@@ -33,6 +33,7 @@ locals {
     wg_prefix_len         = local.wg_prefix_len
     wg_port               = var.wg_port
     loopback_ip           = var.loopback_ip
+    ssh_password          = var.ssh_password
     peers_conf            = local.peers_conf
     agent_url             = var.agent_url
     agent_token           = var.agent_token

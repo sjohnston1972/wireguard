@@ -140,7 +140,11 @@ destroy`, then double-checks with the Azure CLI that the resource group is gone
 and with the Cloudflare API that the DNS record is gone, deleting either by
 hand if Terraform missed it. The bill is £0 when the run is green.
 
-### SSH to the VM (if you allowed it)
+### SSH to the VM
+
+On the Overview, open "SSH to the VM" for the host, username, this deploy's
+password (behind Show) and the address the firewall allows. Press "Allow SSH
+from this address" if you deployed from another device. The key still works:
 
 ```sh
 ssh -i ~/.ssh/wg-admin-azure_ed25519 azureuser@wg.clydeford.net

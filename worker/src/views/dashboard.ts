@@ -22,8 +22,33 @@ export interface LiveOpts {
   notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null;
   lockHolder?: string | null;
   /** The successful apply that built what is running now, for the inventory panel. */
-  deployment?: { id: string; requested_by: string | null; finished_at: string | null; github_run_url: string | null; agent_token_hash: string | null; callback_token_hash: string | null; payload_json: string | null } | null;
+  deployment?: { id: string; requested_by: string | null; finished_at: string | null; github_run_url: string | null; agent_token_hash: string | null; callback_token_hash: string | null; payload_json: string | null; ssh_password: string | null } | null;
+  callerIp?: string | null;
   serverPub?: string | null;
+}
+
+/** SSH access to the VM: user, host, per-deploy password behind a click, and the allow-list. */
+function secrets(o: LiveOpts): Html {
+  const s = o.snap;
+  if (s.state !== "running" || !o.deployment) return html``;
+  let payload: Record<string, unknown> = {};
+  try { payload = JSON.parse(o.deployment.payload_json ?? "{}"); } catch { /* ignore */ }
+  const allowed = s.azure?.resources.find((r) => r.kind === "Network security group")?.detail.match(/allow tcp 22 from ([^;]+)/)?.[1] ?? (payload.ssh_allowed_cidr ? String(payload.ssh_allowed_cidr) : null);
+  const host = s.public_ip ?? o.cfg.dnsName;
+  return html`<details class="panel secret" data-panel="secrets" style="margin-top:16px">
+  <summary><h2 style="display:inline">SSH to the VM</h2> <span class="muted small">username, password and allow-list for this deployment</span></summary>
+  <table class="rows inv"><tbody>
+    <tr><th>Host</th><td><b class="mono">${host}</b></td><td class="muted">${o.cfg.dnsName}, port 22</td></tr>
+    <tr><th>Username</th><td><b class="mono">azureuser</b></td><td class="muted">sudo without a password</td></tr>
+    <tr><th>Password</th><td>${o.deployment.ssh_password
+      ? html`<span class="mono secret-value" data-secret="${o.deployment.ssh_password}" hidden>${o.deployment.ssh_password}</span><span class="mono secret-mask">••••••••••••••••</span></td><td class="muted"><button type="button" data-reveal style="padding:3px 8px;font-size:.8rem">Show</button> <button type="button" data-copy-secret style="padding:3px 8px;font-size:.8rem">Copy</button> <span class="small">made for this deploy only; dies with the VM</span>`
+      : html`<span class="faint">none on this build</span></td><td class="muted">this VM was built before passwords were added; use the key, or redeploy`}</td></tr>
+    <tr><th>Key</th><td><b class="mono">wg-admin-azure_ed25519</b></td><td class="muted">on the laptop in <span class="mono">~/.ssh</span>; always works regardless of the password</td></tr>
+    <tr><th>Allowed from</th><td><b class="mono">${allowed ?? "nobody"}</b></td><td class="muted">${allowed ? "the only address the firewall lets reach port 22" : "no SSH rule on this deploy"}
+      <form method="post" action="/actions/allow-ssh" hx-post="/actions/allow-ssh" hx-target="#live" hx-swap="outerHTML" style="display:inline;margin-left:8px"><button type="submit" style="padding:3px 8px;font-size:.8rem">Allow SSH from this address</button></form></td></tr>
+    <tr><th>Command</th><td colspan="2"><code>ssh azureuser@${host}</code> <span class="muted small">or</span> <code>ssh -i ~/.ssh/wg-admin-azure_ed25519 azureuser@${o.cfg.dnsName}</code></td></tr>
+  </tbody></table>
+</details>`;
 }
 
 /** "What exists in Azure" plus the per-deploy secrets, shown while anything exists. */
@@ -87,6 +112,7 @@ export function liveSection(o: LiveOpts): Html {
   </dl>
 
   ${busy ? runProgress(s) : controls(o)}
+  ${secrets(o)}
   ${inventory(o)}
 </section>`;
 }

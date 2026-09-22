@@ -258,7 +258,7 @@ Build in priority order. Items 1 to 4 are in scope for v1; the rest are backlog 
 - Static secrets live as GitHub repository secrets and Worker secrets (`wrangler secret put`); none in the repo, none in wrangler.toml, none in logs. Terraform variables containing keys are marked sensitive and never appear in outputs or the callback.
 - The Worker validates the Cloudflare Access JWT on every request and refuses to serve if CF_ACCESS_AUD or CF_ACCESS_ALLOWED_EMAIL is unset.
 - /api/agent and /api/callback require bearer tokens generated per deploy or per run, stored as SHA-256 hashes in D1, and are rate limited.
-- The VM accepts SSH only from SSH_ALLOWED_CIDR or the deployer's IP, and only with the SSH key in secrets. Password auth disabled.
+- The VM accepts SSH only from SSH_ALLOWED_CIDR or the deployer's IP. Key auth always works. **Changed 2026-09-22 at Steven's request:** cloud-init also sets a random per-deploy password for azureuser (20 characters, readable alphabet), stored on the run row in D1 and shown in the dashboard's collapsed "SSH to the VM" panel behind a Show button. It dies with the VM. The panel also has "Allow SSH from this address", which rewrites the NSG rule live for the browser's public IP, because a deploy from the phone otherwise leaves the laptop locked out.
 - The NSG is deny-by-default with two inbound rules: UDP 51820 from any, TCP 22 from the allow-list.
 - Client private keys are generated in the browser and never leave it.
 - Destroy and key rotation require typed confirmation.

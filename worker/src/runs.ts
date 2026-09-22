@@ -45,6 +45,15 @@ export async function refreshInventory(env: Env): Promise<void> {
   }
 }
 
+/** A password a person can read out: 4 groups of 5 from an unambiguous alphabet. */
+function readablePassword(): string {
+  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const b = new Uint8Array(20);
+  crypto.getRandomValues(b);
+  const chars = [...b].map((x) => alphabet[x % alphabet.length]);
+  return `${chars.slice(0, 5).join("")}-${chars.slice(5, 10).join("")}-${chars.slice(10, 15).join("")}-${chars.slice(15, 20).join("")}`;
+}
+
 function newRunId(action: string): string {
   const d = new Date();
   const stamp = d.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
@@ -72,6 +81,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
 
   const agentToken = randomToken();
   const callbackToken = randomToken();
+  const sshPassword = readablePassword();
   const peers = terraformPeerList(await db.enabledPeers(env));
   const sshCidr = cfg.sshAllowedCidr || (opts.requesterIp && !opts.requesterIp.includes(":") ? `${opts.requesterIp}/32` : "");
   const auto_destroy_at = opts.hours ? new Date(Date.now() + opts.hours * 3_600_000).toISOString() : null;
@@ -88,12 +98,13 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     wg_subnet: cfg.subnet,
     loopback_ip: cfg.loopbackIp,
     vnet_cidr: cfg.vnetCidr,
+    ssh_password: sshPassword,
     agent_url: `${cfg.publicUrl}/api/agent`,
     agent_token: agentToken,
     callback_url: `${cfg.publicUrl}/api/callback`,
     callback_token: callbackToken,
   };
-  const safePayload = { ...payload, agent_token: "(hidden)", callback_token: "(hidden)" };
+  const safePayload = { ...payload, agent_token: "(hidden)", callback_token: "(hidden)", ssh_password: "(hidden)" };
 
   const now = new Date().toISOString();
   await db.createRun(env, {
@@ -107,6 +118,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     payload_json: JSON.stringify(safePayload),
     auto_destroy_at,
     reason: opts.reason ?? null,
+    ssh_password: sshPassword,
   });
 
   try {
@@ -168,6 +180,7 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
     payload_json: JSON.stringify({ ...payload, callback_token: "(hidden)" }),
     auto_destroy_at: null,
     reason: reason ?? null,
+    ssh_password: null,
   });
 
   try {

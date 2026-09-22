@@ -161,6 +161,31 @@ export async function azureInventory(env: Env): Promise<AzureInventory> {
   }
 }
 
+/**
+ * Point the NSG's SSH rule at a new source. Creates the rule if the deploy had
+ * none. This is a live change on the running VM; the next deploy starts from
+ * the settings again.
+ */
+export async function setSshAllowedCidr(env: Env, cidr: string): Promise<void> {
+  const cfg = config(env);
+  const sub = env.AZURE_SUBSCRIPTION_ID;
+  const path = `/subscriptions/${sub}/resourceGroups/${cfg.resourceGroup}/providers/Microsoft.Network/networkSecurityGroups/nsg-wg/securityRules/allow-ssh-from-home?api-version=2024-01-01`;
+  const body = {
+    properties: {
+      priority: 110,
+      direction: "Inbound",
+      access: "Allow",
+      protocol: "Tcp",
+      sourcePortRange: "*",
+      destinationPortRange: "22",
+      sourceAddressPrefix: cidr,
+      destinationAddressPrefix: "*",
+    },
+  };
+  const r = await arm(env, path, { method: "PUT", body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`Azure refused the NSG change (${r.status}): ${(await r.text()).slice(0, 200)}`);
+}
+
 /** Daily actual cost for this resource group, month to date, via Cost Management. */
 export async function costMonthToDate(env: Env): Promise<{ days: { day: string; gbp: number }[]; currency: string }> {
   const cfg = config(env);

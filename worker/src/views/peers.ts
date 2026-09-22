@@ -78,6 +78,7 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
   </div>
 </section>
 
+<div class="side-by-side">
 <section>
   <div class="panel">
     <h2>Add a client</h2>
@@ -93,6 +94,7 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
   </div>
 </section>
 
+<div class="stack">
 <section>
   <div class="panel quiet">
     <h3>Get the WireGuard app</h3>
@@ -115,5 +117,7 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
     <p class="muted small" style="margin-top:8px">Test from a connected client: <code>ping ${o.cfg.loopbackIp}</code> (the VM loopback, proves routing) and <code>ping ${serverTunnelIpOf(o.cfg.subnet)}</code> (the tunnel end).</p>
     <p class="muted small" style="margin-top:8px">Endpoint <code>${o.cfg.dnsName}:${o.cfg.port}</code>${o.report ? html` · VM reports ${o.report.peers.length} peer${o.report.peers.length === 1 ? "" : "s"} loaded, checked ${fmtTime(o.report.at)}` : ""}</p>
   </div>
-</section>`;
+</section>
+</div>
+</div>`;
 }

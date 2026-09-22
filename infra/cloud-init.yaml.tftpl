@@ -11,6 +11,17 @@
 # dollar-brace is filled in by Terraform. The peer list and the agent files are
 # pre-rendered in main.tf and dropped in whole.
 
+%{ if ssh_password != "" ~}
+# Per-deploy password for azureuser, shown in the dashboard's secret panel.
+# SSH is still limited to the allow-list in the NSG; the key keeps working too.
+ssh_pwauth: true
+chpasswd:
+  expire: false
+  users:
+    - name: azureuser
+      password: ${ssh_password}
+      type: text
+%{ endif ~}
 package_update: true
 package_upgrade: false
 packages:

@@ -85,6 +85,25 @@
   wireConfirm();
   document.addEventListener("htmx:afterSwap", function (e) { wireConfirm(e.target); });
 
+  // ── Secret reveal (the SSH password panel) ─────────────────────────────
+  document.addEventListener("click", function (e) {
+    var r = e.target.closest("[data-reveal]");
+    var c = e.target.closest("[data-copy-secret]");
+    if (!r && !c) return;
+    var row = (r || c).closest("tr");
+    var val = row.querySelector("[data-secret]");
+    var mask = row.querySelector(".secret-mask");
+    if (r) {
+      var show = val.hidden;
+      val.hidden = !show; mask.hidden = show;
+      r.textContent = show ? "Hide" : "Show";
+    } else {
+      navigator.clipboard.writeText(val.getAttribute("data-secret")).then(function () {
+        var old = c.textContent; c.textContent = "Copied"; setTimeout(function () { c.textContent = old; }, 1200);
+      });
+    }
+  });
+
   // ── Copy buttons ────────────────────────────────────────────────────────
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-copy]");

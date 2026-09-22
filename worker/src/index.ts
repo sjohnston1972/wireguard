@@ -15,7 +15,8 @@ import { getSnapshot } from "./state";
 import { lockStatus, releaseLock } from "./lock";
 import { serverPublicKey, nextFreeIp, clientConfigTemplate, validPeerName, isWgKey } from "./peers";
 import { effectiveConfig, saveOverrides } from "./settings";
-import { startDeploy, startDestroy, cancelActive, reconcile, extendAutoDestroy, refreshActiveRun, handleCallback, handleAgent, RunError } from "./runs";
+import { startDeploy, startDestroy, cancelActive, reconcile, extendAutoDestroy, refreshActiveRun, refreshInventory, handleCallback, handleAgent, RunError } from "./runs";
+import { setSshAllowedCidr } from "./azure";
 import { runScheduled } from "./monitor";
 import { page, type Tab } from "./views/layout";
 import { liveSection } from "./views/dashboard";
@@ -101,6 +102,7 @@ async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info";
     lockHolder: lock.held && !["deploying", "destroying"].includes(snap.state) ? lock.lock?.runId ?? null : null,
     deployment,
     serverPub,
+    callerIp: null,
   });
 }
 
@@ -168,6 +170,20 @@ app.post("/actions/extend", async (c) => {
   return action(c, async () => {
     const at = await extendAutoDestroy(c.env, hours > 0 ? hours : null);
     return at ? `Auto-destroy set for ${new Date(at).toLocaleString("en-GB", { timeZone: "Europe/London" })}.` : "Auto-destroy cleared. It runs until you tear it down.";
+  }, "info");
+});
+
+app.post("/actions/allow-ssh", async (c) => {
+  const user = c.get("user");
+  const addr = ip(c);
+  return action(c, async () => {
+    if (!addr || addr.includes(":")) throw new RunError("Could not read an IPv4 address for this browser.");
+    const snap = await getSnapshot(c.env);
+    if (snap.state !== "running") throw new RunError("Nothing is running.");
+    await setSshAllowedCidr(c.env, `${addr}/32`);
+    await db.addAlert(c.env, "info", `SSH allowed from ${addr} by ${user} (live NSG change).`);
+    await refreshInventory(c.env);
+    return `SSH now allowed from ${addr}. Takes effect within a few seconds.`;
   }, "info");
 });
 

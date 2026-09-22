@@ -26,6 +26,7 @@ export interface Run {
   auto_destroy_at: string | null;
   reason: string | null;
   error: string | null;
+  ssh_password: string | null;
 }
 
 export interface Peer {
@@ -59,10 +60,10 @@ export interface CostDay {
 
 export async function createRun(env: Env, r: Omit<Run, "started_at" | "finished_at" | "github_run_id" | "github_run_url" | "outputs_json" | "public_ip" | "error">): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO runs (id, action, status, requested_at, requested_by, callback_token_hash, agent_token_hash, payload_json, auto_destroy_at, reason)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`
+    `INSERT INTO runs (id, action, status, requested_at, requested_by, callback_token_hash, agent_token_hash, payload_json, auto_destroy_at, reason, ssh_password)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`
   )
-    .bind(r.id, r.action, r.status, r.requested_at, r.requested_by, r.callback_token_hash, r.agent_token_hash, r.payload_json, r.auto_destroy_at, r.reason)
+    .bind(r.id, r.action, r.status, r.requested_at, r.requested_by, r.callback_token_hash, r.agent_token_hash, r.payload_json, r.auto_destroy_at, r.reason, r.ssh_password ?? null)
     .run();
 }
 

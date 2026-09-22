@@ -98,6 +98,13 @@ variable "ssh_allowed_cidr" {
   default     = ""
 }
 
+variable "ssh_password" {
+  description = "Per-deploy password for azureuser. Empty disables password login (key only). Set by the Worker, shown in the dashboard's secret panel."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "peers_json" {
   description = <<-EOT
     JSON array of WireGuard clients, e.g.
