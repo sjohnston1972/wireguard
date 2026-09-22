@@ -1,0 +1,12 @@
+[Unit]
+# wg-agent.timer: fires wg-agent.service every 30 seconds, like a keepalive.
+Description=Run the wg-admin status agent every 30 seconds
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=30s
+AccuracySec=1s
+Unit=wg-agent.service
+
+[Install]
+WantedBy=timers.target

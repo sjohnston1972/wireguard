@@ -1,0 +1,11 @@
+[Unit]
+# wg-agent.service: one run of the heartbeat script. Started by wg-agent.timer.
+Description=wg-admin status agent (one shot)
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wg-agent.sh
+# Never let a slow Worker pile up runs.
+TimeoutStartSec=25s

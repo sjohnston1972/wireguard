@@ -308,8 +308,8 @@ Keep it to one language for the Worker so Steven has one thing to learn. TypeScr
 | Cron | Worker cron trigger every 5 minutes for pollers, cost guard, auto-destroy |
 | IaC | Terraform 1.10+, azurerm 4.x and cloudflare 5.x providers pinned, S3 backend on R2 with lockfile |
 | Runner | GitHub Actions workflow with workflow_dispatch inputs and a concurrency group |
-| Tooling | npm scripts: keys, secrets, deploy-worker, migrate, tf-validate (Node scripts in scripts/) |
-| Tests | vitest for the Worker; `terraform validate` and a plan-only job with fake credentials in CI |
+| Tooling | npm scripts: keys, peer, secrets, deploy-worker, migrate, tf-validate, test (Node scripts in scripts/). `npm run peer` makes a client config locally for manual testing; the dashboard replaces it in Phase 3 |
+| Tests | node:test for the scripts (vitest for the Worker from Phase 2); CI runs `terraform fmt`, `terraform validate`, and renders the cloud-init with fake values and parses it as YAML. No plan job: the azurerm provider cannot plan without real credentials |
 
 ```
 wireguard/                 (repo root, this directory)
@@ -318,7 +318,7 @@ wireguard/                 (repo root, this directory)
   .env.example
   .gitignore
   package.json             npm scripts: keys, secrets, deploy-worker, migrate, tf-validate, test
-  scripts/                 the Node scripts behind those npm verbs
+  scripts/                 the Node scripts behind those npm verbs, plus scripts/test/
   wrangler.toml            bindings for D1, KV, R2, Durable Object, cron, custom domain
   worker/
     src/
@@ -352,7 +352,7 @@ Each phase ends with something Steven can click. Do not start the next until the
 | Phase | Delivers | Accepted when |
 | --- | --- | --- |
 | 0. Bootstrap | Repo, Access app, R2 bucket, keys, .env, this spec | Done 2026-09-22 |
-| 1. IaC and runner | Terraform module, cloud-init, R2 backend, wg.yml workflow, package.json with keys/secrets/tf-validate scripts, README first draft | Triggering the workflow by hand from GitHub gives a working tunnel from a laptop within 3 minutes; destroy leaves the resource group gone and the Azure cost page at £0 |
+| 1. IaC and runner | Terraform module, cloud-init, agent, R2 backend, wg.yml and ci.yml workflows, npm scripts (keys, peer, secrets, tf-validate, test), README first draft. **Code complete 2026-09-22; acceptance pending the four REPLACE_ME values** | Triggering the workflow by hand from GitHub gives a working tunnel from a laptop within 3 minutes; destroy leaves the resource group gone and the Azure cost page at £0 |
 | 2. Minimal Worker | Dashboard with state badge, Deploy, Destroy, live log relay; Cloudflare Access enforced; custom domain live | Same result as Phase 1 from a phone browser at wg-admin.clydeford.net |
 | 3. Peers | Peers page, browser-side key generation, QR codes, agent push and live handshake status | A new phone is connected in under 60 seconds and shows Online |
 | 4. Safety | Auto-destroy, cost guard, drift detection, notifications | Leaving the VM running past the timer results in an automatic destroy and a notification |

@@ -1,0 +1,113 @@
+#cloud-config
+#
+# cloud-init.yaml.tftpl
+#
+# Plain English: this is the VM's zero-touch provisioning script, the same idea
+# as Cisco ZTP or a Meraki device claiming itself. Azure hands it to the VM on
+# first boot; the VM installs WireGuard, writes its config, opens the tunnel and
+# starts reporting to the Worker, all without anyone logging in.
+#
+# It is a Terraform template: a dollar-dollar-brace is literal, a single
+# dollar-brace is filled in by Terraform. The peer list and the agent files are
+# pre-rendered in main.tf and dropped in whole.
+
+package_update: true
+package_upgrade: false
+packages:
+  - wireguard
+  - qrencode
+  - curl
+  - jq
+  - unattended-upgrades
+
+write_files:
+  # ── WireGuard: the [Interface] half of wg0.conf ────────────────────────────
+  # Kept as its own file so the agent can rebuild wg0.conf from
+  # interface + peers without touching the key.
+  - path: /etc/wireguard/wg0.interface.conf
+    permissions: "0600"
+    owner: root:root
+    content: |
+      [Interface]
+      Address = ${wg_server_ip}/${wg_prefix_len}
+      ListenPort = ${wg_port}
+      PrivateKey = ${wg_server_private_key}
+      PostUp = /usr/local/sbin/wg-nat.sh up
+      PostDown = /usr/local/sbin/wg-nat.sh down
+
+  # ── WireGuard: the [Peer] half ─────────────────────────────────────────────
+  - path: /etc/wireguard/wg0.peers.conf
+    permissions: "0600"
+    owner: root:root
+    content: |
+      ${indent(6, peers_conf)}
+
+  # ── NAT helper: masquerade tunnel traffic out of the default interface ─────
+  # Looks the interface up at run time rather than assuming eth0.
+  - path: /usr/local/sbin/wg-nat.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      # Called by wg-quick as PostUp / PostDown. Adds or removes the iptables
+      # rules that let tunnel clients reach the internet via the VM's WAN NIC.
+      set -euo pipefail
+      WAN=$(ip -o route show default | awk '{print $5}' | head -n1)
+      case "$${1:-}" in
+        up)   A="-A"; N="-A" ;;
+        down) A="-D"; N="-D" ;;
+        *) echo "usage: $0 up|down" >&2; exit 2 ;;
+      esac
+      iptables "$A" FORWARD -i wg0 -j ACCEPT
+      iptables "$A" FORWARD -o wg0 -j ACCEPT
+      iptables -t nat "$N" POSTROUTING -o "$WAN" -j MASQUERADE
+
+  # ── Kernel: allow forwarding between tunnel and WAN ────────────────────────
+  - path: /etc/sysctl.d/99-wireguard.conf
+    permissions: "0644"
+    owner: root:root
+    content: |
+      net.ipv4.ip_forward = 1
+
+  # ── Status agent: reports to the Worker every 30 seconds ───────────────────
+  - path: /etc/wireguard/wg-agent.env
+    permissions: "0600"
+    owner: root:root
+    content: |
+      AGENT_URL=${agent_url}
+      AGENT_TOKEN=${agent_token}
+
+  - path: /usr/local/sbin/wg-agent.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      ${indent(6, agent_script)}
+
+  - path: /etc/systemd/system/wg-agent.service
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${indent(6, agent_service)}
+
+  - path: /etc/systemd/system/wg-agent.timer
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${indent(6, agent_timer)}
+
+  # ── Security updates on, automatically ────────────────────────────────────
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    permissions: "0644"
+    owner: root:root
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+runcmd:
+  - sysctl --system
+  - cat /etc/wireguard/wg0.interface.conf /etc/wireguard/wg0.peers.conf > /etc/wireguard/wg0.conf
+  - chmod 0600 /etc/wireguard/wg0.conf
+  - systemctl enable --now wg-quick@wg0
+  - systemctl daemon-reload
+  - systemctl enable --now wg-agent.timer
+  - systemctl enable --now unattended-upgrades

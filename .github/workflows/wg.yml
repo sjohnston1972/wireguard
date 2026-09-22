@@ -1,0 +1,204 @@
+# .github/workflows/wg.yml
+#
+# Plain English: this is the "Terraform runner". The Worker (or Steven, by hand
+# from the Actions tab) triggers it with an action (apply or destroy) and a JSON
+# payload of per-run values. It logs into Azure and Cloudflare with repository
+# secrets, runs Terraform against the state in R2, backs the state up, and
+# finally POSTs the result to the Worker's callback URL.
+#
+# Think of it as the NOC engineer who actually types the commands: the Worker
+# raises the ticket, this workflow does the change, then closes the ticket.
+#
+# Safety nets:
+#   - concurrency: two runs can never overlap, even if the Worker's lock fails.
+#   - destroy fallback: if Terraform cannot destroy (lost state, half-built
+#     run), the resource group is deleted by name with the Azure CLI and the
+#     DNS record is removed with the Cloudflare API. Destroy must always reach £0.
+
+name: wg
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "apply builds the concentrator, destroy removes it"
+        type: choice
+        required: true
+        default: apply
+        options: [apply, destroy]
+      payload:
+        description: >-
+          JSON object of per-run values. Any of: region, vm_size, peers_json,
+          home_lan_cidr, ssh_allowed_cidr, wg_dns_name, wg_port, wg_subnet,
+          agent_url, agent_token, run_id, callback_url, callback_token.
+          Leave as {} for a plain manual run.
+        type: string
+        required: false
+        default: "{}"
+
+concurrency:
+  group: wg-admin
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Azure service principal (the azurerm provider reads ARM_*).
+  ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+  ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  # Cloudflare: the NARROW DNS-only token. Never the account token.
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DNS_TOKEN }}
+  # R2 state backend, spoken to as S3.
+  AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+  AWS_REGION: auto
+  R2_BUCKET: ${{ secrets.R2_BUCKET }}
+  # Static Terraform inputs.
+  TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+  TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+  TF_VAR_wg_server_private_key: ${{ secrets.WG_SERVER_PRIVATE_KEY }}
+  TF_VAR_resource_group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+
+jobs:
+  terraform:
+    name: terraform ${{ inputs.action }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: infra
+        shell: bash
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # Turn the JSON payload into TF_VAR_* variables. Tokens are masked so
+      # they never show in the log.
+      - name: Parse payload
+        env:
+          PAYLOAD: ${{ inputs.payload }}
+        run: |
+          set -euo pipefail
+          jq -e 'type == "object"' <<<"$PAYLOAD" >/dev/null || { echo "payload must be a JSON object"; exit 1; }
+          for k in region vm_size peers_json home_lan_cidr ssh_allowed_cidr wg_dns_name wg_port wg_subnet agent_url agent_token run_id; do
+            v="$(jq -r --arg k "$k" 'if has($k) and .[$k] != null then (.[$k] | if type == "string" then . else tojson end) else empty end' <<<"$PAYLOAD")"
+            [ -z "$v" ] && continue
+            [ "$k" = "agent_token" ] && echo "::add-mask::$v"
+            { echo "TF_VAR_$k<<__EOV__"; echo "$v"; echo "__EOV__"; } >> "$GITHUB_ENV"
+            [ "$k" = "agent_token" ] || echo "TF_VAR_$k=$v"
+          done
+          cb_url="$(jq -r '.callback_url // empty' <<<"$PAYLOAD")"
+          cb_tok="$(jq -r '.callback_token // empty' <<<"$PAYLOAD")"
+          [ -n "$cb_tok" ] && echo "::add-mask::$cb_tok"
+          echo "CALLBACK_URL=$cb_url" >> "$GITHUB_ENV"
+          echo "CALLBACK_TOKEN=$cb_tok" >> "$GITHUB_ENV"
+          echo "WORKER_RUN_ID=$(jq -r '.run_id // "manual"' <<<"$PAYLOAD")" >> "$GITHUB_ENV"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      - name: terraform init (state in R2)
+        run: terraform init -no-color -backend-config="bucket=${R2_BUCKET}"
+
+      # ── APPLY ────────────────────────────────────────────────────────────
+      - name: terraform apply
+        if: inputs.action == 'apply'
+        id: apply
+        run: |
+          set -euo pipefail
+          terraform apply -no-color -auto-approve
+          terraform output -no-color -json > "$RUNNER_TEMP/outputs.json"
+          echo "public_ip=$(jq -r .public_ip.value "$RUNNER_TEMP/outputs.json")" >> "$GITHUB_OUTPUT"
+          echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Public IP: $(jq -r .public_ip.value "$RUNNER_TEMP/outputs.json")" >> "$GITHUB_STEP_SUMMARY"
+          echo "- DNS: $(jq -r .dns_name.value "$RUNNER_TEMP/outputs.json")" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── DESTROY ──────────────────────────────────────────────────────────
+      - name: terraform destroy
+        if: inputs.action == 'destroy'
+        id: destroy
+        continue-on-error: true
+        run: terraform destroy -no-color -auto-approve
+
+      # Belt and braces: whatever Terraform thought, make sure Azure and DNS
+      # are actually clean. This is what guarantees the bill returns to zero.
+      - name: Verify Azure is clean (fallback delete)
+        if: inputs.action == 'destroy'
+        env:
+          RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        run: |
+          set -euo pipefail
+          az login --service-principal -u "$ARM_CLIENT_ID" -p "$ARM_CLIENT_SECRET" --tenant "$ARM_TENANT_ID" -o none
+          az account set --subscription "$ARM_SUBSCRIPTION_ID"
+          if [ "$(az group exists -n "$RG")" = "true" ]; then
+            echo "::warning::Resource group $RG still exists after terraform destroy; deleting it by name"
+            az group delete -n "$RG" --yes
+          fi
+          [ "$(az group exists -n "$RG")" = "false" ] && echo "Azure clean: $RG is gone"
+
+      - name: Verify DNS is clean (fallback delete)
+        if: inputs.action == 'destroy'
+        env:
+          ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          NAME: ${{ env.TF_VAR_wg_dns_name || 'wg.clydeford.net' }}
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records"
+          ids="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?type=A&name=$NAME" | jq -r '.result[].id')"
+          for id in $ids; do
+            echo "::warning::DNS record $NAME still present; deleting $id"
+            curl -fsS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$id" >/dev/null
+          done
+          echo "DNS clean: no A record for $NAME"
+
+      - name: Note destroy fallback
+        if: inputs.action == 'destroy' && steps.destroy.outcome == 'failure'
+        run: echo "::warning::terraform destroy reported an error but the fallback checks passed; the next apply will start from a clean state"
+
+      # ── STATE BACKUP ─────────────────────────────────────────────────────
+      # R2 has no versioning, so keep our own last 20 copies.
+      - name: Back up state
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          ts="$(date -u +%Y%m%dT%H%M%SZ)"
+          terraform state pull > "$RUNNER_TEMP/state.json"
+          aws s3 cp "$RUNNER_TEMP/state.json" "s3://$R2_BUCKET/backups/${ts}-${{ inputs.action }}.tfstate" --only-show-errors
+          aws s3 ls "s3://$R2_BUCKET/backups/" | awk '{print $4}' | sort | head -n -20 | while read -r old; do
+            [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/backups/$old" --only-show-errors
+          done
+          echo "state backed up as backups/${ts}-${{ inputs.action }}.tfstate"
+
+      # ── CALLBACK ─────────────────────────────────────────────────────────
+      - name: Report result to the Worker
+        if: always() && env.CALLBACK_URL != ''
+        run: |
+          set -euo pipefail
+          status="success"
+          [ "${{ job.status }}" != "success" ] && status="failure"
+          [ "${{ inputs.action }}" = "destroy" ] && [ "${{ steps.destroy.outcome }}" = "failure" ] && status="success-with-fallback"
+          outputs="{}"
+          [ -f "$RUNNER_TEMP/outputs.json" ] && outputs="$(jq 'with_entries(.value = .value.value)' "$RUNNER_TEMP/outputs.json")"
+          body="$(jq -n \
+            --arg run_id "$WORKER_RUN_ID" \
+            --arg action "${{ inputs.action }}" \
+            --arg status "$status" \
+            --arg gh_run_id "${{ github.run_id }}" \
+            --arg gh_run_url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --argjson outputs "$outputs" \
+            '{run_id:$run_id, action:$action, status:$status, github_run_id:$gh_run_id, github_run_url:$gh_run_url, outputs:$outputs}')"
+          curl -fsS --max-time 20 -X POST \
+            -H "Authorization: Bearer $CALLBACK_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$body" "$CALLBACK_URL" || echo "::warning::callback to Worker failed"

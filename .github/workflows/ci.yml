@@ -1,0 +1,80 @@
+# .github/workflows/ci.yml
+#
+# Plain English: the pre-flight check that runs on every push. It does not
+# touch Azure or Cloudflare. It proves the Terraform is well-formed, that the
+# cloud-init the VM will receive is valid YAML, and that the helper scripts
+# pass their tests. Like "show run | include" before you commit a config.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: terraform validate + render cloud-init
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      - name: fmt
+        working-directory: infra
+        run: terraform fmt -check -recursive -diff
+
+      - name: validate
+        working-directory: infra
+        run: |
+          terraform init -backend=false -input=false -no-color
+          terraform validate -no-color
+
+      # Render the cloud-init with fake values and prove it parses as YAML,
+      # and that no Terraform placeholder leaked through unrendered.
+      - name: render cloud-init
+        run: |
+          set -euo pipefail
+          cp -r infra "$RUNNER_TEMP/render"
+          cd "$RUNNER_TEMP/render"
+          rm -f backend.tf
+          terraform init -input=false -no-color >/dev/null
+          echo 'nonsensitive(local.cloud_init)' | terraform console -no-color \
+            -var cloudflare_zone_id=zone \
+            -var 'ssh_public_key=ssh-ed25519 AAAA ci' \
+            -var wg_server_private_key=PRIVKEY \
+            -var 'peers_json=[{"name":"laptop","public_key":"LAPTOPKEY=","ip":"10.13.13.2"}]' \
+            -var agent_token=tok \
+            | python3 -c 'import sys,json; s=sys.stdin.read().strip(); s = s[len("<<EOT"):].strip()[:-len("EOT")] if s.startswith("<<EOT") else json.loads(s); open("rendered.yaml","w").write(s)'
+          python3 -c '
+          import yaml
+          d = yaml.safe_load(open("rendered.yaml"))
+          paths = [f["path"] for f in d["write_files"]]
+          assert "/etc/wireguard/wg0.interface.conf" in paths, paths
+          assert "/usr/local/sbin/wg-agent.sh" in paths, paths
+          text = open("rendered.yaml").read()
+          for marker in ("${indent(", "${wg_", "${agent_", "${peers_"):
+              assert marker not in text, "unrendered Terraform placeholder in cloud-init: " + marker
+          assert "$$" not in text, "double-dollar leaked into cloud-init"
+          assert "PRIVKEY" in text and "LAPTOPKEY=" in text and "tok" in text, "values did not render"
+          print("cloud-init OK:", len(paths), "files")
+          '
+
+  scripts:
+    name: npm test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm test

@@ -26,3 +26,6 @@ Thumbs.db
 .vscode/
 .idea/
 
+
+# Client configs made by "npm run peer" (contain private keys)
+peers/

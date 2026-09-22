@@ -1,0 +1,19 @@
+{
+  "name": "wg-admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "On-demand Azure WireGuard concentrator managed from a Cloudflare Worker",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "keys": "node scripts/keys.mjs",
+    "peer": "node scripts/peer.mjs",
+    "secrets": "node scripts/secrets.mjs",
+    "tf-validate": "node scripts/tf-validate.mjs",
+    "deploy-worker": "node scripts/not-yet.mjs deploy-worker",
+    "migrate": "node scripts/not-yet.mjs migrate",
+    "test": "node --test \"scripts/test/*.test.mjs\""
+  }
+}
