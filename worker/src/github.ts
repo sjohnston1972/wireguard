@@ -37,6 +37,7 @@ export interface DispatchPayload {
   wg_port: number;
   wg_subnet: string;
   loopback_ip: string;
+  vnet_cidr: string;
   agent_url: string;
   agent_token: string;
   callback_url: string;

@@ -25,7 +25,7 @@ export function peersTable(peers: Peer[], report: AgentReport | null, running: b
         const live = byKey.get(p.public_key);
         const online = !!live && peerOnline(live);
         return html`<tr>
-          <td><b>${p.name}</b>${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}<div class="key" title="${p.public_key}">${p.public_key}</div></td>
+          <td><b>${p.name}</b>${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}<div class="key" title="${p.public_key}">${p.public_key}</div></td>
           <td class="mono">${p.ip}</td>
           <td>${!p.enabled ? html`<span class="pill idle">disabled</span>` : !running ? html`<span class="faint">headend down</span>` : online ? html`<span class="pill up">online</span>` : html`<span class="pill idle">offline</span>`}</td>
           <td>${live && live.latest_handshake ? html`<span title="${new Date(live.latest_handshake * 1000).toISOString()}">${ago(new Date(live.latest_handshake * 1000).toISOString())}</span>` : html`<span class="faint">never</span>`}</td>
@@ -69,8 +69,9 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
     ${o.serverPub
       ? html`<form id="add-peer" hx-boost="false" action="/peers" method="get">
         <label class="field"><span>Name</span><input type="text" name="name" required maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9 _-]{0,31}" placeholder="Phone"></label>
-        <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="full_tunnel" value="1" style="width:auto"><span style="margin:0">Full tunnel (send all traffic through Azure, an exit node)</span></label>
-        <p class="hint">Split tunnel by default: only ${o.cfg.subnet} goes through. Next free address: <span class="mono">${o.nextIp ?? "none left"}</span>.</p>
+        <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="azure_vnet" value="1" style="width:auto"><span style="margin:0">Also route the Azure network <span class="mono">${o.cfg.vnetCidr}</span> through the tunnel</span></label>
+        <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="full_tunnel" value="1" style="width:auto"><span style="margin:0">Full tunnel (send all traffic through Azure, an exit node; includes the Azure network)</span></label>
+        <p class="hint">Split tunnel by default: ${o.cfg.subnet} and the loopback ${o.cfg.loopbackIp} go through. Next free address: <span class="mono">${o.nextIp ?? "none left"}</span>.</p>
         <div class="btn-row"><button type="submit" class="primary" ${o.nextIp ? "" : "disabled"}>Make keys and add</button><span id="add-peer-status" class="small muted"></span></div>
       </form>`
       : html`<p class="muted">The server key is not configured (WG_SERVER_PRIVATE_KEY), so client configs cannot be built yet. <a href="/settings">Finish setup</a>.</p>`}

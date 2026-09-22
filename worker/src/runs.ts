@@ -87,6 +87,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     wg_port: cfg.port,
     wg_subnet: cfg.subnet,
     loopback_ip: cfg.loopbackIp,
+    vnet_cidr: cfg.vnetCidr,
     agent_url: `${cfg.publicUrl}/api/agent`,
     agent_token: agentToken,
     callback_url: `${cfg.publicUrl}/api/callback`,

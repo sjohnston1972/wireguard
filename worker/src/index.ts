@@ -190,7 +190,7 @@ app.get("/partials/peers-table", async (c) => {
 });
 
 app.post("/api/peers", async (c) => {
-  const body = (await c.req.json().catch(() => null)) as { name?: string; public_key?: string; full_tunnel?: boolean } | null;
+  const body = (await c.req.json().catch(() => null)) as { name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean } | null;
   if (!body) return c.json({ error: "bad json" }, 400);
   const name = String(body.name ?? "").trim();
   if (!validPeerName(name)) return c.json({ error: "Name: letters, digits, spaces, dashes; up to 32 characters." }, 400);
@@ -203,7 +203,7 @@ app.post("/api/peers", async (c) => {
   if (!ipAddr) return c.json({ error: "No free tunnel addresses left." }, 409);
   let peer;
   try {
-    peer = await db.addPeer(c.env, { name, public_key: String(body.public_key), ip: ipAddr, full_tunnel: !!body.full_tunnel });
+    peer = await db.addPeer(c.env, { name, public_key: String(body.public_key), ip: ipAddr, full_tunnel: !!body.full_tunnel, azure_vnet: !!body.azure_vnet });
   } catch (e) {
     return c.json({ error: /UNIQUE/.test(String(e)) ? "That key is already registered." : (e as Error).message }, 409);
   }

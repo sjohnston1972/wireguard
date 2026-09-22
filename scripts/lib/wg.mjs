@@ -58,13 +58,14 @@ export function parsePublicKey(publicKeyB64) {
  * @param {string} o.endpoint          e.g. wg.clydeford.net:51820
  * @param {string} o.serverIp          e.g. 10.13.13.1
  * @param {string} [o.loopbackIp]      the VM loopback test address, added to split-tunnel AllowedIPs
+ * @param {string} [o.vnetCidr]        the Azure VNet, added to split-tunnel AllowedIPs when wanted
  * @param {string} [o.homeLanCidr]     add to AllowedIPs for split-tunnel access to home via the VM
  * @param {boolean} [o.fullTunnel]     AllowedIPs 0.0.0.0/0 with DNS pushed
  */
 export function renderClientConf(o) {
   const allowed = o.fullTunnel
     ? ["0.0.0.0/0", "::/0"]
-    : [o.serverIp + "/32", o.tunnelCidr || "10.13.13.0/24"].concat(o.loopbackIp ? [o.loopbackIp + "/32"] : []).concat(o.homeLanCidr ? [o.homeLanCidr] : []);
+    : [o.serverIp + "/32", o.tunnelCidr || "10.13.13.0/24"].concat(o.loopbackIp ? [o.loopbackIp + "/32"] : []).concat(o.vnetCidr ? [o.vnetCidr] : []).concat(o.homeLanCidr ? [o.homeLanCidr] : []);
   const uniq = [...new Set(allowed)];
   return [
     "[Interface]",

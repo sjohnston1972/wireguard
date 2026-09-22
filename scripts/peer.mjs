@@ -22,7 +22,7 @@ function arg(name, fallback) {
 
 const name = arg("name");
 if (!name || !/^[a-z0-9-]{1,32}$/i.test(name)) {
-  console.error("usage: npm run peer -- --name <letters-digits-dashes> [--ip 10.13.13.2] [--full]");
+  console.error("usage: npm run peer -- --name <letters-digits-dashes> [--ip 10.13.13.2] [--full] [--azure] [--home]");
   process.exit(2);
 }
 const ip = arg("ip", "10.13.13.2");
@@ -31,6 +31,8 @@ const fullTunnel = process.argv.includes("--full");
 // AWAY from home once site-to-site (backlog item 7) exists; on a device that
 // is on the home LAN it would black-hole local traffic. Off by default.
 const viaHome = process.argv.includes("--home");
+// --azure adds the Azure VNet so the client can reach workloads next to the VM.
+const viaAzure = process.argv.includes("--azure");
 
 const env = loadEnv();
 if (!isWgKey(env.WG_SERVER_PRIVATE_KEY)) {
@@ -50,6 +52,7 @@ const conf = renderClientConf({
   serverIp,
   tunnelCidr: env.WG_SUBNET,
   loopbackIp: env.WG_LOOPBACK_IP || "10.13.255.1",
+  vnetCidr: viaAzure ? env.AZURE_VNET_CIDR || "10.50.0.0/16" : undefined,
   homeLanCidr: viaHome ? env.HOME_LAN_CIDR || undefined : undefined,
   fullTunnel,
 });

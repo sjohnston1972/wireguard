@@ -7,6 +7,7 @@ const env = {
   WG_DNS_NAME: "wg.clydeford.net",
   WG_PORT: "51820",
   WG_SUBNET: "10.13.13.0/24",
+  AZURE_VNET_CIDR: "10.50.0.0/16",
   // RFC 7748 §6.1 Alice's private key, base64
   WG_SERVER_PRIVATE_KEY: Buffer.from("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", "hex").toString("base64"),
 } as unknown as Env;
@@ -30,8 +31,15 @@ describe("clientConfigTemplate", () => {
     const t = clientConfigTemplate(env, { ip: "10.13.13.7", full_tunnel: 0 }, "SERVERPUB=");
     expect(t).toContain(`PrivateKey = ${PRIVATE_KEY_PLACEHOLDER}`);
     expect(t).toContain("Endpoint = wg.clydeford.net:51820");
-    expect(t).toContain("AllowedIPs = 10.13.13.0/24");
+    expect(t).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32");
     expect(t).not.toContain("DNS =");
+  });
+  it("split tunnel includes the loopback, and the Azure VNet only when asked", () => {
+    const plain = clientConfigTemplate(env, { ip: "10.13.13.7", full_tunnel: 0 }, "SERVERPUB=");
+    expect(plain).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32");
+    expect(plain).not.toContain("10.50.0.0/16");
+    const vnet = clientConfigTemplate(env, { ip: "10.13.13.7", full_tunnel: 0, azure_vnet: 1 }, "SERVERPUB=");
+    expect(vnet).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32, 10.50.0.0/16");
   });
   it("full tunnel routes everything and pushes DNS", () => {
     const t = clientConfigTemplate(env, { ip: "10.13.13.7", full_tunnel: 1 }, "SERVERPUB=");
@@ -42,8 +50,8 @@ describe("clientConfigTemplate", () => {
 
 describe("peer lists", () => {
   const peers: Peer[] = [
-    { id: 1, name: "a", public_key: "A=", ip: "10.13.13.2", enabled: 1, full_tunnel: 0, created_at: "", note: null },
-    { id: 2, name: "b", public_key: "B=", ip: "10.13.13.3", enabled: 0, full_tunnel: 0, created_at: "", note: null },
+    { id: 1, name: "a", public_key: "A=", ip: "10.13.13.2", enabled: 1, full_tunnel: 0, azure_vnet: 0, created_at: "", note: null },
+    { id: 2, name: "b", public_key: "B=", ip: "10.13.13.3", enabled: 0, full_tunnel: 0, azure_vnet: 0, created_at: "", note: null },
   ];
   it("only enabled peers reach the VM and Terraform", () => {
     expect(agentPeerList(peers)).toEqual([{ name: "a", public_key: "A=", allowed_ips: "10.13.13.2/32" }]);

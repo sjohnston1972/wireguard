@@ -75,9 +75,9 @@ export function serverTunnelIp(subnet: string): string {
  * Client config with a placeholder for the private key. Endpoint is always
  * the DNS name so a rebuilt VM needs no client change.
  */
-export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: number }, serverPub: string): string {
+export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: number; azure_vnet?: number }, serverPub: string): string {
   const cfg = config(env);
-  const allowed = peer.full_tunnel ? ["0.0.0.0/0", "::/0"] : [cfg.subnet, `${cfg.loopbackIp}/32`];
+  const allowed = peer.full_tunnel ? ["0.0.0.0/0", "::/0"] : [cfg.subnet, `${cfg.loopbackIp}/32`].concat(peer.azure_vnet ? [cfg.vnetCidr] : []);
   return [
     "[Interface]",
     `PrivateKey = ${PRIVATE_KEY_PLACEHOLDER}`,

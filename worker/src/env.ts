@@ -22,6 +22,7 @@ export interface Env {
   AZURE_REGION: string;
   AZURE_VM_SIZE: string;
   AZURE_RESOURCE_GROUP: string;
+  AZURE_VNET_CIDR?: string;
   HOME_LAN_CIDR?: string;
   SSH_ALLOWED_CIDR?: string;
   AUTO_DESTROY_DEFAULT_HOURS: string;
@@ -57,6 +58,7 @@ export interface Config {
   region: string;
   vmSize: string;
   resourceGroup: string;
+  vnetCidr: string;
   homeLanCidr: string;
   sshAllowedCidr: string;
   autoDestroyDefaultHours: number;
@@ -80,6 +82,7 @@ export function config(env: Env): Config {
     region: env.AZURE_REGION || "uksouth",
     vmSize: env.AZURE_VM_SIZE || "Standard_B1s",
     resourceGroup: env.AZURE_RESOURCE_GROUP || "rg-wg-ondemand",
+    vnetCidr: env.AZURE_VNET_CIDR || "10.50.0.0/16",
     homeLanCidr: env.HOME_LAN_CIDR || "",
     sshAllowedCidr: env.SSH_ALLOWED_CIDR || "",
     autoDestroyDefaultHours: num(env.AUTO_DESTROY_DEFAULT_HOURS, 4),

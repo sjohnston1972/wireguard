@@ -157,7 +157,7 @@
       var fd = new FormData(form);
       var r = await fetch("/api/peers", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: fd.get("name"), public_key: keys.publicKey, full_tunnel: fd.get("full_tunnel") === "1" }),
+        body: JSON.stringify({ name: fd.get("name"), public_key: keys.publicKey, full_tunnel: fd.get("full_tunnel") === "1", azure_vnet: fd.get("azure_vnet") === "1" }),
       });
       var data = await r.json();
       if (!r.ok) throw new Error(data.error || ("Failed (" + r.status + ")"));

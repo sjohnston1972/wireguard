@@ -61,6 +61,8 @@ WG_LOOPBACK_IP = "10.13.255.1"
 AZURE_REGION = "uksouth"
 AZURE_VM_SIZE = "Standard_B1s"
 AZURE_RESOURCE_GROUP = "rg-wg-ondemand"
+# The Azure VNet the VM lives in; clients can opt in to routing it through the tunnel.
+AZURE_VNET_CIDR = "10.50.0.0/16"
 HOME_LAN_CIDR = "192.168.1.0/24"
 SSH_ALLOWED_CIDR = ""
 AUTO_DESTROY_DEFAULT_HOURS = "4"

@@ -35,6 +35,7 @@ export interface Peer {
   ip: string;
   enabled: number;
   full_tunnel: number;
+  azure_vnet: number;
   created_at: string;
   note: string | null;
 }
@@ -113,12 +114,12 @@ export async function getPeer(env: Env, id: number): Promise<Peer | null> {
   return (await env.DB.prepare("SELECT * FROM peers WHERE id = ?1").bind(id).first<Peer>()) ?? null;
 }
 
-export async function addPeer(env: Env, p: { name: string; public_key: string; ip: string; full_tunnel: boolean; note?: string }): Promise<Peer> {
+export async function addPeer(env: Env, p: { name: string; public_key: string; ip: string; full_tunnel: boolean; azure_vnet?: boolean; note?: string }): Promise<Peer> {
   const created_at = new Date().toISOString();
   const r = await env.DB.prepare(
-    "INSERT INTO peers (name, public_key, ip, enabled, full_tunnel, created_at, note) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6) RETURNING *"
+    "INSERT INTO peers (name, public_key, ip, enabled, full_tunnel, azure_vnet, created_at, note) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7) RETURNING *"
   )
-    .bind(p.name, p.public_key, p.ip, p.full_tunnel ? 1 : 0, created_at, p.note ?? null)
+    .bind(p.name, p.public_key, p.ip, p.full_tunnel ? 1 : 0, p.azure_vnet ? 1 : 0, created_at, p.note ?? null)
     .first<Peer>();
   if (!r) throw new Error("insert failed");
   return r;
