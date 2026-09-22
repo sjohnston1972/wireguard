@@ -94,42 +94,78 @@
     el.innerHTML = qr.createSvgTag({ scalable: true, margin: 0 });
   }
 
-  var form = document.getElementById("add-peer");
-  if (form) {
-    form.addEventListener("submit", async function (e) {
-      e.preventDefault();
-      var status = document.getElementById("add-peer-status");
-      var btn = form.querySelector("button[type=submit]");
-      status.textContent = "Making keys…"; btn.disabled = true;
-      try {
-        var keys = await genKeypair();
-        var fd = new FormData(form);
-        var r = await fetch("/api/peers", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: fd.get("name"), public_key: keys.publicKey, full_tunnel: fd.get("full_tunnel") === "1" }),
-        });
-        var data = await r.json();
-        if (!r.ok) throw new Error(data.error || ("Failed (" + r.status + ")"));
-        var conf = data.template.replace("__CLIENT_PRIVATE_KEY__", keys.privateKey);
-        var reveal = document.getElementById("peer-reveal");
-        reveal.hidden = false;
-        reveal.querySelector("[data-peer-name]").textContent = data.peer.name;
-        reveal.querySelector("[data-peer-ip]").textContent = data.peer.ip;
-        reveal.querySelector("#peer-conf").textContent = conf;
-        drawQr(reveal.querySelector(".qr"), conf);
-        var dl = reveal.querySelector("[data-download]");
-        var blob = new Blob([conf], { type: "text/plain" });
-        dl.href = URL.createObjectURL(blob);
-        dl.download = data.peer.name.replace(/[^a-z0-9-]+/gi, "-").toLowerCase() + ".conf";
-        status.textContent = "";
-        form.reset();
-        reveal.scrollIntoView({ behavior: "smooth", block: "start" });
-        if (window.htmx) htmx.ajax("GET", "/partials/peers-table", { target: "#peers-table", swap: "outerHTML" });
-      } catch (err) {
-        status.textContent = err.message;
-      } finally {
-        btn.disabled = false;
-      }
-    });
+  // Show a finished config: QR, text, download. The private key only ever
+  // lives in this page's memory and in the file the person saves.
+  function showConfig(peer, template, privateKey) {
+    var conf = template.replace("__CLIENT_PRIVATE_KEY__", privateKey);
+    var reveal = document.getElementById("peer-reveal");
+    reveal.hidden = false;
+    reveal.querySelector("[data-peer-name]").textContent = peer.name;
+    reveal.querySelector("[data-peer-ip]").textContent = peer.ip;
+    reveal.querySelector("#peer-conf").textContent = conf;
+    drawQr(reveal.querySelector(".qr"), conf);
+    var dl = reveal.querySelector("[data-download]");
+    if (dl.href && dl.href.indexOf("blob:") === 0) URL.revokeObjectURL(dl.href);
+    dl.href = URL.createObjectURL(new Blob([conf], { type: "text/plain" }));
+    // The WireGuard apps use the file name as the tunnel name: letters, digits,
+    // dashes and underscores, at most 15 characters on Windows.
+    dl.download = peer.name.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 15).toLowerCase() + ".conf";
+    reveal.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (window.htmx) htmx.ajax("GET", "/partials/peers-table", { target: "#peers-table", swap: "outerHTML" });
   }
+
+  // The add-client form. Bound at the document level (not on the form) because
+  // htmx swaps the page body when you move between tabs, so a handler attached
+  // to the form at first load would be lost. Capture phase, so it runs before
+  // htmx's own submit handling.
+  document.addEventListener("submit", async function (e) {
+    var form = e.target;
+    if (!form || form.id !== "add-peer") return;
+    e.preventDefault();
+    e.stopPropagation();
+    var status = document.getElementById("add-peer-status");
+    var btn = form.querySelector("button[type=submit]");
+    status.textContent = "Making keys…"; btn.disabled = true;
+    try {
+      var keys = await genKeypair();
+      var fd = new FormData(form);
+      var r = await fetch("/api/peers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: fd.get("name"), public_key: keys.publicKey, full_tunnel: fd.get("full_tunnel") === "1" }),
+      });
+      var data = await r.json();
+      if (!r.ok) throw new Error(data.error || ("Failed (" + r.status + ")"));
+      status.textContent = "";
+      form.reset();
+      showConfig(data.peer, data.template, keys.privateKey);
+    } catch (err) {
+      status.textContent = err.message;
+      alert("Could not add the client: " + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }, true);
+
+  // "Get config" on an existing client: new keys, then the same reveal.
+  document.addEventListener("click", async function (e) {
+    var b = e.target.closest("[data-rekey]");
+    if (!b) return;
+    var id = b.getAttribute("data-rekey"), name = b.getAttribute("data-name");
+    if (!confirm("Make new keys for \"" + name + "\" and download its config? Any config it already has stops working within 30 seconds.")) return;
+    var old = b.textContent; b.textContent = "Making keys…"; b.disabled = true;
+    try {
+      var keys = await genKeypair();
+      var r = await fetch("/api/peers/" + id + "/rekey", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ public_key: keys.publicKey }),
+      });
+      var data = await r.json();
+      if (!r.ok) throw new Error(data.error || ("Failed (" + r.status + ")"));
+      showConfig(data.peer, data.template, keys.privateKey);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      b.textContent = old; b.disabled = false;
+    }
+  });
 })();

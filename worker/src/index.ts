@@ -210,6 +210,25 @@ app.post("/api/peers", async (c) => {
   return c.json({ peer, template: clientConfigTemplate(c.env, peer, serverPub) });
 });
 
+// Re-key: the browser made a new keypair for an existing client and sends
+// the public half. Returns the config template for the new key.
+app.post("/api/peers/:id/rekey", async (c) => {
+  const id = Number(c.req.param("id"));
+  const body = (await c.req.json().catch(() => null)) as { public_key?: string } | null;
+  if (!body || !isWgKey(String(body.public_key ?? ""))) return c.json({ error: "That is not a valid WireGuard public key." }, 400);
+  const peer = await db.getPeer(c.env, id);
+  if (!peer) return c.json({ error: "No such client." }, 404);
+  const serverPub = await serverPublicKey(c.env);
+  if (!serverPub) return c.json({ error: "Server key not configured." }, 503);
+  try {
+    await db.setPeerKey(c.env, id, String(body.public_key));
+  } catch (e) {
+    return c.json({ error: /UNIQUE/.test(String(e)) ? "That key is already registered." : (e as Error).message }, 409);
+  }
+  const updated = (await db.getPeer(c.env, id))!;
+  return c.json({ peer: updated, template: clientConfigTemplate(c.env, updated, serverPub) });
+});
+
 app.post("/peers/:id/toggle", async (c) => {
   const id = Number(c.req.param("id"));
   const p = await db.getPeer(c.env, id);

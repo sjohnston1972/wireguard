@@ -124,6 +124,11 @@ export async function addPeer(env: Env, p: { name: string; public_key: string; i
   return r;
 }
 
+/** Replace a client's public key (a "re-key"): the old config stops working at the next heartbeat. */
+export async function setPeerKey(env: Env, id: number, public_key: string): Promise<void> {
+  await env.DB.prepare("UPDATE peers SET public_key = ?2 WHERE id = ?1").bind(id, public_key).run();
+}
+
 export async function setPeerEnabled(env: Env, id: number, enabled: boolean): Promise<void> {
   await env.DB.prepare("UPDATE peers SET enabled = ?2 WHERE id = ?1").bind(id, enabled ? 1 : 0).run();
 }

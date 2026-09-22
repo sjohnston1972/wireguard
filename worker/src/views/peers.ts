@@ -32,6 +32,7 @@ export function peersTable(peers: Peer[], report: AgentReport | null, running: b
           <td class="num">${live ? bytes(live.tx) : html`<span class="faint">—</span>`}</td>
           <td class="num">${live ? bytes(live.rx) : html`<span class="faint">—</span>`}</td>
           <td class="actions">
+            <button type="button" data-rekey="${p.id}" data-name="${p.name}" title="Make new keys for this client and download its config">Get config</button>
             <form method="post" action="/peers/${p.id}/toggle" hx-post="/peers/${p.id}/toggle" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit">${p.enabled ? "Disable" : "Enable"}</button></form>
             <form method="post" action="/peers/${p.id}/delete" hx-post="/peers/${p.id}/delete" hx-target="#peers-table" hx-swap="outerHTML" hx-confirm="Delete ${p.name}? Its config stops working at the next heartbeat." style="display:inline"><button type="submit" class="danger">Delete</button></form>
           </td>
@@ -51,7 +52,7 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
 <section id="peer-reveal" hidden>
   <div class="panel">
     <div class="section-head"><h2>Config for <span data-peer-name></span></h2><span class="muted small">tunnel address <span class="mono" data-peer-ip></span></span></div>
-    <p class="muted">This is the only time the private key is shown. Scan it with the WireGuard app, or download the file. It is not stored anywhere.</p>
+    <p class="muted">This is the only time the private key is shown. Scan it with the WireGuard app, or download the file and use "Import tunnel(s) from file" on Windows or macOS. It is not stored anywhere; to get a config again later, press Get config on the client, which makes new keys.</p>
     <div class="reveal">
       <div class="qr" aria-label="QR code of the config"></div>
       <div>
@@ -66,7 +67,7 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
   <div class="panel">
     <h2>Add a client</h2>
     ${o.serverPub
-      ? html`<form id="add-peer">
+      ? html`<form id="add-peer" hx-boost="false" action="/peers" method="get">
         <label class="field"><span>Name</span><input type="text" name="name" required maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9 _-]{0,31}" placeholder="Phone"></label>
         <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="full_tunnel" value="1" style="width:auto"><span style="margin:0">Full tunnel (send all traffic through Azure, an exit node)</span></label>
         <p class="hint">Split tunnel by default: only ${o.cfg.subnet} goes through. Next free address: <span class="mono">${o.nextIp ?? "none left"}</span>.</p>
