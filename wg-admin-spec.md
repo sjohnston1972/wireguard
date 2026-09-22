@@ -57,6 +57,7 @@ Still to be filled in by Steven by hand, each marked REPLACE_ME in .env. None bl
 - [ ] R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY: dashboard > R2 > Manage R2 API Tokens > Object Read & Write, bucket = wg-admin-tfstate only
 - [ ] GITHUB_TOKEN: github.com > Settings > Developer settings > Fine-grained tokens, repository = sjohnston1972/wireguard only, permissions Actions: Read and write, Contents: Read
 - [ ] wrangler: `npm i -g wrangler` then `wrangler login` (wrangler is not installed yet)
+- [ ] **GitHub Actions is blocked on this account.** The first CI run (2026-09-22) did not start: "recent account payments have failed or your spending limit needs to be increased". Fix at github.com/settings/billing (a spending limit of £0 with a valid card is enough; the free 2,000 minutes still apply), or make the repo public, where Actions minutes are free. Nothing in the repo is secret. Until this is fixed neither ci.yml nor wg.yml can run, so Phase 1 cannot be accepted.
 
 ## Architecture
 
