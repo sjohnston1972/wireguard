@@ -279,3 +279,19 @@ footer.wrap { color: var(--ink-3); font-size: 0.8rem; padding-bottom: 30px; }
   .tunnel text { font-size: 15px; }
   .tunnel text.name { font-size: 17px; }
 }
+
+/* ── Inventory (what exists in Azure) ─────────────────────────────────────── */
+details.inventory > summary { cursor: pointer; list-style: none; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+details.inventory > summary::-webkit-details-marker { display: none; }
+details.inventory > summary::before { content: "▸"; color: var(--ink-3); font-size: 0.9rem; }
+details.inventory[open] > summary::before { content: "▾"; }
+table.rows.inv { margin-top: 10px; font-size: 0.9rem; }
+table.rows.inv th { width: 12rem; color: var(--ink-2); font-weight: 500; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.rows.inv td { padding: 7px 10px 7px 0; }
+table.rows.inv td.muted { overflow-wrap: anywhere; }
+@media (max-width: 640px) { table.rows.inv th { width: 8rem; } }
+
+/* ── Client download links ────────────────────────────────────────────────── */
+.downloads { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.downloads a { border: 1px solid var(--line-strong); border-radius: 999px; padding: 6px 12px; text-decoration: none; color: var(--ink); font-weight: 500; font-size: 0.92rem; background: var(--surface); }
+.downloads a:hover { background: var(--surface-2); }

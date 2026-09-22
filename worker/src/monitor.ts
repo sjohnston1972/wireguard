@@ -18,7 +18,7 @@ import { canAzure } from "./env";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { getSnapshot, saveSnapshot, anyHandshakeWithin } from "./state";
-import { refreshActiveRun, startDestroy, detectDrift } from "./runs";
+import { refreshActiveRun, startDestroy, detectDrift, refreshInventory } from "./runs";
 import { notify } from "./notify";
 import { costMonthToDate } from "./azure";
 import { checkDns } from "./dns";
@@ -73,7 +73,8 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     }
   }
 
-  // 4. Drift.
+  // 4. Inventory (what Azure says exists) and drift.
+  if (snap.state !== "destroyed" || snap.azure?.exists) await refreshInventory(env);
   try {
     const before = snap.drift;
     const drift = await detectDrift(env);

@@ -21,6 +21,40 @@ export interface LiveOpts {
   canDispatch: boolean;
   notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null;
   lockHolder?: string | null;
+  /** The successful apply that built what is running now, for the inventory panel. */
+  deployment?: { id: string; requested_by: string | null; finished_at: string | null; github_run_url: string | null; agent_token_hash: string | null; callback_token_hash: string | null; payload_json: string | null } | null;
+  serverPub?: string | null;
+}
+
+/** "What exists in Azure" plus the per-deploy secrets, shown while anything exists. */
+function inventory(o: LiveOpts): Html {
+  const s = o.snap;
+  const az = s.azure;
+  if (s.state === "destroyed" && (!az || !az.exists)) return html``;
+  let payload: Record<string, unknown> = {};
+  try { payload = JSON.parse(o.deployment?.payload_json ?? "{}"); } catch { /* ignore */ }
+  const rows = az?.resources ?? [];
+  return html`<details class="panel inventory" style="margin-top:16px" ${s.state === "running" ? raw("open") : ""}>
+  <summary><h2 style="display:inline">In Azure right now</h2> <span class="muted small">${az ? html`${rows.length} resource${rows.length === 1 ? "" : "s"} in ${az.resource_group}, checked ${ago(az.checked_at)}` : "not checked yet"}${az?.error ? html` · <span style="color:var(--down)">${az.error}</span>` : ""}</span></summary>
+  ${rows.length
+    ? html`<table class="rows inv"><tbody>${rows.map((r) => html`<tr><th>${r.kind}</th><td><b>${r.name}</b></td><td class="muted">${r.detail}</td></tr>`)}</tbody></table>`
+    : az && !az.exists
+      ? html`<p class="muted">Azure reports nothing in ${az.resource_group}.</p>`
+      : html`<p class="muted">Waiting for the first Azure check (every 5 minutes, or press Check Azure now).</p>`}
+  ${o.deployment
+    ? html`<h3 style="margin-top:14px">This deployment</h3>
+      <table class="rows inv"><tbody>
+        <tr><th>Run</th><td><b>${o.deployment.id}</b></td><td class="muted">by ${o.deployment.requested_by ?? "?"}, finished ${fmtTime(o.deployment.finished_at)}${o.deployment.github_run_url ? html`, <a href="${o.deployment.github_run_url}" target="_blank" rel="noopener">GitHub log</a>` : ""}</td></tr>
+        <tr><th>DNS record</th><td><b>${o.cfg.dnsName}</b></td><td class="muted">A ${s.public_ip ?? "?"}, TTL 60, DNS only, owned by Terraform</td></tr>
+        <tr><th>Server key</th><td><b>WireGuard</b></td><td class="muted mono">${o.serverPub ?? "not set"}</td></tr>
+        <tr><th>Agent token</th><td><b>per deploy</b></td><td class="muted">baked into the VM by cloud-init; only its hash is stored: <span class="mono">${(o.deployment.agent_token_hash ?? "").slice(0, 16)}…</span></td></tr>
+        <tr><th>Callback token</th><td><b>per run</b></td><td class="muted">used once by GitHub Actions; hash <span class="mono">${(o.deployment.callback_token_hash ?? "").slice(0, 16)}…</span></td></tr>
+        <tr><th>SSH</th><td><b>azureuser</b></td><td class="muted">${payload.ssh_allowed_cidr ? html`key only, allowed from <span class="mono">${String(payload.ssh_allowed_cidr)}</span>` : "no SSH rule (nobody can SSH in)"}</td></tr>
+        <tr><th>Clients loaded</th><td><b>${(() => { try { return JSON.parse(String(payload.peers_json ?? "[]")).length; } catch { return "?"; } })()}</b></td><td class="muted">at boot; later changes reach the VM via the heartbeat</td></tr>
+        <tr><th>State file</th><td><b>R2</b></td><td class="muted">wg-admin-tfstate / wg-admin/terraform.tfstate, backups kept for the last 20 runs</td></tr>
+      </tbody></table>`
+    : ""}
+</details>`;
 }
 
 export function liveSection(o: LiveOpts): Html {
@@ -51,6 +85,7 @@ export function liveSection(o: LiveOpts): Html {
   </dl>
 
   ${busy ? runProgress(s) : controls(o)}
+  ${inventory(o)}
 </section>`;
 }
 

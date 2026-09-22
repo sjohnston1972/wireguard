@@ -20,10 +20,30 @@ import { getSnapshot, saveSnapshot, parseWgDump, type AgentReport } from "./stat
 import { checkDns } from "./dns";
 import { agentPeerList, terraformPeerList } from "./peers";
 import { notify } from "./notify";
-import { azureView } from "./azure";
+import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
 
 export class RunError extends Error {}
+
+/** Re-read what exists in Azure and store it in the snapshot. Never throws. */
+export async function refreshInventory(env: Env): Promise<void> {
+  if (!canAzure(env)) return;
+  try {
+    const azure = await azureInventory(env);
+    const snap = await saveSnapshot(env, { azure });
+    // Self-heal: if we are Running but lost the public IP (the old KV race),
+    // take it from Azure and re-check DNS against it.
+    if (snap.state === "running" && !snap.public_ip) {
+      const ip = azure.resources.find((r) => r.kind === "Public IP")?.detail.split(",")[0]?.trim();
+      if (ip && /^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
+        const dns = await checkDns(env, ip);
+        await saveSnapshot(env, { public_ip: ip, dns_ip: dns.resolver, dns_live: dns.live });
+      }
+    }
+  } catch {
+    /* the panel just shows the last good check */
+  }
+}
 
 function newRunId(action: string): string {
   const d = new Date();
@@ -241,6 +261,7 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
     drift: null,
     log_tail: null,
   });
+  await refreshInventory(env);
   const cfg = config(env);
   await db.addAlert(env, "deploy", `Deployed at ${publicIp ?? "unknown IP"} (${meta.via}); ${cfg.dnsName} ${dns.live ? "is live" : "not live yet"}`, run.id);
   await notify(env, "wg-admin: running", `${cfg.dnsName} → ${publicIp ?? "?"}${run.auto_destroy_at ? `, auto-destroy at ${run.auto_destroy_at}` : ""}`);
@@ -371,6 +392,7 @@ export async function detectDrift(env: Env): Promise<string | null> {
 
 /** Reconcile: destroy anything Azure has if we think we are Destroyed; or accept Destroyed if Azure is empty. */
 export async function reconcile(env: Env, requestedBy: string): Promise<string> {
+  await refreshInventory(env);
   const snap = await getSnapshot(env);
   const az = canAzure(env) ? await azureView(env) : null;
   if (!az || az.error) return "Cannot reach Azure to reconcile.";

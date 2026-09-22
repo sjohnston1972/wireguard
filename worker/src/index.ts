@@ -84,8 +84,24 @@ async function render(c: { env: Env; get: (k: "user") => string }, tab: Tab, tit
 }
 
 async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null) {
-  const [snap, cfg, peers, lock] = await Promise.all([getSnapshot(env), effectiveConfig(env), db.enabledPeers(env), lockStatus(env)]);
-  return liveSection({ snap, cfg, peerCount: peers.length, canDispatch: canDispatch(env), notice, lockHolder: lock.held && !["deploying", "destroying"].includes(snap.state) ? lock.lock?.runId ?? null : null });
+  const [snap, cfg, peers, lock, deployment, serverPub] = await Promise.all([
+    getSnapshot(env),
+    effectiveConfig(env),
+    db.enabledPeers(env),
+    lockStatus(env),
+    db.currentDeployment(env),
+    serverPublicKey(env),
+  ]);
+  return liveSection({
+    snap,
+    cfg,
+    peerCount: peers.length,
+    canDispatch: canDispatch(env),
+    notice,
+    lockHolder: lock.held && !["deploying", "destroying"].includes(snap.state) ? lock.lock?.runId ?? null : null,
+    deployment,
+    serverPub,
+  });
 }
 
 app.get("/", async (c) => {

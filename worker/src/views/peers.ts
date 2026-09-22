@@ -77,6 +77,20 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
 
 <section>
   <div class="panel quiet">
+    <h3>Get the WireGuard app</h3>
+    <p class="muted small">Official clients. Install one, then add a client above and scan the QR (phones) or import the .conf (desktops).</p>
+    <div class="downloads">
+      <a href="https://apps.apple.com/app/wireguard/id1441195209" target="_blank" rel="noopener">iPhone and iPad</a>
+      <a href="https://play.google.com/store/apps/details?id=com.wireguard.android" target="_blank" rel="noopener">Android</a>
+      <a href="https://download.wireguard.com/windows-client/wireguard-installer.exe" target="_blank" rel="noopener">Windows</a>
+      <a href="https://apps.apple.com/app/wireguard/id1451685025" target="_blank" rel="noopener">macOS</a>
+      <a href="https://www.wireguard.com/install/" target="_blank" rel="noopener">Linux and everything else</a>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="panel quiet">
     <h3>Server public key</h3>
     <p class="muted small">Every client trusts this key. It never changes across rebuilds.</p>
     ${o.serverPub ? html`<code id="server-pub">${o.serverPub}</code> <button type="button" data-copy="#server-pub" style="padding:3px 8px;font-size:.8rem">Copy</button>` : html`<span class="faint">not set</span>`}

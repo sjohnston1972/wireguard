@@ -1,17 +1,34 @@
 // state.ts
 //
-// Plain English: the one-line answer to "is it up?". A small JSON snapshot in
-// KV holds the current state (Destroyed, Deploying, Running, Destroying,
+// Plain English: the one-line answer to "is it up?". A small JSON snapshot
+// holds the current state (Destroyed, Deploying, Running, Destroying,
 // Failed), the public IP, whether DNS matches, the last heartbeat from the
-// VM and the auto-destroy deadline. Every page load reads it; every event
-// (a click, a callback, a heartbeat, a cron check) updates it.
+// VM, the auto-destroy deadline and what Azure says exists. Every page load
+// reads it; every event (a click, a callback, a heartbeat, a cron check)
+// patches it. It lives in the Durable Object so patches merge atomically; a
+// KV mirror is kept only for cheap reads.
 //
-// KV is a cache of the truth, never the truth: the cron re-derives it from
-// GitHub, Azure and the VM, so a stale entry heals itself within 5 minutes.
+// The snapshot is a cache of the truth, never the truth: the cron re-derives
+// it from GitHub, Azure and the VM, so a stale entry heals within 5 minutes.
 
 import type { Env } from "./env";
 
 export type State = "destroyed" | "deploying" | "running" | "destroying" | "failed";
+
+/** One row in the "what exists in Azure" inventory. */
+export interface AzureResource {
+  kind: string; // "Resource group", "Virtual network", "Public IP", ...
+  name: string;
+  detail: string; // the one line that matters: address space, IP, size, rules
+}
+
+export interface AzureInventory {
+  checked_at: string;
+  resource_group: string;
+  exists: boolean;
+  resources: AzureResource[];
+  error?: string;
+}
 
 export interface AgentPeer {
   public_key: string;
@@ -55,6 +72,7 @@ export interface Snapshot {
   steps: Step[];
   log_tail: string | null;
   error: string | null;
+  azure: AzureInventory | null; // what Azure itself says exists, refreshed every 5 min while not Destroyed
   updated_at: string;
 }
 
@@ -75,19 +93,48 @@ export const EMPTY: Snapshot = {
   steps: [],
   log_tail: null,
   error: null,
+  azure: null,
   updated_at: new Date(0).toISOString(),
 };
 
+/**
+ * The snapshot is stored in the Durable Object (strongly consistent, atomic
+ * merges). The first read after this change seeds it from the old KV copy so
+ * a deployment that was already running is not forgotten.
+ */
+// Talk to the Durable Object directly (kept out of lock.ts so this module has
+// no "cloudflare:workers" import and its pure helpers stay testable in Node).
+function store(env: Env) {
+  return env.RUN_LOCK.get(env.RUN_LOCK.idFromName("singleton"));
+}
+async function doGetSnapshot<T>(env: Env): Promise<T | null> {
+  const r = await store(env).fetch("https://lock/snapshot");
+  return ((await r.json()) as { snapshot: T | null }).snapshot;
+}
+async function doPatchSnapshot<T>(env: Env, patch: Partial<T>, seed?: T): Promise<T> {
+  const r = await store(env).fetch("https://lock/snapshot", { method: "POST", body: JSON.stringify({ patch, seed }) });
+  return ((await r.json()) as { snapshot: T }).snapshot;
+}
+
+async function legacyKv(env: Env): Promise<Snapshot | null> {
+  return env.STATUS.get<Snapshot>("status", "json");
+}
+
 export async function getSnapshot(env: Env): Promise<Snapshot> {
-  const s = await env.STATUS.get<Snapshot>("status", "json");
+  let s = await doGetSnapshot<Snapshot>(env);
+  if (!s) {
+    const seed = await legacyKv(env);
+    if (seed) s = await doPatchSnapshot<Snapshot>(env, {}, { ...EMPTY, ...seed });
+  }
   return s ? { ...EMPTY, ...s } : { ...EMPTY };
 }
 
 export async function saveSnapshot(env: Env, patch: Partial<Snapshot>): Promise<Snapshot> {
-  const cur = await getSnapshot(env);
-  const next: Snapshot = { ...cur, ...patch, updated_at: new Date().toISOString() };
+  const seed = (await legacyKv(env)) ?? EMPTY;
+  const next = await doPatchSnapshot<Snapshot>(env, patch, { ...EMPTY, ...seed });
+  // Keep a read-only mirror in KV for anything that still wants a cheap look.
   await env.STATUS.put("status", JSON.stringify(next));
-  return next;
+  return { ...EMPTY, ...next };
 }
 
 /** Running cost so far, from a start time and an hourly rate. */

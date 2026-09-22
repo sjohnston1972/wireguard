@@ -10,6 +10,7 @@
 
 import type { Env } from "./env";
 import { config } from "./env";
+import type { AzureInventory } from "./state";
 
 const ARM = "https://management.azure.com";
 
@@ -85,6 +86,78 @@ export async function azureView(env: Env): Promise<AzureView & { error?: string 
     return { rg_exists: true, vm_exists: vm.ok, power, public_ip, checked_at };
   } catch (e) {
     return { rg_exists: false, vm_exists: false, power: null, public_ip: null, checked_at, error: (e as Error).message };
+  }
+}
+
+/**
+ * Everything that exists in the resource group right now, one line each,
+ * straight from Azure Resource Manager. This is the "show inventory" of the
+ * headend: rack (RG), LAN (VNet, subnet), firewall (NSG), WAN address (PIP),
+ * NIC, disk, the VM itself, and any route table. Never throws.
+ */
+export async function azureInventory(env: Env): Promise<AzureInventory> {
+  const cfg = config(env);
+  const sub = env.AZURE_SUBSCRIPTION_ID;
+  const base = `/subscriptions/${sub}/resourceGroups/${cfg.resourceGroup}`;
+  const checked_at = new Date().toISOString();
+  const out: AzureInventory = { checked_at, resource_group: cfg.resourceGroup, exists: false, resources: [] };
+  try {
+    const rg = await arm(env, `${base}?api-version=2021-04-01`);
+    if (rg.status === 404) return out;
+    if (!rg.ok) throw new Error(`resource group check ${rg.status}`);
+    const rgJson = (await rg.json()) as { location: string; tags?: Record<string, string> };
+    out.exists = true;
+    out.resources.push({ kind: "Resource group", name: cfg.resourceGroup, detail: `${rgJson.location}${rgJson.tags?.run_id ? `, run ${rgJson.tags.run_id}` : ""}` });
+
+    const j = async (path: string) => {
+      const r = await arm(env, path);
+      return r.ok ? ((await r.json()) as Record<string, any>) : null;
+    };
+    const [vnet, nsg, pip, nic, vm, vmView, rt] = await Promise.all([
+      j(`${base}/providers/Microsoft.Network/virtualNetworks/vnet-wg?api-version=2024-01-01`),
+      j(`${base}/providers/Microsoft.Network/networkSecurityGroups/nsg-wg?api-version=2024-01-01`),
+      j(`${base}/providers/Microsoft.Network/publicIPAddresses/pip-wg?api-version=2024-01-01`),
+      j(`${base}/providers/Microsoft.Network/networkInterfaces/nic-wg?api-version=2024-01-01`),
+      j(`${base}/providers/Microsoft.Compute/virtualMachines/vm-wg?api-version=2024-07-01`),
+      j(`${base}/providers/Microsoft.Compute/virtualMachines/vm-wg/instanceView?api-version=2024-07-01`),
+      j(`${base}/providers/Microsoft.Network/routeTables/rt-wg-home?api-version=2024-01-01`),
+    ]);
+
+    if (vnet) {
+      out.resources.push({ kind: "Virtual network", name: vnet.name, detail: (vnet.properties?.addressSpace?.addressPrefixes ?? []).join(", ") });
+      for (const s of vnet.properties?.subnets ?? []) {
+        out.resources.push({ kind: "Subnet", name: s.name, detail: `${s.properties?.addressPrefix ?? ""}${s.properties?.networkSecurityGroup ? ", NSG attached" : ""}${s.properties?.routeTable ? ", route table attached" : ""}` });
+      }
+    }
+    if (nsg) {
+      const rules = (nsg.properties?.securityRules ?? [])
+        .sort((a: any, b: any) => a.properties.priority - b.properties.priority)
+        .map((r: any) => `${r.properties.access === "Allow" ? "allow" : "deny"} ${r.properties.protocol.toLowerCase()} ${r.properties.destinationPortRange} from ${r.properties.sourceAddressPrefix}`);
+      out.resources.push({ kind: "Network security group", name: nsg.name, detail: rules.join("; ") || "no rules" });
+    }
+    if (pip) {
+      out.resources.push({ kind: "Public IP", name: pip.name, detail: `${pip.properties?.ipAddress ?? "not yet allocated"}, ${pip.sku?.name ?? ""} ${pip.properties?.publicIPAllocationMethod ?? ""}`.trim() });
+    }
+    if (nic) {
+      const ipc = nic.properties?.ipConfigurations?.[0]?.properties ?? {};
+      out.resources.push({ kind: "Network interface", name: nic.name, detail: `private ${ipc.privateIPAddress ?? "?"}, IP forwarding ${nic.properties?.enableIPForwarding ? "on" : "off"}` });
+    }
+    if (vm) {
+      const hw = vm.properties?.hardwareProfile?.vmSize ?? "";
+      const img = vm.properties?.storageProfile?.imageReference ?? {};
+      const disk = vm.properties?.storageProfile?.osDisk ?? {};
+      const power = (vmView?.statuses ?? []).find((s: any) => String(s.code).startsWith("PowerState/"))?.code?.replace("PowerState/", "") ?? "unknown";
+      out.resources.push({ kind: "Virtual machine", name: vm.name, detail: `${hw}, ${img.offer ?? ""} ${img.sku ?? ""}, ${power}, admin ${vm.properties?.osProfile?.adminUsername ?? "?"}, SSH key only` });
+      out.resources.push({ kind: "OS disk", name: disk.name ?? "osdisk", detail: `${disk.diskSizeGB ?? "?"} GB ${disk.managedDisk?.storageAccountType ?? ""}` });
+    }
+    if (rt) {
+      const routes = (rt.properties?.routes ?? []).map((r: any) => `${r.properties.addressPrefix} via ${r.properties.nextHopIpAddress ?? r.properties.nextHopType}`);
+      out.resources.push({ kind: "Route table", name: rt.name, detail: routes.join("; ") || "no routes" });
+    }
+    return out;
+  } catch (e) {
+    out.error = (e as Error).message;
+    return out;
   }
 }
 
