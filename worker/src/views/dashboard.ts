@@ -10,6 +10,7 @@
 import { html, raw } from "hono/html";
 import type { Html } from "./layout";
 import { fmtTime, ago, gbp, bytes } from "./layout";
+import { serverTunnelIp } from "../peers";
 import type { Snapshot } from "../state";
 import { STATE_LABEL, isBusy, peerOnline, trafficFlowing } from "../state";
 import type { Config } from "../env";
@@ -35,11 +36,14 @@ function secrets(o: LiveOpts): Html {
   try { payload = JSON.parse(o.deployment.payload_json ?? "{}"); } catch { /* ignore */ }
   const allowed = s.azure?.resources.find((r) => r.kind === "Network security group")?.detail.match(/allow tcp 22 from ([^;]+)/)?.[1] ?? (payload.ssh_allowed_cidr ? String(payload.ssh_allowed_cidr) : null);
   const host = s.public_ip ?? o.cfg.dnsName;
+  const tunnelIp = serverTunnelIp(o.cfg.subnet);
+  const loopbackUp = !!s.agent && s.agent.loopback === o.cfg.loopbackIp;
   return html`<dialog id="dlg-ssh" class="modal" aria-labelledby="dlg-ssh-title">
   <div class="modal-box">
   <div class="modal-head"><div><h2 id="dlg-ssh-title">SSH to the VM</h2><p class="muted small">username, password and allow-list for this deployment</p></div><button type="button" data-close aria-label="Close">Close</button></div>
   <table class="rows inv"><tbody>
-    <tr><th>Host</th><td><b class="mono">${host}</b></td><td class="muted">${o.cfg.dnsName}, port 22</td></tr>
+    <tr><th>Public host</th><td><b class="mono">${host}</b></td><td class="muted">${o.cfg.dnsName}, port 22; only from the allowed address below</td></tr>
+    <tr><th>Over the tunnel</th><td><b class="mono">${o.cfg.loopbackIp}</b>${loopbackUp ? html` <span class="pill up">up</span>` : html` <span class="pill idle">not on this build</span>`}<div class="mono small muted">${tunnelIp}</div></td><td class="muted">from any connected client, from anywhere. No firewall rule needed: SSH rides inside the WireGuard packets, which the NSG already admits, so port 22 is never exposed. ${loopbackUp ? "Use the loopback." : `Use ${tunnelIp} until the next deploy adds the loopback.`}</td></tr>
     <tr><th>Username</th><td><b class="mono">azureuser</b></td><td class="muted">sudo without a password</td></tr>
     <tr><th>Password</th><td>${o.deployment.ssh_password
       ? html`<span class="mono secret-value" data-secret="${o.deployment.ssh_password}" hidden>${o.deployment.ssh_password}</span><span class="mono secret-mask">••••••••••••••••</span></td><td class="muted"><button type="button" data-reveal style="padding:3px 8px;font-size:.8rem">Show</button> <button type="button" data-copy-secret style="padding:3px 8px;font-size:.8rem">Copy</button> <span class="small">made for this deploy only; dies with the VM</span>`
@@ -47,7 +51,7 @@ function secrets(o: LiveOpts): Html {
     <tr><th>Key</th><td><b class="mono">wg-admin-azure_ed25519</b></td><td class="muted">on the laptop in <span class="mono">~/.ssh</span>; always works regardless of the password</td></tr>
     <tr><th>Allowed from</th><td><b class="mono">${allowed ?? "nobody"}</b></td><td class="muted">${allowed ? "the only address the firewall lets reach port 22" : "no SSH rule on this deploy"}
       <form method="post" action="/actions/allow-ssh" hx-post="/actions/allow-ssh" hx-target="#live" hx-swap="outerHTML" style="display:inline;margin-left:8px"><button type="submit" style="padding:3px 8px;font-size:.8rem">Allow SSH from this address</button></form></td></tr>
-    <tr><th>Command</th><td colspan="2"><code>ssh azureuser@${host}</code> <span class="muted small">or</span> <code>ssh -i ~/.ssh/wg-admin-azure_ed25519 azureuser@${o.cfg.dnsName}</code></td></tr>
+    <tr><th>Commands</th><td colspan="2"><div><code>ssh azureuser@${loopbackUp ? o.cfg.loopbackIp : tunnelIp}</code> <span class="muted small">over the tunnel, password or key</span></div><div style="margin-top:4px"><code>ssh azureuser@${host}</code> <span class="muted small">over the internet, from the allowed address</span></div><div style="margin-top:4px"><code>ssh -i ~/.ssh/wg-admin-azure_ed25519 azureuser@${o.cfg.dnsName}</code> <span class="muted small">with the key</span></div></td></tr>
   </tbody></table>
   </div>
 </dialog>`;

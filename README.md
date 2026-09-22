@@ -144,7 +144,9 @@ hand if Terraform missed it. The bill is £0 when the run is green.
 
 On the Overview, open "SSH to the VM" for the host, username, this deploy's
 password (behind Show) and the address the firewall allows. Press "Allow SSH
-from this address" if you deployed from another device. The key still works:
+from this address" if you deployed from another device. From a connected
+client you can also `ssh azureuser@10.13.255.1` (or 10.13.13.1) over the tunnel,
+which needs no firewall rule at all. The key still works:
 
 ```sh
 ssh -i ~/.ssh/wg-admin-azure_ed25519 azureuser@wg.clydeford.net
