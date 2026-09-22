@@ -1,0 +1,28 @@
+# Secrets: the only place they live locally is .env
+.env
+*.pem
+*.key
+id_*
+!.env.example
+
+# Terraform
+infra/.terraform/
+infra/.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.auto.tfvars.example
+
+# Node / wrangler
+node_modules/
+.wrangler/
+dist/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
