@@ -34,7 +34,7 @@ function inventory(o: LiveOpts): Html {
   let payload: Record<string, unknown> = {};
   try { payload = JSON.parse(o.deployment?.payload_json ?? "{}"); } catch { /* ignore */ }
   const rows = az?.resources ?? [];
-  return html`<details class="panel inventory" style="margin-top:16px" ${s.state === "running" ? raw("open") : ""}>
+  return html`<details class="panel inventory" data-panel="inventory" style="margin-top:16px" ${s.state === "running" ? raw("open") : ""}>
   <summary><h2 style="display:inline">In Azure right now</h2> <span class="muted small">${az ? html`${rows.length} resource${rows.length === 1 ? "" : "s"} in ${az.resource_group}, checked ${ago(az.checked_at)}` : "not checked yet"}${az?.error ? html` · <span style="color:var(--down)">${az.error}</span>` : ""}</span></summary>
   ${rows.length
     ? html`<table class="rows inv"><tbody>${rows.map((r) => html`<tr><th>${r.kind}</th><td><b>${r.name}</b></td><td class="muted">${r.detail}</td></tr>`)}</tbody></table>`

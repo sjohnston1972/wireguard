@@ -45,6 +45,32 @@
   document.addEventListener("htmx:afterSwap", tick);
   tick();
 
+  // ── Remember collapsed panels across the 20-second refresh ──────────────
+  // The Overview re-renders itself; without this, a panel you collapsed would
+  // spring open again. The choice is kept in this browser only.
+  var PANEL_KEY = "wg-admin:panels";
+  function panelPrefs() {
+    try { return JSON.parse(localStorage.getItem(PANEL_KEY) || "{}"); } catch (e) { return {}; }
+  }
+  function applyPanelPrefs(root) {
+    var prefs = panelPrefs();
+    (root || document).querySelectorAll("details[data-panel]").forEach(function (d) {
+      var k = d.getAttribute("data-panel");
+      if (k in prefs) d.open = !!prefs[k];
+    });
+  }
+  document.addEventListener("toggle", function (e) {
+    var d = e.target;
+    if (!d || !d.matches || !d.matches("details[data-panel]")) return;
+    var prefs = panelPrefs();
+    prefs[d.getAttribute("data-panel")] = d.open;
+    try { localStorage.setItem(PANEL_KEY, JSON.stringify(prefs)); } catch (err) { /* private mode */ }
+  }, true);
+  applyPanelPrefs();
+  document.addEventListener("htmx:afterSwap", function (e) { applyPanelPrefs(e.target); });
+  // Apply before paint on swaps too, so there is no flash of the panel opening.
+  document.addEventListener("htmx:afterSettle", function (e) { applyPanelPrefs(e.target); });
+
   // ── Confirmation word gate ──────────────────────────────────────────────
   function wireConfirm(root) {
     (root || document).querySelectorAll("[data-confirm-word]").forEach(function (input) {
