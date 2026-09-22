@@ -316,7 +316,7 @@ table.rows.inv td.muted { overflow-wrap: anywhere; }
 .panel p, .panel .hint { max-width: 72ch; }
 
 /* ── Modals ───────────────────────────────────────────────────────────────── */
-dialog.modal { border: 0; padding: 0; background: transparent; max-width: none; max-height: none; width: auto; }
+dialog.modal { border: 0; padding: 0; background: transparent; max-width: none; max-height: none; width: fit-content; height: fit-content; margin: auto; inset: 0; }
 dialog.modal::backdrop { background: rgba(8, 14, 24, 0.55); backdrop-filter: blur(3px); }
 dialog.modal .modal-box {
   background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-lg);
