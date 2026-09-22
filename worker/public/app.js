@@ -73,14 +73,13 @@
 
   // ── Modals ─────────────────────────────────────────────────────────────
   // Native <dialog>. The Overview re-renders itself every 20 s, which would
-  // destroy an open dialog, so the open one is remembered before the swap and
-  // re-opened (with fresh content) after it.
-  var openModal = null;
+  // replace an open dialog mid-read, so while one is open the refresh is
+  // skipped; the moment it closes, fresh data is fetched.
   function showModal(id) {
     var d = document.getElementById(id);
-    if (!d || d.open) return;
-    d.showModal(); openModal = id;
+    if (d && !d.open) d.showModal();
   }
+  function anyModalOpen() { return !!document.querySelector("dialog.modal[open]"); }
   document.addEventListener("click", function (e) {
     var o = e.target.closest("[data-open]");
     if (o) { showModal(o.getAttribute("data-open")); return; }
@@ -89,16 +88,16 @@
     // click on the backdrop (the dialog element itself, outside .modal-box)
     if (e.target.tagName === "DIALOG" && e.target.classList.contains("modal")) e.target.close();
   });
+  document.addEventListener("htmx:beforeRequest", function (e) {
+    // Hold the periodic refresh while reading a modal.
+    var el = e.detail && e.detail.elt;
+    if (el && el.id === "live" && anyModalOpen()) e.preventDefault();
+  });
   document.addEventListener("close", function (e) {
-    if (e.target.tagName === "DIALOG" && e.target.id === openModal) openModal = null;
+    if (e.target.tagName !== "DIALOG" || !e.target.classList.contains("modal")) return;
+    var live = document.getElementById("live");
+    if (live && window.htmx) htmx.ajax("GET", "/partials/live", { target: "#live", swap: "outerHTML", select: "#live" });
   }, true);
-  document.addEventListener("htmx:beforeSwap", function () {
-    var d = document.querySelector("dialog.modal[open]");
-    openModal = d ? d.id : null;
-  });
-  document.addEventListener("htmx:afterSettle", function () {
-    if (openModal) showModal(openModal);
-  });
 
   // ── Confirmation word gate ──────────────────────────────────────────────
   function wireConfirm(root) {
