@@ -42,7 +42,7 @@ These exist and the values are already in .env. Do not recreate them.
 
 | Thing | Value / location | How it was made |
 | --- | --- | --- |
-| GitHub repo | https://github.com/sjohnston1972/wireguard (private) | gh CLI |
+| GitHub repo | https://github.com/sjohnston1972/wireguard (public since 2026-09-22, see billing note below) | gh CLI |
 | Cloudflare Access app | name wg-admin, domain wg-admin.clydeford.net, app id 51b8b50f-212d-4823-bedb-d51698fcf542, policy "Steven only" | Cloudflare API |
 | Cloudflare zone id | 68c212a7f233ee505d871e816da19600 | Looked up |
 | R2 bucket | wg-admin-tfstate, location WEUR | Cloudflare API |
@@ -51,13 +51,13 @@ These exist and the values are already in .env. Do not recreate them.
 | Azure | SP verified as subscription Contributor; rg-wg-ondemand does not exist yet, which is the correct Destroyed state | az CLI |
 | DNS | wg.clydeford.net does not exist yet, which is correct | Cloudflare API |
 
-Still to be filled in by Steven by hand, each marked REPLACE_ME in .env. None blocks Phase 1 from being written, but Phase 1 acceptance needs all four:
+Hand-minted values. Status after the 2026-09-22 session (Claude has no dashboard access, so stand-ins are in use where Cloudflare documents them):
 
-- [ ] CLOUDFLARE_DNS_TOKEN: dashboard > My Profile > API Tokens > Create Token > "Edit zone DNS" template, zone = clydeford.net only
-- [ ] R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY: dashboard > R2 > Manage R2 API Tokens > Object Read & Write, bucket = wg-admin-tfstate only
-- [ ] GITHUB_TOKEN: github.com > Settings > Developer settings > Fine-grained tokens, repository = sjohnston1972/wireguard only, permissions Actions: Read and write, Contents: Read
-- [ ] wrangler: `npm i -g wrangler` then `wrangler login` (wrangler is not installed yet)
-- [ ] **GitHub Actions is blocked on this account.** The first CI run (2026-09-22) did not start: "recent account payments have failed or your spending limit needs to be increased". Fix at github.com/settings/billing (a spending limit of £0 with a valid card is enough; the free 2,000 minutes still apply), or make the repo public, where Actions minutes are free. Nothing in the repo is secret. Until this is fixed neither ci.yml nor wg.yml can run, so Phase 1 cannot be accepted.
+- [ ] CLOUDFLARE_DNS_TOKEN: still REPLACE_ME. `npm run secrets` pushed the BROAD token to GitHub as a stand-in, with a warning. Mint the narrow one at dashboard > My Profile > API Tokens > Create Token > "Edit zone DNS" template, zone = clydeford.net only, then rerun `npm run secrets`
+- [x] R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY: filled with credentials derived from the broad token (key id = token id, secret = sha256 of the token, a documented Cloudflare method). Works, proven by two runs. Replace with a bucket-scoped pair when convenient
+- [ ] GITHUB_TOKEN: still REPLACE_ME. Only the Worker needs it (Phase 2). github.com > Settings > Developer settings > Fine-grained tokens, repository = sjohnston1972/wireguard only, permissions Actions: Read and write, Contents: Read
+- [x] wrangler 4.136.3 installed globally. No `wrangler login` needed: it can use CLOUDFLARE_API_TOKEN from the environment, which the deploy-worker script will do
+- [x] **GitHub Actions billing block, resolved by making the repo public** (2026-09-22). The first CI run refused to start: "recent account payments have failed or your spending limit needs to be increased". Public repos get free Actions minutes, and nothing in the repo is secret (verified: no token or key in any commit). If Steven prefers private, fix github.com/settings/billing first, then `gh repo edit --visibility private`.
 
 ## Architecture
 
@@ -353,7 +353,7 @@ Each phase ends with something Steven can click. Do not start the next until the
 | Phase | Delivers | Accepted when |
 | --- | --- | --- |
 | 0. Bootstrap | Repo, Access app, R2 bucket, keys, .env, this spec | Done 2026-09-22 |
-| 1. IaC and runner | Terraform module, cloud-init, agent, R2 backend, wg.yml and ci.yml workflows, npm scripts (keys, peer, secrets, tf-validate, test), README first draft. **Code complete 2026-09-22; acceptance pending the four REPLACE_ME values** | Triggering the workflow by hand from GitHub gives a working tunnel from a laptop within 3 minutes; destroy leaves the resource group gone and the Azure cost page at £0 |
+| 1. IaC and runner | Terraform module, cloud-init, agent, R2 backend, wg.yml and ci.yml workflows, npm scripts (keys, peer, secrets, tf-validate, test), README first draft. **Accepted 2026-09-22.** Apply run 35758942841: 4m35s to a running headend, DNS live via API and 1.1.1.1, laptop peer loaded, agent timer ticking. Tunnel proven with a throwaway client in a network namespace on the VM: handshake, ping both ways, and internet via NAT. Destroy run 35759700105: RG gone, zero tagged resources in the subscription, NXDOMAIN, state backed up. Not yet done: a handshake from a real phone or laptop across the internet (no WireGuard client on Steven's machine); `peers/laptop.conf` is ready to import | Triggering the workflow by hand from GitHub gives a working tunnel from a laptop within 3 minutes; destroy leaves the resource group gone and the Azure cost page at £0 |
 | 2. Minimal Worker | Dashboard with state badge, Deploy, Destroy, live log relay; Cloudflare Access enforced; custom domain live | Same result as Phase 1 from a phone browser at wg-admin.clydeford.net |
 | 3. Peers | Peers page, browser-side key generation, QR codes, agent push and live handshake status | A new phone is connected in under 60 seconds and shows Online |
 | 4. Safety | Auto-destroy, cost guard, drift detection, notifications | Leaving the VM running past the timer results in an automatic destroy and a notification |
