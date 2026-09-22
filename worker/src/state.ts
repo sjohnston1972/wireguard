@@ -50,6 +50,37 @@ export interface AgentReport {
   peers: AgentPeer[];
 }
 
+/** Totals across all peers, plus the rate since the previous heartbeat. */
+export interface Traffic {
+  at: string;
+  rx: number; // bytes received by the VM from clients (client -> Azure)
+  tx: number; // bytes sent by the VM to clients (Azure -> client)
+  rx_rate: number; // bytes per second over the last heartbeat interval
+  tx_rate: number;
+  peers_online: number;
+}
+
+/** Fold a new heartbeat into the traffic summary. Counters reset on a rebuild, so negative deltas are treated as zero. */
+export function nextTraffic(prev: Traffic | null, report: AgentReport, now = Date.now()): Traffic {
+  const rx = report.peers.reduce((a, p) => a + p.rx, 0);
+  const tx = report.peers.reduce((a, p) => a + p.tx, 0);
+  const peers_online = report.peers.filter((p) => peerOnline(p, now)).length;
+  let rx_rate = 0, tx_rate = 0;
+  if (prev) {
+    const secs = (now - Date.parse(prev.at)) / 1000;
+    if (secs > 0 && secs < 600) {
+      rx_rate = Math.max(0, (rx - prev.rx) / secs);
+      tx_rate = Math.max(0, (tx - prev.tx) / secs);
+    }
+  }
+  return { at: new Date(now).toISOString(), rx, tx, rx_rate, tx_rate, peers_online };
+}
+
+/** "Packets are passing" = bytes moved in the last interval and the report is fresh. */
+export function trafficFlowing(t: Traffic | null, now = Date.now()): boolean {
+  return !!t && now - Date.parse(t.at) < 90_000 && t.rx_rate + t.tx_rate > 0;
+}
+
 export interface Step {
   name: string;
   status: string; // queued | in_progress | completed
@@ -74,6 +105,7 @@ export interface Snapshot {
   log_tail: string | null;
   error: string | null;
   azure: AzureInventory | null; // what Azure itself says exists, refreshed every 5 min while not Destroyed
+  traffic: Traffic | null; // totals and rate from the last two heartbeats
   updated_at: string;
 }
 
@@ -95,6 +127,7 @@ export const EMPTY: Snapshot = {
   log_tail: null,
   error: null,
   azure: null,
+  traffic: null,
   updated_at: new Date(0).toISOString(),
 };
 

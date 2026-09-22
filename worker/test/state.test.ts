@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseWgDump, estimateCostGbp, peerOnline, anyHandshakeWithin, type AgentReport } from "../src/state";
+import { parseWgDump, estimateCostGbp, peerOnline, anyHandshakeWithin, nextTraffic, trafficFlowing, type AgentReport } from "../src/state";
 
 const DUMP = [
   "PRIVATE\tSERVERPUB=\t51820\toff",
@@ -48,5 +48,32 @@ describe("handshake helpers", () => {
     expect(anyHandshakeWithin(report, 5, now)).toBe(false);
     expect(anyHandshakeWithin(report, 15, now)).toBe(true);
     expect(anyHandshakeWithin(null, 15, now)).toBe(false);
+  });
+});
+
+describe("traffic", () => {
+  const now = 1_800_000_000_000;
+  const mk = (rx: number, tx: number, hs = now / 1000 - 10): AgentReport => ({
+    at: "", hostname: "", uptime_seconds: 0, load: "", listen_port: null, server_public_key: null, loopback: null,
+    peers: [{ public_key: "a", endpoint: null, allowed_ips: "", latest_handshake: hs, rx, tx }],
+  });
+  it("first heartbeat has totals but no rate", () => {
+    const t = nextTraffic(null, mk(1000, 500), now);
+    expect(t).toMatchObject({ rx: 1000, tx: 500, rx_rate: 0, tx_rate: 0, peers_online: 1 });
+    expect(trafficFlowing(t, now)).toBe(false);
+  });
+  it("rate is the delta over the interval", () => {
+    const t0 = nextTraffic(null, mk(1000, 500), now - 30_000);
+    const t1 = nextTraffic(t0, mk(4000, 2000), now);
+    expect(t1.rx_rate).toBeCloseTo(100, 5);
+    expect(t1.tx_rate).toBeCloseTo(50, 5);
+    expect(trafficFlowing(t1, now)).toBe(true);
+    expect(trafficFlowing(t1, now + 120_000)).toBe(false);
+  });
+  it("a counter reset (rebuild) never gives a negative rate", () => {
+    const t0 = nextTraffic(null, mk(9000, 9000), now - 30_000);
+    const t1 = nextTraffic(t0, mk(10, 10), now);
+    expect(t1.rx_rate).toBe(0);
+    expect(t1.tx_rate).toBe(0);
   });
 });

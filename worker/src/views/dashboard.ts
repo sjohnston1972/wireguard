@@ -9,9 +9,9 @@
 
 import { html, raw } from "hono/html";
 import type { Html } from "./layout";
-import { fmtTime, ago, gbp } from "./layout";
+import { fmtTime, ago, gbp, bytes } from "./layout";
 import type { Snapshot } from "../state";
-import { STATE_LABEL, isBusy, peerOnline } from "../state";
+import { STATE_LABEL, isBusy, peerOnline, trafficFlowing } from "../state";
 import type { Config } from "../env";
 
 export interface LiveOpts {
@@ -114,17 +114,30 @@ function dnsCell(s: Snapshot): Html {
 
 /** The tunnel diagram: Home ── wg.clydeford.net ── Azure. Lit only when Running. */
 function tunnel(s: Snapshot, cfg: Config): Html {
-  return html`<svg class="tunnel" data-state="${s.state}" viewBox="0 0 520 150" role="img" aria-label="Tunnel: home to ${cfg.dnsName} to Azure ${cfg.region}, ${STATE_LABEL[s.state]}">
+  const running = s.state === "running";
+  const heartbeatFresh = running && !!s.last_agent_at && Date.now() - Date.parse(s.last_agent_at) < 120_000;
+  const t = s.traffic;
+  const flowing = running && trafficFlowing(t);
+  const online = t?.peers_online ?? 0;
+  // Home tile: lit when a client has a live handshake, "flow" when bytes moved in the last interval.
+  const homeClass = flowing ? "flow" : running && online > 0 ? "lit" : "";
+  // Azure tile: lit when the VM is heartbeating, "flow" when bytes moved.
+  const azureClass = flowing ? "flow" : heartbeatFresh ? "lit" : "";
+  const rate = (t?.rx_rate ?? 0) + (t?.tx_rate ?? 0);
+  return html`<svg class="tunnel" data-state="${s.state}" data-flow="${flowing ? "1" : "0"}" viewBox="0 0 520 150" role="img" aria-label="Tunnel: home to ${cfg.dnsName} to Azure ${cfg.region}, ${STATE_LABEL[s.state]}${flowing ? ", traffic passing" : ""}">
   <path class="carrier" d="M 92 70 C 170 70, 190 70, 260 70 S 350 70, 428 70" />
-  <rect class="node home" x="12" y="42" width="80" height="56" rx="8"/>
+  <rect class="node home ${homeClass}" x="12" y="42" width="80" height="56" rx="8"/>
   <text class="name" x="52" y="66" text-anchor="middle">Home</text>
-  <text x="52" y="84" text-anchor="middle">${cfg.homeLanCidr || "clients"}</text>
+  <text x="52" y="84" text-anchor="middle">${running ? `${online} client${online === 1 ? "" : "s"} up` : cfg.homeLanCidr || "clients"}</text>
   <g>
     <circle class="port" cx="260" cy="70" r="7"/>
     <text class="name" x="260" y="38" text-anchor="middle">${cfg.dnsName}</text>
-    <text x="260" y="105" text-anchor="middle">UDP ${cfg.port}${s.public_ip ? ` · ${s.public_ip}` : ""}</text>
+    <text x="260" y="102" text-anchor="middle">UDP ${cfg.port}${s.public_ip ? ` · ${s.public_ip}` : ""}</text>
+    ${running && t
+      ? html`<text class="traffic ${flowing ? "flow" : ""}" x="260" y="120" text-anchor="middle">in ${bytes(t.rx)}, out ${bytes(t.tx)}${flowing ? ` at ${bytes(Math.round(rate))}/s` : ""}</text>`
+      : ""}
   </g>
-  <rect class="node azure" x="428" y="42" width="80" height="56" rx="8"/>
+  <rect class="node azure ${azureClass}" x="428" y="42" width="80" height="56" rx="8"/>
   <text class="name" x="468" y="66" text-anchor="middle">Azure</text>
   <text x="468" y="84" text-anchor="middle">${cfg.region}</text>
   <text x="52" y="128" text-anchor="middle">tunnel ${cfg.subnet}</text>

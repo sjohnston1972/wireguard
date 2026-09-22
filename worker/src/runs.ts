@@ -16,7 +16,7 @@ import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
 import { randomToken, sha256Hex, safeEqual } from "./auth";
 import { dispatchWorkflow, findRunByTitle, getGhRun, getJobs, getJobLogTail, cancelGhRun, stepsFromJobs } from "./github";
-import { getSnapshot, saveSnapshot, parseWgDump, type AgentReport } from "./state";
+import { getSnapshot, saveSnapshot, parseWgDump, nextTraffic, type AgentReport } from "./state";
 import { checkDns } from "./dns";
 import { agentPeerList, terraformPeerList } from "./peers";
 import { notify } from "./notify";
@@ -283,6 +283,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     auto_destroy_at: null,
     last_agent_at: null,
     agent: null,
+    traffic: null,
     error: null,
     drift: null,
     steps: [],
@@ -356,7 +357,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     peers: parsed.peers,
   };
   const snap = await getSnapshot(env);
-  const patch: Partial<typeof snap> = { last_agent_at: report.at, agent: report };
+  const patch: Partial<typeof snap> = { last_agent_at: report.at, agent: report, traffic: nextTraffic(snap.traffic, report) };
   // First heartbeat while still "deploying" (callback not yet in) is proof of life.
   if (snap.state === "deploying" && snap.run_id === run.id) {
     patch.state = "running";
