@@ -35,8 +35,9 @@ function secrets(o: LiveOpts): Html {
   try { payload = JSON.parse(o.deployment.payload_json ?? "{}"); } catch { /* ignore */ }
   const allowed = s.azure?.resources.find((r) => r.kind === "Network security group")?.detail.match(/allow tcp 22 from ([^;]+)/)?.[1] ?? (payload.ssh_allowed_cidr ? String(payload.ssh_allowed_cidr) : null);
   const host = s.public_ip ?? o.cfg.dnsName;
-  return html`<details class="panel secret" data-panel="secrets" style="margin-top:16px">
-  <summary><h2 style="display:inline">SSH to the VM</h2> <span class="muted small">username, password and allow-list for this deployment</span></summary>
+  return html`<dialog id="dlg-ssh" class="modal" aria-labelledby="dlg-ssh-title">
+  <div class="modal-box">
+  <div class="modal-head"><div><h2 id="dlg-ssh-title">SSH to the VM</h2><p class="muted small">username, password and allow-list for this deployment</p></div><button type="button" data-close aria-label="Close">Close</button></div>
   <table class="rows inv"><tbody>
     <tr><th>Host</th><td><b class="mono">${host}</b></td><td class="muted">${o.cfg.dnsName}, port 22</td></tr>
     <tr><th>Username</th><td><b class="mono">azureuser</b></td><td class="muted">sudo without a password</td></tr>
@@ -48,7 +49,8 @@ function secrets(o: LiveOpts): Html {
       <form method="post" action="/actions/allow-ssh" hx-post="/actions/allow-ssh" hx-target="#live" hx-swap="outerHTML" style="display:inline;margin-left:8px"><button type="submit" style="padding:3px 8px;font-size:.8rem">Allow SSH from this address</button></form></td></tr>
     <tr><th>Command</th><td colspan="2"><code>ssh azureuser@${host}</code> <span class="muted small">or</span> <code>ssh -i ~/.ssh/wg-admin-azure_ed25519 azureuser@${o.cfg.dnsName}</code></td></tr>
   </tbody></table>
-</details>`;
+  </div>
+</dialog>`;
 }
 
 /** "What exists in Azure" plus the per-deploy secrets, shown while anything exists. */
@@ -59,8 +61,9 @@ function inventory(o: LiveOpts): Html {
   let payload: Record<string, unknown> = {};
   try { payload = JSON.parse(o.deployment?.payload_json ?? "{}"); } catch { /* ignore */ }
   const rows = az?.resources ?? [];
-  return html`<details class="panel inventory" data-panel="inventory" style="margin-top:16px" ${s.state === "running" ? raw("open") : ""}>
-  <summary><h2 style="display:inline">In Azure right now</h2> <span class="muted small">${az ? html`${rows.length} resource${rows.length === 1 ? "" : "s"} in ${az.resource_group}, checked ${ago(az.checked_at)}` : "not checked yet"}${az?.error ? html` · <span style="color:var(--down)">${az.error}</span>` : ""}</span></summary>
+  return html`<dialog id="dlg-azure" class="modal" aria-labelledby="dlg-azure-title">
+  <div class="modal-box">
+  <div class="modal-head"><div><h2 id="dlg-azure-title">In Azure right now</h2><p class="muted small">${az ? html`${rows.length} resource${rows.length === 1 ? "" : "s"} in ${az.resource_group}, checked ${ago(az.checked_at)}` : "not checked yet"}${az?.error ? html` · <span style="color:var(--down)">${az.error}</span>` : ""}</p></div><button type="button" data-close aria-label="Close">Close</button></div>
   ${rows.length
     ? html`<table class="rows inv"><tbody>${rows.map((r) => html`<tr><th>${r.kind}</th><td><b>${r.name}</b></td><td class="muted">${r.detail}</td></tr>`)}</tbody></table>`
     : az && !az.exists
@@ -80,7 +83,21 @@ function inventory(o: LiveOpts): Html {
         <tr><th>State file</th><td><b>R2</b></td><td class="muted">wg-admin-tfstate / wg-admin/terraform.tfstate, backups kept for the last 20 runs</td></tr>
       </tbody></table>`
     : ""}
-</details>`;
+  </div>
+</dialog>`;
+}
+
+/** The buttons that open the two modals. */
+function modalButtons(o: LiveOpts): Html {
+  const s = o.snap;
+  const az = s.azure;
+  const showAzure = !(s.state === "destroyed" && (!az || !az.exists));
+  const showSsh = s.state === "running" && !!o.deployment;
+  if (!showAzure && !showSsh) return html``;
+  return html`<div class="btn-row modal-row" style="margin-top:16px">
+    ${showSsh ? html`<button type="button" data-open="dlg-ssh">SSH to the VM</button>` : ""}
+    ${showAzure ? html`<button type="button" data-open="dlg-azure">In Azure right now${az ? html` <span class="count">${az.resources.length}</span>` : ""}</button>` : ""}
+  </div>`;
 }
 
 export function liveSection(o: LiveOpts): Html {
@@ -112,6 +129,7 @@ export function liveSection(o: LiveOpts): Html {
   </dl>
 
   ${busy ? runProgress(s) : controls(o)}
+  ${modalButtons(o)}
   ${secrets(o)}
   ${inventory(o)}
 </section>`;

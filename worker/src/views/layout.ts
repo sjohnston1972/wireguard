@@ -9,6 +9,7 @@ import type { HtmlEscapedString } from "hono/utils/html";
 import type { Snapshot, State } from "../state";
 import { STATE_LABEL } from "../state";
 import type { Alert } from "../db";
+import { BUILD } from "../build";
 
 export type Tab = "dashboard" | "peers" | "activity" | "cost" | "settings";
 export type Html = HtmlEscapedString | Promise<HtmlEscapedString>;
@@ -46,10 +47,10 @@ export function page(o: {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/app.css?v=${BUILD}">
 <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
-<script src="/qrcode.js" defer></script>
-<script src="/app.js" defer></script>
+<script src="/qrcode.js?v=${BUILD}" defer></script>
+<script src="/app.js?v=${BUILD}" defer></script>
 </head>
 <body hx-boost="true">
 <header class="topbar">

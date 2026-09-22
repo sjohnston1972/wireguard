@@ -308,7 +308,23 @@ table.rows.inv td.muted { overflow-wrap: anywhere; }
 .tunnel text.traffic.flow { fill: var(--signal); }
 
 /* ── Wide screens: put independent panels side by side ────────────────────── */
-.side-by-side { display: grid; gap: 16px; margin-top: 26px; }
-.side-by-side > section { margin-top: 0; }
-@media (min-width: 1100px) { .side-by-side { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } .side-by-side .stack { display: grid; gap: 16px; align-content: start; } }
+.side-by-side { display: grid; gap: 22px; margin-top: 26px; }
+.side-by-side > * { min-width: 0; }
+.side-by-side > section, .side-by-side .stack > section { margin-top: 0; }
+.side-by-side .stack { display: grid; gap: 22px; align-content: start; }
+@media (min-width: 1100px) { .side-by-side { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
 .panel p, .panel .hint { max-width: 72ch; }
+
+/* ── Modals ───────────────────────────────────────────────────────────────── */
+dialog.modal { border: 0; padding: 0; background: transparent; max-width: none; max-height: none; width: auto; }
+dialog.modal::backdrop { background: rgba(8, 14, 24, 0.55); backdrop-filter: blur(3px); }
+dialog.modal .modal-box {
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.5); width: min(92vw, 960px); max-height: 86vh; overflow: auto; padding: 18px 22px 22px;
+}
+dialog.modal[open] { animation: modal-in 160ms ease-out; }
+@keyframes modal-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { dialog.modal[open] { animation: none; } }
+.modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+.modal-head p { margin: 2px 0 0; }
+.modal-row button .count { display: inline-block; min-width: 1.4em; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--signal-soft); color: var(--signal); font-size: 0.8rem; text-align: center; }

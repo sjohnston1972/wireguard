@@ -71,6 +71,35 @@
   // Apply before paint on swaps too, so there is no flash of the panel opening.
   document.addEventListener("htmx:afterSettle", function (e) { applyPanelPrefs(e.target); });
 
+  // ── Modals ─────────────────────────────────────────────────────────────
+  // Native <dialog>. The Overview re-renders itself every 20 s, which would
+  // destroy an open dialog, so the open one is remembered before the swap and
+  // re-opened (with fresh content) after it.
+  var openModal = null;
+  function showModal(id) {
+    var d = document.getElementById(id);
+    if (!d || d.open) return;
+    d.showModal(); openModal = id;
+  }
+  document.addEventListener("click", function (e) {
+    var o = e.target.closest("[data-open]");
+    if (o) { showModal(o.getAttribute("data-open")); return; }
+    var c = e.target.closest("[data-close]");
+    if (c) { var d = c.closest("dialog"); if (d) d.close(); return; }
+    // click on the backdrop (the dialog element itself, outside .modal-box)
+    if (e.target.tagName === "DIALOG" && e.target.classList.contains("modal")) e.target.close();
+  });
+  document.addEventListener("close", function (e) {
+    if (e.target.tagName === "DIALOG" && e.target.id === openModal) openModal = null;
+  }, true);
+  document.addEventListener("htmx:beforeSwap", function () {
+    var d = document.querySelector("dialog.modal[open]");
+    openModal = d ? d.id : null;
+  });
+  document.addEventListener("htmx:afterSettle", function () {
+    if (openModal) showModal(openModal);
+  });
+
   // ── Confirmation word gate ──────────────────────────────────────────────
   function wireConfirm(root) {
     (root || document).querySelectorAll("[data-confirm-word]").forEach(function (input) {

@@ -5,6 +5,7 @@
 // applies any pending database migrations first, then deploys.
 
 import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { loadEnv } from "./lib/env.mjs";
 
 const env = loadEnv();
@@ -16,6 +17,11 @@ function run(args) {
   const r = spawnSync("npx", ["wrangler", ...args], { stdio: "inherit", shell, env: wranglerEnv });
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
+
+// Stamp this build so browsers fetch fresh CSS and script after every deploy.
+const build = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+writeFileSync("worker/src/build.ts", `// build.ts (rewritten by "npm run deploy-worker"; the value only needs to change per deploy)\nexport const BUILD = "${build}";\n`);
+console.log(`build ${build}`);
 
 run(["d1", "migrations", "apply", "wg-admin", "--remote"]);
 run(["deploy"]);
