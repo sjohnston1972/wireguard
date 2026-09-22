@@ -299,7 +299,7 @@ table.rows.inv td.muted { overflow-wrap: anywhere; }
 /* ── Tunnel diagram: link lights ──────────────────────────────────────────── */
 /* lit = the end is up (client handshake / VM heartbeat); flow = bytes moved in the last interval */
 .tunnel .node.lit { stroke: var(--up); fill: var(--up-soft); }
-.tunnel .node.flow { stroke: var(--signal); fill: var(--signal-soft); stroke-width: 2; }
+.tunnel .node.flow, .tunnel[data-state="running"] .node.azure.flow { stroke: var(--signal); fill: var(--signal-soft); stroke-width: 2; }
 .tunnel[data-flow="1"] .carrier { stroke: var(--signal); animation-duration: 0.6s; }
 .tunnel[data-flow="1"] .port { fill: var(--signal); }
 .tunnel text.traffic { fill: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
