@@ -93,8 +93,12 @@ export function buildWorkerSecrets(env) {
   const errors = [];
   const warnings = [];
   for (const k of WORKER_KEYS) {
-    const value = env[k];
+    let value = env[k];
     if (LOCAL_ONLY.includes(k)) continue;
+    if (k === "CLOUDFLARE_DNS_TOKEN" && (!value || PLACEHOLDER.test(value)) && env.CLOUDFLARE_API_TOKEN && !PLACEHOLDER.test(env.CLOUDFLARE_API_TOKEN)) {
+      value = env.CLOUDFLARE_API_TOKEN;
+      warnings.push("CLOUDFLARE_DNS_TOKEN is not set: pushing the BROAD CLOUDFLARE_API_TOKEN to the Worker as a temporary stand-in. Mint a DNS-only token and rerun as soon as you can.");
+    }
     if (!value) {
       if (k !== "NOTIFY_WEBHOOK_URL") warnings.push(`${k} is blank; skipped`);
       continue;

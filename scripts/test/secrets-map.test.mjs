@@ -67,3 +67,9 @@ test("Worker secrets: placeholders are skipped with a warning, not fatal", () =>
   assert.ok(!("GITHUB_TOKEN" in secrets));
   assert.equal(secrets.GITHUB_REPO, "o/r");
 });
+
+test("Worker secrets: placeholder DNS token falls back to the broad token with a warning", () => {
+  const { secrets, warnings } = buildWorkerSecrets({ ...full, CLOUDFLARE_DNS_TOKEN: "REPLACE_ME_dns" });
+  assert.equal(secrets.CLOUDFLARE_DNS_TOKEN, "BROAD");
+  assert.ok(warnings.some((w) => w.includes("BROAD")));
+});

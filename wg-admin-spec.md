@@ -53,7 +53,7 @@ These exist and the values are already in .env. Do not recreate them.
 
 Hand-minted values. Status after the 2026-09-22 session (Claude has no dashboard access, so stand-ins are in use where Cloudflare documents them):
 
-- [ ] CLOUDFLARE_DNS_TOKEN: still REPLACE_ME. `npm run secrets` pushed the BROAD token to GitHub as a stand-in, with a warning. Mint the narrow one at dashboard > My Profile > API Tokens > Create Token > "Edit zone DNS" template, zone = clydeford.net only, then rerun `npm run secrets`
+- [ ] CLOUDFLARE_DNS_TOKEN: still REPLACE_ME. `npm run secrets` pushed the BROAD token to GitHub and (from 2026-09-22 evening, matching Steven's wide-token choice for GitHub) to the Worker as a stand-in, with a warning. Mint the narrow one at dashboard > My Profile > API Tokens > Create Token > "Edit zone DNS" template, zone = clydeford.net only, then rerun `npm run secrets`
 - [x] R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY: filled with credentials derived from the broad token (key id = token id, secret = sha256 of the token, a documented Cloudflare method). Works, proven by two runs. Replace with a bucket-scoped pair when convenient
 - [x] GITHUB_TOKEN: **Steven chose (2026-09-22) to use the gh CLI's OAuth token** (scopes repo, workflow, read:org, gist) instead of a fine-grained PAT. Pushed to the Worker; the Deploy button is live. Tightening to a repo-scoped PAT is a later hardening step. github.com > Settings > Developer settings > Fine-grained tokens, repository = sjohnston1972/wireguard only, permissions Actions: Read and write, Contents: Read
 - [x] wrangler 4.136.3 installed globally. No `wrangler login` needed: it can use CLOUDFLARE_API_TOKEN from the environment, which the deploy-worker script will do
