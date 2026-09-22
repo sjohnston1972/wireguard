@@ -9,10 +9,25 @@ import { html } from "hono/html";
 import type { Html } from "./layout";
 import { ago, bytes, fmtTime } from "./layout";
 import type { Peer } from "../db";
-import type { AgentReport } from "../state";
+import type { AgentReport, AgentPeer } from "../state";
 import { peerOnline } from "../state";
 import type { Config } from "../env";
 import { serverTunnelIp as serverTunnelIpOf } from "../peers";
+
+/**
+ * What the VM says about this client, not just what the database says.
+ * "disabled" only becomes "off the VM" once a heartbeat no longer lists the
+ * key; "enabled" shows "loading onto VM" until a heartbeat does list it.
+ */
+function statusCell(p: Peer, live: AgentPeer | undefined, running: boolean, online: boolean): Html {
+  if (!p.enabled) {
+    if (running && live) return html`<span class="pill busy">removing from VM…</span>`;
+    return html`<span class="pill idle">disabled</span>${running ? html` <span class="faint small">off the VM</span>` : ""}`;
+  }
+  if (!running) return html`<span class="faint">headend down</span>`;
+  if (!live) return html`<span class="pill busy">loading onto VM…</span>`;
+  return online ? html`<span class="pill up">online</span>` : html`<span class="pill idle">offline</span> <span class="faint small">on the VM, no recent handshake</span>`;
+}
 
 export function peersTable(peers: Peer[], report: AgentReport | null, running: boolean): Html {
   const byKey = new Map((report?.peers ?? []).map((p) => [p.public_key, p]));
@@ -27,7 +42,7 @@ export function peersTable(peers: Peer[], report: AgentReport | null, running: b
         return html`<tr>
           <td><b>${p.name}</b>${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}<div class="key" title="${p.public_key}">${p.public_key}</div></td>
           <td class="mono">${p.ip}</td>
-          <td>${!p.enabled ? html`<span class="pill idle">disabled</span>` : !running ? html`<span class="faint">headend down</span>` : online ? html`<span class="pill up">online</span>` : html`<span class="pill idle">offline</span>`}</td>
+          <td>${statusCell(p, live, running, online)}</td>
           <td>${live && live.latest_handshake ? html`<span title="${new Date(live.latest_handshake * 1000).toISOString()}">${ago(new Date(live.latest_handshake * 1000).toISOString())}</span>` : html`<span class="faint">never</span>`}</td>
           <td class="num">${live ? bytes(live.tx) : html`<span class="faint">—</span>`}</td>
           <td class="num">${live ? bytes(live.rx) : html`<span class="faint">—</span>`}</td>
@@ -45,7 +60,7 @@ export function peersTable(peers: Peer[], report: AgentReport | null, running: b
 
 export function peersBody(o: { peers: Peer[]; report: AgentReport | null; running: boolean; cfg: Config; serverPub: string | null; nextIp: string | null }): Html {
   return html`<section>
-  <div class="section-head"><h1>Clients</h1><span class="muted small">${o.running ? "Changes reach the VM within 30 seconds." : "Changes are loaded at the next deploy."}</span></div>
+  <div class="section-head"><h1>Clients</h1><span class="muted small">${o.running ? "Changes reach the VM within 30 seconds; the status column shows what the VM reports." : "Changes are loaded at the next deploy."}</span></div>
   ${peersTable(o.peers, o.report, o.running)}
 </section>
 
