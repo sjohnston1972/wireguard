@@ -27,6 +27,10 @@ if (!name || !/^[a-z0-9-]{1,32}$/i.test(name)) {
 }
 const ip = arg("ip", "10.13.13.2");
 const fullTunnel = process.argv.includes("--full");
+// --home adds the home LAN to AllowedIPs. Only right for a client that is
+// AWAY from home once site-to-site (backlog item 7) exists; on a device that
+// is on the home LAN it would black-hole local traffic. Off by default.
+const viaHome = process.argv.includes("--home");
 
 const env = loadEnv();
 if (!isWgKey(env.WG_SERVER_PRIVATE_KEY)) {
@@ -45,7 +49,7 @@ const conf = renderClientConf({
   endpoint: `${env.WG_DNS_NAME}:${env.WG_PORT}`,
   serverIp,
   tunnelCidr: env.WG_SUBNET,
-  homeLanCidr: env.HOME_LAN_CIDR || undefined,
+  homeLanCidr: viaHome ? env.HOME_LAN_CIDR || undefined : undefined,
   fullTunnel,
 });
 

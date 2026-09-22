@@ -87,7 +87,9 @@ npm run peer -- --name laptop --ip 10.13.13.2
 
 This writes `peers/laptop.conf` (import it into the WireGuard app; it holds the
 client's private key and is gitignored) and prints a `peers_json` payload. Use
-`--full` for a full-tunnel (exit node) config.
+`--full` for a full-tunnel (exit node) config, and `--home` to also route the
+home LAN through the tunnel (only for a device that is away from home, and
+only once site-to-site is built).
 
 ### Deploy
 
