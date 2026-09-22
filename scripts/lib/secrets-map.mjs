@@ -87,21 +87,23 @@ export function buildGithubSecrets(env) {
 
 /** Build the list of Worker secrets. Same rules, no DNS fallback (the Worker only verifies DNS). */
 export function buildWorkerSecrets(env) {
+  // The dashboard copes with missing secrets (it shows a setup checklist), so
+  // blanks and placeholders are skipped with a warning rather than blocking.
   const secrets = {};
   const errors = [];
+  const warnings = [];
   for (const k of WORKER_KEYS) {
     const value = env[k];
     if (LOCAL_ONLY.includes(k)) continue;
     if (!value) {
-      if (k === "NOTIFY_WEBHOOK_URL") continue; // optional
-      errors.push(`${k} is blank`);
+      if (k !== "NOTIFY_WEBHOOK_URL") warnings.push(`${k} is blank; skipped`);
       continue;
     }
     if (PLACEHOLDER.test(value)) {
-      errors.push(`${k} is still ${value}`);
+      warnings.push(`${k} is still ${value}; skipped (the dashboard will show it as missing)`);
       continue;
     }
     secrets[k] = value;
   }
-  return { secrets, errors };
+  return { secrets, errors, warnings };
 }

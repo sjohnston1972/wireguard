@@ -12,8 +12,19 @@
     "peer": "node scripts/peer.mjs",
     "secrets": "node scripts/secrets.mjs",
     "tf-validate": "node scripts/tf-validate.mjs",
-    "deploy-worker": "node scripts/not-yet.mjs deploy-worker",
-    "migrate": "node scripts/not-yet.mjs migrate",
-    "test": "node --test \"scripts/test/*.test.mjs\""
+    "deploy-worker": "node scripts/deploy-worker.mjs",
+    "migrate": "node scripts/migrate.mjs",
+    "test": "node --test \"scripts/test/*.test.mjs\" && vitest run",
+    "dev": "node scripts/dev.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260922.1",
+    "hono": "^4.13.8",
+    "jose": "^6.2.12",
+    "qrcode-generator": "^2.0.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1",
+    "wrangler": "^4.136.3"
   }
 }

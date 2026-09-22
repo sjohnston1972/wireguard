@@ -16,6 +16,8 @@
 #     DNS record is removed with the Cloudflare API. Destroy must always reach £0.
 
 name: wg
+# Put the Worker's run id in the run title so the Worker can find this run.
+run-name: "wg ${{ inputs.action }} ${{ fromJSON(inputs.payload).run_id || 'manual' }}"
 
 on:
   workflow_dispatch:

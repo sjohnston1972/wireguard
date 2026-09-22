@@ -9,9 +9,10 @@ trust the same server key.
 Everything that manages it runs on Cloudflare and GitHub, both on free tiers.
 Nothing runs in the homelab except the WireGuard clients themselves.
 
-> **Status:** Phase 1 (infrastructure and runner) is built. The dashboard
-> (Phase 2) is next. Right now you deploy and destroy from the GitHub Actions
-> tab. The full design is in [wg-admin-spec.md](wg-admin-spec.md).
+> **Status:** the dashboard is live at **https://wg-admin.clydeford.net**
+> (Cloudflare Access login). Deploy, tear down, add clients by QR, watch the
+> live log, see cost. The Deploy button needs the GitHub token in place (see
+> Settings > Setup). The full design is in [wg-admin-spec.md](wg-admin-spec.md).
 
 ## The picture
 
@@ -77,7 +78,33 @@ You need: [Node.js](https://nodejs.org) 20+, [GitHub CLI](https://cli.github.com
    npm test
    ```
 
-## Using it (Phase 1: from the GitHub Actions tab)
+## Using the dashboard
+
+Open **https://wg-admin.clydeford.net** and log in with the one-time PIN sent to
+your email (Cloudflare Access). On a phone, use "Add to Home Screen": it
+installs as an app and the login lasts 24 hours.
+
+| Screen | What it does |
+| --- | --- |
+| **Overview** | The big state word and the tunnel diagram. Deploy (choose how long for), Tear down (type `destroy`), extend or clear the auto-destroy, cancel a run, clean up after a failure. While a run is in progress you see the GitHub steps and the live log. |
+| **Clients** | Every phone and laptop with its tunnel address, online/offline, last handshake and traffic. Add a client: the keys are made in your browser, the private key never leaves it, and you get a QR code to scan with the WireGuard app. Disable or delete a client; a running VM picks the change up within 30 seconds. |
+| **Activity** | Every deploy and tear-down with how long it took and what it cost, plus the watchman's notes (drift, cost guard, missing heartbeat). |
+| **Cost** | This session ticking up, this month's actual spend from Azure against a soft budget, daily bars, and each past session. |
+| **Settings** | Region, VM size, default auto-destroy, idle tear-down, budget, SSH allow-list. The setup checklist, the run lock, and the server public key. |
+
+The watchman (a 5-minute cron in the Worker) tears down when the timer
+passes, again 15 minutes later if that somehow failed, on idle if you set it,
+flags drift between Azure and the dashboard, and pulls actual cost daily.
+
+### Deploying the dashboard itself
+
+```sh
+npm run secrets -- --worker   # push Worker secrets (skips placeholders with a warning)
+npm run deploy-worker         # applies database migrations, then deploys
+npm run dev                   # run it locally at http://localhost:8787 with login off
+```
+
+## Using it without the dashboard (from the GitHub Actions tab)
 
 ### Make a client
 
@@ -137,9 +164,13 @@ free tiers.
 infra/                    Terraform: the Azure build and the DNS record
   cloud-init.yaml.tftpl   the VM's first-boot script
   agent/                  the heartbeat script and its systemd units
+worker/src/               the dashboard (Cloudflare Worker, TypeScript)
+worker/public/            stylesheet, client script, QR library
+worker/migrations/        database schema
+wrangler.toml             the Worker's bindings, cron and hostname
 .github/workflows/wg.yml  the runner: apply or destroy
 .github/workflows/ci.yml  checks on every push, no cloud calls
-scripts/                  the npm commands (keys, peer, secrets, tf-validate)
+scripts/                  the npm commands (keys, peer, secrets, deploy-worker, dev)
 wg-admin-spec.md          the full design
 docs/runs/                records of each autonomous build session
 ```

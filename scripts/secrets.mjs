@@ -60,7 +60,8 @@ if (wantGithub) {
 
 // ── Worker ──────────────────────────────────────────────────────────────────
 if (wantWorker) {
-  const { secrets, errors } = buildWorkerSecrets(env);
+  const { secrets, errors, warnings } = buildWorkerSecrets(env);
+  for (const w of warnings) console.warn(`WARNING: ${w}`);
   if (errors.length) {
     console.error("Cannot push Worker secrets yet:");
     for (const e of errors) console.error(`  - ${e}`);
@@ -79,6 +80,7 @@ if (wantWorker) {
         input: value,
         stdio: ["pipe", "ignore", "inherit"],
         shell: WRANGLER_SHELL,
+        env: { ...process.env, CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID },
       });
       if (r.status !== 0) {
         console.error(`  FAILED ${name}`);

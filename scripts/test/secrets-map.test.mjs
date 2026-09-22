@@ -52,9 +52,18 @@ test("GitHub secrets: other placeholders are errors, not pushed", () => {
 });
 
 test("Worker secrets: never include local-only keys; optional webhook may be blank", () => {
-  const { secrets, errors } = buildWorkerSecrets(full);
+  const { secrets, errors, warnings } = buildWorkerSecrets(full);
   assert.deepEqual(errors, []);
+  assert.deepEqual(warnings, []);
   for (const k of LOCAL_ONLY) assert.ok(!(k in secrets));
   assert.ok(!("NOTIFY_WEBHOOK_URL" in secrets));
   assert.equal(secrets.CF_ACCESS_AUD, "aud");
+});
+
+test("Worker secrets: placeholders are skipped with a warning, not fatal", () => {
+  const { secrets, errors, warnings } = buildWorkerSecrets({ ...full, GITHUB_TOKEN: "REPLACE_ME_pat" });
+  assert.deepEqual(errors, []);
+  assert.equal(warnings.length, 1);
+  assert.ok(!("GITHUB_TOKEN" in secrets));
+  assert.equal(secrets.GITHUB_REPO, "o/r");
 });

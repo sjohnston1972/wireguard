@@ -1,0 +1,68 @@
+# wrangler.toml
+#
+# Plain English: the Worker's wiring diagram. It names the code, the storage
+# it is allowed to touch (D1 database, KV namespace, R2 bucket, the run-lock
+# Durable Object), the 5-minute cron, the public hostname, and the non-secret
+# settings. Secrets are NOT here: they are set with "npm run secrets -- --worker".
+
+name = "wg-admin"
+main = "worker/src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "5bdc4d7840e522355b86631e6b8fac2b"
+workers_dev = false
+
+# The dashboard's address. wrangler creates the DNS record for it.
+routes = [
+  { pattern = "wg-admin.clydeford.net", custom_domain = true }
+]
+
+# Static files (stylesheet, client script, QR library).
+[assets]
+directory = "worker/public"
+
+# Every 5 minutes: drift check, auto-destroy, cost guard, heartbeat watchdog.
+[triggers]
+crons = ["*/5 * * * *"]
+
+# ── Storage ──────────────────────────────────────────────────────────────────
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wg-admin"
+database_id = "20805808-8f19-44b3-9246-36240d3bb705"
+migrations_dir = "worker/migrations"
+
+[[kv_namespaces]]
+binding = "STATUS"
+id = "efa95d8c05e34444b6a95c39055844d5"
+
+[[r2_buckets]]
+binding = "STATE"
+bucket_name = "wg-admin-tfstate"
+
+[[durable_objects.bindings]]
+name = "RUN_LOCK"
+class_name = "RunLock"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RunLock"]
+
+# ── Non-secret settings ──────────────────────────────────────────────────────
+
+[vars]
+PUBLIC_URL = "https://wg-admin.clydeford.net"
+WG_DNS_NAME = "wg.clydeford.net"
+WG_PORT = "51820"
+WG_SUBNET = "10.13.13.0/24"
+AZURE_REGION = "uksouth"
+AZURE_VM_SIZE = "Standard_B1s"
+AZURE_RESOURCE_GROUP = "rg-wg-ondemand"
+HOME_LAN_CIDR = "192.168.1.0/24"
+SSH_ALLOWED_CIDR = ""
+AUTO_DESTROY_DEFAULT_HOURS = "4"
+IDLE_DESTROY_MINUTES = "0"
+MONTHLY_BUDGET_GBP = "10"
+# Estimated running cost: B1s (~£0.0093/h) + 30 GB StandardSSD (~£0.0027/h) + static IP (~£0.0029/h).
+HOURLY_RATE_GBP = "0.0149"
