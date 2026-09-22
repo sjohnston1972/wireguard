@@ -152,12 +152,12 @@ section + section { margin-top: 26px; }
 .tunnel text { font-family: var(--font); font-size: 12px; fill: var(--ink-2); }
 .tunnel text.name { fill: var(--ink); font-weight: 600; font-size: 13px; }
 .tunnel .node { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1.2; }
-.tunnel .carrier { stroke: var(--line-strong); stroke-width: 2; fill: none; stroke-dasharray: 4 6; }
+.tunnel .carrier { stroke: var(--line-strong); stroke-width: 2; fill: none; stroke-dasharray: 6 12; will-change: stroke-dashoffset; }
 .tunnel .port { fill: var(--idle); }
 .tunnel[data-state="running"] .carrier { stroke: var(--up); stroke-dasharray: 10 8; animation: carry 1.4s linear infinite; }
 .tunnel[data-state="running"] .port { fill: var(--up); }
 .tunnel[data-state="running"] .node.azure { stroke: var(--up); }
-.tunnel[data-state="deploying"] .carrier, .tunnel[data-state="destroying"] .carrier { stroke: var(--busy); animation: carry 0.7s linear infinite; }
+.tunnel[data-state="deploying"] .carrier, .tunnel[data-state="destroying"] .carrier { stroke: var(--busy); stroke-dasharray: 6 12; animation: carry 0.7s linear infinite; }
 .tunnel[data-state="deploying"] .port, .tunnel[data-state="destroying"] .port { fill: var(--busy); }
 .tunnel[data-state="failed"] .carrier { stroke: var(--down); animation: none; }
 .tunnel[data-state="failed"] .port { fill: var(--down); }

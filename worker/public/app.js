@@ -45,6 +45,20 @@
   document.addEventListener("htmx:afterSwap", tick);
   tick();
 
+  // ── Keep the carrier animation continuous across re-renders ─────────────
+  // The Overview is replaced every 20 s, which would restart the dash
+  // animation from zero and make it jump. Starting each new copy at the phase
+  // the wall clock implies makes the swap invisible.
+  function syncCarrier(root) {
+    (root || document).querySelectorAll(".tunnel .carrier").forEach(function (el) {
+      var dur = parseFloat(getComputedStyle(el).animationDuration) || 0;
+      if (!dur) return;
+      el.style.animationDelay = (-((Date.now() / 1000) % dur)).toFixed(3) + "s";
+    });
+  }
+  syncCarrier();
+  document.addEventListener("htmx:afterSwap", function (e) { syncCarrier(e.target); });
+
   // ── Remember collapsed panels across the 20-second refresh ──────────────
   // The Overview re-renders itself; without this, a panel you collapsed would
   // spring open again. The choice is kept in this browser only.
