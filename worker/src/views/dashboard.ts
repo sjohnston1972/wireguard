@@ -14,11 +14,13 @@ import { serverTunnelIp } from "../peers";
 import type { Snapshot } from "../state";
 import { STATE_LABEL, isBusy, peerOnline, trafficFlowing } from "../state";
 import type { Config } from "../env";
+import type { Peer } from "../db";
 
 export interface LiveOpts {
   snap: Snapshot;
   cfg: Config;
   peerCount: number;
+  peers?: Peer[];
   canDispatch: boolean;
   notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null;
   lockHolder?: string | null;
@@ -119,7 +121,7 @@ export function liveSection(o: LiveOpts): Html {
       <h1 class="state-word" data-state="${s.state}">${STATE_LABEL[s.state]}</h1>
       <div class="state-sub">${subline(s, o.cfg)}</div>
     </div>
-    ${tunnel(s, o.cfg)}
+    <div class="tipwrap">${tunnel(s, o.cfg)}${homeTip(o)}${azureTip(o)}</div>
   </div>
 
   <dl class="facts">
@@ -175,9 +177,11 @@ function tunnel(s: Snapshot, cfg: Config): Html {
   const rate = (t?.rx_rate ?? 0) + (t?.tx_rate ?? 0);
   return html`<svg class="tunnel" data-state="${s.state}" data-flow="${flowing ? "1" : "0"}" viewBox="0 0 520 150" role="img" aria-label="Tunnel: home to ${cfg.dnsName} to Azure ${cfg.region}, ${STATE_LABEL[s.state]}${flowing ? ", traffic passing" : ""}">
   <path class="carrier" d="M 92 70 C 170 70, 190 70, 260 70 S 350 70, 428 70" />
+  <g class="hot" data-tip="tip-home" tabindex="0" role="button" aria-label="Client details">
   <rect class="node home ${homeClass}" x="12" y="42" width="80" height="56" rx="8"/>
   <text class="name" x="52" y="66" text-anchor="middle">Home</text>
   <text x="52" y="84" text-anchor="middle">${running ? `${online} client${online === 1 ? "" : "s"} up` : cfg.homeLanCidr || "clients"}</text>
+  </g>
   <g>
     <circle class="port" cx="260" cy="70" r="7"/>
     <text class="name" x="260" y="38" text-anchor="middle">${cfg.dnsName}</text>
@@ -186,12 +190,72 @@ function tunnel(s: Snapshot, cfg: Config): Html {
       ? html`<text class="traffic ${flowing ? "flow" : ""}" x="260" y="120" text-anchor="middle">in ${bytes(t.rx)}, out ${bytes(t.tx)}${flowing ? ` at ${bytes(Math.round(rate))}/s` : ""}</text>`
       : ""}
   </g>
+  <g class="hot" data-tip="tip-azure" tabindex="0" role="button" aria-label="VM details">
   <rect class="node azure ${azureClass}" x="428" y="42" width="80" height="56" rx="8"/>
   <text class="name" x="468" y="66" text-anchor="middle">Azure</text>
   <text x="468" y="84" text-anchor="middle">${cfg.region}</text>
+  </g>
   <text x="52" y="128" text-anchor="middle">tunnel ${cfg.subnet}</text>
   <text x="468" y="128" text-anchor="middle">${cfg.vmSize}</text>
 </svg>`;
+}
+
+/** Hover panel for the Home tile: every client, what the VM knows about it. */
+function homeTip(o: LiveOpts): Html {
+  const s = o.snap;
+  const peers = o.peers ?? [];
+  const live = new Map((s.agent?.peers ?? []).map((p) => [p.public_key, p]));
+  const total = (s.traffic?.rx ?? 0) + (s.traffic?.tx ?? 0);
+  const now = Date.now();
+  return html`<div class="tip" id="tip-home" hidden>
+  <div class="tip-head"><b>Clients</b><span class="muted small">${peers.length} configured${s.state === "running" ? html`, ${s.traffic?.peers_online ?? 0} online` : ", headend down"}</span></div>
+  ${peers.length
+    ? html`<table class="tiptable"><thead><tr><th>Client</th><th>Tunnel IP</th><th>Status</th><th>Handshake</th><th>From</th><th class="num">In</th><th class="num">Out</th><th class="num">Share</th></tr></thead><tbody>
+      ${peers.map((p) => {
+        const l = live.get(p.public_key);
+        const on = !!l && peerOnline(l, now);
+        const share = l && total > 0 ? Math.round(((l.rx + l.tx) / total) * 100) : 0;
+        return html`<tr>
+          <td><b>${p.name}</b>${p.full_tunnel ? html` <span class="pill idle">full</span>` : ""}${p.azure_vnet ? html` <span class="pill idle">+az</span>` : ""}</td>
+          <td class="mono">${p.ip}</td>
+          <td>${!p.enabled ? html`<span class="pill idle">disabled</span>` : s.state !== "running" ? html`<span class="faint">—</span>` : !l ? html`<span class="pill busy">loading</span>` : on ? html`<span class="pill up">online</span>` : html`<span class="pill idle">offline</span>`}</td>
+          <td>${l && l.latest_handshake ? ago(new Date(l.latest_handshake * 1000).toISOString(), now) : html`<span class="faint">never</span>`}</td>
+          <td class="mono small">${l?.endpoint ?? html`<span class="faint">—</span>`}</td>
+          <td class="num">${l ? bytes(l.rx) : html`<span class="faint">—</span>`}</td>
+          <td class="num">${l ? bytes(l.tx) : html`<span class="faint">—</span>`}</td>
+          <td class="num">${l ? html`<span class="share"><i style="width:${share}%"></i></span> ${share}%` : html`<span class="faint">—</span>`}</td>
+        </tr>`;
+      })}
+    </tbody></table>`
+    : html`<p class="muted small">No clients yet. Add one on the Clients tab.</p>`}
+  ${s.traffic ? html`<div class="muted small tip-foot">Totals in ${bytes(s.traffic.rx)}, out ${bytes(s.traffic.tx)}${trafficFlowing(s.traffic, now) ? html`, moving at ${bytes(Math.round(s.traffic.rx_rate + s.traffic.tx_rate))}/s` : ", idle"}. "From" is the address the client last dialled in from. In/out are as the VM sees them.</div>` : ""}
+</div>`;
+}
+
+/** Hover panel for the Azure tile: the VM as it reports itself. */
+function azureTip(o: LiveOpts): Html {
+  const s = o.snap;
+  const a = s.agent;
+  const up = a ? a.uptime_seconds : 0;
+  const h = Math.floor(up / 3600), m = Math.floor((up % 3600) / 60);
+  const load = a?.load ? a.load.split(" ") : [];
+  const nic = s.azure?.resources.find((r) => r.kind === "Network interface")?.detail.match(/private ([\d.]+)/)?.[1];
+  return html`<div class="tip" id="tip-azure" hidden>
+  <div class="tip-head"><b>Headend VM</b><span class="muted small">${s.state === "running" ? html`${o.cfg.vmSize} in ${o.cfg.region}` : STATE_LABEL[s.state]}</span></div>
+  ${s.state === "running"
+    ? html`<table class="tiptable kv"><tbody>
+      <tr><th>Heartbeat</th><td>${s.last_agent_at ? html`${ago(s.last_agent_at)}${a ? html` from <span class="mono">${a.hostname}</span>` : ""}` : html`<span class="pill down">none yet</span>`}</td></tr>
+      <tr><th>Uptime</th><td>${a ? `${h}h ${m}m` : html`<span class="faint">—</span>`}</td></tr>
+      <tr><th>Load</th><td>${load.length ? html`<span class="mono">${load[0]}</span> <span class="faint small">1 min</span> · <span class="mono">${load[1]}</span> <span class="faint small">5 min</span> · <span class="mono">${load[2]}</span> <span class="faint small">15 min</span> <span class="faint small">(1 vCPU: 1.0 = busy)</span>` : html`<span class="faint">—</span>`}</td></tr>
+      <tr><th>Public</th><td class="mono">${s.public_ip ?? "?"} <span class="faint small">${s.dns_live ? "DNS live" : "DNS not live"}</span></td></tr>
+      <tr><th>VNet</th><td class="mono">${nic ?? "?"} <span class="faint small">in ${o.cfg.vnetCidr}</span></td></tr>
+      <tr><th>Tunnel</th><td class="mono">${serverTunnelIp(o.cfg.subnet)} <span class="faint small">listening on UDP ${a?.listen_port ?? o.cfg.port}</span></td></tr>
+      <tr><th>Loopback</th><td class="mono">${o.cfg.loopbackIp} ${a?.loopback === o.cfg.loopbackIp ? html`<span class="pill up">up</span>` : html`<span class="pill idle">not on this build</span>`}</td></tr>
+      <tr><th>Peers loaded</th><td>${a ? a.peers.length : html`<span class="faint">—</span>`}</td></tr>
+      ${s.auto_destroy_at ? html`<tr><th>Tears down</th><td>in <b data-until="${s.auto_destroy_at}"></b> <span class="faint small">${fmtTime(s.auto_destroy_at)}</span></td></tr>` : ""}
+      </tbody></table>`
+    : html`<p class="muted small">Nothing is running. Deploy to build the VM.</p>`}
+</div>`;
 }
 
 function runProgress(s: Snapshot): Html {

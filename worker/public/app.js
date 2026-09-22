@@ -99,6 +99,42 @@
     if (live && window.htmx) htmx.ajax("GET", "/partials/live", { target: "#live", swap: "outerHTML", select: "#live" });
   }, true);
 
+  // ── Hover panels on the tunnel tiles ───────────────────────────────────
+  // Hover or keyboard focus shows; tap toggles (phones have no hover). Only
+  // one panel at a time. Panels are re-rendered with the Overview, so nothing
+  // here holds state.
+  function tipFor(el) { return document.getElementById(el.getAttribute("data-tip")); }
+  function hideTips() { document.querySelectorAll(".tip").forEach(function (t) { t.hidden = true; }); }
+  var hoverable = window.matchMedia && window.matchMedia("(hover: hover)").matches;
+  document.addEventListener("mouseover", function (e) {
+    if (!hoverable) return;
+    var h = e.target.closest("[data-tip]"); if (!h) return;
+    var t = tipFor(h); if (!t) return;
+    hideTips(); t.hidden = false;
+  });
+  document.addEventListener("mouseout", function (e) {
+    if (!hoverable) return;
+    var h = e.target.closest("[data-tip]"); if (!h) return;
+    var to = e.relatedTarget;
+    if (to && (h.contains(to) || (tipFor(h) && tipFor(h).contains(to)))) return;
+    // allow moving the pointer onto the panel itself
+    setTimeout(function () {
+      var t = tipFor(h);
+      if (t && !t.matches(":hover") && !h.matches(":hover")) t.hidden = true;
+    }, 120);
+  });
+  document.addEventListener("mouseleave", function (e) {
+    if (e.target && e.target.classList && e.target.classList.contains("tip")) e.target.hidden = true;
+  }, true);
+  document.addEventListener("focusin", function (e) { var h = e.target.closest && e.target.closest("[data-tip]"); if (h) { hideTips(); var t = tipFor(h); if (t) t.hidden = false; } });
+  document.addEventListener("focusout", function (e) { var h = e.target.closest && e.target.closest("[data-tip]"); if (h) { var t = tipFor(h); if (t) setTimeout(function () { if (!t.contains(document.activeElement)) t.hidden = true; }, 100); } });
+  document.addEventListener("click", function (e) {
+    var h = e.target.closest("[data-tip]");
+    if (h) { var t = tipFor(h); if (t) { var was = t.hidden; hideTips(); t.hidden = !was; } return; }
+    if (!e.target.closest(".tip")) hideTips();
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") hideTips(); });
+
   // ── Confirmation word gate ──────────────────────────────────────────────
   function wireConfirm(root) {
     (root || document).querySelectorAll("[data-confirm-word]").forEach(function (input) {

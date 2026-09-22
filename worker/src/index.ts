@@ -88,7 +88,7 @@ async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info";
   const [snap, cfg, peers, lock, deployment, serverPub] = await Promise.all([
     getSnapshot(env),
     effectiveConfig(env),
-    db.enabledPeers(env),
+    db.listPeers(env),
     lockStatus(env),
     db.currentDeployment(env),
     serverPublicKey(env),
@@ -96,7 +96,8 @@ async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info";
   return liveSection({
     snap,
     cfg,
-    peerCount: peers.length,
+    peerCount: peers.filter((p) => p.enabled).length,
+    peers,
     canDispatch: canDispatch(env),
     notice,
     lockHolder: lock.held && !["deploying", "destroying"].includes(snap.state) ? lock.lock?.runId ?? null : null,

@@ -328,3 +328,26 @@ dialog.modal[open] { animation: modal-in 160ms ease-out; }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
 .modal-head p { margin: 2px 0 0; }
 .modal-row button .count { display: inline-block; min-width: 1.4em; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--signal-soft); color: var(--signal); font-size: 0.8rem; text-align: center; }
+
+/* ── Hover panels on the tunnel tiles ─────────────────────────────────────── */
+.tipwrap { position: relative; min-width: 0; }
+.tunnel .hot { cursor: help; outline: none; }
+.tunnel .hot:focus-visible .node { stroke: var(--signal); stroke-width: 2.5; }
+.tip {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 20;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow), 0 16px 40px -16px rgba(0,0,0,.45); padding: 12px 14px; font-size: 0.86rem;
+}
+.tip[hidden] { display: none; }
+.tip-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 8px; }
+.tip-foot { margin-top: 8px; }
+.tiptable { width: 100%; border-collapse: collapse; }
+.tiptable th { text-align: left; font-weight: 500; color: var(--ink-2); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tiptable td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tiptable tr:last-child td { border-bottom: 0; }
+.tiptable .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tiptable.kv th { width: 7.5rem; border-bottom: 0; }
+.tiptable.kv td { border-bottom: 0; padding: 3px 0; }
+.share { display: inline-block; width: 46px; height: 6px; border-radius: 999px; background: var(--idle-soft); vertical-align: middle; overflow: hidden; margin-right: 4px; }
+.share > i { display: block; height: 100%; background: var(--signal); }
+@media (max-width: 640px) { .tip { font-size: 0.8rem; padding: 10px; } .tiptable th:nth-child(5), .tiptable td:nth-child(5) { display: none; } }
