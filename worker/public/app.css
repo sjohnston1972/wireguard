@@ -167,14 +167,16 @@ section + section { margin-top: 26px; }
   .tunnel .carrier, .light { animation: none !important; }
 }
 
-/* facts: a ruled list, not tiles */
-.facts { display: grid; grid-template-columns: 1fr; gap: 0; margin-top: 4px; border-top: 1px solid var(--line); }
-@media (min-width: 640px) { .facts { grid-template-columns: 1fr 1fr; column-gap: 32px; } }
-@media (min-width: 1280px) { .facts { grid-template-columns: 1fr 1fr 1fr; column-gap: 40px; } }
-.fact { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
-.fact dt { color: var(--ink-2); margin: 0; font-size: 0.92rem; }
-.fact dd { margin: 0; text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
-.fact dd .mono { font-size: 0.82rem; }
+/* facts: one tile, cells with the label above the value */
+.facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px 28px;
+  margin: 16px 0 0; padding: 16px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
+}
+.fact { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 0; border: 0; }
+.fact dt { color: var(--ink-2); margin: 0; font-size: 0.82rem; }
+.fact dd { margin: 0; text-align: left; font-weight: 600; font-size: 1.05rem; font-variant-numeric: tabular-nums; line-height: 1.35; overflow-wrap: anywhere; }
+.fact dd .mono { font-size: 0.9rem; }
+.fact dd .faint, .fact dd .small { font-weight: 400; }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; line-height: 1.5; }
 .pill.up { background: var(--up-soft); color: var(--up); }
 .pill.busy { background: var(--busy-soft); color: var(--busy); }
