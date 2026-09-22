@@ -28,7 +28,7 @@ export const WORKER_KEYS = [
   "AZURE_CLIENT_SECRET",
   "AZURE_TENANT_ID",
   "AZURE_SUBSCRIPTION_ID",
-  "AZURE_RESOURCE_GROUP",
+  // AZURE_RESOURCE_GROUP is a plain [vars] value in wrangler.toml, not a secret.
   "CLOUDFLARE_DNS_TOKEN",
   "CLOUDFLARE_ZONE_ID",
   "CF_ACCESS_TEAM_DOMAIN",

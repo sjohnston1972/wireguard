@@ -80,8 +80,8 @@ You need: [Node.js](https://nodejs.org) 20+, [GitHub CLI](https://cli.github.com
 
 ## Using the dashboard
 
-Open **https://wg-admin.clydeford.net** and log in with the one-time PIN sent to
-your email (Cloudflare Access). On a phone, use "Add to Home Screen": it
+Open **https://wg-admin.clydeford.net** and sign in with Google, or with the
+one-time PIN sent to your email (Cloudflare Access; only your address is allowed). On a phone, use "Add to Home Screen": it
 installs as an app and the login lasts 24 hours.
 
 | Screen | What it does |
