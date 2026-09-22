@@ -44,7 +44,7 @@ describe("handshake helpers", () => {
     expect(peerOnline(never, now)).toBe(false);
   });
   it("anyHandshakeWithin checks the whole report", () => {
-    const report: AgentReport = { at: "", hostname: "", uptime_seconds: 0, load: "", listen_port: null, server_public_key: null, peers: [stale, never] };
+    const report: AgentReport = { at: "", hostname: "", uptime_seconds: 0, load: "", listen_port: null, server_public_key: null, loopback: null, peers: [stale, never] };
     expect(anyHandshakeWithin(report, 5, now)).toBe(false);
     expect(anyHandshakeWithin(report, 15, now)).toBe(true);
     expect(anyHandshakeWithin(null, 15, now)).toBe(false);

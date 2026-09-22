@@ -29,6 +29,11 @@ output "wg_server_ip" {
   value       = local.wg_server_ip
 }
 
+output "loopback_ip" {
+  description = "The VM's loopback test address. Ping it from a connected client."
+  value       = var.loopback_ip
+}
+
 output "deployed_at" {
   description = "UTC timestamp of this apply."
   value       = timestamp()

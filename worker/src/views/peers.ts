@@ -12,6 +12,7 @@ import type { Peer } from "../db";
 import type { AgentReport } from "../state";
 import { peerOnline } from "../state";
 import type { Config } from "../env";
+import { serverTunnelIp as serverTunnelIpOf } from "../peers";
 
 export function peersTable(peers: Peer[], report: AgentReport | null, running: boolean): Html {
   const byKey = new Map((report?.peers ?? []).map((p) => [p.public_key, p]));
@@ -94,6 +95,7 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
     <h3>Server public key</h3>
     <p class="muted small">Every client trusts this key. It never changes across rebuilds.</p>
     ${o.serverPub ? html`<code id="server-pub">${o.serverPub}</code> <button type="button" data-copy="#server-pub" style="padding:3px 8px;font-size:.8rem">Copy</button>` : html`<span class="faint">not set</span>`}
+    <p class="muted small" style="margin-top:8px">Test from a connected client: <code>ping ${o.cfg.loopbackIp}</code> (the VM loopback, proves routing) and <code>ping ${serverTunnelIpOf(o.cfg.subnet)}</code> (the tunnel end).</p>
     <p class="muted small" style="margin-top:8px">Endpoint <code>${o.cfg.dnsName}:${o.cfg.port}</code>${o.report ? html` · VM reports ${o.report.peers.length} peer${o.report.peers.length === 1 ? "" : "s"} loaded, checked ${fmtTime(o.report.at)}` : ""}</p>
   </div>
 </section>`;

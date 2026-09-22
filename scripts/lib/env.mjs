@@ -38,6 +38,7 @@ export const DEFAULTS = {
   WG_DNS_NAME: "wg.clydeford.net",
   WG_PORT: "51820",
   WG_SUBNET: "10.13.13.0/24",
+  WG_LOOPBACK_IP: "10.13.255.1",
   GITHUB_WORKFLOW: "wg.yml",
   AUTO_DESTROY_DEFAULT_HOURS: "4",
   IDLE_DESTROY_MINUTES: "0",

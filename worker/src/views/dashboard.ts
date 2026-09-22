@@ -45,6 +45,7 @@ function inventory(o: LiveOpts): Html {
     ? html`<h3 style="margin-top:14px">This deployment</h3>
       <table class="rows inv"><tbody>
         <tr><th>Run</th><td><b>${o.deployment.id}</b></td><td class="muted">by ${o.deployment.requested_by ?? "?"}, finished ${fmtTime(o.deployment.finished_at)}${o.deployment.github_run_url ? html`, <a href="${o.deployment.github_run_url}" target="_blank" rel="noopener">GitHub log</a>` : ""}</td></tr>
+        <tr><th>Loopback</th><td><b>lo1</b></td><td class="muted"><span class="mono">${o.cfg.loopbackIp}/32</span>, a dummy interface outside the tunnel subnet. From a connected client: <span class="mono">ping ${o.cfg.loopbackIp}</span></td></tr>
         <tr><th>DNS record</th><td><b>${o.cfg.dnsName}</b></td><td class="muted">A ${s.public_ip ?? "?"}, TTL 60, DNS only, owned by Terraform</td></tr>
         <tr><th>Server key</th><td><b>WireGuard</b></td><td class="muted mono">${o.serverPub ?? "not set"}</td></tr>
         <tr><th>Agent token</th><td><b>per deploy</b></td><td class="muted">baked into the VM by cloud-init; only its hash is stored: <span class="mono">${(o.deployment.agent_token_hash ?? "").slice(0, 16)}…</span></td></tr>
@@ -81,6 +82,7 @@ export function liveSection(o: LiveOpts): Html {
     <div class="fact"><dt>Cost this session</dt><dd>${s.running_since ? html`<span data-cost-since="${s.running_since}" data-rate="${o.cfg.hourlyRateGbp}">${gbp(0)}</span> <span class="faint small">at ${gbp(o.cfg.hourlyRateGbp)}/h</span>` : html`<span class="faint">£0.00</span>`}</dd></div>
     <div class="fact"><dt>Up for</dt><dd>${s.running_since ? html`<span data-since="${s.running_since}"></span>` : html`<span class="faint">—</span>`}</dd></div>
     <div class="fact"><dt>Clients</dt><dd>${o.peerCount} configured${s.state === "running" ? html`, <b>${online} online</b>` : ""}</dd></div>
+    <div class="fact"><dt>Loopback (ping test)</dt><dd>${s.state === "running" ? html`<span class="mono">${o.cfg.loopbackIp}</span> ${s.agent ? (s.agent.loopback === o.cfg.loopbackIp ? html`<span class="pill up">up</span>` : s.agent.loopback ? html`<span class="pill busy">${s.agent.loopback}</span>` : html`<span class="pill idle">not on this build</span>`) : ""}` : html`<span class="faint">—</span>`}</dd></div>
     <div class="fact"><dt>Heartbeat from VM</dt><dd>${s.state !== "running" ? html`<span class="faint">—</span>` : heartbeatStale ? html`<span class="pill down">missing</span> <span class="faint small">${ago(s.last_agent_at)}</span>` : html`<span class="pill up">live</span> <span class="faint small">${ago(s.last_agent_at)}${s.agent ? html`, load ${s.agent.load.split(" ")[0]}` : ""}</span>`}</dd></div>
   </dl>
 

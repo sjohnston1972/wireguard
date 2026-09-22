@@ -18,6 +18,7 @@ export interface Env {
   WG_DNS_NAME: string;
   WG_PORT: string;
   WG_SUBNET: string;
+  WG_LOOPBACK_IP?: string;
   AZURE_REGION: string;
   AZURE_VM_SIZE: string;
   AZURE_RESOURCE_GROUP: string;
@@ -52,6 +53,7 @@ export interface Config {
   dnsName: string;
   port: number;
   subnet: string;
+  loopbackIp: string;
   region: string;
   vmSize: string;
   resourceGroup: string;
@@ -74,6 +76,7 @@ export function config(env: Env): Config {
     dnsName: env.WG_DNS_NAME || "wg.clydeford.net",
     port: num(env.WG_PORT, 51820),
     subnet: env.WG_SUBNET || "10.13.13.0/24",
+    loopbackIp: env.WG_LOOPBACK_IP || "10.13.255.1",
     region: env.AZURE_REGION || "uksouth",
     vmSize: env.AZURE_VM_SIZE || "Standard_B1s",
     resourceGroup: env.AZURE_RESOURCE_GROUP || "rg-wg-ondemand",

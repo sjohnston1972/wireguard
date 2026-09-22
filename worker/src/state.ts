@@ -46,6 +46,7 @@ export interface AgentReport {
   load: string;
   listen_port: number | null;
   server_public_key: string | null;
+  loopback: string | null; // address the VM reports on its lo1 dummy interface, null if absent
   peers: AgentPeer[];
 }
 

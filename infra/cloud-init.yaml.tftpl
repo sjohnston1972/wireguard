@@ -62,6 +62,29 @@ write_files:
       iptables "$A" FORWARD -o wg0 -j ACCEPT
       iptables -t nat "$N" POSTROUTING -o "$WAN" -j MASQUERADE
 
+  # ── Loopback: a stable test address on its own interface ──────────────────
+  # Like "interface Loopback0" on a router. It sits outside the tunnel subnet,
+  # so a ping to it from a client proves the VM forwards between interfaces.
+  # Ubuntu's cloud image drives networking with systemd-networkd, so a
+  # dummy netdev plus its address is all that is needed, and it survives reboots.
+  - path: /etc/systemd/network/10-lo1.netdev
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [NetDev]
+      Name=lo1
+      Kind=dummy
+
+  - path: /etc/systemd/network/10-lo1.network
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Match]
+      Name=lo1
+
+      [Network]
+      Address=${loopback_ip}/32
+
   # ── Kernel: allow forwarding between tunnel and WAN ────────────────────────
   - path: /etc/sysctl.d/99-wireguard.conf
     permissions: "0644"
@@ -105,6 +128,8 @@ write_files:
 
 runcmd:
   - sysctl --system
+  - networkctl reload
+  - networkctl up lo1 || true
   - cat /etc/wireguard/wg0.interface.conf /etc/wireguard/wg0.peers.conf > /etc/wireguard/wg0.conf
   - chmod 0600 /etc/wireguard/wg0.conf
   - systemctl enable --now wg-quick@wg0

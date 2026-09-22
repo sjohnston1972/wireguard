@@ -34,13 +34,16 @@ dump="$(wg show wg0 dump 2>/dev/null || true)"
 uptime_s="$(cut -d' ' -f1 /proc/uptime)"
 load="$(cut -d' ' -f1-3 /proc/loadavg)"
 host="$(hostname)"
+# The loopback test address on lo1, if this build has one (empty otherwise).
+loopback="$(ip -4 -o addr show dev lo1 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1)"
 
 body="$(jq -n \
   --arg dump "$dump" \
   --arg up "$uptime_s" \
   --arg load "$load" \
   --arg host "$host" \
-  '{agent_version: 1, hostname: $host, uptime_seconds: ($up|tonumber), load: $load, dump: $dump}')"
+  --arg lb "$loopback" \
+  '{agent_version: 2, hostname: $host, uptime_seconds: ($up|tonumber), load: $load, loopback: $lb, dump: $dump}')"
 
 # ── Report ──────────────────────────────────────────────────────────────────
 resp="$(curl -fsS --max-time 10 \

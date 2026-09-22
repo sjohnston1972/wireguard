@@ -56,6 +56,8 @@ PUBLIC_URL = "https://wg-admin.clydeford.net"
 WG_DNS_NAME = "wg.clydeford.net"
 WG_PORT = "51820"
 WG_SUBNET = "10.13.13.0/24"
+# Loopback test address on the VM (dummy interface), outside the tunnel subnet.
+WG_LOOPBACK_IP = "10.13.255.1"
 AZURE_REGION = "uksouth"
 AZURE_VM_SIZE = "Standard_B1s"
 AZURE_RESOURCE_GROUP = "rg-wg-ondemand"

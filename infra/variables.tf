@@ -68,6 +68,12 @@ variable "wg_subnet" {
   default     = "10.13.13.0/24"
 }
 
+variable "loopback_ip" {
+  description = "A loopback (dummy interface) address on the VM, outside the tunnel subnet. Ping it from a client to prove the VM routes between interfaces, not just that wg0 is up."
+  type        = string
+  default     = "10.13.255.1"
+}
+
 variable "vnet_cidr" {
   description = "Azure VNet address space."
   type        = string

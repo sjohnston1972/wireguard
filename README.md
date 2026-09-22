@@ -178,6 +178,9 @@ docs/runs/                records of each autonomous build session
 ## Glossary
 
 - **Concentrator / headend**: the VPN server the clients dial into.
+- **Loopback**: 10.13.255.1, an address on a dummy interface inside the VM, like
+  Loopback0 on a router. Ping it from a connected client: if it answers, the VM
+  is routing between interfaces, not just holding the tunnel up.
 - **Peer**: WireGuard's word for the other end of a tunnel, client or server.
 - **AllowedIPs**: on a client, which destinations go through the tunnel. Split
   tunnel = just the VPN and home ranges. Full tunnel = `0.0.0.0/0`.

@@ -28,6 +28,7 @@ All decisions are made. Nothing in this table needs confirming before Phase 1.
 | Azure region | UK South | Lowest latency from Scotland |
 | VM size | Standard_B1s (1 vCPU, 1 GB) on Ubuntu 24.04 LTS, 30 GB Standard SSD, plus a Standard static public IP | About £8 per month for the VM and £2.60 for the IP if left running; both vanish on destroy |
 | Tunnel subnet | 10.13.13.0/24, server = 10.13.13.1 | Avoids home and Azure ranges |
+| VM loopback | 10.13.255.1/32 on a dummy interface lo1 (systemd-networkd), outside the tunnel subnet, included in split-tunnel client AllowedIPs, reported by the agent and shown on the dashboard (added 2026-09-22 at Steven's request) | A ping to it from a client proves the VM forwards between interfaces, not merely that wg0 is up; it is also the natural target for the future health page and iperf. Pinging 10.13.13.1 only tests the tunnel interface |
 | Azure VNet | 10.50.0.0/16 with one subnet 10.50.1.0/24 for the VM | Room to add workloads later |
 | Home LAN | 192.168.1.0/24; WireGuard clients live here and dial out | Fixed for this build |
 | DNS zone | clydeford.net (zone id 68c212a7f233ee505d871e816da19600); the app owns only wg.clydeford.net | Everything else in the zone is off limits |
@@ -286,6 +287,7 @@ The `.env` file is the single place Steven fills in. It is gitignored. `npm run 
 | WG_DNS_NAME | no | GitHub, Worker | Default wg.clydeford.net |
 | WG_PORT | no | GitHub, Worker | Default 51820 |
 | WG_SUBNET | no | GitHub, Worker | Default 10.13.13.0/24 |
+| WG_LOOPBACK_IP | no | Worker | Default 10.13.255.1; the VM's loopback test address |
 | HOME_LAN_CIDR | no | Worker | Default 192.168.1.0/24; enables site-to-site routing |
 | HOME_WG_PUBLIC_KEY | no | Worker | Home concentrator's key, needed for site-to-site |
 | SSH_ALLOWED_CIDR | no | Worker | Blank = deployer's IP |

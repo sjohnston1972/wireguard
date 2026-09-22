@@ -77,7 +77,7 @@ export function serverTunnelIp(subnet: string): string {
  */
 export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: number }, serverPub: string): string {
   const cfg = config(env);
-  const allowed = peer.full_tunnel ? ["0.0.0.0/0", "::/0"] : [cfg.subnet];
+  const allowed = peer.full_tunnel ? ["0.0.0.0/0", "::/0"] : [cfg.subnet, `${cfg.loopbackIp}/32`];
   return [
     "[Interface]",
     `PrivateKey = ${PRIVATE_KEY_PLACEHOLDER}`,

@@ -86,6 +86,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     wg_dns_name: cfg.dnsName,
     wg_port: cfg.port,
     wg_subnet: cfg.subnet,
+    loopback_ip: cfg.loopbackIp,
     agent_url: `${cfg.publicUrl}/api/agent`,
     agent_token: agentToken,
     callback_url: `${cfg.publicUrl}/api/callback`,
@@ -328,6 +329,7 @@ export interface AgentBody {
   hostname?: string;
   uptime_seconds?: number;
   load?: string;
+  loopback?: string;
   dump?: string;
 }
 
@@ -349,6 +351,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     load: body.load ?? "",
     listen_port: parsed.listen_port,
     server_public_key: parsed.server_public_key,
+    loopback: body.loopback ? String(body.loopback) : null,
     peers: parsed.peers,
   };
   const snap = await getSnapshot(env);

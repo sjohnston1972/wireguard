@@ -49,6 +49,7 @@ const conf = renderClientConf({
   endpoint: `${env.WG_DNS_NAME}:${env.WG_PORT}`,
   serverIp,
   tunnelCidr: env.WG_SUBNET,
+  loopbackIp: env.WG_LOOPBACK_IP || "10.13.255.1",
   homeLanCidr: viaHome ? env.HOME_LAN_CIDR || undefined : undefined,
   fullTunnel,
 });
