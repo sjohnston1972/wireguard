@@ -245,6 +245,14 @@ app.post("/api/peers/:id/rekey", async (c) => {
   return c.json({ peer: updated, template: clientConfigTemplate(c.env, updated, serverPub) });
 });
 
+app.post("/peers/:id/azure", async (c) => {
+  const id = Number(c.req.param("id"));
+  const p = await db.getPeer(c.env, id);
+  if (p) await db.setPeerAzureVnet(c.env, id, !p.azure_vnet);
+  const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running")) : c.redirect("/peers");
+});
+
 app.post("/peers/:id/toggle", async (c) => {
   const id = Number(c.req.param("id"));
   const p = await db.getPeer(c.env, id);

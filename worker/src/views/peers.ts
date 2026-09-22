@@ -48,6 +48,7 @@ export function peersTable(peers: Peer[], report: AgentReport | null, running: b
           <td class="num">${live ? bytes(live.rx) : html`<span class="faint">—</span>`}</td>
           <td class="actions">
             <button type="button" data-rekey="${p.id}" data-name="${p.name}" title="Make new keys for this client and download its config">Get config</button>
+            ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/azure" hx-post="/peers/${p.id}/azure" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client route the Azure network through the tunnel. Changes the next config you download; edit AllowedIPs in the app to change an existing one.">${p.azure_vnet ? "Azure route: on" : "Azure route: off"}</button></form>`}
             <form method="post" action="/peers/${p.id}/toggle" hx-post="/peers/${p.id}/toggle" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit">${p.enabled ? "Disable" : "Enable"}</button></form>
             <form method="post" action="/peers/${p.id}/delete" hx-post="/peers/${p.id}/delete" hx-target="#peers-table" hx-swap="outerHTML" hx-confirm="Delete ${p.name}? Its config stops working at the next heartbeat." style="display:inline"><button type="submit" class="danger">Delete</button></form>
           </td>

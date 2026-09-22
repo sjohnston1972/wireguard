@@ -131,6 +131,11 @@ export async function setPeerKey(env: Env, id: number, public_key: string): Prom
   await env.DB.prepare("UPDATE peers SET public_key = ?2 WHERE id = ?1").bind(id, public_key).run();
 }
 
+/** Flip whether this client's config routes the Azure VNet. Takes effect in the next config it downloads. */
+export async function setPeerAzureVnet(env: Env, id: number, on: boolean): Promise<void> {
+  await env.DB.prepare("UPDATE peers SET azure_vnet = ?2 WHERE id = ?1").bind(id, on ? 1 : 0).run();
+}
+
 export async function setPeerEnabled(env: Env, id: number, enabled: boolean): Promise<void> {
   await env.DB.prepare("UPDATE peers SET enabled = ?2 WHERE id = ?1").bind(id, enabled ? 1 : 0).run();
 }
