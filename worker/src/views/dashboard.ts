@@ -107,6 +107,7 @@ function subline(s: Snapshot, cfg: Config): Html {
 }
 
 function dnsCell(s: Snapshot): Html {
+  if (s.dns_ip === "192.0.2.1") return html`<span class="pill idle">parked</span> <span class="faint small">points nowhere until the next deploy</span>`;
   if (s.state === "destroyed" || s.state === "deploying") return s.dns_ip ? html`<span class="mono">${s.dns_ip}</span> <span class="pill busy">stale</span>` : html`<span class="faint">no record</span>`;
   if (!s.dns_ip) return html`<span class="faint">no record</span>`;
   return html`<span class="mono">${s.dns_ip}</span> ${s.dns_live ? html`<span class="pill up">live</span>` : html`<span class="pill busy">mismatch</span>`}`;

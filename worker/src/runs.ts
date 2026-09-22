@@ -273,12 +273,13 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
   const now = new Date().toISOString();
   await db.updateRun(env, run.id, { status: "success", finished_at: now });
   await releaseLock(env, run.id);
+  const dns = await checkDns(env, null);
   await saveSnapshot(env, {
     state: "destroyed",
     since: now,
     running_since: null,
     public_ip: null,
-    dns_ip: null,
+    dns_ip: dns.resolver,
     dns_live: false,
     auto_destroy_at: null,
     last_agent_at: null,

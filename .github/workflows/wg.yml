@@ -113,6 +113,23 @@ jobs:
         run: terraform init -no-color -backend-config="bucket=${R2_BUCKET}"
 
       # ── APPLY ────────────────────────────────────────────────────────────
+      # While destroyed, the name is parked on 192.0.2.1 (see the destroy path)
+      # so clients never cache an NXDOMAIN. Remove the parked record first so
+      # Terraform's real record is the only A record.
+      - name: Unpark DNS record
+        if: inputs.action == 'apply'
+        env:
+          ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          NAME: ${{ env.TF_VAR_wg_dns_name || 'wg.clydeford.net' }}
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records"
+          ids="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?type=A&name=$NAME&content=192.0.2.1" | jq -r '.result[].id')"
+          for id in $ids; do
+            echo "removing parked record $id"
+            curl -fsS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$id" >/dev/null
+          done
+
       - name: terraform apply
         if: inputs.action == 'apply'
         id: apply
@@ -161,7 +178,14 @@ jobs:
             echo "::warning::DNS record $NAME still present; deleting $id"
             curl -fsS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$id" >/dev/null
           done
-          echo "DNS clean: no A record for $NAME"
+          echo "DNS clean: no live A record for $NAME"
+          # Park the name on a reserved, non-routable address (TEST-NET-1) with the
+          # same 60 s TTL. Clients can always resolve it, handshakes go nowhere while
+          # destroyed, and the next deploy's real address is picked up within a minute.
+          # An NXDOMAIN would be cached for 30 minutes by resolvers; this is not.
+          curl -fsS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" "$api" \
+            -d "$(jq -n --arg name "$NAME" '{type:"A", name:$name, content:"192.0.2.1", ttl:60, proxied:false, comment:"Parked by wg-admin while destroyed. Do not edit by hand."}')" >/dev/null
+          echo "DNS parked: $NAME -> 192.0.2.1"
 
       - name: Note destroy fallback
         if: inputs.action == 'destroy' && steps.destroy.outcome == 'failure'

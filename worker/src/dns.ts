@@ -9,6 +9,9 @@
 import type { Env } from "./env";
 import { config, canDns } from "./env";
 
+/** Where the name points while nothing is deployed: TEST-NET-1, reserved and non-routable. */
+export const PARKED_IP = "192.0.2.1";
+
 export interface DnsCheck {
   api: string | null; // record content per Cloudflare API (null = no record)
   resolver: string | null; // answer from 1.1.1.1 (null = NXDOMAIN)
@@ -43,7 +46,7 @@ export async function checkDns(env: Env, expectedIp: string | null): Promise<Dns
   const checked_at = new Date().toISOString();
   try {
     const [api, resolver] = await Promise.all([canDns(env) ? recordViaApi(env) : Promise.resolve(null), recordViaResolver(cfg.dnsName)]);
-    const live = !!resolver && (expectedIp ? resolver === expectedIp : true) && (canDns(env) ? api === resolver : true);
+    const live = !!resolver && resolver !== PARKED_IP && (expectedIp ? resolver === expectedIp : true) && (canDns(env) ? api === resolver : true);
     return { api, resolver, live, checked_at };
   } catch (e) {
     return { api: null, resolver: null, live: false, checked_at, error: (e as Error).message };

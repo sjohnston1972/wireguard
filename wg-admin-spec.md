@@ -206,7 +206,7 @@ The record is owned by Terraform (cloudflare_dns_record) so it is created and re
 
 - Record: A, wg.clydeford.net, TTL 60, DNS only (grey cloud). WireGuard is UDP, so the record must never be proxied.
 - After apply the Worker queries Cloudflare's API and 1.1.1.1 (DNS over HTTPS) until both return the new IP, and shows "DNS live" on the dashboard.
-- After destroy the record is removed. Clients that dial while destroyed get NXDOMAIN, which fails fast rather than hanging.
+- After destroy the record is **parked on 192.0.2.1** (TEST-NET-1, reserved and non-routable) with the same 60 s TTL, by the workflow's DNS step; the apply path removes the parked record before Terraform creates the real one. Changed 2026-09-22 from "remove the record": an NXDOMAIN is negatively cached by resolvers for up to 30 minutes (Cloudflare's SOA minimum), and Steven's PC cached one and could not activate the client after a rebuild. A parked address always resolves, handshakes simply go nowhere while destroyed, and every resolver follows the real address within a minute of a deploy. The dashboard shows "parked".
 - Terraform and the Worker use CLOUDFLARE_DNS_TOKEN, scoped to Zone:DNS:Edit on clydeford.net only.
 - The app must never touch any other record in the zone; a unit test asserts the record name, and the Terraform module takes the zone id from a variable and the name from WG_DNS_NAME.
 
