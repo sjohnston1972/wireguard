@@ -45,6 +45,18 @@ function verifying(s: Snapshot): boolean {
   return Number.isFinite(since) && Date.now() - since < 5 * 60_000;
 }
 
+/**
+ * The VM's public IPv6 address, from Azure's inventory. The address the VM
+ * itself reports (agent.wan6) is its private fd50:50:0:1::/64 one: Azure
+ * translates IPv6 at the edge just as it does IPv4. Shown only when the VM
+ * also reports IPv6 working inside, so a half-built stack is not advertised.
+ */
+function publicIp6(s: Snapshot): string | null {
+  if (!s.agent?.wan6) return null;
+  const a = s.azure?.resources.find((r) => r.kind === "Public IPv6")?.detail.split(",")[0]?.trim();
+  return a && a.includes(":") ? a : null;
+}
+
 /** A tiny line chart of recent round-trip times. */
 function sparkline(samples: number[] | undefined): Html {
   const v = (samples ?? []).slice(-24);
@@ -171,7 +183,7 @@ export function liveSection(o: LiveOpts): Html {
   </div>
 
   <dl class="facts">
-    <div class="fact"><dt>Public address</dt><dd>${s.public_ip ? html`<span class="mono">${s.public_ip}</span>${s.state === "running" && s.agent?.wan6 ? html`<div class="mono small">${s.agent.wan6}</div>` : ""}` : html`<span class="faint">none</span>`}</dd></div>
+    <div class="fact"><dt>Public address</dt><dd>${s.public_ip ? html`<span class="mono">${s.public_ip}</span>${s.state === "running" && publicIp6(s) ? html`<div class="mono small">${publicIp6(s)}</div>` : ""}` : html`<span class="faint">none</span>`}</dd></div>
     <div class="fact"><dt>${o.cfg.dnsName}</dt><dd>${dnsCell(s)}</dd></div>
     ${s.state === "standby" && s.standby_since
       ? html`<div class="fact"><dt>Standby cost so far</dt><dd><span data-cost-since="${s.standby_since}" data-rate="${o.cfg.standbyRateGbp}">${gbp(0)}</span> <span class="faint small">at ${gbp(o.cfg.standbyRateGbp)}/h, disk and address only</span></dd></div>
