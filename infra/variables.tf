@@ -98,12 +98,6 @@ variable "vnet_cidr6" {
   default     = "fd50:50::/48"
 }
 
-variable "subnet_cidr6" {
-  description = "IPv6 subnet for the VM (a /64 inside vnet_cidr6)."
-  type        = string
-  default     = "fd50:50:1::/64"
-}
-
 variable "home_lan_cidr" {
   description = "Home LAN behind the tunnel. Empty string disables the Azure route table."
   type        = string

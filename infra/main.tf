@@ -14,6 +14,9 @@ locals {
   wg_server_ip  = cidrhost(var.wg_subnet, 1)
   wg_prefix_len = split("/", var.wg_subnet)[1]
   ipv6          = var.wg_subnet6 != ""
+  # The VM's IPv6 subnet is the second /64 of the VNet's /48 (fd50:50:0:1::/64),
+  # derived rather than typed so it can never fall outside the VNet.
+  subnet_cidr6 = cidrsubnet(var.vnet_cidr6, 16, 1)
   # IPv6 inside the tunnel mirrors IPv4: 10.13.13.7 is fd13:13::7. The
   # dashboard derives the same address, so the two always agree.
   wg_server_ip6 = local.ipv6 ? cidrhost(var.wg_subnet6, 1) : ""
@@ -76,7 +79,7 @@ resource "azurerm_subnet" "wg" {
   name                 = "snet-wg"
   resource_group_name  = azurerm_resource_group.wg.name
   virtual_network_name = azurerm_virtual_network.wg.name
-  address_prefixes     = compact([var.subnet_cidr, local.ipv6 ? var.subnet_cidr6 : ""])
+  address_prefixes     = compact([var.subnet_cidr, local.ipv6 ? local.subnet_cidr6 : ""])
 }
 
 # ── The firewall ────────────────────────────────────────────────────────────
