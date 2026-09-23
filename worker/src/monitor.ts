@@ -113,6 +113,13 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     }
   } else {
     await env.STATUS.delete("flag:unreachable");
+    // While destroyed, keep the DNS cell honest too (it should read "parked").
+    try {
+      const dns = await checkDns(env, null);
+      if (dns.resolver !== snap.dns_ip) await saveSnapshot(env, { dns_ip: dns.resolver, dns_live: false });
+    } catch {
+      /* ignore */
+    }
   }
 
   // 6. Daily actual cost.
