@@ -171,7 +171,7 @@ export function liveSection(o: LiveOpts): Html {
   const wordState = checking ? "verifying" : s.state;
   const dns = s.agent?.dns;
 
-  return html`<section id="live" hx-get="/partials/live" hx-trigger="every ${every}" hx-swap="outerHTML" hx-select="#live">
+  return html`<section id="live" data-state="${s.state}" hx-get="/partials/live" hx-trigger="every ${every}" hx-swap="outerHTML" hx-select="#live">
   ${o.notice ? html`<div class="notice ${o.notice.kind === "info" ? "" : o.notice.kind}"><p>${o.notice.text}</p></div>` : ""}
 
   <div class="faceplate">
@@ -179,7 +179,7 @@ export function liveSection(o: LiveOpts): Html {
       <h1 class="state-word" data-state="${wordState}">${word}</h1>
       <div class="state-sub">${subline(s, o.cfg)}</div>
     </div>
-    <div class="tipwrap">${tunnel(s, o.cfg)}${homeTip(o)}${azureTip(o)}</div>
+    <div class="tipwrap">${tunnel(s, o.cfg)}${tunnelCompact(s, o.cfg)}${homeTip(o)}${azureTip(o)}</div>
   </div>
 
   <dl class="facts">
@@ -191,10 +191,10 @@ export function liveSection(o: LiveOpts): Html {
       : html`<div class="fact"><dt>Cost this session</dt><dd>${s.running_since ? html`<span data-cost-since="${s.running_since}" data-rate="${o.cfg.hourlyRateGbp}">${gbp(0)}</span> <span class="faint small">at ${gbp(o.cfg.hourlyRateGbp)}/h</span>` : html`<span class="faint">£0.00</span>`}</dd></div>
         <div class="fact"><dt>Up for</dt><dd>${s.running_since ? html`<span data-since="${s.running_since}"></span>` : html`<span class="faint">—</span>`}</dd></div>`}
     <div class="fact"><dt>Clients</dt><dd>${o.peerCount} configured${s.state === "running" ? html`, <b>${online} online</b>` : ""}</dd></div>
-    <div class="fact"><dt>Loopback (ping test)</dt><dd>${s.state === "running" ? html`<span class="mono">${o.cfg.loopbackIp}</span> ${s.agent ? (s.agent.loopback === o.cfg.loopbackIp ? html`<span class="pill up">up</span>` : s.agent.loopback ? html`<span class="pill busy">${s.agent.loopback}</span>` : html`<span class="pill idle">not on this build</span>`) : ""}` : html`<span class="faint">—</span>`}</dd></div>
-    <div class="fact"><dt>Self-test</dt><dd>${selfTestCell(s)}</dd></div>
-    <div class="fact"><dt>Tunnel DNS</dt><dd>${s.state !== "running" || !s.agent ? html`<span class="faint">—</span>` : dns ? html`${dns.up ? html`<span class="pill up">up</span>` : html`<span class="pill down">down</span>`} <span class="mono small">${o.cfg.loopbackIp}</span> <span class="faint small">${dns.blocked ? `blocks ${dns.blocked.toLocaleString("en-GB")} ad names; ` : ""}names like vm.wg</span>` : html`<span class="pill idle">not on this build</span>`}</dd></div>
-    <div class="fact"><dt>Heartbeat from VM</dt><dd>${s.state !== "running" ? html`<span class="faint">—</span>` : heartbeatStale ? html`<span class="pill down">missing</span> <span class="faint small">${ago(s.last_agent_at)}</span>` : html`<span class="pill up">live</span> <span class="faint small">${ago(s.last_agent_at)}${s.agent ? html`, load ${s.agent.load.split(" ")[0]}` : ""}</span>`}</dd></div>
+    <div class="fact fact-live"><dt>Loopback (ping test)</dt><dd>${s.state === "running" ? html`<span class="mono">${o.cfg.loopbackIp}</span> ${s.agent ? (s.agent.loopback === o.cfg.loopbackIp ? html`<span class="pill up">up</span>` : s.agent.loopback ? html`<span class="pill busy">${s.agent.loopback}</span>` : html`<span class="pill idle">not on this build</span>`) : ""}` : html`<span class="faint">—</span>`}</dd></div>
+    <div class="fact fact-live"><dt>Self-test</dt><dd>${selfTestCell(s)}</dd></div>
+    <div class="fact fact-live"><dt>Tunnel DNS</dt><dd>${s.state !== "running" || !s.agent ? html`<span class="faint">—</span>` : dns ? html`${dns.up ? html`<span class="pill up">up</span>` : html`<span class="pill down">down</span>`} <span class="mono small">${o.cfg.loopbackIp}</span> <span class="faint small">${dns.blocked ? `blocks ${dns.blocked.toLocaleString("en-GB")} ad names; ` : ""}names like vm.wg</span>` : html`<span class="pill idle">not on this build</span>`}</dd></div>
+    <div class="fact fact-live"><dt>Heartbeat from VM</dt><dd>${s.state !== "running" ? html`<span class="faint">—</span>` : heartbeatStale ? html`<span class="pill down">missing</span> <span class="faint small">${ago(s.last_agent_at)}</span>` : html`<span class="pill up">live</span> <span class="faint small">${ago(s.last_agent_at)}${s.agent ? html`, load ${s.agent.load.split(" ")[0]}` : ""}</span>`}</dd></div>
   </dl>
 
   ${isPowerOp(s.state) ? powerProgress(s) : busy ? runProgress(s) : controls(o)}
@@ -244,7 +244,7 @@ function tunnel(s: Snapshot, cfg: Config): Html {
   // Azure tile: lit when the VM is heartbeating, "flow" when bytes moved.
   const azureClass = flowing ? "flow" : heartbeatFresh ? "lit" : "";
   const rate = (t?.rx_rate ?? 0) + (t?.tx_rate ?? 0);
-  return html`<svg class="tunnel" data-state="${s.state}" data-flow="${flowing ? "1" : "0"}" viewBox="0 0 520 150" role="img" aria-label="Tunnel: home to ${cfg.dnsName} to Azure ${cfg.region}, ${STATE_LABEL[s.state]}${flowing ? ", traffic passing" : ""}">
+  return html`<svg class="tunnel wide" data-state="${s.state}" data-flow="${flowing ? "1" : "0"}" viewBox="0 0 520 150" role="img" aria-label="Tunnel: home to ${cfg.dnsName} to Azure ${cfg.region}, ${STATE_LABEL[s.state]}${flowing ? ", traffic passing" : ""}">
   <path class="carrier" d="M 92 70 C 170 70, 190 70, 260 70 S 350 70, 428 70" />
   <g class="hot" data-tip="tip-home" tabindex="0" role="button" aria-label="Client details">
   <rect class="node home ${homeClass}" x="12" y="42" width="80" height="56" rx="8"/>
@@ -266,6 +266,40 @@ function tunnel(s: Snapshot, cfg: Config): Html {
   </g>
   <text x="52" y="128" text-anchor="middle">tunnel ${cfg.subnet}</text>
   <text x="468" y="128" text-anchor="middle">${cfg.vmSize}</text>
+</svg>`;
+}
+
+/**
+ * The same diagram drawn for a phone: a narrower canvas, so at 360 px wide
+ * the labels are real text sizes instead of a scaled-down desktop drawing.
+ * Only the lines that matter at arm's length: the two ends, the name, and
+ * whether traffic is moving. CSS shows this one or the wide one.
+ */
+function tunnelCompact(s: Snapshot, cfg: Config): Html {
+  const running = s.state === "running";
+  const heartbeatFresh = running && !!s.last_agent_at && Date.now() - Date.parse(s.last_agent_at) < 120_000;
+  const t = s.traffic;
+  const flowing = running && trafficFlowing(t);
+  const online = t?.peers_online ?? 0;
+  const homeClass = flowing ? "flow" : running && online > 0 ? "lit" : "";
+  const azureClass = flowing ? "flow" : heartbeatFresh ? "lit" : "";
+  const rate = (t?.rx_rate ?? 0) + (t?.tx_rate ?? 0);
+  const region = s.state === "standby" ? "standby" : s.region ?? cfg.region;
+  return html`<svg class="tunnel compact" data-state="${s.state}" data-flow="${flowing ? "1" : "0"}" viewBox="0 0 340 104" role="img" aria-label="Tunnel: home to ${cfg.dnsName} to Azure ${region}, ${STATE_LABEL[s.state]}${flowing ? ", traffic passing" : ""}">
+  <text class="name" x="170" y="15" text-anchor="middle">${cfg.dnsName}</text>
+  <path class="carrier" d="M 86 50 L 254 50" />
+  <g class="hot" data-tip="tip-home" tabindex="0" role="button" aria-label="Client details">
+    <rect class="node home ${homeClass}" x="2" y="26" width="84" height="48" rx="8"/>
+    <text class="name" x="44" y="46" text-anchor="middle">Home</text>
+    <text x="44" y="63" text-anchor="middle">${running ? `${online} up` : "clients"}</text>
+  </g>
+  <circle class="port" cx="170" cy="50" r="6"/>
+  <g class="hot" data-tip="tip-azure" tabindex="0" role="button" aria-label="VM details">
+    <rect class="node azure ${azureClass}" x="254" y="26" width="84" height="48" rx="8"/>
+    <text class="name" x="296" y="46" text-anchor="middle">Azure</text>
+    <text x="296" y="63" text-anchor="middle">${region}</text>
+  </g>
+  <text x="170" y="96" text-anchor="middle" class="${flowing ? "traffic flow" : ""}">${running && t ? (flowing ? `${bytes(Math.round(rate))}/s moving` : `in ${bytes(t.rx)}, out ${bytes(t.tx)}`) : `UDP ${cfg.port}`}</text>
 </svg>`;
 }
 
@@ -329,7 +363,7 @@ function azureTip(o: LiveOpts): Html {
 }
 
 function runProgress(s: Snapshot): Html {
-  return html`<div class="panel" style="margin-top:16px">
+  return html`<div class="panel progress" style="margin-top:16px">
   <div class="section-head"><h2>${s.action === "destroy" ? "Tearing down" : "Deploying"}</h2>
     <form method="post" action="/actions/cancel" hx-post="/actions/cancel" hx-target="#live" hx-swap="outerHTML" hx-confirm="Cancel the run? You will need to Clean up afterwards."><button type="submit" class="danger">Cancel</button></form>
   </div>
@@ -343,7 +377,7 @@ function runProgress(s: Snapshot): Html {
 /** Hibernate and resume have no GitHub run: Azure does it, and we poll the power state. */
 function powerProgress(s: Snapshot): Html {
   const down = s.state === "hibernating";
-  return html`<div class="panel" style="margin-top:16px">
+  return html`<div class="panel progress" style="margin-top:16px">
   <div class="section-head"><h2>${down ? "Hibernating" : "Resuming"}</h2><span class="muted small">asked ${ago(s.power_op_at)}</span></div>
   <ol class="timeline">
     <li data-s="completed" data-c="success"><span class="dot"></span>Asked Azure to ${down ? "deallocate the VM" : "start the VM"}</li>
@@ -382,7 +416,7 @@ function controls(o: LiveOpts): Html {
   const expiry = o.cfg.expiryAction === "hibernate" ? "hibernates" : "tears down";
   if (s.state === "standby") {
     return html`<div class="controls" style="margin-top:16px">
-      <div class="panel">
+      <div class="panel" data-slot="primary">
         <h2>Resume</h2>
         <p class="muted">Powers the VM back on. Same address, same DNS, same clients; they reconnect by themselves. About a minute, at ${gbp(o.cfg.hourlyRateGbp)} an hour while up.</p>
         <form method="post" action="/actions/resume" hx-post="/actions/resume" hx-target="#live" hx-swap="outerHTML">
@@ -391,7 +425,7 @@ function controls(o: LiveOpts): Html {
           <div class="btn-row"><button type="submit" class="primary big">Resume</button></div>
         </form>
       </div>
-      <div class="panel quiet">
+      <div class="panel quiet" data-slot="last">
         <h2>Tear down</h2>
         <p class="muted">Removes the VM, its disk and address, back to £0. The next start is a full deploy (about 4 minutes).</p>
         <form method="post" action="/actions/destroy" hx-post="/actions/destroy" hx-target="#live" hx-swap="outerHTML">
@@ -403,7 +437,7 @@ function controls(o: LiveOpts): Html {
   }
   return html`<div class="controls" style="margin-top:16px">
   ${s.state === "running"
-    ? html`<div class="panel">
+    ? html`<div class="panel" data-slot="last">
         <h2>Tear down</h2>
         <p class="muted">Removes the VM, its address and the DNS record. Clients keep their configs and reconnect after the next deploy.</p>
         <form method="post" action="/actions/destroy" hx-post="/actions/destroy" hx-target="#live" hx-swap="outerHTML">
@@ -411,14 +445,14 @@ function controls(o: LiveOpts): Html {
           <div class="btn-row"><button type="submit" class="danger primary big" disabled ${disabled ? "disabled" : ""}>Tear down now</button></div>
         </form>
       </div>
-      <div class="panel">
+      <div class="panel" data-slot="second">
         <h2>Hibernate</h2>
         <p class="muted">Warm standby: powers the VM off but keeps its disk and address, about ${gbp(o.cfg.standbyRateGbp * 24 * 30)} a month instead of ${gbp(o.cfg.hourlyRateGbp * 24 * 30)}. Resume takes about a minute instead of a 4-minute deploy.</p>
         <form method="post" action="/actions/hibernate" hx-post="/actions/hibernate" hx-target="#live" hx-swap="outerHTML">
           <div class="btn-row"><button type="submit">Hibernate</button></div>
         </form>
       </div>
-      <div class="panel">
+      <div class="panel" data-slot="primary">
         <h2>Auto-destroy</h2>
         <p class="muted">${s.auto_destroy_at ? html`Set for ${fmtTime(s.auto_destroy_at)}, in <b data-until="${s.auto_destroy_at}"></b>. The watchman ${expiry} within 5 minutes of that, and your phone gets a heads-up 15 minutes before.` : "Not set. The VM runs until you tear it down."}</p>
         <form method="post" action="/actions/extend" hx-post="/actions/extend" hx-target="#live" hx-swap="outerHTML">
@@ -426,7 +460,7 @@ function controls(o: LiveOpts): Html {
           <div class="btn-row"><button type="submit">Set from now</button></div>
         </form>
       </div>`
-    : html`<div class="panel">
+    : html`<div class="panel" data-slot="primary">
         <h2>Deploy</h2>
         <p class="muted">Builds a ${o.cfg.vmSize} in Azure, points ${o.cfg.dnsName} at it, loads ${o.peerCount} client${o.peerCount === 1 ? "" : "s"}. About ${gbp(o.cfg.hourlyRateGbp)} an hour while up.</p>
         <form method="post" action="/actions/deploy" hx-post="/actions/deploy" hx-target="#live" hx-swap="outerHTML">
@@ -440,7 +474,7 @@ function controls(o: LiveOpts): Html {
           </div>
         </form>
       </div>
-      <div class="panel quiet">
+      <div class="panel quiet" data-slot="last">
         <h2>${s.state === "failed" ? "Clean up" : "Nothing running"}</h2>
         <p class="muted">${s.state === "failed" ? "Runs a tear-down to make sure nothing was left in Azure after the failure." : "Azure is empty and costs nothing. The name is parked, so clients that dial now simply get no answer."}</p>
         <div class="btn-row">

@@ -46,12 +46,12 @@ export function costBody(o: { snap: Snapshot; days: CostDay[]; runs: Run[]; cfg:
   <div class="section-head"><h2>Sessions</h2></div>
   <div class="table-wrap">
   ${sessions.length
-    ? html`<table class="rows"><thead><tr><th>Deployed</th><th>Region</th><th>Ran for</th><th class="num">Estimated</th></tr></thead><tbody>
+    ? html`<table class="rows stack"><thead><tr><th>Deployed</th><th>Region</th><th>Ran for</th><th class="num">Estimated</th></tr></thead><tbody>
       ${sessions.map((r) => {
         const end = o.runs.filter((x) => x.action === "destroy" && x.status === "success" && x.finished_at && r.finished_at && Date.parse(x.finished_at) > Date.parse(r.finished_at)).map((x) => x.finished_at!).sort()[0] ?? null;
         let region = o.cfg.region;
         try { region = (JSON.parse(r.payload_json ?? "{}") as { region?: string }).region ?? region; } catch { /* keep default */ }
-        return html`<tr><td>${fmtTime(r.finished_at)}</td><td>${region}</td><td>${end ? duration(r.finished_at, end) : html`<span class="pill up">still running</span>`}</td><td class="num">~${gbp(sessionCost(r, o.runs, o.cfg) ?? 0)}</td></tr>`;
+        return html`<tr><td class="lead"><b>${fmtTime(r.finished_at)}</b></td><td data-label="Region">${region}</td><td data-label="Ran for">${end ? duration(r.finished_at, end) : html`<span class="pill up">still running</span>`}</td><td class="num" data-label="Estimated">~${gbp(sessionCost(r, o.runs, o.cfg) ?? 0)}</td></tr>`;
       })}</tbody></table>`
     : html`<div class="empty"><b>No sessions yet.</b></div>`}
   </div>
@@ -68,13 +68,13 @@ function chart(days: CostDay[]): Html {
   const y = (v: number) => padT + (h - padT - padB) * (1 - v / max);
   return html`<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Daily cost this month">
   <line class="axis" x1="${padL}" y1="${h - padB}" x2="${w - 5}" y2="${h - padB}"/>
-  <text x="${padL - 6}" y="${padT + 8}" text-anchor="end">${gbp(max)}</text>
-  <text x="${padL - 6}" y="${h - padB}" text-anchor="end">£0</text>
+  <text x="${padL + 4}" y="${padT + 12}" text-anchor="start">${gbp(max)}</text>
+  <text class="minor" x="${padL - 6}" y="${h - padB}" text-anchor="end">£0</text>
   ${days.map((d, i) => {
     const x = padL + i * step + (step - bw) / 2;
     const yy = y(d.gbp);
     return html`<g><rect class="bar ${d.day === today ? "today" : ""}" x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${bw.toFixed(1)}" height="${(h - padB - yy).toFixed(1)}" rx="2"><title>${d.day}: ${gbp(d.gbp)}</title></rect>
-      ${n <= 16 || i % Math.ceil(n / 12) === 0 ? html`<text x="${(x + bw / 2).toFixed(1)}" y="${h - 8}" text-anchor="middle">${fmtDate(d.day)}</text>` : ""}</g>`;
+      ${n <= 16 || i % Math.ceil(n / 12) === 0 || i === n - 1 ? html`<text class="${i === 0 || i === n - 1 || i === Math.floor(n / 2) ? "" : "minor"}" x="${(x + bw / 2).toFixed(1)}" y="${h - 8}" text-anchor="${i === 0 ? "start" : i === n - 1 ? "end" : "middle"}">${fmtDate(d.day)}</text>` : ""}</g>`;
   })}
 </svg>`;
 }

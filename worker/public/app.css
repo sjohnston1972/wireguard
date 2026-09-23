@@ -373,3 +373,105 @@ dialog.modal[open] { animation: modal-in 160ms ease-out; }
 .lat { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .spark { vertical-align: middle; overflow: visible; }
 .spark polyline { fill: none; stroke: var(--signal); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+
+/* ── Phone ───────────────────────────────────────────────────────────────────
+   Held in one hand: the sections live in a tab bar at the bottom within thumb
+   reach, the Overview puts the action you came for (Deploy, Extend, Resume)
+   straight under the state word, facts sit two to a row, and tables become
+   one card per row with their labels beside the values. Nothing here changes
+   the desktop layout. */
+.tabbar { display: none; }
+.tunnel.compact { display: none; }
+
+@media (max-width: 640px) {
+  /* Frame: tabs move from the top bar to a bottom bar. */
+  nav.tabs { display: none; }
+  .topbar .wrap { min-height: 50px; }
+  .tabbar {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 15;
+    background: var(--surface); border-top: 1px solid var(--line);
+    padding: 2px 4px env(safe-area-inset-bottom);
+  }
+  .tabbar a {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    min-height: 54px; color: var(--ink-3); text-decoration: none; font-size: 0.72rem; font-weight: 500;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tabbar svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .tabbar a[aria-current="page"] { color: var(--signal); }
+  .tabbar a[aria-current="page"] svg { stroke-width: 2.2; }
+  body { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
+  main.wrap { padding-top: 14px; padding-bottom: 20px; }
+  footer.wrap { padding-bottom: 14px; }
+
+  /* Overview: state, then the action, then the facts. */
+  #live { display: flex; flex-direction: column; }
+  #live > .notice { order: 0; }
+  #live > .faceplate { order: 1; }
+  #live > .controls, #live > .progress { order: 2; margin-top: 12px !important; }
+  #live > .facts { order: 3; margin-top: 12px; }
+  #live > .modal-row { order: 4; }
+  .controls { gap: 12px; }
+  .controls [data-slot="primary"] { order: 1; }
+  .controls [data-slot="second"] { order: 2; }
+  .controls [data-slot="last"] { order: 3; }
+  .faceplate { padding: 18px 16px 12px; gap: 10px; }
+  .state-word { font-size: 3.2rem; }
+  .tunnel.wide { display: none; }
+  .tunnel.compact { display: block; }
+  .tunnel.compact text { font-size: 12.5px; }
+  .tunnel.compact text.name { font-size: 14px; }
+
+  /* Facts: two to a row; the ones that only mean something while running
+     are left out the rest of the time instead of showing a column of dashes. */
+  .facts { grid-template-columns: 1fr 1fr; gap: 14px 16px; padding: 14px 16px; }
+  #live:not([data-state="running"]) .fact-live { display: none; }
+  .fact dd { font-size: 1rem; }
+
+  /* Buttons: the main action spans the card, and every target is thumb-sized. */
+  .panel { padding: 14px 16px; }
+  .btn-row button.primary, .btn-row button.danger { flex: 1 1 100%; justify-content: center; min-height: 48px; }
+  button, .btn { min-height: 42px; }
+  .chips label { padding: 8px 14px; }
+  .modal-row { display: flex; }
+  .modal-row button { flex: 1 1 0; justify-content: center; }
+  input[type="text"], input[type="number"], select { max-width: none; font-size: 16px; } /* 16px stops iOS zooming in on focus */
+
+  /* Tables become cards: the lead cell is the heading, the rest sit two to a
+     row with their label above, actions span the full width. */
+  .table-wrap { overflow-x: visible; }
+  table.rows.stack thead { display: none; }
+  table.rows.stack, table.rows.stack tbody { display: block; }
+  table.rows.stack tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  table.rows.stack tr:last-child { border-bottom: 0; }
+  table.rows.stack td { display: block; padding: 0; border: 0; text-align: left; min-width: 0; }
+  table.rows.stack td[data-label]::before { content: attr(data-label); display: block; color: var(--ink-3); font-size: 0.75rem; font-weight: 500; margin-bottom: 1px; }
+  table.rows.stack td.lead, table.rows.stack td.wide, table.rows.stack td.actions { grid-column: 1 / -1; }
+  table.rows.stack td.lead { order: -1; font-size: 1.02rem; }
+  table.rows.stack td.phone-hide { display: none; }
+  table.rows.stack td.actions { min-width: 0; max-width: none; display: flex; flex-wrap: wrap; gap: 6px; padding-top: 4px; }
+  table.rows.stack td.actions > * { margin: 0; }
+  table.rows.stack td.actions form { flex: 1 1 auto; }
+  table.rows.stack td.actions button { width: 100%; justify-content: center; min-height: 40px; }
+  table.rows.stack .key { max-width: 100%; }
+  /* Watchman notes: time and kind on one line, what happened underneath. */
+  table.rows.stack.notes tr { grid-template-columns: auto 1fr; align-items: center; }
+
+  /* Settings and the rest: nothing wider than the screen. */
+  .two-col > *, .side-by-side > * { min-width: 0; }
+  pre.conf { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  /* Modals open as a sheet from the bottom edge. */
+  dialog.modal { margin: auto 0 0; width: 100%; max-width: 100%; }
+  dialog.modal .modal-box { width: 100%; max-height: 88vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); }
+  table.rows.inv tr { display: grid; grid-template-columns: 1fr; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  table.rows.inv th, table.rows.inv td { width: auto; border: 0; padding: 0; }
+  table.rows.inv th { font-size: 0.78rem; }
+}
+@media (max-width: 640px) {
+  /* The cost chart is drawn 640 units wide; on a phone it is about half
+     that, so its labels get twice the size and only first, middle and last day. */
+  .chart text { font-size: 21px; }
+  .chart text.minor { display: none; }
+}

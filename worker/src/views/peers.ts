@@ -34,20 +34,20 @@ export function peersTable(peers: Peer[], report: AgentReport | null, running: b
   const byKey = new Map((report?.peers ?? []).map((p) => [p.public_key, p]));
   return html`<div id="peers-table" class="table-wrap">
   ${peers.length
-    ? html`<table class="rows">
+    ? html`<table class="rows stack">
       <thead><tr><th>Client</th><th>Tunnel address</th><th>Status</th><th>Last handshake</th><th>Latency</th><th class="num">Received</th><th class="num">Sent</th><th></th></tr></thead>
       <tbody>
       ${peers.map((p) => {
         const live = byKey.get(p.public_key);
         const online = !!live && peerOnline(live);
         return html`<tr>
-          <td><b>${p.name}</b>${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}${p.tunnel_dns || p.full_tunnel ? html` <span class="pill idle">tunnel DNS</span>` : ""}<div class="key" title="${p.public_key}">${p.public_key}</div></td>
-          <td class="mono">${p.ip}</td>
-          <td>${statusCell(p, live, running, online)}</td>
-          <td>${live && live.latest_handshake ? html`<span title="${new Date(live.latest_handshake * 1000).toISOString()}">${ago(new Date(live.latest_handshake * 1000).toISOString())}</span>` : html`<span class="faint">never</span>`}</td>
-          <td>${running && online ? latencyCell(latency[p.public_key]) : html`<span class="faint">—</span>`}</td>
-          <td class="num">${live ? bytes(live.tx) : html`<span class="faint">—</span>`}</td>
-          <td class="num">${live ? bytes(live.rx) : html`<span class="faint">—</span>`}</td>
+          <td class="lead"><b>${p.name}</b>${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}${p.tunnel_dns || p.full_tunnel ? html` <span class="pill idle">tunnel DNS</span>` : ""}<div class="key" title="${p.public_key}">${p.public_key}</div></td>
+          <td class="mono" data-label="Tunnel address">${p.ip}</td>
+          <td data-label="Status">${statusCell(p, live, running, online)}</td>
+          <td data-label="Last handshake">${live && live.latest_handshake ? html`<span title="${new Date(live.latest_handshake * 1000).toISOString()}">${ago(new Date(live.latest_handshake * 1000).toISOString())}</span>` : html`<span class="faint">never</span>`}</td>
+          <td data-label="Latency">${running && online ? latencyCell(latency[p.public_key]) : html`<span class="faint">—</span>`}</td>
+          <td class="num" data-label="Received">${live ? bytes(live.tx) : html`<span class="faint">—</span>`}</td>
+          <td class="num" data-label="Sent">${live ? bytes(live.rx) : html`<span class="faint">—</span>`}</td>
           <td class="actions">
             <button type="button" data-rekey="${p.id}" data-name="${p.name}" title="Make new keys for this client and download its config">Get config</button>
             ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/azure" hx-post="/peers/${p.id}/azure" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client route the Azure network through the tunnel. Changes the next config you download; edit AllowedIPs in the app to change an existing one.">${p.azure_vnet ? "Azure route: on" : "Azure route: off"}</button></form>`}

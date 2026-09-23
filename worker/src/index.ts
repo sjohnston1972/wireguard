@@ -118,7 +118,7 @@ app.get("/manifest.webmanifest", (c) =>
       display: "standalone",
       background_color: "#eef2f6",
       theme_color: "#2457f5",
-      icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
+      icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }, { src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     },
     200,
     { "Content-Type": "application/manifest+json" }

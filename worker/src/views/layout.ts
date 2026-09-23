@@ -22,6 +22,15 @@ const TABS: { id: Tab; href: string; label: string }[] = [
   { id: "settings", href: "/settings", label: "Settings" },
 ];
 
+// Line icons for the phone tab bar, drawn on a 24-unit grid in the text colour.
+const ICON: Record<Tab, string> = {
+  dashboard: `<circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="12" r="2.5"/><path d="M7.5 12h9"/>`,
+  peers: `<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>`,
+  activity: `<path d="M4 6h16M4 12h16M4 18h10"/>`,
+  cost: `<path d="M15 6.5a3.5 3.5 0 0 0-6 2.5v9M7 13h6M7 18h10"/>`,
+  settings: `<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>`,
+};
+
 export function page(o: {
   title: string;
   tab: Tab;
@@ -43,6 +52,11 @@ export function page(o: {
 <meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1620" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="wg-admin">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" href="data:image/svg+xml,${raw(encodeURIComponent(favicon(s.state)))}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -73,6 +87,9 @@ export function page(o: {
     : ""}
   ${o.body}
 </main>
+<nav class="tabbar" aria-label="Sections">
+  ${TABS.map((t) => html`<a href="${t.href}" ${t.id === o.tab ? raw('aria-current="page"') : ""}><svg viewBox="0 0 24 24" aria-hidden="true">${raw(ICON[t.id])}</svg><span>${t.label}</span></a>`)}
+</nav>
 <footer class="wrap">wg-admin · management plane for the on-demand WireGuard headend · state as of ${fmtTime(s.updated_at)}</footer>
 </body>
 </html>`;

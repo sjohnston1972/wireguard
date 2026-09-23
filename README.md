@@ -91,7 +91,13 @@ You need: [Node.js](https://nodejs.org) 20+, [GitHub CLI](https://cli.github.com
 
 Open **https://wg-admin.clydeford.net** and sign in with Google, or with the
 one-time PIN sent to your email (Cloudflare Access; only your address is allowed). On a phone, use "Add to Home Screen": it
-installs as an app and the login lasts 24 hours.
+installs as an app with its own icon, and the login lasts 24 hours.
+
+On a phone the layout changes: the sections sit in a tab bar at the bottom,
+the Overview puts the action you came for (Deploy, Extend, Resume) straight
+under the state word, facts sit two to a row, the client and activity tables
+become one card per row, and the SSH and Azure panels open as sheets from the
+bottom edge. The desktop layout is unchanged.
 
 | Screen | What it does |
 | --- | --- |
