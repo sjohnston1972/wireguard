@@ -1,0 +1,14 @@
+# docker/home/compose.yaml: run with "npm run home" (which writes wg0.conf first).
+# NET_ADMIN lets the container make its own WireGuard interface and NAT rules;
+# ip_forward lets it pass packets between the tunnel and the home network.
+name: wg-home
+services:
+  wg-home:
+    build: .
+    container_name: wg-home
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    volumes:
+      - ./wg0.conf:/etc/wireguard/wg0.conf:ro

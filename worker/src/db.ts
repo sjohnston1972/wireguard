@@ -38,6 +38,8 @@ export interface Peer {
   full_tunnel: number;
   azure_vnet: number;
   tunnel_dns: number;
+  routes: string; // comma-separated CIDRs reached through this peer (a site), "" for a plain client
+  home_lan: number; // client config also routes the home LAN into the tunnel
   created_at: string;
   note: string | null;
 }
@@ -142,6 +144,15 @@ export async function setPeerTunnelDns(env: Env, id: number, on: boolean): Promi
   await env.DB.prepare("UPDATE peers SET tunnel_dns = ?2 WHERE id = ?1").bind(id, on ? 1 : 0).run();
 }
 
+export async function setPeerHomeLan(env: Env, id: number, on: boolean): Promise<void> {
+  await env.DB.prepare("UPDATE peers SET home_lan = ?2 WHERE id = ?1").bind(id, on ? 1 : 0).run();
+}
+
+/** The site peer (a peer with routes), if one is registered and enabled. */
+export async function sitePeer(env: Env): Promise<Peer | null> {
+  return (await env.DB.prepare("SELECT * FROM peers WHERE routes != '' AND enabled = 1 ORDER BY id LIMIT 1").first<Peer>()) ?? null;
+}
+
 export async function setPeerEnabled(env: Env, id: number, enabled: boolean): Promise<void> {
   await env.DB.prepare("UPDATE peers SET enabled = ?2 WHERE id = ?1").bind(id, enabled ? 1 : 0).run();
 }
@@ -198,4 +209,84 @@ export async function upsertCostDay(env: Env, day: string, gbp: number): Promise
 
 export async function costDays(env: Env, sinceDay: string): Promise<CostDay[]> {
   return (await env.DB.prepare("SELECT * FROM cost_days WHERE day >= ?1 ORDER BY day").bind(sinceDay).all<CostDay>()).results;
+}
+
+// ── Profiles ──────────────────────────────────────────────────────────────
+
+export interface Profile {
+  id: number;
+  name: string;
+  region: string;
+  vm_size: string;
+  sort: number;
+}
+
+export async function listProfiles(env: Env): Promise<Profile[]> {
+  return (await env.DB.prepare("SELECT * FROM profiles ORDER BY sort, id").all<Profile>()).results;
+}
+
+export async function getProfile(env: Env, id: number): Promise<Profile | null> {
+  return (await env.DB.prepare("SELECT * FROM profiles WHERE id = ?1").bind(id).first<Profile>()) ?? null;
+}
+
+export async function addProfile(env: Env, p: { name: string; region: string; vm_size: string }): Promise<void> {
+  await env.DB.prepare("INSERT INTO profiles (name, region, vm_size, sort) VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(sort), 0) + 1 FROM profiles))").bind(p.name, p.region, p.vm_size).run();
+}
+
+export async function deleteProfile(env: Env, id: number): Promise<void> {
+  await env.DB.prepare("DELETE FROM profiles WHERE id = ?1").bind(id).run();
+  await env.DB.prepare("UPDATE schedules SET profile_id = NULL WHERE profile_id = ?1").bind(id).run();
+}
+
+// ── Schedules ─────────────────────────────────────────────────────────────
+
+export interface Schedule {
+  id: number;
+  days: string;
+  start_time: string;
+  end_time: string;
+  profile_id: number | null;
+  enabled: number;
+  created_at: string;
+}
+
+export async function listSchedules(env: Env): Promise<Schedule[]> {
+  return (await env.DB.prepare("SELECT * FROM schedules ORDER BY start_time, id").all<Schedule>()).results;
+}
+
+export async function addSchedule(env: Env, s: { days: string; start_time: string; end_time: string; profile_id: number | null }): Promise<void> {
+  await env.DB.prepare("INSERT INTO schedules (days, start_time, end_time, profile_id, enabled, created_at) VALUES (?1, ?2, ?3, ?4, 1, ?5)")
+    .bind(s.days, s.start_time, s.end_time, s.profile_id, new Date().toISOString())
+    .run();
+}
+
+export async function setScheduleEnabled(env: Env, id: number, on: boolean): Promise<void> {
+  await env.DB.prepare("UPDATE schedules SET enabled = ?2 WHERE id = ?1").bind(id, on ? 1 : 0).run();
+}
+
+export async function deleteSchedule(env: Env, id: number): Promise<void> {
+  await env.DB.prepare("DELETE FROM schedules WHERE id = ?1").bind(id).run();
+}
+
+// ── Speed tests ───────────────────────────────────────────────────────────
+
+export interface SpeedTest {
+  id: string;
+  at: string;
+  target_name: string | null;
+  down_mbps: number | null;
+  up_mbps: number | null;
+  rtt_ms: number | null;
+  jitter_ms: number | null;
+  error: string | null;
+}
+
+export async function saveSpeedTest(env: Env, t: SpeedTest): Promise<void> {
+  await env.DB.prepare("INSERT OR IGNORE INTO speedtests (id, at, target_name, down_mbps, up_mbps, rtt_ms, jitter_ms, error) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+    .bind(t.id, t.at, t.target_name, t.down_mbps, t.up_mbps, t.rtt_ms, t.jitter_ms, t.error)
+    .run();
+}
+
+export async function listSpeedTests(env: Env, limit = 10): Promise<SpeedTest[]> {
+  return (await env.DB.prepare("SELECT * FROM speedtests ORDER BY at DESC LIMIT ?1").bind(limit).all<SpeedTest>()).results;
 }

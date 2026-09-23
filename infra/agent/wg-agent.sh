@@ -45,6 +45,9 @@ dns_up=false
 systemctl is-active --quiet dnsmasq && dns_up=true
 blocked=0
 [[ -r /etc/wg-admin/blocklist.hosts ]] && blocked="$(grep -c '^0\.0\.0\.0 ' /etc/wg-admin/blocklist.hosts || true)"
+# A finished speed test waiting to be reported (see wg-speedtest.sh).
+speedtest="null"
+[[ -s /run/wg-admin/speedtest.json ]] && speedtest="$(cat /run/wg-admin/speedtest.json)"
 
 # Round-trip time to every client that shook hands in the last 3 minutes,
 # one ping each, all at once. Like an IP SLA probe per spoke.
@@ -73,7 +76,8 @@ body="$(jq -n \
   --argjson rtt "${rtt:-null}" \
   --argjson dns "$dns_up" \
   --argjson blocked "${blocked:-0}" \
-  '{agent_version: 3, hostname: $host, uptime_seconds: ($up|tonumber), load: $load, loopback: $lb, wan6: $wan6, selftest: $selftest, rtt: $rtt, dns: {up: $dns, blocked: $blocked}, dump: $dump}')"
+  --argjson speedtest "$speedtest" \
+  '{agent_version: 4, hostname: $host, uptime_seconds: ($up|tonumber), load: $load, loopback: $lb, wan6: $wan6, selftest: $selftest, rtt: $rtt, dns: {up: $dns, blocked: $blocked}, speedtest_result: $speedtest, dump: $dump}')"
 
 # ── Report ──────────────────────────────────────────────────────────────────
 resp="$(curl -fsS --max-time 10 \
@@ -84,6 +88,20 @@ resp="$(curl -fsS --max-time 10 \
 
 # ── Reconcile peers, if the Worker sent a list ──────────────────────────────
 # Reply shape: {"peers":[{"name":"laptop","host":"laptop","public_key":"...","allowed_ips":"10.13.13.2/32,fd13:13::2/128"}]}
+
+# ── Speed test: forget a result once the Worker has it; start one when asked ─
+ack="$(jq -r '.speedtest_ack // empty' <<<"$resp" 2>/dev/null || true)"
+if [[ -n "$ack" && -s /run/wg-admin/speedtest.json ]] && [[ "$(jq -r '.id' /run/wg-admin/speedtest.json 2>/dev/null || true)" == "$ack" ]]; then
+  rm -f /run/wg-admin/speedtest.json
+fi
+st_id="$(jq -r '.speedtest.id // empty' <<<"$resp" 2>/dev/null || true)"
+st_target="$(jq -r '.speedtest.target // empty' <<<"$resp" 2>/dev/null || true)"
+if [[ "$st_id" =~ ^[0-9a-f]{6,32}$ && "$st_target" =~ ^[0-9.]+$ && ! -e "/run/wg-admin/speedtest.$st_id" ]]; then
+  mkdir -p /run/wg-admin && touch "/run/wg-admin/speedtest.$st_id"
+  # Its own short-lived unit, so it outlives this 25-second heartbeat.
+  systemd-run --quiet --unit "wg-speedtest-$st_id" --no-block /usr/local/sbin/wg-speedtest.sh "$st_id" "$st_target" || true
+fi
+
 jq -e '.peers | type == "array"' <<<"$resp" >/dev/null 2>&1 || exit 0
 
 # Client names for the tunnel DNS: laptop.wg, phone.wg, and the VM itself.
@@ -97,6 +115,15 @@ if ! cmp -s "$hosts" /etc/wg-admin/peers.hosts 2>/dev/null; then
   systemctl kill -s HUP dnsmasq 2>/dev/null || true
 fi
 rm -f "$hosts"
+
+# Site routes: a peer that carries a whole network (the home LAN behind the
+# home container) needs a kernel route sending that network into wg0, like a
+# static route towards a branch. wg-quick only adds these at boot, so keep
+# them in place here for a site added while the VM is running. A route with
+# no matching peer yet simply drops traffic, so adding it early is harmless.
+while read -r cidr; do
+  [[ -n "$cidr" ]] && { ip route replace "$cidr" dev wg0 2>/dev/null || true; }
+done < <(jq -r '.peers[].allowed_ips | split(",")[] | select(test("^[0-9.]+/([0-9]|[12][0-9]|3[01])$"))' <<<"$resp" 2>/dev/null || true)
 
 # The self-test adds a canary peer for a few seconds; leave the list alone
 # until it is done, or this would remove the canary mid-test.

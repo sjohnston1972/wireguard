@@ -65,13 +65,23 @@ describe("clientConfigTemplate", () => {
 
 describe("peer lists", () => {
   const peers: Peer[] = [
-    { id: 1, name: "Steven's Phone", public_key: "A=", ip: "10.13.13.2", enabled: 1, full_tunnel: 0, azure_vnet: 0, tunnel_dns: 0, created_at: "", note: null },
-    { id: 2, name: "b", public_key: "B=", ip: "10.13.13.3", enabled: 0, full_tunnel: 0, azure_vnet: 0, tunnel_dns: 0, created_at: "", note: null },
+    { id: 1, name: "Steven's Phone", public_key: "A=", ip: "10.13.13.2", enabled: 1, full_tunnel: 0, azure_vnet: 0, tunnel_dns: 0, routes: "", home_lan: 0, created_at: "", note: null },
+    { id: 2, name: "b", public_key: "B=", ip: "10.13.13.3", enabled: 0, full_tunnel: 0, azure_vnet: 0, tunnel_dns: 0, routes: "", home_lan: 0, created_at: "", note: null },
   ];
   it("only enabled peers reach the VM and Terraform, with IPv6 and a DNS name", () => {
     expect(agentPeerList(peers, "fd13:13::/64")).toEqual([{ name: "Steven's Phone", host: "steven-s-phone", public_key: "A=", allowed_ips: "10.13.13.2/32,fd13:13::2/128" }]);
     expect(agentPeerList(peers)).toEqual([{ name: "Steven's Phone", host: "steven-s-phone", public_key: "A=", allowed_ips: "10.13.13.2/32" }]);
     expect(terraformPeerList(peers)).toEqual([{ name: "Steven's Phone", public_key: "A=", ip: "10.13.13.2" }]);
+  });
+  it("a site peer also carries its LAN, on the VM and in Terraform", () => {
+    const site: Peer = { ...peers[0], name: "home-site", public_key: "H=", ip: "10.13.13.10", routes: "192.168.1.0/24, junk" };
+    expect(agentPeerList([site], "fd13:13::/64")[0].allowed_ips).toBe("10.13.13.10/32,fd13:13::a/128,192.168.1.0/24");
+    expect(terraformPeerList([site])[0]).toEqual({ name: "home-site", public_key: "H=", ip: "10.13.13.10", routes: "192.168.1.0/24" });
+  });
+  it("a client can route the home LAN into the tunnel", () => {
+    const e = { ...env, HOME_LAN_CIDR: "192.168.1.0/24" } as unknown as Env;
+    expect(clientConfigTemplate(e, { ip: "10.13.13.7", full_tunnel: 0, home_lan: 1 }, "S=")).toContain("fd13:13::/64, 192.168.1.0/24");
+    expect(clientConfigTemplate(e, { ip: "10.13.13.7", full_tunnel: 0 }, "S=")).not.toContain("192.168.1.0/24");
   });
 });
 

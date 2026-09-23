@@ -28,10 +28,12 @@ locals {
   }
 
   # The [Peer] half of wg0.conf, one block per client. Pre-rendered here so the
-  # YAML template only has to drop it in with the right indentation.
+  # YAML template only has to drop it in with the right indentation. A site
+  # peer (the home container) also lists its LAN ("routes"); wg-quick then
+  # adds the matching kernel route when the tunnel comes up.
   peers_conf = length(local.peers) == 0 ? "# no peers yet\n" : join("\n", [
     for p in local.peers :
-    "# ${p.name}\n[Peer]\nPublicKey = ${p.public_key}\nAllowedIPs = ${p.ip}/32${local.ipv6 ? ",${local.peer_ip6[p.ip]}/128" : ""}\n"
+    "# ${p.name}\n[Peer]\nPublicKey = ${p.public_key}\nAllowedIPs = ${p.ip}/32${local.ipv6 ? ",${local.peer_ip6[p.ip]}/128" : ""}${try(p.routes, "") != "" ? ",${p.routes}" : ""}\n"
   ])
 
   # The VM's zero-touch provisioning script.
@@ -54,6 +56,7 @@ locals {
     selftest_service      = file("${path.module}/agent/wg-selftest.service")
     blocklist_script      = file("${path.module}/agent/wg-blocklist.sh")
     blocklist_service     = file("${path.module}/agent/wg-blocklist.service")
+    speedtest_script      = file("${path.module}/agent/wg-speedtest.sh")
   })
 }
 

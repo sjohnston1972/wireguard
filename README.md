@@ -146,6 +146,49 @@ Each button is a single-use link that stops working 30 minutes after the
 deadline, and can only extend, hibernate or tear down. Nothing reachable
 without the login can deploy, read anything or change settings.
 
+### Profiles and moving
+
+A profile is a named place to deploy: a region and a VM size. "UK", "US exit"
+and "EU exit" come ready-made; add more in Settings > Profiles. Deploy offers
+each as one tap (and, when you are abroad, the nearest Azure region). While
+running, **Move** tears the VM down and builds the chosen profile straight
+after, about 6 minutes in all. Clients never change: they dial
+wg.clydeford.net, which follows the VM. For a US exit node, give the phone a
+full-tunnel config and Move to "US exit".
+
+### Schedules
+
+Settings > Schedules: days, a UK-time window and a profile, e.g. Mon–Fri
+08:00–18:00, UK. When a window opens the watchman deploys (or resumes from
+Standby) and sets the auto-destroy timer to the window's end; the timer tears
+it down. Each window starts once a day, so a manual tear-down in the middle of
+a window sticks until tomorrow. Like a time-based ACL on an interface.
+
+### Site-to-site: the home network through the tunnel
+
+A small WireGuard container on the home PC (Docker Desktop) is the home end,
+the branch router in the picture:
+
+```sh
+npm run home          # first time: makes its keys, registers it, starts it
+npm run home -- --down
+```
+
+It registers as the client **home-site**, carrying the home LAN
+(HOME_LAN_CIDR, 192.168.1.0/24). The VM routes that network to it, and the
+container NATs tunnel traffic onto the LAN, so a client away from home with
+**Home network: on** (Clients page) can reach 192.168.1.x. It re-resolves
+wg.clydeford.net every 30 seconds, so it follows the VM through rebuilds, and
+restarts with Docker. It is one-way by design: tunnel clients reach the home
+LAN; devices at home reach the tunnel only through the PC's own client.
+
+### Speed test
+
+With the home site connected, **Speed** on the Overview runs iperf3 from the
+VM to the home container over the tunnel, 5 seconds each way, then ten pings:
+Azure to home and home to Azure in Mbit/s, latency and jitter. Results arrive
+in about a minute and the last few are kept.
+
 ### Tunnel DNS and IPv6
 
 The VM runs a small DNS server on 10.13.255.1, reachable only through the

@@ -1,0 +1,2 @@
+# Holds the home site private key. Written by "npm run home"; never commit.
+wg0.conf

@@ -68,6 +68,8 @@ export interface DeployOptions {
   requestedBy: string;
   reason?: string;
   region?: string;
+  vmSize?: string;
+  profile?: string | null;
 }
 
 /** Start a deploy. Throws RunError with a message fit for the screen. */
@@ -92,11 +94,12 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   const sshCidr = cfg.sshAllowedCidr || (opts.requesterIp && !opts.requesterIp.includes(":") ? `${opts.requesterIp}/32` : "");
   const auto_destroy_at = opts.hours ? new Date(Date.now() + opts.hours * 3_600_000).toISOString() : null;
   const region = opts.region ?? cfg.region;
+  const vmSize = opts.vmSize ?? cfg.vmSize;
 
   const payload = {
     run_id: id,
     region,
-    vm_size: cfg.vmSize,
+    vm_size: vmSize,
     peers_json: JSON.stringify(peers),
     home_lan_cidr: cfg.homeLanCidr,
     wg_dns_name: cfg.dnsName,
@@ -158,6 +161,10 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     standby_since: null,
     power_op_at: null,
     region,
+    vm_size: vmSize,
+    profile: opts.profile ?? null,
+    pending_deploy: null,
+    speedtest_req: null,
   });
   return (await db.getRun(env, id))!;
 }
@@ -289,7 +296,7 @@ async function settleWithoutCallback(env: Env, run: db.Run): Promise<void> {
 async function failRun(env: Env, run: db.Run, message: string): Promise<void> {
   await db.updateRun(env, run.id, { status: "failure", finished_at: new Date().toISOString(), error: message });
   await releaseLock(env, run.id);
-  await saveSnapshot(env, { state: "failed", error: message, since: new Date().toISOString() });
+  await saveSnapshot(env, { state: "failed", error: message, since: new Date().toISOString(), pending_deploy: null });
   await db.addAlert(env, "failure", `${run.action} failed: ${message}`, run.id);
   await notify(env, `wg-admin: ${run.action} failed`, message);
 }
@@ -347,10 +354,26 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     power_op_at: null,
     pending_summary: null,
     region: null,
+    vm_size: null,
+    profile: null,
+    speedtest_req: null,
   });
   await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
   if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);
-  await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; Azure cost is £0.`, { tags: ["wastebasket"] });
+  const next = before.pending_deploy;
+  if (!next) {
+    await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; Azure cost is £0.`, { tags: ["wastebasket"] });
+    return;
+  }
+  // A move ("Move to US exit"): the old one is gone, build the new one now.
+  try {
+    const r = await startDeploy(env, { hours: next.hours, requesterIp: next.requester_ip, requestedBy: next.requested_by, region: next.region, vmSize: next.vm_size, profile: next.profile, reason: `move to ${next.profile ?? next.region}` });
+    await db.addAlert(env, "info", `Move: torn down, now building ${next.profile ?? next.region} (${r.id}).`, run.id);
+  } catch (e) {
+    await saveSnapshot(env, { pending_deploy: null });
+    await db.addAlert(env, "failure", `Move: torn down, but the new deploy could not start: ${(e as Error).message}`, run.id);
+    await notify(env, "wg-admin: move stopped", `Torn down, but the new deploy could not start: ${(e as Error).message}`, { priority: 4 });
+  }
 }
 
 /** GitHub Actions result callback. Returns an HTTP status and message. */
@@ -425,6 +448,7 @@ export interface AgentBody {
   selftest?: SelfTest | null;
   rtt?: Record<string, number> | null;
   dns?: { up?: boolean; blocked?: number } | null;
+  speedtest_result?: { id?: string; down_bps?: number | null; up_bps?: number | null; rtt_ms?: number | null; jitter_ms?: number | null; error?: string | null } | null;
   dump?: string;
 }
 
@@ -498,10 +522,31 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
       await notify(env, "wg-admin: ready", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}). ${cfg.dnsName} → ${snap.public_ip ?? "?"}${until}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
     }
   }
+  // Speed test: a result coming back, or a request still to hand over.
+  const reply: Record<string, unknown> = {};
+  const req = snap.speedtest_req;
+  const res = body.speedtest_result;
+  if (res?.id) {
+    reply.speedtest_ack = res.id;
+    if (req && req.id === res.id) {
+      const mbps = (b: number | null | undefined) => (typeof b === "number" && b > 0 ? Math.round(b / 1e5) / 10 : null);
+      const t = { id: res.id, at: report.at, target_name: req.target_name, down_mbps: mbps(res.down_bps), up_mbps: mbps(res.up_bps), rtt_ms: typeof res.rtt_ms === "number" ? res.rtt_ms : null, jitter_ms: typeof res.jitter_ms === "number" ? res.jitter_ms : null, error: res.error || null };
+      await db.saveSpeedTest(env, t);
+      patch.speedtest_req = null;
+      await db.addAlert(env, t.error ? "failure" : "info", t.error ? `Speed test failed: ${t.error}` : `Speed test to ${t.target_name}: Azure to home ${t.down_mbps ?? "?"} Mbit/s, home to Azure ${t.up_mbps ?? "?"} Mbit/s, ${t.rtt_ms ?? "?"} ms.`);
+    }
+  } else if (req) {
+    if (Date.now() - Date.parse(req.at) > 5 * 60_000) {
+      patch.speedtest_req = null;
+      await db.saveSpeedTest(env, { id: req.id, at: report.at, target_name: req.target_name, down_mbps: null, up_mbps: null, rtt_ms: null, jitter_ms: null, error: "no result within 5 minutes" });
+    } else {
+      reply.speedtest = { id: req.id, target: req.target };
+    }
+  }
   await saveSnapshot(env, patch);
 
   const peers = agentPeerList(await db.enabledPeers(env), cfg.subnet6);
-  return { status: 200, body: { peers } };
+  return { status: 200, body: { peers, ...reply } };
 }
 
 /** Cancel the active GitHub run and mark it failed. */

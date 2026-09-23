@@ -198,6 +198,12 @@ write_files:
     content: |
       ${indent(6, agent_script)}
 
+  - path: /usr/local/sbin/wg-speedtest.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      ${indent(6, speedtest_script)}
+
   - path: /etc/systemd/system/wg-agent.service
     permissions: "0644"
     owner: root:root

@@ -16,7 +16,7 @@ import type { Snapshot } from "../state";
 import { STATE_LABEL, isBusy, isPowerOp, peerOnline, trafficFlowing, selfTestFailures } from "../state";
 import { regionName } from "../region";
 import type { Config } from "../env";
-import type { Peer } from "../db";
+import type { Peer, Profile, SpeedTest } from "../db";
 
 export interface LiveOpts {
   snap: Snapshot;
@@ -32,6 +32,12 @@ export interface LiveOpts {
   serverPub?: string | null;
   /** Where Cloudflare thinks the browser is, and the nearest Azure region. */
   near?: { country: string | null; region: string | null } | null;
+  profiles?: Profile[];
+  speedtests?: SpeedTest[];
+  /** The home site peer (site-to-site), if one is registered. */
+  site?: Peer | null;
+  /** "Mon 08:00": when the next scheduled window opens, if any. */
+  nextScheduled?: string | null;
 }
 
 /**
@@ -177,8 +183,8 @@ export function liveSection(o: LiveOpts): Html {
   <div class="faceplate">
     <div>
       <h1 class="state-word" data-state="${wordState}">${word}</h1>
-      <div class="state-sub">${subline(s, o.cfg)}</div>
-      <div class="m-sub m-only">${phoneLine(s)}</div>
+      <div class="state-sub">${subline(s, o.cfg)}${s.state === "destroyed" && o.nextScheduled ? html` Next scheduled start: <b>${o.nextScheduled}</b>.` : ""}${s.state === "destroying" && s.pending_deploy ? html` Then building <b>${s.pending_deploy.profile ?? s.pending_deploy.region}</b>.` : ""}</div>
+      <div class="m-sub m-only">${phoneLine(s, o.nextScheduled)}</div>
     </div>
     <div class="tipwrap">${tunnel(s, o.cfg)}${tunnelCompact(s, o.cfg)}${homeTip(o)}${azureTip(o)}</div>
   </div>
@@ -192,6 +198,7 @@ export function liveSection(o: LiveOpts): Html {
         <div class="fact"><dt>In standby for</dt><dd><span data-since="${s.standby_since}"></span> <span class="faint small">torn down after ${o.cfg.standbyMaxDays} days</span></dd></div>`
       : html`<div class="fact"><dt>Cost this session</dt><dd>${s.running_since ? html`<span data-cost-since="${s.running_since}" data-rate="${o.cfg.hourlyRateGbp}">${gbp(0)}</span> <span class="faint small">at ${gbp(o.cfg.hourlyRateGbp)}/h</span>` : html`<span class="faint">£0.00</span>`}</dd></div>
         <div class="fact"><dt>Up for</dt><dd>${s.running_since ? html`<span data-since="${s.running_since}"></span>` : html`<span class="faint">—</span>`}</dd></div>`}
+    ${s.state === "running" || s.state === "standby" ? html`<div class="fact m-only" style="grid-column:1/-1"><dd class="m-more" style="margin:0">${o.deployment && s.state === "running" ? html`<button type="button" class="ghost" data-open="dlg-ssh">SSH to the VM</button>` : ""}<button type="button" class="ghost" data-open="dlg-azure">In Azure</button></dd></div>` : ""}
     <div class="fact"><dt>Clients</dt><dd>${o.peerCount} configured${s.state === "running" ? html`, <b>${online} online</b>` : ""}</dd></div>
     <div class="fact fact-live"><dt>Loopback (ping test)</dt><dd>${s.state === "running" ? html`<span class="mono">${o.cfg.loopbackIp}</span> ${s.agent ? (s.agent.loopback === o.cfg.loopbackIp ? html`<span class="pill up">up</span>` : s.agent.loopback ? html`<span class="pill busy">${s.agent.loopback}</span>` : html`<span class="pill idle">not on this build</span>`) : ""}` : html`<span class="faint">—</span>`}</dd></div>
     <div class="fact fact-live"><dt>Self-test</dt><dd>${selfTestCell(s)}</dd></div>
@@ -208,14 +215,14 @@ export function liveSection(o: LiveOpts): Html {
 }
 
 /** One short line under the state word on a phone. */
-function phoneLine(s: Snapshot): Html {
+function phoneLine(s: Snapshot, nextScheduled?: string | null): Html {
   switch (s.state) {
     case "running":
       return s.auto_destroy_at ? html`Tears down in <b data-until="${s.auto_destroy_at}"></b>` : html`No timer set`;
     case "deploying":
       return html`Building in Azure, about 4 minutes`;
     case "destroying":
-      return html`Removing everything from Azure`;
+      return s.pending_deploy ? html`Moving to ${s.pending_deploy.profile ?? s.pending_deploy.region}: tearing down first` : html`Removing everything from Azure`;
     case "hibernating":
       return html`Powering down; address and DNS stay`;
     case "resuming":
@@ -225,7 +232,7 @@ function phoneLine(s: Snapshot): Html {
     case "failed":
       return html`The last run failed`;
     default:
-      return html`Nothing in Azure, costing £0`;
+      return nextScheduled ? html`Nothing in Azure; next scheduled start ${nextScheduled}` : html`Nothing in Azure, costing £0`;
   }
 }
 
@@ -247,17 +254,22 @@ function phoneDock(o: LiveOpts, online: number, heartbeatStale: boolean): Html {
     inds.push(verifying(s) ? ind("busy", "Testing") : !s.selftest ? ind("idle", "Tunnel") : failed.length ? ind("down", "Tunnel") : ind("up", "Tunnel OK"));
     inds.push(s.agent?.dns ? ind(s.agent.dns.up ? "up" : "down", "DNS") : ind("idle", "DNS"));
     inds.push(heartbeatStale ? ind("down", "No heartbeat") : ind(online > 0 ? "up" : "idle", `${online}/${o.peerCount} online`));
-    inds.push(s.running_since ? ind("idle", html`<span data-cost-since="${s.running_since}" data-rate="${o.cfg.hourlyRateGbp}">£0.00</span>`) : ind("idle", "£0.00"));
+    if (o.site) {
+      const l = s.agent?.peers.find((p) => p.public_key === o.site!.public_key);
+      inds.push(ind(l && peerOnline(l) ? "up" : "down", l && peerOnline(l) ? "Home site" : "Home site down"));
+    } else {
+      inds.push(s.running_since ? ind("idle", html`<span data-cost-since="${s.running_since}" data-rate="${o.cfg.hourlyRateGbp}">£0.00</span>`) : ind("idle", "£0.00"));
+    }
     main = html`<div class="m-btns three">${btn("Extend", "sh-timer", "primary")}${btn("Hibernate", "sh-hibernate")}${btn("Tear down", "sh-teardown", "danger")}</div>`;
-    if (o.deployment) more.push(html`<button type="button" class="ghost" data-open="dlg-ssh">SSH</button>`);
-    more.push(html`<button type="button" class="ghost" data-open="dlg-azure">Azure</button>`);
+    more.push(btn("Speed", "sh-speed", "ghost"));
+    if ((o.profiles ?? []).length > 1) more.push(btn("Move", "sh-move", "ghost"));
   } else if (s.state === "standby") {
     inds.push(ind("idle", "VM off"));
     inds.push(ind("idle", `${o.peerCount} client${o.peerCount === 1 ? "" : "s"}`));
     inds.push(ind(s.dns_live ? "up" : "idle", "DNS kept"));
     inds.push(ind("idle", `${gbp(o.cfg.standbyRateGbp)}/h`));
     main = html`<div class="m-btns">${btn("Resume", "sh-resume", "primary big")}</div>`;
-    more = [btn("Tear down", "sh-teardown", "ghost"), ...more, html`<button type="button" class="ghost" data-open="dlg-azure">Azure</button>`];
+    more = [btn("Tear down", "sh-teardown", "ghost"), ...more];
   } else if (isBusy(s.state)) {
     const steps = s.steps ?? [];
     const done = steps.filter((x) => x.status === "completed").length;
@@ -480,6 +492,24 @@ function hourChips(o: LiveOpts, prefix = "", checkedDefault = true): Html {
   </div>`;
 }
 
+/**
+ * Where to build: one chip per profile, plus the nearest Azure region when
+ * the browser is somewhere no profile covers. The value is "p:<id>" or
+ * "r:<region>".
+ */
+function profileChips(o: LiveOpts): Html {
+  const profiles = o.profiles ?? [];
+  if (!profiles.length) return regionChips(o);
+  const current = profiles.find((p) => p.region === o.cfg.region && p.vm_size === o.cfg.vmSize) ?? profiles[0];
+  const near = o.near?.region;
+  const showNear = !!near && !profiles.some((p) => p.region === near);
+  return html`<span class="small muted">Where?</span>
+    <div class="chips">
+      ${profiles.map((p) => html`<label title="${regionName(p.region)}, ${p.vm_size}"><input type="radio" name="choice" value="p:${p.id}" ${p.id === current.id ? raw("checked") : ""}><span>${p.name}</span></label>`)}
+      ${showNear ? html`<label><input type="radio" name="choice" value="r:${near}"><span>Nearest: ${regionName(near!)}</span></label>` : ""}
+    </div>`;
+}
+
 /** Where to build: the usual region, plus the nearest one when the browser is somewhere else. */
 function regionChips(o: LiveOpts): Html {
   const home = o.cfg.region;
@@ -538,6 +568,8 @@ function controls(o: LiveOpts): Html {
           <div class="btn-row"><button type="submit">Hibernate</button></div>
         </form>
       </div>
+      ${movePanel(o)}
+      ${speedPanel(o)}
       <div class="panel sheet" id="sh-timer" data-slot="primary">
         ${sheetHead("Extend or change the timer")}
         <h2>Auto-destroy</h2>
@@ -554,7 +586,7 @@ function controls(o: LiveOpts): Html {
         <form method="post" action="/actions/deploy" hx-post="/actions/deploy" hx-target="#live" hx-swap="outerHTML">
           <span class="small muted">For how long?</span>
           ${hourChips(o)}
-          ${regionChips(o)}
+          ${profileChips(o)}
           <div class="btn-row">
             <button type="submit" class="primary big" ${disabled ? "disabled" : ""}>Deploy</button>
             ${disabled ? html`<span class="small muted">GitHub is not connected. <a href="/settings">Finish setup</a>.</span>` : ""}
@@ -572,6 +604,48 @@ function controls(o: LiveOpts): Html {
         </div>
       </div>`}
 </div>`;
+}
+
+/** "Move to US exit": tear down here, build there, two taps. */
+function movePanel(o: LiveOpts): Html {
+  const s = o.snap;
+  const others = (o.profiles ?? []).filter((p) => !(p.region === (s.region ?? o.cfg.region) && p.vm_size === (s.vm_size ?? o.cfg.vmSize)));
+  if (!others.length) return html``;
+  return html`<div class="panel sheet" id="sh-move" data-slot="second">
+    ${sheetHead("Move")}
+    <h2>Move to another profile</h2>
+    <p class="muted">Tears this one down and builds the chosen profile straight after, about 6 minutes in all. Clients follow on their own: they dial ${o.cfg.dnsName}, which moves with the VM.</p>
+    <div class="btn-row">
+      ${others.map((p) => html`<form method="post" action="/actions/move" hx-post="/actions/move" hx-target="#live" hx-swap="outerHTML" style="display:inline"><input type="hidden" name="profile" value="${p.id}"><button type="submit" title="${regionName(p.region)}, ${p.vm_size}">${p.name} <span class="faint small">${regionName(p.region).replace(/ \(.*\)$/, "")}</span></button></form>`)}
+    </div>
+  </div>`;
+}
+
+/** Azure <-> home site throughput and latency, over the tunnel. */
+function speedPanel(o: LiveOpts): Html {
+  const s = o.snap;
+  const tests = o.speedtests ?? [];
+  const last = tests[0];
+  const pending = !!s.speedtest_req;
+  const num = (v: number | null | undefined, unit: string) => (v === null || v === undefined ? html`<span class="faint">—</span>` : html`<b>${v < 10 ? v.toFixed(1) : Math.round(v)}</b> <span class="faint small">${unit}</span>`);
+  return html`<div class="panel sheet" id="sh-speed" data-slot="second">
+    ${sheetHead("Speed test")}
+    <h2>Speed test</h2>
+    <p class="muted">Azure to ${o.site?.name ?? "the home site"} and back, over the tunnel: iperf3 for 5 seconds each way, then ten pings.</p>
+    ${last
+      ? last.error
+        ? html`<p><span class="pill down">failed</span> <span class="small">${last.error}</span> <span class="faint small">${ago(last.at)}</span></p>`
+        : html`<dl class="speed">
+            <div><dt>Azure → home</dt><dd>${num(last.down_mbps, "Mbit/s")}</dd></div>
+            <div><dt>Home → Azure</dt><dd>${num(last.up_mbps, "Mbit/s")}</dd></div>
+            <div><dt>Latency</dt><dd>${num(last.rtt_ms, "ms")}${last.jitter_ms !== null ? html` <span class="faint small">± ${last.jitter_ms.toFixed(1)}</span>` : ""}</dd></div>
+          </dl>
+          <p class="faint small">${ago(last.at)}${tests.length > 1 ? html` · earlier: ${tests.slice(1, 5).map((t) => (t.error ? "failed" : `${Math.round(t.down_mbps ?? 0)}/${Math.round(t.up_mbps ?? 0)}`)).join(", ")} Mbit/s` : ""}</p>`
+      : html`<p class="faint">No speed tests yet.</p>`}
+    ${o.site
+      ? html`<form method="post" action="/actions/speedtest" hx-post="/actions/speedtest" hx-target="#live" hx-swap="outerHTML"><div class="btn-row"><button type="submit" ${pending ? "disabled" : ""}>${pending ? "Running…" : "Run speed test"}</button>${pending ? html`<span class="small muted">results in about a minute</span>` : ""}</div></form>`
+      : html`<p class="small muted">Needs the home site container. On the PC: <code>npm run home</code></p>`}
+  </div>`;
 }
 
 function hoursUntilMidnightLondon(now = new Date()): number {

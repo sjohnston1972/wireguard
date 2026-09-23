@@ -74,6 +74,15 @@ export interface AgentReport {
   peers: AgentPeer[];
 }
 
+export interface PendingDeploy {
+  region: string;
+  vm_size: string;
+  profile: string | null;
+  hours: number | null;
+  requested_by: string;
+  requester_ip: string | null;
+}
+
 /** A client that changed the address it dials in from (Wi-Fi to 4G, say). */
 export interface Roam {
   at: string;
@@ -153,6 +162,12 @@ export interface Snapshot {
   power_op_at: string | null; // when a hibernate or resume was asked for
   pending_summary: string | null; // the session summary, held while a tear-down runs
   region: string | null; // the Azure region this deployment was built in
+  vm_size: string | null; // and the VM size
+  profile: string | null; // the profile it was deployed from, if any
+  /** A deploy to start as soon as the current tear-down finishes ("Move to US exit"). */
+  pending_deploy: PendingDeploy | null;
+  /** A speed test the VM has been asked to run, until its result comes back. */
+  speedtest_req: { id: string; target: string; target_name: string; at: string } | null;
   updated_at: string;
 }
 
@@ -183,6 +198,10 @@ export const EMPTY: Snapshot = {
   power_op_at: null,
   pending_summary: null,
   region: null,
+  vm_size: null,
+  profile: null,
+  pending_deploy: null,
+  speedtest_req: null,
   updated_at: new Date(0).toISOString(),
 };
 

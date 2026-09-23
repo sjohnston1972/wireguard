@@ -86,12 +86,15 @@ export function hostLabel(name: string): string {
  * Split-tunnel clients use it only when asked, because while the VM is
  * destroyed a client left connected would lose DNS altogether.
  */
-export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: number; azure_vnet?: number; tunnel_dns?: number }, serverPub: string): string {
+export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: number; azure_vnet?: number; tunnel_dns?: number; home_lan?: number }, serverPub: string): string {
   const cfg = config(env);
   const ip6 = peerIp6(cfg.subnet6, peer.ip);
   const allowed = peer.full_tunnel
     ? ["0.0.0.0/0", "::/0"]
-    : [cfg.subnet, `${cfg.loopbackIp}/32`].concat(cfg.subnet6 ? [cfg.subnet6] : []).concat(peer.azure_vnet ? [cfg.vnetCidr] : []);
+    : [cfg.subnet, `${cfg.loopbackIp}/32`]
+        .concat(cfg.subnet6 ? [cfg.subnet6] : [])
+        .concat(peer.azure_vnet ? [cfg.vnetCidr] : [])
+        .concat(peer.home_lan && cfg.homeLanCidr ? [cfg.homeLanCidr] : []);
   const dns = peer.full_tunnel || peer.tunnel_dns ? [`DNS = ${cfg.loopbackIp}, wg`] : [];
   return [
     "[Interface]",
@@ -108,19 +111,32 @@ export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: 
   ].join("\n");
 }
 
-/** What the VM's agent needs: enabled peers as {name, host, public_key, allowed_ips}. */
+/** The extra networks a site peer carries, cleaned: "192.168.1.0/24, 10.9.0.0/16" -> ["192.168.1.0/24", "10.9.0.0/16"]. */
+export function peerRoutes(p: { routes?: string | null }): string[] {
+  return String(p.routes ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter((x) => /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(x));
+}
+
+/**
+ * What the VM's agent needs: enabled peers as {name, host, public_key, allowed_ips}.
+ * A site peer (the home container) also carries its LAN, so the VM routes
+ * 192.168.1.0/24 to it: WireGuard's cryptokey routing is the routing table.
+ */
 export function agentPeerList(peers: Peer[], subnet6 = ""): { name: string; host: string; public_key: string; allowed_ips: string }[] {
   return peers
     .filter((p) => p.enabled)
     .map((p) => {
       const ip6 = peerIp6(subnet6, p.ip);
-      return { name: p.name, host: hostLabel(p.name), public_key: p.public_key, allowed_ips: `${p.ip}/32${ip6 ? `,${ip6}/128` : ""}` };
+      const allowed = [`${p.ip}/32`].concat(ip6 ? [`${ip6}/128`] : []).concat(peerRoutes(p));
+      return { name: p.name, host: hostLabel(p.name), public_key: p.public_key, allowed_ips: allowed.join(",") };
     });
 }
 
 /** What Terraform's peers_json needs at deploy time. */
-export function terraformPeerList(peers: Peer[]): { name: string; public_key: string; ip: string }[] {
-  return peers.filter((p) => p.enabled).map((p) => ({ name: p.name, public_key: p.public_key, ip: p.ip }));
+export function terraformPeerList(peers: Peer[]): { name: string; public_key: string; ip: string; routes?: string }[] {
+  return peers.filter((p) => p.enabled).map((p) => ({ name: p.name, public_key: p.public_key, ip: p.ip, ...(peerRoutes(p).length ? { routes: peerRoutes(p).join(",") } : {}) }));
 }
 
 export function validPeerName(name: string): boolean {

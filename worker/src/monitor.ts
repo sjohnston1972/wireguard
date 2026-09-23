@@ -4,6 +4,7 @@
 // looking at the dashboard, it:
 //   - refreshes the active run from GitHub (so a missed callback heals)
 //   - moves a hibernate or resume along (standby.ts)
+//   - opens scheduled windows: deploys or resumes, timer to the window's end
 //   - 15 minutes before the auto-destroy deadline, pings the phone with
 //     one-tap buttons: Extend 1h, Hibernate, Tear down
 //   - at the deadline tears down, or hibernates if Settings says so (the
@@ -25,6 +26,7 @@ import * as db from "./db";
 import { getSnapshot, saveSnapshot, anyHandshakeWithin } from "./state";
 import { refreshActiveRun, startDestroy, detectDrift, refreshInventory } from "./runs";
 import { startHibernate, refreshPower } from "./standby";
+import { runSchedules } from "./schedule";
 import { notify } from "./notify";
 import { actionButton, dashboardButton } from "./actions";
 import { costMonthToDate } from "./azure";
@@ -45,6 +47,12 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     await refreshPower(env, now.getTime());
   } catch (e) {
     notes.push(`power: ${(e as Error).message}`);
+  }
+
+  try {
+    notes.push(...(await runSchedules(env, now)));
+  } catch (e) {
+    notes.push(`schedules: ${(e as Error).message}`);
   }
 
   let snap = await getSnapshot(env);

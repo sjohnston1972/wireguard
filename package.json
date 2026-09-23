@@ -16,7 +16,8 @@
     "migrate": "node scripts/migrate.mjs",
     "test": "node --test \"scripts/test/*.test.mjs\" && vitest run",
     "dev": "node scripts/dev.mjs",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "home": "node scripts/home.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260922.1",

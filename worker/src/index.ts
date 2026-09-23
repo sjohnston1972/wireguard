@@ -23,6 +23,9 @@ import { startHibernate, startResume, refreshPower } from "./standby";
 import { consumeAction } from "./actions";
 import { notify, ntfyParts, lastNotifyError } from "./notify";
 import { nearestRegion, REGIONS, regionName } from "./region";
+import { startMove } from "./profiles";
+import { startSpeedTest } from "./speedtest";
+import { nextStart, validRule } from "./schedule-time";
 import { setSshAllowedCidr } from "./azure";
 import { runScheduled } from "./monitor";
 import { page, type Tab } from "./views/layout";
@@ -141,13 +144,16 @@ function where(c: Context<App>): { country: string | null; region: string | null
 }
 
 async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null, near?: { country: string | null; region: string | null }) {
-  const [snap, cfg, peers, lock, deployment, serverPub] = await Promise.all([
+  const [snap, cfg, peers, lock, deployment, serverPub, profiles, speedtests, schedules] = await Promise.all([
     getSnapshot(env),
     effectiveConfig(env),
     db.listPeers(env),
     lockStatus(env),
     db.currentDeployment(env),
     serverPublicKey(env),
+    db.listProfiles(env),
+    db.listSpeedTests(env, 5),
+    db.listSchedules(env),
   ]);
   return liveSection({
     snap,
@@ -161,6 +167,10 @@ async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info";
     serverPub,
     callerIp: null,
     near: near ?? null,
+    profiles,
+    speedtests,
+    site: peers.find((p) => p.enabled && p.routes) ?? null,
+    nextScheduled: nextStart(schedules, new Date()),
   });
 }
 
@@ -194,14 +204,34 @@ async function action(c: Context<App>, fn: () => Promise<string>, kind: "good" |
 app.post("/actions/deploy", async (c) => {
   const form = await c.req.parseBody();
   const hours = Number(form.hours);
-  const region = String(form.region ?? "");
+  const choice = String(form.choice ?? (form.region ? `r:${form.region}` : ""));
   const user = c.get("user");
   return action(c, async () => {
-    if (region && !(region in REGIONS)) throw new RunError("Unknown region.");
-    const run = await startDeploy(c.env, { hours: hours > 0 ? hours : null, requesterIp: ip(c), requestedBy: user, region: region || undefined });
-    return `Deploy started in ${regionName(region || (await effectiveConfig(c.env)).region)} (${run.id}). About 4 minutes.`;
+    let region: string | undefined, vmSize: string | undefined, profile: string | null = null;
+    if (choice.startsWith("p:")) {
+      const p = await db.getProfile(c.env, Number(choice.slice(2)));
+      if (!p) throw new RunError("No such profile.");
+      ({ region, vm_size: vmSize } = p);
+      profile = p.name;
+    } else if (choice.startsWith("r:")) {
+      region = choice.slice(2);
+      if (!(region in REGIONS)) throw new RunError("Unknown region.");
+    }
+    const run = await startDeploy(c.env, { hours: hours > 0 ? hours : null, requesterIp: ip(c), requestedBy: user, region, vmSize, profile });
+    return `Deploy started${profile ? `: ${profile}` : ""} in ${regionName(region ?? (await effectiveConfig(c.env)).region)} (${run.id}). About 4 minutes.`;
   });
 });
+
+app.post("/actions/move", async (c) => {
+  const form = await c.req.parseBody();
+  const user = c.get("user");
+  return action(c, async () => {
+    const cfg = await effectiveConfig(c.env);
+    return startMove(c.env, { profileId: Number(form.profile), hours: cfg.autoDestroyDefaultHours > 0 ? cfg.autoDestroyDefaultHours : null, by: user, requesterIp: ip(c) });
+  }, "info");
+});
+
+app.post("/actions/speedtest", async (c) => action(c, () => startSpeedTest(c.env), "info"));
 
 app.post("/actions/hibernate", async (c) => {
   const user = c.get("user");
@@ -280,7 +310,7 @@ app.get("/partials/peers-table", async (c) => {
 });
 
 app.post("/api/peers", async (c) => {
-  const body = (await c.req.json().catch(() => null)) as { name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean } | null;
+  const body = (await c.req.json().catch(() => null)) as { name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; home_lan?: boolean } | null;
   if (!body) return c.json({ error: "bad json" }, 400);
   const name = String(body.name ?? "").trim();
   if (!validPeerName(name)) return c.json({ error: "Name: letters, digits, spaces, dashes; up to 32 characters." }, 400);
@@ -294,6 +324,10 @@ app.post("/api/peers", async (c) => {
   let peer;
   try {
     peer = await db.addPeer(c.env, { name, public_key: String(body.public_key), ip: ipAddr, full_tunnel: !!body.full_tunnel, azure_vnet: !!body.azure_vnet, tunnel_dns: !!body.tunnel_dns });
+    if (body.home_lan && !body.full_tunnel) {
+      await db.setPeerHomeLan(c.env, peer.id, true);
+      peer = (await db.getPeer(c.env, peer.id))!;
+    }
   } catch (e) {
     return c.json({ error: /UNIQUE/.test(String(e)) ? "That key is already registered." : (e as Error).message }, 409);
   }
@@ -335,6 +369,14 @@ app.post("/peers/:id/dns", async (c) => {
   return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
 });
 
+app.post("/peers/:id/homelan", async (c) => {
+  const id = Number(c.req.param("id"));
+  const p = await db.getPeer(c.env, id);
+  if (p) await db.setPeerHomeLan(c.env, id, !p.home_lan);
+  const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
+});
+
 app.post("/peers/:id/toggle", async (c) => {
   const id = Number(c.req.param("id"));
   const p = await db.getPeer(c.env, id);
@@ -366,7 +408,7 @@ app.get("/settings", async (c) => {
   const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
   const saved = c.req.query("saved") === "1";
   return c.html(
-    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env) }))
+    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null }))
   );
 });
 
@@ -376,12 +418,52 @@ app.post("/settings", async (c) => {
   if (rejected.length) {
     const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
     return c.html(
-      await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env) }), {
+      await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null }), {
         kind: "bad",
         text: `Not saved: ${rejected.join(", ")} did not look right.`,
       })
     );
   }
+  return c.redirect("/settings?saved=1");
+});
+
+app.post("/settings/profiles", async (c) => {
+  const f = (await c.req.parseBody()) as Record<string, string>;
+  const name = String(f.name ?? "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,23}$/.test(name) || !(f.region in REGIONS) || !/^Standard_[A-Za-z0-9_]{1,30}$/.test(f.vm_size ?? "")) return c.redirect("/settings?err=profile");
+  try {
+    await db.addProfile(c.env, { name, region: f.region, vm_size: f.vm_size });
+  } catch {
+    return c.redirect("/settings?err=profile");
+  }
+  return c.redirect("/settings?saved=1");
+});
+
+app.post("/settings/profiles/:id/delete", async (c) => {
+  await db.deleteProfile(c.env, Number(c.req.param("id")));
+  return c.redirect("/settings?saved=1");
+});
+
+app.post("/settings/schedules", async (c) => {
+  const form = await c.req.parseBody({ all: true });
+  const days = ([] as unknown[]).concat(form.day ?? []).map(String).filter((d) => /^[1-7]$/.test(d)).sort().join("");
+  const start = String(form.start ?? ""), end = String(form.end ?? "");
+  if (validRule(days, start, end)) return c.redirect("/settings?err=schedule");
+  const profileId = Number(form.profile) || null;
+  await db.addSchedule(c.env, { days, start_time: start, end_time: end, profile_id: profileId });
+  await db.addAlert(c.env, "info", `Schedule added by ${c.get("user")}: days ${days}, ${start}–${end}.`);
+  return c.redirect("/settings?saved=1");
+});
+
+app.post("/settings/schedules/:id/toggle", async (c) => {
+  const id = Number(c.req.param("id"));
+  const r = (await db.listSchedules(c.env)).find((x) => x.id === id);
+  if (r) await db.setScheduleEnabled(c.env, id, !r.enabled);
+  return c.redirect("/settings?saved=1");
+});
+
+app.post("/settings/schedules/:id/delete", async (c) => {
+  await db.deleteSchedule(c.env, Number(c.req.param("id")));
   return c.redirect("/settings?saved=1");
 });
 

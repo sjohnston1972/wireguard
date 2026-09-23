@@ -10,7 +10,9 @@ import type { Html } from "./layout";
 import { fmtTime, sheetHead } from "./layout";
 import type { Config } from "../env";
 import { SECRET_GROUPS } from "../env";
-import { REGIONS } from "../region";
+import { REGIONS, regionName } from "../region";
+import type { Profile, Schedule } from "../db";
+import { daysText } from "../schedule-time";
 
 export interface SettingsOpts {
   cfg: Config;
@@ -26,6 +28,58 @@ export interface SettingsOpts {
   /** Whether an ntfy access token is set, and the last failed notification. */
   ntfyToken?: boolean;
   notifyError?: { at: string; why: string } | null;
+  profiles?: Profile[];
+  schedules?: Schedule[];
+  err?: string | null;
+}
+
+const SIZES = ["Standard_B1s", "Standard_B1ms", "Standard_B2s", "Standard_B2ats_v2"];
+const DAYS: [string, string][] = [["1", "Mon"], ["2", "Tue"], ["3", "Wed"], ["4", "Thu"], ["5", "Fri"], ["6", "Sat"], ["7", "Sun"]];
+
+/** Deploy profiles: list, delete, add. */
+function profilesPanel(o: SettingsOpts): Html {
+  const ps = o.profiles ?? [];
+  return html`<div class="panel sheet" id="sh-profiles" style="margin-top:16px">
+    ${sheetHead("Profiles")}
+    <h2>Profiles</h2>
+    <p class="muted small">Named places to deploy. Deploy offers each as one tap; while running, Move rebuilds in another.</p>
+    ${ps.length
+      ? html`<ul class="checklist">${ps.map((p) => html`<li><div style="flex:1"><b>${p.name}</b> <span class="muted small">${regionName(p.region)}, ${p.vm_size}</span></div><form method="post" action="/settings/profiles/${p.id}/delete" hx-boost="false"><button type="submit" class="danger" style="padding:3px 10px;font-size:.8rem">Delete</button></form></li>`)}</ul>`
+      : html`<p class="faint">None yet.</p>`}
+    <form method="post" action="/settings/profiles" style="margin-top:10px">
+      <label class="field"><span>Name</span><input type="text" name="name" maxlength="24" required placeholder="Japan exit"></label>
+      <label class="field"><span>Region</span><select name="region">${Object.entries(REGIONS).map(([r, n]) => html`<option value="${r}">${n}</option>`)}</select></label>
+      <label class="field"><span>VM size</span><select name="vm_size">${SIZES.map((v) => html`<option value="${v}">${v}</option>`)}</select></label>
+      <div class="btn-row"><button type="submit">Add profile</button></div>
+    </form>
+  </div>`;
+}
+
+/** Scheduled windows: list, pause, delete, add. */
+function schedulesPanel(o: SettingsOpts): Html {
+  const rs = o.schedules ?? [];
+  const ps = o.profiles ?? [];
+  const pname = (id: number | null) => (id ? ps.find((p) => p.id === id)?.name ?? "deleted profile" : "usual settings");
+  return html`<div class="panel sheet" id="sh-schedules" style="margin-top:16px">
+    ${sheetHead("Schedules")}
+    <h2>Schedules</h2>
+    <p class="muted small">When a window opens (UK time) the watchman deploys, or resumes from Standby, and sets the timer to the window's end. Each window starts once a day; tear down by hand and it stays down until tomorrow's.</p>
+    ${rs.length
+      ? html`<ul class="checklist">${rs.map((r) => html`<li><span class="${r.enabled ? "ok" : "no"}">${r.enabled ? "●" : "○"}</span><div style="flex:1"><b>${daysText(r.days)} ${r.start_time}–${r.end_time}</b> <span class="muted small">${pname(r.profile_id)}</span></div>
+          <form method="post" action="/settings/schedules/${r.id}/toggle" hx-boost="false"><button type="submit" style="padding:3px 10px;font-size:.8rem">${r.enabled ? "Pause" : "Resume"}</button></form>
+          <form method="post" action="/settings/schedules/${r.id}/delete" hx-boost="false"><button type="submit" class="danger" style="padding:3px 10px;font-size:.8rem">Delete</button></form></li>`)}</ul>`
+      : html`<p class="faint">No schedules. Everything starts by hand.</p>`}
+    <form method="post" action="/settings/schedules" style="margin-top:10px">
+      <span class="small muted">Days</span>
+      <div class="chips">${DAYS.map(([v, n]) => html`<label><input type="checkbox" name="day" value="${v}" ${Number(v) <= 5 ? "checked" : ""}><span>${n}</span></label>`)}</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <label class="field"><span>From</span><input type="time" name="start" value="08:00" required></label>
+        <label class="field"><span>Until</span><input type="time" name="end" value="18:00" required></label>
+      </div>
+      <label class="field"><span>Profile</span><select name="profile"><option value="">Usual settings</option>${ps.map((p) => html`<option value="${p.id}">${p.name}</option>`)}</select></label>
+      <div class="btn-row"><button type="submit">Add schedule</button></div>
+    </form>
+  </div>`;
 }
 
 /** The phone's Settings: three lights (setup, alerts, lock) and a button per section. */
@@ -40,6 +94,8 @@ function settingsPhone(o: SettingsOpts): Html {
     </div>
     <div class="m-btns two">
       <button type="button" data-sheet="sh-next">Next deploy</button>
+      <button type="button" data-sheet="sh-profiles">Profiles</button>
+      <button type="button" data-sheet="sh-schedules">Schedules${(o.schedules ?? []).some((r) => r.enabled) ? html` <span class="count">${(o.schedules ?? []).filter((r) => r.enabled).length}</span>` : ""}</button>
       ${o.ntfy ? html`<button type="button" data-sheet="sh-alerts-setup">Phone alerts</button>` : html`<button type="button" data-sheet="sh-setup">Setup</button>`}
       ${o.ntfy ? html`<button type="button" data-sheet="sh-setup">Setup</button>` : ""}
       <button type="button" data-sheet="sh-lock">Run lock</button>
@@ -52,7 +108,9 @@ export function settingsBody(o: SettingsOpts): Html {
   const ov = (k: string, d: string | number) => (o.overrides[k] ?? String(d));
   return html`<section>
   <div class="section-head"><h1>Settings</h1></div>
-  ${o.saved ? html`<div class="notice good"><p>Saved. The next deploy uses these values.</p></div>` : ""}
+  ${o.saved ? html`<div class="notice good"><p>Saved.</p></div>` : ""}
+  ${o.err === "profile" ? html`<div class="notice bad"><p>Not saved: a profile needs a short name (letters, digits, spaces, dashes) that is not already used.</p></div>` : ""}
+  ${o.err === "schedule" ? html`<div class="notice bad"><p>Not saved: pick at least one day, and an end time later than the start (a window cannot cross midnight).</p></div>` : ""}
   ${settingsPhone(o)}
   <div class="two-col">
     <div class="panel sheet" id="sh-next">
@@ -107,6 +165,9 @@ export function settingsBody(o: SettingsOpts): Html {
         <p class="muted small" style="margin-top:8px">You get: ready (with the self-test result), a heads-up 15 minutes before the timer ends with Extend 1h / Hibernate / Tear down buttons, a summary when a session ends, and any drift, failure or cost guard. The topic name is the only key to the channel, so keep it to yourself; the buttons are single-use and can only extend, hibernate or tear down.</p>
       </div>`
         : ""}
+
+      ${profilesPanel(o)}
+      ${schedulesPanel(o)}
 
       <div class="panel sheet" id="sh-lock" style="margin-top:16px">
         ${sheetHead("Run lock")}

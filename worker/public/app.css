@@ -587,3 +587,10 @@ dialog.modal[open] { animation: modal-in 160ms ease-out; }
 }
 
 @media (max-width: 640px) { footer.wrap { display: none; } }
+
+/* Speed test result: three numbers side by side. */
+dl.speed { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 16px; margin: 10px 0 6px; }
+dl.speed dt { color: var(--ink-2); font-size: 0.8rem; }
+dl.speed dd { margin: 2px 0 0; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+dl.speed dd .small { font-size: 0.8rem; }
+button .count { display: inline-block; min-width: 1.4em; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--signal-soft); color: var(--signal); font-size: 0.8rem; text-align: center; }
