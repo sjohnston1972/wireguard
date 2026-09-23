@@ -112,16 +112,27 @@ app.post("/api/act/:token", async (c) => {
   return c.text(msg);
 });
 
+// The app description a phone reads to install wg-admin to its home screen.
+// It and /icons/ have their own Access bypass (they hold nothing private),
+// because browsers fetch them without the login cookie.
 app.get("/manifest.webmanifest", (c) =>
   c.json(
     {
+      id: "/",
       name: "wg-admin",
       short_name: "wg-admin",
+      description: "On-demand WireGuard headend: deploy, watch and tear down.",
       start_url: "/",
+      scope: "/",
       display: "standalone",
-      background_color: "#eef2f6",
+      orientation: "portrait",
+      background_color: "#0f1620",
       theme_color: "#2457f5",
-      icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }, { src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+      icons: [
+        { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+        { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      ],
     },
     200,
     { "Content-Type": "application/manifest+json" }
@@ -408,7 +419,7 @@ app.get("/settings", async (c) => {
   const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
   const saved = c.req.query("saved") === "1";
   return c.html(
-    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null }))
+    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl }))
   );
 });
 
@@ -418,7 +429,7 @@ app.post("/settings", async (c) => {
   if (rejected.length) {
     const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
     return c.html(
-      await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null }), {
+      await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl }), {
         kind: "bad",
         text: `Not saved: ${rejected.join(", ")} did not look right.`,
       })

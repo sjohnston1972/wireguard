@@ -92,6 +92,10 @@ You need: [Node.js](https://nodejs.org) 20+, [GitHub CLI](https://cli.github.com
 Open **https://wg-admin.clydeford.net** and sign in with Google, or with the
 one-time PIN sent to your email (Cloudflare Access; only your address is allowed). On a phone, use "Add to Home Screen": it
 installs as an app with its own icon, and the login lasts 24 hours.
+Settings > **Install the app** walks you through it: an Install button on
+Android (Chrome), the three Safari taps on an iPhone, and on a computer a QR
+code to open the dashboard on the phone. The app manifest and icons are
+public (their own Access bypass); everything else stays behind the login.
 
 On a phone the dashboard is slimmed right down: every tab fits one screen,
 with the sections in a tab bar at the bottom. Each tab shows a few status

@@ -31,10 +31,40 @@ export interface SettingsOpts {
   profiles?: Profile[];
   schedules?: Schedule[];
   err?: string | null;
+  publicUrl?: string;
 }
 
 const SIZES = ["Standard_B1s", "Standard_B1ms", "Standard_B2s", "Standard_B2ats_v2"];
 const DAYS: [string, string][] = [["1", "Mon"], ["2", "Tue"], ["3", "Wed"], ["4", "Thu"], ["5", "Fri"], ["6", "Sat"], ["7", "Sun"]];
+
+/**
+ * Install wg-admin as an app. What shows depends on the device, and app.js
+ * fills it in: an Install button where the browser offers one (Chrome on
+ * Android), the Share-sheet steps on an iPhone, "installed" when it already
+ * runs as an app, and on a computer a QR code to open it on the phone.
+ */
+function installPanel(o: SettingsOpts): Html {
+  return html`<div class="panel sheet" id="sh-install" data-install-panel>
+    ${sheetHead("Install on your phone")}
+    <h2>Install on your phone</h2>
+    <p class="muted small">wg-admin installs as an app: its own icon, full screen, no browser bars, and the login lasts 24 hours.</p>
+    <p data-install-state class="small"></p>
+    <div class="btn-row" data-install-android hidden><button type="button" class="primary big" data-install>Install app</button></div>
+    <ol class="steps small" data-install-ios hidden>
+      <li>Open this page in <b>Safari</b>.</li>
+      <li>Tap <b>Share</b> (the square with an arrow, bottom centre).</li>
+      <li>Scroll down, tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+    </ol>
+    <ol class="steps small" data-install-other hidden>
+      <li>In Chrome, open the <b>⋮</b> menu.</li>
+      <li>Tap <b>Install app</b> (or <b>Add to Home screen</b>).</li>
+    </ol>
+    <div data-install-desktop hidden>
+      <p class="small muted">Scan with the phone's camera to open wg-admin there, then come back to this panel on the phone.</p>
+      <div class="qr install-qr" data-qr-text="${o.publicUrl ?? ""}" aria-label="QR code of the dashboard address"></div>
+    </div>
+  </div>`;
+}
 
 /** Deploy profiles: list, delete, add. */
 function profilesPanel(o: SettingsOpts): Html {
@@ -92,6 +122,7 @@ function settingsPhone(o: SettingsOpts): Html {
       <span class="ind ${alerts[0]}"><i></i>${alerts[1]}</span>
       <span class="ind ${o.lock.held ? "busy" : "up"}"><i></i>${o.lock.held ? "Run lock held" : "Lock free"}</span>
     </div>
+    <div class="m-btns"><button type="button" class="primary" data-sheet="sh-install" data-install-link>Install the app</button></div>
     <div class="m-btns two">
       <button type="button" data-sheet="sh-next">Next deploy</button>
       <button type="button" data-sheet="sh-profiles">Profiles</button>
@@ -166,6 +197,7 @@ export function settingsBody(o: SettingsOpts): Html {
       </div>`
         : ""}
 
+      ${installPanel(o)}
       ${profilesPanel(o)}
       ${schedulesPanel(o)}
 

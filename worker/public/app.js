@@ -182,6 +182,53 @@
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") hideTips(); });
 
+  // ── Install as an app (Settings > Install on your phone) ────────────────
+  // Chrome on Android offers installation through a "beforeinstallprompt"
+  // event: keep it and fire it from our own button. Safari on iPhone has no
+  // such event, so there the panel shows the Share-sheet steps instead.
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(function () { /* the dashboard works without it */ });
+  }
+  var installPrompt = null;
+  function isInstalled() {
+    return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  }
+  function isIos() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+  function isPhone() { return window.matchMedia && window.matchMedia("(max-width: 900px) and (pointer: coarse)").matches; }
+  function renderInstall(root) {
+    (root || document).querySelectorAll("[data-install-panel]").forEach(function (p) {
+      var state = p.querySelector("[data-install-state]");
+      var show = function (sel, on) { var el = p.querySelector(sel); if (el) el.hidden = !on; };
+      var installed = isInstalled();
+      show("[data-install-android]", !installed && !!installPrompt);
+      show("[data-install-ios]", !installed && isIos());
+      show("[data-install-other]", !installed && !isIos() && !installPrompt && isPhone());
+      show("[data-install-desktop]", !installed && !isPhone() && !isIos());
+      if (state) state.innerHTML = installed
+        ? "<span class='pill up'>installed</span> You are using wg-admin as an app."
+        : installPrompt ? "Ready to install on this device."
+        : isIos() ? "iPhone and iPad install from Safari's Share menu:"
+        : isPhone() ? "Install from the browser menu:"
+        : "";
+      var qr = p.querySelector("[data-qr-text]");
+      if (qr && !qr.firstChild && typeof qrcode === "function" && qr.getAttribute("data-qr-text")) drawQr(qr, qr.getAttribute("data-qr-text"));
+    });
+    // Once installed, the Settings button that leads here is not needed.
+    (root || document).querySelectorAll("[data-install-link]").forEach(function (b) { b.hidden = isInstalled(); });
+  }
+  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); installPrompt = e; renderInstall(); });
+  window.addEventListener("appinstalled", function () { installPrompt = null; renderInstall(); });
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest("[data-install]") || !installPrompt) return;
+    installPrompt.prompt();
+    installPrompt.userChoice.finally(function () { installPrompt = null; renderInstall(); });
+  });
+  document.addEventListener("DOMContentLoaded", function () { renderInstall(); });
+  document.addEventListener("htmx:afterSwap", function (e) { renderInstall(e.target); });
+  setTimeout(renderInstall, 0);
+
   // ── Confirmation word gate ──────────────────────────────────────────────
   function wireConfirm(root) {
     (root || document).querySelectorAll("[data-confirm-word]").forEach(function (input) {
