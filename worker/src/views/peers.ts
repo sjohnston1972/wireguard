@@ -7,7 +7,7 @@
 
 import { html } from "hono/html";
 import type { Html } from "./layout";
-import { ago, bytes, fmtTime } from "./layout";
+import { ago, bytes, fmtTime, sheetHead } from "./layout";
 import type { Peer } from "../db";
 import type { AgentReport, AgentPeer } from "../state";
 import { peerOnline } from "../state";
@@ -30,9 +30,53 @@ function statusCell(p: Peer, live: AgentPeer | undefined, running: boolean, onli
   return online ? html`<span class="pill up">online</span>` : html`<span class="pill idle">offline</span> <span class="faint small">on the VM, no recent handshake</span>`;
 }
 
+/** The buttons for one client, shared by the desktop row and the phone sheet. */
+function peerActions(p: Peer): Html {
+  return html`<button type="button" data-rekey="${p.id}" data-name="${p.name}" title="Make new keys for this client and download its config">Get config</button>
+            ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/azure" hx-post="/peers/${p.id}/azure" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client route the Azure network through the tunnel. Changes the next config you download; edit AllowedIPs in the app to change an existing one.">${p.azure_vnet ? "Azure route: on" : "Azure route: off"}</button></form>`}
+            ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/dns" hx-post="/peers/${p.id}/dns" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client use the tunnel DNS on the VM (ad-blocking, .wg names). Changes the next config you download.">${p.tunnel_dns ? "Tunnel DNS: on" : "Tunnel DNS: off"}</button></form>`}
+            <form method="post" action="/peers/${p.id}/toggle" hx-post="/peers/${p.id}/toggle" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit">${p.enabled ? "Disable" : "Enable"}</button></form>
+            <form method="post" action="/peers/${p.id}/delete" hx-post="/peers/${p.id}/delete" hx-target="#peers-table" hx-swap="outerHTML" hx-confirm="Delete ${p.name}? Its config stops working at the next heartbeat." style="display:inline"><button type="submit" class="danger">Delete</button></form>`;
+}
+
+/**
+ * The phone's Clients: one line per device (a light, the name, and latency or
+ * state), each opening a sheet with the details and the buttons.
+ */
+function peersPhone(peers: Peer[], byKey: Map<string, AgentPeer>, running: boolean, latency: Record<string, number[]>): Html {
+  if (!peers.length) return html`<div class="m-only m-empty">No clients yet.</div>`;
+  return html`<ul class="m-list m-only">
+    ${peers.map((p) => {
+      const live = byKey.get(p.public_key);
+      const online = !!live && peerOnline(live);
+      const lat = latency[p.public_key]?.slice(-1)[0];
+      const kind = !p.enabled ? "idle" : !running ? "idle" : online ? "up" : live ? "idle" : "busy";
+      const right = !p.enabled ? "disabled" : !running ? "" : online ? (lat !== undefined ? `${lat < 10 ? lat.toFixed(1) : Math.round(lat)} ms` : "online") : live ? "offline" : "loading";
+      return html`<li><button type="button" data-sheet="sh-peer-${p.id}"><span class="ind ${kind}"><i></i>${p.name}</span><span class="m-right">${right}</span></button></li>`;
+    })}
+  </ul>
+  ${peers.map((p) => {
+    const live = byKey.get(p.public_key);
+    const online = !!live && peerOnline(live);
+    return html`<div class="panel sheet m-only" id="sh-peer-${p.id}">
+      ${sheetHead(p.name)}
+      <p>${statusCell(p, live, running, online)}${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}${p.tunnel_dns || p.full_tunnel ? html` <span class="pill idle">tunnel DNS</span>` : ""}</p>
+      <dl class="m-kv">
+        <div><dt>Tunnel address</dt><dd class="mono">${p.ip}</dd></div>
+        <div><dt>Last handshake</dt><dd>${live && live.latest_handshake ? ago(new Date(live.latest_handshake * 1000).toISOString()) : "never"}</dd></div>
+        <div><dt>Latency</dt><dd>${running && online ? latencyCell(latency[p.public_key]) : "—"}</dd></div>
+        <div><dt>Received / sent</dt><dd>${live ? `${bytes(live.tx)} / ${bytes(live.rx)}` : "—"}</dd></div>
+      </dl>
+      <div class="m-actions">${peerActions(p)}</div>
+    </div>`;
+  })}`;
+}
+
 export function peersTable(peers: Peer[], report: AgentReport | null, running: boolean, latency: Record<string, number[]> = {}): Html {
   const byKey = new Map((report?.peers ?? []).map((p) => [p.public_key, p]));
-  return html`<div id="peers-table" class="table-wrap">
+  return html`<div id="peers-table">
+  ${peersPhone(peers, byKey, running, latency)}
+  <div class="table-wrap d-only">
   ${peers.length
     ? html`<table class="rows stack">
       <thead><tr><th>Client</th><th>Tunnel address</th><th>Status</th><th>Last handshake</th><th>Latency</th><th class="num">Received</th><th class="num">Sent</th><th></th></tr></thead>
@@ -49,27 +93,27 @@ export function peersTable(peers: Peer[], report: AgentReport | null, running: b
           <td class="num" data-label="Received">${live ? bytes(live.tx) : html`<span class="faint">—</span>`}</td>
           <td class="num" data-label="Sent">${live ? bytes(live.rx) : html`<span class="faint">—</span>`}</td>
           <td class="actions">
-            <button type="button" data-rekey="${p.id}" data-name="${p.name}" title="Make new keys for this client and download its config">Get config</button>
-            ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/azure" hx-post="/peers/${p.id}/azure" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client route the Azure network through the tunnel. Changes the next config you download; edit AllowedIPs in the app to change an existing one.">${p.azure_vnet ? "Azure route: on" : "Azure route: off"}</button></form>`}
-            ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/dns" hx-post="/peers/${p.id}/dns" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client use the tunnel DNS on ${"the VM"} (ad-blocking, .wg names). Changes the next config you download.">${p.tunnel_dns ? "Tunnel DNS: on" : "Tunnel DNS: off"}</button></form>`}
-            <form method="post" action="/peers/${p.id}/toggle" hx-post="/peers/${p.id}/toggle" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit">${p.enabled ? "Disable" : "Enable"}</button></form>
-            <form method="post" action="/peers/${p.id}/delete" hx-post="/peers/${p.id}/delete" hx-target="#peers-table" hx-swap="outerHTML" hx-confirm="Delete ${p.name}? Its config stops working at the next heartbeat." style="display:inline"><button type="submit" class="danger">Delete</button></form>
+            ${peerActions(p)}
           </td>
         </tr>`;
       })}
       </tbody></table>`
     : html`<div class="empty"><b>No clients yet.</b> Add one below: a phone takes under a minute.</div>`}
+  </div>
 </div>`;
 }
 
 export function peersBody(o: { peers: Peer[]; report: AgentReport | null; running: boolean; cfg: Config; serverPub: string | null; nextIp: string | null; latency?: Record<string, number[]> }): Html {
   return html`<section>
-  <div class="section-head"><h1>Clients</h1><span class="muted small">${o.running ? "Changes reach the VM within 30 seconds; the status column shows what the VM reports." : "Changes are loaded at the next deploy."}</span></div>
+  <div class="section-head"><h1>Clients</h1><span class="muted small d-only">${o.running ? "Changes reach the VM within 30 seconds; the status column shows what the VM reports." : "Changes are loaded at the next deploy."}</span></div>
   ${peersTable(o.peers, o.report, o.running, o.latency)}
+  <div class="m-btns m-only" style="margin-top:12px"><button type="button" class="primary big" data-sheet="sh-add">Add a client</button></div>
+  <div class="m-more m-only"><button type="button" class="ghost" data-sheet="sh-help">Apps and server key</button></div>
 </section>
 
 <section id="peer-reveal" hidden>
   <div class="panel">
+    <div class="sheet-head"><b>New config</b><button type="button" class="sheet-x" data-reveal-close>Done</button></div>
     <div class="section-head"><h2>Config for <span data-peer-name></span></h2><span class="muted small">tunnel address <span class="mono" data-peer-ip></span></span></div>
     <p class="muted">This is the only time the private key is shown. Scan it with the WireGuard app, or download the file and use "Import tunnel(s) from file" on Windows or macOS. It is not stored anywhere; to get a config again later, press Get config on the client, which makes new keys.</p>
     <div class="reveal">
@@ -84,7 +128,8 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
 
 <div class="side-by-side">
 <section>
-  <div class="panel">
+  <div class="panel sheet" id="sh-add">
+    ${sheetHead("Add a client")}
     <h2>Add a client</h2>
     ${o.serverPub
       ? html`<form id="add-peer" hx-boost="false" action="/peers" method="get">
@@ -99,7 +144,8 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
   </div>
 </section>
 
-<div class="stack">
+<div class="stack sheet" id="sh-help">
+${sheetHead("Apps and server key")}
 <section>
   <div class="panel quiet">
     <h3>Get the WireGuard app</h3>

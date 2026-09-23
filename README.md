@@ -93,11 +93,14 @@ Open **https://wg-admin.clydeford.net** and sign in with Google, or with the
 one-time PIN sent to your email (Cloudflare Access; only your address is allowed). On a phone, use "Add to Home Screen": it
 installs as an app with its own icon, and the login lasts 24 hours.
 
-On a phone the layout changes: the sections sit in a tab bar at the bottom,
-the Overview puts the action you came for (Deploy, Extend, Resume) straight
-under the state word, facts sit two to a row, the client and activity tables
-become one card per row, and the SSH and Azure panels open as sheets from the
-bottom edge. The desktop layout is unchanged.
+On a phone the dashboard is slimmed right down: every tab fits one screen,
+with the sections in a tab bar at the bottom. Each tab shows a few status
+lights (green, amber, red, grey) and a handful of buttons: Overview has the
+state, the tunnel picture, four lights and Deploy / Extend / Hibernate /
+Resume / Tear down; Clients is one line per device. Everything else (the full
+facts, lists, forms, a client's details) sits in a sheet that slides up from
+the bottom when you tap its button, and Done puts it away. The desktop layout
+is unchanged.
 
 | Screen | What it does |
 | --- | --- |

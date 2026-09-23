@@ -10,7 +10,7 @@
 
 import { html, raw } from "hono/html";
 import type { Html } from "./layout";
-import { fmtTime, ago, gbp, bytes } from "./layout";
+import { fmtTime, ago, gbp, bytes, sheetHead } from "./layout";
 import { serverTunnelIp } from "../peers";
 import type { Snapshot } from "../state";
 import { STATE_LABEL, isBusy, isPowerOp, peerOnline, trafficFlowing, selfTestFailures } from "../state";
@@ -178,11 +178,13 @@ export function liveSection(o: LiveOpts): Html {
     <div>
       <h1 class="state-word" data-state="${wordState}">${word}</h1>
       <div class="state-sub">${subline(s, o.cfg)}</div>
+      <div class="m-sub m-only">${phoneLine(s)}</div>
     </div>
     <div class="tipwrap">${tunnel(s, o.cfg)}${tunnelCompact(s, o.cfg)}${homeTip(o)}${azureTip(o)}</div>
   </div>
 
-  <dl class="facts">
+  <dl class="facts sheet" id="sh-facts">
+    ${sheetHead("Details")}
     <div class="fact"><dt>Public address</dt><dd>${s.public_ip ? html`<span class="mono">${s.public_ip}</span>${s.state === "running" && publicIp6(s) ? html`<div class="mono small">${publicIp6(s)}</div>` : ""}` : html`<span class="faint">none</span>`}</dd></div>
     <div class="fact"><dt>${o.cfg.dnsName}</dt><dd>${dnsCell(s)}</dd></div>
     ${s.state === "standby" && s.standby_since
@@ -197,11 +199,89 @@ export function liveSection(o: LiveOpts): Html {
     <div class="fact fact-live"><dt>Heartbeat from VM</dt><dd>${s.state !== "running" ? html`<span class="faint">—</span>` : heartbeatStale ? html`<span class="pill down">missing</span> <span class="faint small">${ago(s.last_agent_at)}</span>` : html`<span class="pill up">live</span> <span class="faint small">${ago(s.last_agent_at)}${s.agent ? html`, load ${s.agent.load.split(" ")[0]}` : ""}</span>`}</dd></div>
   </dl>
 
+  ${phoneDock(o, online, heartbeatStale)}
   ${isPowerOp(s.state) ? powerProgress(s) : busy ? runProgress(s) : controls(o)}
   ${modalButtons(o)}
   ${secrets(o)}
   ${inventory(o)}
 </section>`;
+}
+
+/** One short line under the state word on a phone. */
+function phoneLine(s: Snapshot): Html {
+  switch (s.state) {
+    case "running":
+      return s.auto_destroy_at ? html`Tears down in <b data-until="${s.auto_destroy_at}"></b>` : html`No timer set`;
+    case "deploying":
+      return html`Building in Azure, about 4 minutes`;
+    case "destroying":
+      return html`Removing everything from Azure`;
+    case "hibernating":
+      return html`Powering down; address and DNS stay`;
+    case "resuming":
+      return html`Powering up, about a minute`;
+    case "standby":
+      return html`Powered off; resumes in about a minute`;
+    case "failed":
+      return html`The last run failed`;
+    default:
+      return html`Nothing in Azure, costing £0`;
+  }
+}
+
+/** A status light with a word: green, amber, red or grey. */
+function ind(kind: "up" | "busy" | "down" | "idle", text: Html | string): Html {
+  return html`<span class="ind ${kind}"><i></i>${text}</span>`;
+}
+
+/** The phone's whole Overview below the diagram: four indicators and a few buttons. */
+function phoneDock(o: LiveOpts, online: number, heartbeatStale: boolean): Html {
+  const s = o.snap;
+  const inds: Html[] = [];
+  const btn = (label: string, sheet: string, cls = "") => html`<button type="button" class="${cls}" data-sheet="${sheet}">${label}</button>`;
+  let main: Html = html``;
+  let more: Html[] = [btn("Details", "sh-facts", "ghost")];
+
+  if (s.state === "running") {
+    const failed = selfTestFailures(s.selftest);
+    inds.push(verifying(s) ? ind("busy", "Testing") : !s.selftest ? ind("idle", "Tunnel") : failed.length ? ind("down", "Tunnel") : ind("up", "Tunnel OK"));
+    inds.push(s.agent?.dns ? ind(s.agent.dns.up ? "up" : "down", "DNS") : ind("idle", "DNS"));
+    inds.push(heartbeatStale ? ind("down", "No heartbeat") : ind(online > 0 ? "up" : "idle", `${online}/${o.peerCount} online`));
+    inds.push(s.running_since ? ind("idle", html`<span data-cost-since="${s.running_since}" data-rate="${o.cfg.hourlyRateGbp}">£0.00</span>`) : ind("idle", "£0.00"));
+    main = html`<div class="m-btns three">${btn("Extend", "sh-timer", "primary")}${btn("Hibernate", "sh-hibernate")}${btn("Tear down", "sh-teardown", "danger")}</div>`;
+    if (o.deployment) more.push(html`<button type="button" class="ghost" data-open="dlg-ssh">SSH</button>`);
+    more.push(html`<button type="button" class="ghost" data-open="dlg-azure">Azure</button>`);
+  } else if (s.state === "standby") {
+    inds.push(ind("idle", "VM off"));
+    inds.push(ind("idle", `${o.peerCount} client${o.peerCount === 1 ? "" : "s"}`));
+    inds.push(ind(s.dns_live ? "up" : "idle", "DNS kept"));
+    inds.push(ind("idle", `${gbp(o.cfg.standbyRateGbp)}/h`));
+    main = html`<div class="m-btns">${btn("Resume", "sh-resume", "primary big")}</div>`;
+    more = [btn("Tear down", "sh-teardown", "ghost"), ...more, html`<button type="button" class="ghost" data-open="dlg-azure">Azure</button>`];
+  } else if (isBusy(s.state)) {
+    const steps = s.steps ?? [];
+    const done = steps.filter((x) => x.status === "completed").length;
+    const now = steps.find((x) => x.status === "in_progress")?.name;
+    const pct = isPowerOp(s.state) ? 50 : steps.length ? Math.round((done / steps.length) * 100) : 5;
+    main = html`<div class="m-progress"><div class="m-step">${isPowerOp(s.state) ? (s.state === "hibernating" ? "Waiting for Azure to power it down" : "Waiting for the first heartbeat") : now ?? "Waiting for GitHub to start"}</div><div class="budget"><i class="warn" style="width:${pct}%"></i></div></div>`;
+    more = [btn("Progress", "sh-progress", "ghost"), ...more];
+  } else {
+    // destroyed or failed
+    inds.push(s.state === "failed" ? ind("down", "Run failed") : ind("idle", "Azure empty"));
+    inds.push(ind("idle", `${o.peerCount} client${o.peerCount === 1 ? "" : "s"}`));
+    inds.push(ind("idle", s.dns_ip === "192.0.2.1" ? "DNS parked" : "DNS"));
+    inds.push(ind("idle", "£0.00"));
+    main = s.state === "failed"
+      ? html`<div class="m-btns">${btn("Clean up", "sh-idle", "primary big")}</div>`
+      : html`<div class="m-btns">${btn("Deploy", "sh-deploy", "primary big")}</div>`;
+    if (s.state === "failed") more = [btn("Deploy", "sh-deploy", "ghost"), ...more];
+    else more.push(btn("Check Azure", "sh-idle", "ghost"));
+  }
+  return html`<div class="m-dock m-only">
+    ${inds.length ? html`<div class="m-inds">${inds}</div>` : ""}
+    ${main}
+    <div class="m-more">${more}</div>
+  </div>`;
 }
 
 function subline(s: Snapshot, cfg: Config): Html {
@@ -363,7 +443,8 @@ function azureTip(o: LiveOpts): Html {
 }
 
 function runProgress(s: Snapshot): Html {
-  return html`<div class="panel progress" style="margin-top:16px">
+  return html`<div class="panel progress sheet" id="sh-progress" style="margin-top:16px">
+  ${sheetHead(s.action === "destroy" ? "Tearing down" : "Deploying")}
   <div class="section-head"><h2>${s.action === "destroy" ? "Tearing down" : "Deploying"}</h2>
     <form method="post" action="/actions/cancel" hx-post="/actions/cancel" hx-target="#live" hx-swap="outerHTML" hx-confirm="Cancel the run? You will need to Clean up afterwards."><button type="submit" class="danger">Cancel</button></form>
   </div>
@@ -377,7 +458,8 @@ function runProgress(s: Snapshot): Html {
 /** Hibernate and resume have no GitHub run: Azure does it, and we poll the power state. */
 function powerProgress(s: Snapshot): Html {
   const down = s.state === "hibernating";
-  return html`<div class="panel progress" style="margin-top:16px">
+  return html`<div class="panel progress sheet" id="sh-progress" style="margin-top:16px">
+  ${sheetHead(down ? "Hibernating" : "Resuming")}
   <div class="section-head"><h2>${down ? "Hibernating" : "Resuming"}</h2><span class="muted small">asked ${ago(s.power_op_at)}</span></div>
   <ol class="timeline">
     <li data-s="completed" data-c="success"><span class="dot"></span>Asked Azure to ${down ? "deallocate the VM" : "start the VM"}</li>
@@ -416,7 +498,8 @@ function controls(o: LiveOpts): Html {
   const expiry = o.cfg.expiryAction === "hibernate" ? "hibernates" : "tears down";
   if (s.state === "standby") {
     return html`<div class="controls" style="margin-top:16px">
-      <div class="panel" data-slot="primary">
+      <div class="panel sheet" id="sh-resume" data-slot="primary">
+        ${sheetHead("Resume")}
         <h2>Resume</h2>
         <p class="muted">Powers the VM back on. Same address, same DNS, same clients; they reconnect by themselves. About a minute, at ${gbp(o.cfg.hourlyRateGbp)} an hour while up.</p>
         <form method="post" action="/actions/resume" hx-post="/actions/resume" hx-target="#live" hx-swap="outerHTML">
@@ -425,7 +508,8 @@ function controls(o: LiveOpts): Html {
           <div class="btn-row"><button type="submit" class="primary big">Resume</button></div>
         </form>
       </div>
-      <div class="panel quiet" data-slot="last">
+      <div class="panel quiet sheet" id="sh-teardown" data-slot="last">
+        ${sheetHead("Tear down")}
         <h2>Tear down</h2>
         <p class="muted">Removes the VM, its disk and address, back to £0. The next start is a full deploy (about 4 minutes).</p>
         <form method="post" action="/actions/destroy" hx-post="/actions/destroy" hx-target="#live" hx-swap="outerHTML">
@@ -437,7 +521,8 @@ function controls(o: LiveOpts): Html {
   }
   return html`<div class="controls" style="margin-top:16px">
   ${s.state === "running"
-    ? html`<div class="panel" data-slot="last">
+    ? html`<div class="panel sheet" id="sh-teardown" data-slot="last">
+        ${sheetHead("Tear down")}
         <h2>Tear down</h2>
         <p class="muted">Removes the VM, its address and the DNS record. Clients keep their configs and reconnect after the next deploy.</p>
         <form method="post" action="/actions/destroy" hx-post="/actions/destroy" hx-target="#live" hx-swap="outerHTML">
@@ -445,14 +530,16 @@ function controls(o: LiveOpts): Html {
           <div class="btn-row"><button type="submit" class="danger primary big" disabled ${disabled ? "disabled" : ""}>Tear down now</button></div>
         </form>
       </div>
-      <div class="panel" data-slot="second">
+      <div class="panel sheet" id="sh-hibernate" data-slot="second">
+        ${sheetHead("Hibernate")}
         <h2>Hibernate</h2>
         <p class="muted">Warm standby: powers the VM off but keeps its disk and address, about ${gbp(o.cfg.standbyRateGbp * 24 * 30)} a month instead of ${gbp(o.cfg.hourlyRateGbp * 24 * 30)}. Resume takes about a minute instead of a 4-minute deploy.</p>
         <form method="post" action="/actions/hibernate" hx-post="/actions/hibernate" hx-target="#live" hx-swap="outerHTML">
           <div class="btn-row"><button type="submit">Hibernate</button></div>
         </form>
       </div>
-      <div class="panel" data-slot="primary">
+      <div class="panel sheet" id="sh-timer" data-slot="primary">
+        ${sheetHead("Extend or change the timer")}
         <h2>Auto-destroy</h2>
         <p class="muted">${s.auto_destroy_at ? html`Set for ${fmtTime(s.auto_destroy_at)}, in <b data-until="${s.auto_destroy_at}"></b>. The watchman ${expiry} within 5 minutes of that, and your phone gets a heads-up 15 minutes before.` : "Not set. The VM runs until you tear it down."}</p>
         <form method="post" action="/actions/extend" hx-post="/actions/extend" hx-target="#live" hx-swap="outerHTML">
@@ -460,7 +547,8 @@ function controls(o: LiveOpts): Html {
           <div class="btn-row"><button type="submit">Set from now</button></div>
         </form>
       </div>`
-    : html`<div class="panel" data-slot="primary">
+    : html`<div class="panel sheet" id="sh-deploy" data-slot="primary">
+        ${sheetHead("Deploy")}
         <h2>Deploy</h2>
         <p class="muted">Builds a ${o.cfg.vmSize} in Azure, points ${o.cfg.dnsName} at it, loads ${o.peerCount} client${o.peerCount === 1 ? "" : "s"}. About ${gbp(o.cfg.hourlyRateGbp)} an hour while up.</p>
         <form method="post" action="/actions/deploy" hx-post="/actions/deploy" hx-target="#live" hx-swap="outerHTML">
@@ -474,7 +562,8 @@ function controls(o: LiveOpts): Html {
           </div>
         </form>
       </div>
-      <div class="panel quiet" data-slot="last">
+      <div class="panel quiet sheet" id="sh-idle" data-slot="last">
+        ${sheetHead(s.state === "failed" ? "Clean up" : "Check Azure")}
         <h2>${s.state === "failed" ? "Clean up" : "Nothing running"}</h2>
         <p class="muted">${s.state === "failed" ? "Runs a tear-down to make sure nothing was left in Azure after the failure." : "Azure is empty and costs nothing. The name is parked, so clients that dial now simply get no answer."}</p>
         <div class="btn-row">

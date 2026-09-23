@@ -93,7 +93,40 @@
     var d = document.getElementById(id);
     if (d && !d.open) d.showModal();
   }
-  function anyModalOpen() { return !!document.querySelector("dialog.modal[open]"); }
+  function anyModalOpen() { return !!document.querySelector("dialog.modal[open], .sheet.open"); }
+
+  // ── Sheets (phone) ─────────────────────────────────────────────────────
+  // On a phone, detail panels (class "sheet") stay hidden until a button with
+  // data-sheet="<id>" opens one; it slides up from the bottom. Done, the
+  // backdrop or Escape closes it. The page's own refresh waits while one is
+  // open (see anyModalOpen), and a sheet replaced by a refresh simply closes.
+  function closeSheets() {
+    document.querySelectorAll(".sheet.open").forEach(function (x) { x.classList.remove("open"); });
+    document.documentElement.classList.remove("sheet-open");
+  }
+  function openSheet(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    closeSheets();
+    el.classList.add("open");
+    document.documentElement.classList.add("sheet-open");
+    el.scrollTop = 0;
+  }
+  document.addEventListener("click", function (e) {
+    var o = e.target.closest("[data-sheet]");
+    if (o) { e.preventDefault(); openSheet(o.getAttribute("data-sheet")); return; }
+    if (e.target.closest("[data-sheet-close]")) { closeSheets(); return; }
+    if (e.target.closest("[data-reveal-close]")) { var r = document.getElementById("peer-reveal"); if (r) r.hidden = true; }
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeSheets(); });
+  document.addEventListener("htmx:afterSwap", function () {
+    if (!document.querySelector(".sheet.open")) document.documentElement.classList.remove("sheet-open");
+  });
+  // Moving to another tab starts clean.
+  document.addEventListener("htmx:beforeRequest", function (e) {
+    var el = e.detail && e.detail.elt;
+    if (el && el.tagName === "A") closeSheets();
+  });
   document.addEventListener("click", function (e) {
     var o = e.target.closest("[data-open]");
     if (o) { showModal(o.getAttribute("data-open")); return; }
@@ -222,6 +255,7 @@
   function showConfig(peer, template, privateKey) {
     var conf = template.replace("__CLIENT_PRIVATE_KEY__", privateKey);
     var reveal = document.getElementById("peer-reveal");
+    closeSheets();
     reveal.hidden = false;
     reveal.querySelector("[data-peer-name]").textContent = peer.name;
     reveal.querySelector("[data-peer-ip]").textContent = peer.ip;

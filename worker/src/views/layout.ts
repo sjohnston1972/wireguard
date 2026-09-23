@@ -83,16 +83,28 @@ export function page(o: {
     : ""}
   ${s.drift ? html`<div class="notice bad"><p><b>Drift.</b> ${s.drift}</p><span class="spacer"></span><form method="post" action="/actions/reconcile" hx-post="/actions/reconcile" hx-target="body"><button type="submit">Reconcile</button></form></div>` : ""}
   ${(o.alerts ?? []).length
-    ? html`<div class="notice"><div><b>While you were away</b><ul class="small" style="margin:4px 0 0;padding-left:18px">${o.alerts!.map((a) => html`<li>${fmtTime(a.at)}: ${a.message}</li>`)}</ul></div><span class="spacer"></span><form method="post" action="/alerts/ack" hx-post="/alerts/ack" hx-target="body"><button type="submit">Dismiss</button></form></div>`
+    ? html`<button type="button" class="m-only m-alertbar" data-sheet="sh-alerts"><i></i>${o.alerts!.length} new note${o.alerts!.length === 1 ? "" : "s"} while you were away</button>
+      <div class="notice sheet" id="sh-alerts">${sheetHead("While you were away")}<div><b class="d-only">While you were away</b><ul class="small" style="margin:4px 0 0;padding-left:18px">${o.alerts!.map((a) => html`<li>${fmtTime(a.at)}: ${a.message}</li>`)}</ul></div><span class="spacer"></span><form method="post" action="/alerts/ack" hx-post="/alerts/ack" hx-target="body"><button type="submit">Dismiss</button></form></div>`
     : ""}
   ${o.body}
 </main>
+<div class="sheet-backdrop" data-sheet-close></div>
 <nav class="tabbar" aria-label="Sections">
   ${TABS.map((t) => html`<a href="${t.href}" ${t.id === o.tab ? raw('aria-current="page"') : ""}><svg viewBox="0 0 24 24" aria-hidden="true">${raw(ICON[t.id])}</svg><span>${t.label}</span></a>`)}
 </nav>
 <footer class="wrap">wg-admin · management plane for the on-demand WireGuard headend · state as of ${fmtTime(s.updated_at)}</footer>
 </body>
 </html>`;
+}
+
+/**
+ * The title bar of a sheet. On a phone, anything marked class="sheet" is
+ * hidden until a button with data-sheet="<its id>" opens it, when it slides
+ * up from the bottom edge; this bar names it and closes it. On a desktop the
+ * same element simply sits in the page and this bar is not shown.
+ */
+export function sheetHead(title: string): Html {
+  return html`<div class="sheet-head"><b>${title}</b><button type="button" class="sheet-x" data-sheet-close>Done</button></div>`;
 }
 
 export function notice(kind: "good" | "warn" | "bad" | "info", text: string): Html {

@@ -7,7 +7,7 @@
 
 import { html } from "hono/html";
 import type { Html } from "./layout";
-import { fmtTime } from "./layout";
+import { fmtTime, sheetHead } from "./layout";
 import type { Config } from "../env";
 import { SECRET_GROUPS } from "../env";
 import { REGIONS } from "../region";
@@ -28,13 +28,35 @@ export interface SettingsOpts {
   notifyError?: { at: string; why: string } | null;
 }
 
+/** The phone's Settings: three lights (setup, alerts, lock) and a button per section. */
+function settingsPhone(o: SettingsOpts): Html {
+  const missing = Object.keys(o.missing).length;
+  const alerts = !o.webhook ? ["idle", "Alerts off"] : o.notifyError ? ["down", "Alerts failing"] : o.ntfy && !o.ntfyToken ? ["busy", "Alerts: no token"] : ["up", "Alerts on"];
+  return html`<div class="m-only m-dock">
+    <div class="m-inds">
+      <span class="ind ${missing ? "down" : "up"}"><i></i>${missing ? `${missing} setup gap${missing === 1 ? "" : "s"}` : "Setup complete"}</span>
+      <span class="ind ${alerts[0]}"><i></i>${alerts[1]}</span>
+      <span class="ind ${o.lock.held ? "busy" : "up"}"><i></i>${o.lock.held ? "Run lock held" : "Lock free"}</span>
+    </div>
+    <div class="m-btns two">
+      <button type="button" data-sheet="sh-next">Next deploy</button>
+      ${o.ntfy ? html`<button type="button" data-sheet="sh-alerts-setup">Phone alerts</button>` : html`<button type="button" data-sheet="sh-setup">Setup</button>`}
+      ${o.ntfy ? html`<button type="button" data-sheet="sh-setup">Setup</button>` : ""}
+      <button type="button" data-sheet="sh-lock">Run lock</button>
+      <button type="button" data-sheet="sh-key">Server key</button>
+    </div>
+  </div>`;
+}
+
 export function settingsBody(o: SettingsOpts): Html {
   const ov = (k: string, d: string | number) => (o.overrides[k] ?? String(d));
   return html`<section>
   <div class="section-head"><h1>Settings</h1></div>
   ${o.saved ? html`<div class="notice good"><p>Saved. The next deploy uses these values.</p></div>` : ""}
+  ${settingsPhone(o)}
   <div class="two-col">
-    <div class="panel">
+    <div class="panel sheet" id="sh-next">
+      ${sheetHead("Next deploy")}
       <h2>Next deploy</h2>
       <form method="post" action="/settings">
         <label class="field"><span>Azure region</span>
@@ -60,7 +82,8 @@ export function settingsBody(o: SettingsOpts): Html {
     </div>
 
     <div>
-      <div class="panel">
+      <div class="panel sheet" id="sh-setup">
+        ${sheetHead("Setup")}
         <h2>Setup</h2>
         <p class="muted small">Secrets live in the Worker, set with <kbd>npm run secrets -- --worker</kbd>. This list only shows presence, never values.</p>
         <ul class="checklist">
@@ -74,7 +97,8 @@ export function settingsBody(o: SettingsOpts): Html {
       </div>
 
       ${o.ntfy
-        ? html`<div class="panel" style="margin-top:16px">
+        ? html`<div class="panel sheet" id="sh-alerts-setup" style="margin-top:16px">
+        ${sheetHead("Phone alerts")}
         <h2>Phone alerts</h2>
         <p class="muted small">Install the free ntfy app (<a href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener">iPhone</a>, <a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">Android</a>), tap +, and subscribe to this topic on ${o.ntfy.base.replace(/^https?:\/\//, "")}:</p>
         ${o.notifyError ? html`<div class="notice bad" style="margin:8px 0"><p><b>The last alert did not send</b> (${fmtTime(o.notifyError.at)}): <span class="mono small">${o.notifyError.why}</span>${o.ntfyToken ? "" : html` Anonymous posts from Cloudflare hit ntfy.sh's shared quota: make a free account at ntfy.sh, create an access token (Account, Access tokens) and set it as NOTIFY_TOKEN.`}</p></div>` : ""}
@@ -84,7 +108,8 @@ export function settingsBody(o: SettingsOpts): Html {
       </div>`
         : ""}
 
-      <div class="panel" style="margin-top:16px">
+      <div class="panel sheet" id="sh-lock" style="margin-top:16px">
+        ${sheetHead("Run lock")}
         <h2>Run lock</h2>
         ${o.lock.held
           ? html`<p class="muted">Held by <code>${o.lock.lock!.runId}</code> since ${fmtTime(o.lock.lock!.since)}. It expires on its own after 45 minutes.</p>
@@ -92,7 +117,8 @@ export function settingsBody(o: SettingsOpts): Html {
           : html`<p class="muted">Free. One run at a time; a second click gets a clear message instead of a second VM.</p>`}
       </div>
 
-      <div class="panel" style="margin-top:16px">
+      <div class="panel sheet" id="sh-key" style="margin-top:16px">
+        ${sheetHead("Server key")}
         <h2>Server key</h2>
         ${o.serverPub ? html`<p class="small">Public key <code>${o.serverPub}</code></p>` : html`<p class="muted">Not configured.</p>`}
         <p class="muted small">Rotating it invalidates every client. It is deliberately not a button here. On the laptop:</p>
