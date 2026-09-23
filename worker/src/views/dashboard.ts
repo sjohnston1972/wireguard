@@ -197,7 +197,7 @@ function subline(s: Snapshot, cfg: Config): Html {
     case "running":
       return html`Since ${fmtTime(s.running_since)}.${s.auto_destroy_at ? html` Tears itself down in <b class="clock" data-until="${s.auto_destroy_at}"></b> (${fmtTime(s.auto_destroy_at)}).` : html` No auto-destroy set.`}`;
     case "deploying":
-      return html`Building in Azure ${cfg.region}. Usually about 4 minutes.${s.github_run_url ? html` <a href="${s.github_run_url}" target="_blank" rel="noopener">GitHub run</a>` : ""}`;
+      return html`Building in Azure ${regionName(s.region ?? cfg.region)}. Usually about 4 minutes.${s.github_run_url ? html` <a href="${s.github_run_url}" target="_blank" rel="noopener">GitHub run</a>` : ""}`;
     case "destroying":
       return html`Removing everything from Azure. The bill returns to £0 when this finishes.${s.github_run_url ? html` <a href="${s.github_run_url}" target="_blank" rel="noopener">GitHub run</a>` : ""}`;
     case "failed":
@@ -207,7 +207,7 @@ function subline(s: Snapshot, cfg: Config): Html {
     case "standby":
       return html`Warm standby: the VM is powered off (deallocated) with its disk and address kept, costing about ${gbp(cfg.standbyRateGbp)} an hour. Resume takes about a minute; clients reconnect on their own.${s.error ? html` <b>${s.error}</b>` : ""}`;
     case "resuming":
-      return html`Powering the VM back on in Azure ${cfg.region}. It re-runs its self-test and reports in, usually within a minute.`;
+      return html`Powering the VM back on in Azure ${regionName(s.region ?? cfg.region)}. It re-runs its self-test and reports in, usually within a minute.`;
     default:
       return html`Nothing exists in Azure. Cost is £0.00. Deploy takes about 4 minutes.`;
   }
@@ -250,7 +250,7 @@ function tunnel(s: Snapshot, cfg: Config): Html {
   <g class="hot" data-tip="tip-azure" tabindex="0" role="button" aria-label="VM details">
   <rect class="node azure ${azureClass}" x="428" y="42" width="80" height="56" rx="8"/>
   <text class="name" x="468" y="66" text-anchor="middle">Azure</text>
-  <text x="468" y="84" text-anchor="middle">${s.state === "standby" ? "standby" : cfg.region}</text>
+  <text x="468" y="84" text-anchor="middle">${s.state === "standby" ? "standby" : s.region ?? cfg.region}</text>
   </g>
   <text x="52" y="128" text-anchor="middle">tunnel ${cfg.subnet}</text>
   <text x="468" y="128" text-anchor="middle">${cfg.vmSize}</text>
@@ -299,7 +299,7 @@ function azureTip(o: LiveOpts): Html {
   const load = a?.load ? a.load.split(" ") : [];
   const nic = s.azure?.resources.find((r) => r.kind === "Network interface")?.detail.match(/private ([\d.]+)/)?.[1];
   return html`<div class="tip" id="tip-azure" hidden>
-  <div class="tip-head"><b>Headend VM</b><span class="muted small">${s.state === "running" ? html`${o.cfg.vmSize} in ${o.cfg.region}` : STATE_LABEL[s.state]}</span></div>
+  <div class="tip-head"><b>Headend VM</b><span class="muted small">${s.state === "running" ? html`${o.cfg.vmSize} in ${regionName(s.region ?? o.cfg.region)}` : STATE_LABEL[s.state]}</span></div>
   ${s.state === "running"
     ? html`<table class="tiptable kv"><tbody>
       <tr><th>Heartbeat</th><td>${s.last_agent_at ? html`${ago(s.last_agent_at)}${a ? html` from <span class="mono">${a.hostname}</span>` : ""}` : html`<span class="pill down">none yet</span>`}</td></tr>

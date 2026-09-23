@@ -242,7 +242,8 @@ table.rows td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertic
 table.rows tr:last-child td { border-bottom: 0; }
 table.rows td.num, table.rows th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.rows .key { font-family: var(--mono); font-size: 0.78rem; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30ch; }
-table.rows .actions { white-space: nowrap; }
+table.rows .actions { white-space: normal; min-width: 230px; max-width: 330px; }
+table.rows .actions > * { margin: 0 4px 4px 0; }
 table.rows .actions button { padding: 4px 9px; font-size: 0.85rem; }
 .empty { padding: 28px 18px; color: var(--ink-2); text-align: left; }
 .empty b { color: var(--ink); }
@@ -352,7 +353,10 @@ dialog.modal[open] { animation: modal-in 160ms ease-out; }
 .tiptable.kv td { border-bottom: 0; padding: 3px 0; }
 .share { display: inline-block; width: 46px; height: 6px; border-radius: 999px; background: var(--idle-soft); vertical-align: middle; overflow: hidden; margin-right: 4px; }
 .share > i { display: block; height: 100%; background: var(--signal); }
-@media (max-width: 640px) { .tip { font-size: 0.8rem; padding: 10px; } .tiptable th:nth-child(5), .tiptable td:nth-child(5) { display: none; } }
+/* The client panel has more columns than the diagram is wide: let it grow
+   leftwards from the diagram's right edge, and scroll if it still does not fit. */
+#tip-home { left: auto; right: 0; width: min(920px, calc(100vw - 32px)); overflow-x: auto; }
+@media (max-width: 640px) { .tip { font-size: 0.8rem; padding: 10px; } #tip-home .tiptable th:nth-child(6), #tip-home .tiptable td:nth-child(6), #tip-home .tiptable th:nth-child(9), #tip-home .tiptable td:nth-child(9) { display: none; } }
 
 /* ── Standby, verifying and power changes ─────────────────────────────── */
 /* Hibernating, resuming and "verifying" (running, self-test not in yet) are

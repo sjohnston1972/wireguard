@@ -157,6 +157,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     session: null,
     standby_since: null,
     power_op_at: null,
+    region,
   });
   return (await db.getRun(env, id))!;
 }
@@ -345,6 +346,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     standby_since: null,
     power_op_at: null,
     pending_summary: null,
+    region: null,
   });
   await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
   if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);

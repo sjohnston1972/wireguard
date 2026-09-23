@@ -152,6 +152,7 @@ export interface Snapshot {
   standby_since: string | null; // when the VM was deallocated into Standby
   power_op_at: string | null; // when a hibernate or resume was asked for
   pending_summary: string | null; // the session summary, held while a tear-down runs
+  region: string | null; // the Azure region this deployment was built in
   updated_at: string;
 }
 
@@ -181,6 +182,7 @@ export const EMPTY: Snapshot = {
   standby_since: null,
   power_op_at: null,
   pending_summary: null,
+  region: null,
   updated_at: new Date(0).toISOString(),
 };
 
