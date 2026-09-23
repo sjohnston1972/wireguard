@@ -27,7 +27,7 @@ flowchart LR
   GH --> DNS[Cloudflare DNS<br/>wg.clydeford.net]
   AZ -->|heartbeat every 30s| W
   C[WireGuard clients<br/>phone, laptop, home] -->|UDP 51820| AZ
-  W -->|alerts with buttons| N[ntfy app<br/>on the phone]
+  W -->|"alerts with buttons<br/>(Web Push)"| N[wg-admin app<br/>on the phone]
   GH -->|"OIDC: prove who I am,<br/>collect run secrets"| W
 ```
 
@@ -44,7 +44,7 @@ flowchart LR
 | **R2 bucket** `wg-admin-tfstate` | Where Terraform keeps its inventory of what it built. Locked during a run so two runs cannot collide. | The startup-config; lose it and the box still runs but you no longer know what you have |
 | **wg.clydeford.net** | An A record, TTL 60, DNS-only (grey cloud). Points at the VM while it exists; parked on the reserved address 192.0.2.1 while destroyed, so it always resolves and nobody caches a "no such host". | A DDNS name: the name is stable, the address behind it is disposable |
 | **Cloudflare Access** | Login gate for the dashboard. Only stevie.johnston@gmail.com gets in. Three narrow paths skip it and prove themselves another way: the VM heartbeat and the GitHub callback (per-run tokens), and the phone buttons (single-use links). | MFA on the management plane |
-| **ntfy** (ntfy.sh) | A free push-notification service. The Worker posts to a private, random topic; the ntfy app on the phone shows it, with buttons. | A pager with reply keys |
+| **Phone alerts** (Web Push) | The installed wg-admin app gets notifications like any app. The Worker encrypts each alert to the phone's own key and signs it with the dashboard's VAPID key; Google's push service delivers it without being able to read it. | A pager whose messages only your handset can decrypt |
 | **The Worker** (Phase 2) | The dashboard and API at wg-admin.clydeford.net. | The management plane |
 
 ## Setup, once
@@ -136,15 +136,21 @@ one cannot cost money for ever.
 
 ### Phone alerts
 
-In Settings > Phone alerts is a private ntfy topic. Install the free ntfy app,
-subscribe to it, and you get:
+Alerts come from the wg-admin app itself. Install it (Settings > Install the
+app), then Settings > Phone alerts > **Turn on alerts on this phone** and allow
+notifications; a test alert follows. You get:
 
 - **Ready**, once the self-test has proven the tunnel (or what failed)
-- **Tearing down in 15 minutes**, with buttons: *Extend 1h*, *Hibernate* (or
-  *Tear down*), *Open dashboard*. The buttons work from the lock screen.
+- **Tearing down in 15 minutes**, with buttons: *Extend 1h* and *Hibernate* (or
+  *Tear down*); tap the alert itself to open the dashboard. The buttons work
+  from the lock screen on Android.
 - **A session summary** when it ends: how long, roughly what it cost, how much
   traffic, which clients used it
-- drift, failures, an unreachable VM, the cost guard
+- drift, failures, an unreachable VM, scheduled starts, the cost guard
+
+(ntfy.sh was tried first: its free plan counts messages per sending IP
+address, and Cloudflare's are shared, so every alert was refused. Web Push has
+no such limit and needs no other app.)
 
 Each button is a single-use link that stops working 30 minutes after the
 deadline, and can only extend, hibernate or tear down. Nothing reachable

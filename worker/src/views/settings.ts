@@ -11,7 +11,7 @@ import { fmtTime, sheetHead } from "./layout";
 import type { Config } from "../env";
 import { SECRET_GROUPS } from "../env";
 import { REGIONS, regionName } from "../region";
-import type { Profile, Schedule } from "../db";
+import type { Profile, Schedule, PushSub } from "../db";
 import { daysText } from "../schedule-time";
 
 export interface SettingsOpts {
@@ -32,6 +32,32 @@ export interface SettingsOpts {
   schedules?: Schedule[];
   err?: string | null;
   publicUrl?: string;
+  pushSubs?: PushSub[];
+  vapidPublic?: string | null;
+}
+
+/**
+ * Phone alerts: pushed to the wg-admin app itself (Web Push). app.js fills in
+ * the state for this device and wires the buttons; the list below is every
+ * phone signed up, from the database.
+ */
+function alertsPanel(o: SettingsOpts): Html {
+  const subs = o.pushSubs ?? [];
+  return html`<div class="panel sheet" id="sh-alerts-setup" style="margin-top:16px" data-push-panel data-vapid="${o.vapidPublic ?? ""}">
+    ${sheetHead("Phone alerts")}
+    <h2>Phone alerts</h2>
+    <p class="muted small">Alerts come from the wg-admin app like any app's: ready (with the self-test result), a heads-up 15 minutes before the timer ends with Extend 1h and Hibernate buttons, a summary when a session ends, and drift, failures, scheduled starts and the cost guard.</p>
+    ${o.notifyError ? html`<div class="notice bad" style="margin:8px 0"><p><b>The last alert did not send</b> (${fmtTime(o.notifyError.at)}): <span class="mono small">${o.notifyError.why}</span></p></div>` : ""}
+    <p class="small" data-push-state>${o.vapidPublic ? "" : html`<span class="pill idle">not set up</span> VAPID keys are missing.`}</p>
+    <div class="btn-row">
+      <button type="button" class="primary big" data-push-on hidden>Turn on alerts on this phone</button>
+      <button type="button" data-push-test hidden>Send a test alert</button>
+      <button type="button" data-push-off hidden>Turn off on this device</button>
+    </div>
+    ${subs.length
+      ? html`<ul class="checklist" style="margin-top:12px">${subs.map((s) => html`<li><span class="${s.last_error ? "no" : "ok"}">${s.last_error ? "✕" : "✓"}</span><div style="flex:1">${s.label ?? "A device"} <span class="muted small">${s.last_error ? html`last alert failed: ${s.last_error}` : s.last_ok ? `last alert ${fmtTime(s.last_ok)}` : `since ${fmtTime(s.created_at)}`}</span></div><form method="post" action="/settings/push/${s.id}/delete" hx-boost="false"><button type="submit" class="danger" style="padding:3px 10px;font-size:.8rem">Remove</button></form></li>`)}</ul>`
+      : html`<p class="faint small" style="margin-top:10px">No phone signed up yet.</p>`}
+  </div>`;
 }
 
 const SIZES = ["Standard_B1s", "Standard_B1ms", "Standard_B2s", "Standard_B2ats_v2"];
@@ -115,7 +141,8 @@ function schedulesPanel(o: SettingsOpts): Html {
 /** The phone's Settings: three lights (setup, alerts, lock) and a button per section. */
 function settingsPhone(o: SettingsOpts): Html {
   const missing = Object.keys(o.missing).length;
-  const alerts = !o.webhook ? ["idle", "Alerts off"] : o.notifyError ? ["down", "Alerts failing"] : o.ntfy && !o.ntfyToken ? ["busy", "Alerts: no token"] : ["up", "Alerts on"];
+  const phones = (o.pushSubs ?? []).length;
+  const alerts = o.notifyError ? ["down", "Alerts failing"] : phones ? ["up", `Alerts on (${phones})`] : ["busy", "Alerts off"];
   return html`<div class="m-only m-dock">
     <div class="m-inds">
       <span class="ind ${missing ? "down" : "up"}"><i></i>${missing ? `${missing} setup gap${missing === 1 ? "" : "s"}` : "Setup complete"}</span>
@@ -127,8 +154,8 @@ function settingsPhone(o: SettingsOpts): Html {
       <button type="button" data-sheet="sh-next">Next deploy</button>
       <button type="button" data-sheet="sh-profiles">Profiles</button>
       <button type="button" data-sheet="sh-schedules">Schedules${(o.schedules ?? []).some((r) => r.enabled) ? html` <span class="count">${(o.schedules ?? []).filter((r) => r.enabled).length}</span>` : ""}</button>
-      ${o.ntfy ? html`<button type="button" data-sheet="sh-alerts-setup">Phone alerts</button>` : html`<button type="button" data-sheet="sh-setup">Setup</button>`}
-      ${o.ntfy ? html`<button type="button" data-sheet="sh-setup">Setup</button>` : ""}
+      <button type="button" data-sheet="sh-alerts-setup">Phone alerts</button>
+      <button type="button" data-sheet="sh-setup">Setup</button>
       <button type="button" data-sheet="sh-lock">Run lock</button>
       <button type="button" data-sheet="sh-key">Server key</button>
     </div>
@@ -180,22 +207,12 @@ export function settingsBody(o: SettingsOpts): Html {
             const miss = o.missing[group] ?? [];
             return html`<li><span class="${miss.length ? "no" : "ok"}">${miss.length ? "✕" : "✓"}</span><div>${group}${miss.length ? html`<div class="small muted">missing: ${miss.join(", ")}</div>` : ""}</div></li>`;
           })}
-          <li><span class="${o.webhook ? "ok" : "no"}">${o.webhook ? "✓" : "–"}</span><div>Notifications${o.ntfy ? " to the ntfy app" : o.webhook ? " webhook" : html` <span class="small muted">(optional; set NOTIFY_WEBHOOK_URL for ntfy, Discord, Slack or JSON)</span>`}</div></li>
+          <li><span class="${(o.pushSubs ?? []).length ? "ok" : "no"}">${(o.pushSubs ?? []).length ? "✓" : "–"}</span><div>Phone alerts${(o.pushSubs ?? []).length ? ` (${(o.pushSubs ?? []).length} phone${(o.pushSubs ?? []).length === 1 ? "" : "s"})` : html` <span class="small muted">(turn on in Phone alerts)</span>`}${o.webhook ? " and a webhook" : ""}</div></li>
         </ul>
         ${o.repo ? html`<p class="small muted" style="margin-top:10px">Runner: <a href="https://github.com/${o.repo}/actions" target="_blank" rel="noopener">github.com/${o.repo}</a></p>` : ""}
       </div>
 
-      ${o.ntfy
-        ? html`<div class="panel sheet" id="sh-alerts-setup" style="margin-top:16px">
-        ${sheetHead("Phone alerts")}
-        <h2>Phone alerts</h2>
-        <p class="muted small">Install the free ntfy app (<a href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener">iPhone</a>, <a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">Android</a>), tap +, and subscribe to this topic on ${o.ntfy.base.replace(/^https?:\/\//, "")}:</p>
-        ${o.notifyError ? html`<div class="notice bad" style="margin:8px 0"><p><b>The last alert did not send</b> (${fmtTime(o.notifyError.at)}): <span class="mono small">${o.notifyError.why}</span>${o.ntfyToken ? "" : html` Anonymous posts from Cloudflare hit ntfy.sh's shared quota: make a free account at ntfy.sh, create an access token (Account, Access tokens) and set it as NOTIFY_TOKEN.`}</p></div>` : ""}
-        <p class="small">${o.ntfyToken ? html`<span class="pill up">signed in</span> posting with your ntfy access token` : html`<span class="pill busy">anonymous</span> <span class="muted">no NOTIFY_TOKEN, so ntfy.sh may refuse posts from Cloudflare</span>`}</p>
-        <code id="ntfy-topic">${o.ntfy.topic}</code> <button type="button" data-copy="#ntfy-topic" style="padding:3px 8px;font-size:.8rem">Copy</button>
-        <p class="muted small" style="margin-top:8px">You get: ready (with the self-test result), a heads-up 15 minutes before the timer ends with Extend 1h / Hibernate / Tear down buttons, a summary when a session ends, and any drift, failure or cost guard. The topic name is the only key to the channel, so keep it to yourself; the buttons are single-use and can only extend, hibernate or tear down.</p>
-      </div>`
-        : ""}
+      ${alertsPanel(o)}
 
       ${installPanel(o)}
       ${profilesPanel(o)}

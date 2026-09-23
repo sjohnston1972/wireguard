@@ -21,3 +21,9 @@ declare module "node:fs" {
 interface ImportMeta {
   readonly url: string;
 }
+
+// Node crypto, used only by the Web Push test (typed loosely there).
+declare module "node:crypto" {
+  const nodeCrypto: any;
+  export = nodeCrypto;
+}

@@ -20,7 +20,7 @@ import { effectiveConfig, saveOverrides } from "./settings";
 import { startDeploy, startDestroy, cancelActive, reconcile, extendAutoDestroy, refreshActiveRun, refreshInventory, handleCallback, handleAgent, issueRunSecrets, RunError } from "./runs";
 import { verifyGithubOidc } from "./oidc";
 import { startHibernate, startResume, refreshPower } from "./standby";
-import { consumeAction } from "./actions";
+import { consumeAction, dashboardButton } from "./actions";
 import { notify, ntfyParts, lastNotifyError } from "./notify";
 import { nearestRegion, REGIONS, regionName } from "./region";
 import { startMove } from "./profiles";
@@ -108,7 +108,7 @@ app.post("/api/act/:token", async (c) => {
   } catch (e) {
     msg = `Could not do that: ${(e as Error).message}`;
   }
-  await notify(c.env, "wg-admin", msg, { tags: ["ok_hand"] });
+  await notify(c.env, "wg-admin", msg, { tags: ["ok_hand"], skipPush: true });
   return c.text(msg);
 });
 
@@ -380,6 +380,39 @@ app.post("/peers/:id/dns", async (c) => {
   return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
 });
 
+// ── Phone alerts (Web Push) ───────────────────────────────────────────────
+// The app on the phone subscribes with its push service and hands us where
+// to send and the keys to encrypt to (see webpush.ts). Behind the login.
+
+app.post("/api/push/subscribe", async (c) => {
+  const b = (await c.req.json().catch(() => null)) as { endpoint?: string; keys?: { p256dh?: string; auth?: string }; label?: string } | null;
+  const endpoint = String(b?.endpoint ?? "");
+  const p256dh = String(b?.keys?.p256dh ?? ""), auth = String(b?.keys?.auth ?? "");
+  if (!/^https:\/\/[^\s]{10,}$/.test(endpoint) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return c.json({ error: "That does not look like a push subscription." }, 400);
+  await db.savePushSub(c.env, { endpoint, p256dh, auth, label: String(b?.label ?? "").slice(0, 40) || null });
+  await db.addAlert(c.env, "info", `Phone alerts turned on for ${b?.label || "a device"} by ${c.get("user")}.`);
+  return c.json({ ok: true });
+});
+
+app.post("/api/push/unsubscribe", async (c) => {
+  const b = (await c.req.json().catch(() => null)) as { endpoint?: string } | null;
+  if (b?.endpoint) await db.deletePushSub(c.env, { endpoint: String(b.endpoint) });
+  return c.json({ ok: true });
+});
+
+app.post("/api/push/test", async (c) => {
+  await c.env.STATUS.delete("notify:last_error");
+  await notify(c.env, "wg-admin: test alert", "Phone alerts work. Tap to open the dashboard.", { tags: ["test"], buttons: [dashboardButton(c.env)] });
+  const err = await lastNotifyError(c.env);
+  const subs = await db.listPushSubs(c.env);
+  return c.json(err ? { ok: false, error: err.why } : { ok: true, phones: subs.length });
+});
+
+app.post("/settings/push/:id/delete", async (c) => {
+  await db.deletePushSub(c.env, { id: Number(c.req.param("id")) });
+  return c.redirect("/settings?saved=1");
+});
+
 app.post("/peers/:id/homelan", async (c) => {
   const id = Number(c.req.param("id"));
   const p = await db.getPeer(c.env, id);
@@ -419,7 +452,7 @@ app.get("/settings", async (c) => {
   const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
   const saved = c.req.query("saved") === "1";
   return c.html(
-    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl }))
+    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl, pushSubs: await db.listPushSubs(c.env), vapidPublic: c.env.VAPID_PUBLIC_KEY ?? null }))
   );
 });
 
@@ -429,7 +462,7 @@ app.post("/settings", async (c) => {
   if (rejected.length) {
     const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
     return c.html(
-      await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl }), {
+      await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl, pushSubs: await db.listPushSubs(c.env), vapidPublic: c.env.VAPID_PUBLIC_KEY ?? null }), {
         kind: "bad",
         text: `Not saved: ${rejected.join(", ")} did not look right.`,
       })

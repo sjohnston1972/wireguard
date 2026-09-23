@@ -61,6 +61,9 @@ WG_SUBNET6 = "fd13:13::/64"
 # The server's WireGuard PUBLIC key. Public by design: every client config has it.
 # The private key is only in .env, GitHub secrets and the VM, never the Worker.
 WG_SERVER_PUBLIC_KEY = "wapbe4SDSmZoefARMVLSAR2KHjjCU3DJ3McGiXQ+3yc="
+# Web Push (phone alerts in the wg-admin app): the PUBLIC half of the signing key.
+# Phones use it to check alerts really come from this dashboard. Private half is a secret.
+VAPID_PUBLIC_KEY = "BPCo9BkamgQtJcA3JvUV4_VDRmtFZvj2FUsD6pVMVfbsHXBD4dYKmO7DHeDO5ksQroxeSxtwg6d_5H2nJlD0g98"
 # Loopback test address on the VM (dummy interface), outside the tunnel subnet.
 WG_LOOPBACK_IP = "10.13.255.1"
 AZURE_REGION = "uksouth"

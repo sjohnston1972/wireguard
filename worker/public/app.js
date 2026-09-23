@@ -229,6 +229,85 @@
   document.addEventListener("htmx:afterSwap", function (e) { renderInstall(e.target); });
   setTimeout(renderInstall, 0);
 
+  // ── Phone alerts (Settings > Phone alerts) ──────────────────────────────
+  // Web Push: ask the phone's permission, subscribe with the dashboard's
+  // public key, and hand the subscription to the dashboard, which encrypts
+  // every alert to it. The alerts themselves are shown by sw.js.
+  function keyBytes(b64) {
+    var s = b64.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "=";
+    return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); });
+  }
+  function deviceLabel() {
+    var ua = navigator.userAgent;
+    var what = /Android/i.test(ua) ? "Android phone" : /iPhone|iPad/i.test(ua) ? "iPhone" : /Windows/i.test(ua) ? "Windows PC" : /Mac/i.test(ua) ? "Mac" : "Device";
+    return what + (isInstalled() ? " (app)" : " (browser)");
+  }
+  function swReady() {
+    return Promise.race([navigator.serviceWorker.ready, new Promise(function (_, no) { setTimeout(function () { no(new Error("The app's background worker is not running; reload and try again.")); }, 8000); })]);
+  }
+  function pushSupported() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
+  async function renderPush(root) {
+    var panels = (root || document).querySelectorAll("[data-push-panel]");
+    for (var i = 0; i < panels.length; i++) {
+      var p = panels[i];
+      var state = p.querySelector("[data-push-state]");
+      var on = p.querySelector("[data-push-on]"), test = p.querySelector("[data-push-test]"), off = p.querySelector("[data-push-off]");
+      if (!p.getAttribute("data-vapid")) continue;
+      if (!pushSupported()) { state.textContent = "This browser cannot receive alerts. On Android use Chrome; on iPhone install the app first (Settings > Install the app)."; continue; }
+      if (Notification.permission === "denied") { state.innerHTML = "<span class='pill down'>blocked</span> Notifications are blocked for this site. Allow them in the phone's settings for wg-admin, then come back."; on.hidden = test.hidden = off.hidden = true; continue; }
+      var sub = null;
+      try { sub = await (await swReady()).pushManager.getSubscription(); } catch (e) { state.textContent = e.message; continue; }
+      if (sub) {
+        state.innerHTML = "<span class='pill up'>on</span> This device gets alerts.";
+        on.hidden = true; test.hidden = false; off.hidden = false;
+      } else {
+        state.innerHTML = "<span class='pill idle'>off</span> This device does not get alerts yet.";
+        on.hidden = false; test.hidden = true; off.hidden = true;
+      }
+    }
+  }
+  function pushSay(btn, html) { var p = btn.closest("[data-push-panel]"); var st = p && p.querySelector("[data-push-state]"); if (st) st.innerHTML = html; }
+  document.addEventListener("click", async function (e) {
+    var on = e.target.closest("[data-push-on]"), test = e.target.closest("[data-push-test]"), off = e.target.closest("[data-push-off]");
+    if (!on && !test && !off) return;
+    var btn = on || test || off;
+    btn.disabled = true;
+    try {
+      if (on) {
+        var perm = await Notification.requestPermission();
+        if (perm !== "granted") throw new Error("Notifications were not allowed.");
+        var reg = await swReady();
+        var vapid = btn.closest("[data-push-panel]").getAttribute("data-vapid");
+        var sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(vapid) });
+        var j = sub.toJSON();
+        var r = await fetch("/api/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys, label: deviceLabel() }) });
+        if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).error || ("Failed (" + r.status + ")"));
+        await renderPush();
+        test = btn.closest("[data-push-panel]").querySelector("[data-push-test]");
+        pushSay(btn, "<span class='pill up'>on</span> Alerts are on. Sending a test…");
+      }
+      if (test) {
+        var t = await (await fetch("/api/push/test", { method: "POST" })).json();
+        pushSay(btn, t.ok ? "<span class='pill up'>on</span> Test sent to " + t.phones + " device" + (t.phones === 1 ? "" : "s") + ". It should arrive in a few seconds." : "<span class='pill down'>failed</span> " + (t.error || "The test did not send."));
+      }
+      if (off) {
+        var s2 = await (await swReady()).pushManager.getSubscription();
+        if (s2) {
+          await fetch("/api/push/unsubscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: s2.endpoint }) });
+          await s2.unsubscribe();
+        }
+        await renderPush();
+      }
+    } catch (err) {
+      pushSay(btn, "<span class='pill down'>not on</span> " + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  document.addEventListener("DOMContentLoaded", function () { renderPush(); });
+  document.addEventListener("htmx:afterSwap", function (e) { renderPush(e.target); });
+  setTimeout(renderPush, 0);
+
   // ── Confirmation word gate ──────────────────────────────────────────────
   function wireConfirm(root) {
     (root || document).querySelectorAll("[data-confirm-word]").forEach(function (input) {

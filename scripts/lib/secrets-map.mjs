@@ -41,6 +41,7 @@ export const WORKER_KEYS = [
   "GITHUB_WORKFLOW",
   "NOTIFY_WEBHOOK_URL",
   "NOTIFY_TOKEN",
+  "VAPID_PRIVATE_KEY",
 ];
 
 /** Keys that must NEVER leave this machine. */
@@ -102,7 +103,7 @@ export function buildWorkerSecrets(env) {
       warnings.push("CLOUDFLARE_DNS_TOKEN is not set: pushing the BROAD CLOUDFLARE_API_TOKEN to the Worker as a temporary stand-in. Mint a DNS-only token and rerun as soon as you can.");
     }
     if (!value) {
-      if (k !== "NOTIFY_WEBHOOK_URL" && k !== "NOTIFY_TOKEN") warnings.push(`${k} is blank; skipped`);
+      if (k !== "NOTIFY_WEBHOOK_URL" && k !== "NOTIFY_TOKEN" && k !== "VAPID_PRIVATE_KEY") warnings.push(`${k} is blank; skipped`);
       continue;
     }
     if (PLACEHOLDER.test(value)) {

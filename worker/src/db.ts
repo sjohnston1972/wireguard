@@ -290,3 +290,38 @@ export async function saveSpeedTest(env: Env, t: SpeedTest): Promise<void> {
 export async function listSpeedTests(env: Env, limit = 10): Promise<SpeedTest[]> {
   return (await env.DB.prepare("SELECT * FROM speedtests ORDER BY at DESC LIMIT ?1").bind(limit).all<SpeedTest>()).results;
 }
+
+// ── Phones subscribed to alerts (Web Push) ────────────────────────────────
+
+export interface PushSub {
+  id: number;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  label: string | null;
+  created_at: string;
+  last_ok: string | null;
+  last_error: string | null;
+}
+
+export async function listPushSubs(env: Env): Promise<PushSub[]> {
+  return (await env.DB.prepare("SELECT * FROM push_subs ORDER BY id").all<PushSub>()).results;
+}
+
+export async function savePushSub(env: Env, s: { endpoint: string; p256dh: string; auth: string; label: string | null }): Promise<void> {
+  await env.DB.prepare(
+    "INSERT INTO push_subs (endpoint, p256dh, auth, label, created_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, label = excluded.label"
+  )
+    .bind(s.endpoint, s.p256dh, s.auth, s.label, new Date().toISOString())
+    .run();
+}
+
+export async function deletePushSub(env: Env, by: { id?: number; endpoint?: string }): Promise<void> {
+  if (by.id) await env.DB.prepare("DELETE FROM push_subs WHERE id = ?1").bind(by.id).run();
+  else if (by.endpoint) await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?1").bind(by.endpoint).run();
+}
+
+export async function markPushSub(env: Env, id: number, ok: boolean, error: string | null): Promise<void> {
+  if (ok) await env.DB.prepare("UPDATE push_subs SET last_ok = ?2, last_error = NULL WHERE id = ?1").bind(id, new Date().toISOString()).run();
+  else await env.DB.prepare("UPDATE push_subs SET last_error = ?2 WHERE id = ?1").bind(id, error).run();
+}

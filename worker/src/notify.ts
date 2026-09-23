@@ -1,9 +1,12 @@
 // notify.ts
 //
 // Plain English: the pager. When something worth knowing happens (ready,
-// torn down, failed, drift, cost guard, "tearing down in 15 minutes"), post it
-// to a webhook if one is set. Discord, Slack, ntfy and plain JSON receivers
-// are all handled. Off by default; never blocks the caller; never throws.
+// torn down, failed, drift, cost guard, "tearing down in 15 minutes"):
+//   - it is pushed to every phone that turned alerts on in the wg-admin app
+//     (Web Push, see webpush.ts), with up to two tap buttons, and
+//   - it is posted to a webhook if NOTIFY_WEBHOOK_URL is set (Discord, Slack,
+//     ntfy or plain JSON).
+// Never blocks the caller; never throws.
 //
 // ntfy.sh limits anonymous publishing per source IP, and Cloudflare Workers
 // share their outgoing addresses with everyone else's, so anonymous posts
@@ -18,6 +21,9 @@
 // single-use link (see actions.ts). The other services get the text only.
 
 import type { Env } from "./env";
+import { config } from "./env";
+import * as db from "./db";
+import { canPush, sendPush } from "./webpush";
 
 export interface NotifyButton {
   label: string;
@@ -30,6 +36,8 @@ export interface NotifyOptions {
   buttons?: NotifyButton[];
   priority?: 1 | 2 | 3 | 4 | 5; // ntfy: 3 default, 4 high, 5 urgent
   tags?: string[];
+  /** Not to the phones: the phone that tapped a button already shows the answer itself. */
+  skipPush?: boolean;
 }
 
 /** ntfy URLs look like https://ntfy.sh/<topic> (or a self-hosted server). */
@@ -56,6 +64,7 @@ export function ntfyMessage(topic: string, title: string, body: string, o: Notif
 }
 
 export async function notify(env: Env, title: string, body: string, o: NotifyOptions = {}): Promise<void> {
+  if (!o.skipPush) await pushToPhones(env, title, body, o).catch((e) => recordFailure(env, `push: ${(e as Error).message}`).catch(() => {}));
   const url = env.NOTIFY_WEBHOOK_URL;
   if (!url) return;
   try {
@@ -81,6 +90,38 @@ export async function notify(env: Env, title: string, body: string, o: NotifyOpt
     // Notifications are best effort, but a failure is remembered for Settings.
     await recordFailure(env, (e as Error).message).catch(() => {});
   }
+}
+
+/**
+ * Web Push to every subscribed phone. "http" buttons become notification
+ * buttons (Android shows two); a "view" button, or the dashboard, is what a
+ * tap on the notification opens. Phones whose subscription has gone are
+ * forgotten.
+ */
+async function pushToPhones(env: Env, title: string, body: string, o: NotifyOptions): Promise<void> {
+  if (!canPush(env)) return;
+  const subs = await db.listPushSubs(env);
+  if (!subs.length) return;
+  const buttons = o.buttons ?? [];
+  const msg = {
+    title: title.replace(/^wg-admin:\s*/, ""),
+    body,
+    url: buttons.find((b) => b.kind === "view")?.url ?? config(env).publicUrl,
+    actions: buttons.filter((b) => b.kind === "http").slice(0, 2).map((b) => ({ title: b.label, url: b.url })),
+    tag: o.tags?.[0],
+    urgent: (o.priority ?? 3) >= 4,
+  };
+  const results = await Promise.all(
+    subs.map(async (s) => {
+      const r = await sendPush(env, s, msg).catch((e) => (e as Error).message);
+      if (r === "gone") await db.deletePushSub(env, { id: s.id });
+      else await db.markPushSub(env, s.id, r === "ok", r === "ok" ? null : r);
+      return r;
+    })
+  );
+  const failed = results.filter((r) => r !== "ok" && r !== "gone");
+  if (failed.length) await recordFailure(env, `push: ${failed[0]}`);
+  else if (results.includes("ok")) await env.STATUS.delete("notify:last_error");
 }
 
 async function recordFailure(env: Env, why: string): Promise<void> {

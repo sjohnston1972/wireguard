@@ -51,7 +51,9 @@ export interface Env {
   GITHUB_TOKEN?: string;
   GITHUB_WORKFLOW?: string;
   NOTIFY_WEBHOOK_URL?: string;
-  NOTIFY_TOKEN?: string; // ntfy.sh access token; without it Workers hit ntfy's shared-IP quota
+  NOTIFY_TOKEN?: string; // ntfy.sh access token (ntfy.sh still limits free accounts per IP, so it does not help from Workers)
+  VAPID_PUBLIC_KEY?: string; // Web Push: public half, a plain var in wrangler.toml
+  VAPID_PRIVATE_KEY?: string; // Web Push: private half, a secret
 }
 
 /** Parsed, defaulted view of the plain settings. */
