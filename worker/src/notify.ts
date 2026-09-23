@@ -5,6 +5,13 @@
 // to a webhook if one is set. Discord, Slack, ntfy and plain JSON receivers
 // are all handled. Off by default; never blocks the caller; never throws.
 //
+// ntfy.sh limits anonymous publishing per source IP, and Cloudflare Workers
+// share their outgoing addresses with everyone else's, so anonymous posts
+// from here hit "daily message quota reached" (found 2026-09-23). With
+// NOTIFY_TOKEN (an access token from a free ntfy.sh account) the limit is
+// the account's own. The last failure is kept in KV and shown in Settings,
+// so a pager that has gone quiet is visible rather than silent.
+//
 // ntfy gets the full treatment: a priority, and buttons on the phone
 // notification. A button is either a link that opens the dashboard, or a
 // one-tap action ("Extend 1h", "Hibernate", "Tear down") that POSTs a
@@ -61,12 +68,27 @@ export async function notify(env: Env, title: string, body: string, o: NotifyOpt
       init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: `*${title}*\n${body}` }) };
     } else if (ntfy) {
       target = ntfy.base;
-      init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ntfyMessage(ntfy.topic, title, body, o)) };
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (env.NOTIFY_TOKEN) headers.Authorization = `Bearer ${env.NOTIFY_TOKEN}`;
+      init = { method: "POST", headers, body: JSON.stringify(ntfyMessage(ntfy.topic, title, body, o)) };
     } else {
       init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source: "wg-admin", title, body, at: new Date().toISOString() }) };
     }
-    await fetch(target, init);
-  } catch {
-    // Notifications are best effort.
+    const r = await fetch(target, init);
+    if (r.ok) await env.STATUS.delete("notify:last_error");
+    else await recordFailure(env, `${r.status} ${(await r.text()).slice(0, 200)}`);
+  } catch (e) {
+    // Notifications are best effort, but a failure is remembered for Settings.
+    await recordFailure(env, (e as Error).message).catch(() => {});
   }
+}
+
+async function recordFailure(env: Env, why: string): Promise<void> {
+  console.log("notify failed:", why);
+  await env.STATUS.put("notify:last_error", JSON.stringify({ at: new Date().toISOString(), why }), { expirationTtl: 7 * 86400 });
+}
+
+/** The last failed notification, if the most recent attempt failed. */
+export async function lastNotifyError(env: Env): Promise<{ at: string; why: string } | null> {
+  return env.STATUS.get<{ at: string; why: string }>("notify:last_error", "json");
 }

@@ -23,6 +23,9 @@ export interface SettingsOpts {
   webhook: boolean;
   /** When notifications go to ntfy: where to subscribe on the phone. */
   ntfy?: { base: string; topic: string } | null;
+  /** Whether an ntfy access token is set, and the last failed notification. */
+  ntfyToken?: boolean;
+  notifyError?: { at: string; why: string } | null;
 }
 
 export function settingsBody(o: SettingsOpts): Html {
@@ -74,6 +77,8 @@ export function settingsBody(o: SettingsOpts): Html {
         ? html`<div class="panel" style="margin-top:16px">
         <h2>Phone alerts</h2>
         <p class="muted small">Install the free ntfy app (<a href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener">iPhone</a>, <a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">Android</a>), tap +, and subscribe to this topic on ${o.ntfy.base.replace(/^https?:\/\//, "")}:</p>
+        ${o.notifyError ? html`<div class="notice bad" style="margin:8px 0"><p><b>The last alert did not send</b> (${fmtTime(o.notifyError.at)}): <span class="mono small">${o.notifyError.why}</span>${o.ntfyToken ? "" : html` Anonymous posts from Cloudflare hit ntfy.sh's shared quota: make a free account at ntfy.sh, create an access token (Account, Access tokens) and set it as NOTIFY_TOKEN.`}</p></div>` : ""}
+        <p class="small">${o.ntfyToken ? html`<span class="pill up">signed in</span> posting with your ntfy access token` : html`<span class="pill busy">anonymous</span> <span class="muted">no NOTIFY_TOKEN, so ntfy.sh may refuse posts from Cloudflare</span>`}</p>
         <code id="ntfy-topic">${o.ntfy.topic}</code> <button type="button" data-copy="#ntfy-topic" style="padding:3px 8px;font-size:.8rem">Copy</button>
         <p class="muted small" style="margin-top:8px">You get: ready (with the self-test result), a heads-up 15 minutes before the timer ends with Extend 1h / Hibernate / Tear down buttons, a summary when a session ends, and any drift, failure or cost guard. The topic name is the only key to the channel, so keep it to yourself; the buttons are single-use and can only extend, hibernate or tear down.</p>
       </div>`

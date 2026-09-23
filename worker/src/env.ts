@@ -51,6 +51,7 @@ export interface Env {
   GITHUB_TOKEN?: string;
   GITHUB_WORKFLOW?: string;
   NOTIFY_WEBHOOK_URL?: string;
+  NOTIFY_TOKEN?: string; // ntfy.sh access token; without it Workers hit ntfy's shared-IP quota
 }
 
 /** Parsed, defaulted view of the plain settings. */

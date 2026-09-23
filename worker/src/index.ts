@@ -21,7 +21,7 @@ import { startDeploy, startDestroy, cancelActive, reconcile, extendAutoDestroy, 
 import { verifyGithubOidc } from "./oidc";
 import { startHibernate, startResume, refreshPower } from "./standby";
 import { consumeAction } from "./actions";
-import { notify, ntfyParts } from "./notify";
+import { notify, ntfyParts, lastNotifyError } from "./notify";
 import { nearestRegion, REGIONS, regionName } from "./region";
 import { setSshAllowedCidr } from "./azure";
 import { runScheduled } from "./monitor";
@@ -366,7 +366,7 @@ app.get("/settings", async (c) => {
   const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
   const saved = c.req.query("saved") === "1";
   return c.html(
-    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null }))
+    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env) }))
   );
 });
 
@@ -376,7 +376,7 @@ app.post("/settings", async (c) => {
   if (rejected.length) {
     const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
     return c.html(
-      await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null }), {
+      await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env) }), {
         kind: "bad",
         text: `Not saved: ${rejected.join(", ")} did not look right.`,
       })
