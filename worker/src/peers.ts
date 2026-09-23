@@ -5,8 +5,8 @@
 // sends only the public half, and gets back a config with a placeholder
 // where the private key goes. It fills that in locally and shows the QR.
 //
-// The server's public key is derived here from the fixed private key, the
-// same way "wg pubkey" does it, using the Worker's built-in WebCrypto.
+// The server's public key comes from wrangler.toml; the Worker never holds
+// the private key.
 
 import type { Env } from "./env";
 import { config } from "./env";
@@ -14,30 +14,19 @@ import type { Peer } from "./db";
 
 export const PRIVATE_KEY_PLACEHOLDER = "__CLIENT_PRIVATE_KEY__";
 
-const PKCS8_X25519_PREFIX = new Uint8Array([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x04, 0x22, 0x04, 0x20]);
-
 function b64ToBytes(b64: string): Uint8Array {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
-function b64urlToB64(s: string): string {
-  return s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4);
-}
 
-/** Derive the WireGuard public key from the server's private key. Cached per isolate. */
-let cachedPub: { priv: string; pub: string } | null = null;
+/**
+ * The server's WireGuard public key. The Worker only ever holds the public
+ * half (a plain var in wrangler.toml); the private key lives in GitHub
+ * secrets and on the VM, so a compromised dashboard cannot impersonate the
+ * headend. Async only so callers did not have to change.
+ */
 export async function serverPublicKey(env: Env): Promise<string | null> {
-  const priv = env.WG_SERVER_PRIVATE_KEY;
-  if (!priv || !isWgKey(priv)) return null;
-  if (cachedPub && cachedPub.priv === priv) return cachedPub.pub;
-  const raw = b64ToBytes(priv);
-  const der = new Uint8Array(PKCS8_X25519_PREFIX.length + raw.length);
-  der.set(PKCS8_X25519_PREFIX);
-  der.set(raw, PKCS8_X25519_PREFIX.length);
-  const key = await crypto.subtle.importKey("pkcs8", der, { name: "X25519" }, true, ["deriveBits"]);
-  const jwk = (await crypto.subtle.exportKey("jwk", key)) as JsonWebKey;
-  const pub = b64urlToB64(jwk.x ?? "");
-  cachedPub = { priv, pub };
-  return pub;
+  const pub = env.WG_SERVER_PUBLIC_KEY ?? "";
+  return isWgKey(pub) ? pub : null;
 }
 
 export function isWgKey(s: string): boolean {
@@ -72,17 +61,43 @@ export function serverTunnelIp(subnet: string): string {
 }
 
 /**
+ * A client's IPv6 tunnel address, mirroring its IPv4 one: 10.13.13.7 is
+ * fd13:13::7 and 10.13.13.13 is fd13:13::d (Terraform's cidrhost does the
+ * same, so the VM and the dashboard always agree). Empty when IPv6 is off.
+ */
+export function peerIp6(subnet6: string, ip4: string): string {
+  if (!subnet6) return "";
+  const host = Number(ip4.split(".")[3]);
+  const prefix = subnet6.split("/")[0].replace(/::$/, "");
+  return `${prefix}::${host.toString(16)}`;
+}
+
+/** A DNS-safe name for the tunnel DNS: "Steven's Phone" -> "steven-s-phone" (so steven-s-phone.wg). */
+export function hostLabel(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63);
+}
+
+/**
  * Client config with a placeholder for the private key. Endpoint is always
  * the DNS name so a rebuilt VM needs no client change.
+ *
+ * DNS: full-tunnel clients always use the tunnel DNS on the VM loopback
+ * (ad-blocking, .wg names), since all their traffic depends on the VM anyway.
+ * Split-tunnel clients use it only when asked, because while the VM is
+ * destroyed a client left connected would lose DNS altogether.
  */
-export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: number; azure_vnet?: number }, serverPub: string): string {
+export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: number; azure_vnet?: number; tunnel_dns?: number }, serverPub: string): string {
   const cfg = config(env);
-  const allowed = peer.full_tunnel ? ["0.0.0.0/0", "::/0"] : [cfg.subnet, `${cfg.loopbackIp}/32`].concat(peer.azure_vnet ? [cfg.vnetCidr] : []);
+  const ip6 = peerIp6(cfg.subnet6, peer.ip);
+  const allowed = peer.full_tunnel
+    ? ["0.0.0.0/0", "::/0"]
+    : [cfg.subnet, `${cfg.loopbackIp}/32`].concat(cfg.subnet6 ? [cfg.subnet6] : []).concat(peer.azure_vnet ? [cfg.vnetCidr] : []);
+  const dns = peer.full_tunnel || peer.tunnel_dns ? [`DNS = ${cfg.loopbackIp}, wg`] : [];
   return [
     "[Interface]",
     `PrivateKey = ${PRIVATE_KEY_PLACEHOLDER}`,
-    `Address = ${peer.ip}/32`,
-    ...(peer.full_tunnel ? ["DNS = 1.1.1.1"] : []),
+    `Address = ${peer.ip}/32${ip6 ? `, ${ip6}/128` : ""}`,
+    ...dns,
     "",
     "[Peer]",
     `PublicKey = ${serverPub}`,
@@ -93,9 +108,14 @@ export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: 
   ].join("\n");
 }
 
-/** What the VM's agent needs: enabled peers as {name, public_key, allowed_ips}. */
-export function agentPeerList(peers: Peer[]): { name: string; public_key: string; allowed_ips: string }[] {
-  return peers.filter((p) => p.enabled).map((p) => ({ name: p.name, public_key: p.public_key, allowed_ips: `${p.ip}/32` }));
+/** What the VM's agent needs: enabled peers as {name, host, public_key, allowed_ips}. */
+export function agentPeerList(peers: Peer[], subnet6 = ""): { name: string; host: string; public_key: string; allowed_ips: string }[] {
+  return peers
+    .filter((p) => p.enabled)
+    .map((p) => {
+      const ip6 = peerIp6(subnet6, p.ip);
+      return { name: p.name, host: hostLabel(p.name), public_key: p.public_key, allowed_ips: `${p.ip}/32${ip6 ? `,${ip6}/128` : ""}` };
+    });
 }
 
 /** What Terraform's peers_json needs at deploy time. */

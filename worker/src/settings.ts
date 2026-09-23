@@ -16,6 +16,9 @@ export const OVERRIDABLE: Record<string, (v: string) => boolean> = {
   idle_destroy_minutes: (v) => Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 1440,
   monthly_budget_gbp: (v) => Number(v) >= 0,
   hourly_rate_gbp: (v) => Number(v) >= 0 && Number(v) < 10,
+  standby_rate_gbp: (v) => Number(v) >= 0 && Number(v) < 10,
+  expiry_action: (v) => v === "destroy" || v === "hibernate",
+  standby_max_days: (v) => Number(v) >= 1 && Number(v) <= 60,
   ssh_allowed_cidr: (v) => v === "" || /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(v),
 };
 
@@ -31,6 +34,9 @@ export async function effectiveConfig(env: Env): Promise<Config> {
     idleDestroyMinutes: num("idle_destroy_minutes", base.idleDestroyMinutes),
     monthlyBudgetGbp: num("monthly_budget_gbp", base.monthlyBudgetGbp),
     hourlyRateGbp: num("hourly_rate_gbp", base.hourlyRateGbp),
+    standbyRateGbp: num("standby_rate_gbp", base.standbyRateGbp),
+    expiryAction: ov.expiry_action === "hibernate" ? "hibernate" : ov.expiry_action === "destroy" ? "destroy" : base.expiryAction,
+    standbyMaxDays: num("standby_max_days", base.standbyMaxDays),
     sshAllowedCidr: ov.ssh_allowed_cidr !== undefined ? ov.ssh_allowed_cidr : base.sshAllowedCidr,
   };
 }

@@ -3,7 +3,7 @@ import { parseWgDump, estimateCostGbp, peerOnline, anyHandshakeWithin, nextTraff
 
 const DUMP = [
   "PRIVATE\tSERVERPUB=\t51820\toff",
-  "PEER1=\t(none)\t81.97.53.125:41234\t10.13.13.2/32\t1790097398\t948\t604\t25",
+  "PEER1=\t(none)\t203.0.113.25:41234\t10.13.13.2/32\t1790097398\t948\t604\t25",
   "PEER2=\t(none)\t(none)\t10.13.13.3/32\t0\t0\t0\toff",
 ].join("\n");
 
@@ -13,7 +13,7 @@ describe("parseWgDump", () => {
     expect(r.listen_port).toBe(51820);
     expect(r.server_public_key).toBe("SERVERPUB=");
     expect(r.peers).toHaveLength(2);
-    expect(r.peers[0]).toMatchObject({ public_key: "PEER1=", endpoint: "81.97.53.125:41234", allowed_ips: "10.13.13.2/32", latest_handshake: 1790097398, rx: 948, tx: 604 });
+    expect(r.peers[0]).toMatchObject({ public_key: "PEER1=", endpoint: "203.0.113.25:41234", allowed_ips: "10.13.13.2/32", latest_handshake: 1790097398, rx: 948, tx: 604 });
     expect(r.peers[1].endpoint).toBeNull();
     expect(r.peers[1].latest_handshake).toBe(0);
   });

@@ -12,7 +12,8 @@ import type { Peer } from "../db";
 import type { AgentReport, AgentPeer } from "../state";
 import { peerOnline } from "../state";
 import type { Config } from "../env";
-import { serverTunnelIp as serverTunnelIpOf } from "../peers";
+import { serverTunnelIp as serverTunnelIpOf, peerIp6 } from "../peers";
+import { latencyCell } from "./dashboard";
 
 /**
  * What the VM says about this client, not just what the database says.
@@ -29,26 +30,28 @@ function statusCell(p: Peer, live: AgentPeer | undefined, running: boolean, onli
   return online ? html`<span class="pill up">online</span>` : html`<span class="pill idle">offline</span> <span class="faint small">on the VM, no recent handshake</span>`;
 }
 
-export function peersTable(peers: Peer[], report: AgentReport | null, running: boolean): Html {
+export function peersTable(peers: Peer[], report: AgentReport | null, running: boolean, latency: Record<string, number[]> = {}): Html {
   const byKey = new Map((report?.peers ?? []).map((p) => [p.public_key, p]));
   return html`<div id="peers-table" class="table-wrap">
   ${peers.length
     ? html`<table class="rows">
-      <thead><tr><th>Client</th><th>Tunnel address</th><th>Status</th><th>Last handshake</th><th class="num">Received</th><th class="num">Sent</th><th></th></tr></thead>
+      <thead><tr><th>Client</th><th>Tunnel address</th><th>Status</th><th>Last handshake</th><th>Latency</th><th class="num">Received</th><th class="num">Sent</th><th></th></tr></thead>
       <tbody>
       ${peers.map((p) => {
         const live = byKey.get(p.public_key);
         const online = !!live && peerOnline(live);
         return html`<tr>
-          <td><b>${p.name}</b>${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}<div class="key" title="${p.public_key}">${p.public_key}</div></td>
+          <td><b>${p.name}</b>${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}${p.tunnel_dns || p.full_tunnel ? html` <span class="pill idle">tunnel DNS</span>` : ""}<div class="key" title="${p.public_key}">${p.public_key}</div></td>
           <td class="mono">${p.ip}</td>
           <td>${statusCell(p, live, running, online)}</td>
           <td>${live && live.latest_handshake ? html`<span title="${new Date(live.latest_handshake * 1000).toISOString()}">${ago(new Date(live.latest_handshake * 1000).toISOString())}</span>` : html`<span class="faint">never</span>`}</td>
+          <td>${running && online ? latencyCell(latency[p.public_key]) : html`<span class="faint">—</span>`}</td>
           <td class="num">${live ? bytes(live.tx) : html`<span class="faint">—</span>`}</td>
           <td class="num">${live ? bytes(live.rx) : html`<span class="faint">—</span>`}</td>
           <td class="actions">
             <button type="button" data-rekey="${p.id}" data-name="${p.name}" title="Make new keys for this client and download its config">Get config</button>
             ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/azure" hx-post="/peers/${p.id}/azure" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client route the Azure network through the tunnel. Changes the next config you download; edit AllowedIPs in the app to change an existing one.">${p.azure_vnet ? "Azure route: on" : "Azure route: off"}</button></form>`}
+            ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/dns" hx-post="/peers/${p.id}/dns" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client use the tunnel DNS on ${"the VM"} (ad-blocking, .wg names). Changes the next config you download.">${p.tunnel_dns ? "Tunnel DNS: on" : "Tunnel DNS: off"}</button></form>`}
             <form method="post" action="/peers/${p.id}/toggle" hx-post="/peers/${p.id}/toggle" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit">${p.enabled ? "Disable" : "Enable"}</button></form>
             <form method="post" action="/peers/${p.id}/delete" hx-post="/peers/${p.id}/delete" hx-target="#peers-table" hx-swap="outerHTML" hx-confirm="Delete ${p.name}? Its config stops working at the next heartbeat." style="display:inline"><button type="submit" class="danger">Delete</button></form>
           </td>
@@ -59,10 +62,10 @@ export function peersTable(peers: Peer[], report: AgentReport | null, running: b
 </div>`;
 }
 
-export function peersBody(o: { peers: Peer[]; report: AgentReport | null; running: boolean; cfg: Config; serverPub: string | null; nextIp: string | null }): Html {
+export function peersBody(o: { peers: Peer[]; report: AgentReport | null; running: boolean; cfg: Config; serverPub: string | null; nextIp: string | null; latency?: Record<string, number[]> }): Html {
   return html`<section>
   <div class="section-head"><h1>Clients</h1><span class="muted small">${o.running ? "Changes reach the VM within 30 seconds; the status column shows what the VM reports." : "Changes are loaded at the next deploy."}</span></div>
-  ${peersTable(o.peers, o.report, o.running)}
+  ${peersTable(o.peers, o.report, o.running, o.latency)}
 </section>
 
 <section id="peer-reveal" hidden>
@@ -87,11 +90,12 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
       ? html`<form id="add-peer" hx-boost="false" action="/peers" method="get">
         <label class="field"><span>Name</span><input type="text" name="name" required maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9 _-]{0,31}" placeholder="Phone"></label>
         <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="azure_vnet" value="1" style="width:auto"><span style="margin:0">Also route the Azure network <span class="mono">${o.cfg.vnetCidr}</span> through the tunnel</span></label>
-        <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="full_tunnel" value="1" style="width:auto"><span style="margin:0">Full tunnel (send all traffic through Azure, an exit node; includes the Azure network)</span></label>
-        <p class="hint">Split tunnel by default: ${o.cfg.subnet} and the loopback ${o.cfg.loopbackIp} go through. Next free address: <span class="mono">${o.nextIp ?? "none left"}</span>.</p>
+        <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="tunnel_dns" value="1" style="width:auto"><span style="margin:0">Use the tunnel DNS: ad-blocking and names like <span class="mono">vm.wg</span>. Leave off if this device stays connected while the VM is destroyed</span></label>
+        <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="full_tunnel" value="1" style="width:auto"><span style="margin:0">Full tunnel (send all traffic, IPv4 and IPv6, through Azure, an exit node; includes the Azure network and the tunnel DNS)</span></label>
+        <p class="hint">Split tunnel by default: ${o.cfg.subnet}${o.cfg.subnet6 ? `, ${o.cfg.subnet6}` : ""} and the loopback ${o.cfg.loopbackIp} go through. Next free address: <span class="mono">${o.nextIp ?? "none left"}</span>${o.nextIp && o.cfg.subnet6 ? html` and <span class="mono">${peerIp6(o.cfg.subnet6, o.nextIp)}</span>` : ""}.</p>
         <div class="btn-row"><button type="submit" class="primary" ${o.nextIp ? "" : "disabled"}>Make keys and add</button><span id="add-peer-status" class="small muted"></span></div>
       </form>`
-      : html`<p class="muted">The server key is not configured (WG_SERVER_PRIVATE_KEY), so client configs cannot be built yet. <a href="/settings">Finish setup</a>.</p>`}
+      : html`<p class="muted">The server public key is not configured (WG_SERVER_PUBLIC_KEY in wrangler.toml), so client configs cannot be built yet. <a href="/settings">Finish setup</a>.</p>`}
   </div>
 </section>
 

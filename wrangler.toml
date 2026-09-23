@@ -56,6 +56,11 @@ PUBLIC_URL = "https://wg-admin.clydeford.net"
 WG_DNS_NAME = "wg.clydeford.net"
 WG_PORT = "51820"
 WG_SUBNET = "10.13.13.0/24"
+# IPv6 inside the tunnel (unique local), so full-tunnel clients get IPv6 out of Azure.
+WG_SUBNET6 = "fd13:13::/64"
+# The server's WireGuard PUBLIC key. Public by design: every client config has it.
+# The private key is only in .env, GitHub secrets and the VM, never the Worker.
+WG_SERVER_PUBLIC_KEY = "wapbe4SDSmZoefARMVLSAR2KHjjCU3DJ3McGiXQ+3yc="
 # Loopback test address on the VM (dummy interface), outside the tunnel subnet.
 WG_LOOPBACK_IP = "10.13.255.1"
 AZURE_REGION = "uksouth"
@@ -68,5 +73,13 @@ SSH_ALLOWED_CIDR = ""
 AUTO_DESTROY_DEFAULT_HOURS = "4"
 IDLE_DESTROY_MINUTES = "0"
 MONTHLY_BUDGET_GBP = "10"
-# Estimated running cost: B1s (~£0.0093/h) + 30 GB StandardSSD (~£0.0027/h) + static IP (~£0.0029/h).
-HOURLY_RATE_GBP = "0.0149"
+# Estimated running cost: B1s (~£0.0093/h) + 30 GB StandardSSD (~£0.0027/h) + Standard static IPv4
+# (£0.0037/h, Azure retail price 2026-09). The IPv6 address is free.
+HOURLY_RATE_GBP = "0.0157"
+# Standby (VM deallocated, disk and IP kept): disk + IP only, about £4.65 a month.
+STANDBY_RATE_GBP = "0.0064"
+# What the auto-destroy timer and the idle limit do: "destroy" (back to £0) or "hibernate" (Standby).
+# The cost guard always destroys.
+EXPIRY_ACTION = "destroy"
+# A VM left in Standby longer than this is torn down, so a forgotten one cannot cost money for ever.
+STANDBY_MAX_DAYS = "7"

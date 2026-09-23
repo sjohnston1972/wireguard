@@ -34,7 +34,8 @@ export const WORKER_KEYS = [
   "CF_ACCESS_TEAM_DOMAIN",
   "CF_ACCESS_AUD",
   "CF_ACCESS_ALLOWED_EMAIL",
-  "WG_SERVER_PRIVATE_KEY",
+  // WG_SERVER_PRIVATE_KEY deliberately absent: the Worker only needs the public
+  // key, which is a plain var in wrangler.toml.
   "GITHUB_REPO",
   "GITHUB_TOKEN",
   "GITHUB_WORKFLOW",

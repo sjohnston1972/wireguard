@@ -1,0 +1,13 @@
+[Unit]
+# wg-blocklist.service: refresh the tunnel DNS ad-block list, once per boot.
+Description=wg-admin DNS blocklist refresh
+After=network-online.target dnsmasq.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wg-blocklist.sh
+TimeoutStartSec=120s
+
+[Install]
+WantedBy=multi-user.target

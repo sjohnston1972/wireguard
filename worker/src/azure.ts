@@ -113,10 +113,11 @@ export async function azureInventory(env: Env): Promise<AzureInventory> {
       const r = await arm(env, path);
       return r.ok ? ((await r.json()) as Record<string, any>) : null;
     };
-    const [vnet, nsg, pip, nic, vm, vmView, rt] = await Promise.all([
+    const [vnet, nsg, pip, pip6, nic, vm, vmView, rt] = await Promise.all([
       j(`${base}/providers/Microsoft.Network/virtualNetworks/vnet-wg?api-version=2024-01-01`),
       j(`${base}/providers/Microsoft.Network/networkSecurityGroups/nsg-wg?api-version=2024-01-01`),
       j(`${base}/providers/Microsoft.Network/publicIPAddresses/pip-wg?api-version=2024-01-01`),
+      j(`${base}/providers/Microsoft.Network/publicIPAddresses/pip-wg-v6?api-version=2024-01-01`),
       j(`${base}/providers/Microsoft.Network/networkInterfaces/nic-wg?api-version=2024-01-01`),
       j(`${base}/providers/Microsoft.Compute/virtualMachines/vm-wg?api-version=2024-07-01`),
       j(`${base}/providers/Microsoft.Compute/virtualMachines/vm-wg/instanceView?api-version=2024-07-01`),
@@ -137,6 +138,9 @@ export async function azureInventory(env: Env): Promise<AzureInventory> {
     }
     if (pip) {
       out.resources.push({ kind: "Public IP", name: pip.name, detail: `${pip.properties?.ipAddress ?? "not yet allocated"}, ${pip.sku?.name ?? ""} ${pip.properties?.publicIPAllocationMethod ?? ""}`.trim() });
+    }
+    if (pip6) {
+      out.resources.push({ kind: "Public IPv6", name: pip6.name, detail: `${pip6.properties?.ipAddress ?? "not yet allocated"}, ${pip6.sku?.name ?? ""} ${pip6.properties?.publicIPAllocationMethod ?? ""}`.trim() });
     }
     if (nic) {
       const ipc = nic.properties?.ipConfigurations?.[0]?.properties ?? {};
@@ -184,6 +188,20 @@ export async function setSshAllowedCidr(env: Env, cidr: string): Promise<void> {
   };
   const r = await arm(env, path, { method: "PUT", body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`Azure refused the NSG change (${r.status}): ${(await r.text()).slice(0, 200)}`);
+}
+
+/**
+ * Power the VM down to "deallocated" (Standby) or back up. Deallocated means
+ * Azure stops charging for the VM itself; the disk and the static IP stay,
+ * so DNS and the VM's identity are unchanged. Like shutting a router down
+ * but leaving it racked and cabled. Azure answers 202 and works in the
+ * background; the dashboard polls the power state to see it finish.
+ */
+export async function vmPower(env: Env, op: "deallocate" | "start"): Promise<void> {
+  const cfg = config(env);
+  const sub = env.AZURE_SUBSCRIPTION_ID;
+  const r = await arm(env, `/subscriptions/${sub}/resourceGroups/${cfg.resourceGroup}/providers/Microsoft.Compute/virtualMachines/vm-wg/${op}?api-version=2024-07-01`, { method: "POST" });
+  if (r.status !== 200 && r.status !== 202) throw new Error(`Azure refused to ${op} the VM (${r.status}): ${(await r.text()).slice(0, 200)}`);
 }
 
 /** Daily actual cost for this resource group, month to date, via Cost Management. */

@@ -7,6 +7,8 @@
 //   1. The run lock: a single key on a hook. Only one run (deploy or destroy)
 //      may hold it, so two clicks a millisecond apart cannot both start a run.
 //      It expires on its own in case a run dies without releasing it.
+//   3. The one-time links on phone notifications (actions.ts): "use once"
+//      has to mean once, even if two taps land a millisecond apart.
 //   2. The status snapshot ("is it up?"). It used to live in KV, but KV is
 //      eventually consistent between edges: the GitHub callback wrote the
 //      public IP at one edge, the VM's heartbeat read a stale copy at another
@@ -44,6 +46,22 @@ export class RunLock extends DurableObject<Env> {
         return Response.json({ snapshot: next });
       }
       return new Response("method", { status: 405 });
+    }
+
+    // ── One-time action links ─────────────────────────────────────────
+    if (url.pathname === "/act/put" || url.pathname === "/act/take") {
+      const body = (await request.json()) as { key: string; action?: string; expiresAt?: number };
+      const key = `act:${body.key}`;
+      if (url.pathname === "/act/put") {
+        await this.ctx.storage.put(key, { action: body.action, expiresAt: body.expiresAt });
+        // Sweep expired links so the store does not grow.
+        const all = await this.ctx.storage.list<{ expiresAt: number }>({ prefix: "act:" });
+        for (const [k, v] of all) if (v.expiresAt < now) await this.ctx.storage.delete(k);
+        return Response.json({ ok: true });
+      }
+      const rec = await this.ctx.storage.get<{ action: string; expiresAt: number }>(key);
+      if (rec) await this.ctx.storage.delete(key);
+      return Response.json({ action: rec && rec.expiresAt > now ? rec.action : null });
     }
 
     // ── Run lock ───────────────────────────────────────────────────────

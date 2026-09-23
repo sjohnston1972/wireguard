@@ -2,7 +2,7 @@
 //
 // Plain English: the one-line answer to "is it up?". A small JSON snapshot
 // holds the current state (Destroyed, Deploying, Running, Destroying,
-// Failed), the public IP, whether DNS matches, the last heartbeat from the
+// Failed, and the standby trio Hibernating, Standby, Resuming), the public IP, whether DNS matches, the last heartbeat from the
 // VM, the auto-destroy deadline and what Azure says exists. Every page load
 // reads it; every event (a click, a callback, a heartbeat, a cron check)
 // patches it. It lives in the Durable Object so patches merge atomically; a
@@ -13,7 +13,29 @@
 
 import type { Env } from "./env";
 
-export type State = "destroyed" | "deploying" | "running" | "destroying" | "failed";
+export type State = "destroyed" | "deploying" | "running" | "destroying" | "failed" | "hibernating" | "standby" | "resuming";
+
+/** The VM's boot self-test (wg-selftest.sh): true/false per check, null = not tried on this build. */
+export interface SelfTest {
+  at: string;
+  ms: number;
+  handshake: boolean | null;
+  tunnel: boolean | null;
+  loopback: boolean | null;
+  dns: boolean | null;
+  internet: boolean | null;
+  internet6: boolean | null;
+  error?: string;
+}
+
+/** Which checks failed, in words; empty when everything that ran passed. */
+export function selfTestFailures(t: SelfTest | null): string[] {
+  if (!t) return [];
+  const names: [keyof SelfTest, string][] = [["handshake", "handshake"], ["tunnel", "ping the tunnel end"], ["loopback", "ping the loopback"], ["dns", "tunnel DNS"], ["internet", "internet (IPv4)"], ["internet6", "internet (IPv6)"]];
+  const out = names.filter(([k]) => t[k] === false).map(([, n]) => n);
+  if (t.error) out.unshift(t.error);
+  return out;
+}
 
 /** One row in the "what exists in Azure" inventory. */
 export interface AzureResource {
@@ -47,7 +69,24 @@ export interface AgentReport {
   listen_port: number | null;
   server_public_key: string | null;
   loopback: string | null; // address the VM reports on its lo1 dummy interface, null if absent
+  wan6?: string | null; // the VM's public-side IPv6 address, when Azure gave it one
+  dns?: { up: boolean; blocked: number } | null; // tunnel DNS: running, and how many names it blocks
   peers: AgentPeer[];
+}
+
+/** A client that changed the address it dials in from (Wi-Fi to 4G, say). */
+export interface Roam {
+  at: string;
+  from: string;
+  to: string;
+}
+
+/** What this Running stretch has done, for the summary sent when it ends. */
+export interface Session {
+  started: string;
+  rx: number; // bytes, summed across heartbeats so a reboot's counter reset is not lost
+  tx: number;
+  seen: string[]; // public keys of clients that shook hands during the session
 }
 
 /** Totals across all peers, plus the rate since the previous heartbeat. */
@@ -106,6 +145,13 @@ export interface Snapshot {
   error: string | null;
   azure: AzureInventory | null; // what Azure itself says exists, refreshed every 5 min while not Destroyed
   traffic: Traffic | null; // totals and rate from the last two heartbeats
+  selftest: SelfTest | null; // the VM's boot self-test, from the heartbeat
+  latency: Record<string, number[]>; // per client public key: recent round-trip times in ms, oldest first
+  roams: Record<string, Roam>; // per client public key: the last time it changed networks
+  session: Session | null;
+  standby_since: string | null; // when the VM was deallocated into Standby
+  power_op_at: string | null; // when a hibernate or resume was asked for
+  pending_summary: string | null; // the session summary, held while a tear-down runs
   updated_at: string;
 }
 
@@ -128,6 +174,13 @@ export const EMPTY: Snapshot = {
   error: null,
   azure: null,
   traffic: null,
+  selftest: null,
+  latency: {},
+  roams: {},
+  session: null,
+  standby_since: null,
+  power_op_at: null,
+  pending_summary: null,
   updated_at: new Date(0).toISOString(),
 };
 
@@ -205,6 +258,52 @@ export function parseWgDump(dump: string): { listen_port: number | null; server_
   return { listen_port, server_public_key, peers };
 }
 
+/** How many round-trip samples to keep per client: 40 heartbeats is 20 minutes. */
+export const LATENCY_SAMPLES = 40;
+
+/** Fold one heartbeat's ping results into the per-client history. */
+export function nextLatency(prev: Record<string, number[]>, rtt: Record<string, number> | null | undefined, known: string[]): Record<string, number[]> {
+  const out: Record<string, number[]> = {};
+  for (const k of known) {
+    const hist = prev[k] ?? [];
+    const v = rtt?.[k];
+    out[k] = typeof v === "number" && Number.isFinite(v) ? hist.concat(Math.round(v * 10) / 10).slice(-LATENCY_SAMPLES) : hist;
+  }
+  return out;
+}
+
+/** The host part of "1.2.3.4:5678" or "[2a00::1]:5678". */
+export function endpointHost(ep: string | null): string | null {
+  if (!ep) return null;
+  const m = ep.match(/^\[(.+)\]:\d+$/) ?? ep.match(/^(.+):\d+$/);
+  return m ? m[1] : ep;
+}
+
+/** Clients whose dial-in address changed since the last heartbeat. */
+export function detectRoams(prev: AgentReport | null, next: AgentReport, at: string): Record<string, Roam> {
+  const out: Record<string, Roam> = {};
+  const before = new Map((prev?.peers ?? []).map((p) => [p.public_key, endpointHost(p.endpoint)]));
+  for (const p of next.peers) {
+    const was = before.get(p.public_key);
+    const now = endpointHost(p.endpoint);
+    if (was && now && was !== now) out[p.public_key] = { at, from: was, to: now };
+  }
+  return out;
+}
+
+/** Add one heartbeat to the running session's totals. Counters that went down (a reboot) count from zero. */
+export function nextSession(prev: Session | null, prevReport: AgentReport | null, report: AgentReport, now = Date.now()): Session {
+  const s: Session = prev ? { ...prev, seen: [...prev.seen] } : { started: new Date(now).toISOString(), rx: 0, tx: 0, seen: [] };
+  const before = new Map((prevReport?.peers ?? []).map((p) => [p.public_key, p]));
+  for (const p of report.peers) {
+    const b = before.get(p.public_key);
+    s.rx += b && p.rx >= b.rx ? p.rx - b.rx : p.rx;
+    s.tx += b && p.tx >= b.tx ? p.tx - b.tx : p.tx;
+    if (p.latest_handshake > 0 && now / 1000 - p.latest_handshake < 180 && !s.seen.includes(p.public_key)) s.seen.push(p.public_key);
+  }
+  return s;
+}
+
 /** A peer is "online" if it shook hands within the last 3 minutes (WireGuard rekeys every 2). */
 export function peerOnline(p: AgentPeer, now = Date.now()): boolean {
   return p.latest_handshake > 0 && now / 1000 - p.latest_handshake < 180;
@@ -222,8 +321,16 @@ export const STATE_LABEL: Record<State, string> = {
   running: "Running",
   destroying: "Tearing down",
   failed: "Failed",
+  hibernating: "Hibernating",
+  standby: "Standby",
+  resuming: "Resuming",
 };
 
 export function isBusy(s: State): boolean {
-  return s === "deploying" || s === "destroying";
+  return s === "deploying" || s === "destroying" || s === "hibernating" || s === "resuming";
+}
+
+/** Busy with a VM power change (the Worker talks to Azure itself; no GitHub run). */
+export function isPowerOp(s: State): boolean {
+  return s === "hibernating" || s === "resuming";
 }

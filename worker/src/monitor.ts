@@ -3,10 +3,15 @@
 // Plain English: the night watchman. Every 5 minutes, without anyone
 // looking at the dashboard, it:
 //   - refreshes the active run from GitHub (so a missed callback heals)
-//   - tears down when the auto-destroy deadline passes (the big cost saver)
+//   - moves a hibernate or resume along (standby.ts)
+//   - 15 minutes before the auto-destroy deadline, pings the phone with
+//     one-tap buttons: Extend 1h, Hibernate, Tear down
+//   - at the deadline tears down, or hibernates if Settings says so (the
+//     big cost saver)
 //   - tears down anyway if running 15 minutes past that (cost guard)
-//   - tears down on idle if IDLE_DESTROY_MINUTES is set and no peer has
+//   - does the same on idle if IDLE_DESTROY_MINUTES is set and no peer has
 //     shaken hands for that long
+//   - tears down a VM left in Standby longer than STANDBY_MAX_DAYS
 //   - flags drift: Azure and the dashboard disagree
 //   - flags an unreachable VM: no heartbeat for 2 minutes while Running
 //   - pulls yesterday's actual cost from Azure once a day
@@ -19,7 +24,9 @@ import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { getSnapshot, saveSnapshot, anyHandshakeWithin } from "./state";
 import { refreshActiveRun, startDestroy, detectDrift, refreshInventory } from "./runs";
+import { startHibernate, refreshPower } from "./standby";
 import { notify } from "./notify";
+import { actionButton, dashboardButton } from "./actions";
 import { costMonthToDate } from "./azure";
 import { checkDns } from "./dns";
 
@@ -34,19 +41,46 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     notes.push(`refresh: ${(e as Error).message}`);
   }
 
-  let snap = await getSnapshot(env);
+  try {
+    await refreshPower(env, now.getTime());
+  } catch (e) {
+    notes.push(`power: ${(e as Error).message}`);
+  }
 
-  // 2. Auto-destroy and cost guard.
+  let snap = await getSnapshot(env);
+  const hibernating = cfg.expiryAction === "hibernate";
+
+  // 2a. Heads-up 15 minutes before the deadline, once per deadline, with
+  //     buttons that work from the lock screen.
+  if (snap.state === "running" && snap.auto_destroy_at) {
+    const left = Date.parse(snap.auto_destroy_at) - now.getTime();
+    const key = `warned:${snap.auto_destroy_at}`;
+    if (left > 0 && left <= 15 * 60_000 && !(await env.STATUS.get(key))) {
+      await env.STATUS.put(key, "1", { expirationTtl: 24 * 3600 });
+      const ttl = Math.round(left / 1000) + 30 * 60; // the buttons stop working 30 minutes after the deadline
+      const mins = Math.max(1, Math.round(left / 60_000));
+      const buttons = [await actionButton(env, "extend", ttl), hibernating ? await actionButton(env, "destroy", ttl) : await actionButton(env, "hibernate", ttl), dashboardButton(env)];
+      await notify(env, `wg-admin: ${hibernating ? "hibernating" : "tearing down"} in ${mins} min`, `The auto-destroy timer ends at ${new Date(snap.auto_destroy_at).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}. Extend it, or let it ${hibernating ? "hibernate" : "tear down"}.`, { priority: 4, tags: ["hourglass"], buttons });
+      notes.push("deadline warning sent");
+    }
+  }
+
+  // 2b. Deadline reached: hibernate or destroy per Settings. The cost guard
+  //     (15 minutes over, so the first attempt failed) always destroys.
   if (snap.state === "running" && snap.auto_destroy_at) {
     const deadline = Date.parse(snap.auto_destroy_at);
     const overBy = now.getTime() - deadline;
     if (overBy >= 0) {
       const guard = overBy > 15 * 60_000;
       try {
-        await startDestroy(env, "watchman", guard ? "cost guard: running 15 min past the deadline" : "auto-destroy timer");
-        const msg = guard ? "Cost guard fired: the VM was still running 15 minutes past its deadline. Tearing down." : "Auto-destroy timer reached. Tearing down.";
+        if (hibernating && !guard) {
+          await startHibernate(env, "watchman", "auto-destroy timer");
+        } else {
+          await startDestroy(env, "watchman", guard ? "cost guard: running 15 min past the deadline" : "auto-destroy timer");
+        }
+        const msg = guard ? "Cost guard fired: the VM was still running 15 minutes past its deadline. Tearing down." : hibernating ? "Timer reached. Hibernating into Standby." : "Auto-destroy timer reached. Tearing down.";
         await db.addAlert(env, guard ? "cost_guard" : "info", msg);
-        await notify(env, "wg-admin: auto-destroy", msg);
+        if (guard) await notify(env, "wg-admin: cost guard", msg, { priority: 4, tags: ["rotating_light"] });
         notes.push(msg);
         return notes;
       } catch (e) {
@@ -61,14 +95,30 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     const idleWindow = cfg.idleDestroyMinutes * 60_000;
     if (upFor > idleWindow && !anyHandshakeWithin(snap.agent, cfg.idleDestroyMinutes, now.getTime())) {
       try {
-        await startDestroy(env, "watchman", `idle: no handshake for ${cfg.idleDestroyMinutes} min`);
-        const msg = `No client has connected for ${cfg.idleDestroyMinutes} minutes. Tearing down.`;
+        if (hibernating) await startHibernate(env, "watchman", `idle: no handshake for ${cfg.idleDestroyMinutes} min`);
+        else await startDestroy(env, "watchman", `idle: no handshake for ${cfg.idleDestroyMinutes} min`);
+        const msg = `No client has connected for ${cfg.idleDestroyMinutes} minutes. ${hibernating ? "Hibernating" : "Tearing down"}.`;
         await db.addAlert(env, "idle", msg);
-        await notify(env, "wg-admin: idle tear-down", msg);
         notes.push(msg);
         return notes;
       } catch (e) {
         notes.push(`idle: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  // 3b. Standby has a limit, so a forgotten VM cannot bill for ever.
+  if (snap.state === "standby" && snap.standby_since) {
+    const days = (now.getTime() - Date.parse(snap.standby_since)) / 86_400_000;
+    if (days > cfg.standbyMaxDays) {
+      try {
+        await startDestroy(env, "watchman", `standby limit: ${cfg.standbyMaxDays} days`);
+        const msg = `The VM has been in Standby for ${cfg.standbyMaxDays} days. Tearing it down to get back to £0.`;
+        await db.addAlert(env, "info", msg);
+        notes.push(msg);
+        return notes;
+      } catch (e) {
+        notes.push(`standby limit: ${(e as Error).message}`);
       }
     }
   }
@@ -80,7 +130,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     const drift = await detectDrift(env);
     if (drift && drift !== before) {
       await db.addAlert(env, "drift", drift);
-      await notify(env, "wg-admin: drift", drift);
+      await notify(env, "wg-admin: drift", drift, { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
       notes.push(drift);
     }
   } catch (e) {
@@ -96,7 +146,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     if (stale && !wasFlagged) {
       await env.STATUS.put(`flag:${flag}`, "1");
       await db.addAlert(env, "unreachable", "No heartbeat from the VM for 2 minutes. It may be down, or the agent token may be wrong.");
-      await notify(env, "wg-admin: VM unreachable", "No heartbeat for 2 minutes.");
+      await notify(env, "wg-admin: VM unreachable", "No heartbeat for 2 minutes.", { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
       notes.push("unreachable");
     } else if (!stale && wasFlagged) {
       await env.STATUS.delete(`flag:${flag}`);

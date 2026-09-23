@@ -83,7 +83,7 @@ export function notice(kind: "good" | "warn" | "bad" | "info", text: string): Ht
 }
 
 function favicon(state: State): string {
-  const color = state === "running" ? "#12945f" : state === "failed" ? "#d42b2b" : state === "destroyed" ? "#6b7a8a" : "#d97b06";
+  const color = state === "running" ? "#12945f" : state === "failed" ? "#d42b2b" : state === "destroyed" || state === "standby" ? "#6b7a8a" : "#d97b06";
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="${color}"/></svg>`;
 }
 
@@ -121,18 +121,13 @@ export function gbp(n: number): string {
   return `£${n < 0.1 && n > 0 ? n.toFixed(3) : n.toFixed(2)}`;
 }
 
-export function bytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
-  return `${(n / 1024 ** 3).toFixed(2)} GB`;
-}
+export { bytesText as bytes } from "../format";
 
 export function pill(kind: "up" | "busy" | "down" | "idle", text: string): Html {
   return html`<span class="pill ${kind}">${text}</span>`;
 }
 
 export function statePill(state: State): Html {
-  const kind = state === "running" ? "up" : state === "failed" ? "down" : state === "destroyed" ? "idle" : "busy";
+  const kind = state === "running" ? "up" : state === "failed" ? "down" : state === "destroyed" || state === "standby" ? "idle" : "busy";
   return pill(kind, STATE_LABEL[state]);
 }

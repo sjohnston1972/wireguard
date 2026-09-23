@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { nextFreeIp, serverTunnelIp, clientConfigTemplate, agentPeerList, terraformPeerList, validPeerName, isWgKey, serverPublicKey, PRIVATE_KEY_PLACEHOLDER } from "../src/peers";
+import { nextFreeIp, serverTunnelIp, clientConfigTemplate, agentPeerList, terraformPeerList, validPeerName, isWgKey, serverPublicKey, peerIp6, hostLabel, PRIVATE_KEY_PLACEHOLDER } from "../src/peers";
 import type { Env } from "../src/env";
 import type { Peer } from "../src/db";
 
@@ -8,9 +8,13 @@ const env = {
   WG_PORT: "51820",
   WG_SUBNET: "10.13.13.0/24",
   AZURE_VNET_CIDR: "10.50.0.0/16",
-  // RFC 7748 §6.1 Alice's private key, base64
-  WG_SERVER_PRIVATE_KEY: Buffer.from("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", "hex").toString("base64"),
+  WG_SUBNET6: "fd13:13::/64",
+  // RFC 7748 §6.1 Alice's public key, base64. The Worker only ever holds the public half.
+  WG_SERVER_PUBLIC_KEY: Buffer.from("8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a", "hex").toString("base64"),
 } as unknown as Env;
+
+/** The same settings with IPv6 switched off. */
+const env4 = { ...env, WG_SUBNET6: "" } as unknown as Env;
 
 describe("nextFreeIp", () => {
   it("starts at .2 and skips used addresses", () => {
@@ -31,31 +35,43 @@ describe("clientConfigTemplate", () => {
     const t = clientConfigTemplate(env, { ip: "10.13.13.7", full_tunnel: 0 }, "SERVERPUB=");
     expect(t).toContain(`PrivateKey = ${PRIVATE_KEY_PLACEHOLDER}`);
     expect(t).toContain("Endpoint = wg.clydeford.net:51820");
-    expect(t).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32");
+    expect(t).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32, fd13:13::/64");
     expect(t).not.toContain("DNS =");
+  });
+  it("gives every client an IPv6 tunnel address that mirrors the IPv4 one", () => {
+    expect(clientConfigTemplate(env, { ip: "10.13.13.7", full_tunnel: 0 }, "S=")).toContain("Address = 10.13.13.7/32, fd13:13::7/128");
+    expect(clientConfigTemplate(env, { ip: "10.13.13.13", full_tunnel: 0 }, "S=")).toContain("Address = 10.13.13.13/32, fd13:13::d/128");
+    const v4 = clientConfigTemplate(env4, { ip: "10.13.13.7", full_tunnel: 0 }, "S=");
+    expect(v4).toContain("Address = 10.13.13.7/32\n");
+    expect(v4).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32\n");
+  });
+  it("split tunnel uses the tunnel DNS only when asked", () => {
+    const t = clientConfigTemplate(env, { ip: "10.13.13.7", full_tunnel: 0, tunnel_dns: 1 }, "S=");
+    expect(t).toContain("DNS = 10.13.255.1, wg");
   });
   it("split tunnel includes the loopback, and the Azure VNet only when asked", () => {
     const plain = clientConfigTemplate(env, { ip: "10.13.13.7", full_tunnel: 0 }, "SERVERPUB=");
-    expect(plain).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32");
+    expect(plain).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32, fd13:13::/64");
     expect(plain).not.toContain("10.50.0.0/16");
     const vnet = clientConfigTemplate(env, { ip: "10.13.13.7", full_tunnel: 0, azure_vnet: 1 }, "SERVERPUB=");
-    expect(vnet).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32, 10.50.0.0/16");
+    expect(vnet).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32, fd13:13::/64, 10.50.0.0/16");
   });
-  it("full tunnel routes everything and pushes DNS", () => {
+  it("full tunnel routes everything and always uses the tunnel DNS", () => {
     const t = clientConfigTemplate(env, { ip: "10.13.13.7", full_tunnel: 1 }, "SERVERPUB=");
     expect(t).toContain("AllowedIPs = 0.0.0.0/0, ::/0");
-    expect(t).toContain("DNS = 1.1.1.1");
+    expect(t).toContain("DNS = 10.13.255.1, wg");
   });
 });
 
 describe("peer lists", () => {
   const peers: Peer[] = [
-    { id: 1, name: "a", public_key: "A=", ip: "10.13.13.2", enabled: 1, full_tunnel: 0, azure_vnet: 0, created_at: "", note: null },
-    { id: 2, name: "b", public_key: "B=", ip: "10.13.13.3", enabled: 0, full_tunnel: 0, azure_vnet: 0, created_at: "", note: null },
+    { id: 1, name: "Steven's Phone", public_key: "A=", ip: "10.13.13.2", enabled: 1, full_tunnel: 0, azure_vnet: 0, tunnel_dns: 0, created_at: "", note: null },
+    { id: 2, name: "b", public_key: "B=", ip: "10.13.13.3", enabled: 0, full_tunnel: 0, azure_vnet: 0, tunnel_dns: 0, created_at: "", note: null },
   ];
-  it("only enabled peers reach the VM and Terraform", () => {
-    expect(agentPeerList(peers)).toEqual([{ name: "a", public_key: "A=", allowed_ips: "10.13.13.2/32" }]);
-    expect(terraformPeerList(peers)).toEqual([{ name: "a", public_key: "A=", ip: "10.13.13.2" }]);
+  it("only enabled peers reach the VM and Terraform, with IPv6 and a DNS name", () => {
+    expect(agentPeerList(peers, "fd13:13::/64")).toEqual([{ name: "Steven's Phone", host: "steven-s-phone", public_key: "A=", allowed_ips: "10.13.13.2/32,fd13:13::2/128" }]);
+    expect(agentPeerList(peers)).toEqual([{ name: "Steven's Phone", host: "steven-s-phone", public_key: "A=", allowed_ips: "10.13.13.2/32" }]);
+    expect(terraformPeerList(peers)).toEqual([{ name: "Steven's Phone", public_key: "A=", ip: "10.13.13.2" }]);
   });
 });
 

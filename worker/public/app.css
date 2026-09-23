@@ -353,3 +353,19 @@ dialog.modal[open] { animation: modal-in 160ms ease-out; }
 .share { display: inline-block; width: 46px; height: 6px; border-radius: 999px; background: var(--idle-soft); vertical-align: middle; overflow: hidden; margin-right: 4px; }
 .share > i { display: block; height: 100%; background: var(--signal); }
 @media (max-width: 640px) { .tip { font-size: 0.8rem; padding: 10px; } .tiptable th:nth-child(5), .tiptable td:nth-child(5) { display: none; } }
+
+/* ── Standby, verifying and power changes ─────────────────────────────── */
+/* Hibernating, resuming and "verifying" (running, self-test not in yet) are
+   busy states, amber like a deploy. Standby is quiet: the VM exists but is off. */
+.light[data-state="hibernating"], .light[data-state="resuming"] { background: var(--busy); box-shadow: 0 0 0 3px var(--busy-soft); animation: blink 1.2s ease-in-out infinite; }
+.light[data-state="standby"] { background: var(--idle); box-shadow: 0 0 0 3px var(--idle-soft); }
+.state-word[data-state="verifying"], .state-word[data-state="hibernating"], .state-word[data-state="resuming"] { color: var(--busy); }
+.state-word[data-state="standby"] { color: var(--idle); }
+.tunnel[data-state="hibernating"] .carrier, .tunnel[data-state="resuming"] .carrier { stroke: var(--busy); stroke-dasharray: 6 12; animation: carry 0.7s linear infinite; }
+.tunnel[data-state="hibernating"] .port, .tunnel[data-state="resuming"] .port { fill: var(--busy); }
+.tunnel[data-state="standby"] .node.azure { stroke: var(--idle); stroke-dasharray: 3 3; }
+
+/* Latency sparkline: the last ~12 minutes of pings to a client. */
+.lat { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.spark { vertical-align: middle; overflow: visible; }
+.spark polyline { fill: none; stroke: var(--signal); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }

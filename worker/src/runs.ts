@@ -16,10 +16,12 @@ import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
 import { randomToken, sha256Hex, safeEqual } from "./auth";
 import { dispatchWorkflow, findRunByTitle, getGhRun, getJobs, getJobLogTail, cancelGhRun, stepsFromJobs } from "./github";
-import { getSnapshot, saveSnapshot, parseWgDump, nextTraffic, type AgentReport } from "./state";
+import { getSnapshot, saveSnapshot, parseWgDump, nextTraffic, nextLatency, detectRoams, nextSession, selfTestFailures, type AgentReport, type Snapshot, type SelfTest } from "./state";
 import { checkDns } from "./dns";
 import { agentPeerList, terraformPeerList } from "./peers";
 import { notify } from "./notify";
+import { dashboardButton } from "./actions";
+import { bytesText } from "./format";
 import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
 
@@ -65,6 +67,7 @@ export interface DeployOptions {
   requesterIp: string | null;
   requestedBy: string;
   reason?: string;
+  region?: string;
 }
 
 /** Start a deploy. Throws RunError with a message fit for the screen. */
@@ -72,39 +75,40 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   if (!canDispatch(env)) throw new RunError("GitHub is not connected yet. Add GITHUB_TOKEN and GITHUB_REPO in Settings > Setup.");
   const snap = await getSnapshot(env);
   if (snap.state === "running") throw new RunError("Already running. Tear it down first if you want a rebuild.");
-  if (snap.state === "deploying" || snap.state === "destroying") throw new RunError("A run is already in progress.");
+  if (snap.state === "standby") throw new RunError("The VM is in Standby. Resume it instead (about a minute), or tear it down first.");
+  if (isBusyState(snap.state)) throw new RunError("A run is already in progress.");
 
   const cfg = await effectiveConfig(env);
   const id = newRunId("apply");
   const lock = await acquireLock(env, id);
   if (!lock.ok) throw new RunError(`Another run holds the lock (${lock.holder?.runId}). Wait for it or release it in Settings.`);
 
-  const agentToken = randomToken();
-  const callbackToken = randomToken();
+  // The per-run secrets (SSH password, heartbeat and callback tokens, and the
+  // SSH allow-list, which is Steven's home address) are NOT in the dispatch
+  // payload: the repo is public and so is its log. The workflow proves who it
+  // is with a GitHub OIDC token and collects them from /api/callback/secrets.
   const sshPassword = readablePassword();
   const peers = terraformPeerList(await db.enabledPeers(env));
   const sshCidr = cfg.sshAllowedCidr || (opts.requesterIp && !opts.requesterIp.includes(":") ? `${opts.requesterIp}/32` : "");
   const auto_destroy_at = opts.hours ? new Date(Date.now() + opts.hours * 3_600_000).toISOString() : null;
+  const region = opts.region ?? cfg.region;
 
   const payload = {
     run_id: id,
-    region: cfg.region,
+    region,
     vm_size: cfg.vmSize,
     peers_json: JSON.stringify(peers),
     home_lan_cidr: cfg.homeLanCidr,
-    ssh_allowed_cidr: sshCidr,
     wg_dns_name: cfg.dnsName,
     wg_port: cfg.port,
     wg_subnet: cfg.subnet,
+    wg_subnet6: cfg.subnet6,
     loopback_ip: cfg.loopbackIp,
     vnet_cidr: cfg.vnetCidr,
-    ssh_password: sshPassword,
     agent_url: `${cfg.publicUrl}/api/agent`,
-    agent_token: agentToken,
     callback_url: `${cfg.publicUrl}/api/callback`,
-    callback_token: callbackToken,
+    secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
   };
-  const safePayload = { ...payload, agent_token: "(hidden)", callback_token: "(hidden)", ssh_password: "(hidden)" };
 
   const now = new Date().toISOString();
   await db.createRun(env, {
@@ -113,9 +117,10 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     status: "queued",
     requested_at: now,
     requested_by: opts.requestedBy,
-    callback_token_hash: await sha256Hex(callbackToken),
-    agent_token_hash: await sha256Hex(agentToken),
-    payload_json: JSON.stringify(safePayload),
+    callback_token_hash: null,
+    agent_token_hash: null,
+    // Kept in D1 (private) with the allow-list, for the dashboard's panels.
+    payload_json: JSON.stringify({ ...payload, ssh_allowed_cidr: sshCidr }),
     auto_destroy_at,
     reason: opts.reason ?? null,
     ssh_password: sshPassword,
@@ -146,27 +151,54 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     steps: [],
     log_tail: null,
     error: null,
+    selftest: null,
+    latency: {},
+    roams: {},
+    session: null,
+    standby_since: null,
+    power_op_at: null,
   });
   return (await db.getRun(env, id))!;
 }
 
-/** Start a destroy. Works from Running, Failed, or a drifted Destroyed. */
+export function isBusyState(s: string): boolean {
+  return s === "deploying" || s === "destroying" || s === "hibernating" || s === "resuming";
+}
+
+/**
+ * One paragraph on what a Running stretch did: how long, roughly what it
+ * cost, how much traffic, and which clients used it. Sent when the VM is
+ * torn down or hibernated, and kept on the Activity page.
+ */
+export async function sessionSummary(env: Env, snap: Snapshot, ending: string, now = Date.now()): Promise<string> {
+  const cfg = await effectiveConfig(env);
+  if (!snap.running_since) return `${ending}.`;
+  const ms = Math.max(0, now - Date.parse(snap.running_since));
+  const h = Math.floor(ms / 3_600_000), m = Math.round((ms % 3_600_000) / 60_000);
+  const cost = (ms / 3_600_000) * cfg.hourlyRateGbp;
+  const peers = await db.listPeers(env);
+  const names = (snap.session?.seen ?? []).map((k) => peers.find((p) => p.public_key === k)?.name ?? "an old key");
+  const traffic = snap.session ? `${bytesText(snap.session.rx)} in, ${bytesText(snap.session.tx)} out` : "no traffic recorded";
+  const who = names.length ? `Used by ${names.join(", ")}` : "No client connected";
+  return `${ending} after ${h ? `${h}h ` : ""}${m}m, about £${cost.toFixed(2)}. ${traffic}. ${who}.`;
+}
+
+/** Start a destroy. Works from Running, Standby, Failed, or a drifted Destroyed. */
 export async function startDestroy(env: Env, requestedBy: string, reason?: string): Promise<db.Run> {
   if (!canDispatch(env)) throw new RunError("GitHub is not connected yet. Add GITHUB_TOKEN and GITHUB_REPO in Settings > Setup.");
   const snap = await getSnapshot(env);
-  if (snap.state === "deploying" || snap.state === "destroying") throw new RunError("A run is already in progress.");
+  if (isBusyState(snap.state)) throw new RunError("A run is already in progress.");
 
   const cfg = config(env);
   const id = newRunId("destroy");
   const lock = await acquireLock(env, id);
   if (!lock.ok) throw new RunError(`Another run holds the lock (${lock.holder?.runId}). Wait for it or release it in Settings.`);
 
-  const callbackToken = randomToken();
   const payload = {
     run_id: id,
     wg_dns_name: cfg.dnsName,
     callback_url: `${cfg.publicUrl}/api/callback`,
-    callback_token: callbackToken,
+    secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
   };
   const now = new Date().toISOString();
   await db.createRun(env, {
@@ -175,9 +207,9 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
     status: "queued",
     requested_at: now,
     requested_by: requestedBy,
-    callback_token_hash: await sha256Hex(callbackToken),
+    callback_token_hash: null,
     agent_token_hash: null,
-    payload_json: JSON.stringify({ ...payload, callback_token: "(hidden)" }),
+    payload_json: JSON.stringify(payload),
     auto_destroy_at: null,
     reason: reason ?? null,
     ssh_password: null,
@@ -191,7 +223,9 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
     throw new RunError((e as Error).message);
   }
 
-  await saveSnapshot(env, { state: "destroying", run_id: id, action: "destroy", since: now, github_run_url: null, steps: [], log_tail: null, error: null, drift: null });
+  // Remember what this session did before the snapshot is cleared.
+  const pending_summary = snap.state === "running" ? await sessionSummary(env, snap, "Torn down") : snap.state === "standby" ? "Torn down from Standby." : null;
+  await saveSnapshot(env, { state: "destroying", run_id: id, action: "destroy", since: now, github_run_url: null, steps: [], log_tail: null, error: null, drift: null, pending_summary });
   return (await db.getRun(env, id))!;
 }
 
@@ -279,11 +313,13 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
   await refreshInventory(env);
   const cfg = config(env);
   await db.addAlert(env, "deploy", `Deployed at ${publicIp ?? "unknown IP"} (${meta.via}); ${cfg.dnsName} ${dns.live ? "is live" : "not live yet"}`, run.id);
-  await notify(env, "wg-admin: running", `${cfg.dnsName} → ${publicIp ?? "?"}${run.auto_destroy_at ? `, auto-destroy at ${run.auto_destroy_at}` : ""}`);
+  // The phone hears about it when the VM's self-test comes in (handleAgent),
+  // so "ready" means the tunnel was proven to carry traffic, not just built.
 }
 
 async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Promise<void> {
   const now = new Date().toISOString();
+  const before = await getSnapshot(env);
   await db.updateRun(env, run.id, { status: "success", finished_at: now });
   await releaseLock(env, run.id);
   const dns = await checkDns(env, null);
@@ -302,9 +338,17 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     drift: null,
     steps: [],
     log_tail: null,
+    selftest: null,
+    latency: {},
+    roams: {},
+    session: null,
+    standby_since: null,
+    power_op_at: null,
+    pending_summary: null,
   });
   await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
-  await notify(env, "wg-admin: destroyed", "Everything removed. Azure cost is £0.");
+  if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);
+  await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; Azure cost is £0.`, { tags: ["wastebasket"] });
 }
 
 /** GitHub Actions result callback. Returns an HTTP status and message. */
@@ -331,6 +375,35 @@ export async function handleCallback(env: Env, token: string, body: CallbackBody
   return { status: 200, message: "ok" };
 }
 
+/**
+ * Hand a GitHub run its per-run secrets, once. The caller has already
+ * verified the OIDC token; `ghRunId` is GitHub's run number from it. The run
+ * must carry our run id in its title, so a token from some other dispatch of
+ * the same workflow cannot collect this run's secrets. Tokens are minted here
+ * and only their hashes are kept.
+ */
+export async function issueRunSecrets(env: Env, runId: string, ghRunId: number): Promise<{ status: number; body: Record<string, unknown> }> {
+  const run = await db.getRun(env, runId);
+  if (!run) return { status: 404, body: { error: "unknown run" } };
+  if (run.finished_at || !["queued", "running"].includes(run.status)) return { status: 409, body: { error: "run is not active" } };
+  if (run.callback_token_hash) return { status: 409, body: { error: "secrets already collected" } };
+  const gh = await getGhRun(env, ghRunId);
+  if (!gh || !(gh.display_title ?? "").includes(run.id)) return { status: 403, body: { error: "that GitHub run is not this run" } };
+
+  const callbackToken = randomToken();
+  const out: Record<string, unknown> = { callback_token: callbackToken };
+  const patch: Partial<db.Run> = { callback_token_hash: await sha256Hex(callbackToken), github_run_id: ghRunId, github_run_url: gh.html_url };
+  if (run.action === "apply") {
+    const agentToken = randomToken();
+    patch.agent_token_hash = await sha256Hex(agentToken);
+    let payload: Record<string, unknown> = {};
+    try { payload = JSON.parse(run.payload_json ?? "{}"); } catch { /* ignore */ }
+    Object.assign(out, { agent_token: agentToken, ssh_password: run.ssh_password ?? "", ssh_allowed_cidr: String(payload.ssh_allowed_cidr ?? "") });
+  }
+  await db.updateRun(env, run.id, patch);
+  return { status: 200, body: out };
+}
+
 export interface CallbackBody {
   run_id: string;
   action: string;
@@ -346,6 +419,10 @@ export interface AgentBody {
   uptime_seconds?: number;
   load?: string;
   loopback?: string;
+  wan6?: string;
+  selftest?: SelfTest | null;
+  rtt?: Record<string, number> | null;
+  dns?: { up?: boolean; blocked?: number } | null;
   dump?: string;
 }
 
@@ -359,7 +436,10 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
   const latestApply = await env.DB.prepare("SELECT id FROM runs WHERE action = 'apply' ORDER BY requested_at DESC LIMIT 1").first<{ id: string }>();
   if (latestApply && latestApply.id !== run.id) return { status: 410, body: { error: "token from an older deployment" } };
 
+  const cfg = config(env);
   const parsed = parseWgDump(body.dump ?? "");
+  // The self-test's canary client (.254) is only there for a few seconds; leave it out.
+  const canary = `${cfg.subnet.split("/")[0].replace(/\.\d+$/, "")}.254/32`;
   const report: AgentReport = {
     at: new Date().toISOString(),
     hostname: body.hostname ?? "",
@@ -368,19 +448,57 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     listen_port: parsed.listen_port,
     server_public_key: parsed.server_public_key,
     loopback: body.loopback ? String(body.loopback) : null,
-    peers: parsed.peers,
+    wan6: body.wan6 ? String(body.wan6) : null,
+    dns: body.dns ? { up: !!body.dns.up, blocked: Number(body.dns.blocked) || 0 } : null,
+    peers: parsed.peers.filter((p) => !p.allowed_ips.split(",").includes(canary)),
   };
   const snap = await getSnapshot(env);
-  const patch: Partial<typeof snap> = { last_agent_at: report.at, agent: report, traffic: nextTraffic(snap.traffic, report) };
+  const known = report.peers.map((p) => p.public_key);
+  const patch: Partial<Snapshot> = {
+    last_agent_at: report.at,
+    agent: report,
+    traffic: nextTraffic(snap.traffic, report),
+    latency: nextLatency(snap.latency ?? {}, body.rtt, known),
+    roams: { ...(snap.roams ?? {}), ...detectRoams(snap.agent, report, report.at) },
+    session: nextSession(snap.session, snap.agent, report),
+  };
   // First heartbeat while still "deploying" (callback not yet in) is proof of life.
   if (snap.state === "deploying" && snap.run_id === run.id) {
     patch.state = "running";
     patch.since = report.at;
     patch.running_since = report.at;
   }
+  // First heartbeat after a resume from Standby: back in service.
+  if (snap.state === "resuming") {
+    patch.state = "running";
+    patch.since = report.at;
+    patch.running_since = report.at;
+    patch.standby_since = null;
+    patch.power_op_at = null;
+    patch.session = nextSession(null, null, report);
+    await releaseLock(env, undefined, true);
+    await db.addAlert(env, "info", "Resumed from Standby; the heartbeat is back.");
+  }
+
+  // A new self-test result (once per boot): tell the phone the tunnel is proven, or what failed.
+  const st = body.selftest && typeof body.selftest === "object" && body.selftest.at ? body.selftest : null;
+  if (st && st.at !== snap.selftest?.at) {
+    patch.selftest = st;
+    const failed = selfTestFailures(st);
+    const deadline = patch.state === "running" || snap.state === "running" ? snap.auto_destroy_at : null;
+    if (failed.length) {
+      await db.addAlert(env, "failure", `Self-test failed: ${failed.join(", ")}. The VM is up but clients may not work fully.`);
+      await notify(env, "wg-admin: up, but the self-test failed", `Failed: ${failed.join(", ")}. ${cfg.dnsName} → ${snap.public_ip ?? "?"}`, { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
+    } else {
+      const v6 = st.internet6 === true ? ", IPv6" : "";
+      await db.addAlert(env, "info", `Self-test passed in ${(st.ms / 1000).toFixed(1)} s: handshake, tunnel, loopback${st.dns ? ", DNS" : ""}, internet${v6}.`);
+      const until = deadline ? `. Tears down at ${new Date(deadline).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}` : "";
+      await notify(env, "wg-admin: ready", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}). ${cfg.dnsName} → ${snap.public_ip ?? "?"}${until}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
+    }
+  }
   await saveSnapshot(env, patch);
 
-  const peers = agentPeerList(await db.enabledPeers(env));
+  const peers = agentPeerList(await db.enabledPeers(env), cfg.subnet6);
   return { status: 200, body: { peers } };
 }
 
@@ -397,7 +515,7 @@ export async function cancelActive(env: Env): Promise<string> {
 export async function detectDrift(env: Env): Promise<string | null> {
   if (!canAzure(env)) return null;
   const snap = await getSnapshot(env);
-  if (snap.state === "deploying" || snap.state === "destroying") return null;
+  if (isBusyState(snap.state)) return null;
   const az = await azureView(env);
   if (az.error) return null; // unknown, not drift
   let drift: string | null = null;
@@ -405,6 +523,8 @@ export async function detectDrift(env: Env): Promise<string | null> {
   if (snap.state === "running" && !az.rg_exists) drift = "The dashboard says Running but Azure has no resource group. Something deleted it outside this app.";
   if (snap.state === "running" && az.rg_exists && az.power && az.power !== "running") drift = `The VM exists but its power state is "${az.power}".`;
   if (snap.state === "running" && az.public_ip && snap.public_ip && az.public_ip !== snap.public_ip) drift = `Azure's public IP ${az.public_ip} differs from the recorded ${snap.public_ip}.`;
+  if (snap.state === "standby" && !az.rg_exists) drift = "The dashboard says Standby but Azure has no resource group. Something deleted it outside this app.";
+  if (snap.state === "standby" && az.rg_exists && az.power && az.power !== "deallocated") drift = `The dashboard says Standby but the VM's power state is "${az.power}". If it is running it is costing the full rate.`;
   if (drift !== snap.drift) await saveSnapshot(env, { drift });
   return drift;
 }

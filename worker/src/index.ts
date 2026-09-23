@@ -2,9 +2,11 @@
 //
 // Plain English: the front desk. Every request lands here and is routed to
 // a screen or an action. Screens are server-rendered HTML; htmx swaps them
-// in place so the page never fully reloads. Two API routes take bearer
-// tokens instead of a login: the VM's heartbeat and GitHub's result
-// callback. The cron entry point at the bottom is the night watchman.
+// in place so the page never fully reloads. A few API routes skip the login
+// and prove themselves another way: the VM's heartbeat and GitHub's result
+// callback (bearer tokens), GitHub collecting its run secrets (an OIDC
+// token), and the one-tap buttons on phone notifications (single-use links).
+// The cron entry point at the bottom is the night watchman.
 
 import { Hono, type Context } from "hono";
 import type { Env } from "./env";
@@ -15,7 +17,12 @@ import { getSnapshot } from "./state";
 import { lockStatus, releaseLock } from "./lock";
 import { serverPublicKey, nextFreeIp, clientConfigTemplate, validPeerName, isWgKey } from "./peers";
 import { effectiveConfig, saveOverrides } from "./settings";
-import { startDeploy, startDestroy, cancelActive, reconcile, extendAutoDestroy, refreshActiveRun, refreshInventory, handleCallback, handleAgent, RunError } from "./runs";
+import { startDeploy, startDestroy, cancelActive, reconcile, extendAutoDestroy, refreshActiveRun, refreshInventory, handleCallback, handleAgent, issueRunSecrets, RunError } from "./runs";
+import { verifyGithubOidc } from "./oidc";
+import { startHibernate, startResume, refreshPower } from "./standby";
+import { consumeAction } from "./actions";
+import { notify, ntfyParts } from "./notify";
+import { nearestRegion, REGIONS, regionName } from "./region";
 import { setSshAllowedCidr } from "./azure";
 import { runScheduled } from "./monitor";
 import { page, type Tab } from "./views/layout";
@@ -51,12 +58,55 @@ app.post("/api/callback", async (c) => {
   return c.json({ message: r.message }, r.status as 200);
 });
 
+// GitHub Actions collects the run's secrets here, proving itself with an OIDC
+// token. Lives under /api/callback so it shares that path's Access bypass.
+app.post("/api/callback/secrets", async (c) => {
+  if (rateLimited("secrets", 10, 60_000)) return c.json({ error: "slow down" }, 429);
+  let claims;
+  try {
+    claims = await verifyGithubOidc(c.env, bearer(c));
+  } catch (e) {
+    return c.json({ error: `not a trusted workflow: ${(e as Error).message}` }, 401);
+  }
+  const body = (await c.req.json().catch(() => null)) as { run_id?: string } | null;
+  if (!body?.run_id) return c.json({ error: "missing run_id" }, 400);
+  const r = await issueRunSecrets(c.env, String(body.run_id), Number(claims.run_id));
+  return c.json(r.body, r.status as 200);
+});
+
 app.post("/api/agent", async (c) => {
   if (rateLimited("agent", 10, 60_000)) return c.json({ error: "slow down" }, 429);
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "bad json" }, 400);
   const r = await handleAgent(c.env, bearer(c), body);
   return c.json(r.body as object, r.status as 200);
+});
+
+// One-tap buttons on phone notifications (actions.ts). POST only, so a link
+// preview or a crawler fetching the URL cannot trigger anything.
+app.post("/api/act/:token", async (c) => {
+  if (rateLimited("act", 10, 60_000)) return c.text("slow down", 429);
+  const action = await consumeAction(c.env, c.req.param("token"));
+  if (!action) return c.text("This button has expired or was already used.", 410);
+  let msg: string;
+  try {
+    if (action === "extend") {
+      const snap = await getSnapshot(c.env);
+      if (snap.state !== "running") throw new RunError("Nothing is running.");
+      const from = Math.max(Date.now(), snap.auto_destroy_at ? Date.parse(snap.auto_destroy_at) : 0);
+      const at = await extendAutoDestroy(c.env, (from - Date.now()) / 3_600_000 + 1);
+      msg = `Extended. Now ends at ${new Date(at!).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}.`;
+    } else if (action === "hibernate") {
+      msg = await startHibernate(c.env, "phone notification", "button on the phone");
+    } else {
+      const run = await startDestroy(c.env, "phone notification", "button on the phone");
+      msg = `Tear-down started (${run.id}).`;
+    }
+  } catch (e) {
+    msg = `Could not do that: ${(e as Error).message}`;
+  }
+  await notify(c.env, "wg-admin", msg, { tags: ["ok_hand"] });
+  return c.text(msg);
 });
 
 app.get("/manifest.webmanifest", (c) =>
@@ -84,7 +134,13 @@ async function render(c: { env: Env; get: (k: "user") => string }, tab: Tab, tit
   return page({ title, tab, user: c.get("user"), snapshot, body, missing: missingSecrets(c.env), alerts, notice });
 }
 
-async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null) {
+/** Cloudflare's idea of where the browser is: country code and the nearest Azure region. */
+function where(c: Context<App>): { country: string | null; region: string | null } {
+  const cf = (c.req.raw as unknown as { cf?: { country?: string; continent?: string; longitude?: string } }).cf;
+  return { country: cf?.country ?? null, region: nearestRegion(cf) };
+}
+
+async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null, near?: { country: string | null; region: string | null }) {
   const [snap, cfg, peers, lock, deployment, serverPub] = await Promise.all([
     getSnapshot(env),
     effectiveConfig(env),
@@ -104,17 +160,20 @@ async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info";
     deployment,
     serverPub,
     callerIp: null,
+    near: near ?? null,
   });
 }
 
 app.get("/", async (c) => {
   await refreshActiveRun(c.env).catch(() => {});
-  return c.html(await render(c, "dashboard", "Overview", await live(c.env)));
+  await refreshPower(c.env).catch(() => {});
+  return c.html(await render(c, "dashboard", "Overview", await live(c.env, null, where(c))));
 });
 
 app.get("/partials/live", async (c) => {
   await refreshActiveRun(c.env).catch(() => {});
-  return c.html(await live(c.env));
+  await refreshPower(c.env).catch(() => {});
+  return c.html(await live(c.env, null, where(c)));
 });
 
 function ip(c: { req: { header: (n: string) => string | undefined } }): string | null {
@@ -128,18 +187,32 @@ async function action(c: Context<App>, fn: () => Promise<string>, kind: "good" |
   } catch (e) {
     notice = { kind: "bad", text: e instanceof RunError ? e.message : `Unexpected error: ${(e as Error).message}` };
   }
-  if (c.req.header("HX-Request")) return c.html(await live(c.env, notice));
+  if (c.req.header("HX-Request")) return c.html(await live(c.env, notice, where(c)));
   return c.redirect("/");
 }
 
 app.post("/actions/deploy", async (c) => {
   const form = await c.req.parseBody();
   const hours = Number(form.hours);
+  const region = String(form.region ?? "");
   const user = c.get("user");
   return action(c, async () => {
-    const run = await startDeploy(c.env, { hours: hours > 0 ? hours : null, requesterIp: ip(c), requestedBy: user });
-    return `Deploy started (${run.id}). About 4 minutes.`;
+    if (region && !(region in REGIONS)) throw new RunError("Unknown region.");
+    const run = await startDeploy(c.env, { hours: hours > 0 ? hours : null, requesterIp: ip(c), requestedBy: user, region: region || undefined });
+    return `Deploy started in ${regionName(region || (await effectiveConfig(c.env)).region)} (${run.id}). About 4 minutes.`;
   });
+});
+
+app.post("/actions/hibernate", async (c) => {
+  const user = c.get("user");
+  return action(c, () => startHibernate(c.env, user, "dashboard"), "info");
+});
+
+app.post("/actions/resume", async (c) => {
+  const form = await c.req.parseBody();
+  const hours = Number(form.hours);
+  const user = c.get("user");
+  return action(c, () => startResume(c.env, user, hours > 0 ? hours : null));
 });
 
 app.post("/actions/destroy", async (c) => {
@@ -198,16 +271,16 @@ app.post("/alerts/ack", async (c) => {
 app.get("/peers", async (c) => {
   const [peers, snap, cfg, serverPub] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env), effectiveConfig(c.env), serverPublicKey(c.env)]);
   const nextIp = nextFreeIp(cfg.subnet, peers.map((p) => p.ip));
-  return c.html(await render(c, "peers", "Clients", peersBody({ peers, report: snap.agent, running: snap.state === "running", cfg, serverPub, nextIp })));
+  return c.html(await render(c, "peers", "Clients", peersBody({ peers, report: snap.agent, running: snap.state === "running", cfg, serverPub, nextIp, latency: snap.latency })));
 });
 
 app.get("/partials/peers-table", async (c) => {
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
-  return c.html(peersTable(peers, snap.agent, snap.state === "running"));
+  return c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency));
 });
 
 app.post("/api/peers", async (c) => {
-  const body = (await c.req.json().catch(() => null)) as { name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean } | null;
+  const body = (await c.req.json().catch(() => null)) as { name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean } | null;
   if (!body) return c.json({ error: "bad json" }, 400);
   const name = String(body.name ?? "").trim();
   if (!validPeerName(name)) return c.json({ error: "Name: letters, digits, spaces, dashes; up to 32 characters." }, 400);
@@ -220,7 +293,7 @@ app.post("/api/peers", async (c) => {
   if (!ipAddr) return c.json({ error: "No free tunnel addresses left." }, 409);
   let peer;
   try {
-    peer = await db.addPeer(c.env, { name, public_key: String(body.public_key), ip: ipAddr, full_tunnel: !!body.full_tunnel, azure_vnet: !!body.azure_vnet });
+    peer = await db.addPeer(c.env, { name, public_key: String(body.public_key), ip: ipAddr, full_tunnel: !!body.full_tunnel, azure_vnet: !!body.azure_vnet, tunnel_dns: !!body.tunnel_dns });
   } catch (e) {
     return c.json({ error: /UNIQUE/.test(String(e)) ? "That key is already registered." : (e as Error).message }, 409);
   }
@@ -251,7 +324,15 @@ app.post("/peers/:id/azure", async (c) => {
   const p = await db.getPeer(c.env, id);
   if (p) await db.setPeerAzureVnet(c.env, id, !p.azure_vnet);
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
-  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running")) : c.redirect("/peers");
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
+});
+
+app.post("/peers/:id/dns", async (c) => {
+  const id = Number(c.req.param("id"));
+  const p = await db.getPeer(c.env, id);
+  if (p) await db.setPeerTunnelDns(c.env, id, !p.tunnel_dns);
+  const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
 });
 
 app.post("/peers/:id/toggle", async (c) => {
@@ -259,13 +340,13 @@ app.post("/peers/:id/toggle", async (c) => {
   const p = await db.getPeer(c.env, id);
   if (p) await db.setPeerEnabled(c.env, id, !p.enabled);
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
-  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running")) : c.redirect("/peers");
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
 });
 
 app.post("/peers/:id/delete", async (c) => {
   await db.deletePeer(c.env, Number(c.req.param("id")));
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
-  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running")) : c.redirect("/peers");
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
 });
 
 // ── Activity, cost, settings ───────────────────────────────────────────────
@@ -285,7 +366,7 @@ app.get("/settings", async (c) => {
   const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
   const saved = c.req.query("saved") === "1";
   return c.html(
-    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL }))
+    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null }))
   );
 });
 
@@ -295,7 +376,7 @@ app.post("/settings", async (c) => {
   if (rejected.length) {
     const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
     return c.html(
-      await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL }), {
+      await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null }), {
         kind: "bad",
         text: `Not saved: ${rejected.join(", ")} did not look right.`,
       })

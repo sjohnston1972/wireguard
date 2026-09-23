@@ -1,0 +1,14 @@
+[Unit]
+# wg-selftest.service: the loopback test plug, once per boot. See wg-selftest.sh.
+Description=wg-admin tunnel self-test
+After=network-online.target wg-quick@wg0.service dnsmasq.service
+Wants=network-online.target
+Requires=wg-quick@wg0.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wg-selftest.sh
+TimeoutStartSec=60s
+
+[Install]
+WantedBy=multi-user.target

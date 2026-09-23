@@ -14,6 +14,13 @@
 #   - destroy fallback: if Terraform cannot destroy (lost state, half-built
 #     run), the resource group is deleted by name with the Azure CLI and the
 #     DNS record is removed with the Cloudflare API. Destroy must always reach £0.
+#
+# Secrets and a PUBLIC repo: anyone can read this workflow's logs, and GitHub
+# prints the dispatch payload in them. So the payload carries nothing secret.
+# The per-run secrets (SSH password, heartbeat and callback tokens, the SSH
+# allow-list address) are collected from the Worker in "Collect run secrets",
+# which proves this is the real wg.yml on main with a GitHub OIDC token and
+# masks every value before anything could print it.
 
 name: wg
 # Put the Worker's run id in the run title so the Worker can find this run.
@@ -30,10 +37,10 @@ on:
         options: [apply, destroy]
       payload:
         description: >-
-          JSON object of per-run values. Any of: region, vm_size, peers_json,
-          home_lan_cidr, ssh_allowed_cidr, wg_dns_name, wg_port, wg_subnet, loopback_ip, vnet_cidr, ssh_password,
-          agent_url, agent_token, run_id, callback_url, callback_token.
-          Leave as {} for a plain manual run.
+          JSON object of per-run values, none of them secret. Any of: region,
+          vm_size, peers_json, home_lan_cidr, ssh_allowed_cidr, wg_dns_name,
+          wg_port, wg_subnet, wg_subnet6, loopback_ip, vnet_cidr, agent_url,
+          run_id, callback_url, secrets_url. Leave as {} for a plain manual run.
         type: string
         required: false
         default: "{}"
@@ -44,6 +51,8 @@ concurrency:
 
 permissions:
   contents: read
+  # Lets the run ask GitHub for a signed identity token (OIDC) to show the Worker.
+  id-token: write
 
 env:
   # Azure service principal (the azurerm provider reads ARM_*).
@@ -66,6 +75,8 @@ env:
   TF_VAR_resource_group: ${{ secrets.AZURE_RESOURCE_GROUP }}
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "0"
+  # Keep downloaded providers between runs (see "Cache Terraform providers").
+  TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugins
 
 jobs:
   terraform:
@@ -81,27 +92,49 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
-      # Turn the JSON payload into TF_VAR_* variables. Tokens are masked so
-      # they never show in the log.
+      # Turn the JSON payload into TF_VAR_* variables. Nothing in it is secret.
       - name: Parse payload
         env:
           PAYLOAD: ${{ inputs.payload }}
         run: |
           set -euo pipefail
           jq -e 'type == "object"' <<<"$PAYLOAD" >/dev/null || { echo "payload must be a JSON object"; exit 1; }
-          for k in region vm_size peers_json home_lan_cidr ssh_allowed_cidr wg_dns_name wg_port wg_subnet loopback_ip vnet_cidr agent_url agent_token ssh_password run_id; do
+          for k in region vm_size peers_json home_lan_cidr ssh_allowed_cidr wg_dns_name wg_port wg_subnet wg_subnet6 loopback_ip vnet_cidr agent_url run_id; do
             v="$(jq -r --arg k "$k" 'if has($k) and .[$k] != null then (.[$k] | if type == "string" then . else tojson end) else empty end' <<<"$PAYLOAD")"
             [ -z "$v" ] && continue
-            { [ "$k" = "agent_token" ] || [ "$k" = "ssh_password" ]; } && echo "::add-mask::$v"
             { echo "TF_VAR_$k<<__EOV__"; echo "$v"; echo "__EOV__"; } >> "$GITHUB_ENV"
-            { [ "$k" = "agent_token" ] || [ "$k" = "ssh_password" ]; } || echo "TF_VAR_$k=$v"
+            echo "TF_VAR_$k=$v"
           done
-          cb_url="$(jq -r '.callback_url // empty' <<<"$PAYLOAD")"
-          cb_tok="$(jq -r '.callback_token // empty' <<<"$PAYLOAD")"
-          [ -n "$cb_tok" ] && echo "::add-mask::$cb_tok"
-          echo "CALLBACK_URL=$cb_url" >> "$GITHUB_ENV"
-          echo "CALLBACK_TOKEN=$cb_tok" >> "$GITHUB_ENV"
+          echo "CALLBACK_URL=$(jq -r '.callback_url // empty' <<<"$PAYLOAD")" >> "$GITHUB_ENV"
+          echo "SECRETS_URL=$(jq -r '.secrets_url // empty' <<<"$PAYLOAD")" >> "$GITHUB_ENV"
           echo "WORKER_RUN_ID=$(jq -r '.run_id // "manual"' <<<"$PAYLOAD")" >> "$GITHUB_ENV"
+
+      # Ask GitHub for a signed "this is wg.yml on main, run N" token and trade
+      # it with the Worker for this run's secrets. Each value is masked before
+      # it is stored, so no later step can print it. The Worker hands them out
+      # once per run; a failure here stops the run before anything is built.
+      - name: Collect run secrets from the Worker
+        if: env.SECRETS_URL != ''
+        run: |
+          set -euo pipefail
+          oidc="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=wg-admin" | jq -r .value)"
+          echo "::add-mask::$oidc"
+          if ! resp="$(curl -sS --fail-with-body --max-time 20 -X POST                 -H "Authorization: Bearer $oidc" -H 'Content-Type: application/json'                 -d "$(jq -n --arg r "$WORKER_RUN_ID" '{run_id:$r}')" "$SECRETS_URL")"; then
+            echo "::error::The Worker refused to hand over this run's secrets: $resp"
+            exit 1
+          fi
+          for k in callback_token agent_token ssh_password ssh_allowed_cidr; do
+            v="$(jq -r --arg k "$k" '.[$k] // empty' <<<"$resp")"
+            [ -z "$v" ] && continue
+            echo "::add-mask::$v"
+            [ "$k" = "ssh_allowed_cidr" ] && echo "::add-mask::${v%/*}"
+            if [ "$k" = "callback_token" ]; then
+              echo "CALLBACK_TOKEN=$v" >> "$GITHUB_ENV"
+            else
+              echo "TF_VAR_$k=$v" >> "$GITHUB_ENV"
+            fi
+          done
+          echo "run secrets collected and masked"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -109,8 +142,17 @@ jobs:
           terraform_version: "1.14.6"
           terraform_wrapper: false
 
+      # Providers are ~100 MB; restoring them saves most of "terraform init".
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.terraform-plugins
+          key: tf-plugins-${{ hashFiles('infra/.terraform.lock.hcl') }}
+
       - name: terraform init (state in R2)
-        run: terraform init -no-color -backend-config="bucket=${R2_BUCKET}"
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          terraform init -no-color -backend-config="bucket=${R2_BUCKET}"
 
       # ── APPLY ────────────────────────────────────────────────────────────
       # While destroyed, the name is parked on 192.0.2.1 (see the destroy path)
@@ -208,7 +250,7 @@ jobs:
 
       # ── CALLBACK ─────────────────────────────────────────────────────────
       - name: Report result to the Worker
-        if: always() && env.CALLBACK_URL != ''
+        if: always() && env.CALLBACK_URL != '' && env.CALLBACK_TOKEN != ''
         run: |
           set -euo pipefail
           status="success"

@@ -60,6 +60,28 @@ Hand-minted values. Status after the 2026-09-22 session (Claude has no dashboard
 - [x] wrangler 4.136.3 installed globally. No `wrangler login` needed: it can use CLOUDFLARE_API_TOKEN from the environment, which the deploy-worker script will do
 - [x] **GitHub Actions billing block, resolved by making the repo public** (2026-09-22). The first CI run refused to start: "recent account payments have failed or your spending limit needs to be increased". Public repos get free Actions minutes, and nothing in the repo is secret (verified: no token or key in any commit). If Steven prefers private, fix github.com/settings/billing first, then `gh repo edit --visibility private`.
 
+## Revision 3 (2026-09-23): security fix and new features
+
+Found in a review on 2026-09-23 and fixed the same day:
+
+- **Secrets in the public Actions log.** GitHub prints the workflow_dispatch payload in every run's log, and the repo is public. The payload used to carry the per-deploy SSH password, the agent and callback tokens, and the SSH allow-list (Steven's home address). Now the payload carries nothing secret. The workflow requests a GitHub OIDC token (audience `wg-admin`) and POSTs it to `/api/callback/secrets`; the Worker verifies the signature against GitHub's JWKS, checks repository, `refs/heads/main`, `wg.yml`, `workflow_dispatch`, and that the GitHub run's title carries this run id, then mints the tokens (hashes stored) and returns them once. Every value is `::add-mask::`ed before it is stored. Old run logs were deleted.
+- **The Worker no longer holds the WireGuard private key.** It only needed the public key, now a plain var `WG_SERVER_PUBLIC_KEY` in wrangler.toml; the `WG_SERVER_PRIVATE_KEY` Worker secret was deleted.
+- A real home address in a placeholder and a test fixture was replaced with documentation addresses (203.0.113.0/24).
+
+Added:
+
+| Feature | How |
+| --- | --- |
+| Warm standby | Hibernate deallocates the VM through ARM directly from the Worker (no GitHub run); Standby keeps disk and static IP (~£0.0064/h); Resume starts it and the first heartbeat completes it. States `hibernating`, `standby`, `resuming`. `EXPIRY_ACTION` chooses destroy or hibernate for the timer and idle limit; the cost guard always destroys. `STANDBY_MAX_DAYS` (7) tears a forgotten standby down. |
+| Phone alerts with buttons | `NOTIFY_WEBHOOK_URL` is a private ntfy.sh topic. Messages: ready (after the self-test), a 15-minute heads-up with Extend 1h / Hibernate / Tear down, a session summary, drift, failures, cost guard. Buttons are single-use links `/api/act/<token>` (POST only; SHA-256 stored in the Durable Object; expire 30 min after the deadline) behind their own Access bypass app; they can only extend, hibernate or destroy. |
+| Nearest region | Deploy offers the Azure region nearest the browser (Cloudflare's `request.cf` country) beside the usual one. |
+| Boot self-test | `wg-selftest.service` at every boot: a canary WireGuard interface in a network namespace dials wg0 at 127.0.0.1 and checks handshake, tunnel ping, loopback ping, tunnel DNS, internet via NAT (IPv4, and IPv6 when present). The dashboard shows "Verifying" until it reports; "ready" is only pushed after it. |
+| Tunnel DNS | dnsmasq on the loopback 10.13.255.1 (and 10.13.13.1): StevenBlack ad/tracker list fetched at boot, `<client>.wg` names written by the agent, upstream 1.1.1.1. Full-tunnel configs always use it; split-tunnel per client (`peers.tunnel_dns`). |
+| IPv6 | Dual-stack VNet (fd50:50::/48), a free Standard IPv6 public IP, tunnel fd13:13::/64 with client addresses mirroring IPv4, ip6tables NAT. Full-tunnel clients get IPv6 out of Azure instead of a black hole. `wg_subnet6 = ""` turns it off. |
+| Per-client latency and roaming | The agent pings each recently seen client every heartbeat; the Worker keeps 40 samples per client and notes when a client's source address changes. |
+| Faster cold deploy | Only `wireguard-tools`, `jq` and `dnsmasq` are installed (curl and unattended-upgrades ship with the image); Terraform providers are cached between runs. |
+| Lifecycle tests | `worker/test/harness.ts` runs the real Worker code on node:sqlite (D1, real migrations), a map (KV), the real RunLock class and a faked GitHub/Azure/DNS/ntfy; `lifecycle.test.ts` drives deploy, secrets, callback, heartbeat, heads-up, expiry, hibernate, resume, standby limit, drift and tear-down. |
+
 ## Architecture
 
 Four planes: the Worker (management), GitHub Actions plus Terraform and cloud-init (provisioning), the WireGuard VM (data), and Cloudflare on the edge for login, DNS and storage. Nothing runs at home except the WireGuard clients.
@@ -258,6 +280,9 @@ Build in priority order. Items 1 to 4 are in scope for v1; the rest are backlog 
 - Static secrets live as GitHub repository secrets and Worker secrets (`wrangler secret put`); none in the repo, none in wrangler.toml, none in logs. Terraform variables containing keys are marked sensitive and never appear in outputs or the callback.
 - The Worker validates the Cloudflare Access JWT on every request and refuses to serve if CF_ACCESS_AUD or CF_ACCESS_ALLOWED_EMAIL is unset.
 - /api/agent and /api/callback require bearer tokens generated per deploy or per run, stored as SHA-256 hashes in D1, and are rate limited.
+- The dispatch payload and everything else in the public Actions log carry no secret. Per-run secrets reach the workflow only via /api/callback/secrets, against a verified GitHub OIDC token, once per run (revision 3).
+- The Worker holds the WireGuard server public key only; the private key lives in .env, GitHub secrets and the VM.
+- /api/act/<token> (phone buttons) accepts only single-use, expiring links for extend, hibernate or destroy.
 - The VM accepts SSH only from SSH_ALLOWED_CIDR or the deployer's IP. Key auth always works. **Changed 2026-09-22 at Steven's request:** cloud-init also sets a random per-deploy password for azureuser (20 characters, readable alphabet), stored on the run row in D1 and shown in the dashboard's collapsed "SSH to the VM" panel behind a Show button. It dies with the VM. The panel also has "Allow SSH from this address", which rewrites the NSG rule live for the browser's public IP, because a deploy from the phone otherwise leaves the laptop locked out. It also lists SSH over the tunnel to the loopback 10.13.255.1 (or 10.13.13.1): no NSG rule is involved because the inner packets arrive inside WireGuard, which is the preferred way in.
 - The NSG is deny-by-default with two inbound rules: UDP 51820 from any, TCP 22 from the allow-list.
 - Client private keys are generated in the browser and never leave it.

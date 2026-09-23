@@ -13,6 +13,11 @@ locals {
   peers         = jsondecode(var.peers_json)
   wg_server_ip  = cidrhost(var.wg_subnet, 1)
   wg_prefix_len = split("/", var.wg_subnet)[1]
+  ipv6          = var.wg_subnet6 != ""
+  # IPv6 inside the tunnel mirrors IPv4: 10.13.13.7 is fd13:13::7. The
+  # dashboard derives the same address, so the two always agree.
+  wg_server_ip6 = local.ipv6 ? cidrhost(var.wg_subnet6, 1) : ""
+  peer_ip6      = { for p in local.peers : p.ip => local.ipv6 ? cidrhost(var.wg_subnet6, tonumber(split(".", p.ip)[3])) : "" }
   common_tags = {
     project = "wg-admin"
     run_id  = var.run_id
@@ -23,7 +28,7 @@ locals {
   # YAML template only has to drop it in with the right indentation.
   peers_conf = length(local.peers) == 0 ? "# no peers yet\n" : join("\n", [
     for p in local.peers :
-    "# ${p.name}\n[Peer]\nPublicKey = ${p.public_key}\nAllowedIPs = ${p.ip}/32\n"
+    "# ${p.name}\n[Peer]\nPublicKey = ${p.public_key}\nAllowedIPs = ${p.ip}/32${local.ipv6 ? ",${local.peer_ip6[p.ip]}/128" : ""}\n"
   ])
 
   # The VM's zero-touch provisioning script.
@@ -31,6 +36,8 @@ locals {
     wg_server_private_key = var.wg_server_private_key
     wg_server_ip          = local.wg_server_ip
     wg_prefix_len         = local.wg_prefix_len
+    wg_server_ip6         = local.wg_server_ip6
+    wg_prefix_len6        = local.ipv6 ? split("/", var.wg_subnet6)[1] : ""
     wg_port               = var.wg_port
     loopback_ip           = var.loopback_ip
     ssh_password          = var.ssh_password
@@ -40,6 +47,10 @@ locals {
     agent_script          = file("${path.module}/agent/wg-agent.sh")
     agent_service         = file("${path.module}/agent/wg-agent.service")
     agent_timer           = file("${path.module}/agent/wg-agent.timer")
+    selftest_script       = file("${path.module}/agent/wg-selftest.sh")
+    selftest_service      = file("${path.module}/agent/wg-selftest.service")
+    blocklist_script      = file("${path.module}/agent/wg-blocklist.sh")
+    blocklist_service     = file("${path.module}/agent/wg-blocklist.service")
   })
 }
 
@@ -57,7 +68,7 @@ resource "azurerm_virtual_network" "wg" {
   name                = "vnet-wg"
   location            = azurerm_resource_group.wg.location
   resource_group_name = azurerm_resource_group.wg.name
-  address_space       = [var.vnet_cidr]
+  address_space       = compact([var.vnet_cidr, local.ipv6 ? var.vnet_cidr6 : ""])
   tags                = local.common_tags
 }
 
@@ -65,7 +76,7 @@ resource "azurerm_subnet" "wg" {
   name                 = "snet-wg"
   resource_group_name  = azurerm_resource_group.wg.name
   virtual_network_name = azurerm_virtual_network.wg.name
-  address_prefixes     = [var.subnet_cidr]
+  address_prefixes     = compact([var.subnet_cidr, local.ipv6 ? var.subnet_cidr6 : ""])
 }
 
 # ── The firewall ────────────────────────────────────────────────────────────
@@ -137,6 +148,19 @@ resource "azurerm_public_ip" "wg" {
   tags                = local.common_tags
 }
 
+# IPv6 WAN address, so full-tunnel clients get IPv6 to the internet instead
+# of having it silently dropped. Azure does not charge for IPv6 addresses.
+resource "azurerm_public_ip" "wg6" {
+  count               = local.ipv6 ? 1 : 0
+  name                = "pip-wg-v6"
+  location            = azurerm_resource_group.wg.location
+  resource_group_name = azurerm_resource_group.wg.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  ip_version          = "IPv6"
+  tags                = local.common_tags
+}
+
 resource "azurerm_network_interface" "wg" {
   name                = "nic-wg"
   location            = azurerm_resource_group.wg.location
@@ -152,6 +176,18 @@ resource "azurerm_network_interface" "wg" {
     subnet_id                     = azurerm_subnet.wg.id
     private_ip_address_allocation = "Dynamic"
     public_ip_address_id          = azurerm_public_ip.wg.id
+    primary                       = true
+  }
+
+  dynamic "ip_configuration" {
+    for_each = local.ipv6 ? [1] : []
+    content {
+      name                          = "ipv6"
+      subnet_id                     = azurerm_subnet.wg.id
+      private_ip_address_version    = "IPv6"
+      private_ip_address_allocation = "Dynamic"
+      public_ip_address_id          = azurerm_public_ip.wg6[0].id
+    }
   }
 }
 

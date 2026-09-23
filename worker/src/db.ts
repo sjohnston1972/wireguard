@@ -37,6 +37,7 @@ export interface Peer {
   enabled: number;
   full_tunnel: number;
   azure_vnet: number;
+  tunnel_dns: number;
   created_at: string;
   note: string | null;
 }
@@ -115,12 +116,12 @@ export async function getPeer(env: Env, id: number): Promise<Peer | null> {
   return (await env.DB.prepare("SELECT * FROM peers WHERE id = ?1").bind(id).first<Peer>()) ?? null;
 }
 
-export async function addPeer(env: Env, p: { name: string; public_key: string; ip: string; full_tunnel: boolean; azure_vnet?: boolean; note?: string }): Promise<Peer> {
+export async function addPeer(env: Env, p: { name: string; public_key: string; ip: string; full_tunnel: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; note?: string }): Promise<Peer> {
   const created_at = new Date().toISOString();
   const r = await env.DB.prepare(
-    "INSERT INTO peers (name, public_key, ip, enabled, full_tunnel, azure_vnet, created_at, note) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7) RETURNING *"
+    "INSERT INTO peers (name, public_key, ip, enabled, full_tunnel, azure_vnet, tunnel_dns, created_at, note) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8) RETURNING *"
   )
-    .bind(p.name, p.public_key, p.ip, p.full_tunnel ? 1 : 0, p.azure_vnet ? 1 : 0, created_at, p.note ?? null)
+    .bind(p.name, p.public_key, p.ip, p.full_tunnel ? 1 : 0, p.azure_vnet ? 1 : 0, p.tunnel_dns ? 1 : 0, created_at, p.note ?? null)
     .first<Peer>();
   if (!r) throw new Error("insert failed");
   return r;
@@ -134,6 +135,11 @@ export async function setPeerKey(env: Env, id: number, public_key: string): Prom
 /** Flip whether this client's config routes the Azure VNet. Takes effect in the next config it downloads. */
 export async function setPeerAzureVnet(env: Env, id: number, on: boolean): Promise<void> {
   await env.DB.prepare("UPDATE peers SET azure_vnet = ?2 WHERE id = ?1").bind(id, on ? 1 : 0).run();
+}
+
+/** Flip whether this client's config uses the tunnel DNS. Takes effect in the next config it downloads. */
+export async function setPeerTunnelDns(env: Env, id: number, on: boolean): Promise<void> {
+  await env.DB.prepare("UPDATE peers SET tunnel_dns = ?2 WHERE id = ?1").bind(id, on ? 1 : 0).run();
 }
 
 export async function setPeerEnabled(env: Env, id: number, enabled: boolean): Promise<void> {

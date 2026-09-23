@@ -22,14 +22,14 @@ chpasswd:
       password: ${ssh_password}
       type: text
 %{ endif ~}
+# Only what the Ubuntu cloud image lacks: curl and unattended-upgrades are
+# already there, so every package here is one less download at boot.
 package_update: true
 package_upgrade: false
 packages:
-  - wireguard
-  - qrencode
-  - curl
+  - wireguard-tools
   - jq
-  - unattended-upgrades
+  - dnsmasq
 
 write_files:
   # ── WireGuard: the [Interface] half of wg0.conf ────────────────────────────
@@ -40,7 +40,7 @@ write_files:
     owner: root:root
     content: |
       [Interface]
-      Address = ${wg_server_ip}/${wg_prefix_len}
+      Address = ${wg_server_ip}/${wg_prefix_len}%{ if wg_server_ip6 != "" }, ${wg_server_ip6}/${wg_prefix_len6}%{ endif }
       ListenPort = ${wg_port}
       PrivateKey = ${wg_server_private_key}
       PostUp = /usr/local/sbin/wg-nat.sh up
@@ -72,6 +72,11 @@ write_files:
       iptables "$A" FORWARD -i wg0 -j ACCEPT
       iptables "$A" FORWARD -o wg0 -j ACCEPT
       iptables -t nat "$N" POSTROUTING -o "$WAN" -j MASQUERADE
+      # The same for IPv6: tunnel addresses are private (fd13:13::/64), so
+      # they leave behind the VM's public IPv6 address, like IPv4 does.
+      ip6tables "$A" FORWARD -i wg0 -j ACCEPT
+      ip6tables "$A" FORWARD -o wg0 -j ACCEPT
+      ip6tables -t nat "$N" POSTROUTING -o "$WAN" -j MASQUERADE
 
   # ── Loopback: a stable test address on its own interface ──────────────────
   # Like "interface Loopback0" on a router. It sits outside the tunnel subnet,
@@ -102,6 +107,82 @@ write_files:
     owner: root:root
     content: |
       net.ipv4.ip_forward = 1
+      net.ipv6.conf.all.forwarding = 1
+      # Keep learning the IPv6 default route from Azure's router adverts even
+      # though forwarding is on (the kernel would otherwise ignore them).
+      net.ipv6.conf.eth0.accept_ra = 2
+
+  # ── IPv6 on the WAN side: ask Azure for the address by DHCPv6 ─────────────
+  - path: /etc/netplan/60-wg-ipv6.yaml
+    permissions: "0600"
+    owner: root:root
+    content: |
+      network:
+        version: 2
+        ethernets:
+          eth0:
+            dhcp6: true
+
+  # ── Tunnel DNS: a small resolver on the loopback, for connected clients ───
+  # Answers on 10.13.255.1 (and the tunnel address) only, never the internet.
+  # Blocks ad and tracker names from a public list (wg-blocklist.service
+  # fetches it at boot), and names every client: laptop.wg, phone.wg, vm.wg.
+  # Like pointing branch PCs at the headend's DNS proxy.
+  - path: /etc/dnsmasq.d/wg-admin.conf
+    permissions: "0644"
+    owner: root:root
+    content: |
+      listen-address=${loopback_ip},${wg_server_ip}
+      bind-dynamic
+      no-resolv
+      server=1.1.1.1
+      server=1.0.0.1
+      server=2606:4700:4700::1111
+      cache-size=10000
+      domain-needed
+      bogus-priv
+      local=/wg/
+      addn-hosts=/etc/wg-admin/peers.hosts
+      addn-hosts=/etc/wg-admin/blocklist.hosts
+
+  - path: /etc/wg-admin/peers.hosts
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${loopback_ip} vm.wg
+
+  - path: /etc/wg-admin/blocklist.hosts
+    permissions: "0644"
+    owner: root:root
+    content: |
+      # filled by wg-blocklist.service at boot
+
+  - path: /usr/local/sbin/wg-blocklist.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      ${indent(6, blocklist_script)}
+
+  - path: /etc/systemd/system/wg-blocklist.service
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${indent(6, blocklist_service)}
+
+  # ── Self-test: prove the tunnel carries traffic, on every boot ────────────
+  # A throwaway client inside the VM dials the headend and checks handshake,
+  # ping, DNS and the internet through NAT. The dashboard shows the result.
+  - path: /usr/local/sbin/wg-selftest.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      ${indent(6, selftest_script)}
+
+  - path: /etc/systemd/system/wg-selftest.service
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${indent(6, selftest_service)}
 
   # ── Status agent: reports to the Worker every 30 seconds ───────────────────
   - path: /etc/wireguard/wg-agent.env
@@ -139,11 +220,16 @@ write_files:
 
 runcmd:
   - sysctl --system
+  - netplan apply || true
   - networkctl reload
   - networkctl up lo1 || true
   - cat /etc/wireguard/wg0.interface.conf /etc/wireguard/wg0.peers.conf > /etc/wireguard/wg0.conf
   - chmod 0600 /etc/wireguard/wg0.conf
   - systemctl enable --now wg-quick@wg0
   - systemctl daemon-reload
+  - systemctl restart dnsmasq || true
+  - systemctl enable wg-selftest.service wg-blocklist.service
+  - systemctl start --no-block wg-blocklist.service
+  - systemctl start wg-selftest.service || true
   - systemctl enable --now wg-agent.timer
   - systemctl enable --now unattended-upgrades

@@ -18,7 +18,10 @@ export interface Env {
   WG_DNS_NAME: string;
   WG_PORT: string;
   WG_SUBNET: string;
+  WG_SUBNET6?: string;
   WG_LOOPBACK_IP?: string;
+  // Public, so a plain var. The private half never reaches the Worker.
+  WG_SERVER_PUBLIC_KEY?: string;
   AZURE_REGION: string;
   AZURE_VM_SIZE: string;
   AZURE_RESOURCE_GROUP: string;
@@ -29,6 +32,9 @@ export interface Env {
   IDLE_DESTROY_MINUTES: string;
   MONTHLY_BUDGET_GBP: string;
   HOURLY_RATE_GBP: string;
+  STANDBY_RATE_GBP?: string;
+  EXPIRY_ACTION?: string; // "destroy" | "hibernate": what the timer and idle limit do
+  STANDBY_MAX_DAYS?: string;
   AUTH_DEV_BYPASS?: string; // "1" only under wrangler dev
 
   // Secrets
@@ -41,7 +47,6 @@ export interface Env {
   CF_ACCESS_TEAM_DOMAIN?: string;
   CF_ACCESS_AUD?: string;
   CF_ACCESS_ALLOWED_EMAIL?: string;
-  WG_SERVER_PRIVATE_KEY?: string;
   GITHUB_REPO?: string;
   GITHUB_TOKEN?: string;
   GITHUB_WORKFLOW?: string;
@@ -54,6 +59,7 @@ export interface Config {
   dnsName: string;
   port: number;
   subnet: string;
+  subnet6: string;
   loopbackIp: string;
   region: string;
   vmSize: string;
@@ -65,6 +71,9 @@ export interface Config {
   idleDestroyMinutes: number;
   monthlyBudgetGbp: number;
   hourlyRateGbp: number;
+  standbyRateGbp: number;
+  expiryAction: "destroy" | "hibernate";
+  standbyMaxDays: number;
   workflow: string;
 }
 
@@ -78,6 +87,7 @@ export function config(env: Env): Config {
     dnsName: env.WG_DNS_NAME || "wg.clydeford.net",
     port: num(env.WG_PORT, 51820),
     subnet: env.WG_SUBNET || "10.13.13.0/24",
+    subnet6: env.WG_SUBNET6 ?? "fd13:13::/64",
     loopbackIp: env.WG_LOOPBACK_IP || "10.13.255.1",
     region: env.AZURE_REGION || "uksouth",
     vmSize: env.AZURE_VM_SIZE || "Standard_B1s",
@@ -88,7 +98,10 @@ export function config(env: Env): Config {
     autoDestroyDefaultHours: num(env.AUTO_DESTROY_DEFAULT_HOURS, 4),
     idleDestroyMinutes: num(env.IDLE_DESTROY_MINUTES, 0),
     monthlyBudgetGbp: num(env.MONTHLY_BUDGET_GBP, 10),
-    hourlyRateGbp: num(env.HOURLY_RATE_GBP, 0.0149),
+    hourlyRateGbp: num(env.HOURLY_RATE_GBP, 0.0157),
+    standbyRateGbp: num(env.STANDBY_RATE_GBP, 0.0064),
+    expiryAction: env.EXPIRY_ACTION === "hibernate" ? "hibernate" : "destroy",
+    standbyMaxDays: num(env.STANDBY_MAX_DAYS, 7),
     workflow: env.GITHUB_WORKFLOW || "wg.yml",
   };
 }
@@ -99,7 +112,7 @@ export const SECRET_GROUPS: Record<string, (keyof Env)[]> = {
   "Deploy and destroy (GitHub Actions)": ["GITHUB_REPO", "GITHUB_TOKEN"],
   "Azure checks and cost": ["AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_SUBSCRIPTION_ID"],
   "DNS verification": ["CLOUDFLARE_DNS_TOKEN", "CLOUDFLARE_ZONE_ID"],
-  "Peer configs (server public key)": ["WG_SERVER_PRIVATE_KEY"],
+  "Peer configs (server public key)": ["WG_SERVER_PUBLIC_KEY"],
 };
 
 /** Which secrets are missing, by group. Empty object means fully configured. */

@@ -9,6 +9,11 @@ output "public_ip" {
   value       = azurerm_public_ip.wg.ip_address
 }
 
+output "public_ip6" {
+  description = "The VM's IPv6 WAN address (full-tunnel clients leave from here), or empty."
+  value       = local.ipv6 ? azurerm_public_ip.wg6[0].ip_address : ""
+}
+
 output "vm_private_ip" {
   description = "The VM's address inside the Azure VNet."
   value       = azurerm_network_interface.wg.private_ip_address

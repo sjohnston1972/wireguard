@@ -68,6 +68,12 @@ variable "wg_subnet" {
   default     = "10.13.13.0/24"
 }
 
+variable "wg_subnet6" {
+  description = "IPv6 tunnel subnet (unique local). Empty turns IPv6 off everywhere: tunnel, VNet and the IPv6 public IP."
+  type        = string
+  default     = "fd13:13::/64"
+}
+
 variable "loopback_ip" {
   description = "A loopback (dummy interface) address on the VM, outside the tunnel subnet. Ping it from a client to prove the VM routes between interfaces, not just that wg0 is up."
   type        = string
@@ -84,6 +90,18 @@ variable "subnet_cidr" {
   description = "Subnet for the VM inside the VNet."
   type        = string
   default     = "10.50.1.0/24"
+}
+
+variable "vnet_cidr6" {
+  description = "IPv6 VNet address space (Azure wants a /48). Used only when wg_subnet6 is set."
+  type        = string
+  default     = "fd50:50::/48"
+}
+
+variable "subnet_cidr6" {
+  description = "IPv6 subnet for the VM (a /64 inside vnet_cidr6)."
+  type        = string
+  default     = "fd50:50:1::/64"
 }
 
 variable "home_lan_cidr" {
