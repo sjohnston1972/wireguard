@@ -65,7 +65,8 @@ function actionPill(r: FwRule): Html {
 function ruleButtons(r: FwRule, first: boolean, last: boolean): Html {
   const post = (path: string, label: string, cls = "", title = "") =>
     html`<form method="post" action="/firewall/rules/${r.id}/${path}" hx-post="/firewall/rules/${r.id}/${path}" hx-target="#fw" hx-swap="outerHTML" hx-select="#fw" style="display:inline"><button type="submit" class="${cls}" title="${title}">${label}</button></form>`;
-  return html`${first ? "" : post("up", "↑", "", "Move up")}${last ? "" : post("down", "↓", "", "Move down")}${post("toggle", r.enabled ? "Disable" : "Enable")}${post("delete", "Delete", "danger")}`;
+  // Words, not bare arrows: a lone "↓" reads as "download".
+  return html`${first ? "" : post("up", "Move up", "", "Move this rule up one place (the first matching rule wins)")}${last ? "" : post("down", "Move down", "", "Move this rule down one place (the first matching rule wins)")}${post("toggle", r.enabled ? "Disable" : "Enable")}${post("delete", "Delete", "danger")}`;
 }
 
 /** The add-rule form, also used prefilled by "Allow this" on a drop. */
