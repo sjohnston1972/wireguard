@@ -135,9 +135,12 @@ section + section { margin-top: 26px; }
 .faceplate > * { min-width: 0; }
 @media (min-width: 820px) { .faceplate { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: center; padding: 28px 28px 22px; } }
 @media (min-width: 1280px) { .faceplate { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); padding: 32px 36px 26px; } .tunnel { max-width: 720px; margin-left: auto; } }
+/* The state word reads like a console status line: bold monospace. Every
+   letter is the same width, so the size is set so "Tearing down" (the
+   longest, 12 characters) still fits its column. */
 .state-word {
-  font-size: clamp(2.6rem, 9vw, 4.4rem); font-weight: 700; letter-spacing: -0.035em; line-height: 0.95;
-  font-variation-settings: "opsz" 96, "wdth" 92; margin: 0;
+  font-family: var(--mono); font-size: clamp(2.2rem, 6.5vw, 3.8rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1;
+  margin: 0;
 }
 .state-word[data-state="running"] { color: var(--up); }
 .state-word[data-state="deploying"], .state-word[data-state="destroying"] { color: var(--busy); }
@@ -417,7 +420,7 @@ dialog.modal[open] { animation: modal-in 160ms ease-out; }
   .controls [data-slot="second"] { order: 2; }
   .controls [data-slot="last"] { order: 3; }
   .faceplate { padding: 18px 16px 12px; gap: 10px; }
-  .state-word { font-size: 3.2rem; }
+  .state-word { font-size: 2.6rem; }
   .tunnel.wide { display: none; }
   .tunnel.compact { display: block; }
   .tunnel.compact text { font-size: 12.5px; }

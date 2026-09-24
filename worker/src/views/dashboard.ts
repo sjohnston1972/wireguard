@@ -336,12 +336,12 @@ function tunnel(s: Snapshot, cfg: Config): Html {
   // Azure tile: lit when the VM is heartbeating, "flow" when bytes moved.
   const azureClass = flowing ? "flow" : heartbeatFresh ? "lit" : "";
   const rate = (t?.rx_rate ?? 0) + (t?.tx_rate ?? 0);
-  return html`<svg class="tunnel wide" data-state="${s.state}" data-flow="${flowing ? "1" : "0"}" viewBox="0 0 520 150" role="img" aria-label="Tunnel: home to ${cfg.dnsName} to Azure ${cfg.region}, ${STATE_LABEL[s.state]}${flowing ? ", traffic passing" : ""}">
-  <path class="carrier" d="M 92 70 C 170 70, 190 70, 260 70 S 350 70, 428 70" />
+  return html`<svg class="tunnel wide" data-state="${s.state}" data-flow="${flowing ? "1" : "0"}" viewBox="0 0 520 150" role="img" aria-label="Tunnel: WireGuard clients to ${cfg.dnsName} to Azure ${cfg.region}, ${STATE_LABEL[s.state]}${flowing ? ", traffic passing" : ""}">
+  <path class="carrier" d="M 136 70 C 190 70, 210 70, 260 70 S 330 70, 384 70" />
   <g class="hot" data-tip="tip-home" tabindex="0" role="button" aria-label="Client details">
-  <rect class="node home ${homeClass}" x="12" y="42" width="80" height="56" rx="8"/>
-  <text class="name" x="52" y="66" text-anchor="middle">Home</text>
-  <text x="52" y="84" text-anchor="middle">${running ? `${online} client${online === 1 ? "" : "s"} up` : cfg.homeLanCidr || "clients"}</text>
+  <rect class="node home ${homeClass}" x="4" y="42" width="132" height="56" rx="8"/>
+  <text class="name" x="70" y="66" text-anchor="middle">WireGuard clients</text>
+  <text x="70" y="84" text-anchor="middle">${running ? `${online} connected` : "none connected"}</text>
   </g>
   <g>
     <circle class="port" cx="260" cy="70" r="7"/>
@@ -352,12 +352,12 @@ function tunnel(s: Snapshot, cfg: Config): Html {
       : ""}
   </g>
   <g class="hot" data-tip="tip-azure" tabindex="0" role="button" aria-label="VM details">
-  <rect class="node azure ${azureClass}" x="428" y="42" width="80" height="56" rx="8"/>
-  <text class="name" x="468" y="66" text-anchor="middle">Azure</text>
-  <text x="468" y="84" text-anchor="middle">${s.state === "standby" ? "standby" : s.region ?? cfg.region}</text>
+  <rect class="node azure ${azureClass}" x="384" y="42" width="132" height="56" rx="8"/>
+  <text class="name" x="450" y="66" text-anchor="middle">Azure</text>
+  <text x="450" y="84" text-anchor="middle">${s.state === "standby" ? "standby" : s.region ?? cfg.region}</text>
   </g>
-  <text x="52" y="128" text-anchor="middle">tunnel ${cfg.subnet}</text>
-  <text x="468" y="128" text-anchor="middle">${cfg.vmSize}</text>
+  <text x="70" y="128" text-anchor="middle">tunnel ${cfg.subnet}</text>
+  <text x="450" y="128" text-anchor="middle">${cfg.vmSize}</text>
 </svg>`;
 }
 
@@ -377,19 +377,19 @@ function tunnelCompact(s: Snapshot, cfg: Config): Html {
   const azureClass = flowing ? "flow" : heartbeatFresh ? "lit" : "";
   const rate = (t?.rx_rate ?? 0) + (t?.tx_rate ?? 0);
   const region = s.state === "standby" ? "standby" : s.region ?? cfg.region;
-  return html`<svg class="tunnel compact" data-state="${s.state}" data-flow="${flowing ? "1" : "0"}" viewBox="0 0 340 104" role="img" aria-label="Tunnel: home to ${cfg.dnsName} to Azure ${region}, ${STATE_LABEL[s.state]}${flowing ? ", traffic passing" : ""}">
+  return html`<svg class="tunnel compact" data-state="${s.state}" data-flow="${flowing ? "1" : "0"}" viewBox="0 0 340 104" role="img" aria-label="Tunnel: WireGuard clients to ${cfg.dnsName} to Azure ${region}, ${STATE_LABEL[s.state]}${flowing ? ", traffic passing" : ""}">
   <text class="name" x="170" y="15" text-anchor="middle">${cfg.dnsName}</text>
-  <path class="carrier" d="M 86 50 L 254 50" />
+  <path class="carrier" d="M 120 50 L 220 50" />
   <g class="hot" data-tip="tip-home" tabindex="0" role="button" aria-label="Client details">
-    <rect class="node home ${homeClass}" x="2" y="26" width="84" height="48" rx="8"/>
-    <text class="name" x="44" y="46" text-anchor="middle">Home</text>
-    <text x="44" y="63" text-anchor="middle">${running ? `${online} up` : "clients"}</text>
+    <rect class="node home ${homeClass}" x="2" y="26" width="118" height="48" rx="8"/>
+    <text class="name" x="61" y="46" text-anchor="middle">WireGuard</text>
+    <text x="61" y="63" text-anchor="middle">clients${running ? ` · ${online} up` : ""}</text>
   </g>
   <circle class="port" cx="170" cy="50" r="6"/>
   <g class="hot" data-tip="tip-azure" tabindex="0" role="button" aria-label="VM details">
-    <rect class="node azure ${azureClass}" x="254" y="26" width="84" height="48" rx="8"/>
-    <text class="name" x="296" y="46" text-anchor="middle">Azure</text>
-    <text x="296" y="63" text-anchor="middle">${region}</text>
+    <rect class="node azure ${azureClass}" x="220" y="26" width="118" height="48" rx="8"/>
+    <text class="name" x="279" y="46" text-anchor="middle">Azure</text>
+    <text x="279" y="63" text-anchor="middle">${region}</text>
   </g>
   <text x="170" y="96" text-anchor="middle" class="${flowing ? "traffic flow" : ""}">${running && t ? (flowing ? `${bytes(Math.round(rate))}/s moving` : `in ${bytes(t.rx)}, out ${bytes(t.tx)}`) : `UDP ${cfg.port}`}</text>
 </svg>`;
