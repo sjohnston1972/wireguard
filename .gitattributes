@@ -5,3 +5,4 @@ Dockerfile text eol=lf
 *.service text eol=lf
 *.timer text eol=lf
 *.tftpl text eol=lf
+*.nft text eol=lf
