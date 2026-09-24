@@ -5,7 +5,8 @@ import type { Env } from "../src/env";
 import { config } from "../src/env";
 import * as db from "../src/db";
 import { compileFirewall, ruleLines, parseCidr, parsePorts, STARTER_RULES, type FwRule } from "../src/firewall";
-import { startDeploy, issueRunSecrets, handleCallback, handleAgent, currentFirewall, nextFirewall } from "../src/runs";
+import { startDeploy, startDestroy, issueRunSecrets, handleCallback, handleAgent, currentFirewall, nextFirewall, nextBase, addCounters, clearFirewallCounters } from "../src/runs";
+import { totalHits } from "../src/views/firewall";
 import { getSnapshot } from "../src/state";
 
 const cfg = { ...config({ WG_SUBNET6: "fd13:13::/64", HOME_LAN_CIDR: "192.168.1.0/24" } as unknown as Env), firewallDefault: "deny" as const };
@@ -63,10 +64,23 @@ describe("hits and drops", () => {
     const b = nextFirewall(a, { hash: "h1", counters: { r1: [5, 500], default: [2, 120] }, drops: [{ src: "10.50.2.4", dst: "192.168.1.254", proto: "ICMP", dport: null, in: "eth0", out: "wg0" }] }, "t2")!;
     expect(b.last_hit).toEqual({ r1: "t1", default: "t2" });
     expect(b.drops[0]).toMatchObject({ at: "t2", src: "10.50.2.4", dst: "192.168.1.254", proto: "ICMP" });
-    // A new rule set restarts the counters, so hits start again too.
+    // A new rule set restarts the VM's counters; last-hit times are kept.
     const c = nextFirewall(b, { hash: "h2", counters: { r1: [1, 60] }, drops: [] }, "t3")!;
-    expect(c.last_hit).toEqual({ r1: "t3" });
+    expect(c.last_hit).toEqual({ r1: "t3", default: "t2" });
     expect(c.drops).toHaveLength(1);
+  });
+
+  it("totals carry on across a new rule set and a reboot, and clearing zeroes them", () => {
+    const s1 = { applied_hash: "h1", counters: { r1: [10, 1000] as [number, number] } } as any;
+    // Rule change: the VM's counter restarts at 2; the 10 before it are kept.
+    let base = nextBase({}, s1, { r1: [2, 200] }, false);
+    expect(base).toEqual({ r1: [10, 1000] });
+    // Reboot with the same rule set: the counter goes backwards (7 -> 1), so 7 more are kept.
+    base = nextBase(base, { applied_hash: "h2", counters: { r1: [7, 700] } } as any, { r1: [1, 100] }, true);
+    expect(base).toEqual({ r1: [17, 1700] });
+    // Steady growth adds nothing to the base (the live counter carries it).
+    expect(nextBase(base, { applied_hash: "h2", counters: { r1: [1, 100] } } as any, { r1: [5, 500] }, true)).toEqual(base);
+    expect(addCounters({ r1: [1, 2] }, { r1: [3, 4], r2: [5, 6] })).toEqual({ r1: [4, 6], r2: [5, 6] });
   });
 });
 
@@ -103,5 +117,34 @@ describe("with the VM", () => {
     // An agent from before the firewall is left alone.
     r = await handleAgent(env, token, { dump: "" });
     expect((r.body as any).firewall).toBeUndefined();
+  });
+
+  it("hit totals survive a rule change, a tear-down and a rebuild; Clear counters zeroes them", async () => {
+    const up = async () => {
+      const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "s" });
+      const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+      world.azure.rg = true;
+      await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
+      return sec.body.agent_token as string;
+    };
+    let token = await up();
+    await handleAgent(env, token, { dump: "", firewall: { hash: "h1", counters: { r1: [40, 4000] }, drops: [] } });
+    // A rule change: the VM reloads and its counter restarts.
+    await handleAgent(env, token, { dump: "", firewall: { hash: "h2", counters: { r1: [2, 200] }, drops: [] } });
+    expect(totalHits(await getSnapshot(env), "r1")).toEqual([42, 4200]);
+    // Tear down, build again: the new VM starts from zero, the totals do not.
+    const d = await startDestroy(env, "s", "test");
+    const ds = await issueRunSecrets(env, d.id, lastGhRun(world));
+    world.azure.rg = false;
+    await handleCallback(env, ds.body.callback_token as string, { run_id: d.id, action: "destroy", status: "success" });
+    expect(totalHits(await getSnapshot(env), "r1")).toEqual([42, 4200]);
+    token = await up();
+    await handleAgent(env, token, { dump: "", firewall: { hash: "h2", counters: { r1: [3, 300] }, drops: [] } });
+    expect(totalHits(await getSnapshot(env), "r1")).toEqual([45, 4500]);
+    // Clear: zero now, counting on from here.
+    await clearFirewallCounters(env);
+    expect(totalHits(await getSnapshot(env), "r1")).toEqual([0, 0]);
+    await handleAgent(env, token, { dump: "", firewall: { hash: "h2", counters: { r1: [5, 500] }, drops: [] } });
+    expect(totalHits(await getSnapshot(env), "r1")).toEqual([2, 200]);
   });
 });

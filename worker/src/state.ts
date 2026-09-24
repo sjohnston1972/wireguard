@@ -179,6 +179,14 @@ export interface Snapshot {
   /** A speed test the VM has been asked to run, until its result comes back. */
   speedtest_req: { id: string; target: string; target_name: string; at: string } | null;
   firewall: FirewallStatus | null;
+  /**
+   * Firewall hit totals carried over from earlier readings: every time the
+   * VM's counters restart (a rule change, a reboot, a rebuild) what they had
+   * counted is added here. Shown total = this + the VM's current counter.
+   * Kept across tear-downs; only "Clear counters" resets it.
+   */
+  fw_base: Record<string, [number, number]>;
+  fw_cleared_at: string | null;
   /** The test VM's address in the workloads subnet, from the deploy's outputs. */
   test_vm_ip: string | null;
   updated_at: string;
@@ -216,6 +224,8 @@ export const EMPTY: Snapshot = {
   pending_deploy: null,
   speedtest_req: null,
   firewall: null,
+  fw_base: {},
+  fw_cleared_at: null,
   test_vm_ip: null,
   updated_at: new Date(0).toISOString(),
 };

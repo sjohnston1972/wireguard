@@ -122,6 +122,18 @@
   document.addEventListener("htmx:afterSwap", function () {
     if (!document.querySelector(".sheet.open")) document.documentElement.classList.remove("sheet-open");
   });
+  // A button inside a sheet (Disable, Move up, Delete...): put the sheet away
+  // at once and show the button working, instead of leaving the page dimmed
+  // behind the backdrop until the answer arrives. Buttons on the page itself
+  // show the same "Saving..." while they wait.
+  document.addEventListener("htmx:beforeRequest", function (e) {
+    var el = e.detail && e.detail.elt;
+    if (!el || el.tagName !== "FORM" || !el.closest("#fw")) return;
+    var b = el.querySelector("button[type=submit]");
+    if (b) { b.disabled = true; b.textContent = "Saving\u2026"; }
+    if (el.closest(".sheet.open")) closeSheets();
+  });
+
   // Moving to another tab starts clean.
   document.addEventListener("htmx:beforeRequest", function (e) {
     var el = e.detail && e.detail.elt;

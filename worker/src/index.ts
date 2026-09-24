@@ -35,8 +35,8 @@ import { activityBody } from "./views/activity";
 import { settingsBody } from "./views/settings";
 import { costBody } from "./views/cost";
 import { firewallBody } from "./views/firewall";
-import { parseCidr, parsePorts, type EndKind, type FwRule, type Proto } from "./firewall";
-import { currentFirewall } from "./runs";
+import { parseCidr, parsePorts, compileFirewall, type EndKind, type Proto } from "./firewall";
+import { clearFirewallCounters } from "./runs";
 
 export { RunLock } from "./lock";
 
@@ -522,10 +522,24 @@ app.post("/settings/release-lock", async (c) => {
 
 // ── Firewall ──────────────────────────────────────────────────────────────
 
+/**
+ * The Firewall page. Actions from the page itself (htmx) get just the page
+ * section back, read in one parallel round of queries, so a toggle or a move
+ * comes back fast; a plain visit gets the whole page.
+ */
 async function firewallPage(c: Context<App>, notice: { kind: "good" | "bad"; text: string } | null = null) {
-  const [rules, peers, cfg, snap, fw] = await Promise.all([db.listFwRules(c.env), db.listPeers(c.env), effectiveConfig(c.env), getSnapshot(c.env), currentFirewall(c.env)]);
-  return c.html(await render(c, "firewall", "Firewall", firewallBody({ rules, peers, cfg, snap, hash: fw.hash, problems: fw.problems, notice })));
+  const [rules, peers, cfg, snap] = await Promise.all([db.listFwRules(c.env), db.listPeers(c.env), effectiveConfig(c.env), getSnapshot(c.env)]);
+  const fw = await compileFirewall(rules, cfg, peers, cfg.firewallDefault);
+  const body = firewallBody({ rules, peers, cfg, snap, hash: fw.hash, problems: fw.problems, notice });
+  if (c.req.header("HX-Request") && c.req.method === "POST") return c.html(body);
+  return c.html(await render(c, "firewall", "Firewall", body));
 }
+
+app.post("/firewall/clear", async (c) => {
+  await clearFirewallCounters(c.env);
+  await db.addAlert(c.env, "info", `Firewall hit counters cleared by ${c.get("user")}.`);
+  return firewallPage(c, { kind: "good", text: "Counters cleared. Hits count from zero again." });
+});
 
 app.get("/firewall", (c) => firewallPage(c));
 

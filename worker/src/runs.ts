@@ -179,14 +179,37 @@ export async function currentFirewall(env: Env) {
   return compileFirewall(rules, cfg, peers, cfg.firewallDefault);
 }
 
+/** Add one set of counters into another: [packets, bytes] per key. */
+export function addCounters(a: Record<string, [number, number]>, b: Record<string, [number, number]> | undefined): Record<string, [number, number]> {
+  const out = { ...a };
+  for (const [k, v] of Object.entries(b ?? {})) out[k] = [(out[k]?.[0] ?? 0) + v[0], (out[k]?.[1] ?? 0) + v[1]];
+  return out;
+}
+
+/**
+ * The VM's counters restart whenever a rule set is loaded or the VM reboots.
+ * Whatever the previous reading had counted, for any counter that went
+ * backwards or vanished (or all of them, on a new rule set), moves into the
+ * carried-over totals, so hits keep adding up.
+ */
+export function nextBase(base: Record<string, [number, number]>, prev: FirewallStatus | null, counters: Record<string, [number, number]>, sameSet: boolean): Record<string, [number, number]> {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(prev?.counters ?? {})) {
+    const now = counters[k];
+    if (!sameSet || !now || now[0] < v[0]) out[k] = [(out[k]?.[0] ?? 0) + v[0], (out[k]?.[1] ?? 0) + v[1]];
+  }
+  return out;
+}
+
 /** Fold a heartbeat's firewall report into the status: hits, when each rule last matched, recent drops. */
 export function nextFirewall(prev: FirewallStatus | null, rep: { hash?: string; error?: string | null; counters?: Record<string, [number, number]>; drops?: unknown[] } | null | undefined, at: string): FirewallStatus | null {
   if (!rep) return prev;
   const counters = rep.counters && typeof rep.counters === "object" ? rep.counters : {};
   const sameSet = prev?.applied_hash === (rep.hash || null);
-  const last_hit: Record<string, string> = sameSet ? { ...(prev?.last_hit ?? {}) } : {};
+  const last_hit: Record<string, string> = { ...(prev?.last_hit ?? {}) };
   for (const [k, v] of Object.entries(counters)) {
-    const before = sameSet ? prev?.counters[k]?.[0] ?? 0 : 0;
+    const was = prev?.counters[k]?.[0] ?? 0;
+    const before = sameSet && Number(v[0]) >= was ? was : 0;
     if (Array.isArray(v) && Number(v[0]) > before) last_hit[k] = at;
   }
   const fresh = (Array.isArray(rep.drops) ? rep.drops : [])
@@ -201,6 +224,16 @@ export function nextFirewall(prev: FirewallStatus | null, rep: { hash?: string; 
     last_hit,
     drops: fresh.concat(prev?.drops ?? []).slice(0, 50),
   };
+}
+
+/** "Clear counters": every rule's hits back to zero from now. */
+export async function clearFirewallCounters(env: Env): Promise<void> {
+  const snap = await getSnapshot(env);
+  // Totals are base + the VM's current counter, so a base of minus the
+  // current reading makes every total zero without touching the VM.
+  const neg: Record<string, [number, number]> = {};
+  for (const [k, v] of Object.entries(snap.firewall?.counters ?? {})) neg[k] = [-v[0], -v[1]];
+  await saveSnapshot(env, { fw_base: neg, fw_cleared_at: new Date().toISOString(), firewall: snap.firewall ? { ...snap.firewall, last_hit: {} } : null });
 }
 
 export function isBusyState(s: string): boolean {
@@ -363,6 +396,8 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
 async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Promise<void> {
   const now = new Date().toISOString();
   const before = await getSnapshot(env);
+  // The VM and its counters are gone; its hits live on in the totals.
+  await saveSnapshot(env, { fw_base: addCounters(before.fw_base ?? {}, before.firewall?.counters) });
   await db.updateRun(env, run.id, { status: "success", finished_at: now });
   await releaseLock(env, run.id);
   const dns = await checkDns(env, null);
@@ -392,7 +427,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     vm_size: null,
     profile: null,
     speedtest_req: null,
-    firewall: null,
+    firewall: before.firewall ? { ...before.firewall, counters: {}, applied_hash: null, drops: before.firewall.drops } : null,
     test_vm_ip: null,
   });
   await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
@@ -528,6 +563,10 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     session: nextSession(snap.session, snap.agent, report),
     firewall: nextFirewall(snap.firewall, body.firewall, report.at),
   };
+  if (body.firewall) {
+    const reported = body.firewall.counters && typeof body.firewall.counters === "object" ? body.firewall.counters : {};
+    patch.fw_base = nextBase(snap.fw_base ?? {}, snap.firewall, reported, snap.firewall?.applied_hash === (body.firewall.hash || null));
+  }
   // First heartbeat while still "deploying" (callback not yet in) is proof of life.
   if (snap.state === "deploying" && snap.run_id === run.id) {
     patch.state = "running";

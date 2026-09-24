@@ -359,8 +359,9 @@ export async function moveFwRule(env: Env, id: number, dir: -1 | 1): Promise<voi
   const i = rules.findIndex((r) => r.id === id);
   const j = i + dir;
   if (i < 0 || j < 0 || j >= rules.length) return;
-  // Renumber in tens first, so equal positions cannot make the swap a no-op.
+  // Renumber in tens, so equal positions cannot make the swap a no-op; one
+  // batch, one round trip.
   const order = rules.map((r) => r.id);
   [order[i], order[j]] = [order[j], order[i]];
-  for (let k = 0; k < order.length; k++) await env.DB.prepare("UPDATE fw_rules SET position = ?2 WHERE id = ?1").bind(order[k], (k + 1) * 10).run();
+  await env.DB.batch(order.map((rid, k) => env.DB.prepare("UPDATE fw_rules SET position = ?2 WHERE id = ?1").bind(rid, (k + 1) * 10)));
 }

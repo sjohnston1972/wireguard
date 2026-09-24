@@ -51,11 +51,24 @@ function endSelect(name: string, o: FirewallOpts, selected = "any"): Html {
   </select>`;
 }
 
-function hits(o: FirewallOpts, key: string): Html {
-  const c = o.snap.firewall?.counters[key];
+/** A rule's running total: carried-over hits plus the VM's current counter. */
+export function totalHits(snap: Snapshot, key: string): [number, number] | null {
+  const c = snap.firewall?.counters[key];
+  const b = snap.fw_base?.[key];
+  if (!c && !b) return null;
+  return [Math.max(0, (c?.[0] ?? 0) + (b?.[0] ?? 0)), Math.max(0, (c?.[1] ?? 0) + (b?.[1] ?? 0))];
+}
+
+function hits(o: FirewallOpts, key: string, enabled = true): Html {
+  if (!enabled) return html`<span class="faint">off</span>`;
+  const t = totalHits(o.snap, key);
   const last = o.snap.firewall?.last_hit[key];
-  if (!c) return html`<span class="faint">—</span>`;
-  return html`<b class="mono">${count(c[0])}</b> <span class="faint small">${bytes(c[1])}</span>${last ? html`<div class="faint small">last ${ago(last)}</div>` : ""}`;
+  if (!t) return html`<span class="faint">—</span>`;
+  return html`<b class="mono">${count(t[0])}</b> <span class="faint small">${bytes(t[1])}</span>${last ? html`<div class="faint small">last ${ago(last)}</div>` : ""}`;
+}
+
+function clearButton(): Html {
+  return html`<form method="post" action="/firewall/clear" hx-post="/firewall/clear" hx-target="#fw" hx-swap="outerHTML" hx-select="#fw" hx-confirm="Set every rule's hit count back to zero?" style="display:inline"><button type="submit">Clear counters</button></form>`;
 }
 
 function actionPill(r: FwRule): Html {
@@ -127,12 +140,12 @@ function firewallPhone(o: FirewallOpts, st: { kind: string; text: string }): Htm
     </div>
     <ul class="m-list" style="margin-top:12px">
       ${o.rules.map((r) => {
-        const c = o.snap.firewall?.counters[`r${r.id}`];
-        return html`<li><button type="button" data-sheet="sh-rule-${r.id}"><span class="ind ${!r.enabled || o.problems[r.id] ? "idle" : r.action === "allow" ? "up" : "down"}"><i></i>${r.name}</span><span class="m-right">${c ? count(c[0]) : "—"}</span></button></li>`;
+        const t = totalHits(o.snap, `r${r.id}`);
+        return html`<li><button type="button" data-sheet="sh-rule-${r.id}"><span class="ind ${!r.enabled || o.problems[r.id] ? "idle" : r.action === "allow" ? "up" : "down"}"><i></i>${r.name}</span><span class="m-right">${!r.enabled ? "off" : t ? count(t[0]) : "—"}</span></button></li>`;
       })}
     </ul>
     <div class="m-btns two"><button type="button" class="primary" data-sheet="sh-fw-add">Add rule</button><button type="button" data-sheet="sh-fw-drops">Drops${recent ? html` <span class="count">${recent}</span>` : ""}</button></div>
-    <div class="m-more"><button type="button" class="ghost" data-sheet="sh-fw-zones">Zones and test VM</button><button type="button" class="ghost" data-sheet="sh-fw-default">Default</button></div>
+    <div class="m-more"><button type="button" class="ghost" data-sheet="sh-fw-zones">Zones and test VM</button><button type="button" class="ghost" data-sheet="sh-fw-default">Default and counters</button></div>
   </div>
   ${o.rules.map(
     (r, i) => html`<div class="panel sheet m-only" id="sh-rule-${r.id}">
@@ -142,7 +155,7 @@ function firewallPhone(o: FirewallOpts, st: { kind: string; text: string }): Htm
         <div><dt>From</dt><dd>${endLabel(r.src_kind, r.src_value, o.peers)}</dd></div>
         <div><dt>To</dt><dd>${endLabel(r.dst_kind, r.dst_value, o.peers)}</dd></div>
         <div><dt>Service</dt><dd>${serviceLabel(r)}</dd></div>
-        <div><dt>Hits</dt><dd>${hits(o, `r${r.id}`)}</dd></div>
+        <div><dt>Hits</dt><dd>${hits(o, `r${r.id}`, !!r.enabled)}</dd></div>
       </dl>
       <div class="m-actions">${ruleButtons(r, i === 0, i === o.rules.length - 1)}</div>
     </div>`
@@ -170,7 +183,7 @@ export function firewallBody(o: FirewallOpts): Html {
           <td>${endLabel(r.dst_kind, r.dst_value, o.peers)}</td>
           <td>${serviceLabel(r)}</td>
           <td>${actionPill(r)}</td>
-          <td>${hits(o, `r${r.id}`)}</td>
+          <td>${hits(o, `r${r.id}`, !!r.enabled)}</td>
           <td class="actions">${ruleButtons(r, i === 0, i === o.rules.length - 1)}</td>
         </tr>`
       )}
@@ -185,7 +198,10 @@ export function firewallBody(o: FirewallOpts): Html {
       </tbody>
     </table>
   </div>
-  <p class="faint small d-only" style="margin-top:6px">Hits count packets that started or matched a connection since the rule set was last loaded (a change, or a VM rebuild, starts them again). Replies to allowed traffic pass automatically and are not counted per rule.${def ? "" : ""}</p>
+  <div class="d-only" style="display:flex;gap:12px;align-items:baseline;justify-content:space-between;margin-top:6px;flex-wrap:wrap">
+    <p class="faint small" style="margin:0">Hits count packets that started or matched a connection${o.snap.fw_cleared_at ? html`, since the counters were cleared ${ago(o.snap.fw_cleared_at)}` : ""}. They carry on across rule changes, reboots and rebuilds. Disabled rules count nothing; replies to allowed traffic pass automatically and are not counted per rule.</p>
+    ${clearButton()}
+  </div>
 
   <div class="two-col" style="margin-top:16px">
     <div class="panel sheet" id="sh-fw-add">${sheetHead("Add a rule")}<h2>Add a rule</h2>${addForm(o)}</div>
@@ -195,6 +211,8 @@ export function firewallBody(o: FirewallOpts): Html {
       <div class="panel sheet m-only" id="sh-fw-default">${sheetHead("Default")}
         <p>Anything no rule matches is <b>${o.cfg.firewallDefault === "deny" ? "denied and logged" : "allowed"}</b>. ${hits(o, "default")}</p>
         <form method="post" action="/firewall/default" hx-post="/firewall/default" hx-target="#fw" hx-swap="outerHTML" hx-select="#fw"><input type="hidden" name="value" value="${o.cfg.firewallDefault === "deny" ? "allow" : "deny"}"><div class="btn-row"><button type="submit">${o.cfg.firewallDefault === "deny" ? "Make default allow" : "Make default deny"}</button></div></form>
+        <p class="muted small" style="margin-top:14px">Hit counts carry on across rule changes, reboots and rebuilds${o.snap.fw_cleared_at ? html`; last cleared ${ago(o.snap.fw_cleared_at)}` : ""}.</p>
+        <div class="btn-row">${clearButton()}</div>
       </div>
     </div>
   </div>
