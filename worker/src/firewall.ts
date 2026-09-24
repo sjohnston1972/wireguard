@@ -1,0 +1,216 @@
+// firewall.ts
+//
+// Plain English: the rule table on the Firewall page, compiled into an
+// nftables rule set for the WireGuard VM. The VM routes between four places
+// (the tunnel clients, the home LAN behind the home site, the Azure VNet and
+// the internet) and this decides what may pass between them. Think of an ACL
+// on a firewall's inside interfaces with zones, written top to bottom, first
+// match wins, then the default.
+//
+// Only traffic routed THROUGH the VM is filtered (the "forward" hook). The
+// VM's own traffic (the tunnel, the heartbeat, DNS, SSH to the VM) is never
+// touched, so no rule can lock you out of the headend.
+//
+// Every rule gets a named counter, so the dashboard can show its hits. The
+// default rule logs what it drops ("wgfw-drop ...", rate-limited), which is
+// how the dashboard shows recent drops.
+
+import type { Config } from "./env";
+import type { Peer } from "./db";
+import { peerIp6 } from "./peers";
+
+export type EndKind = "any" | "zone" | "client" | "cidr";
+export type Zone = "clients" | "home" | "azure" | "workloads" | "internet";
+export type Proto = "any" | "tcp" | "udp" | "icmp";
+
+export interface FwRule {
+  id: number;
+  position: number;
+  enabled: number;
+  name: string;
+  src_kind: EndKind;
+  src_value: string;
+  dst_kind: EndKind;
+  dst_value: string;
+  proto: Proto;
+  ports: string;
+  action: "allow" | "deny";
+  log: number;
+}
+
+export const ZONE_LABEL: Record<Zone, string> = {
+  clients: "Tunnel clients",
+  home: "Home LAN",
+  azure: "Azure VNet",
+  workloads: "Workloads subnet",
+  internet: "Internet",
+};
+
+interface Addrs {
+  v4: string[];
+  v6: string[];
+  /** true for "the internet": everything except the private places below. */
+  negate?: boolean;
+}
+
+/** The address sets behind each zone, from the current settings. */
+export function zoneAddrs(zone: Zone, cfg: Config): Addrs {
+  const privateV4 = [cfg.subnet, `${cfg.loopbackIp}/32`, cfg.vnetCidr].concat(cfg.homeLanCidr ? [cfg.homeLanCidr] : []);
+  const privateV6 = (cfg.subnet6 ? [cfg.subnet6] : []).concat(["fd50:50::/48"]);
+  switch (zone) {
+    case "clients":
+      return { v4: [cfg.subnet], v6: cfg.subnet6 ? [cfg.subnet6] : [] };
+    case "home":
+      return { v4: cfg.homeLanCidr ? [cfg.homeLanCidr] : [], v6: [] };
+    case "azure":
+      return { v4: [cfg.vnetCidr], v6: ["fd50:50::/48"] };
+    case "workloads":
+      return { v4: [cfg.workloadCidr], v6: [] };
+    case "internet":
+      return { v4: privateV4, v6: privateV6, negate: true };
+  }
+}
+
+/** A tidy CIDR (or bare address) of either family, or null. */
+export function parseCidr(s: string): { family: 4 | 6; text: string } | null {
+  const t = s.trim();
+  const m4 = t.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/);
+  if (m4 && m4.slice(1, 5).every((x) => Number(x) <= 255) && (m4[5] === undefined || Number(m4[5]) <= 32)) return { family: 4, text: m4[5] === undefined ? `${t}/32` : t };
+  const m6 = t.match(/^([0-9a-fA-F:]+)(?:\/(\d{1,3}))?$/);
+  if (m6 && m6[1].includes(":") && (m6[2] === undefined || Number(m6[2]) <= 128)) return { family: 6, text: m6[2] === undefined ? `${t.toLowerCase()}/128` : t.toLowerCase() };
+  return null;
+}
+
+/** "22", "80,443", "8000-8100" -> nft port expression, or null if it is not valid. */
+export function parsePorts(s: string): string | null {
+  const t = s.replace(/\s+/g, "");
+  if (!t) return "";
+  const parts = t.split(",");
+  for (const p of parts) {
+    const m = p.match(/^(\d{1,5})(?:-(\d{1,5}))?$/);
+    if (!m || Number(m[1]) < 1 || Number(m[1]) > 65535 || (m[2] && (Number(m[2]) > 65535 || Number(m[2]) < Number(m[1])))) return null;
+  }
+  return parts.length === 1 ? parts[0] : `{ ${parts.join(", ")} }`;
+}
+
+/** Resolve one end of a rule to address sets. null = unresolvable (a deleted client). */
+export function endAddrs(kind: EndKind, value: string, cfg: Config, peers: Peer[]): Addrs | "any" | null {
+  if (kind === "any") return "any";
+  if (kind === "zone") return value in ZONE_LABEL ? zoneAddrs(value as Zone, cfg) : null;
+  if (kind === "client") {
+    const p = peers.find((x) => String(x.id) === value);
+    if (!p) return null;
+    const v6 = peerIp6(cfg.subnet6, p.ip);
+    return { v4: [`${p.ip}/32`], v6: v6 ? [`${v6}/128`] : [] };
+  }
+  const c = parseCidr(value);
+  if (!c) return null;
+  return c.family === 4 ? { v4: [c.text], v6: [] } : { v4: [], v6: [c.text] };
+}
+
+/** How one end reads on screen. */
+export function endLabel(kind: EndKind, value: string, peers: Peer[]): string {
+  if (kind === "any") return "Anywhere";
+  if (kind === "zone") return ZONE_LABEL[value as Zone] ?? value;
+  if (kind === "client") return peers.find((x) => String(x.id) === value)?.name ?? "(deleted client)";
+  return value;
+}
+
+export function serviceLabel(r: { proto: Proto; ports: string }): string {
+  if (r.proto === "any") return "Any";
+  if (r.proto === "icmp") return "Ping (ICMP)";
+  return `${r.proto.toUpperCase()}${r.ports ? ` ${r.ports}` : " any port"}`;
+}
+
+const set = (xs: string[]) => (xs.length === 1 ? xs[0] : `{ ${xs.join(", ")} }`);
+
+function match(dir: "saddr" | "daddr", fam: "ip" | "ip6", a: Addrs | "any"): string | null {
+  if (a === "any") return "";
+  const xs = fam === "ip" ? a.v4 : a.v6;
+  if (!xs.length) return a.negate ? "" : null; // nothing of this family: the rule does not apply to it
+  return `${fam} ${dir} ${a.negate ? "!= " : ""}${set(xs)}`;
+}
+
+/** The nft statements for one rule (none if it cannot apply), each ending in its counter and verdict. */
+export function ruleLines(r: FwRule, cfg: Config, peers: Peer[]): { lines: string[]; problem: string | null } {
+  const src = endAddrs(r.src_kind, r.src_value, cfg, peers);
+  const dst = endAddrs(r.dst_kind, r.dst_value, cfg, peers);
+  if (src === null) return { lines: [], problem: `the source (${r.src_value}) no longer exists` };
+  if (dst === null) return { lines: [], problem: `the destination (${r.dst_value}) no longer exists` };
+  const ports = r.proto === "tcp" || r.proto === "udp" ? parsePorts(r.ports) : "";
+  if (ports === null) return { lines: [], problem: `"${r.ports}" is not a port list` };
+
+  const verdict = `${r.log ? `log prefix "wgfw-r${r.id} " level info ` : ""}counter name "r${r.id}" ${r.action === "allow" ? "accept" : "drop"}`;
+  const l4 = (fam: "ip" | "ip6") =>
+    r.proto === "any" ? "" : r.proto === "icmp" ? (fam === "ip" ? "meta l4proto icmp" : "meta l4proto ipv6-icmp") : `${r.proto}${ports ? ` dport ${ports}` : ""}`;
+
+  // No addresses at all: one family-neutral line.
+  if (src === "any" && dst === "any") {
+    if (r.proto === "icmp") return { lines: [`meta l4proto { icmp, ipv6-icmp } ${verdict}`], problem: null };
+    return { lines: [[l4("ip"), verdict].filter(Boolean).join(" ")], problem: null };
+  }
+  const lines: string[] = [];
+  for (const fam of ["ip", "ip6"] as const) {
+    const s = match("saddr", fam, src);
+    const d = match("daddr", fam, dst);
+    if (s === null || d === null) continue;
+    // A negated-only match of a family neither end names ("internet" to
+    // "anywhere" in IPv6, say) still applies to that family.
+    const famOnly = !s && !d ? `meta nfproto ${fam === "ip" ? "ipv4" : "ipv6"}` : "";
+    lines.push([famOnly, s, d, l4(fam), verdict].filter(Boolean).join(" "));
+  }
+  if (!lines.length) return { lines: [], problem: "the two ends have no address family in common (IPv4 to IPv6)" };
+  return { lines, problem: null };
+}
+
+/**
+ * The whole rule set. Loading it replaces the previous one in a single
+ * transaction ("table; delete table; table { ... }"), so there is never a
+ * moment with half a rule set.
+ */
+export async function compileFirewall(rules: FwRule[], cfg: Config, peers: Peer[], defaultAction: "deny" | "allow"): Promise<{ text: string; hash: string; problems: Record<number, string> }> {
+  const problems: Record<number, string> = {};
+  const body: string[] = [];
+  const counters: string[] = [`    counter default { }`];
+  for (const r of [...rules].sort((a, b) => a.position - b.position || a.id - b.id)) {
+    if (!r.enabled) continue;
+    const { lines, problem } = ruleLines(r, cfg, peers);
+    if (problem) {
+      problems[r.id] = problem;
+      continue;
+    }
+    counters.push(`    counter r${r.id} { }`);
+    // Names are the operator's; the file itself stays plain ASCII.
+    body.push(`    # ${r.id}: ${r.name.replace(/[^\x20-\x7e]/g, "?")}`);
+    for (const l of lines) body.push(`    ${l}`);
+  }
+  const deny = defaultAction === "deny";
+  const core = [
+    "table inet wgfw {",
+    ...counters,
+    "  chain forward {",
+    `    type filter hook forward priority filter + 10; policy ${deny ? "drop" : "accept"};`,
+    "    # Replies to allowed traffic, and nothing broken.",
+    "    ct state established,related accept",
+    "    ct state invalid drop",
+    ...body,
+    `    # Default: ${deny ? "deny and log (rate-limited)" : "allow"}.`,
+    deny ? `    limit rate 10/second log prefix "wgfw-drop " level info` : "",
+    `    counter name "default" ${deny ? "drop" : "accept"}`,
+    "  }",
+    "}",
+  ].filter((l) => l !== "");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(core.join("\n")));
+  const hash = [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const text = [`# ruleset ${hash} (wg-admin firewall, compiled by the dashboard)`, "table inet wgfw", "delete table inet wgfw", ...core, ""].join("\n");
+  return { text, hash, problems };
+}
+
+/** The rule set a fresh install starts with: today's behaviour, written out as rules. */
+export const STARTER_RULES: Omit<FwRule, "id">[] = [
+  { position: 10, enabled: 1, name: "Clients to the internet (full tunnel)", src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "internet", proto: "any", ports: "", action: "allow", log: 0 },
+  { position: 20, enabled: 1, name: "Clients to the Azure VNet", src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "azure", proto: "any", ports: "", action: "allow", log: 0 },
+  { position: 30, enabled: 1, name: "Clients to the home LAN", src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "home", proto: "any", ports: "", action: "allow", log: 0 },
+  { position: 40, enabled: 1, name: "Clients to each other", src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "clients", proto: "any", ports: "", action: "allow", log: 0 },
+  { position: 50, enabled: 1, name: "Workloads to the internet (updates)", src_kind: "zone", src_value: "workloads", dst_kind: "zone", dst_value: "internet", proto: "any", ports: "", action: "allow", log: 0 },
+];

@@ -49,6 +49,21 @@ blocked=0
 speedtest="null"
 [[ -s /run/wg-admin/speedtest.json ]] && speedtest="$(cat /run/wg-admin/speedtest.json)"
 
+# Firewall: which rule set is loaded, each rule's hit counter, and what the
+# default-deny rule dropped since the last heartbeat (from the kernel log).
+FW_FILE=/etc/wg-admin/firewall.nft
+fw_hash=""
+[[ -r "$FW_FILE" ]] && fw_hash="$(sed -n 's/^# ruleset \([0-9a-f]*\).*/\1/p' "$FW_FILE" | head -n1)"
+fw_counters="$(nft -j list counters table inet wgfw 2>/dev/null | jq -c '[.nftables[] | .counter? // empty | {key: .name, value: [.packets, .bytes]}] | from_entries' 2>/dev/null || true)"
+[[ -z "$fw_counters" ]] && fw_counters="{}"
+fw_error=""
+[[ -s /run/wg-admin/firewall.error ]] && fw_error="$(head -c 400 /run/wg-admin/firewall.error)"
+# "wgfw-drop IN=wg0 OUT=eth0 SRC=10.13.13.3 DST=10.50.2.4 ... PROTO=TCP SPT=51000 DPT=3389"
+fw_drops="$(journalctl -k --since '-35 seconds' -o cat --no-pager 2>/dev/null | grep 'wgfw-drop' | tail -n 20 \
+  | sed -n 's/.*IN=\([^ ]*\) OUT=\([^ ]*\).* SRC=\([^ ]*\) DST=\([^ ]*\).* PROTO=\([^ ]*\)\( SPT=\([0-9]*\) DPT=\([0-9]*\)\)\{0,1\}.*/\3 \4 \5 \8 \1 \2/p' \
+  | jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | {src: .[0], dst: .[1], proto: .[2], dport: (.[3] | if . == "" then null else tonumber end), in: .[4], out: .[5]})' 2>/dev/null || true)"
+[[ -z "$fw_drops" ]] && fw_drops="[]"
+
 # Round-trip time to every client that shook hands in the last 3 minutes,
 # one ping each, all at once. Like an IP SLA probe per spoke.
 now="$(date +%s)"
@@ -77,7 +92,12 @@ body="$(jq -n \
   --argjson dns "$dns_up" \
   --argjson blocked "${blocked:-0}" \
   --argjson speedtest "$speedtest" \
-  '{agent_version: 4, hostname: $host, uptime_seconds: ($up|tonumber), load: $load, loopback: $lb, wan6: $wan6, selftest: $selftest, rtt: $rtt, dns: {up: $dns, blocked: $blocked}, speedtest_result: $speedtest, dump: $dump}')"
+  --arg fwhash "$fw_hash" \
+  --arg fwerr "$fw_error" \
+  --argjson fwcounters "$fw_counters" \
+  --argjson fwdrops "$fw_drops" \
+  '{agent_version: 5, hostname: $host, uptime_seconds: ($up|tonumber), load: $load, loopback: $lb, wan6: $wan6, selftest: $selftest, rtt: $rtt, dns: {up: $dns, blocked: $blocked}, speedtest_result: $speedtest,
+    firewall: {hash: $fwhash, error: (if $fwerr == "" then null else $fwerr end), counters: $fwcounters, drops: $fwdrops}, dump: $dump}')"
 
 # ── Report ──────────────────────────────────────────────────────────────────
 resp="$(curl -fsS --max-time 10 \
@@ -88,6 +108,24 @@ resp="$(curl -fsS --max-time 10 \
 
 # ── Reconcile peers, if the Worker sent a list ──────────────────────────────
 # Reply shape: {"peers":[{"name":"laptop","host":"laptop","public_key":"...","allowed_ips":"10.13.13.2/32,fd13:13::2/128"}]}
+
+# ── Firewall: a new rule set from the dashboard ─────────────────────────────
+# Checked with "nft -c" first, then loaded in one transaction, so a bad rule
+# set is refused whole and the old one stays in force. Saved to the file the
+# boot service loads, so a resume from Standby comes back with the same rules.
+fw_new="$(jq -r '.firewall.nft_b64 // empty' <<<"$resp" 2>/dev/null || true)"
+if [[ -n "$fw_new" ]]; then
+  mkdir -p /run/wg-admin
+  tmp="$(mktemp)"
+  if base64 -d <<<"$fw_new" > "$tmp" 2>/dev/null && nft -c -f "$tmp" 2>/run/wg-admin/firewall.error && nft -f "$tmp" 2>/run/wg-admin/firewall.error; then
+    install -m 0600 -o root -g root "$tmp" "$FW_FILE"
+    rm -f /run/wg-admin/firewall.error
+    logger -t wg-agent "firewall rule set applied: $(sed -n 's/^# ruleset \([0-9a-f]*\).*/\1/p' "$FW_FILE" | head -n1)"
+  else
+    logger -t wg-agent "firewall rule set refused: $(head -c 200 /run/wg-admin/firewall.error)"
+  fi
+  rm -f "$tmp"
+fi
 
 # ── Speed test: forget a result once the Worker has it; start one when asked ─
 ack="$(jq -r '.speedtest_ack // empty' <<<"$resp" 2>/dev/null || true)"

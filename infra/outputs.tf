@@ -43,3 +43,8 @@ output "deployed_at" {
   description = "UTC timestamp of this apply."
   value       = timestamp()
 }
+
+output "test_vm_ip" {
+  description = "The test VM's address in the workloads subnet, or empty."
+  value       = var.test_vm ? azurerm_network_interface.test[0].private_ip_address : ""
+}

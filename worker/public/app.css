@@ -388,7 +388,7 @@ dialog.modal[open] { animation: modal-in 160ms ease-out; }
   nav.tabs { display: none; }
   .topbar .wrap { min-height: 50px; }
   .tabbar {
-    display: grid; grid-template-columns: repeat(5, 1fr);
+    display: grid; grid-template-columns: repeat(6, 1fr);
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 15;
     background: var(--surface); border-top: 1px solid var(--line);
     padding: 2px 4px env(safe-area-inset-bottom);
@@ -602,3 +602,12 @@ ol.steps li { margin: 4px 0; }
 
 /* "hidden" always wins, even over display rules like .btn-row { display: flex }. */
 [hidden] { display: none !important; }
+
+/* Firewall page */
+.fw-ends { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.fw-ends select, .fw-ends input { max-width: none; }
+.fw-ends input[data-cidr-for] { margin-top: 6px; }
+table.rows.fw tr.off td { opacity: 0.55; }
+table.rows.fw tr.fw-default td { background: var(--surface-2); }
+table.rows.fw .actions { min-width: 0; max-width: none; white-space: nowrap; }
+@media (max-width: 640px) { .fw-ends { grid-template-columns: 1fr; } }

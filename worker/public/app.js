@@ -139,6 +139,12 @@
     // Hold the periodic refresh while reading a modal.
     var el = e.detail && e.detail.elt;
     if (el && el.id === "live" && anyModalOpen()) e.preventDefault();
+    // The Firewall page refreshes its hit counters every 20 s; hold that while
+    // a sheet is open or a rule is half-typed, so nothing you entered is lost.
+    if (el && el.id === "fw") {
+      var typing = Array.prototype.some.call(el.querySelectorAll(".fw-add input[type=text]"), function (i) { return i.value.trim() !== ""; });
+      if (anyModalOpen() || typing || (document.activeElement && el.contains(document.activeElement) && /INPUT|SELECT/.test(document.activeElement.tagName))) e.preventDefault();
+    }
   });
   document.addEventListener("close", function (e) {
     if (e.target.tagName !== "DIALOG" || !e.target.classList.contains("modal")) return;
@@ -307,6 +313,17 @@
   document.addEventListener("DOMContentLoaded", function () { renderPush(); });
   document.addEventListener("htmx:afterSwap", function (e) { renderPush(e.target); });
   setTimeout(renderPush, 0);
+
+  // ── Firewall rule form: the address box appears for "An address or network…" ─
+  function syncCidr(root) {
+    (root || document).querySelectorAll("[data-end-select]").forEach(function (sel) {
+      var box = sel.parentElement.querySelector("[data-cidr-for]");
+      if (box) box.hidden = sel.value !== "cidr";
+    });
+  }
+  document.addEventListener("change", function (e) { if (e.target.matches && e.target.matches("[data-end-select]")) syncCidr(e.target.parentElement); });
+  document.addEventListener("htmx:afterSwap", function (e) { syncCidr(e.target); });
+  syncCidr();
 
   // ── Confirmation word gate ──────────────────────────────────────────────
   function wireConfirm(root) {

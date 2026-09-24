@@ -83,6 +83,16 @@ export interface PendingDeploy {
   requester_ip: string | null;
 }
 
+/** What the VM says about its firewall, from the heartbeat. */
+export interface FirewallStatus {
+  applied_hash: string | null; // the rule set the VM has loaded
+  error: string | null; // why the last rule set was refused, if it was
+  counters: Record<string, [number, number]>; // "r12" / "default" -> [packets, bytes] since the rule set was loaded
+  counters_at: string | null;
+  last_hit: Record<string, string>; // counter name -> when it last went up
+  drops: { at: string; src: string; dst: string; proto: string; dport: number | null; in: string; out: string }[]; // newest first
+}
+
 /** A client that changed the address it dials in from (Wi-Fi to 4G, say). */
 export interface Roam {
   at: string;
@@ -168,6 +178,9 @@ export interface Snapshot {
   pending_deploy: PendingDeploy | null;
   /** A speed test the VM has been asked to run, until its result comes back. */
   speedtest_req: { id: string; target: string; target_name: string; at: string } | null;
+  firewall: FirewallStatus | null;
+  /** The test VM's address in the workloads subnet, from the deploy's outputs. */
+  test_vm_ip: string | null;
   updated_at: string;
 }
 
@@ -202,6 +215,8 @@ export const EMPTY: Snapshot = {
   profile: null,
   pending_deploy: null,
   speedtest_req: null,
+  firewall: null,
+  test_vm_ip: null,
   updated_at: new Date(0).toISOString(),
 };
 

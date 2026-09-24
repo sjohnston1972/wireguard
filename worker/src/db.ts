@@ -4,6 +4,7 @@
 // "the latest run" or "all enabled peers" and gets typed objects back.
 
 import type { Env } from "./env";
+import type { FwRule } from "./firewall";
 
 export type RunAction = "apply" | "destroy";
 export type RunStatus = "queued" | "running" | "success" | "failure" | "cancelled";
@@ -324,4 +325,42 @@ export async function deletePushSub(env: Env, by: { id?: number; endpoint?: stri
 export async function markPushSub(env: Env, id: number, ok: boolean, error: string | null): Promise<void> {
   if (ok) await env.DB.prepare("UPDATE push_subs SET last_ok = ?2, last_error = NULL WHERE id = ?1").bind(id, new Date().toISOString()).run();
   else await env.DB.prepare("UPDATE push_subs SET last_error = ?2 WHERE id = ?1").bind(id, error).run();
+}
+
+// ── Firewall rule table ───────────────────────────────────────────────────
+
+export async function listFwRules(env: Env): Promise<FwRule[]> {
+  return (await env.DB.prepare("SELECT * FROM fw_rules ORDER BY position, id").all<FwRule>()).results;
+}
+
+export async function addFwRule(env: Env, r: Omit<FwRule, "id" | "position"> & { position?: number }): Promise<void> {
+  await env.DB.prepare(
+    "INSERT INTO fw_rules (position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log, created_at) VALUES (COALESCE(?1, (SELECT COALESCE(MAX(position), 0) + 10 FROM fw_rules)), ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
+  )
+    .bind(r.position ?? null, r.enabled, r.name, r.src_kind, r.src_value, r.dst_kind, r.dst_value, r.proto, r.ports, r.action, r.log, new Date().toISOString())
+    .run();
+}
+
+export async function updateFwRule(env: Env, id: number, patch: Partial<FwRule>): Promise<void> {
+  const keys = Object.keys(patch).filter((k) => k !== "id");
+  if (!keys.length) return;
+  await env.DB.prepare(`UPDATE fw_rules SET ${keys.map((k, i) => `${k} = ?${i + 2}`).join(", ")} WHERE id = ?1`)
+    .bind(id, ...keys.map((k) => (patch as Record<string, unknown>)[k] ?? null))
+    .run();
+}
+
+export async function deleteFwRule(env: Env, id: number): Promise<void> {
+  await env.DB.prepare("DELETE FROM fw_rules WHERE id = ?1").bind(id).run();
+}
+
+/** Move a rule one place up or down: swap positions with its neighbour. */
+export async function moveFwRule(env: Env, id: number, dir: -1 | 1): Promise<void> {
+  const rules = await listFwRules(env);
+  const i = rules.findIndex((r) => r.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= rules.length) return;
+  // Renumber in tens first, so equal positions cannot make the swap a no-op.
+  const order = rules.map((r) => r.id);
+  [order[i], order[j]] = [order[j], order[i]];
+  for (let k = 0; k < order.length; k++) await env.DB.prepare("UPDATE fw_rules SET position = ?2 WHERE id = ?1").bind(order[k], (k + 1) * 10).run();
 }

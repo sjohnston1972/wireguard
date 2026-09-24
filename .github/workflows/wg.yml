@@ -39,7 +39,8 @@ on:
         description: >-
           JSON object of per-run values, none of them secret. Any of: region,
           vm_size, peers_json, home_lan_cidr, ssh_allowed_cidr, wg_dns_name,
-          wg_port, wg_subnet, wg_subnet6, loopback_ip, vnet_cidr, agent_url,
+          wg_port, wg_subnet, wg_subnet6, loopback_ip, vnet_cidr, workload_subnet_cidr,
+          test_vm, agent_url,
           run_id, callback_url, secrets_url. Leave as {} for a plain manual run.
         type: string
         required: false
@@ -99,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           jq -e 'type == "object"' <<<"$PAYLOAD" >/dev/null || { echo "payload must be a JSON object"; exit 1; }
-          for k in region vm_size peers_json home_lan_cidr ssh_allowed_cidr wg_dns_name wg_port wg_subnet wg_subnet6 loopback_ip vnet_cidr agent_url run_id; do
+          for k in region vm_size peers_json home_lan_cidr ssh_allowed_cidr wg_dns_name wg_port wg_subnet wg_subnet6 loopback_ip vnet_cidr workload_subnet_cidr test_vm agent_url run_id; do
             v="$(jq -r --arg k "$k" 'if has($k) and .[$k] != null then (.[$k] | if type == "string" then . else tojson end) else empty end' <<<"$PAYLOAD")"
             [ -z "$v" ] && continue
             { echo "TF_VAR_$k<<__EOV__"; echo "$v"; echo "__EOV__"; } >> "$GITHUB_ENV"
@@ -123,7 +124,9 @@ jobs:
             echo "::error::The Worker refused to hand over this run's secrets: $resp"
             exit 1
           fi
-          for k in callback_token agent_token ssh_password ssh_allowed_cidr; do
+          # firewall_nft_b64 is the compiled rule table: not a secret, but it
+          # maps the network, so it stays out of the public log too.
+          for k in callback_token agent_token ssh_password ssh_allowed_cidr firewall_nft_b64; do
             v="$(jq -r --arg k "$k" '.[$k] // empty' <<<"$resp")"
             [ -z "$v" ] && continue
             echo "::add-mask::$v"

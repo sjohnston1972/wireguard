@@ -22,6 +22,8 @@ import { agentPeerList, terraformPeerList } from "./peers";
 import { notify } from "./notify";
 import { dashboardButton } from "./actions";
 import { bytesText } from "./format";
+import { compileFirewall } from "./firewall";
+import type { FirewallStatus } from "./state";
 import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
 
@@ -108,6 +110,8 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     wg_subnet6: cfg.subnet6,
     loopback_ip: cfg.loopbackIp,
     vnet_cidr: cfg.vnetCidr,
+    workload_subnet_cidr: cfg.workloadCidr,
+    test_vm: cfg.testVm,
     agent_url: `${cfg.publicUrl}/api/agent`,
     callback_url: `${cfg.publicUrl}/api/callback`,
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
@@ -167,6 +171,36 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     speedtest_req: null,
   });
   return (await db.getRun(env, id))!;
+}
+
+/** The rule table as it stands, compiled for the VM. */
+export async function currentFirewall(env: Env) {
+  const [rules, peers, cfg] = await Promise.all([db.listFwRules(env), db.listPeers(env), effectiveConfig(env)]);
+  return compileFirewall(rules, cfg, peers, cfg.firewallDefault);
+}
+
+/** Fold a heartbeat's firewall report into the status: hits, when each rule last matched, recent drops. */
+export function nextFirewall(prev: FirewallStatus | null, rep: { hash?: string; error?: string | null; counters?: Record<string, [number, number]>; drops?: unknown[] } | null | undefined, at: string): FirewallStatus | null {
+  if (!rep) return prev;
+  const counters = rep.counters && typeof rep.counters === "object" ? rep.counters : {};
+  const sameSet = prev?.applied_hash === (rep.hash || null);
+  const last_hit: Record<string, string> = sameSet ? { ...(prev?.last_hit ?? {}) } : {};
+  for (const [k, v] of Object.entries(counters)) {
+    const before = sameSet ? prev?.counters[k]?.[0] ?? 0 : 0;
+    if (Array.isArray(v) && Number(v[0]) > before) last_hit[k] = at;
+  }
+  const fresh = (Array.isArray(rep.drops) ? rep.drops : [])
+    .filter((d): d is Record<string, unknown> => !!d && typeof d === "object")
+    .map((d) => ({ at, src: String(d.src ?? ""), dst: String(d.dst ?? ""), proto: String(d.proto ?? ""), dport: typeof d.dport === "number" ? d.dport : null, in: String(d.in ?? ""), out: String(d.out ?? "") }))
+    .reverse();
+  return {
+    applied_hash: rep.hash || null,
+    error: rep.error || null,
+    counters,
+    counters_at: at,
+    last_hit,
+    drops: fresh.concat(prev?.drops ?? []).slice(0, 50),
+  };
 }
 
 export function isBusyState(s: string): boolean {
@@ -317,6 +351,7 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
     error: null,
     drift: null,
     log_tail: null,
+    test_vm_ip: typeof outputs.test_vm_ip === "string" && outputs.test_vm_ip ? outputs.test_vm_ip : null,
   });
   await refreshInventory(env);
   const cfg = config(env);
@@ -357,6 +392,8 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     vm_size: null,
     profile: null,
     speedtest_req: null,
+    firewall: null,
+    test_vm_ip: null,
   });
   await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
   if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);
@@ -423,7 +460,8 @@ export async function issueRunSecrets(env: Env, runId: string, ghRunId: number):
     patch.agent_token_hash = await sha256Hex(agentToken);
     let payload: Record<string, unknown> = {};
     try { payload = JSON.parse(run.payload_json ?? "{}"); } catch { /* ignore */ }
-    Object.assign(out, { agent_token: agentToken, ssh_password: run.ssh_password ?? "", ssh_allowed_cidr: String(payload.ssh_allowed_cidr ?? "") });
+    const fw = await currentFirewall(env);
+    Object.assign(out, { agent_token: agentToken, ssh_password: run.ssh_password ?? "", ssh_allowed_cidr: String(payload.ssh_allowed_cidr ?? ""), firewall_nft_b64: btoa(fw.text) });
   }
   await db.updateRun(env, run.id, patch);
   return { status: 200, body: out };
@@ -448,6 +486,7 @@ export interface AgentBody {
   selftest?: SelfTest | null;
   rtt?: Record<string, number> | null;
   dns?: { up?: boolean; blocked?: number } | null;
+  firewall?: { hash?: string; error?: string | null; counters?: Record<string, [number, number]>; drops?: unknown[] } | null;
   speedtest_result?: { id?: string; down_bps?: number | null; up_bps?: number | null; rtt_ms?: number | null; jitter_ms?: number | null; error?: string | null } | null;
   dump?: string;
 }
@@ -487,6 +526,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     latency: nextLatency(snap.latency ?? {}, body.rtt, known),
     roams: { ...(snap.roams ?? {}), ...detectRoams(snap.agent, report, report.at) },
     session: nextSession(snap.session, snap.agent, report),
+    firewall: nextFirewall(snap.firewall, body.firewall, report.at),
   };
   // First heartbeat while still "deploying" (callback not yet in) is proof of life.
   if (snap.state === "deploying" && snap.run_id === run.id) {
@@ -542,6 +582,12 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     } else {
       reply.speedtest = { id: req.id, target: req.target };
     }
+  }
+  // Firewall: send the rule set when the VM's differs from the table's.
+  // Agents from before the firewall (no report) are left alone.
+  if (body.firewall) {
+    const fw = await currentFirewall(env);
+    if (body.firewall.hash !== fw.hash) reply.firewall = { hash: fw.hash, nft_b64: btoa(fw.text) };
   }
   await saveSnapshot(env, patch);
 

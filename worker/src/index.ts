@@ -34,6 +34,9 @@ import { peersBody, peersTable } from "./views/peers";
 import { activityBody } from "./views/activity";
 import { settingsBody } from "./views/settings";
 import { costBody } from "./views/cost";
+import { firewallBody } from "./views/firewall";
+import { parseCidr, parsePorts, type EndKind, type FwRule, type Proto } from "./firewall";
+import { currentFirewall } from "./runs";
 
 export { RunLock } from "./lock";
 
@@ -515,6 +518,74 @@ app.post("/settings/release-lock", async (c) => {
   await releaseLock(c.env, undefined, true);
   await db.addAlert(c.env, "info", `Run lock released by hand (${c.get("user")}).`);
   return c.redirect("/settings");
+});
+
+// ── Firewall ──────────────────────────────────────────────────────────────
+
+async function firewallPage(c: Context<App>, notice: { kind: "good" | "bad"; text: string } | null = null) {
+  const [rules, peers, cfg, snap, fw] = await Promise.all([db.listFwRules(c.env), db.listPeers(c.env), effectiveConfig(c.env), getSnapshot(c.env), currentFirewall(c.env)]);
+  return c.html(await render(c, "firewall", "Firewall", firewallBody({ rules, peers, cfg, snap, hash: fw.hash, problems: fw.problems, notice })));
+}
+
+app.get("/firewall", (c) => firewallPage(c));
+
+/** One end of a rule from the form: "any", "zone:home", "client:3", or "cidr" plus its text box. */
+function parseEnd(v: unknown, cidr: unknown): { kind: EndKind; value: string } | string {
+  const s = String(v ?? "any");
+  if (s === "any") return { kind: "any", value: "" };
+  if (s === "cidr") {
+    const c = parseCidr(String(cidr ?? ""));
+    return c ? { kind: "cidr", value: c.text } : `"${String(cidr ?? "")}" is not an address or network`;
+  }
+  const m = s.match(/^(zone|client):([a-z0-9]+)$/);
+  return m ? { kind: m[1] as EndKind, value: m[2] } : "Pick where the traffic comes from and goes to.";
+}
+
+app.post("/firewall/rules", async (c) => {
+  const f = await c.req.parseBody();
+  const name = String(f.name ?? "").trim().slice(0, 60);
+  const from = parseEnd(f.from, f.from_cidr);
+  const to = parseEnd(f.to, f.to_cidr);
+  const proto = (["tcp", "udp", "icmp", "any"].includes(String(f.proto)) ? String(f.proto) : "any") as Proto;
+  const ports = proto === "tcp" || proto === "udp" ? String(f.ports ?? "").replace(/\s+/g, "") : "";
+  const problem = !name ? "Give the rule a name." : typeof from === "string" ? from : typeof to === "string" ? to : parsePorts(ports) === null ? `"${ports}" is not a port list (try 8080, 80,443 or 8000-8100).` : null;
+  if (problem || typeof from === "string" || typeof to === "string") return firewallPage(c, { kind: "bad", text: `Not added: ${problem}` });
+  await db.addFwRule(c.env, { enabled: 1, name, src_kind: from.kind, src_value: from.value, dst_kind: to.kind, dst_value: to.value, proto, ports, action: f.action === "deny" ? "deny" : "allow", log: f.log ? 1 : 0 });
+  return firewallPage(c, { kind: "good", text: `Added "${name}". The VM picks it up within 30 seconds.` });
+});
+
+app.post("/firewall/rules/:id/:op{up|down|toggle|delete}", async (c) => {
+  const id = Number(c.req.param("id"));
+  const op = c.req.param("op");
+  if (op === "up" || op === "down") await db.moveFwRule(c.env, id, op === "up" ? -1 : 1);
+  else if (op === "delete") await db.deleteFwRule(c.env, id);
+  else {
+    const r = (await db.listFwRules(c.env)).find((x) => x.id === id);
+    if (r) await db.updateFwRule(c.env, id, { enabled: r.enabled ? 0 : 1 });
+  }
+  return firewallPage(c);
+});
+
+app.post("/firewall/default", async (c) => {
+  const f = await c.req.parseBody();
+  const v = f.value === "allow" ? "allow" : "deny";
+  await db.setSetting(c.env, "firewall_default", v);
+  await db.addAlert(c.env, "info", `Firewall default set to ${v} by ${c.get("user")}.`);
+  return firewallPage(c, { kind: "good", text: `Default is now ${v}.` });
+});
+
+// "Allow this" on a recent drop: an allow rule for exactly that flow.
+app.post("/firewall/allow-drop", async (c) => {
+  const f = await c.req.parseBody();
+  const src = parseCidr(String(f.src ?? "")), dst = parseCidr(String(f.dst ?? ""));
+  if (!src || !dst) return firewallPage(c, { kind: "bad", text: "That drop has no usable addresses." });
+  const peers = await db.listPeers(c.env);
+  const client = peers.find((p) => `${p.ip}/32` === src.text);
+  const proto = ({ TCP: "tcp", UDP: "udp", ICMP: "icmp", ICMPV6: "icmp" } as Record<string, Proto>)[String(f.proto ?? "").toUpperCase()] ?? "any";
+  const port = /^\d{1,5}$/.test(String(f.dport ?? "")) && (proto === "tcp" || proto === "udp") ? String(f.dport) : "";
+  const name = `Allow ${client?.name ?? src.text.replace(/\/(32|128)$/, "")} to ${dst.text.replace(/\/(32|128)$/, "")} ${proto === "any" ? "" : proto.toUpperCase()}${port ? ` ${port}` : ""}`.trim();
+  await db.addFwRule(c.env, { enabled: 1, name, src_kind: client ? "client" : "cidr", src_value: client ? String(client.id) : src.text, dst_kind: "cidr", dst_value: dst.text, proto, ports: port, action: "allow", log: 0 });
+  return firewallPage(c, { kind: "good", text: `Added "${name}". It applies within 30 seconds.` });
 });
 
 app.get("/icon.svg", (c) =>

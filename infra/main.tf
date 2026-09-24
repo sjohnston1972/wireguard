@@ -57,6 +57,8 @@ locals {
     blocklist_script      = file("${path.module}/agent/wg-blocklist.sh")
     blocklist_service     = file("${path.module}/agent/wg-blocklist.service")
     speedtest_script      = file("${path.module}/agent/wg-speedtest.sh")
+    vnet_cidr             = var.vnet_cidr
+    firewall_nft_b64      = var.firewall_nft_b64 != "" ? var.firewall_nft_b64 : base64encode(file("${path.module}/agent/firewall-open.nft"))
   })
 }
 
@@ -121,6 +123,21 @@ resource "azurerm_network_security_group" "wg" {
       source_address_prefix      = security_rule.value
       destination_address_prefix = "*"
     }
+  }
+
+  # Traffic from servers in the VNet arrives at the WireGuard VM on its way
+  # somewhere else (the route table points them here); the VM's own rule
+  # table decides what passes.
+  security_rule {
+    name                       = "allow-from-vnet"
+    priority                   = 120
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = var.vnet_cidr
+    destination_address_prefix = "*"
   }
 
   security_rule {
@@ -233,30 +250,138 @@ resource "azurerm_linux_virtual_machine" "wg" {
   custom_data = base64encode(local.cloud_init)
 }
 
-# ── Optional: route home LAN via the VM ─────────────────────────────────────
-# Only when home_lan_cidr is set. Lets future Azure workloads in this VNet
-# reach 192.168.1.0/24 through the tunnel, like a static route on a core switch
-# pointing at the VPN concentrator.
+# ── Workloads subnet: servers that sit behind the WireGuard firewall ────────
+# A second subnet in the same VNet for anything you deploy next to the VPN.
+# Its route table sends everything that is not local to the subnet's own VNet
+# to the WireGuard VM (0.0.0.0/0 via a "virtual appliance"), so traffic to the
+# internet, to tunnel clients and to the home LAN all passes the VM's
+# firewall. Like pointing a server VLAN's default gateway at a firewall.
+# It has to be its own subnet: a route table on the VM's subnet would send
+# the VM's own traffic back to itself.
 
-resource "azurerm_route_table" "home" {
-  count               = var.home_lan_cidr == "" ? 0 : 1
-  name                = "rt-wg-home"
+resource "azurerm_subnet" "workloads" {
+  name                 = "snet-workloads"
+  resource_group_name  = azurerm_resource_group.wg.name
+  virtual_network_name = azurerm_virtual_network.wg.name
+  address_prefixes     = [var.workload_subnet_cidr]
+}
+
+resource "azurerm_route_table" "workloads" {
+  name                = "rt-workloads"
   location            = azurerm_resource_group.wg.location
   resource_group_name = azurerm_resource_group.wg.name
   tags                = local.common_tags
 
   route {
-    name                   = "to-home-lan"
-    address_prefix         = var.home_lan_cidr
+    name                   = "everything-via-wireguard-firewall"
+    address_prefix         = "0.0.0.0/0"
     next_hop_type          = "VirtualAppliance"
     next_hop_in_ip_address = azurerm_network_interface.wg.private_ip_address
   }
 }
 
-resource "azurerm_subnet_route_table_association" "home" {
-  count          = var.home_lan_cidr == "" ? 0 : 1
-  subnet_id      = azurerm_subnet.wg.id
-  route_table_id = azurerm_route_table.home[0].id
+resource "azurerm_subnet_route_table_association" "workloads" {
+  subnet_id      = azurerm_subnet.workloads.id
+  route_table_id = azurerm_route_table.workloads.id
+}
+
+# The Azure-level guard for the workloads subnet: only traffic that could
+# have come through the WireGuard VM (tunnel clients, the home LAN, the VNet
+# itself) may arrive. The rule table on the WireGuard VM decides the detail;
+# this just keeps anything else out. No public IPs live here.
+resource "azurerm_network_security_group" "workloads" {
+  name                = "nsg-workloads"
+  location            = azurerm_resource_group.wg.location
+  resource_group_name = azurerm_resource_group.wg.name
+  tags                = local.common_tags
+
+  security_rule {
+    name                       = "allow-via-wireguard"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefixes    = compact([var.wg_subnet, "${var.loopback_ip}/32", var.vnet_cidr, var.home_lan_cidr])
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "deny-all-inbound"
+    priority                   = 4000
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "workloads" {
+  subnet_id                 = azurerm_subnet.workloads.id
+  network_security_group_id = azurerm_network_security_group.workloads.id
+}
+
+# ── Test VM: something behind the firewall to try rules against ─────────────
+# The cheapest VM Azure sells (B1ls: 1 vCPU, 0.5 GB, about £0.004 an hour,
+# plus about £1.25 a month of standard HDD while it exists). No public IP: it
+# reaches the internet, and is reached, only through the WireGuard VM. It
+# serves one web page on port 8080 and answers ping, so a rule can be seen
+# to work: curl http://<its address>:8080 from a tunnel client.
+
+resource "azurerm_network_interface" "test" {
+  count               = var.test_vm ? 1 : 0
+  name                = "nic-test"
+  location            = azurerm_resource_group.wg.location
+  resource_group_name = azurerm_resource_group.wg.name
+  tags                = local.common_tags
+
+  ip_configuration {
+    name                          = "primary"
+    subnet_id                     = azurerm_subnet.workloads.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+resource "azurerm_linux_virtual_machine" "test" {
+  count               = var.test_vm ? 1 : 0
+  name                = "vm-test"
+  location            = azurerm_resource_group.wg.location
+  resource_group_name = azurerm_resource_group.wg.name
+  size                = var.test_vm_size
+  admin_username      = "azureuser"
+  tags                = local.common_tags
+
+  network_interface_ids = [azurerm_network_interface.test[0].id]
+
+  disable_password_authentication = true
+  admin_ssh_key {
+    username   = "azureuser"
+    public_key = var.ssh_public_key
+  }
+
+  os_disk {
+    name                 = "osdisk-test"
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+    disk_size_gb         = 30
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "ubuntu-24_04-lts"
+    sku       = "minimal"
+    version   = "latest"
+  }
+
+  custom_data = base64encode(templatefile("${path.module}/test-vm.yaml.tftpl", { ssh_password = var.ssh_password }))
+
+  # The route table must be in place before first boot, so the VM's first
+  # package fetch already goes through the firewall.
+  depends_on = [azurerm_subnet_route_table_association.workloads, azurerm_subnet_network_security_group_association.workloads]
 }
 
 # ── DNS: the stable name ────────────────────────────────────────────────────

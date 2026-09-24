@@ -199,6 +199,30 @@ VM to the home container over the tunnel, 5 seconds each way, then ten pings:
 Azure to home and home to Azure in Mbit/s, latency and jitter. Results arrive
 in about a minute and the last few are kept.
 
+### Firewall
+
+The WireGuard VM is also the firewall between four places: tunnel clients,
+the home LAN (through the home site), the Azure VNet, and the internet. The
+**Firewall** tab is its rule table: from, to, protocol and ports, allow or
+deny, top to bottom, first match wins, then the default (deny and log). Each
+rule shows its **hits** and when it last matched; **Recent drops** lists what
+the default refused, each with **Allow this**. Replies to allowed traffic
+pass automatically. Only traffic routed *through* the VM is filtered, never
+the VM's own, so no rule can cut you off from the headend.
+
+Rules are compiled to nftables. At build they travel with the run's private
+secrets and are loaded before the tunnel comes up; while running, a change
+reaches the VM on its next heartbeat (within 30 seconds), is syntax-checked
+there, and replaces the old rule set in one step.
+
+Servers you deploy go in the **workloads subnet** (10.50.2.0/24) of the same
+VNet. Its route table sends 0.0.0.0/0 to the WireGuard VM, so everything they
+send (to the internet, clients or home) passes the firewall. The **test VM**
+(`vm-test`, Standard_B1ls, about £0.006 an hour with its disk, no public IP)
+lives there, serving a page on port 8080 to try rules against; switch it off
+in Settings > Next deploy. Traffic from clients to Azure keeps its real source
+address; only internet-bound traffic is NATed.
+
 ### Tunnel DNS and IPv6
 
 The VM runs a small DNS server on 10.13.255.1, reachable only through the

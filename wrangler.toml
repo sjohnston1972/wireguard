@@ -71,6 +71,12 @@ AZURE_VM_SIZE = "Standard_B1s"
 AZURE_RESOURCE_GROUP = "rg-wg-ondemand"
 # The Azure VNet the VM lives in; clients can opt in to routing it through the tunnel.
 AZURE_VNET_CIDR = "10.50.0.0/16"
+# Servers behind the WireGuard firewall live here (same VNet, own subnet whose
+# route table points 0.0.0.0/0 at the WireGuard VM).
+WORKLOAD_SUBNET = "10.50.2.0/24"
+# Build the small test VM (B1ls, about £0.006/h with its disk) behind the firewall.
+TEST_VM = "1"
+TEST_VM_RATE_GBP = "0.006"
 HOME_LAN_CIDR = "192.168.1.0/24"
 SSH_ALLOWED_CIDR = ""
 AUTO_DESTROY_DEFAULT_HOURS = "4"

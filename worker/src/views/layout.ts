@@ -11,12 +11,13 @@ import { STATE_LABEL } from "../state";
 import type { Alert } from "../db";
 import { BUILD } from "../build";
 
-export type Tab = "dashboard" | "peers" | "activity" | "cost" | "settings";
+export type Tab = "dashboard" | "peers" | "firewall" | "activity" | "cost" | "settings";
 export type Html = HtmlEscapedString | Promise<HtmlEscapedString>;
 
 const TABS: { id: Tab; href: string; label: string }[] = [
   { id: "dashboard", href: "/", label: "Overview" },
   { id: "peers", href: "/peers", label: "Clients" },
+  { id: "firewall", href: "/firewall", label: "Firewall" },
   { id: "activity", href: "/activity", label: "Activity" },
   { id: "cost", href: "/cost", label: "Cost" },
   { id: "settings", href: "/settings", label: "Settings" },
@@ -26,6 +27,7 @@ const TABS: { id: Tab; href: string; label: string }[] = [
 const ICON: Record<Tab, string> = {
   dashboard: `<circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="12" r="2.5"/><path d="M7.5 12h9"/>`,
   peers: `<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>`,
+  firewall: `<path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/>`,
   activity: `<path d="M4 6h16M4 12h16M4 18h10"/>`,
   cost: `<path d="M15 6.5a3.5 3.5 0 0 0-6 2.5v9M7 13h6M7 18h10"/>`,
   settings: `<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>`,

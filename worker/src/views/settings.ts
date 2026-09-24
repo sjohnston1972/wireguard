@@ -180,6 +180,9 @@ export function settingsBody(o: SettingsOpts): Html {
           <div class="hint">The usual region. Away from home, Deploy also offers the one nearest to you. Changing region is a full tear-down and deploy; clients do not change.</div></label>
         <label class="field"><span>VM size</span>
           <select name="vm_size">${["Standard_B1s", "Standard_B1ms", "Standard_B2s", "Standard_B2ats_v2"].map((v) => html`<option value="${v}" ${ov("vm_size", o.cfg.vmSize) === v ? "selected" : ""}>${v}</option>`)}</select></label>
+        <label class="field"><span>Test VM behind the firewall</span>
+          <select name="test_vm"><option value="1" ${ov("test_vm", o.cfg.testVm ? "1" : "0") === "1" ? "selected" : ""}>Build it (B1ls in the workloads subnet, about £0.006 an hour)</option><option value="0" ${ov("test_vm", o.cfg.testVm ? "1" : "0") === "0" ? "selected" : ""}>Don't build it</option></select>
+          <div class="hint">A small server with no public address, reachable only through the WireGuard firewall, to try rules against.</div></label>
         <label class="field"><span>Default auto-destroy (hours, 0 = none)</span><input type="number" name="auto_destroy_default_hours" min="0" max="72" step="0.25" value="${ov("auto_destroy_default_hours", o.cfg.autoDestroyDefaultHours)}"></label>
         <label class="field"><span>When the timer or idle limit is reached</span>
           <select name="expiry_action">

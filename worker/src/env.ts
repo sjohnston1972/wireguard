@@ -26,6 +26,9 @@ export interface Env {
   AZURE_VM_SIZE: string;
   AZURE_RESOURCE_GROUP: string;
   AZURE_VNET_CIDR?: string;
+  WORKLOAD_SUBNET?: string; // servers behind the WireGuard firewall, in the same VNet
+  TEST_VM?: string; // "1" builds the test VM in the workloads subnet
+  TEST_VM_RATE_GBP?: string;
   HOME_LAN_CIDR?: string;
   SSH_ALLOWED_CIDR?: string;
   AUTO_DESTROY_DEFAULT_HOURS: string;
@@ -68,6 +71,10 @@ export interface Config {
   vmSize: string;
   resourceGroup: string;
   vnetCidr: string;
+  workloadCidr: string;
+  testVm: boolean;
+  testVmRateGbp: number;
+  firewallDefault: "deny" | "allow";
   homeLanCidr: string;
   sshAllowedCidr: string;
   autoDestroyDefaultHours: number;
@@ -96,6 +103,10 @@ export function config(env: Env): Config {
     vmSize: env.AZURE_VM_SIZE || "Standard_B1s",
     resourceGroup: env.AZURE_RESOURCE_GROUP || "rg-wg-ondemand",
     vnetCidr: env.AZURE_VNET_CIDR || "10.50.0.0/16",
+    workloadCidr: env.WORKLOAD_SUBNET || "10.50.2.0/24",
+    testVm: env.TEST_VM === "1",
+    testVmRateGbp: num(env.TEST_VM_RATE_GBP, 0.006),
+    firewallDefault: "deny",
     homeLanCidr: env.HOME_LAN_CIDR || "",
     sshAllowedCidr: env.SSH_ALLOWED_CIDR || "",
     autoDestroyDefaultHours: num(env.AUTO_DESTROY_DEFAULT_HOURS, 4),

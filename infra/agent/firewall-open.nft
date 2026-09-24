@@ -1,0 +1,13 @@
+# firewall-open.nft
+#
+# The rule set a VM gets when it is built without the dashboard (a manual run
+# from the Actions tab): routed traffic is allowed, as before the firewall
+# existed. With the dashboard, its compiled rule table replaces this at build
+# and on every change.
+table inet wgfw
+delete table inet wgfw
+table inet wgfw {
+  chain forward {
+    type filter hook forward priority filter + 10; policy accept;
+  }
+}

@@ -92,6 +92,31 @@ variable "subnet_cidr" {
   default     = "10.50.1.0/24"
 }
 
+variable "workload_subnet_cidr" {
+  description = "Subnet for servers behind the WireGuard firewall (the test VM and anything else you deploy)."
+  type        = string
+  default     = "10.50.2.0/24"
+}
+
+variable "test_vm" {
+  description = "Build the small test VM in the workloads subnet."
+  type        = bool
+  default     = false
+}
+
+variable "test_vm_size" {
+  description = "Size of the test VM. B1ls is the cheapest Azure sells."
+  type        = string
+  default     = "Standard_B1ls"
+}
+
+variable "firewall_nft_b64" {
+  description = "The firewall rule set (nftables, base64), compiled by the dashboard from its rule table. Empty = open (no dashboard)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "vnet_cidr6" {
   description = "IPv6 VNet address space (Azure wants a /48). Used only when wg_subnet6 is set."
   type        = string

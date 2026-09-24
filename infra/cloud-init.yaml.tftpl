@@ -30,6 +30,7 @@ packages:
   - wireguard-tools
   - jq
   - dnsmasq
+  - nftables
 
 write_files:
   # ── WireGuard: the [Interface] half of wg0.conf ────────────────────────────
@@ -71,7 +72,10 @@ write_files:
       esac
       iptables "$A" FORWARD -i wg0 -j ACCEPT
       iptables "$A" FORWARD -o wg0 -j ACCEPT
-      iptables -t nat "$N" POSTROUTING -o "$WAN" -j MASQUERADE
+      # NAT only what leaves for the internet. Traffic to the Azure VNet keeps
+      # its real source (a tunnel client's 10.13.13.x), so the firewall rules
+      # and the servers behind it see who is really talking.
+      iptables -t nat "$N" POSTROUTING -o "$WAN" ! -d ${vnet_cidr} -j MASQUERADE
       # The same for IPv6: tunnel addresses are private (fd13:13::/64), so
       # they leave behind the VM's public IPv6 address, like IPv4 does.
       ip6tables "$A" FORWARD -i wg0 -j ACCEPT
@@ -107,6 +111,10 @@ write_files:
     owner: root:root
     content: |
       net.ipv4.ip_forward = 1
+      # Servers in the workloads subnet reach the internet through this VM and
+      # out of the same interface; don't tell them to "go direct" instead.
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
       net.ipv6.conf.all.forwarding = 1
       # Keep learning the IPv6 default route from Azure's router adverts even
       # though forwarding is on (the kernel would otherwise ignore them).
@@ -122,6 +130,35 @@ write_files:
         ethernets:
           eth0:
             dhcp6: true
+
+  # ── Firewall: the dashboard's rule table, compiled to nftables ────────────
+  # Loaded before the tunnel comes up, so routed traffic is never open, not
+  # even for a moment at boot. Default deny between zones; every rule has a
+  # counter the agent reports as the rule's hits. Changes made on the
+  # dashboard arrive on the heartbeat and replace this file.
+  - path: /etc/wg-admin/firewall.nft
+    permissions: "0600"
+    owner: root:root
+    encoding: b64
+    content: ${firewall_nft_b64}
+
+  - path: /etc/systemd/system/wg-firewall.service
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Unit]
+      Description=wg-admin firewall (the dashboard's rule table)
+      Before=wg-quick@wg0.service
+      Wants=network-pre.target
+      After=network-pre.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/sbin/nft -f /etc/wg-admin/firewall.nft
+
+      [Install]
+      WantedBy=multi-user.target
 
   # ── Tunnel DNS: a small resolver on the loopback, for connected clients ───
   # Answers on 10.13.255.1 (and the tunnel address) only, never the internet.
@@ -229,6 +266,8 @@ runcmd:
   - netplan apply || true
   - networkctl reload
   - networkctl up lo1 || true
+  - systemctl daemon-reload
+  - systemctl enable --now wg-firewall.service
   - cat /etc/wireguard/wg0.interface.conf /etc/wireguard/wg0.peers.conf > /etc/wireguard/wg0.conf
   - chmod 0600 /etc/wireguard/wg0.conf
   - systemctl enable --now wg-quick@wg0

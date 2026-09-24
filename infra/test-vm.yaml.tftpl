@@ -1,0 +1,50 @@
+#cloud-config
+#
+# test-vm.yaml.tftpl
+#
+# Plain English: the test VM's whole job is to be something behind the
+# WireGuard firewall that rules can be tried against. It serves one page on
+# port 8080 and answers ping. It has no public address: every packet in or
+# out goes through the WireGuard VM (the workloads route table), so if a
+# rule blocks it, it simply does not arrive. No packages are installed, so it
+# boots in well under a minute and needs no internet at first boot.
+
+%{ if ssh_password != "" ~}
+ssh_pwauth: true
+chpasswd:
+  expire: false
+  users:
+    - name: azureuser
+      password: ${ssh_password}
+      type: text
+%{ endif ~}
+package_update: false
+package_upgrade: false
+
+write_files:
+  - path: /srv/www/index.html
+    permissions: "0644"
+    content: |
+      <!doctype html><title>wg-admin test VM</title>
+      <h1>wg-admin test VM</h1>
+      <p>If you can read this, the WireGuard firewall let you through.</p>
+
+  - path: /etc/systemd/system/test-web.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=wg-admin test VM web page on port 8080
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      ExecStart=/usr/bin/python3 -m http.server 8080 --directory /srv/www
+      Restart=always
+      DynamicUser=yes
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now test-web.service
