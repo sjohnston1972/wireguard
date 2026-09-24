@@ -125,6 +125,23 @@ resource "azurerm_network_security_group" "wg" {
     }
   }
 
+  # Routed traffic leaves this NIC still carrying its original source (a
+  # tunnel client's 10.13.13.x, say). Azure's default outbound rules only pass
+  # VNet-to-VNet or anything-to-internet, so without this the firewall's
+  # allowed traffic to the workloads subnet was silently dropped here (found
+  # on the first live test, 2026-09-24).
+  security_rule {
+    name                       = "allow-routed-to-vnet"
+    priority                   = 100
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = var.vnet_cidr
+  }
+
   # Traffic from servers in the VNet arrives at the WireGuard VM on its way
   # somewhere else (the route table points them here); the VM's own rule
   # table decides what passes.
