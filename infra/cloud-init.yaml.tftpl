@@ -31,6 +31,7 @@ packages:
   - jq
   - dnsmasq
   - nftables
+  - tcpdump
 
 write_files:
   # ── WireGuard: the [Interface] half of wg0.conf ────────────────────────────
@@ -181,6 +182,10 @@ write_files:
       local=/wg/
       addn-hosts=/etc/wg-admin/peers.hosts
       addn-hosts=/etc/wg-admin/blocklist.hosts
+      # Answers are logged so top talkers can show names; the agent empties
+      # this file every heartbeat, so it never grows.
+      log-queries
+      log-facility=/var/log/dnsmasq-queries.log
 
   - path: /etc/wg-admin/peers.hosts
     permissions: "0644"
@@ -234,6 +239,12 @@ write_files:
     owner: root:root
     content: |
       ${indent(6, agent_script)}
+
+  - path: /usr/local/sbin/wg-capture.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      ${indent(6, capture_script)}
 
   - path: /usr/local/sbin/wg-speedtest.sh
     permissions: "0755"

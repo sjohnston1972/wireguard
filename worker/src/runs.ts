@@ -16,7 +16,7 @@ import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
 import { randomToken, sha256Hex, safeEqual } from "./auth";
 import { dispatchWorkflow, findRunByTitle, getGhRun, getJobs, getJobLogTail, cancelGhRun, stepsFromJobs } from "./github";
-import { getSnapshot, saveSnapshot, parseWgDump, nextTraffic, nextLatency, detectRoams, nextSession, selfTestFailures, type AgentReport, type Snapshot, type SelfTest } from "./state";
+import { getSnapshot, saveSnapshot, parseWgDump, nextTraffic, nextLatency, detectRoams, nextSession, selfTestFailures, nextTalkers, type AgentReport, type Snapshot, type SelfTest } from "./state";
 import { checkDns } from "./dns";
 import { agentPeerList, terraformPeerList } from "./peers";
 import { notify } from "./notify";
@@ -112,6 +112,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     vnet_cidr: cfg.vnetCidr,
     workload_subnet_cidr: cfg.workloadCidr,
     test_vm: cfg.testVm,
+    published_ports: [...new Set((await db.listForwards(env)).filter((f) => f.enabled).map((f) => String(f.public_port)))],
     agent_url: `${cfg.publicUrl}/api/agent`,
     callback_url: `${cfg.publicUrl}/api/callback`,
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
@@ -169,14 +170,17 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     profile: opts.profile ?? null,
     pending_deploy: null,
     speedtest_req: null,
+    talkers: {},
+    traffic_hist: [],
+    capture_req: null,
   });
   return (await db.getRun(env, id))!;
 }
 
 /** The rule table as it stands, compiled for the VM. */
 export async function currentFirewall(env: Env) {
-  const [rules, peers, cfg] = await Promise.all([db.listFwRules(env), db.listPeers(env), effectiveConfig(env)]);
-  return compileFirewall(rules, cfg, peers, cfg.firewallDefault);
+  const [rules, peers, cfg, forwards] = await Promise.all([db.listFwRules(env), db.listPeers(env), effectiveConfig(env), db.listForwards(env)]);
+  return compileFirewall(rules, cfg, peers, cfg.firewallDefault, forwards);
 }
 
 /** Add one set of counters into another: [packets, bytes] per key. */
@@ -522,6 +526,8 @@ export interface AgentBody {
   rtt?: Record<string, number> | null;
   dns?: { up?: boolean; blocked?: number } | null;
   firewall?: { hash?: string; error?: string | null; counters?: Record<string, [number, number]>; drops?: unknown[] } | null;
+  talkers?: unknown[];
+  capture_running?: string | null;
   speedtest_result?: { id?: string; down_bps?: number | null; up_bps?: number | null; rtt_ms?: number | null; jitter_ms?: number | null; error?: string | null } | null;
   dump?: string;
 }
@@ -563,6 +569,10 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     session: nextSession(snap.session, snap.agent, report),
     firewall: nextFirewall(snap.firewall, body.firewall, report.at),
   };
+  if (body.talkers) patch.talkers = nextTalkers(snap.talkers ?? {}, body.talkers, report.at);
+  // Throughput history: one sample per heartbeat, the last two hours.
+  const tr = patch.traffic!;
+  patch.traffic_hist = (snap.traffic_hist ?? []).concat({ t: report.at, rx: Math.round(tr.rx_rate), tx: Math.round(tr.tx_rate) }).slice(-240);
   if (body.firewall) {
     const reported = body.firewall.counters && typeof body.firewall.counters === "object" ? body.firewall.counters : {};
     patch.fw_base = nextBase(snap.fw_base ?? {}, snap.firewall, reported, snap.firewall?.applied_hash === (body.firewall.hash || null));
@@ -622,6 +632,21 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
       reply.speedtest = { id: req.id, target: req.target };
     }
   }
+  // Packet capture: hand the request over until the VM says it has started;
+  // give up if nothing has come back well after it should have finished.
+  const cap = snap.capture_req;
+  if (cap) {
+    if (Date.now() - Date.parse(cap.at) > (cap.seconds + 300) * 1000) {
+      patch.capture_req = null;
+      await db.updateCapture(env, cap.id, { status: "failed", finished_at: report.at, error: "no capture arrived from the VM" });
+    } else if (body.capture_running === cap.id) {
+      await db.updateCapture(env, cap.id, { status: "running" });
+    } else {
+      const row = await db.getCapture(env, cap.id);
+      if (row?.status === "waiting") reply.capture = { id: cap.id, iface: cap.iface, filter: cap.filter, seconds: cap.seconds };
+    }
+  }
+
   // Firewall: send the rule set when the VM's differs from the table's.
   // Agents from before the firewall (no report) are left alone.
   if (body.firewall) {

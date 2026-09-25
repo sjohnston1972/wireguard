@@ -204,6 +204,28 @@ export async function vmPower(env: Env, op: "deallocate" | "start"): Promise<voi
   if (r.status !== 200 && r.status !== 202) throw new Error(`Azure refused to ${op} the VM (${r.status}): ${(await r.text()).slice(0, 200)}`);
 }
 
+/**
+ * Open (or close) the published ports at Azure's edge: one NSG rule listing
+ * every public port the VM forwards, kept in step with the Firewall tab while
+ * the VM is running. The VM's own rule set does the forwarding and any
+ * source restriction; this only lets the packets reach it.
+ */
+export async function setPublishedPorts(env: Env, ports: string[]): Promise<void> {
+  const cfg = config(env);
+  const sub = env.AZURE_SUBSCRIPTION_ID;
+  const path = `/subscriptions/${sub}/resourceGroups/${cfg.resourceGroup}/providers/Microsoft.Network/networkSecurityGroups/nsg-wg/securityRules/published-ports?api-version=2024-01-01`;
+  if (!ports.length) {
+    const r = await arm(env, path, { method: "DELETE" });
+    if (!r.ok && r.status !== 404 && r.status !== 204 && r.status !== 202) throw new Error(`Azure refused to close the published ports (${r.status})`);
+    return;
+  }
+  const body = {
+    properties: { priority: 130, direction: "Inbound", access: "Allow", protocol: "*", sourcePortRange: "*", destinationPortRanges: ports, sourceAddressPrefix: "*", destinationAddressPrefix: "*" },
+  };
+  const r = await arm(env, path, { method: "PUT", body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`Azure refused to open the published ports (${r.status}): ${(await r.text()).slice(0, 200)}`);
+}
+
 /** Daily actual cost for this resource group, month to date, via Cost Management. */
 export async function costMonthToDate(env: Env): Promise<{ days: { day: string; gbp: number }[]; currency: string }> {
   const cfg = config(env);

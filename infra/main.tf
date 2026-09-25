@@ -57,6 +57,7 @@ locals {
     blocklist_script      = file("${path.module}/agent/wg-blocklist.sh")
     blocklist_service     = file("${path.module}/agent/wg-blocklist.service")
     speedtest_script      = file("${path.module}/agent/wg-speedtest.sh")
+    capture_script        = file("${path.module}/agent/wg-capture.sh")
     vnet_cidr             = var.vnet_cidr
     firewall_nft_b64      = var.firewall_nft_b64 != "" ? var.firewall_nft_b64 : base64encode(file("${path.module}/agent/firewall-open.nft"))
   })
@@ -140,6 +141,25 @@ resource "azurerm_network_security_group" "wg" {
     destination_port_range     = "*"
     source_address_prefix      = "*"
     destination_address_prefix = var.vnet_cidr
+  }
+
+  # Published ports (the Firewall tab): public ports the VM forwards to a
+  # server behind it. The VM's rule set does the forwarding and the source
+  # checks; this only opens the ports at Azure's edge. The dashboard keeps it
+  # in step live when you add or remove one.
+  dynamic "security_rule" {
+    for_each = length(var.published_ports) > 0 ? [1] : []
+    content {
+      name                       = "published-ports"
+      priority                   = 130
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "*"
+      source_port_range          = "*"
+      destination_port_ranges    = var.published_ports
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    }
   }
 
   # Traffic from servers in the VNet arrives at the WireGuard VM on its way

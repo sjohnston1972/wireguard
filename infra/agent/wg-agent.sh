@@ -64,6 +64,34 @@ fw_drops="$(journalctl -k --since '-35 seconds' -o cat --no-pager 2>/dev/null | 
   | jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | {src: .[0], dst: .[1], proto: .[2], dport: (.[3] | if . == "" then null else tonumber end), in: .[4], out: .[5]})' 2>/dev/null || true)"
 [[ -z "$fw_drops" ]] && fw_drops="[]"
 
+# Names for addresses: what the tunnel DNS answered recently ("reply
+# www.example.com is 93.184.216.34"), kept in a small map so top talkers
+# show names, not just numbers. The query log is emptied each time it is read.
+DNSLOG=/var/log/dnsmasq-queries.log
+DNSMAP=/run/wg-admin/dnsmap.tsv
+mkdir -p /run/wg-admin
+if [[ -s "$DNSLOG" ]]; then
+  { cat "$DNSMAP" 2>/dev/null; sed -n 's/.* \(reply\|cached\) \([^ ]*\) is \([0-9.]*\)$/\3\t\2/p' "$DNSLOG"; } \
+    | awk -F'\t' '{m[$1]=$2} END {for (k in m) print k "\t" m[k]}' | tail -n 5000 > "$DNSMAP.tmp" && mv "$DNSMAP.tmp" "$DNSMAP"
+  : > "$DNSLOG"
+fi
+
+# Top talkers: bytes per tunnel client and remote address, each way, from
+# the firewall's self-filling sets. The 40 biggest pairs, with names.
+talkers="$(
+  { nft -j list set inet wgfw up4 2>/dev/null | jq -r '.nftables[] | .set? // empty | .elem[]? | .elem | "\(.val.concat[0])\t\(.val.concat[1])\tup\t\(.counter.bytes)"';
+    nft -j list set inet wgfw down4 2>/dev/null | jq -r '.nftables[] | .set? // empty | .elem[]? | .elem | "\(.val.concat[0])\t\(.val.concat[1])\tdown\t\(.counter.bytes)"'; } \
+  | awk -F'\t' -v mapf="$DNSMAP" 'BEGIN { while ((getline l < mapf) > 0) { split(l, a, "\t"); n[a[1]] = a[2] } }
+      { k = $1 "\t" $2; if ($3 == "up") u[k] += $4; else d[k] += $4 }
+      END { for (k in u) s[k] = 1; for (k in d) s[k] = 1;
+            for (k in s) { split(k, p, "\t"); printf "%s\t%s\t%d\t%d\t%s\n", p[1], p[2], u[k] + 0, d[k] + 0, n[p[2]] } }' \
+  | sort -t$'\t' -k3,3nr -k4,4nr | awk -F'\t' '{print $0 "\t" ($3 + $4)}' | sort -t$'\t' -k6,6nr | head -n 40 \
+  | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {c: .[0], r: .[1], up: (.[2] | tonumber), down: (.[3] | tonumber), name: (if .[4] == "" then null else .[4] end)})' 2>/dev/null || true
+)"
+[[ -z "$talkers" ]] && talkers="[]"
+# A packet capture in progress, if any (see wg-capture.sh).
+cap_running="$(ls /run/wg-admin/capture.*.running 2>/dev/null | head -n1 | sed 's/.*capture\.\(.*\)\.running/\1/' || true)"
+
 # Round-trip time to every client that shook hands in the last 3 minutes,
 # one ping each, all at once. Like an IP SLA probe per spoke.
 now="$(date +%s)"
@@ -96,7 +124,9 @@ body="$(jq -n \
   --arg fwerr "$fw_error" \
   --argjson fwcounters "$fw_counters" \
   --argjson fwdrops "$fw_drops" \
-  '{agent_version: 5, hostname: $host, uptime_seconds: ($up|tonumber), load: $load, loopback: $lb, wan6: $wan6, selftest: $selftest, rtt: $rtt, dns: {up: $dns, blocked: $blocked}, speedtest_result: $speedtest,
+  --argjson talkers "$talkers" \
+  --arg caprun "$cap_running" \
+  '{agent_version: 6, talkers: $talkers, capture_running: (if $caprun == "" then null else $caprun end), hostname: $host, uptime_seconds: ($up|tonumber), load: $load, loopback: $lb, wan6: $wan6, selftest: $selftest, rtt: $rtt, dns: {up: $dns, blocked: $blocked}, speedtest_result: $speedtest,
     firewall: {hash: $fwhash, error: (if $fwerr == "" then null else $fwerr end), counters: $fwcounters, drops: $fwdrops}, dump: $dump}')"
 
 # ── Report ──────────────────────────────────────────────────────────────────
@@ -125,6 +155,16 @@ if [[ -n "$fw_new" ]]; then
     logger -t wg-agent "firewall rule set refused: $(head -c 200 /run/wg-admin/firewall.error)"
   fi
   rm -f "$tmp"
+fi
+
+# ── Packet capture: start one when asked (once per id) ──────────────────────
+cap_id="$(jq -r '.capture.id // empty' <<<"$resp" 2>/dev/null || true)"
+if [[ "$cap_id" =~ ^[0-9a-f]{6,32}$ && ! -e "/run/wg-admin/capture.$cap_id.started" ]]; then
+  cap_if="$(jq -r '.capture.iface // "wg0"' <<<"$resp")"
+  cap_s="$(jq -r '.capture.seconds // 60' <<<"$resp")"
+  cap_f="$(jq -r '.capture.filter // ""' <<<"$resp")"
+  touch "/run/wg-admin/capture.$cap_id.started"
+  systemd-run --quiet --unit "wg-capture-$cap_id" --no-block /usr/local/sbin/wg-capture.sh "$cap_id" "$cap_if" "$cap_s" "$cap_f" || true
 fi
 
 # ── Speed test: forget a result once the Worker has it; start one when asked ─

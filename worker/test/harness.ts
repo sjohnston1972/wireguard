@@ -131,6 +131,13 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
   env.DB = fakeD1();
   env.STATUS = fakeKV();
   env.RUN_LOCK = fakeDO(env);
+  const objects = new Map<string, ArrayBuffer>();
+  env.STATE = {
+    async put(k: string, v: ArrayBuffer) { objects.set(k, v); },
+    async get(k: string) { const v = objects.get(k); return v ? { body: v, arrayBuffer: async () => v } : null; },
+    async delete(k: string) { objects.delete(k); },
+  } as unknown as R2Bucket;
+  (world as World & { objects: Map<string, ArrayBuffer> }).objects = objects;
 
   const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
 

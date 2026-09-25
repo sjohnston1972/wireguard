@@ -9,5 +9,6 @@ delete table inet wgfw
 table inet wgfw {
   chain forward {
     type filter hook forward priority filter + 10; policy accept;
+    tcp flags syn / syn,rst tcp option maxseg size set rt mtu
   }
 }

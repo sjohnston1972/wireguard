@@ -37,6 +37,9 @@ import { costBody } from "./views/cost";
 import { firewallBody } from "./views/firewall";
 import { parseCidr, parsePorts, compileFirewall, type EndKind, type Proto } from "./firewall";
 import { clearFirewallCounters } from "./runs";
+import { startCapture, receiveCapture, validFilter } from "./capture";
+import { setPublishedPorts } from "./azure";
+import { RESERVED_PORTS, forwardTargetOk } from "./firewall";
 
 export { RunLock } from "./lock";
 
@@ -78,6 +81,14 @@ app.post("/api/callback/secrets", async (c) => {
   if (!body?.run_id) return c.json({ error: "missing run_id" }, 400);
   const r = await issueRunSecrets(c.env, String(body.run_id), Number(claims.run_id));
   return c.json(r.body, r.status as 200);
+});
+
+app.post("/api/agent/capture/:id", async (c) => {
+  const len = Number(c.req.header("Content-Length") ?? 0);
+  if (len > 30 * 1024 * 1024) return c.text("too big", 413);
+  const body = await c.req.arrayBuffer();
+  const r = await receiveCapture(c.env, bearer(c), c.req.param("id"), body, c.req.header("X-Capture-Error") ?? null);
+  return c.text(r.text, r.status as 200);
 });
 
 app.post("/api/agent", async (c) => {
@@ -315,12 +326,12 @@ app.post("/alerts/ack", async (c) => {
 app.get("/peers", async (c) => {
   const [peers, snap, cfg, serverPub] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env), effectiveConfig(c.env), serverPublicKey(c.env)]);
   const nextIp = nextFreeIp(cfg.subnet, peers.map((p) => p.ip));
-  return c.html(await render(c, "peers", "Clients", peersBody({ peers, report: snap.agent, running: snap.state === "running", cfg, serverPub, nextIp, latency: snap.latency })));
+  return c.html(await render(c, "peers", "Clients", peersBody({ peers, report: snap.agent, running: snap.state === "running", cfg, serverPub, nextIp, latency: snap.latency, talkers: Object.values(snap.talkers ?? {}), hist: snap.traffic_hist })));
 });
 
 app.get("/partials/peers-table", async (c) => {
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
-  return c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency));
+  return c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {})));
 });
 
 app.post("/api/peers", async (c) => {
@@ -372,7 +383,7 @@ app.post("/peers/:id/azure", async (c) => {
   const p = await db.getPeer(c.env, id);
   if (p) await db.setPeerAzureVnet(c.env, id, !p.azure_vnet);
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
-  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {}))) : c.redirect("/peers");
 });
 
 app.post("/peers/:id/dns", async (c) => {
@@ -380,7 +391,7 @@ app.post("/peers/:id/dns", async (c) => {
   const p = await db.getPeer(c.env, id);
   if (p) await db.setPeerTunnelDns(c.env, id, !p.tunnel_dns);
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
-  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {}))) : c.redirect("/peers");
 });
 
 // ── Phone alerts (Web Push) ───────────────────────────────────────────────
@@ -421,7 +432,7 @@ app.post("/peers/:id/homelan", async (c) => {
   const p = await db.getPeer(c.env, id);
   if (p) await db.setPeerHomeLan(c.env, id, !p.home_lan);
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
-  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {}))) : c.redirect("/peers");
 });
 
 app.post("/peers/:id/toggle", async (c) => {
@@ -429,13 +440,13 @@ app.post("/peers/:id/toggle", async (c) => {
   const p = await db.getPeer(c.env, id);
   if (p) await db.setPeerEnabled(c.env, id, !p.enabled);
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
-  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {}))) : c.redirect("/peers");
 });
 
 app.post("/peers/:id/delete", async (c) => {
   await db.deletePeer(c.env, Number(c.req.param("id")));
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
-  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency)) : c.redirect("/peers");
+  return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {}))) : c.redirect("/peers");
 });
 
 // ── Activity, cost, settings ───────────────────────────────────────────────
@@ -528,12 +539,97 @@ app.post("/settings/release-lock", async (c) => {
  * comes back fast; a plain visit gets the whole page.
  */
 async function firewallPage(c: Context<App>, notice: { kind: "good" | "bad"; text: string } | null = null) {
-  const [rules, peers, cfg, snap] = await Promise.all([db.listFwRules(c.env), db.listPeers(c.env), effectiveConfig(c.env), getSnapshot(c.env)]);
-  const fw = await compileFirewall(rules, cfg, peers, cfg.firewallDefault);
-  const body = firewallBody({ rules, peers, cfg, snap, hash: fw.hash, problems: fw.problems, notice });
+  const [rules, peers, cfg, snap, forwards, captures] = await Promise.all([db.listFwRules(c.env), db.listPeers(c.env), effectiveConfig(c.env), getSnapshot(c.env), db.listForwards(c.env), db.listCaptures(c.env)]);
+  const fw = await compileFirewall(rules, cfg, peers, cfg.firewallDefault, forwards);
+  const body = firewallBody({ rules, peers, cfg, snap, hash: fw.hash, problems: fw.problems, notice, forwards, captures });
   if (c.req.header("HX-Request") && c.req.method === "POST") return c.html(body);
   return c.html(await render(c, "firewall", "Firewall", body));
 }
+
+// ── Published ports ──────────────────────────────────────────────────────
+
+/** Keep Azure's edge in step with the published ports, while there is a VM. */
+async function syncPublished(env: Env): Promise<string | null> {
+  const snap = await getSnapshot(env);
+  if (snap.state !== "running" && snap.state !== "standby") return null;
+  const ports = [...new Set((await db.listForwards(env)).filter((f) => f.enabled).map((f) => String(f.public_port)))];
+  try {
+    await setPublishedPorts(env, ports);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+
+app.post("/firewall/forwards", async (c) => {
+  const f = await c.req.parseBody();
+  const cfg = await effectiveConfig(c.env);
+  const name = String(f.name ?? "").trim().slice(0, 60);
+  const proto = f.proto === "udp" ? "udp" : "tcp";
+  const pub = Number(f.public_port), tport = Number(f.target_port || f.public_port);
+  const target = String(f.target_ip ?? "").trim();
+  const from = String(f.allow_from ?? "").trim();
+  const fromC = from ? parseCidr(from) : null;
+  const reserved = RESERVED_PORTS.find((r) => r.proto === proto && r.port === pub);
+  const problem = !name
+    ? "Give it a name."
+    : !(pub >= 1 && pub <= 65535) || !(tport >= 1 && tport <= 65535)
+      ? "Ports are 1 to 65535."
+      : reserved
+        ? `${proto.toUpperCase()} ${pub} is ${reserved.why}; pick another public port.`
+        : !forwardTargetOk(target, cfg)
+          ? `The target must be an address in the Azure VNet (${cfg.vnetCidr})${cfg.homeLanCidr ? ` or the home LAN (${cfg.homeLanCidr})` : ""}.`
+          : from && (!fromC || fromC.family !== 4)
+            ? "Allowed from must be an IPv4 address or network, or blank for anywhere."
+            : null;
+  if (problem) return firewallPage(c, { kind: "bad", text: `Not published: ${problem}` });
+  try {
+    await db.addForward(c.env, { name, proto, public_port: pub, target_ip: target, target_port: tport, allow_from: fromC?.text ?? "" });
+  } catch {
+    return firewallPage(c, { kind: "bad", text: `Not published: ${proto.toUpperCase()} ${pub} is already published.` });
+  }
+  await db.addAlert(c.env, "info", `Published ${proto.toUpperCase()} ${pub} to ${target}:${tport} (${name}) by ${c.get("user")}.`);
+  const err = await syncPublished(c.env);
+  return firewallPage(c, err ? { kind: "bad", text: `Saved, but Azure did not open the port: ${err}` } : { kind: "good", text: `Published ${proto.toUpperCase()} ${pub} → ${target}:${tport}. It works within 30 seconds.` });
+});
+
+app.post("/firewall/forwards/:id/:op{toggle|delete}", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (c.req.param("op") === "delete") await db.deleteForward(c.env, id);
+  else {
+    const f = (await db.listForwards(c.env)).find((x) => x.id === id);
+    if (f) await db.setForwardEnabled(c.env, id, !f.enabled);
+  }
+  const err = await syncPublished(c.env);
+  return firewallPage(c, err ? { kind: "bad", text: `Saved, but Azure did not update: ${err}` } : null);
+});
+
+// ── Packet capture ───────────────────────────────────────────────────────
+
+app.post("/firewall/capture", async (c) => {
+  const f = await c.req.parseBody();
+  const who = String(f.who ?? "any");
+  let filter = String(f.filter ?? "").trim();
+  if (who.startsWith("client:")) {
+    const p = await db.getPeer(c.env, Number(who.slice(7)));
+    if (p) filter = filter ? `host ${p.ip} and (${filter})` : `host ${p.ip}`;
+  }
+  if (!validFilter(filter)) return firewallPage(c, { kind: "bad", text: "That filter has characters a capture filter never needs." });
+  try {
+    const msg = await startCapture(c.env, { iface: String(f.iface ?? "wg0"), filter, seconds: Number(f.seconds) || 60, by: c.get("user") });
+    return firewallPage(c, { kind: "good", text: msg });
+  } catch (e) {
+    return firewallPage(c, { kind: "bad", text: e instanceof RunError ? e.message : (e as Error).message });
+  }
+});
+
+app.get("/captures/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!/^[0-9a-f]{16}$/.test(id)) return c.text("Not found", 404);
+  const obj = await c.env.STATE.get(`captures/${id}.pcap.gz`);
+  if (!obj) return c.text("That capture is no longer kept.", 404);
+  return new Response(obj.body, { headers: { "Content-Type": "application/gzip", "Content-Disposition": `attachment; filename="wg-admin-capture-${id.slice(0, 8)}.pcap.gz"` } });
+});
 
 app.post("/firewall/clear", async (c) => {
   await clearFirewallCounters(c.env);

@@ -9,7 +9,8 @@ import { html } from "hono/html";
 import type { Html } from "./layout";
 import { ago, bytes, fmtTime, sheetHead } from "./layout";
 import type { Peer } from "../db";
-import type { AgentReport, AgentPeer } from "../state";
+import type { AgentReport, AgentPeer, Talker } from "../state";
+import { talkerTotal } from "../state";
 import { peerOnline } from "../state";
 import type { Config } from "../env";
 import { serverTunnelIp as serverTunnelIpOf, peerIp6 } from "../peers";
@@ -49,7 +50,7 @@ function peerActions(p: Peer): Html {
  * The phone's Clients: one line per device (a light, the name, and latency or
  * state), each opening a sheet with the details and the buttons.
  */
-function peersPhone(peers: Peer[], byKey: Map<string, AgentPeer>, running: boolean, latency: Record<string, number[]>): Html {
+function peersPhone(peers: Peer[], byKey: Map<string, AgentPeer>, running: boolean, latency: Record<string, number[]>, talkers: Talker[] = []): Html {
   if (!peers.length) return html`<div class="m-only m-empty">No clients yet.</div>`;
   return html`<ul class="m-list m-only">
     ${peers.map((p) => {
@@ -73,15 +74,16 @@ function peersPhone(peers: Peer[], byKey: Map<string, AgentPeer>, running: boole
         <div><dt>Latency</dt><dd>${running && online ? latencyCell(latency[p.public_key]) : "—"}</dd></div>
         <div><dt>Received / sent</dt><dd>${live ? `${bytes(live.tx)} / ${bytes(live.rx)}` : "—"}</dd></div>
       </dl>
+      ${talkers.some((t) => t.c === p.ip) ? html`<h3 style="margin:4px 0 6px">Top destinations</h3>${talkersTable(talkers.filter((t) => t.c === p.ip), peers, 5)}` : ""}
       <div class="m-actions">${peerActions(p)}</div>
     </div>`;
   })}`;
 }
 
-export function peersTable(peers: Peer[], report: AgentReport | null, running: boolean, latency: Record<string, number[]> = {}): Html {
+export function peersTable(peers: Peer[], report: AgentReport | null, running: boolean, latency: Record<string, number[]> = {}, talkers: Talker[] = []): Html {
   const byKey = new Map((report?.peers ?? []).map((p) => [p.public_key, p]));
   return html`<div id="peers-table">
-  ${peersPhone(peers, byKey, running, latency)}
+  ${peersPhone(peers, byKey, running, latency, talkers)}
   <div class="table-wrap d-only">
   ${peers.length
     ? html`<table class="rows stack">
@@ -109,12 +111,47 @@ export function peersTable(peers: Peer[], report: AgentReport | null, running: b
 </div>`;
 }
 
-export function peersBody(o: { peers: Peer[]; report: AgentReport | null; running: boolean; cfg: Config; serverPub: string | null; nextIp: string | null; latency?: Record<string, number[]> }): Html {
+/** Throughput over the session: two thin lines, received and sent, scaled to the peak. */
+function throughputChart(hist: { t: string; rx: number; tx: number }[]): Html {
+  if (hist.length < 2) return html`<p class="faint small">The chart fills in as the VM reports (every 30 seconds).</p>`;
+  const w = 600, h = 120, pad = 4;
+  const peak = Math.max(1, ...hist.map((x) => Math.max(x.rx, x.tx)));
+  const pts = (k: "rx" | "tx") => hist.map((x, i) => `${(pad + (i / (hist.length - 1)) * (w - 2 * pad)).toFixed(1)},${(h - pad - (x[k] / peak) * (h - 2 * pad)).toFixed(1)}`).join(" ");
+  return html`<svg class="thru" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Throughput over the session, peak ${bytes(peak)}/s">
+      <polyline class="rx" points="${pts("rx")}"/><polyline class="tx" points="${pts("tx")}"/>
+    </svg>
+    <p class="faint small">Peak ${bytes(peak)}/s over the last ${Math.round((Date.parse(hist[hist.length - 1].t) - Date.parse(hist[0].t)) / 60_000)} minutes. <span class="key-rx">From clients</span> <span class="key-tx">To clients</span></p>`;
+}
+
+/** The biggest client-remote pairs this session. */
+export function talkersTable(talkers: Talker[], peers: Peer[], limit = 15): Html {
+  if (!talkers.length) return html`<p class="faint small">No traffic counted yet this session.</p>`;
+  const who = (ip: string) => peers.find((p) => p.ip === ip)?.name ?? ip;
+  return html`<table class="rows stack"><thead><tr><th>Client</th><th>Talking to</th><th class="num">Sent</th><th class="num">Received</th></tr></thead><tbody>
+    ${talkers.slice(0, limit).map((t) => {
+      const tot = talkerTotal(t);
+      return html`<tr><td data-label="Client">${who(t.c)}</td><td class="lead">${t.name ? html`<b>${t.name}</b> <span class="mono faint small">${t.r}</span>` : html`<span class="mono">${t.r}</span>`}</td><td class="num" data-label="Sent">${bytes(tot.up)}</td><td class="num" data-label="Received">${bytes(tot.down)}</td></tr>`;
+    })}</tbody></table>`;
+}
+
+function trafficPanel(o: { peers: Peer[]; talkers?: Talker[]; hist?: { t: string; rx: number; tx: number }[]; running: boolean }): Html {
+  return html`<div class="panel sheet" id="sh-traffic" style="margin-top:16px">
+    ${sheetHead("Traffic")}
+    <h2>Traffic this session</h2>
+    ${o.running ? throughputChart(o.hist ?? []) : html`<p class="faint">Nothing running.</p>`}
+    <h3 style="margin-top:12px">Top talkers</h3>
+    <p class="muted small">Who talked to what through the VPN, biggest first. Names come from the tunnel DNS, so clients that use it show names; the rest show addresses.</p>
+    ${talkersTable(o.talkers ?? [], o.peers)}
+  </div>`;
+}
+
+export function peersBody(o: { peers: Peer[]; report: AgentReport | null; running: boolean; cfg: Config; serverPub: string | null; nextIp: string | null; latency?: Record<string, number[]>; talkers?: Talker[]; hist?: { t: string; rx: number; tx: number }[] }): Html {
   return html`<section>
   <div class="section-head"><h1>Clients</h1><span class="muted small d-only">${o.running ? "Changes reach the VM within 30 seconds; the status column shows what the VM reports." : "Changes are loaded at the next deploy."}</span></div>
-  ${peersTable(o.peers, o.report, o.running, o.latency)}
+  ${peersTable(o.peers, o.report, o.running, o.latency, o.talkers)}
   <div class="m-btns m-only" style="margin-top:12px"><button type="button" class="primary big" data-sheet="sh-add">Add a client</button></div>
-  <div class="m-more m-only"><button type="button" class="ghost" data-sheet="sh-help">Apps and server key</button></div>
+  <div class="m-more m-only"><button type="button" class="ghost" data-sheet="sh-traffic">Traffic</button><button type="button" class="ghost" data-sheet="sh-help">Apps and server key</button></div>
+  ${trafficPanel(o)}
 </section>
 
 <section id="peer-reveal" hidden>

@@ -614,3 +614,15 @@ table.rows.fw tr.off td { opacity: 0.55; }
 table.rows.fw tr.fw-default td { background: var(--surface-2); }
 table.rows.fw .actions { min-width: 0; max-width: none; white-space: nowrap; }
 @media (max-width: 640px) { .fw-ends { grid-template-columns: 1fr; } }
+
+/* Traffic panel: throughput chart */
+svg.thru { width: 100%; height: 120px; display: block; background: var(--surface-2); border-radius: var(--radius); }
+svg.thru polyline { fill: none; stroke-width: 1.6; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+svg.thru .rx { stroke: var(--signal); }
+svg.thru .tx { stroke: var(--up); }
+.key-rx::before, .key-tx::before { content: ""; display: inline-block; width: 12px; height: 2px; margin: 0 5px 3px 10px; vertical-align: middle; }
+.key-rx::before { background: var(--signal); }
+.key-tx::before { background: var(--up); }
+
+/* Desktop tables: the lead column (a name) should not wrap word by word. */
+@media (min-width: 641px) { table.rows.stack td.lead { min-width: 10rem; } }

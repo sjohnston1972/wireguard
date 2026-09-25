@@ -110,6 +110,12 @@ variable "test_vm_size" {
   default     = "Standard_B1ls"
 }
 
+variable "published_ports" {
+  description = "Public ports forwarded by the VM to servers behind it (from the Firewall tab), opened in the NSG."
+  type        = list(string)
+  default     = []
+}
+
 variable "firewall_nft_b64" {
   description = "The firewall rule set (nftables, base64), compiled by the dashboard from its rule table. Empty = open (no dashboard)."
   type        = string

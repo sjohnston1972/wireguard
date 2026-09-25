@@ -100,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           jq -e 'type == "object"' <<<"$PAYLOAD" >/dev/null || { echo "payload must be a JSON object"; exit 1; }
-          for k in region vm_size peers_json home_lan_cidr ssh_allowed_cidr wg_dns_name wg_port wg_subnet wg_subnet6 loopback_ip vnet_cidr workload_subnet_cidr test_vm agent_url run_id; do
+          for k in region vm_size peers_json home_lan_cidr ssh_allowed_cidr wg_dns_name wg_port wg_subnet wg_subnet6 loopback_ip vnet_cidr workload_subnet_cidr test_vm published_ports agent_url run_id; do
             v="$(jq -r --arg k "$k" 'if has($k) and .[$k] != null then (.[$k] | if type == "string" then . else tojson end) else empty end' <<<"$PAYLOAD")"
             [ -z "$v" ] && continue
             { echo "TF_VAR_$k<<__EOV__"; echo "$v"; echo "__EOV__"; } >> "$GITHUB_ENV"

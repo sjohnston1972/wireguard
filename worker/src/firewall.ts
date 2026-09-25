@@ -14,6 +14,15 @@
 // Every rule gets a named counter, so the dashboard can show its hits. The
 // default rule logs what it drops ("wgfw-drop ...", rate-limited), which is
 // how the dashboard shows recent drops.
+//
+// The same rule set also carries:
+//   - TCP MSS clamping, so full-size packets never need fragmenting inside
+//     the tunnel (the classic "pages hang on 4G" fault);
+//   - published ports: destination NAT from the VM's public address to a
+//     server in the workloads subnet or on the home LAN, like a static NAT
+//     on an edge firewall;
+//   - traffic accounting for top talkers: per tunnel client and remote
+//     address, bytes each way, in self-filling sets (think NetFlow cache).
 
 import type { Config } from "./env";
 import type { Peer } from "./db";
@@ -36,6 +45,43 @@ export interface FwRule {
   ports: string;
   action: "allow" | "deny";
   log: number;
+}
+
+/** A published port: public TCP/UDP port on the VM -> a server behind it. */
+export interface Forward {
+  id: number;
+  enabled: number;
+  name: string;
+  proto: "tcp" | "udp";
+  public_port: number;
+  target_ip: string;
+  target_port: number;
+  allow_from: string; // "" = anywhere, else a CIDR
+}
+
+/** Where a packet capture can listen on the VM. */
+export const CAPTURE_IFACES: Record<string, string> = {
+  wg0: "Inside the tunnel (decrypted client traffic)",
+  eth0: "Azure side (the VNet and the internet)",
+  any: "Both",
+};
+
+/** Ports the VM itself needs on its public address; never publishable. */
+export const RESERVED_PORTS: { proto: "tcp" | "udp"; port: number; why: string }[] = [
+  { proto: "udp", port: 51820, why: "WireGuard itself" },
+  { proto: "tcp", port: 22, why: "SSH to the VM" },
+];
+
+/** Is a publish target somewhere the VM can route to and back? Workloads subnet, rest of the VNet, or the home LAN. */
+export function forwardTargetOk(ip: string, cfg: Config): boolean {
+  const inCidr = (addr: string, cidr: string) => {
+    const [base, bits] = cidr.split("/");
+    const toInt = (a: string) => a.split(".").reduce((n, x) => (n << 8) + Number(x), 0) >>> 0;
+    const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0;
+    return (toInt(addr) & mask) === (toInt(base) & mask);
+  };
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return false;
+  return inCidr(ip, cfg.vnetCidr) || (!!cfg.homeLanCidr && inCidr(ip, cfg.homeLanCidr));
 }
 
 export const ZONE_LABEL: Record<Zone, string> = {
@@ -168,10 +214,27 @@ export function ruleLines(r: FwRule, cfg: Config, peers: Peer[]): { lines: strin
  * transaction ("table; delete table; table { ... }"), so there is never a
  * moment with half a rule set.
  */
-export async function compileFirewall(rules: FwRule[], cfg: Config, peers: Peer[], defaultAction: "deny" | "allow"): Promise<{ text: string; hash: string; problems: Record<number, string> }> {
+export async function compileFirewall(rules: FwRule[], cfg: Config, peers: Peer[], defaultAction: "deny" | "allow", forwards: Forward[] = []): Promise<{ text: string; hash: string; problems: Record<number, string> }> {
   const problems: Record<number, string> = {};
   const body: string[] = [];
   const counters: string[] = [`    counter default { }`];
+
+  // Published ports: DNAT in prerouting (counted once per connection), an
+  // accept for exactly that translated flow, and for home-LAN targets a
+  // masquerade into the tunnel so replies come back the same way.
+  const dnat: string[] = [];
+  const fwdAccept: string[] = [];
+  let homeTargets = false;
+  for (const f of forwards.filter((x) => x.enabled)) {
+    const src = f.allow_from ? parseCidr(f.allow_from) : null;
+    if (f.allow_from && (!src || src.family !== 4)) continue;
+    if (!forwardTargetOk(f.target_ip, cfg)) continue;
+    counters.push(`    counter f${f.id} { }`);
+    dnat.push(`    # published ${f.id}: ${f.name.replace(/[^\x20-\x7e]/g, "?")}`);
+    dnat.push(`    iifname "eth0" ${src ? `ip saddr ${src.text} ` : ""}${f.proto} dport ${f.public_port} counter name "f${f.id}" dnat ip to ${f.target_ip}:${f.target_port}`);
+    fwdAccept.push(`    ct status dnat ip daddr ${f.target_ip} ${f.proto} dport ${f.target_port} accept`);
+    if (cfg.homeLanCidr && !forwardTargetOk(f.target_ip, { ...cfg, homeLanCidr: "" })) homeTargets = true;
+  }
   for (const r of [...rules].sort((a, b) => a.position - b.position || a.id - b.id)) {
     if (!r.enabled) continue;
     const { lines, problem } = ruleLines(r, cfg, peers);
@@ -188,11 +251,30 @@ export async function compileFirewall(rules: FwRule[], cfg: Config, peers: Peer[
   const core = [
     "table inet wgfw {",
     ...counters,
+    "  # Top talkers: bytes per tunnel client and remote address, each way.",
+    "  set up4 { type ipv4_addr . ipv4_addr; flags dynamic, timeout; timeout 2h; size 8192; counter; }",
+    "  set down4 { type ipv4_addr . ipv4_addr; flags dynamic, timeout; timeout 2h; size 8192; counter; }",
+    "  chain prerouting {",
+    "    type nat hook prerouting priority dstnat; policy accept;",
+    ...dnat,
+    "  }",
+    "  chain postrouting {",
+    "    type nat hook postrouting priority srcnat; policy accept;",
+    ...(homeTargets ? [`    oifname "wg0" ct status dnat ip daddr ${cfg.homeLanCidr} masquerade`] : []),
+    "  }",
+    "  chain accounting {",
+    "    type filter hook forward priority filter - 20; policy accept;",
+    `    ip saddr ${cfg.subnet} update @up4 { ip saddr . ip daddr }`,
+    `    ip daddr ${cfg.subnet} update @down4 { ip daddr . ip saddr }`,
+    "  }",
     "  chain forward {",
     `    type filter hook forward priority filter + 10; policy ${deny ? "drop" : "accept"};`,
+    "    # Fit every new TCP connection's segments to the tunnel's path MTU.",
+    "    tcp flags syn / syn,rst tcp option maxseg size set rt mtu",
     "    # Replies to allowed traffic, and nothing broken.",
     "    ct state established,related accept",
     "    ct state invalid drop",
+    ...(fwdAccept.length ? ["    # Published ports: exactly the translated flows.", ...fwdAccept] : []),
     ...body,
     `    # Default: ${deny ? "deny and log (rate-limited)" : "allow"}.`,
     deny ? `    limit rate 10/second log prefix "wgfw-drop " level info` : "",

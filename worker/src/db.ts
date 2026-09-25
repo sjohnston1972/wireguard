@@ -4,7 +4,7 @@
 // "the latest run" or "all enabled peers" and gets typed objects back.
 
 import type { Env } from "./env";
-import type { FwRule } from "./firewall";
+import type { FwRule, Forward } from "./firewall";
 
 export type RunAction = "apply" | "destroy";
 export type RunStatus = "queued" | "running" | "success" | "failure" | "cancelled";
@@ -364,4 +364,61 @@ export async function moveFwRule(env: Env, id: number, dir: -1 | 1): Promise<voi
   const order = rules.map((r) => r.id);
   [order[i], order[j]] = [order[j], order[i]];
   await env.DB.batch(order.map((rid, k) => env.DB.prepare("UPDATE fw_rules SET position = ?2 WHERE id = ?1").bind(rid, (k + 1) * 10)));
+}
+
+// ── Published ports ───────────────────────────────────────────────────────
+
+export async function listForwards(env: Env): Promise<Forward[]> {
+  return (await env.DB.prepare("SELECT * FROM fw_forwards ORDER BY proto, public_port").all<Forward>()).results;
+}
+
+export async function addForward(env: Env, f: Omit<Forward, "id" | "enabled">): Promise<void> {
+  await env.DB.prepare("INSERT INTO fw_forwards (enabled, name, proto, public_port, target_ip, target_port, allow_from, created_at) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+    .bind(f.name, f.proto, f.public_port, f.target_ip, f.target_port, f.allow_from, new Date().toISOString())
+    .run();
+}
+
+export async function setForwardEnabled(env: Env, id: number, on: boolean): Promise<void> {
+  await env.DB.prepare("UPDATE fw_forwards SET enabled = ?2 WHERE id = ?1").bind(id, on ? 1 : 0).run();
+}
+
+export async function deleteForward(env: Env, id: number): Promise<void> {
+  await env.DB.prepare("DELETE FROM fw_forwards WHERE id = ?1").bind(id).run();
+}
+
+// ── Packet captures ───────────────────────────────────────────────────────
+
+export interface Capture {
+  id: string;
+  requested_at: string;
+  requested_by: string | null;
+  iface: string;
+  filter: string;
+  seconds: number;
+  status: "waiting" | "running" | "done" | "failed";
+  bytes: number | null;
+  finished_at: string | null;
+  error: string | null;
+}
+
+export async function listCaptures(env: Env, limit = 10): Promise<Capture[]> {
+  return (await env.DB.prepare("SELECT * FROM captures ORDER BY requested_at DESC LIMIT ?1").bind(limit).all<Capture>()).results;
+}
+
+export async function getCapture(env: Env, id: string): Promise<Capture | null> {
+  return (await env.DB.prepare("SELECT * FROM captures WHERE id = ?1").bind(id).first<Capture>()) ?? null;
+}
+
+export async function addCapture(env: Env, c: Pick<Capture, "id" | "requested_by" | "iface" | "filter" | "seconds">): Promise<void> {
+  await env.DB.prepare("INSERT INTO captures (id, requested_at, requested_by, iface, filter, seconds, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'waiting')")
+    .bind(c.id, new Date().toISOString(), c.requested_by, c.iface, c.filter, c.seconds)
+    .run();
+}
+
+export async function updateCapture(env: Env, id: string, patch: Partial<Capture>): Promise<void> {
+  const keys = Object.keys(patch).filter((k) => k !== "id");
+  if (!keys.length) return;
+  await env.DB.prepare(`UPDATE captures SET ${keys.map((k, i) => `${k} = ?${i + 2}`).join(", ")} WHERE id = ?1`)
+    .bind(id, ...keys.map((k) => (patch as Record<string, unknown>)[k] ?? null))
+    .run();
 }

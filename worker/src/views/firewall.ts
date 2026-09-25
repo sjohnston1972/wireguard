@@ -12,9 +12,11 @@ import { html } from "hono/html";
 import type { Html } from "./layout";
 import { ago, bytes, sheetHead } from "./layout";
 import type { Config } from "../env";
-import type { Peer } from "../db";
+import type { Peer, Capture } from "../db";
+
 import type { Snapshot } from "../state";
-import { ZONE_LABEL, endLabel, serviceLabel, zoneAddrs, type FwRule, type Zone } from "../firewall";
+import { ZONE_LABEL, CAPTURE_IFACES, endLabel, serviceLabel, zoneAddrs, type FwRule, type Zone, type Forward } from "../firewall";
+import { fmtTime } from "./layout";
 
 export interface FirewallOpts {
   rules: FwRule[];
@@ -24,6 +26,75 @@ export interface FirewallOpts {
   hash: string;
   problems: Record<number, string>;
   notice?: { kind: "good" | "bad"; text: string } | null;
+  forwards?: Forward[];
+  captures?: Capture[];
+}
+
+/** Published ports: public port on the VM -> a server behind it. */
+function publishedPanel(o: FirewallOpts): Html {
+  const fs = o.forwards ?? [];
+  const pubIp = o.snap.public_ip;
+  const post = (f: Forward, op: string, label: string, cls = "") =>
+    html`<form method="post" action="/firewall/forwards/${f.id}/${op}" hx-post="/firewall/forwards/${f.id}/${op}" hx-target="#fw" hx-swap="outerHTML" hx-select="#fw" style="display:inline"><button type="submit" class="${cls}">${label}</button></form>`;
+  return html`<div class="panel sheet" id="sh-fw-pub" style="margin-top:16px">
+    ${sheetHead("Published ports")}
+    <h2>Published ports</h2>
+    <p class="muted small">Reach a server behind the VPN from the internet: a public port on ${pubIp ? html`<span class="mono">${pubIp}</span>` : "the VM's public address"} (and ${o.cfg.dnsName}) forwarded to a server in the Azure VNet or on the home LAN. Like a static NAT on an edge firewall. The server sees the real caller's address. The count is connections.</p>
+    ${fs.length
+      ? html`<table class="rows stack"><thead><tr><th>Name</th><th>Public</th><th>Forwards to</th><th>Allowed from</th><th>Connections</th><th></th></tr></thead><tbody>
+        ${fs.map(
+          (f) => html`<tr class="${f.enabled ? "" : "off"}"><td class="lead"><b>${f.name}</b>${f.enabled ? "" : html` <span class="pill idle">off</span>`}</td>
+            <td class="mono" data-label="Public">${f.proto.toUpperCase()} ${f.public_port}</td>
+            <td class="mono" data-label="Forwards to">${f.target_ip}:${f.target_port}</td>
+            <td class="mono" data-label="Allowed from">${f.allow_from || "anywhere"}</td>
+            <td data-label="Connections">${hits(o, `f${f.id}`, !!f.enabled)}</td>
+            <td class="actions">${post(f, "toggle", f.enabled ? "Disable" : "Enable")}${post(f, "delete", "Delete", "danger")}</td></tr>`
+        )}</tbody></table>`
+      : html`<p class="faint">Nothing published. Everything behind the VPN is unreachable from the internet.</p>`}
+    <form method="post" action="/firewall/forwards" hx-post="/firewall/forwards" hx-target="#fw" hx-swap="outerHTML" hx-select="#fw" class="fw-add" style="margin-top:12px">
+      <label class="field"><span>Name</span><input type="text" name="name" maxlength="60" required placeholder="Test VM web page"></label>
+      <div class="fw-ends">
+        <label class="field"><span>Protocol and public port</span><div style="display:flex;gap:8px"><select name="proto" style="width:6rem"><option value="tcp">TCP</option><option value="udp">UDP</option></select><input type="number" name="public_port" min="1" max="65535" required placeholder="8080"></div></label>
+        <label class="field"><span>Forward to (address and port)</span><div style="display:flex;gap:8px"><input type="text" name="target_ip" required placeholder="${o.snap.test_vm_ip ?? "10.50.2.4"}"><input type="number" name="target_port" min="1" max="65535" placeholder="same" style="width:7rem"></div></label>
+      </div>
+      <label class="field"><span>Allowed from (blank = anywhere)</span><input type="text" name="allow_from" placeholder="203.0.113.0/24"></label>
+      <div class="btn-row"><button type="submit" class="primary">Publish</button></div>
+    </form>
+  </div>`;
+}
+
+/** Packet capture: record on the VM for a while, download for Wireshark. */
+function capturePanel(o: FirewallOpts): Html {
+  const caps = o.captures ?? [];
+  const busy = !!o.snap.capture_req;
+  const running = o.snap.state === "running";
+  const status = (c: Capture) =>
+    c.status === "done"
+      ? html`<a class="btn" href="/captures/${c.id}" download>Download</a> <span class="faint small">${Math.max(1, Math.round((c.bytes ?? 0) / 1024))} KB</span>`
+      : c.status === "failed"
+        ? html`<span class="pill down">failed</span> <span class="small">${c.error ?? ""}</span>`
+        : html`<span class="pill busy">${c.status === "running" ? "capturing" : "starting"}</span>`;
+  return html`<div class="panel sheet" id="sh-fw-cap" style="margin-top:16px">
+    ${sheetHead("Packet capture")}
+    <h2>Packet capture</h2>
+    <p class="muted small">Record packets on the VM for a while, then download the file and open it in Wireshark (it reads .pcap.gz as it is). Inside the tunnel you see clients' traffic decrypted. Stops early at 25 MB; the last ten captures are kept.</p>
+    ${running
+      ? html`<form method="post" action="/firewall/capture" hx-post="/firewall/capture" hx-target="#fw" hx-swap="outerHTML" hx-select="#fw" class="fw-add">
+        <div class="fw-ends">
+          <label class="field"><span>Where</span><select name="iface">${Object.entries(CAPTURE_IFACES).map(([k, v]) => html`<option value="${k}">${v}</option>`)}</select></label>
+          <label class="field"><span>Whose traffic</span><select name="who"><option value="any">Everyone</option>${o.peers.map((p) => html`<option value="client:${p.id}">${p.name} (${p.ip})</option>`)}</select></label>
+        </div>
+        <label class="field"><span>Extra filter (optional, tcpdump syntax)</span><input type="text" name="filter" maxlength="200" placeholder="tcp port 443   or   icmp   or   host 10.50.2.4"></label>
+        <div class="chips">${[30, 60, 120].map((s, i) => html`<label><input type="radio" name="seconds" value="${s}" ${i === 1 ? "checked" : ""}><span>${s} s</span></label>`)}</div>
+        <div class="btn-row"><button type="submit" class="primary" ${busy ? "disabled" : ""}>${busy ? "A capture is running…" : "Start capture"}</button></div>
+      </form>`
+      : html`<p class="faint">Deploy to take a capture.</p>`}
+    ${caps.length
+      ? html`<table class="rows stack" style="margin-top:12px"><thead><tr><th>When</th><th>Where</th><th>Filter</th><th></th></tr></thead><tbody>
+        ${caps.map((c) => html`<tr><td class="lead">${fmtTime(c.requested_at)} <span class="faint small">${c.seconds} s</span></td><td data-label="Where">${c.iface}</td><td class="mono small" data-label="Filter">${c.filter || "everything"}</td><td class="actions">${status(c)}</td></tr>`)}
+        </tbody></table>`
+      : ""}
+  </div>`;
 }
 
 const ZONES = Object.keys(ZONE_LABEL) as Zone[];
@@ -145,6 +216,7 @@ function firewallPhone(o: FirewallOpts, st: { kind: string; text: string }): Htm
       })}
     </ul>
     <div class="m-btns two"><button type="button" class="primary" data-sheet="sh-fw-add">Add rule</button><button type="button" data-sheet="sh-fw-drops">Drops${recent ? html` <span class="count">${recent}</span>` : ""}</button></div>
+    <div class="m-btns two" style="margin-top:8px"><button type="button" data-sheet="sh-fw-pub">Published${(o.forwards ?? []).filter((f) => f.enabled).length ? html` <span class="count">${(o.forwards ?? []).filter((f) => f.enabled).length}</span>` : ""}</button><button type="button" data-sheet="sh-fw-cap">Capture${o.snap.capture_req ? html` <span class="count">1</span>` : ""}</button></div>
     <div class="m-more"><button type="button" class="ghost" data-sheet="sh-fw-zones">Zones and test VM</button><button type="button" class="ghost" data-sheet="sh-fw-default">Default and counters</button></div>
   </div>
   ${o.rules.map(
@@ -204,9 +276,13 @@ export function firewallBody(o: FirewallOpts): Html {
   </div>
 
   <div class="two-col" style="margin-top:16px">
-    <div class="panel sheet" id="sh-fw-add">${sheetHead("Add a rule")}<h2>Add a rule</h2>${addForm(o)}</div>
+    <div>
+      <div class="panel sheet" id="sh-fw-add">${sheetHead("Add a rule")}<h2>Add a rule</h2>${addForm(o)}</div>
+      ${publishedPanel(o)}
+    </div>
     <div>
       <div class="panel sheet" id="sh-fw-drops">${sheetHead("Recent drops")}<h2>Recent drops</h2><p class="muted small">What the default rule refused, newest first (the VM logs up to 10 a second).</p>${dropsTable(o)}</div>
+      ${capturePanel(o)}
       <div class="panel sheet" id="sh-fw-zones" style="margin-top:16px">${sheetHead("Zones and test VM")}<h2>Zones and test VM</h2>${zonesPanel(o)}</div>
       <div class="panel sheet m-only" id="sh-fw-default">${sheetHead("Default")}
         <p>Anything no rule matches is <b>${o.cfg.firewallDefault === "deny" ? "denied and logged" : "allowed"}</b>. ${hits(o, "default")}</p>

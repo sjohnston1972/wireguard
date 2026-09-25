@@ -93,6 +93,41 @@ export interface FirewallStatus {
   drops: { at: string; src: string; dst: string; proto: string; dport: number | null; in: string; out: string }[]; // newest first
 }
 
+export interface Talker {
+  c: string; // client tunnel address
+  r: string; // remote address
+  name: string | null; // what the tunnel DNS called it, if the client asked it
+  up: number; // client -> remote, bytes, as the VM last counted
+  down: number; // remote -> client
+  bu: number; // carried over from before the VM's counter restarted
+  bd: number;
+  at: string;
+}
+
+/** Fold a heartbeat's top-talker list into the session totals; keep the 60 biggest. */
+export function nextTalkers(prev: Record<string, Talker>, rep: unknown, at: string): Record<string, Talker> {
+  const out: Record<string, Talker> = { ...prev };
+  for (const x of Array.isArray(rep) ? rep : []) {
+    if (!x || typeof x !== "object") continue;
+    const e = x as Record<string, unknown>;
+    const c = String(e.c ?? ""), r = String(e.r ?? "");
+    if (!/^[0-9.]+$/.test(c) || !/^[0-9.]+$/.test(r)) continue;
+    const up = Number(e.up) || 0, down = Number(e.down) || 0;
+    const key = `${c}|${r}`;
+    const p = out[key];
+    // A counter that went backwards restarted (a rule-set load or a reboot): keep what it had.
+    const bu = (p?.bu ?? 0) + (p && up < p.up ? p.up : 0);
+    const bd = (p?.bd ?? 0) + (p && down < p.down ? p.down : 0);
+    out[key] = { c, r, name: typeof e.name === "string" && e.name ? e.name.slice(0, 120) : p?.name ?? null, up, down, bu, bd, at };
+  }
+  const total = (t: Talker) => t.up + t.down + t.bu + t.bd;
+  return Object.fromEntries(Object.entries(out).sort((a, b) => total(b[1]) - total(a[1])).slice(0, 60));
+}
+
+export function talkerTotal(t: Talker): { up: number; down: number } {
+  return { up: t.up + t.bu, down: t.down + t.bd };
+}
+
 /** A client that changed the address it dials in from (Wi-Fi to 4G, say). */
 export interface Roam {
   at: string;
@@ -187,6 +222,12 @@ export interface Snapshot {
    */
   fw_base: Record<string, [number, number]>;
   fw_cleared_at: string | null;
+  /** Top talkers this session: per "client|remote", bytes each way (running totals). */
+  talkers: Record<string, Talker>;
+  /** Throughput this session, one sample per heartbeat, oldest first (bytes/s). */
+  traffic_hist: { t: string; rx: number; tx: number }[];
+  /** A packet capture the VM has been asked to take. */
+  capture_req: { id: string; iface: string; filter: string; seconds: number; at: string } | null;
   /** The test VM's address in the workloads subnet, from the deploy's outputs. */
   test_vm_ip: string | null;
   updated_at: string;
@@ -226,6 +267,9 @@ export const EMPTY: Snapshot = {
   firewall: null,
   fw_base: {},
   fw_cleared_at: null,
+  talkers: {},
+  traffic_hist: [],
+  capture_req: null,
   test_vm_ip: null,
   updated_at: new Date(0).toISOString(),
 };
