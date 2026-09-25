@@ -105,7 +105,11 @@ while read -r pub _ _ ips hs _; do
     [[ -n "$ms" ]] && printf '%s\t%s\n' "$pub" "$ms" > "$rttdir/$(md5sum <<<"$pub" | cut -c1-12)" ) &
 done < <(tail -n +2 <<<"$dump")
 wait
-rtt="$(cat "$rttdir"/* 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: (.[1] | tonumber)}) | from_entries')"
+# Nobody answering is normal (no client connected): that must never stop the
+# heartbeat, so an empty result becomes {} instead of a failed pipeline
+# (found live 2026-09-25: a fresh VM with no clients sent no heartbeats).
+rtt="$(cat "$rttdir"/* 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: (.[1] | tonumber)}) | from_entries' 2>/dev/null || true)"
+[[ -z "$rtt" ]] && rtt="{}"
 rm -rf "$rttdir"
 
 body="$(jq -n \
