@@ -10,7 +10,12 @@
 # survives a destroy, which is exactly why the bill returns to zero.
 
 locals {
-  peers         = jsondecode(var.peers_json)
+  # Only peers with a proper WireGuard key and a plain IPv4 address get into
+  # wg0.conf (the dashboard checks the same; this is the second lock).
+  peers = [
+    for p in jsondecode(var.peers_json) : p
+    if can(regex("^[A-Za-z0-9+/]{43}=$", p.public_key)) && can(regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$", p.ip))
+  ]
   wg_server_ip  = cidrhost(var.wg_subnet, 1)
   wg_prefix_len = split("/", var.wg_subnet)[1]
   ipv6          = var.wg_subnet6 != ""
@@ -30,7 +35,9 @@ locals {
   # The [Peer] half of wg0.conf, one block per client. Pre-rendered here so the
   # YAML template only has to drop it in with the right indentation. A site
   # peer (the home container) also lists its LAN ("routes"); wg-quick then
-  # adds the matching kernel route when the tunnel comes up.
+  # adds the matching kernel route when the tunnel comes up. The name goes in
+  # a comment line, so anything but plain characters becomes "?": a line
+  # break in a name must never be able to add a line of its own.
   # A site route wider than /8 (0.0.0.0/0, say) would take over the VM's own
   # internet route at boot and cut it off from the dashboard for good, so
   # only /8 to /32 IPv4 networks get through. (The dashboard already refuses
@@ -41,7 +48,7 @@ locals {
   ]) }
   peers_conf = length(local.peers) == 0 ? "# no peers yet\n" : join("\n", [
     for p in local.peers :
-    "# ${p.name}\n[Peer]\nPublicKey = ${p.public_key}\nAllowedIPs = ${p.ip}/32${local.ipv6 ? ",${local.peer_ip6[p.ip]}/128" : ""}${local.site_routes[p.ip] != "" ? ",${local.site_routes[p.ip]}" : ""}\n"
+    "# ${replace(p.name, "/[^A-Za-z0-9 _.-]/", "?")}\n[Peer]\nPublicKey = ${p.public_key}\nAllowedIPs = ${p.ip}/32${local.ipv6 ? ",${local.peer_ip6[p.ip]}/128" : ""}${local.site_routes[p.ip] != "" ? ",${local.site_routes[p.ip]}" : ""}\n"
   ])
 
   # The VM's zero-touch provisioning script.

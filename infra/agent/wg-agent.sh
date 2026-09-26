@@ -194,11 +194,34 @@ fi
 
 jq -e '.peers | type == "array"' <<<"$resp" >/dev/null 2>&1 || exit 0
 
+# Check every peer before any of it goes near wg0.conf, which root reads at
+# every boot: a proper WireGuard key, addresses that really are addresses,
+# a DNS name that is only letters, digits and dashes, and a display name of
+# plain characters only (a line break in a name could otherwise slip a
+# "PostUp = ..." line into the file). A peer that fails is left out and
+# logged. The dashboard checks the same things; this is the second lock.
+peers="$(jq -c '
+  def v4: test("^([0-9]{1,3}\\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$");
+  def v6: test("^[0-9a-fA-F:]*:[0-9a-fA-F:]*/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$");
+  [.peers[]
+   | select(type == "object")
+   | select((.public_key | type) == "string" and (.public_key | test("^[A-Za-z0-9+/]{43}=$")))
+   | select((.allowed_ips | type) == "string")
+   | .allowed_ips |= gsub(" "; "")
+   | select(.allowed_ips | split(",") | length > 0 and all(v4 or v6))
+   | {name: ((.name // "") | tostring | gsub("[^A-Za-z0-9 _.-]"; "?") | .[0:64]),
+      host: ((.host // "") | tostring | if test("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$") then . else "" end),
+      public_key, allowed_ips}]' <<<"$resp" 2>/dev/null || true)"
+[[ -z "$peers" ]] && exit 0
+sent="$(jq '.peers | length' <<<"$resp")"
+kept="$(jq 'length' <<<"$peers")"
+(( kept < sent )) && logger -t wg-agent "peer list: $(( sent - kept )) of $sent peer(s) refused (bad key, address or name)"
+
 # Client names for the tunnel DNS: laptop.wg, phone.wg, and the VM itself.
 hosts="$(mktemp)"
 {
   [[ -n "$loopback" ]] && echo "$loopback vm.wg"
-  jq -r '.peers[] | select(.host != null and .host != "") | (.allowed_ips | split(",") | map(split("/")[0]))[] as $a | "\($a) \(.host).wg"' <<<"$resp"
+  jq -r '.[] | select(.host != "") | (.allowed_ips | split(",") | map(split("/")[0]))[] as $a | "\($a) \(.host).wg"' <<<"$peers"
 } > "$hosts"
 if ! cmp -s "$hosts" /etc/wg-admin/peers.hosts 2>/dev/null; then
   install -m 0644 "$hosts" /etc/wg-admin/peers.hosts
@@ -252,7 +275,7 @@ while read -r cidr; do
   else
     logger -t wg-agent "site route $cidr refused: too wide, or overlaps a network the VM needs"
   fi
-done < <(jq -r '.peers[].allowed_ips | split(",")[] | select(test("^[0-9.]+/([0-9]|[12][0-9]|3[01])$"))' <<<"$resp" 2>/dev/null || true)
+done < <(jq -r '.[].allowed_ips | split(",")[] | select(test("^[0-9.]+/([0-9]|[12][0-9]|3[01])$"))' <<<"$peers" 2>/dev/null || true)
 # And take away a site route nobody carries any more (a site deleted or
 # changed). Only routes into wg0 that someone added; the tunnel's own
 # subnet route belongs to the kernel and is left alone.
@@ -270,17 +293,24 @@ done < <(ip -4 -o route show dev wg0 2>/dev/null | grep -v 'proto kernel' | awk 
 # Compare as "key sorted-allowed-ips" lines, so the order WireGuard happens to
 # list addresses in never looks like a change.
 norm() { while read -r k ips; do printf '%s %s\n' "$k" "$(tr ',' '\n' <<<"$ips" | sed '/^$/d' | sort | paste -sd, -)"; done | sort; }
-desired="$(jq -r '.peers[] | "\(.public_key) \(.allowed_ips | gsub(" "; ""))"' <<<"$resp" | norm)"
+desired="$(jq -r '.[] | "\(.public_key) \(.allowed_ips)"' <<<"$peers" | norm)"
 current="$(wg show wg0 dump | tail -n +2 | awk '{print $1, $4}' | norm)"
 
 [[ "$desired" == "$current" ]] && exit 0
 
-# Rebuild the peers half, then the whole conf, then hot-reload.
-tmp="$(mktemp)"
-jq -r '.peers[] | "# \(.name)\n[Peer]\nPublicKey = \(.public_key)\nAllowedIPs = \(.allowed_ips)\n"' <<<"$resp" > "$tmp"
-install -m 0600 -o root -g root "$tmp" "$PEERS_CONF"
-rm -f "$tmp"
-cat "$IFACE_CONF" "$PEERS_CONF" > "$WG_CONF"
-chmod 0600 "$WG_CONF"
-wg syncconf wg0 <(wg-quick strip wg0)
-logger -t wg-agent "peers reconciled: $(jq '.peers | length' <<<"$resp") peer(s)"
+# Build the new peers half and the whole conf in a private scratch folder,
+# have WireGuard itself check it by loading it live ("wg syncconf" reads the
+# whole file before changing anything, so a bad one changes nothing), and
+# only then move the files into place. A peer list WireGuard refuses is
+# never saved, so it cannot break the tunnel at the next boot either.
+work="$(mktemp -d)"
+jq -r '.[] | "# \(.name)\n[Peer]\nPublicKey = \(.public_key)\nAllowedIPs = \(.allowed_ips)\n"' <<<"$peers" > "$work/peers.conf"
+cat "$IFACE_CONF" "$work/peers.conf" > "$work/wg0.conf"
+if wg-quick strip "$work/wg0.conf" > "$work/wg0.strip" 2>"$work/err" && wg syncconf wg0 "$work/wg0.strip" 2>>"$work/err"; then
+  install -m 0600 -o root -g root "$work/peers.conf" "$PEERS_CONF.new" && mv -f "$PEERS_CONF.new" "$PEERS_CONF"
+  install -m 0600 -o root -g root "$work/wg0.conf" "$WG_CONF.new" && mv -f "$WG_CONF.new" "$WG_CONF"
+  logger -t wg-agent "peers reconciled: $kept peer(s)"
+else
+  logger -t wg-agent "peer list refused by WireGuard, nothing changed: $(tr '\n' ' ' < "$work/err" | head -c 200)"
+fi
+rm -rf "$work"
