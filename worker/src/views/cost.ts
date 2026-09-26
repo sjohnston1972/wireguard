@@ -2,7 +2,8 @@
 //
 // Plain English: the bill. Estimated cost of the current session ticking up,
 // actual daily spend this month from Azure Cost Management as a bar chart,
-// the month's total against the soft budget, and what each past session cost.
+// the month's total against the budget (budget.ts: alerts at 80% and 100%,
+// and Deploy asks to confirm when over), and what each past session cost.
 
 import { html } from "hono/html";
 import type { Html } from "./layout";
@@ -11,11 +12,13 @@ import type { CostDay, Run } from "../db";
 import type { Config } from "../env";
 import type { Snapshot } from "../state";
 import { sessionCost } from "./activity";
+import type { BudgetStatus } from "../budget";
 
-export function costBody(o: { snap: Snapshot; days: CostDay[]; runs: Run[]; cfg: Config; fetchedDay: string | null }): Html {
+export function costBody(o: { snap: Snapshot; days: CostDay[]; runs: Run[]; cfg: Config; fetchedDay: string | null; budget: BudgetStatus }): Html {
   const total = o.days.reduce((a, d) => a + d.gbp, 0);
-  const pct = o.cfg.monthlyBudgetGbp > 0 ? Math.min(100, (total / o.cfg.monthlyBudgetGbp) * 100) : 0;
-  const cls = pct >= 100 ? "over" : pct >= 80 ? "warn" : "";
+  const b = o.budget;
+  const pct = Math.min(100, b.pct);
+  const cls = b.level === "over" ? "over" : b.level === "warn" ? "warn" : "";
   const sessions = o.runs.filter((r) => r.action === "apply" && r.status === "success");
   const estMonth = sessions.reduce((a, r) => a + (sessionCost(r, o.runs, o.cfg) ?? 0), 0);
   return html`<section>
@@ -29,9 +32,12 @@ export function costBody(o: { snap: Snapshot; days: CostDay[]; runs: Run[]; cfg:
     <div class="panel">
       <h2>This month, actual</h2>
       <div class="bignum">${gbp(total)}</div>
-      <div class="budget"><i class="${cls}" style="width:${pct.toFixed(0)}%"></i></div>
-      <p class="muted small m-only">${pct.toFixed(0)}% of the £${o.cfg.monthlyBudgetGbp} budget</p>
-      <p class="muted small d-only">${pct.toFixed(0)}% of the £${o.cfg.monthlyBudgetGbp} budget${o.fetchedDay ? html`, from Azure on ${o.fetchedDay}` : html`, no Azure figures yet`}. Sessions this month estimate to ${gbp(estMonth)}.</p>
+      ${b.level === "none"
+        ? html`<p class="muted small">No monthly budget set, so no budget alerts. <a href="/settings">Set one in Settings</a>.</p>`
+        : html`<div class="budget"><i class="${cls}" style="width:${pct.toFixed(0)}%"></i></div>
+      <p class="muted small">${b.pct.toFixed(0)}% of the ${gbp(b.budget)} budget${b.session > 0 ? html`, counting about ${gbp(b.session)} more for this session to its timer` : ""}.</p>`}
+      <p class="muted small d-only">${o.fetchedDay ? html`From Azure on ${o.fetchedDay}.` : "No Azure figures yet."} Sessions this month estimate to ${gbp(estMonth)}.</p>
+      ${budgetLine(b)}
     </div>
   </div>
   <div class="m-btns two m-only" style="margin-top:12px"><button type="button" data-sheet="sh-daily">Daily spend</button><button type="button" data-sheet="sh-sessions">Sessions (${sessions.length})</button></div>
@@ -60,6 +66,15 @@ export function costBody(o: { snap: Snapshot; days: CostDay[]; runs: Run[]; cfg:
     : html`<div class="empty"><b>No sessions yet.</b></div>`}
   </div>
 </section>`;
+}
+
+/** What the budget means right now: phone alerts sent, and the Deploy guard. */
+function budgetLine(b: BudgetStatus): Html {
+  if (b.level === "none") return html``;
+  const sent = b.alerted === 100 ? "The 100% phone alert has gone out this month." : b.alerted === 80 ? "The 80% phone alert has gone out this month; the next comes at 100%." : "Your phone gets an alert at 80% and at 100%, once each a month.";
+  if (b.level === "over") return html`<div class="notice bad" style="margin-top:10px"><p><b>Over budget.</b> Deploy asks you to tick "Deploy anyway" until the month ends or the budget is raised in Settings. ${sent}</p></div>`;
+  if (b.level === "warn") return html`<div class="notice warn" style="margin-top:10px"><p><b>Past 80% of the budget.</b> ${sent}</p></div>`;
+  return html`<p class="muted small">${sent}</p>`;
 }
 
 function chart(days: CostDay[]): Html {
