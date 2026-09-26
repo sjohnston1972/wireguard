@@ -40,6 +40,7 @@ import { clearFirewallCounters } from "./runs";
 import { startCapture, receiveCapture, validFilter, MAX_CAPTURE_BYTES } from "./capture";
 import { setPublishedPorts } from "./azure";
 import { RESERVED_PORTS, forwardTargetOk } from "./firewall";
+import { isPushEndpoint } from "./webpush";
 
 export { RunLock } from "./lock";
 
@@ -473,7 +474,7 @@ app.post("/api/push/subscribe", async (c) => {
   const b = await jsonBody<{ endpoint?: string; keys?: { p256dh?: string; auth?: string }; label?: string }>(c);
   const endpoint = String(b?.endpoint ?? "");
   const p256dh = String(b?.keys?.p256dh ?? ""), auth = String(b?.keys?.auth ?? "");
-  if (!/^https:\/\/[^\s]{10,}$/.test(endpoint) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return c.json({ error: "That does not look like a push subscription." }, 400);
+  if (!/^https:\/\/[^\s]{10,}$/.test(endpoint) || !isPushEndpoint(endpoint) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return c.json({ error: "That does not look like a push subscription." }, 400);
   await db.savePushSub(c.env, { endpoint, p256dh, auth, label: String(b?.label ?? "").slice(0, 40) || null });
   await db.addAlert(c.env, "info", `Phone alerts turned on for ${b?.label || "a device"} by ${c.get("user")}.`);
   return c.json({ ok: true });

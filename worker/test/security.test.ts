@@ -57,6 +57,12 @@ describe("requests from other sites (issue #1)", () => {
     expect(((await r.json()) as { error: string }).error).toMatch(/Name|key/);
   });
 
+  it("phone alerts can only be pointed at a real push service (issue #16)", async () => {
+    const sub = (endpoint: string) => ({ method: "POST", body: JSON.stringify({ endpoint, keys: { p256dh: "B".repeat(87), auth: "a".repeat(22) } }), headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" } });
+    expect((await call(env, "http://localhost:8787/api/push/subscribe", sub("https://evil.example/collect/abcdef"))).status).toBe(400);
+    expect((await call(env, "http://localhost:8787/api/push/subscribe", sub("https://fcm.googleapis.com/fcm/send/abcdef"))).status).toBe(200);
+  });
+
   it("token routes called by the VM, GitHub and the phone are not affected", async () => {
     const r = await call(env, "http://localhost:8787/api/agent", { method: "POST", body: "{}", headers: { "Sec-Fetch-Site": "cross-site", "Content-Type": "application/json" } });
     expect(r.status).toBe(401);

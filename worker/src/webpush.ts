@@ -93,6 +93,24 @@ export async function vapidAuth(env: Env, endpoint: string, now = Date.now()): P
   return `vapid t=${header}.${claims}.${b64u(sig)}, k=${env.VAPID_PUBLIC_KEY}`;
 }
 
+/**
+ * Is this address at one of the real push services? Google (Chrome and
+ * Android), Apple (Safari, iPhone), Mozilla (Firefox) and Microsoft (Edge on
+ * Windows). Alerts carry one-tap Tear down / Hibernate links, so they are only
+ * ever sent to these, never to any other web address someone registers.
+ */
+export function isPushEndpoint(endpoint: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "https:" || u.port !== "" || u.username || u.password) return false;
+  const h = u.hostname.toLowerCase();
+  return h === "fcm.googleapis.com" || h === "updates.push.services.mozilla.com" || h.endsWith(".push.apple.com") || h.endsWith(".notify.windows.com");
+}
+
 export function canPush(env: Env): boolean {
   return !!(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY);
 }
@@ -102,6 +120,7 @@ export function canPush(env: Env): boolean {
  * or the app was removed: forget it) or an error string.
  */
 export async function sendPush(env: Env, sub: PushSubscription, msg: PushMessage): Promise<"ok" | "gone" | string> {
+  if (!isPushEndpoint(sub.endpoint)) return "not a known push service; turn alerts off and on again on that phone";
   const body = await encryptPayload(sub, enc.encode(JSON.stringify(msg)));
   const r = await fetch(sub.endpoint, {
     method: "POST",
