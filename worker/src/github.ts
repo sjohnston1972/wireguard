@@ -65,6 +65,7 @@ export interface GhRun {
   html_url: string;
   display_title: string;
   created_at: string;
+  updated_at?: string; // last change, e.g. when it completed
 }
 
 /** Find the workflow run whose title carries our run id. */

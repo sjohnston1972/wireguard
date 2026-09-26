@@ -105,6 +105,37 @@ export async function updateRun(env: Env, id: string, patch: Partial<Run>): Prom
   await env.DB.prepare(`UPDATE runs SET ${sets} WHERE id = ?1`).bind(id, ...vals).run();
 }
 
+/**
+ * Update a run only if it is still in the expected condition, in one step.
+ * Returns true if this caller won (exactly one row changed). Two callers
+ * racing each other cannot both get true: the second finds the condition
+ * already gone. `when` is a fixed piece of SQL from this file's callers,
+ * never user input.
+ */
+async function updateRunIf(env: Env, id: string, patch: Partial<Run>, when: string): Promise<boolean> {
+  const keys = Object.keys(patch).filter((k) => k !== "id");
+  if (!keys.length) return false;
+  const sets = keys.map((k, i) => `${k} = ?${i + 2}`).join(", ");
+  const vals = keys.map((k) => (patch as Record<string, unknown>)[k] ?? null);
+  const r = await env.DB.prepare(`UPDATE runs SET ${sets} WHERE id = ?1 AND ${when}`).bind(id, ...vals).run();
+  return (r.meta?.changes ?? 0) === 1;
+}
+
+/** Close a run (success, failure, cancelled). False if something else already closed it. */
+export function settleRun(env: Env, id: string, patch: Partial<Run>): Promise<boolean> {
+  return updateRunIf(env, id, patch, "finished_at IS NULL");
+}
+
+/** Record the run's one-time secrets. False if they were already handed out, or the run has ended. */
+export function claimRunSecrets(env: Env, id: string, patch: Partial<Run>): Promise<boolean> {
+  return updateRunIf(env, id, patch, "callback_token_hash IS NULL AND finished_at IS NULL");
+}
+
+/** Forget every stored SSH password: once the VM is gone they open nothing. */
+export async function clearSshPasswords(env: Env): Promise<void> {
+  await env.DB.prepare("UPDATE runs SET ssh_password = NULL WHERE ssh_password IS NOT NULL").run();
+}
+
 // ── Peers ─────────────────────────────────────────────────────────────────
 
 export async function listPeers(env: Env): Promise<Peer[]> {
@@ -412,6 +443,13 @@ export async function getCapture(env: Env, id: string): Promise<Capture | null> 
 export async function addCapture(env: Env, c: Pick<Capture, "id" | "requested_by" | "iface" | "filter" | "seconds">): Promise<void> {
   await env.DB.prepare("INSERT INTO captures (id, requested_at, requested_by, iface, filter, seconds, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'waiting')")
     .bind(c.id, new Date().toISOString(), c.requested_by, c.iface, c.filter, c.seconds)
+    .run();
+}
+
+/** Mark a capture failed, but only if it has not finished already. */
+export async function failPendingCapture(env: Env, id: string, error: string): Promise<void> {
+  await env.DB.prepare("UPDATE captures SET status = 'failed', finished_at = ?2, error = ?3 WHERE id = ?1 AND status IN ('waiting','running')")
+    .bind(id, new Date().toISOString(), error)
     .run();
 }
 

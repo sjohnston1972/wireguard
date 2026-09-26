@@ -9,6 +9,7 @@ import { runScheduled } from "../src/monitor";
 import { getSnapshot, saveSnapshot } from "../src/state";
 import { consumeAction } from "../src/actions";
 import { lockStatus } from "../src/lock";
+import { sha256Hex } from "../src/auth";
 
 let env: Env;
 let world: World;
@@ -48,6 +49,15 @@ describe("deploy never puts secrets in the public dispatch", () => {
     expect(first.body.ssh_password).toBe((await db.getRun(env, run.id))!.ssh_password);
 
     expect((await issueRunSecrets(env, run.id, lastGhRun(world))).status).toBe(409);
+  });
+
+  it("hands the secrets out once even when two requests arrive together", async () => {
+    const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+    const both = await Promise.all([issueRunSecrets(env, run.id, lastGhRun(world)), issueRunSecrets(env, run.id, lastGhRun(world))]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 409]);
+    const winner = both.find((r) => r.status === 200)!;
+    const row = (await db.getRun(env, run.id))!;
+    expect(row.agent_token_hash).toBe(await sha256Hex(winner.body.agent_token as string));
   });
 
   it("refuses a GitHub run that is not this dispatch", async () => {

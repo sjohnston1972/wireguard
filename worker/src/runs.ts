@@ -83,6 +83,10 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   if (isBusyState(snap.state)) throw new RunError("A run is already in progress.");
 
   const cfg = await effectiveConfig(env);
+  // Read what the payload needs before taking the lock, so a database hiccup
+  // here cannot leave the lock held with no run behind it.
+  const peers = terraformPeerList(await db.enabledPeers(env), protectedNets(cfg));
+  const publishedPorts = publishedNsgRules(await db.listForwards(env), cfg);
   const id = newRunId("apply");
   const lock = await acquireLock(env, id);
   if (!lock.ok) throw new RunError(`Another run holds the lock (${lock.holder?.runId}). Wait for it or release it in Settings.`);
@@ -92,7 +96,6 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   // payload: the repo is public and so is its log. The workflow proves who it
   // is with a GitHub OIDC token and collects them from /api/callback/secrets.
   const sshPassword = readablePassword();
-  const peers = terraformPeerList(await db.enabledPeers(env), protectedNets(cfg));
   const sshCidr = cfg.sshAllowedCidr || (opts.requesterIp && !opts.requesterIp.includes(":") ? `${opts.requesterIp}/32` : "");
   const auto_destroy_at = opts.hours ? new Date(Date.now() + opts.hours * 3_600_000).toISOString() : null;
   const region = opts.region ?? cfg.region;
@@ -112,33 +115,41 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     vnet_cidr: cfg.vnetCidr,
     workload_subnet_cidr: cfg.workloadCidr,
     test_vm: cfg.testVm,
-    published_ports: publishedNsgRules(await db.listForwards(env), cfg),
+    published_ports: publishedPorts,
     agent_url: `${cfg.publicUrl}/api/agent`,
     callback_url: `${cfg.publicUrl}/api/callback`,
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
   };
 
   const now = new Date().toISOString();
-  await db.createRun(env, {
-    id,
-    action: "apply",
-    status: "queued",
-    requested_at: now,
-    requested_by: opts.requestedBy,
-    callback_token_hash: null,
-    agent_token_hash: null,
-    // Kept in D1 (private) with the allow-list, for the dashboard's panels.
-    payload_json: JSON.stringify({ ...payload, ssh_allowed_cidr: sshCidr }),
-    auto_destroy_at,
-    reason: opts.reason ?? null,
-    ssh_password: sshPassword,
-  });
+  try {
+    await db.createRun(env, {
+      id,
+      action: "apply",
+      status: "queued",
+      requested_at: now,
+      requested_by: opts.requestedBy,
+      callback_token_hash: null,
+      agent_token_hash: null,
+      // Kept in D1 (private) with the allow-list, for the dashboard's panels.
+      payload_json: JSON.stringify({ ...payload, ssh_allowed_cidr: sshCidr }),
+      auto_destroy_at,
+      reason: opts.reason ?? null,
+      ssh_password: sshPassword,
+    });
+  } catch (e) {
+    await releaseLock(env, id); // no run was recorded, so nothing else would free it
+    throw e;
+  }
 
   try {
     await dispatchWorkflow(env, "apply", payload);
   } catch (e) {
-    await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
-    await releaseLock(env, id);
+    try {
+      await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
+    } finally {
+      await releaseLock(env, id);
+    }
     throw new RunError((e as Error).message);
   }
 
@@ -174,6 +185,8 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     traffic_hist: [],
     capture_req: null,
   });
+  // A capture left over from the previous VM will never arrive; say so.
+  if (snap.capture_req) await db.failPendingCapture(env, snap.capture_req.id, "VM torn down");
   return (await db.getRun(env, id))!;
 }
 
@@ -269,6 +282,9 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
   if (isBusyState(snap.state)) throw new RunError("A run is already in progress.");
 
   const cfg = config(env);
+  // Remember what this session did before the snapshot is cleared. Worked
+  // out before taking the lock, so an error here cannot leave it held.
+  const pending_summary = snap.state === "running" ? await sessionSummary(env, snap, "Torn down") : snap.state === "standby" ? "Torn down from Standby." : null;
   const id = newRunId("destroy");
   const lock = await acquireLock(env, id);
   if (!lock.ok) throw new RunError(`Another run holds the lock (${lock.holder?.runId}). Wait for it or release it in Settings.`);
@@ -280,30 +296,36 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
   };
   const now = new Date().toISOString();
-  await db.createRun(env, {
-    id,
-    action: "destroy",
-    status: "queued",
-    requested_at: now,
-    requested_by: requestedBy,
-    callback_token_hash: null,
-    agent_token_hash: null,
-    payload_json: JSON.stringify(payload),
-    auto_destroy_at: null,
-    reason: reason ?? null,
-    ssh_password: null,
-  });
+  try {
+    await db.createRun(env, {
+      id,
+      action: "destroy",
+      status: "queued",
+      requested_at: now,
+      requested_by: requestedBy,
+      callback_token_hash: null,
+      agent_token_hash: null,
+      payload_json: JSON.stringify(payload),
+      auto_destroy_at: null,
+      reason: reason ?? null,
+      ssh_password: null,
+    });
+  } catch (e) {
+    await releaseLock(env, id); // no run was recorded, so nothing else would free it
+    throw e;
+  }
 
   try {
     await dispatchWorkflow(env, "destroy", payload);
   } catch (e) {
-    await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
-    await releaseLock(env, id);
+    try {
+      await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
+    } finally {
+      await releaseLock(env, id);
+    }
     throw new RunError((e as Error).message);
   }
 
-  // Remember what this session did before the snapshot is cleared.
-  const pending_summary = snap.state === "running" ? await sessionSummary(env, snap, "Torn down") : snap.state === "standby" ? "Torn down from Standby." : null;
   await saveSnapshot(env, { state: "destroying", run_id: id, action: "destroy", since: now, github_run_url: null, steps: [], log_tail: null, error: null, drift: null, pending_summary });
   return (await db.getRun(env, id))!;
 }
@@ -339,9 +361,12 @@ export async function refreshActiveRun(env: Env): Promise<void> {
 
   if (gh && gh.status === "completed") {
     if (gh.conclusion === "success") {
-      // The callback normally lands first. If it has not after 2 minutes, settle from what we know.
+      // The callback normally lands first. If it has not 2 minutes after
+      // GitHub finished, settle from what we know. (updated_at is when the
+      // run last changed, i.e. when it completed.)
       const fresh = await db.getRun(env, run.id);
-      if (fresh && fresh.status !== "success" && Date.now() - Date.parse(gh.created_at) > 0) {
+      const finishedAt = Date.parse(gh.updated_at ?? gh.created_at);
+      if (fresh && !fresh.finished_at && Date.now() - finishedAt > CALLBACK_GRACE_MS) {
         await settleWithoutCallback(env, fresh);
       }
     } else {
@@ -350,8 +375,13 @@ export async function refreshActiveRun(env: Env): Promise<void> {
   }
 }
 
+/** How long after GitHub says "done" we wait for the result callback before settling without it. */
+const CALLBACK_GRACE_MS = 2 * 60_000;
+
 async function settleWithoutCallback(env: Env, run: db.Run): Promise<void> {
-  // Only settle if GitHub says success AND the callback is overdue by 2 min.
+  // Only called once GitHub says success AND the callback is overdue by 2 min.
+  // The dashboard's polling and the cron may both get here at once; the
+  // settle itself (completeApply/completeDestroy) lets only one through.
   if (run.finished_at) return;
   const snap = await getSnapshot(env);
   if (run.action === "destroy") {
@@ -365,16 +395,18 @@ async function settleWithoutCallback(env: Env, run: db.Run): Promise<void> {
 }
 
 async function failRun(env: Env, run: db.Run, message: string): Promise<void> {
-  await db.updateRun(env, run.id, { status: "failure", finished_at: new Date().toISOString(), error: message });
+  // Close the run in one step; if something else already closed it, leave it be.
+  if (!(await db.settleRun(env, run.id, { status: "failure", finished_at: new Date().toISOString(), error: message }))) return;
   await releaseLock(env, run.id);
   await saveSnapshot(env, { state: "failed", error: message, since: new Date().toISOString(), pending_deploy: null });
   await db.addAlert(env, "failure", `${run.action} failed: ${message}`, run.id);
   await notify(env, `wg-admin: ${run.action} failed`, message);
 }
 
-async function completeApply(env: Env, run: db.Run, publicIp: string | null, outputs: Record<string, unknown>, meta: { via: string }): Promise<void> {
+/** Returns false (and does nothing) if the run was already settled by someone else. */
+async function completeApply(env: Env, run: db.Run, publicIp: string | null, outputs: Record<string, unknown>, meta: { via: string }): Promise<boolean> {
   const now = new Date().toISOString();
-  await db.updateRun(env, run.id, { status: "success", finished_at: now, public_ip: publicIp, outputs_json: JSON.stringify(outputs) });
+  if (!(await db.settleRun(env, run.id, { status: "success", finished_at: now, public_ip: publicIp, outputs_json: JSON.stringify(outputs) }))) return false;
   await releaseLock(env, run.id);
   const dns = await checkDns(env, publicIp);
   await saveSnapshot(env, {
@@ -395,14 +427,20 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
   await db.addAlert(env, "deploy", `Deployed at ${publicIp ?? "unknown IP"} (${meta.via}); ${cfg.dnsName} ${dns.live ? "is live" : "not live yet"}`, run.id);
   // The phone hears about it when the VM's self-test comes in (handleAgent),
   // so "ready" means the tunnel was proven to carry traffic, not just built.
+  return true;
 }
 
-async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Promise<void> {
+/** Returns false (and does nothing) if the run was already settled by someone else. */
+async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Promise<boolean> {
   const now = new Date().toISOString();
+  // Claim the run first: only one caller carries on, so a queued Move is
+  // started once, not twice.
+  if (!(await db.settleRun(env, run.id, { status: "success", finished_at: now }))) return false;
+  // The VM is gone, so its SSH password opens nothing; do not keep it.
+  await db.clearSshPasswords(env);
   const before = await getSnapshot(env);
   // The VM and its counters are gone; its hits live on in the totals.
   await saveSnapshot(env, { fw_base: addCounters(before.fw_base ?? {}, before.firewall?.counters) });
-  await db.updateRun(env, run.id, { status: "success", finished_at: now });
   await releaseLock(env, run.id);
   const dns = await checkDns(env, null);
   await saveSnapshot(env, {
@@ -433,13 +471,16 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     speedtest_req: null,
     firewall: before.firewall ? { ...before.firewall, counters: {}, applied_hash: null, drops: before.firewall.drops } : null,
     test_vm_ip: null,
+    capture_req: null,
   });
+  // A packet capture still waiting on the VM will never arrive now.
+  if (before.capture_req) await db.failPendingCapture(env, before.capture_req.id, "VM torn down");
   await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
   if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);
   const next = before.pending_deploy;
   if (!next) {
     await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; Azure cost is £0.`, { tags: ["wastebasket"] });
-    return;
+    return true;
   }
   // A move ("Move to US exit"): the old one is gone, build the new one now.
   try {
@@ -450,6 +491,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     await db.addAlert(env, "failure", `Move: torn down, but the new deploy could not start: ${(e as Error).message}`, run.id);
     await notify(env, "wg-admin: move stopped", `Torn down, but the new deploy could not start: ${(e as Error).message}`, { priority: 4 });
   }
+  return true;
 }
 
 /** GitHub Actions result callback. Returns an HTTP status and message. */
@@ -467,13 +509,14 @@ export async function handleCallback(env: Env, token: string, body: CallbackBody
     await failRun(env, run, `Workflow reported "${body.status}". See the GitHub log.`);
     return { status: 200, message: "recorded failure" };
   }
+  let settled: boolean;
   if (run.action === "apply") {
     const ip = (body.outputs?.public_ip as string | undefined) ?? null;
-    await completeApply(env, run, ip, body.outputs ?? {}, { via: "callback" });
+    settled = await completeApply(env, run, ip, body.outputs ?? {}, { via: "callback" });
   } else {
-    await completeDestroy(env, run, { via: body.status === "success-with-fallback" ? "callback, fallback cleanup used" : "callback" });
+    settled = await completeDestroy(env, run, { via: body.status === "success-with-fallback" ? "callback, fallback cleanup used" : "callback" });
   }
-  return { status: 200, message: "ok" };
+  return { status: 200, message: settled ? "ok" : "already settled" };
 }
 
 /**
@@ -502,7 +545,9 @@ export async function issueRunSecrets(env: Env, runId: string, ghRunId: number):
     const fw = await currentFirewall(env);
     Object.assign(out, { agent_token: agentToken, ssh_password: run.ssh_password ?? "", ssh_allowed_cidr: String(payload.ssh_allowed_cidr ?? ""), firewall_nft_b64: btoa(fw.text) });
   }
-  await db.updateRun(env, run.id, patch);
+  // Claim and record in one step: if two callers got this far at once, only
+  // the first write lands and the other is turned away with no secrets.
+  if (!(await db.claimRunSecrets(env, run.id, patch))) return { status: 409, body: { error: "secrets already collected" } };
   return { status: 200, body: out };
 }
 
@@ -559,24 +604,19 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     peers: parsed.peers.filter((p) => !p.allowed_ips.split(",").includes(canary)),
   };
   const snap = await getSnapshot(env);
-  const known = report.peers.map((p) => p.public_key);
+  const peerList = async () => agentPeerList(await db.enabledPeers(env), cfg.subnet6, protectedNets(cfg));
+  // A heartbeat that lands after a tear-down or after the VM went into
+  // Standby is late mail: record nothing, or it would put a live-looking VM
+  // back on a dashboard that has rightly cleared it.
+  if (isOutOfService(snap.state)) return { status: 200, body: { peers: await peerList() } };
+  // Only the fields the heartbeat owns go in this patch. The ones that build
+  // on the previous reading (traffic, hits, session...) are worked out at
+  // the end, from a fresh copy, so a button pressed meanwhile is not undone.
   const patch: Partial<Snapshot> = {
     last_agent_at: report.at,
     agent: report,
-    traffic: nextTraffic(snap.traffic, report),
-    latency: nextLatency(snap.latency ?? {}, body.rtt, known),
-    roams: { ...(snap.roams ?? {}), ...detectRoams(snap.agent, report, report.at) },
-    session: nextSession(snap.session, snap.agent, report),
-    firewall: nextFirewall(snap.firewall, body.firewall, report.at),
   };
-  if (body.talkers) patch.talkers = nextTalkers(snap.talkers ?? {}, body.talkers, report.at);
-  // Throughput history: one sample per heartbeat, the last two hours.
-  const tr = patch.traffic!;
-  patch.traffic_hist = (snap.traffic_hist ?? []).concat({ t: report.at, rx: Math.round(tr.rx_rate), tx: Math.round(tr.tx_rate) }).slice(-240);
-  if (body.firewall) {
-    const reported = body.firewall.counters && typeof body.firewall.counters === "object" ? body.firewall.counters : {};
-    patch.fw_base = nextBase(snap.fw_base ?? {}, snap.firewall, reported, snap.firewall?.applied_hash === (body.firewall.hash || null));
-  }
+  let resumed = false;
   // First heartbeat while still "deploying" (callback not yet in) is proof of life.
   if (snap.state === "deploying" && snap.run_id === run.id) {
     patch.state = "running";
@@ -590,7 +630,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     patch.running_since = report.at;
     patch.standby_since = null;
     patch.power_op_at = null;
-    patch.session = nextSession(null, null, report);
+    resumed = true;
     await releaseLock(env, undefined, true);
     await db.addAlert(env, "info", "Resumed from Standby; the heartbeat is back.");
   }
@@ -653,10 +693,34 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     const fw = await currentFirewall(env);
     if (body.firewall.hash !== fw.hash) reply.firewall = { hash: fw.hash, nft_b64: btoa(fw.text) };
   }
+
+  // Fold this reading into the running figures, from a fresh copy taken
+  // just before saving (the steps above wait on the database and on
+  // notifications; "Clear counters" or a tear-down may have landed since).
+  const cur = await getSnapshot(env);
+  if (isOutOfService(cur.state)) return { status: 200, body: { peers: await peerList() } };
+  const known = report.peers.map((p) => p.public_key);
+  const traffic = nextTraffic(cur.traffic, report);
+  patch.traffic = traffic;
+  patch.latency = nextLatency(cur.latency ?? {}, body.rtt, known);
+  patch.roams = { ...(cur.roams ?? {}), ...detectRoams(cur.agent, report, report.at) };
+  patch.session = resumed ? nextSession(null, null, report) : nextSession(cur.session, cur.agent, report);
+  patch.firewall = nextFirewall(cur.firewall, body.firewall, report.at);
+  if (body.talkers) patch.talkers = nextTalkers(cur.talkers ?? {}, body.talkers, report.at);
+  // Throughput history: one sample per heartbeat, the last two hours.
+  patch.traffic_hist = (cur.traffic_hist ?? []).concat({ t: report.at, rx: Math.round(traffic.rx_rate), tx: Math.round(traffic.tx_rate) }).slice(-240);
+  if (body.firewall) {
+    const reported = body.firewall.counters && typeof body.firewall.counters === "object" ? body.firewall.counters : {};
+    patch.fw_base = nextBase(cur.fw_base ?? {}, cur.firewall, reported, cur.firewall?.applied_hash === (body.firewall.hash || null));
+  }
   await saveSnapshot(env, patch);
 
-  const peers = agentPeerList(await db.enabledPeers(env), cfg.subnet6, protectedNets(cfg));
-  return { status: 200, body: { peers, ...reply } };
+  return { status: 200, body: { peers: await peerList(), ...reply } };
+}
+
+/** Torn down or powered off: a heartbeat now is a late one and changes nothing. */
+function isOutOfService(state: string): boolean {
+  return state === "destroyed" || state === "standby";
 }
 
 /** Cancel the active GitHub run and mark it failed. */
@@ -677,6 +741,9 @@ export async function detectDrift(env: Env): Promise<string | null> {
   if (az.error) return null; // unknown, not drift
   let drift: string | null = null;
   if (snap.state === "destroyed" && az.rg_exists) drift = `Azure still has resource group ${config(env).resourceGroup} but the dashboard says Destroyed. That VM is costing money.`;
+  // A failed run can leave a half-built (or fully built) VM behind; nothing
+  // else watches a Failed VM, so say so until it is cleaned up.
+  if (snap.state === "failed" && az.rg_exists) drift = `The last run failed but Azure still has resource group ${config(env).resourceGroup}. It may be costing money; use Clean up to tear it down.`;
   if (snap.state === "running" && !az.rg_exists) drift = "The dashboard says Running but Azure has no resource group. Something deleted it outside this app.";
   if (snap.state === "running" && az.rg_exists && az.power && az.power !== "running") drift = `The VM exists but its power state is "${az.power}".`;
   if (snap.state === "running" && az.public_ip && snap.public_ip && az.public_ip !== snap.public_ip) drift = `Azure's public IP ${az.public_ip} differs from the recorded ${snap.public_ip}.`;
@@ -688,19 +755,26 @@ export async function detectDrift(env: Env): Promise<string | null> {
 
 /** Reconcile: destroy anything Azure has if we think we are Destroyed; or accept Destroyed if Azure is empty. */
 export async function reconcile(env: Env, requestedBy: string): Promise<string> {
+  // Mid-deploy the resource group may simply not exist *yet*, and mid-destroy
+  // it is on its way out: either way Azure is not the whole story, so wait.
   await refreshInventory(env);
   const snap = await getSnapshot(env);
+  if (isBusyState(snap.state)) throw new RunError("A run is in progress. Wait for it to finish (or Cancel it) before Clean up.");
   const az = canAzure(env) ? await azureView(env) : null;
   if (!az || az.error) return "Cannot reach Azure to reconcile.";
   if (az.rg_exists && (snap.state === "destroyed" || snap.state === "failed")) {
+    // A clean-up tear-down must not be followed by an old queued Move.
+    await saveSnapshot(env, { pending_deploy: null });
     await startDestroy(env, requestedBy, "reconcile: Azure had resources");
     return "Azure still had resources. A tear-down has been started.";
   }
   if (!az.rg_exists && snap.state !== "destroyed") {
     const run = await db.activeRun(env);
-    if (run) await db.updateRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: "reconciled: Azure empty" });
+    if (run) await db.settleRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: "reconciled: Azure empty" });
     await releaseLock(env, undefined, true);
-    await saveSnapshot(env, { state: "destroyed", since: new Date().toISOString(), public_ip: null, dns_ip: null, dns_live: false, auto_destroy_at: null, agent: null, last_agent_at: null, drift: null, error: null, steps: [], log_tail: null, running_since: null });
+    await db.clearSshPasswords(env); // nothing left in Azure to log in to
+    if (snap.capture_req) await db.failPendingCapture(env, snap.capture_req.id, "VM torn down");
+    await saveSnapshot(env, { state: "destroyed", since: new Date().toISOString(), public_ip: null, dns_ip: null, dns_live: false, auto_destroy_at: null, agent: null, last_agent_at: null, drift: null, error: null, steps: [], log_tail: null, running_since: null, pending_deploy: null, pending_summary: null, capture_req: null });
     return "Azure is empty. State set to Destroyed.";
   }
   await saveSnapshot(env, { drift: null });
