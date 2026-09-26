@@ -38,9 +38,12 @@ export class RunLock extends DurableObject<Env> {
       if (request.method === "POST") {
         // Atomic read-merge-write. Body: { patch: {...}, seed?: {...} }.
         // "seed" is used once to migrate the old KV copy and never overwrites.
-        const body = (await request.json()) as { patch?: Record<string, unknown>; seed?: Record<string, unknown> };
+        // "ifState": only save if the state is still this (compare-and-set),
+        // so of two callers racing on the same change only one goes ahead.
+        const body = (await request.json()) as { patch?: Record<string, unknown>; seed?: Record<string, unknown>; ifState?: string };
         let cur = (await this.ctx.storage.get<Record<string, unknown>>("snapshot")) ?? null;
         if (!cur && body.seed) cur = body.seed;
+        if (body.ifState !== undefined && (cur?.state ?? null) !== body.ifState) return Response.json({ snapshot: cur, ok: false });
         const next = { ...(cur ?? {}), ...(body.patch ?? {}), updated_at: new Date(now).toISOString() };
         await this.ctx.storage.put("snapshot", next);
         return Response.json({ snapshot: next });

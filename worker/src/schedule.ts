@@ -18,7 +18,7 @@ import { startResume } from "./standby";
 import { notify } from "./notify";
 import { dashboardButton } from "./actions";
 
-export { londonClock, toMinutes, windowNow, daysText, nextStart, validRule } from "./schedule-time";
+export { londonClock, londonInstant, toMinutes, windowNow, daysText, nextStart, validRule } from "./schedule-time";
 import { windowNow, daysText } from "./schedule-time";
 
 /** The watchman's schedule check, every 5 minutes. Returns notes for the log. */
@@ -31,7 +31,7 @@ export async function runSchedules(env: Env, now = new Date()): Promise<string[]
     const key = `sched:${rule.id}:${w.date}`;
     if (await env.STATUS.get(key)) continue;
     const snap = await getSnapshot(env);
-    const hours = w.minutesLeft / 60;
+    const hours = w.minutesLeft / 60; // real time left in the window, clock changes included
     const label = `${daysText(rule.days)} ${rule.start_time}–${rule.end_time}`;
     const profile = rule.profile_id ? await db.getProfile(env, rule.profile_id) : null;
     let did: string | null = null;

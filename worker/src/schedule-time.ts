@@ -21,12 +21,48 @@ export function toMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
-/** Is the rule's window open right now, and how many minutes are left in it? */
+/** What a UK clock reads at an instant, written as if that reading were UTC (milliseconds). */
+function londonWallMs(t: number): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
+      .formatToParts(new Date(t))
+      .map((x) => [x.type, x.value])
+  );
+  return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
+}
+
+/**
+ * The real moment a UK clock reads `hhmm` on `date` ("2026-03-29"), in
+ * milliseconds. Twice a year that is not simple:
+ *   - March (clocks go forward at 01:00): 01:00-01:59 never appears on the
+ *     clock. Such a time is moved on by the hour the clocks skip, the way the
+ *     clocks themselves do, so 01:30 means 02:30 BST.
+ *   - October (clocks go back at 02:00): 01:00-01:59 appears twice. The
+ *     first time counts.
+ */
+export function londonInstant(date: string, hhmm: string): number {
+  const [y, mo, d] = date.split("-").map(Number);
+  const wall = Date.UTC(y, mo - 1, d) + toMinutes(hhmm) * 60_000;
+  // The UK offset from UTC half a day either side: equal except on a change day.
+  const offBefore = londonWallMs(wall - 12 * 3_600_000) - (wall - 12 * 3_600_000);
+  const offAfter = londonWallMs(wall + 12 * 3_600_000) - (wall + 12 * 3_600_000);
+  const fits = [wall - offBefore, wall - offAfter].filter((t) => londonWallMs(t) === wall);
+  return fits.length ? Math.min(...fits) : wall - offBefore;
+}
+
+/**
+ * Is the rule's window open right now, and how many minutes are left in it?
+ * Worked out from the real start and end moments, not by subtracting clock
+ * readings, so on the two clock-change Sundays a window lasts as long as it
+ * really does (and one that starts in the hour the clocks skip still opens).
+ */
 export function windowNow(rule: { days: string; start_time: string; end_time: string }, now: Date): { open: boolean; minutesLeft: number; date: string } {
   const c = londonClock(now);
-  const start = toMinutes(rule.start_time), end = toMinutes(rule.end_time);
-  const open = rule.days.includes(String(c.weekday)) && c.minutes >= start && c.minutes < end;
-  return { open, minutesLeft: open ? end - c.minutes : 0, date: c.date };
+  if (!rule.days.includes(String(c.weekday))) return { open: false, minutesLeft: 0, date: c.date };
+  const t = now.getTime();
+  const startAt = londonInstant(c.date, rule.start_time), endAt = londonInstant(c.date, rule.end_time);
+  const open = t >= startAt && t < endAt;
+  return { open, minutesLeft: open ? (endAt - t) / 60_000 : 0, date: c.date };
 }
 
 /** "Mon–Fri", "Sat, Sun", "Every day": how a rule's days read on screen. */
