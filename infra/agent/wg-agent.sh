@@ -211,9 +211,57 @@ rm -f "$hosts"
 # static route towards a branch. wg-quick only adds these at boot, so keep
 # them in place here for a site added while the VM is running. A route with
 # no matching peer yet simply drops traffic, so adding it early is harmless.
+#
+# Never a route that would cut the VM off: nothing wider than /8 (0.0.0.0/0
+# would take the default route, and the VM could never reach the dashboard
+# again to be fixed), and nothing overlapping what the VM needs for itself:
+# the tunnel, its loopback, its own LAN and VNet, Azure's platform
+# addresses, and the dashboard's own address.
+# (10# so a part written "08" is read as eight, not as a broken octal number.)
+ip2int() { local IFS=.; set -- $1; echo $(( (10#$1 << 24) + (10#$2 << 16) + (10#$3 << 8) + 10#$4 )); }
+# Do two IPv4 networks (a.b.c.d/n) share any address?
+overlaps() {
+  local a="${1%/*}" an="${1#*/}" b="${2%/*}" bn="${2#*/}"
+  [[ "$1" == */* ]] || an=32
+  [[ "$2" == */* ]] || bn=32
+  local n=$(( an < bn ? an : bn ))
+  local mask=$(( n == 0 ? 0 : (0xffffffff << (32 - n)) & 0xffffffff ))
+  (( ($(ip2int "$a") & mask) == ($(ip2int "$b") & mask) ))
+}
+keep_out=(168.63.129.16/32 169.254.169.254/32)
+[[ -n "${VNET_CIDR:-}" ]] && keep_out+=("$VNET_CIDR")
+[[ -n "$loopback" ]] && keep_out+=("$loopback/32")
+while read -r net; do [[ -n "$net" ]] && keep_out+=("$net") || true; done < <(
+  ip -4 -o addr show dev wg0 2>/dev/null | awk '{print $4}'
+  ip -4 -o addr show dev eth0 2>/dev/null | awk '{print $4}'
+  getent ahostsv4 "$(sed -E 's#^[a-z]+://([^/:]+).*#\1#' <<<"$AGENT_URL")" 2>/dev/null | awk '{print $1 "/32"}' | sort -u
+)
+route_ok() {
+  local cidr="$1" bits="${1#*/}" k
+  [[ "$cidr" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$ ]] || return 1
+  (( bits >= 8 )) || return 1
+  for k in "${keep_out[@]}"; do overlaps "$cidr" "$k" && return 1; done
+  return 0
+}
+wanted_routes=()
 while read -r cidr; do
-  [[ -n "$cidr" ]] && { ip route replace "$cidr" dev wg0 2>/dev/null || true; }
+  [[ -z "$cidr" ]] && continue
+  if route_ok "$cidr"; then
+    wanted_routes+=("$cidr")
+    ip route replace "$cidr" dev wg0 2>/dev/null || true
+  else
+    logger -t wg-agent "site route $cidr refused: too wide, or overlaps a network the VM needs"
+  fi
 done < <(jq -r '.peers[].allowed_ips | split(",")[] | select(test("^[0-9.]+/([0-9]|[12][0-9]|3[01])$"))' <<<"$resp" 2>/dev/null || true)
+# And take away a site route nobody carries any more (a site deleted or
+# changed). Only routes into wg0 that someone added; the tunnel's own
+# subnet route belongs to the kernel and is left alone.
+while read -r cidr; do
+  [[ -z "$cidr" || "$cidr" == default ]] && continue
+  [[ "$cidr" == */* ]] || continue  # single-address routes are never ours
+  [[ " ${wanted_routes[*]} " == *" $cidr "* ]] && continue
+  { ip route del "$cidr" dev wg0 2>/dev/null && logger -t wg-agent "site route $cidr removed: no peer carries it now"; } || true
+done < <(ip -4 -o route show dev wg0 2>/dev/null | grep -v 'proto kernel' | awk '{print $1}')
 
 # The self-test adds a canary peer for a few seconds; leave the list alone
 # until it is done, or this would remove the canary mid-test.

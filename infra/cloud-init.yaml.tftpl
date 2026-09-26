@@ -250,6 +250,8 @@ write_files:
     content: |
       AGENT_URL=${agent_url}
       AGENT_TOKEN=${agent_token}
+      # The Azure VNet: a site route may never cover it (see wg-agent.sh).
+      VNET_CIDR=${vnet_cidr}
 
   - path: /usr/local/sbin/wg-agent.sh
     permissions: "0755"

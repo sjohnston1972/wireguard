@@ -31,9 +31,17 @@ locals {
   # YAML template only has to drop it in with the right indentation. A site
   # peer (the home container) also lists its LAN ("routes"); wg-quick then
   # adds the matching kernel route when the tunnel comes up.
+  # A site route wider than /8 (0.0.0.0/0, say) would take over the VM's own
+  # internet route at boot and cut it off from the dashboard for good, so
+  # only /8 to /32 IPv4 networks get through. (The dashboard already refuses
+  # those and any overlap with the tunnel or VNet; this is the second lock.)
+  site_routes = { for p in local.peers : p.ip => join(",", [
+    for r in split(",", try(p.routes, "")) : trimspace(r)
+    if can(regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}/([89]|[12][0-9]|3[0-2])$", trimspace(r))) && can(cidrhost(trimspace(r), 0))
+  ]) }
   peers_conf = length(local.peers) == 0 ? "# no peers yet\n" : join("\n", [
     for p in local.peers :
-    "# ${p.name}\n[Peer]\nPublicKey = ${p.public_key}\nAllowedIPs = ${p.ip}/32${local.ipv6 ? ",${local.peer_ip6[p.ip]}/128" : ""}${try(p.routes, "") != "" ? ",${p.routes}" : ""}\n"
+    "# ${p.name}\n[Peer]\nPublicKey = ${p.public_key}\nAllowedIPs = ${p.ip}/32${local.ipv6 ? ",${local.peer_ip6[p.ip]}/128" : ""}${local.site_routes[p.ip] != "" ? ",${local.site_routes[p.ip]}" : ""}\n"
   ])
 
   # The VM's zero-touch provisioning script.
