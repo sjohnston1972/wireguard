@@ -256,7 +256,8 @@ export async function sessionSummary(env: Env, snap: Snapshot, ending: string, n
   const h = Math.floor(ms / 3_600_000), m = Math.round((ms % 3_600_000) / 60_000);
   const cost = (ms / 3_600_000) * cfg.hourlyRateGbp;
   const peers = await db.listPeers(env);
-  const names = (snap.session?.seen ?? []).map((k) => peers.find((p) => p.public_key === k)?.name ?? "an old key");
+  // The home site (a peer with routes) is always connected; it is not a user.
+  const names = (snap.session?.seen ?? []).filter((k) => !peers.find((p) => p.public_key === k)?.routes).map((k) => peers.find((p) => p.public_key === k)?.name ?? "an old key");
   const traffic = snap.session ? `${bytesText(snap.session.rx)} in, ${bytesText(snap.session.tx)} out` : "no traffic recorded";
   const who = names.length ? `Used by ${names.join(", ")}` : "No client connected";
   return `${ending} after ${h ? `${h}h ` : ""}${m}m, about £${cost.toFixed(2)}. ${traffic}. ${who}.`;
