@@ -32,7 +32,8 @@ export async function startCapture(env: Env, o: { iface: string; filter: string;
   const snap = await getSnapshot(env);
   if (snap.state !== "running") throw new RunError("Nothing is running.");
   if (snap.capture_req) throw new RunError("A capture is already running.");
-  if (!(o.iface in CAPTURE_IFACES)) throw new RunError("Unknown interface.");
+  // hasOwn, not "in": "in" would also accept built-in names like "constructor".
+  if (!Object.hasOwn(CAPTURE_IFACES, o.iface)) throw new RunError("Unknown interface.");
   if (!validFilter(o.filter)) throw new RunError("That filter has characters a capture filter never needs.");
   const seconds = Math.min(300, Math.max(5, Math.round(o.seconds)));
   const id = randomToken().slice(0, 16);

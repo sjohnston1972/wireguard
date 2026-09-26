@@ -63,6 +63,14 @@ describe("requests from other sites (issue #1)", () => {
     expect((await call(env, "http://localhost:8787/api/push/subscribe", sub("https://fcm.googleapis.com/fcm/send/abcdef"))).status).toBe(200);
   });
 
+  it("a built-in name like 'constructor' is not a region (issue #53)", async () => {
+    const same = { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/x-www-form-urlencoded", "HX-Request": "true" };
+    const r = await call(env, "http://localhost:8787/actions/deploy", { method: "POST", body: "choice=r%3Aconstructor&hours=1", headers: same });
+    expect(await r.text()).toContain("Unknown region.");
+    const p = await call(env, "http://localhost:8787/settings/profiles", { method: "POST", body: "name=x&region=toString&vm_size=Standard_B1s", headers: same });
+    expect(p.headers.get("Location")).toBe("/settings?err=profile");
+  });
+
   it("token routes called by the VM, GitHub and the phone are not affected", async () => {
     const r = await call(env, "http://localhost:8787/api/agent", { method: "POST", body: "{}", headers: { "Sec-Fetch-Site": "cross-site", "Content-Type": "application/json" } });
     expect(r.status).toBe(401);
@@ -172,6 +180,11 @@ describe("capture upload (issues #8 and #17)", () => {
       },
     });
   }
+
+  it("a built-in name like 'constructor' is not an interface (issue #53)", async () => {
+    await running();
+    await expect(startCapture(env, { iface: "constructor", filter: "", seconds: 30, by: "s" })).rejects.toThrow(/Unknown interface/);
+  });
 
   it("filters may not start with a dash (tcpdump would take it as an option)", () => {
     expect(validFilter("-w/etc/x")).toBe(false);

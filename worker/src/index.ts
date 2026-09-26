@@ -312,7 +312,8 @@ app.post("/actions/deploy", async (c) => {
       profile = p.name;
     } else if (choice.startsWith("r:")) {
       region = choice.slice(2);
-      if (!(region in REGIONS)) throw new RunError("Unknown region.");
+      // hasOwn, not "in": "in" would also accept built-in names like "constructor".
+      if (!Object.hasOwn(REGIONS, region)) throw new RunError("Unknown region.");
     }
     const run = await startDeploy(c.env, { hours: hours > 0 ? hours : null, requesterIp: ip(c), requestedBy: user, region, vmSize, profile });
     return `Deploy started${profile ? `: ${profile}` : ""} in ${regionName(region ?? (await effectiveConfig(c.env)).region)} (${run.id}). About 4 minutes.`;
@@ -560,7 +561,7 @@ app.post("/settings", async (c) => {
 app.post("/settings/profiles", async (c) => {
   const f = (await c.req.parseBody()) as Record<string, string>;
   const name = String(f.name ?? "").trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,23}$/.test(name) || !(f.region in REGIONS) || !/^Standard_[A-Za-z0-9_]{1,30}$/.test(f.vm_size ?? "")) return c.redirect("/settings?err=profile");
+  if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,23}$/.test(name) || !Object.hasOwn(REGIONS, f.region ?? "") || !/^Standard_[A-Za-z0-9_]{1,30}$/.test(f.vm_size ?? "")) return c.redirect("/settings?err=profile");
   try {
     await db.addProfile(c.env, { name, region: f.region, vm_size: f.vm_size });
   } catch {
