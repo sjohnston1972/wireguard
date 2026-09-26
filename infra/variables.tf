@@ -111,9 +111,19 @@ variable "test_vm_size" {
 }
 
 variable "published_ports" {
-  description = "Public ports forwarded by the VM to servers behind it (from the Firewall tab), opened in the NSG."
-  type        = list(string)
-  default     = []
+  description = "Public ports forwarded by the VM to servers behind it (from the Firewall tab), opened in the NSG one rule each: protocol (Tcp/Udp), port, allowed source (\"*\" = anywhere)."
+  type = list(object({
+    name     = string
+    protocol = string
+    port     = string
+    source   = string
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for p in var.published_ports : contains(["Tcp", "Udp"], p.protocol) && can(regex("^published-", p.name))])
+    error_message = "Each published port needs protocol Tcp or Udp and a name starting \"published-\"."
+  }
 }
 
 variable "firewall_nft_b64" {

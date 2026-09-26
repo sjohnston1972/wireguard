@@ -39,7 +39,7 @@ import { parseCidr, parsePorts, compileFirewall, type EndKind, type Proto } from
 import { clearFirewallCounters } from "./runs";
 import { startCapture, receiveCapture, validFilter } from "./capture";
 import { setPublishedPorts } from "./azure";
-import { RESERVED_PORTS, forwardTargetOk } from "./firewall";
+import { reservedPort, forwardTargetOk, publishedNsgRules } from "./firewall";
 
 export { RunLock } from "./lock";
 
@@ -552,9 +552,8 @@ async function firewallPage(c: Context<App>, notice: { kind: "good" | "bad"; tex
 async function syncPublished(env: Env): Promise<string | null> {
   const snap = await getSnapshot(env);
   if (snap.state !== "running" && snap.state !== "standby") return null;
-  const ports = [...new Set((await db.listForwards(env)).filter((f) => f.enabled).map((f) => String(f.public_port)))];
   try {
-    await setPublishedPorts(env, ports);
+    await setPublishedPorts(env, publishedNsgRules(await db.listForwards(env), await effectiveConfig(env)));
     return null;
   } catch (e) {
     return (e as Error).message;
@@ -570,13 +569,13 @@ app.post("/firewall/forwards", async (c) => {
   const target = String(f.target_ip ?? "").trim();
   const from = String(f.allow_from ?? "").trim();
   const fromC = from ? parseCidr(from) : null;
-  const reserved = RESERVED_PORTS.find((r) => r.proto === proto && r.port === pub);
+  const reserved = reservedPort(pub, cfg);
   const problem = !name
     ? "Give it a name."
     : !(pub >= 1 && pub <= 65535) || !(tport >= 1 && tport <= 65535)
       ? "Ports are 1 to 65535."
       : reserved
-        ? `${proto.toUpperCase()} ${pub} is ${reserved.why}; pick another public port.`
+        ? `Port ${pub} is ${reserved}; pick another public port.`
         : !forwardTargetOk(target, cfg)
           ? `The target must be an address in the Azure VNet (${cfg.vnetCidr})${cfg.homeLanCidr ? ` or the home LAN (${cfg.homeLanCidr})` : ""}.`
           : from && (!fromC || fromC.family !== 4)

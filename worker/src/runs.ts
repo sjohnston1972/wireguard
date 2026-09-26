@@ -18,11 +18,11 @@ import { randomToken, sha256Hex, safeEqual } from "./auth";
 import { dispatchWorkflow, findRunByTitle, getGhRun, getJobs, getJobLogTail, cancelGhRun, stepsFromJobs } from "./github";
 import { getSnapshot, saveSnapshot, parseWgDump, nextTraffic, nextLatency, detectRoams, nextSession, selfTestFailures, nextTalkers, type AgentReport, type Snapshot, type SelfTest } from "./state";
 import { checkDns } from "./dns";
-import { agentPeerList, terraformPeerList } from "./peers";
+import { agentPeerList, terraformPeerList, protectedNets } from "./peers";
 import { notify } from "./notify";
 import { dashboardButton } from "./actions";
 import { bytesText } from "./format";
-import { compileFirewall } from "./firewall";
+import { compileFirewall, publishedNsgRules } from "./firewall";
 import type { FirewallStatus } from "./state";
 import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
@@ -92,7 +92,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   // payload: the repo is public and so is its log. The workflow proves who it
   // is with a GitHub OIDC token and collects them from /api/callback/secrets.
   const sshPassword = readablePassword();
-  const peers = terraformPeerList(await db.enabledPeers(env));
+  const peers = terraformPeerList(await db.enabledPeers(env), protectedNets(cfg));
   const sshCidr = cfg.sshAllowedCidr || (opts.requesterIp && !opts.requesterIp.includes(":") ? `${opts.requesterIp}/32` : "");
   const auto_destroy_at = opts.hours ? new Date(Date.now() + opts.hours * 3_600_000).toISOString() : null;
   const region = opts.region ?? cfg.region;
@@ -112,7 +112,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     vnet_cidr: cfg.vnetCidr,
     workload_subnet_cidr: cfg.workloadCidr,
     test_vm: cfg.testVm,
-    published_ports: [...new Set((await db.listForwards(env)).filter((f) => f.enabled).map((f) => String(f.public_port)))],
+    published_ports: publishedNsgRules(await db.listForwards(env), cfg),
     agent_url: `${cfg.publicUrl}/api/agent`,
     callback_url: `${cfg.publicUrl}/api/callback`,
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
@@ -655,7 +655,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
   }
   await saveSnapshot(env, patch);
 
-  const peers = agentPeerList(await db.enabledPeers(env), cfg.subnet6);
+  const peers = agentPeerList(await db.enabledPeers(env), cfg.subnet6, protectedNets(cfg));
   return { status: 200, body: { peers, ...reply } };
 }
 

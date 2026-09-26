@@ -10,7 +10,12 @@
 # survives a destroy, which is exactly why the bill returns to zero.
 
 locals {
-  peers         = jsondecode(var.peers_json)
+  # Only peers with a proper WireGuard key and a plain IPv4 address get into
+  # wg0.conf (the dashboard checks the same; this is the second lock).
+  peers = [
+    for p in jsondecode(var.peers_json) : p
+    if can(regex("^[A-Za-z0-9+/]{43}=$", p.public_key)) && can(regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$", p.ip))
+  ]
   wg_server_ip  = cidrhost(var.wg_subnet, 1)
   wg_prefix_len = split("/", var.wg_subnet)[1]
   ipv6          = var.wg_subnet6 != ""
@@ -30,10 +35,26 @@ locals {
   # The [Peer] half of wg0.conf, one block per client. Pre-rendered here so the
   # YAML template only has to drop it in with the right indentation. A site
   # peer (the home container) also lists its LAN ("routes"); wg-quick then
-  # adds the matching kernel route when the tunnel comes up.
+  # adds the matching kernel route when the tunnel comes up. The name goes in
+  # a comment line, so anything but plain characters becomes "?": a line
+  # break in a name must never be able to add a line of its own.
+  # A site route wider than /8 (0.0.0.0/0, say) would take over the VM's own
+  # internet route at boot and cut it off from the dashboard for good, and
+  # one over the tunnel, loopback or VNet would break those. So only /8 to
+  # /32 IPv4 networks that overlap none of them get through. (The dashboard
+  # already refuses the rest; this is the second lock.) Two networks overlap
+  # when they agree on the shorter of their two prefix lengths.
+  route_keep_out = [var.wg_subnet, "${var.loopback_ip}/32", var.vnet_cidr]
+  site_routes = { for p in local.peers : p.ip => join(",", [
+    for r in [for x in split(",", try(p.routes, "")) : trimspace(x)] : r
+    if can(regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}/([89]|[12][0-9]|3[0-2])$", r)) && can(cidrhost(r, 0)) && !anytrue([
+      for k in local.route_keep_out :
+      cidrhost("${split("/", r)[0]}/${min(split("/", r)[1], split("/", k)[1])}", 0) == cidrhost("${split("/", k)[0]}/${min(split("/", r)[1], split("/", k)[1])}", 0)
+    ])
+  ]) }
   peers_conf = length(local.peers) == 0 ? "# no peers yet\n" : join("\n", [
     for p in local.peers :
-    "# ${p.name}\n[Peer]\nPublicKey = ${p.public_key}\nAllowedIPs = ${p.ip}/32${local.ipv6 ? ",${local.peer_ip6[p.ip]}/128" : ""}${try(p.routes, "") != "" ? ",${p.routes}" : ""}\n"
+    "# ${replace(p.name, "/[^A-Za-z0-9 _.-]/", "?")}\n[Peer]\nPublicKey = ${p.public_key}\nAllowedIPs = ${p.ip}/32${local.ipv6 ? ",${local.peer_ip6[p.ip]}/128" : ""}${local.site_routes[p.ip] != "" ? ",${local.site_routes[p.ip]}" : ""}\n"
   ])
 
   # The VM's zero-touch provisioning script.
@@ -58,6 +79,7 @@ locals {
     blocklist_service     = file("${path.module}/agent/wg-blocklist.service")
     speedtest_script      = file("${path.module}/agent/wg-speedtest.sh")
     capture_script        = file("${path.module}/agent/wg-capture.sh")
+    firewall_load_script  = file("${path.module}/agent/wg-firewall-load.sh")
     vnet_cidr             = var.vnet_cidr
     firewall_nft_b64      = var.firewall_nft_b64 != "" ? var.firewall_nft_b64 : base64encode(file("${path.module}/agent/firewall-open.nft"))
   })
@@ -144,21 +166,23 @@ resource "azurerm_network_security_group" "wg" {
   }
 
   # Published ports (the Firewall tab): public ports the VM forwards to a
-  # server behind it. The VM's rule set does the forwarding and the source
-  # checks; this only opens the ports at Azure's edge. The dashboard keeps it
-  # in step live when you add or remove one.
+  # server behind it. One rule per port, with the same protocol and "allowed
+  # from" as the tab, aimed only at the VM's private IPv4 address, so Azure's
+  # edge opens no more than the VM will forward. The VM's rule set does the
+  # forwarding itself. The dashboard keeps these in step live when you add or
+  # remove one (same names, priorities from 200 up).
   dynamic "security_rule" {
-    for_each = length(var.published_ports) > 0 ? [1] : []
+    for_each = { for i, p in var.published_ports : p.name => merge(p, { priority = 200 + i }) }
     content {
-      name                       = "published-ports"
-      priority                   = 130
+      name                       = security_rule.value.name
+      priority                   = security_rule.value.priority
       direction                  = "Inbound"
       access                     = "Allow"
-      protocol                   = "*"
+      protocol                   = security_rule.value.protocol
       source_port_range          = "*"
-      destination_port_ranges    = var.published_ports
-      source_address_prefix      = "*"
-      destination_address_prefix = "*"
+      destination_port_range     = security_rule.value.port
+      source_address_prefix      = security_rule.value.source
+      destination_address_prefix = azurerm_network_interface.wg.private_ip_address
     }
   }
 

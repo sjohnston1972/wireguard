@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { nextFreeIp, serverTunnelIp, clientConfigTemplate, agentPeerList, terraformPeerList, validPeerName, isWgKey, serverPublicKey, peerIp6, hostLabel, PRIVATE_KEY_PLACEHOLDER } from "../src/peers";
+import { nextFreeIp, serverTunnelIp, clientConfigTemplate, agentPeerList, terraformPeerList, validPeerName, isWgKey, serverPublicKey, peerIp6, hostLabel, PRIVATE_KEY_PLACEHOLDER, protectedNets, routeProblem, v4Overlap } from "../src/peers";
 import type { Env } from "../src/env";
 import type { Peer } from "../src/db";
 
@@ -77,6 +77,25 @@ describe("peer lists", () => {
     const site: Peer = { ...peers[0], name: "home-site", public_key: "H=", ip: "10.13.13.10", routes: "192.168.1.0/24, junk" };
     expect(agentPeerList([site], "fd13:13::/64")[0].allowed_ips).toBe("10.13.13.10/32,fd13:13::a/128,192.168.1.0/24");
     expect(terraformPeerList([site])[0]).toEqual({ name: "home-site", public_key: "H=", ip: "10.13.13.10", routes: "192.168.1.0/24" });
+  });
+  it("a site route can never cut the VM off: nothing wider than /8, nothing over the tunnel or the VNet", () => {
+    const avoid = protectedNets({ subnet: "10.13.13.0/24", loopbackIp: "10.13.255.1", vnetCidr: "10.50.0.0/16" });
+    expect(avoid).toEqual(["10.13.13.0/24", "10.13.255.1/32", "10.50.0.0/16"]);
+    expect(routeProblem("0.0.0.0/0", avoid)).toMatch(/wider than \/8/);
+    expect(routeProblem("128.0.0.0/1", avoid)).toMatch(/wider than \/8/);
+    expect(routeProblem("10.0.0.0/8", avoid)).toMatch(/overlaps 10\.13\.13\.0\/24/);
+    expect(routeProblem("10.50.2.0/24", avoid)).toMatch(/overlaps 10\.50\.0\.0\/16/);
+    expect(routeProblem("10.13.255.1/32", avoid)).toMatch(/overlaps/);
+    expect(routeProblem("192.168.1.0/24", avoid)).toBeNull();
+    expect(routeProblem("11.0.0.0/8", avoid)).toBeNull();
+    expect(routeProblem("300.1.1.0/24", avoid)).toMatch(/not an IPv4/);
+    expect(v4Overlap("192.168.0.0/16", "192.168.1.0/24")).toBe(true);
+    expect(v4Overlap("192.168.2.0/24", "192.168.1.0/24")).toBe(false);
+    const site: Peer = { ...peers[0], name: "home-site", public_key: "H=", ip: "10.13.13.10", routes: "0.0.0.0/0, 10.50.0.0/16, 192.168.1.0/24, 128.0.0.0/1" };
+    expect(agentPeerList([site], "", avoid)[0].allowed_ips).toBe("10.13.13.10/32,192.168.1.0/24");
+    expect(terraformPeerList([site], avoid)[0].routes).toBe("192.168.1.0/24");
+    // Even without the overlap list, the too-wide ones never get through.
+    expect(terraformPeerList([site])[0].routes).toBe("10.50.0.0/16,192.168.1.0/24");
   });
   it("a client can route the home LAN into the tunnel", () => {
     const e = { ...env, HOME_LAN_CIDR: "192.168.1.0/24" } as unknown as Env;
