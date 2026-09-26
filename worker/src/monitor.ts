@@ -18,6 +18,7 @@
 //   - flags drift: Azure and the dashboard disagree
 //   - flags an unreachable VM: no heartbeat for 2 minutes while Running
 //   - pulls yesterday's actual cost from Azure once a day
+//   - once a day, saves the dashboard's data to R2 (backup.ts)
 // Everything it notices is written to alerts so the Activity page can show
 // what happened overnight, and pushed to the webhook if one is set.
 
@@ -33,6 +34,7 @@ import { notify } from "./notify";
 import { actionButton, dashboardButton } from "./actions";
 import { costMonthToDate, azureView } from "./azure";
 import { checkDns } from "./dns";
+import { nightlyConfigBackup } from "./backup";
 
 /**
  * How long a Failed deployment may leave its resource group in Azure before
@@ -229,6 +231,14 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         notes.push(`cost: ${(e as Error).message}`);
       }
     }
+  }
+
+  // 7. Daily copy of the dashboard's data (clients, rules, ...) to R2.
+  try {
+    const note = await nightlyConfigBackup(env, now);
+    if (note) notes.push(note);
+  } catch (e) {
+    notes.push(`config backup: ${(e as Error).message}`);
   }
 
   return notes;

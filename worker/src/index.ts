@@ -41,6 +41,9 @@ import { startCapture, receiveCapture, validFilter, MAX_CAPTURE_BYTES } from "./
 import { setPublishedPorts } from "./azure";
 import { reservedPort, forwardTargetOk, publishedNsgRules } from "./firewall";
 import { isPushEndpoint } from "./webpush";
+import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, backupStatus, MAX_RESTORE_BYTES, type RestorePlan } from "./backup";
+import { restoreBody } from "./views/settings";
+import { randomToken } from "./auth";
 
 export { RunLock } from "./lock";
 
@@ -241,7 +244,7 @@ function where(c: Context<App>): { country: string | null; region: string | null
 }
 
 async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null, near?: { country: string | null; region: string | null }) {
-  const [snap, cfg, peers, lock, deployment, serverPub, profiles, speedtests, schedules] = await Promise.all([
+  const [snap, cfg, peers, lock, deployment, serverPub, profiles, speedtests, schedules, backups] = await Promise.all([
     getSnapshot(env),
     effectiveConfig(env),
     db.listPeers(env),
@@ -251,8 +254,10 @@ async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info";
     db.listProfiles(env),
     db.listSpeedTests(env, 5),
     db.listSchedules(env),
+    backupStatus(env).catch(() => null),
   ]);
   return liveSection({
+    stateBackups: backups && !backups.error ? backups.state : null,
     snap,
     cfg,
     peerCount: peers.filter((p) => p.enabled).length,
@@ -559,8 +564,9 @@ app.get("/cost", async (c) => {
 app.get("/settings", async (c) => {
   const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
   const saved = c.req.query("saved") === "1";
+  const backups = await backupStatus(c.env, true);
   return c.html(
-    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl, pushSubs: await db.listPushSubs(c.env), vapidPublic: c.env.VAPID_PUBLIC_KEY ?? null }))
+    await render(c, "settings", "Settings", settingsBody({ backups, restored: c.req.query("restored") === "1", cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl, pushSubs: await db.listPushSubs(c.env), vapidPublic: c.env.VAPID_PUBLIC_KEY ?? null }))
   );
 });
 
@@ -623,6 +629,67 @@ app.post("/settings/release-lock", async (c) => {
   await releaseLock(c.env, undefined, true);
   await db.addAlert(c.env, "info", `Run lock released by hand (${c.get("user")}).`);
   return c.redirect("/settings");
+});
+
+// ── Backups: export, restore (backup.ts) ──────────────────────────────────
+// Download the dashboard's data as a file, fetch one of the nightly copies
+// from R2, or put a file back. A restore is two steps: upload shows what the
+// file holds next to what is here now; only typing "restore" replaces it.
+
+app.get("/settings/backup/export", async (c) => {
+  const exp = await buildExport(c.env);
+  return c.body(JSON.stringify(exp, null, 1), 200, { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="${exportFileName(exp.exported_at.slice(0, 10))}"`, "Cache-Control": "no-store" });
+});
+
+app.get("/settings/backup/config/:day", async (c) => {
+  const day = c.req.param("day");
+  const obj = /^\d{4}-\d{2}-\d{2}$/.test(day) ? await c.env.STATE.get(`config-backups/${day}.json`) : null;
+  if (!obj) return c.text("That nightly export is no longer kept.", 404);
+  return new Response(obj.body, { headers: { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="${exportFileName(day)}"`, "Cache-Control": "no-store" } });
+});
+
+/** Why a restore must wait, or null. Swapping clients mid-deploy would muddle what the VM gets. */
+async function restoreBlocked(env: Env): Promise<string | null> {
+  const [run, lock, snap] = await Promise.all([db.activeRun(env), lockStatus(env), getSnapshot(env)]);
+  if (run || lock.held || ["deploying", "destroying", "hibernating", "resuming"].includes(snap.state)) return "A run is in progress. Wait for it to finish, then restore.";
+  return null;
+}
+
+app.post("/settings/backup/restore", async (c) => {
+  const show = async (o: Omit<Parameters<typeof restoreBody>[0], "current">) => c.html(await render(c, "settings", "Restore", restoreBody({ ...o, current: await currentCounts(c.env) })));
+  if (Number(c.req.header("Content-Length") ?? 0) > MAX_RESTORE_BYTES + 10_000) return show({ error: "That file is too big to be a wg-admin export." });
+  const blocked = await restoreBlocked(c.env);
+  if (blocked) return show({ error: blocked });
+  const file = (await c.req.parseBody()).file;
+  if (!(file instanceof File) || !file.size) return show({ error: "Choose a file first." });
+  if (file.size > MAX_RESTORE_BYTES) return show({ error: "That file is too big to be a wg-admin export." });
+  const plan = await checkRestoreFile(c.env, await file.text());
+  if (typeof plan === "string") return show({ error: plan });
+  // The checked file waits in KV for 15 minutes under a random name, so the
+  // confirm step does not have to upload it again.
+  const token = randomToken();
+  await c.env.STATUS.put(`restore:${token}`, JSON.stringify(plan), { expirationTtl: 900 });
+  return show({ plan, token, fileName: file.name });
+});
+
+app.post("/settings/backup/restore/confirm", async (c) => {
+  const f = await c.req.parseBody();
+  const token = String(f.token ?? "");
+  const back = async (error: string, keep?: RestorePlan) => c.html(await render(c, "settings", "Restore", restoreBody({ error, current: await currentCounts(c.env), ...(keep ? { plan: keep, token } : {}) })));
+  const plan = /^[0-9a-f]{64}$/.test(token) ? await c.env.STATUS.get<RestorePlan>(`restore:${token}`, "json") : null;
+  if (!plan) return back("That upload has expired (they are kept 15 minutes). Choose the file again.");
+  if (String(f.confirm ?? "").trim().toLowerCase() !== "restore") return back('Not restored: type "restore" to confirm.', plan);
+  const blocked = await restoreBlocked(c.env);
+  if (blocked) return back(blocked);
+  try {
+    await applyRestore(c.env, plan);
+  } catch (e) {
+    return back(`Nothing was changed: the database refused the file (${(e as Error).message}).`);
+  }
+  await c.env.STATUS.delete(`restore:${token}`);
+  await db.addAlert(c.env, "info", `Dashboard data restored from an export of ${plan.exported_at} by ${c.get("user")}: ${plan.counts.peers} client(s), ${plan.counts.fw_rules} firewall rule(s).`);
+  await syncPublished(c.env);
+  return c.redirect("/settings?restored=1");
 });
 
 // ── Firewall ──────────────────────────────────────────────────────────────
