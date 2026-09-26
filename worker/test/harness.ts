@@ -31,8 +31,8 @@ class Stmt {
     return { results: this.db.prepare(this.sql).all(...this.params()).map((r) => ({ ...r })) as T[] };
   }
   async run() {
-    this.db.prepare(this.sql).run(...this.params());
-    return { success: true };
+    const r = this.db.prepare(this.sql).run(...this.params());
+    return { success: true, meta: { changes: Number(r.changes) } };
   }
 }
 
@@ -93,7 +93,7 @@ export interface World {
   /** Every workflow dispatch: action and parsed payload. */
   dispatches: { action: string; payload: Record<string, unknown> }[];
   /** GitHub runs by numeric id, with the title the Worker searches for. */
-  ghRuns: Map<number, { id: number; display_title: string; status: string; conclusion: string | null; html_url: string; created_at: string }>;
+  ghRuns: Map<number, { id: number; display_title: string; status: string; conclusion: string | null; html_url: string; created_at: string; updated_at?: string }>;
   /** Azure: does the resource group exist, and the VM's power state. */
   azure: { rg: boolean; power: string; ip: string };
   /** VM power calls made: "deallocate" | "start". */

@@ -502,7 +502,9 @@ export async function issueRunSecrets(env: Env, runId: string, ghRunId: number):
     const fw = await currentFirewall(env);
     Object.assign(out, { agent_token: agentToken, ssh_password: run.ssh_password ?? "", ssh_allowed_cidr: String(payload.ssh_allowed_cidr ?? ""), firewall_nft_b64: btoa(fw.text) });
   }
-  await db.updateRun(env, run.id, patch);
+  // Claim and record in one step: if two callers got this far at once, only
+  // the first write lands and the other is turned away with no secrets.
+  if (!(await db.claimRunSecrets(env, run.id, patch))) return { status: 409, body: { error: "secrets already collected" } };
   return { status: 200, body: out };
 }
 
