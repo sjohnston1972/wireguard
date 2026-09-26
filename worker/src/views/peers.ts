@@ -154,7 +154,7 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
   ${trafficPanel(o)}
 </section>
 
-<section id="peer-reveal" hidden>
+<section id="peer-reveal" hidden hx-history="false">
   <div class="panel">
     <div class="sheet-head"><b>New config</b><button type="button" class="sheet-x" data-reveal-close>Done</button></div>
     <div class="section-head"><h2>Config for <span data-peer-name></span></h2><span class="muted small">tunnel address <span class="mono" data-peer-ip></span></span></div>

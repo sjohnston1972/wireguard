@@ -59,6 +59,50 @@ self.addEventListener("push", function (e) {
   }));
 });
 
+// The phone's push service can replace a subscription on its own (expired,
+// keys rotated). The browser then tells us here. Sign up again with the same
+// dashboard key and hand the new one to the dashboard, dropping the old, so
+// alerts keep arriving without anyone having to open Settings. If this fails
+// (for example the sign-in has expired) the Phone alerts panel will show
+// "not registered" next time it is opened.
+function deviceLabel() {
+  var ua = self.navigator.userAgent;
+  return (/Android/i.test(ua) ? "Android phone" : /iPhone|iPad/i.test(ua) ? "iPhone" : /Windows/i.test(ua) ? "Windows PC" : /Mac/i.test(ua) ? "Mac" : "Device") + " (renewed)";
+}
+function b64url(buf) {
+  var s = btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+  return s.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function keyBytes(b64) {
+  var s = b64.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "=";
+  return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); });
+}
+function postJson(url, body) {
+  return fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+self.addEventListener("pushsubscriptionchange", function (e) {
+  var old = e.oldSubscription || null;
+  var oldKey = old && old.options && old.options.applicationServerKey;
+  // The dashboard's key: from the old subscription, or else ask the dashboard.
+  function key() {
+    if (oldKey) return Promise.resolve(b64url(oldKey));
+    return fetch("/api/push/status", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (j) { if (!j.vapid) throw new Error("no key"); return j.vapid; });
+  }
+  e.waitUntil(
+    (e.newSubscription ? Promise.resolve(e.newSubscription) : key().then(function (k) {
+      return self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(k) });
+    }))
+      .then(function (sub) {
+        var j = sub.toJSON();
+        return postJson("/api/push/subscribe", { endpoint: j.endpoint, keys: j.keys, label: deviceLabel() }).then(function () {
+          if (old && old.endpoint && old.endpoint !== j.endpoint) return postJson("/api/push/unsubscribe", { endpoint: old.endpoint });
+        });
+      })
+      .catch(function () { /* nothing more to do from here; Settings will show it */ })
+  );
+});
+
 self.addEventListener("notificationclick", function (e) {
   var n = e.notification;
   var data = n.data || {};
