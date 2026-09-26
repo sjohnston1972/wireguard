@@ -62,7 +62,15 @@ fw_counters="$(nft -j list counters table inet wgfw 2>/dev/null | jq -c '[.nftab
 fw_error=""
 [[ -s /run/wg-admin/firewall.error ]] && fw_error="$(head -c 400 /run/wg-admin/firewall.error)"
 # "wgfw-drop IN=wg0 OUT=eth0 SRC=10.13.13.3 DST=10.50.2.4 ... PROTO=TCP SPT=51000 DPT=3389"
-fw_drops="$(journalctl -k --since '-35 seconds' -o cat --no-pager 2>/dev/null | grep 'wgfw-drop' | tail -n 20 \
+# Read the kernel log from exactly where the last heartbeat stopped (a
+# journal bookmark, the "cursor"), so each drop is reported once, however
+# the heartbeats happen to be spaced. The first run after boot has no
+# bookmark yet and looks back 35 seconds.
+mkdir -p /run/wg-admin
+KCURSOR=/run/wg-admin/kernel.cursor
+since=()
+[[ -s "$KCURSOR" ]] || since=(--since '-35 seconds')
+fw_drops="$(journalctl -k "${since[@]}" --cursor-file="$KCURSOR" -o cat --no-pager 2>/dev/null | grep 'wgfw-drop' | tail -n 20 \
   | sed -n 's/.*IN=\([^ ]*\) OUT=\([^ ]*\).* SRC=\([^ ]*\) DST=\([^ ]*\).* PROTO=\([^ ]*\)\( SPT=\([0-9]*\) DPT=\([0-9]*\)\)\{0,1\}.*/\3 \4 \5 \8 \1 \2/p' \
   | jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | {src: .[0], dst: .[1], proto: .[2], dport: (.[3] | if . == "" then null else tonumber end), in: .[4], out: .[5]})' 2>/dev/null || true)"
 [[ -z "$fw_drops" ]] && fw_drops="[]"
