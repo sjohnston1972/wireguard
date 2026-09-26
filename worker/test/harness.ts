@@ -36,19 +36,25 @@ class Stmt {
   }
 }
 
+/** D1's batch: every statement in one transaction, all or nothing. */
+async function batch(db: DatabaseSync, stmts: Stmt[]) {
+  db.exec("BEGIN");
+  try {
+    const out = [];
+    for (const s of stmts) out.push(await s.run());
+    db.exec("COMMIT");
+    return out;
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+}
+
 function fakeD1(): D1Database {
   const db = new DatabaseSync(":memory:");
   const dir = new URL("../migrations/", import.meta.url);
   for (const f of readdirSync(dir).filter((x) => x.endsWith(".sql")).sort()) db.exec(readFileSync(new URL(f, dir), "utf8"));
-  return {
-    prepare: (sql: string) => new Stmt(db, sql),
-    // Several statements in one go, one after another (as D1 runs a batch).
-    async batch(stmts: Stmt[]) {
-      const out = [];
-      for (const s of stmts) out.push(await s.run());
-      return out;
-    },
-  } as unknown as D1Database;
+  return { prepare: (sql: string) => new Stmt(db, sql), batch: (stmts: Stmt[]) => batch(db, stmts) } as unknown as D1Database;
 }
 
 // ── KV ────────────────────────────────────────────────────────────────────
@@ -148,10 +154,14 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
   env.STATUS = fakeKV();
   env.RUN_LOCK = fakeDO(env);
   const objects = new Map<string, ArrayBuffer>();
+  const uploaded = new Map<string, Date>();
   env.STATE = {
-    async put(k: string, v: ArrayBuffer) { objects.set(k, v); },
-    async get(k: string) { const v = objects.get(k); return v ? { body: v, arrayBuffer: async () => v } : null; },
-    async delete(k: string) { objects.delete(k); },
+    async put(k: string, v: ArrayBuffer) { objects.set(k, v); uploaded.set(k, new Date()); },
+    async get(k: string) { const v = objects.get(k); return v ? { body: v, arrayBuffer: async () => v, text: async () => (typeof v === "string" ? v : new TextDecoder().decode(v)) } : null; },
+    async delete(k: string | string[]) { for (const x of ([] as string[]).concat(k)) { objects.delete(x); uploaded.delete(x); } },
+    async list({ prefix = "" }: { prefix?: string } = {}) {
+      return { objects: [...objects.keys()].filter((k) => k.startsWith(prefix)).sort().map((key) => ({ key, uploaded: uploaded.get(key)! })), truncated: false };
+    },
   } as unknown as R2Bucket;
   (world as World & { objects: Map<string, ArrayBuffer> }).objects = objects;
 

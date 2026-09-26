@@ -42,6 +42,8 @@ export interface LiveOpts {
   nextScheduled?: string | null;
   /** Where the monthly budget stands; at or over it, Deploy asks to confirm. */
   budget?: BudgetStatus | null;
+  /** Terraform state backups in R2 (backup.ts), or null when R2 could not be read. */
+  stateBackups?: { count: number; newest: string | null } | null;
 }
 
 /**
@@ -155,7 +157,7 @@ function inventory(o: LiveOpts): Html {
         <tr><th>Callback token</th><td><b>per run</b></td><td class="muted">used once by GitHub Actions; hash <span class="mono">${(o.deployment.callback_token_hash ?? "").slice(0, 16)}…</span></td></tr>
         <tr><th>SSH</th><td><b>azureuser</b></td><td class="muted">${payload.ssh_allowed_cidr ? html`key only, allowed from <span class="mono">${String(payload.ssh_allowed_cidr)}</span>` : "no SSH rule (nobody can SSH in)"}</td></tr>
         <tr><th>Clients loaded</th><td><b>${(() => { try { return JSON.parse(String(payload.peers_json ?? "[]")).length; } catch { return "?"; } })()}</b></td><td class="muted">at boot; later changes reach the VM via the heartbeat</td></tr>
-        <tr><th>State file</th><td><b>R2</b></td><td class="muted">wg-admin-tfstate / wg-admin/terraform.tfstate, backups kept for the last 20 runs</td></tr>
+        <tr><th>State file</th><td><b>R2</b></td><td class="muted">wg-admin-tfstate / wg-admin/terraform.tfstate; ${o.stateBackups ? (o.stateBackups.count ? `${o.stateBackups.count} backup${o.stateBackups.count === 1 ? "" : "s"} kept, newest ${fmtTime(o.stateBackups.newest)}` : "no backups yet") : "backups not checked"} (the last 20 runs are kept)</td></tr>
       </tbody></table>`
     : ""}
   </div>

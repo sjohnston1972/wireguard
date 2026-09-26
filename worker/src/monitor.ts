@@ -21,6 +21,7 @@
 //   - trims the change log (audit) to its newest 1000 entries / 180 days
 //   - checks the month against the budget: one alert at 80%, one at 100%
 //     (budget.ts)
+//   - once a day, saves the dashboard's data to R2 (backup.ts)
 // Everything it notices is written to alerts so the Activity page can show
 // what happened overnight, and pushed to the webhook if one is set.
 
@@ -37,6 +38,7 @@ import { actionButton, dashboardButton } from "./actions";
 import { costMonthToDate, azureView } from "./azure";
 import { checkDns } from "./dns";
 import { checkBudget } from "./budget";
+import { nightlyConfigBackup } from "./backup";
 
 /**
  * How long a Failed deployment may leave its resource group in Azure before
@@ -260,6 +262,14 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     if (note) notes.push(note);
   } catch (e) {
     notes.push(`budget: ${(e as Error).message}`);
+  }
+
+  // 8. Daily copy of the dashboard's data (clients, rules, ...) to R2.
+  try {
+    const note = await nightlyConfigBackup(env, now);
+    if (note) notes.push(note);
+  } catch (e) {
+    notes.push(`config backup: ${(e as Error).message}`);
   }
 
   return notes;
