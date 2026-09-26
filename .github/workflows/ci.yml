@@ -51,7 +51,7 @@ jobs:
             -var cloudflare_zone_id=zone \
             -var 'ssh_public_key=ssh-ed25519 AAAA ci' \
             -var wg_server_private_key=PRIVKEY \
-            -var 'peers_json=[{"name":"laptop","public_key":"LAPTOPKEY=","ip":"10.13.13.2"}]' \
+            -var 'peers_json=[{"name":"laptop","public_key":"LAPTOPKEYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","ip":"10.13.13.2"}]' \
             -var agent_token=tok \
             | python3 -c 'import sys,json; s=sys.stdin.read().strip(); s = s[len("<<EOT"):].strip()[:-len("EOT")] if s.startswith("<<EOT") else json.loads(s); open("rendered.yaml","w").write(s)'
           python3 -c '
@@ -64,7 +64,7 @@ jobs:
           for marker in ("${indent(", "${wg_", "${agent_", "${peers_"):
               assert marker not in text, "unrendered Terraform placeholder in cloud-init: " + marker
           assert "$$" not in text, "double-dollar leaked into cloud-init"
-          assert "PRIVKEY" in text and "LAPTOPKEY=" in text and "tok" in text, "values did not render"
+          assert "PRIVKEY" in text and "LAPTOPKEYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" in text and "tok" in text, "values did not render"
           print("cloud-init OK:", len(paths), "files")
           '
 
