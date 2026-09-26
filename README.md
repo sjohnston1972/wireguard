@@ -213,7 +213,16 @@ the VM's own, so no rule can cut you off from the headend.
 Rules are compiled to nftables. At build they travel with the run's private
 secrets and are loaded before the tunnel comes up; while running, a change
 reaches the VM on its next heartbeat (within 30 seconds), is syntax-checked
-there, and replaces the old rule set in one step.
+there, and replaces the old rule set in one step. If the saved rule set is
+ever refused at boot, the VM fails closed: it blocks all routed traffic,
+shows why on the Firewall tab, and takes the good rule set on the next
+heartbeat. The tunnel will not come up with no firewall at all.
+
+A **published port** forwards a public port on the VM to a server behind
+it. Port 22 and the WireGuard port can never be published (in either
+protocol). Azure's edge opens exactly that protocol, port and "allowed
+from", to the VM's own address only; the VM drops the port for itself and
+forwards it from its own address, so the workloads subnet accepts it.
 
 Servers you deploy go in the **workloads subnet** (10.50.2.0/24) of the same
 VNet. Its route table sends 0.0.0.0/0 to the WireGuard VM, so everything they
@@ -343,7 +352,8 @@ docs/runs/                records of each autonomous build session
 - **AllowedIPs**: on a client, which destinations go through the tunnel. Split
   tunnel = just the VPN and home ranges. Full tunnel = `0.0.0.0/0`.
 - **NSG**: Azure's per-subnet firewall. Ours allows UDP 51820 from anywhere,
-  SSH only from an allow-list, and denies everything else inbound.
+  SSH only from an allow-list, each published port as set on the Firewall
+  tab, and denies everything else inbound.
 - **Resource group**: an Azure folder. Deleting it deletes everything inside,
   which is how destroy can never leave a stray VM running.
 - **State**: Terraform's record of what it built. Lives in R2, backed up on
