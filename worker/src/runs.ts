@@ -339,9 +339,12 @@ export async function refreshActiveRun(env: Env): Promise<void> {
 
   if (gh && gh.status === "completed") {
     if (gh.conclusion === "success") {
-      // The callback normally lands first. If it has not after 2 minutes, settle from what we know.
+      // The callback normally lands first. If it has not 2 minutes after
+      // GitHub finished, settle from what we know. (updated_at is when the
+      // run last changed, i.e. when it completed.)
       const fresh = await db.getRun(env, run.id);
-      if (fresh && fresh.status !== "success" && Date.now() - Date.parse(gh.created_at) > 0) {
+      const finishedAt = Date.parse(gh.updated_at ?? gh.created_at);
+      if (fresh && !fresh.finished_at && Date.now() - finishedAt > CALLBACK_GRACE_MS) {
         await settleWithoutCallback(env, fresh);
       }
     } else {
@@ -350,8 +353,13 @@ export async function refreshActiveRun(env: Env): Promise<void> {
   }
 }
 
+/** How long after GitHub says "done" we wait for the result callback before settling without it. */
+const CALLBACK_GRACE_MS = 2 * 60_000;
+
 async function settleWithoutCallback(env: Env, run: db.Run): Promise<void> {
-  // Only settle if GitHub says success AND the callback is overdue by 2 min.
+  // Only called once GitHub says success AND the callback is overdue by 2 min.
+  // The dashboard's polling and the cron may both get here at once; the
+  // settle itself (completeApply/completeDestroy) lets only one through.
   if (run.finished_at) return;
   const snap = await getSnapshot(env);
   if (run.action === "destroy") {
@@ -365,16 +373,18 @@ async function settleWithoutCallback(env: Env, run: db.Run): Promise<void> {
 }
 
 async function failRun(env: Env, run: db.Run, message: string): Promise<void> {
-  await db.updateRun(env, run.id, { status: "failure", finished_at: new Date().toISOString(), error: message });
+  // Close the run in one step; if something else already closed it, leave it be.
+  if (!(await db.settleRun(env, run.id, { status: "failure", finished_at: new Date().toISOString(), error: message }))) return;
   await releaseLock(env, run.id);
   await saveSnapshot(env, { state: "failed", error: message, since: new Date().toISOString(), pending_deploy: null });
   await db.addAlert(env, "failure", `${run.action} failed: ${message}`, run.id);
   await notify(env, `wg-admin: ${run.action} failed`, message);
 }
 
-async function completeApply(env: Env, run: db.Run, publicIp: string | null, outputs: Record<string, unknown>, meta: { via: string }): Promise<void> {
+/** Returns false (and does nothing) if the run was already settled by someone else. */
+async function completeApply(env: Env, run: db.Run, publicIp: string | null, outputs: Record<string, unknown>, meta: { via: string }): Promise<boolean> {
   const now = new Date().toISOString();
-  await db.updateRun(env, run.id, { status: "success", finished_at: now, public_ip: publicIp, outputs_json: JSON.stringify(outputs) });
+  if (!(await db.settleRun(env, run.id, { status: "success", finished_at: now, public_ip: publicIp, outputs_json: JSON.stringify(outputs) }))) return false;
   await releaseLock(env, run.id);
   const dns = await checkDns(env, publicIp);
   await saveSnapshot(env, {
@@ -395,14 +405,18 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
   await db.addAlert(env, "deploy", `Deployed at ${publicIp ?? "unknown IP"} (${meta.via}); ${cfg.dnsName} ${dns.live ? "is live" : "not live yet"}`, run.id);
   // The phone hears about it when the VM's self-test comes in (handleAgent),
   // so "ready" means the tunnel was proven to carry traffic, not just built.
+  return true;
 }
 
-async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Promise<void> {
+/** Returns false (and does nothing) if the run was already settled by someone else. */
+async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Promise<boolean> {
   const now = new Date().toISOString();
+  // Claim the run first: only one caller carries on, so a queued Move is
+  // started once, not twice.
+  if (!(await db.settleRun(env, run.id, { status: "success", finished_at: now }))) return false;
   const before = await getSnapshot(env);
   // The VM and its counters are gone; its hits live on in the totals.
   await saveSnapshot(env, { fw_base: addCounters(before.fw_base ?? {}, before.firewall?.counters) });
-  await db.updateRun(env, run.id, { status: "success", finished_at: now });
   await releaseLock(env, run.id);
   const dns = await checkDns(env, null);
   await saveSnapshot(env, {
@@ -439,7 +453,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
   const next = before.pending_deploy;
   if (!next) {
     await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; Azure cost is £0.`, { tags: ["wastebasket"] });
-    return;
+    return true;
   }
   // A move ("Move to US exit"): the old one is gone, build the new one now.
   try {
@@ -450,6 +464,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     await db.addAlert(env, "failure", `Move: torn down, but the new deploy could not start: ${(e as Error).message}`, run.id);
     await notify(env, "wg-admin: move stopped", `Torn down, but the new deploy could not start: ${(e as Error).message}`, { priority: 4 });
   }
+  return true;
 }
 
 /** GitHub Actions result callback. Returns an HTTP status and message. */
@@ -467,13 +482,14 @@ export async function handleCallback(env: Env, token: string, body: CallbackBody
     await failRun(env, run, `Workflow reported "${body.status}". See the GitHub log.`);
     return { status: 200, message: "recorded failure" };
   }
+  let settled: boolean;
   if (run.action === "apply") {
     const ip = (body.outputs?.public_ip as string | undefined) ?? null;
-    await completeApply(env, run, ip, body.outputs ?? {}, { via: "callback" });
+    settled = await completeApply(env, run, ip, body.outputs ?? {}, { via: "callback" });
   } else {
-    await completeDestroy(env, run, { via: body.status === "success-with-fallback" ? "callback, fallback cleanup used" : "callback" });
+    settled = await completeDestroy(env, run, { via: body.status === "success-with-fallback" ? "callback, fallback cleanup used" : "callback" });
   }
-  return { status: 200, message: "ok" };
+  return { status: 200, message: settled ? "ok" : "already settled" };
 }
 
 /**
