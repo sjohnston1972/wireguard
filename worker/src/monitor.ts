@@ -18,6 +18,7 @@
 //   - flags drift: Azure and the dashboard disagree
 //   - flags an unreachable VM: no heartbeat for 2 minutes while Running
 //   - pulls yesterday's actual cost from Azure once a day
+//   - trims the change log (audit) to its newest 1000 entries / 180 days
 // Everything it notices is written to alerts so the Activity page can show
 // what happened overnight, and pushed to the webhook if one is set.
 
@@ -63,6 +64,13 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     notes.push(...(await runSchedules(env, now)));
   } catch (e) {
     notes.push(`schedules: ${(e as Error).message}`);
+  }
+
+  // Housekeeping: the change log keeps the newest 1000 entries, 180 days at most.
+  try {
+    await db.pruneAudit(env, now);
+  } catch (e) {
+    notes.push(`change log: ${(e as Error).message}`);
   }
 
   let snap = await getSnapshot(env);

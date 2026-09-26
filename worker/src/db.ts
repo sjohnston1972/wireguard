@@ -460,3 +460,91 @@ export async function updateCapture(env: Env, id: string, patch: Partial<Capture
     .bind(id, ...keys.map((k) => (patch as Record<string, unknown>)[k] ?? null))
     .run();
 }
+
+// ── Change log (audit) ────────────────────────────────────────────────────
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  user: string;
+  action: string;
+  target: string;
+  before_json: string | null;
+  after_json: string | null;
+}
+
+/** How much of the change log is kept: the newest this many rows... */
+export const AUDIT_KEEP_ROWS = 1000;
+/** ...and nothing older than this many days. */
+export const AUDIT_KEEP_DAYS = 180;
+
+/**
+ * Field names that are never written to the change log, whatever table they
+ * came from: private keys, passwords, tokens and their hashes, and a phone's
+ * push keys and address (which work like a password for sending to it).
+ */
+const SECRET_FIELD = /private|password|passwd|secret|token|hash|^auth$|p256dh|endpoint|preshared|psk/i;
+
+/** A copy of a before/after value with every secret-looking field replaced. */
+export function scrubSecrets(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(scrubSecrets);
+  if (v && typeof v === "object") {
+    return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, SECRET_FIELD.test(k) ? "(hidden)" : scrubSecrets(x)]));
+  }
+  return v;
+}
+
+/**
+ * Write one line to the change log: who changed what, with the before and
+ * after (either may be null, e.g. nothing "before" an add). When both are
+ * objects, only the fields that actually changed are kept, so a toggle reads
+ * as {"enabled":1} -> {"enabled":0}; a save that changed nothing is skipped.
+ * Never throws: a change that worked is not undone because logging it failed.
+ *
+ *   await db.audit(c.env, c.get("user"), "client.delete", peer.name, peer, null);
+ */
+export async function audit(env: Env, user: string, action: string, target: string | number | null, before: unknown = null, after: unknown = null): Promise<void> {
+  try {
+    let b = scrubSecrets(before ?? null);
+    let a = scrubSecrets(after ?? null);
+    if (b && a && typeof b === "object" && typeof a === "object" && !Array.isArray(b) && !Array.isArray(a)) {
+      const bo = b as Record<string, unknown>, ao = a as Record<string, unknown>;
+      const keys = [...new Set([...Object.keys(bo), ...Object.keys(ao)])].filter((k) => JSON.stringify(bo[k]) !== JSON.stringify(ao[k]));
+      if (!keys.length) return;
+      b = Object.fromEntries(keys.filter((k) => k in bo).map((k) => [k, bo[k]]));
+      a = Object.fromEntries(keys.filter((k) => k in ao).map((k) => [k, ao[k]]));
+    }
+    await env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+      .bind(new Date().toISOString(), user || "unknown", action, target === null ? "" : String(target), b === null ? null : JSON.stringify(b), a === null ? null : JSON.stringify(a))
+      .run();
+  } catch (e) {
+    console.error(`audit ${action} not recorded:`, (e as Error).message);
+  }
+}
+
+/**
+ * One page of the change log, newest first. `kind` is the start of the
+ * action ("client", "firewall", ...); `q` matches who, what or the target.
+ * Returns one row more than asked for when there is a further page.
+ */
+export async function listAudit(env: Env, o: { kind?: string; q?: string; limit?: number; offset?: number } = {}): Promise<AuditEntry[]> {
+  const limit = Math.min(Math.max(o.limit ?? 50, 1), 200);
+  const offset = Math.max(o.offset ?? 0, 0);
+  const kind = o.kind ? `${o.kind}%` : "%";
+  // "!" marks a % or _ typed in the search box as a plain character, not a wildcard.
+  const q = o.q ? `%${o.q.replace(/[!%_]/g, (m) => `!${m}`)}%` : "%";
+  return (
+    await env.DB.prepare(
+      "SELECT * FROM audit WHERE action LIKE ?1 AND (user LIKE ?2 ESCAPE '!' OR action LIKE ?2 ESCAPE '!' OR target LIKE ?2 ESCAPE '!') ORDER BY at DESC, id DESC LIMIT ?3 OFFSET ?4"
+    )
+      .bind(kind, q, limit + 1, offset)
+      .all<AuditEntry>()
+  ).results;
+}
+
+/** Trim the change log to the newest AUDIT_KEEP_ROWS rows and AUDIT_KEEP_DAYS days. */
+export async function pruneAudit(env: Env, now = new Date()): Promise<void> {
+  const cutoff = new Date(now.getTime() - AUDIT_KEEP_DAYS * 86_400_000).toISOString();
+  await env.DB.prepare("DELETE FROM audit WHERE at < ?1").bind(cutoff).run();
+  await env.DB.prepare("DELETE FROM audit WHERE id NOT IN (SELECT id FROM audit ORDER BY at DESC, id DESC LIMIT ?1)").bind(AUDIT_KEEP_ROWS).run();
+}

@@ -2,12 +2,13 @@
 //
 // Plain English: the logbook. Every deploy and destroy with who asked, how
 // long it took, what it cost and how it ended, plus everything the watchman
-// noticed overnight.
+// noticed overnight. Below them, the change log: every configuration change
+// made from the dashboard, who made it, and what it was before and after.
 
 import { html } from "hono/html";
 import type { Html } from "./layout";
 import { fmtTime, duration, gbp, ago, sheetHead } from "./layout";
-import type { Run, Alert } from "../db";
+import type { Run, Alert, AuditEntry } from "../db";
 import type { Config } from "../env";
 
 export function sessionCost(run: Run, runs: Run[], cfg: Config, now = Date.now()): number | null {
@@ -19,6 +20,104 @@ export function sessionCost(run: Run, runs: Run[], cfg: Config, now = Date.now()
     .sort((a, b) => a - b)[0];
   const ms = (end ?? now) - Date.parse(run.finished_at);
   return (ms / 3_600_000) * cfg.hourlyRateGbp;
+}
+
+/** Change-log rows per page. */
+export const AUDIT_PAGE = 50;
+
+/** The change log's "Show" filter: the first word of each change's action. */
+export const AUDIT_KINDS: { value: string; label: string }[] = [
+  { value: "", label: "All changes" },
+  { value: "client", label: "Clients" },
+  { value: "firewall", label: "Firewall and published ports" },
+  { value: "settings", label: "Settings" },
+  { value: "profile", label: "Profiles" },
+  { value: "schedule", label: "Schedules" },
+  { value: "push", label: "Phone alerts" },
+  { value: "capture", label: "Packet captures" },
+  { value: "lock", label: "Run lock" },
+  { value: "config", label: "Backup and restore" },
+];
+
+export interface ChangeLog {
+  rows: AuditEntry[];
+  more: boolean;
+  kind: string;
+  q: string;
+  page: number;
+}
+
+/** One value, short enough for a table cell. */
+function shortValue(v: unknown): string {
+  const s = v === null || v === undefined ? "none" : typeof v === "string" ? (v === "" ? "blank" : v) : JSON.stringify(v);
+  return s.length > 60 ? `${s.slice(0, 57)}...` : s;
+}
+
+/**
+ * A change's before and after as plain lines: "enabled: 1 → 0" for an
+ * edit, "name = Phone" for something added, "removed; it was:" and the old
+ * values for a delete.
+ */
+export function describeChange(beforeJson: string | null, afterJson: string | null): string[] {
+  const parse = (j: string | null): unknown => {
+    try {
+      return j === null ? null : JSON.parse(j);
+    } catch {
+      return j;
+    }
+  };
+  const b = parse(beforeJson), a = parse(afterJson);
+  const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  if (obj(b) && obj(a)) return [...new Set([...Object.keys(b), ...Object.keys(a)])].map((k) => `${k}: ${shortValue(b[k])} → ${shortValue(a[k])}`);
+  if (obj(a)) return Object.entries(a).map(([k, v]) => `${k} = ${shortValue(v)}`);
+  if (obj(b)) return ["removed; it was:", ...Object.entries(b).map(([k, v]) => `${k} = ${shortValue(v)}`)];
+  if (b !== null || a !== null) return [`${shortValue(b)} → ${shortValue(a)}`];
+  return [];
+}
+
+/** The address of one page of the change log, keeping the filter. */
+function changesLink(o: ChangeLog, page: number): string {
+  const p = new URLSearchParams();
+  if (o.kind) p.set("kind", o.kind);
+  if (o.q) p.set("q", o.q);
+  if (page > 1) p.set("page", String(page));
+  const qs = p.toString();
+  return `/activity${qs ? `?${qs}` : ""}#changes`;
+}
+
+/** The change log: a filter, one page of changes newest first, and Newer / Older links. */
+function changesSection(o: ChangeLog): Html {
+  const filtered = !!(o.kind || o.q);
+  return html`<section id="changes">
+  <div class="section-head d-only"><h2>Change log</h2><span class="muted small">Who changed what from the dashboard. Keeps the newest 1000 changes, 180 days at most.</span></div>
+  <div class="table-wrap sheet" id="sh-changes">
+  ${sheetHead("Change log")}
+  <form method="get" action="/activity#changes" class="btn-row" style="margin:0 0 12px">
+    <select name="kind" aria-label="Show" style="width:auto">${AUDIT_KINDS.map((k) => html`<option value="${k.value}" ${k.value === o.kind ? "selected" : ""}>${k.label}</option>`)}</select>
+    <input type="search" name="q" value="${o.q}" maxlength="60" placeholder="Search who, what or which" aria-label="Search" style="width:auto;flex:1 1 180px">
+    <button type="submit">Filter</button>
+    ${filtered ? html`<a class="small" href="/activity#changes">Clear</a>` : ""}
+  </form>
+  ${o.rows.length
+    ? html`<table class="rows stack notes"><thead><tr><th>When</th><th>Change</th><th>On</th><th>What changed</th><th>By</th></tr></thead><tbody>
+      ${o.rows.map((r) => html`<tr>
+        <td class="small muted" data-label="When">${fmtTime(r.at)}</td>
+        <td class="lead"><b>${r.action}</b></td>
+        <td data-label="On">${r.target}</td>
+        <td class="small wide">${describeChange(r.before_json, r.after_json).map((line) => html`<div>${line}</div>`)}</td>
+        <td class="small phone-hide">${r.user}</td>
+      </tr>`)}
+      </tbody></table>`
+    : html`<div class="empty"><b>${filtered ? "No changes match." : "No changes yet."}</b> ${filtered ? "Try another filter, or clear it." : "Adding a client, a firewall rule or saving Settings will be listed here."}</div>`}
+  ${o.page > 1 || o.more
+    ? html`<div class="btn-row small">
+      ${o.page > 1 ? html`<a href="${changesLink(o, o.page - 1)}">← Newer</a>` : ""}
+      <span class="muted">Page ${o.page}</span>
+      ${o.more ? html`<a href="${changesLink(o, o.page + 1)}">Older →</a>` : ""}
+    </div>`
+    : ""}
+  </div>
+</section>`;
 }
 
 /** The phone's Activity: the last run and the last note as two lines, and buttons for the lists. */
@@ -36,11 +135,11 @@ function activityPhone(o: { runs: Run[]; alerts: Alert[] }): Html {
       <div class="m-label">Last note</div>
       ${a ? html`<div class="m-line"><span class="ind ${noteKind(a.kind)}"><i></i>${a.kind.replace("_", " ")}</span><span class="m-right">${ago(a.at)}</span></div><div class="m-clamp">${a.message}</div>` : html`<div class="m-line faint">Nothing noticed yet</div>`}
     </div>
-    <div class="m-btns two"><button type="button" data-sheet="sh-runs">Runs (${o.runs.length})</button><button type="button" data-sheet="sh-notes">Notes (${o.alerts.length})</button></div>
+    <div class="m-btns three"><button type="button" data-sheet="sh-runs">Runs (${o.runs.length})</button><button type="button" data-sheet="sh-notes">Notes (${o.alerts.length})</button><button type="button" data-sheet="sh-changes">Changes</button></div>
   </div>`;
 }
 
-export function activityBody(o: { runs: Run[]; alerts: Alert[]; cfg: Config }): Html {
+export function activityBody(o: { runs: Run[]; alerts: Alert[]; cfg: Config; changes?: ChangeLog }): Html {
   return html`<section>
   <div class="section-head"><h1>Activity</h1></div>
   ${activityPhone(o)}
@@ -76,5 +175,7 @@ export function activityBody(o: { runs: Run[]; alerts: Alert[]; cfg: Config }): 
       </tbody></table>`
     : html`<div class="empty"><b>Nothing noticed yet.</b> Drift, cost-guard fires, missing heartbeats and completed runs will be listed here.</div>`}
   </div>
-</section>`;
+</section>
+
+${changesSection(o.changes ?? { rows: [], more: false, kind: "", q: "", page: 1 })}`;
 }

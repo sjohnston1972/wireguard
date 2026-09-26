@@ -40,7 +40,15 @@ function fakeD1(): D1Database {
   const db = new DatabaseSync(":memory:");
   const dir = new URL("../migrations/", import.meta.url);
   for (const f of readdirSync(dir).filter((x) => x.endsWith(".sql")).sort()) db.exec(readFileSync(new URL(f, dir), "utf8"));
-  return { prepare: (sql: string) => new Stmt(db, sql) } as unknown as D1Database;
+  return {
+    prepare: (sql: string) => new Stmt(db, sql),
+    // Several statements in one go, one after another (as D1 runs a batch).
+    async batch(stmts: Stmt[]) {
+      const out = [];
+      for (const s of stmts) out.push(await s.run());
+      return out;
+    },
+  } as unknown as D1Database;
 }
 
 // ── KV ────────────────────────────────────────────────────────────────────
