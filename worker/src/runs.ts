@@ -22,7 +22,7 @@ import { agentPeerList, terraformPeerList } from "./peers";
 import { notify } from "./notify";
 import { dashboardButton } from "./actions";
 import { bytesText } from "./format";
-import { compileFirewall } from "./firewall";
+import { compileFirewall, publishedNsgRules } from "./firewall";
 import type { FirewallStatus } from "./state";
 import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
@@ -112,7 +112,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     vnet_cidr: cfg.vnetCidr,
     workload_subnet_cidr: cfg.workloadCidr,
     test_vm: cfg.testVm,
-    published_ports: [...new Set((await db.listForwards(env)).filter((f) => f.enabled).map((f) => String(f.public_port)))],
+    published_ports: publishedNsgRules(await db.listForwards(env), cfg),
     agent_url: `${cfg.publicUrl}/api/agent`,
     callback_url: `${cfg.publicUrl}/api/callback`,
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,

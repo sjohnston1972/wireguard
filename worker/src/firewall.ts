@@ -9,7 +9,9 @@
 //
 // Only traffic routed THROUGH the VM is filtered (the "forward" hook). The
 // VM's own traffic (the tunnel, the heartbeat, DNS, SSH to the VM) is never
-// touched, so no rule can lock you out of the headend.
+// touched, so no rule can lock you out of the headend. The one exception is
+// a published port: the VM drops it for itself, since it is meant for the
+// server behind (and the WireGuard and SSH ports can never be published).
 //
 // Every rule gets a named counter, so the dashboard can show its hits. The
 // default rule logs what it drops ("wgfw-drop ...", rate-limited), which is
@@ -66,11 +68,56 @@ export const CAPTURE_IFACES: Record<string, string> = {
   any: "Both",
 };
 
-/** Ports the VM itself needs on its public address; never publishable. */
-export const RESERVED_PORTS: { proto: "tcp" | "udp"; port: number; why: string }[] = [
-  { proto: "udp", port: 51820, why: "WireGuard itself" },
-  { proto: "tcp", port: 22, why: "SSH to the VM" },
-];
+/**
+ * Ports the VM itself needs on its public address; never publishable, in
+ * either protocol. Checked by port number alone, so "UDP 22" can never turn
+ * into a back door to SSH on TCP 22. The WireGuard port is whatever this
+ * install uses (WG_PORT), not always 51820.
+ * Returns why the port is taken, or null if it is free.
+ */
+export function reservedPort(port: number, cfg: Pick<Config, "port">): string | null {
+  if (port === cfg.port) return "the port WireGuard itself listens on";
+  if (port === 22) return "SSH to the VM";
+  return null;
+}
+
+/** One Azure edge (NSG) rule for a published port: exactly its protocol, port and allowed source. */
+export interface PublishedNsgRule {
+  name: string;
+  protocol: "Tcp" | "Udp";
+  port: string;
+  source: string; // "*" = anywhere
+}
+
+/**
+ * The published ports that are actually in force: enabled, a valid IPv4
+ * "allowed from", a target the VM can route to, and not a reserved port
+ * (a row saved before a check existed is simply left out).
+ */
+export function liveForwards(forwards: Forward[], cfg: Config): Forward[] {
+  return forwards.filter((f) => {
+    if (!f.enabled || reservedPort(f.public_port, cfg)) return false;
+    const src = f.allow_from ? parseCidr(f.allow_from) : null;
+    if (f.allow_from && (!src || src.family !== 4)) return false;
+    return forwardTargetOk(f.target_ip, cfg);
+  });
+}
+
+/**
+ * The NSG rules that let published ports through Azure's edge: one per
+ * published port, with the same protocol and the same "allowed from" as the
+ * Firewall tab, so the edge opens no more than the VM will forward.
+ */
+export function publishedNsgRules(forwards: Forward[], cfg: Config): PublishedNsgRule[] {
+  return liveForwards(forwards, cfg)
+    .sort((a, b) => a.proto.localeCompare(b.proto) || a.public_port - b.public_port)
+    .map((f) => ({
+      name: `published-${f.proto}-${f.public_port}`,
+      protocol: f.proto === "udp" ? "Udp" : "Tcp",
+      port: String(f.public_port),
+      source: f.allow_from ? (parseCidr(f.allow_from)?.text ?? "*") : "*",
+    }));
+}
 
 /** Is a publish target somewhere the VM can route to and back? Workloads subnet, rest of the VNet, or the home LAN. */
 export function forwardTargetOk(ip: string, cfg: Config): boolean {
@@ -249,20 +296,24 @@ export async function compileFirewall(rules: FwRule[], cfg: Config, peers: Peer[
   const counters: string[] = [`    counter default { }`];
 
   // Published ports: DNAT in prerouting (counted once per connection), an
-  // accept for exactly that translated flow, and for home-LAN targets a
-  // masquerade into the tunnel so replies come back the same way.
+  // accept for exactly that translated flow, and a masquerade so replies
+  // come back the same way: into the tunnel for home-LAN targets, and from
+  // the VM's own address for Azure targets (the workloads subnet only lets
+  // in traffic that came through the VM, not straight from the internet).
   const dnat: string[] = [];
   const fwdAccept: string[] = [];
+  const inputDrop: string[] = [];
   let homeTargets = false;
-  for (const f of forwards.filter((x) => x.enabled)) {
+  let vnetTargets = false;
+  for (const f of liveForwards(forwards, cfg)) {
     const src = f.allow_from ? parseCidr(f.allow_from) : null;
-    if (f.allow_from && (!src || src.family !== 4)) continue;
-    if (!forwardTargetOk(f.target_ip, cfg)) continue;
     counters.push(`    counter f${f.id} { }`);
     dnat.push(`    # published ${f.id}: ${f.name.replace(/[^\x20-\x7e]/g, "?")}`);
     dnat.push(`    iifname "eth0" ${src ? `ip saddr ${src.text} ` : ""}${f.proto} dport ${f.public_port} counter name "f${f.id}" dnat ip to ${f.target_ip}:${f.target_port}`);
     fwdAccept.push(`    ct status dnat ip daddr ${f.target_ip} ${f.proto} dport ${f.target_port} accept`);
-    if (cfg.homeLanCidr && !forwardTargetOk(f.target_ip, { ...cfg, homeLanCidr: "" })) homeTargets = true;
+    inputDrop.push(`    iifname "eth0" ${f.proto} dport ${f.public_port} drop`);
+    if (forwardTargetOk(f.target_ip, { ...cfg, homeLanCidr: "" })) vnetTargets = true;
+    else homeTargets = true;
   }
   for (const r of [...rules].sort((a, b) => a.position - b.position || a.id - b.id)) {
     if (!r.enabled) continue;
@@ -290,7 +341,20 @@ export async function compileFirewall(rules: FwRule[], cfg: Config, peers: Peer[
     "  chain postrouting {",
     "    type nat hook postrouting priority srcnat; policy accept;",
     ...(homeTargets ? [`    oifname "wg0" ct status dnat ip daddr ${cfg.homeLanCidr} masquerade`] : []),
+    ...(vnetTargets ? [`    oifname "eth0" ct status dnat ip daddr ${cfg.vnetCidr} masquerade`] : []),
     "  }",
+    ...(inputDrop.length
+      ? [
+          "  # A published port is for the server behind the VM, never the VM",
+          "  # itself: anything on it that was not forwarded (the wrong source,",
+          "  # or IPv6) stops here. Replies to the VM's own connections still pass.",
+          "  chain input {",
+          "    type filter hook input priority filter; policy accept;",
+          "    ct state established,related accept",
+          ...inputDrop,
+          "  }",
+        ]
+      : []),
     "  chain accounting {",
     "    type filter hook forward priority filter - 20; policy accept;",
     `    ip saddr ${cfg.subnet} update @up4 { ip saddr . ip daddr }`,

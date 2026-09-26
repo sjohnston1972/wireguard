@@ -144,21 +144,23 @@ resource "azurerm_network_security_group" "wg" {
   }
 
   # Published ports (the Firewall tab): public ports the VM forwards to a
-  # server behind it. The VM's rule set does the forwarding and the source
-  # checks; this only opens the ports at Azure's edge. The dashboard keeps it
-  # in step live when you add or remove one.
+  # server behind it. One rule per port, with the same protocol and "allowed
+  # from" as the tab, aimed only at the VM's private IPv4 address, so Azure's
+  # edge opens no more than the VM will forward. The VM's rule set does the
+  # forwarding itself. The dashboard keeps these in step live when you add or
+  # remove one (same names, priorities from 200 up).
   dynamic "security_rule" {
-    for_each = length(var.published_ports) > 0 ? [1] : []
+    for_each = { for i, p in var.published_ports : p.name => merge(p, { priority = 200 + i }) }
     content {
-      name                       = "published-ports"
-      priority                   = 130
+      name                       = security_rule.value.name
+      priority                   = security_rule.value.priority
       direction                  = "Inbound"
       access                     = "Allow"
-      protocol                   = "*"
+      protocol                   = security_rule.value.protocol
       source_port_range          = "*"
-      destination_port_ranges    = var.published_ports
-      source_address_prefix      = "*"
-      destination_address_prefix = "*"
+      destination_port_range     = security_rule.value.port
+      source_address_prefix      = security_rule.value.source
+      destination_address_prefix = azurerm_network_interface.wg.private_ip_address
     }
   }
 

@@ -11,6 +11,7 @@
 import type { Env } from "./env";
 import { config } from "./env";
 import type { AzureInventory } from "./state";
+import type { PublishedNsgRule } from "./firewall";
 
 const ARM = "https://management.azure.com";
 
@@ -205,25 +206,71 @@ export async function vmPower(env: Env, op: "deallocate" | "start"): Promise<voi
 }
 
 /**
- * Open (or close) the published ports at Azure's edge: one NSG rule listing
- * every public port the VM forwards, kept in step with the Firewall tab while
- * the VM is running. The VM's own rule set does the forwarding and any
- * source restriction; this only lets the packets reach it.
+ * Open (or close) the published ports at Azure's edge, kept in step with the
+ * Firewall tab while the VM is running. One NSG rule per published port,
+ * with the same protocol and "allowed from" as the tab, and aimed only at
+ * the VM's private IPv4 address (the one the VM forwards from), so the edge
+ * never opens more than the VM will forward.
+ *
+ * The whole NSG is read and written back in one go, with only the
+ * "published-..." rules replaced; every other rule (WireGuard, SSH) is
+ * passed back exactly as Azure had it. One write means Azure never sees a
+ * half-finished set, and the etag check means a change made at the same
+ * moment elsewhere is refused rather than overwritten.
  */
-export async function setPublishedPorts(env: Env, ports: string[]): Promise<void> {
+export async function setPublishedPorts(env: Env, rules: PublishedNsgRule[]): Promise<void> {
   const cfg = config(env);
   const sub = env.AZURE_SUBSCRIPTION_ID;
-  const path = `/subscriptions/${sub}/resourceGroups/${cfg.resourceGroup}/providers/Microsoft.Network/networkSecurityGroups/nsg-wg/securityRules/published-ports?api-version=2024-01-01`;
-  if (!ports.length) {
-    const r = await arm(env, path, { method: "DELETE" });
-    if (!r.ok && r.status !== 404 && r.status !== 204 && r.status !== 202) throw new Error(`Azure refused to close the published ports (${r.status})`);
-    return;
+  const base = `/subscriptions/${sub}/resourceGroups/${cfg.resourceGroup}/providers/Microsoft.Network`;
+  const g = await arm(env, `${base}/networkSecurityGroups/nsg-wg?api-version=2024-01-01`);
+  if (!g.ok) throw new Error(`Azure would not show the NSG (${g.status})`);
+  const nsg = (await g.json()) as any;
+  const all: any[] = nsg.properties?.securityRules ?? [];
+  const mine = (r: any) => String(r.name ?? "").startsWith("published-");
+  const keep = all.filter((r) => !mine(r));
+  const wantNames = rules.map((r) => r.name).sort();
+  const haveNames = all.filter(mine).map((r) => String(r.name)).sort();
+  if (!rules.length && !haveNames.length) return;
+
+  let vmIp = "";
+  if (rules.length) {
+    const n = await arm(env, `${base}/networkInterfaces/nic-wg?api-version=2024-01-01`);
+    if (!n.ok) throw new Error(`Azure would not show the VM's network card (${n.status})`);
+    const nic = (await n.json()) as any;
+    const ipc = (nic.properties?.ipConfigurations ?? []).find((c: any) => c.properties?.privateIPAddressVersion !== "IPv6" && c.properties?.privateIPAddress);
+    vmIp = ipc?.properties?.privateIPAddress ?? "";
+    if (!vmIp) throw new Error("could not find the VM's private address");
   }
+  // Nothing to do if the same rules are already there, aimed the same way.
+  const same =
+    JSON.stringify(wantNames) === JSON.stringify(haveNames) &&
+    rules.every((w) => {
+      const h = all.find((r) => r.name === w.name)?.properties ?? {};
+      return h.protocol === w.protocol && h.destinationPortRange === w.port && h.sourceAddressPrefix === w.source && h.destinationAddressPrefix === vmIp;
+    });
+  if (same) return;
+
+  const used = new Set(keep.filter((r) => r.properties?.direction === "Inbound").map((r) => r.properties?.priority));
+  let pri = 200;
+  const added = rules.map((w) => {
+    while (used.has(pri)) pri++;
+    used.add(pri);
+    return {
+      name: w.name,
+      properties: { priority: pri, direction: "Inbound", access: "Allow", protocol: w.protocol, sourcePortRange: "*", destinationPortRange: w.port, sourceAddressPrefix: w.source, destinationAddressPrefix: vmIp },
+    };
+  });
   const body = {
-    properties: { priority: 130, direction: "Inbound", access: "Allow", protocol: "*", sourcePortRange: "*", destinationPortRanges: ports, sourceAddressPrefix: "*", destinationAddressPrefix: "*" },
+    location: nsg.location,
+    tags: nsg.tags,
+    properties: { securityRules: [...keep.map((r) => ({ name: r.name, properties: r.properties })), ...added] },
   };
-  const r = await arm(env, path, { method: "PUT", body: JSON.stringify(body) });
-  if (!r.ok) throw new Error(`Azure refused to open the published ports (${r.status}): ${(await r.text()).slice(0, 200)}`);
+  const r = await arm(env, `${base}/networkSecurityGroups/nsg-wg?api-version=2024-01-01`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+    headers: nsg.etag ? { "If-Match": nsg.etag } : {},
+  });
+  if (!r.ok) throw new Error(`Azure refused to update the published ports (${r.status}): ${(await r.text()).slice(0, 200)}`);
 }
 
 /** Daily actual cost for this resource group, month to date, via Cost Management. */
