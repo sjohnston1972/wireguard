@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeEnv, lastGhRun, type World } from "./harness";
 import type { Env } from "../src/env";
 import * as db from "../src/db";
-import { startDeploy, startDestroy, issueRunSecrets, handleCallback, refreshActiveRun, reconcile } from "../src/runs";
+import { startDeploy, startDestroy, issueRunSecrets, handleCallback, refreshActiveRun, reconcile, handleAgent, clearFirewallCounters } from "../src/runs";
 import { getSnapshot, saveSnapshot } from "../src/state";
 import { lockStatus } from "../src/lock";
 
@@ -127,6 +127,50 @@ describe("the run lock is not left held by a database error (#28)", () => {
     breakRunInserts();
     await expect(startDestroy(env, "steven", "done")).rejects.toThrow(/D1 unavailable/);
     expect((await lockStatus(env)).held).toBe(false);
+  });
+});
+
+describe("heartbeats (#26)", () => {
+  const DUMP = "PRIV\tS=\t51820\toff";
+  const selftest = () => ({ at: new Date().toISOString() + Math.random(), ms: 4000, handshake: true, tunnel: true, loopback: true, dns: true, internet: true, internet6: null });
+
+  it("a late heartbeat after a tear-down changes nothing", async () => {
+    const { agentToken } = await toRunning();
+    const d = await startDestroy(env, "steven", "done");
+    const sec = await issueRunSecrets(env, d.id, lastGhRun(world));
+    world.azure.rg = false;
+    await handleCallback(env, sec.body.callback_token as string, { run_id: d.id, action: "destroy", status: "success" });
+    const r = await handleAgent(env, agentToken, { dump: DUMP, selftest: selftest() });
+    expect(r.status).toBe(200);
+    expect(await getSnapshot(env)).toMatchObject({ state: "destroyed", agent: null, last_agent_at: null });
+  });
+
+  it("a late heartbeat in Standby changes nothing", async () => {
+    const { agentToken } = await toRunning();
+    await saveSnapshot(env, { state: "standby", agent: null, last_agent_at: null });
+    await handleAgent(env, agentToken, { dump: DUMP });
+    expect(await getSnapshot(env)).toMatchObject({ state: "standby", agent: null, last_agent_at: null });
+  });
+
+  it("'Clear counters' pressed while a heartbeat is in flight is not undone", async () => {
+    const { agentToken } = await toRunning();
+    await handleAgent(env, agentToken, { dump: DUMP, firewall: { hash: "h1", counters: { r1: [10, 1000] } } });
+    // Press Clear counters in the middle of the next heartbeat: while it is
+    // sending its self-test notification.
+    const inner = globalThis.fetch;
+    let pressed = false;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!pressed && String(input).includes("ntfy.sh")) {
+        pressed = true;
+        await clearFirewallCounters(env);
+      }
+      return inner(input, init);
+    });
+    await handleAgent(env, agentToken, { dump: DUMP, selftest: selftest(), firewall: { hash: "h1", counters: { r1: [12, 1200] } } });
+    expect(pressed).toBe(true);
+    const snap = await getSnapshot(env);
+    expect(snap.fw_base.r1).toEqual([-10, -1000]); // total now = -10 + 12 = 2 hits since the clear
+    expect(snap.firewall!.counters.r1).toEqual([12, 1200]);
   });
 });
 

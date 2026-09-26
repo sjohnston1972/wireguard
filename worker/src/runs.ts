@@ -604,24 +604,19 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     peers: parsed.peers.filter((p) => !p.allowed_ips.split(",").includes(canary)),
   };
   const snap = await getSnapshot(env);
-  const known = report.peers.map((p) => p.public_key);
+  const peerList = async () => agentPeerList(await db.enabledPeers(env), cfg.subnet6);
+  // A heartbeat that lands after a tear-down or after the VM went into
+  // Standby is late mail: record nothing, or it would put a live-looking VM
+  // back on a dashboard that has rightly cleared it.
+  if (isOutOfService(snap.state)) return { status: 200, body: { peers: await peerList() } };
+  // Only the fields the heartbeat owns go in this patch. The ones that build
+  // on the previous reading (traffic, hits, session...) are worked out at
+  // the end, from a fresh copy, so a button pressed meanwhile is not undone.
   const patch: Partial<Snapshot> = {
     last_agent_at: report.at,
     agent: report,
-    traffic: nextTraffic(snap.traffic, report),
-    latency: nextLatency(snap.latency ?? {}, body.rtt, known),
-    roams: { ...(snap.roams ?? {}), ...detectRoams(snap.agent, report, report.at) },
-    session: nextSession(snap.session, snap.agent, report),
-    firewall: nextFirewall(snap.firewall, body.firewall, report.at),
   };
-  if (body.talkers) patch.talkers = nextTalkers(snap.talkers ?? {}, body.talkers, report.at);
-  // Throughput history: one sample per heartbeat, the last two hours.
-  const tr = patch.traffic!;
-  patch.traffic_hist = (snap.traffic_hist ?? []).concat({ t: report.at, rx: Math.round(tr.rx_rate), tx: Math.round(tr.tx_rate) }).slice(-240);
-  if (body.firewall) {
-    const reported = body.firewall.counters && typeof body.firewall.counters === "object" ? body.firewall.counters : {};
-    patch.fw_base = nextBase(snap.fw_base ?? {}, snap.firewall, reported, snap.firewall?.applied_hash === (body.firewall.hash || null));
-  }
+  let resumed = false;
   // First heartbeat while still "deploying" (callback not yet in) is proof of life.
   if (snap.state === "deploying" && snap.run_id === run.id) {
     patch.state = "running";
@@ -635,7 +630,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     patch.running_since = report.at;
     patch.standby_since = null;
     patch.power_op_at = null;
-    patch.session = nextSession(null, null, report);
+    resumed = true;
     await releaseLock(env, undefined, true);
     await db.addAlert(env, "info", "Resumed from Standby; the heartbeat is back.");
   }
@@ -698,10 +693,34 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     const fw = await currentFirewall(env);
     if (body.firewall.hash !== fw.hash) reply.firewall = { hash: fw.hash, nft_b64: btoa(fw.text) };
   }
+
+  // Fold this reading into the running figures, from a fresh copy taken
+  // just before saving (the steps above wait on the database and on
+  // notifications; "Clear counters" or a tear-down may have landed since).
+  const cur = await getSnapshot(env);
+  if (isOutOfService(cur.state)) return { status: 200, body: { peers: await peerList() } };
+  const known = report.peers.map((p) => p.public_key);
+  const traffic = nextTraffic(cur.traffic, report);
+  patch.traffic = traffic;
+  patch.latency = nextLatency(cur.latency ?? {}, body.rtt, known);
+  patch.roams = { ...(cur.roams ?? {}), ...detectRoams(cur.agent, report, report.at) };
+  patch.session = resumed ? nextSession(null, null, report) : nextSession(cur.session, cur.agent, report);
+  patch.firewall = nextFirewall(cur.firewall, body.firewall, report.at);
+  if (body.talkers) patch.talkers = nextTalkers(cur.talkers ?? {}, body.talkers, report.at);
+  // Throughput history: one sample per heartbeat, the last two hours.
+  patch.traffic_hist = (cur.traffic_hist ?? []).concat({ t: report.at, rx: Math.round(traffic.rx_rate), tx: Math.round(traffic.tx_rate) }).slice(-240);
+  if (body.firewall) {
+    const reported = body.firewall.counters && typeof body.firewall.counters === "object" ? body.firewall.counters : {};
+    patch.fw_base = nextBase(cur.fw_base ?? {}, cur.firewall, reported, cur.firewall?.applied_hash === (body.firewall.hash || null));
+  }
   await saveSnapshot(env, patch);
 
-  const peers = agentPeerList(await db.enabledPeers(env), cfg.subnet6);
-  return { status: 200, body: { peers, ...reply } };
+  return { status: 200, body: { peers: await peerList(), ...reply } };
+}
+
+/** Torn down or powered off: a heartbeat now is a late one and changes nothing. */
+function isOutOfService(state: string): boolean {
+  return state === "destroyed" || state === "standby";
 }
 
 /** Cancel the active GitHub run and mark it failed. */
