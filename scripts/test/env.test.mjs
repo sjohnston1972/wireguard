@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseEnv, checkEnv, withDefaults, upsertEnvLine, REQUIRED } from "../lib/env.mjs";
+import { parseEnv, checkEnv, withDefaults, upsertEnvLine, devVarsText, REQUIRED } from "../lib/env.mjs";
 
 test("parseEnv handles comments, quotes, export and = in values", () => {
   const env = parseEnv(`
@@ -50,4 +50,15 @@ test("every REQUIRED key appears in .env.example", async () => {
   const { readFileSync } = await import("node:fs");
   const example = parseEnv(readFileSync(new URL("../../.env.example", import.meta.url), "utf8"));
   for (const k of REQUIRED) assert.ok(k in example, `${k} missing from .env.example`);
+});
+
+test("devVarsText quotes each value so wrangler reads it back exactly", () => {
+  const text = devVarsText({ A: "plain", B: "it's", C: `it's "x"`, D: "a&b%c#d$e" });
+  const lines = text.trimEnd().split("\n");
+  assert.ok(lines[0].startsWith("#"));
+  assert.deepEqual(lines.slice(1), ["A='plain'", `B="it's"`, "C=`it's \"x\"`", "D='a&b%c#d$e'"]);
+  // Our own .env reader agrees for the everyday case.
+  assert.equal(parseEnv(text).D, "a&b%c#d$e");
+  assert.throws(() => devVarsText({ X: "two\nlines" }), /line break/);
+  assert.throws(() => devVarsText({ X: "'\"`" }), /quote/);
 });

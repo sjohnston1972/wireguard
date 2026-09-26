@@ -5,9 +5,10 @@ import type { Env } from "../src/env";
 import { config } from "../src/env";
 import * as db from "../src/db";
 import { nextTalkers, talkerTotal, getSnapshot } from "../src/state";
-import { compileFirewall, forwardTargetOk } from "../src/firewall";
+import { compileFirewall, forwardTargetOk, reservedPort, publishedNsgRules } from "../src/firewall";
 import { startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
 import { startCapture, receiveCapture, validFilter } from "../src/capture";
+import { setPublishedPorts } from "../src/azure";
 
 const cfg = { ...config({ HOME_LAN_CIDR: "192.168.1.0/24" } as unknown as Env), firewallDefault: "deny" as const };
 
@@ -44,6 +45,112 @@ describe("published ports", () => {
     expect(fw.text).toContain(`oifname "wg0" ct status dnat ip daddr 192.168.1.0/24 masquerade`);
     expect(fw.text).not.toContain(`"f3"`);
     expect(fw.text).toContain("tcp option maxseg size set rt mtu");
+    // Azure targets are masqueraded too, or nsg-workloads drops the internet source.
+    expect(fw.text).toContain(`oifname "eth0" ct status dnat ip daddr 10.50.0.0/16 masquerade`);
+    // The VM drops a published port for itself (wrong source, IPv6), after replies.
+    const input = fw.text.slice(fw.text.indexOf("chain input {"));
+    expect(input).toContain("type filter hook input priority filter; policy accept;");
+    expect(input.indexOf("ct state established,related accept")).toBeLessThan(input.indexOf(`iifname "eth0" tcp dport 443 drop`));
+    expect(input).toContain(`iifname "eth0" udp dport 5000 drop`);
+    expect(input).not.toContain("dport 9 ");
+  });
+  it("no masquerade to Azure and no input chain when nothing is published there", async () => {
+    const none = await compileFirewall([], cfg, [], "deny", []);
+    expect(none.text).not.toContain("chain input");
+    expect(none.text).not.toContain("masquerade");
+    const home = await compileFirewall([], cfg, [], "deny", [{ id: 2, enabled: 1, name: "nas", proto: "udp", public_port: 5000, target_ip: "192.168.1.20", target_port: 5000, allow_from: "" }]);
+    expect(home.text).not.toContain(`daddr 10.50.0.0/16 masquerade`);
+  });
+  it("the SSH and WireGuard ports are reserved in both protocols, WireGuard's as configured", async () => {
+    expect(reservedPort(22, cfg)).toMatch(/SSH/);
+    expect(reservedPort(51820, cfg)).toMatch(/WireGuard/);
+    expect(reservedPort(443, cfg)).toBeNull();
+    const moved = { ...cfg, port: 443 };
+    expect(reservedPort(443, moved)).toMatch(/WireGuard/);
+    expect(reservedPort(51820, moved)).toBeNull();
+    // A row saved before the check existed (UDP 22) is left out of everything.
+    const old = [
+      { id: 7, enabled: 1, name: "sneaky", proto: "udp" as const, public_port: 22, target_ip: "10.50.2.4", target_port: 22, allow_from: "" },
+      { id: 8, enabled: 1, name: "web", proto: "tcp" as const, public_port: 8443, target_ip: "10.50.2.4", target_port: 8080, allow_from: "203.0.113.7" },
+    ];
+    const fw = await compileFirewall([], cfg, [], "deny", old);
+    expect(fw.text).not.toContain(`"f7"`);
+    expect(fw.text).not.toContain("dport 22");
+    expect(publishedNsgRules(old, cfg)).toEqual([{ name: "published-tcp-8443", protocol: "Tcp", port: "8443", source: "203.0.113.7/32" }]);
+  });
+  it("Azure's edge opens one rule per port, with the port's own protocol and source", () => {
+    const rules = publishedNsgRules(
+      [
+        { id: 1, enabled: 1, name: "web", proto: "tcp", public_port: 443, target_ip: "10.50.2.4", target_port: 8080, allow_from: "" },
+        { id: 2, enabled: 1, name: "nas", proto: "udp", public_port: 5000, target_ip: "192.168.1.20", target_port: 5000, allow_from: "203.0.113.0/24" },
+        { id: 3, enabled: 0, name: "off", proto: "tcp", public_port: 9, target_ip: "10.50.2.4", target_port: 9, allow_from: "" },
+        { id: 4, enabled: 1, name: "nowhere", proto: "tcp", public_port: 10, target_ip: "8.8.8.8", target_port: 9, allow_from: "" },
+      ],
+      cfg,
+    );
+    expect(rules).toEqual([
+      { name: "published-tcp-443", protocol: "Tcp", port: "443", source: "*" },
+      { name: "published-udp-5000", protocol: "Udp", port: "5000", source: "203.0.113.0/24" },
+    ]);
+  });
+});
+
+describe("published ports at Azure's edge", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("replaces only the published rules, in one write, aimed at the VM's private address", async () => {
+    const { env } = makeEnv();
+    const rule = (name: string, priority: number, extra: Record<string, unknown> = {}) => ({ name, etag: "x", properties: { priority, direction: "Inbound", access: "Allow", protocol: "*", sourcePortRange: "*", destinationPortRange: "*", sourceAddressPrefix: "*", destinationAddressPrefix: "*", ...extra } });
+    const nsg = {
+      location: "uksouth",
+      tags: { project: "wg-admin" },
+      etag: 'W/"1"',
+      properties: {
+        securityRules: [
+          rule("allow-wireguard", 100, { protocol: "Udp", destinationPortRange: "51820" }),
+          rule("allow-ssh-from-home", 110, { protocol: "Tcp", destinationPortRange: "22", sourceAddressPrefix: "198.51.100.1/32" }),
+          rule("allow-from-vnet", 120),
+          rule("published-ports", 130),
+          rule("published-tcp-80", 200, { protocol: "Tcp", destinationPortRange: "80" }),
+          rule("allow-routed-to-vnet", 100, { direction: "Outbound" }),
+          rule("deny-all-inbound", 4000),
+        ],
+      },
+    };
+    const puts: { url: string; body: any; headers: Headers }[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const res = (b: unknown) => new Response(JSON.stringify(b), { status: 200 });
+      if (url.includes("login.microsoftonline.com")) return res({ access_token: "arm", expires_in: 3600 });
+      if (url.includes("/networkSecurityGroups/nsg-wg?") && (init?.method ?? "GET") === "GET") return res(nsg);
+      if (url.includes("/networkSecurityGroups/nsg-wg?") && init?.method === "PUT") {
+        puts.push({ url, body: JSON.parse(String(init.body)), headers: new Headers(init.headers) });
+        return res({});
+      }
+      if (url.includes("/networkInterfaces/nic-wg?")) return res({ properties: { ipConfigurations: [{ properties: { privateIPAddressVersion: "IPv4", privateIPAddress: "10.50.1.4" } }, { properties: { privateIPAddressVersion: "IPv6", privateIPAddress: "fd50:50:0:1::4" } }] } });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    await setPublishedPorts(env, [
+      { name: "published-tcp-443", protocol: "Tcp", port: "443", source: "*" },
+      { name: "published-udp-5000", protocol: "Udp", port: "5000", source: "203.0.113.0/24" },
+    ]);
+    expect(puts.length).toBe(1);
+    expect(puts[0].headers.get("If-Match")).toBe('W/"1"');
+    const rules = puts[0].body.properties.securityRules as any[];
+    // Everything that is not a published port goes back untouched.
+    for (const n of ["allow-wireguard", "allow-ssh-from-home", "allow-from-vnet", "allow-routed-to-vnet", "deny-all-inbound"]) {
+      expect(rules.find((r) => r.name === n).properties).toEqual(nsg.properties.securityRules.find((r) => r.name === n)!.properties);
+    }
+    expect(rules.map((r) => r.name)).not.toContain("published-ports");
+    expect(rules.map((r) => r.name)).not.toContain("published-tcp-80");
+    expect(rules.find((r) => r.name === "published-tcp-443").properties).toMatchObject({ priority: 200, protocol: "Tcp", destinationPortRange: "443", sourceAddressPrefix: "*", destinationAddressPrefix: "10.50.1.4" });
+    expect(rules.find((r) => r.name === "published-udp-5000").properties).toMatchObject({ priority: 201, protocol: "Udp", destinationPortRange: "5000", sourceAddressPrefix: "203.0.113.0/24", destinationAddressPrefix: "10.50.1.4" });
+    const inbound = rules.filter((r) => r.properties.direction === "Inbound").map((r) => r.properties.priority);
+    expect(new Set(inbound).size).toBe(inbound.length);
+
+    // Nothing published and nothing there: no write at all.
+    nsg.properties.securityRules = nsg.properties.securityRules.filter((r) => !r.name.startsWith("published-"));
+    await setPublishedPorts(env, []);
+    expect(puts.length).toBe(1);
   });
 });
 

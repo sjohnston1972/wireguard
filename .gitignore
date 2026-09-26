@@ -1,5 +1,9 @@
-# Secrets: the only place they live locally is .env
+# Secrets: the only place they live locally is .env (plus copies of it such
+# as .env.bak, and .dev.vars, which "npm run dev" writes from it).
 .env
+.env.*
+.dev.vars
+.dev.vars.*
 *.pem
 *.key
 id_*
@@ -29,3 +33,7 @@ Thumbs.db
 
 # Client configs made by "npm run peer" (contain private keys)
 peers/
+
+# Packet captures downloaded from the dashboard (real traffic from the network)
+*.pcap
+*.pcapng

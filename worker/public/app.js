@@ -5,9 +5,59 @@
  *   - makes WireGuard client keys in the browser; the private key never leaves
  *   - fills the config template, draws the QR, offers a download
  *   - enables the Tear down button only when the confirmation word is typed
+ *   - keeps secrets out of the browser's saved pages, and says so when a
+ *     request fails (usually an expired sign-in)
  */
 (function () {
   "use strict";
+
+  // ── Keep secrets out of the browser's storage ───────────────────────────
+  // htmx normally saves a copy of each page in the browser's local storage
+  // before moving to another tab, so Back is instant. A copy of the Clients
+  // page taken just after adding a client would hold that client's private
+  // key, and it would stay on disk. So: no saved copies at all (Back simply
+  // reloads the page), and any copy an older version left behind is deleted.
+  if (window.htmx) htmx.config.historyCacheSize = 0;
+  try { localStorage.removeItem("htmx-history-cache"); } catch (e) { /* private mode */ }
+  document.addEventListener("htmx:beforeHistorySave", function () {
+    closeReveal();
+    document.querySelectorAll("[data-secret]").forEach(function (v) { hideSecret(v.closest("tr")); });
+  });
+
+  // ── When a request fails ────────────────────────────────────────────────
+  // htmx quietly ignores a request that fails, so a Deploy press could do
+  // nothing with no word why. The usual cause is the Cloudflare sign-in
+  // having expired: the request is sent off to the sign-in page and the
+  // browser refuses to follow. Show a bar that says so, with a Reload
+  // button (which goes through the sign-in again).
+  function showNetError(text) {
+    var bar = document.getElementById("net-error");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "net-error";
+      bar.className = "notice bad net-error";
+      bar.setAttribute("role", "alert");
+      bar.innerHTML = "<p></p><span class='spacer'></span><button type='button' data-reload>Reload</button>";
+      var main = document.querySelector("main") || document.body;
+      main.insertBefore(bar, main.firstChild);
+    }
+    bar.querySelector("p").textContent = text;
+  }
+  function clearNetError() { var bar = document.getElementById("net-error"); if (bar) bar.remove(); }
+  document.addEventListener("htmx:sendError", function () {
+    showNetError(navigator.onLine === false
+      ? "No connection. The dashboard needs the internet; the VPN itself is unaffected."
+      : "Could not reach the dashboard. If you have been away a while, your sign-in has probably expired: reload to sign in again.");
+  });
+  document.addEventListener("htmx:responseError", function (e) {
+    var x = e.detail && e.detail.xhr;
+    var status = x ? x.status : 0;
+    showNetError(status === 401 || status === 403
+      ? "The dashboard refused that (" + status + "). Your sign-in has probably expired: reload to sign in again."
+      : "The dashboard answered with an error" + (status ? " (" + status + ")" : "") + ". Nothing may have happened; reload to see the current state.");
+  });
+  document.addEventListener("htmx:afterRequest", function (e) { if (e.detail && e.detail.successful) clearNetError(); });
+  document.addEventListener("click", function (e) { if (e.target.closest("[data-reload]")) location.reload(); });
 
   // ── Live counters ───────────────────────────────────────────────────────
   function fmtGbp(n) {
@@ -95,30 +145,77 @@
   }
   function anyModalOpen() { return !!document.querySelector("dialog.modal[open], .sheet.open"); }
 
+  // ── One phone breakpoint ────────────────────────────────────────────────
+  // The same width app.css uses for its phone layout (max-width: 640px), so
+  // the script and the stylesheet always agree on "this is a phone". If one
+  // changes, change the other.
+  var PHONE = "(max-width: 640px)";
+  function isPhone() { return !!(window.matchMedia && window.matchMedia(PHONE).matches); }
+
   // ── Sheets (phone) ─────────────────────────────────────────────────────
   // On a phone, detail panels (class "sheet") stay hidden until a button with
   // data-sheet="<id>" opens one; it slides up from the bottom. Done, the
   // backdrop or Escape closes it. The page's own refresh waits while one is
   // open (see anyModalOpen), and a sheet replaced by a refresh simply closes.
+  // While open, a sheet behaves as a dialog for screen readers and the
+  // keyboard: it is announced as one, Tab stays inside it, and closing it
+  // puts focus back on the button that opened it.
+  var sheetOpener = null, sheetOpenerId = null;
   function closeSheets() {
-    document.querySelectorAll(".sheet.open").forEach(function (x) { x.classList.remove("open"); });
+    var had = false;
+    document.querySelectorAll(".sheet.open").forEach(function (x) {
+      had = true;
+      x.classList.remove("open");
+      x.removeAttribute("role"); x.removeAttribute("aria-modal"); x.removeAttribute("aria-label");
+    });
     document.documentElement.classList.remove("sheet-open");
+    if (had) {
+      // The opener may have been redrawn by a refresh meanwhile: find it again.
+      var back = sheetOpener && sheetOpener.isConnected ? sheetOpener : sheetOpenerId ? document.querySelector('[data-sheet="' + sheetOpenerId + '"]') : null;
+      if (back && back.offsetParent !== null) back.focus({ preventScroll: true });
+    }
+    sheetOpener = null; sheetOpenerId = null;
   }
-  function openSheet(id) {
+  function focusables(root) {
+    return Array.prototype.filter.call(
+      root.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"),
+      function (x) { return x.offsetParent !== null || x === document.activeElement; }
+    );
+  }
+  function openSheet(id, opener) {
     var el = document.getElementById(id);
     if (!el) return;
     closeSheets();
+    sheetOpener = opener || null; sheetOpenerId = id;
     el.classList.add("open");
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-modal", "true");
+    var title = el.querySelector(".sheet-head b");
+    if (title) el.setAttribute("aria-label", title.textContent);
     document.documentElement.classList.add("sheet-open");
     el.scrollTop = 0;
+    var done = el.querySelector(".sheet-head [data-sheet-close]");
+    if (done) done.focus({ preventScroll: true });
   }
   document.addEventListener("click", function (e) {
     var o = e.target.closest("[data-sheet]");
-    if (o) { e.preventDefault(); openSheet(o.getAttribute("data-sheet")); return; }
+    if (o) { e.preventDefault(); openSheet(o.getAttribute("data-sheet"), o); return; }
     if (e.target.closest("[data-sheet-close]")) { closeSheets(); return; }
-    if (e.target.closest("[data-reveal-close]")) { var r = document.getElementById("peer-reveal"); if (r) r.hidden = true; }
+    if (e.target.closest("[data-reveal-close]")) closeReveal();
   });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeSheets(); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { closeSheets(); return; }
+    // Keep Tab inside an open sheet.
+    if (e.key !== "Tab") return;
+    var sheet = document.querySelector(".sheet.open");
+    if (!sheet) return;
+    var f = focusables(sheet);
+    if (!f.length) { e.preventDefault(); return; }
+    var first = f[0], last = f[f.length - 1];
+    if (!sheet.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
   document.addEventListener("htmx:afterSwap", function () {
     if (!document.querySelector(".sheet.open")) document.documentElement.classList.remove("sheet-open");
   });
@@ -134,10 +231,11 @@
     if (el.closest(".sheet.open")) closeSheets();
   });
 
-  // Moving to another tab starts clean.
+  // Moving to another tab starts clean, and so does any other button pressed
+  // inside a sheet (Deploy, Dismiss...): the answer redraws the page anyway.
   document.addEventListener("htmx:beforeRequest", function (e) {
     var el = e.detail && e.detail.elt;
-    if (el && el.tagName === "A") closeSheets();
+    if (el && (el.tagName === "A" || (el.tagName === "FORM" && el.closest(".sheet.open")))) closeSheets();
   });
   document.addEventListener("click", function (e) {
     var o = e.target.closest("[data-open]");
@@ -147,10 +245,58 @@
     // click on the backdrop (the dialog element itself, outside .modal-box)
     if (e.target.tagName === "DIALOG" && e.target.classList.contains("modal")) e.target.close();
   });
-  document.addEventListener("htmx:beforeRequest", function (e) {
-    // Hold the periodic refresh while reading a modal.
+  // ── Don't redraw the Overview under your fingers ────────────────────────
+  // The Overview redraws itself every 20 seconds (5 while busy). On a desktop
+  // the Deploy, Extend and Tear down forms sit inside that redraw, so a
+  // refresh would reset the hours and profile you picked, the typed
+  // "destroy", and where the keyboard was. So: once you touch one of those
+  // forms, the refresh waits until you submit it or leave it alone for two
+  // minutes; and whenever a refresh does happen, keyboard focus is put back
+  // on the same control.
+  var LIVE_HOLD_MS = 120000;
+  var liveTouchedAt = 0;
+  function markLiveTouched(e) {
+    if (e.target && e.target.closest && e.target.closest("#live form")) liveTouchedAt = Date.now();
+  }
+  document.addEventListener("input", markLiveTouched, true);
+  document.addEventListener("change", markLiveTouched, true);
+  document.addEventListener("submit", function (e) {
+    if (e.target && e.target.closest && e.target.closest("#live")) liveTouchedAt = 0;
+  }, true);
+  function liveInUse(live) {
+    if (Date.now() - liveTouchedAt < LIVE_HOLD_MS) return true;
+    var a = document.activeElement;
+    return !!(a && live.contains(a) && a.form && a.tagName === "INPUT" && a.type === "text" && a.value.trim() !== "");
+  }
+  // Where the keyboard was, as "which form, which field", so it can be found
+  // again in the redrawn copy.
+  var liveFocus = null;
+  document.addEventListener("htmx:beforeSwap", function (e) {
     var el = e.detail && e.detail.elt;
-    if (el && el.id === "live" && anyModalOpen()) e.preventDefault();
+    liveFocus = null;
+    if (!el || el.id !== "live") return;
+    var a = document.activeElement;
+    if (!a || !el.contains(a) || a === el) return;
+    liveFocus = { action: a.form ? a.form.getAttribute("action") : null, name: a.getAttribute("name"), value: a.getAttribute("value"), tag: a.tagName, text: a.tagName === "BUTTON" ? a.textContent : null };
+  });
+  document.addEventListener("htmx:afterSettle", function () {
+    if (!liveFocus) return;
+    var f = liveFocus; liveFocus = null;
+    var live = document.getElementById("live");
+    if (!live) return;
+    var scope = f.action ? live.querySelector('form[action="' + f.action + '"]') : live;
+    if (!scope) return;
+    var hit = Array.prototype.find.call(scope.querySelectorAll(f.tag.toLowerCase()), function (x) {
+      return x.getAttribute("name") === f.name && x.getAttribute("value") === f.value && (f.text === null || x.textContent === f.text);
+    });
+    if (hit && hit.offsetParent !== null) hit.focus({ preventScroll: true });
+  });
+
+  document.addEventListener("htmx:beforeRequest", function (e) {
+    // Hold the periodic refresh while reading a modal, or while one of its
+    // forms is half filled in.
+    var el = e.detail && e.detail.elt;
+    if (el && el.id === "live" && (anyModalOpen() || liveInUse(el))) e.preventDefault();
     // The Firewall page refreshes its hit counters every 20 s; hold that while
     // a sheet is open or a rule is half-typed, so nothing you entered is lost.
     if (el && el.id === "fw") {
@@ -160,8 +306,11 @@
   });
   document.addEventListener("close", function (e) {
     if (e.target.tagName !== "DIALOG" || !e.target.classList.contains("modal")) return;
+    // A closed dialog forgets any password it was showing.
+    e.target.querySelectorAll("[data-secret]").forEach(function (v) { hideSecret(v.closest("tr")); });
     var live = document.getElementById("live");
-    if (live && window.htmx) htmx.ajax("GET", "/partials/live", { target: "#live", swap: "outerHTML", select: "#live" });
+    // Sent "from" #live, so the half-filled-form hold above applies to it too.
+    if (live && window.htmx) htmx.ajax("GET", "/partials/live", { source: live, target: "#live", swap: "outerHTML", select: "#live" });
   }, true);
 
   // ── Hover panels on the tunnel tiles ───────────────────────────────────
@@ -214,7 +363,6 @@
   function isIos() {
     return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   }
-  function isPhone() { return window.matchMedia && window.matchMedia("(max-width: 900px) and (pointer: coarse)").matches; }
   function renderInstall(root) {
     (root || document).querySelectorAll("[data-install-panel]").forEach(function (p) {
       var state = p.querySelector("[data-install-state]");
@@ -246,6 +394,13 @@
   document.addEventListener("DOMContentLoaded", function () { renderInstall(); });
   document.addEventListener("htmx:afterSwap", function (e) { renderInstall(e.target); });
   setTimeout(renderInstall, 0);
+  // Turning a phone sideways can cross the phone width; redraw to match.
+  if (window.matchMedia) {
+    var phoneMq = window.matchMedia(PHONE);
+    var onPhoneChange = function () { renderInstall(); if (!isPhone()) closeSheets(); };
+    if (phoneMq.addEventListener) phoneMq.addEventListener("change", onPhoneChange);
+    else if (phoneMq.addListener) phoneMq.addListener(onPhoneChange);
+  }
 
   // ── Phone alerts (Settings > Phone alerts) ──────────────────────────────
   // Web Push: ask the phone's permission, subscribe with the dashboard's
@@ -275,8 +430,29 @@
       if (Notification.permission === "denied") { state.innerHTML = "<span class='pill down'>blocked</span> Notifications are blocked for this site. Allow them in the phone's settings for wg-admin, then come back."; on.hidden = test.hidden = off.hidden = true; continue; }
       var sub = null;
       try { sub = await (await swReady()).pushManager.getSubscription(); } catch (e) { state.textContent = e.message; continue; }
+      // The browser having a subscription is only half of it: the dashboard
+      // must still have it on its list too. It drops one the push service
+      // says is dead, and Remove below drops one by hand, without the phone
+      // knowing. So ask.
+      var known = null;
       if (sub) {
-        state.innerHTML = "<span class='pill up'>on</span> This device gets alerts.";
+        try {
+          var r = await fetch("/api/push/status?endpoint=" + encodeURIComponent(sub.endpoint), { headers: { Accept: "application/json" } });
+          if (r.ok) known = await r.json();
+        } catch (e) { /* offline: say what the browser knows */ }
+      }
+      p.querySelectorAll("[data-push-id]").forEach(function (li) {
+        var mine = !!known && known.id !== null && String(known.id) === li.getAttribute("data-push-id");
+        var tag = li.querySelector("[data-this-device]");
+        if (tag) tag.hidden = !mine;
+      });
+      if (sub && known && !known.registered) {
+        state.innerHTML = "<span class='pill down'>not registered</span> This device was signed up once, but the dashboard no longer sends to it (it was removed, or the phone's push service replaced it). Turn alerts on again.";
+        on.hidden = false; test.hidden = true; off.hidden = false;
+      } else if (sub) {
+        state.innerHTML = known && known.last_error
+          ? "<span class='pill down'>failing</span> This device is signed up, but the last alert to it failed. Send a test to check."
+          : "<span class='pill up'>on</span> This device gets alerts." + (known ? "" : " (Could not check with the dashboard just now.)");
         on.hidden = true; test.hidden = false; off.hidden = false;
       } else {
         state.innerHTML = "<span class='pill idle'>off</span> This device does not get alerts yet.";
@@ -338,12 +514,14 @@
   syncCidr();
 
   // ── Confirmation word gate ──────────────────────────────────────────────
+  // A button marked data-hard-disabled (e.g. GitHub is not connected) stays
+  // off whatever is typed.
   function wireConfirm(root) {
     (root || document).querySelectorAll("[data-confirm-word]").forEach(function (input) {
       var word = input.getAttribute("data-confirm-word");
       var btn = input.form && input.form.querySelector("button[type=submit]");
       if (!btn) return;
-      var update = function () { btn.disabled = input.value.trim().toLowerCase() !== word; };
+      var update = function () { btn.disabled = btn.hasAttribute("data-hard-disabled") || input.value.trim().toLowerCase() !== word; };
       input.addEventListener("input", update);
       update();
     });
@@ -351,7 +529,31 @@
   wireConfirm();
   document.addEventListener("htmx:afterSwap", function (e) { wireConfirm(e.target); });
 
+  // ── "Are you sure?" on plain forms ──────────────────────────────────────
+  // A form with data-confirm="question" asks before it sends. (htmx forms use
+  // hx-confirm; this is for the ordinary ones, such as the Settings removals.)
+  // Capture phase, so a "no" stops the form before anything else sees it.
+  document.addEventListener("submit", function (e) {
+    var f = e.target;
+    var q = f && f.getAttribute && f.getAttribute("data-confirm");
+    if (q && !window.confirm(q)) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+
   // ── Secret reveal (the SSH password panel) ─────────────────────────────
+  // The password is not in the page: Show and Copy fetch it from the
+  // dashboard when pressed, and Hide (or closing the panel) forgets it. So
+  // it is never in the 20-second refreshes or anything the browser keeps.
+  function fetchSecret(el) {
+    return fetch(el.getAttribute("data-secret"), { headers: { Accept: "application/json" }, cache: "no-store" })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || !j.password) throw new Error(j.error || "Could not fetch the password (" + r.status + ")."); return j.password; }); });
+  }
+  function hideSecret(row) {
+    if (!row) return;
+    var val = row.querySelector("[data-secret]"), mask = row.querySelector(".secret-mask"), r = row.querySelector("[data-reveal]");
+    if (val) { val.textContent = ""; val.hidden = true; }
+    if (mask) mask.hidden = false;
+    if (r) r.textContent = "Show";
+  }
   document.addEventListener("click", function (e) {
     var r = e.target.closest("[data-reveal]");
     var c = e.target.closest("[data-copy-secret]");
@@ -359,15 +561,19 @@
     var row = (r || c).closest("tr");
     var val = row.querySelector("[data-secret]");
     var mask = row.querySelector(".secret-mask");
-    if (r) {
-      var show = val.hidden;
-      val.hidden = !show; mask.hidden = show;
-      r.textContent = show ? "Hide" : "Show";
-    } else {
-      navigator.clipboard.writeText(val.getAttribute("data-secret")).then(function () {
+    var b = r || c;
+    if (r && !val.hidden) { hideSecret(row); return; }
+    b.disabled = true;
+    fetchSecret(val).then(function (pw) {
+      if (r) {
+        val.textContent = pw; val.hidden = false; mask.hidden = true;
+        r.textContent = "Hide";
+        return;
+      }
+      return navigator.clipboard.writeText(pw).then(function () {
         var old = c.textContent; c.textContent = "Copied"; setTimeout(function () { c.textContent = old; }, 1200);
       });
-    }
+    }).catch(function (err) { alert(err.message); }).finally(function () { b.disabled = false; });
   });
 
   // ── Copy buttons ────────────────────────────────────────────────────────
@@ -423,7 +629,24 @@
     // dashes and underscores, at most 15 characters on Windows.
     dl.download = peer.name.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 15).toLowerCase() + ".conf";
     reveal.scrollIntoView({ behavior: "smooth", block: "start" });
+    var done = reveal.querySelector("[data-reveal-close]");
+    if (done && done.offsetParent !== null) done.focus({ preventScroll: true });
     if (window.htmx) htmx.ajax("GET", "/partials/peers-table", { target: "#peers-table", swap: "outerHTML" });
+  }
+
+  // Done on the new-config panel: wipe the key, the QR and the download link
+  // from the page, not just hide them.
+  function closeReveal() {
+    var reveal = document.getElementById("peer-reveal");
+    if (!reveal) return;
+    reveal.hidden = true;
+    var conf = reveal.querySelector("#peer-conf"); if (conf) conf.textContent = "";
+    var qr = reveal.querySelector(".qr"); if (qr) qr.innerHTML = "";
+    var dl = reveal.querySelector("[data-download]");
+    if (dl) {
+      if (dl.href && dl.href.indexOf("blob:") === 0) URL.revokeObjectURL(dl.href);
+      dl.setAttribute("href", "#"); dl.removeAttribute("download");
+    }
   }
 
   // The add-client form. Bound at the document level (not on the form) because

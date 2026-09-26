@@ -288,9 +288,10 @@ async function doGetSnapshot<T>(env: Env): Promise<T | null> {
   const r = await store(env).fetch("https://lock/snapshot");
   return ((await r.json()) as { snapshot: T | null }).snapshot;
 }
-async function doPatchSnapshot<T>(env: Env, patch: Partial<T>, seed?: T): Promise<T> {
-  const r = await store(env).fetch("https://lock/snapshot", { method: "POST", body: JSON.stringify({ patch, seed }) });
-  return ((await r.json()) as { snapshot: T }).snapshot;
+async function doPatchSnapshot<T>(env: Env, patch: Partial<T>, seed?: T, ifState?: State): Promise<{ snapshot: T; ok: boolean }> {
+  const r = await store(env).fetch("https://lock/snapshot", { method: "POST", body: JSON.stringify({ patch, seed, ifState }) });
+  const body = (await r.json()) as { snapshot: T; ok?: boolean };
+  return { snapshot: body.snapshot, ok: body.ok !== false };
 }
 
 async function legacyKv(env: Env): Promise<Snapshot | null> {
@@ -301,17 +302,44 @@ export async function getSnapshot(env: Env): Promise<Snapshot> {
   let s = await doGetSnapshot<Snapshot>(env);
   if (!s) {
     const seed = await legacyKv(env);
-    if (seed) s = await doPatchSnapshot<Snapshot>(env, {}, { ...EMPTY, ...seed });
+    if (seed) s = (await doPatchSnapshot<Snapshot>(env, {}, { ...EMPTY, ...seed })).snapshot;
   }
   return s ? { ...EMPTY, ...s } : { ...EMPTY };
 }
 
 export async function saveSnapshot(env: Env, patch: Partial<Snapshot>): Promise<Snapshot> {
   const seed = (await legacyKv(env)) ?? EMPTY;
-  const next = await doPatchSnapshot<Snapshot>(env, patch, { ...EMPTY, ...seed });
-  // Keep a read-only mirror in KV for anything that still wants a cheap look.
-  await env.STATUS.put("status", JSON.stringify(next));
+  const { snapshot: next } = await doPatchSnapshot<Snapshot>(env, patch, { ...EMPTY, ...seed });
+  await mirror(env, next);
   return { ...EMPTY, ...next };
+}
+
+/**
+ * Save only if the state is still `from`, as one step inside the Durable
+ * Object. Two checks that both notice the same change (say, two pollers both
+ * seeing the VM deallocated) race here; exactly one wins and gets the new
+ * snapshot back, the other gets null and should do nothing more, so the
+ * phone hears about it once.
+ */
+export async function saveSnapshotIf(env: Env, from: State, patch: Partial<Snapshot>): Promise<Snapshot | null> {
+  const seed = (await legacyKv(env)) ?? EMPTY;
+  const r = await doPatchSnapshot<Snapshot>(env, patch, { ...EMPTY, ...seed }, from);
+  if (!r.ok) return null;
+  await mirror(env, r.snapshot);
+  return { ...EMPTY, ...r.snapshot };
+}
+
+// Keep a read-only mirror in KV for anything that still wants a cheap look.
+// KV allows about one write a second to the same key, and several saves can
+// land back to back, so a refused write is simply skipped: the Durable Object
+// already holds the real copy, and the next save refreshes the mirror. It must
+// never stop a state change halfway (the alerts and notifications after it).
+async function mirror(env: Env, snap: Snapshot): Promise<void> {
+  try {
+    await env.STATUS.put("status", JSON.stringify(snap));
+  } catch {
+    /* the mirror is a convenience; losing one write is harmless */
+  }
 }
 
 /** Running cost so far, from a start time and an hourly rate. */
@@ -399,10 +427,16 @@ export function peerOnline(p: AgentPeer, now = Date.now()): boolean {
   return p.latest_handshake > 0 && now / 1000 - p.latest_handshake < 180;
 }
 
-/** True if any peer has shaken hands in the last `minutes`. */
-export function anyHandshakeWithin(report: AgentReport | null, minutes: number, now = Date.now()): boolean {
+/**
+ * True if any peer has shaken hands in the last `minutes`. `ignore` lists
+ * public keys that do not count as someone using the VM: the home site
+ * container keeps its tunnel up on its own (a keepalive every 25 seconds), so
+ * counting it would mean the VM is never idle while the site is connected.
+ */
+export function anyHandshakeWithin(report: AgentReport | null, minutes: number, now = Date.now(), ignore: Iterable<string> = []): boolean {
   if (!report) return false;
-  return report.peers.some((p) => p.latest_handshake > 0 && now / 1000 - p.latest_handshake < minutes * 60);
+  const skip = new Set(ignore);
+  return report.peers.some((p) => !skip.has(p.public_key) && p.latest_handshake > 0 && now / 1000 - p.latest_handshake < minutes * 60);
 }
 
 export const STATE_LABEL: Record<State, string> = {

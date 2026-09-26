@@ -111,12 +111,57 @@ export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: 
   ].join("\n");
 }
 
-/** The extra networks a site peer carries, cleaned: "192.168.1.0/24, 10.9.0.0/16" -> ["192.168.1.0/24", "10.9.0.0/16"]. */
-export function peerRoutes(p: { routes?: string | null }): string[] {
+/** An IPv4 network as [first address, prefix length], or null if it is not one. */
+function v4Net(cidr: string): [number, number] | null {
+  const m = cidr.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+  if (!m || m.slice(1, 5).some((x) => Number(x) > 255) || Number(m[5]) > 32) return null;
+  const bits = Number(m[5]);
+  const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+  const n = ((Number(m[1]) << 24) | (Number(m[2]) << 16) | (Number(m[3]) << 8) | Number(m[4])) >>> 0;
+  return [(n & mask) >>> 0, bits];
+}
+
+/** Do two IPv4 networks share any address? (One always contains the other if so.) */
+export function v4Overlap(a: string, b: string): boolean {
+  const x = v4Net(a), y = v4Net(b);
+  if (!x || !y) return false;
+  const bits = Math.min(x[1], y[1]);
+  const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+  return ((x[0] & mask) >>> 0) === ((y[0] & mask) >>> 0);
+}
+
+/**
+ * Networks a site route may never cover: the tunnel itself, the VM's
+ * loopback and the Azure VNet. Sending any of those into the tunnel would
+ * cut the VM off from its own clients or its own LAN.
+ */
+export function protectedNets(cfg: { subnet: string; loopbackIp: string; vnetCidr: string }): string[] {
+  return [cfg.subnet, `${cfg.loopbackIp}/32`, cfg.vnetCidr].filter(Boolean);
+}
+
+/**
+ * Why a site route is refused, or null if it is fine. Shorter than /8
+ * (0.0.0.0/0, 128.0.0.0/1 and so on) would swallow the VM's default route,
+ * so it could never reach the dashboard again to be fixed.
+ */
+export function routeProblem(cidr: string, avoid: string[] = []): string | null {
+  const n = v4Net(cidr);
+  if (!n) return "not an IPv4 network";
+  if (n[1] < 8) return "wider than /8 would take over the VM's own internet route";
+  const hit = avoid.find((a) => v4Overlap(cidr, a));
+  return hit ? `overlaps ${hit}, which the VM needs for itself` : null;
+}
+
+/**
+ * The extra networks a site peer carries, cleaned: "192.168.1.0/24, 10.9.0.0/16"
+ * -> ["192.168.1.0/24", "10.9.0.0/16"]. Anything routeProblem refuses is left
+ * out (pass protectedNets(cfg) as avoid to check for overlaps too).
+ */
+export function peerRoutes(p: { routes?: string | null }, avoid: string[] = []): string[] {
   return String(p.routes ?? "")
     .split(",")
     .map((x) => x.trim())
-    .filter((x) => /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(x));
+    .filter((x) => x && routeProblem(x, avoid) === null);
 }
 
 /**
@@ -124,19 +169,19 @@ export function peerRoutes(p: { routes?: string | null }): string[] {
  * A site peer (the home container) also carries its LAN, so the VM routes
  * 192.168.1.0/24 to it: WireGuard's cryptokey routing is the routing table.
  */
-export function agentPeerList(peers: Peer[], subnet6 = ""): { name: string; host: string; public_key: string; allowed_ips: string }[] {
+export function agentPeerList(peers: Peer[], subnet6 = "", avoid: string[] = []): { name: string; host: string; public_key: string; allowed_ips: string }[] {
   return peers
     .filter((p) => p.enabled)
     .map((p) => {
       const ip6 = peerIp6(subnet6, p.ip);
-      const allowed = [`${p.ip}/32`].concat(ip6 ? [`${ip6}/128`] : []).concat(peerRoutes(p));
+      const allowed = [`${p.ip}/32`].concat(ip6 ? [`${ip6}/128`] : []).concat(peerRoutes(p, avoid));
       return { name: p.name, host: hostLabel(p.name), public_key: p.public_key, allowed_ips: allowed.join(",") };
     });
 }
 
 /** What Terraform's peers_json needs at deploy time. */
-export function terraformPeerList(peers: Peer[]): { name: string; public_key: string; ip: string; routes?: string }[] {
-  return peers.filter((p) => p.enabled).map((p) => ({ name: p.name, public_key: p.public_key, ip: p.ip, ...(peerRoutes(p).length ? { routes: peerRoutes(p).join(",") } : {}) }));
+export function terraformPeerList(peers: Peer[], avoid: string[] = []): { name: string; public_key: string; ip: string; routes?: string }[] {
+  return peers.filter((p) => p.enabled).map((p) => ({ name: p.name, public_key: p.public_key, ip: p.ip, ...(peerRoutes(p, avoid).length ? { routes: peerRoutes(p, avoid).join(",") } : {}) }));
 }
 
 export function validPeerName(name: string): boolean {

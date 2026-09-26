@@ -10,9 +10,11 @@
 //   - at the deadline tears down, or hibernates if Settings says so (the
 //     big cost saver)
 //   - tears down anyway if running 15 minutes past that (cost guard)
-//   - does the same on idle if IDLE_DESTROY_MINUTES is set and no peer has
-//     shaken hands for that long
+//   - does the same on idle if IDLE_DESTROY_MINUTES is set and no client has
+//     shaken hands for that long (the home site does not count: it is always
+//     connected)
 //   - tears down a VM left in Standby longer than STANDBY_MAX_DAYS
+//   - tears down what a failed run left in Azure, after FAILED_GRACE_MINUTES
 //   - flags drift: Azure and the dashboard disagree
 //   - flags an unreachable VM: no heartbeat for 2 minutes while Running
 //   - pulls yesterday's actual cost from Azure once a day
@@ -29,8 +31,16 @@ import { startHibernate, refreshPower } from "./standby";
 import { runSchedules } from "./schedule";
 import { notify } from "./notify";
 import { actionButton, dashboardButton } from "./actions";
-import { costMonthToDate } from "./azure";
+import { costMonthToDate, azureView } from "./azure";
 import { checkDns } from "./dns";
+
+/**
+ * How long a Failed deployment may leave its resource group in Azure before
+ * the watchman tears it down. Long enough to look at what went wrong (or press
+ * Clean up yourself), short enough that a VM nobody is using does not bill all
+ * night.
+ */
+export const FAILED_GRACE_MINUTES = 30;
 
 export async function runScheduled(env: Env, now = new Date()): Promise<string[]> {
   const notes: string[] = [];
@@ -101,7 +111,10 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
   if (snap.state === "running" && cfg.idleDestroyMinutes > 0 && snap.running_since) {
     const upFor = now.getTime() - Date.parse(snap.running_since);
     const idleWindow = cfg.idleDestroyMinutes * 60_000;
-    if (upFor > idleWindow && !anyHandshakeWithin(snap.agent, cfg.idleDestroyMinutes, now.getTime())) {
+    // Site peers (the home container, a peer with routes) keep the tunnel up
+    // by themselves every couple of minutes; they are not someone using it.
+    const sites = (await db.listPeers(env)).filter((p) => p.routes).map((p) => p.public_key);
+    if (upFor > idleWindow && !anyHandshakeWithin(snap.agent, cfg.idleDestroyMinutes, now.getTime(), sites)) {
       try {
         if (hibernating) await startHibernate(env, "watchman", `idle: no handshake for ${cfg.idleDestroyMinutes} min`);
         else await startDestroy(env, "watchman", `idle: no handshake for ${cfg.idleDestroyMinutes} min`);
@@ -127,6 +140,28 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         return notes;
       } catch (e) {
         notes.push(`standby limit: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  // 3c. A run that failed part-way (or was cancelled after Terraform built
+  //     things) can leave a VM running in Azure with nothing watching it: no
+  //     timer, no idle check. Give it a grace period, then tear it down.
+  if (snap.state === "failed" && canAzure(env)) {
+    const failedFor = now.getTime() - Date.parse(snap.since ?? now.toISOString());
+    if (failedFor >= FAILED_GRACE_MINUTES * 60_000) {
+      try {
+        const az = await azureView(env);
+        if (!az.error && az.rg_exists) {
+          await startDestroy(env, "watchman", `failed ${FAILED_GRACE_MINUTES} min ago with resources still in Azure`);
+          const msg = `The last run failed ${Math.round(failedFor / 60_000)} minutes ago and left resource group ${cfg.resourceGroup} in Azure, which is costing money. Tearing it down.`;
+          await db.addAlert(env, "cost_guard", msg);
+          await notify(env, "wg-admin: cleaning up after a failed run", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env)] });
+          notes.push(msg);
+          return notes;
+        }
+      } catch (e) {
+        notes.push(`failed clean-up: ${(e as Error).message}`);
       }
     }
   }

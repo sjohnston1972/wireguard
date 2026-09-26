@@ -54,12 +54,23 @@ speedtest="null"
 FW_FILE=/etc/wg-admin/firewall.nft
 fw_hash=""
 [[ -r "$FW_FILE" ]] && fw_hash="$(sed -n 's/^# ruleset \([0-9a-f]*\).*/\1/p' "$FW_FILE" | head -n1)"
+# At boot the saved file was refused and the block-all fallback is in force
+# (see wg-firewall-load.sh): report no rule set, so the dashboard sends it again.
+[[ -e /run/wg-admin/firewall.fallback ]] && fw_hash=""
 fw_counters="$(nft -j list counters table inet wgfw 2>/dev/null | jq -c '[.nftables[] | .counter? // empty | {key: .name, value: [.packets, .bytes]}] | from_entries' 2>/dev/null || true)"
 [[ -z "$fw_counters" ]] && fw_counters="{}"
 fw_error=""
 [[ -s /run/wg-admin/firewall.error ]] && fw_error="$(head -c 400 /run/wg-admin/firewall.error)"
 # "wgfw-drop IN=wg0 OUT=eth0 SRC=10.13.13.3 DST=10.50.2.4 ... PROTO=TCP SPT=51000 DPT=3389"
-fw_drops="$(journalctl -k --since '-35 seconds' -o cat --no-pager 2>/dev/null | grep 'wgfw-drop' | tail -n 20 \
+# Read the kernel log from exactly where the last heartbeat stopped (a
+# journal bookmark, the "cursor"), so each drop is reported once, however
+# the heartbeats happen to be spaced. The first run after boot has no
+# bookmark yet and looks back 35 seconds.
+mkdir -p /run/wg-admin
+KCURSOR=/run/wg-admin/kernel.cursor
+since=()
+[[ -s "$KCURSOR" ]] || since=(--since '-35 seconds')
+fw_drops="$(journalctl -k "${since[@]}" --cursor-file="$KCURSOR" -o cat --no-pager 2>/dev/null | grep 'wgfw-drop' | tail -n 20 \
   | sed -n 's/.*IN=\([^ ]*\) OUT=\([^ ]*\).* SRC=\([^ ]*\) DST=\([^ ]*\).* PROTO=\([^ ]*\)\( SPT=\([0-9]*\) DPT=\([0-9]*\)\)\{0,1\}.*/\3 \4 \5 \8 \1 \2/p' \
   | jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | {src: .[0], dst: .[1], proto: .[2], dport: (.[3] | if . == "" then null else tonumber end), in: .[4], out: .[5]})' 2>/dev/null || true)"
 [[ -z "$fw_drops" ]] && fw_drops="[]"
@@ -153,8 +164,13 @@ if [[ -n "$fw_new" ]]; then
   tmp="$(mktemp)"
   if base64 -d <<<"$fw_new" > "$tmp" 2>/dev/null && nft -c -f "$tmp" 2>/run/wg-admin/firewall.error && nft -f "$tmp" 2>/run/wg-admin/firewall.error; then
     install -m 0600 -o root -g root "$tmp" "$FW_FILE"
-    rm -f /run/wg-admin/firewall.error
+    rm -f /run/wg-admin/firewall.error /run/wg-admin/firewall.fallback
     logger -t wg-agent "firewall rule set applied: $(sed -n 's/^# ruleset \([0-9a-f]*\).*/\1/p' "$FW_FILE" | head -n1)"
+    # If the firewall could not load at all at boot, the tunnel was kept
+    # down. Now there is a good rule set, bring both up.
+    if systemctl is-failed --quiet wg-firewall.service; then
+      systemctl restart wg-firewall.service && systemctl start --no-block wg-quick@wg0 || true
+    fi
   else
     logger -t wg-agent "firewall rule set refused: $(head -c 200 /run/wg-admin/firewall.error)"
   fi
@@ -186,11 +202,34 @@ fi
 
 jq -e '.peers | type == "array"' <<<"$resp" >/dev/null 2>&1 || exit 0
 
+# Check every peer before any of it goes near wg0.conf, which root reads at
+# every boot: a proper WireGuard key, addresses that really are addresses,
+# a DNS name that is only letters, digits and dashes, and a display name of
+# plain characters only (a line break in a name could otherwise slip a
+# "PostUp = ..." line into the file). A peer that fails is left out and
+# logged. The dashboard checks the same things; this is the second lock.
+peers="$(jq -c '
+  def v4: test("^([0-9]{1,3}\\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$");
+  def v6: test("^[0-9a-fA-F:]*:[0-9a-fA-F:]*/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$");
+  [.peers[]
+   | select(type == "object")
+   | select((.public_key | type) == "string" and (.public_key | test("^[A-Za-z0-9+/]{43}=$")))
+   | select((.allowed_ips | type) == "string")
+   | .allowed_ips |= gsub(" "; "")
+   | select(.allowed_ips | split(",") | length > 0 and all(v4 or v6))
+   | {name: ((.name // "") | tostring | gsub("[^A-Za-z0-9 _.-]"; "?") | .[0:64]),
+      host: ((.host // "") | tostring | if test("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$") then . else "" end),
+      public_key, allowed_ips}]' <<<"$resp" 2>/dev/null || true)"
+[[ -z "$peers" ]] && exit 0
+sent="$(jq '.peers | length' <<<"$resp")"
+kept="$(jq 'length' <<<"$peers")"
+(( kept < sent )) && logger -t wg-agent "peer list: $(( sent - kept )) of $sent peer(s) refused (bad key, address or name)"
+
 # Client names for the tunnel DNS: laptop.wg, phone.wg, and the VM itself.
 hosts="$(mktemp)"
 {
   [[ -n "$loopback" ]] && echo "$loopback vm.wg"
-  jq -r '.peers[] | select(.host != null and .host != "") | (.allowed_ips | split(",") | map(split("/")[0]))[] as $a | "\($a) \(.host).wg"' <<<"$resp"
+  jq -r '.[] | select(.host != "") | (.allowed_ips | split(",") | map(split("/")[0]))[] as $a | "\($a) \(.host).wg"' <<<"$peers"
 } > "$hosts"
 if ! cmp -s "$hosts" /etc/wg-admin/peers.hosts 2>/dev/null; then
   install -m 0644 "$hosts" /etc/wg-admin/peers.hosts
@@ -203,9 +242,57 @@ rm -f "$hosts"
 # static route towards a branch. wg-quick only adds these at boot, so keep
 # them in place here for a site added while the VM is running. A route with
 # no matching peer yet simply drops traffic, so adding it early is harmless.
+#
+# Never a route that would cut the VM off: nothing wider than /8 (0.0.0.0/0
+# would take the default route, and the VM could never reach the dashboard
+# again to be fixed), and nothing overlapping what the VM needs for itself:
+# the tunnel, its loopback, its own LAN and VNet, Azure's platform
+# addresses, and the dashboard's own address.
+# (10# so a part written "08" is read as eight, not as a broken octal number.)
+ip2int() { local IFS=.; set -- $1; echo $(( (10#$1 << 24) + (10#$2 << 16) + (10#$3 << 8) + 10#$4 )); }
+# Do two IPv4 networks (a.b.c.d/n) share any address?
+overlaps() {
+  local a="${1%/*}" an="${1#*/}" b="${2%/*}" bn="${2#*/}"
+  [[ "$1" == */* ]] || an=32
+  [[ "$2" == */* ]] || bn=32
+  local n=$(( an < bn ? an : bn ))
+  local mask=$(( n == 0 ? 0 : (0xffffffff << (32 - n)) & 0xffffffff ))
+  (( ($(ip2int "$a") & mask) == ($(ip2int "$b") & mask) ))
+}
+keep_out=(168.63.129.16/32 169.254.169.254/32)
+[[ -n "${VNET_CIDR:-}" ]] && keep_out+=("$VNET_CIDR")
+[[ -n "$loopback" ]] && keep_out+=("$loopback/32")
+while read -r net; do [[ -n "$net" ]] && keep_out+=("$net") || true; done < <(
+  ip -4 -o addr show dev wg0 2>/dev/null | awk '{print $4}'
+  ip -4 -o addr show dev eth0 2>/dev/null | awk '{print $4}'
+  getent ahostsv4 "$(sed -E 's#^[a-z]+://([^/:]+).*#\1#' <<<"$AGENT_URL")" 2>/dev/null | awk '{print $1 "/32"}' | sort -u
+)
+route_ok() {
+  local cidr="$1" bits="${1#*/}" k
+  [[ "$cidr" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$ ]] || return 1
+  (( bits >= 8 )) || return 1
+  for k in "${keep_out[@]}"; do overlaps "$cidr" "$k" && return 1; done
+  return 0
+}
+wanted_routes=()
 while read -r cidr; do
-  [[ -n "$cidr" ]] && { ip route replace "$cidr" dev wg0 2>/dev/null || true; }
-done < <(jq -r '.peers[].allowed_ips | split(",")[] | select(test("^[0-9.]+/([0-9]|[12][0-9]|3[01])$"))' <<<"$resp" 2>/dev/null || true)
+  [[ -z "$cidr" ]] && continue
+  if route_ok "$cidr"; then
+    wanted_routes+=("$cidr")
+    ip route replace "$cidr" dev wg0 2>/dev/null || true
+  else
+    logger -t wg-agent "site route $cidr refused: too wide, or overlaps a network the VM needs"
+  fi
+done < <(jq -r '.[].allowed_ips | split(",")[] | select(test("^[0-9.]+/([0-9]|[12][0-9]|3[01])$"))' <<<"$peers" 2>/dev/null || true)
+# And take away a site route nobody carries any more (a site deleted or
+# changed). Only routes into wg0 that someone added; the tunnel's own
+# subnet route belongs to the kernel and is left alone.
+while read -r cidr; do
+  [[ -z "$cidr" || "$cidr" == default ]] && continue
+  [[ "$cidr" == */* ]] || continue  # single-address routes are never ours
+  [[ " ${wanted_routes[*]} " == *" $cidr "* ]] && continue
+  { ip route del "$cidr" dev wg0 2>/dev/null && logger -t wg-agent "site route $cidr removed: no peer carries it now"; } || true
+done < <(ip -4 -o route show dev wg0 2>/dev/null | grep -v 'proto kernel' | awk '{print $1}')
 
 # The self-test adds a canary peer for a few seconds; leave the list alone
 # until it is done, or this would remove the canary mid-test.
@@ -214,17 +301,24 @@ done < <(jq -r '.peers[].allowed_ips | split(",")[] | select(test("^[0-9.]+/([0-
 # Compare as "key sorted-allowed-ips" lines, so the order WireGuard happens to
 # list addresses in never looks like a change.
 norm() { while read -r k ips; do printf '%s %s\n' "$k" "$(tr ',' '\n' <<<"$ips" | sed '/^$/d' | sort | paste -sd, -)"; done | sort; }
-desired="$(jq -r '.peers[] | "\(.public_key) \(.allowed_ips | gsub(" "; ""))"' <<<"$resp" | norm)"
+desired="$(jq -r '.[] | "\(.public_key) \(.allowed_ips)"' <<<"$peers" | norm)"
 current="$(wg show wg0 dump | tail -n +2 | awk '{print $1, $4}' | norm)"
 
 [[ "$desired" == "$current" ]] && exit 0
 
-# Rebuild the peers half, then the whole conf, then hot-reload.
-tmp="$(mktemp)"
-jq -r '.peers[] | "# \(.name)\n[Peer]\nPublicKey = \(.public_key)\nAllowedIPs = \(.allowed_ips)\n"' <<<"$resp" > "$tmp"
-install -m 0600 -o root -g root "$tmp" "$PEERS_CONF"
-rm -f "$tmp"
-cat "$IFACE_CONF" "$PEERS_CONF" > "$WG_CONF"
-chmod 0600 "$WG_CONF"
-wg syncconf wg0 <(wg-quick strip wg0)
-logger -t wg-agent "peers reconciled: $(jq '.peers | length' <<<"$resp") peer(s)"
+# Build the new peers half and the whole conf in a private scratch folder,
+# have WireGuard itself check it by loading it live ("wg syncconf" reads the
+# whole file before changing anything, so a bad one changes nothing), and
+# only then move the files into place. A peer list WireGuard refuses is
+# never saved, so it cannot break the tunnel at the next boot either.
+work="$(mktemp -d)"
+jq -r '.[] | "# \(.name)\n[Peer]\nPublicKey = \(.public_key)\nAllowedIPs = \(.allowed_ips)\n"' <<<"$peers" > "$work/peers.conf"
+cat "$IFACE_CONF" "$work/peers.conf" > "$work/wg0.conf"
+if wg-quick strip "$work/wg0.conf" > "$work/wg0.strip" 2>"$work/err" && wg syncconf wg0 "$work/wg0.strip" 2>>"$work/err"; then
+  install -m 0600 -o root -g root "$work/peers.conf" "$PEERS_CONF.new" && mv -f "$PEERS_CONF.new" "$PEERS_CONF"
+  install -m 0600 -o root -g root "$work/wg0.conf" "$WG_CONF.new" && mv -f "$WG_CONF.new" "$WG_CONF"
+  logger -t wg-agent "peers reconciled: $kept peer(s)"
+else
+  logger -t wg-agent "peer list refused by WireGuard, nothing changed: $(tr '\n' ' ' < "$work/err" | head -c 200)"
+fi
+rm -rf "$work"

@@ -8,7 +8,7 @@ declare module "node:sqlite" {
     prepare(sql: string): {
       get(...args: unknown[]): Record<string, unknown> | undefined;
       all(...args: unknown[]): Record<string, unknown>[];
-      run(...args: unknown[]): unknown;
+      run(...args: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint };
     };
   }
 }

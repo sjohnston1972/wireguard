@@ -55,7 +55,7 @@ function alertsPanel(o: SettingsOpts): Html {
       <button type="button" data-push-off hidden>Turn off on this device</button>
     </div>
     ${subs.length
-      ? html`<ul class="checklist" style="margin-top:12px">${subs.map((s) => html`<li><span class="${s.last_error ? "no" : "ok"}">${s.last_error ? "✕" : "✓"}</span><div style="flex:1">${s.label ?? "A device"} <span class="muted small">${s.last_error ? html`last alert failed: ${s.last_error}` : s.last_ok ? `last alert ${fmtTime(s.last_ok)}` : `since ${fmtTime(s.created_at)}`}</span></div><form method="post" action="/settings/push/${s.id}/delete" hx-boost="false"><button type="submit" class="danger" style="padding:3px 10px;font-size:.8rem">Remove</button></form></li>`)}</ul>`
+      ? html`<ul class="checklist" style="margin-top:12px">${subs.map((s) => html`<li data-push-id="${s.id}"><span class="${s.last_error ? "no" : "ok"}">${s.last_error ? "✕" : "✓"}</span><div style="flex:1">${s.label ?? "A device"} <span class="pill idle" data-this-device hidden>this device</span> <span class="muted small">${s.last_error ? html`last alert failed: ${s.last_error}` : s.last_ok ? `last alert ${fmtTime(s.last_ok)}` : `since ${fmtTime(s.created_at)}`}</span></div><form method="post" action="/settings/push/${s.id}/delete" hx-boost="false" data-confirm="Stop sending alerts to ${s.label ?? "this device"}? To get them there again, turn alerts on from that device."><button type="submit" class="danger" style="padding:3px 10px;font-size:.8rem">Remove</button></form></li>`)}</ul>`
       : html`<p class="faint small" style="margin-top:10px">No phone signed up yet.</p>`}
   </div>`;
 }
@@ -92,15 +92,35 @@ function installPanel(o: SettingsOpts): Html {
   </div>`;
 }
 
+/** A schedule in words, for lists and questions: "Mon–Fri 08:00–18:00". */
+function scheduleText(r: Schedule): string {
+  return `${daysText(r.days)} ${r.start_time}–${r.end_time}`;
+}
+
+/**
+ * The question asked before deleting a profile. A schedule that uses it
+ * would quietly fall back to the usual settings, so those are named.
+ */
+function profileDeleteQuestion(p: Profile, schedules: Schedule[]): string {
+  const using = schedules.filter((r) => r.profile_id === p.id);
+  const q = `Delete the profile "${p.name}"?`;
+  if (!using.length) return q;
+  return `${q} ${using.length === 1 ? "This schedule uses it" : `These ${using.length} schedules use it`}: ${using.map(scheduleText).join("; ")}. ${using.length === 1 ? "It" : "They"} will then build with the usual settings instead.`;
+}
+
 /** Deploy profiles: list, delete, add. */
 function profilesPanel(o: SettingsOpts): Html {
   const ps = o.profiles ?? [];
+  const rs = o.schedules ?? [];
   return html`<div class="panel sheet" id="sh-profiles" style="margin-top:16px">
     ${sheetHead("Profiles")}
     <h2>Profiles</h2>
     <p class="muted small">Named places to deploy. Deploy offers each as one tap; while running, Move rebuilds in another.</p>
     ${ps.length
-      ? html`<ul class="checklist">${ps.map((p) => html`<li><div style="flex:1"><b>${p.name}</b> <span class="muted small">${regionName(p.region)}, ${p.vm_size}</span></div><form method="post" action="/settings/profiles/${p.id}/delete" hx-boost="false"><button type="submit" class="danger" style="padding:3px 10px;font-size:.8rem">Delete</button></form></li>`)}</ul>`
+      ? html`<ul class="checklist">${ps.map((p) => {
+          const used = rs.filter((r) => r.profile_id === p.id).length;
+          return html`<li><div style="flex:1"><b>${p.name}</b> <span class="muted small">${regionName(p.region)}, ${p.vm_size}${used ? `; used by ${used} schedule${used === 1 ? "" : "s"}` : ""}</span></div><form method="post" action="/settings/profiles/${p.id}/delete" hx-boost="false" data-confirm="${profileDeleteQuestion(p, rs)}"><button type="submit" class="danger" style="padding:3px 10px;font-size:.8rem">Delete</button></form></li>`;
+        })}</ul>`
       : html`<p class="faint">None yet.</p>`}
     <form method="post" action="/settings/profiles" style="margin-top:10px">
       <label class="field"><span>Name</span><input type="text" name="name" maxlength="24" required placeholder="Japan exit"></label>
@@ -121,9 +141,9 @@ function schedulesPanel(o: SettingsOpts): Html {
     <h2>Schedules</h2>
     <p class="muted small">When a window opens (UK time) the watchman deploys, or resumes from Standby, and sets the timer to the window's end. Each window starts once a day; tear down by hand and it stays down until tomorrow's.</p>
     ${rs.length
-      ? html`<ul class="checklist">${rs.map((r) => html`<li><span class="${r.enabled ? "ok" : "no"}">${r.enabled ? "●" : "○"}</span><div style="flex:1"><b>${daysText(r.days)} ${r.start_time}–${r.end_time}</b> <span class="muted small">${pname(r.profile_id)}</span></div>
+      ? html`<ul class="checklist">${rs.map((r) => html`<li><span class="${r.enabled ? "ok" : "no"}">${r.enabled ? "●" : "○"}</span><div style="flex:1"><b>${scheduleText(r)}</b> <span class="muted small">${pname(r.profile_id)}</span></div>
           <form method="post" action="/settings/schedules/${r.id}/toggle" hx-boost="false"><button type="submit" style="padding:3px 10px;font-size:.8rem">${r.enabled ? "Pause" : "Resume"}</button></form>
-          <form method="post" action="/settings/schedules/${r.id}/delete" hx-boost="false"><button type="submit" class="danger" style="padding:3px 10px;font-size:.8rem">Delete</button></form></li>`)}</ul>`
+          <form method="post" action="/settings/schedules/${r.id}/delete" hx-boost="false" data-confirm="Delete the schedule ${scheduleText(r)}? (Pause keeps it for later.)"><button type="submit" class="danger" style="padding:3px 10px;font-size:.8rem">Delete</button></form></li>`)}</ul>`
       : html`<p class="faint">No schedules. Everything starts by hand.</p>`}
     <form method="post" action="/settings/schedules" style="margin-top:10px">
       <span class="small muted">Days</span>
