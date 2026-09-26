@@ -5,8 +5,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeEnv, lastGhRun, type World } from "./harness";
 import type { Env } from "../src/env";
 import * as db from "../src/db";
-import { startDeploy, startDestroy, issueRunSecrets, handleCallback, refreshActiveRun } from "../src/runs";
+import { startDeploy, startDestroy, issueRunSecrets, handleCallback, refreshActiveRun, reconcile } from "../src/runs";
 import { getSnapshot, saveSnapshot } from "../src/state";
+import { lockStatus } from "../src/lock";
 
 let env: Env;
 let world: World;
@@ -76,6 +77,31 @@ describe("a packet capture pending at tear-down (#29)", () => {
     await db.updateCapture(env, "cap-1", { status: "done" });
     await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven" });
     expect((await db.getCapture(env, "cap-1"))!.status).toBe("done");
+  });
+});
+
+describe("Clean up (reconcile) during a run (#23)", () => {
+  it("refuses while a deploy is still building, before the resource group exists", async () => {
+    const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven" });
+    world.azure.rg = false;
+    await expect(reconcile(env, "steven")).rejects.toThrow(/in progress/);
+    expect((await db.getRun(env, run.id))!.finished_at).toBeNull();
+    expect((await getSnapshot(env)).state).toBe("deploying");
+    expect((await lockStatus(env)).held).toBe(true);
+  });
+
+  it("refuses while a tear-down is running", async () => {
+    await toRunning();
+    await startDestroy(env, "steven", "done");
+    await expect(reconcile(env, "steven")).rejects.toThrow(/in progress/);
+  });
+
+  it("drops a queued Move and summary when it finds Azure empty", async () => {
+    await toRunning();
+    await saveSnapshot(env, { state: "failed", pending_deploy: { region: "eastus", vm_size: "Standard_B1s", profile: "US exit", hours: 2, requested_by: "steven", requester_ip: null }, pending_summary: "Torn down." });
+    world.azure.rg = false;
+    expect(await reconcile(env, "steven")).toMatch(/State set to Destroyed/);
+    expect(await getSnapshot(env)).toMatchObject({ state: "destroyed", pending_deploy: null, pending_summary: null });
   });
 });
 

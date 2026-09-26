@@ -713,20 +713,26 @@ export async function detectDrift(env: Env): Promise<string | null> {
 
 /** Reconcile: destroy anything Azure has if we think we are Destroyed; or accept Destroyed if Azure is empty. */
 export async function reconcile(env: Env, requestedBy: string): Promise<string> {
+  // Mid-deploy the resource group may simply not exist *yet*, and mid-destroy
+  // it is on its way out: either way Azure is not the whole story, so wait.
   await refreshInventory(env);
   const snap = await getSnapshot(env);
+  if (isBusyState(snap.state)) throw new RunError("A run is in progress. Wait for it to finish (or Cancel it) before Clean up.");
   const az = canAzure(env) ? await azureView(env) : null;
   if (!az || az.error) return "Cannot reach Azure to reconcile.";
   if (az.rg_exists && (snap.state === "destroyed" || snap.state === "failed")) {
+    // A clean-up tear-down must not be followed by an old queued Move.
+    await saveSnapshot(env, { pending_deploy: null });
     await startDestroy(env, requestedBy, "reconcile: Azure had resources");
     return "Azure still had resources. A tear-down has been started.";
   }
   if (!az.rg_exists && snap.state !== "destroyed") {
     const run = await db.activeRun(env);
-    if (run) await db.updateRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: "reconciled: Azure empty" });
+    if (run) await db.settleRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: "reconciled: Azure empty" });
     await releaseLock(env, undefined, true);
     await db.clearSshPasswords(env); // nothing left in Azure to log in to
-    await saveSnapshot(env, { state: "destroyed", since: new Date().toISOString(), public_ip: null, dns_ip: null, dns_live: false, auto_destroy_at: null, agent: null, last_agent_at: null, drift: null, error: null, steps: [], log_tail: null, running_since: null });
+    if (snap.capture_req) await db.failPendingCapture(env, snap.capture_req.id, "VM torn down");
+    await saveSnapshot(env, { state: "destroyed", since: new Date().toISOString(), public_ip: null, dns_ip: null, dns_live: false, auto_destroy_at: null, agent: null, last_agent_at: null, drift: null, error: null, steps: [], log_tail: null, running_since: null, pending_deploy: null, pending_summary: null, capture_req: null });
     return "Azure is empty. State set to Destroyed.";
   }
   await saveSnapshot(env, { drift: null });
