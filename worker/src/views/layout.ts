@@ -45,6 +45,9 @@ export function page(o: {
 }): Html {
   const s = o.snapshot;
   const missingGroups = Object.keys(o.missing ?? {});
+  // The drift banner's Reconcile is an ordinary (not htmx) form: it can be
+  // pressed from any tab, and the answer is the whole Overview page. The
+  // notes' Dismiss just removes the notes from this page, wherever you are.
   return html`<!doctype html>
 <html lang="en">
 <head>
@@ -83,10 +86,10 @@ export function page(o: {
   ${missingGroups.length
     ? html`<div class="notice warn"><p><b>Not fully set up.</b> Missing secrets for: ${missingGroups.join(", ")}.</p><span class="spacer"></span><a href="/settings">Finish setup</a></div>`
     : ""}
-  ${s.drift ? html`<div class="notice bad"><p><b>Drift.</b> ${s.drift}</p><span class="spacer"></span><form method="post" action="/actions/reconcile" hx-post="/actions/reconcile" hx-target="body"><button type="submit">Reconcile</button></form></div>` : ""}
+  ${s.drift ? html`<div class="notice bad"><p><b>Drift.</b> ${s.drift}</p><span class="spacer"></span><form method="post" action="/actions/reconcile" hx-boost="false"><button type="submit">Reconcile</button></form></div>` : ""}
   ${(o.alerts ?? []).length
-    ? html`<button type="button" class="m-only m-alertbar" data-sheet="sh-alerts"><i></i>${o.alerts!.length} new note${o.alerts!.length === 1 ? "" : "s"} while you were away</button>
-      <div class="notice sheet" id="sh-alerts">${sheetHead("While you were away")}<div><b class="d-only">While you were away</b><ul class="small" style="margin:4px 0 0;padding-left:18px">${o.alerts!.map((a) => html`<li>${fmtTime(a.at)}: ${a.message}</li>`)}</ul></div><span class="spacer"></span><form method="post" action="/alerts/ack" hx-post="/alerts/ack" hx-target="body"><button type="submit">Dismiss</button></form></div>`
+    ? html`<div id="away"><button type="button" class="m-only m-alertbar" data-sheet="sh-alerts"><i></i>${o.alerts!.length} new note${o.alerts!.length === 1 ? "" : "s"} while you were away</button>
+      <div class="notice sheet" id="sh-alerts">${sheetHead("While you were away")}<div><b class="d-only">While you were away</b><ul class="small" style="margin:4px 0 0;padding-left:18px">${o.alerts!.map((a) => html`<li>${fmtTime(a.at)}: ${a.message}</li>`)}</ul></div><span class="spacer"></span><form method="post" action="/alerts/ack" hx-post="/alerts/ack" hx-target="#away" hx-swap="delete"><button type="submit">Dismiss</button></form></div></div>`
     : ""}
   ${o.body}
 </main>

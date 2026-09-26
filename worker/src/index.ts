@@ -316,8 +316,19 @@ app.post("/actions/allow-ssh", async (c) => {
   }, "info");
 });
 
+// The SSH password for what is running now, fetched only when Show or Copy
+// is pressed (so it is not written into every page). Never cached.
+app.get("/api/ssh-password", async (c) => {
+  const [snap, dep] = await Promise.all([getSnapshot(c.env), db.currentDeployment(c.env)]);
+  c.header("Cache-Control", "no-store");
+  if (snap.state !== "running" || !dep?.ssh_password) return c.json({ error: "There is no SSH password for what is running now." }, 404);
+  return c.json({ password: dep.ssh_password });
+});
+
 app.post("/alerts/ack", async (c) => {
   await db.acknowledgeAlerts(c.env);
+  // From the page (htmx) the notes are simply removed where they are.
+  if (c.req.header("HX-Request")) return c.html("");
   return c.redirect("/");
 });
 
@@ -412,6 +423,16 @@ app.post("/api/push/unsubscribe", async (c) => {
   const b = (await c.req.json().catch(() => null)) as { endpoint?: string } | null;
   if (b?.endpoint) await db.deletePushSub(c.env, { endpoint: String(b.endpoint) });
   return c.json({ ok: true });
+});
+
+// Is this device's subscription still on our list? The Phone alerts panel
+// asks, so it can say "not registered" instead of a false "on". Also hands
+// the service worker the public key when it has to sign up again.
+app.get("/api/push/status", async (c) => {
+  const endpoint = c.req.query("endpoint") ?? "";
+  const sub = endpoint ? (await db.listPushSubs(c.env)).find((s) => s.endpoint === endpoint) : undefined;
+  c.header("Cache-Control", "no-store");
+  return c.json({ registered: !!sub, id: sub?.id ?? null, last_error: sub?.last_error ?? null, vapid: c.env.VAPID_PUBLIC_KEY ?? null });
 });
 
 app.post("/api/push/test", async (c) => {

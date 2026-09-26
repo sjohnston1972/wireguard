@@ -90,7 +90,12 @@ function selfTestCell(s: Snapshot): Html {
   return html`<span class="pill up">passed</span> <span class="faint small">${parts.join(" · ")} in ${(t.ms / 1000).toFixed(1)} s</span>`;
 }
 
-/** SSH access to the VM: user, host, per-deploy password behind a click, and the allow-list. */
+/**
+ * SSH access to the VM: user, host, per-deploy password behind a click, and
+ * the allow-list. The password itself is not in the page: Show and Copy
+ * fetch it from /api/ssh-password when pressed (see app.js), so it is not
+ * in every 20-second refresh or in anything the browser keeps.
+ */
 function secrets(o: LiveOpts): Html {
   const s = o.snap;
   if (s.state !== "running" || !o.deployment) return html``;
@@ -100,7 +105,7 @@ function secrets(o: LiveOpts): Html {
   const host = s.public_ip ?? o.cfg.dnsName;
   const tunnelIp = serverTunnelIp(o.cfg.subnet);
   const loopbackUp = !!s.agent && s.agent.loopback === o.cfg.loopbackIp;
-  return html`<dialog id="dlg-ssh" class="modal" aria-labelledby="dlg-ssh-title">
+  return html`<dialog id="dlg-ssh" class="modal" aria-labelledby="dlg-ssh-title" hx-history="false">
   <div class="modal-box">
   <div class="modal-head"><div><h2 id="dlg-ssh-title">SSH to the VM</h2><p class="muted small">username, password and allow-list for this deployment</p></div><button type="button" data-close aria-label="Close">Close</button></div>
   <table class="rows inv"><tbody>
@@ -108,7 +113,7 @@ function secrets(o: LiveOpts): Html {
     <tr><th>Over the tunnel</th><td><b class="mono">${o.cfg.loopbackIp}</b>${loopbackUp ? html` <span class="pill up">up</span>` : html` <span class="pill idle">not on this build</span>`}<div class="mono small muted">${tunnelIp}</div></td><td class="muted">from any connected client, from anywhere. No firewall rule needed: SSH rides inside the WireGuard packets, which the NSG already admits, so port 22 is never exposed. ${loopbackUp ? "Use the loopback." : `Use ${tunnelIp} until the next deploy adds the loopback.`}</td></tr>
     <tr><th>Username</th><td><b class="mono">azureuser</b></td><td class="muted">sudo without a password</td></tr>
     <tr><th>Password</th><td>${o.deployment.ssh_password
-      ? html`<span class="mono secret-value" data-secret="${o.deployment.ssh_password}" hidden>${o.deployment.ssh_password}</span><span class="mono secret-mask">••••••••••••••••</span></td><td class="muted"><button type="button" data-reveal style="padding:3px 8px;font-size:.8rem">Show</button> <button type="button" data-copy-secret style="padding:3px 8px;font-size:.8rem">Copy</button> <span class="small">made for this deploy only; dies with the VM</span>`
+      ? html`<span class="mono secret-value" data-secret="/api/ssh-password" hidden></span><span class="mono secret-mask">••••••••••••••••</span></td><td class="muted"><button type="button" data-reveal style="padding:3px 8px;font-size:.8rem">Show</button> <button type="button" data-copy-secret style="padding:3px 8px;font-size:.8rem">Copy</button> <span class="small">made for this deploy only; dies with the VM</span>`
       : html`<span class="faint">none on this build</span></td><td class="muted">this VM was built before passwords were added; use the key, or redeploy`}</td></tr>
     <tr><th>Key</th><td><b class="mono">wg-admin-azure_ed25519</b></td><td class="muted">on the laptop in <span class="mono">~/.ssh</span>; always works regardless of the password</td></tr>
     <tr><th>Allowed from</th><td><b class="mono">${allowed ?? "nobody"}</b></td><td class="muted">${allowed ? "the only address the firewall lets reach port 22" : "no SSH rule on this deploy"}
@@ -525,6 +530,9 @@ function regionChips(o: LiveOpts): Html {
 function controls(o: LiveOpts): Html {
   const s = o.snap;
   const disabled = !o.canDispatch;
+  // Tear down starts off greyed out until "destroy" is typed; without GitHub
+  // it must stay greyed out whatever is typed (data-hard-disabled, app.js).
+  const notConnected = disabled ? html`<span class="small muted">GitHub is not connected. <a href="/settings">Finish setup</a>.</span>` : "";
   const expiry = o.cfg.expiryAction === "hibernate" ? "hibernates" : "tears down";
   if (s.state === "standby") {
     return html`<div class="controls" style="margin-top:16px">
@@ -544,7 +552,7 @@ function controls(o: LiveOpts): Html {
         <p class="muted">Removes the VM, its disk and address, back to £0. The next start is a full deploy (about 4 minutes).</p>
         <form method="post" action="/actions/destroy" hx-post="/actions/destroy" hx-target="#live" hx-swap="outerHTML">
           <label class="field"><span>Type <kbd>destroy</kbd> to confirm</span><input type="text" name="confirm" autocomplete="off" data-confirm-word="destroy" placeholder="destroy"></label>
-          <div class="btn-row"><button type="submit" class="danger" disabled ${disabled ? "disabled" : ""}>Tear down now</button></div>
+          <div class="btn-row"><button type="submit" class="danger" disabled ${disabled ? raw("data-hard-disabled") : ""}>Tear down now</button>${notConnected}</div>
         </form>
       </div>
     </div>`;
@@ -557,7 +565,7 @@ function controls(o: LiveOpts): Html {
         <p class="muted">Removes the VM, its address and the DNS record. Clients keep their configs and reconnect after the next deploy.</p>
         <form method="post" action="/actions/destroy" hx-post="/actions/destroy" hx-target="#live" hx-swap="outerHTML">
           <label class="field"><span>Type <kbd>destroy</kbd> to confirm</span><input type="text" name="confirm" autocomplete="off" data-confirm-word="destroy" placeholder="destroy"></label>
-          <div class="btn-row"><button type="submit" class="danger primary big" disabled ${disabled ? "disabled" : ""}>Tear down now</button></div>
+          <div class="btn-row"><button type="submit" class="danger primary big" disabled ${disabled ? raw("data-hard-disabled") : ""}>Tear down now</button>${notConnected}</div>
         </form>
       </div>
       <div class="panel sheet" id="sh-hibernate" data-slot="second">

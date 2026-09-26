@@ -126,6 +126,9 @@ section + section { margin-top: 26px; }
 .notice.bad { border-left-color: var(--down); }
 .notice.good { border-left-color: var(--up); }
 .notice .spacer { flex: 1; }
+/* "Could not reach the dashboard": added by app.js when a request fails.
+   Stays in view under the top bar while scrolling. */
+.notice.net-error { position: sticky; top: 64px; z-index: 12; box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.45); align-items: center; }
 
 /* ── Faceplate (dashboard hero) ─────────────────────────────────────────── */
 .faceplate {
@@ -283,7 +286,7 @@ kbd { font-family: var(--mono); font-size: 0.8rem; background: var(--surface-2);
 footer.wrap { color: var(--ink-3); font-size: 0.8rem; padding-bottom: 30px; }
 
 /* larger diagram labels when the SVG is scaled down on phones */
-@media (max-width: 600px) {
+@media (max-width: 640px) {
   .tunnel text { font-size: 15px; }
   .tunnel text.name { font-size: 17px; }
 }
@@ -382,7 +385,10 @@ dialog.modal[open] { animation: modal-in 160ms ease-out; }
    reach, the Overview puts the action you came for (Deploy, Extend, Resume)
    straight under the state word, facts sit two to a row, and tables become
    one card per row with their labels beside the values. Nothing here changes
-   the desktop layout. */
+   the desktop layout.
+   "A phone" means one width everywhere: max-width 640px (and min-width
+   641px for "not a phone"). app.js uses the same query (PHONE) to decide
+   what the Install panel says; if this changes, change that too. */
 .tabbar { display: none; }
 .tunnel.compact { display: none; }
 
