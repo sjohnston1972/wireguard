@@ -67,7 +67,9 @@ You need: [Node.js](https://nodejs.org) 20+, [GitHub CLI](https://cli.github.com
    forever. `npm run keys` refuses to overwrite it unless you pass `--rotate`.
    Copy the printed `WG_SERVER_PUBLIC_KEY` into `wrangler.toml`: the dashboard
    only ever holds the public half, so a compromised dashboard cannot
-   impersonate the VPN server.
+   impersonate the VPN server. If the key ever has to be replaced, the
+   dashboard's Settings page (Server key) lists the steps and then ticks off
+   each client as it reconnects with its new config.
 
 3. **Push secrets to GitHub.** Terraform in Actions reads them from there.
 

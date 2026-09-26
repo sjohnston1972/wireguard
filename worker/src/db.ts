@@ -43,6 +43,7 @@ export interface Peer {
   home_lan: number; // client config also routes the home LAN into the tunnel
   created_at: string;
   note: string | null;
+  needs_config?: number; // 1 after a server key rotation, until its first handshake with the new key
 }
 
 export interface Alert {
@@ -229,6 +230,34 @@ export async function setSetting(env: Env, key: string, value: string): Promise<
 export async function allSettings(env: Env): Promise<Record<string, string>> {
   const r = await env.DB.prepare("SELECT key, value FROM settings").all<{ key: string; value: string }>();
   return Object.fromEntries(r.results.map((x) => [x.key, x.value]));
+}
+
+/**
+ * Change a setting only if it still holds `was` (null: only if it is not set
+ * yet), in one step. True if this caller made the change. Two requests racing
+ * cannot both win, so something done "once per change" is done once.
+ */
+export async function swapSetting(env: Env, key: string, was: string | null, value: string): Promise<boolean> {
+  const r = was === null
+    ? await env.DB.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?1, ?2)").bind(key, value).run()
+    : await env.DB.prepare("UPDATE settings SET value = ?2 WHERE key = ?1 AND value = ?3").bind(key, value, was).run();
+  return (r.meta?.changes ?? 0) === 1;
+}
+
+// ── Server key rotation: which clients still need a new config ────────────
+
+/** Flag every client made before `before` as needing a new config. Returns how many. */
+export async function flagPeersForNewConfig(env: Env, before: string): Promise<number> {
+  const r = await env.DB.prepare("UPDATE peers SET needs_config = 1 WHERE created_at < ?1").bind(before).run();
+  return r.meta?.changes ?? 0;
+}
+
+export async function peersNeedingConfig(env: Env): Promise<Peer[]> {
+  return (await env.DB.prepare("SELECT * FROM peers WHERE needs_config = 1 ORDER BY id").all<Peer>()).results;
+}
+
+export async function clearNeedsConfig(env: Env, id: number): Promise<void> {
+  await env.DB.prepare("UPDATE peers SET needs_config = 0 WHERE id = ?1").bind(id).run();
 }
 
 // ── Cost ──────────────────────────────────────────────────────────────────
