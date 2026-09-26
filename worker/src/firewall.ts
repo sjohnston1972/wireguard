@@ -218,7 +218,7 @@ export function parsePorts(s: string): string | null {
 /** Resolve one end of a rule to address sets. null = unresolvable (a deleted client). */
 export function endAddrs(kind: EndKind, value: string, cfg: Config, peers: Peer[]): Addrs | "any" | null {
   if (kind === "any") return "any";
-  if (kind === "zone") return value in ZONE_LABEL ? zoneAddrs(value as Zone, cfg) : null;
+  if (kind === "zone") return Object.hasOwn(ZONE_LABEL, value) ? zoneAddrs(value as Zone, cfg) : null;
   if (kind === "client") {
     const p = peers.find((x) => String(x.id) === value);
     if (!p) return null;
