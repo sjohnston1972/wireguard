@@ -43,6 +43,8 @@ export interface Peer {
   home_lan: number; // client config also routes the home LAN into the tunnel
   created_at: string;
   note: string | null;
+  expires_at?: string | null; // ISO time a guest client stops working; null = never
+  last_handshake_at?: string | null; // last real connection, kept across tear-downs (to within an hour)
 }
 
 export interface Alert {
@@ -142,20 +144,21 @@ export async function listPeers(env: Env): Promise<Peer[]> {
   return (await env.DB.prepare("SELECT * FROM peers ORDER BY id").all<Peer>()).results;
 }
 
-export async function enabledPeers(env: Env): Promise<Peer[]> {
-  return (await env.DB.prepare("SELECT * FROM peers WHERE enabled = 1 ORDER BY id").all<Peer>()).results;
+/** Enabled clients that have not expired: the ones allowed on the VM. */
+export async function enabledPeers(env: Env, now = new Date()): Promise<Peer[]> {
+  return (await env.DB.prepare("SELECT * FROM peers WHERE enabled = 1 AND (expires_at IS NULL OR expires_at > ?1) ORDER BY id").bind(now.toISOString()).all<Peer>()).results;
 }
 
 export async function getPeer(env: Env, id: number): Promise<Peer | null> {
   return (await env.DB.prepare("SELECT * FROM peers WHERE id = ?1").bind(id).first<Peer>()) ?? null;
 }
 
-export async function addPeer(env: Env, p: { name: string; public_key: string; ip: string; full_tunnel: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; note?: string }): Promise<Peer> {
+export async function addPeer(env: Env, p: { name: string; public_key: string; ip: string; full_tunnel: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; note?: string; expires_at?: string | null }): Promise<Peer> {
   const created_at = new Date().toISOString();
   const r = await env.DB.prepare(
-    "INSERT INTO peers (name, public_key, ip, enabled, full_tunnel, azure_vnet, tunnel_dns, created_at, note) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8) RETURNING *"
+    "INSERT INTO peers (name, public_key, ip, enabled, full_tunnel, azure_vnet, tunnel_dns, created_at, note, expires_at) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9) RETURNING *"
   )
-    .bind(p.name, p.public_key, p.ip, p.full_tunnel ? 1 : 0, p.azure_vnet ? 1 : 0, p.tunnel_dns ? 1 : 0, created_at, p.note ?? null)
+    .bind(p.name, p.public_key, p.ip, p.full_tunnel ? 1 : 0, p.azure_vnet ? 1 : 0, p.tunnel_dns ? 1 : 0, created_at, p.note ?? null, p.expires_at ?? null)
     .first<Peer>();
   if (!r) throw new Error("insert failed");
   return r;
@@ -185,8 +188,41 @@ export async function sitePeer(env: Env): Promise<Peer | null> {
   return (await env.DB.prepare("SELECT * FROM peers WHERE routes != '' AND enabled = 1 ORDER BY id LIMIT 1").first<Peer>()) ?? null;
 }
 
+/** Switching an expired client back on also clears its old expiry, or the watchman would switch it straight off again. */
 export async function setPeerEnabled(env: Env, id: number, enabled: boolean): Promise<void> {
-  await env.DB.prepare("UPDATE peers SET enabled = ?2 WHERE id = ?1").bind(id, enabled ? 1 : 0).run();
+  await env.DB.prepare("UPDATE peers SET enabled = ?2, expires_at = CASE WHEN ?2 = 1 AND expires_at <= ?3 THEN NULL ELSE expires_at END WHERE id = ?1").bind(id, enabled ? 1 : 0, new Date().toISOString()).run();
+}
+
+/** Set or clear (null) when a client stops working. */
+export async function setPeerExpiry(env: Env, id: number, expires_at: string | null): Promise<void> {
+  await env.DB.prepare("UPDATE peers SET expires_at = ?2 WHERE id = ?1").bind(id, expires_at).run();
+}
+
+/**
+ * Switch off every enabled client whose time is up, and say which. The VM
+ * already stopped loading them the moment they expired; this just makes the
+ * Clients page and Activity agree.
+ */
+export async function disableExpiredPeers(env: Env, now = new Date()): Promise<Peer[]> {
+  return (await env.DB.prepare("UPDATE peers SET enabled = 0 WHERE enabled = 1 AND expires_at IS NOT NULL AND expires_at <= ?1 RETURNING *").bind(now.toISOString()).all<Peer>()).results;
+}
+
+/**
+ * Remember when each client last connected, from a heartbeat's handshake
+ * times (epoch seconds, 0 = never). Written only when it has moved by more
+ * than an hour, so a heartbeat every 30 seconds costs one read, not a write.
+ */
+export async function noteHandshakes(env: Env, seen: { public_key: string; latest_handshake: number }[]): Promise<void> {
+  const live = seen.filter((s) => s.latest_handshake > 0);
+  if (!live.length) return;
+  const peers = await listPeers(env);
+  for (const s of live) {
+    const p = peers.find((x) => x.public_key === s.public_key);
+    if (!p) continue;
+    const at = s.latest_handshake * 1000;
+    if (p.last_handshake_at && at - Date.parse(p.last_handshake_at) <= 3600_000) continue;
+    await env.DB.prepare("UPDATE peers SET last_handshake_at = ?2 WHERE id = ?1").bind(p.id, new Date(at).toISOString()).run();
+  }
 }
 
 export async function deletePeer(env: Env, id: number): Promise<void> {

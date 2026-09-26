@@ -15,7 +15,7 @@ import { requireAccess, sameOriginOnly, bearer, type AuthedVars } from "./auth";
 import * as db from "./db";
 import { getSnapshot } from "./state";
 import { lockStatus, releaseLock } from "./lock";
-import { serverPublicKey, nextFreeIp, clientConfigTemplate, validPeerName, isWgKey } from "./peers";
+import { serverPublicKey, nextFreeIp, clientConfigTemplate, validPeerName, isWgKey, expiryFrom } from "./peers";
 import { effectiveConfig, saveOverrides } from "./settings";
 import { startDeploy, startDestroy, cancelActive, reconcile, extendAutoDestroy, refreshActiveRun, refreshInventory, handleCallback, handleAgent, issueRunSecrets, RunError } from "./runs";
 import { verifyGithubOidc } from "./oidc";
@@ -419,7 +419,7 @@ app.get("/partials/peers-table", async (c) => {
 });
 
 app.post("/api/peers", async (c) => {
-  const body = await jsonBody<{ name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; home_lan?: boolean }>(c);
+  const body = await jsonBody<{ name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; home_lan?: boolean; expires_days?: number }>(c);
   if (!body) return c.json({ error: "bad json" }, 400);
   const name = String(body.name ?? "").trim();
   if (!validPeerName(name)) return c.json({ error: "Name: letters, digits, spaces, dashes; up to 32 characters." }, 400);
@@ -432,7 +432,7 @@ app.post("/api/peers", async (c) => {
   if (!ipAddr) return c.json({ error: "No free tunnel addresses left." }, 409);
   let peer;
   try {
-    peer = await db.addPeer(c.env, { name, public_key: String(body.public_key), ip: ipAddr, full_tunnel: !!body.full_tunnel, azure_vnet: !!body.azure_vnet, tunnel_dns: !!body.tunnel_dns });
+    peer = await db.addPeer(c.env, { name, public_key: String(body.public_key), ip: ipAddr, full_tunnel: !!body.full_tunnel, azure_vnet: !!body.azure_vnet, tunnel_dns: !!body.tunnel_dns, expires_at: expiryFrom(body.expires_days) });
     if (body.home_lan && !body.full_tunnel) {
       await db.setPeerHomeLan(c.env, peer.id, true);
       peer = (await db.getPeer(c.env, peer.id))!;
@@ -460,6 +460,19 @@ app.post("/api/peers/:id/rekey", async (c) => {
   }
   const updated = (await db.getPeer(c.env, id))!;
   return c.json({ peer: updated, template: clientConfigTemplate(c.env, updated, serverPub) });
+});
+
+// Change or remove when a client stops working: {days: 0 (never), 1, 7 or 30}, counted from now.
+// The home site never expires: losing it would cut the home network off.
+app.post("/api/peers/:id/expiry", async (c) => {
+  const body = await jsonBody<{ days?: number }>(c);
+  if (!body) return c.json({ error: "bad json" }, 400);
+  const peer = await db.getPeer(c.env, Number(c.req.param("id")));
+  if (!peer) return c.json({ error: "No such client." }, 404);
+  const at = expiryFrom(body.days);
+  if (at && peer.routes) return c.json({ error: "The home site does not expire." }, 400);
+  await db.setPeerExpiry(c.env, peer.id, at);
+  return c.json({ ok: true, expires_at: at });
 });
 
 app.post("/peers/:id/azure", async (c) => {

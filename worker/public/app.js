@@ -666,7 +666,7 @@
       var fd = new FormData(form);
       var r = await fetch("/api/peers", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: fd.get("name"), public_key: keys.publicKey, full_tunnel: fd.get("full_tunnel") === "1", azure_vnet: fd.get("azure_vnet") === "1", tunnel_dns: fd.get("tunnel_dns") === "1", home_lan: fd.get("home_lan") === "1" }),
+        body: JSON.stringify({ name: fd.get("name"), public_key: keys.publicKey, full_tunnel: fd.get("full_tunnel") === "1", azure_vnet: fd.get("azure_vnet") === "1", tunnel_dns: fd.get("tunnel_dns") === "1", home_lan: fd.get("home_lan") === "1", expires_days: Number(fd.get("expires_days")) || 0 }),
       });
       var data = await r.json();
       if (!r.ok) throw new Error(data.error || ("Failed (" + r.status + ")"));
@@ -680,6 +680,25 @@
       btn.disabled = false;
     }
   }, true);
+
+  // The expiry picker on an existing client: send the choice, then redraw the table.
+  document.addEventListener("change", async function (e) {
+    var sel = e.target.closest && e.target.closest("select[data-expiry]");
+    if (!sel || sel.value === "") return;
+    sel.disabled = true;
+    try {
+      var r = await fetch("/api/peers/" + sel.getAttribute("data-expiry") + "/expiry", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: Number(sel.value) }),
+      });
+      var data = await r.json();
+      if (!r.ok) throw new Error(data.error || ("Failed (" + r.status + ")"));
+    } catch (err) {
+      alert("Could not change the expiry: " + err.message);
+    }
+    sel.disabled = false; sel.value = "";
+    if (window.htmx) htmx.ajax("GET", "/partials/peers-table", { target: "#peers-table", swap: "outerHTML" });
+  });
 
   // "Get config" on an existing client: new keys, then the same reveal.
   document.addEventListener("click", async function (e) {
