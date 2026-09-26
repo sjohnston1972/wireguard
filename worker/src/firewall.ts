@@ -117,13 +117,42 @@ export function zoneAddrs(zone: Zone, cfg: Config): Addrs {
   }
 }
 
+/** A dotted IPv4 address with every part 0-255. */
+function isIpv4(a: string): boolean {
+  const m = a.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  return !!m && m.slice(1, 5).every((x) => Number(x) <= 255);
+}
+
+/**
+ * A real IPv6 address, checked the way nft will check it: eight groups of 1
+ * to 4 hex digits, or fewer with exactly one "::" standing in for the missing
+ * zeros. The last two groups may be written as IPv4 (::ffff:192.0.2.1).
+ * "1::2::3" and "1:2:3" are not addresses, and one of them in the rule table
+ * would make the VM refuse the whole rule set.
+ */
+export function isIpv6(a: string): boolean {
+  let s = a;
+  const v4 = s.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4) {
+    if (!isIpv4(v4[2])) return false;
+    s = `${v4[1]}0:0`;
+  }
+  if (!/^[0-9a-fA-F:]+$/.test(s)) return false;
+  const halves = s.split("::");
+  if (halves.length > 2) return false;
+  const groups = (x: string) => (x === "" ? [] : x.split(":"));
+  const all = halves.length === 2 ? [...groups(halves[0]), ...groups(halves[1])] : s.split(":");
+  if (halves.length === 2 ? all.length > 7 : all.length !== 8) return false;
+  return all.every((g) => /^[0-9a-fA-F]{1,4}$/.test(g));
+}
+
 /** A tidy CIDR (or bare address) of either family, or null. */
 export function parseCidr(s: string): { family: 4 | 6; text: string } | null {
   const t = s.trim();
-  const m4 = t.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/);
-  if (m4 && m4.slice(1, 5).every((x) => Number(x) <= 255) && (m4[5] === undefined || Number(m4[5]) <= 32)) return { family: 4, text: m4[5] === undefined ? `${t}/32` : t };
-  const m6 = t.match(/^([0-9a-fA-F:]+)(?:\/(\d{1,3}))?$/);
-  if (m6 && m6[1].includes(":") && (m6[2] === undefined || Number(m6[2]) <= 128)) return { family: 6, text: m6[2] === undefined ? `${t.toLowerCase()}/128` : t.toLowerCase() };
+  const m4 = t.match(/^([\d.]+)(?:\/(\d{1,2}))?$/);
+  if (m4 && isIpv4(m4[1]) && (m4[2] === undefined || Number(m4[2]) <= 32)) return { family: 4, text: m4[2] === undefined ? `${t}/32` : t };
+  const m6 = t.match(/^([0-9a-fA-F:.]+)(?:\/(\d{1,3}))?$/);
+  if (m6 && m6[1].includes(":") && isIpv6(m6[1]) && (m6[2] === undefined || Number(m6[2]) <= 128)) return { family: 6, text: m6[2] === undefined ? `${t.toLowerCase()}/128` : t.toLowerCase() };
   return null;
 }
 

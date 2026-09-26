@@ -52,6 +52,17 @@ describe("rule compilation", () => {
     expect(parseCidr("fd13:13::3")).toEqual({ family: 6, text: "fd13:13::3/128" });
     expect(parseCidr("300.1.1.1")).toBeNull();
     expect(parsePorts("80,443")).toBe("{ 80, 443 }");
+  });
+  it("IPv6 addresses are checked properly, so one typo cannot sink the whole rule set", () => {
+    for (const ok of ["::", "::1", "fd13:13::/64", "2001:db8::1/128", "1:2:3:4:5:6:7:8", "1::8", "1:2:3:4:5:6:7::", "::ffff:192.0.2.1", "FD00::/8"]) expect(parseCidr(ok), ok).not.toBeNull();
+    expect(parseCidr("FD00::/8")).toEqual({ family: 6, text: "fd00::/8" });
+    expect(parseCidr("::ffff:192.0.2.1")).toEqual({ family: 6, text: "::ffff:192.0.2.1/128" });
+    for (const bad of ["1::2::3", "1:2:3", "1:2:3:4:5:6:7:8:9", "1:2:3:4:5:6:7::8", "12345::", ":1::", "1::2:", ":::", "::/129", "fd00::/", "::ffff:300.1.1.1", "1.2.3.4:5::", "g::1", ":"]) expect(parseCidr(bad), bad).toBeNull();
+    expect(parseCidr("1.2.3")).toBeNull();
+    expect(parseCidr("1.2.3.4/33")).toBeNull();
+  });
+  it("parses ports", () => {
+    expect(parsePorts("80,443")).toBe("{ 80, 443 }");
     expect(parsePorts("22")).toBe("22");
     expect(parsePorts("100-50")).toBeNull();
   });
