@@ -83,6 +83,10 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   if (isBusyState(snap.state)) throw new RunError("A run is already in progress.");
 
   const cfg = await effectiveConfig(env);
+  // Read what the payload needs before taking the lock, so a database hiccup
+  // here cannot leave the lock held with no run behind it.
+  const peers = terraformPeerList(await db.enabledPeers(env));
+  const publishedPorts = [...new Set((await db.listForwards(env)).filter((f) => f.enabled).map((f) => String(f.public_port)))];
   const id = newRunId("apply");
   const lock = await acquireLock(env, id);
   if (!lock.ok) throw new RunError(`Another run holds the lock (${lock.holder?.runId}). Wait for it or release it in Settings.`);
@@ -92,7 +96,6 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   // payload: the repo is public and so is its log. The workflow proves who it
   // is with a GitHub OIDC token and collects them from /api/callback/secrets.
   const sshPassword = readablePassword();
-  const peers = terraformPeerList(await db.enabledPeers(env));
   const sshCidr = cfg.sshAllowedCidr || (opts.requesterIp && !opts.requesterIp.includes(":") ? `${opts.requesterIp}/32` : "");
   const auto_destroy_at = opts.hours ? new Date(Date.now() + opts.hours * 3_600_000).toISOString() : null;
   const region = opts.region ?? cfg.region;
@@ -112,33 +115,41 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     vnet_cidr: cfg.vnetCidr,
     workload_subnet_cidr: cfg.workloadCidr,
     test_vm: cfg.testVm,
-    published_ports: [...new Set((await db.listForwards(env)).filter((f) => f.enabled).map((f) => String(f.public_port)))],
+    published_ports: publishedPorts,
     agent_url: `${cfg.publicUrl}/api/agent`,
     callback_url: `${cfg.publicUrl}/api/callback`,
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
   };
 
   const now = new Date().toISOString();
-  await db.createRun(env, {
-    id,
-    action: "apply",
-    status: "queued",
-    requested_at: now,
-    requested_by: opts.requestedBy,
-    callback_token_hash: null,
-    agent_token_hash: null,
-    // Kept in D1 (private) with the allow-list, for the dashboard's panels.
-    payload_json: JSON.stringify({ ...payload, ssh_allowed_cidr: sshCidr }),
-    auto_destroy_at,
-    reason: opts.reason ?? null,
-    ssh_password: sshPassword,
-  });
+  try {
+    await db.createRun(env, {
+      id,
+      action: "apply",
+      status: "queued",
+      requested_at: now,
+      requested_by: opts.requestedBy,
+      callback_token_hash: null,
+      agent_token_hash: null,
+      // Kept in D1 (private) with the allow-list, for the dashboard's panels.
+      payload_json: JSON.stringify({ ...payload, ssh_allowed_cidr: sshCidr }),
+      auto_destroy_at,
+      reason: opts.reason ?? null,
+      ssh_password: sshPassword,
+    });
+  } catch (e) {
+    await releaseLock(env, id); // no run was recorded, so nothing else would free it
+    throw e;
+  }
 
   try {
     await dispatchWorkflow(env, "apply", payload);
   } catch (e) {
-    await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
-    await releaseLock(env, id);
+    try {
+      await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
+    } finally {
+      await releaseLock(env, id);
+    }
     throw new RunError((e as Error).message);
   }
 
@@ -271,6 +282,9 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
   if (isBusyState(snap.state)) throw new RunError("A run is already in progress.");
 
   const cfg = config(env);
+  // Remember what this session did before the snapshot is cleared. Worked
+  // out before taking the lock, so an error here cannot leave it held.
+  const pending_summary = snap.state === "running" ? await sessionSummary(env, snap, "Torn down") : snap.state === "standby" ? "Torn down from Standby." : null;
   const id = newRunId("destroy");
   const lock = await acquireLock(env, id);
   if (!lock.ok) throw new RunError(`Another run holds the lock (${lock.holder?.runId}). Wait for it or release it in Settings.`);
@@ -282,30 +296,36 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
   };
   const now = new Date().toISOString();
-  await db.createRun(env, {
-    id,
-    action: "destroy",
-    status: "queued",
-    requested_at: now,
-    requested_by: requestedBy,
-    callback_token_hash: null,
-    agent_token_hash: null,
-    payload_json: JSON.stringify(payload),
-    auto_destroy_at: null,
-    reason: reason ?? null,
-    ssh_password: null,
-  });
+  try {
+    await db.createRun(env, {
+      id,
+      action: "destroy",
+      status: "queued",
+      requested_at: now,
+      requested_by: requestedBy,
+      callback_token_hash: null,
+      agent_token_hash: null,
+      payload_json: JSON.stringify(payload),
+      auto_destroy_at: null,
+      reason: reason ?? null,
+      ssh_password: null,
+    });
+  } catch (e) {
+    await releaseLock(env, id); // no run was recorded, so nothing else would free it
+    throw e;
+  }
 
   try {
     await dispatchWorkflow(env, "destroy", payload);
   } catch (e) {
-    await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
-    await releaseLock(env, id);
+    try {
+      await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
+    } finally {
+      await releaseLock(env, id);
+    }
     throw new RunError((e as Error).message);
   }
 
-  // Remember what this session did before the snapshot is cleared.
-  const pending_summary = snap.state === "running" ? await sessionSummary(env, snap, "Torn down") : snap.state === "standby" ? "Torn down from Standby." : null;
   await saveSnapshot(env, { state: "destroying", run_id: id, action: "destroy", since: now, github_run_url: null, steps: [], log_tail: null, error: null, drift: null, pending_summary });
   return (await db.getRun(env, id))!;
 }

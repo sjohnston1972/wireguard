@@ -105,6 +105,31 @@ describe("Clean up (reconcile) during a run (#23)", () => {
   });
 });
 
+describe("the run lock is not left held by a database error (#28)", () => {
+  /** Make every INSERT into runs fail, as a D1 hiccup would. */
+  function breakRunInserts() {
+    const prepare = env.DB.prepare.bind(env.DB);
+    env.DB.prepare = ((sql: string) => {
+      if (/INSERT INTO runs/.test(sql)) throw new Error("D1 unavailable");
+      return prepare(sql);
+    }) as typeof env.DB.prepare;
+  }
+
+  it("deploy", async () => {
+    breakRunInserts();
+    await expect(startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven" })).rejects.toThrow(/D1 unavailable/);
+    expect((await lockStatus(env)).held).toBe(false);
+    expect(world.dispatches).toHaveLength(0);
+  });
+
+  it("tear-down", async () => {
+    await toRunning();
+    breakRunInserts();
+    await expect(startDestroy(env, "steven", "done")).rejects.toThrow(/D1 unavailable/);
+    expect((await lockStatus(env)).held).toBe(false);
+  });
+});
+
 describe("settling without the callback (#24)", () => {
   it("waits 2 minutes after GitHub finishes, so the callback's outputs are not lost", async () => {
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });

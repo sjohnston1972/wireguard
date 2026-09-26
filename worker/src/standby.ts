@@ -35,10 +35,11 @@ export async function startHibernate(env: Env, by: string, reason: string): Prom
   if (!canAzure(env)) throw new RunError("Azure credentials are not set on the Worker, so it cannot power the VM down.");
   const snap = await getSnapshot(env);
   if (snap.state !== "running") throw new RunError("Only a running VM can be hibernated.");
+  // Worked out before taking the lock, so an error here cannot leave it held.
+  const summary = await sessionSummary(env, snap, "Hibernated");
   const id = lockId("hibernate");
   const lock = await acquireLock(env, id);
   if (!lock.ok) throw new RunError(`Another run holds the lock (${lock.holder?.runId}).`);
-  const summary = await sessionSummary(env, snap, "Hibernated");
   try {
     await vmPower(env, "deallocate");
   } catch (e) {
