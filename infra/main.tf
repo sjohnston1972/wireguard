@@ -58,6 +58,7 @@ locals {
     blocklist_service     = file("${path.module}/agent/wg-blocklist.service")
     speedtest_script      = file("${path.module}/agent/wg-speedtest.sh")
     capture_script        = file("${path.module}/agent/wg-capture.sh")
+    firewall_load_script  = file("${path.module}/agent/wg-firewall-load.sh")
     vnet_cidr             = var.vnet_cidr
     firewall_nft_b64      = var.firewall_nft_b64 != "" ? var.firewall_nft_b64 : base64encode(file("${path.module}/agent/firewall-open.nft"))
   })

@@ -54,6 +54,9 @@ speedtest="null"
 FW_FILE=/etc/wg-admin/firewall.nft
 fw_hash=""
 [[ -r "$FW_FILE" ]] && fw_hash="$(sed -n 's/^# ruleset \([0-9a-f]*\).*/\1/p' "$FW_FILE" | head -n1)"
+# At boot the saved file was refused and the block-all fallback is in force
+# (see wg-firewall-load.sh): report no rule set, so the dashboard sends it again.
+[[ -e /run/wg-admin/firewall.fallback ]] && fw_hash=""
 fw_counters="$(nft -j list counters table inet wgfw 2>/dev/null | jq -c '[.nftables[] | .counter? // empty | {key: .name, value: [.packets, .bytes]}] | from_entries' 2>/dev/null || true)"
 [[ -z "$fw_counters" ]] && fw_counters="{}"
 fw_error=""
@@ -153,8 +156,13 @@ if [[ -n "$fw_new" ]]; then
   tmp="$(mktemp)"
   if base64 -d <<<"$fw_new" > "$tmp" 2>/dev/null && nft -c -f "$tmp" 2>/run/wg-admin/firewall.error && nft -f "$tmp" 2>/run/wg-admin/firewall.error; then
     install -m 0600 -o root -g root "$tmp" "$FW_FILE"
-    rm -f /run/wg-admin/firewall.error
+    rm -f /run/wg-admin/firewall.error /run/wg-admin/firewall.fallback
     logger -t wg-agent "firewall rule set applied: $(sed -n 's/^# ruleset \([0-9a-f]*\).*/\1/p' "$FW_FILE" | head -n1)"
+    # If the firewall could not load at all at boot, the tunnel was kept
+    # down. Now there is a good rule set, bring both up.
+    if systemctl is-failed --quiet wg-firewall.service; then
+      systemctl restart wg-firewall.service && systemctl start --no-block wg-quick@wg0 || true
+    fi
   else
     logger -t wg-agent "firewall rule set refused: $(head -c 200 /run/wg-admin/firewall.error)"
   fi

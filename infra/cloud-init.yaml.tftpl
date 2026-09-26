@@ -62,25 +62,24 @@ write_files:
     owner: root:root
     content: |
       #!/usr/bin/env bash
-      # Called by wg-quick as PostUp / PostDown. Adds or removes the iptables
-      # rules that let tunnel clients reach the internet via the VM's WAN NIC.
+      # Called by wg-quick as PostUp / PostDown. Adds or removes the NAT rules
+      # that let tunnel clients reach the internet via the VM's WAN NIC.
+      # There are deliberately no "allow everything to/from wg0" rules here:
+      # what may pass is the firewall's job alone (wg-firewall.service), so
+      # if that ever failed to load, nothing would quietly let traffic through.
       set -euo pipefail
       WAN=$(ip -o route show default | awk '{print $5}' | head -n1)
       case "$${1:-}" in
-        up)   A="-A"; N="-A" ;;
-        down) A="-D"; N="-D" ;;
+        up)   N="-A" ;;
+        down) N="-D" ;;
         *) echo "usage: $0 up|down" >&2; exit 2 ;;
       esac
-      iptables "$A" FORWARD -i wg0 -j ACCEPT
-      iptables "$A" FORWARD -o wg0 -j ACCEPT
       # NAT only what leaves for the internet. Traffic to the Azure VNet keeps
       # its real source (a tunnel client's 10.13.13.x), so the firewall rules
       # and the servers behind it see who is really talking.
       iptables -t nat "$N" POSTROUTING -o "$WAN" ! -d ${vnet_cidr} -j MASQUERADE
       # The same for IPv6: tunnel addresses are private (fd13:13::/64), so
       # they leave behind the VM's public IPv6 address, like IPv4 does.
-      ip6tables "$A" FORWARD -i wg0 -j ACCEPT
-      ip6tables "$A" FORWARD -o wg0 -j ACCEPT
       ip6tables -t nat "$N" POSTROUTING -o "$WAN" -j MASQUERADE
 
   # ── Loopback: a stable test address on its own interface ──────────────────
@@ -143,6 +142,14 @@ write_files:
     encoding: b64
     content: ${firewall_nft_b64}
 
+  # Fails closed: if the saved rule set is refused, a block-all one is
+  # loaded instead and the reason is shown on the dashboard (see the script).
+  - path: /usr/local/sbin/wg-firewall-load.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      ${indent(6, firewall_load_script)}
+
   - path: /etc/systemd/system/wg-firewall.service
     permissions: "0644"
     owner: root:root
@@ -156,10 +163,20 @@ write_files:
       [Service]
       Type=oneshot
       RemainAfterExit=yes
-      ExecStart=/usr/sbin/nft -f /etc/wg-admin/firewall.nft
+      ExecStart=/usr/local/sbin/wg-firewall-load.sh
 
       [Install]
       WantedBy=multi-user.target
+
+  # The tunnel will not come up without the firewall: if wg-firewall.service
+  # fails outright, wg-quick@wg0 is not started at all (closed, not open).
+  - path: /etc/systemd/system/wg-quick@wg0.service.d/10-wg-firewall.conf
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Unit]
+      Requires=wg-firewall.service
+      After=wg-firewall.service
 
   # ── Tunnel DNS: a small resolver on the loopback, for connected clients ───
   # Answers on 10.13.255.1 (and the tunnel address) only, never the internet.
