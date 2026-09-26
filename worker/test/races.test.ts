@@ -36,6 +36,18 @@ function ghFinished(msAgo: number) {
   r.updated_at = ago(msAgo);
 }
 
+describe("SSH passwords are forgotten once the VM is gone (#15)", () => {
+  it("clears every stored password when a tear-down completes", async () => {
+    const { run } = await toRunning();
+    expect((await db.getRun(env, run.id))!.ssh_password).toBeTruthy();
+    const d = await startDestroy(env, "steven", "done");
+    const sec = await issueRunSecrets(env, d.id, lastGhRun(world));
+    world.azure.rg = false;
+    await handleCallback(env, sec.body.callback_token as string, { run_id: d.id, action: "destroy", status: "success" });
+    expect((await db.listRuns(env)).filter((r) => r.ssh_password)).toEqual([]);
+  });
+});
+
 describe("settling without the callback (#24)", () => {
   it("waits 2 minutes after GitHub finishes, so the callback's outputs are not lost", async () => {
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });

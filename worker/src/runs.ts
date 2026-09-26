@@ -414,6 +414,8 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
   // Claim the run first: only one caller carries on, so a queued Move is
   // started once, not twice.
   if (!(await db.settleRun(env, run.id, { status: "success", finished_at: now }))) return false;
+  // The VM is gone, so its SSH password opens nothing; do not keep it.
+  await db.clearSshPasswords(env);
   const before = await getSnapshot(env);
   // The VM and its counters are gone; its hits live on in the totals.
   await saveSnapshot(env, { fw_base: addCounters(before.fw_base ?? {}, before.firewall?.counters) });
@@ -718,6 +720,7 @@ export async function reconcile(env: Env, requestedBy: string): Promise<string> 
     const run = await db.activeRun(env);
     if (run) await db.updateRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: "reconciled: Azure empty" });
     await releaseLock(env, undefined, true);
+    await db.clearSshPasswords(env); // nothing left in Azure to log in to
     await saveSnapshot(env, { state: "destroyed", since: new Date().toISOString(), public_ip: null, dns_ip: null, dns_live: false, auto_destroy_at: null, agent: null, last_agent_at: null, drift: null, error: null, steps: [], log_tail: null, running_since: null });
     return "Azure is empty. State set to Destroyed.";
   }
