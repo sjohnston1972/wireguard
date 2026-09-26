@@ -164,14 +164,40 @@ export function peerRoutes(p: { routes?: string | null }, avoid: string[] = []):
     .filter((x) => x && routeProblem(x, avoid) === null);
 }
 
+/** The expiry choices on the Clients page, in days; 0 = never. */
+export const EXPIRY_DAYS = [0, 1, 7, 30];
+
+/** When a client picked "Expires: N days" stops working, or null for never (or anything not on the list). */
+export function expiryFrom(days: unknown, now = new Date()): string | null {
+  const d = Number(days);
+  if (!d || !EXPIRY_DAYS.includes(d)) return null;
+  return new Date(now.getTime() + d * 86400_000).toISOString();
+}
+
+/** Has this client's time run out? */
+export function peerExpired(p: { expires_at?: string | null }, now = Date.now()): boolean {
+  return !!p.expires_at && Date.parse(p.expires_at) <= now;
+}
+
 /**
- * What the VM's agent needs: enabled peers as {name, host, public_key, allowed_ips}.
+ * A client nobody seems to use: no handshake in 30 days (or never, and it
+ * was added more than 30 days ago). Uses the remembered handshake time, so
+ * it still works while the VM is torn down.
+ */
+export const STALE_DAYS = 30;
+export function peerStale(p: { last_handshake_at?: string | null; created_at: string }, now = Date.now()): boolean {
+  const last = Date.parse(p.last_handshake_at || p.created_at);
+  return Number.isFinite(last) && now - last > STALE_DAYS * 86400_000;
+}
+
+/**
+ * What the VM's agent needs: enabled, unexpired peers as {name, host, public_key, allowed_ips}.
  * A site peer (the home container) also carries its LAN, so the VM routes
  * 192.168.1.0/24 to it: WireGuard's cryptokey routing is the routing table.
  */
-export function agentPeerList(peers: Peer[], subnet6 = "", avoid: string[] = []): { name: string; host: string; public_key: string; allowed_ips: string }[] {
+export function agentPeerList(peers: Peer[], subnet6 = "", avoid: string[] = [], now = Date.now()): { name: string; host: string; public_key: string; allowed_ips: string }[] {
   return peers
-    .filter((p) => p.enabled)
+    .filter((p) => p.enabled && !peerExpired(p, now))
     .map((p) => {
       const ip6 = peerIp6(subnet6, p.ip);
       const allowed = [`${p.ip}/32`].concat(ip6 ? [`${ip6}/128`] : []).concat(peerRoutes(p, avoid));
@@ -179,9 +205,9 @@ export function agentPeerList(peers: Peer[], subnet6 = "", avoid: string[] = [])
     });
 }
 
-/** What Terraform's peers_json needs at deploy time. */
-export function terraformPeerList(peers: Peer[], avoid: string[] = []): { name: string; public_key: string; ip: string; routes?: string }[] {
-  return peers.filter((p) => p.enabled).map((p) => ({ name: p.name, public_key: p.public_key, ip: p.ip, ...(peerRoutes(p, avoid).length ? { routes: peerRoutes(p, avoid).join(",") } : {}) }));
+/** What Terraform's peers_json needs at deploy time. Expired clients are left out, like on the VM. */
+export function terraformPeerList(peers: Peer[], avoid: string[] = [], now = Date.now()): { name: string; public_key: string; ip: string; routes?: string }[] {
+  return peers.filter((p) => p.enabled && !peerExpired(p, now)).map((p) => ({ name: p.name, public_key: p.public_key, ip: p.ip, ...(peerRoutes(p, avoid).length ? { routes: peerRoutes(p, avoid).join(",") } : {}) }));
 }
 
 export function validPeerName(name: string): boolean {

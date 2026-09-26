@@ -115,6 +115,19 @@ export function upsertEnvLine(text, key, value) {
 }
 
 /**
+ * Keep a copy of KEY's current line as a comment just above it, so a value
+ * about to be replaced (a rotated key) can still be found and restored by
+ * hand. Comments are ignored by parseEnv, so the copy is never used by
+ * anything. Does nothing if KEY is not set.
+ */
+export function backupEnvLine(text, key, note) {
+  const re = new RegExp(`^(?:export\\s+)?${key}\\s*=(.*)$`, "m");
+  const m = text.match(re);
+  if (!m || !m[1].trim()) return text;
+  return text.replace(re, (line) => `# ${note}: ${line.replace(/^export\s+/, "")}\n${line}`);
+}
+
+/**
  * Turn { KEY: value } into the text of a .dev.vars file, the file wrangler dev
  * reads a Worker's secrets from. Each value is wrapped in quotes it does not
  * contain, so wrangler reads it back exactly: single quotes are taken

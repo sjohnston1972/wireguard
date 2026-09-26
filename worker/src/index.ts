@@ -15,7 +15,7 @@ import { requireAccess, sameOriginOnly, bearer, type AuthedVars } from "./auth";
 import * as db from "./db";
 import { getSnapshot } from "./state";
 import { lockStatus, releaseLock } from "./lock";
-import { serverPublicKey, nextFreeIp, clientConfigTemplate, validPeerName, isWgKey } from "./peers";
+import { serverPublicKey, nextFreeIp, clientConfigTemplate, validPeerName, isWgKey, expiryFrom } from "./peers";
 import { effectiveConfig, saveOverrides } from "./settings";
 import { startDeploy, startDestroy, cancelActive, reconcile, extendAutoDestroy, refreshActiveRun, refreshInventory, handleCallback, handleAgent, issueRunSecrets, RunError } from "./runs";
 import { verifyGithubOidc } from "./oidc";
@@ -31,9 +31,11 @@ import { runScheduled } from "./monitor";
 import { page, type Tab } from "./views/layout";
 import { liveSection } from "./views/dashboard";
 import { peersBody, peersTable } from "./views/peers";
-import { activityBody } from "./views/activity";
+import { activityBody, AUDIT_KINDS, AUDIT_PAGE } from "./views/activity";
 import { settingsBody } from "./views/settings";
+import { rotationStatus } from "./keyrotation";
 import { costBody } from "./views/cost";
+import { budgetStatus, requireBudgetOk, OVER_BUDGET_FIELD } from "./budget";
 import { firewallBody } from "./views/firewall";
 import { parseCidr, parsePorts, compileFirewall, type EndKind, type Proto } from "./firewall";
 import { clearFirewallCounters } from "./runs";
@@ -41,6 +43,9 @@ import { startCapture, receiveCapture, validFilter, MAX_CAPTURE_BYTES } from "./
 import { setPublishedPorts } from "./azure";
 import { reservedPort, forwardTargetOk, publishedNsgRules } from "./firewall";
 import { isPushEndpoint } from "./webpush";
+import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, backupStatus, MAX_RESTORE_BYTES, type RestorePlan } from "./backup";
+import { restoreBody } from "./views/settings";
+import { randomToken } from "./auth";
 
 export { RunLock } from "./lock";
 
@@ -241,7 +246,7 @@ function where(c: Context<App>): { country: string | null; region: string | null
 }
 
 async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null, near?: { country: string | null; region: string | null }) {
-  const [snap, cfg, peers, lock, deployment, serverPub, profiles, speedtests, schedules] = await Promise.all([
+  const [snap, cfg, peers, lock, deployment, serverPub, profiles, speedtests, schedules, backups] = await Promise.all([
     getSnapshot(env),
     effectiveConfig(env),
     db.listPeers(env),
@@ -251,8 +256,10 @@ async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info";
     db.listProfiles(env),
     db.listSpeedTests(env, 5),
     db.listSchedules(env),
+    backupStatus(env).catch(() => null),
   ]);
   return liveSection({
+    stateBackups: backups && !backups.error ? backups.state : null,
     snap,
     cfg,
     peerCount: peers.filter((p) => p.enabled).length,
@@ -268,6 +275,7 @@ async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info";
     speedtests,
     site: peers.find((p) => p.enabled && p.routes) ?? null,
     nextScheduled: nextStart(schedules, new Date()),
+    budget: await budgetStatus(env, cfg, snap),
   });
 }
 
@@ -315,6 +323,7 @@ app.post("/actions/deploy", async (c) => {
       // hasOwn, not "in": "in" would also accept built-in names like "constructor".
       if (!Object.hasOwn(REGIONS, region)) throw new RunError("Unknown region.");
     }
+    await requireBudgetOk(c.env, form[OVER_BUDGET_FIELD] === "yes");
     const run = await startDeploy(c.env, { hours: hours > 0 ? hours : null, requesterIp: ip(c), requestedBy: user, region, vmSize, profile });
     return `Deploy started${profile ? `: ${profile}` : ""} in ${regionName(region ?? (await effectiveConfig(c.env)).region)} (${run.id}). About 4 minutes.`;
   });
@@ -419,7 +428,7 @@ app.get("/partials/peers-table", async (c) => {
 });
 
 app.post("/api/peers", async (c) => {
-  const body = await jsonBody<{ name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; home_lan?: boolean }>(c);
+  const body = await jsonBody<{ name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; home_lan?: boolean; expires_days?: number }>(c);
   if (!body) return c.json({ error: "bad json" }, 400);
   const name = String(body.name ?? "").trim();
   if (!validPeerName(name)) return c.json({ error: "Name: letters, digits, spaces, dashes; up to 32 characters." }, 400);
@@ -432,7 +441,7 @@ app.post("/api/peers", async (c) => {
   if (!ipAddr) return c.json({ error: "No free tunnel addresses left." }, 409);
   let peer;
   try {
-    peer = await db.addPeer(c.env, { name, public_key: String(body.public_key), ip: ipAddr, full_tunnel: !!body.full_tunnel, azure_vnet: !!body.azure_vnet, tunnel_dns: !!body.tunnel_dns });
+    peer = await db.addPeer(c.env, { name, public_key: String(body.public_key), ip: ipAddr, full_tunnel: !!body.full_tunnel, azure_vnet: !!body.azure_vnet, tunnel_dns: !!body.tunnel_dns, expires_at: expiryFrom(body.expires_days) });
     if (body.home_lan && !body.full_tunnel) {
       await db.setPeerHomeLan(c.env, peer.id, true);
       peer = (await db.getPeer(c.env, peer.id))!;
@@ -440,6 +449,7 @@ app.post("/api/peers", async (c) => {
   } catch (e) {
     return c.json({ error: /UNIQUE/.test(String(e)) ? "That key is already registered." : (e as Error).message }, 409);
   }
+  await db.audit(c.env, c.get("user"), "client.add", peer.name, null, peer);
   return c.json({ peer, template: clientConfigTemplate(c.env, peer, serverPub) });
 });
 
@@ -459,13 +469,29 @@ app.post("/api/peers/:id/rekey", async (c) => {
     return c.json({ error: /UNIQUE/.test(String(e)) ? "That key is already registered." : (e as Error).message }, 409);
   }
   const updated = (await db.getPeer(c.env, id))!;
+  await db.audit(c.env, c.get("user"), "client.rekey", peer.name, peer, updated);
   return c.json({ peer: updated, template: clientConfigTemplate(c.env, updated, serverPub) });
+});
+
+// Change or remove when a client stops working: {days: 0 (never), 1, 7 or 30}, counted from now.
+// The home site never expires: losing it would cut the home network off.
+app.post("/api/peers/:id/expiry", async (c) => {
+  const body = await jsonBody<{ days?: number }>(c);
+  if (!body) return c.json({ error: "bad json" }, 400);
+  const peer = await db.getPeer(c.env, Number(c.req.param("id")));
+  if (!peer) return c.json({ error: "No such client." }, 404);
+  const at = expiryFrom(body.days);
+  if (at && peer.routes) return c.json({ error: "The home site does not expire." }, 400);
+  await db.setPeerExpiry(c.env, peer.id, at);
+  await db.audit(c.env, c.get("user"), "client.edit", peer.name, { expires_at: peer.expires_at ?? null }, { expires_at: at });
+  return c.json({ ok: true, expires_at: at });
 });
 
 app.post("/peers/:id/azure", async (c) => {
   const id = Number(c.req.param("id"));
   const p = await db.getPeer(c.env, id);
   if (p) await db.setPeerAzureVnet(c.env, id, !p.azure_vnet);
+  if (p) await db.audit(c.env, c.get("user"), "client.edit", p.name, p, { ...p, azure_vnet: p.azure_vnet ? 0 : 1 });
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
   return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {}))) : c.redirect("/peers");
 });
@@ -474,6 +500,7 @@ app.post("/peers/:id/dns", async (c) => {
   const id = Number(c.req.param("id"));
   const p = await db.getPeer(c.env, id);
   if (p) await db.setPeerTunnelDns(c.env, id, !p.tunnel_dns);
+  if (p) await db.audit(c.env, c.get("user"), "client.edit", p.name, p, { ...p, tunnel_dns: p.tunnel_dns ? 0 : 1 });
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
   return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {}))) : c.redirect("/peers");
 });
@@ -489,12 +516,14 @@ app.post("/api/push/subscribe", async (c) => {
   if (!/^https:\/\/[^\s]{10,}$/.test(endpoint) || !isPushEndpoint(endpoint) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return c.json({ error: "That does not look like a push subscription." }, 400);
   await db.savePushSub(c.env, { endpoint, p256dh, auth, label: String(b?.label ?? "").slice(0, 40) || null });
   await db.addAlert(c.env, "info", `Phone alerts turned on for ${b?.label || "a device"} by ${c.get("user")}.`);
+  await db.audit(c.env, c.get("user"), "push.add", b?.label || "a device", null, { label: b?.label || null });
   return c.json({ ok: true });
 });
 
 app.post("/api/push/unsubscribe", async (c) => {
   const b = await jsonBody<{ endpoint?: string }>(c);
   if (b?.endpoint) await db.deletePushSub(c.env, { endpoint: String(b.endpoint) });
+  if (b?.endpoint) await db.audit(c.env, c.get("user"), "push.remove", "this device", null, null);
   return c.json({ ok: true });
 });
 
@@ -517,7 +546,9 @@ app.post("/api/push/test", async (c) => {
 });
 
 app.post("/settings/push/:id/delete", async (c) => {
+  const gone = (await db.listPushSubs(c.env)).find((s) => s.id === Number(c.req.param("id")));
   await db.deletePushSub(c.env, { id: Number(c.req.param("id")) });
+  if (gone) await db.audit(c.env, c.get("user"), "push.remove", gone.label ?? `device ${gone.id}`, gone, null);
   return c.redirect("/settings?saved=1");
 });
 
@@ -525,6 +556,7 @@ app.post("/peers/:id/homelan", async (c) => {
   const id = Number(c.req.param("id"));
   const p = await db.getPeer(c.env, id);
   if (p) await db.setPeerHomeLan(c.env, id, !p.home_lan);
+  if (p) await db.audit(c.env, c.get("user"), "client.edit", p.name, p, { ...p, home_lan: p.home_lan ? 0 : 1 });
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
   return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {}))) : c.redirect("/peers");
 });
@@ -533,12 +565,15 @@ app.post("/peers/:id/toggle", async (c) => {
   const id = Number(c.req.param("id"));
   const p = await db.getPeer(c.env, id);
   if (p) await db.setPeerEnabled(c.env, id, !p.enabled);
+  if (p) await db.audit(c.env, c.get("user"), p.enabled ? "client.disable" : "client.enable", p.name, p, { ...p, enabled: p.enabled ? 0 : 1 });
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
   return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {}))) : c.redirect("/peers");
 });
 
 app.post("/peers/:id/delete", async (c) => {
+  const gone = await db.getPeer(c.env, Number(c.req.param("id")));
   await db.deletePeer(c.env, Number(c.req.param("id")));
+  if (gone) await db.audit(c.env, c.get("user"), "client.delete", gone.name, gone, null);
   const [peers, snap] = await Promise.all([db.listPeers(c.env), getSnapshot(c.env)]);
   return c.req.header("HX-Request") ? c.html(peersTable(peers, snap.agent, snap.state === "running", snap.latency, Object.values(snap.talkers ?? {}))) : c.redirect("/peers");
 });
@@ -546,27 +581,36 @@ app.post("/peers/:id/delete", async (c) => {
 // ── Activity, cost, settings ───────────────────────────────────────────────
 
 app.get("/activity", async (c) => {
-  const [runs, alerts, cfg] = await Promise.all([db.listRuns(c.env, 100), db.listAlerts(c.env, 100), effectiveConfig(c.env)]);
-  return c.html(await render(c, "activity", "Activity", activityBody({ runs, alerts, cfg })));
+  // The change log's filter and page come from the address (?kind=&q=&page=).
+  const kind = AUDIT_KINDS.find((k) => k.value === c.req.query("kind"))?.value ?? "";
+  const q = (c.req.query("q") ?? "").trim().slice(0, 60);
+  const pageNo = Math.max(1, Math.min(1000, Number(c.req.query("page")) || 1));
+  const [runs, alerts, cfg, rows] = await Promise.all([db.listRuns(c.env, 100), db.listAlerts(c.env, 100), effectiveConfig(c.env), db.listAudit(c.env, { kind, q, limit: AUDIT_PAGE, offset: (pageNo - 1) * AUDIT_PAGE })]);
+  const changes = { rows: rows.slice(0, AUDIT_PAGE), more: rows.length > AUDIT_PAGE, kind, q, page: pageNo };
+  return c.html(await render(c, "activity", "Activity", activityBody({ runs, alerts, cfg, changes })));
 });
 
 app.get("/cost", async (c) => {
   const monthStart = new Date().toISOString().slice(0, 8) + "01";
   const [snap, days, runs, cfg, fetchedDay] = await Promise.all([getSnapshot(c.env), db.costDays(c.env, monthStart), db.listRuns(c.env, 200), effectiveConfig(c.env), c.env.STATUS.get("cost:fetched_day")]);
-  return c.html(await render(c, "cost", "Cost", costBody({ snap, days, runs, cfg, fetchedDay })));
+  const budget = await budgetStatus(c.env, cfg, snap);
+  return c.html(await render(c, "cost", "Cost", costBody({ snap, days, runs, cfg, fetchedDay, budget })));
 });
 
 app.get("/settings", async (c) => {
   const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
   const saved = c.req.query("saved") === "1";
+  const backups = await backupStatus(c.env, true);
   return c.html(
-    await render(c, "settings", "Settings", settingsBody({ cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl, pushSubs: await db.listPushSubs(c.env), vapidPublic: c.env.VAPID_PUBLIC_KEY ?? null }))
+    await render(c, "settings", "Settings", settingsBody({ backups, restored: c.req.query("restored") === "1", cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl, pushSubs: await db.listPushSubs(c.env), vapidPublic: c.env.VAPID_PUBLIC_KEY ?? null, rotation: await rotationStatus(c.env) }))
   );
 });
 
 app.post("/settings", async (c) => {
   const form = (await c.req.parseBody()) as Record<string, string>;
+  const was = await db.allSettings(c.env);
   const rejected = await saveOverrides(c.env, form);
+  await db.audit(c.env, c.get("user"), "settings.save", "Settings", was, await db.allSettings(c.env));
   if (rejected.length) {
     const [cfg, overrides, lock, serverPub] = await Promise.all([effectiveConfig(c.env), db.allSettings(c.env), lockStatus(c.env), serverPublicKey(c.env)]);
     return c.html(
@@ -588,11 +632,14 @@ app.post("/settings/profiles", async (c) => {
   } catch {
     return c.redirect("/settings?err=profile");
   }
+  await db.audit(c.env, c.get("user"), "profile.add", name, null, { name, region: f.region, vm_size: f.vm_size });
   return c.redirect("/settings?saved=1");
 });
 
 app.post("/settings/profiles/:id/delete", async (c) => {
+  const gone = await db.getProfile(c.env, Number(c.req.param("id")));
   await db.deleteProfile(c.env, Number(c.req.param("id")));
+  if (gone) await db.audit(c.env, c.get("user"), "profile.delete", gone.name, gone, null);
   return c.redirect("/settings?saved=1");
 });
 
@@ -604,6 +651,7 @@ app.post("/settings/schedules", async (c) => {
   const profileId = Number(form.profile) || null;
   await db.addSchedule(c.env, { days, start_time: start, end_time: end, profile_id: profileId });
   await db.addAlert(c.env, "info", `Schedule added by ${c.get("user")}: days ${days}, ${start}–${end}.`);
+  await db.audit(c.env, c.get("user"), "schedule.add", `days ${days}, ${start}–${end}`, null, { days, start_time: start, end_time: end, profile_id: profileId });
   return c.redirect("/settings?saved=1");
 });
 
@@ -611,18 +659,85 @@ app.post("/settings/schedules/:id/toggle", async (c) => {
   const id = Number(c.req.param("id"));
   const r = (await db.listSchedules(c.env)).find((x) => x.id === id);
   if (r) await db.setScheduleEnabled(c.env, id, !r.enabled);
+  if (r) await db.audit(c.env, c.get("user"), r.enabled ? "schedule.disable" : "schedule.enable", `days ${r.days}, ${r.start_time}–${r.end_time}`, r, { ...r, enabled: r.enabled ? 0 : 1 });
   return c.redirect("/settings?saved=1");
 });
 
 app.post("/settings/schedules/:id/delete", async (c) => {
+  const gone = (await db.listSchedules(c.env)).find((x) => x.id === Number(c.req.param("id")));
   await db.deleteSchedule(c.env, Number(c.req.param("id")));
+  if (gone) await db.audit(c.env, c.get("user"), "schedule.delete", `days ${gone.days}, ${gone.start_time}–${gone.end_time}`, gone, null);
   return c.redirect("/settings?saved=1");
 });
 
 app.post("/settings/release-lock", async (c) => {
+  const held = await lockStatus(c.env);
   await releaseLock(c.env, undefined, true);
+  await db.audit(c.env, c.get("user"), "lock.release", held.lock?.runId ?? "run lock", held, { held: false, lock: null });
   await db.addAlert(c.env, "info", `Run lock released by hand (${c.get("user")}).`);
   return c.redirect("/settings");
+});
+
+// ── Backups: export, restore (backup.ts) ──────────────────────────────────
+// Download the dashboard's data as a file, fetch one of the nightly copies
+// from R2, or put a file back. A restore is two steps: upload shows what the
+// file holds next to what is here now; only typing "restore" replaces it.
+
+app.get("/settings/backup/export", async (c) => {
+  const exp = await buildExport(c.env);
+  return c.body(JSON.stringify(exp, null, 1), 200, { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="${exportFileName(exp.exported_at.slice(0, 10))}"`, "Cache-Control": "no-store" });
+});
+
+app.get("/settings/backup/config/:day", async (c) => {
+  const day = c.req.param("day");
+  const obj = /^\d{4}-\d{2}-\d{2}$/.test(day) ? await c.env.STATE.get(`config-backups/${day}.json`) : null;
+  if (!obj) return c.text("That nightly export is no longer kept.", 404);
+  return new Response(obj.body, { headers: { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="${exportFileName(day)}"`, "Cache-Control": "no-store" } });
+});
+
+/** Why a restore must wait, or null. Swapping clients mid-deploy would muddle what the VM gets. */
+async function restoreBlocked(env: Env): Promise<string | null> {
+  const [run, lock, snap] = await Promise.all([db.activeRun(env), lockStatus(env), getSnapshot(env)]);
+  if (run || lock.held || ["deploying", "destroying", "hibernating", "resuming"].includes(snap.state)) return "A run is in progress. Wait for it to finish, then restore.";
+  return null;
+}
+
+app.post("/settings/backup/restore", async (c) => {
+  const show = async (o: Omit<Parameters<typeof restoreBody>[0], "current">) => c.html(await render(c, "settings", "Restore", restoreBody({ ...o, current: await currentCounts(c.env) })));
+  if (Number(c.req.header("Content-Length") ?? 0) > MAX_RESTORE_BYTES + 10_000) return show({ error: "That file is too big to be a wg-admin export." });
+  const blocked = await restoreBlocked(c.env);
+  if (blocked) return show({ error: blocked });
+  const file = (await c.req.parseBody()).file;
+  if (!(file instanceof File) || !file.size) return show({ error: "Choose a file first." });
+  if (file.size > MAX_RESTORE_BYTES) return show({ error: "That file is too big to be a wg-admin export." });
+  const plan = await checkRestoreFile(c.env, await file.text());
+  if (typeof plan === "string") return show({ error: plan });
+  // The checked file waits in KV for 15 minutes under a random name, so the
+  // confirm step does not have to upload it again.
+  const token = randomToken();
+  await c.env.STATUS.put(`restore:${token}`, JSON.stringify(plan), { expirationTtl: 900 });
+  return show({ plan, token, fileName: file.name });
+});
+
+app.post("/settings/backup/restore/confirm", async (c) => {
+  const f = await c.req.parseBody();
+  const token = String(f.token ?? "");
+  const back = async (error: string, keep?: RestorePlan) => c.html(await render(c, "settings", "Restore", restoreBody({ error, current: await currentCounts(c.env), ...(keep ? { plan: keep, token } : {}) })));
+  const plan = /^[0-9a-f]{64}$/.test(token) ? await c.env.STATUS.get<RestorePlan>(`restore:${token}`, "json") : null;
+  if (!plan) return back("That upload has expired (they are kept 15 minutes). Choose the file again.");
+  if (String(f.confirm ?? "").trim().toLowerCase() !== "restore") return back('Not restored: type "restore" to confirm.', plan);
+  const blocked = await restoreBlocked(c.env);
+  if (blocked) return back(blocked);
+  try {
+    await applyRestore(c.env, plan);
+  } catch (e) {
+    return back(`Nothing was changed: the database refused the file (${(e as Error).message}).`);
+  }
+  await c.env.STATUS.delete(`restore:${token}`);
+  await db.audit(c.env, c.get("user"), "config.restore", "backup", null, { exported_at: plan.exported_at, counts: plan.counts });
+  await db.addAlert(c.env, "info", `Dashboard data restored from an export of ${plan.exported_at} by ${c.get("user")}: ${plan.counts.peers} client(s), ${plan.counts.fw_rules} firewall rule(s).`);
+  await syncPublished(c.env);
+  return c.redirect("/settings?restored=1");
 });
 
 // ── Firewall ──────────────────────────────────────────────────────────────
@@ -682,17 +797,17 @@ app.post("/firewall/forwards", async (c) => {
     return firewallPage(c, { kind: "bad", text: `Not published: ${proto.toUpperCase()} ${pub} is already published.` });
   }
   await db.addAlert(c.env, "info", `Published ${proto.toUpperCase()} ${pub} to ${target}:${tport} (${name}) by ${c.get("user")}.`);
+  await db.audit(c.env, c.get("user"), "firewall.forward.add", `${name} (${proto.toUpperCase()} ${pub})`, null, { name, proto, public_port: pub, target_ip: target, target_port: tport, allow_from: fromC?.text ?? "" });
   const err = await syncPublished(c.env);
   return firewallPage(c, err ? { kind: "bad", text: `Saved, but Azure did not open the port: ${err}` } : { kind: "good", text: `Published ${proto.toUpperCase()} ${pub} → ${target}:${tport}. It works within 30 seconds.` });
 });
 
 app.post("/firewall/forwards/:id/:op{toggle|delete}", async (c) => {
   const id = Number(c.req.param("id"));
+  const f = (await db.listForwards(c.env)).find((x) => x.id === id);
   if (c.req.param("op") === "delete") await db.deleteForward(c.env, id);
-  else {
-    const f = (await db.listForwards(c.env)).find((x) => x.id === id);
-    if (f) await db.setForwardEnabled(c.env, id, !f.enabled);
-  }
+  else if (f) await db.setForwardEnabled(c.env, id, !f.enabled);
+  if (f) await db.audit(c.env, c.get("user"), c.req.param("op") === "delete" ? "firewall.forward.delete" : f.enabled ? "firewall.forward.disable" : "firewall.forward.enable", `${f.name} (${f.proto.toUpperCase()} ${f.public_port})`, f, c.req.param("op") === "delete" ? null : { ...f, enabled: f.enabled ? 0 : 1 });
   const err = await syncPublished(c.env);
   return firewallPage(c, err ? { kind: "bad", text: `Saved, but Azure did not update: ${err}` } : null);
 });
@@ -710,6 +825,7 @@ app.post("/firewall/capture", async (c) => {
   if (!validFilter(filter)) return firewallPage(c, { kind: "bad", text: "That filter has characters a capture filter never needs." });
   try {
     const msg = await startCapture(c.env, { iface: String(f.iface ?? "wg0"), filter, seconds: Number(f.seconds) || 60, by: c.get("user") });
+    await db.audit(c.env, c.get("user"), "capture.start", String(f.iface ?? "wg0"), null, { iface: String(f.iface ?? "wg0"), filter, seconds: Number(f.seconds) || 60 });
     return firewallPage(c, { kind: "good", text: msg });
   } catch (e) {
     return firewallPage(c, { kind: "bad", text: e instanceof RunError ? e.message : (e as Error).message });
@@ -727,6 +843,7 @@ app.get("/captures/:id", async (c) => {
 app.post("/firewall/clear", async (c) => {
   await clearFirewallCounters(c.env);
   await db.addAlert(c.env, "info", `Firewall hit counters cleared by ${c.get("user")}.`);
+  await db.audit(c.env, c.get("user"), "firewall.counters.clear", "hit counters");
   return firewallPage(c, { kind: "good", text: "Counters cleared. Hits count from zero again." });
 });
 
@@ -754,25 +871,30 @@ app.post("/firewall/rules", async (c) => {
   const problem = !name ? "Give the rule a name." : typeof from === "string" ? from : typeof to === "string" ? to : parsePorts(ports) === null ? `"${ports}" is not a port list (try 8080, 80,443 or 8000-8100).` : null;
   if (problem || typeof from === "string" || typeof to === "string") return firewallPage(c, { kind: "bad", text: `Not added: ${problem}` });
   await db.addFwRule(c.env, { enabled: 1, name, src_kind: from.kind, src_value: from.value, dst_kind: to.kind, dst_value: to.value, proto, ports, action: f.action === "deny" ? "deny" : "allow", log: f.log ? 1 : 0 });
+  await db.audit(c.env, c.get("user"), "firewall.rule.add", name, null, (await db.listFwRules(c.env)).at(-1));
   return firewallPage(c, { kind: "good", text: `Added "${name}". The VM picks it up within 30 seconds.` });
 });
 
 app.post("/firewall/rules/:id/:op{up|down|toggle|delete}", async (c) => {
   const id = Number(c.req.param("id"));
   const op = c.req.param("op");
+  const was = await db.listFwRules(c.env);
+  const r = was.find((x) => x.id === id);
   if (op === "up" || op === "down") await db.moveFwRule(c.env, id, op === "up" ? -1 : 1);
   else if (op === "delete") await db.deleteFwRule(c.env, id);
-  else {
-    const r = (await db.listFwRules(c.env)).find((x) => x.id === id);
-    if (r) await db.updateFwRule(c.env, id, { enabled: r.enabled ? 0 : 1 });
-  }
+  else if (r) await db.updateFwRule(c.env, id, { enabled: r.enabled ? 0 : 1 });
+  // Change log: the rule before and after, with its place in the list (1 = checked first).
+  const after = (await db.listFwRules(c.env)).map((x, i) => ({ ...x, place: i + 1 })).find((x) => x.id === id) ?? null;
+  if (r) await db.audit(c.env, c.get("user"), op === "toggle" ? (r.enabled ? "firewall.rule.disable" : "firewall.rule.enable") : op === "delete" ? "firewall.rule.delete" : "firewall.rule.move", r.name, { ...r, place: was.indexOf(r) + 1 }, after);
   return firewallPage(c);
 });
 
 app.post("/firewall/default", async (c) => {
   const f = await c.req.parseBody();
   const v = f.value === "allow" ? "allow" : "deny";
+  const was = (await db.getSetting(c.env, "firewall_default")) ?? "deny";
   await db.setSetting(c.env, "firewall_default", v);
+  await db.audit(c.env, c.get("user"), "firewall.default", "default rule", { firewall_default: was }, { firewall_default: v });
   await db.addAlert(c.env, "info", `Firewall default set to ${v} by ${c.get("user")}.`);
   return firewallPage(c, { kind: "good", text: `Default is now ${v}.` });
 });
@@ -788,6 +910,7 @@ app.post("/firewall/allow-drop", async (c) => {
   const port = /^\d{1,5}$/.test(String(f.dport ?? "")) && (proto === "tcp" || proto === "udp") ? String(f.dport) : "";
   const name = `Allow ${client?.name ?? src.text.replace(/\/(32|128)$/, "")} to ${dst.text.replace(/\/(32|128)$/, "")} ${proto === "any" ? "" : proto.toUpperCase()}${port ? ` ${port}` : ""}`.trim();
   await db.addFwRule(c.env, { enabled: 1, name, src_kind: client ? "client" : "cidr", src_value: client ? String(client.id) : src.text, dst_kind: "cidr", dst_value: dst.text, proto, ports: port, action: "allow", log: 0 });
+  await db.audit(c.env, c.get("user"), "firewall.rule.add", name, null, (await db.listFwRules(c.env)).at(-1));
   return firewallPage(c, { kind: "good", text: `Added "${name}". It applies within 30 seconds.` });
 });
 

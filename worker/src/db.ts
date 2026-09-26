@@ -43,6 +43,9 @@ export interface Peer {
   home_lan: number; // client config also routes the home LAN into the tunnel
   created_at: string;
   note: string | null;
+  expires_at?: string | null; // ISO time a guest client stops working; null = never
+  last_handshake_at?: string | null; // last real connection, kept across tear-downs (to within an hour)
+  needs_config?: number; // 1 after a server key rotation, until its first handshake with the new key
 }
 
 export interface Alert {
@@ -142,20 +145,21 @@ export async function listPeers(env: Env): Promise<Peer[]> {
   return (await env.DB.prepare("SELECT * FROM peers ORDER BY id").all<Peer>()).results;
 }
 
-export async function enabledPeers(env: Env): Promise<Peer[]> {
-  return (await env.DB.prepare("SELECT * FROM peers WHERE enabled = 1 ORDER BY id").all<Peer>()).results;
+/** Enabled clients that have not expired: the ones allowed on the VM. */
+export async function enabledPeers(env: Env, now = new Date()): Promise<Peer[]> {
+  return (await env.DB.prepare("SELECT * FROM peers WHERE enabled = 1 AND (expires_at IS NULL OR expires_at > ?1) ORDER BY id").bind(now.toISOString()).all<Peer>()).results;
 }
 
 export async function getPeer(env: Env, id: number): Promise<Peer | null> {
   return (await env.DB.prepare("SELECT * FROM peers WHERE id = ?1").bind(id).first<Peer>()) ?? null;
 }
 
-export async function addPeer(env: Env, p: { name: string; public_key: string; ip: string; full_tunnel: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; note?: string }): Promise<Peer> {
+export async function addPeer(env: Env, p: { name: string; public_key: string; ip: string; full_tunnel: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; note?: string; expires_at?: string | null }): Promise<Peer> {
   const created_at = new Date().toISOString();
   const r = await env.DB.prepare(
-    "INSERT INTO peers (name, public_key, ip, enabled, full_tunnel, azure_vnet, tunnel_dns, created_at, note) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8) RETURNING *"
+    "INSERT INTO peers (name, public_key, ip, enabled, full_tunnel, azure_vnet, tunnel_dns, created_at, note, expires_at) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9) RETURNING *"
   )
-    .bind(p.name, p.public_key, p.ip, p.full_tunnel ? 1 : 0, p.azure_vnet ? 1 : 0, p.tunnel_dns ? 1 : 0, created_at, p.note ?? null)
+    .bind(p.name, p.public_key, p.ip, p.full_tunnel ? 1 : 0, p.azure_vnet ? 1 : 0, p.tunnel_dns ? 1 : 0, created_at, p.note ?? null, p.expires_at ?? null)
     .first<Peer>();
   if (!r) throw new Error("insert failed");
   return r;
@@ -185,8 +189,41 @@ export async function sitePeer(env: Env): Promise<Peer | null> {
   return (await env.DB.prepare("SELECT * FROM peers WHERE routes != '' AND enabled = 1 ORDER BY id LIMIT 1").first<Peer>()) ?? null;
 }
 
+/** Switching an expired client back on also clears its old expiry, or the watchman would switch it straight off again. */
 export async function setPeerEnabled(env: Env, id: number, enabled: boolean): Promise<void> {
-  await env.DB.prepare("UPDATE peers SET enabled = ?2 WHERE id = ?1").bind(id, enabled ? 1 : 0).run();
+  await env.DB.prepare("UPDATE peers SET enabled = ?2, expires_at = CASE WHEN ?2 = 1 AND expires_at <= ?3 THEN NULL ELSE expires_at END WHERE id = ?1").bind(id, enabled ? 1 : 0, new Date().toISOString()).run();
+}
+
+/** Set or clear (null) when a client stops working. */
+export async function setPeerExpiry(env: Env, id: number, expires_at: string | null): Promise<void> {
+  await env.DB.prepare("UPDATE peers SET expires_at = ?2 WHERE id = ?1").bind(id, expires_at).run();
+}
+
+/**
+ * Switch off every enabled client whose time is up, and say which. The VM
+ * already stopped loading them the moment they expired; this just makes the
+ * Clients page and Activity agree.
+ */
+export async function disableExpiredPeers(env: Env, now = new Date()): Promise<Peer[]> {
+  return (await env.DB.prepare("UPDATE peers SET enabled = 0 WHERE enabled = 1 AND expires_at IS NOT NULL AND expires_at <= ?1 RETURNING *").bind(now.toISOString()).all<Peer>()).results;
+}
+
+/**
+ * Remember when each client last connected, from a heartbeat's handshake
+ * times (epoch seconds, 0 = never). Written only when it has moved by more
+ * than an hour, so a heartbeat every 30 seconds costs one read, not a write.
+ */
+export async function noteHandshakes(env: Env, seen: { public_key: string; latest_handshake: number }[]): Promise<void> {
+  const live = seen.filter((s) => s.latest_handshake > 0);
+  if (!live.length) return;
+  const peers = await listPeers(env);
+  for (const s of live) {
+    const p = peers.find((x) => x.public_key === s.public_key);
+    if (!p) continue;
+    const at = s.latest_handshake * 1000;
+    if (p.last_handshake_at && at - Date.parse(p.last_handshake_at) <= 3600_000) continue;
+    await env.DB.prepare("UPDATE peers SET last_handshake_at = ?2 WHERE id = ?1").bind(p.id, new Date(at).toISOString()).run();
+  }
 }
 
 export async function deletePeer(env: Env, id: number): Promise<void> {
@@ -229,6 +266,34 @@ export async function setSetting(env: Env, key: string, value: string): Promise<
 export async function allSettings(env: Env): Promise<Record<string, string>> {
   const r = await env.DB.prepare("SELECT key, value FROM settings").all<{ key: string; value: string }>();
   return Object.fromEntries(r.results.map((x) => [x.key, x.value]));
+}
+
+/**
+ * Change a setting only if it still holds `was` (null: only if it is not set
+ * yet), in one step. True if this caller made the change. Two requests racing
+ * cannot both win, so something done "once per change" is done once.
+ */
+export async function swapSetting(env: Env, key: string, was: string | null, value: string): Promise<boolean> {
+  const r = was === null
+    ? await env.DB.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?1, ?2)").bind(key, value).run()
+    : await env.DB.prepare("UPDATE settings SET value = ?2 WHERE key = ?1 AND value = ?3").bind(key, value, was).run();
+  return (r.meta?.changes ?? 0) === 1;
+}
+
+// ── Server key rotation: which clients still need a new config ────────────
+
+/** Flag every client made before `before` as needing a new config. Returns how many. */
+export async function flagPeersForNewConfig(env: Env, before: string): Promise<number> {
+  const r = await env.DB.prepare("UPDATE peers SET needs_config = 1 WHERE created_at < ?1").bind(before).run();
+  return r.meta?.changes ?? 0;
+}
+
+export async function peersNeedingConfig(env: Env): Promise<Peer[]> {
+  return (await env.DB.prepare("SELECT * FROM peers WHERE needs_config = 1 ORDER BY id").all<Peer>()).results;
+}
+
+export async function clearNeedsConfig(env: Env, id: number): Promise<void> {
+  await env.DB.prepare("UPDATE peers SET needs_config = 0 WHERE id = ?1").bind(id).run();
 }
 
 // ── Cost ──────────────────────────────────────────────────────────────────
@@ -459,4 +524,92 @@ export async function updateCapture(env: Env, id: string, patch: Partial<Capture
   await env.DB.prepare(`UPDATE captures SET ${keys.map((k, i) => `${k} = ?${i + 2}`).join(", ")} WHERE id = ?1`)
     .bind(id, ...keys.map((k) => (patch as Record<string, unknown>)[k] ?? null))
     .run();
+}
+
+// ── Change log (audit) ────────────────────────────────────────────────────
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  user: string;
+  action: string;
+  target: string;
+  before_json: string | null;
+  after_json: string | null;
+}
+
+/** How much of the change log is kept: the newest this many rows... */
+export const AUDIT_KEEP_ROWS = 1000;
+/** ...and nothing older than this many days. */
+export const AUDIT_KEEP_DAYS = 180;
+
+/**
+ * Field names that are never written to the change log, whatever table they
+ * came from: private keys, passwords, tokens and their hashes, and a phone's
+ * push keys and address (which work like a password for sending to it).
+ */
+const SECRET_FIELD = /private|password|passwd|secret|token|hash|^auth$|p256dh|endpoint|preshared|psk/i;
+
+/** A copy of a before/after value with every secret-looking field replaced. */
+export function scrubSecrets(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(scrubSecrets);
+  if (v && typeof v === "object") {
+    return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, SECRET_FIELD.test(k) ? "(hidden)" : scrubSecrets(x)]));
+  }
+  return v;
+}
+
+/**
+ * Write one line to the change log: who changed what, with the before and
+ * after (either may be null, e.g. nothing "before" an add). When both are
+ * objects, only the fields that actually changed are kept, so a toggle reads
+ * as {"enabled":1} -> {"enabled":0}; a save that changed nothing is skipped.
+ * Never throws: a change that worked is not undone because logging it failed.
+ *
+ *   await db.audit(c.env, c.get("user"), "client.delete", peer.name, peer, null);
+ */
+export async function audit(env: Env, user: string, action: string, target: string | number | null, before: unknown = null, after: unknown = null): Promise<void> {
+  try {
+    let b = scrubSecrets(before ?? null);
+    let a = scrubSecrets(after ?? null);
+    if (b && a && typeof b === "object" && typeof a === "object" && !Array.isArray(b) && !Array.isArray(a)) {
+      const bo = b as Record<string, unknown>, ao = a as Record<string, unknown>;
+      const keys = [...new Set([...Object.keys(bo), ...Object.keys(ao)])].filter((k) => JSON.stringify(bo[k]) !== JSON.stringify(ao[k]));
+      if (!keys.length) return;
+      b = Object.fromEntries(keys.filter((k) => k in bo).map((k) => [k, bo[k]]));
+      a = Object.fromEntries(keys.filter((k) => k in ao).map((k) => [k, ao[k]]));
+    }
+    await env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+      .bind(new Date().toISOString(), user || "unknown", action, target === null ? "" : String(target), b === null ? null : JSON.stringify(b), a === null ? null : JSON.stringify(a))
+      .run();
+  } catch (e) {
+    console.error(`audit ${action} not recorded:`, (e as Error).message);
+  }
+}
+
+/**
+ * One page of the change log, newest first. `kind` is the start of the
+ * action ("client", "firewall", ...); `q` matches who, what or the target.
+ * Returns one row more than asked for when there is a further page.
+ */
+export async function listAudit(env: Env, o: { kind?: string; q?: string; limit?: number; offset?: number } = {}): Promise<AuditEntry[]> {
+  const limit = Math.min(Math.max(o.limit ?? 50, 1), 200);
+  const offset = Math.max(o.offset ?? 0, 0);
+  const kind = o.kind ? `${o.kind}%` : "%";
+  // "!" marks a % or _ typed in the search box as a plain character, not a wildcard.
+  const q = o.q ? `%${o.q.replace(/[!%_]/g, (m) => `!${m}`)}%` : "%";
+  return (
+    await env.DB.prepare(
+      "SELECT * FROM audit WHERE action LIKE ?1 AND (user LIKE ?2 ESCAPE '!' OR action LIKE ?2 ESCAPE '!' OR target LIKE ?2 ESCAPE '!') ORDER BY at DESC, id DESC LIMIT ?3 OFFSET ?4"
+    )
+      .bind(kind, q, limit + 1, offset)
+      .all<AuditEntry>()
+  ).results;
+}
+
+/** Trim the change log to the newest AUDIT_KEEP_ROWS rows and AUDIT_KEEP_DAYS days. */
+export async function pruneAudit(env: Env, now = new Date()): Promise<void> {
+  const cutoff = new Date(now.getTime() - AUDIT_KEEP_DAYS * 86_400_000).toISOString();
+  await env.DB.prepare("DELETE FROM audit WHERE at < ?1").bind(cutoff).run();
+  await env.DB.prepare("DELETE FROM audit WHERE id NOT IN (SELECT id FROM audit ORDER BY at DESC, id DESC LIMIT ?1)").bind(AUDIT_KEEP_ROWS).run();
 }

@@ -13,7 +13,7 @@ import type { AgentReport, AgentPeer, Talker } from "../state";
 import { talkerTotal } from "../state";
 import { peerOnline } from "../state";
 import type { Config } from "../env";
-import { serverTunnelIp as serverTunnelIpOf, peerIp6 } from "../peers";
+import { serverTunnelIp as serverTunnelIpOf, peerIp6, peerExpired, peerStale, STALE_DAYS } from "../peers";
 import { latencyCell } from "./dashboard";
 
 /**
@@ -31,6 +31,44 @@ function statusCell(p: Peer, live: AgentPeer | undefined, running: boolean, onli
   return online ? html`<span class="pill up">online</span>` : html`<span class="pill idle">offline</span> <span class="faint small">on the VM, no recent handshake</span>`;
 }
 
+/** "3 days", "5 hours", "20 min": how long until a time. */
+function until(iso: string, now = Date.now()): string {
+  const m = Math.max(1, Math.round((Date.parse(iso) - now) / 60_000));
+  if (m < 60) return `${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} hour${h === 1 ? "" : "s"}`;
+  return `${Math.round(h / 24)} days`;
+}
+
+/** Markers for a guest client's expiry and a client nobody has used in a month. */
+export function lifeMarkers(p: Peer, now = Date.now()): Html {
+  const exp = p.expires_at
+    ? peerExpired(p, now)
+      ? html` <span class="pill idle" title="Expired ${p.expires_at}">expired</span>`
+      : html` <span class="pill busy" title="Stops working at ${p.expires_at}">expires in ${until(p.expires_at, now)}</span>`
+    : "";
+  const stale = p.enabled && peerStale(p, now) ? html` <span class="pill idle" title="Last handshake: ${p.last_handshake_at ?? "never"}. Still needed? Disable or delete it to free the address.">no handshake in ${STALE_DAYS} days</span>` : "";
+  return html`${exp}${stale}`;
+}
+
+/** The expiry picker on an existing client; app.js sends the choice. */
+function expiryPicker(p: Peer): Html {
+  return html`<select data-expiry="${p.id}" aria-label="When ${p.name} stops working" title="When this client stops working, counted from now. Expired clients are left off the VM and switched off." style="width:auto;display:inline-block">
+    <option value="" selected>${p.expires_at ? "Change expiry" : "Expires: never"}</option>
+    <option value="0">Never expires</option>
+    <option value="1">Expires in 1 day</option>
+    <option value="7">Expires in 1 week</option>
+    <option value="30">Expires in 30 days</option>
+  </select>`;
+}
+
+/** After a server key rotation: this client's config still trusts the old key. */
+function needsConfigPill(p: Peer): Html | string {
+  if (!p.needs_config) return "";
+  const how = p.routes ? "On the PC run npm run home -- --down, then npm run home." : "Press Get config and scan or import it.";
+  return html` <span class="pill busy" title="The server key changed. ${how} This clears at its first connection with the new key.">needs new config</span>`;
+}
+
 /** The buttons for one client, shared by the desktop row and the phone sheet. */
 function peerActions(p: Peer): Html {
   if (p.routes) {
@@ -42,6 +80,7 @@ function peerActions(p: Peer): Html {
             ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/homelan" hx-post="/peers/${p.id}/homelan" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client send the home network through the tunnel (via the home site). Only for devices away from home. Changes the next config you download.">${p.home_lan ? "Home network: on" : "Home network: off"}</button></form>`}
             ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/azure" hx-post="/peers/${p.id}/azure" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client route the Azure network through the tunnel. Changes the next config you download; edit AllowedIPs in the app to change an existing one.">${p.azure_vnet ? "Azure route: on" : "Azure route: off"}</button></form>`}
             ${p.full_tunnel ? "" : html`<form method="post" action="/peers/${p.id}/dns" hx-post="/peers/${p.id}/dns" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit" title="Whether configs for this client use the tunnel DNS on the VM (ad-blocking, .wg names). Changes the next config you download.">${p.tunnel_dns ? "Tunnel DNS: on" : "Tunnel DNS: off"}</button></form>`}
+            ${expiryPicker(p)}
             <form method="post" action="/peers/${p.id}/toggle" hx-post="/peers/${p.id}/toggle" hx-target="#peers-table" hx-swap="outerHTML" style="display:inline"><button type="submit">${p.enabled ? "Disable" : "Enable"}</button></form>
             <form method="post" action="/peers/${p.id}/delete" hx-post="/peers/${p.id}/delete" hx-target="#peers-table" hx-swap="outerHTML" hx-confirm="Delete ${p.name}? Its config stops working at the next heartbeat." style="display:inline"><button type="submit" class="danger">Delete</button></form>`;
 }
@@ -58,7 +97,7 @@ function peersPhone(peers: Peer[], byKey: Map<string, AgentPeer>, running: boole
       const online = !!live && peerOnline(live);
       const lat = latency[p.public_key]?.slice(-1)[0];
       const kind = !p.enabled ? "idle" : !running ? "idle" : online ? "up" : live ? "idle" : "busy";
-      const right = !p.enabled ? "disabled" : p.routes && !running ? "home site" : !running ? "" : online ? (lat !== undefined ? `${lat < 10 ? lat.toFixed(1) : Math.round(lat)} ms` : "online") : live ? "offline" : "loading";
+      const right = !p.enabled ? (peerExpired(p) ? "expired" : "disabled") : p.routes && !running ? "home site" : !running ? "" : online ? (lat !== undefined ? `${lat < 10 ? lat.toFixed(1) : Math.round(lat)} ms` : "online") : live ? "offline" : "loading";
       return html`<li><button type="button" data-sheet="sh-peer-${p.id}"><span class="ind ${kind}"><i></i>${p.name}</span><span class="m-right">${right}</span></button></li>`;
     })}
   </ul>
@@ -67,7 +106,7 @@ function peersPhone(peers: Peer[], byKey: Map<string, AgentPeer>, running: boole
     const online = !!live && peerOnline(live);
     return html`<div class="panel sheet m-only" id="sh-peer-${p.id}">
       ${sheetHead(p.name)}
-      <p>${statusCell(p, live, running, online)}${p.routes ? html` <span class="pill up">site: ${p.routes}</span>` : ""}${p.home_lan && !p.full_tunnel ? html` <span class="pill idle">+ home</span>` : ""}${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}${p.tunnel_dns || p.full_tunnel ? html` <span class="pill idle">tunnel DNS</span>` : ""}</p>
+      <p>${statusCell(p, live, running, online)}${needsConfigPill(p)}${p.routes ? html` <span class="pill up">site: ${p.routes}</span>` : ""}${p.home_lan && !p.full_tunnel ? html` <span class="pill idle">+ home</span>` : ""}${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}${p.tunnel_dns || p.full_tunnel ? html` <span class="pill idle">tunnel DNS</span>` : ""}${lifeMarkers(p)}</p>
       <dl class="m-kv">
         <div><dt>Tunnel address</dt><dd class="mono">${p.ip}</dd></div>
         <div><dt>Last handshake</dt><dd>${live && live.latest_handshake ? ago(new Date(live.latest_handshake * 1000).toISOString()) : "never"}</dd></div>
@@ -93,7 +132,7 @@ export function peersTable(peers: Peer[], report: AgentReport | null, running: b
         const live = byKey.get(p.public_key);
         const online = !!live && peerOnline(live);
         return html`<tr>
-          <td class="lead"><b>${p.name}</b>${p.routes ? html` <span class="pill up">site: ${p.routes}</span>` : ""}${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}${p.home_lan && !p.full_tunnel ? html` <span class="pill idle">+ home</span>` : ""}${p.tunnel_dns || p.full_tunnel ? html` <span class="pill idle">tunnel DNS</span>` : ""}<div class="key" title="${p.public_key}">${p.public_key}</div></td>
+          <td class="lead"><b>${p.name}</b>${needsConfigPill(p)}${p.routes ? html` <span class="pill up">site: ${p.routes}</span>` : ""}${p.full_tunnel ? html` <span class="pill idle">full tunnel</span>` : ""}${p.azure_vnet && !p.full_tunnel ? html` <span class="pill idle">+ azure</span>` : ""}${p.home_lan && !p.full_tunnel ? html` <span class="pill idle">+ home</span>` : ""}${p.tunnel_dns || p.full_tunnel ? html` <span class="pill idle">tunnel DNS</span>` : ""}${lifeMarkers(p)}<div class="key" title="${p.public_key}">${p.public_key}</div></td>
           <td class="mono" data-label="Tunnel address">${p.ip}</td>
           <td data-label="Status">${statusCell(p, live, running, online)}</td>
           <td data-label="Last handshake">${live && live.latest_handshake ? html`<span title="${new Date(live.latest_handshake * 1000).toISOString()}">${ago(new Date(live.latest_handshake * 1000).toISOString())}</span>` : html`<span class="faint">never</span>`}</td>
@@ -145,9 +184,17 @@ function trafficPanel(o: { peers: Peer[]; talkers?: Talker[]; hist?: { t: string
   </div>`;
 }
 
+/** After a server key rotation: how many clients still need a new config. */
+function rotationNotice(peers: Peer[]): Html | string {
+  const n = peers.filter((p) => p.needs_config).length;
+  if (!n) return "";
+  return html`<div class="notice warn" style="margin-bottom:12px"><p><b>The server key changed.</b> ${n} client${n === 1 ? "" : "s"} marked "needs new config" still ${n === 1 ? "has" : "have"} a config that trusts the old key: press Get config on each and scan or import it. Each one clears at its first connection with the new key. <a href="/settings">Settings</a> has the checklist.</p></div>`;
+}
+
 export function peersBody(o: { peers: Peer[]; report: AgentReport | null; running: boolean; cfg: Config; serverPub: string | null; nextIp: string | null; latency?: Record<string, number[]>; talkers?: Talker[]; hist?: { t: string; rx: number; tx: number }[] }): Html {
   return html`<section>
   <div class="section-head"><h1>Clients</h1><span class="muted small d-only">${o.running ? "Changes reach the VM within 30 seconds; the status column shows what the VM reports." : "Changes are loaded at the next deploy."}</span></div>
+  ${rotationNotice(o.peers)}
   ${peersTable(o.peers, o.report, o.running, o.latency, o.talkers)}
   <div class="m-btns m-only" style="margin-top:12px"><button type="button" class="primary big" data-sheet="sh-add">Add a client</button></div>
   <div class="m-more m-only"><button type="button" class="ghost" data-sheet="sh-traffic">Traffic</button><button type="button" class="ghost" data-sheet="sh-help">Apps and server key</button></div>
@@ -181,6 +228,7 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
         <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="tunnel_dns" value="1" style="width:auto"><span style="margin:0">Use the tunnel DNS: ad-blocking and names like <span class="mono">vm.wg</span>. Leave off if this device stays connected while the VM is destroyed</span></label>
         ${o.cfg.homeLanCidr ? html`<label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="home_lan" value="1" style="width:auto"><span style="margin:0">Also reach the home network <span class="mono">${o.cfg.homeLanCidr}</span> through the home site (for a device away from home)</span></label>` : ""}
         <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="full_tunnel" value="1" style="width:auto"><span style="margin:0">Full tunnel (send all traffic, IPv4 and IPv6, through Azure, an exit node; includes the Azure network and the tunnel DNS)</span></label>
+        <label class="field"><span>Expires</span><select name="expires_days" style="width:auto"><option value="0" selected>Never</option><option value="1">After 1 day</option><option value="7">After 1 week</option><option value="30">After 30 days</option></select></label>
         <p class="hint">Split tunnel by default: ${o.cfg.subnet}${o.cfg.subnet6 ? `, ${o.cfg.subnet6}` : ""} and the loopback ${o.cfg.loopbackIp} go through. Next free address: <span class="mono">${o.nextIp ?? "none left"}</span>${o.nextIp && o.cfg.subnet6 ? html` and <span class="mono">${peerIp6(o.cfg.subnet6, o.nextIp)}</span>` : ""}.</p>
         <div class="btn-row"><button type="submit" class="primary" ${o.nextIp ? "" : "disabled"}>Make keys and add</button><span id="add-peer-status" class="small muted"></span></div>
       </form>`

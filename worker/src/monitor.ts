@@ -18,6 +18,10 @@
 //   - flags drift: Azure and the dashboard disagree
 //   - flags an unreachable VM: no heartbeat for 2 minutes while Running
 //   - pulls yesterday's actual cost from Azure once a day
+//   - trims the change log (audit) to its newest 1000 entries / 180 days
+//   - checks the month against the budget: one alert at 80%, one at 100%
+//     (budget.ts)
+//   - once a day, saves the dashboard's data to R2 (backup.ts)
 // Everything it notices is written to alerts so the Activity page can show
 // what happened overnight, and pushed to the webhook if one is set.
 
@@ -33,6 +37,9 @@ import { notify } from "./notify";
 import { actionButton, dashboardButton } from "./actions";
 import { costMonthToDate, azureView } from "./azure";
 import { checkDns } from "./dns";
+import { checkBudget } from "./budget";
+import { nightlyConfigBackup } from "./backup";
+import { syncServerKey } from "./keyrotation";
 
 /**
  * How long a Failed deployment may leave its resource group in Azure before
@@ -63,6 +70,31 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     notes.push(...(await runSchedules(env, now)));
   } catch (e) {
     notes.push(`schedules: ${(e as Error).message}`);
+  }
+
+  // Housekeeping: the change log keeps the newest 1000 entries, 180 days at most.
+  try {
+    await db.pruneAudit(env, now);
+  } catch (e) {
+    notes.push(`change log: ${(e as Error).message}`);
+  }
+
+  // Guest clients whose time is up: switch them off and say so. (The VM
+  // already stopped loading them the moment they expired.)
+  try {
+    for (const p of await db.disableExpiredPeers(env, now)) {
+      await db.addAlert(env, "info", `Client "${p.name}" expired and was switched off. Enable it on the Clients page to let it back in.`);
+      notes.push(`expired client ${p.name} disabled`);
+    }
+  } catch (e) {
+    notes.push(`expiry: ${(e as Error).message}`);
+  }
+
+  // A new server key in wrangler.toml (a rotation): flag every client.
+  try {
+    await syncServerKey(env, now);
+  } catch (e) {
+    notes.push(`server key: ${(e as Error).message}`);
   }
 
   let snap = await getSnapshot(env);
@@ -229,6 +261,23 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         notes.push(`cost: ${(e as Error).message}`);
       }
     }
+  }
+
+  // 7. The monthly budget: this month's actual spend plus the running
+  //    session to its timer. Every run, because the session part moves.
+  try {
+    const note = await checkBudget(env, cfg, now);
+    if (note) notes.push(note);
+  } catch (e) {
+    notes.push(`budget: ${(e as Error).message}`);
+  }
+
+  // 8. Daily copy of the dashboard's data (clients, rules, ...) to R2.
+  try {
+    const note = await nightlyConfigBackup(env, now);
+    if (note) notes.push(note);
+  } catch (e) {
+    notes.push(`config backup: ${(e as Error).message}`);
   }
 
   return notes;

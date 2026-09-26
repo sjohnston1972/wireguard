@@ -3,7 +3,8 @@
 // Plain English: the back office. A setup checklist (which secrets are in
 // place), the run lock (with a release button for a stuck run), the values
 // the next deploy will use (editable), the server public key, and how to
-// rotate it (a deliberate, off-dashboard action).
+// rotate it (a deliberate, off-dashboard action), with a checklist of which
+// clients have reconnected since the last rotation.
 
 import { html } from "hono/html";
 import type { Html } from "./layout";
@@ -13,6 +14,10 @@ import { SECRET_GROUPS } from "../env";
 import { REGIONS, regionName } from "../region";
 import type { Profile, Schedule, PushSub } from "../db";
 import { daysText } from "../schedule-time";
+import type { BackupStatus, ExportTable, RestorePlan } from "../backup";
+import { TABLE_LABEL } from "../backup";
+import type { RotationStatus } from "../keyrotation";
+import { shortKey } from "../keyrotation";
 
 export interface SettingsOpts {
   cfg: Config;
@@ -34,6 +39,46 @@ export interface SettingsOpts {
   publicUrl?: string;
   pushSubs?: PushSub[];
   vapidPublic?: string | null;
+  /** What R2 holds (backup.ts). */
+  backups?: BackupStatus;
+  /** Just back from a restore. */
+  restored?: boolean;
+  /** After a server key rotation: when, and which clients have reconnected. */
+  rotation?: RotationStatus | null;
+}
+
+/**
+ * Server key: the public key, a plain-English guide to rotating it (done on
+ * the laptop, never from here: the dashboard never holds the private key),
+ * and after a rotation, a checklist of which clients have reconnected.
+ */
+function keyPanel(o: SettingsOpts): Html {
+  const r = o.rotation;
+  const done = r ? r.clients.filter((c) => c.done).length : 0;
+  const staleVm = !!(r?.changedAt && r.vmKey && o.serverPub && r.vmKey !== o.serverPub);
+  return html`<div class="panel sheet" id="sh-key" style="margin-top:16px">
+        ${sheetHead("Server key")}
+        <h2>Server key</h2>
+        ${o.serverPub ? html`<p class="small">Public key <code>${o.serverPub}</code></p>` : html`<p class="muted">Not configured.</p>`}
+        ${r?.changedAt
+          ? html`<h3 style="margin-top:12px">Since the key changed</h3>
+            <p class="muted small">Changed ${fmtTime(r.changedAt)} (was <code>${shortKey(r.previous)}</code>). ${r.clients.length ? `${done} of ${r.clients.length} client${r.clients.length === 1 ? "" : "s"} reconnected with the new key.` : "There were no clients to update."}</p>
+            ${staleVm ? html`<div class="notice bad" style="margin:8px 0"><p><b>The running VM still uses the old key.</b> Tear it down and deploy again; until then old configs keep working and new ones do not.</p></div>` : ""}
+            ${r.clients.length
+              ? html`<ul class="checklist">${r.clients.map((c) => html`<li><span class="${c.done ? "ok" : "no"}">${c.done ? "✓" : "–"}</span><div>${c.name} <span class="muted small">${c.done ? "reconnected" : c.site ? "waiting: on the PC run npm run home -- --down, then npm run home" : "waiting: press Get config on the Clients page and scan or import it"}</span></div></li>`)}</ul>`
+              : ""}`
+          : ""}
+        <h3 style="margin-top:12px">Rotate the server key</h3>
+        <p class="muted small">Only needed if the server's private key may have leaked. A lost phone does not need this: delete its client instead. Rotating stops every client config working until that device gets a new one. It is deliberately not a button here: the dashboard never holds the private key. On the laptop, in the project folder:</p>
+        <ol class="small">
+          <li><kbd>npm run keys -- --rotate</kbd> makes a new key pair in .env (it asks you to type <kbd>rotate</kbd> first). The old keys stay in .env as commented-out lines, in case you need to go back. It prints the new public key.</li>
+          <li>Put that public key in <b>wrangler.toml</b> as <code>WG_SERVER_PUBLIC_KEY</code>.</li>
+          <li><kbd>npm run secrets</kbd> sends the new private key to GitHub, where the VM build picks it up.</li>
+          <li><kbd>npm run deploy-worker</kbd> so the dashboard hands out configs with the new key. It then marks every client "needs new config" and notes the change in Activity.</li>
+          <li>If the VM is running or in Standby, tear it down and deploy again. A VM only takes the new key when it is built fresh; Resume keeps the old one.</li>
+          <li>On each device, press <b>Get config</b> on the Clients page and scan or import it, replacing the old tunnel. For the home site, on the PC run <kbd>npm run home -- --down</kbd> then <kbd>npm run home</kbd>. Each client ticks off above at its first connection with the new key.</li>
+        </ol>
+      </div>`;
 }
 
 /**
@@ -158,6 +203,69 @@ function schedulesPanel(o: SettingsOpts): Html {
   </div>`;
 }
 
+/** A backup set in words: "12 kept, newest 26 Sep 03:05". */
+function setText(b: { count: number; newest: string | null }): string {
+  return b.count ? `${b.count} kept, newest ${fmtTime(b.newest)}` : "none yet";
+}
+
+/**
+ * Backups: the Terraform state copies GitHub Actions makes after each run,
+ * the nightly export of the dashboard's own data, and download and restore.
+ */
+function backupsPanel(o: SettingsOpts): Html {
+  const b = o.backups;
+  return html`<div class="panel sheet" id="sh-backups" style="margin-top:16px">
+    ${sheetHead("Backups")}
+    <h2>Backups</h2>
+    ${b?.error ? html`<div class="notice bad" style="margin:8px 0"><p>Could not read R2: <span class="mono small">${b.error}</span></p></div>` : ""}
+    <ul class="checklist">
+      <li><span class="${b?.state.count ? "ok" : "no"}">${b?.state.count ? "✓" : "–"}</span><div>Terraform state <span class="muted small">${b ? setText(b.state) : "not checked"}. Copied after every deploy or tear-down; the last 20 are kept.</span></div></li>
+      <li><span class="${b?.config.count ? "ok" : "no"}">${b?.config.count ? "✓" : "–"}</span><div>Dashboard data <span class="muted small">${b ? setText(b.config) : "not checked"}. Clients, firewall rules, published ports, profiles, schedules, alert phones and settings, saved once a day; the last 30 are kept.</span>${b?.config.days.length ? html`<div class="small">Newest: <a href="/settings/backup/config/${b.config.days[0]}" hx-boost="false" download>${b.config.days[0]}</a></div>` : ""}</div></li>
+    </ul>
+    <p class="muted small" style="margin-top:10px">An export holds no passwords or tokens, and no client private keys (the dashboard never has them), so restored clients keep working with the configs they already have.</p>
+    <div class="btn-row"><a class="btn" href="/settings/backup/export" hx-boost="false" download>Download export</a></div>
+    <form method="post" action="/settings/backup/restore" enctype="multipart/form-data" hx-boost="false" style="margin-top:12px">
+      <label class="field"><span>Restore from file</span><input type="file" name="file" accept=".json,application/json" required>
+        <div class="hint">You will see what the file holds before anything changes.</div></label>
+      <div class="btn-row"><button type="submit">Check file</button></div>
+    </form>
+  </div>`;
+}
+
+export interface RestoreOpts {
+  current: Record<ExportTable, number>;
+  plan?: RestorePlan;
+  token?: string;
+  fileName?: string;
+  error?: string;
+}
+
+/**
+ * Restore, step two: what the file holds against what is here now, and the
+ * typed confirmation. Or, if the file could not be used, why.
+ */
+export function restoreBody(o: RestoreOpts): Html {
+  const names = Object.keys(TABLE_LABEL) as ExportTable[];
+  return html`<section>
+  <div class="section-head"><h1>Restore from file</h1></div>
+  ${o.error ? html`<div class="notice bad"><p>${o.error}</p></div>` : ""}
+  ${o.plan && o.token
+    ? html`<div class="panel">
+      <p>${o.fileName ? html`<b>${o.fileName}</b>, e` : "E"}xported ${fmtTime(o.plan.exported_at)}.</p>
+      <table class="rows"><thead><tr><th></th><th>Now</th><th>After restore</th></tr></thead><tbody>
+        ${names.map((n) => html`<tr><th>${TABLE_LABEL[n]}</th><td>${o.current[n]}</td><td><b>${o.plan!.counts[n]}</b></td></tr>`)}
+      </tbody></table>
+      <p class="muted small" style="margin-top:10px">Everything in these lists is replaced by the file's copy in one go. Clients, firewall rules and ports reach a running VM within 30 seconds. Nothing else (runs, activity, cost history) changes.</p>
+      <form method="post" action="/settings/backup/restore/confirm" hx-boost="false">
+        <input type="hidden" name="token" value="${o.token}">
+        <label class="field"><span>Type <kbd>restore</kbd> to confirm</span><input type="text" name="confirm" autocomplete="off" data-confirm-word="restore" placeholder="restore"></label>
+        <div class="btn-row"><button type="submit" class="danger">Replace with this file</button><a class="btn" href="/settings">Cancel</a></div>
+      </form>
+    </div>`
+    : html`<p><a class="btn" href="/settings">Back to Settings</a></p>`}
+</section>`;
+}
+
 /** The phone's Settings: three lights (setup, alerts, lock) and a button per section. */
 function settingsPhone(o: SettingsOpts): Html {
   const missing = Object.keys(o.missing).length;
@@ -178,6 +286,7 @@ function settingsPhone(o: SettingsOpts): Html {
       <button type="button" data-sheet="sh-setup">Setup</button>
       <button type="button" data-sheet="sh-lock">Run lock</button>
       <button type="button" data-sheet="sh-key">Server key</button>
+      <button type="button" data-sheet="sh-backups">Backups</button>
     </div>
   </div>`;
 }
@@ -187,6 +296,7 @@ export function settingsBody(o: SettingsOpts): Html {
   return html`<section>
   <div class="section-head"><h1>Settings</h1></div>
   ${o.saved ? html`<div class="notice good"><p>Saved.</p></div>` : ""}
+  ${o.restored ? html`<div class="notice good"><p>Restored. The dashboard's data now matches the file.</p></div>` : ""}
   ${o.err === "profile" ? html`<div class="notice bad"><p>Not saved: a profile needs a short name (letters, digits, spaces, dashes) that is not already used.</p></div>` : ""}
   ${o.err === "schedule" ? html`<div class="notice bad"><p>Not saved: pick at least one day, and an end time later than the start (a window cannot cross midnight).</p></div>` : ""}
   ${settingsPhone(o)}
@@ -240,6 +350,7 @@ export function settingsBody(o: SettingsOpts): Html {
       ${installPanel(o)}
       ${profilesPanel(o)}
       ${schedulesPanel(o)}
+      ${backupsPanel(o)}
 
       <div class="panel sheet" id="sh-lock" style="margin-top:16px">
         ${sheetHead("Run lock")}
@@ -250,17 +361,7 @@ export function settingsBody(o: SettingsOpts): Html {
           : html`<p class="muted">Free. One run at a time; a second click gets a clear message instead of a second VM.</p>`}
       </div>
 
-      <div class="panel sheet" id="sh-key" style="margin-top:16px">
-        ${sheetHead("Server key")}
-        <h2>Server key</h2>
-        ${o.serverPub ? html`<p class="small">Public key <code>${o.serverPub}</code></p>` : html`<p class="muted">Not configured.</p>`}
-        <p class="muted small">Rotating it invalidates every client. It is deliberately not a button here. On the laptop:</p>
-        <pre class="conf">npm run keys -- --rotate
-npm run secrets
-(put the new WG_SERVER_PUBLIC_KEY in wrangler.toml)
-npm run deploy-worker</pre>
-        <p class="muted small">Then re-add each client so it gets a config that trusts the new key.</p>
-      </div>
+      ${keyPanel(o)}
     </div>
   </div>
 </section>`;

@@ -67,7 +67,9 @@ You need: [Node.js](https://nodejs.org) 20+, [GitHub CLI](https://cli.github.com
    forever. `npm run keys` refuses to overwrite it unless you pass `--rotate`.
    Copy the printed `WG_SERVER_PUBLIC_KEY` into `wrangler.toml`: the dashboard
    only ever holds the public half, so a compromised dashboard cannot
-   impersonate the VPN server.
+   impersonate the VPN server. If the key ever has to be replaced, the
+   dashboard's Settings page (Server key) lists the steps and then ticks off
+   each client as it reconnects with its new config.
 
 3. **Push secrets to GitHub.** Terraform in Actions reads them from there.
 
@@ -111,7 +113,7 @@ is unchanged.
 | **Overview** | The big state word and the tunnel diagram. Deploy (choose how long for, and where: away from home it offers the nearest Azure region), Hibernate, Resume, Tear down (type `destroy`), extend or clear the auto-destroy, cancel a run, clean up after a failure. The self-test result, tunnel DNS and IPv6 address. Hover the Home tile for per-client latency and "changed networks". While a run is in progress you see the GitHub steps and the live log. |
 | **Clients** | Every phone and laptop with its tunnel addresses (IPv4 and IPv6), online/offline, last handshake, latency and traffic. Add a client: the keys are made in your browser, the private key never leaves it, and you get a QR code to scan with the WireGuard app. Per client: Azure route and tunnel DNS on or off. Disable or delete a client; a running VM picks the change up within 30 seconds. |
 | **Activity** | Every deploy and tear-down with how long it took and what it cost, plus the watchman's notes (drift, cost guard, missing heartbeat). |
-| **Cost** | This session ticking up, this month's actual spend from Azure against a soft budget, daily bars, and each past session. |
+| **Cost** | This session ticking up, this month's actual spend from Azure (plus the running session to its timer) against the monthly budget, daily bars, and each past session. Your phone is alerted once at 80% and once at 100% each month; over budget, Deploy asks you to tick "Deploy anyway". A budget of 0 turns this off. |
 | **Settings** | Region, VM size, default auto-destroy, what the timer does (tear down or hibernate), the Standby limit, idle limit, budget, SSH allow-list. The setup checklist, phone alerts, the run lock, and the server public key. |
 
 The watchman (a 5-minute cron in the Worker) warns your phone 15 minutes
