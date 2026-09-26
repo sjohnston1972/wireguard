@@ -64,7 +64,7 @@ export function page(o: {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css?v=${BUILD}">
-<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
+<script src="/htmx.min.js?v=${BUILD}" defer></script>
 <script src="/qrcode.js?v=${BUILD}" defer></script>
 <script src="/app.js?v=${BUILD}" defer></script>
 </head>

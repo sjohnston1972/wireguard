@@ -11,7 +11,7 @@
 import { Hono, type Context } from "hono";
 import type { Env } from "./env";
 import { config, missingSecrets, canDispatch } from "./env";
-import { requireAccess, bearer, type AuthedVars } from "./auth";
+import { requireAccess, sameOriginOnly, bearer, type AuthedVars } from "./auth";
 import * as db from "./db";
 import { getSnapshot } from "./state";
 import { lockStatus, releaseLock } from "./lock";
@@ -37,74 +37,134 @@ import { costBody } from "./views/cost";
 import { firewallBody } from "./views/firewall";
 import { parseCidr, parsePorts, compileFirewall, type EndKind, type Proto } from "./firewall";
 import { clearFirewallCounters } from "./runs";
-import { startCapture, receiveCapture, validFilter } from "./capture";
+import { startCapture, receiveCapture, validFilter, MAX_CAPTURE_BYTES } from "./capture";
 import { setPublishedPorts } from "./azure";
 import { reservedPort, forwardTargetOk, publishedNsgRules } from "./firewall";
+import { isPushEndpoint } from "./webpush";
 
 export { RunLock } from "./lock";
 
 type App = { Bindings: Env; Variables: AuthedVars };
 const app = new Hono<App>();
 
+// ── Browser safety rules on every page ─────────────────────────────────────
+// Content-Security-Policy tells the browser what a wg-admin page may load:
+// scripts only from this site (htmx is kept in worker/public, not fetched
+// from a CDN), styles from here plus Google Fonts, and it may not be shown
+// inside another site's frame (so nobody can overlay invisible buttons on it,
+// "clickjacking"). Inline style="..." attributes are allowed because the
+// screens use them; inline scripts are not. Like an outbound ACL for the page.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "manifest-src 'self'",
+  "worker-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+app.use("*", async (c, next) => {
+  await next();
+  c.res.headers.set("Content-Security-Policy", CSP);
+  c.res.headers.set("X-Frame-Options", "DENY");
+  c.res.headers.set("X-Content-Type-Options", "nosniff");
+  c.res.headers.set("Referrer-Policy", "same-origin");
+});
+
 // ── Token-authenticated API (no Cloudflare Access) ─────────────────────────
 
-const rateBuckets = new Map<string, { n: number; reset: number }>();
-function rateLimited(key: string, limit: number, windowMs: number): boolean {
+// Brake on guessing: each caller's address gets a few WRONG tokens a minute
+// per route, then is told to slow down. Only failures count, and they count
+// against that one address, so junk from elsewhere can never lock out the
+// real VM, GitHub or the phone. (The tokens are far too long to guess anyway;
+// this just stops the noise.) Kept in this Worker copy's memory.
+const FAILS_PER_MINUTE = 10;
+const failBuckets = new Map<string, { n: number; reset: number }>();
+
+function failKey(c: Context<App>, route: string): string {
+  return `${route}:${c.req.header("CF-Connecting-IP") ?? "unknown"}`;
+}
+
+/** Has this caller already had its share of failures on this route? */
+function tooManyFailures(key: string): boolean {
+  const b = failBuckets.get(key);
+  return !!b && b.reset > Date.now() && b.n >= FAILS_PER_MINUTE;
+}
+
+/** Count one failed attempt against this caller. */
+function noteFailure(key: string): void {
   const now = Date.now();
-  const b = rateBuckets.get(key);
-  if (!b || b.reset < now) {
-    rateBuckets.set(key, { n: 1, reset: now + windowMs });
-    return false;
-  }
-  b.n++;
-  return b.n > limit;
+  if (failBuckets.size > 5000) for (const [k, b] of failBuckets) if (b.reset < now) failBuckets.delete(k);
+  const b = failBuckets.get(key);
+  if (!b || b.reset < now) failBuckets.set(key, { n: 1, reset: now + 60_000 });
+  else b.n++;
 }
 
 app.post("/api/callback", async (c) => {
-  if (rateLimited("callback", 30, 60_000)) return c.json({ error: "slow down" }, 429);
+  const key = failKey(c, "callback");
+  if (tooManyFailures(key)) return c.json({ error: "slow down" }, 429);
   const body = await c.req.json().catch(() => null);
   const r = await handleCallback(c.env, bearer(c), body);
+  if (r.status >= 400) noteFailure(key);
   return c.json({ message: r.message }, r.status as 200);
 });
 
 // GitHub Actions collects the run's secrets here, proving itself with an OIDC
 // token. Lives under /api/callback so it shares that path's Access bypass.
 app.post("/api/callback/secrets", async (c) => {
-  if (rateLimited("secrets", 10, 60_000)) return c.json({ error: "slow down" }, 429);
+  const key = failKey(c, "secrets");
+  if (tooManyFailures(key)) return c.json({ error: "slow down" }, 429);
   let claims;
   try {
     claims = await verifyGithubOidc(c.env, bearer(c));
   } catch (e) {
+    noteFailure(key);
     return c.json({ error: `not a trusted workflow: ${(e as Error).message}` }, 401);
   }
   const body = (await c.req.json().catch(() => null)) as { run_id?: string } | null;
   if (!body?.run_id) return c.json({ error: "missing run_id" }, 400);
   const r = await issueRunSecrets(c.env, String(body.run_id), Number(claims.run_id));
+  if (r.status === 403 || r.status === 404) noteFailure(key);
   return c.json(r.body, r.status as 200);
 });
 
+// The VM's packet-capture upload. The token is checked BEFORE the file is
+// read, and the file is read with a hard size cap, so a stranger cannot make
+// the Worker swallow a huge upload (see capture.ts).
 app.post("/api/agent/capture/:id", async (c) => {
-  const len = Number(c.req.header("Content-Length") ?? 0);
-  if (len > 30 * 1024 * 1024) return c.text("too big", 413);
-  const body = await c.req.arrayBuffer();
-  const r = await receiveCapture(c.env, bearer(c), c.req.param("id"), body, c.req.header("X-Capture-Error") ?? null);
+  const key = failKey(c, "capture");
+  if (tooManyFailures(key)) return c.text("slow down", 429);
+  if (Number(c.req.header("Content-Length") ?? 0) > MAX_CAPTURE_BYTES) return c.text("too big", 413);
+  const r = await receiveCapture(c.env, bearer(c), c.req.param("id"), c.req.raw.body, c.req.header("X-Capture-Error") ?? null);
+  if (r.status === 401) noteFailure(key);
   return c.text(r.text, r.status as 200);
 });
 
 app.post("/api/agent", async (c) => {
-  if (rateLimited("agent", 10, 60_000)) return c.json({ error: "slow down" }, 429);
+  const key = failKey(c, "agent");
+  if (tooManyFailures(key)) return c.json({ error: "slow down" }, 429);
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "bad json" }, 400);
   const r = await handleAgent(c.env, bearer(c), body);
+  if (r.status === 401) noteFailure(key);
   return c.json(r.body as object, r.status as 200);
 });
 
 // One-tap buttons on phone notifications (actions.ts). POST only, so a link
 // preview or a crawler fetching the URL cannot trigger anything.
 app.post("/api/act/:token", async (c) => {
-  if (rateLimited("act", 10, 60_000)) return c.text("slow down", 429);
+  const key = failKey(c, "act");
+  if (tooManyFailures(key)) return c.text("slow down", 429);
   const action = await consumeAction(c.env, c.req.param("token"));
-  if (!action) return c.text("This button has expired or was already used.", 410);
+  if (!action) {
+    noteFailure(key);
+    return c.text("This button has expired or was already used.", 410);
+  }
   let msg: string;
   try {
     if (action === "extend") {
@@ -156,6 +216,18 @@ app.get("/manifest.webmanifest", (c) =>
 // ── Everything below requires Cloudflare Access ───────────────────────────
 
 app.use("*", requireAccess);
+// Changes must come from the dashboard's own pages, not another site (auth.ts).
+app.use("*", sameOriginOnly);
+
+/**
+ * The JSON body of a request from the dashboard's own script, or null. Only
+ * accepted when labelled as JSON: a plain HTML form on another site cannot
+ * send that label, so it is one more lock against forged requests.
+ */
+async function jsonBody<T>(c: Context<App>): Promise<T | null> {
+  if (!/^application\/json\b/i.test(c.req.header("Content-Type") ?? "")) return null;
+  return (await c.req.json().catch(() => null)) as T | null;
+}
 
 async function render(c: { env: Env; get: (k: "user") => string }, tab: Tab, title: string, body: Parameters<typeof page>[0]["body"], notice?: Parameters<typeof page>[0]["notice"]) {
   const [snapshot, alerts] = await Promise.all([getSnapshot(c.env), db.unacknowledgedAlerts(c.env)]);
@@ -240,7 +312,8 @@ app.post("/actions/deploy", async (c) => {
       profile = p.name;
     } else if (choice.startsWith("r:")) {
       region = choice.slice(2);
-      if (!(region in REGIONS)) throw new RunError("Unknown region.");
+      // hasOwn, not "in": "in" would also accept built-in names like "constructor".
+      if (!Object.hasOwn(REGIONS, region)) throw new RunError("Unknown region.");
     }
     const run = await startDeploy(c.env, { hours: hours > 0 ? hours : null, requesterIp: ip(c), requestedBy: user, region, vmSize, profile });
     return `Deploy started${profile ? `: ${profile}` : ""} in ${regionName(region ?? (await effectiveConfig(c.env)).region)} (${run.id}). About 4 minutes.`;
@@ -335,7 +408,7 @@ app.get("/partials/peers-table", async (c) => {
 });
 
 app.post("/api/peers", async (c) => {
-  const body = (await c.req.json().catch(() => null)) as { name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; home_lan?: boolean } | null;
+  const body = await jsonBody<{ name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; home_lan?: boolean }>(c);
   if (!body) return c.json({ error: "bad json" }, 400);
   const name = String(body.name ?? "").trim();
   if (!validPeerName(name)) return c.json({ error: "Name: letters, digits, spaces, dashes; up to 32 characters." }, 400);
@@ -363,7 +436,7 @@ app.post("/api/peers", async (c) => {
 // the public half. Returns the config template for the new key.
 app.post("/api/peers/:id/rekey", async (c) => {
   const id = Number(c.req.param("id"));
-  const body = (await c.req.json().catch(() => null)) as { public_key?: string } | null;
+  const body = await jsonBody<{ public_key?: string }>(c);
   if (!body || !isWgKey(String(body.public_key ?? ""))) return c.json({ error: "That is not a valid WireGuard public key." }, 400);
   const peer = await db.getPeer(c.env, id);
   if (!peer) return c.json({ error: "No such client." }, 404);
@@ -399,17 +472,17 @@ app.post("/peers/:id/dns", async (c) => {
 // to send and the keys to encrypt to (see webpush.ts). Behind the login.
 
 app.post("/api/push/subscribe", async (c) => {
-  const b = (await c.req.json().catch(() => null)) as { endpoint?: string; keys?: { p256dh?: string; auth?: string }; label?: string } | null;
+  const b = await jsonBody<{ endpoint?: string; keys?: { p256dh?: string; auth?: string }; label?: string }>(c);
   const endpoint = String(b?.endpoint ?? "");
   const p256dh = String(b?.keys?.p256dh ?? ""), auth = String(b?.keys?.auth ?? "");
-  if (!/^https:\/\/[^\s]{10,}$/.test(endpoint) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return c.json({ error: "That does not look like a push subscription." }, 400);
+  if (!/^https:\/\/[^\s]{10,}$/.test(endpoint) || !isPushEndpoint(endpoint) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return c.json({ error: "That does not look like a push subscription." }, 400);
   await db.savePushSub(c.env, { endpoint, p256dh, auth, label: String(b?.label ?? "").slice(0, 40) || null });
   await db.addAlert(c.env, "info", `Phone alerts turned on for ${b?.label || "a device"} by ${c.get("user")}.`);
   return c.json({ ok: true });
 });
 
 app.post("/api/push/unsubscribe", async (c) => {
-  const b = (await c.req.json().catch(() => null)) as { endpoint?: string } | null;
+  const b = await jsonBody<{ endpoint?: string }>(c);
   if (b?.endpoint) await db.deletePushSub(c.env, { endpoint: String(b.endpoint) });
   return c.json({ ok: true });
 });
@@ -488,7 +561,7 @@ app.post("/settings", async (c) => {
 app.post("/settings/profiles", async (c) => {
   const f = (await c.req.parseBody()) as Record<string, string>;
   const name = String(f.name ?? "").trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,23}$/.test(name) || !(f.region in REGIONS) || !/^Standard_[A-Za-z0-9_]{1,30}$/.test(f.vm_size ?? "")) return c.redirect("/settings?err=profile");
+  if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,23}$/.test(name) || !Object.hasOwn(REGIONS, f.region ?? "") || !/^Standard_[A-Za-z0-9_]{1,30}$/.test(f.vm_size ?? "")) return c.redirect("/settings?err=profile");
   try {
     await db.addProfile(c.env, { name, region: f.region, vm_size: f.vm_size });
   } catch {
@@ -707,7 +780,14 @@ app.get("/health", async (c) => {
 });
 
 app.notFound((c) => c.text("Not found", 404));
-app.onError((err, c) => c.text(`Something broke: ${err.message}`, 500));
+// A crash: the details go to the Worker's log under a short reference, and
+// the caller only gets the reference. Some routes are open to the internet
+// (token-checked), so error text must not leak how things work inside.
+app.onError((err, c) => {
+  const ref = crypto.randomUUID().slice(0, 8);
+  console.error(`error ${ref} on ${c.req.method} ${new URL(c.req.url).pathname}:`, err);
+  return c.text(`Something broke (reference ${ref}). The details are in the Worker's log.`, 500);
+});
 
 export default {
   fetch: app.fetch,

@@ -2,7 +2,7 @@
 // own crypto, an independent implementation), and check the VAPID signature.
 import { describe, it, expect } from "vitest";
 import * as nodeCrypto from "node:crypto";
-import { encryptPayload, vapidAuth, b64u } from "../src/webpush";
+import { encryptPayload, vapidAuth, b64u, isPushEndpoint, sendPush } from "../src/webpush";
 import type { Env } from "../src/env";
 
 // Node's crypto, typed loosely: the Worker's type definitions only describe
@@ -51,5 +51,26 @@ describe("Web Push", () => {
     expect(claims).toEqual({ aud: "https://fcm.googleapis.com", exp: 1_800_000_000 + 12 * 3600, sub: "https://wg-admin.example" });
     const key = createPublicKey({ key: { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y }, format: "jwk" });
     expect(verify("sha256", Buffer.from(`${m[1]}.${m[2]}`), { key, dsaEncoding: "ieee-p1363" }, Buffer.from(m[3], "base64url"))).toBe(true);
+  });
+});
+
+describe("where alerts may be sent (issue #16)", () => {
+  it("only the real push services", () => {
+    expect(isPushEndpoint("https://fcm.googleapis.com/fcm/send/abc123")).toBe(true);
+    expect(isPushEndpoint("https://web.push.apple.com/QGx")).toBe(true);
+    expect(isPushEndpoint("https://updates.push.services.mozilla.com/wpush/v2/x")).toBe(true);
+    expect(isPushEndpoint("https://wns2-par02p.notify.windows.com/w/?token=x")).toBe(true);
+    expect(isPushEndpoint("https://evil.example/collect")).toBe(false);
+    expect(isPushEndpoint("https://fcm.googleapis.com.evil.example/x")).toBe(false);
+    expect(isPushEndpoint("https://evilpush.apple.com/x")).toBe(false);
+    expect(isPushEndpoint("http://fcm.googleapis.com/fcm/send/x")).toBe(false);
+    expect(isPushEndpoint("https://fcm.googleapis.com:8443/x")).toBe(false);
+    expect(isPushEndpoint("not a url")).toBe(false);
+  });
+
+  it("a stored subscription elsewhere is never sent to", async () => {
+    const env = { VAPID_PUBLIC_KEY: "x", VAPID_PRIVATE_KEY: "y", PUBLIC_URL: "https://wg-admin.example" } as unknown as Env;
+    const r = await sendPush(env, { endpoint: "https://evil.example/collect", p256dh: "x", auth: "y" }, { title: "t", body: "b" });
+    expect(r).toMatch(/not a known push service/);
   });
 });
