@@ -46,6 +46,35 @@ export { RunLock } from "./lock";
 type App = { Bindings: Env; Variables: AuthedVars };
 const app = new Hono<App>();
 
+// ── Browser safety rules on every page ─────────────────────────────────────
+// Content-Security-Policy tells the browser what a wg-admin page may load:
+// scripts only from this site (htmx is kept in worker/public, not fetched
+// from a CDN), styles from here plus Google Fonts, and it may not be shown
+// inside another site's frame (so nobody can overlay invisible buttons on it,
+// "clickjacking"). Inline style="..." attributes are allowed because the
+// screens use them; inline scripts are not. Like an outbound ACL for the page.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "manifest-src 'self'",
+  "worker-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+app.use("*", async (c, next) => {
+  await next();
+  c.res.headers.set("Content-Security-Policy", CSP);
+  c.res.headers.set("X-Frame-Options", "DENY");
+  c.res.headers.set("X-Content-Type-Options", "nosniff");
+  c.res.headers.set("Referrer-Policy", "same-origin");
+});
+
 // ── Token-authenticated API (no Cloudflare Access) ─────────────────────────
 
 // Brake on guessing: each caller's address gets a few WRONG tokens a minute

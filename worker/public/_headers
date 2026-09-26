@@ -1,0 +1,7 @@
+# Headers for the static files in this folder (stylesheet, scripts, icons).
+# Cloudflare serves these files before the Worker runs, so the Worker's own
+# safety headers (index.ts) do not reach them; this file adds the basics.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: same-origin
+  X-Frame-Options: DENY

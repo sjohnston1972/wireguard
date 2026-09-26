@@ -65,6 +65,31 @@ describe("requests from other sites (issue #1)", () => {
   });
 });
 
+describe("browser safety headers (issue #6)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("every page says: scripts from here only, never inside a frame", async () => {
+    const { env } = makeEnv({ AUTH_DEV_BYPASS: "1" });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const r = await call(env, "http://localhost:8787/");
+    expect(r.status).toBe(200);
+    const csp = r.headers.get("Content-Security-Policy") ?? "";
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).not.toMatch(/script-src[^;]*(unsafe|jsdelivr)/);
+    expect(r.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(r.headers.get("Referrer-Policy")).toBe("same-origin");
+    const html = await r.text();
+    // htmx comes from this site now, and no page carries an inline script.
+    expect(html).toContain('src="/htmx.min.js');
+    expect(html).not.toContain("cdn.jsdelivr.net");
+    expect(html).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/);
+    // Non-page answers get them too.
+    const m = await call(env, "http://localhost:8787/manifest.webmanifest");
+    expect(m.headers.get("X-Frame-Options")).toBe("DENY");
+  });
+});
+
 describe("the dev login switch-off (issue #12)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
