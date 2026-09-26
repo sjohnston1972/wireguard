@@ -250,6 +250,21 @@ export async function acknowledgeAlerts(env: Env): Promise<void> {
   await env.DB.prepare("UPDATE alerts SET acknowledged = 1 WHERE acknowledged = 0").run();
 }
 
+/** Notes that just report how a run went, as opposed to warnings. */
+export const ROUTINE_ALERT_KINDS = ["deploy", "destroy", "session", "info"] as const;
+
+/**
+ * Mark the routine notes raised between two moments as read. Used for the
+ * minutes after Steven presses a button: he watched those happen, so they
+ * are not "while you were away". Warnings are left alone.
+ */
+export async function acknowledgeRoutineBetween(env: Env, fromIso: string, toIso: string): Promise<void> {
+  const kinds = ROUTINE_ALERT_KINDS.map((k) => `'${k}'`).join(", ");
+  await env.DB.prepare(`UPDATE alerts SET acknowledged = 1 WHERE acknowledged = 0 AND kind IN (${kinds}) AND at >= ?1 AND at <= ?2`)
+    .bind(fromIso, toIso)
+    .run();
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────
 
 export async function getSetting(env: Env, key: string): Promise<string | null> {
