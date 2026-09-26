@@ -11,7 +11,7 @@
 import { Hono, type Context } from "hono";
 import type { Env } from "./env";
 import { config, missingSecrets, canDispatch } from "./env";
-import { requireAccess, bearer, type AuthedVars } from "./auth";
+import { requireAccess, sameOriginOnly, bearer, type AuthedVars } from "./auth";
 import * as db from "./db";
 import { getSnapshot } from "./state";
 import { lockStatus, releaseLock } from "./lock";
@@ -156,6 +156,18 @@ app.get("/manifest.webmanifest", (c) =>
 // ── Everything below requires Cloudflare Access ───────────────────────────
 
 app.use("*", requireAccess);
+// Changes must come from the dashboard's own pages, not another site (auth.ts).
+app.use("*", sameOriginOnly);
+
+/**
+ * The JSON body of a request from the dashboard's own script, or null. Only
+ * accepted when labelled as JSON: a plain HTML form on another site cannot
+ * send that label, so it is one more lock against forged requests.
+ */
+async function jsonBody<T>(c: Context<App>): Promise<T | null> {
+  if (!/^application\/json\b/i.test(c.req.header("Content-Type") ?? "")) return null;
+  return (await c.req.json().catch(() => null)) as T | null;
+}
 
 async function render(c: { env: Env; get: (k: "user") => string }, tab: Tab, title: string, body: Parameters<typeof page>[0]["body"], notice?: Parameters<typeof page>[0]["notice"]) {
   const [snapshot, alerts] = await Promise.all([getSnapshot(c.env), db.unacknowledgedAlerts(c.env)]);
@@ -335,7 +347,7 @@ app.get("/partials/peers-table", async (c) => {
 });
 
 app.post("/api/peers", async (c) => {
-  const body = (await c.req.json().catch(() => null)) as { name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; home_lan?: boolean } | null;
+  const body = await jsonBody<{ name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; home_lan?: boolean }>(c);
   if (!body) return c.json({ error: "bad json" }, 400);
   const name = String(body.name ?? "").trim();
   if (!validPeerName(name)) return c.json({ error: "Name: letters, digits, spaces, dashes; up to 32 characters." }, 400);
@@ -363,7 +375,7 @@ app.post("/api/peers", async (c) => {
 // the public half. Returns the config template for the new key.
 app.post("/api/peers/:id/rekey", async (c) => {
   const id = Number(c.req.param("id"));
-  const body = (await c.req.json().catch(() => null)) as { public_key?: string } | null;
+  const body = await jsonBody<{ public_key?: string }>(c);
   if (!body || !isWgKey(String(body.public_key ?? ""))) return c.json({ error: "That is not a valid WireGuard public key." }, 400);
   const peer = await db.getPeer(c.env, id);
   if (!peer) return c.json({ error: "No such client." }, 404);
@@ -399,7 +411,7 @@ app.post("/peers/:id/dns", async (c) => {
 // to send and the keys to encrypt to (see webpush.ts). Behind the login.
 
 app.post("/api/push/subscribe", async (c) => {
-  const b = (await c.req.json().catch(() => null)) as { endpoint?: string; keys?: { p256dh?: string; auth?: string }; label?: string } | null;
+  const b = await jsonBody<{ endpoint?: string; keys?: { p256dh?: string; auth?: string }; label?: string }>(c);
   const endpoint = String(b?.endpoint ?? "");
   const p256dh = String(b?.keys?.p256dh ?? ""), auth = String(b?.keys?.auth ?? "");
   if (!/^https:\/\/[^\s]{10,}$/.test(endpoint) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return c.json({ error: "That does not look like a push subscription." }, 400);
@@ -409,7 +421,7 @@ app.post("/api/push/subscribe", async (c) => {
 });
 
 app.post("/api/push/unsubscribe", async (c) => {
-  const b = (await c.req.json().catch(() => null)) as { endpoint?: string } | null;
+  const b = await jsonBody<{ endpoint?: string }>(c);
   if (b?.endpoint) await db.deletePushSub(c.env, { endpoint: String(b.endpoint) });
   return c.json({ ok: true });
 });
@@ -708,7 +720,14 @@ app.get("/health", async (c) => {
 });
 
 app.notFound((c) => c.text("Not found", 404));
-app.onError((err, c) => c.text(`Something broke: ${err.message}`, 500));
+// A crash: the details go to the Worker's log under a short reference, and
+// the caller only gets the reference. Some routes are open to the internet
+// (token-checked), so error text must not leak how things work inside.
+app.onError((err, c) => {
+  const ref = crypto.randomUUID().slice(0, 8);
+  console.error(`error ${ref} on ${c.req.method} ${new URL(c.req.url).pathname}:`, err);
+  return c.text(`Something broke (reference ${ref}). The details are in the Worker's log.`, 500);
+});
 
 export default {
   fetch: app.fetch,

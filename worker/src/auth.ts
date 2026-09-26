@@ -10,6 +10,9 @@
 // Two routes skip this and use bearer tokens instead: /api/agent (the VM) and
 // /api/callback (GitHub Actions). Those tokens are minted per deploy and per
 // run and only their SHA-256 hashes are stored.
+//
+// Behind the login, sameOriginOnly also refuses any change that did not come
+// from the dashboard's own pages (see below).
 
 import type { Context, Next } from "hono";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
@@ -32,8 +35,17 @@ export type AuthedVars = { user: string };
 export async function requireAccess(c: Context<{ Bindings: Env; Variables: AuthedVars }>, next: Next) {
   const env = c.env;
   if (env.AUTH_DEV_BYPASS === "1") {
-    c.set("user", "dev@localhost");
-    return next();
+    // The login switch-off is for "npm run dev" on this PC only. If it ever
+    // leaks into the live settings it is ignored, and the normal check runs.
+    if (isLocalhost(c.req.url)) {
+      if (!warnedBypass) {
+        warnedBypass = true;
+        console.warn("AUTH_DEV_BYPASS is on: login is switched off for localhost.");
+      }
+      c.set("user", "dev@localhost");
+      return next();
+    }
+    console.error("AUTH_DEV_BYPASS is set but this request is not on localhost. Ignoring it; remove it from the live settings.");
   }
   const team = env.CF_ACCESS_TEAM_DOMAIN;
   const aud = env.CF_ACCESS_AUD;
@@ -50,8 +62,51 @@ export async function requireAccess(c: Context<{ Bindings: Env; Variables: Authe
     c.set("user", email);
     return next();
   } catch (e) {
-    return c.text(`Access token rejected: ${(e as Error).message}`, 401);
+    // The exact reason goes to the Worker's log, not to whoever sent the token.
+    console.error("Access token rejected:", (e as Error).message);
+    return c.text("Access token rejected. Sign in again through wg-admin.clydeford.net.", 401);
   }
+}
+
+let warnedBypass = false;
+
+/** True when the address is this PC (localhost, 127.0.0.1 or ::1). */
+export function isLocalhost(url: string): boolean {
+  const h = new URL(url).hostname;
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+}
+
+/**
+ * Hono middleware, after requireAccess: a change (anything but reading a
+ * page) must come from the dashboard's own pages. Browsers label every
+ * request with where it came from (Sec-Fetch-Site, and Origin on a POST), and
+ * a web page cannot fake those labels. Without this, another site open in the
+ * same browser could submit a hidden form here while you are logged in
+ * ("cross-site request forgery"). Like an ACL that only accepts management
+ * traffic sourced from the management VLAN.
+ */
+export async function sameOriginOnly(c: Context<{ Bindings: Env; Variables: AuthedVars }>, next: Next) {
+  const m = c.req.method;
+  if (m === "GET" || m === "HEAD" || m === "OPTIONS") return next();
+  if (!cameFromOurPages(c.req.header("Sec-Fetch-Site"), c.req.header("Origin"), c.req.url, c.env.PUBLIC_URL)) {
+    return c.text("Refused: that request did not come from the wg-admin pages.", 403);
+  }
+  return next();
+}
+
+/** The decision behind sameOriginOnly, on its own so it can be tested. */
+export function cameFromOurPages(fetchSite: string | undefined, origin: string | undefined, url: string, publicUrl: string | undefined): boolean {
+  // Modern browsers: "same-origin" means one of our own pages sent it.
+  if (fetchSite) return fetchSite === "same-origin";
+  // Older browsers: fall back to the Origin label. No label at all is refused.
+  if (!origin || origin === "null") return false;
+  const ours = new Set([new URL(url).origin]);
+  try {
+    if (publicUrl) ours.add(new URL(publicUrl).origin);
+  } catch {
+    /* a malformed PUBLIC_URL is simply not trusted */
+  }
+  return ours.has(origin);
 }
 
 /** 32 random bytes as hex. Used for the per-run callback and agent tokens. */
