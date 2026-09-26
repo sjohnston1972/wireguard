@@ -34,6 +34,7 @@ import { peersBody, peersTable } from "./views/peers";
 import { activityBody } from "./views/activity";
 import { settingsBody } from "./views/settings";
 import { costBody } from "./views/cost";
+import { budgetStatus, requireBudgetOk, OVER_BUDGET_FIELD } from "./budget";
 import { firewallBody } from "./views/firewall";
 import { parseCidr, parsePorts, compileFirewall, type EndKind, type Proto } from "./firewall";
 import { clearFirewallCounters } from "./runs";
@@ -268,6 +269,7 @@ async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info";
     speedtests,
     site: peers.find((p) => p.enabled && p.routes) ?? null,
     nextScheduled: nextStart(schedules, new Date()),
+    budget: await budgetStatus(env, cfg, snap),
   });
 }
 
@@ -315,6 +317,7 @@ app.post("/actions/deploy", async (c) => {
       // hasOwn, not "in": "in" would also accept built-in names like "constructor".
       if (!Object.hasOwn(REGIONS, region)) throw new RunError("Unknown region.");
     }
+    await requireBudgetOk(c.env, form[OVER_BUDGET_FIELD] === "yes");
     const run = await startDeploy(c.env, { hours: hours > 0 ? hours : null, requesterIp: ip(c), requestedBy: user, region, vmSize, profile });
     return `Deploy started${profile ? `: ${profile}` : ""} in ${regionName(region ?? (await effectiveConfig(c.env)).region)} (${run.id}). About 4 minutes.`;
   });
@@ -553,7 +556,8 @@ app.get("/activity", async (c) => {
 app.get("/cost", async (c) => {
   const monthStart = new Date().toISOString().slice(0, 8) + "01";
   const [snap, days, runs, cfg, fetchedDay] = await Promise.all([getSnapshot(c.env), db.costDays(c.env, monthStart), db.listRuns(c.env, 200), effectiveConfig(c.env), c.env.STATUS.get("cost:fetched_day")]);
-  return c.html(await render(c, "cost", "Cost", costBody({ snap, days, runs, cfg, fetchedDay })));
+  const budget = await budgetStatus(c.env, cfg, snap);
+  return c.html(await render(c, "cost", "Cost", costBody({ snap, days, runs, cfg, fetchedDay, budget })));
 });
 
 app.get("/settings", async (c) => {

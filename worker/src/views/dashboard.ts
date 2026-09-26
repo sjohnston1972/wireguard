@@ -17,6 +17,8 @@ import { STATE_LABEL, isBusy, isPowerOp, peerOnline, trafficFlowing, selfTestFai
 import { regionName } from "../region";
 import type { Config } from "../env";
 import type { Peer, Profile, SpeedTest } from "../db";
+import type { BudgetStatus } from "../budget";
+import { OVER_BUDGET_FIELD } from "../budget";
 
 export interface LiveOpts {
   snap: Snapshot;
@@ -38,6 +40,8 @@ export interface LiveOpts {
   site?: Peer | null;
   /** "Mon 08:00": when the next scheduled window opens, if any. */
   nextScheduled?: string | null;
+  /** Where the monthly budget stands; at or over it, Deploy asks to confirm. */
+  budget?: BudgetStatus | null;
 }
 
 /**
@@ -595,6 +599,7 @@ function controls(o: LiveOpts): Html {
           <span class="small muted">For how long?</span>
           ${hourChips(o)}
           ${profileChips(o)}
+          ${overBudget(o)}
           <div class="btn-row">
             <button type="submit" class="primary big" ${disabled ? "disabled" : ""}>Deploy</button>
             ${disabled ? html`<span class="small muted">GitHub is not connected. <a href="/settings">Finish setup</a>.</span>` : ""}
@@ -612,6 +617,18 @@ function controls(o: LiveOpts): Html {
         </div>
       </div>`}
 </div>`;
+}
+
+/**
+ * At or over the monthly budget: say so above the Deploy button, with a
+ * "Deploy anyway" tick box. The browser will not submit without it, and the
+ * Worker checks it again (budget.ts), so it cannot be skipped.
+ */
+function overBudget(o: LiveOpts): Html {
+  const b = o.budget;
+  if (!b || b.level !== "over") return html``;
+  return html`<div class="notice bad" style="margin:10px 0"><p>This month is at <b>${Math.round(b.pct)}%</b> of the ${gbp(b.budget)} budget (${gbp(b.total)} so far). <a href="/cost">See Cost</a>.</p></div>
+          <label class="field" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="${OVER_BUDGET_FIELD}" value="yes" required style="width:auto"><span style="margin:0">Deploy anyway, over budget</span></label>`;
 }
 
 /** "Move to US exit": tear down here, build there, two taps. */

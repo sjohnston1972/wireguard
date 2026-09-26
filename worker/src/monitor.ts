@@ -18,6 +18,8 @@
 //   - flags drift: Azure and the dashboard disagree
 //   - flags an unreachable VM: no heartbeat for 2 minutes while Running
 //   - pulls yesterday's actual cost from Azure once a day
+//   - checks the month against the budget: one alert at 80%, one at 100%
+//     (budget.ts)
 // Everything it notices is written to alerts so the Activity page can show
 // what happened overnight, and pushed to the webhook if one is set.
 
@@ -33,6 +35,7 @@ import { notify } from "./notify";
 import { actionButton, dashboardButton } from "./actions";
 import { costMonthToDate, azureView } from "./azure";
 import { checkDns } from "./dns";
+import { checkBudget } from "./budget";
 
 /**
  * How long a Failed deployment may leave its resource group in Azure before
@@ -229,6 +232,15 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         notes.push(`cost: ${(e as Error).message}`);
       }
     }
+  }
+
+  // 7. The monthly budget: this month's actual spend plus the running
+  //    session to its timer. Every run, because the session part moves.
+  try {
+    const note = await checkBudget(env, cfg, now);
+    if (note) notes.push(note);
+  } catch (e) {
+    notes.push(`budget: ${(e as Error).message}`);
   }
 
   return notes;
