@@ -81,9 +81,17 @@ function fakeDO(env: Env): DurableObjectNamespace {
     },
   };
   const obj = new RunLock({ storage } as unknown as DurableObjectState, env);
+  // A real Durable Object's read-then-write is not interleaved with another
+  // request (its "input gate"); handle one request at a time to match.
+  let queue: Promise<unknown> = Promise.resolve();
+  const serial = (url: string, init?: RequestInit) => {
+    const next = queue.then(() => obj.fetch(new Request(url, init)));
+    queue = next.catch(() => undefined);
+    return next;
+  };
   return {
     idFromName: () => "singleton",
-    get: () => ({ fetch: (url: string, init?: RequestInit) => obj.fetch(new Request(url, init)) }),
+    get: () => ({ fetch: serial }),
   } as unknown as DurableObjectNamespace;
 }
 

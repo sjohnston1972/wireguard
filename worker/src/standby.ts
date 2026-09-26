@@ -22,7 +22,7 @@ import { canAzure } from "./env";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
-import { getSnapshot, saveSnapshot } from "./state";
+import { getSnapshot, saveSnapshot, saveSnapshotIf } from "./state";
 import { azureView, vmPower } from "./azure";
 import { notify } from "./notify";
 import { actionButton, dashboardButton } from "./actions";
@@ -90,7 +90,10 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
     if (az.power === "deallocated") {
       const at = new Date(now).toISOString();
       const summary = snap.pending_summary ?? "Hibernated.";
-      await saveSnapshot(env, { state: "standby", since: at, standby_since: at, running_since: null, power_op_at: null, agent: null, last_agent_at: null, traffic: null, session: null, latency: {}, pending_summary: null });
+      // Only the caller that actually moves Hibernating -> Standby carries on;
+      // a second poller that saw the same thing stops here, so one message.
+      const won = await saveSnapshotIf(env, "hibernating", { state: "standby", since: at, standby_since: at, running_since: null, power_op_at: null, agent: null, last_agent_at: null, traffic: null, session: null, latency: {}, pending_summary: null });
+      if (!won) return;
       await releaseLock(env, undefined, true);
       await refreshInventory(env);
       const cfg = await effectiveConfig(env);
@@ -100,7 +103,13 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
         buttons: [dashboardButton(env, "Resume from dashboard"), await actionButton(env, "destroy", 3 * 24 * 3600)],
       });
     } else if (now - started > 15 * 60_000) {
-      await saveSnapshot(env, { state: "running", error: `Hibernate did not finish: Azure still reports "${az.power ?? "unknown"}".`, power_op_at: null });
+      // Hibernating cleared the auto-destroy timer. Back in Running it needs
+      // one again, or nothing would ever tear it down: put back the deadline
+      // the deployment had (kept on its run record). If it has passed, the
+      // next check tears down (the cost guard, since hibernating just failed).
+      const dep = await db.currentDeployment(env);
+      const won = await saveSnapshotIf(env, "hibernating", { state: "running", auto_destroy_at: dep ? dep.auto_destroy_at : new Date(now).toISOString(), error: `Hibernate did not finish: Azure still reports "${az.power ?? "unknown"}".`, power_op_at: null });
+      if (!won) return;
       await releaseLock(env, undefined, true);
       await db.addAlert(env, "failure", `Hibernate did not finish within 15 minutes (power state "${az.power ?? "unknown"}"). Still treated as Running.`);
     }
@@ -112,12 +121,14 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
   // watchdog and the timers take over, and say so.
   if (az.power === "running" && now - started > 6 * 60_000) {
     const at = new Date(now).toISOString();
-    await saveSnapshot(env, { state: "running", since: at, running_since: at, standby_since: null, power_op_at: null });
+    const won = await saveSnapshotIf(env, "resuming", { state: "running", since: at, running_since: at, standby_since: null, power_op_at: null });
+    if (!won) return; // the heartbeat, or another poller, got there first
     await releaseLock(env, undefined, true);
     await db.addAlert(env, "unreachable", "The VM powered on after Resume but has not sent a heartbeat in 6 minutes.");
     await notify(env, "wg-admin: resumed, but silent", "The VM is powered on but has not reported in. Check the dashboard.", { priority: 4, buttons: [dashboardButton(env)] });
   } else if (now - started > 15 * 60_000) {
-    await saveSnapshot(env, { state: "standby", error: `Resume did not finish: Azure reports "${az.power ?? "unknown"}".`, power_op_at: null });
+    const won = await saveSnapshotIf(env, "resuming", { state: "standby", error: `Resume did not finish: Azure reports "${az.power ?? "unknown"}".`, power_op_at: null });
+    if (!won) return;
     await releaseLock(env, undefined, true);
     await db.addAlert(env, "failure", `Resume did not finish within 15 minutes (power state "${az.power ?? "unknown"}").`);
   }
