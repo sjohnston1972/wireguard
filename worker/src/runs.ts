@@ -174,6 +174,8 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     traffic_hist: [],
     capture_req: null,
   });
+  // A capture left over from the previous VM will never arrive; say so.
+  if (snap.capture_req) await db.failPendingCapture(env, snap.capture_req.id, "VM torn down");
   return (await db.getRun(env, id))!;
 }
 
@@ -449,7 +451,10 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     speedtest_req: null,
     firewall: before.firewall ? { ...before.firewall, counters: {}, applied_hash: null, drops: before.firewall.drops } : null,
     test_vm_ip: null,
+    capture_req: null,
   });
+  // A packet capture still waiting on the VM will never arrive now.
+  if (before.capture_req) await db.failPendingCapture(env, before.capture_req.id, "VM torn down");
   await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
   if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);
   const next = before.pending_deploy;

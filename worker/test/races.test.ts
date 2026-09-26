@@ -48,6 +48,37 @@ describe("SSH passwords are forgotten once the VM is gone (#15)", () => {
   });
 });
 
+describe("a packet capture pending at tear-down (#29)", () => {
+  const capture = async () => {
+    await db.addCapture(env, { id: "cap-1", requested_by: "steven", iface: "wg0", filter: "", seconds: 30 });
+    await saveSnapshot(env, { capture_req: { id: "cap-1", iface: "wg0", filter: "", seconds: 30, at: new Date().toISOString() } });
+  };
+
+  it("is marked failed when the VM is torn down", async () => {
+    await toRunning();
+    await capture();
+    const d = await startDestroy(env, "steven", "done");
+    const sec = await issueRunSecrets(env, d.id, lastGhRun(world));
+    world.azure.rg = false;
+    await handleCallback(env, sec.body.callback_token as string, { run_id: d.id, action: "destroy", status: "success" });
+    expect(await db.getCapture(env, "cap-1")).toMatchObject({ status: "failed", error: "VM torn down" });
+    expect((await getSnapshot(env)).capture_req).toBeNull();
+  });
+
+  it("is marked failed when a new deploy replaces it", async () => {
+    await capture();
+    await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven" });
+    expect(await db.getCapture(env, "cap-1")).toMatchObject({ status: "failed" });
+  });
+
+  it("leaves a finished capture alone", async () => {
+    await capture();
+    await db.updateCapture(env, "cap-1", { status: "done" });
+    await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven" });
+    expect((await db.getCapture(env, "cap-1"))!.status).toBe("done");
+  });
+});
+
 describe("settling without the callback (#24)", () => {
   it("waits 2 minutes after GitHub finishes, so the callback's outputs are not lost", async () => {
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
