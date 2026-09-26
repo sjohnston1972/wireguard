@@ -33,6 +33,7 @@ import { liveSection } from "./views/dashboard";
 import { peersBody, peersTable } from "./views/peers";
 import { activityBody, AUDIT_KINDS, AUDIT_PAGE } from "./views/activity";
 import { settingsBody } from "./views/settings";
+import { rotationStatus } from "./keyrotation";
 import { costBody } from "./views/cost";
 import { budgetStatus, requireBudgetOk, OVER_BUDGET_FIELD } from "./budget";
 import { firewallBody } from "./views/firewall";
@@ -482,6 +483,7 @@ app.post("/api/peers/:id/expiry", async (c) => {
   const at = expiryFrom(body.days);
   if (at && peer.routes) return c.json({ error: "The home site does not expire." }, 400);
   await db.setPeerExpiry(c.env, peer.id, at);
+  await db.audit(c.env, c.get("user"), "client.edit", peer.name, { expires_at: peer.expires_at ?? null }, { expires_at: at });
   return c.json({ ok: true, expires_at: at });
 });
 
@@ -600,7 +602,7 @@ app.get("/settings", async (c) => {
   const saved = c.req.query("saved") === "1";
   const backups = await backupStatus(c.env, true);
   return c.html(
-    await render(c, "settings", "Settings", settingsBody({ backups, restored: c.req.query("restored") === "1", cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl, pushSubs: await db.listPushSubs(c.env), vapidPublic: c.env.VAPID_PUBLIC_KEY ?? null }))
+    await render(c, "settings", "Settings", settingsBody({ backups, restored: c.req.query("restored") === "1", cfg, overrides, missing: missingSecrets(c.env), lock, serverPub, saved, repo: c.env.GITHUB_REPO ?? null, webhook: !!c.env.NOTIFY_WEBHOOK_URL, ntfy: c.env.NOTIFY_WEBHOOK_URL ? ntfyParts(c.env.NOTIFY_WEBHOOK_URL) : null, ntfyToken: !!c.env.NOTIFY_TOKEN, notifyError: await lastNotifyError(c.env), profiles: await db.listProfiles(c.env), schedules: await db.listSchedules(c.env), err: c.req.query("err") ?? null, publicUrl: config(c.env).publicUrl, pushSubs: await db.listPushSubs(c.env), vapidPublic: c.env.VAPID_PUBLIC_KEY ?? null, rotation: await rotationStatus(c.env) }))
   );
 });
 
@@ -732,6 +734,7 @@ app.post("/settings/backup/restore/confirm", async (c) => {
     return back(`Nothing was changed: the database refused the file (${(e as Error).message}).`);
   }
   await c.env.STATUS.delete(`restore:${token}`);
+  await db.audit(c.env, c.get("user"), "config.restore", "backup", null, { exported_at: plan.exported_at, counts: plan.counts });
   await db.addAlert(c.env, "info", `Dashboard data restored from an export of ${plan.exported_at} by ${c.get("user")}: ${plan.counts.peers} client(s), ${plan.counts.fw_rules} firewall rule(s).`);
   await syncPublished(c.env);
   return c.redirect("/settings?restored=1");

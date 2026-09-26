@@ -39,6 +39,7 @@ import { costMonthToDate, azureView } from "./azure";
 import { checkDns } from "./dns";
 import { checkBudget } from "./budget";
 import { nightlyConfigBackup } from "./backup";
+import { syncServerKey } from "./keyrotation";
 
 /**
  * How long a Failed deployment may leave its resource group in Azure before
@@ -87,6 +88,13 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     }
   } catch (e) {
     notes.push(`expiry: ${(e as Error).message}`);
+  }
+
+  // A new server key in wrangler.toml (a rotation): flag every client.
+  try {
+    await syncServerKey(env, now);
+  } catch (e) {
+    notes.push(`server key: ${(e as Error).message}`);
   }
 
   let snap = await getSnapshot(env);

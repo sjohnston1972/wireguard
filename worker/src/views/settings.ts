@@ -3,7 +3,8 @@
 // Plain English: the back office. A setup checklist (which secrets are in
 // place), the run lock (with a release button for a stuck run), the values
 // the next deploy will use (editable), the server public key, and how to
-// rotate it (a deliberate, off-dashboard action).
+// rotate it (a deliberate, off-dashboard action), with a checklist of which
+// clients have reconnected since the last rotation.
 
 import { html } from "hono/html";
 import type { Html } from "./layout";
@@ -15,6 +16,8 @@ import type { Profile, Schedule, PushSub } from "../db";
 import { daysText } from "../schedule-time";
 import type { BackupStatus, ExportTable, RestorePlan } from "../backup";
 import { TABLE_LABEL } from "../backup";
+import type { RotationStatus } from "../keyrotation";
+import { shortKey } from "../keyrotation";
 
 export interface SettingsOpts {
   cfg: Config;
@@ -40,6 +43,42 @@ export interface SettingsOpts {
   backups?: BackupStatus;
   /** Just back from a restore. */
   restored?: boolean;
+  /** After a server key rotation: when, and which clients have reconnected. */
+  rotation?: RotationStatus | null;
+}
+
+/**
+ * Server key: the public key, a plain-English guide to rotating it (done on
+ * the laptop, never from here: the dashboard never holds the private key),
+ * and after a rotation, a checklist of which clients have reconnected.
+ */
+function keyPanel(o: SettingsOpts): Html {
+  const r = o.rotation;
+  const done = r ? r.clients.filter((c) => c.done).length : 0;
+  const staleVm = !!(r?.changedAt && r.vmKey && o.serverPub && r.vmKey !== o.serverPub);
+  return html`<div class="panel sheet" id="sh-key" style="margin-top:16px">
+        ${sheetHead("Server key")}
+        <h2>Server key</h2>
+        ${o.serverPub ? html`<p class="small">Public key <code>${o.serverPub}</code></p>` : html`<p class="muted">Not configured.</p>`}
+        ${r?.changedAt
+          ? html`<h3 style="margin-top:12px">Since the key changed</h3>
+            <p class="muted small">Changed ${fmtTime(r.changedAt)} (was <code>${shortKey(r.previous)}</code>). ${r.clients.length ? `${done} of ${r.clients.length} client${r.clients.length === 1 ? "" : "s"} reconnected with the new key.` : "There were no clients to update."}</p>
+            ${staleVm ? html`<div class="notice bad" style="margin:8px 0"><p><b>The running VM still uses the old key.</b> Tear it down and deploy again; until then old configs keep working and new ones do not.</p></div>` : ""}
+            ${r.clients.length
+              ? html`<ul class="checklist">${r.clients.map((c) => html`<li><span class="${c.done ? "ok" : "no"}">${c.done ? "✓" : "–"}</span><div>${c.name} <span class="muted small">${c.done ? "reconnected" : c.site ? "waiting: on the PC run npm run home -- --down, then npm run home" : "waiting: press Get config on the Clients page and scan or import it"}</span></div></li>`)}</ul>`
+              : ""}`
+          : ""}
+        <h3 style="margin-top:12px">Rotate the server key</h3>
+        <p class="muted small">Only needed if the server's private key may have leaked. A lost phone does not need this: delete its client instead. Rotating stops every client config working until that device gets a new one. It is deliberately not a button here: the dashboard never holds the private key. On the laptop, in the project folder:</p>
+        <ol class="small">
+          <li><kbd>npm run keys -- --rotate</kbd> makes a new key pair in .env (it asks you to type <kbd>rotate</kbd> first). The old keys stay in .env as commented-out lines, in case you need to go back. It prints the new public key.</li>
+          <li>Put that public key in <b>wrangler.toml</b> as <code>WG_SERVER_PUBLIC_KEY</code>.</li>
+          <li><kbd>npm run secrets</kbd> sends the new private key to GitHub, where the VM build picks it up.</li>
+          <li><kbd>npm run deploy-worker</kbd> so the dashboard hands out configs with the new key. It then marks every client "needs new config" and notes the change in Activity.</li>
+          <li>If the VM is running or in Standby, tear it down and deploy again. A VM only takes the new key when it is built fresh; Resume keeps the old one.</li>
+          <li>On each device, press <b>Get config</b> on the Clients page and scan or import it, replacing the old tunnel. For the home site, on the PC run <kbd>npm run home -- --down</kbd> then <kbd>npm run home</kbd>. Each client ticks off above at its first connection with the new key.</li>
+        </ol>
+      </div>`;
 }
 
 /**
@@ -322,17 +361,7 @@ export function settingsBody(o: SettingsOpts): Html {
           : html`<p class="muted">Free. One run at a time; a second click gets a clear message instead of a second VM.</p>`}
       </div>
 
-      <div class="panel sheet" id="sh-key" style="margin-top:16px">
-        ${sheetHead("Server key")}
-        <h2>Server key</h2>
-        ${o.serverPub ? html`<p class="small">Public key <code>${o.serverPub}</code></p>` : html`<p class="muted">Not configured.</p>`}
-        <p class="muted small">Rotating it invalidates every client. It is deliberately not a button here. On the laptop:</p>
-        <pre class="conf">npm run keys -- --rotate
-npm run secrets
-(put the new WG_SERVER_PUBLIC_KEY in wrangler.toml)
-npm run deploy-worker</pre>
-        <p class="muted small">Then re-add each client so it gets a config that trusts the new key.</p>
-      </div>
+      ${keyPanel(o)}
     </div>
   </div>
 </section>`;
