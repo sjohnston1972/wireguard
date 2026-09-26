@@ -73,6 +73,17 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     notes.push(`change log: ${(e as Error).message}`);
   }
 
+  // Guest clients whose time is up: switch them off and say so. (The VM
+  // already stopped loading them the moment they expired.)
+  try {
+    for (const p of await db.disableExpiredPeers(env, now)) {
+      await db.addAlert(env, "info", `Client "${p.name}" expired and was switched off. Enable it on the Clients page to let it back in.`);
+      notes.push(`expired client ${p.name} disabled`);
+    }
+  } catch (e) {
+    notes.push(`expiry: ${(e as Error).message}`);
+  }
+
   let snap = await getSnapshot(env);
   const hibernating = cfg.expiryAction === "hibernate";
 

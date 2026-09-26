@@ -610,6 +610,8 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
   // Standby is late mail: record nothing, or it would put a live-looking VM
   // back on a dashboard that has rightly cleared it.
   if (isOutOfService(snap.state)) return { status: 200, body: { peers: await peerList() } };
+  // Remember when each client last connected (for "no handshake in 30 days").
+  await db.noteHandshakes(env, report.peers);
   // Only the fields the heartbeat owns go in this patch. The ones that build
   // on the previous reading (traffic, hits, session...) are worked out at
   // the end, from a fresh copy, so a button pressed meanwhile is not undone.
