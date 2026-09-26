@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeEnv, lastGhRun, type World } from "./harness";
 import type { Env } from "../src/env";
 import * as db from "../src/db";
-import { startDeploy, startDestroy, issueRunSecrets, handleCallback, refreshActiveRun, reconcile, handleAgent, clearFirewallCounters } from "../src/runs";
+import { startDeploy, startDestroy, issueRunSecrets, handleCallback, refreshActiveRun, reconcile, handleAgent, clearFirewallCounters, detectDrift } from "../src/runs";
 import { getSnapshot, saveSnapshot } from "../src/state";
 import { lockStatus } from "../src/lock";
 
@@ -171,6 +171,20 @@ describe("heartbeats (#26)", () => {
     const snap = await getSnapshot(env);
     expect(snap.fw_base.r1).toEqual([-10, -1000]); // total now = -10 + 12 = 2 hits since the clear
     expect(snap.firewall!.counters.r1).toEqual([12, 1200]);
+  });
+});
+
+describe("drift: a failed run that left Azure resources (#20)", () => {
+  it("is flagged", async () => {
+    await toRunning();
+    await saveSnapshot(env, { state: "failed" });
+    expect(await detectDrift(env)).toMatch(/last run failed.*rg-wg-ondemand/);
+  });
+
+  it("is not flagged when Azure is empty", async () => {
+    await saveSnapshot(env, { state: "failed" });
+    world.azure.rg = false;
+    expect(await detectDrift(env)).toBeNull();
   });
 });
 

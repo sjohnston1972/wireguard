@@ -741,6 +741,9 @@ export async function detectDrift(env: Env): Promise<string | null> {
   if (az.error) return null; // unknown, not drift
   let drift: string | null = null;
   if (snap.state === "destroyed" && az.rg_exists) drift = `Azure still has resource group ${config(env).resourceGroup} but the dashboard says Destroyed. That VM is costing money.`;
+  // A failed run can leave a half-built (or fully built) VM behind; nothing
+  // else watches a Failed VM, so say so until it is cleaned up.
+  if (snap.state === "failed" && az.rg_exists) drift = `The last run failed but Azure still has resource group ${config(env).resourceGroup}. It may be costing money; use Clean up to tear it down.`;
   if (snap.state === "running" && !az.rg_exists) drift = "The dashboard says Running but Azure has no resource group. Something deleted it outside this app.";
   if (snap.state === "running" && az.rg_exists && az.power && az.power !== "running") drift = `The VM exists but its power state is "${az.power}".`;
   if (snap.state === "running" && az.public_ip && snap.public_ip && az.public_ip !== snap.public_ip) drift = `Azure's public IP ${az.public_ip} differs from the recorded ${snap.public_ip}.`;
