@@ -37,7 +37,7 @@ import { costBody } from "./views/cost";
 import { firewallBody } from "./views/firewall";
 import { parseCidr, parsePorts, compileFirewall, type EndKind, type Proto } from "./firewall";
 import { clearFirewallCounters } from "./runs";
-import { startCapture, receiveCapture, validFilter } from "./capture";
+import { startCapture, receiveCapture, validFilter, MAX_CAPTURE_BYTES } from "./capture";
 import { setPublishedPorts } from "./azure";
 import { RESERVED_PORTS, forwardTargetOk } from "./firewall";
 
@@ -48,63 +48,93 @@ const app = new Hono<App>();
 
 // ── Token-authenticated API (no Cloudflare Access) ─────────────────────────
 
-const rateBuckets = new Map<string, { n: number; reset: number }>();
-function rateLimited(key: string, limit: number, windowMs: number): boolean {
+// Brake on guessing: each caller's address gets a few WRONG tokens a minute
+// per route, then is told to slow down. Only failures count, and they count
+// against that one address, so junk from elsewhere can never lock out the
+// real VM, GitHub or the phone. (The tokens are far too long to guess anyway;
+// this just stops the noise.) Kept in this Worker copy's memory.
+const FAILS_PER_MINUTE = 10;
+const failBuckets = new Map<string, { n: number; reset: number }>();
+
+function failKey(c: Context<App>, route: string): string {
+  return `${route}:${c.req.header("CF-Connecting-IP") ?? "unknown"}`;
+}
+
+/** Has this caller already had its share of failures on this route? */
+function tooManyFailures(key: string): boolean {
+  const b = failBuckets.get(key);
+  return !!b && b.reset > Date.now() && b.n >= FAILS_PER_MINUTE;
+}
+
+/** Count one failed attempt against this caller. */
+function noteFailure(key: string): void {
   const now = Date.now();
-  const b = rateBuckets.get(key);
-  if (!b || b.reset < now) {
-    rateBuckets.set(key, { n: 1, reset: now + windowMs });
-    return false;
-  }
-  b.n++;
-  return b.n > limit;
+  if (failBuckets.size > 5000) for (const [k, b] of failBuckets) if (b.reset < now) failBuckets.delete(k);
+  const b = failBuckets.get(key);
+  if (!b || b.reset < now) failBuckets.set(key, { n: 1, reset: now + 60_000 });
+  else b.n++;
 }
 
 app.post("/api/callback", async (c) => {
-  if (rateLimited("callback", 30, 60_000)) return c.json({ error: "slow down" }, 429);
+  const key = failKey(c, "callback");
+  if (tooManyFailures(key)) return c.json({ error: "slow down" }, 429);
   const body = await c.req.json().catch(() => null);
   const r = await handleCallback(c.env, bearer(c), body);
+  if (r.status >= 400) noteFailure(key);
   return c.json({ message: r.message }, r.status as 200);
 });
 
 // GitHub Actions collects the run's secrets here, proving itself with an OIDC
 // token. Lives under /api/callback so it shares that path's Access bypass.
 app.post("/api/callback/secrets", async (c) => {
-  if (rateLimited("secrets", 10, 60_000)) return c.json({ error: "slow down" }, 429);
+  const key = failKey(c, "secrets");
+  if (tooManyFailures(key)) return c.json({ error: "slow down" }, 429);
   let claims;
   try {
     claims = await verifyGithubOidc(c.env, bearer(c));
   } catch (e) {
+    noteFailure(key);
     return c.json({ error: `not a trusted workflow: ${(e as Error).message}` }, 401);
   }
   const body = (await c.req.json().catch(() => null)) as { run_id?: string } | null;
   if (!body?.run_id) return c.json({ error: "missing run_id" }, 400);
   const r = await issueRunSecrets(c.env, String(body.run_id), Number(claims.run_id));
+  if (r.status === 403 || r.status === 404) noteFailure(key);
   return c.json(r.body, r.status as 200);
 });
 
+// The VM's packet-capture upload. The token is checked BEFORE the file is
+// read, and the file is read with a hard size cap, so a stranger cannot make
+// the Worker swallow a huge upload (see capture.ts).
 app.post("/api/agent/capture/:id", async (c) => {
-  const len = Number(c.req.header("Content-Length") ?? 0);
-  if (len > 30 * 1024 * 1024) return c.text("too big", 413);
-  const body = await c.req.arrayBuffer();
-  const r = await receiveCapture(c.env, bearer(c), c.req.param("id"), body, c.req.header("X-Capture-Error") ?? null);
+  const key = failKey(c, "capture");
+  if (tooManyFailures(key)) return c.text("slow down", 429);
+  if (Number(c.req.header("Content-Length") ?? 0) > MAX_CAPTURE_BYTES) return c.text("too big", 413);
+  const r = await receiveCapture(c.env, bearer(c), c.req.param("id"), c.req.raw.body, c.req.header("X-Capture-Error") ?? null);
+  if (r.status === 401) noteFailure(key);
   return c.text(r.text, r.status as 200);
 });
 
 app.post("/api/agent", async (c) => {
-  if (rateLimited("agent", 10, 60_000)) return c.json({ error: "slow down" }, 429);
+  const key = failKey(c, "agent");
+  if (tooManyFailures(key)) return c.json({ error: "slow down" }, 429);
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "bad json" }, 400);
   const r = await handleAgent(c.env, bearer(c), body);
+  if (r.status === 401) noteFailure(key);
   return c.json(r.body as object, r.status as 200);
 });
 
 // One-tap buttons on phone notifications (actions.ts). POST only, so a link
 // preview or a crawler fetching the URL cannot trigger anything.
 app.post("/api/act/:token", async (c) => {
-  if (rateLimited("act", 10, 60_000)) return c.text("slow down", 429);
+  const key = failKey(c, "act");
+  if (tooManyFailures(key)) return c.text("slow down", 429);
   const action = await consumeAction(c.env, c.req.param("token"));
-  if (!action) return c.text("This button has expired or was already used.", 410);
+  if (!action) {
+    noteFailure(key);
+    return c.text("This button has expired or was already used.", 410);
+  }
   let msg: string;
   try {
     if (action === "extend") {
