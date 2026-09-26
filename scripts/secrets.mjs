@@ -19,9 +19,9 @@ const wantWorker = args.has("--worker");
 
 const env = loadEnv();
 
-// gh is a real .exe so it runs without a shell (arguments stay exact, secret
-// values are never re-parsed). wrangler is an npm .cmd shim on Windows and
-// needs one; it only ever receives a fixed secret NAME, the value goes via stdin.
+// gh is a real .exe so it runs without a shell (arguments stay exact). wrangler
+// is an npm .cmd shim on Windows and needs one. Both only ever receive a fixed
+// secret NAME on the command line; the value always goes in through stdin.
 const WRANGLER_SHELL = process.platform === "win32";
 
 function have(cmd) {
@@ -50,8 +50,11 @@ if (wantGithub) {
         console.log(`  would set ${name}`);
         continue;
       }
-      execFileSync("gh", ["secret", "set", name, "--repo", repo, "--body", value], {
-        stdio: ["ignore", "ignore", "inherit"],
+      // The value goes in through stdin, never on the command line, where
+      // other programs on the PC could read it in the process list.
+      execFileSync("gh", ["secret", "set", name, "--repo", repo], {
+        input: value,
+        stdio: ["pipe", "ignore", "inherit"],
       });
       console.log(`  set ${name}`);
     }

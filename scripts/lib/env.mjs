@@ -113,3 +113,24 @@ export function upsertEnvLine(text, key, value) {
   const sep = text.endsWith("\n") || text === "" ? "" : "\n";
   return `${text}${sep}${line}\n`;
 }
+
+/**
+ * Turn { KEY: value } into the text of a .dev.vars file, the file wrangler dev
+ * reads a Worker's secrets from. Each value is wrapped in quotes it does not
+ * contain, so wrangler reads it back exactly: single quotes are taken
+ * literally, so they are the first choice.
+ */
+export function devVarsText(vars) {
+  const lines = ["# Written by \"npm run dev\" from .env each time it starts. Do not edit; never commit."];
+  for (const [k, raw] of Object.entries(vars)) {
+    const v = String(raw);
+    if (/[\r\n]/.test(v)) throw new Error(`${k} contains a line break; .dev.vars cannot hold it`);
+    let q;
+    if (!v.includes("'")) q = "'";
+    else if (!v.includes('"') && !v.includes("\\")) q = '"';
+    else if (!v.includes("`")) q = "`";
+    else throw new Error(`${k} contains every kind of quote; .dev.vars cannot hold it`);
+    lines.push(`${k}=${q}${v}${q}`);
+  }
+  return lines.join("\n") + "\n";
+}
