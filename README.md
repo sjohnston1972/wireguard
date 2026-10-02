@@ -42,7 +42,7 @@ flowchart LR
 | **Tunnel DNS** (dnsmasq on the VM) | A resolver on 10.13.255.1, reachable only through the tunnel. Blocks advert and tracker names from a public list and answers names like `laptop.wg`, `phone.wg`, `vm.wg`. Full-tunnel clients always use it; split-tunnel ones by choice. | The headend's DNS proxy, with a sinkhole |
 | **GitHub Actions** (`.github/workflows/wg.yml`) | The machine that actually runs Terraform. It logs into Azure and Cloudflare with secrets, runs apply or destroy, backs up state, reports back. | The NOC engineer who types the change |
 | **R2 bucket** `wg-admin-tfstate` | Where Terraform keeps its inventory of what it built. Locked during a run so two runs cannot collide. | The startup-config; lose it and the box still runs but you no longer know what you have |
-| **wg.clydeford.net** | An A record, TTL 60, DNS-only (grey cloud). Points at the VM while it exists; parked on the reserved address 192.0.2.1 while destroyed, so it always resolves and nobody caches a "no such host". | A DDNS name: the name is stable, the address behind it is disposable |
+| **wg.clydeford.net** | An A record, TTL 60, DNS-only (grey cloud). Points at the VM while it exists; parked on the reserved address 192.0.2.1 while destroyed, so it always resolves and nobody caches a "no such host". Deploy and destroy repoint the one record in place; it is never deleted. | A DDNS name: the name is stable, the address behind it is disposable |
 | **Cloudflare Access** | Login gate for the dashboard. Only stevie.johnston@gmail.com gets in. Three narrow paths skip it and prove themselves another way: the VM heartbeat and the GitHub callback (per-run tokens), and the phone buttons (single-use links). | MFA on the management plane |
 | **Phone alerts** (Web Push) | The installed wg-admin app gets notifications like any app. The Worker encrypts each alert to the phone's own key and signs it with the dashboard's VAPID key; Google's push service delivers it without being able to read it. | A pager whose messages only your handset can decrypt |
 | **The Worker** (Phase 2) | The dashboard and API at wg-admin.clydeford.net. | The management plane |
@@ -190,8 +190,9 @@ It registers as the client **home-site**, carrying the home LAN
 (HOME_LAN_CIDR, 192.168.1.0/24). The VM routes that network to it, and the
 container NATs tunnel traffic onto the LAN, so a client away from home with
 **Home network: on** (Clients page) can reach 192.168.1.x. It re-resolves
-wg.clydeford.net every 30 seconds, so it follows the VM through rebuilds, and
-restarts with Docker. It is one-way by design: tunnel clients reach the home
+wg.clydeford.net every 30 seconds on public DNS (1.1.1.1, not the PC's own
+resolver), so it follows the VM through rebuilds, and restarts with Docker.
+If it cannot look the name up, `docker logs wg-home` says so. It is one-way by design: tunnel clients reach the home
 LAN; devices at home reach the tunnel only through the PC's own client.
 
 ### Speed test

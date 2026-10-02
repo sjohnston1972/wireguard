@@ -15,8 +15,9 @@
 #     waiting destroy can never be thrown away by a later deploy, and each run
 #     waits its turn behind any earlier one before touching Azure.
 #   - destroy fallback: if Terraform cannot destroy (lost state, half-built
-#     run), the resource group is deleted by name with the Azure CLI and the
-#     DNS record is removed with the Cloudflare API. Destroy must always reach £0.
+#     run), the resource group is deleted by name with the Azure CLI. The DNS
+#     record is never deleted: it is repointed at a parking address while
+#     destroyed and back at the VM on deploy. Destroy must always reach £0.
 #
 # Secrets and a PUBLIC repo: anyone can read this workflow's logs, and GitHub
 # prints the dispatch payload in them. So the payload carries nothing secret.
@@ -217,25 +218,6 @@ jobs:
           terraform init -no-color -backend-config="bucket=${R2_BUCKET}"
 
       # ── APPLY ────────────────────────────────────────────────────────────
-      # While destroyed, the name is parked on 192.0.2.1 (see the destroy path)
-      # so clients never cache an NXDOMAIN. Remove the parked record first so
-      # Terraform's real record is the only A record.
-      - name: Unpark DNS record
-        if: inputs.action == 'apply'
-        env:
-          # Cloudflare: the NARROW DNS-only token. Never the account token.
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DNS_TOKEN }}
-          ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          NAME: ${{ env.TF_VAR_wg_dns_name || 'wg.clydeford.net' }}
-        run: |
-          set -euo pipefail
-          api="https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records"
-          ids="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?type=A&name=$NAME&content=192.0.2.1" | jq -r '.result[].id')"
-          for id in $ids; do
-            echo "removing parked record $id"
-            curl -fsS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$id" >/dev/null
-          done
-
       - name: terraform apply
         if: inputs.action == 'apply'
         id: apply
@@ -256,8 +238,32 @@ jobs:
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
           TF_VAR_wg_server_private_key: ${{ secrets.WG_SERVER_PRIVATE_KEY }}
           TF_VAR_resource_group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          NAME: ${{ env.TF_VAR_wg_dns_name || 'wg.clydeford.net' }}
         run: |
           set -euo pipefail
+          # While destroyed, the name is parked on 192.0.2.1 (see the destroy
+          # path). Hand that record to Terraform so it changes the address in
+          # place: the name never stops existing, so no resolver can cache a
+          # "no such host" mid-deploy (a deleted name is remembered for 30
+          # minutes, and the home site and clients stay pointed at nothing).
+          # If adopting fails, fall back to deleting it (a short gap, as before).
+          api="https://api.cloudflare.com/client/v4/zones/$TF_VAR_cloudflare_zone_id/dns_records"
+          parked="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?type=A&name=$NAME&content=192.0.2.1" | jq -r '.result[].id')"
+          managed="$(terraform state list 2>/dev/null || true)"
+          if [ -n "$parked" ] && ! grep -qx cloudflare_dns_record.wg <<<"$managed"; then
+            adopt="$(head -n1 <<<"$parked")"
+            if terraform import -no-color -input=false cloudflare_dns_record.wg "$TF_VAR_cloudflare_zone_id/$adopt"; then
+              echo "adopted parked record $adopt; terraform will repoint it"
+              parked="$(tail -n +2 <<<"$parked")"
+            else
+              echo "::warning::could not adopt the parked DNS record; deleting it instead (the name is briefly missing)"
+            fi
+          fi
+          for id in $parked; do
+            echo "removing parked record $id"
+            curl -fsS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$id" >/dev/null
+          done
+
           terraform apply -no-color -auto-approve
           terraform output -no-color -json > "$RUNNER_TEMP/outputs.json"
           echo "public_ip=$(jq -r .public_ip.value "$RUNNER_TEMP/outputs.json")" >> "$GITHUB_OUTPUT"
@@ -287,7 +293,16 @@ jobs:
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
           TF_VAR_wg_server_private_key: ${{ secrets.WG_SERVER_PRIVATE_KEY }}
           TF_VAR_resource_group: ${{ secrets.AZURE_RESOURCE_GROUP }}
-        run: terraform destroy -no-color -auto-approve
+        run: |
+          set -euo pipefail
+          # Leave the DNS record out of the destroy: "Park DNS record" below
+          # repoints it at 192.0.2.1, so the name never stops existing.
+          managed="$(terraform state list 2>/dev/null || true)"
+          if grep -qx cloudflare_dns_record.wg <<<"$managed"; then
+            terraform state rm -no-color cloudflare_dns_record.wg \
+              || echo "::warning::could not release the DNS record from state; terraform will delete it and it will be recreated parked"
+          fi
+          terraform destroy -no-color -auto-approve
 
       # Belt and braces: whatever Terraform thought, make sure Azure and DNS
       # are actually clean. This is what guarantees the bill returns to zero.
@@ -309,7 +324,13 @@ jobs:
           fi
           [ "$(az group exists -n "$RG")" = "false" ] && echo "Azure clean: $RG is gone"
 
-      - name: Verify DNS is clean (fallback delete)
+      # Park the name on a reserved, non-routable address (TEST-NET-1) with the
+      # same 60 s TTL. Clients can always resolve it, handshakes go nowhere while
+      # destroyed, and the next deploy's real address is picked up within a minute.
+      # An NXDOMAIN would be cached for 30 minutes by resolvers; this is not.
+      # The existing record is repointed rather than deleted and recreated, so
+      # there is no moment without one; any extra A records are deleted.
+      - name: Park DNS record
         if: inputs.action == 'destroy'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DNS_TOKEN }}
@@ -319,17 +340,17 @@ jobs:
           set -euo pipefail
           api="https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records"
           ids="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?type=A&name=$NAME" | jq -r '.result[].id')"
-          for id in $ids; do
-            echo "::warning::DNS record $NAME still present; deleting $id"
+          keep="$(head -n1 <<<"$ids")"
+          for id in $(tail -n +2 <<<"$ids"); do
+            echo "::warning::extra A record for $NAME; deleting $id"
             curl -fsS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$id" >/dev/null
           done
-          echo "DNS clean: no live A record for $NAME"
-          # Park the name on a reserved, non-routable address (TEST-NET-1) with the
-          # same 60 s TTL. Clients can always resolve it, handshakes go nowhere while
-          # destroyed, and the next deploy's real address is picked up within a minute.
-          # An NXDOMAIN would be cached for 30 minutes by resolvers; this is not.
-          curl -fsS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" "$api" \
-            -d "$(jq -n --arg name "$NAME" '{type:"A", name:$name, content:"192.0.2.1", ttl:60, proxied:false, comment:"Parked by wg-admin while destroyed. Do not edit by hand."}')" >/dev/null
+          body="$(jq -n --arg name "$NAME" '{type:"A", name:$name, content:"192.0.2.1", ttl:60, proxied:false, comment:"Parked by wg-admin while destroyed. Do not edit by hand."}')"
+          if [ -n "$keep" ]; then
+            curl -fsS -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" "$api/$keep" -d "$body" >/dev/null
+          else
+            curl -fsS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" "$api" -d "$body" >/dev/null
+          fi
           echo "DNS parked: $NAME -> 192.0.2.1"
 
       - name: Note destroy fallback
