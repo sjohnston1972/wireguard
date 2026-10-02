@@ -36,6 +36,38 @@ describe("rule drawer", () => {
     await waitFor(() => expect(location()).toBe("/firewall"), { timeout: 5000 });
   });
 
+  it.each(["proto", "enabled", "log", "something_new"])("a server error for %s, a field the form does not show, is shown as a form error", async (field) => {
+    const message = `The server did not like ${field}.`;
+    renderApp("/firewall", {
+      routes: {
+        "GET /api/v1/firewall": firewallData(),
+        "POST /api/v1/firewall/draft/rules": { status: 400, json: { error: { code: "bad_input", message, field } } },
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Add rule" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add rule" });
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Clients to the internet" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add to draft" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(message);
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Clients to the internet");
+  });
+
+  it("a server error for ports while the protocol has no ports is shown as a form error", async () => {
+    const message = "Ports only make sense for TCP or UDP.";
+    renderApp("/firewall", {
+      routes: {
+        "GET /api/v1/firewall": firewallData(),
+        "POST /api/v1/firewall/draft/rules": { status: 400, json: { error: { code: "bad_input", message, field: "ports" } } },
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Add rule" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add rule" });
+    expect(within(dialog).queryByLabelText("Ports")).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Anything" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add to draft" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(message);
+  });
+
   it("Add rule posts the whole rule to the draft; a field error shows at the field and keeps the input", async () => {
     let tries = 0;
     const { fetchMock } = renderApp("/firewall", {

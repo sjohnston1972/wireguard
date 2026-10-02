@@ -108,7 +108,11 @@ export function RuleDrawer({ fw, rule, adding, id, open, tab, onTab, onClose }: 
     if (Object.keys(changed).length === 0) return onClose();
     edit.mutate({ id: rule.id, ...changed }, { onSuccess: onClose });
   };
-  const general = m.error && !(m.error as { field?: string }).field ? m.error.message : null;
+  // A server error about a field this form shows sits at that field; any other
+  // (no field, or proto/enabled/log/unknown, or ports while they are hidden) goes at the top.
+  const errField = (m.error as { field?: string } | null)?.field;
+  const shown = ["name", "from", "to", "action", ...(hasPorts ? ["ports"] : [])];
+  const general = m.error && (!errField || !shown.includes(errField)) ? m.error.message : null;
   const hasHistory = !!rule && fw.rules.some((r) => r.id === rule.id);
 
   const title = adding ? "Add rule" : rule ? rule.name : `Rule ${id ?? ""}`;
