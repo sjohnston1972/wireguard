@@ -93,8 +93,18 @@ function SparkBars({ data, vals, label, unit, tone, width, height, className }: 
   const parts = [`${label}: ${vals.length} points, max ${fmtNum(top)}${unit}, latest ${fmtNum(latest)}${unit}`];
   if (gaps > 0) parts.push(`${gaps} ${gaps === 1 ? "hour" : "hours"} with no data`);
   const color = toneVar(tone);
+  if (vals.length < 2) {
+    // One known hour is not a trend: a lone bar at one end looks broken, so show the empty axis and say why.
+    return (
+      <svg className={cx("spark", "spark--bars", "spark--low", className)} role="img" aria-label={`${label}: only 1 hour with data (latest ${fmtNum(latest)}${unit}), too little for a trend`} width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+        <line data-baseline x1={pad} x2={width - pad} y1={height - pad - 0.5} y2={height - pad - 0.5} stroke="var(--text-muted)" strokeWidth={1} strokeDasharray="2 3" />
+      </svg>
+    );
+  }
   return (
     <svg className={cx("spark", "spark--bars", className)} role="img" aria-label={parts.join(", ")} width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      {/* The whole period's axis, so a few recent hours read as "recent", not as a broken chart. */}
+      {gaps > 0 && <line data-baseline x1={pad} x2={width - pad} y1={height - pad - 0.5} y2={height - pad - 0.5} stroke="var(--text-muted)" strokeWidth={1} strokeDasharray="2 3" />}
       {data.map((v, i) => {
         if (v === null || !Number.isFinite(v)) return null;
         // A zero still shows as a 1 px stub, so "nothing matched" differs from "no data".
