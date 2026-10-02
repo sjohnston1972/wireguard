@@ -434,7 +434,7 @@ async function failRun(env: Env, run: db.Run, message: string): Promise<void> {
   await releaseLock(env, run.id);
   await saveSnapshot(env, { state: "failed", error: message, since: new Date().toISOString(), pending_deploy: null });
   await db.addAlert(env, "failure", `${run.action} failed: ${message}`, run.id);
-  await notify(env, `wg-admin: ${run.action} failed`, message);
+  await notify(env, `wg-admin: ${run.action} failed`, message, { buttons: [dashboardButton(env, "Open the run", "/activity/runs/" + run.id)] });
 }
 
 /** Returns false (and does nothing) if the run was already settled by someone else. */

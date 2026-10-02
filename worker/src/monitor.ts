@@ -17,6 +17,7 @@
 //   - tears down what a failed run left in Azure, after FAILED_GRACE_MINUTES
 //   - flags drift: Azure and the dashboard disagree
 //   - flags an unreachable VM: no heartbeat for 2 minutes while Running
+//     (a VM still booting or just resumed gets 5 minutes to send its first)
 //   - pulls yesterday's actual cost from Azure once a day
 //   - trims the change log (audit) to its newest 1000 entries / 180 days
 //   - checks the month against the budget: one alert at 80%, one at 100%
@@ -34,6 +35,7 @@ import { refreshActiveRun, startDestroy, detectDrift, refreshInventory } from ".
 import { startHibernate, refreshPower } from "./standby";
 import { runSchedules } from "./schedule";
 import { notify } from "./notify";
+import { heartbeatStale } from "./overview";
 import { actionButton, dashboardButton } from "./actions";
 import { costMonthToDate, costBreakdownMonthToDate, azureView } from "./azure";
 import { checkDns } from "./dns";
@@ -198,7 +200,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
           await startDestroy(env, "watchman", `failed ${FAILED_GRACE_MINUTES} min ago with resources still in Azure`);
           const msg = `The last run failed ${Math.round(failedFor / 60_000)} minutes ago and left resource group ${cfg.resourceGroup} in Azure, which is costing money. Tearing it down.`;
           await db.addAlert(env, "cost_guard", msg);
-          await notify(env, "wg-admin: cleaning up after a failed run", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env)] });
+          await notify(env, "wg-admin: cleaning up after a failed run", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open dashboard", "/activity")] });
           notes.push(msg);
           return notes;
         }
@@ -225,7 +227,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
   // 5. Heartbeat watchdog and DNS re-check while Running.
   snap = await getSnapshot(env);
   if (snap.state === "running") {
-    const stale = !snap.last_agent_at || now.getTime() - Date.parse(snap.last_agent_at) > 2 * 60_000;
+    const stale = heartbeatStale(snap, now.getTime());
     const flag = "unreachable";
     const wasFlagged = (await env.STATUS.get(`flag:${flag}`)) === "1";
     if (stale && !wasFlagged) {
