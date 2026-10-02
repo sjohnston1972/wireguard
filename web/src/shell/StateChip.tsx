@@ -69,9 +69,9 @@ export function StateChip() {
   else if (isError) view = { text: "State unknown", tone: "unknown" };
   else view = { text: "Checking state…", tone: "unknown" };
   return (
-    <div className="topbar__chip" data-tone={view.tone}>
+    <div className="topbar__chip" data-tone={view.tone} title={view.text}>
       <span className="topbar__chip-dot" aria-hidden="true" />
-      <span>{view.text}</span>
+      <span className="topbar__chip-text">{view.text}</span>
     </div>
   );
 }

@@ -20,6 +20,10 @@
 }
 
 .app-shell__page {
+  /* The containing block for absolutely positioned descendants (visually
+     hidden text, chart overlays), so they scroll and clip with the page area
+     instead of stretching the document past the window. */
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -43,9 +47,11 @@
 
 .topbar__brand {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
   margin-right: 8px;
+  white-space: nowrap;
   border-radius: var(--radius-control);
 }
 .topbar__dot {
@@ -62,6 +68,7 @@
 
 .topbar__tabs {
   display: flex;
+  flex: none;
   align-self: stretch;
   gap: 4px;
   align-items: stretch;
@@ -103,8 +110,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 280px;
-  max-width: 100%;
+  /* Gives way before the state chip when the bar is full. */
+  flex: 0 4 280px;
+  min-width: 170px;
   height: 32px;
   padding: 0 10px;
   background: var(--bg-tile);
@@ -131,6 +139,8 @@
 
 .topbar__chip {
   display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
   align-items: center;
   gap: 8px;
   height: 32px;
@@ -138,6 +148,16 @@
   color: var(--text-secondary);
   font-size: 13px;
   white-space: nowrap;
+}
+/* On narrow desktops the chip gives way first: its text ends in an ellipsis
+   (the full text is its title) rather than pushing the bar off the window. */
+.topbar__chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar__chip-dot {
+  flex: none;
 }
 .topbar__chip-dot {
   width: 8px;
@@ -192,6 +212,23 @@
   display: none;
 }
 
+/* Below 1440 px the account shows its initials only, so the state chip keeps
+   its whole sentence. */
+@media (max-width: 1440px) {
+  .topbar__account-text {
+    display: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .topbar {
+    gap: 8px;
+  }
+  .topbar__tab {
+    padding: 0 10px;
+  }
+}
+
 @media (max-width: 1100px) {
   .topbar__search-text,
   .topbar__kbd,
@@ -199,6 +236,8 @@
     display: none;
   }
   .topbar__search {
+    flex: none;
+    min-width: 0;
     width: 32px;
     justify-content: center;
     padding: 0;

@@ -101,7 +101,9 @@
     display: none;
   }
 }
-@media (max-width: 880px) {
+/* The read-only "Production" label is the first thing to go on narrower
+   desktops, leaving room for the state chip. */
+@media (max-width: 1280px) {
   .topbar__env {
     display: none;
   }
