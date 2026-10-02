@@ -24,7 +24,7 @@ import { startHibernate, startResume, refreshPower } from "./standby";
 import { consumeAction, dashboardButton } from "./actions";
 import { notify, ntfyParts, lastNotifyError } from "./notify";
 import { REGIONS, regionName, whereFrom } from "./region";
-import { startMove, resolveDeployTarget } from "./profiles";
+import { startMove, resolveDeployTarget, profileProblem } from "./profiles";
 import { startSpeedTest } from "./speedtest";
 import { nextStart, validRule } from "./schedule-time";
 import { setSshAllowedCidr } from "./azure";
@@ -38,13 +38,12 @@ import { rotationStatus } from "./keyrotation";
 import { costBody } from "./views/cost";
 import { budgetStatus, requireBudgetOk, OVER_BUDGET_FIELD } from "./budget";
 import { firewallBody } from "./views/firewall";
-import { parseCidr, parsePorts, compileFirewall, type EndKind, type Proto } from "./firewall";
+import { parseCidr, parsePorts, compileFirewall, checkForward, type EndKind, type Proto } from "./firewall";
 import { clearFirewallCounters } from "./runs";
-import { startCapture, receiveCapture, validFilter, MAX_CAPTURE_BYTES } from "./capture";
-import { setPublishedPorts } from "./azure";
-import { reservedPort, forwardTargetOk, publishedNsgRules } from "./firewall";
-import { isPushEndpoint } from "./webpush";
-import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, backupStatus, MAX_RESTORE_BYTES, type RestorePlan } from "./backup";
+import { startCapture, receiveCapture, validFilter, captureFilter, MAX_CAPTURE_BYTES } from "./capture";
+import { syncPublished } from "./published";
+import { subscribePhone, unsubscribePhone, phoneStatus, sendTestAlert, removePhone } from "./pushsubs";
+import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, backupStatus, restoreBlocked, MAX_RESTORE_BYTES, type RestorePlan } from "./backup";
 import { restoreBody } from "./views/settings";
 import { randomToken } from "./auth";
 import { buildApi } from "./api";
@@ -479,19 +478,13 @@ app.post("/peers/:id/dns", async (c) => {
 
 app.post("/api/push/subscribe", async (c) => {
   const b = await jsonBody<{ endpoint?: string; keys?: { p256dh?: string; auth?: string }; label?: string }>(c);
-  const endpoint = String(b?.endpoint ?? "");
-  const p256dh = String(b?.keys?.p256dh ?? ""), auth = String(b?.keys?.auth ?? "");
-  if (!/^https:\/\/[^\s]{10,}$/.test(endpoint) || !isPushEndpoint(endpoint) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return c.json({ error: "That does not look like a push subscription." }, 400);
-  await db.savePushSub(c.env, { endpoint, p256dh, auth, label: String(b?.label ?? "").slice(0, 40) || null });
-  await db.addAlert(c.env, "info", `Phone alerts turned on for ${b?.label || "a device"} by ${c.get("user")}.`);
-  await db.audit(c.env, c.get("user"), "push.add", b?.label || "a device", null, { label: b?.label || null });
-  return c.json({ ok: true });
+  const r = await subscribePhone(c.env, c.get("user"), b);
+  return r.ok ? c.json({ ok: true }) : c.json({ error: r.message }, 400);
 });
 
 app.post("/api/push/unsubscribe", async (c) => {
   const b = await jsonBody<{ endpoint?: string }>(c);
-  if (b?.endpoint) await db.deletePushSub(c.env, { endpoint: String(b.endpoint) });
-  if (b?.endpoint) await db.audit(c.env, c.get("user"), "push.remove", "this device", null, null);
+  await unsubscribePhone(c.env, c.get("user"), b?.endpoint);
   return c.json({ ok: true });
 });
 
@@ -499,24 +492,17 @@ app.post("/api/push/unsubscribe", async (c) => {
 // asks, so it can say "not registered" instead of a false "on". Also hands
 // the service worker the public key when it has to sign up again.
 app.get("/api/push/status", async (c) => {
-  const endpoint = c.req.query("endpoint") ?? "";
-  const sub = endpoint ? (await db.listPushSubs(c.env)).find((s) => s.endpoint === endpoint) : undefined;
   c.header("Cache-Control", "no-store");
-  return c.json({ registered: !!sub, id: sub?.id ?? null, last_error: sub?.last_error ?? null, vapid: c.env.VAPID_PUBLIC_KEY ?? null });
+  return c.json(await phoneStatus(c.env, c.req.query("endpoint") ?? ""));
 });
 
 app.post("/api/push/test", async (c) => {
-  await c.env.STATUS.delete("notify:last_error");
-  await notify(c.env, "wg-admin: test alert", "Phone alerts work. Tap to open the dashboard.", { tags: ["test"], buttons: [dashboardButton(c.env)] });
-  const err = await lastNotifyError(c.env);
-  const subs = await db.listPushSubs(c.env);
-  return c.json(err ? { ok: false, error: err.why } : { ok: true, phones: subs.length });
+  const r = await sendTestAlert(c.env);
+  return c.json(r.ok ? { ok: true, phones: r.value.phones } : { ok: false, error: r.message });
 });
 
 app.post("/settings/push/:id/delete", async (c) => {
-  const gone = (await db.listPushSubs(c.env)).find((s) => s.id === Number(c.req.param("id")));
-  await db.deletePushSub(c.env, { id: Number(c.req.param("id")) });
-  if (gone) await db.audit(c.env, c.get("user"), "push.remove", gone.label ?? `device ${gone.id}`, gone, null);
+  await removePhone(c.env, c.get("user"), Number(c.req.param("id")));
   return c.redirect("/settings?saved=1");
 });
 
@@ -594,7 +580,7 @@ app.post("/settings", async (c) => {
 app.post("/settings/profiles", async (c) => {
   const f = (await c.req.parseBody()) as Record<string, string>;
   const name = String(f.name ?? "").trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,23}$/.test(name) || !Object.hasOwn(REGIONS, f.region ?? "") || !/^Standard_[A-Za-z0-9_]{1,30}$/.test(f.vm_size ?? "")) return c.redirect("/settings?err=profile");
+  if (profileProblem({ name, region: f.region ?? "", vm_size: f.vm_size ?? "" })) return c.redirect("/settings?err=profile");
   try {
     await db.addProfile(c.env, { name, region: f.region, vm_size: f.vm_size });
   } catch {
@@ -663,13 +649,6 @@ app.get("/settings/backup/config/:day", async (c) => {
   return new Response(obj.body, { headers: { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="${exportFileName(day)}"`, "Cache-Control": "no-store" } });
 });
 
-/** Why a restore must wait, or null. Swapping clients mid-deploy would muddle what the VM gets. */
-async function restoreBlocked(env: Env): Promise<string | null> {
-  const [run, lock, snap] = await Promise.all([db.activeRun(env), lockStatus(env), getSnapshot(env)]);
-  if (run || lock.held || ["deploying", "destroying", "hibernating", "resuming"].includes(snap.state)) return "A run is in progress. Wait for it to finish, then restore.";
-  return null;
-}
-
 app.post("/settings/backup/restore", async (c) => {
   const show = async (o: Omit<Parameters<typeof restoreBody>[0], "current">) => c.html(await render(c, "settings", "Restore", restoreBody({ ...o, current: await currentCounts(c.env) })));
   if (Number(c.req.header("Content-Length") ?? 0) > MAX_RESTORE_BYTES + 10_000) return show({ error: "That file is too big to be a wg-admin export." });
@@ -725,47 +704,18 @@ async function firewallPage(c: Context<App>, notice: { kind: "good" | "bad"; tex
 
 // ── Published ports ──────────────────────────────────────────────────────
 
-/** Keep Azure's edge in step with the published ports, while there is a VM. */
-async function syncPublished(env: Env): Promise<string | null> {
-  const snap = await getSnapshot(env);
-  if (snap.state !== "running" && snap.state !== "standby") return null;
-  try {
-    await setPublishedPorts(env, publishedNsgRules(await db.listForwards(env), await effectiveConfig(env)));
-    return null;
-  } catch (e) {
-    return (e as Error).message;
-  }
-}
-
 app.post("/firewall/forwards", async (c) => {
   const f = await c.req.parseBody();
-  const cfg = await effectiveConfig(c.env);
-  const name = String(f.name ?? "").trim().slice(0, 60);
-  const proto = f.proto === "udp" ? "udp" : "tcp";
-  const pub = Number(f.public_port), tport = Number(f.target_port || f.public_port);
-  const target = String(f.target_ip ?? "").trim();
-  const from = String(f.allow_from ?? "").trim();
-  const fromC = from ? parseCidr(from) : null;
-  const reserved = reservedPort(pub, cfg);
-  const problem = !name
-    ? "Give it a name."
-    : !(pub >= 1 && pub <= 65535) || !(tport >= 1 && tport <= 65535)
-      ? "Ports are 1 to 65535."
-      : reserved
-        ? `Port ${pub} is ${reserved}; pick another public port.`
-        : !forwardTargetOk(target, cfg)
-          ? `The target must be an address in the Azure VNet (${cfg.vnetCidr})${cfg.homeLanCidr ? ` or the home LAN (${cfg.homeLanCidr})` : ""}.`
-          : from && (!fromC || fromC.family !== 4)
-            ? "Allowed from must be an IPv4 address or network, or blank for anywhere."
-            : null;
-  if (problem) return firewallPage(c, { kind: "bad", text: `Not published: ${problem}` });
+  const chk = checkForward(f, await effectiveConfig(c.env));
+  if (!chk.ok) return firewallPage(c, { kind: "bad", text: `Not published: ${chk.message}` });
+  const { name, proto, public_port: pub, target_ip: target, target_port: tport } = chk.value;
   try {
-    await db.addForward(c.env, { name, proto, public_port: pub, target_ip: target, target_port: tport, allow_from: fromC?.text ?? "" });
+    await db.addForward(c.env, chk.value);
   } catch {
     return firewallPage(c, { kind: "bad", text: `Not published: ${proto.toUpperCase()} ${pub} is already published.` });
   }
   await db.addAlert(c.env, "info", `Published ${proto.toUpperCase()} ${pub} to ${target}:${tport} (${name}) by ${c.get("user")}.`);
-  await db.audit(c.env, c.get("user"), "firewall.forward.add", `${name} (${proto.toUpperCase()} ${pub})`, null, { name, proto, public_port: pub, target_ip: target, target_port: tport, allow_from: fromC?.text ?? "" });
+  await db.audit(c.env, c.get("user"), "firewall.forward.add", `${name} (${proto.toUpperCase()} ${pub})`, null, chk.value);
   const err = await syncPublished(c.env);
   return firewallPage(c, err ? { kind: "bad", text: `Saved, but Azure did not open the port: ${err}` } : { kind: "good", text: `Published ${proto.toUpperCase()} ${pub} → ${target}:${tport}. It works within 30 seconds.` });
 });
@@ -784,12 +734,7 @@ app.post("/firewall/forwards/:id/:op{toggle|delete}", async (c) => {
 
 app.post("/firewall/capture", async (c) => {
   const f = await c.req.parseBody();
-  const who = String(f.who ?? "any");
-  let filter = String(f.filter ?? "").trim();
-  if (who.startsWith("client:")) {
-    const p = await db.getPeer(c.env, Number(who.slice(7)));
-    if (p) filter = filter ? `host ${p.ip} and (${filter})` : `host ${p.ip}`;
-  }
+  const filter = await captureFilter(c.env, String(f.who ?? "any"), String(f.filter ?? ""));
   if (!validFilter(filter)) return firewallPage(c, { kind: "bad", text: "That filter has characters a capture filter never needs." });
   try {
     const msg = await startCapture(c.env, { iface: String(f.iface ?? "wg0"), filter, seconds: Number(f.seconds) || 60, by: c.get("user") });

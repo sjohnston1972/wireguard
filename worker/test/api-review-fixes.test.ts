@@ -12,6 +12,8 @@ import worker from "../src/index";
 import { startDeploy, issueRunSecrets, handleCallback } from "../src/runs";
 import { getSnapshot } from "../src/state";
 import { resolveDeployTarget } from "../src/profiles";
+import { projection } from "../src/costview";
+import type { CostDay } from "../src/db";
 import type { Env } from "../src/env";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -92,5 +94,88 @@ describe("an Azure refusal says so", () => {
     expect(r.status).toBe(502);
     expect(r.json.error.code).toBe("upstream");
     expect(r.json.error.message).toMatch(/^Azure did not accept the change: /);
+  });
+});
+
+describe("review pass 2: decimal ports are refused", () => {
+  it("rejects a decimal public_port or target_port and saves nothing", async () => {
+    const { env } = apiEnv();
+    const a = await api(env, "POST", "/firewall/forwards", { name: "web", proto: "tcp", public_port: 8080.5, target_ip: "10.50.2.4" });
+    expect(a.status).toBe(400);
+    expect(a.json.error.field).toBe("public_port");
+    const b = await api(env, "POST", "/firewall/forwards", { name: "web", proto: "tcp", public_port: 8080, target_ip: "10.50.2.4", target_port: 80.5 });
+    expect(b.status).toBe(400);
+    expect(b.json.error.field).toBe("target_port");
+    expect(await db.listForwards(env)).toHaveLength(0);
+  });
+});
+
+describe("review pass 2: the month projection allows for Azure's lag", () => {
+  it("on the 2nd with only the 1st reported, projects that day's figure over the month", () => {
+    const p = projection([{ day: "2026-10-01", gbp: 2 } as CostDay], new Date("2026-10-02T09:00:00Z"));
+    expect(p!.gbp).toBeCloseTo(2 * 31, 6);
+    expect(p!.basis).toMatch(/1 day Azure has reported/);
+  });
+});
+
+describe("review pass 2: the cost timezone label tells the truth", () => {
+  it("says the cost days are UTC", async () => {
+    const { env } = apiEnv();
+    const r = await api(env, "GET", "/cost");
+    expect(r.json.meta.timezone).toBe("UTC");
+  });
+});
+
+describe("review pass 2: settings region and VM size must be known", () => {
+  it("rejects an unknown region or VM size and saves nothing", async () => {
+    const { env } = apiEnv();
+    const r = await api(env, "PUT", "/settings", { idle_destroy_minutes: 45, region: "mars" });
+    expect(r.status).toBe(400);
+    expect(r.json.error.field).toBe("region");
+    const v = await api(env, "PUT", "/settings", { vm_size: "Standard_Nonsense" });
+    expect(v.status).toBe(400);
+    expect(v.json.error.field).toBe("vm_size");
+    expect((await db.allSettings(env)).idle_destroy_minutes).toBeUndefined();
+    expect((await api(env, "PUT", "/settings", { region: "uksouth", vm_size: "Standard_B1s" })).status).toBe(200);
+  });
+});
+
+describe("review pass 2: a GitHub outage is not 'no log'", () => {
+  it("answers 502 upstream when GitHub refuses or fails the jobs call, 404 no_log when it just has none", async () => {
+    const { env, world } = apiEnv();
+    await db.createRun(env, { id: "run-g", action: "apply", status: "success", requested_at: new Date().toISOString(), requested_by: "steven", callback_token_hash: "C", agent_token_hash: "A", payload_json: null, auto_destroy_at: null, reason: null, ssh_password: null });
+    await db.updateRun(env, "run-g", { github_run_id: 5001 });
+    for (const status of [500, 401]) {
+      world.ghFail = status;
+      const r = await api(env, "GET", "/runs/run-g/log");
+      expect(r.status).toBe(502);
+      expect(r.json.error.code).toBe("upstream");
+    }
+    world.ghFail = undefined;
+    const none = await api(env, "GET", "/runs/run-g/log");
+    expect(none.status).toBe(404);
+    expect(none.json.error.code).toBe("no_log");
+  });
+});
+
+describe("review pass 2: a busy range is counted in full", () => {
+  it("counts all 250 watchman problems in range but returns at most 200 notes", async () => {
+    const { env } = apiEnv();
+    const now = Date.now();
+    for (let i = 0; i < 250; i++) await env.DB.prepare("INSERT INTO alerts (at, kind, message) VALUES (?1, 'failure', 'bad')").bind(new Date(now - 60_000 - i * 1000).toISOString()).run();
+    const r = await api(env, "GET", "/activity?range=24h");
+    expect(r.status).toBe(200);
+    expect(r.json.kpis.watchmanProblems).toBe(250);
+    expect(r.json.notes.length).toBeLessThanOrEqual(200);
+  });
+
+  it("counts all 250 config changes in range but returns at most 200 events", async () => {
+    const { env } = apiEnv();
+    const now = Date.now();
+    for (let i = 0; i < 250; i++) await env.DB.prepare("INSERT INTO audit (at, user, action, target) VALUES (?1, 'steven', 'settings.save', 'Settings')").bind(new Date(now - 60_000 - i * 1000).toISOString()).run();
+    const r = await api(env, "GET", "/activity?range=24h");
+    expect(r.status).toBe(200);
+    expect(r.json.kpis.configChanges).toBe(250);
+    expect(r.json.all.length).toBeLessThanOrEqual(200);
   });
 });

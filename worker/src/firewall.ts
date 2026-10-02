@@ -131,6 +131,33 @@ export function forwardTargetOk(ip: string, cfg: Config): boolean {
   return inCidr(ip, cfg.vnetCidr) || (!!cfg.homeLanCidr && inCidr(ip, cfg.homeLanCidr));
 }
 
+/**
+ * Check a published port from a form or the API. Names are trimmed and cut
+ * to 60 characters, the protocol is udp or else tcp, the target port
+ * defaults to the public one, and the target must be somewhere the VM can
+ * route to. Says which field is wrong, in the words the page has always used.
+ */
+export function checkForward(
+  raw: { name?: unknown; proto?: unknown; public_port?: unknown; target_ip?: unknown; target_port?: unknown; allow_from?: unknown },
+  cfg: Config,
+): { ok: true; value: Omit<Forward, "id" | "enabled"> } | { ok: false; message: string; field: string } {
+  const name = String(raw.name ?? "").trim().slice(0, 60);
+  const proto = raw.proto === "udp" ? "udp" : "tcp";
+  const pub = Number(raw.public_port), tport = Number(raw.target_port || raw.public_port);
+  const target = String(raw.target_ip ?? "").trim();
+  const from = String(raw.allow_from ?? "").trim();
+  const fromC = from ? parseCidr(from) : null;
+  const no = (message: string, field: string) => ({ ok: false as const, message, field });
+  if (!name) return no("Give it a name.", "name");
+  if (!(pub >= 1 && pub <= 65535)) return no("Ports are 1 to 65535.", "public_port");
+  if (!(tport >= 1 && tport <= 65535)) return no("Ports are 1 to 65535.", "target_port");
+  const reserved = reservedPort(pub, cfg);
+  if (reserved) return no(`Port ${pub} is ${reserved}; pick another public port.`, "public_port");
+  if (!forwardTargetOk(target, cfg)) return no(`The target must be an address in the Azure VNet (${cfg.vnetCidr})${cfg.homeLanCidr ? ` or the home LAN (${cfg.homeLanCidr})` : ""}.`, "target_ip");
+  if (from && (!fromC || fromC.family !== 4)) return no("Allowed from must be an IPv4 address or network, or blank for anywhere.", "allow_from");
+  return { ok: true, value: { name, proto, public_port: pub, target_ip: target, target_port: tport, allow_from: fromC?.text ?? "" } };
+}
+
 export const ZONE_LABEL: Record<Zone, string> = {
   clients: "Tunnel clients",
   home: "Home LAN",

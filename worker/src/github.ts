@@ -92,10 +92,15 @@ export interface GhJob {
 }
 
 export async function getJobs(env: Env, runId: number): Promise<GhJob[]> {
+  return (await getJobsStatus(env, runId)).jobs;
+}
+
+/** Like getJobs, but also says what GitHub answered, so "refused or down" can be told from "no jobs yet". */
+export async function getJobsStatus(env: Env, runId: number): Promise<{ jobs: GhJob[]; ok: boolean; status: number }> {
   const r = await gh(env, `/repos/${env.GITHUB_REPO}/actions/runs/${runId}/jobs`);
-  if (!r.ok) return [];
+  if (!r.ok) return { jobs: [], ok: false, status: r.status };
   const data = (await r.json()) as { jobs: GhJob[] };
-  return data.jobs ?? [];
+  return { jobs: data.jobs ?? [], ok: true, status: r.status };
 }
 
 /** Job log as plain text, or null if GitHub has nothing yet. Trimmed to the last `maxChars`. */

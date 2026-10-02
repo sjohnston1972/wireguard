@@ -27,14 +27,15 @@ Success:
 
 | Topic | Decision |
 |---|---|
-| Data scope | Add a history store. Defer firewall rule simulator, cost breakdown by resource type, cost-forecast modelling beyond a simple projection, SSE streaming, bulk client actions. |
+| Data scope | Add a history store. Also in scope since 2026-10-02 (after the mockups): firewall rule simulator, cost breakdown by resource type and region from Azure billing, on-demand health check, drag-to-reorder rules. Still deferred: cost-forecast modelling beyond a simple projection, SSE streaming. |
 | Stack | React + TypeScript app built with Vite, served by the same Worker; the Worker gains a JSON API under `/api/v1`. |
 | Look | The brief's navy palette and Inter + JetBrains Mono, with a matching light theme. Follows the OS setting; manual override. |
 | Rollout | Build the whole UI on the `redesign` branch; switch over in one deploy when all six views are done. |
 | History | The recorder ships first to today's dashboard (on `main`) so history accumulates before switch-over. |
 | Phone | Today's phone concept (bottom tab bar, one screen of lights and big buttons, slide-up sheets) rebuilt in the new look. |
 | Firewall | Rule changes become draft then apply. Published ports and captures stay instant. |
-| Dropped from the brief | Environment selector, multi-user avatar menu, bulk client operations, grid/list toggle, drag-to-reorder rules (keyboard and button moves remain), per-category alert toggles. |
+| Dropped from the brief | Multi-user avatar menu (the account menu shows Steven's email and initials only), bulk client operations, client config export (private keys are never stored), grid/list toggle, per-category alert toggles. The environment selector is shown read-only ("Production"): there is one environment. |
+| Visual target | The ChatGPT mockups in `redesign/screenshots/ChatGPT Image Oct 2, 2026, *.png` (Overview, Clients, Firewall, Activity, Cost, Settings), added 2026-10-02. They are binding for layout, density, component style and palette; this spec is binding for behaviour and data. Their "Technical UX notes" panels are annotations, not UI. Where a mockup shows something out of scope (bulk actions, export configs, a multi-environment selector), that space goes to real content. The light theme is kept although the mockups only show dark. |
 
 ## 3. Architecture
 
@@ -293,8 +294,14 @@ the palette.
 - Draft bar when a draft exists: "n unpublished changes", Review (diff modal, then
   Apply), Discard.
 - Policy table: order, name, source and destination as zone chips, service, action,
-  hits, status, actions; sticky header; filters All, Enabled, Disabled; move up/down
-  by button and keyboard; the default row is fixed last.
+  hits (24 h, with a small trend), status toggle, actions; sticky header; filters All,
+  Custom, Default (the starter rules), Disabled; reorder by drag, button or keyboard
+  (all edit the draft); the default row is fixed last.
+- Rule simulator ("Test specific traffic"): source, destination, protocol and port;
+  run against the live policy or the draft; answers allow or deny, the matching rule
+  and its place, or the default. It evaluates the same rule list the VM compiles
+  (first match wins, then the default); flows involving published ports or replies
+  to allowed connections are labelled "limited simulation".
 - Right panel tabs: Drops (Allow adds to the draft; shows matched rule where known),
   Zones (relationship view; clicking a zone filters rules), Published ports (cards,
   guided create, edit, disable, delete; instant), Capture (start, progress,
@@ -323,11 +330,21 @@ the palette.
   stored. Currency GBP, UK time, Azure figures lag up to 24 h (stated).
 - Sessions table: start, region, VM size, duration, estimated cost, cost per hour;
   drawer with the session's run, clients used and traffic.
-- Insights only from evidence (for example standby cost per day while in standby).
+- Breakdown of actual spend by resource type (compute, network, disk, other) and by
+  region, from Azure Cost Management grouped by meter category and resource
+  location, fetched daily with the existing cost pull and stored in D1. Shown as
+  Azure actuals with their as-of date. A cheap estimate split by region from session
+  history is shown while no actuals exist, labelled as an estimate.
+- Insights only from evidence (for example standby cost per day while in standby,
+  the largest cost driver from the breakdown).
 
 ### 8.6 Settings
-Left menu, one section at a time, unsaved-changes state with Save / Discard:
-1. Overview: setup checklist (configured / verified / missing / unknown), run lock.
+Horizontal section tabs (as in the mockup), one section at a time, unsaved-changes
+state with Save / Discard:
+1. Overview: summary cards (service, DNS, configuration, cost guard), setup
+   checklist (configured / verified / missing / unknown), run lock, and Run health
+   check: asks the running VM to re-run its boot self-test (the agent picks the
+   request up at its next heartbeat, as with speed tests) and shows the result.
 2. Deployment: next-deploy settings; profiles (use, create, edit, delete; the
    deployed profile marked).
 3. Automation: schedules (UK time, next start, enable, edit, delete), auto-destroy
@@ -430,7 +447,10 @@ restore with preview), run lock release, server key and rotation guidance.
 
 1. History recorder (section 5's tables, recording, watchman roll-up, drop
    history, run steps) on `main`, deployed to the current dashboard.
-2. JSON API with tests (section 4), on `redesign`; old pages untouched.
+2. JSON API with tests (section 4), on `redesign`; old pages untouched. Plan 2c
+   adds the backend for the mockup extras: rule simulator, Azure cost breakdown by
+   resource type and region, on-demand health check (agent change), and a
+   move-to-position operation for drag-reorder.
 3. App foundation: Vite project, build and dev scripts, tokens and themes, fonts,
    shell, command palette, shared components, query layer, scenario seeder.
 4. Views, each with its phone layout and tests: Overview, Clients, Firewall (with
@@ -444,6 +464,6 @@ zero-scroll checks. Steps 2-4 suit autonomous runs, one phase per run.
 
 ## 15. Deferred (not in this project)
 
-Firewall rule simulator; drag-to-reorder; cost breakdown by resource type and
-region comparison; SSE or WebSocket streaming; bulk client operations; per-category
-alert toggles; on-demand health check (needs agent support); environment selector.
+SSE or WebSocket streaming; bulk client operations; client config export;
+per-category alert toggles; a real environment selector (more than one
+environment); cost forecasting beyond a simple projection.
