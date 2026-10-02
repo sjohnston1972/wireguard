@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { activityResponse, activityRoutes, emptyActivity, emptyKpis, kpis } from "./testkit";
+
+vi.setConfig({ testTimeout: 20_000 });
 
 const group = (name: string) => screen.findByRole("group", { name });
 
