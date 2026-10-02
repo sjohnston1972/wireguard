@@ -179,13 +179,18 @@ export function StackedBars({ title, series, buckets, onBrush, height = 120, cla
                 </g>
               );
             })}
-            {buckets.map((b, i) =>
-              ticks.has(i) ? (
-                <text key={i} x={ML + slot * (i + 0.5)} y={height - 5} textAnchor="middle" className="stack__tick">
+            {buckets.map((b, i) => {
+              if (!ticks.has(i)) return null;
+              // A label that would run off either end is pinned to that end instead of cut ("2 Oct 15:0").
+              const x = ML + slot * (i + 0.5);
+              const half = (b.label.length * 6.2) / 2;
+              const anchor = x - half < 0 ? "start" : x + half > width ? "end" : "middle";
+              return (
+                <text key={i} x={anchor === "start" ? 0 : anchor === "end" ? width : x} y={height - 5} textAnchor={anchor} className="stack__tick">
                   {b.label}
                 </text>
-              ) : null,
-            )}
+              );
+            })}
           </svg>
           {tip && (
             <div role="tooltip" className="stack__tip" style={{ left: tipLeft }}>

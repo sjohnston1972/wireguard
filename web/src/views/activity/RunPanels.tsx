@@ -20,7 +20,9 @@ export function StepTrack({ steps }: { steps: ApiStep[] }) {
               {st === "failed" && <X size={13} strokeWidth={3} />}
               {st === "skipped" && <Minus size={13} strokeWidth={3} />}
             </span>
-            <span className="act__step-name">{s.name}</span>
+            <span className="act__step-name" title={s.name}>
+              {s.name}
+            </span>
             <span className="act__step-time">{st === "running" ? "Running…" : st === "pending" ? "Pending" : st === "skipped" ? "Skipped" : (d ?? "")}</span>
           </li>
         );
