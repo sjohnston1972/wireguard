@@ -35,7 +35,7 @@ import { refreshActiveRun, startDestroy, detectDrift, refreshInventory } from ".
 import { startHibernate, refreshPower } from "./standby";
 import { runSchedules } from "./schedule";
 import { notify } from "./notify";
-import { heartbeatStale } from "./overview";
+import { heartbeatProblem } from "./overview";
 import { actionButton, dashboardButton } from "./actions";
 import { costMonthToDate, costBreakdownMonthToDate, azureView } from "./azure";
 import { checkDns } from "./dns";
@@ -227,13 +227,14 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
   // 5. Heartbeat watchdog and DNS re-check while Running.
   snap = await getSnapshot(env);
   if (snap.state === "running") {
-    const stale = heartbeatStale(snap, now.getTime());
+    const problem = heartbeatProblem(snap, now.getTime());
+    const stale = problem !== null;
     const flag = "unreachable";
     const wasFlagged = (await env.STATUS.get(`flag:${flag}`)) === "1";
     if (stale && !wasFlagged) {
       await env.STATUS.put(`flag:${flag}`, "1");
-      await db.addAlert(env, "unreachable", "No heartbeat from the VM for 2 minutes. It may be down, or the agent token may be wrong.");
-      await notify(env, "wg-admin: VM unreachable", "No heartbeat for 2 minutes.", { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
+      await db.addAlert(env, "unreachable", (problem === "boot" ? "The VM hasn't reported in since it started 5 minutes ago." : "No heartbeat from the VM for 2 minutes.") + " It may be down, or the agent token may be wrong.");
+      await notify(env, "wg-admin: VM unreachable", problem === "boot" ? "The VM hasn't reported in since it started 5 minutes ago." : "No heartbeat for 2 minutes.", { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
       notes.push("unreachable");
     } else if (!stale && wasFlagged) {
       await env.STATUS.delete(`flag:${flag}`);

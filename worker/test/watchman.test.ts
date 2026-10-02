@@ -234,6 +234,9 @@ describe("the unreachable alert and the boot grace", () => {
     await runScheduled(env);
     expect(unreachable()).toHaveLength(1);
     expect(await unreachableAlerts()).toHaveLength(1);
+    expect((await unreachableAlerts())[0].message).toMatch(/hasn't reported in since it started 5 minutes ago/);
+    expect(unreachable()[0].message ?? unreachable()[0].body).toMatch(/since it started 5 minutes ago/);
+    expect(JSON.stringify(unreachable()[0])).not.toMatch(/2 minutes/);
     await runScheduled(env); // flagged once, not every 5 minutes
     expect(unreachable()).toHaveLength(1);
   });
@@ -242,6 +245,7 @@ describe("the unreachable alert and the boot grace", () => {
     await runningFor(30 * 60_000, 3 * 60_000);
     await runScheduled(env);
     expect(unreachable()).toHaveLength(1);
+    expect((await unreachableAlerts())[0].message).toMatch(/for 2 minutes/);
     await saveSnapshot(env, { last_agent_at: ago(60_000) });
     await runScheduled(env);
     expect((await db.listAlerts(env)).some((a) => /Heartbeat from the VM is back/.test(a.message))).toBe(true);
