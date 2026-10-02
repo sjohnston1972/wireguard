@@ -1,0 +1,15 @@
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.page-header__title { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; }
+.page-header__subtitle { margin-top: 4px; font-size: 14px; color: var(--text-secondary); }
+.page-header__right { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+  .page-header__title { font-size: 22px; }
+}

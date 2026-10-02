@@ -1,0 +1,10 @@
+.tsc { margin: 0; position: relative; min-width: 0; }
+.tsc__legend { display: flex; justify-content: flex-end; align-items: center; gap: 14px; font-size: 12px; color: var(--text-secondary); min-height: 18px; margin-bottom: 4px; }
+.tsc__time { margin-right: auto; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tsc__key { display: inline-flex; align-items: center; gap: 6px; }
+.tsc__key b { font-weight: 500; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.tsc__dot { width: 8px; height: 4px; border-radius: 2px; }
+.tsc__plot { width: 100%; }
+.tsc__plot .u-over, .tsc__plot .u-under { cursor: crosshair; }
+.tsc__plot .u-cursor-x, .tsc__plot .u-cursor-y { border-color: var(--border-strong) !important; }
+.tsc__empty { display: grid; place-items: center; font-size: 12px; color: var(--text-muted); }

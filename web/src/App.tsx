@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { makeQueryClient } from "@/api/queryClient";
@@ -16,11 +17,25 @@ import {
   SettingsPage,
 } from "@/views/pages";
 
+// Dev-only component gallery. `import.meta.env.DEV` is a build-time constant, so
+// production builds drop both the lazy import and the route.
+const Gallery = import.meta.env.DEV ? lazy(() => import("@/gallery")) : null;
+
 /** The route table, inside whatever router the caller provides (tests use MemoryRouter). */
 export function AppRoutes() {
   return (
     <Routes>
       <Route element={<AppShell />}>
+        {Gallery && (
+          <Route
+            path="__gallery"
+            element={
+              <Suspense fallback={null}>
+                <Gallery />
+              </Suspense>
+            }
+          />
+        )}
         <Route index element={<OverviewPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="clients/:id" element={<ClientDetailPage />} />
