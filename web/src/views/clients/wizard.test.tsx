@@ -234,6 +234,21 @@ describe("Add-client wizard", { timeout: 30_000 }, () => {
     expect(screen.getByRole("status", { name: "location", hidden: true })).toHaveTextContent(/^\/clients$/);
   });
 
+  it("?action=add while already on /clients opens the wizard and drops the parameter on close", async () => {
+    const user = userEvent.setup();
+    const { router } = renderRouted("/clients", clientRoutes());
+    await screen.findByRole("table", { name: "Clients" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await act(() => router.navigate("/clients?action=add"));
+    const d = await dialog();
+    await user.click(within(d).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("status", { name: "location", hidden: true })).toHaveTextContent(/^\/clients$/);
+    // The palette again: it opens again.
+    await act(() => router.navigate("/clients?action=add"));
+    await dialog();
+  });
+
   it("leaving the page while the config is shown drops it", async () => {
     const user = userEvent.setup();
     const { router } = renderRouted("/clients", { ...clientRoutes(), "POST /api/v1/clients": added() });

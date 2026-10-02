@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Plus, Settings2, Users } from "lucide-react";
 import { useClients, useOverview } from "@/api/queries";
@@ -47,8 +47,20 @@ export function ClientsScreen() {
   const data = q.data;
   const edit = useEditClient();
 
-  // ?action=add (the command palette) opens the wizard once; closing it drops the parameter.
-  const [dialog, setDialog] = useState<Dialog>(() => (search.get("action") === "add" ? { kind: "add" } : { kind: "none" }));
+  // ?action=add (the command palette) opens the wizard once per appearance of
+  // the parameter, also when the page is already open; closing it drops the parameter.
+  const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
+  const asked = search.get("action");
+  const handled = useRef<string | null>(null);
+  useEffect(() => {
+    if (asked !== "add") {
+      handled.current = null;
+      return;
+    }
+    if (handled.current === asked) return;
+    handled.current = asked;
+    setDialog({ kind: "add" });
+  }, [asked]);
   const close = useCallback(() => {
     setDialog({ kind: "none" });
     if (search.has("action")) {
