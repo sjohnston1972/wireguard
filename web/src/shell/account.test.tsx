@@ -7,7 +7,7 @@ import { initialsOf } from "./AccountMenu";
 
 describe("initialsOf", () => {
   it("takes the first letters of the name parts of an email", () => {
-    expect(initialsOf("stevie.johnston@gmail.com")).toBe("SJ");
+    expect(initialsOf("ada.lovelace@example.com")).toBe("AL");
     expect(initialsOf("steven@example.com")).toBe("ST");
     expect(initialsOf("a_b-c@x.y")).toBe("AB");
     expect(initialsOf("")).toBe("");
@@ -18,8 +18,8 @@ describe("account menu", () => {
   it("shows the signed-in email and initials from /session", async () => {
     renderApp("/");
     const trigger = await screen.findByRole("button", { name: /Account menu/ });
-    await waitFor(() => expect(trigger).toHaveTextContent("stevie.johnston@gmail.com"));
-    expect(trigger).toHaveTextContent("SJ");
+    await waitFor(() => expect(trigger).toHaveTextContent("dev@localhost"));
+    expect(trigger).toHaveTextContent("DE");
   });
 
   it("opens from the keyboard and offers the theme toggle and Sign out through Access", async () => {

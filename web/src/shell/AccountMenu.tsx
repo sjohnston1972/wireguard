@@ -5,7 +5,7 @@ import { useSession } from "@/api/queries";
 import { currentTheme, setTheme } from "./theme";
 import "./account.css";
 
-/** "SJ" from "stevie.johnston@gmail.com". */
+/** "AL" from "ada.lovelace@example.com", "DE" from "dev@localhost". */
 export function initialsOf(email: string): string {
   const local = email.split("@")[0] ?? "";
   const parts = local.split(/[._\-+\s]+/).filter(Boolean);

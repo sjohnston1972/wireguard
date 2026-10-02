@@ -43,7 +43,7 @@ const SEC = 1000;
 const MIN = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
-const USER = "stevie.johnston@gmail.com";
+const USER = "dev@localhost";
 const SEED = 20261002;
 
 // ── Deterministic randomness ──────────────────────────────────────────────

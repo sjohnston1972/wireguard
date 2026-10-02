@@ -4,7 +4,7 @@ import type { ActivityResponse, ClientsResponse, FirewallResponse, OverviewRespo
 // what the code under test reads.
 
 export const sessionFixture = (over: Partial<SessionResponse> = {}): SessionResponse => ({
-  user: "stevie.johnston@gmail.com",
+  user: "dev@localhost",
   build: "test",
   now: "2026-10-02T12:00:00.000Z",
   setupMissing: {},
