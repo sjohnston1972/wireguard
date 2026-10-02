@@ -23,6 +23,7 @@ import { runScheduled } from "./monitor";
 import { receiveCapture, MAX_CAPTURE_BYTES } from "./capture";
 import { buildApi } from "./api";
 import { devSeed } from "./devseed";
+import { serveHashedAsset } from "./assetguard";
 
 export { RunLock } from "./lock";
 
@@ -31,16 +32,17 @@ const app = new Hono<App>();
 
 // ── Browser safety rules on every page ─────────────────────────────────────
 // Content-Security-Policy tells the browser what a wg-admin page may load:
-// scripts only from this site (never a CDN), styles from here plus Google
-// Fonts, and it may not be shown
-// inside another site's frame (so nobody can overlay invisible buttons on it,
-// "clickjacking"). Inline style="..." attributes are allowed because the
-// screens use them; inline scripts are not. Like an outbound ACL for the page.
+// scripts, styles and fonts only from this site (never a CDN; the fonts are
+// files in the app's build), and it may not be shown inside another site's
+// frame (so nobody can overlay invisible buttons on it, "clickjacking").
+// Inline styles are allowed because the app's dialogs inject one; inline
+// scripts are not. Like an outbound ACL for the page. The app's own files get
+// the same policy from web/public/_headers; keep the two identical.
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self'",
   "img-src 'self' data: blob:",
   "connect-src 'self'",
   "manifest-src 'self'",
@@ -198,6 +200,12 @@ app.get("/manifest.webmanifest", (c) =>
 // Local scenario seeder (devseed.ts). Mounted before the login check, so it
 // carries its own lock: a 404 unless AUTH_DEV_BYPASS=1 and the host is localhost.
 app.all("/__dev/seed", devSeed);
+
+// The app's hashed files (wrangler.toml sends /assets/* here first): served
+// from the build, but a missing one is a 404, never the app's index.html
+// (assetguard.ts). Before the login check like every other static file, which
+// the assets layer serves without the Worker (Access guards them at the edge).
+app.get("/assets/*", (c) => serveHashedAsset(c.req.raw, c.env.ASSETS));
 
 // ── Everything below requires Cloudflare Access ───────────────────────────
 

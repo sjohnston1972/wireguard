@@ -3,6 +3,7 @@ import { makeEnv } from "./harness";
 import type { Env } from "../src/env";
 import worker from "../src/index";
 import * as db from "../src/db";
+import { readFileSync } from "node:fs";
 
 // Switch-over: the old server-rendered dashboard is gone; the token routes,
 // the manifest, health, captures and /api/v1 stay.
@@ -107,5 +108,46 @@ describe("what stays", () => {
     const noBypass = makeEnv({ PUBLIC_URL: base }).env;
     expect((await call(noBypass, "/__dev/seed?scenario=running")).status).toBe(404);
     expect((await call(env, "/__dev/seed?scenario=running", {}, "https://wg-admin.example")).status).toBe(404);
+  });
+});
+
+// Integration seams between area A (index.ts) and area B (assets, _headers).
+describe("serving the app's hashed files and headers", () => {
+  const INDEX = '<!doctype html><div id="root"></div>';
+  // Stands in for the assets layer: its single-page-app fallback answers
+  // index.html for any file it does not have.
+  const assets = {
+    fetch: async (req: Request) => {
+      const p = new URL(req.url).pathname;
+      if (p === "/assets/index-abc123.js") {
+        return new Response("export{}", { headers: { "Content-Type": "text/javascript", "Cache-Control": "public, max-age=31536000, immutable" } });
+      }
+      return new Response(INDEX, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    },
+  } as unknown as Fetcher;
+
+  it("a hashed asset is served through the ASSETS binding with the safety headers", async () => {
+    const r = await call({ ...env, ASSETS: assets }, "/assets/index-abc123.js");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toMatch(/javascript/);
+    expect(r.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(r.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await r.text()).toBe("export{}");
+  });
+
+  it("a missing hashed asset is a 404, not index.html", async () => {
+    const r = await call({ ...env, ASSETS: assets }, "/assets/nope.js");
+    expect(r.status).toBe(404);
+    expect(r.headers.get("content-type") ?? "").not.toMatch(/html/);
+    expect(await r.text()).not.toContain("root");
+  });
+
+  it("the Worker's CSP is the one web/public/_headers gives the app's files", async () => {
+    const headers = readFileSync(new URL("../../web/public/_headers", import.meta.url), "utf8");
+    const fromFile = headers.match(/^\s+Content-Security-Policy:\s*(.+)$/m)?.[1].trim();
+    expect(fromFile).toBeTruthy();
+    const r = await call(env, "/health");
+    expect(r.headers.get("content-security-policy")).toBe(fromFile);
+    expect(r.headers.get("content-security-policy")).not.toMatch(/googleapis|gstatic|https?:/);
   });
 });

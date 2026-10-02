@@ -36,9 +36,11 @@ test("the Worker can reach the built app through the ASSETS binding", () => {
 
 test("run_worker_first covers /api/* and the other Worker paths", () => {
   const cfg = readAssetsConfig(toml);
+  // /assets/* too: the Worker turns the SPA fallback for a missing hashed file
+  // into a 404 (assetguard.ts) instead of index.html under an immutable header.
   assert.deepEqual(
     [...cfg.run_worker_first].sort(),
-    ["/__dev/*", "/api/*", "/captures/*", "/health", "/manifest.webmanifest"],
+    ["/__dev/*", "/api/*", "/assets/*", "/captures/*", "/health", "/manifest.webmanifest"],
   );
 });
 

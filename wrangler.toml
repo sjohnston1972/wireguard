@@ -18,12 +18,13 @@ routes = [
 ]
 
 # The React app (npm run build:web). Page URLs that are not files get index.html;
-# these paths always run the Worker first. The Worker reaches the files as ASSETS.
+# these paths always run the Worker first. The Worker reaches the files as ASSETS
+# (/assets/* so a missing hashed file is a 404, not index.html: assetguard.ts).
 [assets]
 directory = "web/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*", "/captures/*", "/manifest.webmanifest", "/health", "/__dev/*"]
+run_worker_first = ["/api/*", "/assets/*", "/captures/*", "/manifest.webmanifest", "/health", "/__dev/*"]
 
 # Every 5 minutes: drift check, auto-destroy, cost guard, heartbeat watchdog.
 [triggers]
