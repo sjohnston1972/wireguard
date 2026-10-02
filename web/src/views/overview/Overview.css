@@ -51,6 +51,35 @@
   align-self: flex-end;
 }
 
+/* The three rows below the banner share the height left, in the mockup's proportions. */
+.ov-rows {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 200fr) minmax(0, 375fr) minmax(0, 100fr);
+  gap: var(--gap);
+}
+.ov-row {
+  display: grid;
+  gap: var(--gap);
+  min-height: 0;
+  min-width: 0;
+}
+.ov-row > * {
+  min-height: 0;
+  min-width: 0;
+}
+.ov-row--2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.ov-row--3 { grid-template-columns: minmax(0, 41fr) minmax(0, 45fr) minmax(0, 32fr); }
+.ov-row--4 { grid-template-columns: minmax(0, 54fr) minmax(0, 32fr) minmax(0, 32fr); }
+
+/* 641-1099 px: panels stack and the page may scroll. */
+@media (max-width: 1099px) {
+  .ov { height: auto; }
+  .ov-rows { display: flex; flex-direction: column; }
+  .ov-row--2, .ov-row--3, .ov-row--4 { grid-template-columns: minmax(0, 1fr); }
+}
+
 .ov-skeleton {
   display: flex;
   flex-direction: column;

@@ -1,0 +1,54 @@
+.ov-metrics__body {
+  overflow: auto;
+}
+.ov-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+.ov-tiles__row {
+  display: grid;
+  gap: 8px;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.ov-tiles__row--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ov-tiles__row--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ov-tile {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.ov-tile > .tile {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  gap: 10px;
+}
+.ov-tile .tile__icon--plain svg {
+  width: 24px;
+  height: 24px;
+}
+.ov-tile .tile__value {
+  font-size: 17px;
+}
+.ov-tile__mono {
+  font-size: 14px;
+}
+.ov-tile__sub {
+  font-size: 11px;
+}
+.ov-tile .tile__spark {
+  align-self: flex-end;
+}
+/* A late heartbeat: the live figures are old, so grey them (the heartbeat tile says why). */
+.ov-tiles[data-stale="true"] .ov-tile:not(.ov-tile--beat) {
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+
+@media (max-width: 1400px) {
+  .ov-tile .tile__icon { display: none; }
+}

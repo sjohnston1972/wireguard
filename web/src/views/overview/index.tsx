@@ -8,6 +8,8 @@ import { EnvironmentField } from "@/shell/StateChip";
 import { ACTION_WORD, ActionDialog, PALETTE_ACTIONS, actionAllowed, type ActionName } from "./actions";
 import { StatusBanner } from "./Banner";
 import { useServerNow } from "./hooks";
+import { KeyMetrics } from "./KeyMetrics";
+import { Topology } from "./Topology";
 import { STATE_WORD, normalise, regionCountry, regionFull } from "./model";
 import "./Overview.css";
 
@@ -125,6 +127,12 @@ function Desktop({ o, receivedAt, onAction }: { o: OverviewResponse; receivedAt:
   return (
     <>
       <StatusBanner o={o} now={now} onAction={onAction} />
+      <div className="ov-rows">
+        <div className="ov-row ov-row--2">
+          <Topology o={o} now={now} />
+          <KeyMetrics o={o} now={now} />
+        </div>
+      </div>
     </>
   );
 }

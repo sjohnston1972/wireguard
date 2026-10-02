@@ -215,3 +215,123 @@ export function moveTargets(o: OverviewResponse) {
   const size = o.snapshot.vm_size ?? o.config.vmSize;
   return o.profiles.filter((p) => !(p.region === region && p.vm_size === size));
 }
+
+// ── Topology ──
+
+export type NodeStatus = "healthy" | "degraded" | "down" | "unknown";
+export const NODE_WORD: Record<NodeStatus, string> = { healthy: "Healthy", degraded: "Degraded", down: "Down", unknown: "Unknown" };
+const RANK: Record<NodeStatus, number> = { healthy: 0, unknown: 1, degraded: 2, down: 3 };
+export const worst = (...s: NodeStatus[]): NodeStatus => s.reduce((a, b) => (RANK[b] > RANK[a] ? b : a), "healthy" as NodeStatus);
+
+export interface NodeView {
+  status: NodeStatus;
+  /** The word shown with the colour (status word, or the state's when it explains better). */
+  word: string;
+  /** Why, in a few words (also part of the accessible name). */
+  why: string;
+}
+
+export interface TopologyView {
+  clients: NodeView;
+  endpoint: NodeView;
+  azure: NodeView;
+  edges: [NodeStatus, NodeStatus];
+  overall: NodeView;
+}
+
+export function topology(o: OverviewResponse): TopologyView {
+  const s = o.snapshot;
+  const d = o.derived;
+  const running = s.state === "running";
+  const stale = running && d.heartbeatStale;
+
+  let clients: NodeView;
+  if (!running) clients = { status: "unknown", word: NODE_WORD.unknown, why: "VM not running" };
+  else if (stale) clients = { status: "unknown", word: NODE_WORD.unknown, why: "no recent heartbeat" };
+  else if (d.clientsEnabled === 0) clients = { status: "unknown", word: NODE_WORD.unknown, why: "no clients configured" };
+  else if (d.clientsOnline === 0) clients = { status: "degraded", word: NODE_WORD.degraded, why: "no client online" };
+  else clients = { status: "healthy", word: NODE_WORD.healthy, why: `${d.clientsOnline} online` };
+
+  let endpoint: NodeView;
+  const problems: string[] = [];
+  if (running) {
+    if (!s.dns_live) problems.push("DNS does not point at the VM");
+    if (d.selftestFailures.length) problems.push(`self-test: ${d.selftestFailures.join(", ")}`);
+    if (s.agent && s.agent.listen_port === null) problems.push("WireGuard is not listening");
+  }
+  if (s.state === "failed") endpoint = { status: "down", word: "Failed", why: "the last run failed" };
+  else if (!running) endpoint = { status: "unknown", word: s.state === "destroyed" ? "Not deployed" : STATE_WORD[s.state], why: STATE_WORD[s.state] };
+  else if (stale || !s.last_agent_at) endpoint = { status: "down", word: NODE_WORD.down, why: "no heartbeat for over 2 minutes" };
+  else if (problems.length) endpoint = { status: "degraded", word: NODE_WORD.degraded, why: problems.join("; ") };
+  else endpoint = { status: "healthy", word: NODE_WORD.healthy, why: "heartbeat fresh" };
+
+  let azure: NodeView;
+  const az = s.azure;
+  if (!az) azure = { status: "unknown", word: NODE_WORD.unknown, why: "not checked yet" };
+  else if (az.error) azure = { status: "degraded", word: NODE_WORD.degraded, why: `check failed: ${az.error}` };
+  else if (!az.exists) azure = { status: s.state === "destroyed" ? "unknown" : "degraded", word: s.state === "destroyed" ? "Empty" : NODE_WORD.degraded, why: "nothing in the resource group" };
+  else if (s.state === "running") azure = { status: "healthy", word: "Online", why: `${az.resources.length} resources` };
+  else if (s.state === "failed" || s.state === "destroyed") azure = { status: "degraded", word: "Leftovers", why: `${az.resources.length} resources still there` };
+  else azure = { status: "unknown", word: STATE_WORD[s.state], why: `${az.resources.length} resources` };
+
+  const edge1: NodeStatus = !running ? "unknown" : stale ? "down" : clients.status;
+  const edge2: NodeStatus = !running ? "unknown" : endpoint.status;
+  const known = (n: NodeStatus): NodeStatus => (n === "unknown" ? "healthy" : n);
+  const overallStatus: NodeStatus = running ? worst(known(clients.status), endpoint.status, known(azure.status)) : s.state === "failed" ? "down" : "unknown";
+  const overall: NodeView = { status: overallStatus, word: running || s.state === "failed" ? NODE_WORD[overallStatus] : STATE_WORD[s.state], why: "" };
+  return { clients, endpoint, azure, edges: [edge1, edge2], overall };
+}
+
+// ── Metrics ──
+
+export type MetricRange = "live" | "1h" | "24h" | "7d" | "30d";
+export const RANGE_WORD: Record<MetricRange, string> = { live: "live", "1h": "last hour", "24h": "last 24 h", "7d": "last 7 days", "30d": "last 30 days" };
+export const historyRange = (r: MetricRange): "1h" | "24h" | "7d" | "30d" => (r === "live" ? "1h" : r);
+
+/** Mean of each client's latest round-trip time; null with none. */
+export function latencyNow(lat: Record<string, number[]>): number | null {
+  const last = Object.values(lat)
+    .map((a) => a[a.length - 1])
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (!last.length) return null;
+  return Math.round(last.reduce((a, b) => a + b, 0) / last.length);
+}
+
+/** The average across clients, sample by sample (aligned at the newest), for a sparkline. */
+export function latencySeries(lat: Record<string, number[]>): number[] {
+  const arrs = Object.values(lat).filter((a) => a.length);
+  const n = Math.max(0, ...arrs.map((a) => a.length));
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const vals = arrs.map((a) => a[a.length - n + i]).filter((v): v is number => typeof v === "number");
+    if (vals.length) out.push(vals.reduce((a, b) => a + b, 0) / vals.length);
+  }
+  return out;
+}
+
+export function peak(values: (number | null)[]): number | null {
+  const v = values.filter((x): x is number => x !== null && Number.isFinite(x));
+  return v.length ? Math.max(...v) : null;
+}
+
+/** "1.2 KB/s" */
+export function rate(bytesPerSec: number | null | undefined): string {
+  if (bytesPerSec === null || bytesPerSec === undefined || !Number.isFinite(bytesPerSec)) return "no data";
+  if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`;
+}
+
+/** "3 s ago" from two times; null when `at` is missing. */
+export function ageOf(at: string | null | undefined, now: number): string | null {
+  if (!at) return null;
+  const t = Date.parse(at);
+  if (!Number.isFinite(t)) return null;
+  const s = Math.max(0, Math.floor((now - t) / 1000));
+  if (s < 60) return `${s} s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.floor(h / 24)} d ago`;
+}
