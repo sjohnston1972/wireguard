@@ -324,6 +324,41 @@ export async function costDays(env: Env, sinceDay: string): Promise<CostDay[]> {
   return (await env.DB.prepare("SELECT * FROM cost_days WHERE day >= ?1 ORDER BY day").bind(sinceDay).all<CostDay>()).results;
 }
 
+/** One day's cost for one Azure service in one region (location is the region id, "" when Azure gave none). */
+export interface CostBreakdownRow {
+  day: string;
+  category: string;
+  location: string;
+  gbp: number;
+}
+
+/** Store the split rows, replacing any already held for the same day, service and location. */
+export async function upsertCostBreakdown(env: Env, rows: CostBreakdownRow[]): Promise<void> {
+  if (!rows.length) return;
+  const at = new Date().toISOString();
+  await env.DB.batch(
+    rows.map((r) =>
+      env.DB.prepare("INSERT INTO cost_breakdown (day, category, location, gbp, fetched_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(day, category, location) DO UPDATE SET gbp = excluded.gbp, fetched_at = excluded.fetched_at").bind(r.day, r.category, r.location, r.gbp, at),
+    ),
+  );
+}
+
+/** The split over a range of days (inclusive), added up per service and region, with the latest day seen. Reads by the table's key. */
+export async function costBreakdownRange(env: Env, from: string, to: string): Promise<{ category: string; location: string; gbp: number; last_day: string }[]> {
+  return (
+    await env.DB.prepare("SELECT category, location, SUM(gbp) AS gbp, MAX(day) AS last_day FROM cost_breakdown WHERE day >= ?1 AND day <= ?2 GROUP BY category, location").bind(from, to).all<{ category: string; location: string; gbp: number; last_day: string }>()
+  ).results;
+}
+
+/** Days the split is kept: the cost page compares periods a year apart at most. */
+export const COST_BREAKDOWN_KEEP_DAYS = 400;
+
+/** Delete split rows older than 400 days. */
+export async function pruneCostBreakdown(env: Env, now: Date): Promise<void> {
+  const cutoff = new Date(now.getTime() - COST_BREAKDOWN_KEEP_DAYS * 86_400_000).toISOString().slice(0, 10);
+  await env.DB.prepare("DELETE FROM cost_breakdown WHERE day < ?1").bind(cutoff).run();
+}
+
 // ── Profiles ──────────────────────────────────────────────────────────────
 
 export interface Profile {

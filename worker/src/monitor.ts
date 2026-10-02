@@ -35,7 +35,7 @@ import { startHibernate, refreshPower } from "./standby";
 import { runSchedules } from "./schedule";
 import { notify } from "./notify";
 import { actionButton, dashboardButton } from "./actions";
-import { costMonthToDate, azureView } from "./azure";
+import { costMonthToDate, costBreakdownMonthToDate, azureView } from "./azure";
 import { checkDns } from "./dns";
 import { checkBudget } from "./budget";
 import { nightlyConfigBackup } from "./backup";
@@ -271,6 +271,24 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         notes.push(`cost: ${(e as Error).message}`);
       }
     }
+    // The split by type and region is separate: if it fails, the daily
+    // figures above stand, and it is tried again on the next run.
+    const lastSplit = await env.STATUS.get("cost:breakdown_day");
+    if (lastSplit !== today) {
+      try {
+        const rows = await costBreakdownMonthToDate(env);
+        await db.upsertCostBreakdown(env, rows);
+        await env.STATUS.put("cost:breakdown_day", today);
+        notes.push(`cost breakdown: ${rows.length} row(s) updated`);
+      } catch (e) {
+        notes.push(`cost breakdown: ${(e as Error).message}`);
+      }
+    }
+  }
+  try {
+    await db.pruneCostBreakdown(env, now);
+  } catch (e) {
+    notes.push(`cost breakdown expiry: ${(e as Error).message}`);
   }
 
   // 7. The monthly budget: this month's actual spend plus the running

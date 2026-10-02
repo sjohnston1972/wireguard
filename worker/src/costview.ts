@@ -9,6 +9,8 @@
 import type { CostDay, Run } from "./db";
 import type { Config } from "./env";
 import { sessionCost } from "./views/activity";
+import { regionName } from "./region";
+import type { CostBreakdown } from "../../shared/api";
 
 export type CostRange = "month" | "7d" | "30d";
 
@@ -106,4 +108,64 @@ export function sessionsOf(runs: Run[], cfg: Config, now: Date): SessionRow[] {
     });
   }
   return rows.sort((a, b) => b.started.localeCompare(a.started));
+}
+
+/**
+ * Which of the four groups the Cost page shows an Azure service name belongs
+ * to: Virtual Machines is compute; Bandwidth, Virtual Network, IP addresses
+ * and Load Balancer (anything with "network" in it too) are network; Storage
+ * and Managed Disks are disk; everything else is other.
+ */
+export function costType(category: string): "compute" | "network" | "disk" | "other" {
+  const c = category.toLowerCase();
+  if (c.includes("virtual machines")) return "compute";
+  if (/bandwidth|network|ip address|load balancer/.test(c)) return "network";
+  if (/storage|disk/.test(c)) return "disk";
+  return "other";
+}
+
+/** Group amounts, drop the empty ones, biggest first, each with its share (one decimal) of what is left. */
+function shares<K extends string>(amounts: Map<K, number>): { key: K; gbp: number; pct: number }[] {
+  const live = [...amounts].filter(([, g]) => g > 0);
+  const total = live.reduce((a, [, g]) => a + g, 0);
+  return live.sort((a, b) => b[1] - a[1]).map(([key, g]) => ({ key, gbp: Math.round(g * 1e6) / 1e6, pct: Math.round((g / total) * 1000) / 10 }));
+}
+
+/**
+ * Azure's split for a range as the page shows it: by type and by region,
+ * each with its share. `rows` are the stored rows added up over the range.
+ * Null when there are no rows at all. Slices with nothing in them are left out.
+ */
+export function breakdownOf(rows: { category: string; location: string; gbp: number }[], asOfDay: string | null): CostBreakdown | null {
+  if (!rows.length) return null;
+  const types = new Map<"compute" | "network" | "disk" | "other", number>();
+  const places = new Map<string, number>();
+  for (const r of rows) {
+    const t = costType(r.category);
+    types.set(t, (types.get(t) ?? 0) + r.gbp);
+    places.set(r.location, (places.get(r.location) ?? 0) + r.gbp);
+  }
+  return {
+    byType: shares(types).map((s) => ({ type: s.key, gbp: s.gbp, pct: s.pct })),
+    byRegion: shares(places).map((s) => ({ location: s.key, name: s.key ? regionName(s.key) : "Unassigned", gbp: s.gbp, pct: s.pct })),
+    basis: "azure",
+    asOfDay,
+  };
+}
+
+/**
+ * The fallback when Azure has no split for the range: what the sessions that
+ * started in it are estimated to have cost, by region. No types (an estimate
+ * knows only the hourly rate). Null when no session started in the range.
+ */
+export function estimateBreakdown(sessions: SessionRow[], from: string, to: string): CostBreakdown | null {
+  const places = new Map<string, number>();
+  for (const s of sessions) {
+    const d = s.started.slice(0, 10);
+    if (d < from || d > to) continue;
+    places.set(s.region, (places.get(s.region) ?? 0) + s.estimatedGbp);
+  }
+  const byRegion = shares(places).map((s) => ({ location: s.key, name: regionName(s.key), gbp: s.gbp, pct: s.pct }));
+  if (!byRegion.length) return null;
+  return { byType: [], byRegion, basis: "estimate", asOfDay: null };
 }

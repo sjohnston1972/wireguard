@@ -273,19 +273,63 @@ export async function setPublishedPorts(env: Env, rules: PublishedNsgRule[]): Pr
   if (!r.ok) throw new Error(`Azure refused to update the published ports (${r.status}): ${(await r.text()).slice(0, 200)}`);
 }
 
-/** Daily actual cost for this resource group, month to date, via Cost Management. */
-export async function costMonthToDate(env: Env): Promise<{ days: { day: string; gbp: number }[]; currency: string }> {
-  const cfg = config(env);
-  const sub = env.AZURE_SUBSCRIPTION_ID;
-  const body = {
+/** The Cost Management question both cost pulls ask: this resource group, month to date, daily, actual cost. */
+function costQueryBody(env: Env, grouping?: { type: "Dimension"; name: string }[]) {
+  return {
     type: "ActualCost",
     timeframe: "MonthToDate",
     dataset: {
       granularity: "Daily",
       aggregation: { totalCost: { name: "Cost", function: "Sum" } },
-      filter: { dimensions: { name: "ResourceGroupName", operator: "In", values: [cfg.resourceGroup] } },
+      ...(grouping ? { grouping } : {}),
+      filter: { dimensions: { name: "ResourceGroupName", operator: "In", values: [config(env).resourceGroup] } },
     },
   };
+}
+
+/**
+ * The same month-to-date cost, split by Azure service name (for example
+ * "Virtual Machines", "Bandwidth") and by location, one row per day. The
+ * location is tidied to the region id ("UK South" becomes "uksouth") and rows
+ * that tidy to the same day, service and location are added together. Throws
+ * when Azure refuses; the caller decides what that costs.
+ */
+export async function costBreakdownMonthToDate(env: Env): Promise<{ day: string; category: string; location: string; gbp: number }[]> {
+  const sub = env.AZURE_SUBSCRIPTION_ID;
+  const body = costQueryBody(env, [
+    { type: "Dimension", name: "ServiceName" },
+    { type: "Dimension", name: "ResourceLocation" },
+  ]);
+  const r = await arm(env, `/subscriptions/${sub}/providers/Microsoft.CostManagement/query?api-version=2023-11-01`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`Cost breakdown query failed (${r.status})`);
+  const data = (await r.json()) as { properties: { columns: { name: string }[]; rows: (string | number)[][] } };
+  const cols = data.properties.columns.map((c) => c.name);
+  const iCost = cols.indexOf("Cost");
+  const iDate = cols.indexOf("UsageDate");
+  const iSvc = cols.indexOf("ServiceName");
+  const iLoc = cols.indexOf("ResourceLocation");
+  const sums = new Map<string, { day: string; category: string; location: string; gbp: number }>();
+  for (const row of data.properties.rows) {
+    const d = String(row[iDate]); // 20260922
+    const day = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+    const category = String(row[iSvc] ?? "").trim();
+    const location = String(row[iLoc] ?? "").toLowerCase().replace(/\s+/g, "");
+    const key = `${day}|${category}|${location}`;
+    const gbp = Number(row[iCost]) || 0;
+    const have = sums.get(key);
+    if (have) have.gbp += gbp;
+    else sums.set(key, { day, category, location, gbp });
+  }
+  return [...sums.values()];
+}
+
+/** Daily actual cost for this resource group, month to date, via Cost Management. */
+export async function costMonthToDate(env: Env): Promise<{ days: { day: string; gbp: number }[]; currency: string }> {
+  const sub = env.AZURE_SUBSCRIPTION_ID;
+  const body = costQueryBody(env);
   const r = await arm(env, `/subscriptions/${sub}/providers/Microsoft.CostManagement/query?api-version=2023-11-01`, {
     method: "POST",
     body: JSON.stringify(body),
