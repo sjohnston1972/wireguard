@@ -1,0 +1,37 @@
+/* Six count tiles across the top (Clients mockup, region 2). Each is a button. */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--gap);
+  flex: none;
+}
+.filter-tile {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.filter-tile > .tile { height: 100%; padding: 14px 14px; transition: border-color 0.12s, background 0.12s; }
+.filter-tile:hover > .tile { border-color: var(--border-strong); }
+.filter-tile--on > .tile {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 10%, var(--bg-panel));
+}
+.filter-tile:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.filter-tile .tile__sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 1350px) {
+  .filter-tile > .tile { padding: 10px 10px; gap: 8px; }
+  .filter-tile .tile__icon--plain { width: 30px; height: 30px; }
+  .filter-tile .tile__icon--plain > .lucide { width: 24px; height: 24px; }
+  .filter-tile .tile__value { font-size: 20px; }
+}
+@media (max-width: 1099px) {
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

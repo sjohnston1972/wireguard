@@ -1,0 +1,55 @@
+/* The clients table (Clients mockup, region 4). The table panel is a size
+   container, so columns give way to the side panel as the room shrinks. */
+.ctable .dt__td { height: 34px; }
+.ctable .mono { font-family: var(--font-mono); font-size: 12.5px; }
+.ctable .muted { color: var(--text-secondary); }
+
+.cname { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.cname__icon { flex: none; color: var(--blue-bright); }
+.cname__name { font-weight: 500; color: var(--text-primary); }
+
+.ctag {
+  --c: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+}
+.ctag--blue { --c: var(--blue-bright); }
+.ctag--amber { --c: var(--amber); }
+.ctag--grey { --c: var(--text-secondary); }
+
+.clat { display: inline-flex; align-items: center; gap: 10px; }
+.clat__value { min-width: 44px; }
+.ctraffic { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+.croutes { display: inline-flex; align-items: center; gap: 8px; max-width: 260px; min-width: 0; }
+.croutes__ips { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+.cexp { display: inline-flex; align-items: center; gap: 8px; }
+.cexp--gone { color: var(--amber); }
+
+/* Columns give way as the table narrows (the side panel takes 362 px). */
+.clients-table-host { container-type: inline-size; }
+@container (max-width: 1080px) {
+  .ccol-spark { display: none; }
+  .croutes { max-width: 160px; }
+}
+@container (max-width: 940px) {
+  .ccol-address { display: none; }
+}
+@container (max-width: 820px) {
+  .ccol-expires { display: none; }
+}
+@container (max-width: 700px) {
+  .ccol-routes { display: none; }
+}
+@container (max-width: 560px) {
+  .ccol-traffic { display: none; }
+}

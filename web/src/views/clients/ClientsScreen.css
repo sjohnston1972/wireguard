@@ -1,0 +1,38 @@
+/* The Clients page: the header, then the body fills the window (one-screen rule, spec 7). */
+.clients {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  height: 100%;
+  min-height: 0;
+}
+.clients > .page-header { flex: none; }
+.clients__state { flex: 1; min-height: 0; }
+.clients__state > .panel__body { display: grid; place-items: center; }
+
+/* Read-only "Region" beside the environment, styled like it. */
+.ro-field { display: flex; flex-direction: column; gap: 4px; }
+.ro-field__caption { font-size: 12px; color: var(--text-secondary); }
+.ro-field__value {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-tile);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.clients .page-header__right > .icon-btn,
+.clients .page-header__right > .btn--primary { align-self: flex-end; }
+
+.clients__skeleton { display: flex; flex-direction: column; gap: var(--gap); flex: 1; min-height: 0; }
+.clients__skel-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--gap); }
+.clients__skel-table { flex: 1; min-height: 0; }
+.clients__skel-table .panel__body { display: grid; gap: 10px; align-content: start; }
+
+@media (max-width: 1099px) {
+  .clients { height: auto; }
+  .clients__skel-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
