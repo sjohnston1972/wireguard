@@ -1,0 +1,61 @@
+/* Account menu and the unread-notes bell. */
+
+.topbar__avatar {
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.menu {
+  z-index: 150;
+  min-width: 220px;
+  padding: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.4);
+}
+.menu__who {
+  padding: 6px 10px 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+.menu__item[data-highlighted] {
+  background: var(--bg-tile);
+}
+.menu__sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+.topbar__notes {
+  position: relative;
+}
+.topbar__badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--amber);
+  color: #1a1100;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}

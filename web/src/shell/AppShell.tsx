@@ -1,15 +1,36 @@
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { TABS } from "@/routes";
-import { AccountSlot, RegionChipSlot, SearchSlot, ThemeToggleSlot } from "./slots";
+import { useConnection } from "@/api/connection";
+import { AccountSlot, ConnectionSlot, NotesSlot, SearchSlot, StateSlot, ThemeToggleSlot } from "./slots";
+import { DisconnectedBanner } from "./Connection";
+import { SessionExpiredScreen } from "./SessionExpired";
+import { CommandPalette } from "./CommandPalette";
+import { useStateTone } from "./StateChip";
 import "./AppShell.css";
 
 /**
- * The frame around every view: top bar (wordmark, six tabs, search, region
- * chip, theme toggle, account), the page area, and a bottom tab bar on phones.
- * The slots in the top bar live in ./slots.tsx; the data-layer/shell work
- * (plan 3 P3) replaces them with the live versions.
+ * The frame around every view: top bar (wordmark, six tabs, search, state
+ * chip, connection light, notes, theme toggle, account), the disconnected
+ * banner, the page area (or the session-expired screen), the command palette,
+ * and a bottom tab bar on phones. The slots live in ./slots.tsx.
  */
 export function AppShell() {
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const { sessionExpired } = useConnection();
+  const tone = useStateTone();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <div className="app-shell">
       <a className="app-shell__skip" href="#main">
@@ -17,7 +38,7 @@ export function AppShell() {
       </a>
       <header className="topbar">
         <Link to="/" className="topbar__brand" aria-label="wg-admin home">
-          <span className="topbar__dot" aria-hidden="true" />
+          <span className="topbar__dot" data-tone={tone} aria-hidden="true" />
           <span className="topbar__name">wg-admin</span>
         </Link>
         <nav className="topbar__tabs" aria-label="Main">
@@ -28,13 +49,16 @@ export function AppShell() {
           ))}
         </nav>
         <div className="topbar__spacer" />
-        <SearchSlot />
-        <RegionChipSlot />
+        <SearchSlot onOpen={() => setPaletteOpen(true)} />
+        <StateSlot />
+        <ConnectionSlot />
+        <NotesSlot />
         <ThemeToggleSlot />
         <AccountSlot />
       </header>
+      <DisconnectedBanner />
       <main id="main" className="app-shell__page" tabIndex={-1}>
-        <Outlet />
+        {sessionExpired ? <SessionExpiredScreen /> : <Outlet />}
       </main>
       <nav className="tabbar" aria-label="Phone">
         {TABS.map((t) => (
@@ -44,6 +68,7 @@ export function AppShell() {
           </NavLink>
         ))}
       </nav>
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
   );
 }

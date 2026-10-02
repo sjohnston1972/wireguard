@@ -1,5 +1,8 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { makeQueryClient } from "@/api/queryClient";
 import { AppShell } from "@/shell/AppShell";
+import { ToastProvider } from "@/shell/toast";
 import {
   ActivityPage,
   ClientDetailPage,
@@ -33,10 +36,16 @@ export function AppRoutes() {
   );
 }
 
+const queryClient = makeQueryClient();
+
 export function App() {
   return (
-    <BrowserRouter>
-      <AppRoutes />
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </ToastProvider>
+    </QueryClientProvider>
   );
 }
