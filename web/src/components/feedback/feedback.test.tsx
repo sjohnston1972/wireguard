@@ -1,15 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Skeleton } from "./Skeleton";
 import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./ErrorState";
 import { StaleBanner } from "./StaleBanner";
 import { ToastProvider, useToast } from "./Toast";
-
-// Radix Toast uses pointer capture, which jsdom lacks.
-Element.prototype.hasPointerCapture ??= () => false;
-Element.prototype.releasePointerCapture ??= () => {};
 
 describe("Skeleton", () => {
   it("is hidden from assistive tech", () => {
@@ -81,6 +77,26 @@ describe("Toast", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "warn" }));
     expect(await screen.findByText("Warning")).toBeInTheDocument();
+  });
+  it("announces each toast once to screen readers (one live region carries its text)", async () => {
+    render(
+      <ToastProvider>
+        <Pusher />
+      </ToastProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "ok" }));
+    await screen.findByText("Saved");
+    const live = () =>
+      Array.from(document.querySelectorAll('[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"]')).filter((el) =>
+        el.textContent?.includes("Saved"),
+      );
+    // Radix renders the announcement a frame after the toast mounts.
+    await waitFor(() => expect(live()).toHaveLength(1));
+    // The visible toast is not itself a live region, so the text is not read twice.
+    const visible = screen.getByText("Saved").closest("[data-tone]")!;
+    expect(visible).not.toHaveAttribute("aria-live");
+    expect(visible).not.toHaveAttribute("role", "status");
+    expect(live()[0].contains(visible)).toBe(false);
   });
   it("throws a clear error without a provider", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});

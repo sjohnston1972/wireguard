@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { makeQueryClient } from "./queryClient";
 import { resetConnection } from "./connection";
 import { fieldErrorOf, useAddClient, useDeleteClient, useDeploy, useDestroy, useForwardAdd, useAckNotes } from "./mutations";
-import { ToastProvider } from "@/shell/toast";
+import { ToastProvider } from "@/components/feedback/Toast";
 import { mockFetch } from "@/test/mockFetch";
 import { ApiError } from "./client";
 
@@ -66,7 +66,7 @@ describe("mutations", () => {
     );
     act(() => screen.getByText("go").click());
     const warn = await screen.findByText("Saved, but Azure did not open the port: boom");
-    expect(warn.closest("[data-kind]")).toHaveAttribute("data-kind", "warning");
+    expect(warn.closest("[data-tone]")).toHaveAttribute("data-tone", "warning");
     expect(screen.getByText("Published TCP 8080.")).toBeInTheDocument();
   });
 
@@ -84,7 +84,7 @@ describe("mutations", () => {
     );
     act(() => screen.getByText("go").click());
     const t = await screen.findByText("Another run holds the lock.");
-    expect(t.closest("[data-kind]")).toHaveAttribute("data-kind", "error");
+    expect(t.closest("[data-tone]")).toHaveAttribute("data-tone", "error");
   });
 
   it("does not toast a field error (the form shows it) and exposes it by field", async () => {

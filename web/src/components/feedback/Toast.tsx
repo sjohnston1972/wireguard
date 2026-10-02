@@ -45,6 +45,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <RadixToast.Root
               key={t.id}
               className={`toast toast--${tone}`}
+              data-tone={tone}
               duration={ms === 0 ? Infinity : ms}
               onOpenChange={(open) => {
                 if (!open) remove(t.id);

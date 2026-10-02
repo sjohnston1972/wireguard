@@ -12,11 +12,6 @@ import { Field } from "./Field";
 import { ConfirmByTyping } from "./ConfirmByTyping";
 import { Select } from "./Select";
 
-// Radix Select needs a few DOM APIs jsdom lacks.
-Element.prototype.hasPointerCapture ??= () => false;
-Element.prototype.releasePointerCapture ??= () => {};
-Element.prototype.scrollIntoView ??= () => {};
-
 describe("Button", () => {
   it("fires onClick by mouse and keyboard and exposes its name", async () => {
     const onClick = vi.fn();

@@ -53,7 +53,6 @@ import {
   Switch,
   Tabs,
   TimeSeriesChart,
-  ToastProvider,
   useToast,
   type Column,
   type LogLine,
@@ -188,8 +187,9 @@ export default function Gallery() {
     [],
   );
 
+  // Toasts use the app-wide ToastProvider mounted in App.tsx.
   return (
-    <ToastProvider>
+    <>
       <div className="gallery">
         <PageHeader
           title="Component gallery"
@@ -546,6 +546,6 @@ export default function Gallery() {
           <ConfirmByTyping phrase="tear down" actionLabel="Tear down" onConfirm={() => setModal(false)} />
         </Modal>
       </div>
-    </ToastProvider>
+    </>
   );
 }

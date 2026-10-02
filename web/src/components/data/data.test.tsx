@@ -11,11 +11,6 @@ import { DataAge, formatAge } from "./DataAge";
 import { StepList } from "./StepList";
 import { LogView, type LogLine } from "./LogView";
 
-// jsdom lacks these; Radix DropdownMenu needs pointer capture.
-Element.prototype.hasPointerCapture ??= () => false;
-Element.prototype.releasePointerCapture ??= () => {};
-Element.prototype.scrollIntoView ??= () => {};
-
 describe("StatusPill", () => {
   it("always carries a word, not just a colour", () => {
     render(

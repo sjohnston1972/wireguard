@@ -3,7 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { makeQueryClient } from "@/api/queryClient";
 import { AppShell } from "@/shell/AppShell";
-import { ToastProvider } from "@/shell/toast";
+import { ToastProvider } from "@/components/feedback/Toast";
 import {
   ActivityPage,
   ClientDetailPage,

@@ -4,7 +4,7 @@ import { resetConnection } from "@/api/connection";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AppRoutes } from "@/App";
 import { makeQueryClient } from "@/api/queryClient";
-import { ToastProvider } from "@/shell/toast";
+import { ToastProvider } from "@/components/feedback/Toast";
 import { mockFetch } from "./mockFetch";
 import { defaultRoutes } from "./fixtures";
 

@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient, type QueryKey, type UseMutationResult } from "@tanstack/react-query";
 import type { ApiOk, ClientConfigResponse, ClientEditResponse, RestorePreviewResponse } from "@shared/api";
 import { ApiError, NetworkError, SessionExpiredError, apiGet, apiSend } from "./client";
-import { useToast } from "@/shell/toast";
+// The app's one toast system (mounted once in App.tsx). Imported directly, not
+// through the @/components barrel, so the data layer does not pull in charts.
+import { useToast } from "@/components/feedback/Toast";
 
 // One hook per write endpoint. Each one: sends the request, shows the server's
 // message as a toast (a `warning` as a warning toast), refreshes the queries
@@ -30,21 +32,21 @@ interface Config<V, R> {
 
 export function useApiMutation<V = void, R = ApiOk>(cfg: Config<V, R>): ApiMutation<V, R> {
   const qc = useQueryClient();
-  const toast = useToast();
+  const { toast } = useToast();
   const m = useMutation<R, Error, V>({
     mutationFn: (v) => apiSend<R>(cfg.method, typeof cfg.path === "function" ? cfg.path(v) : cfg.path, cfg.body ? cfg.body(v) : undefined),
     onSuccess: (res, v) => {
       const text = cfg.message ? cfg.message(res, v) : (res as Partial<ApiOk>).message ?? null;
       const warning = (res as Partial<ApiOk>).warning;
-      if (warning) toast.show("warning", text ?? "Saved, with a warning.", warning);
-      else if (text) toast.show("success", text);
+      if (warning) toast({ tone: "warning", title: text ?? "Saved, with a warning.", description: warning });
+      else if (text) toast({ tone: "success", title: text });
       for (const key of cfg.invalidate) void qc.invalidateQueries({ queryKey: key });
     },
     onError: (err) => {
       // The banner and the sign-in screen already say so; a field error is shown by its form.
       if (err instanceof SessionExpiredError || err instanceof NetworkError) return;
       if (err instanceof ApiError && err.field) return;
-      toast.show("error", err.message);
+      toast({ tone: "error", title: err.message });
     },
   });
   return Object.assign(m, { fieldError: (field: string) => fieldErrorOf(m.error, field) });
