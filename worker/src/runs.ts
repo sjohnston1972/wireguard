@@ -27,7 +27,7 @@ import type { FirewallStatus } from "./state";
 import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
 import { noteHandshakes } from "./keyrotation";
-import { recordHeartbeat } from "./history";
+import { recordHeartbeat, fwDeltas } from "./history";
 
 /**
  * A refusal fit for the screen. The code says what kind, so the data API
@@ -763,7 +763,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
   // a failed save cannot leave bytes counted twice. A history problem must
   // never cost the VM its heartbeat.
   try {
-    await recordHeartbeat(env, { report, prev: cur.agent, rtt: body.rtt, traffic, drops: freshDrops(body.firewall, report.at) });
+    await recordHeartbeat(env, { report, prev: cur.agent, rtt: body.rtt, traffic, drops: freshDrops(body.firewall, report.at), fwHits: fwDeltas(cur.firewall, body.firewall) });
   } catch (e) {
     console.error("history:", e);
   }

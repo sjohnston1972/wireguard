@@ -100,15 +100,59 @@ export function clientSamples(o: {
   return out;
 }
 
+export interface FwDelta {
+  rule: string;
+  packets: number;
+  bytes: number;
+}
+
+/** A counter reading as a pair of whole, non-negative numbers, or null when it is not one. */
+function counterPair(v: unknown): [number, number] | null {
+  if (!Array.isArray(v) || v.length < 2) return null;
+  const p = Math.floor(Number(v[0]));
+  const b = Math.floor(Number(v[1]));
+  if (!Number.isFinite(p) || p < 0) return null;
+  return [p, Number.isFinite(b) && b >= 0 ? b : 0];
+}
+
+/**
+ * What each firewall counter gained since the previous report. The VM's
+ * counters restart when a rule set is loaded or the VM reboots, and this
+ * uses the same rule as the carried-over totals (runs.ts nextBase): on a
+ * different rule set, for a counter that is new, or for one whose packet
+ * count went down, the whole reading counts (it started from zero). Bytes
+ * that went down while packets did not are counted whole too, never as a
+ * negative. Only counters that gained packets are returned.
+ */
+export function fwDeltas(prev: FirewallStatus | null, rep: { hash?: string; counters?: Record<string, [number, number]> } | null | undefined): FwDelta[] {
+  const counters = rep?.counters;
+  if (!counters || typeof counters !== "object") return [];
+  const sameSet = !!prev && prev.applied_hash === (rep?.hash || null);
+  const out: FwDelta[] = [];
+  for (const [rule, v] of Object.entries(counters)) {
+    const now = counterPair(v);
+    if (!now) continue;
+    const was = sameSet ? counterPair(prev?.counters[rule]) : null;
+    if (!was || now[0] < was[0]) {
+      if (now[0] > 0) out.push({ rule, packets: now[0], bytes: now[1] });
+    } else if (now[0] > was[0]) {
+      out.push({ rule, packets: now[0] - was[0], bytes: now[1] >= was[1] ? now[1] - was[1] : now[1] });
+    }
+  }
+  return out;
+}
+
 /**
  * Add one heartbeat to this minute's samples: the VM, each known client,
- * and the firewall drops it reported. One transaction. A second heartbeat
- * in the same minute keeps "received" at 1, adds the bytes, keeps the
- * latest rate and the highest rate and latency seen.
+ * the firewall drops it reported, and the packets each firewall rule
+ * matched since the last report (`fwHits`, from fwDeltas; only counters
+ * that went up have a row). One transaction. A second heartbeat in the
+ * same minute keeps "received" at 1, adds the bytes, keeps the latest rate
+ * and the highest rate and latency seen.
  */
 export async function recordHeartbeat(
   env: Env,
-  o: { report: AgentReport; prev: AgentReport | null; rtt: Record<string, number> | null | undefined; traffic: Traffic; drops: FirewallStatus["drops"] },
+  o: { report: AgentReport; prev: AgentReport | null; rtt: Record<string, number> | null | undefined; traffic: Traffic; drops: FirewallStatus["drops"]; fwHits?: FwDelta[] },
 ): Promise<void> {
   const nowMs = Date.parse(o.report.at);
   const t = bucket(nowMs, RAW_RES);
@@ -140,6 +184,12 @@ export async function recordHeartbeat(
         `INSERT INTO hist_drops (t, src, dst, proto, dport, in_if, out_if, n) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)
          ON CONFLICT (t, src, dst, proto, dport, in_if, out_if) DO UPDATE SET n = n + 1`,
       ).bind(bucket(Date.parse(d.at), RAW_RES), d.src, d.dst, d.proto, d.dport ?? 0, d.in, d.out),
+    ),
+    ...(o.fwHits ?? []).map((h) =>
+      env.DB.prepare(
+        `INSERT INTO hist_fw (res, t, rule, packets, bytes) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (res, t, rule) DO UPDATE SET packets = packets + excluded.packets, bytes = bytes + excluded.bytes`,
+      ).bind(RAW_RES, t, h.rule, h.packets, h.bytes),
     ),
   ]);
 }
@@ -197,11 +247,19 @@ export async function rollUp(env: Env, now: Date): Promise<void> {
        FROM hist_client WHERE res = ${RAW_RES} AND t < ?1 GROUP BY peer_id, slot
        ON CONFLICT (res, t, peer_id) DO UPDATE SET rx = rx + excluded.rx, tx = tx + excluded.tx`,
     ).bind(cutoff),
+    env.DB.prepare(
+      `INSERT INTO hist_fw (res, t, rule, packets, bytes)
+       SELECT ${SUMMARY_RES}, ${SUMMARY_SLOT} AS slot, rule, SUM(packets), SUM(bytes)
+       FROM hist_fw WHERE res = ${RAW_RES} AND t < ?1 GROUP BY rule, slot
+       ON CONFLICT (res, t, rule) DO UPDATE SET packets = packets + excluded.packets, bytes = bytes + excluded.bytes`,
+    ).bind(cutoff),
     env.DB.prepare(`DELETE FROM hist_vm WHERE res = ${RAW_RES} AND t < ?1`).bind(cutoff),
     env.DB.prepare(`DELETE FROM hist_client WHERE res = ${RAW_RES} AND t < ?1`).bind(cutoff),
+    env.DB.prepare(`DELETE FROM hist_fw WHERE res = ${RAW_RES} AND t < ?1`).bind(cutoff),
     // Raw rows never live 30 days (they are folded at 48 hours), so only summaries expire here.
     env.DB.prepare(`DELETE FROM hist_vm WHERE res = ${SUMMARY_RES} AND t < ?1`).bind(expiry),
     env.DB.prepare(`DELETE FROM hist_client WHERE res = ${SUMMARY_RES} AND t < ?1`).bind(expiry),
+    env.DB.prepare(`DELETE FROM hist_fw WHERE res = ${SUMMARY_RES} AND t < ?1`).bind(expiry),
     env.DB.prepare("DELETE FROM hist_drops WHERE t < ?1").bind(expiry),
   ]);
 }
@@ -286,6 +344,38 @@ export async function readVmHistory(env: Env, range: HistoryRange, now: Date): P
     latest: [...rows].reverse().find((p) => p.received > 0)?.t ?? null,
     availability: { expected, received, pct: expected ? Math.round((received / expected) * 1000) / 10 : null },
   };
+}
+
+export interface RulePoint {
+  t: string;
+  packets: number;
+  bytes: number;
+}
+
+export interface RuleHistory {
+  range: HistoryRange;
+  step: number;
+  from: string;
+  to: string;
+  points: RulePoint[];
+  latest: string | null;
+}
+
+/** A firewall counter key: "r<id>" for a rule, "default", or "f<id>" for a published port. */
+export const RULE_KEY = /^(?:r[1-9]\d{0,9}|f[1-9]\d{0,9}|default)$/;
+
+/** One firewall counter's hits for a range. No point in a step means it matched nothing then (no data is not zero). */
+export async function readRuleHistory(env: Env, rule: string, range: HistoryRange, now: Date): Promise<RuleHistory> {
+  const { step, from, to } = window(range, now);
+  const rows = (
+    await env.DB.prepare(
+      `SELECT ${POINT} AS t, SUM(packets) AS packets, SUM(bytes) AS bytes
+       FROM hist_fw WHERE res IN (${RAW_RES}, ${SUMMARY_RES}) AND t >= ?1 AND t <= ?2 AND rule = ?4 GROUP BY 1 ORDER BY 1`,
+    )
+      .bind(from, to, step, rule)
+      .all<RulePoint>()
+  ).results;
+  return { range, step, from, to, points: rows, latest: rows.at(-1)?.t ?? null };
 }
 
 /** One client's history for a range. No point in a step means the client was idle and offline then. */
