@@ -25,13 +25,14 @@ describe("AppShell", () => {
     ["/firewall", "Firewall"],
     ["/firewall/rules/7", "Firewall"],
     ["/activity", "Activity"],
-    ["/activity/runs/12", "Activity"],
+    ["/activity/runs/run-42", "Activity"],
     ["/settings", "Settings"],
     ["/settings/profiles", "Settings"],
   ])("marks exactly the right tab as current at %s", (url, current) => {
     renderApp(url);
-    const nav = screen.getByRole("navigation", { name: "Main" });
-    const marked = within(nav).getAllByRole("link", { current: "page" });
+    // hidden: the run route opens a modal drawer, which hides the shell from the accessibility tree.
+    const nav = screen.getByRole("navigation", { name: "Main", hidden: true });
+    const marked = within(nav).getAllByRole("link", { current: "page", hidden: true });
     expect(marked.map((l) => l.textContent)).toEqual([current]);
   });
 
@@ -42,7 +43,7 @@ describe("AppShell", () => {
     expect(marked.map((l) => l.textContent)).toEqual(["Firewall"]);
   });
 
-  it("renders a placeholder page with its title inside the shell", () => {
+  it("renders the not-found placeholder with its title inside the shell", () => {
     renderApp("/nowhere");
     const main = screen.getByRole("main");
     expect(within(main).getByRole("heading", { level: 1, name: "Not found" })).toBeInTheDocument();
@@ -50,11 +51,21 @@ describe("AppShell", () => {
   });
 
   it.each([
-    ["/activity/runs/12", "Run 12"],
+    ["/clients/1", "Clients"],
     ["/settings/profiles", "Settings"],
-  ])("has a placeholder for the detail route %s", (url, title) => {
+  ])("renders the detail route %s as its view inside the shell", async (url, title) => {
     renderApp(url);
-    expect(within(screen.getByRole("main")).getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
+    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: title })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["/activity/runs/run-42", /Run/],
+    ["/firewall/rules/7", /Allow DNS to resolver/],
+  ])("renders %s as a modal drawer over the shell", async (url, drawer) => {
+    renderApp(url);
+    expect(await screen.findByRole("dialog", { name: drawer })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Main", hidden: true })).toBeInTheDocument();
   });
 
   it("lets a keyboard user tab through every tab and activate one with Enter", async () => {
