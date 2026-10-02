@@ -141,7 +141,10 @@ describe("connection indicator and banner", () => {
 
 describe("session expired", () => {
   it("replaces the page with Session expired, sign in again on an opaque redirect", async () => {
-    renderApp("/clients", { routes: { "GET /api/v1/overview": { opaqueRedirect: true }, "GET /api/v1/session": { opaqueRedirect: true } } });
+    // An expired sign-in redirects every API call, the Clients page's own included.
+    renderApp("/clients", {
+      routes: { "GET /api/v1/overview": { opaqueRedirect: true }, "GET /api/v1/session": { opaqueRedirect: true }, "GET /api/v1/clients": { opaqueRedirect: true } },
+    });
     const main = screen.getByRole("main");
     expect(await within(main).findByRole("heading", { name: "Session expired, sign in again" })).toBeInTheDocument();
     expect(within(main).getByRole("button", { name: "Sign in" })).toBeInTheDocument();

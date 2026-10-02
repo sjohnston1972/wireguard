@@ -7,6 +7,54 @@ import type { PillStatus, SortState, Tone } from "@/components";
 export type Client = ClientsResponse["clients"][number];
 export type ClientsConfig = ClientsResponse["config"];
 
+// ── The answer, made whole ──
+
+/**
+ * /clients with every list and count present. The Worker always sends them;
+ * this keeps the page standing on a partial answer (an older Worker, the
+ * shell's small test fixtures) instead of throwing. Counts left out are
+ * worked out from the list, as the Worker does.
+ */
+export function wholeAnswer(d: ClientsResponse): ClientsResponse {
+  const clients = (d.clients ?? []).map(
+    (c: Partial<Client>) =>
+      ({
+        public_key: "",
+        enabled: 1,
+        full_tunnel: 0,
+        status: "headend_down",
+        live: null,
+        latency: [],
+        lastLatencyMs: null,
+        allowedIps: [],
+        siteRoutes: [],
+        ip6: null,
+        expired: false,
+        stale: false,
+        expiresSoon: false,
+        isSite: false,
+        roam: null,
+        ...c,
+      }) as Client,
+  );
+  const lat = clients.map((c) => c.lastLatencyMs).filter((x): x is number => x !== null);
+  return {
+    ...d,
+    clients,
+    kpis: d.kpis ?? {
+      total: clients.length,
+      online: clients.filter((c) => c.status === "online").length,
+      avgLatencyMs: lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : null,
+      fullTunnel: clients.filter((c) => c.full_tunnel).length,
+      stale: clients.filter((c) => c.stale).length,
+      expiringSoon: clients.filter((c) => c.expiresSoon).length,
+    },
+    config: d.config ?? { subnet: "", subnet6: "", loopbackIp: "", vnetCidr: "", homeLanCidr: "", dnsName: "", port: 51820 },
+    talkers: d.talkers ?? [],
+    trafficHist: d.trafficHist ?? [],
+  };
+}
+
 // ── Status ──
 
 export interface StatusWord {

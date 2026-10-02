@@ -11,7 +11,7 @@ import "./ClientsPhone.css";
  * The phone composition (spec 9): one line per device (a light, the name,
  * the latency or the state); a tap opens the client's panel as a bottom sheet.
  */
-export function ClientsPhone({ data, selectedId, h }: { data: ClientsResponse; selectedId: number | null; h: ClientHandlers }) {
+export function ClientsPhone({ data, selectedId, rawId, h }: { data: ClientsResponse; selectedId: number | null; rawId: string | null; h: ClientHandlers }) {
   const selected = selectedId === null ? null : data.clients.find((c) => c.id === selectedId) ?? null;
   const online = data.kpis.online;
   return (
@@ -38,7 +38,7 @@ export function ClientsPhone({ data, selectedId, h }: { data: ClientsResponse; s
           );
         })}
       </ul>
-      {selectedId !== null && <ClientPanel id={selectedId} client={selected} data={data} h={h} />}
+      {rawId !== null && <ClientPanel id={rawId} client={selected} data={data} h={h} />}
     </>
   );
 }

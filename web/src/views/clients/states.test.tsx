@@ -32,6 +32,22 @@ describe("Clients states (spec 10)", { timeout: 20_000 }, () => {
     expect(calls).toBe(2);
   });
 
+  it("stands on a partial answer: bare clients, no counts", async () => {
+    renderApp("/clients/1?action=add", {
+      routes: { ...clientRoutes(), "GET /api/v1/clients": { now: "2026-10-02T12:00:00.000Z", running: true, clients: [{ id: 1, name: "laptop", ip: "10.13.13.2" }] } },
+    });
+    expect(await screen.findByRole("dialog", { name: "Add client" })).toBeInTheDocument();
+    const t = screen.getByRole("table", { name: "Clients", hidden: true });
+    expect(within(t).getByText("laptop")).toBeInTheDocument();
+    expect(within(t).getByText("Unknown")).toBeInTheDocument();
+  });
+
+  it("an address that is not a client says so", async () => {
+    renderApp("/clients/abc", { routes: clientRoutes() });
+    const p = await screen.findByRole("complementary", { name: "Client abc" });
+    expect(within(p).getByText("No such client")).toBeInTheDocument();
+  });
+
   it("says what is empty and offers the next action", async () => {
     const user = userEvent.setup();
     renderApp("/clients", { routes: { ...clientRoutes(), "GET /api/v1/clients": clientsResponse({ clients: [], kpis: { total: 0, online: 0, avgLatencyMs: null, fullTunnel: 0, stale: 0, expiringSoon: 0 } }) } });

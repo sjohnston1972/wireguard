@@ -5,7 +5,7 @@ import { useClients, useOverview } from "@/api/queries";
 import { useEditClient } from "@/api/mutations";
 import { Button, EmptyState, ErrorState, IconButton, PageHeader, Panel, Skeleton, useIsPhone, type RowAction } from "@/components";
 import { EnvironmentField, regionLabel } from "@/shell/StateChip";
-import type { Client } from "./model";
+import { wholeAnswer, type Client } from "./model";
 import { ClientsDesktop } from "./ClientsDesktop";
 import { ClientsPhone } from "./ClientsPhone";
 import { AddClientWizard } from "./AddClientWizard";
@@ -41,7 +41,10 @@ export function ClientsScreen() {
   const navigate = useNavigate();
   const params = useParams();
   const [search, setSearch] = useSearchParams();
-  const selectedId = params.id ? Number(params.id) : null;
+  // /clients/:id opens that client; an id that is not a number opens "No such client".
+  const rawId = params.id ?? null;
+  const selectedId = rawId !== null && /^\d+$/.test(rawId) ? Number(rawId) : rawId !== null ? -1 : null;
+  const data = useMemo(() => (q.data ? wholeAnswer(q.data) : undefined), [q.data]);
   const edit = useEditClient();
 
   // ?action=add (the command palette) opens the wizard once; closing it drops the parameter.
@@ -107,7 +110,7 @@ export function ClientsScreen() {
         <ErrorState title="Could not load the clients" message={q.error.message} onRetry={() => void q.refetch()} />
       </Panel>
     );
-  else if (q.data.clients.length === 0)
+  else if (data!.clients.length === 0)
     body = (
       <Panel className="clients__state">
         <EmptyState
@@ -118,14 +121,14 @@ export function ClientsScreen() {
         />
       </Panel>
     );
-  else if (phone) body = <ClientsPhone data={q.data} selectedId={selectedId} h={handlers} />;
-  else body = <ClientsDesktop data={q.data} selectedId={selectedId} h={handlers} />;
+  else if (phone) body = <ClientsPhone data={data!} selectedId={selectedId} rawId={rawId} h={handlers} />;
+  else body = <ClientsDesktop data={data!} selectedId={selectedId} rawId={rawId} h={handlers} />;
 
   return (
     <section className="clients" aria-label="Clients">
       {header}
       {body}
-      {dialog.kind === "add" && q.data && <AddClientWizard config={q.data.config} onClose={close} />}
+      {dialog.kind === "add" && data && <AddClientWizard config={data.config} onClose={close} />}
       {dialog.kind === "rekey" && <RekeyDialog client={dialog.client} onClose={close} />}
       {dialog.kind === "delete" && (
         <DeleteDialog

@@ -23,7 +23,7 @@ import { HBarList } from "./LowerRow";
 import type { ClientHandlers } from "./ClientsScreen";
 import "./ClientPanel.css";
 
-type Props = { id: number; client: Client | null; data: ClientsResponse; h: ClientHandlers };
+type Props = { id: string; client: Client | null; data: ClientsResponse; h: ClientHandlers };
 
 /** The split-view details for one client (Clients mockup, region 5); a bottom sheet on the phone. */
 export function ClientPanel({ id, client, data, h }: Props) {

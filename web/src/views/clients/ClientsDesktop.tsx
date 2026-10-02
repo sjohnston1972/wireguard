@@ -13,7 +13,7 @@ const DEFAULT_SORT: SortState = { key: "name", dir: "asc" };
 const sortValue = (s: SortState | null) => (s ? `${s.key}:${s.dir}` : "");
 
 /** The desktop and tablet composition (Clients mockup regions 2-6). */
-export function ClientsDesktop({ data, selectedId, h }: { data: ClientsResponse; selectedId: number | null; h: ClientHandlers }) {
+export function ClientsDesktop({ data, selectedId, rawId, h }: { data: ClientsResponse; selectedId: number | null; rawId: string | null; h: ClientHandlers }) {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortState | null>(DEFAULT_SORT);
@@ -36,7 +36,7 @@ export function ClientsDesktop({ data, selectedId, h }: { data: ClientsResponse;
   return (
     <SplitView
       className="clients__split"
-      panel={selectedId !== null && <ClientPanel id={selectedId} client={selected} data={data} h={h} />}
+      panel={rawId !== null && <ClientPanel id={rawId} client={selected} data={data} h={h} />}
     >
       <div className="clients__main">
         <KpiTiles kpis={data.kpis} filter={filter} onFilter={setFilter} />
