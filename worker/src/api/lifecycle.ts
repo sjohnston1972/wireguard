@@ -31,7 +31,7 @@ export function parseHours(v: unknown): number | null | "invalid" {
 const HOURS_PROBLEM = "Hours must be a number from 0 (no limit) to 168.";
 
 /** Run an action, answer its message, and count the press as having read the notes. */
-async function act(c: Context<ApiEnv>, fn: () => Promise<string>) {
+export async function act(c: Context<ApiEnv>, fn: () => Promise<string>) {
   try {
     const out: ApiOk = { ok: true, message: await fn() };
     return c.json(out);

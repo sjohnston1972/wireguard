@@ -129,6 +129,14 @@ export interface World {
   logs: Map<number, string>;
   /** Test-only: when set, GitHub answers the jobs call with this status instead of the jobs. */
   ghFail?: number;
+  /**
+   * Test-only: Azure's actual cost, one row per day, service and location.
+   * When set, Cost Management answers the plain daily query with each day's
+   * total and the grouped query with these rows. Unset: both answer empty.
+   */
+  costRows?: { day: string; service: string; location: string; gbp: number }[];
+  /** Test-only: when set, the grouped cost query (by service and location) answers with this status. */
+  costGroupedFail?: number;
 }
 
 export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World } {
@@ -207,6 +215,17 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
       if (vmOp && method === "POST") {
         world.powerCalls.push(vmOp[1]);
         return new Response(null, { status: 202 });
+      }
+      if (world.costRows && u.pathname.includes("CostManagement")) {
+        const grouped = JSON.parse(String(init?.body ?? "{}"))?.dataset?.grouping?.length > 0;
+        const d = (day: string) => Number(day.replace(/-/g, ""));
+        if (!grouped) {
+          const totals = new Map<string, number>();
+          for (const r of world.costRows) totals.set(r.day, (totals.get(r.day) ?? 0) + r.gbp);
+          return json({ properties: { columns: [{ name: "Cost" }, { name: "UsageDate" }, { name: "Currency" }], rows: [...totals].map(([day, gbp]) => [gbp, d(day), "GBP"]) } });
+        }
+        if (world.costGroupedFail) return json({}, world.costGroupedFail);
+        return json({ properties: { columns: [{ name: "Cost" }, { name: "UsageDate" }, { name: "ServiceName" }, { name: "ResourceLocation" }, { name: "Currency" }], rows: world.costRows.map((r) => [r.gbp, d(r.day), r.service, r.location, "GBP"]) } });
       }
       if (!world.azure.rg) return json({}, 404);
       if (/resourceGroups\/[^/]+$/.test(u.pathname)) return json({ location: "uksouth", tags: {} });

@@ -28,19 +28,26 @@ export function registerActivity(api: Hono<ApiEnv>): void {
     const page = Math.max(1, Math.min(1000, Number(c.req.query("page")) || 1));
     const now = Date.now();
     const since = new Date(now - ACTIVITY_RANGE_MS[range]).toISOString();
-    const [runs, notes, inRangeChanges, rows, cfg] = await Promise.all([
+    // The equally long period just before, for the "vs yesterday" figures: [before, since).
+    const before = new Date(now - 2 * ACTIVITY_RANGE_MS[range]).toISOString();
+    const [runs, notes, inRangeChanges, rows, cfg, prevRuns, prevNotes, prevChanges] = await Promise.all([
       c.env.DB.prepare("SELECT * FROM runs WHERE requested_at >= ?1 ORDER BY requested_at DESC").bind(since).all<db.Run>().then((r) => r.results),
       c.env.DB.prepare("SELECT * FROM alerts WHERE at >= ?1 ORDER BY at DESC").bind(since).all<db.Alert>().then((r) => r.results),
       // The change log keeps at most 1000 entries (db.pruneAudit), so this read is bounded.
       c.env.DB.prepare("SELECT * FROM audit WHERE at >= ?1 ORDER BY at DESC, id DESC").bind(since).all<db.AuditEntry>().then((r) => r.results),
       db.listAudit(c.env, { kind, q, limit: AUDIT_PAGE, offset: (page - 1) * AUDIT_PAGE }),
       effectiveConfig(c.env),
+      c.env.DB.prepare("SELECT * FROM runs WHERE requested_at >= ?1 AND requested_at < ?2").bind(before, since).all<db.Run>().then((r) => r.results),
+      c.env.DB.prepare("SELECT * FROM alerts WHERE at >= ?1 AND at < ?2").bind(before, since).all<db.Alert>().then((r) => r.results),
+      c.env.DB.prepare("SELECT * FROM audit WHERE at >= ?1 AND at < ?2").bind(before, since).all<db.AuditEntry>().then((r) => r.results),
     ]);
     // KPIs and the timeline count every row in the range; only the lists sent back are capped (newest first).
     const out: ActivityResponse = {
       range,
       now: new Date(now).toISOString(),
       kpis: activityKpis(runs, notes, inRangeChanges, range, now),
+      // The same figures as if "now" were one range ago: the window [now - 2 ranges, now - 1 range].
+      previous: activityKpis(prevRuns, prevNotes, prevChanges, range, now - ACTIVITY_RANGE_MS[range]),
       timeline: timeline(eventsOf(runs, notes, inRangeChanges), range, now),
       runs: runs.slice(0, RANGE_CAP).map((r) => runRow(r, runs, cfg, now)),
       notes: notes.slice(0, RANGE_CAP),

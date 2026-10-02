@@ -106,7 +106,7 @@ describe("GET /firewall", () => {
     expect(r.json.rules.slice(seeded).map((x: { name: string; place: number }) => [x.name, x.place])).toEqual([["Clients to web", seeded + 1], ["Block", seeded + 2]]);
     expect(r.json.rules.map((x: { place: number }) => x.place)).toEqual(r.json.rules.map((_: unknown, i: number) => i + 1));
     expect(r.json.rules[seeded]).toMatchObject({ service: "TCP 8080", hits: null, lastHit: null, problem: null, toLabel: "Workloads subnet", fromLabel: "Anywhere" });
-    expect(r.json.drops).toEqual({ recent: [], last24h: 0 });
+    expect(r.json.drops).toEqual({ recent: [], last24h: 0, uniqueSources24h: 0, previous24h: 0, hourly24h: Array(24).fill(null) }); // the VM never ran: no data, not 0
     expect(r.json.zones.map((z: { zone: string }) => z.zone)).toEqual(["clients", "home", "azure", "workloads", "internet"]);
     expect(r.json.kpis).toEqual({ rules: seeded + 2, enabled: seeded + 2, defaultAction: "deny", drops24h: 0, published: 0, captureBusy: false });
     expect(r.json.capture.ifaces).toHaveProperty("wg0");

@@ -15,7 +15,7 @@ import { getSnapshot } from "../state";
 import { effectiveConfig } from "../settings";
 import { clearFirewallCounters } from "../runs";
 import { compileFirewall, endLabel, serviceLabel, zoneAddrs, checkForward, ZONE_LABEL, CAPTURE_IFACES, type Zone, type Forward } from "../firewall";
-import { policyState, totalHits, dropsSince } from "../fwview";
+import { policyState, totalHits, dropsSince, dropStats24h, fwHitsLast24h, vmUpHours24h, onlyWhenUp, isStarterRule } from "../fwview";
 import { syncPublished } from "../published";
 import { startCapture, captureFilter, validFilter } from "../capture";
 import type { ApiOk, FirewallResponse } from "../../../shared/api";
@@ -49,7 +49,12 @@ export function registerFirewall(api: Hono<ApiEnv>): void {
     const fw = await compileFirewall(rules, cfg, peers, cfg.firewallDefault, forwards);
     const ps = policyState(snap, fw.hash);
     const now = Date.now();
-    const last24h = await dropsSince(c.env, new Date(now - DAY_MS).toISOString());
+    const [last24h, dropStats, fwHits, up] = await Promise.all([dropsSince(c.env, new Date(now - DAY_MS).toISOString()), dropStats24h(c.env, now), fwHitsLast24h(c.env, now), vmUpHours24h(c.env, now)]);
+    const flat = Array<number>(24).fill(0);
+    // null when nothing at all was recorded; 0 when history exists but this counter did not match.
+    const hits = (key: string) => (fwHits ? (fwHits[key]?.packets ?? 0) : null);
+    // [] when nothing at all was recorded; otherwise 24 hours with the hours the VM was down as null.
+    const trend = (key: string) => (fwHits ? onlyWhenUp(fwHits[key]?.trend ?? flat, up) : []);
     const lastHit = snap.firewall?.last_hit ?? {};
     const who = (ip: string) => peers.find((p) => p.ip === ip)?.name ?? ip;
     const out: FirewallResponse = {
@@ -66,11 +71,16 @@ export function registerFirewall(api: Hono<ApiEnv>): void {
         hits: totalHits(snap, `r${r.id}`),
         lastHit: lastHit[`r${r.id}`] ?? null,
         problem: fw.problems[r.id] ?? null,
+        hits24h: hits(`r${r.id}`),
+        trend24h: trend(`r${r.id}`),
+        starter: isStarterRule(r),
       })),
       defaultHits: totalHits(snap, "default"),
+      defaultHits24h: hits("default"),
+      defaultTrend24h: trend("default"),
       defaultLastHit: lastHit.default ?? null,
       countersClearedAt: snap.fw_cleared_at,
-      drops: { recent: (snap.firewall?.drops ?? []).map((d) => ({ at: d.at, src: d.src, dst: d.dst, proto: d.proto, dport: d.dport, fromName: who(d.src), toName: who(d.dst) })), last24h },
+      drops: { recent: (snap.firewall?.drops ?? []).map((d) => ({ at: d.at, src: d.src, dst: d.dst, proto: d.proto, dport: d.dport, fromName: who(d.src), toName: who(d.dst) })), last24h, uniqueSources24h: dropStats.uniqueSources, previous24h: dropStats.previous, hourly24h: onlyWhenUp(dropStats.hourly, up) },
       zones: (Object.keys(ZONE_LABEL) as Zone[]).map((z) => {
         const a = zoneAddrs(z, cfg);
         return { zone: z, label: ZONE_LABEL[z], v4: a.v4, v6: a.v6, negate: !!a.negate };
