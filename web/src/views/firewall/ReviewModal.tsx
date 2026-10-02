@@ -61,7 +61,7 @@ export function ReviewModal({ draft, open, onOpenChange, onApplied }: ReviewModa
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" loading={apply.isPending} disabled={apply.isPending} onClick={() => apply.mutate({ baseVersion: draft.baseVersion }, { onSuccess: () => onApplied() })}>
+          <Button variant="primary" loading={apply.isPending} disabled={apply.isPending || draft.stale} onClick={() => apply.mutate({ baseVersion: draft.baseVersion }, { onSuccess: () => onApplied() })}>
             Apply {label}
           </Button>
         </>

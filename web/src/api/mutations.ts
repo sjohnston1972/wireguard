@@ -44,6 +44,8 @@ interface Config<V, R> {
   invalidate: QueryKey[];
   /** The success toast text; defaults to the response's `message`. Return null for none. */
   message?: (res: R, v: V) => string | null;
+  /** Query keys to refresh after a failure that says the shown data is out of date (for example a 409). */
+  invalidateOnError?: (err: Error) => QueryKey[];
 }
 
 export function useApiMutation<V = void, R = ApiOk>(cfg: Config<V, R>): ApiMutation<V, R> {
@@ -59,6 +61,7 @@ export function useApiMutation<V = void, R = ApiOk>(cfg: Config<V, R>): ApiMutat
       for (const key of cfg.invalidate) void qc.invalidateQueries({ queryKey: key });
     },
     onError: (err) => {
+      for (const key of cfg.invalidateOnError?.(err) ?? []) void qc.invalidateQueries({ queryKey: key });
       // The sign-in screen already says so; a field error is shown by its form.
       if (err instanceof SessionExpiredError) return;
       // Writes are never re-sent by themselves, so say plainly that this one was not sent.
@@ -151,7 +154,14 @@ export const useDraftDefault = () => useApiMutation<DraftDefaultBody>({ method: 
 export const useDraftFromDrop = () => useApiMutation<DraftFromDropBody>({ method: "POST", path: "/firewall/draft/from-drop", body: (v) => v, invalidate: DRAFT });
 /** 409 (ApiError.status) when the live rules changed since the draft began; 422 field "rules" for a broken rule. */
 export const useDraftApply = () =>
-  useApiMutation<DraftApplyBody>({ method: "POST", path: "/firewall/draft/apply", body: (v) => v, invalidate: [["firewall"], ["overview"], ["activity"]] });
+  useApiMutation<DraftApplyBody>({
+    method: "POST",
+    path: "/firewall/draft/apply",
+    body: (v) => v,
+    invalidate: [["firewall"], ["overview"], ["activity"]],
+    // A stale draft: fetch the firewall at once, so the page shows the draft as out of date.
+    invalidateOnError: (err) => (err instanceof ApiError && err.status === 409 ? [["firewall"]] : []),
+  });
 export const useDraftDiscard = () => useApiMutation({ method: "DELETE", path: "/firewall/draft", invalidate: DRAFT });
 
 // ── Settings, profiles, schedules, lock ──

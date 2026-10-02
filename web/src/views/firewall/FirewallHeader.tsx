@@ -1,4 +1,4 @@
-import { Check, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Check, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import type { FirewallResponse } from "@shared/api";
 import { Button, DataAge, Modal, cx } from "@/components";
@@ -51,9 +51,15 @@ export function DraftBar({ fw, onReview, className, pinned }: { fw: FirewallResp
   return (
     <div className={cx("fw-draftbar", className)} role="region" aria-label="Unpublished changes" data-pinned={pinned ? "bottom" : undefined}>
       <span className="fw-draftbar__count">
-        <span className="fw-draftbar__dot" aria-hidden />
+        <span className={cx("fw-draftbar__dot", fw.draft.stale && "fw-draftbar__dot--stale")} aria-hidden />
         {words}
       </span>
+      {fw.draft.stale && (
+        <span className="fw-draftbar__stale" role="note">
+          <AlertTriangle size={14} aria-hidden />
+          <span>Draft out of date: the live rules changed since it began. Discard it, or review what it would change.</span>
+        </span>
+      )}
       <Button onClick={() => setAsking(true)}>Discard changes</Button>
       <Button variant="primary" icon={<Check size={15} aria-hidden />} onClick={onReview}>
         Review &amp; apply

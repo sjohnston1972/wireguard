@@ -32,6 +32,9 @@
 .fw-draftbar { display: flex; align-items: center; gap: 10px; }
 .fw-draftbar__count { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 550; color: var(--amber); white-space: nowrap; }
 .fw-draftbar__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
+.fw-draftbar__dot--stale { background: var(--red); }
+.fw-draftbar__stale { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 300px; font-size: 12px; line-height: 1.35; color: var(--text-primary); }
+.fw-draftbar__stale svg { flex: none; margin-top: 1px; color: var(--amber); }
 
 @media (max-width: 1099px) {
   .fw-head { flex-wrap: wrap; }

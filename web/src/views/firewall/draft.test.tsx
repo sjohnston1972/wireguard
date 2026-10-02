@@ -138,6 +138,43 @@ describe("the draft", () => {
     expect(policy()).not.toHaveTextContent("Waiting for VM");
   });
 
+  it("a 409 on apply refreshes the firewall at once, then Apply is disabled and the draft bar says the draft is out of date", async () => {
+    let stale = false;
+    const { fetchMock } = renderApp("/firewall", {
+      routes: {
+        "GET /api/v1/firewall": () => firewallData({ draft: draftData({ stale }) }),
+        "POST /api/v1/firewall/draft/apply": () => {
+          stale = true;
+          return { status: 409, json: { error: { code: "conflict", message: STALE } } };
+        },
+      },
+    });
+    fireEvent.click(within(await draftBar()).getByRole("button", { name: "Review & apply" }));
+    const dialog = await screen.findByRole("dialog");
+    const gets = fetchMock!.callsTo("GET", "/api/v1/firewall").length;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply 2 changes" }));
+    await waitFor(() => expect(fetchMock!.callsTo("GET", "/api/v1/firewall").length).toBeGreaterThan(gets));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Apply 2 changes" })).toBeDisabled());
+    expect(within(dialog).getAllByRole("alert").map((a) => a.textContent).join(" ")).toContain(STALE);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const bar = await draftBar();
+    expect(bar).toHaveTextContent(/out of date/i);
+    expect(bar).toHaveTextContent(/discard/i);
+  });
+
+  it("a stale draft: Apply is disabled and the draft bar says what to do", async () => {
+    const { fetchMock } = renderApp("/firewall", { routes: { "GET /api/v1/firewall": () => firewallData({ draft: draftData({ stale: true }) }) } });
+    const bar = await draftBar();
+    expect(bar).toHaveTextContent("Draft out of date: the live rules changed since it began. Discard it, or review what it would change.");
+    fireEvent.click(within(bar).getByRole("button", { name: "Review & apply" }));
+    const dialog = await screen.findByRole("dialog");
+    const apply = within(dialog).getByRole("button", { name: "Apply 2 changes" });
+    expect(apply).toBeDisabled();
+    fireEvent.click(apply);
+    expect(fetchMock!.callsTo("POST", "/api/v1/firewall/draft/apply")).toHaveLength(0);
+  });
+
   it("a 422 for a broken rule is shown in the modal", async () => {
     renderApp("/firewall", {
       routes: {
