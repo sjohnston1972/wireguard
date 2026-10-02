@@ -15,10 +15,11 @@ export interface ApiError {
   error: { code: string; message: string; field?: string };
 }
 
-/** Every action that worked. `message` is fit to show as-is. */
+/** Every action that worked. `message` is fit to show as-is; `warning` says what only half worked (saved, but Azure refused). */
 export interface ApiOk {
   ok: true;
   message: string;
+  warning?: string;
 }
 
 /** GET /api/v1/session */

@@ -10,6 +10,8 @@ import type { Env } from "./env";
 import type { Peer } from "./db";
 import * as db from "./db";
 import { effectiveConfig } from "./settings";
+import { no, type Done, type Refusal } from "./result";
+export type { Done, Refusal };
 import type { AgentPeer, Roam, Snapshot } from "./state";
 import { peerOnline } from "./state";
 import { clientAllowedIps, peerExpired, peerStale, peerIp6, validPeerName, isWgKey, serverPublicKey, nextFreeIp, clientConfigTemplate, expiryFrom, EXPIRY_DAYS } from "./peers";
@@ -94,11 +96,6 @@ export function clientKpis(views: ClientView[]): ClientKpis {
   };
 }
 
-/** A refusal fit for the screen, with the status the API answers. */
-export type Refusal = { ok: false; status: 400 | 404 | 409 | 503; code: string; message: string; field?: string };
-export type Done<T> = { ok: true; value: T } | Refusal;
-
-const no = (status: Refusal["status"], code: string, message: string, field?: string): Refusal => ({ ok: false, status, code, message, ...(field ? { field } : {}) });
 const NAME_RULE = "Name: letters, digits, spaces, dashes; up to 32 characters.";
 const KEY_RULE = "That is not a valid WireGuard public key.";
 
