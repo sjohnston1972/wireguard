@@ -24,7 +24,7 @@ import { startHibernate, startResume, refreshPower } from "./standby";
 import { consumeAction, dashboardButton } from "./actions";
 import { notify, ntfyParts, lastNotifyError } from "./notify";
 import { REGIONS, regionName, whereFrom } from "./region";
-import { startMove } from "./profiles";
+import { startMove, resolveDeployTarget } from "./profiles";
 import { startSpeedTest } from "./speedtest";
 import { nextStart, validRule } from "./schedule-time";
 import { setSshAllowedCidr } from "./azure";
@@ -321,17 +321,10 @@ app.post("/actions/deploy", async (c) => {
   const choice = String(form.choice ?? (form.region ? `r:${form.region}` : ""));
   const user = c.get("user");
   return action(c, async () => {
-    let region: string | undefined, vmSize: string | undefined, profile: string | null = null;
-    if (choice.startsWith("p:")) {
-      const p = await db.getProfile(c.env, Number(choice.slice(2)));
-      if (!p) throw new RunError("No such profile.");
-      ({ region, vm_size: vmSize } = p);
-      profile = p.name;
-    } else if (choice.startsWith("r:")) {
-      region = choice.slice(2);
-      // hasOwn, not "in": "in" would also accept built-in names like "constructor".
-      if (!Object.hasOwn(REGIONS, region)) throw new RunError("Unknown region.");
-    }
+    const { region, vmSize, profile } = await resolveDeployTarget(c.env, {
+      profileId: choice.startsWith("p:") ? Number(choice.slice(2)) : null,
+      region: choice.startsWith("r:") ? choice.slice(2) : null,
+    });
     await requireBudgetOk(c.env, form[OVER_BUDGET_FIELD] === "yes");
     const run = await startDeploy(c.env, { hours: hours > 0 ? hours : null, requesterIp: ip(c), requestedBy: user, region, vmSize, profile });
     return `Deploy started${profile ? `: ${profile}` : ""} in ${regionName(region ?? (await effectiveConfig(c.env)).region)} (${run.id}). About 4 minutes.`;
