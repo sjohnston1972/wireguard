@@ -12,10 +12,9 @@ export default mergeConfig(
       setupFiles: ["./src/test/setup.ts"],
       css: false,
       unstubGlobals: true,
-      // Shell tests render the whole app (the shell plus a real view, e.g. the
-      // Overview with all its panels) and walk journeys across views: about 2-4 s
-      // alone, more when every file runs in parallel. 5 s timed them out under load.
-      testTimeout: 20_000,
+      // Vitest's default 5 s per test. Only the suites that render the whole app
+      // and walk journeys through it (the view folders' test setups, the command
+      // palette) raise their own limit, so a slow or hanging unit test still fails fast.
     },
   }),
 );
