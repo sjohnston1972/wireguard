@@ -58,7 +58,7 @@ export function OverviewSection({ s, ov, updated }: { s: SettingsResponse; ov?: 
   const state = snap?.state;
 
   return (
-    <div className="set-stack">
+    <div className="set-stack set-stack--overview">
       <section className="set-banner" aria-label="Settings overview">
         <span className="set-banner__icon" aria-hidden>
           <Cog size={34} />

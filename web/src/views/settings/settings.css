@@ -1,5 +1,7 @@
-/* Settings view. Desktop (1100 px and up): the page never scrolls; the header
-   and section tabs stay put and the section body scrolls on its own. */
+/* Settings view. Desktop (1100 px and up): the page never scrolls and nothing
+   wraps it in a scroller: the header, the section tabs and the section fill the
+   window. A section's panels share its height; one that has more than its share
+   (a long form, the setup checklist) scrolls inside itself. */
 .settings {
   display: flex;
   flex-direction: column;
@@ -11,16 +13,68 @@
 .settings__body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  /* The containing block for visually hidden text inside the section: without it #main (position: relative) counts them past the end of this scroll area. */
+  display: flex;
+  flex-direction: column;
+  /* The containing block for visually hidden text inside the section: without it #main (position: relative) counts them past the end of the window. */
   position: relative;
-  /* room for the focus ring and the sticky unsaved bar */
-  padding: 14px 2px 2px;
-  margin: 0 -2px;
+  padding-top: 14px;
+}
+.settings__body > .set-stack { flex: 1; min-height: 0; }
+.set-row2 > .grid12__col { display: flex; flex-direction: column; min-height: 0; }
+.set-row2 > .grid12__col > .panel { flex: 1 1 auto; min-height: 0; }
+.set-row2 > .set-col > .panel:last-child { flex: none; }
+
+@media (min-width: 1100px) {
+  /* The overview: the banner, then two rows of cards sharing what it leaves. */
+  .settings__body > .set-stack--overview > .set-row2 { flex: 1 1 0; grid-template-rows: minmax(0, 1.05fr) minmax(0, 1fr); }
+  .set-row2 > .grid12__col > .panel > .panel__body { overflow: auto; }
+  /* The other sections: their panels in two columns. Each row takes its
+     content's height while there is room and gives some back when the window
+     is short; a panel with more than its share scrolls inside. */
+  .settings__body > .set-stack:not(.set-stack--overview) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, auto);
+    align-content: start;
+  }
+  .settings__body > .set-stack:not(.set-stack--overview) > * { min-height: 0; }
+  .settings__body > .set-stack:not(.set-stack--overview) > .set-two { display: contents; }
+  .settings__body > .set-stack > .set-lead,
+  .settings__body > .set-stack > .set-unsaved { grid-column: 1 / -1; }
+  .settings__body > .set-stack .panel { min-height: 0; }
+  /* visually hidden text inside a scrolling panel stays inside it (not past the end of the page) */
+  .settings__body .panel__body { position: relative; }
+  .settings__body > .set-stack:not(.set-stack--overview) .panel > .panel__body { overflow: auto; }
+  .settings .set-unsaved { position: static; }
 }
 @media (max-width: 1099px) {
   .settings { height: auto; }
-  .settings__body { overflow: visible; }
+  .settings__body { display: block; }
+}
+/* A narrower desktop: Region and VM size are in the cards below, so the header keeps to one line. */
+@media (min-width: 1100px) and (max-width: 1399px) {
+  .settings .set-hstat:not(.set-hstat--cost) { display: none; }
+  .settings .set-banner__icon { display: none; }
+  .settings .set-banner { gap: 14px; padding: 10px 14px; flex-wrap: nowrap; }
+  .settings .set-banner__text { flex: 1 1 auto; }
+  .settings .set-banner__light { padding: 0 12px; min-width: 0; }
+}
+/* A short window: a smaller header, and the overview's cards four to a row (the cost card and the deployment actions side by side). */
+@media (min-width: 1100px) and (max-height: 799px) {
+  .settings .page-header__subtitle { display: none; }
+  .settings__body { padding-top: 10px; }
+  .settings .set-tabs .tabs__list { padding: 6px; }
+  .settings .set-tabs .tabs__tab { height: 34px; }
+  .settings .set-banner__text p { margin: 0; }
+  .settings .set-banner__title { font-size: 16px; }
+  .set-row2 > .grid12__col { grid-column: span 3; }
+  .set-row2 > .set-col { display: contents; }
+  .set-row2 > .set-col > .panel { grid-column: span 3; min-height: 0; }
+  .set-row2 > .set-col > .panel > .panel__body { overflow: auto; }
+  .set-row2 .set-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .set-row2 .set-stat__value { font-size: 17px; }
+  .settings .panel__head { padding-top: 10px; }
+  .settings .panel__body { padding-top: 8px; }
 }
 
 .set-tabs { flex: none; }
@@ -52,7 +106,6 @@
 .set-col { display: flex; flex-direction: column; gap: var(--gap); }
 /* Row 2: the panels fill the row (no gap under the shorter ones); on a wide window
    the cost figures sit side by side, so the row is no taller than it needs. */
-.set-row2 > .grid12__col:not(.set-col) > .panel { height: 100%; }
 @media (min-width: 1400px) {
   .set-col .set-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
@@ -115,8 +168,9 @@
 
 /* checklist */
 .set-check { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.set-check li { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; font-size: 13px; }
-.set-check em { font-style: normal; font-size: 12px; text-align: right; }
+.set-check li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; font-size: 13px; }
+.set-check em { font-style: normal; font-size: 12px; text-align: right; white-space: nowrap; }
+.set-check__no em { grid-column: 2 / -1; text-align: left; white-space: normal; overflow-wrap: anywhere; font-size: 12px; }
 .set-check__ok svg, .set-check__ok em { color: var(--green); }
 .set-check__no svg, .set-check__no em { color: var(--amber); }
 .set-key { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 13px; margin-bottom: 10px; }
@@ -126,7 +180,7 @@
 .set-days__pill { padding: 3px 8px; border-radius: 999px; font-size: 11px; background: var(--bg-tile); border: 1px solid var(--border-strong); color: var(--text-secondary); }
 .set-days__pill--on { background: var(--blue-fill); border-color: var(--blue-fill); color: #fff; }
 
-/* unsaved changes: pinned to the bottom of whatever scrolls */
+/* unsaved changes: the last block of the section (below 1100 px, pinned to the bottom of the page) */
 .set-unsaved {
   position: sticky;
   bottom: 0;
