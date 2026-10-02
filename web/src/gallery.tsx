@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -44,6 +44,8 @@ import {
   SegmentedControl,
   Select,
   Sheet,
+  SidePanel,
+  SplitView,
   Skeleton,
   Sparkline,
   StackedBars,
@@ -157,7 +159,17 @@ function ToastButtons() {
 }
 
 /** Dev-only route /__gallery: every component in every state. Not built into production. */
+/** /__gallery#table or /__gallery?section=table opens at that section (for reviewers and screenshots). */
+function useScrollToHash() {
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("section") ?? decodeURIComponent(window.location.hash.replace(/^#/, ""));
+    const id = raw.replace(/[^\w-].*$/, "");
+    if (id) document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }, []);
+}
+
 export default function Gallery() {
+  useScrollToHash();
   const [range, setRange] = useState("1h");
   const [tab, setTab] = useState("all");
   const [days, setDays] = useState(["mon", "tue", "wed", "thu", "fri"]);
@@ -169,6 +181,8 @@ export default function Gallery() {
   const [sheet, setSheet] = useState(false);
   const [modal, setModal] = useState(false);
   const [selected, setSelected] = useState<string | null>("phone");
+  // Open beside the table on desktop; on the phone it would be a modal sheet over the whole gallery.
+  const [split, setSplit] = useState(() => !(typeof window.matchMedia === "function" && window.matchMedia("(max-width: 640px)").matches));
   const [brush, setBrush] = useState<string>("none");
   const [lines, setLines] = useState(() => mkLines(14));
 
@@ -407,26 +421,64 @@ export default function Gallery() {
           </Grid>
         </Section>
 
-        <Section id="table" title="Data table">
+        <Section id="table" title="Data table with the split-view panel">
+          <SplitView
+            className="g-split"
+            panel={
+              <SidePanel
+                open={split}
+                onClose={() => setSplit(false)}
+                title={CLIENTS.find((c) => c.id === selected)?.name ?? "Client"}
+                subtitle="10.13.13.3 · azure"
+                leading={<Smartphone size={22} aria-hidden />}
+                tabs={[
+                  {
+                    value: "overview",
+                    label: "Overview",
+                    content: (
+                      <KeyValue
+                        items={[
+                          { label: "Tunnel address", value: "10.13.13.3", copy: true, mono: true },
+                          { label: "Endpoint", value: "wg.clydeford.net:51820", copy: true, mono: true },
+                          { label: "Allowed IPs", value: "192.168.1.0/24", mono: true },
+                          { label: "Client type", value: "Standard client" },
+                        ]}
+                      />
+                    ),
+                  },
+                  { value: "config", label: "Configuration", content: <p className="g-muted">Configuration</p> },
+                  { value: "traffic", label: "Traffic", content: <p className="g-muted">Traffic</p> },
+                  { value: "activity", label: "Activity", content: <p className="g-muted">Activity</p> },
+                ]}
+                footer={
+                  <>
+                    <Button size="sm">Download .conf</Button>
+                    <Button size="sm" variant="danger">
+                      Delete client
+                    </Button>
+                  </>
+                }
+              />
+            }
+          >
+            <Panel title="Clients" flush status={<StatusPill status="healthy" variant="outline" />} actions={<DataAge at={Date.now() - 8000} />}>
+              <div className="g-table">
+                <DataTable
+                  aria-label="Clients"
+                  columns={clientColumns}
+                  rows={CLIENTS}
+                  rowKey={(r) => r.id}
+                  onRowClick={(r) => {
+                    setSelected(r.id);
+                    setSplit(true);
+                  }}
+                  selectedKey={selected}
+                  rowActions={(r) => [{ label: `Edit ${r.name}`, onSelect: () => {} }, { label: "Delete", danger: true, onSelect: () => {} }]}
+                />
+              </div>
+            </Panel>
+          </SplitView>
           <Grid>
-            <Col span={8}>
-              <Panel title="Clients" flush status={<StatusPill status="healthy" variant="outline" />} actions={<DataAge at={Date.now() - 8000} />}>
-                <div className="g-table">
-                  <DataTable
-                    aria-label="Clients"
-                    columns={clientColumns}
-                    rows={CLIENTS}
-                    rowKey={(r) => r.id}
-                    onRowClick={(r) => {
-                      setSelected(r.id);
-                      setDrawer(true);
-                    }}
-                    selectedKey={selected}
-                    rowActions={(r) => [{ label: `Edit ${r.name}`, onSelect: () => {} }, { label: "Delete", danger: true, onSelect: () => {} }]}
-                  />
-                </div>
-              </Panel>
-            </Col>
             <Col span={4}>
               <Panel title="Table states" flush>
                 <div className="g-table g-table--short">

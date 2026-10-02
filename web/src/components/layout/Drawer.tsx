@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { cx } from "../cx";
 import { useReturnFocus } from "./useReturnFocus";
+import { SidePanel } from "./SidePanel";
 import "./Drawer.css";
 
 export interface DrawerProps {
@@ -17,6 +18,12 @@ export interface DrawerProps {
   footer?: ReactNode;
   /** "right" is a ~420 px side drawer that becomes a bottom sheet below 640 px; "bottom" forces a sheet. */
   side?: "right" | "bottom";
+  /**
+   * "modal" (default): an overlay dialog. "inline": the non-modal split-view
+   * panel beside the page (see SidePanel; put it in a SplitView), which is
+   * still the modal bottom sheet on the phone.
+   */
+  mode?: "modal" | "inline";
   children?: ReactNode;
   className?: string;
 }
@@ -25,7 +32,19 @@ export interface DrawerProps {
  * Right-hand detail drawer. Radix Dialog gives focus trapping, Escape to close
  * and focus restore to the trigger. Below 640 px the CSS turns it into a bottom sheet.
  */
-export function Drawer({ open, onOpenChange, title, subtitle, leading, footer, side = "right", children, className }: DrawerProps) {
+export function Drawer(props: DrawerProps) {
+  if (props.mode === "inline") {
+    const { open, onOpenChange, title, subtitle, leading, footer, children, className } = props;
+    return (
+      <SidePanel open={open} onClose={() => onOpenChange(false)} title={title} subtitle={subtitle} leading={leading} footer={footer} className={className}>
+        {children}
+      </SidePanel>
+    );
+  }
+  return <ModalDrawer {...props} />;
+}
+
+function ModalDrawer({ open, onOpenChange, title, subtitle, leading, footer, side = "right", children, className }: DrawerProps) {
   const { onCloseAutoFocus } = useReturnFocus(open);
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>

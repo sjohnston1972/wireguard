@@ -6,6 +6,7 @@ export { Panel, type PanelProps } from "./layout/Panel";
 export { PageHeader, type PageHeaderProps } from "./layout/PageHeader";
 export { Grid, Col, type ColProps } from "./layout/Grid";
 export { Drawer, Sheet, type DrawerProps } from "./layout/Drawer";
+export { SidePanel, SplitView, useIsPhone, type SidePanelProps } from "./layout/SidePanel";
 export { Modal, type ModalProps } from "./layout/Modal";
 export { Tabs, type TabsProps, type TabItem } from "./layout/Tabs";
 

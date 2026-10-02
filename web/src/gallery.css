@@ -10,3 +10,5 @@
 .g-table { height: 262px; }
 .g-table--short { height: auto; border-top: 1px solid var(--border); }
 .g-log { height: 300px; }
+.g-split { height: 470px; margin-bottom: var(--gap); }
+.g-split .g-table { height: 400px; }
