@@ -54,11 +54,12 @@
   white-space: nowrap;
   border-radius: var(--radius-control);
 }
+/* The brand mark: a constant orange dot (state lives in the chip). */
 .topbar__dot {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: var(--amber);
+  background: #f7931a;
 }
 .topbar__name {
   font-size: 16px;
@@ -110,9 +111,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  /* Gives way before the state chip when the bar is full. */
-  flex: 0 4 280px;
-  min-width: 170px;
+  /* About 280-300 px, as in the mockups, so the whole placeholder shows. */
+  flex: 0 0 296px;
+  min-width: 0;
+  font-size: 13px;
   height: 32px;
   padding: 0 10px;
   background: var(--bg-tile);
@@ -137,33 +139,34 @@
   color: var(--text-muted);
 }
 
+/* "Azure • UK South" with a state dot; details open from it. */
 .topbar__chip {
   display: flex;
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: none;
   align-items: center;
   gap: 8px;
   height: 32px;
   padding: 0 10px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   color: var(--text-secondary);
+  font: inherit;
   font-size: 13px;
   white-space: nowrap;
+  cursor: pointer;
 }
-/* On narrow desktops the chip gives way first: its text ends in an ellipsis
-   (the full text is its title) rather than pushing the bar off the window. */
-.topbar__chip-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.topbar__chip:hover,
+.topbar__chip[data-state="open"] {
+  color: var(--text-primary);
+  background: var(--bg-tile);
+  border-color: var(--border);
 }
 .topbar__chip-dot {
   flex: none;
-}
-.topbar__chip-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--green);
 }
 
 .topbar .topbar__icon-btn {
@@ -212,9 +215,8 @@
   display: none;
 }
 
-/* Below 1440 px the account shows its initials only, so the state chip keeps
-   its whole sentence. */
-@media (max-width: 1440px) {
+/* Narrower desktops: the account shows its initials only. */
+@media (max-width: 1360px) {
   .topbar__account-text {
     display: none;
   }
@@ -226,6 +228,10 @@
   }
   .topbar__tab {
     padding: 0 10px;
+  }
+  /* Narrower: the search keeps its icon, words and shortcut, at a shorter placeholder width. */
+  .topbar__search {
+    flex-basis: 236px;
   }
 }
 

@@ -3,12 +3,14 @@ import { IconButton } from "@/components/forms/IconButton";
 import { setTheme, useTheme } from "./theme";
 import { AccountMenu } from "./AccountMenu";
 import { ConnectionIndicator } from "./Connection";
-import { EnvLabel, StateChip } from "./StateChip";
+import { StateChip } from "./StateChip";
 import { NotesIndicator } from "./NotesIndicator";
 
-// The top bar's right-hand side, in order: search, state chip (with the
-// read-only environment label), connection light, notes bell, theme toggle,
-// account menu. Each is live; the data they show comes from the api/ hooks.
+// The top bar's right-hand side, in order: search, state chip (its dot also
+// carries the connection level; a screen-reader-only status announces it),
+// notes bell, theme toggle, account menu. Each is live; the data they show
+// comes from the api/ hooks. The read-only "Production" environment is not in
+// the bar: views put <EnvironmentField /> in their PageHeader's `env` slot.
 
 const isMac = typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || "");
 
@@ -24,14 +26,7 @@ export function SearchSlot({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-export function StateSlot() {
-  return (
-    <>
-      <EnvLabel />
-      <StateChip />
-    </>
-  );
-}
+export const StateSlot = StateChip;
 
 export const ConnectionSlot = ConnectionIndicator;
 export const NotesSlot = NotesIndicator;

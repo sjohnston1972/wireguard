@@ -24,13 +24,17 @@ export function useConnectionLevel(): ConnectionLevel {
 
 const WORDS: Record<ConnectionLevel, string> = { connecting: "Connecting", live: "Live", stale: "Stale", disconnected: "Disconnected" };
 
+/**
+ * Announces the connection level to screen readers. It shows nothing: on
+ * screen the state chip's dot carries it (amber stale, grey disconnected),
+ * with the word in the chip's details, and the disconnected banner.
+ */
 export function ConnectionIndicator() {
   const level = useConnectionLevel();
   return (
-    <div className="topbar__conn" role="status" aria-label="Connection" data-level={level}>
-      <span className="topbar__conn-dot" aria-hidden="true" />
-      <span className="topbar__conn-text">{WORDS[level]}</span>
-    </div>
+    <span className="visually-hidden" role="status" aria-label="Connection" data-level={level}>
+      {WORDS[level]}
+    </span>
   );
 }
 

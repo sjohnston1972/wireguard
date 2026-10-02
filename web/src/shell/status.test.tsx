@@ -6,6 +6,10 @@ import { overviewFixture, sessionFixture } from "@/test/fixtures";
 import { formatRemaining } from "./StateChip";
 
 const banner = () => screen.getByRole("banner");
+const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** The chip says this state sentence (its accessible name; on screen it reads "Azure • UK South"). */
+const stateSays = (text: string) =>
+  waitFor(() => expect(within(banner()).getByRole("button", { name: /State:/ })).toHaveAccessibleName(new RegExp(`State: ${escape(text)}\\.`)));
 
 describe("formatRemaining", () => {
   it("words a duration in hours and minutes", () => {
@@ -20,17 +24,17 @@ describe("formatRemaining", () => {
 describe("state chip", () => {
   it("shows Running, the region and when it tears down, from /overview", async () => {
     renderApp("/", { routes: { "GET /api/v1/overview": overviewFixture("running", { auto_destroy_at: "2026-10-02T15:12:00.000Z" }) } });
-    expect(await within(banner()).findByText("Running · UK South · tears down in 3h 12m")).toBeInTheDocument();
+    await stateSays("Running · UK South · tears down in 3h 12m");
   });
 
   it("leaves out the timer when there is none", async () => {
     renderApp("/");
-    expect(await within(banner()).findByText("Running · UK South")).toBeInTheDocument();
+    await stateSays("Running · UK South");
   });
 
   it("shows Destroyed with no cost when nothing exists", async () => {
     renderApp("/", { routes: { "GET /api/v1/overview": overviewFixture("destroyed") } });
-    expect(await within(banner()).findByText("Destroyed · £0")).toBeInTheDocument();
+    await stateSays("Destroyed · £0");
   });
 
   it.each([
@@ -42,18 +46,67 @@ describe("state chip", () => {
     ["failed", "Failed · UK South"],
   ])("words the %s state", async (state, text) => {
     renderApp("/", { routes: { "GET /api/v1/overview": overviewFixture(state) } });
-    expect(await within(banner()).findByText(text)).toBeInTheDocument();
+    await stateSays(text);
   });
 
   it("says the state is unknown (never a made-up one) when /overview cannot be read", async () => {
     renderApp("/", { routes: { "GET /api/v1/overview": { status: 500, json: { error: { code: "internal", message: "Something broke." } } } } });
-    expect(await within(banner()).findByText("State unknown")).toBeInTheDocument();
+    await stateSays("State unknown");
   });
 
-  it("shows the read-only Production environment label", () => {
+  it("shows the read-only Production environment in the page header, not the top bar", () => {
     renderApp("/");
-    expect(within(banner()).getByText("Production")).toBeInTheDocument();
-    expect(within(banner()).queryByRole("button", { name: /production/i })).toBeNull();
+    expect(within(banner()).queryByText("Production")).toBeNull();
+    const env = within(screen.getByRole("main")).getByRole("group", { name: "Environment" });
+    expect(env).toHaveTextContent("Production");
+    expect(within(env).queryByRole("button")).toBeNull();
+  });
+});
+
+describe("state chip, de-crowded (V2)", () => {
+  const chip = () => within(banner()).getByRole("button", { name: /State:/ });
+
+  it('reads "Azure • UK South" on screen and keeps the whole state sentence for screen readers', async () => {
+    renderApp("/", { routes: { "GET /api/v1/overview": overviewFixture("running", { auto_destroy_at: "2026-10-02T15:12:00.000Z" }) } });
+    await waitFor(() => expect(chip()).toHaveAccessibleName(/Running · UK South · tears down in 3h 12m/));
+    expect(within(chip()).getByText("Azure • UK South")).toBeInTheDocument();
+  });
+
+  it("colours the dot by state, and folds stale or disconnected into it", async () => {
+    renderApp("/");
+    await waitFor(() => expect(chip()).toHaveAttribute("data-tone", "ok"));
+  });
+
+  it("an old heartbeat turns the dot amber (stale) and says so in the chip's name", async () => {
+    renderApp("/", { routes: { "GET /api/v1/overview": overviewFixture("running", { heartbeatStale: true }) } });
+    await waitFor(() => expect(chip()).toHaveAttribute("data-tone", "stale"));
+    expect(chip()).toHaveAccessibleName(/stale/i);
+  });
+
+  it("there is no separate visible Live/Stale text in the bar", async () => {
+    renderApp("/");
+    const conn = await within(banner()).findByRole("status", { name: "Connection" });
+    expect(conn).toHaveClass("visually-hidden");
+  });
+
+  it("opens details (state, countdown, connection) from the keyboard", async () => {
+    const user = userEvent.setup();
+    renderApp("/", { routes: { "GET /api/v1/overview": overviewFixture("running", { auto_destroy_at: "2026-10-02T15:12:00.000Z" }) } });
+    await waitFor(() => expect(chip()).toHaveAccessibleName(/tears down/));
+    chip().focus();
+    await user.keyboard("{Enter}");
+    const details = await screen.findByRole("dialog", { name: "Environment state" });
+    expect(details).toHaveTextContent("Running");
+    expect(details).toHaveTextContent("tears down in 3h 12m");
+    expect(details).toHaveTextContent(/Connection\s*Live/);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Environment state" })).toBeNull());
+  });
+
+  it("the wordmark's dot is the brand colour, not a state light", async () => {
+    renderApp("/", { routes: { "GET /api/v1/overview": overviewFixture("failed") } });
+    await waitFor(() => expect(chip()).toHaveAttribute("data-tone", "bad"));
+    expect(banner().querySelector(".topbar__dot")).not.toHaveAttribute("data-tone");
   });
 });
 

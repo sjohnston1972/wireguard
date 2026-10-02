@@ -1,11 +1,12 @@
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EnvironmentField } from "@/shell/StateChip";
 import "./Placeholder.css";
 
-/** Stand-in for a view that plan 4 builds. Shows its title and nothing else. */
+/** Stand-in for a view that plan 4 builds: its header (title, the read-only environment) and nothing else. */
 export function Placeholder({ title }: { title: string }) {
   return (
     <section className="placeholder">
-      <h1 className="placeholder__title">{title}</h1>
-      <p className="placeholder__note">Built in plan 4</p>
+      <PageHeader title={title} subtitle="Built in plan 4" env={<EnvironmentField />} />
     </section>
   );
 }

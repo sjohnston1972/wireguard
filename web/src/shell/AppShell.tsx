@@ -6,7 +6,6 @@ import { AccountSlot, ConnectionSlot, NotesSlot, SearchSlot, StateSlot, ThemeTog
 import { DisconnectedBanner } from "./Connection";
 import { SessionExpiredScreen } from "./SessionExpired";
 import { CommandPalette } from "./CommandPalette";
-import { useStateTone } from "./StateChip";
 import "./AppShell.css";
 
 /**
@@ -18,7 +17,6 @@ import "./AppShell.css";
 export function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { sessionExpired } = useConnection();
-  const tone = useStateTone();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -38,7 +36,7 @@ export function AppShell() {
       </a>
       <header className="topbar">
         <Link to="/" className="topbar__brand" aria-label="wg-admin home">
-          <span className="topbar__dot" data-tone={tone} aria-hidden="true" />
+          <span className="topbar__dot" aria-hidden="true" />
           <span className="topbar__name">wg-admin</span>
         </Link>
         <nav className="topbar__tabs" aria-label="Main">

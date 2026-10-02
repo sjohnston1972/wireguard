@@ -1,71 +1,88 @@
-/* State chip, environment label, connection light and banner, session-expired screen. */
+/* State chip and its details, the page-header environment field, the
+   connection banner, the session-expired screen. */
 
-.topbar__dot[data-tone="ok"] {
-  background: var(--green);
-}
-.topbar__dot[data-tone="busy"] {
-  background: var(--amber);
-}
-.topbar__dot[data-tone="bad"] {
-  background: var(--red);
-}
-.topbar__dot[data-tone="idle"],
-.topbar__dot[data-tone="unknown"] {
+/* ---- state chip: dot + "Azure • UK South"; the dot also carries stale/disconnected ---- */
+.topbar__chip-dot {
   background: var(--text-muted);
 }
-
-.topbar__env {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
 .topbar__chip[data-tone="ok"] .topbar__chip-dot {
   background: var(--green);
 }
-.topbar__chip[data-tone="busy"] .topbar__chip-dot {
+.topbar__chip[data-tone="busy"] .topbar__chip-dot,
+.topbar__chip[data-tone="stale"] .topbar__chip-dot {
   background: var(--amber);
 }
 .topbar__chip[data-tone="bad"] .topbar__chip-dot {
   background: var(--red);
 }
-.topbar__chip[data-tone="idle"] .topbar__chip-dot,
-.topbar__chip[data-tone="unknown"] .topbar__chip-dot {
-  background: var(--text-muted);
-}
 
-.topbar__conn {
-  display: flex;
-  align-items: center;
+.chip-pop {
+  z-index: 150;
+  min-width: 240px;
+  max-width: 320px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.4);
+  font-size: 13px;
+}
+.chip-pop__list {
+  display: grid;
   gap: 6px;
-  height: 32px;
-  padding: 0 4px;
+  margin: 0;
+}
+.chip-pop__list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.chip-pop__list dt {
+  color: var(--text-secondary);
+}
+.chip-pop__list dd {
+  margin: 0;
+  color: var(--text-primary);
+  text-align: right;
+}
+.chip-pop__note {
+  margin-top: 8px;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+/* ---- read-only environment, in a page header ---- */
+.env-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.env-field__caption {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.env-field__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  min-width: 132px;
+  padding: 0 12px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  font-size: 13px;
   white-space: nowrap;
 }
-.topbar__conn-dot {
+.env-field__dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-muted);
-}
-.topbar__conn[data-level="live"] .topbar__conn-dot {
   background: var(--green);
 }
-.topbar__conn[data-level="stale"] .topbar__conn-dot {
-  background: var(--amber);
-}
-.topbar__conn[data-level="disconnected"] .topbar__conn-dot {
-  background: var(--red);
-}
 
+/* ---- disconnected banner ---- */
 .conn-banner {
   display: flex;
   align-items: center;
@@ -95,16 +112,4 @@
   font-size: 20px;
   font-weight: 650;
   color: var(--text-primary);
-}
-@media (max-width: 1100px) {
-  .topbar__conn-text {
-    display: none;
-  }
-}
-/* The read-only "Production" label is the first thing to go on narrower
-   desktops, leaving room for the state chip. */
-@media (max-width: 1280px) {
-  .topbar__env {
-    display: none;
-  }
 }
