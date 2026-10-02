@@ -8,7 +8,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 0 1 300px;
+  flex: 0 1 210px;
   min-width: 0;
 }
 .ov-health__icon {
@@ -35,20 +35,37 @@
 }
 .ov-health__list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, max-content));
-  gap: 4px 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 16px;
+  flex: 1 1 0;
   list-style: none;
   margin: 0;
   padding: 0;
   min-width: 0;
 }
+/* Name over age, so a long name never squeezes its age out. */
+.ov-health__list .ov-check-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 0;
+  min-width: 0;
+}
+.ov-check-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ov-health__list .ov-check-item__age {
+  grid-column: 2;
+  line-height: 1.2;
+}
 .ov-check-item {
   --ov-c: var(--text-muted);
-  display: grid;
-  grid-template-columns: 8px auto;
+  display: flex;
   align-items: center;
-  column-gap: 8px;
+  gap: 8px;
   font-size: 12px;
+  white-space: nowrap;
 }
 .ov-check-item[data-ok="true"] { --ov-c: var(--green); }
 .ov-check-item[data-ok="false"] { --ov-c: var(--red); }
@@ -59,7 +76,6 @@
   background: var(--ov-c);
 }
 .ov-check-item__age {
-  grid-column: 2;
   color: var(--text-secondary);
   font-size: 11px;
 }

@@ -56,8 +56,25 @@
   flex: 1 1 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 200fr) minmax(0, 375fr) minmax(0, 100fr);
+  grid-template-rows: minmax(0, 245fr) minmax(0, 320fr) minmax(0, 120fr);
   gap: var(--gap);
+}
+
+/* Every panel is the containing block for what it holds: visually hidden
+   text and other absolutely placed bits inside a panel that scrolls are then
+   clipped by it, instead of stretching the page area below the window. */
+.ov .panel,
+.ov .panel__body {
+  position: relative;
+}
+
+/* The lower row is short: tighter panel heads and bodies. */
+.ov-row--4 .panel__head {
+  padding-top: 8px;
+  min-height: 30px;
+}
+.ov-row--4 .panel__body {
+  padding: 6px 16px 8px;
 }
 .ov-row {
   display: grid;

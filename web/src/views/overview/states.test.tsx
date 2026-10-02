@@ -36,7 +36,8 @@ describe("Overview states (spec §10)", () => {
     const empty = { ...activity(), all: [] };
     renderApp("/", { routes: routes(overview("destroyed"), { "GET /api/v1/activity": empty }) });
     const last = await screen.findByRole("region", { name: "Last run" });
-    expect(last).toHaveTextContent("No runs yet");
+    expect(last).toHaveTextContent("No run steps to show");
+    expect(within(last).getByRole("link", { name: "Activity" })).toHaveAttribute("href", "/activity");
     const events = screen.getByRole("region", { name: "Recent events" });
     await waitFor(() => expect(events).toHaveTextContent("No events in the last 24 h"));
     await user.click(within(last).getByRole("button", { name: "Deploy" }));

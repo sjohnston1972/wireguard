@@ -169,8 +169,12 @@ export function LastRun({ o, onAction }: { o: OverviewResponse; onAction: (a: Ac
         <StepList steps={uiSteps(s.steps)} aria-label="Last run steps" />
       ) : (
         <EmptyState
-          title="No runs yet"
-          description="A deploy's steps show here as GitHub runs them."
+          title="No run steps to show"
+          description={
+            <>
+              A tear-down clears the last run's steps; earlier runs are in <Link to="/activity">Activity</Link>. A deploy's steps show here as GitHub runs them.
+            </>
+          }
           action={s.state === "destroyed" ? { label: "Deploy", onClick: () => onAction("deploy") } : undefined}
         />
       )}

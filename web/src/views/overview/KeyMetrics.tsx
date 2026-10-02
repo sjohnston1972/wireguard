@@ -82,6 +82,8 @@ export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
   const session = running || s.state === "standby" ? sessionGbp : null;
 
   const avail = hist.data?.availability.pct ?? null;
+  // "Live" reads the last hour of heartbeats for availability.
+  const availWord = live ? RANGE_WORD["1h"] : word;
 
   return (
     <Panel
@@ -107,7 +109,7 @@ export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
           <Tile icon={<ShieldCheck size={26} />} tone={dns.tone} label="DNS status" value={dns.value} valueTone sub={<Sub>{dns.sub}</Sub>} />
           <Tile icon={<HeartPulse size={26} />} tone={beat.tone} label="Heartbeat (VM)" value={beat.value} valueTone sub={<Sub>{beat.sub}</Sub>} className="ov-tile--beat" />
           <Tile icon={<Coins size={26} />} tone="blue" label="Session cost" value={session === null ? null : gbp(session)} sub={<Sub>{session === null ? (running ? "estimate not ready" : "nothing running") : "this session, estimate"}</Sub>} />
-          <Tile tone={avail === null ? "grey" : avail >= 99 ? "green" : avail >= 90 ? "amber" : "red"} label="Availability" value={avail === null ? null : `${avail === 100 ? 100 : avail.toFixed(1)}%`} ring={{ value: avail }} sub={<Sub>{avail === null ? `heartbeats · ${histWord}` : word === "live" ? "last hour" : word}</Sub>} />
+          <Tile tone={avail === null ? "grey" : avail >= 99 ? "green" : avail >= 90 ? "amber" : "red"} label="Availability" value={avail === null ? null : `${avail === 100 ? 100 : avail.toFixed(1)}%`} ring={{ value: avail }} sub={<Sub>{avail === null ? `heartbeats · ${hist.isLoading || hist.isError ? histWord : availWord}` : availWord}</Sub>} />
         </div>
       </div>
     </Panel>

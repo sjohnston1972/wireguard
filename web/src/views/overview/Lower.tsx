@@ -33,7 +33,7 @@ export function HealthSummary({ o, now }: { o: OverviewResponse; now: number }) 
   const checks = healthChecks(o, now);
   const bad = checks.filter((c) => c.ok === false);
   const known = checks.some((c) => c.ok !== null);
-  const head = !known ? { tone: "grey", title: "No health data", sub: o.snapshot.state === "running" ? "Waiting for the first heartbeat." : "Nothing is running to check." } : bad.length ? { tone: "red", title: `${bad.length} check${bad.length === 1 ? "" : "s"} failing`, sub: bad.map((c) => c.name).join(", ") } : { tone: "green", title: "All systems healthy", sub: "WireGuard is running and responding normally." };
+  const head = !known ? { tone: "grey", title: "No health data", sub: o.snapshot.state === "running" ? "Waiting for the first heartbeat." : "Nothing is running to check." } : bad.length ? { tone: "red", title: `${bad.length} check${bad.length === 1 ? "" : "s"} failing`, sub: bad.map((c) => c.name).join(", ") } : { tone: "green", title: "All systems healthy", sub: "Running and responding normally." };
   return (
     <Panel title="Health summary" className="ov-health" bodyClassName="ov-health__body">
       <div className="ov-health__head">

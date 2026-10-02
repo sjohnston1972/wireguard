@@ -81,6 +81,14 @@
   flex: 1 1 0;
   min-height: 0;
 }
+/* LogView's per-line "Copied" status is placed against .log__scroller, which
+   does not clip: lines scrolled out of view would stretch the page. Clip it. */
+.ov .log__scroller,
+.ov-run__logbody,
+.ov-run__fulllog,
+.ov-phone__log {
+  overflow: hidden;
+}
 .ov-run__level {
   min-width: 0;
 }

@@ -1,5 +1,22 @@
 .ov-metrics__body {
   overflow: auto;
+  padding: 8px 12px 10px;
+}
+.ov-tile .tile__main {
+  min-width: 0;
+}
+.ov-tile .tile__label,
+.ov-tile .tile__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-tile .tile__spark {
+  width: 64px;
+  flex: none;
+}
+.ov-tile .tile__progress {
+  margin-top: 2px;
 }
 .ov-tiles {
   display: flex;
@@ -11,8 +28,8 @@
 .ov-tiles__row {
   display: grid;
   gap: 8px;
-  flex: 1 1 0;
-  min-height: 0;
+  /* Grow to fill, never shrink below the tiles' text: a short panel scrolls instead. */
+  flex: 1 0 auto;
 }
 .ov-tiles__row--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ov-tiles__row--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -24,8 +41,15 @@
 .ov-tile > .tile {
   flex: 1;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 7px 10px;
   gap: 10px;
+}
+.ov-tile .tile__label {
+  font-size: 12px;
+}
+.ov-tiles {
+  height: auto;
+  min-height: 100%;
 }
 .ov-tile .tile__icon--plain svg {
   width: 24px;

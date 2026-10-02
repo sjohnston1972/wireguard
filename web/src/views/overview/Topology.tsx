@@ -57,7 +57,7 @@ export function Topology({ o, now, compact }: { o: OverviewResponse; now: number
           icon={<Users size={26} />}
           view={t.clients}
           onClick={() => navigate("/clients")}
-          lines={[`${o.derived.clientsEnabled} configured`, running ? `${o.derived.clientsOnline} online` : "VM not running", ...(o.site ? [`home site ${o.site.name}`] : [])]}
+          lines={[`${o.derived.clientsEnabled} configured`, running ? `${o.derived.clientsOnline} online` : "VM not running"]}
         />
         <Edge status={t.edges[0]} />
         <Node
