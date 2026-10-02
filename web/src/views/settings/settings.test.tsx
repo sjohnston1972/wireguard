@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { createMemoryRouter, RouterProvider, useLocation, useNavigate } from "react-router-dom";
 import { renderApp, testQueryClient } from "@/test/render";
 import { mockFetch } from "@/test/mockFetch";
 import { defaultRoutes } from "@/test/fixtures";
@@ -27,15 +27,24 @@ function withBack(url: string) {
       </>
     );
   }
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/settings/:section?",
+        element: (
+          <>
+            <SettingsPage />
+            <Back />
+          </>
+        ),
+      },
+    ],
+    { initialEntries: ["/settings/overview", url], initialIndex: 1 },
+  );
   render(
     <QueryClientProvider client={testQueryClient()}>
       <ToastProvider>
-        <MemoryRouter initialEntries={["/settings/overview", url]} initialIndex={1}>
-          <Routes>
-            <Route path="/settings/:section?" element={<SettingsPage />} />
-          </Routes>
-          <Back />
-        </MemoryRouter>
+        <RouterProvider router={router} />
       </ToastProvider>
     </QueryClientProvider>,
   );
@@ -130,6 +139,41 @@ describe("Settings sections", () => {
     await user.click(await tab(/Automation/));
     expect(await screen.findByLabelText(/Idle limit/)).toHaveValue("0");
     expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it("unsaved edits: the top nav's Overview link asks first; Keep editing stays, Discard and leave goes", async () => {
+    const user = userEvent.setup();
+    renderApp("/settings/automation", { routes: routesFor() });
+    const idle = await screen.findByLabelText(/Idle limit/);
+    await user.clear(idle);
+    await user.type(idle, "15");
+    const main = screen.getByRole("navigation", { name: "Main" });
+
+    await user.click(within(main).getByRole("link", { name: "Overview" }));
+    const ask = await screen.findByRole("dialog", { name: /Leave without saving/i });
+    expect(loc()).toHaveTextContent("/settings/automation");
+    await user.click(within(ask).getByRole("button", { name: "Keep editing" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(loc()).toHaveTextContent("/settings/automation");
+    expect(screen.getByLabelText(/Idle limit/)).toHaveValue("15");
+
+    await user.click(within(main).getByRole("link", { name: "Overview" }));
+    await user.click(within(await screen.findByRole("dialog", { name: /Leave without saving/i })).getByRole("button", { name: "Discard and leave" }));
+    await waitFor(() => expect(loc()).toHaveTextContent(/^\/$/));
+  });
+
+  it("unsaved edits: the command palette asks before it navigates", async () => {
+    const user = userEvent.setup();
+    renderApp("/settings/automation", { routes: routesFor() });
+    const idle = await screen.findByLabelText(/Idle limit/);
+    await user.clear(idle);
+    await user.type(idle, "15");
+    await user.keyboard("{Control>}k{/Control}");
+    const palette = await screen.findByRole("dialog", { name: /command/i });
+    await user.type(within(palette).getByRole("combobox"), "Cost");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("dialog", { name: /Leave without saving/i })).toBeInTheDocument();
+    expect(loc()).toHaveTextContent("/settings/automation");
   });
 
   it("the header shows the estimated cost per day, marked as an estimate", async () => {

@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { useEffect, type ReactNode } from "react";
+import { Navigate, useBlocker, useNavigate, useParams } from "react-router-dom";
 import type { OverviewResponse, SettingsResponse } from "@shared/api";
 import { useOverview, useSettings } from "@/api/queries";
 import { Button, ErrorState, Modal, PageHeader, Sheet, Tabs, useIsPhone, type TabItem } from "@/components";
@@ -91,10 +91,12 @@ function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: O
   const nav = useNavigate();
   const edits = useEdits();
   const current = section ?? "overview";
-  const [leaving, setLeaving] = useState<(() => void) | null>(null);
-
-  // A dirty section asks before anything takes the page away, in the page (never window.confirm).
-  const leave = (go: () => void) => (edits.isDirty(current) ? setLeaving(() => go) : go());
+  // A dirty section asks before anything takes the page away (section tabs,
+  // the top nav, the phone tab bar, the palette, Back, a link in the page), in
+  // the page (never window.confirm). Changing only the query string is not leaving.
+  const dirty = edits.isDirty(current);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname);
+  const leaving = blocker.state === "blocked";
   const anyDirty = SLUGS.some((k) => edits.isDirty(k));
   useEffect(() => {
     if (!anyDirty) return;
@@ -140,22 +142,20 @@ function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: O
 
   const guard = (
     <Modal
-      open={!!leaving}
-      onOpenChange={(o) => !o && setLeaving(null)}
+      open={leaving}
+      onOpenChange={(o) => !o && blocker.reset?.()}
       title="Leave without saving?"
       description={`You have unsaved changes in ${SETTINGS_SECTIONS.find((x) => x.slug === current)?.label}. Leaving throws them away.`}
       footer={
         <>
-          <Button variant="ghost" onClick={() => setLeaving(null)}>
+          <Button variant="ghost" onClick={() => blocker.reset?.()}>
             Keep editing
           </Button>
           <Button
             variant="danger"
             onClick={() => {
-              const go = leaving;
               edits.discard(current);
-              setLeaving(null);
-              go?.();
+              blocker.proceed?.();
             }}
           >
             Discard and leave
@@ -187,7 +187,7 @@ function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: O
           })}
         </ul>
         {open && (
-          <Sheet open onOpenChange={(o) => !o && leave(() => nav("/settings"))} title={open.label}>
+          <Sheet open onOpenChange={(o) => !o && nav("/settings")} title={open.label}>
             {body(open.slug)}
           </Sheet>
         )}
@@ -198,7 +198,7 @@ function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: O
 
   return (
     <>
-      <Tabs variant="pill" aria-label="Settings sections" className="set-tabs" items={items} value={current} onValueChange={(v) => v !== current && leave(() => nav(`/settings/${v}`))} />
+      <Tabs variant="pill" aria-label="Settings sections" className="set-tabs" items={items} value={current} onValueChange={(v) => v !== current && nav(`/settings/${v}`)} />
       <div className="settings__body">{body(current)}</div>
       {guard}
     </>

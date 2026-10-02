@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { lazy, Suspense, useState } from "react";
+import { createBrowserRouter, Route, RouterProvider, Routes } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { makeQueryClient } from "@/api/queryClient";
 import { AppShell } from "@/shell/AppShell";
@@ -21,7 +21,11 @@ import {
 // production builds drop both the lazy import and the route.
 const Gallery = import.meta.env.DEV ? lazy(() => import("@/gallery")) : null;
 
-/** The route table, inside whatever router the caller provides (tests use MemoryRouter). */
+/**
+ * The route table, inside whatever data router the caller provides (the app
+ * a browser router, tests a memory router). A data router, so a page can hold
+ * navigation with useBlocker (Settings' unsaved changes).
+ */
 export function AppRoutes() {
   return (
     <Routes>
@@ -54,12 +58,12 @@ export function AppRoutes() {
 const queryClient = makeQueryClient();
 
 export function App() {
+  // Made on first render, not at import, so importing AppRoutes has no side effects.
+  const [router] = useState(() => createBrowserRouter([{ path: "*", element: <AppRoutes /> }]));
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
+        <RouterProvider router={router} />
       </ToastProvider>
     </QueryClientProvider>
   );
