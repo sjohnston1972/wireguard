@@ -220,6 +220,8 @@ export interface CostResponse {
   previous: CostDay[];
   sessions: SessionRow[];
   insights: string[];
+  /** Null with neither Azure's split nor any session in the range. See `CostBreakdown`. */
+  breakdown: CostBreakdown | null;
 }
 
 // ── Settings and backups ──
@@ -285,4 +287,22 @@ export interface PushStatusResponse {
   last_error: string | null;
   /** The dashboard's public key, for a phone that has to sign up again. */
   vapid: string | null;
+}
+
+// ── Cost breakdown ──
+
+/**
+ * Where the money went, for the chosen range: by type (compute, network,
+ * disk, other) and by Azure region. `basis` says whether it is Azure's
+ * actual split ("azure", with types) or the sessions' estimate ("estimate",
+ * regions only, no types). Shares are percentages to one decimal place and
+ * add up to 100 within rounding; a slice with nothing in it is left out.
+ * `asOfDay` is the latest day of Azure data in the split (null for an estimate).
+ * Part of `CostResponse.breakdown`.
+ */
+export interface CostBreakdown {
+  byType: { type: "compute" | "network" | "disk" | "other"; gbp: number; pct: number }[];
+  byRegion: { location: string; name: string; gbp: number; pct: number }[];
+  basis: "azure" | "estimate";
+  asOfDay: string | null;
 }
