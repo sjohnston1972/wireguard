@@ -85,17 +85,24 @@ function Actions({ o, onAction }: { o: OverviewResponse; onAction: (a: ActionNam
         <Button variant="primary" icon={<Timer size={16} aria-hidden />} onClick={() => onAction("extend")}>
           Extend
         </Button>
-        <Button variant="secondary" icon={<PauseCircle size={16} aria-hidden />} onClick={() => onAction("hibernate")}>
-          Hibernate
+        <Button variant="secondary" className="ov-banner__icon-btn" title="Hibernate" icon={<PauseCircle size={16} aria-hidden />} onClick={() => onAction("hibernate")}>
+          <span className="ov-banner__btn-word">Hibernate</span>
         </Button>
-        <Button variant="secondary" icon={<MoveRight size={16} aria-hidden />} disabled={!moveTargets(o).length} title={moveTargets(o).length ? undefined : "No other profile to move to"} onClick={() => onAction("move")}>
-          Move
+        <Button
+          variant="secondary"
+          className="ov-banner__icon-btn"
+          icon={<MoveRight size={16} aria-hidden />}
+          disabled={!moveTargets(o).length}
+          title={moveTargets(o).length ? "Move" : "No other profile to move to"}
+          onClick={() => onAction("move")}
+        >
+          <span className="ov-banner__btn-word">Move</span>
         </Button>
-        <Button variant="secondary" icon={<Gauge size={16} aria-hidden />} disabled={!!o.snapshot.speedtest_req} onClick={() => onAction("speedtest")}>
-          {o.snapshot.speedtest_req ? "Speed test running…" : "Speed test"}
+        <Button variant="secondary" className="ov-banner__icon-btn" title={o.snapshot.speedtest_req ? "Speed test running…" : "Speed test"} icon={<Gauge size={16} aria-hidden />} disabled={!!o.snapshot.speedtest_req} onClick={() => onAction("speedtest")}>
+          <span className="ov-banner__btn-word">{o.snapshot.speedtest_req ? "Speed test running…" : "Speed test"}</span>
         </Button>
-        <Button variant="danger" icon={<Trash2 size={16} aria-hidden />} onClick={() => onAction("destroy")}>
-          Tear down
+        <Button variant="danger" className="ov-banner__icon-btn" title="Tear down" icon={<Trash2 size={16} aria-hidden />} onClick={() => onAction("destroy")}>
+          <span className="ov-banner__btn-word">Tear down</span>
         </Button>
       </div>
     );

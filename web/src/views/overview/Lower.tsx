@@ -76,7 +76,16 @@ export function CostImpact({ o }: { o: OverviewResponse }) {
   const typical = median(finished.map((x) => x.estimatedGbp));
   const bars = [...(q.data?.sessions ?? [])].reverse().slice(-16).map((x) => x.estimatedGbp);
   return (
-    <Panel title="Cost impact" className="ov-cost" bodyClassName="ov-cost__body">
+    <Panel
+      title="Cost impact"
+      className="ov-cost"
+      bodyClassName="ov-cost__body"
+      actions={
+        <Link className="ov-link" to="/cost">
+          View cost details <ArrowRight size={14} aria-hidden />
+        </Link>
+      }
+    >
       <div className="ov-cost__now">
         <span className="ov-cost__icon" aria-hidden>
           <Coins size={20} />
@@ -90,9 +99,6 @@ export function CostImpact({ o }: { o: OverviewResponse }) {
       <div className="ov-cost__typical">
         <p className="ov-cost__value ov-cost__value--sm">{typical === null ? "no data" : `~${gbp(typical)}`}</p>
         <p className="ov-cost__sub">typical session</p>
-        <Link className="ov-link" to="/cost">
-          View cost details <ArrowRight size={14} aria-hidden />
-        </Link>
       </div>
     </Panel>
   );
