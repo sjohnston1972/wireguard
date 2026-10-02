@@ -63,11 +63,12 @@ export function ClientsScreen() {
   const toggleEnabled = useCallback((c: Client) => edit.mutate({ id: c.id, enabled: !c.enabled }), [edit]);
 
   const actions = useCallback(
+    // The home site is managed by `npm run home`: enable/disable only (spec 8.2).
     (c: Client): RowAction[] => [
       { label: "Open details", onSelect: () => open(c) },
       ...(c.isSite ? [] : [{ label: "Get new config", onSelect: () => rekey(c) }]),
       { label: c.enabled ? "Disable" : "Enable", onSelect: () => toggleEnabled(c) },
-      { label: "Delete", danger: true, onSelect: () => remove(c) },
+      ...(c.isSite ? [] : [{ label: "Delete", danger: true, onSelect: () => remove(c) }]),
     ],
     [open, rekey, toggleEnabled, remove],
   );

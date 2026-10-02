@@ -12,7 +12,8 @@ const rowNames = (t: HTMLElement) =>
     .map((r) => within(r).getAllByRole("cell")[0]!.textContent ?? "");
 const rowFor = (t: HTMLElement, name: string) => within(t).getAllByRole("row").find((r) => (within(r).queryAllByRole("cell")[0]?.textContent ?? "").includes(name))!;
 
-describe("Clients list", () => {
+// Whole-page journeys: generous time, as the full suite runs many jsdom files at once.
+describe("Clients list", { timeout: 20_000 }, () => {
   it("KPI tiles filter the table and show pressed", async () => {
     const user = userEvent.setup();
     renderApp("/clients", { routes: clientRoutes() });
@@ -61,16 +62,20 @@ describe("Clients list", () => {
     await user.click(within(tabs).getByRole("tab", { name: "All (7)" }));
 
     const search = screen.getByRole("searchbox", { name: /Search clients/ });
-    await user.type(search, "lapt");
+    await user.click(search);
+    await user.paste("lapt");
     expect(rowNames(t)).toEqual([expect.stringMatching(/laptop/)]);
     await user.clear(search);
-    await user.type(search, "10.13.13.12");
+    await user.click(search);
+    await user.paste("10.13.13.12");
     expect(rowNames(t)).toEqual([expect.stringMatching(/build-server/)]);
     await user.clear(search);
-    await user.type(search, "KKKKKKKK");
+    await user.click(search);
+    await user.paste("KKKKKKKK");
     expect(rowNames(t)).toEqual([expect.stringMatching(/backup-box/)]);
     await user.clear(search);
-    await user.type(search, "nothing-like-this");
+    await user.click(search);
+    await user.paste("nothing-like-this");
     expect(within(t).getByText(/No clients match/)).toBeInTheDocument();
   });
 
