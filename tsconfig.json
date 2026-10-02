@@ -13,5 +13,5 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
   },
-  "include": ["worker/src/**/*.ts", "worker/test/**/*.ts"]
+  "include": ["worker/src/**/*.ts", "worker/test/**/*.ts", "shared/**/*.ts"]
 }

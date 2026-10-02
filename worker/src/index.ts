@@ -16,15 +16,15 @@ import { requireAccess, sameOriginOnly, bearer, type AuthedVars } from "./auth";
 import * as db from "./db";
 import { getSnapshot } from "./state";
 import { lockStatus, releaseLock } from "./lock";
-import { serverPublicKey, nextFreeIp, clientConfigTemplate, validPeerName, isWgKey, expiryFrom } from "./peers";
+import { serverPublicKey, nextFreeIp } from "./peers";
 import { effectiveConfig, saveOverrides } from "./settings";
 import { startDeploy, startDestroy, cancelActive, reconcile, extendAutoDestroy, refreshActiveRun, refreshInventory, handleCallback, handleAgent, issueRunSecrets, RunError } from "./runs";
 import { verifyGithubOidc } from "./oidc";
 import { startHibernate, startResume, refreshPower } from "./standby";
 import { consumeAction, dashboardButton } from "./actions";
 import { notify, ntfyParts, lastNotifyError } from "./notify";
-import { nearestRegion, REGIONS, regionName } from "./region";
-import { startMove } from "./profiles";
+import { REGIONS, regionName, whereFrom } from "./region";
+import { startMove, resolveDeployTarget } from "./profiles";
 import { startSpeedTest } from "./speedtest";
 import { nextStart, validRule } from "./schedule-time";
 import { setSshAllowedCidr } from "./azure";
@@ -47,6 +47,9 @@ import { isPushEndpoint } from "./webpush";
 import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, backupStatus, MAX_RESTORE_BYTES, type RestorePlan } from "./backup";
 import { restoreBody } from "./views/settings";
 import { randomToken } from "./auth";
+import { buildApi } from "./api";
+import { markActed, ackWatchedNotes } from "./seen";
+import { addClient, rekeyClient, editClient } from "./clients";
 
 export { RunLock } from "./lock";
 
@@ -225,6 +228,9 @@ app.use("*", requireAccess);
 // Changes must come from the dashboard's own pages, not another site (auth.ts).
 app.use("*", sameOriginOnly);
 
+// The data API for the new app (api/): JSON only, behind the same checks.
+app.route("/api/v1", buildApi());
+
 /**
  * The JSON body of a request from the dashboard's own script, or null. Only
  * accepted when labelled as JSON: a plain HTML form on another site cannot
@@ -235,27 +241,6 @@ async function jsonBody<T>(c: Context<App>): Promise<T | null> {
   return (await c.req.json().catch(() => null)) as T | null;
 }
 
-/**
- * "While you were away" should mean exactly that. Pressing any button on the
- * dashboard counts as having read the notes so far, and the routine notes
- * that follow in the next SEEN_WINDOW_MS (Deployed at..., Self-test passed,
- * Torn down, the session summary) are ones Steven watched happen.
- */
-const LAST_ACTION_KEY = "ui:last_action_at";
-const SEEN_WINDOW_MS = 15 * 60_000;
-
-async function markActed(env: Env): Promise<void> {
-  await db.acknowledgeAlerts(env);
-  await env.STATUS.put(LAST_ACTION_KEY, new Date().toISOString(), { expirationTtl: 86_400 });
-}
-
-/** Mark the routine notes from just after the last button press as read. */
-async function ackWatchedNotes(env: Env): Promise<void> {
-  const last = await env.STATUS.get(LAST_ACTION_KEY);
-  if (!last || Number.isNaN(Date.parse(last))) return;
-  await db.acknowledgeRoutineBetween(env, last, new Date(Date.parse(last) + SEEN_WINDOW_MS).toISOString());
-}
-
 async function render(c: { env: Env; get: (k: "user") => string }, tab: Tab, title: string, body: Parameters<typeof page>[0]["body"], notice?: Parameters<typeof page>[0]["notice"]) {
   await ackWatchedNotes(c.env).catch((e) => console.error("ack watched notes:", e));
   const [snapshot, alerts] = await Promise.all([getSnapshot(c.env), db.unacknowledgedAlerts(c.env)]);
@@ -264,8 +249,7 @@ async function render(c: { env: Env; get: (k: "user") => string }, tab: Tab, tit
 
 /** Cloudflare's idea of where the browser is: country code and the nearest Azure region. */
 function where(c: Context<App>): { country: string | null; region: string | null } {
-  const cf = (c.req.raw as unknown as { cf?: { country?: string; continent?: string; longitude?: string } }).cf;
-  return { country: cf?.country ?? null, region: nearestRegion(cf) };
+  return whereFrom(c.req.raw);
 }
 
 async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null, near?: { country: string | null; region: string | null }) {
@@ -338,17 +322,10 @@ app.post("/actions/deploy", async (c) => {
   const choice = String(form.choice ?? (form.region ? `r:${form.region}` : ""));
   const user = c.get("user");
   return action(c, async () => {
-    let region: string | undefined, vmSize: string | undefined, profile: string | null = null;
-    if (choice.startsWith("p:")) {
-      const p = await db.getProfile(c.env, Number(choice.slice(2)));
-      if (!p) throw new RunError("No such profile.");
-      ({ region, vm_size: vmSize } = p);
-      profile = p.name;
-    } else if (choice.startsWith("r:")) {
-      region = choice.slice(2);
-      // hasOwn, not "in": "in" would also accept built-in names like "constructor".
-      if (!Object.hasOwn(REGIONS, region)) throw new RunError("Unknown region.");
-    }
+    const { region, vmSize, profile } = await resolveDeployTarget(c.env, {
+      profileId: choice.startsWith("p:") ? Number(choice.slice(2)) : null,
+      region: choice.startsWith("r:") ? choice.slice(2) : null,
+    });
     await requireBudgetOk(c.env, form[OVER_BUDGET_FIELD] === "yes");
     const run = await startDeploy(c.env, { hours: hours > 0 ? hours : null, requesterIp: ip(c), requestedBy: user, region, vmSize, profile });
     return `Deploy started${profile ? `: ${profile}` : ""} in ${regionName(region ?? (await effectiveConfig(c.env)).region)} (${run.id}). About 4 minutes.`;
@@ -454,49 +431,19 @@ app.get("/partials/peers-table", async (c) => {
 });
 
 app.post("/api/peers", async (c) => {
-  const body = await jsonBody<{ name?: string; public_key?: string; full_tunnel?: boolean; azure_vnet?: boolean; tunnel_dns?: boolean; home_lan?: boolean; expires_days?: number }>(c);
+  const body = await jsonBody<Record<string, unknown>>(c);
   if (!body) return c.json({ error: "bad json" }, 400);
-  const name = String(body.name ?? "").trim();
-  if (!validPeerName(name)) return c.json({ error: "Name: letters, digits, spaces, dashes; up to 32 characters." }, 400);
-  if (!isWgKey(String(body.public_key ?? ""))) return c.json({ error: "That is not a valid WireGuard public key." }, 400);
-  const serverPub = await serverPublicKey(c.env);
-  if (!serverPub) return c.json({ error: "Server key not configured." }, 503);
-  const cfg = await effectiveConfig(c.env);
-  const peers = await db.listPeers(c.env);
-  const ipAddr = nextFreeIp(cfg.subnet, peers.map((p) => p.ip));
-  if (!ipAddr) return c.json({ error: "No free tunnel addresses left." }, 409);
-  let peer;
-  try {
-    peer = await db.addPeer(c.env, { name, public_key: String(body.public_key), ip: ipAddr, full_tunnel: !!body.full_tunnel, azure_vnet: !!body.azure_vnet, tunnel_dns: !!body.tunnel_dns, expires_at: expiryFrom(body.expires_days) });
-    if (body.home_lan && !body.full_tunnel) {
-      await db.setPeerHomeLan(c.env, peer.id, true);
-      peer = (await db.getPeer(c.env, peer.id))!;
-    }
-  } catch (e) {
-    return c.json({ error: /UNIQUE/.test(String(e)) ? "That key is already registered." : (e as Error).message }, 409);
-  }
-  await db.audit(c.env, c.get("user"), "client.add", peer.name, null, peer);
-  return c.json({ peer, template: clientConfigTemplate(c.env, peer, serverPub) });
+  const r = await addClient(c.env, c.get("user"), body);
+  return r.ok ? c.json(r.value) : c.json({ error: r.message }, r.status);
 });
 
 // Re-key: the browser made a new keypair for an existing client and sends
 // the public half. Returns the config template for the new key.
 app.post("/api/peers/:id/rekey", async (c) => {
-  const id = Number(c.req.param("id"));
   const body = await jsonBody<{ public_key?: string }>(c);
-  if (!body || !isWgKey(String(body.public_key ?? ""))) return c.json({ error: "That is not a valid WireGuard public key." }, 400);
-  const peer = await db.getPeer(c.env, id);
-  if (!peer) return c.json({ error: "No such client." }, 404);
-  const serverPub = await serverPublicKey(c.env);
-  if (!serverPub) return c.json({ error: "Server key not configured." }, 503);
-  try {
-    await db.setPeerKey(c.env, id, String(body.public_key));
-  } catch (e) {
-    return c.json({ error: /UNIQUE/.test(String(e)) ? "That key is already registered." : (e as Error).message }, 409);
-  }
-  const updated = (await db.getPeer(c.env, id))!;
-  await db.audit(c.env, c.get("user"), "client.rekey", peer.name, peer, updated);
-  return c.json({ peer: updated, template: clientConfigTemplate(c.env, updated, serverPub) });
+  if (!body) return c.json({ error: "That is not a valid WireGuard public key." }, 400);
+  const r = await rekeyClient(c.env, c.get("user"), Number(c.req.param("id")), body.public_key);
+  return r.ok ? c.json(r.value) : c.json({ error: r.message }, r.status);
 });
 
 // Change or remove when a client stops working: {days: 0 (never), 1, 7 or 30}, counted from now.
@@ -504,13 +451,8 @@ app.post("/api/peers/:id/rekey", async (c) => {
 app.post("/api/peers/:id/expiry", async (c) => {
   const body = await jsonBody<{ days?: number }>(c);
   if (!body) return c.json({ error: "bad json" }, 400);
-  const peer = await db.getPeer(c.env, Number(c.req.param("id")));
-  if (!peer) return c.json({ error: "No such client." }, 404);
-  const at = expiryFrom(body.days);
-  if (at && peer.routes) return c.json({ error: "The home site does not expire." }, 400);
-  await db.setPeerExpiry(c.env, peer.id, at);
-  await db.audit(c.env, c.get("user"), "client.edit", peer.name, { expires_at: peer.expires_at ?? null }, { expires_at: at });
-  return c.json({ ok: true, expires_at: at });
+  const r = await editClient(c.env, c.get("user"), Number(c.req.param("id")), { expires_days: Number(body.days) || 0 });
+  return r.ok ? c.json({ ok: true, expires_at: r.value.expires_at ?? null }) : c.json({ error: r.message }, r.status);
 });
 
 app.post("/peers/:id/azure", async (c) => {

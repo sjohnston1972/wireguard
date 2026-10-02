@@ -74,3 +74,9 @@ export function nearestRegion(cf: { country?: unknown; continent?: unknown; long
 export function regionName(r: string): string {
   return REGIONS[r] ?? r;
 }
+
+/** Cloudflare's idea of where a request came from: country code and the nearest Azure region. */
+export function whereFrom(req: Request): { country: string | null; region: string | null } {
+  const cf = (req as unknown as { cf?: { country?: string; continent?: string; longitude?: string } }).cf;
+  return { country: cf?.country ?? null, region: nearestRegion(cf) };
+}
