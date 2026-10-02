@@ -13,6 +13,7 @@
     "secrets": "node scripts/secrets.mjs",
     "tf-validate": "node scripts/tf-validate.mjs",
     "deploy-worker": "node scripts/deploy-worker.mjs",
+    "rollback-worker": "node scripts/rollback-worker.mjs",
     "migrate": "node scripts/migrate.mjs",
     "test": "node --test \"scripts/test/*.test.mjs\" && vitest run",
     "dev": "node scripts/dev.mjs",
