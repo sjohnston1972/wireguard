@@ -28,6 +28,7 @@ export interface Run {
   reason: string | null;
   error: string | null;
   ssh_password: string | null;
+  steps_json: string | null; // the GitHub step list as last seen while the run was active
 }
 
 export interface Peer {
