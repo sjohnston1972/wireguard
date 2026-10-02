@@ -32,6 +32,11 @@
   .filter-tile .tile__icon--plain > .lucide { width: 24px; height: 24px; }
   .filter-tile .tile__value { font-size: 20px; }
 }
+/* Beside an open panel on a small window the tiles are narrow: drop the icons first. */
+@container clients-main (max-width: 900px) {
+  .filter-tile .tile__icon { display: none; }
+  .filter-tile .tile__sub { font-size: 11.5px; }
+}
 @media (max-width: 1099px) {
   .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

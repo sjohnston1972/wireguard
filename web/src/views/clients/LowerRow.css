@@ -32,8 +32,9 @@
 .cstatus__sw--blue { background: var(--blue-bright); }
 
 /* A short window: the lower row gives up height first. */
+.lower__panel .panel__title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-height: 760px) and (min-width: 1100px) {
-  .lower { height: 132px; }
+  .lower { height: 124px; }
   .hbars { gap: 3px; }
   .cstatus .donut__ring { transform: scale(0.8); transform-origin: left center; }
 }

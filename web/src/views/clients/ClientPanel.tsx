@@ -141,6 +141,34 @@ function OverviewTab({ c, data }: { c: Client; data: ClientsResponse }) {
           },
         ]}
       />
+      <RecentTraffic c={c} />
+    </div>
+  );
+}
+
+/** The last hour of this client's traffic (the mockup's "Traffic this session" card in the panel). */
+function RecentTraffic({ c }: { c: Client }) {
+  const hist = useHistory({ scope: "client", id: c.id, range: "1h" });
+  const pts = hist.data?.points ?? [];
+  const step = hist.data?.step ?? 1;
+  return (
+    <div className="cpanel__recent">
+      <h3 className="cpanel__h">Traffic, last hour</h3>
+      {hist.isPending ? (
+        <Skeleton variant="block" height={110} />
+      ) : (
+        <TimeSeriesChart
+          title={`${c.name} traffic, last hour`}
+          range="1h"
+          height={110}
+          x={pts.map((p) => Math.floor(Date.parse(p.t) / 1000))}
+          format={(v) => `${bytes(v)}/s`}
+          series={[
+            { label: "Sent", color: "blue", data: pts.map((p) => p.rx / step) },
+            { label: "Received", color: "purple", data: pts.map((p) => p.tx / step) },
+          ]}
+        />
+      )}
     </div>
   );
 }

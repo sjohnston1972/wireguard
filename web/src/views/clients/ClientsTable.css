@@ -37,9 +37,12 @@
 
 /* Columns give way as the table narrows (the side panel takes 362 px). */
 .clients-table-host { container-type: inline-size; }
-@container (max-width: 1080px) {
+@container (max-width: 1240px) {
   .ccol-spark { display: none; }
-  .croutes { max-width: 160px; }
+  .croutes { max-width: 190px; }
+}
+@container (max-width: 1060px) {
+  .ccol-handshake { display: none; }
 }
 @container (max-width: 940px) {
   .ccol-address { display: none; }

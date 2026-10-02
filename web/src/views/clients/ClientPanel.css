@@ -1,6 +1,9 @@
 /* The client's split-view panel (Clients mockup, region 5). */
 .side-panel.cpanel { width: 362px; }
 @media (max-width: 1099px) { .side-panel.cpanel { width: auto; } }
+/* Visually hidden text (copy buttons' "Copied") is absolutely placed: keep it
+   inside the scrolling body, or rows below the fold would make the page scroll. */
+.cpanel .side-panel__body { position: relative; }
 .cpanel .mono { font-family: var(--font-mono); font-size: 12.5px; }
 .cpanel__lead { display: inline-flex; align-items: center; gap: 12px; color: var(--blue-bright); }
 .cpanel__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); }
@@ -44,6 +47,7 @@
 .cpanel__traffic > span:last-child svg { color: var(--red); }
 
 .cpanel__kv .kv__row { grid-template-columns: 110px 1fr; }
+.cpanel__recent { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-tile); }
 
 .cpanel__group { display: flex; flex-direction: column; gap: 4px; }
 .srow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }

@@ -1,15 +1,17 @@
 /* Desktop composition: the split view fills what the header leaves. */
-.clients__split { flex: 1; min-height: 0; }
+/* flex-basis 0: the split takes exactly what the header leaves, so the panel beside it is held to that height. */
+.clients__split { flex: 1 1 0; min-height: 0; }
 .clients__main { display: flex; flex-direction: column; gap: var(--gap); height: 100%; min-height: 0; }
 
 .clients__toolbar { display: flex; align-items: center; gap: var(--gap); flex: none; min-width: 0; }
-.clients__tabs { flex: none; }
-.clients__tabs .tabs__list { flex-wrap: nowrap; }
+.clients__main { container-type: inline-size; container-name: clients-main; }
+.clients__tabs { flex: 0 1 auto; min-width: 0; }
+.clients__tabs .tabs__list { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 .clients__search { flex: 1; min-width: 160px; max-width: 420px; margin-left: auto; }
 .clients__sort { flex: none; width: 200px; }
 .clients__age { flex: none; font-size: 12px; }
 
-.clients__table-panel { flex: 1; min-height: 0; overflow: hidden; }
+.clients__table-panel { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .clients__table-panel > .panel__body { min-height: 0; overflow: hidden; }
 
 /* Tight widths: drop the age and narrow the sort before anything wraps. */
@@ -19,6 +21,7 @@
 }
 
 @media (max-width: 1099px) {
+  .clients__split { flex: none; overflow: visible; }
   .clients__toolbar { flex-wrap: wrap; }
   .clients__search { margin-left: 0; max-width: none; }
   .clients__table-panel { flex: none; height: 460px; }
