@@ -51,4 +51,15 @@ describe("Cost page header and tiles", () => {
     expect(donut.getByText("no data")).toBeInTheDocument();
     expect(donut.queryByText(/0%/)).not.toBeInTheDocument();
   });
+
+  it("a budget with no actuals yet shows spent as no data, not £0.00", async () => {
+    renderApp("/cost", {
+      routes: { "GET /api/v1/cost": emptyCostFixture({ budget: { budget: 10, actual: 0, session: 0, total: 0, pct: 0, level: "ok", month: "2026-10", alerted: 0 } }) },
+    });
+    const t = await tile("Monthly budget");
+    expect(t.getByText("£10.00")).toBeInTheDocument();
+    expect(t.getByText("Spent").parentElement).toHaveTextContent("no data");
+    expect(t.queryByText(/£0\.00/)).not.toBeInTheDocument();
+    expect(t.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
 });

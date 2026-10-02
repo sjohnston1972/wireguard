@@ -21,7 +21,7 @@ export function SpendPanel({ cost, compare, updatedAt, height }: { cost: CostRes
         previous={showPrev ? s.previous : undefined}
         budget={s.budgetPerDay}
         format={money}
-        height={height ?? 190}
+        height={height ?? 140}
         className="cost-chart"
       />
       <ul className="cost-legend" aria-label="Chart key">
@@ -48,13 +48,13 @@ export function BreakdownPanel({ cost }: { cost: CostResponse }) {
     caption = `Azure actual${b.asOfDay ? `, as of ${dayLabel(b.asOfDay)}` : ""}`;
   } else if (b) {
     segments = b.byRegion.map((r, i) => ({ label: r.name, value: r.gbp, color: COLOURS[i % COLOURS.length]!, display: gbp(r.gbp) }));
-    caption = "Estimate: session length at the hourly rate, by region. Azure's split by type is not in yet.";
+    caption = "Estimate by region: session length at the hourly rate. Azure's split is not in yet.";
     centreLabel = "Estimate";
   }
   const total = segments.reduce((s, x) => s + x.value, 0);
   return (
     <Panel title="Spend breakdown" className="cost-panel" bodyClassName="cost-panel__body cost-breakdown">
-      <Donut title="Spend breakdown" segments={segments} centre={total > 0 ? { value: gbp(total), label: centreLabel } : undefined} size={150} stroke={16} />
+      <Donut title="Spend breakdown" segments={segments} centre={total > 0 ? { value: gbp(total), label: centreLabel } : undefined} size={132} stroke={15} />
       {caption && total > 0 && <p className="cost-note">{caption}</p>}
     </Panel>
   );
@@ -83,7 +83,7 @@ export function ForecastPanel({ cost, height }: { cost: CostResponse; height?: n
         </div>
       </dl>
       {series ? (
-        <BarChart title="Month so far against budget" bars={series.bars} forecast={series.forecast} budget={budget.budget > 0 ? budget.budget : undefined} format={money} height={height ?? 120} className="cost-chart" />
+        <BarChart title="Month so far against budget" bars={series.bars} forecast={series.forecast} budget={budget.budget > 0 ? budget.budget : undefined} format={money} height={height ?? 96} className="cost-chart" />
       ) : (
         <p className="cost-note">{cost.range === "month" ? "No days from Azure yet." : "Choose This month to see the running total."}</p>
       )}
@@ -157,7 +157,7 @@ export function PerSessionPanel({ cost, height }: { cost: CostResponse; height?:
           <dd>{rows.length ? rows.length : <span className="cost-none">no data</span>}</dd>
         </div>
       </dl>
-      <BarChart title="Cost of each session" bars={rows.map((r) => ({ label: dayLabel(r.started.slice(0, 10)), value: r.estimatedGbp }))} format={money} height={height ?? 100} className="cost-chart" />
+      <BarChart title="Cost of each session" bars={rows.map((r) => ({ label: dayLabel(r.started.slice(0, 10)), value: r.estimatedGbp }))} format={money} height={height ?? 84} className="cost-chart" />
     </Panel>
   );
 }

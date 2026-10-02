@@ -34,7 +34,12 @@ export function CostPage() {
       right={
         <>
           <Select label="Range" value={range} onValueChange={setRange} options={RANGE_OPTIONS} />
-          {canCompare && <Switch label="Compare to previous period" checked={compare} onCheckedChange={setCompare} />}
+          {canCompare && (
+            <span className="cost-compare">
+              <span aria-hidden="true">Compare to previous period</span>
+              <Switch label="Compare to previous period" checked={compare} onCheckedChange={setCompare} />
+            </span>
+          )}
         </>
       }
     />
