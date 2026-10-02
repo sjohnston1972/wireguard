@@ -5,12 +5,15 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  height: 100%;
+  /* #main has 16 px above and 20 px below, under the 48 px bar. */
+  height: calc(100dvh - var(--bar-height) - 36px);
 }
 .settings__body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  /* The containing block for visually hidden text inside the section: without it #main (position: relative) counts them past the end of this scroll area. */
+  position: relative;
   /* room for the focus ring and the sticky unsaved bar */
   padding: 14px 2px 2px;
   margin: 0 -2px;
