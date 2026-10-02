@@ -29,6 +29,11 @@ test("assets come from web/dist as a single-page app", () => {
   assert.equal(cfg.not_found_handling, "single-page-application");
 });
 
+test("the Worker can reach the built app through the ASSETS binding", () => {
+  assert.equal(readAssetsConfig(toml).binding, "ASSETS");
+  assert.match(read("worker/src/env.ts"), /^\s+ASSETS\?: Fetcher;/m);
+});
+
 test("run_worker_first covers /api/* and the other Worker paths", () => {
   const cfg = readAssetsConfig(toml);
   assert.deepEqual(
