@@ -25,6 +25,16 @@ OUT="$DIR/selftest.json"
 FLAG="$DIR/selftest.running"
 NS=wgcanary
 mkdir -p "$DIR"
+
+# One self-test at a time: the boot run and an on-demand health check share
+# the namespace, the interface and the flag. A second copy leaves at once,
+# before it touches any of them (so its exit cleans nothing up), with 75 so
+# the health-check unit knows not to stamp the other copy's result.
+exec 9>"$DIR/selftest.lock"
+if ! flock -n 9; then
+  logger -t wg-selftest "another self-test is running; leaving it to finish"
+  exit 75
+fi
 touch "$FLAG"
 
 started="$(date +%s%3N)"

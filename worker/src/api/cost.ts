@@ -12,7 +12,7 @@ import * as db from "../db";
 import { getSnapshot } from "../state";
 import { effectiveConfig } from "../settings";
 import { budgetStatus } from "../budget";
-import { COST_RANGES, costWindow, projection, sessionsOf, type CostRange } from "../costview";
+import { COST_RANGES, breakdownOf, costWindow, estimateBreakdown, projection, sessionsOf, type CostRange } from "../costview";
 import type { CostResponse } from "../../../shared/api";
 
 const money = (n: number) => `£${n.toFixed(2)}`;
@@ -28,6 +28,8 @@ export function registerCost(api: Hono<ApiEnv>): void {
     // One read covers the range, the stretch before it, and this month.
     const all = await db.costDays(c.env, win.prevFrom < monthStart ? win.prevFrom : monthStart);
     const budget = await budgetStatus(c.env, cfg, snap, now);
+    const split = await db.costBreakdownRange(c.env, win.from, win.to);
+    const sessions = sessionsOf(runs, cfg, now);
 
     const insights: string[] = [];
     const standby = snap.state === "standby" && snap.standby_since ? { since: snap.standby_since, perDayGbp: cfg.standbyRateGbp * 24 } : null;
@@ -48,8 +50,10 @@ export function registerCost(api: Hono<ApiEnv>): void {
       budget,
       daily: all.filter((d) => d.day >= win.from && d.day <= win.to),
       previous: all.filter((d) => d.day >= win.prevFrom && d.day <= win.prevTo),
-      sessions: sessionsOf(runs, cfg, now),
+      sessions,
       insights,
+      // Azure's split when it has one for the range; else the sessions' estimate; else nothing.
+      breakdown: split.length ? breakdownOf(split, split.reduce((a, r) => (r.last_day > a ? r.last_day : a), "")) : estimateBreakdown(sessions, win.from, win.to),
     };
     return c.json(out);
   });
