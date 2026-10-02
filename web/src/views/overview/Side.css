@@ -1,6 +1,7 @@
 .ov-side {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  /* Recent events as tall as its few lines (up to half); the panel below gets the rest. */
+  grid-template-rows: fit-content(50%) minmax(0, 1fr);
   gap: var(--gap);
   min-height: 0;
   min-width: 0;

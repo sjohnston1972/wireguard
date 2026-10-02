@@ -28,7 +28,7 @@
   min-height: 0;
   overflow: auto;
   /* A 32 px gutter at desktop widths, as in the mockups (16 px on the phone). */
-  padding: 16px 32px 20px;
+  padding: 16px 32px 12px;
 }
 .app-shell__page:focus {
   outline: none;

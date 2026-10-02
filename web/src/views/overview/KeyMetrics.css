@@ -41,7 +41,7 @@
 .ov-tile > .tile {
   flex: 1;
   min-width: 0;
-  padding: 7px 10px;
+  padding: 5px 10px;
   gap: 10px;
 }
 .ov-tile .tile__label {

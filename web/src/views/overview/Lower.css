@@ -8,7 +8,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 0 1 210px;
+  flex: 0 1 180px;
   min-width: 0;
 }
 .ov-health__icon {
@@ -24,6 +24,15 @@
 .ov-health__icon--green, .ov-health__title--green { --ov-h: var(--green); }
 .ov-health__icon--red, .ov-health__title--red { --ov-h: var(--red); }
 .ov-health__icon--grey, .ov-health__title--grey { --ov-h: var(--text-secondary); }
+.ov-health__head > div {
+  min-width: 0;
+}
+.ov-health__title,
+.ov-health__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ov-health__title {
   font-size: 14px;
   font-weight: 650;
@@ -36,7 +45,7 @@
 .ov-health__list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px 16px;
+  gap: 6px 12px;
   flex: 1 1 0;
   list-style: none;
   margin: 0;

@@ -60,6 +60,24 @@
   gap: var(--gap);
 }
 
+/* A tall desktop window gets the mockup's proportions: topology and metrics
+   about 190 px, the run (chips, pipeline, log) the most, the lower row a strip. */
+@media (min-width: 1100px) and (min-height: 800px) {
+  .ov,
+  .ov-rows,
+  .ov-row { gap: 10px; }
+  /* Row 2 as tall as its tiles need (more when running: bars and sparklines); the run row takes the rest. */
+  .ov-rows { grid-template-rows: auto minmax(0, 1fr) minmax(0, 96px); }
+  .ov-banner { padding-block: 8px; }
+  .ov-run { gap: 6px; }
+  /* Compact panel heads: the height goes to the steps, lines and tiles. */
+  .ov-rows .panel__head { padding-top: 8px; min-height: 28px; }
+  .ov-rows .panel__body { padding-top: 4px; padding-bottom: 6px; }
+  .ov-pipeline .steps__item { min-height: 21px; }
+  .ov-pipeline__btn { padding-block: 1px; }
+  .ov-run__intro { margin: 0 0 4px; }
+}
+
 /* Every panel is the containing block for what it holds: visually hidden
    text and other absolutely placed bits inside a panel that scrolls are then
    clipped by it, instead of stretching the page area below the window. */

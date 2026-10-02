@@ -1,9 +1,9 @@
 .ov-banner {
   display: flex;
   align-items: center;
-  gap: 16px 28px;
+  gap: 12px 28px;
   flex-wrap: wrap;
-  padding: 14px 20px;
+  padding: 10px 20px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
@@ -12,7 +12,7 @@
 .ov-banner__state {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex: 1 1 420px;
   min-width: 0;
   max-width: 660px;

@@ -27,9 +27,12 @@
   min-height: 0;
 }
 .ov-run__intro {
-  margin: -4px 0 8px;
+  margin: -4px 0 6px;
   font-size: 12px;
   color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ov-run__none {
   padding: 8px 16px;
@@ -42,6 +45,24 @@
 }
 .ov-pipeline .steps__item {
   padding: 0;
+  min-height: 22px;
+}
+/* Compact heads on the pipeline and log, so the steps and lines get the height. */
+.ov-run__panels > .panel > .panel__head {
+  padding-top: 10px;
+  min-height: 34px;
+}
+.ov-run__panels > .panel > .panel__body {
+  padding-top: 8px;
+}
+.ov-run__log .log__bar {
+  padding-bottom: 6px;
+}
+.ov-run__log .log__search {
+  height: 28px;
+}
+.ov-run__log .log__lines {
+  line-height: 1.4;
 }
 .ov-pipeline__btn {
   display: grid;
@@ -49,7 +70,7 @@
   grid-column: 1 / -1;
   align-items: center;
   width: 100%;
-  padding: 5px 8px;
+  padding: 2px 8px;
   border-radius: 8px;
   background: transparent;
   border: 0;

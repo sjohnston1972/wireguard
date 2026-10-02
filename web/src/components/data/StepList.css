@@ -10,6 +10,7 @@
   font-size: 13px;
 }
 .steps__item--running { background: color-mix(in srgb, var(--amber) 10%, transparent); }
+.steps__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .steps__item--running .steps__label { color: var(--text-primary); font-weight: 500; }
 .steps__item--pending .steps__label, .steps__item--skipped .steps__label { color: var(--text-secondary); }
 .steps__icon {
