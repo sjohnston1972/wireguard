@@ -110,6 +110,46 @@ describe("scenarios", () => {
     expect([...SCENARIOS].sort()).toEqual(["busy-month", "deploying", "destroyed", "empty", "failed", "running", "standby"].sort());
   });
 
+  it("every scenario wipes drafts and resets fw_policy", async () => {
+    const { env } = devEnv();
+    await seed(env, "running");
+    for (const s of SCENARIOS) {
+      // Leave things as a long-used install would: a later version and an extra draft rule.
+      await env.DB.prepare("UPDATE fw_policy SET live_version = 9 WHERE id = 1").run();
+      await env.DB.prepare("INSERT INTO fw_draft_rules (live_id, position, name, src_kind, dst_kind, proto, action, created_at) VALUES (NULL, 999, 'leftover', 'any', 'any', 'any', 'deny', '2026-01-01')").run();
+      await seed(env, s);
+      const pol = await env.DB.prepare("SELECT live_version, draft_base, draft_default, apply_token FROM fw_policy WHERE id = 1").first();
+      const names = (await env.DB.prepare("SELECT name FROM fw_draft_rules").all<{ name: string }>()).results.map((r) => r.name);
+      expect(names, s).not.toContain("leftover");
+      if (s === "running") {
+        expect(pol, s).toEqual({ live_version: 1, draft_base: 1, draft_default: "deny", apply_token: null });
+      } else {
+        expect(pol, s).toEqual({ live_version: 1, draft_base: null, draft_default: null, apply_token: null });
+        expect(names, s).toEqual([]);
+        expect((await api(env, "GET", "/firewall")).json.draft, s).toBeNull();
+      }
+    }
+  }, 30_000);
+
+  it("running has a two-change draft (one edited rule, one added)", async () => {
+    const { env } = devEnv();
+    await seed(env, "running");
+    const fw = (await api(env, "GET", "/firewall")).json;
+    expect(fw.version).toBe(1);
+    expect(fw.policy.state).toBe("applied");
+    expect(fw.draft).toMatchObject({ baseVersion: 1, stale: false, changes: 2 });
+    expect(fw.draft.diff.changed).toHaveLength(1);
+    expect(fw.draft.diff.added).toHaveLength(1);
+    expect(fw.draft.diff.removed).toEqual([]);
+    expect(fw.draft.diff.moved).toEqual([]);
+    expect(fw.draft.diff.defaultChanged).toBeNull();
+    expect(fw.draft.rules.filter((r: { mark: string | null }) => r.mark).map((r: { mark: string }) => r.mark).sort()).toEqual(["added", "changed"]);
+    // Apply would go through: neither change is a rule the VM could not load.
+    expect(fw.draft.rules.filter((r: { mark: string | null; problem: string | null }) => r.mark && r.problem)).toEqual([]);
+    // The live rules are as seeded: the draft has not been applied.
+    expect(fw.rules.length).toBe(fw.draft.rules.length - 1);
+  });
+
   it("empty: no clients, destroyed, no history", async () => {
     const { env } = devEnv();
     await seed(env, "empty");
