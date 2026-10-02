@@ -4,7 +4,9 @@
 // the Worker that answers and the app (web/) that asks, so both sides agree
 // on every field. Types only: nothing here runs.
 
-import type { Alert, AuditEntry, Peer, Profile, SpeedTest } from "../worker/src/db";
+import type { Alert, AuditEntry, Capture, Peer, Profile, SpeedTest } from "../worker/src/db";
+import type { FwRule, Forward, Zone } from "../worker/src/firewall";
+import type { PolicyState } from "../worker/src/fwview";
 import type { Snapshot, Talker } from "../worker/src/state";
 import type { ClientView, ClientKpis } from "../worker/src/clients";
 import type { BudgetStatus } from "../worker/src/budget";
@@ -126,4 +128,41 @@ export interface ClientConfigResponse {
 /** PUT /api/v1/clients/:id */
 export interface ClientEditResponse {
   peer: Peer;
+}
+
+// ── Firewall ──
+
+/** One rule in the table, with what the VM reports for it. */
+export interface FirewallRuleRow extends FwRule {
+  /** 1 for the first rule, in the order the VM tries them. */
+  place: number;
+  fromLabel: string;
+  toLabel: string;
+  service: string;
+  /** [packets, bytes] since counters were last cleared, or null when the VM has not counted any. */
+  hits: [number, number] | null;
+  lastHit: string | null;
+  /** Why the VM cannot apply this rule, or null. */
+  problem: string | null;
+}
+
+/** GET /api/v1/firewall */
+export interface FirewallResponse {
+  now: string;
+  running: boolean;
+  defaultAction: "deny" | "allow";
+  policy: { hash: string; state: PolicyState; text: string };
+  rules: FirewallRuleRow[];
+  defaultHits: [number, number] | null;
+  defaultLastHit: string | null;
+  countersClearedAt: string | null;
+  drops: { recent: { at: string; src: string; dst: string; proto: string; dport: number | null; fromName: string; toName: string }[]; last24h: number };
+  zones: { zone: Zone; label: string; v4: string[]; v6: string[]; negate: boolean }[];
+  testVm: { ip: string | null; enabled: boolean };
+  forwards: (Forward & { connections: [number, number] | null; lastHit: string | null })[];
+  captures: Capture[];
+  capture: { busy: boolean; ifaces: Record<string, string> };
+  publicIp: string | null;
+  dnsName: string;
+  kpis: { rules: number; enabled: number; defaultAction: "deny" | "allow"; drops24h: number; published: number; captureBusy: boolean };
 }
