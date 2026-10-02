@@ -168,4 +168,14 @@ describe("review pass 2: a busy range is counted in full", () => {
     expect(r.json.kpis.watchmanProblems).toBe(250);
     expect(r.json.notes.length).toBeLessThanOrEqual(200);
   });
+
+  it("counts all 250 config changes in range but returns at most 200 events", async () => {
+    const { env } = apiEnv();
+    const now = Date.now();
+    for (let i = 0; i < 250; i++) await env.DB.prepare("INSERT INTO audit (at, user, action, target) VALUES (?1, 'steven', 'settings.save', 'Settings')").bind(new Date(now - 60_000 - i * 1000).toISOString()).run();
+    const r = await api(env, "GET", "/activity?range=24h");
+    expect(r.status).toBe(200);
+    expect(r.json.kpis.configChanges).toBe(250);
+    expect(r.json.all.length).toBeLessThanOrEqual(200);
+  });
 });

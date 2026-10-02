@@ -31,7 +31,8 @@ export function registerActivity(api: Hono<ApiEnv>): void {
     const [runs, notes, inRangeChanges, rows, cfg] = await Promise.all([
       c.env.DB.prepare("SELECT * FROM runs WHERE requested_at >= ?1 ORDER BY requested_at DESC").bind(since).all<db.Run>().then((r) => r.results),
       c.env.DB.prepare("SELECT * FROM alerts WHERE at >= ?1 ORDER BY at DESC").bind(since).all<db.Alert>().then((r) => r.results),
-      c.env.DB.prepare("SELECT * FROM audit WHERE at >= ?1 ORDER BY at DESC, id DESC LIMIT ?2").bind(since, RANGE_CAP).all<db.AuditEntry>().then((r) => r.results),
+      // The change log keeps at most 1000 entries (db.pruneAudit), so this read is bounded.
+      c.env.DB.prepare("SELECT * FROM audit WHERE at >= ?1 ORDER BY at DESC, id DESC").bind(since).all<db.AuditEntry>().then((r) => r.results),
       db.listAudit(c.env, { kind, q, limit: AUDIT_PAGE, offset: (page - 1) * AUDIT_PAGE }),
       effectiveConfig(c.env),
     ]);
