@@ -1,0 +1,81 @@
+/* The Firewall page. Desktop (1100 px and up): one screen, never scrolls;
+   panels scroll inside. Left column (9 of 12): rules over zones + simulator.
+   Right column (3 of 12): drops, published ports, capture; below 1400 px one
+   tabbed panel. 641-1099 px: everything stacks and the page scrolls. */
+.fw {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  height: 100%;
+  min-height: 0;
+}
+.fw__kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--gap);
+  flex: none;
+}
+.fw__body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 9fr) minmax(0, 3fr);
+  gap: var(--gap);
+}
+.fw__left {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, auto);
+  gap: var(--gap);
+  min-height: 0;
+}
+.fw__bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
+  gap: var(--gap);
+  min-height: 0;
+  max-height: 232px;
+}
+.fw__right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+}
+.fw__right > * { min-height: 0; }
+.fw__right > .fw-drops-panel { flex: 1 1 0; min-height: 120px; }
+.fw__right > .fw-ports-panel { flex: 0 1 auto; max-height: 26%; }
+.fw__right > .fw-cap-panel { flex: 0 1 auto; max-height: 30%; }
+.fw-cap .select__value { white-space: nowrap; overflow: hidden; }
+.fw-cap .select__value > span { overflow: hidden; text-overflow: ellipsis; }
+.fw__rules { min-height: 0; }
+.fw__bottom > .panel > .panel__body { min-height: 0; }
+
+/* Below 1400 px: drops, published ports and capture share one tabbed panel. */
+.fw-righttabs { flex: 1; min-height: 0; }
+.fw-righttabs__body { display: flex; flex-direction: column; min-height: 0; padding-top: 12px; }
+.fw-righttabs__body > .tabs { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.fw-righttabs__body .tabs__panel { flex: 1; min-height: 0; overflow: auto; padding-top: 10px; }
+.fw-righttabs__ports { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.fw-righttabs__ports > ul { width: 100%; }
+
+.fw-sk__head { display: flex; align-items: center; gap: 14px; }
+.fw-sk__titles { display: flex; flex-direction: column; gap: 8px; }
+.fw-sk__body { flex: 1; min-height: 0; display: grid; grid-template-columns: 9fr 3fr; gap: var(--gap); }
+.fw-sk__table { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-panel); }
+
+@media (max-width: 1399px) {
+  .fw__body { grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); }
+}
+@media (max-height: 760px) and (min-width: 1100px) {
+  .fw__bottom { max-height: 136px; }
+  .fw__bottom .panel__head { min-height: 32px; padding-top: 8px; }
+  .fw__bottom .panel__body { padding-top: 8px; padding-bottom: 8px; }
+  .fw__bottom .fw-panel-sub { display: none; }
+}
+@media (max-width: 1099px) {
+  .fw { height: auto; }
+  .fw__kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fw__body, .fw__bottom { grid-template-columns: minmax(0, 1fr); max-height: none; }
+  .fw__left { grid-template-rows: auto auto; }
+  .fw__rules { max-height: 70vh; }
+}

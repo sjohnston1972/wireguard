@@ -1,0 +1,44 @@
+.fw-head { display: flex; align-items: center; gap: 14px; flex: none; min-width: 0; }
+.fw-head__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  color: var(--blue-bright);
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
+}
+.fw-head__text { min-width: 0; }
+.fw-head__title { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; }
+.fw-head__subtitle { margin-top: 4px; font-size: 14px; color: var(--text-secondary); }
+.fw-head__right { margin-left: auto; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+
+.fw-policy { display: flex; flex-direction: column; gap: 3px; min-width: 0; max-width: 360px; }
+.fw-policy__label { font-size: 12.5px; color: var(--text-secondary); }
+.fw-policy__line { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.fw-policy__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-secondary); flex: none; }
+.fw-policy__dot--green { background: var(--green); }
+.fw-policy__dot--amber { background: var(--amber); }
+.fw-policy__dot--red { background: var(--red); }
+.fw-policy__word { font-weight: 600; }
+.fw-policy__word--green { color: var(--green); }
+.fw-policy__word--amber { color: var(--amber); }
+.fw-policy__word--red { color: var(--red); }
+.fw-policy__age { font-size: 12px; color: var(--text-secondary); }
+.fw-policy__detail { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fw-draftbar { display: flex; align-items: center; gap: 10px; }
+.fw-draftbar__count { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 550; color: var(--amber); white-space: nowrap; }
+.fw-draftbar__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
+
+@media (max-width: 1099px) {
+  .fw-head { flex-wrap: wrap; }
+  .fw-head__right { margin-left: 0; width: 100%; justify-content: space-between; }
+}
+@media (max-height: 700px) and (min-width: 1100px) {
+  .fw-head__icon { width: 44px; height: 44px; }
+  .fw-head__title { font-size: 24px; }
+  .fw-head__subtitle { margin-top: 2px; font-size: 13px; }
+}

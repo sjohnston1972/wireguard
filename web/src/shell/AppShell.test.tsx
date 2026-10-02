@@ -52,7 +52,6 @@ describe("AppShell", () => {
 
   it.each([
     ["/clients/abc", "Client abc"],
-    ["/firewall/rules/7", "Firewall rule 7"],
     ["/activity/runs/12", "Run 12"],
     ["/settings/profiles", "Settings"],
   ])("has a placeholder for the detail route %s", (url, title) => {

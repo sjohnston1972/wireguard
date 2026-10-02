@@ -29,8 +29,6 @@ describe("view folders", () => {
     ["/", "Overview"],
     ["/clients", "Clients"],
     ["/clients/3", "Client 3"],
-    ["/firewall", "Firewall"],
-    ["/firewall/rules/7", "Firewall rule 7"],
     ["/activity", "Activity"],
     ["/activity/runs/12", "Run 12"],
     ["/cost", "Cost"],
