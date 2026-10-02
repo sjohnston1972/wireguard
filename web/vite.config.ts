@@ -20,5 +20,12 @@ export default defineConfig({
     strictPort: true,
     proxy: { "/api": api, "/captures": api },
   },
-  build: { outDir: "dist", emptyOutDir: true },
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+    // Fonts always ship as files: Vite would otherwise inline the small subsets
+    // into the CSS as data: URIs, which the CSP's font-src 'self' blocks.
+    // (npm run bundle-size fails the build if one slips through.)
+    assetsInlineLimit: (file: string) => (/\.(woff2?|ttf|otf)$/i.test(file) ? false : undefined),
+  },
 });

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import { createBrowserRouter, Route, RouterProvider, Routes } from "react-router-dom";
+import { createBrowserRouter, Navigate, Route, RouterProvider, Routes } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { makeQueryClient } from "@/api/queryClient";
 import { AppShell } from "@/shell/AppShell";
@@ -43,6 +43,8 @@ export function AppRoutes() {
         <Route index element={<OverviewPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="clients/:id" element={<ClientDetailPage />} />
+        {/* The old dashboard's address for Clients (bookmarks, the installed app's history). */}
+        <Route path="peers" element={<Navigate to="/clients" replace />} />
         <Route path="firewall" element={<FirewallPage />} />
         <Route path="firewall/rules/:id" element={<FirewallRulePage />} />
         <Route path="activity" element={<ActivityPage />} />
