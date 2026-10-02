@@ -26,8 +26,6 @@ describe("view folders", () => {
   });
 
   it.each([
-    ["/clients", "Clients"],
-    ["/clients/3", "Client 3"],
     ["/activity", "Activity"],
     ["/activity/runs/12", "Run 12"],
     ["/cost", "Cost"],

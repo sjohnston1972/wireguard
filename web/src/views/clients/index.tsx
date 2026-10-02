@@ -1,6 +1,5 @@
-import { useParams } from "react-router-dom";
-import { Placeholder } from "../Placeholder";
+import { ClientsScreen } from "./ClientsScreen";
 
-// Plan 4 area C replaces this file with the Clients view (the detail route opens its side panel).
-export const ClientsPage = () => <Placeholder title="Clients" />;
-export const ClientDetailPage = () => <Placeholder title={`Client ${useParams().id}`} />;
+// The Clients view. /clients/:id is the same page with that client's panel open.
+export const ClientsPage = () => <ClientsScreen />;
+export const ClientDetailPage = ClientsPage;
