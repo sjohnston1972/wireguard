@@ -21,6 +21,8 @@
   --amber: #b45309;
   --red: #c62828;
   --purple: #6d3fd1;
+  --blue-fill: #2563eb;
+  --blue-fill-hover: #1d56d8;
 
   --focus-ring: #1d56d8;
   --scrollbar-thumb: #c3cddb;
@@ -47,6 +49,8 @@
     --amber: #b45309;
     --red: #c62828;
     --purple: #6d3fd1;
+    --blue-fill: #2563eb;
+    --blue-fill-hover: #1d56d8;
 
     --focus-ring: #1d56d8;
     --scrollbar-thumb: #c3cddb;

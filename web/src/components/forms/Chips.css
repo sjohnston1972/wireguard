@@ -13,7 +13,7 @@
 .chip--rect { border-radius: var(--radius-control); height: 30px; padding: 0 14px; }
 .chip:hover { color: var(--text-primary); }
 .chip--on {
-  background: var(--blue);
-  border-color: var(--blue);
+  background: var(--blue-fill);
+  border-color: var(--blue-fill);
   color: #fff;
 }

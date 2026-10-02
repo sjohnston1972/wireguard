@@ -20,7 +20,7 @@
   cursor: pointer;
 }
 .segmented__item:hover { color: var(--text-primary); }
-.segmented__item[aria-checked="true"] { background: var(--blue); color: #fff; }
+.segmented__item[aria-checked="true"] { background: var(--blue-fill); color: #fff; }
 .segmented__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
 .segmented__dot--amber { background: var(--amber); }
 .segmented__dot--red { background: var(--red); }

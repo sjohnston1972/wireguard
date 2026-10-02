@@ -19,6 +19,10 @@
   --amber: #f59e0b;
   --red: #ef4444;
   --purple: #9263f8;
+  /* Filled controls with white text (primary button, active pill/chip): the
+     same hue as --blue, darker so white text passes 4.5:1. */
+  --blue-fill: #1e64fb;
+  --blue-fill-hover: #0f5bfa;
 
   --radius-control: 8px;
   --radius-panel: 14px;

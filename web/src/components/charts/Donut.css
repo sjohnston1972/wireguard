@@ -19,4 +19,4 @@
 .donut__name { flex: 1; color: var(--text-primary); }
 .donut__val, .donut__pct { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .donut__pct { min-width: 34px; text-align: right; }
-.donut__nodata { font-size: 12px; color: var(--text-muted); }
+.donut__nodata { font-size: 12px; color: var(--text-secondary); }

@@ -37,8 +37,8 @@
   background: var(--bg-tile);
 }
 .tabs--pill .tabs__tab[data-state="active"] {
-  background: var(--blue);
-  border-color: var(--blue);
+  background: var(--blue-fill);
+  border-color: var(--blue-fill);
   color: #fff;
 }
 

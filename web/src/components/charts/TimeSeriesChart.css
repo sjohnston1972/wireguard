@@ -7,4 +7,4 @@
 .tsc__plot { width: 100%; }
 .tsc__plot .u-over, .tsc__plot .u-under { cursor: crosshair; }
 .tsc__plot .u-cursor-x, .tsc__plot .u-cursor-y { border-color: var(--border-strong) !important; }
-.tsc__empty { display: grid; place-items: center; font-size: 12px; color: var(--text-muted); }
+.tsc__empty { display: grid; place-items: center; font-size: 12px; color: var(--text-secondary); }

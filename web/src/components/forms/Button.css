@@ -17,8 +17,8 @@
 .btn--sm { height: 28px; padding: 0 10px; font-size: 12px; gap: 6px; }
 .btn--lg { height: 44px; padding: 0 20px; font-size: 14px; }
 
-.btn--primary { background: var(--blue); color: #fff; }
-.btn--primary:hover:not(:disabled) { background: var(--blue-bright); }
+.btn--primary { background: var(--blue-fill); color: #fff; }
+.btn--primary:hover:not(:disabled) { background: var(--blue-fill-hover); }
 
 .btn--secondary { background: var(--bg-tile); border-color: var(--border-strong); color: var(--text-primary); }
 .btn--secondary:hover:not(:disabled) { background: var(--bg-elevated); }
