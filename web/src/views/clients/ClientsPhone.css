@@ -1,0 +1,38 @@
+/* Phone: one big, tappable line per device. */
+.pclients__sum { font-size: 13px; color: var(--text-secondary); }
+.pclients__sum strong { color: var(--text-primary); font-weight: 600; }
+.pclients {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.pclients > li + li { border-top: 1px solid var(--border); }
+.prow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.prow:active,
+.prow--on { background: color-mix(in srgb, var(--blue) 10%, transparent); }
+.prow__light { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--text-muted); }
+.prow__light--green { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 20%, transparent); }
+.prow__light--red { background: var(--red); }
+.prow__light--amber { background: var(--amber); }
+.prow__icon { flex: none; color: var(--blue-bright); }
+.prow__name { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prow__right { flex: none; font-size: 14px; font-variant-numeric: tabular-nums; }
+.prow__right--state { font-size: 13px; color: var(--text-secondary); }
+.prow__chev { flex: none; color: var(--text-muted); }
