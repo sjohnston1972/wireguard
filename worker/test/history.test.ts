@@ -96,14 +96,15 @@ describe("clientSamples", () => {
   });
 
   it("is online under 3 minutes since the handshake, offline from 3 minutes", () => {
-    const cur = report(now, [{ key: PHONE, hs: s - 179, rx: 0, tx: 0 }, { key: LAPTOP, hs: s - 181, rx: 0, tx: 0 }]);
+    // The laptop moved a few bytes, so it gets a row even though it is offline.
+    const cur = report(now, [{ key: PHONE, hs: s - 179, rx: 0, tx: 0 }, { key: LAPTOP, hs: s - 181, rx: 5, tx: 0 }]);
     const out = clientSamples({ report: cur, prev: null, rtt: null, peers, nowMs: now });
     expect(out.map((c) => [c.peer_id, c.online, c.handshake_age])).toEqual([[7, 1, 179], [9, 0, 181]]);
   });
 
-  it("has no handshake age, and is offline, when the client never connected", () => {
+  it("writes no row for a client that never connected", () => {
     const cur = report(now, [{ key: PHONE, hs: 0, rx: 0, tx: 0 }]);
-    expect(clientSamples({ report: cur, prev: null, rtt: null, peers, nowMs: now })[0]).toMatchObject({ online: 0, handshake_age: null, latency: null });
+    expect(clientSamples({ report: cur, prev: null, rtt: null, peers, nowMs: now })).toEqual([]);
   });
 
   it("skips keys that are not a known client", () => {
@@ -333,6 +334,23 @@ describe("run steps", () => {
 });
 
 describe("review fixes", () => {
+  it("writes no row for a client that is offline, idle and unpinged (no row means idle)", () => {
+    const now = T0 + 60_000;
+    const s = now / 1000;
+    const peers = [{ id: 7, public_key: PHONE }, { id: 9, public_key: LAPTOP }];
+    const prev = report(T0, [{ key: PHONE, hs: s - 3600, rx: 500, tx: 500 }, { key: LAPTOP, hs: s - 3600, rx: 500, tx: 500 }]);
+    const cur = report(now, [{ key: PHONE, hs: s - 3600, rx: 500, tx: 500 }, { key: LAPTOP, hs: s - 3600, rx: 600, tx: 500 }]);
+    // PHONE: offline, no bytes, no latency -> nothing. LAPTOP: offline but moved bytes -> kept.
+    expect(clientSamples({ report: cur, prev, rtt: null, peers, nowMs: now }).map((c) => c.peer_id)).toEqual([9]);
+  });
+
+  it("stores history in compact tables (one write per row, not two)", async () => {
+    for (const t of ["hist_vm", "hist_client", "hist_drops"]) {
+      const row = await env.DB.prepare("SELECT sql FROM sqlite_master WHERE name = ?1").bind(t).first<{ sql: string }>();
+      expect(row?.sql, t).toMatch(/WITHOUT ROWID/i);
+    }
+  });
+
   it("records history only after the heartbeat's snapshot is saved (no tear-down race)", async () => {
     const token = await toRunning();
     let seenAtRecording: string | null | undefined;

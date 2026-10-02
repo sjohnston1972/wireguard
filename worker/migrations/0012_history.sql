@@ -7,6 +7,11 @@
 -- into 5-minute summaries, and deletes anything older than 30 days.
 -- Firewall drops are kept as one row per minute per distinct flow, with a
 -- count. Runs keep their GitHub step list (steps_json).
+--
+-- The tables are WITHOUT ROWID: each row lives in its key index only, so a
+-- write is one row, not two (D1 bills writes per row touched). A client that
+-- is offline, moved no bytes and answered no ping gets no row that minute:
+-- no row means idle and offline.
 
 CREATE TABLE IF NOT EXISTS hist_vm (
   res          INTEGER NOT NULL,  -- seconds per row: 60 (raw) or 300 (5-minute summary)
@@ -21,7 +26,7 @@ CREATE TABLE IF NOT EXISTS hist_vm (
   peers_online INTEGER,
   dns_up       INTEGER,           -- 1 up, 0 down, NULL not reported
   PRIMARY KEY (res, t)
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS hist_client (
   res           INTEGER NOT NULL,
@@ -34,7 +39,7 @@ CREATE TABLE IF NOT EXISTS hist_client (
   rx            INTEGER NOT NULL,  -- bytes the VM received from it in this slot
   tx            INTEGER NOT NULL,  -- bytes the VM sent to it in this slot
   PRIMARY KEY (res, t, peer_id)     -- res and time first: the tidy-up reads by time range
-);
+) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS hist_drops (
   t      TEXT    NOT NULL,           -- the minute, as above
@@ -46,6 +51,6 @@ CREATE TABLE IF NOT EXISTS hist_drops (
   out_if TEXT    NOT NULL DEFAULT '',
   n      INTEGER NOT NULL,           -- drops of this flow in this minute
   PRIMARY KEY (t, src, dst, proto, dport, in_if, out_if)
-);
+) WITHOUT ROWID;
 
 ALTER TABLE runs ADD COLUMN steps_json TEXT;

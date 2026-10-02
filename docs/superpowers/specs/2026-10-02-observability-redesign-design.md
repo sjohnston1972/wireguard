@@ -158,8 +158,13 @@ Rules:
 - Online is handshake-based: a client is online if its latest handshake is under
   3 minutes old (the same rule as today's `peerOnline`). The UI explains this in a
   tooltip: WireGuard has no session, only handshakes.
-- Write volume: about 1 + N rows per minute while running (about 7,200 a day for
-  4 clients running all day, plus drops), well inside D1's free allowance.
+- Write volume: every heartbeat (about 2 a minute) upserts the VM row and a row for
+  each client that is online, moved bytes or answered a ping; an idle, offline
+  client gets no row (no row means idle and offline). Tables are WITHOUT ROWID, so
+  each write touches one row. With 4 active clients all day: about 14,400 writes
+  plus about 7,200 roll-up deletes, about 22,000 a day; D1 Free allows 100,000.
+- Reads: every roll-up and expiry statement is an index range read (the client
+  key is `(res, t, peer_id)`), so the tidy-up reads only what it folds or deletes.
 - Run steps: every GitHub poll during a run saves the step list (with start and end
   times) to `runs.steps_json`, so a finished run keeps the last list seen; the run
   drawer may refresh it from GitHub when opened.

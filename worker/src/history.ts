@@ -68,7 +68,9 @@ export interface ClientSample {
  * One heartbeat's reading for each known client. Bytes are what moved since
  * the previous heartbeat; a counter that went down (the VM rebooted or was
  * rebuilt) counts from zero, and the first heartbeat of a session counts
- * the whole counter. Keys that are not a client in the table are skipped.
+ * the whole counter. Keys that are not a client in the table are skipped,
+ * and so is a client that is offline, moved nothing and answered no ping:
+ * no row means idle and offline, which keeps the write count down.
  */
 export function clientSamples(o: {
   report: AgentReport;
@@ -86,14 +88,16 @@ export function clientSamples(o: {
     if (id === undefined) continue;
     const was = before.get(p.public_key);
     const ms = o.rtt?.[p.public_key];
-    out.push({
+    const sample: ClientSample = {
       peer_id: id,
       online: peerOnline(p, o.nowMs) ? 1 : 0,
       handshake_age: p.latest_handshake > 0 ? Math.max(0, Math.round(o.nowMs / 1000 - p.latest_handshake)) : null,
       latency: typeof ms === "number" && Number.isFinite(ms) ? Math.round(ms * 10) / 10 : null,
       rx: delta(p.rx, was?.rx),
       tx: delta(p.tx, was?.tx),
-    });
+    };
+    if (!sample.online && !sample.rx && !sample.tx && sample.latency === null) continue;
+    out.push(sample);
   }
   return out;
 }
