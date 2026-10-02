@@ -74,6 +74,15 @@
   .cost-sessions-col { display: flex; min-height: 0; }
   .cost-sessions-col > .panel { flex: 1; }
 }
+/* A tall desktop window: the charts take what they need and the sessions table
+   gets the rest of the window, instead of one row under a scrolled column. */
+@media (min-width: 1100px) and (min-height: 800px) {
+  .cost-grid { grid-template-rows: minmax(0, 232px) minmax(0, 186px) minmax(150px, 1fr); height: 100%; min-height: 0; }
+  .cost-grid > * { min-height: 0; }
+  .cost-grid .panel__head { padding-top: 10px; min-height: 34px; }
+  .cost-grid .panel__body { padding-top: 8px; padding-bottom: 10px; overflow: hidden; }
+  .cost-sessions .panel__body { overflow: auto; }
+}
 
 .cost-sessions__controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .cost-sessions .panel__head { padding-bottom: 8px; }

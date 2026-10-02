@@ -95,4 +95,12 @@ describe("Settings overview section", () => {
     await user.click(within(backup).getByRole("button", { name: "Open" }));
     expect(loc()).toHaveTextContent("/settings/backup");
   });
+
+  it("a budget in pence shows its pence, not a rounded £0", async () => {
+    const s = settingsFixture();
+    renderApp("/settings", { routes: routesFor({ ...s, values: { ...s.values, monthlyBudgetGbp: 0.34 } }) });
+    const cost = await screen.findByRole("region", { name: "Cost and usage" });
+    expect(within(cost).getByText("£0.34")).toBeInTheDocument();
+    expect(within(cost).queryByText("£0")).toBeNull();
+  });
 });

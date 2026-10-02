@@ -50,6 +50,12 @@
 
 .set-stack { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
 .set-col { display: flex; flex-direction: column; gap: var(--gap); }
+/* Row 2: the panels fill the row (no gap under the shorter ones); on a wide window
+   the cost figures sit side by side, so the row is no taller than it needs. */
+.set-row2 > .grid12__col:not(.set-col) > .panel { height: 100%; }
+@media (min-width: 1400px) {
+  .set-col .set-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 .set-lead { font-size: 14px; color: var(--text-secondary); max-width: 80ch; }
 .set-muted { color: var(--text-secondary); font-size: 12px; }
 .set-note { font-size: 13px; color: var(--text-secondary); margin: 8px 0; }

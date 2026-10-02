@@ -77,8 +77,8 @@ export function OverviewSection({ s, ov, updated }: { s: SettingsResponse; ov?: 
         <HealthCheckButton flow={health} />
       </section>
 
-      <Grid>
-        <Col span={5}>
+      <Grid className="set-row2">
+        <Col span={4}>
           <Panel title="Environment and deployment" actions={<Button size="sm" onClick={go("deployment")}>Edit</Button>}>
             <KeyValue
               items={[
@@ -117,12 +117,12 @@ export function OverviewSection({ s, ov, updated }: { s: SettingsResponse; ov?: 
             )}
           </Panel>
         </Col>
-        <Col span={3} className="set-col">
+        <Col span={4} className="set-col">
           <Panel title="Cost and usage" actions={<Button size="sm" onClick={go("automation")}>Edit limit</Button>}>
             <div className="set-stats">
               <Stat label="If running all day (estimate)" value={gbp(perDay)} />
               <Stat label="This month so far" value={budget ? gbp(budget.total) : "no data"} />
-              <Stat label="Monthly budget" value={v.monthlyBudgetGbp ? gbp(v.monthlyBudgetGbp, 0) : "none"} />
+              <Stat label="Monthly budget" value={v.monthlyBudgetGbp ? gbp(v.monthlyBudgetGbp, Number.isInteger(v.monthlyBudgetGbp) ? 0 : 2) : "none"} />
             </div>
             {budget && budget.level !== "none" && <ProgressBar value={budget.pct} label="Budget used" tone={guard.tone === "green" ? "green" : guard.tone === "amber" ? "amber" : "red"} showValue />}
             <p className="set-note">
