@@ -246,6 +246,7 @@ async function main() {
         rec.overflowX = measured.x;
         rec.mainOverflowY = measured.mainY;
         rec.mainOverflowX = measured.mainX;
+        rec.innerScroller = measured.innerScroller;
         const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
         writeFileSync(join(out, s.file), Buffer.from(shot.data, "base64"));
         const verdict = judgeOverflow(measured, s);

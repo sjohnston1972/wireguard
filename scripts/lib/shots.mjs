@@ -39,15 +39,36 @@ export function isOneScreenSize(s) {
  * area (#main) scrolls inside itself, so the document alone never scrolls:
  * the page area is measured too. Runs inside the browser (see OVERFLOW_PROBE),
  * so it uses nothing but its two arguments.
+ *
+ * `innerScroller` catches a view that keeps #main still but wraps the page in
+ * one scrolling box of its own: an element that scrolls (overflow-y auto or
+ * scroll, and more content than room), spans the page area's width (90 % or
+ * more) and holds two or more panels. A list scrolling inside its one panel
+ * holds one panel; a column of panels too tall for the window (allowed by the
+ * spec, section 7) is narrower than the page. Neither is reported.
  */
 export function measureOverflow(document, window) {
   const d = document.documentElement;
   const main = document.getElementById("main");
+  let innerScroller = null;
+  if (main && typeof main.querySelectorAll === "function" && typeof window.getComputedStyle === "function") {
+    for (const e of main.querySelectorAll("*")) {
+      const by = e.scrollHeight - e.clientHeight;
+      if (by <= 1 || e.clientWidth < main.clientWidth * 0.9) continue;
+      const oy = window.getComputedStyle(e).overflowY;
+      if (oy !== "auto" && oy !== "scroll") continue;
+      if (e.querySelectorAll(".panel").length < 2) continue;
+      const cls = typeof e.className === "string" ? e.className.trim().split(/\s+/).filter(Boolean)[0] : "";
+      innerScroller = { what: `${String(e.tagName).toLowerCase()}${cls ? `.${cls}` : ""}`, by };
+      break;
+    }
+  }
   return {
     y: d.scrollHeight - window.innerHeight,
     x: d.scrollWidth - window.innerWidth,
     mainY: main ? main.scrollHeight - main.clientHeight : null,
     mainX: main ? main.scrollWidth - main.clientWidth : null,
+    innerScroller,
   };
 }
 
@@ -60,6 +81,9 @@ export function judgeOverflow(m, shot) {
   const problems = [];
   if (m.y > 0) problems.push(`the page scrolls ${m.y}px`);
   if (m.mainY !== null && m.mainY > 0) problems.push(`#main scrolls ${m.mainY}px`);
+  if (m.x > 0) problems.push(`the page scrolls sideways ${m.x}px`);
+  if (m.mainX !== null && m.mainX > 0) problems.push(`#main scrolls sideways ${m.mainX}px`);
+  if (m.innerScroller) problems.push(`${m.innerScroller.what} scrolls ${m.innerScroller.by}px (a page-wide scroller holding several panels)`);
   return problems.length ? { ok: false, reason: problems.join(", ") } : { ok: true, reason: null };
 }
 
