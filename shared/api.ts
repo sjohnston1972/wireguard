@@ -7,6 +7,7 @@
 import type { Alert, Profile, SpeedTest } from "../worker/src/db";
 import type { Snapshot } from "../worker/src/state";
 import type { BudgetStatus } from "../worker/src/budget";
+import type { VmHistory, ClientHistory } from "../worker/src/history";
 
 /** Every refusal or failure. `field` names the input at fault, for a form. */
 export interface ApiError {
@@ -83,3 +84,8 @@ export interface OverviewResponse {
 export interface SshPasswordResponse {
   password: string;
 }
+
+/** GET /api/v1/history?scope=vm&range= */
+export type VmHistoryResponse = VmHistory;
+/** GET /api/v1/history?scope=client&id=&range= */
+export type ClientHistoryResponse = ClientHistory;

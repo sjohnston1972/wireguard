@@ -8,6 +8,7 @@ import type { Hono } from "hono";
 import { registerSession } from "./session";
 import { registerOverview } from "./overview";
 import { registerLifecycle } from "./lifecycle";
+import { registerHistory } from "./history";
 
 export function buildApi(): Hono<ApiEnv> {
   const api = createApi();
@@ -15,6 +16,7 @@ export function buildApi(): Hono<ApiEnv> {
   registerSession(api);
   registerOverview(api);
   registerLifecycle(api);
+  registerHistory(api);
   api.all("*", (c) => fail(c, 404, "not_found", "No such API route."));
   return api;
 }

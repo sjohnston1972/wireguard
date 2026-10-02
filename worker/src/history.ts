@@ -205,3 +205,99 @@ export async function rollUp(env: Env, now: Date): Promise<void> {
     env.DB.prepare("DELETE FROM hist_drops WHERE t < ?1").bind(expiry),
   ]);
 }
+
+export type HistoryRange = "1h" | "24h" | "7d" | "30d";
+export const RANGE_MS: Record<HistoryRange, number> = { "1h": 3_600_000, "24h": 86_400_000, "7d": 7 * 86_400_000, "30d": 30 * 86_400_000 };
+/** Seconds per point for each range: about 60 to 360 points, enough for a chart. */
+export const RANGE_STEP: Record<HistoryRange, number> = { "1h": 60, "24h": 300, "7d": 1800, "30d": 7200 };
+
+export interface VmPoint {
+  t: string;
+  expected: number;
+  received: number;
+  load1: number | null;
+  rx_rate: number | null;
+  tx_rate: number | null;
+  rx_rate_max: number | null;
+  tx_rate_max: number | null;
+  peers_online: number | null;
+  dns_up: number | null;
+}
+
+export interface ClientPoint {
+  t: string;
+  online: number;
+  latency_avg: number | null;
+  latency_max: number | null;
+  rx: number;
+  tx: number;
+}
+
+export interface VmHistory {
+  range: HistoryRange;
+  step: number;
+  from: string;
+  to: string;
+  points: VmPoint[];
+  /** The newest point with a heartbeat in it, or null. */
+  latest: string | null;
+  /** Heartbeat minutes received out of those expected while running; pct null when there is nothing to judge. */
+  availability: { expected: number; received: number; pct: number | null };
+}
+
+export interface ClientHistory {
+  range: HistoryRange;
+  step: number;
+  from: string;
+  to: string;
+  points: ClientPoint[];
+  latest: string | null;
+}
+
+/** The slot of a stored time at `?3` seconds per point, in SQL. The step is cast to a whole number: a JavaScript number binds as a decimal, and decimal division would not round down to the slot. */
+const POINT = `strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', t) AS INTEGER) / CAST(?3 AS INTEGER)) * CAST(?3 AS INTEGER), 'unixepoch')`;
+
+function window(range: HistoryRange, now: Date) {
+  const step = RANGE_STEP[range];
+  return { step, from: bucket(now.getTime() - RANGE_MS[range], step), to: bucket(now.getTime(), 1) };
+}
+
+/** The VM's history for a range: raw minutes and 5-minute summaries together, one point per step. */
+export async function readVmHistory(env: Env, range: HistoryRange, now: Date): Promise<VmHistory> {
+  const { step, from, to } = window(range, now);
+  const rows = (
+    await env.DB.prepare(
+      `SELECT ${POINT} AS t, SUM(expected) AS expected, SUM(received) AS received, AVG(load1) AS load1,
+              AVG(rx_rate) AS rx_rate, AVG(tx_rate) AS tx_rate, MAX(rx_rate_max) AS rx_rate_max, MAX(tx_rate_max) AS tx_rate_max,
+              MAX(peers_online) AS peers_online, MIN(dns_up) AS dns_up
+       FROM hist_vm WHERE res IN (${RAW_RES}, ${SUMMARY_RES}) AND t >= ?1 AND t <= ?2 GROUP BY 1 ORDER BY 1`,
+    )
+      .bind(from, to, step)
+      .all<VmPoint>()
+  ).results;
+  const expected = rows.reduce((n, p) => n + p.expected, 0);
+  const received = rows.reduce((n, p) => n + p.received, 0);
+  return {
+    range,
+    step,
+    from,
+    to,
+    points: rows,
+    latest: [...rows].reverse().find((p) => p.received > 0)?.t ?? null,
+    availability: { expected, received, pct: expected ? Math.round((received / expected) * 1000) / 10 : null },
+  };
+}
+
+/** One client's history for a range. No point in a step means the client was idle and offline then. */
+export async function readClientHistory(env: Env, peerId: number, range: HistoryRange, now: Date): Promise<ClientHistory> {
+  const { step, from, to } = window(range, now);
+  const rows = (
+    await env.DB.prepare(
+      `SELECT ${POINT} AS t, MAX(online) AS online, AVG(latency_avg) AS latency_avg, MAX(latency_max) AS latency_max, SUM(rx) AS rx, SUM(tx) AS tx
+       FROM hist_client WHERE res IN (${RAW_RES}, ${SUMMARY_RES}) AND t >= ?1 AND t <= ?2 AND peer_id = ?4 GROUP BY 1 ORDER BY 1`,
+    )
+      .bind(from, to, step, peerId)
+      .all<ClientPoint>()
+  ).results;
+  return { range, step, from, to, points: rows, latest: rows.at(-1)?.t ?? null };
+}
