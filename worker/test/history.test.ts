@@ -9,7 +9,7 @@ import * as db from "../src/db";
 import type { Env } from "../src/env";
 import { bucket, vmSample, clientSamples, recordHeartbeat, recordMissedHeartbeats, rollUp } from "../src/history";
 import { runScheduled } from "../src/monitor";
-import { freshDrops, startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
+import { freshDrops, startDeploy, issueRunSecrets, handleCallback, handleAgent, refreshActiveRun } from "../src/runs";
 import { getSnapshot, saveSnapshot } from "../src/state";
 import type { AgentReport, Snapshot, Traffic } from "../src/state";
 
@@ -306,5 +306,28 @@ describe("watchman", () => {
     await runScheduled(env, new Date(since + 10 * 60_000));
     const [{ n }] = await rows("SELECT COUNT(*) AS n FROM hist_vm WHERE received = 0");
     expect(Number(n)).toBeGreaterThan(0);
+  });
+});
+
+describe("run steps", () => {
+  it("are saved with their times on every GitHub poll during the run", async () => {
+    await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
+    const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+    world.jobs.set(lastGhRun(world), [
+      {
+        id: 1, name: "terraform", status: "in_progress", conclusion: null,
+        steps: [
+          { name: "Set up job", status: "completed", conclusion: "success", started_at: "2026-10-02T10:00:00Z", completed_at: "2026-10-02T10:00:02Z" },
+          { name: "Check out", status: "completed", conclusion: "success", started_at: "2026-10-02T10:00:02Z", completed_at: "2026-10-02T10:00:04Z" },
+          { name: "terraform apply", status: "in_progress", conclusion: null, started_at: "2026-10-02T10:00:30Z", completed_at: null },
+        ],
+      },
+    ]);
+    await refreshActiveRun(env);
+    const saved = await db.getRun(env, run.id);
+    expect(JSON.parse(saved!.steps_json!)).toEqual([
+      { name: "Check out", status: "completed", conclusion: "success", started_at: "2026-10-02T10:00:02Z", completed_at: "2026-10-02T10:00:04Z" },
+      { name: "terraform apply", status: "in_progress", conclusion: null, started_at: "2026-10-02T10:00:30Z", completed_at: null },
+    ]);
   });
 });

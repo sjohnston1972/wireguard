@@ -88,7 +88,7 @@ export interface GhJob {
   name: string;
   status: string;
   conclusion: string | null;
-  steps: { name: string; status: string; conclusion: string | null }[];
+  steps: { name: string; status: string; conclusion: string | null; started_at?: string | null; completed_at?: string | null }[];
 }
 
 export async function getJobs(env: Env, runId: number): Promise<GhJob[]> {
@@ -122,5 +122,5 @@ export function stepsFromJobs(jobs: GhJob[]): Step[] {
   if (!j) return [];
   return j.steps
     .filter((s) => !/^(Set up job|Complete job|Post )/.test(s.name))
-    .map((s) => ({ name: s.name, status: s.status, conclusion: s.conclusion }));
+    .map((s) => ({ name: s.name, status: s.status, conclusion: s.conclusion, started_at: s.started_at ?? null, completed_at: s.completed_at ?? null }));
 }
