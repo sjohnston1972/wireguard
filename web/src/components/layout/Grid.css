@@ -1,0 +1,14 @@
+.grid12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--gap);
+  min-height: 0;
+}
+.grid12__col {
+  grid-column: span var(--span, 12);
+  min-width: 0;
+  min-height: 0;
+}
+@media (max-width: 1099px) {
+  .grid12__col { grid-column: 1 / -1; }
+}
