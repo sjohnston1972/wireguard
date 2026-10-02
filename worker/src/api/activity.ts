@@ -27,25 +27,23 @@ export function registerActivity(api: Hono<ApiEnv>): void {
     const q = (c.req.query("q") ?? "").trim().slice(0, 60);
     const page = Math.max(1, Math.min(1000, Number(c.req.query("page")) || 1));
     const now = Date.now();
-    const sinceMs = now - ACTIVITY_RANGE_MS[range];
-    const since = new Date(sinceMs).toISOString();
-    const [allRuns, allNotes, inRangeChanges, rows, cfg] = await Promise.all([
-      db.listRuns(c.env, RANGE_CAP),
-      db.listAlerts(c.env, RANGE_CAP),
+    const since = new Date(now - ACTIVITY_RANGE_MS[range]).toISOString();
+    const [runs, notes, inRangeChanges, rows, cfg] = await Promise.all([
+      c.env.DB.prepare("SELECT * FROM runs WHERE requested_at >= ?1 ORDER BY requested_at DESC").bind(since).all<db.Run>().then((r) => r.results),
+      c.env.DB.prepare("SELECT * FROM alerts WHERE at >= ?1 ORDER BY at DESC").bind(since).all<db.Alert>().then((r) => r.results),
       c.env.DB.prepare("SELECT * FROM audit WHERE at >= ?1 ORDER BY at DESC, id DESC LIMIT ?2").bind(since, RANGE_CAP).all<db.AuditEntry>().then((r) => r.results),
       db.listAudit(c.env, { kind, q, limit: AUDIT_PAGE, offset: (page - 1) * AUDIT_PAGE }),
       effectiveConfig(c.env),
     ]);
-    const runs = allRuns.filter((r) => Date.parse(r.requested_at) >= sinceMs);
-    const notes = allNotes.filter((a) => Date.parse(a.at) >= sinceMs);
+    // KPIs and the timeline count every row in the range; only the lists sent back are capped (newest first).
     const out: ActivityResponse = {
       range,
       now: new Date(now).toISOString(),
       kpis: activityKpis(runs, notes, inRangeChanges, range, now),
       timeline: timeline(eventsOf(runs, notes, inRangeChanges), range, now),
-      runs: runs.map((r) => runRow(r, allRuns, cfg, now)),
-      notes,
-      all: eventsOf(runs, notes, inRangeChanges),
+      runs: runs.slice(0, RANGE_CAP).map((r) => runRow(r, runs, cfg, now)),
+      notes: notes.slice(0, RANGE_CAP),
+      all: eventsOf(runs, notes, inRangeChanges).slice(0, RANGE_CAP),
       changes: { rows: rows.slice(0, AUDIT_PAGE).map((r) => ({ ...r, lines: describeChange(r.before_json, r.after_json) })), more: rows.length > AUDIT_PAGE, page, kind, q },
     };
     return c.json(out);
