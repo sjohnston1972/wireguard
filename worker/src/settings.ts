@@ -8,6 +8,9 @@ import type { Env, Config } from "./env";
 import { config } from "./env";
 import { allSettings, setSetting } from "./db";
 
+/** The VM sizes the dashboard offers. */
+export const VM_SIZES = ["Standard_B1s", "Standard_B1ms", "Standard_B2s", "Standard_B2ats_v2"];
+
 /** Settings keys the UI may override, with a validator each. */
 export const OVERRIDABLE: Record<string, (v: string) => boolean> = {
   region: (v) => /^[a-z]{2,20}$/.test(v),

@@ -11,6 +11,7 @@ import type { Html } from "./layout";
 import { fmtTime, sheetHead } from "./layout";
 import type { Config } from "../env";
 import { SECRET_GROUPS } from "../env";
+import { VM_SIZES } from "../settings";
 import { REGIONS, regionName } from "../region";
 import type { Profile, Schedule, PushSub } from "../db";
 import { daysText } from "../schedule-time";
@@ -105,7 +106,6 @@ function alertsPanel(o: SettingsOpts): Html {
   </div>`;
 }
 
-const SIZES = ["Standard_B1s", "Standard_B1ms", "Standard_B2s", "Standard_B2ats_v2"];
 const DAYS: [string, string][] = [["1", "Mon"], ["2", "Tue"], ["3", "Wed"], ["4", "Thu"], ["5", "Fri"], ["6", "Sat"], ["7", "Sun"]];
 
 /**
@@ -170,7 +170,7 @@ function profilesPanel(o: SettingsOpts): Html {
     <form method="post" action="/settings/profiles" style="margin-top:10px">
       <label class="field"><span>Name</span><input type="text" name="name" maxlength="24" required placeholder="Japan exit"></label>
       <label class="field"><span>Region</span><select name="region">${Object.entries(REGIONS).map(([r, n]) => html`<option value="${r}">${n}</option>`)}</select></label>
-      <label class="field"><span>VM size</span><select name="vm_size">${SIZES.map((v) => html`<option value="${v}">${v}</option>`)}</select></label>
+      <label class="field"><span>VM size</span><select name="vm_size">${VM_SIZES.map((v) => html`<option value="${v}">${v}</option>`)}</select></label>
       <div class="btn-row"><button type="submit">Add profile</button></div>
     </form>
   </div>`;

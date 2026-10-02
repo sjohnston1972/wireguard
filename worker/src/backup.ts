@@ -19,6 +19,9 @@
 import type { Env } from "./env";
 import { OVERRIDABLE } from "./settings";
 import { isWgKey } from "./peers";
+import * as db from "./db";
+import { lockStatus } from "./lock";
+import { getSnapshot } from "./state";
 
 /** What the file says it is, and the format version this code writes and reads. */
 export const EXPORT_KIND = "wg-admin-config";
@@ -252,4 +255,11 @@ export async function applyRestore(env: Env, plan: RestorePlan): Promise<void> {
   }
   await env.DB.batch(stmts);
   await env.STATUS.delete("backup:status");
+}
+
+/** Why a restore must wait, or null. Swapping clients mid-deploy would muddle what the VM gets. */
+export async function restoreBlocked(env: Env): Promise<string | null> {
+  const [run, lock, snap] = await Promise.all([db.activeRun(env), lockStatus(env), getSnapshot(env)]);
+  if (run || lock.held || ["deploying", "destroying", "hibernating", "resuming"].includes(snap.state)) return "A run is in progress. Wait for it to finish, then restore.";
+  return null;
 }

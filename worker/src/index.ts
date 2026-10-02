@@ -24,7 +24,7 @@ import { startHibernate, startResume, refreshPower } from "./standby";
 import { consumeAction, dashboardButton } from "./actions";
 import { notify, ntfyParts, lastNotifyError } from "./notify";
 import { REGIONS, regionName, whereFrom } from "./region";
-import { startMove, resolveDeployTarget } from "./profiles";
+import { startMove, resolveDeployTarget, profileProblem } from "./profiles";
 import { startSpeedTest } from "./speedtest";
 import { nextStart, validRule } from "./schedule-time";
 import { setSshAllowedCidr } from "./azure";
@@ -43,7 +43,7 @@ import { clearFirewallCounters } from "./runs";
 import { startCapture, receiveCapture, validFilter, captureFilter, MAX_CAPTURE_BYTES } from "./capture";
 import { syncPublished } from "./published";
 import { isPushEndpoint } from "./webpush";
-import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, backupStatus, MAX_RESTORE_BYTES, type RestorePlan } from "./backup";
+import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, backupStatus, restoreBlocked, MAX_RESTORE_BYTES, type RestorePlan } from "./backup";
 import { restoreBody } from "./views/settings";
 import { randomToken } from "./auth";
 import { buildApi } from "./api";
@@ -593,7 +593,7 @@ app.post("/settings", async (c) => {
 app.post("/settings/profiles", async (c) => {
   const f = (await c.req.parseBody()) as Record<string, string>;
   const name = String(f.name ?? "").trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,23}$/.test(name) || !Object.hasOwn(REGIONS, f.region ?? "") || !/^Standard_[A-Za-z0-9_]{1,30}$/.test(f.vm_size ?? "")) return c.redirect("/settings?err=profile");
+  if (profileProblem({ name, region: f.region ?? "", vm_size: f.vm_size ?? "" })) return c.redirect("/settings?err=profile");
   try {
     await db.addProfile(c.env, { name, region: f.region, vm_size: f.vm_size });
   } catch {
@@ -661,13 +661,6 @@ app.get("/settings/backup/config/:day", async (c) => {
   if (!obj) return c.text("That nightly export is no longer kept.", 404);
   return new Response(obj.body, { headers: { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="${exportFileName(day)}"`, "Cache-Control": "no-store" } });
 });
-
-/** Why a restore must wait, or null. Swapping clients mid-deploy would muddle what the VM gets. */
-async function restoreBlocked(env: Env): Promise<string | null> {
-  const [run, lock, snap] = await Promise.all([db.activeRun(env), lockStatus(env), getSnapshot(env)]);
-  if (run || lock.held || ["deploying", "destroying", "hibernating", "resuming"].includes(snap.state)) return "A run is in progress. Wait for it to finish, then restore.";
-  return null;
-}
 
 app.post("/settings/backup/restore", async (c) => {
   const show = async (o: Omit<Parameters<typeof restoreBody>[0], "current">) => c.html(await render(c, "settings", "Restore", restoreBody({ ...o, current: await currentCounts(c.env) })));
