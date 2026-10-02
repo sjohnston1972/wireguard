@@ -144,7 +144,7 @@ export function ConfirmDialog({
 /** A panel-shaped skeleton while the settings load. */
 export function SettingsSkeleton() {
   return (
-    <div className="set-skeleton" aria-busy="true" aria-label="Loading settings">
+    <div className="set-skeleton" role="status" aria-busy="true" aria-label="Loading settings">
       <Skeleton variant="block" height={88} />
       <div className="set-skeleton__row">
         <Skeleton variant="block" height={220} />
