@@ -53,7 +53,7 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
           icon={<Coins />}
           label="This session"
           value={session.estimateGbp === null ? null : gbp(session.estimateGbp)}
-          sub={session.running ? `Estimate, running since ${session.since?.slice(11, 16)} UTC` : "Nothing is running"}
+          sub={session.running ? `Estimate · since ${session.since?.slice(11, 16)} UTC` : "Nothing is running"}
           action={<span className={session.running ? "cost-state cost-state--on" : "cost-state"}>{session.running ? "Running" : "Idle"}</span>}
         />
       </Named>

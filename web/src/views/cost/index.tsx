@@ -81,25 +81,25 @@ export function CostPage() {
           <KpiRow cost={cost} />
           <div className="cost-body">
             <Grid className="cost-grid">
-              <Col span={5}>
+              <Col span={5} className="cost-c-spend">
                 <SpendPanel cost={cost} compare={compare && canCompare} updatedAt={q.dataUpdatedAt} />
               </Col>
-              <Col span={4}>
+              <Col span={4} className="cost-c-break">
                 <BreakdownPanel cost={cost} />
               </Col>
-              <Col span={3}>
+              <Col span={3} className="cost-c-fc">
                 <ForecastPanel cost={cost} />
               </Col>
-              <Col span={4}>
+              <Col span={4} className="cost-c-split">
                 <SplitPanel cost={cost} />
               </Col>
-              <Col span={4}>
+              <Col span={4} className="cost-c-per">
                 <PerSessionPanel cost={cost} />
               </Col>
-              <Col span={4}>
+              <Col span={4} className="cost-c-ins">
                 <InsightsPanel cost={cost} />
               </Col>
-              <Col span={12} className="cost-sessions-col">
+              <Col span={12} className="cost-sessions-col cost-c-sess">
                 <SessionsPanel cost={cost} />
               </Col>
             </Grid>

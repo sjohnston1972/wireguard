@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CostResponse } from "@shared/api";
 import { BarChart, DataAge, Donut, EmptyState, Panel, SegmentedControl, type DonutSegment, type Tone } from "@/components";
 import { cumulativeSeries, dayLabel, gbp, pctText, spendSeries, startedLabel, TYPE_LABEL } from "./model";
+import { FillHeight } from "./FillHeight";
 
 const COLOURS: Tone[] = ["blue", "purple", "green", "amber"];
 const TYPE_COLOUR: Record<keyof typeof TYPE_LABEL, Tone> = { compute: "blue", network: "purple", disk: "green", other: "amber" };
@@ -14,16 +15,20 @@ export function SpendPanel({ cost, compare, updatedAt, height }: { cost: CostRes
   const showPrev = compare && s.previous.some((v) => v !== null);
   return (
     <Panel title="Spend over time" className="cost-panel" bodyClassName="cost-panel__body">
-      <BarChart
-        title="Daily spend"
-        bars={s.bars}
-        forecast={s.forecast}
-        previous={showPrev ? s.previous : undefined}
-        budget={s.budgetPerDay}
-        format={money}
-        height={height ?? 140}
-        className="cost-chart"
-      />
+      <FillHeight fallback={height ?? 140} min={70}>
+        {(h) => (
+          <BarChart
+            title="Daily spend"
+            bars={s.bars}
+            forecast={s.forecast}
+            previous={showPrev ? s.previous : undefined}
+            budget={s.budgetPerDay}
+            format={money}
+            height={h}
+            className="cost-chart"
+          />
+        )}
+      </FillHeight>
       <ul className="cost-legend" aria-label="Chart key">
         <li><span className="cost-key cost-key--bar" />Actual spend</li>
         {showPrev && <li><span className="cost-key cost-key--prev" />Previous period</li>}
@@ -54,7 +59,11 @@ export function BreakdownPanel({ cost }: { cost: CostResponse }) {
   const total = segments.reduce((s, x) => s + x.value, 0);
   return (
     <Panel title="Spend breakdown" className="cost-panel" bodyClassName="cost-panel__body cost-breakdown">
-      <Donut title="Spend breakdown" segments={segments} centre={total > 0 ? { value: gbp(total), label: centreLabel } : undefined} size={132} stroke={15} />
+      <FillHeight fallback={132} min={72}>
+        {(h) => (
+          <Donut title="Spend breakdown" segments={segments} centre={total > 0 ? { value: gbp(total), label: centreLabel } : undefined} size={h < 140 ? Math.min(h, 104) : 132} stroke={h < 140 ? 11 : 15} />
+        )}
+      </FillHeight>
       {caption && total > 0 && <p className="cost-note">{caption}</p>}
     </Panel>
   );
@@ -83,7 +92,9 @@ export function ForecastPanel({ cost, height }: { cost: CostResponse; height?: n
         </div>
       </dl>
       {series ? (
-        <BarChart title="Month so far against budget" bars={series.bars} forecast={series.forecast} budget={budget.budget > 0 ? budget.budget : undefined} format={money} height={height ?? 96} className="cost-chart" />
+        <FillHeight fallback={height ?? 96} min={56}>
+          {(h) => <BarChart title="Month so far against budget" bars={series.bars} forecast={series.forecast} budget={budget.budget > 0 ? budget.budget : undefined} format={money} height={h} className="cost-chart" />}
+        </FillHeight>
       ) : (
         <p className="cost-note">{cost.range === "month" ? "No days from Azure yet." : "Choose This month to see the running total."}</p>
       )}
@@ -157,7 +168,9 @@ export function PerSessionPanel({ cost, height }: { cost: CostResponse; height?:
           <dd>{rows.length ? rows.length : <span className="cost-none">no data</span>}</dd>
         </div>
       </dl>
-      <BarChart title="Cost of each session" bars={rows.map((r) => ({ label: dayLabel(r.started.slice(0, 10)), value: r.estimatedGbp }))} format={money} height={height ?? 84} className="cost-chart" />
+      <FillHeight fallback={height ?? 96} min={56}>
+        {(h) => <BarChart title="Cost of each session" bars={rows.map((r) => ({ label: dayLabel(r.started.slice(0, 10)), value: r.estimatedGbp }))} format={money} height={h} className="cost-chart" />}
+      </FillHeight>
     </Panel>
   );
 }
@@ -165,7 +178,7 @@ export function PerSessionPanel({ cost, height }: { cost: CostResponse; height?:
 /** Row 3, right: the facts the data backs up (the API's insights, nothing invented). */
 export function InsightsPanel({ cost }: { cost: CostResponse }) {
   return (
-    <Panel title="Insights" className="cost-panel" bodyClassName="cost-panel__body">
+    <Panel title="Insights" className="cost-panel" bodyClassName="cost-panel__body cost-insights-body">
       {cost.insights.length === 0 ? (
         <EmptyState title="Nothing to point out" description="Insights appear here when the figures show something, such as a budget at 80% or a VM left on Standby." />
       ) : (

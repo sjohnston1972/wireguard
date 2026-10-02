@@ -56,7 +56,8 @@ export function BarChart({ title, bars, forecast = [], previous, budget, format,
   const bw = Math.max(2, Math.min(18, slotW * 0.62));
   const X = (i: number) => ML + slotW * i + slotW / 2;
   const Y = (v: number) => MT + ph - (v / max) * ph;
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * max);
+  // A short chart gets three labels (0, half, top) so they do not overlap.
+  const ticks = (ph < 70 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((f) => f * max);
   const all = [...bars, ...forecast];
   const tickAt = new Set(axisTicks(all.map((b) => b.label), Math.max(2, Math.floor(pw / 70))));
 

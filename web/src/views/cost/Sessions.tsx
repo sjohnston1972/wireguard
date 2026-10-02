@@ -14,7 +14,7 @@ const regionOf = (s: SessionRow) => regionLabel(s.region) ?? s.region;
 const COLUMNS: Column<SessionRow>[] = [
   { key: "started", header: "Started", cell: (s) => startedLabel(s.started), sortValue: (s) => s.started },
   { key: "status", header: "Status", cell: (s) => <StatusPill status={s.stillRunning ? "running" : "stopped"} /> },
-  { key: "region", header: "Region", cell: regionOf, sortValue: regionOf },
+  { key: "region", header: "Region", cell: regionOf, sortValue: regionOf, className: "cost-hide-short" },
   { key: "size", header: "VM size", cell: (s) => s.vmSize, sortValue: (s) => s.vmSize, className: "cost-hide-narrow" },
   { key: "duration", header: "Duration", cell: (s) => durationLabel(s.durationSeconds), sortValue: (s) => s.durationSeconds, align: "right" },
   { key: "cost", header: "Estimated cost", cell: (s) => gbp(s.estimatedGbp), sortValue: (s) => s.estimatedGbp, align: "right" },
@@ -57,12 +57,15 @@ export function SessionsPanel({ cost, bare }: { cost: CostResponse; bare?: boole
           { value: "ended", label: "Ended" },
         ]}
       />
-      <Select
-        label="Session region"
-        value={region}
-        onValueChange={setRegion}
-        options={[{ value: "all", label: "All regions" }, ...regions.map((r) => ({ value: r, label: regionLabel(r) ?? r }))]}
-      />
+      {/* Only worth a control when the sessions span more than one region. */}
+      {(regions.length > 1 || region !== "all") && (
+        <Select
+          label="Session region"
+          value={region}
+          onValueChange={setRegion}
+          options={[{ value: "all", label: "All regions" }, ...regions.map((r) => ({ value: r, label: regionLabel(r) ?? r }))]}
+        />
+      )}
     </div>
   );
 
