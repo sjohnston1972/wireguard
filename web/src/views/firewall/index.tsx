@@ -14,7 +14,7 @@ import { ZonesPanel } from "./Zones";
 import { SimulatorPanel, type SimulatorHandle } from "./Simulator";
 import { RuleDrawer } from "./RuleDrawer";
 import { FirewallPhone } from "./FirewallPhone";
-import { NO_FILTER, ruleViews, type RuleFilter } from "./model";
+import { NO_FILTER, complete, ruleViews, type RuleFilter } from "./model";
 import { FirewallSkeleton } from "./FirewallSkeleton";
 import { NARROW, useMedia } from "./useMedia";
 import "./Firewall.css";
@@ -51,7 +51,8 @@ export function FirewallPage() {
   const portsAddRef = useRef<HTMLButtonElement>(null);
   const defaultBtnRef = useRef<HTMLButtonElement>(null);
 
-  const rows = useMemo(() => (fw.data ? ruleViews(fw.data) : []), [fw.data]);
+  const full = useMemo(() => (fw.data ? complete(fw.data) : undefined), [fw.data]);
+  const rows = useMemo(() => (full ? ruleViews(full) : []), [full]);
   const action = params.get("action");
   const loaded = !!fw.data;
 
@@ -77,8 +78,8 @@ export function FirewallPage() {
   });
 
   if (fw.isPending) return <FirewallSkeleton />;
-  if (fw.isError || !fw.data) return <ErrorState title="Could not load the firewall" message={fw.error?.message ?? "No answer."} onRetry={() => void fw.refetch()} />;
-  const data = fw.data;
+  if (fw.isError || !full) return <ErrorState title="Could not load the firewall" message={fw.error?.message ?? "No answer."} onRetry={() => void fw.refetch()} />;
+  const data = full;
   const waiting = appliedAt !== null && fw.dataUpdatedAt <= appliedAt;
 
   const adding = addOpen || action === "add-rule";

@@ -48,6 +48,13 @@ describe("firewall states", () => {
     expect(await screen.findByRole("dialog", { name: "Add rule" })).toBeInTheDocument();
   });
 
+  it("a partial answer (the shell tests' small fixture) still renders the rules", async () => {
+    renderApp("/firewall"); // default routes: firewallFixture() sets only a few fields
+    const table = await screen.findByRole("table", { name: "Firewall rules" });
+    expect(table).toHaveTextContent("Block telemetry");
+    expect(table).toHaveTextContent("Default (catch all)");
+  });
+
   it("when the VM is not running the policy says so and capture explains why it cannot start", async () => {
     renderApp("/firewall", {
       routes: {
