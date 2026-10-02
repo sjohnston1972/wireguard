@@ -44,8 +44,8 @@ describe("command palette", () => {
     const user = userEvent.setup();
     renderApp("/");
     const dialog = await openPalette(user);
-    await user.type(within(dialog).getByRole("combobox"), "iphone");
-    const opt = await within(dialog).findByRole("option", { name: /Steven iPhone/ });
+    await user.type(within(dialog).getByRole("combobox"), "test-phone");
+    const opt = await within(dialog).findByRole("option", { name: /test-phone/ });
     expect(opt).toHaveTextContent("10.13.13.2");
     await user.keyboard("{Enter}");
     expect(loc()).toHaveTextContent("/clients/1");
