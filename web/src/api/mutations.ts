@@ -1,5 +1,18 @@
 import { useMutation, useQueryClient, type QueryKey, type UseMutationResult } from "@tanstack/react-query";
-import type { ApiOk, ClientConfigResponse, ClientEditResponse, HealthCheckResponse, RestorePreviewResponse, SimRequest, SimResult } from "@shared/api";
+import type {
+  ApiOk,
+  ClientConfigResponse,
+  ClientEditResponse,
+  DraftApplyBody,
+  DraftDefaultBody,
+  DraftFromDropBody,
+  DraftMoveBody,
+  DraftRuleBody,
+  HealthCheckResponse,
+  RestorePreviewResponse,
+  SimRequest,
+  SimResult,
+} from "@shared/api";
 import { ApiError, NetworkError, SessionExpiredError, apiGet, apiSend } from "./client";
 // The app's one toast system (mounted once in App.tsx). Imported directly, not
 // through the @/components barrel, so the data layer does not pull in charts.
@@ -117,8 +130,29 @@ export const useForwardEdit = () =>
 export const useForwardDelete = () => useApiMutation<number>({ method: "DELETE", path: (id) => `/firewall/forwards/${id}`, invalidate: FIREWALL });
 export const useStartCapture = () => useApiMutation<Body>({ method: "POST", path: "/firewall/captures", body: (v) => v, invalidate: FIREWALL });
 export const useClearCounters = () => useApiMutation({ method: "POST", path: "/firewall/counters/clear", invalidate: FIREWALL });
-/** What the firewall would do with one flow. Changes nothing: no toast, nothing refreshed; the result is the caller's to show. */
+/** What the firewall would do with one flow, against the live rules or (`policy: "draft"`) the draft. Changes nothing: no toast, nothing refreshed; the result is the caller's to show. */
 export const useSimulate = () => useApiMutation<SimRequest, SimResult>({ method: "POST", path: "/firewall/simulate", body: (v) => v, invalidate: [], message: () => null });
+
+// ── Firewall: the draft (spec §6) ──
+// Rule edits change only the draft, so they show no success toast: the draft
+// bar's change count and the row marks say what happened. Errors still toast
+// (a field error is left to its form). Apply, discard and "Allow" on a drop
+// show the server's message.
+const DRAFT: QueryKey[] = [["firewall"]];
+const quiet = () => null;
+export const useDraftAddRule = () => useApiMutation<DraftRuleBody>({ method: "POST", path: "/firewall/draft/rules", body: (v) => v, invalidate: DRAFT, message: quiet });
+export const useDraftEditRule = () =>
+  useApiMutation<{ id: number } & Partial<DraftRuleBody>>({ method: "PUT", path: (v) => `/firewall/draft/rules/${v.id}`, body: ({ id: _id, ...rest }) => rest, invalidate: DRAFT, message: quiet });
+/** `{id, dir: "up"|"down"}` or `{id, to}` (0-based index in the draft list). */
+export const useDraftMoveRule = () =>
+  useApiMutation<{ id: number } & DraftMoveBody>({ method: "POST", path: (v) => `/firewall/draft/rules/${v.id}/move`, body: ({ id: _id, ...rest }) => rest, invalidate: DRAFT, message: quiet });
+export const useDraftDeleteRule = () => useApiMutation<number>({ method: "DELETE", path: (id) => `/firewall/draft/rules/${id}`, invalidate: DRAFT, message: quiet });
+export const useDraftDefault = () => useApiMutation<DraftDefaultBody>({ method: "PUT", path: "/firewall/draft/default", body: (v) => v, invalidate: DRAFT, message: quiet });
+export const useDraftFromDrop = () => useApiMutation<DraftFromDropBody>({ method: "POST", path: "/firewall/draft/from-drop", body: (v) => v, invalidate: DRAFT });
+/** 409 (ApiError.status) when the live rules changed since the draft began; 422 field "rules" for a broken rule. */
+export const useDraftApply = () =>
+  useApiMutation<DraftApplyBody>({ method: "POST", path: "/firewall/draft/apply", body: (v) => v, invalidate: [["firewall"], ["overview"], ["activity"]] });
+export const useDraftDiscard = () => useApiMutation({ method: "DELETE", path: "/firewall/draft", invalidate: DRAFT });
 
 // ── Settings, profiles, schedules, lock ──
 const SETTINGS: QueryKey[] = [["settings"], ["overview"]];
