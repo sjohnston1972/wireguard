@@ -42,6 +42,8 @@ export interface SimContext {
   publicIp?: string | null;
   /** Published ports, if known; lets the simulator flag flows that hit one. */
   forwards?: Forward[];
+  /** The VM's own address on its VNet NIC, if known; without it, any VNet end outside the workloads subnet gets a "might be the VM" note. */
+  vmPrivateIp?: string | null;
 }
 
 // ── IPv4 address sets as sorted, merged [first, last] ranges ──
@@ -132,6 +134,7 @@ function limits(input: SimInput, ctx: SimContext, from: Ranges, to: Ranges): str
   const vmOwn = [cfg.loopbackIp, `${cfg.subnet.split("/")[0].replace(/\.\d+$/, ".1")}`];
   const touchesVm = (e: SimEndInput, set: Ranges) => e.kind === "cidr" && vmOwn.some((ip) => ip && contains(set, ip));
   if (touchesVm(input.from, from) || touchesVm(input.to, to)) notes.push("Traffic to or from the VM itself is not filtered by these rules.");
+  notes.push(...vmNicNotes(ctx, from, to));
   if (ctx.publicIp && input.to.kind === "cidr" && contains(to, ctx.publicIp)) {
     const hit = input.proto !== "icmp" && liveForwards(ctx.forwards ?? [], cfg).some((f) => f.proto === input.proto && (input.port === null || f.public_port === input.port));
     notes.push(`That includes the VM's public address. Published ports and replies to allowed connections are not simulated${hit ? "; this flow matches a published port" : ""}.`);
@@ -147,6 +150,28 @@ function limits(input: SimInput, ctx: SimContext, from: Ranges, to: Ranges): str
 }
 
 const meets = (a: Ranges, b: Ranges): boolean => intersect(a, b).length > 0;
+
+/**
+ * The VM's own address on its VNet NIC: traffic to it hits the VM's input
+ * hook (only published ports are dropped there) and traffic from it leaves
+ * through output, so the forward rules decide neither. When the address is
+ * known, an end that is exactly it is flagged; when it is not, any end inside
+ * the VNet but not wholly inside the workloads subnet (the VM never sits
+ * there) might be it, and says so.
+ */
+function vmNicNotes(ctx: SimContext, from: Ranges, to: Ranges): string[] {
+  const { cfg } = ctx;
+  const known = ctx.vmPrivateIp && parseCidr(ctx.vmPrivateIp)?.family === 4 ? toInt(ctx.vmPrivateIp) : null;
+  const vnet: Ranges = [cidrRange(cfg.vnetCidr)];
+  const workloads: Ranges = [cidrRange(cfg.workloadCidr)];
+  const ends = [from, to].filter((s) => s.length);
+  const NOT_FILTERED = "traffic to or from it is not filtered by these rules; only published ports apply there.";
+  if (known !== null) {
+    return ends.some((s) => s.length === 1 && s[0][0] === known && s[0][1] === known) ? [`${ctx.vmPrivateIp} is the VM's own address in the VNet: ${NOT_FILTERED}`] : [];
+  }
+  const maybe = ends.some((s) => relation(s, vnet) === "full" && relation(s, workloads) !== "full");
+  return maybe ? [`If an address here is the VM's own address in the VNet, ${NOT_FILTERED}`] : [];
+}
 
 /** "The internet" as the zone means it: everything outside the private nets. */
 const internetSet = (cfg: Config): Ranges => v4Set("zone", "internet", cfg, []);

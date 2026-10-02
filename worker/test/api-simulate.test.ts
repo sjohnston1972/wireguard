@@ -189,6 +189,22 @@ describe("simulate: flows that never pass through the VM", () => {
   });
 });
 
+describe("simulate: the VM's own address in the VNet", () => {
+  it("with the VM's address unknown, an end inside the VNet (outside the workloads subnet) says it may be the VM itself", () => {
+    expect(simulate(flow(z("clients"), cidr("10.50.1.4"), "tcp", 22), ctx(starters())).limited).toMatch(/If .*the VM's own address.*not filtered/);
+    expect(simulate(flow(z("home"), z("azure"), "tcp", 22), ctx(starters())).limited).toMatch(/the VM's own address/);
+    // The VM never sits in the workloads subnet.
+    expect(simulate(flow(z("clients"), cidr("10.50.2.4"), "tcp", 22), ctx(starters())).limited).toBeNull();
+    expect(simulate(flow(z("clients"), z("workloads"), "tcp", 22), ctx(starters())).limited).toBeNull();
+  });
+  it("with the VM's address known, flags exactly that address and nothing else", () => {
+    const known = { ...ctx(starters()), vmPrivateIp: "10.50.1.4" };
+    expect(simulate(flow(z("clients"), cidr("10.50.1.4"), "tcp", 22), known).limited).toMatch(/is the VM's own address.*not filtered/);
+    expect(simulate(flow(cidr("10.50.1.4"), z("home"), "tcp", 22), known).limited).toMatch(/is the VM's own address/);
+    expect(simulate(flow(z("clients"), cidr("10.50.1.5"), "tcp", 22), known).limited).toBeNull();
+  });
+});
+
 describe("POST /api/v1/firewall/simulate", () => {
   it("answers against the live rules and default", async () => {
     const { env } = apiEnv({ HOME_LAN_CIDR: "192.168.1.0/24" });
