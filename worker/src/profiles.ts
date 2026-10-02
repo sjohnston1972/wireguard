@@ -36,7 +36,7 @@ export async function resolveDeployTarget(env: Env, o: { profileId?: number | nu
     if (!p) throw new RunError("No such profile.", "not_found");
     return { region: p.region, vmSize: p.vm_size, profile: p.name };
   }
-  if (o.region) {
+  if (o.region !== undefined && o.region !== null) {
     // hasOwn, not "in": "in" would also accept built-in names like "constructor".
     if (!Object.hasOwn(REGIONS, o.region)) throw new RunError("Unknown region.", "bad_input");
     return { region: o.region, profile: null };

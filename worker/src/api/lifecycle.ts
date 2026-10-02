@@ -46,6 +46,7 @@ export function registerLifecycle(api: Hono<ApiEnv>): void {
     const hours = parseHours(b.hours);
     if (hours === "invalid") return fail(c, 400, "bad_input", HOURS_PROBLEM, "hours");
     if (b.profileId !== undefined && b.profileId !== null && !Number.isInteger(b.profileId)) return fail(c, 400, "bad_input", "profileId must be a whole number.", "profileId");
+    if (b.region !== undefined && b.region !== null && typeof b.region !== "string") return fail(c, 400, "bad_input", "region must be a region name.", "region");
     const user = c.get("user");
     return act(c, async () => {
       const t = await resolveDeployTarget(c.env, { profileId: (b.profileId as number | null | undefined) ?? null, region: typeof b.region === "string" ? b.region : null });
@@ -113,7 +114,11 @@ export function registerLifecycle(api: Hono<ApiEnv>): void {
     return act(c, async () => {
       if (!addr || addr.includes(":")) throw new RunError("Could not read an IPv4 address for this browser.");
       if ((await getSnapshot(c.env)).state !== "running") throw new RunError("Nothing is running.");
-      await setSshAllowedCidr(c.env, `${addr}/32`);
+      try {
+        await setSshAllowedCidr(c.env, `${addr}/32`);
+      } catch (e) {
+        throw new RunError(`Azure did not accept the change: ${(e as Error).message}`, "upstream");
+      }
       await db.addAlert(c.env, "info", `SSH allowed from ${addr} by ${user} (live NSG change).`);
       await refreshInventory(c.env);
       return `SSH now allowed from ${addr}. Takes effect within a few seconds.`;

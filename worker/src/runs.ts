@@ -32,8 +32,8 @@ import { recordHeartbeat } from "./history";
 /**
  * A refusal fit for the screen. The code says what kind, so the data API
  * can answer with the right status (api/app.ts): "bad_input", "not_found",
- * "over_budget", "confirm_required", or the default "refused" (the action
- * conflicts with what is happening now).
+ * "over_budget", "confirm_required", "upstream" (Azure or GitHub refused),
+ * or the default "refused" (the action conflicts with what is happening now).
  */
 export class RunError extends Error {
   constructor(

@@ -60,3 +60,37 @@ describe("a malformed body is refused, not read as nothing", () => {
     expect(await db.auditFor(env, "Phone")).toEqual([]);
   });
 });
+
+describe("regions are checked, never silently defaulted", () => {
+  it("refuses a region that is not text (400, field region) and starts nothing", async () => {
+    const { env, world } = apiEnv();
+    const r = await api(env, "POST", "/deploy", { region: 5 });
+    expect(r.status).toBe(400);
+    expect(r.json.error.field).toBe("region");
+    expect(world.dispatches).toHaveLength(0);
+  });
+
+  it("treats an empty region as an unknown one, as the old deploy route always did", async () => {
+    const { env, world } = apiEnv();
+    await expect(resolveDeployTarget(env, { region: "" })).rejects.toMatchObject({ code: "bad_input", message: "Unknown region." });
+    const r = await worker.fetch(
+      new Request(`${base}/actions/deploy`, { method: "POST", headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/x-www-form-urlencoded" }, body: "choice=r%3A&hours=2" }),
+      env,
+      ctx,
+    );
+    expect(r.status).toBe(302);
+    expect(world.dispatches).toHaveLength(0);
+  });
+});
+
+describe("an Azure refusal says so", () => {
+  it("answers 502 with Azure's reason when Allow SSH is refused", async () => {
+    const { env, world } = apiEnv();
+    await running(env, world);
+    world.azure.rg = false; // Azure now answers 404 to the NSG change
+    const r = await api(env, "POST", "/allow-ssh", undefined, { "Sec-Fetch-Site": "same-origin", "CF-Connecting-IP": "203.0.113.7" });
+    expect(r.status).toBe(502);
+    expect(r.json.error.code).toBe("upstream");
+    expect(r.json.error.message).toMatch(/^Azure did not accept the change: /);
+  });
+});
