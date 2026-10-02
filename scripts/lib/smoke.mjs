@@ -41,6 +41,9 @@ export const CHECKS = {
     { name: "a used alert button link is gone", method: "POST", path: "/api/act/nope", expect: { status: 410 } },
     { name: "an old page's htmx request is told to reload", path: "/partials/live", headers: { "HX-Request": "true" }, expect: { status: 200, refresh: true } },
     { name: "an old page's htmx request is told to reload", method: "POST", path: "/actions/deploy", headers: { "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" }, body: "hours=1", expect: { status: 200, refresh: true } },
+    // Today's production behaviour for old pages, pinned so a change shows up. Local-only: live sends GET/HEAD plus its token routes.
+    { name: "an old page's form post is refused", method: "POST", path: "/peers/1/delete", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "", expect: { status: 405 } },
+    { name: "an old page's htmx GET of a page gets the app", path: "/firewall", headers: { "HX-Request": "true" }, expect: { status: 200, type: /^text\/html/, app: true } },
   ],
   live: [
     { name: "deep link without a session goes to Access", path: "/clients/3", navigate: true, expect: { status: 302, redirect: /^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com\// } },

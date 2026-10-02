@@ -58,6 +58,14 @@ const CANNED = {
     pass: r(200, { "hx-refresh": "true" }, ""),
     fail: [html(), r(405, {}), r(404, { "content-type": "text/plain" }, "Not found"), r(200, { "content-type": "text/html" }, "<p>fragment</p>")],
   },
+  "an old page's form post is refused": {
+    pass: r(405, {}),
+    fail: [html(), r(200, { "hx-refresh": "true" }, ""), r(500, {}), r(404, { "content-type": "text/plain" }, "Not found")],
+  },
+  "an old page's htmx GET of a page gets the app": {
+    pass: html(),
+    fail: [r(500, { "content-type": "text/plain" }, "error"), r(200, { "hx-refresh": "true" }, ""), r(200, { "content-type": "text/html", "content-security-policy": CSP }, "<p>fragment</p>"), r(404, { "content-type": "text/plain" }, "Not found")],
+  },
   "deep link without a session goes to Access": {
     pass: r(302, { location: "https://team.cloudflareaccess.com/cdn-cgi/access/login/wg-admin.example?redirect_url=%2Fclients%2F3" }),
     fail: [html(), r(302, { location: "https://evil.example/cloudflareaccess.com" }), r(200, {})],
@@ -88,7 +96,7 @@ for (const [name, { pass, fail }] of Object.entries(CANNED)) {
 
 test("local checks cover the deep links, assets, sw.js, manifest and the APIs", () => {
   const paths = CHECKS.local.map((c) => `${c.method ?? "GET"} ${c.path ?? c.pathFrom}`);
-  for (const p of ["GET /clients/3", "GET /firewall/rules/1", "GET /settings/mobile", "GET indexScript", "GET /assets/nope.js", "GET /sw.js", "GET /manifest.webmanifest", "GET /api/v1/session", "GET /api/v1/nope", "GET /api/push/status", "GET /partials/live", "POST /actions/deploy"]) {
+  for (const p of ["GET /clients/3", "GET /firewall/rules/1", "GET /settings/mobile", "GET indexScript", "GET /assets/nope.js", "GET /sw.js", "GET /manifest.webmanifest", "GET /api/v1/session", "GET /api/v1/nope", "GET /api/push/status", "GET /partials/live", "POST /actions/deploy", "POST /peers/1/delete", "GET /firewall"]) {
     assert.ok(paths.includes(p), p);
   }
 });
@@ -98,6 +106,13 @@ test("live checks need no session: Access for pages, bypass and token routes ans
   assert.deepEqual(paths, ["GET /clients/3", "GET /manifest.webmanifest", "GET /icons/icon-192.png", "POST /api/agent", "POST /api/act/nope"]);
   const agent = CHECKS.live.find((c) => c.path === "/api/agent");
   assert.match(agent.headers.Authorization, /^Bearer /);
+});
+
+test("the old-page checks that send POSTs or HX requests are local-only; live stays GET/HEAD plus its token routes", () => {
+  for (const name of ["an old page's form post is refused", "an old page's htmx GET of a page gets the app"]) {
+    assert.ok(CHECKS.local.some((c) => c.name === name), name);
+    assert.ok(!CHECKS.live.some((c) => c.name === name), `${name} must not run live`);
+  }
 });
 
 test("deep links are requested as browser navigations; everything else is not", () => {
