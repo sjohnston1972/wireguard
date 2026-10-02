@@ -753,6 +753,9 @@ svg.thru .tx { stroke: var(--up); }
 
   /* Activity: runs on the left, notes over the change log on the right. */
   .desk-activity { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+  /* Two long lists share the right column: neither may squeeze the other
+     below a third of it (lists give way in proportion to their length). */
+  .desk-activity section.grow { min-height: 33%; }
 
   /* Cost: the totals and daily chart on the left, every session on the right. */
   .desk-cost { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
