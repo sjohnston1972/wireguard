@@ -286,3 +286,8 @@ export interface PushStatusResponse {
   /** The dashboard's public key, for a phone that has to sign up again. */
   vapid: string | null;
 }
+
+// ── Health check ──
+
+/** POST /api/v1/health-check answers the ordinary ApiOk. The request and its result are in GET /overview's snapshot: selftest_req while pending, then selftest. */
+export type HealthCheckResponse = ApiOk;

@@ -196,6 +196,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     profile: opts.profile ?? null,
     pending_deploy: null,
     speedtest_req: null,
+    selftest_req: null,
     talkers: {},
     traffic_hist: [],
     capture_req: null,
@@ -502,6 +503,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     vm_size: null,
     profile: null,
     speedtest_req: null,
+    selftest_req: null,
     firewall: before.firewall ? { ...before.firewall, counters: {}, applied_hash: null, drops: before.firewall.drops } : null,
     test_vm_ip: null,
     capture_req: null,
@@ -712,6 +714,22 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
       await db.saveSpeedTest(env, { id: req.id, at: report.at, target_name: req.target_name, down_mbps: null, up_mbps: null, rtt_ms: null, jitter_ms: null, error: "no result within 5 minutes" });
     } else {
       reply.speedtest = { id: req.id, target: req.target };
+    }
+  }
+  // Health check: the VM's self-test, on request. It rides the reply until a
+  // result comes back (the id echoed, or any self-test newer than the request);
+  // the result itself is recorded and alerted by the self-test handling above.
+  // An old agent ignores the request, so give up after 5 minutes.
+  const hc = snap.selftest_req;
+  if (hc) {
+    const answered = !!st && (st.id === hc.id || Date.parse(st.at) > Date.parse(hc.at));
+    if (answered) {
+      patch.selftest_req = null;
+    } else if (Date.now() - Date.parse(hc.at) > 5 * 60_000) {
+      patch.selftest_req = null;
+      await db.addAlert(env, "failure", "Health check: the VM did not report within 5 minutes. Its agent may be an older build that cannot run it on request.");
+    } else {
+      reply.selftest = { id: hc.id };
     }
   }
   // Packet capture: hand the request over until the VM says it has started;
