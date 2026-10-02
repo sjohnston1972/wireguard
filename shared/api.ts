@@ -127,3 +127,14 @@ export interface ClientConfigResponse {
 export interface ClientEditResponse {
   peer: Peer;
 }
+
+// ── Phone alerts ──
+
+/** GET /api/v1/push/status?endpoint= (a phone's keys are never sent) */
+export interface PushStatusResponse {
+  registered: boolean;
+  id: number | null;
+  last_error: string | null;
+  /** The dashboard's public key, for a phone that has to sign up again. */
+  vapid: string | null;
+}
