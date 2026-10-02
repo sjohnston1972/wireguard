@@ -254,6 +254,14 @@ describe("the unreachable alert and the boot grace", () => {
     expect(unreachable()).toHaveLength(0);
   });
 
+  it("heartbeatStale with no start time at all falls back to the 2-minute rule", () => {
+    const now = Date.parse("2026-10-02T10:10:00Z");
+    const s = { state: "running", running_since: null, since: null, last_agent_at: "2026-10-02T10:05:00Z" } as unknown as Snapshot;
+    expect(heartbeatStale(s, now)).toBe(true);
+    expect(heartbeatStale({ ...s, last_agent_at: "2026-10-02T10:09:00Z" } as Snapshot, now)).toBe(false);
+    expect(heartbeatStale({ ...s, last_agent_at: null } as Snapshot, now)).toBe(true);
+  });
+
   it("heartbeatStale: a heartbeat from before this session counts as none", () => {
     const now = Date.parse("2026-10-02T10:10:00Z");
     const s = { state: "running", running_since: "2026-10-02T10:09:30Z", since: null, last_agent_at: "2026-10-02T09:00:00Z" } as unknown as Snapshot;

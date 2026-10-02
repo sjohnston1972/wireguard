@@ -29,11 +29,22 @@ export const BOOT_GRACE_MS = 5 * 60_000;
  * resumed VM is not called unreachable before it has had time to report.
  */
 export function heartbeatStale(s: Snapshot, now = Date.now()): boolean {
-  if (s.state !== "running") return false;
+  return heartbeatProblem(s, now) !== null;
+}
+
+/**
+ * Why the heartbeat counts as missing: "boot" when none arrived within the
+ * boot grace of this session starting, "silent" when one did but over 2
+ * minutes ago. With no start time on record at all, the plain 2-minute rule
+ * applies. Null when all is well (or the VM is not running).
+ */
+export function heartbeatProblem(s: Snapshot, now = Date.now()): "boot" | "silent" | null {
+  if (s.state !== "running") return null;
   const start = Date.parse(s.running_since ?? s.since ?? "");
   const last = s.last_agent_at ? Date.parse(s.last_agent_at) : NaN;
-  if (!(last >= start)) return Number.isFinite(start) && now - start > BOOT_GRACE_MS;
-  return now - last > 120_000;
+  if (!Number.isFinite(start)) return !Number.isFinite(last) || now - last > 120_000 ? "silent" : null;
+  if (!(last >= start)) return now - start > BOOT_GRACE_MS ? "boot" : null;
+  return now - last > 120_000 ? "silent" : null;
 }
 
 /**
