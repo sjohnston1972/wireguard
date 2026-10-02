@@ -31,6 +31,16 @@ function jwks(teamDomain: string): JWTVerifyGetKey {
 
 export type AuthedVars = { user: string };
 
+/**
+ * A refusal: plain text for the pages, JSON for the data API (/api/v1), so
+ * the app can tell "signed out" from "broken" instead of reading an HTML
+ * or text answer it cannot use.
+ */
+function refuse(c: Context, status: 401 | 403 | 503, code: string, message: string) {
+  if (new URL(c.req.url).pathname.startsWith("/api/v1/")) return c.json({ error: { code, message } }, status);
+  return c.text(message, status);
+}
+
 /** Hono middleware: require a valid Cloudflare Access identity. */
 export async function requireAccess(c: Context<{ Bindings: Env; Variables: AuthedVars }>, next: Next) {
   const env = c.env;
@@ -51,20 +61,20 @@ export async function requireAccess(c: Context<{ Bindings: Env; Variables: Authe
   const aud = env.CF_ACCESS_AUD;
   const allowed = env.CF_ACCESS_ALLOWED_EMAIL;
   if (!team || !aud || !allowed) {
-    return c.text("wg-admin is not configured for login yet (CF_ACCESS_* secrets missing). Refusing to serve.", 503);
+    return refuse(c, 503, "not_configured", "wg-admin is not configured for login yet (CF_ACCESS_* secrets missing). Refusing to serve.");
   }
   const token = c.req.header("Cf-Access-Jwt-Assertion") ?? "";
-  if (!token) return c.text("No Cloudflare Access token. Open this page through wg-admin.clydeford.net.", 401);
+  if (!token) return refuse(c, 401, "unauthenticated", "No Cloudflare Access token. Open this page through wg-admin.clydeford.net.");
   try {
     const { payload } = await jwtVerify(token, jwks(team), { issuer: `https://${team}`, audience: aud });
     const email = String(payload.email ?? "").toLowerCase();
-    if (email !== allowed.toLowerCase()) return c.text(`Signed in as ${email}, which is not allowed here.`, 403);
+    if (email !== allowed.toLowerCase()) return refuse(c, 403, "forbidden", `Signed in as ${email}, which is not allowed here.`);
     c.set("user", email);
     return next();
   } catch (e) {
     // The exact reason goes to the Worker's log, not to whoever sent the token.
     console.error("Access token rejected:", (e as Error).message);
-    return c.text("Access token rejected. Sign in again through wg-admin.clydeford.net.", 401);
+    return refuse(c, 401, "unauthenticated", "Access token rejected. Sign in again through wg-admin.clydeford.net.");
   }
 }
 
@@ -89,7 +99,7 @@ export async function sameOriginOnly(c: Context<{ Bindings: Env; Variables: Auth
   const m = c.req.method;
   if (m === "GET" || m === "HEAD" || m === "OPTIONS") return next();
   if (!cameFromOurPages(c.req.header("Sec-Fetch-Site"), c.req.header("Origin"), c.req.url, c.env.PUBLIC_URL)) {
-    return c.text("Refused: that request did not come from the wg-admin pages.", 403);
+    return refuse(c, 403, "cross_site", "Refused: that request did not come from the wg-admin pages.");
   }
   return next();
 }

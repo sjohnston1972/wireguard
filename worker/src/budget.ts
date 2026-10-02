@@ -116,5 +116,5 @@ export async function requireBudgetOk(env: Env, confirmed: boolean): Promise<voi
   if (confirmed) return;
   const b = await budgetStatus(env);
   if (b.level !== "over") return;
-  throw new RunError(`This month is at ${Math.round(b.pct)}% of the ${money(b.budget)} budget. Tick "Deploy anyway" to go ahead.`);
+  throw new RunError(`This month is at ${Math.round(b.pct)}% of the ${money(b.budget)} budget. Tick "Deploy anyway" to go ahead.`, "over_budget");
 }

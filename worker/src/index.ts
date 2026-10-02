@@ -47,6 +47,7 @@ import { isPushEndpoint } from "./webpush";
 import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, backupStatus, MAX_RESTORE_BYTES, type RestorePlan } from "./backup";
 import { restoreBody } from "./views/settings";
 import { randomToken } from "./auth";
+import { buildApi } from "./api";
 
 export { RunLock } from "./lock";
 
@@ -224,6 +225,9 @@ app.get("/manifest.webmanifest", (c) =>
 app.use("*", requireAccess);
 // Changes must come from the dashboard's own pages, not another site (auth.ts).
 app.use("*", sameOriginOnly);
+
+// The data API for the new app (api/): JSON only, behind the same checks.
+app.route("/api/v1", buildApi());
 
 /**
  * The JSON body of a request from the dashboard's own script, or null. Only

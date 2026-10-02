@@ -29,7 +29,20 @@ import { canAzure } from "./env";
 import { noteHandshakes } from "./keyrotation";
 import { recordHeartbeat } from "./history";
 
-export class RunError extends Error {}
+/**
+ * A refusal fit for the screen. The code says what kind, so the data API
+ * can answer with the right status (api/app.ts): "bad_input", "not_found",
+ * "over_budget", "confirm_required", or the default "refused" (the action
+ * conflicts with what is happening now).
+ */
+export class RunError extends Error {
+  constructor(
+    message: string,
+    readonly code: string = "refused",
+  ) {
+    super(message);
+  }
+}
 
 /** Re-read what exists in Azure and store it in the snapshot. Never throws. */
 export async function refreshInventory(env: Env): Promise<void> {
