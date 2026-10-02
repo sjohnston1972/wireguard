@@ -5,7 +5,7 @@ import { useClients, useOverview } from "@/api/queries";
 import { useEditClient } from "@/api/mutations";
 import { Button, EmptyState, ErrorState, IconButton, PageHeader, Panel, Skeleton, useIsPhone, type RowAction } from "@/components";
 import { EnvironmentField, regionLabel } from "@/shell/StateChip";
-import { wholeAnswer, type Client } from "./model";
+import type { Client } from "./model";
 import { ClientsDesktop } from "./ClientsDesktop";
 import { ClientsPhone } from "./ClientsPhone";
 import { AddClientWizard } from "./AddClientWizard";
@@ -44,7 +44,7 @@ export function ClientsScreen() {
   // /clients/:id opens that client; an id that is not a number opens "No such client".
   const rawId = params.id ?? null;
   const selectedId = rawId !== null && /^\d+$/.test(rawId) ? Number(rawId) : rawId !== null ? -1 : null;
-  const data = useMemo(() => (q.data ? wholeAnswer(q.data) : undefined), [q.data]);
+  const data = q.data;
   const edit = useEditClient();
 
   // ?action=add (the command palette) opens the wizard once; closing it drops the parameter.

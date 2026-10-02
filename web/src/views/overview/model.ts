@@ -8,50 +8,6 @@ import { REGIONS } from "../../../../worker/src/region";
 
 export type State = Snapshot["state"];
 
-/**
- * The /overview answer with every field the view reads present. A partial
- * answer (an older Worker, a test's small fixture) is filled with empties,
- * never with invented values: no data stays "no data".
- */
-export function normalise(o: OverviewResponse): OverviewResponse {
-  const s = (o.snapshot ?? {}) as Partial<Snapshot>;
-  const c = (o.config ?? {}) as Partial<OverviewResponse["config"]>;
-  return {
-    ...o,
-    now: o.now ?? new Date().toISOString(),
-    snapshot: {
-      ...(s as Snapshot),
-      state: (s.state ?? "destroyed") as State,
-      steps: s.steps ?? [],
-      latency: s.latency ?? {},
-      traffic_hist: s.traffic_hist ?? [],
-      run_id: s.run_id ?? null,
-      since: s.since ?? null,
-      log_tail: s.log_tail ?? null,
-      error: s.error ?? null,
-      agent: s.agent ?? null,
-      azure: s.azure ?? null,
-      selftest: s.selftest ?? null,
-      last_agent_at: s.last_agent_at ?? null,
-      speedtest_req: s.speedtest_req ?? null,
-      region: s.region ?? null,
-      vm_size: s.vm_size ?? null,
-    },
-    derived: { verifying: false, heartbeatStale: false, selftestFailures: [], clientsOnline: 0, clientsEnabled: 0, publicIp6: null, dnsParked: false, ...((o.derived ?? {}) as Partial<OverviewResponse["derived"]>) },
-    config: { dnsName: "", port: 0, subnet: "", subnet6: "", loopbackIp: "", region: "", vmSize: "", vnetCidr: "", homeLanCidr: "", hourlyRateGbp: 0, standbyRateGbp: 0, autoDestroyDefaultHours: 0, expiryAction: "destroy", standbyMaxDays: 0, ...c },
-    actions: o.actions ?? { canDispatch: false, lockHolder: null },
-    near: o.near ?? { country: null, region: null },
-    profiles: o.profiles ?? [],
-    speedtests: o.speedtests ?? [],
-    site: o.site ?? null,
-    nextScheduledStart: o.nextScheduledStart ?? null,
-    budget: o.budget ?? { budget: 0, actual: 0, session: 0, total: 0, pct: 0, level: "none", month: "", alerted: 0 },
-    deployment: o.deployment ?? null,
-    stateBackups: o.stateBackups ?? null,
-    typicalSeconds: o.typicalSeconds ?? { deploy: null, destroy: null },
-  };
-}
-
 export const STATE_WORD: Record<State, string> = {
   running: "Running",
   deploying: "Deploying",

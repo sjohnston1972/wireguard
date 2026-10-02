@@ -32,43 +32,6 @@ export interface RuleView {
   trend24h: (number | null)[];
 }
 
-/**
- * The answer with every list and object the screen reads present. The API
- * always sends them all; this only keeps a partial answer (an older Worker,
- * a test's small fixture) from crashing the page.
- */
-export function complete(fw: FirewallResponse): FirewallResponse {
-  const p = fw as Partial<FirewallResponse>;
-  return {
-    ...fw,
-    defaultAction: p.defaultAction ?? "deny",
-    policy: p.policy ?? { hash: "", state: "not_running", text: "" },
-    rules: (p.rules ?? []).map((r: Partial<FirewallResponse["rules"][number]>, i) => ({
-      src_kind: "any",
-      src_value: "",
-      dst_kind: "any",
-      dst_value: "",
-      proto: "any",
-      ports: "",
-      action: "allow",
-      enabled: 1,
-      log: 0,
-      place: i + 1,
-      fromLabel: "Anywhere",
-      toLabel: "Anywhere",
-      service: "Any",
-      problem: null,
-      ...r,
-    })) as FirewallResponse["rules"],
-    zones: p.zones ?? [],
-    forwards: p.forwards ?? [],
-    captures: p.captures ?? [],
-    capture: p.capture ?? { busy: false, ifaces: {} },
-    drops: { recent: [], last24h: 0, uniqueSources24h: 0, previous24h: 0, hourly24h: [], ...p.drops },
-    draft: p.draft ?? null,
-  };
-}
-
 /** The rows the table shows: the draft's when there is one, else the live rules. Hits come from the live rule a draft row copies. */
 export function ruleViews(fw: FirewallResponse): RuleView[] {
   const live = new Map(fw.rules.map((r) => [r.id, r]));
@@ -88,10 +51,10 @@ export function ruleViews(fw: FirewallResponse): RuleView[] {
       toLabel: r.toLabel,
       service: r.service,
       problem: r.problem,
-      starter: !!r.starter,
+      starter: r.starter,
       mark: null,
-      hits24h: r.hits24h ?? null,
-      trend24h: r.trend24h ?? [],
+      hits24h: r.hits24h,
+      trend24h: r.trend24h,
     }));
   }
   return fw.draft.rules.map((r) => {
@@ -113,8 +76,8 @@ export function ruleViews(fw: FirewallResponse): RuleView[] {
       problem: r.problem,
       starter: !!l?.starter,
       mark: r.mark,
-      hits24h: l ? (l.hits24h ?? null) : null,
-      trend24h: l ? (l.trend24h ?? []) : [],
+      hits24h: l ? l.hits24h : null,
+      trend24h: l ? l.trend24h : [],
     };
   });
 }

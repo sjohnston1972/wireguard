@@ -14,7 +14,7 @@ import { ZonesPanel } from "./Zones";
 import { SimulatorPanel, type SimulatorHandle } from "./Simulator";
 import { RuleDrawer } from "./RuleDrawer";
 import { FirewallPhone } from "./FirewallPhone";
-import { NO_FILTER, complete, ruleViews, type RuleFilter } from "./model";
+import { NO_FILTER, ruleViews, type RuleFilter } from "./model";
 import { FirewallSkeleton } from "./FirewallSkeleton";
 import { NARROW, useMedia } from "./useMedia";
 import "./Firewall.css";
@@ -51,7 +51,7 @@ export function FirewallPage() {
   const portsAddRef = useRef<HTMLButtonElement>(null);
   const defaultBtnRef = useRef<HTMLButtonElement>(null);
 
-  const full = useMemo(() => (fw.data ? complete(fw.data) : undefined), [fw.data]);
+  const full = fw.data;
   const rows = useMemo(() => (full ? ruleViews(full) : []), [full]);
   const action = params.get("action");
   const loaded = !!fw.data;

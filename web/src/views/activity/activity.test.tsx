@@ -72,14 +72,6 @@ describe("Activity header and figures", () => {
     expect(screen.getByRole("group", { name: "Median deploy duration" })).toHaveTextContent("no data");
   });
 
-  it("an answer without the newer parts (previous, lists) renders as no data instead of crashing", async () => {
-    renderApp("/activity", { routes: activityRoutes({ "GET /api/v1/activity": { range: "7d", now: "2026-10-02T12:00:00.000Z", runs: [], notes: [] } }) });
-    const rate = await group("Success rate");
-    expect(rate).toHaveTextContent("no data");
-    expect(screen.getByRole("group", { name: "Deploys" })).not.toHaveTextContent("vs previous");
-    expect(await screen.findByRole("table", { name: "Runs" })).toBeInTheDocument();
-  });
-
   it("failed runs go red only when they rose", async () => {
     renderApp("/activity", { routes: activityRoutes({ "GET /api/v1/activity": activityResponse({ kpis: kpis({ failedRuns: 5 }) }) }) });
     const failed = await group("Failed runs");

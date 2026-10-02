@@ -93,7 +93,7 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
           <RulesTable
             rows={shown}
             showDefault={showDefault}
-            defaultRow={{ action, hits24h: fw.defaultHits24h ?? null, trend24h: fw.defaultTrend24h ?? [], changed: !!fw.draft?.diff.defaultChanged }}
+            defaultRow={{ action, hits24h: fw.defaultHits24h, trend24h: fw.defaultTrend24h, changed: !!fw.draft?.diff.defaultChanged }}
             zones={fw.zones}
             busyIds={busy}
             firstId={rows[0]?.id ?? null}

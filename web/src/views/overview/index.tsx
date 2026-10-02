@@ -14,7 +14,7 @@ import { LastRun, RunPanels } from "./Run";
 import { RecentEvents, SpeedTests, Traffic } from "./Side";
 import { CostImpact, HealthSummary, WatchmanNotes } from "./Lower";
 import { PhoneOverview } from "./Phone";
-import { STATE_WORD, inGithubRun, normalise, regionCountry, regionFull } from "./model";
+import { STATE_WORD, inGithubRun, regionCountry, regionFull } from "./model";
 import "./Overview.css";
 
 const SUBTITLE = "Deploy and monitor your WireGuard environment on Azure.";
@@ -109,7 +109,7 @@ function usePaletteAction(o: OverviewResponse | null, open: (a: ActionName) => v
 
 export function OverviewPage() {
   const q = useOverview();
-  const o = useMemo(() => (q.data ? normalise(q.data) : null), [q.data]);
+  const o = q.data ?? null;
   const phone = useIsPhone();
   const [action, setAction] = useState<ActionName | null>(null);
   const clearParam = usePaletteAction(o, setAction);

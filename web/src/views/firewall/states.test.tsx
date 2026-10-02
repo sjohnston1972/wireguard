@@ -48,8 +48,8 @@ describe("firewall states", () => {
     expect(await screen.findByRole("dialog", { name: "Add rule" })).toBeInTheDocument();
   });
 
-  it("a partial answer (the shell tests' small fixture) still renders the rules", async () => {
-    renderApp("/firewall"); // default routes: firewallFixture() sets only a few fields
+  it("the shared fixture's rules render with the default row last", async () => {
+    renderApp("/firewall"); // default routes: firewallFixture()
     const table = await screen.findByRole("table", { name: "Firewall rules" });
     expect(table).toHaveTextContent("Block telemetry");
     expect(table).toHaveTextContent("Default (catch all)");
