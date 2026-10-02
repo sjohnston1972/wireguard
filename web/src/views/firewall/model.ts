@@ -218,3 +218,6 @@ export function zoneOfIp(ip: string, zones: FirewallResponse["zones"]): Zone {
   hits.sort((a, b) => bits(b) - bits(a));
   return hits[0]?.zone ?? "internet";
 }
+
+/** Below 1400 px the right column folds into one tabbed panel (spec §8.3). */
+export const NARROW = "(max-width: 1399px)";

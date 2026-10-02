@@ -3,7 +3,7 @@ import type { ActivityResponse } from "@shared/api";
 import type { ActivityRange } from "../../../../worker/src/activity";
 import { Button, Panel, StackedBars, type StackBucket, type StackSeries } from "@/components";
 import { bucketLabel, EVENT_TYPES, windowLabel, windowOf, type Window } from "./model";
-import { useMedia } from "./useMedia";
+import { useMedia } from "@/lib/useMedia";
 
 const SERIES: StackSeries[] = EVENT_TYPES.map((e) => ({ key: e.value, label: e.label, color: e.tone }));
 

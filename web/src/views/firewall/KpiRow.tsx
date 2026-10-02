@@ -3,8 +3,8 @@ import { forwardRef, type ReactNode } from "react";
 import type { FirewallResponse } from "@shared/api";
 import { Button, MetricTile, Sparkline } from "@/components";
 import { useDraftDefault } from "@/api/mutations";
-import { dropDelta, fmtCount, shownDefault, type RuleView } from "./model";
-import { NARROW, useMedia } from "./useMedia";
+import { NARROW, dropDelta, fmtCount, shownDefault, type RuleView } from "./model";
+import { useMedia } from "@/lib/useMedia";
 import "./KpiRow.css";
 
 export interface KpiRowProps {

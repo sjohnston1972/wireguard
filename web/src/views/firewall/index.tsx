@@ -14,9 +14,9 @@ import { ZonesPanel } from "./Zones";
 import { SimulatorPanel, type SimulatorHandle } from "./Simulator";
 import { RuleDrawer } from "./RuleDrawer";
 import { FirewallPhone } from "./FirewallPhone";
-import { NO_FILTER, ruleViews, type RuleFilter } from "./model";
+import { NARROW, NO_FILTER, ruleViews, type RuleFilter } from "./model";
 import { FirewallSkeleton } from "./FirewallSkeleton";
-import { NARROW, useMedia } from "./useMedia";
+import { useMedia } from "@/lib/useMedia";
 import "./Firewall.css";
 
 type RightTab = "drops" | "ports" | "capture";
