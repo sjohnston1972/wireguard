@@ -107,6 +107,8 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
             rowProps={reorder.rowProps}
             handleProps={reorder.handleProps}
             dropMark={reorder.dropMark}
+            isDragging={reorder.isDragging}
+            onAltArrow={(r, dir) => reorder.moveByKey(r.id, dir)}
           />
         )}
       </div>

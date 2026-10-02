@@ -34,6 +34,9 @@ export interface RulesTableProps {
   rowProps?: (row: RuleView) => Record<string, unknown>;
   handleProps?: (row: RuleView) => Record<string, unknown>;
   dropMark?: (row: RuleView) => "above" | "below" | null;
+  isDragging?: (row: RuleView) => boolean;
+  /** Alt+ArrowUp/Down on a focused rule row. */
+  onAltArrow?: (row: RuleView, dir: "up" | "down") => void;
 }
 
 const MARK_WORD = { added: "Added", changed: "Changed", moved: "Moved" } as const;
@@ -63,15 +66,21 @@ function HitsCell({ hits, trend, onClick, name }: { hits: number | null; trend: 
 
 /** The rules table: draggable rows in policy order, the fixed default row last. */
 export function RulesTable(p: RulesTableProps) {
-  const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, id: number | "default") => {
+  const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, row: RuleView | "default") => {
     if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      if (id === "default") p.onEditDefault();
-      else p.onOpen(id);
+      if (row === "default") p.onEditDefault();
+      else p.onOpen(row.id);
       return;
     }
-    if (e.altKey) return; // Alt+Arrow is reorder (rowProps)
+    if (e.altKey) {
+      // Alt+Arrow reorders; the default row never moves.
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      if (row !== "default") p.onAltArrow?.(row, e.key === "ArrowUp" ? "up" : "down");
+      return;
+    }
     const tr = e.currentTarget;
     let to: Element | null = null;
     if (e.key === "ArrowDown") to = tr.nextElementSibling;
@@ -114,12 +123,13 @@ export function RulesTable(p: RulesTableProps) {
               data-rule-id={r.id}
               data-rule-name={r.name}
               aria-label={`Rule ${r.place}: ${r.name}`}
-              className={cx("fw-rules__row", !r.enabled && "fw-rules__row--off", r.mark && `fw-rules__row--${r.mark}`, drop && `fw-rules__row--drop-${drop}`)}
+              className={cx("fw-rules__row", !r.enabled && "fw-rules__row--off", r.mark && `fw-rules__row--${r.mark}`, drop && `fw-rules__row--drop-${drop}`, p.isDragging?.(r) && "fw-rules__row--dragging")}
+              aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
               onClick={(e) => {
                 if ((e.target as HTMLElement).closest("button, a, input, [role='switch'], [role='menuitem']")) return;
                 p.onOpen(r.id);
               }}
-              onKeyDown={(e) => onRowKey(e, r.id)}
+              onKeyDown={(e) => onRowKey(e, r)}
               {...p.rowProps?.(r)}
             >
               <td className="dt__td fw-rules__c-handle">
