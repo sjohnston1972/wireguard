@@ -11,6 +11,7 @@ import { registerLifecycle } from "./lifecycle";
 import { registerHistory } from "./history";
 import { registerClients } from "./clients";
 import { registerFirewall } from "./firewall";
+import { registerActivity } from "./activity";
 
 export function buildApi(): Hono<ApiEnv> {
   const api = createApi();
@@ -21,6 +22,7 @@ export function buildApi(): Hono<ApiEnv> {
   registerHistory(api);
   registerClients(api);
   registerFirewall(api);
+  registerActivity(api);
   api.all("*", (c) => fail(c, 404, "not_found", "No such API route."));
   return api;
 }

@@ -125,10 +125,12 @@ export interface World {
   notes: Record<string, any>[];
   /** GitHub jobs per GitHub run id, for the step list. */
   jobs: Map<number, GhJob[]>;
+  /** GitHub job logs per job id, as plain text; a job with none answers 404. */
+  logs: Map<number, string>;
 }
 
 export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World } {
-  const world: World = { dispatches: [], ghRuns: new Map(), azure: { rg: false, power: "running", ip: "20.0.0.10" }, powerCalls: [], notes: [], jobs: new Map() };
+  const world: World = { dispatches: [], ghRuns: new Map(), azure: { rg: false, power: "running", ip: "20.0.0.10" }, powerCalls: [], notes: [], jobs: new Map(), logs: new Map() };
   let nextGh = 1000;
   const env = {
     PUBLIC_URL: "https://wg-admin.example",
@@ -190,6 +192,8 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
       if (run) return world.ghRuns.has(Number(run[1])) ? json(world.ghRuns.get(Number(run[1]))) : json({}, 404);
       const jobs = u.pathname.match(/\/actions\/runs\/(\d+)\/jobs$/);
       if (jobs) return json({ jobs: world.jobs.get(Number(jobs[1])) ?? [] });
+      const log = u.pathname.match(/\/actions\/jobs\/(\d+)\/logs$/);
+      if (log) return world.logs.has(Number(log[1])) ? new Response(world.logs.get(Number(log[1])), { status: 200 }) : json({}, 404);
       return json({}, 404);
     }
 

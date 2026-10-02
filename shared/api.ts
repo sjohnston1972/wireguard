@@ -5,12 +5,13 @@
 // on every field. Types only: nothing here runs.
 
 import type { Alert, AuditEntry, Capture, Peer, Profile, SpeedTest } from "../worker/src/db";
-import type { FwRule, Forward, Zone } from "../worker/src/firewall";
+import type { Forward, FwRule, Zone } from "../worker/src/firewall";
 import type { PolicyState } from "../worker/src/fwview";
-import type { Snapshot, Talker } from "../worker/src/state";
-import type { ClientView, ClientKpis } from "../worker/src/clients";
+import type { Snapshot, Step, Talker } from "../worker/src/state";
+import type { ClientKpis, ClientView } from "../worker/src/clients";
 import type { BudgetStatus } from "../worker/src/budget";
-import type { VmHistory, ClientHistory } from "../worker/src/history";
+import type { ClientHistory, VmHistory } from "../worker/src/history";
+import type { ActivityEvent, ActivityKpis, ActivityRange, EventType, RunRow } from "../worker/src/activity";
 
 /** Every refusal or failure. `field` names the input at fault, for a form. */
 export interface ApiError {
@@ -165,4 +166,34 @@ export interface FirewallResponse {
   publicIp: string | null;
   dnsName: string;
   kpis: { rules: number; enabled: number; defaultAction: "deny" | "allow"; drops24h: number; published: number; captureBusy: boolean };
+}
+
+// ── Activity ──
+
+/** GET /api/v1/activity?range=24h&kind=&q=&page= */
+export interface ActivityResponse {
+  range: ActivityRange;
+  now: string;
+  kpis: ActivityKpis;
+  timeline: { start: string; counts: Record<EventType, number> }[];
+  /** Runs requested in the range, newest first (up to 200). No secrets. */
+  runs: RunRow[];
+  notes: Alert[];
+  /** Runs, notes and changes as one list, newest first. */
+  all: ActivityEvent[];
+  /** The change log: one page, with the filter that produced it. `lines` is each change worded in plain English. */
+  changes: { rows: (AuditEntry & { lines: string[] })[]; more: boolean; page: number; kind: string; q: string };
+}
+
+/** GET /api/v1/runs/:id */
+export interface RunDetailResponse {
+  run: RunRow;
+  steps: Step[];
+  /** True while this is the run in progress; its steps then come live from the VM's snapshot. */
+  active: boolean;
+}
+
+/** GET /api/v1/runs/:id/log */
+export interface RunLogResponse {
+  log: string;
 }
