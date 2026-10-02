@@ -233,14 +233,13 @@ describe("heartbeats write history", () => {
 const running = (since: number) => ({ state: "running", running_since: new Date(since).toISOString() }) as Snapshot;
 
 describe("recordMissedHeartbeats", () => {
-  it("marks fully elapsed minutes with no heartbeat, after the boot grace and before the late grace", async () => {
+  it("marks fully elapsed minutes with no heartbeat, from the first heartbeat to before the late grace", async () => {
     // Up at 10:00. Heartbeats arrived in 10:04 and 10:06. The watchman runs at 10:10:30.
     await env.DB.prepare("INSERT INTO hist_vm (res, t, expected, received) VALUES (60, '2026-10-02T10:04:00Z', 1, 1), (60, '2026-10-02T10:06:00Z', 1, 1)").run();
     const added = await recordMissedHeartbeats(env, running(T0), new Date(T0 + 10 * 60_000 + 30_000));
-    // Counted from 10:03 (boot grace), up to the minute that ended by 10:08:30 (late grace): 10:03, 10:05, 10:07.
-    expect(added).toBe(3);
+    // Counted from 10:04 (first heartbeat), up to the minute that ended by 10:08:30 (late grace): 10:05, 10:07.
+    expect(added).toBe(2);
     expect(await rows("SELECT t, received FROM hist_vm ORDER BY t")).toEqual([
-      { t: "2026-10-02T10:03:00Z", received: 0 },
       { t: "2026-10-02T10:04:00Z", received: 1 },
       { t: "2026-10-02T10:05:00Z", received: 0 },
       { t: "2026-10-02T10:06:00Z", received: 1 },
@@ -249,8 +248,9 @@ describe("recordMissedHeartbeats", () => {
   });
 
   it("only looks back 15 minutes", async () => {
+    await env.DB.prepare("INSERT INTO hist_vm (res, t, expected, received) VALUES (60, '2026-10-02T10:01:00Z', 1, 1)").run();
     await recordMissedHeartbeats(env, running(T0), new Date(T0 + 60 * 60_000));
-    const [{ first }] = await rows("SELECT MIN(t) AS first FROM hist_vm");
+    const [{ first }] = await rows("SELECT MIN(t) AS first FROM hist_vm WHERE received = 0");
     expect(first).toBe("2026-10-02T10:45:00Z");
   });
 
@@ -301,7 +301,8 @@ describe("rollUp", () => {
 
 describe("watchman", () => {
   it("fills in missed minutes while running", async () => {
-    await toRunning();
+    const token = await toRunning();
+    await handleAgent(env, token, { dump: DUMP([peerLine(PHONE, Math.floor(Date.now() / 1000), 1, 1)]) });
     const snap = await getSnapshot(env);
     const since = Date.parse(snap.running_since!);
     await runScheduled(env, new Date(since + 10 * 60_000));
@@ -334,6 +335,18 @@ describe("run steps", () => {
 });
 
 describe("review fixes", () => {
+  it("does not count a slow boot as downtime: missed minutes start at the first heartbeat", async () => {
+    // Up at 10:00 (GitHub callback), first heartbeat only at 10:05, then silence. Watchman at 10:10:30.
+    await env.DB.prepare("INSERT INTO hist_vm (res, t, expected, received) VALUES (60, '2026-10-02T10:05:00Z', 1, 1)").run();
+    await recordMissedHeartbeats(env, running(T0), new Date(T0 + 10 * 60_000 + 30_000));
+    expect((await rows("SELECT t FROM hist_vm WHERE received = 0 ORDER BY t")).map((r) => r.t)).toEqual(["2026-10-02T10:06:00Z", "2026-10-02T10:07:00Z"]);
+  });
+
+  it("marks nothing while the VM has not sent its first heartbeat", async () => {
+    expect(await recordMissedHeartbeats(env, running(T0), new Date(T0 + 20 * 60_000))).toBe(0);
+    expect(await rows("SELECT * FROM hist_vm")).toEqual([]);
+  });
+
   const twoSteps = () => [
     {
       id: 1, name: "terraform", status: "in_progress", conclusion: null,

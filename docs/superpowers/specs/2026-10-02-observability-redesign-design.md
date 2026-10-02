@@ -147,8 +147,9 @@ never fails the heartbeat. Migration `0012_history.sql` (exact SQL in plan 1):
 Rules:
 - Missing heartbeats: the 5-minute watchman writes a raw row with `received = 0`
   for each fully elapsed minute without a heartbeat while the state is `running`,
-  starting 3 minutes after `running_since` (boot) and leaving the last 2 minutes
-  alone (a heartbeat may be in flight). Availability
+  starting at the session's first heartbeat (boot and self-test can take several
+  minutes after GitHub reports the VM built; that is not downtime) and leaving the
+  last 2 minutes alone (a heartbeat may be in flight). Availability
   over a range = sum(received) / sum(expected) over rows while running. Not running
   writes nothing, so it does not count against availability.
 - Roll-up (watchman, every 5 minutes): raw rows older than 48 h are folded into

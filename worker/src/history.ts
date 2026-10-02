@@ -22,8 +22,6 @@ export const SUMMARY_RES = 300;
 export const RAW_KEEP_MS = 48 * 3600_000;
 /** Summaries and drops are deleted after 30 days. */
 export const SUMMARY_KEEP_MS = 30 * 86_400_000;
-/** No minute counts as missed until 3 minutes after the VM came up (boot and self-test). */
-export const BOOT_GRACE_MS = 3 * 60_000;
 /** The last 2 minutes are left alone: a heartbeat may be on its way. */
 export const LATE_GRACE_MS = 2 * 60_000;
 /** How far back the watchman looks for missed minutes (it runs every 5). */
@@ -149,14 +147,19 @@ export async function recordHeartbeat(
 /**
  * The watchman's half of availability: every fully elapsed minute in the
  * last 15 with no heartbeat, while the VM is meant to be up, gets a row
- * saying so. The first 3 minutes after it came up (boot, self-test) and the
- * last 2 (a heartbeat may be on its way) are left alone. A heartbeat that
- * arrives later still fills its minute in (recordHeartbeat).
+ * saying so. Counting starts at the session's first heartbeat: boot and
+ * the self-test can take several minutes after GitHub reports the VM built,
+ * and that is not downtime. The last 2 minutes are left alone (a heartbeat
+ * may be on its way).
  */
 export async function recordMissedHeartbeats(env: Env, snap: Snapshot, now: Date): Promise<number> {
   if (snap.state !== "running" || !snap.running_since) return 0;
+  const first = await env.DB.prepare("SELECT MIN(t) AS t FROM hist_vm WHERE res = ?1 AND t >= ?2 AND received = 1")
+    .bind(RAW_RES, bucket(Date.parse(snap.running_since), RAW_RES))
+    .first<{ t: string | null }>();
+  if (!first?.t) return 0;
   const step = RAW_RES * 1000;
-  const from = Math.ceil(Math.max(Date.parse(snap.running_since) + BOOT_GRACE_MS, now.getTime() - LOOKBACK_MS) / step) * step;
+  const from = Math.ceil(Math.max(Date.parse(first.t), now.getTime() - LOOKBACK_MS) / step) * step;
   const until = now.getTime() - LATE_GRACE_MS;
   const stmts: D1PreparedStatement[] = [];
   for (let ms = from; ms + step <= until; ms += step) {
