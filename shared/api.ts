@@ -356,8 +356,8 @@ export type RuleHistoryResponse = RuleHistory;
 export interface FirewallRuleRow {
   /** Packets matched in the last 24 hours, or null when no hit history has been recorded at all yet. */
   hits24h: number | null;
-  /** Packets per hour over the last 24 hours, oldest first; always 24 numbers (all zero when there is no history). */
-  trend24h: number[];
+  /** Packets per hour over the last 24 hours, oldest first: 24 entries, null for an hour the VM was not running (no data, not 0); [] when no hit history has been recorded at all. */
+  trend24h: (number | null)[];
   /** True when this is one of the rules a fresh install starts with (same name and ends). */
   starter: boolean;
 }
@@ -365,7 +365,8 @@ export interface FirewallRuleRow {
 /** Hit history for the default action, added to GET /firewall (merged into FirewallResponse). */
 export interface FirewallResponse {
   defaultHits24h: number | null;
-  defaultTrend24h: number[];
+  /** As a rule's trend24h. */
+  defaultTrend24h: (number | null)[];
 }
 
 /** What `drops` in GET /firewall gains: statistics over the last 24 hours. */
@@ -374,8 +375,8 @@ export interface FirewallDropStats {
   uniqueSources24h: number;
   /** Total drops in the 24 hours before the last 24, for the "vs the day before" figure. */
   previous24h: number;
-  /** Drops per hour over the last 24 hours, oldest first; always 24 numbers. */
-  hourly24h: number[];
+  /** Drops per hour over the last 24 hours, oldest first; always 24 entries, null for an hour the VM was not running (no data, not 0). */
+  hourly24h: (number | null)[];
 }
 
 /** GET /api/v1/activity gains `previous` (merged into ActivityResponse). */

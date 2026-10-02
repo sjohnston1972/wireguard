@@ -84,6 +84,31 @@ export async function dropStats24h(env: Env, nowMs: number): Promise<{ hourly: n
   return { hourly, uniqueSources: Number(uniq?.n ?? 0), previous: Number(prev?.n ?? 0) };
 }
 
+/**
+ * Which of the last 24 hours (oldest first, bucketed as the trends are) the
+ * VM was up in: any minute with a heartbeat received, from hist_vm (an index
+ * range on the time).
+ */
+export async function vmUpHours24h(env: Env, nowMs: number): Promise<boolean[]> {
+  const fromMs = Math.floor((nowMs - DAY_MS) / 60_000) * 60_000;
+  const rows = (
+    await env.DB.prepare(
+      `SELECT (CAST(strftime('%s', t) AS INTEGER) - CAST(?3 AS INTEGER)) / ${HOUR_S} AS h, SUM(received) AS n
+       FROM hist_vm WHERE res IN (${RAW_RES}, ${SUMMARY_RES}) AND t >= ?1 AND t <= ?2 GROUP BY h`,
+    )
+      .bind(bucket(fromMs, RAW_RES), bucket(nowMs, 1), fromMs / 1000)
+      .all<{ h: number; n: number }>()
+  ).results;
+  const up: boolean[] = Array(24).fill(false);
+  for (const r of rows) if (r.n > 0) up[Math.max(0, Math.min(23, r.h))] = true;
+  return up;
+}
+
+/** Hourly counts with the hours the VM was not up as null ("no data", not 0). A count recorded anyway is kept. */
+export function onlyWhenUp(counts: number[], up: boolean[]): (number | null)[] {
+  return counts.map((n, i) => (n > 0 || up[i] ? n : null));
+}
+
 /** True when a rule is one of the starter rules a fresh install comes with (same name and same ends), for the "Custom / Default" filter. */
 export function isStarterRule(r: Pick<FwRule, "name" | "src_kind" | "src_value" | "dst_kind" | "dst_value">): boolean {
   return STARTER_RULES.some((s) => s.name === r.name && s.src_kind === r.src_kind && s.src_value === r.src_value && s.dst_kind === r.dst_kind && s.dst_value === r.dst_value);

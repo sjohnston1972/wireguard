@@ -192,14 +192,32 @@ const iso = (ms: number) => new Date(ms).toISOString().replace(".000Z", "Z");
 const MIN = 60_000, HOUR = 3_600_000;
 const hit = (rule: string, agoMs: number, packets: number, now: number) => env.DB.prepare("INSERT INTO hist_fw (res, t, rule, packets, bytes) VALUES (60, ?1, ?2, ?3, ?3)").bind(iso(Math.floor((now - agoMs) / MIN) * MIN), rule, packets).run();
 const drop = (agoMs: number, src: string, n: number, now: number) => env.DB.prepare("INSERT INTO hist_drops (t, src, dst, proto, dport, n) VALUES (?1, ?2, '10.13.13.2', 'TCP', 22, ?3)").bind(iso(Math.floor((now - agoMs) / MIN) * MIN), src, n).run();
+/** A minute the VM was up and heartbeating. */
+const vmUp = (agoMs: number, now: number) => env.DB.prepare("INSERT INTO hist_vm (res, t, expected, received) VALUES (60, ?1, 1, 1)").bind(iso(Math.floor((now - agoMs) / MIN) * MIN)).run();
 
 describe("GET /firewall: hit history and drop statistics", () => {
-  it("has no hits history (null, flat trend) before anything was recorded", async () => {
+  it("has no hits history (null, empty trend) before anything was recorded, and no drops per hour while the VM never ran", async () => {
     const r = await api(env, "GET", "/firewall");
     expect(r.status).toBe(200);
-    expect(r.json.rules[0]).toMatchObject({ hits24h: null, trend24h: Array(24).fill(0) });
-    expect(r.json).toMatchObject({ defaultHits24h: null, defaultTrend24h: Array(24).fill(0) });
-    expect(r.json.drops).toMatchObject({ last24h: 0, uniqueSources24h: 0, previous24h: 0, hourly24h: Array(24).fill(0) });
+    expect(r.json.rules[0]).toMatchObject({ hits24h: null, trend24h: [] });
+    expect(r.json).toMatchObject({ defaultHits24h: null, defaultTrend24h: [] });
+    expect(r.json.drops).toMatchObject({ last24h: 0, uniqueSources24h: 0, previous24h: 0, hourly24h: Array(24).fill(null) });
+  });
+
+  it("hours when the VM was not running are null, not 0, in the hit trends and the drops per hour", async () => {
+    const now = Date.now();
+    await vmUp(10 * MIN, now); // the newest hour (index 23)
+    await vmUp(2 * HOUR + 10 * MIN, now); // index 21: up, nothing happened
+    await vmUp(5 * HOUR + 10 * MIN, now); // index 18
+    const [starter] = await db.listFwRules(env);
+    await hit(`r${starter.id}`, 10 * MIN, 5, now);
+    await hit(`r${starter.id}`, 5 * HOUR + 10 * MIN, 7, now);
+    await drop(10 * MIN, "203.0.113.1", 4, now);
+    const r = await api(env, "GET", "/firewall");
+    const expected = (vals: Record<number, number>) => Array.from({ length: 24 }, (_, i) => vals[i] ?? null);
+    expect(r.json.rules.find((x: { id: number }) => x.id === starter.id).trend24h).toEqual(expected({ 18: 7, 21: 0, 23: 5 }));
+    expect(r.json.defaultTrend24h).toEqual(expected({ 18: 0, 21: 0, 23: 0 }));
+    expect(r.json.drops.hourly24h).toEqual(expected({ 18: 0, 21: 0, 23: 4 }));
   });
 
   it("gives 24-hour hits and an hourly trend per rule and for the default, and flags the starter rules", async () => {
@@ -217,13 +235,13 @@ describe("GET /firewall: hit history and drop statistics", () => {
     const s = r.json.rules.find((x: { id: number }) => x.id === starter.id);
     expect(s.hits24h).toBe(14);
     expect(s.trend24h).toHaveLength(24);
-    expect(s.trend24h.reduce((a: number, b: number) => a + b, 0)).toBe(14);
+    expect(s.trend24h.reduce((a: number, b: number | null) => a + (b ?? 0), 0)).toBe(14);
     expect(s.trend24h[23]).toBe(7);
     expect(s.starter).toBe(true);
     const m = r.json.rules.find((x: { id: number }) => x.id === mine.id);
     expect(m).toMatchObject({ hits24h: 0, starter: false }); // history exists, this rule did not match
     expect(r.json.defaultHits24h).toBe(3);
-    expect(r.json.defaultTrend24h.reduce((a: number, b: number) => a + b, 0)).toBe(3);
+    expect(r.json.defaultTrend24h.reduce((a: number, b: number | null) => a + (b ?? 0), 0)).toBe(3);
   });
 
   it("a renamed starter rule is no longer a starter", async () => {
@@ -244,7 +262,7 @@ describe("GET /firewall: hit history and drop statistics", () => {
     const r = await api(env, "GET", "/firewall");
     expect(r.json.drops).toMatchObject({ last24h: 7, uniqueSources24h: 2, previous24h: 7 });
     expect(r.json.drops.hourly24h).toHaveLength(24);
-    expect(r.json.drops.hourly24h.reduce((a: number, b: number) => a + b, 0)).toBe(7);
+    expect(r.json.drops.hourly24h.reduce((a: number, b: number | null) => a + (b ?? 0), 0)).toBe(7);
     expect(r.json.drops.hourly24h[23]).toBe(4);
   });
 
@@ -257,7 +275,7 @@ describe("GET /firewall: hit history and drop statistics", () => {
     });
     await api(env, "GET", "/firewall");
     vi.mocked(env.DB.prepare).mockRestore();
-    const mine = seen.filter((s) => /hist_(drops|fw)/.test(s));
+    const mine = seen.filter((s) => /hist_(drops|fw|vm)/.test(s));
     expect(mine.length).toBeGreaterThanOrEqual(4);
     for (const sql of mine) {
       const n = Math.max(0, ...[...sql.matchAll(/\?(\d+)/g)].map((m) => Number(m[1])));
