@@ -1,0 +1,36 @@
+/* Design tokens: the values measured from the mockups (dark theme). The light
+   theme redefines the same names in themes.css. */
+:root {
+  --bg-app: #08111c;
+  --bg-bar: #091524;
+  --bg-panel: #0c1b29;
+  --bg-tile: #112033;
+  --bg-elevated: #13243a;
+  --border: #162639;
+  --border-strong: #22364d;
+
+  --text-primary: #f2f6fb;
+  --text-secondary: #a9b8cc;
+  --text-muted: #6b7c93; /* non-essential text only */
+
+  --blue: #3776fb;
+  --blue-bright: #4f8cff;
+  --green: #34cf89;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --purple: #9263f8;
+
+  --radius-control: 8px;
+  --radius-panel: 14px;
+  --gap: 12px;
+
+  --font-ui: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  --bar-height: 48px;
+  --tabbar-height: 56px;
+
+  --focus-ring: var(--blue-bright);
+  --scrollbar-thumb: #22364d;
+  color-scheme: dark;
+}
