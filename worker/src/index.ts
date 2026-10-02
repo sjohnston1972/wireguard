@@ -43,7 +43,7 @@ import { clearFirewallCounters } from "./runs";
 import { startCapture, receiveCapture, validFilter, MAX_CAPTURE_BYTES } from "./capture";
 import { setPublishedPorts } from "./azure";
 import { reservedPort, forwardTargetOk, publishedNsgRules } from "./firewall";
-import { isPushEndpoint } from "./webpush";
+import { subscribePhone, unsubscribePhone, phoneStatus, sendTestAlert, removePhone } from "./pushsubs";
 import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, backupStatus, MAX_RESTORE_BYTES, type RestorePlan } from "./backup";
 import { restoreBody } from "./views/settings";
 import { randomToken } from "./auth";
@@ -479,19 +479,13 @@ app.post("/peers/:id/dns", async (c) => {
 
 app.post("/api/push/subscribe", async (c) => {
   const b = await jsonBody<{ endpoint?: string; keys?: { p256dh?: string; auth?: string }; label?: string }>(c);
-  const endpoint = String(b?.endpoint ?? "");
-  const p256dh = String(b?.keys?.p256dh ?? ""), auth = String(b?.keys?.auth ?? "");
-  if (!/^https:\/\/[^\s]{10,}$/.test(endpoint) || !isPushEndpoint(endpoint) || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return c.json({ error: "That does not look like a push subscription." }, 400);
-  await db.savePushSub(c.env, { endpoint, p256dh, auth, label: String(b?.label ?? "").slice(0, 40) || null });
-  await db.addAlert(c.env, "info", `Phone alerts turned on for ${b?.label || "a device"} by ${c.get("user")}.`);
-  await db.audit(c.env, c.get("user"), "push.add", b?.label || "a device", null, { label: b?.label || null });
-  return c.json({ ok: true });
+  const r = await subscribePhone(c.env, c.get("user"), b);
+  return r.ok ? c.json({ ok: true }) : c.json({ error: r.message }, 400);
 });
 
 app.post("/api/push/unsubscribe", async (c) => {
   const b = await jsonBody<{ endpoint?: string }>(c);
-  if (b?.endpoint) await db.deletePushSub(c.env, { endpoint: String(b.endpoint) });
-  if (b?.endpoint) await db.audit(c.env, c.get("user"), "push.remove", "this device", null, null);
+  await unsubscribePhone(c.env, c.get("user"), b?.endpoint);
   return c.json({ ok: true });
 });
 
@@ -499,24 +493,17 @@ app.post("/api/push/unsubscribe", async (c) => {
 // asks, so it can say "not registered" instead of a false "on". Also hands
 // the service worker the public key when it has to sign up again.
 app.get("/api/push/status", async (c) => {
-  const endpoint = c.req.query("endpoint") ?? "";
-  const sub = endpoint ? (await db.listPushSubs(c.env)).find((s) => s.endpoint === endpoint) : undefined;
   c.header("Cache-Control", "no-store");
-  return c.json({ registered: !!sub, id: sub?.id ?? null, last_error: sub?.last_error ?? null, vapid: c.env.VAPID_PUBLIC_KEY ?? null });
+  return c.json(await phoneStatus(c.env, c.req.query("endpoint") ?? ""));
 });
 
 app.post("/api/push/test", async (c) => {
-  await c.env.STATUS.delete("notify:last_error");
-  await notify(c.env, "wg-admin: test alert", "Phone alerts work. Tap to open the dashboard.", { tags: ["test"], buttons: [dashboardButton(c.env)] });
-  const err = await lastNotifyError(c.env);
-  const subs = await db.listPushSubs(c.env);
-  return c.json(err ? { ok: false, error: err.why } : { ok: true, phones: subs.length });
+  const r = await sendTestAlert(c.env);
+  return c.json(r.ok ? { ok: true, phones: r.value.phones } : { ok: false, error: r.message });
 });
 
 app.post("/settings/push/:id/delete", async (c) => {
-  const gone = (await db.listPushSubs(c.env)).find((s) => s.id === Number(c.req.param("id")));
-  await db.deletePushSub(c.env, { id: Number(c.req.param("id")) });
-  if (gone) await db.audit(c.env, c.get("user"), "push.remove", gone.label ?? `device ${gone.id}`, gone, null);
+  await removePhone(c.env, c.get("user"), Number(c.req.param("id")));
   return c.redirect("/settings?saved=1");
 });
 
