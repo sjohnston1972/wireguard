@@ -685,14 +685,21 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     patch.selftest = st;
     const failed = selfTestFailures(st);
     const deadline = patch.state === "running" || snap.state === "running" ? snap.auto_destroy_at : null;
+    // A result stamped with a request's id is an on-demand health check, not
+    // the boot run: its push says so, and does not announce the VM as newly ready.
+    const onDemand = typeof st.id === "string" && st.id !== "";
     if (failed.length) {
       await db.addAlert(env, "failure", `Self-test failed: ${failed.join(", ")}. The VM is up but clients may not work fully.`);
-      await notify(env, "wg-admin: up, but the self-test failed", `Failed: ${failed.join(", ")}. ${cfg.dnsName} → ${snap.public_ip ?? "?"}`, { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
+      await notify(env, onDemand ? "wg-admin: Health check failed" : "wg-admin: up, but the self-test failed", `Failed: ${failed.join(", ")}. ${cfg.dnsName} → ${snap.public_ip ?? "?"}`, { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
     } else {
       const v6 = st.internet6 === true ? ", IPv6" : "";
       await db.addAlert(env, "info", `Self-test passed in ${(st.ms / 1000).toFixed(1)} s: handshake, tunnel, loopback${st.dns ? ", DNS" : ""}, internet${v6}.`);
-      const until = deadline ? `. Tears down at ${new Date(deadline).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}` : "";
-      await notify(env, "wg-admin: ready", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}). ${cfg.dnsName} → ${snap.public_ip ?? "?"}${until}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
+      if (onDemand) {
+        await notify(env, "wg-admin: Health check passed", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}) in ${(st.ms / 1000).toFixed(1)} s. ${cfg.dnsName} → ${snap.public_ip ?? "?"}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
+      } else {
+        const until = deadline ? `. Tears down at ${new Date(deadline).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}` : "";
+        await notify(env, "wg-admin: ready", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}). ${cfg.dnsName} → ${snap.public_ip ?? "?"}${until}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
+      }
     }
   }
   // Speed test: a result coming back, or a request still to hand over.

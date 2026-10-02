@@ -25,7 +25,7 @@ async function running() {
   const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
-  return { env, token: sec.body.agent_token as string };
+  return { env, world, token: sec.body.agent_token as string };
 }
 
 describe("POST /health-check", () => {
@@ -114,6 +114,34 @@ describe("the heartbeat side", () => {
     expect((await getSnapshot(env)).selftest_req).toBeNull();
     const alerts = await db.listAlerts(env);
     expect(alerts.some((a) => a.kind === "failure" && /health check/i.test(a.message) && /did not report/.test(a.message))).toBe(true);
+  });
+
+  it("an on-demand result pushes 'Health check passed' or 'Health check failed', never the deploy's 'ready ... Tears down at'", async () => {
+    const { env, world, token } = await running();
+    await handleAgent(env, token, { dump: DUMP, selftest: selftest({ at: "2026-10-02T09:00:00Z" }) }); // the boot self-test
+    const before = world.notes.length;
+
+    await requestHealthCheck(env);
+    const id1 = (await getSnapshot(env)).selftest_req!.id;
+    await handleAgent(env, token, { dump: DUMP, selftest: selftest({ id: id1 }) });
+    const passed = world.notes.slice(before);
+    expect(passed.map((n) => n.title)).toEqual(["wg-admin: Health check passed"]);
+    expect(passed[0].message).not.toMatch(/Tears down at/);
+
+    await requestHealthCheck(env);
+    const id2 = (await getSnapshot(env)).selftest_req!.id;
+    await handleAgent(env, token, { dump: DUMP, selftest: selftest({ id: id2, at: new Date(Date.now() + 1000).toISOString(), internet: false }) });
+    const failed = world.notes.slice(before + 1);
+    expect(failed.map((n) => n.title)).toEqual(["wg-admin: Health check failed"]);
+    expect(failed[0].message).toMatch(/internet \(IPv4\)/);
+  });
+
+  it("the boot self-test still pushes 'wg-admin: ready' with the tear-down time", async () => {
+    const { env, world, token } = await running();
+    await handleAgent(env, token, { dump: DUMP, selftest: selftest() });
+    const ready = world.notes.find((n) => n.title === "wg-admin: ready");
+    expect(ready?.message).toMatch(/Tears down at/);
+    expect(world.notes.some((n) => /Health check/.test(n.title ?? ""))).toBe(false);
   });
 
   it("with no request, a boot self-test is handled exactly as before", async () => {
