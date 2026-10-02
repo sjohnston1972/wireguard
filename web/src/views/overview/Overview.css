@@ -1,0 +1,66 @@
+/* The Overview fills the page area exactly on a desktop window (one-screen
+   rule): header and banner take what they need, the three rows share the
+   rest, and each panel scrolls inside itself. */
+.ov {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  height: 100%;
+  min-height: 0;
+}
+.ov .page-header {
+  margin-bottom: 0;
+}
+
+.ov-read {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ov-read__caption {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.ov-read__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  min-width: 132px;
+  padding: 0 12px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.ov-flag {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 15px;
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+.ov-gear {
+  align-self: flex-end;
+}
+
+.ov-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.ov-skeleton__row {
+  display: grid;
+  grid-template-columns: 7fr 5fr;
+  gap: var(--gap);
+}
+.ov-skeleton__row--3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
