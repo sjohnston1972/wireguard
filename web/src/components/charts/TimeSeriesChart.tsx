@@ -65,10 +65,27 @@ export function TimeSeriesChart({ title, x, series, range, unit = "", format, he
     return `${parts.join(". ")}. Covers the last ${RANGE_WORDS[range]}.`;
   }, [hasData, series, unit, range]);
 
-  // Build the plot once per data/theme/size-affecting change, destroy on cleanup.
+  // The plot is built once per structural change (series count, labels,
+  // colours, fill; height; theme; range) and destroyed on cleanup. New data
+  // of the same shape goes to setData below, so polling does not rebuild the
+  // canvas or lose the hover. Formatters and data are read through refs so
+  // their identity (fresh arrays, inline functions) never forces a rebuild.
+  const plotRef = useRef<uPlot | null>(null);
+  const fmtRef = useRef(fmt);
+  fmtRef.current = fmt;
+  const fmtXRef = useRef(fmtX);
+  fmtXRef.current = fmtX;
+  const data = useMemo(() => [x, ...series.map((s) => s.data)] as uPlot.AlignedData, [x, series]);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  /** The data the live plot was last given. */
+  const appliedRef = useRef<uPlot.AlignedData | null>(null);
+  const shape = series.map((s) => `${s.label}\u0000${s.color}\u0000${s.area === false ? 0 : 1}`).join("\u0001");
+
   useEffect(() => {
     const el = host.current;
     if (!el || !hasData) return;
+    const shapeSeries = series;
     const grid = resolveVar(el, "--border", "#222");
     const axis = resolveVar(el, "--text-muted", "#888");
     const opts: uPlot.Options = {
@@ -84,7 +101,7 @@ export function TimeSeriesChart({ title, x, series, range, unit = "", format, he
           grid: { stroke: grid, width: 1 },
           ticks: { show: false },
           font: '11px "Inter Variable", system-ui, sans-serif',
-          values: (_u, vals) => vals.map((v) => fmtX(v)),
+          values: (_u, vals) => vals.map((v) => fmtXRef.current(v)),
         },
         {
           stroke: axis,
@@ -92,12 +109,12 @@ export function TimeSeriesChart({ title, x, series, range, unit = "", format, he
           ticks: { show: false },
           size: 56,
           font: '11px "Inter Variable", system-ui, sans-serif',
-          values: (_u, vals) => vals.map((v) => fmt(v)),
+          values: (_u, vals) => vals.map((v) => fmtRef.current(v)),
         },
       ],
       series: [
         {},
-        ...series.map((s): uPlot.Series => {
+        ...shapeSeries.map((s): uPlot.Series => {
           const stroke = resolveTone(el, s.color);
           return {
             label: s.label,
@@ -113,8 +130,9 @@ export function TimeSeriesChart({ title, x, series, range, unit = "", format, he
         setCursor: [(u) => setHover(u.cursor.idx ?? null)],
       },
     };
-    const data = [x, ...series.map((s) => s.data)] as uPlot.AlignedData;
-    const plot = new uPlot(opts, data, el);
+    const plot = new uPlot(opts, dataRef.current, el);
+    plotRef.current = plot;
+    appliedRef.current = dataRef.current;
 
     let ro: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
@@ -127,8 +145,19 @@ export function TimeSeriesChart({ title, x, series, range, unit = "", format, he
     return () => {
       ro?.disconnect();
       plot.destroy();
+      if (plotRef.current === plot) plotRef.current = null;
     };
-  }, [hasData, x, series, height, themeVersion, fmt, fmtX]);
+    // `series` is read only for its shape, which `shape` stands for; `range`
+    // changes the x labels' format, so it rebuilds the axes.
+  }, [hasData, shape, height, themeVersion, range]);
+
+  // New data of the same shape: hand it to the existing plot.
+  useEffect(() => {
+    const plot = plotRef.current;
+    if (!plot || appliedRef.current === data) return;
+    plot.setData(data);
+    appliedRef.current = data;
+  }, [data]);
 
   const readout = hover !== null && hover < x.length ? { time: fmtX(x[hover]), vals: series.map((s) => ({ label: s.label, color: s.color, v: s.data[hover] })) } : null;
 

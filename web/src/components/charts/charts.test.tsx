@@ -157,6 +157,32 @@ describe("TimeSeriesChart", () => {
     unmount();
     expect(created[created.length - 1].destroyed).toBe(true);
   });
+  it("new data of the same shape goes to setData on the existing plot (no destroy and re-create, so hover survives)", () => {
+    const before = created.length;
+    // Fresh arrays and an inline formatter on every render, as a polling view would pass.
+    const { rerender } = render(
+      <TimeSeriesChart title="t" range="1h" x={[...x]} series={[{ label: "In", color: "blue", data: [1, 2, 3, 4] }, { label: "Out", color: "purple", data: [4, 3, 2, 1] }]} format={(v) => `${v} KB/s`} />,
+    );
+    expect(created.length).toBe(before + 1);
+    const plot = created[created.length - 1];
+    const x2 = [T0 + 60, T0 + 120, T0 + 180, T0 + 240];
+    rerender(
+      <TimeSeriesChart title="t" range="1h" x={x2} series={[{ label: "In", color: "blue", data: [2, 3, 4, 5] }, { label: "Out", color: "purple", data: [5, 4, 3, 2] }]} format={(v) => `${v} KB/s`} />,
+    );
+    expect(created.length).toBe(before + 1);
+    expect(plot.destroyed).toBe(false);
+    expect(plot.data).toEqual([x2, [2, 3, 4, 5], [5, 4, 3, 2]]);
+  });
+  it("re-creates the plot when the series change (count or labels)", () => {
+    const before = created.length;
+    const { rerender } = render(<TimeSeriesChart title="t" range="1h" x={x} series={[{ label: "In", color: "blue", data: [1, 2, 3, 4] }]} />);
+    const first = created[created.length - 1];
+    rerender(<TimeSeriesChart title="t" range="1h" x={x} series={[{ label: "In", color: "blue", data: [1, 2, 3, 4] }, { label: "Out", color: "purple", data: [1, 1, 1, 1] }]} />);
+    expect(created.length).toBe(before + 2);
+    expect(first.destroyed).toBe(true);
+    rerender(<TimeSeriesChart title="t" range="1h" x={x} series={[{ label: "Latency", color: "blue", data: [1, 2, 3, 4] }, { label: "Out", color: "purple", data: [1, 1, 1, 1] }]} />);
+    expect(created.length).toBe(before + 3);
+  });
 });
 
 describe("BarChart", () => {
