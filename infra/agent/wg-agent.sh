@@ -207,11 +207,17 @@ fi
 # it back like the boot result. Skipped while a self-test is already running
 # (not marked, so the next heartbeat asks again). An agent without this block
 # just ignores the request and the Worker gives up on it after 5 minutes.
+# The running flag is set here, before the unit is even queued, so peer sync
+# below cannot remove the canary peer in the gap before the self-test sets it
+# itself. If another copy (the boot self-test) holds the lock, ours exits 75
+# and stamps nothing; that copy's newer result answers the request.
 hc_id="$(jq -r '.selftest.id // empty' <<<"$resp" 2>/dev/null || true)"
 if [[ "$hc_id" =~ ^[0-9a-f]{6,32}$ && ! -e "/run/wg-admin/selftest.$hc_id.started" && ! -e /run/wg-admin/selftest.running ]]; then
   mkdir -p /run/wg-admin && touch "/run/wg-admin/selftest.$hc_id.started"
+  touch /run/wg-admin/selftest.running
   systemd-run --quiet --unit "wg-healthcheck-$hc_id" --no-block /bin/bash -c \
-    '/usr/local/sbin/wg-selftest.sh; f=/run/wg-admin/selftest.json; [[ -s $f ]] && jq --arg id "$1" ".id = \$id" "$f" > "$f.tmp" && mv "$f.tmp" "$f"' _ "$hc_id" || true
+    '/usr/local/sbin/wg-selftest.sh; [[ $? -eq 75 ]] && exit 0; f=/run/wg-admin/selftest.json; [[ -s $f ]] && jq --arg id "$1" ".id = \$id" "$f" > "$f.tmp" && mv "$f.tmp" "$f"' _ "$hc_id" \
+    || rm -f /run/wg-admin/selftest.running
 fi
 
 jq -e '.peers | type == "array"' <<<"$resp" >/dev/null 2>&1 || exit 0

@@ -6,6 +6,7 @@
 // checks that the VM agent script is still valid bash.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { api, apiEnv } from "./api-helpers";
 import { lastGhRun } from "./harness";
 import * as db from "../src/db";
@@ -115,5 +116,38 @@ describe("the heartbeat side", () => {
 describe("the VM agent script", () => {
   it("is valid bash", () => {
     expect(() => execFileSync("bash", ["-n", "infra/agent/wg-agent.sh"])).not.toThrow();
+  });
+});
+
+// The hosts here have no flock, systemd-run or netns, so these read the
+// scripts for the order of the steps that matter. On the VM: a health check
+// asked for while the boot self-test is still queued must not start a second
+// copy (both use netns wgcanary and iface wgc), and peer sync must not drop
+// the canary peer in the moment before the self-test marks itself running.
+describe("the self-test cannot run twice or lose its canary", () => {
+  const agent = readFileSync("infra/agent/wg-agent.sh", "utf8");
+  const selftestSh = readFileSync("infra/agent/wg-selftest.sh", "utf8");
+  const hcBlock = agent.slice(agent.indexOf("# ── Health check"), agent.indexOf("jq -e '.peers | type"));
+
+  it("wg-selftest.sh is valid bash", () => {
+    expect(() => execFileSync("bash", ["-n", "infra/agent/wg-selftest.sh"])).not.toThrow();
+  });
+
+  it("the agent marks the self-test running before it spawns one, and unmarks it if the spawn fails", () => {
+    const touch = hcBlock.search(/touch [^\n]*\/run\/wg-admin\/selftest\.running/);
+    const spawn = hcBlock.indexOf("systemd-run");
+    expect(touch, "touches selftest.running").toBeGreaterThan(-1);
+    expect(spawn).toBeGreaterThan(touch);
+    expect(hcBlock.slice(spawn)).toMatch(/\|\|\s*rm -f \/run\/wg-admin\/selftest\.running/);
+  });
+
+  it("wg-selftest.sh takes a non-blocking lock on /run/wg-admin/selftest.lock before it touches anything, and a second copy exits without cleaning up", () => {
+    const lock = selftestSh.search(/flock -n/);
+    expect(lock, "uses flock -n").toBeGreaterThan(-1);
+    expect(selftestSh).toMatch(/selftest\.lock/);
+    for (const step of ['touch "$FLAG"', "trap cleanup EXIT", "wg genkey", 'ip netns add "$NS"']) expect(selftestSh.indexOf(step), step).toBeGreaterThan(lock);
+    // The copy that lost the race exits with its own code, so the health-check unit does not stamp an old result with the new id.
+    expect(selftestSh.slice(lock, selftestSh.indexOf('touch "$FLAG"'))).toMatch(/exit 75/);
+    expect(hcBlock).toMatch(/75/);
   });
 });
