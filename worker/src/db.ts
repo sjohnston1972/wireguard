@@ -351,6 +351,15 @@ export async function deleteProfile(env: Env, id: number): Promise<void> {
   await env.DB.prepare("UPDATE schedules SET profile_id = NULL WHERE profile_id = ?1").bind(id).run();
 }
 
+/** Change a profile's name, region or size; only the fields given are touched. */
+export async function updateProfile(env: Env, id: number, patch: { name?: string; region?: string; vm_size?: string }): Promise<void> {
+  const keys = (["name", "region", "vm_size"] as const).filter((k) => patch[k] !== undefined);
+  if (!keys.length) return;
+  await env.DB.prepare(`UPDATE profiles SET ${keys.map((k, i) => `${k} = ?${i + 2}`).join(", ")} WHERE id = ?1`)
+    .bind(id, ...keys.map((k) => patch[k]))
+    .run();
+}
+
 // ── Schedules ─────────────────────────────────────────────────────────────
 
 export interface Schedule {
@@ -370,6 +379,20 @@ export async function listSchedules(env: Env): Promise<Schedule[]> {
 export async function addSchedule(env: Env, s: { days: string; start_time: string; end_time: string; profile_id: number | null }): Promise<void> {
   await env.DB.prepare("INSERT INTO schedules (days, start_time, end_time, profile_id, enabled, created_at) VALUES (?1, ?2, ?3, ?4, 1, ?5)")
     .bind(s.days, s.start_time, s.end_time, s.profile_id, new Date().toISOString())
+    .run();
+}
+
+/** Change a schedule's days, window, profile or on/off; only the fields given are touched. */
+export async function updateSchedule(env: Env, id: number, patch: { days?: string; start_time?: string; end_time?: string; profile_id?: number | null; enabled?: boolean }): Promise<void> {
+  const cols: [string, string | number | null][] = [];
+  if (patch.days !== undefined) cols.push(["days", patch.days]);
+  if (patch.start_time !== undefined) cols.push(["start_time", patch.start_time]);
+  if (patch.end_time !== undefined) cols.push(["end_time", patch.end_time]);
+  if (patch.profile_id !== undefined) cols.push(["profile_id", patch.profile_id]);
+  if (patch.enabled !== undefined) cols.push(["enabled", patch.enabled ? 1 : 0]);
+  if (!cols.length) return;
+  await env.DB.prepare(`UPDATE schedules SET ${cols.map(([k], i) => `${k} = ?${i + 2}`).join(", ")} WHERE id = ?1`)
+    .bind(id, ...cols.map(([, v]) => v))
     .run();
 }
 

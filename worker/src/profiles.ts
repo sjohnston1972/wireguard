@@ -43,3 +43,14 @@ export async function resolveDeployTarget(env: Env, o: { profileId?: number | nu
   }
   return { profile: null };
 }
+
+/**
+ * Why a profile cannot be saved, in plain words, or null when it is fine.
+ * The name is checked as given (the caller trims it).
+ */
+export function profileProblem(p: { name: string; region: string; vm_size: string }): string | null {
+  if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,23}$/.test(p.name)) return "The name must be 1 to 24 letters, numbers, spaces, dashes or underscores, starting with a letter or number.";
+  if (!Object.hasOwn(REGIONS, p.region)) return "Unknown region.";
+  if (!/^Standard_[A-Za-z0-9_]{1,30}$/.test(p.vm_size)) return "The VM size must look like Standard_B1s.";
+  return null;
+}
