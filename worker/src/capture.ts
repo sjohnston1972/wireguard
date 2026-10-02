@@ -28,6 +28,21 @@ export function validFilter(f: string): boolean {
   return f.length <= 200 && !/^\s*-/.test(f) && /^[A-Za-z0-9 .:/()!&|=<>\-\[\]]*$/.test(f);
 }
 
+/**
+ * The filter for a capture: the person's extra filter, narrowed to one
+ * client's address when "who" is "client:<id>" ("host <ip> and (extra)").
+ * A client that no longer exists narrows nothing (the page's old behaviour;
+ * the API checks for the client first and answers 404).
+ */
+export async function captureFilter(env: Env, who: string, extra: string): Promise<string> {
+  let filter = extra.trim();
+  if (who.startsWith("client:")) {
+    const p = await db.getPeer(env, Number(who.slice(7)));
+    if (p) filter = filter ? `host ${p.ip} and (${filter})` : `host ${p.ip}`;
+  }
+  return filter;
+}
+
 export async function startCapture(env: Env, o: { iface: string; filter: string; seconds: number; by: string }): Promise<string> {
   const snap = await getSnapshot(env);
   if (snap.state !== "running") throw new RunError("Nothing is running.");

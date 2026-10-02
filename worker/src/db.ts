@@ -494,6 +494,15 @@ export async function setForwardEnabled(env: Env, id: number, on: boolean): Prom
   await env.DB.prepare("UPDATE fw_forwards SET enabled = ?2 WHERE id = ?1").bind(id, on ? 1 : 0).run();
 }
 
+/** Change some fields of a published port, in place. */
+export async function updateForward(env: Env, id: number, patch: Partial<Omit<Forward, "id">>): Promise<void> {
+  const keys = Object.keys(patch).filter((k) => k !== "id");
+  if (!keys.length) return;
+  const sets = keys.map((k, i) => `${k} = ?${i + 2}`).join(", ");
+  const vals = keys.map((k) => (patch as Record<string, unknown>)[k] ?? null);
+  await env.DB.prepare(`UPDATE fw_forwards SET ${sets} WHERE id = ?1`).bind(id, ...vals).run();
+}
+
 export async function deleteForward(env: Env, id: number): Promise<void> {
   await env.DB.prepare("DELETE FROM fw_forwards WHERE id = ?1").bind(id).run();
 }

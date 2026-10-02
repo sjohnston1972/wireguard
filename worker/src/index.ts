@@ -38,11 +38,10 @@ import { rotationStatus } from "./keyrotation";
 import { costBody } from "./views/cost";
 import { budgetStatus, requireBudgetOk, OVER_BUDGET_FIELD } from "./budget";
 import { firewallBody } from "./views/firewall";
-import { parseCidr, parsePorts, compileFirewall, type EndKind, type Proto } from "./firewall";
+import { parseCidr, parsePorts, compileFirewall, checkForward, type EndKind, type Proto } from "./firewall";
 import { clearFirewallCounters } from "./runs";
-import { startCapture, receiveCapture, validFilter, MAX_CAPTURE_BYTES } from "./capture";
-import { setPublishedPorts } from "./azure";
-import { reservedPort, forwardTargetOk, publishedNsgRules } from "./firewall";
+import { startCapture, receiveCapture, validFilter, captureFilter, MAX_CAPTURE_BYTES } from "./capture";
+import { syncPublished } from "./published";
 import { isPushEndpoint } from "./webpush";
 import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, backupStatus, MAX_RESTORE_BYTES, type RestorePlan } from "./backup";
 import { restoreBody } from "./views/settings";
@@ -725,47 +724,18 @@ async function firewallPage(c: Context<App>, notice: { kind: "good" | "bad"; tex
 
 // ── Published ports ──────────────────────────────────────────────────────
 
-/** Keep Azure's edge in step with the published ports, while there is a VM. */
-async function syncPublished(env: Env): Promise<string | null> {
-  const snap = await getSnapshot(env);
-  if (snap.state !== "running" && snap.state !== "standby") return null;
-  try {
-    await setPublishedPorts(env, publishedNsgRules(await db.listForwards(env), await effectiveConfig(env)));
-    return null;
-  } catch (e) {
-    return (e as Error).message;
-  }
-}
-
 app.post("/firewall/forwards", async (c) => {
   const f = await c.req.parseBody();
-  const cfg = await effectiveConfig(c.env);
-  const name = String(f.name ?? "").trim().slice(0, 60);
-  const proto = f.proto === "udp" ? "udp" : "tcp";
-  const pub = Number(f.public_port), tport = Number(f.target_port || f.public_port);
-  const target = String(f.target_ip ?? "").trim();
-  const from = String(f.allow_from ?? "").trim();
-  const fromC = from ? parseCidr(from) : null;
-  const reserved = reservedPort(pub, cfg);
-  const problem = !name
-    ? "Give it a name."
-    : !(pub >= 1 && pub <= 65535) || !(tport >= 1 && tport <= 65535)
-      ? "Ports are 1 to 65535."
-      : reserved
-        ? `Port ${pub} is ${reserved}; pick another public port.`
-        : !forwardTargetOk(target, cfg)
-          ? `The target must be an address in the Azure VNet (${cfg.vnetCidr})${cfg.homeLanCidr ? ` or the home LAN (${cfg.homeLanCidr})` : ""}.`
-          : from && (!fromC || fromC.family !== 4)
-            ? "Allowed from must be an IPv4 address or network, or blank for anywhere."
-            : null;
-  if (problem) return firewallPage(c, { kind: "bad", text: `Not published: ${problem}` });
+  const chk = checkForward(f, await effectiveConfig(c.env));
+  if (!chk.ok) return firewallPage(c, { kind: "bad", text: `Not published: ${chk.message}` });
+  const { name, proto, public_port: pub, target_ip: target, target_port: tport } = chk.value;
   try {
-    await db.addForward(c.env, { name, proto, public_port: pub, target_ip: target, target_port: tport, allow_from: fromC?.text ?? "" });
+    await db.addForward(c.env, chk.value);
   } catch {
     return firewallPage(c, { kind: "bad", text: `Not published: ${proto.toUpperCase()} ${pub} is already published.` });
   }
   await db.addAlert(c.env, "info", `Published ${proto.toUpperCase()} ${pub} to ${target}:${tport} (${name}) by ${c.get("user")}.`);
-  await db.audit(c.env, c.get("user"), "firewall.forward.add", `${name} (${proto.toUpperCase()} ${pub})`, null, { name, proto, public_port: pub, target_ip: target, target_port: tport, allow_from: fromC?.text ?? "" });
+  await db.audit(c.env, c.get("user"), "firewall.forward.add", `${name} (${proto.toUpperCase()} ${pub})`, null, chk.value);
   const err = await syncPublished(c.env);
   return firewallPage(c, err ? { kind: "bad", text: `Saved, but Azure did not open the port: ${err}` } : { kind: "good", text: `Published ${proto.toUpperCase()} ${pub} → ${target}:${tport}. It works within 30 seconds.` });
 });
@@ -784,12 +754,7 @@ app.post("/firewall/forwards/:id/:op{toggle|delete}", async (c) => {
 
 app.post("/firewall/capture", async (c) => {
   const f = await c.req.parseBody();
-  const who = String(f.who ?? "any");
-  let filter = String(f.filter ?? "").trim();
-  if (who.startsWith("client:")) {
-    const p = await db.getPeer(c.env, Number(who.slice(7)));
-    if (p) filter = filter ? `host ${p.ip} and (${filter})` : `host ${p.ip}`;
-  }
+  const filter = await captureFilter(c.env, String(f.who ?? "any"), String(f.filter ?? ""));
   if (!validFilter(filter)) return firewallPage(c, { kind: "bad", text: "That filter has characters a capture filter never needs." });
   try {
     const msg = await startCapture(c.env, { iface: String(f.iface ?? "wg0"), filter, seconds: Number(f.seconds) || 60, by: c.get("user") });

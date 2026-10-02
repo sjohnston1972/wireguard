@@ -16,6 +16,9 @@ import type { Peer, Capture } from "../db";
 
 import type { Snapshot } from "../state";
 import { ZONE_LABEL, CAPTURE_IFACES, endLabel, serviceLabel, zoneAddrs, type FwRule, type Zone, type Forward } from "../firewall";
+import { policyState, totalHits } from "../fwview";
+
+export { totalHits } from "../fwview";
 import { fmtTime } from "./layout";
 
 export interface FirewallOpts {
@@ -103,14 +106,12 @@ function count(n: number): string {
   return n < 1000 ? String(n) : n < 1e6 ? `${(n / 1e3).toFixed(n < 1e4 ? 1 : 0)}k` : `${(n / 1e6).toFixed(1)}M`;
 }
 
-/** Where the rule set stands on the VM. */
+const STATE_KIND = { applied: "up", pending: "busy", refused: "down", not_running: "idle", no_firewall: "idle" } as const;
+
+/** Where the rule set stands on the VM, as the page's colour and sentence. */
 function appliedState(o: FirewallOpts): { kind: "up" | "busy" | "down" | "idle"; text: string } {
-  const fw = o.snap.firewall;
-  if (o.snap.state !== "running") return { kind: "idle", text: "Not running: this rule set is loaded at the next deploy or resume." };
-  if (!fw) return { kind: "idle", text: "This VM was built before the firewall existed: redeploy to use it." };
-  if (fw.error) return { kind: "down", text: `The VM refused the last rule set and kept the previous one: ${fw.error}` };
-  if (fw.applied_hash === o.hash) return { kind: "up", text: `Applied on the VM (rule set ${o.hash.slice(0, 8)}).` };
-  return { kind: "busy", text: "Changed: the VM picks it up within 30 seconds." };
+  const p = policyState(o.snap, o.hash);
+  return { kind: STATE_KIND[p.state], text: p.text };
 }
 
 function endSelect(name: string, o: FirewallOpts, selected = "any"): Html {
@@ -120,14 +121,6 @@ function endSelect(name: string, o: FirewallOpts, selected = "any"): Html {
     <optgroup label="One client">${o.peers.map((p) => html`<option value="client:${p.id}" ${selected === `client:${p.id}` ? "selected" : ""}>${p.name} (${p.ip})</option>`)}</optgroup>
     <option value="cidr" ${selected === "cidr" ? "selected" : ""}>An address or network…</option>
   </select>`;
-}
-
-/** A rule's running total: carried-over hits plus the VM's current counter. */
-export function totalHits(snap: Snapshot, key: string): [number, number] | null {
-  const c = snap.firewall?.counters[key];
-  const b = snap.fw_base?.[key];
-  if (!c && !b) return null;
-  return [Math.max(0, (c?.[0] ?? 0) + (b?.[0] ?? 0)), Math.max(0, (c?.[1] ?? 0) + (b?.[1] ?? 0))];
 }
 
 function hits(o: FirewallOpts, key: string, enabled = true): Html {
