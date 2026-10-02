@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, renderHook, screen } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { SimResult } from "@shared/api";
@@ -116,7 +116,8 @@ describe("firewall draft mutations", () => {
     await act(async () => {
       await move.result.current.mutateAsync({ id: 7, to: 9 }).catch(() => {});
     });
-    expect(move.result.current.fieldError("to")).toBe("Choose a place from 0 to 5.");
+    // The hook's error state reaches the component on React Query's next notify, not inside the act.
+    await waitFor(() => expect(move.result.current.fieldError("to")).toBe("Choose a place from 0 to 5."));
   });
 });
 
