@@ -237,5 +237,13 @@
   .ov-cost__bars { display: none; }
   .ov-cost__value { font-size: 15px; }
   .ov-run__chips .tabs__tab, .ov-run__chips button { height: 28px; }
+  /* Destroyed: the deploy form beside a short state, its two choices side by side, so the banner stays one band. */
+  .ov-banner:has(.ov-banner__deploy) { flex-wrap: nowrap; gap: 16px; }
+  .ov-banner:has(.ov-banner__deploy) .ov-banner__state { flex: 0 1 240px; }
+  .ov-banner__deploy .ov-deploy { gap: 6px 16px; }
+  .ov-banner__deploy .ov-deploy__fields { flex-wrap: nowrap; gap: 16px; }
+  .ov-banner__deploy .ov-deploy__field { gap: 3px; }
+  .ov-banner__deploy .chip { height: 28px; padding-inline: 9px; font-size: 12.5px; }
+  .ov-banner__deploy .ov-form__note { flex-basis: 100%; margin: 0; }
   .ov-run__intro { display: none; }
 }
