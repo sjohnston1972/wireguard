@@ -4,11 +4,12 @@
 // the Worker that answers and the app (web/) that asks, so both sides agree
 // on every field. Types only: nothing here runs.
 
-import type { Alert, AuditEntry, Capture, Peer, Profile, SpeedTest } from "../worker/src/db";
+import type { Alert, AuditEntry, Capture, CostDay, Peer, Profile, SpeedTest } from "../worker/src/db";
 import type { Forward, FwRule, Zone } from "../worker/src/firewall";
 import type { PolicyState } from "../worker/src/fwview";
 import type { Snapshot, Step, Talker } from "../worker/src/state";
 import type { ClientKpis, ClientView } from "../worker/src/clients";
+import type { SessionRow } from "../worker/src/costview";
 import type { BudgetStatus } from "../worker/src/budget";
 import type { ClientHistory, VmHistory } from "../worker/src/history";
 import type { ActivityEvent, ActivityKpis, ActivityRange, EventType, RunRow } from "../worker/src/activity";
@@ -196,4 +197,25 @@ export interface RunDetailResponse {
 /** GET /api/v1/runs/:id/log */
 export interface RunLogResponse {
   log: string;
+}
+
+// ── Cost ──
+
+/** GET /api/v1/cost?range=month|7d|30d */
+export interface CostResponse {
+  now: string;
+  range: "month" | "7d" | "30d";
+  meta: { currency: "GBP"; timezone: "Europe/London"; azureLagHours: 24; hourlyRateGbp: number; standbyRateGbp: number; asOfDay: string | null };
+  /** The VM running now: what it has cost so far, estimated (Azure's figures lag). */
+  session: { running: boolean; since: string | null; estimateGbp: number | null };
+  standby: { since: string; perDayGbp: number } | null;
+  /** This month's actual spend from Azure. */
+  monthToDate: number;
+  /** Null until Azure has listed a day of this month. */
+  projection: { gbp: number; basis: string } | null;
+  budget: BudgetStatus;
+  daily: CostDay[];
+  previous: CostDay[];
+  sessions: SessionRow[];
+  insights: string[];
 }
