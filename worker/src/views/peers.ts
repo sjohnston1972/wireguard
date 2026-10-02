@@ -174,7 +174,7 @@ export function talkersTable(talkers: Talker[], peers: Peer[], limit = 15): Html
 }
 
 function trafficPanel(o: { peers: Peer[]; talkers?: Talker[]; hist?: { t: string; rx: number; tx: number }[]; running: boolean }): Html {
-  return html`<div class="panel sheet" id="sh-traffic" style="margin-top:16px">
+  return html`<div class="panel sheet grow" id="sh-traffic">
     ${sheetHead("Traffic")}
     <h2>Traffic this session</h2>
     ${o.running ? throughputChart(o.hist ?? []) : html`<p class="faint">Nothing running.</p>`}
@@ -192,32 +192,20 @@ function rotationNotice(peers: Peer[]): Html | string {
 }
 
 export function peersBody(o: { peers: Peer[]; report: AgentReport | null; running: boolean; cfg: Config; serverPub: string | null; nextIp: string | null; latency?: Record<string, number[]>; talkers?: Talker[]; hist?: { t: string; rx: number; tx: number }[] }): Html {
-  return html`<section>
+  // On a desktop the page is one screen: two columns, the client list and
+  // traffic on the left, adding a client and the help on the right.
+  return html`<section class="page">
   <div class="section-head"><h1>Clients</h1><span class="muted small d-only">${o.running ? "Changes reach the VM within 30 seconds; the status column shows what the VM reports." : "Changes are loaded at the next deploy."}</span></div>
   ${rotationNotice(o.peers)}
+  <div class="desk desk-peers">
+  <div class="col">
   ${peersTable(o.peers, o.report, o.running, o.latency, o.talkers)}
   <div class="m-btns m-only" style="margin-top:12px"><button type="button" class="primary big" data-sheet="sh-add">Add a client</button></div>
   <div class="m-more m-only"><button type="button" class="ghost" data-sheet="sh-traffic">Traffic</button><button type="button" class="ghost" data-sheet="sh-help">Apps and server key</button></div>
   ${trafficPanel(o)}
-</section>
-
-<section id="peer-reveal" hidden hx-history="false">
-  <div class="panel">
-    <div class="sheet-head"><b>New config</b><button type="button" class="sheet-x" data-reveal-close>Done</button></div>
-    <div class="section-head"><h2>Config for <span data-peer-name></span></h2><span class="muted small">tunnel address <span class="mono" data-peer-ip></span></span></div>
-    <p class="muted">This is the only time the private key is shown. Scan it with the WireGuard app, or download the file and use "Import tunnel(s) from file" on Windows or macOS. It is not stored anywhere; to get a config again later, press Get config on the client, which makes new keys.</p>
-    <div class="reveal">
-      <div class="qr" aria-label="QR code of the config"></div>
-      <div>
-        <pre class="conf" id="peer-conf"></pre>
-        <div class="btn-row"><a class="btn" data-download href="#">Download .conf</a><button type="button" data-copy="#peer-conf">Copy</button></div>
-      </div>
-    </div>
   </div>
-</section>
 
-<div class="side-by-side">
-<section>
+<div class="col">
   <div class="panel sheet" id="sh-add">
     ${sheetHead("Add a client")}
     <h2>Add a client</h2>
@@ -234,11 +222,9 @@ export function peersBody(o: { peers: Peer[]; report: AgentReport | null; runnin
       </form>`
       : html`<p class="muted">The server public key is not configured (WG_SERVER_PUBLIC_KEY in wrangler.toml), so client configs cannot be built yet. <a href="/settings">Finish setup</a>.</p>`}
   </div>
-</section>
 
-<div class="stack sheet" id="sh-help">
-${sheetHead("Apps and server key")}
-<section>
+  <div class="stack sheet" id="sh-help">
+  ${sheetHead("Apps and server key")}
   <div class="panel quiet">
     <h3>Get the WireGuard app</h3>
     <p class="muted small">Official clients. Install one, then add a client above and scan the QR (phones) or import the .conf (desktops).</p>
@@ -250,9 +236,6 @@ ${sheetHead("Apps and server key")}
       <a href="https://www.wireguard.com/install/" target="_blank" rel="noopener">Linux and everything else</a>
     </div>
   </div>
-</section>
-
-<section>
   <div class="panel quiet">
     <h3>Server public key</h3>
     <p class="muted small">Every client trusts this key. It never changes across rebuilds.</p>
@@ -260,7 +243,24 @@ ${sheetHead("Apps and server key")}
     <p class="muted small" style="margin-top:8px">Test from a connected client: <code>ping ${o.cfg.loopbackIp}</code> (the VM loopback, proves routing) and <code>ping ${serverTunnelIpOf(o.cfg.subnet)}</code> (the tunnel end).</p>
     <p class="muted small" style="margin-top:8px">Endpoint <code>${o.cfg.dnsName}:${o.cfg.port}</code>${o.report ? html` · VM reports ${o.report.peers.length} peer${o.report.peers.length === 1 ? "" : "s"} loaded, checked ${fmtTime(o.report.at)}` : ""}</p>
   </div>
-</section>
+  </div>
 </div>
-</div>`;
+</div>
+</section>
+
+<section id="peer-reveal" hidden hx-history="false">
+  <div class="panel">
+    <div class="sheet-head"><b>New config</b><button type="button" class="sheet-x" data-reveal-close>Done</button></div>
+    <div class="section-head"><h2>Config for <span data-peer-name></span></h2><span class="muted small">tunnel address <span class="mono" data-peer-ip></span></span></div>
+    <p class="muted">This is the only time the private key is shown. Scan it with the WireGuard app, or download the file and use "Import tunnel(s) from file" on Windows or macOS. It is not stored anywhere; to get a config again later, press Get config on the client, which makes new keys.</p>
+    <div class="reveal">
+      <div class="qr" aria-label="QR code of the config"></div>
+      <div>
+        <pre class="conf" id="peer-conf"></pre>
+        <div class="btn-row"><a class="btn" data-download href="#">Download .conf</a><button type="button" data-copy="#peer-conf">Copy</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+`;
 }

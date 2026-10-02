@@ -632,3 +632,143 @@ svg.thru .tx { stroke: var(--up); }
 
 /* Desktop tables: the lead column (a name) should not wrap word by word. */
 @media (min-width: 641px) { table.rows.stack td.lead { min-width: 10rem; } }
+
+/* ── Columns (.desk > .col) ──────────────────────────────────────────────────
+   Every tab but the Overview lays its panels out as a row of columns. Below
+   desktop size the columns simply stack, or sit two across when there is room. */
+@media (min-width: 641px) {
+  .desk { display: grid; gap: 16px; }
+  .col { display: grid; gap: 16px; align-content: start; min-width: 0; }
+  .col > * { margin-top: 0 !important; }
+  .stack { display: grid; gap: 16px; }
+}
+@media (min-width: 900px) { .desk { grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); } }
+
+/* ── Desktop: one screen per tab ─────────────────────────────────────────────
+   On a desktop-sized window every tab fits the window and the page itself
+   never scrolls. The columns fill the height; the long lists in them (.grow,
+   .fill: runs, notes, changes, drops, sessions, traffic) take the
+   height that is left and scroll inside their own panel, with the table
+   headings pinned. A window too short even for that scrolls one column, not
+   the page, so nothing is ever cut off. Spacing is tighter than on the phone:
+   this is a console read at arm's length, not a thumb target. */
+@media (min-width: 1100px) and (min-height: 600px) {
+  html, body { height: 100%; }
+  body { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { position: static; flex: none; }
+  .topbar .wrap { min-height: 46px; }
+  footer.wrap { display: none; }
+  .wrap { max-width: 2400px; }
+  main.wrap { flex: 1 1 auto; min-height: 0; width: 100%; overflow: auto; display: flex; flex-direction: column; padding-top: 12px; padding-bottom: 14px; }
+  main.wrap > * { flex: none; }
+  main.wrap > .page, main.wrap > #live { flex: 1 1 auto; min-height: 0; }
+  .notice { margin-bottom: 10px; padding: 7px 12px; }
+  .notice.net-error { top: 0; }
+  .section-head { margin-bottom: 8px; }
+  h1 { font-size: 1.35rem; }
+  h2 { font-size: 1.05rem; }
+
+  /* The frame: a page is its heading, then the columns. */
+  .page { display: flex; flex-direction: column; }
+  .page > * { flex: none; }
+  .page > .desk { flex: 1 1 auto; min-height: 0; }
+  .desk { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; gap: 12px; }
+  .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; }
+  .col > * { flex: none; }
+  /* Lists keep their natural height while there is room, and give way
+     (scrolling inside) only when the column runs out. */
+  .col > .grow { flex: 0 1 auto; min-height: 0; overflow: auto; }
+  section.grow { display: flex; flex-direction: column; }
+  section.grow > * { flex: none; }
+  section.grow > .fill { flex: 0 1 auto; min-height: 0; overflow: auto; }
+  .stack { gap: 12px; }
+  .desk table.rows thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); box-shadow: inset 0 -1px 0 var(--line); }
+
+  /* Denser controls and tables. */
+  .panel { padding: 12px 14px; }
+  .panel h2 { margin-bottom: 4px; }
+  .panel p { margin: 0.25rem 0; }
+  .panel p.muted { font-size: 0.88rem; }
+  button, .btn { padding: 6px 12px; }
+  button.big { padding: 8px 16px; font-size: 1rem; }
+  .btn-row { margin-top: 8px; gap: 8px; }
+  .chips { margin: 4px 0 2px; }
+  .chips label { padding: 3px 10px; font-size: 0.86rem; }
+  label.field { margin: 6px 0; }
+  label.field > span { font-size: 0.84rem; margin-bottom: 2px; }
+  input[type="text"], input[type="number"], input[type="search"], select { padding: 5px 8px; }
+  .hint { font-size: 0.8rem; margin-top: 2px; }
+  table.rows { font-size: 0.875rem; }
+  table.rows th, table.rows td { padding: 6px 10px; }
+  table.rows .actions { min-width: 0; max-width: 470px; }
+  table.rows .actions button, table.rows .actions select { padding: 3px 8px; font-size: 0.8rem; }
+  .empty { padding: 16px 14px; }
+  .bignum { font-size: 1.6rem; }
+  .downloads a { padding: 4px 10px; font-size: 0.86rem; }
+  .checklist li { padding: 4px 0; }
+
+  /* Overview: the faceplate beside the facts, the action panels in one row
+     under them; a run's timeline beside its log, which fills the rest. */
+  #live { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); grid-template-rows: auto auto auto minmax(0, 1fr); grid-template-areas: "note note" "face facts" "face modal" "ctrl ctrl"; gap: 0 12px; align-content: start; }
+  #live > .notice { grid-area: note; }
+  #live > .faceplate { grid-area: face; margin-bottom: 12px; padding: 16px 22px; gap: 16px; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+  #live > .facts { grid-area: facts; margin: 0 0 8px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 18px; padding: 12px 16px; align-content: center; }
+  #live > .modal-row { grid-area: modal; margin: 0 0 12px !important; align-self: start; }
+  #live > .modal-row button { padding: 4px 10px; font-size: 0.86rem; }
+  #live > .controls, #live > .progress { grid-area: ctrl; margin-top: 0 !important; min-height: 0; }
+  #live > .controls { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; align-content: start; overflow: auto; }
+  /* Left to right as on the phone: the action you came for, then the rest, Tear down last. */
+  #live > .controls [data-slot="primary"] { order: 1; }
+  #live > .controls [data-slot="second"] { order: 2; }
+  #live > .controls [data-slot="last"] { order: 3; }
+  #live > .progress { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 3fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 20px; overflow: hidden; }
+  #live > .progress > .section-head { grid-column: 1 / -1; }
+  #live > .progress > .timeline, #live > .progress > p { grid-column: 1; grid-row: 2; margin: 0; overflow: auto; align-content: start; }
+  #live > .progress > .log { grid-column: 2; grid-row: 2; margin: 0; max-height: none; min-height: 0; }
+  .state-word { font-size: clamp(2.2rem, 3vw, 3.2rem); }
+  .state-sub { margin-top: 6px; font-size: 0.92rem; }
+  .tunnel.wide { max-width: 560px; margin-left: auto; }
+  .fact dt { font-size: 0.76rem; }
+  .fact dd { font-size: 0.95rem; line-height: 1.3; }
+  .fact dd .mono { font-size: 0.85rem; }
+  dl.speed { margin: 6px 0 2px; }
+  dl.speed dd { font-size: 1.1rem; }
+
+  /* Clients: the list and traffic on the left, adding a client on the right. */
+  .desk-peers { grid-template-columns: minmax(0, 2.4fr) minmax(340px, 1fr); }
+  .desk-peers #peers-table { flex: 0 1 auto; min-height: 120px; display: flex; flex-direction: column; }
+  .desk-peers #peers-table > .table-wrap { min-height: 0; overflow: auto; }
+  svg.thru { height: 90px; }
+  /* A new client's config opens over the page, with Done to close it. */
+  #peer-reveal:not([hidden]) { position: fixed; z-index: 50; top: 8vh; left: 50%; transform: translateX(-50%); width: min(1000px, 92vw); max-height: 84vh; overflow: auto; border-radius: var(--radius-lg); box-shadow: 0 0 0 100vmax rgba(8, 14, 24, 0.55), 0 24px 60px -20px rgba(0, 0, 0, 0.6); }
+  #peer-reveal .panel { border: 0; }
+  #peer-reveal .sheet-head { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+  #peer-reveal .sheet-head > b { display: none; }
+
+  /* Firewall: rules and adding one; drops; published, capture and zones. */
+  .desk-fw { grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr); }
+  table.rows.fw .actions { white-space: normal; }
+  .desk-fw .fw-add { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); column-gap: 16px; align-items: end; }
+  .desk-fw .fw-add .hint { grid-column: 1 / -1; }
+
+  /* Activity: runs on the left, notes over the change log on the right. */
+  .desk-activity { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+
+  /* Cost: the totals and daily chart on the left, every session on the right. */
+  .desk-cost { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .desk-cost .two-col { gap: 12px; }
+
+  /* Settings: four columns; the Next deploy form sits two fields across. */
+  .desk-settings { grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); }
+  .desk-settings #sh-next form { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); column-gap: 14px; align-items: start; }
+  .desk-settings #sh-next form .btn-row { grid-column: 1 / -1; }
+  .install-qr { width: 140px; height: 140px; }
+}
+/* A narrower desktop: the rules table needs the width, so drops sit over
+   the published ports, capture and zones in one right-hand column. */
+@media (min-width: 1100px) and (max-width: 1799px) and (min-height: 600px) {
+  .desk-fw { grid-auto-flow: row; grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); grid-template-rows: fit-content(45%) minmax(0, 1fr); }
+  .desk-fw > .col:nth-child(1) { grid-column: 1; grid-row: 1 / span 2; }
+  .desk-fw > .col:nth-child(2) { grid-column: 2; grid-row: 1; }
+  .desk-fw > .col:nth-child(3) { grid-column: 2; grid-row: 2; }
+}

@@ -237,12 +237,14 @@ function firewallPhone(o: FirewallOpts, st: { kind: string; text: string }): Htm
 export function firewallBody(o: FirewallOpts): Html {
   const st = appliedState(o);
   const def = o.snap.firewall?.counters.default;
-  return html`<section id="fw" hx-get="/firewall" hx-trigger="every 20s" hx-select="#fw" hx-swap="outerHTML">
+  return html`<section id="fw" class="page" hx-get="/firewall" hx-trigger="every 20s" hx-select="#fw" hx-swap="outerHTML">
   <div class="section-head"><h1>Firewall</h1><span class="muted small d-only">What the WireGuard VM lets through between tunnel clients, the home LAN, the Azure VNet and the internet. First match wins.</span></div>
   ${o.notice ? html`<div class="notice ${o.notice.kind}"><p>${o.notice.text}</p></div>` : ""}
   <div class="notice d-only ${st.kind === "down" ? "bad" : st.kind === "busy" ? "warn" : st.kind === "up" ? "good" : ""}"><p>${st.text}</p></div>
   ${firewallPhone(o, st)}
 
+  <div class="desk desk-fw">
+  <div class="col">
   <div class="table-wrap d-only">
     <table class="rows fw">
       <thead><tr><th>#</th><th>Rule</th><th>From</th><th>To</th><th>Service</th><th>Action</th><th>Hits</th><th></th></tr></thead>
@@ -275,15 +277,15 @@ export function firewallBody(o: FirewallOpts): Html {
     ${clearButton()}
   </div>
 
-  <div class="two-col" style="margin-top:16px">
-    <div>
-      <div class="panel sheet" id="sh-fw-add">${sheetHead("Add a rule")}<h2>Add a rule</h2>${addForm(o)}</div>
+  <div class="panel sheet" id="sh-fw-add">${sheetHead("Add a rule")}<h2>Add a rule</h2>${addForm(o)}</div>
+  </div>
+  <div class="col">
+      <div class="panel sheet grow" id="sh-fw-drops">${sheetHead("Recent drops")}<h2>Recent drops</h2><p class="muted small">What the default rule refused, newest first (the VM logs up to 10 a second).</p>${dropsTable(o)}</div>
+      <div class="panel sheet" id="sh-fw-zones">${sheetHead("Zones and test VM")}<h2>Zones and test VM</h2>${zonesPanel(o)}</div>
+  </div>
+  <div class="col">
       ${publishedPanel(o)}
-    </div>
-    <div>
-      <div class="panel sheet" id="sh-fw-drops">${sheetHead("Recent drops")}<h2>Recent drops</h2><p class="muted small">What the default rule refused, newest first (the VM logs up to 10 a second).</p>${dropsTable(o)}</div>
       ${capturePanel(o)}
-      <div class="panel sheet" id="sh-fw-zones" style="margin-top:16px">${sheetHead("Zones and test VM")}<h2>Zones and test VM</h2>${zonesPanel(o)}</div>
       <div class="panel sheet m-only" id="sh-fw-default">${sheetHead("Default")}
         <p>Anything no rule matches is <b>${o.cfg.firewallDefault === "deny" ? "denied and logged" : "allowed"}</b>. ${hits(o, "default")}</p>
         <form method="post" action="/firewall/default" hx-post="/firewall/default" hx-target="#fw" hx-swap="outerHTML" hx-select="#fw"><input type="hidden" name="value" value="${o.cfg.firewallDefault === "deny" ? "allow" : "deny"}"><div class="btn-row"><button type="submit">${o.cfg.firewallDefault === "deny" ? "Make default allow" : "Make default deny"}</button></div></form>
