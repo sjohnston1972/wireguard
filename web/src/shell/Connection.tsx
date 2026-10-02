@@ -42,7 +42,7 @@ export function DisconnectedBanner() {
   return (
     <div className="conn-banner" role="alert">
       <WifiOff size={16} aria-hidden="true" />
-      <span>Cannot reach the dashboard. Showing the last values; trying again automatically.</span>
+      <span>Cannot reach the dashboard. Showing the last values and refreshing them when it answers; changes are not sent until then.</span>
       <Button size="sm" className="conn-banner__retry" onClick={() => void qc.refetchQueries({ type: "active" })}>
         Retry
       </Button>

@@ -74,6 +74,9 @@ describe("connection indicator and banner", () => {
     renderApp("/", { routes: { "GET /api/v1/overview": () => (down ? { networkError: true } : overviewFixture()), "GET /api/v1/session": () => (down ? { networkError: true } : sessionFixture()) } });
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Cannot reach the dashboard");
+    // Reads refresh by themselves; writes are never re-sent, so the banner must not promise it.
+    expect(alert).toHaveTextContent(/changes are not sent/i);
+    expect(alert).not.toHaveTextContent(/trying again automatically/i);
     expect(within(banner()).getByRole("status", { name: "Connection" })).toHaveTextContent("Disconnected");
 
     down = false;

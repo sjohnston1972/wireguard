@@ -132,7 +132,26 @@ describe("mutations", () => {
     expect(await screen.findByText(/Added phone/)).toBeInTheDocument();
   });
 
-  it("does not toast for an expired session or a lost connection", async () => {
+  it("shows an error toast when a write cannot reach the server, and never sends it again by itself", async () => {
+    const m = mockFetch({ "POST /api/v1/deploy": { networkError: true } });
+    const { W } = setup();
+    function Probe() {
+      const d = useDeploy();
+      return <button onClick={() => d.mutate({})}>go</button>;
+    }
+    render(
+      <W>
+        <Probe />
+      </W>,
+    );
+    act(() => screen.getByText("go").click());
+    const t = await screen.findByText("Not sent — couldn't reach wg-admin. Try again.");
+    expect(t.closest("[data-tone]")).toHaveAttribute("data-tone", "error");
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(m.callsTo("POST", "/api/v1/deploy")).toHaveLength(1);
+  });
+
+  it("does not toast for an expired session (the sign-in screen says so)", async () => {
     mockFetch({ "POST /api/v1/deploy": { opaqueRedirect: true } });
     const { W } = setup();
     const { result } = renderHook(() => useDeploy(), { wrapper: W });

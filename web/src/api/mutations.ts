@@ -12,6 +12,9 @@ import { useToast } from "@/components/feedback/Toast";
 
 export type Body = Record<string, unknown>;
 
+/** The toast for a write that could not reach the server (writes are never retried). */
+export const NOT_SENT = "Not sent — couldn't reach wg-admin. Try again.";
+
 /** The server's complaint about one input, for a form to show beside it. */
 export function fieldErrorOf(error: unknown, field: string): string | undefined {
   return error instanceof ApiError && error.field === field ? error.message : undefined;
@@ -43,8 +46,13 @@ export function useApiMutation<V = void, R = ApiOk>(cfg: Config<V, R>): ApiMutat
       for (const key of cfg.invalidate) void qc.invalidateQueries({ queryKey: key });
     },
     onError: (err) => {
-      // The banner and the sign-in screen already say so; a field error is shown by its form.
-      if (err instanceof SessionExpiredError || err instanceof NetworkError) return;
+      // The sign-in screen already says so; a field error is shown by its form.
+      if (err instanceof SessionExpiredError) return;
+      // Writes are never re-sent by themselves, so say plainly that this one was not sent.
+      if (err instanceof NetworkError) {
+        toast({ tone: "error", title: NOT_SENT });
+        return;
+      }
       if (err instanceof ApiError && err.field) return;
       toast({ tone: "error", title: err.message });
     },
