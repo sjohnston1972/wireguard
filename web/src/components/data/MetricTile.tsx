@@ -78,7 +78,9 @@ export function MetricTile({
           </span>
           {delta && (
             <span className={cx("tile__delta", delta.good === true && "tile__delta--good", delta.good === false && "tile__delta--bad")}>
-              <span aria-hidden>{delta.direction === "up" ? "▲" : "▼"}</span>
+              <span className="tile__delta-arrow" aria-hidden>
+                {delta.direction === "up" ? "↑" : "↓"}
+              </span>
               <span className="visually-hidden">{delta.direction}</span>
               <span>{delta.text}</span>
             </span>
