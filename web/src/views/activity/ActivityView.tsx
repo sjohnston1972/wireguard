@@ -2,13 +2,16 @@ import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ActivityResponse } from "@shared/api";
-import { DataAge, ErrorState, IconButton, PageHeader, Select, useIsPhone } from "@/components";
+import { DataAge, ErrorState, IconButton, PageHeader, Select, Skeleton, useIsPhone } from "@/components";
 import { useActivity } from "@/api/queries";
 import { ActivityList } from "./ActivityList";
 import { ChangeLog } from "./ChangeLog";
+import { ChangeDrawer, RunDrawer } from "./Drawers";
 import { EventStream } from "./EventStream";
 import { Kpis } from "./Kpis";
 import { RANGES, type Window } from "./model";
+import { PhoneActivity } from "./PhoneActivity";
+import { LiveOutput, RunDetails } from "./RunPanels";
 import { Timeline } from "./Timeline";
 import { useActivityParams } from "./useActivityParams";
 import "./activity.css";
@@ -20,6 +23,7 @@ function useHeld<T>(data: T | undefined): T | undefined {
   return data ?? ref.current;
 }
 
+/** The Activity page; with `runId` (the /activity/runs/:id route) that run's drawer is open over it. */
 export function ActivityView({ runId }: { runId?: string }) {
   const p = useActivityParams();
   const q = useActivity({ range: p.range, kind: p.kind, q: p.q, page: p.page > 1 ? p.page : undefined });
@@ -27,8 +31,6 @@ export function ActivityView({ runId }: { runId?: string }) {
   const phone = useIsPhone();
   const navigate = useNavigate();
   const location = useLocation();
-  void runId;
-  void phone;
 
   // The window picked on the timeline filters the lists; a different range starts without one.
   const [win, setWin] = useState<Window | null>(null);
@@ -39,7 +41,12 @@ export function ActivityView({ runId }: { runId?: string }) {
     [navigate, p.search],
   );
   const openChange = useCallback((id: number) => p.set({ change: id }), [p]);
-  void location;
+  const closeChange = useCallback(() => p.set({ change: null }), [p]);
+  /** Back to the page the run opened from; from a link, to the Activity page with the same range. */
+  const closeRun = useCallback(() => {
+    if ((location.state as { from?: string } | null)?.from === "activity") navigate(-1);
+    else navigate({ pathname: "/activity", search: p.search ? `?${p.search}` : "" }, { replace: true });
+  }, [location.state, navigate, p.search]);
 
   const header = (
     <PageHeader
@@ -71,29 +78,52 @@ export function ActivityView({ runId }: { runId?: string }) {
   }
 
   const selectedChange = p.change === null ? null : Number(p.change);
+  const changeRow = selectedChange === null || !data ? null : (data.changes.rows.find((c) => c.id === selectedChange) ?? null);
+  // The run shown below: the one open in the drawer, else the newest.
+  const shownRun = runId ?? data?.runs[0]?.id ?? null;
+
   return (
     <section className="act" aria-busy={q.isFetching && !q.data ? true : undefined}>
       {header}
-      <Kpis data={data} />
-      {data && (
-        <div className="act__main">
-          <div className="act__left">
-            <Timeline key={p.range} timeline={data.timeline} range={p.range} window={win} onWindow={setWin} />
-            <ActivityList data={data} params={p} set={p.set} window={win} selectedRun={runId ?? null} onOpenRun={openRun} onOpenChange={openChange} />
+      {phone ? (
+        data ? (
+          <PhoneActivity data={data} onOpenRun={openRun} onOpenChange={openChange} />
+        ) : (
+          <div aria-busy="true" className="act__skel">
+            <Skeleton variant="block" height={96} />
+            <Skeleton variant="block" height={96} />
           </div>
-          <div className="act__right">
-            <EventStream
-              events={data.all}
-              window={win}
-              fetchedAt={q.dataUpdatedAt || null}
-              onOpenRun={openRun}
-              onOpenChange={openChange}
-              hasChange={(id) => data.changes.rows.some((c) => c.id === id)}
-            />
-            <ChangeLog changes={data.changes} params={p} set={p.set} window={win} selected={selectedChange} onOpen={openChange} />
-          </div>
-        </div>
+        )
+      ) : (
+        <>
+          <Kpis data={data} />
+          {data && (
+            <div className="act__main">
+              <div className="act__left">
+                <Timeline key={p.range} timeline={data.timeline} range={p.range} window={win} onWindow={setWin} />
+                <ActivityList data={data} params={p} set={p.set} window={win} selectedRun={runId ?? null} onOpenRun={openRun} onOpenChange={openChange} />
+              </div>
+              <div className="act__right">
+                <EventStream
+                  events={data.all}
+                  window={win}
+                  fetchedAt={q.dataUpdatedAt || null}
+                  onOpenRun={openRun}
+                  onOpenChange={openChange}
+                  hasChange={(id) => data.changes.rows.some((c) => c.id === id)}
+                />
+                <ChangeLog changes={data.changes} params={p} set={p.set} window={win} selected={selectedChange} onOpen={openChange} />
+              </div>
+              <div className="act__bottom">
+                <RunDetails id={shownRun} />
+                <LiveOutput id={shownRun} search={p.search} />
+              </div>
+            </div>
+          )}
+        </>
       )}
+      {runId && <RunDrawer id={runId} onClose={closeRun} />}
+      {data && selectedChange !== null && !runId && <ChangeDrawer change={changeRow} onClose={closeChange} />}
     </section>
   );
 }

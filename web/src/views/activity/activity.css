@@ -99,6 +99,58 @@
 
 .act__pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 8px 16px; border-top: 1px solid var(--border); flex: none; font-size: 12px; color: var(--text-secondary); }
 
+/* ---- bottom row: run details and live output ---- */
+.act__bottom { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); height: clamp(118px, 17vh, 150px); }
+.act__bottom > .panel { min-height: 0; }
+.act__bottom .panel__body { overflow: auto; }
+.act__output .panel__body { overflow: hidden; }
+.act__output-body { background: var(--bg-app); border-radius: 0 0 var(--radius-panel) var(--radius-panel); }
+.act__output-body .log__lines { border: 0; border-radius: 0; background: transparent; padding: 4px 16px; font-size: 12px; }
+.act__output-body .log__copy { display: none; }
+.act__rundetails .panel__title-wrap { gap: 12px; }
+.act__sub { margin-bottom: 8px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.act__muted { color: var(--text-secondary); font-size: 12.5px; }
+.act__pad { padding: 12px 16px; }
+.act__skel { display: grid; gap: 8px; padding: 8px 0; }
+.act__link { display: inline-flex; align-items: center; gap: 4px; margin-left: 12px; font-size: 12.5px; font-weight: 500; color: var(--blue-bright); }
+.act__link:hover { text-decoration: underline; }
+.act__mono { font-family: var(--font-mono); font-size: 12px; }
+
+.act__track { display: flex; margin: 0; padding: 0; list-style: none; }
+.act__step { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; text-align: center; }
+.act__step::before { content: ""; position: absolute; top: 10px; left: -50%; width: 100%; height: 2px; background: var(--border-strong); }
+.act__step:first-child::before { display: none; }
+.act__step--done::before, .act__step--running::before, .act__step--failed::before { background: var(--green); }
+.act__step-mark { position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--text-muted); background: var(--bg-panel); color: #04121a; }
+.act__step--done .act__step-mark { background: var(--green); border-color: var(--green); }
+.act__step--failed .act__step-mark { background: var(--red); border-color: var(--red); color: #fff; }
+.act__step--running .act__step-mark { border-color: var(--blue-bright); background: color-mix(in srgb, var(--blue) 30%, var(--bg-panel)); }
+.act__step--skipped .act__step-mark { color: var(--text-muted); }
+.act__step-name { font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act__step-time { color: var(--text-secondary); }
+.act__step--running .act__step-time { color: var(--blue-bright); }
+.act__step--failed .act__step-time { color: var(--red); }
+
+/* ---- drawers ---- */
+@media (min-width: 641px) {
+  .drawer.act__drawer[data-side="right"] { width: min(560px, 100vw); }
+}
+.act__drawer-body { display: flex; flex-direction: column; gap: 10px; }
+.act__h3 { display: flex; align-items: center; margin-top: 6px; font-size: 13px; font-weight: 600; }
+.act__error { padding: 8px 10px; border-radius: var(--radius-control); border: 1px solid color-mix(in srgb, var(--red) 45%, transparent); background: color-mix(in srgb, var(--red) 10%, transparent); font-size: 13px; }
+.act__drawer-log { height: 280px; }
+
+/* ---- phone (spec §9) ---- */
+.act__phone { display: flex; flex-direction: column; gap: var(--gap); }
+.act__phone-card-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 0; border: 0; background: none; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+div.act__phone-card-btn { cursor: default; align-items: flex-start; }
+.act__phone-card-text { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 2px; font-size: 14px; }
+.act__phone-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.act__phone-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.act__phone-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 48px; padding: 8px 4px; border: 0; border-bottom: 1px solid var(--border); background: none; color: inherit; font: inherit; text-align: left; }
+button.act__phone-row { cursor: pointer; }
+.act__phone-row-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+
 /* 641-1099 px: panels stack and the page may scroll. */
 @media (max-width: 1099px) {
   .act { height: auto; }

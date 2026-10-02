@@ -122,11 +122,12 @@ describe("Activity timeline and tabs", () => {
   it("search narrows the runs table without asking the API", async () => {
     const { fetchMock } = renderApp("/activity", { routes: activityRoutes() });
     const table = await runsTable();
-    const before = fetchMock!.calls.length;
+    const asked = () => fetchMock!.calls.filter((c) => c.url.startsWith("/api/v1/activity")).length;
+    const before = asked();
     await userEvent.type(screen.getByRole("searchbox", { name: "Search this list" }), "watchman");
     expect(within(table).getAllByRole("row")).toHaveLength(2);
     expect(within(table).getByText("terraform apply failed")).toBeInTheDocument();
-    expect(fetchMock!.calls.length).toBe(before);
+    expect(asked()).toBe(before);
   });
 
   it("the change log filters by kind through the API", async () => {
