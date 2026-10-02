@@ -40,7 +40,7 @@ const budgetTone = (level: CostResponse["budget"]["level"]): Tone => (level === 
 export function KpiRow({ cost }: { cost: CostResponse }) {
   const { session, budget, projection } = cost;
   const known = hasActuals(cost);
-  // Spent is Azure's actuals plus the running VM's estimate; with neither it is unknown, not £0.
+  // Spent is Azure's actuals plus the running VM's estimate; with neither it is unknown, not Â£0.
   const spentKnown = known || session.running;
   const change = cost.range === "month" ? changeVsPrevious(cost) : null;
   const guard = budget.level === "none" ? null : budget.level === "over" ? "Over budget" : budget.level === "warn" ? "Nearly there" : "Healthy";
