@@ -126,7 +126,7 @@ export async function recordHeartbeat(
       env.DB.prepare(
         `INSERT INTO hist_client (res, t, peer_id, online, handshake_age, latency_avg, latency_max, rx, tx)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7, ?8)
-         ON CONFLICT (res, peer_id, t) DO UPDATE SET
+         ON CONFLICT (res, t, peer_id) DO UPDATE SET
            online = MAX(online, excluded.online), handshake_age = excluded.handshake_age,
            latency_avg = COALESCE((latency_avg + excluded.latency_avg) / 2, excluded.latency_avg, latency_avg),
            latency_max = MAX(COALESCE(latency_max, excluded.latency_max), COALESCE(excluded.latency_max, latency_max)),
@@ -188,12 +188,13 @@ export async function rollUp(env: Env, now: Date): Promise<void> {
       `INSERT INTO hist_client (res, t, peer_id, online, handshake_age, latency_avg, latency_max, rx, tx)
        SELECT ${SUMMARY_RES}, ${SUMMARY_SLOT} AS slot, peer_id, MAX(online), MIN(handshake_age), AVG(latency_avg), MAX(latency_max), SUM(rx), SUM(tx)
        FROM hist_client WHERE res = ${RAW_RES} AND t < ?1 GROUP BY peer_id, slot
-       ON CONFLICT (res, peer_id, t) DO UPDATE SET rx = rx + excluded.rx, tx = tx + excluded.tx`,
+       ON CONFLICT (res, t, peer_id) DO UPDATE SET rx = rx + excluded.rx, tx = tx + excluded.tx`,
     ).bind(cutoff),
     env.DB.prepare(`DELETE FROM hist_vm WHERE res = ${RAW_RES} AND t < ?1`).bind(cutoff),
     env.DB.prepare(`DELETE FROM hist_client WHERE res = ${RAW_RES} AND t < ?1`).bind(cutoff),
-    env.DB.prepare("DELETE FROM hist_vm WHERE t < ?1").bind(expiry),
-    env.DB.prepare("DELETE FROM hist_client WHERE t < ?1").bind(expiry),
+    // Raw rows never live 30 days (they are folded at 48 hours), so only summaries expire here.
+    env.DB.prepare(`DELETE FROM hist_vm WHERE res = ${SUMMARY_RES} AND t < ?1`).bind(expiry),
+    env.DB.prepare(`DELETE FROM hist_client WHERE res = ${SUMMARY_RES} AND t < ?1`).bind(expiry),
     env.DB.prepare("DELETE FROM hist_drops WHERE t < ?1").bind(expiry),
   ]);
 }

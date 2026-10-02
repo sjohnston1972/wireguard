@@ -331,3 +331,23 @@ describe("run steps", () => {
     ]);
   });
 });
+
+describe("review fixes", () => {
+  it("the tidy-up never reads a whole history table (uses the index for every statement)", async () => {
+    const seen: string[] = [];
+    const real = env.DB.prepare.bind(env.DB);
+    vi.spyOn(env.DB, "prepare").mockImplementation((sql: string) => {
+      seen.push(sql);
+      return real(sql);
+    });
+    await rollUp(env, new Date(Date.parse("2026-10-05T12:00:00Z")));
+    vi.mocked(env.DB.prepare).mockRestore();
+    expect(seen.length).toBeGreaterThan(0);
+    for (const sql of seen) {
+      const nParams = Math.max(0, ...[...sql.matchAll(/\?(\d+)/g)].map((m) => Number(m[1])));
+      const plan = await real(`EXPLAIN QUERY PLAN ${sql}`).bind(...Array(nParams).fill("2026-10-01T00:00:00Z")).all<{ detail: string }>();
+      const scans = plan.results.map((r) => r.detail).filter((d) => /^SCAN hist_/.test(d));
+      expect(scans, sql).toEqual([]);
+    }
+  });
+});

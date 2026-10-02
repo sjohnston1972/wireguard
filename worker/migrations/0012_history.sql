@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS hist_client (
   latency_max   REAL,
   rx            INTEGER NOT NULL,  -- bytes the VM received from it in this slot
   tx            INTEGER NOT NULL,  -- bytes the VM sent to it in this slot
-  PRIMARY KEY (res, peer_id, t)
+  PRIMARY KEY (res, t, peer_id)     -- res and time first: the tidy-up reads by time range
 );
 
 CREATE TABLE IF NOT EXISTS hist_drops (
