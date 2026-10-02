@@ -12,6 +12,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { vi } from "vitest";
 import type { Env } from "../src/env";
 import { RunLock } from "../src/lock";
+import type { GhJob } from "../src/github";
 
 // ── D1 on node:sqlite ─────────────────────────────────────────────────────
 
@@ -122,10 +123,12 @@ export interface World {
   powerCalls: string[];
   /** Every notification published to ntfy. */
   notes: Record<string, any>[];
+  /** GitHub jobs per GitHub run id, for the step list. */
+  jobs: Map<number, GhJob[]>;
 }
 
 export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World } {
-  const world: World = { dispatches: [], ghRuns: new Map(), azure: { rg: false, power: "running", ip: "20.0.0.10" }, powerCalls: [], notes: [] };
+  const world: World = { dispatches: [], ghRuns: new Map(), azure: { rg: false, power: "running", ip: "20.0.0.10" }, powerCalls: [], notes: [], jobs: new Map() };
   let nextGh = 1000;
   const env = {
     PUBLIC_URL: "https://wg-admin.example",
@@ -185,7 +188,8 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
       if (/\/actions\/workflows\/.+\/runs$/.test(u.pathname)) return json({ workflow_runs: [...world.ghRuns.values()].reverse() });
       const run = u.pathname.match(/\/actions\/runs\/(\d+)$/);
       if (run) return world.ghRuns.has(Number(run[1])) ? json(world.ghRuns.get(Number(run[1]))) : json({}, 404);
-      if (/\/actions\/runs\/\d+\/jobs$/.test(u.pathname)) return json({ jobs: [] });
+      const jobs = u.pathname.match(/\/actions\/runs\/(\d+)\/jobs$/);
+      if (jobs) return json({ jobs: world.jobs.get(Number(jobs[1])) ?? [] });
       return json({}, 404);
     }
 

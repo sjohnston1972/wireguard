@@ -27,6 +27,7 @@ import type { FirewallStatus } from "./state";
 import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
 import { noteHandshakes } from "./keyrotation";
+import { recordHeartbeat } from "./history";
 
 export class RunError extends Error {}
 
@@ -219,6 +220,15 @@ export function nextBase(base: Record<string, [number, number]>, prev: FirewallS
   return out;
 }
 
+/** The drops in one heartbeat's firewall report, newest first, stamped with the heartbeat's time. */
+export function freshDrops(rep: { drops?: unknown[] } | null | undefined, at: string): FirewallStatus["drops"] {
+  const drops = rep?.drops;
+  return (Array.isArray(drops) ? drops : [])
+    .filter((d): d is Record<string, unknown> => !!d && typeof d === "object")
+    .map((d) => ({ at, src: String(d.src ?? ""), dst: String(d.dst ?? ""), proto: String(d.proto ?? ""), dport: typeof d.dport === "number" ? d.dport : null, in: String(d.in ?? ""), out: String(d.out ?? "") }))
+    .reverse();
+}
+
 /** Fold a heartbeat's firewall report into the status: hits, when each rule last matched, recent drops. */
 export function nextFirewall(prev: FirewallStatus | null, rep: { hash?: string; error?: string | null; counters?: Record<string, [number, number]>; drops?: unknown[] } | null | undefined, at: string): FirewallStatus | null {
   if (!rep) return prev;
@@ -230,10 +240,7 @@ export function nextFirewall(prev: FirewallStatus | null, rep: { hash?: string; 
     const before = sameSet && Number(v[0]) >= was ? was : 0;
     if (Array.isArray(v) && Number(v[0]) > before) last_hit[k] = at;
   }
-  const fresh = (Array.isArray(rep.drops) ? rep.drops : [])
-    .filter((d): d is Record<string, unknown> => !!d && typeof d === "object")
-    .map((d) => ({ at, src: String(d.src ?? ""), dst: String(d.dst ?? ""), proto: String(d.proto ?? ""), dport: typeof d.dport === "number" ? d.dport : null, in: String(d.in ?? ""), out: String(d.out ?? "") }))
-    .reverse();
+  const fresh = freshDrops(rep, at);
   return {
     applied_hash: rep.hash || null,
     error: rep.error || null,
@@ -357,6 +364,17 @@ export async function refreshActiveRun(env: Env): Promise<void> {
 
   const [gh, jobs] = await Promise.all([getGhRun(env, ghId), getJobs(env, ghId)]);
   const steps = stepsFromJobs(jobs);
+  // Keep the step list with the run (runs.steps_json), so a finished run
+  // still shows its steps after the snapshot moves on to the next one.
+  // Only when it changed, and never at the cost of tracking the run.
+  const stepsJson = steps.length ? JSON.stringify(steps) : null;
+  if (stepsJson && stepsJson !== run.steps_json) {
+    try {
+      await db.updateRun(env, run.id, { steps_json: stepsJson });
+    } catch (e) {
+      console.error("run steps:", e);
+    }
+  }
   let log_tail: string | null = null;
   if (jobs[0]) log_tail = await getJobLogTail(env, jobs[0].id).catch(() => null);
   await saveSnapshot(env, { steps, log_tail, github_run_url: gh?.html_url ?? run.github_run_url });
@@ -725,6 +743,17 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     patch.fw_base = nextBase(cur.fw_base ?? {}, cur.firewall, reported, cur.firewall?.applied_hash === (body.firewall.hash || null));
   }
   await saveSnapshot(env, patch);
+
+  // History (history.ts): this heartbeat's VM, client and drop samples.
+  // After the save, so nothing slow sits between reading the fresh snapshot
+  // and saving it (a tear-down landing meanwhile must not be undone), and so
+  // a failed save cannot leave bytes counted twice. A history problem must
+  // never cost the VM its heartbeat.
+  try {
+    await recordHeartbeat(env, { report, prev: cur.agent, rtt: body.rtt, traffic, drops: freshDrops(body.firewall, report.at) });
+  } catch (e) {
+    console.error("history:", e);
+  }
 
   return { status: 200, body: { peers: await peerList(), ...reply } };
 }

@@ -178,6 +178,8 @@ export interface Step {
   name: string;
   status: string; // queued | in_progress | completed
   conclusion: string | null; // success | failure | skipped | cancelled
+  started_at?: string | null;
+  completed_at?: string | null;
 }
 
 export interface Snapshot {

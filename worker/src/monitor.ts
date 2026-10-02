@@ -40,6 +40,7 @@ import { checkDns } from "./dns";
 import { checkBudget } from "./budget";
 import { nightlyConfigBackup } from "./backup";
 import { syncServerKey } from "./keyrotation";
+import { recordMissedHeartbeats, rollUp } from "./history";
 
 /**
  * How long a Failed deployment may leave its resource group in Azure before
@@ -77,6 +78,15 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     await db.pruneAudit(env, now);
   } catch (e) {
     notes.push(`change log: ${(e as Error).message}`);
+  }
+
+  // History: mark the minutes with no heartbeat while running, then fold
+  // samples older than 48 hours into summaries and drop the 30-day-old ones.
+  try {
+    await recordMissedHeartbeats(env, await getSnapshot(env), now);
+    await rollUp(env, now);
+  } catch (e) {
+    notes.push(`history: ${(e as Error).message}`);
   }
 
   // Guest clients whose time is up: switch them off and say so. (The VM

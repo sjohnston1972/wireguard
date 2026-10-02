@@ -28,6 +28,7 @@ export interface Run {
   reason: string | null;
   error: string | null;
   ssh_password: string | null;
+  steps_json: string | null; // the GitHub step list as last seen while the run was active
 }
 
 export interface Peer {
@@ -65,7 +66,7 @@ export interface CostDay {
 
 // ── Runs ──────────────────────────────────────────────────────────────────
 
-export async function createRun(env: Env, r: Omit<Run, "started_at" | "finished_at" | "github_run_id" | "github_run_url" | "outputs_json" | "public_ip" | "error">): Promise<void> {
+export async function createRun(env: Env, r: Omit<Run, "started_at" | "finished_at" | "github_run_id" | "github_run_url" | "outputs_json" | "public_ip" | "error" | "steps_json">): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO runs (id, action, status, requested_at, requested_by, callback_token_hash, agent_token_hash, payload_json, auto_destroy_at, reason, ssh_password)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`
