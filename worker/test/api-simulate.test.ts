@@ -153,6 +153,42 @@ describe("simulate: what it cannot see", () => {
   });
 });
 
+describe("simulate: flows that never pass through the VM", () => {
+  const BYPASS = /does not pass through the VM/;
+  it("home LAN to the internet, home to home, and the internet to the internet are flagged", () => {
+    const c = ctx(starters());
+    expect(simulate(flow(z("home"), cidr("8.8.8.8"), "tcp", 443), c).limited).toMatch(BYPASS);
+    expect(simulate(flow(z("home"), z("internet")), c).limited).toMatch(BYPASS);
+    expect(simulate(flow(z("home"), cidr("192.168.1.5"), "tcp", 22), c).limited).toMatch(BYPASS);
+    expect(simulate(flow(cidr("8.8.8.8"), cidr("1.1.1.1"), "udp", 53), c).limited).toMatch(BYPASS);
+  });
+  it("the Azure VNet outside the workloads subnet to the internet is flagged", () => {
+    const r = simulate(flow(cidr("10.50.1.7"), z("internet"), "tcp", 443), ctx(starters()));
+    expect(r.limited).toMatch(BYPASS);
+    expect(r.verdict).toBe("deny"); // the walk still runs; the note says the answer does not apply
+  });
+  it("the internet to the VNet or the home LAN says it only comes in through a published port", () => {
+    expect(simulate(flow(z("internet"), z("workloads"), "tcp", 443), ctx(starters())).limited).toMatch(/published port/);
+    expect(simulate(flow(z("internet"), z("home"), "tcp", 443), ctx(starters())).limited).toMatch(/published port/);
+  });
+  it("leaves tunnel-client flows, home <-> VNet and workloads -> internet unflagged", () => {
+    const c = ctx(starters());
+    const cases = [
+      [z("clients"), z("home")],
+      [z("clients"), z("internet")],
+      [z("home"), z("clients")],
+      [cidr("8.8.8.8"), { kind: "client" as const, value: "1" }],
+      [z("home"), z("workloads")],
+      [z("workloads"), z("home")],
+      [z("workloads"), z("internet")],
+      [z("workloads"), cidr("8.8.8.8")],
+    ];
+    for (const [from, to] of cases) {
+      expect(simulate(flow(from, to, "tcp", 443), c).limited, `${from.value} -> ${to.value}`).toBeNull();
+    }
+  });
+});
+
 describe("POST /api/v1/firewall/simulate", () => {
   it("answers against the live rules and default", async () => {
     const { env } = apiEnv({ HOME_LAN_CIDR: "192.168.1.0/24" });

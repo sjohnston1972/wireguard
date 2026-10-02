@@ -138,7 +138,40 @@ function limits(input: SimInput, ctx: SimContext, from: Ranges, to: Ranges): str
   }
   const vnet: Ranges = [cidrRange(cfg.vnetCidr)];
   if (from.length && to.length && relation(from, vnet) === "full" && relation(to, vnet) === "full") notes.push("Traffic inside the Azure VNet does not pass through the VM, so these rules do not govern it.");
+  else if (from.length && to.length && !throughVm(ctx, from, to)) {
+    notes.push("This flow does not pass through the VM (only traffic to or from the tunnel clients, between the home LAN and the Azure VNet, and from the workloads subnet to the internet does), so these rules do not govern it.");
+    const inside = merge([...vnet, ...(cfg.homeLanCidr ? [cidrRange(cfg.homeLanCidr)] : [])]);
+    if (meets(from, internetSet(cfg)) && meets(to, inside)) notes.push("From the internet it can only come in through a published port, which is let through before these rules.");
+  }
   return notes.length ? notes.join(" ") : null;
+}
+
+const meets = (a: Ranges, b: Ranges): boolean => intersect(a, b).length > 0;
+
+/** "The internet" as the zone means it: everything outside the private nets. */
+const internetSet = (cfg: Config): Ranges => v4Set("zone", "internet", cfg, []);
+
+/**
+ * Whether any of this flow could be routed through the VM, and so reach its
+ * forward rules: anything to or from the tunnel clients (or the VM's tunnel
+ * address), between the home LAN and the Azure VNet, from the workloads
+ * subnet to the internet (its route table points there), or to or from the
+ * VM's public address. Everything else (home to the internet, the rest of
+ * the VNet to the internet, the internet to itself) goes its own way.
+ */
+function throughVm(ctx: SimContext, from: Ranges, to: Ranges): boolean {
+  const { cfg } = ctx;
+  const clients = merge([cidrRange(cfg.subnet), cidrRange(`${cfg.loopbackIp}/32`)]);
+  const home: Ranges = cfg.homeLanCidr ? [cidrRange(cfg.homeLanCidr)] : [];
+  const vnet: Ranges = [cidrRange(cfg.vnetCidr)];
+  const workloads: Ranges = [cidrRange(cfg.workloadCidr)];
+  const pub: Ranges = ctx.publicIp && parseCidr(ctx.publicIp)?.family === 4 ? [cidrRange(ctx.publicIp)] : [];
+  return (
+    meets(from, clients) || meets(to, clients) ||
+    meets(from, pub) || meets(to, pub) ||
+    (meets(from, home) && meets(to, vnet)) || (meets(from, vnet) && meets(to, home)) ||
+    (meets(from, workloads) && meets(to, internetSet(cfg)))
+  );
 }
 
 /**
