@@ -22,6 +22,8 @@ export const ROUTES = [
 export const SIZES = [
   { width: 1600, height: 900, mobile: false },
   { width: 1100, height: 700, mobile: false },
+  // The boundary of the one-screen rule.
+  { width: 1100, height: 600, mobile: false },
   { width: 390, height: 844, mobile: true },
 ];
 
@@ -30,6 +32,35 @@ export const THEMES = ["dark", "light"];
 /** The one-screen rule: desktop windows of 1100 x 600 and larger must not scroll the page. */
 export function isOneScreenSize(s) {
   return !s.mobile && s.width >= 1100 && s.height >= 600;
+}
+
+/**
+ * How far the page scrolls. The shell is the window's height and its page
+ * area (#main) scrolls inside itself, so the document alone never scrolls:
+ * the page area is measured too. Runs inside the browser (see OVERFLOW_PROBE),
+ * so it uses nothing but its two arguments.
+ */
+export function measureOverflow(document, window) {
+  const d = document.documentElement;
+  const main = document.getElementById("main");
+  return {
+    y: d.scrollHeight - window.innerHeight,
+    x: d.scrollWidth - window.innerWidth,
+    mainY: main ? main.scrollHeight - main.clientHeight : null,
+    mainX: main ? main.scrollWidth - main.clientWidth : null,
+  };
+}
+
+/** The expression the browser evaluates: a JSON string of measureOverflow's answer. */
+export const OVERFLOW_PROBE = `JSON.stringify((${measureOverflow.toString()})(document, window))`;
+
+/** Whether a shot passes the one-screen rule, and why not. */
+export function judgeOverflow(m, shot) {
+  if (!shot.checkOverflow) return { ok: true, reason: null };
+  const problems = [];
+  if (m.y > 0) problems.push(`the page scrolls ${m.y}px`);
+  if (m.mainY !== null && m.mainY > 0) problems.push(`#main scrolls ${m.mainY}px`);
+  return problems.length ? { ok: false, reason: problems.join(", ") } : { ok: true, reason: null };
 }
 
 /** "/firewall/rules/3" -> "firewall-rules-3"; "/" -> "overview". */

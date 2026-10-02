@@ -5,8 +5,10 @@
 // through the Chrome DevTools Protocol (the same remote control Chrome's
 // developer tools use), visits every page at three window sizes in the dark and
 // light themes, saves a PNG of each, and measures whether the page needs
-// scrolling. The one-screen rule says a desktop window of 1100 x 600 or larger
-// must not: any page that does makes this script exit with an error.
+// scrolling: the document and the shell's page area (#main), which scrolls
+// inside the window-high shell. The one-screen rule says a desktop window of
+// 1100 x 600 or larger must not: any page that does makes this script exit
+// with an error.
 //
 // Needs the app running: npm run dev:web (port 5173) and npm run dev:api
 // (port 8787). With --scenario NAME it first loads that canned story into the
@@ -26,7 +28,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { parseArgs, buildPlan } from "./lib/shots.mjs";
+import { parseArgs, buildPlan, OVERFLOW_PROBE, judgeOverflow } from "./lib/shots.mjs";
 import { seed } from "./seed-scenarios.mjs";
 
 const BROWSERS = [
@@ -228,7 +230,7 @@ async function main() {
     await cdp.send("Runtime.enable");
 
     for (const s of plan) {
-      const rec = { file: s.file, path: s.path, theme: s.theme, width: s.width, height: s.height, overflowY: null, overflowX: null, ok: true };
+      const rec = { file: s.file, path: s.path, theme: s.theme, width: s.width, height: s.height, overflowY: null, overflowX: null, mainOverflowY: null, mainOverflowX: null, ok: true };
       try {
         // Phone width comes from device emulation: a headless window will not go below about 500 px.
         await cdp.send("Emulation.setDeviceMetricsOverride", { width: s.width, height: s.height, deviceScaleFactor: 1, mobile: s.mobile });
@@ -238,14 +240,18 @@ async function main() {
         await loaded;
         await cdp.send("Runtime.evaluate", { expression: "document.fonts ? document.fonts.ready.then(() => true) : true", awaitPromise: true });
         await sleep(opts.settle);
-        const m = await cdp.send("Runtime.evaluate", { expression: "JSON.stringify({ y: document.documentElement.scrollHeight - window.innerHeight, x: document.documentElement.scrollWidth - window.innerWidth })", returnByValue: true });
-        const { y, x } = JSON.parse(m.result.value);
-        rec.overflowY = y;
-        rec.overflowX = x;
+        const m = await cdp.send("Runtime.evaluate", { expression: OVERFLOW_PROBE, returnByValue: true });
+        const measured = JSON.parse(m.result.value);
+        rec.overflowY = measured.y;
+        rec.overflowX = measured.x;
+        rec.mainOverflowY = measured.mainY;
+        rec.mainOverflowX = measured.mainX;
         const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
         writeFileSync(join(out, s.file), Buffer.from(shot.data, "base64"));
-        if (s.checkOverflow && y !== 0) {
+        const verdict = judgeOverflow(measured, s);
+        if (!verdict.ok) {
           rec.ok = false;
+          rec.reason = verdict.reason;
           failed = true;
         }
       } catch (e) {
@@ -254,7 +260,8 @@ async function main() {
         failed = true;
       }
       results.push(rec);
-      const flag = rec.error ? `ERROR ${rec.error}` : s.checkOverflow ? `scroll ${rec.overflowY}px${rec.ok ? "" : "  <-- FAILS the one-screen rule"}` : `scroll ${rec.overflowY}px (not checked)`;
+      const scroll = `scroll ${rec.overflowY}px, #main ${rec.mainOverflowY ?? "-"}px`;
+      const flag = rec.error ? `ERROR ${rec.error}` : s.checkOverflow ? `${scroll}${rec.ok ? "" : `  <-- FAILS the one-screen rule (${rec.reason})`}` : `${scroll} (not checked)`;
       console.log(`${rec.ok ? "ok  " : "FAIL"} ${s.file.padEnd(40)} ${flag}${rec.overflowX > 0 ? `  (sideways overflow ${rec.overflowX}px)` : ""}`);
     }
   } catch (e) {
