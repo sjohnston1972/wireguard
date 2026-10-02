@@ -8,7 +8,7 @@
 
 import type { CostDay, Run } from "./db";
 import type { Config } from "./env";
-import { sessionCost } from "./views/activity";
+import { sessionCost } from "./activity";
 import { regionName } from "./region";
 import type { CostBreakdown } from "../../shared/api";
 

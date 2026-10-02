@@ -8,7 +8,7 @@ import worker from "../src/index";
 import * as db from "../src/db";
 import { runScheduled } from "../src/monitor";
 import { acquireLock } from "../src/lock";
-import { describeChange } from "../src/views/activity";
+import { describeChange } from "../src/activity";
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
 const BASE = "http://localhost:8787";

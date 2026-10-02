@@ -7,7 +7,6 @@ import * as db from "../src/db";
 import { expiryFrom, peerExpired, peerStale, agentPeerList, terraformPeerList } from "../src/peers";
 import { startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
 import { runScheduled } from "../src/monitor";
-import { lifeMarkers } from "../src/views/peers";
 import type { Peer } from "../src/db";
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
@@ -59,15 +58,6 @@ describe("expiry rules", () => {
     expect(peerStale({ created_at: old, last_handshake_at: null }, now)).toBe(true);
     expect(peerStale({ created_at: old, last_handshake_at: new Date(now - 2 * DAY).toISOString() }, now)).toBe(false);
     expect(peerStale({ created_at: new Date(now - DAY).toISOString(), last_handshake_at: null }, now)).toBe(false);
-  });
-
-  it("the Clients page says when it expires, that it expired, and when it has gone quiet", () => {
-    const now = Date.now();
-    expect(String(lifeMarkers({ ...base, expires_at: new Date(now + 3 * DAY).toISOString() }, now))).toContain("expires in 3 days");
-    expect(String(lifeMarkers({ ...base, expires_at: new Date(now + 5 * 3600_000).toISOString() }, now))).toContain("expires in 5 hours");
-    expect(String(lifeMarkers({ ...base, expires_at: new Date(now - 1000).toISOString() }, now))).toContain(">expired<");
-    expect(String(lifeMarkers({ ...base, created_at: new Date(now - 40 * DAY).toISOString() }, now))).toContain("no handshake in 30 days");
-    expect(String(lifeMarkers(base, now))).toBe("");
   });
 });
 
