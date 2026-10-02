@@ -32,10 +32,25 @@ export function fail(c: Context<ApiEnv>, status: Status, code: string, message: 
   return c.json(out, status);
 }
 
-/** The JSON body, or null when it is not labelled JSON or does not parse. */
+/**
+ * The JSON body: null when there is no body at all (an action with no
+ * options), the object when there is one. A body that is not labelled
+ * JSON, does not parse, or is not an object is refused (400), never read
+ * as "nothing": on Extend, nothing means "no timer", and a garbled request
+ * must not quietly leave the VM running.
+ */
 export async function body<T>(c: Context<ApiEnv>): Promise<T | null> {
-  if (!/^application\/json\b/i.test(c.req.header("Content-Type") ?? "")) return null;
-  return (await c.req.json().catch(() => null)) as T | null;
+  const text = await c.req.text();
+  if (!text.trim()) return null;
+  if (!/^application\/json\b/i.test(c.req.header("Content-Type") ?? "")) throw new RunError("Send the request body as JSON (Content-Type: application/json).", "bad_input");
+  let v: unknown;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    throw new RunError("The request body is not valid JSON.", "bad_input");
+  }
+  if (v === null || typeof v !== "object" || Array.isArray(v)) throw new RunError("The request body must be a JSON object.", "bad_input");
+  return v as T;
 }
 
 /** The sub-app every area registers its routes on. */
