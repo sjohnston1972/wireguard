@@ -9,6 +9,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api, apiEnv } from "./api-helpers";
 import { fwDeltas, recordHeartbeat, rollUp, readRuleHistory } from "../src/history";
 import { fwHitsLast24h } from "../src/fwview";
+import { lastGhRun } from "./harness";
+import * as db from "../src/db";
+import { startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
 import type { AgentReport, FirewallStatus, Traffic } from "../src/state";
 import type { Env } from "../src/env";
 
@@ -135,5 +138,205 @@ describe("rollUp: hist_fw", () => {
       const plan = await real(`EXPLAIN QUERY PLAN ${sql}`).bind(...Array(n).fill("2026-10-01T00:00:00Z")).all<{ detail: string }>();
       expect(plan.results.map((r) => r.detail).filter((d) => /^SCAN hist_fw/.test(d)), sql).toEqual([]);
     }
+  });
+});
+
+// ── The heartbeat, end to end ──
+
+const DUMP = (lines: string[]) => ["PRIV\tS=\t51820\toff", ...lines].join("\n");
+
+async function running(e: Env, world: ReturnType<typeof apiEnv>["world"]) {
+  const run = await startDeploy(e, { hours: 4, requesterIp: null, requestedBy: "steven" });
+  const sec = await issueRunSecrets(e, run.id, lastGhRun(world));
+  world.azure.rg = true;
+  await handleCallback(e, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
+  return sec.body.agent_token as string;
+}
+
+describe("the heartbeat records firewall hits", () => {
+  it("stores increases, counts a reset from zero, and writes nothing when idle", async () => {
+    const w = apiEnv();
+    env = w.env;
+    const token = await running(env, w.world);
+    const hb = (hash: string, counters: Record<string, [number, number]>) => handleAgent(env, token, { dump: DUMP([]), firewall: { hash, counters } });
+    const total = async (rule: string) => Number((await rows(`SELECT COALESCE(SUM(packets), 0) AS n FROM hist_fw WHERE rule = '${rule}'`))[0].n);
+    await hb("h1", { r1: [10, 1000], default: [2, 100] }); // first report: whole counters
+    expect(await total("r1")).toBe(10);
+    await hb("h1", { r1: [10, 1000], default: [2, 100] }); // idle
+    expect(await total("r1")).toBe(10);
+    await hb("h1", { r1: [15, 1500], default: [2, 100] }); // +5
+    expect(await total("r1")).toBe(15);
+    await hb("h1", { r1: [3, 200], default: [2, 100] }); // the VM rebooted: counts from zero
+    expect(await total("r1")).toBe(18);
+    await hb("h2", { r1: [4, 300], default: [0, 0] }); // new rule set: counts from zero
+    expect(await total("r1")).toBe(22);
+    expect(await total("default")).toBe(2);
+    expect(await rows("SELECT packets FROM hist_fw WHERE packets <= 0")).toEqual([]);
+  });
+
+  it("never costs the VM its heartbeat when the recorder fails", async () => {
+    const w = apiEnv();
+    env = w.env;
+    const token = await running(env, w.world);
+    await env.DB.prepare("DROP TABLE hist_fw").run();
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await handleAgent(env, token, { dump: DUMP([]), firewall: { hash: "h1", counters: { r1: [1, 1] } } });
+    err.mockRestore();
+    expect(r.status).toBe(200);
+  });
+});
+
+// ── GET /firewall ──
+
+const iso = (ms: number) => new Date(ms).toISOString().replace(".000Z", "Z");
+const MIN = 60_000, HOUR = 3_600_000;
+const hit = (rule: string, agoMs: number, packets: number, now: number) => env.DB.prepare("INSERT INTO hist_fw (res, t, rule, packets, bytes) VALUES (60, ?1, ?2, ?3, ?3)").bind(iso(Math.floor((now - agoMs) / MIN) * MIN), rule, packets).run();
+const drop = (agoMs: number, src: string, n: number, now: number) => env.DB.prepare("INSERT INTO hist_drops (t, src, dst, proto, dport, n) VALUES (?1, ?2, '10.13.13.2', 'TCP', 22, ?3)").bind(iso(Math.floor((now - agoMs) / MIN) * MIN), src, n).run();
+
+describe("GET /firewall: hit history and drop statistics", () => {
+  it("has no hits history (null, flat trend) before anything was recorded", async () => {
+    const r = await api(env, "GET", "/firewall");
+    expect(r.status).toBe(200);
+    expect(r.json.rules[0]).toMatchObject({ hits24h: null, trend24h: Array(24).fill(0) });
+    expect(r.json).toMatchObject({ defaultHits24h: null, defaultTrend24h: Array(24).fill(0) });
+    expect(r.json.drops).toMatchObject({ last24h: 0, uniqueSources24h: 0, previous24h: 0, hourly24h: Array(24).fill(0) });
+  });
+
+  it("gives 24-hour hits and an hourly trend per rule and for the default, and flags the starter rules", async () => {
+    const now = Date.now();
+    await db.addFwRule(env, { enabled: 1, name: "Mine", src_kind: "any", src_value: "", dst_kind: "any", dst_value: "", proto: "any", ports: "", action: "allow", log: 0 });
+    const rules = await db.listFwRules(env);
+    const starter = rules[0];
+    const mine = rules.find((r) => r.name === "Mine")!;
+    await hit(`r${starter.id}`, 10 * MIN, 5, now); // the newest hour
+    await hit(`r${starter.id}`, 11 * MIN, 2, now);
+    await hit(`r${starter.id}`, 5 * HOUR + 10 * MIN, 7, now);
+    await hit(`r${starter.id}`, 25 * HOUR, 99, now); // outside the 24 hours
+    await hit("default", 90 * MIN, 3, now);
+    const r = await api(env, "GET", "/firewall");
+    const s = r.json.rules.find((x: { id: number }) => x.id === starter.id);
+    expect(s.hits24h).toBe(14);
+    expect(s.trend24h).toHaveLength(24);
+    expect(s.trend24h.reduce((a: number, b: number) => a + b, 0)).toBe(14);
+    expect(s.trend24h[23]).toBe(7);
+    expect(s.starter).toBe(true);
+    const m = r.json.rules.find((x: { id: number }) => x.id === mine.id);
+    expect(m).toMatchObject({ hits24h: 0, starter: false }); // history exists, this rule did not match
+    expect(r.json.defaultHits24h).toBe(3);
+    expect(r.json.defaultTrend24h.reduce((a: number, b: number) => a + b, 0)).toBe(3);
+  });
+
+  it("a renamed starter rule is no longer a starter", async () => {
+    const [first] = await db.listFwRules(env);
+    await db.updateFwRule(env, first.id, { name: "Clients to the internet (mine)" });
+    const r = await api(env, "GET", "/firewall");
+    expect(r.json.rules.find((x: { id: number }) => x.id === first.id).starter).toBe(false);
+  });
+
+  it("counts unique sources, the previous 24 hours and drops per hour", async () => {
+    const now = Date.now();
+    await drop(10 * MIN, "203.0.113.1", 4, now);
+    await drop(2 * HOUR, "203.0.113.1", 1, now);
+    await drop(3 * HOUR, "203.0.113.2", 2, now);
+    await drop(30 * HOUR, "203.0.113.9", 6, now); // the day before
+    await drop(40 * HOUR, "203.0.113.8", 1, now); // the day before
+    await drop(50 * HOUR, "203.0.113.7", 50, now); // two days back: neither
+    const r = await api(env, "GET", "/firewall");
+    expect(r.json.drops).toMatchObject({ last24h: 7, uniqueSources24h: 2, previous24h: 7 });
+    expect(r.json.drops.hourly24h).toHaveLength(24);
+    expect(r.json.drops.hourly24h.reduce((a: number, b: number) => a + b, 0)).toBe(7);
+    expect(r.json.drops.hourly24h[23]).toBe(4);
+  });
+
+  it("the new reads use the time index, not a scan", async () => {
+    const seen: string[] = [];
+    const real = env.DB.prepare.bind(env.DB);
+    vi.spyOn(env.DB, "prepare").mockImplementation((sql: string) => {
+      seen.push(sql);
+      return real(sql);
+    });
+    await api(env, "GET", "/firewall");
+    vi.mocked(env.DB.prepare).mockRestore();
+    const mine = seen.filter((s) => /hist_(drops|fw)/.test(s));
+    expect(mine.length).toBeGreaterThanOrEqual(4);
+    for (const sql of mine) {
+      const n = Math.max(0, ...[...sql.matchAll(/\?(\d+)/g)].map((m) => Number(m[1])));
+      const plan = await real(`EXPLAIN QUERY PLAN ${sql}`).bind(...Array(n).fill("2026-10-01T00:00:00Z")).all<{ detail: string }>();
+      expect(plan.results.map((p) => p.detail).filter((d) => /^SCAN hist_/.test(d)), sql).toEqual([]);
+    }
+  });
+});
+
+// ── GET /history?scope=rule ──
+
+describe("GET /history?scope=rule", () => {
+  it("gives a rule's points with the same ranges and steps", async () => {
+    const now = Date.now();
+    await hit("r5", 10 * MIN, 4, now);
+    await hit("r5", 20 * MIN, 1, now);
+    await hit("r6", 10 * MIN, 9, now);
+    const r = await api(env, "GET", "/history?scope=rule&id=r5&range=24h");
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ range: "24h", step: 300 });
+    expect(r.json.points.reduce((a: number, p: { packets: number }) => a + p.packets, 0)).toBe(5);
+    expect(r.json.points.every((p: { bytes: number }) => p.bytes > 0)).toBe(true);
+    expect(r.json.latest).toBe(r.json.points.at(-1).t);
+    expect((await api(env, "GET", "/history?scope=rule&id=default&range=1h")).status).toBe(200);
+    expect((await api(env, "GET", "/history?scope=rule&id=f3&range=7d")).status).toBe(200);
+  });
+  it("is empty, not zeros, when nothing was recorded", async () => {
+    const r = await api(env, "GET", "/history?scope=rule&id=r9&range=30d");
+    expect(r.status).toBe(200);
+    expect(r.json.points).toEqual([]);
+    expect(r.json.latest).toBeNull();
+  });
+  it("refuses an id that is not a counter key, naming the field", async () => {
+    for (const id of ["", "x1", "r", "r0", "r-1", "r1;DROP", "R1", "default2"]) {
+      const r = await api(env, "GET", `/history?scope=rule&id=${encodeURIComponent(id)}&range=24h`);
+      expect(r.status, id).toBe(400);
+      expect(r.json.error.field).toBe("id");
+    }
+    expect((await api(env, "GET", "/history?scope=rule&range=24h")).status).toBe(400);
+  });
+  it("still serves the other scopes and names rule in the scope message", async () => {
+    expect((await api(env, "GET", "/history?scope=vm&range=1h")).status).toBe(200);
+    const bad = await api(env, "GET", "/history?scope=nope&range=1h");
+    expect(bad.status).toBe(400);
+    expect(bad.json.error.message).toContain("rule");
+  });
+});
+
+// ── GET /activity previous ──
+
+describe("GET /activity: previous period", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const run = async (id: string, status: string, requestedAgo: number, tookMs: number) => {
+    await db.createRun(env, { id, action: "apply", status: status as never, requested_at: ago(requestedAgo), requested_by: "steven", callback_token_hash: "CBHASH", agent_token_hash: "AGHASH", payload_json: '{"x":"PAYLOADSECRET"}', auto_destroy_at: null, reason: null, ssh_password: "hunter2-secret" });
+    await db.updateRun(env, id, { started_at: ago(requestedAgo), finished_at: ago(requestedAgo - tookMs) });
+  };
+  it("has the same figures for the equally long period just before the range", async () => {
+    await run("now-ok", "success", 2 * HOUR, 20 * MIN);
+    await run("prev-ok", "success", 30 * HOUR, 10 * MIN);
+    await run("prev-ok2", "success", 40 * HOUR, 30 * MIN);
+    await run("prev-bad", "failure", 41 * HOUR, 0);
+    await run("older", "success", 60 * HOUR, 10 * MIN); // two periods back: in neither
+    await env.DB.prepare("INSERT INTO alerts (at, kind, message) VALUES (?1, 'failure', 'old problem')").bind(ago(30 * HOUR)).run();
+    await env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, 'steven', 'client.add', 'A', NULL, '{}'), (?2, 'steven', 'client.add', 'B', NULL, '{}')").bind(ago(35 * HOUR), ago(10 * MIN)).run();
+    const r = await api(env, "GET", "/activity?range=24h");
+    expect(r.status).toBe(200);
+    expect(r.json.kpis).toMatchObject({ deploys: 1, configChanges: 1, watchmanProblems: 0 });
+    expect(r.json.previous).toEqual({
+      deploys: 2,
+      medianDeploySeconds: 1200,
+      successRate: { success: 2, finished: 3, pct: 67 },
+      failedRuns: 1,
+      configChanges: 1,
+      watchmanProblems: 1,
+    });
+    expect(JSON.stringify(r.json)).not.toMatch(/hunter2|CBHASH|AGHASH|PAYLOADSECRET/);
+  });
+  it("is all zeros and no percentage when nothing happened before", async () => {
+    const r = await api(env, "GET", "/activity?range=7d");
+    expect(r.json.previous).toEqual({ deploys: 0, medianDeploySeconds: null, successRate: { success: 0, finished: 0, pct: null }, failedRuns: 0, configChanges: 0, watchmanProblems: 0 });
   });
 });
