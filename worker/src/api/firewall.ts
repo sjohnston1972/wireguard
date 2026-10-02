@@ -1,8 +1,8 @@
 // api/firewall.ts
 //
 // Plain English: the Firewall screen's data and its published-port and
-// packet-capture actions. The rule table is read-only here (editing rules
-// comes with the Firewall view's drafts); what you can change are the
+// packet-capture actions. The rule table is read-only here (rule edits go
+// to a draft first: api/fwdraft.ts, shown here as `draft`); what you can change are the
 // published ports (saved first, then Azure's edge is told, and if Azure
 // refuses you hear it as a warning rather than losing the change), captures
 // on the VM, and the hit counters.
@@ -17,6 +17,7 @@ import { clearFirewallCounters } from "../runs";
 import { compileFirewall, endLabel, serviceLabel, zoneAddrs, checkForward, ZONE_LABEL, CAPTURE_IFACES, type Zone, type Forward } from "../firewall";
 import { policyState, totalHits, dropsSince, dropStats24h, fwHitsLast24h, vmUpHours24h, onlyWhenUp, isStarterRule } from "../fwview";
 import { syncPublished } from "../published";
+import { loadDraft } from "./fwdraft";
 import { startCapture, captureFilter, validFilter } from "../capture";
 import type { ApiOk, FirewallResponse } from "../../../shared/api";
 
@@ -49,7 +50,7 @@ export function registerFirewall(api: Hono<ApiEnv>): void {
     const fw = await compileFirewall(rules, cfg, peers, cfg.firewallDefault, forwards);
     const ps = policyState(snap, fw.hash);
     const now = Date.now();
-    const [last24h, dropStats, fwHits, up] = await Promise.all([dropsSince(c.env, new Date(now - DAY_MS).toISOString()), dropStats24h(c.env, now), fwHitsLast24h(c.env, now), vmUpHours24h(c.env, now)]);
+    const [last24h, dropStats, fwHits, up, pol, draft] = await Promise.all([dropsSince(c.env, new Date(now - DAY_MS).toISOString()), dropStats24h(c.env, now), fwHitsLast24h(c.env, now), vmUpHours24h(c.env, now), db.getFwPolicy(c.env), loadDraft(c.env, { peers })]);
     const flat = Array<number>(24).fill(0);
     // null when nothing at all was recorded; 0 when history exists but this counter did not match.
     const hits = (key: string) => (fwHits ? (fwHits[key]?.packets ?? 0) : null);
@@ -92,9 +93,8 @@ export function registerFirewall(api: Hono<ApiEnv>): void {
       publicIp: snap.public_ip,
       dnsName: cfg.dnsName,
       kpis: { rules: rules.length, enabled: rules.filter((r) => r.enabled).length, defaultAction: cfg.firewallDefault, drops24h: last24h, published: forwards.filter((f) => f.enabled).length, captureBusy: !!snap.capture_req },
-      // Placeholders until the draft backend (plan 4 area A) reads fw_policy and the draft.
-      version: 1,
-      draft: null,
+      version: pol.live_version,
+      draft,
     };
     return c.json(out);
   });

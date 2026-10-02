@@ -39,6 +39,7 @@ import { costBody } from "./views/cost";
 import { budgetStatus, requireBudgetOk, OVER_BUDGET_FIELD } from "./budget";
 import { firewallBody } from "./views/firewall";
 import { parseCidr, parsePorts, compileFirewall, checkForward, type EndKind, type Proto } from "./firewall";
+import { ruleFromDrop } from "./fwdraft";
 import { clearFirewallCounters } from "./runs";
 import { startCapture, receiveCapture, validFilter, captureFilter, MAX_CAPTURE_BYTES } from "./capture";
 import { syncPublished } from "./published";
@@ -789,6 +790,7 @@ app.post("/firewall/rules", async (c) => {
   const problem = !name ? "Give the rule a name." : typeof from === "string" ? from : typeof to === "string" ? to : parsePorts(ports) === null ? `"${ports}" is not a port list (try 8080, 80,443 or 8000-8100).` : null;
   if (problem || typeof from === "string" || typeof to === "string") return firewallPage(c, { kind: "bad", text: `Not added: ${problem}` });
   await db.addFwRule(c.env, { enabled: 1, name, src_kind: from.kind, src_value: from.value, dst_kind: to.kind, dst_value: to.value, proto, ports, action: f.action === "deny" ? "deny" : "allow", log: f.log ? 1 : 0 });
+  await db.bumpFwVersion(c.env);
   await db.audit(c.env, c.get("user"), "firewall.rule.add", name, null, (await db.listFwRules(c.env)).at(-1));
   return firewallPage(c, { kind: "good", text: `Added "${name}". The VM picks it up within 30 seconds.` });
 });
@@ -801,6 +803,7 @@ app.post("/firewall/rules/:id/:op{up|down|toggle|delete}", async (c) => {
   if (op === "up" || op === "down") await db.moveFwRule(c.env, id, op === "up" ? -1 : 1);
   else if (op === "delete") await db.deleteFwRule(c.env, id);
   else if (r) await db.updateFwRule(c.env, id, { enabled: r.enabled ? 0 : 1 });
+  if (r) await db.bumpFwVersion(c.env);
   // Change log: the rule before and after, with its place in the list (1 = checked first).
   const after = (await db.listFwRules(c.env)).map((x, i) => ({ ...x, place: i + 1 })).find((x) => x.id === id) ?? null;
   if (r) await db.audit(c.env, c.get("user"), op === "toggle" ? (r.enabled ? "firewall.rule.disable" : "firewall.rule.enable") : op === "delete" ? "firewall.rule.delete" : "firewall.rule.move", r.name, { ...r, place: was.indexOf(r) + 1 }, after);
@@ -812,6 +815,7 @@ app.post("/firewall/default", async (c) => {
   const v = f.value === "allow" ? "allow" : "deny";
   const was = (await db.getSetting(c.env, "firewall_default")) ?? "deny";
   await db.setSetting(c.env, "firewall_default", v);
+  await db.bumpFwVersion(c.env);
   await db.audit(c.env, c.get("user"), "firewall.default", "default rule", { firewall_default: was }, { firewall_default: v });
   await db.addAlert(c.env, "info", `Firewall default set to ${v} by ${c.get("user")}.`);
   return firewallPage(c, { kind: "good", text: `Default is now ${v}.` });
@@ -820,14 +824,11 @@ app.post("/firewall/default", async (c) => {
 // "Allow this" on a recent drop: an allow rule for exactly that flow.
 app.post("/firewall/allow-drop", async (c) => {
   const f = await c.req.parseBody();
-  const src = parseCidr(String(f.src ?? "")), dst = parseCidr(String(f.dst ?? ""));
-  if (!src || !dst) return firewallPage(c, { kind: "bad", text: "That drop has no usable addresses." });
-  const peers = await db.listPeers(c.env);
-  const client = peers.find((p) => `${p.ip}/32` === src.text);
-  const proto = ({ TCP: "tcp", UDP: "udp", ICMP: "icmp", ICMPV6: "icmp" } as Record<string, Proto>)[String(f.proto ?? "").toUpperCase()] ?? "any";
-  const port = /^\d{1,5}$/.test(String(f.dport ?? "")) && (proto === "tcp" || proto === "udp") ? String(f.dport) : "";
-  const name = `Allow ${client?.name ?? src.text.replace(/\/(32|128)$/, "")} to ${dst.text.replace(/\/(32|128)$/, "")} ${proto === "any" ? "" : proto.toUpperCase()}${port ? ` ${port}` : ""}`.trim();
-  await db.addFwRule(c.env, { enabled: 1, name, src_kind: client ? "client" : "cidr", src_value: client ? String(client.id) : src.text, dst_kind: "cidr", dst_value: dst.text, proto, ports: port, action: "allow", log: 0 });
+  const rule = ruleFromDrop({ src: String(f.src ?? ""), dst: String(f.dst ?? ""), proto: String(f.proto ?? ""), dport: /^\d+$/.test(String(f.dport ?? "")) ? Number(f.dport) : null }, await db.listPeers(c.env));
+  if (!rule) return firewallPage(c, { kind: "bad", text: "That drop has no usable addresses." });
+  const name = rule.name;
+  await db.addFwRule(c.env, rule);
+  await db.bumpFwVersion(c.env);
   await db.audit(c.env, c.get("user"), "firewall.rule.add", name, null, (await db.listFwRules(c.env)).at(-1));
   return firewallPage(c, { kind: "good", text: `Added "${name}". It applies within 30 seconds.` });
 });

@@ -441,8 +441,12 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
 
 /** Wipe everything the seeder owns. */
 async function wipe(env: Env): Promise<void> {
-  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "fw_forwards", "fw_rules", "schedules"];
-  await env.DB.batch(tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules"];
+  await env.DB.batch([
+    ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
+    // No draft, and the live rule set back at version 1.
+    env.DB.prepare("UPDATE fw_policy SET live_version = 1, draft_base = NULL, draft_default = NULL, apply_token = NULL WHERE id = 1"),
+  ]);
   try {
     await env.DB.prepare("DELETE FROM sqlite_sequence").run();
   } catch {
@@ -751,7 +755,16 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
   const snap = await getSnapshot(env);
   const spent = (await budgetStatus(env, cfg, snap, nowDate)).total;
   await db.setSetting(env, "monthly_budget_gbp", String(Math.max(0.01, Math.round((spent / 0.4) * 100) / 100)));
+  await insertDraft(env);
   return { ok: true, scenario, now: iso(now), counts: await counts(env) };
+}
+
+/** An unapplied firewall draft with two changes: one rule edited, one added. The live rules (and the VM) are untouched. */
+async function insertDraft(env: Env): Promise<void> {
+  await db.ensureFwDraft(env);
+  const k8s = (await db.listFwDraftRules(env)).find((r) => r.name === "k8s-node to the cluster API");
+  if (k8s) await db.updateFwDraftRule(env, k8s.id, { ...k8s, ports: "6443,10250", name: "k8s-node to the cluster API and kubelet" });
+  await db.addFwDraftRule(env, { enabled: 1, name: "Clients to the test VM web page", src_kind: "zone", src_value: "clients", dst_kind: "cidr", dst_value: "10.50.2.4/32", proto: "tcp", ports: "8080", action: "allow", log: 0 });
 }
 
 async function addForward(env: Env): Promise<void> {
