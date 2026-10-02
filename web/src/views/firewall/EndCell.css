@@ -1,4 +1,4 @@
-.fw-end { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.fw-end { display: inline-flex; align-items: center; gap: 10px; min-width: 0; max-width: 190px; vertical-align: middle; }
 .fw-end__icon { flex: none; color: var(--blue-bright); }
 .fw-end__icon--workloads { color: var(--purple); }
 .fw-end__icon--internet,

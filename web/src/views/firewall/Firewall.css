@@ -33,7 +33,7 @@
   grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
   gap: var(--gap);
   min-height: 0;
-  max-height: 250px;
+  max-height: 232px;
 }
 .fw__right {
   display: flex;
@@ -43,8 +43,10 @@
 }
 .fw__right > * { min-height: 0; }
 .fw__right > .fw-drops-panel { flex: 1 1 0; min-height: 120px; }
-.fw__right > .fw-ports-panel { flex: 0 1 auto; max-height: 30%; }
-.fw__right > .fw-cap-panel { flex: 0 1 auto; max-height: 38%; }
+.fw__right > .fw-ports-panel { flex: 0 1 auto; max-height: 26%; }
+.fw__right > .fw-cap-panel { flex: 0 1 auto; max-height: 30%; }
+.fw-cap .select__value { white-space: nowrap; overflow: hidden; }
+.fw-cap .select__value > span { overflow: hidden; text-overflow: ellipsis; }
 .fw__rules { min-height: 0; }
 .fw__bottom > .panel > .panel__body { min-height: 0; }
 
@@ -65,7 +67,10 @@
   .fw__body { grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); }
 }
 @media (max-height: 760px) and (min-width: 1100px) {
-  .fw__bottom { max-height: 200px; }
+  .fw__bottom { max-height: 136px; }
+  .fw__bottom .panel__head { min-height: 32px; padding-top: 8px; }
+  .fw__bottom .panel__body { padding-top: 8px; padding-bottom: 8px; }
+  .fw__bottom .fw-panel-sub { display: none; }
 }
 @media (max-width: 1099px) {
   .fw { height: auto; }

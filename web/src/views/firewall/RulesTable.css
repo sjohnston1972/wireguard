@@ -23,7 +23,12 @@
 
 .fw-rules__name { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
 .fw-rules__name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.fw-rules__name-text { font-weight: 550; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.fw-rules__name-text { font-weight: 550; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+@media (max-width: 1399px) {
+  .fw-rules__name-text { max-width: 170px; }
+  .fw-end { max-width: 150px; }
+  .fw-rules .spark { display: none; }
+}
 .fw-rules__sub { font-size: 12px; color: var(--text-secondary); }
 .fw-rules__problem { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--amber); white-space: normal; }
 .fw-rules__mark {

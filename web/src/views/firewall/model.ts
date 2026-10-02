@@ -179,7 +179,12 @@ export function dropIndex(order: number[], dragged: number, target: number): num
 /** The address line under an end's label in the table. */
 export function endAddress(end: SimEnd, zones: FirewallResponse["zones"]): string {
   if (end.kind === "any") return "0.0.0.0/0";
-  if (end.kind === "zone") return zones.find((z) => z.zone === end.value)?.v4.join(", ") ?? "";
+  if (end.kind === "zone") {
+    const z = zones.find((x) => x.zone === end.value);
+    // The internet is "everything but the private ranges": its v4 list is what it excludes.
+    if (!z) return "";
+    return z.negate ? "0.0.0.0/0" : z.v4.join(", ");
+  }
   if (end.kind === "cidr") return end.value;
   return "";
 }

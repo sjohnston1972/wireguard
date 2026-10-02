@@ -9,7 +9,7 @@
 }
 .fw-rp__tabs { flex: none; }
 .fw-rp__filters { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
-.fw-rp__search { flex: 0 1 300px; min-width: 160px; }
+.fw-rp__search { flex: 0 1 300px; min-width: 120px; }
 .fw-rp__scroll { flex: 1; min-height: 0; overflow: auto; margin: 0 8px; border: 1px solid var(--border); border-radius: 10px; outline: none; }
 .fw-rp__foot {
   display: flex;
@@ -22,10 +22,23 @@
 .fw-rp__hint { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); }
 .fw-rp__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-@media (max-width: 1399px) {
-  .fw-rp__search { flex-basis: 220px; }
+/* 1100-1399 px: one toolbar row (smaller pills, narrower filters), no footer hint
+   (the handles and the drawer say it), so the table keeps its rows. */
+@media (min-width: 1100px) and (max-width: 1399px) {
+  .fw-rp__toolbar { flex-wrap: nowrap; gap: 8px; padding: 8px 12px; }
+  .fw-rp__tabs .tabs__list { flex-wrap: nowrap; gap: 6px; }
+  .fw-rp__tabs .tabs__tab { height: 30px; padding: 0 9px; font-size: 12.5px; }
+  .fw-rp__filters { gap: 6px; }
+  .fw-rp__filters .select__trigger { min-width: 0; width: 112px; height: 30px; white-space: nowrap; }
+  .fw-rp__filters .select__value { overflow: hidden; }
+  .fw-rp__search { flex: 1 1 100px; min-width: 80px; }
+  .fw-rp__filters .select__trigger { width: 104px; }
+  .fw-rp__hint { display: none; }
+  .fw-rp__foot { padding: 6px 12px 8px; justify-content: flex-end; }
 }
-@media (max-height: 700px) and (min-width: 1100px) {
-  .fw-rp__toolbar { padding: 6px 16px; }
-  .fw-rp__foot { padding: 6px 16px 8px; }
+/* Short desktop windows: the panel's name stays for screen readers only. */
+@media (max-height: 760px) and (min-width: 1100px) {
+  .fw__rules > .panel__head { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); padding: 0; min-height: 0; }
+  .fw-rp__toolbar { padding-top: 8px; padding-bottom: 8px; }
+  .fw-rp__foot { padding: 6px 12px 8px; }
 }

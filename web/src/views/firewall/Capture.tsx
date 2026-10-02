@@ -47,7 +47,7 @@ export const CaptureForm = forwardRef<CaptureFormHandle, { fw: FirewallResponse 
     <div className="fw-cap">
       <form ref={wrap} className="fw-cap__form" onSubmit={submit} noValidate>
         <div className="fw-cap__row">
-          <Select label="Interface" showLabel value={iface} onValueChange={setIface} options={ifaces.map(([k, v]) => ({ value: k, label: `${k}: ${v}` }))} />
+          <Select label="Interface" showLabel value={iface} onValueChange={setIface} options={ifaces.map(([k, v]) => ({ value: k, label: `${k} · ${v.split(" (")[0]}` }))} />
           <Select label="Who" showLabel value={who} onValueChange={setWho} options={whoOptions} />
         </div>
         <div className="fw-cap__row">

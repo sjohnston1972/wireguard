@@ -4,6 +4,7 @@ import type { FirewallResponse } from "@shared/api";
 import { Button, MetricTile, Sparkline } from "@/components";
 import { useDraftDefault } from "@/api/mutations";
 import { dropDelta, fmtCount, shownDefault, type RuleView } from "./model";
+import { NARROW, useMedia } from "./useMedia";
 import "./KpiRow.css";
 
 export interface KpiRowProps {
@@ -23,6 +24,7 @@ const Group = ({ label, children }: { label: string; children: ReactNode }) => (
 /** Five tiles: policy set, default action (changing it edits the draft), drops in 24 h, published ports, capture. */
 export const KpiRow = forwardRef<HTMLButtonElement, KpiRowProps>(function KpiRow({ fw, rows, onManageRules, onManagePorts, onStartCapture }, defaultBtn) {
   const setDefault = useDraftDefault();
+  const narrow = useMedia(NARROW);
   const action = shownDefault(fw);
   const other = action === "deny" ? "allow" : "deny";
   const custom = rows.filter((r) => !r.starter).length;
@@ -72,7 +74,7 @@ export const KpiRow = forwardRef<HTMLButtonElement, KpiRowProps>(function KpiRow
           value={fmtCount(fw.drops.last24h)}
           delta={delta ? { ...delta, good: delta.direction === "down" } : undefined}
           sub={`From ${fmtCount(fw.drops.uniqueSources24h)} unique ${fw.drops.uniqueSources24h === 1 ? "source" : "sources"}`}
-          action={<Sparkline variant="bars" tone="blue" label="Drops per hour, last 24 hours" data={fw.drops.hourly24h} width={84} height={30} />}
+          action={<Sparkline variant="bars" tone="blue" label="Drops per hour, last 24 hours" data={fw.drops.hourly24h} width={64} height={30} />}
         />
       </Group>
       <Group label="Published ports">
@@ -81,7 +83,7 @@ export const KpiRow = forwardRef<HTMLButtonElement, KpiRowProps>(function KpiRow
           icon={<Globe />}
           label="Published ports"
           value={`${active} active`}
-          sub={fw.forwards.length > active ? `${fw.forwards.length - active} turned off` : "Instant: not part of the draft"}
+          sub={fw.forwards.length > active ? `${fw.forwards.length - active} turned off` : "Changes apply at once"}
           action={
             <Button size="sm" onClick={onManagePorts}>
               Manage
@@ -100,7 +102,7 @@ export const KpiRow = forwardRef<HTMLButtonElement, KpiRowProps>(function KpiRow
           sub={fw.running ? "Capture and inspect traffic" : "Needs the VM running"}
           action={
             <Button size="sm" aria-label="Start capture: go to the capture form" onClick={onStartCapture}>
-              Start capture
+              {narrow ? "Start" : "Start capture"}
             </Button>
           }
         />
