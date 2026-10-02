@@ -72,6 +72,8 @@
 .ov-row--2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .ov-row--3 { grid-template-columns: minmax(0, 41fr) minmax(0, 45fr) minmax(0, 32fr); }
 .ov-row--4 { grid-template-columns: minmax(0, 54fr) minmax(0, 32fr) minmax(0, 32fr); }
+/* During a run the chip row, pipeline and log share the first two columns. */
+.ov-row--3 > .ov-run { grid-column: span 2; }
 
 /* 641-1099 px: panels stack and the page may scroll. */
 @media (max-width: 1099px) {

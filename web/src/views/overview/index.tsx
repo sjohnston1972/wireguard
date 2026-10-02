@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Settings } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
@@ -10,7 +10,10 @@ import { StatusBanner } from "./Banner";
 import { useServerNow } from "./hooks";
 import { KeyMetrics } from "./KeyMetrics";
 import { Topology } from "./Topology";
-import { STATE_WORD, normalise, regionCountry, regionFull } from "./model";
+import { LastRun, RunPanels } from "./Run";
+import { RecentEvents, SpeedTests, Traffic } from "./Side";
+import { CostImpact, HealthSummary, WatchmanNotes } from "./Lower";
+import { STATE_WORD, inGithubRun, normalise, regionCountry, regionFull } from "./model";
 import "./Overview.css";
 
 const SUBTITLE = "Deploy and monitor your WireGuard environment on Azure.";
@@ -81,15 +84,21 @@ function usePaletteAction(o: OverviewResponse | null, open: (a: ActionName) => v
   const asked = params.get("action") as ActionName | null;
   const handled = useRef<string | null>(null);
   const { toast } = useToast();
+  const ready = !!o;
   useEffect(() => {
-    if (!asked || !o || handled.current === asked) return;
+    // Handled once per appearance of the parameter: a new ?action= (or the same one again later) opens again.
+    if (!asked) {
+      handled.current = null;
+      return;
+    }
+    if (!o || handled.current === asked) return;
     handled.current = asked;
     if (PALETTE_ACTIONS.includes(asked) && actionAllowed(asked, o)) open(asked);
     // Not possible in this state: say so; no form opens, so the address is left as it is.
     else if (PALETTE_ACTIONS.includes(asked)) toast({ tone: "info", title: `${ACTION_WORD[asked]} is not available while the VM is ${STATE_WORD[o.snapshot.state]}.` });
-  }, [asked, o, open, toast]);
+    // `o` is read only when the parameter first appears (or the data first arrives).
+  }, [asked, ready, open, toast]);
   return useCallback(() => {
-    handled.current = null;
     if (!params.has("action")) return;
     const next = new URLSearchParams(params);
     next.delete("action");
@@ -99,7 +108,7 @@ function usePaletteAction(o: OverviewResponse | null, open: (a: ActionName) => v
 
 export function OverviewPage() {
   const q = useOverview();
-  const o = q.data ? normalise(q.data) : null;
+  const o = useMemo(() => (q.data ? normalise(q.data) : null), [q.data]);
   const phone = useIsPhone();
   const [action, setAction] = useState<ActionName | null>(null);
   const clearParam = usePaletteAction(o, setAction);
@@ -123,14 +132,37 @@ export function OverviewPage() {
 }
 
 function Desktop({ o, receivedAt, onAction }: { o: OverviewResponse; receivedAt: number; onAction: (a: ActionName) => void }) {
-  const now = useServerNow(o.now, receivedAt);
+  const now = useServerNow(o.now, receivedAt, 10_000);
   return (
     <>
-      <StatusBanner o={o} now={now} onAction={onAction} />
+      <StatusBanner o={o} now={now} receivedAt={receivedAt} onAction={onAction} />
       <div className="ov-rows">
         <div className="ov-row ov-row--2">
           <Topology o={o} now={now} />
           <KeyMetrics o={o} now={now} />
+        </div>
+        {inGithubRun(o.snapshot.state) ? (
+          <div className="ov-row ov-row--3">
+            <RunPanels o={o} />
+            <div className="ov-side">
+              <RecentEvents />
+              <Traffic o={o} now={now} />
+            </div>
+          </div>
+        ) : (
+          <div className="ov-row ov-row--3">
+            <LastRun o={o} onAction={onAction} />
+            <Traffic o={o} now={now} />
+            <div className="ov-side">
+              <RecentEvents />
+              <SpeedTests o={o} now={now} onAction={onAction} />
+            </div>
+          </div>
+        )}
+        <div className="ov-row ov-row--4">
+          <HealthSummary o={o} now={now} />
+          <CostImpact o={o} />
+          <WatchmanNotes />
         </div>
       </div>
     </>

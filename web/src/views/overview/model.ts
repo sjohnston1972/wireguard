@@ -2,7 +2,7 @@
 // answer. Nothing here fetches or renders.
 
 import type { OverviewResponse } from "@shared/api";
-import type { Step as UiStep, StepState } from "@/components";
+import type { LogLevel, LogLine, Step as UiStep, StepState } from "@/components";
 import type { Snapshot, Step } from "../../../../worker/src/state";
 import { REGIONS } from "../../../../worker/src/region";
 
@@ -320,6 +320,71 @@ export function rate(bytesPerSec: number | null | undefined): string {
   if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} B/s`;
   if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
   return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`;
+}
+
+// ── Run log ──
+
+export interface ParsedLog {
+  lines: LogLine[];
+  /** Where GitHub marks a group ("##[group]Title"): the title and the line it starts at. */
+  groups: { title: string; index: number }[];
+}
+
+const LEVELS = new Set(["INFO", "WARN", "ERROR", "DEBUG"]);
+
+/**
+ * A run's log as LogView lines. GitHub's markers become levels
+ * ("##[error]" ERROR, "##[warning]" WARN) and group titles; the dev
+ * seed's "10:24:27 INFO text" lines keep their time and level.
+ */
+export function parseLog(text: string | null | undefined): ParsedLog {
+  const lines: LogLine[] = [];
+  const groups: ParsedLog["groups"] = [];
+  if (!text) return { lines, groups };
+  for (const raw of text.split("\n")) {
+    const l = raw.replace(/\r$/, "");
+    if (!l.trim() || l.startsWith("##[endgroup]")) continue;
+    const id = String(lines.length);
+    const marker = /^##\[(group|error|warning|debug|notice|command)\](.*)$/.exec(l);
+    if (marker) {
+      const [, kind, rest] = marker;
+      if (kind === "group") {
+        groups.push({ title: rest.trim(), index: lines.length });
+        lines.push({ id, level: "INFO", text: `▸ ${rest.trim()}` });
+      } else lines.push({ id, level: kind === "error" ? "ERROR" : kind === "warning" ? "WARN" : kind === "debug" ? "DEBUG" : "INFO", text: rest });
+      continue;
+    }
+    const seeded = /^(\d{2}:\d{2}:\d{2}) (INFO|WARN|ERROR|DEBUG) (.*)$/.exec(l);
+    if (seeded && LEVELS.has(seeded[2])) {
+      lines.push({ id, time: seeded[1], level: seeded[2] as LogLevel, text: seeded[3] });
+      continue;
+    }
+    lines.push({ id, level: /^error\b/i.test(l.trim()) ? "ERROR" : "INFO", text: l });
+  }
+  return { lines, groups };
+}
+
+/** The log line a step's output starts at: its GitHub group by name, else by order, else by time. Null when unknown. */
+export function stepLine(steps: Step[], i: number, log: ParsedLog): number | null {
+  const name = steps[i]?.name.toLowerCase();
+  if (!name) return null;
+  const byName = log.groups.find((g) => g.title.toLowerCase() === name) ?? log.groups.find((g) => g.title.toLowerCase().includes(name) || name.includes(g.title.toLowerCase()));
+  if (byName) return byName.index;
+  if (log.groups.length === steps.length) return log.groups[i].index;
+  const start = steps[i].started_at?.slice(11, 19);
+  if (start) {
+    const at = log.lines.findIndex((l) => l.time !== undefined && l.time >= start);
+    if (at >= 0) return at;
+  }
+  return null;
+}
+
+export type StepFilter = "all" | "running" | "done" | "pending";
+export function stepMatches(s: Step, f: StepFilter): boolean {
+  if (f === "all") return true;
+  if (f === "running") return s.status === "in_progress";
+  if (f === "done") return s.status === "completed";
+  return s.status !== "completed" && s.status !== "in_progress";
 }
 
 /** "3 s ago" from two times; null when `at` is missing. */

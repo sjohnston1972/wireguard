@@ -4,11 +4,13 @@ import type { OverviewResponse } from "@shared/api";
 import { Button, ProgressBar, cx } from "@/components";
 import { DeployForm, actionAllowed, type ActionName } from "./actions";
 import { STATE_TONE, STATE_WORD, currentStep, failedStep, formatElapsed, formatSpan, hhmm, inGithubRun, isBusy, moveTargets, regionShort, stepProgress, usually } from "./model";
+import { useServerNow } from "./hooks";
 import "./Banner.css";
 
 interface Props {
   o: OverviewResponse;
   now: number;
+  receivedAt: number;
   onAction: (a: ActionName) => void;
 }
 
@@ -44,7 +46,8 @@ function subline(o: OverviewResponse, now: number): string {
 }
 
 /** The middle block: elapsed time and the usual duration (a run), or how long it has been in this state. */
-function Timing({ o, now }: { o: OverviewResponse; now: number }) {
+function Timing({ o, receivedAt }: { o: OverviewResponse; receivedAt: number }) {
+  const now = useServerNow(o.now, receivedAt, 1000);
   const s = o.snapshot;
   const since = s.state === "running" ? s.running_since ?? s.since : s.state === "standby" ? s.standby_since ?? s.since : s.state === "hibernating" || s.state === "resuming" ? s.power_op_at ?? s.since : s.since;
   if (s.state === "destroyed" || !since) return null;
@@ -128,7 +131,7 @@ function Actions({ o, onAction }: { o: OverviewResponse; onAction: (a: ActionNam
 }
 
 /** The full-width status banner: state, progress, timing and the state's actions. */
-export function StatusBanner({ o, now, onAction }: Props) {
+export function StatusBanner({ o, now, receivedAt, onAction }: Props) {
   const s = o.snapshot;
   const progress = inGithubRun(s.state) ? stepProgress(s.steps) : null;
   const failed = s.state === "failed" ? failedStep(s.steps) : null;
@@ -166,7 +169,7 @@ export function StatusBanner({ o, now, onAction }: Props) {
         </div>
       ) : (
         <>
-          <Timing o={o} now={now} />
+          <Timing o={o} receivedAt={receivedAt} />
           <div className="ov-banner__actions">
             <Actions o={o} onAction={onAction} />
           </div>
