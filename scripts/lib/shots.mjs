@@ -164,7 +164,8 @@ export function parseArgs(argv) {
 export function buildPlan(opts, ids) {
   const sizes = opts.sizes ?? SIZES;
   const themes = opts.themes ?? THEMES;
-  const routes = ROUTES.filter((r) => !opts.routes || opts.routes.includes(r.route));
+  // A route given that is not in the list (a Settings section, a given client) is shot as written.
+  const routes = opts.routes ? opts.routes.map((r) => ROUTES.find((x) => x.route === r) ?? { route: r, name: r }) : ROUTES;
   const out = [];
   for (const r of routes) {
     const id = r.needs ? ids[r.needs] : undefined;

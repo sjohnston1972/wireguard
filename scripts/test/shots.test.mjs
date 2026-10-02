@@ -54,6 +54,16 @@ test("flags narrow the plan", () => {
   );
 });
 
+test("a route given that is not in the list (a Settings section, a client) is shot as written, one-screen checked", () => {
+  const plan = buildPlan(parseArgs(["--routes", "/settings/automation,/clients/3,/cost", "--sizes", "1100x600", "--themes", "dark"]), {});
+  assert.deepEqual(
+    plan.map((s) => s.path),
+    ["/settings/automation", "/clients/3", "/cost"],
+  );
+  assert.ok(plan.every((s) => s.checkOverflow));
+  assert.equal(plan[0].file, "settings-automation__1100x600__dark.png");
+});
+
 test("parseArgs knows its flags and refuses the rest", () => {
   const o = parseArgs(["--dry-run", "--scenario", "running", "--base", "http://localhost:5199", "--out", "x"]);
   assert.equal(o.dryRun, true);
