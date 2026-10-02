@@ -242,3 +242,24 @@ export function jsonLines(json: string | null): string[] {
   if (v && typeof v === "object" && !Array.isArray(v)) return Object.entries(v as Record<string, unknown>).map(([k, x]) => `${k}: ${fmt(x)}`);
   return [fmt(v)];
 }
+
+// ── An answer with parts missing ──
+
+const NO_KPIS: ActivityKpis = { deploys: 0, medianDeploySeconds: null, successRate: { success: 0, finished: 0, pct: null }, failedRuns: 0, configChanges: 0, watchmanProblems: 0 };
+
+/**
+ * The answer with every list present. A Worker one release behind (no `previous`)
+ * or a trimmed test answer must show "no data" and empty lists, not crash the page.
+ */
+export function normalize(a: ActivityResponse): ActivityResponse {
+  return {
+    ...a,
+    kpis: a.kpis ?? NO_KPIS,
+    previous: a.previous ?? NO_KPIS,
+    timeline: a.timeline ?? [],
+    runs: a.runs ?? [],
+    notes: a.notes ?? [],
+    all: a.all ?? [],
+    changes: a.changes ?? { rows: [], more: false, page: 1, kind: "", q: "" },
+  };
+}

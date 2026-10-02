@@ -43,7 +43,7 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
               { label: "Duration", value: fmtDuration(run.durationSeconds) ?? (active ? "in progress" : null) },
               { label: "Requested by", value: run.requested_by },
               { label: "Source", value: run.source },
-              { label: "Session cost (estimate)", value: run.sessionCostGbp === null ? "not applicable" : `est. ${fmtGbp(run.sessionCostGbp)}` },
+              { label: "Session cost (estimate)", value: typeof run.sessionCostGbp === "number" ? `est. ${fmtGbp(run.sessionCostGbp)}` : "not applicable" },
               { label: "Public IP", value: run.public_ip, mono: true },
             ]}
           />

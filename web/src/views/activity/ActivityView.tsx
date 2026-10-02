@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ActivityResponse } from "@shared/api";
 import { DataAge, ErrorState, IconButton, PageHeader, Select, Skeleton, useIsPhone } from "@/components";
@@ -9,7 +9,7 @@ import { ChangeLog } from "./ChangeLog";
 import { ChangeDrawer, RunDrawer } from "./Drawers";
 import { EventStream } from "./EventStream";
 import { Kpis } from "./Kpis";
-import { RANGES, type Window } from "./model";
+import { normalize, RANGES, type Window } from "./model";
 import { PhoneActivity } from "./PhoneActivity";
 import { LiveOutput, RunDetails } from "./RunPanels";
 import { Timeline } from "./Timeline";
@@ -27,7 +27,8 @@ function useHeld<T>(data: T | undefined): T | undefined {
 export function ActivityView({ runId }: { runId?: string }) {
   const p = useActivityParams();
   const q = useActivity({ range: p.range, kind: p.kind, q: p.q, page: p.page > 1 ? p.page : undefined });
-  const data: ActivityResponse | undefined = useHeld(q.data);
+  const answer = useMemo(() => (q.data ? normalize(q.data) : undefined), [q.data]);
+  const data: ActivityResponse | undefined = useHeld(answer);
   const phone = useIsPhone();
   const navigate = useNavigate();
   const location = useLocation();

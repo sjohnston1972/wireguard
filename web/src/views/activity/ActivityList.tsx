@@ -54,7 +54,7 @@ export function ActivityList({ data, params, set, window: win, selectedRun, onOp
     { key: "action", header: "Action", cell: (r) => <strong className="act__action">{actionWord(r.action)}</strong> },
     { key: "result", header: "Result", cell: (r) => <StatusPill {...resultPill(r.status)} /> },
     { key: "duration", header: "Duration", cell: (r) => fmtDuration(r.durationSeconds) ?? dash },
-    { key: "cost", header: "Cost impact", cell: (r) => (r.sessionCostGbp === null ? dash : `est. ${fmtGbp(r.sessionCostGbp)}`) },
+    { key: "cost", header: "Cost impact", cell: (r) => (typeof r.sessionCostGbp === "number" ? `est. ${fmtGbp(r.sessionCostGbp)}` : dash) },
     { key: "actor", header: "Actor", cell: (r) => r.requested_by ?? dash, className: "act__col-actor" },
     { key: "source", header: "Source", cell: (r) => r.source, className: "act__col-source" },
     { key: "notes", header: "Notes", cell: (r) => <span className="act__note">{r.error ?? dash}</span>, className: "act__col-notes" },
