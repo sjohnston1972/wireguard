@@ -23,6 +23,10 @@
      same hue as --blue, darker so white text passes 4.5:1. */
   --blue-fill: #1e64fb;
   --blue-fill-hover: #0f5bfa;
+  /* Disabled controls: plainly greyed (no accent fill), text still 3:1 or more. */
+  --disabled-bg: #112033;
+  --disabled-fg: #73839a;
+  --disabled-border: #22364d;
 
   --radius-control: 8px;
   --radius-panel: 14px;

@@ -33,7 +33,10 @@
 .btn--ghost { background: transparent; color: var(--text-secondary); }
 .btn--ghost:hover:not(:disabled) { background: var(--bg-tile); color: var(--text-primary); }
 
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Disabled: greyed fill and text from the disabled tokens (legible, 3:1+),
+   not a fade that leaves light-theme buttons near invisible. */
+.btn:disabled { background: var(--disabled-bg); border-color: var(--disabled-border); color: var(--disabled-fg); cursor: not-allowed; }
+.btn--ghost:disabled { background: transparent; border-color: transparent; color: var(--disabled-fg); }
 .btn[aria-busy="true"] { cursor: progress; }
 .btn__spin { animation: btn-spin 0.9s linear infinite; }
 @keyframes btn-spin { to { transform: rotate(360deg); } }

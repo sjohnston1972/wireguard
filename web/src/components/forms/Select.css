@@ -18,7 +18,7 @@
 }
 .select__trigger:hover { background: var(--bg-elevated); }
 .select__trigger[data-state="open"] { border-color: var(--blue-bright); }
-.select__trigger:disabled { opacity: 0.45; cursor: not-allowed; }
+.select__trigger:disabled { background: var(--disabled-bg); border-color: var(--disabled-border); color: var(--disabled-fg); cursor: not-allowed; }
 .select__value { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .select__content {
   z-index: 80;

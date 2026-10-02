@@ -23,6 +23,9 @@
   --purple: #6d3fd1;
   --blue-fill: #2563eb;
   --blue-fill-hover: #1d56d8;
+  --disabled-bg: #e9eef5;
+  --disabled-fg: #66768b;
+  --disabled-border: #c3cddb;
 
   --focus-ring: #1d56d8;
   --scrollbar-thumb: #c3cddb;
@@ -51,6 +54,9 @@
     --purple: #6d3fd1;
     --blue-fill: #2563eb;
     --blue-fill-hover: #1d56d8;
+    --disabled-bg: #e9eef5;
+    --disabled-fg: #66768b;
+    --disabled-border: #c3cddb;
 
     --focus-ring: #1d56d8;
     --scrollbar-thumb: #c3cddb;

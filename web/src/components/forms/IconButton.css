@@ -14,4 +14,4 @@
 .icon-btn--sm { width: 28px; height: 28px; }
 .icon-btn--bordered { background: var(--bg-tile); border-color: var(--border-strong); }
 .icon-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-elevated); }
-.icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.icon-btn:disabled { color: var(--disabled-fg); cursor: not-allowed; }

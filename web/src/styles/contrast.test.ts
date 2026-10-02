@@ -64,6 +64,11 @@ describe("token contrast", () => {
       }
     });
 
+    it(`${name}: disabled controls are legible, at least 3:1 against their fill and the surfaces they sit on`, () => {
+      for (const bg of ["--disabled-bg", "--bg-panel", "--bg-tile", "--bg-app", "--bg-bar"]) {
+        expect(contrast(tok(t, "--disabled-fg"), tok(t, bg)), `${name} --disabled-fg on ${bg}`).toBeGreaterThanOrEqual(3);
+      }
+    });
   }
 });
 
@@ -88,4 +93,12 @@ describe("component CSS uses the checked pairs", () => {
     }
   });
 
+  it("disabled buttons, icon buttons, selects and switches use the disabled tokens, not a fade", () => {
+    const disabled = rules.filter((r) => /:disabled/.test(r.sel) && !/:not\(:disabled\)/.test(r.sel));
+    expect(disabled.length).toBeGreaterThanOrEqual(4);
+    for (const r of disabled) {
+      expect(r.body, `${r.file} ${r.sel}`).not.toMatch(/opacity\s*:\s*0?\.\d/);
+      expect(r.body, `${r.file} ${r.sel}`).toMatch(/var\(--disabled-fg\)/);
+    }
+  });
 });
