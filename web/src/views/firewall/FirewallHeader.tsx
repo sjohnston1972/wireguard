@@ -42,14 +42,14 @@ export function PolicyStatus({ fw, waiting, updatedAt, compact }: { fw: Firewall
 }
 
 /** "n unpublished changes", Discard (asks first) and Review & apply. Only while a draft exists. */
-export function DraftBar({ fw, onReview, className }: { fw: FirewallResponse; onReview: () => void; className?: string }) {
+export function DraftBar({ fw, onReview, className, pinned }: { fw: FirewallResponse; onReview: () => void; className?: string; pinned?: boolean }) {
   const discard = useDraftDiscard();
   const [asking, setAsking] = useState(false);
   const n = fw.draft?.changes ?? 0;
   if (!fw.draft) return null;
   const words = `${n} unpublished ${n === 1 ? "change" : "changes"}`;
   return (
-    <div className={cx("fw-draftbar", className)} role="region" aria-label="Unpublished changes">
+    <div className={cx("fw-draftbar", className)} role="region" aria-label="Unpublished changes" data-pinned={pinned ? "bottom" : undefined}>
       <span className="fw-draftbar__count">
         <span className="fw-draftbar__dot" aria-hidden />
         {words}
