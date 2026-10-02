@@ -20,7 +20,9 @@
     "home": "node scripts/home.mjs",
     "dev:web": "vite --config web/vite.config.ts",
     "dev:api": "node scripts/dev.mjs --api",
-    "build:web": "vite build --config web/vite.config.ts"
+    "build:web": "vite build --config web/vite.config.ts",
+    "seed": "node scripts/seed-scenarios.mjs",
+    "shots": "node scripts/shots.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260922.1",
