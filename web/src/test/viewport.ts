@@ -12,6 +12,7 @@ import { mediaList, mediaMatches } from "./media";
 //   setViewport("tablet")   800 x 1000 (641-1099 px: panels stack)
 //   setViewport("desktop")  1600 x 900
 //   setViewport(1100)       any width, height 900
+//   setViewport([1100, 600]) any width and height (the one-screen boundary)
 
 export type Viewport = "phone" | "tablet" | "desktop";
 
@@ -45,8 +46,8 @@ function makeList(query: string): MediaQueryList {
 }
 
 /** Make the test browser this size; see the top of this file. */
-export function setViewport(to: Viewport | number): void {
-  size = typeof to === "number" ? [to, 900] : SIZES[to];
+export function setViewport(to: Viewport | number | [width: number, height: number]): void {
+  size = Array.isArray(to) ? [to[0], to[1]] : typeof to === "number" ? [to, 900] : SIZES[to];
   if (!stub || window.matchMedia !== stub) {
     // A fresh test (the previous stub was undone): start with no listeners.
     watches = [];

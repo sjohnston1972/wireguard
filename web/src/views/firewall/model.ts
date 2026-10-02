@@ -221,3 +221,6 @@ export function zoneOfIp(ip: string, zones: FirewallResponse["zones"]): Zone {
 
 /** Below 1400 px the right column folds into one tabbed panel (spec §8.3). */
 export const NARROW = "(max-width: 1399px)";
+
+/** Below 761 px high (desktop) the zones and the simulator join those tabs, so the rules table gets the left column. */
+export const SHORT = "(min-width: 1100px) and (max-height: 760px)";

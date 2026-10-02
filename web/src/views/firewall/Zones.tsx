@@ -9,22 +9,39 @@ import "./Zones.css";
  * green when the rules (or the default) let the left zone reach the right
  * one, red when they block it. Clicking a zone filters the rules table.
  */
-export function ZonesPanel({ fw, rows, selected, onSelect }: { fw: FirewallResponse; rows: RuleView[]; selected: Zone | "all"; onSelect: (z: Zone | "all") => void }) {
+type ZonesProps = { fw: FirewallResponse; rows: RuleView[]; selected: Zone | "all"; onSelect: (z: Zone | "all") => void };
+
+const Legend = () => (
+  <span className="fw-zones__legend" aria-hidden>
+    <span className="fw-zones__key fw-zones__key--allow" /> Allowed
+    <span className="fw-zones__key fw-zones__key--deny" /> Blocked
+  </span>
+);
+
+export function ZonesPanel(props: ZonesProps) {
+  return (
+    <Panel title="Network zones" className="fw-zones-panel" actions={<Legend />}>
+      <p className="fw-panel-sub">How traffic flows between your networks. Click a zone to filter the rules.</p>
+      <ZonesMap {...props} />
+    </Panel>
+  );
+}
+
+/** The zones on their own, for the right column's tabs on a short window. */
+export function ZonesTab(props: ZonesProps) {
+  return (
+    <div className="fw-zones-tab">
+      <Legend />
+      <ZonesMap {...props} />
+    </div>
+  );
+}
+
+function ZonesMap({ fw, rows, selected, onSelect }: ZonesProps) {
   const def = shownDefault(fw);
   const zones = ZONE_ORDER.map((z) => fw.zones.find((x) => x.zone === z)).filter((z): z is FirewallResponse["zones"][number] => !!z);
   const ruleCount = (z: Zone) => rows.filter((r) => (r.from.kind === "zone" && r.from.value === z) || (r.to.kind === "zone" && r.to.value === z)).length;
   return (
-    <Panel
-      title="Network zones"
-      className="fw-zones-panel"
-      actions={
-        <span className="fw-zones__legend" aria-hidden>
-          <span className="fw-zones__key fw-zones__key--allow" /> Allowed
-          <span className="fw-zones__key fw-zones__key--deny" /> Blocked
-        </span>
-      }
-    >
-      <p className="fw-panel-sub">How traffic flows between your networks. Click a zone to filter the rules.</p>
       <div className="fw-zones">
         {zones.map((z, i) => {
           const Icon = ZONE_ICON[z.zone];
@@ -53,6 +70,5 @@ export function ZonesPanel({ fw, rows, selected, onSelect }: { fw: FirewallRespo
           );
         })}
       </div>
-    </Panel>
   );
 }

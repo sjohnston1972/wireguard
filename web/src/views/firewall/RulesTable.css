@@ -1,8 +1,8 @@
 /* The rules table borrows DataTable's cell look (dt__th / dt__td) and adds
    two-line cells, drag handles and drop markers. */
 .fw-rules { table-layout: auto; }
-.fw-rules .dt__td { height: 50px; padding: 0 10px; }
-.fw-rules .dt__th { padding: 8px 10px; }
+.fw-rules .dt__td { height: 50px; padding: 0 8px; }
+.fw-rules .dt__th { padding: 8px 8px; }
 .fw-rules__row { outline: none; }
 .fw-rules__row:last-child .dt__td { border-bottom: 0; }
 .fw-rules__row:not(.fw-rules__row--default) { cursor: pointer; }
@@ -21,11 +21,15 @@
 .fw-rules__handle:hover { color: var(--text-primary); background: var(--bg-tile); }
 .fw-rules__handle:active { cursor: grabbing; }
 
-.fw-rules__name { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+/* The name and its tags share one width: a long name gives way to its tags, so
+   the Hits, Status and menu columns stay on screen (no sideways scroll). */
+.fw-rules__name { display: flex; flex-direction: column; min-width: 0; max-width: 250px; line-height: 1.3; }
 .fw-rules__name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.fw-rules__name-text { font-weight: 550; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+.fw-rules__name-line > :not(.fw-rules__name-text) { flex: none; }
+.fw-rules__name-text { font-weight: 550; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.fw-rules .fw-end { max-width: 160px; }
 @media (max-width: 1399px) {
-  .fw-rules__name-text { max-width: 170px; }
+  .fw-rules__name { max-width: 190px; }
   .fw-end { max-width: 150px; }
   .fw-rules .spark { display: none; }
 }

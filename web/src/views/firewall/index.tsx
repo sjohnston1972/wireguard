@@ -10,16 +10,16 @@ import { KpiRow } from "./KpiRow";
 import { DropsList, DropsPanel } from "./Drops";
 import { ForwardModal, PortsList, PortsPanel } from "./Ports";
 import { CaptureForm, CapturePanel, type CaptureFormHandle } from "./Capture";
-import { ZonesPanel } from "./Zones";
-import { SimulatorPanel, type SimulatorHandle } from "./Simulator";
+import { ZonesPanel, ZonesTab } from "./Zones";
+import { SimulatorForm, SimulatorPanel, type SimulatorHandle } from "./Simulator";
 import { RuleDrawer } from "./RuleDrawer";
 import { FirewallPhone } from "./FirewallPhone";
-import { NARROW, NO_FILTER, ruleViews, type RuleFilter } from "./model";
+import { NARROW, NO_FILTER, SHORT, ruleViews, type RuleFilter } from "./model";
 import { FirewallSkeleton } from "./FirewallSkeleton";
 import { useMedia } from "@/lib/useMedia";
 import "./Firewall.css";
 
-type RightTab = "drops" | "ports" | "capture";
+type RightTab = "drops" | "ports" | "capture" | "zones" | "sim";
 type Forward = FirewallResponse["forwards"][number];
 
 /**
@@ -33,6 +33,8 @@ export function FirewallPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const narrow = useMedia(NARROW);
+  // A short window gives the rules table the whole left column: zones and the simulator join the right-hand tabs.
+  const short = useMedia(SHORT);
   const phone = useIsPhone();
 
   const [filter, setFilter] = useState<RuleFilter>(NO_FILTER);
@@ -147,18 +149,25 @@ export function FirewallPage() {
     );
   }
 
-  const right = narrow ? (
+  const testSimulation = () => {
+    if (!short) return simRef.current?.focus();
+    setRightTab("sim");
+    setTimeout(() => simRef.current?.focus(), 0);
+  };
+  const zones = <ZonesTab fw={data} rows={rows} selected={filter.zone} onSelect={(z) => setFilter((f) => ({ ...f, zone: z }))} />;
+
+  const right = narrow || short ? (
     <Panel className="fw-righttabs" bodyClassName="fw-righttabs__body">
       <Tabs
         variant="pill"
-        aria-label="Drops, published ports and capture"
+        aria-label={short ? "Drops, published ports, capture, zones and simulator" : "Drops, published ports and capture"}
         value={rightTab}
         onValueChange={(v) => setRightTab(v as RightTab)}
         items={[
           { value: "drops", label: "Drops", count: data.drops.recent.length, content: <DropsList fw={data} /> },
           {
             value: "ports",
-            label: "Published ports",
+            label: short ? "Ports" : "Published ports",
             content: (
               <div className="fw-righttabs__ports">
                 <Button ref={portsAddRef} size="sm" variant="primary" onClick={addForward}>
@@ -169,6 +178,12 @@ export function FirewallPage() {
             ),
           },
           { value: "capture", label: "Capture", content: <CaptureForm ref={captureRef} fw={data} /> },
+          ...(short
+            ? [
+                { value: "zones", label: "Zones", content: zones },
+                { value: "sim", label: "Test", content: <SimulatorForm ref={simRef} fw={data} /> },
+              ]
+            : []),
         ]}
       />
     </Panel>
@@ -193,14 +208,16 @@ export function FirewallPage() {
             filter={filter}
             onFilter={setFilter}
             onAddRule={() => setAddOpen(true)}
-            onTestSimulation={() => simRef.current?.focus()}
+            onTestSimulation={testSimulation}
             onEditDefault={() => defaultBtnRef.current?.focus()}
             className="fw__rules"
           />
-          <div className="fw__bottom">
-            <ZonesPanel fw={data} rows={rows} selected={filter.zone} onSelect={(z) => setFilter((f) => ({ ...f, zone: z }))} />
-            <SimulatorPanel ref={simRef} fw={data} />
-          </div>
+          {!short && (
+            <div className="fw__bottom">
+              <ZonesPanel fw={data} rows={rows} selected={filter.zone} onSelect={(z) => setFilter((f) => ({ ...f, zone: z }))} />
+              <SimulatorPanel ref={simRef} fw={data} />
+            </div>
+          )}
         </div>
         <div className="fw__right">{right}</div>
       </div>
