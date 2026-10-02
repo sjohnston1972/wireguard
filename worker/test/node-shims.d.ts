@@ -27,3 +27,8 @@ declare module "node:crypto" {
   const nodeCrypto: any;
   export = nodeCrypto;
 }
+
+// Used only to syntax-check the VM agent script (bash -n) from a test.
+declare module "node:child_process" {
+  export function execFileSync(file: string, args: string[]): unknown;
+}

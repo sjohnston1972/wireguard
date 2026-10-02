@@ -17,6 +17,7 @@ import { registerSettings } from "./settings";
 import { registerBackup } from "./backup";
 import { registerPush } from "./push";
 import { registerSimulate } from "./simulate";
+import { registerHealthCheck } from "./healthcheck";
 
 export function buildApi(): Hono<ApiEnv> {
   const api = createApi();
@@ -33,6 +34,7 @@ export function buildApi(): Hono<ApiEnv> {
   registerBackup(api);
   registerPush(api);
   registerSimulate(api);
+  registerHealthCheck(api);
   api.all("*", (c) => fail(c, 404, "not_found", "No such API route."));
   return api;
 }

@@ -26,6 +26,8 @@ export interface SelfTest {
   internet: boolean | null;
   internet6: boolean | null;
   error?: string;
+  /** Set when this run answered an on-demand health check (the request's id). */
+  id?: string;
 }
 
 /** Which checks failed, in words; empty when everything that ran passed. */
@@ -215,6 +217,8 @@ export interface Snapshot {
   pending_deploy: PendingDeploy | null;
   /** A speed test the VM has been asked to run, until its result comes back. */
   speedtest_req: { id: string; target: string; target_name: string; at: string } | null;
+  /** An on-demand health check (the VM's self-test) the VM has been asked to run, until its result comes back. */
+  selftest_req: { id: string; at: string } | null;
   firewall: FirewallStatus | null;
   /**
    * Firewall hit totals carried over from earlier readings: every time the
@@ -266,6 +270,7 @@ export const EMPTY: Snapshot = {
   profile: null,
   pending_deploy: null,
   speedtest_req: null,
+  selftest_req: null,
   firewall: null,
   fw_base: {},
   fw_cleared_at: null,
