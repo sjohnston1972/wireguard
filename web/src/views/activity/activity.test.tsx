@@ -49,16 +49,37 @@ describe("Activity header and figures", () => {
     // 96 % against 90 %.
     expect(screen.getByRole("group", { name: "Success rate" })).toHaveTextContent("6 pts vs previous period");
     expect(screen.getByRole("group", { name: "Success rate" })).toHaveTextContent("44 successful / 46 total");
-    // Same count as before: nothing to say.
-    expect(screen.getByRole("group", { name: "Failed runs" })).not.toHaveTextContent("vs previous");
+    // Same count as before: it says so.
+    expect(screen.getByRole("group", { name: "Failed runs" })).toHaveTextContent("same as previous period");
     expect(screen.getByRole("group", { name: "Config changes" })).toHaveTextContent("50% vs previous period");
-    expect(screen.getByRole("group", { name: "Watchman problems" })).toHaveTextContent("1");
+    // From 0 to 1: a count against zero, not a percentage.
+    const watch = screen.getByRole("group", { name: "Watchman problems" });
+    expect(watch).toHaveTextContent("1");
+    expect(watch).toHaveTextContent("+1 vs previous period");
   });
 
-  it("no delta when the previous period had nothing to compare", async () => {
+  it("every KPI with a previous value shows a vs-previous figure, also from zero or unchanged", async () => {
+    renderApp("/activity", {
+      routes: activityRoutes({
+        "GET /api/v1/activity": activityResponse({
+          kpis: kpis({ deploys: 6, medianDeploySeconds: 239, successRate: { success: 11, finished: 11, pct: 100 }, failedRuns: 0, configChanges: 2, watchmanProblems: 0 }),
+          previous: kpis({ deploys: 0, medianDeploySeconds: null, successRate: { success: 0, finished: 0, pct: null }, failedRuns: 0, configChanges: 1, watchmanProblems: 0 }),
+        }),
+      }),
+    });
+    expect(await group("Deploys")).toHaveTextContent("+6 vs previous period");
+    expect(screen.getByRole("group", { name: "Failed runs" })).toHaveTextContent("same as previous period");
+    expect(screen.getByRole("group", { name: "Config changes" })).toHaveTextContent("100% vs previous period");
+    expect(screen.getByRole("group", { name: "Watchman problems" })).toHaveTextContent("same as previous period");
+    // No previous median or rate: nothing to compare.
+    expect(screen.getByRole("group", { name: "Median deploy duration" })).not.toHaveTextContent("vs previous");
+    expect(screen.getByRole("group", { name: "Success rate" })).not.toHaveTextContent("vs previous");
+  });
+
+  it("no delta for figures the previous period has no value for", async () => {
     renderApp("/activity", { routes: activityRoutes({ "GET /api/v1/activity": activityResponse({ previous: emptyKpis() }) }) });
     await group("Deploys");
-    for (const name of ["Deploys", "Median deploy duration", "Success rate", "Failed runs", "Config changes", "Watchman problems"]) {
+    for (const name of ["Median deploy duration", "Success rate"]) {
       expect(screen.getByRole("group", { name })).not.toHaveTextContent("vs previous");
     }
   });

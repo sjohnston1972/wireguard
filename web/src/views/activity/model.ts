@@ -66,18 +66,25 @@ export function fmtGbp(v: number): string {
 
 // ── "vs previous period" ──
 
-/** Percent change as a tile delta. No delta without something to compare to, or when nothing moved. */
+/**
+ * The change against the previous period as a tile delta, whenever the
+ * previous period has a value: a percentage, "+n" from zero (no percentage of
+ * nothing), or "same as previous period". No previous value, no delta.
+ */
 export function percentDelta(cur: number | null, prev: number | null, goodWhen: "up" | "down" | null): Delta | undefined {
-  if (cur === null || prev === null || prev === 0) return undefined;
-  const pct = Math.round((Math.abs(cur - prev) / prev) * 100);
-  if (pct === 0) return undefined;
+  if (cur === null || prev === null) return undefined;
+  const pct = prev === 0 ? null : Math.round((Math.abs(cur - prev) / prev) * 100);
+  if (cur === prev || pct === 0) return { text: "same as previous period", direction: "flat", good: null };
   const direction = cur > prev ? "up" : "down";
-  return { text: `${pct}% vs previous period`, direction, good: goodWhen === null ? null : goodWhen === direction };
+  const good = goodWhen === null ? null : goodWhen === direction;
+  if (pct === null) return { text: `+${cur} vs previous period`, direction, good };
+  return { text: `${pct}% vs previous period`, direction, good };
 }
 
 /** Change in percentage points (success rate). */
 export function pointsDelta(cur: number | null, prev: number | null): Delta | undefined {
-  if (cur === null || prev === null || cur === prev) return undefined;
+  if (cur === null || prev === null) return undefined;
+  if (cur === prev) return { text: "same as previous period", direction: "flat", good: null };
   return { text: `${Math.abs(cur - prev)} pts vs previous period`, direction: cur > prev ? "up" : "down", good: cur > prev };
 }
 
