@@ -1,6 +1,8 @@
 import { useParams } from "react-router-dom";
-import { Placeholder } from "../Placeholder";
+import { ActivityView } from "./ActivityView";
 
-// Plan 4 area E replaces this file with the Activity view (the run route opens its drawer).
-export const ActivityPage = () => <Placeholder title="Activity" />;
-export const RunDetailPage = () => <Placeholder title={`Run ${useParams().id}`} />;
+/** /activity */
+export const ActivityPage = () => <ActivityView />;
+
+/** /activity/runs/:id: the Activity page with that run's drawer open. */
+export const RunDetailPage = () => <ActivityView runId={useParams().id} />;
