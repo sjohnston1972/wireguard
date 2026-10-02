@@ -211,6 +211,10 @@ describe("scenarios", () => {
     expect(fw.drops.recent.length).toBeGreaterThan(3);
     expect(fw.drops.recent.some((d: any) => d.proto.toLowerCase() === "tcp" && d.dport === 8080)).toBe(true);
     expect(fw.rules.some((r: any) => r.hits && r.hits[0] > 0)).toBe(true);
+    // Rule hit history, so the Firewall screen's Hits 24h column and its trend have data.
+    expect(fw.rules.some((r: any) => r.hits24h > 0)).toBe(true);
+    expect(fw.rules.find((r: any) => r.hits24h > 0).trend24h).toHaveLength(24);
+    expect(fw.defaultHits24h).toBeGreaterThan(0);
     expect(fw.captures.length).toBeGreaterThan(0);
     expect(fw.forwards.length).toBeGreaterThan(0);
 
@@ -297,7 +301,7 @@ describe("scenarios", () => {
     await seed(env, "running");
     await seed(env, "empty");
     expect((await api(env, "GET", "/overview")).json.snapshot.state).toBe("destroyed");
-    for (const t of ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "fw_forwards"]) {
+    for (const t of ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards"]) {
       const n = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first<{ n: number }>();
       expect(n!.n, t).toBe(0);
     }

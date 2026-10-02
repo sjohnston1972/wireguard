@@ -25,7 +25,7 @@ import type { Env } from "./env";
 import { isLocalhost } from "./auth";
 import * as db from "./db";
 import { EMPTY, getSnapshot, saveSnapshot, nextTraffic, nextLatency, nextSession, nextTalkers, detectRoams, type AgentReport, type AgentPeer, type Snapshot, type Step, type Session, type Talker, type FirewallStatus } from "./state";
-import { recordHeartbeat, rollUp, bucket } from "./history";
+import { recordHeartbeat, rollUp, bucket, fwDeltas } from "./history";
 import { freshDrops, nextFirewall } from "./runs";
 import { effectiveConfig } from "./settings";
 import { compileFirewall } from "./firewall";
@@ -427,7 +427,7 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
     counters.default = [counters.default[0] + dropN, counters.default[1] + dropN * 60];
     const fwReport = { hash: o.fwHash, error: null, counters: structuredClone(counters), drops };
     traffic = nextTraffic(traffic, report, t);
-    await recordHeartbeat(env, { report, prev, rtt, traffic, drops: freshDrops(fwReport, report.at) });
+    await recordHeartbeat(env, { report, prev, rtt, traffic, drops: freshDrops(fwReport, report.at), fwHits: fwDeltas(firewall, fwReport) });
     latency = nextLatency(latency, rtt, report.peers.map((p) => p.public_key));
     roams = { ...roams, ...detectRoams(prev, report, report.at) };
     session = nextSession(session, prev, report, t);
@@ -441,7 +441,7 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
 
 /** Wipe everything the seeder owns. */
 async function wipe(env: Env): Promise<void> {
-  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules"];
+  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules"];
   await env.DB.batch([
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
     // No draft, and the live rule set back at version 1.
