@@ -1,32 +1,40 @@
 import { useState } from "react";
-import { ChevronDown, Moon, Search, Sun, User } from "lucide-react";
+import { Moon, Search, Sun } from "lucide-react";
 import { currentTheme, setTheme } from "./theme";
+import { AccountMenu } from "./AccountMenu";
+import { ConnectionIndicator } from "./Connection";
+import { EnvLabel, StateChip } from "./StateChip";
+import { NotesIndicator } from "./NotesIndicator";
 
-// Placeholder slots for the top bar. They look like the mockups but show no
-// live data (no invented numbers). Plan 3 P3 replaces them: the search button
-// opens the command palette, the chip comes from /overview, the account menu
-// from /session.
+// The top bar's right-hand side, in order: search, state chip (with the
+// read-only environment label), connection light, notes bell, theme toggle,
+// account menu. Each is live; the data they show comes from the api/ hooks.
 
-export function SearchSlot() {
+const isMac = typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent || "");
+
+export function SearchSlot({ onOpen }: { onOpen: () => void }) {
   return (
-    <button type="button" className="topbar__search" aria-label="Search">
+    <button type="button" className="topbar__search" aria-label="Search" aria-keyshortcuts="Control+K Meta+K" onClick={onOpen}>
       <Search size={16} aria-hidden="true" />
       <span className="topbar__search-text">Search clients, logs, settings...</span>
       <kbd className="topbar__kbd" aria-hidden="true">
-        ⌘ K
+        {isMac ? "⌘ K" : "Ctrl K"}
       </kbd>
     </button>
   );
 }
 
-export function RegionChipSlot() {
+export function StateSlot() {
   return (
-    <div className="topbar__chip">
-      <span className="topbar__chip-dot" aria-hidden="true" />
-      <span>Azure • UK South</span>
-    </div>
+    <>
+      <EnvLabel />
+      <StateChip />
+    </>
   );
 }
+
+export const ConnectionSlot = ConnectionIndicator;
+export const NotesSlot = NotesIndicator;
 
 export function ThemeToggleSlot() {
   const [theme, set] = useState(currentTheme);
@@ -46,14 +54,4 @@ export function ThemeToggleSlot() {
   );
 }
 
-export function AccountSlot() {
-  return (
-    <button type="button" className="topbar__account" aria-label="Account menu">
-      <span className="topbar__avatar" aria-hidden="true">
-        <User size={16} />
-      </span>
-      <span className="topbar__account-text">Account</span>
-      <ChevronDown size={14} aria-hidden="true" />
-    </button>
-  );
-}
+export const AccountSlot = AccountMenu;

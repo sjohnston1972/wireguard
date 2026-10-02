@@ -11,6 +11,7 @@ export default mergeConfig(
       include: ["src/**/*.test.{ts,tsx}"],
       setupFiles: ["./src/test/setup.ts"],
       css: false,
+      unstubGlobals: true,
     },
   }),
 );

@@ -71,7 +71,9 @@ export const useReconcile = () => useApiMutation(run("/reconcile"));
 export const useExtend = () => useApiMutation<{ hours: number | null }>(run<{ hours: number | null }>("/extend", (v) => v));
 export const useSpeedTest = () => useApiMutation(run("/speedtest"));
 export const useAllowSsh = () => useApiMutation(run("/allow-ssh"));
-export const useAckNotes = () => useApiMutation<void>({ method: "POST", path: "/notes/ack", invalidate: [["session"], ["activity"]], message: () => "Notes marked as read." });
+/** `quiet` skips the toast, for when opening the notes marks them read as a matter of course. */
+export const useAckNotes = (opts: { quiet?: boolean } = {}) =>
+  useApiMutation<void>({ method: "POST", path: "/notes/ack", invalidate: [["session"], ["activity"]], message: () => (opts.quiet ? null : "Notes marked as read.") });
 
 // ── Clients ──
 const CLIENTS: QueryKey[] = [["clients"], ["overview"], ["firewall"]];
