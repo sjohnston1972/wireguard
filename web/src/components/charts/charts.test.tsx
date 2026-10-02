@@ -30,6 +30,7 @@ import { ProgressBar } from "./ProgressBar";
 import { TimeSeriesChart } from "./TimeSeriesChart";
 import { BarChart } from "./BarChart";
 import { StackedBars } from "./StackedBars";
+import { axisTicks } from "./axis";
 
 describe("ProgressBar", () => {
   it("exposes value and name", () => {
@@ -239,6 +240,23 @@ describe("BarChart", () => {
   });
 });
 
+describe("axisTicks", () => {
+  it("puts one tick at the start of each run of equal labels, then thins evenly", () => {
+    expect(axisTicks(["a", "a", "b", "b", "c", "c"], 10)).toEqual([0, 2, 4]);
+    expect(axisTicks(["1", "2", "3", "4", "5", "6", "7", "8"], 4)).toEqual([0, 2, 4, 6]);
+    expect(axisTicks(["a", "a", "a", "b", "b", "b", "c", "c", "c", "d"], 2)).toEqual([0, 6]);
+    expect(axisTicks([], 4)).toEqual([]);
+  });
+  it("never repeats a label", () => {
+    const labels = Array.from({ length: 96 }, (_, i) => `${1 + Math.floor(i / 24)} Oct`);
+    for (const max of [2, 3, 5, 8, 20]) {
+      const picked = axisTicks(labels, max).map((i) => labels[i]);
+      expect(new Set(picked).size).toBe(picked.length);
+      expect(picked.length).toBeLessThanOrEqual(max);
+    }
+  });
+});
+
 describe("StackedBars", () => {
   const series = [
     { key: "ok", label: "Successful runs", color: "green" as const },
@@ -257,6 +275,15 @@ describe("StackedBars", () => {
     expect(fig).toHaveTextContent("Successful runs 12");
     expect(fig).toHaveTextContent("Failed runs 4");
     expect(fig).toHaveTextContent("busiest 20 Sept");
+  });
+  it("labels each day once on the axis when several buckets share a day (no '19 Sept 19 Sept')", () => {
+    const hourly = Array.from({ length: 30 }, (_, i) => ({ label: `${19 + Math.floor(i / 6)} Sept`, values: { ok: 1 + (i % 3), bad: 0 } }));
+    const { container } = render(<StackedBars title="Activity timeline" series={series} buckets={hourly} />);
+    const ticks = [...container.querySelectorAll("text.stack__tick")].map((t) => t.textContent ?? "").filter((t) => /Sept/.test(t));
+    expect(ticks.length).toBeGreaterThan(1);
+    expect(new Set(ticks).size).toBe(ticks.length);
+    // Each label sits at the first bucket of its day.
+    expect(ticks[0]).toBe("19 Sept");
   });
   it("renders 'no data' with no buckets", () => {
     render(<StackedBars title="Activity timeline" series={series} buckets={[]} />);

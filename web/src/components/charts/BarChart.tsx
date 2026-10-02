@@ -1,6 +1,7 @@
 import { cx } from "../cx";
 import { fmtNum, niceMax } from "./colors";
 import { useElementWidth } from "./useElementWidth";
+import { axisTicks } from "./axis";
 import "./BarChart.css";
 
 export interface Bar {
@@ -56,8 +57,8 @@ export function BarChart({ title, bars, forecast = [], previous, budget, format,
   const X = (i: number) => ML + slotW * i + slotW / 2;
   const Y = (v: number) => MT + ph - (v / max) * ph;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * max);
-  const every = Math.max(1, Math.ceil(slots / Math.max(2, Math.floor(pw / 70))));
   const all = [...bars, ...forecast];
+  const tickAt = new Set(axisTicks(all.map((b) => b.label), Math.max(2, Math.floor(pw / 70))));
 
   const total = real.reduce((s, b) => s + b.value, 0);
   const peak = real.reduce((a, b) => (b.value > a.value ? b : a), real[0]);
@@ -92,7 +93,7 @@ export function BarChart({ title, bars, forecast = [], previous, budget, format,
             </g>
           ))}
           {all.map((b, i) =>
-            i % every === 0 ? (
+            tickAt.has(i) ? (
               <text key={i} x={X(i)} y={height - 5} textAnchor="middle" className="bar__tick">
                 {b.label}
               </text>

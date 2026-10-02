@@ -2,6 +2,7 @@ import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { cx, type Tone } from "../cx";
 import { niceMax, toneVar } from "./colors";
 import { useElementWidth } from "./useElementWidth";
+import { axisTicks } from "./axis";
 import "./StackedBars.css";
 
 export interface StackSeries {
@@ -63,7 +64,7 @@ export function StackedBars({ title, series, buckets, onBrush, height = 120, cla
   const slot = pw / buckets.length;
   const bw = Math.max(1.5, Math.min(14, slot * 0.7));
   const Y = (v: number) => MT + ph - (v / max) * ph;
-  const every = Math.max(1, Math.ceil(buckets.length / Math.max(2, Math.floor(pw / 80))));
+  const ticks = new Set(axisTicks(buckets.map((b) => b.label), Math.max(2, Math.floor(pw / 80))));
 
   const sums = series.map((s) => ({ ...s, total: buckets.reduce((a, b) => a + (b.values[s.key] ?? 0), 0) }));
   const busiest = buckets[totals.indexOf(Math.max(...totals))];
@@ -179,7 +180,7 @@ export function StackedBars({ title, series, buckets, onBrush, height = 120, cla
               );
             })}
             {buckets.map((b, i) =>
-              i % every === 0 ? (
+              ticks.has(i) ? (
                 <text key={i} x={ML + slot * (i + 0.5)} y={height - 5} textAnchor="middle" className="stack__tick">
                   {b.label}
                 </text>
