@@ -273,11 +273,24 @@ export async function setPublishedPorts(env: Env, rules: PublishedNsgRule[]): Pr
   if (!r.ok) throw new Error(`Azure refused to update the published ports (${r.status}): ${(await r.text()).slice(0, 200)}`);
 }
 
-/** The Cost Management question both cost pulls ask: this resource group, month to date, daily, actual cost. */
-function costQueryBody(env: Env, grouping?: { type: "Dimension"; name: string }[]) {
+/**
+ * The time frame both cost pulls ask for. Normally month to date. Azure's
+ * figures lag by up to a day and the pull runs soon after UTC midnight, so
+ * in the first 3 days of a month it reaches back to the 1st of the previous
+ * month: the last day or two of that month get their final figures (the
+ * rows are upserted, so earlier readings are overwritten, not doubled).
+ */
+export function costTimeframe(now: Date): { timeframe: "MonthToDate" } | { timeframe: "Custom"; timePeriod: { from: string; to: string } } {
+  if (now.getUTCDate() > 3) return { timeframe: "MonthToDate" };
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 10);
+  return { timeframe: "Custom", timePeriod: { from: `${from}T00:00:00Z`, to: `${now.toISOString().slice(0, 10)}T23:59:59Z` } };
+}
+
+/** The Cost Management question both cost pulls ask: this resource group, month to date (see costTimeframe), daily, actual cost. */
+function costQueryBody(env: Env, now: Date, grouping?: { type: "Dimension"; name: string }[]) {
   return {
     type: "ActualCost",
-    timeframe: "MonthToDate",
+    ...costTimeframe(now),
     dataset: {
       granularity: "Daily",
       aggregation: { totalCost: { name: "Cost", function: "Sum" } },
@@ -294,9 +307,9 @@ function costQueryBody(env: Env, grouping?: { type: "Dimension"; name: string }[
  * that tidy to the same day, service and location are added together. Throws
  * when Azure refuses; the caller decides what that costs.
  */
-export async function costBreakdownMonthToDate(env: Env): Promise<{ day: string; category: string; location: string; gbp: number }[]> {
+export async function costBreakdownMonthToDate(env: Env, now = new Date()): Promise<{ day: string; category: string; location: string; gbp: number }[]> {
   const sub = env.AZURE_SUBSCRIPTION_ID;
-  const body = costQueryBody(env, [
+  const body = costQueryBody(env, now, [
     { type: "Dimension", name: "ServiceName" },
     { type: "Dimension", name: "ResourceLocation" },
   ]);
@@ -327,9 +340,9 @@ export async function costBreakdownMonthToDate(env: Env): Promise<{ day: string;
 }
 
 /** Daily actual cost for this resource group, month to date, via Cost Management. */
-export async function costMonthToDate(env: Env): Promise<{ days: { day: string; gbp: number }[]; currency: string }> {
+export async function costMonthToDate(env: Env, now = new Date()): Promise<{ days: { day: string; gbp: number }[]; currency: string }> {
   const sub = env.AZURE_SUBSCRIPTION_ID;
-  const body = costQueryBody(env);
+  const body = costQueryBody(env, now);
   const r = await arm(env, `/subscriptions/${sub}/providers/Microsoft.CostManagement/query?api-version=2023-11-01`, {
     method: "POST",
     body: JSON.stringify(body),

@@ -263,7 +263,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     const last = await env.STATUS.get("cost:fetched_day");
     if (last !== today) {
       try {
-        const { days } = await costMonthToDate(env);
+        const { days } = await costMonthToDate(env, now);
         for (const d of days) await db.upsertCostDay(env, d.day, d.gbp);
         await env.STATUS.put("cost:fetched_day", today);
         notes.push(`cost: ${days.length} day(s) updated`);
@@ -276,7 +276,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     const lastSplit = await env.STATUS.get("cost:breakdown_day");
     if (lastSplit !== today) {
       try {
-        const rows = await costBreakdownMonthToDate(env);
+        const rows = await costBreakdownMonthToDate(env, now);
         await db.upsertCostBreakdown(env, rows);
         await env.STATUS.put("cost:breakdown_day", today);
         notes.push(`cost breakdown: ${rows.length} row(s) updated`);

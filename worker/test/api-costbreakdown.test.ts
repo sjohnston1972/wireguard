@@ -6,7 +6,7 @@
 // alone; the Cost page's data adds the split for the range, as shares that
 // add up, falling back to the sessions' estimate and then to nothing; old
 // rows expire; and the reads and deletes use the table's key.
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { api, apiEnv } from "./api-helpers";
 import { runScheduled } from "../src/monitor";
 import { costType, breakdownOf } from "../src/costview";
@@ -87,6 +87,68 @@ describe("the daily pull", () => {
     const [plain, grouped] = bodies;
     expect(grouped.dataset.grouping).toEqual([{ type: "Dimension", name: "ServiceName" }, { type: "Dimension", name: "ResourceLocation" }]);
     expect({ ...grouped, dataset: { ...grouped.dataset, grouping: undefined } }).toEqual({ ...plain, dataset: { ...plain.dataset, grouping: undefined } });
+  });
+});
+
+// Azure's figures lag by up to a day, and the pull runs soon after UTC
+// midnight, so month to date on the 1st would never go back for the last
+// day or two of the month before. For the first 3 days of a month both
+// queries reach back to the 1st of the previous month.
+describe("the month boundary", () => {
+  const capture = () => {
+    const bodies: any[] = [];
+    const inner = globalThis.fetch;
+    vi.stubGlobal("fetch", async (i: any, init?: RequestInit) => {
+      if (String(i?.url ?? i).includes("CostManagement")) bodies.push(JSON.parse(String(init?.body)));
+      return inner(i, init);
+    });
+    return bodies;
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("on the 2nd, both queries cover the 1st of the previous month to today, and late figures overwrite the earlier ones", async () => {
+    const { env, world } = apiEnv();
+    await db.upsertCostDay(env, "2026-10-31", 0.1); // pulled on the 31st, before Azure had the whole day
+    await db.upsertCostBreakdown(env, [{ day: "2026-10-31", category: "Virtual Machines", location: "uksouth", gbp: 0.1 }]);
+    world.costRows = [
+      { day: "2026-10-31", service: "Virtual Machines", location: "UK South", gbp: 0.5 },
+      { day: "2026-11-01", service: "Virtual Machines", location: "UK South", gbp: 0.3 },
+    ];
+    const bodies = capture();
+    await runScheduled(env, new Date("2026-11-02T00:30:00Z"));
+    expect(bodies).toHaveLength(2);
+    for (const b of bodies) {
+      expect(b.timeframe).toBe("Custom");
+      expect(b.timePeriod).toEqual({ from: "2026-10-01T00:00:00Z", to: "2026-11-02T23:59:59Z" });
+    }
+    expect(await db.costDays(env, "2026-10-01")).toMatchObject([{ day: "2026-10-31", gbp: 0.5 }, { day: "2026-11-01", gbp: 0.3 }]);
+    expect(await stored(env)).toEqual([
+      { day: "2026-10-31", category: "Virtual Machines", location: "uksouth", gbp: 0.5 },
+      { day: "2026-11-01", category: "Virtual Machines", location: "uksouth", gbp: 0.3 },
+    ]);
+  });
+
+  it("on the 1st of January it reaches back into December of the year before", async () => {
+    const { env, world } = apiEnv();
+    world.costRows = [];
+    const bodies = capture();
+    await runScheduled(env, new Date("2027-01-01T00:30:00Z"));
+    expect(bodies.map((b) => b.timePeriod)).toEqual([
+      { from: "2026-12-01T00:00:00Z", to: "2027-01-01T23:59:59Z" },
+      { from: "2026-12-01T00:00:00Z", to: "2027-01-01T23:59:59Z" },
+    ]);
+  });
+
+  it("on the 15th, both queries are month to date as before", async () => {
+    const { env, world } = apiEnv();
+    world.costRows = [];
+    const bodies = capture();
+    await runScheduled(env, new Date("2026-11-15T00:30:00Z"));
+    expect(bodies).toHaveLength(2);
+    for (const b of bodies) {
+      expect(b.timeframe).toBe("MonthToDate");
+      expect(b.timePeriod).toBeUndefined();
+    }
   });
 });
 
