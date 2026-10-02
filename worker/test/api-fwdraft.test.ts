@@ -242,17 +242,6 @@ const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as Execution
 const DUMP = (lines: string[]) => ["PRIV\tS=\t51820\toff", ...lines].join("\n");
 const STALE = "The live rules changed since this draft began. Discard it and start again.";
 
-/** An old page route, posted as a form the way the browser does. */
-async function page(env: Env, path: string, form: Record<string, string> = {}): Promise<number> {
-  const r = await worker.fetch(
-    new Request(base + path, { method: "POST", body: new URLSearchParams(form).toString(), headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/x-www-form-urlencoded", "HX-Request": "true" } }),
-    env,
-    ctx,
-  );
-  await r.text();
-  return r.status;
-}
-
 async function deployWith(env: Env, world: ReturnType<typeof apiEnv>["world"]) {
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
   const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
@@ -401,27 +390,6 @@ describe("firewall drafts: apply, discard, staleness", () => {
     expect((await api(env, "POST", "/backup/restore/confirm", { token: p.json.token, confirm: "restore" })).status).toBe(200);
     expect(await version()).toBe(3);
     expect((await api(env, "POST", "/firewall/draft/apply", { baseVersion: 1 })).status).toBe(409);
-  });
-
-  it("the old page's rule and default edits bump live_version", async () => {
-    const { env } = apiEnv();
-    const version = async () => (await db.getFwPolicy(env)).live_version;
-    const [r1] = await db.listFwRules(env);
-    const steps: [string, Record<string, string>][] = [
-      ["/firewall/rules", { name: "Old page rule", from: "zone:clients", to: "any", proto: "any", action: "allow" }],
-      [`/firewall/rules/${r1.id}/down`, {}],
-      [`/firewall/rules/${r1.id}/up`, {}],
-      [`/firewall/rules/${r1.id}/toggle`, {}],
-      [`/firewall/rules/${r1.id}/delete`, {}],
-      ["/firewall/default", { value: "allow" }],
-      ["/firewall/allow-drop", { src: "198.51.100.7", dst: "10.50.2.9", proto: "TCP", dport: "22" }],
-    ];
-    let v = await version();
-    for (const [path, form] of steps) {
-      expect(await page(env, path, form), path).toBe(200);
-      expect(await version(), path).toBe(v + 1);
-      v++;
-    }
   });
 
   it("discard deletes the draft and is ok with none", async () => {

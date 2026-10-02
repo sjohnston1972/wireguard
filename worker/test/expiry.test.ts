@@ -22,10 +22,12 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function post(url: string, body: unknown): Promise<Response> {
-  const init = { method: "POST", body: JSON.stringify(body), headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" } };
-  return worker.fetch(new Request(`http://localhost:8787${url}`, init), env, ctx) as Promise<Response>;
+async function send(method: string, path: string, body: unknown): Promise<Response> {
+  const init = { method, body: JSON.stringify(body), headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" } };
+  return worker.fetch(new Request(`http://localhost:8787/api/v1${path}`, init), env, ctx) as Promise<Response>;
 }
+const post = (path: string, body: unknown) => send("POST", path, body);
+const put = (path: string, body: unknown) => send("PUT", path, body);
 
 const base: Peer = { id: 1, name: "Guest", public_key: GUEST, ip: "10.13.13.2", enabled: 1, full_tunnel: 0, azure_vnet: 0, tunnel_dns: 0, routes: "", home_lan: 0, created_at: new Date().toISOString(), note: null };
 
@@ -63,26 +65,26 @@ describe("expiry rules", () => {
 
 describe("expiry in the database, the API and the watchman", () => {
   it("adds a guest with an expiry, changes it, and removes it", async () => {
-    let r = await post("/api/peers", { name: "Guest", public_key: GUEST, expires_days: 7 });
+    let r = await post("/clients", { name: "Guest", public_key: GUEST, expires_days: 7 });
     expect(r.status).toBe(200);
     const { peer } = (await r.json()) as { peer: Peer };
     expect(Date.parse(peer.expires_at!) - Date.now()).toBeGreaterThan(7 * DAY - 60_000);
 
-    r = await post(`/api/peers/${peer.id}/expiry`, { days: 1 });
+    r = await put(`/clients/${peer.id}`, { expires_days: 1 });
     expect(r.status).toBe(200);
     expect(Date.parse((await db.getPeer(env, peer.id))!.expires_at!) - Date.now()).toBeLessThan(DAY + 60_000);
 
-    r = await post(`/api/peers/${peer.id}/expiry`, { days: 0 });
+    r = await put(`/clients/${peer.id}`, { expires_days: 0 });
     expect((await db.getPeer(env, peer.id))!.expires_at).toBeNull();
 
-    const plain = (await (await post("/api/peers", { name: "Phone", public_key: PHONE })).json()) as { peer: Peer };
+    const plain = (await (await post("/clients", { name: "Phone", public_key: PHONE })).json()) as { peer: Peer };
     expect(plain.peer.expires_at).toBeNull();
   });
 
   it("the home site never expires", async () => {
     const site = await db.addPeer(env, { name: "home-site", public_key: HOME, ip: "10.13.13.10", full_tunnel: false });
     await env.DB.prepare("UPDATE peers SET routes = '192.168.1.0/24' WHERE id = ?1").bind(site.id).run();
-    const r = await post(`/api/peers/${site.id}/expiry`, { days: 1 });
+    const r = await put(`/clients/${site.id}`, { expires_days: 1 });
     expect(r.status).toBe(400);
     expect((await db.getPeer(env, site.id))!.expires_at).toBeNull();
   });

@@ -38,37 +38,38 @@ describe("requests from other sites (issue #1)", () => {
   });
 
   it("a POST from another site is refused; the same POST from our page works", async () => {
-    let r = await call(env, "http://localhost:8787/alerts/ack", { method: "POST", headers: { "Sec-Fetch-Site": "cross-site", Origin: "https://evil.example" } });
+    let r = await call(env, "http://localhost:8787/api/v1/notes/ack", { method: "POST", headers: { "Sec-Fetch-Site": "cross-site", Origin: "https://evil.example" } });
     expect(r.status).toBe(403);
-    r = await call(env, "http://localhost:8787/alerts/ack", { method: "POST" });
+    r = await call(env, "http://localhost:8787/api/v1/notes/ack", { method: "POST" });
     expect(r.status).toBe(403);
-    r = await call(env, "http://localhost:8787/alerts/ack", { method: "POST", headers: { "Sec-Fetch-Site": "same-origin" } });
-    expect(r.status).toBe(302);
-    r = await call(env, "http://localhost:8787/alerts/ack", { method: "POST", headers: { Origin: "http://localhost:8787" } });
-    expect(r.status).toBe(302);
+    r = await call(env, "http://localhost:8787/api/v1/notes/ack", { method: "POST", headers: { "Sec-Fetch-Site": "same-origin" } });
+    expect(r.status).toBe(200);
+    r = await call(env, "http://localhost:8787/api/v1/notes/ack", { method: "POST", headers: { Origin: "http://localhost:8787" } });
+    expect(r.status).toBe(200);
   });
 
   it("JSON routes want a JSON label", async () => {
     const body = JSON.stringify({ endpoint: "https://fcm.googleapis.com/fcm/send/abc" });
-    let r = await call(env, "http://localhost:8787/api/push/subscribe", { method: "POST", body, headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "text/plain" } });
+    let r = await call(env, "http://localhost:8787/api/v1/push/subscribe", { method: "POST", body, headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "text/plain" } });
     expect(r.status).toBe(400);
-    r = await call(env, "http://localhost:8787/api/peers", { method: "POST", body: JSON.stringify({ name: "x" }), headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" } });
+    r = await call(env, "http://localhost:8787/api/v1/clients", { method: "POST", body: JSON.stringify({ name: "x" }), headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" } });
     expect(r.status).toBe(400);
-    expect(((await r.json()) as { error: string }).error).toMatch(/Name|key/);
+    expect(((await r.json()) as { error: { message: string } }).error.message).toMatch(/Name|key/);
   });
 
   it("phone alerts can only be pointed at a real push service (issue #16)", async () => {
     const sub = (endpoint: string) => ({ method: "POST", body: JSON.stringify({ endpoint, keys: { p256dh: "B".repeat(87), auth: "a".repeat(22) } }), headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" } });
-    expect((await call(env, "http://localhost:8787/api/push/subscribe", sub("https://evil.example/collect/abcdef"))).status).toBe(400);
-    expect((await call(env, "http://localhost:8787/api/push/subscribe", sub("https://fcm.googleapis.com/fcm/send/abcdef"))).status).toBe(200);
+    expect((await call(env, "http://localhost:8787/api/v1/push/subscribe", sub("https://evil.example/collect/abcdef"))).status).toBe(400);
+    expect((await call(env, "http://localhost:8787/api/v1/push/subscribe", sub("https://fcm.googleapis.com/fcm/send/abcdef"))).status).toBe(200);
   });
 
   it("a built-in name like 'constructor' is not a region (issue #53)", async () => {
-    const same = { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/x-www-form-urlencoded", "HX-Request": "true" };
-    const r = await call(env, "http://localhost:8787/actions/deploy", { method: "POST", body: "choice=r%3Aconstructor&hours=1", headers: same });
-    expect(await r.text()).toContain("Unknown region.");
-    const p = await call(env, "http://localhost:8787/settings/profiles", { method: "POST", body: "name=x&region=toString&vm_size=Standard_B1s", headers: same });
-    expect(p.headers.get("Location")).toBe("/settings?err=profile");
+    const same = { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" };
+    const r = await call(env, "http://localhost:8787/api/v1/deploy", { method: "POST", body: JSON.stringify({ region: "constructor", hours: 1 }), headers: same });
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as { error: { message: string } }).error.message).toContain("Unknown region.");
+    const p = await call(env, "http://localhost:8787/api/v1/profiles", { method: "POST", body: JSON.stringify({ name: "x", region: "toString", vmSize: "Standard_B1s" }), headers: same });
+    expect(p.status).toBe(400);
   });
 
   it("token routes called by the VM, GitHub and the phone are not affected", async () => {
@@ -82,10 +83,10 @@ describe("requests from other sites (issue #1)", () => {
 describe("browser safety headers (issue #6)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("every page says: scripts from here only, never inside a frame", async () => {
+  it("every Worker answer says: scripts from here only, never inside a frame", async () => {
     const { env } = makeEnv({ AUTH_DEV_BYPASS: "1" });
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const r = await call(env, "http://localhost:8787/");
+    const r = await call(env, "http://localhost:8787/health");
     expect(r.status).toBe(200);
     const csp = r.headers.get("Content-Security-Policy") ?? "";
     expect(csp).toContain("script-src 'self'");
@@ -93,12 +94,6 @@ describe("browser safety headers (issue #6)", () => {
     expect(csp).not.toMatch(/script-src[^;]*(unsafe|jsdelivr)/);
     expect(r.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(r.headers.get("Referrer-Policy")).toBe("same-origin");
-    const html = await r.text();
-    // htmx comes from this site now, and no page carries an inline script.
-    expect(html).toContain('src="/htmx.min.js');
-    expect(html).not.toContain("cdn.jsdelivr.net");
-    expect(html).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/);
-    // Non-page answers get them too.
     const m = await call(env, "http://localhost:8787/manifest.webmanifest");
     expect(m.headers.get("X-Frame-Options")).toBe("DENY");
   });

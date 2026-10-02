@@ -31,8 +31,8 @@ const app = new Hono<App>();
 
 // ── Browser safety rules on every page ─────────────────────────────────────
 // Content-Security-Policy tells the browser what a wg-admin page may load:
-// scripts only from this site (htmx is kept in worker/public, not fetched
-// from a CDN), styles from here plus Google Fonts, and it may not be shown
+// scripts only from this site (never a CDN), styles from here plus Google
+// Fonts, and it may not be shown
 // inside another site's frame (so nobody can overlay invisible buttons on it,
 // "clickjacking"). Inline style="..." attributes are allowed because the
 // screens use them; inline scripts are not. Like an outbound ACL for the page.
