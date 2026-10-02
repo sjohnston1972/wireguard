@@ -52,6 +52,13 @@ describe("Overview lower row", () => {
     expect(r.fetchMock!.calls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 
+  it("?action= that the state does not allow opens nothing and says why", async () => {
+    const r = renderApp("/?action=deploy", { routes: routes(overview("running")) });
+    expect(await screen.findByText("Deploy is not available while the VM is Running.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(r.fetchMock!.calls.filter((c) => c.method !== "GET")).toEqual([]);
+  });
+
   it("health summary lists each check with its age", async () => {
     renderApp("/", { routes: routes(overview("running")) });
     const h = await screen.findByRole("region", { name: "Health summary" });
