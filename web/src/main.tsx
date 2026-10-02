@@ -8,6 +8,7 @@ import "./styles/themes.css";
 import "./styles/base.css";
 import { applyStoredTheme } from "@/shell/theme";
 import { App } from "./App";
+import { registerSw } from "./registerSw";
 
 applyStoredTheme();
 
@@ -16,3 +17,6 @@ createRoot(document.getElementById("root")!).render(
     <App />
   </StrictMode>,
 );
+
+// Only the built app (what the Worker serves); the Vite dev server runs without it.
+if (import.meta.env.PROD) void registerSw();

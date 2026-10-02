@@ -9,7 +9,8 @@ import { startDeploy, issueRunSecrets, handleCallback, handleAgent, sessionSumma
 import { startHibernate, refreshPower } from "../src/standby";
 import { runScheduled, FAILED_GRACE_MINUTES } from "../src/monitor";
 import { runSchedules, windowNow, londonInstant } from "../src/schedule";
-import { getSnapshot, saveSnapshot, saveSnapshotIf } from "../src/state";
+import { getSnapshot, saveSnapshot, saveSnapshotIf, type Snapshot } from "../src/state";
+import { heartbeatStale } from "../src/overview";
 
 let env: Env;
 let world: World;
@@ -208,5 +209,68 @@ describe("schedules across the clock changes (#27)", () => {
     const left = (Date.parse((await getSnapshot(env)).auto_destroy_at!) - Date.now()) / 60_000;
     expect(left).toBeGreaterThan(88);
     expect(left).toBeLessThan(92);
+  });
+});
+
+describe("the unreachable alert and the boot grace", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const unreachable = () => world.notes.filter((n) => /unreachable/.test(n.title));
+  const unreachableAlerts = async () => (await db.listAlerts(env)).filter((a) => a.kind === "unreachable");
+
+  async function runningFor(ms: number, lastAgentMsAgo: number | null) {
+    await toRunning();
+    await saveSnapshot(env, { running_since: ago(ms), since: ago(ms), last_agent_at: lastAgentMsAgo === null ? null : ago(lastAgentMsAgo) });
+  }
+
+  it.each([30_000, 4 * 60_000])("no unreachable alert while a fresh VM boots (running for %i ms)", async (ms) => {
+    await runningFor(ms, null);
+    await runScheduled(env);
+    expect(unreachable()).toHaveLength(0);
+    expect(await unreachableAlerts()).toHaveLength(0);
+  });
+
+  it("unreachable after the boot grace with no heartbeat", async () => {
+    await runningFor(6 * 60_000, null);
+    await runScheduled(env);
+    expect(unreachable()).toHaveLength(1);
+    expect(await unreachableAlerts()).toHaveLength(1);
+    expect((await unreachableAlerts())[0].message).toMatch(/hasn't reported in since it started 5 minutes ago/);
+    expect(unreachable()[0].message ?? unreachable()[0].body).toMatch(/since it started 5 minutes ago/);
+    expect(JSON.stringify(unreachable()[0])).not.toMatch(/2 minutes/);
+    await runScheduled(env); // flagged once, not every 5 minutes
+    expect(unreachable()).toHaveLength(1);
+  });
+
+  it("unreachable 2 minutes after the last heartbeat", async () => {
+    await runningFor(30 * 60_000, 3 * 60_000);
+    await runScheduled(env);
+    expect(unreachable()).toHaveLength(1);
+    expect((await unreachableAlerts())[0].message).toMatch(/for 2 minutes/);
+    await saveSnapshot(env, { last_agent_at: ago(60_000) });
+    await runScheduled(env);
+    expect((await db.listAlerts(env)).some((a) => /Heartbeat from the VM is back/.test(a.message))).toBe(true);
+  });
+
+  it("a resumed VM gets the same boot grace", async () => {
+    await runningFor(4 * 60 * 60_000, null);
+    await saveSnapshot(env, { running_since: ago(40_000), last_agent_at: null });
+    await runScheduled(env);
+    expect(unreachable()).toHaveLength(0);
+  });
+
+  it("heartbeatStale with no start time at all falls back to the 2-minute rule", () => {
+    const now = Date.parse("2026-10-02T10:10:00Z");
+    const s = { state: "running", running_since: null, since: null, last_agent_at: "2026-10-02T10:05:00Z" } as unknown as Snapshot;
+    expect(heartbeatStale(s, now)).toBe(true);
+    expect(heartbeatStale({ ...s, last_agent_at: "2026-10-02T10:09:00Z" } as Snapshot, now)).toBe(false);
+    expect(heartbeatStale({ ...s, last_agent_at: null } as Snapshot, now)).toBe(true);
+  });
+
+  it("heartbeatStale: a heartbeat from before this session counts as none", () => {
+    const now = Date.parse("2026-10-02T10:10:00Z");
+    const s = { state: "running", running_since: "2026-10-02T10:09:30Z", since: null, last_agent_at: "2026-10-02T09:00:00Z" } as unknown as Snapshot;
+    expect(heartbeatStale(s, now)).toBe(false); // booting: inside the grace
+    expect(heartbeatStale({ ...s, running_since: "2026-10-02T10:00:00Z", last_agent_at: "2026-10-02T09:00:00Z" } as Snapshot, now)).toBe(true);
+    expect(heartbeatStale({ ...s, running_since: "2026-10-02T10:00:00Z", last_agent_at: "2026-10-02T10:09:00Z" } as Snapshot, now)).toBe(false);
   });
 });

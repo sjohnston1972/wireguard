@@ -520,23 +520,6 @@ export async function updateFwRule(env: Env, id: number, patch: Partial<FwRule>)
     .run();
 }
 
-export async function deleteFwRule(env: Env, id: number): Promise<void> {
-  await env.DB.prepare("DELETE FROM fw_rules WHERE id = ?1").bind(id).run();
-}
-
-/** Move a rule one place up or down: swap positions with its neighbour. */
-export async function moveFwRule(env: Env, id: number, dir: -1 | 1): Promise<void> {
-  const rules = await listFwRules(env);
-  const i = rules.findIndex((r) => r.id === id);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= rules.length) return;
-  // Renumber in tens, so equal positions cannot make the swap a no-op; one
-  // batch, one round trip.
-  const order = rules.map((r) => r.id);
-  [order[i], order[j]] = [order[j], order[i]];
-  await env.DB.batch(order.map((rid, k) => env.DB.prepare("UPDATE fw_rules SET position = ?2 WHERE id = ?1").bind(rid, (k + 1) * 10)));
-}
-
 // ── Firewall draft and the live rule set's version (0015) ────────────────
 //
 // Numbers bound from JavaScript reach D1 as REAL, so every bound id,

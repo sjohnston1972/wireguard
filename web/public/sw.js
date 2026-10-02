@@ -2,9 +2,11 @@
  *
  * Plain English: what lets a phone install wg-admin as an app. It caches
  * nothing and changes nothing while the network works: every page still
- * comes live from the Worker, behind the login. Its one job is a clear
+ * comes live from Cloudflare, behind the login. Its one job is a clear
  * offline page instead of the browser's own error when the phone has no
  * signal, and being there is what Chrome looks for before offering Install.
+ * It is served at /sw.js with scope "/" (as before the React app), so phones
+ * keep their alert subscriptions when it is updated.
  *
  * It also shows the dashboard's phone alerts (Web Push). An alert can carry
  * two buttons, such as "Extend 1h" and "Hibernate"; tapping one POSTs its
@@ -63,8 +65,8 @@ self.addEventListener("push", function (e) {
 // keys rotated). The browser then tells us here. Sign up again with the same
 // dashboard key and hand the new one to the dashboard, dropping the old, so
 // alerts keep arriving without anyone having to open Settings. If this fails
-// (for example the sign-in has expired) the Phone alerts panel will show
-// "not registered" next time it is opened.
+// (for example the sign-in has expired) Settings > Mobile will show the
+// alerts as "stale" next time it is opened.
 function deviceLabel() {
   var ua = self.navigator.userAgent;
   return (/Android/i.test(ua) ? "Android phone" : /iPhone|iPad/i.test(ua) ? "iPhone" : /Windows/i.test(ua) ? "Windows PC" : /Mac/i.test(ua) ? "Mac" : "Device") + " (renewed)";
@@ -87,7 +89,7 @@ self.addEventListener("pushsubscriptionchange", function (e) {
   // The dashboard's key: from the old subscription, or else ask the dashboard.
   function key() {
     if (oldKey) return Promise.resolve(b64url(oldKey));
-    return fetch("/api/push/status", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (j) { if (!j.vapid) throw new Error("no key"); return j.vapid; });
+    return fetch("/api/v1/push/status", { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (j) { if (!j.vapid) throw new Error("no key"); return j.vapid; });
   }
   e.waitUntil(
     (e.newSubscription ? Promise.resolve(e.newSubscription) : key().then(function (k) {
@@ -95,8 +97,8 @@ self.addEventListener("pushsubscriptionchange", function (e) {
     }))
       .then(function (sub) {
         var j = sub.toJSON();
-        return postJson("/api/push/subscribe", { endpoint: j.endpoint, keys: j.keys, label: deviceLabel() }).then(function () {
-          if (old && old.endpoint && old.endpoint !== j.endpoint) return postJson("/api/push/unsubscribe", { endpoint: old.endpoint });
+        return postJson("/api/v1/push/subscribe", { endpoint: j.endpoint, keys: j.keys, label: deviceLabel() }).then(function () {
+          if (old && old.endpoint && old.endpoint !== j.endpoint) return postJson("/api/v1/push/unsubscribe", { endpoint: old.endpoint });
         });
       })
       .catch(function () { /* nothing more to do from here; Settings will show it */ })
@@ -120,12 +122,27 @@ self.addEventListener("notificationclick", function (e) {
     );
     return;
   }
+  // A tap opens the alert's page (a failed run, Cost, Settings > Mobile): an
+  // open dashboard window is brought forward and, for a specific page, moved
+  // there; a general alert (url "/") only brings it forward. With no window
+  // open, a new one opens at that page.
+  var url = data.url || "/";
+  function path(u) { return String(u || "").replace(/^[a-z]+:\/\/[^/]+/i, "") || "/"; }
   e.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
       for (var i = 0; i < list.length; i++) {
-        if ("focus" in list[i]) return list[i].focus();
+        var w = list[i];
+        if (!("focus" in w)) continue;
+        return w.focus().then(function (f) {
+          var win = f || w;
+          // A general alert (url "/") only brings the window forward: moving it could pull
+          // someone off a half-finished form. Specific pages (Cost, a run, Settings > Mobile) navigate.
+          if (path(url) === "/" || path(win.url) === path(url) || !("navigate" in win)) return win;
+          // navigate() only works on a window this worker controls; otherwise open the page.
+          return win.navigate(url).catch(function () { return self.clients.openWindow(url); });
+        });
       }
-      return self.clients.openWindow(data.url || "/");
+      return self.clients.openWindow(url);
     })
   );
 });

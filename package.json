@@ -13,6 +13,7 @@
     "secrets": "node scripts/secrets.mjs",
     "tf-validate": "node scripts/tf-validate.mjs",
     "deploy-worker": "node scripts/deploy-worker.mjs",
+    "rollback-worker": "node scripts/rollback-worker.mjs",
     "migrate": "node scripts/migrate.mjs",
     "test": "node --test \"scripts/test/*.test.mjs\" && vitest run",
     "dev": "node scripts/dev.mjs",
@@ -22,7 +23,8 @@
     "dev:api": "node scripts/dev.mjs --api",
     "build:web": "vite build --config web/vite.config.ts",
     "seed": "node scripts/seed-scenarios.mjs",
-    "shots": "node scripts/shots.mjs"
+    "shots": "node scripts/shots.mjs",
+    "bundle-size": "node scripts/bundle-size.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260922.1",

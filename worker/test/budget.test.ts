@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeEnv, type World } from "./harness";
 import type { Env } from "../src/env";
+import { api } from "./api-helpers";
 import worker from "../src/index";
 import * as db from "../src/db";
 import { budgetFigures, budgetStatus, checkBudget } from "../src/budget";
@@ -124,42 +125,26 @@ describe("Deploy when over budget", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  const deploy = (fields: Record<string, string>) =>
-    worker.fetch(new Request("http://localhost:8787/actions/deploy", { method: "POST", headers: { "Sec-Fetch-Site": "same-origin", "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(fields).toString() }), env, ctx) as Promise<Response>;
-  const page = async (path: string) => (await (worker.fetch(new Request(`http://localhost:8787${path}`), env, ctx) as Promise<Response>)).text();
+  const deploy = (body: Record<string, unknown>) => api(env, "POST", "/deploy", body);
 
   it("is refused by the Worker without the tick, whatever the browser does", async () => {
-    const body = await (await deploy({ hours: "2" })).text();
-    expect(body).toMatch(/of the £10.00 budget. Tick .*to go ahead/);
+    const r = await deploy({ hours: 2 });
+    expect(r.status).toBe(422);
+    expect(r.json.error.code).toBe("over_budget");
+    expect(r.json.error.message).toMatch(/of the £10.00 budget/);
     expect(world.dispatches).toHaveLength(0);
   });
 
   it("goes ahead with the tick", async () => {
-    const body = await (await deploy({ hours: "2", over_budget_ok: "yes" })).text();
-    expect(body).toMatch(/Deploy started/);
+    const r = await deploy({ hours: 2, overBudgetOk: true });
+    expect(r.status).toBe(200);
+    expect(r.json.message).toMatch(/Deploy started/);
     expect(world.dispatches).toHaveLength(1);
   });
 
   it("under budget, no tick is needed", async () => {
     await db.setSetting(env, "monthly_budget_gbp", "100");
-    await deploy({ hours: "2" });
+    await deploy({ hours: 2 });
     expect(world.dispatches).toHaveLength(1);
-  });
-
-  it("the dashboard shows why and the tick box; the Cost page says over budget", async () => {
-    const dash = await page("/");
-    expect(dash).toMatch(/name="over_budget_ok"/);
-    expect(dash).toMatch(/250%/);
-    const cost = await page("/cost");
-    expect(cost).toMatch(/Over budget/);
-    await db.setSetting(env, "monthly_budget_gbp", "0");
-    expect(await page("/")).not.toMatch(/over_budget_ok/);
-    expect(await page("/cost")).toMatch(/No monthly budget set/);
-  });
-
-  it("the running session counts towards it on the Cost page", async () => {
-    await env.DB.prepare("DELETE FROM cost_days").run();
-    await saveSnapshot(env, { state: "running", running_since: new Date(Date.now() - 3_600_000).toISOString(), auto_destroy_at: new Date(Date.now() + 3_600_000).toISOString() });
-    expect(await page("/cost")).toMatch(/counting about £0\.0\d\d more for this session/);
   });
 });

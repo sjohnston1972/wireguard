@@ -181,9 +181,22 @@ run_worker_first = ["/api/*", "/captures/*", "/manifest.webmanifest", "/health",
 
 ## Go-live (each STOP is Steven's decision; do not proceed without his explicit go in the conversation)
 
-- [ ] **G1 STOP: ask Steven before running.** "Plan 5 is merged into `redesign`. May I open the PR `redesign` → `main` and merge it when CI is green?" On yes: `gh pr create --base main --head redesign`, wait for CI, merge (merge commit, not squash: the plans reference branch commits).
-- [ ] **G2 STOP: ask Steven before running.** "Deploy now? About 2 minutes; nothing is running in Azure" (or "a VM is running"; check the Overview first). Prefer a moment with no VM running and no scheduled start in the next hour. On yes, in `C:\cloudflare_projects\wireguard` (the checkout with `.env`): `git switch main && git pull && npm ci && npm run deploy-worker`. Steven runs it himself, or Claude runs it only if his go says so. **Copy the "Version(s)" id printed before the deploy into the run notes: it is the rollback target.** Migrations 0013-0015 apply here.
+- [ ] **G0 Steven, before G1 and G2:** close every wg-admin browser tab and swipe-close the installed phone app. After the deploy, if a page is blank or a button does nothing, press Ctrl+F5 (phone: close and reopen the app). Why: the old pages use `hx-boost`, so an old page left open keeps sending its old requests and the new site answers them with the new app, which the old page cannot use; a fresh load fixes it.
+- [ ] **G1 STOP: ask Steven before running.** "Plan 5 is merged into `redesign`. May I open the PR `redesign` → `main` and merge it when CI is green?" On yes: `gh pr create --base main --head redesign`, wait for CI, merge (merge commit, not squash: the plans reference branch commits). **G1 and G2 run back to back:** once this is on `main`, any new VM picks up the changed agent scripts while the old Worker is still live. So start G2 right after G1, only at a moment with no VM running and no scheduled start in the next hour (check the Overview and Schedules before merging).
+- [ ] **G2 STOP: ask Steven before running.** "Deploy now? About 2 minutes; nothing is running in Azure" (or "a VM is running"; check the Overview first). Run straight after G1, with no VM running and no scheduled start in the next hour. Steven has no wrangler setup of his own and the deploy uses the local `.env` in `C:\cloudflare_projects\wireguard`, so **Claude runs these steps, only on Steven's explicit go, with Steven watching.** Exact steps, in that checkout:
+  1. `git switch main && git pull` (the checkout must be on `main`).
+  2. `npm ci`.
+  3. `npm run deploy-worker`.
+  4. **Copy the `Version(s): (100%) <uuid>` line printed BEFORE the deploy into the run notes: that uuid is the rollback id.**
+  5. The remote D1 migration step (0013-0015) asks "Ok to proceed?": answer `y`.
+  6. Afterwards run `git checkout worker/src/build.ts`: the deploy rewrites that file's build stamp, and it must not be left modified.
 - [ ] **G3 Claude:** `node scripts/smoke.mjs --live https://wg-admin.clydeford.net`: all pass, else roll back (below) and report.
+- [ ] **G3b Claude: rollback rehearsal, right after G3 passes and while no VM is running** (about 2 minutes). Prove the way back works before it is needed:
+  1. `npm run rollback-worker -- <old id from G2>`; confirm the old dashboard is back: `curl -s https://wg-admin.clydeford.net/manifest.webmanifest` shows theme colour `#0f1620`, and Steven sees the old Overview page.
+  2. `npm run rollback-worker -- <new id>` (the id of the switch-over version; `npm run rollback-worker` with no id lists versions, newest first) to roll forward.
+  3. Re-run `node scripts/smoke.mjs --live https://wg-admin.clydeford.net`: all pass.
+  If the roll-forward fails: retry once; if it still fails, use Cloudflare dashboard > Workers & Pages > wg-admin > Deployments > the switch-over version > Rollback (works from the phone), and if that also fails run `npm run deploy-worker` again from `main`. Do not start a VM until the new version is confirmed live.
+- [ ] **G3c Claude: re-check in production** (the integrator only verified these in local wrangler): `curl -s -o /dev/null -w "%{http_code}" https://wg-admin.clydeford.net/assets/nope.js` is `404`, and an HX request to `/partials/live` (header `HX-Request: true`) gets `HX-Refresh: true`. Note: with no session Access answers first (302), so run these with Steven's signed-in session (he checks in DevTools: Network, or the console `fetch('/partials/live', {headers: {'HX-Request': 'true'}}).then(r => r.headers.get('hx-refresh'))` returns `"true"`).
 
 ## Live checklist (spec §12.4; after G3, in this order)
 

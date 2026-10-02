@@ -81,4 +81,5 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build:web
+      - run: npm run bundle-size
       - run: npm test

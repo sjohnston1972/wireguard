@@ -19,9 +19,32 @@ export function isVerifying(s: Snapshot, now = Date.now()): boolean {
   return Number.isFinite(since) && now - since < 5 * 60_000;
 }
 
-/** Running, and no heartbeat for over 2 minutes. */
+/** How long a freshly started or resumed VM may stay silent before that counts as missing. */
+export const BOOT_GRACE_MS = 5 * 60_000;
+
+/**
+ * Running, and the heartbeat is missing: none from this session within the
+ * boot grace, or none for over 2 minutes since the last one. A heartbeat from
+ * before this session started (an earlier run) counts as none, so a booting or
+ * resumed VM is not called unreachable before it has had time to report.
+ */
 export function heartbeatStale(s: Snapshot, now = Date.now()): boolean {
-  return s.state === "running" && (!s.last_agent_at || now - Date.parse(s.last_agent_at) > 120_000);
+  return heartbeatProblem(s, now) !== null;
+}
+
+/**
+ * Why the heartbeat counts as missing: "boot" when none arrived within the
+ * boot grace of this session starting, "silent" when one did but over 2
+ * minutes ago. With no start time on record at all, the plain 2-minute rule
+ * applies. Null when all is well (or the VM is not running).
+ */
+export function heartbeatProblem(s: Snapshot, now = Date.now()): "boot" | "silent" | null {
+  if (s.state !== "running") return null;
+  const start = Date.parse(s.running_since ?? s.since ?? "");
+  const last = s.last_agent_at ? Date.parse(s.last_agent_at) : NaN;
+  if (!Number.isFinite(start)) return !Number.isFinite(last) || now - last > 120_000 ? "silent" : null;
+  if (!(last >= start)) return now - start > BOOT_GRACE_MS ? "boot" : null;
+  return now - last > 120_000 ? "silent" : null;
 }
 
 /**
