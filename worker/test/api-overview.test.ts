@@ -19,7 +19,7 @@ const DUMP = (lines: string[]) => ["PRIV\tS=\t51820\toff", ...lines].join("\n");
 
 async function toRunning(env: Env, world: ReturnType<typeof apiEnv>["world"]) {
   await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
-  const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+  const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
   const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });

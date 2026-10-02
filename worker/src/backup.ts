@@ -253,6 +253,8 @@ export async function applyRestore(env: Env, plan: RestorePlan): Promise<void> {
       stmts.push(env.DB.prepare(`INSERT INTO ${table} (${cols.join(", ")}) VALUES (${cols.map((_, i) => `?${i + 1}`).join(", ")})`).bind(...cols.map((k) => row[k])));
     }
   }
+  // The rules and default just changed under any firewall draft: it is now stale.
+  stmts.push(db.bumpFwVersionStmt(env));
   await env.DB.batch(stmts);
   await env.STATUS.delete("backup:status");
 }

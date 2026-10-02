@@ -1,0 +1,3 @@
+.fw-endpick { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fw-endpick .select { min-width: 0; }
+.fw-endpick__addr { height: 34px; }

@@ -6,6 +6,9 @@ import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./ErrorState";
 import { StaleBanner } from "./StaleBanner";
 import { ToastProvider, useToast } from "./Toast";
+import { useState } from "react";
+import { Modal } from "../layout/Modal";
+import { Drawer } from "../layout/Drawer";
 
 describe("Skeleton", () => {
   it("is hidden from assistive tech", () => {
@@ -102,5 +105,58 @@ describe("Toast", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => render(<Pusher />)).toThrow(/ToastProvider/);
     spy.mockRestore();
+  });
+});
+
+describe("Toast and an open dialog", () => {
+  // A toast is the newest Radix layer, so it used to take Escape first: the
+  // dialog the user is working in stayed open and only the toast went away.
+  function DialogWithToast({ kind }: { kind: "modal" | "drawer" | "sheet" }) {
+    const [open, setOpen] = useState(true);
+    const { toast } = useToast();
+    const body = <button onClick={() => toast({ title: "Saved", tone: "success", duration: 0 })}>save</button>;
+    if (kind === "modal")
+      return (
+        <Modal open={open} onOpenChange={setOpen} title="Edit">
+          {body}
+        </Modal>
+      );
+    return (
+      <Drawer open={open} onOpenChange={setOpen} title="Edit" side={kind === "sheet" ? "bottom" : "right"}>
+        {body}
+      </Drawer>
+    );
+  }
+
+  it.each(["modal", "drawer", "sheet"] as const)("Escape closes the %s first and leaves the toast", async (kind) => {
+    const user = userEvent.setup();
+    render(
+      <ToastProvider>
+        <DialogWithToast kind={kind} />
+      </ToastProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "save" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Edit" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit" })).toBeNull());
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it("Escape with no dialog open still dismisses the toast", async () => {
+    const user = userEvent.setup();
+    function Plain() {
+      const { toast } = useToast();
+      return <button onClick={() => toast({ title: "Saved", tone: "success", duration: 0 })}>save</button>;
+    }
+    render(
+      <ToastProvider>
+        <Plain />
+      </ToastProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "save" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByText("Saved")).toBeNull());
   });
 });

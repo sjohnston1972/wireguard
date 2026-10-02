@@ -1,0 +1,106 @@
+/* The rules table borrows DataTable's cell look (dt__th / dt__td) and adds
+   two-line cells, drag handles and drop markers. */
+/* Fixed layout: the columns share the panel's width, so the table never scrolls
+   sideways; long text ends in an ellipsis (the drawer has it in full). */
+.fw-rules { width: 100%; table-layout: fixed; }
+.fw-rules .dt__td { height: 50px; padding: 0 8px; overflow: hidden; }
+.fw-rules .dt__th { padding: 8px 8px; }
+.fw-rules__row { outline: none; }
+.fw-rules__row:last-child .dt__td { border-bottom: 0; }
+.fw-rules__row:not(.fw-rules__row--default) { cursor: pointer; }
+.fw-rules__row:hover { background: color-mix(in srgb, var(--blue) 6%, transparent); }
+.fw-rules__row:focus-visible { background: color-mix(in srgb, var(--blue) 12%, transparent); box-shadow: inset 0 0 0 1px var(--blue); }
+.fw-rules__row--off .fw-end, .fw-rules__row--off .fw-rules__name-text { opacity: 0.6; }
+.fw-rules__row--drop-above .dt__td { box-shadow: inset 0 2px 0 var(--blue-bright); }
+.fw-rules__row--drop-below .dt__td { box-shadow: inset 0 -2px 0 var(--blue-bright); }
+.fw-rules__row--dragging { opacity: 0.45; }
+
+.fw-rules__c-handle { width: 30px; padding-right: 0 !important; }
+.fw-rules__c-place { width: 28px; color: var(--text-secondary); }
+.fw-rules__c-arrow { width: 24px; padding: 0 2px !important; color: var(--text-secondary); }
+.fw-rules__c-menu { width: 44px; text-align: right; }
+.fw-rules__c-from, .fw-rules__c-to { width: 16%; }
+.fw-rules__c-svc { width: 11%; }
+.fw-rules__c-action { width: 84px; }
+.fw-rules__c-hits { width: 152px; }
+.fw-rules__c-status { width: 64px; }
+.fw-rules__route-to, .fw-rules__route-head { display: none; }
+.fw-rules__handle { display: inline-grid; place-items: center; width: 22px; height: 30px; color: var(--text-muted); cursor: grab; border-radius: 6px; }
+.fw-rules__handle:hover { color: var(--text-primary); background: var(--bg-tile); }
+.fw-rules__handle:active { cursor: grabbing; }
+
+/* The name and its tags share one width: a long name gives way to its tags, so
+   the Hits, Status and menu columns stay on screen (no sideways scroll). */
+.fw-rules__name { display: flex; flex-direction: column; min-width: 0; max-width: 100%; line-height: 1.3; }
+.fw-rules__name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fw-rules__name-line > :not(.fw-rules__name-text) { flex: none; }
+.fw-rules__name-line { flex-wrap: wrap; row-gap: 2px; }
+/* the name keeps some width; its tags drop under it when the column is narrow */
+.fw-rules__name-text { font-weight: 550; overflow: hidden; text-overflow: ellipsis; min-width: min(100%, 96px); flex: 0 1 auto; white-space: nowrap; }
+.fw-rules .fw-end { max-width: 100%; }
+/* 1100-1399 px: From and To share one column (to under from, no addresses), and the hit sparkline goes. */
+@media (max-width: 1399px) {
+  .fw-rules .spark { display: none; }
+  .fw-rules__c-arrow, .fw-rules__c-to { display: none; }
+  .fw-rules__c-from { width: 19%; }
+  .fw-rules__c-svc { width: 13%; }
+  .fw-rules__c-hits { width: 78px; }
+  .fw-rules__c-action { width: 74px; }
+  .fw-rules__c-status { width: 54px; }
+  .fw-rules__c-handle { width: 26px; }
+  .fw-rules__c-place { width: 24px; }
+  .fw-rules .dt__td, .fw-rules .dt__th { padding-left: 6px; padding-right: 6px; }
+  .fw-rules .fw-end__addr, .fw-rules .fw-end__icon { display: none; }
+  .fw-rules__route-head { display: inline; }
+  .fw-rules__route-to { display: block; font-size: 12.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+  .fw-rules__always { white-space: normal; font-size: 12px; line-height: 1.2; }
+}
+.fw-rules__sub { font-size: 12px; color: var(--text-secondary); }
+.fw-rules__problem { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--amber); white-space: normal; }
+.fw-rules__mark {
+  --c: var(--amber);
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  color: var(--c);
+  font-size: 11px;
+  font-weight: 600;
+}
+.fw-rules__mark--added { --c: var(--green); }
+.fw-rules__mark--moved { --c: var(--blue-bright); }
+
+.fw-rules__svc {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  height: 26px;
+  line-height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.fw-rules__hits { display: inline-flex; align-items: center; }
+.fw-rules__hits-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+.fw-rules__hits-btn:hover { background: var(--bg-tile); }
+.fw-rules__hits { gap: 10px; }
+.fw-rules__hits-n { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+.fw-rules__nodata { color: var(--text-secondary); font-size: 12.5px; }
+.fw-rules__always { font-size: 12.5px; color: var(--text-secondary); }
+.fw-rules__lock { display: inline-grid; place-items: center; width: 28px; color: var(--text-secondary); }

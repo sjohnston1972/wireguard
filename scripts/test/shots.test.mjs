@@ -54,6 +54,16 @@ test("flags narrow the plan", () => {
   );
 });
 
+test("a route given that is not in the list (a Settings section, a client) is shot as written, one-screen checked", () => {
+  const plan = buildPlan(parseArgs(["--routes", "/settings/automation,/clients/3,/cost", "--sizes", "1100x600", "--themes", "dark"]), {});
+  assert.deepEqual(
+    plan.map((s) => s.path),
+    ["/settings/automation", "/clients/3", "/cost"],
+  );
+  assert.ok(plan.every((s) => s.checkOverflow));
+  assert.equal(plan[0].file, "settings-automation__1100x600__dark.png");
+});
+
 test("parseArgs knows its flags and refuses the rest", () => {
   const o = parseArgs(["--dry-run", "--scenario", "running", "--base", "http://localhost:5199", "--out", "x"]);
   assert.equal(o.dryRun, true);
@@ -134,4 +144,51 @@ test("a desktop shot fails the one-screen rule when #main scrolls, even though t
   assert.equal(judgeOverflow({ y: 12, x: 0, mainY: 0, mainX: 0 }, shot).ok, false, "document scroll still fails");
   assert.equal(judgeOverflow({ y: 0, x: 0, mainY: null, mainX: null }, shot).ok, true);
   assert.equal(judgeOverflow({ y: 300, x: 0, mainY: 300, mainX: 0 }, { checkOverflow: false }).ok, true, "phone and gallery are not checked");
+});
+
+test("sideways overflow fails the one-screen rule, in the document or in #main", () => {
+  const shot = { checkOverflow: true };
+  const x = judgeOverflow({ y: 0, x: 30, mainY: 0, mainX: 0 }, shot);
+  assert.equal(x.ok, false);
+  assert.match(x.reason, /sideways/);
+  const mainX = judgeOverflow({ y: 0, x: 0, mainY: 0, mainX: 28 }, shot);
+  assert.equal(mainX.ok, false);
+  assert.match(mainX.reason, /#main/);
+});
+
+// An element for the inner-scroller probe: its size, its overflow style and how many panels it holds.
+function el({ w, h, scrollH = h, overflowY = "visible", panels = 0, cls = "box" }) {
+  return { clientWidth: w, clientHeight: h, scrollHeight: scrollH, tagName: "DIV", className: cls, _overflowY: overflowY, querySelectorAll: (sel) => (sel === ".panel" ? Array.from({ length: panels }) : []) };
+}
+function pageWith(children) {
+  const main = { scrollHeight: 852, clientHeight: 852, scrollWidth: 1536, clientWidth: 1536, querySelectorAll: () => children };
+  const document = { documentElement: { scrollHeight: 900, scrollWidth: 1600 }, getElementById: (id) => (id === "main" ? main : null) };
+  const window = { innerHeight: 900, innerWidth: 1600, getComputedStyle: (e) => ({ overflowY: e._overflowY }) };
+  return { document, window };
+}
+
+test("a full-width scroller holding several panels is the page scrolling under another name, and fails", () => {
+  const { document, window } = pageWith([el({ w: 1536, h: 600, scrollH: 900, overflowY: "auto", panels: 4, cls: "cost-body" })]);
+  const m = measureOverflow(document, window);
+  assert.equal(m.mainY, 0, "#main itself does not scroll");
+  assert.deepEqual(m.innerScroller, { what: "div.cost-body", by: 300 });
+  const v = judgeOverflow(m, { checkOverflow: true });
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /div\.cost-body scrolls 300px/);
+});
+
+test("panels and columns that scroll on their own are allowed", () => {
+  const { document, window } = pageWith([
+    // a list scrolling inside its one panel (full width, but one panel)
+    el({ w: 1536, h: 400, scrollH: 1200, overflowY: "auto", panels: 1, cls: "panel__body" }),
+    // a column of panels, too tall, scrolling on its own (spec section 7)
+    el({ w: 500, h: 700, scrollH: 1000, overflowY: "auto", panels: 3, cls: "col" }),
+    // a full-width wrapper of panels that fits
+    el({ w: 1536, h: 700, scrollH: 700, overflowY: "auto", panels: 5, cls: "fits" }),
+    // clipped, not scrolling
+    el({ w: 1536, h: 700, scrollH: 900, overflowY: "hidden", panels: 5, cls: "clip" }),
+  ]);
+  const m = measureOverflow(document, window);
+  assert.equal(m.innerScroller, null);
+  assert.equal(judgeOverflow(m, { checkOverflow: true }).ok, true);
 });

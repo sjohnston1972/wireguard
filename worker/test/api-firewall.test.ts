@@ -34,7 +34,7 @@ async function page(env: Env, path: string, form: Record<string, string> = {}): 
 }
 
 async function deployWith(env: Env, world: ReturnType<typeof apiEnv>["world"]) {
-  const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+  const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
   const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
@@ -111,6 +111,9 @@ describe("GET /firewall", () => {
     expect(r.json.kpis).toEqual({ rules: seeded + 2, enabled: seeded + 2, defaultAction: "deny", drops24h: 0, published: 0, captureBusy: false });
     expect(r.json.capture.ifaces).toHaveProperty("wg0");
     expect(r.headers.get("Cache-Control")).toBe("no-store");
+    // The draft contract: a version number, and no draft until someone edits one.
+    expect(typeof r.json.version).toBe("number");
+    expect(r.json.draft).toBeNull();
   });
 
   it("running: hits and last hit per rule, drops counted and named, policy pending then applied", async () => {

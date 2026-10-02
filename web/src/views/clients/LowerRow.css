@@ -1,0 +1,52 @@
+/* The lower row (Clients mockup, region 6): top talkers, status donut, session traffic. */
+.lower {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap);
+  flex: none;
+  height: 172px;
+}
+.lower__panel { min-height: 0; overflow: hidden; }
+.lower__panel > .panel__body { padding-top: 8px; padding-bottom: 10px; }
+.lower__muted { font-weight: 400; color: var(--text-secondary); }
+.lower__none { font-size: 13px; color: var(--text-secondary); }
+
+.hbars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.hbars__row { display: grid; grid-template-columns: minmax(80px, 30%) 1fr 64px; align-items: center; gap: 10px; font-size: 12.5px; }
+.hbars__label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hbars__icon { flex: none; color: var(--blue-bright); }
+.hbars__track { height: 8px; border-radius: 999px; background: var(--bg-tile); overflow: hidden; }
+.hbars__bar { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--blue), var(--purple)); }
+.hbars__value { text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+.cstatus { display: flex; align-items: center; gap: 20px; height: 100%; }
+.cstatus__legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0; display: grid; gap: 4px; font-size: 12.5px; }
+.cstatus__legend li { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.cstatus__legend li > span:last-child { margin-left: auto; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.cstatus__extra { color: var(--text-secondary); }
+.cstatus__sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.cstatus__sw--green { background: var(--green); }
+.cstatus__sw--red { background: var(--red); }
+.cstatus__sw--grey { background: var(--text-muted); }
+.cstatus__sw--amber { background: var(--amber); }
+.cstatus__sw--blue { background: var(--blue-bright); }
+
+/* A short window: the lower row gives up height first. */
+.lower__panel .panel__title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-height: 760px) and (min-width: 1100px) {
+  .lower { height: 124px; }
+  .hbars { gap: 3px; }
+  /* the ring shrinks for real (not a transform), so it and its legend fit the short row */
+  .cstatus { gap: 14px; }
+  .cstatus .donut__ring { width: 66px !important; height: 66px !important; }
+  .cstatus .donut__ring svg { width: 100%; height: 100%; }
+  .cstatus .donut__centre strong { font-size: 16px; }
+  .cstatus .donut__centre span { display: none; }
+  .cstatus__legend { gap: 1px; font-size: 12px; }
+  .lower__panel > .panel__head { padding-top: 8px; min-height: 30px; }
+  .lower__panel > .panel__body { padding-top: 4px; padding-bottom: 6px; }
+}
+@media (max-width: 1099px) {
+  .lower { grid-template-columns: 1fr; height: auto; }
+  .lower__panel { min-height: 160px; }
+}

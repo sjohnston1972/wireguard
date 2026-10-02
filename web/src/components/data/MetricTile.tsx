@@ -9,7 +9,8 @@ import "./MetricTile.css";
 export interface Delta {
   /** Text next to the arrow, for example "34%" or "22% vs yesterday". */
   text: string;
-  direction: "up" | "down";
+  /** "flat": no change (no arrow; the text says so). */
+  direction: "up" | "down" | "flat";
   /** true = green, false = red, null/undefined = neutral. Direction alone does not say good or bad. */
   good?: boolean | null;
 }
@@ -78,10 +79,14 @@ export function MetricTile({
           </span>
           {delta && (
             <span className={cx("tile__delta", delta.good === true && "tile__delta--good", delta.good === false && "tile__delta--bad")}>
-              <span className="tile__delta-arrow" aria-hidden>
-                {delta.direction === "up" ? "↑" : "↓"}
-              </span>
-              <span className="visually-hidden">{delta.direction}</span>
+              {delta.direction !== "flat" && (
+                <>
+                  <span className="tile__delta-arrow" aria-hidden>
+                    {delta.direction === "up" ? "↑" : "↓"}
+                  </span>
+                  <span className="visually-hidden">{delta.direction}</span>
+                </>
+              )}
               <span>{delta.text}</span>
             </span>
           )}

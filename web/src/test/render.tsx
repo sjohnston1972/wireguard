@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { createMemoryRouter, RouterProvider, useLocation } from "react-router-dom";
 import { resetConnection } from "@/api/connection";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AppRoutes } from "@/App";
@@ -30,15 +30,27 @@ export function renderApp(url = "/", opts: { routes?: Record<string, unknown> | 
   resetConnection();
   const fetchMock = opts.routes === null ? null : mockFetch({ ...defaultRoutes(), ...(opts.routes ?? {}) });
   const client = testQueryClient();
+  // A data router, as in the app, so useBlocker works.
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: (
+          <>
+            <AppRoutes />
+            <LocationProbe />
+          </>
+        ),
+      },
+    ],
+    { initialEntries: [url] },
+  );
   const utils = render(
     <QueryClientProvider client={client}>
       <ToastProvider>
-        <MemoryRouter initialEntries={[url]}>
-          <AppRoutes />
-          <LocationProbe />
-        </MemoryRouter>
+        <RouterProvider router={router} />
       </ToastProvider>
     </QueryClientProvider>,
   );
-  return { ...utils, client, fetchMock };
+  return { ...utils, client, fetchMock, router };
 }

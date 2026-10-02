@@ -90,7 +90,10 @@ export function registerSettings(api: Hono<ApiEnv>): void {
     const was = await db.allSettings(c.env);
     const rejected = await saveOverrides(c.env, form);
     if (rejected.length) return bad(c, `${rejected[0]} did not look right.`, rejected[0]);
-    await db.audit(c.env, c.get("user"), "settings.save", "Settings", was, await db.allSettings(c.env));
+    const now = await db.allSettings(c.env);
+    // A new default action changes the live firewall: any draft begun before it is stale.
+    if ((was.firewall_default === "allow") !== (now.firewall_default === "allow")) await db.bumpFwVersion(c.env);
+    await db.audit(c.env, c.get("user"), "settings.save", "Settings", was, now);
     return ok(c, "Settings saved.");
   });
 

@@ -12,6 +12,27 @@
 
 **Visual target (binding for layout):** `C:\cloudflare_projects\wireguard\redesign\screenshots\ChatGPT Image Oct 2, 2026, <time>.png`: Overview `01_30_04 PM-1`, Clients `01_29_44 PM-2`, Firewall `01_29_44 PM-3`, Activity `01_29_45 PM-4`, Cost `01_29_46 PM-5`, Settings `01_29_46 PM-6`. Local files, not in git; open yours with the Read tool before writing UI code. Each area below describes its mockup's regions; the image is the authority on spacing and look.
 
+## Names as built (I0, binding: use these, not the names elsewhere in this plan)
+
+Plan 3's fix pass named some things differently from what this plan assumed. Where the plan text below says the left name, use the right one.
+
+| Plan says | Use |
+|---|---|
+| `PageHeader` `context` slot, `EnvironmentControl` | `<PageHeader title subtitle env={<EnvironmentField />} right={…} />`; `EnvironmentField` from `@/shell/StateChip` (also `regionLabel(code)` there) |
+| `downloadFile(name, text\|url)` | `@/api/download`: `downloadExport()`, `downloadConfigBackup(day)`, `downloadText(name, text)` (browser-made file, e.g. a .conf; sends nothing). `downloadFile(path, fallbackName)` fetches `/api/v1<path>` |
+| `SidePanel` | `<SplitView panel={<SidePanel open onClose title subtitle? leading? tabs? tabsLabel? footer?>{children}</SidePanel>}>{page}</SplitView>`, or `<Drawer mode="inline">` inside `SplitView`. Below 1100 px it stacks; on the phone `SidePanel` is the modal bottom sheet. Modal drawer: `<Drawer open onOpenChange title …>`; forced sheet: `<Sheet>` |
+| `web/src/lib/useIsPhone.ts` | `useIsPhone()` from `@/components` (true at `max-width: 640px`, spec §9; false without `matchMedia`; live on resize). No separate file |
+
+Everything else I0 delivers, by import path:
+
+- **`@shared/api`:** `FirewallResponse.version: number`, `.draft: FirewallDraft | null`; `FirewallDraft`, `DraftRuleRow`, `DraftDiff`, `DraftRuleBody`, `DraftMoveBody`, `DraftDefaultBody`, `DraftFromDropBody` (`{src,dst,proto,dport}`), `DraftApplyBody`; `SimRequest.policy?: "live" | "draft"`. Until area A merges, the Worker answers `version: 1, draft: null`.
+- **`@/api/mutations`:** `useDraftAddRule()` (`DraftRuleBody`), `useDraftEditRule()` (`{id, ...Partial<DraftRuleBody>}`), `useDraftMoveRule()` (`{id, dir}` or `{id, to}`), `useDraftDeleteRule()` (`id`), `useDraftDefault()` (`{action}`), `useDraftFromDrop()`, `useDraftApply()` (`{baseVersion}`; a stale draft rejects with `ApiError` `status === 409`), `useDraftDiscard()` (no variables). All refresh `["firewall"]`; add/edit/move/delete/default show **no success toast** (the draft bar shows the change), from-drop/apply/discard show the server's message. `useSimulate()` takes `SimRequest` incl. `policy`; `useHealthCheck()`; every hook has `.fieldError(name)`.
+- **`@/api/queries`:** `useRuleHistory(key, range)` with key `"r<id>"`, `"f<id>"` or `"default"`; the rest unchanged.
+- **`@/lib/wgkeys`:** `genKeypair(): Promise<{privateKey, publicKey}>` (throws `Error(NO_X25519)` / `Error(NO_WEBCRYPTO)`, both exported), `confFileName(name)` (≤ 15-char stem, `client.conf` if nothing is left), `fillConfig(template, privateKey)` (fills `__CLIENT_PRIVATE_KEY__`, exported as `PRIVATE_KEY_SLOT`).
+- **`@/components`:** `QrCode` (`value`, `label` = accessible name, `size` px default 220; black on white; says "too long for a QR code" instead of throwing). Existing from the fix pass: `MetricTile iconStyle="plain"|"circle"|"square"`, `Sparkline variant="bars"` (null = gap), `BarChart` null values as gaps. Not in the barrel: `axisTicks(labels, maxTicks)` from `@/components/charts/axis`; `useTheme()` from `@/shell/theme`. Tokens `--blue-fill`, `--blue-fill-hover`, `--disabled-bg|-border|-fg`.
+- **Views:** `web/src/views/<view>/index.tsx` exports the page(s) `pages.tsx` re-exports: overview `OverviewPage`; clients `ClientsPage`, `ClientDetailPage`; firewall `FirewallPage`, `FirewallRulePage`; activity `ActivityPage`, `RunDetailPage`; cost `CostPage`; settings `SettingsPage`. Keep those export names.
+- **Tests:** `renderApp(url, {routes})` (`@/test/render`), `mockFetch` (`@/test/mockFetch`), fixtures (`@/test/fixtures`; `firewallFixture()` has `version: 1, draft: null`). `setViewport("phone" | "tablet" | "desktop" | widthPx)` from `@/test/viewport` (390 × 844 / 800 × 1000 / 1600 × 900; call again inside `act()` to resize). Every test already starts as a 1600 × 900 dark desktop, and uPlot is replaced by a stand-in for every test (`@/test/fakeUplot`, `FakeUPlot.instances`), so importing `@/components` and rendering charts just works; do not `vi.mock("uplot")` yourself.
+
 ## Global Constraints
 
 - **Inherited:** plan 3's Global Constraints apply unchanged (stack, one `.css` per component, tokens, status colours with a word or icon, accessibility, "no data" not 0, `DataAge` on live panels, Vitest + RTL behaviour tests, commit trailer, push, no PR, no deploy).

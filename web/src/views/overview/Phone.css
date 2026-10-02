@@ -1,0 +1,151 @@
+.ov-phone {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  min-width: 0;
+}
+.ov-phone__state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.ov-phone__word {
+  font-size: 22px;
+  font-weight: 650;
+}
+.ov-phone__word--green { color: var(--green); }
+.ov-phone__word--amber { color: var(--amber); }
+.ov-phone__word--red { color: var(--red); }
+.ov-phone__sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.ov-phone__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ov-phone__step {
+  font-size: 13px;
+}
+
+.ov-phone__topo {
+  display: flex;
+  align-items: flex-start;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ov-phone__node {
+  --ov-st: var(--text-muted);
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-phone__node[data-status="healthy"] { --ov-st: var(--green); }
+.ov-phone__node[data-status="degraded"] { --ov-st: var(--amber); }
+.ov-phone__node[data-status="down"] { --ov-st: var(--red); }
+.ov-phone__dot {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ov-st);
+  box-shadow: 0 0 0 4px var(--bg-panel);
+}
+.ov-phone__line {
+  --ov-st: var(--text-muted);
+  position: absolute;
+  top: 6px;
+  right: 50%;
+  width: 100%;
+  border-top: 2px dashed var(--ov-st);
+}
+.ov-phone__line[data-status="healthy"] { --ov-st: var(--green); }
+.ov-phone__line[data-status="degraded"] { --ov-st: var(--amber); }
+.ov-phone__line[data-status="down"] { --ov-st: var(--red); }
+
+.ov-phone__lights,
+.ov-phone__checks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ov-phone__checks {
+  margin-top: 16px;
+  grid-template-columns: 1fr;
+}
+.ov-light {
+  --ov-l: var(--text-muted);
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  column-gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border);
+  min-width: 0;
+}
+.ov-light[data-tone="green"] { --ov-l: var(--green); }
+.ov-light[data-tone="amber"] { --ov-l: var(--amber); }
+.ov-light[data-tone="red"] { --ov-l: var(--red); }
+.ov-light__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ov-l);
+}
+.ov-light__name {
+  font-size: 13px;
+  font-weight: 500;
+}
+.ov-light__word {
+  grid-column: 2;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.ov-phone__main {
+  width: 100%;
+}
+.ov-phone__small {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.ov-phone__small .btn {
+  width: 100%;
+  padding: 0 6px;
+}
+.ov-phone__log {
+  height: 60vh;
+  display: flex;
+  flex-direction: column;
+}
+.ov-phone__log > .log {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The phone header: title only; the read-only fields would crowd it. */
+@media (max-width: 640px) {
+  .ov .page-header__right { display: none; }
+  .ov .page-header__subtitle { display: none; }
+}

@@ -82,6 +82,14 @@ describe("Sparkline", () => {
     expect([...bars].map((b) => b.getAttribute("data-bar"))).toEqual(["0", "1", "4", "5"]);
     expect(container.querySelector("path")).toBeNull();
   });
+  it('variant="bars" with only one known hour draws a baseline and no lone bar, and says so', () => {
+    const hourly = [...Array(23).fill(null), 7];
+    const { container } = render(<Sparkline variant="bars" label="Drops per hour" data={hourly} />);
+    const img = screen.getByRole("img", { name: /Drops per hour/ });
+    expect(img).toHaveAccessibleName(/only 1 hour with data/);
+    expect(container.querySelectorAll("[data-bar]")).toHaveLength(0);
+    expect(container.querySelector("[data-baseline]")).not.toBeNull();
+  });
   it('variant="bars" says "no data" when every hour is null', () => {
     render(<Sparkline variant="bars" label="Recent drops" data={[null, null, null]} />);
     expect(screen.getByText("no data")).toBeInTheDocument();

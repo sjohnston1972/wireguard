@@ -100,6 +100,8 @@ export function TimeSeriesChart({ title, x, series, range, unit = "", format, he
           stroke: axis,
           grid: { stroke: grid, width: 1 },
           ticks: { show: false },
+          // uPlot's default 50 px under the plot leaves a short chart almost no plot.
+          size: 26,
           font: '11px "Inter Variable", system-ui, sans-serif',
           values: (_u, vals) => vals.map((v) => fmtXRef.current(v)),
         },
@@ -108,6 +110,8 @@ export function TimeSeriesChart({ title, x, series, range, unit = "", format, he
           grid: { stroke: grid, width: 1 },
           ticks: { show: false },
           size: 56,
+          // A short chart still gets a label at the top as well as 0 (uPlot's default wants 30 px between labels).
+          space: height < 160 ? 16 : 30,
           font: '11px "Inter Variable", system-ui, sans-serif',
           values: (_u, vals) => vals.map((v) => fmtRef.current(v)),
         },

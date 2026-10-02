@@ -213,7 +213,7 @@ describe("GET /cost breakdown", () => {
   it("falls back to the sessions' estimate by region, with no types", async () => {
     const { env } = apiEnv();
     const started = new Date(Date.now() - 600_000).toISOString();
-    await db.createRun(env, { id: "run-a", action: "apply", status: "success", requested_at: started, requested_by: "steven", callback_token_hash: "x", agent_token_hash: "y", payload_json: JSON.stringify({ region: "northeurope" }), auto_destroy_at: null, reason: null, ssh_password: null });
+    await db.createRun(env, { id: "run-a", action: "apply", status: "success", requested_at: started, requested_by: "dev@localhost", callback_token_hash: "x", agent_token_hash: "y", payload_json: JSON.stringify({ region: "northeurope" }), auto_destroy_at: null, reason: null, ssh_password: null });
     await db.updateRun(env, "run-a", { finished_at: started });
     const b = (await api(env, "GET", "/cost")).json.breakdown;
     expect(b.basis).toBe("estimate");

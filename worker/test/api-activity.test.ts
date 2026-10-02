@@ -22,14 +22,14 @@ const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 
 function mkRun(id: string, action: Run["action"], status: Run["status"], requestedAgo: number, tookMs: number | null, extra: Partial<Run> = {}): Run {
   return {
-    id, action, status, requested_at: ago(requestedAgo), requested_by: "steven", started_at: ago(requestedAgo),
+    id, action, status, requested_at: ago(requestedAgo), requested_by: "dev@localhost", started_at: ago(requestedAgo),
     finished_at: tookMs === null ? null : new Date(NOW - requestedAgo + tookMs).toISOString(),
     github_run_id: null, github_run_url: null, callback_token_hash: "CBHASH", agent_token_hash: "AGHASH", payload_json: '{"x":"PAYLOADSECRET"}',
     outputs_json: null, public_ip: null, auto_destroy_at: null, reason: null, error: null, ssh_password: "hunter2-secret", steps_json: null, ...extra,
   };
 }
 const note = (id: number, kind: string, agoMs: number): Alert => ({ id, at: ago(agoMs), kind, message: `${kind} happened`, run_id: null, acknowledged: 0 });
-const change = (id: number, action: string, agoMs: number): AuditEntry => ({ id, at: ago(agoMs), user: "steven", action, target: "x", before_json: null, after_json: '{"a":1}' });
+const change = (id: number, action: string, agoMs: number): AuditEntry => ({ id, at: ago(agoMs), user: "dev@localhost", action, target: "x", before_json: null, after_json: '{"a":1}' });
 
 // Finished at: r1 10:20, r2 07:30, r3 11:10, r4 09:00, r5 three days ago.
 const RUNS: Run[] = [
@@ -138,13 +138,13 @@ describe("runRow", () => {
 async function seed(env: Env) {
   const nowMs = Date.now();
   const t = (ms: number) => new Date(nowMs - ms).toISOString();
-  await db.createRun(env, { id: "run-a", action: "apply", status: "success", requested_at: t(2 * HOUR), requested_by: "steven", callback_token_hash: "CBHASH", agent_token_hash: "AGHASH", payload_json: '{"x":"PAYLOADSECRET"}', auto_destroy_at: null, reason: null, ssh_password: "hunter2-secret" });
+  await db.createRun(env, { id: "run-a", action: "apply", status: "success", requested_at: t(2 * HOUR), requested_by: "dev@localhost", callback_token_hash: "CBHASH", agent_token_hash: "AGHASH", payload_json: '{"x":"PAYLOADSECRET"}', auto_destroy_at: null, reason: null, ssh_password: "hunter2-secret" });
   await db.updateRun(env, "run-a", { started_at: t(2 * HOUR), finished_at: t(HOUR) });
-  await db.createRun(env, { id: "run-old", action: "apply", status: "success", requested_at: t(3 * DAY), requested_by: "steven", callback_token_hash: "CBHASH", agent_token_hash: "AGHASH", payload_json: null, auto_destroy_at: null, reason: null, ssh_password: null });
+  await db.createRun(env, { id: "run-old", action: "apply", status: "success", requested_at: t(3 * DAY), requested_by: "dev@localhost", callback_token_hash: "CBHASH", agent_token_hash: "AGHASH", payload_json: null, auto_destroy_at: null, reason: null, ssh_password: null });
   await db.updateRun(env, "run-old", { started_at: t(3 * DAY), finished_at: t(3 * DAY - 600_000) });
   await env.DB.prepare("INSERT INTO alerts (at, kind, message) VALUES (?1, 'failure', 'bad thing')").bind(t(30 * MIN)).run();
   await env.DB.prepare("INSERT INTO alerts (at, kind, message) VALUES (?1, 'drift', 'old drift')").bind(t(3 * DAY)).run();
-  await env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, 'steven', 'client.add', 'Phone', NULL, '{\"name\":\"Phone\"}')").bind(t(10 * MIN)).run();
+  await env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, 'dev@localhost', 'client.add', 'Phone', NULL, '{\"name\":\"Phone\"}')").bind(t(10 * MIN)).run();
 }
 
 describe("GET /activity", () => {
@@ -197,7 +197,7 @@ describe("GET /activity", () => {
     const { env } = apiEnv();
     const base = Date.now();
     for (let i = 0; i < 55; i++) {
-      await env.DB.prepare("INSERT INTO audit (at, user, action, target) VALUES (?1, 'steven', ?2, ?3)").bind(new Date(base - i * 1000).toISOString(), i < 5 ? "firewall.rule.add" : "client.add", `t${i}`).run();
+      await env.DB.prepare("INSERT INTO audit (at, user, action, target) VALUES (?1, 'dev@localhost', ?2, ?3)").bind(new Date(base - i * 1000).toISOString(), i < 5 ? "firewall.rule.add" : "client.add", `t${i}`).run();
     }
     const p1 = await api(env, "GET", "/activity");
     expect(p1.json.changes.rows).toHaveLength(50);
@@ -235,7 +235,7 @@ describe("GET /runs/:id", () => {
 
   it("takes the steps from the snapshot while the run is the active one", async () => {
     const { env } = apiEnv();
-    const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+    const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
     const snap = await getSnapshot(env);
     snap.steps = [{ name: "Live step", status: "in_progress", conclusion: null }];
     await saveSnapshot(env, snap);

@@ -1,0 +1,78 @@
+.fw-ph { display: flex; flex-direction: column; gap: 14px; }
+/* Room under the list so the pinned draft bar never covers the last row. */
+.fw-ph--draft { padding-bottom: 72px; }
+.fw-ph__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fw-ph__title { font-size: 22px; font-weight: 650; }
+.fw-ph__state { font-weight: 600; font-size: 14px; color: var(--text-secondary); }
+.fw-ph__state--green { color: var(--green); }
+.fw-ph__state--amber { color: var(--amber); }
+.fw-ph__state--red { color: var(--red); }
+.fw-ph__detail { font-size: 12.5px; color: var(--text-secondary); }
+
+.fw-ph__lights { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.fw-ph__light {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+}
+.fw-ph__dot { grid-row: span 2; width: 12px; height: 12px; border-radius: 50%; background: var(--text-secondary); }
+.fw-ph__dot--green { background: var(--green); }
+.fw-ph__dot--amber { background: var(--amber); }
+.fw-ph__dot--red { background: var(--red); }
+.fw-ph__dot--blue { background: var(--blue-bright); }
+.fw-ph__lbl { font-size: 12px; color: var(--text-secondary); }
+.fw-ph__val { font-size: 15px; font-weight: 600; }
+
+.fw-ph__rules { display: flex; flex-direction: column; gap: 8px; }
+.fw-ph__rules-head { display: flex; align-items: center; justify-content: space-between; }
+.fw-ph__h2 { font-size: 16px; font-weight: 600; }
+.fw-ph__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-panel); overflow: hidden; }
+.fw-ph__list > li + li { border-top: 1px solid var(--border); }
+.fw-ph__rule {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.fw-ph__rule--off .fw-ph__rule-name { opacity: 0.6; }
+.fw-ph__rule--default { cursor: default; }
+.fw-ph__place { width: 18px; color: var(--text-secondary); font-size: 12.5px; flex: none; }
+.fw-ph__rule-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.fw-ph__rule-name { font-size: 14px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fw-ph__rule-sub { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fw-ph__act { font-size: 12.5px; font-weight: 600; flex: none; }
+.fw-ph__act--allow { color: var(--green); }
+.fw-ph__act--deny { color: var(--red); }
+.fw-ph__chev { color: var(--text-muted); flex: none; }
+
+.fw-ph__more { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.fw-ph__more .btn { height: 44px; justify-content: center; }
+.fw-ph__sheet-ports { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.fw-ph__sheet-ports > ul { width: 100%; }
+
+/* Pinned just above the phone tab bar (spec §9). */
+.fw-ph__dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
+  z-index: 20;
+  padding: 8px 12px;
+  background: var(--bg-bar);
+  border-top: 1px solid var(--border-strong);
+}
+.fw-ph__draftbar { justify-content: space-between; flex-wrap: wrap; row-gap: 6px; }
+.fw-ph__draftbar .fw-draftbar__count { width: 100%; }
+.fw-ph__draftbar .btn { flex: 1; justify-content: center; }

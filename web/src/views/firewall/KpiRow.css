@@ -1,0 +1,29 @@
+.fw-kpi { display: flex; min-width: 0; }
+.fw-kpi > .tile { flex: 1; min-height: 88px; gap: 12px; }
+.fw-kpi .tile__icon--square { width: 46px; height: 46px; }
+.fw-kpi .tile__icon--square > .lucide { width: 24px; height: 24px; }
+/* The sub-line may take a second line rather than be cut short. */
+.fw-kpi .tile__sub { white-space: normal; overflow: visible; line-height: 1.3; font-size: 11.5px; }
+.fw-kpi .tile__label { text-overflow: clip; }
+.fw-kpi .btn { flex: none; }
+/* A wide window: the tile's button sits top right, so the line under the figure keeps to one line. */
+@media (min-width: 1400px) {
+  .fw-kpi > .tile { position: relative; min-height: 0; padding-top: 11px; padding-bottom: 11px; }
+  .fw-kpi > .tile > .btn { position: absolute; top: 12px; right: 12px; }
+  .fw-kpi .tile__sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+@media (max-width: 1399px) {
+  .fw-kpi > .tile { gap: 8px; padding: 10px 12px; }
+  .fw-kpi .tile__icon { display: none; }
+  .fw-kpi .tile__label { text-overflow: ellipsis; }
+  .fw-kpi .tile__value { font-size: 20px; }
+  .fw-kpi .tile__delta { display: none; }
+  .fw-kpi .spark { display: none; }
+}
+@media (max-height: 700px) and (min-width: 1100px) {
+  .fw-kpi > .tile { min-height: 0; padding: 8px 12px; }
+  .fw-kpi .tile__icon--square { width: 36px; height: 36px; }
+  .fw-kpi .tile__value { font-size: 20px; }
+  .fw-kpi .tile__sub { display: none; }
+}

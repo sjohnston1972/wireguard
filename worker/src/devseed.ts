@@ -25,7 +25,7 @@ import type { Env } from "./env";
 import { isLocalhost } from "./auth";
 import * as db from "./db";
 import { EMPTY, getSnapshot, saveSnapshot, nextTraffic, nextLatency, nextSession, nextTalkers, detectRoams, type AgentReport, type AgentPeer, type Snapshot, type Step, type Session, type Talker, type FirewallStatus } from "./state";
-import { recordHeartbeat, rollUp, bucket } from "./history";
+import { recordHeartbeat, rollUp, bucket, fwDeltas } from "./history";
 import { freshDrops, nextFirewall } from "./runs";
 import { effectiveConfig } from "./settings";
 import { compileFirewall } from "./firewall";
@@ -125,8 +125,8 @@ const REMOTES = {
 
 const CAST: Cast[] = [
   { name: "home-site", ip: "10.13.13.10", full: false, vnet: true, dns: false, routes: "192.168.1.0/24", note: "Home network container", presence: 1, lat: [18, 4], rate: 52_000, online: true, lastSeenDays: 0, remotes: [...REMOTES.site] },
-  { name: "sj-phone", ip: "10.13.13.3", full: true, vnet: true, dns: true, routes: "", note: "Android", presence: 0.8, lat: [32, 6], rate: 41_000, online: true, lastSeenDays: 0, remotes: [...REMOTES.web] },
-  { name: "sj-gaming", ip: "10.13.13.2", full: true, vnet: false, dns: true, routes: "", note: "Gaming PC", presence: 0.3, lat: [24, 5], rate: 210_000, online: false, lastSeenDays: 3, remotes: [...REMOTES.game] },
+  { name: "phone", ip: "10.13.13.3", full: true, vnet: true, dns: true, routes: "", note: "Android", presence: 0.8, lat: [32, 6], rate: 41_000, online: true, lastSeenDays: 0, remotes: [...REMOTES.web] },
+  { name: "gaming-pc", ip: "10.13.13.2", full: true, vnet: false, dns: true, routes: "", note: "Gaming PC", presence: 0.3, lat: [24, 5], rate: 210_000, online: false, lastSeenDays: 3, remotes: [...REMOTES.game] },
   { name: "laptop", ip: "10.13.13.4", full: false, vnet: true, dns: true, routes: "", note: null, presence: 0.5, lat: [26, 5], rate: 38_000, online: false, lastSeenDays: 8, remotes: [...REMOTES.dev] },
   { name: "work-mac", ip: "10.13.13.5", full: false, vnet: true, dns: true, routes: "", note: "Work", presence: 0.7, lat: [28, 4], rate: 96_000, online: true, lastSeenDays: 0, remotes: [...REMOTES.dev] },
   { name: "k8s-node", ip: "10.13.13.11", full: false, vnet: true, dns: false, routes: "", note: "Lab cluster", presence: 0.9, lat: [26, 3], rate: 70_000, online: true, lastSeenDays: 0, remotes: [...REMOTES.k8s] },
@@ -134,7 +134,7 @@ const CAST: Cast[] = [
   { name: "guest-ipad", ip: "10.13.13.14", full: true, vnet: false, dns: true, routes: "", note: "Guest, expires soon", presence: 0.1, lat: [34, 7], rate: 18_000, online: false, lastSeenDays: 12, expiresInDays: 4, remotes: [...REMOTES.web] },
 ];
 
-const FOUR = ["home-site", "sj-phone", "sj-gaming", "laptop"];
+const FOUR = ["home-site", "phone", "gaming-pc", "laptop"];
 
 interface SeedPeer {
   id: number;
@@ -256,7 +256,8 @@ async function addSession(env: Env, rng: Rng, s: Session0, now: number, o: { pee
   const requested = s.start - buildSecs * 1000 - rng.int(5, 20) * 1000;
   const started = requested + rng.int(4, 15) * 1000;
   const applyId = runId("apply", requested, rng);
-  const publicIp = `20.${rng.int(100, 120)}.${rng.int(1, 250)}.${rng.int(2, 250)}`;
+  // TEST-NET-3 (RFC 5737): a made-up address, never a real one.
+  const publicIp = `203.0.113.${rng.int(2, 250)}`;
   await db.createRun(env, {
     id: applyId,
     action: "apply",
@@ -427,7 +428,7 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
     counters.default = [counters.default[0] + dropN, counters.default[1] + dropN * 60];
     const fwReport = { hash: o.fwHash, error: null, counters: structuredClone(counters), drops };
     traffic = nextTraffic(traffic, report, t);
-    await recordHeartbeat(env, { report, prev, rtt, traffic, drops: freshDrops(fwReport, report.at) });
+    await recordHeartbeat(env, { report, prev, rtt, traffic, drops: freshDrops(fwReport, report.at), fwHits: fwDeltas(firewall, fwReport) });
     latency = nextLatency(latency, rtt, report.peers.map((p) => p.public_key));
     roams = { ...roams, ...detectRoams(prev, report, report.at) };
     session = nextSession(session, prev, report, t);
@@ -441,8 +442,12 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
 
 /** Wipe everything the seeder owns. */
 async function wipe(env: Env): Promise<void> {
-  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "fw_forwards", "fw_rules", "schedules"];
-  await env.DB.batch(tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules"];
+  await env.DB.batch([
+    ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
+    // No draft, and the live rule set back at version 1.
+    env.DB.prepare("UPDATE fw_policy SET live_version = 1, draft_base = NULL, draft_default = NULL, apply_token = NULL WHERE id = 1"),
+  ]);
   try {
     await env.DB.prepare("DELETE FROM sqlite_sequence").run();
   } catch {
@@ -560,7 +565,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
     const problems: [string, string][] = [
       ["idle", "No client activity for 30 minutes; tearing down in 10 minutes unless someone connects."],
       ["cost_guard", "Auto-destroy extended once; the cost guard stopped it at the 4 hour limit."],
-      ["drift", "DNS mismatch: wg.clydeford.net resolves to 192.0.2.1 but the VM is at 20.108.44.12."],
+      ["drift", "DNS mismatch: wg.clydeford.net resolves to 192.0.2.1 but the VM is at 203.0.113.12."],
       ["unreachable", "No heartbeat from the VM for 2 minutes. It may be down, or the agent token may be wrong."],
       ["info", "Heartbeat from the VM is back."],
       ["info", 'Client "guest-ipad" expired and was switched off.'],
@@ -572,7 +577,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
     const changes: [string, string, unknown, unknown][] = [
       ["client.add", "k8s-node", null, { name: "k8s-node", ip: "10.13.13.11", full_tunnel: 0 }],
       ["client.edit", "laptop", { enabled: 1 }, { enabled: 0 }],
-      ["client.edit", "sj-phone", { note: null }, { note: "Android" }],
+      ["client.edit", "phone", { note: null }, { note: "Android" }],
       ["firewall.rule.add", "Block SSH to the home LAN", null, { action: "deny", proto: "tcp", ports: "22" }],
       ["firewall.rule.toggle", "Clients to each other", { enabled: 1 }, { enabled: 0 }],
       ["firewall.forward.add", "Test VM web page (TCP 8080)", null, { public_port: 8080, target_ip: "10.50.2.4" }],
@@ -625,7 +630,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
   // Audit trail and a speed test or two.
   const changes: [number, string, string, unknown, unknown][] = [
     [now - 18 * DAY, "client.add", "home-site", null, { name: "home-site", ip: "10.13.13.10", full_tunnel: 0 }],
-    [now - 14 * DAY, "client.add", "sj-phone", null, { name: "sj-phone", ip: "10.13.13.3", full_tunnel: 1 }],
+    [now - 14 * DAY, "client.add", "phone", null, { name: "phone", ip: "10.13.13.3", full_tunnel: 1 }],
     [now - 9 * DAY, "firewall.rule.add", "Block SSH to the home LAN", null, { action: "deny", proto: "tcp", ports: "22" }],
     [now - 5 * DAY, "settings.save", "settings", { auto_destroy_default_hours: "4" }, { auto_destroy_default_hours: "6" }],
     [now - 2 * DAY, "client.edit", "laptop", { enabled: 1 }, { enabled: 0 }],
@@ -640,7 +645,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
   }
 
   if (scenario === "standby") {
-    const azure = AZURE(now, region, lastApply?.publicIp ?? "20.108.44.12");
+    const azure = AZURE(now, region, lastApply?.publicIp ?? "203.0.113.12");
     azure.resources[4] = { ...azure.resources[4], detail: "Standard_B1s, deallocated" };
     await saveSnapshot(env, { ...EMPTY, state: "standby", since: iso(standbySince), standby_since: iso(standbySince), public_ip: lastApply?.publicIp ?? null, dns_ip: lastApply?.publicIp ?? null, dns_live: true, region, vm_size: "Standard_B1s", profile: "UK", azure, run_id: lastApply?.applyId ?? null, updated_at: iso(now) });
     return { ok: true, scenario, now: iso(now), counts: await counts(env) };
@@ -694,7 +699,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
       ["INFO", "Installing WireGuard..."],
       ["INFO", "Opening UDP 51820 in Azure NSG..."],
     ];
-    const tail = lines.map(([lvl, msg], i) => `${new Date(now - (lines.length - i) * 2500).toISOString().slice(11, 19)} ${lvl} ${msg}`).join("\n");
+    const tail = lines.map(([lvl, msg], i) => `${new Date(now - (lines.length - i) * 2500).toISOString()} [${lvl}] ${msg}`).join("\n");
     await saveSnapshot(env, { ...EMPTY, state: "deploying", run_id: id, action: "apply", since: iso(started), steps, log_tail: tail, github_run_url: "https://github.com/sjohnston1972/wireguard/actions/runs/7000012346", region, vm_size: "Standard_B1s", profile: "UK", updated_at: iso(now) });
     return { ok: true, scenario, now: iso(now), counts: await counts(env) };
   }
@@ -751,7 +756,16 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
   const snap = await getSnapshot(env);
   const spent = (await budgetStatus(env, cfg, snap, nowDate)).total;
   await db.setSetting(env, "monthly_budget_gbp", String(Math.max(0.01, Math.round((spent / 0.4) * 100) / 100)));
+  await insertDraft(env);
   return { ok: true, scenario, now: iso(now), counts: await counts(env) };
+}
+
+/** An unapplied firewall draft with two changes: one rule edited, one added. The live rules (and the VM) are untouched. */
+async function insertDraft(env: Env): Promise<void> {
+  await db.ensureFwDraft(env);
+  const k8s = (await db.listFwDraftRules(env)).find((r) => r.name === "k8s-node to the cluster API");
+  if (k8s) await db.updateFwDraftRule(env, k8s.id, { ...k8s, ports: "6443,10250", name: "k8s-node to the cluster API and kubelet" });
+  await db.addFwDraftRule(env, { enabled: 1, name: "Clients to the test VM web page", src_kind: "zone", src_value: "clients", dst_kind: "cidr", dst_value: "10.50.2.4/32", proto: "tcp", ports: "8080", action: "allow", log: 0 });
 }
 
 async function addForward(env: Env): Promise<void> {

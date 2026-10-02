@@ -5,7 +5,8 @@ import { renderApp } from "@/test/render";
 import { overviewFixture, sessionFixture } from "@/test/fixtures";
 import { formatRemaining } from "./StateChip";
 
-const banner = () => screen.getByRole("banner");
+// The top bar is the first banner: testing-library also counts the Overview's panel headers (a <header> inside <section>) as banners.
+const banner = () => screen.getAllByRole("banner")[0];
 const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** The chip says this state sentence (its accessible name; on screen it reads "Azure • UK South"). */
 const stateSays = (text: string) =>
@@ -141,7 +142,10 @@ describe("connection indicator and banner", () => {
 
 describe("session expired", () => {
   it("replaces the page with Session expired, sign in again on an opaque redirect", async () => {
-    renderApp("/clients", { routes: { "GET /api/v1/overview": { opaqueRedirect: true }, "GET /api/v1/session": { opaqueRedirect: true } } });
+    // An expired sign-in redirects every API call, the Clients page's own included.
+    renderApp("/clients", {
+      routes: { "GET /api/v1/overview": { opaqueRedirect: true }, "GET /api/v1/session": { opaqueRedirect: true }, "GET /api/v1/clients": { opaqueRedirect: true } },
+    });
     const main = screen.getByRole("main");
     expect(await within(main).findByRole("heading", { name: "Session expired, sign in again" })).toBeInTheDocument();
     expect(within(main).getByRole("button", { name: "Sign in" })).toBeInTheDocument();

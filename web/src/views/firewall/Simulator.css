@@ -1,0 +1,26 @@
+.fw-sim { display: flex; flex-direction: column; gap: 8px; }
+.fw-sim__row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.fw-sim__row--go { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; }
+.fw-sim .field { gap: 4px; }
+.fw-sim .field__label, .fw-sim .select__caption { font-size: 12px; color: var(--text-secondary); }
+.fw-sim .input { height: 34px; }
+.fw-sim__go { height: 34px; }
+.fw-sim__policy { align-self: flex-start; }
+.fw-sim__result {
+  --c: var(--green);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+  background: color-mix(in srgb, var(--c) 9%, transparent);
+}
+.fw-sim__result--deny { --c: var(--red); }
+.fw-sim__icon { color: var(--c); flex: none; margin-top: 1px; }
+.fw-sim__text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.fw-sim__verdict { font-weight: 650; color: var(--c); }
+.fw-sim__by { font-weight: 500; color: var(--text-secondary); }
+.fw-sim__match { font-size: 12.5px; }
+.fw-sim__note { font-size: 12px; color: var(--text-secondary); }
+.fw-sim__note--limited { color: var(--amber); }

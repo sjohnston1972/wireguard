@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
+
+// Whole-app journeys through the palette (about 5 s under a full parallel run; the
+// nine-action walk below has its own, longer limit).
+vi.setConfig({ testTimeout: 15_000 });
 
 const loc = () => screen.getByLabelText("location");
 
@@ -44,8 +48,8 @@ describe("command palette", () => {
     const user = userEvent.setup();
     renderApp("/");
     const dialog = await openPalette(user);
-    await user.type(within(dialog).getByRole("combobox"), "iphone");
-    const opt = await within(dialog).findByRole("option", { name: /Steven iPhone/ });
+    await user.type(within(dialog).getByRole("combobox"), "test-phone");
+    const opt = await within(dialog).findByRole("option", { name: /test-phone/ });
     expect(opt).toHaveTextContent("10.13.13.2");
     await user.keyboard("{Enter}");
     expect(loc()).toHaveTextContent("/clients/1");

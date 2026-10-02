@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { cx } from "../cx";
 import { useReturnFocus } from "./useReturnFocus";
+import { ESCAPE_HANDOFF, escapeHandedToDialog } from "../escapeHandoff";
 import { SidePanel } from "./SidePanel";
 import "./Drawer.css";
 
@@ -55,6 +56,13 @@ function ModalDrawer({ open, onOpenChange, title, subtitle, leading, footer, sid
           data-side={side}
           aria-describedby={undefined}
           onCloseAutoFocus={onCloseAutoFocus}
+          {...{ [ESCAPE_HANDOFF]: "" }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && escapeHandedToDialog(e.nativeEvent)) {
+              e.stopPropagation(); // an outer dialog stays open
+              onOpenChange(false);
+            }
+          }}
         >
           <header className="drawer__head">
             {leading}

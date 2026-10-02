@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useReturnFocus } from "./useReturnFocus";
+import { ESCAPE_HANDOFF, escapeHandedToDialog } from "../escapeHandoff";
 import "./Modal.css";
 
 export interface ModalProps {
@@ -27,6 +28,13 @@ export function Modal({ open, onOpenChange, title, description, footer, children
           style={{ maxWidth: width }}
           onCloseAutoFocus={onCloseAutoFocus}
           {...(description ? {} : { "aria-describedby": undefined })}
+          {...{ [ESCAPE_HANDOFF]: "" }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && escapeHandedToDialog(e.nativeEvent)) {
+              e.stopPropagation(); // an outer dialog stays open
+              onOpenChange(false);
+            }
+          }}
         >
           <header className="modal__head">
             <Dialog.Title className="modal__title">{title}</Dialog.Title>

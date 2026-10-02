@@ -110,6 +110,46 @@ describe("scenarios", () => {
     expect([...SCENARIOS].sort()).toEqual(["busy-month", "deploying", "destroyed", "empty", "failed", "running", "standby"].sort());
   });
 
+  it("every scenario wipes drafts and resets fw_policy", async () => {
+    const { env } = devEnv();
+    await seed(env, "running");
+    for (const s of SCENARIOS) {
+      // Leave things as a long-used install would: a later version and an extra draft rule.
+      await env.DB.prepare("UPDATE fw_policy SET live_version = 9 WHERE id = 1").run();
+      await env.DB.prepare("INSERT INTO fw_draft_rules (live_id, position, name, src_kind, dst_kind, proto, action, created_at) VALUES (NULL, 999, 'leftover', 'any', 'any', 'any', 'deny', '2026-01-01')").run();
+      await seed(env, s);
+      const pol = await env.DB.prepare("SELECT live_version, draft_base, draft_default, apply_token FROM fw_policy WHERE id = 1").first();
+      const names = (await env.DB.prepare("SELECT name FROM fw_draft_rules").all<{ name: string }>()).results.map((r) => r.name);
+      expect(names, s).not.toContain("leftover");
+      if (s === "running") {
+        expect(pol, s).toEqual({ live_version: 1, draft_base: 1, draft_default: "deny", apply_token: null });
+      } else {
+        expect(pol, s).toEqual({ live_version: 1, draft_base: null, draft_default: null, apply_token: null });
+        expect(names, s).toEqual([]);
+        expect((await api(env, "GET", "/firewall")).json.draft, s).toBeNull();
+      }
+    }
+  }, 30_000);
+
+  it("running has a two-change draft (one edited rule, one added)", async () => {
+    const { env } = devEnv();
+    await seed(env, "running");
+    const fw = (await api(env, "GET", "/firewall")).json;
+    expect(fw.version).toBe(1);
+    expect(fw.policy.state).toBe("applied");
+    expect(fw.draft).toMatchObject({ baseVersion: 1, stale: false, changes: 2 });
+    expect(fw.draft.diff.changed).toHaveLength(1);
+    expect(fw.draft.diff.added).toHaveLength(1);
+    expect(fw.draft.diff.removed).toEqual([]);
+    expect(fw.draft.diff.moved).toEqual([]);
+    expect(fw.draft.diff.defaultChanged).toBeNull();
+    expect(fw.draft.rules.filter((r: { mark: string | null }) => r.mark).map((r: { mark: string }) => r.mark).sort()).toEqual(["added", "changed"]);
+    // Apply would go through: neither change is a rule the VM could not load.
+    expect(fw.draft.rules.filter((r: { mark: string | null; problem: string | null }) => r.mark && r.problem)).toEqual([]);
+    // The live rules are as seeded: the draft has not been applied.
+    expect(fw.rules.length).toBe(fw.draft.rules.length - 1);
+  });
+
   it("empty: no clients, destroyed, no history", async () => {
     const { env } = devEnv();
     await seed(env, "empty");
@@ -163,7 +203,7 @@ describe("scenarios", () => {
     expect(c.kpis.avgLatencyMs).toBeGreaterThan(10);
     expect(c.kpis.avgLatencyMs).toBeLessThan(40);
     expect(c.talkers.length).toBeGreaterThan(0);
-    expect(c.clients.map((x: any) => x.name)).toEqual(expect.arrayContaining(["home-site", "sj-phone", "sj-gaming", "laptop"]));
+    expect(c.clients.map((x: any) => x.name)).toEqual(expect.arrayContaining(["home-site", "phone", "gaming-pc", "laptop"]));
 
     const fw = (await api(env, "GET", "/firewall")).json;
     expect(fw.policy.state).toBe("applied");
@@ -171,6 +211,10 @@ describe("scenarios", () => {
     expect(fw.drops.recent.length).toBeGreaterThan(3);
     expect(fw.drops.recent.some((d: any) => d.proto.toLowerCase() === "tcp" && d.dport === 8080)).toBe(true);
     expect(fw.rules.some((r: any) => r.hits && r.hits[0] > 0)).toBe(true);
+    // Rule hit history, so the Firewall screen's Hits 24h column and its trend have data.
+    expect(fw.rules.some((r: any) => r.hits24h > 0)).toBe(true);
+    expect(fw.rules.find((r: any) => r.hits24h > 0).trend24h).toHaveLength(24);
+    expect(fw.defaultHits24h).toBeGreaterThan(0);
     expect(fw.captures.length).toBeGreaterThan(0);
     expect(fw.forwards.length).toBeGreaterThan(0);
 
@@ -201,6 +245,8 @@ describe("scenarios", () => {
     expect(o.snapshot.steps.filter((s: any) => s.conclusion === "success")).toHaveLength(6);
     expect(o.snapshot.steps.filter((s: any) => s.status === "in_progress")).toHaveLength(1);
     expect(o.snapshot.log_tail).toMatch(/INFO/);
+    // GitHub's own line format (a UTC timestamp), so the screen shows it on the same clock as the steps.
+    expect(o.snapshot.log_tail.split("\n")[0]).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z \[INFO\] /);
     expect(o.snapshot.run_id).toBeTruthy();
     const run = (await api(env, "GET", `/runs/${o.snapshot.run_id}`)).json;
     expect(run.active).toBe(true);
@@ -257,7 +303,7 @@ describe("scenarios", () => {
     await seed(env, "running");
     await seed(env, "empty");
     expect((await api(env, "GET", "/overview")).json.snapshot.state).toBe("destroyed");
-    for (const t of ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "fw_forwards"]) {
+    for (const t of ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards"]) {
       const n = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first<{ n: number }>();
       expect(n!.n, t).toBe(0);
     }

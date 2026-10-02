@@ -1,0 +1,83 @@
+.ov-deploy {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px 20px;
+  flex-wrap: wrap;
+}
+.ov-deploy__fields {
+  display: flex;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.ov-deploy__field,
+.ov-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.ov-deploy__caption {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-deploy__go {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-left: auto;
+}
+.ov-deploy__cost {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-deploy__over {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--red) 55%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  font-size: 13px;
+}
+.ov-deploy__over a {
+  color: var(--blue-bright);
+}
+.ov-deploy--compact {
+  flex-direction: column;
+  align-items: stretch;
+}
+.ov-deploy--compact .ov-deploy__fields {
+  flex-direction: column;
+}
+.ov-deploy--compact .ov-deploy__go {
+  margin-left: 0;
+}
+.ov-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ov-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue-fill);
+}
+.ov-form__note {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-form__note a {
+  color: var(--blue-bright);
+}
+.ov-form__error {
+  font-size: 12px;
+  color: var(--red);
+}
