@@ -82,7 +82,7 @@ const rules = cssFiles(src).flatMap((file) => [...readFileSync(file, "utf8").mat
 
 describe("component CSS uses the checked pairs", () => {
   it('"no data" text uses --text-secondary, not --text-muted', () => {
-    const nodata = rules.filter((r) => /nodata|__empty\b/.test(r.sel) && /(^|;|\s)color\s*:/.test(r.body));
+    const nodata = rules.filter((r) => /nodata|__empty\b|__value--none\b/.test(r.sel) && /(^|;|\s)color\s*:/.test(r.body));
     expect(nodata.length).toBeGreaterThan(4);
     for (const r of nodata) expect(r.body, `${r.file} ${r.sel}`).not.toMatch(/color\s*:\s*var\(--text-muted\)/);
   });
