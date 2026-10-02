@@ -11,6 +11,7 @@ import { registerLifecycle } from "./lifecycle";
 import { registerHistory } from "./history";
 import { registerClients } from "./clients";
 import { registerFirewall } from "./firewall";
+import { registerFwDraft } from "./fwdraft";
 import { registerActivity } from "./activity";
 import { registerCost } from "./cost";
 import { registerSettings } from "./settings";
@@ -28,6 +29,7 @@ export function buildApi(): Hono<ApiEnv> {
   registerHistory(api);
   registerClients(api);
   registerFirewall(api);
+  registerFwDraft(api);
   registerActivity(api);
   registerCost(api);
   registerSettings(api);

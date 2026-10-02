@@ -5,6 +5,7 @@
 
 import type { Env } from "./env";
 import type { FwRule, Forward } from "./firewall";
+import type { DraftRule, RuleBody } from "./fwdraft";
 
 export type RunAction = "apply" | "destroy";
 export type RunStatus = "queued" | "running" | "success" | "failure" | "cancelled";
@@ -534,6 +535,97 @@ export async function moveFwRule(env: Env, id: number, dir: -1 | 1): Promise<voi
   const order = rules.map((r) => r.id);
   [order[i], order[j]] = [order[j], order[i]];
   await env.DB.batch(order.map((rid, k) => env.DB.prepare("UPDATE fw_rules SET position = ?2 WHERE id = ?1").bind(rid, (k + 1) * 10)));
+}
+
+// ── Firewall draft and the live rule set's version (0015) ────────────────
+//
+// Numbers bound from JavaScript reach D1 as REAL, so every bound id,
+// position or version is CAST to INTEGER where SQL compares or stores it.
+
+export interface FwPolicy {
+  live_version: number;
+  /** The live version the draft began from; null when there is no draft. */
+  draft_base: number | null;
+  draft_default: "allow" | "deny" | null;
+}
+
+export async function getFwPolicy(env: Env): Promise<FwPolicy> {
+  const r = await env.DB.prepare("SELECT live_version, draft_base, draft_default FROM fw_policy WHERE id = 1").first<FwPolicy>();
+  return r ? { live_version: Number(r.live_version), draft_base: r.draft_base === null ? null : Number(r.draft_base), draft_default: r.draft_default } : { live_version: 1, draft_base: null, draft_default: null };
+}
+
+/** The statement that marks the live rules as changed (a draft begun before now is stale), for a caller's own batch. */
+export function bumpFwVersionStmt(env: Env): D1PreparedStatement {
+  return env.DB.prepare("UPDATE fw_policy SET live_version = live_version + 1 WHERE id = 1");
+}
+
+/** The live rules or default changed outside Apply (old page, Settings, restore): any draft is now stale. */
+export async function bumpFwVersion(env: Env): Promise<void> {
+  await bumpFwVersionStmt(env).run();
+}
+
+export async function listFwDraftRules(env: Env): Promise<DraftRule[]> {
+  return (await env.DB.prepare("SELECT id, live_id, position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log FROM fw_draft_rules ORDER BY position, id").all<DraftRule>()).results;
+}
+
+/**
+ * Begin a draft if there is none: copy every live rule with its own id and
+ * the live default, and record the live version it began from. One batch,
+ * and each step does nothing when a draft already exists.
+ */
+export async function ensureFwDraft(env: Env): Promise<void> {
+  const none = "(SELECT draft_base FROM fw_policy WHERE id = 1) IS NULL";
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM fw_draft_rules WHERE ${none}`),
+    env.DB.prepare(
+      `INSERT INTO fw_draft_rules (id, live_id, position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log, created_at)
+       SELECT id, id, position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log, created_at FROM fw_rules WHERE ${none}`,
+    ),
+    env.DB.prepare(
+      `UPDATE fw_policy SET draft_base = live_version,
+         draft_default = COALESCE((SELECT CASE value WHEN 'allow' THEN 'allow' ELSE 'deny' END FROM settings WHERE key = 'firewall_default'), 'deny')
+       WHERE id = 1 AND draft_base IS NULL`,
+    ),
+  ]);
+}
+
+/** Add a rule at the end of the draft; returns its id. */
+export async function addFwDraftRule(env: Env, r: RuleBody): Promise<number> {
+  const row = await env.DB.prepare(
+    `INSERT INTO fw_draft_rules (live_id, position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log, created_at)
+     VALUES (NULL, (SELECT COALESCE(MAX(position), 0) + 10 FROM fw_draft_rules), CAST(?1 AS INTEGER), ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, CAST(?10 AS INTEGER), ?11) RETURNING id`,
+  )
+    .bind(r.enabled, r.name, r.src_kind, r.src_value, r.dst_kind, r.dst_value, r.proto, r.ports, r.action, r.log, new Date().toISOString())
+    .first<{ id: number }>();
+  return Number(row!.id);
+}
+
+export async function updateFwDraftRule(env: Env, id: number, r: RuleBody): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE fw_draft_rules SET enabled = CAST(?2 AS INTEGER), name = ?3, src_kind = ?4, src_value = ?5, dst_kind = ?6, dst_value = ?7, proto = ?8, ports = ?9, action = ?10, log = CAST(?11 AS INTEGER)
+     WHERE id = CAST(?1 AS INTEGER)`,
+  )
+    .bind(id, r.enabled, r.name, r.src_kind, r.src_value, r.dst_kind, r.dst_value, r.proto, r.ports, r.action, r.log)
+    .run();
+}
+
+export async function deleteFwDraftRule(env: Env, id: number): Promise<void> {
+  await env.DB.prepare("DELETE FROM fw_draft_rules WHERE id = CAST(?1 AS INTEGER)").bind(id).run();
+}
+
+/** Put the draft in this order (ids, first first), renumbered in tens; one batch. */
+export async function orderFwDraft(env: Env, ids: number[]): Promise<void> {
+  if (!ids.length) return;
+  await env.DB.batch(ids.map((rid, k) => env.DB.prepare("UPDATE fw_draft_rules SET position = CAST(?2 AS INTEGER) WHERE id = CAST(?1 AS INTEGER)").bind(rid, (k + 1) * 10)));
+}
+
+export async function setFwDraftDefault(env: Env, action: "allow" | "deny"): Promise<void> {
+  await env.DB.prepare("UPDATE fw_policy SET draft_default = ?1 WHERE id = 1 AND draft_base IS NOT NULL").bind(action).run();
+}
+
+/** Throw the draft away (fine when there is none). */
+export async function dropFwDraft(env: Env): Promise<void> {
+  await env.DB.batch([env.DB.prepare("DELETE FROM fw_draft_rules"), env.DB.prepare("UPDATE fw_policy SET draft_base = NULL, draft_default = NULL WHERE id = 1")]);
 }
 
 // ── Published ports ───────────────────────────────────────────────────────

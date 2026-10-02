@@ -10,9 +10,10 @@
 // that are not part of the longest run already in live order. Dragging rule
 // 4 to the top is one move, not four rules shuffled down a place.
 
+import type { Config } from "./env";
 import type { Peer } from "./db";
-import { endLabel, parseCidr, serviceLabel, type FwRule, type Proto } from "./firewall";
-import type { DraftDiff } from "../../shared/api";
+import { endLabel, parseCidr, ruleLines, serviceLabel, type FwRule, type Proto } from "./firewall";
+import type { DraftDiff, FirewallDraft } from "../../shared/api";
 
 /** A draft row: a rule plus the live rule it edits (null for a rule added in the draft). */
 export interface DraftRule extends FwRule {
@@ -103,6 +104,34 @@ export function draftDiff(live: FwRule[], liveDefault: "allow" | "deny", draft: 
 /** How many changes a diff holds (each default change counts one). */
 export function diffCount(d: DraftDiff): number {
   return d.added.length + d.removed.length + d.changed.length + d.moved.length + (d.defaultChanged ? 1 : 0);
+}
+
+/**
+ * The draft as GET /firewall shows it: its rules in order with labels, the
+ * compile problem of each enabled one, how each differs from live, the
+ * diff and its size. `stale` when the live rules changed after it began.
+ */
+export function draftView(
+  o: { live: FwRule[]; liveDefault: "allow" | "deny"; draft: DraftRule[]; draftDefault: "allow" | "deny"; peers: Peer[]; cfg: Config; baseVersion: number; liveVersion: number },
+): FirewallDraft {
+  const diff = draftDiff(o.live, o.liveDefault, o.draft, o.draftDefault, o.peers);
+  const added = new Set(diff.added.map((x) => x.id));
+  const changed = new Set(diff.changed.map((x) => x.id));
+  const moved = new Set(diff.moved.map((x) => x.id));
+  const rules = byPlace(o.draft).map((r, i) => {
+    const { live_id, ...rule } = r;
+    return {
+      ...rule,
+      liveId: added.has(r.id) ? null : live_id,
+      place: i + 1,
+      fromLabel: endLabel(r.src_kind, r.src_value, o.peers),
+      toLabel: endLabel(r.dst_kind, r.dst_value, o.peers),
+      service: serviceLabel(r),
+      problem: r.enabled ? ruleLines(r, o.cfg, o.peers).problem : null,
+      mark: added.has(r.id) ? ("added" as const) : changed.has(r.id) ? ("changed" as const) : moved.has(r.id) ? ("moved" as const) : null,
+    };
+  });
+  return { baseVersion: o.baseVersion, stale: o.baseVersion !== o.liveVersion, defaultAction: o.draftDefault, rules, diff, changes: diffCount(diff) };
 }
 
 /**
