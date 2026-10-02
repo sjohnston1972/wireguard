@@ -68,7 +68,7 @@ describe("GET /cost", () => {
     const r = await api(env, "GET", "/cost");
     expect(r.status).toBe(200);
     expect(r.json.range).toBe("month");
-    expect(r.json.meta).toMatchObject({ currency: "GBP", timezone: "Europe/London", azureLagHours: 24, asOfDay: null });
+    expect(r.json.meta).toMatchObject({ currency: "GBP", timezone: "UTC", azureLagHours: 24, asOfDay: null });
     expect(r.json).toMatchObject({ projection: null, daily: [], previous: [], sessions: [], standby: null, insights: [], monthToDate: 0 });
     expect(r.json.session).toEqual({ running: false, since: null, estimateGbp: null });
   });

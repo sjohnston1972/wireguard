@@ -207,7 +207,7 @@ export interface RunLogResponse {
 export interface CostResponse {
   now: string;
   range: "month" | "7d" | "30d";
-  meta: { currency: "GBP"; timezone: "Europe/London"; azureLagHours: 24; hourlyRateGbp: number; standbyRateGbp: number; asOfDay: string | null };
+  meta: { currency: "GBP"; timezone: "UTC"; azureLagHours: 24; hourlyRateGbp: number; standbyRateGbp: number; asOfDay: string | null };
   /** The VM running now: what it has cost so far, estimated (Azure's figures lag). */
   session: { running: boolean; since: string | null; estimateGbp: number | null };
   standby: { since: string; perDayGbp: number } | null;

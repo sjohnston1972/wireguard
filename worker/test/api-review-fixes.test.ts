@@ -117,3 +117,11 @@ describe("review pass 2: the month projection allows for Azure's lag", () => {
     expect(p!.basis).toMatch(/1 day Azure has reported/);
   });
 });
+
+describe("review pass 2: the cost timezone label tells the truth", () => {
+  it("says the cost days are UTC", async () => {
+    const { env } = apiEnv();
+    const r = await api(env, "GET", "/cost");
+    expect(r.json.meta.timezone).toBe("UTC");
+  });
+});

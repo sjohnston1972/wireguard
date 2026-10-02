@@ -40,7 +40,7 @@ export function registerCost(api: Hono<ApiEnv>): void {
     const out: CostResponse = {
       now: now.toISOString(),
       range,
-      meta: { currency: "GBP", timezone: "Europe/London", azureLagHours: 24, hourlyRateGbp: cfg.hourlyRateGbp, standbyRateGbp: cfg.standbyRateGbp, asOfDay: fetchedDay },
+      meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: cfg.hourlyRateGbp, standbyRateGbp: cfg.standbyRateGbp, asOfDay: fetchedDay },
       session: { running, since: running ? snap.running_since : null, estimateGbp: running ? Math.max(0, ((now.getTime() - Date.parse(snap.running_since!)) / 3_600_000) * cfg.hourlyRateGbp) : null },
       standby,
       monthToDate: budget.actual,
