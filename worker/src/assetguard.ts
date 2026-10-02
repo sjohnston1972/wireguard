@@ -14,7 +14,9 @@ const notFound = () => new Response("Not found", { status: 404, headers: { "Cont
 export async function serveHashedAsset(request: Request, assets: Fetcher | undefined): Promise<Response> {
   if (!assets) return notFound();
   const res = await assets.fetch(request);
-  if (res.status === 304) return res;
-  if ((res.status !== 200 && res.status !== 206) ||/^text\/html/i.test(res.headers.get("Content-Type") ?? "")) return notFound();
-  return res;
+  if (res.status !== 200 && res.status !== 206 && res.status !== 304) return notFound();
+  if (res.status !== 304 && /^text\/html/i.test(res.headers.get("Content-Type") ?? "")) return notFound();
+  // A copy: the binding's headers are immutable, and the Worker's safety
+  // middleware (index.ts) adds its headers to every response.
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: new Headers(res.headers) });
 }

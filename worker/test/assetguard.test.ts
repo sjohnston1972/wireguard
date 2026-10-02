@@ -20,8 +20,23 @@ describe("serveHashedAsset", () => {
     const stored = new Response("export{}", { headers: { "Content-Type": "text/javascript", "Cache-Control": "public, max-age=31536000, immutable" } });
     const a = fakeAssets(() => stored);
     const res = await serveHashedAsset(new Request("https://x.example/assets/index-abc.js"), a.fetcher);
-    expect(res).toBe(stored);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+    expect(await res.text()).toBe("export{}");
     expect(a.seen).toEqual(["/assets/index-abc.js"]);
+  });
+
+  it("the Worker's header middleware can add to a served asset (the binding's headers are immutable)", async () => {
+    const stored = new Response("export{}", { headers: { "Content-Type": "text/javascript", "Cache-Control": "public, max-age=31536000, immutable" } });
+    for (const m of ["set", "append", "delete"] as const) {
+      Object.defineProperty(stored.headers, m, { value: () => { throw new TypeError("Can't modify immutable headers."); } });
+    }
+    const res = await serveHashedAsset(new Request("https://x.example/assets/index-abc.js"), fakeAssets(() => stored).fetcher);
+    expect(() => res.headers.set("X-Content-Type-Options", "nosniff")).not.toThrow();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("text/javascript");
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+    expect(await res.text()).toBe("export{}");
   });
 
   it("a revalidation (304) passes through", async () => {
