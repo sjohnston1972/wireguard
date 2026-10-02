@@ -49,6 +49,23 @@ test("the dev-only gallery in the build fails", () => {
   assert.ok(r.lines.some((l) => /^FAIL/.test(l) && /__gallery/.test(l) && /index-a\.js/.test(l)));
 });
 
+test("a font inlined into the CSS as a data: URI fails (font-src 'self' blocks it)", () => {
+  const r = judgeBundle([f("assets/index-a.js", 100_000), f("assets/index-c.css", 30_000, { inlineFont: true })], LIMITS);
+  assert.equal(r.ok, false);
+  assert.ok(r.lines.some((l) => /^FAIL/.test(l) && /data: URI/.test(l) && /index-c\.css/.test(l)));
+});
+
+test("bundle-size.mjs finds an inlined font in the built CSS", () => {
+  const dir = fakeDist({ "index.html": "<!doctype html>", "assets/index-b.css": "@font-face{src:url(data:font/woff2;base64,d09GMg) format(\"woff2\")}" });
+  try {
+    const r = spawnSync(process.execPath, [script, dir], { encoding: "utf8" });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /data: URI/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function fakeDist(files) {
   const dir = mkdtempSync(join(tmpdir(), "bundle-"));
   mkdirSync(join(dir, "assets"));

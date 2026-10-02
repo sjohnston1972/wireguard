@@ -11,7 +11,8 @@ const kb = (n) => `${(n / 1000).toFixed(1)} kB`;
 
 /**
  * files: [{ name, bytes, gzip, gallery? }] with names relative to web/dist
- * ("assets/index-abc.js"); `gallery` is true when the file mentions __gallery.
+ * ("assets/index-abc.js"); `gallery` is true when the file mentions __gallery;
+ * `inlineFont` when a stylesheet carries a font as a data: URI.
  * Returns { ok, lines }: a table of every JS and CSS file, the two totals
  * against their limits, and a "FAIL ..." line for each problem.
  */
@@ -31,5 +32,6 @@ export function judgeBundle(files, limits = LIMITS) {
   }
   for (const f of files.filter((f) => f.name.endsWith(".map"))) fails.push(`FAIL source map in the build: ${f.name}`);
   for (const f of files.filter((f) => f.gallery)) fails.push(`FAIL the dev-only __gallery is in the build: ${f.name}`);
+  for (const f of files.filter((f) => f.inlineFont)) fails.push(`FAIL a font is inlined as a data: URI (the CSP's font-src 'self' blocks it): ${f.name}`);
   return { ok: fails.length === 0, lines: [...lines, ...fails] };
 }
