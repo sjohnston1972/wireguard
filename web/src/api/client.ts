@@ -15,7 +15,7 @@ export class ApiError extends Error {
   }
 }
 
-/** The Cloudflare Access sign-in has lapsed (redirect, 401, or a login page instead of JSON). */
+/** The Cloudflare Access sign-in has lapsed (redirect, 401, or a 2xx login page instead of JSON). */
 export class SessionExpiredError extends Error {
   constructor() {
     super("Session expired, sign in again");
@@ -72,7 +72,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   try {
     data = JSON.parse(await res.text());
   } catch {
-    // An API call that does not answer in JSON got a login or error page from in front of the Worker.
+    // Not JSON: something in front of the Worker answered instead of the API.
+    if (res.status >= 500) {
+      // Cloudflare's own error page (502, 524, 1101...): the dashboard is down or
+      // timing out, which is a server problem, not a lapsed sign-in.
+      connection.unreachable();
+      throw new ApiError(res.status, "upstream", `The dashboard is not answering properly (${res.status}). Try again shortly.`);
+    }
+    if (res.status >= 400) throw new ApiError(res.status, "http_" + res.status, `The dashboard answered ${res.status}.`);
+    // A 2xx that is not JSON is Access's login page served in place of the API.
     connection.expired();
     throw new SessionExpiredError();
   }

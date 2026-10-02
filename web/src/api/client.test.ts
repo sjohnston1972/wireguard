@@ -75,8 +75,32 @@ describe("apiGet", () => {
     expect(connection.get().disconnected).toBe(false);
   });
 
-  it("a non-JSON answer to an API call is an expired session even on a 502", async () => {
-    mockFetch({ "GET /api/v1/x": { status: 502, text: "Bad gateway", contentType: "text/plain" } });
+  it("a 3xx that is not opaque is an expired session", async () => {
+    mockFetch({ "GET /api/v1/x": { status: 302, text: "", contentType: "text/html" } });
+    await expect(apiGet("/x")).rejects.toBeInstanceOf(SessionExpiredError);
+  });
+
+  it.each([502, 524, 530])("a non-JSON %i (Cloudflare's error page) is a server error, not an expired session", async (status) => {
+    mockFetch({ "GET /api/v1/x": { status, text: "<html>error code: 1101</html>", contentType: "text/html" } });
+    const err = await apiGet("/x").catch((e) => e);
+    expect(err).not.toBeInstanceOf(SessionExpiredError);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status, code: "upstream" });
+    expect(connection.get().sessionExpired).toBe(false);
+    // The dashboard is effectively unreachable: the banner shows.
+    expect(connection.get().disconnected).toBe(true);
+  });
+
+  it("a non-JSON 4xx other than 401 is an ApiError, not an expired session", async () => {
+    mockFetch({ "GET /api/v1/x": { status: 404, text: "Not found", contentType: "text/plain" } });
+    const err = await apiGet("/x").catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 404 });
+    expect(connection.get().sessionExpired).toBe(false);
+  });
+
+  it("a non-JSON 200 (a login page served in place of the API) is still an expired session", async () => {
+    mockFetch({ "GET /api/v1/x": { status: 200, text: "<html>Sign in</html>", contentType: "text/html" } });
     await expect(apiGet("/x")).rejects.toBeInstanceOf(SessionExpiredError);
   });
 });
