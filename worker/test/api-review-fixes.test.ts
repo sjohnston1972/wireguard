@@ -125,3 +125,17 @@ describe("review pass 2: the cost timezone label tells the truth", () => {
     expect(r.json.meta.timezone).toBe("UTC");
   });
 });
+
+describe("review pass 2: settings region and VM size must be known", () => {
+  it("rejects an unknown region or VM size and saves nothing", async () => {
+    const { env } = apiEnv();
+    const r = await api(env, "PUT", "/settings", { idle_destroy_minutes: 45, region: "mars" });
+    expect(r.status).toBe(400);
+    expect(r.json.error.field).toBe("region");
+    const v = await api(env, "PUT", "/settings", { vm_size: "Standard_Nonsense" });
+    expect(v.status).toBe(400);
+    expect(v.json.error.field).toBe("vm_size");
+    expect((await db.allSettings(env)).idle_destroy_minutes).toBeUndefined();
+    expect((await api(env, "PUT", "/settings", { region: "uksouth", vm_size: "Standard_B1s" })).status).toBe(200);
+  });
+});

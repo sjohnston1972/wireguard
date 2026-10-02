@@ -84,6 +84,7 @@ export function registerSettings(api: Hono<ApiEnv>): void {
       else if (typeof v === "number" && Number.isFinite(v)) s = String(v);
       else return bad(c, `${k} did not look right.`, k);
       if (!OVERRIDABLE[k](s)) return bad(c, `${k} did not look right.`, k);
+      if ((k === "region" && !Object.hasOwn(REGIONS, s)) || (k === "vm_size" && !VM_SIZES.includes(s))) return bad(c, `${k} is not one of the choices on offer.`, k);
       form[k] = s;
     }
     const was = await db.allSettings(c.env);
