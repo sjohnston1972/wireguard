@@ -276,7 +276,7 @@ async function addSession(env: Env, rng: Rng, s: Session0, now: number, o: { pee
     started_at: iso(started),
     finished_at: iso(s.start),
     github_run_id: 7_000_000_000 + rng.int(1, 999_999),
-    github_run_url: `https://github.com/sjohnston1972/wireguard/actions/runs/${7_000_000_000 + rng.int(1, 999_999)}`,
+    github_run_url: `https://ci.example.invalid/actions/runs/${7_000_000_000 + rng.int(1, 999_999)}`,
     public_ip: publicIp,
     steps_json: JSON.stringify(stepList(DEPLOY_STEPS, started)),
   });
@@ -288,7 +288,7 @@ async function addSession(env: Env, rng: Rng, s: Session0, now: number, o: { pee
     const finD = startD + stepSeconds(DESTROY_STEPS) * 1000 + rng.int(-8, 25) * 1000;
     destroyId = runId("destroy", reqD, rng);
     await db.createRun(env, { id: destroyId, action: "destroy", status: "queued", requested_at: iso(reqD), requested_by: s.reason === "schedule" ? "watchman" : s.by, callback_token_hash: null, agent_token_hash: null, payload_json: null, auto_destroy_at: null, reason: s.reason, ssh_password: null });
-    await db.updateRun(env, destroyId, { status: "success", started_at: iso(startD), finished_at: iso(finD), github_run_id: 7_000_000_000 + rng.int(1, 999_999), github_run_url: `https://github.com/sjohnston1972/wireguard/actions/runs/${7_000_000_000 + rng.int(1, 999_999)}`, steps_json: JSON.stringify(stepList(DESTROY_STEPS, startD)) });
+    await db.updateRun(env, destroyId, { status: "success", started_at: iso(startD), finished_at: iso(finD), github_run_id: 7_000_000_000 + rng.int(1, 999_999), github_run_url: `https://ci.example.invalid/actions/runs/${7_000_000_000 + rng.int(1, 999_999)}`, steps_json: JSON.stringify(stepList(DESTROY_STEPS, startD)) });
     const hours = (s.end - s.start) / HOUR;
     await note(env, finD, "destroy", "Torn down: everything in Azure is gone.", destroyId, o.ack);
     await note(env, finD + 1000, "session", `Session ${Math.floor(hours)}h ${Math.round((hours % 1) * 60)}m, about £${(hours * 0.0157).toFixed(2)}.`, destroyId, o.ack);
@@ -303,7 +303,7 @@ async function addFailedRun(env: Env, rng: Rng, atMs: number, error: string): Pr
   const steps = stepList(DEPLOY_STEPS, started, { failAt });
   const finished = Date.parse(steps[failAt].completed_at!);
   await db.createRun(env, { id, action: "apply", status: "queued", requested_at: iso(atMs), requested_by: USER, callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region: "uksouth", vm_size: "Standard_B1s", run_id: id }), auto_destroy_at: null, reason: null, ssh_password: null });
-  await db.updateRun(env, id, { status: "failure", started_at: iso(started), finished_at: iso(finished), github_run_id: 7_000_000_000 + rng.int(1, 999_999), github_run_url: `https://github.com/sjohnston1972/wireguard/actions/runs/7000${rng.int(10000, 99999)}`, error, steps_json: JSON.stringify(steps) });
+  await db.updateRun(env, id, { status: "failure", started_at: iso(started), finished_at: iso(finished), github_run_id: 7_000_000_000 + rng.int(1, 999_999), github_run_url: `https://ci.example.invalid/actions/runs/7000${rng.int(10000, 99999)}`, error, steps_json: JSON.stringify(steps) });
   await note(env, finished, "failure", `Deploy failed: ${error}`, id, false);
   return id;
 }
@@ -665,7 +665,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
       error,
       steps,
       log_tail: ["10:24:51 ERROR azurerm_linux_virtual_machine.wg: Creating...", "10:25:12 ERROR Error: creating Linux Virtual Machine: SkuNotAvailable", "10:25:12 ERROR Terraform apply failed (exit 1)"].join("\n"),
-      github_run_url: `https://github.com/sjohnston1972/wireguard/actions/runs/7000012345`,
+      github_run_url: `https://ci.example.invalid/actions/runs/7000012345`,
       region,
       vm_size: "Standard_B1s",
       profile: "UK",
@@ -680,7 +680,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
     const id = runId("apply", requested, rng);
     await db.createRun(env, { id, action: "apply", status: "queued", requested_at: iso(requested), requested_by: USER, callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region, vm_size: "Standard_B1s", run_id: id, peers_json: JSON.stringify(peers.map((p) => ({ n: p.cast.name }))) }), auto_destroy_at: iso(now + 4 * HOUR), reason: null, ssh_password: null });
     // No github_run_id on purpose: the Worker would otherwise look the run up on GitHub and replace these steps.
-    await db.updateRun(env, id, { status: "running", started_at: iso(started), github_run_url: "https://github.com/sjohnston1972/wireguard/actions/runs/7000012346" });
+    await db.updateRun(env, id, { status: "running", started_at: iso(started), github_run_url: "https://ci.example.invalid/actions/runs/7000012346" });
     // Six steps done, the seventh running, as in the mockup: shift the template so "now" falls inside step 7.
     const lead = DEPLOY_STEPS.slice(0, 6).reduce((n, [, s]) => n + s, 0);
     const steps = stepList(DEPLOY_STEPS, now - (lead + 12) * SEC, { done: 6 });
@@ -700,7 +700,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
       ["INFO", "Opening UDP 51820 in Azure NSG..."],
     ];
     const tail = lines.map(([lvl, msg], i) => `${new Date(now - (lines.length - i) * 2500).toISOString()} [${lvl}] ${msg}`).join("\n");
-    await saveSnapshot(env, { ...EMPTY, state: "deploying", run_id: id, action: "apply", since: iso(started), steps, log_tail: tail, github_run_url: "https://github.com/sjohnston1972/wireguard/actions/runs/7000012346", region, vm_size: "Standard_B1s", profile: "UK", updated_at: iso(now) });
+    await saveSnapshot(env, { ...EMPTY, state: "deploying", run_id: id, action: "apply", since: iso(started), steps, log_tail: tail, github_run_url: "https://ci.example.invalid/actions/runs/7000012346", region, vm_size: "Standard_B1s", profile: "UK", updated_at: iso(now) });
     return { ok: true, scenario, now: iso(now), counts: await counts(env) };
   }
 
@@ -731,7 +731,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
     auto_destroy_at: iso(now + 3 * HOUR + 12 * MIN),
     last_agent_at: out.report.at,
     agent: out.report,
-    github_run_url: `https://github.com/sjohnston1972/wireguard/actions/runs/7000012347`,
+    github_run_url: `https://ci.example.invalid/actions/runs/7000012347`,
     steps: stepList(DEPLOY_STEPS, startMs - stepSeconds(DEPLOY_STEPS) * 1000),
     azure: AZURE(now, region, cur.publicIp),
     traffic: out.traffic,

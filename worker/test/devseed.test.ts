@@ -10,6 +10,8 @@ import { api } from "./api-helpers";
 import worker from "../src/index";
 import type { Env } from "../src/env";
 import { SCENARIOS } from "../src/devseed";
+import { listRuns } from "../src/db";
+import { getSnapshot } from "../src/state";
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
 const NOW = "2026-10-02T14:00:00.000Z";
@@ -324,5 +326,20 @@ describe("scenarios", () => {
     const b = await dump();
     expect(b).toEqual(a);
     expect((a.out.hist_client as unknown[]).length).toBeGreaterThan(50);
+  });
+});
+
+describe("seeded GitHub links", () => {
+  it("no seeded URL points at github.com", async () => {
+    const RE = /^https:\/\/ci\.example\.invalid\/actions\/runs\/\d+$/;
+    let seen = 0;
+    for (const scenario of SCENARIOS) {
+      const { env } = devEnv();
+      await seed(env, scenario);
+      const urls = [...(await listRuns(env, 200)).map((r) => r.github_run_url), (await getSnapshot(env)).github_run_url].filter((u): u is string => !!u);
+      for (const u of urls) expect(u, `${scenario}: ${u}`).toMatch(RE);
+      seen += urls.length;
+    }
+    expect(seen).toBeGreaterThan(5);
   });
 });
