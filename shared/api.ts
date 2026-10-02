@@ -4,7 +4,8 @@
 // the Worker that answers and the app (web/) that asks, so both sides agree
 // on every field. Types only: nothing here runs.
 
-import type { Alert, AuditEntry, Peer, Profile, SpeedTest } from "../worker/src/db";
+import type { Alert, AuditEntry, CostDay, Peer, Profile, SpeedTest } from "../worker/src/db";
+import type { SessionRow } from "../worker/src/costview";
 import type { Snapshot, Talker } from "../worker/src/state";
 import type { ClientView, ClientKpis } from "../worker/src/clients";
 import type { BudgetStatus } from "../worker/src/budget";
@@ -126,4 +127,25 @@ export interface ClientConfigResponse {
 /** PUT /api/v1/clients/:id */
 export interface ClientEditResponse {
   peer: Peer;
+}
+
+// ── Cost ──
+
+/** GET /api/v1/cost?range=month|7d|30d */
+export interface CostResponse {
+  now: string;
+  range: "month" | "7d" | "30d";
+  meta: { currency: "GBP"; timezone: "Europe/London"; azureLagHours: 24; hourlyRateGbp: number; standbyRateGbp: number; asOfDay: string | null };
+  /** The VM running now: what it has cost so far, estimated (Azure's figures lag). */
+  session: { running: boolean; since: string | null; estimateGbp: number | null };
+  standby: { since: string; perDayGbp: number } | null;
+  /** This month's actual spend from Azure. */
+  monthToDate: number;
+  /** Null until Azure has listed a day of this month. */
+  projection: { gbp: number; basis: string } | null;
+  budget: BudgetStatus;
+  daily: CostDay[];
+  previous: CostDay[];
+  sessions: SessionRow[];
+  insights: string[];
 }

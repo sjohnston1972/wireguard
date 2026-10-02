@@ -10,6 +10,7 @@ import { registerOverview } from "./overview";
 import { registerLifecycle } from "./lifecycle";
 import { registerHistory } from "./history";
 import { registerClients } from "./clients";
+import { registerCost } from "./cost";
 
 export function buildApi(): Hono<ApiEnv> {
   const api = createApi();
@@ -19,6 +20,7 @@ export function buildApi(): Hono<ApiEnv> {
   registerLifecycle(api);
   registerHistory(api);
   registerClients(api);
+  registerCost(api);
   api.all("*", (c) => fail(c, 404, "not_found", "No such API route."));
   return api;
 }
