@@ -1,0 +1,16 @@
+.fw-kpi { display: flex; min-width: 0; }
+.fw-kpi > .tile { flex: 1; min-height: 88px; }
+.fw-kpi .tile__sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fw-kpi .btn { flex: none; }
+
+@media (max-width: 1399px) {
+  .fw-kpi > .tile { gap: 10px; padding: 10px 12px; }
+  .fw-kpi .tile__icon--square { width: 44px; height: 44px; }
+  .fw-kpi .tile__icon--square > .lucide { width: 22px; height: 22px; }
+  .fw-kpi .spark { display: none; }
+}
+@media (max-height: 700px) and (min-width: 1100px) {
+  .fw-kpi > .tile { min-height: 0; padding: 8px 12px; }
+  .fw-kpi .tile__icon--square { width: 40px; height: 40px; }
+  .fw-kpi .tile__value { font-size: 20px; }
+}

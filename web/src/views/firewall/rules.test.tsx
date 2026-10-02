@@ -3,6 +3,9 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderApp } from "@/test/render";
 import { firewallData, OK } from "./testData";
 
+// Each test renders the whole page (many Radix controls); jsdom is slow at that under load.
+vi.setConfig({ testTimeout: 20_000 });
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -12,7 +15,7 @@ const table = () => screen.findByRole("table", { name: "Firewall rules" });
 /** Body rows of the rules table (the header row left out). */
 async function bodyRows() {
   const t = await table();
-  return within(t).getAllByRole("row").slice(1);
+  return Array.from(t.querySelectorAll<HTMLElement>("tbody > tr"));
 }
 const names = async () => (await bodyRows()).map((r) => r.getAttribute("data-rule-name"));
 

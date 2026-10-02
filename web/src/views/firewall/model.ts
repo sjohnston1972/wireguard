@@ -186,3 +186,30 @@ export function dropDelta(now: number, before: number): { text: string; directio
 }
 
 export const ZONE_ORDER: Zone[] = ["clients", "home", "azure", "workloads", "internet"];
+
+const ip4 = (s: string): number | null => {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s.trim());
+  if (!m) return null;
+  const p = m.slice(1).map(Number);
+  return p.some((x) => x > 255) ? null : p[0] * 2 ** 24 + p[1] * 2 ** 16 + p[2] * 2 ** 8 + p[3];
+};
+
+/** True when an IPv4 address is inside an IPv4 network ("10.13.13.0/24"). */
+export function inCidr(ip: string, cidr: string): boolean {
+  const [net, bits = "32"] = cidr.split("/");
+  const a = ip4(ip);
+  const n = ip4(net);
+  const b = Number(bits);
+  if (a === null || n === null || !(b >= 0 && b <= 32)) return false;
+  const size = 2 ** (32 - b);
+  return Math.floor(a / size) === Math.floor(n / size);
+}
+
+/** The zone an address belongs to (the internet when no private zone holds it). */
+export function zoneOfIp(ip: string, zones: FirewallResponse["zones"]): Zone {
+  // Workloads sit inside the Azure VNet: the narrower network wins.
+  const hits = zones.filter((z) => !z.negate && z.v4.some((c) => inCidr(ip, c)));
+  const bits = (z: (typeof zones)[number]) => Math.max(...z.v4.filter((c) => inCidr(ip, c)).map((c) => Number(c.split("/")[1] ?? 32)));
+  hits.sort((a, b) => bits(b) - bits(a));
+  return hits[0]?.zone ?? "internet";
+}

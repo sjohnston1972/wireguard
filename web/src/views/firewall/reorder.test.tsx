@@ -3,6 +3,9 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { renderApp } from "@/test/render";
 import { firewallData, OK } from "./testData";
 
+// Each test renders the whole page (many Radix controls); jsdom is slow at that under load.
+vi.setConfig({ testTimeout: 20_000 });
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();

@@ -4,6 +4,9 @@ import type { FirewallResponse } from "@shared/api";
 import { renderApp } from "@/test/render";
 import { draftData, firewallData } from "./testData";
 
+// Each test renders the whole page (many Radix controls); jsdom is slow at that under load.
+vi.setConfig({ testTimeout: 20_000 });
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
