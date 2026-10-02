@@ -366,7 +366,15 @@ export async function refreshActiveRun(env: Env): Promise<void> {
   const steps = stepsFromJobs(jobs);
   // Keep the step list with the run (runs.steps_json), so a finished run
   // still shows its steps after the snapshot moves on to the next one.
-  if (steps.length) await db.updateRun(env, run.id, { steps_json: JSON.stringify(steps) });
+  // Only when it changed, and never at the cost of tracking the run.
+  const stepsJson = steps.length ? JSON.stringify(steps) : null;
+  if (stepsJson && stepsJson !== run.steps_json) {
+    try {
+      await db.updateRun(env, run.id, { steps_json: stepsJson });
+    } catch (e) {
+      console.error("run steps:", e);
+    }
+  }
   let log_tail: string | null = null;
   if (jobs[0]) log_tail = await getJobLogTail(env, jobs[0].id).catch(() => null);
   await saveSnapshot(env, { steps, log_tail, github_run_url: gh?.html_url ?? run.github_run_url });

@@ -334,6 +334,37 @@ describe("run steps", () => {
 });
 
 describe("review fixes", () => {
+  const twoSteps = () => [
+    {
+      id: 1, name: "terraform", status: "in_progress", conclusion: null,
+      steps: [
+        { name: "Check out", status: "completed", conclusion: "success", started_at: "2026-10-02T10:00:02Z", completed_at: "2026-10-02T10:00:04Z" },
+        { name: "terraform apply", status: "in_progress", conclusion: null, started_at: "2026-10-02T10:00:30Z", completed_at: null },
+      ],
+    },
+  ];
+
+  it("keeps tracking the run when the step list cannot be saved", async () => {
+    await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+    world.jobs.set(lastGhRun(world), twoSteps());
+    await env.DB.prepare("ALTER TABLE runs DROP COLUMN steps_json").run();
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(refreshActiveRun(env)).resolves.not.toThrow();
+    spy.mockRestore();
+    expect((await getSnapshot(env)).steps.map((st) => st.name)).toEqual(["Check out", "terraform apply"]);
+  });
+
+  it("writes the step list only when it changed", async () => {
+    await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+    world.jobs.set(lastGhRun(world), twoSteps());
+    await env.DB.prepare("CREATE TABLE step_writes (n INTEGER)").run();
+    await env.DB.prepare("CREATE TRIGGER count_step_writes AFTER UPDATE OF steps_json ON runs BEGIN INSERT INTO step_writes VALUES (1); END").run();
+    await refreshActiveRun(env);
+    await refreshActiveRun(env);
+    const [{ n }] = await rows("SELECT COUNT(*) AS n FROM step_writes");
+    expect(Number(n)).toBe(1);
+  });
+
   it("writes no row for a client that is offline, idle and unpinged (no row means idle)", () => {
     const now = T0 + 60_000;
     const s = now / 1000;
