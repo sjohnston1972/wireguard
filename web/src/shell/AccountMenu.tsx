@@ -1,8 +1,7 @@
-import { useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, LogOut, Moon, Sun, User } from "lucide-react";
 import { useSession } from "@/api/queries";
-import { currentTheme, setTheme } from "./theme";
+import { setTheme, useTheme } from "./theme";
 import "./account.css";
 
 /** "AL" from "ada.lovelace@example.com", "DE" from "dev@localhost". */
@@ -18,10 +17,9 @@ export const LOGOUT_URL = "/cdn-cgi/access/logout";
 
 export function AccountMenu() {
   const { data } = useSession();
-  const [, force] = useState(0);
   const email = data?.user ?? null;
   const initials = email ? initialsOf(email) : "";
-  const next = currentTheme() === "dark" ? "light" : "dark";
+  const next = useTheme() === "dark" ? "light" : "dark";
   return (
     <Dropdown.Root>
       <Dropdown.Trigger asChild>
@@ -38,10 +36,7 @@ export function AccountMenu() {
           {email ? <div className="menu__who">{email}</div> : null}
           <Dropdown.Item
             className="menu__item"
-            onSelect={() => {
-              setTheme(next);
-              force((n) => n + 1);
-            }}
+            onSelect={() => setTheme(next)}
           >
             {next === "light" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
             Switch to {next} theme
