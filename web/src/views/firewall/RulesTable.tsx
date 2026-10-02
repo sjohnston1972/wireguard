@@ -126,7 +126,7 @@ export function RulesTable(p: RulesTableProps) {
               className={cx("fw-rules__row", !r.enabled && "fw-rules__row--off", r.mark && `fw-rules__row--${r.mark}`, drop && `fw-rules__row--drop-${drop}`, p.isDragging?.(r) && "fw-rules__row--dragging")}
               aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
               onClick={(e) => {
-                if ((e.target as HTMLElement).closest("button, a, input, [role='switch'], [role='menuitem']")) return;
+                if ((e.target as HTMLElement).closest("button, a, input, [role='switch'], [role='menuitem'], [draggable='true']")) return;
                 p.onOpen(r.id);
               }}
               onKeyDown={(e) => onRowKey(e, r)}
