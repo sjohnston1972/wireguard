@@ -47,6 +47,7 @@ import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCou
 import { restoreBody } from "./views/settings";
 import { randomToken } from "./auth";
 import { buildApi } from "./api";
+import { devSeed } from "./devseed";
 import { markActed, ackWatchedNotes } from "./seen";
 import { addClient, rekeyClient, editClient } from "./clients";
 
@@ -220,6 +221,10 @@ app.get("/manifest.webmanifest", (c) =>
     { "Content-Type": "application/manifest+json" }
   )
 );
+
+// Local scenario seeder (devseed.ts). Mounted before the login check, so it
+// carries its own lock: a 404 unless AUTH_DEV_BYPASS=1 and the host is localhost.
+app.all("/__dev/seed", devSeed);
 
 // ── Everything below requires Cloudflare Access ───────────────────────────
 
