@@ -40,7 +40,7 @@ export function EventStream({ events, window: win, fetchedAt, onOpenRun, onOpenC
   return (
     <Panel
       title="Live event stream"
-      className="act__stream"
+      className="act__stream" bodyClassName="act__list-body"
       flush
       status={<DataAge at={fetchedAt} />}
       actions={

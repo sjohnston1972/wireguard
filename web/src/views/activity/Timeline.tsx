@@ -54,7 +54,7 @@ export function Timeline({ timeline, range, window: win, onWindow }: TimelinePro
         title="Activity timeline"
         series={SERIES}
         buckets={buckets}
-        height={short ? 88 : 128}
+        height={short ? 72 : 128}
         onBrush={(r) => onWindow(windowOf(timeline, range, r))}
       />
     </Panel>

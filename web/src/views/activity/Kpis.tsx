@@ -37,7 +37,7 @@ export function Kpis({ data }: { data: ActivityResponse | undefined }) {
         <MetricTile
           iconStyle="plain"
           tone="green"
-          icon={pct === null ? <Gauge size={26} /> : <Ring label="Success rate" value={pct} tone={pct >= 90 ? "green" : pct >= 70 ? "amber" : "red"} size={52} stroke={5} />}
+          icon={pct === null ? <Gauge size={26} /> : <Ring label="Success rate" value={pct} tone={pct >= 90 ? "green" : pct >= 70 ? "amber" : "red"} size={40} stroke={4} />}
           label="Success rate"
           value={pct === null ? null : `${pct}%`}
           delta={k.success.delta}

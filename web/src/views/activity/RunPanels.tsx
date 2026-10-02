@@ -75,7 +75,7 @@ export function LiveOutput({ id, search }: { id: string | null; search: string }
   return (
     <Panel
       title="Live output"
-      className="act__output"
+      className="act__output" bodyClassName="act__list-body"
       flush
       actions={
         to && (
