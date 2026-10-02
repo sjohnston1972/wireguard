@@ -27,6 +27,7 @@ import type { FirewallStatus } from "./state";
 import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
 import { noteHandshakes } from "./keyrotation";
+import { recordHeartbeat } from "./history";
 
 export class RunError extends Error {}
 
@@ -723,6 +724,13 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
   patch.roams = { ...(cur.roams ?? {}), ...detectRoams(cur.agent, report, report.at) };
   patch.session = resumed ? nextSession(null, null, report) : nextSession(cur.session, cur.agent, report);
   patch.firewall = nextFirewall(cur.firewall, body.firewall, report.at);
+  // History (history.ts): this heartbeat's VM, client and drop samples.
+  // A history problem must never cost the VM its heartbeat.
+  try {
+    await recordHeartbeat(env, { report, prev: cur.agent, rtt: body.rtt, traffic, drops: freshDrops(body.firewall, report.at) });
+  } catch (e) {
+    console.error("history:", e);
+  }
   if (body.talkers) patch.talkers = nextTalkers(cur.talkers ?? {}, body.talkers, report.at);
   // Throughput history: one sample per heartbeat, the last two hours.
   patch.traffic_hist = (cur.traffic_hist ?? []).concat({ t: report.at, rx: Math.round(traffic.rx_rate), tx: Math.round(traffic.tx_rate) }).slice(-240);

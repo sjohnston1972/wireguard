@@ -4,10 +4,12 @@
 // heartbeats, the watchman filling in missed minutes, folding old samples
 // into 5-minute summaries, and the run step list kept with each run.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, type World } from "./harness";
+import { makeEnv, lastGhRun, type World } from "./harness";
+import * as db from "../src/db";
 import type { Env } from "../src/env";
 import { bucket, vmSample, clientSamples, recordHeartbeat } from "../src/history";
-import { freshDrops } from "../src/runs";
+import { freshDrops, startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
+import { getSnapshot, saveSnapshot } from "../src/state";
 import type { AgentReport, Traffic } from "../src/state";
 
 let env: Env;
@@ -176,5 +178,52 @@ describe("recordHeartbeat", () => {
     await env.DB.prepare("INSERT INTO hist_vm (res, t, expected, received) VALUES (60, '2026-10-02T10:00:00Z', 1, 0)").run();
     await recordHeartbeat(env, { report: report(T0 + 20_000, []), prev: null, rtt: null, traffic: traffic(5, 6, 0), drops: [] });
     expect(await rows("SELECT received, rx_rate, rx_rate_max FROM hist_vm")).toEqual([{ received: 1, rx_rate: 5, rx_rate_max: 5 }]);
+  });
+});
+
+const DUMP = (lines: string[]) => ["PRIV\tS=\t51820\toff", ...lines].join("\n");
+const peerLine = (key: string, hsSecs: number, rx: number, tx: number) => `${key}\t(none)\t203.0.113.25:4000\t10.13.13.2/32\t${hsSecs}\t${rx}\t${tx}\t0`;
+
+/** Deploy on the harness and return the VM's agent token. */
+async function toRunning() {
+  await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
+  const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  world.azure.rg = true;
+  await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
+  return sec.body.agent_token as string;
+}
+
+describe("heartbeats write history", () => {
+  it("records the VM and the client, by client id", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    const token = await toRunning();
+    const phone = (await db.listPeers(env)).find((p) => p.public_key === PHONE)!;
+    vi.setSystemTime(T0 + 15_000);
+    const r = await handleAgent(env, token, { dump: DUMP([peerLine(PHONE, Math.floor((T0 + 10_000) / 1000), 1000, 2000)]), rtt: { [PHONE]: 18 } });
+    expect(r.status).toBe(200);
+    expect(await rows("SELECT res, t, received FROM hist_vm")).toEqual([{ res: 60, t: "2026-10-02T10:00:00Z", received: 1 }]);
+    expect(await rows("SELECT peer_id, online, latency_avg, rx, tx FROM hist_client")).toEqual([{ peer_id: phone.id, online: 1, latency_avg: 18, rx: 1000, tx: 2000 }]);
+  });
+
+  it("records nothing for a heartbeat that arrives after a tear-down", async () => {
+    const token = await toRunning();
+    await saveSnapshot(env, { state: "destroyed" });
+    await handleAgent(env, token, { dump: DUMP([peerLine(PHONE, Math.floor(Date.now() / 1000), 1, 1)]) });
+    expect(await rows("SELECT * FROM hist_vm")).toEqual([]);
+    expect(await rows("SELECT * FROM hist_client")).toEqual([]);
+  });
+
+  it("still answers the heartbeat and updates the snapshot when history cannot be written", async () => {
+    const token = await toRunning();
+    await env.DB.prepare("DROP TABLE hist_client").run();
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await handleAgent(env, token, { dump: DUMP([peerLine(PHONE, Math.floor(Date.now() / 1000), 1, 1)]) });
+    expect(r.status).toBe(200);
+    expect((r.body as { peers: unknown[] }).peers.length).toBe(1);
+    expect((await getSnapshot(env)).last_agent_at).not.toBeNull();
+    expect(spy.mock.calls.some((c) => String(c[0]).startsWith("history:"))).toBe(true);
+    spy.mockRestore();
   });
 });
