@@ -322,7 +322,7 @@ export const settingsFixture = (over: Partial<SettingsResponse> = {}): SettingsR
     firewallDefault: "deny",
   },
   overrides: {},
-  overridable: ["region", "vmSize", "testVm", "autoDestroyDefaultHours", "expiryAction", "standbyMaxDays", "idleDestroyMinutes", "monthlyBudgetGbp", "sshAllowedCidr", "firewallDefault"],
+  overridable: ["region", "vm_size", "auto_destroy_default_hours", "idle_destroy_minutes", "monthly_budget_gbp", "hourly_rate_gbp", "standby_rate_gbp", "expiry_action", "standby_max_days", "test_vm", "firewall_default", "ssh_allowed_cidr"],
   regions: { uksouth: "UK South (London)", westeurope: "West Europe (Netherlands)" },
   vmSizes: ["Standard_B1s", "Standard_B2s"],
   profiles: [{ id: 1, name: "Usual settings", region: "uksouth", vm_size: "Standard_B1s", sort: 1, deployed: true }],
