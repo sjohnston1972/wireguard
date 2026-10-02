@@ -1,14 +1,5 @@
+/* The page gutter comes from the shell; the placeholder adds none, so its
+   title lines up with the wordmark. */
 .placeholder {
-  padding: 8px 4px;
-}
-
-.placeholder__title {
-  font-size: 28px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-
-.placeholder__note {
-  margin-top: 6px;
-  color: var(--text-secondary);
+  padding: 0;
 }
