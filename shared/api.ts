@@ -4,8 +4,9 @@
 // the Worker that answers and the app (web/) that asks, so both sides agree
 // on every field. Types only: nothing here runs.
 
-import type { Alert, Profile, SpeedTest } from "../worker/src/db";
-import type { Snapshot } from "../worker/src/state";
+import type { Alert, AuditEntry, Profile, SpeedTest } from "../worker/src/db";
+import type { Snapshot, Talker } from "../worker/src/state";
+import type { ClientView, ClientKpis } from "../worker/src/clients";
 import type { BudgetStatus } from "../worker/src/budget";
 import type { VmHistory, ClientHistory } from "../worker/src/history";
 
@@ -89,3 +90,27 @@ export interface SshPasswordResponse {
 export type VmHistoryResponse = VmHistory;
 /** GET /api/v1/history?scope=client&id=&range= */
 export type ClientHistoryResponse = ClientHistory;
+/** GET /api/v1/clients */
+export interface ClientsResponse {
+  now: string;
+  running: boolean;
+  /** When the VM last reported (the age of the live columns), or null. */
+  heartbeatAt: string | null;
+  clients: ClientView[];
+  kpis: ClientKpis;
+  nextIp: string | null;
+  nextIp6: string | null;
+  serverPub: string | null;
+  config: { subnet: string; subnet6: string; loopbackIp: string; vnetCidr: string; homeLanCidr: string; dnsName: string; port: number };
+  /** Who talked to what this session, all clients. */
+  talkers: Talker[];
+  /** Throughput this session, one sample per heartbeat (bytes/s). */
+  trafficHist: { t: string; rx: number; tx: number }[];
+}
+
+/** GET /api/v1/clients/:id */
+export interface ClientDetailResponse {
+  client: ClientView;
+  talkers: Talker[];
+  changes: AuditEntry[];
+}

@@ -623,6 +623,11 @@ export async function listAudit(env: Env, o: { kind?: string; q?: string; limit?
   ).results;
 }
 
+/** The change log entries about one thing (a client's name), newest first. */
+export async function auditFor(env: Env, target: string, limit = 50): Promise<AuditEntry[]> {
+  return (await env.DB.prepare("SELECT * FROM audit WHERE target = ?1 ORDER BY at DESC, id DESC LIMIT ?2").bind(target, limit).all<AuditEntry>()).results;
+}
+
 /** Trim the change log to the newest AUDIT_KEEP_ROWS rows and AUDIT_KEEP_DAYS days. */
 export async function pruneAudit(env: Env, now = new Date()): Promise<void> {
   const cutoff = new Date(now.getTime() - AUDIT_KEEP_DAYS * 86_400_000).toISOString();
