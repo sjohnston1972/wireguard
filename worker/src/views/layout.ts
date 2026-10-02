@@ -77,14 +77,14 @@ export function page(o: {
 <body hx-boost="true">
 <header class="topbar">
   <div class="wrap">
-    <a class="wordmark" href="/"><span class="light" data-state="${s.state}" title="${STATE_LABEL[s.state]}"></span>wg-admin</a>
+    <a class="wordmark" href="/" title="State as of ${fmtTime(s.updated_at)}"><span class="light" data-state="${s.state}" title="${STATE_LABEL[s.state]}"></span>wg-admin</a>
     <nav class="tabs" aria-label="Sections">
       ${TABS.map((t) => html`<a href="${t.href}" ${t.id === o.tab ? raw('aria-current="page"') : ""}>${t.label}</a>`)}
     </nav>
     <span class="who">${o.user}</span>
   </div>
 </header>
-<main class="wrap">
+<main class="wrap" data-tab="${o.tab}">
   ${o.notice ? notice(o.notice.kind, o.notice.text) : ""}
   ${missingGroups.length
     ? html`<div class="notice warn"><p><b>Not fully set up.</b> Missing secrets for: ${missingGroups.join(", ")}.</p><span class="spacer"></span><a href="/settings">Finish setup</a></div>`

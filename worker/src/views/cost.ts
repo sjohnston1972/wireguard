@@ -21,8 +21,10 @@ export function costBody(o: { snap: Snapshot; days: CostDay[]; runs: Run[]; cfg:
   const cls = b.level === "over" ? "over" : b.level === "warn" ? "warn" : "";
   const sessions = o.runs.filter((r) => r.action === "apply" && r.status === "success");
   const estMonth = sessions.reduce((a, r) => a + (sessionCost(r, o.runs, o.cfg) ?? 0), 0);
-  return html`<section>
+  return html`<section class="page">
   <div class="section-head"><h1>Cost</h1><span class="muted small d-only">Estimates use ${gbp(o.cfg.hourlyRateGbp)} an hour; actuals come from Azure once a day.</span></div>
+  <div class="desk desk-cost">
+  <div class="col">
   <div class="two-col">
     <div class="panel">
       <h2>This session</h2>
@@ -41,19 +43,17 @@ export function costBody(o: { snap: Snapshot; days: CostDay[]; runs: Run[]; cfg:
     </div>
   </div>
   <div class="m-btns two m-only" style="margin-top:12px"><button type="button" data-sheet="sh-daily">Daily spend</button><button type="button" data-sheet="sh-sessions">Sessions (${sessions.length})</button></div>
-</section>
-
-<section>
   <div class="panel sheet" id="sh-daily">
     ${sheetHead("Daily spend")}
     <h2>Daily spend</h2>
     ${o.days.length ? chart(o.days) : html`<p class="muted">No daily figures yet. Azure publishes usage with a delay of up to 24 hours; the watchman pulls it once a day.</p>`}
   </div>
-</section>
+  </div>
 
-<section>
+  <div class="col">
+  <section class="grow">
   <div class="section-head d-only"><h2>Sessions</h2></div>
-  <div class="table-wrap sheet" id="sh-sessions">
+  <div class="table-wrap sheet fill" id="sh-sessions">
   ${sheetHead("Sessions")}
   ${sessions.length
     ? html`<table class="rows stack"><thead><tr><th>Deployed</th><th>Region</th><th>Ran for</th><th class="num">Estimated</th></tr></thead><tbody>
@@ -64,6 +64,9 @@ export function costBody(o: { snap: Snapshot; days: CostDay[]; runs: Run[]; cfg:
         return html`<tr><td class="lead"><b>${fmtTime(r.finished_at)}</b></td><td data-label="Region">${region}</td><td data-label="Ran for">${end ? duration(r.finished_at, end) : html`<span class="pill up">still running</span>`}</td><td class="num" data-label="Estimated">~${gbp(sessionCost(r, o.runs, o.cfg) ?? 0)}</td></tr>`;
       })}</tbody></table>`
     : html`<div class="empty"><b>No sessions yet.</b></div>`}
+  </div>
+  </section>
+  </div>
   </div>
 </section>`;
 }

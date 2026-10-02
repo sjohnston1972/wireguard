@@ -293,14 +293,17 @@ function settingsPhone(o: SettingsOpts): Html {
 
 export function settingsBody(o: SettingsOpts): Html {
   const ov = (k: string, d: string | number) => (o.overrides[k] ?? String(d));
-  return html`<section>
+  // On a desktop the page is one screen of four columns; a column taller
+  // than the window scrolls on its own.
+  return html`<section class="page">
   <div class="section-head"><h1>Settings</h1></div>
   ${o.saved ? html`<div class="notice good"><p>Saved.</p></div>` : ""}
   ${o.restored ? html`<div class="notice good"><p>Restored. The dashboard's data now matches the file.</p></div>` : ""}
   ${o.err === "profile" ? html`<div class="notice bad"><p>Not saved: a profile needs a short name (letters, digits, spaces, dashes) that is not already used.</p></div>` : ""}
   ${o.err === "schedule" ? html`<div class="notice bad"><p>Not saved: pick at least one day, and an end time later than the start (a window cannot cross midnight).</p></div>` : ""}
   ${settingsPhone(o)}
-  <div class="two-col">
+  <div class="desk desk-settings">
+    <div class="col">
     <div class="panel sheet" id="sh-next">
       ${sheetHead("Next deploy")}
       <h2>Next deploy</h2>
@@ -329,8 +332,9 @@ export function settingsBody(o: SettingsOpts): Html {
         <div class="btn-row"><button type="submit" class="primary">Save</button></div>
       </form>
     </div>
+    </div>
 
-    <div>
+    <div class="col">
       <div class="panel sheet" id="sh-setup">
         ${sheetHead("Setup")}
         <h2>Setup</h2>
@@ -344,15 +348,13 @@ export function settingsBody(o: SettingsOpts): Html {
         </ul>
         ${o.repo ? html`<p class="small muted" style="margin-top:10px">Runner: <a href="https://github.com/${o.repo}/actions" target="_blank" rel="noopener">github.com/${o.repo}</a></p>` : ""}
       </div>
+      ${keyPanel(o)}
+    </div>
 
-      ${alertsPanel(o)}
-
-      ${installPanel(o)}
+    <div class="col">
       ${profilesPanel(o)}
-      ${schedulesPanel(o)}
       ${backupsPanel(o)}
-
-      <div class="panel sheet" id="sh-lock" style="margin-top:16px">
+      <div class="panel sheet" id="sh-lock">
         ${sheetHead("Run lock")}
         <h2>Run lock</h2>
         ${o.lock.held
@@ -360,8 +362,12 @@ export function settingsBody(o: SettingsOpts): Html {
             <form method="post" action="/settings/release-lock"><div class="btn-row"><button type="submit" class="danger">Release lock</button><span class="small muted">Only if the run is truly dead. Check GitHub first.</span></div></form>`
           : html`<p class="muted">Free. One run at a time; a second click gets a clear message instead of a second VM.</p>`}
       </div>
+    </div>
 
-      ${keyPanel(o)}
+    <div class="col">
+      ${schedulesPanel(o)}
+      ${installPanel(o)}
+      ${alertsPanel(o)}
     </div>
   </div>
 </section>`;

@@ -88,9 +88,9 @@ function changesLink(o: ChangeLog, page: number): string {
 /** The change log: a filter, one page of changes newest first, and Newer / Older links. */
 function changesSection(o: ChangeLog): Html {
   const filtered = !!(o.kind || o.q);
-  return html`<section id="changes">
+  return html`<section id="changes" class="grow">
   <div class="section-head d-only"><h2>Change log</h2><span class="muted small">Who changed what from the dashboard. Keeps the newest 1000 changes, 180 days at most.</span></div>
-  <div class="table-wrap sheet" id="sh-changes">
+  <div class="table-wrap sheet fill" id="sh-changes">
   ${sheetHead("Change log")}
   <form method="get" action="/activity#changes" class="btn-row" style="margin:0 0 12px">
     <select name="kind" aria-label="Show" style="width:auto">${AUDIT_KINDS.map((k) => html`<option value="${k.value}" ${k.value === o.kind ? "selected" : ""}>${k.label}</option>`)}</select>
@@ -140,10 +140,16 @@ function activityPhone(o: { runs: Run[]; alerts: Alert[] }): Html {
 }
 
 export function activityBody(o: { runs: Run[]; alerts: Alert[]; cfg: Config; changes?: ChangeLog }): Html {
-  return html`<section>
+  // On a desktop the page is one screen: runs on the left, notes and the
+  // change log on the right, each list scrolling inside its own panel.
+  return html`<div class="page">
   <div class="section-head"><h1>Activity</h1></div>
   ${activityPhone(o)}
-  <div class="table-wrap sheet" id="sh-runs">
+  <div class="desk desk-activity">
+  <div class="col">
+  <section class="grow">
+  <div class="section-head d-only"><h2>Runs</h2><span class="muted small">Every deploy and tear-down, newest first.</span></div>
+  <div class="table-wrap sheet fill" id="sh-runs">
   ${sheetHead("Runs")}
   ${o.runs.length
     ? html`<table class="rows stack">
@@ -164,10 +170,12 @@ export function activityBody(o: { runs: Run[]; alerts: Alert[]; cfg: Config; cha
     : html`<div class="empty"><b>No runs yet.</b> The first deploy will appear here.</div>`}
   </div>
 </section>
+  </div>
 
-<section>
+  <div class="col">
+<section class="grow">
   <div class="section-head d-only"><h2>Watchman notes</h2><span class="muted small">Checks run every 5 minutes, whether or not anyone is looking.</span></div>
-  <div class="table-wrap sheet" id="sh-notes">
+  <div class="table-wrap sheet fill" id="sh-notes">
   ${sheetHead("Watchman notes")}
   ${o.alerts.length
     ? html`<table class="rows stack notes"><thead><tr><th>When</th><th>Kind</th><th>What happened</th></tr></thead><tbody>
@@ -177,5 +185,8 @@ export function activityBody(o: { runs: Run[]; alerts: Alert[]; cfg: Config; cha
   </div>
 </section>
 
-${changesSection(o.changes ?? { rows: [], more: false, kind: "", q: "", page: 1 })}`;
+${changesSection(o.changes ?? { rows: [], more: false, kind: "", q: "", page: 1 })}
+  </div>
+  </div>
+</div>`;
 }
