@@ -5,10 +5,12 @@
 
 import { createApi, fail, type ApiEnv } from "./app";
 import type { Hono } from "hono";
+import { registerSession } from "./session";
 
 export function buildApi(): Hono<ApiEnv> {
   const api = createApi();
-  // Area routes are registered here (later tasks), before the catch-all.
+  // Area routes, before the catch-all.
+  registerSession(api);
   api.all("*", (c) => fail(c, 404, "not_found", "No such API route."));
   return api;
 }
