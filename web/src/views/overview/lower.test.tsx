@@ -45,6 +45,24 @@ describe("Overview lower row", () => {
     expect(r.fetchMock!.calls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 
+  it("?action=deploy&profile=<id> (Settings' Use) pre-selects that profile and drops both parameters on close", async () => {
+    const user = userEvent.setup();
+    const r = renderApp("/?action=deploy&profile=2", { routes: routes(overview("destroyed")) });
+    const dlg = await screen.findByRole("dialog", { name: "Deploy" });
+    expect(within(dlg).getByRole("button", { name: "US exit" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(dlg).getByRole("button", { name: "UK" })).toHaveAttribute("aria-pressed", "false");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByLabelText("location")).toHaveTextContent(/^\/$/);
+    expect(r.fetchMock!.calls.filter((c) => c.method !== "GET")).toEqual([]);
+  });
+
+  it("?action=deploy&profile=<unknown id> keeps the usual choice", async () => {
+    renderApp("/?action=deploy&profile=99", { routes: routes(overview("destroyed")) });
+    const dlg = await screen.findByRole("dialog", { name: "Deploy" });
+    expect(within(dlg).getByRole("button", { name: "UK" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("?action=destroy opens the typed confirmation and runs nothing", async () => {
     const r = renderApp("/?action=destroy", { routes: routes(overview("running")) });
     const dlg = await screen.findByRole("dialog", { name: "Tear down" });

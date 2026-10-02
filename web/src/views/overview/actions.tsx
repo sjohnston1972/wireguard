@@ -72,10 +72,12 @@ function FieldError({ text }: { text?: string }) {
 // ── Deploy ──
 
 /** Where to build: one chip per profile, plus the nearest region when no profile covers it. Values "p:<id>" or "r:<region>". */
-function whereChoices(o: OverviewResponse): { items: { value: string; label: string }[]; initial: string } {
+function whereChoices(o: OverviewResponse, profileId?: number | null): { items: { value: string; label: string }[]; initial: string } {
   const near = o.near.region;
   if (o.profiles.length) {
-    const current = o.profiles.find((p) => p.region === o.config.region && p.vm_size === o.config.vmSize) ?? o.profiles[0];
+    // A profile asked for by id (Settings' "Use") wins while it still exists.
+    const current =
+      o.profiles.find((p) => p.id === profileId) ?? o.profiles.find((p) => p.region === o.config.region && p.vm_size === o.config.vmSize) ?? o.profiles[0];
     const items = o.profiles.map((p) => ({ value: `p:${p.id}`, label: p.name }));
     if (near && !o.profiles.some((p) => p.region === near)) items.push({ value: `r:${near}`, label: `Nearest: ${regionShort(near)}` });
     return { items, initial: `p:${current.id}` };
@@ -87,9 +89,9 @@ function whereChoices(o: OverviewResponse): { items: { value: string; label: str
 }
 
 /** The Deploy form: duration chips, where chips, the over-budget box. Inline in the banner, or in a dialog. */
-export function DeployForm({ o, onDone, compact }: { o: OverviewResponse; onDone?: () => void; compact?: boolean }) {
+export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewResponse; onDone?: () => void; compact?: boolean; profileId?: number | null }) {
   const deploy = useDeploy();
-  const where = whereChoices(o);
+  const where = whereChoices(o, profileId);
   const [hours, setHours] = useState(() => defaultHoursChip(o));
   const [choice, setChoice] = useState(where.initial);
   const [overOk, setOverOk] = useState(false);
@@ -155,10 +157,10 @@ interface DialogProps {
   onClose: () => void;
 }
 
-function DeployDialog({ o, onClose }: DialogProps) {
+function DeployDialog({ o, onClose, profileId }: DialogProps & { profileId?: number | null }) {
   return (
     <Modal open onOpenChange={(v) => !v && onClose()} title="Deploy" description={`Builds a ${o.config.vmSize} in Azure and points ${o.config.dnsName} at it.`} width={560}>
-      <DeployForm o={o} onDone={onClose} compact />
+      <DeployForm o={o} onDone={onClose} compact profileId={profileId} />
     </Modal>
   );
 }
@@ -365,12 +367,12 @@ function CleanupDialog({ o, onClose }: DialogProps) {
 }
 
 /** The open action's reviewed form, or nothing. */
-export function ActionDialog({ name, o, onClose }: { name: ActionName | null; o: OverviewResponse; onClose: () => void }) {
+export function ActionDialog({ name, o, onClose, profileId }: { name: ActionName | null; o: OverviewResponse; onClose: () => void; profileId?: number | null }) {
   if (!name) return null;
   const p = { o, onClose };
   switch (name) {
     case "deploy":
-      return <DeployDialog {...p} />;
+      return <DeployDialog {...p} profileId={profileId} />;
     case "destroy":
       return <TearDownDialog {...p} />;
     case "hibernate":

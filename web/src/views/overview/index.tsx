@@ -80,7 +80,7 @@ function OverviewSkeleton() {
 }
 
 /** ?action=<name> opens that reviewed form once (never runs anything) and is removed when the form closes. */
-function usePaletteAction(o: OverviewResponse | null, open: (a: ActionName) => void) {
+function usePaletteAction(o: OverviewResponse | null, open: (a: ActionName, profileId: number | null) => void) {
   const [params, setParams] = useSearchParams();
   const asked = params.get("action") as ActionName | null;
   const handled = useRef<string | null>(null);
@@ -94,15 +94,18 @@ function usePaletteAction(o: OverviewResponse | null, open: (a: ActionName) => v
     }
     if (!o || handled.current === asked) return;
     handled.current = asked;
-    if (PALETTE_ACTIONS.includes(asked) && actionAllowed(asked, o)) open(asked);
+    // Settings' profile "Use" adds &profile=<id>: the deploy form starts on that profile.
+    const profile = Number(params.get("profile"));
+    if (PALETTE_ACTIONS.includes(asked) && actionAllowed(asked, o)) open(asked, Number.isInteger(profile) && profile > 0 ? profile : null);
     // Not possible in this state: say so; no form opens, so the address is left as it is.
     else if (PALETTE_ACTIONS.includes(asked)) toast({ tone: "info", title: `${ACTION_WORD[asked]} is not available while the VM is ${STATE_WORD[o.snapshot.state]}.` });
     // `o` is read only when the parameter first appears (or the data first arrives).
   }, [asked, ready, open, toast]);
   return useCallback(() => {
-    if (!params.has("action")) return;
+    if (!params.has("action") && !params.has("profile")) return;
     const next = new URLSearchParams(params);
     next.delete("action");
+    next.delete("profile");
     setParams(next, { replace: true });
   }, [params, setParams]);
 }
@@ -112,9 +115,15 @@ export function OverviewPage() {
   const o = q.data ?? null;
   const phone = useIsPhone();
   const [action, setAction] = useState<ActionName | null>(null);
-  const clearParam = usePaletteAction(o, setAction);
+  const [profileId, setProfileId] = useState<number | null>(null);
+  const openFromPalette = useCallback((a: ActionName, p: number | null) => {
+    setAction(a);
+    setProfileId(p);
+  }, []);
+  const clearParam = usePaletteAction(o, openFromPalette);
   const close = useCallback(() => {
     setAction(null);
+    setProfileId(null);
     clearParam();
   }, [clearParam]);
 
@@ -127,7 +136,7 @@ export function OverviewPage() {
     <div className="ov">
       <Header o={o} />
       {body}
-      {o && <ActionDialog name={action} o={o} onClose={close} />}
+      {o && <ActionDialog name={action} o={o} onClose={close} profileId={profileId} />}
     </div>
   );
 }
