@@ -99,15 +99,17 @@ export function RulesTable(p: RulesTableProps) {
           </th>
           <th scope="col" className="dt__th fw-rules__c-place">#</th>
           <th scope="col" className="dt__th fw-rules__c-name">Name</th>
-          <th scope="col" className="dt__th">From (source)</th>
+          <th scope="col" className="dt__th fw-rules__c-from">
+            From (source)<span className="fw-rules__route-head"> → to</span>
+          </th>
           <th scope="col" className="dt__th fw-rules__c-arrow">
             <span className="visually-hidden">to</span>
           </th>
-          <th scope="col" className="dt__th">To (destination)</th>
-          <th scope="col" className="dt__th">Service / Port</th>
-          <th scope="col" className="dt__th">Action</th>
-          <th scope="col" className="dt__th">Hits (24h)</th>
-          <th scope="col" className="dt__th">Status</th>
+          <th scope="col" className="dt__th fw-rules__c-to">To (destination)</th>
+          <th scope="col" className="dt__th fw-rules__c-svc">Service / Port</th>
+          <th scope="col" className="dt__th fw-rules__c-action">Action</th>
+          <th scope="col" className="dt__th fw-rules__c-hits">Hits (24h)</th>
+          <th scope="col" className="dt__th fw-rules__c-status">Status</th>
           <th scope="col" className="dt__th fw-rules__c-menu">
             <span className="visually-hidden">Actions</span>
           </th>
@@ -152,17 +154,21 @@ export function RulesTable(p: RulesTableProps) {
                   )}
                 </span>
               </td>
-              <td className="dt__td">
+              <td className="dt__td fw-rules__c-from">
                 <EndCell end={r.from} label={r.fromLabel} address={endAddress(r.from, p.zones)} />
+                {/* Below 1400 px the To column folds into this one. */}
+                <span className="fw-rules__route-to">→ {r.toLabel}</span>
               </td>
               <td className="dt__td fw-rules__c-arrow">
                 <MoveRight size={16} aria-hidden />
               </td>
-              <td className="dt__td">
+              <td className="dt__td fw-rules__c-to">
                 <EndCell end={r.to} label={r.toLabel} address={endAddress(r.to, p.zones)} />
               </td>
-              <td className="dt__td">
-                <span className="fw-rules__svc">{r.service}</span>
+              <td className="dt__td fw-rules__c-svc">
+                <span className="fw-rules__svc" title={r.service}>
+                  {r.service}
+                </span>
               </td>
               <td className="dt__td">
                 <StatusPill status={r.action} />
@@ -225,16 +231,17 @@ export function RulesTable(p: RulesTableProps) {
                 <span className="fw-rules__sub">Unmatched traffic is {p.defaultRow.action === "deny" ? "blocked" : "allowed"}</span>
               </span>
             </td>
-            <td className="dt__td">
+            <td className="dt__td fw-rules__c-from">
               <EndCell end={{ kind: "any", value: "" }} label="Anywhere" address="0.0.0.0/0" />
+              <span className="fw-rules__route-to">→ Anywhere</span>
             </td>
             <td className="dt__td fw-rules__c-arrow">
               <MoveRight size={16} aria-hidden />
             </td>
-            <td className="dt__td">
+            <td className="dt__td fw-rules__c-to">
               <EndCell end={{ kind: "any", value: "" }} label="Anywhere" address="0.0.0.0/0" />
             </td>
-            <td className="dt__td">
+            <td className="dt__td fw-rules__c-svc">
               <span className="fw-rules__svc">Any</span>
             </td>
             <td className="dt__td">
@@ -243,7 +250,7 @@ export function RulesTable(p: RulesTableProps) {
             <td className="dt__td">
               <HitsCell hits={p.defaultRow.hits24h} trend={p.defaultRow.trend24h} name="the default action" />
             </td>
-            <td className="dt__td">
+            <td className="dt__td fw-rules__c-status">
               <span className="fw-rules__always">Always on</span>
             </td>
             <td className="dt__td fw-rules__c-menu">

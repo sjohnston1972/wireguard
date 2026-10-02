@@ -69,6 +69,10 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
   return (
     <Panel title="Firewall rules" className={className} bodyClassName="fw-rp__body" flush>
       <div className="fw-rp__toolbar">
+        {/* On a wide window the panel's title sits on this row (the heading itself stays for screen readers). */}
+        <span className="fw-rp__title" aria-hidden>
+          Firewall rules
+        </span>
         <Tabs
           variant="pill"
           aria-label="Rule filter"
