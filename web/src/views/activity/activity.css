@@ -1,0 +1,31 @@
+/* Activity view. At 1100 x 600 and larger the page never scrolls: the rows share
+   the window and every list scrolls inside its panel (spec §7). */
+.act { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.act[aria-busy="true"] { cursor: progress; }
+
+.act__live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-tile);
+  font-size: 13px;
+}
+.act__live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.act__live .data-age { font-size: 11px; color: var(--text-secondary); }
+
+.act__kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--gap);
+  flex: none;
+  margin-bottom: var(--gap);
+}
+.act__kpis > * { min-width: 0; }
+.act__kpis .tile { height: 100%; padding: 10px 12px; gap: 10px; }
+@media (max-width: 1099px) {
+  .act__kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
