@@ -8,8 +8,6 @@ import * as db from "../src/db";
 import { startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
 import { syncServerKey, rotationStatus } from "../src/keyrotation";
 import { runScheduled } from "../src/monitor";
-import { peersTable } from "../src/views/peers";
-import { settingsBody } from "../src/views/settings";
 import { effectiveConfig } from "../src/settings";
 
 let env: Env;
@@ -124,31 +122,6 @@ describe("server key rotation", () => {
     await db.addPeer(env, { name: "Tablet", public_key: "T".repeat(43) + "=", ip: "10.13.13.4", full_tunnel: false });
     expect((await db.peersNeedingConfig(env)).map((p) => p.name)).toEqual(["Phone", "Laptop"]);
     expect((await rotationStatus(env)).clients.map((c) => c.name)).toEqual(["Phone", "Laptop"]);
-  });
-
-  it("the Clients table marks flagged clients", async () => {
-    await twoClients();
-    await syncServerKey(env);
-    await new Promise((r) => setTimeout(r, 5));
-    env.WG_SERVER_PUBLIC_KEY = NEW;
-    await syncServerKey(env);
-    const phone = (await db.listPeers(env)).find((p) => p.name === "Phone")!;
-    await db.clearNeedsConfig(env, phone.id);
-    const out = String(await peersTable(await db.listPeers(env), null, false));
-    expect(out.match(/needs new config<\/span>/g)?.length).toBe(2); // the laptop: desktop row and phone sheet
-  });
-
-  it("Settings shows the guide, the checklist, and a warning while the VM runs the old key", async () => {
-    const cfg = await effectiveConfig(env);
-    const base = { cfg, overrides: {}, missing: {}, lock: { held: false, lock: null }, serverPub: NEW, repo: null, webhook: false };
-    const before = String(await settingsBody({ ...base, rotation: { changedAt: null, previous: null, vmKey: null, clients: [] } }));
-    expect(before).toContain("Rotate the server key");
-    expect(before).toContain("npm run keys -- --rotate");
-    expect(before).not.toContain("Since the key changed");
-    const after = String(await settingsBody({ ...base, rotation: { changedAt: new Date().toISOString(), previous: OLD, vmKey: OLD, clients: [{ name: "Phone", done: true, site: false }, { name: "home-site", done: false, site: true }] } }));
-    expect(after).toContain("1 of 2 clients reconnected");
-    expect(after).toContain("The running VM still uses the old key");
-    expect(after).toContain("npm run home -- --down");
   });
 
   it("ignores a missing or malformed key rather than recording it", async () => {

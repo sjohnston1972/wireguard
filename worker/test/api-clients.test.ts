@@ -141,24 +141,6 @@ describe("POST /clients", () => {
     expect(r.status).toBe(409);
     expect(r.json.error.message).toBe("That key is already registered.");
   });
-
-  it("keeps the old page route working the same way", async () => {
-    const { env } = apiEnv();
-    const r = await (await import("../src/index")).default.fetch(
-      new Request("http://localhost:8787/api/peers", { method: "POST", headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" }, body: JSON.stringify({ name: "Old", public_key: LAPTOP }) }),
-      env,
-      { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext,
-    );
-    expect(r.status).toBe(200);
-    expect(((await r.json()) as { peer: { name: string } }).peer.name).toBe("Old");
-    const bad = await (await import("../src/index")).default.fetch(
-      new Request("http://localhost:8787/api/peers", { method: "POST", headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" }, body: JSON.stringify({ name: "", public_key: LAPTOP }) }),
-      env,
-      { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext,
-    );
-    expect(bad.status).toBe(400);
-    expect(await bad.json()).toEqual({ error: "Name: letters, digits, spaces, dashes; up to 32 characters." });
-  });
 });
 
 describe("POST /clients/:id/rekey", () => {

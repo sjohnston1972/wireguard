@@ -72,15 +72,12 @@ describe("regions are checked, never silently defaulted", () => {
     expect(world.dispatches).toHaveLength(0);
   });
 
-  it("treats an empty region as an unknown one, as the old deploy route always did", async () => {
+  it("treats an empty region as an unknown one, as the old deploy page always did", async () => {
     const { env, world } = apiEnv();
     await expect(resolveDeployTarget(env, { region: "" })).rejects.toMatchObject({ code: "bad_input", message: "Unknown region." });
-    const r = await worker.fetch(
-      new Request(`${base}/actions/deploy`, { method: "POST", headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/x-www-form-urlencoded" }, body: "choice=r%3A&hours=2" }),
-      env,
-      ctx,
-    );
-    expect(r.status).toBe(302);
+    const r = await api(env, "POST", "/deploy", { region: "", hours: 2 });
+    expect(r.status).toBe(400);
+    expect(r.json.error.message).toBe("Unknown region.");
     expect(world.dispatches).toHaveLength(0);
   });
 });
