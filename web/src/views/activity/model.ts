@@ -1,6 +1,6 @@
 import type { ActivityResponse, RunDetailResponse } from "@shared/api";
 import type { ActivityKpis, ActivityRange, EventType } from "../../../../worker/src/activity";
-import type { Delta, LogLevel, LogLine, StepState, PillStatus, Tone } from "@/components";
+import type { Delta, StepState, PillStatus, Tone } from "@/components";
 
 // The Activity view's plain logic: wording, time formatting, the "vs previous
 // period" figures, the brush window and the run log. No React in here.
@@ -193,38 +193,6 @@ export function stepSeconds(s: ApiStep): number | null {
   if (!s.started_at || !s.completed_at) return null;
   const v = (Date.parse(s.completed_at) - Date.parse(s.started_at)) / 1000;
   return Number.isFinite(v) && v >= 0 ? v : null;
-}
-
-// ── A run's log ──
-
-const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
-const STAMP = /^(\d{4}-\d\d-\d\dT(\d\d:\d\d:\d\d)(?:\.\d+)?Z?)\s?/;
-
-function levelOf(text: string): { level: LogLevel; text: string } {
-  const tag = /^\[(INFO|WARN|WARNING|ERROR|DEBUG)\]\s*/i.exec(text);
-  if (tag) {
-    const w = tag[1].toUpperCase();
-    return { level: w === "WARNING" ? "WARN" : (w as LogLevel), text: text.slice(tag[0].length) };
-  }
-  if (/^##\[error\]|\berror\b/i.test(text)) return { level: "ERROR", text: text.replace(/^##\[error\]/, "") };
-  if (/^##\[warning\]|\bwarning\b/i.test(text)) return { level: "WARN", text: text.replace(/^##\[warning\]/, "") };
-  return { level: "INFO", text };
-}
-
-/** GitHub's raw log (a timestamp then the text on each line) as LogView lines. */
-export function parseLog(raw: string): LogLine[] {
-  const out: LogLine[] = [];
-  raw.split(/\r?\n/).forEach((line, i) => {
-    const clean = line.replace(ANSI, "").replace(/^\uFEFF/, "");
-    if (!clean.trim()) return;
-    const m = STAMP.exec(clean);
-    const rest = m ? clean.slice(m[0].length) : clean;
-    if (/^##\[(group|endgroup)\]/.test(rest)) return;
-    const { level, text } = levelOf(rest);
-    const time = m ? m[2] : undefined;
-    out.push({ id: String(i), time, level, text });
-  });
-  return out;
 }
 
 // ── Change drawer ──

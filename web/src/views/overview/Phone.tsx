@@ -5,7 +5,8 @@ import { useCost, useRunLog } from "@/api/queries";
 import type { ActionName } from "./actions";
 import { StateMark } from "./Banner";
 import { healthChecks } from "./Lower";
-import { STATE_TONE, STATE_WORD, ageOf, currentStep, gbp, inGithubRun, moveTargets, parseLog, regionFull, stepProgress, topology, uiSteps, type NodeStatus } from "./model";
+import { STATE_TONE, STATE_WORD, ageOf, currentStep, gbp, inGithubRun, moveTargets, regionFull, stepProgress, topology, uiSteps, type NodeStatus } from "./model";
+import { parseLog } from "@/lib/parseLog";
 import "./Phone.css";
 
 type Tone = "green" | "amber" | "red" | "grey";

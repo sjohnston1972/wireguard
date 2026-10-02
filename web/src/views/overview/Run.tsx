@@ -4,7 +4,8 @@ import { Check, Maximize2, Minus, X } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
 import { EmptyState, IconButton, LogView, Modal, Panel, Select, StepList, Tabs, cx, type LogLine } from "@/components";
 import { useRunLog } from "@/api/queries";
-import { inGithubRun, parseLog, stepLine, stepMatches, stepState, uiSteps, type StepFilter } from "./model";
+import { inGithubRun, stepLine, stepMatches, stepState, uiSteps, type StepFilter } from "./model";
+import { parseLog } from "@/lib/parseLog";
 import type { ActionName } from "./actions";
 import "./Run.css";
 
