@@ -71,16 +71,16 @@
   display: flex;
   flex: none;
   align-self: stretch;
-  gap: 4px;
+  gap: 0;
   align-items: stretch;
 }
+/* Tabs run the bar's full height. The active one is a faint tint from top to
+   bottom with square corners and an underline on the bar's bottom edge. */
 .topbar__tab {
   position: relative;
   display: flex;
   align-items: center;
-  margin: 6px 0;
-  padding: 0 14px;
-  border-radius: var(--radius-control);
+  padding: 0 16px;
   color: var(--text-secondary);
   font-size: 14px;
   white-space: nowrap;
@@ -90,17 +90,17 @@
 }
 .topbar__tab[aria-current="page"] {
   color: var(--text-primary);
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
 }
 .topbar__tab[aria-current="page"]::after {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -7px;
+  /* Over the bar's 1 px bottom border. */
+  bottom: -1px;
   height: 2px;
   background: var(--blue);
-  border-radius: 2px;
 }
 
 .topbar__spacer {
