@@ -31,14 +31,41 @@ function Result({ result, policy, defaultAction }: { result: SimResult; policy: 
   );
 }
 
-/** "Test specific traffic": which rule would decide one flow, against the live rules or the draft. */
-export const SimulatorForm = forwardRef<SimulatorHandle, { fw: FirewallResponse }>(function SimulatorForm({ fw }, handle) {
+type Policy = "live" | "draft";
+
+/** Live rules or the draft: shown only while a draft exists. */
+function PolicySwitch({ value, onChange, className }: { value: Policy; onChange: (v: Policy) => void; className?: string }) {
+  return (
+    <SegmentedControl
+      aria-label="Test against"
+      value={value}
+      onChange={(v) => onChange(v as Policy)}
+      items={[
+        { value: "live", label: "Live rules" },
+        { value: "draft", label: "Draft" },
+      ]}
+      className={className}
+    />
+  );
+}
+
+/**
+ * "Test specific traffic": which rule would decide one flow, against the live
+ * rules or the draft. The panel puts the Live/Draft switch in its title row
+ * (`choice` and `onChoice`); on its own (a tab) the form shows it inline.
+ */
+export const SimulatorForm = forwardRef<SimulatorHandle, { fw: FirewallResponse; choice?: Policy; onChoice?: (v: Policy) => void }>(function SimulatorForm(
+  { fw, choice: outerChoice, onChoice },
+  handle,
+) {
   const sim = useSimulate();
   const [from, setFrom] = useState<SimEnd>({ kind: "zone", value: "clients" });
   const [to, setTo] = useState<SimEnd>({ kind: "zone", value: "home" });
   const [proto, setProto] = useState<SimRequest["proto"]>("tcp");
   const [port, setPort] = useState("22");
-  const [choice, setChoice] = useState<"live" | "draft">("live");
+  const [innerChoice, setInnerChoice] = useState<Policy>("live");
+  const choice = outerChoice ?? innerChoice;
+  const setChoice = onChoice ?? setInnerChoice;
   const [asked, setAsked] = useState<"live" | "draft">("live");
   const form = useRef<HTMLFormElement>(null);
   useImperativeHandle(handle, () => ({
@@ -84,18 +111,7 @@ export const SimulatorForm = forwardRef<SimulatorHandle, { fw: FirewallResponse 
           Simulate
         </Button>
       </div>
-      {fw.draft && (
-        <SegmentedControl
-          aria-label="Test against"
-          value={choice}
-          onChange={(v) => setChoice(v as "live" | "draft")}
-          items={[
-            { value: "live", label: "Live rules" },
-            { value: "draft", label: "Draft" },
-          ]}
-          className="fw-sim__policy"
-        />
-      )}
+      {fw.draft && !onChoice && <PolicySwitch value={choice} onChange={setChoice} className="fw-sim__policy" />}
       {general && (
         <p className="fw-form__error" role="alert">
           {general}
@@ -107,10 +123,11 @@ export const SimulatorForm = forwardRef<SimulatorHandle, { fw: FirewallResponse 
 });
 
 export const SimulatorPanel = forwardRef<SimulatorHandle, { fw: FirewallResponse }>(function SimulatorPanel({ fw }, handle) {
+  const [choice, setChoice] = useState<Policy>("live");
   return (
-    <Panel title="Test specific traffic" scroll className="fw-sim-panel">
+    <Panel title="Test specific traffic" scroll className="fw-sim-panel" actions={fw.draft ? <PolicySwitch value={choice} onChange={setChoice} className="fw-sim__policy" /> : undefined}>
       <p className="fw-panel-sub">See which rule would match a connection request.</p>
-      <SimulatorForm ref={handle} fw={fw} />
+      <SimulatorForm ref={handle} fw={fw} choice={choice} onChoice={setChoice} />
     </Panel>
   );
 });

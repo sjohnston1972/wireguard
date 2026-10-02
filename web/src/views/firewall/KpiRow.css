@@ -6,6 +6,12 @@
 .fw-kpi .tile__sub { white-space: normal; overflow: visible; line-height: 1.3; font-size: 11.5px; }
 .fw-kpi .tile__label { text-overflow: clip; }
 .fw-kpi .btn { flex: none; }
+/* A wide window: the tile's button sits top right, so the line under the figure keeps to one line. */
+@media (min-width: 1400px) {
+  .fw-kpi > .tile { position: relative; min-height: 0; padding-top: 11px; padding-bottom: 11px; }
+  .fw-kpi > .tile > .btn { position: absolute; top: 12px; right: 12px; }
+  .fw-kpi .tile__sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
 
 @media (max-width: 1399px) {
   .fw-kpi > .tile { gap: 8px; padding: 10px 12px; }

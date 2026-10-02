@@ -44,7 +44,8 @@
 .fw__right > * { min-height: 0; }
 .fw__right > .fw-drops-panel { flex: 1 1 0; min-height: 120px; }
 .fw__right > .fw-ports-panel { flex: 0 1 auto; max-height: 26%; }
-.fw__right > .fw-cap-panel { flex: 0 1 auto; max-height: 30%; }
+/* the capture form keeps its height (Start button included); the drops list gives way */
+.fw__right > .fw-cap-panel { flex: 0 1 226px; }
 .fw-cap .select__value { white-space: nowrap; overflow: hidden; }
 .fw-cap .select__value > span { overflow: hidden; text-overflow: ellipsis; }
 .fw__rules { min-height: 0; }
@@ -55,6 +56,9 @@
 .fw-righttabs__body { display: flex; flex-direction: column; min-height: 0; padding-top: 12px; }
 .fw-righttabs__body > .tabs { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .fw-righttabs__body .tabs__panel { flex: 1; min-height: 0; overflow: auto; padding-top: 10px; }
+/* the tabs stay on one row: smaller pills, and the row scrolls sideways if it must */
+.fw-righttabs__body .tabs__list { flex-wrap: nowrap; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+.fw-righttabs__body .tabs__tab { height: 30px; padding: 0 7px; font-size: 12px; flex: none; }
 .fw-righttabs__ports { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .fw-righttabs__ports > ul { width: 100%; }
 .fw-zones-tab { display: flex; flex-direction: column; gap: 10px; }
