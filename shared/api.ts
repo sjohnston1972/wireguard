@@ -4,7 +4,7 @@
 // the Worker that answers and the app (web/) that asks, so both sides agree
 // on every field. Types only: nothing here runs.
 
-import type { Alert, AuditEntry, Profile, SpeedTest } from "../worker/src/db";
+import type { Alert, AuditEntry, Peer, Profile, SpeedTest } from "../worker/src/db";
 import type { Snapshot, Talker } from "../worker/src/state";
 import type { ClientView, ClientKpis } from "../worker/src/clients";
 import type { BudgetStatus } from "../worker/src/budget";
@@ -113,4 +113,16 @@ export interface ClientDetailResponse {
   client: ClientView;
   talkers: Talker[];
   changes: AuditEntry[];
+}
+
+/** POST /api/v1/clients and POST /api/v1/clients/:id/rekey */
+export interface ClientConfigResponse {
+  peer: Peer;
+  /** The client's config, with __CLIENT_PRIVATE_KEY__ where the browser puts the private key it made. */
+  template: string;
+}
+
+/** PUT /api/v1/clients/:id */
+export interface ClientEditResponse {
+  peer: Peer;
 }

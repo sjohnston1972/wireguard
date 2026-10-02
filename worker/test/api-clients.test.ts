@@ -106,3 +106,117 @@ describe("GET /clients/:id", () => {
     expect((await api(env, "GET", "/clients/abc")).status).toBe(400);
   });
 });
+
+describe("POST /clients", () => {
+  it("adds a client and returns its config template, keyed in the browser", async () => {
+    const { env } = apiEnv();
+    const r = await api(env, "POST", "/clients", { name: "Tablet", public_key: PHONE, azure_vnet: true, expires_days: 7 });
+    expect(r.status).toBe(200);
+    expect(r.json.peer).toMatchObject({ name: "Tablet", ip: "10.13.13.2", azure_vnet: 1 });
+    expect(r.json.peer.expires_at).not.toBeNull();
+    expect(r.json.template).toContain("PrivateKey = __CLIENT_PRIVATE_KEY__");
+    expect(r.json.template).toContain("AllowedIPs = 10.13.13.0/24, 10.13.255.1/32, fd13:13::/64, 10.50.0.0/16");
+    expect((await db.auditFor(env, "Tablet"))[0].action).toBe("client.add");
+  });
+
+  it("names the field at fault and adds nothing", async () => {
+    const { env } = apiEnv();
+    const bad = async (b: object, field: string) => {
+      const r = await api(env, "POST", "/clients", b);
+      expect(r.status, JSON.stringify(b)).toBe(400);
+      expect(r.json.error.field).toBe(field);
+    };
+    await bad({ name: "", public_key: PHONE }, "name");
+    await bad({ name: "x".repeat(40), public_key: PHONE }, "name");
+    await bad({ name: "Tablet", public_key: "nope" }, "public_key");
+    await bad({ name: "Tablet", public_key: PHONE, full_tunnel: "yes" }, "full_tunnel");
+    await bad({ name: "Tablet", public_key: PHONE, expires_days: 3 }, "expires_days");
+    expect(await db.listPeers(env)).toEqual([]);
+  });
+
+  it("refuses a key that is already registered (409)", async () => {
+    const { env } = apiEnv();
+    await api(env, "POST", "/clients", { name: "One", public_key: PHONE });
+    const r = await api(env, "POST", "/clients", { name: "Two", public_key: PHONE });
+    expect(r.status).toBe(409);
+    expect(r.json.error.message).toBe("That key is already registered.");
+  });
+
+  it("keeps the old page route working the same way", async () => {
+    const { env } = apiEnv();
+    const r = await (await import("../src/index")).default.fetch(
+      new Request("http://localhost:8787/api/peers", { method: "POST", headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" }, body: JSON.stringify({ name: "Old", public_key: LAPTOP }) }),
+      env,
+      { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext,
+    );
+    expect(r.status).toBe(200);
+    expect(((await r.json()) as { peer: { name: string } }).peer.name).toBe("Old");
+    const bad = await (await import("../src/index")).default.fetch(
+      new Request("http://localhost:8787/api/peers", { method: "POST", headers: { "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json" }, body: JSON.stringify({ name: "", public_key: LAPTOP }) }),
+      env,
+      { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext,
+    );
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "Name: letters, digits, spaces, dashes; up to 32 characters." });
+  });
+});
+
+describe("POST /clients/:id/rekey", () => {
+  it("swaps the key and returns a new template", async () => {
+    const { env } = apiEnv();
+    const p = await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
+    const r = await api(env, "POST", `/clients/${p.id}/rekey`, { public_key: LAPTOP });
+    expect(r.status).toBe(200);
+    expect(r.json.peer.public_key).toBe(LAPTOP);
+    expect(r.json.template).toContain("Address = 10.13.13.2/32");
+    expect((await api(env, "POST", `/clients/${p.id}/rekey`, { public_key: "x" })).json.error.field).toBe("public_key");
+    expect((await api(env, "POST", "/clients/999/rekey", { public_key: PHONE })).status).toBe(404);
+  });
+});
+
+describe("PUT /clients/:id", () => {
+  it("changes the switches and expiry, in one change-log entry", async () => {
+    const { env } = apiEnv();
+    const p = await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
+    const r = await api(env, "PUT", `/clients/${p.id}`, { home_lan: true, tunnel_dns: true, expires_days: 30 });
+    expect(r.status).toBe(200);
+    expect(r.json.peer).toMatchObject({ home_lan: 1, tunnel_dns: 1, azure_vnet: 0 });
+    expect(Date.parse(r.json.peer.expires_at) - Date.now()).toBeGreaterThan(29 * 86_400_000);
+    const log = await db.auditFor(env, "Phone");
+    expect(log.map((a) => a.action)).toEqual(["client.edit"]);
+  });
+
+  it("logs switching off as client.disable, and expires_days 0 as never", async () => {
+    const { env } = apiEnv();
+    const p = await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false, expires_at: "2030-01-01T00:00:00.000Z" });
+    const r = await api(env, "PUT", `/clients/${p.id}`, { enabled: false, expires_days: 0 });
+    expect(r.json.peer).toMatchObject({ enabled: 0, expires_at: null });
+    expect((await db.auditFor(env, "Phone"))[0].action).toBe("client.disable");
+  });
+
+  it("refuses bad input and an expiry on the home site, changing nothing", async () => {
+    const { env } = apiEnv();
+    const p = await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
+    expect((await api(env, "PUT", `/clients/${p.id}`, { enabled: "no" })).json.error.field).toBe("enabled");
+    expect((await api(env, "PUT", `/clients/${p.id}`, { expires_days: 2 })).json.error.field).toBe("expires_days");
+    await env.DB.prepare("INSERT INTO peers (name, public_key, ip, enabled, full_tunnel, routes, created_at) VALUES ('home-site', ?1, '10.13.13.10', 1, 0, '192.168.1.0/24', 'x')").bind(LAPTOP).run();
+    const site = (await db.listPeers(env)).find((x) => x.routes)!;
+    const r = await api(env, "PUT", `/clients/${site.id}`, { expires_days: 7 });
+    expect(r.status).toBe(400);
+    expect(r.json.error.message).toBe("The home site does not expire.");
+    expect(await db.auditFor(env, "Phone")).toEqual([]);
+    expect((await api(env, "PUT", "/clients/999", { enabled: true })).status).toBe(404);
+  });
+});
+
+describe("DELETE /clients/:id", () => {
+  it("deletes and logs it; a second delete is 404", async () => {
+    const { env } = apiEnv();
+    const p = await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
+    const r = await api(env, "DELETE", `/clients/${p.id}`);
+    expect(r.json).toEqual({ ok: true, message: "Deleted Phone. Its config stops working at the next heartbeat." });
+    expect(await db.listPeers(env)).toEqual([]);
+    expect((await db.auditFor(env, "Phone"))[0].action).toBe("client.delete");
+    expect((await api(env, "DELETE", `/clients/${p.id}`)).status).toBe(404);
+  });
+});
