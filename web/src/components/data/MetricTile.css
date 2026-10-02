@@ -14,13 +14,19 @@
   display: grid;
   place-items: center;
   flex: none;
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
   color: var(--c);
-  background: color-mix(in srgb, var(--c) 14%, transparent);
 }
-.tile--inset .tile__icon { width: 34px; height: 34px; background: transparent; }
+/* plain (Overview, Clients): a large unboxed line icon, ~30 px glyph. */
+.tile__icon--plain { width: 40px; height: 40px; }
+.tile__icon--plain > .lucide { width: 30px; height: 30px; stroke-width: 1.6; }
+/* circle (Activity, Cost): a ~52 px tinted circle. */
+.tile__icon--circle { width: 52px; height: 52px; border-radius: 50%; background: color-mix(in srgb, var(--c) 15%, transparent); }
+.tile__icon--circle > .lucide { width: 26px; height: 26px; stroke-width: 1.8; }
+/* square (Firewall): a ~56 px tinted rounded square. */
+.tile__icon--square { width: 56px; height: 56px; border-radius: 12px; background: color-mix(in srgb, var(--c) 14%, transparent); }
+.tile__icon--square > .lucide { width: 28px; height: 28px; stroke-width: 1.8; }
+.tile--inset .tile__icon--plain { width: 34px; height: 34px; }
+.tile--inset .tile__icon--plain > .lucide { width: 26px; height: 26px; }
 .tile__icon--green { --c: var(--green); }
 .tile__icon--amber { --c: var(--amber); }
 .tile__icon--red { --c: var(--red); }

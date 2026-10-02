@@ -241,6 +241,27 @@ export default function Gallery() {
             <Col span={3}>
               <MetricTile icon={<CalendarClock size={22} />} label="Latency" value={null} sub="No heartbeat received" />
             </Col>
+            <Col span={3}>
+              <MetricTile iconStyle="circle" icon={<Clock size={22} />} label="Average duration" value="2m 18s" delta={{ text: "34% vs last week", direction: "down", good: true }} />
+            </Col>
+            <Col span={3}>
+              <MetricTile iconStyle="circle" icon={<CalendarClock size={22} />} tone="purple" label="Month to date (actual)" value="£0.00" delta={{ text: "100%", direction: "up", good: false }} sub="vs. previous 30 days (£0.13)" />
+            </Col>
+            <Col span={3}>
+              <MetricTile iconStyle="square" icon={<ShieldCheck size={22} />} tone="red" label="Default action" value="Deny" valueTone sub="Unmatched traffic is blocked" />
+            </Col>
+            <Col span={3}>
+              <MetricTile
+                iconStyle="square"
+                icon={<Activity size={22} />}
+                tone="red"
+                label="Recent drops (24h)"
+                value="342"
+                delta={{ text: "12%", direction: "up", good: false }}
+                sub="From 18 unique sources"
+                action={<Sparkline variant="bars" tone="blue" label="Drops per hour" data={[2, 1, 3, 2, null, null, 1, 4, 6, 3, 5, 8, 4, 2, 6, 9, 5, 3, 4, 7, 5, 3, 6, 4]} width={80} height={30} />}
+              />
+            </Col>
           </Grid>
         </Section>
 

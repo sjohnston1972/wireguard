@@ -44,6 +44,16 @@ describe("MetricTile", () => {
     expect(screen.getByText("34%")).toBeInTheDocument();
     expect(screen.getByText("down")).toHaveClass("visually-hidden");
   });
+  it("takes an icon style: plain by default, circle or square on request (icon stays decorative)", () => {
+    const { container, rerender } = render(<MetricTile icon={<svg />} label="Total clients" value="12" />);
+    const icon = () => container.querySelector(".tile__icon")!;
+    expect(icon()).toHaveClass("tile__icon--plain");
+    expect(icon()).toHaveAttribute("aria-hidden");
+    rerender(<MetricTile icon={<svg />} iconStyle="circle" label="Total clients" value="12" />);
+    expect(icon()).toHaveClass("tile__icon--circle");
+    rerender(<MetricTile icon={<svg />} iconStyle="square" label="Total clients" value="12" />);
+    expect(icon()).toHaveClass("tile__icon--square");
+  });
   it("renders 'no data' instead of a number when the value is missing", () => {
     render(<MetricTile label="Latency" value={null} />);
     expect(screen.getByText("no data")).toBeInTheDocument();

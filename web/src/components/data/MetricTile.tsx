@@ -16,6 +16,12 @@ export interface Delta {
 
 export interface MetricTileProps {
   icon?: ReactNode;
+  /**
+   * How the icon sits, per mockup: "plain" (default) a large unboxed line icon
+   * (Overview, Clients); "circle" a ~52 px tinted circle (Activity, Cost);
+   * "square" a ~56 px tinted rounded square (Firewall).
+   */
+  iconStyle?: "plain" | "circle" | "square";
   /** Icon and (optionally) value colour: status only. */
   tone?: Tone;
   label: string;
@@ -41,6 +47,7 @@ export interface MetricTileProps {
 
 export function MetricTile({
   icon,
+  iconStyle = "plain",
   tone = "blue",
   label,
   value,
@@ -59,7 +66,7 @@ export function MetricTile({
   return (
     <div className={cx("tile", `tile--${variant}`, className)}>
       {icon && (
-        <span className={cx("tile__icon", `tile__icon--${tone}`)} aria-hidden>
+        <span className={cx("tile__icon", `tile__icon--${iconStyle}`, `tile__icon--${tone}`)} aria-hidden>
           {icon}
         </span>
       )}
