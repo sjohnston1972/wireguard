@@ -1,13 +1,14 @@
 // api/history.ts
 //
 // Plain English: the recorded history for a chart: the VM's (health,
-// traffic, availability) or one client's (online, latency, bytes), for the
-// last hour, day, week or 30 days.
+// traffic, availability), one client's (online, latency, bytes) or one
+// firewall rule's hits (packets, bytes), for the last hour, day, week or 30
+// days.
 
 import type { Hono } from "hono";
 import { fail, type ApiEnv } from "./app";
 import * as db from "../db";
-import { readVmHistory, readClientHistory, RANGE_MS, type HistoryRange } from "../history";
+import { readVmHistory, readClientHistory, readRuleHistory, RULE_KEY, RANGE_MS, type HistoryRange } from "../history";
 
 export function registerHistory(api: Hono<ApiEnv>): void {
   api.get("/history", async (c) => {
@@ -16,7 +17,12 @@ export function registerHistory(api: Hono<ApiEnv>): void {
     const scope = c.req.query("scope");
     const now = new Date();
     if (scope === "vm") return c.json(await readVmHistory(c.env, range as HistoryRange, now));
-    if (scope !== "client") return fail(c, 400, "bad_input", "Scope is vm or client.", "scope");
+    if (scope === "rule") {
+      const key = c.req.query("id") ?? "";
+      if (!RULE_KEY.test(key)) return fail(c, 400, "bad_input", 'id must be a firewall counter: "r" and a rule number, "f" and a published port number, or "default".', "id");
+      return c.json(await readRuleHistory(c.env, key, range as HistoryRange, now));
+    }
+    if (scope !== "client") return fail(c, 400, "bad_input", "Scope is vm, client or rule.", "scope");
     const id = Number(c.req.query("id"));
     if (!Number.isInteger(id) || id < 1) return fail(c, 400, "bad_input", "id must be a client's number.", "id");
     if (!(await db.getPeer(c.env, id))) return fail(c, 404, "not_found", "No such client.");

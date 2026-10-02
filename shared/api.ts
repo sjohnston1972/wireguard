@@ -11,7 +11,7 @@ import type { Snapshot, Step, Talker } from "../worker/src/state";
 import type { ClientKpis, ClientView } from "../worker/src/clients";
 import type { SessionRow } from "../worker/src/costview";
 import type { BudgetStatus } from "../worker/src/budget";
-import type { ClientHistory, VmHistory } from "../worker/src/history";
+import type { ClientHistory, RuleHistory, VmHistory } from "../worker/src/history";
 import type { ActivityEvent, ActivityKpis, ActivityRange, EventType, RunRow } from "../worker/src/activity";
 import type { RotationStatus } from "../worker/src/keyrotation";
 import type { BackupStatus, ExportTable } from "../worker/src/backup";
@@ -160,7 +160,7 @@ export interface FirewallResponse {
   defaultHits: [number, number] | null;
   defaultLastHit: string | null;
   countersClearedAt: string | null;
-  drops: { recent: { at: string; src: string; dst: string; proto: string; dport: number | null; fromName: string; toName: string }[]; last24h: number };
+  drops: { recent: { at: string; src: string; dst: string; proto: string; dport: number | null; fromName: string; toName: string }[]; last24h: number } & FirewallDropStats;
   zones: { zone: Zone; label: string; v4: string[]; v6: string[]; negate: boolean }[];
   testVm: { ip: string | null; enabled: boolean };
   forwards: (Forward & { connections: [number, number] | null; lastHit: string | null })[];
@@ -323,6 +323,7 @@ export interface SimResult {
   /** What the simulation cannot see, in plain English; null when nothing is left out. */
   limited: string | null;
 }
+
 // ── Cost breakdown ──
 
 /**
@@ -340,7 +341,45 @@ export interface CostBreakdown {
   basis: "azure" | "estimate";
   asOfDay: string | null;
 }
+
 // ── Health check ──
 
 /** POST /api/v1/health-check answers the ordinary ApiOk. The request and its result are in GET /overview's snapshot: selftest_req while pending, then selftest. */
 export type HealthCheckResponse = ApiOk;
+
+// ── Firewall history ──
+
+/** GET /api/v1/history?scope=rule&id=<counter key>&range= (the key is "r<id>", "default" or "f<id>") */
+export type RuleHistoryResponse = RuleHistory;
+
+/** Hit history added to each row of GET /firewall `rules` (merged into FirewallRuleRow). */
+export interface FirewallRuleRow {
+  /** Packets matched in the last 24 hours, or null when no hit history has been recorded at all yet. */
+  hits24h: number | null;
+  /** Packets per hour over the last 24 hours, oldest first; always 24 numbers (all zero when there is no history). */
+  trend24h: number[];
+  /** True when this is one of the rules a fresh install starts with (same name and ends). */
+  starter: boolean;
+}
+
+/** Hit history for the default action, added to GET /firewall (merged into FirewallResponse). */
+export interface FirewallResponse {
+  defaultHits24h: number | null;
+  defaultTrend24h: number[];
+}
+
+/** What `drops` in GET /firewall gains: statistics over the last 24 hours. */
+export interface FirewallDropStats {
+  /** Different source addresses that were dropped. */
+  uniqueSources24h: number;
+  /** Total drops in the 24 hours before the last 24, for the "vs the day before" figure. */
+  previous24h: number;
+  /** Drops per hour over the last 24 hours, oldest first; always 24 numbers. */
+  hourly24h: number[];
+}
+
+/** GET /api/v1/activity gains `previous` (merged into ActivityResponse). */
+export interface ActivityResponse {
+  /** The same figures for the equally long period just before the selected range. */
+  previous: ActivityKpis;
+}
