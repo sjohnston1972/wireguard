@@ -39,6 +39,7 @@ import {
   PageHeader,
   Panel,
   ProgressBar,
+  QrCode,
   Ring,
   SearchInput,
   SegmentedControl,
@@ -490,6 +491,14 @@ export default function Gallery() {
                 <div className="g-table g-table--short">
                   <DataTable aria-label="Error" columns={clientColumns.slice(0, 3)} rows={[]} rowKey={(r) => r.id} error="The clients endpoint did not answer." onRetry={() => {}} />
                 </div>
+              </Panel>
+            </Col>
+            <Col span={4}>
+              <Panel title="QR code">
+                <QrCode
+                  label="QR code for a sample client config"
+                  value={"[Interface]\nPrivateKey = (made in the browser)\nAddress = 10.13.13.9/32\n\n[Peer]\nAllowedIPs = 10.13.13.0/24\nEndpoint = wg.example.net:51820\n"}
+                />
               </Panel>
             </Col>
           </Grid>

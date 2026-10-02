@@ -20,6 +20,7 @@ export { KeyValue, type KeyValueProps, type KeyValueItem } from "./data/KeyValue
 export { CopyButton, type CopyButtonProps } from "./data/CopyButton";
 export { Diff, diffLines, type DiffProps, type DiffLine } from "./data/Diff";
 export { DataAge, formatAge, type DataAgeProps } from "./data/DataAge";
+export { QrCode, type QrCodeProps } from "./data/QrCode";
 
 // charts
 export { Sparkline, type SparklineProps } from "./charts/Sparkline";

@@ -1,0 +1,15 @@
+/* QR codes stay black on white in both themes: phone cameras need the contrast. */
+.qr {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-control);
+}
+
+.qr--too-long {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-size: 13px;
+}
