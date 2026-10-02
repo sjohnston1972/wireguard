@@ -1,16 +1,13 @@
-import { useParams } from "react-router-dom";
 import { Placeholder } from "./Placeholder";
 
-// One placeholder per route. Plan 4 replaces each of these with the real view
-// (keep the export names, or change the route table in App.tsx).
+// The route table's pages (App.tsx imports these names). Each view lives in
+// its own folder, views/<view>/index.tsx, and is re-exported here, so a view
+// area replaces only its own folder and never this file or the routes.
 
-export const OverviewPage = () => <Placeholder title="Overview" />;
-export const ClientsPage = () => <Placeholder title="Clients" />;
-export const ClientDetailPage = () => <Placeholder title={`Client ${useParams().id}`} />;
-export const FirewallPage = () => <Placeholder title="Firewall" />;
-export const FirewallRulePage = () => <Placeholder title={`Firewall rule ${useParams().id}`} />;
-export const ActivityPage = () => <Placeholder title="Activity" />;
-export const RunDetailPage = () => <Placeholder title={`Run ${useParams().id}`} />;
-export const CostPage = () => <Placeholder title="Cost" />;
-export const SettingsPage = () => <Placeholder title="Settings" />;
+export { OverviewPage } from "./overview";
+export { ClientsPage, ClientDetailPage } from "./clients";
+export { FirewallPage, FirewallRulePage } from "./firewall";
+export { ActivityPage, RunDetailPage } from "./activity";
+export { CostPage } from "./cost";
+export { SettingsPage } from "./settings";
 export const NotFoundPage = () => <Placeholder title="Not found" />;
