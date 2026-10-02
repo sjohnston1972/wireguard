@@ -52,7 +52,7 @@ export async function phoneStatus(env: Env, endpoint: string): Promise<{ registe
 /** Send a test alert to every phone and the webhook; a failure comes back as 502 with the reason. */
 export async function sendTestAlert(env: Env): Promise<Done<{ phones: number }>> {
   await env.STATUS.delete("notify:last_error");
-  await notify(env, "wg-admin: test alert", "Phone alerts work. Tap to open the dashboard.", { tags: ["test"], buttons: [dashboardButton(env)] });
+  await notify(env, "wg-admin: test alert", "Phone alerts work. Tap to open the dashboard.", { tags: ["test"], buttons: [dashboardButton(env, "Open dashboard", "/settings/mobile")] });
   const err = await lastNotifyError(env);
   if (err) return no(502, "upstream", err.why);
   return { ok: true, value: { phones: (await db.listPushSubs(env)).length } };
