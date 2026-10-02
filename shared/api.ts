@@ -286,3 +286,38 @@ export interface PushStatusResponse {
   /** The dashboard's public key, for a phone that has to sign up again. */
   vapid: string | null;
 }
+
+// ── Simulator ──
+
+/** One end of a simulated flow, the same kinds a firewall rule uses. */
+export interface SimEnd {
+  kind: "any" | "zone" | "client" | "cidr";
+  value: string;
+}
+
+/** POST /api/v1/firewall/simulate */
+export interface SimRequest {
+  from: SimEnd;
+  to: SimEnd;
+  proto: "tcp" | "udp" | "icmp";
+  port?: number | null;
+}
+
+/** A rule named in a simulation result; `place` is its row number on the Firewall screen. */
+export interface SimRuleRef {
+  id: number;
+  name: string;
+  place: number;
+}
+
+/** What the firewall would do with one flow. */
+export interface SimResult {
+  verdict: "allow" | "deny";
+  /** The rule that decided it; null when no rule matched and the default decided. */
+  matched: SimRuleRef | null;
+  reason: string;
+  /** Rules that cover only part of the flow ("depends on the exact address"); evaluation went past them. */
+  partial: SimRuleRef[];
+  /** What the simulation cannot see, in plain English; null when nothing is left out. */
+  limited: string | null;
+}
