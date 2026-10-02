@@ -46,6 +46,18 @@ describe("POST /health-check", () => {
     expect(r2.json.error.message).toBe("A health check is already running.");
   });
 
+  it("counts as having read the notes, like every other button (speed test included), even when refused", async () => {
+    const { env: idle } = apiEnv();
+    await db.addAlert(idle, "info", "Old note");
+    expect((await api(idle, "POST", "/health-check")).status).toBe(409);
+    expect(await db.unacknowledgedAlerts(idle)).toHaveLength(0);
+
+    const { env } = await running();
+    await db.addAlert(env, "failure", "Something happened while you were away");
+    expect((await api(env, "POST", "/health-check")).status).toBe(200);
+    expect(await db.unacknowledgedAlerts(env)).toHaveLength(0);
+  });
+
   it("shows the pending request in GET /overview", async () => {
     const { env } = await running();
     await requestHealthCheck(env);
