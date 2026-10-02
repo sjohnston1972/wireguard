@@ -146,7 +146,7 @@ describe("rollUp: hist_fw", () => {
 const DUMP = (lines: string[]) => ["PRIV\tS=\t51820\toff", ...lines].join("\n");
 
 async function running(e: Env, world: ReturnType<typeof apiEnv>["world"]) {
-  const run = await startDeploy(e, { hours: 4, requesterIp: null, requestedBy: "steven" });
+  const run = await startDeploy(e, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
   const sec = await issueRunSecrets(e, run.id, lastGhRun(world));
   world.azure.rg = true;
   await handleCallback(e, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
@@ -329,7 +329,7 @@ describe("GET /history?scope=rule", () => {
 describe("GET /activity: previous period", () => {
   const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
   const run = async (id: string, status: string, requestedAgo: number, tookMs: number) => {
-    await db.createRun(env, { id, action: "apply", status: status as never, requested_at: ago(requestedAgo), requested_by: "steven", callback_token_hash: "CBHASH", agent_token_hash: "AGHASH", payload_json: '{"x":"PAYLOADSECRET"}', auto_destroy_at: null, reason: null, ssh_password: "hunter2-secret" });
+    await db.createRun(env, { id, action: "apply", status: status as never, requested_at: ago(requestedAgo), requested_by: "dev@localhost", callback_token_hash: "CBHASH", agent_token_hash: "AGHASH", payload_json: '{"x":"PAYLOADSECRET"}', auto_destroy_at: null, reason: null, ssh_password: "hunter2-secret" });
     await db.updateRun(env, id, { started_at: ago(requestedAgo), finished_at: ago(requestedAgo - tookMs) });
   };
   it("has the same figures for the equally long period just before the range", async () => {
@@ -339,7 +339,7 @@ describe("GET /activity: previous period", () => {
     await run("prev-bad", "failure", 41 * HOUR, 0);
     await run("older", "success", 60 * HOUR, 10 * MIN); // two periods back: in neither
     await env.DB.prepare("INSERT INTO alerts (at, kind, message) VALUES (?1, 'failure', 'old problem')").bind(ago(30 * HOUR)).run();
-    await env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, 'steven', 'client.add', 'A', NULL, '{}'), (?2, 'steven', 'client.add', 'B', NULL, '{}')").bind(ago(35 * HOUR), ago(10 * MIN)).run();
+    await env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, 'dev@localhost', 'client.add', 'A', NULL, '{}'), (?2, 'dev@localhost', 'client.add', 'B', NULL, '{}')").bind(ago(35 * HOUR), ago(10 * MIN)).run();
     const r = await api(env, "GET", "/activity?range=24h");
     expect(r.status).toBe(200);
     expect(r.json.kpis).toMatchObject({ deploys: 1, configChanges: 1, watchmanProblems: 0 });

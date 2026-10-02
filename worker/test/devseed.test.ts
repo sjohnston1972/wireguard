@@ -203,7 +203,7 @@ describe("scenarios", () => {
     expect(c.kpis.avgLatencyMs).toBeGreaterThan(10);
     expect(c.kpis.avgLatencyMs).toBeLessThan(40);
     expect(c.talkers.length).toBeGreaterThan(0);
-    expect(c.clients.map((x: any) => x.name)).toEqual(expect.arrayContaining(["home-site", "sj-phone", "sj-gaming", "laptop"]));
+    expect(c.clients.map((x: any) => x.name)).toEqual(expect.arrayContaining(["home-site", "phone", "gaming-pc", "laptop"]));
 
     const fw = (await api(env, "GET", "/firewall")).json;
     expect(fw.policy.state).toBe("applied");

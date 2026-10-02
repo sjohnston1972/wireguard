@@ -27,7 +27,7 @@ async function raw(env: Env, method: string, path: string, bodyText: string, con
 }
 
 async function running(env: Env, world: ReturnType<typeof apiEnv>["world"]) {
-  const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+  const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
   const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
@@ -143,7 +143,7 @@ describe("review pass 2: settings region and VM size must be known", () => {
 describe("review pass 2: a GitHub outage is not 'no log'", () => {
   it("answers 502 upstream when GitHub refuses or fails the jobs call, 404 no_log when it just has none", async () => {
     const { env, world } = apiEnv();
-    await db.createRun(env, { id: "run-g", action: "apply", status: "success", requested_at: new Date().toISOString(), requested_by: "steven", callback_token_hash: "C", agent_token_hash: "A", payload_json: null, auto_destroy_at: null, reason: null, ssh_password: null });
+    await db.createRun(env, { id: "run-g", action: "apply", status: "success", requested_at: new Date().toISOString(), requested_by: "dev@localhost", callback_token_hash: "C", agent_token_hash: "A", payload_json: null, auto_destroy_at: null, reason: null, ssh_password: null });
     await db.updateRun(env, "run-g", { github_run_id: 5001 });
     for (const status of [500, 401]) {
       world.ghFail = status;
@@ -172,7 +172,7 @@ describe("review pass 2: a busy range is counted in full", () => {
   it("counts all 250 config changes in range but returns at most 200 events", async () => {
     const { env } = apiEnv();
     const now = Date.now();
-    for (let i = 0; i < 250; i++) await env.DB.prepare("INSERT INTO audit (at, user, action, target) VALUES (?1, 'steven', 'settings.save', 'Settings')").bind(new Date(now - 60_000 - i * 1000).toISOString()).run();
+    for (let i = 0; i < 250; i++) await env.DB.prepare("INSERT INTO audit (at, user, action, target) VALUES (?1, 'dev@localhost', 'settings.save', 'Settings')").bind(new Date(now - 60_000 - i * 1000).toISOString()).run();
     const r = await api(env, "GET", "/activity?range=24h");
     expect(r.status).toBe(200);
     expect(r.json.kpis.configChanges).toBe(250);

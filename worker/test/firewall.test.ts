@@ -10,7 +10,7 @@ import { totalHits } from "../src/views/firewall";
 import { getSnapshot } from "../src/state";
 
 const cfg = { ...config({ WG_SUBNET6: "fd13:13::/64", HOME_LAN_CIDR: "192.168.1.0/24" } as unknown as Env), firewallDefault: "deny" as const };
-const phone = { id: 3, name: "sj-phone", ip: "10.13.13.3" } as any;
+const phone = { id: 3, name: "phone", ip: "10.13.13.3" } as any;
 const rule = (over: Partial<FwRule>): FwRule => ({ id: 9, position: 10, enabled: 1, name: "r", src_kind: "any", src_value: "", dst_kind: "any", dst_value: "", proto: "any", ports: "", action: "allow", log: 0, ...over });
 
 describe("rule compilation", () => {

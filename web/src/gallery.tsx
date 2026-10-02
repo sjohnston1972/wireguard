@@ -110,8 +110,8 @@ interface ClientRow {
 }
 const CLIENTS: ClientRow[] = [
   { id: "home", name: "home-site", address: "10.13.13.10", status: "online", latency: 18, spark: wave(14, 18, 6), traffic: "12.4 MB ↑ 8.1 MB ↓", allowed: "0.0.0.0/0", expires: "Never" },
-  { id: "gaming", name: "sj-gaming", address: "10.13.13.2", status: "offline", latency: null, spark: [], traffic: "1.2 GB ↑ 420 MB ↓", allowed: "0.0.0.0/0", expires: "Never" },
-  { id: "phone", name: "sj-phone", address: "10.13.13.3", status: "online", latency: 32, spark: wave(14, 32, 9, 1), traffic: "284 MB ↑ 96 MB ↓", allowed: "192.168.1.0/24", expires: "Dec 15, 2024" },
+  { id: "gaming", name: "gaming-pc", address: "10.13.13.2", status: "offline", latency: null, spark: [], traffic: "1.2 GB ↑ 420 MB ↓", allowed: "0.0.0.0/0", expires: "Never" },
+  { id: "phone", name: "phone", address: "10.13.13.3", status: "online", latency: 32, spark: wave(14, 32, 9, 1), traffic: "284 MB ↑ 96 MB ↓", allowed: "192.168.1.0/24", expires: "Dec 15, 2024" },
   { id: "laptop", name: "laptop", address: "10.13.13.4", status: "offline", latency: null, spark: [], traffic: "42 MB ↑ 11 MB ↓", allowed: "192.168.1.0/24", expires: "Never" },
   { id: "mac", name: "work-mac", address: "10.13.13.5", status: "online", latency: 28, spark: wave(14, 28, 7, 2), traffic: "1.1 GB ↑ 512 MB ↓", allowed: "192.168.10.0/24", expires: "Never" },
 ];
@@ -604,7 +604,7 @@ export default function Gallery() {
           </div>
         </Section>
 
-        <Drawer open={drawer} onOpenChange={setDrawer} title="sj-phone" subtitle="10.13.13.3 · azure" leading={<StatusPill status="online" />} footer={<Button variant="danger">Delete client</Button>}>
+        <Drawer open={drawer} onOpenChange={setDrawer} title="phone" subtitle="10.13.13.3 · azure" leading={<StatusPill status="online" />} footer={<Button variant="danger">Delete client</Button>}>
           <Tabs
             aria-label="Client"
             items={[

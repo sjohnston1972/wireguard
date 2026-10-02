@@ -102,7 +102,7 @@ describe("GET /cost", () => {
 
   it("lists sessions with nothing secret in the serialised answer", async () => {
     const { env } = apiEnv();
-    await db.createRun(env, { id: "run-a", action: "apply", status: "success", requested_at: "2026-10-01T10:00:00Z", requested_by: "steven", callback_token_hash: "cbhash-secret", agent_token_hash: "aghash-secret", payload_json: JSON.stringify({ region: "uksouth", ssh_allowed_cidr: "9.9.9.9/32" }), auto_destroy_at: null, reason: null, ssh_password: "hunter2-secret" });
+    await db.createRun(env, { id: "run-a", action: "apply", status: "success", requested_at: "2026-10-01T10:00:00Z", requested_by: "dev@localhost", callback_token_hash: "cbhash-secret", agent_token_hash: "aghash-secret", payload_json: JSON.stringify({ region: "uksouth", ssh_allowed_cidr: "9.9.9.9/32" }), auto_destroy_at: null, reason: null, ssh_password: "hunter2-secret" });
     await db.updateRun(env, "run-a", { finished_at: "2026-10-01T10:02:00Z" });
     const r = await api(env, "GET", "/cost");
     expect(r.json.sessions).toHaveLength(1);

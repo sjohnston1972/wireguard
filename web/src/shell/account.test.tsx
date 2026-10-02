@@ -8,7 +8,7 @@ import { initialsOf } from "./AccountMenu";
 describe("initialsOf", () => {
   it("takes the first letters of the name parts of an email", () => {
     expect(initialsOf("ada.lovelace@example.com")).toBe("AL");
-    expect(initialsOf("steven@example.com")).toBe("ST");
+    expect(initialsOf("dev@localhost")).toBe("DE");
     expect(initialsOf("a_b-c@x.y")).toBe("AB");
     expect(initialsOf("")).toBe("");
   });

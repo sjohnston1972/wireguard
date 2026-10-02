@@ -53,7 +53,7 @@ function DrawerHarness() {
   return (
     <>
       <button onClick={() => setOpen(true)}>open it</button>
-      <Drawer open={open} onOpenChange={setOpen} title="sj-phone" subtitle="10.13.13.3">
+      <Drawer open={open} onOpenChange={setOpen} title="phone" subtitle="10.13.13.3">
         <button>inside one</button>
         <button>inside two</button>
       </Drawer>
@@ -66,7 +66,7 @@ describe("Drawer", () => {
     render(<DrawerHarness />);
     const trigger = screen.getByRole("button", { name: "open it" });
     await userEvent.click(trigger);
-    const dialog = await screen.findByRole("dialog", { name: "sj-phone" });
+    const dialog = await screen.findByRole("dialog", { name: "phone" });
     expect(dialog).toBeInTheDocument();
     // Tab around: focus never leaves the dialog.
     for (let i = 0; i < 6; i++) {

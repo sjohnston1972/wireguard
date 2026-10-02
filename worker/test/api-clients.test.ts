@@ -23,7 +23,7 @@ const DUMP = (lines: string[]) => ["PRIV\tS=\t51820\toff", ...lines].join("\n");
 const line = (key: string, ip: string, hs: number) => `${key}\t(none)\t203.0.113.25:4000\t${ip}/32\t${hs}\t1000\t2000\t0`;
 
 async function deployWith(env: Env, world: ReturnType<typeof apiEnv>["world"]) {
-  const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+  const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
   const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
@@ -90,8 +90,8 @@ describe("GET /clients/:id", () => {
   it("gives one client with its destinations and changes", async () => {
     const { env } = apiEnv();
     const p = await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
-    await db.audit(env, "steven", "client.add", "Phone", null, { name: "Phone" });
-    await db.audit(env, "steven", "client.add", "Other", null, { name: "Other" });
+    await db.audit(env, "dev@localhost", "client.add", "Phone", null, { name: "Phone" });
+    await db.audit(env, "dev@localhost", "client.add", "Other", null, { name: "Other" });
     await saveSnapshot(env, { talkers: { "10.13.13.2|1.1.1.1": { c: "10.13.13.2", r: "1.1.1.1", name: "one.one.one.one", up: 10, down: 20, bu: 0, bd: 0, at: "x" }, "10.13.13.9|8.8.8.8": { c: "10.13.13.9", r: "8.8.8.8", name: null, up: 1, down: 1, bu: 0, bd: 0, at: "x" } } });
     const r = await api(env, "GET", `/clients/${p.id}`);
     expect(r.status).toBe(200);
