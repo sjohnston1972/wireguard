@@ -1,6 +1,7 @@
 import * as RadixToast from "@radix-ui/react-toast";
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { handEscapeToDialog } from "../escapeHandoff";
 import "./Toast.css";
 
 export type ToastTone = "success" | "warning" | "error" | "info";
@@ -49,6 +50,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               duration={ms === 0 ? Infinity : ms}
               onOpenChange={(open) => {
                 if (!open) remove(t.id);
+              }}
+              // Escape pressed inside an open dialog closes the dialog, not this toast.
+              onEscapeKeyDown={(e) => {
+                if (handEscapeToDialog(e)) e.preventDefault();
               }}
             >
               <Icon size={18} aria-hidden className="toast__icon" />

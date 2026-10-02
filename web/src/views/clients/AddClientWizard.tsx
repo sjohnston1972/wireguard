@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ApiError } from "@/api/client";
 import { useAddClient } from "@/api/mutations";
 import { fillConfig, genKeypair } from "@/lib/wgkeys";
@@ -158,17 +158,8 @@ export function AddClientWizard({ config, onClose }: { config: ClientsConfig; on
     body = made && <ConfigDelivery name={made.name} ip={made.ip} conf={made.conf} large={phone} />;
   }
 
-  // Escape closes the wizard even while a toast is up (a toast is the top
-  // Radix layer, so the dialog's own Escape would only dismiss the toast).
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && !e.defaultPrevented && !making) {
-      e.preventDefault();
-      close();
-    }
-  };
-
   const footer = (
-    <div className="wiz__foot" onKeyDown={onKeyDown}>
+    <div className="wiz__foot">
       {step > 0 && step < 3 && (
         <Button variant="ghost" onClick={() => setStep((s) => s - 1)} disabled={making}>
           Back
@@ -195,7 +186,7 @@ export function AddClientWizard({ config, onClose }: { config: ClientsConfig; on
   );
 
   const content = (
-    <div className="wiz" onKeyDown={onKeyDown}>
+    <div className="wiz">
       <ol className="wiz__steps" aria-label="Steps">
         {STEPS.map((s, i) => (
           <li key={s} className={cx("wiz__step", i === step && "wiz__step--on", i < step && "wiz__step--done")} aria-current={i === step ? "step" : undefined}>

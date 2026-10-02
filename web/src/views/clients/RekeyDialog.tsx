@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import { KeyRound } from "lucide-react";
 import { useRekeyClient } from "@/api/mutations";
 import { fillConfig, genKeypair } from "@/lib/wgkeys";
@@ -40,15 +40,8 @@ export function RekeyDialog({ client, onClose }: { client: Client; onClose: () =
     }
   };
 
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && !e.defaultPrevented && !making) {
-      e.preventDefault();
-      close();
-    }
-  };
-
   const footer = (
-    <div className="wiz__foot" onKeyDown={onKeyDown}>
+    <div className="wiz__foot">
       {made ? (
         <>
           <span className="wiz__spacer" />
@@ -71,7 +64,7 @@ export function RekeyDialog({ client, onClose }: { client: Client; onClose: () =
   );
 
   const body = (
-    <div className="wiz" onKeyDown={onKeyDown}>
+    <div className="wiz">
       {made ? (
         <ConfigDelivery name={made.name} ip={made.ip} conf={made.conf} large={phone} />
       ) : (
