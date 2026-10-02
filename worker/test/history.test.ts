@@ -7,10 +7,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeEnv, lastGhRun, type World } from "./harness";
 import * as db from "../src/db";
 import type { Env } from "../src/env";
-import { bucket, vmSample, clientSamples, recordHeartbeat } from "../src/history";
+import { bucket, vmSample, clientSamples, recordHeartbeat, recordMissedHeartbeats, rollUp } from "../src/history";
+import { runScheduled } from "../src/monitor";
 import { freshDrops, startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
 import { getSnapshot, saveSnapshot } from "../src/state";
-import type { AgentReport, Traffic } from "../src/state";
+import type { AgentReport, Snapshot, Traffic } from "../src/state";
 
 let env: Env;
 let world: World;
@@ -225,5 +226,85 @@ describe("heartbeats write history", () => {
     expect((await getSnapshot(env)).last_agent_at).not.toBeNull();
     expect(spy.mock.calls.some((c) => String(c[0]).startsWith("history:"))).toBe(true);
     spy.mockRestore();
+  });
+});
+
+const running = (since: number) => ({ state: "running", running_since: new Date(since).toISOString() }) as Snapshot;
+
+describe("recordMissedHeartbeats", () => {
+  it("marks fully elapsed minutes with no heartbeat, after the boot grace and before the late grace", async () => {
+    // Up at 10:00. Heartbeats arrived in 10:04 and 10:06. The watchman runs at 10:10:30.
+    await env.DB.prepare("INSERT INTO hist_vm (res, t, expected, received) VALUES (60, '2026-10-02T10:04:00Z', 1, 1), (60, '2026-10-02T10:06:00Z', 1, 1)").run();
+    const added = await recordMissedHeartbeats(env, running(T0), new Date(T0 + 10 * 60_000 + 30_000));
+    // Counted from 10:03 (boot grace), up to the minute that ended by 10:08:30 (late grace): 10:03, 10:05, 10:07.
+    expect(added).toBe(3);
+    expect(await rows("SELECT t, received FROM hist_vm ORDER BY t")).toEqual([
+      { t: "2026-10-02T10:03:00Z", received: 0 },
+      { t: "2026-10-02T10:04:00Z", received: 1 },
+      { t: "2026-10-02T10:05:00Z", received: 0 },
+      { t: "2026-10-02T10:06:00Z", received: 1 },
+      { t: "2026-10-02T10:07:00Z", received: 0 },
+    ]);
+  });
+
+  it("only looks back 15 minutes", async () => {
+    await recordMissedHeartbeats(env, running(T0), new Date(T0 + 60 * 60_000));
+    const [{ first }] = await rows("SELECT MIN(t) AS first FROM hist_vm");
+    expect(first).toBe("2026-10-02T10:45:00Z");
+  });
+
+  it("records nothing while the VM is not meant to be up", async () => {
+    for (const state of ["destroyed", "standby", "deploying", "hibernating", "resuming", "failed"]) {
+      expect(await recordMissedHeartbeats(env, { ...running(T0), state } as Snapshot, new Date(T0 + 30 * 60_000))).toBe(0);
+    }
+    expect(await recordMissedHeartbeats(env, { state: "running", running_since: null } as Snapshot, new Date(T0 + 30 * 60_000))).toBe(0);
+    expect(await rows("SELECT * FROM hist_vm")).toEqual([]);
+  });
+});
+
+describe("rollUp", () => {
+  const NOW = new Date(Date.parse("2026-10-05T12:00:00Z"));
+  const OLD = Date.parse("2026-10-03T11:50:00Z"); // 48 h 10 min before NOW
+
+  it("folds raw samples older than 48 hours into 5-minute summaries and deletes them", async () => {
+    for (let i = 0; i < 10; i++) {
+      const t = bucket(OLD + i * 60_000, 60);
+      await env.DB.prepare("INSERT INTO hist_vm (res, t, expected, received, load1, rx_rate, tx_rate, rx_rate_max, tx_rate_max, peers_online, dns_up) VALUES (60, ?1, 1, ?2, 0.5, ?3, 10, ?3, 10, ?4, ?5)")
+        .bind(t, i === 3 ? 0 : 1, i * 10, i < 5 ? 1 : 2, i === 7 ? 0 : 1)
+        .run();
+      await env.DB.prepare("INSERT INTO hist_client (res, t, peer_id, online, handshake_age, latency_avg, latency_max, rx, tx) VALUES (60, ?1, 7, ?2, ?3, ?4, ?5, 100, 50)")
+        .bind(t, i === 9 ? 1 : 0, 600 - i, 20 + i, 30 + i)
+        .run();
+    }
+    await env.DB.prepare("INSERT INTO hist_vm (res, t, expected, received) VALUES (60, '2026-10-05T11:00:00Z', 1, 1)").run(); // recent: kept raw
+    await rollUp(env, NOW);
+    expect(await rows("SELECT res, t, expected, received, rx_rate, rx_rate_max, peers_online, dns_up FROM hist_vm ORDER BY res, t")).toEqual([
+      { res: 60, t: "2026-10-05T11:00:00Z", expected: 1, received: 1, rx_rate: null, rx_rate_max: null, peers_online: null, dns_up: null },
+      { res: 300, t: "2026-10-03T11:50:00Z", expected: 5, received: 4, rx_rate: 20, rx_rate_max: 40, peers_online: 1, dns_up: 1 },
+      { res: 300, t: "2026-10-03T11:55:00Z", expected: 5, received: 5, rx_rate: 70, rx_rate_max: 90, peers_online: 2, dns_up: 0 },
+    ]);
+    expect(await rows("SELECT res, t, online, handshake_age, latency_avg, latency_max, rx, tx FROM hist_client ORDER BY t")).toEqual([
+      { res: 300, t: "2026-10-03T11:50:00Z", online: 0, handshake_age: 596, latency_avg: 22, latency_max: 34, rx: 500, tx: 250 },
+      { res: 300, t: "2026-10-03T11:55:00Z", online: 1, handshake_age: 591, latency_avg: 27, latency_max: 39, rx: 500, tx: 250 },
+    ]);
+  });
+
+  it("deletes summaries and drops older than 30 days", async () => {
+    await env.DB.prepare("INSERT INTO hist_vm (res, t, expected, received) VALUES (300, '2026-09-04T11:55:00Z', 5, 5), (300, '2026-09-06T00:00:00Z', 5, 5)").run();
+    await env.DB.prepare("INSERT INTO hist_drops (t, src, dst, proto, n) VALUES ('2026-09-04T11:55:00Z', 'a', 'b', 'TCP', 1), ('2026-09-06T00:00:00Z', 'a', 'b', 'TCP', 1)").run();
+    await rollUp(env, NOW);
+    expect(await rows("SELECT t FROM hist_vm")).toEqual([{ t: "2026-09-06T00:00:00Z" }]);
+    expect(await rows("SELECT t FROM hist_drops")).toEqual([{ t: "2026-09-06T00:00:00Z" }]);
+  });
+});
+
+describe("watchman", () => {
+  it("fills in missed minutes while running", async () => {
+    await toRunning();
+    const snap = await getSnapshot(env);
+    const since = Date.parse(snap.running_since!);
+    await runScheduled(env, new Date(since + 10 * 60_000));
+    const [{ n }] = await rows("SELECT COUNT(*) AS n FROM hist_vm WHERE received = 0");
+    expect(Number(n)).toBeGreaterThan(0);
   });
 });
