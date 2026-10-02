@@ -245,6 +245,8 @@ describe("scenarios", () => {
     expect(o.snapshot.steps.filter((s: any) => s.conclusion === "success")).toHaveLength(6);
     expect(o.snapshot.steps.filter((s: any) => s.status === "in_progress")).toHaveLength(1);
     expect(o.snapshot.log_tail).toMatch(/INFO/);
+    // GitHub's own line format (a UTC timestamp), so the screen shows it on the same clock as the steps.
+    expect(o.snapshot.log_tail.split("\n")[0]).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z \[INFO\] /);
     expect(o.snapshot.run_id).toBeTruthy();
     const run = (await api(env, "GET", `/runs/${o.snapshot.run_id}`)).json;
     expect(run.active).toBe(true);

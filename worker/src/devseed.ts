@@ -698,7 +698,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
       ["INFO", "Installing WireGuard..."],
       ["INFO", "Opening UDP 51820 in Azure NSG..."],
     ];
-    const tail = lines.map(([lvl, msg], i) => `${new Date(now - (lines.length - i) * 2500).toISOString().slice(11, 19)} ${lvl} ${msg}`).join("\n");
+    const tail = lines.map(([lvl, msg], i) => `${new Date(now - (lines.length - i) * 2500).toISOString()} [${lvl}] ${msg}`).join("\n");
     await saveSnapshot(env, { ...EMPTY, state: "deploying", run_id: id, action: "apply", since: iso(started), steps, log_tail: tail, github_run_url: "https://github.com/sjohnston1972/wireguard/actions/runs/7000012346", region, vm_size: "Standard_B1s", profile: "UK", updated_at: iso(now) });
     return { ok: true, scenario, now: iso(now), counts: await counts(env) };
   }

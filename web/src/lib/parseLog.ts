@@ -12,8 +12,14 @@ export interface ParsedLog {
 }
 
 const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
-/** GitHub's per-line timestamp: "2026-10-02T11:51:02.1234567Z ". */
-const STAMP = /^\d{4}-\d\d-\d\dT(\d\d:\d\d:\d\d)(?:\.\d+)?Z?\s?/;
+/** GitHub's per-line timestamp, in UTC: "2026-10-02T11:51:02.1234567Z ". */
+const STAMP = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?Z?\s?/;
+
+/** "HH:MM:SS" on the local clock, like every other time on screen. */
+function localClock(utc: string): string | undefined {
+  const d = new Date(`${utc}Z`);
+  return Number.isNaN(d.getTime()) ? undefined : d.toTimeString().slice(0, 8);
+}
 const MARKER = /^##\[(group|endgroup|error|warning|debug|notice|command)\](.*)$/;
 const SEEDED = /^(\d{2}:\d{2}:\d{2}) (INFO|WARN|ERROR|DEBUG) (.*)$/;
 const TAG = /^\[(INFO|WARN|WARNING|ERROR|DEBUG)\]\s*/i;
@@ -28,7 +34,7 @@ export function parseLog(text: string | null | undefined): ParsedLog {
     const clean = raw.replace(ANSI, "");
     if (!clean.trim()) continue;
     const stamp = STAMP.exec(clean);
-    const time = stamp?.[1];
+    const time = stamp ? localClock(stamp[1]) : undefined;
     const rest = stamp ? clean.slice(stamp[0].length) : clean;
     const id = String(lines.length);
 

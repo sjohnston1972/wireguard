@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { parseLog } from "./parseLog";
 
+/** HH:MM:SS of an instant on this machine's clock. */
+const clock = (iso: string) => new Date(iso).toTimeString().slice(0, 8);
+
 // One reader for a run's log, used by the Overview (live log) and Activity
 // (run drawer, live output). It takes GitHub's raw log and the dev seed's log.
 
@@ -11,7 +14,7 @@ describe("parseLog", () => {
     expect(parseLog("\n  \r\n")).toEqual({ lines: [], groups: [] });
   });
 
-  it("GitHub's raw log: the timestamp becomes the time, bracket tags the level", () => {
+  it("GitHub's raw log: the UTC timestamp becomes the local clock time (as every other time on screen), bracket tags the level", () => {
     const { lines } = parseLog(
       [
         "2026-10-02T11:51:02.1234567Z [INFO] Applying Terraform configuration...",
@@ -20,10 +23,17 @@ describe("parseLog", () => {
       ].join("\r\n"),
     );
     expect(lines.map((l) => [l.time, l.level, l.text])).toEqual([
-      ["11:51:02", "INFO", "Applying Terraform configuration..."],
-      ["11:51:09", "WARN", "retrying after a slow response"],
-      ["11:51:12", "ERROR", "quota check failed for 203.0.113.9"],
+      [clock("2026-10-02T11:51:02Z"), "INFO", "Applying Terraform configuration..."],
+      [clock("2026-10-02T11:51:09Z"), "WARN", "retrying after a slow response"],
+      [clock("2026-10-02T11:51:12Z"), "ERROR", "quota check failed for 203.0.113.9"],
     ]);
+  });
+
+  it("a GitHub timestamp is shown in local time, not UTC", () => {
+    // Europe/London in October is UTC+1; the test runner may sit anywhere, so compare with the runner's own clock.
+    const { lines } = parseLog("2026-10-02T23:59:58Z [INFO] late");
+    const d = new Date("2026-10-02T23:59:58Z");
+    expect(lines[0]!.time).toBe(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:58`);
   });
 
   it("GitHub's markers: groups are titled lines and remembered, endgroup is dropped, error and warning set the level", () => {
@@ -44,7 +54,7 @@ describe("parseLog", () => {
       ["ERROR", "Process completed with exit code 1."],
       ["INFO", "▸ Set DNS record"],
     ]);
-    expect(log.lines[0]!.time).toBe("11:51:00");
+    expect(log.lines[0]!.time).toBe(clock("2026-10-02T11:51:00Z"));
     expect(log.groups).toEqual([
       { title: "Run terraform apply", index: 0 },
       { title: "Set DNS record", index: 4 },
