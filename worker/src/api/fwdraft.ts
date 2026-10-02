@@ -27,6 +27,7 @@ const KINDS: EndKind[] = ["any", "zone", "client", "cidr"];
 const PROTOS: Proto[] = ["any", "tcp", "udp", "icmp"];
 const RULE_FIELDS = ["name", "from", "to", "proto", "ports", "action", "enabled", "log"];
 const NO_RULE = "No such rule.";
+const STALE = "The live rules changed since this draft began. Discard it and start again.";
 
 /** The draft as GET /firewall shows it, or null when there is none. */
 export async function loadDraft(env: Env, o?: { peers?: Peer[] }): Promise<FirewallDraft | null> {
@@ -206,5 +207,35 @@ export function registerFwDraft(api: Hono<ApiEnv>): void {
     await db.addFwDraftRule(c.env, r);
     await settle(c.env);
     return ok(c, `Added "${r.name}" to the draft. Review and apply to let it through.`);
+  });
+
+  api.post("/firewall/draft/apply", async (c) => {
+    const b = (await body<Obj>(c)) ?? {};
+    const extra = Object.keys(b).find((k) => k !== "baseVersion");
+    if (extra) return fail(c, 400, "bad_input", `${extra} is not part of an apply.`, extra);
+    const base = b.baseVersion;
+    if (typeof base !== "number" || !Number.isSafeInteger(base) || base < 1) return fail(c, 400, "bad_input", "baseVersion must be the version GET /firewall gave.", "baseVersion");
+    const pol = await db.getFwPolicy(c.env);
+    if (pol.draft_base === null) return fail(c, 409, "no_draft", "There is no draft to apply.");
+    if (pol.draft_base !== base || pol.live_version !== base) return fail(c, 409, "stale", STALE);
+    const d = (await loadDraft(c.env))!;
+    // A rule the VM could not load would make it refuse the whole set. Rules
+    // already broken in live and left alone do not block (the VM skips them today).
+    const broken = d.rules.find((r) => (r.mark === "added" || r.mark === "changed") && r.enabled && r.problem);
+    if (broken) return fail(c, 422, "rule_problem", `Rule ${broken.place}, ${broken.name}: ${broken.problem}`, "rules");
+    const applied = await db.applyFwDraft(c.env, base, {
+      user: c.get("user"),
+      target: "rule set",
+      before: { version: base },
+      after: { version: base + 1, changes: d.changes, diff: d.diff },
+    });
+    if (!applied) return fail(c, 409, "stale", STALE);
+    return ok(c, `Applied ${d.changes} change${d.changes === 1 ? "" : "s"}. The VM picks them up within 30 seconds.`);
+  });
+
+  api.delete("/firewall/draft", async (c) => {
+    const had = (await db.getFwPolicy(c.env)).draft_base !== null;
+    await db.dropFwDraft(c.env);
+    return ok(c, had ? "Draft discarded. The live rules are as they were." : "There was no draft.");
   });
 }

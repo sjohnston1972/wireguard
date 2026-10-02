@@ -623,6 +623,40 @@ export async function setFwDraftDefault(env: Env, action: "allow" | "deny"): Pro
   await env.DB.prepare("UPDATE fw_policy SET draft_default = ?1 WHERE id = 1 AND draft_base IS NOT NULL").bind(action).run();
 }
 
+/**
+ * Put the draft live, all in one batch, or nothing at all. The first
+ * statement claims the apply with a one-time token, and only if the live
+ * version is still `base` and the draft began from `base`; every later
+ * statement runs only while that token is the one stored. So a draft begun
+ * before another apply, a restore or a default change does nothing.
+ * Kept rules are updated in place (their ids, hit counters and history
+ * carry on), removed ones deleted, new ones inserted with fresh ids; the
+ * default is saved if it differs; the audit entry is written; the draft is
+ * cleared. True when it was applied.
+ */
+export async function applyFwDraft(env: Env, base: number, log: { user: string; target: string; before: unknown; after: unknown }): Promise<boolean> {
+  const tok = crypto.randomUUID();
+  const mine = "(SELECT apply_token FROM fw_policy WHERE id = 1) = ?1";
+  const cols = "position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log";
+  const entry = auditStmt(env, log.user, "firewall.apply", log.target, log.before, log.after, { sql: "(SELECT apply_token FROM fw_policy WHERE id = 1) = ?7", value: tok });
+  const stmts = [
+    env.DB.prepare("UPDATE fw_policy SET live_version = live_version + 1, apply_token = ?1 WHERE id = 1 AND live_version = CAST(?2 AS INTEGER) AND draft_base = CAST(?2 AS INTEGER)").bind(tok, base),
+    env.DB.prepare(`DELETE FROM fw_rules WHERE id NOT IN (SELECT live_id FROM fw_draft_rules WHERE live_id IS NOT NULL) AND ${mine}`).bind(tok),
+    env.DB.prepare(`UPDATE fw_rules SET (${cols}) = (SELECT ${cols} FROM fw_draft_rules d WHERE d.live_id = fw_rules.id) WHERE id IN (SELECT live_id FROM fw_draft_rules WHERE live_id IS NOT NULL) AND ${mine}`).bind(tok),
+    env.DB.prepare(`INSERT INTO fw_rules (${cols}, created_at) SELECT ${cols}, created_at FROM fw_draft_rules WHERE live_id IS NULL AND ${mine} ORDER BY position, id`).bind(tok),
+    env.DB.prepare(
+      `INSERT INTO settings (key, value) SELECT 'firewall_default', draft_default FROM fw_policy
+       WHERE id = 1 AND apply_token = ?1 AND draft_default IS NOT COALESCE((SELECT CASE value WHEN 'allow' THEN 'allow' ELSE 'deny' END FROM settings WHERE key = 'firewall_default'), 'deny')
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    ).bind(tok),
+    ...(entry ? [entry] : []),
+    env.DB.prepare(`DELETE FROM fw_draft_rules WHERE ${mine}`).bind(tok),
+    env.DB.prepare("UPDATE fw_policy SET draft_base = NULL, draft_default = NULL, apply_token = NULL WHERE id = 1 AND apply_token = ?1").bind(tok),
+  ];
+  const res = await env.DB.batch(stmts);
+  return (res[0]?.meta?.changes ?? 0) === 1;
+}
+
 /** Throw the draft away (fine when there is none). */
 export async function dropFwDraft(env: Env): Promise<void> {
   await env.DB.batch([env.DB.prepare("DELETE FROM fw_draft_rules"), env.DB.prepare("UPDATE fw_policy SET draft_base = NULL, draft_default = NULL WHERE id = 1")]);
@@ -745,21 +779,32 @@ export function scrubSecrets(v: unknown): unknown {
  */
 export async function audit(env: Env, user: string, action: string, target: string | number | null, before: unknown = null, after: unknown = null): Promise<void> {
   try {
-    let b = scrubSecrets(before ?? null);
-    let a = scrubSecrets(after ?? null);
-    if (b && a && typeof b === "object" && typeof a === "object" && !Array.isArray(b) && !Array.isArray(a)) {
-      const bo = b as Record<string, unknown>, ao = a as Record<string, unknown>;
-      const keys = [...new Set([...Object.keys(bo), ...Object.keys(ao)])].filter((k) => JSON.stringify(bo[k]) !== JSON.stringify(ao[k]));
-      if (!keys.length) return;
-      b = Object.fromEntries(keys.filter((k) => k in bo).map((k) => [k, bo[k]]));
-      a = Object.fromEntries(keys.filter((k) => k in ao).map((k) => [k, ao[k]]));
-    }
-    await env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
-      .bind(new Date().toISOString(), user || "unknown", action, target === null ? "" : String(target), b === null ? null : JSON.stringify(b), a === null ? null : JSON.stringify(a))
-      .run();
+    const stmt = auditStmt(env, user, action, target, before, after);
+    if (stmt) await stmt.run();
   } catch (e) {
     console.error(`audit ${action} not recorded:`, (e as Error).message);
   }
+}
+
+/**
+ * The change-log insert as a statement, for a caller's own batch (so the
+ * entry lands with the change or not at all). Same scrubbing and trimming
+ * as audit(); null when there is nothing to record. `when` adds a condition
+ * (SQL using ?7 for its one value): the row is written only if it holds.
+ */
+export function auditStmt(env: Env, user: string, action: string, target: string | number | null, before: unknown = null, after: unknown = null, when?: { sql: string; value: string }): D1PreparedStatement | null {
+  let b = scrubSecrets(before ?? null);
+  let a = scrubSecrets(after ?? null);
+  if (b && a && typeof b === "object" && typeof a === "object" && !Array.isArray(b) && !Array.isArray(a)) {
+    const bo = b as Record<string, unknown>, ao = a as Record<string, unknown>;
+    const keys = [...new Set([...Object.keys(bo), ...Object.keys(ao)])].filter((k) => JSON.stringify(bo[k]) !== JSON.stringify(ao[k]));
+    if (!keys.length) return null;
+    b = Object.fromEntries(keys.filter((k) => k in bo).map((k) => [k, bo[k]]));
+    a = Object.fromEntries(keys.filter((k) => k in ao).map((k) => [k, ao[k]]));
+  }
+  const args = [new Date().toISOString(), user || "unknown", action, target === null ? "" : String(target), b === null ? null : JSON.stringify(b), a === null ? null : JSON.stringify(a)];
+  if (!when) return env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(...args);
+  return env.DB.prepare(`INSERT INTO audit (at, user, action, target, before_json, after_json) SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE ${when.sql}`).bind(...args, when.value);
 }
 
 /**

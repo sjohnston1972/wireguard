@@ -1,8 +1,9 @@
 // api/simulate.ts
 //
 // Plain English: the Firewall screen's "what would happen if..." box. You post
-// a flow (from, to, protocol, port) and get back whether the live rules allow
-// it and which rule decides. Nothing is written. The checking of the request
+// a flow (from, to, protocol, port) and get back whether the live rules (or,
+// with policy "draft", the unapplied draft) allow it and which rule decides.
+// Nothing is written. The checking of the request
 // lives here; the answer itself comes from simulate.ts.
 
 import type { Hono } from "hono";
@@ -56,11 +57,20 @@ export function registerSimulate(api: Hono<ApiEnv>): void {
       if (proto === "icmp") return fail(c, 400, "bad_input", "A port only applies to tcp and udp.", "port");
       if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) return fail(c, 400, "bad_input", "port must be a whole number from 1 to 65535.", "port");
     }
+    const policy = b.policy ?? "live";
+    if (policy !== "live" && policy !== "draft") return fail(c, 400, "bad_input", 'policy must be "live" or "draft".', "policy");
     for (const [e, field] of [[from, "from"], [to, "to"]] as const) {
       if (e.clientId !== null && !(await db.getPeer(c.env, e.clientId))) return fail(c, 404, "not_found", "No such client.", field);
     }
-    const [rules, peers, cfg, snap, forwards] = await Promise.all([db.listFwRules(c.env), db.listPeers(c.env), effectiveConfig(c.env), getSnapshot(c.env), db.listForwards(c.env)]);
-    const out: SimResult = simulate({ from: from.end, to: to.end, proto, port: port as number | null }, { rules, defaultAction: cfg.firewallDefault, cfg, peers, publicIp: snap.public_ip, forwards });
+    const [pol, live, peers, cfg, snap, forwards] = await Promise.all([db.getFwPolicy(c.env), db.listFwRules(c.env), db.listPeers(c.env), effectiveConfig(c.env), getSnapshot(c.env), db.listForwards(c.env)]);
+    let rules = live;
+    let defaultAction = cfg.firewallDefault;
+    if (policy === "draft") {
+      if (pol.draft_base === null) return fail(c, 400, "bad_input", "There is no draft to test against.", "policy");
+      rules = await db.listFwDraftRules(c.env);
+      defaultAction = pol.draft_default ?? cfg.firewallDefault;
+    }
+    const out: SimResult = simulate({ from: from.end, to: to.end, proto, port: port as number | null }, { rules, defaultAction, cfg, peers, publicIp: snap.public_ip, forwards });
     return c.json(out);
   });
 }
