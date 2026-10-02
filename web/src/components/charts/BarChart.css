@@ -1,0 +1,5 @@
+.bar { margin: 0; min-width: 0; }
+.bar__plot { width: 100%; }
+.bar__plot svg { display: block; }
+.bar__tick { font-size: 11px; fill: var(--text-muted); font-family: var(--font-ui); }
+.bar__empty { display: grid; place-items: center; font-size: 12px; color: var(--text-muted); }

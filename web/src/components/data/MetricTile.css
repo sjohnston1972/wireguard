@@ -1,0 +1,41 @@
+.tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-panel);
+}
+.tile--card { background: var(--bg-panel); border: 1px solid var(--border); }
+.tile--inset { background: var(--bg-tile); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+
+.tile__icon {
+  --c: var(--blue-bright);
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+}
+.tile--inset .tile__icon { width: 34px; height: 34px; background: transparent; }
+.tile__icon--green { --c: var(--green); }
+.tile__icon--amber { --c: var(--amber); }
+.tile__icon--red { --c: var(--red); }
+.tile__icon--purple { --c: var(--purple); }
+.tile__icon--grey { --c: var(--text-secondary); }
+
+.tile__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tile__label { font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile__row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.tile__value { font-size: 24px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; white-space: nowrap; }
+.tile--inset .tile__value { font-size: 18px; }
+.tile__value--none { font-size: 14px; font-weight: 400; color: var(--text-muted); letter-spacing: 0; }
+.tile__delta { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; }
+.tile__delta--good { color: var(--green); }
+.tile__delta--bad { color: var(--red); }
+.tile__sub { font-size: 12px; color: var(--text-secondary); }
+.tile__progress { margin-top: 3px; }
+.tile__spark { align-self: center; }
