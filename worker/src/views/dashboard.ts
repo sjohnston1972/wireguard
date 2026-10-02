@@ -19,6 +19,7 @@ import type { Config } from "../env";
 import type { Peer, Profile, SpeedTest } from "../db";
 import type { BudgetStatus } from "../budget";
 import { OVER_BUDGET_FIELD } from "../budget";
+import { isVerifying, publicIp6 } from "../overview";
 
 export interface LiveOpts {
   snap: Snapshot;
@@ -46,29 +47,6 @@ export interface LiveOpts {
   stateBackups?: { count: number; newest: string | null } | null;
 }
 
-/**
- * Running, but the VM's boot self-test has not reported yet: show "Verifying"
- * rather than a green "Running". Builds from before the self-test never
- * report one, so after 5 minutes it stops waiting.
- */
-function verifying(s: Snapshot): boolean {
-  if (s.state !== "running" || s.selftest) return false;
-  const since = Date.parse(s.running_since ?? s.since ?? "");
-  return Number.isFinite(since) && Date.now() - since < 5 * 60_000;
-}
-
-/**
- * The VM's public IPv6 address, from Azure's inventory. The address the VM
- * itself reports (agent.wan6) is its private fd50:50:0:1::/64 one: Azure
- * translates IPv6 at the edge just as it does IPv4. Shown only when the VM
- * also reports IPv6 working inside, so a half-built stack is not advertised.
- */
-function publicIp6(s: Snapshot): string | null {
-  if (!s.agent?.wan6) return null;
-  const a = s.azure?.resources.find((r) => r.kind === "Public IPv6")?.detail.split(",")[0]?.trim();
-  return a && a.includes(":") ? a : null;
-}
-
 /** A tiny line chart of recent round-trip times. */
 function sparkline(samples: number[] | undefined): Html {
   const v = (samples ?? []).slice(-24);
@@ -89,7 +67,7 @@ export function latencyCell(samples: number[] | undefined): Html {
 function selfTestCell(s: Snapshot): Html {
   if (s.state !== "running") return html`<span class="faint">—</span>`;
   const t = s.selftest;
-  if (!t) return verifying(s) ? html`<span class="pill busy">running</span> <span class="faint small">a test client is dialling in</span>` : html`<span class="pill idle">not on this build</span>`;
+  if (!t) return isVerifying(s) ? html`<span class="pill busy">running</span> <span class="faint small">a test client is dialling in</span>` : html`<span class="pill idle">not on this build</span>`;
   const failed = selfTestFailures(t);
   if (failed.length) return html`<span class="pill down">failed</span> <span class="small">${failed.join(", ")}</span>`;
   const parts = ["handshake", "tunnel", t.loopback ? "loopback" : "", t.dns ? "DNS" : "", t.internet ? "internet" : "", t.internet6 ? "IPv6" : ""].filter(Boolean);
@@ -183,7 +161,7 @@ export function liveSection(o: LiveOpts): Html {
   const every = busy ? "5s" : "20s";
   const online = s.agent ? s.agent.peers.filter((p) => peerOnline(p)).length : 0;
   const heartbeatStale = s.state === "running" && (!s.last_agent_at || Date.now() - Date.parse(s.last_agent_at) > 120_000);
-  const checking = verifying(s);
+  const checking = isVerifying(s);
   const word = checking ? "Verifying" : STATE_LABEL[s.state];
   const wordState = checking ? "verifying" : s.state;
   const dns = s.agent?.dns;
@@ -262,7 +240,7 @@ function phoneDock(o: LiveOpts, online: number, heartbeatStale: boolean): Html {
 
   if (s.state === "running") {
     const failed = selfTestFailures(s.selftest);
-    inds.push(verifying(s) ? ind("busy", "Testing") : !s.selftest ? ind("idle", "Tunnel") : failed.length ? ind("down", "Tunnel") : ind("up", "Tunnel OK"));
+    inds.push(isVerifying(s) ? ind("busy", "Testing") : !s.selftest ? ind("idle", "Tunnel") : failed.length ? ind("down", "Tunnel") : ind("up", "Tunnel OK"));
     inds.push(s.agent?.dns ? ind(s.agent.dns.up ? "up" : "down", "DNS") : ind("idle", "DNS"));
     inds.push(heartbeatStale ? ind("down", "No heartbeat") : ind(online > 0 ? "up" : "idle", `${online}/${o.peerCount} online`));
     if (o.site) {

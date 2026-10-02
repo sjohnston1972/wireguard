@@ -23,7 +23,7 @@ import { verifyGithubOidc } from "./oidc";
 import { startHibernate, startResume, refreshPower } from "./standby";
 import { consumeAction, dashboardButton } from "./actions";
 import { notify, ntfyParts, lastNotifyError } from "./notify";
-import { nearestRegion, REGIONS, regionName } from "./region";
+import { REGIONS, regionName, whereFrom } from "./region";
 import { startMove } from "./profiles";
 import { startSpeedTest } from "./speedtest";
 import { nextStart, validRule } from "./schedule-time";
@@ -248,8 +248,7 @@ async function render(c: { env: Env; get: (k: "user") => string }, tab: Tab, tit
 
 /** Cloudflare's idea of where the browser is: country code and the nearest Azure region. */
 function where(c: Context<App>): { country: string | null; region: string | null } {
-  const cf = (c.req.raw as unknown as { cf?: { country?: string; continent?: string; longitude?: string } }).cf;
-  return { country: cf?.country ?? null, region: nearestRegion(cf) };
+  return whereFrom(c.req.raw);
 }
 
 async function live(env: Env, notice?: { kind: "good" | "warn" | "bad" | "info"; text: string } | null, near?: { country: string | null; region: string | null }) {

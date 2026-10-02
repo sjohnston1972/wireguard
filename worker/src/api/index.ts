@@ -6,11 +6,13 @@
 import { createApi, fail, type ApiEnv } from "./app";
 import type { Hono } from "hono";
 import { registerSession } from "./session";
+import { registerOverview } from "./overview";
 
 export function buildApi(): Hono<ApiEnv> {
   const api = createApi();
   // Area routes, before the catch-all.
   registerSession(api);
+  registerOverview(api);
   api.all("*", (c) => fail(c, 404, "not_found", "No such API route."));
   return api;
 }
