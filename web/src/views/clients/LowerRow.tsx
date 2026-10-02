@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import type { ClientsResponse } from "@shared/api";
 import { Donut, Panel, TimeSeriesChart } from "@/components";
+import { useMedia } from "@/lib/useMedia";
 import { bytes, talkerTotals, type Client } from "./model";
 import { deviceIcon } from "./ClientsTable";
 import "./LowerRow.css";
@@ -108,6 +109,8 @@ export function StatusDonut({ clients }: { clients: Client[] }) {
 
 /** All clients' throughput this session, one sample per heartbeat (the mockup's UX-notes slot). */
 export function SessionTraffic({ hist }: { hist: ClientsResponse["trafficHist"] }) {
+  // The lower row is 124 px on a short window (LowerRow.css): the chart keeps to it, axis labels included.
+  const short = useMedia("(max-height: 760px) and (min-width: 1100px)");
   const x = hist.map((p) => Math.floor(Date.parse(p.t) / 1000));
   return (
     <Panel title="Traffic this session" className="lower__panel">
@@ -115,7 +118,7 @@ export function SessionTraffic({ hist }: { hist: ClientsResponse["trafficHist"] 
         title="Traffic this session, all clients"
         range="1h"
         x={x}
-        height={104}
+        height={short ? 70 : 104}
         format={(v) => `${bytes(v)}/s`}
         series={[
           { label: "Inbound", color: "blue", data: hist.map((p) => p.rx) },
