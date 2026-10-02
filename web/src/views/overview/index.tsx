@@ -13,6 +13,7 @@ import { Topology } from "./Topology";
 import { LastRun, RunPanels } from "./Run";
 import { RecentEvents, SpeedTests, Traffic } from "./Side";
 import { CostImpact, HealthSummary, WatchmanNotes } from "./Lower";
+import { PhoneOverview } from "./Phone";
 import { STATE_WORD, inGithubRun, normalise, regionCountry, regionFull } from "./model";
 import "./Overview.css";
 
@@ -120,7 +121,7 @@ export function OverviewPage() {
   let body: React.ReactNode;
   if (!o && q.isError) body = <ErrorState title="Could not load the overview" message={q.error.message} onRetry={() => void q.refetch()} />;
   else if (!o) body = <OverviewSkeleton />;
-  else body = phone ? null : <Desktop o={o} receivedAt={q.dataUpdatedAt} onAction={setAction} />;
+  else body = phone ? <Phone o={o} receivedAt={q.dataUpdatedAt} onAction={setAction} /> : <Desktop o={o} receivedAt={q.dataUpdatedAt} onAction={setAction} />;
 
   return (
     <div className="ov">
@@ -129,6 +130,11 @@ export function OverviewPage() {
       {o && <ActionDialog name={action} o={o} onClose={close} />}
     </div>
   );
+}
+
+function Phone({ o, receivedAt, onAction }: { o: OverviewResponse; receivedAt: number; onAction: (a: ActionName) => void }) {
+  const now = useServerNow(o.now, receivedAt, 10_000);
+  return <PhoneOverview o={o} now={now} onAction={onAction} />;
 }
 
 function Desktop({ o, receivedAt, onAction }: { o: OverviewResponse; receivedAt: number; onAction: (a: ActionName) => void }) {
