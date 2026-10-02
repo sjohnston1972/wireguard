@@ -45,7 +45,7 @@ describe("theme", () => {
     document.documentElement.setAttribute("data-theme", "dark");
     const user = userEvent.setup();
     renderApp("/");
-    const bar = screen.getByRole("banner");
+    const bar = screen.getAllByRole("banner")[0];
     expect(within(bar).getByRole("button", { name: "Switch to light theme" })).toBeInTheDocument();
     await user.click(await within(bar).findByRole("button", { name: /Account menu/ }));
     await user.click(await screen.findByRole("menuitem", { name: /Switch to light theme/ }));

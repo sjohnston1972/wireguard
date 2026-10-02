@@ -1,0 +1,114 @@
+/* The Overview fills the page area exactly on a desktop window (one-screen
+   rule): header and banner take what they need, the three rows share the
+   rest, and each panel scrolls inside itself. */
+.ov {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  height: 100%;
+  min-height: 0;
+}
+.ov .page-header {
+  margin-bottom: 0;
+}
+
+.ov-read {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ov-read__caption {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.ov-read__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  min-width: 132px;
+  padding: 0 12px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.ov-flag {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 15px;
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+.ov-gear {
+  align-self: flex-end;
+}
+
+/* The three rows below the banner share the height left, in the mockup's proportions. */
+.ov-rows {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 245fr) minmax(0, 320fr) minmax(0, 120fr);
+  gap: var(--gap);
+}
+
+/* Every panel is the containing block for what it holds: visually hidden
+   text and other absolutely placed bits inside a panel that scrolls are then
+   clipped by it, instead of stretching the page area below the window. */
+.ov .panel,
+.ov .panel__body {
+  position: relative;
+}
+
+/* The lower row is short: tighter panel heads and bodies. */
+.ov-row--4 .panel__head {
+  padding-top: 8px;
+  min-height: 30px;
+}
+.ov-row--4 .panel__body {
+  padding: 6px 16px 8px;
+}
+.ov-row {
+  display: grid;
+  gap: var(--gap);
+  min-height: 0;
+  min-width: 0;
+}
+.ov-row > * {
+  min-height: 0;
+  min-width: 0;
+}
+.ov-row--2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.ov-row--3 { grid-template-columns: minmax(0, 41fr) minmax(0, 45fr) minmax(0, 32fr); }
+.ov-row--4 { grid-template-columns: minmax(0, 54fr) minmax(0, 32fr) minmax(0, 32fr); }
+/* During a run the chip row, pipeline and log share the first two columns. */
+.ov-row--3 > .ov-run { grid-column: span 2; }
+
+/* 641-1099 px: panels stack and the page may scroll. */
+@media (max-width: 1099px) {
+  .ov { height: auto; }
+  .ov-rows { display: flex; flex-direction: column; }
+  .ov-row--2, .ov-row--3, .ov-row--4 { grid-template-columns: minmax(0, 1fr); }
+}
+
+.ov-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.ov-skeleton__row {
+  display: grid;
+  grid-template-columns: 7fr 5fr;
+  gap: var(--gap);
+}
+.ov-skeleton__row--3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}

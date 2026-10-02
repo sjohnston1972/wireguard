@@ -5,7 +5,8 @@ import { renderApp } from "@/test/render";
 import { overviewFixture, sessionFixture } from "@/test/fixtures";
 import { formatRemaining } from "./StateChip";
 
-const banner = () => screen.getByRole("banner");
+// The top bar is the first banner: testing-library also counts the Overview's panel headers (a <header> inside <section>) as banners.
+const banner = () => screen.getAllByRole("banner")[0];
 const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** The chip says this state sentence (its accessible name; on screen it reads "Azure • UK South"). */
 const stateSays = (text: string) =>
