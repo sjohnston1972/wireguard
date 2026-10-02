@@ -33,9 +33,9 @@ describe("costWindow", () => {
 describe("projection", () => {
   it("scales the month so far to the whole month", () => {
     const p = projection([day("2026-10-01", 1), day("2026-10-02", 2), day("2026-10-03", 3), day("2026-09-30", 99)], new Date("2026-10-10T12:00:00Z"));
-    // 6 pounds over 10 days elapsed, 31 days in October.
-    expect(p!.gbp).toBeCloseTo(18.6, 6);
-    expect(p!.basis).toMatch(/10 days/);
+    // 6 pounds over the 3 days reported (the last is the 3rd), 31 days in October.
+    expect(p!.gbp).toBeCloseTo(62, 6);
+    expect(p!.basis).toMatch(/3 days/);
     expect(p!.basis).toMatch(/31/);
   });
   it("is null when this month has no Azure day yet", () => {

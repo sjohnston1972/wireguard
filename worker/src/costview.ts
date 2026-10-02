@@ -38,8 +38,8 @@ export function costWindow(range: CostRange, now: Date): { from: string; to: str
 }
 
 /**
- * Where this month is heading: the month so far, divided by the days gone
- * (today's day of the month) and multiplied by the days in the month. Null
+ * Where this month is heading: the month so far, divided by the days up to
+ * the last one Azure has reported (its figures lag a day, so not today) and multiplied by the days in the month. Null
  * when Azure has not listed a day of this month yet: no data is not a £0
  * forecast.
  */
@@ -48,11 +48,11 @@ export function projection(days: CostDay[], now: Date): { gbp: number; basis: st
   const mine = days.filter((d) => d.day.startsWith(month));
   if (!mine.length) return null;
   const actual = mine.reduce((a, d) => a + d.gbp, 0);
-  const elapsed = now.getUTCDate();
+  const elapsed = Math.max(...mine.map((d) => Number(d.day.slice(8, 10))));
   const inMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
   return {
     gbp: (actual / elapsed) * inMonth,
-    basis: `£${actual.toFixed(2)} spent in the ${elapsed} ${elapsed === 1 ? "day" : "days"} so far this month, carried on at the same pace to all ${inMonth} days.`,
+    basis: `£${actual.toFixed(2)} over the ${elapsed} ${elapsed === 1 ? "day" : "days"} Azure has reported so far this month, carried on at the same pace to all ${inMonth} days.`,
   };
 }
 

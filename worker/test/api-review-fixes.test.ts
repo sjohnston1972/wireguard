@@ -12,6 +12,8 @@ import worker from "../src/index";
 import { startDeploy, issueRunSecrets, handleCallback } from "../src/runs";
 import { getSnapshot } from "../src/state";
 import { resolveDeployTarget } from "../src/profiles";
+import { projection } from "../src/costview";
+import type { CostDay } from "../src/db";
 import type { Env } from "../src/env";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -105,5 +107,13 @@ describe("review pass 2: decimal ports are refused", () => {
     expect(b.status).toBe(400);
     expect(b.json.error.field).toBe("target_port");
     expect(await db.listForwards(env)).toHaveLength(0);
+  });
+});
+
+describe("review pass 2: the month projection allows for Azure's lag", () => {
+  it("on the 2nd with only the 1st reported, projects that day's figure over the month", () => {
+    const p = projection([{ day: "2026-10-01", gbp: 2 } as CostDay], new Date("2026-10-02T09:00:00Z"));
+    expect(p!.gbp).toBeCloseTo(2 * 31, 6);
+    expect(p!.basis).toMatch(/1 day Azure has reported/);
   });
 });
