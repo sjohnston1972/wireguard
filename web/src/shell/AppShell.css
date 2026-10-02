@@ -1,0 +1,292 @@
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+}
+
+.app-shell__skip {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 100;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+}
+.app-shell__skip:focus {
+  top: 8px;
+}
+
+.app-shell__page {
+  /* The containing block for absolutely positioned descendants (visually
+     hidden text, chart overlays), so they scroll and clip with the page area
+     instead of stretching the document past the window. */
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  /* A 32 px gutter at desktop widths, as in the mockups (16 px on the phone). */
+  padding: 16px 32px 20px;
+}
+.app-shell__page:focus {
+  outline: none;
+}
+
+/* ---- top bar ---- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--bar-height);
+  flex: none;
+  padding: 0 32px;
+  background: var(--bg-bar);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar__brand {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-right: 8px;
+  white-space: nowrap;
+  border-radius: var(--radius-control);
+}
+/* The brand mark: a constant orange dot (state lives in the chip). */
+.topbar__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f7931a;
+}
+.topbar__name {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.topbar__tabs {
+  display: flex;
+  flex: none;
+  align-self: stretch;
+  gap: 0;
+  align-items: stretch;
+}
+/* Tabs run the bar's full height. The active one is a faint tint from top to
+   bottom with square corners and an underline on the bar's bottom edge. */
+.topbar__tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.topbar__tab:hover {
+  color: var(--text-primary);
+}
+.topbar__tab[aria-current="page"] {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+}
+.topbar__tab[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Over the bar's 1 px bottom border. */
+  bottom: -1px;
+  height: 2px;
+  background: var(--blue);
+}
+
+.topbar__spacer {
+  flex: 1;
+}
+
+.topbar__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* About 280-300 px, as in the mockups, so the whole placeholder shows. */
+  flex: 0 0 296px;
+  min-width: 0;
+  font-size: 13px;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.topbar__search:hover {
+  border-color: var(--border-strong);
+}
+.topbar__search-text {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar__kbd {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* "Azure • UK South" with a state dot; details open from it. */
+.topbar__chip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.topbar__chip:hover,
+.topbar__chip[data-state="open"] {
+  color: var(--text-primary);
+  background: var(--bg-tile);
+  border-color: var(--border);
+}
+.topbar__chip-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.topbar .topbar__icon-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.topbar .topbar__icon-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.topbar__account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.topbar__account:hover {
+  color: var(--text-primary);
+}
+.topbar__avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--purple);
+  color: #fff;
+}
+
+/* ---- phone tab bar ---- */
+.tabbar {
+  display: none;
+}
+
+/* Narrower desktops: the account shows its initials only. */
+@media (max-width: 1360px) {
+  .topbar__account-text {
+    display: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .topbar {
+    gap: 8px;
+    padding: 0 20px;
+  }
+  .topbar__tab {
+    padding: 0 10px;
+  }
+  /* Narrower: the search keeps its icon, words and shortcut, at a shorter placeholder width. */
+  .topbar__search {
+    flex-basis: 236px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .topbar__search-text,
+  .topbar__kbd,
+  .topbar__account-text {
+    display: none;
+  }
+  .topbar__search {
+    flex: none;
+    min-width: 0;
+    width: 32px;
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+@media (max-width: 880px) {
+  .topbar__chip {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 0 16px;
+  }
+  .topbar__tabs {
+    display: none;
+  }
+  .app-shell__page {
+    padding: 12px 16px;
+  }
+  .tabbar {
+    display: flex;
+    flex: none;
+    height: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--bg-bar);
+    border-top: 1px solid var(--border);
+  }
+  .tabbar__tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .tabbar__tab[aria-current="page"] {
+    color: var(--blue-bright);
+  }
+}

@@ -31,6 +31,11 @@ for (const k of WORKER_KEYS) {
 writeFileSync(".dev.vars", devVarsText(vars), { mode: 0o600 });
 
 const args = ["wrangler", "dev", "--port", port, "--test-scheduled"];
+// "npm run dev:api" (--api) is the Worker half of the new app's dev setup: the
+// Vite server (npm run dev:web) proxies /api to it. wrangler rewrites the Host
+// header to the custom-domain route's name, and the localhost login bypass then
+// refuses the request. --local-upstream makes it keep "localhost".
+if (process.argv.includes("--api")) args.push("--local-upstream", "localhost:9");
 console.log(`wrangler dev on http://localhost:${port} (login bypassed; cron test at /__scheduled)`);
 const r = spawnSync("npx", args, { stdio: "inherit", shell, env: { ...process.env, CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID } });
 process.exit(r.status ?? 0);

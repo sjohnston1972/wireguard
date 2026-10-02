@@ -1,0 +1,65 @@
+/* Light theme. Follows the OS unless the user chose one: the account menu sets
+   data-theme="light" or "dark" on <html> (stored in localStorage). Same names
+   as tokens.css. Text pairs are chosen for WCAG AA (4.5:1) on the surfaces they
+   sit on; --text-muted is for non-essential text only. */
+:root[data-theme="light"] {
+  --bg-app: #eef2f7;
+  --bg-bar: #ffffff;
+  --bg-panel: #ffffff;
+  --bg-tile: #f4f7fb;
+  --bg-elevated: #ffffff;
+  --border: #dde4ee;
+  --border-strong: #c3cddb;
+
+  --text-primary: #0f1b2d;
+  --text-secondary: #44546a;
+  --text-muted: #5f6f86;
+
+  --blue: #2563eb;
+  --blue-bright: #1d56d8;
+  --green: #12804f;
+  --amber: #b45309;
+  --red: #c62828;
+  --purple: #6d3fd1;
+  --blue-fill: #2563eb;
+  --blue-fill-hover: #1d56d8;
+  --disabled-bg: #e9eef5;
+  --disabled-fg: #66768b;
+  --disabled-border: #c3cddb;
+
+  --focus-ring: #1d56d8;
+  --scrollbar-thumb: #c3cddb;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg-app: #eef2f7;
+    --bg-bar: #ffffff;
+    --bg-panel: #ffffff;
+    --bg-tile: #f4f7fb;
+    --bg-elevated: #ffffff;
+    --border: #dde4ee;
+    --border-strong: #c3cddb;
+
+    --text-primary: #0f1b2d;
+    --text-secondary: #44546a;
+    --text-muted: #5f6f86;
+
+    --blue: #2563eb;
+    --blue-bright: #1d56d8;
+    --green: #12804f;
+    --amber: #b45309;
+    --red: #c62828;
+    --purple: #6d3fd1;
+    --blue-fill: #2563eb;
+    --blue-fill-hover: #1d56d8;
+    --disabled-bg: #e9eef5;
+    --disabled-fg: #66768b;
+    --disabled-border: #c3cddb;
+
+    --focus-ring: #1d56d8;
+    --scrollbar-thumb: #c3cddb;
+    color-scheme: light;
+  }
+}

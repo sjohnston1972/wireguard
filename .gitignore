@@ -37,3 +37,10 @@ peers/
 # Packet captures downloaded from the dashboard (real traffic from the network)
 *.pcap
 *.pcapng
+
+# Web app (npm run build:web); dist/ above already covers it, listed for clarity
+web/dist/
+web/node_modules/
+
+# Screenshots from "npm run shots" (local only)
+.superpowers/shots/

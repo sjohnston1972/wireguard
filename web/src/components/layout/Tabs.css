@@ -1,0 +1,49 @@
+.tabs { min-width: 0; }
+.tabs__list { display: flex; gap: 8px; }
+.tabs__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tabs__tab:hover { color: var(--text-primary); }
+
+/* underline tabs (drawer: Overview / Configuration / Traffic / Activity) */
+.tabs--underline .tabs__list { gap: 20px; border-bottom: 1px solid var(--border); }
+.tabs--underline .tabs__tab { height: 36px; padding: 0 2px; position: relative; }
+.tabs--underline .tabs__tab[data-state="active"] { color: var(--text-primary); }
+.tabs--underline .tabs__tab[data-state="active"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--blue);
+}
+
+/* pill tabs (All (12), Online (3), Settings sections) */
+.tabs--pill .tabs__list { flex-wrap: wrap; }
+.tabs--pill .tabs__tab {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-tile);
+}
+.tabs--pill .tabs__tab[data-state="active"] {
+  background: var(--blue-fill);
+  border-color: var(--blue-fill);
+  color: #fff;
+}
+
+.tabs__panel { padding-top: 12px; }
+.tabs__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.tabs__dot--amber { background: var(--amber); }
+.tabs__dot--red { background: var(--red); }
+.tabs__dot--grey { background: var(--text-muted); }

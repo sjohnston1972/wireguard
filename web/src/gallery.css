@@ -1,0 +1,14 @@
+.gallery { display: flex; flex-direction: column; gap: 22px; padding-bottom: 40px; }
+.g-section { display: flex; flex-direction: column; gap: 12px; }
+.g-h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); font-weight: 600; }
+.g-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.g-col { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.g-grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.g-narrow { max-width: 420px; }
+.g-muted { color: var(--text-secondary); font-size: 13px; }
+.g-name { display: inline-flex; align-items: center; gap: 8px; color: var(--text-primary); }
+.g-table { height: 262px; }
+.g-table--short { height: auto; border-top: 1px solid var(--border); }
+.g-log { height: 300px; }
+.g-split { height: 470px; margin-bottom: var(--gap); }
+.g-split .g-table { height: 400px; }

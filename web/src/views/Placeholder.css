@@ -1,0 +1,5 @@
+/* The page gutter comes from the shell; the placeholder adds none, so its
+   title lines up with the wordmark. */
+.placeholder {
+  padding: 0;
+}

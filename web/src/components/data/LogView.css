@@ -1,0 +1,43 @@
+.log { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.log__bar { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding-bottom: 8px; flex: none; }
+.log__search { flex: 1; max-width: 260px; height: 32px; }
+.log__follow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); }
+.log__scroller { position: relative; flex: 1; min-height: 0; display: flex; }
+.log__lines {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.log__line { display: flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; }
+.log__line:hover { background: color-mix(in srgb, var(--blue) 8%, transparent); }
+.log__time { color: var(--text-secondary); flex: none; }
+.log__level { flex: none; min-width: 42px; text-align: center; padding: 0 5px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.log__level--INFO { color: var(--green); background: color-mix(in srgb, var(--green) 18%, transparent); }
+.log__level--WARN { color: var(--amber); background: color-mix(in srgb, var(--amber) 18%, transparent); }
+.log__level--ERROR { color: var(--red); background: color-mix(in srgb, var(--red) 18%, transparent); }
+.log__level--DEBUG { color: var(--text-secondary); background: color-mix(in srgb, var(--text-secondary) 16%, transparent); }
+.log__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+.log__copy { opacity: 0; flex: none; }
+.log__line:hover .log__copy, .log__copy:focus-visible { opacity: 1; }
+.log__empty { color: var(--text-secondary); font-family: var(--font-ui); text-align: center; padding: 20px 0; }
+.log__new {
+  position: absolute;
+  right: 18px;
+  bottom: 10px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--blue-fill);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}

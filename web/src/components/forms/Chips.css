@@ -1,0 +1,19 @@
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  height: 26px;
+  min-width: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-tile);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.chip--pill { border-radius: 999px; }
+.chip--rect { border-radius: var(--radius-control); height: 30px; padding: 0 14px; }
+.chip:hover { color: var(--text-primary); }
+.chip--on {
+  background: var(--blue-fill);
+  border-color: var(--blue-fill);
+  color: #fff;
+}

@@ -1,0 +1,35 @@
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.steps__item {
+  display: grid;
+  grid-template-columns: 18px 1fr auto 44px 72px;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+  min-height: 26px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.steps__item--running { background: color-mix(in srgb, var(--amber) 10%, transparent); }
+.steps__item--running .steps__label { color: var(--text-primary); font-weight: 500; }
+.steps__item--pending .steps__label, .steps__item--skipped .steps__label { color: var(--text-secondary); }
+.steps__icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--text-muted);
+  color: #04121a;
+}
+.steps__icon--done { background: var(--green); border-color: var(--green); }
+.steps__icon--failed { background: var(--red); border-color: var(--red); color: #fff; }
+.steps__icon--skipped { border-color: var(--text-muted); color: var(--text-muted); }
+.steps__icon--running { border-color: var(--amber); background: var(--amber); }
+.steps__spinner { width: 6px; height: 6px; border-radius: 50%; background: #04121a; }
+.steps__state { font-size: 12px; color: var(--amber); }
+.steps__item--failed .steps__state { color: var(--red); }
+.steps__duration, .steps__time { font-size: 12px; color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .steps__item { grid-template-columns: 18px 1fr auto 40px; }
+  .steps__time { display: none; }
+}
