@@ -1,0 +1,70 @@
+/* The rules table borrows DataTable's cell look (dt__th / dt__td) and adds
+   two-line cells, drag handles and drop markers. */
+.fw-rules { table-layout: auto; }
+.fw-rules .dt__td { height: 50px; padding: 0 10px; }
+.fw-rules .dt__th { padding: 8px 10px; }
+.fw-rules__row { outline: none; }
+.fw-rules__row:last-child .dt__td { border-bottom: 0; }
+.fw-rules__row:not(.fw-rules__row--default) { cursor: pointer; }
+.fw-rules__row:hover { background: color-mix(in srgb, var(--blue) 6%, transparent); }
+.fw-rules__row:focus-visible { background: color-mix(in srgb, var(--blue) 12%, transparent); box-shadow: inset 0 0 0 1px var(--blue); }
+.fw-rules__row--off .fw-end, .fw-rules__row--off .fw-rules__name-text { opacity: 0.6; }
+.fw-rules__row--drop-above .dt__td { box-shadow: inset 0 2px 0 var(--blue-bright); }
+.fw-rules__row--drop-below .dt__td { box-shadow: inset 0 -2px 0 var(--blue-bright); }
+.fw-rules__row--dragging { opacity: 0.45; }
+
+.fw-rules__c-handle { width: 30px; padding-right: 0 !important; }
+.fw-rules__c-place { width: 28px; color: var(--text-secondary); }
+.fw-rules__c-arrow { width: 24px; padding: 0 2px !important; color: var(--text-secondary); }
+.fw-rules__c-menu { width: 36px; text-align: right; }
+.fw-rules__handle { display: inline-grid; place-items: center; width: 22px; height: 30px; color: var(--text-muted); cursor: grab; border-radius: 6px; }
+.fw-rules__handle:hover { color: var(--text-primary); background: var(--bg-tile); }
+.fw-rules__handle:active { cursor: grabbing; }
+
+.fw-rules__name { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.fw-rules__name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fw-rules__name-text { font-weight: 550; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.fw-rules__sub { font-size: 12px; color: var(--text-secondary); }
+.fw-rules__problem { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--amber); white-space: normal; }
+.fw-rules__mark {
+  --c: var(--amber);
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  color: var(--c);
+  font-size: 11px;
+  font-weight: 600;
+}
+.fw-rules__mark--added { --c: var(--green); }
+.fw-rules__mark--moved { --c: var(--blue-bright); }
+
+.fw-rules__svc {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.fw-rules__hits { display: inline-flex; align-items: center; }
+.fw-rules__hits-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+.fw-rules__hits-btn:hover { background: var(--bg-tile); }
+.fw-rules__hits { gap: 10px; }
+.fw-rules__hits-n { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+.fw-rules__nodata { color: var(--text-secondary); font-size: 12.5px; }
+.fw-rules__always { font-size: 12.5px; color: var(--text-secondary); }
+.fw-rules__lock { display: inline-grid; place-items: center; width: 28px; color: var(--text-secondary); }
