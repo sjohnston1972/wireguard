@@ -727,13 +727,6 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
   patch.roams = { ...(cur.roams ?? {}), ...detectRoams(cur.agent, report, report.at) };
   patch.session = resumed ? nextSession(null, null, report) : nextSession(cur.session, cur.agent, report);
   patch.firewall = nextFirewall(cur.firewall, body.firewall, report.at);
-  // History (history.ts): this heartbeat's VM, client and drop samples.
-  // A history problem must never cost the VM its heartbeat.
-  try {
-    await recordHeartbeat(env, { report, prev: cur.agent, rtt: body.rtt, traffic, drops: freshDrops(body.firewall, report.at) });
-  } catch (e) {
-    console.error("history:", e);
-  }
   if (body.talkers) patch.talkers = nextTalkers(cur.talkers ?? {}, body.talkers, report.at);
   // Throughput history: one sample per heartbeat, the last two hours.
   patch.traffic_hist = (cur.traffic_hist ?? []).concat({ t: report.at, rx: Math.round(traffic.rx_rate), tx: Math.round(traffic.tx_rate) }).slice(-240);
@@ -742,6 +735,17 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     patch.fw_base = nextBase(cur.fw_base ?? {}, cur.firewall, reported, cur.firewall?.applied_hash === (body.firewall.hash || null));
   }
   await saveSnapshot(env, patch);
+
+  // History (history.ts): this heartbeat's VM, client and drop samples.
+  // After the save, so nothing slow sits between reading the fresh snapshot
+  // and saving it (a tear-down landing meanwhile must not be undone), and so
+  // a failed save cannot leave bytes counted twice. A history problem must
+  // never cost the VM its heartbeat.
+  try {
+    await recordHeartbeat(env, { report, prev: cur.agent, rtt: body.rtt, traffic, drops: freshDrops(body.firewall, report.at) });
+  } catch (e) {
+    console.error("history:", e);
+  }
 
   return { status: 200, body: { peers: await peerList(), ...reply } };
 }

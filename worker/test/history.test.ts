@@ -333,6 +333,20 @@ describe("run steps", () => {
 });
 
 describe("review fixes", () => {
+  it("records history only after the heartbeat's snapshot is saved (no tear-down race)", async () => {
+    const token = await toRunning();
+    let seenAtRecording: string | null | undefined;
+    const real = env.DB.batch.bind(env.DB);
+    vi.spyOn(env.DB, "batch").mockImplementation(async (stmts: D1PreparedStatement[]) => {
+      if (stmts.some((st) => String((st as unknown as { sql: string }).sql).includes("INSERT INTO hist_vm"))) seenAtRecording = (await getSnapshot(env)).last_agent_at;
+      return real(stmts);
+    });
+    await handleAgent(env, token, { dump: DUMP([peerLine(PHONE, Math.floor(Date.now() / 1000), 1, 1)]) });
+    vi.mocked(env.DB.batch).mockRestore();
+    expect(seenAtRecording).toBeTruthy();
+    expect(seenAtRecording).toBe((await getSnapshot(env)).last_agent_at);
+  });
+
   it("the tidy-up never reads a whole history table (uses the index for every statement)", async () => {
     const seen: string[] = [];
     const real = env.DB.prepare.bind(env.DB);
