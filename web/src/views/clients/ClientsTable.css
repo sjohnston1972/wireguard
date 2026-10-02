@@ -30,7 +30,8 @@
 .ctraffic { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
 .croutes { display: inline-flex; align-items: center; gap: 8px; max-width: 260px; min-width: 0; }
-.croutes__ips { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.croutes__ips { flex: none; }
+.croutes__more { flex: none; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--bg-tile); font-size: 11px; color: var(--text-secondary); }
 
 .cexp { display: inline-flex; align-items: center; gap: 8px; }
 .cexp--gone { color: var(--amber); }

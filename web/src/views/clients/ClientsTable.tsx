@@ -122,8 +122,15 @@ export function ClientsTable({ rows, now, selectedId, onOpen, actions, sort, onS
       cell: (c) => {
         const r = routesOf(c);
         return (
+          // The first route in full and "+n" for the rest (the whole list is the tooltip and, for screen readers, spelled out).
           <span className="croutes" title={r.join(", ")}>
-            <span className="croutes__ips mono">{r.length ? r.join(", ") : "—"}</span>
+            <span className="croutes__ips mono">{r.length ? r[0] : "—"}</span>
+            {r.length > 1 && (
+              <span className="croutes__more">
+                +{r.length - 1}
+                <span className="visually-hidden"> more: {r.slice(1).join(", ")}</span>
+              </span>
+            )}
             {!!c.full_tunnel && <span className="ctag ctag--blue">Full tunnel</span>}
           </span>
         );

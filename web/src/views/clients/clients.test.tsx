@@ -93,6 +93,16 @@ describe("Clients list", { timeout: 20_000 }, () => {
     expect(within(rowFor(t, "backup-box")).getByText("stale")).toBeInTheDocument();
   });
 
+  it("Allowed IPs shows the first route in full and +n for the rest, the whole list as its tooltip", async () => {
+    renderApp("/clients", { routes: clientRoutes() });
+    const t = await table();
+    const cell = within(rowFor(t, "laptop")).getAllByRole("cell")[6]!;
+    const ips = cell.querySelector(".croutes__ips")!;
+    expect(ips.textContent).toBe("10.13.13.0/24");
+    expect(cell).toHaveTextContent("+4");
+    expect(cell.querySelector(".croutes")).toHaveAttribute("title", "10.13.13.0/24, 10.13.13.1/32, fd13:13::/64, 10.50.0.0/16, 192.168.1.0/24");
+  });
+
   it("offline latency shows a dash, not 0", async () => {
     renderApp("/clients", { routes: clientRoutes() });
     const t = await table();
