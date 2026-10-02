@@ -14,6 +14,7 @@ import { PhoneActivity } from "./PhoneActivity";
 import { LiveOutput, RunDetails } from "./RunPanels";
 import { Timeline } from "./Timeline";
 import { useActivityParams } from "./useActivityParams";
+import { useMedia } from "@/lib/useMedia";
 import "./activity.css";
 
 /** The last good answer, so a new range keeps the old figures on screen until the new ones arrive. */
@@ -29,6 +30,8 @@ export function ActivityView({ runId }: { runId?: string }) {
   const q = useActivity({ range: p.range, kind: p.kind, q: p.q, page: p.page > 1 ? p.page : undefined });
   const data: ActivityResponse | undefined = useHeld(q.data);
   const phone = useIsPhone();
+  // A short desktop window (the 1100 x 600 boundary): the runs table gets the bottom row's height; the run drawer shows the same steps and log.
+  const short = useMedia("(min-width: 1100px) and (max-height: 720px)");
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -114,10 +117,12 @@ export function ActivityView({ runId }: { runId?: string }) {
                 />
                 <ChangeLog changes={data.changes} params={p} set={p.set} window={win} selected={selectedChange} onOpen={openChange} />
               </div>
-              <div className="act__bottom">
-                <RunDetails id={shownRun} />
-                <LiveOutput id={shownRun} search={p.search} />
-              </div>
+              {!short && (
+                <div className="act__bottom">
+                  <RunDetails id={shownRun} />
+                  <LiveOutput id={shownRun} search={p.search} />
+                </div>
+              )}
             </div>
           )}
         </>
