@@ -57,11 +57,15 @@ export async function downloadFile(path: string, fallbackName: string): Promise<
     throw new SessionExpiredError();
   }
   connection.ok();
-  const blob = await res.blob();
+  saveBlob(await res.blob(), fileNameFrom(res.headers.get("Content-Disposition")) ?? fallbackName);
+}
+
+/** Hand a blob to the browser as a saved file, then let go of it. */
+function saveBlob(blob: Blob, name: string): void {
   const href = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = href;
-  a.download = fileNameFrom(res.headers.get("Content-Disposition")) ?? fallbackName;
+  a.download = name;
   a.style.display = "none";
   document.body.appendChild(a);
   try {
@@ -71,6 +75,14 @@ export async function downloadFile(path: string, fallbackName: string): Promise<
     // Some browsers read the blob after click returns; let go of it on the next turn.
     setTimeout(() => URL.revokeObjectURL(href), 0);
   }
+}
+
+/**
+ * Save text made in the browser as a file (a client's .conf, which holds the
+ * private key): nothing is sent anywhere, and the blob is let go of at once.
+ */
+export function downloadText(name: string, text: string): void {
+  saveBlob(new Blob([text], { type: "text/plain" }), name);
 }
 
 /** Everything the dashboard keeps, as one JSON file (GET /backup/export). */
