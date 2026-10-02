@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { WifiOff } from "lucide-react";
 import { useConnection } from "@/api/connection";
 import { useOverview } from "@/api/queries";
+import { Button } from "@/components/forms/Button";
 import "./status.css";
 
 export type ConnectionLevel = "connecting" | "live" | "stale" | "disconnected";
@@ -42,9 +43,9 @@ export function DisconnectedBanner() {
     <div className="conn-banner" role="alert">
       <WifiOff size={16} aria-hidden="true" />
       <span>Cannot reach the dashboard. Showing the last values; trying again automatically.</span>
-      <button type="button" className="conn-banner__retry" onClick={() => void qc.refetchQueries({ type: "active" })}>
+      <Button size="sm" className="conn-banner__retry" onClick={() => void qc.refetchQueries({ type: "active" })}>
         Retry
-      </button>
+      </Button>
     </div>
   );
 }

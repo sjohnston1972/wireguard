@@ -146,7 +146,7 @@
   background: var(--green);
 }
 
-.topbar__icon-btn {
+.topbar .topbar__icon-btn {
   display: grid;
   place-items: center;
   width: 32px;
@@ -157,7 +157,7 @@
   color: var(--text-secondary);
   cursor: pointer;
 }
-.topbar__icon-btn:hover {
+.topbar .topbar__icon-btn:hover {
   color: var(--text-primary);
   border-color: var(--border-strong);
 }

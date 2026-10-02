@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Moon, Search, Sun } from "lucide-react";
+import { IconButton } from "@/components/forms/IconButton";
 import { currentTheme, setTheme } from "./theme";
 import { AccountMenu } from "./AccountMenu";
 import { ConnectionIndicator } from "./Connection";
@@ -40,17 +41,16 @@ export function ThemeToggleSlot() {
   const [theme, set] = useState(currentTheme);
   const next = theme === "dark" ? "light" : "dark";
   return (
-    <button
-      type="button"
+    <IconButton
       className="topbar__icon-btn"
-      aria-label={`Switch to ${next} theme`}
+      label={`Switch to ${next} theme`}
       onClick={() => {
         setTheme(next);
         set(next);
       }}
     >
       {theme === "dark" ? <Moon size={18} aria-hidden="true" /> : <Sun size={18} aria-hidden="true" />}
-    </button>
+    </IconButton>
   );
 }
 
