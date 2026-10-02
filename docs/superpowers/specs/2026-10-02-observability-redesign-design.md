@@ -128,40 +128,27 @@ Captures keep their download path `GET /captures/:id`. The old form routes and
 
 ## 5. History store
 
-Recorded on every agent heartbeat (30 s while running), in `ctx.waitUntil` so the
-heartbeat response is not delayed. Migration `0012_history.sql`:
+Recorded on every agent heartbeat (about every 30 s while running) into one-minute
+slots. A minute rather than 30 s, because heartbeats drift: two can land in one
+30 s slot and leave the next empty, which would read as downtime. Recording runs
+inside the heartbeat handler, after the snapshot work, guarded so a history error
+never fails the heartbeat. Migration `0012_history.sql` (exact SQL in plan 1):
 
-```sql
-CREATE TABLE hist_vm (
-  res INTEGER NOT NULL,        -- 30 (raw) or 300 (5-minute roll-up), seconds
-  t TEXT NOT NULL,             -- ISO time, start of the bucket (sample time floored to res)
-  expected INTEGER NOT NULL,   -- heartbeats expected in the bucket
-  received INTEGER NOT NULL,   -- heartbeats received
-  load1 REAL, rx_rate REAL, tx_rate REAL, rx_rate_max REAL, tx_rate_max REAL,
-  peers_online INTEGER, dns_up INTEGER,
-  PRIMARY KEY (res, t)
-);
-CREATE TABLE hist_client (
-  res INTEGER NOT NULL, t TEXT NOT NULL,
-  peer_id INTEGER NOT NULL,    -- peers.id (stable across re-keys)
-  online INTEGER,              -- 1 if handshake within 3 minutes
-  handshake_age INTEGER,       -- seconds, at sample time
-  latency_avg REAL, latency_max REAL,
-  rx INTEGER, tx INTEGER,      -- bytes in the bucket (counter deltas; a counter reset counts from 0)
-  PRIMARY KEY (res, peer_id, t)
-);
-CREATE TABLE hist_drops (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  at TEXT NOT NULL, src TEXT NOT NULL, dst TEXT NOT NULL, proto TEXT NOT NULL,
-  dport INTEGER, in_if TEXT, out_if TEXT,
-  UNIQUE (at, src, dst, proto, dport)
-);
-ALTER TABLE runs ADD COLUMN steps_json TEXT;
-```
+- `hist_vm (res, t, expected, received, load1, rx_rate, tx_rate, rx_rate_max,
+  tx_rate_max, peers_online, dns_up)`, key `(res, t)`; `res` is 60 (raw) or 300.
+- `hist_client (res, t, peer_id, online, handshake_age, latency_avg, latency_max,
+  rx, tx)`, key `(res, peer_id, t)`; `peer_id` is `peers.id`, stable across re-keys;
+  rx/tx are counter deltas, and a counter reset counts from 0.
+- `hist_drops (t, src, dst, proto, dport, in_if, out_if, n)`: one row per minute
+  per distinct flow with a count, so a port scan cannot flood D1 (the agent sends
+  up to 20 drops per heartbeat).
+- `runs.steps_json`: the run's GitHub steps with start and end times.
 
 Rules:
 - Missing heartbeats: the 5-minute watchman writes a raw row with `received = 0`
-  for each 30 s slot without a heartbeat while the state is `running`. Availability
+  for each fully elapsed minute without a heartbeat while the state is `running`,
+  starting 3 minutes after `running_since` (boot) and leaving the last 2 minutes
+  alone (a heartbeat may be in flight). Availability
   over a range = sum(received) / sum(expected) over rows while running. Not running
   writes nothing, so it does not count against availability.
 - Roll-up (watchman, every 5 minutes): raw rows older than 48 h are folded into
@@ -171,9 +158,11 @@ Rules:
 - Online is handshake-based: a client is online if its latest handshake is under
   3 minutes old (the same rule as today's `peerOnline`). The UI explains this in a
   tooltip: WireGuard has no session, only handshakes.
-- Write volume: about 1 + N rows per heartbeat while running (15,000 a day at most
-  for 4 clients running all day), well inside D1's free allowance.
-- Run steps: when a run finishes, its final step list is saved to `runs.steps_json`.
+- Write volume: about 1 + N rows per minute while running (about 7,200 a day for
+  4 clients running all day, plus drops), well inside D1's free allowance.
+- Run steps: every GitHub poll during a run saves the step list (with start and end
+  times) to `runs.steps_json`, so a finished run keeps the last list seen; the run
+  drawer may refresh it from GitHub when opened.
 
 ## 6. Firewall drafts
 
