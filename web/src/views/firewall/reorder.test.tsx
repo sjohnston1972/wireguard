@@ -17,6 +17,12 @@ async function rowsByName() {
   return (name: string) => rows.find((r) => r.getAttribute("data-rule-name") === name)!;
 }
 const moves = (fetchMock: ReturnType<typeof renderApp>["fetchMock"]) => fetchMock!.calls.filter((c) => c.method === "POST" && /\/firewall\/draft\/rules\/\d+\/move$/.test(c.url));
+/** Exactly one move: waits for the first, then lets pending work settle and checks no second one followed. */
+async function exactlyOneMove(fetchMock: ReturnType<typeof renderApp>["fetchMock"]) {
+  await waitFor(() => expect(moves(fetchMock)).toHaveLength(1));
+  await act(() => new Promise((r) => setTimeout(r, 50)));
+  expect(moves(fetchMock)).toHaveLength(1);
+}
 
 describe("reordering rules", () => {
   it("drag to a new place sends one move with to", async () => {
@@ -31,7 +37,7 @@ describe("reordering rules", () => {
     expect(fireEvent.dragOver(target)).toBe(false); // a drop target: the browser is told a drop is allowed
     fireEvent.drop(target);
     fireEvent.dragEnd(handle);
-    await waitFor(() => expect(moves(fetchMock)).toHaveLength(1));
+    await exactlyOneMove(fetchMock);
     expect(moves(fetchMock)[0].url).toBe("/api/v1/firewall/draft/rules/1/move");
     expect(moves(fetchMock)[0].body).toEqual({ to: 2 });
   });
@@ -72,7 +78,7 @@ describe("reordering rules", () => {
     const r2 = row("Clients to the internet (full tunnel)");
     act(() => r2.focus());
     fireEvent.keyDown(r2, { key: "ArrowDown", altKey: true });
-    await waitFor(() => expect(moves(fetchMock)).toHaveLength(1));
+    await exactlyOneMove(fetchMock);
     expect(moves(fetchMock)[0].body).toEqual({ dir: "down" });
     // The refreshed list puts the rule third, and focus stays on it.
     await waitFor(async () => {
@@ -111,7 +117,7 @@ describe("reordering rules", () => {
     const trigger = screen.getByRole("button", { name: "Actions for Web to the test server" });
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
     fireEvent.click(await screen.findByRole("menuitem", { name: "Move down" }));
-    await waitFor(() => expect(moves(fetchMock)).toHaveLength(1));
+    await exactlyOneMove(fetchMock);
     expect(moves(fetchMock)[0].body).toEqual({ dir: "down" });
   });
 });
