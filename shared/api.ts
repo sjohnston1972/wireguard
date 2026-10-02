@@ -169,6 +169,82 @@ export interface FirewallResponse {
   publicIp: string | null;
   dnsName: string;
   kpis: { rules: number; enabled: number; defaultAction: "deny" | "allow"; drops24h: number; published: number; captureBusy: boolean };
+  /** The live rule set's version (fw_policy.live_version); Apply sends it back as `baseVersion`. */
+  version: number;
+  /** The unpublished draft, or null when there is none (an edit that leaves nothing changed deletes it). */
+  draft: FirewallDraft | null;
+}
+
+// ── Firewall draft (spec §6) ──
+
+/** One rule of the draft, as the table shows it. `id` is the live rule's id for a copied rule, so a rule keeps its id with or without a draft. */
+export interface DraftRuleRow extends FwRule {
+  /** The live rule this one edits; null for a rule added in the draft. */
+  liveId: number | null;
+  /** 1 for the first rule, in the draft's order. */
+  place: number;
+  fromLabel: string;
+  toLabel: string;
+  service: string;
+  /** Why the VM could not apply this rule, or null. */
+  problem: string | null;
+  /** How it differs from live; null when unchanged. */
+  mark: "added" | "changed" | "moved" | null;
+}
+
+/** What Apply would change. Places are 1-based. */
+export interface DraftDiff {
+  added: { id: number; name: string; place: number }[];
+  /** `place` is the rule's place in the live list. */
+  removed: { id: number; name: string; place: number }[];
+  changed: { id: number; name: string; fields: { field: string; before: string; after: string }[] }[];
+  moved: { id: number; name: string; from: number; to: number }[];
+  defaultChanged: { before: "allow" | "deny"; after: "allow" | "deny" } | null;
+}
+
+/** GET /api/v1/firewall `draft`. `stale` is true when the live rules changed after the draft began (Apply would be refused with 409). */
+export interface FirewallDraft {
+  baseVersion: number;
+  stale: boolean;
+  defaultAction: "allow" | "deny";
+  rules: DraftRuleRow[];
+  diff: DraftDiff;
+  /** Number of changes in `diff` (added + removed + changed + moved + default). */
+  changes: number;
+}
+
+/** POST /api/v1/firewall/draft/rules; PUT /api/v1/firewall/draft/rules/:id takes any part of it. */
+export interface DraftRuleBody {
+  name: string;
+  from: SimEnd;
+  to: SimEnd;
+  proto: "any" | "tcp" | "udp" | "icmp";
+  /** Only for tcp/udp: "443", "80,443", "8000-8100". */
+  ports?: string;
+  action: "allow" | "deny";
+  enabled?: boolean;
+  log?: boolean;
+}
+
+/** POST /api/v1/firewall/draft/rules/:id/move: one step, or to a 0-based index in the draft list. */
+export type DraftMoveBody = { dir: "up" | "down" } | { to: number };
+
+/** PUT /api/v1/firewall/draft/default */
+export interface DraftDefaultBody {
+  action: "allow" | "deny";
+}
+
+/** POST /api/v1/firewall/draft/from-drop: "Allow" on a recent drop (fields as in `drops.recent`). */
+export interface DraftFromDropBody {
+  src: string;
+  dst: string;
+  proto: string;
+  dport: number | null;
+}
+
+/** POST /api/v1/firewall/draft/apply. 409 when `baseVersion` is no longer the live version; 422 (field `rules`) for a broken rule. */
+export interface DraftApplyBody {
+  baseVersion: number;
 }
 
 // ── Activity ──
@@ -303,6 +379,8 @@ export interface SimRequest {
   to: SimEnd;
   proto: "tcp" | "udp" | "icmp";
   port?: number | null;
+  /** Test against the live rules (default) or the draft; "draft" with no draft is 400 field `policy`. */
+  policy?: "live" | "draft";
 }
 
 /** A rule named in a simulation result; `place` is its row number on the Firewall screen. */

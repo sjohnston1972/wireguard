@@ -47,6 +47,8 @@ export const firewallFixture = (): FirewallResponse =>
     defaultHits24h: 342,
     defaultTrend24h: hourly(3),
     drops: { recent: [], last24h: 342, uniqueSources24h: 18, previous24h: 305, hourly24h: hourly(3) },
+    version: 1,
+    draft: null,
   }) as unknown as FirewallResponse;
 
 export const activityFixture = (): ActivityResponse =>

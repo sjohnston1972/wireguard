@@ -92,6 +92,9 @@ export function registerFirewall(api: Hono<ApiEnv>): void {
       publicIp: snap.public_ip,
       dnsName: cfg.dnsName,
       kpis: { rules: rules.length, enabled: rules.filter((r) => r.enabled).length, defaultAction: cfg.firewallDefault, drops24h: last24h, published: forwards.filter((f) => f.enabled).length, captureBusy: !!snap.capture_req },
+      // Placeholders until the draft backend (plan 4 area A) reads fw_policy and the draft.
+      version: 1,
+      draft: null,
     };
     return c.json(out);
   });
