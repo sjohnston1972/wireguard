@@ -120,7 +120,7 @@ export function OverviewSection({ s, ov, updated }: { s: SettingsResponse; ov?: 
         <Col span={4} className="set-col">
           <Panel title="Cost and usage" actions={<Button size="sm" onClick={go("automation")}>Edit limit</Button>}>
             <div className="set-stats">
-              <Stat label="If running all day (estimate)" value={gbp(perDay)} />
+              <Stat label="Estimated per day" value={gbp(perDay)} />
               <Stat label="This month so far" value={budget ? gbp(budget.total) : "no data"} />
               <Stat label="Monthly budget" value={v.monthlyBudgetGbp ? gbp(v.monthlyBudgetGbp, Number.isInteger(v.monthlyBudgetGbp) ? 0 : 2) : "none"} />
             </div>

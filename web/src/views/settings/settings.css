@@ -107,7 +107,10 @@
 /* Row 2: the panels fill the row (no gap under the shorter ones); on a wide window
    the cost figures sit side by side, so the row is no taller than it needs. */
 @media (min-width: 1400px) {
-  .set-col .set-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .set-col .set-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 6px; }
+  .set-col .set-note { margin: 6px 0 0; }
+  .set-col > .panel:last-child > .panel__body { padding-top: 6px; }
+  .set-col .set-actions { margin-top: 0; }
 }
 .set-lead { font-size: 14px; color: var(--text-secondary); max-width: 80ch; }
 .set-muted { color: var(--text-secondary); font-size: 12px; }
