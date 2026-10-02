@@ -7,7 +7,8 @@ export type MockReply =
   | { opaqueRedirect: true }
   | { networkError: true };
 
-export type MockHandler = MockReply | ((req: { url: string; method: string; body: unknown; init: RequestInit }) => MockReply | unknown);
+/** A MockReply, any other value (sent as 200 JSON), or a function returning either (may be async). */
+export type MockHandler = unknown;
 
 export interface Call {
   method: string;
@@ -39,7 +40,7 @@ export function mockFetch(routes: Record<string, MockHandler>) {
     const path = url.split("?")[0]!;
     const handler = routes[`${method} ${url}`] ?? routes[`${method} ${path}`];
     if (handler === undefined) throw new Error(`mockFetch: no route for ${method} ${url}`);
-    const raw = typeof handler === "function" ? handler({ url, method, body, init }) : handler;
+    const raw = typeof handler === "function" ? await (handler as (req: { url: string; method: string; body: unknown; init: RequestInit }) => unknown)({ url, method, body, init }) : handler;
     const reply = isReply(raw) ? raw : ({ json: raw } as MockReply);
     if ("networkError" in reply) throw new TypeError("Failed to fetch");
     if ("opaqueRedirect" in reply) return { type: "opaqueredirect", status: 0, ok: false, headers: new Headers(), text: async () => "" } as unknown as Response;
