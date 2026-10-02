@@ -81,6 +81,20 @@ test("a notification tap navigates an open window to its url", async () => {
   assert.deepEqual(sw.calls.opened, []);
 });
 
+test("a tap on a general alert (url /) only focuses an open window, never moving it off its page", async () => {
+  for (const url of ["/", "https://wg-admin.example/"]) {
+    const win = { url: "https://wg-admin.example/clients/3", type: "window" };
+    const sw = load({ windows: [win] });
+    await sw.fire("notificationclick", { action: "", notification: { data: { url }, close() {} } });
+    assert.deepEqual(sw.calls.focused, ["https://wg-admin.example/clients/3"]);
+    assert.deepEqual(sw.calls.navigated, []);
+    assert.deepEqual(sw.calls.opened, []);
+  }
+  const none = load();
+  await none.fire("notificationclick", { action: "", notification: { data: { url: "/" }, close() {} } });
+  assert.deepEqual(none.calls.opened, ["/"], "with no window open, a new one opens");
+});
+
 test("a tap on an alert for the page already open only focuses it", async () => {
   const win = { url: "https://wg-admin.example/cost", type: "window" };
   const sw = load({ windows: [win] });

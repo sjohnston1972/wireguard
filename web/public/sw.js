@@ -123,8 +123,9 @@ self.addEventListener("notificationclick", function (e) {
     return;
   }
   // A tap opens the alert's page (a failed run, Cost, Settings > Mobile): an
-  // open dashboard window is brought forward and moved there; with none, a
-  // new one opens at that page.
+  // open dashboard window is brought forward and, for a specific page, moved
+  // there; a general alert (url "/") only brings it forward. With no window
+  // open, a new one opens at that page.
   var url = data.url || "/";
   function path(u) { return String(u || "").replace(/^[a-z]+:\/\/[^/]+/i, "") || "/"; }
   e.waitUntil(
@@ -134,7 +135,9 @@ self.addEventListener("notificationclick", function (e) {
         if (!("focus" in w)) continue;
         return w.focus().then(function (f) {
           var win = f || w;
-          if (path(win.url) === path(url) || !("navigate" in win)) return win;
+          // A general alert (url "/") only brings the window forward: moving it could pull
+          // someone off a half-finished form. Specific pages (Cost, a run, Settings > Mobile) navigate.
+          if (path(url) === "/" || path(win.url) === path(url) || !("navigate" in win)) return win;
           // navigate() only works on a window this worker controls; otherwise open the page.
           return win.navigate(url).catch(function () { return self.clients.openWindow(url); });
         });
