@@ -54,6 +54,10 @@ const CANNED = {
     pass: r(410, { "content-type": "text/plain" }, "That button has expired."),
     fail: [html(), r(302, { location: "https://team.cloudflareaccess.com/" })],
   },
+  "an old page's htmx request is told to reload": {
+    pass: r(200, { "hx-refresh": "true" }, ""),
+    fail: [html(), r(405, {}), r(404, { "content-type": "text/plain" }, "Not found"), r(200, { "content-type": "text/html" }, "<p>fragment</p>")],
+  },
   "deep link without a session goes to Access": {
     pass: r(302, { location: "https://team.cloudflareaccess.com/cdn-cgi/access/login/wg-admin.example?redirect_url=%2Fclients%2F3" }),
     fail: [html(), r(302, { location: "https://evil.example/cloudflareaccess.com" }), r(200, {})],
@@ -84,7 +88,7 @@ for (const [name, { pass, fail }] of Object.entries(CANNED)) {
 
 test("local checks cover the deep links, assets, sw.js, manifest and the APIs", () => {
   const paths = CHECKS.local.map((c) => `${c.method ?? "GET"} ${c.path ?? c.pathFrom}`);
-  for (const p of ["GET /clients/3", "GET /firewall/rules/1", "GET /settings/mobile", "GET indexScript", "GET /assets/nope.js", "GET /sw.js", "GET /manifest.webmanifest", "GET /api/v1/session", "GET /api/v1/nope", "GET /api/push/status"]) {
+  for (const p of ["GET /clients/3", "GET /firewall/rules/1", "GET /settings/mobile", "GET indexScript", "GET /assets/nope.js", "GET /sw.js", "GET /manifest.webmanifest", "GET /api/v1/session", "GET /api/v1/nope", "GET /api/push/status", "GET /partials/live", "POST /actions/deploy"]) {
     assert.ok(paths.includes(p), p);
   }
 });

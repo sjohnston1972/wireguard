@@ -215,7 +215,10 @@ app.use("*", sameOriginOnly);
 
 // An old dashboard page still open in a tab (htmx polling, boosted links, form
 // buttons) is told to reload into the app instead of painting error text into
-// itself. Remove this one release after the switch-over.
+// itself. Its polling and buttons (/partials/*, /actions/*, /alerts/*) are
+// routed here by run_worker_first in wrangler.toml; without that the assets
+// layer would answer them. Remove this, and those three paths, one release
+// after the switch-over.
 app.use("*", async (c, next) => {
   if (c.req.header("HX-Request") === "true") return c.body(null, 200, { "HX-Refresh": "true" });
   await next();

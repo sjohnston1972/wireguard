@@ -14,7 +14,8 @@ const DEEP = "deep link is index.html with CSP and no long cache";
  *  status, type (RegExp on Content-Type), notType (RegExp it must not match),
  *  csp (a strict CSP header), cache ("immutable" | "no-cache" | "not-long"),
  *  app (the body is the React app's index.html), json (the body parses),
- *  errorCode (the body is { error: { code } }), redirect (RegExp on Location). */
+ *  errorCode (the body is { error: { code } }), redirect (RegExp on Location),
+ *  refresh (an empty answer with HX-Refresh: true, for an old htmx page). */
 const deepLink = (path) => ({
   name: DEEP,
   path,
@@ -38,6 +39,8 @@ export const CHECKS = {
     { name: "the old push API is gone", path: "/api/push/status", expect: { status: 404, notType: /^text\/html/ } },
     { name: "the VM heartbeat route reaches the Worker", method: "POST", path: "/api/agent", headers: { Authorization: "Bearer smoke-test-not-a-token", "Content-Type": "application/json" }, body: "{}", expect: { status: 401, type: /json/, json: true } },
     { name: "a used alert button link is gone", method: "POST", path: "/api/act/nope", expect: { status: 410 } },
+    { name: "an old page's htmx request is told to reload", path: "/partials/live", headers: { "HX-Request": "true" }, expect: { status: 200, refresh: true } },
+    { name: "an old page's htmx request is told to reload", method: "POST", path: "/actions/deploy", headers: { "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" }, body: "hours=1", expect: { status: 200, refresh: true } },
   ],
   live: [
     { name: "deep link without a session goes to Access", path: "/clients/3", navigate: true, expect: { status: 302, redirect: /^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com\// } },
@@ -94,6 +97,7 @@ export function judge(check, response) {
   }
   if (e.errorCode && parsed && parsed.error?.code !== e.errorCode) problems.push(`error code ${JSON.stringify(parsed.error?.code)}, expected "${e.errorCode}"`);
   if (e.redirect && !e.redirect.test(h.location ?? "")) problems.push(`Location "${h.location ?? ""}" does not match ${e.redirect}`);
+  if (e.refresh && (h["hx-refresh"] !== "true" || (response.body ?? "") !== "")) problems.push(`no empty HX-Refresh: true answer (HX-Refresh "${h["hx-refresh"] ?? ""}")`);
   return { ok: problems.length === 0, problems };
 }
 

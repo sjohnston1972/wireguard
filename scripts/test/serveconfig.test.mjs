@@ -38,10 +38,20 @@ test("run_worker_first covers /api/* and the other Worker paths", () => {
   const cfg = readAssetsConfig(toml);
   // /assets/* too: the Worker turns the SPA fallback for a missing hashed file
   // into a 404 (assetguard.ts) instead of index.html under an immutable header.
+  // /partials/*, /actions/*, /alerts/*: see the next test.
   assert.deepEqual(
     [...cfg.run_worker_first].sort(),
-    ["/__dev/*", "/api/*", "/assets/*", "/captures/*", "/health", "/manifest.webmanifest"],
+    ["/__dev/*", "/actions/*", "/alerts/*", "/api/*", "/assets/*", "/captures/*", "/health", "/manifest.webmanifest", "/partials/*"],
   );
+});
+
+test("an old page's htmx poll and buttons reach the Worker's HX-Refresh shim", () => {
+  // With run_worker_first as a list, the assets layer answers index.html (GET)
+  // or 405 (POST) for every other unknown path, fetches included, so the
+  // Worker would never see them. The old Overview polls /partials/live and its
+  // buttons post to /actions/* and /alerts/ack; none is an app route.
+  const cfg = readAssetsConfig(toml);
+  for (const p of ["/partials/*", "/actions/*", "/alerts/*"]) assert.ok(cfg.run_worker_first.includes(p), p);
 });
 
 test("CSP: scripts self only, no unsafe-eval, no outside hosts, frame-ancestors none", () => {
