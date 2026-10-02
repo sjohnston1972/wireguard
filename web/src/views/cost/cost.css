@@ -64,3 +64,34 @@
 @media (max-width: 1099px) {
   .cost-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Desktop: the page never scrolls; whatever is too tall for the window scrolls inside this body. */
+@media (min-width: 1100px) {
+  .cost { height: 100%; min-height: 0; }
+  .cost-body { flex: 1; min-height: 0; overflow: auto; margin: 0 -4px; padding: 0 4px 4px; }
+  .cost-grid { grid-template-rows: auto auto minmax(230px, 1fr); min-height: 100%; }
+  .cost-sessions-col { display: flex; min-height: 0; }
+  .cost-sessions-col > .panel { flex: 1; }
+}
+
+.cost-sessions__controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.cost-sessions .panel__head { padding-bottom: 8px; }
+.cost-sessions .panel__title { margin-right: auto; }
+.cost-sessions .panel__title-wrap { flex: none; }
+.cost-sessions .panel__actions { flex: 1; justify-content: flex-start; }
+.cost-sessions .dt thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-panel); }
+
+.cost-drawer { display: flex; flex-direction: column; gap: 12px; }
+.cost-drawer__h { font-size: 13px; font-weight: 600; margin-top: 6px; }
+.cost-drawer__link { color: var(--blue-bright); font-size: 14px; }
+
+.cost-phone__buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+@media (max-width: 1099px) {
+  .cost-hide-narrow { display: none; }
+}
+@media (max-width: 640px) {
+  .cost-kpis { grid-template-columns: 1fr; gap: 8px; }
+  .cost-tile .tile__value { font-size: 20px; }
+  .cost-sessions__controls > * { flex: 1 1 100%; }
+}

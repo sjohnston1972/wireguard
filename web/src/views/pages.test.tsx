@@ -33,7 +33,6 @@ describe("view folders", () => {
     ["/firewall/rules/7", "Firewall rule 7"],
     ["/activity", "Activity"],
     ["/activity/runs/12", "Run 12"],
-    ["/cost", "Cost"],
     ["/settings", "Settings"],
     ["/settings/automation", "Settings"],
     ["/nowhere", "Not found"],

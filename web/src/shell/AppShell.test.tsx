@@ -26,7 +26,6 @@ describe("AppShell", () => {
     ["/firewall/rules/7", "Firewall"],
     ["/activity", "Activity"],
     ["/activity/runs/12", "Activity"],
-    ["/cost", "Cost"],
     ["/settings", "Settings"],
     ["/settings/profiles", "Settings"],
   ])("marks exactly the right tab as current at %s", (url, current) => {
@@ -44,9 +43,9 @@ describe("AppShell", () => {
   });
 
   it("renders a placeholder page with its title inside the shell", () => {
-    renderApp("/cost");
+    renderApp("/nowhere");
     const main = screen.getByRole("main");
-    expect(within(main).getByRole("heading", { level: 1, name: "Cost" })).toBeInTheDocument();
+    expect(within(main).getByRole("heading", { level: 1, name: "Not found" })).toBeInTheDocument();
     expect(main).toHaveTextContent("Built in plan 4");
   });
 
