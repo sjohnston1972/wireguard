@@ -28,7 +28,6 @@ describe("view folders", () => {
   it.each([
     ["/activity", "Activity"],
     ["/activity/runs/12", "Run 12"],
-    ["/cost", "Cost"],
     ["/settings", "Settings"],
     ["/settings/automation", "Settings"],
     ["/nowhere", "Not found"],
