@@ -11,7 +11,7 @@ import { getSnapshot, type Step } from "../state";
 import { effectiveConfig } from "../settings";
 import { canDispatch } from "../env";
 import { RunError } from "../runs";
-import { getJobs, getJobLogTail } from "../github";
+import { getJobsStatus, getJobLogTail } from "../github";
 import { AUDIT_KINDS, AUDIT_PAGE, ACTIVITY_RANGE_MS, describeChange, parseRange, runRow, eventsOf, timeline, activityKpis } from "../activity";
 import type { ActivityResponse, RunDetailResponse, RunLogResponse } from "../../../shared/api";
 
@@ -77,7 +77,9 @@ export function registerActivity(api: Hono<ApiEnv>): void {
     if (!run.github_run_id) return fail(c, 404, "no_log", "This run has no GitHub log.");
     let log: string | null;
     try {
-      const job = (await getJobs(c.env, run.github_run_id))[0];
+      const got = await getJobsStatus(c.env, run.github_run_id);
+      if (!got.ok && got.status !== 404) return fail(c, 502, "upstream", `GitHub refused or failed the request for this run's jobs (it answered ${got.status}), so the log could not be fetched.`);
+      const job = got.jobs[0];
       if (!job) return fail(c, 404, "no_log", "GitHub has no jobs for this run yet.");
       log = await getJobLogTail(c.env, job.id, 200_000);
     } catch (e) {

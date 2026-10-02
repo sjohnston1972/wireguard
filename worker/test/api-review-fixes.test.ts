@@ -139,3 +139,21 @@ describe("review pass 2: settings region and VM size must be known", () => {
     expect((await api(env, "PUT", "/settings", { region: "uksouth", vm_size: "Standard_B1s" })).status).toBe(200);
   });
 });
+
+describe("review pass 2: a GitHub outage is not 'no log'", () => {
+  it("answers 502 upstream when GitHub refuses or fails the jobs call, 404 no_log when it just has none", async () => {
+    const { env, world } = apiEnv();
+    await db.createRun(env, { id: "run-g", action: "apply", status: "success", requested_at: new Date().toISOString(), requested_by: "steven", callback_token_hash: "C", agent_token_hash: "A", payload_json: null, auto_destroy_at: null, reason: null, ssh_password: null });
+    await db.updateRun(env, "run-g", { github_run_id: 5001 });
+    for (const status of [500, 401]) {
+      world.ghFail = status;
+      const r = await api(env, "GET", "/runs/run-g/log");
+      expect(r.status).toBe(502);
+      expect(r.json.error.code).toBe("upstream");
+    }
+    world.ghFail = undefined;
+    const none = await api(env, "GET", "/runs/run-g/log");
+    expect(none.status).toBe(404);
+    expect(none.json.error.code).toBe("no_log");
+  });
+});
