@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, type QueryKey, type UseMutationResult } from "@tanstack/react-query";
-import type { ApiOk, ClientConfigResponse, ClientEditResponse, RestorePreviewResponse } from "@shared/api";
+import type { ApiOk, ClientConfigResponse, ClientEditResponse, HealthCheckResponse, RestorePreviewResponse, SimRequest, SimResult } from "@shared/api";
 import { ApiError, NetworkError, SessionExpiredError, apiGet, apiSend } from "./client";
 // The app's one toast system (mounted once in App.tsx). Imported directly, not
 // through the @/components barrel, so the data layer does not pull in charts.
@@ -80,6 +80,8 @@ export const useCancel = () => useApiMutation(run("/cancel"));
 export const useReconcile = () => useApiMutation(run("/reconcile"));
 export const useExtend = () => useApiMutation<{ hours: number | null }>(run<{ hours: number | null }>("/extend", (v) => v));
 export const useSpeedTest = () => useApiMutation(run("/speedtest"));
+/** Ask the VM for an on-demand self-test. Its result arrives in /overview's snapshot (selftest_req, then selftest). */
+export const useHealthCheck = () => useApiMutation<void, HealthCheckResponse>({ method: "POST", path: "/health-check", invalidate: [["overview"]] });
 export const useAllowSsh = () => useApiMutation(run("/allow-ssh"));
 /** `quiet` skips the toast, for when opening the notes marks them read as a matter of course. */
 export const useAckNotes = (opts: { quiet?: boolean } = {}) =>
@@ -115,6 +117,8 @@ export const useForwardEdit = () =>
 export const useForwardDelete = () => useApiMutation<number>({ method: "DELETE", path: (id) => `/firewall/forwards/${id}`, invalidate: FIREWALL });
 export const useStartCapture = () => useApiMutation<Body>({ method: "POST", path: "/firewall/captures", body: (v) => v, invalidate: FIREWALL });
 export const useClearCounters = () => useApiMutation({ method: "POST", path: "/firewall/counters/clear", invalidate: FIREWALL });
+/** What the firewall would do with one flow. Changes nothing: no toast, nothing refreshed; the result is the caller's to show. */
+export const useSimulate = () => useApiMutation<SimRequest, SimResult>({ method: "POST", path: "/firewall/simulate", body: (v) => v, invalidate: [], message: () => null });
 
 // ── Settings, profiles, schedules, lock ──
 const SETTINGS: QueryKey[] = [["settings"], ["overview"]];

@@ -20,8 +20,8 @@ export interface Call {
 /**
  * Replaces global fetch with a router. Keys are "METHOD /path" (query string
  * included when you want to match it; otherwise matched on the path alone).
- * A handler may return a MockReply, or any other value, which is sent as a
- * 200 JSON answer. Unmatched requests fail the test loudly.
+ * A handler may return a MockReply, a ready-made Response, or any other
+ * value, which is sent as a 200 JSON answer. Unmatched requests fail the test loudly.
  */
 export function mockFetch(routes: Record<string, MockHandler>) {
   const calls: Call[] = [];
@@ -41,6 +41,8 @@ export function mockFetch(routes: Record<string, MockHandler>) {
     const handler = routes[`${method} ${url}`] ?? routes[`${method} ${path}`];
     if (handler === undefined) throw new Error(`mockFetch: no route for ${method} ${url}`);
     const raw = typeof handler === "function" ? await (handler as (req: { url: string; method: string; body: unknown; init: RequestInit }) => unknown)({ url, method, body, init }) : handler;
+    // A handler may build the whole Response itself (headers such as Content-Disposition).
+    if (raw instanceof Response) return raw;
     const reply = isReply(raw) ? raw : ({ json: raw } as MockReply);
     if ("networkError" in reply) throw new TypeError("Failed to fetch");
     if ("opaqueRedirect" in reply) return { type: "opaqueredirect", status: 0, ok: false, headers: new Headers(), text: async () => "" } as unknown as Response;

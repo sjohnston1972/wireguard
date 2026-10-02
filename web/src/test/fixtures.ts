@@ -33,13 +33,20 @@ export const clientsFixture = (): ClientsResponse =>
     ],
   }) as unknown as ClientsResponse;
 
+/** 24 hourly counts, oldest first; null for the hours the VM was not running (no data, not 0). */
+const hourly = (scale: number, downFrom = 2, downTo = 5): (number | null)[] =>
+  Array.from({ length: 24 }, (_, h) => (h >= downFrom && h < downTo ? null : ((h * 7) % 11) * scale));
+
 export const firewallFixture = (): FirewallResponse =>
   ({
     now: "2026-10-02T12:00:00.000Z",
     rules: [
-      { id: 7, name: "Allow DNS to resolver", place: 1 },
-      { id: 8, name: "Block telemetry", place: 2 },
+      { id: 7, name: "Allow DNS to resolver", place: 1, hits24h: 1240, trend24h: hourly(12), starter: true },
+      { id: 8, name: "Block telemetry", place: 2, hits24h: null, trend24h: [], starter: false },
     ],
+    defaultHits24h: 342,
+    defaultTrend24h: hourly(3),
+    drops: { recent: [], last24h: 342, uniqueSources24h: 18, previous24h: 305, hourly24h: hourly(3) },
   }) as unknown as FirewallResponse;
 
 export const activityFixture = (): ActivityResponse =>

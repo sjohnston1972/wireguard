@@ -5,7 +5,8 @@ import "./BarChart.css";
 
 export interface Bar {
   label: string;
-  value: number;
+  /** Null is a day with no data: a gap, with the day kept on the axis (never drawn as 0). */
+  value: number | null;
 }
 
 export interface BarChartProps {
@@ -14,8 +15,8 @@ export interface BarChartProps {
   bars: Bar[];
   /** Projected values continuing after the bars, drawn as a dashed amber line. */
   forecast?: Bar[];
-  /** Same length as bars: the previous period, drawn as a dashed line. */
-  previous?: number[];
+  /** Same length as bars: the previous period, drawn as a dashed line (null is a gap). */
+  previous?: Array<number | null>;
   /** Budget line (dashed grey) across the whole plot. */
   budget?: number;
   format?: (v: number) => string;
@@ -32,7 +33,10 @@ export function BarChart({ title, bars, forecast = [], previous, budget, format,
   const [ref, width] = useElementWidth<HTMLDivElement>(600);
   const fmt = format ?? ((v: number) => fmtNum(v));
 
-  if (bars.length === 0) {
+  const known = (vals: Array<number | null>) => vals.filter((v): v is number => v !== null && Number.isFinite(v));
+  const real = bars.filter((b): b is Bar & { value: number } => b.value !== null && Number.isFinite(b.value));
+
+  if (real.length === 0) {
     return (
       <figure className={cx("bar", className)} aria-label={title}>
         <div className="bar__empty" style={{ height }}>
@@ -44,7 +48,7 @@ export function BarChart({ title, bars, forecast = [], previous, budget, format,
   }
 
   const slots = bars.length + forecast.length;
-  const max = niceMax(Math.max(...bars.map((b) => b.value), ...forecast.map((b) => b.value), ...(previous ?? []), budget ?? 0));
+  const max = niceMax(Math.max(...real.map((b) => b.value), ...known(forecast.map((b) => b.value)), ...known(previous ?? []), budget ?? 0));
   const pw = width - ML - 8;
   const ph = height - MT - MB;
   const slotW = pw / slots;
@@ -55,14 +59,17 @@ export function BarChart({ title, bars, forecast = [], previous, budget, format,
   const every = Math.max(1, Math.ceil(slots / Math.max(2, Math.floor(pw / 70))));
   const all = [...bars, ...forecast];
 
-  const total = bars.reduce((s, b) => s + b.value, 0);
-  const peak = bars.reduce((a, b) => (b.value > a.value ? b : a), bars[0]);
+  const total = real.reduce((s, b) => s + b.value, 0);
+  const peak = real.reduce((a, b) => (b.value > a.value ? b : a), real[0]);
+  const missing = bars.length - real.length;
+  const lastForecast = forecast[forecast.length - 1];
   const summary = [
     `${bars.length} ${bars.length === 1 ? "day" : "days"}`,
     `total ${fmt(total)}`,
     `peak ${fmt(peak.value)} on ${peak.label}`,
+    missing > 0 ? `${missing} ${missing === 1 ? "day" : "days"} with no data` : null,
     budget !== undefined ? `budget ${fmt(budget)}` : null,
-    forecast.length ? `forecast ${fmt(forecast[forecast.length - 1].value)} by ${forecast[forecast.length - 1].label}` : null,
+    lastForecast && lastForecast.value !== null ? `forecast ${fmt(lastForecast.value)} by ${lastForecast.label}` : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -91,9 +98,11 @@ export function BarChart({ title, bars, forecast = [], previous, budget, format,
               </text>
             ) : null,
           )}
-          {bars.map((b, i) => (
-            <rect key={i} x={X(i) - bw / 2} y={Y(b.value)} width={bw} height={Math.max(0, MT + ph - Y(b.value))} rx={2} fill="var(--blue)" />
-          ))}
+          {bars.map((b, i) =>
+            b.value === null || !Number.isFinite(b.value) ? null : (
+              <rect key={i} x={X(i) - bw / 2} y={Y(b.value)} width={bw} height={Math.max(0, MT + ph - Y(b.value))} rx={2} fill="var(--blue)" />
+            ),
+          )}
           {previous && <path d={line(previous)} fill="none" stroke="var(--blue-bright)" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.8} />}
           {forecast.length > 0 && (
             <path

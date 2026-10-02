@@ -70,6 +70,22 @@ describe("Sparkline", () => {
     render(<Sparkline label="Latency" data={[1, null, 3]} />);
     expect(screen.getByRole("img")).toHaveAccessibleName(/2 points/);
   });
+  it('variant="bars" draws one bar per known value and leaves a gap for null (no data, not 0)', () => {
+    const hourly = [3, 0, null, null, 5, 2];
+    const { container } = render(<Sparkline variant="bars" label="Hits (24h)" data={hourly} />);
+    const img = screen.getByRole("img", { name: /Hits \(24h\)/ });
+    expect(img).toHaveAccessibleName(/4 points/);
+    expect(img).toHaveAccessibleName(/2 hours? with no data/);
+    const bars = container.querySelectorAll("[data-bar]");
+    expect(bars).toHaveLength(4);
+    expect([...bars].map((b) => b.getAttribute("data-bar"))).toEqual(["0", "1", "4", "5"]);
+    expect(container.querySelector("path")).toBeNull();
+  });
+  it('variant="bars" says "no data" when every hour is null', () => {
+    render(<Sparkline variant="bars" label="Recent drops" data={[null, null, null]} />);
+    expect(screen.getByText("no data")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
 });
 
 describe("Ring", () => {
@@ -169,6 +185,30 @@ describe("BarChart", () => {
   });
   it("renders 'no data' with no bars", () => {
     render(<BarChart title="Spend" bars={[]} />);
+    expect(screen.getByText("no data")).toBeInTheDocument();
+  });
+  it("draws a null day as a gap but keeps the day on the axis, and leaves it out of the totals", () => {
+    const { container } = render(
+      <BarChart
+        title="Spend over time"
+        bars={[
+          { label: "1 Oct", value: 0.02 },
+          { label: "2 Oct", value: null },
+          { label: "3 Oct", value: 0.05 },
+        ]}
+        format={(v) => `£${v.toFixed(2)}`}
+      />,
+    );
+    expect(container.querySelectorAll("rect")).toHaveLength(2);
+    expect([...container.querySelectorAll("text")].map((t) => t.textContent)).toContain("2 Oct");
+    const fig = screen.getByRole("figure", { name: "Spend over time" });
+    expect(fig).toHaveTextContent("3 days");
+    expect(fig).toHaveTextContent("total £0.07");
+    expect(fig).toHaveTextContent("1 day with no data");
+    expect(fig).toHaveTextContent("peak £0.05 on 3 Oct");
+  });
+  it("renders 'no data' when every day is null", () => {
+    render(<BarChart title="Spend" bars={[{ label: "1 Oct", value: null }]} />);
     expect(screen.getByText("no data")).toBeInTheDocument();
   });
 });

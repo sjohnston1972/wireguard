@@ -174,7 +174,8 @@ export default function Gallery() {
 
   const net = useMemo(() => traffic(60, 60), []);
   const spendBars = useMemo(
-    () => Array.from({ length: 24 }, (_, i) => ({ label: `${i + 3} Sept`, value: i > 15 && i < 22 ? 0.03 + (i - 15) * 0.012 : 0.004 + (i % 4) * 0.002 })),
+    // Day 9 Sept has no data (a gap on the chart, the day kept on the axis).
+    () => Array.from({ length: 24 }, (_, i): { label: string; value: number | null } => ({ label: `${i + 3} Sept`, value: i === 6 ? null : i > 15 && i < 22 ? 0.03 + (i - 15) * 0.012 : 0.004 + (i % 4) * 0.002 })),
     [],
   );
   const forecast = useMemo(() => Array.from({ length: 8 }, (_, i) => ({ label: `${i + 27} Sept`, value: 0.05 - i * 0.003 })), []);
@@ -321,7 +322,7 @@ export default function Gallery() {
             </Col>
             <Col span={6}>
               <Panel title="Spend over time">
-                <BarChart title="Spend over time" bars={spendBars} forecast={forecast} budget={0.2} previous={spendBars.map((b, i) => (i % 3 === 0 ? b.value * 1.2 : b.value * 0.8))} format={(v) => `£${v.toFixed(2)}`} />
+                <BarChart title="Spend over time" bars={spendBars} forecast={forecast} budget={0.2} previous={spendBars.map((b, i) => (b.value === null ? null : i % 3 === 0 ? b.value * 1.2 : b.value * 0.8))} format={(v) => `£${v.toFixed(2)}`} />
               </Panel>
             </Col>
             <Col span={8}>
@@ -368,6 +369,8 @@ export default function Gallery() {
                   <Ring value={40} label="Budget" tone="amber" />
                   <Sparkline label="Latency" data={wave(20, 30, 10)} />
                   <Sparkline label="Errors" tone="red" data={[1, 2, null, 6, 3, 8, 4]} />
+                  <Sparkline variant="bars" tone="blue" label="Hits (24h)" data={[4, 6, 3, null, null, 2, 5, 8, 6, 9, 7, 3, 2, 5, 6, 8, 11, 9, 6, 4, 3, 5, 7, 6]} width={64} height={22} />
+                  <Sparkline variant="bars" tone="red" label="Recent drops (24h)" data={[2, 1, 3, 2, null, null, null, 1, 4, 6, 3, 5, 8, 4, 2, 6, 9, 5, 3, 4, 7, 5, 3, 6]} width={90} height={32} />
                   <div style={{ width: 180 }}>
                     <ProgressBar label="Budget used" value={1} showValue />
                   </div>

@@ -9,6 +9,7 @@ import type {
   OverviewResponse,
   PushStatusResponse,
   RunDetailResponse,
+  RuleHistoryResponse,
   RunLogResponse,
   SessionResponse,
   SettingsResponse,
@@ -99,6 +100,19 @@ export function useHistory(p: HistoryParams, o?: QueryOpts): UseQueryResult<VmHi
   const path = "/history" + (p.scope === "client" ? qs({ scope: "client", id: p.id, range: p.range }) : qs({ scope: "vm", range: p.range }));
   return useHist(p, path, o);
 }
+/**
+ * One firewall counter's hits for a range: `key` is "r<rule id>", "f<published
+ * port id>" or "default". Fetched on range change, then every 60 s.
+ */
+export function useRuleHistory(key: string, range: HistoryRange, o?: QueryOpts): UseQueryResult<RuleHistoryResponse> {
+  return useQuery({
+    queryKey: ["history", { scope: "rule", id: key, range }],
+    queryFn: () => apiGet<RuleHistoryResponse>("/history" + qs({ scope: "rule", id: key, range })),
+    refetchInterval: INTERVALS.history,
+    enabled: o?.enabled ?? true,
+  });
+}
+
 const useHist = (p: HistoryParams, path: string, o?: QueryOpts) =>
   useQuery({
     queryKey: ["history", p],
