@@ -219,6 +219,15 @@ export function nextBase(base: Record<string, [number, number]>, prev: FirewallS
   return out;
 }
 
+/** The drops in one heartbeat's firewall report, newest first, stamped with the heartbeat's time. */
+export function freshDrops(rep: { drops?: unknown[] } | null | undefined, at: string): FirewallStatus["drops"] {
+  const drops = rep?.drops;
+  return (Array.isArray(drops) ? drops : [])
+    .filter((d): d is Record<string, unknown> => !!d && typeof d === "object")
+    .map((d) => ({ at, src: String(d.src ?? ""), dst: String(d.dst ?? ""), proto: String(d.proto ?? ""), dport: typeof d.dport === "number" ? d.dport : null, in: String(d.in ?? ""), out: String(d.out ?? "") }))
+    .reverse();
+}
+
 /** Fold a heartbeat's firewall report into the status: hits, when each rule last matched, recent drops. */
 export function nextFirewall(prev: FirewallStatus | null, rep: { hash?: string; error?: string | null; counters?: Record<string, [number, number]>; drops?: unknown[] } | null | undefined, at: string): FirewallStatus | null {
   if (!rep) return prev;
@@ -230,10 +239,7 @@ export function nextFirewall(prev: FirewallStatus | null, rep: { hash?: string; 
     const before = sameSet && Number(v[0]) >= was ? was : 0;
     if (Array.isArray(v) && Number(v[0]) > before) last_hit[k] = at;
   }
-  const fresh = (Array.isArray(rep.drops) ? rep.drops : [])
-    .filter((d): d is Record<string, unknown> => !!d && typeof d === "object")
-    .map((d) => ({ at, src: String(d.src ?? ""), dst: String(d.dst ?? ""), proto: String(d.proto ?? ""), dport: typeof d.dport === "number" ? d.dport : null, in: String(d.in ?? ""), out: String(d.out ?? "") }))
-    .reverse();
+  const fresh = freshDrops(rep, at);
   return {
     applied_hash: rep.hash || null,
     error: rep.error || null,

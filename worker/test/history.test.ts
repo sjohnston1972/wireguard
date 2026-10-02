@@ -6,7 +6,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeEnv, type World } from "./harness";
 import type { Env } from "../src/env";
-import { bucket, vmSample, clientSamples } from "../src/history";
+import { bucket, vmSample, clientSamples, recordHeartbeat } from "../src/history";
+import { freshDrops } from "../src/runs";
 import type { AgentReport, Traffic } from "../src/state";
 
 let env: Env;
@@ -110,5 +111,70 @@ describe("clientSamples", () => {
   it("ignores a latency that is not a finite number", () => {
     const cur = report(now, [{ key: PHONE, hs: s - 10, rx: 0, tx: 0 }]);
     expect(clientSamples({ report: cur, prev: null, rtt: { [PHONE]: Number.NaN }, peers, nowMs: now })[0].latency).toBeNull();
+  });
+});
+
+async function addPeer(id: number, key: string) {
+  await env.DB.prepare("INSERT INTO peers (id, name, public_key, ip, enabled, full_tunnel, created_at) VALUES (?1, ?2, ?3, ?4, 1, 0, 'x')")
+    .bind(id, `client${id}`, key, `10.13.13.${id}`)
+    .run();
+}
+const rows = async (sql: string) => (await env.DB.prepare(sql).all<Record<string, unknown>>()).results;
+
+describe("freshDrops", () => {
+  it("stamps each reported drop with the heartbeat time, newest first", () => {
+    const at = "2026-10-02T10:00:30.000Z";
+    const out = freshDrops({ drops: [{ src: "10.13.13.2", dst: "10.50.2.4", proto: "TCP", dport: 22, in: "wg0", out: "eth0" }, { src: "10.13.13.3", dst: "10.50.2.4", proto: "ICMP" }] }, at);
+    expect(out).toEqual([
+      { at, src: "10.13.13.3", dst: "10.50.2.4", proto: "ICMP", dport: null, in: "", out: "" },
+      { at, src: "10.13.13.2", dst: "10.50.2.4", proto: "TCP", dport: 22, in: "wg0", out: "eth0" },
+    ]);
+    expect(freshDrops(null, at)).toEqual([]);
+    expect(freshDrops({ drops: [null, 5, "x"] as unknown[] }, at)).toEqual([]);
+  });
+});
+
+describe("recordHeartbeat", () => {
+  beforeEach(async () => {
+    await addPeer(7, PHONE);
+  });
+
+  it("writes one VM row and one row per client for the minute", async () => {
+    const s = (T0 + 30_000) / 1000;
+    await recordHeartbeat(env, { report: report(T0 + 30_000, [{ key: PHONE, hs: s - 5, rx: 100, tx: 200 }]), prev: null, rtt: { [PHONE]: 20 }, traffic: traffic(10, 20, 1), drops: [] });
+    expect(await rows("SELECT res, t, expected, received, load1, rx_rate, tx_rate, rx_rate_max, tx_rate_max, peers_online, dns_up FROM hist_vm")).toEqual([
+      { res: 60, t: "2026-10-02T10:00:00Z", expected: 1, received: 1, load1: 0.12, rx_rate: 10, tx_rate: 20, rx_rate_max: 10, tx_rate_max: 20, peers_online: 1, dns_up: 1 },
+    ]);
+    expect(await rows("SELECT res, t, peer_id, online, handshake_age, latency_avg, latency_max, rx, tx FROM hist_client")).toEqual([
+      { res: 60, t: "2026-10-02T10:00:00Z", peer_id: 7, online: 1, handshake_age: 5, latency_avg: 20, latency_max: 20, rx: 100, tx: 200 },
+    ]);
+  });
+
+  it("merges two heartbeats in the same minute: received stays 1, bytes add, maxima kept", async () => {
+    const s1 = (T0 + 5_000) / 1000;
+    const s2 = (T0 + 35_000) / 1000;
+    const first = report(T0 + 5_000, [{ key: PHONE, hs: s1 - 5, rx: 100, tx: 100 }]);
+    await recordHeartbeat(env, { report: first, prev: null, rtt: { [PHONE]: 20 }, traffic: traffic(50, 10, 1), drops: [] });
+    await recordHeartbeat(env, { report: report(T0 + 35_000, [{ key: PHONE, hs: s2 - 5, rx: 400, tx: 150 }]), prev: first, rtt: { [PHONE]: 40 }, traffic: traffic(20, 30, 1), drops: [] });
+    const [vm] = await rows("SELECT received, rx_rate, rx_rate_max, tx_rate_max FROM hist_vm");
+    expect(vm).toEqual({ received: 1, rx_rate: 20, rx_rate_max: 50, tx_rate_max: 30 });
+    const [c] = await rows("SELECT rx, tx, latency_avg, latency_max FROM hist_client");
+    expect(c).toEqual({ rx: 400, tx: 150, latency_avg: 30, latency_max: 40 });
+  });
+
+  it("counts drops per minute per flow, with no port stored as 0", async () => {
+    const at = new Date(T0 + 10_000).toISOString();
+    const drop = { at, src: "10.13.13.2", dst: "10.50.2.4", proto: "ICMP", dport: null, in: "wg0", out: "eth0" };
+    await recordHeartbeat(env, { report: report(T0 + 10_000, []), prev: null, rtt: null, traffic: traffic(0, 0, 0), drops: [drop, drop] });
+    await recordHeartbeat(env, { report: report(T0 + 40_000, []), prev: null, rtt: null, traffic: traffic(0, 0, 0), drops: [{ ...drop, at: new Date(T0 + 40_000).toISOString() }] });
+    expect(await rows("SELECT t, src, dst, proto, dport, in_if, out_if, n FROM hist_drops")).toEqual([
+      { t: "2026-10-02T10:00:00Z", src: "10.13.13.2", dst: "10.50.2.4", proto: "ICMP", dport: 0, in_if: "wg0", out_if: "eth0", n: 3 },
+    ]);
+  });
+
+  it("fills in a minute the watchman had marked as missed", async () => {
+    await env.DB.prepare("INSERT INTO hist_vm (res, t, expected, received) VALUES (60, '2026-10-02T10:00:00Z', 1, 0)").run();
+    await recordHeartbeat(env, { report: report(T0 + 20_000, []), prev: null, rtt: null, traffic: traffic(5, 6, 0), drops: [] });
+    expect(await rows("SELECT received, rx_rate, rx_rate_max FROM hist_vm")).toEqual([{ received: 1, rx_rate: 5, rx_rate_max: 5 }]);
   });
 });

@@ -8,8 +8,10 @@
 // samples older than 48 hours into 5-minute summaries kept for 30 days.
 // Nothing is recorded while the VM is destroyed or in Standby.
 
-import type { AgentReport, Traffic } from "./state";
+import type { Env } from "./env";
+import type { AgentReport, FirewallStatus, Traffic } from "./state";
 import { peerOnline } from "./state";
+import { listPeers } from "./db";
 
 /** Seconds per raw sample. A minute, not 30 s: heartbeats drift, and a 30 s
  *  slot could miss one and read as downtime while the VM was fine. */
@@ -94,4 +96,48 @@ export function clientSamples(o: {
     });
   }
   return out;
+}
+
+/**
+ * Add one heartbeat to this minute's samples: the VM, each known client,
+ * and the firewall drops it reported. One transaction. A second heartbeat
+ * in the same minute keeps "received" at 1, adds the bytes, keeps the
+ * latest rate and the highest rate and latency seen.
+ */
+export async function recordHeartbeat(
+  env: Env,
+  o: { report: AgentReport; prev: AgentReport | null; rtt: Record<string, number> | null | undefined; traffic: Traffic; drops: FirewallStatus["drops"] },
+): Promise<void> {
+  const nowMs = Date.parse(o.report.at);
+  const t = bucket(nowMs, RAW_RES);
+  const vm = vmSample(o.report, o.traffic);
+  const clients = clientSamples({ report: o.report, prev: o.prev, rtt: o.rtt, peers: await listPeers(env), nowMs });
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO hist_vm (res, t, expected, received, load1, rx_rate, tx_rate, rx_rate_max, tx_rate_max, peers_online, dns_up)
+       VALUES (?1, ?2, 1, 1, ?3, ?4, ?5, ?4, ?5, ?6, ?7)
+       ON CONFLICT (res, t) DO UPDATE SET
+         received = 1, load1 = excluded.load1, rx_rate = excluded.rx_rate, tx_rate = excluded.tx_rate,
+         rx_rate_max = MAX(COALESCE(rx_rate_max, 0), excluded.rx_rate_max),
+         tx_rate_max = MAX(COALESCE(tx_rate_max, 0), excluded.tx_rate_max),
+         peers_online = excluded.peers_online, dns_up = excluded.dns_up`,
+    ).bind(RAW_RES, t, vm.load1, vm.rx_rate, vm.tx_rate, vm.peers_online, vm.dns_up),
+    ...clients.map((c) =>
+      env.DB.prepare(
+        `INSERT INTO hist_client (res, t, peer_id, online, handshake_age, latency_avg, latency_max, rx, tx)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7, ?8)
+         ON CONFLICT (res, peer_id, t) DO UPDATE SET
+           online = MAX(online, excluded.online), handshake_age = excluded.handshake_age,
+           latency_avg = COALESCE((latency_avg + excluded.latency_avg) / 2, excluded.latency_avg, latency_avg),
+           latency_max = MAX(COALESCE(latency_max, excluded.latency_max), COALESCE(excluded.latency_max, latency_max)),
+           rx = rx + excluded.rx, tx = tx + excluded.tx`,
+      ).bind(RAW_RES, t, c.peer_id, c.online, c.handshake_age, c.latency, c.rx, c.tx),
+    ),
+    ...o.drops.map((d) =>
+      env.DB.prepare(
+        `INSERT INTO hist_drops (t, src, dst, proto, dport, in_if, out_if, n) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)
+         ON CONFLICT (t, src, dst, proto, dport, in_if, out_if) DO UPDATE SET n = n + 1`,
+      ).bind(bucket(Date.parse(d.at), RAW_RES), d.src, d.dst, d.proto, d.dport ?? 0, d.in, d.out),
+    ),
+  ]);
 }
