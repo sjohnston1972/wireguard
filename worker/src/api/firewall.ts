@@ -29,10 +29,10 @@ type Problem = { message: string; field: string };
 /** Type problems in a published-port body: every field present must be the right JSON type. `required` also demands the ones the form needs. */
 function forwardTypes(b: Obj, required: boolean): Problem | null {
   const text = (k: string) => b[k] !== undefined && typeof b[k] !== "string" && { message: `${k} must be text.`, field: k };
-  const num = (k: string, nullable: boolean) => b[k] !== undefined && !(nullable && b[k] === null) && typeof b[k] !== "number" && { message: `${k} must be a number.`, field: k };
+  const num = (k: string, nullable: boolean) => b[k] !== undefined && !(nullable && b[k] === null) && !(typeof b[k] === "number" && Number.isInteger(b[k])) && { message: `${k} must be a whole number.`, field: k };
   if (required) {
     if (b.proto !== "tcp" && b.proto !== "udp") return { message: 'proto must be "tcp" or "udp".', field: "proto" };
-    if (typeof b.public_port !== "number") return { message: "public_port must be a number.", field: "public_port" };
+    if (!Number.isInteger(b.public_port)) return { message: "public_port must be a whole number.", field: "public_port" };
     if (typeof b.target_ip !== "string") return { message: "target_ip must be text.", field: "target_ip" };
   }
   if (b.proto !== undefined && b.proto !== "tcp" && b.proto !== "udp") return { message: 'proto must be "tcp" or "udp".', field: "proto" };

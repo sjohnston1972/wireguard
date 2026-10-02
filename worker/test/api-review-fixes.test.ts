@@ -94,3 +94,16 @@ describe("an Azure refusal says so", () => {
     expect(r.json.error.message).toMatch(/^Azure did not accept the change: /);
   });
 });
+
+describe("review pass 2: decimal ports are refused", () => {
+  it("rejects a decimal public_port or target_port and saves nothing", async () => {
+    const { env } = apiEnv();
+    const a = await api(env, "POST", "/firewall/forwards", { name: "web", proto: "tcp", public_port: 8080.5, target_ip: "10.50.2.4" });
+    expect(a.status).toBe(400);
+    expect(a.json.error.field).toBe("public_port");
+    const b = await api(env, "POST", "/firewall/forwards", { name: "web", proto: "tcp", public_port: 8080, target_ip: "10.50.2.4", target_port: 80.5 });
+    expect(b.status).toBe(400);
+    expect(b.json.error.field).toBe("target_port");
+    expect(await db.listForwards(env)).toHaveLength(0);
+  });
+});
