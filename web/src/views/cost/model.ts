@@ -1,5 +1,6 @@
 import type { CostResponse } from "@shared/api";
 import type { Bar } from "@/components";
+import { thresholdTone } from "@shared/widgets";
 
 // Pure helpers for the Cost view. Days are UTC strings ("2026-10-02"); money is GBP.
 
@@ -145,3 +146,16 @@ export const TYPE_LABEL: Record<"compute" | "network" | "disk" | "other", string
   disk: "Disk (managed)",
   other: "Other",
 };
+
+export type Level = "ok" | "warn" | "bad";
+
+/**
+ * The forecast as a share of the budget, as a tone; null with no projection or
+ * no budget. Today's pill says "Over budget" only when the projection is above
+ * the budget, so exactly 100 % stays on track.
+ */
+export function forecastLevel(projectionGbp: number | null | undefined, budgetGbp: number, thr: { warn: number | null; bad: number | null }): Level | null {
+  if (projectionGbp === null || projectionGbp === undefined || !(budgetGbp > 0)) return null;
+  const pct = Math.round((projectionGbp / budgetGbp) * 10000) / 100;
+  return thresholdTone(pct, pct === 100 && thr.bad === 100 ? { warn: thr.warn, bad: null } : thr, "above");
+}
