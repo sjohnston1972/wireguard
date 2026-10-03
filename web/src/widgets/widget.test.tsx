@@ -44,6 +44,8 @@ function withoutChrome(el: HTMLElement): string {
   copy.querySelectorAll("[data-widget-chrome]").forEach((c) => c.remove());
   // The corner's positioning box (position: relative, as the old *:has(> .wg-corner) rule gave it) is chrome too.
   copy.querySelectorAll(".wg-corner-host").forEach((c) => c.classList.remove("wg-corner-host"));
+  // So is the class that marks a panel whose header holds the cog (its header rules, Panel.css).
+  copy.querySelectorAll(".panel--chrome").forEach((c) => c.classList.remove("panel--chrome"));
   return plain(copy.innerHTML);
 }
 

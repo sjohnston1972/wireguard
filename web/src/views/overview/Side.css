@@ -79,6 +79,10 @@
 .ov-traffic .segmented__item {
   padding: 0 8px;
 }
+/* In the narrow side column (during a run) its window switch cannot give way: the title wraps, as before. */
+.ov-side .ov-traffic.panel--chrome > .panel__head > .panel__title-wrap { min-width: 0; }
+.ov-side .ov-traffic.panel--chrome > .panel__head > .panel__title-wrap > .panel__title { white-space: normal; flex-shrink: 1; }
+.ov-side .ov-traffic.panel--chrome > .panel__head > .panel__actions { flex: none; }
 
 .ov-speed__list {
   display: flex;

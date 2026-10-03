@@ -50,7 +50,7 @@ export function Panel({ title, status, actions, flush, scroll, widgetChrome = tr
   const body = <div className={cx("panel__body", flush && "panel__body--flush", bodyClassName)}>{children}</div>;
   return (
     <section
-      className={cx("panel", scroll && "panel--scroll", className, chrome && !inHead && "wg-corner-host")}
+      className={cx("panel", scroll && "panel--scroll", className, chrome && !inHead && "wg-corner-host", inHead && "panel--chrome")}
       role={title ? "region" : undefined}
       aria-labelledby={title ? titleId : undefined}
     >
