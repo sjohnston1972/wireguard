@@ -8,7 +8,7 @@
 
 import { useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Settings2 } from "lucide-react";
+import { Settings } from "lucide-react";
 import { Button, IconButton, Sheet, useIsPhone } from "@/components";
 import type { PageId } from "@shared/widgets";
 import { useWidget } from "./useWidget";
@@ -100,7 +100,7 @@ export function WidgetCog({ id }: { id: string }) {
   };
   const button = (
     <IconButton label={label} size="sm" variant="plain" className="wg-cog" data-widget-chrome="" onClick={phone ? () => setOpen(true) : undefined}>
-      <Settings2 size={15} aria-hidden />
+      <Settings size={15} aria-hidden />
     </IconButton>
   );
   if (phone)
