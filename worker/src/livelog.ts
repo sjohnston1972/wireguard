@@ -31,16 +31,33 @@ export function isActiveRun(run: Pick<db.Run, "status" | "finished_at">): boolea
   return !run.finished_at && (run.status === "queued" || run.status === "running");
 }
 
+const uEscape = (c: string) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`;
+/** < > & and the two JavaScript line separators, which Go's JSON (so Terraform's) writes as \u escapes. */
+const GO_ESCAPED = new RegExp(`[<>&${String.fromCharCode(0x2028, 0x2029)}]`, "g");
+
 /**
- * The forms a secret can appear in: as typed, base64 on its own, and the part
- * of its base64 that is the same at each of the three byte alignments inside
- * a longer base64 blob. The same rule as the runner's (infra/ci/live-log.mjs).
+ * A secret inside a URL (encodeURIComponent) or a JSON string: JSON's own
+ * escapes, plus the \u escapes other writers add for non-ASCII characters
+ * (Python's default) and for < > & (Go's). Same as the runner's.
+ */
+function escapedForms(v: string): string[] {
+  const json = JSON.stringify(v).slice(1, -1);
+  const ascii = (s: string) => s.replace(/[^\x00-\x7e]/g, uEscape);
+  const html = (s: string) => s.replace(GO_ESCAPED, uEscape);
+  return [encodeURIComponent(v), json, ascii(json), html(json), ascii(html(json))];
+}
+
+/**
+ * The forms a secret can appear in: as typed, URL-encoded and JSON-escaped,
+ * base64 on its own, and the part of its base64 that is the same at each of
+ * the three byte alignments inside a longer base64 blob. The same rule as the
+ * runner's (infra/ci/live-log.mjs).
  */
 export function secretForms(value: string): string[] {
   if (value.length < 4) return [];
   const bytes = new TextEncoder().encode(value);
   const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
-  const forms = new Set([value, b64(bytes)]);
+  const forms = new Set([value, ...escapedForms(value), b64(bytes)]);
   for (const skip of [0, 1, 2]) {
     const rest = bytes.subarray(skip);
     const enc = b64(rest.subarray(0, Math.floor(rest.length / 3) * 3));

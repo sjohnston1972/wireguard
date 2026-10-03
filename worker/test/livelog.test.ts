@@ -15,7 +15,7 @@ import worker from "../src/index";
 import * as db from "../src/db";
 import { startDeploy, issueRunSecrets, handleCallback } from "../src/runs";
 import { runScheduled } from "../src/monitor";
-import { LIVE_LOG_KEEP_BYTES, LIVE_LOG_KEEP_DAYS } from "../src/livelog";
+import { LIVE_LOG_KEEP_BYTES, LIVE_LOG_KEEP_DAYS, redact } from "../src/livelog";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -159,6 +159,19 @@ describe("POST /api/callback/log", () => {
     expect(b64(`xPW=${password}\n`)).toContain(b64(core));
     expect(stored).not.toContain(b64(core));
     expect(stored).toContain("password ***");
+  });
+});
+
+describe("Worker redaction: escaped forms", () => {
+  it("hides a secret URL-encoded and JSON-escaped (including \\u escapes), as the runner does", () => {
+    const secret = 'pa ss/w"o&r<d>\\é+=?#';
+    const u = (c: string) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`;
+    const json = JSON.stringify(secret).slice(1, -1);
+    const forms = [encodeURIComponent(secret), json, json.replace(/[^\x00-\x7e]/g, u), json.replace(/[<>&]/g, u)];
+    for (const f of forms) {
+      expect(f).not.toBe(secret);
+      expect(redact(`before ${f} after`, [secret]), f).toBe("before *** after");
+    }
   });
 });
 

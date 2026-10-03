@@ -26,7 +26,7 @@
 // through GitHub, so it must hide them itself. Both commands redact every
 // value held in the env names in SECRET_ENV (the repository secrets each step
 // is given, GitHub's own tokens and this run's secrets from the Worker), as
-// typed and base64-encoded, by exact replacement with ***. The filter does it
+// typed, URL-encoded, JSON-escaped and base64-encoded, by exact replacement with ***. The filter does it
 // with the step's own env (where the Azure and Cloudflare keys live); the
 // shipper does it again with what the whole job knows. The Worker does a
 // third pass for the run secrets it holds.
@@ -102,8 +102,24 @@ export function secretsFromEnv(env, names = SECRET_ENV) {
   return [...out];
 }
 
+const uEscape = (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`;
+
 /**
- * The forms a secret can be printed in: as typed, base64-encoded on its own,
+ * A secret as it appears inside a URL (encodeURIComponent) or a JSON string:
+ * JSON.stringify's own escapes, and the \u escapes other writers add, for
+ * non-ASCII characters (Python's default) and for < > & (Go's, so
+ * Terraform's JSON).
+ */
+export function escapedForms(v) {
+  const json = JSON.stringify(v).slice(1, -1);
+  const ascii = (s) => s.replace(/[\u007f-\uffff]/g, uEscape);
+  const html = (s) => s.replace(/[<>&\u2028\u2029]/g, uEscape);
+  return [encodeURIComponent(v), json, ascii(json), html(json), ascii(html(json))];
+}
+
+/**
+ * The forms a secret can be printed in: as typed, URL-encoded, JSON-escaped
+ * (see escapedForms), base64-encoded on its own,
  * and the part of its base64 that is the same wherever it sits inside a
  * longer base64 blob (one form for each of the three byte alignments), which
  * is how cloud-init carries files.
@@ -111,7 +127,7 @@ export function secretsFromEnv(env, names = SECRET_ENV) {
 export function secretForms(value) {
   const v = String(value ?? "");
   if (v.length < MIN_SECRET) return [];
-  const forms = new Set([v]);
+  const forms = new Set([v, ...escapedForms(v)]);
   const bytes = Buffer.from(v, "utf8");
   forms.add(bytes.toString("base64"));
   for (const skip of [0, 1, 2]) {

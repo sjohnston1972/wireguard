@@ -205,6 +205,25 @@ test("the redactor leaves no secret in any form, and keeps the rest of the text"
   assert.match(out, /ARM_CLIENT_SECRET=\*\*\* \(plain\)/);
 });
 
+test("the redactor also hides a secret URL-encoded and JSON-escaped, including \\u escapes", () => {
+  const secret = 'pa ss/w"o&r<d>\\é\u0001+=?#';
+  const redact = makeRedactor([secret]);
+  const asciiJson = JSON.stringify(secret).slice(1, -1).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  const goJson = JSON.stringify(secret).slice(1, -1).replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  const forms = {
+    url: encodeURIComponent(secret),
+    json: JSON.stringify(secret).slice(1, -1),
+    "json, non-ASCII as \\u": asciiJson,
+    "json, <>& as \\u (Go, so Terraform)": goJson,
+  };
+  for (const [what, f] of Object.entries(forms)) {
+    assert.notEqual(f, secret, what);
+    assert.equal(redact(`before ${f} after`), "before *** after", what);
+  }
+  assert.equal(redact(`{"password":${JSON.stringify(secret)}}`), '{"password":"***"}');
+  assert.equal(redact(`https://x.example/?p=${encodeURIComponent(secret)}&q=1`), "https://x.example/?p=***&q=1");
+});
+
 test("a multi-line secret is hidden line by line", () => {
   const key = "-----BEGIN KEY-----\nAAAAsecretline1AAAA\nBBBBsecretline2BBBB\n-----END KEY-----";
   const out = makeRedactor(secretsFromEnv({ TF_VAR_wg_server_private_key: key }))("got BBBBsecretline2BBBB here");
