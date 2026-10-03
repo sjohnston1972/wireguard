@@ -68,7 +68,8 @@ describe("Cost widgets: frame and defaults", () => {
     expect(container.querySelector('[aria-label="Monthly budget"] .tile__icon--amber')).not.toBeNull();
     expect(container.querySelector('[aria-label="Cost guard"] .tile__icon--amber')).not.toBeNull();
     expect((await tile("Cost guard")).getByText("Nearly there")).toBeInTheDocument();
-    expect(b.queryByText("Nearly there")).not.toBeInTheDocument();
+    // Amber is never colour alone: the budget tile says its word too (accessibility ruling).
+    expect(b.getByText("Nearly there")).toBeInTheDocument();
     expect(container.querySelector('[aria-label="Month to date (actual)"] .tile__delta')).not.toBeNull();
     // spend: forecast, budget pace, legend and note all on; no previous line
     const spend = await region("Spend over time");
@@ -201,6 +202,25 @@ describe("Cost widgets: thresholds and display", () => {
     const g = await tile("Cost guard");
     expect(g.getByText("Nearly there")).toBeInTheDocument();
     expect(container.querySelector('[aria-label="Cost guard"] .tile__icon--amber')).not.toBeNull();
+  });
+
+  it("the Monthly budget tile always says its word when amber or red, thresholds customised or not", async () => {
+    const red = page({}, costFixture({ budget: budget(100, "over") }));
+    let b = await tile("Monthly budget");
+    await waitFor(() => expect(b.getByText("Over budget")).toBeInTheDocument());
+    expect(red.container.querySelector('[aria-label="Monthly budget"] .tile__icon--red')).not.toBeNull();
+    red.unmount();
+    const green = page({}, costFixture({ budget: budget(50, "ok") }));
+    b = await tile("Monthly budget");
+    expect(green.container.querySelector('[aria-label="Monthly budget"] .tile__icon--green')).not.toBeNull();
+    expect(b.queryByText("Nearly there")).not.toBeInTheDocument();
+    expect(b.queryByText("Over budget")).not.toBeInTheDocument();
+    green.unmount();
+    // Bar off: the word stays.
+    page(saved({ "cost.kpis": { budgetBar: false } }), costFixture({ budget: budget(85, "warn") }));
+    b = await tile("Monthly budget");
+    await waitFor(() => expect(b.queryByRole("progressbar")).toBeNull());
+    expect(b.getByText("Nearly there")).toBeInTheDocument();
   });
 
   it("budget threshold just below and at each cutoff", async () => {

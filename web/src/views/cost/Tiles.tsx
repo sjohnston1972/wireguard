@@ -39,9 +39,6 @@ const Named = ({ name, children }: { name: string; children: ReactNode }) => (
 const budgetTone = (level: CostResponse["budget"]["level"]): Tone => (level === "over" ? "red" : level === "warn" ? "amber" : "green");
 const levelTone = (l: Level | null): Tone => (l === "bad" ? "red" : l === "warn" ? "amber" : "green");
 
-/** The budget tile's own thresholds (the server's 80 and 100 unless changed). */
-const BUDGET_DEFAULT = { warn: 80, bad: 100 };
-
 /** Row 1: this session, month to date, the month's projection, the budget and the cost guard. */
 export function KpiRow({ cost }: { cost: CostResponse }) {
   const { settings } = useWidget("cost.kpis");
@@ -58,8 +55,8 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
   // The budget tile follows the thresholds set on this widget (colouring only); the Cost guard tile follows the server's level.
   const usedLevel = thresholdTone(budget.pct, used, "above");
   const tone = levelTone(usedLevel);
-  const customised = used.warn !== BUDGET_DEFAULT.warn || used.bad !== BUDGET_DEFAULT.bad;
-  const word = usedLevel === "bad" ? "Over budget" : "Nearly there";
+  // Amber or red always comes with its word (never colour alone).
+  const word = usedLevel === "bad" ? "Over budget" : usedLevel === "warn" ? "Nearly there" : null;
 
   const tiles: Record<string, ReactNode> = {
     session: (
@@ -118,7 +115,7 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
           label="Monthly budget"
           value={budget.budget > 0 ? gbp(budget.budget) : null}
           progress={bar && budget.budget > 0 && spentKnown ? { value: budget.pct, tone, showValue: true } : undefined}
-          action={customised && budget.budget > 0 && spentKnown && usedLevel && usedLevel !== "ok" ? <span className={usedLevel === "bad" ? "cost-state cost-state--bad" : "cost-state cost-state--warn"}>{word}</span> : undefined}
+          action={word ? <span className={usedLevel === "bad" ? "cost-state cost-state--bad" : "cost-state cost-state--warn"}>{word}</span> : undefined}
           sub={
             budget.budget > 0 ? (
               <span className="cost-figs">
