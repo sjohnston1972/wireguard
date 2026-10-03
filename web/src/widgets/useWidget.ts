@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import type { PagePrefs, SettingValue } from "@shared/api";
 import { settingProblem, widgetDef, widgetDefaults, type WidgetDef } from "@shared/widgets";
 import { usePagePrefs, usePrefsStore, type PrefsStatus } from "./usePrefs";
+import { canMoveIn, moveWithin, type MoveState } from "./layout";
 
 export interface WidgetState {
   def: WidgetDef;
@@ -27,6 +28,13 @@ export interface WidgetState {
   /** Preferences not read (loading or failed): show the values, change nothing. */
   readOnly: boolean;
   status: PrefsStatus;
+  /**
+   * Where it can move (desktop order only): `movable` when it is a direct item
+   * of a row with two or more visible items; `left`/`right` at the ends are false.
+   */
+  canMove: MoveState;
+  /** One visible place left or right within its row; false when it cannot. */
+  move: (dir: "left" | "right") => boolean;
 }
 
 /** Apply `fn` to one widget's saved values, keeping the entry sparse. */
@@ -54,8 +62,16 @@ export function useWidget(id: string): WidgetState {
   const saved = prefs.widgets?.[id]?.s;
   const settings = useMemo(() => ({ ...widgetDefaults(id), ...(saved ?? {}) }), [id, saved]);
   const hidden = !def.pinned && !!prefs.layout?.hidden?.includes(id);
+  const canMove = useMemo(() => canMoveIn(def.page, id, prefs), [def.page, id, prefs]);
 
   return {
+    canMove,
+    move: (dir) => {
+      if (readOnly) return false;
+      if (!moveWithin(def.page, prefs, id, dir)) return false;
+      store.change(def.page, (p) => moveWithin(def.page, p, id, dir) ?? p);
+      return true;
+    },
     def,
     settings,
     differs: !!saved && Object.keys(saved).length > 0,

@@ -12,6 +12,12 @@ import { Settings2 } from "lucide-react";
 import { Button, IconButton, Sheet, useIsPhone } from "@/components";
 import { useWidget } from "./useWidget";
 import { SettingsForm } from "./SettingsForm";
+import { announce } from "./announce";
+
+/** Says where a widget went, for screen readers: "Last run moved to position 2 of 3". */
+export function announceMove(title: string, index: number, count: number, dir: "left" | "right") {
+  announce(`${title} moved to position ${index + (dir === "left" ? 0 : 2)} of ${count}`);
+}
 
 export const READ_ONLY_FAILED = "Widget settings couldn't be loaded, so changes can't be saved right now.";
 export const READ_ONLY_LOADING = "Loading widget settings…";
@@ -19,11 +25,27 @@ export const READ_ONLY_LOADING = "Loading widget settings…";
 /** The cog's contents for one widget: the form and the footer. Also used by the phone's Widget settings list. */
 export function WidgetSettings({ id, onClose }: { id: string; onClose?: () => void }) {
   const w = useWidget(id);
+  const phone = useIsPhone();
+  const move = (dir: "left" | "right") => {
+    const { index, count } = w.canMove;
+    if (w.move(dir)) announceMove(w.def.title, index, count, dir);
+  };
   return (
     <div className="wg-settings">
       {w.readOnly && <p className="wg-settings__note">{w.status === "failed" ? READ_ONLY_FAILED : READ_ONLY_LOADING}</p>}
       <SettingsForm def={w.def} settings={w.settings} onSet={w.set} readOnly={w.readOnly} />
       <footer className="wg-settings__foot">
+        {/* Order is desktop-only: the phone keeps its own layout. */}
+        {w.canMove.movable && !phone && (
+          <>
+            <Button size="sm" disabled={w.readOnly || !w.canMove.left} onClick={() => move("left")}>
+              Move left
+            </Button>
+            <Button size="sm" disabled={w.readOnly || !w.canMove.right} onClick={() => move("right")}>
+              Move right
+            </Button>
+          </>
+        )}
         {!w.def.pinned && (
           <Button
             size="sm"

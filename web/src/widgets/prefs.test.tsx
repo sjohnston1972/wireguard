@@ -116,12 +116,15 @@ describe("saving", () => {
     };
     renderWithProviders(<Probe />, { routes: server.routes });
     await waitFor(() => expect(out("status")).toHaveTextContent("ready"));
+    const before = performance.now();
     await userEvent.click(screen.getByRole("button", { name: "rows 7" }));
-    const clickedAt = performance.now();
+    const after = performance.now();
     expect(out("rows")).toHaveTextContent("7");
     expect(server.puts).toHaveLength(0);
     await waitFor(() => expect(server.puts).toHaveLength(1));
-    expect(putAt - clickedAt).toBeGreaterThanOrEqual(SAVE_DELAY_MS - 20);
+    // The save went out a quiet spell after the change (which happened between before and after).
+    expect(putAt - before).toBeGreaterThanOrEqual(SAVE_DELAY_MS - 5);
+    expect(putAt - after).toBeLessThan(SAVE_DELAY_MS + 400);
     expect(server.puts[0]).toEqual({ page: "overview", body: { baseVersion: 1, prefs: { widgets: { "overview.events": { v: 1, s: { rows: 7 } } } } } });
     expect(out("rows")).toHaveTextContent("7");
     expect(server.state.pages.overview.version).toBe(2);

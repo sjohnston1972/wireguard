@@ -28,6 +28,50 @@
   .wg-corner { opacity: 1; }
 }
 
+/* The move handle: an overlay at the left of a panel header (or the left
+   corner of a headerless widget), shown on hover or keyboard focus. */
+.panel__head:has(> .wg-handle) { position: relative; }
+.wg-handle {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.wg-handle:active { cursor: grabbing; }
+.panel__head > .wg-handle { position: absolute; left: 0; top: 50%; transform: translate(-2px, -50%); z-index: 5; }
+.panel:hover > .panel__head > .wg-handle,
+.wg-handle:focus-visible { opacity: 1; }
+@media (hover: none) {
+  .wg-handle { opacity: 1; }
+}
+
+/* The page header's Layout menu. */
+.wg-layout { display: inline-flex; align-self: flex-end; }
+.menu__label { padding: 6px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
+.menu__sep { height: 1px; margin: 4px 0; background: var(--border); }
+.menu__item[data-disabled] { color: var(--disabled-fg); cursor: default; }
+.wg-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.wg-list__item {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 /* The cog's popover (desktop) and sheet (phone). */
 .wg-pop {
   z-index: 80;
