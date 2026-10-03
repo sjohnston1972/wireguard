@@ -180,19 +180,21 @@ describe("Overview widget settings: thresholds", () => {
 
   it("DNS warn threshold", async () => {
     const user = userEvent.setup();
-    const cases: [object, string][] = [
-      [{}, "amber"],
-      [saved(KM, { dnsUp: { warn: 95, bad: null } }), "green"],
-      [saved(KM, { dnsUp: { warn: 100, bad: 98 } }), "red"],
+    const cases: [object, string, string | null][] = [
+      [{}, "amber", "Low"],
+      [saved(KM, { dnsUp: { warn: 95, bad: null } }), "green", null],
+      [saved(KM, { dnsUp: { warn: 100, bad: 98 } }), "red", "Very low"],
     ];
-    for (const [prefs, tone] of cases) {
+    for (const [prefs, tone, word] of cases) {
       const r = renderApp("/", { routes: prefsRoutes(overview("running"), prefs, { "GET /api/v1/history": history(100, 0.97) }) });
       const m = await region("Key metrics");
       await user.click(within(m).getByRole("radio", { name: "24h" }));
       const tile = within(m).getByRole("group", { name: "DNS status" });
-      // The word is the value: "Up 97%".
       await waitFor(() => expect(tile).toHaveTextContent("Up 97%"));
       await waitFor(() => expect(tile.querySelector(`.tile__icon--${tone}`)).not.toBeNull());
+      // Amber or red comes with a level word, as the other tiles' thresholds do.
+      if (word) expect(tile.querySelector(".tile__value .ov-tile__word")).toHaveTextContent(new RegExp(`^${word}$`));
+      else expect(tile.querySelector(".tile__value .ov-tile__word")).toBeNull();
       r.unmount();
     }
   });

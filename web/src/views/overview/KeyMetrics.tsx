@@ -87,8 +87,8 @@ export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
   const latTone = latLevel ? LEVEL_TONE[latLevel] : undefined;
 
   // Tunnel DNS: the heartbeat's answer now, or how often it was up in the range
-  // (coloured by the DNS up threshold; the value "Up N%" is the word).
-  let dns: { value: string | null; tone: "green" | "amber" | "red" | "grey"; sub: string };
+  // (coloured by the DNS up threshold, with its level word: "Up 97% Low").
+  let dns: { value: ReactNode; tone: "green" | "amber" | "red" | "grey"; sub: string };
   if (live) {
     const up = running ? s.agent?.dns?.up : undefined;
     dns = up === true ? { value: "Healthy", tone: "green", sub: "Tunnel DNS resolving · live" } : up === false ? { value: "Down", tone: "red", sub: "Tunnel DNS not answering · live" } : { value: null, tone: "grey", sub: running ? "not reported · live" : "VM not running" };
@@ -97,8 +97,9 @@ export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
     if (!vals.length) dns = { value: null, tone: "grey", sub: `tunnel DNS · ${histWord}` };
     else {
       const pct = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100);
-      const tone = LEVEL_TONE[levelOf(pct, st.dnsUp, "below") ?? "ok"];
-      dns = pct === 100 ? { value: "Healthy", tone, sub: `up all the time · ${word}` } : { value: `Up ${pct}%`, tone, sub: `tunnel DNS · ${word}` };
+      const level = levelOf(pct, st.dnsUp, "below");
+      const tone = LEVEL_TONE[level ?? "ok"];
+      dns = pct === 100 ? { value: "Healthy", tone, sub: `up all the time · ${word}` } : { value: withWord(`Up ${pct}%`, level, "below"), tone, sub: `tunnel DNS · ${word}` };
     }
   }
 
