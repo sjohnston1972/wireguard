@@ -21,6 +21,7 @@ import { useWidget } from "./useWidget";
 import { usePagePrefs, usePrefsStore } from "./usePrefs";
 import { WidgetCog, announceMove } from "./WidgetCog";
 import { dropKey, dropMove, type DragItem } from "./layout";
+import { useArranged } from "./arrangement";
 import "./widgets.css";
 
 /** The drag data type a widget's handle sets; drops without it are ignored. */
@@ -36,24 +37,29 @@ export interface WidgetProps {
   id: string;
   /** Put the chrome in the corner overlay even if the panel has a header (status banner, tile rows, tables). */
   headerless?: boolean;
+  /**
+   * This block draws its whole stack (a tabbed column showing one member at
+   * a time): it carries the stack's move handle whichever member it shows.
+   */
+  stackHandle?: boolean;
   children: ReactNode;
 }
 
-export function Widget({ id, headerless = false, children }: WidgetProps) {
+export function Widget({ id, headerless = false, stackHandle = false, children }: WidgetProps) {
   const w = useWidget(id);
   const chrome = useMemo<PanelChrome>(
     () => ({
       handle: (
         <>
           <DropAnchor id={id} />
-          <WidgetHandle id={id} />
+          <WidgetHandle id={id} stackHandle={stackHandle} />
         </>
       ),
       cog: <WidgetCog id={id} />,
       corner: (
         <div className="wg-corner" data-widget-chrome="">
           <DropAnchor id={id} />
-          <WidgetHandle id={id} />
+          <WidgetHandle id={id} stackHandle={stackHandle} />
           <span className="wg-corner__end">
             <WidgetCog id={id} />
           </span>
@@ -61,7 +67,7 @@ export function Widget({ id, headerless = false, children }: WidgetProps) {
       ),
       headerless,
     }),
-    [id, headerless],
+    [id, headerless, stackHandle],
   );
   if (w.hidden) return null;
   return <PanelChromeContext.Provider value={chrome}>{children}</PanelChromeContext.Provider>;
@@ -77,8 +83,12 @@ export function WidgetCorner() {
   return c ? <>{c.corner}</> : null;
 }
 
-/** The grip: drag it, or Alt+Arrow on it. Only where the widget can move, and never on the phone. */
-function WidgetHandle({ id }: { id: string }) {
+/**
+ * The grip: drag it, or Alt+Arrow on it. Only where the widget can move, and
+ * never on the phone. In a stack it moves the whole stack ("Move ‹title›
+ * column"), and only the stack's top widget carries it.
+ */
+function WidgetHandle({ id, stackHandle }: { id: string; stackHandle: boolean }) {
   const w = useWidget(id);
   const phone = useIsPhone();
   const ref = useRef<HTMLButtonElement>(null);
@@ -88,13 +98,15 @@ function WidgetHandle({ id }: { id: string }) {
       ref.current.focus();
     }
   });
-  if (phone || !w.canMove.movable || !w.canMove.row) return null;
-  const row = w.canMove.row;
+  const { movable, row, item } = w.canMove;
+  const ofStack = item !== id;
+  if (phone || !movable || !row || !item || !(w.canMove.handle || (ofStack && stackHandle))) return null;
+  const name = ofStack ? `${w.def.title} column` : w.def.title;
   const move = (dir: "left" | "right") => {
     const { index, count } = w.canMove;
     if (!w.move(dir)) return;
     focusAfterMove = id;
-    announceMove(w.def.title, index, count, dir);
+    announceMove(name, index, count, dir);
   };
   return (
     <button
@@ -102,8 +114,8 @@ function WidgetHandle({ id }: { id: string }) {
       type="button"
       className="wg-handle"
       data-widget-chrome=""
-      aria-label={`Move ${w.def.title}`}
-      title={`Move ${w.def.title} (drag, or Alt+Left and Alt+Right)`}
+      aria-label={`Move ${name}`}
+      title={`Move ${name} (drag, or Alt+Left and Alt+Right)`}
       draggable={!w.readOnly}
       onKeyDown={(e) => {
         if (!e.altKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
@@ -111,7 +123,7 @@ function WidgetHandle({ id }: { id: string }) {
         move(e.key === "ArrowLeft" ? "left" : "right");
       }}
       onDragStart={(e) => {
-        dragging = { page: w.def.page, row, key: id };
+        dragging = { page: w.def.page, row, key: item };
         const dt = e.dataTransfer;
         if (dt) {
           dt.effectAllowed = "move";
@@ -140,11 +152,12 @@ function DropAnchor({ id }: { id: string }) {
   const page = def.page;
   const { status } = usePagePrefs(page);
   const store = usePrefsStore();
+  const reg = useArranged();
   const phone = useIsPhone();
   const active = status === "ready" && !phone;
   useEffect(() => {
     const host = el ? ((el.closest(".wg-corner")?.parentElement ?? el.closest(".panel")) as HTMLElement | null) : null;
-    const target = dropKey(page, id);
+    const target = dropKey(page, id, reg);
     if (!host || !target || !active) return;
     const accepted = (e: DragEvent): (DragItem & { page: PageId }) | null => {
       const dt = e.dataTransfer;
@@ -170,7 +183,7 @@ function DropAnchor({ id }: { id: string }) {
       if (!d) return;
       e.preventDefault();
       dragging = null;
-      store.change(page, (p) => dropMove(page, p, d, id) ?? p);
+      store.change(page, (p) => dropMove(page, p, d, id, reg) ?? p);
     };
     host.addEventListener("dragover", over);
     host.addEventListener("drop", drop);
@@ -178,6 +191,6 @@ function DropAnchor({ id }: { id: string }) {
       host.removeEventListener("dragover", over);
       host.removeEventListener("drop", drop);
     };
-  }, [el, page, id, store, active]);
+  }, [el, page, id, store, active, reg]);
   return <span hidden data-widget-chrome="" ref={setEl} />;
 }

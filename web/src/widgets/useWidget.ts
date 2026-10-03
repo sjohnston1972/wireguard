@@ -10,6 +10,7 @@ import type { PagePrefs, SettingValue } from "@shared/api";
 import { settingProblem, widgetDef, widgetDefaults, type WidgetDef } from "@shared/widgets";
 import { usePagePrefs, usePrefsStore, type PrefsStatus } from "./usePrefs";
 import { canMoveIn, moveWithin, type MoveState } from "./layout";
+import { useArranged } from "./arrangement";
 
 export interface WidgetState {
   def: WidgetDef;
@@ -30,10 +31,13 @@ export interface WidgetState {
   status: PrefsStatus;
   /**
    * Where it can move (desktop order only): `movable` when it is a direct item
-   * of a row with two or more visible items; `left`/`right` at the ends are false.
+   * of a row with two or more visible items, or a member of a stack that is
+   * (then `item` is the stack, which moves as one); `left`/`right` at the
+   * ends are false. Rows a view draws differently for now (WidgetArrangement)
+   * count as drawn.
    */
   canMove: MoveState;
-  /** One visible place left or right within its row; false when it cannot. */
+  /** It (or its stack) one visible place left or right within its row; false when it cannot. */
   move: (dir: "left" | "right") => boolean;
 }
 
@@ -62,14 +66,15 @@ export function useWidget(id: string): WidgetState {
   const saved = prefs.widgets?.[id]?.s;
   const settings = useMemo(() => ({ ...widgetDefaults(id), ...(saved ?? {}) }), [id, saved]);
   const hidden = !def.pinned && !!prefs.layout?.hidden?.includes(id);
-  const canMove = useMemo(() => canMoveIn(def.page, id, prefs), [def.page, id, prefs]);
+  const reg = useArranged();
+  const canMove = useMemo(() => canMoveIn(def.page, id, prefs, reg), [def.page, id, prefs, reg]);
 
   return {
     canMove,
     move: (dir) => {
       if (readOnly) return false;
-      if (!moveWithin(def.page, prefs, id, dir)) return false;
-      store.change(def.page, (p) => moveWithin(def.page, p, id, dir) ?? p);
+      if (!moveWithin(def.page, prefs, id, dir, reg)) return false;
+      store.change(def.page, (p) => moveWithin(def.page, p, id, dir, reg) ?? p);
       return true;
     },
     def,

@@ -26,9 +26,11 @@ export const READ_ONLY_LOADING = "Loading widget settings…";
 export function WidgetSettings({ id, onClose }: { id: string; onClose?: () => void }) {
   const w = useWidget(id);
   const phone = useIsPhone();
+  // A widget in a stack moves its whole column.
+  const ofStack = w.canMove.item !== id;
   const move = (dir: "left" | "right") => {
     const { index, count } = w.canMove;
-    if (w.move(dir)) announceMove(w.def.title, index, count, dir);
+    if (w.move(dir)) announceMove(ofStack ? `${w.def.title} column` : w.def.title, index, count, dir);
   };
   return (
     <div className="wg-settings">
@@ -39,10 +41,10 @@ export function WidgetSettings({ id, onClose }: { id: string; onClose?: () => vo
         {w.canMove.movable && !phone && (
           <>
             <Button size="sm" disabled={w.readOnly || !w.canMove.left} onClick={() => move("left")}>
-              Move left
+              {ofStack ? "Move column left" : "Move left"}
             </Button>
             <Button size="sm" disabled={w.readOnly || !w.canMove.right} onClick={() => move("right")}>
-              Move right
+              {ofStack ? "Move column right" : "Move right"}
             </Button>
           </>
         )}

@@ -7,14 +7,15 @@
 // and the row's height never changes. A row with nothing left is not drawn.
 
 import { Fragment, type HTMLAttributes, type ReactNode } from "react";
-import { LAYOUTS, itemKey, type PageId } from "@shared/widgets";
+import type { PageId } from "@shared/widgets";
 import { usePagePrefs } from "./usePrefs";
-import { rowView, type RowView } from "./layout";
+import { rowView, stackMembers, type RowView } from "./layout";
+import { useArranged } from "./arrangement";
 
 /** A row's visible items in the user's order, its grid columns, and whether it is as shipped. For views that keep their own markup. */
 export function useRowItems(page: PageId, row: string): RowView {
   const { prefs } = usePagePrefs(page);
-  return rowView(page, row, prefs);
+  return rowView(page, row, prefs, useArranged());
 }
 
 export interface WidgetRowProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
@@ -46,11 +47,10 @@ export interface WidgetStackProps extends Omit<HTMLAttributes<HTMLDivElement>, "
   children: Record<string, ReactNode>;
 }
 
-/** A vertical stack: its visible members in their declared order; nothing at all when none is visible. */
+/** A vertical stack: its visible members in their declared order (or as a WidgetArrangement draws it); nothing at all when none is visible. */
 export function WidgetStack({ page, stack, children, ...rest }: WidgetStackProps) {
   const { prefs } = usePagePrefs(page);
-  const row = LAYOUTS[page].rows.find((r) => r.items.some((i) => itemKey(i) === stack));
-  const members = row ? (rowView(page, row.id, prefs).items.find((i) => i.key === stack)?.members ?? []) : [];
+  const members = stackMembers(page, stack, prefs, useArranged());
   if (!members.length) return null;
   return (
     <div {...rest}>

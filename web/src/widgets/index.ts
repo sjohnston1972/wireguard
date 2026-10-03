@@ -7,6 +7,7 @@ export { WidgetCog, WidgetSettings } from "./WidgetCog";
 export { SettingsForm, THRESHOLD_HINT, type SettingsFormProps } from "./SettingsForm";
 export { WidgetRow, WidgetStack, useRowItems, type WidgetRowProps, type WidgetStackProps } from "./WidgetRow";
 export { LayoutMenu } from "./LayoutMenu";
+export { WidgetArrangement, type WidgetArrangementProps } from "./arrangement";
 export type { RowView, RowItemView, MoveState } from "./layout";
 export { SAVE_DELAY_MS, PREFS_MIRROR_KEY } from "./store";
 export { thresholdTone } from "@shared/widgets";

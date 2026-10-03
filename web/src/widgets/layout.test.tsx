@@ -14,8 +14,8 @@ import { setViewport } from "@/test/viewport";
 import { Panel } from "@/components";
 import type { PagePrefs } from "@shared/api";
 import type { Registry } from "@shared/widgets";
-import { LayoutMenu, Widget, WidgetCorner, WidgetRow, WidgetStack, usePrefsStatus, useRowItems, WIDGET_DRAG_TYPE } from "@/widgets";
-import { canMoveIn, moveWithin, rowView, dropMove } from "./layout";
+import { LayoutMenu, Widget, WidgetArrangement, WidgetCorner, WidgetRow, WidgetStack, usePrefsStatus, useRowItems, WIDGET_DRAG_TYPE } from "@/widgets";
+import { canMoveIn, moveWithin, rowView, dropMove, type Arranged } from "./layout";
 
 afterEach(() => {
   try {
@@ -83,10 +83,9 @@ describe("rows (pure)", () => {
   });
 
   it("moves step over hidden neighbours, stay in the row, and only direct items move", () => {
-    expect(canMoveIn("overview", "overview.b", {}, reg)).toEqual({ movable: true, left: false, right: true, row: "mid", index: 0, count: 3 });
+    expect(canMoveIn("overview", "overview.b", {}, reg)).toEqual({ movable: true, left: false, right: true, row: "mid", index: 0, count: 3, item: "overview.b", handle: true });
     expect(canMoveIn("overview", "overview.c", {}, reg)).toMatchObject({ movable: true, left: true, right: true, index: 1 });
-    // In a stack, or alone in a row: no move controls.
-    expect(canMoveIn("overview", "overview.d", {}, reg).movable).toBe(false);
+    // Alone in a row: no move controls.
     expect(canMoveIn("overview", "overview.g", {}, reg).movable).toBe(false);
     expect(canMoveIn("overview", "overview.a", {}, reg).movable).toBe(false);
     // A nested row's widgets move within it.
@@ -98,7 +97,41 @@ describe("rows (pure)", () => {
     // c hidden: b moving right swaps with the stack, c keeps its place.
     expect(moveWithin("overview", hide("c"), "overview.b", "right", reg)!.layout!.order).toEqual({ mid: ["st", "overview.c", "overview.b"] });
     expect(moveWithin("overview", {}, "overview.b", "left", reg)).toBeNull();
-    expect(moveWithin("overview", {}, "overview.d", "left", reg)).toBeNull();
+  });
+
+  it("a stack that is a row's direct item moves as one: its top widget carries the handle, its members' moves move the stack", () => {
+    // d is the stack's first widget: the stack's handle sits on it.
+    expect(canMoveIn("overview", "overview.d", {}, reg)).toEqual({ movable: true, left: true, right: false, row: "mid", index: 2, count: 3, item: "st", handle: true });
+    expect(moveWithin("overview", {}, "overview.d", "left", reg)).toEqual({ layout: { order: { mid: ["overview.b", "st", "overview.c"] } } });
+    expect(moveWithin("overview", {}, "overview.d", "right", reg)).toBeNull();
+    // A widget of a row nested in the stack still moves within its own row.
+    expect(canMoveIn("overview", "overview.e", {}, reg)).toMatchObject({ item: "overview.e", row: "sub", handle: true });
+    // Alone in its row (b and c hidden): the stack cannot move.
+    expect(canMoveIn("overview", "overview.d", hide("b", "c"), reg).movable).toBe(false);
+  });
+
+  it("a row drawn differently for now (a variant) moves what is drawn and keeps the saved order a permutation of the declared row", () => {
+    // As Overview during a run: b widens over c's slot and c joins the stack.
+    const arranged: Arranged = { ...reg, variants: { overview: { mid: [{ widget: "overview.b", weight: 3 }, { stack: "st", weight: 1, widgets: ["overview.d", "overview.c"] }] } } };
+    const v = rowView("overview", "mid", {}, arranged);
+    expect(v.items.map((i) => i.key)).toEqual(["overview.b", "st"]);
+    expect(v.items[1]!.members).toEqual(["overview.d", "overview.c"]);
+    expect(v).toMatchObject({ isDefault: true, template: "minmax(0, 3fr) minmax(0, 1fr)" });
+    // c is not a direct item now: it moves its stack, and the handle stays with d.
+    expect(canMoveIn("overview", "overview.c", {}, arranged)).toEqual({ movable: true, left: true, right: false, row: "mid", index: 1, count: 2, item: "st", handle: false });
+    expect(canMoveIn("overview", "overview.b", {}, arranged)).toMatchObject({ movable: true, item: "overview.b", index: 0, count: 2 });
+    // b moving right swaps with the stack in the whole row's order; c keeps its place.
+    const moved = moveWithin("overview", {}, "overview.b", "right", arranged)!;
+    expect(moved.layout!.order).toEqual({ mid: ["st", "overview.c", "overview.b"] });
+    expect(rowView("overview", "mid", moved, arranged).items.map((i) => i.key)).toEqual(["st", "overview.b"]);
+    expect(rowView("overview", "mid", moved, arranged).isDefault).toBe(false);
+    // Moving it back gives the declared order, which is not stored.
+    expect(moveWithin("overview", moved, "overview.b", "left", arranged)!.layout!.order).toEqual({});
+    // A drop onto c lands on its stack.
+    expect(dropMove("overview", {}, { row: "mid", key: "overview.b" }, "overview.c", arranged)!.layout!.order).toEqual({ mid: ["overview.c", "st", "overview.b"] });
+    // A widget the variant does not draw cannot move.
+    const without: Arranged = { ...reg, variants: { overview: { mid: [{ widget: "overview.b", weight: 3 }, { stack: "st", weight: 1, widgets: ["overview.d"] }] } } };
+    expect(canMoveIn("overview", "overview.c", {}, without).movable).toBe(false);
   });
 
   it("a drop moves the dragged item to the target's place within the same row only", () => {
@@ -310,18 +343,86 @@ describe("moving", () => {
     expect(within(dialog).getByRole("button", { name: "Move right" })).toBeDisabled();
   });
 
-  it("a widget in a stack or alone in its row has no move controls", async () => {
+  it("a widget in a stack or alone in its row has no move controls of its own", async () => {
     renderRows({ overview: { layout: { hidden: ["overview.costImpact", "overview.notes"] } } });
     await ready();
     expect(screen.queryByRole("button", { name: "Move Recent events" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Move Status banner" })).toBeNull();
     // Health is alone in its row now.
     expect(screen.queryByRole("button", { name: "Move Health summary" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Health summary settings" }));
+    let dialog = await screen.findByRole("dialog", { name: "Health summary settings" });
+    expect(within(dialog).queryByRole("button", { name: /^Move/ })).toBeNull();
+    await userEvent.keyboard("{Escape}");
+    // In a stack: only its column's moves.
     await userEvent.click(screen.getByRole("button", { name: "Recent events settings" }));
-    const dialog = await screen.findByRole("dialog", { name: "Recent events settings" });
+    dialog = await screen.findByRole("dialog", { name: "Recent events settings" });
     expect(within(dialog).queryByRole("button", { name: "Move left" })).toBeNull();
     expect(within(dialog).queryByRole("button", { name: "Move right" })).toBeNull();
     expect(screen.getByRole("button", { name: "Move Last run" })).toBeInTheDocument();
+  });
+
+  it("a stack in a row moves as one: its top widget's handle (Alt+Arrow, drag) and every member's cog move the column", async () => {
+    const { server } = renderRows();
+    await ready();
+    // One handle for the column, on its top widget.
+    const handle = screen.getByRole("button", { name: "Move Recent events column" });
+    expect(screen.queryByRole("button", { name: /^Move Speed test/ })).toBeNull();
+    handle.focus();
+    await userEvent.keyboard("{Alt>}{ArrowLeft}{/Alt}");
+    expect(titles(rowOf("Last run"))).toEqual(["Last run", "Recent events", "Speed test", "Network traffic"]);
+    expect(screen.getByRole("button", { name: "Move Recent events column" })).toHaveFocus();
+    expect(document.querySelector("[data-wg-announcer]")).toHaveTextContent("Recent events column moved to position 2 of 3");
+    await userEvent.click(screen.getByRole("button", { name: "Speed test settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Speed test settings" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Move column left" }));
+    expect(titles(rowOf("Last run"))).toEqual(["Recent events", "Speed test", "Last run", "Network traffic"]);
+    expect(within(dialog).getByRole("button", { name: "Move column left" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Move column right" })).toBeEnabled();
+    await userEvent.keyboard("{Escape}");
+    // Dragged by its handle onto Network traffic: the column takes traffic's place.
+    const dt = transfer({});
+    fireEvent.dragStart(screen.getByRole("button", { name: "Move Recent events column" }), { dataTransfer: dt });
+    fireEvent.drop(region("Network traffic"), { dataTransfer: dt });
+    expect(titles(rowOf("Last run"))).toEqual(["Last run", "Network traffic", "Recent events", "Speed test"]);
+    await waitFor(() => expect(server.puts.at(-1)?.body.prefs).toEqual({}));
+  });
+
+  it("in a variant arrangement a widget moved into a stack has no handle of its own and its cog moves the stack", async () => {
+    // Overview during a run: the run widens over traffic's slot and traffic joins the side stack.
+    const server = prefsServer({});
+    renderWithProviders(
+      <WidgetArrangement page="overview" rows={{ r3: [{ widget: "overview.run", weight: 86 }, { stack: "side", weight: 32, widgets: ["overview.events", "overview.traffic"] }] }}>
+        <Ready />
+        <WidgetRow page="overview" row="r3" className="ov-row ov-row--3">
+          {{
+            "overview.run": <Widget id="overview.run">{panel("Last run")}</Widget>,
+            side: (
+              <WidgetStack page="overview" stack="side" className="ov-side">
+                {{
+                  "overview.events": <Widget id="overview.events">{panel("Recent events")}</Widget>,
+                  "overview.traffic": <Widget id="overview.traffic">{panel("Network traffic")}</Widget>,
+                }}
+              </WidgetStack>
+            ),
+          }}
+        </WidgetRow>
+      </WidgetArrangement>,
+      { routes: server.routes },
+    );
+    await ready();
+    expect(titles(rowOf("Last run"))).toEqual(["Last run", "Recent events", "Network traffic"]);
+    expect(screen.queryByRole("button", { name: /^Move Network traffic/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Move Recent events column" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Network traffic settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Network traffic settings" });
+    expect(within(dialog).queryByRole("button", { name: "Move left" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Move column right" })).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Move column left" }));
+    expect(titles(rowOf("Last run"))).toEqual(["Recent events", "Network traffic", "Last run"]);
+    // Saved as an order of the whole declared row: traffic keeps its place there.
+    await waitFor(() => expect(server.puts).toHaveLength(1));
+    expect(server.puts[0]!.body.prefs).toEqual({ layout: { order: { r3: ["side", "overview.traffic", "overview.run"] } } });
   });
 });
 
