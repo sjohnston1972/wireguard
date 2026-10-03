@@ -168,8 +168,8 @@ describe("Overview widget settings: thresholds", () => {
       const tile = within(await region("Key metrics")).getByRole("group", { name: "Availability" });
       await waitFor(() => expect(tile).toHaveTextContent(`${pct.toFixed(1)}%`));
       expect(ringStroke(tile)).toBe(stroke);
-      if (word) expect(tile.querySelector(".ov-tile__word")).toHaveTextContent(new RegExp(`^${word}$`));
-      else expect(tile.querySelector(".ov-tile__word")).toBeNull();
+      if (word) expect(tile.querySelector(".tile__value .ov-tile__word")).toHaveTextContent(new RegExp(`^${word}$`));
+      else expect(tile.querySelector(".tile__value .ov-tile__word")).toBeNull();
       r.unmount();
     }
     // Moved cut-offs: 96% is fine above a warn of 95.
@@ -210,8 +210,8 @@ describe("Overview widget settings: thresholds", () => {
       const tile = within(await region("Key metrics")).getByRole("group", { name: "Latency (avg)" });
       await waitFor(() => expect(tile.querySelector(`.tile__icon--${tone}`)).not.toBeNull());
       expect(tile).toHaveTextContent("28 ms");
-      if (word) expect(tile.querySelector(".ov-tile__word")).toHaveTextContent(new RegExp(`^${word}$`));
-      else expect(tile.querySelector(".ov-tile__word")).toBeNull();
+      if (word) expect(tile.querySelector(".tile__value .ov-tile__word")).toHaveTextContent(new RegExp(`^${word}$`));
+      else expect(tile.querySelector(".tile__value .ov-tile__word")).toBeNull();
       r.unmount();
     }
   });
@@ -282,7 +282,7 @@ describe("Overview widget settings: display", () => {
   it("a threshold word stays when sub-lines are off", async () => {
     renderApp("/", { routes: prefsRoutes(overview("running"), saved(KM, { subLines: false }), { "GET /api/v1/history": history(85) }) });
     const tile = within(await region("Key metrics")).getByRole("group", { name: "Availability" });
-    await waitFor(() => expect(tile.querySelector(".ov-tile__word")).toHaveTextContent("Very low"));
+    await waitFor(() => expect(tile.querySelector(".tile__value .ov-tile__word")).toHaveTextContent("Very low"));
     expect(tile).not.toHaveTextContent("last hour");
   });
 

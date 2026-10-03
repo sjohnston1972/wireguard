@@ -29,22 +29,24 @@ function Sub({ children }: { children: ReactNode }) {
   return <span className="ov-tile__sub">{children}</span>;
 }
 
-/** A threshold's word, in the threshold's colour, for the start of a tile's sub-line (none when all is well). */
-function wordFor(level: Level, direction: "above" | "below"): ReactNode | undefined {
+/**
+ * A figure with its threshold's word beside it, in the threshold's colour
+ * (just the figure when all is well). Beside the value, not in the sub-line,
+ * so the word shows wherever the colour does: short windows hide sub-lines.
+ */
+function withWord(value: string | null, level: Level, direction: "above" | "below"): ReactNode {
   const word = levelWord(level, direction);
-  return word && level ? <span className={cx("ov-tile__word", `ov-tile__word--${LEVEL_TONE[level]}`)}>{word}</span> : undefined;
+  if (value === null || !word || !level) return value;
+  return (
+    <>
+      {value} <span className={cx("ov-tile__word", `ov-tile__word--${LEVEL_TONE[level]}`)}>{word}</span>
+    </>
+  );
 }
 
-/** A tile's sub-line: the threshold's word (always kept) and the text (only with Sub-lines on). */
-function subLine(on: boolean, text: ReactNode, word?: ReactNode): ReactNode {
-  if (!on) return word ? <Sub>{word}</Sub> : undefined;
-  return (
-    <Sub>
-      {word}
-      {word ? " · " : null}
-      {text}
-    </Sub>
-  );
+/** A tile's sub-line, or none with Sub-lines off. */
+function subLine(on: boolean, text: ReactNode): ReactNode {
+  return on ? <Sub>{text}</Sub> : undefined;
 }
 
 type TileKey = "endpoint" | "clients" | "latency" | "dns" | "heartbeat" | "sessionCost" | "availability";
@@ -138,10 +140,10 @@ export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
           tone={latTone}
           valueTone={latLevel === "warn" || latLevel === "bad"}
           label="Latency (avg)"
-          value={lat === null ? null : `${lat} ms`}
+          value={withWord(lat === null ? null : `${lat} ms`, latLevel, "above")}
           spark={charts && latSpark.length > 1 ? latSpark : undefined}
           sparkTone={latLevel === "warn" || latLevel === "bad" ? latTone : "green"}
-          sub={subLine(subs, running ? `live · ${Object.keys(s.latency).length} clients` : "VM not running", wordFor(latLevel, "above"))}
+          sub={subLine(subs, running ? `live · ${Object.keys(s.latency).length} clients` : "VM not running")}
         />
       ),
     },
@@ -154,9 +156,9 @@ export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
         <Tile
           tone={availLevel === null ? "grey" : LEVEL_TONE[availLevel]}
           label="Availability"
-          value={avail === null ? null : `${avail === 100 ? 100 : avail.toFixed(1)}%`}
+          value={withWord(avail === null ? null : `${avail === 100 ? 100 : avail.toFixed(1)}%`, availLevel, "below")}
           ring={charts ? { value: avail } : undefined}
-          sub={subLine(subs, avail === null ? `heartbeats · ${hist.isLoading || hist.isError ? histWord : availWord}` : availWord, wordFor(availLevel, "below"))}
+          sub={subLine(subs, avail === null ? `heartbeats · ${hist.isLoading || hist.isError ? histWord : availWord}` : availWord)}
         />
       ),
     },
