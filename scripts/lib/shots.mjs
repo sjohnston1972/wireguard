@@ -124,6 +124,7 @@ export function parseArgs(argv) {
     settle: 1500,
     port: 0,
     freezeTime: false,
+    now: null,
     widgetChrome: "on",
     prefs: [],
   };
@@ -179,6 +180,12 @@ export function parseArgs(argv) {
       case "--freeze-time":
         o.freezeTime = true;
         break;
+      case "--now": {
+        const ms = Date.parse(need(i++, a));
+        if (!Number.isFinite(ms)) throw new Error("--now is an ISO time, for example 2026-10-02T14:00:00Z");
+        o.now = new Date(ms).toISOString();
+        break;
+      }
       case "--widget-chrome":
         o.widgetChrome = need(i++, a);
         if (o.widgetChrome !== "on" && o.widgetChrome !== "off") throw new Error("--widget-chrome is on or off");
@@ -193,8 +200,18 @@ export function parseArgs(argv) {
   if (!Number.isFinite(o.settle) || o.settle < 0) throw new Error("--settle is a number of milliseconds");
   // The frozen time is the seeded story's "now", so there has to be a story.
   if (o.freezeTime && !o.scenario) throw new Error("--freeze-time needs --scenario (the browser's clock is pinned to the seeded time)");
+  // A frozen run seeds the same moment every time, so runs taken days apart still compare pixel for pixel.
+  if (o.freezeTime && !o.now) o.now = FROZEN_NOW;
   return o;
 }
+
+/**
+ * The moment a --freeze-time run seeds its story at (unless --now says
+ * otherwise). The seeder also stops the dev Worker's clock there, and the
+ * browser's clock is pinned to it, so every age and clock on screen is the
+ * same on every run.
+ */
+export const FROZEN_NOW = "2026-10-02T14:00:00.000Z";
 
 // ── Widgets: a frozen clock, hidden widget chrome, saved preferences ──────
 

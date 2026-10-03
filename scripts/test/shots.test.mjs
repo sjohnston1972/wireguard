@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { parseArgs, buildPlan, SIZES, ROUTES, shotName, isOneScreenSize, measureOverflow, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, freezeTimeScript, WIDGET_CHROME_OFF_CSS, widgetChromeOffScript, prefsPuts } from "../lib/shots.mjs";
+import { parseArgs, buildPlan, SIZES, ROUTES, shotName, isOneScreenSize, measureOverflow, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, freezeTimeScript, WIDGET_CHROME_OFF_CSS, widgetChromeOffScript, prefsPuts, FROZEN_NOW } from "../lib/shots.mjs";
 
 const script = fileURLToPath(new URL("../shots.mjs", import.meta.url));
 
@@ -208,6 +208,32 @@ test("parseArgs: --freeze-time, --widget-chrome off, --prefs a.json,b.json", () 
   assert.throws(() => parseArgs(["--widget-chrome", "hidden"]), /--widget-chrome is on or off/);
   assert.throws(() => parseArgs(["--prefs"]), /needs a value/);
   assert.throws(() => parseArgs(["--freeze-time"]), /--freeze-time needs --scenario/);
+  // Frozen runs seed the same story at the same moment every time, so two runs (days apart) compare equal.
+  assert.equal(o.now, FROZEN_NOW);
+  assert.equal(FROZEN_NOW, "2026-10-02T14:00:00.000Z");
+  assert.equal(d.now, null, "an ordinary run seeds at the real time");
+  assert.equal(parseArgs(["--scenario", "running", "--freeze-time", "--now", "2026-11-01T09:30:00Z"]).now, "2026-11-01T09:30:00.000Z");
+  assert.throws(() => parseArgs(["--now", "soon"]), /--now is an ISO time/);
+});
+
+test("a frozen run asks the seeder to stop the dev Worker's clock at the seeded time", async () => {
+  const { seed } = await import("../seed-scenarios.mjs");
+  const seen = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    seen.push({ url: String(url), method: init?.method });
+    return new Response(JSON.stringify({ ok: true, now: "2026-10-02T14:00:00.000Z" }), { status: 200 });
+  };
+  try {
+    await seed("http://localhost:8787", "running", "2026-10-02T14:00:00.000Z", true);
+    await seed("http://localhost:8787", "running");
+  } finally {
+    globalThis.fetch = real;
+  }
+  const q = (u) => Object.fromEntries(new URL(u).searchParams);
+  assert.deepEqual(q(seen[0].url), { scenario: "running", now: "2026-10-02T14:00:00.000Z", freeze: "1" });
+  assert.deepEqual(q(seen[1].url), { scenario: "running" });
+  assert.ok(seen.every((s) => s.method === "POST"));
 });
 
 test("buildPlan: --prefs is read and validated before the browser starts", () => {

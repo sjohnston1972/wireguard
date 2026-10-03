@@ -30,6 +30,7 @@ import { freshDrops, nextFirewall } from "./runs";
 import { effectiveConfig } from "./settings";
 import { compileFirewall } from "./firewall";
 import { budgetStatus } from "./budget";
+import { freezeDevClock } from "./devclock";
 
 export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month"] as const;
 export type Scenario = (typeof SCENARIOS)[number];
@@ -793,7 +794,7 @@ async function insertSpeedTests(env: Env, rng: Rng, now: number, recent: boolean
 // ── The route ─────────────────────────────────────────────────────────────
 
 /**
- * POST /__dev/seed?scenario=<name>[&now=<ISO time>]. A 404 (the same as any
+ * POST /__dev/seed?scenario=<name>[&now=<ISO time>][&freeze=1]. A 404 (the same as any
  * route that does not exist) unless the dev guard passes; only then are bad
  * input and results spoken about.
  */
@@ -802,7 +803,11 @@ export async function devSeed(c: Context<{ Bindings: Env }>): Promise<Response> 
   const name = c.req.query("scenario") ?? "";
   if (!(SCENARIOS as readonly string[]).includes(name)) return c.json({ ok: false, error: `scenario must be one of: ${SCENARIOS.join(", ")}`, scenarios: [...SCENARIOS] }, 400);
   const nowParam = c.req.query("now");
+  // The real clock first: a previous freeze=1 must not decide what "now" means.
+  freezeDevClock(null);
   const when = nowParam ? new Date(nowParam) : new Date();
   if (Number.isNaN(when.getTime())) return c.json({ ok: false, error: "now must be an ISO time", scenarios: [...SCENARIOS] }, 400);
+  // freeze=1 (npm run shots -- --freeze-time): this dev Worker's clock stands still at `when` until the next seed.
+  if (c.req.query("freeze") === "1") freezeDevClock(when.getTime());
   return c.json(await seedScenario(c.env, name as Scenario, when));
 }

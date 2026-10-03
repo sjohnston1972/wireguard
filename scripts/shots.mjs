@@ -19,7 +19,8 @@
 //   node scripts/shots.mjs --dry-run                 (list the shots, take none)
 //   options: --base URL --api URL --out DIR --routes /,/cost --sizes 1100x700 --themes dark
 //            --browser PATH --settle MS --json (with --dry-run)
-//   widgets: --freeze-time          pin the browser's clock to the seeded "now" (needs --scenario)
+//   widgets: --freeze-time          seed at a fixed moment (2026-10-02T14:00Z, or --now ISO) and stop
+//                                   both the dev Worker's clock and the browser's there (needs --scenario)
 //            --widget-chrome off    hide every cog, move handle and widget menu ([data-widget-chrome])
 //            --prefs a.json,b.json  save these widget preferences for dev@localhost before shooting
 //                                   (each file: {"<page>": <PagePrefs>}; see scripts/shots-prefs/)
@@ -212,9 +213,9 @@ async function main() {
   let seededNow = null;
   if (opts.scenario) {
     try {
-      const r = await seed(opts.api, opts.scenario);
+      const r = await seed(opts.api, opts.scenario, opts.now ?? undefined, opts.freezeTime);
       seededNow = r.now;
-      console.log(`Seeded "${opts.scenario}" at ${r.now}`);
+      console.log(`Seeded "${opts.scenario}" at ${r.now}${opts.freezeTime ? " (the dev Worker's clock now stands still there until the next seed)" : ""}`);
     } catch (e) {
       console.error(e.message);
       return 3;
