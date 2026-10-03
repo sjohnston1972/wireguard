@@ -240,8 +240,22 @@ export function FirewallPage() {
     sim: { value: "sim", label: "Test", content: <SimulatorForm ref={simRef} fw={data} /> },
   };
 
+  // One widget left in the tabbed column: no lone tab, its own panel instead.
+  const LONE: Record<RightTab, ReactNode> = {
+    drops: <DropsPanel fw={data} updatedAt={fw.dataUpdatedAt} />,
+    ports: <PortsPanel ref={portsAddRef} fw={data} onAdd={addForward} onEdit={editForward} />,
+    capture: <CapturePanel ref={captureRef} fw={data} />,
+    zones: <ZonesPanel fw={data} rows={rows} selected={filter.zone} onSelect={(z) => setFilter((f) => ({ ...f, zone: z }))} />,
+    sim: <SimulatorPanel ref={simRef} fw={data} />,
+  };
+  const lone = tabbed && tabs.length === 1 ? tabs[0]! : null;
+
   const right =
-    tabs.length === 0 ? null : tabbed && current ? (
+    tabs.length === 0 ? null : lone ? (
+      <Widget id={TAB_WIDGET[lone]} stackHandle>
+        {LONE[lone]}
+      </Widget>
+    ) : tabbed && current ? (
       // One panel for several widgets: its corner cog belongs to the tab shown, and it carries its column's move handle.
       <Widget id={TAB_WIDGET[current]} headerless stackHandle>
         <Panel className="fw-righttabs" bodyClassName="fw-righttabs__body">
@@ -302,7 +316,7 @@ export function FirewallPage() {
     </div>
   );
   const rightCol = right && (
-    <div key="right" className={cx("fw__right", !tabbed && hidden.drops && "fw__right--no-drops")}>
+    <div key="right" className={cx("fw__right", !tabbed && hidden.drops && "fw__right--no-drops", lone && "fw__right--lone")}>
       {right}
     </div>
   );

@@ -42,6 +42,10 @@
   min-height: 0;
 }
 .fw__right > * { min-height: 0; }
+/* The tabbed column down to one widget: that widget's own panel, the column's full height. */
+.fw__right--lone > * { flex: 1 1 0; max-height: none; }
+/* (the narrow column: the simulator's Live rules / Draft switch a little tighter, so its header fits with the cog) */
+.fw__right--lone .fw-sim-panel .panel__actions .segmented__item { padding: 0 8px; }
 .fw__right > .fw-drops-panel { flex: 1 1 0; min-height: 120px; }
 .fw__right > .fw-ports-panel { flex: 0 1 auto; max-height: 26%; }
 /* the capture form keeps its height (Start button included); the drops list gives way */
