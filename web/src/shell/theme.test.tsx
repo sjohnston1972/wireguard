@@ -44,7 +44,9 @@ describe("theme", () => {
   it("switching from the account menu updates the top-bar toggle (one shared theme)", async () => {
     document.documentElement.setAttribute("data-theme", "dark");
     const user = userEvent.setup();
-    renderApp("/");
+    // The theme lives in the shell: a page with nothing in it keeps the test about the shell
+    // (the Overview, re-rendering as its queries land, made every click slow under load).
+    renderApp("/nowhere");
     const bar = screen.getAllByRole("banner")[0];
     expect(within(bar).getByRole("button", { name: "Switch to light theme" })).toBeInTheDocument();
     await user.click(await within(bar).findByRole("button", { name: /Account menu/ }));

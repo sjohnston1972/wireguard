@@ -32,6 +32,11 @@ describe("view folders", () => {
     expect(main).toHaveTextContent("Built in plan 4");
   });
 
+  // Every real route renders a whole view in the shell, as the view folders' own suites do, so these
+  // take their limit (20 s), not Vitest's 5 s: with the whole suite running in parallel /firewall took
+  // 1.8 s and /firewall/rules/7 1.9 s, and heavier load (other suites at the same time) passed 5 s.
+  const WHOLE_VIEW_MS = 20_000;
+
   // Every real route shows its view, never the placeholder (default fixtures: a running session).
   it.each([
     ["/", "Overview"],
@@ -47,7 +52,7 @@ describe("view folders", () => {
     const main = screen.getByRole("main");
     expect(await within(main).findByRole("heading", { level: 1, name: title })).toBeInTheDocument();
     expect(main).not.toHaveTextContent("Built in plan 4");
-  });
+  }, WHOLE_VIEW_MS);
 
   // These two open a modal drawer over their page, which hides the page from the accessibility tree.
   it.each([
@@ -59,5 +64,5 @@ describe("view folders", () => {
     const main = screen.getByRole("main", { hidden: true });
     expect(within(main).getByRole("heading", { level: 1, name: title, hidden: true })).toBeInTheDocument();
     expect(main).not.toHaveTextContent("Built in plan 4");
-  });
+  }, WHOLE_VIEW_MS);
 });
