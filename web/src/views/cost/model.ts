@@ -149,13 +149,28 @@ export const TYPE_LABEL: Record<"compute" | "network" | "disk" | "other", string
 
 export type Level = "ok" | "warn" | "bad";
 
+export interface ForecastPill {
+  /** The pill's colour: "plain" is over the budget but below every cutoff the user set. */
+  tone: "good" | "warn" | "bad" | "plain";
+  text: "On track" | "Near budget" | "Over budget";
+}
+
 /**
- * The forecast as a share of the budget, as a tone; null with no projection or
- * no budget. Today's pill says "Over budget" only when the projection is above
- * the budget, so exactly 100 % stays on track.
+ * The Forecast vs budget pill; null with no projection or no budget.
+ *
+ * The words tell the truth: "Over budget" exactly when the projection is above
+ * the budget (compared unrounded, so 100.004 % is over and exactly 100 % is
+ * not), "On track" otherwise. The thresholds set only the colour, and below
+ * the budget a cutoff that is reached says "Near budget". So with today's
+ * default (bad 100 %) the pill is today's: green On track, red Over budget.
  */
-export function forecastLevel(projectionGbp: number | null | undefined, budgetGbp: number, thr: { warn: number | null; bad: number | null }): Level | null {
-  if (projectionGbp === null || projectionGbp === undefined || !(budgetGbp > 0)) return null;
-  const pct = Math.round((projectionGbp / budgetGbp) * 10000) / 100;
-  return thresholdTone(pct, pct === 100 && thr.bad === 100 ? { warn: thr.warn, bad: null } : thr, "above");
+export function forecastPill(projectionGbp: number | null | undefined, budgetGbp: number, thr: { warn: number | null; bad: number | null }): ForecastPill | null {
+  if (projectionGbp === null || projectionGbp === undefined || !Number.isFinite(projectionGbp) || !(budgetGbp > 0)) return null;
+  const over = projectionGbp > budgetGbp;
+  const pct = (projectionGbp / budgetGbp) * 100;
+  // Exactly on the budget is not over it: a bad cutoff of 100 % or more does not fire there.
+  const tone = thresholdTone(pct, !over && thr.bad !== null && thr.bad >= 100 ? { warn: thr.warn, bad: null } : thr, "above") ?? "ok";
+  if (over) return { tone: tone === "ok" ? "plain" : tone, text: "Over budget" };
+  if (tone === "ok") return { tone: "good", text: "On track" };
+  return { tone, text: "Near budget" };
 }

@@ -11,6 +11,7 @@ import { renderApp } from "@/test/render";
 import { prefsServer } from "@/test/fixtures";
 import { setViewport } from "@/test/viewport";
 import { costFixture } from "./testData";
+import { forecastPill } from "./model";
 
 afterEach(() => {
   try {
@@ -232,12 +233,45 @@ describe("Cost widgets: thresholds and display", () => {
     const warn = page(saved({ "cost.forecast": { forecast: { warn: 90, bad: 100 } } }));
     await waitFor(async () => expect((await region("Forecast vs budget")).getByText("Near budget")).toBeInTheDocument());
     warn.unmount();
+    // 93 % is under the budget: the bad cutoff turns it red, but it is still Near budget, not Over.
     const bad = page(saved({ "cost.forecast": { forecast: { warn: 90, bad: 93 } } }));
-    await waitFor(async () => expect((await region("Forecast vs budget")).getByText("Over budget")).toBeInTheDocument());
+    await waitFor(async () => expect((await region("Forecast vs budget")).getByText("Near budget")).toHaveClass("cost-pill--bad"));
     bad.unmount();
     // exactly on the budget is still on track, as today
     page({}, costFixture({ projection: { gbp: 10, basis: "x" } }));
     expect((await region("Forecast vs budget")).getByText("On track")).toBeInTheDocument();
+  });
+
+  it("forecast pill: Over budget / On track follow projection > budget (unrounded); thresholds set only the tone and Near budget", () => {
+    const pill = (gbp: number, warn: number | null, bad: number | null) => forecastPill(gbp, 10, { warn, bad });
+    // Defaults (bad 100): today's pill.
+    expect(pill(9.3, null, 100)).toEqual({ tone: "good", text: "On track" });
+    expect(pill(10, null, 100)).toEqual({ tone: "good", text: "On track" });
+    expect(pill(12, null, 100)).toEqual({ tone: "bad", text: "Over budget" });
+    // 100.004 % is over, though it rounds to 100.00 %.
+    expect(pill(10.0004, null, 100)).toEqual({ tone: "bad", text: "Over budget" });
+    // Threshold off: still the truth in words, no colour.
+    expect(pill(12, null, null)).toEqual({ tone: "plain", text: "Over budget" });
+    expect(pill(9.99, null, null)).toEqual({ tone: "good", text: "On track" });
+    // bad 150: 120 % is over the budget, not yet red.
+    expect(pill(12, null, 150)).toEqual({ tone: "plain", text: "Over budget" });
+    expect(pill(12, 110, 150)).toEqual({ tone: "warn", text: "Over budget" });
+    expect(pill(15, 110, 150)).toEqual({ tone: "bad", text: "Over budget" });
+    // Under the budget the cutoffs give Near budget, never Over.
+    expect(pill(9.3, 90, 100)).toEqual({ tone: "warn", text: "Near budget" });
+    expect(pill(9.3, 90, 93)).toEqual({ tone: "bad", text: "Near budget" });
+    expect(pill(8.9, 90, 93)).toEqual({ tone: "good", text: "On track" });
+    // No projection or no budget: no pill.
+    expect(forecastPill(null, 10, { warn: null, bad: 100 })).toBeNull();
+    expect(forecastPill(5, 0, { warn: null, bad: 100 })).toBeNull();
+  });
+
+  it("forecast pill at 100.004 % says Over budget, and with bad 150 at 120 % still says Over budget", async () => {
+    const r1 = page({}, costFixture({ projection: { gbp: 10.0004, basis: "x" } }));
+    await waitFor(async () => expect((await region("Forecast vs budget")).getByText("Over budget")).toHaveClass("cost-pill--bad"));
+    r1.unmount();
+    page(saved({ "cost.forecast": { forecast: { warn: null, bad: 150 } } }), costFixture({ projection: { gbp: 12, basis: "x" } }));
+    await waitFor(async () => expect((await region("Forecast vs budget")).getByText("Over budget")).toHaveClass("cost-pill--plain"));
   });
 
   it("forecast month-so-far chart off", async () => {

@@ -2,7 +2,7 @@ import type { CostResponse } from "@shared/api";
 import { thresholdTone, type Threshold } from "@shared/widgets";
 import { BarChart, DataAge, Donut, EmptyState, Panel, SegmentedControl, type DonutSegment, type Tone } from "@/components";
 import { useStarting, useWidget } from "@/widgets";
-import { cumulativeSeries, dayLabel, forecastLevel, gbp, pctText, spendSeries, startedLabel, TYPE_LABEL } from "./model";
+import { cumulativeSeries, dayLabel, forecastPill, gbp, pctText, spendSeries, startedLabel, TYPE_LABEL } from "./model";
 import { FillHeight } from "./FillHeight";
 
 const COLOURS: Tone[] = ["blue", "purple", "green", "amber"];
@@ -83,14 +83,13 @@ export function ForecastPanel({ cost, height }: { cost: CostResponse; height?: n
   const { settings } = useWidget("cost.forecast");
   const { projection, budget } = cost;
   const series = cumulativeSeries(cost);
-  const level = forecastLevel(projection?.gbp, budget.budget, settings.forecast as Threshold);
-  const pill = level === "bad" ? { cls: "bad", text: "Over budget" } : level === "warn" ? { cls: "warn", text: "Near budget" } : level === "ok" ? { cls: "good", text: "On track" } : null;
+  const pill = forecastPill(projection?.gbp, budget.budget, settings.forecast as Threshold);
   return (
     <Panel
       title="Forecast vs budget"
       className="cost-panel"
       bodyClassName="cost-panel__body"
-      status={pill ? <span className={`cost-pill cost-pill--${pill.cls}`}>{pill.text}</span> : undefined}
+      status={pill ? <span className={`cost-pill cost-pill--${pill.tone}`}>{pill.text}</span> : undefined}
     >
       <dl className="cost-pair">
         <div>
