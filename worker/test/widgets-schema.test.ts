@@ -28,6 +28,9 @@ import {
   type WidgetDef,
 } from "../../shared/widgets";
 import type { PagePrefs } from "../../shared/api";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { AUDIT_KINDS, type EventType } from "../src/activity";
 import { CAPTURE_IFACES } from "../src/firewall";
 
@@ -59,6 +62,19 @@ describe("the catalogue (spec section 8)", () => {
     expect(normalisePagePrefs("cost", { widgets: { "cost.breakdown": { v: 1, s: { percentages: false } } } })).toEqual({});
     expect(normalisePagePrefs("cost", { widgets: { "cost.breakdown": { v: 2, s: { percentages: false } } } })).toEqual({ widgets: { "cost.breakdown": { v: 2, s: { percentages: false } } } });
     expect(validatePagePrefs("cost", { widgets: { "cost.breakdown": { v: 1, s: { groupBy: "region" } } } })).toMatchObject({ field: "widgets.cost.breakdown.v", outdated: true });
+  });
+
+  it("every shots prefs fixture (scripts/shots-prefs) is valid for the current schema", () => {
+    const dir = fileURLToPath(new URL("../../scripts/shots-prefs/", import.meta.url));
+    const files = readdirSync(dir).filter((f) => f.endsWith(".json"));
+    expect(files.length).toBeGreaterThanOrEqual(10);
+    for (const f of files) {
+      const all = JSON.parse(readFileSync(join(dir, f), "utf8")) as Record<string, PagePrefs>;
+      for (const [page, prefs] of Object.entries(all)) {
+        expect(PAGE_IDS, `${f}: ${page}`).toContain(page);
+        expect(validatePagePrefs(page as PageId, prefs), `${f}: ${page}`).toBeNull();
+      }
+    }
   });
 
   it("money thresholds step in pennies: a session's cost (Cost per session, Overview's cost impact) takes £0.07", () => {
