@@ -1,9 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Coins, Globe, HeartPulse, ShieldCheck, TrendingUp, Users } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
 import { CopyButton, DataAge, MetricTile, Panel, SegmentedControl, cx, type MetricTileProps } from "@/components";
 import { useCost, useHistory } from "@/api/queries";
+import { useWidget } from "@/widgets";
 import { RANGE_WORD, ageOf, gbp, historyRange, latencyNow, latencySeries, peak, type MetricRange } from "./model";
+import { LEVEL_TONE, levelOf, levelWord, thresholdOn, useStarting, type Level } from "./widgetSettings";
 import "./KeyMetrics.css";
 
 const RANGES: { value: MetricRange; label: string; dot?: "green" }[] = [
@@ -27,8 +29,31 @@ function Sub({ children }: { children: ReactNode }) {
   return <span className="ov-tile__sub">{children}</span>;
 }
 
+/** A threshold's word, in the threshold's colour, for the start of a tile's sub-line (none when all is well). */
+function wordFor(level: Level, direction: "above" | "below"): ReactNode | undefined {
+  const word = levelWord(level, direction);
+  return word && level ? <span className={cx("ov-tile__word", `ov-tile__word--${LEVEL_TONE[level]}`)}>{word}</span> : undefined;
+}
+
+/** A tile's sub-line: the threshold's word (always kept) and the text (only with Sub-lines on). */
+function subLine(on: boolean, text: ReactNode, word?: ReactNode): ReactNode {
+  if (!on) return word ? <Sub>{word}</Sub> : undefined;
+  return (
+    <Sub>
+      {word}
+      {word ? " · " : null}
+      {text}
+    </Sub>
+  );
+}
+
+type TileKey = "endpoint" | "clients" | "latency" | "dns" | "heartbeat" | "sessionCost" | "availability";
+
 export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
-  const [range, setRange] = useState<MetricRange>("live");
+  const { settings: st } = useWidget("overview.keyMetrics");
+  const [range, setRange] = useStarting(st.range as MetricRange);
+  const charts = st.charts as boolean;
+  const subs = st.subLines as boolean;
   const hist = useHistory({ scope: "vm", range: historyRange(range) });
   const cost = useCost("month");
   const s = o.snapshot;
@@ -53,10 +78,14 @@ export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
   }
 
   // Latency: the VM keeps recent round-trip times per client, not per range.
+  // Its threshold is off unless set; then the tile takes its colour and word.
   const lat = running ? latencyNow(s.latency) : null;
   const latSpark = running ? latencySeries(s.latency) : [];
+  const latLevel = thresholdOn(st.latency) ? levelOf(lat, st.latency, "above") : null;
+  const latTone = latLevel ? LEVEL_TONE[latLevel] : undefined;
 
-  // Tunnel DNS: the heartbeat's answer now, or how often it was up in the range.
+  // Tunnel DNS: the heartbeat's answer now, or how often it was up in the range
+  // (coloured by the DNS up threshold; the value "Up N%" is the word).
   let dns: { value: string | null; tone: "green" | "amber" | "red" | "grey"; sub: string };
   if (live) {
     const up = running ? s.agent?.dns?.up : undefined;
@@ -66,7 +95,8 @@ export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
     if (!vals.length) dns = { value: null, tone: "grey", sub: `tunnel DNS · ${histWord}` };
     else {
       const pct = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100);
-      dns = pct === 100 ? { value: "Healthy", tone: "green", sub: `up all the time · ${word}` } : { value: `Up ${pct}%`, tone: "amber", sub: `tunnel DNS · ${word}` };
+      const tone = LEVEL_TONE[levelOf(pct, st.dnsUp, "below") ?? "ok"];
+      dns = pct === 100 ? { value: "Healthy", tone, sub: `up all the time · ${word}` } : { value: `Up ${pct}%`, tone, sub: `tunnel DNS · ${word}` };
     }
   }
 
@@ -84,6 +114,57 @@ export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
   const avail = hist.data?.availability.pct ?? null;
   // "Live" reads the last hour of heartbeats for availability.
   const availWord = live ? RANGE_WORD["1h"] : word;
+  const availLevel = levelOf(avail, st.availability, "below");
+
+  const tiles: { key: TileKey; node: ReactNode }[] = [
+    {
+      key: "endpoint",
+      node: (
+        <Tile
+          icon={<Globe size={26} />}
+          label="Public endpoint"
+          value={o.config.dnsName ? <span className="mono ov-tile__mono">{o.config.dnsName}</span> : null}
+          sub={subLine(subs, d.dnsParked ? "parked, nothing running" : s.public_ip ? <span className="mono">{s.public_ip}</span> : "not deployed")}
+          action={o.config.dnsName ? <CopyButton text={o.config.dnsName} label="Copy public endpoint" /> : undefined}
+        />
+      ),
+    },
+    { key: "clients", node: <Tile icon={<Users size={26} />} label="Connected clients" value={clients.value} progress={charts && clients.value ? { value: clients.pct, tone: "green" } : undefined} sub={subLine(subs, clients.sub)} /> },
+    {
+      key: "latency",
+      node: (
+        <Tile
+          icon={<TrendingUp size={26} />}
+          tone={latTone}
+          valueTone={latLevel === "warn" || latLevel === "bad"}
+          label="Latency (avg)"
+          value={lat === null ? null : `${lat} ms`}
+          spark={charts && latSpark.length > 1 ? latSpark : undefined}
+          sparkTone={latLevel === "warn" || latLevel === "bad" ? latTone : "green"}
+          sub={subLine(subs, running ? `live · ${Object.keys(s.latency).length} clients` : "VM not running", wordFor(latLevel, "above"))}
+        />
+      ),
+    },
+    { key: "dns", node: <Tile icon={<ShieldCheck size={26} />} tone={dns.tone} label="DNS status" value={dns.value} valueTone sub={subLine(subs, dns.sub)} /> },
+    { key: "heartbeat", node: <Tile icon={<HeartPulse size={26} />} tone={beat.tone} label="Heartbeat (VM)" value={beat.value} valueTone sub={subLine(subs, beat.sub)} className="ov-tile--beat" /> },
+    { key: "sessionCost", node: <Tile icon={<Coins size={26} />} tone="blue" label="Session cost" value={session === null ? null : gbp(session)} sub={subLine(subs, session === null ? (running ? "estimate not ready" : "nothing running") : "this session, estimate")} /> },
+    {
+      key: "availability",
+      node: (
+        <Tile
+          tone={availLevel === null ? "grey" : LEVEL_TONE[availLevel]}
+          label="Availability"
+          value={avail === null ? null : `${avail === 100 ? 100 : avail.toFixed(1)}%`}
+          ring={charts ? { value: avail } : undefined}
+          sub={subLine(subs, avail === null ? `heartbeats · ${hist.isLoading || hist.isError ? histWord : availWord}` : availWord, wordFor(availLevel, "below"))}
+        />
+      ),
+    },
+  ];
+  const shown = tiles.filter((t) => (st.tiles as string[]).includes(t.key));
+  // Two rows as today (three over four); fewer tiles flow into the same two rows, one tile is one row.
+  const split = Math.floor(shown.length / 2);
+  const rows = split ? [shown.slice(0, split), shown.slice(split)] : [shown];
 
   return (
     <Panel
@@ -94,23 +175,13 @@ export function KeyMetrics({ o, now }: { o: OverviewResponse; now: number }) {
       actions={<SegmentedControl aria-label="Metrics range" items={RANGES} value={range} onChange={(v) => setRange(v as MetricRange)} />}
     >
       <div className="ov-tiles" data-testid="ov-tiles" data-stale={stale ? "true" : "false"}>
-        <div className="ov-tiles__row ov-tiles__row--3">
-          <Tile
-            icon={<Globe size={26} />}
-            label="Public endpoint"
-            value={o.config.dnsName ? <span className="mono ov-tile__mono">{o.config.dnsName}</span> : null}
-            sub={<Sub>{d.dnsParked ? "parked, nothing running" : s.public_ip ? <span className="mono">{s.public_ip}</span> : "not deployed"}</Sub>}
-            action={o.config.dnsName ? <CopyButton text={o.config.dnsName} label="Copy public endpoint" /> : undefined}
-          />
-          <Tile icon={<Users size={26} />} label="Connected clients" value={clients.value} progress={clients.value ? { value: clients.pct, tone: "green" } : undefined} sub={<Sub>{clients.sub}</Sub>} />
-          <Tile icon={<TrendingUp size={26} />} label="Latency (avg)" value={lat === null ? null : `${lat} ms`} spark={latSpark.length > 1 ? latSpark : undefined} sparkTone="green" sub={<Sub>{running ? `live · ${Object.keys(s.latency).length} clients` : "VM not running"}</Sub>} />
-        </div>
-        <div className="ov-tiles__row ov-tiles__row--4">
-          <Tile icon={<ShieldCheck size={26} />} tone={dns.tone} label="DNS status" value={dns.value} valueTone sub={<Sub>{dns.sub}</Sub>} />
-          <Tile icon={<HeartPulse size={26} />} tone={beat.tone} label="Heartbeat (VM)" value={beat.value} valueTone sub={<Sub>{beat.sub}</Sub>} className="ov-tile--beat" />
-          <Tile icon={<Coins size={26} />} tone="blue" label="Session cost" value={session === null ? null : gbp(session)} sub={<Sub>{session === null ? (running ? "estimate not ready" : "nothing running") : "this session, estimate"}</Sub>} />
-          <Tile tone={avail === null ? "grey" : avail >= 99 ? "green" : avail >= 90 ? "amber" : "red"} label="Availability" value={avail === null ? null : `${avail === 100 ? 100 : avail.toFixed(1)}%`} ring={{ value: avail }} sub={<Sub>{avail === null ? `heartbeats · ${hist.isLoading || hist.isError ? histWord : availWord}` : availWord}</Sub>} />
-        </div>
+        {rows.map((row, i) => (
+          <div key={i} className={cx("ov-tiles__row", `ov-tiles__row--${row.length}`)}>
+            {row.map((t) => (
+              <Fragment key={t.key}>{t.node}</Fragment>
+            ))}
+          </div>
+        ))}
       </div>
     </Panel>
   );

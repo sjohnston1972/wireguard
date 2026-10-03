@@ -2,6 +2,7 @@ import { Clock, Gauge, Hourglass, MoveRight, PauseCircle, Play, Timer, Trash2 } 
 import { Link } from "react-router-dom";
 import type { OverviewResponse } from "@shared/api";
 import { Button, ProgressBar, cx } from "@/components";
+import { WidgetCorner, useWidget } from "@/widgets";
 import { DeployForm, actionAllowed, type ActionName } from "./actions";
 import { STATE_TONE, STATE_WORD, currentStep, failedStep, formatElapsed, formatSpan, hhmm, inGithubRun, isBusy, moveTargets, regionShort, stepProgress, usually } from "./model";
 import { useServerNow } from "./hooks";
@@ -19,7 +20,8 @@ export function StateMark({ state, size = 40 }: { state: OverviewResponse["snaps
   return <span className={cx("ov-mark", `ov-mark--${STATE_TONE[state]}`, isBusy(state) && "ov-mark--busy")} style={{ width: size, height: size }} aria-hidden />;
 }
 
-function subline(o: OverviewResponse, now: number): string {
+/** The line under the state word. `autoDestroy` false leaves the timer out (the Auto-destroy time setting). */
+function subline(o: OverviewResponse, now: number, autoDestroy = true): string {
   const s = o.snapshot;
   const step = currentStep(s.steps);
   switch (s.state) {
@@ -34,7 +36,8 @@ function subline(o: OverviewResponse, now: number): string {
     case "running": {
       const at = s.auto_destroy_at ? Date.parse(s.auto_destroy_at) - now : null;
       const timer = at === null ? "no timer set" : at > 0 ? `${o.config.expiryAction === "hibernate" ? "hibernates" : "tears down"} in ${formatSpan(at)}` : "timer due";
-      return `Up at ${o.config.dnsName || "its address"} in ${regionShort(s.region ?? o.config.region) || "Azure"} · ${timer}`;
+      const up = `Up at ${o.config.dnsName || "its address"} in ${regionShort(s.region ?? o.config.region) || "Azure"}`;
+      return autoDestroy ? `${up} · ${timer}` : up;
     }
     case "standby":
       return "Powered off; disk and address kept. Resume takes about a minute";
@@ -46,7 +49,7 @@ function subline(o: OverviewResponse, now: number): string {
 }
 
 /** The middle block: elapsed time and the usual duration (a run), or how long it has been in this state. */
-function Timing({ o, receivedAt }: { o: OverviewResponse; receivedAt: number }) {
+function Timing({ o, receivedAt, autoDestroy }: { o: OverviewResponse; receivedAt: number; autoDestroy: boolean }) {
   const now = useServerNow(o.now, receivedAt, 1000);
   const s = o.snapshot;
   const since = s.state === "running" ? s.running_since ?? s.since : s.state === "standby" ? s.standby_since ?? s.since : s.state === "hibernating" || s.state === "resuming" ? s.power_op_at ?? s.since : s.since;
@@ -56,7 +59,7 @@ function Timing({ o, receivedAt }: { o: OverviewResponse; receivedAt: number }) 
   const label = isBusy(s.state) ? "Elapsed time" : s.state === "running" ? "Up for" : s.state === "standby" ? "In standby for" : "Failed";
   const typical = s.state === "deploying" ? usually(o.typicalSeconds.deploy) : s.state === "destroying" ? usually(o.typicalSeconds.destroy) : null;
   let note: string | null = typical;
-  if (s.state === "running") note = s.auto_destroy_at ? `Auto-destroy at ${hhmm(s.auto_destroy_at)}` : "No auto-destroy timer";
+  if (s.state === "running") note = !autoDestroy ? null : s.auto_destroy_at ? `Auto-destroy at ${hhmm(s.auto_destroy_at)}` : "No auto-destroy timer";
   if (s.state === "failed") note = null;
   return (
     <div className="ov-banner__timing">
@@ -139,6 +142,8 @@ function Actions({ o, onAction }: { o: OverviewResponse; onAction: (a: ActionNam
 
 /** The full-width status banner: state, progress, timing and the state's actions. */
 export function StatusBanner({ o, now, receivedAt, onAction }: Props) {
+  const { settings: st } = useWidget("overview.status");
+  const autoDestroy = st.autoDestroy as boolean;
   const s = o.snapshot;
   const progress = inGithubRun(s.state) ? stepProgress(s.steps) : null;
   const failed = s.state === "failed" ? failedStep(s.steps) : null;
@@ -150,10 +155,10 @@ export function StatusBanner({ o, now, receivedAt, onAction }: Props) {
           <StateMark state={s.state} />
           <div className="ov-banner__words">
             <p className={cx("ov-banner__word", `ov-tone--${tone}`)}>{STATE_WORD[s.state]}</p>
-            <p className="ov-banner__sub">{subline(o, now)}</p>
+            <p className="ov-banner__sub">{subline(o, now, autoDestroy)}</p>
           </div>
         </div>
-        {inGithubRun(s.state) && (
+        {inGithubRun(s.state) && st.progress && (
           <div className="ov-banner__progress">
             <ProgressBar label={`${STATE_WORD[s.state]} progress`} value={progress ? progress.pct : null} showValue tone="blue" />
             <p className="ov-banner__steps">{progress ? `${progress.done} of ${progress.total} steps completed` : "Waiting for GitHub to list the steps"}</p>
@@ -176,12 +181,13 @@ export function StatusBanner({ o, now, receivedAt, onAction }: Props) {
         </div>
       ) : (
         <>
-          <Timing o={o} receivedAt={receivedAt} />
+          {st.timing && <Timing o={o} receivedAt={receivedAt} autoDestroy={autoDestroy} />}
           <div className="ov-banner__actions">
             <Actions o={o} onAction={onAction} />
           </div>
         </>
       )}
+      <WidgetCorner />
     </section>
   );
 }

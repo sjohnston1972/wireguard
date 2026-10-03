@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Settings } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
-import { ErrorState, IconButton, PageHeader, Skeleton, useIsPhone, useToast } from "@/components";
+import { LAYOUTS, itemKey } from "@shared/widgets";
+import { ErrorState, IconButton, PageHeader, Skeleton, cx, useIsPhone, useToast } from "@/components";
+import { LayoutMenu, Widget, WidgetRow, WidgetStack, usePagePrefs, useRowItems, useWidget } from "@/widgets";
 import { useOverview } from "@/api/queries";
 import { EnvironmentField } from "@/shell/StateChip";
 import { ACTION_WORD, ActionDialog, PALETTE_ACTIONS, actionAllowed, type ActionName } from "./actions";
@@ -55,6 +57,7 @@ function Header({ o }: { o: OverviewResponse | null }) {
           <IconButton label="Deployment settings" className="ov-gear" onClick={() => navigate("/settings/deployment")}>
             <Settings size={18} aria-hidden />
           </IconButton>
+          <LayoutMenu page="overview" />
         </>
       }
     />
@@ -146,39 +149,151 @@ function Phone({ o, receivedAt, onAction }: { o: OverviewResponse; receivedAt: n
   return <PhoneOverview o={o} now={now} onAction={onAction} />;
 }
 
+const R3 = LAYOUTS.overview.rows.find((r) => r.id === "r3")!;
+const weightOf = (key: string) => R3.items.find((i) => itemKey(i) === key)!.weight;
+const RUN = "overview.run";
+const TRAFFIC = "overview.traffic";
+const EVENTS = "overview.events";
+
+/** The side stack: its visible widgets; one alone takes the whole column. */
+function Side({ members, children }: { members: string[]; children: Record<string, React.ReactNode> }) {
+  return <div className={cx("ov-side", members.length === 1 && "ov-side--one")}>{members.map((m) => <Fragment key={m}>{children[m]}</Fragment>)}</div>;
+}
+
+/**
+ * The middle row. Without a run (or with the run widget hidden): Last run,
+ * Network traffic and the side stack (Recent events, Speed test), in the
+ * user's order. During a GitHub run, as today: the run widget widens over
+ * traffic's slot and Network traffic takes Speed test's place in the side
+ * stack; hidden widgets stay hidden and the user's order is kept.
+ */
+function MiddleRow({ o, now, onAction }: { o: OverviewResponse; now: number; onAction: (a: ActionName) => void }) {
+  const { prefs } = usePagePrefs("overview");
+  const v = useRowItems("overview", "r3");
+  const run = useWidget(RUN);
+  const traffic = useWidget(TRAFFIC);
+  const events = useWidget(EVENTS);
+  const sideMembers = v.items.find((i) => i.key === "side")?.members ?? [];
+
+  if (!inGithubRun(o.snapshot.state) || run.hidden)
+    return (
+      <WidgetRow page="overview" row="r3" className="ov-row ov-row--3">
+        {{
+          [RUN]: (
+            <Widget id={RUN}>
+              <LastRun o={o} onAction={onAction} />
+            </Widget>
+          ),
+          [TRAFFIC]: (
+            <Widget id={TRAFFIC}>
+              <Traffic o={o} now={now} />
+            </Widget>
+          ),
+          side: (
+            <WidgetStack page="overview" stack="side" className={cx("ov-side", sideMembers.length === 1 && "ov-side--one")}>
+              {{
+                [EVENTS]: (
+                  <Widget id={EVENTS}>
+                    <RecentEvents />
+                  </Widget>
+                ),
+                "overview.speedTest": (
+                  <Widget id="overview.speedTest">
+                    <SpeedTests o={o} now={now} onAction={onAction} />
+                  </Widget>
+                ),
+              }}
+            </WidgetStack>
+          ),
+        }}
+      </WidgetRow>
+    );
+
+  // The run arrangement: the run and the side stack, in the user's order of r3.
+  const declared = R3.items.map(itemKey);
+  const saved = prefs.layout?.order?.r3;
+  const order = saved && saved.length === declared.length && declared.every((k) => saved.includes(k)) ? saved : declared;
+  const side = [EVENTS, TRAFFIC].filter((id) => !(id === EVENTS ? events : traffic).hidden);
+  const items = order.filter((k) => k === RUN || (k === "side" && side.length)).map((k) => ({ key: k, weight: k === RUN ? weightOf(RUN) + weightOf(TRAFFIC) : weightOf("side") }));
+  const isDefault = items.map((i) => i.key).join() === [RUN, "side"].join() && side.length === 2;
+  const sideBlock = (
+    <Side key="side" members={side}>
+      {{
+        [EVENTS]: (
+          <Widget id={EVENTS}>
+            <RecentEvents />
+          </Widget>
+        ),
+        [TRAFFIC]: (
+          <Widget id={TRAFFIC}>
+            <Traffic o={o} now={now} />
+          </Widget>
+        ),
+      }}
+    </Side>
+  );
+  return (
+    <div className={cx("ov-row ov-row--3", !isDefault && "ov-row--custom")} style={isDefault ? undefined : { gridTemplateColumns: items.map((i) => `minmax(0, ${i.weight}fr)`).join(" ") }}>
+      {items.map((i) =>
+        i.key === RUN ? (
+          <Widget key={RUN} id={RUN}>
+            <RunPanels o={o} />
+          </Widget>
+        ) : (
+          sideBlock
+        ),
+      )}
+    </div>
+  );
+}
+
 function Desktop({ o, receivedAt, onAction }: { o: OverviewResponse; receivedAt: number; onAction: (a: ActionName) => void }) {
   const now = useServerNow(o.now, receivedAt, 10_000);
+  const r2 = useRowItems("overview", "r2");
+  const r3 = useRowItems("overview", "r3");
+  const r4 = useRowItems("overview", "r4");
+  // A row with nothing visible is not drawn, and its height track goes with it; the others keep theirs.
+  const shown = [r2.visible && "r2", r3.visible && "r3", r4.visible && "r4"].filter(Boolean);
   return (
     <>
-      <StatusBanner o={o} now={now} receivedAt={receivedAt} onAction={onAction} />
-      <div className="ov-rows">
-        <div className="ov-row ov-row--2">
-          <Topology o={o} now={now} />
-          <KeyMetrics o={o} now={now} />
-        </div>
-        {inGithubRun(o.snapshot.state) ? (
-          <div className="ov-row ov-row--3">
-            <RunPanels o={o} />
-            <div className="ov-side">
-              <RecentEvents />
-              <Traffic o={o} now={now} />
-            </div>
-          </div>
-        ) : (
-          <div className="ov-row ov-row--3">
-            <LastRun o={o} onAction={onAction} />
-            <Traffic o={o} now={now} />
-            <div className="ov-side">
-              <RecentEvents />
-              <SpeedTests o={o} now={now} onAction={onAction} />
-            </div>
-          </div>
-        )}
-        <div className="ov-row ov-row--4">
-          <HealthSummary o={o} now={now} />
-          <CostImpact o={o} />
-          <WatchmanNotes />
-        </div>
+      <Widget id="overview.status" headerless>
+        <StatusBanner o={o} now={now} receivedAt={receivedAt} onAction={onAction} />
+      </Widget>
+      <div className={cx("ov-rows", shown.length < 3 && `ov-rows--${shown.join("-") || "none"}`)}>
+        <WidgetRow page="overview" row="r2" className="ov-row ov-row--2">
+          {{
+            "overview.topology": (
+              <Widget id="overview.topology">
+                <Topology o={o} now={now} />
+              </Widget>
+            ),
+            "overview.keyMetrics": (
+              <Widget id="overview.keyMetrics">
+                <KeyMetrics o={o} now={now} />
+              </Widget>
+            ),
+          }}
+        </WidgetRow>
+        {r3.visible && <MiddleRow o={o} now={now} onAction={onAction} />}
+        <WidgetRow page="overview" row="r4" className="ov-row ov-row--4">
+          {{
+            "overview.health": (
+              <Widget id="overview.health">
+                <HealthSummary o={o} now={now} />
+              </Widget>
+            ),
+            "overview.costImpact": (
+              <Widget id="overview.costImpact">
+                <CostImpact o={o} />
+              </Widget>
+            ),
+            "overview.notes": (
+              <Widget id="overview.notes">
+                <WatchmanNotes />
+              </Widget>
+            ),
+          }}
+        </WidgetRow>
       </div>
     </>
   );
