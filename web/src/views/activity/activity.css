@@ -32,6 +32,10 @@
 .act__kpis .tile__icon--circle { width: 40px; height: 40px; }
 .act__kpis .tile__delta { max-width: 100%; height: auto; min-height: 17px; font-size: 11px; padding-block: 1px; }
 .act__kpis .tile__value:not(.tile__value--none) { font-size: 22px; }
+/* A threshold's word beside the value (amber Warning, red Critical): colour is never the only sign. */
+.act-kpi__word { font-size: 12px; font-weight: 600; letter-spacing: 0; white-space: nowrap; }
+.act-kpi__word--amber { color: var(--amber); }
+.act-kpi__word--red { color: var(--red); }
 .act__kpis .tile__row { row-gap: 2px; }
 .act__rundetails > .panel__head { padding-top: 8px; min-height: 30px; }
 .act__rundetails > .panel__body { padding-top: 6px; padding-bottom: 8px; }

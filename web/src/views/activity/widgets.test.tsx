@@ -32,7 +32,12 @@ function renderActivity(prefs: PagePrefs | null, opts: { url?: string; routes?: 
 const group = (name: string) => screen.findByRole("group", { name });
 const groupNow = (name: string) => screen.getByRole("group", { name });
 const tone = (el: HTMLElement) => /tile__icon--(green|amber|red|grey|blue|purple)/.exec(el.querySelector(".tile__icon")!.className)?.[1];
-const hiddenWord = (el: HTMLElement) => el.querySelector(".tile__value .visually-hidden")?.textContent?.trim() ?? null;
+/** The threshold word shown (not only read aloud) beside a tile's value, or null. */
+const shownWord = (el: HTMLElement) => {
+  const w = el.querySelector(".tile__value .act-kpi__word");
+  if (w?.classList.contains("visually-hidden")) return null;
+  return w?.textContent?.trim() ?? null;
+};
 const headers = () => within(screen.getByRole("table", { name: "Runs" })).getAllByRole("columnheader").map((h) => h.textContent);
 const eventsList = () => screen.getByRole("list", { name: "Events" });
 const ringTone = (el: HTMLElement) => el.querySelector(".ring circle:last-child")?.getAttribute("stroke")?.replace(/^var\(--(.*)\)$/, "$1");
@@ -181,19 +186,19 @@ describe("activity: thresholds and display", () => {
   it("success rate: at the warn cutoff is fine, just under it is amber with a word", async () => {
     renderActivity(saved({ "activity.kpis": { successRate: { warn: 96, bad: 70 } } }));
     await group("Success rate");
-    expect(hiddenWord(groupNow("Success rate"))).toBeNull(); // 96 is not below 96
+    expect(shownWord(groupNow("Success rate"))).toBeNull(); // 96 is not below 96
     expect(ringTone(groupNow("Success rate"))).toBe("green");
   });
 
   it("success rate: warn just above gives amber and the word Warning; bad above gives red and Critical", async () => {
     const a = renderActivity(saved({ "activity.kpis": { successRate: { warn: 97, bad: 70 } } }));
     await group("Success rate");
-    await waitFor(() => expect(hiddenWord(groupNow("Success rate"))).toBe("Warning"));
+    await waitFor(() => expect(shownWord(groupNow("Success rate"))).toBe("Warning"));
     expect(ringTone(groupNow("Success rate"))).toBe("amber");
     a.unmount();
     renderActivity(saved({ "activity.kpis": { successRate: { warn: 99, bad: 97 } } }));
     await group("Success rate");
-    await waitFor(() => expect(hiddenWord(groupNow("Success rate"))).toBe("Critical"));
+    await waitFor(() => expect(shownWord(groupNow("Success rate"))).toBe("Critical"));
     expect(ringTone(groupNow("Success rate"))).toBe("red");
   });
 
@@ -201,17 +206,17 @@ describe("activity: thresholds and display", () => {
     const a = renderActivity(null);
     await group("Failed runs");
     expect(tone(groupNow("Failed runs"))).toBe("red");
-    expect(hiddenWord(groupNow("Failed runs"))).toBe("Critical");
+    expect(shownWord(groupNow("Failed runs"))).toBe("Critical");
     a.unmount();
     const b = renderActivity(saved({ "activity.kpis": { failedRuns: { warn: 2, bad: 3 } } }));
     await group("Failed runs");
     await waitFor(() => expect(tone(groupNow("Failed runs"))).toBe("amber"));
-    expect(hiddenWord(groupNow("Failed runs"))).toBe("Warning");
+    expect(shownWord(groupNow("Failed runs"))).toBe("Warning");
     b.unmount();
     const c = renderActivity(saved({ "activity.kpis": { failedRuns: { warn: null, bad: 3 } } }));
     await group("Failed runs");
     await waitFor(() => expect(tone(groupNow("Failed runs"))).toBe("grey"));
-    expect(hiddenWord(groupNow("Failed runs"))).toBeNull();
+    expect(shownWord(groupNow("Failed runs"))).toBeNull();
     c.unmount();
   });
 
@@ -219,17 +224,17 @@ describe("activity: thresholds and display", () => {
     const a = renderActivity(null);
     await group("Watchman problems");
     expect(tone(groupNow("Watchman problems"))).toBe("amber");
-    expect(hiddenWord(groupNow("Watchman problems"))).toBe("Warning");
+    expect(shownWord(groupNow("Watchman problems"))).toBe("Warning");
     a.unmount();
     const b = renderActivity(saved({ "activity.kpis": { watchman: { warn: null, bad: 1 } } }));
     await group("Watchman problems");
     await waitFor(() => expect(tone(groupNow("Watchman problems"))).toBe("red"));
-    expect(hiddenWord(groupNow("Watchman problems"))).toBe("Critical");
+    expect(shownWord(groupNow("Watchman problems"))).toBe("Critical");
     b.unmount();
     renderActivity(saved({ "activity.kpis": { watchman: { warn: 2, bad: null } } }));
     await group("Watchman problems");
     await waitFor(() => expect(tone(groupNow("Watchman problems"))).toBe("green"));
-    expect(hiddenWord(groupNow("Watchman problems"))).toBeNull();
+    expect(shownWord(groupNow("Watchman problems"))).toBeNull();
   });
 
   it("tiles setting removes a tile", async () => {

@@ -10,13 +10,12 @@ type ToneName = "ok" | "warn" | "bad" | null;
 const COLOURS = { warn: "amber", bad: "red" } as const;
 const WORDS = { warn: "Warning", bad: "Critical" } as const;
 
-/** A value and, after a coloured threshold, the word for it (the colour and icon sit beside it; the word is for reading aloud). */
+/** A value and, after a coloured threshold, the word for it, shown beside the value so colour is never the only sign. */
 function withWord(value: ReactNode, t: ToneName): ReactNode {
   if (t !== "warn" && t !== "bad") return value;
   return (
     <>
-      {value}
-      <span className="visually-hidden"> {WORDS[t]}</span>
+      {value} <span className={`act-kpi__word act-kpi__word--${COLOURS[t]}`}>{WORDS[t]}</span>
     </>
   );
 }
