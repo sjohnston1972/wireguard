@@ -28,3 +28,7 @@
 @media (max-width: 640px) {
   .fw-form__row { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Every published port in a drawer, while the Published ports widget is hidden. */
+.fw-ports-sheet { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.fw-ports-sheet > ul { width: 100%; }

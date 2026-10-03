@@ -10,7 +10,7 @@ import { FirewallHeader } from "./FirewallHeader";
 import { ReviewModal } from "./ReviewModal";
 import { KpiRow } from "./KpiRow";
 import { DropsList, DropsPanel } from "./Drops";
-import { ForwardModal, PortsList, PortsPanel } from "./Ports";
+import { ForwardModal, PortsList, PortsPanel, PortsSheet } from "./Ports";
 import { CaptureForm, CapturePanel, type CaptureFormHandle } from "./Capture";
 import { ZonesPanel, ZonesTab } from "./Zones";
 import { SimulatorForm, SimulatorPanel, type SimulatorHandle } from "./Simulator";
@@ -84,6 +84,8 @@ export function FirewallPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [focusCapture, setFocusCapture] = useState(false);
   const [phoneSheet, setPhoneSheet] = useState<string | null>(null);
+  // Every published port, to manage them while the Published ports widget is hidden.
+  const [portsSheet, setPortsSheet] = useState(false);
 
   const tableRef = useRef<HTMLDivElement>(null);
   const simRef = useRef<SimulatorHandle>(null);
@@ -156,8 +158,8 @@ export function FirewallPage() {
   const editForward = (f: Forward) => setForward({ open: true, editing: f });
   const focusRules = () => tableRef.current?.querySelector<HTMLElement>("tr[tabindex]")?.focus();
   const managePorts = () => {
-    // With the ports widget hidden there is no list to go to: open the add form instead.
-    if (hidden.ports) return addForward();
+    // With the ports widget hidden there is no list on the page: open the list in a drawer.
+    if (hidden.ports) return setPortsSheet(true);
     setRightTab("ports");
     setTimeout(() => portsAddRef.current?.focus(), 0);
   };
@@ -179,6 +181,7 @@ export function FirewallPage() {
       />
       <RuleDrawer fw={data} rule={rule} adding={adding && !id} id={id ?? null} open={drawerOpen} tab={tab} onTab={setTab} onClose={closeDrawer} />
       <ForwardModal fw={data} open={forward.open} editing={forward.editing} onOpenChange={(o) => setForward((s) => ({ ...s, open: o }))} />
+      <PortsSheet fw={data} open={portsSheet && hidden.ports} onOpenChange={setPortsSheet} onAdd={addForward} onEdit={editForward} />
     </>
   );
 
@@ -196,6 +199,7 @@ export function FirewallPage() {
           onAddRule={() => setAddOpen(true)}
           onAddForward={addForward}
           onEditForward={editForward}
+          onManagePorts={() => setPortsSheet(true)}
           captureRef={captureRef}
         />
         {overlays}

@@ -385,6 +385,31 @@ describe("W3.4 layout", () => {
     expect(before(document.querySelector(".fw__right")!, document.querySelector(".fw__left")!)).toBe(true);
   });
 
+  it("with Published ports hidden, Manage on its tile opens a list of every port to edit or delete (desktop)", async () => {
+    renderFw({ layout: { hidden: ["firewall.ports"] }, ...ws({ ports: { showOff: false } }) }, bigData());
+    const tile = await screen.findByRole("group", { name: "Published ports" });
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Published ports" })).toBeNull());
+    fireEvent.click(within(tile).getByRole("button", { name: "Manage" }));
+    const sheet = await screen.findByRole("dialog", { name: "Published ports" });
+    // Every port, turned-off ones too (that is where one is turned back on).
+    expect(sheet).toHaveTextContent("Old game server");
+    expect(within(sheet).getByRole("button", { name: "Add published port" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: /^Delete Old game server/ })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Edit Old game server" }));
+    expect(await screen.findByRole("dialog", { name: "Edit Old game server" })).toBeInTheDocument();
+  });
+
+  it("phone: with Published ports hidden, Manage published ports opens the same list", async () => {
+    setViewport("phone");
+    renderFw({ layout: { hidden: ["firewall.ports"] } }, bigData());
+    await screen.findByRole("list", { name: "Firewall at a glance" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Published ports" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Manage published ports" }));
+    const sheet = await screen.findByRole("dialog", { name: "Published ports" });
+    expect(sheet).toHaveTextContent("Old game server");
+    expect(within(sheet).getByRole("button", { name: "Edit Old game server" })).toBeInTheDocument();
+  });
+
   it("narrow tabs follow the stack order minus hidden widgets", async () => {
     setViewport(1200);
     renderFw({ layout: { hidden: ["firewall.ports"] } });

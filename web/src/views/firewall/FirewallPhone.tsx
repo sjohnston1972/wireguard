@@ -24,6 +24,8 @@ export interface FirewallPhoneProps {
   onAddRule: () => void;
   onAddForward: () => void;
   onEditForward: (f: FirewallResponse["forwards"][number]) => void;
+  /** Open every published port in a drawer (shown while the Published ports widget is hidden). */
+  onManagePorts: () => void;
   captureRef: RefObject<CaptureFormHandle | null>;
 }
 
@@ -53,7 +55,7 @@ function Light({ label, value, tone }: { label: string; value: string; tone: "gr
  * threshold), a hidden widget's button is gone, and the sheets show each
  * widget's content with its settings. The phone has no widget order.
  */
-export function FirewallPhone({ fw, rows, waiting, sheet, onSheet, onReview, onAddRule, onAddForward, onEditForward, captureRef }: FirewallPhoneProps) {
+export function FirewallPhone({ fw, rows, waiting, sheet, onSheet, onReview, onAddRule, onAddForward, onEditForward, onManagePorts, captureRef }: FirewallPhoneProps) {
   const navigate = useNavigate();
   const pv = policyView(fw.policy.state, fw.policy.text, waiting);
   const enabled = rows.filter((r) => r.enabled).length;
@@ -137,6 +139,12 @@ export function FirewallPhone({ fw, rows, waiting, sheet, onSheet, onReview, onA
         {shown.ports && (
           <Button icon={<Globe size={16} aria-hidden />} onClick={() => onSheet("ports")}>
             Published ports
+          </Button>
+        )}
+        {/* Hidden, the ports widget's button goes; existing ports can still be managed. */}
+        {!shown.ports && fw.forwards.length > 0 && (
+          <Button variant="ghost" icon={<Globe size={16} aria-hidden />} onClick={onManagePorts}>
+            Manage published ports
           </Button>
         )}
         {shown.capture && (
