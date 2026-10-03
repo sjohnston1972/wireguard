@@ -115,9 +115,7 @@
 
 .act__kpis .tile__row { flex-wrap: wrap; gap: 2px 8px; }
 .act__kpis .tile__delta { white-space: nowrap; }
-/* With the widget's cog in the header too, a narrow column cuts the title short (…) rather than
-   letting it run under the type select. */
-.act__stream .panel__title { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.act__stream .panel__title { white-space: nowrap; }
 .act__log .dt__td, .act__log .dt__th { padding-left: 8px; padding-right: 8px; }
 .act__log .act__note { max-width: 12ch; }
 .act__log .act__code { display: inline-block; max-width: 17ch; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }

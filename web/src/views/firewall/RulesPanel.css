@@ -46,10 +46,7 @@
   .fw-rp__filters { gap: 6px; }
   .fw-rp__filters .select__trigger { min-width: 0; width: 104px; height: 30px; white-space: nowrap; padding-left: 8px; padding-right: 6px; }
   .fw-rp__filters .select__value { overflow: hidden; text-overflow: ellipsis; }
-  /* The selects keep their width (shrunk, their fixed triggers overlapped); the search gives up the
-     room the widget's cog takes at the end of this row. */
-  .fw-rp__filters .select { flex-shrink: 0; }
-  .fw-rp__search { flex: 1 1 100px; min-width: 56px; }
+  .fw-rp__search { flex: 1 1 100px; min-width: 84px; }
   .fw-rp__hint { display: none; }
   .fw-rp__foot { padding: 6px 12px 8px; justify-content: flex-end; }
 }
