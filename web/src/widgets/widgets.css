@@ -55,6 +55,10 @@
 
 /* The page header's Layout menu. */
 .wg-layout { display: inline-flex; align-self: flex-end; }
+/* On a desktop the Layout button is as tall as the page header's other controls (36 px), bottom-aligned with them. */
+@media (min-width: 641px) {
+  .wg-layout > .btn { height: 36px; }
+}
 .menu__label { padding: 6px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
 .menu__sep { height: 1px; margin: 4px 0; background: var(--border); }
 .menu__item[data-disabled] { color: var(--disabled-fg); cursor: default; }
