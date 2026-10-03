@@ -2,7 +2,8 @@
 //
 // Plain English: the Activity screen's data: the logbook for a chosen range
 // (runs, watchman notes, dashboard changes, the figures across the top and a
-// timeline), one run with its steps, and a run's GitHub log.
+// timeline), one run with its steps, and a run's log (live while it runs,
+// GitHub's once it has finished).
 
 import type { Hono } from "hono";
 import { fail, type ApiEnv } from "./app";
@@ -10,8 +11,8 @@ import * as db from "../db";
 import { getSnapshot, type Step } from "../state";
 import { effectiveConfig } from "../settings";
 import { canDispatch } from "../env";
-import { RunError } from "../runs";
 import { getJobsStatus, getJobLogTail } from "../github";
+import { isActiveRun, readLiveLog } from "../livelog";
 import { AUDIT_KINDS, AUDIT_PAGE, ACTIVITY_RANGE_MS, describeChange, parseRange, runRow, eventsOf, timeline, activityKpis } from "../activity";
 import type { ActivityResponse, RunDetailResponse, RunLogResponse } from "../../../shared/api";
 
@@ -76,23 +77,42 @@ export function registerActivity(api: Hono<ApiEnv>): void {
     return c.json(out);
   });
 
+  // A run's log. While the run is going: the live log the workflow sends as
+  // it runs (livelog.ts), even when nothing has arrived yet; GitHub has no log
+  // for an unfinished job. Once it has finished: GitHub's full log, or the
+  // live copy when GitHub has none (not yet, gone, or unreachable).
   api.get("/runs/:id/log", async (c) => {
     const run = await db.getRun(c.env, c.req.param("id"));
     if (!run) return fail(c, 404, "not_found", "No such run.");
-    if (!canDispatch(c.env)) return fail(c, 503, "not_configured", "GitHub is not set up, so there is no log to fetch.");
-    if (!run.github_run_id) return fail(c, 404, "no_log", "This run has no GitHub log.");
+    if (isActiveRun(run)) {
+      const live = await readLiveLog(c.env, run.id);
+      const out: RunLogResponse = { log: live?.text ?? "", source: "live", active: true, updatedAt: live?.updatedAt ?? null };
+      return c.json(out);
+    }
+
+    // Finished. The live copy is the fallback for every way GitHub can come up empty.
+    const fallback = async (status: 404 | 502 | 503, code: string, message: string) => {
+      const live = await readLiveLog(c.env, run.id);
+      if (live) {
+        const out: RunLogResponse = { log: live.text, source: "live", active: false, updatedAt: live.updatedAt };
+        return c.json(out);
+      }
+      return fail(c, status, code, message);
+    };
+    if (!canDispatch(c.env)) return fallback(503, "not_configured", "GitHub is not set up, so there is no log to fetch.");
+    if (!run.github_run_id) return fallback(404, "no_log", "This run has no GitHub log, and no live log was kept.");
     let log: string | null;
     try {
       const got = await getJobsStatus(c.env, run.github_run_id);
-      if (!got.ok && got.status !== 404) return fail(c, 502, "upstream", `GitHub refused or failed the request for this run's jobs (it answered ${got.status}), so the log could not be fetched.`);
+      if (!got.ok && got.status !== 404) return fallback(502, "upstream", `GitHub refused or failed the request for this run's jobs (it answered ${got.status}), so the log could not be fetched.`);
       const job = got.jobs[0];
-      if (!job) return fail(c, 404, "no_log", "GitHub has no jobs for this run yet.");
+      if (!job) return fallback(404, "no_log", "GitHub has no jobs for this run yet.");
       log = await getJobLogTail(c.env, job.id, 200_000);
     } catch (e) {
-      throw new RunError(`Could not fetch the log from GitHub: ${(e as Error).message}`, "upstream");
+      return fallback(502, "upstream", `Could not fetch the log from GitHub: ${(e as Error).message}`);
     }
-    if (log === null) return fail(c, 404, "no_log", "GitHub has no log for this run.");
-    const out: RunLogResponse = { log };
+    if (log === null) return fallback(404, "no_log", "GitHub has no log for this run (it can take a minute after a run ends), and no live log was kept.");
+    const out: RunLogResponse = { log, source: "github", active: false, updatedAt: null };
     return c.json(out);
   });
 }

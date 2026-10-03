@@ -43,6 +43,7 @@ import { checkBudget } from "./budget";
 import { nightlyConfigBackup } from "./backup";
 import { syncServerKey } from "./keyrotation";
 import { recordMissedHeartbeats, rollUp } from "./history";
+import { LIVE_LOG_KEEP_DAYS } from "./livelog";
 
 /**
  * How long a Failed deployment may leave its resource group in Azure before
@@ -80,6 +81,14 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     await db.pruneAudit(env, now);
   } catch (e) {
     notes.push(`change log: ${(e as Error).message}`);
+  }
+
+  // A run's live log is only needed until GitHub's full log exists: drop it
+  // LIVE_LOG_KEEP_DAYS after the run ended (livelog.ts).
+  try {
+    await db.pruneLiveLogs(env, now, LIVE_LOG_KEEP_DAYS);
+  } catch (e) {
+    notes.push(`live log: ${(e as Error).message}`);
   }
 
   // History: mark the minutes with no heartbeat while running, then fold

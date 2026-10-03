@@ -141,6 +141,51 @@ export async function clearSshPasswords(env: Env): Promise<void> {
   await env.DB.prepare("UPDATE runs SET ssh_password = NULL WHERE ssh_password IS NOT NULL").run();
 }
 
+// ── Run live log (livelog.ts) ─────────────────────────────────────────────
+// D1 binds every JS number as REAL, so seq and sizes are CAST to INTEGER.
+
+export interface LiveLogRow {
+  seq: number;
+  at: string;
+  text: string;
+}
+
+/** Store one piece of a run's live log. False if that piece number was already stored (a resend). */
+export async function addLiveLogChunk(env: Env, runId: string, seq: number, at: string, text: string): Promise<boolean> {
+  const r = await env.DB.prepare("INSERT OR IGNORE INTO run_live_log (run_id, seq, at, text) VALUES (?1, CAST(?2 AS INTEGER), ?3, ?4)").bind(runId, seq, at, text).run();
+  return (r.meta?.changes ?? 0) === 1;
+}
+
+/** Drop a run's oldest pieces until what is left fits in `keepBytes` (the newest piece always stays). */
+export async function trimLiveLog(env: Env, runId: string, keepBytes: number): Promise<void> {
+  await env.DB.prepare(
+    `DELETE FROM run_live_log WHERE run_id = ?1 AND seq IN (
+       SELECT seq FROM (
+         SELECT seq, SUM(length(CAST(text AS BLOB))) OVER (ORDER BY seq DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS newer
+         FROM run_live_log WHERE run_id = ?1
+       ) WHERE newer > CAST(?2 AS INTEGER) AND seq < (SELECT MAX(seq) FROM run_live_log WHERE run_id = ?1)
+     )`
+  )
+    .bind(runId, keepBytes)
+    .run();
+}
+
+/** A run's live log pieces, oldest first. */
+export async function liveLogRows(env: Env, runId: string): Promise<LiveLogRow[]> {
+  return (await env.DB.prepare("SELECT seq, at, text FROM run_live_log WHERE run_id = ?1 ORDER BY seq").bind(runId).all<LiveLogRow>()).results;
+}
+
+/** Delete the live log of every run that ended more than `keepDays` before `now`, and of runs that no longer exist. */
+export async function pruneLiveLogs(env: Env, now: Date, keepDays = 14): Promise<void> {
+  const cutoff = new Date(now.getTime() - keepDays * 86_400_000).toISOString();
+  await env.DB.prepare(
+    `DELETE FROM run_live_log WHERE run_id NOT IN (SELECT id FROM runs)
+       OR run_id IN (SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ?1)`
+  )
+    .bind(cutoff)
+    .run();
+}
+
 // ── Peers ─────────────────────────────────────────────────────────────────
 
 export async function listPeers(env: Env): Promise<Peer[]> {

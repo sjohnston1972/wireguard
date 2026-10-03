@@ -4,7 +4,7 @@
 // here. The pages themselves are the React app (served as static files, see
 // wrangler.toml); this file only answers what the app cannot: the routes that
 // prove themselves with a token instead of the login (the VM's heartbeat and
-// packet captures, GitHub's result callback and run secrets, the one-tap
+// packet captures, GitHub's result callback, run secrets and live log, the one-tap
 // buttons on phone notifications), the phone-install manifest, the data API
 // for the app (/api/v1, behind the login), capture downloads and the health
 // check. The cron entry point at the bottom is the night watchman.
@@ -24,6 +24,7 @@ import { receiveCapture, MAX_CAPTURE_BYTES } from "./capture";
 import { buildApi } from "./api";
 import { devSeed } from "./devseed";
 import { serveHashedAsset } from "./assetguard";
+import { receiveLiveLog, LIVE_LOG_MAX_BODY } from "./livelog";
 
 export { RunLock } from "./lock";
 
@@ -96,6 +97,21 @@ app.post("/api/callback", async (c) => {
   const r = await handleCallback(c.env, bearer(c), body);
   if (r.status >= 400) noteFailure(key);
   return c.json({ message: r.message }, r.status as 200);
+});
+
+// The workflow's live log: its output, a piece every few seconds while the run
+// is going (livelog.ts), proven with the same callback token. Its own brake,
+// so a late piece can never use up the result callback's share; and a late
+// piece (409, the run just finished) or a too-big one (413) is not a "wrong
+// token", so neither counts. The size is checked before the body is read.
+app.post("/api/callback/log", async (c) => {
+  const key = failKey(c, "callback-log");
+  if (tooManyFailures(key)) return c.json({ error: "slow down" }, 429);
+  if (Number(c.req.header("Content-Length") ?? 0) > LIVE_LOG_MAX_BODY) return c.json({ error: "too big" }, 413);
+  const body = await c.req.json().catch(() => null);
+  const r = await receiveLiveLog(c.env, bearer(c), body);
+  if (r.status === 400 || r.status === 401 || r.status === 404) noteFailure(key);
+  return c.json(r.body, r.status as 200);
 });
 
 // GitHub Actions collects the run's secrets here, proving itself with an OIDC
