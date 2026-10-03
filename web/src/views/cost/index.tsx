@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Col, ErrorState, Grid, PageHeader, Select, Skeleton, Switch, useIsPhone } from "@/components";
 import { useCost } from "@/api/queries";
@@ -26,7 +26,7 @@ function CostGrid({ panels }: { panels: Record<string, ReactNode> }) {
   const views = { r2: useRowItems("cost", "r2"), r3: useRowItems("cost", "r3"), r4: useRowItems("cost", "r4") };
   const generic = !GRID_ROWS.every((r) => views[r].isDefault);
   return (
-    <Grid className={generic ? "cost-grid cost-grid--generic" : "cost-grid"}>
+    <Grid className={generic ? "cost-grid cost-grid--generic" : "cost-grid"} style={generic ? ({ "--cost-rows": GRID_ROWS.filter((r) => views[r].visible).map((r) => `var(--cost-h-${r})`).join(" ") } as CSSProperties) : undefined}>
       {GRID_ROWS.map((r) => {
         const v = views[r];
         if (!v.visible) return null;
