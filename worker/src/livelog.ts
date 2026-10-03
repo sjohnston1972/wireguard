@@ -106,10 +106,11 @@ export async function receiveLiveLog(env: Env, token: string, body: LiveLogBody 
 
 /** A run's live log as one text, oldest first; null when nothing was ever stored. */
 export async function readLiveLog(env: Env, runId: string): Promise<{ text: string; updatedAt: string } | null> {
-  const rows = await db.liveLogRows(env, runId);
+  const [rows, prunedUpto] = await Promise.all([db.liveLogRows(env, runId), db.liveLogPrunedUpto(env, runId)]);
   if (!rows.length) return null;
-  // Pieces start at 1; if the first is gone, the oldest were trimmed.
-  const note = rows[0].seq > 1 ? `##[warning]Earlier lines were dropped: the live log keeps the newest ${Math.round(LIVE_LOG_KEEP_BYTES / 1024)} KB. GitHub's full log shows here once the run has finished.\n` : "";
+  // Only when the cap really dropped pieces: a missing piece 1 alone can be
+  // one the Worker turned away as too big (413), which the runner skips.
+  const note = prunedUpto !== null ? `##[warning]Earlier lines were dropped: the live log keeps the newest ${Math.round(LIVE_LOG_KEEP_BYTES / 1024)} KB. GitHub's full log shows here once the run has finished.\n` : "";
   const updatedAt = rows.reduce((t, r) => (r.at > t ? r.at : t), rows[0].at);
   return { text: note + rows.map((r) => r.text).join(""), updatedAt };
 }

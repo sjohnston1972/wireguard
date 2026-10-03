@@ -137,10 +137,21 @@ describe("POST /api/callback/log", () => {
     expect(rows.at(-1)!.seq).toBe(10);
     expect(rows[0].seq).toBeGreaterThan(1);
     expect(rows.map((r) => r.seq)).toEqual(Array.from({ length: rows.length }, (_, i) => 11 - rows.length + i));
+    expect(await db.liveLogPrunedUpto(env, runId)).toBe(rows[0].seq - 1);
     const log = (await api(env, "GET", `/runs/${runId}/log`)).json.log as string;
     expect(log).toMatch(/^##\[warning\]Earlier lines were dropped/);
     expect(log).toContain("piece 10 ");
     expect(log).not.toContain("piece 1 ");
+  });
+
+  it("says earlier lines were dropped only when the cap dropped some, not when piece 1 never arrived (a 413 skip, a lost first piece)", async () => {
+    const { env, runId, token } = await activeDeploy();
+    expect((await postLog(env, token, { run_id: runId, seq: 1, text: "x".repeat(64 * 1024 + 1) })).status).toBe(413);
+    expect((await postLog(env, token, { run_id: runId, seq: 2, text: LINE("second") })).status).toBe(200);
+    expect((await postLog(env, token, { run_id: runId, seq: 4, text: LINE("fourth") })).status).toBe(200);
+    const log = (await api(env, "GET", `/runs/${runId}/log`)).json.log as string;
+    expect(log).toBe(LINE("second") + LINE("fourth"));
+    expect(log).not.toContain("Earlier lines were dropped");
   });
 
   it("hides the run's own secrets even if the runner missed them: the SSH password and the callback token, typed or base64", async () => {
@@ -185,6 +196,9 @@ describe("live log retention", () => {
     await db.updateRun(env, "apply-old", { status: "success", finished_at: "2026-01-01T00:30:00.000Z" });
     await db.addLiveLogChunk(env, "apply-old", 1, "2026-01-01T00:10:00.000Z", "old text\n");
     await db.addLiveLogChunk(env, "apply-gone", 1, "2026-01-01T00:10:00.000Z", "orphan\n");
+    await db.addLiveLogChunk(env, "apply-old", 2, "2026-01-01T00:11:00.000Z", "x".repeat(100));
+    await db.trimLiveLog(env, "apply-old", 50); // the cap drops piece 1 and says so
+    expect(await db.liveLogPrunedUpto(env, "apply-old")).toBe(1);
 
     const finished = (await db.getRun(env, runId))!.finished_at!;
     const day = 86_400_000;
@@ -192,6 +206,7 @@ describe("live log retention", () => {
     await runScheduled(env, new Date(Date.parse(finished) + (LIVE_LOG_KEEP_DAYS - 1) * day));
     expect(await db.liveLogRows(env, runId)).toHaveLength(1);
     expect(await db.liveLogRows(env, "apply-old")).toEqual([]);
+    expect(await db.liveLogPrunedUpto(env, "apply-old")).toBeNull();
     expect(await db.liveLogRows(env, "apply-gone")).toEqual([]);
     // Past it, the recent run's log goes too.
     await db.pruneLiveLogs(env, new Date(Date.parse(finished) + (LIVE_LOG_KEEP_DAYS + 1) * day));
