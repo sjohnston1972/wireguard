@@ -2,9 +2,9 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Settings } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
-import { LAYOUTS, itemKey } from "@shared/widgets";
+import { LAYOUTS, itemKey, type LayoutItem } from "@shared/widgets";
 import { ErrorState, IconButton, PageHeader, Skeleton, cx, useIsPhone, useToast } from "@/components";
-import { LayoutMenu, Widget, WidgetRow, WidgetStack, usePagePrefs, useRowItems, useWidget } from "@/widgets";
+import { LayoutMenu, Widget, WidgetArrangement, WidgetRow, WidgetStack, useRowItems, useWidget } from "@/widgets";
 import { useOverview } from "@/api/queries";
 import { EnvironmentField } from "@/shell/StateChip";
 import { ACTION_WORD, ActionDialog, PALETTE_ACTIONS, actionAllowed, type ActionName } from "./actions";
@@ -154,6 +154,13 @@ const weightOf = (key: string) => R3.items.find((i) => itemKey(i) === key)!.weig
 const RUN = "overview.run";
 const TRAFFIC = "overview.traffic";
 const EVENTS = "overview.events";
+/** During a run: the run widens over traffic's slot and traffic takes Speed test's place in the side stack. */
+const RUN_ROWS: Record<string, LayoutItem[]> = {
+  r3: [
+    { widget: RUN, weight: weightOf(RUN) + weightOf(TRAFFIC) },
+    { stack: "side", weight: weightOf("side"), widgets: [EVENTS, TRAFFIC] },
+  ],
+};
 
 /** The side stack: its visible widgets; one alone takes the whole column. */
 function Side({ members, children }: { members: string[]; children: Record<string, React.ReactNode> }) {
@@ -168,11 +175,8 @@ function Side({ members, children }: { members: string[]; children: Record<strin
  * stack; hidden widgets stay hidden and the user's order is kept.
  */
 function MiddleRow({ o, now, onAction }: { o: OverviewResponse; now: number; onAction: (a: ActionName) => void }) {
-  const { prefs } = usePagePrefs("overview");
   const v = useRowItems("overview", "r3");
   const run = useWidget(RUN);
-  const traffic = useWidget(TRAFFIC);
-  const events = useWidget(EVENTS);
   const sideMembers = v.items.find((i) => i.key === "side")?.members ?? [];
 
   if (!inGithubRun(o.snapshot.state) || run.hidden)
@@ -209,13 +213,18 @@ function MiddleRow({ o, now, onAction }: { o: OverviewResponse; now: number; onA
       </WidgetRow>
     );
 
-  // The run arrangement: the run and the side stack, in the user's order of r3.
-  const declared = R3.items.map(itemKey);
-  const saved = prefs.layout?.order?.r3;
-  const order = saved && saved.length === declared.length && declared.every((k) => saved.includes(k)) ? saved : declared;
-  const side = [EVENTS, TRAFFIC].filter((id) => !(id === EVENTS ? events : traffic).hidden);
-  const items = order.filter((k) => k === RUN || (k === "side" && side.length)).map((k) => ({ key: k, weight: k === RUN ? weightOf(RUN) + weightOf(TRAFFIC) : weightOf("side") }));
-  const isDefault = items.map((i) => i.key).join() === [RUN, "side"].join() && side.length === 2;
+  // The run arrangement: the widgets inside are told, so their moves act on what is drawn.
+  return (
+    <WidgetArrangement page="overview" rows={RUN_ROWS}>
+      <RunRow o={o} now={now} />
+    </WidgetArrangement>
+  );
+}
+
+/** The middle row during a run: the run and the side stack, in the user's order of r3. */
+function RunRow({ o, now }: { o: OverviewResponse; now: number }) {
+  const v = useRowItems("overview", "r3");
+  const side = v.items.find((i) => i.key === "side")?.members ?? [];
   const sideBlock = (
     <Side key="side" members={side}>
       {{
@@ -233,8 +242,8 @@ function MiddleRow({ o, now, onAction }: { o: OverviewResponse; now: number; onA
     </Side>
   );
   return (
-    <div className={cx("ov-row ov-row--3", !isDefault && "ov-row--custom")} style={isDefault ? undefined : { gridTemplateColumns: items.map((i) => `minmax(0, ${i.weight}fr)`).join(" ") }}>
-      {items.map((i) =>
+    <div className={cx("ov-row ov-row--3", !v.isDefault && "ov-row--custom")} style={v.isDefault ? undefined : { gridTemplateColumns: v.template }}>
+      {v.items.map((i) =>
         i.key === RUN ? (
           <Widget key={RUN} id={RUN}>
             <RunPanels o={o} />

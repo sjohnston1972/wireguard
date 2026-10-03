@@ -201,6 +201,29 @@ describe("Overview widgets: layout", () => {
     expect(titles(row.querySelector(".ov-side")!)).toEqual(["Recent events", "Network traffic"]);
   });
 
+  it("during a run traffic in the side stack has no handle of its own; its cog and the run's move what is drawn", async () => {
+    const user = userEvent.setup();
+    renderApp("/", { routes: prefsRoutes(overview("deploying"), {}) });
+    const traffic = await region("Network traffic");
+    await waitFor(() => expect(within(traffic).getByRole("button", { name: "Network traffic settings" })).toBeEnabled());
+    // Traffic sits under events now: the column's handle is on events, none on traffic.
+    expect(screen.queryByRole("button", { name: /^Move Network traffic/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Move Recent events column" })).toBeInTheDocument();
+    await user.click(within(traffic).getByRole("button", { name: "Network traffic settings" }));
+    const pop = await screen.findByRole("dialog", { name: "Network traffic settings" });
+    expect(within(pop).queryByRole("button", { name: "Move left" })).toBeNull();
+    expect(within(pop).getByRole("button", { name: "Move column right" })).toBeDisabled();
+    await user.click(within(pop).getByRole("button", { name: "Move column left" }));
+    // The side stack swapped with the run (what is drawn), not with traffic's hidden-for-now slot.
+    await waitFor(() => expect(Array.from(rowOf(screen.getByRole("region", { name: "Deployment pipeline" })).children).map((x) => x.className)).toEqual(["ov-side", "ov-run"]));
+    await user.keyboard("{Escape}");
+    // The run: one move left puts it back.
+    const handle = screen.getByRole("button", { name: "Move Last run" });
+    handle.focus();
+    await user.keyboard("{Alt>}{ArrowLeft}{/Alt}");
+    expect(Array.from(rowOf(screen.getByRole("region", { name: "Deployment pipeline" })).children).map((x) => x.className)).toEqual(["ov-run", "ov-side"]);
+  });
+
   it("with the run widget hidden a run leaves the row as it is without one", async () => {
     renderApp("/", { routes: prefsRoutes(overview("deploying"), hide("run")) });
     const t = await region("Network traffic");
