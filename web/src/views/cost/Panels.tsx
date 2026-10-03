@@ -1,4 +1,3 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
 import type { CostResponse } from "@shared/api";
 import { thresholdTone, type Threshold } from "@shared/widgets";
 import { BarChart, DataAge, Donut, EmptyState, Panel, SegmentedControl, type DonutSegment, type Tone } from "@/components";
@@ -164,25 +163,6 @@ export function SplitPanel({ cost }: { cost: CostResponse }) {
   );
 }
 
-/**
- * Colours the bars of the BarChart inside it by tone (the chart has no per-bar
- * colour of its own). The rects of its svg are exactly its bars, in order.
- */
-function BarTones({ tones, children }: { tones: Array<"warn" | "bad" | null>; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    ref.current?.querySelectorAll("svg rect").forEach((r, i) => {
-      const t = tones[i];
-      r.setAttribute("fill", t === "bad" ? "var(--red)" : t === "warn" ? "var(--amber)" : "var(--blue)");
-    });
-  });
-  return (
-    <div ref={ref} style={{ display: "contents" }}>
-      {children}
-    </div>
-  );
-}
-
 /** Row 3, middle: what a session costs, on average and at most, with a bar per session. */
 export function PerSessionPanel({ cost, height }: { cost: CostResponse; height?: number }) {
   const { settings } = useWidget("cost.perSession");
@@ -220,10 +200,16 @@ export function PerSessionPanel({ cost, height }: { cost: CostResponse; height?:
         </div>
       </dl>
       <FillHeight fallback={height ?? 96} min={56}>
-        {(h) => {
-          const c = <BarChart title="Cost of each session" bars={bars.map((r) => ({ label: dayLabel(r.started.slice(0, 10)), value: r.estimatedGbp }))} format={money} height={h} className="cost-chart" />;
-          return coloured ? <BarTones tones={tones}>{c}</BarTones> : c;
-        }}
+        {(h) => (
+          <BarChart
+            title="Cost of each session"
+            bars={bars.map((r) => ({ label: dayLabel(r.started.slice(0, 10)), value: r.estimatedGbp }))}
+            format={money}
+            height={h}
+            className="cost-chart"
+            barTone={coloured ? (_, i) => tones[i] ?? null : undefined}
+          />
+        )}
       </FillHeight>
       {coloured && (warnCount > 0 || badCount > 0) && (
         <p className="cost-flag cost-flag--sessions">

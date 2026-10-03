@@ -246,6 +246,35 @@ describe("BarChart", () => {
     render(<BarChart title="Spend" bars={[{ label: "1 Oct", value: null }]} />);
     expect(screen.getByText("no data")).toBeInTheDocument();
   });
+  it("barTone colours each bar amber (warn) or red (bad); without it every bar is blue", () => {
+    const bars = [
+      { label: "1 Oct", value: 0.7 },
+      { label: "2 Oct", value: null },
+      { label: "3 Oct", value: 0.2 },
+      { label: "4 Oct", value: 2.5 },
+    ];
+    const fills = (c: HTMLElement) => [...c.querySelectorAll("rect")].map((r) => r.getAttribute("fill"));
+    const seen: Array<[string, number]> = [];
+    const toned = render(
+      <BarChart
+        title="Cost of each session"
+        bars={bars}
+        barTone={(b, i) => {
+          seen.push([b.label, i]);
+          return b.value! >= 2 ? "bad" : b.value! >= 0.5 ? "warn" : null;
+        }}
+      />,
+    );
+    expect(fills(toned.container)).toEqual(["var(--amber)", "var(--blue)", "var(--red)"]);
+    // Asked about drawn bars only, with their index in `bars`.
+    expect(seen).toEqual([
+      ["1 Oct", 0],
+      ["3 Oct", 2],
+      ["4 Oct", 3],
+    ]);
+    toned.unmount();
+    expect(fills(render(<BarChart title="Cost of each session" bars={bars} />).container)).toEqual(["var(--blue)", "var(--blue)", "var(--blue)"]);
+  });
 });
 
 describe("axisTicks", () => {

@@ -23,14 +23,23 @@ export interface BarChartProps {
   format?: (v: number) => string;
   height?: number;
   className?: string;
+  /**
+   * A bar's tone: "warn" draws it amber, "bad" red, null the usual blue.
+   * Asked only for bars that are drawn (index into `bars`). Colour is never
+   * the only sign: say what the colours mean in words beside the chart.
+   */
+  barTone?: (bar: Bar, index: number) => BarTone | null;
 }
+
+export type BarTone = "warn" | "bad";
+const TONE_FILL: Record<BarTone, string> = { warn: "var(--amber)", bad: "var(--red)" };
 
 const ML = 48;
 const MB = 22;
 const MT = 8;
 
 /** Daily bars with an optional budget line and a dashed forecast. Plain SVG. */
-export function BarChart({ title, bars, forecast = [], previous, budget, format, height = 180, className }: BarChartProps) {
+export function BarChart({ title, bars, forecast = [], previous, budget, format, height = 180, className, barTone }: BarChartProps) {
   const [ref, width] = useElementWidth<HTMLDivElement>(600);
   const fmt = format ?? ((v: number) => fmtNum(v));
 
@@ -100,11 +109,11 @@ export function BarChart({ title, bars, forecast = [], previous, budget, format,
               </text>
             ) : null,
           )}
-          {bars.map((b, i) =>
-            b.value === null || !Number.isFinite(b.value) ? null : (
-              <rect key={i} x={X(i) - bw / 2} y={Y(b.value)} width={bw} height={Math.max(0, MT + ph - Y(b.value))} rx={2} fill="var(--blue)" />
-            ),
-          )}
+          {bars.map((b, i) => {
+            if (b.value === null || !Number.isFinite(b.value)) return null;
+            const tone = barTone?.(b, i) ?? null;
+            return <rect key={i} x={X(i) - bw / 2} y={Y(b.value)} width={bw} height={Math.max(0, MT + ph - Y(b.value))} rx={2} fill={tone ? TONE_FILL[tone] : "var(--blue)"} />;
+          })}
           {previous && <path d={line(previous)} fill="none" stroke="var(--blue-bright)" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.8} />}
           {forecast.length > 0 && (
             <path
