@@ -11,7 +11,7 @@ import { renderWithProviders } from "@/test/render";
 import { prefsServer } from "@/test/fixtures";
 import { setViewport } from "@/test/viewport";
 import { Panel } from "@/components";
-import { SAVE_DELAY_MS, Widget, WidgetCorner, useWidget, usePrefsStatus } from "@/widgets";
+import { LayoutMenu, SAVE_DELAY_MS, Widget, WidgetCorner, useWidget, usePrefsStatus } from "@/widgets";
 
 afterEach(() => {
   try {
@@ -357,6 +357,31 @@ describe("the cog", () => {
     expect(screen.getByRole("status", { name: "hidden" })).toHaveTextContent("true");
     expect(screen.queryByRole("region", { name: "Recent events" })).toBeNull();
   });
+
+  for (const size of ["desktop", "phone"] as const) {
+    it(`after Hide widget, focus moves to the page's Layout button and the change is announced (${size})`, async () => {
+      if (size === "phone") setViewport("phone");
+      renderWidget(
+        <>
+          <Settings id="overview.events" />
+          <LayoutMenu page="overview" />
+          <Widget id="overview.events">
+            <Panel title="Recent events">body</Panel>
+          </Widget>
+        </>,
+      );
+      await ready();
+      const dialog = await openCog("Recent events");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Hide widget" }));
+      expect(screen.getByRole("status", { name: "hidden" })).toHaveTextContent("true");
+      const layout = screen.getByRole("button", { name: "Layout" });
+      await waitFor(() => expect(document.activeElement).toBe(layout));
+      // Still there once the closing dialog has had its say about focus.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(document.activeElement).toBe(layout);
+      expect(document.querySelector("[data-wg-announcer]")).toHaveTextContent("Recent events hidden. Show it from Layout.");
+    });
+  }
 
   it("on the phone the cog opens a bottom sheet with the same sections", async () => {
     setViewport("phone");

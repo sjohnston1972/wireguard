@@ -35,7 +35,7 @@ export function LayoutMenu({ page }: { page: PageId }) {
     <span className="wg-layout" data-widget-chrome="">
       <Menu.Root>
         <Menu.Trigger asChild>
-          <Button size="sm" icon={<LayoutGrid size={15} aria-hidden />}>
+          <Button size="sm" icon={<LayoutGrid size={15} aria-hidden />} data-wg-layout={page}>
             Layout
           </Button>
         </Menu.Trigger>
