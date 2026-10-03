@@ -106,8 +106,19 @@ export class PrefsStore {
     q.timer = setTimeout(() => this.flush(page), SAVE_DELAY_MS);
   }
 
+  private disposed = false;
+
+  /** Stop: waiting saves are dropped and answers still out are ignored (tests only, see dropPrefsStores). */
+  dispose(): void {
+    this.disposed = true;
+    for (const q of this.queues.values()) if (q.timer) clearTimeout(q.timer);
+    this.queues.clear();
+    this.listeners.clear();
+  }
+
   /** Send what is waiting for the page now (or right after the save in flight). */
   flush(page: PageId): void {
+    if (this.disposed) return;
     const q = this.queue(page);
     if (q.timer) clearTimeout(q.timer);
     q.timer = null;
@@ -139,6 +150,7 @@ export class PrefsStore {
     q.queued = false;
     try {
       const res = await apiSend<PrefsPage>("PUT", `/prefs/${page}`, { baseVersion: this.confirmed(page).version, prefs: sent });
+      if (this.disposed) return;
       // A refetch started before this save landed must not put the old version back.
       await this.client.cancelQueries({ queryKey: PREFS_KEY });
       this.setPage(page, res);
@@ -147,6 +159,7 @@ export class PrefsStore {
       else if (!q.timer && q.override === sent) q.override = null; // nothing newer: show what the server stored
       this.notify();
     } catch (e) {
+      if (this.disposed) return;
       q.inFlight = false;
       q.queued = false;
       if (q.timer) clearTimeout(q.timer);
@@ -173,7 +186,7 @@ export class PrefsStore {
   }
 }
 
-const stores = new WeakMap<QueryClient, PrefsStore>();
+const stores = new Map<QueryClient, PrefsStore>();
 
 /** The store for this query client. */
 export function storeFor(client: QueryClient): PrefsStore {
@@ -183,4 +196,14 @@ export function storeFor(client: QueryClient): PrefsStore {
     stores.set(client, s);
   }
   return s;
+}
+
+/**
+ * Tests only (web/src/test/setup.ts, after each test): forget every store,
+ * dropping saves still waiting, so one test's change is never sent to the
+ * next test's mocked server.
+ */
+export function dropPrefsStores(): void {
+  for (const s of stores.values()) s.dispose();
+  stores.clear();
 }

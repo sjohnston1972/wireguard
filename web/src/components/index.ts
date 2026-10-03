@@ -2,7 +2,7 @@
 export { cx, type Tone } from "./cx";
 
 // layout
-export { Panel, type PanelProps } from "./layout/Panel";
+export { Panel, PanelChromeContext, type PanelProps, type PanelChrome } from "./layout/Panel";
 export { PageHeader, type PageHeaderProps } from "./layout/PageHeader";
 export { Grid, Col, type ColProps } from "./layout/Grid";
 export { Drawer, Sheet, type DrawerProps } from "./layout/Drawer";

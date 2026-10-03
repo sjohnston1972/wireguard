@@ -1,0 +1,78 @@
+// widgets/WidgetCog.tsx
+//
+// Plain English: the settings cog. On a desktop it opens a small popover
+// beside the widget; on the phone a bottom sheet. Inside: Data, Thresholds
+// and Display (each only when the widget has such settings), then the
+// layout controls (Move left / Move right, Hide widget) and Reset to
+// default. Changes apply at once; there is no Save button.
+
+import { useState } from "react";
+import * as Popover from "@radix-ui/react-popover";
+import { Settings2 } from "lucide-react";
+import { Button, IconButton, Sheet, useIsPhone } from "@/components";
+import { useWidget } from "./useWidget";
+import { SettingsForm } from "./SettingsForm";
+
+export const READ_ONLY_FAILED = "Widget settings couldn't be loaded, so changes can't be saved right now.";
+export const READ_ONLY_LOADING = "Loading widget settings…";
+
+/** The cog's contents for one widget: the form and the footer. Also used by the phone's Widget settings list. */
+export function WidgetSettings({ id, onClose }: { id: string; onClose?: () => void }) {
+  const w = useWidget(id);
+  return (
+    <div className="wg-settings">
+      {w.readOnly && <p className="wg-settings__note">{w.status === "failed" ? READ_ONLY_FAILED : READ_ONLY_LOADING}</p>}
+      <SettingsForm def={w.def} settings={w.settings} onSet={w.set} readOnly={w.readOnly} />
+      <footer className="wg-settings__foot">
+        {!w.def.pinned && (
+          <Button
+            size="sm"
+            disabled={w.readOnly}
+            onClick={() => {
+              w.hide();
+              onClose?.();
+            }}
+          >
+            Hide widget
+          </Button>
+        )}
+        <Button size="sm" disabled={w.readOnly || !w.differs} onClick={w.reset}>
+          Reset to default
+        </Button>
+      </footer>
+    </div>
+  );
+}
+
+/** The cog button and what it opens. */
+export function WidgetCog({ id }: { id: string }) {
+  const w = useWidget(id);
+  const phone = useIsPhone();
+  const [open, setOpen] = useState(false);
+  const label = `${w.def.title} settings`;
+  const button = (
+    <IconButton label={label} size="sm" variant="plain" className="wg-cog" data-widget-chrome="" onClick={phone ? () => setOpen(true) : undefined}>
+      <Settings2 size={15} aria-hidden />
+    </IconButton>
+  );
+  if (phone)
+    return (
+      <>
+        {button}
+        <Sheet open={open} onOpenChange={setOpen} title={label} className="wg-sheet">
+          <WidgetSettings id={id} onClose={() => setOpen(false)} />
+        </Sheet>
+      </>
+    );
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>{button}</Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content className="wg-pop" align="end" sideOffset={6} collisionPadding={12} aria-label={label}>
+          <h2 className="wg-pop__title">{label}</h2>
+          <WidgetSettings id={id} onClose={() => setOpen(false)} />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
