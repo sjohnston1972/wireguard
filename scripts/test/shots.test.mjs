@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { parseArgs, buildPlan, SIZES, ROUTES, shotName, isOneScreenSize, measureOverflow, OVERFLOW_PROBE, judgeOverflow } from "../lib/shots.mjs";
+import { parseArgs, buildPlan, SIZES, ROUTES, shotName, isOneScreenSize, measureOverflow, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, freezeTimeScript, WIDGET_CHROME_OFF_CSS, widgetChromeOffScript, prefsPuts } from "../lib/shots.mjs";
 
 const script = fileURLToPath(new URL("../shots.mjs", import.meta.url));
 
@@ -191,4 +191,85 @@ test("panels and columns that scroll on their own are allowed", () => {
   const m = measureOverflow(document, window);
   assert.equal(m.innerScroller, null);
   assert.equal(judgeOverflow(m, { checkOverflow: true }).ok, true);
+});
+
+// ── Options for the widgets work: frozen clock, hidden chrome, saved preferences ──
+
+test("parseArgs: --freeze-time, --widget-chrome off, --prefs a.json,b.json", () => {
+  const d = parseArgs([]);
+  assert.equal(d.freezeTime, false);
+  assert.equal(d.widgetChrome, "on");
+  assert.deepEqual(d.prefs, []);
+  const o = parseArgs(["--scenario", "running", "--freeze-time", "--widget-chrome", "off", "--prefs", "a.json, b.json"]);
+  assert.equal(o.freezeTime, true);
+  assert.equal(o.widgetChrome, "off");
+  assert.deepEqual(o.prefs, ["a.json", "b.json"]);
+  assert.equal(parseArgs(["--widget-chrome", "on"]).widgetChrome, "on");
+  assert.throws(() => parseArgs(["--widget-chrome", "hidden"]), /--widget-chrome is on or off/);
+  assert.throws(() => parseArgs(["--prefs"]), /needs a value/);
+  assert.throws(() => parseArgs(["--freeze-time"]), /--freeze-time needs --scenario/);
+});
+
+test("buildPlan: --prefs is read and validated before the browser starts", () => {
+  const files = {
+    "ov.json": JSON.stringify({ overview: { layout: { hidden: ["overview.topology"] } } }),
+    "cost.json": JSON.stringify({ cost: { widgets: { "cost.perSession": { v: 1, s: { shown: "10" } } } } }),
+    "again.json": JSON.stringify({ overview: {} }),
+    "bad.json": "{ not json",
+    "list.json": "[]",
+    "page.json": JSON.stringify({ settings: {} }),
+    "value.json": JSON.stringify({ clients: [] }),
+  };
+  const read = (p) => {
+    if (!(p in files)) throw Object.assign(new Error(`ENOENT: no such file, open '${p}'`), { code: "ENOENT" });
+    return files[p];
+  };
+  assert.deepEqual(loadPrefsFiles(["ov.json", "cost.json"], read), {
+    overview: { layout: { hidden: ["overview.topology"] } },
+    cost: { widgets: { "cost.perSession": { v: 1, s: { shown: "10" } } } },
+  });
+  assert.throws(() => loadPrefsFiles(["nope.json"], read), /nope\.json.*cannot be read/);
+  assert.throws(() => loadPrefsFiles(["bad.json"], read), /bad\.json is not valid JSON/);
+  assert.throws(() => loadPrefsFiles(["list.json"], read), /list\.json.*object of pages/);
+  assert.throws(() => loadPrefsFiles(["page.json"], read), /page\.json.*"settings" is not a widget page/);
+  assert.throws(() => loadPrefsFiles(["value.json"], read), /value\.json.*"clients" must be an object/);
+  assert.throws(() => loadPrefsFiles(["ov.json", "again.json"], read), /overview.*both ov\.json and again\.json/);
+  // The whole command refuses a bad file before seeding or starting a browser.
+  const r = spawnSync(process.execPath, [script, "--dry-run", "--prefs", "no-such-prefs-file.json"], { encoding: "utf8", timeout: 20_000 });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /no-such-prefs-file\.json/);
+});
+
+test("the frozen clock reads the seeded time everywhere a page asks, and dates still work", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const at = "2026-10-02T14:00:00.000Z";
+  const out = runInNewContext(
+    `${freezeTimeScript(at)};
+     const d = new Date();
+     JSON.stringify({ now: Date.now(), iso: d.toISOString(), isDate: d instanceof Date, epoch: new Date(0).toISOString(), parts: new Date(2020, 0, 2).getFullYear(), utc: Date.UTC(2020, 0, 1), parse: Date.parse("2020-01-01T00:00:00Z"), str: typeof Date() })`,
+    {},
+  );
+  const v = JSON.parse(out);
+  assert.equal(v.now, Date.parse(at));
+  assert.equal(v.iso, at);
+  assert.equal(v.isDate, true);
+  assert.equal(v.epoch, "1970-01-01T00:00:00.000Z");
+  assert.equal(v.parts, 2020);
+  assert.equal(v.utc, Date.UTC(2020, 0, 1));
+  assert.equal(v.parse, Date.parse("2020-01-01T00:00:00Z"));
+  assert.equal(v.str, "string");
+  assert.throws(() => freezeTimeScript("yesterday"), /not a time/);
+});
+
+test("--widget-chrome off hides every [data-widget-chrome] element", () => {
+  assert.match(WIDGET_CHROME_OFF_CSS, /\[data-widget-chrome\]\s*\{\s*display:\s*none\s*!important;?\s*\}/);
+  assert.match(widgetChromeOffScript(), /data-widget-chrome/);
+});
+
+test("prefsPuts sends each page with the version the server holds now", () => {
+  const current = { pages: { overview: { version: 3, updatedAt: "x", prefs: {} }, cost: { version: 0, updatedAt: null, prefs: {} } } };
+  assert.deepEqual(prefsPuts(current, { overview: { layout: { hidden: ["overview.notes"] } }, cost: {} }), [
+    { page: "overview", body: { baseVersion: 3, prefs: { layout: { hidden: ["overview.notes"] } } } },
+    { page: "cost", body: { baseVersion: 0, prefs: {} } },
+  ]);
 });

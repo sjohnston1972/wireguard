@@ -123,6 +123,9 @@ export function parseArgs(argv) {
     browser: null,
     settle: 1500,
     port: 0,
+    freezeTime: false,
+    widgetChrome: "on",
+    prefs: [],
   };
   const need = (i, flag) => {
     if (i + 1 >= argv.length) throw new Error(`${flag} needs a value`);
@@ -173,12 +176,113 @@ export function parseArgs(argv) {
           return { width, height: Number(m[2]), mobile: width < 640 };
         });
         break;
+      case "--freeze-time":
+        o.freezeTime = true;
+        break;
+      case "--widget-chrome":
+        o.widgetChrome = need(i++, a);
+        if (o.widgetChrome !== "on" && o.widgetChrome !== "off") throw new Error("--widget-chrome is on or off");
+        break;
+      case "--prefs":
+        o.prefs = split(need(i++, a));
+        break;
       default:
         throw new Error(`Unknown option ${a}`);
     }
   }
   if (!Number.isFinite(o.settle) || o.settle < 0) throw new Error("--settle is a number of milliseconds");
+  // The frozen time is the seeded story's "now", so there has to be a story.
+  if (o.freezeTime && !o.scenario) throw new Error("--freeze-time needs --scenario (the browser's clock is pinned to the seeded time)");
   return o;
+}
+
+// ── Widgets: a frozen clock, hidden widget chrome, saved preferences ──────
+
+/**
+ * A script for every new page (before the app's own) that pins the clock:
+ * `Date.now()` and `new Date()` both answer `iso`, so "3 min ago", today's
+ * date and every clock on screen come out the same on every run. Dates made
+ * from a value (new Date(0), Date.UTC, Date.parse) work as normal.
+ */
+export function freezeTimeScript(iso) {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) throw new Error(`--freeze-time: "${iso}" is not a time`);
+  return `(() => {
+  const Real = Date;
+  const FIXED = ${ms};
+  function Frozen(...args) {
+    if (!new.target) return new Real(FIXED).toString();
+    return args.length ? new Real(...args) : new Real(FIXED);
+  }
+  Frozen.prototype = Real.prototype;
+  Frozen.now = () => FIXED;
+  Frozen.parse = Real.parse;
+  Frozen.UTC = Real.UTC;
+  Object.defineProperty(Real.prototype, "constructor", { value: Frozen, configurable: true, writable: true });
+  globalThis.Date = Frozen;
+})()`;
+}
+
+/** The style --widget-chrome off adds: every cog, move handle and widget menu is gone, as if never built. */
+export const WIDGET_CHROME_OFF_CSS = "[data-widget-chrome] { display: none !important; }";
+
+/** A script for every new page that adds WIDGET_CHROME_OFF_CSS as early as the page allows. */
+export function widgetChromeOffScript() {
+  return `(() => {
+  const add = () => {
+    if (document.getElementById("wg-shots-chrome-off")) return true;
+    const root = document.head || document.documentElement;
+    if (!root) return false;
+    const s = document.createElement("style");
+    s.id = "wg-shots-chrome-off";
+    s.textContent = ${JSON.stringify(WIDGET_CHROME_OFF_CSS)};
+    root.appendChild(s);
+    return true;
+  };
+  if (!add()) document.addEventListener("DOMContentLoaded", add, { once: true });
+})()`;
+}
+
+/** The widget pages, as shared/widgets.ts names them. */
+export const PREFS_PAGES = ["overview", "clients", "firewall", "activity", "cost"];
+
+/**
+ * The --prefs files read and checked before anything starts: each is a JSON
+ * object of page -> that page's preferences (the body the dashboard saves).
+ * A page may come from one file only. The Worker checks the preferences
+ * themselves when they are saved, and a refusal stops the run.
+ */
+export function loadPrefsFiles(paths, read) {
+  const out = {};
+  const from = {};
+  for (const p of paths) {
+    let text;
+    try {
+      text = read(p);
+    } catch (e) {
+      throw new Error(`--prefs: ${p} cannot be read (${e.code ?? e.message})`);
+    }
+    let v;
+    try {
+      v = JSON.parse(String(text));
+    } catch {
+      throw new Error(`--prefs: ${p} is not valid JSON`);
+    }
+    if (v === null || typeof v !== "object" || Array.isArray(v)) throw new Error(`--prefs: ${p} must be an object of pages, for example {"overview": {...}}`);
+    for (const [page, prefs] of Object.entries(v)) {
+      if (!PREFS_PAGES.includes(page)) throw new Error(`--prefs: in ${p}, "${page}" is not a widget page (${PREFS_PAGES.join(", ")})`);
+      if (prefs === null || typeof prefs !== "object" || Array.isArray(prefs)) throw new Error(`--prefs: in ${p}, "${page}" must be an object`);
+      if (page in out) throw new Error(`--prefs: ${page} is in both ${from[page]} and ${p}; give each page once`);
+      out[page] = prefs;
+      from[page] = p;
+    }
+  }
+  return out;
+}
+
+/** The saves to make: each page's preferences with the version the server holds now (GET /api/v1/prefs). */
+export function prefsPuts(current, pages) {
+  return Object.entries(pages).map(([page, prefs]) => ({ page, body: { baseVersion: current.pages[page]?.version ?? 0, prefs } }));
 }
 
 /**

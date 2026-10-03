@@ -19,16 +19,21 @@
 //   node scripts/shots.mjs --dry-run                 (list the shots, take none)
 //   options: --base URL --api URL --out DIR --routes /,/cost --sizes 1100x700 --themes dark
 //            --browser PATH --settle MS --json (with --dry-run)
+//   widgets: --freeze-time          pin the browser's clock to the seeded "now" (needs --scenario)
+//            --widget-chrome off    hide every cog, move handle and widget menu ([data-widget-chrome])
+//            --prefs a.json,b.json  save these widget preferences for dev@localhost before shooting
+//                                   (each file: {"<page>": <PagePrefs>}; see scripts/shots-prefs/)
+//   Compare two runs pixel by pixel: npm run shots:diff -- <dir A> <dir B>
 //
 // The browser is stopped by its own process id when the run ends; no other
 // program is touched.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { parseArgs, buildPlan, OVERFLOW_PROBE, judgeOverflow } from "./lib/shots.mjs";
+import { parseArgs, buildPlan, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, prefsPuts, freezeTimeScript, widgetChromeOffScript } from "./lib/shots.mjs";
 import { seed } from "./seed-scenarios.mjs";
 
 const BROWSERS = [
@@ -141,6 +146,33 @@ async function findIds(base) {
   return ids;
 }
 
+/**
+ * Save widget preferences for the signed-in dev user (dev@localhost): read
+ * each page's current version, then PUT the page with it. The Worker checks
+ * every value; a refusal stops the run with the Worker's own message.
+ */
+async function savePrefs(api, pages) {
+  const current = await getJson(`${api}/api/v1/prefs`);
+  for (const { page, body } of prefsPuts(current, pages)) {
+    const r = await fetch(`${api}/api/v1/prefs/${page}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Sec-Fetch-Site": "same-origin" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      let why = `answered ${r.status}`;
+      try {
+        const e = (await r.json()).error;
+        why = `${e.message}${e.field ? ` (field ${e.field})` : ""}`;
+      } catch {
+        /* not the API's error shape */
+      }
+      throw new Error(`--prefs: the dashboard refused the ${page} preferences: ${why}`);
+    }
+  }
+  console.log(`Saved widget preferences for ${Object.keys(pages).join(", ")}`);
+}
+
 /** Stop the browser we started, by its own process id (and its helper processes). */
 function stopBrowser(child) {
   if (!child || child.exitCode !== null || !child.pid) return;
@@ -162,8 +194,11 @@ function printPlan(plan, opts) {
 
 async function main() {
   let opts;
+  let prefs;
   try {
     opts = parseArgs(process.argv.slice(2));
+    // Read and checked before anything is seeded or started.
+    prefs = loadPrefsFiles(opts.prefs, (p) => readFileSync(p, "utf8"));
   } catch (e) {
     console.error(e.message);
     return 2;
@@ -174,15 +209,27 @@ async function main() {
     return 0;
   }
 
+  let seededNow = null;
   if (opts.scenario) {
     try {
       const r = await seed(opts.api, opts.scenario);
+      seededNow = r.now;
       console.log(`Seeded "${opts.scenario}" at ${r.now}`);
     } catch (e) {
       console.error(e.message);
       return 3;
     }
     if (opts.scenario === "deploying") console.error("Note: with real GitHub credentials in .dev.vars the Worker gives up on a seeded deploy after about 3 minutes; shoot soon after seeding.");
+  }
+
+  // Saved widget preferences for dev@localhost, after seeding (the seeder wipes them).
+  if (Object.keys(prefs).length) {
+    try {
+      await savePrefs(opts.api, prefs);
+    } catch (e) {
+      console.error(e.message);
+      return 3;
+    }
   }
 
   try {
@@ -228,6 +275,11 @@ async function main() {
     await cdp.ready;
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    if (opts.freezeTime) {
+      await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: freezeTimeScript(seededNow) });
+      console.log(`Browser clock frozen at ${seededNow}`);
+    }
+    if (opts.widgetChrome === "off") await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: widgetChromeOffScript() });
 
     for (const s of plan) {
       const rec = { file: s.file, path: s.path, theme: s.theme, width: s.width, height: s.height, overflowY: null, overflowX: null, mainOverflowY: null, mainOverflowX: null, ok: true };
