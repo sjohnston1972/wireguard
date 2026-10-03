@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { OverviewResponse } from "@shared/api";
 import { Button, KeyValue, LogView, ProgressBar, Sheet, StepList, cx } from "@/components";
 import { useCost, useRunLog } from "@/api/queries";
+import { useWidget } from "@/widgets";
 import type { ActionName } from "./actions";
 import { StateMark } from "./Banner";
 import { healthChecks } from "./Lower";
@@ -36,21 +37,32 @@ function lights(o: OverviewResponse): { name: string; word: string; tone: Tone }
 
 function PhoneLog({ o }: { o: OverviewResponse }) {
   const s = o.snapshot;
+  const { settings: st } = useWidget("overview.run");
   const q = useRunLog(s.run_id ?? "none", inGithubRun(s.state), { enabled: !!s.run_id });
   const parsed = useMemo(() => parseLog(q.data?.log || s.log_tail), [q.data, s.log_tail]);
   // The live copy has started but nothing has arrived yet.
   const waiting = q.data?.source === "live" && q.data.active && parsed.lines.length === 0;
   return (
     <div className="ov-phone__log">
-      <LogView lines={parsed.lines} aria-label="Run log" toolbar={false} emptyText={waiting ? LIVE_LOG_WAITING : undefined} />
+      <LogView lines={parsed.lines} aria-label="Run log" toolbar={false} emptyText={waiting ? LIVE_LOG_WAITING : undefined} timestamps={st.logTimestamps as boolean} />
     </div>
   );
 }
+
+/** Key metrics' figures in the Details sheet, by the tile they belong to. */
+const DETAIL_TILE: Record<string, string> = { Endpoint: "endpoint", "Public IP": "endpoint", Heartbeat: "heartbeat", "Session cost": "sessionCost" };
 
 /** The phone composition (spec §9): state word, compact topology, lights, the main action and small buttons; steps, log and details in sheets. */
 export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: number; onAction: (a: ActionName) => void }) {
   const [sheet, setSheet] = useState<"steps" | "log" | "details" | null>(null);
   const cost = useCost("month");
+  // The phone keeps its own layout (no order), but follows what is hidden and set:
+  // status (progress), topology (the strip), run (Steps and Log), key metrics and health (Details).
+  const status = useWidget("overview.status").settings;
+  const topo = useWidget("overview.topology");
+  const runW = useWidget("overview.run");
+  const metrics = useWidget("overview.keyMetrics");
+  const health = useWidget("overview.health");
   const s = o.snapshot;
   const t = topology(o);
   const run = inGithubRun(s.state);
@@ -74,7 +86,7 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
   }
   if (s.state === "standby") small.push({ label: "Tear down", onClick: () => onAction("destroy") });
   if (s.state === "failed") small.push({ label: "Deploy again", onClick: () => onAction("deploy") });
-  if (run || s.state === "failed") {
+  if ((run || s.state === "failed") && !runW.hidden) {
     small.push({ label: "Steps", onClick: () => setSheet("steps") });
     small.push({ label: "Log", onClick: () => setSheet("log") });
   }
@@ -96,22 +108,24 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
         </div>
       </div>
 
-      {run && (
+      {run && status.progress && (
         <div className="ov-phone__progress">
           <p className="ov-phone__step">{step && stepNo ? `Step ${stepNo} of ${s.steps.length}: ${step.name}` : progress ? `${progress.done} of ${progress.total} steps completed` : "Waiting for GitHub to start"}</p>
           <ProgressBar label="Run progress" value={progress ? progress.pct : null} showValue />
         </div>
       )}
 
-      <ol className="ov-phone__topo" aria-label="Topology">
-        {nodes.map(([name, st, word], i) => (
-          <li key={name} className="ov-phone__node" data-status={st} aria-label={`${name}: ${word}`}>
-            {i > 0 && <span className="ov-phone__line" data-status={i === 1 ? t.edges[0] : t.edges[1]} aria-hidden />}
-            <span className="ov-phone__dot" aria-hidden />
-            <span className="ov-phone__name">{name}</span>
-          </li>
-        ))}
-      </ol>
+      {!topo.hidden && (
+        <ol className="ov-phone__topo" aria-label="Topology">
+          {nodes.map(([name, st, word], i) => (
+            <li key={name} className="ov-phone__node" data-status={st} aria-label={`${name}: ${word}`}>
+              {i > 0 && <span className="ov-phone__line" data-status={i === 1 ? t.edges[0] : t.edges[1]} aria-hidden />}
+              <span className="ov-phone__dot" aria-hidden />
+              <span className="ov-phone__name">{name}</span>
+            </li>
+          ))}
+        </ol>
+      )}
 
       <ul className="ov-phone__lights" aria-label="Status lights">
         {lights(o).map((l) => (
@@ -151,17 +165,19 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
             { label: "VM size", value: s.vm_size ?? (o.config.vmSize || null) },
             { label: "Heartbeat", value: s.state === "running" ? ageOf(s.last_agent_at, now) : null },
             { label: "Session cost", value: s.state === "running" || s.state === "standby" ? (cost.data?.session.estimateGbp == null ? null : gbp(cost.data.session.estimateGbp)) : null },
-          ]}
+          ].filter((x) => !DETAIL_TILE[x.label] || (!metrics.hidden && (metrics.settings.tiles as string[]).includes(DETAIL_TILE[x.label])))}
         />
-        <ul className="ov-phone__checks" aria-label="Health checks">
-          {healthChecks(o, now).map((c) => (
-            <li key={c.name} className="ov-light" data-tone={c.ok === null ? "grey" : c.ok ? "green" : "red"}>
-              <span className="ov-light__dot" aria-hidden />
-              <span className="ov-light__name">{c.name}</span>
-              <span className="ov-light__word">{c.ok === null ? "no data" : c.ok ? `OK · ${c.age ?? ""}` : "Failing"}</span>
-            </li>
-          ))}
-        </ul>
+        {!health.hidden && (
+          <ul className="ov-phone__checks" aria-label="Health checks">
+            {healthChecks(o, now, health.settings.checks as string[]).map((c) => (
+              <li key={c.name} className="ov-light" data-tone={c.ok === null ? "grey" : c.ok ? "green" : "red"}>
+                <span className="ov-light__dot" aria-hidden />
+                <span className="ov-light__name">{c.name}</span>
+                <span className="ov-light__word">{c.ok === null ? "no data" : c.ok ? (health.settings.ages ? `OK · ${c.age ?? ""}` : "OK") : "Failing"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </Sheet>
     </section>
   );

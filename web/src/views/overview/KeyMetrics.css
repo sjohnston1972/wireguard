@@ -33,6 +33,13 @@
 }
 .ov-tiles__row--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ov-tiles__row--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* Fewer tiles (the Tiles setting) flow into the same two rows. */
+.ov-tiles__row--1 { grid-template-columns: minmax(0, 1fr); }
+.ov-tiles__row--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* A threshold's word beside its colour (Latency, Availability). */
+.ov-tile__word { font-size: 12px; font-weight: 600; }
+.ov-tile__word--amber { color: var(--amber); }
+.ov-tile__word--red { color: var(--red); }
 .ov-tile {
   display: flex;
   min-width: 0;

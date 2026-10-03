@@ -51,14 +51,25 @@
   align-self: flex-end;
 }
 
-/* The three rows below the banner share the height left, in the mockup's proportions. */
+/* The three rows below the banner share the height left, in the mockup's proportions.
+   Each row's track is a variable (set per window size below), so a row the user
+   has emptied (every widget hidden) drops its track and the others keep theirs. */
 .ov-rows {
+  --ov-track-r2: minmax(0, 245fr);
+  --ov-track-r3: minmax(0, 320fr);
+  --ov-track-r4: minmax(0, 120fr);
   flex: 1 1 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 245fr) minmax(0, 320fr) minmax(0, 120fr);
+  grid-template-rows: var(--ov-track-r2) var(--ov-track-r3) var(--ov-track-r4);
   gap: var(--gap);
 }
+.ov-rows--r2-r3 { grid-template-rows: var(--ov-track-r2) var(--ov-track-r3); }
+.ov-rows--r2-r4 { grid-template-rows: var(--ov-track-r2) var(--ov-track-r4); }
+.ov-rows--r3-r4 { grid-template-rows: var(--ov-track-r3) var(--ov-track-r4); }
+.ov-rows--r2 { grid-template-rows: var(--ov-track-r2); }
+.ov-rows--r3 { grid-template-rows: var(--ov-track-r3); }
+.ov-rows--r4 { grid-template-rows: var(--ov-track-r4); }
 
 /* A tall desktop window gets the mockup's proportions: topology and metrics
    about 190 px, the run (chips, pipeline, log) the most, the lower row a strip. */
@@ -67,7 +78,7 @@
   .ov-rows,
   .ov-row { gap: 10px; }
   /* Row 2 as tall as its tiles need (more when running: bars and sparklines); the run row takes the rest. */
-  .ov-rows { grid-template-rows: auto minmax(0, 1fr) minmax(0, 96px); }
+  .ov-rows { --ov-track-r2: auto; --ov-track-r3: minmax(0, 1fr); --ov-track-r4: minmax(0, 96px); }
   .ov-banner { padding-block: 8px; }
   .ov-run { gap: 6px; }
   /* Compact panel heads: the height goes to the steps, lines and tiles. */
@@ -109,12 +120,15 @@
 .ov-row--4 { grid-template-columns: minmax(0, 54fr) minmax(0, 32fr) minmax(0, 32fr); }
 /* During a run the chip row, pipeline and log share the first two columns. */
 .ov-row--3 > .ov-run { grid-column: span 2; }
+/* ...unless the user changed the row: then its columns come from the widgets' weights (index.tsx). */
+.ov-row--custom > .ov-run { grid-column: auto; }
 
-/* 641-1099 px: panels stack and the page may scroll. */
+/* 641-1099 px: panels stack and the page may scroll (in the user's order;
+   the columns a changed row sets on itself do not apply here). */
 @media (max-width: 1099px) {
   .ov { height: auto; }
   .ov-rows { display: flex; flex-direction: column; }
-  .ov-row--2, .ov-row--3, .ov-row--4 { grid-template-columns: minmax(0, 1fr); }
+  .ov-row--2, .ov-row--3, .ov-row--4 { grid-template-columns: minmax(0, 1fr) !important; }
 }
 
 .ov-skeleton {
@@ -161,7 +175,7 @@
   .ov,
   .ov-rows,
   .ov-row { gap: 8px; }
-  .ov-rows { grid-template-rows: auto minmax(0, 1fr) minmax(0, 104px); }
+  .ov-rows { --ov-track-r2: auto; --ov-track-r3: minmax(0, 1fr); --ov-track-r4: minmax(0, 104px); }
   .ov-tile > .tile { padding-block: 3px; }
   .ov-tile .tile__main { gap: 1px; }
   .ov-tile .tile__label, .ov-tile .tile__value, .ov-tile .tile__sub, .ov-tile__sub { line-height: 1.25; }
@@ -196,7 +210,7 @@
   .ov-rows,
   .ov-row { gap: 8px; }
   .ov .page-header__subtitle { display: none; }
-  .ov-rows { grid-template-rows: minmax(0, 118px) minmax(0, 1fr) minmax(0, 82px); }
+  .ov-rows { --ov-track-r2: minmax(0, 118px); --ov-track-r3: minmax(0, 1fr); --ov-track-r4: minmax(0, 82px); }
   .ov-tiles { min-height: 0; }
   .ov-tiles__row { flex: none; }
   .ov-banner { padding: 6px 16px; }

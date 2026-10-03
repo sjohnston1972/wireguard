@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from "react";
+import { useWidget } from "@/widgets";
+import { useStarting } from "./widgetSettings";
 import { Link } from "react-router-dom";
 import { Check, Maximize2, Minus, X } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
@@ -65,8 +67,10 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
   const s = o.snapshot;
   const live = inGithubRun(s.state);
   const runLog = useRunLog(s.run_id ?? "none", live, { enabled: !!s.run_id });
-  const [filter, setFilter] = useState<StepFilter>("all");
-  const [level, setLevel] = useState<LevelFilter>("all");
+  const { settings: st } = useWidget("overview.run");
+  const [filter, setFilter] = useStarting(st.stepFilter as StepFilter);
+  const [level, setLevel] = useStarting(st.logLevel as LevelFilter);
+  const timestamps = st.logTimestamps as boolean;
   const [full, setFull] = useState(false);
   const host = useRef<HTMLDivElement | null>(null);
   // While the run is going the log is the live copy the workflow sends; once
@@ -124,6 +128,7 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
         <Panel
           title="Live logs"
           className="ov-run__log"
+          widgetChrome={false}
           flush
           bodyClassName="ov-run__logbody"
           status={
@@ -142,14 +147,14 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
           }
         >
           <div ref={host} className="ov-run__loghost">
-            <LogView lines={lines} aria-label={`${what === "deployment" ? "Deployment" : "Tear-down"} log`} emptyText={waiting ? LIVE_LOG_WAITING : undefined} />
+            <LogView lines={lines} aria-label={`${what === "deployment" ? "Deployment" : "Tear-down"} log`} emptyText={waiting ? LIVE_LOG_WAITING : undefined} timestamps={timestamps} />
           </div>
           {runLog.isError && !s.log_tail && <p className="ov-run__none">{runLog.error.message}</p>}
         </Panel>
       </div>
       <Modal open={full} onOpenChange={setFull} title="Run log" width={1100}>
         <div className="ov-run__fulllog">
-          <LogView lines={lines} aria-label="Run log, full screen" />
+          <LogView lines={lines} aria-label="Run log, full screen" timestamps={timestamps} />
         </div>
       </Modal>
     </div>

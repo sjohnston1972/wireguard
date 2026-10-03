@@ -6,6 +6,8 @@
   min-height: 0;
   min-width: 0;
 }
+/* One widget left in the stack (the other hidden): it takes the whole column. */
+.ov-side--one > * { grid-row: 1 / -1; }
 
 .ov-events__list {
   display: flex;
@@ -101,4 +103,9 @@
 .ov-speed__err {
   grid-column: 2 / -1;
   color: var(--red);
+}
+/* The Test server setting: a line of its own under the figures. */
+.ov-speed__server {
+  grid-column: 2 / -1;
+  margin-top: -8px;
 }
