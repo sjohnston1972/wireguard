@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Maximize2, Minus, X } from "lucide-react";
-import type { OverviewResponse } from "@shared/api";
+import type { OverviewResponse, RunLogResponse } from "@shared/api";
 import { EmptyState, IconButton, LogView, Modal, Panel, Select, StepList, Tabs, cx, type LogLine } from "@/components";
 import { useRunLog } from "@/api/queries";
 import { inGithubRun, stepLine, stepMatches, stepState, uiSteps, type StepFilter } from "./model";
-import { parseLog } from "@/lib/parseLog";
+import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
 import type { ActionName } from "./actions";
 import "./Run.css";
 
@@ -59,6 +59,16 @@ function Pipeline({ steps, filter, onPick }: { steps: OverviewResponse["snapshot
   );
 }
 
+/**
+ * The word beside "Live logs": "Streaming" only while the run is going and the
+ * log is the live copy; "Finished" once the run is over or the log is
+ * GitHub's; "Waiting" while the first answer is still on its way.
+ */
+function streamState(running: boolean, data: RunLogResponse | undefined): "Streaming" | "Waiting" | "Finished" {
+  if (!running || data?.source === "github" || data?.active === false) return "Finished";
+  return data?.source === "live" ? "Streaming" : "Waiting";
+}
+
 /** During a deploy or tear-down: the step chips, the pipeline and the live log, side by side. */
 export function RunPanels({ o }: { o: OverviewResponse }) {
   const s = o.snapshot;
@@ -68,9 +78,13 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
   const [level, setLevel] = useState<LevelFilter>("all");
   const [full, setFull] = useState(false);
   const host = useRef<HTMLDivElement | null>(null);
-  const fromGithub = runLog.data?.log;
-  const parsed = useMemo(() => parseLog(fromGithub || s.log_tail), [fromGithub, s.log_tail]);
+  // While the run is going the log is the live copy the workflow sends; once
+  // it has finished, GitHub's full log (the API decides, see RunLogResponse).
+  const fromApi = runLog.data?.log;
+  const parsed = useMemo(() => parseLog(fromApi || s.log_tail), [fromApi, s.log_tail]);
   const lines = useMemo(() => parsed.lines.filter((l) => keep(l, level)), [parsed, level]);
+  const stream = streamState(live, runLog.data);
+  const waiting = stream === "Streaming" && parsed.lines.length === 0;
 
   const counts = {
     all: s.steps.length,
@@ -119,9 +133,9 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
           flush
           bodyClassName="ov-run__logbody"
           status={
-            <span className={cx("ov-stream", live && "ov-stream--on")}>
+            <span className={cx("ov-stream", stream === "Streaming" && "ov-stream--on")}>
               <span className="ov-stream__dot" aria-hidden />
-              {live ? "Streaming" : "Finished"}
+              {stream}
             </span>
           }
           actions={
@@ -134,7 +148,7 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
           }
         >
           <div ref={host} className="ov-run__loghost">
-            <LogView lines={lines} aria-label={`${what === "deployment" ? "Deployment" : "Tear-down"} log`} />
+            <LogView lines={lines} aria-label={`${what === "deployment" ? "Deployment" : "Tear-down"} log`} emptyText={waiting ? LIVE_LOG_WAITING : undefined} />
           </div>
           {runLog.isError && !s.log_tail && <p className="ov-run__none">{runLog.error.message}</p>}
         </Panel>

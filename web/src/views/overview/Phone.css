@@ -143,7 +143,6 @@
   flex: 1;
   min-height: 0;
 }
-
 /* The phone header: title only; the read-only fields would crowd it. */
 @media (max-width: 640px) {
   .ov .page-header__right { display: none; }

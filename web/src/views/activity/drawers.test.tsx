@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
-import { activityRoutes } from "./testkit";
+import { LOG, activityRoutes, runDetail } from "./testkit";
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -79,6 +79,41 @@ describe("Run drawer", () => {
     expect(await within(drawer).findByText("GitHub is not set up, so there is no log to fetch.")).toBeInTheDocument();
   });
 
+  it("a run in progress says its log is streaming", async () => {
+    renderApp("/activity/runs/run-4", { routes: activityRoutes() });
+    const drawer = await screen.findByRole("dialog");
+    await within(drawer).findByRole("log", { name: "Run log" });
+    expect(within(drawer).getByText("Streaming")).toBeInTheDocument();
+  });
+
+  it("a run that has only just started waits for its first lines, even before GitHub has a run for it", async () => {
+    const queued = runDetail("run-4");
+    queued.run = { ...queued.run, github_run_url: null };
+    const { fetchMock } = renderApp("/activity/runs/run-4", {
+      routes: activityRoutes({ "GET /api/v1/runs/run-4": queued, "GET /api/v1/runs/run-4/log": { log: "", source: "live", active: true, updatedAt: null } }),
+    });
+    const drawer = await screen.findByRole("dialog");
+    expect(await within(drawer).findByText("Waiting for the first lines from GitHub Actions…")).toBeInTheDocument();
+    expect(within(drawer).queryByText(/no GitHub log/i)).toBeNull();
+    expect(logCalls(fetchMock, "run-4")).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a finished run without GitHub's log shows the live copy and says so", async () => {
+    renderApp("/activity/runs/run-2", { routes: activityRoutes({ "GET /api/v1/runs/run-2/log": { log: LOG, source: "live", active: false, updatedAt: "2026-10-02T11:51:12.000Z" } }) });
+    const drawer = await screen.findByRole("dialog");
+    expect(await within(drawer).findByText("Applying Terraform configuration...")).toBeInTheDocument();
+    expect(within(drawer).getByText(/GitHub's full log is not available/)).toBeInTheDocument();
+    expect(within(drawer).queryByText("Streaming")).toBeNull();
+  });
+
+  it("a finished run with GitHub's log shows no streaming or live-copy note", async () => {
+    renderApp("/activity/runs/run-2", { routes: activityRoutes() });
+    const drawer = await screen.findByRole("dialog");
+    expect(await within(drawer).findByText("Applying Terraform configuration...")).toBeInTheDocument();
+    expect(within(drawer).queryByText("Streaming")).toBeNull();
+    expect(within(drawer).queryByText(/GitHub's full log is not available/)).toBeNull();
+  });
+
   it("an unknown run says so", async () => {
     renderApp("/activity/runs/nope", { routes: activityRoutes({ "GET /api/v1/runs/nope": { status: 404, json: { error: { code: "not_found", message: "No such run." } } } }) });
     const drawer = await screen.findByRole("dialog");
@@ -115,6 +150,12 @@ describe("Run details and live output", () => {
     const out = screen.getByRole("region", { name: "Live output" });
     expect(await within(out).findByText("azurerm_public_ip.wg: Creating...")).toBeInTheDocument();
     expect(within(out).getByRole("link", { name: /Open in logs/ })).toHaveAttribute("href", "/activity/runs/run-4");
+  });
+
+  it("the live output waits for the run's first lines instead of showing nothing", async () => {
+    renderApp("/activity", { routes: activityRoutes({ "GET /api/v1/runs/run-4/log": { log: "", source: "live", active: true, updatedAt: null } }) });
+    const out = await screen.findByRole("region", { name: "Live output" });
+    expect(await within(out).findByText("Waiting for the first lines from GitHub Actions…")).toBeInTheDocument();
   });
 
   it("show the opened run instead of the latest", async () => {

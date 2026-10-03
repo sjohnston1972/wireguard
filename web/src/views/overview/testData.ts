@@ -217,7 +217,7 @@ export function routes(o: OverviewResponse, extra: Record<string, unknown> = {})
     "GET /api/v1/history": ({ url }: { url: string }) => vmHistory((new URL(url, "http://x").searchParams.get("range") ?? "1h") as "1h"),
     "GET /api/v1/activity": activity(),
     "GET /api/v1/cost": cost(),
-    [`GET /api/v1/runs/${o.snapshot.run_id ?? "none"}/log`]: { log: "" },
+    [`GET /api/v1/runs/${o.snapshot.run_id ?? "none"}/log`]: { log: "", source: "live", active: true, updatedAt: null },
     ...extra,
   };
 }
