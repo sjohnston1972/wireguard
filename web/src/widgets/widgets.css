@@ -76,7 +76,8 @@
 .wg-pop {
   z-index: 80;
   width: min(340px, calc(100vw - 24px));
-  max-height: min(70vh, 560px);
+  /* Never past the window's edge: Radix gives the room left on the side it opened. */
+  max-height: min(70vh, 560px, var(--radix-popover-content-available-height, 560px));
   overflow: auto;
   padding: 12px 14px;
   background: var(--bg-elevated);
