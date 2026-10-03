@@ -103,12 +103,14 @@ function Panels({ cost, compare, updatedAt }: { cost: CostResponse; compare: boo
 export function CostPage() {
   const [params, setParams] = useSearchParams();
   const range = parseRange(params.get("range"));
-  const startPrevious = useWidget("cost.spend").settings.previous === true;
+  const spendWidget = useWidget("cost.spend");
+  const startPrevious = spendWidget.settings.previous === true;
   const [compare, setCompare] = useStarting(startPrevious);
   const phone = useIsPhone();
   const q = useCost(range);
   const cost = q.data;
-  const canCompare = !!cost && cost.previous.length > 0;
+  // The switch drives the Spend over time chart only: with that widget hidden it would do nothing.
+  const canCompare = !!cost && cost.previous.length > 0 && !spendWidget.hidden;
 
   const setRange = (v: string) => {
     const next = new URLSearchParams(params);

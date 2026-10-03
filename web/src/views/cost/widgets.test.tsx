@@ -366,6 +366,18 @@ describe("Cost widgets: thresholds and display", () => {
 });
 
 describe("Cost widgets: layout", () => {
+  it("hiding Spend over time removes the header's Compare to previous period switch (it would do nothing)", async () => {
+    const shown = page();
+    await region("Spend over time");
+    expect(screen.getByRole("switch", { name: "Compare to previous period" })).toBeInTheDocument();
+    shown.unmount();
+    page(saved({}, { hidden: ["cost.spend"] }));
+    await region("Spend breakdown");
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Spend over time" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("switch", { name: "Compare to previous period" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Compare to previous period")).not.toBeInTheDocument();
+  });
+
   it("hiding forecast widens spend and breakdown", async () => {
     const { container } = page(saved({}, { hidden: ["cost.forecast"] }));
     await region("Spend over time");
