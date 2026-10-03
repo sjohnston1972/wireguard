@@ -29,8 +29,6 @@ import {
 } from "../../shared/widgets";
 import type { PagePrefs } from "../../shared/api";
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { AUDIT_KINDS, type EventType } from "../src/activity";
 import { CAPTURE_IFACES } from "../src/firewall";
 
@@ -65,11 +63,11 @@ describe("the catalogue (spec section 8)", () => {
   });
 
   it("every shots prefs fixture (scripts/shots-prefs) is valid for the current schema", () => {
-    const dir = fileURLToPath(new URL("../../scripts/shots-prefs/", import.meta.url));
+    const dir = new URL("../../scripts/shots-prefs/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".json"));
     expect(files.length).toBeGreaterThanOrEqual(10);
     for (const f of files) {
-      const all = JSON.parse(readFileSync(join(dir, f), "utf8")) as Record<string, PagePrefs>;
+      const all = JSON.parse(readFileSync(new URL(f, dir), "utf8")) as Record<string, PagePrefs>;
       for (const [page, prefs] of Object.entries(all)) {
         expect(PAGE_IDS, `${f}: ${page}`).toContain(page);
         expect(validatePagePrefs(page as PageId, prefs), `${f}: ${page}`).toBeNull();
