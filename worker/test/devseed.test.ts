@@ -113,6 +113,15 @@ describe("scenarios", () => {
     expect([...SCENARIOS].sort()).toEqual(["busy-month", "deploying", "destroyed", "empty", "failed", "running", "standby"].sort());
   });
 
+  it("every scenario wipes ui_prefs", async () => {
+    const { env } = devEnv();
+    for (const s of SCENARIOS) {
+      await env.DB.prepare("INSERT OR REPLACE INTO ui_prefs (user, page, json, version, updated_at) VALUES ('dev@localhost', 'overview', '{\"layout\":{\"hidden\":[\"overview.notes\"]}}', 3, ?1)").bind(NOW).run();
+      await seed(env, s);
+      expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM ui_prefs").first<{ n: number }>())!.n, s).toBe(0);
+    }
+  }, 30_000);
+
   it("every scenario wipes drafts and resets fw_policy", async () => {
     const { env } = devEnv();
     await seed(env, "running");

@@ -443,7 +443,8 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
 
 /** Wipe everything the seeder owns. */
 async function wipe(env: Env): Promise<void> {
-  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules"];
+  // ui_prefs too: every story starts with the widgets as they ship (shots --prefs saves its own after seeding).
+  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules", "ui_prefs"];
   await env.DB.batch([
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
     // No draft, and the live rule set back at version 1.
