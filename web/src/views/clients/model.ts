@@ -166,9 +166,69 @@ export const SORT_OPTIONS: { value: string; label: string; sort: SortState }[] =
   { value: "expires:asc", label: "Expires (soonest)", sort: { key: "expires", dir: "asc" } },
 ];
 
-/** The total a client moved this session in the top-talkers list, by tunnel address. */
-export function talkerTotals(talkers: ClientsResponse["talkers"]): Map<string, number> {
+/** What the top-talkers list adds up: everything, what the client sent (up + bu) or what it received (down + bd). */
+export type TalkerMeasure = "total" | "sent" | "received";
+
+/** The amount a client moved this session in the top-talkers list, by tunnel address. */
+export function talkerTotals(talkers: ClientsResponse["talkers"], measure: TalkerMeasure = "total"): Map<string, number> {
   const out = new Map<string, number>();
-  for (const t of talkers) out.set(t.c, (out.get(t.c) ?? 0) + t.up + t.down + t.bu + t.bd);
+  for (const t of talkers) {
+    const v = measure === "sent" ? t.up + t.bu : measure === "received" ? t.down + t.bd : t.up + t.down + t.bu + t.bd;
+    out.set(t.c, (out.get(t.c) ?? 0) + v);
+  }
   return out;
+}
+
+// ── Widget settings (clients.table) ──
+
+/** Starting-filter setting values -> the page's filter keys. */
+export const START_FILTERS: Record<string, FilterKey> = { all: "all", online: "online", offline: "offline", expiring: "expiring", home: "site", fullTunnel: "full" };
+
+/** Starting-sort setting values -> sort states (the same orders as the Sort menu). */
+export const START_SORTS: Record<string, SortState> = {
+  nameAsc: { key: "name", dir: "asc" },
+  nameDesc: { key: "name", dir: "desc" },
+  address: { key: "address", dir: "asc" },
+  handshake: { key: "handshake", dir: "desc" },
+  latency: { key: "latency", dir: "asc" },
+  traffic: { key: "traffic", dir: "desc" },
+  expires: { key: "expires", dir: "asc" },
+};
+
+/** The value a client sorts by under a sort key, or null when it has none (nulls stay last). */
+export function sortValueOf(c: Client, key: string): string | number | null {
+  switch (key) {
+    case "name":
+      return c.name.toLowerCase();
+    case "address":
+      return ipSortValue(c.ip);
+    case "handshake":
+      return lastHandshakeMs(c);
+    case "latency":
+      return c.lastLatencyMs;
+    case "traffic": {
+      const t = sessionTraffic(c);
+      return t ? t.up + t.down : null;
+    }
+    case "expires":
+      return c.expires_at ? Date.parse(c.expires_at) : null;
+    default:
+      return null;
+  }
+}
+
+/** Rows ordered by a sort key as the table orders them (stable; nulls last either way). */
+export function sortClients(rows: Client[], sort: SortState): Client[] {
+  const dir = sort.dir === "asc" ? 1 : -1;
+  const cmp = (a: string | number, b: string | number) =>
+    typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+  return rows
+    .map((r, i) => ({ r, i, v: sortValueOf(r, sort.key) }))
+    .sort((x, y) => {
+      if (x.v === null && y.v === null) return x.i - y.i;
+      if (x.v === null) return 1;
+      if (y.v === null) return -1;
+      return cmp(x.v, y.v) * dir || x.i - y.i;
+    })
+    .map((x) => x.r);
 }
