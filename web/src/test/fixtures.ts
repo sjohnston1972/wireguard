@@ -9,7 +9,11 @@ import type {
   SessionResponse,
   SettingsResponse,
   VmHistoryResponse,
+  PagePrefs,
+  PrefsPage,
+  PrefsResponse,
 } from "@shared/api";
+import { PAGE_IDS, normalisePagePrefs, validatePagePrefs, type PageId } from "@shared/widgets";
 import type { Snapshot } from "../../../worker/src/state";
 import type { ClientView } from "../../../worker/src/clients";
 
@@ -358,4 +362,52 @@ export const defaultRoutes = (): Record<string, unknown> => ({
   "GET /api/v1/runs/r1/log": { log: "", source: "github", active: false, updatedAt: null },
   "GET /api/v1/runs/run-42": runDetailFixture("run-42"),
   "GET /api/v1/runs/run-42/log": { log: "", source: "github", active: false, updatedAt: null },
+  "GET /api/v1/prefs": prefsFixture(),
 });
+
+// ── Widget preferences ────────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/prefs: the given pages saved (version 1, or `version`), every
+ * other page never saved (version 0, {}). Each page's prefs are normalised
+ * as the Worker would answer them, so a test can write defaults freely.
+ */
+export function prefsFixture(pages: Partial<Record<PageId, PagePrefs>> = {}, version = 1): PrefsResponse {
+  const out = {} as Record<PageId, PrefsPage>;
+  for (const p of PAGE_IDS) out[p] = pages[p] ? { version, updatedAt: NOW, prefs: normalisePagePrefs(p, pages[p]) } : { version: 0, updatedAt: null, prefs: {} };
+  return { pages: out };
+}
+
+export interface PrefsServer {
+  /** GET /api/v1/prefs and PUT /api/v1/prefs/<page> for all five pages; spread into mockFetch or renderApp routes. */
+  routes: Record<string, unknown>;
+  /** What the fake server holds now. */
+  state: PrefsResponse;
+  /** Every PUT received, in order, accepted or not. */
+  puts: { page: PageId; body: { baseVersion: number; prefs: PagePrefs } }[];
+}
+
+/**
+ * A working fake of the preferences API, as the Worker behaves: a PUT lands
+ * only on the stored version (else 409 stale), is checked with the same
+ * shared/widgets.ts rules (400 with the field; 409 outdated), is stored
+ * normalised, and answers the page with its new version.
+ */
+export function prefsServer(initial: Partial<Record<PageId, PagePrefs>> = {}): PrefsServer {
+  const server: PrefsServer = { routes: {}, state: prefsFixture(initial), puts: [] };
+  server.routes["GET /api/v1/prefs"] = () => structuredClone(server.state);
+  for (const page of PAGE_IDS) {
+    server.routes[`PUT /api/v1/prefs/${page}`] = ({ body }: { body: { baseVersion: number; prefs: PagePrefs } }) => {
+      server.puts.push({ page, body: structuredClone(body) });
+      const cur = server.state.pages[page];
+      const problem = validatePagePrefs(page, body.prefs);
+      if (problem?.outdated) return { status: 409, json: { error: { code: "outdated", message: problem.message, field: problem.field } } };
+      if (problem) return { status: 400, json: { error: { code: "bad_input", message: problem.message, field: problem.field } } };
+      if (body.baseVersion !== cur.version) return { status: 409, json: { error: { code: "stale", message: "Changed on another device. Showing the latest." } } };
+      const next: PrefsPage = { version: cur.version + 1, updatedAt: NOW, prefs: normalisePagePrefs(page, body.prefs) };
+      server.state.pages[page] = next;
+      return structuredClone(next);
+    };
+  }
+  return server;
+}

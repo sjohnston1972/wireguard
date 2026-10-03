@@ -487,6 +487,14 @@ function valueProblem(s: SettingSpec, v: unknown): [string, string] | null {
   }
 }
 
+/**
+ * Why `value` cannot be saved for this setting (the message a form shows
+ * at the field), or null when it can. The same strict rule the Worker uses.
+ */
+export function settingProblem(spec: SettingSpec, value: unknown): string | null {
+  return valueProblem(spec, value)?.[1] ?? null;
+}
+
 /** The value in its stored form (a multi in the options' order, a threshold as {warn, bad}). */
 function canonical(s: SettingSpec, v: SettingValue): SettingValue {
   if (s.kind === "multi") return s.options.map((x) => x.value).filter((x) => (v as string[]).includes(x));
