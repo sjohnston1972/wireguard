@@ -7,9 +7,11 @@
   flex-wrap: wrap;
   padding: 10px 16px 10px;
 }
-/* The rules column's move handle (widget chrome): an overlay at the toolbar's left, as on a panel header. */
-.fw-rp__toolbar:has(> .wg-handle) { position: relative; }
-.fw-rp__toolbar > .wg-handle { position: absolute; left: 0; top: 50%; transform: translate(-2px, -50%); z-index: 5; }
+/* The rules column's move handle (widget chrome): an overlay in the toolbar's left padding, as on a
+   panel header. No offsets, so the toolbar need not be positioned: a positioned toolbar is snapped to
+   whole pixels and moved the row's text by a fraction of one (seen at 1100 px wide). Out of flow, an
+   absolute flex child sits where a sole flex item would: centred by align-items. */
+.fw-rp__toolbar > .wg-handle { position: absolute; margin-left: -16px; z-index: 5; }
 .panel:hover .fw-rp__toolbar > .wg-handle { opacity: 1; }
 .fw-rp__tabs { flex: none; }
 .fw-rp__title { display: none; font-size: 15px; font-weight: 600; letter-spacing: -0.005em; white-space: nowrap; }
