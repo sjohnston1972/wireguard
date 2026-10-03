@@ -2,10 +2,9 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 import type { CostResponse } from "@shared/api";
 import { thresholdTone, type Threshold } from "@shared/widgets";
 import { BarChart, DataAge, Donut, EmptyState, Panel, SegmentedControl, type DonutSegment, type Tone } from "@/components";
-import { useWidget } from "@/widgets";
+import { useStarting, useWidget } from "@/widgets";
 import { cumulativeSeries, dayLabel, forecastLevel, gbp, pctText, spendSeries, startedLabel, TYPE_LABEL } from "./model";
 import { FillHeight } from "./FillHeight";
-import { useStarting } from "./useStarting";
 
 const COLOURS: Tone[] = ["blue", "purple", "green", "amber"];
 const TYPE_COLOUR: Record<keyof typeof TYPE_LABEL, Tone> = { compute: "blue", network: "purple", disk: "green", other: "amber" };

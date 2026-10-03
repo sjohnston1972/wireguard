@@ -3,13 +3,12 @@ import { useSearchParams } from "react-router-dom";
 import { Col, ErrorState, Grid, PageHeader, Select, Skeleton, Switch, useIsPhone } from "@/components";
 import { useCost } from "@/api/queries";
 import { EnvironmentField } from "@/shell/StateChip";
-import { LayoutMenu, Widget, WidgetCorner, useRowItems, useWidget } from "@/widgets";
+import { LayoutMenu, Widget, WidgetCorner, useRowItems, useStarting, useWidget } from "@/widgets";
 import { InsightsPanel, BreakdownPanel, ForecastPanel, PerSessionPanel, SpendPanel, SplitPanel } from "./Panels";
 import { CostPhone } from "./Phone";
 import { SessionsPanel } from "./Sessions";
 import { KpiRow } from "./Tiles";
 import { RANGE_OPTIONS, parseRange } from "./model";
-import { useStarting } from "./useStarting";
 import type { CostResponse } from "@shared/api";
 import "./cost.css";
 

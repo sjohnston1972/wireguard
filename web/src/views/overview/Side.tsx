@@ -3,9 +3,8 @@ import { ArrowRight, CheckCircle2, Cog, Eye, Rocket, Shield, Trash2, XCircle } f
 import type { OverviewResponse } from "@shared/api";
 import { Button, EmptyState, ErrorState, Panel, SegmentedControl, Skeleton, TimeSeriesChart, cx } from "@/components";
 import { useActivity, useHistory } from "@/api/queries";
-import { useWidget } from "@/widgets";
+import { useStarting, useWidget } from "@/widgets";
 import { useElementHeight } from "./hooks";
-import { useStarting } from "./widgetSettings";
 import { ageOf, hhmm } from "./model";
 import type { ActionName } from "./actions";
 import "./Side.css";

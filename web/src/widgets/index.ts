@@ -8,6 +8,7 @@ export { SettingsForm, THRESHOLD_HINT, type SettingsFormProps } from "./Settings
 export { WidgetRow, WidgetStack, useRowItems, type WidgetRowProps, type WidgetStackProps } from "./WidgetRow";
 export { LayoutMenu } from "./LayoutMenu";
 export { WidgetArrangement, type WidgetArrangementProps } from "./arrangement";
+export { useStarting } from "./useStarting";
 export type { RowView, RowItemView, MoveState } from "./layout";
 export { SAVE_DELAY_MS, PREFS_MIRROR_KEY } from "./store";
 export { thresholdTone } from "@shared/widgets";

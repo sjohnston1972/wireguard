@@ -3,8 +3,7 @@ import { forwardRef, useImperativeHandle, useRef, useState, type FormEvent } fro
 import type { FirewallResponse, SimEnd, SimRequest, SimResult } from "@shared/api";
 import { Button, Field, Panel, SegmentedControl, Select, cx } from "@/components";
 import { useSimulate } from "@/api/mutations";
-import { useWidget } from "@/widgets";
-import { useStarting } from "./useStarting";
+import { useStarting, useWidget } from "@/widgets";
 import { EndPicker } from "./EndPicker";
 import "./Simulator.css";
 

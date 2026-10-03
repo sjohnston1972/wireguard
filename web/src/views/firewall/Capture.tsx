@@ -4,8 +4,7 @@ import type { FirewallResponse } from "@shared/api";
 import { Button, Field, Panel, Select, cx } from "@/components";
 import { useStartCapture } from "@/api/mutations";
 import { useClients } from "@/api/queries";
-import { useWidget } from "@/widgets";
-import { useStarting } from "./useStarting";
+import { useStarting, useWidget } from "@/widgets";
 import "./Capture.css";
 
 type Capture = FirewallResponse["captures"][number];

@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { useWidget } from "@/widgets";
-import { useStarting } from "./widgetSettings";
+import { useStarting, useWidget } from "@/widgets";
 import { Link } from "react-router-dom";
 import { Check, Maximize2, Minus, X } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";

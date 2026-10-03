@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { FirewallResponse } from "@shared/api";
 import { Button, ErrorState, Panel, Tabs, cx, useIsPhone } from "@/components";
-import { Widget, usePagePrefs, useRowItems, useWidget } from "@/widgets";
+import { Widget, usePagePrefs, useRowItems, useStarting, useWidget } from "@/widgets";
 import { useFirewall } from "@/api/queries";
 import { RulesPanel } from "./RulesPanel";
 import { FirewallHeader } from "./FirewallHeader";
@@ -17,7 +17,6 @@ import { RuleDrawer } from "./RuleDrawer";
 import { FirewallPhone } from "./FirewallPhone";
 import { NARROW, NO_FILTER, SHORT, TAB_WIDGET, ruleViews, tabsLabel, type RightTab, type RuleFilter, type RuleTab } from "./model";
 import { FirewallSkeleton } from "./FirewallSkeleton";
-import { useStarting } from "./useStarting";
 import { useMedia } from "@/lib/useMedia";
 import "./Firewall.css";
 

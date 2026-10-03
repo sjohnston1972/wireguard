@@ -2,10 +2,9 @@ import { useEffect, useRef } from "react";
 import { Activity } from "lucide-react";
 import type { ActivityResponse } from "@shared/api";
 import { DataAge, EmptyState, Panel, Select, Switch } from "@/components";
-import { useWidget } from "@/widgets";
+import { useStarting, useWidget } from "@/widgets";
 import { EVENT_TYPES, fmtClock, fmtRelative, inWindow, type EventRow, type Window } from "./model";
 import { Fill, TypeTag } from "./parts";
-import { useStart } from "./useStart";
 
 const ALL = "all";
 const OPTIONS = [{ value: ALL, label: "All events" }, ...EVENT_TYPES.map((e) => ({ value: e.value as string, label: e.label }))];
@@ -26,8 +25,8 @@ export interface EventStreamProps {
 /** Runs, notes and changes as one list, newest first. */
 export function EventStream({ events, window: win, fetchedAt, now, onOpenRun, onOpenChange, hasChange }: EventStreamProps) {
   const { settings } = useWidget("activity.stream");
-  const [kind, setKind] = useStart(settings.type as string);
-  const [follow, setFollow] = useStart(settings.autoScroll as boolean);
+  const [kind, setKind] = useStarting(settings.type as string);
+  const [follow, setFollow] = useStarting(settings.autoScroll as boolean);
   const detail = settings.detail as boolean;
   const relative = settings.timeFormat === "relative";
   const box = useRef<HTMLDivElement | null>(null);

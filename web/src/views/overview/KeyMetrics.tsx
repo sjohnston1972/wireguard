@@ -3,9 +3,9 @@ import { Coins, Globe, HeartPulse, ShieldCheck, TrendingUp, Users } from "lucide
 import type { OverviewResponse } from "@shared/api";
 import { CopyButton, DataAge, MetricTile, Panel, SegmentedControl, cx, type MetricTileProps } from "@/components";
 import { useCost, useHistory } from "@/api/queries";
-import { useWidget } from "@/widgets";
+import { useStarting, useWidget } from "@/widgets";
 import { RANGE_WORD, ageOf, gbp, historyRange, latencyNow, latencySeries, peak, type MetricRange } from "./model";
-import { LEVEL_TONE, levelOf, levelWord, thresholdOn, useStarting, type Level } from "./widgetSettings";
+import { LEVEL_TONE, levelOf, levelWord, thresholdOn, type Level } from "./widgetSettings";
 import "./KeyMetrics.css";
 
 const RANGES: { value: MetricRange; label: string; dot?: "green" }[] = [

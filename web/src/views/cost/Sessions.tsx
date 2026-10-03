@@ -4,10 +4,9 @@ import { ChevronRight } from "lucide-react";
 import type { CostResponse } from "@shared/api";
 import { Chips, DataTable, Drawer, EmptyState, KeyValue, Panel, SearchInput, Select, Skeleton, StatusPill, type Column } from "@/components";
 import { useRun } from "@/api/queries";
-import { useWidget } from "@/widgets";
+import { useStarting, useWidget } from "@/widgets";
 import { regionLabel } from "@/shell/StateChip";
 import { durationLabel, gbp, startedLabel } from "./model";
-import { useStarting } from "./useStarting";
 
 type SessionRow = CostResponse["sessions"][number];
 
