@@ -2,13 +2,15 @@ import { ChevronRight, FlaskConical, Globe, Plus, Radio, ShieldBan } from "lucid
 import type { RefObject } from "react";
 import { useNavigate } from "react-router-dom";
 import type { FirewallResponse } from "@shared/api";
+import type { Threshold } from "@shared/widgets";
 import { Button, Sheet, cx } from "@/components";
+import { LayoutMenu, useWidget } from "@/widgets";
 import { DraftBar, policyView } from "./FirewallHeader";
 import { DropsList } from "./Drops";
 import { PortsList } from "./Ports";
 import { CaptureForm, type CaptureFormHandle } from "./Capture";
 import { SimulatorForm } from "./Simulator";
-import { fmtCount, shownDefault, type RuleView } from "./model";
+import { dropsLevel, fmtCount, shownDefault, type RuleView } from "./model";
 import "./FirewallPhone.css";
 
 export interface FirewallPhoneProps {
@@ -46,27 +48,46 @@ function Light({ label, value, tone }: { label: string; value: string; tone: "gr
 /**
  * The phone's Firewall (spec §9): four lights, one line per rule opening its
  * sheet, buttons for drops, ports, capture and the simulator (each a sheet),
- * and the draft bar pinned above the tab bar.
+ * and the draft bar pinned above the tab bar. Widget settings apply here
+ * too: the lights follow the Firewall figures tiles (and its drops
+ * threshold), a hidden widget's button is gone, and the sheets show each
+ * widget's content with its settings. The phone has no widget order.
  */
 export function FirewallPhone({ fw, rows, waiting, sheet, onSheet, onReview, onAddRule, onAddForward, onEditForward, captureRef }: FirewallPhoneProps) {
   const navigate = useNavigate();
   const pv = policyView(fw.policy.state, fw.policy.text, waiting);
   const enabled = rows.filter((r) => r.enabled).length;
   const def = shownDefault(fw);
-  const open = (sheet && sheet in SHEETS ? sheet : null) as SheetKey | null;
+  const kpis = useWidget("firewall.kpis");
+  const tiles = kpis.settings.tiles as string[];
+  const level = dropsLevel(fw.drops.last24h, kpis.settings.drops as Threshold);
+  const shown: Record<SheetKey, boolean> = {
+    drops: !useWidget("firewall.drops").hidden,
+    ports: !useWidget("firewall.ports").hidden,
+    capture: !useWidget("firewall.capture").hidden,
+    test: !useWidget("firewall.simulator").hidden,
+  };
+  const open = (sheet && sheet in SHEETS && shown[sheet as SheetKey] ? sheet : null) as SheetKey | null;
 
   return (
     <div className={cx("fw-ph", fw.draft && "fw-ph--draft")}>
       <header className="fw-ph__head">
         <h1 className="fw-ph__title">Firewall</h1>
         <span className={cx("fw-ph__state", `fw-ph__state--${pv.tone}`)}>{pv.word}</span>
+        <LayoutMenu page="firewall" />
       </header>
       {(pv.tone === "red" || pv.tone === "amber") && <p className="fw-ph__detail">{pv.detail}</p>}
       <ul className="fw-ph__lights" aria-label="Firewall at a glance">
         <Light label="Applied" value={pv.word} tone={pv.tone} />
-        <Light label="Rules" value={`${enabled} of ${rows.length} on`} tone="blue" />
-        <Light label="Recent drops" value={`${fmtCount(fw.drops.last24h)} in 24 h`} tone={fw.drops.last24h > 0 ? "amber" : "green"} />
-        <Light label="Default" value={def === "deny" ? "Deny" : "Allow"} tone={def === "deny" ? "red" : "green"} />
+        {!kpis.hidden && tiles.includes("policy") && <Light label="Rules" value={`${enabled} of ${rows.length} on`} tone="blue" />}
+        {!kpis.hidden && tiles.includes("drops") && (
+          <Light
+            label="Recent drops"
+            value={`${fmtCount(fw.drops.last24h)} in 24 h${level ? ` · ${level.word}` : ""}`}
+            tone={level ? level.tone : fw.drops.last24h > 0 ? "amber" : "green"}
+          />
+        )}
+        {!kpis.hidden && tiles.includes("default") && <Light label="Default" value={def === "deny" ? "Deny" : "Allow"} tone={def === "deny" ? "red" : "green"} />}
       </ul>
 
       <section className="fw-ph__rules" aria-labelledby="fw-ph-rules">
@@ -108,18 +129,26 @@ export function FirewallPhone({ fw, rows, waiting, sheet, onSheet, onReview, onA
       </section>
 
       <div className="fw-ph__more">
-        <Button icon={<ShieldBan size={16} aria-hidden />} onClick={() => onSheet("drops")}>
-          Drops
-        </Button>
-        <Button icon={<Globe size={16} aria-hidden />} onClick={() => onSheet("ports")}>
-          Published ports
-        </Button>
-        <Button icon={<Radio size={16} aria-hidden />} onClick={() => onSheet("capture")}>
-          Capture
-        </Button>
-        <Button icon={<FlaskConical size={16} aria-hidden />} onClick={() => onSheet("test")}>
-          Test traffic
-        </Button>
+        {shown.drops && (
+          <Button icon={<ShieldBan size={16} aria-hidden />} onClick={() => onSheet("drops")}>
+            Drops
+          </Button>
+        )}
+        {shown.ports && (
+          <Button icon={<Globe size={16} aria-hidden />} onClick={() => onSheet("ports")}>
+            Published ports
+          </Button>
+        )}
+        {shown.capture && (
+          <Button icon={<Radio size={16} aria-hidden />} onClick={() => onSheet("capture")}>
+            Capture
+          </Button>
+        )}
+        {shown.test && (
+          <Button icon={<FlaskConical size={16} aria-hidden />} onClick={() => onSheet("test")}>
+            Test traffic
+          </Button>
+        )}
       </div>
 
       {fw.draft && (

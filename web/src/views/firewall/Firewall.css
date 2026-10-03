@@ -65,6 +65,20 @@
 .fw-zones-tab .fw-zones__legend { align-self: flex-end; }
 .fw__left:has(> :only-child) { grid-template-rows: minmax(0, 1fr); }
 
+/* Widgets hidden or moved (spec 2026-10-03 §5): a widget keeps its width
+   when it moves, and a hidden one's width or height goes to the rest. */
+.fw__kpis.fw__kpis--1 { grid-template-columns: minmax(0, 1fr); }
+.fw__kpis.fw__kpis--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fw__kpis.fw__kpis--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fw__kpis.fw__kpis--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fw-kpi__word { font-size: 13px; font-weight: 600; }
+.fw__body.fw__body--single { grid-template-columns: minmax(0, 1fr); }
+.fw__body.fw__body--reversed { grid-template-columns: minmax(0, 3fr) minmax(0, 9fr); }
+.fw__bottom.fw__bottom--single { grid-template-columns: minmax(0, 1fr); }
+.fw__bottom.fw__bottom--swapped { grid-template-columns: minmax(0, 4fr) minmax(0, 5fr); }
+.fw__right--no-drops > .fw-ports-panel { flex: 1 1 0; max-height: none; min-height: 120px; }
+.fw__right > .fw-cap-panel:only-child { flex: 1 1 0; }
+
 .fw-sk__head { display: flex; align-items: center; gap: 14px; }
 .fw-sk__titles { display: flex; flex-direction: column; gap: 8px; }
 .fw-sk__body { flex: 1; min-height: 0; display: grid; grid-template-columns: 9fr 3fr; gap: var(--gap); }
@@ -72,6 +86,7 @@
 
 @media (max-width: 1399px) {
   .fw__body { grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); }
+  .fw__body.fw__body--reversed { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); }
 }
 @media (max-height: 760px) and (min-width: 1100px) {
   .fw__bottom { max-height: 136px; }
@@ -83,6 +98,9 @@
   .fw { height: auto; }
   .fw__kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fw__body, .fw__bottom { grid-template-columns: minmax(0, 1fr); max-height: none; }
+  .fw__kpis.fw__kpis--1 { grid-template-columns: minmax(0, 1fr); }
+  .fw__kpis:is(.fw__kpis--3, .fw__kpis--4) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fw__body.fw__body--reversed, .fw__bottom.fw__bottom--swapped { grid-template-columns: minmax(0, 1fr); }
   .fw__left { grid-template-rows: auto auto; }
   .fw__rules { max-height: 70vh; }
 }
