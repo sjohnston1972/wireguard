@@ -174,6 +174,13 @@ export class Shipper {
     Object.assign(this, { file, runId, post, redact, maxBytes });
     this.offset = 0;
     this.seq = 1;
+    /**
+     * The piece sent under `seq` whose answer has not come back yet: its
+     * exact text and how many bytes of the file it covers. If the Worker
+     * stored it and only the answer was lost, a resend is a duplicate, so it
+     * must be the same text; anything written since goes in the next piece.
+     */
+    this.pending = null;
   }
 
   /** The unsent part of the file, at most a little over one chunk. */
@@ -208,10 +215,13 @@ export class Shipper {
    */
   async pump(final) {
     for (let i = 0; i < 50; i++) {
-      const buf = this.unread();
-      const n = nextChunk(buf, this.maxBytes, final);
-      if (!n) return "ok";
-      const text = this.redact(buf.subarray(0, n).toString("utf8"));
+      if (!this.pending) {
+        const buf = this.unread();
+        const n = nextChunk(buf, this.maxBytes, final);
+        if (!n) return "ok";
+        this.pending = { n, text: this.redact(buf.subarray(0, n).toString("utf8")) };
+      }
+      const { n, text } = this.pending;
       let status;
       try {
         status = (await this.post({ run_id: this.runId, seq: this.seq, text })).status;
@@ -225,6 +235,7 @@ export class Shipper {
       if ((status >= 200 && status < 300) || status === 413) {
         this.offset += n;
         this.seq++;
+        this.pending = null;
         continue;
       }
       return "retry";

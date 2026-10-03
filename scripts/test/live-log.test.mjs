@@ -178,6 +178,41 @@ test("Shipper: sends new text with rising sequence numbers, retries the same chu
   assert.equal(calls.length, 5, "nothing new, nothing sent");
 });
 
+test("Shipper: when a piece was stored but the answer was lost, the retry resends exactly that piece, and lines written meanwhile go under the next number", async () => {
+  const dir = tmp();
+  const file = join(dir, "log.txt");
+  writeFileSync(file, "line one\n");
+  // A stand-in Worker: the first copy of a number wins (INSERT OR IGNORE), a resend is a duplicate.
+  const stored = new Map();
+  const sent = [];
+  let loseReply = true;
+  const post = async (body) => {
+    sent.push(body);
+    const dup = stored.has(body.seq);
+    if (!dup) stored.set(body.seq, body.text);
+    if (loseReply) {
+      loseReply = false;
+      throw new Error("timed out after the Worker stored it");
+    }
+    return { status: 200 };
+  };
+  const s = new Shipper({ file, runId: "r", post, redact: (t) => t, maxBytes: 1000 });
+  assert.equal(await s.pump(false), "retry");
+  appendFileSync(file, "line two\nline three\n");
+  assert.equal(await s.pump(false), "ok");
+  appendFileSync(file, "tail");
+  assert.equal(await s.pump(true), "ok");
+
+  const bySeq = new Map();
+  for (const b of sent) {
+    if (bySeq.has(b.seq)) assert.equal(b.text, bySeq.get(b.seq), `seq ${b.seq} was resent with different text`);
+    bySeq.set(b.seq, b.text);
+  }
+  const all = [...stored.keys()].sort((a, b) => a - b).map((k) => stored.get(k)).join("");
+  assert.equal(all, "line one\nline two\nline three\ntail", "no line lost");
+  assert.deepEqual(sent.map((b) => b.seq), [1, 1, 2, 3]);
+});
+
 test("Shipper: stops for good when the Worker says the run is over or the token is wrong; skips a chunk the Worker calls too big", async () => {
   const dir = tmp();
   const file = join(dir, "log.txt");
