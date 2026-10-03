@@ -15,7 +15,7 @@ import { mkdtempSync, writeFileSync, appendFileSync, readFileSync, existsSync, r
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SECRET_ENV, secretForms, secretsFromEnv, makeRedactor, formatLine, nextChunk, Shipper } from "../../infra/ci/live-log.mjs";
+import { SECRET_ENV, secretForms, secretsFromEnv, makeRedactor, formatLine, nextChunk, Shipper, LineFilter } from "../../infra/ci/live-log.mjs";
 
 const HELPER = fileURLToPath(new URL("../../infra/ci/live-log.sh", import.meta.url)).replace(/\\/g, "/");
 const SCRIPT = fileURLToPath(new URL("../../infra/ci/live-log.mjs", import.meta.url));
@@ -239,6 +239,61 @@ test("formatLine stamps each line, turns workflow commands into log markers and 
   assert.equal(formatLine("line with cr\r", at), `${at} line with cr`);
   const long = formatLine("x".repeat(20_000), at);
   assert.ok(long.length < 17_000 && long.endsWith("[line cut short]"));
+});
+
+test("the filter writes a very long line without a newline as soon as it passes the limit, cut short, instead of holding it", async () => {
+  const dir = tmp();
+  const file = join(dir, "live.txt");
+  const child = spawn(process.execPath, [SCRIPT, "filter", "Long step", join(dir, "done")], { env: { ...process.env, LIVE_LOG_FILE: file }, stdio: ["pipe", "ignore", "pipe"] });
+  const exited = new Promise((r) => child.on("exit", r));
+  try {
+    for (let i = 0; i < 10; i++) child.stdin.write("x".repeat(5000));
+    // The line has no end yet: it must still reach the log.
+    await waitFor(() => existsSync(file) && readFileSync(file, "utf8").includes("[line cut short]"), 4000);
+    child.stdin.end("y".repeat(3000) + " rest of the long line\nnext line\n");
+    assert.equal(await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 5000))]), 0);
+  } finally {
+    child.kill();
+  }
+  const lines = readFileSync(file, "utf8").trimEnd().split("\n").map((l) => l.replace(/^\S+Z /, ""));
+  assert.deepEqual(lines.map((l) => l.slice(0, 20)), ["##[group]Long step", "x".repeat(20), "next line", "##[endgroup]"]);
+  assert.equal(lines[1], `${"x".repeat(16_000)} …[line cut short]`);
+});
+
+test("LineFilter: a secret straddling the point where a long line is written early is still hidden, however the output is chunked", () => {
+  const secret = "ABCDEFGHIJKLMNOPQRSTUV";
+  const redact = makeRedactor([secret]);
+  const MAX = 16_000;
+  const leaked = [];
+  for (const size of [7, 1000, 4093, 65_536]) {
+    for (let p = MAX - 40; p <= MAX + redact.longest + 40; p++) {
+      const text = "x".repeat(p) + secret + "x".repeat(MAX) + "\nafter\n";
+      const f = new LineFilter(redact, () => "@");
+      const out = [];
+      for (let i = 0; i < text.length; i += size) out.push(...f.feed(text.slice(i, i + size)));
+      out.push(...f.end());
+      const all = out.join("\n");
+      if (/[A-V]/.test(all)) leaked.push(`chunk ${size}, secret at ${p}: ${all.match(/[A-V]+/)[0]}`);
+      assert.equal(out.length, 2, `chunk ${size}, secret at ${p}`);
+      assert.ok(out[0].endsWith("…[line cut short]") && out[1] === "@ after");
+    }
+  }
+  assert.deepEqual(leaked.slice(0, 5), []);
+});
+
+test("LineFilter: holds no more than one line's worth of a never-ending line, and writes it once", () => {
+  const f = new LineFilter(makeRedactor(["a-secret-value"]), () => "T");
+  const out = [];
+  let most = 0;
+  for (let i = 0; i < 40; i++) {
+    out.push(...f.feed("z".repeat(64 * 1024)));
+    most = Math.max(most, f.done.length + f.held.length);
+  }
+  assert.ok(most <= 16_000 + 64 * 1024 + 64, `held ${most} characters`);
+  assert.equal(out.length, 1);
+  assert.equal(out[0], `T ${"z".repeat(16_000)} …[line cut short]`);
+  out.push(...f.feed(" end of it\nnext\n"), ...f.end());
+  assert.deepEqual(out.slice(1), ["T next"]);
 });
 
 // ── Chunking and shipping ────────────────────────────────────────────────

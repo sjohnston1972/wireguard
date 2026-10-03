@@ -142,11 +142,14 @@ export function secretForms(value) {
 /** A function that replaces every form of every secret with ***. Longest first, so no part of a longer form is left behind. */
 export function makeRedactor(secrets) {
   const forms = [...new Set(secrets.flatMap(secretForms))].sort((a, b) => b.length - a.length);
-  return (text) => {
+  const redact = (text) => {
     let out = text;
     for (const f of forms) if (out.includes(f)) out = out.split(f).join("***");
     return out;
   };
+  /** The longest form hidden: text held back this long minus one can never end part-way into a secret. */
+  redact.longest = forms[0]?.length ?? 0;
+  return redact;
 }
 
 const COMMAND = /^::(warning|error|notice|debug|group|endgroup)(?: [^:]*)?::(.*)$/;
@@ -157,13 +160,79 @@ const COMMAND = /^::(warning|error|notice|debug|group|endgroup)(?: [^:]*)?::(.*)
  * GitHub writes in its own log ("##[warning]"), "::add-mask::" lines dropped.
  * Null means "leave this line out".
  */
-export function formatLine(line, at) {
+export function formatLine(line, at, cut = false) {
   let t = line.replace(/\r$/, "");
   if (t.startsWith("::add-mask::")) return null;
   const cmd = COMMAND.exec(t);
   if (cmd) t = `##[${cmd[1]}]${cmd[2]}`;
-  if (t.length > MAX_LINE) t = `${t.slice(0, MAX_LINE)} …[line cut short]`;
+  if (cut || t.length > MAX_LINE) t = `${t.slice(0, MAX_LINE)} …[line cut short]`;
   return `${at} ${t}`;
+}
+
+/**
+ * A step's output, as it arrives in pieces, turned into finished log lines,
+ * every secret hidden. A line with no end yet is held, but never more than
+ * MAX_LINE characters: past that it is written at once, cut short, and the
+ * rest of it is skipped up to the next line break. So a never-ending line
+ * costs the same per byte as any other, and a slow copy cannot back up
+ * through tee into the step.
+ *
+ * Hiding a secret needs all of it in view. The held text is redacted as it
+ * grows, and the last (longest secret form - 1) characters are always kept
+ * back unredacted until more arrives: whatever is set aside as finished can
+ * therefore never end part-way into a secret, even one that straddles the
+ * point where a long line is cut.
+ */
+export class LineFilter {
+  constructor(redact, at = () => new Date().toISOString()) {
+    this.redact = redact;
+    this.at = at;
+    this.overlap = Math.max(0, (redact.longest ?? 0) - 1);
+    this.done = ""; // the start of the line, already redacted
+    this.held = ""; // the rest of it, not yet redacted
+    this.skipping = false; // written cut short; skip to the next line break
+  }
+
+  /** Take a piece of output; returns the log lines it finished. */
+  feed(data) {
+    const out = [];
+    const parts = data.split(/\r?\n|\r/);
+    const last = parts.pop() ?? "";
+    for (const p of parts) this.finish(p, out);
+    this.grow(last, out);
+    return out;
+  }
+
+  /** The output has ended: the unfinished line, if any. */
+  end() {
+    const out = [];
+    if (this.done || this.held) this.finish("", out);
+    return out;
+  }
+
+  finish(rest, out) {
+    if (this.skipping) this.skipping = false;
+    else {
+      const l = formatLine(this.done + this.redact(this.held + rest), this.at());
+      if (l !== null) out.push(l);
+    }
+    this.done = this.held = "";
+  }
+
+  grow(more, out) {
+    if (this.skipping) return;
+    this.held += more;
+    if (this.done.length + this.held.length <= MAX_LINE + this.overlap) return;
+    const r = this.redact(this.held);
+    const keep = Math.min(this.overlap, r.length);
+    this.done += r.slice(0, r.length - keep);
+    this.held = r.slice(r.length - keep);
+    if (this.done.length < MAX_LINE) return;
+    const l = formatLine(this.done, this.at(), true);
+    if (l !== null) out.push(l);
+    this.done = this.held = "";
+    this.skipping = true;
+  }
 }
 
 /**
@@ -279,15 +348,10 @@ async function filter(name, doneFile) {
     }
   };
   write([`${now()} ##[group]${redact(name)}`]);
-  let partial = "";
+  const lines = new LineFilter(redact, now);
   process.stdin.setEncoding("utf8");
-  for await (const data of process.stdin) {
-    const parts = (partial + data).split(/\r?\n|\r/);
-    partial = parts.pop() ?? "";
-    const at = now();
-    write(parts.map((l) => formatLine(redact(l), at)).filter((l) => l !== null));
-  }
-  if (partial) write([formatLine(redact(partial), now())].filter((l) => l !== null));
+  for await (const data of process.stdin) write(lines.feed(data));
+  write(lines.end());
   write([`${now()} ##[endgroup]`]);
   if (doneFile) {
     try {
