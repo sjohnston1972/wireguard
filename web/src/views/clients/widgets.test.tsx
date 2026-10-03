@@ -1,6 +1,6 @@
 import "./testSetup";
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PagePrefs, SettingValue } from "@shared/api";
 import { renderApp } from "@/test/render";
@@ -80,6 +80,25 @@ describe("Clients widgets: data settings", { timeout: 20_000 }, () => {
     // The in-panel controls still change the view for the visit.
     await user.click(screen.getByRole("tab", { name: "All (7)" }));
     expect(rowNames(t)).toHaveLength(7);
+  });
+
+  it("a starting filter or sort that changes later starts the controls again (useStarting, as on other pages)", async () => {
+    const user = userEvent.setup();
+    const { server, client } = renderClients(prefs({ "clients.table": { filter: "online" } }));
+    const t = await table();
+    await waitFor(() => expect(rowNames(t)).toHaveLength(2));
+    // A pick in the panel lasts for the visit...
+    await user.click(screen.getByRole("tab", { name: /^Offline/ }));
+    expect(screen.getByRole("tab", { name: /^Offline/ })).toHaveAttribute("aria-selected", "true");
+    // ...until the setting itself changes (another device, or the cog): then the view starts again from it.
+    server.state.pages.clients = { version: 2, updatedAt: NOW, prefs: prefs({ "clients.table": { filter: "home", sort: "nameDesc" } }) };
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ["prefs"] });
+    });
+    await waitFor(() => expect(rowNames(t)).toHaveLength(1));
+    expect(rowNames(t)[0]).toMatch(/home-site/);
+    await user.click(screen.getByRole("tab", { name: "All (7)" }));
+    expect(rowNames(t)[0]).toMatch(/^phone/);
   });
 
   it("starting filter Home site and sort Name Z to A", async () => {

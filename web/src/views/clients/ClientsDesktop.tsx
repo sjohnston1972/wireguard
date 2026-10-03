@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { ClientsResponse } from "@shared/api";
 import type { Threshold } from "@shared/widgets";
 import { DataAge, EmptyState, Panel, SearchInput, Select, SplitView, Tabs, type SortState } from "@/components";
-import { Widget, WidgetRow, useWidget } from "@/widgets";
+import { Widget, WidgetRow, useStarting, useWidget } from "@/widgets";
 import { FILTERS, SORT_OPTIONS, START_FILTERS, START_SORTS, TAB_FILTERS, matchesSearch, type FilterKey } from "./model";
 import { KpiTiles } from "./KpiTiles";
 import { ClientsTable } from "./ClientsTable";
@@ -16,13 +16,12 @@ const sortValue = (s: SortState | null) => (s ? `${s.key}:${s.dir}` : "");
 /** The desktop and tablet composition (Clients mockup regions 2-6). */
 export function ClientsDesktop({ data, selectedId, rawId, h }: { data: ClientsResponse; selectedId: number | null; rawId: string | null; h: ClientHandlers }) {
   const { settings } = useWidget("clients.table");
-  // The widget's starting filter and sort show until the in-panel controls are used (those change the view for the visit only).
+  // The widget's starting filter and sort show until the in-panel controls are used (those change the view for the visit only);
+  // a changed setting (the cog, another device) starts them again.
   const startFilter = START_FILTERS[settings.filter as string] ?? "all";
   const startSort = START_SORTS[settings.sort as string] ?? START_SORTS.nameAsc!;
-  const [pickedFilter, setFilter] = useState<FilterKey | null>(null);
-  const [pickedSort, setSort] = useState<SortState | null | undefined>(undefined);
-  const filter = pickedFilter ?? startFilter;
-  const sort = pickedSort === undefined ? startSort : pickedSort;
+  const [filter, setFilter] = useStarting<FilterKey>(startFilter);
+  const [sort, setSort] = useStarting<SortState | null>(startSort);
   const [query, setQuery] = useState("");
   const now = Date.parse(data.now) || Date.now();
 
