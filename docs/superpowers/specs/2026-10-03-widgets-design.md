@@ -35,7 +35,7 @@ harness's shots (section 9).
 1. **One D1 row per user per page**, not one row per widget (section 6.1).
 2. **Server-side validation uses the exact schema module the app uses**, `shared/widgets.ts`, rather than a generic size-capped JSON blob (section 6.3).
 3. **A widget keeps its width when it moves.** A row's height never changes, and its widths always add up to the same total. So reordering a row cannot change how tall the page is (section 5).
-4. **Reorder happens among a row's direct items only.** A vertical stack inside a row moves as one unit. Widgets inside a stack can be hidden but not reordered. For example, Firewall's Drops / Published ports / Capture column stays in that order.
+4. **Reorder happens among a row's direct items only.** A vertical stack inside a row moves as one unit. Widgets inside a stack can be hidden but not reordered. For example, Firewall's Drops / Published ports / Capture column stays in that order. (Integration ruling: a stack moves by its top widget's handle, "Move ‹title› column", and by Move column left / right in every member's cog.)
 5. **Four pinned widgets cannot be hidden:** `overview.status`, `clients.table`, `firewall.rules` and `activity.list`. Pinned widgets still have a cog and can still move. They carry each page's primary actions (Deploy and Tear down; client row actions; the firewall draft) and the palette's `?action=` forms.
 6. **Where the cog appears:**
    - On titled panels, the cog sits in the header, after the panel's own actions.
@@ -93,7 +93,9 @@ interface PageLayout { page: PageId; rows: { id: string; items: LayoutItem[] }[]
 - **Reorder.** Only a row's direct items (widgets or stacks) can be reordered, and only within that row. The stored order is a permutation of the row's item keys.
   - **Mouse:** a grip handle appears at the left of the header on hover or focus (an overlay, so no layout shift). Native drag and drop uses its own data type, `application/x-wg-widget`. Drops that do not carry that type are ignored, so the firewall rules table's own drag (`text/plain`, handle-only) cannot trigger it.
   - **Keyboard:** the handle is a button, "Move ‹title›". Alt+ArrowLeft and Alt+ArrowRight move the widget one place and keep focus. A live region announces "‹title› moved to position 2 of 3".
-  - **Cog menu:** the cog has Move left and Move right, disabled at the ends. Neither the handle nor these items exist for a row's only item or for widgets inside a stack.
+  - **Cog menu:** the cog has Move left and Move right, disabled at the ends. Neither the handle nor these items exist for a row's only item.
+  - **Stacks:** a stack that is a row's direct item moves as one. Its top visible widget carries the stack's handle ("Move ‹title› column"; a tabbed column carries it whichever tab is shown), and every member's cog has Move column left / Move column right. A widget of a row nested in a stack (Firewall's zones and simulator) still moves within that nested row.
+  - **A row drawn differently for a while** (Overview during a run) is declared by the view (`WidgetArrangement`): moves act on what is drawn (traffic, in the side stack for now, moves the side column; the run swaps with the side stack), and the saved order stays an order of the declared row.
 - **Responsive folds keep working, and follow the user's order minus hidden widgets.** These are:
   - Firewall `NARROW` (< 1400 px): Drops, Ports and Capture become tabs.
   - Firewall `SHORT` (≤ 760 px tall): Zones and Simulator join those tabs.
