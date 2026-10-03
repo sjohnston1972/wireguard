@@ -311,8 +311,13 @@ async function ship() {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const [cmd, ...args] = process.argv.slice(2);
   const run = cmd === "filter" ? filter(args[0] ?? "step", args[1]) : cmd === "ship" ? ship() : Promise.reject(new Error(`unknown command ${cmd}`));
+  // No process.exit(): forcing an exit while fetch's sockets are still open
+  // can crash Node on Windows. Every handle left is idle and unref'd, so the
+  // process ends by itself (and wg.yml kills the shipper anyway).
   run.then(
-    () => process.exit(0),
+    () => {
+      process.exitCode = 0;
+    },
     (e) => {
       console.error(`live log: ${e?.message ?? e}`);
       // A broken filter still drains its input, so the step is never blocked.
