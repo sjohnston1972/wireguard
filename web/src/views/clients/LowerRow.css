@@ -22,7 +22,7 @@
 .cstatus { display: flex; align-items: center; gap: 20px; height: 100%; }
 .cstatus__legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0; display: grid; gap: 4px; font-size: 12.5px; }
 .cstatus__legend li { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.cstatus__legend li > span:last-child { margin-left: auto; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.cstatus__legend li > .cstatus__share { margin-left: auto; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .cstatus__extra { color: var(--text-secondary); }
 .cstatus__sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .cstatus__sw--green { background: var(--green); }
@@ -47,6 +47,7 @@
   .lower__panel > .panel__body { padding-top: 4px; padding-bottom: 6px; }
 }
 @media (max-width: 1099px) {
-  .lower { grid-template-columns: 1fr; height: auto; }
+  /* !important: once the row is reordered or thinned, WidgetRow sets its columns inline. */
+  .lower { grid-template-columns: 1fr !important; height: auto; }
   .lower__panel { min-height: 160px; }
 }

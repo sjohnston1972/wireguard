@@ -1,6 +1,8 @@
 /* The clients table (Clients mockup, region 4). The table panel is a size
    container, so columns give way to the side panel as the room shrinks. */
 .ctable .dt__td { height: 34px; }
+.ctable.dt--compact .dt__td { height: 28px; }
+.cnote { display: inline-block; max-width: 220px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; vertical-align: bottom; }
 .ctable .mono { font-family: var(--font-mono); font-size: 12.5px; }
 .ctable .muted { color: var(--text-secondary); }
 
@@ -24,6 +26,7 @@
 .ctag--blue { --c: var(--blue-bright); }
 .ctag--amber { --c: var(--amber); }
 .ctag--grey { --c: var(--text-secondary); }
+.ctag--red { --c: var(--red); }
 
 .clat { display: inline-flex; align-items: center; gap: 10px; }
 .clat__value { min-width: 44px; }
@@ -56,4 +59,14 @@
 }
 @container (max-width: 560px) {
   .ccol-traffic { display: none; }
+}
+/* The optional extra columns give way first. */
+@container (max-width: 1240px) {
+  .ccol-note { display: none; }
+}
+@container (max-width: 1060px) {
+  .ccol-created { display: none; }
+}
+@container (max-width: 940px) {
+  .ccol-ipv6 { display: none; }
 }

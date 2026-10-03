@@ -1,7 +1,7 @@
 /* Six count tiles across the top (Clients mockup, region 2). Each is a button. */
 .kpis {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--kpi-cols, 6), minmax(0, 1fr));
   gap: var(--gap);
   flex: none;
 }
@@ -38,5 +38,5 @@
   .filter-tile .tile__sub { font-size: 11.5px; }
 }
 @media (max-width: 1099px) {
-  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kpis { grid-template-columns: repeat(var(--kpi-cols-narrow, 3), minmax(0, 1fr)); }
 }
