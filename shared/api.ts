@@ -15,6 +15,7 @@ import type { ClientHistory, RuleHistory, VmHistory } from "../worker/src/histor
 import type { ActivityEvent, ActivityKpis, ActivityRange, EventType, RunRow } from "../worker/src/activity";
 import type { RotationStatus } from "../worker/src/keyrotation";
 import type { BackupStatus, ExportTable } from "../worker/src/backup";
+import type { PageId } from "./widgets";
 
 /** Every refusal or failure. `field` names the input at fault, for a form. */
 export interface ApiError {
@@ -472,4 +473,42 @@ export interface FirewallDropStats {
 export interface ActivityResponse {
   /** The same figures for the equally long period just before the selected range. */
   previous: ActivityKpis;
+}
+
+// ── Widget preferences (spec 2026-10-03-widgets-design.md, section 6) ─────
+
+/** One saved setting: enum and bool and number values, a multi-select's choices, or a threshold pair (null = off). */
+export type SettingValue = string | number | boolean | string[] | { warn: number | null; bad: number | null };
+
+/**
+ * One page's widget preferences, sparse: only what differs from the
+ * defaults in shared/widgets.ts. `{}` is "everything as it ships".
+ */
+export interface PagePrefs {
+  layout?: {
+    /** Row id -> that row's item keys (widget ids and stack ids) in the user's order. */
+    order?: Record<string, string[]>;
+    /** Hidden widget ids (never a pinned widget). */
+    hidden?: string[];
+  };
+  /** Widget id -> its settings version and the values that differ from its defaults. */
+  widgets?: Record<string, { v: number; s: Record<string, SettingValue> }>;
+}
+
+/** A page's saved preferences. `version` 0 = never saved (then updatedAt is null and prefs is {}). */
+export interface PrefsPage {
+  version: number;
+  updatedAt: string | null;
+  prefs: PagePrefs;
+}
+
+/** GET /api/v1/prefs: every widget page for the signed-in user, normalised against the current schemas. */
+export interface PrefsResponse {
+  pages: Record<PageId, PrefsPage>;
+}
+
+/** PUT /api/v1/prefs/:page. `baseVersion` is the version the change was made on (0 for a page never saved). */
+export interface PrefsPutBody {
+  baseVersion: number;
+  prefs: PagePrefs;
 }
