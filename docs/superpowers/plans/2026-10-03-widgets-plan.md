@@ -1,5 +1,78 @@
 # Widgets with settings cogs: implementation plan
 
+## W0 names as built
+
+W0 is on branch `feat/widgets-w0` (the plan's `feat/widgets-contract`); areas branch from its last commit. Pixel baseline tag: `widgets-baseline`. Everything below is the whole public surface; anything else in `web/src/widgets/` is internal.
+
+**`@shared/widgets`** (pure; app and Worker)
+- Types: `PageId`, `Section`, `Option`, `Threshold` (`{warn, bad}`, null = off), `SettingSpec`, `WidgetDef`, `LayoutItem`, `LayoutRow` (`in?`: the stack a nested row sits in), `PageLayout`, `Registry`, `PrefsProblem` (`{field, message, outdated?}`).
+- Data: `WIDGETS` (37), `LAYOUTS`, `REGISTRY`, `PAGE_IDS`, `PAGE_TITLES`, `SECTIONS`, `SECTION_TITLES`, `EVENT_TYPES`, `AUDIT_KIND_OPTIONS` ("all" stands for AUDIT_KINDS' ""), `CAPTURE_IFACE_OPTIONS`, `MAX_PREFS_BODY_BYTES` (16 KiB), `MAX_PAGE_PREFS_BYTES` (8 KiB).
+- Functions: `widgetDef(id)`, `pageWidgets(page)`, `widgetDefaults(id)`, `itemKey(item)`, `rowItemKeys(page, row)`, `thresholdTone(value, threshold, direction)` → `"ok" | "warn" | "bad" | null` (null = no data), `settingProblem(spec, value)` → message or null, `normalisePagePrefs(page, raw)` (lenient, sparse), `validatePagePrefs(page, prefs)` → `PrefsProblem | null`.
+- Row and stack ids: Overview `r1 [status]`, `r2 [topology, keyMetrics]`, `r3 [run, traffic, side(events, speedTest)]`, `r4 [health, costImpact, notes]`. Clients `r1 [kpis]`, `r2 [table]`, `r3 [talkers, statusDonut, sessionTraffic]`. Firewall `r1 [kpis]`, `r2 [left(rules, bottom), right(drops, ports, capture)]`, nested row `bottom` (in `left`) `[zones, simulator]`. Activity `r1 [kpis]`, `r2 [left(timeline, list), right(stream, changeLog)]`, `r3 [runDetails, liveOutput]`. Cost `r1 [kpis]`, `r2 [spend, breakdown, forecast]`, `r3 [split, perSession, insights]`, `r4 [sessions]`. Weights as spec §8.
+
+**`@shared/api`**: `SettingValue`, `PagePrefs` (`{layout?: {order?, hidden?}, widgets?: {[id]: {v, s}}}`), `PrefsPage` (`{version, updatedAt, prefs}`, version 0 = never saved), `PrefsResponse` (`{pages}`), `PrefsPutBody` (`{baseVersion, prefs}`).
+
+**`@/widgets`** (app)
+- `<Widget id headerless?>`: wraps a widget's content; renders null when hidden. The outermost `Panel` inside draws the chrome: handle at the left of its header, cog after its `actions`; a Panel with no header (or `headerless`) gets a corner overlay. A block that is not a Panel puts `<WidgetCorner />` inside its root element (which becomes `position: relative`). A second Panel of the same widget takes `widgetChrome={false}`. Every chrome element has `data-widget-chrome`.
+- `useWidget(id)` → `{def, settings, set(key, value) → boolean, reset(), differs, hidden, hide(), show(), readOnly, status, canMove: {movable, left, right, row, index, count}, move("left" | "right") → boolean}`. `settings` = defaults overlaid with saved values: read `settings.rows` etc., never `undefined`. `set` refuses (false) an invalid value or while read-only.
+- `<WidgetRow page row {...divProps}>{{[itemKey]: node}}</WidgetRow>`: the row's div with its visible items in the user's order; `style.gridTemplateColumns` is set only once the row differs from default (keep the view's class for today's columns); renders null when nothing is visible. `<WidgetStack page stack {...divProps}>{{[memberId]: node}}</WidgetStack>`: visible members in declared order, null when none.
+- `useRowItems(page, row)` → `{id, items: [{key, kind: "widget" | "stack", weight, members}], template, isDefault, visible}` for views that keep their own markup.
+- `<LayoutMenu page />` in `PageHeader` `right`: Show hidden widgets, Reset this page (Modal), and on the phone Widget settings (every widget of the page).
+- `usePrefsStatus()` → `"loading" | "ready" | "failed"`; `usePagePrefs(page)` → `{prefs, status}`; `usePrefs()` (already called by `AppShell`); `thresholdTone`; `WidgetCog`, `WidgetSettings`, `SettingsForm`, `THRESHOLD_HINT`, `SAVE_DELAY_MS` (600), `PREFS_MIRROR_KEY` (`wg.prefs.v1`), `WIDGET_DRAG_TYPE` (`application/x-wg-widget`).
+- Reorder: the handle (desktop only, only for a row's direct items when 2+ are visible) drags onto another widget of the same row, or Alt+Left/Right on it (focus kept, position announced); the cog has Move left / Move right. Hide: cog "Hide widget" (not on pinned); unhide from the Layout menu.
+
+**`@/components`**: `DataTable` `density?: "comfortable" | "compact"` (adds `dt--compact`; set your page's compact row height on it); `LogView` `wrap?` (false), `timestamps?` (true), `levelTags?` (true); `Panel` `widgetChrome?`; `PanelChromeContext`.
+
+**Test helpers** (`@/test/...`): `prefsFixture(pages, version = 1)` (a GET answer); `prefsServer(initial)` → `{routes, state, puts}`, a working fake of GET and PUT for all pages (409 stale, 400/409 outdated as the Worker); `renderWithProviders(ui, {routes?, url?})`; `mockFetch` answers `GET /api/v1/prefs` with nothing saved unless a test routes it; waiting saves are dropped after each test. In a whole-app test: `renderApp(url, { routes: prefsServer({cost: {...}}).routes })`.
+
+**API**: `GET /api/v1/prefs` → 200 `PrefsResponse`. `PUT /api/v1/prefs/:page` `{baseVersion, prefs}` → 200 `PrefsPage`; 400 `bad_input` with `field` (validation, unknown body field, body over 16 KiB before parsing, stored page over 8 KiB); 404 `not_found` "No such page."; 409 `stale`; 409 `outdated`; 403 `cross_site` without same-origin. Migration `worker/migrations/0018_ui_prefs.sql` (deploy needs `npm run migrate` first).
+
+**Screens**: `npm run shots -- --scenario S --freeze-time --widget-chrome off [--prefs a.json,b.json] [--base URL --api URL]`; `--freeze-time` seeds at 2026-10-02T14:00Z (or `--now`) and stops the dev Worker's clock and the browser's there (the run fails if the Worker reloads mid-run: do not edit `worker/` or `shared/` while shooting). A `--prefs` file is `{"<page>": PagePrefs}`. `npm run shots:diff -- A B` exits 1 on any differing pixel. Baseline (in a copy of the tag, short path to keep wrangler's state under Windows' 260-character limit): `git archive widgets-baseline` unpacked into `.superpowers/shots/b`, `cp .env.example .env`, `npm ci`, `npm run build:web`, `PORT=8798 node scripts/dev.mjs --api` (a free port per worktree; stop it by its own PID), then for each scenario `node scripts/shots.mjs --scenario S --freeze-time --base http://localhost:8798 --api http://localhost:8798 --out ../widgets-baseline/S`. New shots the same way from your worktree after `npm run build:web` (the Worker serves `web/dist`), adding `--widget-chrome off`. The gallery (`/__gallery`) gained demos in W0 and differs from the baseline by design.
+
+**Setting keys** (values in brackets; `=` the default):
+
+| Widget | Title | Settings |
+|---|---|---|
+| `overview.status` (pinned) | Status banner | progress = true; timing = true; autoDestroy = true |
+| `overview.topology` | Live topology | secondLines = true; edgeLabels = true |
+| `overview.keyMetrics` | Key metrics | range (live/1h/24h/7d/30d) = live; tiles [endpoint,clients,latency,dns,heartbeat,sessionCost,availability] min 1 = all; charts = true; subLines = true; availability (threshold below, 0–100 step 0.1) = 99/90; dnsUp (below, 0–100 step 0.1) = 100/off; latency (above, 1–1000) = off/off |
+| `overview.run` | Last run | stepFilter (all/running/done/pending) = all; logLevel (all/warn/error) = all; logTimestamps = true |
+| `overview.traffic` | Network traffic | window (5m/15m/1h/session/24h/7d) = session; units (kBps/mbps) = kBps; series [in,out] min 1 = all; peak = false |
+| `overview.events` | Recent events | rows (3–10) = 5; range (1h/6h/24h/7d) = 24h; types [deploy,destroy,failure,config,firewall,watchman] min 1 = all; detail = true |
+| `overview.speedTest` | Speed test | shown (1–5) = 3; jitter = false; server = false |
+| `overview.health` | Health summary | checks [vm,wireguard,dns,tunnel,selftest] min 1 = all; ages = true |
+| `overview.costImpact` | Cost impact | sessions (4–30) = 16; typical = true; session (above, 0–500 step 0.5) = off/off |
+| `overview.notes` | Watchman notes | max (all/3/5/10) = all; times = true |
+| `clients.kpis` | Client figures | tiles [total,online,latency,fullTunnel,stale,expiring] min 1 = all; subLines = true; onlineRing = true; latency (above, 1–1000) = off/off |
+| `clients.table` (pinned) | Clients | filter (all/online/offline/expiring/home/fullTunnel) = all; sort (nameAsc/nameDesc/address/handshake/latency/traffic/expires) = nameAsc; columns [address,handshake,latency,traffic,allowedIps,expires,ipv6,created,note] min 0 = first six; sparkline = true; density (comfortable/compact) = comfortable; latency (above, 1–1000) = off/off |
+| `clients.talkers` | Top talkers | rows (3–10) = 5; measure (total/sent/received) = total |
+| `clients.statusDonut` | Client status | extras [expiring,fullTunnel] min 0 = all; percentages = true |
+| `clients.sessionTraffic` | Traffic this session | range (session/1h/24h/7d/30d) = session; units (auto/mbps) = auto; series [in,out] min 1 = all |
+| `firewall.kpis` | Firewall figures | tiles [policy,default,drops,ports,capture] min 1 = all; sparkline = true; deltas = true; subLines = true; drops (above, 1–100000) = off/off |
+| `firewall.rules` (pinned) | Firewall rules | tab (all/custom/default/disabled) = all; columns [service,hits,lastHit,lifetime] min 0 = [service,hits]; sparkline = true; density = comfortable |
+| `firewall.zones` | Network zones | addresses = true; ruleCounts = true; arrows = true |
+| `firewall.simulator` | Test specific traffic | from, to (clients/home/azure/workloads/internet) = clients, home; proto (tcp/udp/icmp) = tcp; port (1–65535) = 22 |
+| `firewall.drops` | Recent drops | max (all/10/25/50) = all; timeZone (uk/utc) = uk; zoneChip = true; allowButton = true |
+| `firewall.ports` | Published ports | showOff = true; connections = false |
+| `firewall.capture` | Packet capture | iface (wg0/eth0/any) = wg0; seconds (5–300 step 5) = 30; recent (1–10) = 5 |
+| `activity.kpis` | Activity figures | tiles [deploys,duration,success,failed,config,watchman] min 1 = all; deltas = true; subLines = true; successRate (below, 0–100 step 0.1) = 90/70; failedRuns (above, 1–1000) = off/1; watchman (above, 1–1000) = 1/off |
+| `activity.timeline` | Activity timeline | series [deploy,destroy,failure,config,firewall,watchman] min 1 = all; legend = true |
+| `activity.list` (pinned) | Runs and activity | tab (runs/all/changes/notes) = runs; runColumns [duration,cost,actor,source,notes,publicIp] min 0 = first five; density = comfortable |
+| `activity.stream` | Live event stream | type (all + the six event types) = all; autoScroll = true; detail = true; timeFormat (clock/relative) = clock |
+| `activity.changeLog` | Change log | kind (all/client/firewall/settings/profile/schedule/push/capture/lock/config) = all; whatChanged = true; by = true |
+| `activity.runDetails` | Run details | run (newest/newestFailed) = newest; durations = true; nameLines (1/2) = 2 |
+| `activity.liveOutput` | Live output | lines (20–200 step 20) = 60; wrap = false; timestamps = true; levelTags = true |
+| `cost.kpis` | Cost figures | tiles [session,month,estimate,budget,guard] min 1 = all; deltas = true; budgetBar = true; budgetUsed (above, 1–200) = 80/100 |
+| `cost.spend` | Spend over time | forecast = true; budgetLine = true; previous = false; note = true; legend = true |
+| `cost.breakdown` | Spend breakdown | groupBy (auto/region) = auto; percentages = false |
+| `cost.forecast` | Forecast vs budget | chart = true; forecast (above, 1–200) = off/100 |
+| `cost.split` | Spend by region | view (region/resource) = region; order (listed/largest) = listed; tracks = true; percent = true |
+| `cost.perSession` | Cost per session | shown (all/10/20/50) = all; session (above, 0–500 step 0.5) = off/off |
+| `cost.insights` | Insights | none |
+| `cost.sessions` | Sessions | status (all/running/ended) = all; sort (started/cost/duration) = started; columns [region,vmSize,duration,cost,rate,ended] min 0 = first five; density = comfortable |
+
+Numbers without a step have step 1. Threshold defaults read warn/bad.
+
 > **For agentic workers:** the integrator first lands the contract and framework branch (W0). Then five areas (W1 Overview, W2 Clients, W3 Firewall, W4 Activity, W5 Cost) run **in parallel**, each in its own git worktree, each built by one implementer under superpowers:test-driven-development. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** turn every panel on Overview, Clients, Firewall, Activity and Cost into a widget with a settings cog (Data / Thresholds / Display, Reset to default), hide and in-row reorder with a Layout menu, saved per user in D1 and synced to PC and phone; with no saved preferences every screen is pixel-identical to today.
