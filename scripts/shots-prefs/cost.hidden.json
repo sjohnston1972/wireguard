@@ -1,0 +1,5 @@
+{
+  "cost": {
+    "layout": { "hidden": ["cost.breakdown", "cost.forecast", "cost.perSession", "cost.insights"] }
+  }
+}

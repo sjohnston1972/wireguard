@@ -1,0 +1,10 @@
+{
+  "cost": {
+    "layout": {
+      "order": {
+        "r2": ["cost.forecast", "cost.breakdown", "cost.spend"],
+        "r3": ["cost.insights", "cost.perSession", "cost.split"]
+      }
+    }
+  }
+}
