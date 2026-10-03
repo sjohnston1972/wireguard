@@ -40,7 +40,8 @@ import { fileURLToPath } from "node:url";
 /**
  * Every env name in wg.yml that can hold a secret. Repository secrets (as the
  * steps name them), GitHub's tokens, and the per-run secrets collected from
- * the Worker. Keep in step with .github/workflows/wg.yml.
+ * the Worker. Keep in step with .github/workflows/wg.yml: a test reads
+ * wg.yml and fails if a secret it hands a step is not hidden.
  */
 export const SECRET_ENV = [
   // Azure service principal

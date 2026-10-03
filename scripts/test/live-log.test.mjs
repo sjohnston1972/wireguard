@@ -82,8 +82,103 @@ function leaks(text) {
 
 // ── Redaction ────────────────────────────────────────────────────────────
 
-test("every env name the workflow keeps a secret under is on the redaction list", () => {
-  for (const k of Object.keys(SECRETS)) if (k !== "AWS_ENDPOINT_URL_S3") assert.ok(SECRET_ENV.includes(k), `${k} missing from SECRET_ENV`);
+const WORKFLOW = fileURLToPath(new URL("../../.github/workflows/wg.yml", import.meta.url));
+/** wg.yml with plain line ends (a Windows checkout has CRLF). */
+const readWorkflow = () => readFileSync(WORKFLOW, "utf8").replace(/\r\n/g, "\n");
+/** A secret-bearing expression in wg.yml: a repository secret or GitHub's own token. */
+const SECRET_EXPR = /\$\{\{\s*(?:secrets\.[A-Za-z0-9_]+|github\.token)\s*\}\}/g;
+/** Run secrets the Worker hands out that are masked only because they map the network, not because they are secret (wg.yml says so). */
+const RUN_VALUES_NOT_SECRET = new Set(["firewall_nft_b64"]);
+
+/** Every `env:` entry in a workflow, at any level, as [name, raw value]. Plain line reading, so it never needs a YAML library. */
+function envEntries(yml) {
+  const out = [];
+  let block = null; // indent of the current "env:" key
+  let child = null; // indent of its entries
+  for (const line of yml.split(/\r?\n/)) {
+    if (!line.trim() || /^\s*#/.test(line)) continue;
+    const indent = line.length - line.trimStart().length;
+    if (block !== null && indent <= block) block = child = null;
+    if (block !== null) {
+      child ??= indent;
+      const m = indent === child && /^\s*([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/.exec(line);
+      if (m) out.push([m[1], m[2].replace(/\s+#.*$/, "")]);
+      continue;
+    }
+    if (/^\s*env:\s*$/.test(line)) block = indent;
+  }
+  return out;
+}
+
+/**
+ * Every way wg.yml puts a secret where a step (and so the live log) can see
+ * it, checked against what the redactor actually hides. Returns the problems:
+ * each env fed from `${{ secrets.* }}` or `${{ github.token }}` whose secret
+ * is not hidden, each such expression outside an env entry (a step's
+ * script would print it and nothing could hide it), and each run secret
+ * collected from the Worker that is not on SECRET_ENV.
+ */
+function secretCoverage(yml) {
+  const problems = [];
+  const entries = envEntries(yml);
+  let n = 0;
+  for (const [name, raw] of entries) {
+    const exprs = raw.match(SECRET_EXPR) ?? [];
+    if (!exprs.length) continue;
+    const fakes = exprs.map((_, i) => `fakeSecret${n++}x${i}Value0123456789`);
+    let value = raw.replace(/^(["'])(.*)\1$/, "$2");
+    exprs.forEach((e, i) => (value = value.replace(e, fakes[i])));
+    const redact = makeRedactor(secretsFromEnv({ [name]: value }));
+    const out = redact(`printed: ${value} | alone: ${fakes.join(" ")}`);
+    for (const [i, f] of fakes.entries()) if (out.includes(f)) problems.push(`${name} (fed from ${exprs[i]}) is not hidden: add it to SECRET_ENV`);
+  }
+  const code = yml
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*#/.test(l))
+    .join("\n");
+  const inEnv = entries.reduce((t, [, raw]) => t + (raw.match(SECRET_EXPR) ?? []).length, 0);
+  const everywhere = (code.match(SECRET_EXPR) ?? []).length;
+  if (everywhere !== inEnv) problems.push(`${everywhere - inEnv} secret expression(s) outside an env entry, where the live log cannot hide them`);
+
+  // The run's own secrets: the Worker's answer in "Collect run secrets", saved to the env by put_env.
+  const step = /- name: Collect run secrets[\s\S]*?(?=\n {6}- name: )/.exec(yml)?.[0] ?? "";
+  const loop = /for k in ([^;]+); do/.exec(step);
+  if (!loop) problems.push('"Collect run secrets" no longer has its "for k in ...; do" loop: update this test');
+  else {
+    if (!/put_env CALLBACK_TOKEN "\$v"/.test(step) || !/put_env "TF_VAR_\$k" "\$v"/.test(step)) problems.push('"Collect run secrets" saves its values differently now: update this test');
+    for (const k of loop[1].trim().split(/\s+/)) {
+      if (RUN_VALUES_NOT_SECRET.has(k)) continue;
+      const name = k === "callback_token" ? "CALLBACK_TOKEN" : `TF_VAR_${k}`;
+      if (!SECRET_ENV.includes(name)) problems.push(`run secret ${k} (env ${name}) is not on SECRET_ENV`);
+    }
+  }
+  return problems;
+}
+
+test("every secret wg.yml hands a step, and every run secret from the Worker, is hidden by the live log", () => {
+  const yml = readWorkflow();
+  assert.ok(envEntries(yml).filter(([, v]) => (v.match(SECRET_EXPR) ?? []).length > 0).length >= 20, "the env entries were found");
+  assert.deepEqual(secretCoverage(yml), []);
+});
+
+test("the wg.yml secret check is not circular: a new secret added to wg.yml alone fails it", () => {
+  const yml = readWorkflow();
+  const anchor = "          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}\n";
+  assert.ok(yml.includes(anchor));
+  const withEnv = yml.replace(anchor, `${anchor}          NEW_API_KEY: \${{ secrets.NEW_API_KEY }}\n`);
+  assert.deepEqual(secretCoverage(withEnv), ["NEW_API_KEY (fed from ${{ secrets.NEW_API_KEY }}) is not hidden: add it to SECRET_ENV"]);
+  const inScript = yml.replace("terraform apply -no-color -auto-approve", 'terraform apply -no-color -auto-approve -var "x=${{ secrets.INLINE }}"');
+  assert.match(secretCoverage(inScript).join("\n"), /1 secret expression\(s\) outside an env entry/);
+  const runSecret = yml.replace("for k in callback_token agent_token", "for k in callback_token new_token agent_token");
+  assert.deepEqual(secretCoverage(runSecret), ["run secret new_token (env TF_VAR_new_token) is not on SECRET_ENV"]);
+});
+
+test("the wg.yml env reader agrees with a real YAML parser", { skip: (() => spawnSync("python", ["-c", "import yaml"]).status !== 0 && "no Python with PyYAML here")() }, () => {
+  const r = spawnSync("python", ["-c", "import sys, json, yaml; d = yaml.safe_load(open(sys.argv[1], encoding='utf-8')); envs = [d.get('env') or {}] + [j.get('env') or {} for j in d['jobs'].values()] + [s.get('env') or {} for j in d['jobs'].values() for s in j['steps']]; print(json.dumps([[k, str(v)] for e in envs for k, v in e.items()]))", WORKFLOW], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  const real = JSON.parse(r.stdout).map(([k, v]) => `${k}=${v}`);
+  const mine = envEntries(readWorkflow()).map(([k, v]) => `${k}=${v.replace(/^(["'])(.*)\1$/, "$2")}`);
+  assert.deepEqual(mine, real);
 });
 
 test("secretsFromEnv picks up every secret, plus the account id in the R2 endpoint and the bare home address", () => {
