@@ -182,7 +182,7 @@ test("Shipper: stops for good when the Worker says the run is over or the token 
   const dir = tmp();
   const file = join(dir, "log.txt");
   writeFileSync(file, "a\n");
-  for (const code of [401, 404, 409]) {
+  for (const code of [401, 404, 409, 301, 302, 307]) {
     const { post } = fakePost([code]);
     const s = new Shipper({ file, runId: "r", post, redact: (t) => t, maxBytes: 1000 });
     assert.equal(await s.pump(false), "gone", `status ${code}`);
@@ -239,6 +239,81 @@ test("the ship command posts to the Worker with the callback token and flushes e
   for (const g of got) ok.set(g.seq, g.text);
   assert.deepEqual([...ok.keys()], [1, 2, 3]);
   assert.equal([...ok.values()].join(""), "first line\nsecond *** line\nno newline yet");
+});
+
+test("the ship command treats a redirect (Cloudflare Access sending it to a login page) as the end: it is not followed, and the shipper says so once and stops", async () => {
+  const dir = tmp();
+  const file = join(dir, "live.txt");
+  writeFileSync(file, "");
+  const posts = [];
+  let loginHits = 0;
+  const server = createServer((req, res) => {
+    if (req.url.startsWith("/cdn-cgi/access/login")) {
+      loginHits++;
+      res.writeHead(200, { "Content-Type": "text/html" }).end("<html>Sign in</html>");
+      return;
+    }
+    req.resume();
+    req.on("end", () => {
+      posts.push(req.url);
+      res.writeHead(302, { Location: `http://127.0.0.1:${server.address().port}/cdn-cgi/access/login?redirect_url=/api/callback/log` }).end();
+    });
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  // Access answers 302 to its login page, which answers 200: followed, that looked like success.
+  const url = `http://127.0.0.1:${server.address().port}/api/callback/log`;
+  const child = spawn(process.execPath, [SCRIPT, "ship"], {
+    env: { ...process.env, LIVE_LOG_FILE: file, LIVE_LOG_URL: url, CALLBACK_TOKEN: "cbtoken-abcdefgh", WORKER_RUN_ID: "run-9", LIVE_LOG_INTERVAL_MS: "100" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (d) => (stderr += d));
+  const exited = new Promise((r) => child.on("exit", r));
+  try {
+    appendFileSync(file, "first line\n");
+    // No stop file: a redirect alone must end the shipper.
+    const code = await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 5000))]);
+    appendFileSync(file, "second line\n");
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(code, 0, `shipper still running; stderr: ${stderr}`);
+  } finally {
+    child.kill();
+    server.close();
+  }
+  assert.equal(posts.length, 1, "nothing more is sent after a redirect");
+  assert.equal(loginHits, 0, "the redirect is never followed");
+  const notes = stderr.split("\n").filter((l) => /\b302\b/.test(l));
+  assert.equal(notes.length, 1, `one line about the redirect; got: ${stderr}`);
+  assert.match(notes[0], /127\.0\.0\.1/);
+  assert.ok(!notes[0].includes("redirect_url"), "only the host of the Location, not the whole address");
+  assert.ok(!stderr.includes("first line") && !stderr.includes("cbtoken"), "the text and the token are never logged");
+});
+
+test("the ship command writes down every answer that is not a success, by status only", async () => {
+  const dir = tmp();
+  const file = join(dir, "live.txt");
+  writeFileSync(file, "");
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on("end", () => res.writeHead(404).end());
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${server.address().port}/api/callback/log`;
+  const child = spawn(process.execPath, [SCRIPT, "ship"], {
+    env: { ...process.env, LIVE_LOG_FILE: file, LIVE_LOG_URL: url, CALLBACK_TOKEN: "cbtoken-abcdefgh", WORKER_RUN_ID: "run-9", LIVE_LOG_INTERVAL_MS: "100" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (d) => (stderr += d));
+  const exited = new Promise((r) => child.on("exit", r));
+  try {
+    appendFileSync(file, "a line\n");
+    assert.equal(await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 5000))]), 0);
+  } finally {
+    child.kill();
+    server.close();
+  }
+  assert.match(stderr, /piece 1 answered 404/);
 });
 
 async function waitFor(fn, ms = 6000) {

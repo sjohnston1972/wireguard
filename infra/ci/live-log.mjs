@@ -218,7 +218,9 @@ export class Shipper {
       } catch {
         return "retry";
       }
-      if (GONE.has(status)) return "gone";
+      // A redirect is never the Worker taking the piece: it is Cloudflare
+      // Access (or a wrong address) sending us to a login page. Stop.
+      if (GONE.has(status) || (status >= 300 && status < 400)) return "gone";
       // 413: the Worker will never take this piece; skip it rather than stall.
       if ((status >= 200 && status < 300) || status === 413) {
         this.offset += n;
@@ -285,10 +287,21 @@ async function ship() {
       headers: { Authorization: `Bearer ${env.CALLBACK_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(10_000),
+      // Never follow a redirect: Access answers 302 to its login page, which
+      // answers 200, and that would look like the piece was stored.
+      redirect: "manual",
     });
     await r.arrayBuffer().catch(() => null);
-    // Only the status is ever written down: never the text sent.
-    if (r.status >= 300) console.error(`live log: piece ${body.seq} answered ${r.status}`);
+    // Only the status (and a redirect's host) is ever written down: never the text sent.
+    if (r.status >= 300 && r.status < 400) {
+      let host = "nowhere";
+      try {
+        host = new URL(r.headers.get("location") ?? "", url).host || host;
+      } catch {
+        /* no usable Location */
+      }
+      console.error(`live log: piece ${body.seq} answered ${r.status}, a redirect to ${host}; sending no more`);
+    } else if (r.status < 200 || r.status >= 300) console.error(`live log: piece ${body.seq} answered ${r.status}`);
     return { status: r.status };
   };
   const shipper = new Shipper({ file, runId: env.WORKER_RUN_ID || "manual", post, redact: makeRedactor(secretsFromEnv(env)) });
