@@ -18,7 +18,7 @@ import { GripVertical } from "lucide-react";
 import { PanelChromeContext, useIsPhone, type PanelChrome } from "@/components";
 import { widgetDef, type PageId } from "@shared/widgets";
 import { useWidget } from "./useWidget";
-import { usePagePrefs, usePrefsStore } from "./usePrefs";
+import { usePrefsStatus, usePrefsStore } from "./usePrefs";
 import { WidgetCog, announceMove } from "./WidgetCog";
 import { dropKey, dropMove, type DragItem } from "./layout";
 import { useArranged } from "./arrangement";
@@ -150,7 +150,7 @@ function DropAnchor({ id }: { id: string }) {
   const [el, setEl] = useState<HTMLSpanElement | null>(null);
   const def = widgetDef(id)!;
   const page = def.page;
-  const { status } = usePagePrefs(page);
+  const status = usePrefsStatus();
   const store = usePrefsStore();
   const reg = useArranged();
   const phone = useIsPhone();

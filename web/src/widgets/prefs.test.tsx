@@ -224,6 +224,74 @@ describe("saving", () => {
   });
 });
 
+describe("re-renders", () => {
+  const two = { overview: { widgets: { "overview.events": { v: 1, s: { rows: 9 } }, "overview.speedTest": { v: 1, s: { shown: 2 } } } } };
+
+  function Loader() {
+    usePrefs();
+    return null;
+  }
+
+  function Counted({ id, renders, seen }: { id: string; renders: Record<string, number>; seen: Record<string, unknown[]> }) {
+    const w = useWidget(id);
+    renders[id] = (renders[id] ?? 0) + 1;
+    (seen[id] ??= []).push(w.settings);
+    return (
+      <div>
+        <output aria-label={`${id} status`}>{w.status}</output>
+        <button onClick={() => w.set(id === "overview.events" ? "rows" : "shown", id === "overview.events" ? 7 : 4)}>change {id}</button>
+      </div>
+    );
+  }
+
+  it("a change re-renders only the widget it changes, and the others keep the same settings object", async () => {
+    const renders: Record<string, number> = {};
+    const seen: Record<string, unknown[]> = {};
+    renderWithProviders(
+      <>
+        <Loader />
+        <Counted id="overview.events" renders={renders} seen={seen} />
+        <Counted id="overview.speedTest" renders={renders} seen={seen} />
+        <Counted id="overview.health" renders={renders} seen={seen} />
+      </>,
+      { routes: prefsServer(two).routes },
+    );
+    await waitFor(() => expect(out("overview.events status")).toHaveTextContent("ready"));
+    await waitFor(() => expect(out("overview.health status")).toHaveTextContent("ready"));
+    const before = { ...renders };
+    const speedSettings = seen["overview.speedTest"]!.at(-1);
+    await userEvent.click(screen.getByRole("button", { name: "change overview.events" }));
+    expect(renders["overview.events"]).toBeGreaterThan(before["overview.events"]!);
+    expect(renders["overview.speedTest"]).toBe(before["overview.speedTest"]);
+    expect(renders["overview.health"]).toBe(before["overview.health"]);
+    expect(seen["overview.speedTest"]!.at(-1)).toBe(speedSettings);
+  });
+
+  it("the localStorage copy is read once per load, not once per widget", async () => {
+    const server = prefsServer(two);
+    const first = renderWithProviders(<Probe />, { routes: server.routes });
+    await waitFor(() => expect(out("status")).toHaveTextContent("ready"));
+    first.unmount();
+    const getItem = vi.spyOn(Storage.prototype, "getItem");
+    const slow = deferred<unknown>();
+    const renders: Record<string, number> = {};
+    renderWithProviders(
+      <>
+        <Loader />
+        <Counted id="overview.events" renders={renders} seen={{}} />
+        <Counted id="overview.speedTest" renders={renders} seen={{}} />
+        <Counted id="overview.health" renders={renders} seen={{}} />
+      </>,
+      { routes: { "GET /api/v1/prefs": () => slow.promise } },
+    );
+    expect(out("overview.events status")).toHaveTextContent("loading");
+    expect(getItem.mock.calls.filter(([k]) => k === PREFS_MIRROR_KEY)).toHaveLength(1);
+    await act(async () => slow.resolve(structuredClone(server.state)));
+    await waitFor(() => expect(out("overview.events status")).toHaveTextContent("ready"));
+    expect(getItem.mock.calls.filter(([k]) => k === PREFS_MIRROR_KEY)).toHaveLength(1);
+  });
+});
+
 describe("a save that fails", () => {
   for (const [what, reply, said] of [
     ["500", { status: 500, json: { error: { code: "internal", message: "Something broke (reference ab12)." } } }, "Something broke (reference ab12)."],

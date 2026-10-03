@@ -8,7 +8,7 @@
 import { useMemo } from "react";
 import type { PagePrefs, SettingValue } from "@shared/api";
 import { settingProblem, widgetDef, widgetDefaults, type WidgetDef } from "@shared/widgets";
-import { usePagePrefs, usePrefsStore, type PrefsStatus } from "./usePrefs";
+import { usePagePart, usePrefsStore, type PrefsStatus } from "./usePrefs";
 import { canMoveIn, moveWithin, type MoveState } from "./layout";
 import { useArranged } from "./arrangement";
 
@@ -60,12 +60,16 @@ function withHidden(p: PagePrefs, id: string, hide: boolean): PagePrefs {
 export function useWidget(id: string): WidgetState {
   const def = widgetDef(id);
   if (!def) throw new Error(`No widget ${id} (see shared/widgets.ts)`);
-  const { prefs, status } = usePagePrefs(def.page);
+  // Only this widget's saved values and the page layout are read, each the
+  // same object while unchanged, so another widget's change does not
+  // re-render this one.
+  const { value: saved, status } = usePagePart(def.page, (p) => p.widgets?.[id]?.s);
+  const { value: layout } = usePagePart(def.page, (p) => p.layout);
+  const prefs = useMemo<PagePrefs>(() => (layout ? { layout } : {}), [layout]);
   const store = usePrefsStore();
   const readOnly = status !== "ready";
-  const saved = prefs.widgets?.[id]?.s;
   const settings = useMemo(() => ({ ...widgetDefaults(id), ...(saved ?? {}) }), [id, saved]);
-  const hidden = !def.pinned && !!prefs.layout?.hidden?.includes(id);
+  const hidden = !def.pinned && !!layout?.hidden?.includes(id);
   const reg = useArranged();
   const canMove = useMemo(() => canMoveIn(def.page, id, prefs, reg), [def.page, id, prefs, reg]);
 

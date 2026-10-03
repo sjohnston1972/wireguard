@@ -68,14 +68,39 @@ export function writeMirror(r: PrefsResponse): void {
   }
 }
 
+const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * `next` with every part that did not change taken from `prev` (the same
+ * objects), so a widget whose settings did not change gets the same settings
+ * object and does not re-render.
+ */
+function keepUnchanged(prev: PagePrefs, next: PagePrefs): PagePrefs {
+  const out: PagePrefs = { ...next };
+  if (next.layout && same(prev.layout, next.layout)) out.layout = prev.layout;
+  if (next.widgets) {
+    const widgets: NonNullable<PagePrefs["widgets"]> = {};
+    for (const [id, entry] of Object.entries(next.widgets)) widgets[id] = prev.widgets?.[id] && same(prev.widgets[id], entry) ? prev.widgets[id]! : entry;
+    out.widgets = widgets;
+  }
+  return out;
+}
+
 export class PrefsStore {
   private queues = new Map<PageId, PageQueue>();
   private listeners = new Set<() => void>();
   private watching = false;
+  private mirrored: { value: PrefsResponse | undefined } | null = null;
   /** Set by the hooks from the app's toast host. */
   toast: ((t: ToastInput) => void) | null = null;
 
   constructor(private client: QueryClient) {}
+
+  /** The localStorage copy, read once per load (every widget's query shares it while the first answer is out). */
+  mirror(): PrefsResponse | undefined {
+    if (!this.mirrored) this.mirrored = { value: readMirror() };
+    return this.mirrored.value;
+  }
 
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
@@ -111,7 +136,7 @@ export class PrefsStore {
     const q = this.queue(page);
     if (q.override === null || q.base === null) q.base = this.confirmed(page).version;
     const shown = q.override ?? this.confirmed(page).prefs;
-    q.override = normalisePagePrefs(page, fn(structuredClone(shown)));
+    q.override = keepUnchanged(shown, normalisePagePrefs(page, fn(structuredClone(shown))));
     this.notify();
     if (q.timer) clearTimeout(q.timer);
     q.timer = setTimeout(() => this.flush(page), SAVE_DELAY_MS);

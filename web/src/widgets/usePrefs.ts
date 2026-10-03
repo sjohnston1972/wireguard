@@ -11,22 +11,23 @@ import type { PagePrefs, PrefsResponse } from "@shared/api";
 import type { PageId } from "@shared/widgets";
 import { apiGet } from "@/api/client";
 import { useToast } from "@/components";
-import { PREFS_KEY, readMirror, storeFor, writeMirror, type PrefsStore } from "./store";
+import { PREFS_KEY, storeFor, writeMirror, type PrefsStore } from "./store";
 
 /** "loading": not answered yet (the mirror may be showing); "ready": read; "failed": could not be read, so nothing may be saved. */
 export type PrefsStatus = "loading" | "ready" | "failed";
 
-function usePrefsQuery(): UseQueryResult<PrefsResponse> {
+export function usePrefsQuery(): UseQueryResult<PrefsResponse> {
+  const store = storeFor(useQueryClient());
   return useQuery<PrefsResponse>({
     queryKey: PREFS_KEY,
     queryFn: () => apiGet<PrefsResponse>("/prefs"),
     staleTime: 30_000,
     refetchOnWindowFocus: true,
-    placeholderData: () => readMirror(),
+    placeholderData: () => store.mirror(),
   });
 }
 
-function statusOf(q: UseQueryResult<PrefsResponse>): PrefsStatus {
+export function statusOf(q: UseQueryResult<PrefsResponse>): PrefsStatus {
   if (q.data !== undefined && !q.isPlaceholderData) return "ready";
   if (q.isError) return "failed";
   return "loading";
@@ -71,6 +72,21 @@ export function usePagePrefs(page: PageId): { prefs: PagePrefs; status: PrefsSta
   const status = statusOf(q);
   if (status === "failed") return { prefs: EMPTY, status };
   return { prefs: override ?? q.data?.pages[page]?.prefs ?? EMPTY, status };
+}
+
+/**
+ * One part of a page's preferences as shown now (as usePagePrefs), for a
+ * hook that needs only that part: `pick` returns a piece of the page (the
+ * same object while it is unchanged, see the store's keepUnchanged), so a
+ * change elsewhere on the page does not re-render the caller.
+ */
+export function usePagePart<T>(page: PageId, pick: (p: PagePrefs) => T): { value: T; status: PrefsStatus } {
+  const q = usePrefsQuery();
+  const store = usePrefsStore();
+  const status = statusOf(q);
+  const base = q.data?.pages[page]?.prefs ?? EMPTY;
+  const value = useSyncExternalStore(store.subscribe, () => pick(status === "failed" ? EMPTY : (store.override(page) ?? base)));
+  return { value, status };
 }
 
 const EMPTY: PagePrefs = {};
