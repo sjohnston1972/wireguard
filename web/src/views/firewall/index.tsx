@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { FirewallResponse } from "@shared/api";
-import { Button, ErrorState, Panel, Tabs, cx, useIsPhone } from "@/components";
-import { Widget, usePagePrefs, useRowItems, useStarting, useWidget } from "@/widgets";
+import { Button, ErrorState, Panel, Tabs, cx, useIsPhone, useToast } from "@/components";
+import { Widget, usePagePrefs, usePrefsStatus, useRowItems, useStarting, useWidget } from "@/widgets";
 import { useFirewall } from "@/api/queries";
 import { useDraftDefault } from "@/api/mutations";
 import { RulesPanel } from "./RulesPanel";
@@ -22,6 +22,9 @@ import { useMedia } from "@/lib/useMedia";
 import "./Firewall.css";
 
 type Forward = FirewallResponse["forwards"][number];
+
+/** Said when ?action=capture (the palette's Start capture) arrives with the capture widget hidden. */
+export const CAPTURE_HIDDEN = "Packet capture is hidden — show it from Layout";
 
 /**
  * /firewall and /firewall/rules/:id: one page (the rule route opens its
@@ -59,6 +62,8 @@ export function FirewallPage() {
     sim: useWidget("firewall.simulator").hidden,
   };
   const { prefs } = usePagePrefs("firewall");
+  const prefsStatus = usePrefsStatus();
+  const { toast } = useToast();
   const bottomRow = useRowItems("firewall", "bottom");
 
   // The rule filter; its tab starts at the rules widget's Starting tab.
@@ -92,13 +97,24 @@ export function FirewallPage() {
   const loaded = !!fw.data;
 
   // ?action=capture: show the capture form, focus it, then drop the parameter.
+  // With the capture widget hidden there is no form: say so and drop the
+  // parameter (showing it again is the user's call, from Layout), so nothing
+  // is left waiting to take focus when it comes back.
   useEffect(() => {
-    if (action !== "capture" || !loaded) return;
+    if (action !== "capture" || !loaded || prefsStatus === "loading") return;
+    if (hidden.capture) {
+      toast({ tone: "info", title: CAPTURE_HIDDEN });
+      const next = new URLSearchParams(params);
+      next.delete("action");
+      setParams(next, { replace: true });
+      return;
+    }
     setRightTab("capture");
     setPhoneSheet("capture");
     setFocusCapture(true);
-  }, [action, loaded]);
+  }, [action, loaded, prefsStatus, hidden.capture]);
   useEffect(() => {
+    if (focusCapture && hidden.capture) return setFocusCapture(false);
     if (!focusCapture || !captureRef.current) return;
     const t = setTimeout(() => {
       captureRef.current?.focus();

@@ -316,6 +316,27 @@ describe("W3.4 layout", () => {
     expect(within(screen.getByRole("group", { name: "Default action" })).getByRole("button", { name: "Change default action to Allow" })).toHaveFocus();
   });
 
+  for (const size of ["desktop", "phone"] as const) {
+    it(`?action=capture with Packet capture hidden says so, clears the parameter and never takes focus later (${size})`, async () => {
+      if (size === "phone") setViewport("phone");
+      const server = prefsServer({ firewall: { layout: { hidden: ["firewall.capture"] } } });
+      renderApp("/firewall?action=capture", { routes: { ...server.routes, "GET /api/v1/firewall": firewallData() } });
+      expect(await screen.findByText("Packet capture is hidden — show it from Layout")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole("status", { name: "location", hidden: true }).textContent).toBe("/firewall"));
+      expect(screen.queryByRole("dialog", { name: /capture/i })).toBeNull();
+      // Shown again later: the form appears but focus stays where it was.
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Layout" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Show Packet capture" }));
+      await waitFor(() => expect(server.state.pages.firewall.prefs).toEqual({}));
+      await new Promise((r) => setTimeout(r, 50));
+      if (size === "desktop") {
+        const cap = await region("Packet capture");
+        expect(cap.contains(document.activeElement)).toBe(false);
+      }
+      expect(screen.queryByRole("dialog", { name: /capture/i })).toBeNull();
+    });
+  }
+
   it("hiding zones gives the simulator the whole bottom row", async () => {
     renderFw({ layout: { hidden: ["firewall.zones"] } });
     const sim = await region("Test specific traffic");
