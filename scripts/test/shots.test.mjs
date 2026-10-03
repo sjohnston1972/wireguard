@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { parseArgs, buildPlan, SIZES, ROUTES, shotName, isOneScreenSize, measureOverflow, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, freezeTimeScript, WIDGET_CHROME_OFF_CSS, widgetChromeOffScript, prefsPuts, FROZEN_NOW } from "../lib/shots.mjs";
+import { parseArgs, buildPlan, SIZES, ROUTES, shotName, isOneScreenSize, measureOverflow, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, freezeTimeScript, WIDGET_CHROME_OFF_CSS, widgetChromeOffScript, prefsPuts, FROZEN_NOW, frozenClockProblem } from "../lib/shots.mjs";
 
 const script = fileURLToPath(new URL("../shots.mjs", import.meta.url));
 
@@ -214,6 +214,12 @@ test("parseArgs: --freeze-time, --widget-chrome off, --prefs a.json,b.json", () 
   assert.equal(d.now, null, "an ordinary run seeds at the real time");
   assert.equal(parseArgs(["--scenario", "running", "--freeze-time", "--now", "2026-11-01T09:30:00Z"]).now, "2026-11-01T09:30:00.000Z");
   assert.throws(() => parseArgs(["--now", "soon"]), /--now is an ISO time/);
+});
+
+test("a frozen run fails if the dev Worker's clock moved (wrangler reloaded it mid-run)", () => {
+  assert.equal(frozenClockProblem("2026-10-02T14:00:00.000Z", "2026-10-02T14:00:00.000Z"), null);
+  assert.match(frozenClockProblem("2026-10-03T16:01:02.000Z", "2026-10-02T14:00:00.000Z"), /clock.*2026-10-03T16:01:02.000Z.*restarted/);
+  assert.match(frozenClockProblem(undefined, "2026-10-02T14:00:00.000Z"), /clock/);
 });
 
 test("a frozen run asks the seeder to stop the dev Worker's clock at the seeded time", async () => {

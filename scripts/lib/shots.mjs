@@ -213,6 +213,17 @@ export function parseArgs(argv) {
  */
 export const FROZEN_NOW = "2026-10-02T14:00:00.000Z";
 
+/**
+ * Why a frozen run's pictures cannot be trusted, or null: the dev Worker's
+ * clock (GET /api/v1/session's `now`) must still read the seeded moment at
+ * the end of the run. wrangler reloads the Worker when its code changes,
+ * which starts the clock again.
+ */
+export function frozenClockProblem(serverNow, expected) {
+  if (serverNow === expected) return null;
+  return `The dev Worker's clock reads ${serverNow ?? "nothing"}, not the frozen ${expected}: it restarted during the run (wrangler reloads it when worker/ or shared/ files change). Shoot again without editing those files.`;
+}
+
 // ── Widgets: a frozen clock, hidden widget chrome, saved preferences ──────
 
 /**

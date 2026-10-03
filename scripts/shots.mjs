@@ -34,7 +34,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { parseArgs, buildPlan, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, prefsPuts, freezeTimeScript, widgetChromeOffScript } from "./lib/shots.mjs";
+import { parseArgs, buildPlan, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, prefsPuts, freezeTimeScript, widgetChromeOffScript, frozenClockProblem } from "./lib/shots.mjs";
 import { seed } from "./seed-scenarios.mjs";
 
 const BROWSERS = [
@@ -317,6 +317,20 @@ async function main() {
       const scroll = `scroll ${rec.overflowY}px, #main ${rec.mainOverflowY ?? "-"}px`;
       const flag = rec.error ? `ERROR ${rec.error}` : s.checkOverflow ? `${scroll}${rec.ok ? "" : `  <-- FAILS the one-screen rule (${rec.reason})`}` : `${scroll} (not checked)`;
       console.log(`${rec.ok ? "ok  " : "FAIL"} ${s.file.padEnd(40)} ${flag}${rec.overflowX > 0 ? `  (sideways overflow ${rec.overflowX}px)` : ""}`);
+    }
+    // A frozen run is only good if the dev Worker's clock stood still throughout.
+    if (opts.freezeTime) {
+      let serverNow;
+      try {
+        serverNow = (await getJson(`${opts.api}/api/v1/session`)).now;
+      } catch {
+        /* reported below as "nothing" */
+      }
+      const problem = frozenClockProblem(serverNow, seededNow);
+      if (problem) {
+        console.error(problem);
+        failed = true;
+      }
     }
   } catch (e) {
     console.error(e.message);
