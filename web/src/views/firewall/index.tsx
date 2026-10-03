@@ -4,6 +4,7 @@ import type { FirewallResponse } from "@shared/api";
 import { Button, ErrorState, Panel, Tabs, cx, useIsPhone } from "@/components";
 import { Widget, usePagePrefs, useRowItems, useStarting, useWidget } from "@/widgets";
 import { useFirewall } from "@/api/queries";
+import { useDraftDefault } from "@/api/mutations";
 import { RulesPanel } from "./RulesPanel";
 import { FirewallHeader } from "./FirewallHeader";
 import { ReviewModal } from "./ReviewModal";
@@ -15,7 +16,7 @@ import { ZonesPanel, ZonesTab } from "./Zones";
 import { SimulatorForm, SimulatorPanel, type SimulatorHandle } from "./Simulator";
 import { RuleDrawer } from "./RuleDrawer";
 import { FirewallPhone } from "./FirewallPhone";
-import { NARROW, NO_FILTER, SHORT, TAB_WIDGET, ruleViews, tabsLabel, type RightTab, type RuleFilter, type RuleTab } from "./model";
+import { NARROW, NO_FILTER, SHORT, TAB_WIDGET, ruleViews, shownDefault, tabsLabel, type RightTab, type RuleFilter, type RuleTab } from "./model";
 import { FirewallSkeleton } from "./FirewallSkeleton";
 import { useMedia } from "@/lib/useMedia";
 import "./Firewall.css";
@@ -45,6 +46,10 @@ export function FirewallPage() {
   const phone = useIsPhone();
 
   const rulesWidget = useWidget("firewall.rules");
+  const kpisWidget = useWidget("firewall.kpis");
+  // The Default action tile carries the Change button; without it the default rule row gets its own.
+  const defaultTile = !kpisWidget.hidden && (kpisWidget.settings.tiles as string[]).includes("default");
+  const setDefault = useDraftDefault();
   const dropsMax = useWidget("firewall.drops").settings.max as string;
   const hidden = {
     drops: useWidget("firewall.drops").hidden,
@@ -128,6 +133,9 @@ export function FirewallPage() {
     setParams(next, { replace: true });
   };
 
+  const changeDefault = () => {
+    if (!setDefault.isPending) setDefault.mutate({ action: shownDefault(data) === "deny" ? "allow" : "deny" });
+  };
   const addForward = () => setForward({ open: true, editing: null });
   const editForward = (f: Forward) => setForward({ open: true, editing: f });
   const focusRules = () => tableRef.current?.querySelector<HTMLElement>("tr[tabindex]")?.focus();
@@ -265,7 +273,8 @@ export function FirewallPage() {
           onFilter={setFilter}
           onAddRule={() => setAddOpen(true)}
           onTestSimulation={hidden.sim ? undefined : testSimulation}
-          onEditDefault={() => defaultBtnRef.current?.focus()}
+          onEditDefault={() => (defaultTile && defaultBtnRef.current ? defaultBtnRef.current.focus() : changeDefault())}
+          onChangeDefault={defaultTile ? undefined : changeDefault}
           className="fw__rules"
         />
       </Widget>

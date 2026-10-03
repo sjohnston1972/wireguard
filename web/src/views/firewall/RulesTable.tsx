@@ -1,5 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { AlertTriangle, GripVertical, Lock, MoreVertical, MoveRight } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, GripVertical, Lock, MoreVertical, MoveRight } from "lucide-react";
 import { type KeyboardEvent } from "react";
 import type { FirewallResponse } from "@shared/api";
 import { IconButton, Sparkline, StatusPill, Switch, cx, formatAge } from "@/components";
@@ -35,6 +35,11 @@ export interface RulesTableProps {
   onMove: (row: RuleView, dir: "up" | "down") => void;
   onDelete: (row: RuleView) => void;
   onEditDefault: () => void;
+  /**
+   * Present when the Default action tile (and its Change button) is not on the
+   * page: the default row then carries its own Change button instead of the lock.
+   */
+  onChangeDefault?: () => void;
   /** The first and last rule of the whole list, which cannot move further up or down. */
   firstId: number | null;
   lastId: number | null;
@@ -327,9 +332,15 @@ export function RulesTable(p: RulesTableProps) {
               <span className="fw-rules__always">Always on</span>
             </td>
             <td className="dt__td fw-rules__c-menu">
-              <span className="fw-rules__lock" title="The default action is always last">
-                <Lock size={15} aria-hidden />
-              </span>
+              {p.onChangeDefault ? (
+                <IconButton label={`Change default action to ${p.defaultRow.action === "deny" ? "Allow" : "Deny"}`} size="sm" variant="plain" onClick={p.onChangeDefault}>
+                  <ArrowLeftRight size={16} aria-hidden />
+                </IconButton>
+              ) : (
+                <span className="fw-rules__lock" title="The default action is always last">
+                  <Lock size={15} aria-hidden />
+                </span>
+              )}
             </td>
           </tr>
         )}

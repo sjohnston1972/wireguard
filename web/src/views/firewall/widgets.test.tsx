@@ -288,6 +288,34 @@ describe("W3.3 thresholds and display", () => {
 });
 
 describe("W3.4 layout", () => {
+  for (const [what, prefs] of [
+    ["the figures widget hidden", { layout: { hidden: ["firewall.kpis"] } }],
+    ["its Default action tile off", ws({ kpis: { tiles: ["policy", "drops", "ports", "capture"] } })],
+  ] as const) {
+    it(`with ${what}, the default action can still be changed from its rule row (button and Enter)`, async () => {
+      const { fetchMock } = renderFw(prefs as PagePrefs, firewallData(), { "PUT /api/v1/firewall/draft/default": OK });
+      await table();
+      await waitFor(() => expect(screen.queryByRole("group", { name: "Default action" })).toBeNull());
+      const row = screen.getByRole("row", { name: "Default action, always last" });
+      fireEvent.click(within(row).getByRole("button", { name: "Change default action to Allow" }));
+      await waitFor(() => expect(fetchMock!.callsTo("PUT", "/api/v1/firewall/draft/default")).toHaveLength(1));
+      expect(fetchMock!.callsTo("PUT", "/api/v1/firewall/draft/default")[0].body).toEqual({ action: "allow" });
+      row.focus();
+      fireEvent.keyDown(row, { key: "Enter" });
+      await waitFor(() => expect(fetchMock!.callsTo("PUT", "/api/v1/firewall/draft/default")).toHaveLength(2));
+    });
+  }
+
+  it("with the Default action tile shown, the default row keeps its lock and Enter goes to the tile's Change button", async () => {
+    renderFw();
+    await table();
+    const row = screen.getByRole("row", { name: "Default action, always last" });
+    expect(within(row).queryByRole("button", { name: /Change default action/ })).toBeNull();
+    row.focus();
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(within(screen.getByRole("group", { name: "Default action" })).getByRole("button", { name: "Change default action to Allow" })).toHaveFocus();
+  });
+
   it("hiding zones gives the simulator the whole bottom row", async () => {
     renderFw({ layout: { hidden: ["firewall.zones"] } });
     const sim = await region("Test specific traffic");

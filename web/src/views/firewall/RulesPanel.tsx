@@ -19,6 +19,8 @@ export interface RulesPanelProps {
   /** Absent when the simulator is not on the page (its widget is hidden): no Test simulation button. */
   onTestSimulation?: () => void;
   onEditDefault: () => void;
+  /** Change the default action from its row (when the Default action tile is not on the page). */
+  onChangeDefault?: () => void;
   className?: string;
 }
 
@@ -30,7 +32,7 @@ const ACTION_OPTIONS = [
 ];
 
 /** "Firewall rules": filter tabs, search, zone and action filters, the table, and its footer actions. */
-export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function RulesPanel({ fw, rows, filter, onFilter, onAddRule, onTestSimulation, onEditDefault, className }, ref) {
+export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function RulesPanel({ fw, rows, filter, onFilter, onAddRule, onTestSimulation, onEditDefault, onChangeDefault, className }, ref) {
   const navigate = useNavigate();
   const edit = useDraftEditRule();
   const move = useDraftMoveRule();
@@ -121,6 +123,7 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
             onMove={(r, dir) => reorder.moveByButton(r.id, dir)}
             onDelete={(r) => del.mutate(r.id)}
             onEditDefault={onEditDefault}
+            onChangeDefault={onChangeDefault}
             rowProps={reorder.rowProps}
             handleProps={reorder.handleProps}
             dropMark={reorder.dropMark}
