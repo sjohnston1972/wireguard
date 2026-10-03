@@ -75,6 +75,8 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
   return (
     <Panel title="Firewall rules" className={className} bodyClassName="fw-rp__body" flush widgetChrome={false}>
       <div className="fw-rp__toolbar">
+        {/* The column's move handle: an overlay at the left of the row the eye sees as the header. */}
+        {chrome?.handle}
         {/* On a wide window the panel's title sits on this row (the heading itself stays for screen readers). */}
         <span className="fw-rp__title" aria-hidden>
           Firewall rules

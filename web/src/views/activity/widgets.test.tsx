@@ -338,6 +338,24 @@ describe("activity: layout", () => {
     expect([...row.children].map((c) => c.className.split(" ")[0])).toEqual(["act__right", "act__left"]);
   });
 
+  it("the two stacks swap as one by the top widget's handle, and the list's cog moves its column", async () => {
+    const user = userEvent.setup();
+    const { server } = renderActivity(null);
+    await screen.findByRole("table", { name: "Runs" });
+    const handle = await screen.findByRole("button", { name: "Move Activity timeline column" });
+    expect(screen.getByRole("button", { name: "Move Live event stream column" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Move Change log/ })).toBeNull();
+    handle.focus();
+    await user.keyboard("{Alt>}{ArrowRight}{/Alt}");
+    const row = document.querySelector(".act__r2")!;
+    await waitFor(() => expect([...row.children].map((c) => c.className.split(" ")[0])).toEqual(["act__right", "act__left"]));
+    await user.click(screen.getByRole("button", { name: "Runs and activity settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Runs and activity settings" });
+    await user.click(within(dialog).getByRole("button", { name: "Move column left" }));
+    await waitFor(() => expect([...row.children].map((c) => c.className.split(" ")[0])).toEqual(["act__left", "act__right"]));
+    await waitFor(() => expect(server.puts.length).toBeGreaterThan(0), { timeout: 3000 });
+  });
+
   it("swapping run details and live output", async () => {
     renderActivity(saved({}, { order: { r3: ["activity.liveOutput", "activity.runDetails"] } }));
     await screen.findByRole("table", { name: "Runs" });

@@ -215,8 +215,8 @@ export function FirewallPage() {
 
   const right =
     tabs.length === 0 ? null : tabbed && current ? (
-      // One panel for several widgets: its corner cog belongs to the tab shown.
-      <Widget id={TAB_WIDGET[current]} headerless>
+      // One panel for several widgets: its corner cog belongs to the tab shown, and it carries its column's move handle.
+      <Widget id={TAB_WIDGET[current]} headerless stackHandle>
         <Panel className="fw-righttabs" bodyClassName="fw-righttabs__body">
           <Tabs variant="pill" aria-label={tabsLabel(tabs)} value={current} onValueChange={(v) => setRightTab(v as RightTab)} items={tabs.map((t) => TAB_ITEMS[t])} />
         </Panel>

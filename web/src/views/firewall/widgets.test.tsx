@@ -417,6 +417,36 @@ describe("W3.4 layout", () => {
     expect(screen.queryByRole("button", { name: "Move Firewall rules" })).toBeNull();
   });
 
+  it("the two columns swap as one: by a column's handle (Alt+Arrow) and from any member's cog", async () => {
+    const { server } = renderFw();
+    await table();
+    // One handle per column, on its top widget.
+    const handle = await screen.findByRole("button", { name: "Move Firewall rules column" });
+    expect(screen.getByRole("button", { name: "Move Recent drops column" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Move Published ports/ })).toBeNull();
+    act(() => handle.focus());
+    fireEvent.keyDown(handle, { key: "ArrowRight", altKey: true });
+    await waitFor(() => expect(document.querySelector(".fw__body")).toHaveClass("fw__body--reversed"));
+    expect(before(document.querySelector(".fw__right")!, document.querySelector(".fw__left")!)).toBe(true);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Move Firewall rules column" }));
+    // From the capture widget's cog: the right column goes back to the right.
+    fireEvent.click(screen.getByRole("button", { name: "Packet capture settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Packet capture settings" });
+    expect(within(dialog).getByRole("button", { name: "Move column left" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move column right" }));
+    await waitFor(() => expect(document.querySelector(".fw__body")).not.toHaveClass("fw__body--reversed"));
+    await waitFor(() => expect(server.puts.length).toBeGreaterThan(0), { timeout: 3000 });
+  });
+
+  it("the tabbed right column carries its column's handle whichever tab is shown", async () => {
+    setViewport(1200);
+    renderFw();
+    await table();
+    expect(await screen.findByRole("button", { name: "Move Recent drops column" })).toBeInTheDocument();
+    fireEvent.mouseDown(within(screen.getByRole("tablist", { name: "Drops, published ports and capture" })).getByRole("tab", { name: "Capture" }));
+    expect(await screen.findByRole("button", { name: "Move Packet capture column" })).toBeInTheDocument();
+  });
+
   it("hiding a widget from its cog removes it and the Layout menu brings it back", async () => {
     const { server } = renderFw();
     fireEvent.click(await screen.findByRole("button", { name: "Published ports settings" }));
