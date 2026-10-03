@@ -41,12 +41,22 @@ describe("Overview during a run", () => {
   });
 
   it("says Streaming while the run's live log comes in", async () => {
-    renderApp("/", { routes: routes(overview("deploying"), { "GET /api/v1/runs/run-dep/log": { log: groupedLog, source: "live", active: true, updatedAt: "2026-10-02T12:00:00.000Z" } }) });
+    renderApp("/", { routes: routes(overview("deploying"), { "GET /api/v1/runs/run-dep/log": { log: groupedLog, source: "live", active: true, updatedAt: new Date(Date.now() - 5_000).toISOString() } }) });
     const panel = await screen.findByRole("region", { name: "Live logs" });
     const log = within(panel).getByRole("log", { name: "Deployment log" });
     expect(await within(log).findByText(/output of step 2/)).toBeInTheDocument();
     expect(panel).toHaveTextContent("Streaming");
+    expect(panel).not.toHaveTextContent("Stalled");
     expect(panel).not.toHaveTextContent("Waiting for the first lines");
+  });
+
+  it("says Stalled (amber), not Streaming, when the run is going but nothing new has arrived for over 30 s", async () => {
+    renderApp("/", { routes: routes(overview("deploying"), { "GET /api/v1/runs/run-dep/log": { log: groupedLog, source: "live", active: true, updatedAt: new Date(Date.now() - 45_000).toISOString() } }) });
+    const panel = await screen.findByRole("region", { name: "Live logs" });
+    expect(await within(panel).findByText(/output of step 2/)).toBeInTheDocument();
+    const label = within(panel).getByText("Stalled");
+    expect(label.closest(".ov-stream")).toHaveClass("ov-stream--stalled");
+    expect(panel).not.toHaveTextContent("Streaming");
   });
 
   it("before the first lines arrive, the live log says it is waiting instead of showing an error", async () => {

@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Maximize2, Minus, X } from "lucide-react";
-import type { OverviewResponse, RunLogResponse } from "@shared/api";
+import type { OverviewResponse } from "@shared/api";
 import { EmptyState, IconButton, LogView, Modal, Panel, Select, StepList, Tabs, cx, type LogLine } from "@/components";
 import { useRunLog } from "@/api/queries";
 import { inGithubRun, stepLine, stepMatches, stepState, uiSteps, type StepFilter } from "./model";
 import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
+import { streamState, useNowWhile } from "@/lib/liveStream";
 import type { ActionName } from "./actions";
 import "./Run.css";
 
@@ -59,16 +60,6 @@ function Pipeline({ steps, filter, onPick }: { steps: OverviewResponse["snapshot
   );
 }
 
-/**
- * The word beside "Live logs": "Streaming" only while the run is going and the
- * log is the live copy; "Finished" once the run is over or the log is
- * GitHub's; "Waiting" while the first answer is still on its way.
- */
-function streamState(running: boolean, data: RunLogResponse | undefined): "Streaming" | "Waiting" | "Finished" {
-  if (!running || data?.source === "github" || data?.active === false) return "Finished";
-  return data?.source === "live" ? "Streaming" : "Waiting";
-}
-
 /** During a deploy or tear-down: the step chips, the pipeline and the live log, side by side. */
 export function RunPanels({ o }: { o: OverviewResponse }) {
   const s = o.snapshot;
@@ -83,7 +74,10 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
   const fromApi = runLog.data?.log;
   const parsed = useMemo(() => parseLog(fromApi || s.log_tail), [fromApi, s.log_tail]);
   const lines = useMemo(() => parsed.lines.filter((l) => keep(l, level)), [parsed, level]);
-  const stream = streamState(live, runLog.data);
+  // The word beside "Live logs" (see streamState); the clock ticks while the
+  // run is going, so it turns "Stalled" even when no new answer comes.
+  const now = useNowWhile(live);
+  const stream = streamState(live, runLog.data, now);
   const waiting = stream === "Streaming" && parsed.lines.length === 0;
 
   const counts = {
@@ -133,7 +127,7 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
           flush
           bodyClassName="ov-run__logbody"
           status={
-            <span className={cx("ov-stream", stream === "Streaming" && "ov-stream--on")}>
+            <span className={cx("ov-stream", stream === "Streaming" && "ov-stream--on", stream === "Stalled" && "ov-stream--stalled")}>
               <span className="ov-stream__dot" aria-hidden />
               {stream}
             </span>

@@ -84,6 +84,17 @@ describe("Run drawer", () => {
     const drawer = await screen.findByRole("dialog");
     await within(drawer).findByRole("log", { name: "Run log" });
     expect(within(drawer).getByText("Streaming")).toBeInTheDocument();
+    expect(within(drawer).queryByText("Stalled")).toBeNull();
+  });
+
+  it("a run in progress whose live log has had nothing new for over 30 s says Stalled, in amber", async () => {
+    renderApp("/activity/runs/run-4", {
+      routes: activityRoutes({ "GET /api/v1/runs/run-4/log": { log: LOG, source: "live", active: true, updatedAt: new Date(Date.now() - 45_000).toISOString() } }),
+    });
+    const drawer = await screen.findByRole("dialog");
+    await within(drawer).findByRole("log", { name: "Run log" });
+    expect(within(drawer).getByText("Stalled").closest(".pill")).toHaveClass("pill--amber");
+    expect(within(drawer).queryByText("Streaming")).toBeNull();
   });
 
   it("a run that has only just started waits for its first lines, even before GitHub has a run for it", async () => {

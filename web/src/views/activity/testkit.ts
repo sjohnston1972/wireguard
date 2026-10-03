@@ -117,7 +117,8 @@ export const LOG = [
 export const activityRoutes = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   "GET /api/v1/activity": activityResponse(),
   "GET /api/v1/runs/run-4": runDetail("run-4"),
-  "GET /api/v1/runs/run-4/log": { log: LOG, source: "live", active: true, updatedAt: "2026-10-02T11:51:12.000Z" },
+  // Fresh: a live log last updated over 30 s ago reads "Stalled".
+  "GET /api/v1/runs/run-4/log": { log: LOG, source: "live", active: true, updatedAt: new Date().toISOString() },
   "GET /api/v1/runs/run-3": runDetail("run-3", { active: false }),
   "GET /api/v1/runs/run-3/log": { log: LOG, source: "github", active: false, updatedAt: null },
   "GET /api/v1/runs/run-2": runDetail("run-2", { active: false }),

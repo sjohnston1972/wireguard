@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useRun, useRunLog } from "@/api/queries";
 import { parseLog } from "@/lib/parseLog";
+import { streamState, useNowWhile } from "@/lib/liveStream";
 
 /**
  * One run for the page and its drawer: the saved (or live) steps and the log.
@@ -23,7 +24,10 @@ export function useRunData(id: string | null) {
   const streaming = active && source === "live" && log.data?.active !== false;
   /** Streaming, but nothing has arrived yet. */
   const waiting = streaming && lines.length === 0;
+  /** Streaming, but nothing new for over 30 s (the clock ticks while streaming, so this turns on with no new answer). */
+  const now = useNowWhile(streaming);
+  const stalled = streaming && streamState(active, log.data, now) === "Stalled";
   /** Finished, but GitHub had no log, so this is the copy sent while it ran. */
   const liveCopy = !!log.data && source === "live" && !log.data.active;
-  return { detail, run, steps: detail.data?.steps ?? [], active, hasLog, log, lines, streaming, waiting, liveCopy };
+  return { detail, run, steps: detail.data?.steps ?? [], active, hasLog, log, lines, streaming, stalled, waiting, liveCopy };
 }
