@@ -1,16 +1,17 @@
 import { Check, ExternalLink, Minus, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, LogView, Panel, Skeleton, StatusPill } from "@/components";
+import { useWidget } from "@/widgets";
 import { actionWord, fmtDuration, fmtWhen, resultPill, stepSeconds, stepState, type ApiStep } from "./model";
 import { Fill } from "./parts";
 import { useRunData } from "./useRunData";
 import { LIVE_LOG_WAITING } from "@/lib/parseLog";
 
-/** The run's steps left to right: a mark, the name and how long it took. */
-export function StepTrack({ steps }: { steps: ApiStep[] }) {
+/** The run's steps left to right: a mark, the name and how long it took (the run drawer shows them all, with durations and two-line names). */
+export function StepTrack({ steps, durations = true, nameLines = 2 }: { steps: ApiStep[]; durations?: boolean; nameLines?: 1 | 2 }) {
   if (steps.length === 0) return <p className="act__muted">No steps were saved for this run.</p>;
   return (
-    <ol className="act__track" aria-label="Run progress">
+    <ol className={nameLines === 1 ? "act__track act__track--one" : "act__track"} aria-label="Run progress">
       {steps.map((s, i) => {
         const st = stepState(s);
         const d = fmtDuration(stepSeconds(s));
@@ -24,7 +25,7 @@ export function StepTrack({ steps }: { steps: ApiStep[] }) {
             <span className="act__step-name" title={s.name}>
               {s.name}
             </span>
-            <span className="act__step-time">{st === "running" ? "Running…" : st === "pending" ? "Pending" : st === "skipped" ? "Skipped" : (d ?? "")}</span>
+            <span className="act__step-time">{st === "running" ? "Running…" : st === "pending" ? "Pending" : st === "skipped" ? "Skipped" : (durations ? (d ?? "") : "")}</span>
           </li>
         );
       })}
@@ -33,8 +34,9 @@ export function StepTrack({ steps }: { steps: ApiStep[] }) {
 }
 
 /** Bottom left: the selected run (else the latest) as a row of steps. */
-export function RunDetails({ id }: { id: string | null }) {
+export function RunDetails({ id, emptyTitle = "No runs yet", emptyHint = "A deploy or tear-down shows its steps here." }: { id: string | null; emptyTitle?: string; emptyHint?: string }) {
   const { detail, run, steps } = useRunData(id);
+  const { settings } = useWidget("activity.runDetails");
   const pill = run ? resultPill(run.status) : null;
   return (
     <Panel
@@ -50,7 +52,7 @@ export function RunDetails({ id }: { id: string | null }) {
       }
     >
       {id === null ? (
-        <EmptyState title="No runs yet" description="A deploy or tear-down shows its steps here." />
+        <EmptyState title={emptyTitle} description={emptyHint} />
       ) : detail.isError ? (
         <ErrorState title="Could not load this run" message={detail.error.message} onRetry={() => void detail.refetch()} />
       ) : !run ? (
@@ -64,7 +66,7 @@ export function RunDetails({ id }: { id: string | null }) {
             {actionWord(run.action)} requested by {run.requested_by ?? "unknown"}
             {run.error ? `: ${run.error}` : run.status === "running" ? ", in progress" : ""}
           </p>
-          <StepTrack steps={steps} />
+          <StepTrack steps={steps} durations={settings.durations as boolean} nameLines={settings.nameLines === "1" ? 1 : 2} />
         </>
       )}
     </Panel>
@@ -74,6 +76,7 @@ export function RunDetails({ id }: { id: string | null }) {
 /** Bottom right: the tail of the selected run's log, with a way to the whole thing. */
 export function LiveOutput({ id, search }: { id: string | null; search: string }) {
   const { run, hasLog, log, lines, waiting } = useRunData(id);
+  const { settings } = useWidget("activity.liveOutput");
   const to = id ? { pathname: `/activity/runs/${encodeURIComponent(id)}`, search: search ? `?${search}` : "" } : null;
   return (
     <Panel
@@ -109,7 +112,7 @@ export function LiveOutput({ id, search }: { id: string | null; search: string }
               {LIVE_LOG_WAITING}
             </p>
           ) : (
-            <LogView aria-label="Live output log" toolbar={false} lines={lines.slice(-60)} />
+            <LogView aria-label="Live output log" toolbar={false} lines={lines.slice(-(settings.lines as number))} wrap={settings.wrap as boolean} timestamps={settings.timestamps as boolean} levelTags={settings.levelTags as boolean} />
           )}
         </div>
       </Fill>

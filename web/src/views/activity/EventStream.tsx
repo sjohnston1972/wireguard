@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Activity } from "lucide-react";
 import type { ActivityResponse } from "@shared/api";
 import { DataAge, EmptyState, Panel, Select, Switch } from "@/components";
-import { EVENT_TYPES, fmtClock, inWindow, type EventRow, type Window } from "./model";
+import { useWidget } from "@/widgets";
+import { EVENT_TYPES, fmtClock, fmtRelative, inWindow, type EventRow, type Window } from "./model";
 import { Fill, TypeTag } from "./parts";
+import { useStart } from "./useStart";
 
 const ALL = "all";
 const OPTIONS = [{ value: ALL, label: "All events" }, ...EVENT_TYPES.map((e) => ({ value: e.value as string, label: e.label }))];
@@ -13,6 +15,8 @@ export interface EventStreamProps {
   window: Window | null;
   /** When the list was fetched (epoch ms). It is polled every 30 s, not streamed, and says so. */
   fetchedAt: number | null;
+  /** The server's clock for this answer (epoch ms), for relative times. */
+  now: number;
   onOpenRun: (id: string) => void;
   onOpenChange: (id: number) => void;
   /** Whether a change event can open (its entry is on the loaded page of the change log). */
@@ -20,9 +24,12 @@ export interface EventStreamProps {
 }
 
 /** Runs, notes and changes as one list, newest first. */
-export function EventStream({ events, window: win, fetchedAt, onOpenRun, onOpenChange, hasChange }: EventStreamProps) {
-  const [kind, setKind] = useState(ALL);
-  const [follow, setFollow] = useState(true);
+export function EventStream({ events, window: win, fetchedAt, now, onOpenRun, onOpenChange, hasChange }: EventStreamProps) {
+  const { settings } = useWidget("activity.stream");
+  const [kind, setKind] = useStart(settings.type as string);
+  const [follow, setFollow] = useStart(settings.autoScroll as boolean);
+  const detail = settings.detail as boolean;
+  const relative = settings.timeFormat === "relative";
   const box = useRef<HTMLDivElement | null>(null);
   const shown = events.filter((e) => inWindow(e.at, win) && (kind === ALL || e.type === kind));
 
@@ -61,17 +68,17 @@ export function EventStream({ events, window: win, fetchedAt, onOpenRun, onOpenC
             <ul className="act__events" aria-label="Events">
               {shown.map((e) => (
                 <li key={`${e.ref.kind}-${e.ref.id}-${e.at}`} className="act__event">
-                  <span className="act__event-time">{fmtClock(e.at)}</span>
+                  <span className="act__event-time">{relative ? fmtRelative(e.at, now) : fmtClock(e.at)}</span>
                   <TypeTag type={e.type} />
                   {opens(e) ? (
                     <button type="button" className="act__event-text act__event-open" onClick={() => open(e)}>
                       <strong>{e.title}</strong>
-                      {e.detail && <span>{e.detail}</span>}
+                      {detail && e.detail && <span>{e.detail}</span>}
                     </button>
                   ) : (
                     <span className="act__event-text">
                       <strong>{e.title}</strong>
-                      {e.detail && <span>{e.detail}</span>}
+                      {detail && e.detail && <span>{e.detail}</span>}
                     </span>
                   )}
                 </li>

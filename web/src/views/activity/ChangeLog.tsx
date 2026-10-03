@@ -2,6 +2,7 @@ import { FileText } from "lucide-react";
 import type { ActivityResponse } from "@shared/api";
 import { AUDIT_KINDS } from "../../../../worker/src/activity";
 import { Column, DataTable, EmptyState, Panel, SearchInput, Select } from "@/components";
+import { useWidget } from "@/widgets";
 import { fmtWhen, inWindow, type Change, type Window } from "./model";
 import { Chevron, Fill, Pager } from "./parts";
 import type { ActivityParams } from "./useActivityParams";
@@ -20,12 +21,13 @@ export interface ChangeLogProps {
 
 /** The dashboard's change log: search, a kind filter (both asked of the API), and a row that opens the change. */
 export function ChangeLog({ changes, params, set, window: win, selected, onOpen }: ChangeLogProps) {
+  const { settings } = useWidget("activity.changeLog");
   const rows = changes.rows.filter((c) => inWindow(c.at, win));
   const cols: Column<Change>[] = [
     { key: "when", header: "When", cell: (c) => fmtWhen(c.at) },
     { key: "change", header: "Change", cell: (c) => <code className="act__code">{c.action}</code> },
-    { key: "what", header: "What changed", cell: (c) => <span className="act__note">{c.lines.join(", ") || c.target || "—"}</span>, className: "act__col-what" },
-    { key: "by", header: "By", cell: (c) => c.user, className: "act__col-actor" },
+    ...(settings.whatChanged ? [{ key: "what", header: "What changed", cell: (c: Change) => <span className="act__note">{c.lines.join(", ") || c.target || "—"}</span>, className: "act__col-what" }] : []),
+    ...(settings.by ? [{ key: "by", header: "By", cell: (c: Change) => c.user, className: "act__col-actor" }] : []),
     { key: "go", header: <span className="visually-hidden">Open</span>, cell: () => <Chevron />, align: "right", width: 28 },
   ];
   return (
