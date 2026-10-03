@@ -274,7 +274,18 @@ export interface RunDetailResponse {
 
 /** GET /api/v1/runs/:id/log */
 export interface RunLogResponse {
+  /** The log text: GitHub's style, one "<ISO time> <text>" per line, "##[group]" markers. May be "" while a run has just started. */
   log: string;
+  /**
+   * Where it came from. "live": sent by the workflow while it ran (secrets
+   * hidden on the runner), the only log there is until the run finishes.
+   * "github": GitHub's full job log, once the run has finished.
+   */
+  source: "live" | "github";
+  /** The run is still going: the live log will grow, so keep polling. */
+  active: boolean;
+  /** When the last piece of the live log arrived; null for GitHub's log or before anything arrived. */
+  updatedAt: string | null;
 }
 
 // ── Cost ──

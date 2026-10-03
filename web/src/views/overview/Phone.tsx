@@ -6,7 +6,7 @@ import type { ActionName } from "./actions";
 import { StateMark } from "./Banner";
 import { healthChecks } from "./Lower";
 import { STATE_TONE, STATE_WORD, ageOf, currentStep, gbp, inGithubRun, moveTargets, regionFull, stepProgress, topology, uiSteps, type NodeStatus } from "./model";
-import { parseLog } from "@/lib/parseLog";
+import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
 import "./Phone.css";
 
 type Tone = "green" | "amber" | "red" | "grey";
@@ -38,9 +38,11 @@ function PhoneLog({ o }: { o: OverviewResponse }) {
   const s = o.snapshot;
   const q = useRunLog(s.run_id ?? "none", inGithubRun(s.state), { enabled: !!s.run_id });
   const parsed = useMemo(() => parseLog(q.data?.log || s.log_tail), [q.data, s.log_tail]);
+  // The live copy has started but nothing has arrived yet.
+  const waiting = q.data?.source === "live" && q.data.active && parsed.lines.length === 0;
   return (
     <div className="ov-phone__log">
-      <LogView lines={parsed.lines} aria-label="Run log" toolbar={false} />
+      <LogView lines={parsed.lines} aria-label="Run log" toolbar={false} emptyText={waiting ? LIVE_LOG_WAITING : undefined} />
     </div>
   );
 }

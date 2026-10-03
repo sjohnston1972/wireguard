@@ -279,6 +279,11 @@ describe("LogView", () => {
     render(<LogView aria-label="Live logs" lines={[]} />);
     expect(screen.getByText("No log output")).toBeInTheDocument();
   });
+  it("can say something else when empty (a live log still waiting for its first lines)", () => {
+    render(<LogView aria-label="Live logs" lines={[]} emptyText="Waiting for the first lines" />);
+    expect(screen.getByText("Waiting for the first lines")).toBeInTheDocument();
+    expect(screen.queryByText("No log output")).toBeNull();
+  });
   it("filters by search text", async () => {
     render(<LogView aria-label="Live logs" lines={mk(5)} />);
     await userEvent.type(screen.getByRole("searchbox", { name: "Search logs" }), "line 3");

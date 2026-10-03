@@ -3,10 +3,11 @@ import type { ActivityResponse } from "@shared/api";
 import { Button, Diff, Drawer, ErrorState, KeyValue, LogView, Skeleton, StatusPill, StepList, type Step } from "@/components";
 import { actionWord, fmtClock, fmtDuration, fmtGbp, fmtWhen, jsonLines, resultPill, stepSeconds, stepState } from "./model";
 import { useRunData } from "./useRunData";
+import { LIVE_LOG_WAITING } from "@/lib/parseLog";
 
-/** A run: its facts, the saved steps with durations, and its log from GitHub (loaded on open). */
+/** A run: its facts, the saved steps with durations, and its log (loaded on open; live while the run is going, GitHub's once it has finished). */
 export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) {
-  const { detail, run, steps, active, hasLog, log, lines } = useRunData(id);
+  const { detail, run, steps, active, hasLog, log, lines, streaming, stalled, waiting, liveCopy } = useRunData(id);
   const pill = run ? resultPill(run.status) : null;
   const rows: Step[] = steps.map((s, i) => ({ id: `${i}`, label: s.name, state: stepState(s), duration: fmtDuration(stepSeconds(s)) ?? undefined, time: fmtClock(s.started_at) || undefined }));
 
@@ -52,6 +53,7 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
           {rows.length === 0 ? <p className="act__muted">No steps were saved for this run.</p> : <StepList aria-label="Run steps" steps={rows} />}
           <h3 className="act__h3">
             Log
+            {streaming && (stalled ? <StatusPill status="degraded" label="Stalled" variant="outline" className="act__stream" /> : <StatusPill status="online" label="Streaming" variant="outline" className="act__stream" />)}
             {run.github_run_url && (
               <a className="act__link" href={run.github_run_url} target="_blank" rel="noreferrer noopener">
                 View on GitHub <ExternalLink size={13} aria-hidden />
@@ -69,10 +71,17 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
               <Skeleton variant="line" />
               <Skeleton variant="line" width="80%" />
             </div>
+          ) : waiting ? (
+            <p className="act__muted" role="status">
+              {LIVE_LOG_WAITING}
+            </p>
           ) : (
-            <div className="act__drawer-log">
-              <LogView aria-label="Run log" lines={lines} />
-            </div>
+            <>
+              {liveCopy && <p className="act__muted">GitHub's full log is not available, so this is the copy the workflow sent while it ran.</p>}
+              <div className="act__drawer-log">
+                <LogView aria-label="Run log" lines={lines} />
+              </div>
+            </>
           )}
         </div>
       )}

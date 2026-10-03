@@ -141,6 +141,61 @@ export async function clearSshPasswords(env: Env): Promise<void> {
   await env.DB.prepare("UPDATE runs SET ssh_password = NULL WHERE ssh_password IS NOT NULL").run();
 }
 
+// ── Run live log (livelog.ts) ─────────────────────────────────────────────
+// D1 binds every JS number as REAL, so seq and sizes are CAST to INTEGER.
+
+export interface LiveLogRow {
+  seq: number;
+  at: string;
+  text: string;
+}
+
+/** Store one piece of a run's live log. False if that piece number was already stored (a resend). */
+export async function addLiveLogChunk(env: Env, runId: string, seq: number, at: string, text: string): Promise<boolean> {
+  const r = await env.DB.prepare("INSERT OR IGNORE INTO run_live_log (run_id, seq, at, text) VALUES (?1, CAST(?2 AS INTEGER), ?3, ?4)").bind(runId, seq, at, text).run();
+  return (r.meta?.changes ?? 0) === 1;
+}
+
+/** The pieces of a run's live log beyond the newest `?2` bytes (never the newest piece). */
+const LIVE_LOG_OVER_CAP = `SELECT seq FROM (
+    SELECT seq, SUM(length(CAST(text AS BLOB))) OVER (ORDER BY seq DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS newer
+    FROM run_live_log WHERE run_id = ?1
+  ) WHERE newer > CAST(?2 AS INTEGER) AND seq < (SELECT MAX(seq) FROM run_live_log WHERE run_id = ?1)`;
+
+/**
+ * Drop a run's oldest pieces until what is left fits in `keepBytes` (the
+ * newest piece always stays), and note how far it dropped
+ * (run_live_log_pruned), so the dashboard can say so. Both or neither.
+ */
+export async function trimLiveLog(env: Env, runId: string, keepBytes: number): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO run_live_log_pruned (run_id, upto)
+         SELECT ?1, m FROM (SELECT MAX(seq) AS m FROM (${LIVE_LOG_OVER_CAP})) WHERE m IS NOT NULL
+         ON CONFLICT(run_id) DO UPDATE SET upto = MAX(upto, excluded.upto)`
+    ).bind(runId, keepBytes),
+    env.DB.prepare(`DELETE FROM run_live_log WHERE run_id = ?1 AND seq IN (${LIVE_LOG_OVER_CAP})`).bind(runId, keepBytes),
+  ]);
+}
+
+/** A run's live log pieces, oldest first. */
+export async function liveLogRows(env: Env, runId: string): Promise<LiveLogRow[]> {
+  return (await env.DB.prepare("SELECT seq, at, text FROM run_live_log WHERE run_id = ?1 ORDER BY seq").bind(runId).all<LiveLogRow>()).results;
+}
+
+/** The highest piece number the cap has dropped from a run's live log; null if it never dropped any. */
+export async function liveLogPrunedUpto(env: Env, runId: string): Promise<number | null> {
+  const r = await env.DB.prepare("SELECT upto FROM run_live_log_pruned WHERE run_id = ?1").bind(runId).first<{ upto: number }>();
+  return r ? r.upto : null;
+}
+
+/** Delete the live log of every run that ended more than `keepDays` before `now`, and of runs that no longer exist. */
+export async function pruneLiveLogs(env: Env, now: Date, keepDays = 14): Promise<void> {
+  const cutoff = new Date(now.getTime() - keepDays * 86_400_000).toISOString();
+  const gone = `run_id NOT IN (SELECT id FROM runs) OR run_id IN (SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ?1)`;
+  await env.DB.batch([env.DB.prepare(`DELETE FROM run_live_log WHERE ${gone}`).bind(cutoff), env.DB.prepare(`DELETE FROM run_live_log_pruned WHERE ${gone}`).bind(cutoff)]);
+}
+
 // ── Peers ─────────────────────────────────────────────────────────────────
 
 export async function listPeers(env: Env): Promise<Peer[]> {

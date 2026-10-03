@@ -355,7 +355,7 @@ export const defaultRoutes = (): Record<string, unknown> => ({
   "GET /api/v1/cost": costFixture(),
   "GET /api/v1/settings": settingsFixture(),
   "GET /api/v1/runs/r1": runDetailFixture("r1"),
-  "GET /api/v1/runs/r1/log": { log: "" },
+  "GET /api/v1/runs/r1/log": { log: "", source: "github", active: false, updatedAt: null },
   "GET /api/v1/runs/run-42": runDetailFixture("run-42"),
-  "GET /api/v1/runs/run-42/log": { log: "" },
+  "GET /api/v1/runs/run-42/log": { log: "", source: "github", active: false, updatedAt: null },
 });

@@ -2,8 +2,15 @@ import type { LogLevel, LogLine } from "@/components";
 
 // A run's log as LogView lines, for the Overview's live log and Activity's
 // run drawer and live output. It reads GitHub's raw log (an ISO timestamp,
-// then the text; "##[group]" and friends as markers) and the dev seed's
-// "10:24:27 INFO text" lines.
+// then the text; "##[group]" and friends as markers), the live log the
+// workflow sends while it runs (written in the same shape), and the dev
+// seed's "10:24:27 INFO text" lines.
+
+/**
+ * Shown while a run's live log is still empty: the workflow sends its output
+ * a few seconds at a time once it has started (see README, "Live logs").
+ */
+export const LIVE_LOG_WAITING = "Waiting for the first lines from GitHub Actions…";
 
 export interface ParsedLog {
   lines: LogLine[];

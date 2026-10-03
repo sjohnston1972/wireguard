@@ -5,7 +5,8 @@ import type { OverviewResponse } from "@shared/api";
 import { EmptyState, IconButton, LogView, Modal, Panel, Select, StepList, Tabs, cx, type LogLine } from "@/components";
 import { useRunLog } from "@/api/queries";
 import { inGithubRun, stepLine, stepMatches, stepState, uiSteps, type StepFilter } from "./model";
-import { parseLog } from "@/lib/parseLog";
+import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
+import { streamState, useNowWhile } from "@/lib/liveStream";
 import type { ActionName } from "./actions";
 import "./Run.css";
 
@@ -68,9 +69,16 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
   const [level, setLevel] = useState<LevelFilter>("all");
   const [full, setFull] = useState(false);
   const host = useRef<HTMLDivElement | null>(null);
-  const fromGithub = runLog.data?.log;
-  const parsed = useMemo(() => parseLog(fromGithub || s.log_tail), [fromGithub, s.log_tail]);
+  // While the run is going the log is the live copy the workflow sends; once
+  // it has finished, GitHub's full log (the API decides, see RunLogResponse).
+  const fromApi = runLog.data?.log;
+  const parsed = useMemo(() => parseLog(fromApi || s.log_tail), [fromApi, s.log_tail]);
   const lines = useMemo(() => parsed.lines.filter((l) => keep(l, level)), [parsed, level]);
+  // The word beside "Live logs" (see streamState); the clock ticks while the
+  // run is going, so it turns "Stalled" even when no new answer comes.
+  const now = useNowWhile(live);
+  const stream = streamState(live, runLog.data, now);
+  const waiting = stream === "Streaming" && parsed.lines.length === 0;
 
   const counts = {
     all: s.steps.length,
@@ -119,9 +127,9 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
           flush
           bodyClassName="ov-run__logbody"
           status={
-            <span className={cx("ov-stream", live && "ov-stream--on")}>
+            <span className={cx("ov-stream", stream === "Streaming" && "ov-stream--on", stream === "Stalled" && "ov-stream--stalled")}>
               <span className="ov-stream__dot" aria-hidden />
-              {live ? "Streaming" : "Finished"}
+              {stream}
             </span>
           }
           actions={
@@ -134,7 +142,7 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
           }
         >
           <div ref={host} className="ov-run__loghost">
-            <LogView lines={lines} aria-label={`${what === "deployment" ? "Deployment" : "Tear-down"} log`} />
+            <LogView lines={lines} aria-label={`${what === "deployment" ? "Deployment" : "Tear-down"} log`} emptyText={waiting ? LIVE_LOG_WAITING : undefined} />
           </div>
           {runLog.isError && !s.log_tail && <p className="ov-run__none">{runLog.error.message}</p>}
         </Panel>

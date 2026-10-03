@@ -35,6 +35,16 @@ describe("Overview on the phone", () => {
     expect(within(log).getByRole("log")).toBeInTheDocument();
   });
 
+  it("the Log sheet waits politely for the live log's first lines", async () => {
+    setViewport("phone");
+    const user = userEvent.setup();
+    renderApp("/", { routes: routes(overview("deploying", { snapshot: { log_tail: null } }), { "GET /api/v1/runs/run-dep/log": { log: "", source: "live", active: true, updatedAt: null } }) });
+    const page = await screen.findByRole("region", { name: "Environment status" });
+    await user.click(within(page).getByRole("button", { name: "Log" }));
+    const sheet = await screen.findByRole("dialog", { name: "Log" });
+    expect(await within(sheet).findByText("Waiting for the first lines from GitHub Actions…")).toBeInTheDocument();
+  });
+
   it("destroyed: Deploy is the main action and opens the deploy form", async () => {
     setViewport("phone");
     const user = userEvent.setup();

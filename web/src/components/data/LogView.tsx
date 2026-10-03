@@ -20,6 +20,8 @@ export interface LogViewProps {
   "aria-label": string;
   /** Hide the toolbar (search and auto-scroll), for compact embeds. */
   toolbar?: boolean;
+  /** What to say when there are no lines at all (default "No log output"). */
+  emptyText?: string;
   className?: string;
 }
 
@@ -30,7 +32,7 @@ const BOTTOM_SLACK = 24;
  * Monospace log: severity tag per line, search, copy a line, and auto-scroll that
  * pauses the moment the reader scrolls up and counts the lines that arrive meanwhile.
  */
-export function LogView({ lines, toolbar = true, className, ...rest }: LogViewProps) {
+export function LogView({ lines, toolbar = true, emptyText = "No log output", className, ...rest }: LogViewProps) {
   const [query, setQuery] = useState("");
   const [following, setFollowing] = useState(true);
   const [pausedAt, setPausedAt] = useState(0);
@@ -89,7 +91,7 @@ export function LogView({ lines, toolbar = true, className, ...rest }: LogViewPr
       <div className="log__scroller">
         <div ref={box} className="log__lines" role="log" aria-live="off" aria-label={rest["aria-label"]} tabIndex={0} onScroll={onScroll}>
           {shown.length === 0 ? (
-            <p className="log__empty">{lines.length === 0 ? "No log output" : "No lines match the search"}</p>
+            <p className="log__empty">{lines.length === 0 ? emptyText : "No lines match the search"}</p>
           ) : (
             shown.map((l) => (
               <div className="log__line" key={l.id}>

@@ -4,6 +4,7 @@ import { EmptyState, ErrorState, LogView, Panel, Skeleton, StatusPill } from "@/
 import { actionWord, fmtDuration, fmtWhen, resultPill, stepSeconds, stepState, type ApiStep } from "./model";
 import { Fill } from "./parts";
 import { useRunData } from "./useRunData";
+import { LIVE_LOG_WAITING } from "@/lib/parseLog";
 
 /** The run's steps left to right: a mark, the name and how long it took. */
 export function StepTrack({ steps }: { steps: ApiStep[] }) {
@@ -72,7 +73,7 @@ export function RunDetails({ id }: { id: string | null }) {
 
 /** Bottom right: the tail of the selected run's log, with a way to the whole thing. */
 export function LiveOutput({ id, search }: { id: string | null; search: string }) {
-  const { run, hasLog, log, lines } = useRunData(id);
+  const { run, hasLog, log, lines, waiting } = useRunData(id);
   const to = id ? { pathname: `/activity/runs/${encodeURIComponent(id)}`, search: search ? `?${search}` : "" } : null;
   return (
     <Panel
@@ -103,6 +104,10 @@ export function LiveOutput({ id, search }: { id: string | null; search: string }
               <Skeleton variant="line" width="80%" />
               <Skeleton variant="line" width="60%" />
             </div>
+          ) : waiting ? (
+            <p className="act__muted act__pad" role="status">
+              {LIVE_LOG_WAITING}
+            </p>
           ) : (
             <LogView aria-label="Live output log" toolbar={false} lines={lines.slice(-60)} />
           )}

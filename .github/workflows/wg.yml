@@ -25,6 +25,14 @@
 # allow-list address) are collected from the Worker in "Collect run secrets",
 # which proves this is the real wg.yml on main with a GitHub OIDC token and
 # masks every value before anything could print it.
+#
+# Live log: GitHub only hands out a job's log once the job has finished, so
+# the workflow also sends its own output to the Worker as it runs ("Start live
+# log"; infra/ci/live-log.mjs). The steps that matter copy their output into
+# it with their first line (infra/ci/live-log.sh). That copy never passes
+# through GitHub's masking, so it hides every secret itself (as typed and
+# base64-encoded) before anything leaves the runner. It can never fail or
+# change a step: it is best effort and stopped in "Finish live log".
 
 name: wg
 # Put the Worker's run id in the run title so the Worker can find this run.
@@ -172,6 +180,23 @@ jobs:
           done
           echo "run secrets collected and masked"
 
+      # Send this run's output to the Worker while it runs, every 3 seconds
+      # (see "Live log" at the top). Runs in the background until "Finish live
+      # log". Best effort: if it cannot start, the run goes on without it.
+      - name: Start live log
+        if: env.CALLBACK_URL != '' && env.CALLBACK_TOKEN != ''
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          if ! command -v node >/dev/null 2>&1; then echo "::warning::Node is missing on this runner; no live log for this run"; exit 0; fi
+          f="$RUNNER_TEMP/live-log.txt"
+          : > "$f"
+          LIVE_LOG_FILE="$f" LIVE_LOG_URL="${CALLBACK_URL%/}/log" \
+            nohup node "$GITHUB_WORKSPACE/infra/ci/live-log.mjs" ship > "$RUNNER_TEMP/live-log-shipper.txt" 2>&1 < /dev/null &
+          echo "LIVE_LOG_PID=$!" >> "$GITHUB_ENV"
+          echo "LIVE_LOG_FILE=$f" >> "$GITHUB_ENV"
+          echo "live log started: the dashboard shows this run's output as it happens, secrets hidden"
+
       # Apply and destroy queue separately (see "concurrency" at the top), so
       # hold back until every wg run started before this one has finished.
       # Runs only ever wait for OLDER runs, so two can never wait for each
@@ -183,6 +208,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Wait for any earlier wg run to finish"
           set -euo pipefail
           while :; do
             earlier="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/wg.yml/runs?per_page=50" \
@@ -214,6 +240,7 @@ jobs:
           AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "terraform init (state in R2)"
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           terraform init -no-color -backend-config="bucket=${R2_BUCKET}"
 
@@ -240,6 +267,7 @@ jobs:
           TF_VAR_resource_group: ${{ secrets.AZURE_RESOURCE_GROUP }}
           NAME: ${{ env.TF_VAR_wg_dns_name || 'wg.clydeford.net' }}
         run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "terraform apply"
           set -euo pipefail
           # While destroyed, the name is parked on 192.0.2.1 (see the destroy
           # path). Hand that record to Terraform so it changes the address in
@@ -294,6 +322,7 @@ jobs:
           TF_VAR_wg_server_private_key: ${{ secrets.WG_SERVER_PRIVATE_KEY }}
           TF_VAR_resource_group: ${{ secrets.AZURE_RESOURCE_GROUP }}
         run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "terraform destroy"
           set -euo pipefail
           # Leave the DNS record out of the destroy: "Park DNS record" below
           # repoints it at 192.0.2.1, so the name never stops existing.
@@ -315,6 +344,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
           RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
         run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Verify Azure is clean (fallback delete)"
           set -euo pipefail
           az login --service-principal -u "$ARM_CLIENT_ID" -p "$ARM_CLIENT_SECRET" --tenant "$ARM_TENANT_ID" -o none
           az account set --subscription "$ARM_SUBSCRIPTION_ID"
@@ -337,6 +367,7 @@ jobs:
           ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
           NAME: ${{ env.TF_VAR_wg_dns_name || 'wg.clydeford.net' }}
         run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Park DNS record"
           set -euo pipefail
           api="https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records"
           ids="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?type=A&name=$NAME" | jq -r '.result[].id')"
@@ -368,6 +399,7 @@ jobs:
           AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Back up state"
           set -euo pipefail
           ts="$(date -u +%Y%m%dT%H%M%SZ)"
           terraform state pull > "$RUNNER_TEMP/state.json"
@@ -376,6 +408,20 @@ jobs:
             [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/backups/$old" --only-show-errors
           done
           echo "state backed up as backups/${ts}-${{ inputs.action }}.tfstate"
+
+      # ── LIVE LOG: last lines ─────────────────────────────────────────────
+      # Tell the shipper to send what is left and wait for it (15 s at most),
+      # BEFORE the result: once the run is reported the Worker takes no more.
+      - name: Finish live log
+        if: always() && env.LIVE_LOG_PID != ''
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          touch "$LIVE_LOG_FILE.stop"
+          for _ in $(seq 1 60); do kill -0 "$LIVE_LOG_PID" 2>/dev/null || break; sleep 0.25; done
+          kill "$LIVE_LOG_PID" 2>/dev/null || true
+          # The shipper's own notes: status codes only, never the text it sent.
+          tail -n 5 "$RUNNER_TEMP/live-log-shipper.txt" 2>/dev/null || true
 
       # ── CALLBACK ─────────────────────────────────────────────────────────
       - name: Report result to the Worker

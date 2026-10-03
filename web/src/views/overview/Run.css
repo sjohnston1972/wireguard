@@ -149,6 +149,13 @@
 .ov-stream--on .ov-stream__dot {
   background: var(--green);
 }
+/* Still running, but nothing new from the workflow for over 30 s. */
+.ov-stream--stalled {
+  color: var(--amber);
+}
+.ov-stream--stalled .ov-stream__dot {
+  background: var(--amber);
+}
 
 .ov-result {
   font-size: 12px;
