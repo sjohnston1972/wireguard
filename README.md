@@ -129,6 +129,27 @@ again 15 minutes later if that somehow failed (the cost guard always destroys),
 acts on idle if you set it, tears down a Standby left longer than its limit,
 flags drift between Azure and the dashboard, and pulls actual cost daily.
 
+### Live logs
+
+GitHub only hands out a job's log once the job has finished, so during a
+deploy or tear-down the workflow sends its own output to the Worker as it
+runs, a few seconds behind (`infra/ci/live-log.mjs`, posting to
+`/api/callback/log` with the run's one-time callback token). The Overview's
+Live logs panel and the Activity run drawer show that copy, marked
+**Streaming**, until the run ends; until the first lines arrive they say
+"Waiting for the first lines from GitHub Actions…". Once the run has finished
+they show GitHub's full log instead, and fall back to the live copy if GitHub
+has none. The Worker keeps the newest 400 KB of each run's live copy for 14
+days after the run.
+
+Secrets are hidden **before anything leaves the runner**: the copy never
+passes through GitHub's own masking, so every secret the job holds (the
+Azure, Cloudflare and R2 keys, the WireGuard server key, GitHub's tokens, the
+run's SSH password, heartbeat and callback tokens and the SSH allow-list
+address) is replaced by `***`, as typed and base64-encoded. The Worker hides
+the run's own secrets again before storing anything. The live log is best
+effort: if it cannot reach the Worker, the run carries on exactly as before.
+
 ### Warm standby: Hibernate and Resume
 
 Tear down takes you to £0 but the next start is a 4-minute build. Hibernate
@@ -376,6 +397,7 @@ free tiers.
 infra/                    Terraform: the Azure build and the DNS record
   cloud-init.yaml.tftpl   the VM's first-boot script
   agent/                  the heartbeat script and its systemd units
+  ci/                     the workflow's live log: copies step output, hides secrets, sends it to the Worker
 worker/src/               the Worker: JSON API, VM and GitHub endpoints, watchman (TypeScript)
 web/                      the dashboard app (React, Vite); built into web/dist
 web/public/               files served at fixed addresses: sw.js, icons, _headers
