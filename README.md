@@ -146,9 +146,14 @@ Secrets are hidden **before anything leaves the runner**: the copy never
 passes through GitHub's own masking, so every secret the job holds (the
 Azure, Cloudflare and R2 keys, the WireGuard server key, GitHub's tokens, the
 run's SSH password, heartbeat and callback tokens and the SSH allow-list
-address) is replaced by `***`, as typed, URL-encoded, JSON-escaped and base64-encoded. The Worker hides
-the run's own secrets again before storing anything. The live log is best
-effort: if it cannot reach the Worker, the run carries on exactly as before.
+address) is replaced by `***`, as typed, URL-encoded, JSON-escaped and
+base64-encoded. The runner's redaction is the one that counts. The Worker
+does a second pass before storing anything, but only for the two run
+secrets it still holds in the clear: the run's SSH password (while it is
+kept) and the callback token the piece arrived with. It cannot hide the
+heartbeat (agent) token, which it keeps only as a hash, nor any of the
+repository secrets, which it never sees. The live log is best effort: if it
+cannot reach the Worker, the run carries on exactly as before.
 
 ### Warm standby: Hibernate and Resume
 

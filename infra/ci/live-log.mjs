@@ -29,7 +29,9 @@
 // typed, URL-encoded, JSON-escaped and base64-encoded, by exact replacement with ***. The filter does it
 // with the step's own env (where the Azure and Cloudflare keys live); the
 // shipper does it again with what the whole job knows. The Worker does a
-// third pass for the run secrets it holds.
+// third pass, but only for the two run secrets it holds in the clear (the
+// SSH password and the callback token; the agent token it keeps only as a
+// hash), so the passes here are the ones that count.
 //
 // It must never break or slow the job: every failure here is swallowed, a
 // failed send is retried next tick, and the workflow kills it at the end.
