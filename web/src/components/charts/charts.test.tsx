@@ -127,6 +127,17 @@ describe("Donut", () => {
     render(<Donut title="Breakdown" segments={[{ label: "A", value: 0, color: "blue" }]} />);
     expect(screen.getByText("no data")).toBeInTheDocument();
   });
+  it("percentages={false} leaves the legend's share column out; by default it is there", () => {
+    const withAmounts = segments.map((s) => ({ ...s, display: `£${s.value}` }));
+    const on = render(<Donut title="Breakdown" segments={withAmounts} />);
+    expect([...on.container.querySelectorAll(".donut__pct")].map((x) => x.textContent)).toEqual(["62%", "23%", "15%"]);
+    on.unmount();
+    const off = render(<Donut title="Breakdown" segments={withAmounts} percentages={false} />);
+    expect(off.container.querySelector(".donut__pct")).toBeNull();
+    expect([...off.container.querySelectorAll(".donut__val")].map((x) => x.textContent)).toEqual(["£62", "£23", "£15"]);
+    // The chart's name still gives each share.
+    expect(screen.getByRole("img", { name: /Compute 62%/ })).toBeInTheDocument();
+  });
 });
 
 const T0 = 1_760_000_000;

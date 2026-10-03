@@ -237,7 +237,7 @@ Option lists that mirror Worker constants are copied into `shared/widgets.ts`, s
 | `overview.events` | Recent events | Data: Rows (number 3–10 step 1) = 5; Range (enum 1h, 6h, 24h, 7d) = 24h; Types (multi deploy, destroy, failure, config, firewall, watchman; min 1) = all. Display: Detail line (bool) = on | none |
 | `overview.speedTest` | Speed test | Data: Results shown (number 1–5) = 3. Display: Jitter (`jitter_ms`) (bool) = off; Test server (`target_name`) (bool) = off | none |
 | `overview.health` | Health summary | Data: Checks (multi VM reachable, WireGuard service, DNS resolving, Tunnel connectivity, Self-test; min 1) = all 5. Display: Check ages (bool) = on | none |
-| `overview.costImpact` | Cost impact | Data: Sessions in chart (number 4–30) = 16. Display: Typical session line (bool) = on | Session estimate (above, £, 0–500 step 0.5) warn off / bad off |
+| `overview.costImpact` | Cost impact | Data: Sessions in chart (number 4–30) = 16. Display: Typical session line (bool) = on | Session estimate (above, £, 0–500 step 0.01: sessions cost pennies) warn off / bad off |
 | `overview.notes` | Watchman notes | Data: Show at most (enum All, 3, 5, 10) = All. Display: Times (bool) = on | none |
 
 ### Clients (5): R1 [kpis] · R2 [table] · R3 [talkers 1, statusDonut 1, sessionTraffic 1]. The client side panel is a drawer, not a widget.
@@ -280,10 +280,10 @@ Option lists that mirror Worker constants are copied into `shared/widgets.ts`, s
 |---|---|---|---|
 | `cost.kpis` | Cost figures (headerless tile row) | Data: Tiles (multi This session, Month to date, Estimated this month, Monthly budget, Cost guard; min 1) = all 5. Display: Change vs previous (bool) = on; Budget progress bar (bool) = on | Budget used (above, % of budget, 1–200) warn 80 / bad 100 = the server's levels today. These colour the tile only; the Cost guard tile, the cost guard, watchman and push alerts keep using the server's settings |
 | `cost.spend` | Spend over time | Data: Forecast bars (bool) = on; Daily budget line (bool) = on; Previous period line at start (bool) = off (the header's Compare switch still toggles it). Display: Note line (bool) = on; Legend (bool) = on | none |
-| `cost.breakdown` | Spend breakdown | Data: Group by (enum Auto: resource type when Azure actuals exist, otherwise region; Region) = Auto. Display: Percentages in legend (`pct`) (bool) = off | none |
+| `cost.breakdown` | Spend breakdown | Data: Group by (enum Auto: resource type when Azure actuals exist, otherwise region; Region) = Auto. Display: Percentages in legend (bool) = on (the legend's share column, as today; off hides the column). Version 2: version 1's off-by-default switch added a second share beside each amount, so a v1 entry keeps Group by and drops Percentages | none |
 | `cost.forecast` | Forecast vs budget | Display: Month-so-far chart (bool) = on | Forecast vs budget (above, % of budget, 1–200) warn off / bad 100 = today's "Over budget" pill |
 | `cost.split` | Spend by region / resource type | Data: Starting view (enum Region, Resource type) = Region; Order (enum As Azure lists them, Largest first) = As listed. Display: Track bars (bool) = on; Percent column (bool) = on | none |
-| `cost.perSession` | Cost per session | Data: Sessions shown (enum All, last 10, last 20, last 50) = All | Session cost (above, £, 0–500 step 0.5) warn off / bad off (colours bars) |
+| `cost.perSession` | Cost per session | Data: Sessions shown (enum All, last 10, last 20, last 50) = All | Session cost (above, £, 0–500 step 0.01: sessions cost pennies) warn off / bad off (colours bars) |
 | `cost.insights` | Insights | none (cog holds only Layout and Reset) | none |
 | `cost.sessions` | Sessions | Data: Starting status (enum All, Running, Ended) = All; Starting sort (enum Started newest, Estimated cost highest, Duration longest) = Started newest; Columns (multi Region, VM size, Duration, Estimated cost, Cost / hour, Ended; min 0) = the first five (Started, Status and the chevron are always shown; the short-window hiding stays). Display: Density (enum Comfortable 32 px, Compact 26 px) = Comfortable | none |
 

@@ -48,7 +48,25 @@ describe("the catalogue (spec section 8)", () => {
     const count = (p: PageId) => WIDGETS.filter((w) => w.page === p).length;
     expect(PAGE_IDS.map(count)).toEqual([10, 5, 7, 7, 8]);
     expect(WIDGETS.filter((w) => w.pinned).map((w) => w.id).sort()).toEqual(["activity.list", "clients.table", "firewall.rules", "overview.status"]);
-    expect(WIDGETS.every((w) => w.version === 1)).toBe(true);
+    // Every widget is at version 1 but Spend breakdown (its percentages changed meaning: version 2).
+    expect(WIDGETS.filter((w) => w.version !== 1).map((w) => [w.id, w.version])).toEqual([["cost.breakdown", 2]]);
+  });
+
+  it("cost.breakdown v2: percentages default on (today's share column); a v1 entry keeps its group by and loses percentages", () => {
+    expect(widgetDefaults("cost.breakdown")).toEqual({ groupBy: "auto", percentages: true });
+    // v1's percentages added a second share beside the amount; v2's on is today's legend, so neither v1 value carries over.
+    expect(normalisePagePrefs("cost", { widgets: { "cost.breakdown": { v: 1, s: { groupBy: "region", percentages: true } } } })).toEqual({ widgets: { "cost.breakdown": { v: 2, s: { groupBy: "region" } } } });
+    expect(normalisePagePrefs("cost", { widgets: { "cost.breakdown": { v: 1, s: { percentages: false } } } })).toEqual({});
+    expect(normalisePagePrefs("cost", { widgets: { "cost.breakdown": { v: 2, s: { percentages: false } } } })).toEqual({ widgets: { "cost.breakdown": { v: 2, s: { percentages: false } } } });
+    expect(validatePagePrefs("cost", { widgets: { "cost.breakdown": { v: 1, s: { groupBy: "region" } } } })).toMatchObject({ field: "widgets.cost.breakdown.v", outdated: true });
+  });
+
+  it("money thresholds step in pennies: a session's cost (Cost per session, Overview's cost impact) takes £0.07", () => {
+    const pennies = { warn: 0.07, bad: 0.13 };
+    expect(validatePagePrefs("cost", { widgets: { "cost.perSession": { v: 1, s: { session: pennies } } } })).toBeNull();
+    expect(validatePagePrefs("overview", { widgets: { "overview.costImpact": { v: 1, s: { session: pennies } } } })).toBeNull();
+    // Still refused below a penny.
+    expect(validatePagePrefs("cost", { widgets: { "cost.perSession": { v: 1, s: { session: { warn: 0.075, bad: null } } } } })).toMatchObject({ field: "widgets.cost.perSession.session.warn" });
   });
 
   it("every widget id is page.camelCase, unique, and appears once in its page layout", () => {
@@ -261,7 +279,7 @@ describe("validatePagePrefs (strict: every save)", () => {
     ["a multi-select under minSelected", "overview", { widgets: { "overview.keyMetrics": { v: 1, s: { tiles: [] } } } }, "widgets.overview.keyMetrics.tiles", /at least 1/],
     ["a multi-select that is not a list", "overview", { widgets: { "overview.keyMetrics": { v: 1, s: { tiles: "latency" } } } }, "widgets.overview.keyMetrics.tiles", /list/],
     ["a threshold out of range", "overview", { widgets: { "overview.keyMetrics": { v: 1, s: { availability: { warn: 101, bad: null } } } } }, "widgets.overview.keyMetrics.availability.warn", /0 to 100/],
-    ["a threshold off step", "cost", { widgets: { "cost.perSession": { v: 1, s: { session: { warn: 1.25, bad: null } } } } }, "widgets.cost.perSession.session.warn", /steps of 0\.5/],
+    ["a threshold off step", "cost", { widgets: { "cost.perSession": { v: 1, s: { session: { warn: 1.255, bad: null } } } } }, "widgets.cost.perSession.session.warn", /steps of 0\.01/],
     ["thresholds in the wrong order (above)", "cost", { widgets: { "cost.kpis": { v: 1, s: { budgetUsed: { warn: 100, bad: 80 } } } } }, "widgets.cost.kpis.budgetUsed", /Warn must be below Bad/],
     ["thresholds in the wrong order (below)", "activity", { widgets: { "activity.kpis": { v: 1, s: { successRate: { warn: 70, bad: 90 } } } } }, "widgets.activity.kpis.successRate", /Warn must be above Bad/],
     ["a threshold with other keys", "cost", { widgets: { "cost.kpis": { v: 1, s: { budgetUsed: { warn: 80, bad: 100, at: 1 } } } } }, "widgets.cost.kpis.budgetUsed", /warn and bad/],

@@ -149,7 +149,7 @@ const num = (section: Section, key: string, label: string, min: number, max: num
 /** A multi-select; the default is every option unless given. */
 const multi = (section: Section, key: string, label: string, options: Option[], minSelected: number, def?: string[]): SettingSpec => ({ kind: "multi", key, label, section, options, minSelected, default: def ?? options.map((x) => x.value) });
 const thr = (key: string, label: string, direction: "above" | "below", unit: string, min: number, max: number, step: number, warn: number | null, bad: number | null): SettingSpec => ({ kind: "threshold", key, label, section: "thresholds", unit, min, max, step, direction, default: { warn, bad } });
-const def = (id: string, title: string, settings: SettingSpec[], extra: { pinned?: boolean } = {}): WidgetDef => ({ id, page: id.split(".")[0] as PageId, title, version: 1, settings, ...extra });
+const def = (id: string, title: string, settings: SettingSpec[], extra: { pinned?: boolean; version?: number; migrate?: WidgetDef["migrate"] } = {}): WidgetDef => ({ id, page: id.split(".")[0] as PageId, title, version: 1, settings, ...extra });
 
 const DENSITY = o(["comfortable", "Comfortable"], ["compact", "Compact"]);
 const ZONES = o(["clients", "Clients"], ["home", "Home"], ["azure", "Azure"], ["workloads", "Workloads"], ["internet", "Internet"]);
@@ -191,7 +191,7 @@ export const WIDGETS: readonly WidgetDef[] = [
     multi("data", "checks", "Checks", o(["vm", "VM reachable"], ["wireguard", "WireGuard service"], ["dns", "DNS resolving"], ["tunnel", "Tunnel connectivity"], ["selftest", "Self-test"]), 1),
     bool("display", "ages", "Check ages", true),
   ]),
-  def("overview.costImpact", "Cost impact", [num("data", "sessions", "Sessions in chart", 4, 30, 1, 16), bool("display", "typical", "Typical session line", true), thr("session", "Session estimate", "above", "£", 0, 500, 0.5, null, null)]),
+  def("overview.costImpact", "Cost impact", [num("data", "sessions", "Sessions in chart", 4, 30, 1, 16), bool("display", "typical", "Typical session line", true), thr("session", "Session estimate", "above", "£", 0, 500, 0.01, null, null)]),
   def("overview.notes", "Watchman notes", [pick("data", "max", "Show at most", o(["all", "All"], "3", "5", "10"), "all"), bool("display", "times", "Times", true)]),
 
   // Clients
@@ -309,7 +309,16 @@ export const WIDGETS: readonly WidgetDef[] = [
     bool("display", "note", "Note line", true),
     bool("display", "legend", "Legend", true),
   ]),
-  def("cost.breakdown", "Spend breakdown", [pick("data", "groupBy", "Group by", o(["auto", "Auto"], ["region", "Region"]), "auto"), bool("display", "percentages", "Percentages in legend", false)]),
+  // Version 2: "Percentages in legend" is the legend's share column (on, as today); version 1's added a
+  // second share beside each amount (off by default). Neither v1 value means the same, so it is dropped.
+  def("cost.breakdown", "Spend breakdown", [pick("data", "groupBy", "Group by", o(["auto", "Auto"], ["region", "Region"]), "auto"), bool("display", "percentages", "Percentages in legend", true)], {
+    version: 2,
+    migrate: (from, s) => {
+      if (from !== 1) return null;
+      const { percentages: _dropped, ...rest } = s;
+      return rest;
+    },
+  }),
   def("cost.forecast", "Forecast vs budget", [bool("display", "chart", "Month-so-far chart", true), thr("forecast", "Forecast vs budget", "above", "% of budget", 1, 200, 1, null, 100)]),
   def("cost.split", "Spend by region", [
     pick("data", "view", "Starting view", o(["region", "Region"], ["resource", "Resource type"]), "region"),
@@ -317,7 +326,7 @@ export const WIDGETS: readonly WidgetDef[] = [
     bool("display", "tracks", "Track bars", true),
     bool("display", "percent", "Percent column", true),
   ]),
-  def("cost.perSession", "Cost per session", [pick("data", "shown", "Sessions shown", o(["all", "All"], ["10", "Last 10"], ["20", "Last 20"], ["50", "Last 50"]), "all"), thr("session", "Session cost", "above", "£", 0, 500, 0.5, null, null)]),
+  def("cost.perSession", "Cost per session", [pick("data", "shown", "Sessions shown", o(["all", "All"], ["10", "Last 10"], ["20", "Last 20"], ["50", "Last 50"]), "all"), thr("session", "Session cost", "above", "£", 0, 500, 0.01, null, null)]),
   def("cost.insights", "Insights", []),
   def("cost.sessions", "Sessions", [
     pick("data", "status", "Starting status", o(["all", "All"], ["running", "Running"], ["ended", "Ended"]), "all"),

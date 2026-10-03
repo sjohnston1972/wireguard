@@ -41,7 +41,7 @@ W0 is on branch `feat/widgets-w0` (the plan's `feat/widgets-contract`); areas br
 | `overview.events` | Recent events | rows (3–10) = 5; range (1h/6h/24h/7d) = 24h; types [deploy,destroy,failure,config,firewall,watchman] min 1 = all; detail = true |
 | `overview.speedTest` | Speed test | shown (1–5) = 3; jitter = false; server = false |
 | `overview.health` | Health summary | checks [vm,wireguard,dns,tunnel,selftest] min 1 = all; ages = true |
-| `overview.costImpact` | Cost impact | sessions (4–30) = 16; typical = true; session (above, 0–500 step 0.5) = off/off |
+| `overview.costImpact` | Cost impact | sessions (4–30) = 16; typical = true; session (above, 0–500 step 0.01) = off/off |
 | `overview.notes` | Watchman notes | max (all/3/5/10) = all; times = true |
 | `clients.kpis` | Client figures | tiles [total,online,latency,fullTunnel,stale,expiring] min 1 = all; subLines = true; onlineRing = true; latency (above, 1–1000) = off/off |
 | `clients.table` (pinned) | Clients | filter (all/online/offline/expiring/home/fullTunnel) = all; sort (nameAsc/nameDesc/address/handshake/latency/traffic/expires) = nameAsc; columns [address,handshake,latency,traffic,allowedIps,expires,ipv6,created,note] min 0 = first six; sparkline = true; density (comfortable/compact) = comfortable; latency (above, 1–1000) = off/off |
@@ -64,10 +64,10 @@ W0 is on branch `feat/widgets-w0` (the plan's `feat/widgets-contract`); areas br
 | `activity.liveOutput` | Live output | lines (20–200 step 20) = 60; wrap = false; timestamps = true; levelTags = true |
 | `cost.kpis` | Cost figures | tiles [session,month,estimate,budget,guard] min 1 = all; deltas = true; budgetBar = true; budgetUsed (above, 1–200) = 80/100 |
 | `cost.spend` | Spend over time | forecast = true; budgetLine = true; previous = false; note = true; legend = true |
-| `cost.breakdown` | Spend breakdown | groupBy (auto/region) = auto; percentages = false |
+| `cost.breakdown` | Spend breakdown | groupBy (auto/region) = auto; percentages = true (the legend's share column; off hides it). **Version 2** (v1 entries keep groupBy, drop percentages) |
 | `cost.forecast` | Forecast vs budget | chart = true; forecast (above, 1–200) = off/100 |
 | `cost.split` | Spend by region | view (region/resource) = region; order (listed/largest) = listed; tracks = true; percent = true |
-| `cost.perSession` | Cost per session | shown (all/10/20/50) = all; session (above, 0–500 step 0.5) = off/off |
+| `cost.perSession` | Cost per session | shown (all/10/20/50) = all; session (above, 0–500 step 0.01) = off/off |
 | `cost.insights` | Insights | none |
 | `cost.sessions` | Sessions | status (all/running/ended) = all; sort (started/cost/duration) = started; columns [region,vmSize,duration,cost,rate,ended] min 0 = first five; density = comfortable |
 

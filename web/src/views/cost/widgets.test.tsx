@@ -6,6 +6,7 @@ vi.setConfig({ testTimeout: 30_000 });
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CostResponse, PagePrefs, SettingValue } from "@shared/api";
+import { widgetDef } from "@shared/widgets";
 import { renderApp } from "@/test/render";
 import { prefsServer } from "@/test/fixtures";
 import { setViewport } from "@/test/viewport";
@@ -21,7 +22,7 @@ afterEach(() => {
 
 /** Saved settings for the Cost widgets (and optionally layout), as the server would hold them. */
 const saved = (widgets: Record<string, Record<string, SettingValue>> = {}, layout?: PagePrefs["layout"]): PagePrefs => ({
-  widgets: Object.fromEntries(Object.entries(widgets).map(([id, s]) => [id, { v: 1, s }])),
+  widgets: Object.fromEntries(Object.entries(widgets).map(([id, s]) => [id, { v: widgetDef(id)!.version, s }])),
   ...(layout ? { layout } : {}),
 });
 
@@ -266,10 +267,18 @@ describe("Cost widgets: thresholds and display", () => {
     expect(container.querySelector(".cost-flag--sessions")).toBeNull();
   });
 
-  it("breakdown percentages", async () => {
-    page(saved({ "cost.breakdown": { percentages: true } }));
+  it("breakdown percentages: on by default (today's share column), off hides the column", async () => {
+    const { container, unmount } = page();
+    await region("Spend breakdown");
+    const legend = () => container.querySelector(".cost-breakdown .donut__legend")!;
+    await waitFor(() => expect([...legend().querySelectorAll(".donut__pct")].map((x) => x.textContent)).toEqual(["60%", "23%", "17%"]));
+    expect([...legend().querySelectorAll(".donut__val")].map((x) => x.textContent)).toEqual(["£0.18", "£0.070", "£0.050"]);
+    unmount();
+    const off = page(saved({ "cost.breakdown": { percentages: false } }));
     const br = await region("Spend breakdown");
-    await waitFor(() => expect(br.getByText("£0.18 (60%)")).toBeInTheDocument());
+    await waitFor(() => expect(off.container.querySelector(".cost-breakdown .donut__pct")).toBeNull());
+    expect(br.getByText("£0.18")).toBeInTheDocument();
+    expect(br.queryByText(/\(60%\)/)).toBeNull();
   });
 
   it("split track bars and percent off", async () => {

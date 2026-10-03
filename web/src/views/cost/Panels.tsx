@@ -53,17 +53,15 @@ export function SpendPanel({ cost, compare, updatedAt, height }: { cost: CostRes
 /** Row 2, middle: where the money went, by type (Azure's split) or, failing that (or when asked), by region (the sessions' estimate). */
 export function BreakdownPanel({ cost }: { cost: CostResponse }) {
   const { settings } = useWidget("cost.breakdown");
-  const withPct = settings.percentages === true;
   const b = cost.breakdown;
-  const share = (p: number) => (withPct ? ` (${pctText(p)})` : "");
   let segments: DonutSegment[] = [];
   let caption: string | null = null;
   let centreLabel = "Total";
   if (b && b.basis === "azure" && settings.groupBy !== "region") {
-    segments = b.byType.map((t) => ({ label: TYPE_LABEL[t.type], value: t.gbp, color: TYPE_COLOUR[t.type], display: `${gbp(t.gbp)}${share(t.pct)}` }));
+    segments = b.byType.map((t) => ({ label: TYPE_LABEL[t.type], value: t.gbp, color: TYPE_COLOUR[t.type], display: gbp(t.gbp) }));
     caption = `Azure actual${b.asOfDay ? `, as of ${dayLabel(b.asOfDay)}` : ""}`;
   } else if (b) {
-    segments = b.byRegion.map((r, i) => ({ label: r.name, value: r.gbp, color: COLOURS[i % COLOURS.length]!, display: `${gbp(r.gbp)}${share(r.pct)}` }));
+    segments = b.byRegion.map((r, i) => ({ label: r.name, value: r.gbp, color: COLOURS[i % COLOURS.length]!, display: gbp(r.gbp) }));
     caption = "Estimate by region: session length at the hourly rate. Azure's split is not in yet.";
     centreLabel = "Estimate";
   }
@@ -72,7 +70,7 @@ export function BreakdownPanel({ cost }: { cost: CostResponse }) {
     <Panel title="Spend breakdown" className="cost-panel" bodyClassName="cost-panel__body cost-breakdown">
       <FillHeight fallback={132} min={72}>
         {(h) => (
-          <Donut title="Spend breakdown" segments={segments} centre={total > 0 ? { value: gbp(total), label: centreLabel } : undefined} size={h < 140 ? Math.min(h, 104) : 132} stroke={h < 140 ? 11 : 15} />
+          <Donut title="Spend breakdown" segments={segments} centre={total > 0 ? { value: gbp(total), label: centreLabel } : undefined} size={h < 140 ? Math.min(h, 104) : 132} stroke={h < 140 ? 11 : 15} percentages={settings.percentages !== false} />
         )}
       </FillHeight>
       {caption && total > 0 && <p className="cost-note">{caption}</p>}
