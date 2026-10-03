@@ -216,6 +216,9 @@ button.act__phone-row { cursor: pointer; }
   .act__toolbar { flex-wrap: nowrap; padding: 8px 12px; }
   .act__toolbar .tabs__tab { padding: 0 10px; }
   .act__stream .panel__actions, .act__log .panel__actions { gap: 6px; }
+  /* the timeline's legend stays on one line beside its title, with the widget cog */
+  .act__legend { gap: 10px; flex-wrap: nowrap; }
+  .act__legend li { gap: 5px; white-space: nowrap; }
 }
 
 /* 641-1099 px: panels stack and the page may scroll. */

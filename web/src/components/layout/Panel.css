@@ -15,9 +15,14 @@
   padding: 12px 16px 0;
   min-height: 40px;
 }
-.panel__title-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.panel__title { font-size: 15px; font-weight: 600; letter-spacing: -0.005em; }
-.panel__actions { display: flex; align-items: center; gap: 10px; flex: none; }
+/* The title never wraps or shrinks: the actions give way (their selects shrink), and a status beside
+   the title (a pill, "updated 9 s ago") drops under it when there is no room. */
+.panel__title-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.panel__title { font-size: 15px; font-weight: 600; letter-spacing: -0.005em; white-space: nowrap; flex-shrink: 0; }
+.panel__actions { display: flex; align-items: center; gap: 10px; flex: 0 1 auto; min-width: 0; }
+.panel__actions .select__trigger { min-width: 0; }
+.panel__actions .select__value { overflow: hidden; white-space: nowrap; }
+.panel__actions .segmented__item { white-space: nowrap; }
 .panel__body { padding: 12px 16px 14px; min-height: 0; flex: 1; }
 .panel__body--flush { padding: 0; }
 .panel--scroll > .panel__body { overflow: auto; }

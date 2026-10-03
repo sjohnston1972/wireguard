@@ -4,6 +4,9 @@
    unchanged). Overlays take no space, so a widget's layout never moves. */
 
 .wg-cog { flex: none; color: var(--text-secondary); }
+/* In a panel header: a small cog, its box tucked into the header's end padding. */
+.panel__head .wg-cog { width: 24px; height: 24px; margin-right: -4px; }
+.panel__actions > .wg-cog { margin-left: -4px; }
 .wg-cog:hover { color: var(--text-primary); }
 
 /* The corner overlay of a headerless widget: shown on hover or keyboard
