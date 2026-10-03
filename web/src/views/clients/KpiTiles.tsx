@@ -3,7 +3,7 @@ import { Activity, CalendarClock, Clock, Globe, Users, Wifi } from "lucide-react
 import { MetricTile, Ring, cx, type MetricTileProps } from "@/components";
 import type { ClientsResponse } from "@shared/api";
 import { thresholdTone, widgetDefaults, type Threshold } from "@shared/widgets";
-import { WidgetCorner, useWidget } from "@/widgets";
+import { WidgetCorner, useCornerHost, useWidget } from "@/widgets";
 import type { FilterKey } from "./model";
 import "./KpiTiles.css";
 
@@ -38,6 +38,7 @@ export function useKpiSettings() {
 
 export function KpiTiles({ kpis, filter, onFilter }: { kpis: ClientsResponse["kpis"]; filter: FilterKey; onFilter: (f: FilterKey) => void }) {
   const { tiles, subLines, onlineRing, latency } = useKpiSettings();
+  const host = useCornerHost();
   const toggle = (f: FilterKey) => () => onFilter(filter === f ? "all" : f);
   const onlinePct = kpis.total ? Math.round((kpis.online / kpis.total) * 100) : null;
   const sub = (text: string) => (subLines ? text : undefined);
@@ -94,7 +95,7 @@ export function KpiTiles({ kpis, filter, onFilter }: { kpis: ClientsResponse["kp
   // Fewer tiles share the row: the column count appears only once it differs from today's six.
   const style = shown.length !== 6 ? ({ "--kpi-cols": shown.length, "--kpi-cols-narrow": Math.min(shown.length, 3) } as CSSProperties) : undefined;
   return (
-    <div className="kpis" role="group" aria-label="Client counts (each filters the table)" style={style}>
+    <div className={cx("kpis", host)} role="group" aria-label="Client counts (each filters the table)" style={style}>
       {shown.map((k) => all[k])}
       <WidgetCorner />
     </div>

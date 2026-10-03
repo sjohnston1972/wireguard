@@ -2,8 +2,8 @@ import { Bell, Clock, FileText, Gauge, Rocket, ShieldCheck, XCircle } from "luci
 import type { CSSProperties, ReactNode } from "react";
 import type { ActivityResponse } from "@shared/api";
 import type { Threshold } from "@shared/widgets";
-import { MetricTile, Ring, Skeleton, type Tone } from "@/components";
-import { thresholdTone, useWidget, WidgetCorner } from "@/widgets";
+import { MetricTile, Ring, Skeleton, cx, type Tone } from "@/components";
+import { thresholdTone, useCornerHost, useWidget, WidgetCorner } from "@/widgets";
 import { kpiView } from "./model";
 
 type ToneName = "ok" | "warn" | "bad" | null;
@@ -23,13 +23,14 @@ function withWord(value: ReactNode, t: ToneName): ReactNode {
 /** The figures across the top, each with its basis and a change against the period before. */
 export function Kpis({ data }: { data: ActivityResponse | undefined }) {
   const { settings } = useWidget("activity.kpis");
+  const host = useCornerHost();
   const tiles = new Set(settings.tiles as string[]);
   const deltas = settings.deltas as boolean;
   const subLines = settings.subLines as boolean;
   const cols = { "--act-kpi-cols": tiles.size } as CSSProperties;
   if (!data) {
     return (
-      <section className="act__kpis" style={cols} aria-label="Key figures" aria-busy="true">
+      <section className={cx("act__kpis", host)} style={cols} aria-label="Key figures" aria-busy="true">
         {Array.from({ length: tiles.size }, (_, i) => (
           <Skeleton key={i} variant="tile" />
         ))}
@@ -46,7 +47,7 @@ export function Kpis({ data }: { data: ActivityResponse | undefined }) {
   const d = <T,>(x: T | undefined) => (deltas ? x : undefined);
   const sub = (s: string) => (subLines ? s : undefined);
   return (
-    <section className="act__kpis" style={cols} aria-label="Key figures">
+    <section className={cx("act__kpis", host)} style={cols} aria-label="Key figures">
       {tiles.has("deploys") && (
         <div role="group" aria-label="Deploys">
           <MetricTile iconStyle="circle" icon={<Rocket size={22} />} label="Deploys" value={k.deploys.value} delta={d(k.deploys.delta)} sub={sub("successful deploys")} />

@@ -2,7 +2,7 @@ import { Clock, Gauge, Hourglass, MoveRight, PauseCircle, Play, Timer, Trash2 } 
 import { Link } from "react-router-dom";
 import type { OverviewResponse } from "@shared/api";
 import { Button, ProgressBar, cx } from "@/components";
-import { WidgetCorner, useWidget } from "@/widgets";
+import { WidgetCorner, useCornerHost, useWidget } from "@/widgets";
 import { DeployForm, actionAllowed, type ActionName } from "./actions";
 import { STATE_TONE, STATE_WORD, currentStep, failedStep, formatElapsed, formatSpan, hhmm, inGithubRun, isBusy, moveTargets, regionShort, stepProgress, usually } from "./model";
 import { useServerNow } from "./hooks";
@@ -143,13 +143,14 @@ function Actions({ o, onAction }: { o: OverviewResponse; onAction: (a: ActionNam
 /** The full-width status banner: state, progress, timing and the state's actions. */
 export function StatusBanner({ o, now, receivedAt, onAction }: Props) {
   const { settings: st } = useWidget("overview.status");
+  const host = useCornerHost();
   const autoDestroy = st.autoDestroy as boolean;
   const s = o.snapshot;
   const progress = inGithubRun(s.state) ? stepProgress(s.steps) : null;
   const failed = s.state === "failed" ? failedStep(s.steps) : null;
   const tone = STATE_TONE[s.state];
   return (
-    <section className={cx("ov-banner", `ov-banner--${s.state}`)} aria-label="Status">
+    <section className={cx("ov-banner", `ov-banner--${s.state}`, host)} aria-label="Status">
       <div className="ov-banner__state">
         <div className="ov-banner__head">
           <StateMark state={s.state} />

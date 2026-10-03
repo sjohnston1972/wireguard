@@ -8,7 +8,7 @@
 
 /* The corner overlay of a headerless widget: shown on hover or keyboard
    focus, always on touch screens (no hover there). */
-*:has(> .wg-corner) { position: relative; }
+.wg-corner-host { position: relative; } /* set by the block holding the corner (useCornerHost, Panel) */
 .wg-corner {
   position: absolute;
   inset: 4px 4px auto 4px;

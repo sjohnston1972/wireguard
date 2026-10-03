@@ -42,6 +42,8 @@ const plain = (html: string) => html.replace(/«r[0-9a-z]+»|:r[0-9a-z]+:|_r_[0-
 function withoutChrome(el: HTMLElement): string {
   const copy = el.cloneNode(true) as HTMLElement;
   copy.querySelectorAll("[data-widget-chrome]").forEach((c) => c.remove());
+  // The corner's positioning box (position: relative, as the old *:has(> .wg-corner) rule gave it) is chrome too.
+  copy.querySelectorAll(".wg-corner-host").forEach((c) => c.classList.remove("wg-corner-host"));
   return plain(copy.innerHTML);
 }
 

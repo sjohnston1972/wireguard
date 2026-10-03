@@ -73,10 +73,23 @@ export function Widget({ id, headerless = false, stackHandle = false, children }
   return <PanelChromeContext.Provider value={chrome}>{children}</PanelChromeContext.Provider>;
 }
 
+/** The class of the element a corner overlay sits in: its positioning box (widgets.css). */
+export const CORNER_HOST = "wg-corner-host";
+
+/**
+ * The class for the root element of a block that holds <WidgetCorner />
+ * (CORNER_HOST inside a <Widget>, where the corner is drawn; undefined
+ * elsewhere), so only those blocks become the corner's positioning box.
+ */
+export function useCornerHost(): string | undefined {
+  return useContext(PanelChromeContext) ? CORNER_HOST : undefined;
+}
+
 /**
  * The corner overlay (cog, and the move handle where the widget can move)
  * for a headerless widget that is not a Panel: put it inside the block's
- * root element, which becomes its positioning box. Nothing outside a <Widget>.
+ * root element, which becomes its positioning box (give that element the
+ * class from useCornerHost()). Nothing outside a <Widget>.
  */
 export function WidgetCorner() {
   const c = useContext(PanelChromeContext);

@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { CalendarDays, ChartColumn, ChevronRight, Coins, Gauge, Info, ShieldCheck } from "lucide-react";
 import type { CostResponse } from "@shared/api";
 import { thresholdTone, type Threshold } from "@shared/widgets";
-import { MetricTile, type Tone } from "@/components";
-import { useWidget, WidgetCorner } from "@/widgets";
+import { MetricTile, cx, type Tone } from "@/components";
+import { useCornerHost, useWidget, WidgetCorner } from "@/widgets";
 import { changeVsPrevious, dayLabel, gbp, hasActuals, type Level } from "./model";
 
 /** A small "i" button whose text shows on hover or focus and closes on Escape. */
@@ -42,6 +42,7 @@ const levelTone = (l: Level | null): Tone => (l === "bad" ? "red" : l === "warn"
 /** Row 1: this session, month to date, the month's projection, the budget and the cost guard. */
 export function KpiRow({ cost }: { cost: CostResponse }) {
   const { settings } = useWidget("cost.kpis");
+  const host = useCornerHost();
   const shown = settings.tiles as string[];
   const deltas = settings.deltas === true;
   const bar = settings.budgetBar === true;
@@ -157,7 +158,7 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
   const keys = ["session", "month", "estimate", "budget", "guard"].filter((k) => shown.includes(k));
   const custom = keys.length !== 5;
   return (
-    <div className={custom ? "cost-kpis cost-kpis--custom" : "cost-kpis"} style={custom ? ({ "--cost-kpi-n": keys.length } as CSSProperties) : undefined}>
+    <div className={cx("cost-kpis", custom && "cost-kpis--custom", host)} style={custom ? ({ "--cost-kpi-n": keys.length } as CSSProperties) : undefined}>
       {keys.map((k) => (
         <Fragment key={k}>{tiles[k]}</Fragment>
       ))}

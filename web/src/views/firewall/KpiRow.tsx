@@ -3,7 +3,7 @@ import { forwardRef, type ReactNode } from "react";
 import type { FirewallResponse } from "@shared/api";
 import type { Threshold } from "@shared/widgets";
 import { Button, MetricTile, Sparkline, cx } from "@/components";
-import { WidgetCorner, useWidget } from "@/widgets";
+import { WidgetCorner, useCornerHost, useWidget } from "@/widgets";
 import { useDraftDefault } from "@/api/mutations";
 import { NARROW, dropDelta, dropsLevel, fmtCount, shownDefault, type RuleView } from "./model";
 import { useMedia } from "@/lib/useMedia";
@@ -35,6 +35,7 @@ export const KpiRow = forwardRef<HTMLButtonElement, KpiRowProps>(function KpiRow
   const setDefault = useDraftDefault();
   const narrow = useMedia(NARROW);
   const { settings } = useWidget("firewall.kpis");
+  const host = useCornerHost();
   const tiles = settings.tiles as string[];
   const subLines = settings.subLines as boolean;
   const sub = (s: string) => (subLines ? s : undefined);
@@ -144,7 +145,7 @@ export const KpiRow = forwardRef<HTMLButtonElement, KpiRowProps>(function KpiRow
   };
 
   return (
-    <div className={cx("fw__kpis", tiles.length !== 5 && `fw__kpis--${tiles.length}`)}>
+    <div className={cx("fw__kpis", tiles.length !== 5 && `fw__kpis--${tiles.length}`, host)}>
       {tiles.map((t) => all[t])}
       <WidgetCorner />
     </div>

@@ -61,7 +61,7 @@ import {
   type LogLine,
   type PillStatus,
 } from "@/components";
-import { LayoutMenu, Widget, WidgetCorner, WidgetRow, useWidget } from "@/widgets";
+import { CORNER_HOST, LayoutMenu, Widget, WidgetCorner, WidgetRow, useWidget } from "@/widgets";
 import "./gallery.css";
 
 // ---- deterministic sample data (no randomness: screenshots must be stable) ----
@@ -580,7 +580,7 @@ export default function Gallery() {
             }}
           </WidgetRow>
           <Widget id="overview.status" headerless>
-            <div className="g-widget-block">
+            <div className={`g-widget-block ${CORNER_HOST}`}>
               <strong>A headerless widget</strong> (the status banner): its cog is a corner overlay, shown on hover or focus.
               <WidgetCorner />
             </div>
