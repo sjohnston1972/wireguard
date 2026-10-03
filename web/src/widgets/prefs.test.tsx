@@ -228,6 +228,26 @@ describe("a save that fails", () => {
     expect(server.puts).toHaveLength(1);
   });
 
+  it("a refetch landing between a change and its save does not let the save win: 409, the other device's change stays", async () => {
+    const server = prefsServer(saved);
+    const { client } = renderWithProviders(<Probe />, { routes: server.routes });
+    await waitFor(() => expect(out("status")).toHaveTextContent("ready"));
+    await userEvent.click(screen.getByRole("button", { name: "rows 7" }));
+    // Another device saves while this change waits, and a refetch (window focus) brings its version here.
+    server.state.pages.overview = { version: 2, updatedAt: "2026-10-02T12:05:00.000Z", prefs: { layout: { hidden: ["overview.events"] } } };
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ["prefs"] });
+    });
+    expect(out("rows")).toHaveTextContent("7");
+    await waitFor(() => expect(server.puts).toHaveLength(1));
+    // The save names the version the change was made on, so the server refuses it.
+    expect(server.puts[0]!.body.baseVersion).toBe(1);
+    expect(await screen.findByText("Changed on another device. Showing the latest.")).toBeInTheDocument();
+    await waitFor(() => expect(out("hidden")).toHaveTextContent("true"));
+    expect(out("rows")).toHaveTextContent("5");
+    expect(server.state.pages.overview).toMatchObject({ version: 2, prefs: { layout: { hidden: ["overview.events"] } } });
+  });
+
   it("a 409 outdated says reload", async () => {
     const server = prefsServer(saved);
     server.routes["PUT /api/v1/prefs/overview"] = { status: 409, json: { error: { code: "outdated", message: "This tab is running an older dashboard. Reload to change widget settings.", field: "widgets.overview.events.v" } } };

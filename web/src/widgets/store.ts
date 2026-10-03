@@ -32,6 +32,13 @@ interface PageQueue {
   inFlight: boolean;
   /** A change waited for the save in flight. */
   queued: boolean;
+  /**
+   * The server version the shown change was made on: taken from the confirmed
+   * page when the first change of a batch is made, advanced by each save that
+   * lands. Sent as `baseVersion`, so a refetch that lands between a change and
+   * its save cannot make the save win over another device's newer change.
+   */
+  base: number | null;
 }
 
 /** The last good answer, or undefined (none, unreadable, or storage refused). */
@@ -79,7 +86,7 @@ export class PrefsStore {
   private queue(page: PageId): PageQueue {
     let q = this.queues.get(page);
     if (!q) {
-      q = { override: null, timer: null, inFlight: false, queued: false };
+      q = { override: null, timer: null, inFlight: false, queued: false, base: null };
       this.queues.set(page, q);
     }
     return q;
@@ -99,6 +106,7 @@ export class PrefsStore {
   change(page: PageId, fn: (p: PagePrefs) => PagePrefs): void {
     this.watchVisibility();
     const q = this.queue(page);
+    if (q.override === null || q.base === null) q.base = this.confirmed(page).version;
     const shown = q.override ?? this.confirmed(page).prefs;
     q.override = normalisePagePrefs(page, fn(structuredClone(shown)));
     this.notify();
@@ -149,14 +157,18 @@ export class PrefsStore {
     q.inFlight = true;
     q.queued = false;
     try {
-      const res = await apiSend<PrefsPage>("PUT", `/prefs/${page}`, { baseVersion: this.confirmed(page).version, prefs: sent });
+      const res = await apiSend<PrefsPage>("PUT", `/prefs/${page}`, { baseVersion: q.base ?? this.confirmed(page).version, prefs: sent });
       if (this.disposed) return;
       // A refetch started before this save landed must not put the old version back.
       await this.client.cancelQueries({ queryKey: PREFS_KEY });
       this.setPage(page, res);
       q.inFlight = false;
+      q.base = res.version; // changes made since were made on top of this save
       if (q.queued) void this.send(page);
-      else if (!q.timer && q.override === sent) q.override = null; // nothing newer: show what the server stored
+      else if (!q.timer && q.override === sent) {
+        q.override = null; // nothing newer: show what the server stored
+        q.base = null;
+      }
       this.notify();
     } catch (e) {
       if (this.disposed) return;
@@ -165,6 +177,7 @@ export class PrefsStore {
       if (q.timer) clearTimeout(q.timer);
       q.timer = null;
       q.override = null;
+      q.base = null;
       this.notify();
       this.failed(page, e);
     }
