@@ -61,6 +61,7 @@ import {
   type LogLine,
   type PillStatus,
 } from "@/components";
+import { LayoutMenu, Widget, WidgetCorner, WidgetRow, useWidget } from "@/widgets";
 import "./gallery.css";
 
 // ---- deterministic sample data (no randomness: screenshots must be stable) ----
@@ -138,6 +139,12 @@ const clientColumns: Column<ClientRow>[] = [
 ];
 
 const ALL_STATUSES: PillStatus[] = ["online", "offline", "running", "success", "failure", "allow", "deny", "healthy", "degraded", "down", "pending", "deployed", "stopped", "unknown", "custom"];
+
+/** A widget's settings as they stand, for the widgets demo. */
+function WidgetValues({ id }: { id: string }) {
+  const w = useWidget(id);
+  return <pre className="g-mono">{JSON.stringify(w.settings, null, 1)}</pre>;
+}
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
@@ -491,6 +498,9 @@ export default function Gallery() {
                 <div className="g-table g-table--short">
                   <DataTable aria-label="Error" columns={clientColumns.slice(0, 3)} rows={[]} rowKey={(r) => r.id} error="The clients endpoint did not answer." onRetry={() => {}} />
                 </div>
+                <div className="g-table g-table--short">
+                  <DataTable aria-label="Compact" density="compact" columns={clientColumns.slice(0, 3)} rows={CLIENTS.slice(0, 3)} rowKey={(r) => r.id} />
+                </div>
               </Panel>
             </Col>
             <Col span={4}>
@@ -529,7 +539,52 @@ export default function Gallery() {
                 </div>
               </Panel>
             </Col>
+            <Col span={12}>
+              <Panel title="Log view: wrapped, no times, no level tags">
+                <div className="g-log g-log--short">
+                  <LogView aria-label="Wrapped log" toolbar={false} wrap timestamps={false} levelTags={false} lines={[...lines.slice(0, 3), { id: "long", level: "INFO", text: "A long line that wraps instead of being cut off: ".repeat(6) }]} />
+                </div>
+              </Panel>
+            </Col>
           </Grid>
+        </Section>
+
+        <Section id="widgets" title="Widgets: settings cog, move handle, Layout menu">
+          <div className="g-row">
+            <LayoutMenu page="overview" />
+            <span className="g-muted">The Overview's lower row and its status banner, as widgets. Changes here are saved for the dev user.</span>
+          </div>
+          <WidgetRow page="overview" row="r4" className="g-widgets">
+            {{
+              "overview.health": (
+                <Widget id="overview.health">
+                  <Panel title="Health summary">
+                    <WidgetValues id="overview.health" />
+                  </Panel>
+                </Widget>
+              ),
+              "overview.costImpact": (
+                <Widget id="overview.costImpact">
+                  <Panel title="Cost impact" actions={<Button size="sm">View cost details</Button>}>
+                    <WidgetValues id="overview.costImpact" />
+                  </Panel>
+                </Widget>
+              ),
+              "overview.notes": (
+                <Widget id="overview.notes">
+                  <Panel title="Watchman notes">
+                    <WidgetValues id="overview.notes" />
+                  </Panel>
+                </Widget>
+              ),
+            }}
+          </WidgetRow>
+          <Widget id="overview.status" headerless>
+            <div className="g-widget-block">
+              <strong>A headerless widget</strong> (the status banner): its cog is a corner overlay, shown on hover or focus.
+              <WidgetCorner />
+            </div>
+          </Widget>
         </Section>
 
         <Section id="kv" title="Key/value, diff, data age">

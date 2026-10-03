@@ -26,6 +26,9 @@
 .log__level--ERROR { color: var(--red); background: color-mix(in srgb, var(--red) 18%, transparent); }
 .log__level--DEBUG { color: var(--text-secondary); background: color-mix(in srgb, var(--text-secondary) 16%, transparent); }
 .log__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+/* wrap: long lines continue on the next line instead of being cut off. */
+.log--wrap .log__line { white-space: pre-wrap; align-items: flex-start; }
+.log--wrap .log__text { overflow-wrap: anywhere; }
 .log__copy { opacity: 0; position: absolute; right: 0; top: 50%; transform: translateY(-50%); background: var(--bg-elevated); }
 .log__line:hover .log__copy, .log__copy:focus-visible { opacity: 1; }
 .log__empty { color: var(--text-secondary); font-family: var(--font-ui); text-align: center; padding: 20px 0; }

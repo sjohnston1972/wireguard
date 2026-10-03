@@ -48,6 +48,8 @@ export interface DataTableProps<T> {
   loading?: boolean;
   error?: string | null;
   onRetry?: () => void;
+  /** Row height: "comfortable" (the default, as today) or "compact" (class dt--compact; views may set their own heights for it). */
+  density?: "comfortable" | "compact";
   /** Shown when there are no rows; defaults to a plain "Nothing to show". */
   empty?: ReactNode;
   className?: string;
@@ -78,6 +80,7 @@ export function DataTable<T>({
   error,
   onRetry,
   empty,
+  density = "comfortable",
   className,
   ...rest
 }: DataTableProps<T>) {
@@ -145,7 +148,7 @@ export function DataTable<T>({
   };
 
   return (
-    <div className={cx("dt", className)}>
+    <div className={cx("dt", density === "compact" && "dt--compact", className)}>
       <table className="dt__table" aria-label={rest["aria-label"]} aria-busy={loading ? true : undefined}>
         <thead>
           <tr>

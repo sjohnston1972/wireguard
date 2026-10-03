@@ -22,6 +22,12 @@ export interface LogViewProps {
   toolbar?: boolean;
   /** What to say when there are no lines at all (default "No log output"). */
   emptyText?: string;
+  /** Wrap long lines instead of cutting them off with an ellipsis (default false). */
+  wrap?: boolean;
+  /** Show each line's time (default true). */
+  timestamps?: boolean;
+  /** Show each line's severity tag (default true). */
+  levelTags?: boolean;
   className?: string;
 }
 
@@ -32,7 +38,7 @@ const BOTTOM_SLACK = 24;
  * Monospace log: severity tag per line, search, copy a line, and auto-scroll that
  * pauses the moment the reader scrolls up and counts the lines that arrive meanwhile.
  */
-export function LogView({ lines, toolbar = true, emptyText = "No log output", className, ...rest }: LogViewProps) {
+export function LogView({ lines, toolbar = true, emptyText = "No log output", wrap = false, timestamps = true, levelTags = true, className, ...rest }: LogViewProps) {
   const [query, setQuery] = useState("");
   const [following, setFollowing] = useState(true);
   const [pausedAt, setPausedAt] = useState(0);
@@ -78,7 +84,7 @@ export function LogView({ lines, toolbar = true, emptyText = "No log output", cl
   const newCount = following ? 0 : Math.max(0, shown.length - pausedAt);
 
   return (
-    <div className={cx("log", className)}>
+    <div className={cx("log", wrap && "log--wrap", className)}>
       {toolbar && (
         <div className="log__bar">
           <SearchInput className="log__search" label="Search logs" value={query} onChange={setQuery} />
@@ -95,8 +101,8 @@ export function LogView({ lines, toolbar = true, emptyText = "No log output", cl
           ) : (
             shown.map((l) => (
               <div className="log__line" key={l.id}>
-                {l.time && <span className="log__time">{l.time}</span>}
-                <span className={cx("log__level", `log__level--${l.level}`)}>{l.level}</span>
+                {timestamps && l.time && <span className="log__time">{l.time}</span>}
+                {levelTags && <span className={cx("log__level", `log__level--${l.level}`)}>{l.level}</span>}
                 <span className="log__text">{l.text}</span>
                 <CopyButton className="log__copy" label="Copy line" text={`${l.time ?? ""} ${l.level} ${l.text}`.trim()} />
               </div>
