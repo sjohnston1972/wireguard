@@ -1,0 +1,59 @@
+.ov-drawer__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.ov-drawer__caption {
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-drawer__note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-drawer__code {
+  display: block;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: var(--bg-tile);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-x: auto;
+}
+.ov-secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ov-secret__mask {
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+.ov-inventory {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.ov-inventory li {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 2px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.ov-inventory__kind {
+  color: var(--text-secondary);
+  grid-row: span 2;
+}
+.ov-inventory__detail {
+  font-size: 12px;
+  color: var(--text-secondary);
+}

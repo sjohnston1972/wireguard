@@ -1,0 +1,175 @@
+/* A panel body that scrolls inside the panel (one-screen rule). */
+.ov-scroll {
+  overflow: auto;
+  min-height: 0;
+}
+
+.ov-run {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+}
+.ov-run__chips {
+  flex: none;
+  min-width: 0;
+  overflow-x: auto;
+}
+.ov-run__panels {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 41fr) minmax(0, 45fr);
+  gap: var(--gap);
+}
+.ov-run__panels > .panel {
+  min-height: 0;
+}
+.ov-run__intro {
+  margin: -4px 0 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ov-run__none {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ov-pipeline {
+  gap: 0;
+}
+.ov-pipeline .steps__item {
+  padding: 0;
+  min-height: 22px;
+}
+/* Compact heads on the pipeline and log, so the steps and lines get the height. */
+.ov-run__panels > .panel > .panel__head {
+  padding-top: 10px;
+  min-height: 34px;
+}
+.ov-run__panels > .panel > .panel__body {
+  padding-top: 8px;
+}
+.ov-run__log .log__bar {
+  padding-bottom: 6px;
+}
+.ov-run__log .log__search {
+  height: 28px;
+}
+.ov-run__log .log__lines {
+  line-height: 1.4;
+}
+.ov-pipeline__btn {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  width: 100%;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ov-pipeline__btn:hover {
+  background: var(--bg-tile);
+}
+.ov-pipeline .steps__item--running .ov-pipeline__btn {
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+}
+
+.ov-run__logbody {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 12px 12px;
+}
+.ov-run__loghost {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ov-run__loghost > .log {
+  flex: 1 1 0;
+  min-height: 0;
+}
+/* LogView's per-line "Copied" status is placed against .log__scroller, which
+   does not clip: lines scrolled out of view would stretch the page. Clip it. */
+.ov .log__scroller,
+.ov-run__logbody,
+.ov-run__fulllog,
+.ov-phone__log {
+  overflow: hidden;
+}
+.ov-run__level {
+  min-width: 0;
+}
+.ov-run__level .select__trigger {
+  height: 28px;
+  font-size: 12px;
+}
+.ov-run__fulllog {
+  height: min(70vh, 720px);
+  display: flex;
+  flex-direction: column;
+}
+.ov-run__fulllog > .log {
+  flex: 1;
+  min-height: 0;
+}
+.ov-log__hit {
+  background: color-mix(in srgb, var(--blue) 18%, transparent);
+}
+
+.ov-stream {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-stream__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.ov-stream--on {
+  color: var(--green);
+}
+.ov-stream--on .ov-stream__dot {
+  background: var(--green);
+}
+
+.ov-result {
+  font-size: 12px;
+  font-weight: 600;
+}
+.ov-result--ok { color: var(--green); }
+.ov-result--bad { color: var(--red); }
+
+.ov-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--blue-bright);
+  white-space: nowrap;
+}
+.ov-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 1099px) {
+  .ov-run__panels { grid-template-columns: minmax(0, 1fr); }
+  .ov-run__panels > .panel { min-height: 320px; }
+}

@@ -1,0 +1,23 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+}
+.panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 0;
+  min-height: 40px;
+}
+.panel__title-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.panel__title { font-size: 15px; font-weight: 600; letter-spacing: -0.005em; }
+.panel__actions { display: flex; align-items: center; gap: 10px; flex: none; }
+.panel__body { padding: 12px 16px 14px; min-height: 0; flex: 1; }
+.panel__body--flush { padding: 0; }
+.panel--scroll > .panel__body { overflow: auto; }

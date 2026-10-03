@@ -77,6 +77,18 @@ export function hostLabel(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63);
 }
 
+/** What a client's config sends through the tunnel (its AllowedIPs), in order. */
+export function clientAllowedIps(
+  cfg: { subnet: string; subnet6: string; loopbackIp: string; vnetCidr: string; homeLanCidr: string },
+  peer: { full_tunnel: number; azure_vnet?: number; home_lan?: number },
+): string[] {
+  if (peer.full_tunnel) return ["0.0.0.0/0", "::/0"];
+  return [cfg.subnet, `${cfg.loopbackIp}/32`]
+    .concat(cfg.subnet6 ? [cfg.subnet6] : [])
+    .concat(peer.azure_vnet ? [cfg.vnetCidr] : [])
+    .concat(peer.home_lan && cfg.homeLanCidr ? [cfg.homeLanCidr] : []);
+}
+
 /**
  * Client config with a placeholder for the private key. Endpoint is always
  * the DNS name so a rebuilt VM needs no client change.
@@ -89,12 +101,7 @@ export function hostLabel(name: string): string {
 export function clientConfigTemplate(env: Env, peer: { ip: string; full_tunnel: number; azure_vnet?: number; tunnel_dns?: number; home_lan?: number }, serverPub: string): string {
   const cfg = config(env);
   const ip6 = peerIp6(cfg.subnet6, peer.ip);
-  const allowed = peer.full_tunnel
-    ? ["0.0.0.0/0", "::/0"]
-    : [cfg.subnet, `${cfg.loopbackIp}/32`]
-        .concat(cfg.subnet6 ? [cfg.subnet6] : [])
-        .concat(peer.azure_vnet ? [cfg.vnetCidr] : [])
-        .concat(peer.home_lan && cfg.homeLanCidr ? [cfg.homeLanCidr] : []);
+  const allowed = clientAllowedIps(cfg, peer);
   const dns = peer.full_tunnel || peer.tunnel_dns ? [`DNS = ${cfg.loopbackIp}, wg`] : [];
   return [
     "[Interface]",

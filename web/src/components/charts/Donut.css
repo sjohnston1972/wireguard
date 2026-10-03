@@ -1,0 +1,22 @@
+.donut { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.donut__ring { position: relative; flex: none; }
+.donut__ring svg { position: absolute; inset: 0; }
+.donut__centre {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 2px;
+}
+.donut__centre strong { font-size: 20px; font-weight: 600; }
+.donut__centre span { font-size: 11px; color: var(--text-secondary); }
+.donut__legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; flex: 1; min-width: 160px; }
+.donut__legend li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.donut__swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.donut__name { flex: 1; color: var(--text-primary); }
+.donut__val, .donut__pct { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.donut__pct { min-width: 34px; text-align: right; }
+.donut__nodata { font-size: 12px; color: var(--text-secondary); }

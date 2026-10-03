@@ -1,0 +1,166 @@
+.ov-health__body {
+  display: flex;
+  align-items: center;
+  gap: 12px 24px;
+  overflow: auto;
+}
+.ov-health__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 1 180px;
+  min-width: 0;
+}
+.ov-health__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ov-h) 14%, transparent);
+  color: var(--ov-h);
+}
+.ov-health__icon--green, .ov-health__title--green { --ov-h: var(--green); }
+.ov-health__icon--red, .ov-health__title--red { --ov-h: var(--red); }
+.ov-health__icon--grey, .ov-health__title--grey { --ov-h: var(--text-secondary); }
+.ov-health__head > div {
+  min-width: 0;
+}
+.ov-health__title,
+.ov-health__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-health__title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ov-h);
+}
+.ov-health__sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-health__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 12px;
+  flex: 1 1 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+/* Name over age, so a long name never squeezes its age out. */
+.ov-health__list .ov-check-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 0;
+  min-width: 0;
+}
+.ov-check-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ov-health__list .ov-check-item__age {
+  grid-column: 2;
+  line-height: 1.2;
+}
+.ov-check-item {
+  --ov-c: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.ov-check-item[data-ok="true"] { --ov-c: var(--green); }
+.ov-check-item[data-ok="false"] { --ov-c: var(--red); }
+.ov-check-item__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ov-c);
+}
+.ov-check-item__age {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.ov-check-item[data-ok="false"] .ov-check-item__age {
+  color: var(--red);
+}
+
+.ov-cost__body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow: auto;
+}
+.ov-cost__now {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ov-cost__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+  color: var(--amber);
+  flex: none;
+}
+.ov-cost__value {
+  font-size: 17px;
+  font-weight: 650;
+}
+.ov-cost__value--sm {
+  font-size: 14px;
+}
+.ov-cost__sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-cost__bars {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+}
+.ov-cost__typical {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ov-notes__list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ov-note {
+  display: grid;
+  grid-template-columns: 8px 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.ov-note__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+.ov-note__time {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.ov-notes__empty {
+  font-size: 12px;
+  color: var(--text-secondary);
+}

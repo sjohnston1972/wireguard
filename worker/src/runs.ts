@@ -27,9 +27,22 @@ import type { FirewallStatus } from "./state";
 import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
 import { noteHandshakes } from "./keyrotation";
-import { recordHeartbeat } from "./history";
+import { recordHeartbeat, fwDeltas } from "./history";
 
-export class RunError extends Error {}
+/**
+ * A refusal fit for the screen. The code says what kind, so the data API
+ * can answer with the right status (api/app.ts): "bad_input", "not_found",
+ * "over_budget", "confirm_required", "upstream" (Azure or GitHub refused),
+ * or the default "refused" (the action conflicts with what is happening now).
+ */
+export class RunError extends Error {
+  constructor(
+    message: string,
+    readonly code: string = "refused",
+  ) {
+    super(message);
+  }
+}
 
 /** Re-read what exists in Azure and store it in the snapshot. Never throws. */
 export async function refreshInventory(env: Env): Promise<void> {
@@ -183,6 +196,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     profile: opts.profile ?? null,
     pending_deploy: null,
     speedtest_req: null,
+    selftest_req: null,
     talkers: {},
     traffic_hist: [],
     capture_req: null,
@@ -420,7 +434,7 @@ async function failRun(env: Env, run: db.Run, message: string): Promise<void> {
   await releaseLock(env, run.id);
   await saveSnapshot(env, { state: "failed", error: message, since: new Date().toISOString(), pending_deploy: null });
   await db.addAlert(env, "failure", `${run.action} failed: ${message}`, run.id);
-  await notify(env, `wg-admin: ${run.action} failed`, message);
+  await notify(env, `wg-admin: ${run.action} failed`, message, { buttons: [dashboardButton(env, "Open the run", "/activity/runs/" + run.id)] });
 }
 
 /** Returns false (and does nothing) if the run was already settled by someone else. */
@@ -489,6 +503,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     vm_size: null,
     profile: null,
     speedtest_req: null,
+    selftest_req: null,
     firewall: before.firewall ? { ...before.firewall, counters: {}, applied_hash: null, drops: before.firewall.drops } : null,
     test_vm_ip: null,
     capture_req: null,
@@ -670,14 +685,21 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     patch.selftest = st;
     const failed = selfTestFailures(st);
     const deadline = patch.state === "running" || snap.state === "running" ? snap.auto_destroy_at : null;
+    // A result stamped with a request's id is an on-demand health check, not
+    // the boot run: its push says so, and does not announce the VM as newly ready.
+    const onDemand = typeof st.id === "string" && st.id !== "";
     if (failed.length) {
       await db.addAlert(env, "failure", `Self-test failed: ${failed.join(", ")}. The VM is up but clients may not work fully.`);
-      await notify(env, "wg-admin: up, but the self-test failed", `Failed: ${failed.join(", ")}. ${cfg.dnsName} → ${snap.public_ip ?? "?"}`, { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
+      await notify(env, onDemand ? "wg-admin: Health check failed" : "wg-admin: up, but the self-test failed", `Failed: ${failed.join(", ")}. ${cfg.dnsName} → ${snap.public_ip ?? "?"}`, { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
     } else {
       const v6 = st.internet6 === true ? ", IPv6" : "";
       await db.addAlert(env, "info", `Self-test passed in ${(st.ms / 1000).toFixed(1)} s: handshake, tunnel, loopback${st.dns ? ", DNS" : ""}, internet${v6}.`);
-      const until = deadline ? `. Tears down at ${new Date(deadline).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}` : "";
-      await notify(env, "wg-admin: ready", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}). ${cfg.dnsName} → ${snap.public_ip ?? "?"}${until}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
+      if (onDemand) {
+        await notify(env, "wg-admin: Health check passed", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}) in ${(st.ms / 1000).toFixed(1)} s. ${cfg.dnsName} → ${snap.public_ip ?? "?"}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
+      } else {
+        const until = deadline ? `. Tears down at ${new Date(deadline).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}` : "";
+        await notify(env, "wg-admin: ready", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}). ${cfg.dnsName} → ${snap.public_ip ?? "?"}${until}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
+      }
     }
   }
   // Speed test: a result coming back, or a request still to hand over.
@@ -699,6 +721,22 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
       await db.saveSpeedTest(env, { id: req.id, at: report.at, target_name: req.target_name, down_mbps: null, up_mbps: null, rtt_ms: null, jitter_ms: null, error: "no result within 5 minutes" });
     } else {
       reply.speedtest = { id: req.id, target: req.target };
+    }
+  }
+  // Health check: the VM's self-test, on request. It rides the reply until a
+  // result comes back (the id echoed, or any self-test newer than the request);
+  // the result itself is recorded and alerted by the self-test handling above.
+  // An old agent ignores the request, so give up after 5 minutes.
+  const hc = snap.selftest_req;
+  if (hc) {
+    const answered = !!st && (st.id === hc.id || Date.parse(st.at) > Date.parse(hc.at));
+    if (answered) {
+      patch.selftest_req = null;
+    } else if (Date.now() - Date.parse(hc.at) > 5 * 60_000) {
+      patch.selftest_req = null;
+      await db.addAlert(env, "failure", "Health check: the VM did not report within 5 minutes. Its agent may be an older build that cannot run it on request.");
+    } else {
+      reply.selftest = { id: hc.id };
     }
   }
   // Packet capture: hand the request over until the VM says it has started;
@@ -750,7 +788,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
   // a failed save cannot leave bytes counted twice. A history problem must
   // never cost the VM its heartbeat.
   try {
-    await recordHeartbeat(env, { report, prev: cur.agent, rtt: body.rtt, traffic, drops: freshDrops(body.firewall, report.at) });
+    await recordHeartbeat(env, { report, prev: cur.agent, rtt: body.rtt, traffic, drops: freshDrops(body.firewall, report.at), fwHits: fwDeltas(cur.firewall, body.firewall) });
   } catch (e) {
     console.error("history:", e);
   }

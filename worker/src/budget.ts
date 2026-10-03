@@ -103,7 +103,7 @@ export async function checkBudget(env: Env, cfg: Config, now = new Date()): Prom
   const sums = `${money(b.actual)} spent in Azure so far${b.session > 0 ? ` plus about ${money(b.session)} for the VM running now, to its timer` : ""}: ${Math.round(b.pct)}% of the ${money(b.budget)} monthly budget.`;
   const msg = due === 100 ? `Monthly budget reached. ${sums} Deploy will ask you to confirm until the month ends.` : `80% of the monthly budget used. ${sums}`;
   await db.addAlert(env, "budget", msg);
-  await notify(env, due === 100 ? "wg-admin: over budget" : "wg-admin: 80% of budget", msg, { priority: due === 100 ? 4 : 3, tags: ["moneybag"], buttons: [dashboardButton(env)] });
+  await notify(env, due === 100 ? "wg-admin: over budget" : "wg-admin: 80% of budget", msg, { priority: due === 100 ? 4 : 3, tags: ["moneybag"], buttons: [dashboardButton(env, "Open dashboard", "/cost")] });
   return `budget: ${due}% alert sent`;
 }
 
@@ -116,5 +116,5 @@ export async function requireBudgetOk(env: Env, confirmed: boolean): Promise<voi
   if (confirmed) return;
   const b = await budgetStatus(env);
   if (b.level !== "over") return;
-  throw new RunError(`This month is at ${Math.round(b.pct)}% of the ${money(b.budget)} budget. Tick "Deploy anyway" to go ahead.`);
+  throw new RunError(`This month is at ${Math.round(b.pct)}% of the ${money(b.budget)} budget. Tick "Deploy anyway" to go ahead.`, "over_budget");
 }

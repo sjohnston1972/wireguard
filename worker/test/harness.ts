@@ -125,10 +125,22 @@ export interface World {
   notes: Record<string, any>[];
   /** GitHub jobs per GitHub run id, for the step list. */
   jobs: Map<number, GhJob[]>;
+  /** GitHub job logs per job id, as plain text; a job with none answers 404. */
+  logs: Map<number, string>;
+  /** Test-only: when set, GitHub answers the jobs call with this status instead of the jobs. */
+  ghFail?: number;
+  /**
+   * Test-only: Azure's actual cost, one row per day, service and location.
+   * When set, Cost Management answers the plain daily query with each day's
+   * total and the grouped query with these rows. Unset: both answer empty.
+   */
+  costRows?: { day: string; service: string; location: string; gbp: number }[];
+  /** Test-only: when set, the grouped cost query (by service and location) answers with this status. */
+  costGroupedFail?: number;
 }
 
 export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World } {
-  const world: World = { dispatches: [], ghRuns: new Map(), azure: { rg: false, power: "running", ip: "20.0.0.10" }, powerCalls: [], notes: [], jobs: new Map() };
+  const world: World = { dispatches: [], ghRuns: new Map(), azure: { rg: false, power: "running", ip: "20.0.0.10" }, powerCalls: [], notes: [], jobs: new Map(), logs: new Map() };
   let nextGh = 1000;
   const env = {
     PUBLIC_URL: "https://wg-admin.example",
@@ -189,7 +201,10 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
       const run = u.pathname.match(/\/actions\/runs\/(\d+)$/);
       if (run) return world.ghRuns.has(Number(run[1])) ? json(world.ghRuns.get(Number(run[1]))) : json({}, 404);
       const jobs = u.pathname.match(/\/actions\/runs\/(\d+)\/jobs$/);
+      if (jobs && world.ghFail) return json({}, world.ghFail);
       if (jobs) return json({ jobs: world.jobs.get(Number(jobs[1])) ?? [] });
+      const log = u.pathname.match(/\/actions\/jobs\/(\d+)\/logs$/);
+      if (log) return world.logs.has(Number(log[1])) ? new Response(world.logs.get(Number(log[1])), { status: 200 }) : json({}, 404);
       return json({}, 404);
     }
 
@@ -200,6 +215,17 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
       if (vmOp && method === "POST") {
         world.powerCalls.push(vmOp[1]);
         return new Response(null, { status: 202 });
+      }
+      if (world.costRows && u.pathname.includes("CostManagement")) {
+        const grouped = JSON.parse(String(init?.body ?? "{}"))?.dataset?.grouping?.length > 0;
+        const d = (day: string) => Number(day.replace(/-/g, ""));
+        if (!grouped) {
+          const totals = new Map<string, number>();
+          for (const r of world.costRows) totals.set(r.day, (totals.get(r.day) ?? 0) + r.gbp);
+          return json({ properties: { columns: [{ name: "Cost" }, { name: "UsageDate" }, { name: "Currency" }], rows: [...totals].map(([day, gbp]) => [gbp, d(day), "GBP"]) } });
+        }
+        if (world.costGroupedFail) return json({}, world.costGroupedFail);
+        return json({ properties: { columns: [{ name: "Cost" }, { name: "UsageDate" }, { name: "ServiceName" }, { name: "ResourceLocation" }, { name: "Currency" }], rows: world.costRows.map((r) => [r.gbp, d(r.day), r.service, r.location, "GBP"]) } });
       }
       if (!world.azure.rg) return json({}, 404);
       if (/resourceGroups\/[^/]+$/.test(u.pathname)) return json({ location: "uksouth", tags: {} });

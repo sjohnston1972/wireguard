@@ -17,6 +17,7 @@
 //   - tears down what a failed run left in Azure, after FAILED_GRACE_MINUTES
 //   - flags drift: Azure and the dashboard disagree
 //   - flags an unreachable VM: no heartbeat for 2 minutes while Running
+//     (a VM still booting or just resumed gets 5 minutes to send its first)
 //   - pulls yesterday's actual cost from Azure once a day
 //   - trims the change log (audit) to its newest 1000 entries / 180 days
 //   - checks the month against the budget: one alert at 80%, one at 100%
@@ -34,8 +35,9 @@ import { refreshActiveRun, startDestroy, detectDrift, refreshInventory } from ".
 import { startHibernate, refreshPower } from "./standby";
 import { runSchedules } from "./schedule";
 import { notify } from "./notify";
+import { heartbeatProblem } from "./overview";
 import { actionButton, dashboardButton } from "./actions";
-import { costMonthToDate, azureView } from "./azure";
+import { costMonthToDate, costBreakdownMonthToDate, azureView } from "./azure";
 import { checkDns } from "./dns";
 import { checkBudget } from "./budget";
 import { nightlyConfigBackup } from "./backup";
@@ -198,7 +200,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
           await startDestroy(env, "watchman", `failed ${FAILED_GRACE_MINUTES} min ago with resources still in Azure`);
           const msg = `The last run failed ${Math.round(failedFor / 60_000)} minutes ago and left resource group ${cfg.resourceGroup} in Azure, which is costing money. Tearing it down.`;
           await db.addAlert(env, "cost_guard", msg);
-          await notify(env, "wg-admin: cleaning up after a failed run", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env)] });
+          await notify(env, "wg-admin: cleaning up after a failed run", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open dashboard", "/activity")] });
           notes.push(msg);
           return notes;
         }
@@ -225,13 +227,14 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
   // 5. Heartbeat watchdog and DNS re-check while Running.
   snap = await getSnapshot(env);
   if (snap.state === "running") {
-    const stale = !snap.last_agent_at || now.getTime() - Date.parse(snap.last_agent_at) > 2 * 60_000;
+    const problem = heartbeatProblem(snap, now.getTime());
+    const stale = problem !== null;
     const flag = "unreachable";
     const wasFlagged = (await env.STATUS.get(`flag:${flag}`)) === "1";
     if (stale && !wasFlagged) {
       await env.STATUS.put(`flag:${flag}`, "1");
-      await db.addAlert(env, "unreachable", "No heartbeat from the VM for 2 minutes. It may be down, or the agent token may be wrong.");
-      await notify(env, "wg-admin: VM unreachable", "No heartbeat for 2 minutes.", { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
+      await db.addAlert(env, "unreachable", (problem === "boot" ? "The VM hasn't reported in since it started 5 minutes ago." : "No heartbeat from the VM for 2 minutes.") + " It may be down, or the agent token may be wrong.");
+      await notify(env, "wg-admin: VM unreachable", problem === "boot" ? "The VM hasn't reported in since it started 5 minutes ago." : "No heartbeat for 2 minutes.", { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
       notes.push("unreachable");
     } else if (!stale && wasFlagged) {
       await env.STATUS.delete(`flag:${flag}`);
@@ -263,7 +266,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     const last = await env.STATUS.get("cost:fetched_day");
     if (last !== today) {
       try {
-        const { days } = await costMonthToDate(env);
+        const { days } = await costMonthToDate(env, now);
         for (const d of days) await db.upsertCostDay(env, d.day, d.gbp);
         await env.STATUS.put("cost:fetched_day", today);
         notes.push(`cost: ${days.length} day(s) updated`);
@@ -271,6 +274,24 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         notes.push(`cost: ${(e as Error).message}`);
       }
     }
+    // The split by type and region is separate: if it fails, the daily
+    // figures above stand, and it is tried again on the next run.
+    const lastSplit = await env.STATUS.get("cost:breakdown_day");
+    if (lastSplit !== today) {
+      try {
+        const rows = await costBreakdownMonthToDate(env, now);
+        await db.upsertCostBreakdown(env, rows);
+        await env.STATUS.put("cost:breakdown_day", today);
+        notes.push(`cost breakdown: ${rows.length} row(s) updated`);
+      } catch (e) {
+        notes.push(`cost breakdown: ${(e as Error).message}`);
+      }
+    }
+  }
+  try {
+    await db.pruneCostBreakdown(env, now);
+  } catch (e) {
+    notes.push(`cost breakdown expiry: ${(e as Error).message}`);
   }
 
   // 7. The monthly budget: this month's actual spend plus the running

@@ -1,0 +1,67 @@
+/* The client's split-view panel (Clients mockup, region 5). */
+.side-panel.cpanel { width: 362px; }
+@media (max-width: 1099px) { .side-panel.cpanel { width: auto; } }
+/* Visually hidden text (copy buttons' "Copied") is absolutely placed: keep it
+   inside the scrolling body, or rows below the fold would make the page scroll. */
+.cpanel .side-panel__body { position: relative; }
+.cpanel .mono { font-family: var(--font-mono); font-size: 12.5px; }
+.cpanel__lead { display: inline-flex; align-items: center; gap: 12px; color: var(--blue-bright); }
+.cpanel__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); }
+.cpanel__dot--green { background: var(--green); }
+.cpanel__dot--red { background: var(--red); }
+.cpanel__dot--amber { background: var(--amber); }
+
+.cpanel__stack { display: flex; flex-direction: column; gap: 12px; }
+.cpanel__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cpanel__h { font-size: 13px; font-weight: 600; }
+.cpanel__note { font-size: 12.5px; color: var(--text-secondary); line-height: 1.45; }
+.cpanel__note code { font-family: var(--font-mono); font-size: 12px; }
+.cpanel__muted { color: var(--text-secondary); font-size: 12px; }
+.cpanel__error { font-size: 12.5px; color: var(--red); }
+
+/* The status card: a ring, the word, the last handshake, the latency. */
+.cstate {
+  --c: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-tile);
+}
+.cstate--green { --c: var(--green); }
+.cstate--red { --c: var(--red); }
+.cstate--amber { --c: var(--amber); }
+.cstate__ring { width: 30px; height: 30px; border-radius: 50%; border: 4px solid var(--c); flex: none; }
+.cstate__text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-secondary); }
+.cstate__text strong { font-size: 15px; font-weight: 600; color: var(--c); }
+.cstate__lat { font-size: 14px; font-weight: 600; }
+
+.cpanel__tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cpanel__tiles .tile { align-items: flex-start; flex-wrap: wrap; }
+.cpanel__tiles .tile__spark { width: 100%; }
+.cpanel__traffic { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.cpanel__traffic > span { display: inline-flex; align-items: center; gap: 4px; }
+.cpanel__traffic > span:first-child svg { color: var(--green); }
+.cpanel__traffic > span:last-child svg { color: var(--red); }
+
+.cpanel__kv .kv__row { grid-template-columns: 110px 1fr; }
+.cpanel__recent { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-tile); }
+
+.cpanel__group { display: flex; flex-direction: column; gap: 4px; }
+.srow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.srow__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.srow__label { font-size: 13px; font-weight: 500; }
+.srow__hint { font-size: 12px; color: var(--text-secondary); }
+
+.cpanel__expiry { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cpanel__expiry-now { font-size: 13px; }
+.cpanel__expiry .select { width: 170px; }
+
+.cpanel__log { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cpanel__log li { display: flex; flex-direction: column; gap: 2px; font-size: 13px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.cpanel__move p { font-size: 13px; margin-top: 4px; }
+
+.cpanel__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+.cpanel__actions > .btn:first-child:nth-last-child(odd) { grid-column: 1 / -1; }

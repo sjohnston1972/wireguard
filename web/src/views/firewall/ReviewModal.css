@@ -1,0 +1,42 @@
+.fw-review { display: flex; flex-direction: column; gap: 14px; max-height: min(60vh, 520px); overflow: auto; }
+.fw-review__warn,
+.fw-review__error {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.fw-review__warn { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); }
+.fw-review__error { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border: 1px solid color-mix(in srgb, var(--red) 35%, transparent); }
+.fw-review__warn > svg, .fw-review__error > svg { flex: none; margin-top: 2px; }
+.fw-review__section { display: flex; flex-direction: column; gap: 6px; }
+.fw-review__h { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
+.fw-review__list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.fw-review__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+.fw-review__item--block { flex-direction: column; align-items: stretch; }
+.fw-review__row { display: flex; align-items: center; gap: 8px; }
+.fw-review__mark { display: inline-grid; place-items: center; width: 18px; font-family: var(--font-mono); font-weight: 700; }
+.fw-review__mark--add { color: var(--green); }
+.fw-review__mark--remove { color: var(--red); }
+.fw-review__mark--change { color: var(--amber); }
+.fw-review__mark--move { color: var(--blue-bright); }
+.fw-review__name { font-weight: 550; }
+.fw-review__where { color: var(--text-secondary); }
+.fw-review__fields { display: flex; flex-direction: column; gap: 3px; padding-left: 26px; }
+.fw-review__field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+.fw-review__fname { color: var(--text-secondary); min-width: 64px; }
+.fw-review__before { color: var(--red); font-family: var(--font-mono); }
+.fw-review__after { color: var(--green); font-family: var(--font-mono); text-decoration: none; }

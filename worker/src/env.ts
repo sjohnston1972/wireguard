@@ -12,6 +12,8 @@ export interface Env {
   STATUS: KVNamespace;
   STATE: R2Bucket;
   RUN_LOCK: DurableObjectNamespace;
+  /** The built app (web/dist), for the /assets/* guard (assetguard.ts). Absent in tests. */
+  ASSETS?: Fetcher;
 
   // Plain settings ([vars])
   PUBLIC_URL: string;

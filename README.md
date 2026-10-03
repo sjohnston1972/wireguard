@@ -99,14 +99,21 @@ Android (Chrome), the three Safari taps on an iPhone, and on a computer a QR
 code to open the dashboard on the phone. The app manifest and icons are
 public (their own Access bypass); everything else stays behind the login.
 
+The dashboard is a single-page app (React, built from `web/`) that talks to
+the Worker's JSON API. Every view has its own address, so you can bookmark or
+type one: `/clients/3`, `/firewall/rules/1`, `/activity/runs/<id>`,
+`/settings/mobile` (the old `/peers` goes to Clients). A phone alert opens the
+page it is about when tapped (a failed run, Cost, Settings > Mobile). After a
+deploy, open tabs and the installed app pick up the new version on their next
+load; phone alerts keep working without re-enabling them.
+
 On a phone the dashboard is slimmed right down: every tab fits one screen,
 with the sections in a tab bar at the bottom. Each tab shows a few status
 lights (green, amber, red, grey) and a handful of buttons: Overview has the
 state, the tunnel picture, four lights and Deploy / Extend / Hibernate /
 Resume / Tear down; Clients is one line per device. Everything else (the full
 facts, lists, forms, a client's details) sits in a sheet that slides up from
-the bottom when you tap its button, and Done puts it away. The desktop layout
-is unchanged.
+the bottom when you tap its button, and Done puts it away.
 
 | Screen | What it does |
 | --- | --- |
@@ -254,9 +261,44 @@ pick up the IPv6 address and the DNS setting.
 
 ```sh
 npm run secrets -- --worker   # push Worker secrets (skips placeholders with a warning)
-npm run deploy-worker         # applies database migrations, then deploys
-npm run dev                   # run it locally at http://localhost:8787 with login off
+npm run deploy-worker         # build the app, check its size, show the live version, migrate, deploy
+npm run deploy-worker -- --dry-run   # print those steps, change nothing
 ```
+
+`npm run deploy-worker` builds the app (`web/` into `web/dist`), checks it is
+within its size budget (`npm run bundle-size`), prints the version that is
+live now, applies any database migrations, then deploys the Worker with the
+app. It stops at the first step that fails. **Copy the version id it prints
+before deploying** (under "The version above is the one this deploy
+replaces"): that is what you go back to.
+
+**Going back.** A Worker version carries its static files, so going back
+restores the old pages, scripts and `sw.js` together, in about 30 seconds.
+The database is not touched (migrations only ever add tables).
+
+```sh
+npm run rollback-worker                      # lists recent versions (dates and ids); changes nothing
+npm run rollback-worker -- <version id>      # makes that version live again
+```
+
+Without a computer: Cloudflare dashboard > Workers & Pages > wg-admin >
+Deployments > the version before the deploy > Rollback. Then check with
+`node scripts/smoke.mjs --live https://wg-admin.clydeford.net` (run it after
+every deploy too): pages go to the Access login, the manifest and icons
+answer, and the VM heartbeat and alert-button paths still reach the Worker.
+
+**Running it on this PC.**
+
+```sh
+npm run dev:api               # the Worker and the built app at http://localhost:8787, login off
+npm run dev:web               # alongside it: the app with live reload at http://localhost:5173
+node scripts/smoke.mjs --local http://localhost:8787   # check pages, files and headers
+```
+
+`npm run dev:api` serves the built app from `web/dist` (it builds `web/`
+first if there is no build yet; run `npm run build:web` to refresh it). For
+working on the app, keep it running and use `npm run dev:web`, which reloads
+as you edit and sends `/api` to 8787.
 
 ## Using it without the dashboard (from the GitHub Actions tab)
 
@@ -334,13 +376,14 @@ free tiers.
 infra/                    Terraform: the Azure build and the DNS record
   cloud-init.yaml.tftpl   the VM's first-boot script
   agent/                  the heartbeat script and its systemd units
-worker/src/               the dashboard (Cloudflare Worker, TypeScript)
-worker/public/            stylesheet, client script, QR library
+worker/src/               the Worker: JSON API, VM and GitHub endpoints, watchman (TypeScript)
+web/                      the dashboard app (React, Vite); built into web/dist
+web/public/               files served at fixed addresses: sw.js, icons, _headers
 worker/migrations/        database schema
 wrangler.toml             the Worker's bindings, cron and hostname
 .github/workflows/wg.yml  the runner: apply or destroy
 .github/workflows/ci.yml  checks on every push, no cloud calls
-scripts/                  the npm commands (keys, peer, secrets, deploy-worker, dev)
+scripts/                  the npm commands (keys, peer, secrets, deploy-worker, rollback-worker, dev, smoke)
 wg-admin-spec.md          the full design
 docs/runs/                records of each autonomous build session
 ```

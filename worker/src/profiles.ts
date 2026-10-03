@@ -11,7 +11,7 @@ import type { Env } from "./env";
 import * as db from "./db";
 import { getSnapshot, saveSnapshot } from "./state";
 import { startDestroy, RunError } from "./runs";
-import { regionName } from "./region";
+import { regionName, REGIONS } from "./region";
 
 /** Tear down what exists and queue a deploy of the chosen profile. */
 export async function startMove(env: Env, o: { profileId: number; hours: number | null; by: string; requesterIp: string | null }): Promise<string> {
@@ -23,4 +23,39 @@ export async function startMove(env: Env, o: { profileId: number; hours: number 
   const run = await startDestroy(env, o.by, `move to ${p.name}`);
   await saveSnapshot(env, { pending_deploy: { region: p.region, vm_size: p.vm_size, profile: p.name, hours: o.hours, requested_by: o.by, requester_ip: o.requesterIp } });
   return `Moving to ${p.name} (${regionName(p.region)}): tearing down now (${run.id}), then building there. About 6 minutes in all.`;
+}
+
+/**
+ * Where a deploy goes: a profile (its region and size), a region on its
+ * own, or the usual settings when neither is given. Throws RunError
+ * "not_found" for a missing profile and "bad_input" for an unknown region.
+ */
+export async function resolveDeployTarget(env: Env, o: { profileId?: number | null; region?: string | null }): Promise<{ region?: string; vmSize?: string; profile: string | null }> {
+  if (o.profileId !== undefined && o.profileId !== null) {
+    const p = await db.getProfile(env, Number(o.profileId));
+    if (!p) throw new RunError("No such profile.", "not_found");
+    return { region: p.region, vmSize: p.vm_size, profile: p.name };
+  }
+  if (o.region !== undefined && o.region !== null) {
+    // hasOwn, not "in": "in" would also accept built-in names like "constructor".
+    if (!Object.hasOwn(REGIONS, o.region)) throw new RunError("Unknown region.", "bad_input");
+    return { region: o.region, profile: null };
+  }
+  return { profile: null };
+}
+
+/**
+ * Why a profile cannot be saved, in plain words, or null when it is fine.
+ * The name is checked as given (the caller trims it).
+ */
+export function profileProblem(p: { name: string; region: string; vm_size: string }): string | null {
+  return profileProblemAt(p)?.message ?? null;
+}
+
+/** The same check, also saying which input is at fault (named as the data API names it). */
+export function profileProblemAt(p: { name: string; region: string; vm_size: string }): { field: "name" | "region" | "vmSize"; message: string } | null {
+  if (!/^[A-Za-z0-9][A-Za-z0-9 _-]{0,23}$/.test(p.name)) return { field: "name", message: "The name must be 1 to 24 letters, numbers, spaces, dashes or underscores, starting with a letter or number." };
+  if (!Object.hasOwn(REGIONS, p.region)) return { field: "region", message: "Unknown region." };
+  if (!/^Standard_[A-Za-z0-9_]{1,30}$/.test(p.vm_size)) return { field: "vmSize", message: "The VM size must look like Standard_B1s." };
+  return null;
 }

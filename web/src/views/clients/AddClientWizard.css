@@ -1,0 +1,46 @@
+/* The add-client wizard (Modal on desktop, Sheet on the phone). */
+.wiz { display: flex; flex-direction: column; gap: 16px; }
+.wiz .mono { font-family: var(--font-mono); font-size: 12.5px; }
+
+.wiz__steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.wiz__step { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; font-size: 12.5px; color: var(--text-secondary); background: var(--bg-tile); }
+.wiz__num { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 600; background: var(--bg-elevated); border: 1px solid var(--border-strong); }
+.wiz__step--on { color: var(--text-primary); background: color-mix(in srgb, var(--blue) 16%, transparent); }
+.wiz__step--on .wiz__num { background: var(--blue-fill); border-color: var(--blue-fill); color: #fff; }
+.wiz__step--done .wiz__num { border-color: var(--green); color: var(--green); }
+
+.wiz__choices { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.wiz__choices > legend { margin-bottom: 8px; }
+.wiz__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-tile);
+  cursor: pointer;
+}
+.wiz__choice--indent { margin-left: 24px; }
+.wiz__choice--on { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, var(--bg-tile)); }
+.wiz__choice--off { cursor: not-allowed; opacity: 0.7; }
+.wiz__choice input { margin-top: 2px; accent-color: var(--blue-fill); width: 16px; height: 16px; flex: none; }
+.wiz__choice-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wiz__choice-title { font-size: 13.5px; font-weight: 500; }
+.wiz__choice-hint { font-size: 12.5px; color: var(--text-secondary); line-height: 1.4; }
+
+.wiz__routing { display: flex; flex-direction: column; gap: 14px; }
+.wiz__ips { display: flex; flex-direction: column; gap: 6px; }
+.wiz__ips-value {
+  display: block;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-app);
+  word-break: break-all;
+}
+.wiz__lead { font-size: 14px; line-height: 1.5; }
+.wiz__error { font-size: 13px; color: var(--red); line-height: 1.45; }
+
+.wiz__foot { display: flex; align-items: center; gap: 8px; width: 100%; }
+.wiz__spacer { flex: 1; }

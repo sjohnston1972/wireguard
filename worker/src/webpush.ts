@@ -41,12 +41,15 @@ export function b64u(bytes: ArrayBuffer | Uint8Array): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export function unb64u(s: string): Uint8Array {
+type Bytes = Uint8Array<ArrayBuffer>;
+const bytesOf = (s: string): Bytes => new Uint8Array(enc.encode(s));
+
+export function unb64u(s: string): Bytes {
   const t = s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4);
   return Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
 }
 
-function concat(...parts: Uint8Array[]): Uint8Array {
+function concat(...parts: Uint8Array[]): Bytes {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let o = 0;
   for (const p of parts) {
@@ -56,13 +59,13 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-async function hkdf(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, bytes: number): Promise<Uint8Array> {
+async function hkdf(salt: Bytes, ikm: Bytes, info: Bytes, bytes: number): Promise<Bytes> {
   const key = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
   return new Uint8Array(await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info }, key, bytes * 8));
 }
 
 /** RFC 8291 "aes128gcm" body for one subscription. `salt` and `ephemeral` are injectable for tests. */
-export async function encryptPayload(sub: PushSubscription, plaintext: Uint8Array, opts: { salt?: Uint8Array; ephemeral?: CryptoKeyPair } = {}): Promise<Uint8Array> {
+export async function encryptPayload(sub: PushSubscription, plaintext: Uint8Array, opts: { salt?: Bytes; ephemeral?: CryptoKeyPair } = {}): Promise<Bytes> {
   const uaPublic = unb64u(sub.p256dh);
   const authSecret = unb64u(sub.auth);
   const eph = opts.ephemeral ?? ((await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"])) as CryptoKeyPair);
@@ -72,8 +75,8 @@ export async function encryptPayload(sub: PushSubscription, plaintext: Uint8Arra
 
   const ikm = await hkdf(authSecret, ecdhSecret, concat(enc.encode("WebPush: info\0"), uaPublic, asPublic), 32);
   const salt = opts.salt ?? crypto.getRandomValues(new Uint8Array(16));
-  const cek = await hkdf(salt, ikm, enc.encode("Content-Encoding: aes128gcm\0"), 16);
-  const nonce = await hkdf(salt, ikm, enc.encode("Content-Encoding: nonce\0"), 12);
+  const cek = await hkdf(salt, ikm, bytesOf("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await hkdf(salt, ikm, bytesOf("Content-Encoding: nonce\0"), 12);
 
   const aes = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"]);
   const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, aes, concat(plaintext, new Uint8Array([2]))));

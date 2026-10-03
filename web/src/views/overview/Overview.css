@@ -1,0 +1,249 @@
+/* The Overview fills the page area exactly on a desktop window (one-screen
+   rule): header and banner take what they need, the three rows share the
+   rest, and each panel scrolls inside itself. */
+.ov {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  height: 100%;
+  min-height: 0;
+}
+.ov .page-header {
+  margin-bottom: 0;
+}
+
+.ov-read {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ov-read__caption {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.ov-read__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  min-width: 132px;
+  padding: 0 12px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.ov-flag {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 15px;
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+.ov-gear {
+  align-self: flex-end;
+}
+
+/* The three rows below the banner share the height left, in the mockup's proportions. */
+.ov-rows {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 245fr) minmax(0, 320fr) minmax(0, 120fr);
+  gap: var(--gap);
+}
+
+/* A tall desktop window gets the mockup's proportions: topology and metrics
+   about 190 px, the run (chips, pipeline, log) the most, the lower row a strip. */
+@media (min-width: 1100px) and (min-height: 800px) {
+  .ov,
+  .ov-rows,
+  .ov-row { gap: 10px; }
+  /* Row 2 as tall as its tiles need (more when running: bars and sparklines); the run row takes the rest. */
+  .ov-rows { grid-template-rows: auto minmax(0, 1fr) minmax(0, 96px); }
+  .ov-banner { padding-block: 8px; }
+  .ov-run { gap: 6px; }
+  /* Compact panel heads: the height goes to the steps, lines and tiles. */
+  .ov-rows .panel__head { padding-top: 8px; min-height: 28px; }
+  .ov-rows .panel__body { padding-top: 4px; padding-bottom: 6px; }
+  .ov-pipeline .steps__item { min-height: 21px; }
+  .ov-pipeline__btn { padding-block: 1px; }
+  .ov-run__intro { margin: 0 0 4px; }
+}
+
+/* Every panel is the containing block for what it holds: visually hidden
+   text and other absolutely placed bits inside a panel that scrolls are then
+   clipped by it, instead of stretching the page area below the window. */
+.ov .panel,
+.ov .panel__body {
+  position: relative;
+}
+
+/* The lower row is short: tighter panel heads and bodies. */
+.ov-row--4 .panel__head {
+  padding-top: 8px;
+  min-height: 30px;
+}
+.ov-row--4 .panel__body {
+  padding: 6px 16px 8px;
+}
+.ov-row {
+  display: grid;
+  gap: var(--gap);
+  min-height: 0;
+  min-width: 0;
+}
+.ov-row > * {
+  min-height: 0;
+  min-width: 0;
+}
+.ov-row--2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.ov-row--3 { grid-template-columns: minmax(0, 41fr) minmax(0, 45fr) minmax(0, 32fr); }
+.ov-row--4 { grid-template-columns: minmax(0, 54fr) minmax(0, 32fr) minmax(0, 32fr); }
+/* During a run the chip row, pipeline and log share the first two columns. */
+.ov-row--3 > .ov-run { grid-column: span 2; }
+
+/* 641-1099 px: panels stack and the page may scroll. */
+@media (max-width: 1099px) {
+  .ov { height: auto; }
+  .ov-rows { display: flex; flex-direction: column; }
+  .ov-row--2, .ov-row--3, .ov-row--4 { grid-template-columns: minmax(0, 1fr); }
+}
+
+.ov-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.ov-skeleton__row {
+  display: grid;
+  grid-template-columns: 7fr 5fr;
+  gap: var(--gap);
+}
+.ov-skeleton__row--3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* Below 1400 px the running banner's secondary buttons show their icon only
+   (the word stays for screen readers and as a tooltip), so the row never wraps. */
+@media (min-width: 1100px) and (max-width: 1399px) {
+  .ov-banner__icon-btn { width: 36px; padding: 0; gap: 0; }
+  .ov-banner__icon-btn .ov-banner__btn-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .ov-banner { flex-wrap: nowrap; }
+  .ov-banner__state { flex: 1 1 auto; }
+  /* The topology's side nodes keep their words: the icon goes. */
+  .ov-node:not(.ov-node--centre) .ov-node__icon { display: none; }
+  .ov-node { padding: 10px 12px; }
+  /* speed tests: when, down, up and ping each on one line */
+  .ov-speed__row { grid-template-columns: 46px repeat(2, minmax(0, 1fr)) auto; gap: 8px; font-size: 11.5px; }
+  /* the health checks in two columns, so their names fit */
+  .ov-health__head { flex-basis: 178px; }
+  .ov-health__list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* A tall window: the bottom strip's panels hold their content without scrolling,
+   and during a run the pipeline shows all its steps beside about 14 log lines. */
+@media (min-width: 1100px) and (min-height: 800px) {
+  .ov,
+  .ov-rows,
+  .ov-row { gap: 8px; }
+  .ov-rows { grid-template-rows: auto minmax(0, 1fr) minmax(0, 104px); }
+  .ov-tile > .tile { padding-block: 3px; }
+  .ov-tile .tile__main { gap: 1px; }
+  .ov-tile .tile__label, .ov-tile .tile__value, .ov-tile .tile__sub, .ov-tile__sub { line-height: 1.25; }
+  .ov-health__list { row-gap: 4px; }
+  .ov-health__head { flex: none; }
+  .ov-health__list { grid-template-columns: repeat(3, max-content); column-gap: 22px; }
+  .ov-health__body, .ov-cost__body { overflow: hidden; }
+  .ov-check-item__name, .ov-check-item__age { line-height: 1.2; }
+  .ov-cost__now { flex: none; }
+  .ov-cost__sub, .ov-cost__value { line-height: 1.3; white-space: nowrap; }
+  .ov-metrics__body { padding-top: 4px; padding-bottom: 8px; }
+  .ov-tiles, .ov-tiles__row { gap: 6px; }
+  .ov-node { padding-block: 10px; }
+  .ov-node--centre { padding-block: 8px; }
+  .ov-topo__body { padding-top: 6px; padding-bottom: 8px; }
+  .ov-run .ov-pipeline .steps__item { min-height: 20px; }
+  .ov-run__log .log__lines { font-size: 12px; line-height: 1.32; padding-block: 6px; }
+  .ov-run__log .log__line { min-height: 0; }
+  .ov-node--centre { gap: 2px; }
+  .ov-node--centre .ov-node__line { line-height: 1.3; }
+  .ov-run__log .log__bar { padding-bottom: 4px; }
+  .ov-run__panels > .panel > .panel__head { padding-top: 8px; min-height: 30px; }
+  .ov-run__panels > .panel > .panel__body { padding-top: 6px; }
+  .ov-run__logbody { padding-bottom: 8px; }
+  .ov-banner__progress { gap: 4px; }
+}
+
+/* A short window (1100 x 600): every row compact; the metric tiles drop their
+   second line and the lower strip keeps one line per item. */
+@media (min-width: 1100px) and (max-height: 799px) {
+  .ov,
+  .ov-rows,
+  .ov-row { gap: 8px; }
+  .ov .page-header__subtitle { display: none; }
+  .ov-rows { grid-template-rows: minmax(0, 118px) minmax(0, 1fr) minmax(0, 82px); }
+  .ov-tiles { min-height: 0; }
+  .ov-tiles__row { flex: none; }
+  .ov-banner { padding: 6px 16px; }
+  .ov-banner .ov-mark { width: 30px !important; height: 30px !important; }
+  .ov-banner__word { font-size: 16px; }
+  .ov-banner__elapsed { font-size: 17px; }
+  .ov-banner__timing { padding-left: 16px; }
+  .ov-banner__steps { display: none; }
+  .ov-rows .panel__head { padding-top: 6px; min-height: 28px; }
+  .ov-rows .panel__title { font-size: 14px; }
+  .ov-rows .panel__body { padding-top: 4px; padding-bottom: 6px; }
+  /* topology: one line per node */
+  .ov-node { padding: 6px 10px; gap: 8px; }
+  .ov-node--centre { padding-block: 4px; gap: 0; }
+  .ov-node--centre .ov-node__icon { display: none; }
+  .ov-node__title { font-size: 13px; }
+  .ov-node__line + .ov-node__line { display: none; }
+  .ov-edge__label { display: none; }
+  /* metric tiles: label and figure only */
+  .ov-tiles, .ov-tiles__row { gap: 6px; }
+  .ov-tile > .tile { padding: 3px 8px; }
+  .ov-tile .tile__sub, .ov-tile .tile__spark, .ov-tile .tile__progress { display: none; }
+  .ov-tile .tile__label { font-size: 11px; }
+  .ov-tile .tile__value { font-size: 15px; }
+  .ov-tile__mono { font-size: 13px; }
+  .ov-metrics__body { padding-top: 2px; }
+  /* lower strip: one line each */
+  .ov-row--4 .panel__head { padding-top: 6px; min-height: 26px; }
+  .ov-row--4 .panel__body { padding: 4px 16px 6px; }
+  .ov-health__icon { width: 30px; height: 30px; }
+  .ov-health__icon svg { width: 16px; height: 16px; }
+  .ov-health__sub { display: none; }
+  .ov-health__list .ov-check-item__age { display: none; }
+  .ov-health__list { gap: 1px 10px; }
+  .ov-health__list .ov-check-item { font-size: 11.5px; line-height: 1.2; }
+  .ov-tile .tile__icon, .ov-tile .ring { display: none; }
+  .ov-cost__icon { display: none; }
+  .ov-cost__bars { display: none; }
+  .ov-cost__value { font-size: 15px; }
+  .ov-run__chips .tabs__tab, .ov-run__chips button { height: 28px; }
+  /* Destroyed: the deploy form beside a short state, its two choices side by side, so the banner stays one band. */
+  .ov-banner:has(.ov-banner__deploy) { flex-wrap: nowrap; gap: 16px; }
+  .ov-banner:has(.ov-banner__deploy) .ov-banner__state { flex: 0 1 240px; }
+  .ov-banner__deploy .ov-deploy { gap: 6px 16px; }
+  .ov-banner__deploy .ov-deploy__fields { flex-wrap: nowrap; gap: 16px; }
+  .ov-banner__deploy .ov-deploy__field { gap: 3px; }
+  .ov-banner__deploy .chip { height: 28px; padding-inline: 9px; font-size: 12.5px; }
+  .ov-banner__deploy .ov-form__note { flex-basis: 100%; margin: 0; }
+  .ov-run__intro { display: none; }
+}

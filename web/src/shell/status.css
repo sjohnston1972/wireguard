@@ -1,0 +1,115 @@
+/* State chip and its details, the page-header environment field, the
+   connection banner, the session-expired screen. */
+
+/* ---- state chip: dot + "Azure • UK South"; the dot also carries stale/disconnected ---- */
+.topbar__chip-dot {
+  background: var(--text-muted);
+}
+.topbar__chip[data-tone="ok"] .topbar__chip-dot {
+  background: var(--green);
+}
+.topbar__chip[data-tone="busy"] .topbar__chip-dot,
+.topbar__chip[data-tone="stale"] .topbar__chip-dot {
+  background: var(--amber);
+}
+.topbar__chip[data-tone="bad"] .topbar__chip-dot {
+  background: var(--red);
+}
+
+.chip-pop {
+  z-index: 150;
+  min-width: 240px;
+  max-width: 320px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.4);
+  font-size: 13px;
+}
+.chip-pop__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.chip-pop__list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.chip-pop__list dt {
+  color: var(--text-secondary);
+}
+.chip-pop__list dd {
+  margin: 0;
+  color: var(--text-primary);
+  text-align: right;
+}
+.chip-pop__note {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ---- read-only environment, in a page header ---- */
+.env-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.env-field__caption {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.env-field__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  min-width: 132px;
+  padding: 0 12px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.env-field__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+/* ---- disconnected banner ---- */
+.conn-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--red) 16%, var(--bg-bar));
+  border-bottom: 1px solid color-mix(in srgb, var(--red) 45%, var(--border));
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.conn-banner__retry {
+  margin-left: auto;
+}
+
+.session-expired {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 420px;
+  margin: 12vh auto 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.session-expired__title {
+  font-size: 20px;
+  font-weight: 650;
+  color: var(--text-primary);
+}

@@ -1,0 +1,148 @@
+.ov-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px 28px;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  min-width: 0;
+}
+.ov-banner__state {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 420px;
+  min-width: 0;
+  max-width: 660px;
+}
+.ov-banner__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.ov-banner__words {
+  min-width: 0;
+}
+.ov-banner__word {
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+.ov-banner__sub {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-banner__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ov-banner__progress .progress__value {
+  min-width: 36px;
+  text-align: right;
+}
+.ov-banner__steps {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-banner__failed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.ov-banner__link {
+  color: var(--blue-bright);
+  font-weight: 500;
+}
+.ov-banner__timing {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-left: 28px;
+  border-left: 1px solid var(--border-strong);
+  flex: 0 0 auto;
+}
+.ov-banner__clock {
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+.ov-banner__caption {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-banner__elapsed {
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.ov-banner__note {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ov-banner__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+.ov-banner__buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ov-banner__wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ov-banner__deploy {
+  flex: 10 1 560px;
+  min-width: 0;
+}
+
+/* The state mark: a ring in the state's colour with a dot; it turns while busy. */
+.ov-mark {
+  position: relative;
+  flex: none;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--ov-tone) 35%, transparent);
+  border-top-color: var(--ov-tone);
+}
+.ov-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 30%;
+  height: 30%;
+  border-radius: 50%;
+  background: var(--ov-tone);
+}
+.ov-mark--busy {
+  animation: ov-turn 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ov-mark--busy { animation: none; }
+}
+@keyframes ov-turn { to { transform: rotate(360deg); } }
+
+.ov-mark--green, .ov-tone--green { --ov-tone: var(--green); }
+.ov-mark--amber, .ov-tone--amber { --ov-tone: var(--amber); }
+.ov-mark--red, .ov-tone--red { --ov-tone: var(--red); }
+.ov-mark--grey, .ov-tone--grey { --ov-tone: var(--text-muted); }
+.ov-banner__word.ov-tone--green { color: var(--green); }
+.ov-banner__word.ov-tone--amber { color: var(--amber); }
+.ov-banner__word.ov-tone--red { color: var(--red); }
+.ov-banner__word.ov-tone--grey { color: var(--text-primary); }
+.ov-mark:not(.ov-mark--busy) { border-color: var(--ov-tone); }

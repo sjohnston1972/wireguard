@@ -41,6 +41,7 @@ export async function consumeAction(env: Env, token: string): Promise<QuickActio
   return action === "extend" || action === "hibernate" || action === "destroy" ? action : null;
 }
 
-export function dashboardButton(env: Env, label = "Open dashboard"): NotifyButton {
-  return { label, url: config(env).publicUrl, kind: "view" };
+/** A "view" button: the dashboard, or a page of it (a path like "/cost"). */
+export function dashboardButton(env: Env, label = "Open dashboard", path = "/"): NotifyButton {
+  return { label, url: config(env).publicUrl + path, kind: "view" };
 }

@@ -1,0 +1,72 @@
+.fw-zones-panel > .panel__body { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+.fw-zones { display: flex; align-items: stretch; gap: 0; min-height: 0; flex: 1; }
+.fw-zones__cell { display: flex; align-items: center; flex: 1 1 0; min-width: 0; }
+.fw-zones__cell:last-child { flex: 0.82 1 0; }
+.fw-zones__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  min-height: 96px;
+  max-height: 128px;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-tile);
+  cursor: pointer;
+  text-align: center;
+}
+.fw-zones__card:hover { border-color: var(--blue); }
+.fw-zones__card--on { border-color: var(--blue-bright); background: color-mix(in srgb, var(--blue) 14%, var(--bg-tile)); box-shadow: inset 0 0 0 1px var(--blue-bright); }
+.fw-zones__icon { color: var(--blue-bright); margin-bottom: 2px; }
+.fw-zones__card--workloads .fw-zones__icon { color: var(--purple); }
+.fw-zones__card--home .fw-zones__icon { color: var(--green); }
+.fw-zones__card--internet .fw-zones__icon { color: var(--text-primary); }
+.fw-zones__label { font-size: 12.5px; font-weight: 600; line-height: 1.2; max-width: 100%; overflow-wrap: anywhere; }
+.fw-zones__addr { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.fw-zones__sub { font-size: 11.5px; color: var(--text-secondary); }
+.fw-zones__arrow { position: relative; flex: none; width: 26px; height: 2px; margin: 0 2px; }
+.fw-zones__arrow::before {
+  content: "";
+  position: absolute;
+  inset: 0 6px 0 0;
+  background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px);
+}
+.fw-zones__arrow::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -4px;
+  border-left: 7px solid var(--c);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+.fw-zones__arrow--allow { --c: var(--green); }
+.fw-zones__arrow--deny { --c: var(--red); }
+.fw-zones__legend { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+.fw-zones__key { display: inline-block; width: 18px; height: 2px; margin-left: 8px; background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px); }
+.fw-zones__key--allow { --c: var(--green); }
+.fw-zones__key--deny { --c: var(--red); }
+
+/* 1100-1399 px: five narrow cards; icon and name only (the address is in the table). */
+@media (min-width: 1100px) and (max-width: 1399px) {
+  .fw-zones__addr, .fw-zones__sub { display: none; }
+  .fw-zones__card { min-height: 64px; padding: 6px 3px; }
+  .fw-zones__label { font-size: 11px; overflow-wrap: normal; word-break: normal; hyphens: auto; }
+  .fw-zones__arrow { width: 14px; }
+  .fw-zones__legend { display: none; }
+}
+@media (max-height: 760px) and (min-width: 1100px) {
+  .fw-zones__card { min-height: 60px; }
+  .fw-zones__sub { display: none; }
+}
+@media (max-width: 640px) {
+  .fw-zones { flex-direction: column; gap: 6px; }
+  .fw-zones__cell { flex-direction: column; }
+  .fw-zones__arrow { transform: rotate(90deg); margin: 10px 0; }
+  .fw-zones__card { width: 100%; min-height: 0; flex-direction: row; gap: 10px; }
+}

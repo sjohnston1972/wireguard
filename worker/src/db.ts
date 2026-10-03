@@ -5,6 +5,7 @@
 
 import type { Env } from "./env";
 import type { FwRule, Forward } from "./firewall";
+import type { DraftRule, RuleBody } from "./fwdraft";
 
 export type RunAction = "apply" | "destroy";
 export type RunStatus = "queued" | "running" | "success" | "failure" | "cancelled";
@@ -324,6 +325,41 @@ export async function costDays(env: Env, sinceDay: string): Promise<CostDay[]> {
   return (await env.DB.prepare("SELECT * FROM cost_days WHERE day >= ?1 ORDER BY day").bind(sinceDay).all<CostDay>()).results;
 }
 
+/** One day's cost for one Azure service in one region (location is the region id, "" when Azure gave none). */
+export interface CostBreakdownRow {
+  day: string;
+  category: string;
+  location: string;
+  gbp: number;
+}
+
+/** Store the split rows, replacing any already held for the same day, service and location. */
+export async function upsertCostBreakdown(env: Env, rows: CostBreakdownRow[]): Promise<void> {
+  if (!rows.length) return;
+  const at = new Date().toISOString();
+  await env.DB.batch(
+    rows.map((r) =>
+      env.DB.prepare("INSERT INTO cost_breakdown (day, category, location, gbp, fetched_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(day, category, location) DO UPDATE SET gbp = excluded.gbp, fetched_at = excluded.fetched_at").bind(r.day, r.category, r.location, r.gbp, at),
+    ),
+  );
+}
+
+/** The split over a range of days (inclusive), added up per service and region, with the latest day seen. Reads by the table's key. */
+export async function costBreakdownRange(env: Env, from: string, to: string): Promise<{ category: string; location: string; gbp: number; last_day: string }[]> {
+  return (
+    await env.DB.prepare("SELECT category, location, SUM(gbp) AS gbp, MAX(day) AS last_day FROM cost_breakdown WHERE day >= ?1 AND day <= ?2 GROUP BY category, location").bind(from, to).all<{ category: string; location: string; gbp: number; last_day: string }>()
+  ).results;
+}
+
+/** Days the split is kept: the cost page compares periods a year apart at most. */
+export const COST_BREAKDOWN_KEEP_DAYS = 400;
+
+/** Delete split rows older than 400 days. */
+export async function pruneCostBreakdown(env: Env, now: Date): Promise<void> {
+  const cutoff = new Date(now.getTime() - COST_BREAKDOWN_KEEP_DAYS * 86_400_000).toISOString().slice(0, 10);
+  await env.DB.prepare("DELETE FROM cost_breakdown WHERE day < ?1").bind(cutoff).run();
+}
+
 // ── Profiles ──────────────────────────────────────────────────────────────
 
 export interface Profile {
@@ -351,6 +387,15 @@ export async function deleteProfile(env: Env, id: number): Promise<void> {
   await env.DB.prepare("UPDATE schedules SET profile_id = NULL WHERE profile_id = ?1").bind(id).run();
 }
 
+/** Change a profile's name, region or size; only the fields given are touched. */
+export async function updateProfile(env: Env, id: number, patch: { name?: string; region?: string; vm_size?: string }): Promise<void> {
+  const keys = (["name", "region", "vm_size"] as const).filter((k) => patch[k] !== undefined);
+  if (!keys.length) return;
+  await env.DB.prepare(`UPDATE profiles SET ${keys.map((k, i) => `${k} = ?${i + 2}`).join(", ")} WHERE id = ?1`)
+    .bind(id, ...keys.map((k) => patch[k]))
+    .run();
+}
+
 // ── Schedules ─────────────────────────────────────────────────────────────
 
 export interface Schedule {
@@ -370,6 +415,20 @@ export async function listSchedules(env: Env): Promise<Schedule[]> {
 export async function addSchedule(env: Env, s: { days: string; start_time: string; end_time: string; profile_id: number | null }): Promise<void> {
   await env.DB.prepare("INSERT INTO schedules (days, start_time, end_time, profile_id, enabled, created_at) VALUES (?1, ?2, ?3, ?4, 1, ?5)")
     .bind(s.days, s.start_time, s.end_time, s.profile_id, new Date().toISOString())
+    .run();
+}
+
+/** Change a schedule's days, window, profile or on/off; only the fields given are touched. */
+export async function updateSchedule(env: Env, id: number, patch: { days?: string; start_time?: string; end_time?: string; profile_id?: number | null; enabled?: boolean }): Promise<void> {
+  const cols: [string, string | number | null][] = [];
+  if (patch.days !== undefined) cols.push(["days", patch.days]);
+  if (patch.start_time !== undefined) cols.push(["start_time", patch.start_time]);
+  if (patch.end_time !== undefined) cols.push(["end_time", patch.end_time]);
+  if (patch.profile_id !== undefined) cols.push(["profile_id", patch.profile_id]);
+  if (patch.enabled !== undefined) cols.push(["enabled", patch.enabled ? 1 : 0]);
+  if (!cols.length) return;
+  await env.DB.prepare(`UPDATE schedules SET ${cols.map(([k], i) => `${k} = ?${i + 2}`).join(", ")} WHERE id = ?1`)
+    .bind(id, ...cols.map(([, v]) => v))
     .run();
 }
 
@@ -461,21 +520,129 @@ export async function updateFwRule(env: Env, id: number, patch: Partial<FwRule>)
     .run();
 }
 
-export async function deleteFwRule(env: Env, id: number): Promise<void> {
-  await env.DB.prepare("DELETE FROM fw_rules WHERE id = ?1").bind(id).run();
+// ── Firewall draft and the live rule set's version (0015) ────────────────
+//
+// Numbers bound from JavaScript reach D1 as REAL, so every bound id,
+// position or version is CAST to INTEGER where SQL compares or stores it.
+
+export interface FwPolicy {
+  live_version: number;
+  /** The live version the draft began from; null when there is no draft. */
+  draft_base: number | null;
+  draft_default: "allow" | "deny" | null;
 }
 
-/** Move a rule one place up or down: swap positions with its neighbour. */
-export async function moveFwRule(env: Env, id: number, dir: -1 | 1): Promise<void> {
-  const rules = await listFwRules(env);
-  const i = rules.findIndex((r) => r.id === id);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= rules.length) return;
-  // Renumber in tens, so equal positions cannot make the swap a no-op; one
-  // batch, one round trip.
-  const order = rules.map((r) => r.id);
-  [order[i], order[j]] = [order[j], order[i]];
-  await env.DB.batch(order.map((rid, k) => env.DB.prepare("UPDATE fw_rules SET position = ?2 WHERE id = ?1").bind(rid, (k + 1) * 10)));
+export async function getFwPolicy(env: Env): Promise<FwPolicy> {
+  const r = await env.DB.prepare("SELECT live_version, draft_base, draft_default FROM fw_policy WHERE id = 1").first<FwPolicy>();
+  return r ? { live_version: Number(r.live_version), draft_base: r.draft_base === null ? null : Number(r.draft_base), draft_default: r.draft_default } : { live_version: 1, draft_base: null, draft_default: null };
+}
+
+/** The statement that marks the live rules as changed (a draft begun before now is stale), for a caller's own batch. */
+export function bumpFwVersionStmt(env: Env): D1PreparedStatement {
+  return env.DB.prepare("UPDATE fw_policy SET live_version = live_version + 1 WHERE id = 1");
+}
+
+/** The live rules or default changed outside Apply (old page, Settings, restore): any draft is now stale. */
+export async function bumpFwVersion(env: Env): Promise<void> {
+  await bumpFwVersionStmt(env).run();
+}
+
+export async function listFwDraftRules(env: Env): Promise<DraftRule[]> {
+  return (await env.DB.prepare("SELECT id, live_id, position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log FROM fw_draft_rules ORDER BY position, id").all<DraftRule>()).results;
+}
+
+/**
+ * Begin a draft if there is none: copy every live rule with its own id and
+ * the live default, and record the live version it began from. One batch,
+ * and each step does nothing when a draft already exists.
+ */
+export async function ensureFwDraft(env: Env): Promise<void> {
+  const none = "(SELECT draft_base FROM fw_policy WHERE id = 1) IS NULL";
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM fw_draft_rules WHERE ${none}`),
+    env.DB.prepare(
+      `INSERT INTO fw_draft_rules (id, live_id, position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log, created_at)
+       SELECT id, id, position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log, created_at FROM fw_rules WHERE ${none}`,
+    ),
+    env.DB.prepare(
+      `UPDATE fw_policy SET draft_base = live_version,
+         draft_default = COALESCE((SELECT CASE value WHEN 'allow' THEN 'allow' ELSE 'deny' END FROM settings WHERE key = 'firewall_default'), 'deny')
+       WHERE id = 1 AND draft_base IS NULL`,
+    ),
+  ]);
+}
+
+/** Add a rule at the end of the draft; returns its id. */
+export async function addFwDraftRule(env: Env, r: RuleBody): Promise<number> {
+  const row = await env.DB.prepare(
+    `INSERT INTO fw_draft_rules (live_id, position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log, created_at)
+     VALUES (NULL, (SELECT COALESCE(MAX(position), 0) + 10 FROM fw_draft_rules), CAST(?1 AS INTEGER), ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, CAST(?10 AS INTEGER), ?11) RETURNING id`,
+  )
+    .bind(r.enabled, r.name, r.src_kind, r.src_value, r.dst_kind, r.dst_value, r.proto, r.ports, r.action, r.log, new Date().toISOString())
+    .first<{ id: number }>();
+  return Number(row!.id);
+}
+
+export async function updateFwDraftRule(env: Env, id: number, r: RuleBody): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE fw_draft_rules SET enabled = CAST(?2 AS INTEGER), name = ?3, src_kind = ?4, src_value = ?5, dst_kind = ?6, dst_value = ?7, proto = ?8, ports = ?9, action = ?10, log = CAST(?11 AS INTEGER)
+     WHERE id = CAST(?1 AS INTEGER)`,
+  )
+    .bind(id, r.enabled, r.name, r.src_kind, r.src_value, r.dst_kind, r.dst_value, r.proto, r.ports, r.action, r.log)
+    .run();
+}
+
+export async function deleteFwDraftRule(env: Env, id: number): Promise<void> {
+  await env.DB.prepare("DELETE FROM fw_draft_rules WHERE id = CAST(?1 AS INTEGER)").bind(id).run();
+}
+
+/** Put the draft in this order (ids, first first), renumbered in tens; one batch. */
+export async function orderFwDraft(env: Env, ids: number[]): Promise<void> {
+  if (!ids.length) return;
+  await env.DB.batch(ids.map((rid, k) => env.DB.prepare("UPDATE fw_draft_rules SET position = CAST(?2 AS INTEGER) WHERE id = CAST(?1 AS INTEGER)").bind(rid, (k + 1) * 10)));
+}
+
+export async function setFwDraftDefault(env: Env, action: "allow" | "deny"): Promise<void> {
+  await env.DB.prepare("UPDATE fw_policy SET draft_default = ?1 WHERE id = 1 AND draft_base IS NOT NULL").bind(action).run();
+}
+
+/**
+ * Put the draft live, all in one batch, or nothing at all. The first
+ * statement claims the apply with a one-time token, and only if the live
+ * version is still `base` and the draft began from `base`; every later
+ * statement runs only while that token is the one stored. So a draft begun
+ * before another apply, a restore or a default change does nothing.
+ * Kept rules are updated in place (their ids, hit counters and history
+ * carry on), removed ones deleted, new ones inserted with fresh ids; the
+ * default is saved if it differs; the audit entry is written; the draft is
+ * cleared. True when it was applied.
+ */
+export async function applyFwDraft(env: Env, base: number, log: { user: string; target: string; before: unknown; after: unknown }): Promise<boolean> {
+  const tok = crypto.randomUUID();
+  const mine = "(SELECT apply_token FROM fw_policy WHERE id = 1) = ?1";
+  const cols = "position, enabled, name, src_kind, src_value, dst_kind, dst_value, proto, ports, action, log";
+  const entry = auditStmt(env, log.user, "firewall.apply", log.target, log.before, log.after, { sql: "(SELECT apply_token FROM fw_policy WHERE id = 1) = ?7", value: tok });
+  const stmts = [
+    env.DB.prepare("UPDATE fw_policy SET live_version = live_version + 1, apply_token = ?1 WHERE id = 1 AND live_version = CAST(?2 AS INTEGER) AND draft_base = CAST(?2 AS INTEGER)").bind(tok, base),
+    env.DB.prepare(`DELETE FROM fw_rules WHERE id NOT IN (SELECT live_id FROM fw_draft_rules WHERE live_id IS NOT NULL) AND ${mine}`).bind(tok),
+    env.DB.prepare(`UPDATE fw_rules SET (${cols}) = (SELECT ${cols} FROM fw_draft_rules d WHERE d.live_id = fw_rules.id) WHERE id IN (SELECT live_id FROM fw_draft_rules WHERE live_id IS NOT NULL) AND ${mine}`).bind(tok),
+    env.DB.prepare(`INSERT INTO fw_rules (${cols}, created_at) SELECT ${cols}, created_at FROM fw_draft_rules WHERE live_id IS NULL AND ${mine} ORDER BY position, id`).bind(tok),
+    env.DB.prepare(
+      `INSERT INTO settings (key, value) SELECT 'firewall_default', draft_default FROM fw_policy
+       WHERE id = 1 AND apply_token = ?1 AND draft_default IS NOT COALESCE((SELECT CASE value WHEN 'allow' THEN 'allow' ELSE 'deny' END FROM settings WHERE key = 'firewall_default'), 'deny')
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    ).bind(tok),
+    ...(entry ? [entry] : []),
+    env.DB.prepare(`DELETE FROM fw_draft_rules WHERE ${mine}`).bind(tok),
+    env.DB.prepare("UPDATE fw_policy SET draft_base = NULL, draft_default = NULL, apply_token = NULL WHERE id = 1 AND apply_token = ?1").bind(tok),
+  ];
+  const res = await env.DB.batch(stmts);
+  return (res[0]?.meta?.changes ?? 0) === 1;
+}
+
+/** Throw the draft away (fine when there is none). */
+export async function dropFwDraft(env: Env): Promise<void> {
+  await env.DB.batch([env.DB.prepare("DELETE FROM fw_draft_rules"), env.DB.prepare("UPDATE fw_policy SET draft_base = NULL, draft_default = NULL WHERE id = 1")]);
 }
 
 // ── Published ports ───────────────────────────────────────────────────────
@@ -492,6 +659,15 @@ export async function addForward(env: Env, f: Omit<Forward, "id" | "enabled">): 
 
 export async function setForwardEnabled(env: Env, id: number, on: boolean): Promise<void> {
   await env.DB.prepare("UPDATE fw_forwards SET enabled = ?2 WHERE id = ?1").bind(id, on ? 1 : 0).run();
+}
+
+/** Change some fields of a published port, in place. */
+export async function updateForward(env: Env, id: number, patch: Partial<Omit<Forward, "id">>): Promise<void> {
+  const keys = Object.keys(patch).filter((k) => k !== "id");
+  if (!keys.length) return;
+  const sets = keys.map((k, i) => `${k} = ?${i + 2}`).join(", ");
+  const vals = keys.map((k) => (patch as Record<string, unknown>)[k] ?? null);
+  await env.DB.prepare(`UPDATE fw_forwards SET ${sets} WHERE id = ?1`).bind(id, ...vals).run();
 }
 
 export async function deleteForward(env: Env, id: number): Promise<void> {
@@ -586,21 +762,32 @@ export function scrubSecrets(v: unknown): unknown {
  */
 export async function audit(env: Env, user: string, action: string, target: string | number | null, before: unknown = null, after: unknown = null): Promise<void> {
   try {
-    let b = scrubSecrets(before ?? null);
-    let a = scrubSecrets(after ?? null);
-    if (b && a && typeof b === "object" && typeof a === "object" && !Array.isArray(b) && !Array.isArray(a)) {
-      const bo = b as Record<string, unknown>, ao = a as Record<string, unknown>;
-      const keys = [...new Set([...Object.keys(bo), ...Object.keys(ao)])].filter((k) => JSON.stringify(bo[k]) !== JSON.stringify(ao[k]));
-      if (!keys.length) return;
-      b = Object.fromEntries(keys.filter((k) => k in bo).map((k) => [k, bo[k]]));
-      a = Object.fromEntries(keys.filter((k) => k in ao).map((k) => [k, ao[k]]));
-    }
-    await env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
-      .bind(new Date().toISOString(), user || "unknown", action, target === null ? "" : String(target), b === null ? null : JSON.stringify(b), a === null ? null : JSON.stringify(a))
-      .run();
+    const stmt = auditStmt(env, user, action, target, before, after);
+    if (stmt) await stmt.run();
   } catch (e) {
     console.error(`audit ${action} not recorded:`, (e as Error).message);
   }
+}
+
+/**
+ * The change-log insert as a statement, for a caller's own batch (so the
+ * entry lands with the change or not at all). Same scrubbing and trimming
+ * as audit(); null when there is nothing to record. `when` adds a condition
+ * (SQL using ?7 for its one value): the row is written only if it holds.
+ */
+export function auditStmt(env: Env, user: string, action: string, target: string | number | null, before: unknown = null, after: unknown = null, when?: { sql: string; value: string }): D1PreparedStatement | null {
+  let b = scrubSecrets(before ?? null);
+  let a = scrubSecrets(after ?? null);
+  if (b && a && typeof b === "object" && typeof a === "object" && !Array.isArray(b) && !Array.isArray(a)) {
+    const bo = b as Record<string, unknown>, ao = a as Record<string, unknown>;
+    const keys = [...new Set([...Object.keys(bo), ...Object.keys(ao)])].filter((k) => JSON.stringify(bo[k]) !== JSON.stringify(ao[k]));
+    if (!keys.length) return null;
+    b = Object.fromEntries(keys.filter((k) => k in bo).map((k) => [k, bo[k]]));
+    a = Object.fromEntries(keys.filter((k) => k in ao).map((k) => [k, ao[k]]));
+  }
+  const args = [new Date().toISOString(), user || "unknown", action, target === null ? "" : String(target), b === null ? null : JSON.stringify(b), a === null ? null : JSON.stringify(a)];
+  if (!when) return env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(...args);
+  return env.DB.prepare(`INSERT INTO audit (at, user, action, target, before_json, after_json) SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE ${when.sql}`).bind(...args, when.value);
 }
 
 /**
@@ -621,6 +808,11 @@ export async function listAudit(env: Env, o: { kind?: string; q?: string; limit?
       .bind(kind, q, limit + 1, offset)
       .all<AuditEntry>()
   ).results;
+}
+
+/** The change log entries about one thing (a client's name), newest first. */
+export async function auditFor(env: Env, target: string, limit = 50): Promise<AuditEntry[]> {
+  return (await env.DB.prepare("SELECT * FROM audit WHERE target = ?1 ORDER BY at DESC, id DESC LIMIT ?2").bind(target, limit).all<AuditEntry>()).results;
 }
 
 /** Trim the change log to the newest AUDIT_KEEP_ROWS rows and AUDIT_KEEP_DAYS days. */

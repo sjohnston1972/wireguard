@@ -8,6 +8,8 @@ Requires=wg-quick@wg0.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/wg-selftest.sh
+# 75: another self-test (an on-demand health check) already holds the lock.
+SuccessExitStatus=75
 TimeoutStartSec=60s
 
 [Install]
