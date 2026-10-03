@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Bell, ChevronRight, ListChecks, Rocket } from "lucide-react";
 import type { ActivityResponse } from "@shared/api";
 import { Button, EmptyState, Panel, Sheet, StatusPill } from "@/components";
+import { useWidget } from "@/widgets";
 import { actionWord, fmtDuration, fmtWhen, noteKind, resultPill } from "./model";
 
 type List = "runs" | "notes" | "changes";
@@ -25,7 +26,11 @@ function Row({ children, onClick }: { children: ReactNode; onClick?: () => void 
 /** Spec §9: the last run and the last note, and a button for each list (which opens in a sheet). */
 export function PhoneActivity({ data, onOpenRun, onOpenChange }: PhoneActivityProps) {
   const [list, setList] = useState<List | null>(null);
-  const run = data.runs[0];
+  const details = useWidget("activity.runDetails");
+  const changeLog = useWidget("activity.changeLog");
+  // The last-run card is the Run details widget: its choice of run and its durations; hidden, the card is gone.
+  const run = details.settings.run === "newestFailed" ? data.runs.find((r) => r.status === "failure") : data.runs[0];
+  const showDuration = details.settings.durations as boolean;
   const note = data.notes[0];
   const pick = (fn: () => void) => () => {
     setList(null);
@@ -34,6 +39,7 @@ export function PhoneActivity({ data, onOpenRun, onOpenChange }: PhoneActivityPr
 
   return (
     <div className="act__phone">
+      {!details.hidden && (
       <Panel title="Last run" className="act__phone-card">
         {run ? (
           <button type="button" className="act__phone-card-btn" onClick={() => onOpenRun(run.id)}>
@@ -42,15 +48,16 @@ export function PhoneActivity({ data, onOpenRun, onOpenChange }: PhoneActivityPr
               <strong>{actionWord(run.action)}</strong>
               <span className="act__muted">
                 {fmtWhen(run.requested_at)}
-                {fmtDuration(run.durationSeconds) ? `, ${fmtDuration(run.durationSeconds)}` : ""}
+                {showDuration && fmtDuration(run.durationSeconds) ? `, ${fmtDuration(run.durationSeconds)}` : ""}
               </span>
             </span>
             <StatusPill {...resultPill(run.status)} />
           </button>
         ) : (
-          <EmptyState title="No runs yet" description="A deploy or tear-down shows up here." />
+          <EmptyState title={details.settings.run === "newestFailed" ? "No failed runs" : "No runs yet"} description={details.settings.run === "newestFailed" ? "A failed deploy or tear-down shows up here." : "A deploy or tear-down shows up here."} />
         )}
       </Panel>
+      )}
       <Panel title="Last note" className="act__phone-card">
         {note ? (
           <div className="act__phone-card-btn">
@@ -72,9 +79,11 @@ export function PhoneActivity({ data, onOpenRun, onOpenChange }: PhoneActivityPr
         <Button size="lg" onClick={() => setList("notes")}>
           Notes
         </Button>
-        <Button size="lg" onClick={() => setList("changes")}>
-          Changes
-        </Button>
+        {!changeLog.hidden && (
+          <Button size="lg" onClick={() => setList("changes")}>
+            Changes
+          </Button>
+        )}
       </div>
 
       {list === "runs" && (

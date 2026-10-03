@@ -7,6 +7,7 @@ import { Column, DataTable, EmptyState, Panel, SearchInput, Select, StatusPill, 
 import { actionWord, EVENT_TYPES, fmtDuration, fmtGbp, fmtWhen, inWindow, noteKind, resultPill, TABS, type Change, type EventRow, type Note, type RunRow, type Tab, type Window } from "./model";
 import { Chevron, Fill, Pager, TypeTag } from "./parts";
 import type { ActivityParams } from "./useActivityParams";
+import { useWidget } from "@/widgets";
 
 const ALL = "all";
 const dash = "—";
@@ -38,6 +39,8 @@ const runBlob = (r: RunRow) => [actionWord(r.action), resultPill(r.status).label
 export function ActivityList({ data, params, set, window: win, selectedRun, onOpenRun, onOpenChange }: ActivityListProps) {
   const { tab } = params;
   const navigate = useNavigate();
+  const { settings } = useWidget("activity.list");
+  const density = settings.density as "comfortable" | "compact";
   const [filters, setFilters] = useState<Partial<Record<Tab, string>>>({});
   const [find, setFind] = useState("");
   const filter = filters[tab] ?? ALL;
@@ -49,15 +52,20 @@ export function ActivityList({ data, params, set, window: win, selectedRun, onOp
   const notes = data.notes.filter((n) => inWindow(n.at, win) && (filter === ALL || n.kind === filter) && has(`${n.kind} ${n.message}`, find));
   const changes = data.changes.rows.filter((c) => inWindow(c.at, win));
 
-  const runCols: Column<RunRow>[] = [
-    { key: "when", header: "When", cell: (r) => fmtWhen(r.requested_at) },
-    { key: "action", header: "Action", cell: (r) => <strong className="act__action">{actionWord(r.action)}</strong> },
-    { key: "result", header: "Result", cell: (r) => <StatusPill {...resultPill(r.status)} /> },
+  const shownRunCols = new Set(settings.runColumns as string[]);
+  const runExtras: Column<RunRow>[] = [
     { key: "duration", header: "Duration", cell: (r) => fmtDuration(r.durationSeconds) ?? dash },
     { key: "cost", header: "Cost impact", cell: (r) => (typeof r.sessionCostGbp === "number" ? `est. ${fmtGbp(r.sessionCostGbp)}` : dash) },
     { key: "actor", header: "Actor", cell: (r) => r.requested_by ?? dash, className: "act__col-actor" },
     { key: "source", header: "Source", cell: (r) => r.source, className: "act__col-source" },
     { key: "notes", header: "Notes", cell: (r) => <span className="act__note">{r.error ?? dash}</span>, className: "act__col-notes" },
+    { key: "publicIp", header: "Public IP", cell: (r) => r.public_ip ?? dash },
+  ];
+  const runCols: Column<RunRow>[] = [
+    { key: "when", header: "When", cell: (r) => fmtWhen(r.requested_at) },
+    { key: "action", header: "Action", cell: (r) => <strong className="act__action">{actionWord(r.action)}</strong> },
+    { key: "result", header: "Result", cell: (r) => <StatusPill {...resultPill(r.status)} /> },
+    ...runExtras.filter((c) => shownRunCols.has(c.key)),
     { key: "go", header: <span className="visually-hidden">Open</span>, cell: () => <Chevron />, align: "right", width: 32 },
   ];
   const allCols: Column<EventRow>[] = [
@@ -116,6 +124,7 @@ export function ActivityList({ data, params, set, window: win, selectedRun, onOp
         {tab === "runs" && (
           <DataTable
             aria-label="Runs"
+            density={density}
             columns={runCols}
             rows={runs}
             rowKey={(r) => r.id}
@@ -128,6 +137,7 @@ export function ActivityList({ data, params, set, window: win, selectedRun, onOp
         {tab === "all" && (
           <DataTable
             aria-label="All activity"
+            density={density}
             columns={allCols}
             rows={all}
             rowKey={(e) => `${e.ref.kind}-${e.ref.id}-${e.at}`}
@@ -139,6 +149,7 @@ export function ActivityList({ data, params, set, window: win, selectedRun, onOp
         {tab === "changes" && (
           <DataTable
             aria-label="Config changes"
+            density={density}
             columns={changeCols}
             rows={changes}
             rowKey={(c) => String(c.id)}
@@ -148,7 +159,7 @@ export function ActivityList({ data, params, set, window: win, selectedRun, onOp
           />
         )}
         {tab === "notes" && (
-          <DataTable aria-label="Watchman notes" columns={noteCols} rows={notes} rowKey={(n) => String(n.id)} rowLabel={(n) => n.kind} empty={empty("watchman notes", "The watchman writes a note when something looks wrong.")} />
+          <DataTable aria-label="Watchman notes" density={density} columns={noteCols} rows={notes} rowKey={(n) => String(n.id)} rowLabel={(n) => n.kind} empty={empty("watchman notes", "The watchman writes a note when something looks wrong.")} />
         )}
       </Fill>
       {tab === "changes" && (data.changes.more || params.page > 1) && <Pager label="Config changes pages" page={data.changes.page} more={data.changes.more} onPage={(p) => set({ page: p })} />}
