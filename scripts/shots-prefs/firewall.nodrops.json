@@ -1,0 +1,7 @@
+{
+  "firewall": {
+    "layout": {
+      "hidden": ["firewall.kpis", "firewall.drops", "firewall.simulator"]
+    }
+  }
+}

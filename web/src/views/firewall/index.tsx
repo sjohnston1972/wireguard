@@ -46,6 +46,7 @@ export function FirewallPage() {
   const phone = useIsPhone();
 
   const rulesWidget = useWidget("firewall.rules");
+  const dropsMax = useWidget("firewall.drops").settings.max as string;
   const hidden = {
     drops: useWidget("firewall.drops").hidden,
     ports: useWidget("firewall.ports").hidden,
@@ -194,7 +195,7 @@ export function FirewallPage() {
   const tabs: RightTab[] = tabbed ? [...stackTabs, ...bottomTabs] : [...stackTabs];
   const current: RightTab | undefined = tabs.includes(rightTab) ? rightTab : tabs[0];
   const TAB_ITEMS: Record<RightTab, { value: RightTab; label: string; count?: number; content: ReactNode }> = {
-    drops: { value: "drops", label: "Drops", count: data.drops.recent.length, content: <DropsList fw={data} /> },
+    drops: { value: "drops", label: "Drops", count: dropsMax === "all" ? data.drops.recent.length : Math.min(data.drops.recent.length, Number(dropsMax)), content: <DropsList fw={data} /> },
     ports: {
       value: "ports",
       label: short ? "Ports" : "Published ports",

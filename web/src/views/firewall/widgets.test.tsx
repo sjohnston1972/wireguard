@@ -182,6 +182,11 @@ describe("W3.2 data", () => {
     renderFw(ws({ drops: { max: "10" } }), bigData());
     const drops = await region("Recent drops");
     await waitFor(() => expect(within(drops).getAllByRole("listitem")).toHaveLength(10));
+    // Below 1400 px the Drops tab counts what it lists.
+    cleanup();
+    setViewport(1200);
+    renderFw(ws({ drops: { max: "10" } }), bigData());
+    expect(await screen.findByRole("tab", { name: "Drops (10)" })).toBeInTheDocument();
   });
 
   it("capture starting interface, seconds and recent count", async () => {

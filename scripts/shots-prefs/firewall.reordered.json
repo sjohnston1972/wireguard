@@ -1,0 +1,10 @@
+{
+  "firewall": {
+    "layout": {
+      "order": {
+        "r2": ["right", "left"],
+        "bottom": ["firewall.simulator", "firewall.zones"]
+      }
+    }
+  }
+}
