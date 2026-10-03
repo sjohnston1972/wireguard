@@ -1,0 +1,13 @@
+{
+  "firewall": {
+    "widgets": {
+      "firewall.kpis": { "v": 1, "s": { "tiles": ["policy", "drops", "capture"], "drops": { "warn": 100, "bad": 1000 } } },
+      "firewall.rules": { "v": 1, "s": { "tab": "custom", "columns": ["service", "hits", "lastHit", "lifetime"], "density": "compact" } },
+      "firewall.zones": { "v": 1, "s": { "arrows": false } },
+      "firewall.simulator": { "v": 1, "s": { "from": "home", "to": "azure", "proto": "udp", "port": 53 } },
+      "firewall.drops": { "v": 1, "s": { "max": "10", "timeZone": "utc", "zoneChip": false } },
+      "firewall.ports": { "v": 1, "s": { "connections": true } },
+      "firewall.capture": { "v": 1, "s": { "iface": "eth0", "seconds": 60, "recent": 3 } }
+    }
+  }
+}

@@ -24,6 +24,11 @@
 .fw-rules__c-action { width: 84px; }
 .fw-rules__c-hits { width: 152px; }
 .fw-rules__c-status { width: 64px; }
+.fw-rules__c-last { width: 92px; }
+.fw-rules__c-life { width: 96px; }
+.fw-rules__last, .fw-rules__life { font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Compact density (the Firewall rules widget's setting): 36 px rows at every size. */
+.fw-rules.fw-rules--compact .dt__td { height: 36px; }
 .fw-rules__route-to, .fw-rules__route-head { display: none; }
 .fw-rules__handle { display: inline-grid; place-items: center; width: 22px; height: 30px; color: var(--text-muted); cursor: grab; border-radius: 6px; }
 .fw-rules__handle:hover { color: var(--text-primary); background: var(--bg-tile); }
@@ -47,6 +52,7 @@
   .fw-rules__c-hits { width: 78px; }
   .fw-rules__c-action { width: 74px; }
   .fw-rules__c-status { width: 54px; }
+  .fw-rules__c-last, .fw-rules__c-life { width: 72px; }
   .fw-rules__c-handle { width: 26px; }
   .fw-rules__c-place { width: 24px; }
   .fw-rules .dt__td, .fw-rules .dt__th { padding-left: 6px; padding-right: 6px; }

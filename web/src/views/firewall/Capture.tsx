@@ -4,6 +4,8 @@ import type { FirewallResponse } from "@shared/api";
 import { Button, Field, Panel, Select, cx } from "@/components";
 import { useStartCapture } from "@/api/mutations";
 import { useClients } from "@/api/queries";
+import { useWidget } from "@/widgets";
+import { useStarting } from "./useStarting";
 import "./Capture.css";
 
 type Capture = FirewallResponse["captures"][number];
@@ -16,14 +18,20 @@ export interface CaptureFormHandle {
   focus: () => void;
 }
 
-/** Start a capture on the VM (instant, not part of the draft); the latest captures to download. */
+/**
+ * Start a capture on the VM (instant, not part of the draft); the latest
+ * captures to download. The Packet capture widget's settings: the starting
+ * interface and seconds, and how many recent captures are listed.
+ */
 export const CaptureForm = forwardRef<CaptureFormHandle, { fw: FirewallResponse }>(function CaptureForm({ fw }, ref) {
   const start = useStartCapture();
   const clients = useClients();
   const ifaces = Object.entries(fw.capture.ifaces);
-  const [iface, setIface] = useState(ifaces[0]?.[0] ?? "wg0");
+  const { settings } = useWidget("firewall.capture");
+  const wanted = settings.iface as string;
+  const [iface, setIface] = useStarting(ifaces.some(([k]) => k === wanted) ? wanted : (ifaces[0]?.[0] ?? wanted));
   const [who, setWho] = useState("any");
-  const [seconds, setSeconds] = useState("30");
+  const [seconds, setSeconds] = useStarting(String(settings.seconds));
   const [filter, setFilter] = useState("");
   const wrap = useRef<HTMLFormElement>(null);
   useImperativeHandle(ref, () => ({
@@ -67,7 +75,7 @@ export const CaptureForm = forwardRef<CaptureFormHandle, { fw: FirewallResponse 
       </form>
       {fw.captures.length > 0 && (
         <ul className="fw-cap__list" aria-label="Recent captures">
-          {fw.captures.slice(0, 5).map((c) => (
+          {fw.captures.slice(0, settings.recent as number).map((c) => (
             <li key={c.id} className="fw-cap__item">
               <span className={cx("fw-cap__status", `fw-cap__status--${c.status}`)}>{STATUS[c.status]}</span>
               <span className="fw-cap__what">

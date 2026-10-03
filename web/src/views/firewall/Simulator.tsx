@@ -3,6 +3,8 @@ import { forwardRef, useImperativeHandle, useRef, useState, type FormEvent } fro
 import type { FirewallResponse, SimEnd, SimRequest, SimResult } from "@shared/api";
 import { Button, Field, Panel, SegmentedControl, Select, cx } from "@/components";
 import { useSimulate } from "@/api/mutations";
+import { useWidget } from "@/widgets";
+import { useStarting } from "./useStarting";
 import { EndPicker } from "./EndPicker";
 import "./Simulator.css";
 
@@ -59,10 +61,12 @@ export const SimulatorForm = forwardRef<SimulatorHandle, { fw: FirewallResponse;
   handle,
 ) {
   const sim = useSimulate();
-  const [from, setFrom] = useState<SimEnd>({ kind: "zone", value: "clients" });
-  const [to, setTo] = useState<SimEnd>({ kind: "zone", value: "home" });
-  const [proto, setProto] = useState<SimRequest["proto"]>("tcp");
-  const [port, setPort] = useState("22");
+  // The Test specific traffic widget's starting values (Clients to Home, TCP 22 as shipped).
+  const { settings } = useWidget("firewall.simulator");
+  const [from, setFrom] = useStarting<SimEnd>({ kind: "zone", value: settings.from as string });
+  const [to, setTo] = useStarting<SimEnd>({ kind: "zone", value: settings.to as string });
+  const [proto, setProto] = useStarting(settings.proto as SimRequest["proto"]);
+  const [port, setPort] = useStarting(String(settings.port));
   const [innerChoice, setInnerChoice] = useState<Policy>("live");
   const choice = outerChoice ?? innerChoice;
   const setChoice = onChoice ?? setInnerChoice;

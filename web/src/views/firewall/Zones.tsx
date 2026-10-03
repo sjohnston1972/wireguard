@@ -1,5 +1,6 @@
 import type { FirewallResponse } from "@shared/api";
 import { Panel, cx } from "@/components";
+import { useWidget } from "@/widgets";
 import { ZONE_ICON } from "./EndCell";
 import { ZONE_ORDER, shownDefault, zoneFlow, type RuleView, type Zone } from "./model";
 import "./Zones.css";
@@ -18,9 +19,16 @@ const Legend = () => (
   </span>
 );
 
+/** The Network zones widget's display settings: addresses, rule counts and flow arrows (the legend goes with the arrows). */
+function useZoneDisplay() {
+  const { settings } = useWidget("firewall.zones");
+  return { addresses: settings.addresses as boolean, ruleCounts: settings.ruleCounts as boolean, arrows: settings.arrows as boolean };
+}
+
 export function ZonesPanel(props: ZonesProps) {
+  const { arrows } = useZoneDisplay();
   return (
-    <Panel title="Network zones" className="fw-zones-panel" actions={<Legend />}>
+    <Panel title="Network zones" className="fw-zones-panel" actions={arrows ? <Legend /> : undefined}>
       <p className="fw-panel-sub">How traffic flows between your networks. Click a zone to filter the rules.</p>
       <ZonesMap {...props} />
     </Panel>
@@ -29,20 +37,22 @@ export function ZonesPanel(props: ZonesProps) {
 
 /** The zones on their own, for the right column's tabs on a short window. */
 export function ZonesTab(props: ZonesProps) {
+  const { arrows } = useZoneDisplay();
   return (
     <div className="fw-zones-tab">
-      <Legend />
+      {arrows && <Legend />}
       <ZonesMap {...props} />
     </div>
   );
 }
 
 function ZonesMap({ fw, rows, selected, onSelect }: ZonesProps) {
+  const show = useZoneDisplay();
   const def = shownDefault(fw);
   const zones = ZONE_ORDER.map((z) => fw.zones.find((x) => x.zone === z)).filter((z): z is FirewallResponse["zones"][number] => !!z);
   const ruleCount = (z: Zone) => rows.filter((r) => (r.from.kind === "zone" && r.from.value === z) || (r.to.kind === "zone" && r.to.value === z)).length;
   return (
-    <div className="fw-zones">
+    <div className={cx("fw-zones", !show.arrows && "fw-zones--no-arrows")}>
       {zones.map((z, i) => {
         const Icon = ZONE_ICON[z.zone];
         const next = zones[i + 1];
@@ -54,12 +64,14 @@ function ZonesMap({ fw, rows, selected, onSelect }: ZonesProps) {
             <button type="button" className={cx("fw-zones__card", `fw-zones__card--${z.zone}`, on && "fw-zones__card--on")} aria-pressed={on} onClick={() => onSelect(on ? "all" : z.zone)}>
               <Icon className="fw-zones__icon" size={26} aria-hidden />
               <span className="fw-zones__label">{z.label}</span>
-              <span className="fw-zones__addr">{z.negate ? "0.0.0.0/0" : (z.v4[0] ?? "")}</span>
-              <span className="fw-zones__sub">
-                {n} {n === 1 ? "rule" : "rules"}
-              </span>
+              {show.addresses && <span className="fw-zones__addr">{z.negate ? "0.0.0.0/0" : (z.v4[0] ?? "")}</span>}
+              {show.ruleCounts && (
+                <span className="fw-zones__sub">
+                  {n} {n === 1 ? "rule" : "rules"}
+                </span>
+              )}
             </button>
-            {next && flow && (
+            {show.arrows && next && flow && (
               <span className={cx("fw-zones__arrow", `fw-zones__arrow--${flow}`)}>
                 <span className="visually-hidden">
                   {z.label} to {next.label}: {flow === "allow" ? "allowed" : "blocked"}
