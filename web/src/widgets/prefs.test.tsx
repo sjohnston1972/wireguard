@@ -194,6 +194,34 @@ describe("saving", () => {
     expect(performance.now() - clickedAt).toBeLessThan(SAVE_DELAY_MS - 100);
     vis.mockRestore();
   });
+
+  it("the save sent as the tab is hidden or closed uses keepalive, so it outlives the page", async () => {
+    const server = prefsServer(saved);
+    const { fetchMock } = renderWithProviders(<Probe />, { routes: server.routes });
+    await waitFor(() => expect(out("status")).toHaveTextContent("ready"));
+    // Hidden.
+    await userEvent.click(screen.getByRole("button", { name: "rows 7" }));
+    const vis = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(server.puts).toHaveLength(1));
+    vis.mockRestore();
+    const puts = () => fetchMock!.calls.filter((c) => c.method === "PUT");
+    expect(puts()[0]!.init.keepalive).toBe(true);
+    // Closed (pagehide, which some browsers fire without a visibilitychange).
+    await userEvent.click(screen.getByRole("button", { name: "rows 8" }));
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    await waitFor(() => expect(server.puts).toHaveLength(2));
+    expect(puts()[1]!.init.keepalive).toBe(true);
+    expect(server.puts[1]!.body.prefs).toEqual({ widgets: { "overview.events": { v: 1, s: { rows: 8 } } } });
+    // An ordinary save after the quiet spell does not need it.
+    await userEvent.click(screen.getByRole("button", { name: "rows 7" }));
+    await waitFor(() => expect(server.puts).toHaveLength(3));
+    expect(puts()[2]!.init.keepalive).toBeFalsy();
+  });
 });
 
 describe("a save that fails", () => {

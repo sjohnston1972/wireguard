@@ -6,7 +6,8 @@
 // one per key. One save per page is in flight at a time; changes made
 // meanwhile go after it, on the version it produced. A save that fails puts
 // the page back to its last confirmed state and says why; a conflict (409)
-// reloads what the other device saved. A hidden tab sends what is waiting.
+// reloads what the other device saved. A hidden or closing tab sends what is
+// waiting with keepalive, so the request outlives the page.
 //
 // One store per query client (so each test gets its own). React reads it
 // through useSyncExternalStore in usePrefs.ts.
@@ -39,6 +40,8 @@ interface PageQueue {
    * its save cannot make the save win over another device's newer change.
    */
   base: number | null;
+  /** The next save goes out as the page is hidden or closed (fetch keepalive). */
+  keepalive: boolean;
 }
 
 /** The last good answer, or undefined (none, unreadable, or storage refused). */
@@ -86,7 +89,7 @@ export class PrefsStore {
   private queue(page: PageId): PageQueue {
     let q = this.queues.get(page);
     if (!q) {
-      q = { override: null, timer: null, inFlight: false, queued: false, base: null };
+      q = { override: null, timer: null, inFlight: false, queued: false, base: null, keepalive: false };
       this.queues.set(page, q);
     }
     return q;
@@ -125,12 +128,13 @@ export class PrefsStore {
   }
 
   /** Send what is waiting for the page now (or right after the save in flight). */
-  flush(page: PageId): void {
+  flush(page: PageId, opts: { keepalive?: boolean } = {}): void {
     if (this.disposed) return;
     const q = this.queue(page);
     if (q.timer) clearTimeout(q.timer);
     q.timer = null;
     if (!q.override) return;
+    if (opts.keepalive) q.keepalive = true;
     if (q.inFlight) {
       q.queued = true;
       return;
@@ -141,10 +145,15 @@ export class PrefsStore {
   private watchVisibility() {
     if (this.watching || typeof document === "undefined") return;
     this.watching = true;
+    // The page may be going away: send what is waiting with keepalive, so the
+    // browser finishes the request even if the tab is closed.
+    const leaving = () => {
+      for (const [page, q] of this.queues) if (q.timer) this.flush(page, { keepalive: true });
+    };
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "hidden") return;
-      for (const [page, q] of this.queues) if (q.timer) this.flush(page);
+      if (document.visibilityState === "hidden") leaving();
     });
+    if (typeof window !== "undefined") window.addEventListener("pagehide", leaving);
   }
 
   private setPage(page: PageId, value: PrefsPage) {
@@ -154,10 +163,12 @@ export class PrefsStore {
   private async send(page: PageId): Promise<void> {
     const q = this.queue(page);
     const sent = q.override!;
+    const keepalive = q.keepalive;
     q.inFlight = true;
     q.queued = false;
+    q.keepalive = false;
     try {
-      const res = await apiSend<PrefsPage>("PUT", `/prefs/${page}`, { baseVersion: q.base ?? this.confirmed(page).version, prefs: sent });
+      const res = await apiSend<PrefsPage>("PUT", `/prefs/${page}`, { baseVersion: q.base ?? this.confirmed(page).version, prefs: sent }, keepalive ? { keepalive: true } : undefined);
       if (this.disposed) return;
       // A refetch started before this save landed must not put the old version back.
       await this.client.cancelQueries({ queryKey: PREFS_KEY });
