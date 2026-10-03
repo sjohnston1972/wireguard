@@ -2,6 +2,7 @@
 // shows the live rules or the draft, the filter tabs, where a drag lands, and
 // which zone-to-zone flows the rules allow. No React here.
 import type { DraftRuleBody, FirewallResponse, SimEnd } from "@shared/api";
+import { thresholdTone, type Threshold } from "@shared/widgets";
 
 export type Zone = FirewallResponse["zones"][number]["zone"];
 export type Action = "allow" | "deny";
@@ -30,6 +31,10 @@ export interface RuleView {
   /** Packets in the last 24 h; null when no hit history exists (no data, not 0). */
   hits24h: number | null;
   trend24h: (number | null)[];
+  /** Packets since the counters were last cleared (the Lifetime hits column); null when the VM has not counted any. */
+  hitsTotal: number | null;
+  /** When the rule last matched; null when never (or no data). */
+  lastHit: string | null;
 }
 
 /** The rows the table shows: the draft's when there is one, else the live rules. Hits come from the live rule a draft row copies. */
@@ -55,6 +60,8 @@ export function ruleViews(fw: FirewallResponse): RuleView[] {
       mark: null,
       hits24h: r.hits24h,
       trend24h: r.trend24h,
+      hitsTotal: r.hits?.[0] ?? null,
+      lastHit: r.lastHit,
     }));
   }
   return fw.draft.rules.map((r) => {
@@ -78,6 +85,8 @@ export function ruleViews(fw: FirewallResponse): RuleView[] {
       mark: r.mark,
       hits24h: l ? l.hits24h : null,
       trend24h: l ? l.trend24h : [],
+      hitsTotal: l?.hits?.[0] ?? null,
+      lastHit: l?.lastHit ?? null,
     };
   });
 }
@@ -224,3 +233,31 @@ export const NARROW = "(max-width: 1399px)";
 
 /** Below 761 px high (desktop) the zones and the simulator join those tabs, so the rules table gets the left column. */
 export const SHORT = "(min-width: 1100px) and (max-height: 760px)";
+
+// ── Widgets (spec 2026-10-03 §8, Firewall) ──
+
+/** The right-hand column's tabs below 1400 px wide (and, on a short window, zones and the simulator too). */
+export type RightTab = "drops" | "ports" | "capture" | "zones" | "sim";
+export const TAB_WIDGET: Record<RightTab, string> = { drops: "firewall.drops", ports: "firewall.ports", capture: "firewall.capture", zones: "firewall.zones", sim: "firewall.simulator" };
+const TAB_WORDS: Record<RightTab, string> = { drops: "drops", ports: "published ports", capture: "capture", zones: "zones", sim: "simulator" };
+
+/** "Drops, published ports and capture": the tab list's name from the tabs shown. */
+export function tabsLabel(tabs: RightTab[]): string {
+  const w = tabs.map((t) => TAB_WORDS[t]);
+  const text = w.length > 1 ? `${w.slice(0, -1).join(", ")} and ${w[w.length - 1]}` : (w[0] ?? "");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** The words a drops threshold colours the tile with (always with the colour, never colour alone). */
+export const LEVEL: Record<"ok" | "warn" | "bad", { word: string; tone: "green" | "amber" | "red" }> = {
+  ok: { word: "Normal", tone: "green" },
+  warn: { word: "High", tone: "amber" },
+  bad: { word: "Very high", tone: "red" },
+};
+
+/** How 24 h of drops reads against the Firewall figures threshold; null while the threshold is off (today's look). */
+export function dropsLevel(drops: number, t: Threshold): (typeof LEVEL)["ok"] | null {
+  if (t.warn === null && t.bad === null) return null;
+  const tone = thresholdTone(drops, t, "above");
+  return tone ? LEVEL[tone] : null;
+}
