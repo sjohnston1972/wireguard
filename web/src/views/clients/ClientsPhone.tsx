@@ -2,8 +2,8 @@ import { useMemo } from "react";
 import { ChevronRight } from "lucide-react";
 import type { ClientsResponse } from "@shared/api";
 import { cx } from "@/components";
-import { useWidget } from "@/widgets";
-import { FILTERS, START_FILTERS, START_SORTS, sortClients, statusWord } from "./model";
+import { useStarting, useWidget } from "@/widgets";
+import { FILTERS, START_FILTERS, START_SORTS, TAB_FILTERS, sortClients, statusWord, type FilterKey } from "./model";
 import { deviceIcon } from "./ClientsTable";
 import { ClientPanel } from "./ClientPanel";
 import { useKpiSettings } from "./KpiTiles";
@@ -20,7 +20,9 @@ export function ClientsPhone({ data, selectedId, rawId, h }: { data: ClientsResp
   const selected = selectedId === null ? null : data.clients.find((c) => c.id === selectedId) ?? null;
   const kpis = useKpiSettings();
   const { settings } = useWidget("clients.table");
-  const filter = START_FILTERS[settings.filter as string] ?? "all";
+  // The starting filter, said above the list with a way out (for the visit, as the desktop tabs).
+  const [filter, setFilter] = useStarting<FilterKey>(START_FILTERS[settings.filter as string] ?? "all");
+  const filterLabel = TAB_FILTERS.find((t) => t.key === filter)?.label ?? filter;
   const sortName = settings.sort as string;
   const list = useMemo(() => {
     const filtered = data.clients.filter((c) => FILTERS[filter](c));
@@ -50,6 +52,14 @@ export function ClientsPhone({ data, selectedId, rawId, h }: { data: ClientsResp
           {lead}
           {lead && latency && " · "}
           {latency}
+        </p>
+      )}
+      {filter !== "all" && (
+        <p className="pclients__filter">
+          Showing {filterLabel} clients only.{" "}
+          <button type="button" className="pclients__clear" onClick={() => setFilter("all")}>
+            Show all clients
+          </button>
         </p>
       )}
       <ul className="pclients" aria-label="Clients">

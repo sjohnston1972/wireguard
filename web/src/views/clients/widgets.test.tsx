@@ -354,6 +354,18 @@ describe("Clients widgets: phone", { timeout: 20_000 }, () => {
     expect(screen.getByText(/online/, { selector: "p" })).not.toHaveTextContent("average");
   });
 
+  it("phone: a starting filter is shown above the list with a way to clear it", async () => {
+    setViewport("phone");
+    renderClients(prefs({ "clients.table": { filter: "online" } }));
+    const list = await screen.findByRole("list", { name: "Clients" });
+    await waitFor(() => expect(within(list).getAllByRole("button")).toHaveLength(2));
+    expect(screen.getByText(/Showing/, { selector: "p" })).toHaveTextContent("Showing Online clients only");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Show all clients" }));
+    expect(within(list).getAllByRole("button")).toHaveLength(7);
+    expect(screen.queryByText(/Showing/, { selector: "p" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show all clients" })).toBeNull();
+  });
+
   it("phone with no prefs keeps today's summary and list order", async () => {
     setViewport("phone");
     renderClients();
