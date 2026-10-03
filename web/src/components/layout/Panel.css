@@ -24,7 +24,9 @@
 .panel--chrome > .panel__head > .panel__title-wrap { flex-wrap: wrap; row-gap: 2px; min-width: auto; }
 .panel--chrome > .panel__head > .panel__title-wrap > .panel__title { white-space: nowrap; flex-shrink: 0; }
 .panel--chrome > .panel__head > .panel__actions { flex-shrink: 1; min-width: 0; white-space: nowrap; }
-.panel--chrome > .panel__head > .panel__actions .select__trigger { min-width: 0; }
+@media (max-width: 1399px) {
+  .panel--chrome > .panel__head > .panel__actions .select__trigger { min-width: 0; }
+}
 .panel--chrome > .panel__head > .panel__actions .select__value { overflow: hidden; }
 .panel__body { padding: 12px 16px 14px; min-height: 0; flex: 1; }
 .panel__body--flush { padding: 0; }
