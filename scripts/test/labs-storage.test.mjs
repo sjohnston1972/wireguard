@@ -133,7 +133,9 @@ function commonChecks(id) {
     // A VNet uses at most subnets_used /20s of the slot, each from cidrsubnet(var.address_space, 2, n).
     const twenties = new Set([...Object.values(l.files).join("\n").matchAll(/cidrsubnet\(var\.address_space,\s*2,\s*(\d+)\)/g)].map((m) => m[1]));
     assert.equal(twenties.size, k.subnets_used);
-    assert.doesNotMatch(Object.values(l.files).join("\n"), /cidrsubnet\(var\.address_space,\s*(?!2,)/, "the slot is only ever cut into /20s first");
+    // (variables.tf's description says "cidrsubnet(var.address_space, ...)" in prose.)
+    const code = uncomment(Object.entries(l.files).filter(([f]) => f !== "variables.tf").map(([, t]) => t).join("\n"));
+    assert.doesNotMatch(code, /cidrsubnet\(var\.address_space,(?!\s*2,)/, "the slot is only ever cut into /20s first");
     assert.ok(Object.values(l.files).join("\n").includes("var.address_space") === k.subnets_used > 0);
   });
 
@@ -180,4 +182,69 @@ test("az104-05-storage: one blob in a private container, and no network at all",
   assert.equal(attr(c.body, "storage_account_id"), "azurerm_storage_account.hot.id");
   assert.equal(resources(l).filter((r) => /virtual_network|subnet|private_endpoint/.test(r.labels[0])).length, 0);
   assert.equal(l.yaml.connectivity.peering, "off");
+});
+
+// ── Lab 6: blob security ─────────────────────────────────────────────────
+
+/** The provider's storage feature: false means Terraform never calls the storage data plane. */
+const dataPlaneOff = (l) => /storage\s*\{\s*data_plane_available\s*=\s*false\s*\}/.test(uncomment(l.files["versions.tf"]));
+
+commonChecks("az104-06-blob-security");
+
+test("az104-06-blob-security: a private container made through ARM, and Terraform never calls the data plane", () => {
+  const l = lab("az104-06-blob-security");
+  const [c] = resources(l, "azurerm_storage_container");
+  assert.equal(attr(c.body, "container_access_type"), '"private"');
+  assert.match(attr(c.body, "storage_account_id"), /^azurerm_storage_account\.\w+\.id$/);
+  // So tear-down still works after you turn public network access off by hand.
+  assert.ok(dataPlaneOff(l), "versions.tf sets storage { data_plane_available = false }");
+  assert.equal(resources(l, "azurerm_storage_blob").length, 0);
+});
+
+test("az104-06-blob-security: a /20 VNet from the slot, a blob private endpoint and the privatelink zone linked to the lab VNet", () => {
+  const l = lab("az104-06-blob-security");
+  const all = Object.values(l.files).join("\n");
+  const [vnet] = resources(l, "azurerm_virtual_network");
+  assert.equal(attr(vnet.body, "name"), '"vnet-lab"');
+  assert.match(all, /vnet_cidr\s*=\s*cidrsubnet\(var\.address_space,\s*2,\s*0\)/);
+  assert.equal(attr(vnet.body, "address_space"), "[local.vnet_cidr]");
+  const [pe] = resources(l, "azurerm_private_endpoint");
+  assert.match(pe.body, /subresource_names\s*=\s*\["blob"\]/);
+  assert.match(pe.body, /private_dns_zone_ids\s*=\s*\[azurerm_private_dns_zone\.blob\.id\]/);
+  const [zone] = resources(l, "azurerm_private_dns_zone");
+  assert.equal(attr(zone.body, "name"), '"privatelink.blob.core.windows.net"');
+  const links = resources(l, "azurerm_private_dns_zone_virtual_network_link");
+  assert.equal(links.length, 1, "Terraform links the zone to the lab VNet only");
+  assert.equal(attr(links[0].body, "virtual_network_id"), "azurerm_virtual_network.lab.id");
+  assert.equal(attr(links[0].body, "registration_enabled"), "false");
+});
+
+test("az104-06-blob-security: the pipeline, not Terraform, links the zone to the gateway VNet while peered (dns_link)", () => {
+  const l = lab("az104-06-blob-security");
+  assert.equal(l.yaml.connectivity.dns_link, true);
+  assert.equal(l.yaml.connectivity.peering, "optional");
+  const all = uncomment(Object.values(l.files).join("\n"));
+  assert.doesNotMatch(all, /var\.gateway_vnet_id|var\.peered/);
+  const [out] = l.blocks.filter((b) => b.kind === "output" && b.labels[0] === "peer_vnet_id");
+  assert.equal(attr(out.body, "value"), "azurerm_virtual_network.lab.id");
+});
+
+test("az104-06-blob-security: group lab-<id>-readers holds Storage Blob Data Reader on the resource group", () => {
+  const l = lab("az104-06-blob-security");
+  const [g] = resources(l, "azuread_group");
+  assert.equal(attr(g.body, "display_name"), '"lab-${var.lab_id}-readers"');
+  assert.equal(attr(g.body, "security_enabled"), "true");
+  const [ra] = resources(l, "azurerm_role_assignment");
+  assert.equal(attr(ra.body, "scope"), "azurerm_resource_group.lab.id");
+  assert.equal(attr(ra.body, "role_definition_name"), '"Storage Blob Data Reader"');
+  assert.equal(attr(ra.body, "principal_id"), "azuread_group.readers.object_id");
+  assert.equal(attr(ra.body, "principal_type"), '"Group"');
+  assert.deepEqual(l.yaml.identity.roles, [{ role: "Storage Blob Data Reader", scope: "resource_group" }]);
+});
+
+test("az104-06-blob-security: the stored access policy is a thing to try (azurerm cannot make one on a container)", () => {
+  const l = lab("az104-06-blob-security");
+  const things = l.readme.split("## Things to try")[1].split("## Learn more")[0];
+  assert.match(things, /stored access policy/i);
+  assert.doesNotMatch(l.readme.split("## Things to try")[0], /stored access policy/i, "What it deploys does not claim one");
 });
