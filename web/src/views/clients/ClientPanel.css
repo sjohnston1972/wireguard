@@ -65,3 +65,5 @@
 
 .cpanel__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
 .cpanel__actions > .btn:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
+.cpanel__note--due { padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--amber) 55%, var(--border-strong)); border-radius: 10px; background: color-mix(in srgb, var(--amber) 10%, transparent); color: var(--text-primary); }
+.cpanel__link { padding: 0; border: 0; background: none; font: inherit; color: var(--blue-bright); cursor: pointer; text-decoration: underline; }

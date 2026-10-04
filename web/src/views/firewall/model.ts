@@ -199,7 +199,7 @@ export function dropDelta(now: number, before: number): { text: string; directio
   return { text: `${Math.abs(pct)}%`, direction: pct > 0 ? "up" : "down" };
 }
 
-export const ZONE_ORDER: Zone[] = ["clients", "home", "azure", "workloads", "internet"];
+export const ZONE_ORDER: Zone[] = ["clients", "home", "azure", "workloads", "labs", "internet"];
 
 const ip4 = (s: string): number | null => {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s.trim());

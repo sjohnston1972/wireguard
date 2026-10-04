@@ -55,7 +55,7 @@ export function ClientPanel({ id, client, data, h }: Props) {
         </span>
       }
       tabs={[
-        { value: "overview", label: "Overview", content: <OverviewTab c={client} data={data} /> },
+        { value: "overview", label: "Overview", content: <OverviewTab c={client} data={data} h={h} /> },
         { value: "config", label: "Configuration", content: <ConfigTab c={client} data={data} h={h} /> },
         { value: "traffic", label: "Traffic", content: <TrafficTab c={client} /> },
         { value: "activity", label: "Activity", content: <ActivityTab c={client} /> },
@@ -87,7 +87,7 @@ function PanelActions({ c, h }: { c: Client; h: ClientHandlers }) {
 
 // ── Overview ──
 
-function OverviewTab({ c, data }: { c: Client; data: ClientsResponse }) {
+function OverviewTab({ c, data, h }: { c: Client; data: ClientsResponse; h: ClientHandlers }) {
   const now = Date.parse(data.now) || Date.now();
   const w = statusWord(c);
   const hs = lastHandshakeMs(c);
@@ -97,6 +97,14 @@ function OverviewTab({ c, data }: { c: Client; data: ClientsResponse }) {
   const routes = routesOf(c);
   return (
     <div className="cpanel__stack">
+      {c.labsConfigDue && (
+        <p className="cpanel__note cpanel__note--due" role="note" aria-label="Config out of date">
+          Config out of date: this device's config does not include the labs network (10.64.0.0/13) yet, so it cannot reach running labs.{" "}
+          <button type="button" className="cpanel__link" onClick={() => h.rekey(c)}>
+            Get new config
+          </button>
+        </p>
+      )}
       <div className={cx("cstate", `cstate--${w.tone}`)}>
         <span className="cstate__ring" aria-hidden />
         <div className="cstate__text">
