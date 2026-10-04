@@ -4,6 +4,7 @@ import { useLabs } from "@/api/queries";
 import { EnvironmentField } from "@/shell/StateChip";
 import { Catalogue } from "./Catalogue";
 import { Filters } from "./Filters";
+import { RunningStrip } from "./RunningStrip";
 
 /** Catalogue | Your labs: the tab's two pages, as links (so each has its address). */
 export function LabsNav() {
@@ -56,10 +57,13 @@ export function LabsPage({ children }: { children?: React.ReactNode }) {
           <Skeleton variant="block" height={240} />
         </div>
       ) : (
-        <div className="labs-main">
-          <Filters cards={d.labs} />
-          <Catalogue cards={d.labs} />
-        </div>
+        <>
+          <RunningStrip sessions={d.running} />
+          <div className="labs-main">
+            <Filters cards={d.labs} />
+            <Catalogue cards={d.labs} />
+          </div>
+        </>
       )}
       {children}
     </section>
