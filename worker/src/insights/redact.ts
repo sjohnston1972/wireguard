@@ -7,7 +7,8 @@
 //
 //   - PEM private keys (including one cut off by the 64 KB tail),
 //   - URLs with a signature (sig=), such as a storage SAS link,
-//   - the current run's SSH password, wherever it appears,
+//   - the current run's SSH password, agent token and callback token
+//     (literals passed in by the boot log feed), wherever they appear,
 //   - the value after password, passwd, secret, token, apikey,
 //     authorization or bearer (and ":", "=" or a space),
 //   - WireGuard-shaped keys (43 base64 characters and "="),

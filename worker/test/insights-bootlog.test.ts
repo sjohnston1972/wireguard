@@ -11,6 +11,7 @@ import { saveSnapshot } from "../src/state";
 import { api, base } from "./api-helpers";
 import { azureEnv, running, allNotDue, feedRows, latest, callsTo, json, NOW, ago, MIN, NO_AZURE } from "./insights-helpers";
 import type { Env } from "../src/env";
+import { sha256Hex } from "../src/auth";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -74,6 +75,30 @@ describe("boot log", () => {
     expect(az.calls.filter((c) => c.u.hostname.endsWith("blob.core.windows.net")).every((c) => c.u.pathname.endsWith("serialconsole.log"))).toBe(true);
     expect((await api(env, "GET", "/azure/bootlog")).json).toEqual(r.json);
     expect((await feedRows(env)).bootLog.status).toBe("ok");
+  });
+
+  it("the run's agent token, callback token and SSH password are redacted from the boot log", async () => {
+    const { env, az } = routeEnv();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    await running(env);
+    // The Worker keeps only the tokens' SHA-256 hashes; it finds the literals in the log by hashing what looks like a token.
+    const agentToken = "a1".repeat(32);
+    const callbackToken = "c3".repeat(32);
+    const otherHex = "0f".repeat(32); // a 64-hex value that is not one of the run's tokens
+    await env.DB.prepare(
+      "INSERT INTO runs (id, action, status, requested_at, finished_at, callback_token_hash, agent_token_hash, ssh_password) VALUES ('run-1', 'apply', 'success', ?1, ?1, ?2, ?3, 'Tr0ub4dor&3')",
+    )
+      .bind(ago(120), await sha256Hex(callbackToken), await sha256Hex(agentToken))
+      .run();
+    az.serialLog = `cloud-init: AGENT/${agentToken}\ncloud-init: CB/${callbackToken}\nchpasswd Tr0ub4dor&3\nhex ${otherHex}\nwg-admin ready\n`;
+    const r = await api(env, "POST", "/azure/bootlog");
+    expect(r.status).toBe(200);
+    // Exactly the literals go (the prefixes stay); the unrelated hex is caught by the base64 rule, as before.
+    expect(r.json.text).toBe(`cloud-init: AGENT/${REDACTED}\ncloud-init: CB/${REDACTED}\nchpasswd ${REDACTED}\nhex ${REDACTED}\nwg-admin ready\n`);
+    expect(r.json.redactions).toBe(4);
+    const stored = await everything(env);
+    for (const s of [agentToken, callbackToken, "Tr0ub4dor&3"]) expect(stored).not.toContain(s);
   });
 
   it("no SAS URL in any stored row, response or error message", async () => {

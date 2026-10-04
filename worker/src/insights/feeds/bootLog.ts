@@ -11,13 +11,17 @@
 //   - HEAD for the length, then a ranged GET of the last 64 KB only (a reply
 //     that ignores Range is cut to its last 64 KB as it streams in).
 //   - The text is redacted (insights/redact.ts, including this run's SSH
-//     password) before it is stored as az_latest['bootlog'].
+//     password, agent token and callback token) before it is stored as
+//     az_latest['bootlog']. The Worker keeps only the tokens' SHA-256
+//     hashes, so a token in the log is found by hashing each 64-hex value
+//     in it and comparing.
 //   - Without boot diagnostics (a VM built before they were turned on) the
 //     answer says they turn on with the next deploy; without a VM, "No VM".
 
 import type { FeedModule } from "../runner";
 import type { BootLogDoc, FeedCtx, HealthDoc } from "../types";
 import { currentDeployment } from "../../db";
+import { sha256Hex } from "../../auth";
 import { heartbeatProblem } from "../../overview";
 import { armRefusal, getLatest, paths, putLatest, vmExists } from "../common";
 import { redact } from "../redact";
@@ -78,8 +82,40 @@ async function readSerialLog(ctx: FeedCtx, signedUrl: string): Promise<{ bytes: 
   return { bytes: t.bytes, truncated: t.total > BOOTLOG_MAX_BYTES };
 }
 
-/** Fetch, cap and redact the boot log; a reason instead when there is none to fetch. */
-export async function fetchBootLog(ctx: FeedCtx, extraSecrets: (string | null)[] = []): Promise<BootLogDoc> {
+/** Distinct 64-hex values hashed at most per log (a log full of hashes costs no more than this). */
+const MAX_TOKEN_CANDIDATES = 100;
+const HEX_TOKEN = /(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])/g;
+
+/** The 64-hex values in `text` whose SHA-256 is one of `hashes` (randomToken's shape: 32 bytes as lowercase hex). */
+export async function tokensByHash(text: string, hashes: (string | null | undefined)[]): Promise<string[]> {
+  const want = new Set(hashes.filter((h): h is string => typeof h === "string" && h.length === 64).map((h) => h.toLowerCase()));
+  if (!want.size) return [];
+  const seen = new Set<string>();
+  const found: string[] = [];
+  for (const m of text.matchAll(HEX_TOKEN)) {
+    if (seen.has(m[0])) continue;
+    if (seen.size >= MAX_TOKEN_CANDIDATES) break;
+    seen.add(m[0]);
+    if (want.has(await sha256Hex(m[0]))) found.push(m[0]);
+  }
+  return found;
+}
+
+/** The token hashes of the VM's run: the current deployment's, and the newest apply run's (one may still be finishing). */
+async function runTokenHashes(ctx: FeedCtx, dep: { callback_token_hash: string | null; agent_token_hash: string | null } | null): Promise<(string | null)[]> {
+  const newest = await ctx.db
+    .prepare("SELECT callback_token_hash, agent_token_hash FROM runs WHERE action = 'apply' ORDER BY requested_at DESC LIMIT 1")
+    .first<{ callback_token_hash: string | null; agent_token_hash: string | null }>()
+    .catch(() => null);
+  return [dep?.agent_token_hash ?? null, dep?.callback_token_hash ?? null, newest?.agent_token_hash ?? null, newest?.callback_token_hash ?? null];
+}
+
+/**
+ * Fetch, cap and redact the boot log; a reason instead when there is none to fetch.
+ * `extraSecrets` are literal secrets (the SSH password); `tokenHashes` are the
+ * SHA-256 hashes of tokens whose literals are redacted wherever they appear.
+ */
+export async function fetchBootLog(ctx: FeedCtx, extraSecrets: (string | null)[] = [], tokenHashes: (string | null)[] = []): Promise<BootLogDoc> {
   if (!vmExists(ctx.snap)) return reasonDoc(NO_VM);
   const health = await getLatest<HealthDoc>(ctx.db, "health");
   if (health?.doc?.bootDiagnostics === false) return reasonDoc(NEXT_DEPLOY);
@@ -104,14 +140,14 @@ export async function fetchBootLog(ctx: FeedCtx, extraSecrets: (string | null)[]
     const nl = text.indexOf("\n");
     if (nl >= 0 && nl < 4096) text = text.slice(nl + 1);
   }
-  const clean = redact(text, extraSecrets);
+  const clean = redact(text, [...extraSecrets, ...(await tokensByHash(text, tokenHashes))]);
   return { fetchedAt: ctx.now.toISOString(), bytes: bytes.length, truncated, redactions: clean.count, text: clean.text.slice(-BOOTLOG_MAX_BYTES), reason: null };
 }
 
 /** Fetch and store (a "No VM" answer never replaces the last VM's log). */
 export async function fetchAndStoreBootLog(ctx: FeedCtx): Promise<BootLogDoc> {
   const dep = await currentDeployment(ctx.env).catch(() => null);
-  const doc = await fetchBootLog(ctx, [dep?.ssh_password ?? null]);
+  const doc = await fetchBootLog(ctx, [dep?.ssh_password ?? null], await runTokenHashes(ctx, dep));
   if (doc.reason !== NO_VM) await putLatest(ctx.db, "bootlog", doc, ctx.now.toISOString());
   return doc;
 }
