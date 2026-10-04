@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { ALLOWED_ROLES, buildCatalogue, LAB_TF_VARS, lintTfText, parseLabYaml, variablesProblems } from "../lib/labs.mjs";
 
 const labsDir = fileURLToPath(new URL("../../labs/", import.meta.url));
-const LABS = ["az104-01-identity", "az104-02-policy"];
+const LABS = ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups"];
 
 // ── A small HCL reader: enough for these labs' own text ──────────────────
 
@@ -257,4 +257,34 @@ test("lab 2: a tagged storage account with a CanNotDelete lock, and an untagged 
   assert.doesNotMatch(nsg.body, /costcentre/);
   const req = l.resources.find((r) => r.type === "azurerm_resource_group_policy_assignment" && /require_costcentre_tag/.test(r.body));
   assert.match(attr(req.body, "depends_on") ?? "", new RegExp(`azurerm_network_security_group\\.${nsg.name}`), "the untagged resource is made before the deny lands");
+});
+
+// ── Lab 3: management groups ─────────────────────────────────────────────
+
+test("lab 3: lab-<id>-root with prod and dev under it, and the subscription never moved", () => {
+  const l = lab("az104-03-mgmt-groups");
+  const root = one(l, "azurerm_management_group", "root");
+  assert.equal(attr(root.body, "name"), '"lab-${var.lab_id}-root"');
+  assert.equal(attr(root.body, "parent_management_group_id"), null);
+  for (const c of ["prod", "dev"]) {
+    const mg = one(l, "azurerm_management_group", c);
+    assert.equal(attr(mg.body, "name"), `"lab-\${var.lab_id}-${c}"`);
+    assert.equal(attr(mg.body, "parent_management_group_id"), "azurerm_management_group.root.id");
+  }
+  assert.doesNotMatch(stripComments(l.all), /subscription_ids|subscription_association/);
+});
+
+test("lab 3: an audit policy defined and assigned at lab-<id>-root, with a name Azure accepts there", () => {
+  const l = lab("az104-03-mgmt-groups");
+  const def = one(l, "azurerm_policy_definition");
+  assert.equal(attr(def.body, "management_group_id"), "azurerm_management_group.root.id");
+  assert.match(def.body, /"[Aa]udit"/);
+  assert.doesNotMatch(def.body, /"[Dd]eny"|DeployIfNotExists|[Mm]odify/);
+  const a = one(l, "azurerm_management_group_policy_assignment");
+  assert.equal(attr(a.body, "management_group_id"), "azurerm_management_group.root.id");
+  assert.equal(attr(a.body, "policy_definition_id"), `azurerm_policy_definition.${def.name}.id`);
+  // Assignment names at management group scope are at most 24 characters; name_prefix is 8.
+  const name = JSON.parse(attr(a.body, "name").replace("${var.name_prefix}", "l03abcde"));
+  assert.ok(name.length <= 24, `${name} is longer than 24`);
+  assert.match(attr(a.body, "display_name"), /^"lab-\$\{var\.lab_id\}-/);
 });
