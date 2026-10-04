@@ -21,7 +21,8 @@ names are frozen: a change goes through the integrator, with this section update
 - `rowCapacity(page, home, prefs, adding?) → Capacity { page, home, kind: "row" | "stack", max, visible, full, candidates,
   suggestion }`. `home` is a row id or a stack id (throws for neither). Candidates, in the person's order: visible non-pinned
   widgets whose leaving frees a place (in a row: its widgets, plus a stack's only visible widget; in a stack: its visible
-  widgets). `suggestion`: `adding`'s `replaces` if it is a candidate, else the first candidate; null without `adding`.
+  widgets). `suggestion` (integrator): `adding`'s `replaces` if it is a candidate, else a candidate whose `replaces` is
+  `adding`, else the newest `shown` candidate, else the last candidate (never the row's lead); null without `adding`.
 - `overfullHome(page, prefs) → Capacity | null`.
 - normalise: `layout.shown` keeps only this page's default-off ids, deduped, **saved order** (oldest first); an over-full
   row/stack drops its newest shown entries; `hidden` drops default-off ids.

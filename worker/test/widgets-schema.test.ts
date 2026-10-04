@@ -517,11 +517,31 @@ describe("widget library schema (insights spec 9.1)", () => {
     expect(rowCapacity("firewall", "right", {}, "firewall.publicIp")).toMatchObject({ kind: "stack", max: 3, visible: 3, full: true, candidates: ["firewall.drops", "firewall.ports", "firewall.capture"], suggestion: "firewall.capture" });
     expect(rowCapacity("activity", "right", { layout: { hidden: ["activity.changeLog"] } }, "activity.azureChanges")).toMatchObject({ visible: 1, full: false, candidates: ["activity.stream"], suggestion: "activity.stream" });
     expect(rowCapacity("firewall", "r2", {}).candidates).toEqual([]);
-    // The suggestion, when it is not a candidate, falls back to the first candidate; none without a widget.
-    expect(rowCapacity("overview", "r4", { layout: { hidden: ["overview.notes"] } }, "overview.azureHealth")).toMatchObject({ full: false, suggestion: "overview.health" });
+    // The suggestion, when it is not a candidate and nothing else points anywhere, is the row's last candidate; none without a widget.
+    expect(rowCapacity("overview", "r4", { layout: { hidden: ["overview.notes"] } }, "overview.azureHealth")).toMatchObject({ full: false, suggestion: "overview.costImpact" });
     expect(rowCapacity("overview", "r4", {}, "overview.vitals").suggestion).toBe("overview.costImpact");
     expect(rowCapacity("overview", "r4", {}).suggestion).toBeNull();
     expect(() => rowCapacity("overview", "nope", {})).toThrow(/No row or stack nope on the Overview page/);
+  });
+
+  it("without a preset suggestion Replace offers the widget that took its place, else the newest turned on, else the row's last, never its first", () => {
+    // Turning Watchman notes back on after Azure health replaced it: swap them back.
+    expect(rowCapacity("overview", "r4", { layout: { hidden: ["overview.notes"], shown: ["overview.azureHealth"] } }, "overview.notes")).toMatchObject({
+      full: true,
+      candidates: ["overview.health", "overview.costImpact", "overview.azureHealth"],
+      suggestion: "overview.azureHealth",
+    });
+    // Health summary back on, where nothing replaced it: the most recently turned-on widget (Azure health, after System vitals).
+    expect(rowCapacity("overview", "r4", { layout: { hidden: ["overview.health", "overview.costImpact"], shown: ["overview.vitals", "overview.azureHealth"] } }, "overview.health")).toMatchObject({
+      full: true,
+      candidates: ["overview.notes", "overview.azureHealth", "overview.vitals"],
+      suggestion: "overview.azureHealth",
+    });
+    // The person's order does not change which one was turned on last.
+    const order = { r4: ["overview.vitals", "overview.azureHealth", "overview.notes", "overview.health", "overview.costImpact"] };
+    expect(rowCapacity("overview", "r4", { layout: { order, hidden: ["overview.health", "overview.costImpact"], shown: ["overview.azureHealth", "overview.vitals"] } }, "overview.health").suggestion).toBe("overview.vitals");
+    // A preset still wins.
+    expect(rowCapacity("overview", "r4", { layout: { hidden: ["overview.notes"], shown: ["overview.azureHealth"] } }, "overview.vitals").suggestion).toBe("overview.costImpact");
   });
 
   // Spec 10.1, one row per new widget: suggested Replace, title, description, settings keys (section, kind) and defaults, threshold defaults.

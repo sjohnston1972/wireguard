@@ -203,6 +203,9 @@ describe("the library", () => {
     const d = await replaceDialog();
     expect(d).toHaveAccessibleDescription("Row 4 is full. Pick a widget to turn off, and Cost impact takes its place.");
     expect(radios(d)).toEqual(["Health summary", "Watchman notes", "System vitals"]);
+    // Preselected: System vitals, which took Cost impact's place (never the row's lead widget, Health summary).
+    expect(within(d).getByRole("radio", { name: /System vitals/ })).toBeChecked();
+    expect(within(d).getByRole("radio", { name: /Health summary/ })).not.toBeChecked();
     expect(within(lib).getByRole("switch", { name: "Cost impact", hidden: true })).not.toBeChecked();
     await wait();
     expect(server.puts).toHaveLength(0);

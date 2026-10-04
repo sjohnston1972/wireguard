@@ -686,7 +686,7 @@ export interface Capacity {
    * plus a stack's only visible widget. In a stack: its visible widgets.
    */
   candidates: string[];
-  /** The candidate to preselect for `adding`: its `replaces` when that is a candidate, else the first; null without `adding` or candidates. */
+  /** The candidate to preselect for `adding` (see suggestFor); null without `adding` or candidates. */
   suggestion: string | null;
 }
 
@@ -710,9 +710,25 @@ function capacityOf(page: PageId, u: Unit, prefs: PagePrefs, reg: Registry, addi
     visible = u.stack.widgets.filter(shows).length;
     candidates = u.stack.widgets.filter(offerable);
   }
-  const wanted = adding ? widgetDef(adding, reg)?.replaces : undefined;
-  const suggestion = adding ? (wanted && candidates.includes(wanted) ? wanted : (candidates[0] ?? null)) : null;
+  const suggestion = adding ? suggestFor(adding, candidates, prefs, reg) : null;
   return { page, home: u.kind === "row" ? u.row.id : u.stack.stack, kind: u.kind, max, visible, full: visible >= max, candidates, suggestion };
+}
+
+/**
+ * Replace's preselected widget for turning `adding` on (spec 9.3), first that applies:
+ * 1. its `replaces`, when that is a candidate;
+ * 2. a candidate whose `replaces` is `adding` (turning a widget back on swaps out what took its place);
+ * 3. the candidate turned on most recently (the newest `layout.shown` entry);
+ * 4. the row's last candidate in the person's order: the row's first is its lead widget (Health summary, Last run), the
+ *    least sensible thing to offer away.
+ */
+function suggestFor(adding: string, candidates: string[], prefs: PagePrefs, reg: Registry): string | null {
+  const preset = widgetDef(adding, reg)?.replaces;
+  if (preset && candidates.includes(preset)) return preset;
+  const tookItsPlace = candidates.find((c) => widgetDef(c, reg)?.replaces === adding);
+  if (tookItsPlace) return tookItsPlace;
+  const newest = [...(prefs.layout?.shown ?? [])].reverse().find((id) => candidates.includes(id));
+  return newest ?? candidates.at(-1) ?? null;
 }
 
 /**
