@@ -11,7 +11,7 @@ import type { Snapshot, Step, Talker } from "../worker/src/state";
 import type { ClientKpis, ClientView } from "../worker/src/clients";
 import type { SessionRow } from "../worker/src/costview";
 import type { BudgetStatus } from "../worker/src/budget";
-import type { ClientHistory, RuleHistory, VmHistory } from "../worker/src/history";
+import type { ClientHistory, HistoryRange, RuleHistory, VmHistory } from "../worker/src/history";
 import type { ActivityEvent, ActivityKpis, ActivityRange, EventType, RunRow } from "../worker/src/activity";
 import type { RotationStatus } from "../worker/src/keyrotation";
 import type { BackupStatus, ExportTable } from "../worker/src/backup";
@@ -87,6 +87,8 @@ export interface OverviewResponse {
   } | null;
   stateBackups: { count: number; newest: string | null } | null;
   typicalSeconds: { deploy: number | null; destroy: number | null };
+  /** Can the deploy form's current target (region and size) be deployed? null until the collectors have looked (area X1). */
+  capacity: CapacityCheck | null;
 }
 
 /** GET /api/v1/ssh-password */
@@ -354,6 +356,10 @@ export interface SettingsResponse {
   vapidPublic: string | null;
   notifyError: { at: string; why: string } | null;
   publicUrl: string;
+  /** Where cost estimates take the hourly rate from: Azure's list price, or the fixed rates (setting rate_source; area X1). */
+  rateSource: "azure" | "fixed";
+  /** The price for the configured region and size, with where it came from. */
+  price: PriceInfo;
 }
 
 /** POST /api/v1/backup/restore/preview */
@@ -488,8 +494,10 @@ export interface PagePrefs {
   layout?: {
     /** Row id -> that row's item keys (widget ids and stack ids) in the user's order. */
     order?: Record<string, string[]>;
-    /** Hidden widget ids (never a pinned widget). */
+    /** Hidden widget ids (never a pinned or a default-off widget). */
     hidden?: string[];
+    /** Default-off widgets turned on (schema 2), oldest first: an over-full row loses its newest. Never a widget that is on by default. */
+    shown?: string[];
   };
   /** Widget id -> its settings version and the values that differ from its defaults. */
   widgets?: Record<string, { v: number; s: Record<string, SettingValue> }>;
@@ -507,8 +515,228 @@ export interface PrefsResponse {
   pages: Record<PageId, PrefsPage>;
 }
 
-/** PUT /api/v1/prefs/:page. `baseVersion` is the version the change was made on (0 for a page never saved). */
+/**
+ * PUT /api/v1/prefs/:page. `baseVersion` is the version the change was made
+ * on (0 for a page never saved). `schema` is 2 (PREFS_SCHEMA in
+ * shared/widgets.ts); without it the save is from an older dashboard that
+ * would drop `layout.shown`, and the Worker answers 409 outdated.
+ */
 export interface PrefsPutBody {
+  schema: 2;
   baseVersion: number;
   prefs: PagePrefs;
+}
+
+// ── Azure insights (spec 2026-10-04-azure-insights-design.md, section 8) ──
+// Every route sits behind the login and the same-origin check, reads D1 and
+// the snapshot only (never Azure, except POST bootlog and a capacity cache
+// miss), and without Azure credentials answers `configured: false` with
+// every feed not_configured. "No data" is always null, never 0.
+
+/** The collector's feeds (worker/src/insights/feeds/<id>.ts), in priority order in FEEDS (shared/azureMetrics.ts). */
+export type FeedId = "health" | "vmMetrics" | "pipMetrics" | "metricDefs" | "activity" | "serviceHealth" | "capacity" | "prices" | "bootLog";
+/** ok; error (the last run failed); not_configured (no Azure credentials); skipped (the run's budget ran out: still due); idle (never run yet). */
+export type FeedState = "ok" | "error" | "not_configured" | "skipped" | "idle";
+
+/** One feed's health, for a widget's footer ("Azure · 3 min ago", amber after 3 cadences: feedIsStale in shared/azureMetrics.ts). */
+export interface FeedStatus {
+  id: FeedId;
+  title: string;
+  status: FeedState;
+  lastOkAt: string | null;
+  /** The last error in plain words, never a URL. */
+  error: string | null;
+  /** Minutes between runs now; null = on demand (boot log). */
+  cadenceMin: number | null;
+}
+
+/** What Azure says about the VM: Resource Health plus the instance view. */
+export interface AzureHealth {
+  state: "Available" | "Degraded" | "Unavailable" | "Unknown";
+  title: string | null;
+  summary: string | null;
+  /** Resource Health's reasonType ("Unplanned", "Customer initiated", ...). */
+  reason: string | null;
+  /** When the current state began. */
+  since: string | null;
+  /** "VM running", "VM deallocated", ... as Azure words it. */
+  power: string | null;
+  /** "Provisioning succeeded", ... */
+  provisioning: string | null;
+  vmAgent: { status: string | null; version: string | null } | null;
+  /** Boot diagnostics on (true), off (false: "turns on with the next deploy"), or not known. */
+  bootDiagnostics: boolean | null;
+  /** Azure's own notes on the VM (Activity Log, category ResourceHealth), newest first. */
+  annotations: { at: string; title: string }[];
+  checkedAt: string;
+}
+
+export type ScheduledEventType = "Reboot" | "Redeploy" | "Freeze" | "Preempt" | "Terminate";
+
+/** A maintenance event Azure has scheduled for this VM (from the VM's metadata service, via the heartbeat). Read only: wg-admin never approves one. */
+export interface ScheduledEvent {
+  id: string;
+  type: ScheduledEventType;
+  /** "Scheduled" or "Started". */
+  status: string;
+  notBefore: string | null;
+  source: string | null;
+  description: string | null;
+  durationS: number | null;
+}
+
+/** The VM's own figures, from the heartbeat (agent_version 7 and later). */
+export interface AgentVitals {
+  /** The heartbeat they came with. */
+  at: string;
+  memUsedPct: number | null;
+  diskUsedPct: number | null;
+  diskFreeBytes: number | null;
+  load1: number | null;
+  ncpu: number | null;
+  stealPct: number | null;
+  uptimeS: number | null;
+  conntrack: { count: number; max: number } | null;
+  updates: { pending: number; security: number; at: string } | null;
+  /** The internet check: icmp, or tcp to port 53 when ping is blocked. lossPct 100 on every target = no internet. */
+  net: { at: string; method: "icmp" | "tcp"; targets: { ip: string; rttMs: number | null; lossPct: number | null }[] } | null;
+}
+
+/** An Azure Service Health event touching VMs or networking (SERVICE_HEALTH_SERVICES). */
+export interface ServiceEvent {
+  trackingId: string;
+  type: "ServiceIssue" | "PlannedMaintenance";
+  status: "Active" | "Resolved";
+  level: string | null;
+  title: string;
+  summary: string | null;
+  services: string[];
+  startsAt: string | null;
+  endsAt: string | null;
+  updatedAt: string;
+}
+
+/** GET /api/v1/azure/summary: polled every 30 s by Overview and the shell. */
+export interface AzureSummaryResponse {
+  /** All four service principal values are set. */
+  configured: boolean;
+  /** The configured region; `name` as Azure names it ("UK South"), for "Azure issue in UK South". */
+  region: { id: string; name: string };
+  /** Every feed, in priority order. */
+  feeds: FeedStatus[];
+  health: AzureHealth | null;
+  /** Azure's scheduled events for this VM, soonest first. */
+  maintenance: ScheduledEvent[];
+  /** Active ServiceIssues affecting VMs or networking in this region: the top-bar pill shows while this is not empty. */
+  serviceIssues: ServiceEvent[];
+  vitals: AgentVitals | null;
+  /** current: the VM's agent sends vitals; needsDeploy: a running VM's agent is older than 7; none: no VM or no heartbeat. */
+  agent: "current" | "needsDeploy" | "none";
+  /** The newest 5-minute slot's headline figures. */
+  latest: { cpuPct: number | null; creditsLeft: number | null; memFreeBytes: number | null; vipAvailPct: number | null; underDdos: boolean | null; at: string | null };
+}
+
+export type AzureMetricsResource = "vm" | "pip" | "vitals";
+
+/** GET /api/v1/azure/metrics?resource=vm|pip|vitals&range=1h|24h|7d|30d. Columns: "t" then VM_COLUMNS, PIP_COLUMNS or VITALS_COLUMNS (shared/azureMetrics.ts). */
+export interface AzureMetricsResponse {
+  resource: AzureMetricsResource;
+  range: HistoryRange;
+  /** Seconds per point: vm and pip at least 300 (Azure's 5-minute slots), vitals as hist_vm. */
+  step: number;
+  columns: string[];
+  /** One object per point, keyed by column; "t" is the slot start (ISO). A missing figure is null. */
+  points: Record<string, number | string | null>[];
+}
+
+export type AzureChangesRange = "24h" | "7d" | "30d" | "90d";
+export type AzureChangesWho = "all" | "others" | "wgadmin";
+
+/** One operation in the Azure Activity Log (grouped by correlation id: the final status wins). */
+export interface AzureChangeRow {
+  id: string;
+  at: string;
+  /** Azure's operationName, e.g. Microsoft.Network/networkSecurityGroups/securityRules/write. */
+  operation: string;
+  status: string;
+  caller: string | null;
+  /** wgadmin: wg-admin's own service principal; person: an email address; azure: the platform. */
+  callerKind: "wgadmin" | "person" | "azure";
+  /** A plain name from AZURE_RESOURCE_KINDS' labels (shared/azureMetrics.ts). */
+  resourceType: string;
+  resourceName: string | null;
+}
+
+/** GET /api/v1/azure/changes?range=24h|7d|30d|90d&who=all|others|wgadmin (defaults 7d, all). Newest first. */
+export interface AzureChangesResponse {
+  range: AzureChangesRange;
+  feed: FeedStatus;
+  rows: AzureChangeRow[];
+}
+
+export type AzureServiceHealthRange = "7d" | "30d" | "90d";
+
+/** GET /api/v1/azure/service-health?range=7d|30d|90d (default 30d): this region's events, active first. */
+export interface AzureServiceHealthResponse {
+  events: ServiceEvent[];
+  feed: FeedStatus;
+}
+
+/** GET /api/v1/azure/capacity?region=&size=, and OverviewResponse.capacity: can the next deploy get this size here? */
+export interface CapacityCheck {
+  region: string;
+  size: string;
+  /** Offered to this subscription in this region; null = not known yet. */
+  available: boolean | null;
+  /** Azure's restriction reason, e.g. NotAvailableForSubscription. */
+  reason: string | null;
+  /** vCPUs the deploy needs (the size's, plus 1 for the test VM); null until the SKU list is read. */
+  vcpusNeeded: number | null;
+  family: { name: string; used: number; limit: number } | null;
+  total: { used: number; limit: number } | null;
+  /** false: show the warning ("Deploy anyway"); true: fine; null: not known. */
+  ok: boolean | null;
+  /** The warning or the quiet line, in plain words (spec 10.2). */
+  message: string | null;
+  fetchedAt: string | null;
+}
+
+/** GET /api/v1/azure/price?region=&size=, and SettingsResponse.price. GBP per hour, Linux pay-as-you-go list prices. */
+export interface PriceInfo {
+  region: string;
+  size: string;
+  vmGbpPerHour: number | null;
+  /** The E4 disk's monthly price / 730. */
+  diskGbpPerHour: number | null;
+  ipGbpPerHour: number | null;
+  /** VM + disk + IP (azure), or the fixed hourly rate. */
+  totalGbpPerHour: number | null;
+  /** Disk + IP (azure), or the fixed standby rate. */
+  standbyGbpPerHour: number | null;
+  fetchedAt: string | null;
+  /** An Azure price exists but is more than 7 days old. */
+  stale: boolean;
+  /** Where the totals come from. */
+  source: "azure" | "fixed";
+  /** Why the fixed rates apply, when they do; null otherwise. */
+  reason: string | null;
+}
+
+/** GET and POST /api/v1/azure/bootlog: the VM's serial log, redacted, at most the last 64 KB. Never a URL. POST is limited to one a minute (429 slow_down). */
+export interface BootLogResponse {
+  fetchedAt: string | null;
+  bytes: number;
+  truncated: boolean;
+  /** How many secrets were replaced with ‹redacted›. */
+  redactions: number;
+  text: string | null;
+  /** Why there is no log: "Boot diagnostics turn on with the next deploy", "No VM", "Azure isn't connected...". */
+  reason: string | null;
+}
+
+/** GET /api/v1/azure/diagnostics: each feed with its timing, and the metric names Azure emits (null until read). No secrets. */
+export interface AzureDiagnosticsResponse {
+  configured: boolean;
+  feeds: (FeedStatus & { lastTryAt: string | null; nextDueAt: string | null })[];
+  metricNames: { vm: string[] | null; pip: string[] | null };
 }

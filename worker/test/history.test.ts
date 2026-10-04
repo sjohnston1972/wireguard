@@ -28,7 +28,7 @@ const columns = async (table: string) =>
 
 describe("schema", () => {
   it("has the history tables and the run step column", async () => {
-    expect(await columns("hist_vm")).toEqual(["res", "t", "expected", "received", "load1", "rx_rate", "tx_rate", "rx_rate_max", "tx_rate_max", "peers_online", "dns_up"]);
+    expect(await columns("hist_vm")).toEqual(["res", "t", "expected", "received", "load1", "rx_rate", "tx_rate", "rx_rate_max", "tx_rate_max", "peers_online", "dns_up", "mem_used_pct", "disk_used_pct", "steal_pct", "conntrack_pct", "net_rtt_ms", "net_loss_pct"]);
     expect(await columns("hist_client")).toEqual(["res", "t", "peer_id", "online", "handshake_age", "latency_avg", "latency_max", "rx", "tx"]);
     expect(await columns("hist_drops")).toEqual(["t", "src", "dst", "proto", "dport", "in_if", "out_if", "n"]);
     expect(await columns("runs")).toContain("steps_json");

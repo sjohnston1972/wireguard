@@ -75,6 +75,11 @@ export function regionName(r: string): string {
   return REGIONS[r] ?? r;
 }
 
+/** The region as Azure itself names it, without the city: "UK South" (Service Health events use these names). */
+export function azureRegionName(r: string): string {
+  return regionName(r).replace(/\s*\([^)]*\)$/, "");
+}
+
 /** Cloudflare's idea of where a request came from: country code and the nearest Azure region. */
 export function whereFrom(req: Request): { country: string | null; region: string | null } {
   const cf = (req as unknown as { cf?: { country?: string; continent?: string; longitude?: string } }).cf;

@@ -85,6 +85,8 @@ export function registerOverview(api: Hono<ApiEnv>): void {
         : null,
       stateBackups: backups && !backups.error ? backups.state : null,
       typicalSeconds: { deploy: typicalSeconds(runs, "apply"), destroy: typicalSeconds(runs, "destroy") },
+      // The deploy target's capacity check: area X1 fills it from az_capacity.
+      capacity: null,
     };
     return c.json(out);
   });

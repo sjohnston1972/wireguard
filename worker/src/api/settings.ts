@@ -21,6 +21,7 @@ import { backupStatus } from "../backup";
 import { rotationStatus, shortKey } from "../keyrotation";
 import { serverPublicKey } from "../peers";
 import { lastNotifyError } from "../notify";
+import { fixedPrice } from "./azure";
 import type { ApiOk, SettingsResponse } from "../../../shared/api";
 
 const ok = (c: Context<ApiEnv>, message: string) => {
@@ -67,6 +68,9 @@ export function registerSettings(api: Hono<ApiEnv>): void {
       vapidPublic: env.VAPID_PUBLIC_KEY ?? null,
       notifyError,
       publicUrl: config(env).publicUrl,
+      // Until area X1 collects Azure's prices (and adds rate_source), estimates use the fixed rates.
+      rateSource: "fixed",
+      price: fixedPrice(cfg, cfg.region, cfg.vmSize),
     };
     return c.json(out);
   });

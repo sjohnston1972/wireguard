@@ -308,9 +308,9 @@ export function loadPrefsFiles(paths, read) {
   return out;
 }
 
-/** The saves to make: each page's preferences with the version the server holds now (GET /api/v1/prefs). */
+/** The saves to make: each page's preferences with the version the server holds now (GET /api/v1/prefs), as a schema 2 dashboard (PrefsPutBody). */
 export function prefsPuts(current, pages) {
-  return Object.entries(pages).map(([page, prefs]) => ({ page, body: { baseVersion: current.pages[page]?.version ?? 0, prefs } }));
+  return Object.entries(pages).map(([page, prefs]) => ({ page, body: { schema: 2, baseVersion: current.pages[page]?.version ?? 0, prefs } }));
 }
 
 /**

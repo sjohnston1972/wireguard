@@ -7,7 +7,8 @@
 // packet captures, GitHub's result callback, run secrets and live log, the one-tap
 // buttons on phone notifications), the phone-install manifest, the data API
 // for the app (/api/v1, behind the login), capture downloads and the health
-// check. The cron entry point at the bottom is the night watchman.
+// check. The cron entry point at the bottom is the night watchman, and (on its
+// own cron) the Azure insights collector.
 
 import { Hono, type Context } from "hono";
 import type { Env } from "./env";
@@ -20,6 +21,8 @@ import { startHibernate } from "./standby";
 import { consumeAction } from "./actions";
 import { notify } from "./notify";
 import { runScheduled } from "./monitor";
+import { runInsights } from "./insights/runner";
+import { INSIGHTS_CRON } from "./insights/types";
 import { receiveCapture, MAX_CAPTURE_BYTES } from "./capture";
 import { buildApi } from "./api";
 import { devSeed } from "./devseed";
@@ -268,7 +271,22 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  // Two crons (wrangler.toml): the Azure insights collector on its own (INSIGHTS_CRON),
+  // and the watchman on everything else, as before. Each gets its own invocation, so
+  // neither can use up the other's time or outside calls, and a collector failure is
+  // only logged.
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (event.cron === INSIGHTS_CRON) {
+      ctx.waitUntil(
+        runInsights(env, new Date(event.scheduledTime)).then(
+          (lines) => {
+            if (lines.length) console.log("insights:", lines.join(" | "));
+          },
+          (e) => console.error("insights run failed:", e),
+        )
+      );
+      return;
+    }
     ctx.waitUntil(
       runScheduled(env).then((notes) => {
         if (notes.length) console.log("watchman:", notes.join(" | "));
