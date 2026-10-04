@@ -14,6 +14,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 import { buildCatalogue, lintTfText, parseLabYaml, variablesProblems } from "../lib/labs.mjs";
 
 const labsDir = fileURLToPath(new URL("../../labs/", import.meta.url));
@@ -247,4 +248,98 @@ test("az104-06-blob-security: the stored access policy is a thing to try (azurer
   const things = l.readme.split("## Things to try")[1].split("## Learn more")[0];
   assert.match(things, /stored access policy/i);
   assert.doesNotMatch(l.readme.split("## Things to try")[0], /stored access policy/i, "What it deploys does not claim one");
+});
+
+// ── Lab 7: Azure Files from a VM ─────────────────────────────────────────
+
+commonChecks("az104-07-files");
+
+const files7 = () => {
+  const l = lab("az104-07-files");
+  const tplPath = join(l.tfDir, "cloud-init.yaml.tftpl");
+  return { l, tpl: existsSync(tplPath) ? readFileSync(tplPath, "utf8").replace(/\r\n/g, "\n") : "" };
+};
+const output = (l, name) => l.blocks.find((b) => b.kind === "output" && b.labels[0] === name);
+
+test("az104-07-files: an SMB share made through ARM, behind a firewall that admits only the VM subnet's service endpoint", () => {
+  const { l } = files7();
+  const [share] = resources(l, "azurerm_storage_share");
+  assert.equal(attr(share.body, "enabled_protocol"), '"SMB"');
+  assert.equal(attr(share.body, "storage_account_id"), "azurerm_storage_account.files.id");
+  assert.ok(Number(attr(share.body, "quota")) <= 5, "a small quota");
+  const [acct] = resources(l, "azurerm_storage_account");
+  assert.equal(attr(acct.body, "account_replication_type"), '"LRS"');
+  assert.equal(attr(acct.body, "account_tier"), '"Standard"', "standard (pay for what is stored), never premium (provisioned)");
+  assert.equal(attr(acct.body, "default_action"), '"Deny"');
+  assert.equal(attr(acct.body, "virtual_network_subnet_ids"), "[azurerm_subnet.vms.id]");
+  const [subnet] = resources(l, "azurerm_subnet");
+  assert.equal(attr(subnet.body, "service_endpoints"), '["Microsoft.Storage"]');
+  // The GitHub runner is outside the firewall, so Terraform must never call the data plane.
+  assert.ok(dataPlaneOff(l), "versions.tf sets storage { data_plane_available = false }");
+});
+
+test("az104-07-files: a Standard_B1s Linux VM with no public IP, a standard HDD OS disk and boot diagnostics for the serial console", () => {
+  const { l } = files7();
+  assert.equal(resources(l, "azurerm_public_ip").length, 0);
+  const [nic] = resources(l, "azurerm_network_interface");
+  assert.doesNotMatch(nic.body, /public_ip_address_id/);
+  const [vm] = resources(l, "azurerm_linux_virtual_machine");
+  assert.equal(attr(vm.body, "size"), '"Standard_B1s"');
+  assert.equal(attr(vm.body, "storage_account_type"), '"Standard_LRS"');
+  assert.match(vm.body, /boot_diagnostics\s*\{\s*\}/);
+  assert.equal(attr(vm.body, "admin_password"), "var.admin_password");
+  assert.match(vm.body, /dynamic\s+"admin_ssh_key"/, "the operator's SSH key when the pipeline has one");
+  assert.match(output(l, "connect").body, /"ssh azureuser@\$\{azurerm_network_interface\.vm\.private_ip_address\}"/);
+});
+
+test("az104-07-files: cloud-init mounts the share with a root-only credentials file and never prints the key", () => {
+  const { l, tpl } = files7();
+  const [vm] = resources(l, "azurerm_linux_virtual_machine");
+  assert.match(vm.body, /custom_data\s*=\s*base64encode\(templatefile\("\$\{path\.module\}\/cloud-init\.yaml\.tftpl"/);
+  assert.match(vm.body, /key\s*=\s*azurerm_storage_account\.files\.primary_access_key/);
+  assert.ok(tpl, "terraform/cloud-init.yaml.tftpl exists");
+  assert.match(tpl, /^#cloud-config/);
+  // The key is written once, into a 0600 root file, and used only by its path.
+  assert.equal([...tpl.matchAll(/\$\{key\}/g)].length, 1, "the key appears once");
+  assert.match(tpl, /- path: \/etc\/smbcredentials\/\S+\n(?:[ ]+\S.*\n)*?[ ]+permissions: "0600"/, "the credentials file is written 0600");
+  assert.match(tpl, /password=\$\{key\}/);
+  const runcmd = tpl.split(/^runcmd:/m)[1] ?? "";
+  assert.ok(runcmd, "a runcmd section");
+  assert.doesNotMatch(runcmd, /\$\{key\}|password=|set -x/, "commands never carry the key");
+  assert.match(runcmd, /credentials=\/etc\/smbcredentials\//);
+  assert.match(runcmd, /nofail/, "a failed mount never stops the VM booting");
+  assert.match(tpl, /cifs-utils/);
+  assert.doesNotMatch(tpl, /\b\d{1,3}(\.\d{1,3}){3}\b/, "no literal addresses");
+});
+
+test("az104-07-files: rendered cloud-init is valid YAML and the key lives only in the credentials file", () => {
+  const { tpl } = files7();
+  const KEY = "FAKEKEY+abc/def==";
+  const vars = { account: "l07abcdefiles", host: "l07abcdefiles.file.core.windows.net", share: "labshare", key: KEY };
+  const rendered = tpl.replace(/\$\{(\w+)\}/g, (_, k) => {
+    assert.ok(k in vars, `template variable ${k} is passed by main.tf`);
+    return vars[k];
+  });
+  const doc = parseYaml(rendered);
+  assert.deepEqual(doc.packages, ["cifs-utils"]);
+  const [cred] = doc.write_files;
+  assert.equal(cred.path, "/etc/smbcredentials/l07abcdefiles.cred");
+  assert.equal(cred.permissions, "0600");
+  assert.equal(cred.content, `username=l07abcdefiles\npassword=${KEY}\n`);
+  for (const cmd of doc.runcmd) assert.equal(typeof cmd, "string");
+  assert.ok(!JSON.stringify(doc.runcmd).includes(KEY));
+  assert.match(doc.runcmd.join("\n"), /\/\/l07abcdefiles\.file\.core\.windows\.net\/labshare \/mnt\/labshare cifs /);
+});
+
+test("az104-07-files: the VM subnet keeps default outbound access, so cloud-init can install cifs-utils without a NAT gateway", () => {
+  const { l } = files7();
+  const [subnet] = resources(l, "azurerm_subnet");
+  assert.equal(attr(subnet.body, "default_outbound_access_enabled"), "true");
+  assert.equal(resources(l, "azurerm_nat_gateway").length, 0);
+});
+
+test("az104-07-files: private_ips names the VM and peer_vnet_id is the lab VNet", () => {
+  const { l } = files7();
+  assert.match(output(l, "private_ips").body, /"vm-files"\s*=\s*azurerm_network_interface\.vm\.private_ip_address/);
+  assert.equal(attr(output(l, "peer_vnet_id").body, "value"), "azurerm_virtual_network.lab.id");
 });
