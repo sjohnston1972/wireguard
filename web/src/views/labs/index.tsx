@@ -1,17 +1,19 @@
 // views/labs/index.tsx
 //
 // Plain English: the Labs tab (/labs, /labs/:id, /labs/history), loaded lazily
-// by views/pages.tsx. Contract placeholder (plan L0): the page header only.
-// Plan area L3 replaces this folder with the catalogue, the lab modal, the
-// running strip and history; the default export stays the whole tab.
+// by views/pages.tsx, so the first page load never carries it. The default
+// export is the whole tab: the catalogue page (with a lab's modal at
+// /labs/:id), the history page, or the phone's own composition.
 
-import { PageHeader } from "@/components/layout/PageHeader";
-import { EnvironmentField } from "@/shell/StateChip";
+import { useLocation, useParams } from "react-router-dom";
+import { LabsPage } from "./LabsPage";
+import "./labs.css";
 
 export default function LabsTab() {
-  return (
-    <section className="placeholder">
-      <PageHeader title="Labs" subtitle="On-demand AZ-104 and AZ-305 lab environments. Built in plan area L3." env={<EnvironmentField />} />
-    </section>
-  );
+  const { pathname } = useLocation();
+  const { id } = useParams();
+  const history = pathname.replace(/\/+$/, "") === "/labs/history";
+  void history;
+  void id;
+  return <LabsPage />;
 }
