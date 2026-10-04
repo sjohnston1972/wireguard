@@ -154,7 +154,7 @@
 .act__step--done .act__step-mark { background: var(--green); border-color: var(--green); }
 .act__step--failed .act__step-mark { background: var(--red); border-color: var(--red); color: #fff; }
 .act__step--running .act__step-mark { border-color: var(--blue-bright); background: color-mix(in srgb, var(--blue) 30%, var(--bg-panel)); }
-.act__step--skipped .act__step-mark { color: var(--text-muted); }
+.act__step--skipped .act__step-mark, .act__step--notrun .act__step-mark { color: var(--text-muted); }
 /* a step's name in at most two lines (the full name is its tooltip) */
 .act__step-name { font-weight: 500; max-width: 100%; padding: 0 2px; line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .act__track--one .act__step-name { -webkit-line-clamp: 1; }

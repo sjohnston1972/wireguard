@@ -378,6 +378,89 @@ describe("run steps", () => {
       { name: "terraform apply", status: "in_progress", conclusion: null, started_at: "2026-10-02T10:00:30Z", completed_at: null },
     ]);
   });
+
+  // Live test 2026-10-04: a finished destroy showed "terraform destroy — Running…",
+  // because the step list was saved mid-run and never again once the run ended.
+  const job = (applyStatus: "in_progress" | "completed", reportStatus: "queued" | "completed") => [
+    {
+      id: 1, name: "terraform", status: reportStatus === "completed" ? "completed" : "in_progress", conclusion: reportStatus === "completed" ? "success" : null,
+      steps: [
+        { name: "Check out", status: "completed", conclusion: "success", started_at: "2026-10-02T10:00:02Z", completed_at: "2026-10-02T10:00:04Z" },
+        { name: "terraform destroy", status: applyStatus, conclusion: applyStatus === "completed" ? "success" : null, started_at: "2026-10-02T10:00:30Z", completed_at: applyStatus === "completed" ? "2026-10-02T10:03:00Z" : null },
+        { name: "Report result", status: reportStatus, conclusion: reportStatus === "completed" ? "success" : null, started_at: reportStatus === "completed" ? "2026-10-02T10:03:01Z" : null, completed_at: reportStatus === "completed" ? "2026-10-02T10:03:02Z" : null },
+      ],
+    },
+  ];
+  const unfinished = (json: string | null | undefined) => (JSON.parse(json ?? "[]") as { status: string }[]).filter((s) => s.status !== "completed").map((s) => (s as { name?: string }).name);
+
+  async function destroyRun() {
+    const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+    const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+    world.azure.rg = true;
+    await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
+    const { startDestroy } = await import("../src/runs");
+    const d = await startDestroy(env, "steven");
+    const dsec = await issueRunSecrets(env, d.id, lastGhRun(world));
+    return { id: d.id, gh: lastGhRun(world), token: dsec.body.callback_token as string };
+  }
+
+  it("are saved once more when the callback finishes the run", async () => {
+    const d = await destroyRun();
+    world.jobs.set(d.gh, job("in_progress", "queued"));
+    await refreshActiveRun(env);
+    expect(unfinished((await db.getRun(env, d.id))!.steps_json)).toEqual(["terraform destroy", "Report result"]);
+    // GitHub moves on; the callback lands.
+    world.jobs.set(d.gh, job("completed", "completed"));
+    world.azure.rg = false;
+    await handleCallback(env, d.token, { run_id: d.id, action: "destroy", status: "success" });
+    expect(unfinished((await db.getRun(env, d.id))!.steps_json)).toEqual([]);
+  });
+
+  it("are finished off by the next poll when GitHub had not finished them at the callback", async () => {
+    const d = await destroyRun();
+    world.jobs.set(d.gh, job("completed", "queued"));
+    world.azure.rg = false;
+    await handleCallback(env, d.token, { run_id: d.id, action: "destroy", status: "success" });
+    expect(unfinished((await db.getRun(env, d.id))!.steps_json)).toEqual(["Report result"]);
+    world.jobs.set(d.gh, job("completed", "completed"));
+    await refreshActiveRun(env); // no run is active now: the last one's steps are read once more
+    expect(unfinished((await db.getRun(env, d.id))!.steps_json)).toEqual([]);
+  });
+
+  it("a poll that races the callback never puts the old steps back on the snapshot", async () => {
+    const d = await destroyRun();
+    world.jobs.set(d.gh, job("in_progress", "queued"));
+    await refreshActiveRun(env);
+    // The next poll reads GitHub while the callback finishes the tear-down.
+    const harnessFetch = globalThis.fetch;
+    let raced = false;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (!raced && /\/actions\/runs\/\d+\/jobs$/.test(url)) {
+        raced = true;
+        const answer = await harnessFetch(input, init); // the old (mid-run) list
+        world.jobs.set(d.gh, job("completed", "completed"));
+        world.azure.rg = false;
+        await handleCallback(env, d.token, { run_id: d.id, action: "destroy", status: "success" });
+        return answer;
+      }
+      return harnessFetch(input, init);
+    });
+    await refreshActiveRun(env);
+    expect(raced).toBe(true);
+    const snap = await getSnapshot(env);
+    expect(snap.state).toBe("destroyed");
+    expect(snap.steps.filter((s) => s.status !== "completed")).toEqual([]);
+  });
+
+  it("a GitHub failure while saving the final steps never fails the callback", async () => {
+    const d = await destroyRun();
+    world.ghFail = 500;
+    world.azure.rg = false;
+    const r = await handleCallback(env, d.token, { run_id: d.id, action: "destroy", status: "success" });
+    expect(r).toEqual({ status: 200, message: "ok" });
+    expect((await getSnapshot(env)).state).toBe("destroyed");
+  });
 });
 
 describe("review fixes", () => {

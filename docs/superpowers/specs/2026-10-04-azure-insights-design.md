@@ -88,7 +88,7 @@ API versions are what is believed current. **(V)** marks "verify at build time w
 | `vmMetrics` | `GET {vm}/providers/Microsoft.Insights/metrics?api-version=2023-10-01&metricnames=…&interval=PT5M&timespan=<last 20 min>&aggregation=Average,Maximum,Minimum,Total` | 5 min | VM running, or up to 15 min after it stops | 1 | `hist_az_vm` (upsert the last 3 complete slots) |
 | `pipMetrics` | the same on `pip-wg` | 5 min | the public IP exists (running or Standby) | 1 | `hist_az_pip` |
 | `metricDefs` | `GET {res}/providers/Microsoft.Insights/metricDefinitions?api-version=2023-10-01` (V), VM and IP | daily, and after each deploy | resource exists | 2 | `az_latest['metricDefs']`: the names this resource emits. Metric calls ask only for these, because one unknown name fails the whole call with 400 |
-| `activity` | `GET /subscriptions/{s}/providers/Microsoft.Insights/eventtypes/management/values?api-version=2015-04-01&$filter=eventTimestamp ge '{last−10 min}' and resourceGroupName eq '{rg}'&$select=eventDataId,eventTimestamp,operationName,status,caller,resourceId,category,correlationId,level,subStatus` | 5 min while the resource group exists or a run ended < 2 h ago, otherwise 60 min | always | 1–2 (at most 2 pages) | `az_activity` |
+| `activity` | `GET /subscriptions/{s}/providers/Microsoft.Insights/eventtypes/management/values?api-version=2015-04-01&$filter=eventTimestamp ge '{last−10 min}' and resourceGroupName eq '{rg}'&$select=eventDataId,eventTimestamp,operationName,status,caller,resourceId,category,correlationId,level,subStatus` | 5 min while the resource group exists or a run ended < 2 h ago, otherwise 60 min; due at once when a run starts or ends | always | 1–2 (at most 2 pages; a first run or one after a 2 h gap reaches back 7 days and may read up to 5 pages while 8 calls of the budget remain) | `az_activity` |
 | `serviceHealth` | `GET /subscriptions/{s}/providers/Microsoft.ResourceHealth/events?api-version=2022-10-01&queryStartTime={−7 d}` (V: server-side `$filter` on EventType; otherwise filtered here) | 15 min | always | 1 | `az_service_events`: ServiceIssue and PlannedMaintenance only, impact limited to Virtual Machines, Virtual Network, Network Infrastructure, Load Balancer, Azure DNS (V: service names) |
 | `capacity` | `GET /subscriptions/{s}/providers/Microsoft.Compute/skus?api-version=2021-07-01&$filter=location eq '{r}'` + `GET …/Microsoft.Compute/locations/{r}/usages?api-version=2024-07-01` (V) | daily per region in use (configured, profiles); on demand for the "nearest" region | always | 2 per region, 1 region per run | `az_capacity` |
 | `prices` | `GET https://prices.azure.com/api/retail/prices?api-version=2023-01-01-preview&currencyCode='GBP'&$filter=armRegionName eq '{r}' and priceType eq 'Consumption' and (…VM sizes… or meterName eq 'E4 LRS Disk' or meterName eq 'S4 LRS Disk' or meterName eq 'Standard IPv4 Static Public IP')` (V: whether one OR filter works; otherwise 3 calls) | daily per region in use | always | 1–3 | `az_prices`. Linux only: skip names containing Windows, Spot or Low Priority, and units that are not "1 Hour" / "1/Month" |
@@ -325,6 +325,12 @@ head is today's `HealthSummary` head, unchanged.
 | 11 | Any warn-level threshold (credits, CPU, memory, disk, steal, conntrack, latency, loss, security updates) | amber | the most severe one, in that order |
 | 12 | Not running and the next deploy's capacity check fails | amber | "The next deploy may fail: ‹message›" |
 | 13 | otherwise | as today | today's head ("All systems healthy" / "No health data") |
+
+**CPU credits (rules 8 and 11), changed after the live test of 4 Oct:** a fresh B-series VM sits on its launch credits (about
+30 on a B1s, which banks up to 144) and earns more while idle, so "28.9 credits left" right after a deploy is not running low.
+The summary's `latest.creditsTrend` compares the newest `credits_min` with the oldest in the hour before it (at least 10 minutes
+older; a change of more than 1 credit is a direction). Credits at warn count only while `falling`; credits at bad count unless
+`rising`, so a VM spent out at 0 still says so.
 
 ## 11. Boot log security
 

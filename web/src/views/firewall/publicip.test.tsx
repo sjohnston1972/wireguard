@@ -117,6 +117,39 @@ describe("Firewall: Public IP and DDoS", () => {
     expect(await within(p).findByText("Under DDoS attack")).toBeInTheDocument();
   });
 
+  // Live test 2026-10-04: under Azure's free DDoS infrastructure protection the DDoS
+  // metrics (and VipAvailability) come back null; only ByteCount, PacketCount and
+  // SynCount have values. The widget said "No DDoS attack" and showed blanks.
+  it("with no DDoS figures from Azure: shows the traffic it has, says DDoS is not reported, and the attack state is no data", async () => {
+    setViewport(1600);
+    const m = pipMetrics();
+    m.points = m.points.map((p) => ({ ...p, ddos_max: null, pkts_in_ddos: null, pkts_drop_ddos: null, bytes_in_ddos: null, bytes_drop_ddos: null, vip_avail: null }));
+    renderFw(withSettings({ series: ["packets", "bytes", "syn", "dropped"] }), { metrics: m });
+    const p = await panel();
+    expect(await within(p).findByText("DDoS figures: not reported by Azure for this IP")).toBeInTheDocument();
+    expect(p).not.toHaveTextContent("No DDoS attack");
+    expect(p).not.toHaveTextContent("Under DDoS attack");
+    expect(within(p).getByText("DDoS attack: no data")).toBeInTheDocument();
+    // The traffic Azure did report.
+    expect(within(row(p, "Packets")).getByText("1,005 per 5 min")).toBeInTheDocument();
+    expect(within(row(p, "SYN packets")).getByText("1,005 per 5 min")).toBeInTheDocument();
+    // No blank DDoS rows; availability says it is not reported.
+    expect(names(p)).toEqual(["Data path availability", "Packets", "Bytes", "SYN packets"]);
+    expect(within(row(p, "Data path availability")).getByText("not reported by Azure")).toBeInTheDocument();
+  });
+
+  it("with no IfUnderDDoSAttack value the attack state is no data, not No, even when other DDoS figures came", async () => {
+    setViewport(1600);
+    const m = pipMetrics();
+    m.points = m.points.map((p) => ({ ...p, ddos_max: null }));
+    renderFw(ON, { metrics: m });
+    const p = await panel();
+    expect(await within(p).findByText("DDoS attack: no data")).toBeInTheDocument();
+    expect(p).not.toHaveTextContent("No DDoS attack");
+    expect(p).not.toHaveTextContent("not reported by Azure for this IP"); // the dropped counts did come
+    expect(within(row(p, "Dropped by DDoS mitigation")).getByText("0 per 5 min")).toBeInTheDocument();
+  });
+
   it("Azure names in small print, and off", async () => {
     setViewport(1600);
     renderFw();

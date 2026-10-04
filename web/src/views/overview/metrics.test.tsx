@@ -7,6 +7,7 @@ import { backdrop, expectBottomSheet, expectCentredModal } from "@/test/dialogs"
 import { setViewport } from "@/test/viewport";
 import { NOW_MS, overview, routes, vmHistory } from "./testData";
 import { AzureDrawer, SshDrawer } from "./drawers";
+import { azureSummaryFixture } from "@/test/fixtures";
 
 const metrics = () => screen.findByRole("region", { name: "Key metrics" });
 const topology = () => screen.findByRole("region", { name: "Live topology" });
@@ -70,9 +71,11 @@ describe("Overview key metrics", () => {
     const endpoint = within(t).getByRole("button", { name: /^WireGuard endpoint/ });
     expect(endpoint).toHaveAttribute("data-status", "down");
     expect(endpoint).toHaveTextContent("Down");
+    // A failed inventory check is not Azure saying the VM is degraded: it says the check failed.
     const azure = within(t).getByRole("button", { name: /^Microsoft Azure/ });
-    expect(azure).toHaveAttribute("data-status", "degraded");
-    expect(azure).toHaveTextContent("Degraded");
+    expect(azure).toHaveAttribute("data-status", "unknown");
+    expect(azure).toHaveTextContent("Check failed");
+    expect(azure).not.toHaveTextContent("Degraded");
     expect(within(t).getByText("Down", { selector: ".pill *, .pill" })).toBeInTheDocument();
     r.unmount();
 
@@ -82,6 +85,24 @@ describe("Overview key metrics", () => {
     expect(clients).toHaveAttribute("data-status", "degraded");
     expect(clients).toHaveTextContent("Degraded");
     expect(within(t2).getByRole("button", { name: /^WireGuard endpoint/ })).toHaveAttribute("data-status", "healthy");
+  });
+
+  // Live test 2026-10-04: during a deploy (nothing in Azure yet) the Azure node read "Degraded" in amber.
+  it("during a deploy with nothing in Azure yet, Azure says Creating, not Degraded", async () => {
+    const empty = { checked_at: new Date(NOW_MS).toISOString(), resource_group: "rg-wg", exists: false, resources: [] };
+    renderApp("/", { routes: routes(overview("deploying", { snapshot: { azure: empty } })) });
+    const azure = within(await topology()).getByRole("button", { name: /^Microsoft Azure/ });
+    expect(azure).not.toHaveAttribute("data-status", "degraded");
+    expect(azure).toHaveTextContent("Creating");
+    expect(azure).not.toHaveTextContent("Degraded");
+  });
+
+  it("Azure says Degraded when Azure's own health check says so", async () => {
+    const health = { ...azureSummaryFixture().health!, state: "Degraded" as const, title: "Degraded", summary: "We're sorry, your virtual machine is degraded." };
+    renderApp("/", { routes: routes(overview("running"), { "GET /api/v1/azure/summary": azureSummaryFixture({ health }) }) });
+    const t = await topology();
+    await waitFor(() => expect(within(t).getByRole("button", { name: /^Microsoft Azure/ })).toHaveAttribute("data-status", "degraded"));
+    expect(within(t).getByRole("button", { name: /^Microsoft Azure/ })).toHaveTextContent("Degraded");
   });
 
   it("the endpoint opens the SSH drawer; the password is fetched only on press", async () => {

@@ -145,7 +145,7 @@ describe("verdict rules (first match wins)", () => {
     });
 
   it("each rule just short of its threshold falls through", () => {
-    expect(verdict(input({ azure: azure({}, { creditsLeft: 10 }) })).rule).toBe(11); // credits 10: warn (below 30), not bad (below 10)
+    expect(verdict(input({ azure: azure({}, { creditsLeft: 10, creditsTrend: "falling" }) })).rule).toBe(11); // credits 10: warn (below 30), not bad (below 10)
     expect(verdict(input({ azure: azure({}, { cpuPct: 79 }) })).rule).toBe(13);
     expect(verdict(input({ azure: azure({ maintenance: [event({ notBefore: iso(NOW + 16 * MIN) })] }) })).rule).toBe(10);
     expect(verdict(input({ azure: azure({ vitals: vitals({ net: { at: iso(NOW), method: "icmp", targets: [{ ip: "1.1.1.1", rttMs: 9, lossPct: 9 }, { ip: "8.8.8.8", rttMs: 9, lossPct: 100 }] } }) }) })).rule).toBe(11);
@@ -164,11 +164,37 @@ describe("verdict rules (first match wins)", () => {
 
   it("rule 11 gives the most severe threshold, in the spec's order", () => {
     // CPU bad (95) outranks a credits warn; with both at warn, credits comes first.
-    expect(verdict(input({ azure: azure({}, { creditsLeft: 25, cpuPct: 95 }) })).title).toBe("CPU busy");
-    expect(verdict(input({ azure: azure({}, { creditsLeft: 25, cpuPct: 85 }) })).title).toBe("CPU credits running low");
+    expect(verdict(input({ azure: azure({}, { creditsLeft: 25, creditsTrend: "falling", cpuPct: 95 }) })).title).toBe("CPU busy");
+    expect(verdict(input({ azure: azure({}, { creditsLeft: 25, creditsTrend: "falling", cpuPct: 85 }) })).title).toBe("CPU credits running low");
     expect(verdict(input({ azure: azure({ vitals: vitals({ stealPct: 10 }) }) })).title).toBe("CPU steal high");
     expect(verdict(input({ azure: azure({ vitals: vitals({ net: { at: iso(NOW), method: "icmp", targets: [{ ip: "1.1.1.1", rttMs: 100, lossPct: 0 }] } }) }) })).title).toBe("Internet latency high");
     expect(verdict(input({ azure: azure({ vitals: vitals({ updates: { pending: 4, security: 1, at: iso(NOW) } }) }) })).title).toBe("Security updates waiting");
+  });
+});
+
+// Live test 2026-10-04: right after a fresh deploy the head said "CPU credits running
+// low — 28.9 credits left". A B-series VM starts with its launch credits (about 30 for
+// a B1s, which banks up to 144) and earns more while idle: that is not running low.
+describe("CPU credits warn only while they are being spent down", () => {
+  const credits = (creditsLeft: number, creditsTrend: AzureSummaryResponse["latest"]["creditsTrend"]) => verdict(input({ azure: azure({}, { creditsLeft, creditsTrend }) }));
+
+  it("a fresh VM on its launch credits says nothing about credits", () => {
+    expect(credits(28.9, "rising")).toMatchObject({ rule: 13, title: "All systems healthy" });
+    expect(credits(28.9, "flat")).toMatchObject({ rule: 13 });
+    // The first readings after a deploy: no trend yet.
+    expect(credits(28.9, null)).toMatchObject({ rule: 13 });
+    expect(credits(28.9, undefined)).toMatchObject({ rule: 13 });
+  });
+
+  it("credits that are falling below warn still warn", () => {
+    expect(credits(28.9, "falling")).toMatchObject({ rule: 11, tone: "amber", title: "CPU credits running low", sub: "28.9 credits left" });
+  });
+
+  it("credits at bad warn unless they are climbing back", () => {
+    expect(credits(4, "falling")).toMatchObject({ rule: 8, title: "CPU credits nearly gone: the VM will slow to its baseline speed" });
+    expect(credits(0, "flat")).toMatchObject({ rule: 8 }); // spent out, held at the baseline
+    expect(credits(4, null)).toMatchObject({ rule: 8 });
+    expect(credits(4, "rising")).toMatchObject({ rule: 13 });
   });
 });
 

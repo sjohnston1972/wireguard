@@ -3,7 +3,10 @@
 // Plain English: the resource group's Activity Log: who changed what in
 // Azure, including changes made in the portal. Every 5 minutes while the
 // resource group exists or a run ended less than 2 hours ago, otherwise
-// hourly. At most 2 pages per run.
+// hourly; a run starting or ending makes it due at once. At most 2 pages
+// per run, except a backfill (the first run, or after a 2-hour gap), which
+// reaches back 7 days by the group's name (so also once the group is gone)
+// and may read up to 5.
 //
 //   - Events are grouped by correlation id (one operation logs Started,
 //     Accepted, then Succeeded or Failed); the final status wins, and a
@@ -30,10 +33,22 @@ import { HOUR, MIN, armRefusal, iso, paths, rgExists, str, time, valueOf, type F
 const ACTIVITY_API = "2015-04-01";
 const SELECT = "eventDataId,eventTimestamp,operationName,status,caller,resourceId,category,correlationId,level,subStatus";
 const MAX_PAGES = 2;
+/** A cron that fires a few seconds early still counts (as the runner's own rule). */
+const DUE_SLACK_MS = 30_000;
 /** How far before the last success each query reaches, for events Azure logs late. */
 const OVERLAP_MS = 10 * MIN;
-/** The furthest back the first run reaches. */
-const BACKFILL_MS = 24 * HOUR;
+/**
+ * The furthest back a run reaches: the first run (no success yet), or one
+ * after a long gap, fills in the last 7 days (Azure keeps 90). 24 hours was
+ * too short: a first run stored nothing although the day before's deploys
+ * and tear-downs were in the log (live test, 4 Oct).
+ */
+const BACKFILL_MS = 7 * 24 * HOUR;
+/** A run is a backfill when it has no success in this long; it may then read more pages. */
+const BACKFILL_AFTER_MS = 2 * HOUR;
+const BACKFILL_PAGES = 5;
+/** Extra backfill pages leave at least this many calls of the run's budget for the feeds after this one. */
+const BACKFILL_RESERVE = 8;
 const FINAL = new Set(["Succeeded", "Failed", "Canceled", "Cancelled", "Resolved"]);
 /** Resource kinds whose outside changes write a watchman note. */
 const WATCHED = new Set(["vm", "nsg", "pip", "nic"]);
@@ -151,14 +166,17 @@ export function activityQuery(rg: string, fromMs: number, toMs: number): string 
   return `api-version=${ACTIVITY_API}&$filter=${encodeURIComponent(filter)}&$select=${encodeURIComponent(SELECT)}`;
 }
 
-/** Up to two pages of events since 10 minutes before the last success (24 h on the first run). */
+/** Up to two pages of events since 10 minutes before the last success; a backfill (7 days back) up to five, budget allowing. */
 export async function fetchActivity(ctx: FeedCtx, row: Pick<FeedRow, "last_ok_at"> | null): Promise<unknown[]> {
   const now = ctx.now.getTime();
   const lastOk = Date.parse(row?.last_ok_at ?? "");
   const from = Math.max(now - BACKFILL_MS, Math.min(now - OVERLAP_MS, Number.isFinite(lastOk) ? lastOk - OVERLAP_MS : -Infinity));
+  // Filtered by the group's name, so it works the same when the group is gone.
+  const backfill = !Number.isFinite(lastOk) || now - lastOk > BACKFILL_AFTER_MS;
   let next: string | null = `${paths(ctx.env, ctx.cfg).sub}/providers/Microsoft.Insights/eventtypes/management/values?${activityQuery(ctx.cfg.resourceGroup, from, now)}`;
   const out: unknown[] = [];
-  for (let page = 0; page < MAX_PAGES && next; page++) {
+  const more = (page: number) => page < MAX_PAGES || (backfill && page < BACKFILL_PAGES && ctx.budget.remaining() > BACKFILL_RESERVE);
+  for (let page = 0; more(page) && next; page++) {
     const r = await ctx.arm(next);
     if (!r.ok) throw await armRefusal("the Activity Log", r);
     const j = (await r.json()) as { value?: unknown; nextLink?: unknown };
@@ -231,6 +249,19 @@ const activity: FeedModule = {
   when: "always",
   calls: MAX_PAGES,
   arm: true,
+  /**
+   * Due when its time has come, and also as soon as the 5-minute cadence
+   * applies again (a deploy under way, the group back) after it had set
+   * itself an hour ahead, once 5 minutes have passed since it last tried.
+   * Starting or finishing a run also makes it due (runs.ts, markActivityDue).
+   */
+  async due(ctx, row) {
+    const now = ctx.now.getTime();
+    if (!row || !row.next_due_at || Date.parse(row.next_due_at) <= now + DUE_SLACK_MS) return true;
+    if (activityCadence(ctx.snap, await lastRunEnd(ctx.db), now) !== 5) return false;
+    const tried = Date.parse(row.last_try_at ?? "");
+    return !Number.isFinite(tried) || now - tried >= 5 * MIN - DUE_SLACK_MS;
+  },
   async run(ctx) {
     // The runner hands over the row it read for the whole run; a one-off reads it.
     const row = ctx.row !== undefined ? ctx.row : await ctx.db.prepare("SELECT feed, last_try_at, last_ok_at, status, error, next_due_at FROM az_feed WHERE feed = 'activity'").first<FeedRow>();

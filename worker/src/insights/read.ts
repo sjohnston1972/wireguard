@@ -85,6 +85,28 @@ function agentState(snap: Snapshot): AzureSummaryResponse["agent"] {
   return (snap.agent.agent_version ?? 0) >= VITALS_AGENT_VERSION ? "current" : "needsDeploy";
 }
 
+/** How far back the credit trend looks, the least time it needs between two readings, and the change that counts. */
+const TREND_MS = 60 * MIN;
+const TREND_SPAN_MS = 10 * MIN;
+const TREND_CREDITS = 1;
+
+/**
+ * Where the CPU credits have gone in the hour up to the newest slot `t`: the
+ * newest reading against the oldest one in that hour, if it is at least 10
+ * minutes older. A B1s earns about 6 credits an hour at idle, so a move of
+ * more than 1 credit is a direction; less is flat. Null with too few readings.
+ */
+async function creditsTrend(db: D1Database, t: string, newest: number): Promise<"falling" | "flat" | "rising" | null> {
+  const at = Date.parse(t);
+  const first = await db
+    .prepare("SELECT t, credits_min FROM hist_az_vm WHERE res = 300 AND t >= ?1 AND t <= ?2 AND credits_min IS NOT NULL ORDER BY t LIMIT 1")
+    .bind(slotOf(at - TREND_MS), slotOf(at - TREND_SPAN_MS))
+    .first<{ t: string; credits_min: number }>();
+  if (!first) return null;
+  const change = newest - first.credits_min;
+  return change < -TREND_CREDITS ? "falling" : change > TREND_CREDITS ? "rising" : "flat";
+}
+
 async function latest(db: D1Database, now: Date): Promise<AzureSummaryResponse["latest"]> {
   const since = slotOf(now.getTime() - LATEST_MS);
   const vm = await db.prepare("SELECT t, cpu_avg, credits_min, mem_free_min FROM hist_az_vm WHERE res = 300 AND t >= ?1 ORDER BY t DESC LIMIT 1").bind(since).first<{ t: string; cpu_avg: number | null; credits_min: number | null; mem_free_min: number | null }>();
@@ -92,6 +114,7 @@ async function latest(db: D1Database, now: Date): Promise<AzureSummaryResponse["
   return {
     cpuPct: vm?.cpu_avg ?? null,
     creditsLeft: vm?.credits_min ?? null,
+    creditsTrend: vm && vm.credits_min !== null ? await creditsTrend(db, vm.t, vm.credits_min) : null,
     memFreeBytes: vm?.mem_free_min ?? null,
     vipAvailPct: pip?.vip_avail ?? null,
     underDdos: pip && pip.ddos_max !== null ? pip.ddos_max >= 1 : null,
