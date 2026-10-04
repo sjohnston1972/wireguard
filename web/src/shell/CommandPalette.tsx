@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { Command } from "cmdk";
 import { useNavigate } from "react-router-dom";
-import { Activity, Cog, Play, Plus, Search, Shield, Users, Zap, type LucideIcon } from "lucide-react";
+import { Activity, Cog, FlaskConical, Play, Plus, Search, Shield, Users, Zap, type LucideIcon } from "lucide-react";
 import { TABS } from "@/routes";
-import { useActivity, useClients, useFirewall } from "@/api/queries";
+import { useActivity, useClients, useFirewall, useLabs } from "@/api/queries";
 import "./palette.css";
 
 /**
@@ -34,21 +35,39 @@ export const ACTIONS: { label: string; to: string; icon: LucideIcon; keywords?: 
   { label: "Speed test", to: "/?action=speedtest", icon: Zap, keywords: "bandwidth" },
 ];
 
+/** "Deploy lab..." and "Tear down lab..." each ask which lab, as a second list in the palette. */
+type LabPage = "deploy" | "teardown" | null;
+
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const navigate = useNavigate();
+  const [page, setPage] = useState<LabPage>(null);
   // Held until the palette is first opened, then kept fresh while it is open.
   const clients = useClients({ enabled: open });
   const firewall = useFirewall({ enabled: open });
   const activity = useActivity({ range: "7d" }, { enabled: open });
+  // The catalogue is asked for only while the palette is open.
+  const labs = useLabs({ enabled: open }).data;
+  const catalogue = labs?.labs ?? [];
+  const liveLabs = catalogue.filter((l) => l.running);
 
   const go = (to: string) => {
     onOpenChange(false);
     navigate(to);
   };
+  const close = (v: boolean) => {
+    if (!v) setPage(null);
+    onOpenChange(v);
+  };
+  const labItems = (list: typeof catalogue) =>
+    list.map((l) => (
+      <Item key={l.id} value={`Lab ${l.number} ${l.title} ${l.exam} lab`} icon={FlaskConical} hint={l.running ? "running" : l.exam} onSelect={() => go(`/labs/${l.id}`)}>
+        {`Lab ${l.number}: ${l.title}`}
+      </Item>
+    ));
   const latestRun = activity.data?.runs[0];
 
   return (
-    <Command.Dialog open={open} onOpenChange={onOpenChange} label="Command palette" className="palette" overlayClassName="palette__overlay" contentClassName="palette__content">
+    <Command.Dialog open={open} onOpenChange={close} label="Command palette" className="palette" overlayClassName="palette__overlay" contentClassName="palette__content">
       <div className="palette__input-row">
         <Search size={16} aria-hidden="true" />
         <Command.Input className="palette__input" placeholder="Search clients, rules, settings, actions..." />
@@ -56,6 +75,17 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       <Command.List className="palette__list">
         <Command.Empty className="palette__empty">Nothing matches.</Command.Empty>
 
+        {page ? (
+          <Command.Group heading={page === "deploy" ? "Deploy which lab?" : "Tear down which lab?"} className="palette__group">
+            {labItems(page === "deploy" ? catalogue : liveLabs)}
+            <Item value="Back to the palette" icon={Search} onSelect={() => setPage(null)}>
+              Back
+            </Item>
+          </Command.Group>
+        ) : null}
+
+        {page ? null : (
+          <>
         <Command.Group heading="Go to" className="palette__group">
           {TABS.map((t) => (
             <Item key={t.to} value={`Go to ${t.label}`} icon={t.icon} onSelect={() => go(t.to)}>
@@ -94,13 +124,31 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
           </Command.Group>
         ) : null}
 
+        {catalogue.length ? (
+          <Command.Group heading="Labs" className="palette__group">
+            {labItems(catalogue)}
+          </Command.Group>
+        ) : null}
+
         <Command.Group heading="Actions (opens the form, nothing runs)" className="palette__group">
           {ACTIONS.map((a) => (
             <Item key={a.label} value={`${a.label} ${a.keywords ?? ""}`} icon={a.icon} onSelect={() => go(a.to)}>
               {a.label}
             </Item>
           ))}
+          {catalogue.length ? (
+            <Item value="Deploy lab… start a lab environment" icon={FlaskConical} onSelect={() => setPage("deploy")}>
+              Deploy lab…
+            </Item>
+          ) : null}
+          {liveLabs.length ? (
+            <Item value="Tear down lab… stop a lab destroy" icon={FlaskConical} onSelect={() => setPage("teardown")}>
+              Tear down lab…
+            </Item>
+          ) : null}
         </Command.Group>
+          </>
+        )}
       </Command.List>
     </Command.Dialog>
   );
