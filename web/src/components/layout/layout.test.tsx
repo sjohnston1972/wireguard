@@ -9,6 +9,7 @@ import { Drawer } from "./Drawer";
 import { Modal } from "./Modal";
 import { Tabs } from "./Tabs";
 import { setViewport } from "@/test/viewport";
+import { ConfirmByTyping } from "../forms/ConfirmByTyping";
 
 describe("Panel", () => {
   it("is a named region with title, status and actions", () => {
@@ -185,6 +186,39 @@ describe("Modal", () => {
     expect(onConfirm).toHaveBeenCalled();
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(trigger).toHaveFocus());
+  });
+  it("is aria-modal, keeps its width, and a click on the dimmed backdrop closes it and restores focus", async () => {
+    render(<ModalHarness onConfirm={() => {}} />);
+    const trigger = screen.getByRole("button", { name: "danger" });
+    await userEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Tear down" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveClass("modal");
+    expect(dialog.style.maxWidth).toBe("480px");
+    await userEvent.click(document.querySelector(".modal__overlay")!);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+  it("with a typed confirmation, the action waits for the phrase; Escape still closes", async () => {
+    const onConfirm = vi.fn();
+    const onOpenChange = vi.fn();
+    render(
+      <Modal open onOpenChange={onOpenChange} title="Tear down" description="This destroys the VM." width={520}>
+        <ConfirmByTyping phrase="tear down" actionLabel="Tear down now" onConfirm={onConfirm} />
+      </Modal>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Tear down" });
+    expect(dialog.style.maxWidth).toBe("520px");
+    const go = screen.getByRole("button", { name: "Tear down now" });
+    expect(go).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Type tear down to confirm"), "tear dow");
+    expect(go).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Type tear down to confirm"), "n");
+    expect(go).toBeEnabled();
+    await userEvent.click(go);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    await userEvent.keyboard("{Escape}");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
 
