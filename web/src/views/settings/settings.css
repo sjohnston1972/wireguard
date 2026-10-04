@@ -58,6 +58,9 @@
   .settings .set-banner { gap: 14px; padding: 10px 14px; flex-wrap: nowrap; }
   .settings .set-banner__text { flex: 1 1 auto; }
   .settings .set-banner__light { padding: 0 12px; min-width: 0; }
+  /* Eight sections (Labs joined) stay on one line: tighter pills, never a second row. */
+  .settings .set-tabs .tabs__list { flex-wrap: nowrap; gap: 4px; }
+  .settings .set-tabs .tabs__tab { padding: 0 10px; }
 }
 /* A short window: a smaller header, and the overview's cards four to a row (the cost card and the deployment actions side by side). */
 @media (min-width: 1100px) and (max-height: 799px) {

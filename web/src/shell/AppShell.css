@@ -112,8 +112,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  /* About 280-300 px, as in the mockups, so the whole placeholder shows. */
-  flex: 0 0 296px;
+  /* About 280-300 px, as in the mockups, so the whole placeholder shows. It gives way (the
+     placeholder ends in "...") only when the bar is full: seven tabs and the Azure issue pill. */
+  flex: 0 1 296px;
   min-width: 0;
   font-size: 13px;
   height: 32px;
