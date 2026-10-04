@@ -6,8 +6,8 @@
 // disk. GBP list prices before discounts and VAT, so not the invoice.
 //
 // The setting rate_source picks Azure's price or the fixed rates; with
-// nothing saved it is "fixed" if an hourly_rate_gbp override was saved
-// before this existed, otherwise "azure". Under "azure", a price that is
+// nothing saved it is "fixed" if any fixed-rate override (hourly, Standby
+// or test VM rate) is saved, otherwise "azure". Under "azure", a price that is
 // missing or more than 7 days old means the fixed rates apply, with the
 // reason given. Settings and every cost estimate read this (settings.ts).
 //
@@ -32,10 +32,17 @@ export interface PriceRow {
 
 export type RateSource = "azure" | "fixed";
 
+/**
+ * The fixed-rate overrides: saving any of them means Steven set his own rates,
+ * so the source stays "fixed" until he picks "azure". (test_vm_rate_gbp is not
+ * saved by Settings today; it is here so one would follow the same rule.)
+ */
+export const FIXED_RATE_KEYS = ["hourly_rate_gbp", "standby_rate_gbp", "test_vm_rate_gbp"] as const;
+
 /** The rate source from the stored settings (see the file comment). */
 export function rateSource(stored: Record<string, string>): RateSource {
   if (stored.rate_source === "fixed" || stored.rate_source === "azure") return stored.rate_source;
-  return stored.hourly_rate_gbp !== undefined && stored.hourly_rate_gbp !== "" ? "fixed" : "azure";
+  return FIXED_RATE_KEYS.some((k) => stored[k] !== undefined && stored[k] !== "") ? "fixed" : "azure";
 }
 
 export async function readPrices(db: D1Database, region?: string): Promise<PriceRow[]> {

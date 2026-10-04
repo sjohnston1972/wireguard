@@ -89,6 +89,18 @@ describe("prices", () => {
     expect(rateSource({ rate_source: "weird" })).toBe("azure");
   });
 
+  it("any saved fixed-rate override (hourly, standby or test VM) keeps the fixed rates unless Steven chose azure", async () => {
+    expect(rateSource({ standby_rate_gbp: "0.004" })).toBe("fixed");
+    expect(rateSource({ test_vm_rate_gbp: "0.006" })).toBe("fixed");
+    expect(rateSource({ standby_rate_gbp: "", hourly_rate_gbp: "" })).toBe("azure"); // cleared, not saved
+    expect(rateSource({ standby_rate_gbp: "0.004", rate_source: "azure" })).toBe("azure");
+    expect(rateSource({ test_vm_rate_gbp: "0.006", rate_source: "azure" })).toBe("azure");
+    // Through Settings: saving only the Standby rate keeps the source fixed.
+    const { env } = azureEnv({ AUTH_DEV_BYPASS: "1", PUBLIC_URL: base });
+    expect((await api(env, "PUT", "/settings", { standby_rate_gbp: "0.004" })).status).toBe(200);
+    expect((await api(env, "GET", "/settings")).json.rateSource).toBe("fixed");
+  });
+
   it("effectiveConfig uses the Azure price for the deployed region and size", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
