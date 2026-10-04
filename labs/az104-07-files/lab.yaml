@@ -1,0 +1,25 @@
+id: az104-07-files
+version: 1
+title: "Azure Files shares mounted from a VM"
+summary: >-
+  An SMB file share behind a subnet service endpoint and a small Linux VM, with no public IP,
+  that mounts it at boot, so you can see Azure Files from the inside.
+exam: AZ-104
+skill_areas: [az104.storage, az104.compute]
+level: associate
+type: explore
+prerequisites: [az104-05-storage]
+cost:
+  items:
+    - { name: "Linux VM, Standard_B1s", gbp_h: 0.0083, retail: { sku: Standard_B1s } }
+    - { name: "OS disk, Standard SSD E4", gbp_h: 0.0034 }
+    - { name: "Azure Files share, LRS, a few MB", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 5, destroy_min: 4, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

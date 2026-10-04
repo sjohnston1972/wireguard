@@ -1,0 +1,23 @@
+id: az104-03-mgmt-groups
+version: 1
+title: "Management groups and subscription governance"
+summary: >-
+  A small management group tree of the lab's own, with an audit policy assigned at its root,
+  so you can see how governance flows down a hierarchy. The subscription is never moved.
+exam: AZ-104
+skill_areas: [az104.identity]
+level: associate
+type: explore
+prerequisites: [az104-02-policy]
+cost:
+  items:
+    - { name: "Management groups and an audit policy (free)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 3, destroy_min: 3, session_h: 1, max_h: 4 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles: []
+  governance: true

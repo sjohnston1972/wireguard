@@ -1,0 +1,25 @@
+id: az104-01-identity
+version: 1
+title: "Users, groups, roles and custom roles"
+summary: >-
+  Two Entra users, a helpdesk group and a custom VM operator role, assigned at the lab's resource group,
+  so you can see how users, groups, built-in and custom roles combine.
+exam: AZ-104
+skill_areas: [az104.identity]
+level: foundation
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Entra ID users, groups and role assignments (free)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 2, destroy_min: 2, session_h: 1, max_h: 4 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: [user, group]
+  roles:
+    - { role: "Reader", scope: resource_group }
+    - { role: "lab-az104-01-identity-vm-operator", scope: resource_group }
+  governance: true

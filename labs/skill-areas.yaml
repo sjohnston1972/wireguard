@@ -1,0 +1,15 @@
+# labs/skill-areas.yaml
+#
+# The official skill areas of both exams (spec §12.1), from Microsoft's study
+# guides (V: checked against the current outlines before batches 1 and 3).
+# lab.yaml skill_areas lists keys from here; the coverage map is one row each.
+
+- { key: az104.identity, exam: AZ-104, name: "Manage Azure identities and governance" }
+- { key: az104.storage, exam: AZ-104, name: "Implement and manage storage" }
+- { key: az104.compute, exam: AZ-104, name: "Deploy and manage Azure compute resources" }
+- { key: az104.networking, exam: AZ-104, name: "Implement and manage virtual networking" }
+- { key: az104.monitor, exam: AZ-104, name: "Monitor and maintain Azure resources" }
+- { key: az305.identity, exam: AZ-305, name: "Design identity, governance, and monitoring solutions" }
+- { key: az305.data, exam: AZ-305, name: "Design data storage solutions" }
+- { key: az305.continuity, exam: AZ-305, name: "Design business continuity solutions" }
+- { key: az305.infra, exam: AZ-305, name: "Design infrastructure solutions" }

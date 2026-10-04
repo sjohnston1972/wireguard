@@ -44,3 +44,8 @@ web/node_modules/
 
 # Screenshots from "npm run shots" (local only)
 .superpowers/shots/
+
+# Labs: the catalogue npm run labs-build writes (the Worker bundles it), and
+# the setup files npm run labs-setup fills with the subscription id.
+shared/labs.generated.json
+labs/setup/*.local.*

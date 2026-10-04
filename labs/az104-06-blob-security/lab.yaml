@@ -1,0 +1,25 @@
+id: az104-06-blob-security
+version: 1
+title: "Blob security: SAS, access policies, private endpoint"
+summary: >-
+  A storage account with a private container, a stored access policy and a private endpoint in a small VNet,
+  so you can compare SAS, RBAC and network access side by side.
+exam: AZ-104
+skill_areas: [az104.storage, az104.networking]
+level: associate
+type: explore
+prerequisites: [az104-05-storage]
+cost:
+  items:
+    - { name: "Storage account, LRS hot, a few MB", gbp_h: 0.0001 }
+    - { name: "Private endpoint", gbp_h: 0.0076, retail: { meter: "Standard Private Endpoint", unit: "1 Hour" } }
+    - { name: "Private DNS zone", gbp_h: 0.0005 }
+  pricey: null
+timing: { deploy_min: 4, destroy_min: 3, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: true, subnets_used: 1 }
+identity:
+  creates: [group]
+  roles: [{ role: "Storage Blob Data Reader", scope: resource_group }]
+  governance: false

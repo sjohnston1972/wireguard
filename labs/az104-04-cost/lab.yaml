@@ -1,0 +1,23 @@
+id: az104-04-cost
+version: 1
+title: "Cost management: budgets and alerts"
+summary: >-
+  A monthly budget on the lab's resource group and an action group to alert,
+  so you can see how budgets, thresholds and alerts are wired together.
+exam: AZ-104
+skill_areas: [az104.identity, az104.monitor]
+level: foundation
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Budget and action group (free)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 2, destroy_min: 2, session_h: 1, max_h: 4 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles: []
+  governance: false

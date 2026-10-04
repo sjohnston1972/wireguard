@@ -1,0 +1,24 @@
+id: az104-05-storage
+version: 1
+title: "Storage accounts: redundancy, access tiers, lifecycle"
+summary: >-
+  Two storage accounts, one LRS hot and one GRS cool, with a lifecycle policy and a blob,
+  so you can compare redundancy, tiers and lifecycle rules side by side.
+exam: AZ-104
+skill_areas: [az104.storage]
+level: foundation
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Storage account, LRS hot, a few MB", gbp_h: 0.0001 }
+    - { name: "Storage account, GRS cool, a few MB", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles: []
+  governance: false
