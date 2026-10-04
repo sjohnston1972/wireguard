@@ -429,6 +429,26 @@ test("stale caches start their jobs through systemd-run --no-block", { skip }, (
   }
 });
 
+test("a job with no result yet is tried again after 5 minutes, not its whole interval", { skip }, () => {
+  const w = world();
+  try {
+    // updates (every 6 h) was started 6 minutes ago and wrote nothing (apt busy at boot, say).
+    const now = Math.floor(Date.now() / 1000);
+    writeFileSync(join(w.run, "vitals-updates.started"), String(now - 360));
+    writeFileSync(join(w.run, "vitals-events.started"), String(now));
+    writeFileSync(join(w.run, "vitals-net.started"), String(now));
+    vitals(w, ["collect"]);
+    assert.deepEqual(w.calls("systemd-run").map((c) => c.split(" ").at(-1)), ["updates"]);
+    // With a result in hand, 6 minutes is well inside its 6 hours.
+    w.file("run/wg-admin/updates.json", '{"pending":0,"security":0,"at":"2026-10-04T08:00:00Z"}');
+    writeFileSync(join(w.run, "vitals-updates.started"), String(now - 360));
+    vitals(w, ["collect"]);
+    assert.equal(w.calls("systemd-run").length, 1);
+  } finally {
+    w.cleanup();
+  }
+});
+
 // ── The heartbeat ──────────────────────────────────────────────────────
 
 /** Run wg-agent.sh once against a local server; resolves with the posted body and how long the run took. */
