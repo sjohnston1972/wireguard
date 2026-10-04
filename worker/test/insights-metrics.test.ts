@@ -122,7 +122,11 @@ describe("metric feeds", () => {
     expect(asked).not.toContain("Inbound Flows"); // emitted, but not in the catalogue
     expect(asked.length).toBe(12);
     // Before metricDefs has run, the whole catalogue is asked for.
-    expect(metricsQuery(azureMetricNames("vm"), null, NOW).get("metricnames")!.split(",")).toHaveLength(13);
+    const q = metricsQuery(azureMetricNames("vm"), NOW);
+    expect(new URLSearchParams(q).get("metricnames")!.split(",")).toHaveLength(13);
+    expect(q).toContain("metricnames=Percentage%20CPU,");
+    expect(q).toContain("Disk%20Read%20Operations%2FSec");
+    expect(q).not.toMatch(/\+/);
   });
 
   it("metricDefs is due again after each deploy", async () => {

@@ -36,17 +36,17 @@ export function namesToAsk(resource: MetricResource, emitted: string[] | null): 
   return all.filter((n) => have.has(n));
 }
 
-/** The metrics call's query for `names` at `now`. */
-export function metricsQuery(names: string[], _emitted: string[] | null, now: Date): URLSearchParams {
+/** The metrics call's query string for `names` at `now`. Spaces go as %20 (never "+"), each name encoded, commas between. */
+export function metricsQuery(names: string[], now: Date): string {
   const to = Date.parse(slotOf(now.getTime()));
   const from = to - WINDOW_MS;
-  return new URLSearchParams({
-    "api-version": METRICS_API,
-    metricnames: names.join(","),
-    interval: "PT5M",
-    timespan: `${slotOf(from)}/${slotOf(to)}`,
-    aggregation: "Average,Maximum,Minimum,Total",
-  });
+  return [
+    `api-version=${METRICS_API}`,
+    `metricnames=${names.map(encodeURIComponent).join(",")}`,
+    "interval=PT5M",
+    `timespan=${encodeURIComponent(`${slotOf(from)}/${slotOf(to)}`)}`,
+    "aggregation=Average,Maximum,Minimum,Total",
+  ].join("&");
 }
 
 /** The metrics reply as rows, the last three complete slots, oldest first. */
@@ -98,7 +98,7 @@ export async function runMetrics(ctx: FeedCtx, resource: MetricResource, path: s
   const emitted = defs?.doc?.[resource] ?? null;
   const names = namesToAsk(resource, Array.isArray(emitted) ? emitted : null);
   if (!names.length) return; // the resource emits none of ours
-  const r = await ctx.arm(`${path}/providers/Microsoft.Insights/metrics?${metricsQuery(names, emitted, ctx.now)}`);
+  const r = await ctx.arm(`${path}/providers/Microsoft.Insights/metrics?${metricsQuery(names, ctx.now)}`);
   if (r.status === 400) {
     await markDue(ctx.db, "metricDefs");
     throw new Error("Azure refused a metric name for this resource (400); the metric names are being read again.");
