@@ -39,7 +39,10 @@ jobs:
           terraform validate -no-color
 
       # Render the cloud-init with fake values and prove it parses as YAML,
-      # and that no Terraform placeholder leaked through unrendered.
+      # and that no Terraform placeholder leaked through unrendered. The
+      # gzipped files (encoding gz+b64) are invisible to those text checks,
+      # so they are unpacked: the scripts must pass bash -n, and the rule set
+      # nft -c where the runner has nft (otherwise a structural check).
       - name: render cloud-init
         run: |
           set -euo pipefail
@@ -66,7 +69,38 @@ jobs:
           assert "$$" not in text, "double-dollar leaked into cloud-init"
           assert "PRIVKEY" in text and "LAPTOPKEYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" in text and "tok" in text, "values did not render"
           print("cloud-init OK:", len(paths), "files")
+          import base64, gzip, os
+          os.makedirs("unpacked", exist_ok=True)
+          packed = {}
+          for f in d["write_files"]:
+              if f.get("encoding") == "gz+b64":
+                  body = gzip.decompress(base64.b64decode(f["content"])).decode("utf-8")
+                  name = os.path.basename(f["path"])
+                  open(os.path.join("unpacked", name), "w", encoding="utf-8", newline="\n").write(body)
+                  packed[name] = body
+          for name in ("wg-agent.sh", "wg-vitals.sh", "firewall.nft"):
+              assert name in packed, "not carried gzipped: " + name + " " + str(sorted(packed))
+          for name in ("wg-agent.sh", "wg-vitals.sh"):
+              assert packed[name].startswith("#!/"), name + " lost its #! line"
+          nft = packed["firewall.nft"]
+          assert "table inet wgfw" in nft, "the rule set has no wgfw table"
+          depth = 0
+          for ch in nft:
+              depth += {"{": 1, "}": -1}.get(ch, 0)
+              assert depth >= 0, "firewall.nft: a } with no {"
+          assert depth == 0, "firewall.nft: unbalanced braces"
+          print("unpacked OK:", ", ".join(sorted(packed)))
           '
+          for f in unpacked/*.sh; do
+            bash -n "$f"
+            echo "bash -n OK: $f"
+          done
+          if command -v nft >/dev/null 2>&1; then
+            sudo nft -c -f unpacked/firewall.nft
+            echo "nft -c OK: unpacked/firewall.nft"
+          else
+            echo "nft is not on this runner: firewall.nft had the structural check only"
+          fi
 
   scripts:
     name: typecheck + tests

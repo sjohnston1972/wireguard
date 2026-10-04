@@ -351,7 +351,8 @@ describe("seeded GitHub links", () => {
       seen += urls.length;
     }
     expect(seen).toBeGreaterThan(5);
-  });
+    // Seeds all eight scenarios: measured 1.9 s alone and 4.9 s in the full suite (the default limit is 5 s).
+  }, 30_000);
 });
 
 // For pixel-identical screenshots (npm run shots -- --freeze-time): the
