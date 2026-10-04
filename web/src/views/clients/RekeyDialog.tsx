@@ -2,7 +2,7 @@ import { useState } from "react";
 import { KeyRound } from "lucide-react";
 import { useRekeyClient } from "@/api/mutations";
 import { fillConfig, genKeypair } from "@/lib/wgkeys";
-import { Button, Modal, Sheet, useIsPhone } from "@/components";
+import { Button, Drawer, useIsPhone } from "@/components";
 import type { Client } from "./model";
 import { ConfigDelivery } from "./ConfigDelivery";
 // Shares the wizard's dialog layout (footer, lead, error).
@@ -85,13 +85,10 @@ export function RekeyDialog({ client, onClose }: { client: Client; onClose: () =
 
   const title = `Get new config for ${client.name}`;
   const onOpenChange = (o: boolean) => !o && !making && close();
-  return phone ? (
-    <Sheet open onOpenChange={onOpenChange} title={title} footer={footer}>
+  // A centred modal on the desktop, a bottom sheet on the phone.
+  return (
+    <Drawer open onOpenChange={onOpenChange} title={title} footer={footer} size="md">
       {body}
-    </Sheet>
-  ) : (
-    <Modal open onOpenChange={onOpenChange} title={title} footer={footer} width={made ? 620 : 480}>
-      {body}
-    </Modal>
+    </Drawer>
   );
 }

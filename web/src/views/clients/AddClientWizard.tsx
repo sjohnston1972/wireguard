@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ApiError } from "@/api/client";
 import { useAddClient } from "@/api/mutations";
 import { fillConfig, genKeypair } from "@/lib/wgkeys";
-import { Button, Field, Modal, Sheet, cx, useIsPhone } from "@/components";
+import { Button, Drawer, Field, cx, useIsPhone } from "@/components";
 import { allowedIpsFor, type ClientsConfig, type Routing } from "./model";
 import { ConfigDelivery } from "./ConfigDelivery";
 import "./AddClientWizard.css";
@@ -205,14 +205,11 @@ export function AddClientWizard({ config, onClose }: { config: ClientsConfig; on
   const onOpenChange = (o: boolean) => {
     if (!o && !making) close();
   };
-  return phone ? (
-    <Sheet open onOpenChange={onOpenChange} title="Add client" footer={footer}>
+  // A centred modal on the desktop, a bottom sheet on the phone.
+  return (
+    <Drawer open onOpenChange={onOpenChange} title="Add client" footer={footer} size="lg" className="wiz-dialog">
       {content}
-    </Sheet>
-  ) : (
-    <Modal open onOpenChange={onOpenChange} title="Add client" footer={footer} width={step === 3 ? 620 : 560}>
-      {content}
-    </Modal>
+    </Drawer>
   );
 }
 

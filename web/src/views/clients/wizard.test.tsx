@@ -6,6 +6,7 @@ import { renderApp } from "@/test/render";
 import { renderRouted } from "./testRender";
 import { NO_X25519, PRIVATE_KEY_SLOT } from "@/lib/wgkeys";
 import { clientRoutes, NOW } from "./testData";
+import { backdrop, expectCentredModal } from "@/test/dialogs";
 
 // crypto.subtle is replaced by a stand-in that makes a new, known key pair on
 // every call: key pair n has a private key of 32 bytes of n and a public key
@@ -273,6 +274,38 @@ describe("Add-client wizard", { timeout: 30_000 }, () => {
     expect(fetchMock!.callsTo("POST", "/api/v1/clients/3/rekey")[0]!.body).toEqual({ public_key: publicKey(1) });
     expect(document.body.innerHTML).toContain(privateKey(1));
     await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(document.body.innerHTML).not.toContain(privateKey(1));
+  });
+});
+
+describe("Add client and Get new config on the desktop", { timeout: 30_000 }, () => {
+  it("the wizard is the large centred modal; a backdrop click on Delivery drops the key and focus goes back to Add client", async () => {
+    const user = userEvent.setup();
+    renderApp("/clients", { routes: { ...clientRoutes(), "POST /api/v1/clients": () => added() } });
+    await screen.findByRole("table", { name: "Clients" });
+    const d = await toDelivery(user);
+    expectCentredModal(d, "lg");
+    expect(document.body.innerHTML).toContain(privateKey(1));
+    await user.click(backdrop());
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(document.body.innerHTML).not.toContain(privateKey(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add client" })).toHaveFocus());
+  });
+
+  it("Get new config is the medium centred modal; its close button drops the key", async () => {
+    const user = userEvent.setup();
+    renderApp("/clients/3", {
+      routes: { ...clientRoutes(), "POST /api/v1/clients/3/rekey": { ...added("laptop"), peer: { ...added("laptop").peer, id: 3, ip: "10.13.13.4" } } },
+    });
+    const p = await screen.findByRole("complementary", { name: "laptop" });
+    await user.click(within(p).getByRole("button", { name: "Get new config" }));
+    const d = await screen.findByRole("dialog", { name: "Get new config for laptop" });
+    expectCentredModal(d, "md");
+    await user.click(within(d).getByRole("button", { name: "Make new keys" }));
+    await within(d).findByRole("img", { name: /QR code/ });
+    expect(document.body.innerHTML).toContain(privateKey(1));
+    await user.click(within(d).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(document.body.innerHTML).not.toContain(privateKey(1));
   });
