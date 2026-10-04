@@ -1,0 +1,81 @@
+{
+  "cost": 0,
+  "timespan": "2026-10-04T09:45:00Z/2026-10-04T10:05:00Z",
+  "interval": "PT5M",
+  "value": [
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.Insights/metrics/Percentage CPU",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "Percentage CPU", "localizedValue": "Percentage CPU" },
+      "unit": "Percent",
+      "timeseries": [
+        {
+          "metadatavalues": [],
+          "data": [
+            { "timeStamp": "2026-10-04T09:45:00Z" },
+            { "timeStamp": "2026-10-04T09:50:00Z" },
+            { "timeStamp": "2026-10-04T09:55:00Z", "average": 38.2, "maximum": 96.4, "minimum": 4.1, "total": 76.4 },
+            { "timeStamp": "2026-10-04T10:00:00Z", "average": 12.5, "maximum": 31, "minimum": 2.2, "total": 62.5 }
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.Insights/metrics/Available Memory Bytes",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "Available Memory Bytes", "localizedValue": "Available Memory Bytes (Preview)" },
+      "unit": "Bytes",
+      "timeseries": [
+        {
+          "metadatavalues": [],
+          "data": [
+            { "timeStamp": "2026-10-04T09:45:00Z" },
+            { "timeStamp": "2026-10-04T09:50:00Z" },
+            { "timeStamp": "2026-10-04T09:55:00Z", "average": 0, "maximum": 0, "minimum": 0, "total": 0 },
+            { "timeStamp": "2026-10-04T10:00:00Z", "average": 311000000, "maximum": 402000000, "minimum": 0, "total": 1555000000 }
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.Insights/metrics/CPU Credits Remaining",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "CPU Credits Remaining", "localizedValue": "CPU Credits Remaining" },
+      "unit": "Count",
+      "timeseries": [
+        {
+          "metadatavalues": [],
+          "data": [
+            { "timeStamp": "2026-10-04T09:45:00Z", "average": 0, "maximum": 0, "minimum": 0, "total": 0 },
+            { "timeStamp": "2026-10-04T09:50:00Z", "average": 0, "maximum": 0, "minimum": 0, "total": 0 },
+            { "timeStamp": "2026-10-04T09:55:00Z", "average": 15, "maximum": 30, "minimum": 0, "total": 30 },
+            { "timeStamp": "2026-10-04T10:00:00Z", "average": 29.4, "maximum": 29.6, "minimum": 28.9, "total": 147 }
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.Insights/metrics/CPU Credits Consumed",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "CPU Credits Consumed", "localizedValue": "CPU Credits Consumed" },
+      "unit": "Count",
+      "timeseries": [
+        {
+          "metadatavalues": [],
+          "data": [
+            { "timeStamp": "2026-10-04T09:45:00Z", "average": 0, "maximum": 0, "minimum": 0, "total": 0 },
+            { "timeStamp": "2026-10-04T09:50:00Z", "average": 0, "maximum": 0, "minimum": 0, "total": 0 },
+            { "timeStamp": "2026-10-04T09:55:00Z", "average": 0.4, "maximum": 0.8, "minimum": 0, "total": 0.8 },
+            { "timeStamp": "2026-10-04T10:00:00Z", "average": 0.14, "maximum": 0.3, "minimum": 0, "total": 0.7 }
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    }
+  ],
+  "namespace": "Microsoft.Compute/virtualMachines",
+  "resourceregion": "uksouth"
+}

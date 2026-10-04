@@ -9,7 +9,7 @@ import { normaliseMetrics, metricsQuery } from "../src/insights/feeds/metrics";
 import { runInsights } from "../src/insights/runner";
 import { saveSnapshot } from "../src/state";
 import { azureMetricNames } from "../../shared/azureMetrics";
-import { azureEnv, running, allNotDue, setFeed, feedRows, latest, callsTo, fixture, json, NOW, ago, MIN } from "./insights-helpers";
+import { azureEnv, running, allNotDue, setFeed, feedRows, latest, callsTo, fixture, json, agentReport, NOW, ago, MIN } from "./insights-helpers";
 import type { Env } from "../src/env";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -84,6 +84,37 @@ describe("metric feeds", () => {
     const ten = stored.find((r) => r.t === "2026-10-04T10:00:00Z");
     expect(ten.disk_write).toBe(500);
     expect(ten.cpu_avg).toBe(7.75);
+  });
+
+  // Live test 2026-10-04: Azure answers 0 for CPU credits at timestamps before the VM
+  // existed, and Available Memory Bytes' first sample during boot is 0; both were stored
+  // as real zeros, so the chart drew a flat zero line before the VM started.
+  it("stores nothing from before the VM booted, and no 0 bytes of free memory", async () => {
+    const { env, az } = azureEnv();
+    // Booted at 09:57:30: the heartbeat at 10:06:30 says up 540 s.
+    await running(env, { since: ago(8), running_since: ago(8), agent: agentReport({ at: ago(0.5), uptime_seconds: 540 }) });
+    az.handlers.push((c) => (c.url.includes("/Microsoft.Insights/metrics?") && c.url.includes("/virtualMachines/") ? json(fixture("metrics-vm-boot")) : undefined));
+    await only(env, "vmMetrics");
+    await runInsights(env, NOW);
+    const stored = await rows(env, "hist_az_vm");
+    // 09:50 and 09:55 began before the VM was there (09:55 only partly): not data.
+    expect(stored.map((r) => r.t)).toEqual(["2026-10-04T10:00:00Z"]);
+    expect(stored[0]).toMatchObject({ cpu_avg: 12.5, credits_min: 28.9, credits_used: 0.7, mem_free_min: null });
+    expect(stored.some((r) => r.credits_min === 0 || r.credits_used === 0 || r.mem_free_min === 0)).toBe(false);
+  });
+
+  it("a 0 for Available Memory Bytes is never stored as 0 bytes free", () => {
+    const reply = fixture("metrics-vm-boot");
+    expect(normaliseMetrics("vm", reply, NOW).map((r) => r.mem_free_min)).toEqual([null, null, null]);
+  });
+
+  it("stores nothing from after the VM stopped reporting during a tear-down", async () => {
+    const { env } = azureEnv();
+    await running(env, { state: "destroying", since: ago(10), last_agent_at: ago(10) });
+    await only(env, "vmMetrics");
+    await runInsights(env, NOW);
+    // The last heartbeat was 09:57; the 10:00 slot began after the VM was gone.
+    expect((await rows(env, "hist_az_vm")).map((r) => r.t)).toEqual(["2026-10-04T09:50:00Z", "2026-10-04T09:55:00Z"]);
   });
 
   it("pip metrics normalise", async () => {
