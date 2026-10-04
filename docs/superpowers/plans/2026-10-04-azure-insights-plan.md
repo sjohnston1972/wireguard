@@ -109,6 +109,21 @@ nextDueAt })[], metricNames: { vm, pip } }`; `AzureMetricsResource`, `AzureChang
 - Shell: `<ServiceHealthIndicator />` (`web/src/shell/ServiceHealthIndicator.tsx`, renders null) sits just before the notes
   bell in the top bar.
 
+**Integration additions (integrator, on `feat/azure-insights`)**
+- Code splitting: `@/widgets` exports `lazyWidget(title, load)` (a titled loading outline, a reload offer if the chunk is
+  gone after a deploy) and `lazyPart(load)` (modals: nothing while loading, a toast on failure). Pages import the Azure parts
+  only through `views/overview/lazyInsights.tsx`, `views/firewall/lazyPublicIp.tsx` and `views/activity/lazyAzure.tsx`; the
+  pill's code is `shell/ServiceHealthPill.tsx`, loaded by `ServiceHealthIndicator` only during an issue; Add widgets… loads
+  on first open. `web/vite.config.ts` keeps everything statically reachable in one entry chunk. `npm run bundle-size`
+  budgets the entry (index.html's script and modulepreloads) at 320 kB and all JS at 400 kB (`scripts/lib/bundle.mjs`).
+  Tests that draw those parts call `beforeAll(preloadLazy)` (`@/test/lazy`).
+- `/activity?widget=serviceHealth` (the pill's link): focuses the widget when drawn, else opens the active issue's details.
+- Settings → Deployment shows the price line and rate control only when Azure has priced the region and size, or
+  `rate_source` was saved; a `fixed` PriceInfo still carries Azure's figures when known.
+- cloud-init carries `wg-agent.sh` (`agent_script_gz`) and the rule set (`firewall_nft_gz`) gzipped; the worst case is
+  checked under 58 KB by `worker/test/cloud-init-size.test.ts`.
+- The `insights` scenario also stores a redacted boot log.
+
 > **For agentic workers:** the integrator first lands the contract branch (X0). Then five areas run **in parallel**, each in its
 > own git worktree and each built by one implementer under superpowers:test-driven-development:
 > - X1: Azure collectors

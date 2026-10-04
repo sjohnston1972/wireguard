@@ -37,7 +37,8 @@ function vmMetrics(range: AzureMetricsResponse["range"] = "24h", last: Record<st
 function show(o = overview("running"), prefs: PagePrefs = ON, summary: AzureSummaryResponse | null = azureSummaryFixture(), extra: Record<string, unknown> = {}) {
   return renderApp("/", { routes: prefsRoutes(o, prefs, { ...(summary ? { "GET /api/v1/azure/summary": summary } : {}), "GET /api/v1/azure/metrics": ({ url }: { url: string }) => vmMetrics((new URL(url, "http://x").searchParams.get("range") ?? "24h") as "24h"), ...extra }) });
 }
-const region = (name: string) => screen.findByRole("region", { name });
+// The whole Overview, then the code-split widget: allow a busy test run longer than the default wait.
+const region = (name: string) => screen.findByRole("region", { name }, { timeout: 15_000 });
 /** The row of a widget's list named `name`. */
 const row = (panel: HTMLElement, name: string) => within(panel).getByText(name, { selector: ".ov-az__name" }).closest("li") as HTMLElement;
 

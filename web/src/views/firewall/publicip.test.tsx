@@ -48,7 +48,7 @@ function renderFw(prefs: PagePrefs = ON, opts: { data?: FirewallResponse; summar
     },
   });
 }
-const panel = () => screen.findByRole("region", { name: "Public IP and DDoS" });
+const panel = () => screen.findByRole("region", { name: "Public IP and DDoS" }, { timeout: 15_000 });
 const names = (p: HTMLElement) => within(p).getAllByText(/./, { selector: ".ov-az__name" }).map((e) => e.textContent);
 const row = (p: HTMLElement, name: string) => within(p).getByText(name, { selector: ".ov-az__name" }).closest("li") as HTMLElement;
 
