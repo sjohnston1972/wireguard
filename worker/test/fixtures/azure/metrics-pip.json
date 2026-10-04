@@ -1,0 +1,57 @@
+{
+  "cost": 0,
+  "timespan": "2026-10-04T09:45:00Z/2026-10-04T10:05:00Z",
+  "interval": "PT5M",
+  "value": [
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Network/publicIPAddresses/pip-wg/providers/Microsoft.Insights/metrics/IfUnderDDoSAttack",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "IfUnderDDoSAttack", "localizedValue": "Under DDoS attack or not" },
+      "unit": "Count",
+      "timeseries": [{ "metadatavalues": [], "data": [
+        { "timeStamp": "2026-10-04T09:50:00Z", "maximum": 0 },
+        { "timeStamp": "2026-10-04T09:55:00Z", "maximum": 0 },
+        { "timeStamp": "2026-10-04T10:00:00Z", "maximum": 1 }
+      ] }],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Network/publicIPAddresses/pip-wg/providers/Microsoft.Insights/metrics/PacketsDroppedDDoS",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "PacketsDroppedDDoS", "localizedValue": "Inbound packets dropped DDoS" },
+      "unit": "CountPerSecond",
+      "timeseries": [{ "metadatavalues": [], "data": [
+        { "timeStamp": "2026-10-04T09:50:00Z", "maximum": 0 },
+        { "timeStamp": "2026-10-04T09:55:00Z", "maximum": 0 },
+        { "timeStamp": "2026-10-04T10:00:00Z", "maximum": 5200 }
+      ] }],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Network/publicIPAddresses/pip-wg/providers/Microsoft.Insights/metrics/PacketCount",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "PacketCount", "localizedValue": "Packet Count" },
+      "unit": "Count",
+      "timeseries": [{ "metadatavalues": [], "data": [
+        { "timeStamp": "2026-10-04T09:50:00Z", "total": 12000 },
+        { "timeStamp": "2026-10-04T09:55:00Z", "total": 12600 },
+        { "timeStamp": "2026-10-04T10:00:00Z", "total": 98000 }
+      ] }],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Network/publicIPAddresses/pip-wg/providers/Microsoft.Insights/metrics/VipAvailability",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "VipAvailability", "localizedValue": "Data Path Availability" },
+      "unit": "Count",
+      "timeseries": [{ "metadatavalues": [], "data": [
+        { "timeStamp": "2026-10-04T09:50:00Z", "average": 100 },
+        { "timeStamp": "2026-10-04T09:55:00Z", "average": 100 },
+        { "timeStamp": "2026-10-04T10:00:00Z", "average": 99.2 }
+      ] }],
+      "errorCode": "Success"
+    }
+  ],
+  "namespace": "Microsoft.Network/publicIPAddresses",
+  "resourceregion": "uksouth"
+}

@@ -1,0 +1,87 @@
+{
+  "value": [
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.ResourceHealth/events/AB1C-2DE",
+      "name": "AB1C-2DE",
+      "type": "Microsoft.ResourceHealth/events",
+      "properties": {
+        "eventType": "ServiceIssue",
+        "eventSource": "ServiceHealth",
+        "status": "Active",
+        "title": "Connectivity issues for Virtual Machines in UK South",
+        "summary": "<p><strong>Impact Statement:</strong> Starting at 09:20 UTC some customers may see packet loss to virtual machines.</p><p>Engineers are investigating &amp; will update in 60 minutes.</p>",
+        "header": "Your service might have been impacted by an Azure service issue",
+        "level": "Error",
+        "eventLevel": "Error",
+        "impactStartTime": "2026-10-04T09:20:00Z",
+        "lastUpdateTime": "2026-10-04T09:50:00Z",
+        "impact": [
+          { "impactedService": "Virtual Machines", "impactedRegions": [{ "impactedRegion": "UK South", "status": "Active", "lastUpdateTime": "2026-10-04T09:50:00Z" }, { "impactedRegion": "UK West", "status": "Active" }] },
+          { "impactedService": "Virtual Network", "impactedRegions": [{ "impactedRegion": "UK South", "status": "Active" }] }
+        ]
+      }
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.ResourceHealth/events/FG3H-4IJ",
+      "name": "FG3H-4IJ",
+      "type": "Microsoft.ResourceHealth/events",
+      "properties": {
+        "eventType": "PlannedMaintenance",
+        "eventSource": "ServiceHealth",
+        "status": "Resolved",
+        "title": "Planned maintenance for Network Infrastructure in UK South",
+        "summary": "Routine maintenance.",
+        "level": "Informational",
+        "impactStartTime": "2026-09-30T01:00:00Z",
+        "impactMitigationTime": "2026-09-30T05:00:00Z",
+        "lastUpdateTime": "2026-09-30T05:10:00Z",
+        "impact": [{ "impactedService": "Network Infrastructure", "impactedRegions": [{ "impactedRegion": "UK South", "status": "Resolved" }] }]
+      }
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.ResourceHealth/events/KL5M-6NO",
+      "name": "KL5M-6NO",
+      "type": "Microsoft.ResourceHealth/events",
+      "properties": {
+        "eventType": "ServiceIssue",
+        "status": "Active",
+        "title": "Azure SQL Database issue in UK South",
+        "summary": "Not ours.",
+        "level": "Warning",
+        "impactStartTime": "2026-10-04T08:00:00Z",
+        "lastUpdateTime": "2026-10-04T08:30:00Z",
+        "impact": [{ "impactedService": "SQL Database", "impactedRegions": [{ "impactedRegion": "UK South" }] }]
+      }
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.ResourceHealth/events/PQ7R-8ST",
+      "name": "PQ7R-8ST",
+      "type": "Microsoft.ResourceHealth/events",
+      "properties": {
+        "eventType": "ServiceIssue",
+        "status": "Active",
+        "title": "Virtual Machines issue in East US",
+        "summary": "Elsewhere.",
+        "level": "Warning",
+        "impactStartTime": "2026-10-04T08:00:00Z",
+        "lastUpdateTime": "2026-10-04T08:30:00Z",
+        "impact": [{ "impactedService": "Virtual Machines", "impactedRegions": [{ "impactedRegion": "East US" }] }]
+      }
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.ResourceHealth/events/UV9W-0XY",
+      "name": "UV9W-0XY",
+      "type": "Microsoft.ResourceHealth/events",
+      "properties": {
+        "eventType": "HealthAdvisory",
+        "status": "Active",
+        "title": "Upcoming retirement of something",
+        "summary": "Advisory.",
+        "level": "Informational",
+        "impactStartTime": "2026-10-01T00:00:00Z",
+        "lastUpdateTime": "2026-10-01T00:00:00Z",
+        "impact": [{ "impactedService": "Virtual Machines", "impactedRegions": [{ "impactedRegion": "UK South" }] }]
+      }
+    }
+  ]
+}

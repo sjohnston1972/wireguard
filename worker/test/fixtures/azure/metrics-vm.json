@@ -1,0 +1,100 @@
+{
+  "cost": 0,
+  "timespan": "2026-10-04T09:45:00Z/2026-10-04T10:05:00Z",
+  "interval": "PT5M",
+  "value": [
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.Insights/metrics/Percentage CPU",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "Percentage CPU", "localizedValue": "Percentage CPU" },
+      "displayDescription": "The percentage of allocated compute units that are currently in use by the Virtual Machine(s)",
+      "unit": "Percent",
+      "timeseries": [
+        {
+          "metadatavalues": [],
+          "data": [
+            { "timeStamp": "2026-10-04T09:45:00Z", "average": 4.1, "maximum": 9.5, "minimum": 1.2, "total": 20.5 },
+            { "timeStamp": "2026-10-04T09:50:00Z", "average": 5.25, "maximum": 12, "minimum": 1.5, "total": 26.25 },
+            { "timeStamp": "2026-10-04T09:55:00Z", "average": 6.5, "maximum": 14, "minimum": 2, "total": 32.5 },
+            { "timeStamp": "2026-10-04T10:00:00Z", "average": 7.75, "maximum": 21.5, "minimum": 2.5, "total": 38.75 }
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.Insights/metrics/Network In Total",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "Network In Total", "localizedValue": "Network In Total" },
+      "unit": "Bytes",
+      "timeseries": [
+        {
+          "metadatavalues": [],
+          "data": [
+            { "timeStamp": "2026-10-04T09:45:00Z", "average": 600000, "maximum": 900000, "minimum": 300000, "total": 3000000 },
+            { "timeStamp": "2026-10-04T09:50:00Z", "average": 600000, "maximum": 900000, "minimum": 300000, "total": 3000000 },
+            { "timeStamp": "2026-10-04T09:55:00Z", "average": 1200000, "maximum": 1800000, "minimum": 600000, "total": 6000000 },
+            { "timeStamp": "2026-10-04T10:00:00Z", "average": 300000, "maximum": 450000, "minimum": 150000, "total": 1500000 }
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.Insights/metrics/Disk Write Bytes",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "Disk Write Bytes", "localizedValue": "Disk Write Bytes" },
+      "unit": "Bytes",
+      "timeseries": [
+        {
+          "metadatavalues": [],
+          "data": [
+            { "timeStamp": "2026-10-04T09:45:00Z", "total": 30000 },
+            { "timeStamp": "2026-10-04T09:50:00Z", "total": 60000 },
+            { "timeStamp": "2026-10-04T09:55:00Z", "total": 90000 },
+            { "timeStamp": "2026-10-04T10:00:00Z" }
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.Insights/metrics/CPU Credits Remaining",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "CPU Credits Remaining", "localizedValue": "CPU Credits Remaining" },
+      "unit": "Count",
+      "timeseries": [
+        {
+          "metadatavalues": [],
+          "data": [
+            { "timeStamp": "2026-10-04T09:45:00Z", "average": 140, "maximum": 141, "minimum": 139.5, "total": 700 },
+            { "timeStamp": "2026-10-04T09:50:00Z", "average": 139, "maximum": 140, "minimum": 138.25, "total": 695 },
+            { "timeStamp": "2026-10-04T09:55:00Z", "average": 138, "maximum": 139, "minimum": 137, "total": 690 },
+            { "timeStamp": "2026-10-04T10:00:00Z", "average": 137, "maximum": 138, "minimum": 136.5, "total": 685 }
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.Insights/metrics/Available Memory Bytes",
+      "type": "Microsoft.Insights/metrics",
+      "name": { "value": "Available Memory Bytes", "localizedValue": "Available Memory Bytes" },
+      "unit": "Bytes",
+      "timeseries": [
+        {
+          "metadatavalues": [],
+          "data": [
+            { "timeStamp": "2026-10-04T09:45:00Z", "average": 420000000, "maximum": 421000000, "minimum": 419000000 },
+            { "timeStamp": "2026-10-04T09:50:00Z", "average": 418000000, "maximum": 419000000, "minimum": 417000000 },
+            { "timeStamp": "2026-10-04T09:55:00Z", "average": 416000000, "maximum": 417000000, "minimum": 415000000 },
+            { "timeStamp": "2026-10-04T10:00:00Z", "average": 414000000, "maximum": 415000000, "minimum": 413000000 }
+          ]
+        }
+      ],
+      "errorCode": "Success"
+    }
+  ],
+  "namespace": "Microsoft.Compute/virtualMachines",
+  "resourceregion": "uksouth"
+}
