@@ -109,12 +109,18 @@ describe("the metric catalogue (shared/azureMetrics.ts)", () => {
 describe("the second cron", () => {
   it("wrangler.toml declares both crons", () => {
     const toml = readFileSync(new URL("../../wrangler.toml", import.meta.url), "utf8");
-    expect(toml).toMatch(/^crons = \["\*\/5 \* \* \* \*", "2-59\/5 \* \* \* \*"\]$/m);
+    expect(toml).toContain(`crons = ["${WATCHMAN_CRON}", "${INSIGHTS_CRON}"]`);
     expect(WATCHMAN_CRON).toBe("*/5 * * * *");
-    expect(INSIGHTS_CRON).toBe("2-59/5 * * * *");
   });
 
-  it("scheduled() sends 2-59/5 to runInsights and */5 to the watchman", async () => {
+  // Live 2026-10-04: Cloudflare registered "2-59/5 * * * *" but never fired it. The
+  // collector's minutes are listed out, two minutes after each watchman run.
+  it("the collector's cron lists its minutes, with no range step", () => {
+    expect(INSIGHTS_CRON).toBe("2,7,12,17,22,27,32,37,42,47,52,57 * * * *");
+    expect(INSIGHTS_CRON).not.toMatch(/\d-\d+\//);
+  });
+
+  it("scheduled() sends the collector's cron to runInsights and */5 to the watchman", async () => {
     const { runInsights } = await import("../src/insights/runner");
     const { runScheduled } = await import("../src/monitor");
     const { env } = makeEnv();

@@ -120,19 +120,19 @@ test("rollback-worker --dry-run with an id would roll back to it", () => {
 });
 
 test("the cron triggers are read from wrangler.toml", () => {
-  assert.deepEqual(cronTriggers('[triggers]\ncrons = ["*/5 * * * *", "2-59/5 * * * *"]\n'), ["*/5 * * * *", "2-59/5 * * * *"]);
+  assert.deepEqual(cronTriggers('[triggers]\ncrons = ["*/5 * * * *", "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]\n'), ["*/5 * * * *", "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]);
   assert.deepEqual(cronTriggers('[triggers]\ncrons = [\n  "*/5 * * * *",\n]\n'), ["*/5 * * * *"]);
   assert.deepEqual(cronTriggers("name = 'x'\n"), []);
   // The real file: the watchman and the Azure insights collector.
   const toml = readFileSync(new URL("../../wrangler.toml", import.meta.url), "utf8");
-  assert.deepEqual(cronTriggers(toml), ["*/5 * * * *", "2-59/5 * * * *"]);
+  assert.deepEqual(cronTriggers(toml), ["*/5 * * * *", "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]);
 });
 
 test("the rollback warning says a rollback keeps today's cron triggers and how to go back properly", () => {
-  const w = cronRollbackWarning(["*/5 * * * *", "2-59/5 * * * *"]);
+  const w = cronRollbackWarning(["*/5 * * * *", "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]);
   assert.match(w, /^WARNING: /);
   assert.match(w, /cron triggers/i);
-  assert.match(w, /"\*\/5 \* \* \* \*", "2-59\/5 \* \* \* \*"/);
+  assert.match(w, /"\*\/5 \* \* \* \*", "2,7,12,17,22,27,32,37,42,47,52,57 \* \* \* \*"/);
   // What goes wrong: the old code gets the new cron too, and runs the watchman on every cron event.
   assert.match(w, /watchman/);
   assert.match(w, /twice every 5 minutes/);

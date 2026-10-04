@@ -26,7 +26,7 @@ export type InsightsFeedId = FeedId | "housekeeping";
 /** The watchman's cron (wrangler.toml), unchanged. Any cron that is not INSIGHTS_CRON goes to the watchman. */
 export const WATCHMAN_CRON = "*/5 * * * *";
 /** The collector's own cron: two minutes after each watchman tick, in its own invocation and subrequest budget. */
-export const INSIGHTS_CRON = "2-59/5 * * * *";
+export const INSIGHTS_CRON = "2,7,12,17,22,27,32,37,42,47,52,57 * * * *";
 
 /** The most outside calls (fetches) one insights run may make. The Workers Free plan allows 50 per invocation. */
 export const AZ_RUN_BUDGET = 25;

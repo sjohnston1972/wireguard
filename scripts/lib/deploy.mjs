@@ -71,7 +71,7 @@ export function cronRollbackWarning(crons) {
   return [
     `WARNING: a rollback keeps today's cron triggers (${list} in wrangler.toml); only the code goes back.`,
     "If the version you go back to is from before a change to these cron triggers (for example from before",
-    'the Azure insights collector\'s "2-59/5 * * * *"), the old code runs the watchman on every cron event,',
+    'the Azure insights collector\'s "2,7,12,...,57 * * * *"), the old code runs the watchman on every cron event,',
     "twice every 5 minutes. To go back across a cron change, do not use this:",
     "revert the merge on main, then npm run deploy-worker (or deploy the previous commit: check it out, then npm run deploy-worker).",
     "A deploy puts back the old cron triggers together with the old code.",
