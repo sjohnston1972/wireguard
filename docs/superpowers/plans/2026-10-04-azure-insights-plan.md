@@ -1,5 +1,113 @@
 # Azure insights widgets: implementation plan
 
+## X0 names as built
+
+Branch `feat/az-x0` (the contract; the plan called it `feat/azure-insights-contract`). Areas branch from its head. These
+names are frozen: a change goes through the integrator, with this section updated in the same commit.
+
+**Baseline:** tag `insights-baseline` = `main` c174b15 (pushed). Regenerate in a worktree at the tag: `npm run dev:api` and
+`npm run dev:web`, then for each of `running deploying busy-month destroyed empty failed standby`:
+`npm run shots -- --scenario <s> --freeze-time --widget-chrome off --out <dir>/<s>`; compare with
+`npm run shots:diff -- <dirA>/<s> <dirB>/<s>`. Two baseline runs of `running` diff to zero.
+
+**Shared, `@shared/widgets` (`shared/widgets.ts`)**
+- `WidgetDef` gains `description: string` (all 43), `icon?: string` (a lucide-react export name), `defaultOff?: true`,
+  `replaces?: string` (the Replace modal's preselected widget).
+- `LayoutRow.max?` and stack items' `max?`: the most items visible at once; default = declared count. Set on overview `r3`
+  (3), `r4` (3), firewall stack `right` (3), activity stack `right` (2), activity `r3` (2). Every row/stack is full as shipped.
+- `PREFS_SCHEMA = 2`. `isVisible(prefs, def)`: pinned always; `defaultOff ? shown.includes(id) : !hidden.includes(id)`.
+- `widgetHome(id) → { page, row, stack: string | null, home } | null` (`home` = the stack id, else the row id).
+- `homeMembers(page, home)`: a row's item keys or a stack's members, as declared.
+- `rowCapacity(page, home, prefs, adding?) → Capacity { page, home, kind: "row" | "stack", max, visible, full, candidates,
+  suggestion }`. `home` is a row id or a stack id (throws for neither). Candidates, in the person's order: visible non-pinned
+  widgets whose leaving frees a place (in a row: its widgets, plus a stack's only visible widget; in a stack: its visible
+  widgets). `suggestion`: `adding`'s `replaces` if it is a candidate, else the first candidate; null without `adding`.
+- `overfullHome(page, prefs) → Capacity | null`.
+- normalise: `layout.shown` keeps only this page's default-off ids, deduped, **saved order** (oldest first); an over-full
+  row/stack drops its newest shown entries; `hidden` drops default-off ids.
+- validate: `layout.shown` must be a list of this page's default-off ids, no repeats; `hidden` may not name one; an over-full
+  row/stack is `{ field: "layout.shown", message: "Overview row 3 is full. Turn a widget off first." }` (a stack: "The
+  Firewall right column is full. ...").
+
+**New widgets (all `defaultOff`, v1; settings keys exactly; spec 10.1 defaults)**
+
+| id · home (index) · replaces · icon | settings keys (section) |
+|---|---|
+| `overview.vmPerformance` · r3 (3, weight 45) · `overview.traffic` · Gauge | `range` 1h/24h/7d/30d=24h, `charts` multi cpu/credits/memory/network/disk/diskQuota=[cpu,credits,network] (data); `azureNames`=true, `peaks`=false (display); thresholds `cpu` above 80/95, `credits` below 30/10 (0–2000), `memory` above 85/95, `diskIops` above 80/95 |
+| `overview.azureHealth` · r4 (3, 32) · `overview.notes` · HeartPulse | `annotations` 0–5=3, `maintenance`=true, `serviceIssues`=true (data); `feedAges`=true, `azureTerms`=true (display) |
+| `overview.vitals` · r4 (4, 32) · `overview.costImpact` · Activity | `rows` multi memory/disk/load/steal/conntrack/uptime/updates/internet=all (data); `bars`=true (display); thresholds `memory` 85/95, `disk` 80/90, `load` 1/2 (0–16 step 0.1), `steal` 10/25, `conntrack` 70/90, `latency` 100/250 ms, `loss` 2/10, `securityUpdates` 1/off (0–500), all above |
+| `firewall.publicIp` · stack right (3) · `firewall.capture` · ShieldAlert | `range` 1h/24h/7d=24h, `series` multi packets/bytes/syn/dropped=[packets,dropped] (data); `azureNames`=true (display); `availability` below 99.9/99 (step 0.1), `dropped` above off/off (1–1e9) |
+| `activity.azureChanges` · stack right (2) · `activity.changeLog` · History | `range` 24h/7d/30d/90d=7d, `who` all/others/wgadmin=all, `types` multi vm/nsg/pip/nic/disk/vnet/rg/other=all (data); `status`=true, `caller`=true, `failedOnly`=false (display) |
+| `activity.serviceHealth` · r3 (2, weight 2) · `activity.liveOutput` · CloudAlert | `range` 7d/30d/90d=30d, `types` multi issue/maintenance=both (data); `summaries`=true (display) |
+| `overview.health` (still v1) | adds `verdict` (display, "Verdict line") = true |
+| `activity.changeLog` (still v1) | adds `azure` (data, "Include Azure changes") = false |
+
+**Shared, `@shared/azureMetrics` (`shared/azureMetrics.ts`)**: `AZURE_METRICS` (`{ resource: "vm" | "pip", name, aggregation,
+column, title, unit }`, one per stored column), `metricByColumn(col)`, `azureMetricNames("vm" | "pip")` (13 / 9 names),
+`VM_COLUMNS`, `PIP_COLUMNS`, `VITALS_COLUMNS` (table order), `FEEDS` (`{ id, title, cadenceMin }` in priority order; bootLog
+cadence null), `STALE_CADENCES = 3`, `feedIsStale(feed, nowMs)`, `AZURE_RESOURCE_KINDS` (`{ value, label, armType }`; labels
+are `az_activity.resource_type` values), `SERVICE_HEALTH_SERVICES`.
+
+**Shared, `@shared/api` (`shared/api.ts`)**: spec 8 types as written, plus: `FeedState`; `FeedStatus.cadenceMin: number |
+null`; `AzureSummaryResponse.region: { id, name }` (name as Azure says it, "UK South"); `CapacityCheck.vcpusNeeded: number |
+null`; `PriceInfo.reason: string | null`; `AzureDiagnosticsResponse { configured, feeds: (FeedStatus & { lastTryAt,
+nextDueAt })[], metricNames: { vm, pip } }`; `AzureMetricsResource`, `AzureChangesRange`, `AzureChangesWho`, `AzureChangeRow`,
+`AzureServiceHealthRange`, `ScheduledEventType`. `OverviewResponse.capacity: CapacityCheck | null`;
+`SettingsResponse.rateSource: "azure" | "fixed"` and `.price: PriceInfo`; `PagePrefs.layout.shown?: string[]`;
+`PrefsPutBody.schema: 2`.
+
+**Worker**
+- Migration `worker/migrations/0019_azure_insights.sql`: tables `hist_az_vm`, `hist_az_pip`, `az_feed`, `az_latest`,
+  `az_activity` (+ index `az_activity_at`), `az_service_events`, `az_capacity`, `az_prices` (all WITHOUT ROWID, spec 6
+  columns exactly), and `hist_vm` columns `mem_used_pct`, `disk_used_pct`, `steal_pct`, `conntrack_pct`, `net_rtt_ms`,
+  `net_loss_pct`. History `t` uses hist_vm's `YYYY-MM-DDTHH:MM:SSZ`; bind `res` as `CAST(?n AS INTEGER)`.
+- `worker/src/insights/types.ts`: `Feed { id: InsightsFeedId, title, cadenceMin, when, calls, run(ctx) }`, `FeedCtx { env,
+  arm(path, init?), fetch(url, init?), db, now, snap, cfg, budget }`, `FeedResult { status, error, nextDueAt? }`, `FeedWhen`,
+  `Budget { take(n?), remaining(), used() }`, `makeBudget(limit = 25)`, `BudgetExceeded`, `AZ_RUN_BUDGET = 25`, `FEED_IDS`,
+  `FEED_TITLES`, `InsightsFeedId` (= FeedId | "housekeeping"), `WATCHMAN_CRON = "*/5 * * * *"`, `INSIGHTS_CRON =
+  "2-59/5 * * * *"`, `AZ_TABLES`, `insightsConfigured(env)` (all four AZURE_* service principal values, not REPLACE_ME), stored
+  JSON docs `HealthDoc` (az_latest 'health' = AzureHealth less annotations), `MetricDefsDoc` ('metricDefs'), `BootLogDoc`
+  ('bootlog' = BootLogResponse), `CapacityDoc` (az_capacity.json).
+- `worker/src/insights/runner.ts`: `runInsights(env, now) → Promise<string[]>`, a no-op X1 replaces. `scheduled()` sends
+  `INSIGHTS_CRON` there (errors only logged) and every other cron to the watchman.
+- `worker/src/api/azure.ts` (`registerAzure`, mounted): GET `summary`, `metrics?resource=vm|pip|vitals&range=1h|24h|7d|30d`
+  (both required), `changes?range=24h|7d|30d|90d&who=all|others|wgadmin` (defaults 7d, all), `service-health?range=7d|30d|90d`
+  (default 30d), `capacity?region=&size=` and `price?region=&size=` (both required; region a REGIONS key, size
+  `Standard_[A-Za-z0-9_]+`), `diagnostics`, `bootlog`; POST `bootlog`. Unknown query keys and values outside the lists are 400
+  `bad_input` naming the key. Stubs answer the shapes with nothing collected (feeds `not_configured` without credentials,
+  else `idle`), never fetch. Also exports `fixedPrice(cfg, region, size, reason?)` and `NOT_CONNECTED`.
+- `GET /settings` answers `rateSource: "fixed"` and `price: fixedPrice(...)`; `GET /overview` answers `capacity: null` (X1).
+- `worker/src/state.ts`: `AgentReport.agent_version?: number | null`, `AgentReport.vitals?: VmVitals | null`, `VmVitals { mem,
+  disk, cpu, conntrack, updates, events, net }` (spec 5 field names, snake_case, each part nullable), `VmScheduledEvent`,
+  `Snapshot.sched_events_seen?: string[]`. `worker/src/region.ts`: `azureRegionName(id)` ("UK South").
+- Prefs: `PUT /api/v1/prefs/:page` takes `{ schema: 2, baseVersion, prefs }`; missing or older schema → 409 `outdated`
+  (field `schema`), another value → 400. `schemaRefusal(schema)` in `worker/src/prefs.ts`.
+- Dev seeder: `SCENARIOS` gains `insights` (the running story, then `seedInsights` in `worker/src/devseed-insights.ts`: every
+  feed ok, a credits dip about an hour ago, one NSG rule change by `someone@example.net`, one active ServiceIssue in the
+  region, a resolved maintenance, a capacity doc with `Standard_B2ats_v2` NotAvailableForSubscription, GBP prices, agent
+  version 7 with vitals and a scheduled Reboot in 3 h, hist_vm vitals). Every story wipes `AZ_TABLES`.
+  `wrangler.toml` crons `["*/5 * * * *", "2-59/5 * * * *"]`. `scripts/seed-scenarios.mjs` lists `insights`; shots save
+  prefs with `schema: 2`.
+
+**App**
+- `@/widgets`: `useWidget(id)` gains `enable() → EnableResult` (`{ ok: true } | { ok: false, full: true, candidates,
+  suggestion } | { ok: false, full: false }` when read-only), `disable()`, `replace(oldId) → boolean` (one save: old off, new
+  on and, in a row, in the old item's place); `hidden` now means "not drawn"; `hide` = disable, `show` = enable.
+  `usePagePrefs(page)` returns `{ prefs, status, shown }`. The store sends `schema: 2`. `type EnableResult` exported.
+  `web/src/widgets/layout.ts`: `isOff`, `enableIn`, `disableIn`, `replaceIn`; `isHidden` still means "on the hidden list"
+  (never a default-off widget), so the current Layout menu never lists one. X0 touched X5's `LayoutMenu.tsx` once: the
+  phone's Widget settings list shows a default-off widget only while it is on (so today's menu is unchanged).
+- `@/api`: `useAzureSummary()` (30 s, `INTERVALS.azure`), `useAzureMetrics(resource, range)`, `useAzureChanges(range, who)`,
+  `useAzureServiceHealth(range)` (60 s, `INTERVALS.azureData`), `useCapacity(region, size)`, `usePrice(region, size)` (held
+  until both are given), `useBootLog()` (`BOOTLOG_KEY = ["azure", "bootlog"]`), `useFetchBootLog()` in `mutations.ts`
+  (POST, then sets the bootlog cache; errors toast). Query keys all start `"azure"`.
+- Test fixtures (`@/test/fixtures`): `azureSummaryFixture(over)` (connected, all ok; `{ configured: false }` gives the
+  not-connected shape), `vitalsFixture(over)`, `feedFixture(id, over)`, `notConfiguredFeeds()`, `priceFixture(over)`,
+  `azureNotConfigured(method, url)`; `mockFetch` falls back to it for every `/api/v1/azure/*` route. `prefsServer` refuses
+  a PUT without schema 2.
+- Shell: `<ServiceHealthIndicator />` (`web/src/shell/ServiceHealthIndicator.tsx`, renders null) sits just before the notes
+  bell in the top bar.
+
 > **For agentic workers:** the integrator first lands the contract branch (X0). Then five areas run **in parallel**, each in its
 > own git worktree and each built by one implementer under superpowers:test-driven-development:
 > - X1: Azure collectors
