@@ -1,6 +1,7 @@
 // Plain English: the Overview's Azure insights widgets (spec 2026-10-04
 // section 10.1), all off until turned on from the widget library:
-//   - VM performance: Azure's own measurements of the VM, one row per chart
+//   - VM performance: Azure's own measurements of the VM, one row per chart;
+//     on a tall panel (1600x900) each chart grows to fill its share of it
 //   - Azure health: what Azure says about the VM, its maintenance and issues
 //   - System vitals: the VM's own figures, from the heartbeat
 // Plus the small parts they share with the Firewall's Public IP widget: the
@@ -10,7 +11,7 @@
 // Thresholds colour this dashboard only, always with a word. Pages never
 // call Azure: these read the Worker's stored copies.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AzureSummaryResponse, FeedId, FeedStatus, OverviewResponse, SettingValue } from "@shared/api";
 import { feedIsStale, metricByColumn } from "@shared/azureMetrics";
 import { Panel, ProgressBar, Sparkline, cx, formatAge } from "@/components";
@@ -128,8 +129,55 @@ const CHARTS: Record<string, Chart> = {
   diskQuota: { name: "Disk IOPS used", cols: ["os_iops_max"], f: pct, th: "diskIops" },
 };
 
+/** A row this tall or taller (px) draws its chart full width under the name, as tall as the row allows. */
+export const FILL_ROW_MIN = 64;
+/** The gap between rows when the charts fill the panel (px; matches .ov-az__list--fill). */
+const FILL_GAP = 8;
+
+/** An element's height (0 until measured, and where ResizeObserver is missing), through a callback ref: the element may appear late. */
+function useBoxHeight(): [(el: HTMLDivElement | null) => void, number] {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => setHeight(Math.floor(el.getBoundingClientRect().height));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
+  return [setEl, height];
+}
+
+/** A sparkline drawn at the size of its box (the box is absolutely placed, so the chart never sizes the row). */
+function FillSpark({ data, label }: { data: (number | null)[]; label: string }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      const w = Math.floor(r.width);
+      const h = Math.floor(r.height);
+      if (w > 0 && h > 0) setSize((s) => (s && s.w === w && s.h === h ? s : { w, h }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="ov-az__fill-spark">
+      {size && <Sparkline data={data} label={label} tone="blue" width={size.w} height={size.h} />}
+    </div>
+  );
+}
+
 export function VmPerformance({ o, now }: { o: OverviewResponse; now: number }) {
   const { settings: st } = useWidget("overview.vmPerformance");
+  // The space the list has: on a tall panel each chart takes an equal share of it (no empty half-panel at 1600x900).
+  const [boxRef, boxHeight] = useBoxHeight();
   const sum0 = useAzureSummary().data;
   const q = useAzureMetrics("vm", st.range as HistoryRange);
   const feed = feedOf(sum0, "vmMetrics");
@@ -145,26 +193,31 @@ export function VmPerformance({ o, now }: { o: OverviewResponse; now: number }) 
   else if (!has && o.snapshot.state !== "running") body = <AzNote>{NOTHING_TEXT}</AzNote>;
   else if (!has && !feed?.lastOkAt) body = <AzNote>{WAITING_TEXT}</AzNote>;
   else if (!has) body = <AzNote>No figures from Azure in this range.</AzNote>;
-  else
+  else {
+    const n = (st.charts as string[]).length;
+    const fill = n > 0 && (boxHeight - FILL_GAP * (n - 1)) / n >= FILL_ROW_MIN;
     body = (
-      <ul className="ov-az__list">
-        {(st.charts as string[]).map((k) => {
-          const ch = CHARTS[k]!;
-          const cols = ch.cols.map((col) => column(pts, col));
-          const line = cols.length > 1 ? sum(cols[0]!, cols[1]!) : cols[0]!;
-          // The memory threshold is on memory used (%), which only the VM's own vitals know.
-          const used = k === "memory" ? (sum0.vitals?.memUsedPct ?? null) : null;
-          const judged = k === "memory" ? used : lastOf(line);
-          const peak = ch.low ? minOf(line) : maxOf(ch.peak ? column(pts, ch.peak) : line);
-          const extra = [used !== null && `${pct(used)} used`, peaks && peak !== null && `${ch.low ? "lowest" : "peak"} ${ch.f(peak)}`].filter(Boolean).join(" · ");
-          return (
-            <Figure key={k} name={ch.name} az={az(...ch.cols)} value={ch.words ? ch.words.map((w, i) => `${w} ${ch.f(lastOf(cols[i]!))}`).join(" · ") : ch.f(lastOf(line))} level={ch.th ? levelOf(judged, th(ch.th), ch.dir ?? "above") : null} dir={ch.dir} extra={extra || null}>
-              {spark(line, ch.name)}
-            </Figure>
-          );
-        })}
-      </ul>
+      <div ref={boxRef} className="ov-az__box">
+        <ul className={cx("ov-az__list", fill && "ov-az__list--fill")}>
+          {(st.charts as string[]).map((k) => {
+            const ch = CHARTS[k]!;
+            const cols = ch.cols.map((col) => column(pts, col));
+            const line = cols.length > 1 ? sum(cols[0]!, cols[1]!) : cols[0]!;
+            // The memory threshold is on memory used (%), which only the VM's own vitals know.
+            const used = k === "memory" ? (sum0.vitals?.memUsedPct ?? null) : null;
+            const judged = k === "memory" ? used : lastOf(line);
+            const peak = ch.low ? minOf(line) : maxOf(ch.peak ? column(pts, ch.peak) : line);
+            const extra = [used !== null && `${pct(used)} used`, peaks && peak !== null && `${ch.low ? "lowest" : "peak"} ${ch.f(peak)}`].filter(Boolean).join(" · ");
+            return (
+              <Figure key={k} name={ch.name} az={az(...ch.cols)} value={ch.words ? ch.words.map((w, i) => `${w} ${ch.f(lastOf(cols[i]!))}`).join(" · ") : ch.f(lastOf(line))} level={ch.th ? levelOf(judged, th(ch.th), ch.dir ?? "above") : null} dir={ch.dir} extra={extra || null}>
+                {fill ? <FillSpark data={line} label={ch.name} /> : spark(line, ch.name)}
+              </Figure>
+            );
+          })}
+        </ul>
+      </div>
     );
+  }
   return (
     <Panel title="VM performance" className="ov-az" bodyClassName="ov-scroll ov-az__body">
       {body}

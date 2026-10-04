@@ -17,6 +17,14 @@
 .ov-az__chart { display: flex; align-items: center; min-width: 84px; }
 .ov-az__chart .progress { width: 84px; }
 
+/* VM performance: the list's box takes the panel's spare height. When each chart's share is at least FILL_ROW_MIN
+   (Insights.tsx), the list fills the box and each chart is drawn full width under its name, as tall as its share. */
+.ov-az__box { flex: 1 0 auto; position: relative; min-width: 0; }
+.ov-az__list--fill { position: absolute; inset: 0; gap: 8px; }
+.ov-az__list--fill > .ov-az__row { flex: 1 1 0; min-height: 0; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr); align-items: start; }
+.ov-az__list--fill .ov-az__chart { grid-column: 1 / -1; align-self: stretch; position: relative; min-width: 0; min-height: 0; }
+.ov-az__fill-spark { position: absolute; inset: 0; }
+
 .ov-az__state { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 650; --ov-az: var(--text-secondary); color: var(--ov-az); }
 .ov-az__state--green { --ov-az: var(--green); }
 .ov-az__state--amber { --ov-az: var(--amber); }
