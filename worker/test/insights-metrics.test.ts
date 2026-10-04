@@ -172,6 +172,16 @@ describe("metric feeds", () => {
     expect(count()).toBe(1);
   });
 
+  it("a resource already gone (404) stores nothing and is not an error", async () => {
+    const { env, az } = azureEnv();
+    await saveSnapshot(env, { state: "destroying", since: ago(5) });
+    az.handlers.push((c) => (c.url.includes("/Microsoft.Insights/metrics?") ? json({ error: { code: "ResourceNotFound" } }, 404) : undefined));
+    await only(env, "vmMetrics");
+    await runInsights(env, NOW);
+    expect((await feedRows(env)).vmMetrics.status).toBe("ok");
+    expect(await rows(env, "hist_az_vm")).toEqual([]);
+  });
+
   it("pipMetrics runs while the IP exists", async () => {
     const { env, az } = azureEnv();
     const count = () => callsTo(az, "publicIPAddresses/pip-wg/providers/Microsoft.Insights/metrics?").length;

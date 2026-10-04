@@ -103,6 +103,7 @@ export async function runMetrics(ctx: FeedCtx, resource: MetricResource, path: s
     await markDue(ctx.db, "metricDefs");
     throw new Error("Azure refused a metric name for this resource (400); the metric names are being read again.");
   }
+  if (r.status === 404) return; // the resource is already gone (a tear-down under way): nothing to store
   if (!r.ok) throw await armRefusal(`the ${resource === "vm" ? "VM" : "public IP"} metrics`, r);
   await storeMetrics(ctx.db, resource, normaliseMetrics(resource, await r.json(), ctx.now));
 }
