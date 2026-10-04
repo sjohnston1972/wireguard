@@ -25,6 +25,7 @@ import { dashboardButton } from "../actions";
 import { releaseLock, labLock } from "../lock";
 import { labDef } from "./catalogue";
 import type { LabEndReason } from "../../../shared/api";
+import { labIsClean } from "./orphans";
 import { clearPasswords, freeSlot, getSession, payloadOf, settleRun, updateSession, type LabRunDb, type LabSessionRow } from "./store";
 
 const HOUR = 3_600_000;
@@ -104,6 +105,8 @@ export async function endSession(env: Env, s: LabSessionRow, clean: boolean, lef
   if (!changed) return;
   if (clean) {
     await freeSlot(env, s.id);
+    // The clean check covers everything named for the lab: older leftovers and the slots they held go too.
+    await labIsClean(env, s.lab_id);
     return;
   }
   const names = leftovers.length ? leftovers.join(", ") : `something in rg-lab-${s.lab_id}`;

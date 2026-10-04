@@ -22,7 +22,8 @@ import { effectiveConfig } from "../settings";
 import { acquireLock, releaseLock, labLock } from "../lock";
 import { randomToken } from "../auth";
 import { RunError } from "../runs";
-import { labDef } from "./catalogue";
+import { labDef, labIds } from "./catalogue";
+import { readOrphans } from "./orphans";
 import { LAB_SLOTS, labNeeds, labsSettingsFrom, sessionTimeoutMin, type LabDef } from "../../../shared/labs";
 import type { LabAction, LabEndReason, LabPermissions } from "../../../shared/api";
 import { cancelGh, directNet, dispatchLab, findLabRun, publicUrl, type Net } from "./net";
@@ -167,6 +168,9 @@ export async function deployLab(env: Env, labId: string, input: DeployInput, by:
   if (live) throw new RunError(`${def.title} already has a session (${live.state.replace("_", " ")}). Tear it down first.`);
   const why = unavailableReason(def, a);
   if (why) throw new RunError(why, "unavailable");
+  // Leftovers of an earlier session would clash with a new one (same group, same names).
+  const dirty = await env.DB.prepare("SELECT id FROM lab_sessions WHERE lab_id = ?1 AND state = 'ended_dirty' AND slot IS NOT NULL LIMIT 1").bind(labId).first<{ id: string }>();
+  if (dirty || (await readOrphans(env)).some((o) => o.labId === labId)) throw new RunError(`${def.title} still has leftovers in Azure from an earlier session. Clean them up from the Labs tab first.`, "unavailable");
 
   const cfg = await effectiveConfig(env);
   const region = input.region ?? cfg.region;
@@ -317,6 +321,59 @@ export async function extendLab(env: Env, labId: string, by: { hours?: number; t
   const s = await liveSessionOf(env, labId);
   if (!s) throw new RunError(`${labDef(labId)?.title ?? labId} is not running.`);
   return (await extendSession(env, s, by)).until;
+}
+
+/**
+ * Clean up a lab's leftovers (spec §7.5, the Labs tab's Clean up): a destroy
+ * run for that lab id, in a session of its own (state tearing_down, reason
+ * orphan, no slot). The lab need not be in the catalogue any more: its id
+ * then comes from the leftovers' names. Refused when the lab has a live
+ * session (Tear down is the way), when nothing is known about the id, and
+ * when the id is a prefix of a catalogue lab's (rg-lab-<id>-* would reach it).
+ */
+export async function cleanupLab(env: Env, labId: string, by: string): Promise<LabRunDb> {
+  const def = labDef(labId);
+  if (!def && !(await readOrphans(env)).some((o) => o.labId === labId)) throw new RunError(`No leftovers are known for ${labId}.`, "not_found");
+  const clash = labIds().find((id) => id !== labId && id.startsWith(`${labId}-`));
+  if (clash) throw new RunError(`A clean-up for ${labId} would also reach lab ${clash} (its safety net removes rg-lab-${labId}-*), so it is not offered. Remove those leftovers by hand.`);
+  if (await liveSessionOf(env, labId)) throw new RunError(`${def?.title ?? labId} has a live session: use Tear down instead.`);
+  if (!canDispatch(env)) throw new RunError("GitHub is not connected yet. Add GITHUB_TOKEN and GITHUB_REPO in Settings > Setup.", "unavailable");
+  const now = new Date();
+  const at = now.toISOString();
+  const cfg = await effectiveConfig(env);
+  const s: LabSessionRow = {
+    id: newSessionId(now),
+    lab_id: labId,
+    lab_version: def?.version ?? 1,
+    state: "tearing_down",
+    test: 0,
+    region: cfg.region,
+    secondary_region: def?.regions.secondary ?? null,
+    slot: null,
+    cidr: null,
+    name_prefix: namePrefix(Number(labId.split("-")[1]) || 0),
+    // Leftover peerings on vnet-wg go too, unless the lab never peers.
+    peering: def?.connectivity.peering === "off" ? "off" : "disconnected",
+    requested_at: at,
+    ready_at: null,
+    ended_at: null,
+    auto_destroy_at: null,
+    max_until: at,
+    warned_at: null,
+    est_gbp_h: 0,
+    est_gbp: null,
+    end_reason: "orphan",
+    outputs_json: null,
+    leftovers_json: null,
+    note: null,
+  };
+  await insertSession(env, s);
+  try {
+    return await startLabRun(env, s.id, "destroy", by, "clean up leftovers");
+  } catch (e) {
+    await env.DB.prepare("DELETE FROM lab_sessions WHERE id = ?1").bind(s.id).run();
+    throw e;
+  }
 }
 
 /** Cancel the lab's run in progress, then tear the lab down (spec §7.2 /cancel). */

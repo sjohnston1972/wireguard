@@ -26,7 +26,9 @@ import { fixedConfig } from "../settings";
 import { getSnapshot } from "../state";
 import { REGIONS } from "../region";
 import { catalogue, labDef, labReadme } from "../labs/catalogue";
-import { availability, cancelLab, deployLab, destroyLab, extendLab, hhmm, unavailableReason, type DeployInput } from "../labs/engine";
+import { checkLabPermissions } from "../labs/permissions";
+import { directNet } from "../labs/net";
+import { availability, cancelLab, cleanupLab, deployLab, destroyLab, extendLab, hhmm, unavailableReason, type DeployInput } from "../labs/engine";
 import { activeRuns, liveSessionOf, runsOf, type LabSessionRow } from "../labs/store";
 import { labRunRow } from "../labs/view";
 import { cardContext, labCard, sessionView } from "../labs/cards";
@@ -44,7 +46,7 @@ import {
   labsSettingsFrom,
   type LabDef,
 } from "../../../shared/labs";
-import type { ApiOk, LabCard, LabCoverageResponse, LabDetail, LabOrphan, LabPermissions, LabSecretResponse, LabsResponse, LabSessionsResponse } from "../../../shared/api";
+import type { ApiOk, LabCard, LabCoverageResponse, LabDetail, LabOrphan, LabPermissions, LabPermissionsCheckResponse, LabSecretResponse, LabsResponse, LabSessionsResponse } from "../../../shared/api";
 
 type C = Context<ApiEnv>;
 const bad = (c: C, message: string, field?: string) => fail(c, 400, "bad_input", message, field);
@@ -173,16 +175,21 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     return c.json(out);
   });
 
+  // Settings → Labs → Check permissions: the one route here that calls Azure and Graph (4 reads).
   api.post("/labs/permissions/check", async (c) => {
     const r = await readBody(c, NOTHING);
     if (!r.ok) return r.res;
-    return notYet(c);
+    const permissions = await checkLabPermissions(c.env, directNet());
+    const out: LabPermissionsCheckResponse = { ok: true, message: permissions.message ?? "All permissions are in place.", permissions };
+    return c.json(out);
   });
 
   api.post("/labs/orphans/cleanup", async (c) => {
     const r = await readBody(c, CLEANUP);
     if (!r.ok) return r.res;
-    return notYet(c);
+    const labId = String(r.b.lab_id);
+    const run = await cleanupLab(c.env, labId, c.get("user"));
+    return c.json({ ok: true, message: `Cleaning up ${labDef(labId)?.title ?? labId}: a tear-down run removes what is left.`, runId: run.id, sessionId: run.session_id });
   });
 
   api.put("/labs/sessions/:sid/note", async (c) => {

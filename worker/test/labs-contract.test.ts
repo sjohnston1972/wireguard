@@ -159,10 +159,10 @@ describe("/api/v1/labs with an empty catalogue", () => {
       expect(r.status, `${m} ${p}`).toBe(404);
       expect(r.json.error.code, `${m} ${p}`).toBe("not_found");
     }
-    // Nothing waits to re-peer; the rest need the engine (L2).
+    // Nothing waits to re-peer; the engine (L2) checks permissions, and knows no leftovers of a lab it has not got.
     expect(await api(env, "POST", "/labs/repeer")).toMatchObject({ status: 200, json: { ok: true } });
-    expect((await api(env, "POST", "/labs/permissions/check")).status).toBe(501);
-    expect((await api(env, "POST", "/labs/orphans/cleanup", { lab_id: "az104-05-storage" })).status).toBe(501);
+    expect((await api(env, "POST", "/labs/permissions/check")).status).toBe(200);
+    expect((await api(env, "POST", "/labs/orphans/cleanup", { lab_id: "az104-05-storage" })).status).toBe(404);
   });
 
   it("the existing answers carry the lab fields with nothing in them", async () => {
