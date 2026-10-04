@@ -32,7 +32,7 @@ run_worker_first = ["/api/*", "/assets/*", "/captures/*", "/manifest.webmanifest
 # And two minutes after each: the Azure insights collector, in its own invocation and
 # subrequest budget, so Azure can never delay the watchman (worker/src/insights/).
 [triggers]
-crons = ["*/5 * * * *", "2-59/5 * * * *"]
+crons = ["*/5 * * * *", "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]
 
 # ── Storage ──────────────────────────────────────────────────────────────────
 

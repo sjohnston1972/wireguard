@@ -310,7 +310,7 @@ npm run rollback-worker -- <version id>      # makes that version live again
 **A rollback keeps today's cron triggers.** Crons (`[triggers]` in
 `wrangler.toml`) belong to the Worker, not to a version, so a rollback
 brings back the old code with the new crons. Going back to a version from
-before the Azure insights collector (which added `2-59/5 * * * *`) would
+before the Azure insights collector (which added `2,7,12,17,22,27,32,37,42,47,52,57 * * * *`) would
 leave the old code, which knows one cron only, running the watchman on
 every cron event: twice every 5 minutes. `npm run rollback-worker` prints
 this warning every time. To go back across a cron change, redeploy instead:
