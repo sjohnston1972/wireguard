@@ -1,6 +1,7 @@
-import { useMutation, useQueryClient, type QueryKey, type UseMutationResult } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type QueryClient, type QueryKey, type UseMutationResult } from "@tanstack/react-query";
 import type {
   ApiOk,
+  BootLogResponse,
   ClientConfigResponse,
   ClientEditResponse,
   DraftApplyBody,
@@ -14,6 +15,7 @@ import type {
   SimResult,
 } from "@shared/api";
 import { ApiError, NetworkError, SessionExpiredError, apiGet, apiSend } from "./client";
+import { BOOTLOG_KEY } from "./queries";
 // The app's one toast system (mounted once in App.tsx). Imported directly, not
 // through the @/components barrel, so the data layer does not pull in charts.
 import { useToast } from "@/components/feedback/Toast";
@@ -44,6 +46,8 @@ interface Config<V, R> {
   invalidate: QueryKey[];
   /** The success toast text; defaults to the response's `message`. Return null for none. */
   message?: (res: R, v: V) => string | null;
+  /** Put the answer into the cache yourself (for example the boot log), after a success and before the invalidations. */
+  store?: (qc: QueryClient, res: R, v: V) => void;
   /** Query keys to refresh after a failure that says the shown data is out of date (for example a 409). */
   invalidateOnError?: (err: Error) => QueryKey[];
 }
@@ -54,6 +58,7 @@ export function useApiMutation<V = void, R = ApiOk>(cfg: Config<V, R>): ApiMutat
   const m = useMutation<R, Error, V>({
     mutationFn: (v) => apiSend<R>(cfg.method, typeof cfg.path === "function" ? cfg.path(v) : cfg.path, cfg.body ? cfg.body(v) : undefined),
     onSuccess: (res, v) => {
+      cfg.store?.(qc, res, v);
       const text = cfg.message ? cfg.message(res, v) : (res as Partial<ApiOk>).message ?? null;
       const warning = (res as Partial<ApiOk>).warning;
       if (warning) toast({ tone: "warning", title: text ?? "Saved, with a warning.", description: warning });
@@ -189,6 +194,15 @@ export const usePushSubscribe = () => useApiMutation<Body>({ method: "POST", pat
 export const usePushUnsubscribe = () => useApiMutation<{ endpoint: string }>({ method: "POST", path: "/push/unsubscribe", body: (v) => v, invalidate: PUSH });
 export const usePushTest = () => useApiMutation({ method: "POST", path: "/push/test", invalidate: [] });
 export const usePushRemove = () => useApiMutation<number>({ method: "DELETE", path: (id) => `/push/${id}`, invalidate: PUSH });
+
+// ── Azure insights ──
+/**
+ * POST /azure/bootlog: fetch the VM's boot log from Azure now (the Worker
+ * allows one a minute; a 429 slow_down shows its message as a toast). The
+ * answer replaces the cached GET /azure/bootlog, so useBootLog shows it at once.
+ */
+export const useFetchBootLog = () =>
+  useApiMutation<void, BootLogResponse>({ method: "POST", path: "/azure/bootlog", invalidate: [], message: () => null, store: (qc, res) => qc.setQueryData(BOOTLOG_KEY, res) });
 
 /** The SSH password is fetched only when pressed; no toast, no cache. */
 export const fetchSshPassword = () => apiGet<{ password: string }>("/ssh-password");

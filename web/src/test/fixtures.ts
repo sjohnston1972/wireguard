@@ -12,7 +12,19 @@ import type {
   PagePrefs,
   PrefsPage,
   PrefsResponse,
+  AgentVitals,
+  AzureChangesResponse,
+  AzureDiagnosticsResponse,
+  AzureMetricsResponse,
+  AzureServiceHealthResponse,
+  AzureSummaryResponse,
+  BootLogResponse,
+  CapacityCheck,
+  FeedId,
+  FeedStatus,
+  PriceInfo,
 } from "@shared/api";
+import { FEEDS, PIP_COLUMNS, VITALS_COLUMNS, VM_COLUMNS } from "@shared/azureMetrics";
 import { PAGE_IDS, PREFS_SCHEMA, normalisePagePrefs, validatePagePrefs, type PageId } from "@shared/widgets";
 import type { Snapshot } from "../../../worker/src/state";
 import type { ClientView } from "../../../worker/src/clients";
@@ -128,6 +140,7 @@ export function overviewFixture(state = "running", over: { auto_destroy_at?: str
     deployment: null,
     stateBackups: null,
     typicalSeconds: { deploy: 250, destroy: 120 },
+    capacity: null,
   };
 }
 
@@ -342,8 +355,114 @@ export const settingsFixture = (over: Partial<SettingsResponse> = {}): SettingsR
   vapidPublic: null,
   notifyError: null,
   publicUrl: "https://wg.example.net",
+  rateSource: "fixed",
+  price: priceFixture({ source: "fixed", totalGbpPerHour: 0.0144, standbyGbpPerHour: 0.002, reason: "Azure prices aren't collected yet, so the fixed rates apply." }),
   ...over,
 });
+
+// ── Azure insights (spec 2026-10-04-azure-insights-design.md, section 8) ──
+
+/** A feed's status: ok two minutes ago unless told otherwise. */
+export const feedFixture = (id: FeedId, over: Partial<FeedStatus> = {}): FeedStatus => {
+  const f = FEEDS.find((x) => x.id === id)!;
+  return { id, title: f.title, status: "ok", lastOkAt: ago(2 * MIN), error: null, cadenceMin: f.cadenceMin, ...over };
+};
+
+/** What every feed reports without Azure credentials. */
+export const notConfiguredFeeds = (): FeedStatus[] => FEEDS.map((f) => feedFixture(f.id, { status: "not_configured", lastOkAt: null }));
+
+/** AgentVitals from a version-7 agent: a healthy 1-vCPU VM. */
+export const vitalsFixture = (over: Partial<AgentVitals> = {}): AgentVitals => ({
+  at: ago(20_000),
+  memUsedPct: 40,
+  diskUsedPct: 24,
+  diskFreeBytes: 23_700_000_000,
+  load1: 0.12,
+  ncpu: 1,
+  stealPct: 0.4,
+  uptimeS: 7_900,
+  conntrack: { count: 61, max: 32_768 },
+  updates: { pending: 3, security: 0, at: ago(2 * HOUR) },
+  net: { at: ago(3 * MIN), method: "icmp", targets: [{ ip: "1.1.1.1", rttMs: 9.4, lossPct: 0 }, { ip: "8.8.8.8", rttMs: 10.1, lossPct: 0 }] },
+  ...over,
+});
+
+/**
+ * GET /azure/summary for a running VM with Azure connected and every feed
+ * ok, nothing wrong: no maintenance, no issue, a current agent. Override
+ * what a test is about (configured: false gives the not-connected shape).
+ */
+export const azureSummaryFixture = (over: Partial<AzureSummaryResponse> = {}): AzureSummaryResponse => {
+  const configured = over.configured ?? true;
+  return {
+    configured,
+    region: { id: "uksouth", name: "UK South" },
+    feeds: configured ? FEEDS.map((f) => feedFixture(f.id)) : notConfiguredFeeds(),
+    health: configured
+      ? { state: "Available", title: "Available", summary: "There aren't any known Azure platform problems affecting this virtual machine.", reason: null, since: ago(2 * HOUR), power: "VM running", provisioning: "Provisioning succeeded", vmAgent: { status: "Ready", version: "2.11.1.12" }, bootDiagnostics: true, annotations: [], checkedAt: ago(2 * MIN) }
+      : null,
+    maintenance: [],
+    serviceIssues: [],
+    vitals: configured ? vitalsFixture() : null,
+    agent: configured ? "current" : "none",
+    latest: configured ? { cpuPct: 6, creditsLeft: 120, memFreeBytes: 412_000_000, vipAvailPct: 100, underDdos: false, at: ago(5 * MIN) } : { cpuPct: null, creditsLeft: null, memFreeBytes: null, vipAvailPct: null, underDdos: null, at: null },
+    ...over,
+  };
+};
+
+/** PriceInfo for UK South B1s from Azure's list prices, unless told otherwise. */
+export const priceFixture = (over: Partial<PriceInfo> = {}): PriceInfo => ({
+  region: "uksouth",
+  size: "Standard_B1s",
+  vmGbpPerHour: 0.0093,
+  diskGbpPerHour: 0.0027,
+  ipGbpPerHour: 0.0037,
+  totalGbpPerHour: 0.0157,
+  standbyGbpPerHour: 0.0064,
+  fetchedAt: ago(5 * HOUR),
+  stale: false,
+  source: "azure",
+  reason: null,
+  ...over,
+});
+
+/**
+ * What the Worker answers on every /api/v1/azure/* route before anything is
+ * collected and without credentials (the X0 stubs), keyed by path. mockFetch
+ * falls back to these, so a view that reads Azure data needs no new routes in
+ * existing tests. Answers undefined for any other path.
+ */
+export function azureNotConfigured(method: string, url: string): unknown {
+  const u = new URL(url, "http://x");
+  const q = (k: string) => u.searchParams.get(k);
+  const feed = (id: FeedId) => feedFixture(id, { status: "not_configured", lastOkAt: null });
+  const bootlog: BootLogResponse = { fetchedAt: null, bytes: 0, truncated: false, redactions: 0, text: null, reason: "Azure isn't connected. Add the service principal secrets to the Worker." };
+  if (method === "POST") return u.pathname === "/api/v1/azure/bootlog" ? bootlog : undefined;
+  if (method !== "GET") return undefined;
+  switch (u.pathname) {
+    case "/api/v1/azure/summary":
+      return azureSummaryFixture({ configured: false });
+    case "/api/v1/azure/metrics": {
+      const resource = (q("resource") ?? "vm") as AzureMetricsResponse["resource"];
+      const cols = resource === "vm" ? VM_COLUMNS : resource === "pip" ? PIP_COLUMNS : VITALS_COLUMNS;
+      return { resource, range: (q("range") ?? "24h") as AzureMetricsResponse["range"], step: 300, columns: ["t", ...cols], points: [] } satisfies AzureMetricsResponse;
+    }
+    case "/api/v1/azure/changes":
+      return { range: (q("range") ?? "7d") as AzureChangesResponse["range"], feed: feed("activity"), rows: [] } satisfies AzureChangesResponse;
+    case "/api/v1/azure/service-health":
+      return { events: [], feed: feed("serviceHealth") } satisfies AzureServiceHealthResponse;
+    case "/api/v1/azure/capacity":
+      return { region: q("region") ?? "", size: q("size") ?? "", available: null, reason: null, vcpusNeeded: null, family: null, total: null, ok: null, message: null, fetchedAt: null } satisfies CapacityCheck;
+    case "/api/v1/azure/price":
+      return priceFixture({ region: q("region") ?? "", size: q("size") ?? "", vmGbpPerHour: null, diskGbpPerHour: null, ipGbpPerHour: null, fetchedAt: null, source: "fixed", reason: "Azure prices aren't collected yet, so the fixed rates apply." });
+    case "/api/v1/azure/diagnostics":
+      return { configured: false, feeds: notConfiguredFeeds().map((f) => ({ ...f, lastTryAt: null, nextDueAt: null })), metricNames: { vm: null, pip: null } } satisfies AzureDiagnosticsResponse;
+    case "/api/v1/azure/bootlog":
+      return bootlog;
+    default:
+      return undefined;
+  }
+}
 
 /** GET /history answers with the range the query asked for. */
 const history = ({ url }: { url: string }) => historyFixture((new URL(url, "http://x").searchParams.get("range") ?? "1h") as VmHistoryResponse["range"]);

@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { prefsFixture } from "./fixtures";
+import { azureNotConfigured, prefsFixture } from "./fixtures";
 
 /** What a mocked route answers with. */
 export type MockReply =
@@ -40,7 +40,8 @@ export function mockFetch(routes: Record<string, MockHandler>) {
     calls.push({ method, url, body, init });
     const path = url.split("?")[0]!;
     // Widget preferences load with the shell on every page: unless a test says otherwise, nothing is saved.
-    const handler = routes[`${method} ${url}`] ?? routes[`${method} ${path}`] ?? (method === "GET" && path === "/api/v1/prefs" ? prefsFixture() : undefined);
+    // Azure insights: every /api/v1/azure route answers as the Worker does with nothing collected and no credentials.
+    const handler = routes[`${method} ${url}`] ?? routes[`${method} ${path}`] ?? (method === "GET" && path === "/api/v1/prefs" ? prefsFixture() : undefined) ?? (path.startsWith("/api/v1/azure/") ? azureNotConfigured(method, url) : undefined);
     if (handler === undefined) throw new Error(`mockFetch: no route for ${method} ${url}`);
     const raw = typeof handler === "function" ? await (handler as (req: { url: string; method: string; body: unknown; init: RequestInit }) => unknown)({ url, method, body, init }) : handler;
     // A handler may build the whole Response itself (headers such as Content-Disposition).
@@ -56,6 +57,15 @@ export function mockFetch(routes: Record<string, MockHandler>) {
   return { calls, spy, callsTo: (method: string, pathPrefix: string) => calls.filter((c) => c.method === method && c.url.startsWith(pathPrefix)) };
 }
 
+/**
+ * A MockReply has only a reply's keys, so an API answer that happens to have
+ * a `text` field (BootLogResponse) is sent as JSON, not taken for a text reply.
+ */
 function isReply(v: unknown): v is MockReply {
-  return typeof v === "object" && v !== null && ("json" in v || "text" in v || "opaqueRedirect" in v || "networkError" in v);
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const keys = Object.keys(v);
+  const only = (...allowed: string[]) => keys.every((k) => allowed.includes(k));
+  if ("json" in v) return only("json", "status");
+  if ("text" in v) return typeof (v as { text: unknown }).text === "string" && only("text", "status", "contentType");
+  return ("opaqueRedirect" in v && only("opaqueRedirect")) || ("networkError" in v && only("networkError"));
 }
