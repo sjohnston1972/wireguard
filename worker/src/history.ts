@@ -12,6 +12,7 @@ import type { Env } from "./env";
 import type { AgentReport, FirewallStatus, Snapshot, Traffic } from "./state";
 import { peerOnline } from "./state";
 import { listPeers } from "./db";
+import { vitalsSample } from "./vitals";
 
 /** Seconds per raw sample. A minute, not 30 s: heartbeats drift, and a 30 s
  *  slot could miss one and read as downtime while the VM was fine. */
@@ -157,17 +158,26 @@ export async function recordHeartbeat(
   const nowMs = Date.parse(o.report.at);
   const t = bucket(nowMs, RAW_RES);
   const vm = vmSample(o.report, o.traffic);
+  // The VM's own vitals (agent version 7; all null from an older agent).
+  const vit = vitalsSample(o.report.vitals, nowMs);
   const clients = clientSamples({ report: o.report, prev: o.prev, rtt: o.rtt, peers: await listPeers(env), nowMs });
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO hist_vm (res, t, expected, received, load1, rx_rate, tx_rate, rx_rate_max, tx_rate_max, peers_online, dns_up)
-       VALUES (?1, ?2, 1, 1, ?3, ?4, ?5, ?4, ?5, ?6, ?7)
+      `INSERT INTO hist_vm (res, t, expected, received, load1, rx_rate, tx_rate, rx_rate_max, tx_rate_max, peers_online, dns_up,
+                           mem_used_pct, disk_used_pct, steal_pct, conntrack_pct, net_rtt_ms, net_loss_pct)
+       VALUES (?1, ?2, 1, 1, ?3, ?4, ?5, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
        ON CONFLICT (res, t) DO UPDATE SET
          received = 1, load1 = excluded.load1, rx_rate = excluded.rx_rate, tx_rate = excluded.tx_rate,
          rx_rate_max = MAX(COALESCE(rx_rate_max, 0), excluded.rx_rate_max),
          tx_rate_max = MAX(COALESCE(tx_rate_max, 0), excluded.tx_rate_max),
-         peers_online = excluded.peers_online, dns_up = excluded.dns_up`,
-    ).bind(RAW_RES, t, vm.load1, vm.rx_rate, vm.tx_rate, vm.peers_online, vm.dns_up),
+         peers_online = excluded.peers_online, dns_up = excluded.dns_up,
+         mem_used_pct = COALESCE(excluded.mem_used_pct, mem_used_pct),
+         disk_used_pct = COALESCE(excluded.disk_used_pct, disk_used_pct),
+         steal_pct = MAX(COALESCE(steal_pct, excluded.steal_pct), COALESCE(excluded.steal_pct, steal_pct)),
+         conntrack_pct = COALESCE(excluded.conntrack_pct, conntrack_pct),
+         net_rtt_ms = COALESCE(excluded.net_rtt_ms, net_rtt_ms),
+         net_loss_pct = MAX(COALESCE(net_loss_pct, excluded.net_loss_pct), COALESCE(excluded.net_loss_pct, net_loss_pct))`,
+    ).bind(RAW_RES, t, vm.load1, vm.rx_rate, vm.tx_rate, vm.peers_online, vm.dns_up, vit.mem_used_pct, vit.disk_used_pct, vit.steal_pct, vit.conntrack_pct, vit.net_rtt_ms, vit.net_loss_pct),
     ...clients.map((c) =>
       env.DB.prepare(
         `INSERT INTO hist_client (res, t, peer_id, online, handshake_age, latency_avg, latency_max, rx, tx)
@@ -235,9 +245,11 @@ export async function rollUp(env: Env, now: Date): Promise<void> {
   const expiry = bucket(now.getTime() - SUMMARY_KEEP_MS, SUMMARY_RES);
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO hist_vm (res, t, expected, received, load1, rx_rate, tx_rate, rx_rate_max, tx_rate_max, peers_online, dns_up)
+      `INSERT INTO hist_vm (res, t, expected, received, load1, rx_rate, tx_rate, rx_rate_max, tx_rate_max, peers_online, dns_up,
+                           mem_used_pct, disk_used_pct, steal_pct, conntrack_pct, net_rtt_ms, net_loss_pct)
        SELECT ${SUMMARY_RES}, ${SUMMARY_SLOT} AS slot, SUM(expected), SUM(received), AVG(load1), AVG(rx_rate), AVG(tx_rate),
-              MAX(rx_rate_max), MAX(tx_rate_max), MAX(peers_online), MIN(dns_up)
+              MAX(rx_rate_max), MAX(tx_rate_max), MAX(peers_online), MIN(dns_up),
+              AVG(mem_used_pct), AVG(disk_used_pct), MAX(steal_pct), AVG(conntrack_pct), AVG(net_rtt_ms), MAX(net_loss_pct)
        FROM hist_vm WHERE res = ${RAW_RES} AND t < ?1 GROUP BY slot
        ON CONFLICT (res, t) DO UPDATE SET expected = expected + excluded.expected, received = received + excluded.received`,
     ).bind(cutoff),

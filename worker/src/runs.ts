@@ -28,6 +28,7 @@ import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
 import { noteHandshakes } from "./keyrotation";
 import { recordHeartbeat, fwDeltas } from "./history";
+import { parseVitals, parseAgentVersion, freshScheduledEvents, scheduledEventNote } from "./vitals";
 
 /**
  * A refusal fit for the screen. The code says what kind, so the data API
@@ -609,6 +610,8 @@ export interface AgentBody {
   talkers?: unknown[];
   capture_running?: string | null;
   speedtest_result?: { id?: string; down_bps?: number | null; up_bps?: number | null; rtt_ms?: number | null; jitter_ms?: number | null; error?: string | null } | null;
+  /** Agent version 7 and later: the VM's own figures, checked by parseVitals (vitals.ts) before anything keeps them. */
+  vitals?: unknown;
   dump?: string;
 }
 
@@ -637,6 +640,10 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     wan6: body.wan6 ? String(body.wan6) : null,
     dns: body.dns ? { up: !!body.dns.up, blocked: Number(body.dns.blocked) || 0 } : null,
     peers: parsed.peers.filter((p) => !p.allowed_ips.split(",").includes(canary)),
+    // Older agents send neither: both read as null, and the widgets fed by
+    // them say the VM needs the next deploy. parseVitals never throws.
+    agent_version: parseAgentVersion(body.agent_version),
+    vitals: parseVitals(body.vitals),
   };
   const snap = await getSnapshot(env);
   const peerList = async () => agentPeerList(await db.enabledPeers(env), cfg.subnet6, protectedNets(cfg));
@@ -702,6 +709,22 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
       }
     }
   }
+  // Azure scheduled maintenance the VM has heard of (its metadata service):
+  // one note and one push per new event id, never again for the same id.
+  // wg-admin never approves an event (that would bring it forward). A note
+  // or push that fails must not cost the heartbeat.
+  try {
+    const ev = freshScheduledEvents(report.vitals, snap.sched_events_seen);
+    for (const e of ev.fresh) {
+      const note = scheduledEventNote(e);
+      await db.addAlert(env, "info", note);
+      await notify(env, "wg-admin: Azure maintenance scheduled", note, { tags: ["calendar"], buttons: [dashboardButton(env)] });
+    }
+    if (ev.fresh.length) patch.sched_events_seen = ev.seen;
+  } catch (e) {
+    console.error("scheduled events:", e);
+  }
+
   // Speed test: a result coming back, or a request still to hand over.
   const reply: Record<string, unknown> = {};
   const req = snap.speedtest_req;

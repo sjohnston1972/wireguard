@@ -16,7 +16,11 @@
 set -euo pipefail
 export LC_ALL=C
 
-ENV_FILE=/etc/wireguard/wg-agent.env
+# Tests only (scripts/test/agent-vitals.test.mjs): a fixture tree standing in
+# for /proc, /run and /etc while the heartbeat is collected. Empty on the VM.
+ROOT="${WG_ROOT:-}"
+
+ENV_FILE=$ROOT/etc/wireguard/wg-agent.env
 IFACE_CONF=/etc/wireguard/wg0.interface.conf
 PEERS_CONF=/etc/wireguard/wg0.peers.conf
 WG_CONF=/etc/wireguard/wg0.conf
@@ -31,8 +35,8 @@ AGENT_TOKEN="${AGENT_TOKEN:-}"
 
 # ── Collect ─────────────────────────────────────────────────────────────────
 dump="$(wg show wg0 dump 2>/dev/null || true)"
-uptime_s="$(cut -d' ' -f1 /proc/uptime)"
-load="$(cut -d' ' -f1-3 /proc/loadavg)"
+uptime_s="$(cut -d' ' -f1 "$ROOT"/proc/uptime)"
+load="$(cut -d' ' -f1-3 "$ROOT"/proc/loadavg)"
 host="$(hostname)"
 # The loopback test address on lo1, if this build has one (empty otherwise).
 loopback="$(ip -4 -o addr show dev lo1 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1 || true)"
@@ -40,34 +44,34 @@ loopback="$(ip -4 -o addr show dev lo1 2>/dev/null | awk '{print $4}' | cut -d/ 
 wan6="$(ip -6 -o addr show dev eth0 scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1 || true)"
 # The boot self-test result, once it has run.
 selftest="null"
-[[ -s /run/wg-admin/selftest.json ]] && selftest="$(cat /run/wg-admin/selftest.json)"
+[[ -s "$ROOT"/run/wg-admin/selftest.json ]] && selftest="$(cat "$ROOT"/run/wg-admin/selftest.json)"
 dns_up=false
 systemctl is-active --quiet dnsmasq && dns_up=true
 blocked=0
-[[ -r /etc/wg-admin/blocklist.hosts ]] && blocked="$(grep -c '^0\.0\.0\.0 ' /etc/wg-admin/blocklist.hosts || true)"
+[[ -r "$ROOT"/etc/wg-admin/blocklist.hosts ]] && blocked="$(grep -c '^0\.0\.0\.0 ' "$ROOT"/etc/wg-admin/blocklist.hosts || true)"
 # A finished speed test waiting to be reported (see wg-speedtest.sh).
 speedtest="null"
-[[ -s /run/wg-admin/speedtest.json ]] && speedtest="$(cat /run/wg-admin/speedtest.json)"
+[[ -s "$ROOT"/run/wg-admin/speedtest.json ]] && speedtest="$(cat "$ROOT"/run/wg-admin/speedtest.json)"
 
 # Firewall: which rule set is loaded, each rule's hit counter, and what the
 # default-deny rule dropped since the last heartbeat (from the kernel log).
-FW_FILE=/etc/wg-admin/firewall.nft
+FW_FILE=$ROOT/etc/wg-admin/firewall.nft
 fw_hash=""
 [[ -r "$FW_FILE" ]] && fw_hash="$(sed -n 's/^# ruleset \([0-9a-f]*\).*/\1/p' "$FW_FILE" | head -n1)"
 # At boot the saved file was refused and the block-all fallback is in force
 # (see wg-firewall-load.sh): report no rule set, so the dashboard sends it again.
-[[ -e /run/wg-admin/firewall.fallback ]] && fw_hash=""
+[[ -e "$ROOT"/run/wg-admin/firewall.fallback ]] && fw_hash=""
 fw_counters="$(nft -j list counters table inet wgfw 2>/dev/null | jq -c '[.nftables[] | .counter? // empty | {key: .name, value: [.packets, .bytes]}] | from_entries' 2>/dev/null || true)"
 [[ -z "$fw_counters" ]] && fw_counters="{}"
 fw_error=""
-[[ -s /run/wg-admin/firewall.error ]] && fw_error="$(head -c 400 /run/wg-admin/firewall.error)"
+[[ -s "$ROOT"/run/wg-admin/firewall.error ]] && fw_error="$(head -c 400 "$ROOT"/run/wg-admin/firewall.error)"
 # "wgfw-drop IN=wg0 OUT=eth0 SRC=10.13.13.3 DST=10.50.2.4 ... PROTO=TCP SPT=51000 DPT=3389"
 # Read the kernel log from exactly where the last heartbeat stopped (a
 # journal bookmark, the "cursor"), so each drop is reported once, however
 # the heartbeats happen to be spaced. The first run after boot has no
 # bookmark yet and looks back 35 seconds.
-mkdir -p /run/wg-admin
-KCURSOR=/run/wg-admin/kernel.cursor
+mkdir -p "$ROOT"/run/wg-admin
+KCURSOR=$ROOT/run/wg-admin/kernel.cursor
 since=()
 [[ -s "$KCURSOR" ]] || since=(--since '-35 seconds')
 fw_drops="$(journalctl -k "${since[@]}" --cursor-file="$KCURSOR" -o cat --no-pager 2>/dev/null | grep 'wgfw-drop' | tail -n 20 \
@@ -78,9 +82,9 @@ fw_drops="$(journalctl -k "${since[@]}" --cursor-file="$KCURSOR" -o cat --no-pag
 # Names for addresses: what the tunnel DNS answered recently ("reply
 # www.example.com is 93.184.216.34"), kept in a small map so top talkers
 # show names, not just numbers. The query log is emptied each time it is read.
-DNSLOG=/var/log/dnsmasq-queries.log
-DNSMAP=/run/wg-admin/dnsmap.tsv
-mkdir -p /run/wg-admin
+DNSLOG=$ROOT/var/log/dnsmasq-queries.log
+DNSMAP=$ROOT/run/wg-admin/dnsmap.tsv
+mkdir -p "$ROOT"/run/wg-admin
 if [[ -s "$DNSLOG" ]]; then
   { cat "$DNSMAP" 2>/dev/null; sed -n 's/.* \(reply\|cached\) \([^ ]*\) is \([0-9.]*\)$/\3\t\2/p' "$DNSLOG"; } \
     | awk -F'\t' '{m[$1]=$2} END {for (k in m) print k "\t" m[k]}' | tail -n 5000 > "$DNSMAP.tmp" && mv "$DNSMAP.tmp" "$DNSMAP"
@@ -101,7 +105,7 @@ talkers="$(
 )"
 [[ -z "$talkers" ]] && talkers="[]"
 # A packet capture in progress, if any (see wg-capture.sh).
-cap_running="$(ls /run/wg-admin/capture.*.running 2>/dev/null | head -n1 | sed 's/.*capture\.\(.*\)\.running/\1/' || true)"
+cap_running="$(ls "$ROOT"/run/wg-admin/capture.*.running 2>/dev/null | head -n1 | sed 's/.*capture\.\(.*\)\.running/\1/' || true)"
 
 # Round-trip time to every client that shook hands in the last 3 minutes,
 # one ping each, all at once. Like an IP SLA probe per spoke.
@@ -123,6 +127,14 @@ rtt="$(cat "$rttdir"/* 2>/dev/null | jq -R -s -c 'split("\n") | map(select(lengt
 [[ -z "$rtt" ]] && rtt="{}"
 rm -rf "$rttdir"
 
+# The VM's own health figures (agent version 7): memory, disk, CPU steal,
+# connection tracking, and the last results of the slow checks (pending
+# updates, Azure's scheduled maintenance, an internet check), which
+# wg-vitals.sh runs in the background and caches. Here it only reads files,
+# and it is cut off after 3 seconds. Anything wrong sends "vitals": null;
+# the heartbeat itself always goes.
+vitals="$(timeout 3 "$ROOT/usr/local/sbin/wg-vitals.sh" collect 2>/dev/null || true)"
+
 body="$(jq -n \
   --arg dump "$dump" \
   --arg up "$uptime_s" \
@@ -141,7 +153,8 @@ body="$(jq -n \
   --argjson fwdrops "$fw_drops" \
   --argjson talkers "$talkers" \
   --arg caprun "$cap_running" \
-  '{agent_version: 6, talkers: $talkers, capture_running: (if $caprun == "" then null else $caprun end), hostname: $host, uptime_seconds: ($up|tonumber), load: $load, loopback: $lb, wan6: $wan6, selftest: $selftest, rtt: $rtt, dns: {up: $dns, blocked: $blocked}, speedtest_result: $speedtest,
+  --arg vitals "$vitals" \
+  '{agent_version: 7, vitals: ($vitals | try fromjson catch null | if type == "object" then . else null end), talkers: $talkers, capture_running: (if $caprun == "" then null else $caprun end), hostname: $host, uptime_seconds: ($up|tonumber), load: $load, loopback: $lb, wan6: $wan6, selftest: $selftest, rtt: $rtt, dns: {up: $dns, blocked: $blocked}, speedtest_result: $speedtest,
     firewall: {hash: $fwhash, error: (if $fwerr == "" then null else $fwerr end), counters: $fwcounters, drops: $fwdrops}, dump: $dump}')"
 
 # ── Report ──────────────────────────────────────────────────────────────────

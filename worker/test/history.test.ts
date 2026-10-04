@@ -299,6 +299,52 @@ describe("rollUp", () => {
   });
 });
 
+// Insights spec 5: the VM's own vitals (agent version 7) in hist_vm.
+describe("vitals in history", () => {
+  const vitals = (memAvail: number, steal: number, loss: number, at = T0) => ({
+    mem: { total: 1000, available: memAvail },
+    disk: { total: 100, used: 30, avail: 70 },
+    cpu: { steal_pct: steal, iowait_pct: 0, ncpu: 1 },
+    conntrack: { count: 50, max: 1000 },
+    updates: null,
+    events: null,
+    net: { at: new Date(at).toISOString(), method: "icmp" as const, targets: [{ ip: "1.1.1.1", rtt_ms: 10, loss_pct: loss }] },
+  });
+  const VITALS_SQL = "SELECT mem_used_pct, disk_used_pct, steal_pct, conntrack_pct, net_rtt_ms, net_loss_pct FROM hist_vm";
+
+  it("hist_vm gets mem, disk, steal, conntrack and net columns", async () => {
+    await recordHeartbeat(env, { report: report(T0 + 30_000, [], { vitals: vitals(600, 2, 0) }), prev: null, rtt: null, traffic: traffic(0, 0, 0), drops: [] });
+    expect(await rows(VITALS_SQL)).toEqual([{ mem_used_pct: 40, disk_used_pct: 30, steal_pct: 2, conntrack_pct: 5, net_rtt_ms: 10, net_loss_pct: 0 }]);
+  });
+
+  it("an older agent's heartbeat leaves them empty, never 0", async () => {
+    await recordHeartbeat(env, { report: report(T0 + 30_000, []), prev: null, rtt: null, traffic: traffic(0, 0, 0), drops: [] });
+    expect(await rows(VITALS_SQL)).toEqual([{ mem_used_pct: null, disk_used_pct: null, steal_pct: null, conntrack_pct: null, net_rtt_ms: null, net_loss_pct: null }]);
+  });
+
+  it("two heartbeats in a minute keep the latest memory and the higher steal and loss", async () => {
+    await recordHeartbeat(env, { report: report(T0 + 5_000, [], { vitals: vitals(600, 9, 50) }), prev: null, rtt: null, traffic: traffic(0, 0, 0), drops: [] });
+    await recordHeartbeat(env, { report: report(T0 + 35_000, [], { vitals: vitals(500, 1, 0) }), prev: null, rtt: null, traffic: traffic(0, 0, 0), drops: [] });
+    expect(await rows("SELECT mem_used_pct, steal_pct, net_loss_pct FROM hist_vm")).toEqual([{ mem_used_pct: 50, steal_pct: 9, net_loss_pct: 50 }]);
+  });
+
+  it("rollUp averages them and keeps the max steal and loss", async () => {
+    const NOW = new Date(Date.parse("2026-10-05T12:00:00Z"));
+    const OLD = Date.parse("2026-10-03T11:50:00Z");
+    for (let i = 0; i < 5; i++) {
+      await env.DB.prepare(
+        "INSERT INTO hist_vm (res, t, expected, received, mem_used_pct, disk_used_pct, steal_pct, conntrack_pct, net_rtt_ms, net_loss_pct) VALUES (60, ?1, 1, 1, ?2, 30, ?3, ?4, ?5, ?6)",
+      )
+        .bind(bucket(OLD + i * 60_000, 60), 40 + i * 2, i === 2 ? 20 : 1, i === 4 ? null : 5, 10 + i, i === 3 ? 100 : 0)
+        .run();
+    }
+    await rollUp(env, NOW);
+    expect(await rows(`SELECT res, t, ${VITALS_SQL.slice(7, VITALS_SQL.indexOf(" FROM"))} FROM hist_vm`)).toEqual([
+      { res: 300, t: "2026-10-03T11:50:00Z", mem_used_pct: 44, disk_used_pct: 30, steal_pct: 20, conntrack_pct: 5, net_rtt_ms: 12, net_loss_pct: 100 },
+    ]);
+  });
+});
+
 describe("watchman", () => {
   it("fills in missed minutes while running", async () => {
     const token = await toRunning();
