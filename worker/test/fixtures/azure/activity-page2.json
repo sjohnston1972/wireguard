@@ -1,0 +1,16 @@
+{
+  "value": [
+    {
+      "caller": "someone@example.net",
+      "correlationId": "aaaaaaaa-0000-0000-0000-000000000006",
+      "eventDataId": "e0000000-0000-0000-0000-000000000009",
+      "category": { "value": "Administrative", "localizedValue": "Administrative" },
+      "level": "Informational",
+      "operationName": { "value": "Microsoft.Compute/disks/write", "localizedValue": "Create or Update Disk" },
+      "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/disks/osdisk-wg",
+      "status": { "value": "Succeeded", "localizedValue": "Succeeded" },
+      "eventTimestamp": "2026-10-04T09:50:00.0000000Z"
+    }
+  ],
+  "nextLink": "https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Insights/eventtypes/management/values?api-version=2015-04-01&$skipToken=page3"
+}

@@ -1,0 +1,13 @@
+{
+  "value": [
+    { "namespace": "Microsoft.Network/publicIPAddresses", "name": { "value": "PacketsInDDoS", "localizedValue": "Inbound packets DDoS" }, "unit": "CountPerSecond", "primaryAggregationType": "Maximum" },
+    { "namespace": "Microsoft.Network/publicIPAddresses", "name": { "value": "PacketsDroppedDDoS", "localizedValue": "Inbound packets dropped DDoS" }, "unit": "CountPerSecond", "primaryAggregationType": "Maximum" },
+    { "namespace": "Microsoft.Network/publicIPAddresses", "name": { "value": "BytesInDDoS", "localizedValue": "Inbound bytes DDoS" }, "unit": "BytesPerSecond", "primaryAggregationType": "Maximum" },
+    { "namespace": "Microsoft.Network/publicIPAddresses", "name": { "value": "BytesDroppedDDoS", "localizedValue": "Inbound bytes dropped DDoS" }, "unit": "BytesPerSecond", "primaryAggregationType": "Maximum" },
+    { "namespace": "Microsoft.Network/publicIPAddresses", "name": { "value": "IfUnderDDoSAttack", "localizedValue": "Under DDoS attack or not" }, "unit": "Count", "primaryAggregationType": "Maximum" },
+    { "namespace": "Microsoft.Network/publicIPAddresses", "name": { "value": "PacketCount", "localizedValue": "Packet Count" }, "unit": "Count", "primaryAggregationType": "Total" },
+    { "namespace": "Microsoft.Network/publicIPAddresses", "name": { "value": "ByteCount", "localizedValue": "Byte Count" }, "unit": "Bytes", "primaryAggregationType": "Total" },
+    { "namespace": "Microsoft.Network/publicIPAddresses", "name": { "value": "SynCount", "localizedValue": "SYN Packet Count" }, "unit": "Count", "primaryAggregationType": "Total" },
+    { "namespace": "Microsoft.Network/publicIPAddresses", "name": { "value": "VipAvailability", "localizedValue": "Data Path Availability" }, "unit": "Count", "primaryAggregationType": "Average" }
+  ]
+}
