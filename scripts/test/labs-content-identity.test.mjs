@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { ALLOWED_ROLES, buildCatalogue, LAB_TF_VARS, lintTfText, parseLabYaml, variablesProblems } from "../lib/labs.mjs";
 
 const labsDir = fileURLToPath(new URL("../../labs/", import.meta.url));
-const LABS = ["az104-01-identity"];
+const LABS = ["az104-01-identity", "az104-02-policy"];
 
 // ── A small HCL reader: enough for these labs' own text ──────────────────
 
@@ -226,4 +226,35 @@ test("lab 1: Reader for the group and the custom role for ben, both at the resou
 
 test("lab 1: the readme warns about MFA registration", () => {
   assert.match(lab("az104-01-identity").readme, /MFA|multifactor/i);
+});
+
+// ── Lab 2: Azure Policy, tags and resource locks ─────────────────────────
+
+const ALLOWED_LOCATIONS = "e56962a6-4747-49cd-b67b-bf8b01975c4c";
+
+test("lab 2: the costcentre-tag policy and built-in Allowed locations are both assigned at the resource group", () => {
+  const l = lab("az104-02-policy");
+  const def = one(l, "azurerm_policy_definition", "require_costcentre_tag");
+  assert.equal(attr(def.body, "name"), '"lab-${var.lab_id}-require-costcentre-tag"');
+  assert.equal(attr(def.body, "management_group_id"), null, "a definition at the subscription, as §8.3 allows");
+  const assigns = of(l, "azurerm_resource_group_policy_assignment");
+  assert.equal(assigns.length, 2);
+  for (const a of assigns) assert.match(attr(a.body, "name"), /^"lab-\$\{var\.lab_id\}-/);
+  assert.ok(assigns.some((a) => attr(a.body, "policy_definition_id") === "azurerm_policy_definition.require_costcentre_tag.id"));
+  assert.ok(l.all.includes(`/providers/Microsoft.Authorization/policyDefinitions/${ALLOWED_LOCATIONS}`));
+  assert.equal(of(l, "azurerm_management_group_policy_assignment").length, 0);
+});
+
+test("lab 2: a tagged storage account with a CanNotDelete lock, and an untagged resource that existed first", () => {
+  const l = lab("az104-02-policy");
+  const sa = one(l, "azurerm_storage_account");
+  assert.match(sa.body, /costcentre/);
+  assert.equal(attr(sa.body, "account_replication_type"), '"LRS"');
+  const lock = one(l, "azurerm_management_lock");
+  assert.equal(attr(lock.body, "lock_level"), '"CanNotDelete"');
+  assert.equal(attr(lock.body, "scope"), `azurerm_storage_account.${sa.name}.id`);
+  const nsg = one(l, "azurerm_network_security_group");
+  assert.doesNotMatch(nsg.body, /costcentre/);
+  const req = l.resources.find((r) => r.type === "azurerm_resource_group_policy_assignment" && /require_costcentre_tag/.test(r.body));
+  assert.match(attr(req.body, "depends_on") ?? "", new RegExp(`azurerm_network_security_group\\.${nsg.name}`), "the untagged resource is made before the deny lands");
 });
