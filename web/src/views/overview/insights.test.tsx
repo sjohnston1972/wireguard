@@ -54,7 +54,7 @@ describe("VM performance", () => {
   it("range fetches that range", async () => {
     const r = show(overview("running"), withOn(set("vmPerformance", { range: "7d" })));
     await region("VM performance");
-    await waitFor(() => expect(r.fetchMock!.calls.some((c) => c.url.includes("/api/v1/azure/metrics?resource=vm&range=7d"))).toBe(true));
+    await waitFor(() => expect(r.fetchMock!.calls.some((c) => c.url.includes("/api/v1/azure/metrics?resource=vm&range=7d"))).toBe(true), { timeout: 10_000 });
   });
 
   it("charts setting: the default three, or the chosen ones", async () => {

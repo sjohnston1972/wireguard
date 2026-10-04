@@ -17,7 +17,7 @@ import { bucket } from "./history";
 import { azureRegionName } from "./region";
 import { FEEDS } from "../../shared/azureMetrics";
 import type { AzureHealth } from "../../shared/api";
-import type { CapacityDoc, MetricDefsDoc } from "./insights/types";
+import type { BootLogDoc, CapacityDoc, MetricDefsDoc } from "./insights/types";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -76,6 +76,23 @@ export async function seedInsights(env: Env, now: number, startMs: number, regio
   const defs: MetricDefsDoc = { vm: ["Percentage CPU", "Available Memory Bytes", "Network In Total", "Network Out Total", "Disk Read Bytes", "Disk Write Bytes", "Disk Read Operations/Sec", "Disk Write Operations/Sec", "CPU Credits Remaining", "CPU Credits Consumed", "VmAvailabilityMetric", "OS Disk IOPS Consumed Percentage", "OS Disk Bandwidth Consumed Percentage"], pip: ["IfUnderDDoSAttack", "PacketsInDDoS", "PacketsDroppedDDoS", "BytesInDDoS", "BytesDroppedDDoS", "PacketCount", "ByteCount", "SynCount", "VipAvailability"] };
   add("INSERT INTO az_latest (key, json, updated_at) VALUES ('health', ?1, ?2)", JSON.stringify(health), iso(now - 2 * MIN));
   add("INSERT INTO az_latest (key, json, updated_at) VALUES ('metricDefs', ?1, ?2)", JSON.stringify(defs), iso(startMs + 10 * MIN));
+  // The serial console log fetched earlier, stored as the collector stores it: redacted, no URL.
+  const bootText = [
+    "[    0.000000] Linux version 6.8.0-1015-azure (buildd@lcy02-amd64-075) (x86_64-linux-gnu-gcc-13) #17-Ubuntu SMP",
+    "[    0.000000] Command line: BOOT_IMAGE=/vmlinuz-6.8.0-1015-azure root=PARTUUID=00000000-0000-0000-0000-000000000001 ro console=ttyS0",
+    "[    0.412871] hv_vmbus: Vmbus version:5.3",
+    "[    1.902114] EXT4-fs (sda1): mounted filesystem with ordered data mode.",
+    "[    4.118230] cloud-init[612]: Cloud-init v. 24.1 running 'init' at Fri, 02 Oct 2026 12:04:31 +0000.",
+    "[    9.501777] cloud-init[612]: ci-info: | eth0 | True | 10.50.1.4 | 255.255.255.0 | global |",
+    "[   22.384905] cloud-init[1043]: Setting up wireguard-tools (1.0.20210914-1ubuntu4) ...",
+    "[   24.006118] cloud-init[1043]: chpasswd: azureuser password set to ‹redacted›",
+    "[   26.771043] wg-quick[1388]: [#] wg setconf wg0 /dev/fd/63 (private key ‹redacted›)",
+    "[   27.120995] systemd[1]: Started wg-agent.timer - wg-admin status agent.",
+    "[   31.645201] cloud-init[1043]: Cloud-init v. 24.1 finished. Datasource DataSourceAzure. Up 31.64 seconds",
+    "",
+  ].join("\n");
+  const bootLog: BootLogDoc = { fetchedAt: iso(now - 3 * HOUR), bytes: new TextEncoder().encode(bootText).length, truncated: false, redactions: 2, text: bootText, reason: null };
+  add("INSERT INTO az_latest (key, json, updated_at) VALUES ('bootlog', ?1, ?2)", JSON.stringify(bootLog), iso(now - 3 * HOUR));
 
   // The Activity Log: wg-admin's own deploy, one change in the portal by a person, and an Azure annotation.
   const act = (id: string, at: number, op: string, status: string, caller: string, kind: string, type: string, name: string, category: string, level = "Informational") =>

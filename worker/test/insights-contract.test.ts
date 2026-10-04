@@ -215,6 +215,13 @@ describe("the insights scenario", () => {
     const issues = (await env.DB.prepare("SELECT type, status, regions FROM az_service_events WHERE status = 'Active'").all<{ type: string; status: string; regions: string }>()).results;
     expect(issues).toEqual([{ type: "ServiceIssue", status: "Active", regions: JSON.stringify(["UK South"]) }]);
     expect(await rows(env, "hist_vm WHERE mem_used_pct IS NOT NULL")).toBeGreaterThan(0);
+    // A stored boot log, already redacted the way the collector stores it (no URL, secrets replaced).
+    const boot = JSON.parse((await env.DB.prepare("SELECT json FROM az_latest WHERE key = 'bootlog'").first<{ json: string }>())!.json);
+    expect(boot).toMatchObject({ fetchedAt: expect.any(String), truncated: false, redactions: 2, reason: null });
+    expect(boot.text).toMatch(/Linux version/);
+    expect(boot.text.match(/‹redacted›/g)).toHaveLength(2);
+    expect(boot.bytes).toBe(new TextEncoder().encode(boot.text).length);
+    expect(boot.text).not.toMatch(/https?:\/\//);
     // Fixtures stay fake: TEST-NET addresses, example names, no real subscription id.
     const all = JSON.stringify((await env.DB.prepare("SELECT * FROM az_activity").all()).results) + JSON.stringify((await env.DB.prepare("SELECT * FROM az_latest").all()).results);
     expect(all).not.toMatch(/clydeford|@gmail|5bdc4d78/);

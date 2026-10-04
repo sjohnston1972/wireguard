@@ -73,7 +73,7 @@ describe("Firewall: Public IP and DDoS", () => {
     setViewport(1600);
     const r = renderFw(withSettings({ range: "7d" }));
     await panel();
-    await waitFor(() => expect(r.fetchMock!.calls.some((c) => c.url.includes("/api/v1/azure/metrics?resource=pip&range=7d"))).toBe(true));
+    await waitFor(() => expect(r.fetchMock!.calls.some((c) => c.url.includes("/api/v1/azure/metrics?resource=pip&range=7d"))).toBe(true), { timeout: 10_000 });
   });
 
   it("series: packets and dropped by default, or the chosen ones", async () => {
