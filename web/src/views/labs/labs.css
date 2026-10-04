@@ -93,7 +93,9 @@
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
 }
 .labs-card__facts, .labs-card__badges { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--text-secondary); }
+.labs-card__facts + .labs-card__facts { margin-top: -3px; }
 .labs-card__facts li + li::before { content: "·"; margin-right: 10px; color: var(--text-muted); }
+.labs-card__badges { margin-top: auto; padding-top: 2px; }
 .labs-card__rate { color: var(--text-primary); font-weight: 500; }
 .labs-card__badges { gap: 6px; }
 .labs-badge { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-strong); font-size: 11.5px; color: var(--text-secondary); }
@@ -140,7 +142,7 @@
 .labs-readme__h1 { font-size: 17px; }
 .labs-readme__h2 { font-size: 15px; }
 .labs-readme__h3 { font-size: 13.5px; color: var(--text-secondary); }
-.labs-readme code { font-family: var(--font-mono); font-size: 12px; padding: 1px 5px; border-radius: 5px; background: var(--bg-tile); border: 1px solid var(--border); }
+.labs-readme code { font-variant-ligatures: none; font-family: var(--font-mono); font-size: 12px; padding: 1px 5px; border-radius: 5px; background: var(--bg-tile); border: 1px solid var(--border); }
 .labs-readme__pre { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg-tile); border: 1px solid var(--border); overflow-x: auto; }
 .labs-readme__pre code { padding: 0; border: 0; background: none; white-space: pre; line-height: 1.45; }
 .labs-readme a { color: var(--blue-bright); text-decoration: underline; text-underline-offset: 2px; }

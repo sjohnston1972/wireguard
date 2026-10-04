@@ -41,6 +41,8 @@ export function LabCard({ card }: { card: Card }) {
         <li>{LEVEL_WORD[card.level]}</li>
         <li>{TYPE_WORD[card.type]}</li>
         <li className="labs-card__rate">{fmtRate(card.estGbpH)}</li>
+      </ul>
+      <ul className="labs-card__facts" aria-label="Timing">
         <li>{card.timing.deployMin} min to deploy</li>
         <li>{card.timing.sessionH} h session</li>
       </ul>
