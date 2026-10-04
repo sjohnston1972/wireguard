@@ -3,8 +3,8 @@
     "layout": {
       "order": {
         "r2": ["overview.keyMetrics", "overview.topology"],
-        "r3": ["side", "overview.traffic", "overview.run"],
-        "r4": ["overview.notes", "overview.costImpact", "overview.health"]
+        "r3": ["side", "overview.traffic", "overview.run", "overview.vmPerformance"],
+        "r4": ["overview.notes", "overview.costImpact", "overview.health", "overview.azureHealth", "overview.vitals"]
       }
     }
   }

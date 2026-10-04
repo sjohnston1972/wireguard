@@ -102,7 +102,7 @@ describe("ui_prefs storage", () => {
     const { env } = makeEnv();
     // A test-only widget whose one setting can hold more than 8 KiB of valid choices.
     const options = Array.from({ length: 400 }, (_, i) => ({ value: `choice-number-${String(i).padStart(4, "0")}`, label: `Choice ${i}` }));
-    const big: WidgetDef = { id: "cost.big", page: "cost", title: "Big", version: 1, settings: [{ kind: "multi", key: "pick", label: "Pick", section: "data", options, minSelected: 0, default: [] }] };
+    const big: WidgetDef = { id: "cost.big", page: "cost", title: "Big", description: "A test-only widget", version: 1, settings: [{ kind: "multi", key: "pick", label: "Pick", section: "data", options, minSelected: 0, default: [] }] };
     const reg: Registry = { widgets: [big], layouts: { cost: { page: "cost", rows: [{ id: "r1", items: [{ widget: "cost.big", weight: 1 }] }] } } };
     const many = options.map((x) => x.value);
     expect(JSON.stringify({ widgets: { "cost.big": { v: 1, s: { pick: many } } } }).length).toBeGreaterThan(8 * 1024);
