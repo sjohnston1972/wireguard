@@ -253,7 +253,9 @@ describe("Overview widgets: layout", () => {
     await waitFor(() => expect(screen.queryByRole("region", { name: "Watchman notes" })).toBeNull());
     expect(rowOf(await region("Cost impact")).style.gridTemplateColumns).toBe("minmax(0, 54fr) minmax(0, 32fr)");
     await user.click(screen.getByRole("button", { name: "Layout" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Show Watchman notes" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Add widgets…" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Add widgets" })).getByRole("switch", { name: "Watchman notes" }));
+    await user.keyboard("{Escape}");
     expect(await region("Watchman notes")).toBeInTheDocument();
   });
 });
