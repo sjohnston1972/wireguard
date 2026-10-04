@@ -136,11 +136,13 @@ write_files:
   # even for a moment at boot. Default deny between zones; every rule has a
   # counter the agent reports as the rule's hits. Changes made on the
   # dashboard arrive on the heartbeat and replace this file.
+  # Carried gzipped: Azure refuses custom data over 64 KB, and a big rule
+  # table is many kilobytes of plain text.
   - path: /etc/wg-admin/firewall.nft
     permissions: "0600"
     owner: root:root
-    encoding: b64
-    content: ${firewall_nft_b64}
+    encoding: gz+b64
+    content: ${firewall_nft_gz}
 
   # Fails closed: if the saved rule set is refused, a block-all one is
   # loaded instead and the reason is shown on the dashboard (see the script).
@@ -253,11 +255,12 @@ write_files:
       # The Azure VNet: a site route may never cover it (see wg-agent.sh).
       VNET_CIDR=${vnet_cidr}
 
+  # Carried gzipped, like wg-vitals.sh below: it is the biggest file here.
   - path: /usr/local/sbin/wg-agent.sh
     permissions: "0755"
     owner: root:root
-    content: |
-      ${indent(6, agent_script)}
+    encoding: gz+b64
+    content: ${agent_script_gz}
 
   - path: /usr/local/sbin/wg-capture.sh
     permissions: "0755"
