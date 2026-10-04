@@ -247,7 +247,7 @@ button.act__phone-row { cursor: pointer; }
 .act__feed--bad { color: var(--red); }
 .act__azlog { min-height: 0; }
 /* Long Azure operation names ("Changed network security group") shorten with an ellipsis, so the table fits its column. */
-.act__azlog .act__azchange { display: inline-block; max-width: 20ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.act__azlog .act__azchange { display: inline-block; max-width: 13ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .act__health { min-height: 0; }
 .act__health > .panel__body { padding: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 /* The list scrolls; the feed line stays under it (it was drawn over the list when the body scrolled). */
