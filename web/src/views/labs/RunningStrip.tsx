@@ -2,9 +2,9 @@ import { useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
-import type { LabSession } from "@shared/api";
+import type { LabOrphan, LabSession } from "@shared/api";
 import { Button, Modal } from "@/components";
-import { useCancelLab, useDestroyLab, useExtendLab } from "@/api/mutations";
+import { useCancelLab, useCleanupLabOrphans, useDestroyLab, useExtendLab } from "@/api/mutations";
 import { endsAt, extendChoices, fmtGbp, fmtSpan, peeringWord, stateWord, timeLeft, useLabClock } from "./model";
 
 /** A coloured word: the colour never stands alone. */
@@ -117,6 +117,50 @@ function Chip({ s, now }: { s: LabSession; now: number }) {
       </div>
       <SessionActions s={s} now={now} />
     </li>
+  );
+}
+
+/** Leftovers the hourly sweep found (spec §7.5), one line per lab, with Clean up (a destroy run for that lab) after a confirm. */
+export function Orphans({ orphans }: { orphans: LabOrphan[] }) {
+  const cleanup = useCleanupLabOrphans();
+  const [asking, setAsking] = useState<string | null>(null);
+  if (orphans.length === 0) return null;
+  return (
+    <section className="labs-orphans" aria-label="Lab leftovers">
+      <ul className="labs-orphans__list">
+        {orphans.map((o, i) => (
+          <li key={o.labId ?? `unknown-${i}`} className="labs-orphans__item">
+            <Word label="Leftovers" tone="red" />
+            <span className="labs-orphans__names">{o.names.join(", ")}</span>
+            {o.labId ? (
+              <Button size="sm" variant="secondary" aria-label={`Clean up ${o.labId}`} onClick={() => setAsking(o.labId)}>
+                Clean up
+              </Button>
+            ) : (
+              <span className="labs-muted">Not from a known lab: remove it in the portal.</span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {asking && (
+        <Modal
+          open
+          onOpenChange={(o) => !o && !cleanup.isPending && setAsking(null)}
+          title={`Clean up ${asking}?`}
+          description={`Runs a tear-down for ${asking}: everything in rg-lab-${asking} and its lab-${asking}- Entra and governance objects is removed.`}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setAsking(null)} disabled={cleanup.isPending}>
+                Keep them
+              </Button>
+              <Button variant="danger" loading={cleanup.isPending} disabled={cleanup.isPending} onClick={() => cleanup.mutate({ lab_id: asking }, { onSuccess: () => setAsking(null) })}>
+                Clean up now
+              </Button>
+            </>
+          }
+        />
+      )}
+    </section>
   );
 }
 

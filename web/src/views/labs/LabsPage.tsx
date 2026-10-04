@@ -4,7 +4,7 @@ import { useLabs } from "@/api/queries";
 import { EnvironmentField } from "@/shell/StateChip";
 import { Catalogue } from "./Catalogue";
 import { Filters } from "./Filters";
-import { RunningStrip } from "./RunningStrip";
+import { Orphans, RunningStrip } from "./RunningStrip";
 
 /** Catalogue | Your labs: the tab's two pages, as links (so each has its address). */
 export function LabsNav() {
@@ -49,6 +49,7 @@ export function LabsPage({ children }: { children?: React.ReactNode }) {
   return (
     <section className="labs">
       <LabsHeader />
+      {children}
       {q.isError && !d ? (
         <ErrorState title="Could not load the labs" message={q.error instanceof Error ? q.error.message : "The catalogue could not be loaded."} onRetry={() => void q.refetch()} />
       ) : !d ? (
@@ -58,6 +59,7 @@ export function LabsPage({ children }: { children?: React.ReactNode }) {
         </div>
       ) : (
         <>
+          <Orphans orphans={d.orphans} />
           <RunningStrip sessions={d.running} />
           <div className="labs-main">
             <Filters cards={d.labs} />
@@ -65,7 +67,6 @@ export function LabsPage({ children }: { children?: React.ReactNode }) {
           </div>
         </>
       )}
-      {children}
     </section>
   );
 }

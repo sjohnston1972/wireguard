@@ -88,7 +88,7 @@ export function SessionsTable({ sessions, loading, error, onRetry }: { sessions:
 }
 
 /** /labs/history: the sessions on the left, the coverage map on the right; each scrolls inside its panel. */
-export function HistoryPage({ children }: { children?: React.ReactNode }) {
+export function HistoryPage() {
   const q = useLabSessions(undefined, 200);
   return (
     <section className="labs">
@@ -101,7 +101,6 @@ export function HistoryPage({ children }: { children?: React.ReactNode }) {
         </Panel>
         <CoverageMap />
       </div>
-      {children}
     </section>
   );
 }

@@ -111,6 +111,23 @@ describe("the running strip", () => {
     expect(fetchMock!.callsTo("POST", "/api/v1/labs/az104-06-blob-security/destroy")[0]!.body).toEqual({ confirm: true });
   });
 
+  it("leftovers the sweep found are listed with Clean up, which asks first", async () => {
+    const user = userEvent.setup();
+    const orphans = [
+      { labId: "az104-08-vms", names: ["rg-lab-az104-08-vms", "lab-az104-08-vms-ann"], since: at(-2 * HOUR) },
+      { labId: null, names: ["lab-odd-thing"], since: at(-HOUR) },
+    ];
+    const { fetchMock } = renderApp("/labs", { routes: { "GET /api/v1/labs": labs({ orphans }), "POST /api/v1/labs/orphans/cleanup": { ok: true, message: "Cleaning up." } } });
+    const box = within(await screen.findByRole("region", { name: "Lab leftovers" }));
+    const items = box.getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("rg-lab-az104-08-vms, lab-az104-08-vms-ann");
+    expect(within(items[1]!).queryByRole("button", { name: /Clean up/ })).toBeNull();
+    await user.click(within(items[0]!).getByRole("button", { name: "Clean up az104-08-vms" }));
+    const dialog = within(await screen.findByRole("dialog", { name: /Clean up az104-08-vms/ }));
+    await user.click(dialog.getByRole("button", { name: "Clean up now" }));
+    await waitFor(() => expect(fetchMock!.callsTo("POST", "/api/v1/labs/orphans/cleanup")[0]?.body).toEqual({ lab_id: "az104-08-vms" }));
+  });
+
   it("a session tearing down offers no Extend and no second Tear down", async () => {
     const going = session({ state: "tearing_down", activeRun: run({ action: "destroy", step: { done: 4, of: 11, name: "Unpeer" }, labId: "az104-06-blob-security" }) });
     renderApp("/labs", { routes: { "GET /api/v1/labs": labs({ running: [going] }) } });

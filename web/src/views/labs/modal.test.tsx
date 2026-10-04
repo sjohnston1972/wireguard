@@ -38,10 +38,16 @@ describe("the lab modal, not running", () => {
     expect(screen.getByLabelText("location")).toHaveTextContent(`/labs/${ID}`);
   });
 
-  it("an unknown lab says so", async () => {
-    renderApp("/labs/az104-99-nothing");
-    const el = within(await screen.findByRole("dialog"));
-    expect(await el.findByText("No such lab.")).toBeInTheDocument();
+  it("an unknown lab says so on the page, with no empty modal over it", async () => {
+    const user = userEvent.setup();
+    renderApp("/labs/az104-99-nothing", { routes: { "GET /api/v1/labs": labs() } });
+    const notice = within(await screen.findByRole("alert"));
+    expect(notice.getByText(/Could not open az104-99-nothing: No such lab\./)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The page stays usable behind it.
+    expect(within(screen.getByRole("main")).getByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
+    await user.click(notice.getByRole("button", { name: "Dismiss" }));
+    expect(screen.getByLabelText("location")).toHaveTextContent(/^\/labs$/);
   });
 
   it("readme blocks render without HTML injection", async () => {

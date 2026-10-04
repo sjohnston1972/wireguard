@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import type { LabDetail } from "@shared/api";
-import { Drawer, ErrorState, Skeleton } from "@/components";
+import { Button, Drawer } from "@/components";
 import { useLab } from "@/api/queries";
 import { CostTable, DeployFields, DeployFooter, useDeployForm } from "./DeployForm";
 import { LEVEL_WORD, TYPE_WORD, stateWord } from "./model";
@@ -47,18 +47,28 @@ export function LabModal({ id, closeTo = "/labs" }: { id: string; closeTo?: stri
   const { search } = useLocation();
   const close = () => navigate({ pathname: closeTo, search });
   const d = q.data;
+  // The modal opens once the lab has answered, so there is never an empty
+  // dialog over the page; a lab that cannot be opened (an old link) is a
+  // notice on the page, which stays usable behind it.
   if (!d) {
+    if (!q.isError)
+      return (
+        <p className="labs-sr" role="status">
+          Opening the lab…
+        </p>
+      );
     return (
-      <Drawer open onOpenChange={(o) => !o && close()} side="auto" size="lg" title="Lab" subtitle={id}>
-        {q.isError ? (
-          <ErrorState title="Could not open this lab" message={q.error instanceof Error ? q.error.message : "The lab could not be loaded."} onRetry={() => void q.refetch()} />
-        ) : (
-          <div aria-busy="true" className="labs-modal__skel">
-            <Skeleton variant="line" width="60%" />
-            <Skeleton variant="block" height={160} />
-          </div>
-        )}
-      </Drawer>
+      <div className="labs-notice" role="alert">
+        <span>
+          Could not open {id}: {q.error instanceof Error ? q.error.message : "the lab could not be loaded."}
+        </span>
+        <Button size="sm" variant="secondary" onClick={() => void q.refetch()}>
+          Try again
+        </Button>
+        <Button size="sm" variant="ghost" onClick={close}>
+          Dismiss
+        </Button>
+      </div>
     );
   }
   if (!d.session) return <IdleLab key={d.card.id} d={d} onClose={close} />;
