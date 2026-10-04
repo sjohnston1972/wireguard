@@ -5,12 +5,13 @@
 // never confirm()) and then puts the page's order, hidden widgets and every
 // widget's settings back as they ship. On the phone it also has Widget
 // settings: every widget on the page, each opening its settings, including
-// widgets the phone's own layout does not show.
+// widgets the phone's own layout does not show (a default-off widget only
+// while it is turned on).
 
 import { useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { ChevronLeft, LayoutGrid } from "lucide-react";
-import { PAGE_TITLES, pageWidgets, type PageId } from "@shared/widgets";
+import { PAGE_TITLES, isVisible, pageWidgets, type PageId } from "@shared/widgets";
 import { Button, Modal, Sheet, useIsPhone } from "@/components";
 import { usePagePrefs, usePrefsStore } from "./usePrefs";
 import { isHidden } from "./layout";
@@ -104,7 +105,7 @@ export function LayoutMenu({ page }: { page: PageId }) {
             </>
           ) : (
             <ul className="wg-list">
-              {widgets.map((w) => (
+              {widgets.filter((w) => !w.defaultOff || isVisible(prefs, w)).map((w) => (
                 <li key={w.id}>
                   <button type="button" className="wg-list__item" aria-label={`${w.title} settings`} onClick={() => setCurrent(w.id)}>
                     {w.title}

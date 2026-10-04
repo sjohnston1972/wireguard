@@ -503,9 +503,6 @@ describe("the Layout menu", () => {
       "Health summary",
       "Cost impact",
       "Watchman notes",
-      "VM performance",
-      "Azure health",
-      "System vitals",
     ]);
     // Topology is not on this test page at all, and can still be set.
     await userEvent.click(within(sheet).getByRole("button", { name: "Live topology settings" }));
@@ -643,6 +640,21 @@ describe("default-off widgets", () => {
     expect(titles(screen.getByTestId("r4"))).toEqual(["Health summary", "Cost impact", "Watchman notes"]);
     await waitFor(() => expect(server.puts).toHaveLength(1));
     expect(server.puts[0]!.body).toEqual({ schema: 2, baseVersion: 1, prefs: {} });
+  });
+
+  it("the phone's Widget settings list a default-off widget only while it is on", async () => {
+    setViewport("phone");
+    renderLibrary("overview.vitals", { overview: { layout: { hidden: ["overview.costImpact"], shown: ["overview.vitals"] } } });
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "Layout" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Widget settings" }));
+    const sheet = await screen.findByRole("dialog", { name: "Overview widget settings" });
+    const names = within(sheet).getAllByRole("button", { name: /settings$/ }).map((b) => b.textContent);
+    expect(names).toContain("System vitals");
+    expect(names).not.toContain("VM performance");
+    expect(names).not.toContain("Azure health");
+    // Hidden widgets that ship on are still listed, as before.
+    expect(names).toContain("Cost impact");
   });
 
   it("the Layout menu's hidden list never offers a default-off widget", async () => {
