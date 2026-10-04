@@ -10,13 +10,16 @@ import { AutomationSection } from "./AutomationSection";
 import { BackupSection } from "./BackupSection";
 import { DeploymentSection } from "./DeploymentSection";
 import { EditsProvider, useEdits } from "./edits";
-import { LabsSection } from "./LabsSection";
+import { lazyPart } from "@/widgets";
 import { MaintenanceSection } from "./MaintenanceSection";
 import { MobileSection } from "./MobileSection";
 import { OverviewSection } from "./OverviewSection";
 import { SecuritySection } from "./SecuritySection";
 import { SettingsSkeleton, Stat, gbp } from "./ui";
 import "./settings.css";
+
+/** Settings → Labs loads only when opened (it is the one section most people never visit). */
+const LabsSection = lazyPart(() => import("./LabsSection").then((m) => m.LabsSection));
 
 const ICONS: Record<string, LucideIcon> = {
   overview: Cog,
