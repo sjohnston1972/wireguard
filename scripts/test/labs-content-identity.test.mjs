@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { ALLOWED_ROLES, buildCatalogue, LAB_TF_VARS, lintTfText, parseLabYaml, variablesProblems } from "../lib/labs.mjs";
 
 const labsDir = fileURLToPath(new URL("../../labs/", import.meta.url));
-const LABS = ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups"];
+const LABS = ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az104-04-cost"];
 
 // ── A small HCL reader: enough for these labs' own text ──────────────────
 
@@ -90,6 +90,9 @@ const SUBSCRIPTION_TYPES = [
 // ── Every lab ────────────────────────────────────────────────────────────
 
 const { catalogue, problems } = buildCatalogue(labsDir);
+// No update check: it calls out to the internet and can stall a test run.
+const TF_ENV = { ...process.env, CHECKPOINT_DISABLE: "1" };
+const TF_SKIP = spawnSync("terraform", ["version"], { env: TF_ENV }).status === 0 ? false : "terraform is not on PATH";
 
 for (const id of LABS) {
   test(`${id}: labs-check passes and the readme is in the catalogue`, () => {
@@ -176,8 +179,8 @@ for (const id of LABS) {
     assert.doesNotMatch(l.readme, /This readme is a stub/);
   });
 
-  test(`${id}: terraform fmt -check`, { skip: spawnSync("terraform", ["version"]).status === 0 ? false : "terraform is not on PATH" }, () => {
-    const r = spawnSync("terraform", ["fmt", "-check", "-diff", "-no-color"], { cwd: lab(id).dir, encoding: "utf8" });
+  test(`${id}: terraform fmt -check`, { skip: TF_SKIP }, () => {
+    const r = spawnSync("terraform", ["fmt", "-check", "-diff", "-no-color"], { cwd: lab(id).dir, encoding: "utf8", env: TF_ENV });
     assert.equal(r.status, 0, r.stdout + r.stderr);
   });
 }
@@ -287,4 +290,25 @@ test("lab 3: an audit policy defined and assigned at lab-<id>-root, with a name 
   const name = JSON.parse(attr(a.body, "name").replace("${var.name_prefix}", "l03abcde"));
   assert.ok(name.length <= 24, `${name} is longer than 24`);
   assert.match(attr(a.body, "display_name"), /^"lab-\$\{var\.lab_id\}-/);
+});
+
+// ── Lab 4: budgets and alerts ────────────────────────────────────────────
+
+test("lab 4: a £5 monthly budget on the resource group from the 1st, with ignore_changes, alerting an empty action group", () => {
+  const l = lab("az104-04-cost");
+  const b = one(l, "azurerm_consumption_budget_resource_group");
+  assert.equal(attr(b.body, "resource_group_id"), "azurerm_resource_group.lab.id");
+  assert.equal(attr(b.body, "amount"), "5");
+  assert.equal(attr(b.body, "time_grain"), '"Monthly"');
+  assert.match(attr(b.body, "start_date") ?? "", /formatdate\("YYYY-MM-01'T'00:00:00Z", timestamp\(\)\)/);
+  assert.match(b.body, /ignore_changes\s*=\s*\[[^\]]*time_period/);
+  const n = [...b.body.matchAll(/notification\s*\{/g)].length;
+  assert.ok(n >= 2, "at least two thresholds");
+  assert.match(b.body, /"Forecasted"/);
+  assert.match(b.body, /contact_groups\s*=\s*\[azurerm_monitor_action_group\.\w+\.id\]/);
+  assert.doesNotMatch(b.body, /contact_emails|contact_roles/);
+  const ag = one(l, "azurerm_monitor_action_group");
+  assert.doesNotMatch(ag.body, /_receiver\s*\{/, "no receivers: nothing is emailed or called");
+  const short = JSON.parse(attr(ag.body, "short_name"));
+  assert.ok(short.length <= 12, "an action group short name is at most 12 characters");
 });

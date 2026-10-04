@@ -11,7 +11,8 @@ type: explore
 prerequisites: []
 cost:
   items:
-    - { name: "Budget and action group (free)", gbp_h: 0 }
+    - { name: "Resource group budget (free)", gbp_h: 0 }
+    - { name: "Action group, no receivers (free)", gbp_h: 0 }
   pricey: null
 timing: { deploy_min: 2, destroy_min: 2, session_h: 1, max_h: 4 }
 capacity: { vm_sizes: [] }
