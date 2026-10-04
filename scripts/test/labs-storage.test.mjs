@@ -1,0 +1,183 @@
+// labs-storage.test.mjs
+//
+// Plain English: the storage labs (plan area L6: labs 5, 6 and 7) checked
+// without touching Azure. Each lab must pass the catalogue rules
+// (scripts/lib/labs.mjs), keep everything inside rg-lab-<id> with addresses
+// only from its slot, name its storage accounts from name_prefix (globally
+// unique, at most 24 lowercase letters and digits) and build what the plan's
+// L6 section says it builds. terraform fmt runs when terraform is installed;
+// init and validate are npm run labs-tf's job (they download providers).
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { buildCatalogue, lintTfText, parseLabYaml, variablesProblems } from "../lib/labs.mjs";
+
+const labsDir = fileURLToPath(new URL("../../labs/", import.meta.url));
+const TERRAFORM = spawnSync("terraform", ["version"], { encoding: "utf8" }).status === 0;
+
+// ── Helpers: read a lab and split its Terraform into top-level blocks ────
+
+const lab = (id) => {
+  const dir = join(labsDir, id);
+  const tfDir = join(dir, "terraform");
+  const files = existsSync(tfDir) ? Object.fromEntries(readdirSync(tfDir).filter((f) => f.endsWith(".tf")).map((f) => [f, readFileSync(join(tfDir, f), "utf8")])) : {};
+  const all = Object.values(files).join("\n");
+  return { dir, tfDir, files, yaml: parseLabYaml(readFileSync(join(dir, "lab.yaml"), "utf8")).raw, readme: readFileSync(join(dir, "readme.md"), "utf8"), blocks: hclBlocks(all) };
+};
+
+/** Drop # and // comment lines, so commented-out code never counts. */
+const uncomment = (src) => src.split("\n").map((l) => (/^\s*(#|\/\/)/.test(l) ? "" : l)).join("\n");
+
+/** Top-level blocks: { kind, labels, body }. Braces are counted outside strings ("${...}" is balanced anyway). */
+function hclBlocks(src) {
+  const code = uncomment(src);
+  const out = [];
+  const re = /^(resource|data|output|variable|locals|provider|terraform)((?:\s+"[^"]*")*)\s*\{/gm;
+  for (const m of code.matchAll(re)) {
+    let depth = 0;
+    let i = m.index + m[0].length - 1;
+    let inStr = false;
+    for (; i < code.length; i++) {
+      const ch = code[i];
+      if (inStr) {
+        if (ch === "\\") i++;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') inStr = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}" && --depth === 0) break;
+    }
+    out.push({ kind: m[1], labels: [...m[2].matchAll(/"([^"]*)"/g)].map((x) => x[1]), body: code.slice(m.index + m[0].length, i) });
+  }
+  return out;
+}
+
+const resources = (l, type) => l.blocks.filter((b) => b.kind === "resource" && (!type || b.labels[0] === type));
+const outputs = (l) => l.blocks.filter((b) => b.kind === "output").map((b) => b.labels[0]);
+const attr = (body, name) => body.match(new RegExp(`^\\s*${name}\\s*=\\s*(.+)$`, "m"))?.[1].trim();
+
+// Resource types that are children of another resource (no resource group, no tags of their own).
+const CHILD_TYPES = new Set([
+  "azurerm_storage_container",
+  "azurerm_storage_blob",
+  "azurerm_storage_share",
+  "azurerm_storage_management_policy",
+  "azurerm_subnet",
+  "azurerm_private_dns_zone_virtual_network_link",
+  "azurerm_role_assignment",
+]);
+
+/** The checks every storage lab shares. */
+function commonChecks(id) {
+  test(`${id}: lab.yaml and readme pass the catalogue rules, and the readme is no longer a stub`, () => {
+    const { problems } = buildCatalogue(labsDir);
+    assert.deepEqual(problems.filter((p) => p.lab === id), []);
+    assert.doesNotMatch(lab(id).readme, /stub/i);
+  });
+
+  test(`${id}: Terraform passes the text lint and declares only contract variables`, () => {
+    const l = lab(id);
+    assert.ok(Object.keys(l.files).length, "terraform/ has .tf files");
+    for (const f of ["versions.tf", "variables.tf", "main.tf", "outputs.tf"]) assert.ok(l.files[f], `terraform/${f} exists`);
+    assert.deepEqual(lintTfText(l.files), []);
+    assert.deepEqual(variablesProblems(l.files["variables.tf"]), []);
+  });
+
+  test(`${id}: one resource group, named by the pipeline, and everything else inside it with the tags`, () => {
+    const l = lab(id);
+    const rgs = resources(l, "azurerm_resource_group");
+    assert.equal(rgs.length, 1);
+    assert.equal(attr(rgs[0].body, "name"), "var.resource_group_name");
+    assert.equal(attr(rgs[0].body, "tags"), "var.tags");
+    for (const r of resources(l).filter((r) => r.labels[0].startsWith("azurerm_") && r.labels[0] !== "azurerm_resource_group")) {
+      const rgName = attr(r.body, "resource_group_name");
+      if (rgName !== undefined) assert.equal(rgName, "azurerm_resource_group.lab.name", `${r.labels.join(".")} is inside rg-lab-<id>`);
+      if (!CHILD_TYPES.has(r.labels[0])) {
+        assert.equal(rgName, "azurerm_resource_group.lab.name", `${r.labels.join(".")} names its resource group`);
+        assert.equal(attr(r.body, "tags"), "var.tags", `${r.labels.join(".")} carries var.tags`);
+      }
+    }
+  });
+
+  test(`${id}: storage account names come from name_prefix and stay within 24 lowercase letters and digits`, () => {
+    const l = lab(id);
+    const accounts = resources(l, "azurerm_storage_account");
+    assert.ok(accounts.length >= 1);
+    for (const a of accounts) {
+      const m = attr(a.body, "name")?.match(/^"\$\{var\.name_prefix\}([a-z0-9]+)"$/);
+      assert.ok(m, `${a.labels[1]}: name is "\${var.name_prefix}<suffix>"`);
+      // name_prefix is l + two digits + 5 lowercase characters: 8.
+      assert.ok(8 + m[1].length <= 24, `${a.labels[1]}: ${8 + m[1].length} characters`);
+      assert.equal(attr(a.body, "min_tls_version"), '"TLS1_2"');
+      assert.equal(attr(a.body, "allow_nested_items_to_be_public"), "false");
+    }
+    assert.match(l.files["variables.tf"], /variable "name_prefix"[\s\S]*?validation\s*\{[\s\S]*?\^\[a-z0-9\]/, "name_prefix is validated as lowercase letters and digits");
+  });
+
+  test(`${id}: lab.yaml agrees with the Terraform on peering, VM sizes and identity`, () => {
+    const l = lab(id);
+    const k = l.yaml.connectivity;
+    assert.equal(outputs(l).includes("peer_vnet_id"), k.peering !== "off", "peer_vnet_id only when the lab can peer");
+    for (const o of ["private_ips", "connect"]) assert.ok(outputs(l).includes(o), `output ${o}`);
+    const sizes = resources(l).map((r) => attr(r.body, "size")).filter(Boolean).map((s) => s.replace(/"/g, ""));
+    assert.deepEqual([...new Set(sizes)].sort(), [...l.yaml.capacity.vm_sizes].sort());
+    assert.equal(resources(l, "azuread_group").length > 0, l.yaml.identity.creates.includes("group"));
+    assert.equal(resources(l, "azuread_user").length > 0, l.yaml.identity.creates.includes("user"));
+    const roles = resources(l, "azurerm_role_assignment").map((r) => attr(r.body, "role_definition_name")?.replace(/"/g, ""));
+    assert.deepEqual(roles.sort(), l.yaml.identity.roles.map((r) => r.role).sort());
+    // A VNet uses at most subnets_used /20s of the slot, each from cidrsubnet(var.address_space, 2, n).
+    const twenties = new Set([...Object.values(l.files).join("\n").matchAll(/cidrsubnet\(var\.address_space,\s*2,\s*(\d+)\)/g)].map((m) => m[1]));
+    assert.equal(twenties.size, k.subnets_used);
+    assert.doesNotMatch(Object.values(l.files).join("\n"), /cidrsubnet\(var\.address_space,\s*(?!2,)/, "the slot is only ever cut into /20s first");
+    assert.ok(Object.values(l.files).join("\n").includes("var.address_space") === k.subnets_used > 0);
+  });
+
+  test(`${id}: costs a few pence an hour at most (the £ marker)`, () => {
+    const items = lab(id).yaml.cost.items;
+    const total = items.reduce((s, i) => s + i.gbp_h * (i.qty ?? 1), 0);
+    assert.ok(total > 0 && total < 0.05, `£${total.toFixed(4)}/h`);
+  });
+
+  test(`${id}: terraform fmt -check`, { skip: TERRAFORM ? false : "terraform is not installed" }, () => {
+    const r = spawnSync("terraform", ["fmt", "-check", "-diff", "-recursive"], { cwd: lab(id).tfDir, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  });
+}
+
+// ── Lab 5: storage accounts ──────────────────────────────────────────────
+
+commonChecks("az104-05-storage");
+
+test("az104-05-storage: an LRS hot account and a GRS cool account", () => {
+  const l = lab("az104-05-storage");
+  const accounts = resources(l, "azurerm_storage_account").map((a) => ({ repl: attr(a.body, "account_replication_type"), tier: attr(a.body, "access_tier"), kind: attr(a.body, "account_kind"), perf: attr(a.body, "account_tier") }));
+  assert.deepEqual(accounts, [
+    { repl: '"LRS"', tier: '"Hot"', kind: '"StorageV2"', perf: '"Standard"' },
+    { repl: '"GRS"', tier: '"Cool"', kind: '"StorageV2"', perf: '"Standard"' },
+  ]);
+});
+
+test("az104-05-storage: a lifecycle policy moves block blobs to cool at 30 days and deletes them at 365", () => {
+  const l = lab("az104-05-storage");
+  const [p] = resources(l, "azurerm_storage_management_policy");
+  assert.ok(p, "a management policy");
+  assert.equal(attr(p.body, "storage_account_id"), "azurerm_storage_account.hot.id");
+  assert.equal(attr(p.body, "tier_to_cool_after_days_since_modification_greater_than"), "30");
+  assert.equal(attr(p.body, "delete_after_days_since_modification_greater_than"), "365");
+  assert.match(p.body, /blob_types\s*=\s*\["blockBlob"\]/);
+});
+
+test("az104-05-storage: one blob in a private container, and no network at all", () => {
+  const l = lab("az104-05-storage");
+  assert.equal(resources(l, "azurerm_storage_blob").length, 1);
+  const [c] = resources(l, "azurerm_storage_container");
+  assert.equal(attr(c.body, "container_access_type"), '"private"');
+  assert.equal(attr(c.body, "storage_account_id"), "azurerm_storage_account.hot.id");
+  assert.equal(resources(l).filter((r) => /virtual_network|subnet|private_endpoint/.test(r.labels[0])).length, 0);
+  assert.equal(l.yaml.connectivity.peering, "off");
+});
