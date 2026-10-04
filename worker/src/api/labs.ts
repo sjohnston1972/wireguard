@@ -26,6 +26,7 @@ import { fixedConfig } from "../settings";
 import { getSnapshot } from "../state";
 import { REGIONS } from "../region";
 import { catalogue, labDef, labReadme } from "../labs/catalogue";
+import { availability, deployLab, unavailableReason, type DeployInput } from "../labs/engine";
 import {
   LAB_HOURS_MAX,
   LAB_ID_MAX,
@@ -136,13 +137,14 @@ async function kvJson<T>(c: C, key: string, fallback: T): Promise<T> {
 
 export function registerLabs(api: Hono<ApiEnv>): void {
   api.get("/labs", async (c) => {
+    const avail = await availability(c.env);
     const [stored, used] = await Promise.all([
       db.allSettings(c.env),
       c.env.DB.prepare("SELECT COUNT(*) AS n FROM lab_slots WHERE session_id IS NOT NULL").first<{ n: number }>(),
     ]);
     const out: LabsResponse = {
       now: new Date().toISOString(),
-      labs: catalogue().labs.map(card),
+      labs: catalogue().labs.map((d) => ({ ...card(d), unavailable: unavailableReason(d, avail) })),
       running: [],
       slots: { used: Number(used?.n ?? 0), total: LAB_SLOTS },
       maxRunning: labsSettingsFrom(stored).labsMaxRunning,
@@ -250,7 +252,16 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       if (!labDef(c.req.param("id"))) return notFound(c);
       return notYet(c);
     });
-  action("deploy", DEPLOY);
+  api.post("/labs/:id/deploy", async (c) => {
+    const r = await readBody(c, DEPLOY);
+    if (!r.ok) return r.res;
+    const def = labDef(c.req.param("id"));
+    if (!def) return notFound(c);
+    const b = r.b as unknown as DeployInput;
+    if (b.hours > def.timing.max_h) return bad(c, `${def.title} runs for at most ${def.timing.max_h} hours.`, "hours");
+    const { session, run } = await deployLab(c.env, def.id, b, c.get("user"));
+    return c.json({ ok: true, message: `Deploying ${def.title}.`, sessionId: session.id, runId: run.id });
+  });
   action("extend", EXTEND, (b, c) => {
     if (b.hours !== undefined && b.toMax !== undefined) return bad(c, "Extend by hours or to the maximum, not both.", "toMax");
     if (b.hours === undefined && b.toMax === undefined) return bad(c, "Say how many hours, or toMax: true.", "hours");

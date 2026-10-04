@@ -33,6 +33,9 @@ export const OVERRIDABLE: Record<string, (v: string) => boolean> = {
   firewall_default: (v) => v === "deny" || v === "allow",
   ssh_allowed_cidr: (v) => v === "" || /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(v),
   rate_source: (v) => v === "azure" || v === "fixed",
+  // Settings → Labs (labs spec §10; read through labsSettingsFrom in shared/labs.ts).
+  labs_max_running: (v) => /^[1-5]$/.test(v),
+  labs_default_peering: (v) => v === "1" || v === "0",
 };
 
 function fromOverrides(env: Env, ov: Record<string, string>): Config {

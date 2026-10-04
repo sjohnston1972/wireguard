@@ -45,3 +45,8 @@ export async function handleLabPeer(_env: Env, token: string | null, _body: unkn
 export async function handleLabPeeringsRemoved(_env: Env, token: string | null, _body: unknown): Promise<CallbackReply> {
   return token ? notYet : noToken;
 }
+
+/** Hand a lab run its per-run secrets, once (after the OIDC check). */
+export async function issueLabSecrets(_env: Env, _runId: string, _ghRunId: number): Promise<CallbackReply> {
+  return notYet;
+}

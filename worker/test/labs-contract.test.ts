@@ -198,8 +198,10 @@ describe("/api/v1/labs input checks", () => {
     expect(await field({ hours: 2, peer: true, region: "UK South" })).toBe("region");
     expect(await field({ hours: 2, peer: true, overBudgetOk: 1 })).toBe("overBudgetOk");
     expect(await field({ hours: 2, peer: true, capacityOk: "true" })).toBe("capacityOk");
-    // A good body reaches the engine, which L2 builds.
-    expect((await deploy({ hours: 2, peer: true, region: "uksouth", overBudgetOk: true, capacityOk: false })).status).toBe(501);
+    // A good body reaches the engine (L2), which refuses it here: the permission check has not run.
+    const engine = await deploy({ hours: 2, peer: true, region: "uksouth", overBudgetOk: true, capacityOk: false });
+    expect(engine.status).toBe(409);
+    expect(engine.json.error.code).toBe("unavailable");
   });
 
   it("the other bodies refuse what they do not take, each with its field", async () => {
