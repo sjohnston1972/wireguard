@@ -77,10 +77,10 @@ describe("the Labs tab", () => {
     expect(390 / links.length).toBeGreaterThanOrEqual(44);
   });
 
-  it("Settings lists a Labs section with a placeholder body", async () => {
+  it("Settings lists a Labs section with its own body", async () => {
     renderApp("/settings/labs");
     expect(await screen.findByRole("tab", { name: /Labs/ })).toBeInTheDocument();
-    expect(await screen.findByText(/Lab settings arrive with the Labs tab/)).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Release tests" })).toBeInTheDocument();
   });
 });
 

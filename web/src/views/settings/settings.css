@@ -257,3 +257,8 @@
   .set-banner__light { border-left: 0; padding: 0 16px 0 0; }
   .set-list__row { flex-wrap: wrap; }
 }
+
+/* Settings -> Labs: the release tests take the full width and scroll inside their panel. */
+@media (min-width: 1100px) {
+  .settings__body > .set-stack > .set-two + .panel { grid-column: 1 / -1; }
+}
