@@ -239,3 +239,17 @@ button.act__phone-row { cursor: pointer; }
   .act__list { height: 420px; flex: none; }
   .act__stream, .act__log { height: 360px; flex: none; }
 }
+
+/* Azure parts (insights spec 10.1): the change log's Azure tag, the service health list, the feed line. */
+.act__tag { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--blue-bright); background: color-mix(in srgb, var(--blue-bright) 16%, transparent); }
+.act__feed { margin: 0; padding: 4px 16px; flex: none; font-size: 11px; color: var(--text-secondary); border-top: 1px solid var(--border); }
+.act__feed--stale { color: var(--amber); }
+.act__feed--bad { color: var(--red); }
+.act__azlog { min-height: 0; }
+.act__health { min-height: 0; }
+.act__health > .panel__body { padding: 0; display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+.act__health-list { flex: 1; min-height: 0; }
+.act__health-item + .act__health-item { border-top: 1px solid var(--border); }
+.act__health-open { display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.act__health-open:hover strong { text-decoration: underline; }
+.act__health-open .act__event-text { flex: 1; }
