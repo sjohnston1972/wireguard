@@ -1,8 +1,10 @@
 import { useId, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { AlertTriangle } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
 import { Button, Chips, ConfirmByTyping, Modal } from "@/components";
 import { useCancel, useCleanup, useDeploy, useDestroy, useExtend, useHibernate, useMove, useResume, useSpeedTest } from "@/api/mutations";
+import { useCapacity } from "@/api/queries";
 import { chipHours, defaultHoursChip, formatSpan, gbp, hourChoices, moveTargets, regionShort } from "./model";
 import "./actions.css";
 
@@ -99,6 +101,13 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
   const overId = useId();
   const over = o.budget.level === "over";
   const blocked = blockedReason(o);
+  // Can Azure give this target its VM? The overview carries the configured target's check; another target is asked for.
+  const profile = choice.startsWith("p:") ? o.profiles.find((p) => p.id === Number(choice.slice(2))) : null;
+  const target = profile ? { region: profile.region, size: profile.vm_size } : { region: choice.slice(2), size: o.config.vmSize };
+  const given = o.capacity && o.capacity.region === target.region && o.capacity.size === target.size ? o.capacity : null;
+  const asked = useCapacity(target.region, target.size, { enabled: !given && !!o.capacity }).data;
+  const capacity = given ?? (o.capacity ? asked : null);
+  const warn = capacity?.ok === false ? capacity.message : null;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -139,9 +148,18 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
           </label>
         </div>
       )}
+      {warn && (
+        // Never blocks: the check can be up to a day old, and Azure may still find the VM.
+        <p className="ov-deploy__cap" role="note">
+          <AlertTriangle size={14} aria-hidden />
+          <span>
+            <strong>May fail:</strong> {warn}
+          </span>
+        </p>
+      )}
       <div className="ov-deploy__go">
         <Button type="submit" variant="primary" size={compact ? "md" : "lg"} disabled={!!blocked || (over && !overOk) || deploy.isPending} loading={deploy.isPending}>
-          Deploy
+          {warn ? "Deploy anyway" : "Deploy"}
         </Button>
         <span className="ov-deploy__cost">About {gbp(o.config.hourlyRateGbp)} an hour while up</span>
       </div>

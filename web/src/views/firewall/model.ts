@@ -237,9 +237,9 @@ export const SHORT = "(min-width: 1100px) and (max-height: 760px)";
 // ── Widgets (spec 2026-10-03 §8, Firewall) ──
 
 /** The right-hand column's tabs below 1400 px wide (and, on a short window, zones and the simulator too). */
-export type RightTab = "drops" | "ports" | "capture" | "zones" | "sim";
-export const TAB_WIDGET: Record<RightTab, string> = { drops: "firewall.drops", ports: "firewall.ports", capture: "firewall.capture", zones: "firewall.zones", sim: "firewall.simulator" };
-const TAB_WORDS: Record<RightTab, string> = { drops: "drops", ports: "published ports", capture: "capture", zones: "zones", sim: "simulator" };
+export type RightTab = "drops" | "ports" | "capture" | "publicIp" | "zones" | "sim";
+export const TAB_WIDGET: Record<RightTab, string> = { drops: "firewall.drops", ports: "firewall.ports", capture: "firewall.capture", publicIp: "firewall.publicIp", zones: "firewall.zones", sim: "firewall.simulator" };
+const TAB_WORDS: Record<RightTab, string> = { drops: "drops", ports: "published ports", capture: "capture", publicIp: "public IP", zones: "zones", sim: "simulator" };
 
 /** "Drops, published ports and capture": the tab list's name from the tabs shown. */
 export function tabsLabel(tabs: RightTab[]): string {

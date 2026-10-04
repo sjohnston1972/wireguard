@@ -6,6 +6,7 @@ import { useWidget } from "@/widgets";
 import type { ActionName } from "./actions";
 import { StateMark } from "./Banner";
 import { healthChecks } from "./Lower";
+import { AzureHealth, Vitals, VmPerformance } from "./Insights";
 import { STATE_TONE, STATE_WORD, ageOf, currentStep, gbp, inGithubRun, moveTargets, regionFull, stepProgress, topology, uiSteps, type NodeStatus } from "./model";
 import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
 import "./Phone.css";
@@ -63,6 +64,12 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
   const runW = useWidget("overview.run");
   const metrics = useWidget("overview.keyMetrics");
   const health = useWidget("overview.health");
+  // Azure insights widgets that are turned on: cards after the composition's blocks (spec 2026-10-04 section 2.11).
+  const cards = [
+    !useWidget("overview.vmPerformance").hidden && <VmPerformance key="vm" o={o} now={now} />,
+    !useWidget("overview.azureHealth").hidden && <AzureHealth key="health" o={o} now={now} />,
+    !useWidget("overview.vitals").hidden && <Vitals key="vitals" o={o} now={now} />,
+  ].filter(Boolean);
   const s = o.snapshot;
   const t = topology(o);
   const run = inGithubRun(s.state);
@@ -149,6 +156,7 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
           </Button>
         ))}
       </div>
+      {cards.length > 0 && <div className="ov-phone__cards">{cards}</div>}
 
       <Sheet open={sheet === "steps"} onOpenChange={(v) => !v && setSheet(null)} title="Steps" subtitle={progress ? `${progress.done} of ${progress.total} completed` : undefined}>
         {s.steps.length ? <StepList steps={uiSteps(s.steps)} aria-label="Run steps" /> : <p className="ov-phone__sub">GitHub has not listed the steps yet.</p>}
