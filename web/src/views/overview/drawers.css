@@ -57,3 +57,9 @@
   font-size: 12px;
   color: var(--text-secondary);
 }
+/* In the wide modal each resource is one line: kind, name, detail. */
+@media (min-width: 900px) {
+  .drawer--modal .ov-inventory li { grid-template-columns: 180px minmax(160px, 260px) 1fr; align-items: baseline; padding: 10px 0; }
+  .drawer--modal .ov-inventory__kind { grid-row: auto; }
+  .drawer--modal .ov-inventory__detail { font-size: 13px; }
+}

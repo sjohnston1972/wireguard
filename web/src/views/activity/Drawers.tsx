@@ -57,7 +57,7 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
           <div className="act__run-log">
             <h3 className="act__h3">
               Log
-              {streaming && (stalled ? <StatusPill status="degraded" label="Stalled" variant="outline" className="act__stream" /> : <StatusPill status="online" label="Streaming" variant="outline" className="act__stream" />)}
+              {streaming && (stalled ? <StatusPill status="degraded" label="Stalled" variant="outline" className="act__live-pill" /> : <StatusPill status="online" label="Streaming" variant="outline" className="act__live-pill" />)}
               {run.github_run_url && (
                 <a className="act__link" href={run.github_run_url} target="_blank" rel="noreferrer noopener">
                   View on GitHub <ExternalLink size={13} aria-hidden />
