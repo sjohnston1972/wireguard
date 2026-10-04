@@ -3,7 +3,7 @@
     "layout": {
       "order": {
         "r3": ["overview.run", "overview.vmPerformance", "side", "overview.traffic"],
-        "r4": ["overview.health", "overview.vitals", "overview.azureHealth", "overview.notes", "overview.costImpact"]
+        "r4": ["overview.health", "overview.vitals", "overview.azureHealth", "overview.notes", "overview.costImpact", "overview.runningLabs"]
       },
       "hidden": ["overview.traffic", "overview.notes", "overview.costImpact"],
       "shown": ["overview.vmPerformance", "overview.azureHealth", "overview.vitals"]

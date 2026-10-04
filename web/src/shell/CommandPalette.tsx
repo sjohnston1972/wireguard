@@ -18,6 +18,7 @@ export const SETTINGS_SECTIONS: { slug: string; label: string }[] = [
   { slug: "security", label: "Security" },
   { slug: "backup", label: "Backup & Recovery" },
   { slug: "mobile", label: "Mobile" },
+  { slug: "labs", label: "Labs" },
   { slug: "maintenance", label: "Maintenance" },
 ];
 

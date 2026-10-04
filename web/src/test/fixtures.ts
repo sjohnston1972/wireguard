@@ -23,6 +23,12 @@ import type {
   FeedId,
   FeedStatus,
   PriceInfo,
+  LabCard,
+  LabCoverageResponse,
+  LabDetail,
+  LabSession,
+  LabSessionsResponse,
+  LabsResponse,
 } from "@shared/api";
 import { FEEDS, PIP_COLUMNS, VITALS_COLUMNS, VM_COLUMNS } from "@shared/azureMetrics";
 import { PAGE_IDS, PREFS_SCHEMA, normalisePagePrefs, validatePagePrefs, type PageId } from "@shared/widgets";
@@ -467,6 +473,161 @@ export function azureNotConfigured(method: string, url: string): unknown {
     default:
       return undefined;
   }
+}
+
+// ── Labs (labs spec §7.2, plan L0) ────────────────────────────────────────
+// Lab 6 of the spec, running and peered, as the Worker would answer it. Only
+// lab-pool addresses (10.64.0.0/13), contoso.onmicrosoft.com and fake ids.
+
+/** One session: lab 6, running 45 minutes, peered, ending in 75 minutes. */
+export const labSessionFixture = (over: Partial<LabSession> = {}): LabSession => ({
+  id: "ls-20261002111500-b6r1",
+  labId: "az104-06-blob-security",
+  labVersion: 1,
+  title: "Blob security: SAS, access policies, private endpoint",
+  state: "running",
+  test: false,
+  region: "uksouth",
+  secondaryRegion: null,
+  slot: 0,
+  cidr: "10.64.0.0/18",
+  peering: "on",
+  requestedAt: ago(52 * MIN),
+  readyAt: ago(45 * MIN),
+  endedAt: null,
+  autoDestroyAt: new Date(NOW_MS + 75 * MIN).toISOString(),
+  maxUntil: new Date(NOW_MS - 52 * MIN + 6 * HOUR).toISOString(),
+  estGbpH: 0.0082,
+  costGbp: 0.0071,
+  costBasis: "estimate",
+  endReason: null,
+  note: null,
+  outputs: { privateIps: { "pe-blob": "10.64.0.4" }, connect: [], users: {} },
+  leftovers: null,
+  activeRun: null,
+  ...over,
+});
+
+const labCard = (over: Partial<LabCard> = {}): LabCard => ({
+  id: "az104-06-blob-security",
+  number: 6,
+  version: 1,
+  title: "Blob security: SAS, access policies, private endpoint",
+  summary: "A storage account with a private container, a stored access policy and a private endpoint in a small VNet.",
+  exam: "AZ-104",
+  skillAreas: ["az104.storage", "az104.networking"],
+  level: "associate",
+  type: "explore",
+  prerequisites: ["az104-05-storage"],
+  peering: "optional",
+  estGbpH: 0.0082,
+  marker: "£",
+  pricey: null,
+  timing: { deployMin: 4, destroyMin: 3, sessionH: 2, maxH: 6 },
+  running: null,
+  lastSession: null,
+  runs: 0,
+  lastReleaseTest: null,
+  released: false,
+  unavailable: null,
+  ...over,
+});
+
+/** GET /labs: an empty catalogue (what mockFetch answers by default); pass labs, running and so on to fill it. */
+export const labsFixture = (over: Partial<LabsResponse> = {}): LabsResponse => ({
+  now: NOW,
+  labs: [],
+  running: [],
+  slots: { used: 0, total: 32 },
+  maxRunning: 3,
+  permissions: { checkedAt: null, role: null, users: null, groups: null, message: null },
+  orphans: [],
+  ...over,
+});
+
+/** GET /labs/:id: lab 6 running and peered, with its deploy run finished. */
+export const labDetailFixture = (over: Partial<LabDetail> = {}): LabDetail => {
+  const session = labSessionFixture();
+  return {
+    card: labCard({ running: session, runs: 2 }),
+    readme: [
+      { t: "h", level: 2, text: "What it deploys" },
+      { t: "ul", items: [[{ t: "text", text: "A storage account with a private container" }]] },
+      { t: "h", level: 2, text: "Things to try" },
+      { t: "ul", items: [[{ t: "text", text: "Make a SAS from the stored access policy" }], [{ t: "b", text: "Revoke" }, { t: "text", text: " it" }], [{ t: "code", text: "az storage blob list" }]] },
+      { t: "h", level: 2, text: "Learn more" },
+      { t: "ul", items: [[{ t: "a", text: "SAS overview", href: "https://learn.microsoft.com/azure/storage/common/storage-sas-overview" }]] },
+    ],
+    cost: {
+      items: [
+        { name: "Storage account, LRS hot, a few MB", gbp_h: 0.0001, gbpH: 0.0001, source: "authored", priceAge: null },
+        { name: "Private endpoint", gbp_h: 0.0076, retail: { meter: "Standard Private Endpoint", unit: "1 Hour" }, gbpH: 0.0076, source: "azure", priceAge: 3 * 3600 },
+        { name: "Private DNS zone", gbp_h: 0.0005, gbpH: 0.0005, source: "authored", priceAge: null },
+      ],
+      gbpH: 0.0082,
+    },
+    connectivity: { peering: "optional", dns_link: true, subnets_used: 1 },
+    identity: { creates: ["group"], roles: [{ role: "Storage Blob Data Reader", scope: "resource_group" }], governance: false },
+    warnings: [],
+    defaults: { region: "uksouth", peer: true, hours: 2 },
+    gatewayUp: true,
+    session,
+    runs: [
+      {
+        id: "lab-deploy-20261002111500-b6d1",
+        sessionId: session.id,
+        labId: session.labId,
+        action: "deploy",
+        status: "succeeded",
+        requestedAt: ago(52 * MIN),
+        requestedBy: "dev@localhost",
+        reason: null,
+        startedAt: ago(51 * MIN),
+        finishedAt: ago(45 * MIN),
+        githubRunUrl: "https://ci.example.invalid/actions/runs/7100000001",
+        error: null,
+        step: { done: 11, of: 11, name: null },
+      },
+    ],
+    resources: [{ name: "l06k3x9q", type: "Microsoft.Storage/storageAccounts", group: "rg-lab-az104-06-blob-security", state: "Succeeded" }],
+    portalUrl: "https://portal.azure.com/#resource/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-lab-az104-06-blob-security",
+    ...over,
+  };
+};
+
+/** GET /labs/coverage: storage covered by lab 6 (run) and lab 5 (not yet). */
+export const labCoverageFixture = (): LabCoverageResponse => ({
+  exams: [
+    {
+      exam: "AZ-104",
+      areas: [
+        {
+          key: "az104.storage",
+          name: "Implement and manage storage",
+          labs: [
+            { id: "az104-05-storage", number: 5, title: "Storage accounts: redundancy, access tiers, lifecycle", run: false },
+            { id: "az104-06-blob-security", number: 6, title: "Blob security: SAS, access policies, private endpoint", run: true },
+          ],
+          run: 1,
+          available: 2,
+        },
+      ],
+    },
+  ],
+});
+
+/**
+ * What the Worker answers on /api/v1/labs routes with an empty catalogue, so
+ * existing tests need no lab routes: GET /labs, /labs/sessions and
+ * /labs/coverage empty; any one lab 404. Undefined for other paths.
+ */
+export function labsEmpty(method: string, url: string): unknown {
+  const path = new URL(url, "http://x").pathname;
+  if (method !== "GET" || !path.startsWith("/api/v1/labs")) return undefined;
+  if (path === "/api/v1/labs") return labsFixture();
+  if (path === "/api/v1/labs/sessions") return { sessions: [] } satisfies LabSessionsResponse;
+  if (path === "/api/v1/labs/coverage") return { exams: [] } satisfies LabCoverageResponse;
+  return { status: 404, json: { error: { code: "not_found", message: "No such lab." } } };
 }
 
 /** GET /history answers with the range the query asked for. */

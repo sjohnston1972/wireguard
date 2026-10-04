@@ -11,6 +11,7 @@ import {
   CostPage,
   FirewallPage,
   FirewallRulePage,
+  LabsPage,
   NotFoundPage,
   OverviewPage,
   RunDetailPage,
@@ -50,6 +51,10 @@ export function AppRoutes() {
         <Route path="activity" element={<ActivityPage />} />
         <Route path="activity/runs/:id" element={<RunDetailPage />} />
         <Route path="cost" element={<CostPage />} />
+        {/* Labs (plan L0): one lazy page for all three; the entry never loads views/labs. */}
+        <Route path="labs" element={<LabsPage />} />
+        <Route path="labs/history" element={<LabsPage />} />
+        <Route path="labs/:id" element={<LabsPage />} />
         <Route path="settings/:section?" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

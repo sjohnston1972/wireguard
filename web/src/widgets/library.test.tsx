@@ -138,6 +138,7 @@ describe("the library", () => {
       "Watchman notes",
       "Azure health",
       "System vitals",
+      "Running labs",
     ]);
     const row3 = within(lib).getByRole("list", { name: "Row 3" });
     const vm = within(row3).getByRole("switch", { name: "VM performance" });

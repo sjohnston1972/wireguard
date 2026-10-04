@@ -12,6 +12,11 @@ import type {
   BootLogResponse,
   CapacityCheck,
   PriceInfo,
+  LabCoverageResponse,
+  LabDetail,
+  LabSession,
+  LabSessionsResponse,
+  LabsResponse,
   ClientDetailResponse,
   ClientHistoryResponse,
   ClientsResponse,
@@ -48,6 +53,10 @@ export const INTERVALS = {
   azure: 30_000,
   /** Azure metrics, the change log and Service Health: collected every 5 to 15 minutes, so a minute is plenty. */
   azureData: 60_000,
+  /** The Labs tab (GET /labs, /labs/:id); `busy` while a lab deploys, tears down or runs a peer, unpeer or test. */
+  labs: 15_000,
+  /** Lab history and coverage. */
+  labsHistory: 60_000,
 } as const;
 
 export interface QueryOpts {
@@ -212,3 +221,28 @@ export const usePrice = endpoint<PriceInfo, [region: string | null | undefined, 
 /** GET /azure/bootlog: the last stored boot log, fetched when asked for (no polling). useFetchBootLog (mutations.ts) fetches a new one. */
 export const BOOTLOG_KEY = ["azure", "bootlog"] as const;
 export const useBootLog = endpoint<BootLogResponse>(() => ({ key: BOOTLOG_KEY, path: "/azure/bootlog", every: false }));
+
+// ── Labs (labs spec §7.2, plan L0). Every key starts "labs", so one invalidation refreshes them all. ──
+
+/** A session is busy while it deploys or tears down, or has a run going (peer, unpeer, test). */
+const labBusy = (s: LabSession | null | undefined): boolean => !!s && (s.state === "deploying" || s.state === "tearing_down" || s.activeRun !== null);
+
+/** GET /labs: every 5 s while any live session is busy, else 15 s. */
+export function labsInterval(data: LabsResponse | undefined): number {
+  return data?.running.some(labBusy) ? INTERVALS.busy : INTERVALS.labs;
+}
+/** GET /labs/:id: every 5 s while its session is busy, else 15 s. */
+export function labDetailInterval(data: LabDetail | undefined): number {
+  return labBusy(data?.session) ? INTERVALS.busy : INTERVALS.labs;
+}
+
+export const useLabs = endpoint<LabsResponse>(() => ({ key: ["labs"], path: "/labs", every: labsInterval }));
+export const useLab = endpoint<LabDetail, [id: string]>((id) => ({ key: ["labs", id], path: `/labs/${encodeURIComponent(id)}`, every: labDetailInterval }));
+/** GET /labs/sessions, newest first; `lab` narrows to one lab; `limit` 1 to 200 (default 50). Every 60 s. */
+export const useLabSessions = endpoint<LabSessionsResponse, [lab?: string, limit?: number]>((lab, limit = 50) => ({
+  key: ["labs", "sessions", lab ?? "", limit],
+  path: "/labs/sessions" + qs({ lab, limit }),
+  every: INTERVALS.labsHistory,
+}));
+/** GET /labs/coverage, every 60 s. */
+export const useLabCoverage = endpoint<LabCoverageResponse>(() => ({ key: ["labs", "coverage"], path: "/labs/coverage", every: INTERVALS.labsHistory }));

@@ -11,7 +11,7 @@ import { usePrefs } from "@/widgets";
 import "./AppShell.css";
 
 /**
- * The frame around every view: top bar (wordmark, six tabs, search, state
+ * The frame around every view: top bar (wordmark, seven tabs, search, state
  * chip, connection light, Azure Service Health pill (only during an issue),
  * notes, theme toggle, account), the disconnected
  * banner, the page area (or the session-expired screen), the command palette,
@@ -68,7 +68,7 @@ export function AppShell() {
         {TABS.map((t) => (
           <NavLink key={t.to} to={t.to} end={t.end} className="tabbar__tab">
             <t.icon className="tabbar__icon" size={20} aria-hidden="true" />
-            <span>{t.label}</span>
+            <span className="tabbar__label">{t.label}</span>
           </NavLink>
         ))}
       </nav>

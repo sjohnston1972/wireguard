@@ -5,7 +5,7 @@ import { useOverview, useSettings } from "@/api/queries";
 import { Button, ErrorState, Modal, PageHeader, Sheet, Tabs, useIsPhone, type TabItem } from "@/components";
 import { SETTINGS_SECTIONS } from "@/shell/CommandPalette";
 import { EnvironmentField } from "@/shell/StateChip";
-import { ChevronRight, Clock, Cloud, Database, Settings as Cog, ShieldCheck, Smartphone, Wrench, type LucideIcon } from "lucide-react";
+import { ChevronRight, Clock, Cloud, Database, FlaskConical, Settings as Cog, ShieldCheck, Smartphone, Wrench, type LucideIcon } from "lucide-react";
 import { AutomationSection } from "./AutomationSection";
 import { BackupSection } from "./BackupSection";
 import { DeploymentSection } from "./DeploymentSection";
@@ -24,6 +24,7 @@ const ICONS: Record<string, LucideIcon> = {
   security: ShieldCheck,
   backup: Database,
   mobile: Smartphone,
+  labs: FlaskConical,
   maintenance: Wrench,
 };
 
@@ -35,12 +36,13 @@ const BLURB: Record<string, string> = {
   security: "Server key and SSH",
   backup: "Export, nightly copies, restore",
   mobile: "Install and phone alerts",
+  labs: "Lab limits, permissions, release tests",
   maintenance: "Health check, lock, destroy",
 };
 
 const SLUGS = SETTINGS_SECTIONS.map((s) => s.slug);
 
-/** Settings (spec 8.6): seven sections at /settings/:section, one at a time. */
+/** Settings (spec 8.6): eight sections at /settings/:section, one at a time (Labs from the labs plan). */
 export function SettingsPage() {
   const { section } = useParams();
   const phone = useIsPhone();
@@ -117,6 +119,9 @@ function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: O
         return <BackupSection s={s} />;
       case "mobile":
         return <MobileSection s={s} />;
+      case "labs":
+        // Settings → Labs (plan L0 placeholder; plan area L4 builds LabsSection here).
+        return <p className="set-muted">Lab settings arrive with the Labs tab: how many labs may run at once, default peering, the permission check, slots in use and release tests.</p>;
       case "maintenance":
         return <MaintenanceSection s={s} ov={ov} />;
       default:
