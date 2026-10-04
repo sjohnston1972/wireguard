@@ -225,6 +225,15 @@ describe("the library", () => {
     expect(within(lib).getByRole("switch", { name: "VM performance" })).toBeInTheDocument();
   });
 
+  it("closing the library puts focus back on the Layout button", async () => {
+    renderPage();
+    await ready();
+    await openLibrary();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Add widgets" })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Layout" })));
+  });
+
   it("desktop opens the library as a centred modal", async () => {
     renderPage();
     await ready();

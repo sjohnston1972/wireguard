@@ -9,7 +9,7 @@
 // widgets the phone's own layout does not show (a default-off widget only
 // while it is turned on).
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { ChevronLeft, LayoutGrid } from "lucide-react";
 import { PAGE_TITLES, isVisible, pageWidgets, type PageId } from "@shared/widgets";
@@ -26,13 +26,14 @@ export function LayoutMenu({ page }: { page: PageId }) {
   const [confirming, setConfirming] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const host = useRef<HTMLSpanElement>(null);
   const [current, setCurrent] = useState<string | null>(null);
   const widgets = pageWidgets(page);
   const pageName = PAGE_TITLES[page];
   const currentDef = widgets.find((w) => w.id === current);
 
   return (
-    <span className="wg-layout" data-widget-chrome="">
+    <span className="wg-layout" data-widget-chrome="" ref={host}>
       <Menu.Root>
         <Menu.Trigger asChild>
           <Button size="sm" icon={<LayoutGrid size={15} aria-hidden />} data-wg-layout={page}>
@@ -83,7 +84,7 @@ export function LayoutMenu({ page }: { page: PageId }) {
         }
       />
 
-      <WidgetLibrary page={page} open={libraryOpen} onOpenChange={setLibraryOpen} />
+      <WidgetLibrary page={page} open={libraryOpen} onOpenChange={setLibraryOpen} trigger={() => host.current?.querySelector("button")} />
 
       {phone && (
         <Sheet open={listOpen} onOpenChange={setListOpen} title={currentDef ? `${currentDef.title} settings` : `${pageName} widget settings`} className="wg-sheet">

@@ -65,13 +65,27 @@ function LibraryItem({ id, onFull }: { id: string; onFull: (ask: ReplaceAsk) => 
   );
 }
 
-export function WidgetLibrary({ page, open, onOpenChange }: { page: PageId; open: boolean; onOpenChange: (open: boolean) => void }) {
+/** `trigger`: what takes focus when the library closes (the Layout button; the menu item that opened it is gone by then). */
+export function WidgetLibrary({ page, open, onOpenChange, trigger }: { page: PageId; open: boolean; onOpenChange: (open: boolean) => void; trigger?: () => HTMLElement | null | undefined }) {
   const { status } = usePagePrefs(page);
   const [ask, setAsk] = useState<ReplaceAsk | null>(null);
   const base = useId();
   return (
     <>
-      <Drawer open={open} onOpenChange={onOpenChange} title="Add widgets" subtitle={`${PAGE_TITLES[page]}: turn widgets on or off. A full row asks which one to replace.`} className="wg-lib">
+      <Drawer
+        open={open}
+        onOpenChange={onOpenChange}
+        title="Add widgets"
+        subtitle={`${PAGE_TITLES[page]}: turn widgets on or off. A full row asks which one to replace.`}
+        className="wg-lib"
+        onCloseAutoFocus={(e) => {
+          const el = trigger?.();
+          if (el) {
+            e.preventDefault();
+            el.focus();
+          }
+        }}
+      >
         {status === "failed" && <p className="wg-settings__note">Widget settings couldn't be loaded, so changes can't be saved right now.</p>}
         {groups(page).map((g, i) => (
           <section key={g.row} className="wg-lib__group">
