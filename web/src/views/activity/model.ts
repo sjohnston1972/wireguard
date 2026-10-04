@@ -132,6 +132,10 @@ export type EventRow = ActivityResponse["all"][number];
 
 export const actionWord = (a: RunRow["action"]) => (a === "apply" ? "Deploy" : "Tear down");
 
+const LAB_ACTION_WORD = { deploy: "Deploy lab", destroy: "Tear down lab", peer: "Peer lab", unpeer: "Unpeer lab", test: "Release test" } as const;
+/** A run's action in words: a lab run says its own action ("Deploy lab"); `action` stays apply or destroy for the gateway-only views. */
+export const runWord = (r: Pick<RunRow, "action" | "lab">) => (r.lab ? LAB_ACTION_WORD[r.lab.action] : actionWord(r.action));
+
 /** The result pill for a run: a status, always with its word. */
 export function resultPill(status: RunRow["status"]): { status: PillStatus; label: string } {
   switch (status) {
