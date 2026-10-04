@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderApp } from "@/test/render";
 import { setViewport } from "@/test/viewport";
+import { expectBottomSheet } from "@/test/dialogs";
 import { draftData, firewallData } from "./testData";
 
 vi.setConfig({ testTimeout: 20_000 });
@@ -28,7 +29,7 @@ describe("firewall on the phone", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Web to the test server/ }));
     const sheet = await screen.findByRole("dialog", { name: "Web to the test server" });
-    expect(sheet).toHaveAttribute("data-side", "bottom");
+    expectBottomSheet(sheet);
     fireEvent.click(within(sheet).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), { timeout: 5000 });
 

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
+import { backdrop, expectCentredModal } from "@/test/dialogs";
 import { firewallData, OK } from "./testData";
 
 // Each test renders the whole page (many Radix controls); jsdom is slow at that under load.
@@ -113,5 +115,31 @@ describe("rule drawer", () => {
     renderApp("/firewall/rules/99", { routes: { "GET /api/v1/firewall": firewallData() } });
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("No rule 99");
+  });
+});
+
+describe("rule dialog on the desktop", () => {
+  it("a deep link opens the rule as a medium centred modal; a backdrop click goes back to /firewall", async () => {
+    const user = userEvent.setup();
+    renderApp("/firewall/rules/3", { routes: { "GET /api/v1/firewall": firewallData() } });
+    expectCentredModal(await screen.findByRole("dialog", { name: "Web to the test server" }), "md");
+    await user.click(backdrop());
+    await waitFor(() => expect(location()).toBe("/firewall"), { timeout: 5000 });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("Escape closes a rule opened from its row and focus goes back to the row", async () => {
+    const user = userEvent.setup();
+    renderApp("/firewall", { routes: { "GET /api/v1/firewall": firewallData() } });
+    const table = await screen.findByRole("table", { name: "Firewall rules" });
+    const row = within(table).getByText("Block old printer").closest("tr")!;
+    await user.click(within(table).getByText("Block old printer"));
+    const dialog = await screen.findByRole("dialog", { name: "Block old printer" });
+    expectCentredModal(dialog, "md");
+    // The footer's actions sit in the modal's footer bar.
+    expect(dialog.querySelector(".drawer__foot")).toContainElement(within(dialog).getByRole("button", { name: "Save to draft" }));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(location()).toBe("/firewall"), { timeout: 5000 });
+    await waitFor(() => expect(row.contains(document.activeElement)).toBe(true));
   });
 });

@@ -99,6 +99,7 @@ export function AzureDrawer({ o, now, open, onClose }: { o: OverviewResponse; no
       onOpenChange={(v) => !v && onClose()}
       title="In Azure right now"
       subtitle={sub}
+      size="lg"
       footer={
         <Button variant="secondary" loading={reconcile.isPending} disabled={reconcile.isPending} onClick={() => reconcile.mutate()}>
           Check Azure now

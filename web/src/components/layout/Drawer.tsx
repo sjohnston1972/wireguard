@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { cx } from "../cx";
 import { useReturnFocus } from "./useReturnFocus";
 import { ESCAPE_HANDOFF, escapeHandedToDialog } from "../escapeHandoff";
-import { SidePanel } from "./SidePanel";
+import { SidePanel, useIsPhone } from "./SidePanel";
 import "./Drawer.css";
 
 export interface DrawerProps {
@@ -17,8 +17,13 @@ export interface DrawerProps {
   leading?: ReactNode;
   /** Pinned at the bottom (actions). */
   footer?: ReactNode;
-  /** "right" is a ~420 px side drawer that becomes a bottom sheet below 640 px; "bottom" forces a sheet. */
-  side?: "right" | "bottom";
+  /**
+   * "auto" (default): a centred modal dialog on the desktop and tablet, the
+   * bottom sheet on the phone (640 px and below). "bottom": always a sheet.
+   */
+  side?: "auto" | "bottom";
+  /** The centred modal's width: "md" about 640 px (default), "lg" up to 1100 px. The phone sheet ignores it. */
+  size?: "md" | "lg";
   /**
    * "modal" (default): an overlay dialog. "inline": the non-modal split-view
    * panel beside the page (see SidePanel; put it in a SplitView), which is
@@ -32,8 +37,10 @@ export interface DrawerProps {
 }
 
 /**
- * Right-hand detail drawer. Radix Dialog gives focus trapping, Escape to close
- * and focus restore to the trigger. Below 640 px the CSS turns it into a bottom sheet.
+ * Details and secondary flows in a dialog: a centred modal on the desktop, a
+ * bottom sheet on the phone. Radix Dialog gives the focus trap, and Escape or
+ * a click on the dimmed backdrop closes it; useReturnFocus puts focus back on
+ * whatever opened it. The body scrolls inside; the header and footer stay put.
  */
 export function Drawer(props: DrawerProps) {
   if (props.mode === "inline") {
@@ -47,8 +54,11 @@ export function Drawer(props: DrawerProps) {
   return <ModalDrawer {...props} />;
 }
 
-function ModalDrawer({ open, onOpenChange, title, subtitle, leading, footer, side = "right", children, className, onCloseAutoFocus: onClose }: DrawerProps) {
+function ModalDrawer({ open, onOpenChange, title, subtitle, leading, footer, side = "auto", size = "md", children, className, onCloseAutoFocus: onClose }: DrawerProps) {
   const returnFocus = useReturnFocus(open);
+  const phone = useIsPhone();
+  const sheet = side === "bottom" || phone;
+  const where = sheet ? "bottom" : "center";
   const onCloseAutoFocus = (e: Event) => {
     onClose?.(e);
     if (!e.defaultPrevented) returnFocus.onCloseAutoFocus(e);
@@ -56,10 +66,12 @@ function ModalDrawer({ open, onOpenChange, title, subtitle, leading, footer, sid
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="drawer__overlay" />
+        <Dialog.Overlay className="drawer__overlay" data-side={where} />
         <Dialog.Content
-          className={cx("drawer", className)}
-          data-side={side}
+          className={cx("drawer", !sheet && "drawer--modal", className)}
+          data-side={where}
+          data-size={sheet ? undefined : size}
+          aria-modal="true"
           aria-describedby={undefined}
           onCloseAutoFocus={onCloseAutoFocus}
           {...{ [ESCAPE_HANDOFF]: "" }}
@@ -89,6 +101,6 @@ function ModalDrawer({ open, onOpenChange, title, subtitle, leading, footer, sid
 }
 
 /** A Drawer that is always a bottom sheet (phone flows). */
-export function Sheet(props: Omit<DrawerProps, "side">) {
+export function Sheet(props: Omit<DrawerProps, "side" | "size">) {
   return <Drawer {...props} side="bottom" />;
 }

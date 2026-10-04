@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { RestorePreviewResponse } from "@shared/api";
 import { renderApp } from "@/test/render";
 import { routesFor, runningOverview, settingsFixture } from "./testkit";
+import { expectCentredModal } from "@/test/dialogs";
 
 // The real downloader needs a browser (blobs, a temporary link); what matters
 // here is that every download goes through @/api/download.
@@ -158,6 +159,10 @@ describe("Settings sections", () => {
     await user.click(screen.getByRole("button", { name: /How key rotation works/ }));
     const drawer = await screen.findByRole("dialog", { name: "How key rotation works" });
     expect(within(drawer).getByText("npm run keys -- --rotate")).toBeInTheDocument();
+    expectCentredModal(drawer, "md");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.getByRole("button", { name: /How key rotation works/ })).toHaveFocus());
   });
 
   it("profiles: use goes to the reviewed deploy form; delete is typed", async () => {

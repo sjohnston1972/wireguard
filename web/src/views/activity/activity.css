@@ -163,12 +163,21 @@
 .act__step--failed .act__step-time { color: var(--red); }
 
 /* ---- drawers ---- */
-@media (min-width: 641px) {
-  .drawer.act__drawer[data-side="right"] { width: min(560px, 100vw); }
+.act__drawer-body,
+.act__run-facts,
+.act__run-log { display: flex; flex-direction: column; gap: 10px; }
+.act__run-facts,
+.act__run-log { min-width: 0; }
+/* The run as a wide modal: facts and steps on the left, the log on the right
+   as tall as the window allows (the sheet on the phone stacks them). */
+@media (min-width: 900px) {
+  .drawer--modal .act__run-body { display: grid; grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); gap: 24px; align-items: start; }
+  .drawer--modal .act__run-log { position: sticky; top: 0; }
+  .drawer--modal .act__run-log .act__h3 { margin-top: 0; }
+  .drawer--modal .act__run-log .act__drawer-log { height: clamp(240px, calc(88vh - 210px), 640px); }
 }
-.act__drawer-body { display: flex; flex-direction: column; gap: 10px; }
 .act__h3 { display: flex; align-items: center; margin-top: 6px; font-size: 13px; font-weight: 600; }
-.act__stream { margin-left: 10px; font-weight: 500; }
+.act__live-pill { margin-left: 10px; font-weight: 500; }
 .act__error { padding: 8px 10px; border-radius: var(--radius-control); border: 1px solid color-mix(in srgb, var(--red) 45%, transparent); background: color-mix(in srgb, var(--red) 10%, transparent); font-size: 13px; }
 .act__drawer-log { height: 280px; }
 

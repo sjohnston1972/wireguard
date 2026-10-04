@@ -10,6 +10,7 @@ import type { FirewallResponse, PagePrefs, SettingValue } from "@shared/api";
 import { renderApp } from "@/test/render";
 import { prefsServer } from "@/test/fixtures";
 import { setViewport } from "@/test/viewport";
+import { expectBottomSheet, expectCentredModal } from "@/test/dialogs";
 import { draftData, firewallData, OK } from "./testData";
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -391,6 +392,7 @@ describe("W3.4 layout", () => {
     await waitFor(() => expect(screen.queryByRole("region", { name: "Published ports" })).toBeNull());
     fireEvent.click(within(tile).getByRole("button", { name: "Manage" }));
     const sheet = await screen.findByRole("dialog", { name: "Published ports" });
+    expectCentredModal(sheet, "md");
     // Every port, turned-off ones too (that is where one is turned back on).
     expect(sheet).toHaveTextContent("Old game server");
     expect(within(sheet).getByRole("button", { name: "Add published port" })).toBeInTheDocument();
@@ -406,6 +408,7 @@ describe("W3.4 layout", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Published ports" })).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Manage published ports" }));
     const sheet = await screen.findByRole("dialog", { name: "Published ports" });
+    expectBottomSheet(sheet);
     expect(sheet).toHaveTextContent("Old game server");
     expect(within(sheet).getByRole("button", { name: "Edit Old game server" })).toBeInTheDocument();
   });

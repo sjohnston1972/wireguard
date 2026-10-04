@@ -16,9 +16,14 @@ export interface ModalProps {
   width?: number;
 }
 
-/** Centred dialog for reviewed forms and confirmations (never window.confirm). */
+/**
+ * Centred dialog for reviewed forms and confirmations (never window.confirm).
+ * It has the same look as a Drawer's desktop modal: blurred backdrop, header
+ * and footer bars, and the body scrolling between them.
+ */
 export function Modal({ open, onOpenChange, title, description, footer, children, width = 480 }: ModalProps) {
   const { onCloseAutoFocus } = useReturnFocus(open);
+  const hasBody = children !== undefined && children !== null && children !== false;
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -26,6 +31,7 @@ export function Modal({ open, onOpenChange, title, description, footer, children
         <Dialog.Content
           className="modal"
           style={{ maxWidth: width }}
+          aria-modal="true"
           onCloseAutoFocus={onCloseAutoFocus}
           {...(description ? {} : { "aria-describedby": undefined })}
           {...{ [ESCAPE_HANDOFF]: "" }}
@@ -37,13 +43,15 @@ export function Modal({ open, onOpenChange, title, description, footer, children
           }}
         >
           <header className="modal__head">
-            <Dialog.Title className="modal__title">{title}</Dialog.Title>
+            <div className="modal__titles">
+              <Dialog.Title className="modal__title">{title}</Dialog.Title>
+              {description && <Dialog.Description className="modal__desc">{description}</Dialog.Description>}
+            </div>
             <Dialog.Close className="modal__close" aria-label="Close">
               <X size={18} aria-hidden />
             </Dialog.Close>
           </header>
-          {description && <Dialog.Description className="modal__desc">{description}</Dialog.Description>}
-          <div className="modal__body">{children}</div>
+          {hasBody && <div className="modal__body">{children}</div>}
           {footer && <footer className="modal__foot">{footer}</footer>}
         </Dialog.Content>
       </Dialog.Portal>

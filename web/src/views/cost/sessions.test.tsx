@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 20_000 });
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
+import { backdrop, expectBottomSheet, expectCentredModal } from "@/test/dialogs";
+import { setViewport } from "@/test/viewport";
 import { costFixture } from "./testData";
 
 const runDetail = {
@@ -57,5 +59,27 @@ describe("Cost sessions", () => {
     expect(drawer.getByRole("link", { name: /Open the run in Activity/ })).toHaveAttribute("href", "/activity/runs/run-3");
     expect(drawer.getByText(/not recorded per session/)).toBeInTheDocument();
     expect(fetchMock!.callsTo("GET", "/api/v1/runs/run-3")).toHaveLength(1);
+  });
+
+  it("on the desktop a session is a medium centred modal; a backdrop click closes it and focus goes back to its row", async () => {
+    const user = userEvent.setup();
+    open();
+    const t = await table();
+    const cell = t.getByText("2 Oct, 09:41");
+    await user.click(cell);
+    expectCentredModal(await screen.findByRole("dialog"), "md");
+    await user.click(backdrop());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(cell.closest("tr")!.contains(document.activeElement)).toBe(true));
+  });
+
+  it("phone: a session opened from the Sessions sheet is a bottom sheet too", async () => {
+    setViewport("phone");
+    const user = userEvent.setup();
+    open();
+    await user.click(await screen.findByRole("button", { name: "Sessions" }));
+    const list = await screen.findByRole("dialog", { name: "Sessions" });
+    await user.click(within(list).getByText("2 Oct, 09:41"));
+    expectBottomSheet(await screen.findByRole("dialog", { name: /^Session / }));
   });
 });

@@ -4,6 +4,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { setViewport } from "@/test/viewport";
+import { expectBottomSheet } from "@/test/dialogs";
 import { clientRoutes } from "./testData";
 
 describe("Clients on the phone", { timeout: 20_000 }, () => {
@@ -35,6 +36,15 @@ describe("Clients on the phone", { timeout: 20_000 }, () => {
     await screen.findByRole("list", { name: "Clients" });
     await user.click(screen.getByRole("button", { name: "Add client" }));
     const sheet = await screen.findByRole("dialog", { name: "Add client" });
-    expect(sheet).toHaveAttribute("data-side", "bottom");
+    expectBottomSheet(sheet);
+  });
+
+  it("Get new config opens as a sheet", async () => {
+    setViewport("phone");
+    const user = userEvent.setup();
+    renderApp("/clients/3", { routes: clientRoutes() });
+    const details = await screen.findByRole("dialog", { name: "laptop" });
+    await user.click(within(details).getByRole("button", { name: "Get new config" }));
+    expectBottomSheet(await screen.findByRole("dialog", { name: "Get new config for laptop" }));
   });
 });

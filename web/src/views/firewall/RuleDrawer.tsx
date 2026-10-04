@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import type { DraftRuleBody, FirewallResponse } from "@shared/api";
-import { BarChart, Button, Drawer, EmptyState, ErrorState, Field, SegmentedControl, Select, Skeleton, Switch, Tabs, useIsPhone } from "@/components";
+import { BarChart, Button, Drawer, EmptyState, ErrorState, Field, SegmentedControl, Select, Skeleton, Switch, Tabs } from "@/components";
 import { useDraftAddRule, useDraftDeleteRule, useDraftEditRule } from "@/api/mutations";
 import { useRuleHistory, type HistoryRange } from "@/api/queries";
 import { EndPicker } from "./EndPicker";
@@ -72,7 +72,6 @@ export interface RuleDrawerProps {
 
 /** /firewall/rules/:id and Add rule: the edit form (saves to the draft) and the rule's hit history. */
 export function RuleDrawer({ fw, rule, adding, id, open, tab, onTab, onClose }: RuleDrawerProps) {
-  const phone = useIsPhone();
   const add = useDraftAddRule();
   const edit = useDraftEditRule();
   const del = useDraftDeleteRule();
@@ -207,7 +206,7 @@ export function RuleDrawer({ fw, rule, adding, id, open, tab, onTab, onClose }: 
     );
 
   return (
-    <Drawer open={open} onOpenChange={(o) => !o && onClose()} side={phone ? "bottom" : "right"} title={title} subtitle={subtitle} footer={tab === "rule" ? footer : undefined} className="fw-rule-drawer">
+    <Drawer open={open} onOpenChange={(o) => !o && onClose()} title={title} subtitle={subtitle} footer={tab === "rule" ? footer : undefined} className="fw-rule-drawer">
       {!adding && !rule ? (
         <EmptyState title={`No rule ${id ?? ""}`} description="It may have been deleted, or the draft that held it was discarded or applied." action={{ label: "Back to the rules", onClick: onClose }} />
       ) : adding || !hasHistory ? (

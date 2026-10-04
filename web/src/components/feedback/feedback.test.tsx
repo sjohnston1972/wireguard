@@ -122,7 +122,7 @@ describe("Toast and an open dialog", () => {
         </Modal>
       );
     return (
-      <Drawer open={open} onOpenChange={setOpen} title="Edit" side={kind === "sheet" ? "bottom" : "right"}>
+      <Drawer open={open} onOpenChange={setOpen} title="Edit" side={kind === "sheet" ? "bottom" : "auto"}>
         {body}
       </Drawer>
     );

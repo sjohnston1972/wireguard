@@ -3,6 +3,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { LOG, activityRoutes, runDetail } from "./testkit";
+import { backdrop, expectBottomSheet, expectCentredModal } from "@/test/dialogs";
+import { setViewport } from "@/test/viewport";
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -216,5 +218,57 @@ describe("Change drawer", () => {
     renderApp("/activity?change=999", { routes: activityRoutes() });
     const drawer = await screen.findByRole("dialog");
     expect(within(drawer).getByText(/not on this page/i)).toBeInTheDocument();
+  });
+});
+
+describe("Run and change dialogs: a centred modal on the desktop, a sheet on the phone", () => {
+  it("a run row opens the run as a large centred modal; Escape closes it, back on the page, with focus on the row", async () => {
+    const user = userEvent.setup();
+    renderApp("/activity?range=30d", { routes: activityRoutes() });
+    const table = await screen.findByRole("table", { name: "Runs" });
+    const cell = within(table).getByText("est. £0.010");
+    await user.click(cell);
+    const drawer = await screen.findByRole("dialog");
+    expectCentredModal(drawer, "lg");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(location()).toHaveTextContent(/^\/activity\?range=30d$/);
+    const row = cell.closest("tr")!;
+    await waitFor(() => expect(row.contains(document.activeElement)).toBe(true));
+  });
+
+  it("Open in logs opens the live run in the modal, still streaming", async () => {
+    const user = userEvent.setup();
+    renderApp("/activity", { routes: activityRoutes() });
+    const out = await screen.findByRole("region", { name: "Live output" });
+    await user.click(within(out).getByRole("link", { name: /Open in logs/ }));
+    const drawer = await screen.findByRole("dialog");
+    expectCentredModal(drawer, "lg");
+    expect(location()).toHaveTextContent("/activity/runs/run-4");
+    expect(await within(drawer).findByRole("log", { name: "Run log" })).toBeInTheDocument();
+    expect(within(drawer).getByText("Streaming")).toBeInTheDocument();
+  });
+
+  it("a click on the dimmed backdrop closes a deep-linked run and goes to the activity page, keeping the range", async () => {
+    const user = userEvent.setup();
+    renderApp("/activity/runs/run-2?range=24h", { routes: activityRoutes() });
+    expectCentredModal(await screen.findByRole("dialog"), "lg");
+    await user.click(backdrop());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(location()).toHaveTextContent(/^\/activity\?range=24h$/);
+  });
+
+  it("a change opens as a medium centred modal", async () => {
+    renderApp("/activity?change=30", { routes: activityRoutes() });
+    expectCentredModal(await screen.findByRole("dialog"), "md");
+  });
+
+  it("phone: a run and a change are still bottom sheets", async () => {
+    setViewport("phone");
+    const r = renderApp("/activity/runs/run-2", { routes: activityRoutes() });
+    expectBottomSheet(await screen.findByRole("dialog"));
+    r.unmount();
+    renderApp("/activity?change=30", { routes: activityRoutes() });
+    expectBottomSheet(await screen.findByRole("dialog"));
   });
 });
