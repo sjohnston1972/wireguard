@@ -3,13 +3,12 @@
 // Plain English: the contract the Azure insights areas build on (plan
 // 2026-10-04-azure-insights-plan.md, X0.4). The tables exist (migration
 // 0019), the second cron reaches the collector and only the collector,
-// every /api/v1/azure route answers its spec section 8 shape without asking
-// Azure anything, and the dev seeder knows the new tables and the
+// the /api/v1/azure routes answer their spec section 8 shapes (tested
+// unmocked in insights-routes.test.ts), and the dev seeder knows the new tables and the
 // `insights` story.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { makeEnv } from "./harness";
-import { api, apiEnv } from "./api-helpers";
 import worker from "../src/index";
 import type { Env } from "../src/env";
 import { SCENARIOS } from "../src/devseed";
@@ -163,126 +162,6 @@ describe("collector contract", () => {
   });
 });
 
-// ── Routes (spec section 8) ─────────────────────────────────────────────────
-
-const ISO = expect.stringMatching(/^\d{4}-\d\d-\d\dT/);
-/** A feed's cadence now (X1): the activity feed reads hourly while nothing is deployed and no run ended in the last 2 hours. */
-const nowCadence = (f: { id: string; cadenceMin: number | null }) => (f.id === "activity" ? 60 : f.cadenceMin);
-const feedShape = (status: string) => ({ id: expect.any(String), title: expect.any(String), status, lastOkAt: null, error: null, cadenceMin: expect.any(Number) });
-
-/** The routes with the query each needs, and the shape it answers before any data exists. */
-function routes(status: string, configured: boolean): [string, unknown][] {
-  const feed = feedShape(status);
-  return [
-    [
-      "/azure/summary",
-      {
-        configured,
-        region: { id: "uksouth", name: "UK South" },
-        feeds: FEEDS.map((f) => ({ ...feed, id: f.id, title: f.title, cadenceMin: nowCadence(f) })),
-        health: null,
-        maintenance: [],
-        serviceIssues: [],
-        vitals: null,
-        agent: "none",
-        latest: { cpuPct: null, creditsLeft: null, memFreeBytes: null, vipAvailPct: null, underDdos: null, at: null },
-      },
-    ],
-    ["/azure/metrics?resource=vm&range=24h", { resource: "vm", range: "24h", step: 300, columns: expect.arrayContaining(["t", "cpu_avg", "credits_min"]), points: [] }],
-    ["/azure/metrics?resource=pip&range=1h", { resource: "pip", range: "1h", step: 300, columns: expect.arrayContaining(["t", "ddos_max", "vip_avail"]), points: [] }],
-    ["/azure/metrics?resource=vitals&range=7d", { resource: "vitals", range: "7d", step: expect.any(Number), columns: expect.arrayContaining(["t", "mem_used_pct", "net_loss_pct"]), points: [] }],
-    ["/azure/changes?range=7d&who=all", { range: "7d", feed: { ...feed, id: "activity", title: FEED_TITLES.activity }, rows: [] }],
-    ["/azure/changes", { range: "7d", feed: { ...feed, id: "activity", title: FEED_TITLES.activity }, rows: [] }],
-    ["/azure/service-health?range=30d", { events: [], feed: { ...feed, id: "serviceHealth", title: FEED_TITLES.serviceHealth } }],
-    [
-      "/azure/capacity?region=uksouth&size=Standard_B1s",
-      { region: "uksouth", size: "Standard_B1s", available: null, reason: null, vcpusNeeded: null, family: null, total: null, ok: null, message: null, fetchedAt: null },
-    ],
-    [
-      "/azure/price?region=uksouth&size=Standard_B1s",
-      { region: "uksouth", size: "Standard_B1s", vmGbpPerHour: null, diskGbpPerHour: null, ipGbpPerHour: null, totalGbpPerHour: 0.0157, standbyGbpPerHour: 0.0064, fetchedAt: null, stale: false, source: "fixed", reason: expect.any(String) },
-    ],
-    ["/azure/diagnostics", { configured, feeds: FEEDS.map((f) => ({ ...feed, id: f.id, title: f.title, cadenceMin: nowCadence(f), lastTryAt: null, nextDueAt: null })), metricNames: { vm: null, pip: null } }],
-    ["/azure/bootlog", { fetchedAt: null, bytes: 0, truncated: false, redactions: 0, text: null, reason: expect.any(String) }],
-  ];
-}
-
-describe("/api/v1/azure routes", () => {
-  it("every /api/v1/azure route answers its spec 8 shape with configured false and no fetch", async () => {
-    const { env } = apiEnv(NO_AZURE);
-    const spy = vi.fn(globalThis.fetch);
-    vi.stubGlobal("fetch", spy);
-    for (const [path, want] of routes("not_configured", false)) {
-      const r = await api(env, "GET", path);
-      expect(r.status, path).toBe(200);
-      expect(r.headers.get("Cache-Control"), path).toBe("no-store");
-      expect(r.json, path).toEqual(want);
-    }
-    const post = await api(env, "POST", "/azure/bootlog");
-    expect(post.status).toBe(200);
-    expect(post.json).toEqual({ fetchedAt: null, bytes: 0, truncated: false, redactions: 0, text: null, reason: "Azure isn't connected. Add the service principal secrets to the Worker." });
-    expect(spy).not.toHaveBeenCalled();
-  });
-
-  it("with Azure configured but nothing collected yet, every feed is idle and still nothing is fetched", async () => {
-    const { env } = apiEnv();
-    const spy = vi.fn(globalThis.fetch);
-    vi.stubGlobal("fetch", spy);
-    for (const [path, want] of routes("idle", true)) {
-      const r = await api(env, "GET", path);
-      expect(r.status, path).toBe(200);
-      expect(r.json, path).toEqual(want);
-    }
-    expect(spy).not.toHaveBeenCalled();
-  });
-
-  it("refuses unknown query keys and values outside the spec's lists, naming the field", async () => {
-    const { env } = apiEnv(NO_AZURE);
-    const cases: [string, string][] = [
-      ["/azure/summary?x=1", "x"],
-      ["/azure/metrics?resource=disk&range=24h", "resource"],
-      ["/azure/metrics?resource=vm&range=2h", "range"],
-      ["/azure/metrics?resource=vm", "range"],
-      ["/azure/metrics?resource=vm&range=24h&step=60", "step"],
-      ["/azure/changes?range=1h", "range"],
-      ["/azure/changes?who=me", "who"],
-      ["/azure/service-health?range=24h", "range"],
-      ["/azure/capacity?size=Standard_B1s", "region"],
-      ["/azure/capacity?region=mars&size=Standard_B1s", "region"],
-      ["/azure/capacity?region=uksouth", "size"],
-      ["/azure/capacity?region=uksouth&size=Huge'1", "size"],
-      ["/azure/price?region=uksouth&size=Standard_B1s&currency=USD", "currency"],
-      ["/azure/bootlog?full=1", "full"],
-      ["/azure/diagnostics?secrets=1", "secrets"],
-    ];
-    for (const [path, field] of cases) {
-      const r = await api(env, "GET", path);
-      expect(r.status, path).toBe(400);
-      expect(r.json.error, path).toMatchObject({ code: "bad_input", field });
-    }
-    expect((await api(env, "GET", "/azure/nope")).status).toBe(404);
-  });
-
-  it("routes refuse cross-site requests", async () => {
-    const { env } = apiEnv(NO_AZURE);
-    const r = await api(env, "POST", "/azure/bootlog", undefined, { "Sec-Fetch-Site": "cross-site" });
-    expect(r.status).toBe(403);
-    expect(r.json.error.code).toBe("cross_site");
-    // And every route is behind the login: no bypass, no Access token, no answer.
-    const { env: closed } = makeEnv({ ...NO_AZURE, PUBLIC_URL: "http://localhost:8787" });
-    for (const path of ["/azure/summary", "/azure/bootlog", "/azure/diagnostics"]) expect((await api(closed, "GET", path)).status, path).toBeGreaterThanOrEqual(401);
-  });
-
-  it("settings carry rateSource and price, and overview carries capacity, before the collectors exist", async () => {
-    const { env } = apiEnv(NO_AZURE);
-    const s = await api(env, "GET", "/settings");
-    // X1 (spec 2.7): with no hourly override saved the source is azure; with no Azure price yet the totals are the fixed rates.
-    expect(s.json.rateSource).toBe("azure");
-    expect(s.json.price).toMatchObject({ region: "uksouth", size: "Standard_B1s", source: "fixed", totalGbpPerHour: 0.0157 });
-    const o = await api(env, "GET", "/overview");
-    expect(o.json.capacity).toBeNull();
-  });
-});
 
 // ── The dev seeder ──────────────────────────────────────────────────────────
 
