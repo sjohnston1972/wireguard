@@ -1,0 +1,17 @@
+{
+  "DocumentIncarnation": 4,
+  "Events": [
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000001", "EventType": "Reboot", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Scheduled", "NotBefore": "Sun, 04 Oct 2026 13:00:00 GMT", "Description": "Host server maintenance.", "EventSource": "Platform", "DurationInSeconds": 300 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000002", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-other"], "EventStatus": "Scheduled", "NotBefore": "", "Description": "LONGDESC", "EventSource": "Platform", "DurationInSeconds": 9 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000003", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Started", "NotBefore": "", "Description": "", "EventSource": "Platform", "DurationInSeconds": -1 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000004", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Scheduled", "NotBefore": "", "Description": "", "EventSource": "Platform", "DurationInSeconds": 5 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000005", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Scheduled", "NotBefore": "", "Description": "", "EventSource": "Platform", "DurationInSeconds": 5 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000006", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Scheduled", "NotBefore": "", "Description": "", "EventSource": "Platform", "DurationInSeconds": 5 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000007", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Scheduled", "NotBefore": "", "Description": "", "EventSource": "Platform", "DurationInSeconds": 5 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000008", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Scheduled", "NotBefore": "", "Description": "", "EventSource": "Platform", "DurationInSeconds": 5 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000009", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Scheduled", "NotBefore": "", "Description": "", "EventSource": "Platform", "DurationInSeconds": 5 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000010", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Scheduled", "NotBefore": "", "Description": "", "EventSource": "Platform", "DurationInSeconds": 5 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000011", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Scheduled", "NotBefore": "", "Description": "", "EventSource": "Platform", "DurationInSeconds": 5 },
+    { "EventId": "6e1c3b9a-0000-4000-8000-000000000012", "EventType": "Freeze", "ResourceType": "VirtualMachine", "Resources": ["vm-wg"], "EventStatus": "Scheduled", "NotBefore": "", "Description": "", "EventSource": "Platform", "DurationInSeconds": 5 }
+  ]
+}
