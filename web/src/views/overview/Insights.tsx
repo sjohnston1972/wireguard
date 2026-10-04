@@ -194,10 +194,10 @@ export function AzureHealth({ o, now }: { o: OverviewResponse; now: number }) {
         [
           "Boot log",
           h.bootDiagnostics === false ? (
-            "Boot log turns on with the next deploy"
+            "Turns on with the next deploy"
           ) : (
-            <button type="button" className="ov-az__link" onClick={() => setBoot(true)}>
-              Boot log
+            <button type="button" className="ov-az__link" aria-label="Boot log" onClick={() => setBoot(true)}>
+              View
             </button>
           ),
         ],

@@ -22,6 +22,12 @@
 @media (max-width: 1280px) {
   .sh-pill__region { display: none; }
 }
+/* The phone's top bar has no room for the words (they pushed the account button off the edge): the warning icon alone,
+   still named in full for screen readers, and the popover says the rest. */
+@media (max-width: 640px) {
+  .sh-pill { width: 32px; padding: 0; justify-content: center; }
+  .sh-pill__text { display: none; }
+}
 
 .sh-pop {
   z-index: 150;

@@ -42,7 +42,7 @@ export function ServiceHealthPill() {
       <Popover.Trigger asChild>
         <button type="button" className="sh-pill" data-tone={severe ? "red" : "amber"} aria-label={`${word} in ${region}`}>
           <Icon size={15} aria-hidden="true" />
-          <span aria-hidden="true">
+          <span aria-hidden="true" className="sh-pill__text">
             {word}
             <span className="sh-pill__region"> in {region}</span>
           </span>

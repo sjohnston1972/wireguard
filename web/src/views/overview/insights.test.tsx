@@ -250,7 +250,15 @@ describe("states", () => {
   it("needs the next deploy: an old agent, and boot diagnostics off", async () => {
     show(overview("running"), ON, azureSummaryFixture({ agent: "needsDeploy", vitals: null, health: { ...azureSummaryFixture().health!, bootDiagnostics: false } }));
     expect(await within(await region("System vitals")).findByText("Needs the next deploy: this VM's agent is older than these figures.")).toBeInTheDocument();
-    expect(await within(await region("Azure health")).findByText("Boot log turns on with the next deploy")).toBeInTheDocument();
+    expect(await within(await region("Azure health")).findByText("Turns on with the next deploy")).toBeInTheDocument();
+  });
+
+  it("the boot log row says Boot log once: its button reads View", async () => {
+    show();
+    const panel = await region("Azure health");
+    const button = await within(panel).findByRole("button", { name: "Boot log" });
+    expect(button).toHaveTextContent(/^View$/);
+    expect(within(panel).getAllByText("Boot log")).toHaveLength(1);
   });
 
   it("nothing running", async () => {
