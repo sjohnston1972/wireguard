@@ -128,6 +128,12 @@
 .set-switch { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .set-switch .field__hint { margin-top: 4px; max-width: 60ch; }
 .set-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+/* Deployment: Azure's capacity check (under region and size) and the price line, each the form's full width. */
+.set-cap { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 6px; margin: -6px 0 0; font-size: 12px; color: var(--text-secondary); }
+.set-cap--warn { color: var(--amber); }
+.set-cap svg { flex: none; margin-top: 2px; }
+.set-price { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.set-price__line { margin: 0; font-size: 13px; color: var(--text-primary); }
 
 /* lists: profiles, schedules, backups, phones */
 .set-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
