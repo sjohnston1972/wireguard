@@ -102,6 +102,51 @@ jobs:
             echo "nft is not on this runner: firewall.nft had the structural check only"
           fi
 
+  # Labs (labs spec §11.1): every lab.yaml, readme and the address pool, a
+  # version bump for every lab changed against main, then per lab (and the
+  # template) terraform fmt, init -backend=false, validate and the HCL scope
+  # check (hcl2json into infra/ci/lab-scope.mjs --hcl). A lab with no
+  # terraform/ folder fails here. No cloud calls, no secrets.
+  labs:
+    name: labs check + terraform + scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # labs-check --base compares each lab folder with main's.
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+      - run: npm ci
+      # hcl2json, pinned by version and checksum: checked before it is made runnable.
+      - name: install hcl2json
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSLo hcl2json_linux_amd64 https://github.com/tmccombs/hcl2json/releases/download/v0.6.9/hcl2json_linux_amd64
+          echo "b609e37094948c0b77cd8c6c0baaf8af2bd168c685c6e3334d671cc9692c34a5  hcl2json_linux_amd64" | sha256sum -c -
+          chmod +x hcl2json_linux_amd64
+          mkdir -p "$RUNNER_TEMP/bin"
+          mv hcl2json_linux_amd64 "$RUNNER_TEMP/bin/hcl2json"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: labs-check against main
+        run: |
+          git fetch --no-tags origin main
+          npm run labs-check -- --base origin/main
+      - name: labs-tf
+        env:
+          TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tf-plugins
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          LABS_TF_REQUIRE_HCL2JSON=1 node scripts/labs-tf.mjs
+
   scripts:
     name: typecheck + tests
     runs-on: ubuntu-24.04
