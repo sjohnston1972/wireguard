@@ -100,7 +100,7 @@ export async function runMetrics(ctx: FeedCtx, resource: MetricResource, path: s
   if (!names.length) return; // the resource emits none of ours
   const r = await ctx.arm(`${path}/providers/Microsoft.Insights/metrics?${metricsQuery(names, ctx.now)}`);
   if (r.status === 400) {
-    await markDue(ctx.db, "metricDefs");
+    await markDue(ctx, "metricDefs");
     throw new Error("Azure refused a metric name for this resource (400); the metric names are being read again.");
   }
   if (r.status === 404) return; // the resource is already gone (a tear-down under way): nothing to store

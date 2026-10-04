@@ -161,3 +161,54 @@ export async function latest<T = any>(env: Env, key: string): Promise<T | null> 
   const r = await env.DB.prepare("SELECT json FROM az_latest WHERE key = ?1").bind(key).first<{ json: string }>();
   return r ? (JSON.parse(r.json) as T) : null;
 }
+
+/**
+ * Count what reaches D1 from now until stop(): `statements` (each statement,
+ * a batch's counted one by one), `roundTrips` (one per run/first/all, one per
+ * batch), the SQL of each statement (whitespace squeezed), and the batches.
+ */
+export function countD1(env: Env) {
+  const real = env.DB;
+  const inner = new WeakMap<object, D1PreparedStatement>();
+  const out = { statements: 0, roundTrips: 0, sql: [] as string[], batches: [] as string[][] };
+  const squeeze = (s: string) => s.replace(/\s+/g, " ").trim();
+  const wrap = (stmt: D1PreparedStatement, sql: string): D1PreparedStatement => {
+    const w = {
+      bind: (...args: unknown[]) => wrap(stmt.bind(...args), sql),
+      first: (...a: unknown[]) => (out.statements++, out.roundTrips++, out.sql.push(sql), (stmt.first as any)(...a)),
+      all: (...a: unknown[]) => (out.statements++, out.roundTrips++, out.sql.push(sql), (stmt.all as any)(...a)),
+      run: (...a: unknown[]) => (out.statements++, out.roundTrips++, out.sql.push(sql), (stmt.run as any)(...a)),
+      raw: (...a: unknown[]) => (out.statements++, out.roundTrips++, out.sql.push(sql), (stmt.raw as any)(...a)),
+    } as unknown as D1PreparedStatement;
+    inner.set(w, stmt);
+    (w as any).__sql = sql;
+    return w;
+  };
+  env.DB = {
+    ...real,
+    prepare: (sql: string) => wrap(real.prepare(sql), squeeze(sql)),
+    batch: (stmts: D1PreparedStatement[]) => {
+      out.roundTrips++;
+      out.statements += stmts.length;
+      const sqls = stmts.map((s) => (s as any).__sql as string);
+      out.sql.push(...sqls);
+      out.batches.push(sqls);
+      return real.batch(stmts.map((s) => inner.get(s) ?? s));
+    },
+  } as unknown as D1Database;
+  return {
+    get statements() {
+      return out.statements;
+    },
+    get roundTrips() {
+      return out.roundTrips;
+    },
+    sql: out.sql,
+    batches: out.batches,
+    /** How many batches held a statement matching `re`. */
+    batchesWith: (re: RegExp) => out.batches.filter((b) => b.some((s) => re.test(s))).length,
+    stop() {
+      env.DB = real;
+    },
+  };
+}

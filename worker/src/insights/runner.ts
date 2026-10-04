@@ -4,14 +4,25 @@
 // (INSIGHTS_CRON in insights/types.ts) in its own invocation, so nothing it
 // does can delay the watchman. Each run:
 //
-//   1. reads az_feed (when each feed last ran and is next due),
+//   1. reads az_feed once (when each feed last ran and is next due),
 //   2. takes the feeds that are due and apply now (the VM running, the
 //      resource group existing, ...), in the spec's priority order,
 //   3. runs each one on its own: its own try/catch, every outside call
 //      aborted after 8 s, and every call taken from one budget of 25 per
 //      run. A feed that would pass the budget is skipped and stays due; a
 //      feed that fails is recorded as an error and the next one still runs,
-//   4. records each result in az_feed (errors in plain words, never a URL).
+//   4. records every result in az_feed in one D1 batch at the end (errors
+//      in plain words, never a URL), also when the run fails or runs out
+//      of time part-way.
+//
+// Time: the collector runs in waitUntil, which the platform ends about 30 s
+// after the cron event. Past RUN_SOFT_DEADLINE_MS the runner sends no more
+// outside calls and starts no more feeds (they are recorded as skipped and
+// stay due), so the one batch is always written before that hard stop.
+//
+// D1 per run (worst case, every feed due, measured in api-azure.test.ts):
+// 70 statements in 31 round trips; it was 80 in 50 when each feed read and
+// wrote az_feed on its own.
 //
 // The sign-in to Azure happens once, at the first feed that needs it. If it
 // fails, every feed that talks to Azure Resource Manager is recorded as an
@@ -24,7 +35,7 @@ import { arm as armCall, armToken } from "../azure";
 import { effectiveConfig } from "../settings";
 import { getSnapshot, type Snapshot } from "../state";
 import { AZ_RUN_BUDGET, BudgetExceeded, FEED_IDS, insightsConfigured, makeBudget, type Budget, type Feed, type FeedCtx, type FeedResult, type FeedWhen, type InsightsFeedId } from "./types";
-import { MIN, iso, plainError, readFeedRows, rgExists, vmExists, vmMetricsApply, type FeedRow } from "./common";
+import { MIN, iso, markDueStmt, plainError, readFeedRows, rgExists, vmExists, vmMetricsApply, type FeedRow } from "./common";
 import health from "./feeds/health";
 import vmMetrics from "./feeds/vmMetrics";
 import pipMetrics from "./feeds/pipMetrics";
@@ -49,6 +60,24 @@ export const FEED_MODULES: readonly FeedModule[] = [health, vmMetrics, pipMetric
 
 /** Every outside call is given up after this long. */
 export const FETCH_TIMEOUT_MS = 8_000;
+/**
+ * After this long (wall time) a run sends no more outside calls and starts no
+ * more feeds. One call in flight can take 8 s more, which still leaves the
+ * results' batch inside waitUntil's 30 s.
+ */
+export const RUN_SOFT_DEADLINE_MS = 18_000;
+
+const OUT_OF_CALLS = `This run's ${AZ_RUN_BUDGET} Azure calls were used up; it runs next time.`;
+const OUT_OF_TIME = "This run ran out of time; it runs next time.";
+
+/** Thrown before an outside call once the run is past RUN_SOFT_DEADLINE_MS. Ends the feed as skipped. */
+class RunOutOfTime extends Error {
+  constructor() {
+    super(OUT_OF_TIME);
+    this.name = "RunOutOfTime";
+  }
+}
+
 /** A feed is due a little early, so a cron that fires a few seconds early does not push it back a whole cadence. */
 const DUE_SLACK_MS = 30_000;
 
@@ -103,8 +132,19 @@ async function tokenCached(env: Env): Promise<boolean> {
   }
 }
 
+/** What the runner adds to one feed's ctx: its row, markDue, and the run's deadline. */
+interface RunParts {
+  row?: FeedRow | null;
+  markDue?(feed: string): void;
+  /** True once the run is past its deadline: no more outside calls. */
+  late?(): boolean;
+}
+
 /** The ctx one feed runs with, sharing the run's budget and sign-in. */
-function makeCtx(env: Env, now: Date, snap: Snapshot, cfg: FeedCtx["cfg"], budget: Budget, signIn: () => Promise<void>): FeedCtx {
+function makeCtx(env: Env, now: Date, snap: Snapshot, cfg: FeedCtx["cfg"], budget: Budget, signIn: () => Promise<void>, run: RunParts = {}): FeedCtx {
+  const inTime = () => {
+    if (run.late?.()) throw new RunOutOfTime();
+  };
   return {
     env,
     db: env.DB,
@@ -112,6 +152,8 @@ function makeCtx(env: Env, now: Date, snap: Snapshot, cfg: FeedCtx["cfg"], budge
     snap,
     cfg,
     budget,
+    ...("row" in run ? { row: run.row ?? null } : {}),
+    ...(run.markDue ? { markDue: run.markDue } : {}),
     async arm(path, init = {}) {
       let p = path;
       if (/^https?:\/\//i.test(p)) {
@@ -119,7 +161,9 @@ function makeCtx(env: Env, now: Date, snap: Snapshot, cfg: FeedCtx["cfg"], budge
         if (!p.startsWith(`${ARM_ORIGIN}/`)) throw new Error("Azure gave a next-page link to another host; it was not followed.");
         p = p.slice(ARM_ORIGIN.length);
       }
+      inTime();
       await signIn();
+      inTime();
       budget.take(1);
       try {
         return await timed((signal) => armCall(env, p, { ...init, signal }));
@@ -129,6 +173,7 @@ function makeCtx(env: Env, now: Date, snap: Snapshot, cfg: FeedCtx["cfg"], budge
       }
     },
     async fetch(url, init = {}) {
+      inTime();
       budget.take(1);
       try {
         return await timed((signal) => fetch(url, { ...init, signal }));
@@ -147,26 +192,46 @@ async function isDue(f: FeedModule, row: FeedRow | null, ctx: FeedCtx): Promise<
   return !row || !row.next_due_at || Date.parse(row.next_due_at) <= ctx.now.getTime() + DUE_SLACK_MS;
 }
 
-async function record(env: Env, id: InsightsFeedId, now: Date, r: FeedResult, row: FeedRow | null, cadenceMin: number | null): Promise<void> {
+/** The az_feed write for one feed's result. */
+function recordStmt(env: Env, id: InsightsFeedId, now: Date, r: FeedResult, row: FeedRow | null, cadenceMin: number | null): D1PreparedStatement {
   const at = now.toISOString();
   let next: string | null;
   if (r.status === "skipped") next = row?.next_due_at ?? null; // stays due
   else if (r.nextDueAt) next = r.nextDueAt;
   else next = cadenceMin === null ? null : iso(now.getTime() + cadenceMin * MIN);
-  await env.DB.prepare(
+  return env.DB.prepare(
     `INSERT INTO az_feed (feed, last_try_at, last_ok_at, status, error, next_due_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
      ON CONFLICT (feed) DO UPDATE SET last_try_at = excluded.last_try_at, last_ok_at = COALESCE(excluded.last_ok_at, az_feed.last_ok_at),
        status = excluded.status, error = excluded.error, next_due_at = excluded.next_due_at`,
-  )
-    .bind(id, at, r.status === "ok" ? at : null, r.status, r.error === null ? null : plainError(r.error), next)
-    .run();
+  ).bind(id, at, r.status === "ok" ? at : null, r.status, r.error === null ? null : plainError(r.error), next);
 }
 
 /** Record an on-demand run of a feed (POST boot log) like a cron run. */
 export async function recordFeedResult(env: Env, id: InsightsFeedId, now: Date, r: FeedResult): Promise<void> {
   const row = (await readFeedRows(env.DB)).get(id) ?? null;
   const cadence = FEED_MODULES.find((f) => f.id === id)?.cadenceMin ?? null;
-  await record(env, id, now, r, row, cadence);
+  await recordStmt(env, id, now, r, row, cadence).run();
+}
+
+/**
+ * Write the run's results in one batch. If the batch fails (all or nothing),
+ * each statement is tried on its own, so one bad write never loses the rest.
+ */
+async function flush(env: Env, stmts: { id: string; stmt: D1PreparedStatement }[], lines: string[]): Promise<void> {
+  if (!stmts.length) return;
+  try {
+    await env.DB.batch(stmts.map((s) => s.stmt));
+    return;
+  } catch {
+    // fall through: one at a time
+  }
+  for (const { id, stmt } of stmts) {
+    try {
+      await stmt.run();
+    } catch (e) {
+      lines.push(`${id}: could not record (${plainError(e)})`);
+    }
+  }
 }
 
 /** Without credentials: every feed reads not_configured. Only rows that say otherwise are written. */
@@ -205,42 +270,64 @@ export async function oneOffCtx(env: Env, now: Date, limit: number): Promise<Fee
   return makeCtx(env, now, snap, cfg, budget, signInOnce(env, budget));
 }
 
+export interface RunOptions {
+  /** Wall-clock ms for the run's deadline (tests); Date.now by default. */
+  clock?: () => number;
+}
+
 /** Run the due feeds. Answers one line per thing worth logging (errors and skips). */
-export async function runInsights(env: Env, now: Date = new Date(), feeds: readonly FeedModule[] = FEED_MODULES): Promise<string[]> {
+export async function runInsights(env: Env, now: Date = new Date(), feeds: readonly FeedModule[] = FEED_MODULES, opts: RunOptions = {}): Promise<string[]> {
   if (!insightsConfigured(env)) {
     await markNotConfigured(env, feeds);
     return [];
   }
+  const clock = opts.clock ?? Date.now;
+  const started = clock();
+  const late = () => clock() - started >= RUN_SOFT_DEADLINE_MS;
   const lines: string[] = [];
-  const [snap, cfg] = await Promise.all([getSnapshot(env), effectiveConfig(env)]);
+  const [snap, cfg, rows] = await Promise.all([getSnapshot(env), effectiveConfig(env), readFeedRows(env.DB)]);
   const budget = makeBudget(AZ_RUN_BUDGET);
   const signIn = signInOnce(env, budget);
+  const pending: { id: string; stmt: D1PreparedStatement }[] = [];
+  const recorded = new Set<string>();
+  const madeDue = new Set<string>();
+  // An earlier feed may make a later one due (metric names after a refused metrics call): this run sees it at once.
+  const markDue = (feed: string) => {
+    madeDue.add(feed);
+    const r = rows.get(feed);
+    if (r) rows.set(feed, { ...r, next_due_at: null });
+  };
 
-  for (const f of feeds) {
-    const ctx = makeCtx(env, now, snap, cfg, budget, signIn);
-    if (!whenHolds(f.when, snap, now.getTime())) continue;
-    // Read fresh: an earlier feed may have made this one due (metric names after a refused metrics call).
-    const row = (await readFeedRows(env.DB)).get(f.id) ?? null;
-    if (!(await isDue(f, row, ctx))) continue;
+  try {
+    for (const f of feeds) {
+      if (!whenHolds(f.when, snap, now.getTime())) continue;
+      const row = rows.get(f.id) ?? null;
+      const ctx = makeCtx(env, now, snap, cfg, budget, signIn, { row, markDue, late });
+      if (!(await isDue(f, row, ctx))) continue;
 
-    let result: FeedResult;
-    if (f.calls > budget.remaining()) {
-      result = { status: "skipped", error: `This run's ${AZ_RUN_BUDGET} Azure calls were used up; it runs next time.` };
-    } else {
-      try {
-        if (f.arm) await signIn();
-        result = await f.run(ctx);
-      } catch (e) {
-        if (e instanceof BudgetExceeded) result = { status: "skipped", error: `This run's ${AZ_RUN_BUDGET} Azure calls were used up; it runs next time.` };
-        else result = { status: "error", error: plainError(e) };
+      let result: FeedResult;
+      if (late()) {
+        result = { status: "skipped", error: OUT_OF_TIME };
+      } else if (f.calls > budget.remaining()) {
+        result = { status: "skipped", error: OUT_OF_CALLS };
+      } else {
+        try {
+          if (f.arm) await signIn();
+          result = await f.run(ctx);
+        } catch (e) {
+          if (e instanceof BudgetExceeded) result = { status: "skipped", error: OUT_OF_CALLS };
+          else if (e instanceof RunOutOfTime) result = { status: "skipped", error: OUT_OF_TIME };
+          else result = { status: "error", error: plainError(e) };
+        }
       }
+      if (result.status !== "ok") lines.push(`${f.id} ${result.status}${result.error ? `: ${plainError(result.error)}` : ""}`);
+      // A skipped feed stays due: keep a markDue it was given in this run.
+      pending.push({ id: f.id, stmt: recordStmt(env, f.id, now, result, rows.get(f.id) ?? null, f.cadenceMin) });
+      recorded.add(f.id);
     }
-    if (result.status !== "ok") lines.push(`${f.id} ${result.status}${result.error ? `: ${plainError(result.error)}` : ""}`);
-    try {
-      await record(env, f.id, now, result, row, f.cadenceMin);
-    } catch (e) {
-      lines.push(`${f.id}: could not record (${plainError(e)})`);
-    }
+  } finally {
+    for (const id of madeDue) if (!recorded.has(id)) pending.push({ id, stmt: markDueStmt(env.DB, id) });
+    await flush(env, pending, lines);
   }
   return lines;
 }

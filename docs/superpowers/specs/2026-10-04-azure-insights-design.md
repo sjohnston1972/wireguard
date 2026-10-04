@@ -203,7 +203,8 @@ Design target: the Workers **Free** plan (50 external subrequests and 10 ms CPU 
 - **Why a separate cron:** the watchman's own worst case is about 28 calls, so sharing its invocation would reach about 46 of 50.
 - **CPU:** replies are trimmed (`$select`, at most 2 pages), the SKU list is sliced before parsing, and the boot log is capped
   at 64 KB.
-- **D1:** about 15 rows per run while running (about 180 an hour). **KV:** no new writes. **Cron triggers:** this Worker uses 2
+- **D1:** about 15 rows per run while running (about 180 an hour); az_feed is read once per run and every result written in one
+  batch, so a worst-case run is 70 statements in 31 round trips (tested in `api-azure.test.ts`). **KV:** no new writes. **Cron triggers:** this Worker uses 2
   of the 5 Free allows per account; (V) how many the account's other Workers use.
 
 ## 8. API and shared types (`shared/api.ts`)

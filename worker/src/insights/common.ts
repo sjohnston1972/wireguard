@@ -142,9 +142,19 @@ export async function claimTry(db: D1Database, key: string, now: Date, windowMs:
   return Number(r.meta?.changes ?? 0) > 0;
 }
 
-/** Make a feed due at the next run (for example metricDefs after a metrics call refused a name). */
-export async function markDue(db: D1Database, feed: string): Promise<void> {
-  await db.prepare("INSERT INTO az_feed (feed, status, next_due_at) VALUES (?1, 'idle', NULL) ON CONFLICT (feed) DO UPDATE SET next_due_at = NULL").bind(feed).run();
+/** The statement that makes a feed due at the next run. */
+export function markDueStmt(db: D1Database, feed: string): D1PreparedStatement {
+  return db.prepare("INSERT INTO az_feed (feed, status, next_due_at) VALUES (?1, 'idle', NULL) ON CONFLICT (feed) DO UPDATE SET next_due_at = NULL").bind(feed);
+}
+
+/**
+ * Make a feed due (for example metricDefs after a metrics call refused a
+ * name). In a cron run the runner holds it: a later feed in the same run
+ * runs, otherwise it is saved with the run's results. Elsewhere, at once.
+ */
+export async function markDue(ctx: Pick<FeedCtx, "db" | "markDue">, feed: string): Promise<void> {
+  if (ctx.markDue) ctx.markDue(feed);
+  else await markDueStmt(ctx.db, feed).run();
 }
 
 // ── Small parsing helpers (everything parsed is trimmed and capped) ───────

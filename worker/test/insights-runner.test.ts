@@ -5,7 +5,8 @@
 // feed failing, hanging or running out of budget never stops the others;
 // without credentials nothing is fetched at all.
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { runInsights, FEED_MODULES, whenHolds, type FeedModule } from "../src/insights/runner";
+import { runInsights, FEED_MODULES, RUN_SOFT_DEADLINE_MS, whenHolds, type FeedModule } from "../src/insights/runner";
+import { markDue } from "../src/insights/common";
 import { BudgetExceeded, AZ_RUN_BUDGET, FEED_IDS } from "../src/insights/types";
 import { EMPTY, type Snapshot } from "../src/state";
 import { azureEnv, running, feedRows, setFeed, allNotDue, NOW, ago, iso, MIN, NO_AZURE, callsTo, FAKE_TOKEN } from "./insights-helpers";
@@ -201,6 +202,73 @@ describe("the runner", () => {
     expect(rows.health.status).toBe("error");
     expect(rows.health.error).toMatch(/8 s/);
     expect(rows.vmMetrics.status).toBe("ok");
+  });
+
+  it("a run that reaches its time limit stops calling out, records every status, and the rest stay due", async () => {
+    // The collector runs in waitUntil, which the platform ends about 30 s in: past
+    // RUN_SOFT_DEADLINE_MS the runner starts no feed and makes no call, and writes what it has.
+    const { env, az } = azureEnv();
+    await env.STATUS.put("azure:token", JSON.stringify({ token: FAKE_TOKEN, expiresAt: Date.now() + 3_600_000 }));
+    let t = 0;
+    const clock = () => t;
+    const log: string[] = [];
+    await setFeed(env, "activity", { status: "ok", next_due_at: ago(2) });
+    const feeds = [
+      fake("health", log, { arm: true }, async (ctx) => {
+        await ctx.arm("/subscriptions/s/a?api-version=1");
+        t = RUN_SOFT_DEADLINE_MS + 1; // that call was slow: the run is out of time
+        await ctx.arm("/subscriptions/s/b?api-version=1"); // never sent
+      }),
+      fake("vmMetrics", log),
+      fake("activity", log),
+    ];
+    const lines = await runInsights(env, NOW, feeds, { clock });
+    expect(log).toEqual(["health"]);
+    expect(callsTo(az, "management.azure.com")).toHaveLength(1);
+    const rows = await feedRows(env);
+    for (const id of ["health", "vmMetrics", "activity"]) {
+      expect(rows[id]?.status, id).toBe("skipped");
+      expect(rows[id]?.error, id).toMatch(/time/i);
+      expect(rows[id]?.last_try_at, id).toBe(NOW.toISOString());
+    }
+    // Still due next run.
+    expect(rows.health.next_due_at).toBeNull();
+    expect(rows.activity.next_due_at).toBe(ago(2));
+    expect(lines.join(" ")).toMatch(/vmMetrics skipped/);
+  });
+
+  it("a run that fails between feeds still records the statuses it has", async () => {
+    const { env } = azureEnv();
+    const log: string[] = [];
+    const feeds = [
+      fake("health", log),
+      fake("vmMetrics", log, {
+        due: async () => {
+          throw new Error("KV is down");
+        },
+      }),
+    ];
+    await expect(runInsights(env, NOW, feeds)).rejects.toThrow(/KV is down/);
+    expect((await feedRows(env)).health.status).toBe("ok");
+  });
+
+  it("a feed made due by another (markDue) runs later in the same run, or is saved due for the next one", async () => {
+    const { env } = azureEnv();
+    const log: string[] = [];
+    await setFeed(env, "metricDefs", { status: "ok", next_due_at: iso(NOW.getTime() + 600 * MIN) });
+    await setFeed(env, "capacity", { status: "ok", next_due_at: iso(NOW.getTime() + 600 * MIN) });
+    const feeds = [
+      fake("vmMetrics", log, {}, async (ctx) => {
+        await markDue(ctx, "metricDefs");
+        await markDue(ctx, "capacity");
+      }),
+      fake("metricDefs", log),
+    ];
+    await runInsights(env, NOW, feeds);
+    expect(log).toEqual(["vmMetrics", "metricDefs"]);
+    const rows = await feedRows(env);
+    expect(rows.metricDefs.next_due_at).toBe(iso(NOW.getTime() + 5 * MIN));
+    expect(rows.capacity.next_due_at).toBeNull(); // not in this run: due next time
   });
 
   it("when conditions: rg, vm, running, always", () => {

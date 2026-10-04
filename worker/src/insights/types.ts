@@ -105,6 +105,14 @@ export interface FeedCtx {
   snap: Snapshot;
   cfg: Config;
   budget: Budget;
+  /**
+   * The runner only: this feed's az_feed row as the run read it (the run reads
+   * az_feed once), and a way to make another feed due that this run sees at
+   * once and saves with its results. Without them (a one-off job), markDue
+   * in common.ts writes to D1 straight away.
+   */
+  row?: { last_try_at: string | null; last_ok_at: string | null; next_due_at: string | null } | null;
+  markDue?(feed: string): void;
 }
 
 /** How one feed's run went; the runner writes it to az_feed. */

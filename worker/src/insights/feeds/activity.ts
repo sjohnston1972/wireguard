@@ -152,7 +152,7 @@ export function activityQuery(rg: string, fromMs: number, toMs: number): string 
 }
 
 /** Up to two pages of events since 10 minutes before the last success (24 h on the first run). */
-export async function fetchActivity(ctx: FeedCtx, row: FeedRow | null): Promise<unknown[]> {
+export async function fetchActivity(ctx: FeedCtx, row: Pick<FeedRow, "last_ok_at"> | null): Promise<unknown[]> {
   const now = ctx.now.getTime();
   const lastOk = Date.parse(row?.last_ok_at ?? "");
   const from = Math.max(now - BACKFILL_MS, Math.min(now - OVERLAP_MS, Number.isFinite(lastOk) ? lastOk - OVERLAP_MS : -Infinity));
@@ -232,7 +232,8 @@ const activity: FeedModule = {
   calls: MAX_PAGES,
   arm: true,
   async run(ctx) {
-    const row = await ctx.db.prepare("SELECT feed, last_try_at, last_ok_at, status, error, next_due_at FROM az_feed WHERE feed = 'activity'").first<FeedRow>();
+    // The runner hands over the row it read for the whole run; a one-off reads it.
+    const row = ctx.row !== undefined ? ctx.row : await ctx.db.prepare("SELECT feed, last_try_at, last_ok_at, status, error, next_due_at FROM az_feed WHERE feed = 'activity'").first<FeedRow>();
     const events = await fetchActivity(ctx, row);
     await storeActivity(ctx.env, normaliseActivity(events, await wgadminIds(ctx.env)));
     const cadence = activityCadence(ctx.snap, await lastRunEnd(ctx.db), ctx.now.getTime());

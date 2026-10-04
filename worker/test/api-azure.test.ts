@@ -10,7 +10,7 @@ import { runInsights } from "../src/insights/runner";
 import { saveSnapshot } from "../src/state";
 import { AZ_RUN_BUDGET, FEED_IDS } from "../src/insights/types";
 import { FEEDS, PIP_COLUMNS, VITALS_COLUMNS, VM_COLUMNS } from "../../shared/azureMetrics";
-import { azureEnv, running, agentReport, allNotDue, setFeed, feedRows, callsTo, NOW, ago, iso, MIN, CLIENT, SECRET, SUB, FAKE_TOKEN } from "./insights-helpers";
+import { azureEnv, running, agentReport, allNotDue, setFeed, feedRows, callsTo, countD1, json, NOW, ago, iso, MIN, CLIENT, SECRET, SUB, FAKE_TOKEN } from "./insights-helpers";
 import type { Env } from "../src/env";
 import type { VmVitals } from "../src/state";
 
@@ -282,6 +282,40 @@ describe("whole runs with the real feeds", () => {
     const rows = await feedRows(env);
     for (const id of FEED_IDS) expect(rows[id]?.status, id).toBe("ok");
     expect(rows.housekeeping.status).toBe("ok");
+  });
+
+  it("worst-case run stays within 70 D1 statements in 31 round trips (az_feed read once, results written in one batch)", async () => {
+    const { env } = azureEnv({ TEST_VM: "1" });
+    // The same worst case as above: every feed due and running.
+    await running(env, { last_agent_at: ago(10) });
+    await env.STATUS.put("flag:unreachable", "1");
+    await env.DB.prepare("DELETE FROM profiles").run();
+    await env.DB.prepare("INSERT INTO profiles (name, region, vm_size) VALUES ('US', 'eastus', 'Standard_B2s')").run();
+    const d1 = countD1(env);
+    await runInsights(env, NOW);
+    d1.stop();
+    const rows = await feedRows(env);
+    for (const id of FEED_IDS) expect(rows[id]?.status, id).toBe("ok");
+    // az_feed: one read for the whole run, one batch for every feed's result.
+    expect(d1.sql.filter((s) => /^SELECT .* FROM az_feed$/.test(s))).toHaveLength(1);
+    expect(d1.sql.filter((s) => /^INSERT INTO az_feed/.test(s))).toHaveLength(FEED_IDS.length + 1);
+    // The bound for a worst-case run, as measured: 70 statements in 31 round trips (80 in 50 when each
+    // feed read all of az_feed and wrote its own row). Most of the rest are the feeds' own stores.
+    expect(d1.statements).toBeLessThanOrEqual(70);
+    expect(d1.roundTrips).toBeLessThanOrEqual(31);
+  });
+
+  it("a feed that fails still has its status recorded in the run's one batch", async () => {
+    const { env, az } = azureEnv();
+    await running(env);
+    az.handlers.push((c) => (c.url.includes("instanceView") ? json({ error: { code: "InternalServerError" } }, 500) : undefined));
+    const d1 = countD1(env);
+    await runInsights(env, NOW);
+    d1.stop();
+    const rows = await feedRows(env);
+    expect(rows.health.status).toBe("error");
+    expect(rows.vmMetrics.status).toBe("ok");
+    expect(d1.batchesWith(/^INSERT INTO az_feed/)).toBe(1);
   });
 
   it("sign-in failure marks ARM feeds error and still runs prices", async () => {
