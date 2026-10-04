@@ -307,8 +307,24 @@ npm run rollback-worker                      # lists recent versions (dates and 
 npm run rollback-worker -- <version id>      # makes that version live again
 ```
 
+**A rollback keeps today's cron triggers.** Crons (`[triggers]` in
+`wrangler.toml`) belong to the Worker, not to a version, so a rollback
+brings back the old code with the new crons. Going back to a version from
+before the Azure insights collector (which added `2-59/5 * * * *`) would
+leave the old code, which knows one cron only, running the watchman on
+every cron event: twice every 5 minutes. `npm run rollback-worker` prints
+this warning every time. To go back across a cron change, redeploy instead:
+
+```sh
+git revert -m 1 <merge commit>   # revert the merge on main (then push it)
+npm run deploy-worker            # the old code and its old cron triggers go live together
+```
+
+Or deploy the previous commit: check it out, then `npm run deploy-worker`.
+
 Without a computer: Cloudflare dashboard > Workers & Pages > wg-admin >
-Deployments > the version before the deploy > Rollback. Then check with
+Deployments > the version before the deploy > Rollback (the same cron
+caveat applies). Then check with
 `node scripts/smoke.mjs --live https://wg-admin.clydeford.net` (run it after
 every deploy too): pages go to the Access login, the manifest and icons
 answer, and the VM heartbeat and alert-button paths still reach the Worker.
