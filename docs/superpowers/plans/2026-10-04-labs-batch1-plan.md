@@ -1,5 +1,124 @@
 # Labs batch 1 (engine + labs 1–7): implementation plan
 
+## L0 names as built
+
+The contract on `feat/labs-contract`. Every area branches from its head and uses these names exactly; a change goes through
+the integrator. Paths are from the repo root.
+
+**Shared, `shared/labs.ts`** (values and pure functions; the scripts' copies in `scripts/lib/labs.mjs` are kept equal by a test)
+- Constants: `LAB_ID_RE` (`/^az(104|305)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/`), `LAB_ID_MAX` 40, `LAB_POOL` `"10.64.0.0/13"`,
+  `LAB_SLOTS` 32, `LAB_SLOT_BITS` 18, `GATEWAY_RANGES`, `GOVERNANCE_LABS` (the five ids: `az104-01-identity`,
+  `az104-02-policy`, `az104-03-mgmt-groups`, `az305-20-landing-zone`, `az305-21-monitoring-scale`), `LAB_TF_VARS` (§3.4),
+  `ALLOWED_ROLES` `{ builtIn: {name,id}[], custom: {lab,name,id}[], principalTypes }` (from `labs/setup/allowed-roles.json`),
+  `HOURS_PER_MONTH` 730, `LAB_GRACE_MIN` 15, `LAB_COVERAGE_MIN` 15, `LAB_NOTE_MAX` 2000, `LAB_HOURS_MAX` 12,
+  `LABS_MAX_RUNNING_DEFAULT` 3.
+- Lists: `LAB_SESSION_STATES`, `LAB_LIVE_STATES` (deploying, running, failed, tearing_down), `LAB_PEERINGS`,
+  `LAB_END_REASONS`, `LAB_ACTIONS`, `LAB_WARNING_KINDS` (budget, capacity, pricey, slow, unavailable), and `LAB_STEPS`: the 16
+  §5 steps `{ n, name, on: LabAction[] }`. **lab.yml's step names are `LAB_STEPS[].name` exactly.**
+- Types: `LabExam`, `LabLevel`, `LabType`, `PeeringMode`, `LabRoleScope` (resource_group | resource | management_group),
+  `LabCostItem`, `LabDef` (lab.yaml keys in snake_case, plus `number`), `SkillArea { key, exam, name }`, `ReadmeInline`
+  (`t: text | b | code | a`), `ReadmeBlock` (`t: h | p | ul | code | details`; details `{ summary, blocks }`), `LabCatalogue
+  { schema: 1, skillAreas, labs, readmes: Record<id, ReadmeBlock[]> }`, `AllowedRoles`.
+- Functions: `slotCidr(n)`, `cidrOverlaps(a, b)`, `labRg(id)`, `labLockName(id)`, `labIdFromName(name, ids)` (longest id, else
+  null), `ownsName(id, name, ids?)`, `isGovernanceLab(id)`, `labNeeds(def)` → `{ role, graph }`, `estimateGbpH(items, priceOf?)`
+  (6 dp), `costMarker(gbpH, deployMin)` (£ < 0.05/h ≤ ££ < 0.50/h ≤ £££, or deploy ≥ 30 min), `sessionTimeoutMin(timing)`,
+  `labsSettingsFrom(stored)` → `{ labsMaxRunning, labsDefaultPeering }`.
+
+**lab.yaml** (read as YAML 1.1: quote `"off"`). Keys, all required unless marked: `id, version, title, summary, exam,
+skill_areas, level, type, prerequisites, cost: { items: [{ name, gbp_h, qty?, retail?: { meter?, unit?, sku? } }], pricey },
+timing: { deploy_min, destroy_min, session_h, max_h }, capacity: { vm_sizes }, regions: { secondary }, connectivity: {
+peering, dns_link, subnets_used }, identity: { creates, roles: [{ role, scope }], governance }`. Unknown keys are refused.
+Extra rules: exam matches the id; `identity.governance` equals `isGovernanceLab(id)`; roles come from `allowed-roles.json`
+(a custom role only for its own lab), never at `subscription`; `subnets_used` 0–4, 0 only with peering `"off"`; a
+`retail.sku` is also listed in `capacity.vm_sizes`; whole hours and minutes; ids unique, not a prefix of another, numbers unique.
+**Readmes:** `##` headings What it deploys, Things to try (3–6 bullets), Learn more; break-fix adds Symptom and a closed
+`<details>` + `<summary>What was broken</summary>`; the footer `readmeFooter(id)` verbatim. Allowed: `#`–`###`, paragraphs,
+`-` bullets (no nesting), fenced code, `**bold**`, `` `code` ``, `[text](https://...)`, `<details>`. Names such as `<id>` go in
+backticks. **Terraform outputs:** `private_ips` (map), `connect` (list), optional `peer_vnet_id`, optional `users` (name → UPN).
+
+**Scripts:** `scripts/lib/labs.mjs` (types in `labs.d.mts`): `parseLabYaml(text)`, `validateLab(raw, { folder, skillAreas })`,
+`parseReadme(md, type, id|null)` → `{ blocks, problems }`, `readmeFooter(id)`, `buildCatalogue(labsDir)` → `{ catalogue,
+problems: { lab, file, field, message }[] }`, `labFolders(labsDir)`, `checkPool(ranges?)`, `lintTfText({ file: text })` →
+`{ file, line, rule: literal-cidr | provisioner | provider | gateway, message }[]`, `variablesProblems(tf)`,
+`versionProblems(labsDir, gitRef)`. `npm run labs-build` writes `shared/labs.generated.json` (gitignored; `test`, `typecheck`,
+`build:web`, `dev`, `dev:api` run it first); `npm run labs-check [-- --base origin/main]` (a lab without `terraform/` is a note,
+not a failure, until L5/L6 add it). `.gitignore` also covers `labs/setup/*.local.*`. Dev dependency `yaml` 2.9.1 (exact).
+**Seeds:** `labs/skill-areas.yaml` (list of `{ key, exam, name }`), `labs/_template/{versions,variables,outputs,main}.tf`,
+`labs/setup/allowed-roles.json` (lab 1's `lab-az104-01-identity-vm-operator` is `7331dcae-09d3-477e-8da7-2895697f0fc0`),
+labs 1–7 `lab.yaml` v1 and stub readmes (no `terraform/` yet).
+
+**API, `shared/api.ts`** (routes under `/api/v1`, errors `{ error: { code, message, field? } }`; an unknown body key is 400
+`bad_input` with `field` = that key)
+- Types: `LabSessionState`, `LabPeering`, `LabEndReason`, `LabAction`, `LabWarningKind`, `LabWarning`, `LabRunRow` (with
+  `step: { done, of, name }`), `LabSession` (camelCase; `costGbp`, `costBasis`, `outputs { privateIps, connect, users }`,
+  `activeRun`), `LabReleaseTest` (`result: pass | fail`, `clean`), `LabCard` (`estGbpH`, `marker`, `pricey { item, gbpH }`,
+  `running`, `lastSession`, `runs`, `lastReleaseTest`, `released`, `unavailable`), `LabPermissions`, `LabOrphan`,
+  `LabsResponse`, `LabCostLine` (`gbpH`, `source: azure | authored`, `priceAge` seconds), `LabDetail` (`card, readme, cost,
+  connectivity, identity, warnings, defaults { region, peer, hours }, gatewayUp, session, runs, resources, portalUrl`),
+  `LabDeployBody`, `LabExtendBody` (`{ hours }` or `{ toMax: true }`), `LabDestroyBody`, `LabNoteBody`, `LabOrphanCleanupBody`
+  (`lab_id`), `LabSessionsResponse`, `LabCoverage`, `LabCoverageResponse`, `LabSecretResponse { adminPassword, users }`,
+  `LabPermissionsCheckResponse`, `LabCostRow`, `LabsSummary { running: LabSession[], gbpH, rePeer }`.
+- New fields: `OverviewResponse.labs: LabsSummary`, `CostResponse.labs: LabCostRow[]`, `SettingsValues.labsMaxRunning /
+  labsDefaultPeering`, `RunRow.lab?: { id, title, action: LabAction } | null` (a lab row's `action` is `apply` for deploy,
+  peer and test, `destroy` for destroy and unpeer), `ClientView.labsConfigDue`, `Peer.labs_config_due`.
+- Routes (`worker/src/api/labs.ts`, `registerLabs`): `GET /labs`, `GET /labs/sessions?lab=&limit=` (1–200, default 50),
+  `GET /labs/coverage`, `GET /labs/:id`, `GET /labs/:id/secret` (409 `not_running`), `POST /labs/:id/{deploy,extend,destroy,
+  peer,unpeer,test,cancel}`, `PUT /labs/sessions/:sid/note`, `POST /labs/repeer`, `POST /labs/permissions/check`,
+  `POST /labs/orphans/cleanup`. Stubs answer 501 `not_implemented` where the engine must act; input checks, shapes and 404s are
+  final.
+
+**Widgets, `shared/widgets.ts`:** `overview.runningLabs` (r4, weight 32, settings `costSoFar`, `peering`) and `cost.labs` (r3,
+weight 4, settings `order: largest | lab`, `estimates`), both `defaultOff`, icon `FlaskConical`, replacing `overview.costImpact`
+and `cost.insights`; cost r3 `max: 3`; the simulator's zones gain `labs` (before `internet`).
+
+**Worker**
+- Migration `worker/migrations/0020_labs.sql`: `lab_sessions`, `lab_runs`, `lab_slots`, `lab_cost_days`, `lab_release_tests`
+  (§7.1 columns exactly; extra indexes `lab_sessions_state`, `lab_runs_session`, `lab_runs_requested`), 32 slots, and
+  `peers.labs_config_due` (set for `azure_vnet = 1`, `full_tunnel = 0`, no routes). Bind integers with `CAST(? AS INTEGER)`.
+- `worker/src/labs/catalogue.ts`: `catalogue()`, `labDef(id)`, `labReadme(id)`, `labIds()`, `setCatalogueForTest(cat | null)`.
+- `worker/src/lock.ts`: `acquireLock(env, runId, { name?, ttlMs? })`, `releaseLock(env, runId?, force?, name?)`,
+  `lockStatus(env, name?)`, `GATEWAY_LOCK` `"singleton"`, `labLock(id)` `"lab:<id>"`.
+- `worker/src/actions.ts`: `QuickAction` adds `LabQuickAction` (`lab-extend-1h:<sid>`, `lab-destroy:<sid>`), `isLabAction()`;
+  `/api/act` sends those to `runLabAction(env, action)` in `labs/act.ts`.
+- `worker/src/labs/callbacks.ts` (index.ts mounts them; each `(env, token | null, body) → { status, body }`; 401/403/404 count
+  against the brake): `handleLabCallback` (`/api/callback/lab`), `handleLabSecrets` (`lab-secrets`, the OIDC token),
+  `handleLabPeer` (`lab-peer`), `handleLabPeeringsRemoved` (`lab-peerings-removed`).
+- `worker/src/labs/watch.ts`: `runLabWatch(env, now) → string[]`; `scheduled()` runs watchman → lab watch → insights, each
+  caught alone.
+- `worker/src/labs/summary.ts`: `labsSummary(env, now)` (OverviewResponse.labs), `labCostRows(env, now)` (CostResponse.labs).
+- KV: `labs:permissions` (`LabPermissions`), `labs:orphans` (`LabOrphan[]`). Lab notes use alert kind `cost_guard` or `info`.
+- Firewall: `Zone` gains `"labs"` (label "Labs", v4 `[LAB_POOL]`, no v6); `LAB_POOL` joins `privateV4`.
+- Harness: `World.dispatches[] { workflow, action, payload }` (lab.yml titles `lab <action> <lab_id> <run_id>`; each
+  workflow lists only its own runs), `world.labAzure { groups, managementGroups, roleDefinitions, policyDefinitions,
+  policyAssignments, resources, roleAssignments, costRows }`, `world.graph { users, groups, fail? }`, `world.calls[] { method,
+  host, path }`; one RunLock instance per name.
+- Dev seed: scenario `labs` (`worker/src/devseed-labs.ts`: `seedLabs`, `wipeLabs`, `LABS_KV`, `LAB_TABLES`); every story wipes
+  the lab tables, frees the slots and deletes both KV keys. Listed in `scripts/seed-scenarios.mjs`.
+
+**App**
+- `TABS`: Labs (`/labs`, icon `FlaskConical`) after Cost. Routes `/labs`, `/labs/history`, `/labs/:id` → `LabsPage` in
+  `views/pages.tsx` (`React.lazy(() => import("./labs"))`); `views/labs/index.tsx`'s **default export** is the whole tab.
+  Phone labels are `.tabbar__label`.
+- `SETTINGS_SECTIONS` gains `{ slug: "labs", label: "Labs" }` (before Maintenance); its body is a placeholder in
+  `views/settings/index.tsx` (`case "labs"`) for L4's `LabsSection`.
+- Queries (`web/src/api/queries.ts`): `INTERVALS.labs` 15 s, `INTERVALS.labsHistory` 60 s, `labsInterval(data)`,
+  `labDetailInterval(data)` (5 s while a session deploys, tears down or has an `activeRun`), `useLabs()` key `["labs"]`,
+  `useLab(id)` `["labs", id]`, `useLabSessions(lab?, limit = 50)` `["labs", "sessions", lab ?? "", limit]`, `useLabCoverage()`
+  `["labs", "coverage"]`.
+- Mutations (`web/src/api/mutations.ts`; each invalidates `["labs"]`, `["overview"]`, `["activity"]`): `useDeployLab({ id,
+  ...LabDeployBody })`, `useExtendLab({ id, ...LabExtendBody })`, `useDestroyLab(id)`, `usePeerLab(id)`, `useUnpeerLab(id)`,
+  `useTestLab(id)`, `useCancelLab(id)`, `useRePeerLabs()`, `useSaveLabNote({ sid, note })`, `useCleanupLabOrphans({ lab_id })`,
+  `useCheckLabPermissions()` (also `["settings"]`), `useLabSecret()` (a GET on demand: `mutateAsync(id)`, no toast, no cache).
+- Fixtures (`web/src/test/fixtures.ts`): `labsFixture(over)`, `labDetailFixture(over)`, `labSessionFixture(over)`,
+  `labCoverageFixture()`, `labsEmpty(method, url)`; `mockFetch` answers GET `/api/v1/labs*` with an empty catalogue (one lab:
+  404); `overviewFixture().labs`, `costFixture().labs`, `settingsFixture().values` and `clientView` carry the new fields.
+- `widgets/WidgetLibrary.tsx` knows `FlaskConical`; `views/firewall/EndCell.tsx` gives the labs zone `FlaskConical`.
+
+**L0 rulings** (also in the spec, §16): inline `code` is allowed in readmes (the footer needs it); lab ids take single hyphens
+only; lab.yaml is YAML 1.1; `labs_default_peering` defaults on; custom-role GUIDs are fixed in `allowed-roles.json`;
+`overview.labs.running` is the session list (count = length); a lab row in `RunRow` keeps a gateway `action`; permissions and
+orphans live in KV; `costMarker` thresholds as above; deploy and extend take whole hours.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans. The integrator lands the contract (L0) first. Then seven areas run **in parallel**, each in its
 > own git worktree and each built by one implementer under superpowers:test-driven-development: **L1** pipeline, **L2** Worker

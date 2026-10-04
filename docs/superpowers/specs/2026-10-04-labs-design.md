@@ -547,3 +547,36 @@ Open questions for Steven: none block batch 1, apart from running §8.2 and choo
     the Running labs widget lives in row `r4` and suggests replacing Cost impact.
 16. **Lab VMs have no public IP.** Reach them through peering, or the portal's Serial console or Run command.
 17. **Lab ids `az104-NN-slug` / `az305-NN-slug`,** with resource groups and Entra names derived from them (§3.1).
+
+## 16. Rulings from the batch 1 plan
+
+Copied from `docs/superpowers/plans/2026-10-04-labs-batch1-plan.md` (rulings 1–8) and its contract area L0. Where they differ
+from the sections above, these win.
+
+1. **The app never imports the generated catalogue.** It reads `GET /labs`; only the Worker imports `shared/labs.generated.json`
+   (so §7.1's "imported by the Worker and the app" now reads "by the Worker").
+2. **Readmes are parsed at build time** into `ReadmeBlock[]` and drawn as React elements, never as HTML. Allowed: headings (`#`
+   to `###`), paragraphs, `-` bullets, fenced code, `**bold**`, inline `` `code` ``, `[links](https://...)` and `<details>`.
+   Anything else is refused by `labs-build`. Names like `<id>` go in backticks.
+3. **Custom roles get fixed GUIDs** (`role_definition_id`), kept with the allowed built-in GUIDs in
+   `labs/setup/allowed-roles.json`, which the scope check and the setup condition both read.
+4. **Timers:** `max_until` = `requested_at + max_h`; `auto_destroy_at` = `ready_at + hours`, never later than `max_until`; the
+   estimate = `est_gbp_h × (ended_at − requested_at)`.
+5. **The Cost "Labs" panel is widget `cost.labs`**, off by default, in Cost row `r3` (now `max: 3`), suggesting `cost.insights`.
+   `overview.runningLabs` is off by default in Overview `r4`, suggesting `overview.costImpact`.
+6. **`peers.labs_config_due`** marks split-tunnel `azure_vnet` clients whose config predates the lab pool; it clears when that
+   client's config is fetched or edited.
+7. **Extra routes:** `GET /labs/:id/secret`, `POST /labs/repeer`, `POST /labs/permissions/check`.
+8. **An inert `lab.yml` lands on `main` first** (PR 0), so branch tests can dispatch it; without `secrets_url` a run makes its
+   own masked password and skips peering.
+9. **Lab ids use single hyphens** (`^az(104|305)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$`): no trailing or doubled hyphen, so names built
+   from an id cannot be ambiguous.
+10. **`lab.yaml` is read as YAML 1.1**, as most tools read it: an unquoted `off` is a boolean and is refused, so write `"off"`.
+    Unknown keys are refused. A `retail.sku` must also appear in `capacity.vm_sizes`; whole minutes and hours only.
+11. **Optional output `users`** (name → user principal name) is what Show reveals beside the admin password.
+12. **`labs_default_peering` defaults on**; `labs_max_running` is 1–5, default 3.
+13. **Cost markers** (`costMarker`): £ under £0.05/h, ££ under £0.50/h, £££ from £0.50/h or a deploy of 30 minutes or more.
+14. **The permission check result and the orphan list live in KV** (`labs:permissions`, `labs:orphans`), not D1.
+15. **A lab run in the Activity list keeps a gateway `action`** (`apply` for deploy, peer and test; `destroy` for destroy and
+    unpeer); `RunRow.lab.action` carries the lab action.
+16. **Deploy and Extend take whole hours, 1 to 12**; Extend may instead ask `toMax`.
