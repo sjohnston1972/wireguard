@@ -103,6 +103,31 @@ const spark = (data: (number | null)[], label: string, unit = "") => <Sparkline 
 
 // ── VM performance ──
 
+const num = (v: number | null) => (v === null ? NO_DATA : round(v));
+interface Chart {
+  name: string;
+  /** Stored columns: one, or two shown as words ("in X · out Y") and charted as their sum. */
+  cols: string[];
+  words?: string[];
+  f: (v: number | null) => string;
+  /** Its threshold setting, if any. */
+  th?: string;
+  dir?: "above" | "below";
+  /** Peaks: the lowest figure instead of the highest. */
+  low?: boolean;
+  /** Peaks: read this column (CPU's maximum). */
+  peak?: string;
+}
+/** The Charts setting's options. */
+const CHARTS: Record<string, Chart> = {
+  cpu: { name: "CPU used", cols: ["cpu_avg"], f: pct, th: "cpu", peak: "cpu_max" },
+  credits: { name: "Credits left", cols: ["credits_min"], f: num, th: "credits", dir: "below", low: true },
+  memory: { name: "Memory free", cols: ["mem_free_min"], f: bytes, th: "memory", low: true },
+  network: { name: "Data in / out", cols: ["net_in", "net_out"], words: ["in", "out"], f: rate },
+  disk: { name: "Disk read / written", cols: ["disk_read", "disk_write"], words: ["read", "write"], f: rate },
+  diskQuota: { name: "Disk IOPS used", cols: ["os_iops_max"], f: pct, th: "diskIops" },
+};
+
 export function VmPerformance({ o, now }: { o: OverviewResponse; now: number }) {
   const { settings: st } = useWidget("overview.vmPerformance");
   const sum0 = useAzureSummary().data;
@@ -120,65 +145,26 @@ export function VmPerformance({ o, now }: { o: OverviewResponse; now: number }) 
   else if (!has && o.snapshot.state !== "running") body = <AzNote>{NOTHING_TEXT}</AzNote>;
   else if (!has && !feed?.lastOkAt) body = <AzNote>{WAITING_TEXT}</AzNote>;
   else if (!has) body = <AzNote>No figures from Azure in this range.</AzNote>;
-  else {
-    const c = (col: string) => column(pts, col);
-    const rows: Record<string, ReactNode> = {
-      cpu: (() => {
-        const v = c("cpu_avg");
-        return (
-          <Figure key="cpu" name="CPU used" az={az("cpu_avg")} value={pct(lastOf(v))} level={levelOf(lastOf(v), th("cpu"), "above")} extra={peaks ? `peak ${pct(maxOf(c("cpu_max")))}` : null}>
-            {spark(v, "CPU used", "%")}
-          </Figure>
-        );
-      })(),
-      credits: (() => {
-        const v = c("credits_min");
-        const last = lastOf(v);
-        return (
-          <Figure key="credits" name="Credits left" az={az("credits_min")} value={last === null ? NO_DATA : round(last)} level={levelOf(last, th("credits"), "below")} dir="below" extra={peaks && minOf(v) !== null ? `lowest ${round(minOf(v)!)}` : null}>
-            {spark(v, "Credits left")}
-          </Figure>
-        );
-      })(),
-      memory: (() => {
-        const v = c("mem_free_min");
-        // The memory threshold is on memory used (%), which only the VM's own vitals know.
-        const used = sum0.vitals?.memUsedPct ?? null;
-        return (
-          <Figure key="memory" name="Memory free" az={az("mem_free_min")} value={bytes(lastOf(v))} level={levelOf(used, th("memory"), "above")} extra={[used !== null ? `${pct(used)} used` : null, peaks && minOf(v) !== null ? `lowest ${bytes(minOf(v))}` : null].filter(Boolean).join(" · ") || null}>
-            {spark(v, "Memory free", " bytes")}
-          </Figure>
-        );
-      })(),
-      network: (() => {
-        const i = c("net_in");
-        const out = c("net_out");
-        return (
-          <Figure key="network" name="Data in / out" az={az("net_in", "net_out")} value={`in ${rate(lastOf(i))} · out ${rate(lastOf(out))}`} extra={peaks ? `peak ${rate(maxOf(sum(i, out)))}` : null}>
-            {spark(sum(i, out), "Data in and out", " bytes/s")}
-          </Figure>
-        );
-      })(),
-      disk: (() => {
-        const r = c("disk_read");
-        const w = c("disk_write");
-        return (
-          <Figure key="disk" name="Disk read / written" az={az("disk_read", "disk_write")} value={`read ${rate(lastOf(r))} · write ${rate(lastOf(w))}`} extra={peaks ? `peak ${rate(maxOf(sum(r, w)))}` : null}>
-            {spark(sum(r, w), "Disk read and written", " bytes/s")}
-          </Figure>
-        );
-      })(),
-      diskQuota: (() => {
-        const v = c("os_iops_max");
-        return (
-          <Figure key="diskQuota" name="Disk IOPS used" az={az("os_iops_max")} value={pct(lastOf(v))} level={levelOf(lastOf(v), th("diskIops"), "above")} extra={`bandwidth ${pct(lastOf(c("os_bw_max")))}${peaks ? ` · peak ${pct(maxOf(v))}` : ""}`}>
-            {spark(v, "Disk IOPS used", "%")}
-          </Figure>
-        );
-      })(),
-    };
-    body = <ul className="ov-az__list">{(st.charts as string[]).map((k) => rows[k])}</ul>;
-  }
+  else
+    body = (
+      <ul className="ov-az__list">
+        {(st.charts as string[]).map((k) => {
+          const ch = CHARTS[k]!;
+          const cols = ch.cols.map((col) => column(pts, col));
+          const line = cols.length > 1 ? sum(cols[0]!, cols[1]!) : cols[0]!;
+          // The memory threshold is on memory used (%), which only the VM's own vitals know.
+          const used = k === "memory" ? (sum0.vitals?.memUsedPct ?? null) : null;
+          const judged = k === "memory" ? used : lastOf(line);
+          const peak = ch.low ? minOf(line) : maxOf(ch.peak ? column(pts, ch.peak) : line);
+          const extra = [used !== null && `${pct(used)} used`, peaks && peak !== null && `${ch.low ? "lowest" : "peak"} ${ch.f(peak)}`].filter(Boolean).join(" · ");
+          return (
+            <Figure key={k} name={ch.name} az={az(...ch.cols)} value={ch.words ? ch.words.map((w, i) => `${w} ${ch.f(lastOf(cols[i]!))}`).join(" · ") : ch.f(lastOf(line))} level={ch.th ? levelOf(judged, th(ch.th), ch.dir ?? "above") : null} dir={ch.dir} extra={extra || null}>
+              {spark(line, ch.name)}
+            </Figure>
+          );
+        })}
+      </ul>
+    );
   return (
     <Panel title="VM performance" className="ov-az" bodyClassName="ov-scroll ov-az__body">
       {body}
