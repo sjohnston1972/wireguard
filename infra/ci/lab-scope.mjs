@@ -256,6 +256,14 @@ function hclValue(v, ctx, refs) {
   return v;
 }
 
+/** How many blocks: an array of them, or labelled blocks as an object of arrays. */
+function blockCount(b) {
+  if (b == null) return 0;
+  if (Array.isArray(b)) return b.length;
+  if (typeof b === "object") return Object.values(b).reduce((n, v) => n + (Array.isArray(v) ? v.length : 1), 0) || 1;
+  return 1;
+}
+
 /** Resources from hcl2json output (all of a lab's .tf files together), in this check's own shape. */
 export function hclResources(hcl, labId) {
   const ctx = hclContext(hcl ?? {}, labId);
@@ -280,7 +288,8 @@ export function hclResources(hcl, labId) {
             values,
             refs,
             configured: new Set(Object.keys(refs)),
-            provisioners: (block?.provisioner ?? []).length,
+            // hcl2json prints labelled blocks as { "local-exec": [...] }; count every kind.
+            provisioners: blockCount(block?.provisioner),
             sensitive: new Set(),
           });
         }

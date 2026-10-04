@@ -28,7 +28,8 @@
 # Worker); the lab itself is still up, or still coming down.
 #
 # PEER_VNET_ID (the lab's peer_vnet_id output) picks the lab VNet; without it
-# the first VNet in rg-lab-<id> is used. LAB_GATEWAY_RG defaults to rg-wg-ondemand.
+# the first VNet in rg-lab-<id> is used. The gateway's group comes from $RG
+# (or LAB_GATEWAY_RG), and defaults to rg-wg-ondemand.
 
 set -uo pipefail
 
@@ -39,8 +40,9 @@ if ! [[ "$LAB_ID" =~ $LAB_ID_RE ]] || [ "${#LAB_ID}" -gt 40 ] || { [ "$ACTION" !
   echo "::error::lab-peer: usage: lab-peer.sh peer|unpeer <lab id> (got '${ACTION}' '${LAB_ID}')"
   exit 2
 fi
+# The gateway's group: $RG in lab.yml (the AZURE_RESOURCE_GROUP secret, a name the live log hides).
+GW_RG="${LAB_GATEWAY_RG:-${RG:-rg-wg-ondemand}}"
 RG="rg-lab-$LAB_ID"
-GW_RG="${LAB_GATEWAY_RG:-rg-wg-ondemand}"
 GW_VNET="vnet-wg"
 LAB_PEERING="lab-$LAB_ID-to-wg"
 WG_PEERING="lab-$LAB_ID"
