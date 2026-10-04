@@ -45,12 +45,12 @@ export function AzureChangesPanel() {
   const { q, data, rows, settings } = useAzureChangeRows();
   const [open, setOpen] = useState<string | null>(null);
   const cols: Column<AzureChangeRow>[] = [
-    { key: "when", header: "When", cell: (c) => fmtWhen(c.at) },
+    { key: "when", header: "When", cell: (c) => fmtWhen(c.at), className: "act__col-azwhen" },
     { key: "change", header: "Change", cell: (c) => <span className="act__azchange" title={changeLabel(c)}>{changeLabel(c)}</span> },
-    { key: "what", header: "What", cell: (c) => <span className="act__note">{c.resourceName ?? "—"}</span>, className: "act__col-what" },
-    ...(settings.status ? [{ key: "status", header: "Status", cell: (c: AzureChangeRow) => <ChangeStatus status={c.status} /> }] : []),
-    ...(settings.caller ? [{ key: "caller", header: "Caller", cell: (c: AzureChangeRow) => callerLabel(c), className: "act__col-actor" }] : []),
-    { key: "go", header: <span className="visually-hidden">Open</span>, cell: () => <Chevron />, align: "right", width: 28 },
+    { key: "what", header: "What", cell: (c) => <span className="act__note" title={c.resourceName ?? undefined}>{c.resourceName ?? "—"}</span>, className: "act__col-what" },
+    ...(settings.status ? [{ key: "status", header: "Status", cell: (c: AzureChangeRow) => <ChangeStatus status={c.status} />, className: "act__col-azstatus" }] : []),
+    ...(settings.caller ? [{ key: "caller", header: "Caller", cell: (c: AzureChangeRow) => <span title={callerLabel(c)}>{callerLabel(c)}</span>, className: "act__col-actor" }] : []),
+    { key: "go", header: <span className="visually-hidden">Open</span>, cell: () => <Chevron />, align: "right", width: 28, className: "act__col-go" },
   ];
   const off = notConnected(data?.feed);
   const selected = rows.find((c) => c.id === open) ?? null;

@@ -101,6 +101,8 @@ export async function seedInsights(env: Env, now: number, startMs: number, regio
   act("00000000-seed-0000-0000-000000000002", startMs + 2 * MIN, "Microsoft.Network/networkSecurityGroups/write", "Succeeded", SEED_WGADMIN_CALLER, "wgadmin", "Network security group", "nsg-wg", "Administrative");
   act("00000000-seed-0000-0000-000000000003", startMs + 3 * MIN, "Microsoft.Compute/virtualMachines/write", "Succeeded", SEED_WGADMIN_CALLER, "wgadmin", "Virtual machine", "vm-wg", "Administrative");
   act("00000000-seed-0000-0000-000000000004", now - 40 * MIN, "Microsoft.Network/networkSecurityGroups/securityRules/write", "Succeeded", "someone@example.net", "person", "Network security group", "nsg-wg", "Administrative");
+  // Real names run long: the deploy's OS disk under Azure's own naming (the change log must still fit its column).
+  act("00000000-seed-0000-0000-000000000006", startMs + 4 * MIN, "Microsoft.Compute/disks/write", "Succeeded", SEED_WGADMIN_CALLER, "wgadmin", "Disk", "vm-wg_OsDisk_1_6c1e0f2b8a6d4c3e9f7a5b1d2c4e6f80", "Administrative");
   act("00000000-seed-0000-0000-000000000005", now - 3 * DAY, "Microsoft.Resourcehealth/healthevent/Activated/action", "Active", "Microsoft.ResourceHealth", "azure", "Virtual machine", "vm-wg", "ResourceHealth", "Warning");
 
   // Service Health: an active issue in this region now, and last week's finished maintenance.
