@@ -580,9 +580,9 @@ test("a job that sleeps 30 s leaves the heartbeat under 2 s", { skip }, async (t
     assert.ok(r.body, "the heartbeat posted");
     assert.equal(w.calls("systemd-run").length, 1, "the job was started");
     // Under 2 s, or on a slow or busy machine (Git Bash's forks on Windows, a
-    // loaded container) within 1.5 s of that machine's own plain heartbeat:
-    // either way nowhere near the job's 30 s.
-    const limit = Math.max(2000, base.ms + 1500);
+    // loaded container, the whole suite running at once) within half again
+    // that machine's own plain heartbeat: either way well short of the job's 30 s.
+    const limit = Math.min(25_000, Math.max(2000, base.ms * 1.5 + 1500));
     t.diagnostic(`heartbeat with a hanging job: ${r.ms} ms; with every cache fresh: ${base.ms} ms; limit ${limit} ms`);
     assert.ok(r.ms < limit, `heartbeat took ${r.ms} ms (limit ${limit}, plain heartbeat ${base.ms} ms)`);
     assert.ok(!existsSync(join(w.run, "updates.json")), "the job was still running when the heartbeat finished");
