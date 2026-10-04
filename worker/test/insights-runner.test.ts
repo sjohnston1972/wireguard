@@ -122,7 +122,7 @@ describe("the runner", () => {
 
   it("worst-case run makes at most 25 fetches", async () => {
     // Stand-in feeds that each make as many calls as they declare, 33 in all
-    // (the real feeds' worst case is in insights-routes.test.ts).
+    // (the real feeds' worst case is in api-azure.test.ts).
     const { env, az } = azureEnv();
     const calling = (id: FeedModule["id"], declared: number, arm: boolean, makes = declared) =>
       fake(id, [], { calls: declared, arm }, async (ctx) => {

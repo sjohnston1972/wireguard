@@ -3,13 +3,10 @@
 // Plain English: what the app reads about Azure and the VM (spec
 // 2026-10-04-azure-insights-design.md, section 8). Every route reads D1 and
 // the snapshot only, never Azure, except POST bootlog and a capacity cache
-// miss (area X1). All sit behind the login and the same-origin check, like
-// the rest of /api/v1.
-//
-// X0 ships these as stubs that answer each route's exact shape with nothing
-// collected yet: `configured` says whether the service principal is set,
-// and every feed is not_configured (no secrets) or idle (nothing run yet).
-// Nothing here fetches. Area X1 fills them from the az_* tables.
+// miss (insights/ondemand.ts), each in its own small budget. All sit behind
+// the login and the same-origin check, like the rest of /api/v1. Without
+// Azure credentials everything answers `configured: false`, every feed
+// reads not_configured, and nothing is fetched.
 //
 //   GET  /api/v1/azure/summary
 //   GET  /api/v1/azure/metrics?resource=vm|pip|vitals&range=1h|24h|7d|30d
@@ -27,12 +24,14 @@ import type { Context, Hono } from "hono";
 import { fail, type ApiEnv } from "./app";
 import { effectiveConfig, fixedConfig } from "../settings";
 import { allSettings } from "../db";
-import { fixedPrice as fixedPriceInfo, priceInfo, rateSource, readPrices } from "../insights/price";
+import { getSnapshot } from "../state";
 import { REGIONS, azureRegionName } from "../region";
-import { RANGE_STEP, type HistoryRange } from "../history";
+import type { HistoryRange } from "../history";
 import { insightsConfigured } from "../insights/types";
+import { fixedPrice as fixedPriceInfo, priceInfo, rateSource, readPrices } from "../insights/price";
 import { capacityFor, fetchBootLogNow, storedBootLog } from "../insights/ondemand";
-import { FEEDS, PIP_COLUMNS, VITALS_COLUMNS, VM_COLUMNS } from "../../../shared/azureMetrics";
+import { feedStatus, feedStatuses, metricNames, readChanges, readMetrics, readSummary } from "../insights/read";
+import { regionalEvents } from "../insights/feeds/serviceHealth";
 import type {
   AzureChangesResponse,
   AzureDiagnosticsResponse,
@@ -41,8 +40,6 @@ import type {
   AzureSummaryResponse,
   BootLogResponse,
   CapacityCheck,
-  FeedId,
-  FeedStatus,
   PriceInfo,
 } from "../../../shared/api";
 import type { Env } from "../env";
@@ -57,6 +54,7 @@ const METRIC_RANGES = ["1h", "24h", "7d", "30d"] as const;
 const CHANGE_RANGES = ["24h", "7d", "30d", "90d"] as const;
 const WHO = ["all", "others", "wgadmin"] as const;
 const HEALTH_RANGES = ["7d", "30d", "90d"] as const;
+const HEALTH_RANGE_DAYS: Record<(typeof HEALTH_RANGES)[number], number> = { "7d": 7, "30d": 30, "90d": 90 };
 const SIZE_RE = /^Standard_[A-Za-z0-9_]{1,40}$/;
 
 type Rule = { values?: readonly string[]; test?: (v: string) => boolean; required?: boolean; default?: string; what: string };
@@ -84,13 +82,6 @@ const oneOf = (values: readonly string[], d?: string, required = false): Rule =>
 const REGION: Rule = { test: (v) => Object.hasOwn(REGIONS, v), required: true, what: "an Azure region wg-admin offers (for example uksouth)" };
 const SIZE: Rule = { test: (v) => SIZE_RE.test(v), required: true, what: "a VM size such as Standard_B1s" };
 
-/** Each feed's status before anything has run. */
-function feedStatuses(env: Env): FeedStatus[] {
-  const status = insightsConfigured(env) ? "idle" : "not_configured";
-  return FEEDS.map((f) => ({ id: f.id, title: f.title, status, lastOkAt: null, error: null, cadenceMin: f.cadenceMin }));
-}
-const feed = (env: Env, id: FeedId): FeedStatus => feedStatuses(env).find((f) => f.id === id)!;
-
 /** The fixed rates as a price, and why they apply (insights/price.ts). `cfg` must carry the fixed rates (fixedConfig). */
 export function fixedPrice(cfg: Config, region: string, size: string, reason: string = NO_PRICE): PriceInfo {
   return fixedPriceInfo(cfg, region, size, reason);
@@ -104,44 +95,38 @@ export function registerAzure(api: Hono<ApiEnv>): void {
   api.get("/azure/summary", async (c) => {
     const q = readQuery(c, {});
     if (q instanceof Response) return q;
-    const cfg = await effectiveConfig(c.env);
-    const out: AzureSummaryResponse = {
-      configured: insightsConfigured(c.env),
-      region: { id: cfg.region, name: azureRegionName(cfg.region) },
-      feeds: feedStatuses(c.env),
-      health: null,
-      maintenance: [],
-      serviceIssues: [],
-      vitals: null,
-      agent: "none",
-      latest: { cpuPct: null, creditsLeft: null, memFreeBytes: null, vipAvailPct: null, underDdos: null, at: null },
-    };
+    const [cfg, snap] = await Promise.all([effectiveConfig(c.env), getSnapshot(c.env)]);
+    const out: AzureSummaryResponse = await readSummary(c.env, cfg, snap, new Date());
     return c.json(out);
   });
 
-  api.get("/azure/metrics", (c) => {
+  api.get("/azure/metrics", async (c) => {
     const q = readQuery(c, { resource: oneOf(["vm", "pip", "vitals"], undefined, true), range: oneOf(METRIC_RANGES, undefined, true) });
     if (q instanceof Response) return q;
     const resource = q.resource as AzureMetricsResponse["resource"];
     const range = q.range as HistoryRange;
-    const columns = ["t", ...(resource === "vm" ? VM_COLUMNS : resource === "pip" ? PIP_COLUMNS : VITALS_COLUMNS)];
     // Azure's metrics are 5-minute slots; the vitals follow hist_vm's steps.
-    const step = resource === "vitals" ? RANGE_STEP[range] : Math.max(300, RANGE_STEP[range]);
-    const out: AzureMetricsResponse = { resource, range, step, columns, points: [] };
+    const m = await readMetrics(c.env.DB, resource, range, new Date());
+    const out: AzureMetricsResponse = { resource, range, step: m.step, columns: m.columns, points: m.points };
     return c.json(out);
   });
 
-  api.get("/azure/changes", (c) => {
+  api.get("/azure/changes", async (c) => {
     const q = readQuery(c, { range: oneOf(CHANGE_RANGES, "7d"), who: oneOf(WHO, "all") });
     if (q instanceof Response) return q;
-    const out: AzureChangesResponse = { range: q.range as AzureChangesResponse["range"], feed: feed(c.env, "activity"), rows: [] };
+    const now = new Date();
+    const range = q.range as AzureChangesResponse["range"];
+    const out: AzureChangesResponse = { range, feed: await feedStatus(c.env, await getSnapshot(c.env), "activity", now), rows: await readChanges(c.env.DB, range, q.who as "all" | "others" | "wgadmin", now) };
     return c.json(out);
   });
 
-  api.get("/azure/service-health", (c) => {
+  api.get("/azure/service-health", async (c) => {
     const q = readQuery(c, { range: oneOf(HEALTH_RANGES, "30d") });
     if (q instanceof Response) return q;
-    const out: AzureServiceHealthResponse = { events: [], feed: feed(c.env, "serviceHealth") };
+    const now = new Date();
+    const cfg = await effectiveConfig(c.env);
+    const from = new Date(now.getTime() - HEALTH_RANGE_DAYS[q.range as (typeof HEALTH_RANGES)[number]] * 86_400_000).toISOString();
+    const out: AzureServiceHealthResponse = { events: await regionalEvents(c.env.DB, azureRegionName(cfg.region), from), feed: await feedStatus(c.env, await getSnapshot(c.env), "serviceHealth", now) };
     return c.json(out);
   });
 
@@ -160,10 +145,10 @@ export function registerAzure(api: Hono<ApiEnv>): void {
     return c.json(out);
   });
 
-  api.get("/azure/diagnostics", (c) => {
+  api.get("/azure/diagnostics", async (c) => {
     const q = readQuery(c, {});
     if (q instanceof Response) return q;
-    const out: AzureDiagnosticsResponse = { configured: insightsConfigured(c.env), feeds: feedStatuses(c.env).map((f) => ({ ...f, lastTryAt: null, nextDueAt: null })), metricNames: { vm: null, pip: null } };
+    const out: AzureDiagnosticsResponse = { configured: insightsConfigured(c.env), feeds: await feedStatuses(c.env, await getSnapshot(c.env), new Date()), metricNames: await metricNames(c.env.DB) };
     return c.json(out);
   });
 

@@ -166,6 +166,8 @@ describe("collector contract", () => {
 // ── Routes (spec section 8) ─────────────────────────────────────────────────
 
 const ISO = expect.stringMatching(/^\d{4}-\d\d-\d\dT/);
+/** A feed's cadence now (X1): the activity feed reads hourly while nothing is deployed and no run ended in the last 2 hours. */
+const nowCadence = (f: { id: string; cadenceMin: number | null }) => (f.id === "activity" ? 60 : f.cadenceMin);
 const feedShape = (status: string) => ({ id: expect.any(String), title: expect.any(String), status, lastOkAt: null, error: null, cadenceMin: expect.any(Number) });
 
 /** The routes with the query each needs, and the shape it answers before any data exists. */
@@ -177,7 +179,7 @@ function routes(status: string, configured: boolean): [string, unknown][] {
       {
         configured,
         region: { id: "uksouth", name: "UK South" },
-        feeds: FEEDS.map((f) => ({ ...feed, id: f.id, title: f.title, cadenceMin: f.cadenceMin })),
+        feeds: FEEDS.map((f) => ({ ...feed, id: f.id, title: f.title, cadenceMin: nowCadence(f) })),
         health: null,
         maintenance: [],
         serviceIssues: [],
@@ -200,7 +202,7 @@ function routes(status: string, configured: boolean): [string, unknown][] {
       "/azure/price?region=uksouth&size=Standard_B1s",
       { region: "uksouth", size: "Standard_B1s", vmGbpPerHour: null, diskGbpPerHour: null, ipGbpPerHour: null, totalGbpPerHour: 0.0157, standbyGbpPerHour: 0.0064, fetchedAt: null, stale: false, source: "fixed", reason: expect.any(String) },
     ],
-    ["/azure/diagnostics", { configured, feeds: FEEDS.map((f) => ({ ...feed, id: f.id, title: f.title, cadenceMin: f.cadenceMin, lastTryAt: null, nextDueAt: null })), metricNames: { vm: null, pip: null } }],
+    ["/azure/diagnostics", { configured, feeds: FEEDS.map((f) => ({ ...feed, id: f.id, title: f.title, cadenceMin: nowCadence(f), lastTryAt: null, nextDueAt: null })), metricNames: { vm: null, pip: null } }],
     ["/azure/bootlog", { fetchedAt: null, bytes: 0, truncated: false, redactions: 0, text: null, reason: expect.any(String) }],
   ];
 }

@@ -56,7 +56,7 @@ describe("health feed", () => {
     await allNotDue(env);
     await setFeed(env, "health", { status: "ok", next_due_at: ago(1) });
     await runInsights(env, NOW);
-    const arm = callsTo(az, "management.azure.com");
+    const arm = callsTo(az, "management.azure.com").filter((c) => !c.url.includes("metricDefinitions")); // metric names are due too: none stored yet
     expect(arm.map((c) => decodeURIComponent(c.u.pathname + c.u.search))).toEqual([
       "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.ResourceHealth/availabilityStatuses/current?api-version=2022-10-01",
       "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg?api-version=2024-07-01&$expand=instanceView",
