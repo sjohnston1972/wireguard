@@ -306,11 +306,12 @@ test("prefsPuts sends each page with the version the server holds now, as a sche
   ]);
 });
 
-test("the seed script offers the Worker's scenarios, insights included", async () => {
+test("the seed script offers the Worker's scenarios, insights and labs included", async () => {
   const { SCENARIOS } = await import("../seed-scenarios.mjs");
   const { readFileSync } = await import("node:fs");
   const worker = readFileSync(new URL("../../worker/src/devseed.ts", import.meta.url), "utf8");
   const listed = JSON.parse(worker.match(/export const SCENARIOS = (\[[^\]]*\])/)[1]);
   assert.deepEqual([...SCENARIOS].sort(), [...listed].sort());
   assert.ok(SCENARIOS.includes("insights"));
+  assert.ok(SCENARIOS.includes("labs"));
 });

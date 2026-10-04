@@ -79,7 +79,8 @@ function fakeKV(): KVNamespace {
 
 // ── Durable Object ────────────────────────────────────────────────────────
 
-function fakeDO(env: Env): DurableObjectNamespace {
+/** One RunLock instance with its own in-memory storage, handling one request at a time. */
+function fakeInstance(env: Env): { fetch: (url: string, init?: RequestInit) => Promise<Response> } {
   const data = new Map<string, unknown>();
   const storage = {
     async get(k: string) {
@@ -104,19 +105,62 @@ function fakeDO(env: Env): DurableObjectNamespace {
     queue = next.catch(() => undefined);
     return next;
   };
+  return { fetch: serial };
+}
+
+/** The RunLock namespace: one instance per name, as Cloudflare keeps them ("singleton" for the gateway, "lab:<id>" per lab). */
+function fakeDO(env: Env): DurableObjectNamespace {
+  const instances = new Map<string, ReturnType<typeof fakeInstance>>();
   return {
-    idFromName: () => "singleton",
-    get: () => ({ fetch: serial }),
+    idFromName: (name: string) => name,
+    get: (id: string) => {
+      if (!instances.has(id)) instances.set(id, fakeInstance(env));
+      return instances.get(id)!;
+    },
   } as unknown as DurableObjectNamespace;
 }
 
 // ── The outside world ─────────────────────────────────────────────────────
 
+/**
+ * Azure as the lab code sees it (labs spec §7.5, §8.2, §9.4): what the orphan
+ * sweep lists, what the ready check and the modal's resources read, the
+ * permission check's role assignments and the per-lab cost rows. Starts empty.
+ */
+export interface LabAzure {
+  /** Resource groups in the subscription (any name: rg-lab-*, NetworkWatcherRG, rg-wg-ondemand). */
+  groups: { name: string; location?: string; createdTime?: string; tags?: Record<string, string> }[];
+  managementGroups: { name: string; displayName?: string }[];
+  /** Custom role definitions (the list is filtered to CustomRole by the caller's $filter). */
+  roleDefinitions: { id: string; roleName: string; type?: "CustomRole" | "BuiltInRole" }[];
+  policyDefinitions: { name: string; displayName?: string; policyType?: string }[];
+  policyAssignments: { name: string; displayName?: string; scope: string }[];
+  /** Resources, by group: GET .../resourceGroups/<rg>/resources lists those whose resourceGroup is <rg>. */
+  resources: { name: string; type: string; resourceGroup: string; provisioningState?: string }[];
+  /** Role assignments (the permission check filters by principalId). */
+  roleAssignments: { principalId: string; roleDefinitionId: string; scope: string }[];
+  /** Cost Management rows for the query grouped by ResourceGroupName: one per day and group, in £. */
+  costRows: { day: string; rg: string; gbp: number }[];
+}
+
+/** Microsoft Graph as the lab code sees it: Entra users and groups. `fail` answers every Graph call with that status. */
+export interface FakeGraph {
+  users: { id: string; displayName: string; userPrincipalName: string }[];
+  groups: { id: string; displayName: string; mailNickname?: string }[];
+  fail?: number;
+}
+
 export interface World {
-  /** Every workflow dispatch: action and parsed payload. */
-  dispatches: { action: string; payload: Record<string, unknown> }[];
-  /** GitHub runs by numeric id, with the title the Worker searches for. */
-  ghRuns: Map<number, { id: number; display_title: string; status: string; conclusion: string | null; html_url: string; created_at: string; updated_at?: string }>;
+  /** Every workflow dispatch: the workflow file ("wg.yml", "lab.yml"), action and parsed payload. */
+  dispatches: { workflow: string; action: string; payload: Record<string, unknown> }[];
+  /** GitHub runs by numeric id, with the title the Worker searches for. `workflow` is the file (absent = the gateway's). */
+  ghRuns: Map<number, { id: number; display_title: string; status: string; conclusion: string | null; html_url: string; created_at: string; updated_at?: string; workflow?: string }>;
+  /** Labs: Azure resource groups, management groups, definitions, assignments, resources and cost rows. */
+  labAzure: LabAzure;
+  /** Labs: Entra users and groups. */
+  graph: FakeGraph;
+  /** Every outbound call the Worker made, in order (for subrequest budgets: a lab watch makes at most 20). */
+  calls: { method: string; host: string; path: string }[];
   /** Azure: does the resource group exist, and the VM's power state. */
   azure: { rg: boolean; power: string; ip: string };
   /** VM power calls made: "deallocate" | "start". */
@@ -140,7 +184,18 @@ export interface World {
 }
 
 export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World } {
-  const world: World = { dispatches: [], ghRuns: new Map(), azure: { rg: false, power: "running", ip: "20.0.0.10" }, powerCalls: [], notes: [], jobs: new Map(), logs: new Map() };
+  const world: World = {
+    dispatches: [],
+    ghRuns: new Map(),
+    labAzure: { groups: [], managementGroups: [], roleDefinitions: [], policyDefinitions: [], policyAssignments: [], resources: [], roleAssignments: [], costRows: [] },
+    graph: { users: [], groups: [] },
+    calls: [],
+    azure: { rg: false, power: "running", ip: "20.0.0.10" },
+    powerCalls: [],
+    notes: [],
+    jobs: new Map(),
+    logs: new Map(),
+  };
   let nextGh = 1000;
   const env = {
     PUBLIC_URL: "https://wg-admin.example",
@@ -186,18 +241,27 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const method = (init?.method ?? "GET").toUpperCase();
     const u = new URL(url);
+    world.calls.push({ method, host: u.hostname, path: u.pathname + u.search });
 
     // GitHub
     if (u.hostname === "api.github.com") {
       if (u.pathname.endsWith("/dispatches")) {
         const body = JSON.parse(String(init?.body));
         const payload = JSON.parse(body.inputs.payload);
-        world.dispatches.push({ action: body.inputs.action, payload });
+        const workflow = decodeURIComponent(u.pathname.match(/\/actions\/workflows\/([^/]+)\/dispatches$/)?.[1] ?? "");
+        world.dispatches.push({ workflow, action: body.inputs.action, payload });
         const id = nextGh++;
-        world.ghRuns.set(id, { id, display_title: `wg ${body.inputs.action} ${payload.run_id}`, status: "in_progress", conclusion: null, html_url: `https://github.com/run/${id}`, created_at: new Date().toISOString() });
+        // Each workflow's run-name: wg.yml "wg <action> <run id>", lab.yml "lab <action> <lab id> <run id>".
+        const title = workflow === "lab.yml" ? `lab ${body.inputs.action} ${payload.lab_id} ${payload.run_id}` : `wg ${body.inputs.action} ${payload.run_id}`;
+        world.ghRuns.set(id, { id, display_title: title, status: "in_progress", conclusion: null, html_url: `https://github.com/run/${id}`, created_at: new Date().toISOString(), workflow });
         return new Response(null, { status: 204 });
       }
-      if (/\/actions\/workflows\/.+\/runs$/.test(u.pathname)) return json({ workflow_runs: [...world.ghRuns.values()].reverse() });
+      const listed = u.pathname.match(/\/actions\/workflows\/([^/]+)\/runs$/);
+      if (listed) {
+        // A workflow lists only its own runs; a run without `workflow` is the gateway's.
+        const lab = decodeURIComponent(listed[1]) === "lab.yml";
+        return json({ workflow_runs: [...world.ghRuns.values()].filter((r) => (r.workflow === "lab.yml") === lab).reverse() });
+      }
       const run = u.pathname.match(/\/actions\/runs\/(\d+)$/);
       if (run) return world.ghRuns.has(Number(run[1])) ? json(world.ghRuns.get(Number(run[1]))) : json({}, 404);
       const jobs = u.pathname.match(/\/actions\/runs\/(\d+)\/jobs$/);
@@ -209,8 +273,26 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
     }
 
     // Azure
-    if (u.hostname === "login.microsoftonline.com") return json({ access_token: "arm", expires_in: 3600 });
+    if (u.hostname === "login.microsoftonline.com") return json({ access_token: String(init?.body ?? "").includes("graph.microsoft.com") ? "graph" : "arm", expires_in: 3600 });
+
+    // Microsoft Graph (labs): users and groups, with startswith(displayName,'x') honoured.
+    if (u.hostname === "graph.microsoft.com") {
+      if (world.graph.fail) return json({ error: { code: "Authorization_RequestDenied", message: "Insufficient privileges" } }, world.graph.fail);
+      const kind = u.pathname.match(/^\/v1\.0\/(users|groups)$/)?.[1] as "users" | "groups" | undefined;
+      if (kind && method === "GET") {
+        const starts = (u.searchParams.get("$filter") ?? "").match(/startswith\(displayName,\s*'([^']*)'\)/i)?.[1];
+        const top = Number(u.searchParams.get("$top") ?? 0);
+        let value: { displayName: string }[] = world.graph[kind];
+        if (starts !== undefined) value = value.filter((x) => x.displayName.toLowerCase().startsWith(starts.toLowerCase()));
+        if (top > 0) value = value.slice(0, top);
+        return json({ value });
+      }
+      return json({ error: { code: "Request_ResourceNotFound" } }, 404);
+    }
+
     if (u.hostname === "management.azure.com") {
+      const lab = labArm(world.labAzure, method, u, init);
+      if (lab) return lab;
       const vmOp = u.pathname.match(/virtualMachines\/vm-wg\/(deallocate|start)$/);
       if (vmOp && method === "POST") {
         world.powerCalls.push(vmOp[1]);
@@ -248,6 +330,49 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
   });
 
   return { env, world };
+}
+
+/**
+ * ARM answers for the lab code, from world.labAzure; null when the call is
+ * not one of them (the gateway's ARM answers then apply). Paths are matched
+ * case-insensitively, as ARM does.
+ */
+function labArm(az: LabAzure, method: string, u: URL, init?: RequestInit): Response | null {
+  const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
+  const p = u.pathname.toLowerCase();
+  const sub = (rest: string) => new RegExp(`^/subscriptions/[^/]+${rest}$`);
+  if (method === "GET" && sub("/resourcegroups").test(p)) {
+    return json({ value: az.groups.map((g) => ({ id: `/subscriptions/sub/resourceGroups/${g.name}`, name: g.name, location: g.location ?? "uksouth", tags: g.tags ?? {}, createdTime: g.createdTime ?? null, properties: { provisioningState: "Succeeded" } })) });
+  }
+  const inGroup = p.match(sub("/resourcegroups/([^/]+)/resources"));
+  if (method === "GET" && inGroup) {
+    const rg = decodeURIComponent(inGroup[1]);
+    return json({ value: az.resources.filter((r) => r.resourceGroup.toLowerCase() === rg).map((r) => ({ id: `/subscriptions/sub/resourceGroups/${r.resourceGroup}/providers/${r.type}/${r.name}`, name: r.name, type: r.type, properties: { provisioningState: r.provisioningState ?? "Succeeded" } })) });
+  }
+  if (method === "GET" && p === "/providers/microsoft.management/managementgroups") {
+    return json({ value: az.managementGroups.map((m) => ({ id: `/providers/Microsoft.Management/managementGroups/${m.name}`, name: m.name, properties: { displayName: m.displayName ?? m.name } })) });
+  }
+  if (method === "GET" && sub("/providers/microsoft.authorization/roledefinitions").test(p)) {
+    const custom = /CustomRole/i.test(u.searchParams.get("$filter") ?? "");
+    return json({ value: az.roleDefinitions.filter((r) => !custom || (r.type ?? "CustomRole") === "CustomRole").map((r) => ({ id: `/subscriptions/sub/providers/Microsoft.Authorization/roleDefinitions/${r.id}`, name: r.id, properties: { roleName: r.roleName, type: r.type ?? "CustomRole" } })) });
+  }
+  if (method === "GET" && sub("/providers/microsoft.authorization/policydefinitions").test(p)) {
+    return json({ value: az.policyDefinitions.map((d) => ({ id: `/subscriptions/sub/providers/Microsoft.Authorization/policyDefinitions/${d.name}`, name: d.name, properties: { displayName: d.displayName ?? d.name, policyType: d.policyType ?? "Custom" } })) });
+  }
+  if (method === "GET" && sub("/providers/microsoft.authorization/policyassignments").test(p)) {
+    return json({ value: az.policyAssignments.map((a) => ({ id: `${a.scope}/providers/Microsoft.Authorization/policyAssignments/${a.name}`, name: a.name, properties: { displayName: a.displayName ?? a.name, scope: a.scope } })) });
+  }
+  if (method === "GET" && sub("/providers/microsoft.authorization/roleassignments").test(p)) {
+    const who = (u.searchParams.get("$filter") ?? "").match(/principalId\s+eq\s+'([^']+)'/i)?.[1];
+    return json({ value: az.roleAssignments.filter((a) => !who || a.principalId === who).map((a, i) => ({ id: `${a.scope}/providers/Microsoft.Authorization/roleAssignments/ra-${i}`, name: `ra-${i}`, properties: a })) });
+  }
+  if (method === "POST" && p.includes("/providers/microsoft.costmanagement/query")) {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { dataset?: { grouping?: { name: string }[] } };
+    if (!body.dataset?.grouping?.some((g) => g.name === "ResourceGroupName")) return null;
+    const d = (day: string) => Number(day.replace(/-/g, ""));
+    return json({ properties: { columns: [{ name: "Cost" }, { name: "UsageDate" }, { name: "ResourceGroupName" }, { name: "Currency" }], rows: az.costRows.map((r) => [r.gbp, d(r.day), r.rg, "GBP"]) } });
+  }
+  return null;
 }
 
 /** The GitHub run id for the Worker's latest dispatch. */

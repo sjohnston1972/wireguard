@@ -22,6 +22,7 @@ import { rotationStatus, shortKey } from "../keyrotation";
 import { serverPublicKey } from "../peers";
 import { lastNotifyError } from "../notify";
 import { priceInfo, rateSource, readPrices } from "../insights/price";
+import { labsSettingsFrom } from "../../../shared/labs";
 import type { ApiOk, SettingsResponse } from "../../../shared/api";
 
 const ok = (c: Context<ApiEnv>, message: string) => {
@@ -49,6 +50,7 @@ export function registerSettings(api: Hono<ApiEnv>): void {
       values: {
         region: cfg.region, vmSize: cfg.vmSize, testVm: cfg.testVm, autoDestroyDefaultHours: cfg.autoDestroyDefaultHours, expiryAction: cfg.expiryAction, standbyMaxDays: cfg.standbyMaxDays,
         idleDestroyMinutes: cfg.idleDestroyMinutes, monthlyBudgetGbp: cfg.monthlyBudgetGbp, hourlyRateGbp: cfg.hourlyRateGbp, standbyRateGbp: cfg.standbyRateGbp, sshAllowedCidr: cfg.sshAllowedCidr, firewallDefault: cfg.firewallDefault,
+        ...labsSettingsFrom(stored),
       },
       // Only the settings the screen can change; internal ones stay inside.
       overrides: Object.fromEntries(Object.entries(stored).filter(([k]) => Object.hasOwn(OVERRIDABLE, k))),

@@ -34,7 +34,8 @@ async function columns(env: Env, table: string): Promise<string[]> {
 describe("migration 0019", () => {
   it("migration 0019 creates the az tables, hist_az_vm, hist_az_pip and the hist_vm vitals columns", async () => {
     const files = readdirSync(new URL("../migrations/", import.meta.url)).filter((f) => f.endsWith(".sql")).sort();
-    expect(files.at(-1)).toBe("0019_azure_insights.sql");
+    // 0019 is followed only by later plans' migrations (0020_labs.sql).
+    expect(files.indexOf("0019_azure_insights.sql")).toBe(files.indexOf("0020_labs.sql") - 1);
     const { env } = makeEnv();
     expect(await columns(env, "hist_vm")).toEqual(expect.arrayContaining(["mem_used_pct", "disk_used_pct", "steal_pct", "conntrack_pct", "net_rtt_ms", "net_loss_pct"]));
     expect(await columns(env, "hist_az_vm")).toEqual(["res", "t", "cpu_avg", "cpu_max", "mem_free_min", "net_in", "net_out", "disk_read", "disk_write", "disk_rops", "disk_wops", "credits_min", "credits_used", "avail_avg", "os_iops_max", "os_bw_max"]);

@@ -48,6 +48,7 @@ export interface Peer {
   expires_at?: string | null; // ISO time a guest client stops working; null = never
   last_handshake_at?: string | null; // last real connection, kept across tear-downs (to within an hour)
   needs_config?: number; // 1 after a server key rotation, until its first handshake with the new key
+  labs_config_due?: number; // 1 when its config predates the lab pool in AllowedIPs (migration 0020), until its config is fetched or edited
 }
 
 export interface Alert {

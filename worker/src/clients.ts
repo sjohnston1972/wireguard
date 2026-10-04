@@ -50,6 +50,8 @@ export interface ClientView extends Peer {
   expiresSoon: boolean;
   isSite: boolean;
   roam: Roam | null;
+  /** Its config predates the lab pool in AllowedIPs: "config out of date: get config" (peers.labs_config_due). */
+  labsConfigDue: boolean;
 }
 
 export interface ClientKpis {
@@ -81,6 +83,7 @@ export function clientView(p: Peer, snap: Snapshot, cfg: { subnet: string; subne
     expiresSoon: !!p.expires_at && !expired && Date.parse(p.expires_at) - now <= EXPIRING_SOON_MS,
     isSite: !!p.routes,
     roam: snap.roams?.[p.public_key] ?? null,
+    labsConfigDue: !!p.labs_config_due,
   };
 }
 

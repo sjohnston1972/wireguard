@@ -141,6 +141,7 @@ export function overviewFixture(state = "running", over: { auto_destroy_at?: str
     stateBackups: null,
     typicalSeconds: { deploy: 250, destroy: 120 },
     capacity: null,
+    labs: { running: [], gbpH: 0, rePeer: 0 },
   };
 }
 
@@ -171,6 +172,7 @@ function clientView(over: Partial<ClientView> & Pick<ClientView, "id" | "name" |
     expiresSoon: false,
     isSite: false,
     roam: null,
+    labsConfigDue: false,
     ...over,
   };
 }
@@ -319,6 +321,7 @@ export const costFixture = (over: Partial<CostResponse> = {}): CostResponse => (
   sessions: [],
   insights: [],
   breakdown: null,
+  labs: [],
   ...over,
 });
 
@@ -337,6 +340,8 @@ export const settingsFixture = (over: Partial<SettingsResponse> = {}): SettingsR
     standbyRateGbp: 0.002,
     sshAllowedCidr: "",
     firewallDefault: "deny",
+    labsMaxRunning: 3,
+    labsDefaultPeering: true,
   },
   overrides: {},
   overridable: ["region", "vm_size", "auto_destroy_default_hours", "idle_destroy_minutes", "monthly_budget_gbp", "hourly_rate_gbp", "standby_rate_gbp", "expiry_action", "standby_max_days", "test_vm", "firewall_default", "ssh_allowed_cidr"],

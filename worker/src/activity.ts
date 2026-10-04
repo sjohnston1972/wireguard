@@ -7,6 +7,7 @@
 
 import type { Run, Alert, AuditEntry } from "./db";
 import type { Config } from "./env";
+import type { LabAction } from "../../shared/api";
 
 export function sessionCost(run: Run, runs: Run[], cfg: Config, now = Date.now()): number | null {
   if (run.action !== "apply" || run.status !== "success" || !run.finished_at) return null;
@@ -99,6 +100,12 @@ export interface RunRow {
   error: string | null;
   durationSeconds: number | null;
   sessionCostGbp: number | null;
+  /**
+   * Set for a lab run (lab_runs, id "lab-..."): the lab and its own action. Such a
+   * row's `action` is "apply" for deploy, peer and test and "destroy" for destroy
+   * and unpeer, so a gateway-only view still reads it. Absent or null: a gateway run.
+   */
+  lab?: { id: string; title: string; action: LabAction } | null;
   /** Why it ran: the stated reason, else "watchman" for the watchman's own runs, else "dashboard". */
   source: string;
 }

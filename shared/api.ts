@@ -16,6 +16,7 @@ import type { ActivityEvent, ActivityKpis, ActivityRange, EventType, RunRow } fr
 import type { RotationStatus } from "../worker/src/keyrotation";
 import type { BackupStatus, ExportTable } from "../worker/src/backup";
 import type { PageId } from "./widgets";
+import type { LabCostItem, LabDef, LabExam, LabLevel, LabType, PeeringMode, ReadmeBlock, LAB_ACTIONS, LAB_END_REASONS, LAB_PEERINGS, LAB_SESSION_STATES, LAB_WARNING_KINDS } from "./labs";
 
 /** Every refusal or failure. `field` names the input at fault, for a form. */
 export interface ApiError {
@@ -753,4 +754,293 @@ export interface AzureDiagnosticsResponse {
   configured: boolean;
   feeds: (FeedStatus & { lastTryAt: string | null; nextDueAt: string | null })[];
   metricNames: { vm: string[] | null; pip: string[] | null };
+}
+
+// ── Labs (spec 2026-10-04-labs-design.md §7.2, §10; plan L0) ──────────────
+// Every route sits behind the login and the same-origin check and reads D1,
+// the KV records the lab watch and the orphan sweep leave, and the bundled
+// catalogue; never Azure or the workflow host, except POST
+// /labs/permissions/check and GET /labs/:id `resources` while a lab runs.
+// "No data" is null, never 0. Times are ISO UTC. A body with a key the route
+// does not take is refused (400 bad_input, `field` = that key).
+
+export type LabSessionState = (typeof LAB_SESSION_STATES)[number];
+export type LabPeering = (typeof LAB_PEERINGS)[number];
+export type LabEndReason = (typeof LAB_END_REASONS)[number];
+export type LabAction = (typeof LAB_ACTIONS)[number];
+export type LabWarningKind = (typeof LAB_WARNING_KINDS)[number];
+
+/**
+ * One deploy-modal warning (§9.2). `overridable`: "Deploy anyway" is offered
+ * (budget: send overBudgetOk; capacity: send capacityOk). pricey and slow are
+ * information (overridable false, never blocking); unavailable blocks Deploy.
+ */
+export interface LabWarning {
+  kind: LabWarningKind;
+  message: string;
+  overridable: boolean;
+}
+
+/** A lab run (lab_runs), without its secrets (token hash, admin password, payload). */
+export interface LabRunRow {
+  id: string;
+  sessionId: string;
+  labId: string;
+  action: LabAction;
+  /** queued | running | succeeded | failed | cancelled, as the gateway's runs. */
+  status: string;
+  requestedAt: string;
+  requestedBy: string | null;
+  reason: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  githubRunUrl: string | null;
+  error: string | null;
+  /** Steps done of the steps this action runs (LAB_STEPS filtered by `on`), for "Deploying 3/16". Null before the first step. */
+  step: { done: number; of: number; name: string | null } | null;
+}
+
+/** A session (lab_sessions), as every lab screen shows it. Never the admin password. */
+export interface LabSession {
+  id: string;
+  labId: string;
+  labVersion: number;
+  /** The lab's title, or its id when it has left the catalogue. */
+  title: string;
+  state: LabSessionState;
+  /** A release test (§11.2). */
+  test: boolean;
+  region: string;
+  secondaryRegion: string | null;
+  slot: number | null;
+  cidr: string | null;
+  peering: LabPeering;
+  requestedAt: string;
+  readyAt: string | null;
+  endedAt: string | null;
+  autoDestroyAt: string | null;
+  maxUntil: string;
+  estGbpH: number;
+  /** £ so far: the estimate while live; once ended, the estimate until Azure has the day after it ended, then the actual (`costBasis`). */
+  costGbp: number | null;
+  costBasis: "estimate" | "actual";
+  endReason: LabEndReason | null;
+  note: string | null;
+  /** The lab's Terraform outputs once ready (no secrets; users are names, not passwords). */
+  outputs: { privateIps: Record<string, string>; connect: string[]; users: Record<string, string> } | null;
+  /** What the clean check found left behind (ended_dirty), else null. */
+  leftovers: string[] | null;
+  /** The run in progress (deploy, destroy, peer, unpeer or test), else null. */
+  activeRun: LabRunRow | null;
+}
+
+/** A release test (lab_release_tests). A version is released when its newest test has result "pass" (which needs clean). */
+export interface LabReleaseTest {
+  labId: string;
+  version: number;
+  at: string;
+  runId: string;
+  result: "pass" | "fail";
+  clean: boolean;
+  deploySeconds: number | null;
+  destroySeconds: number | null;
+  estGbp: number | null;
+  leftovers: string[];
+}
+
+/** A catalogue card (GET /labs). */
+export interface LabCard {
+  id: string;
+  number: number;
+  version: number;
+  title: string;
+  summary: string;
+  exam: LabExam;
+  skillAreas: string[];
+  level: LabLevel;
+  type: LabType;
+  prerequisites: string[];
+  peering: PeeringMode;
+  /** £/h now (fresh retail prices where the lab has them, else authored): estimateGbpH. */
+  estGbpH: number;
+  /** costMarker(estGbpH, deploy_min). */
+  marker: "£" | "££" | "£££";
+  /** The item that makes it pricey, with its £/h; null when lab.yaml's pricey is null. */
+  pricey: { item: string; gbpH: number } | null;
+  timing: { deployMin: number; destroyMin: number; sessionH: number; maxH: number };
+  /** The live session (deploying, running, failed or tearing_down), else null. */
+  running: LabSession | null;
+  lastSession: LabSession | null;
+  /** Sessions of LAB_COVERAGE_MIN minutes or more, ever ("Ran 2×"). */
+  runs: number;
+  lastReleaseTest: LabReleaseTest | null;
+  /** The current version has a passing release test; false shows "Untested v<version>". */
+  released: boolean;
+  /** Why Deploy is disabled (permissions, no free slot, labs_max_running); null when it can deploy. */
+  unavailable: string | null;
+}
+
+/** Settings → Labs → Check permissions (§8.2): each null until checked. The Worker keeps it in KV `labs:permissions`. */
+export interface LabPermissions {
+  checkedAt: string | null;
+  /** The governance custom role is assigned to the service principal. */
+  role: boolean | null;
+  /** Graph can read users (/users?$top=1). */
+  users: boolean | null;
+  /** Graph can read groups (/groups?$top=1). */
+  groups: boolean | null;
+  /** What failed, in plain words; null when all passed or never checked. */
+  message: string | null;
+}
+
+/** Leftovers the hourly sweep found for one lab (§7.5). The Worker keeps the list in KV `labs:orphans` (LabOrphan[]). */
+export interface LabOrphan {
+  /** The catalogue id the names belong to (labIdFromName); null when it cannot be told. */
+  labId: string | null;
+  names: string[];
+  /** First seen by the sweep. */
+  since: string;
+}
+
+/** GET /api/v1/labs */
+export interface LabsResponse {
+  now: string;
+  labs: LabCard[];
+  /** Live sessions (deploying, running, failed, tearing_down), oldest first: the running strip. */
+  running: LabSession[];
+  slots: { used: number; total: number };
+  maxRunning: number;
+  permissions: LabPermissions;
+  orphans: LabOrphan[];
+}
+
+/** One priced line of GET /labs/:id. */
+export interface LabCostLine extends LabCostItem {
+  /** £/h for one, as used: the fresh retail price, else the authored gbp_h. */
+  gbpH: number;
+  source: "azure" | "authored";
+  /** Seconds since the retail price was fetched; null for an authored price (none, or over 7 days old). */
+  priceAge: number | null;
+}
+
+/** GET /api/v1/labs/:id (404 not_found for an id not in the catalogue). */
+export interface LabDetail {
+  card: LabCard;
+  readme: ReadmeBlock[];
+  /** Each item priced, and the £/h total (= card.estGbpH). */
+  cost: { items: LabCostLine[]; gbpH: number };
+  connectivity: LabDef["connectivity"];
+  identity: LabDef["identity"];
+  /** Warnings for a deploy now (§9.2); [] while a session is live. */
+  warnings: LabWarning[];
+  /** Deploy form defaults: region from Settings, the peer tick from labs_default_peering (forced on for required, false for off), hours = session_h. */
+  defaults: { region: string; peer: boolean; hours: number };
+  /** The gateway is running or in Standby, so peering can happen now (else "will peer when the gateway is next running"). */
+  gatewayUp: boolean;
+  session: LabSession | null;
+  /** The live session's runs, newest first; [] with no live session. */
+  runs: LabRunRow[];
+  /** Resources in rg-lab-<id>* from ARM while running; null otherwise or when ARM did not answer. */
+  resources: { name: string; type: string; group: string; state: string | null }[] | null;
+  /** The portal page of rg-lab-<id> while a session is live, else null. */
+  portalUrl: string | null;
+}
+
+/** POST /api/v1/labs/:id/deploy. 422 confirm_required for an unconfirmed budget or capacity warning; 409 while the lab's lock is held. */
+export interface LabDeployBody {
+  /** Whole hours, 1 to 12 and at most the lab's max_h. */
+  hours: number;
+  /** Peer to the gateway (ignored for peering off, forced for required). */
+  peer: boolean;
+  /** An Azure region name; default the Settings region. */
+  region?: string;
+  overBudgetOk?: boolean;
+  capacityOk?: boolean;
+}
+
+/** POST /api/v1/labs/:id/extend: whole hours (1 to 12), or to max_until. Refused past max_until, saying until when. */
+export type LabExtendBody = { hours: number } | { toMax: true };
+
+/** POST /api/v1/labs/:id/destroy (also cancels a deploy in progress first). */
+export interface LabDestroyBody {
+  confirm: true;
+}
+
+/** PUT /api/v1/labs/sessions/:sid/note: at most LAB_NOTE_MAX (2000) characters; "" clears it. */
+export interface LabNoteBody {
+  note: string;
+}
+
+/** POST /api/v1/labs/orphans/cleanup: a destroy run for that lab id's leftovers (snake_case as in spec §7.2). */
+export interface LabOrphanCleanupBody {
+  lab_id: string;
+}
+
+/** GET /api/v1/labs/sessions?lab=&limit= (limit 1 to 200, default 50): newest first. */
+export interface LabSessionsResponse {
+  sessions: LabSession[];
+}
+
+/** One exam's coverage (GET /labs/coverage). A lab is "run" with a session of LAB_COVERAGE_MIN minutes or more. */
+export interface LabCoverage {
+  exam: LabExam;
+  areas: { key: string; name: string; labs: { id: string; number: number; title: string; run: boolean }[]; run: number; available: number }[];
+}
+
+/** GET /api/v1/labs/coverage: one entry per exam that has skill areas, AZ-104 first. */
+export interface LabCoverageResponse {
+  exams: LabCoverage[];
+}
+
+/** GET /api/v1/labs/:id/secret: only while the lab's session is running (else 409 not_running). Fetched on Show, never cached. */
+export interface LabSecretResponse {
+  adminPassword: string;
+  /** Entra users the lab made: name -> user principal name (the lab's `users` output). */
+  users: Record<string, string>;
+}
+
+/** POST /api/v1/labs/permissions/check */
+export interface LabPermissionsCheckResponse extends ApiOk {
+  permissions: LabPermissions;
+}
+
+/** One lab's spend this month (CostResponse.labs): Azure's actual so far plus live and not-yet-billed estimates. */
+export interface LabCostRow {
+  labId: string;
+  title: string;
+  /** From lab_cost_days; null when Azure has listed nothing for it this month. */
+  actualGbp: number | null;
+  /** Live sessions' cost so far, plus ended sessions Azure has not caught up with; null when none. */
+  estimateGbp: number | null;
+  totalGbp: number;
+  sessions: number;
+  running: boolean;
+}
+
+/** OverviewResponse.labs: what the banner, the topology and the runningLabs widget need. */
+export interface LabsSummary {
+  /** Live sessions, oldest first. Empty: the Overview looks exactly as before. */
+  running: LabSession[];
+  /** Σ estGbpH of `running`. */
+  gbpH: number;
+  /** Sessions with peering waiting or disconnected ("Re-peer N labs" once the gateway runs). */
+  rePeer: number;
+}
+
+/** GET /api/v1/overview gains `labs`. */
+export interface OverviewResponse {
+  labs: LabsSummary;
+}
+
+/** GET /api/v1/cost gains `labs`: this month per lab, largest first; [] with none. */
+export interface CostResponse {
+  labs: LabCostRow[];
+}
+
+/** Settings → Labs (stored as labs_max_running and labs_default_peering; labsSettingsFrom in shared/labs.ts). */
+export interface SettingsValues {
+  /** 1 to 5, default 3. */
+  labsMaxRunning: number;
+  /** The Deploy form's "Peer to gateway" tick for optional labs; default on. */
+  labsDefaultPeering: boolean;
 }

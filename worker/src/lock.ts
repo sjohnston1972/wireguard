@@ -100,20 +100,34 @@ export class RunLock extends DurableObject<Env> {
   }
 }
 
-function stub(env: Env) {
-  return env.RUN_LOCK.get(env.RUN_LOCK.idFromName("singleton"));
+// ── Which lock ─────────────────────────────────────────────────────────
+// RunLock works for any instance name (labs spec §7.3). "singleton" is the
+// gateway's: its run lock, its snapshot and the one-time links. Each lab has
+// its own instance, "lab:<id>" (labLock), holding only that lab's run lock,
+// so a lab never waits for the gateway or another lab. The one time a lab
+// takes "singleton" is the 10-minute peering lock (§7.6).
+
+export const GATEWAY_LOCK = "singleton";
+/** A lab's RunLock instance name (the same as labLockName in shared/labs.ts). */
+export const labLock = (labId: string): string => `lab:${labId}`;
+
+export type { LockRecord };
+
+function stub(env: Env, name = GATEWAY_LOCK) {
+  return env.RUN_LOCK.get(env.RUN_LOCK.idFromName(name));
 }
 
-export async function acquireLock(env: Env, runId: string): Promise<{ ok: boolean; holder?: LockRecord }> {
-  const r = await stub(env).fetch("https://lock/acquire", { method: "POST", body: JSON.stringify({ runId }) });
+/** Take a run lock: the gateway's unless `name` says which. Expires on its own after `ttlMs` (default 45 minutes). */
+export async function acquireLock(env: Env, runId: string, opts: { name?: string; ttlMs?: number } = {}): Promise<{ ok: boolean; holder?: LockRecord }> {
+  const r = await stub(env, opts.name).fetch("https://lock/acquire", { method: "POST", body: JSON.stringify({ runId, ttlMs: opts.ttlMs }) });
   return (await r.json()) as { ok: boolean; holder?: LockRecord };
 }
 
-export async function releaseLock(env: Env, runId?: string, force = false): Promise<void> {
-  await stub(env).fetch("https://lock/release", { method: "POST", body: JSON.stringify({ runId, force }) });
+export async function releaseLock(env: Env, runId?: string, force = false, name = GATEWAY_LOCK): Promise<void> {
+  await stub(env, name).fetch("https://lock/release", { method: "POST", body: JSON.stringify({ runId, force }) });
 }
 
-export async function lockStatus(env: Env): Promise<{ held: boolean; lock: LockRecord | null }> {
-  const r = await stub(env).fetch("https://lock/status");
+export async function lockStatus(env: Env, name = GATEWAY_LOCK): Promise<{ held: boolean; lock: LockRecord | null }> {
+  const r = await stub(env, name).fetch("https://lock/status");
   return (await r.json()) as { held: boolean; lock: LockRecord | null };
 }

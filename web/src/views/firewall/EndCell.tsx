@@ -1,10 +1,10 @@
-import { Box, Cloud, Globe, Home, MonitorSmartphone, Network, Users, UsersRound, type LucideIcon } from "lucide-react";
+import { Box, Cloud, FlaskConical, Globe, Home, MonitorSmartphone, Network, Users, UsersRound, type LucideIcon } from "lucide-react";
 import type { SimEnd } from "@shared/api";
 import { cx } from "@/components";
 import type { Zone } from "./model";
 import "./EndCell.css";
 
-export const ZONE_ICON: Record<Zone, LucideIcon> = { clients: Users, home: Home, azure: Cloud, workloads: Box, internet: Globe };
+export const ZONE_ICON: Record<Zone, LucideIcon> = { clients: Users, home: Home, azure: Cloud, workloads: Box, labs: FlaskConical, internet: Globe };
 
 export function endIcon(end: SimEnd): { Icon: LucideIcon; tone: string } {
   if (end.kind === "zone") return { Icon: ZONE_ICON[end.value as Zone] ?? Network, tone: end.value };
