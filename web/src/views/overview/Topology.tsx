@@ -4,6 +4,7 @@ import { Cloud, Server, Users } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
 import { Panel, StatusPill, cx, type PillStatus } from "@/components";
 import { useWidget } from "@/widgets";
+import { useAzureSummary } from "@/api/queries";
 import { AzureDrawer, SshDrawer } from "./drawers";
 import { regionFull, topology, type NodeStatus, type NodeView } from "./model";
 import "./Topology.css";
@@ -49,7 +50,7 @@ export function Topology({ o, now, compact }: { o: OverviewResponse; now: number
   const { settings: st } = useWidget("overview.topology");
   // Second lines: each node's lines under its title (counts, addresses, region).
   const lines = (l: ReactNode[]) => (st.secondLines ? l : []);
-  const t = topology(o);
+  const t = topology(o, useAzureSummary().data?.health);
   const s = o.snapshot;
   const running = s.state === "running";
   const region = s.region ?? o.config.region;

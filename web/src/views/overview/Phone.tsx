@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { OverviewResponse } from "@shared/api";
 import { Button, KeyValue, LogView, ProgressBar, Sheet, StepList, cx } from "@/components";
-import { useCost, useRunLog } from "@/api/queries";
+import { useAzureSummary, useCost, useRunLog } from "@/api/queries";
 import { useWidget } from "@/widgets";
 import type { ActionName } from "./actions";
 import { StateMark } from "./Banner";
@@ -71,7 +71,7 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
     !useWidget("overview.vitals").hidden && <Vitals key="vitals" o={o} now={now} />,
   ].filter(Boolean);
   const s = o.snapshot;
-  const t = topology(o);
+  const t = topology(o, useAzureSummary().data?.health);
   const run = inGithubRun(s.state);
   const progress = run ? stepProgress(s.steps) : null;
   const step = currentStep(s.steps);

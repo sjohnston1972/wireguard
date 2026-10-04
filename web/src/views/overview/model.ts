@@ -1,7 +1,7 @@
 // Pure helpers for the Overview: words, sums and shapes from the /overview
 // answer. Nothing here fetches or renders.
 
-import type { OverviewResponse } from "@shared/api";
+import type { AzureHealth, OverviewResponse } from "@shared/api";
 import type { Step as UiStep, StepState } from "@/components";
 import type { ParsedLog } from "@/lib/parseLog";
 import type { Snapshot, Step } from "../../../../worker/src/state";
@@ -208,7 +208,8 @@ export interface TopologyView {
   overall: NodeView;
 }
 
-export function topology(o: OverviewResponse): TopologyView {
+/** `health`: Azure's own Resource Health for the VM (the insights summary), when known. */
+export function topology(o: OverviewResponse, health?: AzureHealth | null): TopologyView {
   const s = o.snapshot;
   const d = o.derived;
   const running = s.state === "running";
@@ -234,12 +235,22 @@ export function topology(o: OverviewResponse): TopologyView {
   else if (problems.length) endpoint = { status: "degraded", word: NODE_WORD.degraded, why: problems.join("; ") };
   else endpoint = { status: "healthy", word: NODE_WORD.healthy, why: "heartbeat fresh" };
 
+  // "Degraded" only when Azure's own health check says so (Resource Health,
+  // from the insights collector); everything else says what is happening.
   let azure: NodeView;
   const az = s.azure;
-  if (!az) azure = { status: "unknown", word: NODE_WORD.unknown, why: "not checked yet" };
-  else if (az.error) azure = { status: "degraded", word: NODE_WORD.degraded, why: `check failed: ${az.error}` };
-  else if (!az.exists) azure = { status: s.state === "destroyed" ? "unknown" : "degraded", word: s.state === "destroyed" ? "Empty" : NODE_WORD.degraded, why: "nothing in the resource group" };
-  else if (s.state === "running") azure = { status: "healthy", word: "Online", why: `${az.resources.length} resources` };
+  const vmUp = running || s.state === "standby" || s.state === "hibernating" || s.state === "resuming";
+  const said = vmUp && health ? health.state : null;
+  if (said === "Unavailable") azure = { status: "down", word: "Unavailable", why: `Azure says: ${health!.title || "unavailable"}` };
+  else if (said === "Degraded") azure = { status: "degraded", word: NODE_WORD.degraded, why: `Azure says: ${health!.title || "degraded"}` };
+  else if (!az) azure = { status: "unknown", word: NODE_WORD.unknown, why: "not checked yet" };
+  else if (az.error) azure = { status: "unknown", word: "Check failed", why: `check failed: ${az.error}` };
+  else if (!az.exists) {
+    if (s.state === "deploying") azure = { status: "unknown", word: "Creating", why: "deploy under way; nothing in the resource group yet" };
+    else if (s.state === "destroying") azure = { status: "unknown", word: "Removed", why: "tear-down under way; the resource group is gone" };
+    else if (vmUp) azure = { status: "down", word: "Missing", why: "the resource group is not in Azure" };
+    else azure = { status: "unknown", word: "Empty", why: "nothing in the resource group" };
+  } else if (s.state === "running") azure = { status: "healthy", word: "Online", why: `${az.resources.length} resources` };
   else if (s.state === "failed" || s.state === "destroyed") azure = { status: "degraded", word: "Leftovers", why: `${az.resources.length} resources still there` };
   else azure = { status: "unknown", word: STATE_WORD[s.state], why: `${az.resources.length} resources` };
 
