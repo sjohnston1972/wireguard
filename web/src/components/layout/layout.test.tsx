@@ -8,6 +8,7 @@ import { Grid, Col } from "./Grid";
 import { Drawer } from "./Drawer";
 import { Modal } from "./Modal";
 import { Tabs } from "./Tabs";
+import { setViewport } from "@/test/viewport";
 
 describe("Panel", () => {
   it("is a named region with title, status and actions", () => {
@@ -86,6 +87,59 @@ describe("Drawer", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+  it("on the desktop is a centred modal dialog, md by default", () => {
+    render(
+      <Drawer open onOpenChange={() => {}} title="T" subtitle="sub" footer={<button>act</button>}>
+        x
+      </Drawer>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "T" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAttribute("data-side", "center");
+    expect(dialog).toHaveAttribute("data-size", "md");
+    expect(dialog).toHaveClass("drawer", "drawer--modal");
+    expect(dialog).toHaveTextContent("sub");
+    expect(dialog.querySelector(".drawer__foot")).toHaveTextContent("act");
+    expect(document.querySelector(".drawer__overlay")).toHaveAttribute("data-side", "center");
+  });
+  it("takes a size: lg is the wide modal", () => {
+    render(
+      <Drawer open onOpenChange={() => {}} title="T" size="lg">
+        x
+      </Drawer>,
+    );
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-size", "lg");
+  });
+  it("on a tablet is still a centred modal", () => {
+    setViewport("tablet");
+    render(
+      <Drawer open onOpenChange={() => {}} title="T">
+        x
+      </Drawer>,
+    );
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-side", "center");
+  });
+  it("on the phone is a bottom sheet, whatever its size", () => {
+    setViewport("phone");
+    render(
+      <Drawer open onOpenChange={() => {}} title="T" size="lg">
+        x
+      </Drawer>,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("data-side", "bottom");
+    expect(dialog).not.toHaveClass("drawer--modal");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+  });
+  it("a click on the dimmed backdrop closes it and restores focus", async () => {
+    render(<DrawerHarness />);
+    const trigger = screen.getByRole("button", { name: "open it" });
+    await userEvent.click(trigger);
+    await screen.findByRole("dialog", { name: "phone" });
+    await userEvent.click(document.querySelector(".drawer__overlay")!);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
   it("renders as a bottom sheet when asked", () => {
     render(
