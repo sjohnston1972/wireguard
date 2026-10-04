@@ -92,16 +92,26 @@ export async function receiveLiveLog(env: Env, token: string, body: LiveLogBody 
   if (!body || typeof body.run_id !== "string" || !body.run_id || typeof seq !== "number" || !Number.isInteger(seq) || seq < 0 || seq > 1_000_000 || typeof body.text !== "string") {
     return { status: 400, body: { error: "expected {run_id, seq, text}" } };
   }
-  const run = await db.getRun(env, body.run_id);
+  // A lab run (labs spec §7.1: "lab-<action>-..." in lab_runs) proves itself the same way; its secret is the admin password.
+  const run = body.run_id.startsWith("lab-") ? await labRunForLog(env, body.run_id) : await db.getRun(env, body.run_id);
   if (!run || !run.callback_token_hash) return { status: 404, body: { error: "unknown run" } };
   if (!safeEqual(await sha256Hex(token), run.callback_token_hash)) return { status: 401, body: { error: "bad token" } };
-  if (!isActiveRun(run)) return { status: 409, body: { error: "run is not active" } };
+  if (!isActiveRun(run as Pick<db.Run, "status" | "finished_at">)) return { status: 409, body: { error: "run is not active" } };
   if (new TextEncoder().encode(body.text).length > LIVE_LOG_MAX_TEXT) return { status: 413, body: { error: "piece too big" } };
 
   const text = redact(body.text, [run.ssh_password, token]);
   const stored = await db.addLiveLogChunk(env, run.id, seq, now.toISOString(), text);
   if (stored) await db.trimLiveLog(env, run.id, LIVE_LOG_KEEP_BYTES);
   return { status: 200, body: { message: stored ? "ok" : "already stored", duplicate: !stored } };
+}
+
+/** A lab run as the live log needs it: its token hash, whether it is going, and its secret (the admin password) to hide. */
+async function labRunForLog(env: Env, id: string): Promise<{ id: string; status: string; finished_at: string | null; callback_token_hash: string | null; ssh_password: string | null } | null> {
+  return (
+    (await env.DB.prepare("SELECT id, status, finished_at, callback_token_hash, admin_password AS ssh_password FROM lab_runs WHERE id = ?1")
+      .bind(id)
+      .first<{ id: string; status: string; finished_at: string | null; callback_token_hash: string | null; ssh_password: string | null }>()) ?? null
+  );
 }
 
 /** A run's live log as one text, oldest first; null when nothing was ever stored. */

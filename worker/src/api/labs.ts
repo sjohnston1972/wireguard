@@ -26,7 +26,9 @@ import { fixedConfig } from "../settings";
 import { getSnapshot } from "../state";
 import { REGIONS } from "../region";
 import { catalogue, labDef, labReadme } from "../labs/catalogue";
-import { availability, deployLab, unavailableReason, type DeployInput } from "../labs/engine";
+import { availability, cancelLab, deployLab, destroyLab, unavailableReason, type DeployInput } from "../labs/engine";
+import { liveSessionOf } from "../labs/store";
+import { releaseFields, releaseTests } from "../labs/cards";
 import {
   LAB_HOURS_MAX,
   LAB_ID_MAX,
@@ -38,7 +40,7 @@ import {
   labsSettingsFrom,
   type LabDef,
 } from "../../../shared/labs";
-import type { ApiOk, LabCard, LabCoverageResponse, LabDetail, LabOrphan, LabPermissions, LabsResponse, LabSessionsResponse } from "../../../shared/api";
+import type { ApiOk, LabCard, LabCoverageResponse, LabDetail, LabOrphan, LabPermissions, LabSecretResponse, LabsResponse, LabSessionsResponse } from "../../../shared/api";
 
 type C = Context<ApiEnv>;
 const bad = (c: C, message: string, field?: string) => fail(c, 400, "bad_input", message, field);
@@ -138,13 +140,14 @@ async function kvJson<T>(c: C, key: string, fallback: T): Promise<T> {
 export function registerLabs(api: Hono<ApiEnv>): void {
   api.get("/labs", async (c) => {
     const avail = await availability(c.env);
-    const [stored, used] = await Promise.all([
+    const [stored, used, tests] = await Promise.all([
       db.allSettings(c.env),
       c.env.DB.prepare("SELECT COUNT(*) AS n FROM lab_slots WHERE session_id IS NOT NULL").first<{ n: number }>(),
+      releaseTests(c.env),
     ]);
     const out: LabsResponse = {
       now: new Date().toISOString(),
-      labs: catalogue().labs.map((d) => ({ ...card(d), unavailable: unavailableReason(d, avail) })),
+      labs: catalogue().labs.map((d) => ({ ...card(d), ...releaseFields(d, tests), unavailable: unavailableReason(d, avail) })),
       running: [],
       slots: { used: Number(used?.n ?? 0), total: LAB_SLOTS },
       maxRunning: labsSettingsFrom(stored).labsMaxRunning,
@@ -236,22 +239,36 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     return c.json(out);
   });
 
-  api.get("/labs/:id/secret", (c) => {
+  // The admin password and lab user names: only while the session is running, fetched on Show, never cached.
+  api.get("/labs/:id/secret", async (c) => {
     const def = labDef(c.req.param("id"));
     if (!def) return notFound(c);
-    return fail(c, 409, "not_running", `${def.title} is not running, so it has no password.`);
+    const s = await liveSessionOf(c.env, def.id);
+    const deploy = s?.state === "running" ? await c.env.DB.prepare("SELECT admin_password FROM lab_runs WHERE session_id = ?1 AND action = 'deploy' AND status = 'succeeded' ORDER BY requested_at DESC LIMIT 1").bind(s.id).first<{ admin_password: string | null }>() : null;
+    if (!s || !deploy?.admin_password) return fail(c, 409, "not_running", `${def.title} is not running, so it has no password.`);
+    let users: Record<string, string> = {};
+    try {
+      users = (JSON.parse(s.outputs_json ?? "{}") as { users?: Record<string, string> }).users ?? {};
+    } catch {
+      users = {};
+    }
+    const out: LabSecretResponse = { adminPassword: deploy.admin_password, users };
+    return c.json(out);
   });
 
-  // The actions: check the body, then the lab, then (until the engine) 501.
-  const action = (path: string, fields: Record<string, Field>, extra?: (b: Record<string, unknown>, c: C) => Response | null) =>
+  // The actions: check the body, then the lab, then do it (RunError becomes the error answer, api/app.ts).
+  type Handler = (c: C, def: LabDef, b: Record<string, unknown>) => Promise<Response>;
+  const action = (path: string, fields: Record<string, Field>, extra?: ((b: Record<string, unknown>, c: C) => Response | null) | null, handle: Handler = async (c) => notYet(c)) =>
     api.post(`/labs/:id/${path}`, async (c) => {
       const r = await readBody(c, fields);
       if (!r.ok) return r.res;
       const more = extra?.(r.b, c);
       if (more) return more;
-      if (!labDef(c.req.param("id"))) return notFound(c);
-      return notYet(c);
+      const def = labDef(c.req.param("id"));
+      if (!def) return notFound(c);
+      return handle(c, def, r.b);
     });
+  const done = (c: C, message: string, run?: { id: string; session_id: string }) => c.json({ ok: true, message, ...(run ? { runId: run.id, sessionId: run.session_id } : {}) });
   api.post("/labs/:id/deploy", async (c) => {
     const r = await readBody(c, DEPLOY);
     if (!r.ok) return r.res;
@@ -267,9 +284,12 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     if (b.hours === undefined && b.toMax === undefined) return bad(c, "Say how many hours, or toMax: true.", "hours");
     return null;
   });
-  action("destroy", DESTROY);
+  action("destroy", DESTROY, null, async (c, def) => done(c, `Tearing down ${def.title}.`, await destroyLab(c.env, def.id, "manual", c.get("user"))));
   action("peer", NOTHING);
   action("unpeer", NOTHING);
-  action("test", NOTHING);
-  action("cancel", NOTHING);
+  action("test", NOTHING, null, async (c, def) => {
+    const { run } = await deployLab(c.env, def.id, { hours: def.timing.session_h, peer: def.connectivity.peering !== "off" }, c.get("user"), true);
+    return done(c, `Release test of ${def.title} v${def.version} started: deploy, check, tear down and verify clean.`, run);
+  });
+  action("cancel", NOTHING, null, async (c, def) => done(c, `Cancelled; tearing down ${def.title}.`, await cancelLab(c.env, def.id, c.get("user"))));
 }

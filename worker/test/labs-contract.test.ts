@@ -246,7 +246,8 @@ describe("/api/v1/labs input checks", () => {
     expect(d.defaults).toEqual({ region: "uksouth", peer: true, hours: 2 });
     expect(d).toMatchObject({ session: null, runs: [], resources: null, warnings: [], portalUrl: null });
     expect((await api(env, "GET", "/labs/az104-06-blob-security/secret")).status).toBe(409);
-    expect((await api(env, "POST", "/labs/az104-06-blob-security/destroy", { confirm: true })).status).toBe(501);
+    // Nothing is running, so the engine (L2) refuses the tear-down.
+    expect((await api(env, "POST", "/labs/az104-06-blob-security/destroy", { confirm: true })).status).toBe(409);
     const cards = (await api(env, "GET", "/labs")).json as LabsResponse;
     expect(cards.labs.map((c) => c.id)).toEqual(catalogue().labs.map((l) => l.id));
     const cov = (await api(env, "GET", "/labs/coverage")).json as LabCoverageResponse;
@@ -267,8 +268,9 @@ describe("callbacks", () => {
     for (const p of ["/api/callback/lab", "/api/callback/lab-secrets", "/api/callback/lab-peer", "/api/callback/lab-peerings-removed"]) {
       const none = await post(env, p);
       expect(none.status, p).toBe(401);
+      // With a token, the engine (L2) answers: never a success for a run it does not know or a token it cannot verify.
       const some = await post(env, p, "a-token");
-      expect(some.status, p).toBe(501);
+      expect(some.status, p).toBeGreaterThanOrEqual(400);
     }
   });
 });

@@ -24,9 +24,9 @@ import { randomToken } from "../auth";
 import { RunError } from "../runs";
 import { labDef } from "./catalogue";
 import { LAB_SLOTS, labNeeds, labsSettingsFrom, sessionTimeoutMin, type LabDef } from "../../../shared/labs";
-import type { LabAction, LabPermissions } from "../../../shared/api";
-import { directNet, dispatchLab, publicUrl, type Net } from "./net";
-import { freeSlot, getLabRun, insertRun, insertSession, liveSessionOf, reserveSlot, runningCount, settleRun, slotsInUse, updateSession, getSession, type LabRunDb, type LabSessionRow } from "./store";
+import type { LabAction, LabEndReason, LabPermissions } from "../../../shared/api";
+import { cancelGh, directNet, dispatchLab, findLabRun, publicUrl, type Net } from "./net";
+import { activeRunOf, freeSlot, getLabRun, insertRun, insertSession, liveSessionOf, reserveSlot, runningCount, settleRun, slotsInUse, updateSession, getSession, type LabRunDb, type LabSessionRow } from "./store";
 import { labGbpH } from "./prices";
 import { labWarnings } from "./warnings";
 
@@ -268,4 +268,61 @@ export async function deployLab(env: Env, labId: string, input: DeployInput, by:
     await freeSlot(env, sid);
     throw e;
   }
+}
+
+// ── Stopping runs and tearing down ───────────────────────────────────────
+
+/**
+ * Stop a run in progress: GitHub's run is cancelled (found by its title if
+ * GitHub had not said its number yet), the run is closed as cancelled and
+ * its lock released. A run GitHub cannot find is still closed: when it does
+ * start, its secrets are refused and it stops at step 2.
+ */
+export async function cancelRun(env: Env, run: LabRunDb, net: Net, why: string): Promise<void> {
+  let gh = run.github_run_id;
+  if (!gh) gh = (await findLabRun(env, net, run.id).catch(() => null))?.id ?? null;
+  if (gh) await cancelGh(env, net, gh).catch(() => false);
+  await settleRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: why, ...(gh ? { github_run_id: gh } : {}) });
+  await releaseLock(env, run.id, false, labLock(run.lab_id));
+}
+
+/**
+ * Tear a session down (spec §7.4): cancel its run in progress first (a deploy,
+ * peer or test), then dispatch destroy and mark it tearing_down with its end
+ * reason (the first reason given stays). `again` lets the cost guard replace
+ * a destroy run that is stuck.
+ */
+export async function destroySession(env: Env, s: LabSessionRow, reason: LabEndReason, by: string, why: string, opts: { net?: Net; again?: boolean } = {}): Promise<LabRunDb> {
+  if (s.state === "ended" || s.state === "ended_dirty") throw new RunError("That lab session has already ended.");
+  const net = opts.net ?? directNet();
+  const active = await activeRunOf(env, s.id);
+  if (active) {
+    if (active.action === "destroy" && !opts.again) throw new RunError(`${labDef(s.lab_id)?.title ?? s.lab_id} is already being torn down.`);
+    await cancelRun(env, active, net, active.action === "destroy" ? "Replaced by a new tear-down (cost guard)." : `Cancelled: tearing the lab down (${why}).`);
+  }
+  let run: LabRunDb;
+  try {
+    run = await startLabRun(env, s.id, "destroy", by, why, { net });
+  } catch (e) {
+    // The deploy was stopped but the tear-down could not start: failed, so the watch tries again.
+    if (active && s.state === "deploying") await updateSession(env, s.id, { state: "failed", end_reason: s.end_reason ?? reason }, "state = 'deploying'");
+    throw e;
+  }
+  await updateSession(env, s.id, { state: "tearing_down", end_reason: s.end_reason ?? reason }, "state NOT IN ('ended', 'ended_dirty')");
+  return run;
+}
+
+/** Tear down a lab's live session (the Tear down button, the phone's link). */
+export async function destroyLab(env: Env, labId: string, reason: LabEndReason, by: string, why = "torn down from the dashboard"): Promise<LabRunDb> {
+  const s = await liveSessionOf(env, labId);
+  if (!s) throw new RunError(`${labDef(labId)?.title ?? labId} is not running.`);
+  return destroySession(env, s, reason, by, why);
+}
+
+/** Cancel the lab's run in progress, then tear the lab down (spec §7.2 /cancel). */
+export async function cancelLab(env: Env, labId: string, by: string): Promise<LabRunDb> {
+  const s = await liveSessionOf(env, labId);
+  const active = s ? await activeRunOf(env, s.id) : null;
+  if (!s || !active || active.action === "destroy") throw new RunError("Nothing to cancel: no deploy, peer or test is running for this lab.");
+  return destroySession(env, s, "manual", by, "cancelled from the dashboard");
 }

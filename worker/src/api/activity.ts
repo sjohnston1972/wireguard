@@ -15,6 +15,8 @@ import { getJobsStatus, getJobLogTail } from "../github";
 import { isActiveRun, readLiveLog } from "../livelog";
 import { AUDIT_KINDS, AUDIT_PAGE, ACTIVITY_RANGE_MS, describeChange, parseRange, runRow, eventsOf, timeline, activityKpis } from "../activity";
 import type { ActivityResponse, RunDetailResponse, RunLogResponse } from "../../../shared/api";
+import { getLabRun, type LabRunDb } from "../labs/store";
+import { activityEvent, activityRow } from "../labs/view";
 
 /** Most rows of any one list in a range. */
 const RANGE_CAP = 200;
@@ -42,6 +44,16 @@ export function registerActivity(api: Hono<ApiEnv>): void {
       c.env.DB.prepare("SELECT * FROM alerts WHERE at >= ?1 AND at < ?2").bind(before, since).all<db.Alert>().then((r) => r.results),
       c.env.DB.prepare("SELECT * FROM audit WHERE at >= ?1 AND at < ?2").bind(before, since).all<db.AuditEntry>().then((r) => r.results),
     ]);
+    // Lab runs (lab_runs) join the run list and the feed, named for their lab (RunRow.lab); the
+    // gateway's figures across the top stay the gateway's.
+    const labRuns = (await c.env.DB.prepare("SELECT * FROM lab_runs WHERE requested_at >= ?1 ORDER BY requested_at DESC").bind(since).all<LabRunDb>()).results;
+    const events = eventsOf(runs, notes, inRangeChanges)
+      .concat(labRuns.map(activityEvent).filter((e): e is NonNullable<ReturnType<typeof activityEvent>> => e !== null))
+      .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+    const runRows = runs
+      .map((r) => runRow(r, runs, cfg, now))
+      .concat(labRuns.map(activityRow))
+      .sort((a, b) => Date.parse(b.requested_at) - Date.parse(a.requested_at));
     // KPIs and the timeline count every row in the range; only the lists sent back are capped (newest first).
     const out: ActivityResponse = {
       range,
@@ -49,16 +61,30 @@ export function registerActivity(api: Hono<ApiEnv>): void {
       kpis: activityKpis(runs, notes, inRangeChanges, range, now),
       // The same figures as if "now" were one range ago: the window [now - 2 ranges, now - 1 range].
       previous: activityKpis(prevRuns, prevNotes, prevChanges, range, now - ACTIVITY_RANGE_MS[range]),
-      timeline: timeline(eventsOf(runs, notes, inRangeChanges), range, now),
-      runs: runs.slice(0, RANGE_CAP).map((r) => runRow(r, runs, cfg, now)),
+      timeline: timeline(events, range, now),
+      runs: runRows.slice(0, RANGE_CAP),
       notes: notes.slice(0, RANGE_CAP),
-      all: eventsOf(runs, notes, inRangeChanges).slice(0, RANGE_CAP),
+      all: events.slice(0, RANGE_CAP),
       changes: { rows: rows.slice(0, AUDIT_PAGE).map((r) => ({ ...r, lines: describeChange(r.before_json, r.after_json) })), more: rows.length > AUDIT_PAGE, page, kind, q },
     };
     return c.json(out);
   });
 
   api.get("/runs/:id", async (c) => {
+    // A lab run (labs spec §7.2): its steps as last read from GitHub, kept with the run.
+    if (c.req.param("id").startsWith("lab-")) {
+      const lab = await getLabRun(c.env, c.req.param("id"));
+      if (!lab) return fail(c, 404, "not_found", "No such run.");
+      let steps: Step[] = [];
+      try {
+        const v = JSON.parse(lab.steps_json ?? "[]");
+        if (Array.isArray(v)) steps = v;
+      } catch {
+        steps = [];
+      }
+      const out: RunDetailResponse = { run: activityRow(lab), steps, active: isActiveRun(lab as Pick<db.Run, "status" | "finished_at">) };
+      return c.json(out);
+    }
     const run = await db.getRun(c.env, c.req.param("id"));
     if (!run) return fail(c, 404, "not_found", "No such run.");
     const [runs, cfg, snap, active] = await Promise.all([db.listRuns(c.env, RANGE_CAP), effectiveConfig(c.env), getSnapshot(c.env), db.activeRun(c.env)]);
@@ -82,7 +108,10 @@ export function registerActivity(api: Hono<ApiEnv>): void {
   // for an unfinished job. Once it has finished: GitHub's full log, or the
   // live copy when GitHub has none (not yet, gone, or unreachable).
   api.get("/runs/:id/log", async (c) => {
-    const run = await db.getRun(c.env, c.req.param("id"));
+    const id = c.req.param("id");
+    // A lab run's log comes the same two ways (live while it runs, then GitHub's).
+    const lab = id.startsWith("lab-") ? await getLabRun(c.env, id) : null;
+    const run = lab ? ({ id: lab.id, status: lab.status, finished_at: lab.finished_at, github_run_id: lab.github_run_id } as Pick<db.Run, "id" | "status" | "finished_at" | "github_run_id">) : await db.getRun(c.env, id);
     if (!run) return fail(c, 404, "not_found", "No such run.");
     if (isActiveRun(run)) {
       const live = await readLiveLog(c.env, run.id);
