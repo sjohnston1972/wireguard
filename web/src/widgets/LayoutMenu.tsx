@@ -1,9 +1,10 @@
 // widgets/LayoutMenu.tsx
 //
-// Plain English: the page header's Layout menu. Show hidden widgets lists
-// what is hidden, each with Show. Reset this page asks first (a dialog,
-// never confirm()) and then puts the page's order, hidden widgets and every
-// widget's settings back as they ship. On the phone it also has Widget
+// Plain English: the page header's Layout menu. Add widgets… opens the
+// page's widget library (WidgetLibrary: every widget with an On/Off switch).
+// Reset this page asks first (a dialog, never confirm()) and then puts the
+// page's order, hidden widgets and every widget's settings back as they
+// ship, which turns every added widget off. On the phone it also has Widget
 // settings: every widget on the page, each opening its settings, including
 // widgets the phone's own layout does not show (a default-off widget only
 // while it is turned on).
@@ -14,8 +15,8 @@ import { ChevronLeft, LayoutGrid } from "lucide-react";
 import { PAGE_TITLES, isVisible, pageWidgets, type PageId } from "@shared/widgets";
 import { Button, Modal, Sheet, useIsPhone } from "@/components";
 import { usePagePrefs, usePrefsStore } from "./usePrefs";
-import { isHidden } from "./layout";
 import { WidgetSettings } from "./WidgetCog";
+import { WidgetLibrary } from "./WidgetLibrary";
 
 export function LayoutMenu({ page }: { page: PageId }) {
   const phone = useIsPhone();
@@ -24,13 +25,11 @@ export function LayoutMenu({ page }: { page: PageId }) {
   const readOnly = status !== "ready";
   const [confirming, setConfirming] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [current, setCurrent] = useState<string | null>(null);
   const widgets = pageWidgets(page);
-  const hidden = widgets.filter((w) => isHidden(prefs, w.id));
   const pageName = PAGE_TITLES[page];
   const currentDef = widgets.find((w) => w.id === current);
-
-  const show = (id: string) => store.change(page, (p) => ({ ...p, layout: { ...(p.layout ?? {}), hidden: (p.layout?.hidden ?? []).filter((x) => x !== id) } }));
 
   return (
     <span className="wg-layout" data-widget-chrome="">
@@ -42,19 +41,9 @@ export function LayoutMenu({ page }: { page: PageId }) {
         </Menu.Trigger>
         <Menu.Portal>
           <Menu.Content className="menu wg-layout-menu" align="end" sideOffset={4}>
-            <Menu.Label className="menu__label">Show hidden widgets</Menu.Label>
-            {hidden.length ? (
-              hidden.map((w) => (
-                <Menu.Item key={w.id} className="menu__item" disabled={readOnly} onSelect={() => show(w.id)}>
-                  Show {w.title}
-                </Menu.Item>
-              ))
-            ) : (
-              <Menu.Item className="menu__item" disabled>
-                No hidden widgets
-              </Menu.Item>
-            )}
-            <Menu.Separator className="menu__sep" />
+            <Menu.Item className="menu__item" onSelect={() => setLibraryOpen(true)}>
+              Add widgets…
+            </Menu.Item>
             {phone && (
               <Menu.Item
                 className="menu__item"
@@ -77,7 +66,7 @@ export function LayoutMenu({ page }: { page: PageId }) {
         open={confirming}
         onOpenChange={setConfirming}
         title={`Reset ${pageName} to its default layout and settings?`}
-        description="Every widget on this page comes back, in its usual place, with its usual settings."
+        description="Every widget on this page comes back, in its usual place, with its usual settings. Widgets you added are turned off."
         footer={
           <>
             <Button onClick={() => setConfirming(false)}>Cancel</Button>
@@ -93,6 +82,8 @@ export function LayoutMenu({ page }: { page: PageId }) {
           </>
         }
       />
+
+      <WidgetLibrary page={page} open={libraryOpen} onOpenChange={setLibraryOpen} />
 
       {phone && (
         <Sheet open={listOpen} onOpenChange={setListOpen} title={currentDef ? `${currentDef.title} settings` : `${pageName} widget settings`} className="wg-sheet">

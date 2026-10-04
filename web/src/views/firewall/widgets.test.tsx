@@ -327,7 +327,10 @@ describe("W3.4 layout", () => {
       expect(screen.queryByRole("dialog", { name: /capture/i })).toBeNull();
       // Shown again later: the form appears but focus stays where it was.
       fireEvent.pointerDown(screen.getByRole("button", { name: "Layout" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Show Packet capture" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Add widgets…" }));
+      const lib = await screen.findByRole("dialog", { name: "Add widgets" });
+      fireEvent.click(within(lib).getByRole("switch", { name: "Packet capture" }));
+      fireEvent.keyDown(lib, { key: "Escape" });
       await waitFor(() => expect(server.state.pages.firewall.prefs).toEqual({}));
       await new Promise((r) => setTimeout(r, 50));
       if (size === "desktop") {

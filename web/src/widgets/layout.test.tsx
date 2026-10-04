@@ -438,27 +438,19 @@ describe("the Layout menu", () => {
     expect(button.closest("[data-widget-chrome]")).not.toBeNull();
   });
 
-  it("Layout menu: Show hidden widgets lists hidden ones and Show brings one back", async () => {
+  it("Layout menu: Add widgets shows hidden ones as off and On brings one back", async () => {
     const { server } = renderRows({ overview: { layout: { hidden: ["overview.notes", "overview.speedTest"] } } });
     await ready();
     expect(screen.queryByRole("region", { name: "Watchman notes" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Layout" }));
-    const menu = await screen.findByRole("menu");
-    expect(within(menu).getByText("Show hidden widgets")).toBeInTheDocument();
-    expect(within(menu).getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Show Speed test", "Show Watchman notes", "Reset this page…"]);
-    await userEvent.click(within(menu).getByRole("menuitem", { name: "Show Watchman notes" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Add widgets…" }));
+    const lib = await screen.findByRole("dialog", { name: "Add widgets" });
+    expect(within(lib).getByRole("switch", { name: "Speed test" })).not.toBeChecked();
+    await userEvent.click(within(lib).getByRole("switch", { name: "Watchman notes" }));
+    await userEvent.keyboard("{Escape}");
     expect(region("Watchman notes")).toBeInTheDocument();
     await waitFor(() => expect(server.puts).toHaveLength(1));
     expect(server.puts[0]!.body.prefs).toEqual({ layout: { hidden: ["overview.speedTest"] } });
-  });
-
-  it("Layout menu says No hidden widgets when none are", async () => {
-    renderRows();
-    await ready();
-    await userEvent.click(screen.getByRole("button", { name: "Layout" }));
-    const menu = await screen.findByRole("menu");
-    const none = within(menu).getByRole("menuitem", { name: "No hidden widgets" });
-    expect(none).toHaveAttribute("aria-disabled", "true");
   });
 
   it("Reset this page asks in a Modal, then resets order, hidden and every widget", async () => {
@@ -657,11 +649,12 @@ describe("default-off widgets", () => {
     expect(names).toContain("Cost impact");
   });
 
-  it("the Layout menu's hidden list never offers a default-off widget", async () => {
+  it("Add widgets shows a default-off widget as off", async () => {
     renderLibrary("overview.vitals");
     await ready();
     await userEvent.click(screen.getByRole("button", { name: "Layout" }));
-    const menu = await screen.findByRole("menu");
-    expect(within(menu).getByRole("menuitem", { name: "No hidden widgets" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Add widgets…" }));
+    const lib = await screen.findByRole("dialog", { name: "Add widgets" });
+    expect(within(lib).getByRole("switch", { name: "System vitals" })).not.toBeChecked();
   });
 });

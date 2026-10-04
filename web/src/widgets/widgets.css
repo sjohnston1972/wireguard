@@ -126,3 +126,17 @@
 .wg-threshold__parts { display: flex; flex-wrap: wrap; gap: 12px; }
 .wg-threshold__part { display: flex; align-items: flex-end; gap: 8px; }
 .wg-threshold__switch { display: inline-flex; align-items: center; gap: 6px; padding-bottom: 5px; font-size: 12px; color: var(--text-secondary); }
+
+/* Add widgets… (the library) and Replace a widget: one row per widget,
+   icon, title over its one-line description, then the switch (or radio). */
+.wg-lib__group + .wg-lib__group { margin-top: 14px; }
+.wg-lib__group > h3 { margin: 0 0 2px; }
+.wg-lib__list { list-style: none; margin: 0; padding: 0; }
+.wg-lib__item { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 2px; border-bottom: 1px solid var(--border); }
+.wg-lib__icon { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: var(--radius-control); background: var(--bg-tile); color: var(--text-secondary); }
+.wg-lib__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wg-lib__title { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.wg-lib__desc { font-size: 12.5px; color: var(--text-secondary); }
+.wg-lib__always { flex: none; font-size: 12px; color: var(--text-secondary); }
+.wg-lib__choice { cursor: pointer; }
+.wg-lib__choice > input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--blue); }
