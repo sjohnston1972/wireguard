@@ -1,0 +1,8 @@
+{
+  "firewall": {
+    "layout": {
+      "hidden": ["firewall.capture"],
+      "shown": ["firewall.publicIp"]
+    }
+  }
+}

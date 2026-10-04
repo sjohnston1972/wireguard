@@ -1,0 +1,19 @@
+{
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/Microsoft.ResourceHealth/availabilityStatuses/current",
+  "name": "current",
+  "type": "Microsoft.ResourceHealth/AvailabilityStatuses",
+  "location": "uksouth",
+  "properties": {
+    "availabilityState": "Degraded",
+    "title": "Degraded",
+    "summary": "We're sorry, your virtual machine is degraded because the host it runs on has a hardware fault.",
+    "reasonType": "Unplanned",
+    "reasonChronicity": "Transient",
+    "detailedStatus": "",
+    "occuredTime": "2026-10-04T09:41:00Z",
+    "reportedTime": "2026-10-04T09:43:12Z",
+    "recommendedActions": [
+      { "action": "To learn more, see the Resource Health documentation.", "actionUrl": "https://aka.ms/resourcehealthdocs", "actionUrlText": "Resource Health documentation" }
+    ]
+  }
+}

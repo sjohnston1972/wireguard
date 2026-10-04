@@ -159,6 +159,47 @@ describe("the VM agent script", () => {
   });
 });
 
+// Insights (agent version 7): the vitals script reaches the VM, and Azure
+// keeps a boot log for the headend. Read from the Terraform, as CI's
+// validate and cloud-init render cannot run here without the providers.
+describe("the insights additions to the VM build", () => {
+  // A Windows checkout may give main.tf CRLF line ends; the template is always LF.
+  const mainTf = readFileSync("infra/main.tf", "utf8").replace(/\r\n/g, "\n");
+  const cloudInit = readFileSync("infra/cloud-init.yaml.tftpl", "utf8").replace(/\r\n/g, "\n");
+  /** One resource block, from its header to the closing brace at the start of a line. */
+  const block = (header: string) => {
+    const at = mainTf.indexOf(header);
+    expect(at, header).toBeGreaterThan(-1);
+    return mainTf.slice(at, mainTf.indexOf("\n}\n", at) + 2);
+  };
+
+  it("wg-vitals.sh is valid bash", () => {
+    expect(() => execFileSync("bash", ["-n", "infra/agent/wg-vitals.sh"])).not.toThrow();
+  });
+
+  it("vm-wg declares boot_diagnostics with managed storage", () => {
+    const vm = block('resource "azurerm_linux_virtual_machine" "wg" {');
+    expect(vm).toMatch(/\n  boot_diagnostics \{\}\n/);
+    expect(vm).not.toMatch(/storage_account_uri/);
+    // The test VM is unchanged.
+    expect(block('resource "azurerm_linux_virtual_machine" "test" {')).not.toMatch(/boot_diagnostics/);
+  });
+
+  // Gzipped: Azure refuses custom data over 64 KB, and the rendered
+  // cloud-init was already about 50 KB before this script.
+  it("main.tf passes wg-vitals.sh into the template, gzipped", () => {
+    expect(block("locals {")).toMatch(/\n    vitals_script_gz\s+= base64gzip\(file\("\$\{path\.module\}\/agent\/wg-vitals\.sh"\)\)\n/);
+  });
+
+  it("wg-vitals.sh has no double dollar, which CI's cloud-init render check refuses if it is ever carried as plain text", () => {
+    expect(readFileSync("infra/agent/wg-vitals.sh", "utf8")).not.toContain("$$");
+  });
+
+  it("cloud-init writes /usr/local/sbin/wg-vitals.sh 0755", () => {
+    expect(cloudInit).toMatch(/  - path: \/usr\/local\/sbin\/wg-vitals\.sh\n    permissions: "0755"\n    owner: root:root\n    encoding: gz\+b64\n    content: \$\{vitals_script_gz\}\n/);
+  });
+});
+
 // The hosts here have no flock, systemd-run or netns, so these read the
 // scripts for the order of the steps that matter. On the VM: a health check
 // asked for while the boot self-test is still queued must not start a second

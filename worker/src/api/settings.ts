@@ -12,7 +12,7 @@ import { idParam } from "./clients";
 import * as db from "../db";
 import { config, missingSecrets } from "../env";
 import { getSnapshot } from "../state";
-import { effectiveConfig, saveOverrides, OVERRIDABLE, VM_SIZES } from "../settings";
+import { fixedConfig, saveOverrides, OVERRIDABLE, VM_SIZES } from "../settings";
 import { REGIONS } from "../region";
 import { profileProblemAt } from "../profiles";
 import { daysText, nextStart, validRule } from "../schedule-time";
@@ -21,6 +21,7 @@ import { backupStatus } from "../backup";
 import { rotationStatus, shortKey } from "../keyrotation";
 import { serverPublicKey } from "../peers";
 import { lastNotifyError } from "../notify";
+import { priceInfo, rateSource, readPrices } from "../insights/price";
 import type { ApiOk, SettingsResponse } from "../../../shared/api";
 
 const ok = (c: Context<ApiEnv>, message: string) => {
@@ -42,7 +43,7 @@ export function registerSettings(api: Hono<ApiEnv>): void {
   api.get("/settings", async (c) => {
     const env = c.env;
     const [cfg, stored, snap, profiles, schedules, pushSubs, lock, backups, rotation, serverPub, notifyError] = await Promise.all([
-      effectiveConfig(env), db.allSettings(env), getSnapshot(env), db.listProfiles(env), db.listSchedules(env), db.listPushSubs(env), lockStatus(env), backupStatus(env, true), rotationStatus(env), serverPublicKey(env), lastNotifyError(env),
+      fixedConfig(env), db.allSettings(env), getSnapshot(env), db.listProfiles(env), db.listSchedules(env), db.listPushSubs(env), lockStatus(env), backupStatus(env, true), rotationStatus(env), serverPublicKey(env), lastNotifyError(env),
     ]);
     const out: SettingsResponse = {
       values: {
@@ -67,6 +68,9 @@ export function registerSettings(api: Hono<ApiEnv>): void {
       vapidPublic: env.VAPID_PUBLIC_KEY ?? null,
       notifyError,
       publicUrl: config(env).publicUrl,
+      // The form edits the fixed rates (values above); estimates use this price when rateSource is azure and it is fresh.
+      rateSource: rateSource(stored),
+      price: priceInfo(await readPrices(env.DB, cfg.region), cfg, cfg.region, cfg.vmSize, rateSource(stored), new Date()),
     };
     return c.json(out);
   });

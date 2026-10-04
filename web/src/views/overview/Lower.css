@@ -24,6 +24,10 @@
 .ov-health__icon--green, .ov-health__title--green { --ov-h: var(--green); }
 .ov-health__icon--red, .ov-health__title--red { --ov-h: var(--red); }
 .ov-health__icon--grey, .ov-health__title--grey { --ov-h: var(--text-secondary); }
+.ov-health__icon--amber, .ov-health__title--amber { --ov-h: var(--amber); }
+/* The verdict's Boot log link (rule 1), inside the sub-line. */
+.ov-health__bootlog { padding: 0; border: 0; background: none; font: inherit; color: var(--blue-bright); cursor: pointer; }
+.ov-health__bootlog:hover { text-decoration: underline; }
 .ov-health__head > div {
   min-width: 0;
 }

@@ -50,6 +50,35 @@ export function rollbackSteps(id) {
 }
 
 /**
+ * The cron lines in wrangler.toml's [triggers] (`crons = [...]`, on one line
+ * or several). [] when there are none.
+ */
+export function cronTriggers(toml) {
+  const m = /^\s*crons\s*=\s*\[([^\]]*)\]/m.exec(toml);
+  if (!m) return [];
+  return [...m[1].matchAll(/"([^"]*)"|'([^']*)'/g)].map((x) => x[1] ?? x[2]);
+}
+
+/**
+ * Printed by rollback-worker. Cron triggers belong to the Worker, not to a
+ * version: "wrangler rollback" brings back the old code but keeps today's
+ * crons. Code from before the Azure insights collector knows only one cron,
+ * so it would run the watchman on every cron event (twice every 5 minutes).
+ * Going back across a change to the crons is a redeploy instead.
+ */
+export function cronRollbackWarning(crons) {
+  const list = crons.length ? crons.map((c) => `"${c}"`).join(", ") : "(none)";
+  return [
+    `WARNING: a rollback keeps today's cron triggers (${list} in wrangler.toml); only the code goes back.`,
+    "If the version you go back to is from before a change to these cron triggers (for example from before",
+    'the Azure insights collector\'s "2-59/5 * * * *"), the old code runs the watchman on every cron event,',
+    "twice every 5 minutes. To go back across a cron change, do not use this:",
+    "revert the merge on main, then npm run deploy-worker (or deploy the previous commit: check it out, then npm run deploy-worker).",
+    "A deploy puts back the old cron triggers together with the old code.",
+  ].join("\n");
+}
+
+/**
  * Runs each step with `run(step) -> exit status`, printing "$ step" first and
  * the rollback note after the status step. Stops at the first failure and
  * returns its status (0 when every step worked).

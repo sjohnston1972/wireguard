@@ -1,6 +1,17 @@
 import { useQuery, type QueryKey, type UseQueryResult } from "@tanstack/react-query";
 import type {
   ActivityResponse,
+  AzureChangesRange,
+  AzureChangesResponse,
+  AzureChangesWho,
+  AzureMetricsResource,
+  AzureMetricsResponse,
+  AzureServiceHealthRange,
+  AzureServiceHealthResponse,
+  AzureSummaryResponse,
+  BootLogResponse,
+  CapacityCheck,
+  PriceInfo,
   ClientDetailResponse,
   ClientHistoryResponse,
   ClientsResponse,
@@ -33,6 +44,10 @@ export const INTERVALS = {
   history: 60_000,
   session: 60_000,
   run: 5_000,
+  /** The Azure summary (feeds, health, vitals, the Service Health pill), on Overview and in the shell. */
+  azure: 30_000,
+  /** Azure metrics, the change log and Service Health: collected every 5 to 15 minutes, so a minute is plenty. */
+  azureData: 60_000,
 } as const;
 
 export interface QueryOpts {
@@ -156,3 +171,44 @@ export type CostRange = "month" | "7d" | "30d";
 export const useCost = endpoint<CostResponse, [range: CostRange]>((range) => ({ key: ["cost", range], path: "/cost" + qs({ range }), every: INTERVALS.cost }));
 export const useSettings = endpoint<SettingsResponse>(() => ({ key: ["settings"], path: "/settings", every: INTERVALS.settings }));
 export const usePushStatus = endpoint<PushStatusResponse, [endpoint: string]>((ep) => ({ key: ["push", ep], path: "/push/status" + qs({ endpoint: ep }), every: false }));
+
+// ── Azure insights (spec 2026-10-04-azure-insights-design.md, section 8) ──
+// Every query key starts with "azure". The routes read D1 only, so polling never reaches Azure.
+
+/** GET /azure/summary every 30 s. On an error the last answer stays (React Query keeps data). */
+export const useAzureSummary = endpoint<AzureSummaryResponse>(() => ({ key: ["azure", "summary"], path: "/azure/summary", every: INTERVALS.azure }));
+/** GET /azure/metrics for one resource and range, every 60 s. */
+export const useAzureMetrics = endpoint<AzureMetricsResponse, [resource: AzureMetricsResource, range: HistoryRange]>((resource, range) => ({
+  key: ["azure", "metrics", resource, range],
+  path: "/azure/metrics" + qs({ resource, range }),
+  every: INTERVALS.azureData,
+}));
+/** GET /azure/changes, every 60 s. */
+export const useAzureChanges = endpoint<AzureChangesResponse, [range: AzureChangesRange, who: AzureChangesWho]>((range, who) => ({
+  key: ["azure", "changes", range, who],
+  path: "/azure/changes" + qs({ range, who }),
+  every: INTERVALS.azureData,
+}));
+/** GET /azure/service-health, every 60 s. */
+export const useAzureServiceHealth = endpoint<AzureServiceHealthResponse, [range: AzureServiceHealthRange]>((range) => ({
+  key: ["azure", "serviceHealth", range],
+  path: "/azure/service-health" + qs({ range }),
+  every: INTERVALS.azureData,
+}));
+/** GET /azure/capacity for a deploy target; held until both a region and a size are given. Refetched with the settings (60 s). */
+export const useCapacity = endpoint<CapacityCheck, [region: string | null | undefined, size: string | null | undefined]>((region, size) => ({
+  key: ["azure", "capacity", region ?? "", size ?? ""],
+  path: "/azure/capacity" + qs({ region: region ?? undefined, size: size ?? undefined }),
+  every: INTERVALS.settings,
+  enabled: !!region && !!size,
+}));
+/** GET /azure/price for a region and size; held until both are given. */
+export const usePrice = endpoint<PriceInfo, [region: string | null | undefined, size: string | null | undefined]>((region, size) => ({
+  key: ["azure", "price", region ?? "", size ?? ""],
+  path: "/azure/price" + qs({ region: region ?? undefined, size: size ?? undefined }),
+  every: INTERVALS.settings,
+  enabled: !!region && !!size,
+}));
+/** GET /azure/bootlog: the last stored boot log, fetched when asked for (no polling). useFetchBootLog (mutations.ts) fetches a new one. */
+export const BOOTLOG_KEY = ["azure", "bootlog"] as const;
+export const useBootLog = endpoint<BootLogResponse>(() => ({ key: BOOTLOG_KEY, path: "/azure/bootlog", every: false }));

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SettingsResponse } from "@shared/api";
-import { useAddProfile, useDeleteProfile, useEditProfile } from "@/api/mutations";
-import { Button, EmptyState, Field, Modal, Panel, StatusPill, cx } from "@/components";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useAddProfile, useDeleteProfile, useEditProfile, useSaveSettings } from "@/api/mutations";
+import { useCapacity } from "@/api/queries";
+import { Button, EmptyState, Field, Modal, Panel, SegmentedControl, StatusPill, cx, formatAge } from "@/components";
+import { AlertTriangle, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEdits } from "./edits";
 import { ConfirmDialog, Lead, SelectField, SettingSwitch, UnsavedBar, plural } from "./ui";
 
@@ -21,11 +22,70 @@ export function DeploymentSection({ s }: { s: SettingsResponse }) {
         <div className="set-form">
           <SelectField label="Azure region" hint="The closest region to you. Changing it needs a tear-down and a fresh deploy." error={e.fieldError("region")} options={regionOptions} value={e.value<string>("region")} onValueChange={(v) => e.set("region", v)} />
           <SelectField label="VM size" hint="Small is plenty for a handful of devices." error={e.fieldError("vm_size")} options={sizeOptions} value={e.value<string>("vm_size")} onValueChange={(v) => e.set("vm_size", v)} />
+          <CapacityLine region={e.value<string>("region")} size={e.value<string>("vm_size")} />
           <SettingSwitch name="test_vm" label="Test VM behind the firewall" hint="Builds a small second server to test firewall rules against. Costs a little more while it runs." />
+          <PriceLine s={s} />
         </div>
       </Panel>
       <UnsavedBar section="deployment" label="Deployment" />
       <ProfilesPanel s={s} />
+    </div>
+  );
+}
+
+/**
+ * Can Azure give the next deploy this size here? A warning only when the
+ * check fails (it never blocks: the data can be a day old); a quiet line
+ * when it passes; nothing while it is not known.
+ */
+function CapacityLine({ region, size }: { region: string; size: string }) {
+  const c = useCapacity(region, size).data;
+  if (!c || c.ok === null) return null;
+  if (c.ok === false)
+    return (
+      <p className="set-cap set-cap--warn" role="note">
+        <AlertTriangle size={14} aria-hidden />
+        <span>{c.message ?? "Azure may not have this size for you here."}</span>
+      </p>
+    );
+  const q = c.family ?? c.total;
+  return <p className="set-cap">{["Available", q && `vCPU quota ${q.used} of ${q.limit} used`, c.fetchedAt && `checked ${formatAge(Date.now() - Date.parse(c.fetchedAt))}`].filter(Boolean).join(" · ")}</p>;
+}
+
+const per = (n: number | null) => (n === null ? "no data" : `£${n.toFixed(4)}`);
+const day = (iso: string) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" }).format(new Date(iso));
+
+/**
+ * Where cost estimates take the hourly price from: Azure's list price for the
+ * region and size, or the fixed rates (and why). Shown only when the choice
+ * means something: Azure has priced this region and size (fresh or stale), or
+ * a rate source was saved. Otherwise estimates use the fixed rates exactly as
+ * before, and the section is today's screen.
+ */
+function PriceLine({ s }: { s: SettingsResponse }) {
+  const save = useSaveSettings();
+  const p = s.price;
+  if (!p || (p.fetchedAt === null && s.overrides.rate_source === undefined)) return null;
+  const region = (s.regions[p.region] ?? p.region).replace(/\s*\(.*\)$/, "");
+  const line =
+    p.source === "azure"
+      ? `Azure list price, ${region}: VM ${per(p.vmGbpPerHour)} + disk ${per(p.diskGbpPerHour)} + IP ${per(p.ipGbpPerHour)} = ${per(p.totalGbpPerHour)}/h${p.fetchedAt ? ` (${day(p.fetchedAt)})` : ""}`
+      : `Fixed rates: ${per(p.totalGbpPerHour)}/h while running, ${per(p.standbyGbpPerHour)}/h in standby.`;
+  return (
+    <div className="set-price">
+      <div>
+        <p className="set-price__line">{line}</p>
+        {p.reason && <p className="field__hint">{p.reason}</p>}
+      </div>
+      <SegmentedControl
+        aria-label="Cost estimates use"
+        items={[
+          { value: "azure", label: "Azure price" },
+          { value: "fixed", label: "Fixed rates" },
+        ]}
+        value={s.rateSource}
+        onChange={(v) => v !== s.rateSource && save.mutate({ rate_source: v })}
+      />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { Topology } from "./Topology";
 import { LastRun, RunPanels } from "./Run";
 import { RecentEvents, SpeedTests, Traffic } from "./Side";
 import { CostImpact, HealthSummary, WatchmanNotes } from "./Lower";
+import { AzureHealth, Vitals, VmPerformance } from "./lazyInsights";
 import { PhoneOverview } from "./Phone";
 import { STATE_WORD, inGithubRun, regionCountry, regionFull } from "./model";
 import "./Overview.css";
@@ -154,11 +155,14 @@ const weightOf = (key: string) => R3.items.find((i) => itemKey(i) === key)!.weig
 const RUN = "overview.run";
 const TRAFFIC = "overview.traffic";
 const EVENTS = "overview.events";
+const VMPERF = "overview.vmPerformance";
 /** During a run: the run widens over traffic's slot and traffic takes Speed test's place in the side stack. */
 const RUN_ROWS: Record<string, LayoutItem[]> = {
   r3: [
     { widget: RUN, weight: weightOf(RUN) + weightOf(TRAFFIC) },
     { stack: "side", weight: weightOf("side"), widgets: [EVENTS, TRAFFIC] },
+    // VM performance (off unless turned on) keeps its own slot during a run.
+    { widget: VMPERF, weight: weightOf(VMPERF) },
   ],
 };
 
@@ -209,6 +213,11 @@ function MiddleRow({ o, now, onAction }: { o: OverviewResponse; now: number; onA
               }}
             </WidgetStack>
           ),
+          [VMPERF]: (
+            <Widget id={VMPERF}>
+              <VmPerformance o={o} now={now} />
+            </Widget>
+          ),
         }}
       </WidgetRow>
     );
@@ -247,6 +256,10 @@ function RunRow({ o, now }: { o: OverviewResponse; now: number }) {
         i.key === RUN ? (
           <Widget key={RUN} id={RUN}>
             <RunPanels o={o} />
+          </Widget>
+        ) : i.key === VMPERF ? (
+          <Widget key={VMPERF} id={VMPERF}>
+            <VmPerformance o={o} now={now} />
           </Widget>
         ) : (
           sideBlock
@@ -299,6 +312,16 @@ function Desktop({ o, receivedAt, onAction }: { o: OverviewResponse; receivedAt:
             "overview.notes": (
               <Widget id="overview.notes">
                 <WatchmanNotes />
+              </Widget>
+            ),
+            "overview.azureHealth": (
+              <Widget id="overview.azureHealth">
+                <AzureHealth o={o} now={now} />
+              </Widget>
+            ),
+            "overview.vitals": (
+              <Widget id="overview.vitals">
+                <Vitals o={o} now={now} />
               </Widget>
             ),
           }}

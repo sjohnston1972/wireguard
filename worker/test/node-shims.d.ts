@@ -15,6 +15,13 @@ declare module "node:sqlite" {
 declare module "node:fs" {
   export function readdirSync(path: string | URL): string[];
   export function readFileSync(path: string | URL, encoding: "utf8"): string;
+  export function writeFileSync(path: string | URL, data: string): void;
+}
+
+// gzip, used only by the cloud-init size test (Terraform's base64gzip).
+declare module "node:zlib" {
+  export function gzipSync(data: Uint8Array, options?: { level?: number }): Buffer;
+  export function gunzipSync(data: Uint8Array): Buffer;
 }
 
 // Vitest runs the tests as ES modules, where import.meta.url is the file's URL.

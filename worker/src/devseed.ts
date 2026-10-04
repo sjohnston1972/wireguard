@@ -31,8 +31,10 @@ import { effectiveConfig } from "./settings";
 import { compileFirewall } from "./firewall";
 import { budgetStatus } from "./budget";
 import { freezeDevClock } from "./devclock";
+import { AZ_TABLES } from "./insights/types";
+import { seedInsights } from "./devseed-insights";
 
-export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month"] as const;
+export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights"] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
 /** True only on a developer's PC: the login bypass is on and the request is for localhost. */
@@ -444,7 +446,8 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
 /** Wipe everything the seeder owns. */
 async function wipe(env: Env): Promise<void> {
   // ui_prefs too: every story starts with the widgets as they ship (shots --prefs saves its own after seeding).
-  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules", "ui_prefs"];
+  // And the Azure insights tables: only the insights story fills them.
+  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules", "ui_prefs", ...AZ_TABLES];
   await env.DB.batch([
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
     // No draft, and the live rule set back at version 1.
@@ -504,10 +507,12 @@ async function counts(env: Env): Promise<Record<string, number>> {
 
 /** Wipe the local data and build one scenario. `now` is injectable so a run can be repeated exactly. */
 export async function seedScenario(env: Env, scenario: Scenario, nowDate = new Date()): Promise<SeedResult> {
+  // insights tells the running story, then adds what the Azure collector and a version-7 agent would have stored.
+  const story: Exclude<Scenario, "insights"> = scenario === "insights" ? "running" : scenario;
   const now = nowDate.getTime();
   const rng = makeRng(SEED);
   await wipe(env);
-  await insertRules(env, scenario !== "empty");
+  await insertRules(env, story !== "empty");
   await env.STATUS.delete("cost:fetched_day").catch(() => {});
   await saveSnapshot(env, { ...EMPTY, updated_at: iso(now) });
   const cfg = await effectiveConfig(env);
@@ -539,11 +544,11 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
     }
   };
 
-  if (scenario === "empty") {
+  if (story === "empty") {
     return { ok: true, scenario, now: iso(now), counts: await counts(env) };
   }
 
-  if (scenario === "busy-month") {
+  if (story === "busy-month") {
     const peers = await insertPeers(env, rng, now, CAST.map((c) => c.name));
     const spans: { start: number; end: number | null }[] = [];
     for (let d = 29; d >= 0; d--) {
@@ -599,30 +604,30 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
 
   // The rest share a cast. "destroyed" and "failed" and "deploying" have a
   // week of earlier sessions behind them; "standby" and "running" too.
-  const names = scenario === "running" || scenario === "standby" ? CAST.map((c) => c.name) : FOUR;
+  const names = story === "running" || story === "standby" ? CAST.map((c) => c.name) : FOUR;
   const peers = await insertPeers(env, rng, now, names);
-  const dayList = scenario === "running" ? [6, 5, 4, 2, 1] : [6, 5, 4, 3, 2, 1];
+  const dayList = story === "running" ? [6, 5, 4, 2, 1] : [6, 5, 4, 3, 2, 1];
   // The last earlier session must end well before anything happening now.
-  const lastEnd = scenario === "standby" ? now - 20 * HOUR : now - 5 * HOUR;
+  const lastEnd = story === "standby" ? now - 20 * HOUR : now - 5 * HOUR;
   const earlier = pastSessions(rng, now, dayList, lastEnd);
   const standbySince = now - 3 * HOUR - 8 * MIN;
-  if (scenario === "standby") earlier.push({ start: standbySince - 2 * HOUR - 40 * MIN, end: standbySince, region: "uksouth", by: USER, reason: null });
+  if (story === "standby") earlier.push({ start: standbySince - 2 * HOUR - 40 * MIN, end: standbySince, region: "uksouth", by: USER, reason: null });
   const spans: { start: number; end: number | null }[] = earlier.map((s) => ({ start: s.start, end: s.end }));
   let lastApply: { applyId: string; publicIp: string } | null = null;
   for (const s of earlier) {
     const r = await addSession(env, rng, s, now, { peersLoaded: peers.length, ack: now - s.end! > DAY });
     lastApply = { applyId: r.applyId, publicIp: r.publicIp };
-    if (scenario === "standby" && s.end === standbySince) {
+    if (story === "standby" && s.end === standbySince) {
       // Standby: the deploy stands, only the VM is off. Drop the tear-down the helper wrote.
       await env.DB.prepare("DELETE FROM runs WHERE id = ?1").bind(r.destroyId).run();
       await env.DB.prepare("DELETE FROM alerts WHERE run_id = ?1").bind(r.destroyId).run();
     }
   }
-  if (scenario === "running" || scenario === "standby") await addForward(env);
+  if (story === "running" || story === "standby") await addForward(env);
   const ids = (await db.listFwRules(env)).map((r) => r.id);
   const hash = await fwHashNow();
-  await simSessions(peers, earlier.filter((s) => !(scenario === "standby" && s.end === standbySince)), ids, hash);
-  if (scenario === "standby") {
+  await simSessions(peers, earlier.filter((s) => !(story === "standby" && s.end === standbySince)), ids, hash);
+  if (story === "standby") {
     const s = earlier.at(-1)!;
     const presence = new Map<number, Presence | null>(peers.map((p) => [p.id, p.cast.presence >= 1 ? { from: s.start, to: s.end! } : p.cast.online ? { from: s.start + 10 * MIN, to: s.end! - 20 * MIN } : null]));
     await simulate(env, rng, { startMs: s.start, endMs: s.end!, stepMs: 5 * MIN, peers, presence, ruleIds: ids, fwHash: hash, port: cfg.port, serverKey });
@@ -638,22 +643,22 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
     [now - 2 * DAY, "client.edit", "laptop", { enabled: 1 }, { enabled: 0 }],
   ];
   for (const [at, a, tgt, b, af] of changes) await auditAt(env, at, a, tgt, b, af);
-  await insertSpeedTests(env, rng, now, scenario === "running");
+  await insertSpeedTests(env, rng, now, story === "running");
   await seedCost(env, rng, now, 40, spans);
   await db.addSchedule(env, { days: "12345", start_time: "08:00", end_time: "18:00", profile_id: null });
 
-  if (scenario === "destroyed") {
+  if (story === "destroyed") {
     return { ok: true, scenario, now: iso(now), counts: await counts(env) };
   }
 
-  if (scenario === "standby") {
+  if (story === "standby") {
     const azure = AZURE(now, region, lastApply?.publicIp ?? "203.0.113.12");
     azure.resources[4] = { ...azure.resources[4], detail: "Standard_B1s, deallocated" };
     await saveSnapshot(env, { ...EMPTY, state: "standby", since: iso(standbySince), standby_since: iso(standbySince), public_ip: lastApply?.publicIp ?? null, dns_ip: lastApply?.publicIp ?? null, dns_live: true, region, vm_size: "Standard_B1s", profile: "UK", azure, run_id: lastApply?.applyId ?? null, updated_at: iso(now) });
     return { ok: true, scenario, now: iso(now), counts: await counts(env) };
   }
 
-  if (scenario === "failed") {
+  if (story === "failed") {
     const at = now - 26 * MIN;
     const error = "Terraform apply failed: azurerm_linux_virtual_machine.wg: SkuNotAvailable: Standard_B1s is not available in uksouth right now.";
     const id = await addFailedRun(env, rng, at, error);
@@ -676,7 +681,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
     return { ok: true, scenario, now: iso(now), counts: await counts(env) };
   }
 
-  if (scenario === "deploying") {
+  if (story === "deploying") {
     const requested = now - 2 * MIN - 28 * SEC;
     const started = requested + 9 * SEC;
     const id = runId("apply", requested, rng);
@@ -759,6 +764,8 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
   const spent = (await budgetStatus(env, cfg, snap, nowDate)).total;
   await db.setSetting(env, "monthly_budget_gbp", String(Math.max(0.01, Math.round((spent / 0.4) * 100) / 100)));
   await insertDraft(env);
+  // Last, so everything above is exactly the running story.
+  if (scenario === "insights") await seedInsights(env, now, startMs, region);
   return { ok: true, scenario, now: iso(now), counts: await counts(env) };
 }
 

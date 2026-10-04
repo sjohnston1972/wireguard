@@ -1,1 +1,1 @@
-{"activity":{"layout":{"order":{"r2":["right","left"],"r3":["activity.liveOutput","activity.runDetails"]}}}}
+{"activity":{"layout":{"order":{"r2":["right","left"],"r3":["activity.liveOutput","activity.runDetails","activity.serviceHealth"]}}}}

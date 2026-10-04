@@ -13,8 +13,8 @@
 // through useSyncExternalStore in usePrefs.ts.
 
 import type { QueryClient } from "@tanstack/react-query";
-import type { PagePrefs, PrefsPage, PrefsResponse } from "@shared/api";
-import { PAGE_TITLES, normalisePagePrefs, PAGE_IDS, type PageId } from "@shared/widgets";
+import type { PagePrefs, PrefsPage, PrefsPutBody, PrefsResponse } from "@shared/api";
+import { PAGE_TITLES, PREFS_SCHEMA, normalisePagePrefs, PAGE_IDS, type PageId } from "@shared/widgets";
 import { apiSend, ApiError } from "@/api/client";
 import type { ToastInput } from "@/components";
 
@@ -193,7 +193,8 @@ export class PrefsStore {
     q.queued = false;
     q.keepalive = false;
     try {
-      const res = await apiSend<PrefsPage>("PUT", `/prefs/${page}`, { baseVersion: q.base ?? this.confirmed(page).version, prefs: sent }, keepalive ? { keepalive: true } : undefined);
+      const body: PrefsPutBody = { schema: PREFS_SCHEMA, baseVersion: q.base ?? this.confirmed(page).version, prefs: sent };
+      const res = await apiSend<PrefsPage>("PUT", `/prefs/${page}`, body, keepalive ? { keepalive: true } : undefined);
       if (this.disposed) return;
       // A refetch started before this save landed must not put the old version back.
       await this.client.cancelQueries({ queryKey: PREFS_KEY });

@@ -42,7 +42,7 @@ export async function armToken(env: Env): Promise<string> {
   return rec.token;
 }
 
-async function arm(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
+export async function arm(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
   const token = await armToken(env);
   return fetch(`${ARM}${path}`, {
     ...init,

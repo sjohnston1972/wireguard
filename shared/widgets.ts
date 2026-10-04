@@ -20,6 +20,7 @@
 //     reader would have to repair, naming the field.
 
 import type { PagePrefs, SettingValue } from "./api";
+import { AZURE_RESOURCE_KINDS } from "./azureMetrics";
 
 export type { PagePrefs, SettingValue };
 
@@ -61,6 +62,17 @@ export interface WidgetDef {
   page: PageId;
   /** The cog is named "<title> settings". */
   title: string;
+  /** One line for the Add widgets library: what the widget shows. No full stop. */
+  description: string;
+  /** A lucide-react icon name ("Gauge") for the library. */
+  icon?: string;
+  /**
+   * Off until the person turns it on (layout.shown); the insights widgets.
+   * Visible = defaultOff ? shown.includes(id) : !hidden.includes(id).
+   */
+  defaultOff?: true;
+  /** The widget its home row's Replace modal preselects when that row is full. */
+  replaces?: string;
   /** Starts at 1. Bump it (and add `migrate`) when a setting changes meaning or is renamed. */
   version: number;
   /** Pinned widgets cannot be hidden (they carry a page's primary actions). */
@@ -76,12 +88,19 @@ export interface WidgetDef {
  * the stack (that row's `in` names the stack): Firewall's zones and
  * simulator sit side by side under the rules.
  */
-export type LayoutItem = { widget: string; weight: number } | { stack: string; weight: number; widgets: string[] };
+export type LayoutItem = { widget: string; weight: number } | { stack: string; weight: number; widgets: string[]; /** The most members visible at once; default: how many it declares. */ max?: number };
 export interface LayoutRow {
   id: string;
   items: LayoutItem[];
   /** Set on a row nested inside a stack: that stack's id. */
   in?: string;
+  /**
+   * The most items visible at once (a stack counts as one while any member
+   * shows). Default: how many it declares. A row or stack that gained
+   * default-off widgets keeps its count from before, so it is full as
+   * shipped and turning one on means replacing another (spec 9.3).
+   */
+  max?: number;
 }
 export interface PageLayout {
   page: PageId;
@@ -106,6 +125,12 @@ export interface PrefsProblem {
 export const MAX_PREFS_BODY_BYTES = 16 * 1024;
 /** A page's stored (normalised) preferences may be at most this long as JSON. */
 export const MAX_PAGE_PREFS_BYTES = 8 * 1024;
+/**
+ * The preferences schema this dashboard saves (PrefsPutBody.schema). 2 added
+ * layout.shown; a save without it comes from an older bundle that would drop
+ * `shown`, so the Worker answers 409 outdated.
+ */
+export const PREFS_SCHEMA = 2;
 
 // ── Option lists copied from the Worker (a Worker test keeps them equal) ──
 
@@ -149,14 +174,22 @@ const num = (section: Section, key: string, label: string, min: number, max: num
 /** A multi-select; the default is every option unless given. */
 const multi = (section: Section, key: string, label: string, options: Option[], minSelected: number, def?: string[]): SettingSpec => ({ kind: "multi", key, label, section, options, minSelected, default: def ?? options.map((x) => x.value) });
 const thr = (key: string, label: string, direction: "above" | "below", unit: string, min: number, max: number, step: number, warn: number | null, bad: number | null): SettingSpec => ({ kind: "threshold", key, label, section: "thresholds", unit, min, max, step, direction, default: { warn, bad } });
-const def = (id: string, title: string, settings: SettingSpec[], extra: { pinned?: boolean; version?: number; migrate?: WidgetDef["migrate"] } = {}): WidgetDef => ({ id, page: id.split(".")[0] as PageId, title, version: 1, settings, ...extra });
+type DefExtra = Partial<Pick<WidgetDef, "pinned" | "version" | "migrate" | "defaultOff" | "icon" | "replaces">>;
+/** A widget; its description comes from DESCRIPTIONS below. */
+const def = (id: string, title: string, settings: SettingSpec[], extra: DefExtra = {}): Omit<WidgetDef, "description"> => ({ id, page: id.split(".")[0] as PageId, title, version: 1, settings, ...extra });
 
 const DENSITY = o(["comfortable", "Comfortable"], ["compact", "Compact"]);
 const ZONES = o(["clients", "Clients"], ["home", "Home"], ["azure", "Azure"], ["workloads", "Workloads"], ["internet", "Internet"]);
 
-// ── The catalogue (spec section 8). Every default is today's behaviour. ──
+/** The change log's Azure resource kinds (shared/azureMetrics.ts AZURE_RESOURCE_KINDS). */
+const AZ_KINDS: Option[] = AZURE_RESOURCE_KINDS.map((k) => ({ value: k.value, label: k.label }));
+const ADDED = { defaultOff: true } as const;
 
-export const WIDGETS: readonly WidgetDef[] = [
+// ── The catalogue (spec section 8). Every default is today's behaviour. ──
+// The insights widgets (2026-10-04 spec 10.1) close each page's list: all
+// default-off, so with nothing saved every page is exactly as before.
+
+const CATALOGUE: readonly Omit<WidgetDef, "description">[] = [
   // Overview
   def("overview.status", "Status banner", [bool("display", "progress", "Step progress bar", true), bool("display", "timing", "Timing block", true), bool("display", "autoDestroy", "Auto-destroy time", true)], { pinned: true }),
   def("overview.topology", "Live topology", [bool("display", "secondLines", "Second lines: addresses, region", true), bool("display", "edgeLabels", "Edge labels: UDP port", true)]),
@@ -190,9 +223,55 @@ export const WIDGETS: readonly WidgetDef[] = [
   def("overview.health", "Health summary", [
     multi("data", "checks", "Checks", o(["vm", "VM reachable"], ["wireguard", "WireGuard service"], ["dns", "DNS resolving"], ["tunnel", "Tunnel connectivity"], ["selftest", "Self-test"]), 1),
     bool("display", "ages", "Check ages", true),
+    // Added by the insights project: the head's title and sub-line from the verdict (spec 10.3). On gives today's head when there is no new data.
+    bool("display", "verdict", "Verdict line", true),
   ]),
   def("overview.costImpact", "Cost impact", [num("data", "sessions", "Sessions in chart", 4, 30, 1, 16), bool("display", "typical", "Typical session line", true), thr("session", "Session estimate", "above", "£", 0, 500, 0.01, null, null)]),
   def("overview.notes", "Watchman notes", [pick("data", "max", "Show at most", o(["all", "All"], "3", "5", "10"), "all"), bool("display", "times", "Times", true)]),
+  def(
+    "overview.vmPerformance",
+    "VM performance",
+    [
+      pick("data", "range", "Range", o("1h", "24h", "7d", "30d"), "24h"),
+      multi("data", "charts", "Charts", o(["cpu", "CPU"], ["credits", "CPU credits"], ["memory", "Memory"], ["network", "Network"], ["disk", "Disk"], ["diskQuota", "Disk quota used"]), 1, ["cpu", "credits", "network"]),
+      bool("display", "azureNames", "Azure metric names", true),
+      bool("display", "peaks", "Peaks", false),
+      thr("cpu", "CPU", "above", "%", 0, 100, 1, 80, 95),
+      thr("credits", "Credits left", "below", "credits", 0, 2000, 1, 30, 10),
+      thr("memory", "Memory used", "above", "%", 0, 100, 1, 85, 95),
+      thr("diskIops", "Disk IOPS used", "above", "%", 0, 100, 1, 80, 95),
+    ],
+    { ...ADDED, icon: "Gauge", replaces: "overview.traffic" },
+  ),
+  def(
+    "overview.azureHealth",
+    "Azure health",
+    [
+      num("data", "annotations", "Annotations shown", 0, 5, 1, 3),
+      bool("data", "maintenance", "Maintenance", true),
+      bool("data", "serviceIssues", "Service issues", true),
+      bool("display", "feedAges", "Feed ages", true),
+      bool("display", "azureTerms", "Azure terms", true),
+    ],
+    { ...ADDED, icon: "HeartPulse", replaces: "overview.notes" },
+  ),
+  def(
+    "overview.vitals",
+    "System vitals",
+    [
+      multi("data", "rows", "Rows", o(["memory", "Memory"], ["disk", "Disk"], ["load", "Load"], ["steal", "CPU steal"], ["conntrack", "Connections"], ["uptime", "Uptime"], ["updates", "Updates"], ["internet", "Internet"]), 1),
+      bool("display", "bars", "Bars", true),
+      thr("memory", "Memory used", "above", "%", 0, 100, 1, 85, 95),
+      thr("disk", "Disk used", "above", "%", 0, 100, 1, 80, 90),
+      thr("load", "Load per vCPU", "above", "per vCPU", 0, 16, 0.1, 1, 2),
+      thr("steal", "CPU steal", "above", "%", 0, 100, 1, 10, 25),
+      thr("conntrack", "Connections (conntrack)", "above", "%", 0, 100, 1, 70, 90),
+      thr("latency", "Internet latency", "above", "ms", 1, 1000, 1, 100, 250),
+      thr("loss", "Internet loss", "above", "%", 0, 100, 1, 2, 10),
+      thr("securityUpdates", "Security updates", "above", "updates", 0, 500, 1, 1, null),
+    ],
+    { ...ADDED, icon: "Activity", replaces: "overview.costImpact" },
+  ),
 
   // Clients
   def("clients.kpis", "Client figures", [
@@ -260,6 +339,18 @@ export const WIDGETS: readonly WidgetDef[] = [
     num("data", "seconds", "Starting seconds", 5, 300, 5, 30, "s"),
     num("data", "recent", "Recent captures shown", 1, 10, 1, 5),
   ]),
+  def(
+    "firewall.publicIp",
+    "Public IP and DDoS",
+    [
+      pick("data", "range", "Range", o("1h", "24h", "7d"), "24h"),
+      multi("data", "series", "Series", o(["packets", "Packets"], ["bytes", "Bytes"], ["syn", "SYN packets"], ["dropped", "Dropped by DDoS mitigation"]), 1, ["packets", "dropped"]),
+      bool("display", "azureNames", "Azure metric names", true),
+      thr("availability", "Data path availability", "below", "%", 0, 100, 0.1, 99.9, 99),
+      thr("dropped", "Dropped packets per 5 minutes", "above", "packets", 1, 1e9, 1, null, null),
+    ],
+    { ...ADDED, icon: "ShieldAlert", replaces: "firewall.capture" },
+  ),
 
   // Activity
   def("activity.kpis", "Activity figures", [
@@ -287,13 +378,42 @@ export const WIDGETS: readonly WidgetDef[] = [
     bool("display", "detail", "Detail line", true),
     pick("display", "timeFormat", "Time format", o(["clock", "HH:MM:SS"], ["relative", "Relative"]), "clock"),
   ]),
-  def("activity.changeLog", "Change log", [pick("data", "kind", "Starting change kind", AUDIT_KIND_OPTIONS, "all"), bool("display", "whatChanged", "What changed column", true), bool("display", "by", "By column", true)]),
+  def("activity.changeLog", "Change log", [
+    pick("data", "kind", "Starting change kind", AUDIT_KIND_OPTIONS, "all"),
+    bool("display", "whatChanged", "What changed column", true),
+    bool("display", "by", "By column", true),
+    // Added by the insights project: Azure's change log rows, tagged "Azure", among wg-admin's own (off: today's list).
+    bool("data", "azure", "Include Azure changes", false),
+  ]),
   def("activity.runDetails", "Run details", [
     pick("data", "run", "Run shown on Activity", o(["newest", "Newest run"], ["newestFailed", "Newest failed run"]), "newest"),
     bool("display", "durations", "Step durations", true),
     pick("display", "nameLines", "Step name lines", o("1", "2"), "2"),
   ]),
   def("activity.liveOutput", "Live output", [num("data", "lines", "Lines", 20, 200, 20, 60), bool("display", "wrap", "Wrap long lines", false), bool("display", "timestamps", "Timestamps", true), bool("display", "levelTags", "Level tags", true)]),
+  def(
+    "activity.azureChanges",
+    "Azure change log",
+    [
+      pick("data", "range", "Range", o("24h", "7d", "30d", "90d"), "7d"),
+      pick("data", "who", "Who", o(["all", "Everyone"], ["others", "Everyone but wg-admin"], ["wgadmin", "wg-admin only"]), "all"),
+      multi("data", "types", "Types", AZ_KINDS, 1),
+      bool("display", "status", "Status column", true),
+      bool("display", "caller", "Caller column", true),
+      bool("display", "failedOnly", "Failed only", false),
+    ],
+    { ...ADDED, icon: "History", replaces: "activity.changeLog" },
+  ),
+  def(
+    "activity.serviceHealth",
+    "Azure service health",
+    [
+      pick("data", "range", "Range", o("7d", "30d", "90d"), "30d"),
+      multi("data", "types", "Types", o(["issue", "Service issues"], ["maintenance", "Planned maintenance"]), 1),
+      bool("display", "summaries", "Summaries", true),
+    ],
+    { ...ADDED, icon: "CloudAlert", replaces: "activity.liveOutput" },
+  ),
 
   // Cost
   def("cost.kpis", "Cost figures", [
@@ -336,6 +456,55 @@ export const WIDGETS: readonly WidgetDef[] = [
   ]),
 ];
 
+/** Each widget's one line for the Add widgets library (spec 9.1). */
+const DESCRIPTIONS: Record<string, string> = {
+  "overview.status": "The deployment's state, progress and auto-destroy time",
+  "overview.topology": "Clients, tunnel, VM and home site as a live diagram",
+  "overview.keyMetrics": "Endpoint, clients, latency, DNS, heartbeat, cost and availability",
+  "overview.run": "The latest deploy or tear-down: its steps and log",
+  "overview.traffic": "Data in and out of the tunnel over time",
+  "overview.events": "The latest deploys, failures, changes and watchman notes",
+  "overview.speedTest": "Recent speed tests from the VM",
+  "overview.health": "VM, WireGuard, DNS, tunnel and self-test checks",
+  "overview.costImpact": "What each recent session cost",
+  "overview.notes": "What the watchman noticed and did",
+  "overview.vmPerformance": "CPU, memory, network and disk as Azure measures them",
+  "overview.azureHealth": "What Azure says about the VM: health, power, agent, maintenance",
+  "overview.vitals": "Memory, disk, load, steal, connections, updates and internet from the VM",
+  "clients.kpis": "Total, online, latency, full-tunnel, stale and expiring clients",
+  "clients.table": "Every client with its address, handshake, latency and traffic",
+  "clients.talkers": "The clients moving the most data this session",
+  "clients.statusDonut": "Online, offline and expiring clients at a glance",
+  "clients.sessionTraffic": "Client traffic in and out over time",
+  "firewall.kpis": "Policy, default action, drops, published ports and capture",
+  "firewall.rules": "The firewall rules, their hits and their order",
+  "firewall.zones": "The network zones and the traffic allowed between them",
+  "firewall.simulator": "Check whether some traffic would be allowed or dropped",
+  "firewall.drops": "The latest packets the firewall dropped",
+  "firewall.ports": "Ports opened from the internet through the VM",
+  "firewall.capture": "Take a packet capture on the VM and download it",
+  "firewall.publicIp": "Packets at Azure's edge and DDoS mitigation on the public IP",
+  "activity.kpis": "Deploys, durations, success rate, failures, changes and problems",
+  "activity.timeline": "Deploys, tear-downs, failures and changes over time",
+  "activity.list": "Every run and activity entry, with filters",
+  "activity.stream": "Events as they happen",
+  "activity.changeLog": "Who changed which setting, and when",
+  "activity.runDetails": "The steps of one run and how long each took",
+  "activity.liveOutput": "The selected run's log output",
+  "activity.azureChanges": "Who changed what in Azure, including the portal",
+  "activity.serviceHealth": "Azure issues and planned maintenance in your region",
+  "cost.kpis": "This session, month to date, forecast, budget and cost guard",
+  "cost.spend": "Daily spend with the forecast and the budget",
+  "cost.breakdown": "Where this month's money went",
+  "cost.forecast": "The month's forecast against the budget",
+  "cost.split": "Spend by region or by resource type",
+  "cost.perSession": "What each session cost",
+  "cost.insights": "Plain-English notes on your spending",
+  "cost.sessions": "Every session with its region, size, duration and cost",
+};
+
+export const WIDGETS: readonly WidgetDef[] = CATALOGUE.map((x) => ({ ...x, description: DESCRIPTIONS[x.id] ?? "" }));
+
 const w = (widget: string, weight = 1): LayoutItem => ({ widget, weight });
 
 /** Each page's rows with today's weights (fr units or column spans). */
@@ -345,8 +514,9 @@ export const LAYOUTS: Record<PageId, PageLayout> = {
     rows: [
       { id: "r1", items: [w("overview.status")] },
       { id: "r2", items: [w("overview.topology"), w("overview.keyMetrics")] },
-      { id: "r3", items: [w("overview.run", 41), w("overview.traffic", 45), { stack: "side", weight: 32, widgets: ["overview.events", "overview.speedTest"] }] },
-      { id: "r4", items: [w("overview.health", 54), w("overview.costImpact", 32), w("overview.notes", 32)] },
+      // The insights widgets join at the end with the weight of the widget they suggest replacing, and max keeps each row at its old count.
+      { id: "r3", max: 3, items: [w("overview.run", 41), w("overview.traffic", 45), { stack: "side", weight: 32, widgets: ["overview.events", "overview.speedTest"] }, w("overview.vmPerformance", 45)] },
+      { id: "r4", max: 3, items: [w("overview.health", 54), w("overview.costImpact", 32), w("overview.notes", 32), w("overview.azureHealth", 32), w("overview.vitals", 32)] },
     ],
   },
   clients: {
@@ -361,7 +531,7 @@ export const LAYOUTS: Record<PageId, PageLayout> = {
     page: "firewall",
     rows: [
       { id: "r1", items: [w("firewall.kpis")] },
-      { id: "r2", items: [{ stack: "left", weight: 9, widgets: ["firewall.rules", "bottom"] }, { stack: "right", weight: 3, widgets: ["firewall.drops", "firewall.ports", "firewall.capture"] }] },
+      { id: "r2", items: [{ stack: "left", weight: 9, widgets: ["firewall.rules", "bottom"] }, { stack: "right", weight: 3, max: 3, widgets: ["firewall.drops", "firewall.ports", "firewall.capture", "firewall.publicIp"] }] },
       { id: "bottom", in: "left", items: [w("firewall.zones"), w("firewall.simulator")] },
     ],
   },
@@ -369,8 +539,8 @@ export const LAYOUTS: Record<PageId, PageLayout> = {
     page: "activity",
     rows: [
       { id: "r1", items: [w("activity.kpis")] },
-      { id: "r2", items: [{ stack: "left", weight: 8, widgets: ["activity.timeline", "activity.list"] }, { stack: "right", weight: 4, widgets: ["activity.stream", "activity.changeLog"] }] },
-      { id: "r3", items: [w("activity.runDetails", 3), w("activity.liveOutput", 2)] },
+      { id: "r2", items: [{ stack: "left", weight: 8, widgets: ["activity.timeline", "activity.list"] }, { stack: "right", weight: 4, max: 2, widgets: ["activity.stream", "activity.changeLog", "activity.azureChanges"] }] },
+      { id: "r3", max: 2, items: [w("activity.runDetails", 3), w("activity.liveOutput", 2), w("activity.serviceHealth", 2)] },
     ],
   },
   cost: {
@@ -406,6 +576,186 @@ export function itemKey(item: LayoutItem): string {
 /** A row's item keys in their declared order ([] for no such row). */
 export function rowItemKeys(page: PageId, rowId: string, reg: Registry = REGISTRY): string[] {
   return reg.layouts[page]?.rows.find((r) => r.id === rowId)?.items.map(itemKey) ?? [];
+}
+
+// ── Visibility and capacity (insights spec 9.1, 9.3) ─────────────────────
+
+/**
+ * Whether a widget shows with these preferences: a default-off widget only
+ * when `layout.shown` names it; any other unless `layout.hidden` does;
+ * a pinned widget always.
+ */
+export function isVisible(prefs: PagePrefs, d: Pick<WidgetDef, "id" | "pinned" | "defaultOff">): boolean {
+  if (d.pinned) return true;
+  if (d.defaultOff) return !!prefs.layout?.shown?.includes(d.id);
+  return !prefs.layout?.hidden?.includes(d.id);
+}
+
+/** Where a widget lives: its row (the row whose items hold it, directly or in a stack) and its stack, if any. `home` is the capacity unit: the stack's id, else the row's. */
+export interface WidgetHome {
+  page: PageId;
+  row: string;
+  stack: string | null;
+  home: string;
+}
+
+/** The home of widget `id`, or null when no layout holds it. */
+export function widgetHome(id: string, reg: Registry = REGISTRY): WidgetHome | null {
+  const d = widgetDef(id, reg);
+  if (!d) return null;
+  for (const row of reg.layouts[d.page]?.rows ?? [])
+    for (const it of row.items) {
+      if ("widget" in it && it.widget === id) return { page: d.page, row: row.id, stack: null, home: row.id };
+      if ("stack" in it && it.widgets.includes(id)) return { page: d.page, row: row.id, stack: it.stack, home: it.stack };
+    }
+  return null;
+}
+
+type Unit = { kind: "row"; row: LayoutRow } | { kind: "stack"; row: LayoutRow; stack: Extract<LayoutItem, { stack: string }> };
+
+/** A page's row or stack with this id. */
+function unitOf(page: PageId, home: string, reg: Registry): Unit | null {
+  const rows = reg.layouts[page]?.rows ?? [];
+  const row = rows.find((r) => r.id === home);
+  if (row) return { kind: "row", row };
+  for (const r of rows) for (const it of r.items) if ("stack" in it && it.stack === home) return { kind: "stack", row: r, stack: it };
+  return null;
+}
+
+/** Every row and stack of a page, rows first. */
+function unitsOf(page: PageId, reg: Registry): Unit[] {
+  const rows = reg.layouts[page]?.rows ?? [];
+  return [...rows.map((row): Unit => ({ kind: "row", row })), ...rows.flatMap((row) => row.items.flatMap((it): Unit[] => ("stack" in it ? [{ kind: "stack", row, stack: it }] : [])))];
+}
+
+/** A row's item keys, or a stack's members (widget ids and nested row ids), as declared. */
+export function homeMembers(page: PageId, home: string, reg: Registry = REGISTRY): string[] {
+  const u = unitOf(page, home, reg);
+  if (!u) return [];
+  return u.kind === "row" ? u.row.items.map(itemKey) : [...u.stack.widgets];
+}
+
+const isRowId = (page: PageId, id: string, reg: Registry) => (reg.layouts[page]?.rows ?? []).some((r) => r.id === id);
+
+/** A nested row shows while anything in it does. */
+function rowShows(page: PageId, rowId: string, prefs: PagePrefs, reg: Registry): boolean {
+  const row = reg.layouts[page]?.rows.find((r) => r.id === rowId);
+  return !!row && row.items.some((it) => ("widget" in it ? memberShows(page, it.widget, prefs, reg) : it.widgets.some((m) => memberShows(page, m, prefs, reg))));
+}
+
+/** A stack member (a widget, or a nested row) shows. */
+function memberShows(page: PageId, m: string, prefs: PagePrefs, reg: Registry): boolean {
+  if (isRowId(page, m, reg)) return rowShows(page, m, prefs, reg);
+  const d = widgetDef(m, reg);
+  return !!d && isVisible(prefs, d);
+}
+
+/** Every widget a row or stack holds, through stacks and nested rows. */
+function widgetsUnder(page: PageId, keys: string[], reg: Registry): string[] {
+  const rows = reg.layouts[page]?.rows ?? [];
+  return keys.flatMap((k) => {
+    const row = rows.find((r) => r.id === k);
+    if (row) return widgetsUnder(page, row.items.map(itemKey), reg);
+    for (const r of rows) for (const it of r.items) if ("stack" in it && it.stack === k) return widgetsUnder(page, it.widgets, reg);
+    return [k];
+  });
+}
+
+/** A row's item keys in the person's order: the saved order when it is a permutation of the row, else the declared one. */
+function orderOf(row: LayoutRow, prefs: PagePrefs): string[] {
+  const keys = row.items.map(itemKey);
+  const saved = prefs.layout?.order?.[row.id];
+  return saved && saved.length === keys.length && keys.every((k) => saved.includes(k)) ? [...saved] : keys;
+}
+
+/** What turning a widget on into a row or stack meets (spec 9.3). */
+export interface Capacity {
+  page: PageId;
+  /** The row or stack id asked about. */
+  home: string;
+  kind: "row" | "stack";
+  /** The most items it shows at once. */
+  max: number;
+  /** How many show now (a stack in a row counts as one while any member shows). */
+  visible: number;
+  /** visible >= max: turning another on means replacing one (the Replace modal). */
+  full: boolean;
+  /**
+   * What Replace may turn off to make room, in the person's order: visible,
+   * non-pinned widgets whose leaving frees a place. In a row: its widgets,
+   * plus a stack's only visible widget. In a stack: its visible widgets.
+   */
+  candidates: string[];
+  /** The candidate to preselect for `adding` (see suggestFor); null without `adding` or candidates. */
+  suggestion: string | null;
+}
+
+function capacityOf(page: PageId, u: Unit, prefs: PagePrefs, reg: Registry, adding?: string): Capacity {
+  const shows = (m: string) => memberShows(page, m, prefs, reg);
+  const offerable = (m: string) => !isRowId(page, m, reg) && shows(m) && !widgetDef(m, reg)?.pinned;
+  let max: number;
+  let visible: number;
+  let candidates: string[];
+  if (u.kind === "row") {
+    max = u.row.max ?? u.row.items.length;
+    const items = orderOf(u.row, prefs).map((k) => u.row.items.find((it) => itemKey(it) === k)!);
+    visible = items.filter((it) => ("widget" in it ? shows(it.widget) : it.widgets.some(shows))).length;
+    candidates = items.flatMap((it) => {
+      if ("widget" in it) return offerable(it.widget) ? [it.widget] : [];
+      const on = it.widgets.filter(shows);
+      return on.length === 1 && offerable(on[0]!) ? [on[0]!] : [];
+    });
+  } else {
+    max = u.stack.max ?? u.stack.widgets.length;
+    visible = u.stack.widgets.filter(shows).length;
+    candidates = u.stack.widgets.filter(offerable);
+  }
+  const suggestion = adding ? suggestFor(adding, candidates, prefs, reg) : null;
+  return { page, home: u.kind === "row" ? u.row.id : u.stack.stack, kind: u.kind, max, visible, full: visible >= max, candidates, suggestion };
+}
+
+/**
+ * Replace's preselected widget for turning `adding` on (spec 9.3), first that applies:
+ * 1. its `replaces`, when that is a candidate;
+ * 2. a candidate whose `replaces` is `adding` (turning a widget back on swaps out what took its place);
+ * 3. the candidate turned on most recently (the newest `layout.shown` entry);
+ * 4. the row's last candidate in the person's order: the row's first is its lead widget (Health summary, Last run), the
+ *    least sensible thing to offer away.
+ */
+function suggestFor(adding: string, candidates: string[], prefs: PagePrefs, reg: Registry): string | null {
+  const preset = widgetDef(adding, reg)?.replaces;
+  if (preset && candidates.includes(preset)) return preset;
+  const tookItsPlace = candidates.find((c) => widgetDef(c, reg)?.replaces === adding);
+  if (tookItsPlace) return tookItsPlace;
+  const newest = [...(prefs.layout?.shown ?? [])].reverse().find((id) => candidates.includes(id));
+  return newest ?? candidates.at(-1) ?? null;
+}
+
+/**
+ * The capacity of row or stack `home` with these preferences. `adding`, the
+ * widget about to be turned on, picks the suggestion. Throws for an id the
+ * page does not have.
+ */
+export function rowCapacity(page: PageId, home: string, prefs: PagePrefs, adding?: string, reg: Registry = REGISTRY): Capacity {
+  const u = unitOf(page, home, reg);
+  if (!u) throw new Error(`No row or stack ${home} on the ${PAGE_TITLES[page]} page.`);
+  return capacityOf(page, u, prefs, reg, adding);
+}
+
+/** The first row or stack showing more than its max, or null. */
+export function overfullHome(page: PageId, prefs: PagePrefs, reg: Registry = REGISTRY): Capacity | null {
+  for (const u of unitsOf(page, reg)) {
+    const c = capacityOf(page, u, prefs, reg);
+    if (c.visible > c.max) return c;
+  }
+  return null;
+}
+
+/** How a row or stack is named in a message: "Overview row 3", "The Firewall right column". */
+function homeLabel(page: PageId, c: Capacity): string {
+  if (c.kind === "stack") return `The ${PAGE_TITLES[page]} ${c.home} column`;
+  const n = /^r(\d+)$/.exec(c.home);
+  return n ? `${PAGE_TITLES[page]} row ${n[1]}` : `The ${PAGE_TITLES[page]} ${c.home} row`;
 }
 
 /** Every setting at its default: what a widget shows with nothing saved. */
@@ -561,8 +911,24 @@ export function normalisePagePrefs(page: PageId, raw: unknown, reg: Registry = R
     }
     if (Array.isArray(raw.layout.hidden)) {
       const asked = raw.layout.hidden.filter((x): x is string => typeof x === "string");
-      const hidden = defs.filter((d) => !d.pinned && asked.includes(d.id)).map((d) => d.id);
+      const hidden = defs.filter((d) => !d.pinned && !d.defaultOff && asked.includes(d.id)).map((d) => d.id);
       if (hidden.length) layout.hidden = hidden;
+    }
+    // shown keeps its saved order: the last entry is the newest, the first to go from an over-full row.
+    if (Array.isArray(raw.layout.shown)) {
+      const shown: string[] = [];
+      for (const x of raw.layout.shown) if (typeof x === "string" && !shown.includes(x) && defs.some((d) => d.id === x && d.defaultOff)) shown.push(x);
+      // An over-full row or stack (saved by another dashboard, or a layout change since): drop its newest shown widgets.
+      for (const u of unitsOf(page, reg)) {
+        const inside = widgetsUnder(page, [u.kind === "row" ? u.row.id : u.stack.stack], reg);
+        for (let c = capacityOf(page, u, { layout: { ...layout, shown } }, reg); c.visible > c.max; c = capacityOf(page, u, { layout: { ...layout, shown } }, reg)) {
+          let i = shown.length - 1;
+          while (i >= 0 && !inside.includes(shown[i]!)) i--;
+          if (i < 0) break;
+          shown.splice(i, 1);
+        }
+      }
+      if (shown.length) layout.shown = shown;
     }
   }
   if (Object.keys(layout).length) out.layout = layout;
@@ -629,7 +995,7 @@ export function validatePagePrefs(page: PageId, prefs: unknown, reg: Registry = 
   if (own(prefs, "layout")) {
     const layout = prefs.layout;
     if (!isObj(layout)) return { field: "layout", message: "layout must be an object." };
-    for (const k of Object.keys(layout)) if (k !== "order" && k !== "hidden") return { field: `layout.${k}`, message: `Unknown key "${k}" in layout.` };
+    for (const k of Object.keys(layout)) if (k !== "order" && k !== "hidden" && k !== "shown") return { field: `layout.${k}`, message: `Unknown key "${k}" in layout.` };
     if (own(layout, "order")) {
       const order = layout.order;
       if (!isObj(order)) return { field: "layout.order", message: "order must be an object of row id to item list." };
@@ -650,10 +1016,25 @@ export function validatePagePrefs(page: PageId, prefs: unknown, reg: Registry = 
         const d = typeof id === "string" ? defs.find((x) => x.id === id) : undefined;
         if (!d) return { field: "layout.hidden", message: `No widget ${String(id)} on the ${pageName} page.` };
         if (d.pinned) return { field: "layout.hidden", message: `${d.title} can't be hidden.` };
+        if (d.defaultOff) return { field: "layout.hidden", message: `${d.title} is off by default: leave it out of shown instead.` };
         if (seen.has(d.id)) return { field: "layout.hidden", message: `${d.id} is listed twice.` };
         seen.add(d.id);
       }
     }
+    if (own(layout, "shown")) {
+      const shown = layout.shown;
+      if (!Array.isArray(shown)) return { field: "layout.shown", message: "shown must be a list of widget ids." };
+      const seen = new Set<string>();
+      for (const id of shown) {
+        const d = typeof id === "string" ? defs.find((x) => x.id === id) : undefined;
+        if (!d) return { field: "layout.shown", message: `No widget ${String(id)} on the ${pageName} page.` };
+        if (!d.defaultOff) return { field: "layout.shown", message: `${d.title} is on by default: turn it off with hidden, not shown.` };
+        if (seen.has(d.id)) return { field: "layout.shown", message: `${d.id} is listed twice.` };
+        seen.add(d.id);
+      }
+    }
+    const full = overfullHome(page, prefs as PagePrefs, reg);
+    if (full) return { field: "layout.shown", message: `${homeLabel(page, full)} is full. Turn a widget off first.` };
   }
 
   if (own(prefs, "widgets")) {

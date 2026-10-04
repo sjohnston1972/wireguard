@@ -10,13 +10,26 @@
 // unseen. The owner is always the signed-in identity the caller passes in.
 
 import type { Env } from "./env";
-import { MAX_PAGE_PREFS_BYTES, PAGE_IDS, REGISTRY, normalisePagePrefs, validatePagePrefs, type PageId, type Registry } from "../../shared/widgets";
+import { MAX_PAGE_PREFS_BYTES, PAGE_IDS, PREFS_SCHEMA, REGISTRY, normalisePagePrefs, validatePagePrefs, type PageId, type Registry } from "../../shared/widgets";
 import type { PrefsPage, PrefsResponse } from "../../shared/api";
 
 /** What a save came to: the page as now stored, or the refusal (status, code, message, field). */
 export type PutResult = { ok: true; page: PrefsPage } | { ok: false; status: 400 | 409; code: "bad_input" | "stale" | "outdated"; message: string; field?: string };
 
 export const STALE_MESSAGE = "Changed on another device. Showing the latest.";
+/** What an older dashboard is told (the same words as an entry saved by one: shared/widgets.ts). */
+export const OUTDATED_MESSAGE = "This tab is running an older dashboard. Reload to change widget settings.";
+
+/**
+ * Why a save's `schema` is refused, or null for PREFS_SCHEMA (2). Missing or
+ * an older number: 409 outdated (the tab runs a bundle that would drop
+ * layout.shown, so it should reload). Anything else: 400.
+ */
+export function schemaRefusal(schema: unknown): { status: 400 | 409; code: "bad_input" | "outdated"; message: string } | null {
+  if (schema === PREFS_SCHEMA) return null;
+  if (schema === undefined || (typeof schema === "number" && Number.isInteger(schema) && schema >= 0 && schema < PREFS_SCHEMA)) return { status: 409, code: "outdated", message: OUTDATED_MESSAGE };
+  return { status: 400, code: "bad_input", message: `schema must be ${PREFS_SCHEMA}.` };
+}
 
 /** Every widget page for `user`, normalised; a page never saved is version 0 with {}. */
 export async function getPrefs(env: Env, user: string, reg: Registry = REGISTRY): Promise<PrefsResponse> {

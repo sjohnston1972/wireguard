@@ -70,7 +70,7 @@ locals {
     peers_conf            = local.peers_conf
     agent_url             = var.agent_url
     agent_token           = var.agent_token
-    agent_script          = file("${path.module}/agent/wg-agent.sh")
+    agent_script_gz       = base64gzip(file("${path.module}/agent/wg-agent.sh"))
     agent_service         = file("${path.module}/agent/wg-agent.service")
     agent_timer           = file("${path.module}/agent/wg-agent.timer")
     selftest_script       = file("${path.module}/agent/wg-selftest.sh")
@@ -81,7 +81,10 @@ locals {
     capture_script        = file("${path.module}/agent/wg-capture.sh")
     firewall_load_script  = file("${path.module}/agent/wg-firewall-load.sh")
     vnet_cidr             = var.vnet_cidr
-    firewall_nft_b64      = var.firewall_nft_b64 != "" ? var.firewall_nft_b64 : base64encode(file("${path.module}/agent/firewall-open.nft"))
+    firewall_nft_gz       = base64gzip(var.firewall_nft_b64 != "" ? base64decode(var.firewall_nft_b64) : file("${path.module}/agent/firewall-open.nft"))
+    # Gzipped, like the agent and the rule set: Azure refuses custom data over
+    # 64 KB (worker/test/cloud-init-size.test.ts renders the worst case).
+    vitals_script_gz = base64gzip(file("${path.module}/agent/wg-vitals.sh"))
   })
 }
 
@@ -306,6 +309,12 @@ resource "azurerm_linux_virtual_machine" "wg" {
     sku       = "server"
     version   = "latest"
   }
+
+  # Boot diagnostics with Azure's own (managed) storage: no storage account
+  # URI, so nothing is added to the resource group and the serial log goes
+  # away with the VM. The dashboard's boot log reads it when the heartbeat
+  # stops, like a console server on a router's console port.
+  boot_diagnostics {}
 
   # cloud-init: the VM configures itself on first boot. See cloud-init.yaml.tftpl.
   custom_data = base64encode(local.cloud_init)

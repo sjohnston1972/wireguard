@@ -9,7 +9,7 @@ import { useMemo } from "react";
 import type { PagePrefs, SettingValue } from "@shared/api";
 import { settingProblem, widgetDef, widgetDefaults, type WidgetDef } from "@shared/widgets";
 import { usePagePart, usePrefsStore, type PrefsStatus } from "./usePrefs";
-import { canMoveIn, moveWithin, type MoveState } from "./layout";
+import { canMoveIn, disableIn, enableIn, isOff, moveWithin, replaceIn, type EnableResult, type MoveState } from "./layout";
 import { useArranged } from "./arrangement";
 
 export interface WidgetState {
@@ -22,10 +22,23 @@ export interface WidgetState {
   reset: () => void;
   /** Something differs from the defaults (Reset to default is enabled). */
   differs: boolean;
+  /** Not drawn: hidden, or a default-off widget that is not turned on. */
   hidden: boolean;
-  /** Hide the widget (never a pinned one). */
+  /** Hide the widget (never a pinned one); the same as disable(). */
   hide: () => void;
+  /** Bring it back: enable(), with the answer ignored (nothing changes when its row is full). */
   show: () => void;
+  /**
+   * Turn it on in its home row or stack at its declared place and save
+   * (layout.shown for a default-off widget, else off the hidden list).
+   * A full home changes nothing and answers the Replace candidates and the
+   * suggestion; read-only answers { ok: false, full: false }.
+   */
+  enable: () => EnableResult;
+  /** Turn it off (out of shown, or onto hidden). Never a pinned widget. */
+  disable: () => void;
+  /** Turn it on in place of `oldId`, one of enable()'s candidates, in one save. False (nothing changes) for anything else. */
+  replace: (oldId: string) => boolean;
   /** Preferences not read (loading or failed): show the values, change nothing. */
   readOnly: boolean;
   status: PrefsStatus;
@@ -51,12 +64,6 @@ function withValues(p: PagePrefs, def: WidgetDef, fn: (s: Record<string, Setting
   return { ...p, widgets };
 }
 
-function withHidden(p: PagePrefs, id: string, hide: boolean): PagePrefs {
-  const cur = p.layout?.hidden ?? [];
-  const hidden = hide ? [...cur.filter((x) => x !== id), id] : cur.filter((x) => x !== id);
-  return { ...p, layout: { ...(p.layout ?? {}), hidden } };
-}
-
 export function useWidget(id: string): WidgetState {
   const def = widgetDef(id);
   if (!def) throw new Error(`No widget ${id} (see shared/widgets.ts)`);
@@ -69,9 +76,24 @@ export function useWidget(id: string): WidgetState {
   const store = usePrefsStore();
   const readOnly = status !== "ready";
   const settings = useMemo(() => ({ ...widgetDefaults(id), ...(saved ?? {}) }), [id, saved]);
-  const hidden = !def.pinned && !!layout?.hidden?.includes(id);
+  const hidden = isOff(prefs, id);
   const reg = useArranged();
   const canMove = useMemo(() => canMoveIn(def.page, id, prefs, reg), [def.page, id, prefs, reg]);
+
+  const enable = (): EnableResult => {
+    if (readOnly) return { ok: false, full: false };
+    const r = enableIn(def.page, prefs, id);
+    if ("full" in r) return { ok: false, full: true, candidates: r.candidates, suggestion: r.suggestion };
+    store.change(def.page, (p) => {
+      const x = enableIn(def.page, p, id);
+      return "prefs" in x ? x.prefs : p;
+    });
+    return { ok: true };
+  };
+  const disable = () => {
+    if (readOnly || def.pinned) return;
+    store.change(def.page, (p) => disableIn(p, id));
+  };
 
   return {
     canMove,
@@ -97,13 +119,14 @@ export function useWidget(id: string): WidgetState {
       if (readOnly) return;
       store.change(def.page, (p) => withValues(p, def, (s) => Object.keys(s).forEach((k) => delete s[k])));
     },
-    hide: () => {
-      if (readOnly || def.pinned) return;
-      store.change(def.page, (p) => withHidden(p, id, true));
-    },
-    show: () => {
-      if (readOnly) return;
-      store.change(def.page, (p) => withHidden(p, id, false));
+    hide: disable,
+    show: () => void enable(),
+    enable,
+    disable,
+    replace: (oldId) => {
+      if (readOnly || !replaceIn(def.page, prefs, id, oldId)) return false;
+      store.change(def.page, (p) => replaceIn(def.page, p, id, oldId) ?? p);
+      return true;
     },
   };
 }

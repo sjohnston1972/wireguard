@@ -1,0 +1,30 @@
+{
+  "name": "vm-wg",
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg",
+  "type": "Microsoft.Compute/virtualMachines",
+  "location": "uksouth",
+  "properties": {
+    "vmId": "00000000-0000-0000-0000-00000000000a",
+    "hardwareProfile": { "vmSize": "Standard_B1s" },
+    "provisioningState": "Succeeded",
+    "diagnosticsProfile": { "bootDiagnostics": { "enabled": true } },
+    "instanceView": {
+      "computerName": "vm-wg",
+      "osName": "ubuntu",
+      "osVersion": "24.04",
+      "vmAgent": {
+        "vmAgentVersion": "2.11.1.12",
+        "statuses": [
+          { "code": "ProvisioningState/succeeded", "level": "Info", "displayStatus": "Ready", "message": "Guest Agent is running", "time": "2026-10-04T09:58:40+00:00" }
+        ],
+        "extensionHandlers": []
+      },
+      "disks": [{ "name": "osdisk-wg", "statuses": [{ "code": "ProvisioningState/succeeded", "level": "Info", "displayStatus": "Provisioning succeeded" }] }],
+      "hyperVGeneration": "V2",
+      "statuses": [
+        { "code": "ProvisioningState/succeeded", "level": "Info", "displayStatus": "Provisioning succeeded", "time": "2026-10-04T08:02:11+00:00" },
+        { "code": "PowerState/running", "level": "Info", "displayStatus": "VM running" }
+      ]
+    }
+  }
+}

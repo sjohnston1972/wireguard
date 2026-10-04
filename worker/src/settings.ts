@@ -3,10 +3,17 @@
 // Plain English: the values the next deploy will use. Defaults come from
 // wrangler.toml [vars]; anything changed on the Settings page is stored in
 // D1 and wins. Kept separate from env.ts so env.ts stays synchronous.
+//
+// Cost rates: with rate_source "azure" (the default unless an hourly rate
+// override was saved), every estimate uses Azure's list price for what is
+// deployed (or, with nothing deployed, the configured region and size),
+// while it is under 7 days old; otherwise the fixed rates (insights/price.ts).
 
 import type { Env, Config } from "./env";
 import { config } from "./env";
 import { allSettings, setSetting } from "./db";
+import { getSnapshot } from "./state";
+import { priceInfo, rateSource, readPrices, testVmPrice } from "./insights/price";
 
 /** The VM sizes the dashboard offers. */
 export const VM_SIZES = ["Standard_B1s", "Standard_B1ms", "Standard_B2s", "Standard_B2ats_v2"];
@@ -25,11 +32,11 @@ export const OVERRIDABLE: Record<string, (v: string) => boolean> = {
   test_vm: (v) => v === "1" || v === "0",
   firewall_default: (v) => v === "deny" || v === "allow",
   ssh_allowed_cidr: (v) => v === "" || /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(v),
+  rate_source: (v) => v === "azure" || v === "fixed",
 };
 
-export async function effectiveConfig(env: Env): Promise<Config> {
+function fromOverrides(env: Env, ov: Record<string, string>): Config {
   const base = config(env);
-  const ov = await allSettings(env);
   const num = (k: string, d: number) => (ov[k] !== undefined && ov[k] !== "" && Number.isFinite(Number(ov[k])) ? Number(ov[k]) : d);
   return {
     ...base,
@@ -46,6 +53,36 @@ export async function effectiveConfig(env: Env): Promise<Config> {
     firewallDefault: ov.firewall_default === "allow" ? "allow" : "deny",
     sshAllowedCidr: ov.ssh_allowed_cidr !== undefined ? ov.ssh_allowed_cidr : base.sshAllowedCidr,
   };
+}
+
+/** The settings with the fixed cost rates, whatever rate_source says (the Settings form edits these). */
+export async function fixedConfig(env: Env): Promise<Config> {
+  return fromOverrides(env, await allSettings(env));
+}
+
+/** The settings, with cost rates from Azure's list price when rate_source is azure and a fresh price exists. */
+export async function effectiveConfig(env: Env): Promise<Config> {
+  const ov = await allSettings(env);
+  const cfg = fromOverrides(env, ov);
+  if (rateSource(ov) !== "azure") return cfg;
+  try {
+    const rows = await readPrices(env.DB);
+    if (!rows.length) return cfg;
+    const snap = await getSnapshot(env);
+    const deployed = snap.state !== "destroyed" && snap.region && snap.vm_size;
+    const region = deployed ? snap.region! : cfg.region;
+    const size = deployed ? snap.vm_size! : cfg.vmSize;
+    const now = new Date();
+    const p = priceInfo(rows, cfg, region, size, "azure", now);
+    const test = testVmPrice(rows, region, now);
+    return {
+      ...cfg,
+      ...(p.source === "azure" && p.totalGbpPerHour !== null && p.standbyGbpPerHour !== null ? { hourlyRateGbp: p.totalGbpPerHour, standbyRateGbp: p.standbyGbpPerHour } : {}),
+      ...(test !== null ? { testVmRateGbp: test } : {}),
+    };
+  } catch {
+    return cfg; // a price problem never stops the settings
+  }
 }
 
 /** Validate and store a form's overrides. Returns the keys that were rejected. */

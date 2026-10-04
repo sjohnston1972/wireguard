@@ -5,12 +5,15 @@
 // only the row they are in; the phone keeps its own layout but follows
 // what is hidden and what is set.
 import "./testSetup";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { setViewport } from "@/test/viewport";
 import { activityOf, cost, costSessionsOf, merge, notesOf, overview, prefsRoutes, routes, saved, session, speedtestsOf, vmHistory } from "./testData";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 const region = (name: string) => screen.findByRole("region", { name });
 const hide = (...ids: string[]) => ({ layout: { hidden: ids.map((x) => `overview.${x}`) } });
@@ -253,7 +256,9 @@ describe("Overview widgets: layout", () => {
     await waitFor(() => expect(screen.queryByRole("region", { name: "Watchman notes" })).toBeNull());
     expect(rowOf(await region("Cost impact")).style.gridTemplateColumns).toBe("minmax(0, 54fr) minmax(0, 32fr)");
     await user.click(screen.getByRole("button", { name: "Layout" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Show Watchman notes" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Add widgets…" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Add widgets" })).getByRole("switch", { name: "Watchman notes" }));
+    await user.keyboard("{Escape}");
     expect(await region("Watchman notes")).toBeInTheDocument();
   });
 });

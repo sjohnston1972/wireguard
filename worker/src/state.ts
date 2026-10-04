@@ -74,6 +74,37 @@ export interface AgentReport {
   wan6?: string | null; // the VM's public-side IPv6 address, when Azure gave it one
   dns?: { up: boolean; blocked: number } | null; // tunnel DNS: running, and how many names it blocks
   peers: AgentPeer[];
+  /** The agent's version: 7 and later send `vitals`; absent (older agents) reads as null. */
+  agent_version?: number | null;
+  /** The VM's own figures (insights spec 5), after parseVitals (worker/src/vitals.ts) checked them; null when absent or unreadable. */
+  vitals?: VmVitals | null;
+}
+
+/** A maintenance event from the VM's metadata service (scheduledevents), as the agent reports it. Read only. */
+export interface VmScheduledEvent {
+  id: string;
+  type: "Reboot" | "Redeploy" | "Freeze" | "Preempt" | "Terminate";
+  status: string; // Scheduled | Started
+  not_before: string | null;
+  source: string | null;
+  duration_s: number | null;
+  description: string | null; // at most 200 characters
+  self: boolean; // this VM is among the event's resources
+}
+
+/**
+ * The heartbeat's `vitals` (agent version 7), stored on the snapshot's agent
+ * report. Every number is clamped and type-checked by parseVitals; any part
+ * that is missing or malformed is null, never 0.
+ */
+export interface VmVitals {
+  mem: { total: number; available: number } | null; // bytes, /proc/meminfo
+  disk: { total: number; used: number; avail: number } | null; // bytes, df of /
+  cpu: { steal_pct: number | null; iowait_pct: number | null; ncpu: number | null } | null; // since the previous heartbeat
+  conntrack: { count: number; max: number } | null; // null when the conntrack files are absent
+  updates: { pending: number; security: number; at: string } | null; // apt-check, every 6 h
+  events: { incarnation: number | null; at: string; items: VmScheduledEvent[] } | null; // at most 10 items
+  net: { at: string; method: "icmp" | "tcp"; targets: { ip: string; rtt_ms: number | null; loss_pct: number | null }[] } | null;
 }
 
 export interface PendingDeploy {
@@ -236,6 +267,8 @@ export interface Snapshot {
   capture_req: { id: string; iface: string; filter: string; seconds: number; at: string } | null;
   /** The test VM's address in the workloads subnet, from the deploy's outputs. */
   test_vm_ip: string | null;
+  /** Scheduled-event ids already noted (one note and one push each), the last 20. Absent on snapshots saved before the insights project. */
+  sched_events_seen?: string[];
   updated_at: string;
 }
 

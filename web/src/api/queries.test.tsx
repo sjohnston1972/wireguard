@@ -1,16 +1,41 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { ApiError, NetworkError, SessionExpiredError } from "./client";
 import { makeQueryClient, shouldRetry, retryDelay } from "./queryClient";
-import { INTERVALS, activityInterval, overviewInterval, useActivity, useClients, useCost, useHistory, useOverview, useSession, useSettings } from "./queries";
+import {
+  INTERVALS,
+  activityInterval,
+  overviewInterval,
+  useActivity,
+  useAzureChanges,
+  useAzureMetrics,
+  useAzureServiceHealth,
+  useAzureSummary,
+  useBootLog,
+  useCapacity,
+  useClients,
+  useCost,
+  useHistory,
+  useOverview,
+  usePrice,
+  useSession,
+  useSettings,
+} from "./queries";
+import { useFetchBootLog } from "./mutations";
 import { resetConnection } from "./connection";
 import { mockFetch } from "@/test/mockFetch";
+import { azureSummaryFixture } from "@/test/fixtures";
+import { ToastProvider } from "@/components/feedback/Toast";
 
 function wrapper() {
   const client = makeQueryClient();
-  const W = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  const W = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>
+      <ToastProvider>{children}</ToastProvider>
+    </QueryClientProvider>
+  );
   return { W, client };
 }
 
@@ -150,5 +175,100 @@ describe("query hooks", () => {
     const { W } = wrapper();
     renderHook(() => useClients({ enabled: false }), { wrapper: W });
     expect(m.calls.length).toBe(0);
+  });
+});
+
+// ── Azure insights (spec 2026-10-04-azure-insights-design.md, section 8) ──
+
+describe("Azure insights hooks", () => {
+  it("useAzureSummary polls every 30 s and keeps the last answer on error", async () => {
+    const first = azureSummaryFixture({ configured: true });
+    let fail = false;
+    // A refusal (4xx is never retried) stands in for any failed poll.
+    mockFetch({ "GET /api/v1/azure/summary": () => (fail ? { status: 400, json: { error: { code: "bad_input", message: "No." } } } : first) });
+    const { W, client } = wrapper();
+    client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retry: false } });
+    const { result } = renderHook(() => useAzureSummary(), { wrapper: W });
+    await waitFor(() => expect(result.current.data).toEqual(first));
+    await waitFor(() => expect(result.current.fetchStatus).toBe("idle"));
+    expect(INTERVALS.azure).toBe(30_000);
+    const q = client.getQueryCache().find({ queryKey: ["azure", "summary"] })!;
+    expect(q.observers[0]!.options.refetchInterval).toBe(30_000);
+    fail = true;
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ["azure", "summary"] });
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.data).toEqual(first);
+  });
+
+  it("the Azure hooks build their URLs from parameters", async () => {
+    const m = mockFetch({});
+    const { W } = wrapper();
+    renderHook(
+      () => {
+        useAzureMetrics("vm", "7d");
+        useAzureMetrics("vitals", "1h");
+        useAzureChanges("30d", "others");
+        useAzureServiceHealth("90d");
+        useCapacity("uksouth", "Standard_B2s");
+        usePrice("westeurope", "Standard_B1s");
+        useBootLog();
+      },
+      { wrapper: W },
+    );
+    await waitFor(() => expect(m.calls.length).toBe(7));
+    expect(m.calls.map((c) => c.url).sort()).toEqual(
+      [
+        "/api/v1/azure/metrics?resource=vm&range=7d",
+        "/api/v1/azure/metrics?resource=vitals&range=1h",
+        "/api/v1/azure/changes?range=30d&who=others",
+        "/api/v1/azure/service-health?range=90d",
+        "/api/v1/azure/capacity?region=uksouth&size=Standard_B2s",
+        "/api/v1/azure/price?region=westeurope&size=Standard_B1s",
+        "/api/v1/azure/bootlog",
+      ].sort(),
+    );
+  });
+
+  it("useCapacity is disabled without a region", () => {
+    const m = mockFetch({});
+    const { W } = wrapper();
+    renderHook(
+      () => {
+        useCapacity("", "Standard_B1s");
+        useCapacity(null, "Standard_B1s");
+        useCapacity("uksouth", "");
+        usePrice(undefined, "Standard_B1s");
+      },
+      { wrapper: W },
+    );
+    expect(m.calls.length).toBe(0);
+  });
+
+  it("mockFetch answers every Azure route with the not-configured shape, so existing tests need no new routes", async () => {
+    mockFetch({});
+    const { W } = wrapper();
+    const { result } = renderHook(() => ({ s: useAzureSummary(), c: useAzureChanges("7d", "all"), b: useBootLog() }), { wrapper: W });
+
+    await waitFor(() => expect(result.current.s.data && result.current.c.data && result.current.b.data).toBeTruthy());
+    expect(result.current.s.data!.configured).toBe(false);
+    expect(result.current.s.data!.feeds.every((f) => f.status === "not_configured")).toBe(true);
+    expect(result.current.c.data!.rows).toEqual([]);
+    expect(result.current.b.data!.text).toBeNull();
+  });
+
+  it("useFetchBootLog posts and updates the bootlog cache", async () => {
+    const fresh = { fetchedAt: "2026-10-02T12:00:00.000Z", bytes: 120, truncated: false, redactions: 1, text: "[    0.000000] Linux version ‹redacted›", reason: null };
+    const m = mockFetch({ "POST /api/v1/azure/bootlog": fresh });
+    const { W, client } = wrapper();
+    const { result } = renderHook(() => ({ log: useBootLog(), fetch: useFetchBootLog() }), { wrapper: W });
+    await waitFor(() => expect(result.current.log.data).toBeDefined());
+    await act(async () => {
+      await result.current.fetch.mutateAsync();
+    });
+    expect(m.callsTo("POST", "/api/v1/azure/bootlog")).toHaveLength(1);
+    expect(client.getQueryData(["azure", "bootlog"])).toEqual(fresh);
+    await waitFor(() => expect(result.current.log.data).toEqual(fresh));
   });
 });

@@ -19,6 +19,7 @@ import { refreshActiveRun } from "../runs";
 import { refreshPower } from "../standby";
 import { whereFrom } from "../region";
 import { isVerifying, heartbeatStale, publicIp6, sshAllowedFrom, typicalSeconds } from "../overview";
+import { deployTargetCapacity } from "../insights/ondemand";
 import type { OverviewResponse, SshPasswordResponse } from "../../../shared/api";
 
 export function registerOverview(api: Hono<ApiEnv>): void {
@@ -85,6 +86,8 @@ export function registerOverview(api: Hono<ApiEnv>): void {
         : null,
       stateBackups: backups && !backups.error ? backups.state : null,
       typicalSeconds: { deploy: typicalSeconds(runs, "apply"), destroy: typicalSeconds(runs, "destroy") },
+      // The deploy target's capacity check, from the last stored reading (never a fetch); null until one exists.
+      capacity: await deployTargetCapacity(c.env, cfg, new Date(now)).catch(() => null),
     };
     return c.json(out);
   });

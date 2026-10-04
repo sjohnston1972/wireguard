@@ -163,6 +163,7 @@ export function overview(state: State, over: OverviewOver = {}): OverviewRespons
     deployment: running ? { id: "run-ok", requestedBy: "dev@localhost", finishedAt: iso(NOW_MS - 2 * 3_600_000), githubRunUrl: null, hasSshPassword: true, sshAllowedFrom: "198.51.100.7", peersLoaded: 3 } : null,
     stateBackups: null,
     typicalSeconds: { deploy: 250, destroy: 120, ...over.typicalSeconds },
+    capacity: null,
   };
 }
 

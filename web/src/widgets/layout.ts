@@ -15,7 +15,7 @@
 // declared row, so nothing saved depends on the variant.
 
 import type { PagePrefs } from "@shared/api";
-import { REGISTRY, itemKey, widgetDef, type LayoutItem, type LayoutRow, type PageId, type Registry } from "@shared/widgets";
+import { REGISTRY, isVisible, itemKey, overfullHome, rowCapacity, widgetDef, widgetHome, type LayoutItem, type LayoutRow, type PageId, type Registry } from "@shared/widgets";
 
 /** A registry with some rows drawn differently for now (see `WidgetArrangement`). */
 export type Arranged = Registry & { variants?: Partial<Record<PageId, Record<string, LayoutItem[]>>> };
@@ -50,9 +50,21 @@ function itemsOf(page: PageId, row: LayoutRow, reg: Arranged): LayoutItem[] {
   return reg.variants?.[page]?.[row.id] ?? row.items;
 }
 
-/** Hidden (never a pinned widget). */
+/**
+ * Hidden by the person (layout.hidden): never a pinned or a default-off
+ * widget. The Layout menu's "Show hidden widgets" lists these. Not the same
+ * as not drawn: a default-off widget that is not shown is off without being
+ * hidden (see isOff).
+ */
 export function isHidden(prefs: PagePrefs, id: string, reg: Registry = REGISTRY): boolean {
-  return !!prefs.layout?.hidden?.includes(id) && !widgetDef(id, reg)?.pinned;
+  const d = widgetDef(id, reg);
+  return !!prefs.layout?.hidden?.includes(id) && !d?.pinned && !d?.defaultOff;
+}
+
+/** Not drawn: hidden, or default-off and not in layout.shown (shared isVisible). */
+export function isOff(prefs: PagePrefs, id: string, reg: Registry = REGISTRY): boolean {
+  const d = widgetDef(id, reg);
+  return d ? !isVisible(prefs, d) : !!prefs.layout?.hidden?.includes(id);
 }
 
 /** A row's declared item keys in the user's order (the declared order unless a valid saved one exists). */
@@ -89,14 +101,15 @@ export function rowView(page: PageId, rowId: string, prefs: PagePrefs, reg: Arra
   for (const key of order) {
     const it = drawn.find((i) => itemKey(i) === key)!;
     if ("widget" in it) {
-      if (!isHidden(prefs, it.widget, reg)) items.push({ key, kind: "widget", weight: it.weight, members: [it.widget] });
+      if (!isOff(prefs, it.widget, reg)) items.push({ key, kind: "widget", weight: it.weight, members: [it.widget] });
       continue;
     }
-    const members = it.widgets.filter((m) => (rows.some((r) => r.id === m) ? rowView(page, m, prefs, reg).visible : !isHidden(prefs, m, reg)));
+    const members = it.widgets.filter((m) => (rows.some((r) => r.id === m) ? rowView(page, m, prefs, reg).visible : !isOff(prefs, m, reg)));
     if (members.length) items.push({ key, kind: "stack", weight: it.weight, members });
   }
   const declared = drawn.map(itemKey);
-  const isDefault = order.join("\n") === declared.join("\n") && widgetsIn(page, rowId, reg).every((id) => !isHidden(prefs, id, reg));
+  // As shipped: the declared order, and every widget on or off as it ships (a default-off widget left off is as shipped).
+  const isDefault = order.join("\n") === declared.join("\n") && widgetsIn(page, rowId, reg).every((id) => isOff(prefs, id, reg) === isOff({}, id, reg));
   return { id: rowId, items, template: items.map((i) => `minmax(0, ${i.weight}fr)`).join(" "), isDefault, visible: items.length > 0 };
 }
 
@@ -143,7 +156,7 @@ export function canMoveIn(page: PageId, id: string, prefs: PagePrefs, reg: Arran
   const row = direct ?? held?.row ?? null;
   const item = direct ? id : (held?.stack ?? null);
   const none: MoveState = { movable: false, left: false, right: false, row: row?.id ?? null, index: 0, count: 0, item, handle: false };
-  if (!row || !item || isHidden(prefs, id, reg)) return none;
+  if (!row || !item || isOff(prefs, id, reg)) return none;
   const view = rowView(page, row.id, prefs, reg);
   const visible = view.items.map((i) => i.key);
   const index = visible.indexOf(item);
@@ -200,4 +213,67 @@ export function dropMove(page: PageId, prefs: PagePrefs, drag: DragItem, targetI
   order.splice(from, 1);
   order.splice(to, 0, drag.key);
   return withOrder(page, prefs, drag.row, order, reg);
+}
+
+// ── Turning widgets on and off (insights spec 9.2, 9.3) ───────────────────
+
+/** What enable() answers: on; or its home row (or stack) is full, with what Replace may offer; or nothing may change (read-only). */
+export type EnableResult = { ok: true } | { ok: false; full: true; candidates: string[]; suggestion: string | null } | { ok: false; full: false };
+
+/** `prefs` with widget `id` on: off the hidden list, or (default-off) onto the end of shown. No capacity check. */
+function withOn(prefs: PagePrefs, id: string, reg: Registry): PagePrefs {
+  const d = widgetDef(id, reg);
+  const layout = { ...(prefs.layout ?? {}) };
+  if (d?.defaultOff) layout.shown = [...(layout.shown ?? []).filter((x) => x !== id), id];
+  else layout.hidden = (layout.hidden ?? []).filter((x) => x !== id);
+  return { ...prefs, layout };
+}
+
+/** `prefs` with widget `id` off: out of shown (default-off), or onto the hidden list. A pinned widget stays on. */
+export function disableIn(prefs: PagePrefs, id: string, reg: Registry = REGISTRY): PagePrefs {
+  const d = widgetDef(id, reg);
+  if (!d || d.pinned) return prefs;
+  const layout = { ...(prefs.layout ?? {}) };
+  if (d.defaultOff) layout.shown = (layout.shown ?? []).filter((x) => x !== id);
+  else layout.hidden = [...(layout.hidden ?? []).filter((x) => x !== id), id];
+  return { ...prefs, layout };
+}
+
+/**
+ * Widget `id` turned on in its home row or stack, at its declared place (a
+ * saved order already holds every declared item), or the reason it cannot:
+ * the home is full, with Replace's candidates and suggestion.
+ */
+export function enableIn(page: PageId, prefs: PagePrefs, id: string, reg: Registry = REGISTRY): { prefs: PagePrefs } | { full: true; candidates: string[]; suggestion: string | null } {
+  const d = widgetDef(id, reg);
+  if (!d || isVisible(prefs, d)) return { prefs };
+  const next = withOn(prefs, id, reg);
+  if (!overfullHome(page, next, reg)) return { prefs: next };
+  const home = widgetHome(id, reg);
+  const c = home ? rowCapacity(page, home.home, prefs, id, reg) : null;
+  return { full: true, candidates: c?.candidates ?? [], suggestion: c?.suggestion ?? null };
+}
+
+/**
+ * Widget `id` on in place of `oldId` (one of its home's Replace candidates),
+ * as one change: `oldId` off, `id` on and, in a row, `id` moved to the place
+ * `oldId` (or the stack holding it) had, so the row keeps its geometry.
+ * Null when `oldId` is not a candidate or the result would not fit.
+ */
+export function replaceIn(page: PageId, prefs: PagePrefs, id: string, oldId: string, reg: Registry = REGISTRY): PagePrefs | null {
+  const home = widgetHome(id, reg);
+  if (!home || home.page !== page) return null;
+  if (!rowCapacity(page, home.home, prefs, id, reg).candidates.includes(oldId)) return null;
+  let next = disableIn(withOn(prefs, id, reg), oldId, reg);
+  if (home.stack === null) {
+    const oldKey = dropKey(page, oldId, reg)?.key;
+    const order = fullOrder(page, home.row, prefs, reg);
+    const a = order.indexOf(id);
+    const b = oldKey ? order.indexOf(oldKey) : -1;
+    if (a >= 0 && b >= 0) {
+      [order[a], order[b]] = [order[b]!, order[a]!];
+      next = withOrder(page, next, home.row, order, reg);
+    }
+  }
+  return overfullHome(page, next, reg) ? null : next;
 }

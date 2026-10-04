@@ -6,12 +6,14 @@ import { AccountSlot, ConnectionSlot, NotesSlot, SearchSlot, StateSlot, ThemeTog
 import { DisconnectedBanner } from "./Connection";
 import { SessionExpiredScreen } from "./SessionExpired";
 import { CommandPalette } from "./CommandPalette";
+import { ServiceHealthIndicator } from "./ServiceHealthIndicator";
 import { usePrefs } from "@/widgets";
 import "./AppShell.css";
 
 /**
  * The frame around every view: top bar (wordmark, six tabs, search, state
- * chip, connection light, notes, theme toggle, account), the disconnected
+ * chip, connection light, Azure Service Health pill (only during an issue),
+ * notes, theme toggle, account), the disconnected
  * banner, the page area (or the session-expired screen), the command palette,
  * and a bottom tab bar on phones. The slots live in ./slots.tsx.
  */
@@ -53,6 +55,7 @@ export function AppShell() {
         <SearchSlot onOpen={() => setPaletteOpen(true)} />
         <StateSlot />
         <ConnectionSlot />
+        <ServiceHealthIndicator />
         <NotesSlot />
         <ThemeToggleSlot />
         <AccountSlot />

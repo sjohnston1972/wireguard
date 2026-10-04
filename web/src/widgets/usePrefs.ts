@@ -63,16 +63,19 @@ export function usePrefsStatus(): PrefsStatus {
 /**
  * One page's preferences as shown now: a change not yet confirmed, else
  * what the server holds, else (while loading) the mirror; {} (every widget
- * at its defaults) when they could not be read.
+ * at its defaults) when they could not be read. `shown`: the default-off
+ * widgets turned on (layout.shown, oldest first; [] for none).
  */
-export function usePagePrefs(page: PageId): { prefs: PagePrefs; status: PrefsStatus } {
+export function usePagePrefs(page: PageId): { prefs: PagePrefs; status: PrefsStatus; shown: string[] } {
   const q = usePrefsQuery();
   const store = usePrefsStore();
   const override = useSyncExternalStore(store.subscribe, () => store.override(page));
   const status = statusOf(q);
-  if (status === "failed") return { prefs: EMPTY, status };
-  return { prefs: override ?? q.data?.pages[page]?.prefs ?? EMPTY, status };
+  const prefs = status === "failed" ? EMPTY : (override ?? q.data?.pages[page]?.prefs ?? EMPTY);
+  return { prefs, status, shown: prefs.layout?.shown ?? NONE };
 }
+
+const NONE: string[] = [];
 
 /**
  * One part of a page's preferences as shown now (as usePagePrefs), for a

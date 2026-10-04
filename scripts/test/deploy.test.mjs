@@ -9,7 +9,8 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { deploySteps, rollbackArgs, rollbackSteps, runSteps, toSpawn, devBuildSteps, REPLACED_NOTE } from "../lib/deploy.mjs";
+import { deploySteps, rollbackArgs, rollbackSteps, runSteps, toSpawn, devBuildSteps, REPLACED_NOTE, cronTriggers, cronRollbackWarning } from "../lib/deploy.mjs";
+import { readFileSync } from "node:fs";
 
 const scripts = fileURLToPath(new URL("../", import.meta.url));
 const ID = "0b9ee8a5-3c3b-4c1f-9a43-1f2e3d4c5b6a";
@@ -116,6 +117,37 @@ test("rollback-worker --dry-run with an id would roll back to it", () => {
   const r = dryRun("rollback-worker.mjs", [ID]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, new RegExp(`^\\$ wrangler rollback ${ID} --message switch-over rollback --yes$`, "m"));
+});
+
+test("the cron triggers are read from wrangler.toml", () => {
+  assert.deepEqual(cronTriggers('[triggers]\ncrons = ["*/5 * * * *", "2-59/5 * * * *"]\n'), ["*/5 * * * *", "2-59/5 * * * *"]);
+  assert.deepEqual(cronTriggers('[triggers]\ncrons = [\n  "*/5 * * * *",\n]\n'), ["*/5 * * * *"]);
+  assert.deepEqual(cronTriggers("name = 'x'\n"), []);
+  // The real file: the watchman and the Azure insights collector.
+  const toml = readFileSync(new URL("../../wrangler.toml", import.meta.url), "utf8");
+  assert.deepEqual(cronTriggers(toml), ["*/5 * * * *", "2-59/5 * * * *"]);
+});
+
+test("the rollback warning says a rollback keeps today's cron triggers and how to go back properly", () => {
+  const w = cronRollbackWarning(["*/5 * * * *", "2-59/5 * * * *"]);
+  assert.match(w, /^WARNING: /);
+  assert.match(w, /cron triggers/i);
+  assert.match(w, /"\*\/5 \* \* \* \*", "2-59\/5 \* \* \* \*"/);
+  // What goes wrong: the old code gets the new cron too, and runs the watchman on every cron event.
+  assert.match(w, /watchman/);
+  assert.match(w, /twice every 5 minutes/);
+  // The right way back.
+  assert.match(w, /revert the merge on main, then npm run deploy-worker/);
+  assert.match(w, /deploy the previous commit/);
+});
+
+test("rollback-worker prints the cron warning when it lists and when it rolls back", () => {
+  for (const args of [[], [ID]]) {
+    const r = dryRun("rollback-worker.mjs", args);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout + r.stderr, /WARNING: .*cron triggers/i, args.join(" ") || "(list)");
+    assert.match(r.stdout + r.stderr, /revert the merge on main, then npm run deploy-worker/);
+  }
 });
 
 test("rollback-worker refuses an id that is not a version id", () => {

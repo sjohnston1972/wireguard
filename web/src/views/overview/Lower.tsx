@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Coins, HeartPulse } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
+import { todayHead, verdict, verdictThresholds } from "@shared/verdict";
 import { Button, Panel, Sparkline, cx } from "@/components";
-import { useCost, useSession } from "@/api/queries";
+import { useAzureSummary, useCost, useSession } from "@/api/queries";
 import { useAckNotes } from "@/api/mutations";
-import { useWidget } from "@/widgets";
+import { usePagePrefs, useWidget } from "@/widgets";
 import { ageOf, gbp, hhmm } from "./model";
+import { BootLogModal } from "./lazyInsights";
 import { LEVEL_TONE, levelOf, levelWord, thresholdOn } from "./widgetSettings";
 import "./Lower.css";
 
@@ -48,10 +50,14 @@ export function healthChecks(o: OverviewResponse, now: number, keys?: readonly s
 export function HealthSummary({ o, now }: { o: OverviewResponse; now: number }) {
   const { settings: st } = useWidget("overview.health");
   const ages = st.ages as boolean;
+  const [bootLog, setBootLog] = useState(false);
   const checks = healthChecks(o, now, st.checks as string[]);
-  const bad = checks.filter((c) => c.ok === false);
-  const known = checks.some((c) => c.ok !== null);
-  const head = !known ? { tone: "grey", title: "No health data", sub: o.snapshot.state === "running" ? "Waiting for the first heartbeat." : "Nothing is running to check." } : bad.length ? { tone: "red", title: `${bad.length} check${bad.length === 1 ? "" : "s"} failing`, sub: bad.map((c) => c.name).join(", ") } : { tone: "green", title: "All systems healthy", sub: "Running and responding normally." };
+  // The Verdict line (on by default): Azure's and the VM's own figures rewrite the head; with none of them it is today's head.
+  const on = st.verdict as boolean;
+  const { prefs } = usePagePrefs("overview");
+  const thresholds = useMemo(() => verdictThresholds(prefs), [prefs]);
+  const azure = useAzureSummary({ enabled: on }).data;
+  const head = on ? verdict({ state: o.snapshot.state, checks, azure, capacity: o.capacity, thresholds, now }) : { ...todayHead(o.snapshot.state, checks), bootLog: false };
   return (
     <Panel title="Health summary" className="ov-health" bodyClassName="ov-health__body">
       <div className="ov-health__head">
@@ -59,10 +65,23 @@ export function HealthSummary({ o, now }: { o: OverviewResponse; now: number }) 
           <HeartPulse size={22} />
         </span>
         <div>
-          <p className={cx("ov-health__title", `ov-health__title--${head.tone}`)}>{head.title}</p>
-          <p className="ov-health__sub">{head.sub}</p>
+          <p className={cx("ov-health__title", `ov-health__title--${head.tone}`)} title={on ? head.title : undefined}>
+            {head.title}
+          </p>
+          <p className="ov-health__sub">
+            {head.sub}
+            {head.bootLog && (
+              <>
+                {" · "}
+                <button type="button" className="ov-health__bootlog" onClick={() => setBootLog(true)}>
+                  Boot log
+                </button>
+              </>
+            )}
+          </p>
         </div>
       </div>
+      <BootLogModal open={bootLog} onOpenChange={setBootLog} />
       <ul className="ov-health__list">
         {checks.map((c) => {
           const word = c.ok === null ? "no data" : c.ok ? "OK" : "Failing";

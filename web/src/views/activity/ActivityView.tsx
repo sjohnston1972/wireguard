@@ -11,6 +11,7 @@ import { EventStream } from "./EventStream";
 import { Kpis } from "./Kpis";
 import { RANGES, type Window } from "./model";
 import { PhoneActivity } from "./PhoneActivity";
+import { AzureChangesPanel, PhoneAzure, ServiceHealthLink, ServiceHealthPanel } from "./lazyAzure";
 import { LiveOutput, RunDetails } from "./RunPanels";
 import { Timeline } from "./Timeline";
 import { useActivityParams } from "./useActivityParams";
@@ -31,6 +32,8 @@ export function ActivityView({ runId }: { runId?: string }) {
   const list = useWidget("activity.list");
   const changeLog = useWidget("activity.changeLog");
   const runDetails = useWidget("activity.runDetails");
+  const serviceHealth = useWidget("activity.serviceHealth");
+  const azureChanges = useWidget("activity.azureChanges");
   const p = useActivityParams({ tab: list.settings.tab as Tab, kind: changeLog.settings.kind as string });
   const r2 = useRowItems("activity", "r2");
   const q = useActivity({ range: p.range, kind: p.kind, q: p.q, page: p.page > 1 ? p.page : undefined });
@@ -40,6 +43,9 @@ export function ActivityView({ runId }: { runId?: string }) {
   const short = useMedia("(min-width: 1100px) and (max-height: 720px)");
   const navigate = useNavigate();
   const location = useLocation();
+  // The Service Health pill's link: its handler (code-split) is mounted once the address asks, and stays for the modal it may open.
+  const linkAsked = useRef(false);
+  if (new URLSearchParams(location.search).get("widget") === "serviceHealth") linkAsked.current = true;
 
   // The window picked on the timeline filters the lists; a different range starts without one.
   const [win, setWin] = useState<Window | null>(null);
@@ -98,7 +104,11 @@ export function ActivityView({ runId }: { runId?: string }) {
       {header}
       {phone ? (
         data ? (
-          <PhoneActivity data={data} onOpenRun={openRun} onOpenChange={openChange} />
+          <>
+            <PhoneActivity data={data} onOpenRun={openRun} onOpenChange={openChange} />
+            {/* Loaded only when one of the Azure cards is on. */}
+            {(!azureChanges.hidden || !serviceHealth.hidden) && <PhoneAzure />}
+          </>
         ) : (
           <div aria-busy="true" className="act__skel">
             <Skeleton variant="block" height={96} />
@@ -151,6 +161,11 @@ export function ActivityView({ runId }: { runId?: string }) {
                             <ChangeLog changes={data.changes} params={p} set={p.set} window={win} selected={selectedChange} onOpen={openChange} />
                           </Widget>
                         ),
+                        "activity.azureChanges": (
+                          <Widget id="activity.azureChanges">
+                            <AzureChangesPanel />
+                          </Widget>
+                        ),
                       }}
                     </WidgetStack>
                   ),
@@ -169,6 +184,11 @@ export function ActivityView({ runId }: { runId?: string }) {
                         <LiveOutput id={shownRun} search={p.search} />
                       </Widget>
                     ),
+                    "activity.serviceHealth": (
+                      <Widget id="activity.serviceHealth">
+                        <ServiceHealthPanel />
+                      </Widget>
+                    ),
                   }}
                 </WidgetRow>
               )}
@@ -176,6 +196,8 @@ export function ActivityView({ runId }: { runId?: string }) {
           )}
         </>
       )}
+      {/* The Service Health pill's link: to the widget when it is drawn, else the active issue's details. */}
+      {data && linkAsked.current && <ServiceHealthLink drawn={!serviceHealth.hidden && (phone || !short)} />}
       {runId && <RunDrawer id={runId} onClose={closeRun} />}
       {data && selectedChange !== null && !runId && <ChangeDrawer change={changeRow} onClose={closeChange} />}
     </section>

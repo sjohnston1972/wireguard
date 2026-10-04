@@ -298,10 +298,19 @@ test("--widget-chrome off hides every [data-widget-chrome] element", () => {
   assert.match(widgetChromeOffScript(), /data-widget-chrome/);
 });
 
-test("prefsPuts sends each page with the version the server holds now", () => {
+test("prefsPuts sends each page with the version the server holds now, as a schema 2 dashboard", () => {
   const current = { pages: { overview: { version: 3, updatedAt: "x", prefs: {} }, cost: { version: 0, updatedAt: null, prefs: {} } } };
   assert.deepEqual(prefsPuts(current, { overview: { layout: { hidden: ["overview.notes"] } }, cost: {} }), [
-    { page: "overview", body: { baseVersion: 3, prefs: { layout: { hidden: ["overview.notes"] } } } },
-    { page: "cost", body: { baseVersion: 0, prefs: {} } },
+    { page: "overview", body: { schema: 2, baseVersion: 3, prefs: { layout: { hidden: ["overview.notes"] } } } },
+    { page: "cost", body: { schema: 2, baseVersion: 0, prefs: {} } },
   ]);
+});
+
+test("the seed script offers the Worker's scenarios, insights included", async () => {
+  const { SCENARIOS } = await import("../seed-scenarios.mjs");
+  const { readFileSync } = await import("node:fs");
+  const worker = readFileSync(new URL("../../worker/src/devseed.ts", import.meta.url), "utf8");
+  const listed = JSON.parse(worker.match(/export const SCENARIOS = (\[[^\]]*\])/)[1]);
+  assert.deepEqual([...SCENARIOS].sort(), [...listed].sort());
+  assert.ok(SCENARIOS.includes("insights"));
 });

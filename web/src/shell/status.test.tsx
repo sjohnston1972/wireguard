@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
-import { overviewFixture, prefsFixture, sessionFixture } from "@/test/fixtures";
+import { azureSummaryFixture, overviewFixture, prefsFixture, sessionFixture } from "@/test/fixtures";
 import { formatRemaining } from "./StateChip";
 
 // The top bar is the first banner: testing-library also counts the Overview's panel headers (a <header> inside <section>) as banners.
@@ -126,7 +126,7 @@ describe("connection indicator and banner", () => {
   it("shows Disconnected plus a banner when the dashboard cannot be reached, and Retry tries again", async () => {
     let down = true;
     // Every call the page makes fails, the widget preferences' included.
-    renderApp("/", { routes: { "GET /api/v1/overview": () => (down ? { networkError: true } : overviewFixture()), "GET /api/v1/session": () => (down ? { networkError: true } : sessionFixture()), "GET /api/v1/prefs": () => (down ? { networkError: true } : prefsFixture()) } });
+    renderApp("/", { routes: { "GET /api/v1/overview": () => (down ? { networkError: true } : overviewFixture()), "GET /api/v1/session": () => (down ? { networkError: true } : sessionFixture()), "GET /api/v1/prefs": () => (down ? { networkError: true } : prefsFixture()), "GET /api/v1/azure/summary": () => (down ? { networkError: true } : azureSummaryFixture()) } });
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Cannot reach the dashboard");
     // Reads refresh by themselves; writes are never re-sent, so the banner must not promise it.
@@ -145,7 +145,7 @@ describe("session expired", () => {
   it("replaces the page with Session expired, sign in again on an opaque redirect", async () => {
     // An expired sign-in redirects every API call, the Clients page's own included.
     renderApp("/clients", {
-      routes: { "GET /api/v1/overview": { opaqueRedirect: true }, "GET /api/v1/session": { opaqueRedirect: true }, "GET /api/v1/clients": { opaqueRedirect: true }, "GET /api/v1/prefs": { opaqueRedirect: true } },
+      routes: { "GET /api/v1/overview": { opaqueRedirect: true }, "GET /api/v1/session": { opaqueRedirect: true }, "GET /api/v1/clients": { opaqueRedirect: true }, "GET /api/v1/prefs": { opaqueRedirect: true }, "GET /api/v1/azure/summary": { opaqueRedirect: true } },
     });
     const main = screen.getByRole("main");
     expect(await within(main).findByRole("heading", { name: "Session expired, sign in again" })).toBeInTheDocument();
@@ -154,7 +154,7 @@ describe("session expired", () => {
   });
 
   it("does the same for a 401 and for a login page returned instead of JSON", async () => {
-    renderApp("/", { routes: { "GET /api/v1/overview": { text: "<html>login</html>" }, "GET /api/v1/session": { status: 401, json: { error: { code: "x", message: "y" } } }, "GET /api/v1/prefs": { status: 401, json: { error: { code: "x", message: "y" } } } } });
+    renderApp("/", { routes: { "GET /api/v1/overview": { text: "<html>login</html>" }, "GET /api/v1/session": { status: 401, json: { error: { code: "x", message: "y" } } }, "GET /api/v1/prefs": { status: 401, json: { error: { code: "x", message: "y" } } }, "GET /api/v1/azure/summary": { status: 401, json: { error: { code: "x", message: "y" } } } } });
     expect(await screen.findByRole("heading", { name: "Session expired, sign in again" })).toBeInTheDocument();
   });
 });

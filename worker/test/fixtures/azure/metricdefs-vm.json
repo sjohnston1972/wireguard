@@ -1,0 +1,18 @@
+{
+  "value": [
+    { "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg/providers/microsoft.insights/metricdefinitions/Percentage CPU", "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Compute/virtualMachines/vm-wg", "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "Percentage CPU", "localizedValue": "Percentage CPU" }, "isDimensionRequired": false, "unit": "Percent", "primaryAggregationType": "Average", "supportedAggregationTypes": ["None", "Average", "Minimum", "Maximum", "Total", "Count"], "metricAvailabilities": [{ "timeGrain": "PT1M", "retention": "P93D" }, { "timeGrain": "PT5M", "retention": "P93D" }], "category": "Compute" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "Network In Total", "localizedValue": "Network In Total" }, "unit": "Bytes", "primaryAggregationType": "Total" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "Network Out Total", "localizedValue": "Network Out Total" }, "unit": "Bytes", "primaryAggregationType": "Total" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "Disk Read Bytes", "localizedValue": "Disk Read Bytes" }, "unit": "Bytes", "primaryAggregationType": "Total" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "Disk Write Bytes", "localizedValue": "Disk Write Bytes" }, "unit": "Bytes", "primaryAggregationType": "Total" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "Disk Read Operations/Sec", "localizedValue": "Disk Read Operations/Sec" }, "unit": "CountPerSecond", "primaryAggregationType": "Average" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "Disk Write Operations/Sec", "localizedValue": "Disk Write Operations/Sec" }, "unit": "CountPerSecond", "primaryAggregationType": "Average" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "CPU Credits Remaining", "localizedValue": "CPU Credits Remaining" }, "unit": "Count", "primaryAggregationType": "Average" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "CPU Credits Consumed", "localizedValue": "CPU Credits Consumed" }, "unit": "Count", "primaryAggregationType": "Average" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "OS Disk IOPS Consumed Percentage", "localizedValue": "OS Disk IOPS Consumed Percentage" }, "unit": "Percent", "primaryAggregationType": "Average" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "OS Disk Bandwidth Consumed Percentage", "localizedValue": "OS Disk Bandwidth Consumed Percentage" }, "unit": "Percent", "primaryAggregationType": "Average" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "Available Memory Bytes", "localizedValue": "Available Memory Bytes (Preview)" }, "unit": "Bytes", "primaryAggregationType": "Average" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "Inbound Flows", "localizedValue": "Inbound Flows" }, "unit": "Count", "primaryAggregationType": "Average" },
+    { "namespace": "Microsoft.Compute/virtualMachines", "name": { "value": "Outbound Flows", "localizedValue": "Outbound Flows" }, "unit": "Count", "primaryAggregationType": "Average" }
+  ]
+}

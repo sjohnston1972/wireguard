@@ -109,8 +109,8 @@ describe("the seed route's guard", () => {
 });
 
 describe("scenarios", () => {
-  it("lists exactly the seven the plan names", () => {
-    expect([...SCENARIOS].sort()).toEqual(["busy-month", "deploying", "destroyed", "empty", "failed", "running", "standby"].sort());
+  it("lists exactly the eight the plans name (insights: the running story plus Azure data)", () => {
+    expect([...SCENARIOS].sort()).toEqual(["busy-month", "deploying", "destroyed", "empty", "failed", "insights", "running", "standby"].sort());
   });
 
   it("every scenario wipes ui_prefs", async () => {
@@ -133,7 +133,7 @@ describe("scenarios", () => {
       const pol = await env.DB.prepare("SELECT live_version, draft_base, draft_default, apply_token FROM fw_policy WHERE id = 1").first();
       const names = (await env.DB.prepare("SELECT name FROM fw_draft_rules").all<{ name: string }>()).results.map((r) => r.name);
       expect(names, s).not.toContain("leftover");
-      if (s === "running") {
+      if (s === "running" || s === "insights") {
         expect(pol, s).toEqual({ live_version: 1, draft_base: 1, draft_default: "deny", apply_token: null });
       } else {
         expect(pol, s).toEqual({ live_version: 1, draft_base: null, draft_default: null, apply_token: null });
@@ -351,7 +351,8 @@ describe("seeded GitHub links", () => {
       seen += urls.length;
     }
     expect(seen).toBeGreaterThan(5);
-  });
+    // Seeds all eight scenarios: measured 1.9 s alone and 4.9 s in the full suite (the default limit is 5 s).
+  }, 30_000);
 });
 
 // For pixel-identical screenshots (npm run shots -- --freeze-time): the
