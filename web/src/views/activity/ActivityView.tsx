@@ -14,6 +14,7 @@ import { RANGES, type Window } from "./model";
 import { PhoneActivity } from "./PhoneActivity";
 import { PhoneAzure } from "./PhoneAzure";
 import { ServiceHealthPanel } from "./ServiceHealth";
+import { ServiceHealthLink } from "./ServiceHealthLink";
 import { LiveOutput, RunDetails } from "./RunPanels";
 import { Timeline } from "./Timeline";
 import { useActivityParams } from "./useActivityParams";
@@ -34,6 +35,7 @@ export function ActivityView({ runId }: { runId?: string }) {
   const list = useWidget("activity.list");
   const changeLog = useWidget("activity.changeLog");
   const runDetails = useWidget("activity.runDetails");
+  const serviceHealth = useWidget("activity.serviceHealth");
   const p = useActivityParams({ tab: list.settings.tab as Tab, kind: changeLog.settings.kind as string });
   const r2 = useRowItems("activity", "r2");
   const q = useActivity({ range: p.range, kind: p.kind, q: p.q, page: p.page > 1 ? p.page : undefined });
@@ -192,6 +194,8 @@ export function ActivityView({ runId }: { runId?: string }) {
           )}
         </>
       )}
+      {/* The Service Health pill's link: to the widget when it is drawn, else the active issue's details. */}
+      {data && <ServiceHealthLink drawn={!serviceHealth.hidden && (phone || !short)} />}
       {runId && <RunDrawer id={runId} onClose={closeRun} />}
       {data && selectedChange !== null && !runId && <ChangeDrawer change={changeRow} onClose={closeChange} />}
     </section>

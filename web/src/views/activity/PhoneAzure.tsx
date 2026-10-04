@@ -45,7 +45,7 @@ function HealthCard() {
   const [open, setOpen] = useState<string | null>(null);
   const selected = events.find((e) => e.trackingId === open) ?? null;
   return (
-    <Panel title="Azure service health" className="act__phone-card">
+    <Panel title="Azure service health" className="act__phone-card act__health-card">
       {!data ? (
         <p className="act__muted" aria-busy="true">Loading Azure service health...</p>
       ) : notConnected(data.feed) ? (

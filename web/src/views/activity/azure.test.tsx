@@ -4,22 +4,22 @@
 // Azure change log widget, the Change log's "Include Azure changes" opt-in,
 // and the Azure service health widget. All are off until turned on; with
 // nothing saved the page is today's page.
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PagePrefs } from "@shared/api";
 import { widgetDef } from "@shared/widgets";
 import { renderApp } from "@/test/render";
-import { prefsServer } from "@/test/fixtures";
+import { azureSummaryFixture, prefsServer } from "@/test/fixtures";
 import { setViewport } from "@/test/viewport";
 import { activityRoutes } from "./testkit";
 import { azChangesResponse, azRoutes, healthEvents, healthResponse, issue, turnedOn } from "./azureKit";
 
 vi.setConfig({ testTimeout: 20_000 });
 
-function renderActivity(prefs: PagePrefs | null, routes: Record<string, unknown> = {}) {
+function renderActivity(prefs: PagePrefs | null, routes: Record<string, unknown> = {}, url = "/activity") {
   const server = prefsServer(prefs ? { activity: prefs } : {});
-  const r = renderApp("/activity", { routes: activityRoutes({ ...server.routes, ...azRoutes(), ...routes }) });
+  const r = renderApp(url, { routes: activityRoutes({ ...server.routes, ...azRoutes(), ...routes }) });
   return { ...r, server };
 }
 
@@ -228,5 +228,38 @@ describe("activity: Azure widgets on the phone", () => {
     await screen.findByRole("region", { name: "Last run" });
     expect(screen.queryByRole("region", { name: "Azure change log" })).toBeNull();
     expect(fetchMock!.calls.some((c) => /azure\/(changes|service-health)/.test(c.url))).toBe(false);
+  });
+});
+
+describe("activity: the Service Health pill's link (/activity?widget=serviceHealth)", () => {
+  const PILL_LINK = "/activity?widget=serviceHealth";
+  const withIssue = { "GET /api/v1/azure/summary": azureSummaryFixture({ serviceIssues: [issue()] }) };
+
+  it("with the widget on, it scrolls to and focuses the Azure service health widget", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    onTestFinished(() => scrolled.mockRestore());
+    renderActivity(turnedOn(...AZ_HEALTH), withIssue, PILL_LINK);
+    const panel = await screen.findByRole("region", { name: "Azure service health" });
+    await waitFor(() => expect(panel).toHaveFocus());
+    expect(scrolled).toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // Handled once: the address loses the parameter.
+    await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent(/^\/activity$/));
+  });
+
+  it("with the widget off, it opens the active issue's details", async () => {
+    renderActivity(null, withIssue, PILL_LINK);
+    const dialog = await screen.findByRole("dialog", { name: "Virtual Machines: connectivity problems" });
+    expect(dialog).toHaveTextContent("Some VMs in UK South may fail to start.");
+    expect(dialog).toHaveTextContent("UK South");
+    expect(screen.queryByRole("region", { name: "Azure service health" })).toBeNull();
+    await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent(/^\/activity$/));
+  });
+
+  it("without the parameter nothing opens, even during an issue", async () => {
+    renderActivity(null, withIssue);
+    await screen.findByRole("table", { name: "Runs" });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
