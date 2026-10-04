@@ -2,11 +2,14 @@ import { useMemo, useState } from "react";
 import type { OverviewResponse } from "@shared/api";
 import { Button, KeyValue, LogView, ProgressBar, Sheet, StepList, cx } from "@/components";
 import { useAzureSummary, useCost, useRunLog } from "@/api/queries";
+import { useRePeerLabs } from "@/api/mutations";
 import { useWidget } from "@/widgets";
 import type { ActionName } from "./actions";
 import { StateMark } from "./Banner";
 import { healthChecks } from "./Lower";
 import { AzureHealth, Vitals, VmPerformance } from "./lazyInsights";
+import { RunningLabs } from "./lazyLabs";
+import { labsBannerText } from "./labs";
 import { STATE_TONE, STATE_WORD, ageOf, currentStep, gbp, inGithubRun, moveTargets, regionFull, runActive, stepProgress, topology, uiSteps, type NodeStatus } from "./model";
 import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
 import "./Phone.css";
@@ -69,7 +72,10 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
     !useWidget("overview.vmPerformance").hidden && <VmPerformance key="vm" o={o} now={now} />,
     !useWidget("overview.azureHealth").hidden && <AzureHealth key="health" o={o} now={now} />,
     !useWidget("overview.vitals").hidden && <Vitals key="vitals" o={o} now={now} />,
+    !useWidget("overview.runningLabs").hidden && <RunningLabs key="labs" labs={o.labs.running} now={now} />,
   ].filter(Boolean);
+  const repeer = useRePeerLabs();
+  const labsText = labsBannerText(o.labs);
   const s = o.snapshot;
   const t = topology(o, useAzureSummary().data?.health);
   const run = inGithubRun(s.state);
@@ -90,6 +96,7 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
     small.push({ label: "Tear down", onClick: () => onAction("destroy") });
     small.push({ label: "Speed", onClick: () => onAction("speedtest"), disabled: !!s.speedtest_req });
     small.push({ label: "Move", onClick: () => onAction("move"), disabled: !moveTargets(o).length });
+    if (o.labs.rePeer > 0) small.push({ label: `Re-peer ${o.labs.rePeer}`, onClick: () => repeer.mutate(), disabled: repeer.isPending });
   }
   if (s.state === "standby") small.push({ label: "Tear down", onClick: () => onAction("destroy") });
   if (s.state === "failed") small.push({ label: "Deploy again", onClick: () => onAction("deploy") });
@@ -111,7 +118,7 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
         <StateMark state={s.state} size={34} />
         <div>
           <p className={cx("ov-phone__word", `ov-phone__word--${STATE_TONE[s.state]}`)}>{STATE_WORD[s.state]}</p>
-          <p className="ov-phone__sub">{s.state === "failed" ? s.error ?? "The last run failed" : `${o.config.dnsName} · ${regionFull(s.region ?? o.config.region)}`}</p>
+          <p className="ov-phone__sub">{s.state === "failed" ? s.error ?? "The last run failed" : `${o.config.dnsName} · ${regionFull(s.region ?? o.config.region)}`}{labsText && ` · ${labsText}`}</p>
         </div>
       </div>
 

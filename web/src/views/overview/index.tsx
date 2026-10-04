@@ -16,6 +16,7 @@ import { LastRun, RunPanels } from "./Run";
 import { RecentEvents, SpeedTests, Traffic } from "./Side";
 import { CostImpact, HealthSummary, WatchmanNotes } from "./Lower";
 import { AzureHealth, Vitals, VmPerformance } from "./lazyInsights";
+import { RunningLabs } from "./lazyLabs";
 import { PhoneOverview } from "./Phone";
 import { STATE_WORD, inGithubRun, regionCountry, regionFull } from "./model";
 import "./Overview.css";
@@ -322,6 +323,11 @@ function Desktop({ o, receivedAt, onAction }: { o: OverviewResponse; receivedAt:
             "overview.vitals": (
               <Widget id="overview.vitals">
                 <Vitals o={o} now={now} />
+              </Widget>
+            ),
+            "overview.runningLabs": (
+              <Widget id="overview.runningLabs">
+                <RunningLabs labs={o.labs.running} now={now} />
               </Widget>
             ),
           }}
