@@ -106,42 +106,59 @@ describe("the metric catalogue (shared/azureMetrics.ts)", () => {
   });
 });
 
-describe("the second cron", () => {
-  it("wrangler.toml declares both crons", () => {
+describe("one cron runs both", () => {
+  // Live 2026-10-04: Cloudflare registered a second trigger ("2-59/5", then the minutes
+  // listed out) but never fired it, while the watchman's "*/5" ran every time. The
+  // collector now runs in the watchman's invocation, after the watchman.
+  it("wrangler.toml declares only the watchman's cron", () => {
     const toml = readFileSync(new URL("../../wrangler.toml", import.meta.url), "utf8");
-    expect(toml).toContain(`crons = ["${WATCHMAN_CRON}", "${INSIGHTS_CRON}"]`);
+    const line = toml.split(/\r?\n/).find((l) => l.startsWith("crons = "));
+    expect(line).toBe(`crons = ["${WATCHMAN_CRON}"]`);
+    expect(toml).not.toContain(INSIGHTS_CRON);
     expect(WATCHMAN_CRON).toBe("*/5 * * * *");
   });
 
-  // Live 2026-10-04: Cloudflare registered "2-59/5 * * * *" but never fired it. The
-  // collector's minutes are listed out, two minutes after each watchman run.
-  it("the collector's cron lists its minutes, with no range step", () => {
-    expect(INSIGHTS_CRON).toBe("2,7,12,17,22,27,32,37,42,47,52,57 * * * *");
-    expect(INSIGHTS_CRON).not.toMatch(/\d-\d+\//);
-  });
+  const fire = async (env: Env, cron: string) => {
+    const waits: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => void waits.push(p), passThroughOnCancel() {} } as unknown as ExecutionContext;
+    await worker.scheduled!({ cron, scheduledTime: Date.parse("2026-10-04T10:05:00Z"), type: "scheduled", noRetry() {} } as unknown as ScheduledController, env, ctx);
+    await Promise.all(waits);
+  };
 
-  it("scheduled() sends the collector's cron to runInsights and */5 to the watchman", async () => {
+  it("the watchman's cron runs the watchman, then the collector", async () => {
     const { runInsights } = await import("../src/insights/runner");
     const { runScheduled } = await import("../src/monitor");
+    const order: string[] = [];
+    vi.mocked(runScheduled).mockImplementation(async () => { order.push("watchman"); return []; });
+    vi.mocked(runInsights).mockImplementation(async () => { order.push("insights"); return []; });
     const { env } = makeEnv();
-    const run = async (cron: string) => {
-      const waits: Promise<unknown>[] = [];
-      const ctx = { waitUntil: (p: Promise<unknown>) => void waits.push(p), passThroughOnCancel() {} } as unknown as ExecutionContext;
-      await worker.scheduled!({ cron, scheduledTime: Date.parse("2026-10-04T10:07:00Z"), type: "scheduled", noRetry() {} } as unknown as ScheduledController, env, ctx);
-      await Promise.all(waits);
-    };
-    await run(INSIGHTS_CRON);
+    await fire(env, WATCHMAN_CRON);
+    expect(order).toEqual(["watchman", "insights"]);
+    expect(vi.mocked(runInsights).mock.calls[0]![1]).toEqual(new Date("2026-10-04T10:05:00Z"));
+  });
+
+  it("a failing watchman does not stop the collector, and a failing collector does not touch the watchman", async () => {
+    const { runInsights } = await import("../src/insights/runner");
+    const { runScheduled } = await import("../src/monitor");
+    vi.mocked(runScheduled).mockRejectedValueOnce(new Error("watchman broke"));
+    vi.mocked(runInsights).mockResolvedValueOnce([]);
+    const { env } = makeEnv();
+    await expect(fire(env, WATCHMAN_CRON)).resolves.toBeUndefined();
     expect(runInsights).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(runInsights).mock.calls[0]![0]).toBe(env);
-    expect(vi.mocked(runInsights).mock.calls[0]![1]).toEqual(new Date("2026-10-04T10:07:00Z"));
-    expect(runScheduled).not.toHaveBeenCalled();
-    await run(WATCHMAN_CRON);
-    expect(runScheduled).toHaveBeenCalledTimes(1);
-    expect(runInsights).toHaveBeenCalledTimes(1);
-    // A cron this Worker does not know (an old trigger left behind) is the watchman, as before this project.
-    await run("0 * * * *");
+    vi.mocked(runScheduled).mockResolvedValueOnce([]);
+    vi.mocked(runInsights).mockRejectedValueOnce(new Error("collector broke"));
+    await expect(fire(env, WATCHMAN_CRON)).resolves.toBeUndefined();
     expect(runScheduled).toHaveBeenCalledTimes(2);
+  });
+
+  it("a leftover second trigger, if it ever fires, still runs only the collector", async () => {
+    const { runInsights } = await import("../src/insights/runner");
+    const { runScheduled } = await import("../src/monitor");
+    vi.mocked(runInsights).mockResolvedValue([]);
+    const { env } = makeEnv();
+    await fire(env, INSIGHTS_CRON);
     expect(runInsights).toHaveBeenCalledTimes(1);
+    expect(runScheduled).not.toHaveBeenCalled();
   });
 });
 

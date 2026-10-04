@@ -2,7 +2,7 @@
 #
 # Plain English: the Worker's wiring diagram. It names the code, the storage
 # it is allowed to touch (D1 database, KV namespace, R2 bucket, the run-lock
-# Durable Object), the two 5-minute crons, the public hostname, and the non-secret
+# Durable Object), the 5-minute cron (watchman, then the Azure collector), the public hostname, and the non-secret
 # settings. Secrets are NOT here: they are set with "npm run secrets -- --worker".
 
 name = "wg-admin"
@@ -32,7 +32,7 @@ run_worker_first = ["/api/*", "/assets/*", "/captures/*", "/manifest.webmanifest
 # And two minutes after each: the Azure insights collector, in its own invocation and
 # subrequest budget, so Azure can never delay the watchman (worker/src/insights/).
 [triggers]
-crons = ["*/5 * * * *", "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]
+crons = ["*/5 * * * *"]
 
 # ── Storage ──────────────────────────────────────────────────────────────────
 
