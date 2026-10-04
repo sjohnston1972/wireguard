@@ -123,9 +123,9 @@ test("the cron triggers are read from wrangler.toml", () => {
   assert.deepEqual(cronTriggers('[triggers]\ncrons = ["*/5 * * * *", "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]\n'), ["*/5 * * * *", "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]);
   assert.deepEqual(cronTriggers('[triggers]\ncrons = [\n  "*/5 * * * *",\n]\n'), ["*/5 * * * *"]);
   assert.deepEqual(cronTriggers("name = 'x'\n"), []);
-  // The real file: the watchman and the Azure insights collector.
+  // The real file: one cron (the watchman, then the Azure insights collector).
   const toml = readFileSync(new URL("../../wrangler.toml", import.meta.url), "utf8");
-  assert.deepEqual(cronTriggers(toml), ["*/5 * * * *", "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]);
+  assert.deepEqual(cronTriggers(toml), ["*/5 * * * *"]);
 });
 
 test("the rollback warning says a rollback keeps today's cron triggers and how to go back properly", () => {

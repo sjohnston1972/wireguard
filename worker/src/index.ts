@@ -271,26 +271,32 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
-  // Two crons (wrangler.toml): the Azure insights collector on its own (INSIGHTS_CRON),
-  // and the watchman on everything else, as before. Each gets its own invocation, so
-  // neither can use up the other's time or outside calls, and a collector failure is
-  // only logged.
+  // One cron (wrangler.toml): the watchman, then the Azure insights collector in the
+  // same invocation. (A second trigger for the collector was registered but never fired
+  // on Cloudflare, 2026-10-04.) Each is caught on its own, so neither can stop the
+  // other; the collector keeps its own 25-call budget and soft time limit. A leftover
+  // INSIGHTS_CRON trigger, if one ever fires, runs only the collector.
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    if (event.cron === INSIGHTS_CRON) {
-      ctx.waitUntil(
-        runInsights(env, new Date(event.scheduledTime)).then(
-          (lines) => {
-            if (lines.length) console.log("insights:", lines.join(" | "));
-          },
-          (e) => console.error("insights run failed:", e),
-        )
+    const insights = () =>
+      runInsights(env, new Date(event.scheduledTime)).then(
+        (lines) => {
+          if (lines.length) console.log("insights:", lines.join(" | "));
+        },
+        (e) => console.error("insights run failed:", e),
       );
+    if (event.cron === INSIGHTS_CRON) {
+      ctx.waitUntil(insights());
       return;
     }
     ctx.waitUntil(
-      runScheduled(env).then((notes) => {
-        if (notes.length) console.log("watchman:", notes.join(" | "));
-      })
+      runScheduled(env)
+        .then(
+          (notes) => {
+            if (notes.length) console.log("watchman:", notes.join(" | "));
+          },
+          (e) => console.error("watchman run failed:", e),
+        )
+        .then(insights)
     );
   },
 };
