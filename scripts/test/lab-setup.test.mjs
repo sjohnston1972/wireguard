@@ -72,6 +72,16 @@ test("labs-setup substitutes the subscription id and never prints it", () => {
   assert.throws(() => setup({ subscriptionId: "REPLACE_ME", dir, log: () => {} }), /AZURE_SUBSCRIPTION_ID/);
 });
 
+test("the README's 'Labs: one-time setup' has the §8.2 steps, Cloud Shell, the Graph role ids and the management-group setting", () => {
+  const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+  const start = readme.indexOf("## Labs: one-time setup");
+  assert.ok(start > 0);
+  const section = readme.slice(start, readme.indexOf("\n## ", start + 5)).replace(/\s+/g, " ");
+  for (const s of ["npm run labs-setup", "Add custom role", "Allow user to only assign selected roles", "User.ReadWrite.All", "User.DeleteRestore.All", "Group.ReadWrite.All", "Grant admin consent", "LAB_UPN_DOMAIN", "Check permissions", "Cloud Shell", "az ad sp show --id $GRAPH", "GRAPH=00000003-0000-0000-c000-000000000000", "Require write permissions for creating new management groups", "--check", "--confirm-cost"]) {
+    assert.ok(section.includes(s), s);
+  }
+});
+
 test("LAB_UPN_DOMAIN goes to GitHub when set, and a blank one is skipped without failing the gateway's secrets", () => {
   assert.equal(OPTIONAL_GITHUB_MAP.LAB_UPN_DOMAIN, "LAB_UPN_DOMAIN");
   const env = { LAB_UPN_DOMAIN: "contoso.onmicrosoft.com" };
