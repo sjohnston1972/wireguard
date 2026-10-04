@@ -2,10 +2,9 @@
 //
 // Plain English: the shell mounts the Azure Service Health pill in the top
 // bar, just before the notes bell (insights spec 10.2). Area X4 draws the
-// pill itself; here a stand-in proves where it sits, and the real one
-// renders nothing until X4 fills it.
+// pill itself; here a stand-in proves where it sits, and the real pill is tested in ServiceHealthIndicator.test.tsx.
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { renderApp } from "@/test/render";
 import { sessionFixture } from "@/test/fixtures";
 
@@ -18,11 +17,5 @@ describe("ServiceHealthIndicator in the shell", () => {
     const bell = await screen.findByRole("link", { name: "1 unread watchman note" });
     const pill = within(document.querySelector<HTMLElement>("header.topbar")!).getByTestId("service-health-pill");
     expect(pill.nextElementSibling).toBe(bell);
-  });
-
-  it("the X0 pill renders nothing", async () => {
-    const real = await vi.importActual<typeof import("./ServiceHealthIndicator")>("./ServiceHealthIndicator");
-    const { container } = render(<real.ServiceHealthIndicator />);
-    expect(container).toBeEmptyDOMElement();
   });
 });

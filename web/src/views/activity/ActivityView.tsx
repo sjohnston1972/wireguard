@@ -5,12 +5,15 @@ import type { ActivityResponse } from "@shared/api";
 import { DataAge, ErrorState, IconButton, PageHeader, Select, Skeleton, useIsPhone } from "@/components";
 import { useActivity } from "@/api/queries";
 import { ActivityList } from "./ActivityList";
+import { AzureChangesPanel } from "./AzureChanges";
 import { ChangeLog } from "./ChangeLog";
 import { ChangeDrawer, RunDrawer } from "./Drawers";
 import { EventStream } from "./EventStream";
 import { Kpis } from "./Kpis";
 import { RANGES, type Window } from "./model";
 import { PhoneActivity } from "./PhoneActivity";
+import { PhoneAzure } from "./PhoneAzure";
+import { ServiceHealthPanel } from "./ServiceHealth";
 import { LiveOutput, RunDetails } from "./RunPanels";
 import { Timeline } from "./Timeline";
 import { useActivityParams } from "./useActivityParams";
@@ -98,7 +101,10 @@ export function ActivityView({ runId }: { runId?: string }) {
       {header}
       {phone ? (
         data ? (
-          <PhoneActivity data={data} onOpenRun={openRun} onOpenChange={openChange} />
+          <>
+            <PhoneActivity data={data} onOpenRun={openRun} onOpenChange={openChange} />
+            <PhoneAzure />
+          </>
         ) : (
           <div aria-busy="true" className="act__skel">
             <Skeleton variant="block" height={96} />
@@ -151,6 +157,11 @@ export function ActivityView({ runId }: { runId?: string }) {
                             <ChangeLog changes={data.changes} params={p} set={p.set} window={win} selected={selectedChange} onOpen={openChange} />
                           </Widget>
                         ),
+                        "activity.azureChanges": (
+                          <Widget id="activity.azureChanges">
+                            <AzureChangesPanel />
+                          </Widget>
+                        ),
                       }}
                     </WidgetStack>
                   ),
@@ -167,6 +178,11 @@ export function ActivityView({ runId }: { runId?: string }) {
                     "activity.liveOutput": (
                       <Widget id="activity.liveOutput">
                         <LiveOutput id={shownRun} search={p.search} />
+                      </Widget>
+                    ),
+                    "activity.serviceHealth": (
+                      <Widget id="activity.serviceHealth">
+                        <ServiceHealthPanel />
                       </Widget>
                     ),
                   }}
