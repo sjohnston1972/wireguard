@@ -186,6 +186,28 @@ describe("Run details and live output", () => {
   });
 });
 
+// Live test 2026-10-04: a finished run's saved steps can still say a step is in
+// progress (saved mid-run). A run that is not active never shows one as running.
+describe("a finished run's unfinished steps", () => {
+  it("the run drawer says Not run, never Running", async () => {
+    renderApp("/activity/runs/run-2", { routes: activityRoutes() });
+    const drawer = await screen.findByRole("dialog");
+    const steps = await within(drawer).findByRole("list", { name: "Run steps" });
+    expect(steps).not.toHaveTextContent("Running");
+    const items = within(steps).getAllByRole("listitem");
+    expect(items[2]).toHaveTextContent("Not run");
+    expect(items[3]).toHaveTextContent("Not run");
+  });
+
+  it("Run details says Not run, never Running…", async () => {
+    renderApp("/activity/runs/run-2", { routes: activityRoutes() });
+    const details = await screen.findByRole("region", { name: "Run details", hidden: true });
+    const track = await within(details).findByRole("list", { name: "Run progress", hidden: true });
+    expect(track).not.toHaveTextContent("Running");
+    expect(within(track).getAllByRole("listitem", { hidden: true })[2]).toHaveTextContent("Not run");
+  });
+});
+
 describe("Change drawer", () => {
   it("a change opens with its before and after diff", async () => {
     renderApp("/activity", { routes: activityRoutes() });

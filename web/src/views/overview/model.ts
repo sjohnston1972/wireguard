@@ -45,7 +45,13 @@ export function stepProgress(steps: Step[]): { done: number; total: number; pct:
   return { done, total: steps.length, pct: Math.round((done / steps.length) * 100) };
 }
 
-export function stepState(s: Step): StepState {
+/**
+ * A step's state. `active` false: the run is over, so a step that never
+ * finished was not run (its list was saved while the run was going); it is
+ * never shown as running.
+ */
+export function stepState(s: Step, active = true): StepState {
+  if (s.status !== "completed" && !active) return "notrun";
   if (s.status === "in_progress") return "running";
   if (s.status !== "completed") return "pending";
   if (s.conclusion === "failure" || s.conclusion === "cancelled" || s.conclusion === "timed_out") return "failed";
@@ -73,8 +79,14 @@ export function hhmm(isoTime: string | null | undefined): string {
   return clock(isoTime).slice(0, 5);
 }
 
-export function uiSteps(steps: Step[]): UiStep[] {
-  return steps.map((s, i) => ({ id: String(i), label: s.name, state: stepState(s), duration: stepDuration(s), time: clock(s.started_at) }));
+export function uiSteps(steps: Step[], active = true): UiStep[] {
+  return steps.map((s, i) => ({ id: String(i), label: s.name, state: stepState(s, active), duration: stepDuration(s), time: clock(s.started_at) }));
+}
+
+/** Is the snapshot's run still going? During a GitHub run, or while it holds the lock (a deploy's first heartbeat comes before its callback). */
+export function runActive(o: OverviewResponse): boolean {
+  const s = o.snapshot;
+  return inGithubRun(s.state) || (!!s.run_id && o.actions.lockHolder === s.run_id);
 }
 
 /** The first failed step, with its 1-based place. */

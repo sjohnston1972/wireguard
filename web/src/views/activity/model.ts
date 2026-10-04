@@ -200,7 +200,9 @@ export function bucketLabel(iso: string, range: ActivityRange): string {
 
 export type ApiStep = RunDetailResponse["steps"][number];
 
-export function stepState(s: ApiStep): StepState {
+/** A step's state; `active` false (the run is over): a step that never finished was not run, never "running". */
+export function stepState(s: ApiStep, active = true): StepState {
+  if (s.status !== "completed" && !active) return "notrun";
   if (s.status === "completed") {
     if (s.conclusion === "success") return "done";
     if (s.conclusion === "failure") return "failed";

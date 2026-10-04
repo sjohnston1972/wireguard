@@ -5,7 +5,7 @@ import { Check, Maximize2, Minus, X } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
 import { EmptyState, IconButton, LogView, Modal, Panel, Select, StepList, Tabs, cx, type LogLine } from "@/components";
 import { useRunLog } from "@/api/queries";
-import { inGithubRun, stepLine, stepMatches, stepState, uiSteps, type StepFilter } from "./model";
+import { inGithubRun, runActive, stepLine, stepMatches, stepState, uiSteps, type StepFilter } from "./model";
 import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
 import { streamState, useNowWhile } from "@/lib/liveStream";
 import type { ActionName } from "./actions";
@@ -179,7 +179,7 @@ export function LastRun({ o, onAction }: { o: OverviewResponse; onAction: (a: Ac
       }
     >
       {s.steps.length ? (
-        <StepList steps={uiSteps(s.steps)} aria-label="Last run steps" />
+        <StepList steps={uiSteps(s.steps, runActive(o))} aria-label="Last run steps" />
       ) : (
         <EmptyState
           title="No run steps to show"

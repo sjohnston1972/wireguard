@@ -9,7 +9,7 @@ import { LIVE_LOG_WAITING } from "@/lib/parseLog";
 export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const { detail, run, steps, active, hasLog, log, lines, streaming, stalled, waiting, liveCopy } = useRunData(id);
   const pill = run ? resultPill(run.status) : null;
-  const rows: Step[] = steps.map((s, i) => ({ id: `${i}`, label: s.name, state: stepState(s), duration: fmtDuration(stepSeconds(s)) ?? undefined, time: fmtClock(s.started_at) || undefined }));
+  const rows: Step[] = steps.map((s, i) => ({ id: `${i}`, label: s.name, state: stepState(s, active), duration: fmtDuration(stepSeconds(s)) ?? undefined, time: fmtClock(s.started_at) || undefined }));
 
   return (
     <Drawer

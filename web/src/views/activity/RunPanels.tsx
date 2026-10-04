@@ -8,24 +8,24 @@ import { useRunData } from "./useRunData";
 import { LIVE_LOG_WAITING } from "@/lib/parseLog";
 
 /** The run's steps left to right: a mark, the name and how long it took (the run drawer shows them all, with durations and two-line names). */
-export function StepTrack({ steps, durations = true, nameLines = 2 }: { steps: ApiStep[]; durations?: boolean; nameLines?: 1 | 2 }) {
+export function StepTrack({ steps, durations = true, nameLines = 2, active = true }: { steps: ApiStep[]; durations?: boolean; nameLines?: 1 | 2; active?: boolean }) {
   if (steps.length === 0) return <p className="act__muted">No steps were saved for this run.</p>;
   return (
     <ol className={nameLines === 1 ? "act__track act__track--one" : "act__track"} aria-label="Run progress">
       {steps.map((s, i) => {
-        const st = stepState(s);
+        const st = stepState(s, active);
         const d = fmtDuration(stepSeconds(s));
         return (
           <li key={`${s.name}-${i}`} className={`act__step act__step--${st}`} aria-current={st === "running" ? "step" : undefined}>
             <span className="act__step-mark" aria-hidden>
               {st === "done" && <Check size={13} strokeWidth={3} />}
               {st === "failed" && <X size={13} strokeWidth={3} />}
-              {st === "skipped" && <Minus size={13} strokeWidth={3} />}
+              {(st === "skipped" || st === "notrun") && <Minus size={13} strokeWidth={3} />}
             </span>
             <span className="act__step-name" title={s.name}>
               {s.name}
             </span>
-            <span className="act__step-time">{st === "running" ? "Running…" : st === "pending" ? "Pending" : st === "skipped" ? "Skipped" : (durations ? (d ?? "") : "")}</span>
+            <span className="act__step-time">{st === "running" ? "Running…" : st === "pending" ? "Pending" : st === "skipped" ? "Skipped" : st === "notrun" ? "Not run" : (durations ? (d ?? "") : "")}</span>
           </li>
         );
       })}
@@ -35,7 +35,7 @@ export function StepTrack({ steps, durations = true, nameLines = 2 }: { steps: A
 
 /** Bottom left: the selected run (else the latest) as a row of steps. */
 export function RunDetails({ id, emptyTitle = "No runs yet", emptyHint = "A deploy or tear-down shows its steps here." }: { id: string | null; emptyTitle?: string; emptyHint?: string }) {
-  const { detail, run, steps } = useRunData(id);
+  const { detail, run, steps, active } = useRunData(id);
   const { settings } = useWidget("activity.runDetails");
   const pill = run ? resultPill(run.status) : null;
   return (
@@ -66,7 +66,7 @@ export function RunDetails({ id, emptyTitle = "No runs yet", emptyHint = "A depl
             {actionWord(run.action)} requested by {run.requested_by ?? "unknown"}
             {run.error ? `: ${run.error}` : run.status === "running" ? ", in progress" : ""}
           </p>
-          <StepTrack steps={steps} durations={settings.durations as boolean} nameLines={settings.nameLines === "1" ? 1 : 2} />
+          <StepTrack steps={steps} active={active} durations={settings.durations as boolean} nameLines={settings.nameLines === "1" ? 1 : 2} />
         </>
       )}
     </Panel>

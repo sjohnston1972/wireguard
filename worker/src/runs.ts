@@ -16,14 +16,14 @@ import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
 import { randomToken, sha256Hex, safeEqual } from "./auth";
 import { dispatchWorkflow, findRunByTitle, getGhRun, getJobs, getJobLogTail, cancelGhRun, stepsFromJobs } from "./github";
-import { getSnapshot, saveSnapshot, parseWgDump, nextTraffic, nextLatency, detectRoams, nextSession, selfTestFailures, nextTalkers, type AgentReport, type Snapshot, type SelfTest } from "./state";
+import { getSnapshot, saveSnapshot, saveSnapshotIf, parseWgDump, nextTraffic, nextLatency, detectRoams, nextSession, selfTestFailures, nextTalkers, type AgentReport, type Snapshot, type SelfTest } from "./state";
 import { checkDns } from "./dns";
 import { agentPeerList, terraformPeerList, protectedNets } from "./peers";
 import { notify } from "./notify";
 import { dashboardButton } from "./actions";
 import { bytesText } from "./format";
 import { compileFirewall, publishedNsgRules } from "./firewall";
-import type { FirewallStatus } from "./state";
+import type { FirewallStatus, Step } from "./state";
 import { azureView, azureInventory } from "./azure";
 import { canAzure } from "./env";
 import { noteHandshakes } from "./keyrotation";
@@ -359,9 +359,17 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
  * dashboard's polling and by the cron. Cheap when nothing is active.
  */
 export async function refreshActiveRun(env: Env): Promise<void> {
+  if (!canDispatch(env)) return;
   const run = await db.activeRun(env);
-  if (!run || !canDispatch(env)) return;
+  if (!run) {
+    // No run going: if the last one ended with steps GitHub had not
+    // finished yet (the callback lands from inside the workflow), read them
+    // once more so the saved list is the final one.
+    await finishLastRunSteps(env);
+    return;
+  }
 
+  const before = await getSnapshot(env);
   let ghId = run.github_run_id;
   if (!ghId) {
     const found = await findRunByTitle(env, run.id);
@@ -392,7 +400,18 @@ export async function refreshActiveRun(env: Env): Promise<void> {
   }
   let log_tail: string | null = null;
   if (jobs[0]) log_tail = await getJobLogTail(env, jobs[0].id).catch(() => null);
-  await saveSnapshot(env, { steps, log_tail, github_run_url: gh?.html_url ?? run.github_run_url });
+  // Only onto the snapshot this run was read against: if the result
+  // callback finished the run while GitHub was being read (a tear-down
+  // clears the steps), these mid-run steps must not come back.
+  const patch: Partial<Snapshot> = { steps, log_tail, github_run_url: gh?.html_url ?? run.github_run_url };
+  const saved = await saveSnapshotIf(env, before.state, patch);
+  if ((await db.getRun(env, run.id))?.finished_at) {
+    // The run ended meanwhile: its final steps, from GitHub, replace these.
+    await saveFinalSteps(env, run.id);
+    return;
+  }
+  // Still going, but the state moved on (a deploy's first heartbeat): save as usual.
+  if (!saved) await saveSnapshot(env, patch);
 
   if (gh && gh.status === "completed") {
     if (gh.conclusion === "success") {
@@ -407,6 +426,48 @@ export async function refreshActiveRun(env: Env): Promise<void> {
     } else {
       await failRun(env, run, `GitHub run finished with "${gh.conclusion}".`);
     }
+  }
+}
+
+/** How long after a run ends its saved steps are still read again from GitHub, until they are all finished. */
+const FINAL_STEPS_MS = 30 * 60_000;
+
+const allFinished = (steps: Step[]) => steps.every((s) => s.status === "completed");
+
+/**
+ * Read a finished run's steps from GitHub once more and keep them (with the
+ * run, and on the snapshot while it still shows this run's steps). The
+ * result callback is sent from inside the workflow, so at that moment its
+ * own step is still running; refreshActiveRun calls this again (via
+ * finishLastRunSteps) until GitHub has finished them all. Best effort:
+ * never throws, so it can never fail a callback.
+ */
+export async function saveFinalSteps(env: Env, runId: string): Promise<void> {
+  try {
+    const run = await db.getRun(env, runId);
+    if (!run?.github_run_id || !canDispatch(env)) return;
+    const steps = stepsFromJobs(await getJobs(env, run.github_run_id));
+    if (!steps.length) return;
+    const json = JSON.stringify(steps);
+    if (json !== run.steps_json) await db.updateRun(env, run.id, { steps_json: json });
+    const snap = await getSnapshot(env);
+    // A tear-down clears the snapshot's steps; an apply keeps them on Overview's Last run.
+    if (snap.run_id === run.id && snap.steps.length && JSON.stringify(snap.steps) !== json) await saveSnapshotIf(env, snap.state, { steps });
+  } catch (e) {
+    console.error("final run steps:", e);
+  }
+}
+
+/** The last run, if it ended less than 30 minutes ago with steps GitHub had not finished: read them once more. */
+async function finishLastRunSteps(env: Env): Promise<void> {
+  try {
+    const last = await env.DB.prepare("SELECT id, finished_at, steps_json, github_run_id FROM runs WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1").first<Pick<db.Run, "id" | "finished_at" | "steps_json" | "github_run_id">>();
+    if (!last?.github_run_id || !last.steps_json || Date.now() - Date.parse(last.finished_at ?? "") > FINAL_STEPS_MS) return;
+    const steps = JSON.parse(last.steps_json) as Step[];
+    if (!Array.isArray(steps) || allFinished(steps)) return;
+    await saveFinalSteps(env, last.id);
+  } catch (e) {
+    console.error("last run steps:", e);
   }
 }
 
@@ -433,6 +494,7 @@ async function failRun(env: Env, run: db.Run, message: string): Promise<void> {
   // Close the run in one step; if something else already closed it, leave it be.
   if (!(await db.settleRun(env, run.id, { status: "failure", finished_at: new Date().toISOString(), error: message }))) return;
   await releaseLock(env, run.id);
+  await saveFinalSteps(env, run.id);
   await saveSnapshot(env, { state: "failed", error: message, since: new Date().toISOString(), pending_deploy: null });
   await db.addAlert(env, "failure", `${run.action} failed: ${message}`, run.id);
   await notify(env, `wg-admin: ${run.action} failed`, message, { buttons: [dashboardButton(env, "Open the run", "/activity/runs/" + run.id)] });
@@ -552,6 +614,8 @@ export async function handleCallback(env: Env, token: string, body: CallbackBody
   } else {
     settled = await completeDestroy(env, run, { via: body.status === "success-with-fallback" ? "callback, fallback cleanup used" : "callback" });
   }
+  // The run is over: keep its steps as GitHub has them now (best effort, never fails the callback).
+  if (settled) await saveFinalSteps(env, run.id);
   return { status: 200, message: settled ? "ok" : "already settled" };
 }
 

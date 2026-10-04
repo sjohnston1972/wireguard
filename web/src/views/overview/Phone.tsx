@@ -7,7 +7,7 @@ import type { ActionName } from "./actions";
 import { StateMark } from "./Banner";
 import { healthChecks } from "./Lower";
 import { AzureHealth, Vitals, VmPerformance } from "./lazyInsights";
-import { STATE_TONE, STATE_WORD, ageOf, currentStep, gbp, inGithubRun, moveTargets, regionFull, stepProgress, topology, uiSteps, type NodeStatus } from "./model";
+import { STATE_TONE, STATE_WORD, ageOf, currentStep, gbp, inGithubRun, moveTargets, regionFull, runActive, stepProgress, topology, uiSteps, type NodeStatus } from "./model";
 import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
 import "./Phone.css";
 
@@ -159,7 +159,7 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
       {cards.length > 0 && <div className="ov-phone__cards">{cards}</div>}
 
       <Sheet open={sheet === "steps"} onOpenChange={(v) => !v && setSheet(null)} title="Steps" subtitle={progress ? `${progress.done} of ${progress.total} completed` : undefined}>
-        {s.steps.length ? <StepList steps={uiSteps(s.steps)} aria-label="Run steps" /> : <p className="ov-phone__sub">GitHub has not listed the steps yet.</p>}
+        {s.steps.length ? <StepList steps={uiSteps(s.steps, runActive(o))} aria-label="Run steps" /> : <p className="ov-phone__sub">GitHub has not listed the steps yet.</p>}
       </Sheet>
       <Sheet open={sheet === "log"} onOpenChange={(v) => !v && setSheet(null)} title="Log">
         <PhoneLog o={o} />

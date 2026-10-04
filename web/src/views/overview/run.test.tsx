@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
-import { STEP_NAMES, overview, routes } from "./testData";
+import { STEP_NAMES, deploySteps, overview, routes } from "./testData";
+import { setViewport } from "@/test/viewport";
 
 const groupedLog = STEP_NAMES.slice(0, 7)
   .map((name, i) => [`##[group]${name}`, `output of step ${i + 1}`, ...(i === 6 ? ["##[warning]slow disk", "##[error]something broke"] : []), "##[endgroup]"].join("\n"))
@@ -125,5 +126,41 @@ describe("Overview during a run", () => {
     expect(screen.queryByRole("log", { name: "Deployment log" })).toBeNull();
     expect(screen.getByRole("region", { name: "Network traffic" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Speed test" })).toBeInTheDocument();
+  });
+});
+
+// Live test 2026-10-04: a finished tear-down's Last run read "terraform destroy — Running…",
+// which looked like a destroy under way. A run that is over never shows a step as running.
+describe("a finished run's unfinished steps", () => {
+  const finished = (state: "destroyed" | "running" | "failed", lockHolder: string | null = null) =>
+    overview(state, { snapshot: { run_id: "run-des", action: "destroy", steps: deploySteps({ done: 6 }) }, actions: { lockHolder } });
+
+  it("Overview's Last run says Not run, never Running…", async () => {
+    renderApp("/", { routes: routes(finished("destroyed")) });
+    const last = await screen.findByRole("region", { name: "Last run" });
+    expect(last).not.toHaveTextContent("Running");
+    const items = within(last).getAllByRole("listitem");
+    expect(items[6]).toHaveTextContent("Not run");
+    expect(items[6]).toHaveClass("steps__item--notrun");
+    expect(items[11]).toHaveTextContent("Not run");
+    expect(within(last).queryByRole("listitem", { current: "step" })).toBeNull();
+  });
+
+  it("still says Running… while the run holds the lock (a deploy's first heartbeat comes before its callback)", async () => {
+    renderApp("/", { routes: routes(finished("running", "run-des")) });
+    const last = await screen.findByRole("region", { name: "Last run" });
+    expect(last).toHaveTextContent("Running…");
+    expect(last).not.toHaveTextContent("Not run");
+  });
+
+  it("the phone's Steps sheet for a failed run says Not run", async () => {
+    setViewport("phone");
+    const user = userEvent.setup();
+    renderApp("/", { routes: routes(finished("failed")) });
+    const page = await screen.findByRole("region", { name: "Environment status" });
+    await user.click(within(page).getByRole("button", { name: "Steps" }));
+    const sheet = await screen.findByRole("dialog", { name: "Steps" });
+    expect(sheet).not.toHaveTextContent("Running");
+    expect(sheet).toHaveTextContent("Not run");
   });
 });
