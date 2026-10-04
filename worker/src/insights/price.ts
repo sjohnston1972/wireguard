@@ -65,14 +65,18 @@ export function fixedPrice(cfg: Config, region: string, size: string, reason: st
  */
 export function priceInfo(rows: PriceRow[], cfg: Config, region: string, size: string, source: RateSource, now: Date): PriceInfo {
   const place = azureRegionName(region);
-  if (source === "fixed") return fixedPrice(cfg, region, size, "Settings use the fixed rates.");
   const of = (item: string) => rows.find((r) => r.region === region && r.item === item);
   const parts = [of(size), of("disk:E4"), of("ip:v4")];
   const [vm, disk, ip] = parts.map(perHour);
-  if (vm === null || disk === null || ip === null) return fixedPrice(cfg, region, size, `No Azure price for ${size} in ${place} yet, so the fixed rates apply.`);
+  if (vm === null || disk === null || ip === null) {
+    return fixedPrice(cfg, region, size, source === "fixed" ? "Settings use the fixed rates." : `No Azure price for ${size} in ${place} yet, so the fixed rates apply.`);
+  }
   const oldest = parts.map((p) => p!.fetched_at).sort()[0]!;
   const priced = { vmGbpPerHour: round(vm), diskGbpPerHour: round(disk), ipGbpPerHour: round(ip), fetchedAt: oldest };
-  if (!(now.getTime() - Date.parse(oldest) <= PRICE_STALE_MS)) {
+  const stale = !(now.getTime() - Date.parse(oldest) <= PRICE_STALE_MS);
+  // Fixed chosen: the fixed rates, still carrying Azure's list figures (Settings offers the choice only when there are some).
+  if (source === "fixed") return { ...fixedPrice(cfg, region, size, "Settings use the fixed rates."), ...priced, stale };
+  if (stale) {
     return { ...fixedPrice(cfg, region, size, `Azure's prices for ${place} are more than 7 days old, so the fixed rates apply.`), ...priced, stale: true };
   }
   return { region, size, ...priced, totalGbpPerHour: round(vm + disk + ip), standbyGbpPerHour: round(disk + ip), stale: false, source: "azure", reason: null };

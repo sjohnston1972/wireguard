@@ -73,15 +73,33 @@ describe("Settings → Deployment: capacity and price", () => {
     expect(r.fetchMock!.callsTo("PUT", "/api/v1/settings")[0]!.body).toEqual({ rate_source: "fixed" });
   });
 
-  it("stale or missing price explains the fixed fallback", async () => {
+  it("a stale price explains the fixed fallback", async () => {
     const stale = "The newest Azure price for UK South is over 7 days old, so the fixed rates apply.";
-    const r = open(settingsFixture({ rateSource: "azure", price: price({ source: "fixed", stale: true, totalGbpPerHour: 0.0144, standbyGbpPerHour: 0.002, reason: stale }) }));
+    open(settingsFixture({ rateSource: "azure", price: price({ source: "fixed", stale: true, totalGbpPerHour: 0.0144, standbyGbpPerHour: 0.002, reason: stale }) }));
     expect(await screen.findByText(stale)).toBeInTheDocument();
     expect(screen.getByText(/Fixed rates: £0.0144\/h while running, £0.0020\/h in standby/)).toBeInTheDocument();
-    r.unmount();
+  });
 
-    const missing = "Azure prices aren't collected yet, so the fixed rates apply.";
-    open(settingsFixture({ rateSource: "azure", price: price({ source: "fixed", vmGbpPerHour: null, diskGbpPerHour: null, ipGbpPerHour: null, fetchedAt: null, totalGbpPerHour: 0.0144, standbyGbpPerHour: 0.002, reason: missing }) }));
-    expect(await screen.findByText(missing)).toBeInTheDocument();
+  // What the Worker sends before Azure has priced anything (or without Azure): the fixed rates, no Azure figures.
+  const noAzurePrice = (reason = "No Azure price for Standard_B1s in UK South yet, so the fixed rates apply.") =>
+    price({ source: "fixed", vmGbpPerHour: null, diskGbpPerHour: null, ipGbpPerHour: null, fetchedAt: null, totalGbpPerHour: 0.0157, standbyGbpPerHour: 0.0064, reason });
+
+  it("with no Azure price and no rate source chosen, Deployment is today's screen: no price line, no control", async () => {
+    open(settingsFixture({ rateSource: "azure", price: noAzurePrice() }), { "GET /api/v1/azure/capacity": cap({ available: null, ok: null, family: null, total: null, fetchedAt: null }) });
+    await screen.findByRole("switch", { name: /Test VM behind the firewall/ });
+    expect(screen.queryByRole("radiogroup", { name: "Cost estimates use" })).toBeNull();
+    expect(screen.queryByText(/Fixed rates: |Azure list price|so the fixed rates apply/)).toBeNull();
+  });
+
+  it("a saved rate source keeps the line and the control, so Fixed can be switched back", async () => {
+    open(settingsFixture({ rateSource: "fixed", overrides: { rate_source: "fixed" }, price: noAzurePrice("Settings use the fixed rates.") }));
+    expect(await screen.findByRole("radiogroup", { name: "Cost estimates use" })).toBeInTheDocument();
+    expect(screen.getByText(/Fixed rates: £0.0157\/h while running, £0.0064\/h in standby/)).toBeInTheDocument();
+  });
+
+  it("Fixed by default (an hourly override) with Azure figures in hand offers the choice", async () => {
+    open(settingsFixture({ rateSource: "fixed", overrides: { hourly_rate_gbp: "0.02" }, price: price({ source: "fixed", totalGbpPerHour: 0.02, standbyGbpPerHour: 0.0064, reason: "Settings use the fixed rates." }) }));
+    expect(await screen.findByRole("radiogroup", { name: "Cost estimates use" })).toBeInTheDocument();
+    expect(screen.getByText(/Fixed rates: £0.0200\/h while running/)).toBeInTheDocument();
   });
 });

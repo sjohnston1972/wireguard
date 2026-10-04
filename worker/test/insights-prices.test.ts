@@ -121,6 +121,16 @@ describe("prices", () => {
     expect(chosen.reason).toMatch(/Settings/);
   });
 
+  it("with the fixed rates chosen the price still carries Azure's list figures when it has them, so Settings can offer the choice", async () => {
+    const { env } = azureEnv();
+    await seedPrices(env, "uksouth", ago(60));
+    const cfg = await fixedConfig(env);
+    const p = priceInfo(await readPrices(env.DB, "uksouth"), cfg, "uksouth", "Standard_B1s", "fixed", NOW);
+    expect(p).toMatchObject({ source: "fixed", totalGbpPerHour: 0.0157, standbyGbpPerHour: 0.0064, vmGbpPerHour: 0.0093, ipGbpPerHour: 0.0037, fetchedAt: ago(60), stale: false, reason: expect.stringMatching(/Settings/) });
+    // Nothing priced: no figures, as before.
+    expect(priceInfo([], cfg, "uksouth", "Standard_B1s", "fixed", NOW)).toMatchObject({ vmGbpPerHour: null, fetchedAt: null });
+  });
+
   it("the feed reads each region in use daily, one per run, in one call", async () => {
     const { env, az } = azureEnv();
     await env.DB.prepare("DELETE FROM profiles").run();

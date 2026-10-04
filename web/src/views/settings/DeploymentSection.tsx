@@ -55,11 +55,17 @@ function CapacityLine({ region, size }: { region: string; size: string }) {
 const per = (n: number | null) => (n === null ? "no data" : `£${n.toFixed(4)}`);
 const day = (iso: string) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" }).format(new Date(iso));
 
-/** Where cost estimates take the hourly price from: Azure's list price for the region and size, or the fixed rates (and why). */
+/**
+ * Where cost estimates take the hourly price from: Azure's list price for the
+ * region and size, or the fixed rates (and why). Shown only when the choice
+ * means something: Azure has priced this region and size (fresh or stale), or
+ * a rate source was saved. Otherwise estimates use the fixed rates exactly as
+ * before, and the section is today's screen.
+ */
 function PriceLine({ s }: { s: SettingsResponse }) {
   const save = useSaveSettings();
   const p = s.price;
-  if (!p) return null;
+  if (!p || (p.fetchedAt === null && s.overrides.rate_source === undefined)) return null;
   const region = (s.regions[p.region] ?? p.region).replace(/\s*\(.*\)$/, "");
   const line =
     p.source === "azure"
