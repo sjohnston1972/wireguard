@@ -307,7 +307,7 @@ test("job net counts a ping that printed no summary as everything lost", { skip 
 test("a second start while a job runs exits at once", { skip }, async () => {
   const w = world();
   try {
-    const first = spawn(BASH, withFakes(fwd(join(w.root, "usr", "local", "sbin", "wg-vitals.sh")), ["updates"]), { env: w.env({ FAKE_SLEEP: "3" }), stdio: "ignore" });
+    const first = spawn(BASH, withFakes(fwd(join(w.root, "usr", "local", "sbin", "wg-vitals.sh")), ["updates"]), { env: w.env({ FAKE_SLEEP: "8" }), stdio: "ignore" });
     const done = new Promise((r) => first.on("close", r));
     const end = Date.now() + 10_000;
     while (!w.calls("apt-check").length) {
@@ -316,7 +316,8 @@ test("a second start while a job runs exits at once", { skip }, async () => {
     }
     const second = vitals(w, ["updates"]);
     assert.equal(second.status, 0, second.stderr);
-    assert.ok(second.ms < 2500, `second start took ${second.ms} ms`);
+    // It did not wait for the lock: the first is still in its 8-second apt-check.
+    assert.ok(!existsSync(join(w.run, "updates.json")), `the second start returned (after ${second.ms} ms) before the first finished`);
     assert.equal(w.calls("apt-check").length, 1, "apt-check ran once");
     await done;
     assert.equal(w.json("run/wg-admin/updates.json").pending, 5);
@@ -459,6 +460,13 @@ async function heartbeat(w, extra = {}) {
   }
 }
 
+/**
+ * Lift the heartbeat's 3-second cap on collect, for the tests about what is
+ * sent: on a busy Windows machine Git Bash's slow forks can take collect past
+ * it (on the VM it takes milliseconds). The cap has its own test below.
+ */
+const uncapped = (w) => w.fake("timeout", 'shift\nexec "$@"');
+
 test("wg-agent.sh passes bash -n", { skip: BASH ? false : "no bash found" }, () => {
   const r = spawnSync(BASH, ["-n", fwd(AGENT_SH)], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
@@ -468,6 +476,7 @@ test("wg-agent.sh sends agent_version 7 and vitals from fixture /proc", { skip }
   const w = world();
   try {
     w.file("run/wg-admin/updates.json", '{"pending":3,"security":0,"at":"2026-10-04T08:00:00Z"}');
+    uncapped(w);
     const r = await heartbeat(w);
     assert.equal(r.status, 0, r.stderr);
     assert.ok(r.body, "the heartbeat posted");
@@ -491,6 +500,7 @@ test("a broken cache file sends null for that field and the heartbeat still post
   try {
     w.file("run/wg-admin/updates.json", '{"pending":3,"secur');
     w.file("run/wg-admin/net.json", "[1,2,3]");
+    uncapped(w);
     const r = await heartbeat(w);
     assert.equal(r.status, 0, r.stderr);
     assert.equal(r.body.json.vitals.updates, null);
@@ -515,6 +525,23 @@ test("a missing or failing wg-vitals.sh sends vitals null and the heartbeat stil
   }
 });
 
+test("a collect that hangs is cut off after 3 s and the heartbeat still posts, with vitals null", { skip }, async () => {
+  const w = world();
+  try {
+    // systemd-run stuck (say, on D-Bus) while starting a due job.
+    w.fake("systemd-run", `echo "$*" >> "$FAKE_LOG/systemd-run"\nsleep 60`);
+    const r = await heartbeat(w);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(r.body, "the heartbeat posted");
+    assert.equal(r.body.json.vitals, null);
+    assert.equal(w.calls("systemd-run").length, 1, "collect reached the stuck call");
+    // Loose, for busy test machines: the point is that it never waits out the 60 s.
+    assert.ok(r.ms < 40_000, `heartbeat took ${r.ms} ms`);
+  } finally {
+    w.cleanup();
+  }
+});
+
 test("a job that sleeps 30 s leaves the heartbeat under 2 s", { skip }, async (t) => {
   const w = world();
   try {
@@ -532,8 +559,10 @@ test("a job that sleeps 30 s leaves the heartbeat under 2 s", { skip }, async (t
     assert.equal(r.status, 0, r.stderr);
     assert.ok(r.body, "the heartbeat posted");
     assert.equal(w.calls("systemd-run").length, 1, "the job was started");
-    // Git Bash on Windows forks slowly, so the bound there is relative to this machine's own heartbeat.
-    const limit = process.platform === "win32" ? Math.max(2000, base.ms + 1500) : 2000;
+    // Under 2 s, or on a slow or busy machine (Git Bash's forks on Windows, a
+    // loaded container) within 1.5 s of that machine's own plain heartbeat:
+    // either way nowhere near the job's 30 s.
+    const limit = Math.max(2000, base.ms + 1500);
     t.diagnostic(`heartbeat with a hanging job: ${r.ms} ms; with every cache fresh: ${base.ms} ms; limit ${limit} ms`);
     assert.ok(r.ms < limit, `heartbeat took ${r.ms} ms (limit ${limit}, plain heartbeat ${base.ms} ms)`);
     assert.ok(!existsSync(join(w.run, "updates.json")), "the job was still running when the heartbeat finished");
