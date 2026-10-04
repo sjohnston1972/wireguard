@@ -5,12 +5,15 @@
 // only the row they are in; the phone keeps its own layout but follows
 // what is hidden and what is set.
 import "./testSetup";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { setViewport } from "@/test/viewport";
 import { activityOf, cost, costSessionsOf, merge, notesOf, overview, prefsRoutes, routes, saved, session, speedtestsOf, vmHistory } from "./testData";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 const region = (name: string) => screen.findByRole("region", { name });
 const hide = (...ids: string[]) => ({ layout: { hidden: ids.map((x) => `overview.${x}`) } });

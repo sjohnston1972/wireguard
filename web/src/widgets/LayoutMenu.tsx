@@ -16,7 +16,10 @@ import { PAGE_TITLES, isVisible, pageWidgets, type PageId } from "@shared/widget
 import { Button, Modal, Sheet, useIsPhone } from "@/components";
 import { usePagePrefs, usePrefsStore } from "./usePrefs";
 import { WidgetSettings } from "./WidgetCog";
-import { WidgetLibrary } from "./WidgetLibrary";
+import { lazyPart } from "./lazy";
+
+/** Add widgets…: its code (and Replace's) is fetched the first time it opens. */
+const WidgetLibrary = lazyPart(() => import("./WidgetLibrary").then((m) => m.WidgetLibrary));
 
 export function LayoutMenu({ page }: { page: PageId }) {
   const phone = useIsPhone();
@@ -26,6 +29,8 @@ export function LayoutMenu({ page }: { page: PageId }) {
   const [confirming, setConfirming] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const libraryUsed = useRef(false);
+  if (libraryOpen) libraryUsed.current = true;
   const host = useRef<HTMLSpanElement>(null);
   const [current, setCurrent] = useState<string | null>(null);
   const widgets = pageWidgets(page);
@@ -84,7 +89,7 @@ export function LayoutMenu({ page }: { page: PageId }) {
         }
       />
 
-      <WidgetLibrary page={page} open={libraryOpen} onOpenChange={setLibraryOpen} trigger={() => host.current?.querySelector("button")} />
+      {libraryUsed.current && <WidgetLibrary page={page} open={libraryOpen} onOpenChange={setLibraryOpen} trigger={() => host.current?.querySelector("button")} />}
 
       {phone && (
         <Sheet open={listOpen} onOpenChange={setListOpen} title={currentDef ? `${currentDef.title} settings` : `${pageName} widget settings`} className="wg-sheet">

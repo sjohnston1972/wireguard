@@ -4,7 +4,7 @@
 // Azure change log widget, the Change log's "Include Azure changes" opt-in,
 // and the Azure service health widget. All are off until turned on; with
 // nothing saved the page is today's page.
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PagePrefs } from "@shared/api";
@@ -14,6 +14,9 @@ import { azureSummaryFixture, prefsServer } from "@/test/fixtures";
 import { setViewport } from "@/test/viewport";
 import { activityRoutes } from "./testkit";
 import { azChangesResponse, azRoutes, healthEvents, healthResponse, issue, turnedOn } from "./azureKit";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 vi.setConfig({ testTimeout: 20_000 });
 

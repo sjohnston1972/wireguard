@@ -4,7 +4,7 @@
 // plan W3). With nothing saved the page is exactly today's; each setting
 // changes what it says; hiding and reordering keep the page's shape; the
 // rules table's own drag and Alt+Up/Down still move rules, never widgets.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { FirewallResponse, PagePrefs, SettingValue } from "@shared/api";
 import { renderApp } from "@/test/render";
@@ -12,6 +12,9 @@ import { prefsServer } from "@/test/fixtures";
 import { setViewport } from "@/test/viewport";
 import { expectBottomSheet, expectCentredModal } from "@/test/dialogs";
 import { draftData, firewallData, OK } from "./testData";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 vi.setConfig({ testTimeout: 30_000 });
 

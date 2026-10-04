@@ -3,7 +3,7 @@
 // Plain English: every Activity panel is a widget (W4). With nothing saved
 // the page is today's page; each setting in the catalogue changes what its
 // widget draws; hidden and reordered widgets give their room to the rest.
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PagePrefs, SettingValue } from "@shared/api";
@@ -12,6 +12,9 @@ import { renderApp } from "@/test/render";
 import { prefsServer } from "@/test/fixtures";
 import { setViewport } from "@/test/viewport";
 import { activityResponse, activityRoutes, noteRows, runRows, runDetail } from "./testkit";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 vi.setConfig({ testTimeout: 20_000 });
 

@@ -5,11 +5,14 @@
 // and is today's head when it is off. With no Azure data it reads exactly
 // as before.
 import "./testSetup";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { screen, within } from "@testing-library/react";
 import { renderApp } from "@/test/render";
 import { azureSummaryFixture } from "@/test/fixtures";
 import { NOW_MS, overview, prefsRoutes, routes, saved } from "./testData";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 const head = async () => {
   const panel = await screen.findByRole("region", { name: "Health summary" });

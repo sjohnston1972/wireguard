@@ -6,7 +6,7 @@
 // thresholds colour with a word; every state says what is going on, and
 // "no data" is never drawn as 0.
 import "./testSetup";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import type { AzureMetricsResponse, AzureSummaryResponse, PagePrefs, SettingValue } from "@shared/api";
 import { renderApp } from "@/test/render";
@@ -14,6 +14,9 @@ import { azureSummaryFixture, feedFixture, vitalsFixture } from "@/test/fixtures
 import { setViewport } from "@/test/viewport";
 import { FEEDS } from "@shared/azureMetrics";
 import { NOW_MS, merge, overview, prefsRoutes, routes, saved, type State } from "./testData";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 const iso = (ms: number) => new Date(ms).toISOString();
 const ON: PagePrefs = { layout: { hidden: ["overview.traffic", "overview.costImpact", "overview.notes"], shown: ["overview.vmPerformance", "overview.azureHealth", "overview.vitals"] } };

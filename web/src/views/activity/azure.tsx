@@ -5,9 +5,8 @@
 // the data is, and the messages for "not connected", "empty" and "failing".
 
 import { useRef, type ReactNode } from "react";
-import type { AzureChangeRow, AzureChangesRange, FeedStatus, ServiceEvent } from "@shared/api";
+import type { AzureChangeRow, FeedStatus, ServiceEvent } from "@shared/api";
 import { AZURE_RESOURCE_KINDS, feedIsStale } from "@shared/azureMetrics";
-import type { ActivityRange } from "../../../../worker/src/activity";
 import { DataAge, EmptyState, StatusPill, type PillStatus, type Tone } from "@/components";
 
 /** The last good answer, so a new range keeps the old rows on screen until the new ones arrive. */
@@ -17,24 +16,11 @@ export function useHeld<T>(data: T | undefined): T | undefined {
   return data ?? ref.current;
 }
 
-/** The Azure range that covers an Activity page range. */
-export const azureRangeFor = (r: ActivityRange): AzureChangesRange => (r === "30d" ? "30d" : r === "7d" ? "7d" : "24h");
-
-const VERBS: Record<string, string> = { write: "Changed", delete: "Deleted", start: "Started", deallocate: "Stopped", restart: "Restarted", powerOff: "Powered off" };
-
-/** "Changed network security group": the operation's verb and the resource's plain name. */
-export function changeLabel(c: AzureChangeRow): string {
-  const parts = c.operation.split("/").filter(Boolean);
-  const last = parts.at(-1) ?? "";
-  const verb = last === "action" ? (VERBS[parts.at(-2) ?? ""] ?? "Ran an action on") : (VERBS[last] ?? "Changed");
-  return `${verb} ${c.resourceType.replace(/^./, (ch) => ch.toLowerCase())}`;
-}
+// The wording the always-on Change log also needs lives in azureLabels.ts.
+export { azureRangeFor, callerLabel, changeLabel } from "./azureLabels";
 
 /** The kind (vm, nsg, ...) a row's plain resource name stands for; "other" for anything unlisted. */
 export const kindOf = (c: AzureChangeRow): string => AZURE_RESOURCE_KINDS.find((k) => k.label === c.resourceType)?.value ?? "other";
-
-/** wg-admin's own changes say so; a portal change shows the person; the platform says Azure. */
-export const callerLabel = (c: AzureChangeRow): string => (c.callerKind === "wgadmin" ? "wg-admin" : c.callerKind === "azure" ? "Azure" : (c.caller ?? "Unknown"));
 
 export const isFailed = (c: AzureChangeRow): boolean => /fail/i.test(c.status);
 

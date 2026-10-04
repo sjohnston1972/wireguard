@@ -13,3 +13,4 @@ export { useStarting } from "./useStarting";
 export type { RowView, RowItemView, MoveState, EnableResult } from "./layout";
 export { SAVE_DELAY_MS, PREFS_MIRROR_KEY } from "./store";
 export { thresholdTone } from "@shared/widgets";
+export { lazyWidget, lazyPart } from "./lazy";

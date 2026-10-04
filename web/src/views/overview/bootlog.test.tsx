@@ -5,13 +5,16 @@
 // Worker's redacted serial log, fetches a fresh one on request (one a
 // minute), says why there is none, and never shows a URL.
 import "./testSetup";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { BootLogResponse } from "@shared/api";
 import { renderApp } from "@/test/render";
 import { azureSummaryFixture } from "@/test/fixtures";
 import { overview, prefsRoutes, routes } from "./testData";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 const log = (over: Partial<BootLogResponse> = {}): BootLogResponse => ({ fetchedAt: "2026-10-02T11:58:00.000Z", bytes: 2048, truncated: false, redactions: 1, text: "[    0.000000] Linux version 6.8.0-azure\n[    5.100000] cloud-init: password ‹redacted›", reason: null, ...over });
 const stale = (extra: Record<string, unknown> = {}) => routes(overview("running", { derived: { heartbeatStale: true } }), { "GET /api/v1/azure/summary": azureSummaryFixture(), ...extra });

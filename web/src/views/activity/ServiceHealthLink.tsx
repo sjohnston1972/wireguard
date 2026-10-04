@@ -32,23 +32,45 @@ export function ServiceHealthLink({ drawn }: { drawn: boolean }) {
       return;
     }
     if (handled.current) return;
+    const done = () => {
+      handled.current = true;
+      const next = new URLSearchParams(params);
+      next.delete(KEY);
+      setParams(next, { replace: true });
+    };
     if (drawn) {
-      const el = document.querySelector<HTMLElement>(TARGET);
-      if (!el) return; // not in the page yet: the next render tries again
-      handled.current = true;
-      el.scrollIntoView?.({ block: "nearest" });
-      if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
-      el.focus({ preventScroll: true });
-    } else {
-      if (!summary.data && !summary.isError) return; // wait for the answer
-      handled.current = true;
-      const issue = (summary.data?.serviceIssues ?? []).find((e) => e.type === "ServiceIssue" && e.status === "Active");
-      if (issue) setOpen(issue.trackingId);
+      // The widget's code may still be loading (it is code-split): wait for its panel, for up to 10 s.
+      const focus = (el: HTMLElement) => {
+        el.scrollIntoView?.({ block: "nearest" });
+        if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+        el.focus({ preventScroll: true });
+        done();
+      };
+      const now = document.querySelector<HTMLElement>(TARGET);
+      if (now) return focus(now);
+      const watch = new MutationObserver(() => {
+        const el = document.querySelector<HTMLElement>(TARGET);
+        if (el) {
+          stop();
+          focus(el);
+        }
+      });
+      const timer = window.setTimeout(() => {
+        stop();
+        done();
+      }, 10_000);
+      const stop = () => {
+        watch.disconnect();
+        window.clearTimeout(timer);
+      };
+      watch.observe(document.body, { childList: true, subtree: true });
+      return stop;
     }
-    const next = new URLSearchParams(params);
-    next.delete(KEY);
-    setParams(next, { replace: true });
-  });
+    if (!summary.data && !summary.isError) return; // wait for the answer
+    const issue = (summary.data?.serviceIssues ?? []).find((e) => e.type === "ServiceIssue" && e.status === "Active");
+    if (issue) setOpen(issue.trackingId);
+    done();
+  }, [asked, drawn, summary.data, summary.isError, params, setParams]);
 
   const event = open ? (summary.data?.serviceIssues ?? []).find((e) => e.trackingId === open) : undefined;
   if (!event) return null;

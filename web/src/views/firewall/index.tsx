@@ -16,7 +16,7 @@ import { ZonesPanel, ZonesTab } from "./Zones";
 import { SimulatorForm, SimulatorPanel, type SimulatorHandle } from "./Simulator";
 import { RuleDrawer } from "./RuleDrawer";
 import { FirewallPhone } from "./FirewallPhone";
-import { PublicIp } from "./PublicIp";
+import { PublicIp } from "./lazyPublicIp";
 import { NARROW, NO_FILTER, SHORT, TAB_WIDGET, ruleViews, shownDefault, tabsLabel, type RightTab, type RuleFilter, type RuleTab } from "./model";
 import { FirewallSkeleton } from "./FirewallSkeleton";
 import { useMedia } from "@/lib/useMedia";

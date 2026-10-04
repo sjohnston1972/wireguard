@@ -15,7 +15,7 @@ import { Topology } from "./Topology";
 import { LastRun, RunPanels } from "./Run";
 import { RecentEvents, SpeedTests, Traffic } from "./Side";
 import { CostImpact, HealthSummary, WatchmanNotes } from "./Lower";
-import { AzureHealth, Vitals, VmPerformance } from "./Insights";
+import { AzureHealth, Vitals, VmPerformance } from "./lazyInsights";
 import { PhoneOverview } from "./Phone";
 import { STATE_WORD, inGithubRun, regionCountry, regionFull } from "./model";
 import "./Overview.css";

@@ -3,10 +3,13 @@
 // Plain English: the shell mounts the Azure Service Health pill in the top
 // bar, just before the notes bell (insights spec 10.2). Area X4 draws the
 // pill itself; here a stand-in proves where it sits, and the real pill is tested in ServiceHealthIndicator.test.tsx.
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import { renderApp } from "@/test/render";
 import { sessionFixture } from "@/test/fixtures";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 vi.mock("./ServiceHealthIndicator", () => ({ ServiceHealthIndicator: () => <span data-testid="service-health-pill">pill</span> }));
 

@@ -2,13 +2,16 @@
 //
 // Plain English: the top-bar Azure Service Health pill (insights spec 10.2)
 // appears only while Azure has an active issue in the configured region.
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { azureSummaryFixture } from "@/test/fixtures";
 import { setViewport } from "@/test/viewport";
 import { issue } from "@/views/activity/azureKit";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 vi.setConfig({ testTimeout: 20_000 });
 

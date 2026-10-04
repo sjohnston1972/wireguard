@@ -6,7 +6,7 @@
 // is fetched and shown; availability and dropped packets colour with a
 // word; Azure's metric names are in small print; every state says what is
 // going on.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import type { AzureMetricsResponse, AzureSummaryResponse, FirewallResponse, PagePrefs, SettingValue } from "@shared/api";
 import { renderApp } from "@/test/render";
@@ -14,6 +14,9 @@ import { azureSummaryFixture, feedFixture, prefsServer } from "@/test/fixtures";
 import { FEEDS } from "@shared/azureMetrics";
 import { setViewport } from "@/test/viewport";
 import { firewallData } from "./testData";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 vi.setConfig({ testTimeout: 30_000 });
 afterEach(() => {

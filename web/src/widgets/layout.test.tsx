@@ -5,7 +5,7 @@
 // move within their own row only: by dragging the handle, by Alt+Arrow on
 // it, or from the cog. The Layout menu brings hidden widgets back and
 // resets the page.
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { beforeAll, describe, it, expect, afterEach, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
@@ -17,6 +17,9 @@ import type { Registry } from "@shared/widgets";
 import { useState } from "react";
 import { LayoutMenu, Widget, WidgetArrangement, WidgetCorner, WidgetRow, WidgetStack, usePagePrefs, usePrefsStatus, useRowItems, useWidget, SAVE_DELAY_MS, WIDGET_DRAG_TYPE } from "@/widgets";
 import { canMoveIn, moveWithin, rowView, dropMove, type Arranged } from "./layout";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 afterEach(() => {
   try {

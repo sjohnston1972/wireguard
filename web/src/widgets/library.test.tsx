@@ -5,7 +5,7 @@
 // home row, Off takes it out, and a full row asks which widget to replace
 // (the row's suggestion picked already), so a row never shows more than it
 // does today. Saves are optimistic and put back with a toast when they fail.
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { beforeAll, describe, it, expect, afterEach, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
@@ -16,6 +16,9 @@ import type { PagePrefs } from "@shared/api";
 import type { PageId } from "@shared/widgets";
 import { LayoutMenu, Widget, WidgetRow, WidgetStack, usePrefsStatus, SAVE_DELAY_MS } from "@/widgets";
 import { rowView } from "./layout";
+import { preloadLazy } from "@/test/lazy";
+
+beforeAll(preloadLazy);
 
 afterEach(() => {
   try {

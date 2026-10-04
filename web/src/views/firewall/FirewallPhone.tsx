@@ -10,7 +10,7 @@ import { DropsList } from "./Drops";
 import { PortsList } from "./Ports";
 import { CaptureForm, type CaptureFormHandle } from "./Capture";
 import { SimulatorForm } from "./Simulator";
-import { PublicIp } from "./PublicIp";
+import { PublicIp } from "./lazyPublicIp";
 import { dropsLevel, fmtCount, shownDefault, type RuleView } from "./model";
 import "./FirewallPhone.css";
 

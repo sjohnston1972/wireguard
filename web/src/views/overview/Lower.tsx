@@ -8,7 +8,7 @@ import { useAzureSummary, useCost, useSession } from "@/api/queries";
 import { useAckNotes } from "@/api/mutations";
 import { usePagePrefs, useWidget } from "@/widgets";
 import { ageOf, gbp, hhmm } from "./model";
-import { BootLogModal } from "./BootLog";
+import { BootLogModal } from "./lazyInsights";
 import { LEVEL_TONE, levelOf, levelWord, thresholdOn } from "./widgetSettings";
 import "./Lower.css";
 
