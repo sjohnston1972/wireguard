@@ -303,7 +303,8 @@ describe("whole runs with the real feeds", () => {
     await env.DB.prepare("INSERT INTO profiles (name, region, vm_size) VALUES ('US', 'eastus', 'Standard_B2s')").run();
     await runInsights(env, NOW);
     expect(az.calls.length).toBeLessThanOrEqual(AZ_RUN_BUDGET);
-    expect(az.calls.length).toBe(1 + 2 + 1 + 1 + 2 + 2 + 1 + 2 + 1 + 3); // sign-in, health, vm, pip, defs, activity (2 pages), service health, capacity, prices, boot log
+    // sign-in, health, vm, pip, defs, activity (a first run backfills: its 2 pages and the empty third), service health, capacity, prices, boot log
+    expect(az.calls.length).toBe(1 + 2 + 1 + 1 + 2 + 3 + 1 + 2 + 1 + 3);
     const rows = await feedRows(env);
     for (const id of FEED_IDS) expect(rows[id]?.status, id).toBe("ok");
     expect(rows.housekeeping.status).toBe("ok");

@@ -153,6 +153,85 @@ describe("activity feed", () => {
   });
 });
 
+// Live test 2026-10-04: with nothing deployed the feed set itself due in 60 minutes; a
+// deploy then started and the feed still waited out the hour, so the deploy's changes
+// were not collected for up to an hour. And its first run stored nothing, although the
+// resource group's deploys and tear-downs of the day before were in Azure's log.
+describe("activity feed cadence and backfill (live test)", () => {
+  const due = async (env: Env) => (await feedRows(env)).activity?.next_due_at ?? null;
+  const later = iso(NOW.getTime() + 55 * MIN);
+
+  it("starting a deploy or a tear-down, and a run finishing, make the feed due at the next run", async () => {
+    const { makeEnv, lastGhRun } = await import("./harness");
+    const { startDeploy, startDestroy, issueRunSecrets, handleCallback } = await import("../src/runs");
+    const { env, world } = makeEnv(); // GitHub and Azure as the lifecycle tests have them
+    await setFeed(env, "activity", { status: "ok", last_ok_at: ago(5), last_try_at: ago(5), next_due_at: later });
+    const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
+    expect(await due(env)).toBeNull();
+
+    await setFeed(env, "activity", { status: "ok", next_due_at: later });
+    const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+    world.azure.rg = true;
+    await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
+    expect(await due(env)).toBeNull();
+
+    await setFeed(env, "activity", { status: "ok", next_due_at: later });
+    await startDestroy(env, "steven");
+    expect(await due(env)).toBeNull();
+  });
+
+  it("is due every 5 minutes as soon as a deploy is under way, even when it last set itself an hour ahead", async () => {
+    const { env, az } = azureEnv();
+    await saveSnapshot(env, { state: "deploying", since: ago(2), azure: { checked_at: ago(3), resource_group: "rg-wg-ondemand", exists: false, resources: [] } });
+    await allNotDue(env);
+    await setFeed(env, "activity", { status: "ok", last_ok_at: ago(6), last_try_at: ago(6), next_due_at: later });
+    await runInsights(env, NOW);
+    expect(callsTo(az, "eventtypes/management/values").length).toBeGreaterThan(0);
+    expect(await due(env)).toBe(iso(NOW.getTime() + 5 * MIN));
+    // Not again within the 5 minutes.
+    const n = callsTo(az, "eventtypes/management/values").length;
+    await runInsights(env, new Date(NOW.getTime() + 2 * MIN));
+    expect(callsTo(az, "eventtypes/management/values").length).toBe(n);
+  });
+
+  it("the first run reaches back 7 days, by resource group name, even with the group gone", async () => {
+    const { env, az } = azureEnv();
+    await saveSnapshot(env, { state: "destroyed", since: ago(20 * 60), azure: { checked_at: ago(3), resource_group: "rg-wg-ondemand", exists: false, resources: [] } });
+    await allNotDue(env);
+    await env.DB.prepare("DELETE FROM az_feed WHERE feed = 'activity'").run();
+    // Azure's log, as the API filters it: yesterday's deploy (30 h ago), nothing since.
+    const yesterday = iso(NOW.getTime() - 30 * 60 * MIN);
+    const deploy = fixture("activity").value.slice(0, 2).map((e: any) => ({ ...e, eventTimestamp: yesterday }));
+    az.handlers.push((c) => {
+      if (!c.url.includes("eventtypes/management/values")) return undefined;
+      const from = c.u.searchParams.get("$filter")!.match(/eventTimestamp ge '([^']+)'/)![1];
+      return json({ value: deploy.filter((e: any) => e.eventTimestamp >= from) });
+    });
+    await runInsights(env, NOW);
+    const q = callsTo(az, "eventtypes/management/values")[0]!.u.searchParams.get("$filter")!;
+    expect(q).toBe(`eventTimestamp ge '${iso(NOW.getTime() - 7 * 24 * 60 * MIN)}' and eventTimestamp le '${NOW.toISOString()}' and resourceGroupName eq 'rg-wg-ondemand'`);
+    expect((await stored(env)).map((r) => r.at)).toEqual([new Date(yesterday).toISOString()]);
+  });
+
+  it("a backfill follows up to 5 pages; a normal run 2", async () => {
+    const { env, az } = azureEnv();
+    await running(env);
+    await allNotDue(env);
+    await env.DB.prepare("DELETE FROM az_feed WHERE feed = 'activity'").run();
+    const page = (n: number) => ({
+      value: [{ ...fixture("activity").value[0], eventDataId: `p${n}`, correlationId: `c${n}` }],
+      nextLink: `https://management.azure.com/subscriptions/x/providers/Microsoft.Insights/eventtypes/management/values?api-version=2015-04-01&$skipToken=p${n + 1}`,
+    });
+    az.handlers.push((c) => (c.url.includes("eventtypes/management/values") ? json(page(Number((c.u.searchParams.get("$skipToken") ?? "p1").slice(1)))) : undefined));
+    await runInsights(env, NOW);
+    expect(callsTo(az, "eventtypes/management/values")).toHaveLength(5);
+    expect((await stored(env)).length).toBe(5);
+    await setFeed(env, "activity", { status: "ok", last_ok_at: NOW.toISOString(), last_try_at: NOW.toISOString(), next_due_at: ago(1) });
+    await runInsights(env, new Date(NOW.getTime() + 5 * MIN));
+    expect(callsTo(az, "eventtypes/management/values")).toHaveLength(7);
+  });
+});
+
 async function snapOf(over: any) {
   const { EMPTY } = await import("../src/state");
   return { ...EMPTY, ...over };

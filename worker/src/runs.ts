@@ -29,6 +29,7 @@ import { canAzure } from "./env";
 import { noteHandshakes } from "./keyrotation";
 import { recordHeartbeat, fwDeltas } from "./history";
 import { parseVitals, parseAgentVersion, freshScheduledEvents, scheduledEventNote } from "./vitals";
+import { markDueStmt } from "./insights/common";
 
 /**
  * A refusal fit for the screen. The code says what kind, so the data API
@@ -204,7 +205,22 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   });
   // A capture left over from the previous VM will never arrive; say so.
   if (snap.capture_req) await db.failPendingCapture(env, snap.capture_req.id, "VM torn down");
+  await markActivityDue(env);
   return (await db.getRun(env, id))!;
+}
+
+/**
+ * The Azure insights Activity Log feed reads the next time the collector
+ * runs: a run starting or ending changes the resource group, and the feed
+ * may have set itself an hour ahead while nothing was deployed. Best
+ * effort: never fails a run.
+ */
+async function markActivityDue(env: Env): Promise<void> {
+  try {
+    await markDueStmt(env.DB, "activity").run();
+  } catch (e) {
+    console.error("activity feed due:", e);
+  }
 }
 
 /** The rule table as it stands, compiled for the VM. */
@@ -351,6 +367,7 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
   }
 
   await saveSnapshot(env, { state: "destroying", run_id: id, action: "destroy", since: now, github_run_url: null, steps: [], log_tail: null, error: null, drift: null, pending_summary });
+  await markActivityDue(env);
   return (await db.getRun(env, id))!;
 }
 
@@ -494,10 +511,11 @@ async function failRun(env: Env, run: db.Run, message: string): Promise<void> {
   // Close the run in one step; if something else already closed it, leave it be.
   if (!(await db.settleRun(env, run.id, { status: "failure", finished_at: new Date().toISOString(), error: message }))) return;
   await releaseLock(env, run.id);
-  await saveFinalSteps(env, run.id);
+  await markActivityDue(env);
   await saveSnapshot(env, { state: "failed", error: message, since: new Date().toISOString(), pending_deploy: null });
   await db.addAlert(env, "failure", `${run.action} failed: ${message}`, run.id);
   await notify(env, `wg-admin: ${run.action} failed`, message, { buttons: [dashboardButton(env, "Open the run", "/activity/runs/" + run.id)] });
+  await saveFinalSteps(env, run.id);
 }
 
 /** Returns false (and does nothing) if the run was already settled by someone else. */
@@ -505,6 +523,7 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
   const now = new Date().toISOString();
   if (!(await db.settleRun(env, run.id, { status: "success", finished_at: now, public_ip: publicIp, outputs_json: JSON.stringify(outputs) }))) return false;
   await releaseLock(env, run.id);
+  await markActivityDue(env);
   const dns = await checkDns(env, publicIp);
   await saveSnapshot(env, {
     state: "running",
@@ -539,6 +558,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
   // The VM and its counters are gone; its hits live on in the totals.
   await saveSnapshot(env, { fw_base: addCounters(before.fw_base ?? {}, before.firewall?.counters) });
   await releaseLock(env, run.id);
+  await markActivityDue(env);
   const dns = await checkDns(env, null);
   await saveSnapshot(env, {
     state: "destroyed",
