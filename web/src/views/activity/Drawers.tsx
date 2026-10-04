@@ -16,6 +16,7 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
       open
       onOpenChange={(o) => !o && onClose()}
       className="act__drawer"
+      size="lg"
       title={run ? `${actionWord(run.action)} run, ${fmtWhen(run.requested_at)}` : "Run"}
       subtitle={<span className="act__mono">{id}</span>}
       leading={pill ? <StatusPill {...pill} /> : undefined}
@@ -34,55 +35,59 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
           <Skeleton variant="block" height={140} />
         </div>
       ) : (
-        <div className="act__drawer-body">
-          <KeyValue
-            items={[
-              { label: "Action", value: actionWord(run.action) },
-              { label: "Requested", value: fmtWhen(run.requested_at) },
-              { label: "Started", value: run.started_at ? fmtWhen(run.started_at) : "not started" },
-              { label: "Finished", value: run.finished_at ? fmtWhen(run.finished_at) : active ? "in progress" : "not finished" },
-              { label: "Duration", value: fmtDuration(run.durationSeconds) ?? (active ? "in progress" : null) },
-              { label: "Requested by", value: run.requested_by },
-              { label: "Source", value: run.source },
-              { label: "Session cost (estimate)", value: typeof run.sessionCostGbp === "number" ? `est. ${fmtGbp(run.sessionCostGbp)}` : "not applicable" },
-              { label: "Public IP", value: run.public_ip, mono: true },
-            ]}
-          />
-          {run.error && <p className="act__error">{run.error}</p>}
-          <h3 className="act__h3">Steps</h3>
-          {rows.length === 0 ? <p className="act__muted">No steps were saved for this run.</p> : <StepList aria-label="Run steps" steps={rows} />}
-          <h3 className="act__h3">
-            Log
-            {streaming && (stalled ? <StatusPill status="degraded" label="Stalled" variant="outline" className="act__stream" /> : <StatusPill status="online" label="Streaming" variant="outline" className="act__stream" />)}
-            {run.github_run_url && (
-              <a className="act__link" href={run.github_run_url} target="_blank" rel="noreferrer noopener">
-                View on GitHub <ExternalLink size={13} aria-hidden />
-              </a>
-            )}
-          </h3>
-          {!hasLog ? (
-            <p className="act__muted">This run has no GitHub log.</p>
-          ) : log.isError ? (
-            <p className="act__muted" role="alert">
-              {log.error.message}
-            </p>
-          ) : !log.data ? (
-            <div aria-busy="true" className="act__skel">
-              <Skeleton variant="line" />
-              <Skeleton variant="line" width="80%" />
-            </div>
-          ) : waiting ? (
-            <p className="act__muted" role="status">
-              {LIVE_LOG_WAITING}
-            </p>
-          ) : (
-            <>
-              {liveCopy && <p className="act__muted">GitHub's full log is not available, so this is the copy the workflow sent while it ran.</p>}
-              <div className="act__drawer-log">
-                <LogView aria-label="Run log" lines={lines} />
+        <div className="act__drawer-body act__run-body">
+          <div className="act__run-facts">
+            <KeyValue
+              items={[
+                { label: "Action", value: actionWord(run.action) },
+                { label: "Requested", value: fmtWhen(run.requested_at) },
+                { label: "Started", value: run.started_at ? fmtWhen(run.started_at) : "not started" },
+                { label: "Finished", value: run.finished_at ? fmtWhen(run.finished_at) : active ? "in progress" : "not finished" },
+                { label: "Duration", value: fmtDuration(run.durationSeconds) ?? (active ? "in progress" : null) },
+                { label: "Requested by", value: run.requested_by },
+                { label: "Source", value: run.source },
+                { label: "Session cost (estimate)", value: typeof run.sessionCostGbp === "number" ? `est. ${fmtGbp(run.sessionCostGbp)}` : "not applicable" },
+                { label: "Public IP", value: run.public_ip, mono: true },
+              ]}
+            />
+            {run.error && <p className="act__error">{run.error}</p>}
+            <h3 className="act__h3">Steps</h3>
+            {rows.length === 0 ? <p className="act__muted">No steps were saved for this run.</p> : <StepList aria-label="Run steps" steps={rows} />}
+          </div>
+          <div className="act__run-log">
+            <h3 className="act__h3">
+              Log
+              {streaming && (stalled ? <StatusPill status="degraded" label="Stalled" variant="outline" className="act__stream" /> : <StatusPill status="online" label="Streaming" variant="outline" className="act__stream" />)}
+              {run.github_run_url && (
+                <a className="act__link" href={run.github_run_url} target="_blank" rel="noreferrer noopener">
+                  View on GitHub <ExternalLink size={13} aria-hidden />
+                </a>
+              )}
+            </h3>
+            {!hasLog ? (
+              <p className="act__muted">This run has no GitHub log.</p>
+            ) : log.isError ? (
+              <p className="act__muted" role="alert">
+                {log.error.message}
+              </p>
+            ) : !log.data ? (
+              <div aria-busy="true" className="act__skel">
+                <Skeleton variant="line" />
+                <Skeleton variant="line" width="80%" />
               </div>
-            </>
-          )}
+            ) : waiting ? (
+              <p className="act__muted" role="status">
+                {LIVE_LOG_WAITING}
+              </p>
+            ) : (
+              <>
+                {liveCopy && <p className="act__muted">GitHub's full log is not available, so this is the copy the workflow sent while it ran.</p>}
+                <div className="act__drawer-log">
+                  <LogView aria-label="Run log" lines={lines} />
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </Drawer>
