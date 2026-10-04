@@ -10,6 +10,7 @@ import { DropsList } from "./Drops";
 import { PortsList } from "./Ports";
 import { CaptureForm, type CaptureFormHandle } from "./Capture";
 import { SimulatorForm } from "./Simulator";
+import { PublicIp } from "./PublicIp";
 import { dropsLevel, fmtCount, shownDefault, type RuleView } from "./model";
 import "./FirewallPhone.css";
 
@@ -57,6 +58,7 @@ function Light({ label, value, tone }: { label: string; value: string; tone: "gr
  */
 export function FirewallPhone({ fw, rows, waiting, sheet, onSheet, onReview, onAddRule, onAddForward, onEditForward, onManagePorts, captureRef }: FirewallPhoneProps) {
   const navigate = useNavigate();
+  const pip = useWidget("firewall.publicIp");
   const pv = policyView(fw.policy.state, fw.policy.text, waiting);
   const enabled = rows.filter((r) => r.enabled).length;
   const def = shownDefault(fw);
@@ -158,6 +160,9 @@ export function FirewallPhone({ fw, rows, waiting, sheet, onSheet, onReview, onA
           </Button>
         )}
       </div>
+
+      {/* An Azure insights widget that is turned on: a card after the composition's blocks. */}
+      {!pip.hidden && <PublicIp fw={fw} />}
 
       {fw.draft && (
         <div className="fw-ph__dock">

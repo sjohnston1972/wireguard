@@ -1,0 +1,5 @@
+/* The Public IP widget in the right-hand column: it keeps a capture-sized slot; the drops list gives way. */
+.fw__right > .fw-pip-panel { flex: 0 1 226px; }
+.fw__right > .fw-pip-panel:only-child { flex: 1 1 0; }
+/* As a tab's content: the tab body scrolls it. */
+.fw-pip { overflow: auto; min-height: 0; }

@@ -16,6 +16,7 @@ import { ZonesPanel, ZonesTab } from "./Zones";
 import { SimulatorForm, SimulatorPanel, type SimulatorHandle } from "./Simulator";
 import { RuleDrawer } from "./RuleDrawer";
 import { FirewallPhone } from "./FirewallPhone";
+import { PublicIp } from "./PublicIp";
 import { NARROW, NO_FILTER, SHORT, TAB_WIDGET, ruleViews, shownDefault, tabsLabel, type RightTab, type RuleFilter, type RuleTab } from "./model";
 import { FirewallSkeleton } from "./FirewallSkeleton";
 import { useMedia } from "@/lib/useMedia";
@@ -58,6 +59,8 @@ export function FirewallPage() {
     drops: useWidget("firewall.drops").hidden,
     ports: useWidget("firewall.ports").hidden,
     capture: useWidget("firewall.capture").hidden,
+    // Off by default (an Azure insights widget): drawn only once turned on.
+    publicIp: useWidget("firewall.publicIp").hidden,
     zones: useWidget("firewall.zones").hidden,
     sim: useWidget("firewall.simulator").hidden,
   };
@@ -217,7 +220,7 @@ export function FirewallPage() {
   // The right column's tabs (below 1400 px wide, or short): its stack's widgets in their
   // fixed order, then (short) zones and the simulator in the user's order; hidden ones left out.
   const tabbed = narrow || short;
-  const stackTabs = (["drops", "ports", "capture"] as const).filter((t) => !hidden[t]);
+  const stackTabs = (["drops", "ports", "capture", "publicIp"] as const).filter((t) => !hidden[t]);
   const bottomTabs: RightTab[] = short ? bottomRow.items.map((i) => (i.key === "firewall.zones" ? "zones" : "sim")) : [];
   const tabs: RightTab[] = tabbed ? [...stackTabs, ...bottomTabs] : [...stackTabs];
   const current: RightTab | undefined = tabs.includes(rightTab) ? rightTab : tabs[0];
@@ -236,6 +239,7 @@ export function FirewallPage() {
       ),
     },
     capture: { value: "capture", label: "Capture", content: <CaptureForm ref={captureRef} fw={data} /> },
+    publicIp: { value: "publicIp", label: "Public IP", content: <PublicIp fw={data} bare /> },
     zones: { value: "zones", label: "Zones", content: zones },
     sim: { value: "sim", label: "Test", content: <SimulatorForm ref={simRef} fw={data} /> },
   };
@@ -245,6 +249,7 @@ export function FirewallPage() {
     drops: <DropsPanel fw={data} updatedAt={fw.dataUpdatedAt} />,
     ports: <PortsPanel ref={portsAddRef} fw={data} onAdd={addForward} onEdit={editForward} />,
     capture: <CapturePanel ref={captureRef} fw={data} />,
+    publicIp: <PublicIp fw={data} />,
     zones: <ZonesPanel fw={data} rows={rows} selected={filter.zone} onSelect={(z) => setFilter((f) => ({ ...f, zone: z }))} />,
     sim: <SimulatorPanel ref={simRef} fw={data} />,
   };
@@ -272,6 +277,9 @@ export function FirewallPage() {
         </Widget>
         <Widget id="firewall.capture">
           <CapturePanel ref={captureRef} fw={data} />
+        </Widget>
+        <Widget id="firewall.publicIp">
+          <PublicIp fw={data} />
         </Widget>
       </>
     );
