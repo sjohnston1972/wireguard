@@ -633,7 +633,21 @@ export interface AzureSummaryResponse {
   /** current: the VM's agent sends vitals; needsDeploy: a running VM's agent is older than 7; none: no VM or no heartbeat. */
   agent: "current" | "needsDeploy" | "none";
   /** The newest 5-minute slot's headline figures. */
-  latest: { cpuPct: number | null; creditsLeft: number | null; memFreeBytes: number | null; vipAvailPct: number | null; underDdos: boolean | null; at: string | null };
+  latest: {
+    cpuPct: number | null;
+    creditsLeft: number | null;
+    /**
+     * Where the CPU credits have gone over the last hour of slots (the newest
+     * against the oldest at least 10 minutes earlier, by more than 1 credit);
+     * null with too few readings. The verdict warns about credits only while
+     * they fall (shared/verdict.ts).
+     */
+    creditsTrend?: "falling" | "flat" | "rising" | null;
+    memFreeBytes: number | null;
+    vipAvailPct: number | null;
+    underDdos: boolean | null;
+    at: string | null;
+  };
 }
 
 export type AzureMetricsResource = "vm" | "pip" | "vitals";

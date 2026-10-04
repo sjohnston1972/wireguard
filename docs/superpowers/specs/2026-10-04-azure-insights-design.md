@@ -326,6 +326,12 @@ head is today's `HealthSummary` head, unchanged.
 | 12 | Not running and the next deploy's capacity check fails | amber | "The next deploy may fail: ‹message›" |
 | 13 | otherwise | as today | today's head ("All systems healthy" / "No health data") |
 
+**CPU credits (rules 8 and 11), changed after the live test of 4 Oct:** a fresh B-series VM sits on its launch credits (about
+30 on a B1s, which banks up to 144) and earns more while idle, so "28.9 credits left" right after a deploy is not running low.
+The summary's `latest.creditsTrend` compares the newest `credits_min` with the oldest in the hour before it (at least 10 minutes
+older; a change of more than 1 credit is a direction). Credits at warn count only while `falling`; credits at bad count unless
+`rising`, so a VM spent out at 0 still says so.
+
 ## 11. Boot log security
 
 - **SAS URLs never leave the Worker.** They are requested with a 5-minute expiry, used at once, and never stored, logged or

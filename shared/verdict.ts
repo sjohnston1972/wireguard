@@ -130,8 +130,18 @@ export function verdict(input: VerdictInput): Verdict {
   const loss = max(targets.map((t) => t.lossPct));
   const sec = v?.updates?.security ?? null;
   const read = (value: number | null, t: Threshold | undefined, dir: "above" | "below", title: string, sub: string, badTitle?: string): Reading => ({ level: t ? thresholdTone(value, t, dir) : null, title, sub, badTitle });
+  // CPU credits matter only while they are being spent down. A B-series VM
+  // starts with its launch credits (about 30 on a B1s, which banks up to
+  // 144) and earns more whenever it runs below its baseline, so a fresh VM
+  // always sits under the warn level without anything being wrong. Warn
+  // therefore needs the balance to be falling over the last hour; bad (the
+  // VM is about to be held to its baseline) holds unless it is climbing
+  // back, so a VM spent out at 0 still says so.
+  const creditsRead = read(latest?.creditsLeft ?? null, th.perf.credits, "below", "CPU credits running low", `${n(latest?.creditsLeft ?? 0)} credits left`, "CPU credits nearly gone: the VM will slow to its baseline speed");
+  const trend = latest?.creditsTrend ?? null;
+  if ((creditsRead.level === "warn" && trend !== "falling") || (creditsRead.level === "bad" && trend === "rising")) creditsRead.level = "ok";
   const readings: Reading[] = [
-    read(latest?.creditsLeft ?? null, th.perf.credits, "below", "CPU credits running low", `${n(latest?.creditsLeft ?? 0)} credits left`, "CPU credits nearly gone: the VM will slow to its baseline speed"),
+    creditsRead,
     read(latest?.cpuPct ?? null, th.perf.cpu, "above", "CPU busy", `${n(latest?.cpuPct ?? 0)}% used`),
     read(v?.memUsedPct ?? null, th.vitals.memory, "above", "Memory use high", `${n(v?.memUsedPct ?? 0)}% used`, "Memory nearly full on the VM"),
     read(v?.diskUsedPct ?? null, th.vitals.disk, "above", "Disk use high", `${n(v?.diskUsedPct ?? 0)}% used`, "Disk nearly full on the VM"),

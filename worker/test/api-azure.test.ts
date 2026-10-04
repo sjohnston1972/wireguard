@@ -105,12 +105,37 @@ describe("GET /api/v1/azure/summary", () => {
     await pipRow(env, t(10), { vip_avail: 100, ddos_max: 0 });
     await pipRow(env, t(5), { vip_avail: 99.2, ddos_max: 1 });
     const s = (await api(env, "GET", "/azure/summary")).json;
-    expect(s.latest).toEqual({ cpuPct: 7.75, creditsLeft: null, memFreeBytes: 413_000_000, vipAvailPct: 99.2, underDdos: true, at: t(5) });
+    expect(s.latest).toEqual({ cpuPct: 7.75, creditsLeft: null, creditsTrend: null, memFreeBytes: 413_000_000, vipAvailPct: 99.2, underDdos: true, at: t(5) });
     // Hours-old slots are not "latest".
     await env.DB.prepare("UPDATE hist_az_vm SET t = '2026-10-03T00:00:00Z' WHERE t = ?1").bind(t(5)).run();
     await env.DB.prepare("DELETE FROM hist_az_vm WHERE t <> '2026-10-03T00:00:00Z'").run();
     await env.DB.prepare("DELETE FROM hist_az_pip").run();
-    expect((await api(env, "GET", "/azure/summary")).json.latest).toEqual({ cpuPct: null, creditsLeft: null, memFreeBytes: null, vipAvailPct: null, underDdos: null, at: null });
+    expect((await api(env, "GET", "/azure/summary")).json.latest).toEqual({ cpuPct: null, creditsLeft: null, creditsTrend: null, memFreeBytes: null, vipAvailPct: null, underDdos: null, at: null });
+  });
+
+  // Live test 2026-10-04: the verdict warned about a fresh VM's launch credits. It now
+  // needs to know whether the credits are being spent down, from the last hour of slots.
+  it("summary says whether CPU credits are falling, flat or rising over the last hour", async () => {
+    const { env } = routeEnv();
+    await running(env);
+    const t = (minAgo: number) => slot(NOW.getTime() - minAgo * MIN);
+    const trend = async () => (await api(env, "GET", "/azure/summary")).json.latest.creditsTrend;
+    // One reading (a fresh VM's first slot): no trend yet.
+    await vmRow(env, t(5), { credits_min: 28.9 });
+    expect(await trend()).toBeNull();
+    // A fresh VM earning credits while idle.
+    await vmRow(env, t(20), { credits_min: 27.6 });
+    expect(await trend()).toBe("rising");
+    // Spent down over the hour (the reading from 70 minutes ago is out of the window).
+    await env.DB.prepare("DELETE FROM hist_az_vm").run();
+    await vmRow(env, t(70), { credits_min: 10 });
+    await vmRow(env, t(55), { credits_min: 60 });
+    await vmRow(env, t(30), { credits_min: 45 });
+    await vmRow(env, t(5), { credits_min: 28.9 });
+    expect(await trend()).toBe("falling");
+    // Held where it is.
+    await env.DB.prepare("UPDATE hist_az_vm SET credits_min = 29.2 WHERE t = ?1").bind(t(55)).run();
+    expect(await trend()).toBe("flat");
   });
 
   it("summary carries health with annotations, the region's active issues and each feed's status", async () => {

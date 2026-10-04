@@ -41,7 +41,7 @@ function routes(status: string, configured: boolean): [string, unknown][] {
         serviceIssues: [],
         vitals: null,
         agent: "none",
-        latest: { cpuPct: null, creditsLeft: null, memFreeBytes: null, vipAvailPct: null, underDdos: null, at: null },
+        latest: { cpuPct: null, creditsLeft: null, creditsTrend: null, memFreeBytes: null, vipAvailPct: null, underDdos: null, at: null },
       },
     ],
     ["/azure/metrics?resource=vm&range=24h", { resource: "vm", range: "24h", step: 300, columns: expect.arrayContaining(["t", "cpu_avg", "credits_min"]), points: [] }],
