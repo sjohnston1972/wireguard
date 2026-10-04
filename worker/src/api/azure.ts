@@ -25,7 +25,9 @@
 
 import type { Context, Hono } from "hono";
 import { fail, type ApiEnv } from "./app";
-import { effectiveConfig } from "../settings";
+import { effectiveConfig, fixedConfig } from "../settings";
+import { allSettings } from "../db";
+import { fixedPrice as fixedPriceInfo, priceInfo, rateSource, readPrices } from "../insights/price";
 import { REGIONS, azureRegionName } from "../region";
 import { RANGE_STEP, type HistoryRange } from "../history";
 import { insightsConfigured } from "../insights/types";
@@ -89,9 +91,9 @@ function feedStatuses(env: Env): FeedStatus[] {
 }
 const feed = (env: Env, id: FeedId): FeedStatus => feedStatuses(env).find((f) => f.id === id)!;
 
-/** The price before Azure's are collected: the fixed rates, and why. Also used by GET /settings (X1 replaces it). */
+/** The fixed rates as a price, and why they apply (insights/price.ts). `cfg` must carry the fixed rates (fixedConfig). */
 export function fixedPrice(cfg: Config, region: string, size: string, reason: string = NO_PRICE): PriceInfo {
-  return { region, size, vmGbpPerHour: null, diskGbpPerHour: null, ipGbpPerHour: null, totalGbpPerHour: cfg.hourlyRateGbp, standbyGbpPerHour: cfg.standbyRateGbp, fetchedAt: null, stale: false, source: "fixed", reason };
+  return fixedPriceInfo(cfg, region, size, reason);
 }
 
 function emptyBootLog(env: Env): BootLogResponse {
@@ -153,7 +155,9 @@ export function registerAzure(api: Hono<ApiEnv>): void {
   api.get("/azure/price", async (c) => {
     const q = readQuery(c, { region: REGION, size: SIZE });
     if (q instanceof Response) return q;
-    return c.json(fixedPrice(await effectiveConfig(c.env), q.region!, q.size!));
+    const [cfg, stored, rows] = await Promise.all([fixedConfig(c.env), allSettings(c.env), readPrices(c.env.DB, q.region!)]);
+    const out: PriceInfo = priceInfo(rows, cfg, q.region!, q.size!, rateSource(stored), new Date());
+    return c.json(out);
   });
 
   api.get("/azure/diagnostics", (c) => {

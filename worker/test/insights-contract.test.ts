@@ -274,7 +274,8 @@ describe("/api/v1/azure routes", () => {
   it("settings carry rateSource and price, and overview carries capacity, before the collectors exist", async () => {
     const { env } = apiEnv(NO_AZURE);
     const s = await api(env, "GET", "/settings");
-    expect(s.json.rateSource).toBe("fixed");
+    // X1 (spec 2.7): with no hourly override saved the source is azure; with no Azure price yet the totals are the fixed rates.
+    expect(s.json.rateSource).toBe("azure");
     expect(s.json.price).toMatchObject({ region: "uksouth", size: "Standard_B1s", source: "fixed", totalGbpPerHour: 0.0157 });
     const o = await api(env, "GET", "/overview");
     expect(o.json.capacity).toBeNull();
