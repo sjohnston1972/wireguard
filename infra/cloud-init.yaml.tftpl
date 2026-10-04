@@ -271,6 +271,15 @@ write_files:
     content: |
       ${indent(6, speedtest_script)}
 
+  # The VM's own health figures for the heartbeat (memory, disk, updates,
+  # Azure's scheduled maintenance, an internet check); see the script.
+  # Carried gzipped: Azure refuses custom data over 64 KB.
+  - path: /usr/local/sbin/wg-vitals.sh
+    permissions: "0755"
+    owner: root:root
+    encoding: gz+b64
+    content: ${vitals_script_gz}
+
   - path: /etc/systemd/system/wg-agent.service
     permissions: "0644"
     owner: root:root

@@ -58,7 +58,9 @@ take_lock() {
     rm -rf "$LOCK"
     mkdir "$LOCK" 2>/dev/null || return 1
   fi
-  echo $$ > "$LOCK/pid"
+  # BASHPID, not the usual double-dollar: this file goes through Terraform's
+  # template, and CI refuses a double-dollar in the rendered cloud-init.
+  echo "$BASHPID" > "$LOCK/pid"
   trap 'rm -rf "$LOCK"' EXIT
   return 0
 }

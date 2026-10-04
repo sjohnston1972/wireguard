@@ -82,6 +82,9 @@ locals {
     firewall_load_script  = file("${path.module}/agent/wg-firewall-load.sh")
     vnet_cidr             = var.vnet_cidr
     firewall_nft_b64      = var.firewall_nft_b64 != "" ? var.firewall_nft_b64 : base64encode(file("${path.module}/agent/firewall-open.nft"))
+    # Gzipped: Azure refuses custom data over 64 KB, and the rendered
+    # cloud-init was already about 50 KB before this file.
+    vitals_script_gz = base64gzip(file("${path.module}/agent/wg-vitals.sh"))
   })
 }
 
@@ -306,6 +309,12 @@ resource "azurerm_linux_virtual_machine" "wg" {
     sku       = "server"
     version   = "latest"
   }
+
+  # Boot diagnostics with Azure's own (managed) storage: no storage account
+  # URI, so nothing is added to the resource group and the serial log goes
+  # away with the VM. The dashboard's boot log reads it when the heartbeat
+  # stops, like a console server on a router's console port.
+  boot_diagnostics {}
 
   # cloud-init: the VM configures itself on first boot. See cloud-init.yaml.tftpl.
   custom_data = base64encode(local.cloud_init)
