@@ -129,6 +129,19 @@ export async function readFeedRows(db: D1Database): Promise<Map<string, FeedRow>
   return new Map(rows.map((r) => [r.feed, r]));
 }
 
+/**
+ * Claim the right to try something at most once per `windowMs` (a capacity
+ * cache miss per region, POST boot log), in one step so two requests racing
+ * cannot both win. Kept in az_latest under `key`, never in KV.
+ */
+export async function claimTry(db: D1Database, key: string, now: Date, windowMs: number): Promise<boolean> {
+  const r = await db
+    .prepare("INSERT INTO az_latest (key, json, updated_at) VALUES (?1, '{}', ?2) ON CONFLICT (key) DO UPDATE SET updated_at = excluded.updated_at WHERE az_latest.updated_at <= ?3")
+    .bind(key, now.toISOString(), iso(now.getTime() - windowMs))
+    .run();
+  return Number(r.meta?.changes ?? 0) > 0;
+}
+
 /** Make a feed due at the next run (for example metricDefs after a metrics call refused a name). */
 export async function markDue(db: D1Database, feed: string): Promise<void> {
   await db.prepare("INSERT INTO az_feed (feed, status, next_due_at) VALUES (?1, 'idle', NULL) ON CONFLICT (feed) DO UPDATE SET next_due_at = NULL").bind(feed).run();

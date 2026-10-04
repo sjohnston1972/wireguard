@@ -29,6 +29,7 @@ import { effectiveConfig } from "../settings";
 import { REGIONS, azureRegionName } from "../region";
 import { RANGE_STEP, type HistoryRange } from "../history";
 import { insightsConfigured } from "../insights/types";
+import { capacityFor } from "../insights/ondemand";
 import { FEEDS, PIP_COLUMNS, VITALS_COLUMNS, VM_COLUMNS } from "../../../shared/azureMetrics";
 import type {
   AzureChangesResponse,
@@ -142,10 +143,10 @@ export function registerAzure(api: Hono<ApiEnv>): void {
     return c.json(out);
   });
 
-  api.get("/azure/capacity", (c) => {
+  api.get("/azure/capacity", async (c) => {
     const q = readQuery(c, { region: REGION, size: SIZE });
     if (q instanceof Response) return q;
-    const out: CapacityCheck = { region: q.region!, size: q.size!, available: null, reason: null, vcpusNeeded: null, family: null, total: null, ok: null, message: null, fetchedAt: null };
+    const out: CapacityCheck = await capacityFor(c.env, await effectiveConfig(c.env), q.region!, q.size!, new Date());
     return c.json(out);
   });
 

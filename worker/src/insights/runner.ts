@@ -173,6 +173,31 @@ async function markNotConfigured(env: Env, feeds: readonly FeedModule[]): Promis
   if (stmts.length) await env.DB.batch(stmts);
 }
 
+/** The sign-in, once, at the first ARM call (1 call from the budget unless the token is cached); a failure is remembered. */
+function signInOnce(env: Env, budget: Budget): () => Promise<void> {
+  let signedIn: Promise<void> | null = null;
+  return () =>
+    (signedIn ??= (async () => {
+      if (!(await tokenCached(env))) budget.take(1);
+      try {
+        await timed(() => armToken(env));
+      } catch (e) {
+        throw new SignInFailed(e instanceof FetchTimeout ? "no answer in 8 s" : plainError(e));
+      }
+    })());
+}
+
+/**
+ * A ctx for one on-demand job outside the cron (POST boot log, a capacity
+ * cache miss), with its own small budget, the same sign-in, timeouts and
+ * error rules as a feed.
+ */
+export async function oneOffCtx(env: Env, now: Date, limit: number): Promise<FeedCtx> {
+  const [snap, cfg] = await Promise.all([getSnapshot(env), effectiveConfig(env)]);
+  const budget = makeBudget(limit);
+  return makeCtx(env, now, snap, cfg, budget, signInOnce(env, budget));
+}
+
 /** Run the due feeds. Answers one line per thing worth logging (errors and skips). */
 export async function runInsights(env: Env, now: Date = new Date(), feeds: readonly FeedModule[] = FEED_MODULES): Promise<string[]> {
   if (!insightsConfigured(env)) {
@@ -182,18 +207,7 @@ export async function runInsights(env: Env, now: Date = new Date(), feeds: reado
   const lines: string[] = [];
   const [snap, cfg] = await Promise.all([getSnapshot(env), effectiveConfig(env)]);
   const budget = makeBudget(AZ_RUN_BUDGET);
-
-  // The sign-in, once, at the first ARM call; a failure is remembered for the rest of the run.
-  let signedIn: Promise<void> | null = null;
-  const signIn = () =>
-    (signedIn ??= (async () => {
-      if (!(await tokenCached(env))) budget.take(1);
-      try {
-        await timed(() => armToken(env));
-      } catch (e) {
-        throw new SignInFailed(e instanceof FetchTimeout ? "no answer in 8 s" : plainError(e));
-      }
-    })());
+  const signIn = signInOnce(env, budget);
 
   for (const f of feeds) {
     const ctx = makeCtx(env, now, snap, cfg, budget, signIn);
