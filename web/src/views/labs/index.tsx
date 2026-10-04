@@ -6,6 +6,7 @@
 // /labs/:id), the history page, or the phone's own composition.
 
 import { useLocation, useParams } from "react-router-dom";
+import { LabModal } from "./LabModal";
 import { LabsPage } from "./LabsPage";
 import "./labs.css";
 
@@ -14,6 +15,5 @@ export default function LabsTab() {
   const { id } = useParams();
   const history = pathname.replace(/\/+$/, "") === "/labs/history";
   void history;
-  void id;
-  return <LabsPage />;
+  return <LabsPage>{id && <LabModal key={id} id={id} />}</LabsPage>;
 }
