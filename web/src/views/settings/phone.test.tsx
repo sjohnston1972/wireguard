@@ -4,6 +4,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { setViewport } from "@/test/viewport";
+import { expectBottomSheet } from "@/test/dialogs";
 import { routesFor } from "./testkit";
 
 describe("Settings on the phone", () => {
@@ -25,6 +26,15 @@ describe("Settings on the phone", () => {
     await user.click(within(sheet).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.getByLabelText("location")).toHaveTextContent(/^\/settings$/);
+  });
+
+  it("How key rotation works opens as a sheet over the Security sheet", async () => {
+    setViewport("phone");
+    const user = userEvent.setup();
+    renderApp("/settings/security", { routes: routesFor() });
+    const sheet = await screen.findByRole("dialog", { name: "Security" });
+    await user.click(within(sheet).getByRole("button", { name: /How key rotation works/ }));
+    expectBottomSheet(await screen.findByRole("dialog", { name: "How key rotation works" }));
   });
 
   it("closing a sheet with unsaved changes asks first", async () => {
