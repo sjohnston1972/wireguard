@@ -5,24 +5,63 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { judgeBundle, LIMITS } from "../lib/bundle.mjs";
+import { judgeBundle, entryFiles, LIMITS } from "../lib/bundle.mjs";
 
 const script = fileURLToPath(new URL("../bundle-size.mjs", import.meta.url));
 const f = (name, gzip, extra = {}) => ({ name, bytes: gzip * 3, gzip, ...extra });
 
-test("the budget is ruling 8's: JS 320 kB gzip in total, CSS 50 kB gzip", () => {
-  assert.deepEqual(LIMITS, { jsGzip: 320_000, cssGzip: 50_000 });
+test("the budget: the page's entry JS 320 kB gzip (ruling 8), all JS 400 kB, CSS 50 kB", () => {
+  assert.deepEqual(LIMITS, { entryJsGzip: 320_000, jsGzip: 400_000, cssGzip: 50_000 });
+});
+
+test("the entry is index.html's module script and its modulepreloads; lazy chunks and sw.js are not", () => {
+  const html = '<script type="module" crossorigin src="/assets/index-a.js"></script><link rel="modulepreload" crossorigin href="/assets/vendor-b.js"><link rel="stylesheet" href="/assets/index-c.css">';
+  assert.deepEqual(entryFiles(html), ["assets/index-a.js", "assets/vendor-b.js"]);
+  assert.deepEqual(entryFiles("<p>no scripts</p>"), []);
+});
+
+test("lazy chunks count toward the JS total but not the entry", () => {
+  const r = judgeBundle([f("assets/index-a.js", 300_000, { entry: true }), f("assets/Insights-b.js", 60_000), f("sw.js", 3_000)], LIMITS);
+  assert.equal(r.ok, true, r.lines.join("\n"));
+  assert.ok(r.lines.some((l) => /^Entry JS/.test(l) && /300\.0 kB/.test(l) && /320\.0 kB/.test(l)), r.lines.join("\n"));
+  assert.ok(r.lines.some((l) => /^JS total/.test(l) && /363\.0 kB/.test(l) && /400\.0 kB/.test(l)), r.lines.join("\n"));
+  assert.ok(r.lines.some((l) => l.includes("assets/Insights-b.js") && /lazy/.test(l)), "the table marks lazy chunks");
+});
+
+test("over the entry budget fails and names only the entry files", () => {
+  const r = judgeBundle([f("assets/index-a.js", 321_000, { entry: true }), f("assets/Insights-b.js", 20_000)], LIMITS);
+  assert.equal(r.ok, false);
+  const fail = r.lines.filter((l) => /^FAIL/.test(l)).join("\n");
+  assert.match(fail, /entry JS/);
+  assert.match(fail, /assets\/index-a\.js/);
+  assert.doesNotMatch(fail, /Insights-b/);
+});
+
+test("bundle-size.mjs reads the entry from the built index.html", () => {
+  const dir = fakeDist({
+    "index.html": '<!doctype html><script type="module" src="/assets/index-a.js"></script>',
+    "assets/index-a.js": "import('./Insights-b.js')",
+    "assets/Insights-b.js": "export const x = 1",
+  });
+  try {
+    const r = spawnSync(process.execPath, [script, dir], { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /assets\/Insights-b\.js.*lazy/);
+    assert.doesNotMatch(r.stdout, /assets\/index-a\.js.*lazy/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("under budget passes", () => {
-  const r = judgeBundle([f("assets/index-a.js", 279_470), f("assets/index-b.css", 38_040), f("assets/inter.woff2", 48_000), f("index.html", 400)], LIMITS);
+  const r = judgeBundle([f("assets/index-a.js", 279_470, { entry: true }), f("assets/index-b.css", 38_040), f("assets/inter.woff2", 48_000), f("index.html", 400)], LIMITS);
   assert.equal(r.ok, true);
-  assert.ok(r.lines.some((l) => /JS/.test(l) && /279\.5 kB/.test(l) && /320\.0 kB/.test(l)), r.lines.join("\n"));
+  assert.ok(r.lines.some((l) => /Entry JS/.test(l) && /279\.5 kB/.test(l) && /320\.0 kB/.test(l)), r.lines.join("\n"));
   assert.ok(r.lines.some((l) => l.includes("assets/index-a.js")), "the table lists each file");
 });
 
-test("over the JS budget fails and names the files", () => {
-  const r = judgeBundle([f("assets/index-a.js", 200_000), f("assets/vendor-b.js", 130_000), f("assets/index-c.css", 30_000)], LIMITS);
+test("over the JS total fails and names the files", () => {
+  const r = judgeBundle([f("assets/index-a.js", 200_000, { entry: true }), f("assets/vendor-b.js", 210_000), f("assets/index-c.css", 30_000)], LIMITS);
   assert.equal(r.ok, false);
   const fail = r.lines.filter((l) => /^FAIL/.test(l)).join("\n");
   assert.match(fail, /JS/);
