@@ -2,8 +2,11 @@ import "./testSetup";
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderApp } from "@/test/render";
+import { renderApp, renderWithProviders } from "@/test/render";
+import { backdrop, expectBottomSheet, expectCentredModal } from "@/test/dialogs";
+import { setViewport } from "@/test/viewport";
 import { NOW_MS, overview, routes, vmHistory } from "./testData";
+import { AzureDrawer, SshDrawer } from "./drawers";
 
 const metrics = () => screen.findByRole("region", { name: "Key metrics" });
 const topology = () => screen.findByRole("region", { name: "Live topology" });
@@ -114,5 +117,39 @@ describe("Overview key metrics", () => {
     const t = await topology();
     await user.click(within(t).getByRole("button", { name: /^Clients/ }));
     await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent(/^\/clients$/));
+  });
+});
+
+describe("Overview's SSH and In Azure dialogs", () => {
+  it("SSH opens as a medium centred modal; Escape closes it and focus goes back to the endpoint", async () => {
+    const user = userEvent.setup();
+    renderApp("/", { routes: routes(overview("running")) });
+    const endpoint = within(await topology()).getByRole("button", { name: /^WireGuard endpoint/ });
+    await user.click(endpoint);
+    expectCentredModal(await screen.findByRole("dialog", { name: "SSH to the VM" }), "md");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(endpoint).toHaveFocus());
+  });
+
+  it("In Azure right now opens as the large centred modal; a backdrop click closes it and focus goes back to Azure", async () => {
+    const user = userEvent.setup();
+    renderApp("/", { routes: routes(overview("running")) });
+    const azure = within(await topology()).getByRole("button", { name: /^Microsoft Azure/ });
+    await user.click(azure);
+    expectCentredModal(await screen.findByRole("dialog", { name: "In Azure right now" }), "lg");
+    await user.click(backdrop());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(azure).toHaveFocus());
+  });
+
+  it("phone: both are bottom sheets", () => {
+    setViewport("phone");
+    const o = overview("running");
+    const r = renderWithProviders(<SshDrawer o={o} open onClose={() => {}} />);
+    expectBottomSheet(screen.getByRole("dialog", { name: "SSH to the VM" }));
+    r.unmount();
+    renderWithProviders(<AzureDrawer o={o} now={NOW_MS} open onClose={() => {}} />);
+    expectBottomSheet(screen.getByRole("dialog", { name: "In Azure right now" }));
   });
 });
