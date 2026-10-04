@@ -83,6 +83,18 @@ const columns: Column<Row>[] = [
 const names = () => screen.getAllByRole("row").slice(1).map((r) => within(r).getAllByRole("cell")[0].textContent);
 
 describe("DataTable", () => {
+  it("DataTable density compact sets the compact row class; default unchanged", () => {
+    const { container, unmount } = render(<DataTable aria-label="Clients" columns={columns} rows={rows} rowKey={(r) => r.id} />);
+    expect(container.firstElementChild!.className).toBe("dt");
+    const comfortable = container.innerHTML;
+    unmount();
+    const again = render(<DataTable aria-label="Clients" columns={columns} rows={rows} rowKey={(r) => r.id} density="comfortable" />);
+    expect(again.container.innerHTML).toBe(comfortable);
+    again.unmount();
+    const compact = render(<DataTable aria-label="Clients" columns={columns} rows={rows} rowKey={(r) => r.id} density="compact" className="clients-table" />);
+    expect(compact.container.firstElementChild).toHaveClass("dt", "dt--compact", "clients-table");
+  });
+
   it("renders headers and rows with an accessible name", () => {
     render(<DataTable aria-label="Clients" columns={columns} rows={rows} rowKey={(r) => r.id} />);
     expect(screen.getByRole("table", { name: "Clients" })).toBeInTheDocument();
@@ -269,6 +281,26 @@ const mk = (n: number): LogLine[] =>
   Array.from({ length: n }, (_, i) => ({ id: String(i), time: "10:24:27", level: i === 1 ? "WARN" : "INFO", text: `line ${i}` }));
 
 describe("LogView", () => {
+  it("LogView wrap, timestamps and levelTags; defaults unchanged", () => {
+    const { container, unmount } = render(<LogView aria-label="Live logs" lines={mk(2)} />);
+    const plainHtml = container.innerHTML;
+    expect(container.firstElementChild!.className).toBe("log");
+    expect(container.querySelectorAll(".log__time")).toHaveLength(2);
+    expect(container.querySelectorAll(".log__level")).toHaveLength(2);
+    unmount();
+    // Giving the defaults explicitly changes nothing.
+    const same = render(<LogView aria-label="Live logs" lines={mk(2)} wrap={false} timestamps levelTags />);
+    expect(same.container.innerHTML).toBe(plainHtml);
+    same.unmount();
+    const custom = render(<LogView aria-label="Live logs" lines={mk(2)} wrap timestamps={false} levelTags={false} />);
+    expect(custom.container.firstElementChild).toHaveClass("log", "log--wrap");
+    expect(custom.container.querySelector(".log__time")).toBeNull();
+    expect(custom.container.querySelector(".log__level")).toBeNull();
+    expect(screen.getByText("line 1")).toBeInTheDocument();
+    // Search still reads the whole line.
+    expect(screen.queryByText("10:24:27")).toBeNull();
+  });
+
   it("renders a severity tag and text per line", () => {
     render(<LogView aria-label="Live logs" lines={mk(3)} />);
     expect(screen.getByText("line 0")).toBeInTheDocument();

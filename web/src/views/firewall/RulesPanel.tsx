@@ -1,10 +1,11 @@
 import { FlaskConical, GripVertical, Plus, RotateCcw } from "lucide-react";
-import { forwardRef, useState } from "react";
+import { forwardRef, useContext, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { FirewallResponse } from "@shared/api";
-import { Button, EmptyState, Modal, Panel, SearchInput, Select, Tabs, formatAge } from "@/components";
+import { Button, EmptyState, Modal, Panel, PanelChromeContext, SearchInput, Select, Tabs, formatAge } from "@/components";
+import { useWidget } from "@/widgets";
 import { useClearCounters, useDraftDeleteRule, useDraftEditRule, useDraftMoveRule } from "@/api/mutations";
-import { RulesTable } from "./RulesTable";
+import { RulesTable, type RuleColumn } from "./RulesTable";
 import { useReorder } from "./useReorder";
 import { NO_FILTER, filterRules, shownDefault, showsDefaultRow, tabCounts, type RuleFilter, type RuleTab, type RuleView } from "./model";
 import "./RulesPanel.css";
@@ -15,8 +16,11 @@ export interface RulesPanelProps {
   filter: RuleFilter;
   onFilter: (f: RuleFilter) => void;
   onAddRule: () => void;
-  onTestSimulation: () => void;
+  /** Absent when the simulator is not on the page (its widget is hidden): no Test simulation button. */
+  onTestSimulation?: () => void;
   onEditDefault: () => void;
+  /** Change the default action from its row (when the Default action tile is not on the page). */
+  onChangeDefault?: () => void;
   className?: string;
 }
 
@@ -28,7 +32,7 @@ const ACTION_OPTIONS = [
 ];
 
 /** "Firewall rules": filter tabs, search, zone and action filters, the table, and its footer actions. */
-export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function RulesPanel({ fw, rows, filter, onFilter, onAddRule, onTestSimulation, onEditDefault, className }, ref) {
+export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function RulesPanel({ fw, rows, filter, onFilter, onAddRule, onTestSimulation, onEditDefault, onChangeDefault, className }, ref) {
   const navigate = useNavigate();
   const edit = useDraftEditRule();
   const move = useDraftMoveRule();
@@ -36,6 +40,10 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
   const clear = useClearCounters();
   const [confirmClear, setConfirmClear] = useState(false);
   const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
+  const { settings } = useWidget("firewall.rules");
+  // The widget's cog sits at the end of the filter row, the header the eye sees
+  // (the panel's own title row is for screen readers only on wide and short windows).
+  const chrome = useContext(PanelChromeContext);
 
   const counts = tabCounts(rows);
   const shown = filterRules(rows, filter);
@@ -67,8 +75,10 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
   const nothing = shown.length === 0 && !showDefault;
 
   return (
-    <Panel title="Firewall rules" className={className} bodyClassName="fw-rp__body" flush>
+    <Panel title="Firewall rules" className={className} bodyClassName="fw-rp__body" flush widgetChrome={false}>
       <div className="fw-rp__toolbar">
+        {/* The column's move handle: an overlay at the left of the row the eye sees as the header. */}
+        {chrome?.handle}
         {/* On a wide window the panel's title sits on this row (the heading itself stays for screen readers). */}
         <span className="fw-rp__title" aria-hidden>
           Firewall rules
@@ -85,6 +95,7 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
           <SearchInput className="fw-rp__search" label="Search rules" placeholder="Search rules (source, destination, service...)" value={filter.q} onChange={(q) => onFilter({ ...filter, q })} />
           <Select label="Zone" value={filter.zone} options={ZONE_OPTIONS(fw)} onValueChange={(v) => onFilter({ ...filter, zone: v as RuleFilter["zone"] })} />
           <Select label="Action" value={filter.action} options={ACTION_OPTIONS} onValueChange={(v) => onFilter({ ...filter, action: v as RuleFilter["action"] })} />
+          {chrome?.cog}
         </div>
       </div>
       <div className="fw-rp__scroll dt" ref={ref} tabIndex={-1}>
@@ -97,7 +108,11 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
           <RulesTable
             rows={shown}
             showDefault={showDefault}
-            defaultRow={{ action, hits24h: fw.defaultHits24h, trend24h: fw.defaultTrend24h, changed: !!fw.draft?.diff.defaultChanged }}
+            defaultRow={{ action, hits24h: fw.defaultHits24h, trend24h: fw.defaultTrend24h, changed: !!fw.draft?.diff.defaultChanged, hitsTotal: fw.defaultHits?.[0] ?? null, lastHit: fw.defaultLastHit }}
+            columns={settings.columns as RuleColumn[]}
+            sparkline={settings.sparkline as boolean}
+            density={settings.density as "comfortable" | "compact"}
+            now={fw.now}
             zones={fw.zones}
             busyIds={busy}
             firstId={rows[0]?.id ?? null}
@@ -108,6 +123,7 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
             onMove={(r, dir) => reorder.moveByButton(r.id, dir)}
             onDelete={(r) => del.mutate(r.id)}
             onEditDefault={onEditDefault}
+            onChangeDefault={onChangeDefault}
             rowProps={reorder.rowProps}
             handleProps={reorder.handleProps}
             dropMark={reorder.dropMark}
@@ -124,9 +140,11 @@ export const RulesPanel = forwardRef<HTMLDivElement, RulesPanelProps>(function R
           <Button variant="primary" size="sm" icon={<Plus size={15} aria-hidden />} onClick={onAddRule}>
             Add rule
           </Button>
-          <Button size="sm" icon={<FlaskConical size={15} aria-hidden />} onClick={onTestSimulation}>
-            Test simulation
-          </Button>
+          {onTestSimulation && (
+            <Button size="sm" icon={<FlaskConical size={15} aria-hidden />} onClick={onTestSimulation}>
+              Test simulation
+            </Button>
+          )}
           <Button size="sm" icon={<RotateCcw size={14} aria-hidden />} onClick={() => setConfirmClear(true)} title={fw.countersClearedAt ? `Last cleared ${formatAge(Date.parse(fw.now) - Date.parse(fw.countersClearedAt))}` : "Never cleared"}>
             Clear hit counters
           </Button>

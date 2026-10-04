@@ -127,6 +127,17 @@ describe("Donut", () => {
     render(<Donut title="Breakdown" segments={[{ label: "A", value: 0, color: "blue" }]} />);
     expect(screen.getByText("no data")).toBeInTheDocument();
   });
+  it("percentages={false} leaves the legend's share column out; by default it is there", () => {
+    const withAmounts = segments.map((s) => ({ ...s, display: `£${s.value}` }));
+    const on = render(<Donut title="Breakdown" segments={withAmounts} />);
+    expect([...on.container.querySelectorAll(".donut__pct")].map((x) => x.textContent)).toEqual(["62%", "23%", "15%"]);
+    on.unmount();
+    const off = render(<Donut title="Breakdown" segments={withAmounts} percentages={false} />);
+    expect(off.container.querySelector(".donut__pct")).toBeNull();
+    expect([...off.container.querySelectorAll(".donut__val")].map((x) => x.textContent)).toEqual(["£62", "£23", "£15"]);
+    // The chart's name still gives each share.
+    expect(screen.getByRole("img", { name: /Compute 62%/ })).toBeInTheDocument();
+  });
 });
 
 const T0 = 1_760_000_000;
@@ -245,6 +256,35 @@ describe("BarChart", () => {
   it("renders 'no data' when every day is null", () => {
     render(<BarChart title="Spend" bars={[{ label: "1 Oct", value: null }]} />);
     expect(screen.getByText("no data")).toBeInTheDocument();
+  });
+  it("barTone colours each bar amber (warn) or red (bad); without it every bar is blue", () => {
+    const bars = [
+      { label: "1 Oct", value: 0.7 },
+      { label: "2 Oct", value: null },
+      { label: "3 Oct", value: 0.2 },
+      { label: "4 Oct", value: 2.5 },
+    ];
+    const fills = (c: HTMLElement) => [...c.querySelectorAll("rect")].map((r) => r.getAttribute("fill"));
+    const seen: Array<[string, number]> = [];
+    const toned = render(
+      <BarChart
+        title="Cost of each session"
+        bars={bars}
+        barTone={(b, i) => {
+          seen.push([b.label, i]);
+          return b.value! >= 2 ? "bad" : b.value! >= 0.5 ? "warn" : null;
+        }}
+      />,
+    );
+    expect(fills(toned.container)).toEqual(["var(--amber)", "var(--blue)", "var(--red)"]);
+    // Asked about drawn bars only, with their index in `bars`.
+    expect(seen).toEqual([
+      ["1 Oct", 0],
+      ["3 Oct", 2],
+      ["4 Oct", 3],
+    ]);
+    toned.unmount();
+    expect(fills(render(<BarChart title="Cost of each session" bars={bars} />).container)).toEqual(["var(--blue)", "var(--blue)", "var(--blue)"]);
   });
 });
 

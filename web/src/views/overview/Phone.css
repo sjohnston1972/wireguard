@@ -144,8 +144,9 @@
   min-height: 0;
 }
 
-/* The phone header: title only; the read-only fields would crowd it. */
+/* The phone header: title only; the read-only fields would crowd it. The widgets' Layout menu
+   stays (on the phone it is the way to every widget's settings). */
 @media (max-width: 640px) {
-  .ov .page-header__right { display: none; }
+  .ov .page-header__right > :not(.wg-layout) { display: none; }
   .ov .page-header__subtitle { display: none; }
 }

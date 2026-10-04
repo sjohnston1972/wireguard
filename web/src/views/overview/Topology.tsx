@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Cloud, Server, Users } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
 import { Panel, StatusPill, cx, type PillStatus } from "@/components";
+import { useWidget } from "@/widgets";
 import { AzureDrawer, SshDrawer } from "./drawers";
 import { regionFull, topology, type NodeStatus, type NodeView } from "./model";
 import "./Topology.css";
@@ -45,6 +46,9 @@ function Edge({ status, label }: { status: NodeStatus; label?: string }) {
 export function Topology({ o, now, compact }: { o: OverviewResponse; now: number; compact?: boolean }) {
   const navigate = useNavigate();
   const [drawer, setDrawer] = useState<"ssh" | "azure" | null>(null);
+  const { settings: st } = useWidget("overview.topology");
+  // Second lines: each node's lines under its title (counts, addresses, region).
+  const lines = (l: ReactNode[]) => (st.secondLines ? l : []);
   const t = topology(o);
   const s = o.snapshot;
   const running = s.state === "running";
@@ -57,7 +61,7 @@ export function Topology({ o, now, compact }: { o: OverviewResponse; now: number
           icon={<Users size={26} />}
           view={t.clients}
           onClick={() => navigate("/clients")}
-          lines={[`${o.derived.clientsEnabled} configured`, running ? `${o.derived.clientsOnline} online` : "VM not running"]}
+          lines={lines([`${o.derived.clientsEnabled} configured`, running ? `${o.derived.clientsOnline} online` : "VM not running"])}
         />
         <Edge status={t.edges[0]} />
         <Node
@@ -66,10 +70,10 @@ export function Topology({ o, now, compact }: { o: OverviewResponse; now: number
           view={t.endpoint}
           className="ov-node--centre"
           onClick={() => setDrawer("ssh")}
-          lines={[<span className="mono">{o.config.dnsName || "no name set"}</span>, <span className="mono">{o.config.subnet || "no subnet"}</span>]}
+          lines={lines([<span className="mono">{o.config.dnsName || "no name set"}</span>, <span className="mono">{o.config.subnet || "no subnet"}</span>])}
         />
-        <Edge status={t.edges[1]} label={o.config.port ? `UDP ${o.config.port}` : undefined} />
-        <Node title="Microsoft Azure" icon={<Cloud size={26} />} view={t.azure} onClick={() => setDrawer("azure")} lines={[regionFull(region) || "no region", s.azure ? `${s.azure.resources.length} resources` : "not checked yet"]} />
+        <Edge status={t.edges[1]} label={st.edgeLabels && o.config.port ? `UDP ${o.config.port}` : undefined} />
+        <Node title="Microsoft Azure" icon={<Cloud size={26} />} view={t.azure} onClick={() => setDrawer("azure")} lines={lines([regionFull(region) || "no region", s.azure ? `${s.azure.resources.length} resources` : "not checked yet"])} />
       </div>
       <SshDrawer o={o} open={drawer === "ssh"} onClose={() => setDrawer(null)} />
       <AzureDrawer o={o} now={now} open={drawer === "azure"} onClose={() => setDrawer(null)} />

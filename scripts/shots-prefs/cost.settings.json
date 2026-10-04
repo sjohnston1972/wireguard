@@ -1,0 +1,12 @@
+{
+  "cost": {
+    "widgets": {
+      "cost.kpis": { "v": 1, "s": { "tiles": ["session", "month", "budget"], "budgetUsed": { "warn": 50, "bad": 90 } } },
+      "cost.spend": { "v": 1, "s": { "previous": true, "note": false } },
+      "cost.breakdown": { "v": 2, "s": { "groupBy": "region", "percentages": false } },
+      "cost.split": { "v": 1, "s": { "order": "largest", "tracks": false } },
+      "cost.perSession": { "v": 1, "s": { "shown": "10", "session": { "warn": 0.05, "bad": 0.12 } } },
+      "cost.sessions": { "v": 1, "s": { "sort": "cost", "columns": ["region", "vmSize", "duration", "cost", "rate", "ended"], "density": "compact" } }
+    }
+  }
+}

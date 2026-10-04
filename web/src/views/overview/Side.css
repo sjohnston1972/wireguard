@@ -6,6 +6,8 @@
   min-height: 0;
   min-width: 0;
 }
+/* One widget left in the stack (the other hidden): it takes the whole column. */
+.ov-side--one > * { grid-row: 1 / -1; }
 
 .ov-events__list {
   display: flex;
@@ -77,6 +79,10 @@
 .ov-traffic .segmented__item {
   padding: 0 8px;
 }
+/* In the narrow side column (during a run) its window switch cannot give way: the title wraps, as before. */
+.ov-side .ov-traffic.panel--chrome > .panel__head > .panel__title-wrap { min-width: 0; }
+.ov-side .ov-traffic.panel--chrome > .panel__head > .panel__title-wrap > .panel__title { white-space: normal; flex-shrink: 1; }
+.ov-side .ov-traffic.panel--chrome > .panel__head > .panel__actions { flex: none; }
 
 .ov-speed__list {
   display: flex;
@@ -101,4 +107,9 @@
 .ov-speed__err {
   grid-column: 2 / -1;
   color: var(--red);
+}
+/* The Test server setting: a line of its own under the figures. */
+.ov-speed__server {
+  grid-column: 2 / -1;
+  margin-top: -8px;
 }

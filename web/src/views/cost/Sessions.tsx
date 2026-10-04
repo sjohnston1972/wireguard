@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import type { CostResponse } from "@shared/api";
 import { Chips, DataTable, Drawer, EmptyState, KeyValue, Panel, SearchInput, Select, Skeleton, StatusPill, type Column } from "@/components";
 import { useRun } from "@/api/queries";
+import { useStarting, useWidget } from "@/widgets";
 import { regionLabel } from "@/shell/StateChip";
 import { durationLabel, gbp, startedLabel } from "./model";
 
@@ -11,21 +12,34 @@ type SessionRow = CostResponse["sessions"][number];
 
 const regionOf = (s: SessionRow) => regionLabel(s.region) ?? s.region;
 
-const COLUMNS: Column<SessionRow>[] = [
+/** Each optional column, keyed by the widget setting's column id (Started, Status and the chevron are always shown). */
+const OPTIONAL: Record<string, Column<SessionRow>> = {
+  region: { key: "region", header: "Region", cell: regionOf, sortValue: regionOf, className: "cost-hide-short" },
+  vmSize: { key: "size", header: "VM size", cell: (s) => s.vmSize, sortValue: (s) => s.vmSize, className: "cost-hide-narrow" },
+  duration: { key: "duration", header: "Duration", cell: (s) => durationLabel(s.durationSeconds), sortValue: (s) => s.durationSeconds, align: "right" },
+  cost: { key: "cost", header: "Estimated cost", cell: (s) => gbp(s.estimatedGbp), sortValue: (s) => s.estimatedGbp, align: "right" },
+  rate: { key: "hour", header: "Cost / hour", cell: (s) => gbp(s.perHourGbp), sortValue: (s) => s.perHourGbp, align: "right", className: "cost-hide-narrow" },
+  ended: { key: "ended", header: "Ended", cell: (s) => (s.ended ? startedLabel(s.ended) : s.stillRunning ? "Still running" : "no data"), sortValue: (s) => s.ended ?? "", className: "cost-hide-narrow" },
+};
+const ORDER = ["region", "vmSize", "duration", "cost", "rate", "ended"];
+
+const columnsFor = (chosen: string[]): Column<SessionRow>[] => [
   { key: "started", header: "Started", cell: (s) => startedLabel(s.started), sortValue: (s) => s.started },
   { key: "status", header: "Status", cell: (s) => <StatusPill status={s.stillRunning ? "running" : "stopped"} /> },
-  { key: "region", header: "Region", cell: regionOf, sortValue: regionOf, className: "cost-hide-short" },
-  { key: "size", header: "VM size", cell: (s) => s.vmSize, sortValue: (s) => s.vmSize, className: "cost-hide-narrow" },
-  { key: "duration", header: "Duration", cell: (s) => durationLabel(s.durationSeconds), sortValue: (s) => s.durationSeconds, align: "right" },
-  { key: "cost", header: "Estimated cost", cell: (s) => gbp(s.estimatedGbp), sortValue: (s) => s.estimatedGbp, align: "right" },
-  { key: "hour", header: "Cost / hour", cell: (s) => gbp(s.perHourGbp), sortValue: (s) => s.perHourGbp, align: "right", className: "cost-hide-narrow" },
+  ...ORDER.filter((k) => chosen.includes(k)).map((k) => OPTIONAL[k]!),
   { key: "open", header: <span className="visually-hidden">Details</span>, cell: () => <ChevronRight size={16} aria-hidden />, width: 32 },
 ];
+
+/** The starting sort setting as a table sort (each is largest or newest first). */
+const SORTS = { started: "started", cost: "cost", duration: "duration" } as const;
 
 /** Row 4: every past session, filterable, each opening a drawer with its run. */
 export function SessionsPanel({ cost, bare }: { cost: CostResponse; bare?: boolean }) {
   const navigate = useNavigate();
-  const [status, setStatus] = useState("all");
+  const { settings } = useWidget("cost.sessions");
+  const [status, setStatus] = useStarting(String(settings.status));
+  const sortKey = SORTS[settings.sort as keyof typeof SORTS] ?? "started";
+  const columns = useMemo(() => columnsFor(settings.columns as string[]), [settings.columns]);
   const [text, setText] = useState("");
   const [region, setRegion] = useState("all");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -33,14 +47,16 @@ export function SessionsPanel({ cost, bare }: { cost: CostResponse; bare?: boole
   const regions = useMemo(() => [...new Set(cost.sessions.map((s) => s.region))], [cost.sessions]);
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
-    return cost.sessions.filter((s) => {
+    // Sorted here too, so the starting sort holds even when its own column is not shown.
+    const by = (s: SessionRow) => (sortKey === "cost" ? s.estimatedGbp : sortKey === "duration" ? s.durationSeconds : Date.parse(s.started));
+    return [...cost.sessions].sort((a, b) => by(b) - by(a)).filter((s) => {
       if (status === "running" && !s.stillRunning) return false;
       if (status === "ended" && s.stillRunning) return false;
       if (region !== "all" && s.region !== region) return false;
       if (!needle) return true;
       return [startedLabel(s.started), s.started, regionOf(s), s.vmSize, s.stillRunning ? "running" : "stopped"].some((v) => v.toLowerCase().includes(needle));
     });
-  }, [cost.sessions, status, text, region]);
+  }, [cost.sessions, status, text, region, sortKey]);
   const open = cost.sessions.find((s) => s.runId === openId) ?? null;
 
   const controls = (
@@ -72,11 +88,13 @@ export function SessionsPanel({ cost, bare }: { cost: CostResponse; bare?: boole
   const table = (
     <DataTable
       aria-label="Sessions"
-      columns={COLUMNS}
+      key={sortKey}
+      columns={columns}
+      density={settings.density === "compact" ? "compact" : "comfortable"}
       rows={rows}
       rowKey={(s) => s.runId}
       rowLabel={(s) => startedLabel(s.started)}
-      defaultSort={{ key: "started", dir: "desc" }}
+      defaultSort={{ key: sortKey, dir: "desc" }}
       onRowClick={(s) => setOpenId(s.runId)}
       empty={
         cost.sessions.length === 0 ? (

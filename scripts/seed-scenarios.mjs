@@ -13,10 +13,14 @@ import { pathToFileURL } from "node:url";
 
 export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month"];
 
-/** Seed one scenario on the dev server at `api`. Returns the Worker's summary or throws with a plain reason. */
-export async function seed(api, scenario, now) {
+/**
+ * Seed one scenario on the dev server at `api`. Returns the Worker's summary or throws with a plain reason.
+ * `freeze` (npm run shots -- --freeze-time) also stops the dev Worker's clock at `now` until the next seed.
+ */
+export async function seed(api, scenario, now, freeze = false) {
   const qs = new URLSearchParams({ scenario });
   if (now) qs.set("now", now);
+  if (freeze) qs.set("freeze", "1");
   let r;
   try {
     r = await fetch(`${api}/__dev/seed?${qs}`, { method: "POST" });

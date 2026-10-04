@@ -1,6 +1,17 @@
 /* Phone: one big, tappable line per device. */
 .pclients__sum { font-size: 13px; color: var(--text-secondary); }
 .pclients__sum strong { color: var(--text-primary); font-weight: 600; }
+.pclients__filter { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; margin: 0; font-size: 13px; color: var(--text-secondary); }
+.pclients__clear {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--blue-bright);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
 .pclients {
   list-style: none;
   margin: 0;

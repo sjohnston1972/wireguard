@@ -42,9 +42,10 @@ function isErrorBody(v: unknown): v is ApiErrorBody {
   return typeof v === "object" && v !== null && typeof (v as ApiErrorBody).error === "object" && (v as ApiErrorBody).error !== null && typeof (v as ApiErrorBody).error.message === "string";
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, opts: SendOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   const init: RequestInit = { method, credentials: "same-origin", redirect: "manual", headers };
+  if (opts.keepalive) init.keepalive = true;
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
@@ -98,7 +99,12 @@ export function apiGet<T>(path: string): Promise<T> {
   return request<T>("GET", path);
 }
 
+export interface SendOptions {
+  /** Let the request outlive the page (a save sent as the tab is hidden or closed; body under 64 KiB). */
+  keepalive?: boolean;
+}
+
 /** POST, PUT or DELETE under /api/v1. Leave `body` out to send nothing. */
-export function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
-  return request<T>(method, path, body);
+export function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown, opts?: SendOptions): Promise<T> {
+  return request<T>(method, path, body, opts);
 }

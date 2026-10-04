@@ -7,6 +7,12 @@
   flex-wrap: wrap;
   padding: 10px 16px 10px;
 }
+/* The rules column's move handle (widget chrome): an overlay in the toolbar's left padding, as on a
+   panel header. No offsets, so the toolbar need not be positioned: a positioned toolbar is snapped to
+   whole pixels and moved the row's text by a fraction of one (seen at 1100 px wide). Out of flow, an
+   absolute flex child sits where a sole flex item would: centred by align-items. */
+.fw-rp__toolbar > .wg-handle { position: absolute; margin-left: -16px; z-index: 5; }
+.panel:hover .fw-rp__toolbar > .wg-handle { opacity: 1; }
 .fw-rp__tabs { flex: none; }
 .fw-rp__title { display: none; font-size: 15px; font-weight: 600; letter-spacing: -0.005em; white-space: nowrap; }
 /* A wide, tall window: the title joins the filter row, so the table keeps six rows at 1600 x 900. */
@@ -37,10 +43,14 @@
   .fw-rp__toolbar { flex-wrap: nowrap; gap: 8px; padding: 8px 12px; }
   .fw-rp__tabs .tabs__list { flex-wrap: nowrap; gap: 4px; }
   .fw-rp__tabs .tabs__tab { height: 30px; padding: 0 7px; font-size: 12px; }
-  .fw-rp__filters { gap: 6px; }
-  .fw-rp__filters .select__trigger { min-width: 0; width: 104px; height: 30px; white-space: nowrap; padding-left: 8px; padding-right: 6px; }
+  /* The group may be narrower than its content; inside it the search gives way first, then the
+     two selects (down to 84 px, their words cut short), and the widget cog never shrinks. */
+  .fw-rp__filters { gap: 6px; min-width: 0; }
+  .fw-rp__filters .select { flex: 0 1 104px; min-width: 84px; }
+  .fw-rp__filters .select__trigger { min-width: 0; width: 100%; height: 30px; white-space: nowrap; padding-left: 8px; padding-right: 6px; }
   .fw-rp__filters .select__value { overflow: hidden; text-overflow: ellipsis; }
-  .fw-rp__search { flex: 1 1 100px; min-width: 84px; }
+  .fw-rp__search { flex: 1 1 0; min-width: 96px; }
+  .fw-rp__filters > .wg-cog { flex: none; }
   .fw-rp__hint { display: none; }
   .fw-rp__foot { padding: 6px 12px 8px; justify-content: flex-end; }
 }

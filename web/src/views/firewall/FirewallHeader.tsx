@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { FirewallResponse } from "@shared/api";
 import { Button, DataAge, Modal, cx } from "@/components";
 import { useDraftDiscard } from "@/api/mutations";
+import { LayoutMenu } from "@/widgets";
 import "./FirewallHeader.css";
 
 type PolicyState = FirewallResponse["policy"]["state"];
@@ -89,7 +90,7 @@ export interface FirewallHeaderProps {
   onReview: () => void;
 }
 
-/** Shield, title and subtitle; on the right the policy status and, with a draft, the draft bar. */
+/** Shield, title and subtitle; on the right the policy status, with a draft the draft bar, and the widgets' Layout menu. */
 export function FirewallHeader({ fw, waiting, updatedAt, onReview }: FirewallHeaderProps) {
   return (
     <header className="fw-head">
@@ -103,6 +104,7 @@ export function FirewallHeader({ fw, waiting, updatedAt, onReview }: FirewallHea
       <div className="fw-head__right">
         <PolicyStatus fw={fw} waiting={waiting} updatedAt={updatedAt} />
         <DraftBar fw={fw} onReview={onReview} />
+        <LayoutMenu page="firewall" />
       </div>
     </header>
   );

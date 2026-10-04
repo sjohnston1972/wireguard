@@ -1,8 +1,8 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { AlertTriangle, GripVertical, Lock, MoreVertical, MoveRight } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, GripVertical, Lock, MoreVertical, MoveRight } from "lucide-react";
 import { type KeyboardEvent } from "react";
 import type { FirewallResponse } from "@shared/api";
-import { IconButton, Sparkline, StatusPill, Switch, cx } from "@/components";
+import { IconButton, Sparkline, StatusPill, Switch, cx, formatAge } from "@/components";
 import { EndCell } from "./EndCell";
 import { endAddress, fmtCount, type Action, type RuleView } from "./model";
 import "./RulesTable.css";
@@ -12,7 +12,15 @@ export interface DefaultRowInfo {
   hits24h: number | null;
   trend24h: (number | null)[];
   changed: boolean;
+  /** Packets since the counters were cleared, and when it last matched (the optional columns). */
+  hitsTotal: number | null;
+  lastHit: string | null;
 }
+
+/** The table's optional columns (the Firewall rules widget's Columns setting), in the order they can appear. */
+export type RuleColumn = "service" | "hits" | "lastHit" | "lifetime";
+/** Today's columns. */
+export const DEFAULT_RULE_COLUMNS: RuleColumn[] = ["service", "hits"];
 
 export interface RulesTableProps {
   rows: RuleView[];
@@ -27,6 +35,11 @@ export interface RulesTableProps {
   onMove: (row: RuleView, dir: "up" | "down") => void;
   onDelete: (row: RuleView) => void;
   onEditDefault: () => void;
+  /**
+   * Present when the Default action tile (and its Change button) is not on the
+   * page: the default row then carries its own Change button instead of the lock.
+   */
+  onChangeDefault?: () => void;
   /** The first and last rule of the whole list, which cannot move further up or down. */
   firstId: number | null;
   lastId: number | null;
@@ -37,18 +50,49 @@ export interface RulesTableProps {
   isDragging?: (row: RuleView) => boolean;
   /** Alt+ArrowUp/Down on a focused rule row. */
   onAltArrow?: (row: RuleView, dir: "up" | "down") => void;
+  /** Optional columns shown (default: Service / Port and Hits (24h)). */
+  columns?: RuleColumn[];
+  /** The hit sparkline in the Hits column (default on). */
+  sparkline?: boolean;
+  /** Compact rows (36 px). */
+  density?: "comfortable" | "compact";
+  /** The answer's own clock, for the Last hit column. */
+  now?: string;
+}
+
+/** "4 m ago", "never", or "no data" when the VM has counted nothing for it. */
+function lastHitText(lastHit: string | null, counted: boolean, now: string | undefined): string {
+  if (lastHit && now) return formatAge(Date.parse(now) - Date.parse(lastHit));
+  return counted ? "never" : "no data";
+}
+
+function LastHitCell({ lastHit, counted, now }: { lastHit: string | null; counted: boolean; now?: string }) {
+  const text = lastHitText(lastHit, counted, now);
+  return (
+    <span className={cx("fw-rules__last", text === "no data" && "fw-rules__nodata")} data-testid="last-hit">
+      {text}
+    </span>
+  );
+}
+
+function LifetimeCell({ hits }: { hits: number | null }) {
+  return (
+    <span className={cx("fw-rules__life", hits === null && "fw-rules__nodata")} data-testid="lifetime">
+      {hits === null ? "no data" : fmtCount(hits)}
+    </span>
+  );
 }
 
 const MARK_WORD = { added: "Added", changed: "Changed", moved: "Moved" } as const;
 
-function HitsCell({ hits, trend, onClick, name }: { hits: number | null; trend: (number | null)[]; onClick?: () => void; name: string }) {
+function HitsCell({ hits, trend, onClick, name, sparkline = true }: { hits: number | null; trend: (number | null)[]; onClick?: () => void; name: string; sparkline?: boolean }) {
   const inner =
     hits === null ? (
       <span className="fw-rules__nodata">no data</span>
     ) : (
       <>
         <span className="fw-rules__hits-n">{fmtCount(hits)}</span>
-        <Sparkline variant="bars" tone="blue" label={`Hits per hour for ${name}`} data={trend} width={52} height={20} />
+        {sparkline && <Sparkline variant="bars" tone="blue" label={`Hits per hour for ${name}`} data={trend} width={52} height={20} />}
       </>
     );
   return (
@@ -90,8 +134,12 @@ export function RulesTable(p: RulesTableProps) {
     if (to instanceof HTMLElement) to.focus();
   };
 
+  const cols = p.columns ?? DEFAULT_RULE_COLUMNS;
+  const has = (c: RuleColumn) => cols.includes(c);
+  const sparkline = p.sparkline ?? true;
+
   return (
-    <table className="fw-rules dt__table" aria-label="Firewall rules">
+    <table className={cx("fw-rules dt__table", p.density === "compact" && "fw-rules--compact")} aria-label="Firewall rules">
       <thead>
         <tr>
           <th scope="col" className="dt__th fw-rules__c-handle">
@@ -106,9 +154,11 @@ export function RulesTable(p: RulesTableProps) {
             <span className="visually-hidden">to</span>
           </th>
           <th scope="col" className="dt__th fw-rules__c-to">To (destination)</th>
-          <th scope="col" className="dt__th fw-rules__c-svc">Service / Port</th>
+          {has("service") && <th scope="col" className="dt__th fw-rules__c-svc">Service / Port</th>}
           <th scope="col" className="dt__th fw-rules__c-action">Action</th>
-          <th scope="col" className="dt__th fw-rules__c-hits">Hits (24h)</th>
+          {has("hits") && <th scope="col" className="dt__th fw-rules__c-hits">Hits (24h)</th>}
+          {has("lastHit") && <th scope="col" className="dt__th fw-rules__c-last">Last hit</th>}
+          {has("lifetime") && <th scope="col" className="dt__th fw-rules__c-life">Lifetime hits</th>}
           <th scope="col" className="dt__th fw-rules__c-status">Status</th>
           <th scope="col" className="dt__th fw-rules__c-menu">
             <span className="visually-hidden">Actions</span>
@@ -165,17 +215,31 @@ export function RulesTable(p: RulesTableProps) {
               <td className="dt__td fw-rules__c-to">
                 <EndCell end={r.to} label={r.toLabel} address={endAddress(r.to, p.zones)} />
               </td>
-              <td className="dt__td fw-rules__c-svc">
-                <span className="fw-rules__svc" title={r.service}>
-                  {r.service}
-                </span>
-              </td>
+              {has("service") && (
+                <td className="dt__td fw-rules__c-svc">
+                  <span className="fw-rules__svc" title={r.service}>
+                    {r.service}
+                  </span>
+                </td>
+              )}
               <td className="dt__td">
                 <StatusPill status={r.action} />
               </td>
-              <td className="dt__td">
-                <HitsCell hits={r.hits24h} trend={r.trend24h} name={r.name} onClick={() => p.onHistory(r.id)} />
-              </td>
+              {has("hits") && (
+                <td className="dt__td">
+                  <HitsCell hits={r.hits24h} trend={r.trend24h} name={r.name} sparkline={sparkline} onClick={() => p.onHistory(r.id)} />
+                </td>
+              )}
+              {has("lastHit") && (
+                <td className="dt__td">
+                  <LastHitCell lastHit={r.lastHit} counted={r.hitsTotal !== null} now={p.now} />
+                </td>
+              )}
+              {has("lifetime") && (
+                <td className="dt__td">
+                  <LifetimeCell hits={r.hitsTotal} />
+                </td>
+              )}
               <td className="dt__td">
                 <Switch
                   checked={r.enabled}
@@ -241,22 +305,42 @@ export function RulesTable(p: RulesTableProps) {
             <td className="dt__td fw-rules__c-to">
               <EndCell end={{ kind: "any", value: "" }} label="Anywhere" address="0.0.0.0/0" />
             </td>
-            <td className="dt__td fw-rules__c-svc">
-              <span className="fw-rules__svc">Any</span>
-            </td>
+            {has("service") && (
+              <td className="dt__td fw-rules__c-svc">
+                <span className="fw-rules__svc">Any</span>
+              </td>
+            )}
             <td className="dt__td">
               <StatusPill status={p.defaultRow.action} />
             </td>
-            <td className="dt__td">
-              <HitsCell hits={p.defaultRow.hits24h} trend={p.defaultRow.trend24h} name="the default action" />
-            </td>
+            {has("hits") && (
+              <td className="dt__td">
+                <HitsCell hits={p.defaultRow.hits24h} trend={p.defaultRow.trend24h} name="the default action" sparkline={sparkline} />
+              </td>
+            )}
+            {has("lastHit") && (
+              <td className="dt__td">
+                <LastHitCell lastHit={p.defaultRow.lastHit} counted={p.defaultRow.hitsTotal !== null} now={p.now} />
+              </td>
+            )}
+            {has("lifetime") && (
+              <td className="dt__td">
+                <LifetimeCell hits={p.defaultRow.hitsTotal} />
+              </td>
+            )}
             <td className="dt__td fw-rules__c-status">
               <span className="fw-rules__always">Always on</span>
             </td>
             <td className="dt__td fw-rules__c-menu">
-              <span className="fw-rules__lock" title="The default action is always last">
-                <Lock size={15} aria-hidden />
-              </span>
+              {p.onChangeDefault ? (
+                <IconButton label={`Change default action to ${p.defaultRow.action === "deny" ? "Allow" : "Deny"}`} size="sm" variant="plain" onClick={p.onChangeDefault}>
+                  <ArrowLeftRight size={16} aria-hidden />
+                </IconButton>
+              ) : (
+                <span className="fw-rules__lock" title="The default action is always last">
+                  <Lock size={15} aria-hidden />
+                </span>
+              )}
             </td>
           </tr>
         )}

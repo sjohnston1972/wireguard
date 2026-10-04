@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { prefsFixture } from "./fixtures";
 
 /** What a mocked route answers with. */
 export type MockReply =
@@ -38,7 +39,8 @@ export function mockFetch(routes: Record<string, MockHandler>) {
     }
     calls.push({ method, url, body, init });
     const path = url.split("?")[0]!;
-    const handler = routes[`${method} ${url}`] ?? routes[`${method} ${path}`];
+    // Widget preferences load with the shell on every page: unless a test says otherwise, nothing is saved.
+    const handler = routes[`${method} ${url}`] ?? routes[`${method} ${path}`] ?? (method === "GET" && path === "/api/v1/prefs" ? prefsFixture() : undefined);
     if (handler === undefined) throw new Error(`mockFetch: no route for ${method} ${url}`);
     const raw = typeof handler === "function" ? await (handler as (req: { url: string; method: string; body: unknown; init: RequestInit }) => unknown)({ url, method, body, init }) : handler;
     // A handler may build the whole Response itself (headers such as Content-Disposition).

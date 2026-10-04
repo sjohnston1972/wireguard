@@ -1,7 +1,8 @@
-import { useState } from "react";
 import type { CostResponse } from "@shared/api";
+import { thresholdTone, type Threshold } from "@shared/widgets";
 import { BarChart, DataAge, Donut, EmptyState, Panel, SegmentedControl, type DonutSegment, type Tone } from "@/components";
-import { cumulativeSeries, dayLabel, gbp, pctText, spendSeries, startedLabel, TYPE_LABEL } from "./model";
+import { useStarting, useWidget } from "@/widgets";
+import { cumulativeSeries, dayLabel, forecastPill, gbp, pctText, spendSeries, startedLabel, TYPE_LABEL } from "./model";
 import { FillHeight } from "./FillHeight";
 
 const COLOURS: Tone[] = ["blue", "purple", "green", "amber"];
@@ -11,8 +12,11 @@ const money = (v: number) => gbp(v).replace(/(\.\d\d)0$/, "$1");
 
 /** Row 2, left: daily actuals, the budget pace, the projection and (optionally) the previous period. */
 export function SpendPanel({ cost, compare, updatedAt, height }: { cost: CostResponse; compare: boolean; updatedAt: number; height?: number }) {
+  const { settings } = useWidget("cost.spend");
   const s = spendSeries(cost);
   const showPrev = compare && s.previous.some((v) => v !== null);
+  const forecast = settings.forecast === true ? s.forecast : [];
+  const budgetPerDay = settings.budgetLine === true ? s.budgetPerDay : undefined;
   return (
     <Panel title="Spend over time" className="cost-panel" bodyClassName="cost-panel__body">
       <FillHeight fallback={height ?? 140} min={70}>
@@ -20,35 +24,40 @@ export function SpendPanel({ cost, compare, updatedAt, height }: { cost: CostRes
           <BarChart
             title="Daily spend"
             bars={s.bars}
-            forecast={s.forecast}
+            forecast={forecast}
             previous={showPrev ? s.previous : undefined}
-            budget={s.budgetPerDay}
+            budget={budgetPerDay}
             format={money}
             height={h}
             className="cost-chart"
           />
         )}
       </FillHeight>
-      <ul className="cost-legend" aria-label="Chart key">
-        <li><span className="cost-key cost-key--bar" />Actual spend</li>
-        {showPrev && <li><span className="cost-key cost-key--prev" />Previous period</li>}
-        {s.forecast.length > 0 && <li><span className="cost-key cost-key--fc" />Forecast</li>}
-        {s.budgetPerDay !== undefined && <li><span className="cost-key cost-key--budget" />Budget pace ({gbp(s.budgetPerDay)} a day)</li>}
-      </ul>
-      <p className="cost-note">
-        GBP · UTC days · Azure figures lag up to {cost.meta.azureLagHours} h <DataAge at={updatedAt} />
-      </p>
+      {settings.legend === true && (
+        <ul className="cost-legend" aria-label="Chart key">
+          <li><span className="cost-key cost-key--bar" />Actual spend</li>
+          {showPrev && <li><span className="cost-key cost-key--prev" />Previous period</li>}
+          {forecast.length > 0 && <li><span className="cost-key cost-key--fc" />Forecast</li>}
+          {budgetPerDay !== undefined && <li><span className="cost-key cost-key--budget" />Budget pace ({gbp(budgetPerDay)} a day)</li>}
+        </ul>
+      )}
+      {settings.note === true && (
+        <p className="cost-note">
+          GBP · UTC days · Azure figures lag up to {cost.meta.azureLagHours} h <DataAge at={updatedAt} />
+        </p>
+      )}
     </Panel>
   );
 }
 
-/** Row 2, middle: where the money went, by type (Azure's split) or, failing that, by region (the sessions' estimate). */
+/** Row 2, middle: where the money went, by type (Azure's split) or, failing that (or when asked), by region (the sessions' estimate). */
 export function BreakdownPanel({ cost }: { cost: CostResponse }) {
+  const { settings } = useWidget("cost.breakdown");
   const b = cost.breakdown;
   let segments: DonutSegment[] = [];
   let caption: string | null = null;
   let centreLabel = "Total";
-  if (b && b.basis === "azure") {
+  if (b && b.basis === "azure" && settings.groupBy !== "region") {
     segments = b.byType.map((t) => ({ label: TYPE_LABEL[t.type], value: t.gbp, color: TYPE_COLOUR[t.type], display: gbp(t.gbp) }));
     caption = `Azure actual${b.asOfDay ? `, as of ${dayLabel(b.asOfDay)}` : ""}`;
   } else if (b) {
@@ -61,7 +70,7 @@ export function BreakdownPanel({ cost }: { cost: CostResponse }) {
     <Panel title="Spend breakdown" className="cost-panel" bodyClassName="cost-panel__body cost-breakdown">
       <FillHeight fallback={132} min={72}>
         {(h) => (
-          <Donut title="Spend breakdown" segments={segments} centre={total > 0 ? { value: gbp(total), label: centreLabel } : undefined} size={h < 140 ? Math.min(h, 104) : 132} stroke={h < 140 ? 11 : 15} />
+          <Donut title="Spend breakdown" segments={segments} centre={total > 0 ? { value: gbp(total), label: centreLabel } : undefined} size={h < 140 ? Math.min(h, 104) : 132} stroke={h < 140 ? 11 : 15} percentages={settings.percentages !== false} />
         )}
       </FillHeight>
       {caption && total > 0 && <p className="cost-note">{caption}</p>}
@@ -71,15 +80,16 @@ export function BreakdownPanel({ cost }: { cost: CostResponse }) {
 
 /** Row 2, right: the forecast against the budget, with the month's running total. */
 export function ForecastPanel({ cost, height }: { cost: CostResponse; height?: number }) {
+  const { settings } = useWidget("cost.forecast");
   const { projection, budget } = cost;
   const series = cumulativeSeries(cost);
-  const onTrack = projection && budget.budget > 0 ? projection.gbp <= budget.budget : null;
+  const pill = forecastPill(projection?.gbp, budget.budget, settings.forecast as Threshold);
   return (
     <Panel
       title="Forecast vs budget"
       className="cost-panel"
       bodyClassName="cost-panel__body"
-      status={onTrack === null ? undefined : <span className={onTrack ? "cost-pill cost-pill--good" : "cost-pill cost-pill--bad"}>{onTrack ? "On track" : "Over budget"}</span>}
+      status={pill ? <span className={`cost-pill cost-pill--${pill.tone}`}>{pill.text}</span> : undefined}
     >
       <dl className="cost-pair">
         <div>
@@ -91,7 +101,7 @@ export function ForecastPanel({ cost, height }: { cost: CostResponse; height?: n
           <dd>{budget.budget > 0 ? gbp(budget.budget) : <span className="cost-none">no data</span>}</dd>
         </div>
       </dl>
-      {series ? (
+      {settings.chart !== true ? null : series ? (
         <FillHeight fallback={height ?? 96} min={56}>
           {(h) => <BarChart title="Month so far against budget" bars={series.bars} forecast={series.forecast} budget={budget.budget > 0 ? budget.budget : undefined} format={money} height={h} className="cost-chart" />}
         </FillHeight>
@@ -104,10 +114,13 @@ export function ForecastPanel({ cost, height }: { cost: CostResponse; height?: n
 
 /** Row 3, left: spend by region or by resource type, as bars. */
 export function SplitPanel({ cost }: { cost: CostResponse }) {
-  const [by, setBy] = useState<"region" | "type">("region");
+  const { settings } = useWidget("cost.split");
+  const [by, setBy] = useStarting<"region" | "type">(settings.view === "resource" ? "type" : "region");
   const b = cost.breakdown;
-  const rows =
-    !b ? [] : by === "region" ? b.byRegion.map((r) => ({ key: r.location, name: r.name, gbp: r.gbp, pct: r.pct })) : b.byType.map((t) => ({ key: t.type, name: TYPE_LABEL[t.type], gbp: t.gbp, pct: t.pct }));
+  let rows = !b ? [] : by === "region" ? b.byRegion.map((r) => ({ key: r.location, name: r.name, gbp: r.gbp, pct: r.pct })) : b.byType.map((t) => ({ key: t.type, name: TYPE_LABEL[t.type], gbp: t.gbp, pct: t.pct }));
+  if (settings.order === "largest") rows = [...rows].sort((x, y) => y.gbp - x.gbp);
+  const tracks = settings.tracks === true;
+  const percent = settings.percent === true;
   return (
     <Panel
       title={by === "region" ? "Spend by region" : "Spend by resource type"}
@@ -127,15 +140,17 @@ export function SplitPanel({ cost }: { cost: CostResponse }) {
       {rows.length === 0 ? (
         <p className="cost-none cost-none--block">{b && by === "type" ? "no data: Azure's split by type is not in yet (the estimate is by region only)" : "no data"}</p>
       ) : (
-        <ul className="cost-split">
+        <ul className={`cost-split${tracks ? "" : " cost-split--no-tracks"}${percent ? "" : " cost-split--no-pct"}`}>
           {rows.map((r) => (
             <li key={r.key}>
               <span className="cost-split__name">{r.name}</span>
-              <span className="cost-split__track" aria-hidden>
-                <span className="cost-split__fill" style={{ width: `${Math.max(2, r.pct)}%` }} />
-              </span>
+              {tracks && (
+                <span className="cost-split__track" aria-hidden>
+                  <span className="cost-split__fill" style={{ width: `${Math.max(2, r.pct)}%` }} />
+                </span>
+              )}
               <span className="cost-split__gbp">{gbp(r.gbp)}</span>
-              <span className="cost-split__pct">{pctText(r.pct)}</span>
+              {percent && <span className="cost-split__pct">{pctText(r.pct)}</span>}
             </li>
           ))}
         </ul>
@@ -147,10 +162,23 @@ export function SplitPanel({ cost }: { cost: CostResponse }) {
 
 /** Row 3, middle: what a session costs, on average and at most, with a bar per session. */
 export function PerSessionPanel({ cost, height }: { cost: CostResponse; height?: number }) {
+  const { settings } = useWidget("cost.perSession");
+  const limit = settings.shown === "all" ? 0 : Number(settings.shown);
+  const thr = settings.session as Threshold;
   const rows = [...cost.sessions].reverse();
   const costs = rows.map((r) => r.estimatedGbp);
   const total = costs.reduce((a, b) => a + b, 0);
   const top = rows.reduce<(typeof rows)[number] | null>((a, r) => (!a || r.estimatedGbp > a.estimatedGbp ? r : a), null);
+  // The chart shows the latest sessions (rows run oldest to newest).
+  const bars = limit > 0 ? rows.slice(-limit) : rows;
+  const coloured = thr.warn !== null || thr.bad !== null;
+  const tones = bars.map((r) => {
+    const t = thresholdTone(r.estimatedGbp, thr, "above");
+    return t === "warn" || t === "bad" ? t : null;
+  });
+  const warnCount = tones.filter((t) => t === "warn").length;
+  const badCount = tones.filter((t) => t === "bad").length;
+  const count = (n: number) => `${n} ${n === 1 ? "session" : "sessions"}`;
   return (
     <Panel title="Cost per session" className="cost-panel" bodyClassName="cost-panel__body">
       <dl className="cost-pair cost-pair--3">
@@ -169,8 +197,23 @@ export function PerSessionPanel({ cost, height }: { cost: CostResponse; height?:
         </div>
       </dl>
       <FillHeight fallback={height ?? 96} min={56}>
-        {(h) => <BarChart title="Cost of each session" bars={rows.map((r) => ({ label: dayLabel(r.started.slice(0, 10)), value: r.estimatedGbp }))} format={money} height={h} className="cost-chart" />}
+        {(h) => (
+          <BarChart
+            title="Cost of each session"
+            bars={bars.map((r) => ({ label: dayLabel(r.started.slice(0, 10)), value: r.estimatedGbp }))}
+            format={money}
+            height={h}
+            className="cost-chart"
+            barTone={coloured ? (_, i) => tones[i] ?? null : undefined}
+          />
+        )}
       </FillHeight>
+      {coloured && (warnCount > 0 || badCount > 0) && (
+        <p className="cost-flag cost-flag--sessions">
+          {warnCount > 0 && thr.warn !== null && <span className="cost-flag__warn">Amber: {count(warnCount)} over {money(thr.warn)}</span>}
+          {badCount > 0 && thr.bad !== null && <span className="cost-flag__bad">Red: {count(badCount)} over {money(thr.bad)}</span>}
+        </p>
+      )}
     </Panel>
   );
 }

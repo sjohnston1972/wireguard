@@ -1,0 +1,7 @@
+{
+  "firewall": {
+    "layout": {
+      "hidden": ["firewall.zones", "firewall.drops", "firewall.ports", "firewall.capture"]
+    }
+  }
+}

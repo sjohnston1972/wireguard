@@ -1,5 +1,6 @@
 import type { CostResponse } from "@shared/api";
 import type { Bar } from "@/components";
+import { thresholdTone } from "@shared/widgets";
 
 // Pure helpers for the Cost view. Days are UTC strings ("2026-10-02"); money is GBP.
 
@@ -145,3 +146,31 @@ export const TYPE_LABEL: Record<"compute" | "network" | "disk" | "other", string
   disk: "Disk (managed)",
   other: "Other",
 };
+
+export type Level = "ok" | "warn" | "bad";
+
+export interface ForecastPill {
+  /** The pill's colour: "plain" is over the budget but below every cutoff the user set. */
+  tone: "good" | "warn" | "bad" | "plain";
+  text: "On track" | "Near budget" | "Over budget";
+}
+
+/**
+ * The Forecast vs budget pill; null with no projection or no budget.
+ *
+ * The words tell the truth: "Over budget" exactly when the projection is above
+ * the budget (compared unrounded, so 100.004 % is over and exactly 100 % is
+ * not), "On track" otherwise. The thresholds set only the colour, and below
+ * the budget a cutoff that is reached says "Near budget". So with today's
+ * default (bad 100 %) the pill is today's: green On track, red Over budget.
+ */
+export function forecastPill(projectionGbp: number | null | undefined, budgetGbp: number, thr: { warn: number | null; bad: number | null }): ForecastPill | null {
+  if (projectionGbp === null || projectionGbp === undefined || !Number.isFinite(projectionGbp) || !(budgetGbp > 0)) return null;
+  const over = projectionGbp > budgetGbp;
+  const pct = (projectionGbp / budgetGbp) * 100;
+  // Exactly on the budget is not over it: a bad cutoff of 100 % or more does not fire there.
+  const tone = thresholdTone(pct, !over && thr.bad !== null && thr.bad >= 100 ? { warn: thr.warn, bad: null } : thr, "above") ?? "ok";
+  if (over) return { tone: tone === "ok" ? "plain" : tone, text: "Over budget" };
+  if (tone === "ok") return { tone: "good", text: "On track" };
+  return { tone, text: "Near budget" };
+}

@@ -1,9 +1,11 @@
-import { useId, useState, type ReactNode } from "react";
+import { Fragment, useId, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { CalendarDays, ChartColumn, ChevronRight, Coins, Gauge, Info, ShieldCheck } from "lucide-react";
 import type { CostResponse } from "@shared/api";
-import { MetricTile, type Tone } from "@/components";
-import { changeVsPrevious, dayLabel, gbp, hasActuals } from "./model";
+import { thresholdTone, type Threshold } from "@shared/widgets";
+import { MetricTile, cx, type Tone } from "@/components";
+import { useCornerHost, useWidget, WidgetCorner } from "@/widgets";
+import { changeVsPrevious, dayLabel, gbp, hasActuals, type Level } from "./model";
 
 /** A small "i" button whose text shows on hover or focus and closes on Escape. */
 export function InfoTip({ label, children }: { label: string; children: ReactNode }) {
@@ -35,17 +37,30 @@ const Named = ({ name, children }: { name: string; children: ReactNode }) => (
 );
 
 const budgetTone = (level: CostResponse["budget"]["level"]): Tone => (level === "over" ? "red" : level === "warn" ? "amber" : "green");
+const levelTone = (l: Level | null): Tone => (l === "bad" ? "red" : l === "warn" ? "amber" : "green");
 
 /** Row 1: this session, month to date, the month's projection, the budget and the cost guard. */
 export function KpiRow({ cost }: { cost: CostResponse }) {
+  const { settings } = useWidget("cost.kpis");
+  const host = useCornerHost();
+  const shown = settings.tiles as string[];
+  const deltas = settings.deltas === true;
+  const bar = settings.budgetBar === true;
+  const used = settings.budgetUsed as Threshold;
   const { session, budget, projection } = cost;
   const known = hasActuals(cost);
   // Spent is Azure's actuals plus the running VM's estimate; with neither it is unknown, not £0.
   const spentKnown = known || session.running;
   const change = cost.range === "month" ? changeVsPrevious(cost) : null;
   const guard = budget.level === "none" ? null : budget.level === "over" ? "Over budget" : budget.level === "warn" ? "Nearly there" : "Healthy";
-  return (
-    <div className="cost-kpis">
+  // The budget tile follows the thresholds set on this widget (colouring only); the Cost guard tile follows the server's level.
+  const usedLevel = thresholdTone(budget.pct, used, "above");
+  const tone = levelTone(usedLevel);
+  // Amber or red always comes with its word (never colour alone).
+  const word = usedLevel === "bad" ? "Over budget" : usedLevel === "warn" ? "Nearly there" : null;
+
+  const tiles: Record<string, ReactNode> = {
+    session: (
       <Named name="This session">
         <MetricTile
           iconStyle="circle"
@@ -57,6 +72,8 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
           action={<span className={session.running ? "cost-state cost-state--on" : "cost-state"}>{session.running ? "Running" : "Idle"}</span>}
         />
       </Named>
+    ),
+    month: (
       <Named name="Month to date (actual)">
         <MetricTile
           iconStyle="circle"
@@ -64,10 +81,12 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
           icon={<CalendarDays />}
           label="Month to date (actual)"
           value={known ? gbp(cost.monthToDate) : null}
-          delta={known && change !== null ? { text: `${Math.abs(Math.round(change))}%`, direction: change < 0 ? "down" : "up", good: change <= 0 } : undefined}
+          delta={deltas && known && change !== null ? { text: `${Math.abs(Math.round(change))}%`, direction: change < 0 ? "down" : "up", good: change <= 0 } : undefined}
           sub={cost.meta.asOfDay ? `Azure actual, as of ${dayLabel(cost.meta.asOfDay)} (UTC)` : "Azure has not listed a day yet"}
         />
       </Named>
+    ),
+    estimate: (
       <Named name="Estimated this month">
         <MetricTile
           iconStyle="circle"
@@ -87,14 +106,17 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
           }
         />
       </Named>
+    ),
+    budget: (
       <Named name="Monthly budget">
         <MetricTile
           iconStyle="circle"
-          tone={budgetTone(budget.level)}
+          tone={tone}
           icon={<Gauge />}
           label="Monthly budget"
           value={budget.budget > 0 ? gbp(budget.budget) : null}
-          progress={budget.budget > 0 && spentKnown ? { value: budget.pct, tone: budgetTone(budget.level), showValue: true } : undefined}
+          progress={bar && budget.budget > 0 && spentKnown ? { value: budget.pct, tone, showValue: true } : undefined}
+          action={word ? <span className={usedLevel === "bad" ? "cost-state cost-state--bad" : "cost-state cost-state--warn"}>{word}</span> : undefined}
           sub={
             budget.budget > 0 ? (
               <span className="cost-figs">
@@ -113,6 +135,8 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
           }
         />
       </Named>
+    ),
+    guard: (
       <Named name="Cost guard">
         <MetricTile
           iconStyle="circle"
@@ -129,6 +153,16 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
           }
         />
       </Named>
+    ),
+  };
+  const keys = ["session", "month", "estimate", "budget", "guard"].filter((k) => shown.includes(k));
+  const custom = keys.length !== 5;
+  return (
+    <div className={cx("cost-kpis", custom && "cost-kpis--custom", host)} style={custom ? ({ "--cost-kpi-n": keys.length } as CSSProperties) : undefined}>
+      {keys.map((k) => (
+        <Fragment key={k}>{tiles[k]}</Fragment>
+      ))}
+      <WidgetCorner />
     </div>
   );
 }

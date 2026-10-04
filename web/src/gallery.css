@@ -12,3 +12,7 @@
 .g-log { height: 300px; }
 .g-split { height: 470px; margin-bottom: var(--gap); }
 .g-split .g-table { height: 400px; }
+.g-log--short { height: 150px; }
+.g-mono { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary); white-space: pre-wrap; }
+.g-widgets { display: grid; grid-template-columns: minmax(0, 54fr) minmax(0, 32fr) minmax(0, 32fr); gap: var(--gap); margin-top: 12px; }
+.g-widget-block { margin-top: var(--gap); padding: 16px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-panel); font-size: 13px; }

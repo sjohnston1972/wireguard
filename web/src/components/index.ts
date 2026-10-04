@@ -2,7 +2,7 @@
 export { cx, type Tone } from "./cx";
 
 // layout
-export { Panel, type PanelProps } from "./layout/Panel";
+export { Panel, PanelChromeContext, type PanelProps, type PanelChrome } from "./layout/Panel";
 export { PageHeader, type PageHeaderProps } from "./layout/PageHeader";
 export { Grid, Col, type ColProps } from "./layout/Grid";
 export { Drawer, Sheet, type DrawerProps } from "./layout/Drawer";
@@ -25,7 +25,7 @@ export { QrCode, type QrCodeProps } from "./data/QrCode";
 // charts
 export { Sparkline, type SparklineProps } from "./charts/Sparkline";
 export { TimeSeriesChart, type TimeSeriesChartProps, type TimeSeries, type ChartRange } from "./charts/TimeSeriesChart";
-export { BarChart, type BarChartProps, type Bar } from "./charts/BarChart";
+export { BarChart, type BarChartProps, type Bar, type BarTone } from "./charts/BarChart";
 export { StackedBars, type StackedBarsProps, type StackSeries, type StackBucket, type BrushRange } from "./charts/StackedBars";
 export { Donut, type DonutProps, type DonutSegment } from "./charts/Donut";
 export { Ring, type RingProps } from "./charts/Ring";

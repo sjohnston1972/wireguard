@@ -10,6 +10,7 @@ import { api } from "./api-helpers";
 import worker from "../src/index";
 import type { Env } from "../src/env";
 import { SCENARIOS } from "../src/devseed";
+import { freezeDevClock } from "../src/devclock";
 import { listRuns } from "../src/db";
 import { getSnapshot } from "../src/state";
 
@@ -111,6 +112,15 @@ describe("scenarios", () => {
   it("lists exactly the seven the plan names", () => {
     expect([...SCENARIOS].sort()).toEqual(["busy-month", "deploying", "destroyed", "empty", "failed", "running", "standby"].sort());
   });
+
+  it("every scenario wipes ui_prefs", async () => {
+    const { env } = devEnv();
+    for (const s of SCENARIOS) {
+      await env.DB.prepare("INSERT OR REPLACE INTO ui_prefs (user, page, json, version, updated_at) VALUES ('dev@localhost', 'overview', '{\"layout\":{\"hidden\":[\"overview.notes\"]}}', 3, ?1)").bind(NOW).run();
+      await seed(env, s);
+      expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM ui_prefs").first<{ n: number }>())!.n, s).toBe(0);
+    }
+  }, 30_000);
 
   it("every scenario wipes drafts and resets fw_policy", async () => {
     const { env } = devEnv();
@@ -341,5 +351,44 @@ describe("seeded GitHub links", () => {
       seen += urls.length;
     }
     expect(seen).toBeGreaterThan(5);
+  });
+});
+
+// For pixel-identical screenshots (npm run shots -- --freeze-time): the
+// Worker's own clock must stand still at the seeded time too, or "updated
+// 12 s ago" and every server-side age changes between two runs.
+describe("the frozen clock for screenshots", () => {
+  beforeEach(() => vi.useRealTimers());
+  afterEach(() => freezeDevClock(null));
+
+  async function seedFreeze(env: Env, host: string, freeze: boolean) {
+    const qs = new URLSearchParams({ scenario: "running", now: NOW });
+    if (freeze) qs.set("freeze", "1");
+    const r = await worker.fetch(new Request(`http://${host}/__dev/seed?${qs}`, { method: "POST" }), env, ctx);
+    return { status: r.status, text: await r.text() };
+  }
+
+  it("seed with freeze=1 pins the Worker's clock to the seeded now; a seed without it lets go", async () => {
+    const { env } = devEnv();
+    const r = await seedFreeze(env, "localhost:8787", true);
+    expect(r.status, r.text).toBe(200);
+    expect(Date.now()).toBe(Date.parse(NOW));
+    expect(new Date().toISOString()).toBe(NOW);
+    expect(new Date(0).toISOString()).toBe("1970-01-01T00:00:00.000Z");
+    await new Promise((res) => setTimeout(res, 15));
+    expect(Date.now()).toBe(Date.parse(NOW));
+    expect((await api(env, "GET", "/session")).json.now).toBe(NOW);
+    const again = await seedFreeze(env, "localhost:8787", false);
+    expect(again.status, again.text).toBe(200);
+    expect(Date.now()).not.toBe(Date.parse(NOW));
+  }, 30_000);
+
+  it("a refused seed never touches the clock", async () => {
+    const { env } = makeEnv({ PUBLIC_URL: "http://localhost:8787" });
+    expect((await seedFreeze(env, "localhost:8787", true)).status).toBe(404);
+    expect(Date.now()).not.toBe(Date.parse(NOW));
+    const dev = devEnv();
+    expect((await seedFreeze(dev.env, "wg-admin.example:443", true)).status).toBe(404);
+    expect(Date.now()).not.toBe(Date.parse(NOW));
   });
 });

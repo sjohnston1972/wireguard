@@ -1,0 +1,11 @@
+{
+  "overview": {
+    "layout": {
+      "order": {
+        "r2": ["overview.keyMetrics", "overview.topology"],
+        "r3": ["side", "overview.traffic", "overview.run"],
+        "r4": ["overview.notes", "overview.costImpact", "overview.health"]
+      }
+    }
+  }
+}

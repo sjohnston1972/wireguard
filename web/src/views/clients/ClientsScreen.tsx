@@ -5,6 +5,7 @@ import { useClients, useOverview } from "@/api/queries";
 import { useEditClient } from "@/api/mutations";
 import { Button, EmptyState, ErrorState, IconButton, PageHeader, Panel, Skeleton, useIsPhone, type RowAction } from "@/components";
 import { EnvironmentField, regionLabel } from "@/shell/StateChip";
+import { LayoutMenu, Widget } from "@/widgets";
 import type { Client } from "./model";
 import { ClientsDesktop } from "./ClientsDesktop";
 import { ClientsPhone } from "./ClientsPhone";
@@ -106,6 +107,7 @@ export function ClientsScreen() {
               <Settings2 size={17} aria-hidden />
             </IconButton>
           )}
+          <LayoutMenu page="clients" />
           <Button variant="primary" icon={<Plus size={16} aria-hidden />} onClick={startAdd} size={phone ? "md" : "lg"}>
             Add client
           </Button>
@@ -118,20 +120,24 @@ export function ClientsScreen() {
   if (q.isPending) body = <ClientsSkeleton />;
   else if (q.isError)
     body = (
-      <Panel className="clients__state">
-        <ErrorState title="Could not load the clients" message={q.error.message} onRetry={() => void q.refetch()} />
-      </Panel>
+      <Widget id="clients.table" headerless>
+        <Panel className="clients__state">
+          <ErrorState title="Could not load the clients" message={q.error.message} onRetry={() => void q.refetch()} />
+        </Panel>
+      </Widget>
     );
   else if (data!.clients.length === 0)
     body = (
-      <Panel className="clients__state">
-        <EmptyState
-          icon={<Users size={22} />}
-          title="No clients yet"
-          description="Add a device: its keys are made in this browser, and you get a QR code and a .conf file."
-          action={{ label: "Add client", onClick: startAdd }}
-        />
-      </Panel>
+      <Widget id="clients.table" headerless>
+        <Panel className="clients__state">
+          <EmptyState
+            icon={<Users size={22} />}
+            title="No clients yet"
+            description="Add a device: its keys are made in this browser, and you get a QR code and a .conf file."
+            action={{ label: "Add client", onClick: startAdd }}
+          />
+        </Panel>
+      </Widget>
     );
   else if (phone) body = <ClientsPhone data={data!} selectedId={selectedId} rawId={rawId} h={handlers} />;
   else body = <ClientsDesktop data={data!} selectedId={selectedId} rawId={rawId} h={handlers} />;
@@ -177,11 +183,13 @@ function ClientsSkeleton() {
         ))}
       </div>
       <Skeleton variant="line" width="40%" />
-      <Panel className="clients__skel-table">
-        {Array.from({ length: 8 }, (_, i) => (
-          <Skeleton key={i} variant="row" />
-        ))}
-      </Panel>
+      <Widget id="clients.table" headerless>
+        <Panel className="clients__skel-table">
+          {Array.from({ length: 8 }, (_, i) => (
+            <Skeleton key={i} variant="row" />
+          ))}
+        </Panel>
+      </Widget>
     </div>
   );
 }

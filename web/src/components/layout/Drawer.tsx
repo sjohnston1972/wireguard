@@ -27,6 +27,8 @@ export interface DrawerProps {
   mode?: "modal" | "inline";
   children?: ReactNode;
   className?: string;
+  /** Where focus goes on close: call preventDefault() and focus something to override the default (back to what had focus before). */
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 /**
@@ -45,8 +47,12 @@ export function Drawer(props: DrawerProps) {
   return <ModalDrawer {...props} />;
 }
 
-function ModalDrawer({ open, onOpenChange, title, subtitle, leading, footer, side = "right", children, className }: DrawerProps) {
-  const { onCloseAutoFocus } = useReturnFocus(open);
+function ModalDrawer({ open, onOpenChange, title, subtitle, leading, footer, side = "right", children, className, onCloseAutoFocus: onClose }: DrawerProps) {
+  const returnFocus = useReturnFocus(open);
+  const onCloseAutoFocus = (e: Event) => {
+    onClose?.(e);
+    if (!e.defaultPrevented) returnFocus.onCloseAutoFocus(e);
+  };
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>

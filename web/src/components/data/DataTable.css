@@ -32,6 +32,8 @@
 .dt__a-center { text-align: center; }
 .dt__actions { width: 40px; text-align: right; }
 .dt__row:last-child .dt__td { border-bottom: 0; }
+/* density="compact": views with their own row heights set their compact height on .dt--compact too. */
+.dt--compact .dt__td { height: 28px; }
 .dt__row--click { cursor: pointer; }
 .dt__row--click:hover { background: color-mix(in srgb, var(--blue) 7%, transparent); }
 .dt__row--selected { background: color-mix(in srgb, var(--blue) 13%, transparent); box-shadow: inset 0 0 0 1px var(--blue); }

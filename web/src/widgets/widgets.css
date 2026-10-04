@@ -1,0 +1,128 @@
+/* Widget chrome: the settings cog, the move handle and the corner overlay.
+   Every element here carries data-widget-chrome (npm run shots --
+   --widget-chrome off hides them all to prove the page is otherwise
+   unchanged). Overlays take no space, so a widget's layout never moves. */
+
+.wg-cog { flex: none; color: var(--text-secondary); }
+/* In a panel header: a small cog, its box tucked into the header's end padding. */
+.panel__head .wg-cog { width: 24px; height: 24px; margin-right: -4px; }
+.panel__actions > .wg-cog { margin-left: -4px; }
+.wg-cog:hover { color: var(--text-primary); }
+
+/* The corner overlay of a headerless widget: shown on hover or keyboard
+   focus, always on touch screens (no hover there). */
+.wg-corner-host { position: relative; } /* set by the block holding the corner (useCornerHost, Panel) */
+.wg-corner {
+  position: absolute;
+  inset: 4px 4px auto 4px;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.wg-corner > * { pointer-events: auto; }
+.wg-corner__end { margin-left: auto; }
+.wg-corner .wg-cog { background: var(--bg-elevated); border-radius: var(--radius-control); }
+:hover > .wg-corner,
+:focus-within > .wg-corner { opacity: 1; }
+@media (hover: none) {
+  .wg-corner { opacity: 1; }
+}
+
+/* The move handle: an overlay at the left of a panel header (or the left
+   corner of a headerless widget), shown on hover or keyboard focus. */
+.panel__head:has(> .wg-handle) { position: relative; }
+.wg-handle {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.wg-handle:active { cursor: grabbing; }
+.panel__head > .wg-handle { position: absolute; left: 0; top: 50%; transform: translate(-2px, -50%); z-index: 5; }
+.panel:hover > .panel__head > .wg-handle,
+.wg-handle:focus-visible { opacity: 1; }
+@media (hover: none) {
+  .wg-handle { opacity: 1; }
+}
+
+/* The page header's Layout menu. */
+.wg-layout { display: inline-flex; align-self: flex-end; }
+/* On a desktop the Layout button is as tall as the page header's other controls (36 px), bottom-aligned with them. */
+@media (min-width: 641px) {
+  .wg-layout > .btn { height: 36px; }
+}
+.menu__label { padding: 6px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
+.menu__sep { height: 1px; margin: 4px 0; background: var(--border); }
+.menu__item[data-disabled] { color: var(--disabled-fg); cursor: default; }
+.wg-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.wg-list__item {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The cog's popover (desktop) and sheet (phone). */
+.wg-pop {
+  z-index: 80;
+  width: min(340px, calc(100vw - 24px));
+  /* Never past the window's edge: Radix gives the room left on the side it opened. */
+  max-height: min(70vh, 560px, var(--radix-popover-content-available-height, 560px));
+  overflow: auto;
+  padding: 12px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+.wg-pop__title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+
+.wg-settings { display: flex; flex-direction: column; gap: 10px; }
+.wg-settings__note { font-size: 12.5px; color: var(--amber); }
+.wg-settings__foot { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+
+.wg-form { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.wg-form__section { display: flex; flex-direction: column; gap: 8px; }
+.wg-form__title { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.wg-form__hint { font-size: 12px; color: var(--text-secondary); }
+
+.wg-field { display: flex; flex-direction: column; gap: 4px; }
+.wg-field--inline { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.wg-field__label { font-size: 12.5px; color: var(--text-primary); }
+
+.wg-number { display: inline-flex; align-items: center; gap: 6px; }
+.wg-number__input {
+  width: 96px;
+  height: 30px;
+  padding: 0 8px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+.wg-number__input:disabled { background: var(--disabled-bg); border-color: var(--disabled-border); color: var(--disabled-fg); cursor: not-allowed; }
+.wg-unit { font-size: 12px; color: var(--text-secondary); }
+
+.wg-threshold { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.wg-threshold__parts { display: flex; flex-wrap: wrap; gap: 12px; }
+.wg-threshold__part { display: flex; align-items: flex-end; gap: 8px; }
+.wg-threshold__switch { display: inline-flex; align-items: center; gap: 6px; padding-bottom: 5px; font-size: 12px; color: var(--text-secondary); }

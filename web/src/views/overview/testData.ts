@@ -2,9 +2,11 @@
 // shared fixtures are partial). Names and addresses are invented: dev@localhost,
 // wg.example.net and TEST-NET ranges only.
 
-import type { ActivityResponse, CostResponse, OverviewResponse, SessionResponse, VmHistoryResponse } from "@shared/api";
+import type { ActivityResponse, CostResponse, OverviewResponse, PagePrefs, SessionResponse, SettingValue, VmHistoryResponse } from "@shared/api";
 import type { Snapshot, Step } from "../../../../worker/src/state";
 import type { Alert } from "../../../../worker/src/db";
+import type { ActivityEvent } from "../../../../worker/src/activity";
+import { prefsServer } from "@/test/fixtures";
 
 export const NOW = "2026-10-02T12:00:00.000Z";
 export const NOW_MS = Date.parse(NOW);
@@ -220,4 +222,64 @@ export function routes(o: OverviewResponse, extra: Record<string, unknown> = {})
     [`GET /api/v1/runs/${o.snapshot.run_id ?? "none"}/log`]: { log: "", source: "live", active: true, updatedAt: null },
     ...extra,
   };
+}
+
+// ── Widget settings (W1): saved preferences and longer lists ───────────────
+
+/** Saved settings for one Overview widget: `{ widgets: { id: { v: 1, s } } }`. */
+export function saved(id: string, s: Record<string, SettingValue>): PagePrefs {
+  return { widgets: { [id]: { v: 1, s } } };
+}
+
+/** Several preference pieces merged (widgets and layout). */
+export function merge(...ps: PagePrefs[]): PagePrefs {
+  const out: PagePrefs = {};
+  for (const p of ps) {
+    if (p.widgets) out.widgets = { ...(out.widgets ?? {}), ...p.widgets };
+    if (p.layout?.order) out.layout = { ...(out.layout ?? {}), order: { ...(out.layout?.order ?? {}), ...p.layout.order } };
+    if (p.layout?.hidden) out.layout = { ...(out.layout ?? {}), hidden: [...(out.layout?.hidden ?? []), ...p.layout.hidden] };
+  }
+  return out;
+}
+
+/** The Overview's routes with these preferences saved on a working fake of the prefs API. */
+export function prefsRoutes(o: OverviewResponse, prefs: PagePrefs, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { ...routes(o, extra), ...prefsServer({ overview: prefs }).routes };
+}
+
+const EVENT_ROWS: [ActivityEvent["type"], string, string | null][] = [
+  ["deploy", "Deployed", "uksouth"],
+  ["config", "Client added", "laptop"],
+  ["firewall", "Firewall rule added", "ssh from home"],
+  ["watchman", "Heartbeat late", "3 minutes"],
+  ["destroy", "Torn down", "timer"],
+  ["failure", "Deploy failed", "SkuNotAvailable"],
+  ["deploy", "Deployed again", "uksouth"],
+  ["config", "Settings changed", "budget"],
+];
+
+/** An /activity answer whose combined list has `n` events (newest first, one every 10 minutes, types cycling). */
+export function activityOf(n: number): ActivityResponse {
+  return {
+    ...activity(),
+    all: Array.from({ length: n }, (_, i) => {
+      const [type, title, detail] = EVENT_ROWS[i % EVENT_ROWS.length];
+      return { at: iso(NOW_MS - (i + 1) * 600_000), type, title: `${title} ${i + 1}`, detail, ref: { kind: "run", id: `ev-${i}` } };
+    }),
+  } as unknown as ActivityResponse;
+}
+
+/** `n` speed tests, newest first, with jitter and the test server's name. */
+export function speedtestsOf(n: number): OverviewResponse["speedtests"] {
+  return Array.from({ length: n }, (_, i) => ({ id: `st-${i}`, at: iso(NOW_MS - (i + 1) * 3_600_000), target_name: `home-site-${i + 1}`, down_mbps: 50 + i, up_mbps: 20 + i, rtt_ms: 30 + i, jitter_ms: 2.5 + i, error: null }));
+}
+
+/** `n` finished sessions, newest first, costing £0.01, £0.02, ... */
+export function costSessionsOf(n: number): CostResponse["sessions"] {
+  return Array.from({ length: n }, (_, i) => ({ runId: `s${i}`, started: iso(NOW_MS - (i + 1) * 86_400_000), ended: iso(NOW_MS - (i + 1) * 86_000_000), durationSeconds: 3600, region: "uksouth", vmSize: "Standard_B1s", estimatedGbp: (i + 1) / 100, perHourGbp: 0.01, stillRunning: false }));
+}
+
+/** `n` unread watchman notes, newest first. */
+export function notesOf(n: number): Alert[] {
+  return Array.from({ length: n }, (_, i) => ({ id: 100 + i, at: iso(NOW_MS - (i + 1) * 300_000), kind: "watchman", message: `Note number ${i + 1}`, run_id: null, acknowledged: 0 }));
 }

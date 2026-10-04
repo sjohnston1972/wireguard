@@ -1,7 +1,8 @@
 import { Globe, Pencil, Plus, Trash2 } from "lucide-react";
 import { forwardRef, useEffect, useId, useState, type FormEvent } from "react";
 import type { FirewallResponse } from "@shared/api";
-import { Button, ConfirmByTyping, EmptyState, Field, IconButton, Modal, Panel, Select, Switch, cx } from "@/components";
+import { Button, ConfirmByTyping, Drawer, EmptyState, Field, IconButton, Modal, Panel, Select, Switch, cx, formatAge } from "@/components";
+import { useWidget } from "@/widgets";
 import { useForwardAdd, useForwardDelete, useForwardEdit } from "@/api/mutations";
 import "./Ports.css";
 
@@ -115,17 +116,33 @@ export function ForwardModal({ fw, open, onOpenChange, editing }: { fw: Firewall
   );
 }
 
-/** Published-port cards with edit and delete (delete asks for the name). */
-export function PortsList({ fw, onAdd, onEdit }: { fw: FirewallResponse; onAdd: () => void; onEdit: (f: Forward) => void }) {
+/** "3 connections · last hit 4 m ago": what the VM counted for a published port (the Published ports widget's setting). */
+function usage(f: Forward, now: string): string {
+  const n = f.connections?.[0];
+  const count = n === undefined ? "no data" : `${n.toLocaleString("en-GB")} ${n === 1 ? "connection" : "connections"}`;
+  const last = f.lastHit ? formatAge(Date.parse(now) - Date.parse(f.lastHit)) : "never";
+  return `${count} · last hit ${last}`;
+}
+
+/**
+ * Published-port cards with edit and delete (delete asks for the name). The
+ * Published ports widget's settings: whether turned-off ports are listed, and
+ * each port's connection count and last hit. `all` lists turned-off ports
+ * whatever the setting (the manage sheet, where one is turned back on).
+ */
+export function PortsList({ fw, onAdd, onEdit, all = false }: { fw: FirewallResponse; onAdd: () => void; onEdit: (f: Forward) => void; all?: boolean }) {
   const del = useForwardDelete();
   const [deleting, setDeleting] = useState<Forward | null>(null);
+  const { settings } = useWidget("firewall.ports");
   if (fw.forwards.length === 0) {
     return <EmptyState icon={<Globe />} title="No published ports" description="Nothing on your network is reachable from the internet." action={{ label: "Add published port", onClick: onAdd }} />;
   }
+  const shown = settings.showOff || all ? fw.forwards : fw.forwards.filter((f) => f.enabled);
+  if (shown.length === 0) return <p className="fw-ports__none">Every published port is turned off.</p>;
   return (
     <>
       <ul className="fw-ports">
-        {fw.forwards.map((f) => (
+        {shown.map((f) => (
           <li key={f.id} className="fw-ports__card">
             <span className={cx("fw-ports__dot", f.enabled ? "fw-ports__dot--on" : "fw-ports__dot--off")} aria-hidden />
             <span className="fw-ports__main">
@@ -137,6 +154,7 @@ export function PortsList({ fw, onAdd, onEdit }: { fw: FirewallResponse; onAdd: 
                 {f.proto.toUpperCase()} {f.public_port} → {f.target_ip}:{f.target_port}
               </span>
               <span className="fw-ports__from">{f.allow_from ? `from ${f.allow_from}` : "from anywhere"}</span>
+              {settings.connections && <span className="fw-ports__usage">{usage(f, fw.now)}</span>}
             </span>
             <IconButton size="sm" label={`Edit ${f.name}`} onClick={() => onEdit(f)}>
               <Pencil size={14} aria-hidden />
@@ -171,3 +189,21 @@ export const PortsPanel = forwardRef<HTMLButtonElement, { fw: FirewallResponse; 
     </Panel>
   );
 });
+
+/**
+ * Every published port in a drawer (a bottom sheet on the phone), to add,
+ * edit (which turns one off or on) or delete: how ports are managed while the
+ * Published ports widget is hidden.
+ */
+export function PortsSheet({ fw, open, onOpenChange, onAdd, onEdit }: { fw: FirewallResponse; open: boolean; onOpenChange: (o: boolean) => void; onAdd: () => void; onEdit: (f: Forward) => void }) {
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} title="Published ports" subtitle="Expose a server on your network to the internet.">
+      <div className="fw-ports-sheet">
+        <Button size="sm" variant="primary" icon={<Plus size={14} aria-hidden />} onClick={onAdd}>
+          Add published port
+        </Button>
+        <PortsList fw={fw} onAdd={onAdd} onEdit={onEdit} all />
+      </div>
+    </Drawer>
+  );
+}

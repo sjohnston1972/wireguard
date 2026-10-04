@@ -3,6 +3,8 @@
 .fw-ph--draft { padding-bottom: 72px; }
 .fw-ph__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .fw-ph__title { font-size: 22px; font-weight: 650; }
+/* The widgets' Layout menu, when shown, sits after the state word. */
+.fw-ph__head > .fw-ph__state { margin-left: auto; }
 .fw-ph__state { font-weight: 600; font-size: 14px; color: var(--text-secondary); }
 .fw-ph__state--green { color: var(--green); }
 .fw-ph__state--amber { color: var(--amber); }

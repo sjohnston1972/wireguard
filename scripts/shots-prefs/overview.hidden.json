@@ -1,0 +1,7 @@
+{
+  "overview": {
+    "layout": {
+      "hidden": ["overview.topology", "overview.traffic", "overview.events", "overview.speedTest", "overview.costImpact", "overview.notes"]
+    }
+  }
+}

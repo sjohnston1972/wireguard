@@ -6,6 +6,7 @@ import { AccountSlot, ConnectionSlot, NotesSlot, SearchSlot, StateSlot, ThemeTog
 import { DisconnectedBanner } from "./Connection";
 import { SessionExpiredScreen } from "./SessionExpired";
 import { CommandPalette } from "./CommandPalette";
+import { usePrefs } from "@/widgets";
 import "./AppShell.css";
 
 /**
@@ -17,6 +18,8 @@ import "./AppShell.css";
 export function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { sessionExpired } = useConnection();
+  // Widget preferences load with the shell, so every page's widgets have them from the start.
+  usePrefs();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

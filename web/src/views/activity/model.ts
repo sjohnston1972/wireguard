@@ -49,6 +49,20 @@ export function fmtClock(iso: string | null | undefined): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+/** "just now", "5m ago", "3h ago", "2d ago": how long before `nowMs` the moment was. */
+export function fmtRelative(iso: string | null | undefined, nowMs: number): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const s = Math.max(0, Math.round((nowMs - t) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 /** 138 -> "2m 18s", 45 -> "45s", 3840 -> "1h 4m". null stays null (the caller says "no data"). */
 export function fmtDuration(seconds: number | null | undefined): string | null {
   if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return null;

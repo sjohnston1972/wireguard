@@ -20,6 +20,8 @@ export interface DonutProps {
   stroke?: number;
   /** Show the legend (label, value, share) beside the ring. */
   legend?: boolean;
+  /** The legend's share column (default on). Off leaves it out; the chart's name still gives each share. */
+  percentages?: boolean;
   className?: string;
 }
 
@@ -28,7 +30,7 @@ const pct = (v: number, total: number) => {
   return p > 0 && p < 1 ? "<1%" : `${Math.round(p)}%`;
 };
 
-export function Donut({ segments, title, centre, size = 160, stroke = 18, legend = true, className }: DonutProps) {
+export function Donut({ segments, title, centre, size = 160, stroke = 18, legend = true, percentages = true, className }: DonutProps) {
   const total = segments.reduce((s, x) => s + (Number.isFinite(x.value) ? Math.max(0, x.value) : 0), 0);
   if (total <= 0) return <span className={cx("donut__nodata", className)}>no data</span>;
 
@@ -74,7 +76,7 @@ export function Donut({ segments, title, centre, size = 160, stroke = 18, legend
               <span className="donut__swatch" style={{ background: toneVar(s.color) }} aria-hidden />
               <span className="donut__name">{s.label}</span>
               {s.display && <span className="donut__val">{s.display}</span>}
-              <span className="donut__pct">{pct(s.value, total)}</span>
+              {percentages && <span className="donut__pct">{pct(s.value, total)}</span>}
             </li>
           ))}
         </ul>
