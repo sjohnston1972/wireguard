@@ -125,7 +125,7 @@ describe("saving", () => {
     // The save went out a quiet spell after the change (which happened between before and after).
     expect(putAt - before).toBeGreaterThanOrEqual(SAVE_DELAY_MS - 5);
     expect(putAt - after).toBeLessThan(SAVE_DELAY_MS + 400);
-    expect(server.puts[0]).toEqual({ page: "overview", body: { baseVersion: 1, prefs: { widgets: { "overview.events": { v: 1, s: { rows: 7 } } } } } });
+    expect(server.puts[0]).toEqual({ page: "overview", body: { schema: 2, baseVersion: 1, prefs: { widgets: { "overview.events": { v: 1, s: { rows: 7 } } } } } });
     expect(out("rows")).toHaveTextContent("7");
     expect(server.state.pages.overview.version).toBe(2);
   });
@@ -174,7 +174,7 @@ describe("saving", () => {
     expect(calls).toBe(1);
     await act(async () => gate.resolve());
     await waitFor(() => expect(server.puts).toHaveLength(2));
-    expect(server.puts[1]!.body).toEqual({ baseVersion: 2, prefs: { layout: { hidden: ["overview.events"] }, widgets: { "overview.events": { v: 1, s: { rows: 7 } } } } });
+    expect(server.puts[1]!.body).toEqual({ schema: 2, baseVersion: 2, prefs: { layout: { hidden: ["overview.events"] }, widgets: { "overview.events": { v: 1, s: { rows: 7 } } } } });
     await waitFor(() => expect(server.state.pages.overview.version).toBe(3));
     expect(out("hidden")).toHaveTextContent("true");
     expect(out("rows")).toHaveTextContent("7");
@@ -342,6 +342,33 @@ describe("a save that fails", () => {
     await waitFor(() => expect(out("hidden")).toHaveTextContent("true"));
     expect(out("rows")).toHaveTextContent("5");
     expect(server.state.pages.overview).toMatchObject({ version: 2, prefs: { layout: { hidden: ["overview.events"] } } });
+  });
+
+  it("the store sends schema 2", async () => {
+    const server = prefsServer(saved);
+    renderWithProviders(<Probe />, { routes: server.routes });
+    await waitFor(() => expect(out("status")).toHaveTextContent("ready"));
+    await userEvent.click(screen.getByRole("button", { name: "hide" }));
+    await waitFor(() => expect(server.puts).toHaveLength(1));
+    expect(server.puts[0]!.body.schema).toBe(2);
+    expect(server.state.pages.overview.version).toBe(2);
+  });
+
+  it("the fake server, like the Worker, answers a save without schema 2 with 409 outdated", () => {
+    const server = prefsServer();
+    const put = server.routes["PUT /api/v1/prefs/cost"] as (r: { body: unknown }) => { status?: number; json?: { error: { code: string; field: string } } };
+    expect(put({ body: { baseVersion: 0, prefs: {} } })).toMatchObject({ status: 409, json: { error: { code: "outdated", field: "schema" } } });
+    expect(server.state.pages.cost.version).toBe(0);
+  });
+
+  it("a 409 outdated from a missing schema says reload", async () => {
+    const server = prefsServer(saved);
+    server.routes["PUT /api/v1/prefs/overview"] = { status: 409, json: { error: { code: "outdated", message: "This tab is running an older dashboard. Reload to change widget settings.", field: "schema" } } };
+    renderWithProviders(<Probe />, { routes: server.routes });
+    await waitFor(() => expect(out("status")).toHaveTextContent("ready"));
+    await userEvent.click(screen.getByRole("button", { name: "hide" }));
+    expect(await screen.findByText("This tab is running an older dashboard. Reload to change widget settings.")).toBeInTheDocument();
+    expect(out("hidden")).toHaveTextContent("false");
   });
 
   it("a 409 outdated says reload", async () => {

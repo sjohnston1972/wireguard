@@ -1,5 +1,6 @@
 // The widget framework. Import from "@/widgets". See the "W0 names as built"
-// section at the top of docs/superpowers/plans/2026-10-03-widgets-plan.md.
+// section at the top of docs/superpowers/plans/2026-10-03-widgets-plan.md, and
+// "X0 names as built" in docs/superpowers/plans/2026-10-04-azure-insights-plan.md.
 export { usePrefs, usePrefsStatus, usePagePrefs, type PrefsStatus } from "./usePrefs";
 export { useWidget, type WidgetState } from "./useWidget";
 export { Widget, WidgetCorner, useCornerHost, CORNER_HOST, WIDGET_DRAG_TYPE, type WidgetProps } from "./Widget";
@@ -9,6 +10,6 @@ export { WidgetRow, WidgetStack, useRowItems, type WidgetRowProps, type WidgetSt
 export { LayoutMenu } from "./LayoutMenu";
 export { WidgetArrangement, type WidgetArrangementProps } from "./arrangement";
 export { useStarting } from "./useStarting";
-export type { RowView, RowItemView, MoveState } from "./layout";
+export type { RowView, RowItemView, MoveState, EnableResult } from "./layout";
 export { SAVE_DELAY_MS, PREFS_MIRROR_KEY } from "./store";
 export { thresholdTone } from "@shared/widgets";

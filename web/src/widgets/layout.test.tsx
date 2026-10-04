@@ -14,7 +14,8 @@ import { setViewport } from "@/test/viewport";
 import { Panel } from "@/components";
 import type { PagePrefs } from "@shared/api";
 import type { Registry } from "@shared/widgets";
-import { LayoutMenu, Widget, WidgetArrangement, WidgetCorner, WidgetRow, WidgetStack, usePrefsStatus, useRowItems, WIDGET_DRAG_TYPE } from "@/widgets";
+import { useState } from "react";
+import { LayoutMenu, Widget, WidgetArrangement, WidgetCorner, WidgetRow, WidgetStack, usePagePrefs, usePrefsStatus, useRowItems, useWidget, SAVE_DELAY_MS, WIDGET_DRAG_TYPE } from "@/widgets";
 import { canMoveIn, moveWithin, rowView, dropMove, type Arranged } from "./layout";
 
 afterEach(() => {
@@ -29,7 +30,7 @@ afterEach(() => {
 // ── The rules, on a test-only page ────────────────────────────────────────
 
 const reg: Registry = {
-  widgets: ["a", "b", "c", "d", "e", "f", "g"].map((x) => ({ id: `overview.${x}`, page: "overview" as const, title: x.toUpperCase(), version: 1, settings: [], ...(x === "a" ? { pinned: true } : {}) })),
+  widgets: ["a", "b", "c", "d", "e", "f", "g"].map((x) => ({ id: `overview.${x}`, page: "overview" as const, title: x.toUpperCase(), description: `Test widget ${x}`, version: 1, settings: [], ...(x === "a" ? { pinned: true } : {}) })),
   layouts: {
     overview: {
       page: "overview",
@@ -169,6 +170,7 @@ function OverviewRows() {
               }}
             </WidgetStack>
           ),
+          "overview.vmPerformance": <Widget id="overview.vmPerformance">{panel("VM performance")}</Widget>,
         }}
       </WidgetRow>
       <WidgetRow page="overview" row="r4" className="ov-row ov-row--4" data-testid="r4">
@@ -176,6 +178,8 @@ function OverviewRows() {
           "overview.health": <Widget id="overview.health">{panel("Health summary")}</Widget>,
           "overview.costImpact": <Widget id="overview.costImpact">{panel("Cost impact")}</Widget>,
           "overview.notes": <Widget id="overview.notes">{panel("Watchman notes")}</Widget>,
+          "overview.azureHealth": <Widget id="overview.azureHealth">{panel("Azure health")}</Widget>,
+          "overview.vitals": <Widget id="overview.vitals">{panel("System vitals")}</Widget>,
         }}
       </WidgetRow>
       <Widget id="overview.status" headerless>
@@ -279,7 +283,7 @@ describe("moving", () => {
     fireEvent.dragEnd(handle, { dataTransfer: dt });
     expect(titles(screen.getByTestId("r4"))).toEqual(["Cost impact", "Watchman notes", "Health summary"]);
     await waitFor(() => expect(server.puts).toHaveLength(1));
-    expect(server.puts[0]!.body.prefs).toEqual({ layout: { order: { r4: ["overview.costImpact", "overview.notes", "overview.health"] } } });
+    expect(server.puts[0]!.body.prefs).toEqual({ layout: { order: { r4: ["overview.costImpact", "overview.notes", "overview.health", "overview.azureHealth", "overview.vitals"] } } });
   });
 
   it("a drop without the widget data type is ignored", async () => {
@@ -325,7 +329,7 @@ describe("moving", () => {
     await userEvent.keyboard("{Alt>}{ArrowRight}{/Alt}{ArrowLeft}");
     expect(titles(rowOf("Last run"))).toEqual(["Network traffic", "Recent events", "Speed test", "Last run"]);
     await waitFor(() => expect(server.puts).toHaveLength(1));
-    expect(server.puts[0]!.body.prefs).toEqual({ layout: { order: { r3: ["overview.traffic", "side", "overview.run"] } } });
+    expect(server.puts[0]!.body.prefs).toEqual({ layout: { order: { r3: ["overview.traffic", "side", "overview.run", "overview.vmPerformance"] } } });
   });
 
   it("Move left / Move right in the cog", async () => {
@@ -422,7 +426,7 @@ describe("moving", () => {
     expect(titles(rowOf("Last run"))).toEqual(["Recent events", "Network traffic", "Last run"]);
     // Saved as an order of the whole declared row: traffic keeps its place there.
     await waitFor(() => expect(server.puts).toHaveLength(1));
-    expect(server.puts[0]!.body.prefs).toEqual({ layout: { order: { r3: ["side", "overview.traffic", "overview.run"] } } });
+    expect(server.puts[0]!.body.prefs).toEqual({ layout: { order: { r3: ["side", "overview.traffic", "overview.run", "overview.vmPerformance"] } } });
   });
 });
 
@@ -475,7 +479,7 @@ describe("the Layout menu", () => {
     expect(titles(screen.getByTestId("r4"))).toEqual(["Health summary", "Cost impact", "Watchman notes"]);
     expect(region("Speed test")).toBeInTheDocument();
     await waitFor(() => expect(server.puts).toHaveLength(1));
-    expect(server.puts[0]!.body).toEqual({ baseVersion: 1, prefs: {} });
+    expect(server.puts[0]!.body).toEqual({ schema: 2, baseVersion: 1, prefs: {} });
     expect(confirmSpy).not.toHaveBeenCalled();
   });
 
@@ -499,11 +503,153 @@ describe("the Layout menu", () => {
       "Health summary",
       "Cost impact",
       "Watchman notes",
+      "VM performance",
+      "Azure health",
+      "System vitals",
     ]);
     // Topology is not on this test page at all, and can still be set.
     await userEvent.click(within(sheet).getByRole("button", { name: "Live topology settings" }));
     const settings = await screen.findByRole("dialog", { name: "Live topology settings" });
     expect(within(settings).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Display"]);
     expect(within(settings).getByRole("switch", { name: "Edge labels: UDP port" })).toBeChecked();
+  });
+});
+
+// ── Default-off widgets (insights spec 9.1-9.3), on the real Overview layout ──
+
+/** One widget's library controls, with the last answer from enable() on show. */
+function LibraryProbe({ id }: { id: string }) {
+  const w = useWidget(id);
+  const [last, setLast] = useState("");
+  const { shown } = usePagePrefs("overview");
+  return (
+    <div>
+      <output aria-label={`${id} hidden`}>{String(w.hidden)}</output>
+      <output aria-label="shown">{shown.join(",")}</output>
+      <output aria-label="enable result">{last}</output>
+      <button onClick={() => setLast(JSON.stringify(w.enable()))}>enable {id}</button>
+      <button onClick={() => w.disable()}>disable {id}</button>
+      <button onClick={() => setLast(String(w.replace("overview.traffic")))}>replace traffic with {id}</button>
+    </div>
+  );
+}
+
+function renderLibrary(id: string, initial: Partial<Record<"overview", PagePrefs>> = {}) {
+  const server = prefsServer(initial);
+  const r = renderWithProviders(
+    <>
+      <LayoutMenu page="overview" />
+      <OverviewRows />
+      <LibraryProbe id={id} />
+    </>,
+    { routes: server.routes },
+  );
+  return { ...r, server };
+}
+
+describe("default-off widgets", () => {
+  it("a default-off widget renders nothing until shown", async () => {
+    renderLibrary("overview.vitals");
+    await ready();
+    expect(screen.queryByRole("region", { name: "System vitals" })).toBeNull();
+    expect(screen.getByRole("status", { name: "overview.vitals hidden" })).toHaveTextContent("true");
+    // As shipped: r4 is untouched, so the view's own CSS keeps its columns.
+    expect(titles(screen.getByTestId("r4"))).toEqual(["Health summary", "Cost impact", "Watchman notes"]);
+    expect(screen.getByTestId("r4").style.gridTemplateColumns).toBe("");
+    expect(rowOf("Last run").style.gridTemplateColumns).toBe("");
+  });
+
+  it("a shown default-off widget renders in its home row", async () => {
+    renderLibrary("overview.vitals", { overview: { layout: { hidden: ["overview.costImpact"], shown: ["overview.vitals"] } } });
+    await ready();
+    expect(titles(screen.getByTestId("r4"))).toEqual(["Health summary", "Watchman notes", "System vitals"]);
+    expect(screen.getByTestId("r4").style.gridTemplateColumns).toBe("minmax(0, 54fr) minmax(0, 32fr) minmax(0, 32fr)");
+  });
+
+  it("enable adds it to shown at its declared index and saves", async () => {
+    // A saved order from before this project: notes first. Azure health comes in at its declared place (after notes' row-mates).
+    const { server } = renderLibrary("overview.azureHealth", { overview: { layout: { order: { r4: ["overview.notes", "overview.health", "overview.costImpact"] }, hidden: ["overview.costImpact"] } } });
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "enable overview.azureHealth" }));
+    expect(screen.getByRole("status", { name: "enable result" })).toHaveTextContent('{"ok":true}');
+    expect(titles(screen.getByTestId("r4"))).toEqual(["Watchman notes", "Health summary", "Azure health"]);
+    expect(screen.getByRole("status", { name: "shown" })).toHaveTextContent("overview.azureHealth");
+    await waitFor(() => expect(server.puts).toHaveLength(1));
+    expect(server.puts[0]!.body.prefs.layout).toMatchObject({ hidden: ["overview.costImpact"], shown: ["overview.azureHealth"] });
+  });
+
+  it("enable into a full row returns full with candidates and saves nothing", async () => {
+    const { server } = renderLibrary("overview.vmPerformance");
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "enable overview.vmPerformance" }));
+    expect(JSON.parse(screen.getByRole("status", { name: "enable result" }).textContent!)).toEqual({ ok: false, full: true, candidates: ["overview.run", "overview.traffic"], suggestion: "overview.traffic" });
+    expect(screen.queryByRole("region", { name: "VM performance" })).toBeNull();
+    await new Promise((r) => setTimeout(r, SAVE_DELAY_MS + 100));
+    expect(server.puts).toHaveLength(0);
+  });
+
+  it("enable of a hidden existing widget into a full row is refused the same way", async () => {
+    const { server } = renderLibrary("overview.notes", { overview: { layout: { hidden: ["overview.notes", "overview.costImpact"], shown: ["overview.azureHealth", "overview.vitals"] } } });
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "enable overview.notes" }));
+    expect(JSON.parse(screen.getByRole("status", { name: "enable result" }).textContent!)).toMatchObject({ ok: false, full: true, candidates: ["overview.health", "overview.azureHealth", "overview.vitals"] });
+    await new Promise((r) => setTimeout(r, SAVE_DELAY_MS + 100));
+    expect(server.puts).toHaveLength(0);
+  });
+
+  it("replace hides the old widget and shows the new one in its place in one PUT", async () => {
+    const { server } = renderLibrary("overview.vmPerformance");
+    await ready();
+    const before = rowView("overview", "r3", {}).template;
+    await userEvent.click(screen.getByRole("button", { name: "replace traffic with overview.vmPerformance" }));
+    expect(screen.getByRole("status", { name: "enable result" })).toHaveTextContent("true");
+    expect(screen.queryByRole("region", { name: "Network traffic" })).toBeNull();
+    const row = rowOf("Last run");
+    expect(within(row).getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Last run", "VM performance", "Recent events", "Speed test"]);
+    // The same weights in the same places: the row's geometry is unchanged.
+    expect(row.style.gridTemplateColumns).toBe(before);
+    await waitFor(() => expect(server.puts).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, SAVE_DELAY_MS + 100));
+    expect(server.puts).toHaveLength(1);
+    expect(server.puts[0]!.body.prefs).toEqual({ layout: { order: { r3: ["overview.run", "overview.vmPerformance", "side", "overview.traffic"] }, hidden: ["overview.traffic"], shown: ["overview.vmPerformance"] } });
+  });
+
+  it("replace refuses a widget that is not a candidate", async () => {
+    const { server } = renderLibrary("overview.vitals");
+    await ready();
+    // Traffic is in r3, not in the vitals' home row r4.
+    await userEvent.click(screen.getByRole("button", { name: "replace traffic with overview.vitals" }));
+    expect(screen.getByRole("status", { name: "enable result" })).toHaveTextContent("false");
+    await new Promise((r) => setTimeout(r, SAVE_DELAY_MS + 100));
+    expect(server.puts).toHaveLength(0);
+  });
+
+  it("disable of a default-off widget removes it from shown", async () => {
+    const { server } = renderLibrary("overview.vitals", { overview: { layout: { hidden: ["overview.costImpact"], shown: ["overview.vitals"] } } });
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "disable overview.vitals" }));
+    expect(screen.queryByRole("region", { name: "System vitals" })).toBeNull();
+    await waitFor(() => expect(server.puts).toHaveLength(1));
+    expect(server.puts[0]!.body.prefs).toEqual({ layout: { hidden: ["overview.costImpact"] } });
+  });
+
+  it("Reset this page clears shown", async () => {
+    const { server } = renderLibrary("overview.vitals", { overview: { layout: { hidden: ["overview.costImpact"], shown: ["overview.vitals"] } } });
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "Layout" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Reset this page…" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Reset" }));
+    expect(screen.queryByRole("region", { name: "System vitals" })).toBeNull();
+    expect(titles(screen.getByTestId("r4"))).toEqual(["Health summary", "Cost impact", "Watchman notes"]);
+    await waitFor(() => expect(server.puts).toHaveLength(1));
+    expect(server.puts[0]!.body).toEqual({ schema: 2, baseVersion: 1, prefs: {} });
+  });
+
+  it("the Layout menu's hidden list never offers a default-off widget", async () => {
+    renderLibrary("overview.vitals");
+    await ready();
+    await userEvent.click(screen.getByRole("button", { name: "Layout" }));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByRole("menuitem", { name: "No hidden widgets" })).toBeInTheDocument();
   });
 });

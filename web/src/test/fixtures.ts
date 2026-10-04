@@ -13,7 +13,7 @@ import type {
   PrefsPage,
   PrefsResponse,
 } from "@shared/api";
-import { PAGE_IDS, normalisePagePrefs, validatePagePrefs, type PageId } from "@shared/widgets";
+import { PAGE_IDS, PREFS_SCHEMA, normalisePagePrefs, validatePagePrefs, type PageId } from "@shared/widgets";
 import type { Snapshot } from "../../../worker/src/state";
 import type { ClientView } from "../../../worker/src/clients";
 
@@ -384,22 +384,24 @@ export interface PrefsServer {
   /** What the fake server holds now. */
   state: PrefsResponse;
   /** Every PUT received, in order, accepted or not. */
-  puts: { page: PageId; body: { baseVersion: number; prefs: PagePrefs } }[];
+  puts: { page: PageId; body: { schema?: number; baseVersion: number; prefs: PagePrefs } }[];
 }
 
 /**
- * A working fake of the preferences API, as the Worker behaves: a PUT lands
- * only on the stored version (else 409 stale), is checked with the same
- * shared/widgets.ts rules (400 with the field; 409 outdated), is stored
- * normalised, and answers the page with its new version.
+ * A working fake of the preferences API, as the Worker behaves: a PUT
+ * without schema 2 is 409 outdated, then it lands only on the stored version
+ * (else 409 stale), is checked with the same shared/widgets.ts rules (400
+ * with the field; 409 outdated), is stored normalised, and answers the page
+ * with its new version.
  */
 export function prefsServer(initial: Partial<Record<PageId, PagePrefs>> = {}): PrefsServer {
   const server: PrefsServer = { routes: {}, state: prefsFixture(initial), puts: [] };
   server.routes["GET /api/v1/prefs"] = () => structuredClone(server.state);
   for (const page of PAGE_IDS) {
-    server.routes[`PUT /api/v1/prefs/${page}`] = ({ body }: { body: { baseVersion: number; prefs: PagePrefs } }) => {
+    server.routes[`PUT /api/v1/prefs/${page}`] = ({ body }: { body: { schema?: number; baseVersion: number; prefs: PagePrefs } }) => {
       server.puts.push({ page, body: structuredClone(body) });
       const cur = server.state.pages[page];
+      if (body.schema !== PREFS_SCHEMA) return { status: 409, json: { error: { code: "outdated", message: "This tab is running an older dashboard. Reload to change widget settings.", field: "schema" } } };
       const problem = validatePagePrefs(page, body.prefs);
       if (problem?.outdated) return { status: 409, json: { error: { code: "outdated", message: problem.message, field: problem.field } } };
       if (problem) return { status: 400, json: { error: { code: "bad_input", message: problem.message, field: problem.field } } };
