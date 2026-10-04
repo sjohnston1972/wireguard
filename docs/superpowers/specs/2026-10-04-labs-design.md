@@ -1,0 +1,549 @@
+# wg-admin Labs: design
+
+Date: 2026-10-04. Status: Steven approved the design in conversation; this written spec awaits his review. Details left open are
+decided here and listed in §15. Grounded in `main` at 13dd06c (`wg.yml`, `infra/`, `worker/src/{runs,github,lock,monitor,budget,
+firewall}.ts`, `insights/`, `shared/widgets.ts`); conventions as in the observability and Azure insights specs. **(V)** marks an
+Azure fact to verify with a live call or the official page at build time; the batch report records the answer.
+
+## 1. Intent
+
+Labs are **on-demand Azure environments for AZ-104, then AZ-305 study**. Each one is deployed and destroyed by wg-admin the same
+way as the WireGuard gateway: the Worker dispatches a GitHub Actions workflow, Terraform builds it with its state in R2, the
+dashboard shows a live log, and a timer tears it down. The gateway stays the base connectivity: a lab can peer to it so tunnel
+clients reach the lab's private addresses.
+
+Goals: 34 labs (§12) covering the official skill areas of both exams; each says its cost per hour and per session before
+deploy, and the month's budget covers labs; a lab always goes back to £0 (timer, maximum lifetime, budget guard, safety-net
+delete, orphan sweep); a lab never touches the gateway's resource group, any other group, or Entra objects without its prefix;
+several labs can run at once, alongside the gateway, within budget.
+
+Non-goals: this is **not a guided-learning product**. No automated checks, tasks, hints, solutions, "reset task", quizzes or probe
+VM. The learning features are only lab history (date, duration, cost), an optional note per session, and a coverage map by exam skill
+area. Later possibilities, not in scope: "Ask Claude" inside a lab, exam-style questions.
+
+## 2. How it fits the existing system
+
+```
+                         ┌──────────────── Cloudflare ────────────────┐
+ Steven ─ Access ─────▶  │ Worker (wg-admin.clydeford.net)            │
+                         │  /api/v1/labs/*  lab_sessions, lab_runs    │
+                         │  RunLock DO: "singleton" (gateway)         │
+                         │              "lab:<id>"  (one per lab)     │
+                         │  watchman */5: lab timers, budget, orphans │
+                         └──────┬──────────────────────────┬──────────┘
+            dispatch wg.yml     │                          │ dispatch lab.yml (lab id, version, run id, slot, peering…)
+                                ▼                          ▼
+                GitHub Actions: wg.yml          GitHub Actions: lab.yml ── OIDC ─▶ /api/callback/lab-secrets
+                Terraform infra/                Terraform labs/<id>/terraform/
+                state R2 wg-admin/…             state R2 labs/<id>/terraform.tfstate
+                                │                          │
+ Azure subscription             ▼                          ▼
+   rg-wg-ondemand: vnet-wg 10.50.0.0/16, vm-wg ◀── peering (both sides) ──▶ rg-lab-<id>: lab VNets in slot 10.64.x.0/18
+   tunnel 10.13.13.0/24, fd13:13::/64; home LAN 192.168.1.0/24 via home-site     (+ rg-lab-<id>-<suffix> made by Azure)
+   Entra: lab-<id>-* users and groups only            governance labs: lab-<id>-* management groups, definitions
+```
+
+Lab and gateway runs are independent (workflow, concurrency groups, lock instances, state keys); the one shared object is `vnet-wg`
+(peering), guarded in §7.6. Live logs reuse `infra/ci/live-log.mjs`, `live-log.sh` and `/api/callback/log` unchanged. Prices and
+capacity reuse the insights feeds (`az_prices`, `az_capacity`, `capacityCheck`), extended in §9.
+
+## 3. Lab definition
+
+### 3.1 Folder
+
+```
+labs/
+  skill-areas.yaml               the official skill areas of both exams (§12.1), keys used by lab.yaml
+  az104-06-blob-security/
+    lab.yaml                     read by the dashboard (bundled at Worker build) and by the pipeline
+    readme.md                    what it deploys, diagram, things to try, Microsoft Learn links
+    terraform/                   main.tf, variables.tf, outputs.tf, versions.tf; optional *.bicep
+```
+
+Lab id: `^az(104|305)-\d{2}-[a-z0-9-]+$`, at most 40 characters, equal to the folder name, never a prefix of another lab's id.
+Resource group: `rg-lab-<id>`. Azure-made groups the lab must name (AKS nodes, backup restore points, DR targets):
+`rg-lab-<id>-<suffix>`. Entra users, groups, custom roles, policy definitions, management groups: `lab-<id>-<name>`.
+
+### 3.2 `lab.yaml` (example: lab 6)
+
+```yaml
+id: az104-06-blob-security
+version: 1                         # bump on any change to lab.yaml, readme.md or terraform/ (CI checks)
+title: "Blob security: SAS, access policies, private endpoint"
+summary: >-
+  A storage account with a private container, a stored access policy and a private endpoint in a small VNet,
+  so you can compare SAS, RBAC and network access side by side.
+exam: AZ-104                       # AZ-104 | AZ-305
+skill_areas: [az104.storage, az104.networking]   # keys from labs/skill-areas.yaml
+level: associate                   # foundation | associate | expert
+type: explore                      # explore | break-fix
+prerequisites: [az104-05-storage]  # shown as a "run before" badge; never blocks Deploy
+cost:
+  items:                           # hourly estimate per resource; total = sum (gbp_h × qty)
+    - { name: "Storage account, LRS hot, a few MB", gbp_h: 0.0001 }
+    - { name: "Private endpoint", gbp_h: 0.0076, retail: { meter: "Standard Private Endpoint", unit: "1 Hour" } }
+    - { name: "Private DNS zone", gbp_h: 0.0005 }
+  pricey: null                     # or the name of the item that makes it pricey (shown on the card)
+timing: { deploy_min: 4, destroy_min: 3, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [] }         # each one checked against az_capacity (offered + vCPU quota)
+regions: { secondary: null }       # e.g. ukwest for cross-region labs
+connectivity: { peering: optional, dns_link: true, subnets_used: 1 }   # peering: off | optional | required
+identity:
+  creates: [group]                 # any of user, group; [] for none. Names always lab-<id>-...
+  roles: [{ role: "Storage Blob Data Reader", scope: resource_group }]  # every role assignment, and where
+  governance: false                # true only for the named governance labs (§8.3)
+```
+
+`timing`: typical deploy and destroy minutes (from release tests), suggested session (the default auto-destroy timer) and maximum
+lifetime (a hard stop nothing overrides, ≤ 12 h). `dns_link` links the lab's private DNS zones to `vnet-wg` while peered (§7.6);
+`subnets_used` is how many /20s of its /18 slot it uses (1–4). `retail` is optional: when present, the price feed (§9) refreshes
+`gbp_h` from Azure's list price; a VM item takes `retail: { sku: Standard_B1s }` and also feeds `capacity.vm_sizes`.
+
+### 3.3 `readme.md`
+
+Required headings (CI checks): **What it deploys** (a list and a small text diagram), **Things to try** (3–6 bullets), **Learn
+more** (Microsoft Learn links). Break-fix labs add **Symptom** and a collapsed `<details><summary>What was broken</summary>`.
+Standard footer: "Anything you build by hand inside `rg-lab-<id>` is removed at tear-down. Entra users or groups you create by
+hand are removed only if their name starts `lab-<id>-`."
+
+### 3.4 Terraform contract
+
+Variables filled by the pipeline (a lab declares only the ones it uses; CI refuses unknown `TF_VAR`s):
+`lab_id`, `name_prefix` (`l` + lab number + 5 random lowercase characters, e.g. `l06k3x9q`, for globally unique names),
+`resource_group_name`, `region`, `secondary_region`, `address_space` (the slot, e.g. `10.64.64.0/18`), `peered` (bool),
+`gateway_vnet_id` (empty when not peered), `admin_password` (sensitive, per session), `ssh_public_key`, `upn_domain`, `tags`
+(`project=wg-admin-labs`, `lab=<id>`, `session=<id>`).
+
+Rules: the lab creates `rg-lab-<id>` itself and everything else inside it; every address comes from
+`cidrsubnet(var.address_space, …)`; no provisioners, no `null`, `external`, `http` or `local` providers. Outputs: `private_ips`
+(name to address), `peer_vnet_id` when peering is possible, optionally `connect` (short strings: "ssh azureuser@10.64.64.4").
+Bicep-subject labs keep `.bicep` files in `terraform/`; the workflow compiles them with `az bicep build` and Terraform deploys the
+JSON with `azurerm_resource_group_template_deployment` into the lab's group, so destroy and the scope check still apply.
+
+## 4. Lab address pool
+
+The gateway uses 10.13.13.0/24 (tunnel), 10.13.255.1/32 (loopback), 10.50.0.0/16 (vnet-wg, with 10.50.1.0/24 and the workloads
+subnet 10.50.2.0/24), 192.168.1.0/24 (home LAN), fd13:13::/64 and fd50:50::/48 (`wrangler.toml`, `infra/variables.tf`).
+
+**Lab pool: 10.64.0.0/13** (10.64.0.0 – 10.71.255.255), **32 slots of /18**, slot *n* = `10.64.0.0 + n × 16384`
+(slot 0 10.64.0.0/18, slot 1 10.64.64.0/18, … slot 31 10.71.192.0/18). A lab holds one slot (`lab_slots`, §7.1) from deploy until
+Azure is clean, so two labs never share addresses. Inside it, a lab carves up to four /20s (hub, spokes, "on-prem", second region)
+or smaller subnets; the AKS lab puts its service CIDR in the last /20. IPv4 only. The pool overlaps none of the ranges above, nor
+172.17.0.0/16 (Docker) or 168.63.129.16; a test proves it.
+
+## 5. Workflow `.github/workflows/lab.yml`
+
+`workflow_dispatch` inputs: `action` (`deploy` | `destroy` | `peer` | `unpeer` | `test`) and `payload` (JSON, nothing secret):
+`lab_id`, `version`, `run_id`, `session_id`, `region`, `secondary_region`, `slot_cidr`, `name_prefix`, `peering` (bool),
+`timeout_min`, `callback_url`, `secrets_url`. `run-name: "lab ${action} ${lab_id} ${run_id}"` so the Worker finds the run by title.
+
+- **Concurrency:** `group: lab-${lab_id}-${action}`, `cancel-in-progress: false`, plus "Wait for any earlier run of this lab"
+  (`lab.yml` runs whose title has the lab id), as `wg.yml` does. Labs never queue behind the gateway or each other.
+- **Timeout:** `timeout-minutes: ${{ fromJSON(inputs.payload).timeout_min || 60 }}` (V: an input expression is accepted here;
+  if not, a fixed 150). The Worker sets `2 × (deploy_min + destroy_min) + 20`, capped at 150: 30–60 for most labs, 130 for the
+  VPN gateway lab (§14). A test run does both halves, hence the 2×.
+- **Secrets per step**, as in `wg.yml`: `ARM_*` (the same service principal), R2 keys and `CLOUDFLARE_ACCOUNT_ID`,
+  `SSH_PUBLIC_KEY`, and a new `LAB_UPN_DOMAIN`. Never the Cloudflare DNS token or the WireGuard key.
+
+Steps (D deploy, X destroy, P peer, U unpeer, T test = D then X):
+
+| # | Step | Runs on | What it does |
+|---|---|---|---|
+| 1 | Check out, Parse payload | all | refuses a lab id that fails the regex or has no folder, and a `version` that differs from `lab.yaml` (stale dashboard) |
+| 2 | Collect run secrets | all | OIDC (`aud wg-admin`, workflow `lab.yml` on `main`) → `callback_token`, `admin_password`; masked |
+| 3 | Start live log | all | unchanged shipper, same redaction |
+| 4 | Wait for earlier run of this lab | all | ≤ 10 min, then fail loudly |
+| 5 | Terraform init | D X T | backend key `labs/<id>/terraform.tfstate`; `az bicep build` first if `*.bicep` exist |
+| 6 | Plan and scope check | D T | `terraform plan -out`, `terraform show -json`, `node infra/ci/lab-scope.mjs` (§8.4); refuses before anything is built |
+| 7 | Apply | D T | `terraform apply plan.out` |
+| 8 | Ready check | D T | every resource in `rg-lab-<id>*` exists with `provisioningState = Succeeded`; polls up to `deploy_min` |
+| 9 | Peer | D P T | if `peering`: ask the Worker (`/api/callback/lab-peer` begin); on "go", create both peerings (§7.6), then "end" |
+| 10 | Unpeer | X U T | delete the `vnet-wg` side, then the lab side if the group still exists |
+| 11 | Unblock | X T | remove what stops a group delete: resource locks, legal holds and unlocked immutability policies, backup protection (stop and delete data), Site Recovery replication (`infra/ci/lab-unblock.sh`) |
+| 12 | Destroy | X T | `terraform destroy`; `continue-on-error`, like the gateway |
+| 13 | Safety net | X T | delete `rg-lab-<id>*`; Entra users and groups starting `lab-<id>-`; governance labs also custom roles, policy assignments and definitions, and management groups (children first) starting `lab-<id>-` |
+| 14 | Verify clean | X T | re-list all of 13; outputs `clean` and `leftovers` |
+| 15 | Back up state | all | `labs/<id>/backups/`, newest 5 |
+| 16 | Finish live log, Report result | all | `{run_id, action, status, outputs: {private_ips, connect, clean, leftovers, deploy_seconds, destroy_seconds}}` |
+
+A failed deploy is destroyed after 15 minutes (§7.4). Safety net and clean check run even when Terraform fails or the state is
+missing, so an orphan cleanup (§7.5) is just a destroy run.
+
+## 6. Gateway changes (`wg.yml`, `infra/`)
+
+- **`wg.yml` destroy:** a new first step, "Remove lab peerings", deletes every peering and private DNS link on `vnet-wg`, then
+  calls `/api/callback/lab-peerings-removed`. Labs keep running; their sessions show peering "disconnected".
+- **Gateway deploy:** on reaching Running, the Overview and the ready push offer "Re-peer 2 labs" for sessions that asked for
+  peering; one press dispatches a `peer` run per lab.
+- **Tunnel DNS (`cloud-init.yaml.tftpl`):** dnsmasq forwards `core.windows.net`, `database.windows.net`, `azurewebsites.net`,
+  `vaultcore.azure.net`, `documents.azure.com`, `servicebus.windows.net` and `internal` to Azure DNS (168.63.129.16), so tunnel-DNS
+  clients resolve private endpoints via lab zones linked to `vnet-wg` (Azure DNS answers public names too). Next gateway deploy.
+- **No NAT change.** `wg-nat.sh` masquerades everything leaving eth0 except `vnet_cidr`, so peered lab traffic reaches the lab from
+  the gateway VM's VNet address. Labs need no routes back to the tunnel. The firewall sees the real client address first, because
+  nftables `forward` runs before NAT.
+
+## 7. Worker additions
+
+### 7.1 Data model (migration `0020_labs.sql`)
+
+Tables are `WITHOUT ROWID` where they suit it, times are ISO UTC, and nothing is added to `runs`: its `action` CHECK allows only
+`apply` and `destroy`, and SQLite cannot alter a CHECK.
+
+```sql
+CREATE TABLE lab_sessions (
+  id TEXT PRIMARY KEY, lab_id TEXT NOT NULL, lab_version INTEGER NOT NULL,      -- id "ls-<stamp>-<rand>"
+  state TEXT NOT NULL,               -- deploying | running | failed | tearing_down | ended | ended_dirty
+  test INTEGER NOT NULL DEFAULT 0, region TEXT NOT NULL, secondary_region TEXT, -- test 1 = release test
+  slot INTEGER, cidr TEXT, name_prefix TEXT NOT NULL, peering TEXT NOT NULL,     -- off | waiting | on | disconnected
+  requested_at TEXT NOT NULL, ready_at TEXT, ended_at TEXT, auto_destroy_at TEXT, max_until TEXT NOT NULL, warned_at TEXT,
+  est_gbp_h REAL NOT NULL, est_gbp REAL,                                         -- estimate per hour; total on end
+  end_reason TEXT,                   -- manual | timer | max | budget | failed | orphan | test
+  outputs_json TEXT, leftovers_json TEXT, note TEXT
+);
+CREATE INDEX lab_sessions_lab ON lab_sessions (lab_id, requested_at DESC);
+CREATE TABLE lab_runs (
+  id TEXT PRIMARY KEY,               -- "lab-<action>-<stamp>-<rand>", also the run_live_log key
+  session_id TEXT NOT NULL, lab_id TEXT NOT NULL, action TEXT NOT NULL,  -- deploy|destroy|peer|unpeer|test
+  status TEXT NOT NULL, requested_at TEXT NOT NULL, requested_by TEXT, reason TEXT, started_at TEXT, finished_at TEXT,
+  github_run_id INTEGER, github_run_url TEXT, callback_token_hash TEXT,
+  admin_password TEXT,               -- cleared when the session ends, like runs.ssh_password
+  payload_json TEXT, outputs_json TEXT, steps_json TEXT, error TEXT
+);
+CREATE TABLE lab_slots (slot INTEGER PRIMARY KEY, cidr TEXT NOT NULL, session_id TEXT, since TEXT) WITHOUT ROWID;  -- 32 rows seeded
+CREATE TABLE lab_cost_days (day TEXT NOT NULL, rg TEXT NOT NULL, lab_id TEXT NOT NULL, gbp REAL NOT NULL, fetched_at TEXT NOT NULL, PRIMARY KEY (day, rg)) WITHOUT ROWID;
+CREATE TABLE lab_release_tests (lab_id TEXT NOT NULL, version INTEGER NOT NULL, at TEXT NOT NULL, run_id TEXT NOT NULL,
+  result TEXT NOT NULL, deploy_seconds INTEGER, destroy_seconds INTEGER, est_gbp REAL, leftovers_json TEXT,
+  PRIMARY KEY (lab_id, version, at)) WITHOUT ROWID;
+```
+
+Slot reservation is one statement: `UPDATE lab_slots SET session_id = ?1, since = ?2 WHERE slot = (SELECT MIN(slot) FROM
+lab_slots WHERE session_id IS NULL) AND session_id IS NULL RETURNING slot, cidr`. It is freed when the session ends clean; after
+`ended_dirty`, only once the orphan sweep finds Azure clean. `run_live_log` stores lab runs by id; `livelog.ts` also accepts
+`lab_runs` tokens. The catalogue is not in D1: `npm run labs-build` (run first by `deploy-worker`) turns every `lab.yaml` and
+`readme.md` into `shared/labs.generated.json`, imported by the Worker and the app, so a new lab or version needs a Worker deploy.
+
+### 7.2 API (`worker/src/api/labs.ts`, house style: `{ ok, message }` or `{ error: { code, message, field? } }`)
+
+| Route | Does |
+|---|---|
+| `GET /labs` | catalogue cards with each lab's estimate (£/h), running session (if any), last session, last release test, slots in use |
+| `GET /labs/:id` | readme (markdown), cost items and total with price source and age, warnings (§9.2), session and runs if running |
+| `POST /labs/:id/deploy` | `{ hours, peer, region?, overBudgetOk?, capacityOk? }`; 422 `confirm_required` for budget or capacity warnings |
+| `POST /labs/:id/extend` | `{ hours }`; refuses beyond `max_until` and says until when it can run |
+| `POST /labs/:id/destroy` | `{ confirm: true }`; also cancels a deploy in progress first |
+| `POST /labs/:id/peer` · `/unpeer` · `/test` · `/cancel` | a `peer` or `unpeer` run; a release test (§11.2); cancel the active GitHub run, then destroy |
+| `PUT /labs/sessions/:sid/note` | `{ note }`, ≤ 2000 characters |
+| `GET /labs/sessions?lab=&limit=` | history: date, duration, estimate and actual cost, note, end reason |
+| `GET /labs/coverage` | per exam: skill areas, labs available, labs run (sessions of 15 minutes or more) |
+| `POST /labs/orphans/cleanup` | `{ lab_id }`: a destroy run for leftovers (§7.5) |
+
+The existing `GET /runs/:id` (Activity run drawer: steps, live log, GitHub log) reads `lab_runs` when the id starts `lab-`.
+Outside Access, authenticated by token: `POST /api/callback/lab` (result), `POST /api/callback/lab-secrets` (OIDC; `claimsProblem`
+gains an allowed-workflow argument, and only this route accepts `lab.yml`), `POST /api/callback/lab-peer` (begin and end),
+`POST /api/callback/lab-peerings-removed` (from `wg.yml`, with the gateway run's callback token). `/api/act` gains one-time links
+`lab-extend-1h:<session>` and `lab-destroy:<session>`. Types in `shared/api.ts`: `LabCard`, `LabDetail`, `LabSession`, `LabCoverage`.
+
+### 7.3 Locks
+
+`RunLock` works for any instance name, so a lab lock is `env.RUN_LOCK.idFromName("lab:<id>")`: no new class, no DO migration,
+TTL `timeout_min + 15` minutes. One run per lab at a time; the gateway and other labs run alongside. The gateway's `"singleton"`
+lock and snapshot are unchanged. Deploy also needs a free slot and fewer than `labs_max_running` (setting, default 3) labs live.
+
+### 7.4 Timers and the watchman (`worker/src/labs/watch.ts`, called from `runScheduled`)
+
+Every 5 minutes, in its own try/catch so a lab problem never delays the gateway's cost guard:
+1. Refresh each active lab run from GitHub (missed callback heals), as `refreshActiveRun` does.
+2. 15 minutes before `auto_destroy_at` or `max_until`: one push, "Lab 'Storage accounts' ends in 15 min", with **Extend 1h**
+   (left out when `max_until` is under an hour away) and **Tear down**.
+3. At `auto_destroy_at`: destroy (`timer`). At `max_until`: destroy (`max`); Extend can never move a timer past `max_until`.
+4. **Cost guard:** still `running` or `tearing_down` 15 minutes after its deadline → destroy again, plus a watchman note. A
+   `failed` session older than 15 minutes → destroy (`failed`).
+5. **Budget:** at ≥ 100% (§9.3) every running lab is destroyed (`budget`), deploying ones cancelled first. Never the gateway.
+6. Hourly: the orphan sweep (§7.5). Daily: lab costs from Cost Management (§9.4).
+
+### 7.5 Orphan detection
+
+Hourly, the Worker lists (6 calls): resource groups starting `rg-lab-`; Entra users and groups with `displayName` or
+`userPrincipalName` starting `lab-`; management groups, custom role definitions and policy definitions/assignments starting `lab-`.
+Anything not owned by a `deploying`, `running` or `tearing_down` session and older than 30 minutes becomes one watchman note per
+lab ("Lab leftovers: rg-lab-az104-08-vms, lab-az104-01-identity-ann") on the Labs tab and the bell, with **Clean up**: a destroy
+run for that lab id, parsed from the name if the lab has left the catalogue. Azure's own `NetworkWatcherRG` is ignored. A clean
+sweep releases slots held by `ended_dirty` sessions.
+
+### 7.6 Peering orchestration and the firewall Labs zone
+
+- **Who peers:** step 9 of the lab run asks `/api/callback/lab-peer` (begin). The Worker answers **go** only if the gateway is
+  running or in Standby and it can take the gateway's `singleton` lock as `peer:<lab run id>` for 10 minutes; otherwise **wait**,
+  and the session's peering becomes `waiting`. That one lock means a peering change never races a gateway apply or destroy on
+  `vnet-wg`. The run then creates `vnet-lab → vnet-wg` (allow virtual network access, allow forwarded traffic) and
+  `vnet-wg → vnet-lab` (allow virtual network access) with `az network vnet peering create`, links any private DNS zones in
+  `rg-lab-<id>` to `vnet-wg` when `dns_link` is set, and calls end, which releases the lock. Multi-VNet labs peer only their
+  first VNet, the "hub" (output `peer_vnet_id`).
+- **Later:** `waiting` and `disconnected` sessions are offered "Re-peer" when the gateway reaches Running (§6); an `unpeer` run
+  removes both sides and the DNS links.
+- **Clients:** the per-client "Azure route" switch now also puts 10.64.0.0/13 in AllowedIPs (`clientAllowedIps`). Clients with it
+  on are flagged "config out of date: get config" once.
+- **Firewall (`firewall.ts`):** a new zone `labs` ("Labs", v4 = the pool, no v6). The pool joins `privateV4`, so "internet" no
+  longer matches lab addresses. A new default rule after position 20: "Clients to labs", clients → labs, any, allow. Existing
+  installs get it through the draft/apply flow as a proposed rule, never silently. The gateway VM's NSG needs no change: peered
+  address space is inside the `VirtualNetwork` service tag.
+
+## 8. Identity, permissions and the risk
+
+### 8.1 What the pipeline service principal gets (Steven's choice: reuse it)
+
+The SP is already **Contributor on the whole subscription** (`.env.example`, `wg-admin-spec.md`). Contributor cannot write
+anything under `Microsoft.Authorization` (role assignments, role definitions, policy, locks), and it has no Entra rights. Labs add:
+
+1. **Custom role `wg-admin labs governance`**, assigned at subscription scope (a lab group does not exist until the lab deploys and
+   is deleted after, so it cannot be scoped to one in advance). Actions: `Microsoft.Authorization/roleAssignments/write|delete`,
+   `roleDefinitions/write|delete`, `policyDefinitions/*`, `policySetDefinitions/*`, `policyAssignments/*`, `policyExemptions/*`,
+   `locks/*`; `Microsoft.Management/managementGroups/read|write|delete`. The assignment carries an **ABAC condition** that allows
+   role assignments only for an allow-list of role definitions (Reader, Contributor, Storage Blob Data Reader/Contributor, Virtual
+   Machine Contributor, Key Vault Secrets User/Officer, Monitoring Reader/Contributor, Network Contributor, Backup Operator, and
+   custom roles named `lab-*`) and only to principal types User, Group and ServicePrincipal. It can never assign Owner, User Access
+   Administrator or Role Based Access Control Administrator. (V: conditions on a custom role that holds these actions.)
+2. **Microsoft Graph application permissions:** `User.ReadWrite.All`, `User.DeleteRestore.All` (V: least privilege for delete),
+   and `Group.ReadWrite.All`, with admin consent. Graph offers nothing narrower than tenant-wide for creating users (V); the
+   prefix rule is enforced in code (§8.4). Creating management groups needs the hierarchy setting "require write permissions"
+   off, or `Management Group Contributor` at the root (V: which applies to Steven's tenant).
+
+### 8.2 One-time setup (README gets these exact steps; Steven runs them as subscription Owner and Entra Global Administrator)
+
+1. Azure portal → Subscriptions → (the subscription) → Access control (IAM) → Add → Add custom role → JSON tab → paste
+   `labs/setup/governance-role.json` (the repo fills in the subscription id) → Create.
+2. Same IAM page → Add role assignment → `wg-admin labs governance` → Members: the wg-admin service principal (the app name shown in
+   Settings → Setup) → Conditions → "Allow user to only assign selected roles" → pick the list in §8.1 → principal types
+   User, Group, Service principal → Review + assign.
+3. Entra admin centre → App registrations → (the wg-admin app) → API permissions → Add → Microsoft Graph → Application →
+   tick `User.ReadWrite.All`, `User.DeleteRestore.All`, `Group.ReadWrite.All` → Add → **Grant admin consent**.
+4. Entra admin centre → Identity → Overview → Properties: copy the primary domain (`…onmicrosoft.com`) into `.env` as
+   `LAB_UPN_DOMAIN`, then `npm run secrets`.
+5. Dashboard → Settings → Labs → **Check permissions**: the Worker reads the role assignment and makes harmless Graph reads
+   (`/users?$top=1`, `/groups?$top=1`), ticking each. Until all tick, Deploy is disabled with the reason for labs that need them.
+
+### 8.3 Governance labs
+
+Named in code, not in `lab.yaml` alone: labs 1, 2, 3, 20, 21. Only these may create subscription-level **definitions** (custom
+roles, policy definitions, initiatives) and management groups, all named `lab-<id>-*`. Even they **never assign** a policy, lock or
+role at subscription scope, and never move the subscription into a management group: assignments go to the lab's group or its own
+management groups. A deny policy at subscription scope could otherwise break the next gateway deploy.
+
+### 8.4 Enforcement (two layers)
+
+- **Plan-time scope check (authoritative):** `infra/ci/lab-scope.mjs` reads `terraform show -json` and refuses the plan when any
+  managed resource: is an `azurerm_resource_group` not named `rg-lab-<id>` or `rg-lab-<id>-*`; has a `resource_group_name` or `scope`
+  outside those groups (governance types excepted as above, only for governance labs); is an `azuread_*` object whose display name,
+  UPN or mail nickname does not start `lab-<id>-`; is a role assignment whose role is not on the allow-list; is a subscription or
+  management-group association; locks an immutability policy (`state = "Locked"`); or comes from a disallowed provider. The only
+  reference to `vnet-wg` allowed is `var.gateway_vnet_id` in a private DNS zone link. The only writes to `rg-wg-ondemand` are
+  the pipeline's own peering and DNS-link steps (§7.6), never lab Terraform.
+- **CI lint (early warning):** the same rules on HCL (`hcl2json`), on every push.
+
+### 8.5 The risk, stated plainly
+
+Steven chose to reuse the existing SP after being told the blast radius. Its secret lives in GitHub secrets and the Worker, used by
+a public repository's workflow. With labs it can also **create and delete Entra users and groups tenant-wide**, write policy and
+locks, create role definitions, and assign the allow-listed roles anywhere in the subscription. A leaked secret or a malicious
+change merged to `main` could create users, give them Contributor, or delete non-admin users (Graph refuses it admin accounts, V).
+The prefix and scope rules are code, not Azure boundaries. Mitigations: workflows reach Azure only from `main`; the scope check runs
+before any apply; the ABAC condition blocks the dangerous roles; the orphan sweep catches strays. A dedicated lab SP is better (§15).
+
+## 9. Cost estimation and budget
+
+### 9.1 Estimate and prices (`insights/feeds/prices.ts`)
+
+£/hour = Σ `gbp_h × qty`; per session = £/hour × chosen hours, shown on the card (per hour) and in the modal (both). A monthly fee
+is converted at 730 hours (`HOURS_PER_MONTH`). Release tests record the real deploy time for the next lab version. The prices
+feed gains the lab items: every `retail.sku` (VM sizes, merged into `sizesOfInterest`) and every `retail.meter`, stored in
+`az_prices` as `item = 'lab:<meter>'`, for the configured region and each lab `secondary_region`, at most 3 pages a day as now.
+With no price under 7 days old, the authored `gbp_h` is used and the modal says so. GBP list prices before discounts and VAT.
+
+### 9.2 Warnings in the deploy modal (each allows "Deploy anyway", except the last)
+
+- **Budget:** "This session would take the month to £X of £Y" when month total + session estimate > budget.
+- **Capacity/quota:** `capacityCheck` per `capacity.vm_sizes` entry (vCPUs summed, plus the gateway's) says "may not be
+  available", reading uncached regions on demand (`insights/ondemand.ts`). Other quotas (public IPs, VPN gateways) are not checked.
+- **Pricey:** "Pricey: Azure Firewall, about £0.40/h". **Slow** (`deploy_min ≥ 15`): "Takes about 35 minutes to deploy and 20 to tear down".
+- **Not available:** a lab whose permissions (§8.2) or slot pool or `labs_max_running` limit is not met. No override.
+
+### 9.3 Budget guard
+
+`budgetFigures` gains labs: `session` adds each running lab's `est_gbp_h × hours` to its timer (or `max_until`). `actual` comes from
+Cost Management for the gateway's group **and** all `rg-lab-*` groups (the query filters on the gateway group today). The 80% push
+is unchanged and now names lab spend; at 100%, labs are torn down (§7.4 step 5), the gateway is not, and Deploy (gateway or lab)
+needs the existing "Deploy anyway".
+
+### 9.4 Per-lab spend
+
+Daily, one Cost Management query grouped by `ResourceGroupName`, unfiltered, keeps rows starting `rg-lab-` in `lab_cost_days`.
+Actuals arrive 8–24 hours late (V), so a session shows "estimate" until the day after it ends, then "actual" (a day's actual
+for that lab, split over that day's sessions by duration).
+
+## 10. Dashboard
+
+**Labs tab** (new top-level tab after Cost; route `/labs`, `/labs/:id`, `/labs/history`). Same design system and the one-screen rule:
+at 1100×600 the page never scrolls; the catalogue panel scrolls inside itself.
+
+- **Running strip** (top, hidden when nothing runs): a chip per session with state (Deploying 3/16, Running, Tearing down), title,
+  time left, cost so far, peering (on, waiting, off, disconnected), **Extend** (1h, 2h, to max) and **Tear down** (confirm dialog).
+- **Filters** (left column): exam, skill area, level, type, "not run yet". **Catalogue** grouped AZ-104 then AZ-305 by number;
+  a card shows title, summary (2 lines), level, £/h, typical deploy time, suggested session, the pricey marker (£, ££, £££, resource
+  on hover), a "run before: Lab 5" badge, "Ran 2×", and "Untested v2" when the version has no passing release test.
+- **Lab modal** (desktop modal; sheet on the phone). Not running: readme, cost items and totals, warnings, session length (default
+  `session_h`, up to `max_h`), "Peer to gateway" (optional: a tick; required: forced on; off: hidden; "will peer when the gateway
+  is next running" if it is not), region (default the Settings one), **Deploy**. Running: pipeline steps and live log (the Activity
+  run panel), resources from ARM with a portal link to `rg-lab-<id>`, private IPs and `connect` lines, admin password and Entra user
+  names behind **Show**, **Extend**, **Tear down**, the note box, and for break-fix the collapsed "What was broken".
+- **Your labs** (`/labs/history`): sessions table (date, lab, duration, cost estimate/actual, end reason, note) and a coverage map:
+  per exam, one row per skill area with labs run / labs available and small boxes per lab (filled when run).
+
+**Integrations:**
+- **Overview topology:** running labs as small boxes beside the Azure VNet, linked with a solid line when peered, dashed when
+  waiting or disconnected. The status banner adds "· 2 labs running (£0.12/h)".
+- **Activity:** lab runs in the run list with the lab's title and a "Labs" filter chip; watchman notes use existing kinds (no new
+  event type, so no widget option list changes). **Cost:** a "Labs" panel with this month's spend per lab (actual plus running
+  estimates). **Firewall:** the Labs zone in the zone list and rule pickers (§7.6).
+- **Widget `overview.runningLabs`:** `defaultOff`, home row `r4`, suggests replacing `overview.costImpact` (weight 32). It shows
+  running labs with time left, cost so far and Tear down.
+- **Command palette:** "Deploy lab…" (opens the lab's modal), "Tear down lab…" (running labs), and each lab's title as a jump.
+- **Settings → Labs:** `labs_max_running`, default peering, permissions check (§8.2), slots in use, release tests (§11.2).
+- **Phone:** the Labs tab is the seventh bottom-bar icon. One screen: running labs with lights, time left and Extend / Tear down;
+  "Catalogue" and "Your labs" open sheets; a lab opens as a sheet with Deploy.
+
+## 11. Keeping labs honest
+
+### 11.1 Static tests (`npm run labs-check`, in `ci.yml`, no cloud calls)
+
+- `lab.yaml` against the schema in `shared/labs.ts`: id = folder, unique, not a prefix of another; skill areas exist; prerequisites
+  exist and have no cycles; `max_h ≤ 12`, `session_h ≤ max_h`; cost items non-empty; `pricey` names an item.
+- `version` bumped when the lab's folder changed against `main`; `terraform fmt -check` and `terraform init -backend=false &&
+  terraform validate` per lab (providers pinned as in `infra/`); HCL scope lint (§8.4); no literal CIDR outside `cidrsubnet`.
+- Pool: 32 slots, no overlap with each other, the tunnel, loopback, vnet-wg, home LAN or Docker; a lab's `subnets_used` fits its slot.
+- Readme has the required headings; break-fix readmes have Symptom and a closed `<details>`.
+- Worker unit tests: slot reservation under races, timers and max lifetime, Extend refusal, budget teardown (labs yes, gateway no),
+  orphan matching (prefixes, ignore list, 30-minute grace), the scope check against fixture plans (including one evil plan per rule),
+  OIDC workflow allow-list per route, migration 0020.
+
+### 11.2 Real-Azure release test (once per lab version)
+
+Settings → Labs → **Test** (or `POST /labs/:id/test`) runs `action: test`: deploy, ready check (resources exist and every
+`provisioningState` is Succeeded), peer and unpeer when the lab allows peering and the gateway is running, destroy, verify clean.
+Recorded in `lab_release_tests` (deploy and destroy times, estimated cost). A version is **released** when its test passes with
+`clean: true`; untested versions stay deployable, marked "Untested".
+
+## 12. Curriculum
+
+### 12.1 Skill areas (`labs/skill-areas.yaml`; names from Microsoft's study guides, (V) against the current outlines)
+
+- **AZ-104:** `az104.identity` Manage Azure identities and governance · `az104.storage` Implement and manage storage ·
+  `az104.compute` Deploy and manage Azure compute resources · `az104.networking` Implement and manage virtual networking ·
+  `az104.monitor` Monitor and maintain Azure resources.
+- **AZ-305:** `az305.identity` Design identity, governance, and monitoring solutions · `az305.data` Design data storage solutions ·
+  `az305.continuity` Design business continuity solutions · `az305.infra` Design infrastructure solutions.
+
+### 12.2 The 34 labs
+
+Cost markers: £ pennies an hour, ££ up to about 50p an hour, £££ about £1 an hour or more, or a long deploy. Peer: off / opt /
+req. Session and max are hours. G = governance lab. Times and SKUs are planning figures; release tests replace them.
+
+| # | Id | Title | Areas | Lvl | Type | £ | Peer | Deploy | Sess/max | Identity |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | az104-01-identity | Users, groups, roles and custom roles | identity | F | explore | £ | off | 2 min | 1/4 | users, groups, custom role, RG assignments · G |
+| 2 | az104-02-policy | Azure Policy, tags and resource locks | identity | F | explore | £ | off | 2 | 1/4 | policy defs, RG assignments, locks · G |
+| 3 | az104-03-mgmt-groups | Management groups and subscription governance | identity | A | explore | £ | off | 3 | 1/4 | lab MGs, MG-scope policy · G |
+| 4 | az104-04-cost | Cost management: budgets and alerts | identity, monitor | F | explore | £ | off | 2 | 1/4 | RG budget, action group |
+| 5 | az104-05-storage | Storage accounts: redundancy, access tiers, lifecycle | storage | F | explore | £ | off | 3 | 2/6 | none |
+| 6 | az104-06-blob-security | Blob security: SAS, access policies, private endpoint | storage, networking | A | explore | £ | opt | 4 | 2/6 | group, Blob Data Reader |
+| 7 | az104-07-files | Azure Files shares mounted from a VM | storage, compute | A | explore | £ | opt | 5 | 2/6 | none |
+| 8 | az104-08-vms | VMs: availability zones, disks, extensions | compute | A | explore | £ | opt | 6 | 2/6 | none |
+| 9 | az104-09-vmss | VM Scale Sets and autoscale | compute | A | explore | £ | opt | 6 | 2/6 | none |
+| 10 | az104-10-app-service | App Service: plans, slots, scaling | compute | A | explore | £ | off | 4 | 2/6 | none |
+| 11 | az104-11-containers | Containers: ACI and Container Apps | compute | A | explore | £ | opt | 5 | 2/6 | none |
+| 12 | az104-12-bicep | ARM and Bicep templates (Bicep) | compute | A | explore | £ | off | 3 | 2/6 | none |
+| 13 | az104-13-vnets | VNets, subnets, NSGs, ASGs | networking | F | explore | £ | opt | 5 | 2/6 | none |
+| 14 | az104-14-peering-udr | VNet peering and UDRs | networking | A | explore | £ | opt | 6 | 2/6 | none |
+| 15 | az104-15-dns | Azure DNS public and private zones | networking | A | explore | £ | opt | 4 | 2/6 | none |
+| 16 | az104-16-lb-appgw | Load Balancer and Application Gateway | networking | A | explore | ££ | opt | 12 | 2/4 | none |
+| 17 | az104-17-netwatcher-fix | Break-fix: connectivity troubleshooting with Network Watcher | networking, monitor | A | break-fix | £ | opt | 6 | 2/4 | none |
+| 18 | az104-18-monitor | Azure Monitor: metrics, alerts, Log Analytics | monitor | A | explore | £ | opt | 6 | 2/6 | none |
+| 19 | az104-19-backup | Backup: Recovery Services vault, VM backup and restore | monitor | A | explore | ££ | opt | 8 | 3/8 | none |
+| 20 | az305-20-landing-zone | Landing zone lite: management groups, policy initiatives, role design | identity | E | explore | £ | off | 4 | 2/4 | MGs, initiatives, custom roles · G |
+| 21 | az305-21-monitoring-scale | Monitoring at scale: workspace design, diagnostics via policy | identity | E | explore | £ | off | 6 | 2/6 | DINE policy at RG, MI role · G |
+| 22 | az305-22-keyvault-mi | Key Vault and managed identities | identity | E | explore | £ | opt | 5 | 2/6 | MI, Key Vault Secrets User |
+| 23 | az305-23-sql-failover | Azure SQL Database: serverless, geo-replication, failover groups | data, continuity | E | explore | ££ | opt | 15 | 2/4 | none |
+| 24 | az305-24-cosmos | Cosmos DB: partitioning and consistency | data | E | explore | £ | off | 8 | 2/4 | none |
+| 25 | az305-25-storage-design | Storage design: data lake, immutability, tiering | data | E | explore | £ | off | 3 | 2/6 | none |
+| 26 | az305-26-site-recovery | Cross-region VM restore and Site Recovery | continuity | E | explore | ££ | opt | 20 | 3/8 | none |
+| 27 | az305-27-multi-region | Multi-region app with Traffic Manager and Front Door | infra, continuity | E | explore | ££ | off | 15 | 2/4 | none |
+| 28 | az305-28-hub-spoke-fw | Hub-spoke with Azure Firewall | infra | E | explore | £££ | opt | 15 | 2/3 | none |
+| 29 | az305-29-s2s-vpn | Site-to-site VPN Gateway (two VNets as on-prem) | infra | E | explore | £££ | opt | ~35 | 3/6 | none |
+| 30 | az305-30-private-link | Private Link and private DNS for PaaS | infra, data | E | explore | £ | req | 6 | 2/6 | none |
+| 31 | az305-31-three-tier | Three-tier app: App Service, SQL, Front Door + WAF | infra | E | explore | £££ | off | 15 | 2/3 | none |
+| 32 | az305-32-aks | AKS small cluster, networking, ingress | infra | E | explore | ££ | opt | 12 | 2/4 | MI, AcrPull (V) |
+| 33 | az305-33-messaging | Messaging and events: Service Bus, Event Grid, Functions | infra | E | explore | £ | off | 5 | 2/6 | none |
+| 34 | az305-34-forced-tunnel-fix | Break-fix: hub-spoke routing fault (forced tunnelling) | infra | E | break-fix | £ | opt | 8 | 2/4 | none |
+
+Cheap SKUs are listed in §15 item 13; lab 23 adds a separate serverless database to show auto-pause, and lab 34 uses a small Linux
+router VM, not Azure Firewall. Break-fix faults: lab 17, an NSG deny at higher priority plus a UDR to a dead next hop; lab 34, a
+0.0.0.0/0 UDR on the spoke to an NVA that does not forward.
+
+## 13. Delivery
+
+Each batch is built, tested for real on Azure (every lab in it passes §11.2 with `clean: true`), released (merged, Worker deployed),
+and noted in its report before the next starts. Gateway-side changes ship as their own PR and take effect at the next gateway deploy.
+
+1. **Engine + labs 1–7.** Migration 0020, `labs-build`, `labs-check`, `lab.yml`, `lab-scope.mjs`, `lab-unblock.sh`, lab API,
+   locks, timers, budget, orphan sweep, cost query, prices for lab items, peering and the Labs zone, client AllowedIPs, the Labs tab
+   (catalogue, modal, running strip, history and coverage), Activity, Cost, topology and banner, the widget, the command palette,
+   Settings → Labs, phone. Gateway PR: `wg.yml` "Remove lab peerings", dnsmasq forwarding. README: §8.2. Labs 1–7 prove every
+   governance permission and the lock "unblock" early.
+2. **Labs 8–19:** compute, networking, monitoring, backup (the first vault "unblock" case).
+3. **Labs 20–27:** AZ-305 governance, identity, data and continuity (cross-region and Site Recovery).
+4. **Labs 28–34:** infrastructure, including the £££ and slow labs, and both break-fix labs' final checks.
+
+## 14. Risks and open questions
+
+| Item | Status |
+|---|---|
+| SP blast radius (§8.5) | Accepted by Steven. Tenant-wide Graph write is the largest exposure. |
+| Teardown blockers | Locks, backup items with soft delete, Site Recovery replication, legal holds and **locked** immutability can stop a group delete. The unblock step handles the first four, and locked immutability is refused at plan. Vaults are created with soft delete off (V: still allowed on new vaults). |
+| Azure-made resource groups | AKS (`node_resource_group`), backup instant restore (`instant_restore_resource_group` prefix) and Site Recovery targets must be named `rg-lab-<id>-*` or they escape the sweep. CI checks these attributes are set. |
+| Budget size | Today's `MONTHLY_BUDGET_GBP` is £10. One 2-hour session of a £££ lab is about £2, so §15 asks Steven to set a study-period budget. |
+| VPN gateway time | Microsoft quotes 45 minutes or more per gateway (V); two are built in parallel. Planned 35 minutes to deploy and 20 to destroy, with a 130-minute job timeout (cap 150). |
+| App Gateway, Front Door, Azure Firewall | App Gateway Standard_v2: fixed fee plus capacity units, about £0.15–0.20/h (V); a Basic SKU may be GA and in `azurerm` (V), and lab 16 uses it if so. Front Door Standard: monthly base fee, about £0.04/h prorated (V). Azure Firewall Basic: about £0.30/h plus two public IPs (V). |
+| AKS and quotas | Free tier has no control-plane charge (V); system pools need ≥ 2 vCPU and 4 GB (B2s, V). New pay-as-you-go subscriptions have low regional vCPU limits (V); the capacity warning covers VM sizes only. |
+| Network Watcher, Log Analytics | Network Watcher is enabled per region automatically; the lab 17 tools are free apart from connection troubleshoot, billed per 1,000 checks (pennies, V). No flow logs or Connection Monitor. Log Analytics ingestion is small, believed within the free allowance (V). |
+| SQL failover group | Two Basic databases cost about £0.007/h together (V). Auto-pause is not available for geo-replicated serverless databases (V), hence the split design. |
+| Cost Management delay | Actuals lag 8–24 hours, so budget teardown works on estimates plus actuals and can be a few pence late. |
+| Exam outlines, lab users | Skill area names (§12.1) checked on Microsoft Learn (V) before batches 1 and 3. Security defaults may make lab users register MFA at first sign-in (V); the readme says so. |
+| Management groups | Creation rights depend on the hierarchy setting (§8.1, V). A lab MG must be empty to delete, so the safety net deletes children first. |
+| GitHub | Public repo: Actions minutes are free; 20 concurrent jobs, far above `labs_max_running`. Lab logs are public, so lab outputs with addresses are masked as `wg.yml` does. |
+| Private DNS link and VNet delete | (V) whether a private DNS zone link blocks deleting `vnet-wg`. The gateway destroy removes links first anyway. |
+
+Open questions for Steven: none block batch 1, apart from running §8.2 and choosing a study budget (§15 item 1).
+
+## 15. Decisions Steven may want to change
+
+1. **Budget:** labs share the existing monthly budget (£10 today). Suggested: raise it to about £30 for study months.
+2. **Pool 10.64.0.0/13, 32 × /18 slots,** IPv4 only.
+3. **Peered traffic reaches labs from the gateway VM's VNet address** (NAT, no change to the gateway). Lab NSGs see 10.50.1.x,
+   not the client's 10.13.13.x. Keeping the real source would need routes in every lab subnet back to the gateway VM.
+4. **The client "Azure route" switch also carries the lab pool** (no separate switch); one config re-download per client.
+5. **Tunnel DNS forwards Azure service domains to Azure DNS** (§6), so private endpoints resolve over the tunnel.
+6. **At most 3 labs at once** (`labs_max_running`), within budget.
+7. **Session timer:** defaults to the lab's suggestion; Extend in 1-hour steps; maximum lifetime per lab, never over 12 hours.
+8. **A failed lab deploy is destroyed after 15 minutes** (the gateway waits 30); budget teardown also cancels labs mid-deploy.
+9. **Catalogue bundled at Worker build:** a new lab or version needs `npm run deploy-worker`.
+10. **Governance labs:** 1, 2, 3, 20, 21 (lab 4 keeps its budget on its own group). Definitions at subscription scope are
+    allowed; assignments there never are.
+11. **Role-assignment allow-list** as in §8.1; a lab needing another role changes the list and the condition.
+12. **Graph permissions** `User.ReadWrite.All`, `User.DeleteRestore.All`, `Group.ReadWrite.All` (tenant-wide). A dedicated
+    lab service principal, or an administrative-unit-scoped role (V: licensing), would narrow this later.
+13. **SKUs:** App Gateway Standard_v2 (or Basic if available), Azure Firewall Basic, VPN Gateway Basic (else VpnGw1), SQL Basic
+    pair plus one serverless database, Front Door Standard with custom WAF rules, AKS Free with one B2s node.
+14. **Release test from the dashboard** (Settings → Labs → Test). Untested versions stay deployable, marked "Untested".
+15. **UI:** tear down a lab with a confirm dialog (not typing `destroy`); Labs is the phone's seventh bottom-bar icon, after Cost;
+    the Running labs widget lives in row `r4` and suggests replacing Cost impact.
+16. **Lab VMs have no public IP.** Reach them through peering, or the portal's Serial console or Run command.
+17. **Lab ids `az104-NN-slug` / `az305-NN-slug`,** with resource groups and Entra names derived from them (§3.1).
