@@ -162,6 +162,13 @@ async function record(env: Env, id: InsightsFeedId, now: Date, r: FeedResult, ro
     .run();
 }
 
+/** Record an on-demand run of a feed (POST boot log) like a cron run. */
+export async function recordFeedResult(env: Env, id: InsightsFeedId, now: Date, r: FeedResult): Promise<void> {
+  const row = (await readFeedRows(env.DB)).get(id) ?? null;
+  const cadence = FEED_MODULES.find((f) => f.id === id)?.cadenceMin ?? null;
+  await record(env, id, now, r, row, cadence);
+}
+
 /** Without credentials: every feed reads not_configured. Only rows that say otherwise are written. */
 async function markNotConfigured(env: Env, feeds: readonly FeedModule[]): Promise<void> {
   const rows = await readFeedRows(env.DB);

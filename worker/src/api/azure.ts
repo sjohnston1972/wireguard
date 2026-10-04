@@ -31,7 +31,7 @@ import { fixedPrice as fixedPriceInfo, priceInfo, rateSource, readPrices } from 
 import { REGIONS, azureRegionName } from "../region";
 import { RANGE_STEP, type HistoryRange } from "../history";
 import { insightsConfigured } from "../insights/types";
-import { capacityFor } from "../insights/ondemand";
+import { capacityFor, fetchBootLogNow, storedBootLog } from "../insights/ondemand";
 import { FEEDS, PIP_COLUMNS, VITALS_COLUMNS, VM_COLUMNS } from "../../../shared/azureMetrics";
 import type {
   AzureChangesResponse,
@@ -167,15 +167,21 @@ export function registerAzure(api: Hono<ApiEnv>): void {
     return c.json(out);
   });
 
-  api.get("/azure/bootlog", (c) => {
+  api.get("/azure/bootlog", async (c) => {
     const q = readQuery(c, {});
     if (q instanceof Response) return q;
-    return c.json(emptyBootLog(c.env));
+    const out: BootLogResponse = await storedBootLog(c.env, NOT_CONNECTED, NOT_FETCHED);
+    return c.json(out);
   });
 
-  api.post("/azure/bootlog", (c) => {
+  // Fetch now: one Worker-side fetch through a 5-minute signed link that never leaves the Worker; once a minute at most.
+  api.post("/azure/bootlog", async (c) => {
     const q = readQuery(c, {});
     if (q instanceof Response) return q;
-    return c.json(emptyBootLog(c.env));
+    if (!insightsConfigured(c.env)) return c.json(emptyBootLog(c.env));
+    const r = await fetchBootLogNow(c.env, new Date());
+    if (r.ok) return c.json(r.doc satisfies BootLogResponse);
+    if (r.why === "slow_down") return c.json({ error: { code: "slow_down", message: "The boot log was fetched less than a minute ago. Try again in a minute." } }, 429);
+    return fail(c, 502, "upstream", `Could not fetch the boot log: ${r.message}`);
   });
 }

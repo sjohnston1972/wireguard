@@ -11,9 +11,11 @@
 import type { Env, Config } from "../env";
 import type { CapacityCheck } from "../../../shared/api";
 import { REGIONS } from "../region";
-import { insightsConfigured } from "./types";
-import { claimTry, MIN } from "./common";
-import { oneOffCtx } from "./runner";
+import { getSnapshot } from "../state";
+import { insightsConfigured, type BootLogDoc, type HealthDoc } from "./types";
+import { claimTry, getLatest, MIN, plainError, vmExists } from "./common";
+import { oneOffCtx, recordFeedResult } from "./runner";
+import { NEXT_DEPLOY, NO_VM, fetchAndStoreBootLog } from "./feeds/bootLog";
 import { CAPACITY_FRESH_MS, capacityCheck, emptyCheck, fetchCapacity, readCapacity, sizesOfInterest, storeCapacity } from "./feeds/capacity";
 
 /** One try per region per this long on a cache miss. */
@@ -44,6 +46,40 @@ export async function capacityFor(env: Env, cfg: Config, region: string, size: s
     console.error("capacity check failed:", e instanceof Error ? e.name : "error");
     return fromHave();
   }
+}
+
+/** POST boot log: at most once per this long (whoever asked, the cron included through its own once-per-episode rule). */
+export const BOOTLOG_RETRY_MS = 60_000;
+/** Sign-in, the signed link, HEAD and the ranged GET. */
+const BOOTLOG_CALLS = 4;
+
+export type BootLogNow = { ok: true; doc: BootLogDoc } | { ok: false; why: "slow_down" } | { ok: false; why: "upstream"; message: string };
+
+/** "Fetch now": the boot log, fetched, redacted and stored; limited to one a minute. Errors in plain words, never a URL. */
+export async function fetchBootLogNow(env: Env, now: Date): Promise<BootLogNow> {
+  if (!(await claimTry(env.DB, "bootlog-try", now, BOOTLOG_RETRY_MS))) return { ok: false, why: "slow_down" };
+  try {
+    const ctx = await oneOffCtx(env, now, BOOTLOG_CALLS);
+    const doc = await fetchAndStoreBootLog(ctx);
+    if (doc.reason !== NO_VM) await recordFeedResult(env, "bootLog", now, { status: "ok", error: null });
+    return { ok: true, doc };
+  } catch (e) {
+    const message = plainError(e);
+    await recordFeedResult(env, "bootLog", now, { status: "error", error: message }).catch(() => {});
+    return { ok: false, why: "upstream", message };
+  }
+}
+
+/** GET boot log: the stored one, or why there is none. */
+export async function storedBootLog(env: Env, notConnected: string, notFetched: string): Promise<BootLogDoc> {
+  const have = await getLatest<BootLogDoc>(env.DB, "bootlog");
+  if (have?.doc && typeof have.doc === "object") return have.doc;
+  const none = (reason: string): BootLogDoc => ({ fetchedAt: null, bytes: 0, truncated: false, redactions: 0, text: null, reason });
+  if (!insightsConfigured(env)) return none(notConnected);
+  if (!vmExists(await getSnapshot(env))) return none(NO_VM);
+  const health = await getLatest<HealthDoc>(env.DB, "health");
+  if (health?.doc?.bootDiagnostics === false) return none(NEXT_DEPLOY);
+  return none(notFetched);
 }
 
 /** The deploy form's current target, from the stored reading only (never a fetch); null until one exists. */
