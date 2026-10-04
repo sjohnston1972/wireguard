@@ -16,6 +16,8 @@ import "./PublicIp.css";
 
 /** Azure's slots are 5 minutes: a per-second figure times 300. */
 const SLOT_S = 300;
+/** The DDoS mitigation metrics (IfUnderDDoSAttack and the four in/dropped counts). */
+const DDOS_COLUMNS = ["ddos_max", "pkts_in_ddos", "pkts_drop_ddos", "bytes_in_ddos", "bytes_drop_ddos"] as const;
 const count = (v: number | null) => (v === null ? NO_DATA : `${Math.round(v).toLocaleString("en-GB")} per 5 min`);
 
 export function PublicIp({ fw, bare }: { fw: FirewallResponse; bare?: boolean }) {
@@ -36,23 +38,30 @@ export function PublicIp({ fw, bare }: { fw: FirewallResponse; bare?: boolean })
   else if (!has) body = <AzNote>No figures from Azure in this range.</AzNote>;
   else {
     const c = (col: string) => column(pts, col);
-    const attack = (lastOf(c("ddos_max")) ?? 0) > 0;
+    // Under Azure's free DDoS infrastructure protection the DDoS metrics (and
+    // often VipAvailability) come back with no values: say so once, show the
+    // traffic Azure does report, and never read a missing figure as "no attack".
+    const reported = (cols: readonly string[]) => cols.some((k) => c(k).some((v) => v !== null));
+    const ddosReported = reported(DDOS_COLUMNS);
+    const ddos = lastOf(c("ddos_max"));
+    const attack = ddos === null ? null : ddos > 0;
     const avail = lastOf(c("vip_avail"));
     const dropped = lastOf(c("pkts_drop_ddos"));
     const series: Record<string, ReactNode> = {
       packets: <Figure key="packets" name="Packets" az={az("packets")} value={count(lastOf(c("packets")))} />,
       bytes: <Figure key="bytes" name="Bytes" az={az("bytes")} value={`${bytes(lastOf(c("bytes")))} per 5 min`} />,
       syn: <Figure key="syn" name="SYN packets" az={az("syn")} value={count(lastOf(c("syn")))} />,
-      dropped: <Figure key="dropped" name="Dropped by DDoS mitigation" az={az("pkts_drop_ddos")} value={count(dropped === null ? null : dropped * SLOT_S)} level={levelOf(dropped === null ? null : dropped * SLOT_S, st.dropped as SettingValue, "above")} />,
+      dropped: ddosReported ? <Figure key="dropped" name="Dropped by DDoS mitigation" az={az("pkts_drop_ddos")} value={count(dropped === null ? null : dropped * SLOT_S)} level={levelOf(dropped === null ? null : dropped * SLOT_S, st.dropped as SettingValue, "above")} /> : null,
     };
     body = (
       <>
-        <p className={cx("ov-az__state", attack ? "ov-az__state--red" : "ov-az__state--green")}>
+        <p className={cx("ov-az__state", attack === true && "ov-az__state--red", attack === false && "ov-az__state--green")}>
           <span className="ov-az__dot" aria-hidden />
-          <span>{attack ? "Under DDoS attack" : "No DDoS attack"}</span>
+          <span>{attack === null ? "DDoS attack: no data" : attack ? "Under DDoS attack" : "No DDoS attack"}</span>
         </p>
+        {!ddosReported && <AzNote>DDoS figures: not reported by Azure for this IP</AzNote>}
         <ul className="ov-az__list">
-          <Figure name="Data path availability" az={az("vip_avail")} value={avail === null ? NO_DATA : `${Math.round(avail * 10) / 10}%`} level={levelOf(avail, st.availability as SettingValue, "below")} dir="below" />
+          <Figure name="Data path availability" az={az("vip_avail")} value={avail !== null ? `${Math.round(avail * 10) / 10}%` : reported(["vip_avail"]) ? NO_DATA : "not reported by Azure"} level={levelOf(avail, st.availability as SettingValue, "below")} dir="below" />
           {(st.series as string[]).map((k) => series[k])}
         </ul>
       </>
