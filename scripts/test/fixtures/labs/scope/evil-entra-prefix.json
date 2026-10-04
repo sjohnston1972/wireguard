@@ -1,0 +1,47 @@
+{
+  "lab": "az104-01-identity",
+  "about": "Entra objects without the lab-<id>- prefix: a user principal name, a group name, a mail nickname, a look-alike id, and a lab user added to a group the lab does not own.",
+  "expect": [
+    ["entra-prefix", "azuread_user.boss"],
+    ["entra-prefix", "azuread_group.helpdesk"],
+    ["entra-prefix", "azuread_group.nickname"],
+    ["entra-prefix", "azuread_user.lookalike"],
+    ["entra-prefix", "azuread_group_member.admins"]
+  ],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-01-identity", "location": "uksouth" } },
+      { "address": "azuread_user.boss", "mode": "managed", "type": "azuread_user", "name": "boss", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "lab-az104-01-identity-boss", "user_principal_name": "boss@contoso.onmicrosoft.com" } },
+      { "address": "azuread_group.helpdesk", "mode": "managed", "type": "azuread_group", "name": "helpdesk", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "helpdesk", "security_enabled": true } },
+      { "address": "azuread_group.nickname", "mode": "managed", "type": "azuread_group", "name": "nickname", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "lab-az104-01-identity-team", "mail_nickname": "team", "mail_enabled": true } },
+      { "address": "azuread_user.lookalike", "mode": "managed", "type": "azuread_user", "name": "lookalike", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "lab-az104-01-identityx-ann", "user_principal_name": "lab-az104-01-identityx-ann@contoso.onmicrosoft.com" } },
+      { "address": "azuread_user.ann", "mode": "managed", "type": "azuread_user", "name": "ann", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "lab-az104-01-identity-ann", "user_principal_name": "lab-az104-01-identity-ann@contoso.onmicrosoft.com" } },
+      { "address": "azuread_group_member.admins", "mode": "managed", "type": "azuread_group_member", "name": "admins", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "group_object_id": "22222222-2222-2222-2222-222222222222" } }
+    ] } },
+    "resource_changes": [
+      { "address": "azuread_group_member.admins", "type": "azuread_group_member", "change": { "actions": ["create"], "after_unknown": { "id": true, "member_object_id": true } } }
+    ],
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+      { "address": "azuread_user.boss", "mode": "managed", "type": "azuread_user", "name": "boss", "expressions": { "user_principal_name": { "references": ["var.upn_domain"] } } },
+      { "address": "azuread_group.helpdesk", "mode": "managed", "type": "azuread_group", "name": "helpdesk", "expressions": { "display_name": { "constant_value": "helpdesk" } } },
+      { "address": "azuread_group.nickname", "mode": "managed", "type": "azuread_group", "name": "nickname", "expressions": { "display_name": { "references": ["var.lab_id"] } } },
+      { "address": "azuread_user.lookalike", "mode": "managed", "type": "azuread_user", "name": "lookalike", "expressions": { "user_principal_name": { "references": ["var.lab_id", "var.upn_domain"] } } },
+      { "address": "azuread_user.ann", "mode": "managed", "type": "azuread_user", "name": "ann", "expressions": { "user_principal_name": { "references": ["var.lab_id", "var.upn_domain"] } } },
+      { "address": "azuread_group_member.admins", "mode": "managed", "type": "azuread_group_member", "name": "admins", "expressions": { "group_object_id": { "constant_value": "22222222-2222-2222-2222-222222222222" }, "member_object_id": { "references": ["azuread_user.ann.object_id", "azuread_user.ann"] } } }
+    ] } }
+  },
+  "hcl": { "resource": {
+    "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+    "azuread_user": {
+      "boss": [ { "display_name": "lab-${var.lab_id}-boss", "user_principal_name": "boss@${var.upn_domain}" } ],
+      "lookalike": [ { "display_name": "lab-${var.lab_id}x-ann", "user_principal_name": "lab-${var.lab_id}x-ann@${var.upn_domain}" } ],
+      "ann": [ { "display_name": "lab-${var.lab_id}-ann", "user_principal_name": "lab-${var.lab_id}-ann@${var.upn_domain}" } ]
+    },
+    "azuread_group": {
+      "helpdesk": [ { "display_name": "helpdesk", "security_enabled": true } ],
+      "nickname": [ { "display_name": "lab-${var.lab_id}-team", "mail_nickname": "team", "mail_enabled": true } ]
+    },
+    "azuread_group_member": { "admins": [ { "group_object_id": "22222222-2222-2222-2222-222222222222", "member_object_id": "${azuread_user.ann.object_id}" } ] }
+  } }
+}

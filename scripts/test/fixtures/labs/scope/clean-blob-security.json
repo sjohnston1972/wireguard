@@ -1,0 +1,79 @@
+{
+  "lab": "az104-06-blob-security",
+  "about": "A lab-6-like plan, peered: storage, a container, a VNet and subnet from the slot, a private DNS zone linked to the gateway VNet only through var.gateway_vnet_id, a lab group and an allowed role on the lab's storage account.",
+  "expect": [],
+  "plan": {
+    "format_version": "1.2",
+    "planned_values": {
+      "root_module": {
+        "resources": [
+          { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "location": "uksouth", "name": "rg-lab-az104-06-blob-security", "tags": { "lab": "az104-06-blob-security" } } },
+          { "address": "azurerm_storage_account.sa", "mode": "managed", "type": "azurerm_storage_account", "name": "sa", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "l06k3x9qsa", "resource_group_name": "rg-lab-az104-06-blob-security", "location": "uksouth", "account_tier": "Standard", "account_replication_type": "LRS", "public_network_access_enabled": false } },
+          { "address": "azurerm_storage_container.private", "mode": "managed", "type": "azurerm_storage_container", "name": "private", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "private", "container_access_type": "private" } },
+          { "address": "azurerm_virtual_network.lab", "mode": "managed", "type": "azurerm_virtual_network", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "vnet-lab", "resource_group_name": "rg-lab-az104-06-blob-security", "location": "uksouth", "address_space": ["10.64.64.0/20"] } },
+          { "address": "azurerm_subnet.endpoints", "mode": "managed", "type": "azurerm_subnet", "name": "endpoints", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "endpoints", "resource_group_name": "rg-lab-az104-06-blob-security", "virtual_network_name": "vnet-lab", "address_prefixes": ["10.64.64.0/24"] } },
+          { "address": "azurerm_private_dns_zone.blob", "mode": "managed", "type": "azurerm_private_dns_zone", "name": "blob", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "privatelink.blob.core.windows.net", "resource_group_name": "rg-lab-az104-06-blob-security" } },
+          { "address": "azurerm_private_dns_zone_virtual_network_link.gateway[0]", "mode": "managed", "type": "azurerm_private_dns_zone_virtual_network_link", "name": "gateway", "index": 0, "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "lab-az104-06-blob-security-wg", "resource_group_name": "rg-lab-az104-06-blob-security", "private_dns_zone_name": "privatelink.blob.core.windows.net", "registration_enabled": false,
+              "virtual_network_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Network/virtualNetworks/vnet-wg" } },
+          { "address": "azuread_group.readers", "mode": "managed", "type": "azuread_group", "name": "readers", "provider_name": "registry.terraform.io/hashicorp/azuread",
+            "values": { "display_name": "lab-az104-06-blob-security-readers", "security_enabled": true } },
+          { "address": "azurerm_role_assignment.readers", "mode": "managed", "type": "azurerm_role_assignment", "name": "readers", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "role_definition_name": "Storage Blob Data Reader", "principal_type": "Group" } }
+        ]
+      }
+    },
+    "resource_changes": [
+      { "address": "azurerm_storage_container.private", "type": "azurerm_storage_container", "change": { "actions": ["create"], "after_unknown": { "id": true, "storage_account_id": true } } },
+      { "address": "azurerm_role_assignment.readers", "type": "azurerm_role_assignment", "change": { "actions": ["create"], "after_unknown": { "id": true, "scope": true, "principal_id": true, "role_definition_id": true } } }
+    ],
+    "configuration": {
+      "provider_config": {
+        "azurerm": { "name": "azurerm", "full_name": "registry.terraform.io/hashicorp/azurerm" },
+        "azuread": { "name": "azuread", "full_name": "registry.terraform.io/hashicorp/azuread" }
+      },
+      "root_module": {
+        "resources": [
+          { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab",
+            "expressions": { "name": { "references": ["var.resource_group_name"] }, "location": { "references": ["var.region"] } } },
+          { "address": "azurerm_storage_account.sa", "mode": "managed", "type": "azurerm_storage_account", "name": "sa",
+            "expressions": { "name": { "references": ["var.name_prefix"] }, "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } },
+          { "address": "azurerm_storage_container.private", "mode": "managed", "type": "azurerm_storage_container", "name": "private",
+            "expressions": { "name": { "constant_value": "private" }, "storage_account_id": { "references": ["azurerm_storage_account.sa.id", "azurerm_storage_account.sa"] } } },
+          { "address": "azurerm_virtual_network.lab", "mode": "managed", "type": "azurerm_virtual_network", "name": "lab",
+            "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] }, "address_space": { "references": ["var.address_space"] } } },
+          { "address": "azurerm_subnet.endpoints", "mode": "managed", "type": "azurerm_subnet", "name": "endpoints",
+            "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] }, "virtual_network_name": { "references": ["azurerm_virtual_network.lab.name", "azurerm_virtual_network.lab"] }, "address_prefixes": { "references": ["var.address_space"] } } },
+          { "address": "azurerm_private_dns_zone.blob", "mode": "managed", "type": "azurerm_private_dns_zone", "name": "blob",
+            "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } },
+          { "address": "azurerm_private_dns_zone_virtual_network_link.gateway", "mode": "managed", "type": "azurerm_private_dns_zone_virtual_network_link", "name": "gateway",
+            "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] }, "private_dns_zone_name": { "references": ["azurerm_private_dns_zone.blob.name", "azurerm_private_dns_zone.blob"] }, "virtual_network_id": { "references": ["var.gateway_vnet_id"] } },
+            "count_expression": { "references": ["var.peered"] } },
+          { "address": "azuread_group.readers", "mode": "managed", "type": "azuread_group", "name": "readers",
+            "expressions": { "display_name": { "references": ["var.lab_id"] } } },
+          { "address": "azurerm_role_assignment.readers", "mode": "managed", "type": "azurerm_role_assignment", "name": "readers",
+            "expressions": { "scope": { "references": ["azurerm_storage_account.sa.id", "azurerm_storage_account.sa"] }, "role_definition_name": { "constant_value": "Storage Blob Data Reader" }, "principal_id": { "references": ["azuread_group.readers.object_id", "azuread_group.readers"] }, "principal_type": { "constant_value": "Group" } } }
+        ]
+      }
+    }
+  },
+  "hcl": {
+    "resource": {
+      "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}", "tags": "${var.tags}" } ] },
+      "azurerm_storage_account": { "sa": [ { "name": "${var.name_prefix}sa", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${var.region}", "account_tier": "Standard", "account_replication_type": "LRS", "public_network_access_enabled": false } ] },
+      "azurerm_storage_container": { "private": [ { "name": "private", "storage_account_id": "${azurerm_storage_account.sa.id}", "container_access_type": "private" } ] },
+      "azurerm_virtual_network": { "lab": [ { "name": "vnet-lab", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${var.region}", "address_space": ["${cidrsubnet(var.address_space, 2, 0)}"] } ] },
+      "azurerm_subnet": { "endpoints": [ { "name": "endpoints", "resource_group_name": "${azurerm_resource_group.lab.name}", "virtual_network_name": "${azurerm_virtual_network.lab.name}", "address_prefixes": ["${cidrsubnet(var.address_space, 6, 0)}"] } ] },
+      "azurerm_private_dns_zone": { "blob": [ { "name": "privatelink.blob.core.windows.net", "resource_group_name": "${azurerm_resource_group.lab.name}" } ] },
+      "azurerm_private_dns_zone_virtual_network_link": { "gateway": [ { "count": "${var.peered ? 1 : 0}", "name": "lab-${var.lab_id}-wg", "resource_group_name": "${azurerm_resource_group.lab.name}", "private_dns_zone_name": "${azurerm_private_dns_zone.blob.name}", "virtual_network_id": "${var.gateway_vnet_id}", "registration_enabled": false } ] },
+      "azuread_group": { "readers": [ { "display_name": "lab-${var.lab_id}-readers", "security_enabled": true } ] },
+      "azurerm_role_assignment": { "readers": [ { "scope": "${azurerm_storage_account.sa.id}", "role_definition_name": "Storage Blob Data Reader", "principal_id": "${azuread_group.readers.object_id}", "principal_type": "Group" } ] }
+    }
+  }
+}

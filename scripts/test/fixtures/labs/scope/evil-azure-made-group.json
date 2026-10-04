@@ -1,0 +1,44 @@
+{
+  "lab": "az104-06-blob-security",
+  "about": "Groups Azure makes by itself that would escape the sweep: an AKS node group outside rg-lab-<id>-*, an AKS cluster that leaves it to Azure, and a VM backup policy without an instant-restore group prefix.",
+  "expect": [
+    ["azure-made-group", "azurerm_kubernetes_cluster.named"],
+    ["azure-made-group", "azurerm_kubernetes_cluster.unnamed"],
+    ["azure-made-group", "azurerm_backup_policy_vm.daily"]
+  ],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-06-blob-security", "location": "uksouth" } },
+      { "address": "azurerm_kubernetes_cluster.named", "mode": "managed", "type": "azurerm_kubernetes_cluster", "name": "named", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "aks-lab", "resource_group_name": "rg-lab-az104-06-blob-security", "node_resource_group": "MC_rg-lab_aks-lab_uksouth", "dns_prefix": "l06k3x9q" } },
+      { "address": "azurerm_kubernetes_cluster.unnamed", "mode": "managed", "type": "azurerm_kubernetes_cluster", "name": "unnamed", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "aks-lab2", "resource_group_name": "rg-lab-az104-06-blob-security", "dns_prefix": "l06k3x9r" } },
+      { "address": "azurerm_kubernetes_cluster.good", "mode": "managed", "type": "azurerm_kubernetes_cluster", "name": "good", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "aks-lab3", "resource_group_name": "rg-lab-az104-06-blob-security", "node_resource_group": "rg-lab-az104-06-blob-security-nodes", "dns_prefix": "l06k3x9s" } },
+      { "address": "azurerm_backup_policy_vm.daily", "mode": "managed", "type": "azurerm_backup_policy_vm", "name": "daily", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "daily", "resource_group_name": "rg-lab-az104-06-blob-security", "recovery_vault_name": "rsv-lab", "instant_restore_resource_group": [] } },
+      { "address": "azurerm_backup_policy_vm.prefixed", "mode": "managed", "type": "azurerm_backup_policy_vm", "name": "prefixed", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "prefixed", "resource_group_name": "rg-lab-az104-06-blob-security", "recovery_vault_name": "rsv-lab", "instant_restore_resource_group": [ { "prefix": "rg-lab-az104-06-blob-security-restore-", "suffix": null } ] } }
+    ] } },
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+      { "address": "azurerm_kubernetes_cluster.named", "mode": "managed", "type": "azurerm_kubernetes_cluster", "name": "named", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } },
+      { "address": "azurerm_kubernetes_cluster.unnamed", "mode": "managed", "type": "azurerm_kubernetes_cluster", "name": "unnamed", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } },
+      { "address": "azurerm_kubernetes_cluster.good", "mode": "managed", "type": "azurerm_kubernetes_cluster", "name": "good", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] }, "node_resource_group": { "references": ["var.resource_group_name"] } } },
+      { "address": "azurerm_backup_policy_vm.daily", "mode": "managed", "type": "azurerm_backup_policy_vm", "name": "daily", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } },
+      { "address": "azurerm_backup_policy_vm.prefixed", "mode": "managed", "type": "azurerm_backup_policy_vm", "name": "prefixed", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } }
+    ] } }
+  },
+  "hcl": { "resource": {
+    "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+    "azurerm_kubernetes_cluster": {
+      "named": [ { "name": "aks-lab", "resource_group_name": "${azurerm_resource_group.lab.name}", "node_resource_group": "MC_rg-lab_aks-lab_uksouth", "dns_prefix": "${var.name_prefix}" } ],
+      "unnamed": [ { "name": "aks-lab2", "resource_group_name": "${azurerm_resource_group.lab.name}", "dns_prefix": "${var.name_prefix}" } ],
+      "good": [ { "name": "aks-lab3", "resource_group_name": "${azurerm_resource_group.lab.name}", "node_resource_group": "${var.resource_group_name}-nodes", "dns_prefix": "${var.name_prefix}" } ]
+    },
+    "azurerm_backup_policy_vm": {
+      "daily": [ { "name": "daily", "resource_group_name": "${azurerm_resource_group.lab.name}", "recovery_vault_name": "rsv-lab" } ],
+      "prefixed": [ { "name": "prefixed", "resource_group_name": "${azurerm_resource_group.lab.name}", "recovery_vault_name": "rsv-lab", "instant_restore_resource_group": [ { "prefix": "${var.resource_group_name}-restore-" } ] } ]
+    }
+  } }
+}

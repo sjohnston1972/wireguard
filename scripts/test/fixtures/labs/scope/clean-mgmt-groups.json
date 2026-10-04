@@ -1,0 +1,62 @@
+{
+  "lab": "az104-03-mgmt-groups",
+  "about": "A lab-3-like plan (a governance lab): lab management groups root > prod, an audit policy defined and assigned at the lab root, and a lock and a policy assignment at the lab's own group. The subscription is never moved.",
+  "expect": [],
+  "plan": {
+    "format_version": "1.2",
+    "planned_values": {
+      "root_module": {
+        "resources": [
+          { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "location": "uksouth", "name": "rg-lab-az104-03-mgmt-groups" } },
+          { "address": "azurerm_management_group.root", "mode": "managed", "type": "azurerm_management_group", "name": "root", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "lab-az104-03-mgmt-groups-root", "display_name": "lab-az104-03-mgmt-groups-root" } },
+          { "address": "azurerm_management_group.prod", "mode": "managed", "type": "azurerm_management_group", "name": "prod", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "lab-az104-03-mgmt-groups-prod", "display_name": "lab-az104-03-mgmt-groups-prod", "parent_management_group_id": "/providers/Microsoft.Management/managementGroups/lab-az104-03-mgmt-groups-root" } },
+          { "address": "azurerm_policy_definition.audit", "mode": "managed", "type": "azurerm_policy_definition", "name": "audit", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "lab-az104-03-mgmt-groups-audit-tags", "display_name": "lab-az104-03-mgmt-groups-audit-tags", "policy_type": "Custom", "mode": "Indexed",
+              "management_group_id": "/providers/Microsoft.Management/managementGroups/lab-az104-03-mgmt-groups-root", "policy_rule": "{\"if\":{\"field\":\"tags\",\"exists\":\"false\"},\"then\":{\"effect\":\"audit\"}}" } },
+          { "address": "azurerm_management_group_policy_assignment.audit", "mode": "managed", "type": "azurerm_management_group_policy_assignment", "name": "audit", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "lab-az104-03-audit", "management_group_id": "/providers/Microsoft.Management/managementGroups/lab-az104-03-mgmt-groups-root",
+              "policy_definition_id": "/providers/Microsoft.Management/managementGroups/lab-az104-03-mgmt-groups-root/providers/Microsoft.Authorization/policyDefinitions/lab-az104-03-mgmt-groups-audit-tags" } },
+          { "address": "azurerm_resource_group_policy_assignment.locations", "mode": "managed", "type": "azurerm_resource_group_policy_assignment", "name": "locations", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "lab-az104-03-mgmt-groups-locations", "resource_group_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-lab-az104-03-mgmt-groups",
+              "policy_definition_id": "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c" } },
+          { "address": "azurerm_management_lock.rg", "mode": "managed", "type": "azurerm_management_lock", "name": "rg", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "values": { "name": "lab-az104-03-mgmt-groups-nodelete", "scope": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-lab-az104-03-mgmt-groups", "lock_level": "CanNotDelete" } }
+        ]
+      }
+    },
+    "configuration": {
+      "root_module": {
+        "resources": [
+          { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+          { "address": "azurerm_management_group.root", "mode": "managed", "type": "azurerm_management_group", "name": "root", "expressions": { "name": { "references": ["var.lab_id"] } } },
+          { "address": "azurerm_management_group.prod", "mode": "managed", "type": "azurerm_management_group", "name": "prod",
+            "expressions": { "parent_management_group_id": { "references": ["azurerm_management_group.root.id", "azurerm_management_group.root"] } } },
+          { "address": "azurerm_policy_definition.audit", "mode": "managed", "type": "azurerm_policy_definition", "name": "audit",
+            "expressions": { "management_group_id": { "references": ["azurerm_management_group.root.id", "azurerm_management_group.root"] } } },
+          { "address": "azurerm_management_group_policy_assignment.audit", "mode": "managed", "type": "azurerm_management_group_policy_assignment", "name": "audit",
+            "expressions": { "management_group_id": { "references": ["azurerm_management_group.root.id", "azurerm_management_group.root"] }, "policy_definition_id": { "references": ["azurerm_policy_definition.audit.id", "azurerm_policy_definition.audit"] } } },
+          { "address": "azurerm_resource_group_policy_assignment.locations", "mode": "managed", "type": "azurerm_resource_group_policy_assignment", "name": "locations",
+            "expressions": { "resource_group_id": { "references": ["azurerm_resource_group.lab.id", "azurerm_resource_group.lab"] } } },
+          { "address": "azurerm_management_lock.rg", "mode": "managed", "type": "azurerm_management_lock", "name": "rg",
+            "expressions": { "scope": { "references": ["azurerm_resource_group.lab.id", "azurerm_resource_group.lab"] } } }
+        ]
+      }
+    }
+  },
+  "hcl": {
+    "resource": {
+      "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+      "azurerm_management_group": {
+        "root": [ { "name": "lab-${var.lab_id}-root", "display_name": "lab-${var.lab_id}-root" } ],
+        "prod": [ { "name": "lab-${var.lab_id}-prod", "display_name": "lab-${var.lab_id}-prod", "parent_management_group_id": "${azurerm_management_group.root.id}" } ]
+      },
+      "azurerm_policy_definition": { "audit": [ { "name": "lab-${var.lab_id}-audit-tags", "display_name": "lab-${var.lab_id}-audit-tags", "policy_type": "Custom", "mode": "Indexed", "management_group_id": "${azurerm_management_group.root.id}", "policy_rule": "${jsonencode({ if = { field = \"tags\", exists = \"false\" }, then = { effect = \"audit\" } })}" } ] },
+      "azurerm_management_group_policy_assignment": { "audit": [ { "name": "lab-az104-03-audit", "management_group_id": "${azurerm_management_group.root.id}", "policy_definition_id": "${azurerm_policy_definition.audit.id}" } ] },
+      "azurerm_resource_group_policy_assignment": { "locations": [ { "name": "lab-${var.lab_id}-locations", "resource_group_id": "${azurerm_resource_group.lab.id}", "policy_definition_id": "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c" } ] },
+      "azurerm_management_lock": { "rg": [ { "name": "lab-${var.lab_id}-nodelete", "scope": "${azurerm_resource_group.lab.id}", "lock_level": "CanNotDelete" } ] }
+    }
+  }
+}

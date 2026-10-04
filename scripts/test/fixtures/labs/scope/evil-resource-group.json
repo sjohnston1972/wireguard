@@ -1,0 +1,22 @@
+{
+  "lab": "az104-06-blob-security",
+  "about": "A resource group that is not the lab's: a shared name, and one that only starts like the lab's id.",
+  "expect": [["resource-group", "azurerm_resource_group.shared"], ["resource-group", "azurerm_resource_group.lookalike"]],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-06-blob-security", "location": "uksouth" } },
+      { "address": "azurerm_resource_group.shared", "mode": "managed", "type": "azurerm_resource_group", "name": "shared", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-shared", "location": "uksouth" } },
+      { "address": "azurerm_resource_group.lookalike", "mode": "managed", "type": "azurerm_resource_group", "name": "lookalike", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-06-blob-securityx", "location": "uksouth" } }
+    ] } },
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+      { "address": "azurerm_resource_group.shared", "mode": "managed", "type": "azurerm_resource_group", "name": "shared", "expressions": { "name": { "constant_value": "rg-shared" } } },
+      { "address": "azurerm_resource_group.lookalike", "mode": "managed", "type": "azurerm_resource_group", "name": "lookalike", "expressions": { "name": { "references": ["var.resource_group_name"] } } }
+    ] } }
+  },
+  "hcl": { "resource": { "azurerm_resource_group": {
+    "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ],
+    "shared": [ { "name": "rg-shared", "location": "${var.region}" } ],
+    "lookalike": [ { "name": "${var.resource_group_name}x", "location": "${var.region}" } ]
+  } } }
+}

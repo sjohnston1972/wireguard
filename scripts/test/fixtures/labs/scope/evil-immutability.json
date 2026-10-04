@@ -1,0 +1,41 @@
+{
+  "lab": "az104-06-blob-security",
+  "about": "Locked immutability, which nothing can remove until it expires: a locked container policy, an account-level Locked policy and a Locked vault.",
+  "expect": [
+    ["immutability", "azurerm_storage_container_immutability_policy.locked"],
+    ["immutability", "azurerm_storage_account.worm"],
+    ["immutability", "azurerm_recovery_services_vault.vault"]
+  ],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-06-blob-security", "location": "uksouth" } },
+      { "address": "azurerm_storage_account.worm", "mode": "managed", "type": "azurerm_storage_account", "name": "worm", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "l06k3x9qworm", "resource_group_name": "rg-lab-az104-06-blob-security", "immutability_policy": [ { "allow_protected_append_writes": false, "period_since_creation_in_days": 1, "state": "Locked" } ] } },
+      { "address": "azurerm_storage_container.c", "mode": "managed", "type": "azurerm_storage_container", "name": "c", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "worm", "container_access_type": "private" } },
+      { "address": "azurerm_storage_container_immutability_policy.locked", "mode": "managed", "type": "azurerm_storage_container_immutability_policy", "name": "locked", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "immutability_period_in_days": 1, "locked": true } },
+      { "address": "azurerm_recovery_services_vault.vault", "mode": "managed", "type": "azurerm_recovery_services_vault", "name": "vault", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "rsv-lab", "resource_group_name": "rg-lab-az104-06-blob-security", "sku": "Standard", "immutability": "Locked", "soft_delete_enabled": false } }
+    ] } },
+    "resource_changes": [
+      { "address": "azurerm_storage_container.c", "type": "azurerm_storage_container", "change": { "actions": ["create"], "after_unknown": { "id": true, "storage_account_id": true, "resource_manager_id": true } } },
+      { "address": "azurerm_storage_container_immutability_policy.locked", "type": "azurerm_storage_container_immutability_policy", "change": { "actions": ["create"], "after_unknown": { "id": true, "storage_container_resource_manager_id": true } } }
+    ],
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+      { "address": "azurerm_storage_account.worm", "mode": "managed", "type": "azurerm_storage_account", "name": "worm", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } },
+      { "address": "azurerm_storage_container.c", "mode": "managed", "type": "azurerm_storage_container", "name": "c", "expressions": { "storage_account_id": { "references": ["azurerm_storage_account.worm.id", "azurerm_storage_account.worm"] } } },
+      { "address": "azurerm_storage_container_immutability_policy.locked", "mode": "managed", "type": "azurerm_storage_container_immutability_policy", "name": "locked",
+        "expressions": { "storage_container_resource_manager_id": { "references": ["azurerm_storage_container.c.resource_manager_id", "azurerm_storage_container.c"] } } },
+      { "address": "azurerm_recovery_services_vault.vault", "mode": "managed", "type": "azurerm_recovery_services_vault", "name": "vault", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } }
+    ] } }
+  },
+  "hcl": { "resource": {
+    "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+    "azurerm_storage_account": { "worm": [ { "name": "${var.name_prefix}worm", "resource_group_name": "${azurerm_resource_group.lab.name}", "immutability_policy": [ { "allow_protected_append_writes": false, "period_since_creation_in_days": 1, "state": "Locked" } ] } ] },
+    "azurerm_storage_container": { "c": [ { "name": "worm", "storage_account_id": "${azurerm_storage_account.worm.id}", "container_access_type": "private" } ] },
+    "azurerm_storage_container_immutability_policy": { "locked": [ { "storage_container_resource_manager_id": "${azurerm_storage_container.c.resource_manager_id}", "immutability_period_in_days": 1, "locked": true } ] },
+    "azurerm_recovery_services_vault": { "vault": [ { "name": "rsv-lab", "resource_group_name": "${azurerm_resource_group.lab.name}", "sku": "Standard", "immutability": "Locked", "soft_delete_enabled": false } ] }
+  } }
+}
