@@ -224,13 +224,16 @@ collect() {
 
   # Start each background job whose last start is older than its interval.
   # The start time is written before the job is queued, so a job that keeps
-  # failing is still tried only once per interval.
-  local job started now
+  # failing is not restarted on every heartbeat. One with no result yet (apt
+  # busy just after boot, say) is tried again after 5 minutes, not 6 hours.
+  local job started now every
   now="${EPOCHSECONDS:-$(date +%s)}"
   for job in updates events net; do
+    every="${EVERY[$job]}"
+    if [[ ! -s "$RUN/$job.json" ]] && (( every > 300 )); then every=300; fi
     started=""
     read -r started < "$RUN/vitals-$job.started" 2>/dev/null || true
-    [[ "$started" =~ ^[0-9]+$ ]] && (( now - started < EVERY[$job] )) && continue
+    [[ "$started" =~ ^[0-9]+$ ]] && (( now - started < every )) && continue
     printf '%s\n' "$now" > "$RUN/vitals-$job.started" 2>/dev/null
     systemd-run --quiet --no-block --collect --unit "wg-vitals-$job" -p RuntimeMaxSec=300 -p Nice=10 "$SELF" "$job" >/dev/null 2>&1 </dev/null || true
   done
