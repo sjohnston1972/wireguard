@@ -319,6 +319,40 @@ export async function destroyLab(env: Env, labId: string, reason: LabEndReason, 
   return destroySession(env, s, reason, by, why);
 }
 
+/** "19:00", London time, as every push and refusal says it. */
+export const hhmm = (ms: number) => new Date(ms).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
+
+/**
+ * Move a running session's timer (spec §7.2, plan ruling 4): by whole hours
+ * from its current end, or to max_until. Never past max_until: the API
+ * refuses and says until when it can run; the phone's Extend 1h (`clamp`)
+ * stops at the maximum instead. A new deadline earns a new 15-minute warning.
+ */
+export async function extendSession(env: Env, s: LabSessionRow, by: { hours?: number; toMax?: boolean; clamp?: boolean }): Promise<{ until: string; clamped: boolean }> {
+  const title = labDef(s.lab_id)?.title ?? s.lab_id;
+  if (s.state !== "running" || !s.auto_destroy_at) throw new RunError(`${title} is not running yet, so it has no timer to extend.`);
+  const max = Date.parse(s.max_until);
+  const current = Date.parse(s.auto_destroy_at);
+  if (by.clamp && current >= max) throw new RunError(`${title} already runs to its maximum lifetime, ${hhmm(max)}.`);
+  let next = by.toMax ? max : Math.max(current, Date.now()) + (by.hours ?? 1) * HOUR;
+  let clamped = false;
+  if (next > max) {
+    if (!by.clamp) throw new RunError(`${title} can run until ${hhmm(max)} at most (its maximum lifetime). Extend to the maximum instead.`);
+    next = max;
+    clamped = true;
+  }
+  const until = new Date(next).toISOString();
+  if (!(await updateSession(env, s.id, { auto_destroy_at: until, warned_at: null }, "state = 'running'"))) throw new RunError(`${title} is no longer running.`);
+  return { until, clamped };
+}
+
+/** Extend a lab's running session from the dashboard. */
+export async function extendLab(env: Env, labId: string, by: { hours?: number; toMax?: boolean }): Promise<string> {
+  const s = await liveSessionOf(env, labId);
+  if (!s) throw new RunError(`${labDef(labId)?.title ?? labId} is not running.`);
+  return (await extendSession(env, s, by)).until;
+}
+
 /** Cancel the lab's run in progress, then tear the lab down (spec §7.2 /cancel). */
 export async function cancelLab(env: Env, labId: string, by: string): Promise<LabRunDb> {
   const s = await liveSessionOf(env, labId);

@@ -26,8 +26,9 @@ import { fixedConfig } from "../settings";
 import { getSnapshot } from "../state";
 import { REGIONS } from "../region";
 import { catalogue, labDef, labReadme } from "../labs/catalogue";
-import { availability, cancelLab, deployLab, destroyLab, unavailableReason, type DeployInput } from "../labs/engine";
-import { liveSessionOf } from "../labs/store";
+import { availability, cancelLab, deployLab, destroyLab, extendLab, hhmm, unavailableReason, type DeployInput } from "../labs/engine";
+import { liveSessionOf, runsOf } from "../labs/store";
+import { labRunRow, labSession } from "../labs/view";
 import { releaseFields, releaseTests } from "../labs/cards";
 import {
   LAB_HOURS_MAX,
@@ -222,6 +223,9 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     const [cfg, stored, snap] = await Promise.all([fixedConfig(c.env), db.allSettings(c.env), getSnapshot(c.env)]);
     const peer = def.connectivity.peering === "required" ? true : def.connectivity.peering === "off" ? false : labsSettingsFrom(stored).labsDefaultPeering;
     const items = def.cost.items.map((i) => ({ ...i, gbpH: i.gbp_h, source: "authored" as const, priceAge: null }));
+    const live = await liveSessionOf(c.env, def.id);
+    const liveRuns = live ? await runsOf(c.env, live.id) : [];
+    const active = liveRuns.find((r) => !r.finished_at && (r.status === "queued" || r.status === "running")) ?? null;
     const out: LabDetail = {
       card: card(def),
       readme: labReadme(def.id),
@@ -231,8 +235,8 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       warnings: [],
       defaults: { region: cfg.region, peer, hours: def.timing.session_h },
       gatewayUp: snap.state === "running" || snap.state === "standby",
-      session: null,
-      runs: [],
+      session: live ? labSession(live, active, Date.now()) : null,
+      runs: liveRuns.map(labRunRow),
       resources: null,
       portalUrl: null,
     };
@@ -283,6 +287,9 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     if (b.hours !== undefined && b.toMax !== undefined) return bad(c, "Extend by hours or to the maximum, not both.", "toMax");
     if (b.hours === undefined && b.toMax === undefined) return bad(c, "Say how many hours, or toMax: true.", "hours");
     return null;
+  }, async (c, def, b) => {
+    const until = await extendLab(c.env, def.id, { hours: b.hours as number | undefined, toMax: b.toMax === true });
+    return done(c, `${def.title} now ends at ${hhmm(Date.parse(until))}.`);
   });
   action("destroy", DESTROY, null, async (c, def) => done(c, `Tearing down ${def.title}.`, await destroyLab(c.env, def.id, "manual", c.get("user"))));
   action("peer", NOTHING);

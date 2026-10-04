@@ -16,6 +16,7 @@
 import type { Env } from "./env";
 import * as db from "./db";
 import { sha256Hex, safeEqual } from "./auth";
+import { refreshLabSteps } from "./labs/refresh";
 
 /** Largest piece accepted, in bytes of UTF-8 (the workflow sends at most 48 KB). */
 export const LIVE_LOG_MAX_TEXT = 64 * 1024;
@@ -102,6 +103,9 @@ export async function receiveLiveLog(env: Env, token: string, body: LiveLogBody 
   const text = redact(body.text, [run.ssh_password, token]);
   const stored = await db.addLiveLogChunk(env, run.id, seq, now.toISOString(), text);
   if (stored) await db.trimLiveLog(env, run.id, LIVE_LOG_KEEP_BYTES);
+  // A lab run's step list ("Deploying 3/11") is read from GitHub here, every fourth piece
+  // (about every 20 seconds), so pages never have to ask GitHub themselves. Never fails the piece.
+  if (stored && run.id.startsWith("lab-") && seq % 4 === 0) await refreshLabSteps(env, run.id).catch((e) => console.error("lab steps:", e));
   return { status: 200, body: { message: stored ? "ok" : "already stored", duplicate: !stored } };
 }
 
