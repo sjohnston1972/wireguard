@@ -28,7 +28,7 @@ import { REGIONS } from "../region";
 import { catalogue, labDef, labReadme } from "../labs/catalogue";
 import { checkLabPermissions } from "../labs/permissions";
 import { directNet } from "../labs/net";
-import { availability, cancelLab, cleanupLab, deployLab, destroyLab, extendLab, hhmm, unavailableReason, type DeployInput } from "../labs/engine";
+import { availability, cancelLab, cleanupLab, deployLab, peerLab, rePeerLabs, unpeerLab, destroyLab, extendLab, hhmm, unavailableReason, type DeployInput } from "../labs/engine";
 import { activeRuns, liveSessionOf, runsOf, type LabSessionRow } from "../labs/store";
 import { labRunRow } from "../labs/view";
 import { cardContext, labCard, sessionView } from "../labs/cards";
@@ -169,9 +169,10 @@ export function registerLabs(api: Hono<ApiEnv>): void {
   api.post("/labs/repeer", async (c) => {
     const r = await readBody(c, NOTHING);
     if (!r.ok) return r.res;
-    const waiting = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM lab_sessions WHERE state IN ('deploying', 'running') AND peering IN ('waiting', 'disconnected')").first<{ n: number }>();
-    if (Number(waiting?.n ?? 0) > 0) return notYet(c);
-    const out: ApiOk = { ok: true, message: "No labs are waiting to peer." };
+    const { started, failed } = await rePeerLabs(c.env, c.get("user"));
+    if (!started.length && !failed.length) return c.json({ ok: true, message: "No labs are waiting to peer." } satisfies ApiOk);
+    if (!started.length) return fail(c, 409, "refused", `Could not re-peer: ${failed.join("; ")}`);
+    const out: ApiOk = { ok: true, message: `Re-peering ${started.length} lab${started.length === 1 ? "" : "s"}: ${started.join(", ")}.`, ...(failed.length ? { warning: `Not now: ${failed.join("; ")}` } : {}) };
     return c.json(out);
   });
 
@@ -279,8 +280,8 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     return done(c, `${def.title} now ends at ${hhmm(Date.parse(until))}.`);
   });
   action("destroy", DESTROY, null, async (c, def) => done(c, `Tearing down ${def.title}.`, await destroyLab(c.env, def.id, "manual", c.get("user"))));
-  action("peer", NOTHING);
-  action("unpeer", NOTHING);
+  action("peer", NOTHING, null, async (c, def) => done(c, `Peering ${def.title} to the gateway.`, await peerLab(c.env, def.id, c.get("user"))));
+  action("unpeer", NOTHING, null, async (c, def) => done(c, `Unpeering ${def.title} from the gateway.`, await unpeerLab(c.env, def.id, c.get("user"))));
   action("test", NOTHING, null, async (c, def) => {
     const { run } = await deployLab(c.env, def.id, { hours: def.timing.session_h, peer: def.connectivity.peering !== "off" }, c.get("user"), true);
     return done(c, `Release test of ${def.title} v${def.version} started: deploy, check, tear down and verify clean.`, run);

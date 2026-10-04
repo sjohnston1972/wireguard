@@ -11,6 +11,7 @@
 import type { Env } from "./env";
 import { config } from "./env";
 import type { Peer } from "./db";
+import { LAB_POOL } from "../../shared/labs";
 
 export const PRIVATE_KEY_PLACEHOLDER = "__CLIENT_PRIVATE_KEY__";
 
@@ -77,7 +78,11 @@ export function hostLabel(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63);
 }
 
-/** What a client's config sends through the tunnel (its AllowedIPs), in order. */
+/**
+ * What a client's config sends through the tunnel (its AllowedIPs), in order.
+ * The "Azure route" switch carries the lab pool too (labs spec §7.6, §15 item
+ * 4): labs peered to the gateway sit in 10.64.0.0/13.
+ */
 export function clientAllowedIps(
   cfg: { subnet: string; subnet6: string; loopbackIp: string; vnetCidr: string; homeLanCidr: string },
   peer: { full_tunnel: number; azure_vnet?: number; home_lan?: number },
@@ -85,7 +90,7 @@ export function clientAllowedIps(
   if (peer.full_tunnel) return ["0.0.0.0/0", "::/0"];
   return [cfg.subnet, `${cfg.loopbackIp}/32`]
     .concat(cfg.subnet6 ? [cfg.subnet6] : [])
-    .concat(peer.azure_vnet ? [cfg.vnetCidr] : [])
+    .concat(peer.azure_vnet ? [cfg.vnetCidr, LAB_POOL] : [])
     .concat(peer.home_lan && cfg.homeLanCidr ? [cfg.homeLanCidr] : []);
 }
 

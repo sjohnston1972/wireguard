@@ -30,6 +30,7 @@ import { noteHandshakes } from "./keyrotation";
 import { recordHeartbeat, fwDeltas } from "./history";
 import { parseVitals, parseAgentVersion, freshScheduledEvents, scheduledEventNote } from "./vitals";
 import { markDueStmt } from "./insights/common";
+import { rePeerPush } from "./labs/repeer";
 
 /**
  * A refusal fit for the screen. The code says what kind, so the data API
@@ -541,6 +542,13 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
   await refreshInventory(env);
   const cfg = config(env);
   await db.addAlert(env, "deploy", `Deployed at ${publicIp ?? "unknown IP"} (${meta.via}); ${cfg.dnsName} ${dns.live ? "is live" : "not live yet"}`, run.id);
+  // Labs waiting to peer (or disconnected by the last tear-down) can peer now: one push (labs/repeer.ts).
+  // A lab problem must never cost the gateway its deploy.
+  try {
+    await rePeerPush(env, run.id);
+  } catch (e) {
+    console.error("lab re-peer push:", e);
+  }
   // The phone hears about it when the VM's self-test comes in (handleAgent),
   // so "ready" means the tunnel was proven to carry traffic, not just built.
   return true;

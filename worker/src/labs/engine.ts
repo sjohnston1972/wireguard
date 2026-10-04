@@ -19,6 +19,7 @@ import type { Env } from "../env";
 import { canDispatch } from "../env";
 import * as db from "../db";
 import { effectiveConfig } from "../settings";
+import { getSnapshot } from "../state";
 import { acquireLock, releaseLock, labLock } from "../lock";
 import { randomToken } from "../auth";
 import { RunError } from "../runs";
@@ -374,6 +375,52 @@ export async function cleanupLab(env: Env, labId: string, by: string): Promise<L
     await env.DB.prepare("DELETE FROM lab_sessions WHERE id = ?1").bind(s.id).run();
     throw e;
   }
+}
+
+// ── Peering (spec §7.6) ──────────────────────────────────────────────────
+
+/** A peer run for a running lab that can peer (its step 9 asks the Worker for the gateway's lock). */
+export async function peerLab(env: Env, labId: string, by: string): Promise<LabRunDb> {
+  const def = labDef(labId);
+  const s = await liveSessionOf(env, labId);
+  if (!def || def.connectivity.peering === "off") throw new RunError(`${def?.title ?? labId} never peers to the gateway.`);
+  if (!s || s.state !== "running") throw new RunError(`${def.title} is not running.`);
+  if (s.peering === "on") throw new RunError(`${def.title} is already peered to the gateway.`);
+  const run = await startLabRun(env, s.id, "peer", by, "peer to the gateway");
+  await updateSession(env, s.id, { peering: "waiting" }, "state = 'running'");
+  return run;
+}
+
+/** An unpeer run: both sides of the peering and the DNS links go; the lab keeps running. */
+export async function unpeerLab(env: Env, labId: string, by: string): Promise<LabRunDb> {
+  const def = labDef(labId);
+  const s = await liveSessionOf(env, labId);
+  if (!def || def.connectivity.peering === "off") throw new RunError(`${def?.title ?? labId} never peers to the gateway.`);
+  if (!s || s.state !== "running") throw new RunError(`${def.title} is not running.`);
+  if (def.connectivity.peering === "required") throw new RunError(`${def.title} needs its peering; tear it down instead.`);
+  if (s.peering === "off") throw new RunError(`${def.title} is not peered.`);
+  return startLabRun(env, s.id, "unpeer", by, "unpeer from the gateway");
+}
+
+/** Re-peer: one peer run per running session whose peering is waiting or disconnected, once the gateway is up. */
+export async function rePeerLabs(env: Env, by: string): Promise<{ started: string[]; failed: string[] }> {
+  const snap = await getSnapshot(env);
+  const waiting = (await env.DB.prepare("SELECT * FROM lab_sessions WHERE state = 'running' AND peering IN ('waiting', 'disconnected') ORDER BY requested_at").all<LabSessionRow>()).results;
+  if (!waiting.length) return { started: [], failed: [] };
+  if (snap.state !== "running" && snap.state !== "standby") throw new RunError("The gateway is not running, so there is nothing to peer to yet. Re-peer once it is.");
+  const started: string[] = [];
+  const failed: string[] = [];
+  for (const s of waiting) {
+    const title = labDef(s.lab_id)?.title ?? s.lab_id;
+    try {
+      await startLabRun(env, s.id, "peer", by, "re-peer after the gateway came back");
+      await updateSession(env, s.id, { peering: "waiting" }, "state = 'running'");
+      started.push(title);
+    } catch (e) {
+      failed.push(`${title}: ${(e as Error).message}`);
+    }
+  }
+  return { started, failed };
 }
 
 /** Cancel the lab's run in progress, then tear the lab down (spec §7.2 /cancel). */

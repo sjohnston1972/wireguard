@@ -33,7 +33,7 @@ async function deployWith(env: Env, world: ReturnType<typeof apiEnv>["world"]) {
 describe("clientAllowedIps", () => {
   it("lists exactly what each kind of config sends through the tunnel", () => {
     expect(clientAllowedIps(cfg, { full_tunnel: 0 })).toEqual(["10.13.13.0/24", "10.13.255.1/32", "fd13:13::/64"]);
-    expect(clientAllowedIps(cfg, { full_tunnel: 0, azure_vnet: 1, home_lan: 1 })).toEqual(["10.13.13.0/24", "10.13.255.1/32", "fd13:13::/64", "10.50.0.0/16", "192.168.1.0/24"]);
+    expect(clientAllowedIps(cfg, { full_tunnel: 0, azure_vnet: 1, home_lan: 1 })).toEqual(["10.13.13.0/24", "10.13.255.1/32", "fd13:13::/64", "10.50.0.0/16", "10.64.0.0/13", "192.168.1.0/24"]);
     expect(clientAllowedIps(cfg, { full_tunnel: 1, azure_vnet: 1 })).toEqual(["0.0.0.0/0", "::/0"]);
     expect(clientAllowedIps({ ...cfg, homeLanCidr: "" }, { full_tunnel: 0, home_lan: 1 })).toEqual(["10.13.13.0/24", "10.13.255.1/32", "fd13:13::/64"]);
   });
@@ -67,7 +67,7 @@ describe("GET /clients", () => {
     expect(r.status).toBe(200);
     expect(r.json.running).toBe(true);
     const phone = r.json.clients.find((x: { name: string }) => x.name === "Phone");
-    expect(phone).toMatchObject({ status: "online", lastLatencyMs: 20, allowedIps: ["10.13.13.0/24", "10.13.255.1/32", "fd13:13::/64", "10.50.0.0/16"], ip6: "fd13:13::2", isSite: false, expiresSoon: false });
+    expect(phone).toMatchObject({ status: "online", lastLatencyMs: 20, allowedIps: ["10.13.13.0/24", "10.13.255.1/32", "fd13:13::/64", "10.50.0.0/16", "10.64.0.0/13"], ip6: "fd13:13::2", isSite: false, expiresSoon: false });
     expect(phone.live).toMatchObject({ rx: 1000, tx: 2000 });
     const laptop = r.json.clients.find((x: { name: string }) => x.name === "Laptop");
     expect(laptop).toMatchObject({ status: "offline", allowedIps: ["0.0.0.0/0", "::/0"], expiresSoon: true });

@@ -32,8 +32,9 @@ describe("simulate: the starter rules", () => {
   it("tunnel clients to the home LAN on TCP 22 is allowed by 'Clients to the home LAN'", () => {
     const r = simulate(flow(z("clients"), z("home"), "tcp", 22), ctx(starters()));
     expect(r.verdict).toBe("allow");
-    expect(r.matched).toEqual({ id: 3, name: "Clients to the home LAN", place: 3 });
-    expect(r.reason).toBe("Allowed by rule 3, Clients to the home LAN.");
+    // Place 4: "Clients to labs" (labs, position 25) sits between the Azure VNet and the home LAN.
+    expect(r.matched).toEqual({ id: 3, name: "Clients to the home LAN", place: 4 });
+    expect(r.reason).toBe("Allowed by rule 4, Clients to the home LAN.");
     expect(r.partial).toEqual([]);
   });
   it("workloads to the home LAN is denied by the default", () => {
@@ -62,7 +63,7 @@ describe("simulate: matching", () => {
     const r = simulate(flow(z("clients"), z("home")), ctx([off, ...starters()]));
     expect(r.verdict).toBe("allow");
     expect(r.matched?.id).toBe(3);
-    expect(r.matched?.place).toBe(4);
+    expect(r.matched?.place).toBe(5); // after "Off" and the four rules before it, "Clients to labs" (25) included
   });
   it("a rule with a compile problem (deleted client) is skipped, as the VM skips it", () => {
     const gone = rule({ name: "Gone", src_kind: "client", src_value: "99", action: "deny", position: 1 });

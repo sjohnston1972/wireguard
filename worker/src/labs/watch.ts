@@ -38,6 +38,7 @@ import { refreshLabRun } from "./refresh";
 import { budgetStatus } from "../budget";
 import { fetchLabCostDays } from "./cost";
 import { sweepOrphans } from "./orphans";
+import { proposeLabsRule } from "./fwproposal";
 import { labTitle } from "./view";
 
 const MIN = 60_000;
@@ -184,6 +185,8 @@ export async function runLabWatch(env: Env, now: Date = new Date()): Promise<str
   // 5: hourly, the orphan sweep (7 listings); 6: daily, Azure's spend per lab group.
   await step("orphans", () => sweepOrphans(env, net, now));
   await step("lab costs", () => fetchLabCostDays(env, net, now));
+  // 7: once per install, the Labs firewall rule as a draft proposal (D1 only).
+  await step("firewall", () => proposeLabsRule(env));
   return lines;
 }
 

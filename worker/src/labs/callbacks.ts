@@ -19,7 +19,10 @@ import type { Env } from "../env";
 import { randomToken, safeEqual, sha256Hex } from "../auth";
 import { verifyGithubOidc } from "../oidc";
 import { directNet, getGhRun, LAB_WORKFLOW } from "./net";
-import { getLabRun, updateRun } from "./store";
+import * as db from "../db";
+import { getSnapshot } from "../state";
+import { acquireLock, releaseLock, GATEWAY_LOCK } from "../lock";
+import { getLabRun, LIVE_SQL, updateRun, updateSession } from "./store";
 import { finishRun, readOutputs } from "./settle";
 
 export interface CallbackReply {
@@ -28,7 +31,6 @@ export interface CallbackReply {
 }
 
 const noToken: CallbackReply = { status: 401, body: { error: "missing token" } };
-const notYet: CallbackReply = { status: 501, body: { error: "labs are not built yet" } };
 const badBody = (error: string, field?: string): CallbackReply => ({ status: 400, body: field ? { error, field } : { error } });
 
 type Obj = Record<string, unknown>;
@@ -111,12 +113,87 @@ export async function handleLabSecrets(env: Env, oidcToken: string | null, body:
   return issueLabSecrets(env, body.run_id, Number(claims.run_id));
 }
 
-/** POST /api/callback/lab-peer: begin (answers { go: boolean }) or end (releases the 10-minute gateway lock). */
-export async function handleLabPeer(_env: Env, token: string | null, _body: unknown): Promise<CallbackReply> {
-  return token ? notYet : noToken;
+/**
+ * POST /api/callback/lab-peer (spec §7.6), from step 9 of a deploy, peer or
+ * test run, with the run's callback token.
+ *   begin: "go" only while the gateway is running or in Standby and the
+ *          gateway's own lock can be taken as peer:<run id> for 10 minutes,
+ *          so a peering change never races a gateway apply or destroy on
+ *          vnet-wg. Otherwise "wait": the session's peering is waiting, and
+ *          Re-peer offers it once the gateway is running.
+ *   end:   releases that lock; { ok: true } means peered.
+ */
+export async function handleLabPeer(env: Env, token: string | null, body: unknown): Promise<CallbackReply> {
+  if (!token) return noToken;
+  if (!isObj(body)) return badBody("expected {run_id, phase}");
+  const extra = unknownKey(body, ["run_id", "phase", "ok"]);
+  if (extra) return badBody(`${extra} is not something this takes`, extra);
+  if (body.phase !== "begin" && body.phase !== "end") return badBody("phase is begin or end", "phase");
+  if (body.phase === "end" && typeof body.ok !== "boolean") return badBody("end says ok: true or false", "ok");
+  if (body.phase === "begin" && body.ok !== undefined) return badBody("ok is only for end", "ok");
+  const found = await runForToken(env, token, body.run_id);
+  if (!found.run) return found.reply;
+  const run = found.run;
+  if (run.finished_at || !["queued", "running"].includes(run.status)) return { status: 409, body: { error: "run is not active" } };
+  if (!["deploy", "peer", "test"].includes(run.action)) return { status: 409, body: { error: `a ${run.action} run does not peer` } };
+  const holder = `peer:${run.id}`;
+  const live = "state NOT IN ('ended', 'ended_dirty')";
+
+  if (body.phase === "end") {
+    await releaseLock(env, holder, false, GATEWAY_LOCK);
+    await updateSession(env, run.session_id, { peering: body.ok ? "on" : "waiting" }, live);
+    return { status: 200, body: { message: body.ok ? "peered" : "noted: not peered" } };
+  }
+  const snap = await getSnapshot(env);
+  if (snap.state !== "running" && snap.state !== "standby") {
+    await updateSession(env, run.session_id, { peering: "waiting" }, live);
+    return { status: 200, body: { go: false, reason: "the gateway is not running; Re-peer once it is" } };
+  }
+  const lock = await acquireLock(env, holder, { name: GATEWAY_LOCK, ttlMs: PEER_LOCK_MS });
+  if (!lock.ok) {
+    await updateSession(env, run.session_id, { peering: "waiting" }, live);
+    return { status: 200, body: { go: false, reason: "the gateway is busy with a run; Re-peer once it has finished" } };
+  }
+  await updateSession(env, run.session_id, { peering: "waiting" }, live);
+  return { status: 200, body: { go: true } };
 }
 
-/** POST /api/callback/lab-peerings-removed: wg.yml removed every peering on vnet-wg; peered sessions become disconnected. */
-export async function handleLabPeeringsRemoved(_env: Env, token: string | null, _body: unknown): Promise<CallbackReply> {
-  return token ? notYet : noToken;
+/** The gateway's lock is held at most this long for one lab's peering (spec §7.6). */
+export const PEER_LOCK_MS = 10 * 60_000;
+
+const REMOVED_KEYS = ["run_id", "peerings_removed", "dns_links_removed", "complete"] as const;
+const count = (v: unknown) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 10_000;
+
+/**
+ * POST /api/callback/lab-peerings-removed (spec §6): wg.yml's first destroy
+ * step removed every peering and DNS link on vnet-wg, and says so with the
+ * gateway run's own callback token, while that destroy is running. Peered
+ * lab sessions become "disconnected" (the labs keep running), ready for
+ * Re-peer when the gateway is next running. Body exactly
+ * { run_id, peerings_removed, dns_links_removed, complete }.
+ */
+export async function handleLabPeeringsRemoved(env: Env, token: string | null, body: unknown): Promise<CallbackReply> {
+  if (!token) return noToken;
+  if (!isObj(body)) return badBody("expected {run_id, peerings_removed, dns_links_removed, complete}");
+  const extra = unknownKey(body, REMOVED_KEYS);
+  if (extra) return badBody(`${extra} is not something this takes`, extra);
+  if (typeof body.run_id !== "string" || !body.run_id) return badBody("run_id is the gateway run's id", "run_id");
+  if (!count(body.peerings_removed)) return badBody("peerings_removed is a whole number", "peerings_removed");
+  if (!count(body.dns_links_removed)) return badBody("dns_links_removed is a whole number", "dns_links_removed");
+  if (typeof body.complete !== "boolean") return badBody("complete is true or false", "complete");
+  const run = await db.getRun(env, body.run_id);
+  if (!run || !run.callback_token_hash) return { status: 404, body: { error: "unknown run" } };
+  if (!safeEqual(await sha256Hex(token), run.callback_token_hash)) return { status: 401, body: { error: "bad token" } };
+  if (run.action !== "destroy" || run.finished_at || !["queued", "running"].includes(run.status)) return { status: 409, body: { error: "only a gateway destroy in progress removes lab peerings" } };
+  const r = await env.DB.prepare(`UPDATE lab_sessions SET peering = 'disconnected' WHERE peering = 'on' AND state IN (${LIVE_SQL})`).run();
+  const n = Number(r.meta?.changes ?? 0);
+  if (n > 0 || !body.complete) {
+    await db.addAlert(
+      env,
+      "info",
+      `The gateway's tear-down removed ${body.peerings_removed} lab peering${body.peerings_removed === 1 ? "" : "s"} and ${body.dns_links_removed} DNS link${body.dns_links_removed === 1 ? "" : "s"}${body.complete ? "" : " (some could not be removed)"}. ${n} lab${n === 1 ? " is" : "s are"} now disconnected; Re-peer once the gateway is running again.`,
+      run.id,
+    );
+  }
+  return { status: 200, body: { message: "ok", disconnected: n } };
 }
