@@ -7,12 +7,17 @@
 // prices.azure.com only, up to three calls. Linux pay-as-you-go only: names
 // with Windows, Spot or Low Priority are skipped, and so are units other
 // than "1 Hour" and "1/Month". Stored in az_prices; see insights/price.ts.
+//
+// Labs (labs spec §9.1): every lab cost item's retail meter is asked for by
+// name too and stored as item "lab:<meter>"; a lab's VM sizes (retail.sku)
+// are among the sizes of interest; each lab's secondary region is read as well.
 
 import type { FeedModule } from "../runner";
 import type { FeedCtx } from "../types";
 import { listProfiles } from "../../db";
 import { DAY, MIN, iso, num, str } from "../common";
 import { sizesOfInterest } from "./capacity";
+import { catalogue } from "../../labs/catalogue";
 
 const PRICES_URL = "https://prices.azure.com/api/retail/prices";
 const PRICES_API = "2023-01-01-preview";
@@ -31,15 +36,27 @@ export interface PriceItem {
   meter: string;
 }
 
-/** The query string (spaces as %20). */
-export function pricesQuery(region: string, sizes: string[]): string {
-  const any = [...sizes.map((s) => `armSkuName eq '${s}'`), ...Object.keys(METERS).map((m) => `meterName eq '${m}'`)].join(" or ");
+/** A lab cost item's meter (labs spec §9.1) is stored as this item: "lab:<meter name>". */
+export const labItem = (meter: string) => `lab:${meter}`;
+/** Units a lab meter may be priced in (each turns into £ per hour). */
+const LAB_UNITS = ["1 Hour", "1/Month", "1/Day"];
+/** An OData string literal ('' for a quote). */
+const odata = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+/** Every lab cost item's retail meter in the catalogue (labs spec §9.1), each once. */
+export function labMeters(): string[] {
+  return [...new Set(catalogue().labs.flatMap((l) => l.cost.items.map((i) => i.retail?.meter).filter((m): m is string => !!m)))];
+}
+
+/** The query string (spaces as %20). `meters`: the labs' retail meters, asked for by name too. */
+export function pricesQuery(region: string, sizes: string[], meters: string[] = []): string {
+  const any = [...sizes.map((s) => `armSkuName eq '${s}'`), ...Object.keys(METERS).map((m) => `meterName eq '${m}'`), ...meters.filter((m) => !Object.hasOwn(METERS, m)).map((m) => `meterName eq ${odata(m)}`)].join(" or ");
   const filter = `armRegionName eq '${region}' and priceType eq 'Consumption' and (${any})`;
   return `api-version=${PRICES_API}&currencyCode=${encodeURIComponent("'GBP'")}&$filter=${encodeURIComponent(filter)}`;
 }
 
-/** The price items worth keeping, one per item (a primary meter region first). */
-export function normalisePrices(reply: unknown, sizes: string[]): PriceItem[] {
+/** The price items worth keeping, one per item (a primary meter region first). A lab meter is kept as "lab:<meter>". */
+export function normalisePrices(reply: unknown, sizes: string[], meters: string[] = []): PriceItem[] {
   const items = (reply as { Items?: unknown })?.Items;
   if (!Array.isArray(items)) return [];
   const out = new Map<string, { row: PriceItem; primary: boolean }>();
@@ -56,6 +73,7 @@ export function normalisePrices(reply: unknown, sizes: string[]): PriceItem[] {
     const m = METERS[meter];
     if (m) item = unit === m.unit ? m.item : null;
     else if (typeof i.armSkuName === "string" && sizes.includes(i.armSkuName) && unit === "1 Hour") item = i.armSkuName;
+    else if (meters.includes(meter) && LAB_UNITS.includes(unit)) item = labItem(meter);
     if (!item) continue;
     const primary = i.isPrimaryMeterRegion !== false;
     const have = out.get(item);
@@ -64,8 +82,8 @@ export function normalisePrices(reply: unknown, sizes: string[]): PriceItem[] {
   return [...out.values()].map((x) => x.row);
 }
 
-export async function fetchPrices(ctx: FeedCtx, region: string, sizes: string[]): Promise<unknown[]> {
-  let next: string | null = `${PRICES_URL}?${pricesQuery(region, sizes)}`;
+export async function fetchPrices(ctx: FeedCtx, region: string, sizes: string[], meters: string[] = []): Promise<unknown[]> {
+  let next: string | null = `${PRICES_URL}?${pricesQuery(region, sizes, meters)}`;
   const all: unknown[] = [];
   for (let page = 0; page < MAX_PAGES && next; page++) {
     const r = await ctx.fetch(next);
@@ -89,10 +107,11 @@ export async function storePrices(db: D1Database, region: string, rows: PriceIte
   );
 }
 
-/** Regions in use whose prices were last read more than a day ago (or never). */
+/** Regions in use whose prices were last read more than a day ago (or never): the configured one, the profiles', and each lab's secondary region. */
 async function staleRegions(ctx: FeedCtx): Promise<string[]> {
   const profiles = await listProfiles(ctx.env).catch(() => []);
-  const regions = [...new Set([ctx.cfg.region, ...profiles.map((p) => p.region)])];
+  const secondaries = catalogue().labs.map((l) => l.regions.secondary).filter((r): r is string => !!r);
+  const regions = [...new Set([ctx.cfg.region, ...profiles.map((p) => p.region), ...secondaries])];
   const out: string[] = [];
   for (const r of regions) {
     const have = await ctx.db.prepare("SELECT MIN(fetched_at) AS at FROM az_prices WHERE region = ?1").bind(r).first<{ at: string | null }>();
@@ -113,7 +132,8 @@ const prices: FeedModule = {
     if (!stale.length) return { status: "ok", error: null };
     const region = stale[0]!;
     const sizes = await sizesOfInterest(ctx);
-    const rows = normalisePrices({ Items: await fetchPrices(ctx, region, sizes) }, sizes);
+    const meters = labMeters();
+    const rows = normalisePrices({ Items: await fetchPrices(ctx, region, sizes, meters) }, sizes, meters);
     if (!rows.length) throw new Error(`Azure's price list had no GBP pay-as-you-go prices for ${region}.`);
     await storePrices(ctx.db, region, rows, ctx.now.toISOString());
     return { status: "ok", error: null, nextDueAt: stale.length > 1 ? iso(ctx.now.getTime() + 5 * MIN) : null };

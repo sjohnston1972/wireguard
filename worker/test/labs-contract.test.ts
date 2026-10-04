@@ -244,7 +244,9 @@ describe("/api/v1/labs input checks", () => {
     expect(d.cost.items.map((i) => i.source)).toEqual(["authored", "authored", "authored"]);
     expect(d.cost.items[1].priceAge).toBeNull();
     expect(d.defaults).toEqual({ region: "uksouth", peer: true, hours: 2 });
-    expect(d).toMatchObject({ session: null, runs: [], resources: null, warnings: [], portalUrl: null });
+    expect(d).toMatchObject({ session: null, runs: [], resources: null, portalUrl: null });
+    // The engine (L2): lab 6 makes an Entra group, and the permission check has not run.
+    expect(d.warnings.map((w) => [w.kind, w.overridable])).toEqual([["unavailable", false]]);
     expect((await api(env, "GET", "/labs/az104-06-blob-security/secret")).status).toBe(409);
     // Nothing is running, so the engine (L2) refuses the tear-down.
     expect((await api(env, "POST", "/labs/az104-06-blob-security/destroy", { confirm: true })).status).toBe(409);

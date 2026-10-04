@@ -27,9 +27,12 @@ import { getSnapshot } from "../state";
 import { REGIONS } from "../region";
 import { catalogue, labDef, labReadme } from "../labs/catalogue";
 import { availability, cancelLab, deployLab, destroyLab, extendLab, hhmm, unavailableReason, type DeployInput } from "../labs/engine";
-import { liveSessionOf, runsOf } from "../labs/store";
-import { labRunRow, labSession } from "../labs/view";
-import { releaseFields, releaseTests } from "../labs/cards";
+import { activeRuns, liveSessionOf, runsOf, type LabSessionRow } from "../labs/store";
+import { labRunRow } from "../labs/view";
+import { cardContext, labCard, sessionView } from "../labs/cards";
+import { sessionCosts } from "../labs/cost";
+import { gbpHFrom, pricedItems } from "../labs/prices";
+import { labWarnings } from "../labs/warnings";
 import {
   LAB_HOURS_MAX,
   LAB_ID_MAX,
@@ -98,35 +101,6 @@ const isLabId = (v: string) => v.length <= LAB_ID_MAX && LAB_ID_RE.test(v);
 
 // ── Shapes ───────────────────────────────────────────────────────────────
 
-/** A catalogue card with nothing run yet (the engine adds sessions, runs and release tests). */
-function card(def: LabDef): LabCard {
-  const estGbpH = estimateGbpH(def.cost.items);
-  const pricey = def.cost.pricey ? def.cost.items.find((i) => i.name === def.cost.pricey) ?? null : null;
-  return {
-    id: def.id,
-    number: def.number,
-    version: def.version,
-    title: def.title,
-    summary: def.summary,
-    exam: def.exam,
-    skillAreas: def.skill_areas,
-    level: def.level,
-    type: def.type,
-    prerequisites: def.prerequisites,
-    peering: def.connectivity.peering,
-    estGbpH,
-    marker: costMarker(estGbpH, def.timing.deploy_min),
-    pricey: pricey ? { item: pricey.name, gbpH: estimateGbpH([pricey]) } : null,
-    timing: { deployMin: def.timing.deploy_min, destroyMin: def.timing.destroy_min, sessionH: def.timing.session_h, maxH: def.timing.max_h },
-    running: null,
-    lastSession: null,
-    runs: 0,
-    lastReleaseTest: null,
-    released: false,
-    unavailable: null,
-  };
-}
-
 const NO_PERMISSIONS: LabPermissions = { checkedAt: null, role: null, users: null, groups: null, message: null };
 
 async function kvJson<T>(c: C, key: string, fallback: T): Promise<T> {
@@ -140,16 +114,15 @@ async function kvJson<T>(c: C, key: string, fallback: T): Promise<T> {
 
 export function registerLabs(api: Hono<ApiEnv>): void {
   api.get("/labs", async (c) => {
-    const avail = await availability(c.env);
-    const [stored, used, tests] = await Promise.all([
+    const [ctx, stored, used] = await Promise.all([
+      cardContext(c.env),
       db.allSettings(c.env),
       c.env.DB.prepare("SELECT COUNT(*) AS n FROM lab_slots WHERE session_id IS NOT NULL").first<{ n: number }>(),
-      releaseTests(c.env),
     ]);
     const out: LabsResponse = {
-      now: new Date().toISOString(),
-      labs: catalogue().labs.map((d) => ({ ...card(d), ...releaseFields(d, tests), unavailable: unavailableReason(d, avail) })),
-      running: [],
+      now: new Date(ctx.now).toISOString(),
+      labs: catalogue().labs.map((d) => labCard(d, ctx)),
+      running: ctx.live.map((s) => sessionView(s, ctx)),
       slots: { used: Number(used?.n ?? 0), total: LAB_SLOTS },
       maxRunning: labsSettingsFrom(stored).labsMaxRunning,
       permissions: await kvJson(c, "labs:permissions", NO_PERMISSIONS),
@@ -164,7 +137,13 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     if (lab !== undefined && lab !== "" && !isLabId(lab)) return bad(c, "lab is a lab id such as az104-05-storage.", "lab");
     const limit = limitText === undefined || limitText === "" ? 50 : Number(limitText);
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) return bad(c, "limit is a whole number from 1 to 200.", "limit");
-    const out: LabSessionsResponse = { sessions: [] };
+    const now = Date.now();
+    const rows = (lab
+      ? await c.env.DB.prepare("SELECT * FROM lab_sessions WHERE lab_id = ?1 ORDER BY requested_at DESC LIMIT CAST(?2 AS INTEGER)").bind(lab, limit).all<LabSessionRow>()
+      : await c.env.DB.prepare("SELECT * FROM lab_sessions ORDER BY requested_at DESC LIMIT CAST(?1 AS INTEGER)").bind(limit).all<LabSessionRow>()
+    ).results;
+    const [costs, runs] = await Promise.all([sessionCosts(c.env, rows, now), activeRuns(c.env)]);
+    const out: LabSessionsResponse = { sessions: rows.map((s) => sessionView(s, { runs, costs, now })) };
     return c.json(out);
   });
 
@@ -222,20 +201,21 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     if (!def) return notFound(c);
     const [cfg, stored, snap] = await Promise.all([fixedConfig(c.env), db.allSettings(c.env), getSnapshot(c.env)]);
     const peer = def.connectivity.peering === "required" ? true : def.connectivity.peering === "off" ? false : labsSettingsFrom(stored).labsDefaultPeering;
-    const items = def.cost.items.map((i) => ({ ...i, gbpH: i.gbp_h, source: "authored" as const, priceAge: null }));
-    const live = await liveSessionOf(c.env, def.id);
+    const ctx = await cardContext(c.env);
+    const items = pricedItems(def, ctx.prices, ctx.region, new Date(ctx.now));
+    const live = ctx.live.find((s) => s.lab_id === def.id) ?? null;
     const liveRuns = live ? await runsOf(c.env, live.id) : [];
-    const active = liveRuns.find((r) => !r.finished_at && (r.status === "queued" || r.status === "running")) ?? null;
     const out: LabDetail = {
-      card: card(def),
+      card: labCard(def, ctx),
       readme: labReadme(def.id),
-      cost: { items, gbpH: estimateGbpH(def.cost.items) },
+      cost: { items, gbpH: gbpHFrom(def, ctx.prices, ctx.region, new Date(ctx.now)) },
       connectivity: def.connectivity,
       identity: def.identity,
-      warnings: [],
+      // Warnings for a deploy now; none while a session is live (spec §9.2).
+      warnings: live ? [] : await labWarnings(c.env, def, { hours: def.timing.session_h, region: cfg.region }),
       defaults: { region: cfg.region, peer, hours: def.timing.session_h },
       gatewayUp: snap.state === "running" || snap.state === "standby",
-      session: live ? labSession(live, active, Date.now()) : null,
+      session: live ? sessionView(live, ctx) : null,
       runs: liveRuns.map(labRunRow),
       resources: null,
       portalUrl: null,

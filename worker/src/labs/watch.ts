@@ -33,8 +33,10 @@ import { LAB_GRACE_MIN } from "../../../shared/labs";
 import { labDef } from "./catalogue";
 import { budgetedNet, BudgetExceeded, type Net } from "./net";
 import { destroySession, hhmm, timeoutOf } from "./engine";
-import { activeRunOf, activeRuns, getSession, liveSessions, runsOf, updateSession, type LabSessionRow } from "./store";
+import { activeRunOf, activeRuns, getSession, liveSessions, payloadOf, runsOf, updateSession, type LabSessionRow } from "./store";
 import { refreshLabRun } from "./refresh";
+import { budgetStatus } from "../budget";
+import { fetchLabCostDays } from "./cost";
 import { labTitle } from "./view";
 
 const MIN = 60_000;
@@ -164,6 +166,8 @@ export async function runLabWatch(env: Env, now: Date = new Date()): Promise<str
 
   if (canDispatch(env)) {
     const cost = await pushCost(env);
+    // 0: the month's budget: at 100% every lab goes (deploying ones cancelled first). Never the gateway.
+    await step("budget", () => budgetTeardown(env, net, cost, now));
     // 1 and 2: timers, max_until, the cost guard and failed sessions, first.
     for (const s of await liveSessions(env)) {
       await step(`lab ${s.lab_id}`, async () => {
@@ -176,5 +180,38 @@ export async function runLabWatch(env: Env, now: Date = new Date()): Promise<str
     // 4: runs in progress, from GitHub.
     for (const run of await activeRuns(env)) await step(`refresh ${run.id}`, () => refreshLabRun(env, run, net, now));
   }
+  // 6: daily, Azure's spend per lab group.
+  await step("lab costs", () => fetchLabCostDays(env, net, now));
   return lines;
+}
+
+/**
+ * Spec §7.4 step 5: at or over 100% of the month's budget (§9.3), tear down
+ * every live lab, reason budget: a deploy in progress is cancelled first. A
+ * session deployed with "Deploy anyway" while over budget is left alone (it
+ * was a deliberate choice). Sessions already tearing down are not touched
+ * again. Only lab.yml is ever dispatched; the gateway runs on.
+ */
+async function budgetTeardown(env: Env, net: Net, cost: number, now: Date): Promise<string | null> {
+  const b = await budgetStatus(env, undefined, undefined, now);
+  if (b.level !== "over") return null;
+  const gone: string[] = [];
+  const failed: string[] = [];
+  for (const s of await liveSessions(env)) {
+    if (s.state === "tearing_down") continue;
+    const first = (await runsOf(env, s.id)).filter((r) => r.action === "deploy" || r.action === "test").at(-1) ?? null;
+    if (payloadOf(first).overBudgetOk === true) continue;
+    try {
+      await destroySession(env, s, "budget", "watchman", "monthly budget reached", { net });
+      gone.push(labTitle(s.lab_id));
+    } catch (e) {
+      if (e instanceof BudgetExceeded) throw e;
+      failed.push(`${labTitle(s.lab_id)} (${plainError(e)})`);
+    }
+  }
+  if (!gone.length && !failed.length) return null;
+  const msg = `Monthly budget reached (${Math.round(b.pct)}% of £${b.budget.toFixed(2)}): ${gone.length ? `tearing down ${gone.length} lab${gone.length === 1 ? "" : "s"} (${gone.join(", ")})` : "no lab could be torn down yet"}${failed.length ? `; could not start: ${failed.join(", ")}, tried again in 5 minutes` : ""}. The gateway is not touched.`;
+  await db.addAlert(env, "cost_guard", msg);
+  await pushIfCalls(env, net, cost, "wg-admin: budget reached, labs torn down", msg, { priority: 4, tags: ["moneybag"], buttons: [dashboardButton(env, "Open Labs", "/labs")] });
+  return `budget: ${msg}`;
 }
