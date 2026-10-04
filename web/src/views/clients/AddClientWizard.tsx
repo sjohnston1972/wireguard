@@ -207,7 +207,7 @@ export function AddClientWizard({ config, onClose }: { config: ClientsConfig; on
   };
   // A centred modal on the desktop, a bottom sheet on the phone.
   return (
-    <Drawer open onOpenChange={onOpenChange} title="Add client" footer={footer} size="lg" className="wiz-dialog">
+    <Drawer open onOpenChange={onOpenChange} title="Add client" footer={footer} size="md">
       {content}
     </Drawer>
   );

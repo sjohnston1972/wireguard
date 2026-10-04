@@ -280,12 +280,12 @@ describe("Add-client wizard", { timeout: 30_000 }, () => {
 });
 
 describe("Add client and Get new config on the desktop", { timeout: 30_000 }, () => {
-  it("the wizard is the large centred modal; a backdrop click on Delivery drops the key and focus goes back to Add client", async () => {
+  it("the wizard is the medium centred modal (a narrow form: lg left it 1,100 px wide); a backdrop click on Delivery drops the key and focus goes back to Add client", async () => {
     const user = userEvent.setup();
     renderApp("/clients", { routes: { ...clientRoutes(), "POST /api/v1/clients": () => added() } });
     await screen.findByRole("table", { name: "Clients" });
     const d = await toDelivery(user);
-    expectCentredModal(d, "lg");
+    expectCentredModal(d, "md");
     expect(document.body.innerHTML).toContain(privateKey(1));
     await user.click(backdrop());
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
