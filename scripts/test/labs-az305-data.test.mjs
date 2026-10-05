@@ -7,8 +7,9 @@
 // the plan names for it: what it builds, read from its Terraform text, and
 // above all that tear-down can get it back to £0 (no vCore database where
 // the quota is 0, a failover group Terraform can take apart, no locked
-// immutability). Plans and the scope check are lab-plans.test.mjs's job;
-// init, validate and the mocked plan are npm run labs-tf's.
+// immutability). Plans and the scope check are lab-plans.test.mjs's job
+// (lab 25 also proves its plan is refused once its policy is locked); init,
+// validate and the mocked plan are npm run labs-tf's.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

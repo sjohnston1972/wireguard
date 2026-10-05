@@ -34,8 +34,8 @@ rg-lab-<id> (UK South)                                rg-lab-<id>-secondary (UK 
 - While peered, run the first Connect line (`sqlcmd` to the listener), create a table in `appdb` and insert a row. Then connect to `appdb` on the secondary server and read the row back: the geo-secondary is readable but refuses writes.
 - Run `nslookup` on the listener, then fail the group over: in the portal open the failover group and choose **Failover**, or run `az sql failover-group set-primary` against the secondary server. Look up the listener again (it now points at `<prefix>-sqls`), reconnect through it and write another row. Then fail back. You may tear down while failed over: tear-down deletes the failover group and the geo-replication link first, so it still gets back to £0.
 - On the primary, query `sys.dm_geo_replication_link_status` for the link's role, state and replication lag, and compare `replication_lag_sec` after a burst of inserts.
-- Leave `scratch` idle for 15 minutes and watch its status turn **Paused** in the portal. Connect to it (the last Connect line) and notice the first login waits while it resumes; then read its **App CPU billed** metric to see what serverless charges for.
-- Open **Compute + storage** on `appdb` and on `scratch` and compare the DTU and vCore purchasing models: Basic, Standard and Premium against General Purpose, Business Critical and Hyperscale, provisioned against serverless. Read the options and prices without saving: a geo-secondary must be scaled before its primary.
+- Leave `scratch` idle for 15 minutes and watch its status turn **Paused** in the portal. Connect to it (the last Connect line) and notice the first login may be refused or slow while it resumes (try again after a minute); then read its **App CPU billed** metric to see what serverless charges for.
+- Open **Compute + storage** on `appdb` and on `scratch` and compare the DTU and vCore purchasing models: Basic, Standard and Premium against General Purpose, Business Critical and Hyperscale, provisioned against serverless. Read the options and prices without saving: to scale up a geo-replicated database, scale its geo-secondary up first, and both must stay in the same service tier.
 - Connect to the read-only listener with `ApplicationIntent=ReadOnly` and check `DATABASEPROPERTYEX(DB_NAME(), 'Updateability')`: reporting traffic can use the secondary while writes stay on the primary.
 
 ## Learn more
@@ -44,6 +44,7 @@ rg-lab-<id> (UK South)                                rg-lab-<id>-secondary (UK 
 - [Configure a failover group for Azure SQL Database](https://learn.microsoft.com/azure/azure-sql/database/failover-group-configure-sql-db)
 - [Active geo-replication](https://learn.microsoft.com/azure/azure-sql/database/active-geo-replication-overview)
 - [Serverless compute tier for Azure SQL Database](https://learn.microsoft.com/azure/azure-sql/database/serverless-tier-overview)
+- [Auto-pause and auto-resume in the serverless compute tier](https://learn.microsoft.com/azure/azure-sql/database/serverless-tier-auto-pause-resume)
 - [Compare vCore and DTU-based purchasing models of Azure SQL Database](https://learn.microsoft.com/azure/azure-sql/database/purchasing-models)
 - [Azure Private Link for Azure SQL Database](https://learn.microsoft.com/azure/azure-sql/database/private-endpoint-overview)
 - [Azure SQL Database connectivity architecture](https://learn.microsoft.com/azure/azure-sql/database/connectivity-architecture)
