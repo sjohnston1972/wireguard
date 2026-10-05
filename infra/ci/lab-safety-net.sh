@@ -184,8 +184,25 @@ list_roles() {
 # "name"
 list_mgs() {
   ROWS=()
-  local name display
-  fetch "management groups" false account management-group list --query "[].[name, displayName]" -o tsv || return 0
+  local name display err
+  # wg-admin's identity owns every management group it creates, so when Azure refuses
+  # the list outright (AuthorizationFailed: e.g. a tenant that has never used management
+  # groups) none of the lab's can exist. Any other failure stays "unverified".
+  err="$(mktemp)"
+  if OUT="$(az account management-group list --query "[].[name, displayName]" -o tsv 2>"$err" | tr -d '\r')" && [ "${PIPESTATUS[0]}" -eq 0 ]; then
+    rm -f "$err"
+  elif grep -q "AuthorizationFailed" "$err"; then
+    rm -f "$err"
+    echo "safety net: no management groups visible to wg-admin's identity, so none of the lab's exist"
+    return 0
+  else
+    cat "$err" >&2
+    rm -f "$err"
+    OUT=""
+    warn "could not list management groups"
+    UNVERIFIED+=("unverified: management groups")
+    return 0
+  fi
   while IFS=$'\t' read -r name display; do
     [ -n "$name" ] && prefixed "$name" && ROWS+=("$name")
   done <<<"$OUT"
