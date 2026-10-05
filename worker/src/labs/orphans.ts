@@ -2,7 +2,7 @@
 //
 // Plain English: the hourly orphan sweep (labs spec §7.5). Anything a lab
 // left behind that nobody is watching: the sweep lists, in SWEEP_CALLS calls,
-// resource groups (rg-lab-*), Entra users and groups (lab-*), management
+// resource groups (rg-lab-*), Entra users (user principal name lab-*) and groups (display name lab-*, the fields the safety net deletes by), management
 // groups, custom role definitions, and policy definitions and assignments
 // (lab-*; an assignment also by its display name or its scope). A name
 // counts only when it is a lab's (labIdOf: the longest
@@ -79,9 +79,11 @@ async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph:
   };
   type Named = { name?: string; createdTime?: string; properties?: { displayName?: string; roleName?: string; createdTime?: string; scope?: string } };
   const rgs = await attempt(() => list<Named>(arm(env, net, `${sub}/resourcegroups?api-version=2021-04-01&$expand=createdTime`), "resource groups"));
-  const startsLab = encodeURIComponent("startswith(displayName,'lab-') or startswith(userPrincipalName,'lab-')");
-  const users = await attempt(() => list<{ displayName?: string; userPrincipalName?: string; createdDateTime?: string }>(graph(env, net, `/users?$filter=${startsLab}&$select=id,displayName,userPrincipalName,createdDateTime&$top=200`), "Entra users"));
-  const groups = await attempt(() => list<{ displayName?: string; mailNickname?: string; createdDateTime?: string }>(graph(env, net, `/groups?$filter=${encodeURIComponent("startswith(displayName,'lab-')")}&$select=id,displayName,mailNickname,createdDateTime&$top=200`), "Entra groups"));
+  // Entra names are matched by the field the safety net deletes by (lab-safety-net.sh): users by
+  // user principal name, groups by display name. A look-alike in another field is never deleted
+  // by a Clean up, so it must not become a leftover note that can never clear.
+  const users = await attempt(() => list<{ userPrincipalName?: string; createdDateTime?: string }>(graph(env, net, `/users?$filter=${encodeURIComponent("startswith(userPrincipalName,'lab-')")}&$select=id,userPrincipalName,createdDateTime&$top=200`), "Entra users"));
+  const groups = await attempt(() => list<{ displayName?: string; createdDateTime?: string }>(graph(env, net, `/groups?$filter=${encodeURIComponent("startswith(displayName,'lab-')")}&$select=id,displayName,createdDateTime&$top=200`), "Entra groups"));
   const mgs = await attempt(() => list<Named>(arm(env, net, `/providers/Microsoft.Management/managementGroups?api-version=2021-04-01`), "management groups"));
   const roles = await attempt(() => list<Named>(arm(env, net, `${sub}/providers/Microsoft.Authorization/roleDefinitions?api-version=2022-04-01&$filter=${encodeURIComponent("type eq 'CustomRole'")}`), "custom roles"));
   const defs = await attempt(() => list<Named>(arm(env, net, `${sub}/providers/Microsoft.Authorization/policyDefinitions?api-version=2023-04-01&$filter=${encodeURIComponent("policyType eq 'Custom'")}`), "policy definitions"));
@@ -102,7 +104,7 @@ async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph:
   const rg = rgs?.filter((g) => starts(g.name, "rg-lab-")).map((g) => ({ name: g.name!, created: g.createdTime ?? g.properties?.createdTime ?? null })) ?? null;
   const entra =
     users && groups
-      ? [...users.map((u) => ({ name: pick(u.displayName, u.userPrincipalName?.split("@")[0]), created: u.createdDateTime ?? null })), ...groups.map((g) => ({ name: pick(g.displayName, g.mailNickname), created: g.createdDateTime ?? null }))]
+      ? [...users.map((u) => ({ name: pick(u.userPrincipalName?.split("@")[0]), created: u.createdDateTime ?? null })), ...groups.map((g) => ({ name: pick(g.displayName), created: g.createdDateTime ?? null }))]
           .filter((x) => !!x.name)
           .map((x) => ({ name: x.name!, created: x.created }))
       : null;

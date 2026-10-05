@@ -284,10 +284,11 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
       if (world.graph.fail) return json({ error: { code: "Authorization_RequestDenied", message: "Insufficient privileges" } }, world.graph.fail);
       const kind = u.pathname.match(/^\/v1\.0\/(users|groups)$/)?.[1] as "users" | "groups" | undefined;
       if (kind && method === "GET") {
-        const starts = (u.searchParams.get("$filter") ?? "").match(/startswith\(displayName,\s*'([^']*)'\)/i)?.[1];
+        // startswith(field,'x') clauses joined by "or" (displayName, userPrincipalName, mailNickname).
+        const clauses = [...(u.searchParams.get("$filter") ?? "").matchAll(/startswith\((\w+),\s*'([^']*)'\)/gi)].map((m) => ({ field: m[1], prefix: m[2].toLowerCase() }));
         const top = Number(u.searchParams.get("$top") ?? 0);
         let value: { displayName: string }[] = world.graph[kind];
-        if (starts !== undefined) value = value.filter((x) => x.displayName.toLowerCase().startsWith(starts.toLowerCase()));
+        if (clauses.length) value = value.filter((x) => clauses.some((c) => String((x as Record<string, unknown>)[c.field] ?? "").toLowerCase().startsWith(c.prefix)));
         if (top > 0) value = value.slice(0, top);
         return json({ value });
       }

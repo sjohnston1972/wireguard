@@ -37,6 +37,29 @@ function litter(world: World) {
   world.labAzure.policyAssignments.push({ name: "lab-az104-01-identity-tags", scope: "/subscriptions/sub/resourceGroups/rg-lab-az104-01-identity" });
 }
 
+describe("orphan sweep: Entra names matched by the field the safety net deletes by", () => {
+  it("users by user principal name, groups by display name: a look-alike in another field is not a lab's", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    await env.STATUS.put("azure:token", JSON.stringify({ token: "arm", expiresAt: Date.now() + 2 * HOUR }));
+    await env.STATUS.put("labs:graph-token", JSON.stringify({ token: "graph", expiresAt: Date.now() + 2 * HOUR }));
+    world.graph.users.push(
+      // The safety net deletes this one (its UPN starts lab-<id>-), whatever its display name.
+      { id: "u1", displayName: "Ann (lab 7)", userPrincipalName: "lab-az104-07-files-ann@contoso.onmicrosoft.com" },
+      // The safety net never deletes this one (its UPN is a person's): not a leftover, however it is named.
+      { id: "u2", displayName: "lab-az104-07-files-steven", userPrincipalName: "steven@contoso.onmicrosoft.com" },
+    );
+    world.graph.groups.push(
+      { id: "g1", displayName: "lab-az104-07-files-readers", mailNickname: "readers7" },
+      { id: "g2", displayName: "Admins", mailNickname: "lab-az104-07-files-admins" },
+    );
+    await sweepOrphans(env, budgetedNet(20), new Date());
+    advance(61 * MIN);
+    await sweepOrphans(env, budgetedNet(20), new Date());
+    expect(await orphans(env)).toEqual([expect.objectContaining({ labId: "az104-07-files", names: ["lab-az104-07-files-ann", "lab-az104-07-files-readers"] })]);
+  });
+});
+
 describe("orphan sweep: fixed custom role GUIDs", () => {
   it("finds lab 1's custom role by its fixed GUID when the subscription's list does not show it (assignable only in its group)", async () => {
     freeze();
