@@ -117,12 +117,19 @@ async function staleRegions(ctx: FeedCtx): Promise<string[]> {
   const profiles = await listProfiles(ctx.env).catch(() => []);
   const secondaries = catalogue().labs.map((l) => l.regions.secondary).filter((r): r is string => !!r);
   const regions = [...new Set([ctx.cfg.region, ...profiles.map((p) => p.region), ...secondaries])];
-  const out: string[] = [];
-  for (const r of regions) {
-    const have = await ctx.db.prepare("SELECT MIN(fetched_at) AS at FROM az_prices WHERE region = ?1").bind(r).first<{ at: string | null }>();
-    if (!have?.at || !(ctx.now.getTime() - Date.parse(have.at) < DAY)) out.push(r);
-  }
-  return out;
+  // One statement for every region (GROUP BY), so a lab's secondary region adds no D1 round trip.
+  const marks = regions.map((_, i) => `?${i + 1}`).join(", ");
+  const rows = (
+    await ctx.db
+      .prepare(`SELECT region, MIN(fetched_at) AS at FROM az_prices WHERE region IN (${marks}) GROUP BY region`)
+      .bind(...regions)
+      .all<{ region: string; at: string | null }>()
+  ).results;
+  const at = new Map(rows.map((r) => [r.region, r.at]));
+  return regions.filter((r) => {
+    const have = at.get(r);
+    return !have || !(ctx.now.getTime() - Date.parse(have) < DAY);
+  });
 }
 
 const prices: FeedModule = {
