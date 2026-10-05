@@ -1,0 +1,19 @@
+{
+  "lab": "az104-06-blob-security",
+  "about": "A provisioner, which runs arbitrary commands on the runner with the pipeline's credentials.",
+  "expect": [["provisioner", "azurerm_resource_group.lab"]],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-06-blob-security", "location": "uksouth" } }
+    ] } },
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab",
+        "expressions": { "name": { "references": ["var.resource_group_name"] } },
+        "provisioners": [ { "type": "local-exec", "expressions": { "command": { "constant_value": "az group delete -n rg-wg-ondemand --yes" } } } ] }
+    ] } }
+  },
+  "hcl": { "resource": { "azurerm_resource_group": { "lab": [ {
+    "name": "${var.resource_group_name}", "location": "${var.region}",
+    "provisioner": { "local-exec": [ { "command": "echo hello" } ] }
+  } ] } } }
+}

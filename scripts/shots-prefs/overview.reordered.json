@@ -4,7 +4,7 @@
       "order": {
         "r2": ["overview.keyMetrics", "overview.topology"],
         "r3": ["side", "overview.traffic", "overview.run", "overview.vmPerformance"],
-        "r4": ["overview.notes", "overview.costImpact", "overview.health", "overview.azureHealth", "overview.vitals"]
+        "r4": ["overview.notes", "overview.costImpact", "overview.health", "overview.azureHealth", "overview.vitals", "overview.runningLabs"]
       }
     }
   }

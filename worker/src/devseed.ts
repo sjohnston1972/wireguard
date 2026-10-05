@@ -33,8 +33,9 @@ import { budgetStatus } from "./budget";
 import { freezeDevClock } from "./devclock";
 import { AZ_TABLES } from "./insights/types";
 import { seedInsights } from "./devseed-insights";
+import { seedLabs, wipeLabs } from "./devseed-labs";
 
-export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights"] as const;
+export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs"] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
 /** True only on a developer's PC: the login bypass is on and the request is for localhost. */
@@ -459,6 +460,8 @@ async function wipe(env: Env): Promise<void> {
     /* ids simply carry on counting where this database does not allow the reset */
   }
   await env.DB.prepare("DELETE FROM settings WHERE key = 'monthly_budget_gbp'").run();
+  // The lab tables and the lab engine's KV records: only the labs story fills them.
+  await wipeLabs(env);
 }
 
 const AZURE = (now: number, region: string, ip: string): NonNullable<Snapshot["azure"]> => ({
@@ -507,8 +510,9 @@ async function counts(env: Env): Promise<Record<string, number>> {
 
 /** Wipe the local data and build one scenario. `now` is injectable so a run can be repeated exactly. */
 export async function seedScenario(env: Env, scenario: Scenario, nowDate = new Date()): Promise<SeedResult> {
-  // insights tells the running story, then adds what the Azure collector and a version-7 agent would have stored.
-  const story: Exclude<Scenario, "insights"> = scenario === "insights" ? "running" : scenario;
+  // insights tells the running story, then adds what the Azure collector and a version-7 agent would have stored;
+  // labs tells it too, then adds the lab story (devseed-labs.ts).
+  const story: Exclude<Scenario, "insights" | "labs"> = scenario === "insights" || scenario === "labs" ? "running" : scenario;
   const now = nowDate.getTime();
   const rng = makeRng(SEED);
   await wipe(env);
@@ -766,6 +770,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
   await insertDraft(env);
   // Last, so everything above is exactly the running story.
   if (scenario === "insights") await seedInsights(env, now, startMs, region);
+  if (scenario === "labs") await seedLabs(env, now);
   return { ok: true, scenario, now: iso(now), counts: await counts(env) };
 }
 

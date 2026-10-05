@@ -49,10 +49,10 @@ function layoutWidgetIds(page: PageId): string[] {
 }
 
 describe("the catalogue (spec section 8)", () => {
-  it("has 43 widgets: Overview 13, Clients 5, Firewall 8, Activity 9, Cost 8; four pinned", () => {
-    expect(WIDGETS).toHaveLength(43);
+  it("has 45 widgets: Overview 14, Clients 5, Firewall 8, Activity 9, Cost 9; four pinned", () => {
+    expect(WIDGETS).toHaveLength(45);
     const count = (p: PageId) => WIDGETS.filter((w) => w.page === p).length;
-    expect(PAGE_IDS.map(count)).toEqual([13, 5, 8, 9, 8]);
+    expect(PAGE_IDS.map(count)).toEqual([14, 5, 8, 9, 9]);
     expect(WIDGETS.filter((w) => w.pinned).map((w) => w.id).sort()).toEqual(["activity.list", "clients.table", "firewall.rules", "overview.status"]);
     // Every widget is at version 1 but Spend breakdown (its percentages changed meaning: version 2).
     expect(WIDGETS.filter((w) => w.version !== 1).map((w) => [w.id, w.version])).toEqual([["cost.breakdown", 2]]);
@@ -114,7 +114,7 @@ describe("the catalogue (spec section 8)", () => {
       { id: "r1", items: ["overview.status:1"] },
       { id: "r2", items: ["overview.topology:1", "overview.keyMetrics:1"] },
       { id: "r3", max: 3, items: ["overview.run:41", "overview.traffic:45", "side[overview.events,overview.speedTest]:32", "overview.vmPerformance:45"] },
-      { id: "r4", max: 3, items: ["overview.health:54", "overview.costImpact:32", "overview.notes:32", "overview.azureHealth:32", "overview.vitals:32"] },
+      { id: "r4", max: 3, items: ["overview.health:54", "overview.costImpact:32", "overview.notes:32", "overview.azureHealth:32", "overview.vitals:32", "overview.runningLabs:32"] },
     ]);
     expect(shape("clients")).toEqual([
       { id: "r1", items: ["clients.kpis:1"] },
@@ -134,11 +134,11 @@ describe("the catalogue (spec section 8)", () => {
     expect(shape("cost")).toEqual([
       { id: "r1", items: ["cost.kpis:1"] },
       { id: "r2", items: ["cost.spend:5", "cost.breakdown:4", "cost.forecast:3"] },
-      { id: "r3", items: ["cost.split:4", "cost.perSession:4", "cost.insights:4"] },
+      { id: "r3", max: 3, items: ["cost.split:4", "cost.perSession:4", "cost.insights:4", "cost.labs:4"] },
       { id: "r4", items: ["cost.sessions:1"] },
     ]);
     expect(rowItemKeys("overview", "r3")).toEqual(["overview.run", "overview.traffic", "side", "overview.vmPerformance"]);
-    expect(pageWidgets("cost").map((w) => w.id)).toEqual(["cost.kpis", "cost.spend", "cost.breakdown", "cost.forecast", "cost.split", "cost.perSession", "cost.insights", "cost.sessions"]);
+    expect(pageWidgets("cost").map((w) => w.id)).toEqual(["cost.kpis", "cost.spend", "cost.breakdown", "cost.forecast", "cost.split", "cost.perSession", "cost.insights", "cost.sessions", "cost.labs"]);
   });
 
   it("every setting key is unique within its widget, and every default validates", () => {
@@ -253,7 +253,7 @@ describe("normalisePagePrefs (lenient: every read, on both sides)", () => {
     expect(normalisePagePrefs("overview", { layout: { order: { r3: ["side", "overview.run"] } } })).toEqual({ layout: { order: { r3: ["side", "overview.traffic", "overview.run", "overview.vmPerformance"] } } });
     // Run missing (declared first) goes back first; the result is the default order, so nothing is kept.
     expect(normalisePagePrefs("overview", { layout: { order: { r3: ["overview.traffic", "side"] } } })).toEqual({});
-    expect(normalisePagePrefs("overview", { layout: { order: { r4: ["overview.notes", "overview.health"] } } })).toEqual({ layout: { order: { r4: ["overview.notes", "overview.costImpact", "overview.health", "overview.azureHealth", "overview.vitals"] } } });
+    expect(normalisePagePrefs("overview", { layout: { order: { r4: ["overview.notes", "overview.health"] } } })).toEqual({ layout: { order: { r4: ["overview.notes", "overview.costImpact", "overview.health", "overview.azureHealth", "overview.vitals", "overview.runningLabs"] } } });
     expect(normalisePagePrefs("overview", { layout: { hidden: ["overview.status", "overview.topology"] } })).toEqual({ layout: { hidden: ["overview.topology"] } });
     // Hidden comes back in the page's own order, whatever order it was saved in.
     expect(normalisePagePrefs("cost", { layout: { hidden: ["cost.insights", "cost.spend"] } })).toEqual({ layout: { hidden: ["cost.spend", "cost.insights"] } });
@@ -366,7 +366,8 @@ describe("thresholdTone", () => {
 
 // ── Azure insights (spec 2026-10-04-azure-insights-design.md, sections 9 and 10.1) ──
 
-const NEW_WIDGETS = ["overview.vmPerformance", "overview.azureHealth", "overview.vitals", "firewall.publicIp", "activity.azureChanges", "activity.serviceHealth"];
+/** The default-off widgets added since the widgets project: six from Azure insights, two from labs. */
+const NEW_WIDGETS = ["overview.vmPerformance", "overview.azureHealth", "overview.vitals", "firewall.publicIp", "activity.azureChanges", "activity.serviceHealth", "overview.runningLabs", "cost.labs"];
 
 /** Each row's and stack's item count before this project: what `max` defaults to. */
 const BEFORE: Record<PageId, Record<string, number>> = {
@@ -387,7 +388,7 @@ describe("widget library schema (insights spec 9.1)", () => {
     }
   });
 
-  it("the six new widgets are defaultOff and declared in their home row or stack after the existing items", () => {
+  it("the new widgets (insights and labs) are defaultOff and declared in their home row or stack after the existing items", () => {
     expect(WIDGETS.filter((w) => w.defaultOff).map((w) => w.id).sort()).toEqual([...NEW_WIDGETS].sort());
     const homes: Record<string, [PageId, string, number]> = {
       "overview.vmPerformance": ["overview", "r3", 3],
@@ -396,6 +397,8 @@ describe("widget library schema (insights spec 9.1)", () => {
       "firewall.publicIp": ["firewall", "right", 3],
       "activity.azureChanges": ["activity", "right", 2],
       "activity.serviceHealth": ["activity", "r3", 2],
+      "overview.runningLabs": ["overview", "r4", 5],
+      "cost.labs": ["cost", "r3", 3],
     };
     for (const [id, [page, home, index]] of Object.entries(homes)) {
       const h = widgetHome(id)!;

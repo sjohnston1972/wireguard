@@ -1,9 +1,9 @@
 // firewall.ts
 //
 // Plain English: the rule table on the Firewall page, compiled into an
-// nftables rule set for the WireGuard VM. The VM routes between four places
-// (the tunnel clients, the home LAN behind the home site, the Azure VNet and
-// the internet) and this decides what may pass between them. Think of an ACL
+// nftables rule set for the WireGuard VM. The VM routes between five places
+// (the tunnel clients, the home LAN behind the home site, the Azure VNet, the
+// lab pool peered to it, and the internet) and this decides what may pass between them. Think of an ACL
 // on a firewall's inside interfaces with zones, written top to bottom, first
 // match wins, then the default.
 //
@@ -29,9 +29,10 @@
 import type { Config } from "./env";
 import type { Peer } from "./db";
 import { peerIp6 } from "./peers";
+import { LAB_POOL } from "../../shared/labs";
 
 export type EndKind = "any" | "zone" | "client" | "cidr";
-export type Zone = "clients" | "home" | "azure" | "workloads" | "internet";
+export type Zone = "clients" | "home" | "azure" | "workloads" | "labs" | "internet";
 export type Proto = "any" | "tcp" | "udp" | "icmp";
 
 export interface FwRule {
@@ -163,6 +164,7 @@ export const ZONE_LABEL: Record<Zone, string> = {
   home: "Home LAN",
   azure: "Azure VNet",
   workloads: "Workloads subnet",
+  labs: "Labs",
   internet: "Internet",
 };
 
@@ -175,7 +177,8 @@ interface Addrs {
 
 /** The address sets behind each zone, from the current settings. */
 export function zoneAddrs(zone: Zone, cfg: Config): Addrs {
-  const privateV4 = [cfg.subnet, `${cfg.loopbackIp}/32`, cfg.vnetCidr].concat(cfg.homeLanCidr ? [cfg.homeLanCidr] : []);
+  // The lab pool is private too (labs spec §7.6), so "the internet" never matches a lab address.
+  const privateV4 = [cfg.subnet, `${cfg.loopbackIp}/32`, cfg.vnetCidr].concat(cfg.homeLanCidr ? [cfg.homeLanCidr] : [], [LAB_POOL]);
   const privateV6 = (cfg.subnet6 ? [cfg.subnet6] : []).concat(["fd50:50::/48"]);
   switch (zone) {
     case "clients":
@@ -186,6 +189,9 @@ export function zoneAddrs(zone: Zone, cfg: Config): Addrs {
       return { v4: [cfg.vnetCidr], v6: ["fd50:50::/48"] };
     case "workloads":
       return { v4: [cfg.workloadCidr], v6: [] };
+    case "labs":
+      // Every lab slot (10.64.0.0/13); labs are IPv4 only.
+      return { v4: [LAB_POOL], v6: [] };
     case "internet":
       return { v4: privateV4, v6: privateV6, negate: true };
   }
@@ -415,4 +421,6 @@ export const STARTER_RULES: Omit<FwRule, "id">[] = [
   { position: 30, enabled: 1, name: "Clients to the home LAN", src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "home", proto: "any", ports: "", action: "allow", log: 0 },
   { position: 40, enabled: 1, name: "Clients to each other", src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "clients", proto: "any", ports: "", action: "allow", log: 0 },
   { position: 50, enabled: 1, name: "Workloads to the internet (updates)", src_kind: "zone", src_value: "workloads", dst_kind: "zone", dst_value: "internet", proto: "any", ports: "", action: "allow", log: 0 },
+  // Last in the list (so earlier rules keep their ids) but placed at 25, after the Azure VNet. Labs peered to the gateway (labs spec §7.6). An install from before labs gets this as a proposed draft rule (labs/fwproposal.ts), never applied by itself.
+  { position: 25, enabled: 1, name: "Clients to labs", src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "labs", proto: "any", ports: "", action: "allow", log: 0 },
 ];

@@ -164,6 +164,7 @@ export function overview(state: State, over: OverviewOver = {}): OverviewRespons
     stateBackups: null,
     typicalSeconds: { deploy: 250, destroy: 120, ...over.typicalSeconds },
     capacity: null,
+    labs: { running: [], gbpH: 0, rePeer: 0 },
   };
 }
 
@@ -208,6 +209,7 @@ export function cost(over: Partial<CostResponse> = {}): CostResponse {
     sessions: [],
     insights: [],
     breakdown: null,
+    labs: [],
     ...over,
   };
 }

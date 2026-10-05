@@ -286,7 +286,7 @@ describe("moving", () => {
     fireEvent.dragEnd(handle, { dataTransfer: dt });
     expect(titles(screen.getByTestId("r4"))).toEqual(["Cost impact", "Watchman notes", "Health summary"]);
     await waitFor(() => expect(server.puts).toHaveLength(1));
-    expect(server.puts[0]!.body.prefs).toEqual({ layout: { order: { r4: ["overview.costImpact", "overview.notes", "overview.health", "overview.azureHealth", "overview.vitals"] } } });
+    expect(server.puts[0]!.body.prefs).toEqual({ layout: { order: { r4: ["overview.costImpact", "overview.notes", "overview.health", "overview.azureHealth", "overview.vitals", "overview.runningLabs"] } } });
   });
 
   it("a drop without the widget data type is ignored", async () => {

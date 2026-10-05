@@ -273,6 +273,8 @@ export async function oneOffCtx(env: Env, now: Date, limit: number): Promise<Fee
 export interface RunOptions {
   /** Wall-clock ms for the run's deadline (tests); Date.now by default. */
   clock?: () => number;
+  /** The cron's shared allowance (cron.ts): the run takes at most AZ_RUN_BUDGET of what the watchman and the lab watch left. */
+  parent?: Budget;
 }
 
 /** Run the due feeds. Answers one line per thing worth logging (errors and skips). */
@@ -286,7 +288,7 @@ export async function runInsights(env: Env, now: Date = new Date(), feeds: reado
   const late = () => clock() - started >= RUN_SOFT_DEADLINE_MS;
   const lines: string[] = [];
   const [snap, cfg, rows] = await Promise.all([getSnapshot(env), effectiveConfig(env), readFeedRows(env.DB)]);
-  const budget = makeBudget(AZ_RUN_BUDGET);
+  const budget = makeBudget(AZ_RUN_BUDGET, opts.parent);
   const signIn = signInOnce(env, budget);
   const pending: { id: string; stmt: D1PreparedStatement }[] = [];
   const recorded = new Set<string>();

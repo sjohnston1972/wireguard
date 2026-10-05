@@ -1,0 +1,46 @@
+{
+  "lab": "az104-06-blob-security",
+  "about": "Resources placed outside the lab: a VNet in another group, a role at another group and at the subscription, a scope read from a data source, and a blob written into an account the lab does not own.",
+  "expect": [
+    ["outside-scope", "azurerm_virtual_network.elsewhere"],
+    ["outside-scope", "azurerm_role_assignment.other_rg"],
+    ["outside-scope", "azurerm_role_assignment.subscription"],
+    ["outside-scope", "azurerm_role_assignment.from_data"],
+    ["outside-scope", "azurerm_storage_blob.foreign"]
+  ],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-06-blob-security", "location": "uksouth" } },
+      { "address": "azurerm_virtual_network.elsewhere", "mode": "managed", "type": "azurerm_virtual_network", "name": "elsewhere", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "vnet-x", "resource_group_name": "rg-prod", "location": "uksouth" } },
+      { "address": "azurerm_role_assignment.other_rg", "mode": "managed", "type": "azurerm_role_assignment", "name": "other_rg", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "scope": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-prod", "role_definition_name": "Reader", "principal_id": "11111111-1111-1111-1111-111111111111" } },
+      { "address": "azurerm_role_assignment.subscription", "mode": "managed", "type": "azurerm_role_assignment", "name": "subscription", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "scope": "/subscriptions/00000000-0000-0000-0000-000000000000", "role_definition_name": "Reader", "principal_id": "11111111-1111-1111-1111-111111111111" } },
+      { "address": "azurerm_role_assignment.from_data", "mode": "managed", "type": "azurerm_role_assignment", "name": "from_data", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "scope": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-prod", "role_definition_name": "Reader", "principal_id": "11111111-1111-1111-1111-111111111111" } },
+      { "address": "azurerm_storage_blob.foreign", "mode": "managed", "type": "azurerm_storage_blob", "name": "foreign", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "hello.txt", "storage_account_name": "prodstorage", "storage_container_name": "data", "type": "Block" } }
+    ] } },
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+      { "address": "azurerm_virtual_network.elsewhere", "mode": "managed", "type": "azurerm_virtual_network", "name": "elsewhere", "expressions": { "resource_group_name": { "constant_value": "rg-prod" } } },
+      { "address": "azurerm_role_assignment.other_rg", "mode": "managed", "type": "azurerm_role_assignment", "name": "other_rg", "expressions": { "scope": { "constant_value": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-prod" } } },
+      { "address": "azurerm_role_assignment.subscription", "mode": "managed", "type": "azurerm_role_assignment", "name": "subscription", "expressions": { "scope": { "constant_value": "/subscriptions/00000000-0000-0000-0000-000000000000" } } },
+      { "address": "azurerm_role_assignment.from_data", "mode": "managed", "type": "azurerm_role_assignment", "name": "from_data", "expressions": { "scope": { "references": ["data.azurerm_resource_group.prod.id", "data.azurerm_resource_group.prod"] } } },
+      { "address": "azurerm_storage_blob.foreign", "mode": "managed", "type": "azurerm_storage_blob", "name": "foreign", "expressions": { "storage_account_name": { "constant_value": "prodstorage" }, "storage_container_name": { "constant_value": "data" } } },
+      { "address": "data.azurerm_resource_group.prod", "mode": "data", "type": "azurerm_resource_group", "name": "prod", "expressions": { "name": { "constant_value": "rg-prod" } } }
+    ] } },
+    "prior_state": { "values": { "root_module": { "resources": [
+      { "address": "data.azurerm_resource_group.prod", "mode": "data", "type": "azurerm_resource_group", "name": "prod", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-prod", "name": "rg-prod", "location": "uksouth" } }
+    ] } } }
+  },
+  "hcl": {
+    "data": { "azurerm_resource_group": { "prod": [ { "name": "rg-prod" } ] } },
+    "resource": {
+      "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+      "azurerm_virtual_network": { "elsewhere": [ { "name": "vnet-x", "resource_group_name": "rg-prod", "location": "${var.region}" } ] },
+      "azurerm_role_assignment": {
+        "other_rg": [ { "scope": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-prod", "role_definition_name": "Reader", "principal_id": "11111111-1111-1111-1111-111111111111" } ],
+        "subscription": [ { "scope": "/subscriptions/00000000-0000-0000-0000-000000000000", "role_definition_name": "Reader", "principal_id": "11111111-1111-1111-1111-111111111111" } ],
+        "from_data": [ { "scope": "${data.azurerm_resource_group.prod.id}", "role_definition_name": "Reader", "principal_id": "11111111-1111-1111-1111-111111111111" } ]
+      },
+      "azurerm_storage_blob": { "foreign": [ { "name": "hello.txt", "storage_account_name": "prodstorage", "storage_container_name": "data", "type": "Block" } ] }
+    }
+  }
+}

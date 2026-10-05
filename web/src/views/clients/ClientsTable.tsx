@@ -26,6 +26,11 @@ export function ClientTags({ c }: { c: Client }) {
           needs new config
         </span>
       )}
+      {c.labsConfigDue && (
+        <span className="ctag ctag--amber" title="Its config predates the labs network (10.64.0.0/13): get a new config to reach running labs.">
+          config out of date: get config
+        </span>
+      )}
       {c.stale && (
         <span className="ctag ctag--grey" title="No handshake in 30 days.">
           stale

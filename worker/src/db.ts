@@ -48,6 +48,7 @@ export interface Peer {
   expires_at?: string | null; // ISO time a guest client stops working; null = never
   last_handshake_at?: string | null; // last real connection, kept across tear-downs (to within an hour)
   needs_config?: number; // 1 after a server key rotation, until its first handshake with the new key
+  labs_config_due?: number; // 1 when its config predates the lab pool in AllowedIPs (migration 0020), until its config is fetched or edited
 }
 
 export interface Alert {
@@ -192,7 +193,8 @@ export async function liveLogPrunedUpto(env: Env, runId: string): Promise<number
 /** Delete the live log of every run that ended more than `keepDays` before `now`, and of runs that no longer exist. */
 export async function pruneLiveLogs(env: Env, now: Date, keepDays = 14): Promise<void> {
   const cutoff = new Date(now.getTime() - keepDays * 86_400_000).toISOString();
-  const gone = `run_id NOT IN (SELECT id FROM runs) OR run_id IN (SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ?1)`;
+  // Lab runs (lab_runs, ids "lab-...") keep their live logs on the same terms.
+  const gone = `(run_id NOT IN (SELECT id FROM runs) AND run_id NOT IN (SELECT id FROM lab_runs)) OR run_id IN (SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ?1) OR run_id IN (SELECT id FROM lab_runs WHERE finished_at IS NOT NULL AND finished_at < ?1)`;
   await env.DB.batch([env.DB.prepare(`DELETE FROM run_live_log WHERE ${gone}`).bind(cutoff), env.DB.prepare(`DELETE FROM run_live_log_pruned WHERE ${gone}`).bind(cutoff)]);
 }
 

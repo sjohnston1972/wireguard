@@ -89,6 +89,90 @@ You need: [Node.js](https://nodejs.org) 20+, [GitHub CLI](https://cli.github.com
    npm test
    ```
 
+## Labs: one-time setup
+
+Labs (the Labs tab) build AZ-104 and AZ-305 study environments with the same
+service principal as the gateway. Most labs need nothing more. Labs that create
+Entra users and groups, custom roles, policy or management groups (labs 1, 2, 3
+and 6 so far) need the extra rights below, which you give once, as subscription
+Owner and Entra Global Administrator. Read the risk in
+`docs/superpowers/specs/2026-10-04-labs-design.md` §8.5 first: these rights are
+tenant-wide for Entra users and groups.
+
+First, make the two files you will paste (your subscription id is filled in from
+`.env`; nothing is printed but the file names):
+
+```sh
+npm run labs-setup     # or: node scripts/labs-setup.mjs. Writes labs/setup/governance-role.local.json
+                       # and governance-condition.local.txt (both gitignored)
+```
+
+Then (spec §8.2, as written):
+
+1. Azure portal → Subscriptions → (the subscription) → Access control (IAM) → Add → Add custom role → JSON tab → paste
+   `labs/setup/governance-role.json` (the repo fills in the subscription id) → Create.
+   *Paste `labs/setup/governance-role.local.json`, the copy `npm run labs-setup` made with your id in it.*
+2. Same IAM page → Add role assignment → `wg-admin labs governance` → Members: the wg-admin service principal (the app name shown in
+   Settings → Setup) → Conditions → "Allow user to only assign selected roles" → pick the list in §8.1 → principal types
+   User, Group, Service principal → Review + assign.
+   *Or, in the condition's code view, paste `labs/setup/governance-condition.local.txt`: it allows exactly the role ids in
+   `labs/setup/allowed-roles.json` (Reader, Contributor, Storage Blob Data Reader/Contributor, Virtual Machine Contributor,
+   Key Vault Secrets User/Officer, Monitoring Reader/Contributor, Network Contributor, Backup Operator, and each lab's own
+   custom role), only to users, groups and service principals, for both adding and removing assignments.*
+3. Entra admin centre → App registrations → (the wg-admin app) → API permissions → Add → Microsoft Graph → Application →
+   tick `User.ReadWrite.All`, `User.DeleteRestore.All`, `Group.ReadWrite.All` → Add → **Grant admin consent**.
+4. Entra admin centre → Identity → Overview → Properties: copy the primary domain (`…onmicrosoft.com`) into `.env` as
+   `LAB_UPN_DOMAIN`, then `npm run secrets`.
+5. Dashboard → Settings → Labs → **Check permissions**: the Worker reads the role assignment and makes harmless Graph reads
+   (`/users?$top=1`, `/groups?$top=1`), ticking each. Until all tick, Deploy is disabled with the reason for labs that need them.
+
+**Management groups (lab 3).** Creating a management group needs either the tenant setting "Require write permissions for
+creating new management groups" turned **off** (Azure portal → Management groups → Settings), or the wg-admin app given
+`Management Group Contributor` at the tenant root group. Turning the setting off is the smaller change; check which one your
+tenant needs with `--check` below. *(To be confirmed against Steven's tenant at the first lab 3 release test.)*
+
+**The same from Cloud Shell** (Azure portal → Cloud Shell, Bash; upload the two `.local` files first). `APP` is the wg-admin
+app's client id (`AZURE_CLIENT_ID` in `.env`):
+
+```sh
+SUB=$(az account show --query id -o tsv)
+APP=<the wg-admin client id>
+# 1. the custom role
+az role definition create --role-definition @governance-role.local.json
+# 2. its assignment, with the condition
+az role assignment create --assignee "$APP" --role "wg-admin labs governance" --scope "/subscriptions/$SUB" \
+  --condition "$(cat governance-condition.local.txt)" --condition-version 2.0
+# 3. the Graph application permissions: look up their ids (they are the same in every tenant) ...
+GRAPH=00000003-0000-0000-c000-000000000000
+for p in User.ReadWrite.All User.DeleteRestore.All Group.ReadWrite.All; do
+  echo "$p $(az ad sp show --id $GRAPH --query "appRoles[?value=='$p'].id" -o tsv)"
+done
+# ... add each as <id>=Role, then grant consent
+az ad app permission add --id "$APP" --api $GRAPH --api-permissions <User.ReadWrite.All id>=Role <User.DeleteRestore.All id>=Role <Group.ReadWrite.All id>=Role
+az ad app permission admin-consent --id "$APP"
+```
+
+**Check it from this PC**, signed in as the service principal (not as yourself):
+
+```sh
+az login --service-principal -u <AZURE_CLIENT_ID> -p <AZURE_CLIENT_SECRET> --tenant <AZURE_TENANT_ID>
+node scripts/lab-release-test.mjs --check
+```
+
+It reports the role and its condition, the two Graph reads, and creating and deleting a management group called
+`lab-perm-check`; it prints no ids.
+
+**Release tests** (real Azure, pennies per lab; Steven OKs the spend first). Each lab version is tested once before it is
+offered as released: deploy, ready check, destroy, safety net, clean check, in one `lab.yml` run, recorded in
+`docs/labs/release-tests.md`. `lab.yml` must be on `main` first (GitHub only starts workflows that exist there).
+
+```sh
+node scripts/lab-release-test.mjs az104-04-cost az104-05-storage az104-07-files --ref feat/labs --confirm-cost
+```
+
+Without `--confirm-cost` it only prints the estimate. A failed, dirty or interrupted (Ctrl-C) test always dispatches a
+destroy run for that lab before it stops.
+
 ## Using the dashboard
 
 Open **https://wg-admin.clydeford.net** and sign in with Google, or with the
@@ -419,13 +503,16 @@ free tiers.
 infra/                    Terraform: the Azure build and the DNS record
   cloud-init.yaml.tftpl   the VM's first-boot script
   agent/                  the heartbeat script and its systemd units
-  ci/                     the workflow's live log: copies step output, hides secrets, sends it to the Worker
+  ci/                     the workflows' live log (copies step output, hides secrets, sends it to the Worker),
+                          and the lab pipeline's steps: lab-scope.mjs (plan check), parse, ready, peer, unblock, safety net
+labs/                     the study labs: one folder per lab (lab.yaml, readme.md, terraform/), setup/ for the one-time rights
 worker/src/               the Worker: JSON API, VM and GitHub endpoints, watchman (TypeScript)
 web/                      the dashboard app (React, Vite); built into web/dist
 web/public/               files served at fixed addresses: sw.js, icons, _headers
 worker/migrations/        database schema
 wrangler.toml             the Worker's bindings, cron and hostname
 .github/workflows/wg.yml  the runner: apply or destroy
+.github/workflows/lab.yml the lab runner: deploy, destroy, peer, unpeer, test
 .github/workflows/ci.yml  checks on every push, no cloud calls
 scripts/                  the npm commands (keys, peer, secrets, deploy-worker, rollback-worker, dev, smoke)
 wg-admin-spec.md          the full design

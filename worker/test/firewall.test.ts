@@ -20,7 +20,7 @@ describe("rule compilation", () => {
   });
   it("zones expand to both families where they have both, and the internet is 'everything else'", () => {
     const { lines } = ruleLines(rule({ src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "internet" }), cfg, []);
-    expect(lines[0]).toBe(`ip saddr 10.13.13.0/24 ip daddr != { 10.13.13.0/24, 10.13.255.1/32, 10.50.0.0/16, 192.168.1.0/24 } counter name "r9" accept`);
+    expect(lines[0]).toBe(`ip saddr 10.13.13.0/24 ip daddr != { 10.13.13.0/24, 10.13.255.1/32, 10.50.0.0/16, 192.168.1.0/24, 10.64.0.0/13 } counter name "r9" accept`);
     expect(lines[1]).toBe(`ip6 saddr fd13:13::/64 ip6 daddr != { fd13:13::/64, fd50:50::/48 } counter name "r9" accept`);
   });
   it("ping to anywhere covers ICMP and ICMPv6 in one line", () => {

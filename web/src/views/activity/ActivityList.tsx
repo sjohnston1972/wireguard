@@ -4,7 +4,7 @@ import { History } from "lucide-react";
 import type { ActivityResponse } from "@shared/api";
 import { AUDIT_KINDS } from "../../../../worker/src/activity";
 import { Column, DataTable, EmptyState, Panel, SearchInput, Select, StatusPill, Tabs } from "@/components";
-import { actionWord, EVENT_TYPES, fmtDuration, fmtGbp, fmtWhen, inWindow, noteKind, resultPill, TABS, type Change, type EventRow, type Note, type RunRow, type Tab, type Window } from "./model";
+import { EVENT_TYPES, fmtDuration, fmtGbp, fmtWhen, inWindow, noteKind, resultPill, runWord, TABS, type Change, type EventRow, type Note, type RunRow, type Tab, type Window } from "./model";
 import { Chevron, Fill, Pager, TypeTag } from "./parts";
 import type { ActivityParams } from "./useActivityParams";
 import { useWidget } from "@/widgets";
@@ -33,7 +33,7 @@ export interface ActivityListProps {
 
 const has = (blob: string, find: string) => !find.trim() || blob.toLowerCase().includes(find.trim().toLowerCase());
 
-const runBlob = (r: RunRow) => [actionWord(r.action), resultPill(r.status).label, r.requested_by, r.source, r.error, r.public_ip].filter(Boolean).join(" ");
+const runBlob = (r: RunRow) => [runWord(r), r.lab?.title, resultPill(r.status).label, r.requested_by, r.source, r.error, r.public_ip].filter(Boolean).join(" ");
 
 /** The four tabs (Runs, All activity, Config changes, Watchman notes) with search and one filter. */
 export function ActivityList({ data, params, set, window: win, selectedRun, onOpenRun, onOpenChange }: ActivityListProps) {
@@ -43,10 +43,12 @@ export function ActivityList({ data, params, set, window: win, selectedRun, onOp
   const density = settings.density as "comfortable" | "compact";
   const [filters, setFilters] = useState<Partial<Record<Tab, string>>>({});
   const [find, setFind] = useState("");
+  const [labsOnly, setLabsOnly] = useState(false);
+  const anyLab = data.runs.some((r) => r.lab);
   const filter = filters[tab] ?? ALL;
   const setFilter = (v: string) => setFilters((f) => ({ ...f, [tab]: v }));
 
-  const runs = data.runs.filter((r) => inWindow(r.requested_at, win) && (filter === ALL || (filter === "running" ? r.status === "running" || r.status === "queued" : r.status === filter)) && has(runBlob(r), find));
+  const runs = data.runs.filter((r) => (!labsOnly || !!r.lab) && inWindow(r.requested_at, win) && (filter === ALL || (filter === "running" ? r.status === "running" || r.status === "queued" : r.status === filter)) && has(runBlob(r), find));
   const all = data.all.filter((e) => inWindow(e.at, win) && (filter === ALL || e.type === filter) && has(`${e.title} ${e.detail ?? ""} ${e.type}`, find));
   const noteKinds = [...new Set(data.notes.map((n) => n.kind))];
   const notes = data.notes.filter((n) => inWindow(n.at, win) && (filter === ALL || n.kind === filter) && has(`${n.kind} ${n.message}`, find));
@@ -63,7 +65,13 @@ export function ActivityList({ data, params, set, window: win, selectedRun, onOp
   ];
   const runCols: Column<RunRow>[] = [
     { key: "when", header: "When", cell: (r) => fmtWhen(r.requested_at) },
-    { key: "action", header: "Action", cell: (r) => <strong className="act__action">{actionWord(r.action)}</strong> },
+    { key: "action", header: "Action", cell: (r) => (
+        <>
+          <strong className="act__action">{runWord(r)}</strong>
+          {r.lab && <span className="act__muted act__lab"> {r.lab.title}</span>}
+        </>
+      ),
+    },
     { key: "result", header: "Result", cell: (r) => <StatusPill {...resultPill(r.status)} /> },
     ...runExtras.filter((c) => shownRunCols.has(c.key)),
     { key: "go", header: <span className="visually-hidden">Open</span>, cell: () => <Chevron />, align: "right", width: 32 },
@@ -111,6 +119,11 @@ export function ActivityList({ data, params, set, window: win, selectedRun, onOp
           items={TABS.map((t) => ({ value: t.value, label: t.label }))}
         />
         <div className="act__tools">
+          {tab === "runs" && anyLab && (
+            <button type="button" className="act__toggle" aria-pressed={labsOnly} onClick={() => setLabsOnly((v) => !v)}>
+              Labs
+            </button>
+          )}
           {tab === "changes" && (
             <button type="button" className="act__toggle" aria-pressed={firewallOnly} onClick={() => set({ kind: firewallOnly ? null : "firewall" })}>
               Firewall events
@@ -130,7 +143,7 @@ export function ActivityList({ data, params, set, window: win, selectedRun, onOp
             rowKey={(r) => r.id}
             selectedKey={selectedRun}
             onRowClick={(r) => onOpenRun(r.id)}
-            rowLabel={(r) => `${actionWord(r.action)} ${fmtWhen(r.requested_at)}`}
+            rowLabel={(r) => `${runWord(r)}${r.lab ? ` ${r.lab.title}` : ""} ${fmtWhen(r.requested_at)}`}
             empty={empty("runs", win || find || filter !== ALL ? "Nothing matches the window or filter. Reset the timeline or clear the search." : "Deploy from Overview to start a session.", win || find || filter !== ALL ? undefined : { label: "Open Overview", onClick: () => navigate("/") })}
           />
         )}

@@ -3,10 +3,10 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 
-const TABS = ["Overview", "Clients", "Firewall", "Activity", "Cost", "Settings"];
+const TABS = ["Overview", "Clients", "Firewall", "Activity", "Cost", "Labs", "Settings"];
 
 describe("AppShell", () => {
-  it("shows the six tabs in order in the main navigation", () => {
+  it("shows the seven tabs in order in the main navigation", () => {
     renderApp("/");
     const nav = screen.getByRole("navigation", { name: "Main" });
     const links = within(nav).getAllByRole("link");

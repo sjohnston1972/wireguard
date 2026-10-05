@@ -47,20 +47,39 @@ export const OVER_BUDGET_FIELD = "over_budget_ok";
 
 const alertKey = (month: string) => `budget:alerted:${month}`;
 
+/** A live lab session as the budget counts it (labs spec §9.3). */
+export interface BudgetLab {
+  state: string;
+  requested_at: string;
+  auto_destroy_at: string | null;
+  max_until: string;
+  est_gbp_h: number;
+  /** The hours chosen at deploy (from the deploy or test run's payload); null when not known. */
+  hours?: number | null;
+}
+
 /**
  * The sum, pure so it can be tested. The session estimate starts where
  * Azure's figures stop (midnight after the last day Azure has listed), so
  * the same hours are not counted twice, and it runs to the auto-destroy
  * timer, or to now if there is no timer. Both ends stay inside this month.
+ *
+ * Labs (spec §9.3): `labDays` is Azure's daily spend on the rg-lab-* groups
+ * (lab_cost_days), added to the actual; each live lab in `labs` adds its
+ * est_gbp_h from when it started (or from where Azure's figures stop) to
+ * its timer. Before it has one (still deploying) it counts for the hours
+ * chosen at deploy, never past max_until; to max_until only when those
+ * hours are not known.
  */
-export function budgetFigures(o: { budget: number; days: { day: string; gbp: number }[]; snap: Pick<Snapshot, "state" | "running_since" | "auto_destroy_at">; hourlyRate: number; now: Date }): Omit<BudgetStatus, "alerted"> {
+export function budgetFigures(o: { budget: number; days: { day: string; gbp: number }[]; snap: Pick<Snapshot, "state" | "running_since" | "auto_destroy_at">; hourlyRate: number; now: Date; labs?: BudgetLab[]; labDays?: { day: string; gbp: number }[] }): Omit<BudgetStatus, "alerted"> {
   const month = o.now.toISOString().slice(0, 7);
   const monthStart = Date.parse(`${month}-01T00:00:00Z`);
   const next = new Date(monthStart);
   next.setUTCMonth(next.getUTCMonth() + 1);
   const monthEnd = next.getTime();
   const days = o.days.filter((d) => d.day.startsWith(month));
-  const actual = days.reduce((a, d) => a + d.gbp, 0);
+  const labDays = (o.labDays ?? []).filter((d) => d.day.startsWith(month));
+  const actual = days.reduce((a, d) => a + d.gbp, 0) + labDays.reduce((a, d) => a + d.gbp, 0);
 
   let session = 0;
   if (o.snap.state === "running" && o.snap.running_since) {
@@ -71,6 +90,7 @@ export function budgetFigures(o: { budget: number; days: { day: string; gbp: num
     const to = Math.min(Number.isFinite(deadline) ? Math.max(deadline, o.now.getTime()) : o.now.getTime(), monthEnd);
     if (Number.isFinite(from) && to > from) session = ((to - from) / 3_600_000) * o.hourlyRate;
   }
+  session += labsEstimate(o.labs ?? [], labDays, o.now, monthStart, monthEnd);
 
   const total = actual + session;
   if (!(o.budget > 0)) return { budget: 0, actual, session, total, pct: 0, level: "none", month };
@@ -78,11 +98,66 @@ export function budgetFigures(o: { budget: number; days: { day: string; gbp: num
   return { budget: o.budget, actual, session, total, pct, level: pct >= 100 ? "over" : pct >= 80 ? "warn" : "ok", month };
 }
 
+/**
+ * Where a live lab's estimate stops: its timer; before it has one, the hours
+ * chosen at deploy from when it was requested (never past max_until); with
+ * neither, max_until.
+ */
+function labEnd(l: BudgetLab): number {
+  if (l.auto_destroy_at) return Date.parse(l.auto_destroy_at);
+  const max = Date.parse(l.max_until);
+  const hours = Number(l.hours);
+  if (l.hours != null && Number.isFinite(hours) && hours > 0) {
+    const chosen = Date.parse(l.requested_at) + hours * 3_600_000;
+    return Number.isFinite(max) ? Math.min(chosen, max) : chosen;
+  }
+  return max;
+}
+
+/** The live labs' estimate to their timers (or chosen hours, or max_until), from where Azure's lab figures stop, inside this month. */
+export function labsEstimate(labs: BudgetLab[], labDays: { day: string; gbp: number }[], now: Date, monthStart: number, monthEnd: number): number {
+  const lastDay = labDays.map((d) => d.day).sort().at(-1);
+  const azureUpTo = lastDay ? Date.parse(`${lastDay}T00:00:00Z`) + 86_400_000 : monthStart;
+  let sum = 0;
+  for (const l of labs) {
+    const from = Math.max(Date.parse(l.requested_at), azureUpTo, monthStart);
+    const end = labEnd(l);
+    const to = Math.min(Number.isFinite(end) ? Math.max(end, now.getTime()) : now.getTime(), monthEnd);
+    if (Number.isFinite(from) && to > from && l.est_gbp_h > 0) sum += ((to - from) / 3_600_000) * l.est_gbp_h;
+  }
+  return sum;
+}
+
+/**
+ * The labs' part of the month: live sessions and Azure's lab days. A lab
+ * problem (a missing table, a bad row) must never stop the gateway's budget
+ * check, so this answers nothing rather than throwing.
+ */
+export async function budgetLabs(env: Env, month: string): Promise<{ labs: BudgetLab[]; labDays: { day: string; gbp: number }[] }> {
+  try {
+    const [labs, labDays] = await Promise.all([
+      // The hours chosen at deploy are kept in the session's deploy (or test) run's payload (labs/engine.ts deployLab).
+      env.DB.prepare(
+        `SELECT s.state, s.requested_at, s.auto_destroy_at, s.max_until, s.est_gbp_h,
+                (SELECT json_extract(r.payload_json, '$.hours') FROM lab_runs r
+                  WHERE r.session_id = s.id AND r.action IN ('deploy', 'test') AND json_valid(r.payload_json)
+                  ORDER BY r.requested_at ASC LIMIT 1) AS hours
+           FROM lab_sessions s WHERE s.state IN ('deploying', 'running', 'failed', 'tearing_down')`,
+      ).all<BudgetLab>(),
+      env.DB.prepare("SELECT day, SUM(gbp) AS gbp FROM lab_cost_days WHERE day >= ?1 GROUP BY day").bind(`${month}-01`).all<{ day: string; gbp: number }>(),
+    ]);
+    return { labs: labs.results, labDays: labDays.results };
+  } catch (e) {
+    console.error("budget labs:", e);
+    return { labs: [], labDays: [] };
+  }
+}
+
 /** Where the budget stands right now. */
 export async function budgetStatus(env: Env, cfg?: Config, snap?: Snapshot, now = new Date()): Promise<BudgetStatus> {
   const month = now.toISOString().slice(0, 7);
-  const [c, s, days, sent] = await Promise.all([cfg ?? effectiveConfig(env), snap ?? getSnapshot(env), db.costDays(env, `${month}-01`), env.STATUS.get(alertKey(month))]);
-  const f = budgetFigures({ budget: c.monthlyBudgetGbp, days, snap: s, hourlyRate: c.hourlyRateGbp, now });
+  const [c, s, days, sent, lab] = await Promise.all([cfg ?? effectiveConfig(env), snap ?? getSnapshot(env), db.costDays(env, `${month}-01`), env.STATUS.get(alertKey(month)), budgetLabs(env, month)]);
+  const f = budgetFigures({ budget: c.monthlyBudgetGbp, days, snap: s, hourlyRate: c.hourlyRateGbp, now, labs: lab.labs, labDays: lab.labDays });
   return { ...f, alerted: sent === "100" ? 100 : sent === "80" ? 80 : 0 };
 }
 
@@ -100,7 +175,17 @@ export async function checkBudget(env: Env, cfg: Config, now = new Date()): Prom
   if (!due || due <= b.alerted) return null;
   // Remember first, so a slow or failing notification cannot cause a repeat.
   await env.STATUS.put(alertKey(b.month), String(due), { expirationTtl: 40 * 86400 });
-  const sums = `${money(b.actual)} spent in Azure so far${b.session > 0 ? ` plus about ${money(b.session)} for the VM running now, to its timer` : ""}: ${Math.round(b.pct)}% of the ${money(b.budget)} monthly budget.`;
+  // The labs' share, named (labs spec §9.3): Azure's lab spend so far and the live labs to their timers.
+  const lab = await budgetLabs(env, b.month);
+  const monthStart = Date.parse(`${b.month}-01T00:00:00Z`);
+  const labActual = lab.labDays.filter((d) => d.day.startsWith(b.month)).reduce((a, d) => a + d.gbp, 0);
+  const labSession = labsEstimate(lab.labs, lab.labDays, now, monthStart, new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).getTime());
+  const vmSession = b.session - labSession;
+  const sums =
+    `${money(b.actual)} spent in Azure so far${labActual > 0 ? ` (${money(labActual)} of it on labs)` : ""}` +
+    `${vmSession > 1e-9 ? ` plus about ${money(vmSession)} for the VM running now, to its timer` : ""}` +
+    `${labSession > 0 ? ` plus about ${money(labSession)} for ${lab.labs.length} lab${lab.labs.length === 1 ? "" : "s"} running now, to ${lab.labs.length === 1 ? "its timer" : "their timers"}` : ""}` +
+    `: ${Math.round(b.pct)}% of the ${money(b.budget)} monthly budget.`;
   const msg = due === 100 ? `Monthly budget reached. ${sums} Deploy will ask you to confirm until the month ends.` : `80% of the monthly budget used. ${sums}`;
   await db.addAlert(env, "budget", msg);
   await notify(env, due === 100 ? "wg-admin: over budget" : "wg-admin: 80% of budget", msg, { priority: due === 100 ? 4 : 3, tags: ["moneybag"], buttons: [dashboardButton(env, "Open dashboard", "/cost")] });

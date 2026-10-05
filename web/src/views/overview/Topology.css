@@ -164,3 +164,58 @@
 .ov-topo--compact .ov-edge__label { bottom: auto; left: calc(50% + 12px); transform: none; }
 .ov-topo--compact .ov-node--centre { flex-direction: row; text-align: left; }
 .ov-topo--compact .ov-node--centre .ov-node__text { align-items: flex-start; }
+
+/* Running labs, beside the Azure VNet (spec section 10): a solid line when peered, dashed when waiting or disconnected. */
+.ov-labs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 1 190px;
+  max-height: 100%;
+  overflow: auto;
+  min-width: 0;
+  margin: 0 0 0 4px;
+  padding: 0;
+  list-style: none;
+}
+.ov-lab {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.ov-lab__edge {
+  flex: 0 0 22px;
+  height: 0;
+  border-top: 2px solid var(--green);
+}
+.ov-lab__edge[data-peering="waiting"] { border-top: 2px dashed var(--amber); }
+.ov-lab__edge[data-peering="disconnected"] { border-top: 2px dashed var(--red); }
+.ov-lab__box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  background: var(--bg-tile);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.ov-lab__box:hover { background: var(--bg-elevated); }
+.ov-lab__box[data-peering="waiting"] { border-color: color-mix(in srgb, var(--amber) 55%, var(--border-strong)); }
+.ov-lab__box[data-peering="disconnected"] { border-color: color-mix(in srgb, var(--red) 55%, var(--border-strong)); }
+.ov-lab__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ov-lab__title,
+.ov-lab__word {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-lab__title { font-size: 12px; font-weight: 600; }
+.ov-lab__word { font-size: 11px; color: var(--text-secondary); }

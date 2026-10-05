@@ -1,11 +1,13 @@
-import { Clock, Gauge, Hourglass, MoveRight, PauseCircle, Play, Timer, Trash2 } from "lucide-react";
+import { Clock, Gauge, Hourglass, Link2, MoveRight, PauseCircle, Play, Timer, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { OverviewResponse } from "@shared/api";
 import { Button, ProgressBar, cx } from "@/components";
+import { useRePeerLabs } from "@/api/mutations";
 import { WidgetCorner, useCornerHost, useWidget } from "@/widgets";
 import { DeployForm, actionAllowed, type ActionName } from "./actions";
 import { STATE_TONE, STATE_WORD, currentStep, failedStep, formatElapsed, formatSpan, hhmm, inGithubRun, isBusy, moveTargets, regionShort, stepProgress, usually } from "./model";
 import { useServerNow } from "./hooks";
+import { labsBannerText } from "./labs";
 import "./Banner.css";
 
 interface Props {
@@ -21,7 +23,7 @@ export function StateMark({ state, size = 40 }: { state: OverviewResponse["snaps
 }
 
 /** The line under the state word. `autoDestroy` false leaves the timer out (the Auto-destroy time setting). */
-function subline(o: OverviewResponse, now: number, autoDestroy = true): string {
+function gatewaySubline(o: OverviewResponse, now: number, autoDestroy = true, labs = false): string {
   const s = o.snapshot;
   const step = currentStep(s.steps);
   switch (s.state) {
@@ -44,8 +46,15 @@ function subline(o: OverviewResponse, now: number, autoDestroy = true): string {
     case "failed":
       return s.error ?? "The last run failed";
     case "destroyed":
-      return `Nothing in Azure, £0. Deploy builds a ${o.config.vmSize || "VM"} and points ${o.config.dnsName || "the name"} at it`;
+      return `${labs ? "No gateway VM, £0 for it." : "Nothing in Azure, £0."} Deploy builds a ${o.config.vmSize || "VM"} and points ${o.config.dnsName || "the name"} at it`;
   }
+}
+
+/** The line under the state word, with "· 2 labs running (£0.12/h)" added while labs run. */
+function subline(o: OverviewResponse, now: number, autoDestroy = true): string {
+  const labs = labsBannerText(o.labs);
+  const base = gatewaySubline(o, now, autoDestroy, !!labs);
+  return labs ? `${base} · ${labs}` : base;
 }
 
 /** The middle block: elapsed time and the usual duration (a run), or how long it has been in this state. */
@@ -71,6 +80,16 @@ function Timing({ o, receivedAt, autoDestroy }: { o: OverviewResponse; receivedA
         {isBusy(s.state) && !typical && (s.state === "deploying" || s.state === "destroying") && <div className="ov-banner__note">no typical time yet</div>}
       </div>
     </div>
+  );
+}
+
+/** Labs waiting or disconnected, now that the gateway is up: one press peers them all. */
+function RePeer({ n }: { n: number }) {
+  const repeer = useRePeerLabs();
+  return (
+    <Button variant="secondary" className="ov-banner__icon-btn" title={`Re-peer ${n} ${n === 1 ? "lab" : "labs"}`} icon={<Link2 size={16} aria-hidden />} loading={repeer.isPending} disabled={repeer.isPending} onClick={() => repeer.mutate()}>
+      <span className="ov-banner__btn-word">{`Re-peer ${n} ${n === 1 ? "lab" : "labs"}`}</span>
+    </Button>
   );
 }
 
@@ -101,6 +120,7 @@ function Actions({ o, onAction }: { o: OverviewResponse; onAction: (a: ActionNam
         >
           <span className="ov-banner__btn-word">Move</span>
         </Button>
+        {o.labs.rePeer > 0 && <RePeer n={o.labs.rePeer} />}
         <Button variant="secondary" className="ov-banner__icon-btn" title={o.snapshot.speedtest_req ? "Speed test running…" : "Speed test"} icon={<Gauge size={16} aria-hidden />} disabled={!!o.snapshot.speedtest_req} onClick={() => onAction("speedtest")}>
           <span className="ov-banner__btn-word">{o.snapshot.speedtest_req ? "Speed test running…" : "Speed test"}</span>
         </Button>

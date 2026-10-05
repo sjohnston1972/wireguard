@@ -4,11 +4,11 @@
 // here. The pages themselves are the React app (served as static files, see
 // wrangler.toml); this file only answers what the app cannot: the routes that
 // prove themselves with a token instead of the login (the VM's heartbeat and
-// packet captures, GitHub's result callback, run secrets and live log, the one-tap
+// packet captures, GitHub's result callbacks for the gateway and the labs, run secrets and live log, the one-tap
 // buttons on phone notifications), the phone-install manifest, the data API
 // for the app (/api/v1, behind the login), capture downloads and the health
-// check. The cron entry point at the bottom is the night watchman, and (on its
-// own cron) the Azure insights collector.
+// check. The cron entry point at the bottom is the night watchman, then the
+// labs' watch, then the Azure insights collector.
 
 import { Hono, type Context } from "hono";
 import type { Env } from "./env";
@@ -18,9 +18,11 @@ import { getSnapshot } from "./state";
 import { startDestroy, extendAutoDestroy, handleCallback, handleAgent, issueRunSecrets, RunError } from "./runs";
 import { verifyGithubOidc } from "./oidc";
 import { startHibernate } from "./standby";
-import { consumeAction } from "./actions";
+import { consumeAction, isLabAction } from "./actions";
+import { handleLabCallback, handleLabPeer, handleLabPeeringsRemoved, handleLabSecrets, type CallbackReply } from "./labs/callbacks";
+import { runLabAction } from "./labs/act";
 import { notify } from "./notify";
-import { runScheduled } from "./monitor";
+import { runCron, CRON_CALLS } from "./cron";
 import { runInsights } from "./insights/runner";
 import { INSIGHTS_CRON } from "./insights/types";
 import { receiveCapture, MAX_CAPTURE_BYTES } from "./capture";
@@ -136,6 +138,27 @@ app.post("/api/callback/secrets", async (c) => {
   return c.json(r.body, r.status as 200);
 });
 
+// Labs (labs spec §7.2): the lab workflow's result, its run secrets (OIDC),
+// the peering handshake, and wg.yml's "lab peerings removed". Each proves
+// itself with a token (labs/callbacks.ts); each has its own brake, and only
+// a refused token (401, 403) or an unknown run (404) counts against it.
+const LAB_CALLBACKS: [string, (env: Env, token: string | null, body: unknown) => Promise<CallbackReply>][] = [
+  ["lab", handleLabCallback],
+  ["lab-secrets", handleLabSecrets],
+  ["lab-peer", handleLabPeer],
+  ["lab-peerings-removed", handleLabPeeringsRemoved],
+];
+for (const [route, handle] of LAB_CALLBACKS) {
+  app.post(`/api/callback/${route}`, async (c) => {
+    const key = failKey(c, route);
+    if (tooManyFailures(key)) return c.json({ error: "slow down" }, 429);
+    const body = await c.req.json().catch(() => null);
+    const r = await handle(c.env, bearer(c) || null, body);
+    if (r.status === 401 || r.status === 403 || r.status === 404) noteFailure(key);
+    return c.json(r.body as object, r.status as 200);
+  });
+}
+
 // The VM's packet-capture upload. The token is checked BEFORE the file is
 // read, and the file is read with a hard size cap, so a stranger cannot make
 // the Worker swallow a huge upload (see capture.ts).
@@ -170,7 +193,10 @@ app.post("/api/act/:token", async (c) => {
   }
   let msg: string;
   try {
-    if (action === "extend") {
+    if (isLabAction(action)) {
+      // A lab session's Extend 1h or Tear down (labs/act.ts).
+      msg = await runLabAction(c.env, action);
+    } else if (action === "extend") {
       const snap = await getSnapshot(c.env);
       if (snap.state !== "running") throw new RunError("Nothing is running.");
       const from = Math.max(Date.now(), snap.auto_destroy_at ? Date.parse(snap.auto_destroy_at) : 0);
@@ -271,11 +297,14 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
-  // One cron (wrangler.toml): the watchman, then the Azure insights collector in the
-  // same invocation. (A second trigger for the collector was registered but never fired
-  // on Cloudflare, 2026-10-04.) Each is caught on its own, so neither can stop the
-  // other; the collector keeps its own 25-call budget and soft time limit. A leftover
-  // INSIGHTS_CRON trigger, if one ever fires, runs only the collector.
+  // One cron (wrangler.toml): the watchman, then the labs' watch (labs/watch.ts), then
+  // the Azure insights collector, in the same invocation. (A second trigger for the
+  // collector was registered but never fired on Cloudflare, 2026-10-04.) Each is caught
+  // on its own, so none can stop the others: a lab problem never delays the gateway's
+  // cost guard. Cloudflare Free allows 50 outside calls per invocation, so the three
+  // share one allowance of 45 (cron.ts), the watchman first; the lab watch takes at
+  // most 20 of what is left, the collector at most 25 (and keeps its soft time limit).
+  // A leftover INSIGHTS_CRON trigger, if one ever fires, runs only the collector.
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     const insights = () =>
       runInsights(env, new Date(event.scheduledTime)).then(
@@ -288,15 +317,15 @@ export default {
       ctx.waitUntil(insights());
       return;
     }
+    // One shared allowance of outside calls for all three (cron.ts): watchman, then labs, then insights.
     ctx.waitUntil(
-      runScheduled(env)
-        .then(
-          (notes) => {
-            if (notes.length) console.log("watchman:", notes.join(" | "));
-          },
-          (e) => console.error("watchman run failed:", e),
-        )
-        .then(insights)
+      runCron(env, new Date(event.scheduledTime)).then(
+        ({ lines, used }) => {
+          for (const l of lines) console.log(l);
+          if (used) console.log(`cron: ${used} of ${CRON_CALLS} outside calls`);
+        },
+        (e) => console.error("cron run failed:", e),
+      ),
     );
   },
 };

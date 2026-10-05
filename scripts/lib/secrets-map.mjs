@@ -22,6 +22,16 @@ export const GITHUB_MAP = {
   WG_SERVER_PRIVATE_KEY: "WG_SERVER_PRIVATE_KEY",
 };
 
+/**
+ * Optional .env key -> GitHub secret name: pushed when filled in, skipped
+ * quietly when blank (the gateway never needs them). LAB_UPN_DOMAIN is the
+ * tenant's primary domain (contoso.onmicrosoft.com) for lab users' sign-in
+ * names; lab.yml hands it to Terraform as var.upn_domain (labs spec §8.2).
+ */
+export const OPTIONAL_GITHUB_MAP = {
+  LAB_UPN_DOMAIN: "LAB_UPN_DOMAIN",
+};
+
 /** .env keys that become Worker secrets (same name). Phase 2 uses these. */
 export const WORKER_KEYS = [
   "AZURE_CLIENT_ID",
@@ -84,6 +94,10 @@ export function buildGithubSecrets(env) {
       continue;
     }
     secrets[ghName] = value;
+  }
+  for (const [envKey, ghName] of Object.entries(OPTIONAL_GITHUB_MAP)) {
+    const value = env[envKey];
+    if (value && !PLACEHOLDER.test(value)) secrets[ghName] = value;
   }
   return { secrets, warnings, errors };
 }

@@ -10,7 +10,7 @@
 
 import { useId, useState } from "react";
 import * as RadixSwitch from "@radix-ui/react-switch";
-import { Activity, CloudAlert, Gauge, HeartPulse, History, LayoutGrid, ShieldAlert } from "lucide-react";
+import { Activity, CloudAlert, FlaskConical, Gauge, HeartPulse, History, LayoutGrid, ShieldAlert } from "lucide-react";
 import { PAGE_TITLES, REGISTRY, pageWidgets, widgetDef, type LayoutItem, type PageId } from "@shared/widgets";
 import { Drawer } from "@/components";
 import { useWidget } from "./useWidget";
@@ -18,7 +18,7 @@ import { usePagePrefs } from "./usePrefs";
 import { ReplaceModal, rowLabel, type ReplaceAsk } from "./ReplaceModal";
 
 /** The library's icons by WidgetDef.icon name; a widget without one gets the Layout icon. */
-const ICONS = { Activity, CloudAlert, Gauge, HeartPulse, History, ShieldAlert };
+const ICONS = { Activity, CloudAlert, FlaskConical, Gauge, HeartPulse, History, ShieldAlert };
 
 /** The page's widgets grouped by top-level row, each in declared order (stacks and nested rows included). */
 function groups(page: PageId): { row: string; ids: string[] }[] {

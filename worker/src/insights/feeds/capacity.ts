@@ -22,6 +22,7 @@ import { VM_SIZES } from "../../settings";
 import { listProfiles } from "../../db";
 import { azureRegionName } from "../../region";
 import { DAY, HOUR, MIN, armRefusal, iso, num, paths, str } from "../common";
+import { catalogue } from "../../labs/catalogue";
 
 const SKU_API = "2021-07-01";
 const USAGE_API = "2024-07-01";
@@ -167,10 +168,15 @@ export function capacityCheck(doc: CapacityDoc, region: string, size: string, te
   return out;
 }
 
-/** The sizes worth recording for a region: every size on offer, the test VM's, the configured one, the profiles', and any asked for. */
+/** Every VM size a lab builds (lab.yaml capacity.vm_sizes and retail.sku, labs spec §9.1, §9.2). */
+export function labVmSizes(): string[] {
+  return catalogue().labs.flatMap((l) => [...l.capacity.vm_sizes, ...l.cost.items.map((i) => i.retail?.sku).filter((s): s is string => !!s)]);
+}
+
+/** The sizes worth recording for a region: every size on offer, the test VM's, the configured one, the profiles', the labs', and any asked for. */
 export async function sizesOfInterest(ctx: Pick<FeedCtx, "env" | "cfg">, extra: string[] = []): Promise<string[]> {
   const profiles = await listProfiles(ctx.env).catch(() => []);
-  return [...new Set([...VM_SIZES, TEST_VM_SIZE, ctx.cfg.vmSize, ...profiles.map((p) => p.vm_size), ...extra])];
+  return [...new Set([...VM_SIZES, TEST_VM_SIZE, ctx.cfg.vmSize, ...profiles.map((p) => p.vm_size), ...labVmSizes(), ...extra])];
 }
 
 /** Read one region (2 calls) and store it. */

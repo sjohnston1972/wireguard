@@ -10,6 +10,13 @@ import type {
   DraftMoveBody,
   DraftRuleBody,
   HealthCheckResponse,
+  LabDeployBody,
+  LabDestroyBody,
+  LabExtendBody,
+  LabNoteBody,
+  LabOrphanCleanupBody,
+  LabPermissionsCheckResponse,
+  LabSecretResponse,
   RestorePreviewResponse,
   SimRequest,
   SimResult,
@@ -203,6 +210,40 @@ export const usePushRemove = () => useApiMutation<number>({ method: "DELETE", pa
  */
 export const useFetchBootLog = () =>
   useApiMutation<void, BootLogResponse>({ method: "POST", path: "/azure/bootlog", invalidate: [], message: () => null, store: (qc, res) => qc.setQueryData(BOOTLOG_KEY, res) });
+
+// ── Labs (labs spec §7.2, plan L0) ──
+// Each refreshes every "labs" query, the Overview (banner, topology, the
+// runningLabs widget) and Activity (lab runs). A lab id is the route's :id.
+const LABS: QueryKey[] = [["labs"], ["overview"], ["activity"]];
+const labPost = <V,>(path: (v: V) => string, body?: (v: V) => unknown) => ({ method: "POST" as const, path, body, invalidate: LABS });
+const labPath = (id: string, action: string) => `/labs/${encodeURIComponent(id)}/${action}`;
+
+/** Deploy: `{ id, hours, peer, region?, overBudgetOk?, capacityOk? }`; 422 confirm_required asks for an override. */
+export const useDeployLab = () => useApiMutation<{ id: string } & LabDeployBody>(labPost(({ id }) => labPath(id, "deploy"), ({ id: _id, ...rest }) => rest));
+/** Extend: `{ id, hours }` or `{ id, toMax: true }`; refused past max_until, saying until when. */
+export const useExtendLab = () => useApiMutation<{ id: string } & LabExtendBody>(labPost(({ id }) => labPath(id, "extend"), ({ id: _id, ...rest }) => rest));
+/** Tear down (after the confirm dialog); also cancels a deploy in progress. */
+export const useDestroyLab = () => useApiMutation<string>(labPost((id) => labPath(id, "destroy"), (): LabDestroyBody => ({ confirm: true })));
+export const usePeerLab = () => useApiMutation<string>(labPost((id) => labPath(id, "peer")));
+export const useUnpeerLab = () => useApiMutation<string>(labPost((id) => labPath(id, "unpeer")));
+/** A real-Azure release test (Settings → Labs → Test, after a confirm). */
+export const useTestLab = () => useApiMutation<string>(labPost((id) => labPath(id, "test")));
+/** Cancel the active run, then destroy. */
+export const useCancelLab = () => useApiMutation<string>(labPost((id) => labPath(id, "cancel")));
+/** One peer run per waiting or disconnected session. */
+export const useRePeerLabs = () => useApiMutation<void>(labPost(() => "/labs/repeer"));
+export const useSaveLabNote = () =>
+  useApiMutation<{ sid: string } & LabNoteBody>({ method: "PUT", path: (v) => `/labs/sessions/${encodeURIComponent(v.sid)}/note`, body: ({ sid: _sid, ...rest }) => rest, invalidate: LABS });
+export const useCleanupLabOrphans = () => useApiMutation<LabOrphanCleanupBody>(labPost(() => "/labs/orphans/cleanup", (v) => v));
+/** Settings → Labs → Check permissions; refreshes Settings too. */
+export const useCheckLabPermissions = () =>
+  useApiMutation<void, LabPermissionsCheckResponse>({ method: "POST", path: "/labs/permissions/check", invalidate: [...LABS, ["settings"]] });
+/**
+ * A running lab's admin password and user names, fetched when Show is pressed: no toast, nothing
+ * refreshed, and not kept: gcTime 0 drops the answer from the mutation cache as soon as nothing
+ * shows it (call reset() on Hide; unmounting lets it go too).
+ */
+export const useLabSecret = () => useMutation<LabSecretResponse, Error, string>({ mutationFn: (id) => apiGet<LabSecretResponse>(`/labs/${encodeURIComponent(id)}/secret`), gcTime: 0 });
 
 /** The SSH password is fetched only when pressed; no toast, no cache. */
 export const fetchSshPassword = () => apiGet<{ password: string }>("/ssh-password");

@@ -13,6 +13,7 @@ import { getSnapshot } from "../state";
 import { effectiveConfig } from "../settings";
 import { budgetStatus } from "../budget";
 import { COST_RANGES, breakdownOf, costWindow, estimateBreakdown, projection, sessionsOf, type CostRange } from "../costview";
+import { labCostRows } from "../labs/summary";
 import type { CostResponse } from "../../../shared/api";
 
 const money = (n: number) => `£${n.toFixed(2)}`;
@@ -54,6 +55,8 @@ export function registerCost(api: Hono<ApiEnv>): void {
       insights,
       // Azure's split when it has one for the range; else the sessions' estimate; else nothing.
       breakdown: split.length ? breakdownOf(split, split.reduce((a, r) => (r.last_day > a ? r.last_day : a), "")) : estimateBreakdown(sessions, win.from, win.to),
+      // This month per lab (labs/summary.ts), whatever the range; [] with none.
+      labs: await labCostRows(c.env, now),
     };
     return c.json(out);
   });

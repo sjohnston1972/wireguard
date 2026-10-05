@@ -6,6 +6,7 @@ import { EnvironmentField } from "@/shell/StateChip";
 import { LayoutMenu, Widget, WidgetCorner, useRowItems, useStarting, useWidget } from "@/widgets";
 import { InsightsPanel, BreakdownPanel, ForecastPanel, PerSessionPanel, SpendPanel, SplitPanel } from "./Panels";
 import { CostPhone } from "./Phone";
+import { LabsPanel } from "./lazyLabs";
 import { SessionsPanel } from "./Sessions";
 import { KpiRow } from "./Tiles";
 import { RANGE_OPTIONS, parseRange } from "./model";
@@ -84,6 +85,13 @@ function Panels({ cost, compare, updatedAt }: { cost: CostResponse; compare: boo
           <Col span={4} className="cost-c-ins">
             <Widget id="cost.insights">
               <InsightsPanel cost={cost} />
+            </Widget>
+          </Col>
+        ),
+        "cost.labs": (
+          <Col span={4} className="cost-c-labs">
+            <Widget id="cost.labs">
+              <LabsPanel cost={cost} />
             </Widget>
           </Col>
         ),

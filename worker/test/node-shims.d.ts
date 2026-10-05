@@ -16,6 +16,20 @@ declare module "node:fs" {
   export function readdirSync(path: string | URL): string[];
   export function readFileSync(path: string | URL, encoding: "utf8"): string;
   export function writeFileSync(path: string | URL, data: string): void;
+  export function appendFileSync(path: string | URL, data: string): void;
+  export function mkdtempSync(prefix: string): string;
+}
+
+// The lab pipeline contract test (labs-pipeline-contract.test.ts) runs infra/ci/lab-parse.sh.
+declare module "node:os" {
+  export function tmpdir(): string;
+}
+declare module "node:path" {
+  export function join(...parts: string[]): string;
+}
+declare module "node:url" {
+  export function fileURLToPath(url: string | URL): string;
+  export function pathToFileURL(path: string): URL;
 }
 
 // gzip, used only by the cloud-init size test (Terraform's base64gzip).
@@ -38,4 +52,5 @@ declare module "node:crypto" {
 // Used only to syntax-check the VM agent script (bash -n) from a test.
 declare module "node:child_process" {
   export function execFileSync(file: string, args: string[]): unknown;
+  export function spawnSync(file: string, args: string[], options?: { encoding?: "utf8"; env?: Record<string, string | undefined>; timeout?: number }): { status: number | null; stdout: string; stderr: string };
 }

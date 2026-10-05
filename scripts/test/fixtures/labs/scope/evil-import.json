@@ -1,0 +1,34 @@
+{
+  "lab": "az104-01-identity",
+  "about": "An import block adopting an existing Entra user (someone's real account) and renaming it lab-<id>-x: every name passes the prefix rule, and tear-down would then delete the real account. A lab only ever creates.",
+  "expect": [
+    ["import", "azuread_user.x"]
+  ],
+  "plan": {
+    "format_version": "1.2",
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-01-identity", "location": "uksouth" } },
+      { "address": "azuread_user.x", "mode": "managed", "type": "azuread_user", "name": "x", "provider_name": "registry.terraform.io/hashicorp/azuread",
+        "values": { "display_name": "lab-az104-01-identity-x", "user_principal_name": "lab-az104-01-identity-x@contoso.onmicrosoft.com", "mail_nickname": "lab-az104-01-identity-x", "account_enabled": true } }
+    ] } },
+    "resource_changes": [
+      { "address": "azuread_user.x", "mode": "managed", "type": "azuread_user", "name": "x", "provider_name": "registry.terraform.io/hashicorp/azuread",
+        "change": { "actions": ["update"], "importing": { "id": "/users/5b0c6a1e-2f3d-4c5b-8a9e-1d2c3b4a5f6e" },
+          "before": { "display_name": "Steven", "user_principal_name": "steven@contoso.onmicrosoft.com", "mail_nickname": "steven" },
+          "after": { "display_name": "lab-az104-01-identity-x", "user_principal_name": "lab-az104-01-identity-x@contoso.onmicrosoft.com", "mail_nickname": "lab-az104-01-identity-x", "account_enabled": true },
+          "after_unknown": {} } }
+    ],
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+      { "address": "azuread_user.x", "mode": "managed", "type": "azuread_user", "name": "x",
+        "expressions": { "display_name": { "references": ["var.lab_id"] }, "user_principal_name": { "references": ["var.lab_id", "var.upn_domain"] }, "mail_nickname": { "references": ["var.lab_id"] } } }
+    ] } }
+  },
+  "hcl": {
+    "import": [ { "to": "${azuread_user.x}", "id": "/users/5b0c6a1e-2f3d-4c5b-8a9e-1d2c3b4a5f6e" } ],
+    "resource": {
+      "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+      "azuread_user": { "x": [ { "display_name": "lab-${var.lab_id}-x", "user_principal_name": "lab-${var.lab_id}-x@${var.upn_domain}", "mail_nickname": "lab-${var.lab_id}-x", "account_enabled": true } ] }
+    }
+  }
+}

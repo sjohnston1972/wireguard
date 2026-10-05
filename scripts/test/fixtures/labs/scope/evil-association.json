@@ -1,0 +1,29 @@
+{
+  "lab": "az104-03-mgmt-groups",
+  "about": "Moving the subscription into a lab management group, by an association and by subscription_ids.",
+  "expect": [["association", "azurerm_management_group_subscription_association.move"], ["association", "azurerm_management_group.with_sub"]],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-03-mgmt-groups", "location": "uksouth" } },
+      { "address": "azurerm_management_group.root", "mode": "managed", "type": "azurerm_management_group", "name": "root", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "lab-az104-03-mgmt-groups-root", "display_name": "lab-az104-03-mgmt-groups-root" } },
+      { "address": "azurerm_management_group.with_sub", "mode": "managed", "type": "azurerm_management_group", "name": "with_sub", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "lab-az104-03-mgmt-groups-dev", "display_name": "lab-az104-03-mgmt-groups-dev", "parent_management_group_id": "/providers/Microsoft.Management/managementGroups/lab-az104-03-mgmt-groups-root", "subscription_ids": ["00000000-0000-0000-0000-000000000000"] } },
+      { "address": "azurerm_management_group_subscription_association.move", "mode": "managed", "type": "azurerm_management_group_subscription_association", "name": "move", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "management_group_id": "/providers/Microsoft.Management/managementGroups/lab-az104-03-mgmt-groups-root", "subscription_id": "/subscriptions/00000000-0000-0000-0000-000000000000" } }
+    ] } },
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+      { "address": "azurerm_management_group.root", "mode": "managed", "type": "azurerm_management_group", "name": "root", "expressions": { "name": { "references": ["var.lab_id"] } } },
+      { "address": "azurerm_management_group.with_sub", "mode": "managed", "type": "azurerm_management_group", "name": "with_sub", "expressions": { "parent_management_group_id": { "references": ["azurerm_management_group.root.id", "azurerm_management_group.root"] } } },
+      { "address": "azurerm_management_group_subscription_association.move", "mode": "managed", "type": "azurerm_management_group_subscription_association", "name": "move", "expressions": { "management_group_id": { "references": ["azurerm_management_group.root.id", "azurerm_management_group.root"] } } }
+    ] } }
+  },
+  "hcl": { "resource": {
+    "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+    "azurerm_management_group": {
+      "root": [ { "name": "lab-${var.lab_id}-root", "display_name": "lab-${var.lab_id}-root" } ],
+      "with_sub": [ { "name": "lab-${var.lab_id}-dev", "display_name": "lab-${var.lab_id}-dev", "parent_management_group_id": "${azurerm_management_group.root.id}", "subscription_ids": ["00000000-0000-0000-0000-000000000000"] } ]
+    },
+    "azurerm_management_group_subscription_association": { "move": [ { "management_group_id": "${azurerm_management_group.root.id}", "subscription_id": "/subscriptions/00000000-0000-0000-0000-000000000000" } ] }
+  } }
+}

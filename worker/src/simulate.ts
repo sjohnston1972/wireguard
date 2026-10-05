@@ -20,6 +20,7 @@ import type { Config } from "./env";
 import type { Peer } from "./db";
 import { endAddrs, parseCidr, parsePorts, ruleLines, liveForwards, type EndKind, type Forward, type FwRule } from "./firewall";
 import type { SimResult, SimRuleRef } from "../../shared/api";
+import { LAB_POOL } from "../../shared/labs";
 
 export interface SimEndInput {
   kind: EndKind;
@@ -142,7 +143,7 @@ function limits(input: SimInput, ctx: SimContext, from: Ranges, to: Ranges): str
   const vnet: Ranges = [cidrRange(cfg.vnetCidr)];
   if (from.length && to.length && relation(from, vnet) === "full" && relation(to, vnet) === "full") notes.push("Traffic inside the Azure VNet does not pass through the VM, so these rules do not govern it.");
   else if (from.length && to.length && !throughVm(ctx, from, to)) {
-    notes.push("This flow does not pass through the VM (only traffic to or from the tunnel clients, between the home LAN and the Azure VNet, and from the workloads subnet to the internet does), so these rules do not govern it.");
+    notes.push("This flow does not pass through the VM (only traffic to or from the tunnel clients, between the home LAN and the Azure VNet or the labs, and from the workloads subnet to the internet does), so these rules do not govern it.");
     const inside = merge([...vnet, ...(cfg.homeLanCidr ? [cidrRange(cfg.homeLanCidr)] : [])]);
     if (meets(from, internetSet(cfg)) && meets(to, inside)) notes.push("From the internet it can only come in through a published port, which is let through before these rules.");
   }
@@ -191,10 +192,13 @@ function throughVm(ctx: SimContext, from: Ranges, to: Ranges): boolean {
   const vnet: Ranges = [cidrRange(cfg.vnetCidr)];
   const workloads: Ranges = [cidrRange(cfg.workloadCidr)];
   const pub: Ranges = ctx.publicIp && parseCidr(ctx.publicIp)?.family === 4 ? [cidrRange(ctx.publicIp)] : [];
+  // Labs peered to vnet-wg (labs spec §7.6) are reached from the home LAN through the VM, as the VNet is.
+  const labs: Ranges = [cidrRange(LAB_POOL)];
   return (
     meets(from, clients) || meets(to, clients) ||
     meets(from, pub) || meets(to, pub) ||
     (meets(from, home) && meets(to, vnet)) || (meets(from, vnet) && meets(to, home)) ||
+    (meets(from, home) && meets(to, labs)) || (meets(from, labs) && meets(to, home)) ||
     (meets(from, workloads) && meets(to, internetSet(cfg)))
   );
 }

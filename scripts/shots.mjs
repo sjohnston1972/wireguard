@@ -16,6 +16,7 @@
 // there is nothing extra to install.
 //
 //   node scripts/shots.mjs --scenario running
+//   node scripts/shots.mjs --scenario labs --routes /labs,/labs/az104-06-blob-security,/labs/history
 //   node scripts/shots.mjs --dry-run                 (list the shots, take none)
 //   options: --base URL --api URL --out DIR --routes /,/cost --sizes 1100x700 --themes dark
 //            --browser PATH --settle MS --json (with --dry-run)

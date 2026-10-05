@@ -78,6 +78,23 @@ describe("PUT /settings", () => {
     expect(await audits(env, "settings.save")).toHaveLength(2);
   });
 
+  it("takes the Settings page's Labs body as it is sent: labs_default_peering as a boolean (or 1/0), labs_max_running as a string", async () => {
+    const { env } = apiEnv();
+    // Exactly what Settings > Labs sends (web/src/views/settings/labs.test.tsx).
+    const r = await api(env, "PUT", "/settings", { labs_max_running: "4", labs_default_peering: false });
+    expect(r.status, r.text).toBe(200);
+    expect(await db.allSettings(env)).toMatchObject({ labs_max_running: "4", labs_default_peering: "0" });
+    expect((await api(env, "GET", "/settings")).json.values).toMatchObject({ labsMaxRunning: 4, labsDefaultPeering: false });
+    expect((await api(env, "PUT", "/settings", { labs_default_peering: true })).status).toBe(200);
+    expect((await db.allSettings(env)).labs_default_peering).toBe("1");
+    expect((await api(env, "PUT", "/settings", { labs_default_peering: "0" })).status).toBe(200);
+    expect((await api(env, "GET", "/settings")).json.values.labsDefaultPeering).toBe(false);
+    // A boolean is still refused where a number goes.
+    const bad = await api(env, "PUT", "/settings", { labs_max_running: true });
+    expect(bad.status).toBe(400);
+    expect(bad.json.error.field).toBe("labs_max_running");
+  });
+
   it("is all or nothing: one bad value saves none, and names the first bad key", async () => {
     const { env } = apiEnv();
     const r = await api(env, "PUT", "/settings", { idle_destroy_minutes: 45, standby_max_days: 999, region: "!!" });

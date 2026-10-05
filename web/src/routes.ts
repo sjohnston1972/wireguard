@@ -1,6 +1,6 @@
-import { Activity, DollarSign, LayoutDashboard, Settings, Shield, Users, type LucideIcon } from "lucide-react";
+import { Activity, DollarSign, FlaskConical, LayoutDashboard, Settings, Shield, Users, type LucideIcon } from "lucide-react";
 
-/** The six top-level tabs, in display order. `to` is where the tab links. */
+/** The seven top-level tabs, in display order. `to` is where the tab links. */
 export interface TabDef {
   to: string;
   label: string;
@@ -15,5 +15,6 @@ export const TABS: TabDef[] = [
   { to: "/firewall", label: "Firewall", icon: Shield },
   { to: "/activity", label: "Activity", icon: Activity },
   { to: "/cost", label: "Cost", icon: DollarSign },
+  { to: "/labs", label: "Labs", icon: FlaskConical },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

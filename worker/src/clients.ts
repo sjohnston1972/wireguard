@@ -50,6 +50,8 @@ export interface ClientView extends Peer {
   expiresSoon: boolean;
   isSite: boolean;
   roam: Roam | null;
+  /** Its config predates the lab pool in AllowedIPs: "config out of date: get config" (peers.labs_config_due). */
+  labsConfigDue: boolean;
 }
 
 export interface ClientKpis {
@@ -81,6 +83,7 @@ export function clientView(p: Peer, snap: Snapshot, cfg: { subnet: string; subne
     expiresSoon: !!p.expires_at && !expired && Date.parse(p.expires_at) - now <= EXPIRING_SOON_MS,
     isSite: !!p.routes,
     roam: snap.roams?.[p.public_key] ?? null,
+    labsConfigDue: !!p.labs_config_due,
   };
 }
 
@@ -147,6 +150,11 @@ export async function addClient(
   return { ok: true, value: { peer, template: clientConfigTemplate(env, peer, serverPub) } };
 }
 
+/** peers.labs_config_due (migration 0020): set for split-tunnel Azure-route clients whose config predates the lab pool; cleared once a config is fetched or the client edited. */
+async function clearLabsConfigDue(env: Env, id: number): Promise<void> {
+  await env.DB.prepare("UPDATE peers SET labs_config_due = 0 WHERE id = CAST(?1 AS INTEGER) AND labs_config_due <> 0").bind(id).run();
+}
+
 /** New keys for an existing client: the browser sends the new public half. */
 export async function rekeyClient(env: Env, user: string, id: number, publicKey: unknown): Promise<Done<{ peer: Peer; template: string }>> {
   if (!isWgKey(String(publicKey ?? ""))) return no(400, "bad_input", KEY_RULE, "public_key");
@@ -159,6 +167,8 @@ export async function rekeyClient(env: Env, user: string, id: number, publicKey:
   } catch (e) {
     return no(409, "refused", /UNIQUE/.test(String(e)) ? "That key is already registered." : (e as Error).message);
   }
+  // A new config was just handed out: it has the lab pool in AllowedIPs (labs spec §7.6, plan ruling 6).
+  await clearLabsConfigDue(env, id);
   const updated = (await db.getPeer(env, id))!;
   await db.audit(env, user, "client.rekey", peer.name, peer, updated);
   return { ok: true, value: { peer: updated, template: clientConfigTemplate(env, updated, serverPub) } };
@@ -187,6 +197,8 @@ export async function editClient(
   if (f.tunnel_dns !== undefined) await db.setPeerTunnelDns(env, id, f.tunnel_dns as boolean);
   if (f.enabled !== undefined) await db.setPeerEnabled(env, id, f.enabled as boolean);
   if (d !== undefined) await db.setPeerExpiry(env, id, expiryFrom(d));
+  // Edited: its next config download is the current one, lab pool included (plan ruling 6).
+  await clearLabsConfigDue(env, id);
   const after = (await db.getPeer(env, id))!;
   const onlySwitch = f.enabled !== undefined && f.home_lan === undefined && f.azure_vnet === undefined && f.tunnel_dns === undefined;
   const action = onlySwitch || (f.enabled !== undefined && !!p.enabled !== !!after.enabled) ? (after.enabled ? "client.enable" : "client.disable") : "client.edit";

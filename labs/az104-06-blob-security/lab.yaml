@@ -1,0 +1,39 @@
+# Lab 6 (plan area L6; the spec's §3.2 example). AZ-104 study guide skills
+# this lab touches ((V) the wording against the current outline):
+#   Implement and manage storage > Configure access to storage: "Configure
+#   Azure Storage firewalls and virtual networks", "Create and use shared
+#   access signature (SAS) tokens", "Configure stored access policies",
+#   "Manage access keys", "Configure identity-based access for Azure Files"
+#   (not covered here: lab 7).
+#   Implement and manage virtual networking > Configure secure access to
+#   virtual networks: "Configure service endpoints for Azure platform as a
+#   service (PaaS)", "Configure private endpoints for Azure PaaS".
+# Costs are GBP list prices for UK South, rounded up. Private endpoint:
+# $0.01/h (the retail meter refreshes it). Private DNS zone: $0.50 a month
+# per zone, about £0.0005/h; queries are pennies per million. The VNet, the
+# Entra group and the role assignment are free.
+id: az104-06-blob-security
+version: 1
+title: "Blob security: SAS, access policies, private endpoint"
+summary: >-
+  A storage account with a private container, a blob readers group and a private endpoint in a small VNet,
+  so you can compare SAS, stored access policies, RBAC and network access side by side.
+exam: AZ-104
+skill_areas: [az104.storage, az104.networking]
+level: associate
+type: explore
+prerequisites: [az104-05-storage]
+cost:
+  items:
+    - { name: "Storage account, LRS hot, a few KB", gbp_h: 0.0001 }
+    - { name: "Private endpoint", gbp_h: 0.0076, retail: { meter: "Standard Private Endpoint", unit: "1 Hour" } }
+    - { name: "Private DNS zone", gbp_h: 0.0005 }
+  pricey: null
+timing: { deploy_min: 4, destroy_min: 3, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: true, subnets_used: 1 }
+identity:
+  creates: [group]
+  roles: [{ role: "Storage Blob Data Reader", scope: resource_group }]
+  governance: false

@@ -1,0 +1,47 @@
+{
+  "lab": "az104-06-blob-security",
+  "about": "Providers a lab may not use (null, http, terraform_data, azapi), and an azurerm provider pointed at another subscription.",
+  "expect": [
+    ["provider", "null_resource.run"],
+    ["provider", "data.http.fetch"],
+    ["provider", "terraform_data.run"],
+    ["provider", "azapi_resource.anything"],
+    ["provider", "provider.azurerm.other"]
+  ],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-06-blob-security", "location": "uksouth" } },
+      { "address": "null_resource.run", "mode": "managed", "type": "null_resource", "name": "run", "provider_name": "registry.terraform.io/hashicorp/null", "values": { "triggers": null } },
+      { "address": "terraform_data.run", "mode": "managed", "type": "terraform_data", "name": "run", "provider_name": "terraform.io/builtin/terraform", "values": { "input": "x" } },
+      { "address": "azapi_resource.anything", "mode": "managed", "type": "azapi_resource", "name": "anything", "provider_name": "registry.terraform.io/azure/azapi", "values": { "type": "Microsoft.Resources/resourceGroups@2022-09-01", "name": "rg-lab-az104-06-blob-security-x" } }
+    ] } },
+    "configuration": {
+      "provider_config": {
+        "azurerm": { "name": "azurerm", "full_name": "registry.terraform.io/hashicorp/azurerm" },
+        "azurerm.other": { "name": "azurerm", "full_name": "registry.terraform.io/hashicorp/azurerm", "alias": "other", "expressions": { "subscription_id": { "constant_value": "99999999-9999-9999-9999-999999999999" } } },
+        "null": { "name": "null", "full_name": "registry.terraform.io/hashicorp/null" },
+        "http": { "name": "http", "full_name": "registry.terraform.io/hashicorp/http" }
+      },
+      "root_module": { "resources": [
+        { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+        { "address": "null_resource.run", "mode": "managed", "type": "null_resource", "name": "run", "provider_config_key": "null", "expressions": {} },
+        { "address": "terraform_data.run", "mode": "managed", "type": "terraform_data", "name": "run", "expressions": { "input": { "constant_value": "x" } } },
+        { "address": "azapi_resource.anything", "mode": "managed", "type": "azapi_resource", "name": "anything", "expressions": {} },
+        { "address": "data.http.fetch", "mode": "data", "type": "http", "name": "fetch", "provider_config_key": "http", "expressions": { "url": { "constant_value": "https://example.com" } } }
+      ] }
+    },
+    "prior_state": { "values": { "root_module": { "resources": [
+      { "address": "data.http.fetch", "mode": "data", "type": "http", "name": "fetch", "provider_name": "registry.terraform.io/hashicorp/http", "values": { "url": "https://example.com", "response_body": "hello" } }
+    ] } } }
+  },
+  "hcl": {
+    "provider": { "azurerm": [ { "features": [ {} ] }, { "alias": "other", "subscription_id": "99999999-9999-9999-9999-999999999999", "features": [ {} ] } ] },
+    "data": { "http": { "fetch": [ { "url": "https://example.com" } ] } },
+    "resource": {
+      "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+      "null_resource": { "run": [ {} ] },
+      "terraform_data": { "run": [ { "input": "x" } ] },
+      "azapi_resource": { "anything": [ { "type": "Microsoft.Resources/resourceGroups@2022-09-01", "name": "rg-lab-${var.lab_id}-x" } ] }
+    }
+  }
+}

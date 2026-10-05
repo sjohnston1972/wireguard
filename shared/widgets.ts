@@ -179,7 +179,7 @@ type DefExtra = Partial<Pick<WidgetDef, "pinned" | "version" | "migrate" | "defa
 const def = (id: string, title: string, settings: SettingSpec[], extra: DefExtra = {}): Omit<WidgetDef, "description"> => ({ id, page: id.split(".")[0] as PageId, title, version: 1, settings, ...extra });
 
 const DENSITY = o(["comfortable", "Comfortable"], ["compact", "Compact"]);
-const ZONES = o(["clients", "Clients"], ["home", "Home"], ["azure", "Azure"], ["workloads", "Workloads"], ["internet", "Internet"]);
+const ZONES = o(["clients", "Clients"], ["home", "Home"], ["azure", "Azure"], ["workloads", "Workloads"], ["labs", "Labs"], ["internet", "Internet"]);
 
 /** The change log's Azure resource kinds (shared/azureMetrics.ts AZURE_RESOURCE_KINDS). */
 const AZ_KINDS: Option[] = AZURE_RESOURCE_KINDS.map((k) => ({ value: k.value, label: k.label }));
@@ -272,6 +272,8 @@ const CATALOGUE: readonly Omit<WidgetDef, "description">[] = [
     ],
     { ...ADDED, icon: "Activity", replaces: "overview.costImpact" },
   ),
+  // Labs (2026-10-04 labs spec §10, plan ruling 5): off by default, loaded lazily.
+  def("overview.runningLabs", "Running labs", [bool("display", "costSoFar", "Cost so far", true), bool("display", "peering", "Peering state", true)], { ...ADDED, icon: "FlaskConical", replaces: "overview.costImpact" }),
 
   // Clients
   def("clients.kpis", "Client figures", [
@@ -454,6 +456,8 @@ const CATALOGUE: readonly Omit<WidgetDef, "description">[] = [
     multi("data", "columns", "Columns", o(["region", "Region"], ["vmSize", "VM size"], ["duration", "Duration"], ["cost", "Estimated cost"], ["rate", "Cost / hour"], ["ended", "Ended"]), 0, ["region", "vmSize", "duration", "cost", "rate"]),
     pick("display", "density", "Density", DENSITY, "comfortable"),
   ]),
+  // Labs (2026-10-04 labs spec §10, plan ruling 5): off by default, loaded lazily.
+  def("cost.labs", "Labs", [pick("data", "order", "Order", o(["largest", "Largest first"], ["lab", "By lab number"]), "largest"), bool("display", "estimates", "Running estimates", true)], { ...ADDED, icon: "FlaskConical", replaces: "cost.insights" }),
 ];
 
 /** Each widget's one line for the Add widgets library (spec 9.1). */
@@ -501,6 +505,8 @@ const DESCRIPTIONS: Record<string, string> = {
   "cost.perSession": "What each session cost",
   "cost.insights": "Plain-English notes on your spending",
   "cost.sessions": "Every session with its region, size, duration and cost",
+  "overview.runningLabs": "Labs running now: time left, cost so far and Tear down",
+  "cost.labs": "This month's spend per lab: Azure's actual plus running estimates",
 };
 
 export const WIDGETS: readonly WidgetDef[] = CATALOGUE.map((x) => ({ ...x, description: DESCRIPTIONS[x.id] ?? "" }));
@@ -516,7 +522,8 @@ export const LAYOUTS: Record<PageId, PageLayout> = {
       { id: "r2", items: [w("overview.topology"), w("overview.keyMetrics")] },
       // The insights widgets join at the end with the weight of the widget they suggest replacing, and max keeps each row at its old count.
       { id: "r3", max: 3, items: [w("overview.run", 41), w("overview.traffic", 45), { stack: "side", weight: 32, widgets: ["overview.events", "overview.speedTest"] }, w("overview.vmPerformance", 45)] },
-      { id: "r4", max: 3, items: [w("overview.health", 54), w("overview.costImpact", 32), w("overview.notes", 32), w("overview.azureHealth", 32), w("overview.vitals", 32)] },
+      // Running labs (plan ruling 5) joins r4 the same way, off by default, suggesting Cost impact.
+      { id: "r4", max: 3, items: [w("overview.health", 54), w("overview.costImpact", 32), w("overview.notes", 32), w("overview.azureHealth", 32), w("overview.vitals", 32), w("overview.runningLabs", 32)] },
     ],
   },
   clients: {
@@ -548,7 +555,8 @@ export const LAYOUTS: Record<PageId, PageLayout> = {
     rows: [
       { id: "r1", items: [w("cost.kpis")] },
       { id: "r2", items: [w("cost.spend", 5), w("cost.breakdown", 4), w("cost.forecast", 3)] },
-      { id: "r3", items: [w("cost.split", 4), w("cost.perSession", 4), w("cost.insights", 4)] },
+      // The Labs panel (cost.labs, plan ruling 5) joins off by default; max keeps the row at three.
+      { id: "r3", max: 3, items: [w("cost.split", 4), w("cost.perSession", 4), w("cost.insights", 4), w("cost.labs", 4)] },
       { id: "r4", items: [w("cost.sessions")] },
     ],
   },

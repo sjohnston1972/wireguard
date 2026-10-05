@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { azureNotConfigured, prefsFixture } from "./fixtures";
+import { azureNotConfigured, labsEmpty, prefsFixture } from "./fixtures";
 
 /** What a mocked route answers with. */
 export type MockReply =
@@ -41,7 +41,13 @@ export function mockFetch(routes: Record<string, MockHandler>) {
     const path = url.split("?")[0]!;
     // Widget preferences load with the shell on every page: unless a test says otherwise, nothing is saved.
     // Azure insights: every /api/v1/azure route answers as the Worker does with nothing collected and no credentials.
-    const handler = routes[`${method} ${url}`] ?? routes[`${method} ${path}`] ?? (method === "GET" && path === "/api/v1/prefs" ? prefsFixture() : undefined) ?? (path.startsWith("/api/v1/azure/") ? azureNotConfigured(method, url) : undefined);
+    // Labs: every /api/v1/labs read answers as the Worker does with an empty catalogue (labsEmpty).
+    const handler =
+      routes[`${method} ${url}`] ??
+      routes[`${method} ${path}`] ??
+      (method === "GET" && path === "/api/v1/prefs" ? prefsFixture() : undefined) ??
+      (path.startsWith("/api/v1/azure/") ? azureNotConfigured(method, url) : undefined) ??
+      labsEmpty(method, url);
     if (handler === undefined) throw new Error(`mockFetch: no route for ${method} ${url}`);
     const raw = typeof handler === "function" ? await (handler as (req: { url: string; method: string; body: unknown; init: RequestInit }) => unknown)({ url, method, body, init }) : handler;
     // A handler may build the whole Response itself (headers such as Content-Disposition).

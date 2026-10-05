@@ -55,14 +55,21 @@ export interface Budget {
   used(): number;
 }
 
-export function makeBudget(limit: number = AZ_RUN_BUDGET): Budget {
+/**
+ * At most `limit` calls. With a `parent` (the cron's shared allowance,
+ * cron.ts), every call is also taken from the parent, and the parent running
+ * out stops this one too; a refused take takes nothing from either.
+ */
+export function makeBudget(limit: number = AZ_RUN_BUDGET, parent?: Budget): Budget {
   let used = 0;
+  const remaining = () => Math.max(0, Math.min(limit - used, parent ? parent.remaining() : Infinity));
   return {
     take(n = 1) {
-      if (used + n > limit) throw new BudgetExceeded(n, limit - used, limit);
+      if (n > remaining()) throw new BudgetExceeded(n, remaining(), limit);
+      parent?.take(n);
       used += n;
     },
-    remaining: () => limit - used,
+    remaining,
     used: () => used,
   };
 }

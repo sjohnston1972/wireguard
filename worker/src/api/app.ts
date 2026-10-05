@@ -6,7 +6,7 @@
 // page. A refused action comes back as { error: { code, message, field? } }
 // with a status that says why: 400 bad input, 401 signed out, 404 not
 // found, 409 conflicts with what is happening now, 422 needs a
-// confirmation, 502 Azure or GitHub refused (with their reason), 500 a
+// confirmation, 501 not built yet (a contract stub), 502 Azure or GitHub refused (with their reason), 500 a
 // crash (with only a reference; the details go to the Worker's log).
 
 import { Hono, type Context } from "hono";
@@ -16,7 +16,7 @@ import { RunError } from "../runs";
 import type { ApiError } from "../../../shared/api";
 
 export type ApiEnv = { Bindings: Env; Variables: AuthedVars };
-type Status = 400 | 401 | 403 | 404 | 409 | 422 | 500 | 502 | 503;
+type Status = 400 | 401 | 403 | 404 | 409 | 422 | 500 | 501 | 502 | 503;
 
 /** The status for a RunError's code. */
 export function statusFor(code: string): 400 | 404 | 409 | 422 | 502 {

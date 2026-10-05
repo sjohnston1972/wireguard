@@ -21,6 +21,7 @@ import { registerSimulate } from "./simulate";
 import { registerHealthCheck } from "./healthcheck";
 import { registerPrefs } from "./prefs";
 import { registerAzure } from "./azure";
+import { registerLabs } from "./labs";
 
 export function buildApi(): Hono<ApiEnv> {
   const api = createApi();
@@ -41,6 +42,7 @@ export function buildApi(): Hono<ApiEnv> {
   registerHealthCheck(api);
   registerPrefs(api);
   registerAzure(api);
+  registerLabs(api);
   api.all("*", (c) => fail(c, 404, "not_found", "No such API route."));
   return api;
 }

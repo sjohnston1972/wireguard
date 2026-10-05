@@ -1,0 +1,32 @@
+{
+  "lab": "az104-06-blob-security",
+  "about": "Governance types in a lab that is not a governance lab: a policy definition, a management group and a custom role, all properly prefixed.",
+  "expect": [
+    ["governance", "azurerm_policy_definition.tags"],
+    ["governance", "azurerm_management_group.mine"],
+    ["governance", "azurerm_role_definition.mine"]
+  ],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-06-blob-security", "location": "uksouth" } },
+      { "address": "azurerm_policy_definition.tags", "mode": "managed", "type": "azurerm_policy_definition", "name": "tags", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "lab-az104-06-blob-security-tags", "display_name": "lab-az104-06-blob-security-tags", "policy_type": "Custom", "mode": "All" } },
+      { "address": "azurerm_management_group.mine", "mode": "managed", "type": "azurerm_management_group", "name": "mine", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "lab-az104-06-blob-security-mg", "display_name": "lab-az104-06-blob-security-mg" } },
+      { "address": "azurerm_role_definition.mine", "mode": "managed", "type": "azurerm_role_definition", "name": "mine", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "lab-az104-06-blob-security-role", "role_definition_id": "55555555-5555-4555-8555-555555555555", "scope": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-lab-az104-06-blob-security", "permissions": [ { "actions": ["Microsoft.Storage/storageAccounts/read"] } ] } }
+    ] } },
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+      { "address": "azurerm_policy_definition.tags", "mode": "managed", "type": "azurerm_policy_definition", "name": "tags", "expressions": { "name": { "references": ["var.lab_id"] } } },
+      { "address": "azurerm_management_group.mine", "mode": "managed", "type": "azurerm_management_group", "name": "mine", "expressions": { "name": { "references": ["var.lab_id"] } } },
+      { "address": "azurerm_role_definition.mine", "mode": "managed", "type": "azurerm_role_definition", "name": "mine", "expressions": { "scope": { "references": ["azurerm_resource_group.lab.id", "azurerm_resource_group.lab"] } } }
+    ] } }
+  },
+  "hcl": { "resource": {
+    "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+    "azurerm_policy_definition": { "tags": [ { "name": "lab-${var.lab_id}-tags", "display_name": "lab-${var.lab_id}-tags", "policy_type": "Custom", "mode": "All" } ] },
+    "azurerm_management_group": { "mine": [ { "name": "lab-${var.lab_id}-mg", "display_name": "lab-${var.lab_id}-mg" } ] },
+    "azurerm_role_definition": { "mine": [ { "name": "lab-${var.lab_id}-role", "role_definition_id": "55555555-5555-4555-8555-555555555555", "scope": "${azurerm_resource_group.lab.id}", "permissions": [ { "actions": ["Microsoft.Storage/storageAccounts/read"] } ] } ] }
+  } }
+}
