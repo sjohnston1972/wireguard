@@ -195,6 +195,16 @@ write_files:
       server=1.1.1.1
       server=1.0.0.1
       server=2606:4700:4700::1111
+      # Azure service names go to Azure's own resolver: the same public
+      # answers, plus a lab's private endpoints once its zone is linked to
+      # vnet-wg.
+      server=/core.windows.net/168.63.129.16
+      server=/database.windows.net/168.63.129.16
+      server=/azurewebsites.net/168.63.129.16
+      server=/vaultcore.azure.net/168.63.129.16
+      server=/documents.azure.com/168.63.129.16
+      server=/servicebus.windows.net/168.63.129.16
+      server=/internal/168.63.129.16
       cache-size=10000
       domain-needed
       bogus-priv
