@@ -1,7 +1,7 @@
 Containers without a VM: one in Azure Container Instances, one in Azure Container Apps, and a registry to keep images in.
-Practise provisioning each, sizing and scaling them, and see how they differ in networking and billing. From the AZ-104
-outline: create and manage an Azure container registry, provision a container by using Azure Container Instances and by
-using Azure Container Apps, and manage sizing and scaling for containers.
+Practise provisioning each, sizing and scaling them, and see how they differ in networking and billing.
+From the AZ-104 outline: create and manage an Azure container registry, provision a container by using Azure Container
+Instances and by using Azure Container Apps, and manage sizing and scaling for containers.
 
 ## What it deploys
 

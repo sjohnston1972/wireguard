@@ -1,7 +1,7 @@
 Two small Linux VMs spread over availability zones, a data disk and a VM extension. Practise creating VMs, placing them in
-zones, resizing them and managing their disks, and see what an extension does once a VM is running. From the AZ-104
-outline: create a virtual machine, deploy virtual machines to availability zones and availability sets, manage virtual
-machine sizes, and manage virtual machine disks.
+zones, resizing them and managing their disks, and see what an extension does once a VM is running.
+From the AZ-104 outline: create a virtual machine, deploy virtual machines to availability zones and availability sets,
+manage virtual machine sizes, and manage virtual machine disks.
 
 ## What it deploys
 
