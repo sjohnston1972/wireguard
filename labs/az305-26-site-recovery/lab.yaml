@@ -24,7 +24,7 @@
 # failover VM is priced as if one ran all session; it only exists while a
 # test failover does. The vault, fabrics, policy and mappings cost nothing.
 id: az305-26-site-recovery
-version: 1
+version: 2
 title: "Cross-region VM recovery with Site Recovery"
 summary: >-
   A small Linux VM in uksouth replicated by Azure Site Recovery to ukwest, so you can run a test failover
@@ -44,7 +44,7 @@ cost:
     - { name: "Initial replication, about 3 GB uksouth to ukwest (inter-region transfer)", gbp_h: 0.0151 }
     - { name: "Test failover VM, Standard_B1s (only while a test failover runs)", gbp_h: 0.0089, region: secondary, retail: { sku: Standard_B1s } }
   pricey: null
-timing: { deploy_min: 25, destroy_min: 20, session_h: 3, max_h: 8 }
+timing: { deploy_min: 40, destroy_min: 20, session_h: 3, max_h: 8 }
 capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
 regions: { secondary: ukwest }
 connectivity: { peering: optional, dns_link: false, subnets_used: 3 }

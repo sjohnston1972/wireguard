@@ -214,13 +214,14 @@ export function roleAssignments(l) {
 /**
  * The checks every batch 2 and 3 lab shares, as [{ name, skip?, fn }] (names
  * as in the batch 2 plan's "B0 names as built" and the batch 3 plan's C0
- * names). `marker`: "£" or "££". `secondary`: the lab has rg-lab-<id>-secondary
+ * names). `marker`: "£", "££" or "£££" (£££ from £0.50/h or a deploy of 30
+ * minutes or more). `secondary`: the lab has rg-lab-<id>-secondary
  * in the secondary region. `identity`: "none" (no role assignments) or "match"
  * (lab.yaml identity lists them). `labsDir` and `load` are for the suite's own
  * tests (fixture labs, or a lab changed in memory).
  */
 export function contentChecks(id, { marker, secondary = false, identity = "none", labsDir = LABS, load = () => lab(id, labsDir) } = {}) {
-  assert.ok(marker === "£" || marker === "££", `labContentSuite(${id}): marker is "£" or "££"`);
+  assert.ok(marker === "£" || marker === "££" || marker === "£££", `labContentSuite(${id}): marker is "£", "££" or "£££"`);
   assert.ok(identity === "none" || identity === "match", `labContentSuite(${id}): identity is "none" or "match"`);
   const groups = secondary ? ["lab", "secondary"] : ["lab"];
   const where = secondary ? "rg-lab-<id> or rg-lab-<id>-secondary" : "rg-lab-<id>";
@@ -359,7 +360,7 @@ export function contentChecks(id, { marker, secondary = false, identity = "none"
 /**
  * The shared checks as node:test tests (seven, named as in the batch 2 plan's
  * "B0 names as built"; batch 3's options as in its C0 names). `marker`: the
- * lab's cost marker, "£" or "££".
+ * lab's cost marker, "£", "££" or "£££".
  */
 export function labContentSuite(id, opts) {
   for (const c of contentChecks(id, opts)) test(c.name, c.skip ? { skip: c.skip } : {}, c.fn);

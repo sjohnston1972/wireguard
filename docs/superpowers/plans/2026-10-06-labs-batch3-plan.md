@@ -201,7 +201,7 @@ Markers from `costMarker` (ruling 13 of §16): £ under £0.05/h, ££ under £0
 | 23 | az305-23-sql-failover | 2 SQL servers, Basic primary + Basic geo-secondary, failover group (Manual), serverless DB in ukwest, 2 private endpoints | 0.151 ££ | opt | uksouth + ukwest | 1 | 15/10 | 2/4 | — | 70 |
 | 24 | az305-24-cosmos | Cosmos DB serverless (SQL API), 3 containers with different partition keys | 0.003 £ | off | uksouth | 0 | 10/10 | 2/4 | — | 60 |
 | 25 | az305-25-storage-design | HNS data lake with lifecycle tiering, RA-GRS account with an unlocked 1-day container policy | 0.000 £ | off | uksouth | 0 | 3/3 | 2/6 | 5 | 32 |
-| 26 | az305-26-site-recovery | B1s VM (Ubuntu 22.04) replicated by ASR to ukwest; vault, target and test VNets in the secondary group | 0.063 ££ | opt | uksouth + ukwest | 3 | 25/20 | 3/8 | 8 | 110 |
+| 26 | az305-26-site-recovery | B1s VM (Ubuntu 22.04) replicated by ASR to ukwest; vault, target and test VNets in the secondary group | 0.063 £££ | opt | uksouth + ukwest | 3 | 40/20 | 3/8 | 8 | 140 |
 | 27 | az305-27-multi-region | ACI in uksouth and ukwest, Traffic Manager (priority) and Front Door Standard in front | 0.078 ££ | off | uksouth + ukwest | 0 | 12/12 | 2/4 | — | 68 |
 
 Skill areas: 20–22 `az305.identity`; 23 `az305.data, az305.continuity`; 24–25 `az305.data`; 26 `az305.continuity`; 27
@@ -457,8 +457,9 @@ One identity change is in batch 3: **change 2 below, approved by Steven 2026-10-
 5. **Prices that drift or match the wrong product.** C0: `a secondary-region item is priced at the session's secondary region`;
    `labs-verify checks a secondary-region meter in ukwest`. Areas: `${id}: costs what its marker says`; lab 23's serverless and
    lab 27's Front Door fee stay authored (shared meter; no uksouth row) and the readmes say how they are billed.
-6. **Timeouts.** Lab 26's job timeout is 110 (25 + 20); an enable-replication job slower than 25 minutes fails the ready check.
-   The release test measures it; if over, raise `deploy_min` (marker £££ at 30) with a version bump before the dashboard pass.
+6. **Timeouts.** azurerm's replicated-VM create waits for the initial replication, so lab 26 ships its first release test
+   with `deploy_min: 40` (job timeout 140 = 2 × (40 + 20) + 20; marker £££, deploy ≥ 30, version 2). The release test
+   measures the real time; lower `deploy_min` to the measured figure rounded up (a version bump) before the dashboard pass.
 
 ---
 

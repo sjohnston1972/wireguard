@@ -101,7 +101,7 @@ const IN_SECONDARY = "azurerm_resource_group.secondary.name";
 
 // ── Lab 26: Site Recovery ────────────────────────────────────────────────
 
-labContentSuite(SR, { marker: "££", secondary: true });
+labContentSuite(SR, { marker: "£££", secondary: true });
 
 test(`${SR}: one Ubuntu 22.04 Standard_B1s source VM with no public IP and default outbound on`, () => {
   const l = lab(SR);
@@ -293,10 +293,15 @@ test(`${SR}: vm_sizes lists two Standard_B1s and the replica disk is priced in t
   assert.equal(transfer.retail, undefined);
 });
 
-test(`${SR}: deploy allows for the initial replication, destroy for disabling it, and the job timeout is 110`, () => {
-  const { timing, prerequisites, regions, connectivity } = lab(SR).yaml;
-  assert.deepEqual(timing, { deploy_min: 25, destroy_min: 20, session_h: 3, max_h: 8 });
-  assert.equal(Math.min(150, 2 * (timing.deploy_min + timing.destroy_min) + 20), 110);
+test(`${SR}: deploy allows for the initial replication, destroy for disabling it, and the job timeout is 140`, () => {
+  // azurerm's replicated-VM create waits for the initial replication, so the
+  // first release test gets 40 minutes (job timeout 140); the measured time
+  // replaces it afterwards. A deploy of 30 or more makes the lab £££.
+  const { timing, prerequisites, regions, connectivity, version } = lab(SR).yaml;
+  assert.deepEqual(timing, { deploy_min: 40, destroy_min: 20, session_h: 3, max_h: 8 });
+  assert.equal(Math.min(150, 2 * (timing.deploy_min + timing.destroy_min) + 20), 140);
+  assert.ok(version >= 2, "the timing change bumps the version");
+  assert.match(lab(SR).readme, /about 40 minutes/, "the readme gives the deploy time");
   assert.deepEqual(prerequisites, ["az104-08-vms"]);
   assert.deepEqual(regions, { secondary: "ukwest" });
   assert.deepEqual(connectivity, { peering: "optional", dns_link: false, subnets_used: 3 });
