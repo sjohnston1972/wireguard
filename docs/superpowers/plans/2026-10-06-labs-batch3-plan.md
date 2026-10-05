@@ -64,6 +64,11 @@ installs.
 - `outside-scope`: such a rule with `deploymentScope` `subscription`; and an **unknown id inside a nested block** (last path
   segment `id`, `*_id` or `*_ids`, not an Entra id) must come from the lab's own resources, as top-level ids already must
   (a failover group's `partner_server.0.id`, a replicated VM's `managed_disk.0.target_resource_group_id`).
+  **Integration fix:** `terraform show -json` splits references by path only for schema *blocks*; an *attribute* holding
+  objects or lists (`managed_disk`, `network_interface`, `databases`) lists every reference under the attribute while
+  `after_unknown` marks the nested paths (checked on a real offline plan). So an unknown nested value takes the nearest
+  enclosing path's references, and one named as an id or made from ids (`databases.0`) must have every one of them place it
+  in the lab.
 - `rg-lab-<id>-secondary` passes and `rg-lab-<id>secondary` is refused (pinned by tests).
 - Lab 20 may assign its own two custom roles (by GUID or through its `azurerm_role_definition`), no other lab may.
 
@@ -81,7 +86,8 @@ pass `def.regions.secondary`; `labGbpH` reads the region's and the lab's seconda
 warnings. `labs-verify --meters` checks a `region: secondary` item in the lab's `regions.secondary` and prints it as
 `<meter> (ukwest): ...`; such an item in a lab without one is a problem.
 
-**Unblock** (`infra/ci/lab-unblock.sh`, same "never fails" contract): `5. Site Recovery`, per vault: list
+**Unblock** (`infra/ci/lab-unblock.sh`, same "never fails" contract): `5. Site Recovery`, per vault: DELETE every
+`replicationRecoveryPlans` first (integration fix: a learner's hand-made plan blocks item removal and vault deletion); list
 `replicationProtectedItems` (`value[].[id, properties.testFailoverState]`); an item whose state is not empty, `None` or
 `MarkedForDeletion` → POST `<item>/testFailoverCleanup` (`{"properties":{"comments":...}}`); POST `<item>/remove`; poll
 the vault's items every 15 s until none, at most `LAB_UNBLOCK_ASR_WAIT_SECONDS` (default 900; a failed list is

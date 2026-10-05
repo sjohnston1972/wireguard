@@ -693,9 +693,10 @@ From `docs/superpowers/plans/2026-10-06-labs-batch3-plan.md` (labs 20–27). Whe
 25. **Secondary-region resources live in `rg-lab-<id>-secondary`,** made by the lab's own Terraform in `var.secondary_region`
     (`azurerm_resource_group.secondary`, name `"${var.resource_group_name}-secondary"`). A lab with `regions.secondary` refuses
     an empty secondary region or one equal to `var.region` (variable validation). Its secondary-region VNets take /20s of the
-    lab's own slot, never addresses of their own. As built: the scope check holds an unknown id inside a nested block (a
-    failover group's partner server, a replicated VM's disk target group) to the lab's own resources, as it does top-level
-    ids, and the content suite's `secondary: true` checks both groups, `regions.secondary: ukwest` and the validation.
+    lab's own slot, never addresses of their own. As built: the scope check holds an unknown id at any nested path (a
+    failover group's partner server and databases, a replicated VM's disk target group) to the lab's own resources, as it
+    does top-level ids; inside an attribute written as blocks (`managed_disk`, typed `set(object)`), where
+    `terraform show -json` lists every reference under the attribute, all of the attribute's references must; and the content suite's `secondary: true` checks both groups, `regions.secondary: ukwest` and the validation.
 26. **A cost item may say `region: secondary`** (only in a lab with `regions.secondary`). The Worker then prices its
     `retail` entry in the session's secondary region (the lab's `regions.secondary`; the cards, modal and warnings read that
     region's prices too), `labs-verify --meters` checks it there, and the content suite counts VM sizes and S4 disks per
@@ -725,7 +726,7 @@ From `docs/superpowers/plans/2026-10-06-labs-batch3-plan.md` (labs 20–27). Whe
     soft-deleted vaults that lived in a lab group, and Verify clean counts one as a leftover.
 31. **Unblock knows SQL and Site Recovery.** Before the group deletes: SQL failover groups are deleted (on the server that
     holds the primary, so a swapped failover is handled), then the primary databases' geo-replication links; Site Recovery
-    test failovers are cleaned up, replication is removed and waited for (every 15 s, at most
+    recovery plans are deleted (a learner may make one; it holds its items), test failovers are cleaned up, replication is removed and waited for (every 15 s, at most
     `LAB_UNBLOCK_ASR_WAIT_SECONDS`, default 900; a list that fails is "unverified"; never failing the run), then network
     mappings, container mappings and replication policies are removed (an Azure-to-Azure vault needs only its items gone;
     the rest is tidy-up).
