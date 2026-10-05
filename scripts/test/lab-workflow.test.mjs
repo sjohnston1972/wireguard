@@ -153,11 +153,9 @@ const secretNames = (() => {
   return [...named].sort();
 })();
 const notHidden = secretNames.filter((k) => !SECRET_ENV.includes(k));
-test("every secret lab.yml hands a step is hidden by the live log", { todo: notHidden.length ? `integrator: add ${notHidden.join(", ")} to SECRET_ENV in infra/ci/live-log.mjs` : false }, () => {
+test("every secret lab.yml hands a step is hidden by the live log", () => {
   assert.deepEqual(notHidden, []);
-});
-test("the only secrets the live log does not hide yet are the admin password and the UPN domain", () => {
-  assert.deepEqual(notHidden.filter((k) => !["TF_VAR_admin_password", "TF_VAR_upn_domain"].includes(k)), []);
+  for (const k of ["TF_VAR_admin_password", "TF_VAR_upn_domain"]) assert.ok(SECRET_ENV.includes(k), k);
 });
 
 // ── Payload and step order ───────────────────────────────────────────────
