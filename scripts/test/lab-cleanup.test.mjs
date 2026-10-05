@@ -87,6 +87,86 @@ test("unblock removes locks, legal holds, unlocked immutability, backup protecti
   w.cleanup();
 });
 
+// Lab 19's vault, as unblock finds it (labs batch 2 plan, B0.5).
+const L19 = "az104-19-backup";
+const R19 = `rg-lab-${L19}`;
+const VAULT = [
+  { match: "^group list", out: `${R19}\n${R19}-irp1\nrg-lab-az104-07-files` },
+  { match: `^backup vault list --resource-group ${R19} `, out: "rsv-lab" },
+];
+const ITEM_VM = `/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/iaasvmcontainerv2;${R19};vm-app/protectedItems/vm;iaasvmcontainerv2;${R19};vm-app`;
+
+test("unblock turns an unlocked vault's immutability off before soft delete, and warns on a locked one", { skip }, () => {
+  const w = world([...VAULT, { match: "^backup vault show .*immutabilitySettings", out: "Unlocked" }, { match: "^backup item list", out: "" }]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const show = firstCall(calls, /^az backup vault show --name rsv-lab --resource-group rg-lab-az104-19-backup --query properties\.securitySettings\.immutabilitySettings\.state -o tsv$/);
+  const off = firstCall(calls, /^az backup vault update --name rsv-lab --resource-group rg-lab-az104-19-backup --immutability-state Disabled -o none$/);
+  const soft = firstCall(calls, /^az backup vault backup-properties set --name rsv-lab .*--soft-delete-feature-state Disable/);
+  assert.ok(show >= 0 && off > show && soft > off, `immutability off, then soft delete off:\n${calls.join("\n")}`);
+  assert.match(r.out, /rsv-lab: unlocked immutability turned off/);
+  w.cleanup();
+
+  // Locked: nothing can turn it off. Said loudly, never "updated", and the run still ends 0.
+  const l = world([...VAULT, { match: "^backup vault show .*immutabilitySettings", out: "Locked" }, { match: "^backup item list", out: "" }]);
+  const lr = l.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(lr.status, 0, lr.out);
+  assert.equal(firstCall(l.calls(), /^az backup vault update/), -1);
+  assert.match(lr.out, /::warning::unblock: rsv-lab: immutability is LOCKED/);
+  // Disabled (or a vault that cannot be read): nothing to do.
+  const d = world([...VAULT, { match: "^backup vault show", out: "Disabled" }, { match: "^backup item list", out: "" }]);
+  assert.equal(d.run("infra/ci/lab-unblock.sh", [L19]).status, 0);
+  assert.equal(firstCall(d.calls(), /^az backup vault update/), -1);
+  l.cleanup();
+  d.cleanup();
+});
+
+test("unblock stops protection for backup items of every management type", { skip }, () => {
+  // `az backup item list` with no --backup-management-type sends no filter, so it lists every type (az 2.86, checked).
+  const items = [
+    [ITEM_VM, "AzureIaasVM", "VM"],
+    [`/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/storagecontainer;Storage;${R19};l19k3x9qsa/protectedItems/AzureFileShare;labshare`, "AzureStorage", "AzureFileShare"],
+    [`/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/vmappcontainer;compute;${R19};vm-sql/protectedItems/sqldatabase;mssqlserver;labdb`, "AzureWorkload", "SQLDataBase"],
+    [`/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/mab;agent/protectedItems/mab;files`, "MAB", "FileFolder"],
+  ];
+  const w = world([...VAULT, { match: "^backup item list .*\\[\\]\\.\\[id", out: [items.map((i) => i.join("\t")).join("\n"), ""] }, { match: "^backup item list", out: "" }]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  // Listed once, without a type filter, asking for each item's type.
+  const list = calls.find((c) => /^az backup item list .*\[\]\.\[id/.test(c));
+  assert.doesNotMatch(list, /--backup-management-type/);
+  const disables = calls.filter((c) => c.startsWith("az backup protection disable"));
+  assert.deepEqual(disables, items.slice(0, 3).map(([id, bmt, wt]) => `az backup protection disable --ids ${id} --delete-backup-data true --yes --backup-management-type ${bmt} --workload-type ${wt} -o none`));
+  // An agent (MAB) item cannot be stopped from the CLI: a warning names it.
+  assert.match(r.out, /::warning::unblock: rsv-lab: .*mab;files.*MAB/);
+  w.cleanup();
+});
+
+test("unblock waits until a vault has no backup items, at most five minutes", { skip }, () => {
+  // Deleting backup data takes Azure a while: the vault lists the item until it is gone.
+  const gone = world([...VAULT, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: [ITEM_VM, ITEM_VM, ""] }]);
+  const r = gone.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(r.status, 0, r.out);
+  const sleeps = gone.calls().filter((c) => c.startsWith("sleep "));
+  assert.deepEqual(sleeps, ["sleep 15", "sleep 15"]);
+  assert.match(r.out, /rsv-lab: no backup items left/);
+  // Still there after the wait (default 300 s): a warning, and the run goes on to destroy.
+  const stuck = world([...VAULT, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: ITEM_VM }]);
+  const s = stuck.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(s.status, 0, s.out);
+  const waited = stuck.calls().filter((c) => c.startsWith("sleep ")).reduce((n, c) => n + Number(c.split(" ")[1]), 0);
+  assert.ok(waited <= 300 && waited >= 285, `waited ${waited} s`);
+  assert.match(s.out, /::warning::unblock: rsv-lab: 1 backup item\(s\) still listed after 300 s/);
+  assert.match(s.out, /unblock: done/);
+  // The wait is configurable (a release test may want longer), still bounded.
+  const short = world([...VAULT, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: ITEM_VM }]);
+  short.run("infra/ci/lab-unblock.sh", [L19], { LAB_UNBLOCK_VAULT_WAIT_SECONDS: "30" });
+  assert.deepEqual(short.calls().filter((c) => c.startsWith("sleep ")), ["sleep 15", "sleep 15"]);
+  for (const x of [gone, stuck, short]) x.cleanup();
+});
+
 test("unblock deletes Azure Files share snapshots (lab 7): a share with snapshots cannot be destroyed", { skip }, () => {
   const L7 = "az104-07-files";
   const R7 = `rg-lab-${L7}`;

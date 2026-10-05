@@ -12,8 +12,12 @@
 #      one found here is reported loudly)
 #   3b. Azure Files share snapshots (a share with snapshots cannot be deleted,
 #      so Terraform's destroy of it fails; lab 7)
-#   4. backup protection: soft delete off, soft-deleted items undeleted, then
-#      protection stopped with the backup data deleted
+#   4. backup protection, per Recovery Services vault: an Unlocked vault
+#      immutability turned Disabled (a Locked one is a loud warning), soft
+#      delete off, soft-deleted items undeleted, protection stopped with the
+#      backup data deleted for items of every management type, then a wait
+#      until the vault lists no items (LAB_UNBLOCK_VAULT_WAIT_SECONDS, default
+#      300, polled every 15 s)
 #   5. Site Recovery replication: protection disabled on every replicated item
 #
 # Never fails the run: every refusal is a ::warning:: and the destroy, the
@@ -134,22 +138,67 @@ for g in "${groups[@]}"; do
   vaults["$g"]="$(azq backup vault list --resource-group "$g" --query "[].name" -o tsv || warn "$g: could not list Recovery Services vaults")"
 done
 
-# 4. Backup protection
+# 4. Backup protection. Immutability first: an Unlocked vault's is turned
+# Disabled (a Locked one cannot be, by anyone, until its data expires: said
+# loudly). Then soft delete off, soft-deleted items undeleted, protection
+# stopped with the data deleted for items of every management type (`az
+# backup item list` without --backup-management-type lists them all), and a
+# bounded wait until the vault lists no items, so the group delete is not
+# refused for a vault still deleting its backups.
+VAULT_WAIT="${LAB_UNBLOCK_VAULT_WAIT_SECONDS:-300}"
+[[ "$VAULT_WAIT" =~ ^[0-9]+$ ]] || VAULT_WAIT=300
 for g in "${groups[@]}"; do
   while IFS= read -r v; do
     [ -z "$v" ] && continue
+    immutability="$(azq backup vault show --name "$v" --resource-group "$g" --query properties.securitySettings.immutabilitySettings.state -o tsv || warn "$v: could not read its immutability")"
+    case "${immutability:-}" in
+      Unlocked)
+        if az backup vault update --name "$v" --resource-group "$g" --immutability-state Disabled -o none; then
+          echo "unblock: $v: unlocked immutability turned off"
+        else warn "$v: could not turn its unlocked immutability off"; fi
+        ;;
+      Locked)
+        warn "$v: immutability is LOCKED; nobody can turn it off or delete its backup data until it expires, so this vault and its group cannot be deleted yet (and keep costing)"
+        ;;
+    esac
     az backup vault backup-properties set --name "$v" --resource-group "$g" --soft-delete-feature-state Disable -o none ||
       warn "$v: could not turn soft delete off"
     while IFS= read -r item; do
       [ -z "$item" ] && continue
       az backup protection undelete --ids "$item" -o none || warn "$v: could not undelete a soft-deleted item"
     done < <(azq backup item list --vault-name "$v" --resource-group "$g" --query "[?properties.isScheduledForDeferredDelete].id" -o tsv)
-    while IFS= read -r item; do
+    while IFS=$'\t' read -r item bmt wt; do
       [ -z "$item" ] && continue
-      if az backup protection disable --ids "$item" --delete-backup-data true --yes -o none; then
+      typed=()
+      case "${bmt:-}" in
+        "") ;;
+        AzureIaasVM | AzureStorage | AzureWorkload)
+          typed=(--backup-management-type "$bmt")
+          [ -n "${wt:-}" ] && typed+=(--workload-type "$wt")
+          ;;
+        *)
+          warn "$v: ${item##*/} is a $bmt item, which the CLI cannot stop; stop it in the portal or the agent"
+          continue
+          ;;
+      esac
+      if az backup protection disable --ids "$item" --delete-backup-data true --yes "${typed[@]}" -o none; then
         echo "unblock: $v: protection stopped and backup data deleted for ${item##*/}"
       else warn "$v: could not stop protection for ${item##*/}"; fi
-    done < <(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].id" -o tsv)
+    done < <(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].[id, properties.backupManagementType, properties.workloadType]" -o tsv)
+    # Wait (bounded) until the vault lists no items.
+    tries=$(((VAULT_WAIT + 14) / 15))
+    for ((n = 0; ; n++)); do
+      left="$(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].id" -o tsv || true)"
+      if [ -z "$left" ]; then
+        echo "unblock: $v: no backup items left"
+        break
+      fi
+      if [ "$n" -ge "$tries" ]; then
+        warn "$v: $(grep -c . <<<"$left") backup item(s) still listed after $VAULT_WAIT s; the destroy goes ahead and the safety net tries again"
+        break
+      fi
+      sleep 15
+    done
   done <<<"${vaults[$g]}"
 done
 
