@@ -14,7 +14,7 @@
 # empty staging account: each well under £0.0001/h, listed at that. Per GB
 # units the feed cannot read. The vault, policy and VNet cost nothing.
 id: az104-19-backup
-version: 1
+version: 2
 title: "Azure Backup: protect and restore a VM"
 summary: >-
   A Recovery Services vault with a daily policy protecting a small Linux VM, so you can run a backup on
@@ -33,7 +33,7 @@ cost:
     - { name: "Instant restore snapshot, a day", gbp_h: 0.0001 }
     - { name: "Staging storage account, empty until a restore", gbp_h: 0.0001 }
   pricey: null
-timing: { deploy_min: 8, destroy_min: 10, session_h: 3, max_h: 8 }
+timing: { deploy_min: 8, destroy_min: 12, session_h: 3, max_h: 8 }
 capacity: { vm_sizes: [Standard_B1s] }
 regions: { secondary: null }
 connectivity: { peering: optional, dns_link: false, subnets_used: 1 }

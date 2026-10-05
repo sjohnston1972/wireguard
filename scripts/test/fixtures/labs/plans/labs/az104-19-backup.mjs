@@ -2,7 +2,7 @@
 //
 // Plain English: lab 19's first-deploy plan, as `terraform show -json` prints
 // it (realistic.mjs adds what azurerm 4.81.0 computes). A Recovery Services
-// vault (Standard, LRS, soft delete and immutability off), a daily Enhanced
+// vault (Standard, LRS, soft delete on, immutability off), a daily Enhanced
 // policy whose restore points go to rg-lab-<id>-irp (Azure appends 1), the
 // VM it protects and an empty storage account restores stage through. The
 // vault's name is known at plan (a literal), so the policy and the protected
@@ -51,7 +51,7 @@ export default () => {
           sku: "Standard",
           storage_mode_type: "LocallyRedundant",
           cross_region_restore_enabled: false,
-          soft_delete_enabled: false,
+          soft_delete_enabled: true,
           immutability: "Disabled",
           public_network_access_enabled: true,
           tags: c.tags,

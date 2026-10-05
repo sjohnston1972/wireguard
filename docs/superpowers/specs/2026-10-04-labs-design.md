@@ -626,7 +626,8 @@ these win; §3.4's `az bicep build` and §5 step 5's are replaced by ruling 1.
 8. **Lab 17 makes no Network Watcher resource.** Azure's own lives in `NetworkWatcherRG`; the VMs get the
    `NetworkWatcherAgentLinux` extension only.
 9. **Lab 18 never writes subscription diagnostic settings;** the workspace is capped and permanently deleted on destroy.
-   **Lab 19's vault** is Standard, LRS, `soft_delete_enabled = false`, `immutability = "Disabled"`; instant restore goes to
+   **Lab 19's vault** is Standard, LRS, `soft_delete_enabled = true` (Azure requires it on a new vault; unblock turns it
+   off before destroy), `immutability = "Disabled"`; instant restore goes to
    `rg-lab-<id>-irp`.
 10. **Lab 15's private zone is `lab15.internal`**: the gateway's dnsmasq already forwards `internal` to Azure DNS (§6).
 11. **`labs-pr0-check` is not needed:** `lab.yml` is on `main`, and `--ref feat/labs-b2` runs that branch's `lab.yml` and

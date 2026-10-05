@@ -162,13 +162,15 @@ test(`${MONITOR}: the readme's things to try include KQL on Perf and Syslog`, ()
 
 labContentSuite(BACKUP, { marker: "£" });
 
-test(`${BACKUP}: a Standard Recovery Services vault, LRS, soft delete off, immutability Disabled`, () => {
+test(`${BACKUP}: a Standard Recovery Services vault, LRS, soft delete on (not always-on), immutability Disabled`, () => {
   const v = one(lab(BACKUP), "azurerm_recovery_services_vault").body;
   assert.equal(attr(v, "sku"), '"Standard"');
   assert.equal(attr(v, "storage_mode_type"), '"LocallyRedundant"');
   assert.equal(attr(v, "cross_region_restore_enabled"), "false");
-  // Soft delete on would keep deleted backup data (and the vault) for 14 days after tear-down.
-  assert.equal(attr(v, "soft_delete_enabled"), "false");
+  // azurerm refuses a new vault with soft delete off ("Soft Delete is a required security feature"; lab 19's real
+  // plan failed on it). On, but never always-on: unblock turns it off before tear-down deletes the backup data.
+  assert.equal(attr(v, "soft_delete_enabled"), "true");
+  assert.doesNotMatch(v, /AlwaysOn/i);
   assert.equal(attr(v, "immutability"), '"Disabled"');
 });
 
@@ -219,8 +221,9 @@ test(`${BACKUP}: a staging storage account for restores, named from name_prefix 
 
 test(`${BACKUP}: destroy allows for the vault to clear its backup items`, () => {
   const { timing } = lab(BACKUP).yaml;
-  // Unblock waits up to 5 minutes for the vault to list no items, then Terraform deletes the rest.
-  assert.ok(timing.destroy_min >= 10, `destroy_min ${timing.destroy_min} is at least 10`);
+  // Unblock turns soft delete off, undeletes soft-deleted items and deletes their data, and waits up to 5 minutes
+  // for the vault to list no items; then Terraform deletes the rest.
+  assert.ok(timing.destroy_min >= 12, `destroy_min ${timing.destroy_min} is at least 12`);
   assert.ok(Math.min(150, 2 * (timing.deploy_min + timing.destroy_min) + 20) >= 50, "the job timeout leaves room for a slow vault");
 });
 
@@ -230,6 +233,10 @@ test(`${BACKUP}: the readme says to restore only into rg-lab-<id> and never to l
   assert.match(r, /[Nn]ever lock[^\n]*immutability/);
   assert.match(r, /[Nn]ever[^\n]*soft delete[^\n]*[Aa]lways[- ]on/);
   assert.match(r, /Backup now/);
+  // Soft delete is on: stopping protection with Delete backup data leaves the item soft-deleted, visible, for 14 days.
+  assert.match(r, /\*\*soft delete on\*\*/);
+  assert.match(r, /[Dd]elete backup data[^\n]*soft-deleted[^\n]*14 days/);
+  assert.match(r, /[Tt]ear-down turns soft delete off/);
 });
 
 // ── Both labs ────────────────────────────────────────────────────────────

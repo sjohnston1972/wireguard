@@ -6,12 +6,13 @@
 # and one day of instant-restore snapshots. Azure keeps those snapshots in a
 # resource group it makes itself, named from the policy's prefix:
 # rg-lab-<id>-irp1, inside the lab's sweep. The vault is made so tear-down
-# can always empty and delete it: soft delete off (deleted backup data is
-# gone at once, not kept for 14 days) and immutability Disabled. Terraform
-# never waits for a backup: the first one runs when you press Backup now, or
-# at 23:00 UTC. An empty storage account is where a restore stages the VM's
-# configuration and disks. Reach the VM over the tunnel when peered, or
-# through the portal's serial console or Run command.
+# can always empty and delete it: soft delete on but never always-on (Azure
+# requires it on a new vault; tear-down turns it off first, so deleted
+# backup data is gone at once, not kept for 14 days) and immutability
+# Disabled. Terraform never waits for a backup: the first one runs when you
+# press Backup now, or at 23:00 UTC. An empty storage account is where a
+# restore stages the VM's configuration and disks. Reach the VM over the
+# tunnel when peered, or through the portal's serial console or Run command.
 
 locals {
   # The first /20 of the slot; the VM subnet is its first /24.
@@ -123,10 +124,11 @@ resource "azurerm_recovery_services_vault" "lab" {
   sku                          = "Standard"
   storage_mode_type            = "LocallyRedundant"
   cross_region_restore_enabled = false
-  # Off, so tear-down deletes backup data at once and the vault can go.
-  # (Deprecated in azurerm 4.x but still sent; the unblock step turns soft
-  # delete off again before a destroy in case it was turned on by hand.)
-  soft_delete_enabled = false
+  # On: azurerm refuses a new vault with soft delete off ("Soft Delete is a
+  # required security feature"). Never always-on: before a destroy the
+  # unblock step turns it off, undeletes anything soft-deleted and deletes
+  # its backup data for good, so the vault can go.
+  soft_delete_enabled = true
   # Never "Locked": a locked vault cannot be deleted until its data expires.
   immutability                  = "Disabled"
   public_network_access_enabled = true

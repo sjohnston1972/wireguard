@@ -94,10 +94,12 @@ const VAULT = [
   { match: "^group list", out: `${R19}\n${R19}-irp1\nrg-lab-az104-07-files` },
   { match: `^backup vault list --resource-group ${R19} `, out: "rsv-lab" },
 ];
+/** Soft delete already off: for tests about other things (a test about soft delete gives its own rule). */
+const SOFT_OFF = { match: "^backup vault backup-properties show", out: "Disabled" };
 const ITEM_VM = `/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/iaasvmcontainerv2;${R19};vm-app/protectedItems/vm;iaasvmcontainerv2;${R19};vm-app`;
 
 test("unblock turns an unlocked vault's immutability off before soft delete, and warns on a locked one", { skip }, () => {
-  const w = world([...VAULT, { match: "^backup vault show .*immutabilitySettings", out: "Unlocked" }, { match: "^backup item list", out: "" }]);
+  const w = world([...VAULT, { match: "^backup vault backup-properties show", out: ["Enabled", "Disabled"] }, { match: "^backup vault show .*immutabilitySettings", out: "Unlocked" },{ match: "^backup item list", out: "" }]);
   const r = w.run("infra/ci/lab-unblock.sh", [L19]);
   assert.equal(r.status, 0, r.out);
   const calls = w.calls();
@@ -109,17 +111,84 @@ test("unblock turns an unlocked vault's immutability off before soft delete, and
   w.cleanup();
 
   // Locked: nothing can turn it off. Said loudly, never "updated", and the run still ends 0.
-  const l = world([...VAULT, { match: "^backup vault show .*immutabilitySettings", out: "Locked" }, { match: "^backup item list", out: "" }]);
+  const l = world([...VAULT, SOFT_OFF, { match: "^backup vault show .*immutabilitySettings", out: "Locked" }, { match: "^backup item list", out: "" }]);
   const lr = l.run("infra/ci/lab-unblock.sh", [L19]);
   assert.equal(lr.status, 0, lr.out);
   assert.equal(firstCall(l.calls(), /^az backup vault update/), -1);
   assert.match(lr.out, /::warning::unblock: rsv-lab: immutability is LOCKED/);
   // Disabled (or a vault that cannot be read): nothing to do.
-  const d = world([...VAULT, { match: "^backup vault show", out: "Disabled" }, { match: "^backup item list", out: "" }]);
+  const d = world([...VAULT, SOFT_OFF, { match: "^backup vault show", out: "Disabled" }, { match: "^backup item list", out: "" }]);
   assert.equal(d.run("infra/ci/lab-unblock.sh", [L19]).status, 0);
   assert.equal(firstCall(d.calls(), /^az backup vault update/), -1);
   l.cleanup();
   d.cleanup();
+});
+
+// Lab 19's vault is made with soft delete on (azurerm refuses a vault made with it off), so unblock turns it off
+// before any backup data is deleted. `az backup vault backup-properties show` answers [storage config, vault config];
+// the vault config's properties.softDeleteFeatureState is Enabled, Disabled or AlwaysON (az 2.86, azure-cli custom.py).
+const SOFT_SHOW = /^az backup vault backup-properties show --name rsv-lab --resource-group rg-lab-az104-19-backup --query \[\]\.properties\.softDeleteFeatureState \| \[0\] -o tsv$/;
+const SOFT_SET = /^az backup vault backup-properties set --name rsv-lab --resource-group rg-lab-az104-19-backup --soft-delete-feature-state Disable -o none$/;
+const SOFT_ITEMS = { match: "^backup item list .*isScheduledForDeferredDelete", out: `${ITEM_VM}\tAzureIaasVM\tVM` };
+
+test("unblock turns soft delete off and checks it, then undeletes soft-deleted items and deletes their backup data", { skip }, () => {
+  const w = world([
+    ...VAULT,
+    { match: "^backup vault backup-properties show", out: ["Enabled", "Disabled"] },
+    SOFT_ITEMS,
+    { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` },
+    { match: "^backup item list", out: "" },
+  ]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const order = [
+    firstCall(calls, SOFT_SHOW),
+    firstCall(calls, SOFT_SET),
+    lastCall(calls, SOFT_SHOW),
+    firstCall(calls, new RegExp(`^az backup protection undelete --ids ${ITEM_VM.replace(/[.;]/g, "\\$&")} --backup-management-type AzureIaasVM --workload-type VM -o none$`)),
+    firstCall(calls, /^az backup protection disable --ids .*vm-app --delete-backup-data true --yes --backup-management-type AzureIaasVM --workload-type VM -o none$/),
+  ];
+  for (const i of order) assert.ok(i >= 0, `missing call; calls were:\n${calls.join("\n")}`);
+  assert.deepEqual([...new Set(order)].sort((a, b) => a - b), order, `out of order:\n${calls.join("\n")}`);
+  assert.match(r.stdout, /unblock: rsv-lab: soft delete turned off/);
+  assert.match(r.stdout, /unblock: rsv-lab: soft-deleted item .*vm-app undeleted/);
+  assert.doesNotMatch(r.stderr, /unverified/);
+  w.cleanup();
+
+  // Already off: nothing to set (a second run finds nothing to do).
+  const off = world([...VAULT, { match: "^backup vault backup-properties show", out: "Disabled" }, { match: "^backup item list", out: "" }]);
+  assert.equal(off.run("infra/ci/lab-unblock.sh", [L19]).status, 0);
+  assert.equal(firstCall(off.calls(), /backup-properties set/), -1);
+  off.cleanup();
+});
+
+test("unblock: soft delete always on, or not off after asking, is unverified and the run goes on", { skip }, () => {
+  // AlwaysON cannot be turned off by anyone: never asked, said loudly, and protection is still stopped.
+  const on = world([...VAULT, { match: "^backup vault backup-properties show", out: "AlwaysON" }, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list", out: "" }]);
+  const r = on.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(firstCall(on.calls(), /backup-properties set/), -1);
+  assert.match(r.stderr, /::warning::unblock: rsv-lab: soft delete is ALWAYS ON/);
+  assert.match(r.stderr, /::warning::unblock: unverified: .*rsv-lab soft delete/);
+  assert.ok(firstCall(on.calls(), /^az backup protection disable --ids .*vm-app/) >= 0);
+  assert.match(r.stdout, /unblock: done/);
+  on.cleanup();
+
+  // Asked, but still Enabled when read back (or the set failed, or the state cannot be read): unverified.
+  for (const [rules, why] of [
+    [[{ match: "^backup vault backup-properties show", out: "Enabled" }], "still on"],
+    [[{ match: "^backup vault backup-properties show", out: ["Enabled", "Enabled"] }, { match: "^backup vault backup-properties set", code: 1, err: "ERROR: (UserErrorSoftDeleteStateChangeNotAllowed)" }], "set refused"],
+    [[{ match: "^backup vault backup-properties show", out: "", code: 1, err: "ERROR: (ServiceUnavailable)" }], "unreadable"],
+  ]) {
+    const w = world([...VAULT, ...rules,{ match: "^backup item list", out: "" }]);
+    const x = w.run("infra/ci/lab-unblock.sh", [L19]);
+    assert.equal(x.status, 0, `${why}: ${x.out}`);
+    assert.ok(firstCall(w.calls(), SOFT_SET) >= 0, `${why}: soft delete off is still asked for`);
+    assert.match(x.stderr, /::warning::unblock: unverified: .*rsv-lab soft delete/, why);
+    assert.doesNotMatch(x.stdout, /soft delete turned off/, why);
+    w.cleanup();
+  }
 });
 
 test("unblock stops protection for backup items of every management type", { skip }, () => {
@@ -130,7 +199,7 @@ test("unblock stops protection for backup items of every management type", { ski
     [`/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/vmappcontainer;compute;${R19};vm-sql/protectedItems/sqldatabase;mssqlserver;labdb`, "AzureWorkload", "SQLDataBase"],
     [`/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/mab;agent/protectedItems/mab;files`, "MAB", "FileFolder"],
   ];
-  const w = world([...VAULT, { match: "^backup item list .*\\[\\]\\.\\[id", out: [items.map((i) => i.join("\t")).join("\n"), ""] }, { match: "^backup item list", out: "" }]);
+  const w = world([...VAULT, SOFT_OFF, { match: "^backup item list .*\\[\\]\\.\\[id", out: [items.map((i) => i.join("\t")).join("\n"), ""] }, { match: "^backup item list", out: "" }]);
   const r = w.run("infra/ci/lab-unblock.sh", [L19]);
   assert.equal(r.status, 0, r.out);
   const calls = w.calls();
@@ -146,14 +215,14 @@ test("unblock stops protection for backup items of every management type", { ski
 
 test("unblock waits until a vault has no backup items, at most five minutes", { skip }, () => {
   // Deleting backup data takes Azure a while: the vault lists the item until it is gone.
-  const gone = world([...VAULT, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: [ITEM_VM, ITEM_VM, ""] }]);
+  const gone = world([...VAULT, SOFT_OFF, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: [ITEM_VM, ITEM_VM, ""] }]);
   const r = gone.run("infra/ci/lab-unblock.sh", [L19]);
   assert.equal(r.status, 0, r.out);
   const sleeps = gone.calls().filter((c) => c.startsWith("sleep "));
   assert.deepEqual(sleeps, ["sleep 15", "sleep 15"]);
   assert.match(r.out, /rsv-lab: no backup items left/);
   // Still there after the wait (default 300 s): a warning, and the run goes on to destroy.
-  const stuck = world([...VAULT, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: ITEM_VM }]);
+  const stuck = world([...VAULT, SOFT_OFF, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: ITEM_VM }]);
   const s = stuck.run("infra/ci/lab-unblock.sh", [L19]);
   assert.equal(s.status, 0, s.out);
   const waited = stuck.calls().filter((c) => c.startsWith("sleep ")).reduce((n, c) => n + Number(c.split(" ")[1]), 0);
@@ -161,7 +230,7 @@ test("unblock waits until a vault has no backup items, at most five minutes", { 
   assert.match(s.out, /::warning::unblock: rsv-lab: 1 backup item\(s\) still listed after 300 s/);
   assert.match(s.out, /unblock: done/);
   // The wait is configurable (a release test may want longer), still bounded.
-  const short = world([...VAULT, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: ITEM_VM }]);
+  const short = world([...VAULT, SOFT_OFF, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: ITEM_VM }]);
   short.run("infra/ci/lab-unblock.sh", [L19], { LAB_UNBLOCK_VAULT_WAIT_SECONDS: "30" });
   assert.deepEqual(short.calls().filter((c) => c.startsWith("sleep ")), ["sleep 15", "sleep 15"]);
   for (const x of [gone, stuck, short]) x.cleanup();
@@ -170,7 +239,7 @@ test("unblock waits until a vault has no backup items, at most five minutes", { 
 test("unblock: a backup item list that fails is unverified, never \"no backup items left\", and the run goes on", { skip }, () => {
   const ITEMS = { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` };
   // Azure cannot answer the wait's list at all.
-  const down = world([...VAULT, ITEMS, { match: "^backup item list .*--query \\[\\]\\.id ", out: "", code: 1, err: "ERROR: (ServiceUnavailable) try again later" }]);
+  const down = world([...VAULT, SOFT_OFF, ITEMS, { match: "^backup item list .*--query \\[\\]\\.id ", out: "", code: 1, err: "ERROR: (ServiceUnavailable) try again later" }]);
   const r = down.run("infra/ci/lab-unblock.sh", [L19], { LAB_UNBLOCK_VAULT_WAIT_SECONDS: "30" });
   assert.equal(r.status, 0, r.out);
   assert.doesNotMatch(r.out, /no backup items left/);
@@ -180,7 +249,7 @@ test("unblock: a backup item list that fails is unverified, never \"no backup it
   // Still bounded by the wait.
   assert.deepEqual(down.calls().filter((c) => c.startsWith("sleep ")), ["sleep 15", "sleep 15"]);
   // One failed list, then an empty one: that is "no items left", and nothing is unverified.
-  const blip = world([...VAULT, ITEMS, { match: "^backup item list .*--query \\[\\]\\.id ", out: ["", ""], code: [1, 0] }]);
+  const blip = world([...VAULT, SOFT_OFF, ITEMS, { match: "^backup item list .*--query \\[\\]\\.id ", out: ["", ""], code: [1, 0] }]);
   const b = blip.run("infra/ci/lab-unblock.sh", [L19]);
   assert.equal(b.status, 0, b.out);
   assert.match(b.stdout, /rsv-lab: no backup items left/);

@@ -14,7 +14,9 @@
 #      so Terraform's destroy of it fails; lab 7)
 #   4. backup protection, per Recovery Services vault: an Unlocked vault
 #      immutability turned Disabled (a Locked one is a loud warning), soft
-#      delete off, soft-deleted items undeleted, protection stopped with the
+#      delete off and read back (AlwaysON, or not Disabled when read back, is
+#      "unverified": lab 19's vault is made with it on, as azurerm insists),
+#      soft-deleted items undeleted, protection stopped with the
 #      backup data deleted for items of every management type, then a wait
 #      until the vault lists no items (LAB_UNBLOCK_VAULT_WAIT_SECONDS, default
 #      300, polled every 15 s; a list that fails is never "none left": if
@@ -147,6 +149,8 @@ done
 # bounded wait until the vault lists no items, so the group delete is not
 # refused for a vault still deleting its backups.
 UNVERIFIED=()
+# A vault's soft delete state: Enabled, Disabled or AlwaysON (empty if unreadable).
+soft_state() { azq backup vault backup-properties show --name "$1" --resource-group "$2" --query "[].properties.softDeleteFeatureState | [0]" -o tsv; }
 VAULT_WAIT="${LAB_UNBLOCK_VAULT_WAIT_SECONDS:-300}"
 [[ "$VAULT_WAIT" =~ ^[0-9]+$ ]] || VAULT_WAIT=300
 for g in "${groups[@]}"; do
@@ -163,12 +167,47 @@ for g in "${groups[@]}"; do
         warn "$v: immutability is LOCKED; nobody can turn it off or delete its backup data until it expires, so this vault and its group cannot be deleted yet (and keep costing)"
         ;;
     esac
-    az backup vault backup-properties set --name "$v" --resource-group "$g" --soft-delete-feature-state Disable -o none ||
-      warn "$v: could not turn soft delete off"
-    while IFS= read -r item; do
+    # Soft delete: read it, turn it off unless it is already off, and read it back.
+    # `backup-properties show` answers [storage config, vault config]; the vault
+    # config holds softDeleteFeatureState (Enabled, Disabled or AlwaysON). AlwaysON
+    # cannot be turned off by anyone (az only warns and changes nothing), so it is
+    # never asked for: deleted backup data then stays soft-deleted for 14 days and
+    # the vault cannot go. Anything not read back as Disabled is unverified.
+    soft="$(soft_state "$v" "$g" || warn "$v: could not read its soft delete state")"
+    case "${soft,,}" in
+      disabled) ;;
+      alwayson)
+        warn "$v: soft delete is ALWAYS ON; nobody can turn it off, so its deleted backup data stays for 14 days and this vault and its group cannot be deleted until then"
+        UNVERIFIED+=("$v soft delete (always on)")
+        ;;
+      *)
+        if ! az backup vault backup-properties set --name "$v" --resource-group "$g" --soft-delete-feature-state Disable -o none; then
+          warn "$v: could not turn soft delete off"
+        fi
+        soft="$(soft_state "$v" "$g" || true)"
+        if [ "${soft,,}" = disabled ]; then
+          echo "unblock: $v: soft delete turned off"
+        else
+          warn "$v: soft delete is ${soft:-not readable} after turning it off, so deleted backup data may be kept for 14 days"
+          UNVERIFIED+=("$v soft delete")
+        fi
+        ;;
+    esac
+    # Items already soft-deleted (protection stopped while soft delete was on) are
+    # brought back first, so the loop below can delete their backup data for good.
+    while IFS=$'\t' read -r item bmt wt; do
       [ -z "$item" ] && continue
-      az backup protection undelete --ids "$item" -o none || warn "$v: could not undelete a soft-deleted item"
-    done < <(azq backup item list --vault-name "$v" --resource-group "$g" --query "[?properties.isScheduledForDeferredDelete].id" -o tsv)
+      typed=()
+      case "${bmt:-}" in
+        AzureIaasVM | AzureStorage | AzureWorkload)
+          typed=(--backup-management-type "$bmt")
+          [ -n "${wt:-}" ] && typed+=(--workload-type "$wt")
+          ;;
+      esac
+      if az backup protection undelete --ids "$item" "${typed[@]}" -o none; then
+        echo "unblock: $v: soft-deleted item ${item##*/} undeleted"
+      else warn "$v: could not undelete the soft-deleted item ${item##*/}"; fi
+    done < <(azq backup item list --vault-name "$v" --resource-group "$g" --query "[?properties.isScheduledForDeferredDelete].[id, properties.backupManagementType, properties.workloadType]" -o tsv)
     while IFS=$'\t' read -r item bmt wt; do
       [ -z "$item" ] && continue
       typed=()
@@ -229,7 +268,8 @@ for g in "${groups[@]}"; do
 done
 
 if [ "${#UNVERIFIED[@]}" -gt 0 ]; then
-  warn "unverified: ${UNVERIFIED[*]} (Azure could not list them); the destroy goes ahead, and the safety net and Verify clean decide"
+  unverified="$(printf '%s; ' "${UNVERIFIED[@]}")"
+  warn "unverified: ${unverified%; } (Azure could not confirm them); the destroy goes ahead, and the safety net and Verify clean decide"
 fi
 echo "unblock: done"
 exit 0

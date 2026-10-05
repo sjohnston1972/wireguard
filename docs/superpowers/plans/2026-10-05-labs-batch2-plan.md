@@ -183,7 +183,8 @@ items are checked live or on the official page during the build; each area's rep
 8. **Lab 17 makes no Network Watcher resource.** Azure's own lives in `NetworkWatcherRG` (outside the lab; ignored by the sweep);
    the VMs get the `NetworkWatcherAgentLinux` extension only.
 9. **Lab 18 never writes subscription diagnostic settings** (outside scope); the workspace is capped and permanently deleted on
-   destroy. **Lab 19's vault** is Standard, LRS, `soft_delete_enabled = false` (deprecated in 4.81 but honoured, V),
+   destroy. **Lab 19's vault** is Standard, LRS, `soft_delete_enabled = true` (azurerm refuses `false` on a new vault: the release
+   test's plan failed on it; unblock turns soft delete off before destroy, and AlwaysON is unverified),
    `immutability = "Disabled"`; instant restore goes to `rg-lab-<id>-irp`.
 10. **Lab 15's private zone is `lab15.internal`**: the gateway's dnsmasq already forwards `internal` to Azure DNS (§6), so
     tunnel clients resolve it once `dns_link` links it to `vnet-wg`.
@@ -270,7 +271,7 @@ Retail entries: `{ sku: Standard_B1s }`; `S4 LRS Disk` and `E1 LRS Disk` (`1/Mon
 6. **Peering-optional networking.** Suite: subnets, `peer_vnet_id`, `dns_link`; B2: `az104-14-peering-udr: peer_vnet_id is the
    hub, and the readme says the spokes are not reachable over the tunnel`; `az104-15-dns: dns_link is true and Terraform never
    links the zone to the gateway`.
-7. **Timeouts.** Job timeout is `min(150, 2 × (deploy + destroy) + 20)`: lab 16 gets 64, lab 19 56. A destroy slower than that
+7. **Timeouts.** Job timeout is `min(150, 2 × (deploy + destroy) + 20)`: lab 16 gets 64, lab 19 60. A destroy slower than that
    loses the safety net to a cancelled job, so `destroy_min` is generous, and the release test records the real figures.
 
 ---
@@ -398,7 +399,8 @@ Same step shape as B1.
   `policy_type = "V2"`, because a V1 policy refuses Trusted Launch VMs, and Enhanced backs up both kinds); `az104-19-backup: the VM is
   protected and versions.tf stops protection and deletes data on destroy`; `az104-19-backup: the readme says to restore only into
   rg-lab-<id> and never to lock immutability or make soft delete always-on`. Things to try: Backup now, file recovery, restore
-  to a new VM in the lab's group, stop protection. (V) `soft_delete_enabled = false` is honoured on a new vault.
+  to a new VM in the lab's group, stop protection. (V, corrected by the release test) `soft_delete_enabled = false` is refused on a new vault, so it is `true` and unblock
+  turns it off, undeletes soft-deleted items and deletes their data before destroy.
 - **Done when:** the gate passes for labs 18–19 and the report lists every (V) answer.
 
 ---

@@ -2,7 +2,7 @@ A Recovery Services vault protecting a small Linux VM under a daily backup polic
 
 ## What it deploys
 
-- A Recovery Services vault, `rsv-lab` (Standard, locally redundant), with **soft delete off** and **immutability Disabled**, so tear-down can delete its backup data at once and then the vault
+- A Recovery Services vault, `rsv-lab` (Standard, locally redundant), with **soft delete on** (Azure requires it on a new vault) and **immutability Disabled**. Tear-down turns soft delete off first, so it can delete the backup data at once and then the vault
 - A daily Enhanced backup policy, `policy-daily-7d`: one backup a day at 23:00 UTC, 7 daily recovery points, and instant-restore snapshots kept for one day in a resource group Azure makes for them, `rg-lab-az104-19-backup-irp1`
 - A Standard_B1s Ubuntu 24.04 VM, `vm-backup`, with no public IP and boot diagnostics on (so the portal's serial console works), protected by that policy
 - An empty storage account ending `stage`, for restores to stage through
@@ -18,7 +18,7 @@ rg-lab-<id>
     snet-vms (/24)
       vm-backup (B1s, no public IP) <--protects-- rsv-lab (Standard, LRS)
                                                     policy-daily-7d (daily, 7 points)
-  <prefix>stage (restore staging)                   soft delete off, immutability Disabled
+  <prefix>stage (restore staging)                   soft delete on, immutability Disabled
 rg-lab-<id>-irp1 (made by Azure: instant-restore snapshots, 1 day)
        peering (optional) <--> gateway VNet <--> WireGuard tunnel <--> you
 ```
@@ -29,7 +29,7 @@ rg-lab-<id>-irp1 (made by Azure: instant-restore snapshots, 1 day)
 - Once the snapshot is done, delete `~/precious.txt` and get it back with **File Recovery**: download the script for that recovery point, run it on the VM with `sudo python3`, copy the file back from the mounted volume, then unmount the disks from the portal.
 - Restore to a new VM: **Restore VM** → **Create new**, in `rg-lab-az104-19-backup`, on `vnet-lab`/`snet-vms`, staging through the account ending `stage`. Restore only into `rg-lab-az104-19-backup`; the new VM costs as much as `vm-backup` while it runs.
 - Look inside `rg-lab-az104-19-backup-irp1` for the restore point collection the snapshot lives in, and at **Alerts** in the vault or Business Continuity Center: a failed backup job raises a built-in Azure Monitor alert.
-- Change the policy's backup time or retention, then **Stop backup** on `vm-backup` with **Retain backup data** and see the item's state change. Resume it, or leave it: tear-down deletes the data either way.
+- Change the policy's backup time or retention, then **Stop backup** on `vm-backup` with **Retain backup data** and see the item's state change. Then stop it again with **Delete backup data**: because soft delete is on, the item stays in **Backup items**, marked soft-deleted, for 14 days, and **Undelete** brings it back with its recovery points. Tear-down turns soft delete off, undeletes anything soft-deleted and deletes its data for good, so nothing is left behind or billed.
 - Before you tear down, check **Backup jobs**: a Backup now still copying into the vault can hold the vault until it ends, so cancel it or let it finish.
 
 ## Learn more
