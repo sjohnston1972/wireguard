@@ -12,6 +12,10 @@
 //
 //   realisticPlan({ resources, data, providers, variables })
 //     resources: [{ address, values, refs?, unknown?, sensitive?, importing?, actions? }]
+//       address    may carry an instance key, azurerm_subnet.s[0] or azurerm_subnet.s["web"]
+//                  (count or for_each): each instance is its own planned resource
+//                  and change (with "index"), and the configuration has one
+//                  entry per resource block, as Terraform prints it
 //       values     what the plan knows (nested blocks as arrays of objects)
 //       refs       { "attr" or "block.0.attr": [references] } as in the configuration
 //       unknown    ["attr" or "block.0.attr"]: known only after apply (built from unknowns)
@@ -25,8 +29,20 @@ import { readFileSync } from "node:fs";
 
 export const COMPUTED = JSON.parse(readFileSync(new URL("./computed.json", import.meta.url), "utf8"));
 
-const typeOf = (address) => address.replace(/^data\./, "").split(".")[0];
-const nameOf = (address) => address.replace(/^data\./, "").split(".")[1];
+/** An address's parts: data.TYPE.NAME or TYPE.NAME, with an optional [0] or ["key"] instance key. */
+function parseAddress(address) {
+  const m = /^(?:data\.)?([a-z0-9_]+)\.([A-Za-z0-9_-]+)(?:\[(\d+|"[^"]*")\])?$/.exec(address);
+  if (!m) throw new Error(`not a resource address: ${address}`);
+  const index = m[3] === undefined ? undefined : m[3].startsWith('"') ? JSON.parse(m[3]) : Number(m[3]);
+  return { type: m[1], name: m[2], index, block: address.replace(/\[[^\]]*\]$/, "") };
+}
+const typeOf = (address) => parseAddress(address).type;
+const nameOf = (address) => parseAddress(address).name;
+/** { index } for an instance address, {} otherwise. */
+const indexOf = (address) => {
+  const { index } = parseAddress(address);
+  return index === undefined ? {} : { index };
+};
 const providerOf = (type) => `registry.terraform.io/hashicorp/${type.split("_")[0]}`;
 const split = (path) => path.split(".").map((p) => (/^\d+$/.test(p) ? Number(p) : p));
 
@@ -90,20 +106,28 @@ export function realisticPlan({ resources = [], data = [], providers = ["azurerm
   const planned = [];
   const changes = [];
   const config = [];
+  // One configuration entry per resource block, however many instances it has.
+  const blocks = new Set();
+  const configure = (def, entry) => {
+    const block = parseAddress(def.address).block;
+    if (blocks.has(block)) return;
+    blocks.add(block);
+    config.push({ address: block, ...entry });
+  };
   for (const def of resources) {
     const { type, values, au, expressions, sensitive } = resourceParts(def, "managed");
-    const common = { address: def.address, mode: "managed", type, name: nameOf(def.address), provider_name: providerOf(type) };
+    const common = { address: def.address, mode: "managed", type, name: nameOf(def.address), ...indexOf(def.address), provider_name: providerOf(type) };
     planned.push({ ...common, schema_version: 0, values, sensitive_values: sensitive });
     const change = { actions: def.actions ?? ["create"], before: def.importing ? {} : null, after: values, after_unknown: au, before_sensitive: false, after_sensitive: sensitive };
     if (def.importing) change.importing = def.importing;
     changes.push({ ...common, change });
-    config.push({ address: def.address, mode: "managed", type, name: common.name, provider_config_key: type.split("_")[0], expressions, schema_version: 0 });
+    configure(def, { mode: "managed", type, name: common.name, provider_config_key: type.split("_")[0], expressions, schema_version: 0 });
   }
   const read = [];
   for (const def of data) {
     const { type, values, expressions } = resourceParts(def, "data");
-    read.push({ address: def.address, mode: "data", type, name: nameOf(def.address), provider_name: providerOf(type), schema_version: 0, values, sensitive_values: {} });
-    config.push({ address: def.address, mode: "data", type, name: nameOf(def.address), provider_config_key: type.split("_")[0], expressions, schema_version: 0 });
+    read.push({ address: def.address, mode: "data", type, name: nameOf(def.address), ...indexOf(def.address), provider_name: providerOf(type), schema_version: 0, values, sensitive_values: {} });
+    configure(def, { mode: "data", type, name: nameOf(def.address), provider_config_key: type.split("_")[0], expressions, schema_version: 0 });
   }
   return {
     format_version: "1.2",

@@ -479,6 +479,921 @@
     }
    }
   },
+  "azurerm_linux_virtual_machine_scale_set": {
+   "attrs": [
+    "computer_name_prefix",
+    "id",
+    "platform_fault_domain_count",
+    "unique_id"
+   ],
+   "blocks": {
+    "automatic_instance_repair": {
+     "attrs": [
+      "action",
+      "grace_period"
+     ],
+     "blocks": {}
+    },
+    "data_disk": {
+     "attrs": [
+      "disk_iops_read_write",
+      "disk_mbps_read_write",
+      "ultra_ssd_disk_iops_read_write",
+      "ultra_ssd_disk_mbps_read_write"
+     ],
+     "blocks": {}
+    },
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "network_interface": {
+     "attrs": [],
+     "blocks": {
+      "ip_configuration": {
+       "attrs": [],
+       "blocks": {
+        "public_ip_address": {
+         "attrs": [
+          "idle_timeout_in_minutes"
+         ],
+         "blocks": {}
+        }
+       }
+      }
+     }
+    },
+    "os_disk": {
+     "attrs": [
+      "disk_size_gb"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_monitor_autoscale_setting": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_service_plan": {
+   "attrs": [
+    "id",
+    "kind",
+    "maximum_elastic_worker_count",
+    "reserved",
+    "worker_count"
+   ],
+   "blocks": {}
+  },
+  "azurerm_linux_web_app": {
+   "attrs": [
+    "custom_domain_verification_id",
+    "default_hostname",
+    "hosting_environment_id",
+    "id",
+    "key_vault_reference_identity_id",
+    "kind",
+    "outbound_ip_address_list",
+    "outbound_ip_addresses",
+    "possible_outbound_ip_address_list",
+    "possible_outbound_ip_addresses",
+    "site_credential",
+    "zip_deploy_file"
+   ],
+   "blocks": {
+    "auth_settings": {
+     "attrs": [
+      "allowed_external_redirect_urls",
+      "default_provider",
+      "runtime_version",
+      "unauthenticated_client_action"
+     ],
+     "blocks": {}
+    },
+    "auth_settings_v2": {
+     "attrs": [],
+     "blocks": {
+      "apple_v2": {
+       "attrs": [
+        "login_scopes"
+       ],
+       "blocks": {}
+      },
+      "custom_oidc_v2": {
+       "attrs": [
+        "authorisation_endpoint",
+        "certification_uri",
+        "client_credential_method",
+        "client_secret_setting_name",
+        "issuer_endpoint",
+        "token_endpoint"
+       ],
+       "blocks": {}
+      },
+      "facebook_v2": {
+       "attrs": [
+        "graph_api_version"
+       ],
+       "blocks": {}
+      }
+     }
+    },
+    "backup": {
+     "attrs": [],
+     "blocks": {
+      "schedule": {
+       "attrs": [
+        "last_execution_time",
+        "start_time"
+       ],
+       "blocks": {}
+      }
+     }
+    },
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "site_config": {
+     "attrs": [
+      "default_documents",
+      "detailed_error_logging_enabled",
+      "linux_fx_version",
+      "remote_debugging_version",
+      "scm_type",
+      "worker_count"
+     ],
+     "blocks": {
+      "auto_heal_setting": {
+       "attrs": [],
+       "blocks": {
+        "action": {
+         "attrs": [
+          "minimum_process_execution_time"
+         ],
+         "blocks": {}
+        }
+       }
+      },
+      "ip_restriction": {
+       "attrs": [
+        "name"
+       ],
+       "blocks": {}
+      },
+      "scm_ip_restriction": {
+       "attrs": [
+        "name"
+       ],
+       "blocks": {}
+      }
+     }
+    }
+   }
+  },
+  "azurerm_linux_web_app_slot": {
+   "attrs": [
+    "app_metadata",
+    "custom_domain_verification_id",
+    "default_hostname",
+    "hosting_environment_id",
+    "id",
+    "key_vault_reference_identity_id",
+    "kind",
+    "outbound_ip_address_list",
+    "outbound_ip_addresses",
+    "possible_outbound_ip_address_list",
+    "possible_outbound_ip_addresses",
+    "site_credential",
+    "zip_deploy_file"
+   ],
+   "blocks": {
+    "auth_settings": {
+     "attrs": [
+      "allowed_external_redirect_urls",
+      "default_provider",
+      "runtime_version",
+      "unauthenticated_client_action"
+     ],
+     "blocks": {}
+    },
+    "auth_settings_v2": {
+     "attrs": [],
+     "blocks": {
+      "apple_v2": {
+       "attrs": [
+        "login_scopes"
+       ],
+       "blocks": {}
+      },
+      "custom_oidc_v2": {
+       "attrs": [
+        "authorisation_endpoint",
+        "certification_uri",
+        "client_credential_method",
+        "client_secret_setting_name",
+        "issuer_endpoint",
+        "token_endpoint"
+       ],
+       "blocks": {}
+      },
+      "facebook_v2": {
+       "attrs": [
+        "graph_api_version"
+       ],
+       "blocks": {}
+      }
+     }
+    },
+    "backup": {
+     "attrs": [],
+     "blocks": {
+      "schedule": {
+       "attrs": [
+        "last_execution_time",
+        "start_time"
+       ],
+       "blocks": {}
+      }
+     }
+    },
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "site_config": {
+     "attrs": [
+      "default_documents",
+      "detailed_error_logging_enabled",
+      "linux_fx_version",
+      "remote_debugging_version",
+      "scm_type",
+      "worker_count"
+     ],
+     "blocks": {
+      "auto_heal_setting": {
+       "attrs": [],
+       "blocks": {
+        "action": {
+         "attrs": [
+          "minimum_process_execution_time"
+         ],
+         "blocks": {}
+        }
+       }
+      },
+      "ip_restriction": {
+       "attrs": [
+        "name"
+       ],
+       "blocks": {}
+      },
+      "scm_ip_restriction": {
+       "attrs": [
+        "name"
+       ],
+       "blocks": {}
+      }
+     }
+    }
+   }
+  },
+  "azurerm_container_group": {
+   "attrs": [
+    "exposed_port",
+    "fqdn",
+    "id",
+    "ip_address",
+    "network_profile_id"
+   ],
+   "blocks": {
+    "container": {
+     "attrs": [
+      "commands"
+     ],
+     "blocks": {}
+    },
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "init_container": {
+     "attrs": [
+      "commands"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_container_app": {
+   "attrs": [
+    "custom_domain_verification_id",
+    "id",
+    "latest_revision_fqdn",
+    "latest_revision_name",
+    "location",
+    "outbound_ip_addresses"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "ingress": {
+     "attrs": [
+      "custom_domain",
+      "fqdn"
+     ],
+     "blocks": {}
+    },
+    "template": {
+     "attrs": [
+      "revision_suffix"
+     ],
+     "blocks": {
+      "container": {
+       "attrs": [
+        "ephemeral_storage"
+       ],
+       "blocks": {
+        "liveness_probe": {
+         "attrs": [
+          "path",
+          "termination_grace_period_seconds"
+         ],
+         "blocks": {}
+        },
+        "readiness_probe": {
+         "attrs": [
+          "path"
+         ],
+         "blocks": {}
+        },
+        "startup_probe": {
+         "attrs": [
+          "path",
+          "termination_grace_period_seconds"
+         ],
+         "blocks": {}
+        }
+       }
+      },
+      "init_container": {
+       "attrs": [
+        "ephemeral_storage"
+       ],
+       "blocks": {}
+      }
+     }
+    }
+   }
+  },
+  "azurerm_container_app_environment": {
+   "attrs": [
+    "custom_domain_verification_id",
+    "default_domain",
+    "docker_bridge_cidr",
+    "id",
+    "logs_destination",
+    "platform_reserved_cidr",
+    "platform_reserved_dns_ip_address",
+    "public_network_access",
+    "static_ip_address"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_container_registry": {
+   "attrs": [
+    "admin_password",
+    "admin_username",
+    "data_endpoint_host_names",
+    "encryption",
+    "id",
+    "login_server",
+    "network_rule_set"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_virtual_machine_extension": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_managed_disk": {
+   "attrs": [
+    "disk_iops_read_only",
+    "disk_iops_read_write",
+    "disk_mbps_read_only",
+    "disk_mbps_read_write",
+    "disk_size_gb",
+    "id",
+    "logical_sector_size",
+    "max_shares",
+    "source_uri",
+    "tier"
+   ],
+   "blocks": {}
+  },
+  "azurerm_virtual_machine_data_disk_attachment": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_resource_group_template_deployment": {
+   "attrs": [
+    "id",
+    "output_content",
+    "parameters_content",
+    "template_content"
+   ],
+   "blocks": {}
+  },
+  "azurerm_application_security_group": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_interface_application_security_group_association": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_security_rule": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_interface_security_group_association": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_subnet_network_security_group_association": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_route_table": {
+   "attrs": [
+    "id",
+    "route",
+    "subnets"
+   ],
+   "blocks": {}
+  },
+  "azurerm_route": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_subnet_route_table_association": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_virtual_network_peering": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_dns_zone": {
+   "attrs": [
+    "id",
+    "max_number_of_record_sets",
+    "name_servers",
+    "number_of_record_sets"
+   ],
+   "blocks": {
+    "soa_record": {
+     "attrs": [
+      "fqdn",
+      "host_name"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_dns_a_record": {
+   "attrs": [
+    "fqdn",
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_dns_cname_record": {
+   "attrs": [
+    "fqdn",
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_private_dns_a_record": {
+   "attrs": [
+    "fqdn",
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_public_ip": {
+   "attrs": [
+    "fqdn",
+    "id",
+    "ip_address"
+   ],
+   "blocks": {}
+  },
+  "azurerm_lb": {
+   "attrs": [
+    "id",
+    "private_ip_address",
+    "private_ip_addresses",
+    "public_ip_address_id",
+    "subnet_id"
+   ],
+   "blocks": {
+    "frontend_ip_configuration": {
+     "attrs": [
+      "gateway_load_balancer_frontend_ip_configuration_id",
+      "id",
+      "inbound_nat_rules",
+      "load_balancer_rules",
+      "outbound_rules",
+      "private_ip_address",
+      "private_ip_address_allocation",
+      "private_ip_address_version",
+      "public_ip_prefix_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_lb_backend_address_pool": {
+   "attrs": [
+    "backend_ip_configurations",
+    "id",
+    "inbound_nat_rules",
+    "load_balancing_rules",
+    "outbound_rules"
+   ],
+   "blocks": {}
+  },
+  "azurerm_lb_probe": {
+   "attrs": [
+    "id",
+    "load_balancer_rules"
+   ],
+   "blocks": {}
+  },
+  "azurerm_lb_rule": {
+   "attrs": [
+    "enable_floating_ip",
+    "enable_tcp_reset",
+    "floating_ip_enabled",
+    "frontend_ip_configuration_id",
+    "id",
+    "tcp_reset_enabled"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_interface_backend_address_pool_association": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_application_gateway": {
+   "attrs": [
+    "enable_http2",
+    "http2_enabled",
+    "id",
+    "private_endpoint_connection"
+   ],
+   "blocks": {
+    "authentication_certificate": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "backend": {
+     "attrs": [
+      "id",
+      "probe_id"
+     ],
+     "blocks": {}
+    },
+    "backend_address_pool": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "backend_http_settings": {
+     "attrs": [
+      "id",
+      "probe_id"
+     ],
+     "blocks": {
+      "authentication_certificate": {
+       "attrs": [
+        "id"
+       ],
+       "blocks": {}
+      }
+     }
+    },
+    "custom_error_configuration": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "frontend_ip_configuration": {
+     "attrs": [
+      "id",
+      "private_ip_address",
+      "private_link_configuration_id"
+     ],
+     "blocks": {}
+    },
+    "frontend_port": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "gateway_ip_configuration": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "http_listener": {
+     "attrs": [
+      "frontend_ip_configuration_id",
+      "frontend_port_id",
+      "id",
+      "ssl_certificate_id",
+      "ssl_profile_id"
+     ],
+     "blocks": {
+      "custom_error_configuration": {
+       "attrs": [
+        "id"
+       ],
+       "blocks": {}
+      }
+     }
+    },
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "listener": {
+     "attrs": [
+      "frontend_ip_configuration_id",
+      "frontend_port_id",
+      "id",
+      "ssl_certificate_id",
+      "ssl_profile_id"
+     ],
+     "blocks": {}
+    },
+    "private_link_configuration": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {
+      "ip_configuration": {
+       "attrs": [
+        "private_ip_address"
+       ],
+       "blocks": {}
+      }
+     }
+    },
+    "probe": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "redirect_configuration": {
+     "attrs": [
+      "id",
+      "target_listener_id"
+     ],
+     "blocks": {}
+    },
+    "request_routing_rule": {
+     "attrs": [
+      "backend_address_pool_id",
+      "backend_http_settings_id",
+      "http_listener_id",
+      "id",
+      "redirect_configuration_id",
+      "rewrite_rule_set_id",
+      "url_path_map_id"
+     ],
+     "blocks": {}
+    },
+    "rewrite_rule_set": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "routing_rule": {
+     "attrs": [
+      "backend_address_pool_id",
+      "backend_id",
+      "id",
+      "listener_id"
+     ],
+     "blocks": {}
+    },
+    "ssl_certificate": {
+     "attrs": [
+      "id",
+      "public_cert_data"
+     ],
+     "blocks": {}
+    },
+    "ssl_profile": {
+     "attrs": [
+      "id",
+      "verify_client_cert_issuer_dn",
+      "verify_client_certificate_issuer_dn"
+     ],
+     "blocks": {}
+    },
+    "trusted_client_certificate": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "trusted_root_certificate": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "url_path_map": {
+     "attrs": [
+      "default_backend_address_pool_id",
+      "default_backend_http_settings_id",
+      "default_redirect_configuration_id",
+      "default_rewrite_rule_set_id",
+      "id"
+     ],
+     "blocks": {
+      "path_rule": {
+       "attrs": [
+        "backend_address_pool_id",
+        "backend_http_settings_id",
+        "id",
+        "redirect_configuration_id",
+        "rewrite_rule_set_id"
+       ],
+       "blocks": {}
+      }
+     }
+    }
+   }
+  },
+  "azurerm_log_analytics_workspace": {
+   "attrs": [
+    "id",
+    "local_authentication_disabled",
+    "local_authentication_enabled",
+    "primary_shared_key",
+    "retention_in_days",
+    "secondary_shared_key",
+    "sku",
+    "workspace_id"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_monitor_data_collection_rule": {
+   "attrs": [
+    "id",
+    "immutable_id"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_monitor_data_collection_rule_association": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_monitor_metric_alert": {
+   "attrs": [
+    "id",
+    "target_resource_location",
+    "target_resource_type"
+   ],
+   "blocks": {}
+  },
+  "azurerm_monitor_activity_log_alert": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_recovery_services_vault": {
+   "attrs": [
+    "id",
+    "immutability"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_backup_policy_vm": {
+   "attrs": [
+    "id",
+    "instant_restore_retention_days"
+   ],
+   "blocks": {}
+  },
+  "azurerm_backup_protected_vm": {
+   "attrs": [
+    "id",
+    "protection_state",
+    "source_vm_id"
+   ],
+   "blocks": {}
+  },
   "data.azurerm_subscription": {
    "attrs": [
     "display_name",
@@ -489,6 +1404,16 @@
     "state",
     "subscription_id",
     "tags",
+    "tenant_id"
+   ],
+   "blocks": {}
+  },
+  "data.azurerm_client_config": {
+   "attrs": [
+    "client_id",
+    "id",
+    "object_id",
+    "subscription_id",
     "tenant_id"
    ],
    "blocks": {}
