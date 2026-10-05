@@ -183,6 +183,13 @@ describe("the lab modal, not running", () => {
     expect(d.getByRole("button", { name: "Deploy" })).toBeEnabled();
   });
 
+  it("a budget warning with no override (month already over budget) disables Deploy and offers no Deploy anyway", async () => {
+    open(detailIdle({ warnings: [{ kind: "budget", message: "This month is already at £10.10 of £10.00, and the budget guard removes labs at 100%. Raise the budget in Settings to deploy.", overridable: false }] }));
+    const d = await dialog();
+    expect(d.queryByRole("button", { name: "Deploy anyway" })).toBeNull();
+    expect(d.getByRole("button", { name: "Deploy" })).toBeDisabled();
+  });
+
   it("unavailable disables Deploy with the reason", async () => {
     open(detailIdle({ warnings: [{ kind: "unavailable", message: "3 of 3 labs are running (Settings → Labs).", overridable: false }] }));
     const d = await dialog();

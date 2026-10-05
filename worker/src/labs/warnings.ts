@@ -89,7 +89,10 @@ export async function labWarnings(env: Env, def: LabDef, o: { hours: number; reg
   const out: LabWarning[] = [];
   const b = await budgetStatus(env, cfg, snap, now);
   const gbpH = gbpHFrom(def, rows, o.region, now);
-  if (b.budget > 0 && b.total + gbpH * o.hours > b.budget) {
+  if (b.budget > 0 && b.total >= b.budget) {
+    // The budget guard tears labs down at 100%, so there is nothing to "Deploy anyway" into.
+    out.push({ kind: "budget", message: `This month is already at ${money(b.total)} of ${money(b.budget)}, and the budget guard removes labs at 100%. Raise the budget in Settings to deploy.`, overridable: false });
+  } else if (b.budget > 0 && b.total + gbpH * o.hours > b.budget) {
     out.push({ kind: "budget", message: `This session would take the month to ${money(b.total + gbpH * o.hours)} of ${money(b.budget)}.`, overridable: true });
   }
   const cap = await capacityWarning(env, def, o.region, cfg, snap);

@@ -190,6 +190,8 @@ export async function deployLab(env: Env, labId: string, input: DeployInput, by:
   const region = input.region ?? cfg.region;
   if (!test) {
     const warnings = await labWarnings(env, def, { hours: input.hours, region });
+    const blocked = warnings.find((w) => w.kind === "budget" && !w.overridable);
+    if (blocked) throw new RunError(blocked.message, "unavailable");
     const unconfirmed = warnings.filter((w) => (w.kind === "budget" && !input.overBudgetOk) || (w.kind === "capacity" && !input.capacityOk));
     if (unconfirmed.length) throw new RunError(`${unconfirmed.map((w) => w.message).join(" ")} Choose "Deploy anyway" to go ahead.`, "confirm_required");
   }

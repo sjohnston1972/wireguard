@@ -22,7 +22,9 @@ export function useDeployForm(d: LabDetail) {
   const [peer, setPeer] = useState(d.connectivity.peering === "required" ? true : d.connectivity.peering === "off" ? false : d.defaults.peer);
   const [region, setRegion] = useState(d.defaults.region);
   const deploy = useDeployLab();
-  const unavailable = d.warnings.find((w) => w.kind === "unavailable")?.message ?? d.card.unavailable;
+  // "unavailable", or a budget warning with no override (the month is already over budget, so
+  // the budget guard would remove the lab at once): Deploy is off and the reason is shown.
+  const unavailable = d.warnings.find((w) => w.kind === "unavailable" || (w.kind === "budget" && !w.overridable))?.message ?? d.card.unavailable;
   const overrides = overridesFor(d.warnings);
   const anyway = Object.keys(overrides).length > 0;
   const submit = () => {

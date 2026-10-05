@@ -99,10 +99,12 @@ describe("budget (L2.4)", () => {
     const a = await runningLab(env, world, "az104-05-storage");
     const b = await deployLab(env, "az104-07-files");
     await secrets(env, world, b.json.runId);
-    // The month goes over budget; one more lab is deployed anyway, on purpose.
-    await db.upsertCostDay(env, "2026-10-01", 25);
+    // Close to budget, one more lab is deployed anyway, on purpose (its session would pass the budget)...
+    await db.upsertCostDay(env, "2026-10-01", 9.8);
     const c = await deployLab(env, "az104-06-blob-security", { hours: 1, peer: false, overBudgetOk: true });
-    expect(c.status).toBe(200);
+    expect(c.status, JSON.stringify(c.json)).toBe(200);
+    // ...then the month goes over budget.
+    await db.upsertCostDay(env, "2026-10-01", 25);
     const lines = await runLabWatch(env, new Date());
     expect((await session(env, a.sid))!).toMatchObject({ state: "tearing_down", end_reason: "budget" });
     expect((await session(env, b.json.sessionId))!).toMatchObject({ state: "tearing_down", end_reason: "budget" });
@@ -225,6 +227,22 @@ describe("prices and warnings (L2.4)", () => {
     await price(env, "Standard_B1s", 0.0093, "1 Hour", NOW);
     d = (await api(env, "GET", "/labs/az104-07-files")).json;
     expect(d.cost.items[0]).toMatchObject({ gbpH: 0.0093, source: "azure", priceAge: 0 });
+  });
+
+  // Steven's decision B: the budget guard tears labs down at 100%, so a month already at or
+  // past the budget offers no "Deploy anyway" (the lab would be removed at the next watch).
+  it("a month already at or over budget: the budget warning has no override and deploy is refused even with overBudgetOk", async () => {
+    freeze();
+    const { env } = await labEnv();
+    await db.upsertCostDay(env, "2026-10-01", 10.5);
+    const d = (await api(env, "GET", "/labs/az104-07-files")).json as { warnings: { kind: string; message: string; overridable: boolean }[] };
+    const budget = d.warnings.find((w) => w.kind === "budget");
+    expect(budget).toBeDefined();
+    expect(budget!.overridable).toBe(false);
+    expect(budget!.message).toMatch(/already/i);
+    const r = await api(env, "POST", "/labs/az104-07-files/deploy", { hours: 1, peer: false, overBudgetOk: true });
+    expect(r.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(r.json)).toMatch(/budget/i);
   });
 
   it("warnings: budget, capacity per vm size plus the gateway, pricey, slow; unavailable has no override", async () => {
