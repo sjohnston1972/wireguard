@@ -43,7 +43,9 @@
 //   resource-group    a resource group other than rg-lab-<id> or rg-lab-<id>-*
 //   outside-scope     a resource group, scope or parent outside the lab, anything
 //                     at subscription scope, or a resource tied to nothing in the
-//                     lab; template deployments at other scopes, deployment
+//                     lab (an instance key, count.index or each.key, places
+//                     nothing on its own; each.value places only when for_each
+//                     ranges over the lab's own resources); template deployments at other scopes, deployment
 //                     scripts, a template spec; in a template (templateProblems,
 //                     keys read case-insensitively, as ARM does): a schema other
 //                     than a resource group's, any resource type not on its
@@ -87,6 +89,13 @@ const GATEWAY_RE = /\b(?:rg-wg|vnet-wg)\b/i;
 const DNS_LINK = "azurerm_private_dns_zone_virtual_network_link";
 /** Attributes ending _id that hold an Entra object or tenant id, not an Azure resource id. */
 const NOT_ARM = new Set(["principal_id", "tenant_id", "object_id", "client_id", "application_id", "member_object_id", "group_object_id", "principal_object_id", "role_id", "application_object_id", "sku_id"]);
+/**
+ * count.index and each.key: an instance's own key, as in azurerm_network_interface.web[count.index].id,
+ * which Terraform 1.14 lists as ["azurerm_network_interface.web", "count.index"]. They never reach
+ * outside the lab, but they place nothing either. each.value is the for_each element: see forEachPlaces.
+ */
+const INDEX_REF = /^(count\.index|each\.key)(\.|\[|$)/;
+const EACH_VALUE_REF = /^each\.value(\.|\[|$)/;
 /** Meta-arguments hcl2json shows as attributes. */
 const META = new Set(["count", "for_each", "depends_on", "lifecycle", "provider", "provisioner", "connection"]);
 
@@ -164,6 +173,8 @@ export function planResources(plan) {
       values,
       refs,
       configured: new Set(Object.keys(exprs)),
+      // for_each, as the configuration prints it ({ references } or { constant_value }), or null.
+      forEach: c.for_each_expression ? { refs: exprRefs(c.for_each_expression), constant: c.for_each_expression.constant_value } : null,
       provisioners: (c.provisioners ?? []).length,
       sensitive: new Set(Object.entries(r.sensitive_values ?? {}).filter(([, v]) => v === true).map(([k]) => k)),
     });
@@ -327,6 +338,8 @@ export function hclResources(hcl, labId) {
             values,
             refs,
             configured: new Set(Object.keys(refs)),
+            // hcl2json's count.index and each.* are not references here (REF_RE skips them).
+            forEach: null,
             // hcl2json prints labelled blocks as { "local-exec": [...] }; count every kind.
             provisioners: blockCount(block?.provisioner),
             sensitive: new Set(),
@@ -599,6 +612,21 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
     if (parts[0] === "data") return data.get(parts.slice(0, 3).join(".")) ?? null;
     return managed.get(parts.slice(0, 2).join(".")) ?? null;
   };
+  /** A reference that places a value inside the lab: a resource it makes, or its group's name. */
+  const placed = (x) => target(x)?.mode === "managed" || x === "var.resource_group_name" || x === "var.gateway_vnet_id";
+  /** Any Azure id in a constant (keys too). */
+  const holdsId = (v) => (typeof v === "string" ? classifyId(v) !== null || /\/(subscriptions|resourcegroups)\//i.test(v) : v && typeof v === "object" ? Object.entries(v).some(([k, x]) => holdsId(k) || holdsId(x)) : false);
+  /**
+   * What each.value is, from the resource's for_each: "places" when it ranges over resources the lab makes
+   * (each.value is one of them), "harmless" over a constant with no Azure id in it, otherwise "unknown"
+   * (a variable, a local, a data source, or nothing this check can see).
+   */
+  const forEachValue = (res) => {
+    const fe = res.forEach;
+    if (!fe) return "unknown";
+    if (fe.refs.length) return fe.refs.every((x) => target(x)?.mode === "managed") ? "places" : "unknown";
+    return fe.constant !== undefined && !holdsId(fe.constant) ? "harmless" : "unknown";
+  };
   const gatewayData = new Set([...data.values()].filter((d) => leaves(d.values).some((l) => typeof l.value === "string" && GATEWAY_RE.test(l.value))).map((d) => stripIndex(d.address)));
 
   const ownRg = (name) => {
@@ -799,8 +827,12 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
           if (!scopeLike) continue;
           const unknownHere = all.some((l) => l.attr === attr && l.value instanceof Unknown);
           if (!unknownHere) continue;
-          const bad = refs.filter((x) => !(target(x)?.mode === "managed") && x !== "var.resource_group_name" && x !== "var.gateway_vnet_id");
-          if (bad.length || refs.length === 0) refuse("outside-scope", `${attr} comes from ${bad[0] ?? "nothing this check can place"}, which the check cannot place inside the lab`);
+          // count.index and each.key are the instance's key; each.value is judged by the for_each it comes from.
+          const eachValue = refs.some((x) => EACH_VALUE_REF.test(x)) ? forEachValue(r) : null;
+          const rest = refs.filter((x) => !INDEX_REF.test(x) && !EACH_VALUE_REF.test(x));
+          const bad = [...rest.filter((x) => !placed(x)), ...(eachValue === "unknown" ? ["each.value"] : [])];
+          const places = rest.some(placed) || eachValue === "places";
+          if (bad.length || !places) refuse("outside-scope", `${attr} comes from ${bad[0] ?? refs[0] ?? "nothing this check can place"}, which the check cannot place inside the lab`);
         }
         if (!anchored) refuse("outside-scope", "it is tied to nothing inside the lab's resource group");
       }

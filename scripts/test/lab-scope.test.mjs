@@ -431,6 +431,74 @@ test("a container app environment with an infrastructure subnet must name its in
   assert.deepEqual(checkPlan(plan({ infrastructure_resource_group_name: `${rg}-cae` }), id), []);
 });
 
+// count and for_each: lab 16's real plan was refused because a VM's
+// network_interface_ids = [azurerm_network_interface.web[count.index].id]
+// lists count.index among its references. Terraform 1.14.6 prints that
+// reference as ["azurerm_network_interface.web", "count.index"] (checked with
+// a real `terraform show -json`); older notes give the long form too.
+const LB_LAB = "az104-16-lb-appgw";
+const LB_RG = `rg-lab-${LB_LAB}`;
+const IN_LB_RG = { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] };
+/** NICs (count 2 or for_each), VMs on them and pool members, with the VM's and member's NIC references as given. */
+function repeatPlan({ nicRefs, memberRefs = nicRefs, repeat = "count", vmForEach, data = [] }) {
+  const keys = repeat === "count" ? ["[0]", "[1]"] : ['["a"]', '["b"]'];
+  const each = repeat === "count" ? { count: 2 } : { forEach: { constant_value: { a: "vm-web1", b: "vm-web2" } } };
+  const vmEach = repeat === "count" ? { count: 2 } : { forEach: vmForEach ?? { references: ["azurerm_network_interface.web"] } };
+  return realisticPlan({
+    resources: [
+      { address: "azurerm_resource_group.lab", values: { name: LB_RG, location: "uksouth" }, refs: { name: ["var.resource_group_name"] } },
+      { address: "azurerm_lb.web", values: { name: "lbi-web", resource_group_name: LB_RG, location: "uksouth", sku: "Standard" }, refs: IN_LB_RG },
+      { address: "azurerm_lb_backend_address_pool.web", values: { name: "pool-web" }, unknown: ["loadbalancer_id"], refs: { loadbalancer_id: ["azurerm_lb.web.id", "azurerm_lb.web"] } },
+      ...keys.flatMap((k, i) => [
+        { address: `azurerm_network_interface.web${k}`, ...each, values: { name: `nic-vm-web${i + 1}`, resource_group_name: LB_RG, location: "uksouth", ip_configuration: [{ name: "ipconfig1", private_ip_address_allocation: "Dynamic" }] }, refs: { ...IN_LB_RG, name: [repeat === "count" ? "count.index" : "each.value"] } },
+        { address: `azurerm_linux_virtual_machine.web${k}`, ...vmEach, values: { name: `vm-web${i + 1}`, resource_group_name: LB_RG, location: "uksouth", size: "Standard_B1s", admin_username: "azureuser" }, unknown: ["network_interface_ids"], refs: { ...IN_LB_RG, name: [repeat === "count" ? "count.index" : "each.key"], network_interface_ids: nicRefs } },
+        { address: `azurerm_network_interface_backend_address_pool_association.web${k}`, ...vmEach, values: { ip_configuration_name: "ipconfig1" }, unknown: ["network_interface_id", "backend_address_pool_id"], refs: { network_interface_id: memberRefs, backend_address_pool_id: ["azurerm_lb_backend_address_pool.web.id", "azurerm_lb_backend_address_pool.web"] } },
+      ]),
+    ],
+    data,
+  });
+}
+
+test("count.index and each.key next to a lab resource's reference stay inside the lab (lab 16's VMs and pool members)", () => {
+  // As Terraform 1.14.6 prints azurerm_network_interface.web[count.index].id.
+  assert.deepEqual(checkPlan(repeatPlan({ nicRefs: ["azurerm_network_interface.web", "count.index"] }), LB_LAB), []);
+  // The long form, with the key spelled inside the reference.
+  const long = ["azurerm_network_interface.web[count.index].id", "azurerm_network_interface.web[count.index]", "azurerm_network_interface.web", "count.index"];
+  assert.deepEqual(checkPlan(repeatPlan({ nicRefs: long }), LB_LAB), []);
+  // for_each over a constant map, the VMs over the NICs: azurerm_network_interface.web[each.key].id ...
+  assert.deepEqual(checkPlan(repeatPlan({ repeat: "for_each", nicRefs: ["azurerm_network_interface.web", "each.key"] }), LB_LAB), []);
+  assert.deepEqual(checkPlan(repeatPlan({ repeat: "for_each", nicRefs: ["azurerm_network_interface.web[each.key].id", "azurerm_network_interface.web[each.key]", "azurerm_network_interface.web", "each.key"] }), LB_LAB), []);
+  // ... and each.value.id, when for_each ranges over the lab's own NICs.
+  assert.deepEqual(checkPlan(repeatPlan({ repeat: "for_each", nicRefs: ["each.value.id", "each.value"] }), LB_LAB), []);
+});
+
+test("count.index or each.* alone, or next to something outside the lab, is still refused", () => {
+  const refused = (plan) => verdict(checkPlan(plan, LB_LAB));
+  const vmsAndMembers = [
+    ["outside-scope", "azurerm_linux_virtual_machine.web"],
+    ["outside-scope", "azurerm_linux_virtual_machine.web"],
+    ["outside-scope", "azurerm_network_interface_backend_address_pool_association.web"],
+    ["outside-scope", "azurerm_network_interface_backend_address_pool_association.web"],
+  ];
+  // Only count.index: nothing places the value.
+  assert.deepEqual(refused(repeatPlan({ nicRefs: ["count.index"] })), vmsAndMembers);
+  const only = checkPlan(repeatPlan({ nicRefs: ["count.index"] }), LB_LAB);
+  assert.match(only[0].message, /comes from count\.index/);
+  // count.index and a variable or a data source the lab does not make.
+  assert.deepEqual(refused(repeatPlan({ nicRefs: ["var.nic_ids", "count.index"] })), vmsAndMembers);
+  const other = { address: "data.azurerm_subscription.other", values: { subscription_id: "3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b" } };
+  const dataPlan = repeatPlan({ nicRefs: ["data.azurerm_subscription.other.id", "data.azurerm_subscription.other", "count.index"], data: [other] });
+  assert.deepEqual(refused(dataPlan), vmsAndMembers);
+  // Only each.key: nothing places it either.
+  assert.deepEqual(refused(repeatPlan({ repeat: "for_each", nicRefs: ["each.key"] })), vmsAndMembers);
+  // each.value when for_each ranges over a variable (or a local) this check cannot see into.
+  assert.deepEqual(refused(repeatPlan({ repeat: "for_each", nicRefs: ["each.value.id", "each.value"], vmForEach: { references: ["var.nics"] } })), vmsAndMembers);
+  assert.deepEqual(refused(repeatPlan({ repeat: "for_each", nicRefs: ["azurerm_lb.web", "each.value"], vmForEach: { references: ["local.nics"] } })), vmsAndMembers);
+  // each.value over a constant naming another group's NIC.
+  const outsideId = "/subscriptions/3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b/resourceGroups/rg-elsewhere/providers/Microsoft.Network/networkInterfaces/nic-x";
+  assert.deepEqual(refused(repeatPlan({ repeat: "for_each", nicRefs: ["azurerm_lb.web", "each.value"], vmForEach: { constant_value: { a: outsideId } } })), vmsAndMembers);
+});
+
 test("the command line prints one rule: address line per refusal and exits 1; a clean plan exits 0", () => {
   const tmp = mkdtempSync(join(tmpdir(), "lab-scope-"));
   const evil = fixtures.find((x) => x.file === "evil-role.json");

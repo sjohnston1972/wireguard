@@ -11,7 +11,7 @@
 // group subscription_ids).
 //
 //   realisticPlan({ resources, data, providers, variables })
-//     resources: [{ address, values, refs?, unknown?, sensitive?, importing?, actions? }]
+//     resources: [{ address, values, refs?, unknown?, sensitive?, importing?, actions?, count?, forEach? }]
 //       address    may carry an instance key, azurerm_subnet.s[0] or azurerm_subnet.s["web"]
 //                  (count or for_each): each instance is its own planned resource
 //                  and change (with "index"), and the configuration has one
@@ -20,6 +20,13 @@
 //       refs       { "attr" or "block.0.attr": [references] } as in the configuration
 //       unknown    ["attr" or "block.0.attr"]: known only after apply (built from unknowns)
 //       sensitive  ["attr"]
+//       count      the block's count (a number), printed as count_expression
+//       forEach    the block's for_each as Terraform prints it: { references: [...] }
+//                  or { constant_value: {...} } (for_each_expression)
+//                  Terraform 1.14 prints a reference through an instance key it
+//                  works out from count or for_each, such as
+//                  azurerm_network_interface.web[count.index].id, as the
+//                  resource and the key: ["azurerm_network_interface.web", "count.index"]
 //     data: [{ address, values, refs? }] data sources read at plan (prior_state)
 //
 //   withAfterUnknown(plan)   adds resource_changes with real after_unknown to an
@@ -121,7 +128,8 @@ export function realisticPlan({ resources = [], data = [], providers = ["azurerm
     const change = { actions: def.actions ?? ["create"], before: def.importing ? {} : null, after: values, after_unknown: au, before_sensitive: false, after_sensitive: sensitive };
     if (def.importing) change.importing = def.importing;
     changes.push({ ...common, change });
-    configure(def, { mode: "managed", type, name: common.name, provider_config_key: type.split("_")[0], expressions, schema_version: 0 });
+    const repeat = { ...(def.count !== undefined ? { count_expression: { constant_value: def.count } } : {}), ...(def.forEach ? { for_each_expression: def.forEach } : {}) };
+    configure(def, { mode: "managed", type, name: common.name, provider_config_key: type.split("_")[0], expressions, schema_version: 0, ...repeat });
   }
   const read = [];
   for (const def of data) {

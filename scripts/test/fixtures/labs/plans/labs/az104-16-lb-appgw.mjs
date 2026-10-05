@@ -6,6 +6,9 @@
 // 10.64.64.10, snet-appgw 10.64.65.0/24 with the gateway's private frontend
 // at 10.64.65.10). The two web VMs are count instances ([0] and [1]); the
 // gateway's backend addresses are theirs, unknown until their NICs exist.
+// Each VM and pool member reaches its NIC through count.index, which
+// Terraform lists among the references (the real plan was refused over it
+// while an older copy of this file spelled [0] and [1] out).
 
 import { ctx, IN_RG, linuxVm, ref, REGION, rgResource } from "../common.mjs";
 
@@ -23,12 +26,21 @@ export default () => {
     refs: { ...inRg, network_security_group_name: ref("azurerm_network_security_group.appgw", "name") },
   });
   const onLb = (address, values, more = [], moreRefs = {}) => ({ address, values, unknown: ["loadbalancer_id", ...more], refs: { loadbalancer_id: ref("azurerm_lb.web", "id"), ...moreRefs } });
-  const vm = (i) => linuxVm(c, { name: `vm-web${i + 1}`, key: `web[${i}]`, subnet: "azurerm_subnet.web", customData: "I2Nsb3VkLWNvbmZpZwo= (cloud-init.yaml.tftpl, port 80)" });
+  // azurerm_network_interface.web[count.index].id, as Terraform 1.14 lists its references.
+  const nicOfThisVm = ["azurerm_network_interface.web", "count.index"];
+  const vm = (i) => {
+    const [nic, machine] = linuxVm(c, { name: `vm-web${i + 1}`, key: `web[${i}]`, subnet: "azurerm_subnet.web", customData: "I2Nsb3VkLWNvbmZpZwo= (cloud-init.yaml.tftpl, port 80)" });
+    return [
+      { ...nic, count: 2, refs: { ...nic.refs, name: ["count.index"] } },
+      { ...machine, count: 2, refs: { ...machine.refs, name: ["count.index"], network_interface_ids: nicOfThisVm } },
+    ];
+  };
   const member = (i) => ({
     address: `azurerm_network_interface_backend_address_pool_association.web[${i}]`,
+    count: 2,
     values: { ip_configuration_name: "ipconfig1" },
     unknown: ["network_interface_id", "backend_address_pool_id"],
-    refs: { network_interface_id: ref(`azurerm_network_interface.web[${i}]`, "id"), backend_address_pool_id: ref("azurerm_lb_backend_address_pool.web", "id") },
+    refs: { network_interface_id: nicOfThisVm, backend_address_pool_id: ref("azurerm_lb_backend_address_pool.web", "id") },
   });
   return {
     lab: c.id,

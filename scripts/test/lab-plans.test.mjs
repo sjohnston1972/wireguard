@@ -88,6 +88,60 @@ export function tfResources(dir) {
   return out;
 }
 
+const ITERATOR_RE = /\b(count\.index|each\.key|each\.value)\b/g;
+
+/**
+ * count and for_each in a lab's .tf files: { address: { repeat: "count" | "for_each" | null, attrs: { attr: Set(count.index, each.key, each.value) } } }.
+ * Terraform lists these among an attribute's references (azurerm_network_interface.web[count.index].id
+ * as ["azurerm_network_interface.web", "count.index"]), so a fixture must too: lab 16's real plan was
+ * refused over exactly that while its fixture, with [0] and [1] spelled out, passed.
+ */
+export function tfIterators(dir) {
+  const out = {};
+  for (const f of readdirSync(dir).filter((x) => x.endsWith(".tf"))) {
+    const lines = readFileSync(join(dir, f), "utf8").split(/\r?\n/);
+    let depth = 0;
+    let current = null;
+    let attr = null;
+    let heredoc = null;
+    for (const raw of lines) {
+      if (heredoc) {
+        if (raw.trim() === heredoc) heredoc = null;
+        continue;
+      }
+      const line = raw.replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/\s(#|\/\/).*$/, "").replace(/^\s*(#|\/\/).*$/, "");
+      const code = /^\s*(#|\/\/)/.test(raw) ? "" : raw;
+      const hd = /<<-?([A-Z_]+)\s*$/.exec(line);
+      if (depth === 0) {
+        const m = /^(resource|data)\s+"([^"]+)"\s+"([^"]+)"/.exec(raw);
+        if (m) {
+          current = `${m[1] === "data" ? "data." : ""}${m[2]}.${m[3]}`;
+          out[current] = { repeat: null, attrs: {} };
+        }
+      } else if (depth === 1 && current) {
+        const a = /^\s*([a-z0-9_]+)\s*=/.exec(line);
+        const b = /^\s*([a-z0-9_]+)\s*\{/.exec(line);
+        const d = /^\s*dynamic\s+"([a-z0-9_]+)"/.exec(raw);
+        attr = d?.[1] ?? a?.[1] ?? b?.[1] ?? attr;
+        if (a && (a[1] === "count" || a[1] === "for_each")) out[current].repeat = a[1];
+      }
+      if (current && depth >= 1 && attr && !META.has(attr)) {
+        for (const m of code.matchAll(ITERATOR_RE)) (out[current].attrs[attr] ??= new Set()).add(m[1]);
+      }
+      for (const ch of line) {
+        if (ch === "{" || ch === "(" || ch === "[") depth++;
+        else if (ch === "}" || ch === ")" || ch === "]") depth--;
+      }
+      if (depth === 0) {
+        current = null;
+        attr = null;
+      }
+      if (hd) heredoc = hd[1];
+    }
+  }
+  return out;
+}
+
 /** The attribute names a fixture description configures (a data source: only its arguments). */
 const configured = (def, data = false) =>
   data ? new Set(Object.keys(def.refs ?? {})) : new Set([...Object.keys(def.values ?? {}), ...(def.unknown ?? []).map((p) => p.split(".")[0]), ...Object.keys(def.refs ?? {}).map((p) => p.split(".")[0])]);
@@ -165,6 +219,35 @@ for (const id of labs) {
     const fixture = fixtureAttributes(d);
     assert.deepEqual(Object.keys(fixture).sort(), Object.keys(tf).sort(), "resources");
     for (const [address, attrs] of Object.entries(tf)) assert.deepEqual([...fixture[address]].sort(), [...attrs].sort(), address);
+  });
+
+  test(`${id}: the plan fixture lists count.index and each.* where main.tf uses them, as Terraform does`, () => {
+    const tf = tfIterators(join(LABS, id, "terraform"));
+    const d = LAB_PLANS[id];
+    const defs = [...d.resources, ...(d.data ?? [])];
+    for (const [address, { repeat, attrs }] of Object.entries(tf)) {
+      const mine = defs.filter((r) => block(r.address) === address);
+      // count and for_each reach the configuration (count_expression, for_each_expression).
+      for (const r of mine) {
+        assert.equal(r.count !== undefined ? "count" : r.forEach ? "for_each" : null, repeat, `${r.address}: main.tf has ${repeat ?? "neither count nor for_each"}`);
+      }
+      for (const [attr, tokens] of Object.entries(attrs)) {
+        for (const r of mine) {
+          const refs = Object.entries(r.refs ?? {}).filter(([k]) => k.split(".")[0] === attr).flatMap(([, v]) => v);
+          for (const t of tokens) assert.ok(refs.some((x) => x === t || x.startsWith(`${t}.`)), `${r.address}: ${attr} uses ${t} in main.tf, so its references must list it (${JSON.stringify(refs)})`);
+        }
+      }
+    }
+    // Terraform never prints an instance key it works out ([count.index], [each.key]) as a literal [0] or ["a"].
+    const text = readdirSync(join(LABS, id, "terraform")).filter((f) => f.endsWith(".tf")).map((f) => readFileSync(join(LABS, id, "terraform", f), "utf8")).join("\n");
+    for (const r of defs) {
+      for (const [attr, refs] of Object.entries(r.refs ?? {})) {
+        for (const x of refs) {
+          const keyed = /^.*?\[(?:\d+|"[^"]*")\]/.exec(x);
+          if (keyed) assert.ok(text.includes(keyed[0]), `${r.address}: ${attr} references ${x}, but main.tf never spells ${keyed[0]}`);
+        }
+      }
+    }
   });
 
   test(`${id}: lab-scope passes its realistic first-deploy plan`, () => {
