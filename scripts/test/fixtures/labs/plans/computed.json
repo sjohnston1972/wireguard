@@ -1,7 +1,9 @@
 {
  "providers": {
   "registry.terraform.io/hashicorp/azuread": true,
-  "registry.terraform.io/hashicorp/azurerm": true
+  "registry.terraform.io/hashicorp/azurerm": true,
+  "registry.terraform.io/hashicorp/random": true,
+  "registry.terraform.io/hashicorp/time": true
  },
  "types": {
   "azuread_group": {
@@ -1394,6 +1396,333 @@
    ],
    "blocks": {}
   },
+  "azurerm_key_vault": {
+   "attrs": [
+    "access_policy",
+    "enable_rbac_authorization",
+    "id",
+    "rbac_authorization_enabled",
+    "vault_uri"
+   ],
+   "blocks": {}
+  },
+  "azurerm_key_vault_secret": {
+   "attrs": [
+    "id",
+    "resource_id",
+    "resource_versionless_id",
+    "version",
+    "versionless_id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_user_assigned_identity": {
+   "attrs": [
+    "client_id",
+    "id",
+    "principal_id",
+    "tenant_id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_policy_set_definition": {
+   "attrs": [
+    "id",
+    "metadata"
+   ],
+   "blocks": {
+    "policy_definition_reference": {
+     "attrs": [
+      "reference_id",
+      "version"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_management_group_policy_set_definition": {
+   "attrs": [
+    "id",
+    "metadata"
+   ],
+   "blocks": {
+    "policy_definition_reference": {
+     "attrs": [
+      "reference_id",
+      "version"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_mssql_server": {
+   "attrs": [
+    "administrator_login",
+    "fully_qualified_domain_name",
+    "id",
+    "primary_user_assigned_identity_id",
+    "restorable_dropped_database_ids"
+   ],
+   "blocks": {
+    "azuread_administrator": {
+     "attrs": [
+      "azuread_authentication_only",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_mssql_database": {
+   "attrs": [
+    "auto_pause_delay_in_minutes",
+    "collation",
+    "creation_source_database_id",
+    "enclave_type",
+    "id",
+    "ledger_enabled",
+    "license_type",
+    "maintenance_configuration_name",
+    "max_size_gb",
+    "min_capacity",
+    "read_replica_count",
+    "read_scale",
+    "restore_point_in_time",
+    "sample_name",
+    "secondary_type",
+    "sku_name",
+    "zone_redundant"
+   ],
+   "blocks": {
+    "long_term_retention_policy": {
+     "attrs": [
+      "monthly_retention",
+      "week_of_year",
+      "weekly_retention",
+      "yearly_retention"
+     ],
+     "blocks": {}
+    },
+    "short_term_retention_policy": {
+     "attrs": [
+      "backup_interval_in_hours"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_mssql_failover_group": {
+   "attrs": [
+    "id",
+    "readonly_endpoint_failover_policy_enabled"
+   ],
+   "blocks": {
+    "partner_server": {
+     "attrs": [
+      "location",
+      "role"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_cosmosdb_account": {
+   "attrs": [
+    "create_mode",
+    "endpoint",
+    "id",
+    "local_authentication_disabled",
+    "local_authentication_enabled",
+    "mongo_server_version",
+    "primary_key",
+    "primary_mongodb_connection_string",
+    "primary_readonly_key",
+    "primary_readonly_mongodb_connection_string",
+    "primary_readonly_sql_connection_string",
+    "primary_sql_connection_string",
+    "read_endpoints",
+    "secondary_key",
+    "secondary_mongodb_connection_string",
+    "secondary_readonly_key",
+    "secondary_readonly_mongodb_connection_string",
+    "secondary_readonly_sql_connection_string",
+    "secondary_sql_connection_string",
+    "write_endpoints"
+   ],
+   "blocks": {
+    "backup": {
+     "attrs": [
+      "interval_in_minutes",
+      "retention_in_hours",
+      "storage_redundancy",
+      "tier"
+     ],
+     "blocks": {}
+    },
+    "geo_location": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_cosmosdb_sql_database": {
+   "attrs": [
+    "id",
+    "throughput"
+   ],
+   "blocks": {
+    "autoscale_settings": {
+     "attrs": [
+      "max_throughput"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_cosmosdb_sql_container": {
+   "attrs": [
+    "id",
+    "throughput"
+   ],
+   "blocks": {
+    "autoscale_settings": {
+     "attrs": [
+      "max_throughput"
+     ],
+     "blocks": {}
+    },
+    "indexing_policy": {
+     "attrs": [],
+     "blocks": {
+      "spatial_index": {
+       "attrs": [
+        "types"
+       ],
+       "blocks": {}
+      }
+     }
+    }
+   }
+  },
+  "azurerm_storage_container_immutability_policy": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_site_recovery_fabric": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_site_recovery_protection_container": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_site_recovery_replication_policy": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_site_recovery_protection_container_mapping": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_site_recovery_network_mapping": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_site_recovery_replicated_vm": {
+   "attrs": [
+    "id",
+    "managed_disk",
+    "network_interface",
+    "target_network_id",
+    "target_virtual_machine_size",
+    "test_network_id",
+    "unmanaged_disk"
+   ],
+   "blocks": {}
+  },
+  "azurerm_traffic_manager_profile": {
+   "attrs": [
+    "fqdn",
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_traffic_manager_external_endpoint": {
+   "attrs": [
+    "endpoint_location",
+    "id",
+    "priority"
+   ],
+   "blocks": {}
+  },
+  "azurerm_cdn_frontdoor_profile": {
+   "attrs": [
+    "id",
+    "resource_guid"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_cdn_frontdoor_endpoint": {
+   "attrs": [
+    "host_name",
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_cdn_frontdoor_origin_group": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_cdn_frontdoor_origin": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_cdn_frontdoor_route": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
   "data.azurerm_subscription": {
    "attrs": [
     "display_name",
@@ -1415,6 +1744,29 @@
     "object_id",
     "subscription_id",
     "tenant_id"
+   ],
+   "blocks": {}
+  },
+  "random_password": {
+   "attrs": [
+    "bcrypt_hash",
+    "id",
+    "lower",
+    "min_lower",
+    "min_numeric",
+    "min_special",
+    "min_upper",
+    "number",
+    "numeric",
+    "result",
+    "special",
+    "upper"
+   ],
+   "blocks": {}
+  },
+  "time_sleep": {
+   "attrs": [
+    "id"
    ],
    "blocks": {}
   }

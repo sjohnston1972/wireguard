@@ -7,7 +7,17 @@
 // that lab's own tests with the helpers below. Everything reads the lab's
 // text: no Azure, no terraform init (npm run labs-tf does that).
 //
-//   lab(id)               { dir, tfDir, files, yaml, readme, blocks }
+// Batch 3 (labs batch 3 plan, C0 names): labContentSuite(id, { marker,
+// secondary = false, identity = "none" }). `secondary: true` for a lab with
+// rg-lab-<id>-secondary in the secondary region; `identity: "match"` for a
+// lab whose lab.yaml identity lists its role assignments. Test 3 reads
+// plans/schema-facts.json (which types take a resource group and tags), and
+// test 5 counts S4 disks per region (`region: secondary` = one per replicated
+// VM). contentChecks(id, opts) gives the same checks as { name, skip?, fn }
+// without registering them (the suite's own tests run them on fixture labs;
+// opts.labsDir and opts.load point them elsewhere).
+//
+//   lab(id, labsDir?)     { dir, tfDir, files, yaml, readme, blocks }
 //                           files   { "main.tf": text, ... } (.tf only)
 //                           yaml    lab.yaml as read (YAML 1.1)
 //                           readme  readme.md, LF line ends
@@ -15,9 +25,15 @@
 //   resources(l, type?)   resource blocks, optionally of one type
 //   attr(body, name)      the right-hand side of `name = ...` (first match, any depth)
 //   outputs(l)            output names
+//   roleAssignments(l)    [{ address, role, scope, principalType }] per azurerm_role_assignment:
+//                           role   a literal role_definition_name, or the lab's custom role's
+//                                  name (azurerm_role_definition.<x>.<id or name>), else null
+//                           scope  resource_group (azurerm_resource_group.*.id), management_group
+//                                  (azurerm_management_group.*.id) or resource (anything else)
 //   uncomment(src)        # and // comment lines blanked
 //   TERRAFORM             terraform is on PATH
 //   CHILD_TYPES           types that need neither a resource group nor tags of their own
+//                         (batch 1-2 tests; the suite now reads schema-facts.json)
 //   estimateGbpH(items)   Σ gbp_h × qty, as shared/labs.ts estimateGbpH (authored figures)
 //   costMarker(gbpH, deployMin)   as shared/labs.ts costMarker
 
@@ -27,11 +43,15 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCatalogue, parseLabYaml, variablesProblems } from "../../../lib/labs.mjs";
+import { buildCatalogue, GOVERNANCE_LABS, parseLabYaml, variablesProblems } from "../../../lib/labs.mjs";
 import { lintDir } from "../../../../infra/ci/lab-lint.mjs";
 import { costMarker, estimateGbpH } from "./estimate.mjs";
 
 const LABS = fileURLToPath(new URL("../../../../labs/", import.meta.url));
+/** { "<type>": { rg, tags } } from the provider schemas (plans/extract-computed.mjs writes it). */
+const SCHEMA_FACTS = JSON.parse(readFileSync(new URL("./plans/schema-facts.json", import.meta.url), "utf8"));
+/** The secondary region every batch 3 lab with regions.secondary names (uksouth's pair). */
+const SECONDARY_REGION = "ukwest";
 // No update check: it calls out to the internet and can stall a test run.
 const TF_ENV = { ...process.env, CHECKPOINT_DISABLE: "1" };
 export const TERRAFORM = spawnSync("terraform", ["version"], { encoding: "utf8", env: TF_ENV }).status === 0;
@@ -65,8 +85,8 @@ function hclBlocks(src) {
 }
 
 /** A lab's folder read once: lab.yaml, readme and the .tf files split into blocks. */
-export function lab(id) {
-  const dir = join(LABS, id);
+export function lab(id, labsDir = LABS) {
+  const dir = join(labsDir, id);
   const tfDir = join(dir, "terraform");
   const files = existsSync(tfDir) ? Object.fromEntries(readdirSync(tfDir).filter((f) => f.endsWith(".tf")).map((f) => [f, readFileSync(join(tfDir, f), "utf8").replace(/\r\n/g, "\n")])) : {};
   const all = Object.values(files).join("\n");
@@ -152,20 +172,65 @@ function vms(l) {
   return out;
 }
 
+/**
+ * Site Recovery's replicated VMs: [{ address, size }]. Each has a replica disk
+ * in the secondary region, and a failover (or test failover) makes a VM there
+ * of its source VM's size, so capacity.vm_sizes lists it too (ruling 3).
+ */
+function replicatedVms(l) {
+  return resources(l, "azurerm_site_recovery_replicated_vm").map((r) => {
+    const address = r.labels.join(".");
+    const source = /^([a-z0-9_]+\.[A-Za-z0-9_-]+)\.id$/.exec(attr(r.body, "source_vm_id") ?? "")?.[1];
+    const vm = vms(l).find((v) => v.address === source);
+    assert.ok(vm, `${address}: source_vm_id is a VM this lab makes (azurerm_linux_virtual_machine.<name>.id), so its failover VM can be counted`);
+    return { address, size: vm.size };
+  });
+}
+
 /** Σ qty of the cost items matching `pick`. */
 const pricedQty = (l, pick) => l.yaml.cost.items.filter(pick).reduce((n, i) => n + (i.qty ?? 1), 0);
 
-/**
- * The checks every batch 2 lab shares (seven tests, named as in the batch 2
- * plan's "B0 names as built"). `marker`: the lab's cost marker, "£" or "££".
- */
-export function labContentSuite(id, { marker }) {
-  assert.ok(marker === "£" || marker === "££", `labContentSuite(${id}): marker is "£" or "££"`);
+/** Every role assignment a lab makes: [{ address, role, scope, principalType }] (count copies included). */
+export function roleAssignments(l) {
+  const id = l.yaml?.id ?? "";
+  return resources(l, "azurerm_role_assignment").flatMap((r) => {
+    const address = r.labels.join(".");
+    const named = attr(r.body, "role_definition_name");
+    let role = null;
+    if (named !== undefined && /^"[^"$]*"$/.test(named)) role = unquote(named);
+    else {
+      // The lab's own custom role: azurerm_role_definition.<x>.role_definition_resource_id (or .name, .id).
+      const ref = /^azurerm_role_definition\.([A-Za-z0-9_-]+)\.(role_definition_resource_id|role_definition_id|name|id)$/.exec(named ?? attr(r.body, "role_definition_id") ?? "");
+      const def = ref && resources(l, "azurerm_role_definition").find((d) => d.labels[1] === ref[1]);
+      if (def) role = unquote(attr(def.body, "name")).replace(/\$\{var\.lab_id\}/g, id);
+    }
+    const at = attr(r.body, "scope") ?? "";
+    const scope = /^azurerm_resource_group\.[A-Za-z0-9_-]+\.id$/.test(at) ? "resource_group" : /^azurerm_management_group\.[A-Za-z0-9_-]+\.id$/.test(at) ? "management_group" : "resource";
+    const pt = attr(r.body, "principal_type");
+    return Array(countOf(r)).fill({ address, role, scope, principalType: pt === undefined ? null : unquote(pt) });
+  });
+}
 
-  test(`${id}: lab.yaml and readme pass the catalogue rules, and the readme is no longer a stub`, () => {
-    const { problems } = buildCatalogue(LABS);
+/**
+ * The checks every batch 2 and 3 lab shares, as [{ name, skip?, fn }] (names
+ * as in the batch 2 plan's "B0 names as built" and the batch 3 plan's C0
+ * names). `marker`: "£" or "££". `secondary`: the lab has rg-lab-<id>-secondary
+ * in the secondary region. `identity`: "none" (no role assignments) or "match"
+ * (lab.yaml identity lists them). `labsDir` and `load` are for the suite's own
+ * tests (fixture labs, or a lab changed in memory).
+ */
+export function contentChecks(id, { marker, secondary = false, identity = "none", labsDir = LABS, load = () => lab(id, labsDir) } = {}) {
+  assert.ok(marker === "£" || marker === "££", `labContentSuite(${id}): marker is "£" or "££"`);
+  assert.ok(identity === "none" || identity === "match", `labContentSuite(${id}): identity is "none" or "match"`);
+  const groups = secondary ? ["lab", "secondary"] : ["lab"];
+  const where = secondary ? "rg-lab-<id> or rg-lab-<id>-secondary" : "rg-lab-<id>";
+  const checks = [];
+  const check = (name, fn, skip) => checks.push({ name: `${id}: ${name}`, fn, ...(skip ? { skip } : {}) });
+
+  check("lab.yaml and readme pass the catalogue rules, and the readme is no longer a stub", () => {
+    const { problems } = buildCatalogue(labsDir);
     assert.deepEqual(problems.filter((p) => p.lab === id), []);
-    const l = lab(id);
+    const l = load();
     assert.doesNotMatch(l.readme, /stub/i);
     assert.match(l.readme, /## What it deploys[\s\S]*```text\n[\s\S]+?\n```[\s\S]*## Things to try/, "What it deploys has a text diagram");
     const learn = l.readme.split("## Learn more")[1]?.split(/\n## |\nAnything you build/)[0] ?? "";
@@ -174,8 +239,8 @@ export function labContentSuite(id, { marker }) {
     for (const u of links) assert.match(u, /^https:\/\/learn\.microsoft\.com\//, u);
   });
 
-  test(`${id}: Terraform passes the text lint and declares only contract variables`, () => {
-    const l = lab(id);
+  check("Terraform passes the text lint and declares only contract variables", () => {
+    const l = load();
     for (const f of ["versions.tf", "variables.tf", "main.tf", "outputs.tf"]) assert.ok(l.files[f], `terraform/${f} exists`);
     // The whole folder, as lab.yml lints it before init: .tf text, .bicep text and the file rules.
     assert.deepEqual(lintDir(l.tfDir), []);
@@ -184,61 +249,87 @@ export function labContentSuite(id, { marker }) {
     for (const b of l.blocks.filter((x) => x.kind === "variable")) assert.match(elsewhere, new RegExp(`\\bvar\\.${b.labels[0]}\\b`), `variable ${b.labels[0]} is declared but never used`);
   });
 
-  test(`${id}: one resource group, named by the pipeline, and everything else inside it with the tags`, () => {
-    const l = lab(id);
+  const groupsName = secondary
+    ? "two resource groups, rg-lab-<id> in the region and rg-lab-<id>-secondary in the secondary region, and everything else inside one of them with the tags"
+    : "one resource group, named by the pipeline, and everything else inside it with the tags";
+  check(groupsName, () => {
+    const l = load();
     const rgs = resources(l, "azurerm_resource_group");
-    assert.equal(rgs.length, 1);
-    assert.equal(rgs[0].labels[1], "lab");
-    assert.equal(attr(rgs[0].body, "name"), "var.resource_group_name");
-    assert.equal(attr(rgs[0].body, "tags"), "var.tags");
+    assert.deepEqual(rgs.map((r) => r.labels[1]).sort(), [...groups].sort(), `the resource groups are azurerm_resource_group.${groups.join(" and .")}`);
+    const main = rgs.find((r) => r.labels[1] === "lab");
+    assert.equal(attr(main.body, "name"), "var.resource_group_name");
+    assert.equal(attr(main.body, "tags"), "var.tags");
+    if (secondary) {
+      assert.equal(attr(main.body, "location"), "var.region", "rg-lab-<id> is in var.region");
+      const sec = rgs.find((r) => r.labels[1] === "secondary");
+      assert.equal(attr(sec.body, "name"), '"${var.resource_group_name}-secondary"', "azurerm_resource_group.secondary is rg-lab-<id>-secondary");
+      assert.equal(attr(sec.body, "location"), "var.secondary_region", "rg-lab-<id>-secondary is in var.secondary_region");
+      assert.equal(attr(sec.body, "tags"), "var.tags");
+      assert.equal(l.yaml.regions?.secondary, SECONDARY_REGION, `lab.yaml regions.secondary is ${SECONDARY_REGION}`);
+      const v = uncomment(l.files["variables.tf"] ?? "").replace(/\s+/g, " ");
+      assert.match(v, /variable "secondary_region" \{.*?validation \{ condition = var\.secondary_region != "" && var\.secondary_region != var\.region /, 'variables.tf refuses an empty secondary_region or one equal to the region (condition = var.secondary_region != "" && var.secondary_region != var.region)');
+    }
+    const rgNames = groups.map((g) => `azurerm_resource_group.${g}.name`);
+    const rgIds = groups.map((g) => `azurerm_resource_group.${g}.id`);
     for (const r of resources(l).filter((x) => x.labels[0].startsWith("azurerm_") && x.labels[0] !== "azurerm_resource_group")) {
       const at = r.labels.join(".");
+      const facts = SCHEMA_FACTS[r.labels[0]];
+      assert.ok(facts, `${r.labels[0]} is not in plans/schema-facts.json: the integrator adds it to extract-computed.mjs and regenerates`);
       const rgName = attr(r.body, "resource_group_name");
-      if (rgName !== undefined) assert.equal(rgName, "azurerm_resource_group.lab.name", `${at} is inside rg-lab-<id>`);
+      if (facts.rg || rgName !== undefined) assert.ok(rgNames.includes(rgName), `${at} is inside ${where} (resource_group_name = ${rgName})`);
       const rgId = attr(r.body, "resource_group_id");
-      if (rgId !== undefined) assert.equal(rgId, "azurerm_resource_group.lab.id", `${at} is inside rg-lab-<id>`);
-      if (!CHILD_TYPES.has(r.labels[0])) {
-        assert.equal(rgName, "azurerm_resource_group.lab.name", `${at} names its resource group`);
-        assert.equal(attr(r.body, "tags"), "var.tags", `${at} carries var.tags`);
-      }
+      if (rgId !== undefined) assert.ok(rgIds.includes(rgId), `${at} is inside ${where} (resource_group_id = ${rgId})`);
+      if (facts.tags) assert.equal(attr(r.body, "tags"), "var.tags", `${at} carries var.tags`);
     }
   });
 
-  test(`${id}: lab.yaml agrees with the Terraform on peering, VM sizes, subnets and identity`, () => {
-    const l = lab(id);
+  check("lab.yaml agrees with the Terraform on peering, VM sizes, subnets and identity", () => {
+    const l = load();
     const k = l.yaml.connectivity;
     assert.equal(outputs(l).includes("peer_vnet_id"), k.peering !== "off", "peer_vnet_id only when the lab can peer");
     for (const o of ["private_ips", "connect"]) assert.ok(outputs(l).includes(o), `output ${o}`);
-    // One vm_sizes entry per VM, a scale set counted at its autoscale maximum.
-    const sizes = vms(l).flatMap((v) => Array(v.max).fill(v.size));
-    assert.deepEqual([...l.yaml.capacity.vm_sizes].sort(), sizes.sort(), "capacity.vm_sizes: one entry per VM at its maximum");
+    // One vm_sizes entry per VM at its maximum (a scale set at its autoscale maximum), and one per replicated VM's failover VM.
+    const sizes = [...vms(l).flatMap((v) => Array(v.max).fill(v.size)), ...replicatedVms(l).map((v) => v.size)];
+    assert.deepEqual([...l.yaml.capacity.vm_sizes].sort(), sizes.sort(), "capacity.vm_sizes: one entry per VM at its maximum, and one per replicated VM");
     // Each /20 of the slot from cidrsubnet(var.address_space, 2, n); subnets_used counts them.
     const all = uncomment(Object.entries(l.files).filter(([f]) => f !== "variables.tf").map(([, t]) => t).join("\n"));
     const twenties = new Set([...all.matchAll(/cidrsubnet\(var\.address_space,\s*2,\s*(\d+)\)/g)].map((m) => m[1]));
     assert.equal(twenties.size, k.subnets_used, "subnets_used is the number of distinct /20s");
     assert.doesNotMatch(all, /cidrsubnet\(var\.address_space,(?!\s*2,)/, "the slot is only ever cut into /20s first");
     assert.equal(/\bvar\.address_space\b/.test(all), k.subnets_used > 0, "var.address_space is used exactly when subnets_used > 0");
-    // Batch 2 makes no Entra objects and assigns no roles.
-    assert.equal(l.blocks.filter((b) => (b.kind === "resource" || b.kind === "data") && b.labels[0].startsWith("azuread_")).length, 0, "no Entra objects");
-    assert.equal(resources(l, "azurerm_role_assignment").length, 0, "no role assignments");
-    assert.deepEqual(l.yaml.identity, { creates: [], roles: [], governance: false });
+    if (identity === "none") {
+      // Batch 2 makes no Entra objects and assigns no roles.
+      assert.equal(l.blocks.filter((b) => (b.kind === "resource" || b.kind === "data") && b.labels[0].startsWith("azuread_")).length, 0, "no Entra objects");
+      assert.equal(resources(l, "azurerm_role_assignment").length, 0, "no role assignments");
+      assert.deepEqual(l.yaml.identity, { creates: [], roles: [], governance: false });
+      return;
+    }
+    // identity "match": lab.yaml lists exactly what the Terraform assigns and makes.
+    const ras = roleAssignments(l);
+    for (const r of ras) assert.ok(r.principalType, `${r.address} sets principal_type`);
+    const key = (x) => `${x.role} at ${x.scope}`;
+    assert.deepEqual((l.yaml.identity.roles ?? []).map(key).sort(), ras.map(key).sort(), "identity.roles lists the Terraform's role assignments ({ role, scope })");
+    const made = [...new Set(resources(l).filter((b) => b.labels[0] === "azuread_user" || b.labels[0] === "azuread_group").map((b) => b.labels[0].slice("azuread_".length)))].sort();
+    assert.deepEqual([...new Set(l.yaml.identity.creates ?? [])].sort(), made, "identity.creates lists the Entra object types the Terraform makes");
+    assert.equal(l.yaml.identity.governance, GOVERNANCE_LABS.includes(id), "identity.governance is true exactly for the governance labs");
   });
 
-  test(`${id}: VMs have no public IP and use the sizes and disks lab.yaml prices`, () => {
-    const l = lab(id);
+  check("VMs have no public IP and use the sizes and disks lab.yaml prices", () => {
+    const l = load();
     for (const nic of resources(l, "azurerm_network_interface")) assert.doesNotMatch(nic.body, /public_ip_address_id/, `${nic.labels[1]}: no public IP on a VM's NIC`);
     for (const v of vms(l)) assert.doesNotMatch(v.r.body, /public_ip_address\s*\{/, `${v.address}: no public IP on scale set instances`);
     // A public IP only where Azure insists on one: an Application Gateway's frontend.
     const gateways = resources(l, "azurerm_application_gateway").map((g) => g.body).join("\n");
     for (const ip of resources(l, "azurerm_public_ip")) assert.ok(gateways.includes(`azurerm_public_ip.${ip.labels[1]}.id`), `azurerm_public_ip.${ip.labels[1]} belongs to an Application Gateway`);
-    // Sizes: each priced by a retail.sku item, qty = the default count.
+    // Sizes: each priced by a retail.sku item in the session's region, qty = the default count.
     const bySize = {};
     for (const v of vms(l)) bySize[v.size] = (bySize[v.size] ?? 0) + v.count;
-    for (const [size, n] of Object.entries(bySize)) assert.equal(pricedQty(l, (i) => i.retail?.sku === size), n, `${size}: ${n} priced (cost qty is the default count)`);
-    // OS disks: Standard HDD (S4), priced per VM.
+    for (const [size, n] of Object.entries(bySize)) assert.equal(pricedQty(l, (i) => i.retail?.sku === size && !i.region), n, `${size}: ${n} priced (cost qty is the default count)`);
+    // OS disks: Standard HDD (S4), priced per VM in the region; a replicated VM's replica disk in the secondary region.
     const vmCount = vms(l).reduce((n, v) => n + v.count, 0);
     for (const v of vms(l)) assert.equal(attr(v.r.body, "storage_account_type"), '"Standard_LRS"', `${v.address}: a Standard_LRS OS disk`);
-    assert.equal(pricedQty(l, (i) => i.retail?.meter === "S4 LRS Disk"), vmCount, "one S4 LRS Disk per VM");
+    assert.equal(pricedQty(l, (i) => i.retail?.meter === "S4 LRS Disk" && !i.region), vmCount, "one S4 LRS Disk per VM");
+    assert.equal(pricedQty(l, (i) => i.retail?.meter === "S4 LRS Disk" && i.region === "secondary"), replicatedVms(l).length, "one S4 LRS Disk with region: secondary per replicated VM (its replica disk)");
     // Data disks: StandardSSD E1 (4 GiB at most), priced each.
     const disks = resources(l, "azurerm_managed_disk");
     for (const d of disks) {
@@ -248,14 +339,28 @@ export function labContentSuite(id, { marker }) {
     assert.equal(pricedQty(l, (i) => i.retail?.meter === "E1 LRS Disk"), disks.reduce((n, d) => n + countOf(d), 0), "one E1 LRS Disk per data disk");
   });
 
-  test(`${id}: costs what its marker says`, () => {
-    const y = lab(id).yaml;
+  check("costs what its marker says", () => {
+    const y = load().yaml;
     const total = estimateGbpH(y.cost.items);
     assert.equal(costMarker(total, y.timing.deploy_min), marker, `£${total.toFixed(4)}/h, deploy ${y.timing.deploy_min} min`);
   });
 
-  test(`${id}: terraform fmt -check`, { skip: TERRAFORM ? false : "terraform is not installed" }, () => {
-    const r = spawnSync("terraform", ["fmt", "-check", "-diff", "-recursive", "-no-color"], { cwd: lab(id).tfDir, encoding: "utf8", env: TF_ENV });
-    assert.equal(r.status, 0, r.stdout + r.stderr);
-  });
+  check(
+    "terraform fmt -check",
+    () => {
+      const r = spawnSync("terraform", ["fmt", "-check", "-diff", "-recursive", "-no-color"], { cwd: load().tfDir, encoding: "utf8", env: TF_ENV });
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+    },
+    TERRAFORM ? false : "terraform is not installed",
+  );
+  return checks;
+}
+
+/**
+ * The shared checks as node:test tests (seven, named as in the batch 2 plan's
+ * "B0 names as built"; batch 3's options as in its C0 names). `marker`: the
+ * lab's cost marker, "£" or "££".
+ */
+export function labContentSuite(id, opts) {
+  for (const c of contentChecks(id, opts)) test(c.name, c.skip ? { skip: c.skip } : {}, c.fn);
 }

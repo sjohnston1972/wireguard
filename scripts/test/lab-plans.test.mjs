@@ -19,7 +19,8 @@ import { fileURLToPath } from "node:url";
 import { checkPlan } from "../../infra/ci/lab-scope.mjs";
 import { labFolders } from "../lib/labs.mjs";
 import { LAB_PLANS, loadLabPlans } from "./fixtures/labs/plans/labs.mjs";
-import { COMPUTED, realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
+import { COMPUTED, realisticPlan, SCHEMA_FACTS } from "./fixtures/labs/plans/realistic.mjs";
+import { ctx, linuxVm, rgResource, rgSecondaryResource, SECONDARY } from "./fixtures/labs/plans/common.mjs";
 
 const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
 const PLAN_FILES = fileURLToPath(new URL("./fixtures/labs/plans/labs/", import.meta.url));
@@ -44,6 +45,18 @@ const BATCH2_TYPES = [
   "azurerm_backup_policy_vm", "azurerm_backup_protected_vm",
   // data sources
   "data.azurerm_client_config",
+];
+/** Every resource type batch 3's labs (20-27) use, from the batch 3 plan's C0.1 list: computed.json must know each one. */
+const BATCH3_TYPES = [
+  "azurerm_key_vault", "azurerm_key_vault_secret", "azurerm_user_assigned_identity", "azurerm_log_analytics_workspace", "azurerm_policy_set_definition",
+  "azurerm_management_group_policy_set_definition", "azurerm_resource_group_policy_assignment", "azurerm_mssql_server", "azurerm_mssql_database",
+  "azurerm_mssql_failover_group", "azurerm_private_endpoint", "azurerm_private_dns_zone", "azurerm_private_dns_zone_virtual_network_link",
+  "azurerm_cosmosdb_account", "azurerm_cosmosdb_sql_database", "azurerm_cosmosdb_sql_container", "azurerm_storage_container_immutability_policy",
+  "azurerm_storage_management_policy", "azurerm_recovery_services_vault", "azurerm_site_recovery_fabric", "azurerm_site_recovery_protection_container",
+  "azurerm_site_recovery_replication_policy", "azurerm_site_recovery_protection_container_mapping", "azurerm_site_recovery_network_mapping",
+  "azurerm_site_recovery_replicated_vm", "azurerm_container_group", "azurerm_traffic_manager_profile", "azurerm_traffic_manager_external_endpoint",
+  "azurerm_cdn_frontdoor_profile", "azurerm_cdn_frontdoor_endpoint", "azurerm_cdn_frontdoor_origin_group", "azurerm_cdn_frontdoor_origin",
+  "azurerm_cdn_frontdoor_route", "time_sleep", "random_password",
 ];
 /** An address without its instance key: azurerm_subnet.s["web"] -> azurerm_subnet.s. */
 const block = (address) => address.replace(/\[[^\]]*\]/g, "");
@@ -162,6 +175,48 @@ function fixtureAttributes(d) {
 
 test("computed.json has every type batch 2 labs use", () => {
   assert.deepEqual(BATCH2_TYPES.filter((t) => !COMPUTED.types[t]), []);
+});
+
+test("computed.json has every type batch 3 labs use", () => {
+  assert.deepEqual(BATCH3_TYPES.filter((t) => !COMPUTED.types[t]), []);
+  // The providers they come from, at the versions labs/_template's constraints resolve to.
+  for (const p of ["azurerm", "azuread", "random", "time"]) assert.ok(COMPUTED.providers[`registry.terraform.io/hashicorp/${p}`], p);
+});
+
+test("schema-facts.json says which types take a resource group and tags", () => {
+  // One entry for every resource type computed.json knows (data sources take neither).
+  assert.deepEqual(Object.keys(SCHEMA_FACTS).sort(), Object.keys(COMPUTED.types).filter((t) => !t.startsWith("data.")).sort());
+  for (const [t, f] of Object.entries(SCHEMA_FACTS)) assert.deepEqual(Object.keys(f).sort(), ["rg", "tags"], t);
+  // As azurerm 4.81.0 declares them (resource_group_name and tags as arguments).
+  assert.deepEqual(SCHEMA_FACTS.azurerm_subnet, { rg: true, tags: false });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_storage_container, { rg: false, tags: false });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_key_vault_secret, { rg: false, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_mssql_database, { rg: false, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_site_recovery_replicated_vm, { rg: true, tags: false });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_user_assigned_identity, { rg: true, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_resource_group, { rg: false, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.time_sleep, { rg: false, tags: false });
+});
+
+test("ctx gives a secondary group and region", () => {
+  const c = ctx("az305-23-sql-failover", "23");
+  assert.equal(SECONDARY, "ukwest");
+  assert.equal(c.rgSecondary, "rg-lab-az305-23-sql-failover-secondary");
+  assert.equal(c.variables.secondary_region, "ukwest");
+  assert.notEqual(c.variables.secondary_region, c.variables.region);
+  const rg2 = rgSecondaryResource(c);
+  assert.equal(rg2.address, "azurerm_resource_group.secondary");
+  assert.deepEqual(rg2.values, { name: c.rgSecondary, location: SECONDARY, tags: c.tags });
+  assert.deepEqual(rg2.refs, { name: ["var.resource_group_name"], location: ["var.secondary_region"], tags: ["var.tags"] });
+  // Both groups are the lab's own; a VM in the secondary group passes the scope check too.
+  const IN_RG2 = { resource_group_name: ["azurerm_resource_group.secondary.name", "azurerm_resource_group.secondary"], location: ["azurerm_resource_group.secondary.location", "azurerm_resource_group.secondary"], tags: ["var.tags"] };
+  const vnet = { address: "azurerm_virtual_network.target", values: { name: "vnet-target", resource_group_name: c.rgSecondary, location: SECONDARY, address_space: ["10.64.80.0/20"], tags: c.tags }, refs: IN_RG2 };
+  const subnet = { address: "azurerm_subnet.target", values: { name: "snet-vms", resource_group_name: c.rgSecondary, virtual_network_name: "vnet-target", address_prefixes: ["10.64.80.0/24"] }, refs: { resource_group_name: IN_RG2.resource_group_name } };
+  const [nic, vm] = linuxVm(c, { name: "vm-app", subnet: "azurerm_subnet.target", image: { offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2" } });
+  assert.deepEqual(vm.values.source_image_reference, [{ publisher: "Canonical", offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2", version: "latest" }]);
+  assert.deepEqual(linuxVm(c, { name: "vm-x", subnet: "azurerm_subnet.target" })[1].values.source_image_reference, [{ publisher: "Canonical", offer: "ubuntu-24_04-lts", sku: "server", version: "latest" }]);
+  const plan = realisticPlan({ resources: [rgResource(c), rg2, vnet, subnet, nic, vm], variables: c.variables });
+  assert.deepEqual(checkPlan(plan, c.id), []);
 });
 
 test("a realistic plan with for_each instances has one configuration entry per resource block", () => {

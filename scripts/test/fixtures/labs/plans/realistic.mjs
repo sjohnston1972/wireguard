@@ -35,6 +35,8 @@
 import { readFileSync } from "node:fs";
 
 export const COMPUTED = JSON.parse(readFileSync(new URL("./computed.json", import.meta.url), "utf8"));
+/** { "<type>": { rg, tags } }: whether a resource type takes resource_group_name and tags (extract-computed.mjs writes it). */
+export const SCHEMA_FACTS = JSON.parse(readFileSync(new URL("./schema-facts.json", import.meta.url), "utf8"));
 
 /** An address's parts: data.TYPE.NAME or TYPE.NAME, with an optional [0] or ["key"] instance key. */
 function parseAddress(address) {

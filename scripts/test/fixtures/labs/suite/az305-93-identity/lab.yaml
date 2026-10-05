@@ -1,0 +1,27 @@
+# A fixture for labs-content-suite.test.mjs: identity "match" (labs batch 3
+# plan, C0 names). Role assignments at a group, at a resource, and of the
+# lab's own custom role. Not a catalogue lab.
+id: az305-93-identity
+version: 1
+title: "Identity match"
+summary: A managed identity holding three roles.
+exam: AZ-305
+skill_areas: [az305.identity]
+level: expert
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Managed identity and role assignments", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles:
+    - { role: "Reader", scope: resource_group }
+    - { role: "lab-az305-93-identity-ops", scope: resource_group }
+    - { role: "Monitoring Reader", scope: resource }
+  governance: false
