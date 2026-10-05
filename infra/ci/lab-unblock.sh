@@ -21,7 +21,9 @@
 #      until the vault lists no items (LAB_UNBLOCK_VAULT_WAIT_SECONDS, default
 #      300, polled every 15 s; a list that fails is never "none left": if
 #      the last one fails, the vault's items are "unverified", a warning)
-#   5. Site Recovery, per vault: a test failover still to clean up is cleaned
+#   5. Site Recovery, per vault: recovery plans deleted (a learner may make
+#      one; an item in a plan cannot be unprotected), a test failover still
+#      to clean up is cleaned
 #      up, replication is removed from every item, then a wait until the vault
 #      lists none (LAB_UNBLOCK_ASR_WAIT_SECONDS, default 900, every 15 s; a
 #      list that fails is "unverified"), then its network mappings, container
@@ -261,8 +263,9 @@ for g in "${groups[@]}"; do
   done <<<"${vaults[$g]}"
 done
 
-# 5. Site Recovery (lab 26; spec §17 ruling 31), per vault: a test failover still to
-# clean up is cleaned up first (its VM and NIC sit in the test network), then
+# 5. Site Recovery (lab 26; spec §17 ruling 31), per vault: recovery plans are deleted
+# first (an item in a plan cannot be unprotected), then a test failover still to
+# clean up is cleaned up (its VM and NIC sit in the test network), then
 # replication is removed from every item, and a bounded wait (every 15 s, at most
 # LAB_UNBLOCK_ASR_WAIT_SECONDS, default 900) runs until the vault lists none; a
 # list that fails is never "none left". Then the network mappings, container
@@ -276,6 +279,12 @@ asr_list() { azq rest --method get --url "/subscriptions/{subscriptionId}/resour
 for g in "${groups[@]}"; do
   while IFS= read -r v; do
     [ -z "$v" ] && continue
+    # Recovery plans first (a learner may make one by hand): an item in a plan cannot have its
+    # replication removed, and a vault holding a plan cannot be deleted.
+    while IFS= read -r p; do
+      [ -z "$p" ] && continue
+      if az rest --method delete --url "${p}?$ASR_API" -o none; then echo "unblock: $v: recovery plan ${p##*/} deleted"; else warn "$v: could not delete recovery plan ${p##*/}"; fi
+    done < <(asr_list "$g" "$v" replicationRecoveryPlans || warn "$v: could not list recovery plans")
     items="$(asr_list "$g" "$v" replicationProtectedItems "value[].[id, properties.testFailoverState]")" || { warn "$v: could not list replicated items"; items=""; }
     [ -z "$items" ] && continue
     while IFS=$'\t' read -r item tfo; do

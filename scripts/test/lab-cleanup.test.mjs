@@ -879,6 +879,40 @@ test("unblock waits until a vault has no replicated items, then removes network 
   refused.cleanup();
 });
 
+// A recovery plan a learner made by hand holds its items: Azure will not disable replication for an item in a
+// plan, and a vault with a plan left in it cannot be deleted.
+const RECOVERY_PLAN = `${RSV}/replicationRecoveryPlans/rp-learner`;
+test("unblock deletes a vault's recovery plans before removing replication, never failing the run", { skip }, () => {
+  const plans = { match: "^rest --method get --url .*/replicationRecoveryPlans\\?", out: RECOVERY_PLAN };
+  const w = world([...asrWorld(), plans]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L26]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const list = firstCall(calls, new RegExp(`^az rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${R26S}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/replicationRecoveryPlans\\?api-version=2023-08-01 `));
+  const del = firstCall(calls, new RegExp(`^az rest --method delete --url ${RECOVERY_PLAN}\\?api-version=2023-08-01`));
+  const remove = firstCall(calls, /replicationProtectedItems\/vm-app\/remove/);
+  assert.ok(list >= 0 && del > list && remove > del, calls.join("\n"));
+  assert.match(r.out, /unblock: rsv-lab: recovery plan rp-learner deleted/);
+  w.cleanup();
+  // A vault with no replicated items left still has its plans deleted.
+  const empty = world([{ match: "^rest --method get --url .*/replicationProtectedItems\\?", out: "" }, ...asrWorld(), plans]);
+  assert.equal(empty.run("infra/ci/lab-unblock.sh", [L26]).status, 0);
+  assert.ok(firstCall(empty.calls(), new RegExp(`^az rest --method delete --url ${RECOVERY_PLAN}\\?`)) >= 0, empty.calls().join("\n"));
+  empty.cleanup();
+  // Azure refuses the delete, or the list: a warning each, and replication is still removed.
+  for (const [extra, warning] of [
+    [{ match: "^rest --method delete --url .*/replicationRecoveryPlans/", code: 1, err: "ERROR: (BadRequest)" }, /::warning::unblock: rsv-lab: could not delete recovery plan rp-learner/],
+    [{ match: "^rest --method get --url .*/replicationRecoveryPlans\\?", code: 1, err: "ERROR: (Forbidden)" }, /::warning::unblock: rsv-lab: could not list recovery plans/],
+  ]) {
+    const x = world([...asrWorld(), extra, plans]);
+    const out = x.run("infra/ci/lab-unblock.sh", [L26]);
+    assert.equal(out.status, 0, out.out);
+    assert.match(out.stderr, warning);
+    assert.ok(firstCall(x.calls(), /replicationProtectedItems\/vm-app\/remove/) >= 0);
+    x.cleanup();
+  }
+});
+
 test("unblock removes an unlocked policy and a legal hold on an HNS account", { skip }, () => {
   // Lab 25's data lake (is_hns_enabled): its file systems are blob containers to the management plane.
   const L25 = "az305-25-storage-design";
