@@ -16,3 +16,4 @@ lab's hourly estimate times those minutes.
 | 2026-10-05 10:10 | az104-02-policy | 1 | pass | yes | none | 4m 1s | 3m 48s | £0.0000 | 37293933547 |
 | 2026-10-05 10:18 | az104-03-mgmt-groups | 1 | pass | yes | none | 3m 57s | 3m 23s | £0.0000 | 37294886487 |
 | 2026-10-05 10:27 | az104-06-blob-security | 1 | pass | yes | none | 2m 24s | 5m 26s | £0.0011 | 37295767424 |
+| 2026-10-05 10:36 | az104-01-identity | 1 | pass | yes | none | 1m 40s | 5m 34s | £0.0000 | 37296777396 |
