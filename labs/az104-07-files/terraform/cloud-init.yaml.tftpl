@@ -1,0 +1,22 @@
+#cloud-config
+# Rendered by Terraform's templatefile (main.tf). The storage account key is
+# written once, into a root-only credentials file; no command below names it,
+# so it never reaches the console, cloud-init's output log or the boot log.
+
+package_update: true
+packages:
+  - cifs-utils
+
+write_files:
+  - path: /etc/smbcredentials/${account}.cred
+    owner: root:root
+    permissions: "0600"
+    content: |
+      username=${account}
+      password=${key}
+
+runcmd:
+  - mkdir -p /mnt/${share}
+  - echo "//${host}/${share} /mnt/${share} cifs nofail,_netdev,credentials=/etc/smbcredentials/${account}.cred,dir_mode=0777,file_mode=0777,serverino,nosharesock,actimeo=30,vers=3.1.1 0 0" >> /etc/fstab
+  - for i in 1 2 3 4 5 6 7 8 9 10; do mount /mnt/${share} && break; sleep 15; done
+  - sh -c 'echo "Mounted by $(hostname) at $(date -u)" > /mnt/${share}/hello-from-vm.txt'

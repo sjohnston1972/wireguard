@@ -1,3 +1,14 @@
+# Lab 5 (plan area L6). AZ-104 "Implement and manage storage", the study
+# guide's skills this lab touches (wording from the AZ-104 study guide; (V)
+# against the current outline before release):
+#   Configure and manage storage accounts: "Create and configure storage
+#   accounts", "Configure Azure Storage redundancy".
+#   Configure Azure Files and Azure Blob Storage: "Configure storage tiers",
+#   "Configure blob lifecycle management".
+# Costs are GBP list prices for UK South, rounded up (V: price, the GRS cool
+# account in particular). A few kilobytes of data cost far less than the
+# authored 0.0001 per account, which also covers the handful of transactions;
+# storage accounts have no hourly fee of their own.
 id: az104-05-storage
 version: 1
 title: "Storage accounts: redundancy, access tiers, lifecycle"
@@ -11,8 +22,8 @@ type: explore
 prerequisites: []
 cost:
   items:
-    - { name: "Storage account, LRS hot, a few MB", gbp_h: 0.0001 }
-    - { name: "Storage account, GRS cool, a few MB", gbp_h: 0.0001 }
+    - { name: "Storage account, LRS hot, a few KB", gbp_h: 0.0001 }
+    - { name: "Storage account, GRS cool, a few KB", gbp_h: 0.0001 }
   pricey: null
 timing: { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 6 }
 capacity: { vm_sizes: [] }
