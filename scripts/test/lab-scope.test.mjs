@@ -904,3 +904,37 @@ test("ids inside JSON strings are read for what they are", () => {
   assert.deepEqual(checkPlan(plan(assignment(undefined, { parameters: ["azurerm_log_analytics_workspace.law.id", "azurerm_log_analytics_workspace.law"] }, ["parameters"])), id), []);
   assert.deepEqual(verdict(checkPlan(plan(assignment(undefined, { parameters: ["data.azurerm_log_analytics_workspace.prod.id", "data.azurerm_log_analytics_workspace.prod"] }, ["parameters"])), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
 });
+
+// Review (labs batch 3): a deployIfNotExists rule carries a template the remediation deploys; it is checked like
+// any template a lab deploys (templateProblems), and its deployment may not be sent to another group or subscription.
+test("a DINE rule's embedded template is checked as a template, and its deployment stays in the resource's group", () => {
+  const id = "az305-21-monitoring-scale";
+  const DIAG = { type: "Microsoft.KeyVault/vaults/providers/diagnosticSettings", apiVersion: "2021-05-01-preview", name: "[concat(parameters('vaultName'), '/Microsoft.Insights/setbypolicy-alllogs')]", properties: { workspaceId: "[parameters('logAnalytics')]", logs: [{ categoryGroup: "allLogs", enabled: true }] } };
+  const withTemplate = (resources, deployment = {}, extra = {}) => {
+    const rule = dineRule([MONITORING_CONTRIBUTOR]);
+    rule.then.details.deployment = { ...deployment, properties: { mode: "incremental", template: { $schema: RG_SCHEMA, contentVersion: "1.0.0.0", parameters: { vaultName: { type: "string" }, logAnalytics: { type: "string" } }, resources, ...extra }, parameters: { vaultName: { value: "[field('name')]" } } } };
+    return dineHcl(rule);
+  };
+  // Lab 21's own: a Key Vault's diagnostic setting.
+  assert.deepEqual(checkHcl(withTemplate([DIAG]), id), []);
+  const refused = (hcl) => verdict(checkHcl(hcl, id)).map(([rule]) => rule);
+  // A role assignment, a deployment script, a type off the list, a foreign id, subscription() in the template: refused.
+  assert.deepEqual(refused(withTemplate([{ type: "Microsoft.Authorization/roleAssignments", apiVersion: "2022-04-01", name: "[guid('x')]", properties: { roleDefinitionId: `/providers/Microsoft.Authorization/roleDefinitions/${OWNER}`, principalId: "x" } }])), ["role"]);
+  assert.deepEqual(refused(withTemplate([{ type: "Microsoft.Resources/deploymentScripts", apiVersion: "2023-08-01", name: "s", kind: "AzureCLI", properties: {} }])), ["outside-scope"]);
+  assert.deepEqual(refused(withTemplate([{ type: "Microsoft.Compute/virtualMachines", apiVersion: "2024-03-01", name: "vm", properties: {} }])), ["outside-scope"]);
+  assert.deepEqual(refused(withTemplate([{ ...DIAG, properties: { ...DIAG.properties, workspaceId: `${SUB_ID}/resourceGroups/rg-other/providers/Microsoft.OperationalInsights/workspaces/law` } }])), ["outside-scope"]);
+  assert.deepEqual(refused(withTemplate([{ ...DIAG, properties: { ...DIAG.properties, workspaceId: "[concat(subscription().id, '/x')]" } }])), ["outside-scope"]);
+  assert.deepEqual(refused(withTemplate([DIAG], {}, { $schema: "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#" })), ["outside-scope"]);
+  assert.match(checkHcl(withTemplate([{ type: "Microsoft.Compute/virtualMachines", apiVersion: "2024-03-01", name: "vm", properties: {} }]), id)[0].message, /policy_rule's deployment template/);
+  // The deployment sent to another group or subscription (any case of the key), or a linked template.
+  assert.deepEqual(refused(withTemplate([DIAG], { resourceGroup: "rg-other" })), ["outside-scope"]);
+  assert.deepEqual(refused(withTemplate([DIAG], { SubscriptionId: "00000000-0000-0000-0000-000000000000" })), ["outside-scope"]);
+  const linked = dineRule([MONITORING_CONTRIBUTOR]);
+  linked.then.details.deployment = { properties: { mode: "incremental", templateLink: { uri: "https://example.com/t.json" } } };
+  assert.deepEqual(refused(dineHcl(linked)), ["outside-scope"]);
+  // The lab's own group, by name or as the resource's group, is fine.
+  assert.deepEqual(checkHcl(withTemplate([DIAG], { resourceGroup: "[resourceGroup().name]" }), id), []);
+  assert.deepEqual(checkHcl(withTemplate([DIAG], { resourceGroup: `rg-lab-${id}` }), id), []);
+  // Lab 21's real plan still passes.
+  assert.deepEqual(checkPlan(LAB_PLANS[id].plan, id), []);
+});

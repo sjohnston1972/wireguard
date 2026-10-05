@@ -37,6 +37,9 @@
 //                     definition whose rule lists a roleDefinitionIds entry that is
 //                     not a built-in on the allow-list (a remediating policy's
 //                     identity gets those roles), or whose rule a plan cannot read;
+//                     a deployIfNotExists rule's deployment template is checked as
+//                     any template (templateProblems, plus POLICY_TEMPLATE_TYPES),
+//                     and its deployment may not name another group or subscription;
 //                     in a template: Microsoft.Authorization, .Management or .Graph
 //                     resources, and any extension (Bicep `extension`/`import`)
 //   immutability      a Locked immutability policy (nothing can delete it), or a
@@ -478,9 +481,9 @@ export function classifyId(id) {
 
 const DEFINITION_REF = /^\/providers\/Microsoft\.Authorization\/(roleDefinitions|policyDefinitions|policySetDefinitions)\/[^/]+$/i;
 
-/** Every roleDefinitionIds entry and deploymentScope value in a parsed policy rule, keys read case-insensitively. */
+/** Every roleDefinitionIds entry, deploymentScope value and deployment object in a parsed policy rule, keys read case-insensitively. */
 function policyRuleKeys(rule) {
-  const out = { roleDefinitionIds: [], deploymentScope: [] };
+  const out = { roleDefinitionIds: [], deploymentScope: [], deployments: [] };
   const walk = (v) => {
     if (Array.isArray(v)) v.forEach(walk);
     else if (v && typeof v === "object") {
@@ -488,6 +491,11 @@ function policyRuleKeys(rule) {
         const key = k.toLowerCase();
         if (key === "roledefinitionids") out.roleDefinitionIds.push(...(Array.isArray(x) ? x : [x]));
         else if (key === "deploymentscope") out.deploymentScope.push(x);
+        else if (key === "deployment" && x && typeof x === "object" && !Array.isArray(x)) {
+          // A deployment's own template is read by templateProblems, not walked here.
+          out.deployments.push(x);
+          continue;
+        }
         walk(x);
       }
     }
@@ -519,6 +527,14 @@ const TEMPLATE_TYPES = new Map([
   ["microsoft.network/networksecuritygroups", "lab 12: an NSG lives in the group it is deployed to"],
   ["microsoft.network/networksecuritygroups/securityrules", "a rule lives in its NSG"],
   ["microsoft.resources/deployments", "lab 12's module: only as Bicep emits one (inline template, inner scope, Incremental, no resourceGroup/subscriptionId/scope), checked as a template of its own"],
+]);
+/**
+ * The extra types a deployIfNotExists rule's remediation template may deploy (lower case), each with its reason.
+ * The template is otherwise checked as any other (templateProblems), and its deployment lands in the resource's
+ * own group (deploymentScope subscription and a deployment's resourceGroup/subscriptionId elsewhere are refused).
+ */
+const POLICY_TEMPLATE_TYPES = new Map([
+  ["microsoft.keyvault/vaults/providers/diagnosticsettings", "lab 21: a Key Vault's diagnostic setting is an extension of the vault, in the vault's own group; where it sends logs is an assignment parameter, which the id rules read"],
 ]);
 /** Template deployments at other scopes than a resource group. */
 const OTHER_SCOPE_DEPLOYMENTS = new Set(["azurerm_subscription_template_deployment", "azurerm_management_group_template_deployment", "azurerm_tenant_template_deployment"]);
@@ -554,9 +570,10 @@ function resourceIdFirstArgs(expr) {
  * schemas and scopes, resource groups, deployment scripts, linked templates
  * and template specs, ids of other groups, or a template it cannot read);
  * under "gateway" the gateway's names. Nested deployments are checked as
- * templates of their own.
+ * templates of their own. `extraTypes`: more allowed types for this template
+ * (a policy's remediation template: POLICY_TEMPLATE_TYPES).
  */
-export function templateProblems(template) {
+export function templateProblems(template, { extraTypes = new Map() } = {}) {
   const out = [];
   const add = (rule, message) => {
     if (!out.some((p) => p.rule === rule && p.message === message)) out.push({ rule, message });
@@ -590,10 +607,12 @@ export function templateProblems(template) {
     const given = String(res.type ?? "").replace(/@.*$/, "");
     const type = parentType && given && !given.includes("/") ? `${parentType}/${given}` : given;
     if (/^Microsoft\.Graph\//i.test(type) || "extension" in res || "import" in res) add("role", `${where} deploys ${type || "a resource"} through an extension (Microsoft Graph and the like reach beyond Azure Resource Manager)`);
-    else if (TEMPLATE_ROLE_TYPES.test(type) || /\/providers\//i.test(type)) add("role", `${where} deploys ${type}, which a lab may only make in Terraform`);
+    else if (extraTypes.has(type.toLowerCase())) {
+      // On this template's own allow-list (a policy's remediation template: POLICY_TEMPLATE_TYPES).
+    } else if (TEMPLATE_ROLE_TYPES.test(type) || /\/providers\//i.test(type)) add("role", `${where} deploys ${type}, which a lab may only make in Terraform`);
     else if (TEMPLATE_OUTSIDE_TYPES.test(type)) add("outside-scope", `${where} deploys ${type}, which reaches beyond the lab's group`);
     else if (!TEMPLATE_TYPES.has(type.toLowerCase())) {
-      add("outside-scope", `${where} deploys ${type || "a resource with no type"}, which is not on the template allow-list (${[...TEMPLATE_TYPES.keys()].join(", ")}); if a lab needs it, add it to TEMPLATE_TYPES in infra/ci/lab-scope.mjs with the reason it can only ever land inside the lab's group (labs spec §17, ruling 21)`);
+      add("outside-scope", `${where} deploys ${type || "a resource with no type"}, which is not on the template allow-list (${[...TEMPLATE_TYPES.keys(), ...extraTypes.keys()].join(", ")}); if a lab needs it, add it to TEMPLATE_TYPES in infra/ci/lab-scope.mjs (POLICY_TEMPLATE_TYPES for a policy's remediation) with the reason it can only ever land inside the lab's group (labs spec §17, ruling 21)`);
     }
     for (const k of TEMPLATE_SCOPE_KEYS) if (k in res) add("outside-scope", `${where} sends ${type || "a resource"} to another scope (${k})`);
     if (NESTED_DEPLOYMENT.test(type)) {
@@ -850,6 +869,25 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
           const off = roles.filter((g) => !builtInIds.has(g));
           if (off.length) refuse("role", `policy_rule's roleDefinitionIds may name only built-in roles on labs/setup/allowed-roles.json (not ${off.join(", ")})`);
           if (found.deploymentScope.some((s) => String(s).toLowerCase() === "subscription")) refuse("outside-scope", "policy_rule deploys at subscription scope (deploymentScope); a lab's remediation deploys into the resource's own group");
+          // The remediation's deployment: its template checked as any template a lab deploys, never linked, and
+          // never sent to another group or subscription (keys read case-insensitively, as ARM does).
+          const ci = (o, key) => (o && typeof o === "object" && !Array.isArray(o) ? Object.entries(o).find(([k]) => k.toLowerCase() === key)?.[1] : undefined);
+          const ownGroupExpr = (s) => typeof s === "string" && (/^\[\s*resourceGroup\s*\(\s*\)\s*\.\s*name\s*\]$/i.test(s) || (!s.startsWith("[") && ownRg(s)));
+          const ownSubExpr = (s) => typeof s === "string" && /^\[\s*subscription\s*\(\s*\)\s*\.\s*subscriptionId\s*\]$/i.test(s);
+          for (const dep of found.deployments) {
+            const props = ci(dep, "properties");
+            for (const [where, o] of [["deployment", dep], ["deployment.properties", props]]) {
+              const group = ci(o, "resourcegroup");
+              const sub = ci(o, "subscriptionid");
+              if (group !== undefined && !ownGroupExpr(group)) refuse("outside-scope", `policy_rule's ${where} sends the remediation to resource group ${JSON.stringify(group)}; it deploys into the resource's own group`);
+              if (sub !== undefined && !ownSubExpr(sub)) refuse("outside-scope", `policy_rule's ${where} sends the remediation to subscription ${JSON.stringify(sub)}`);
+              if (ci(o, "scope") !== undefined || ci(o, "managementgroup") !== undefined) refuse("outside-scope", `policy_rule's ${where} sends the remediation to another scope`);
+            }
+            const template = ci(props, "template");
+            if (ci(props, "templatelink") !== undefined) refuse("outside-scope", "policy_rule's deployment links a template this check cannot read; put it inline");
+            else if (template === undefined) refuse("outside-scope", "policy_rule's deployment has no template this check can read");
+            else for (const p of templateProblems(template, { extraTypes: POLICY_TEMPLATE_TYPES })) refuse(p.rule, `policy_rule's deployment template: ${p.message}`);
+          }
         }
       }
       if (r.type === "azurerm_role_definition") {
