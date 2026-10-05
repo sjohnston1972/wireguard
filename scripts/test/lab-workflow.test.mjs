@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { SECRET_ENV } from "../../infra/ci/live-log.mjs";
 import { BASH, fwd, JQ, REPO } from "./fixtures/labs/harness.mjs";
+import { BICEP_SHA256, BICEP_VERSION } from "../lib/bicep.mjs";
 
 const WF = fileURLToPath(new URL("../../.github/workflows/lab.yml", import.meta.url));
 const text = readFileSync(WF, "utf8").replace(/\r\n/g, "\n");
@@ -397,16 +398,31 @@ test("the lab's Terraform text is linted before anything of Terraform runs (init
   assert.match(init, /node "\$GITHUB_WORKSPACE\/infra\/ci\/lab-lint\.mjs" "\$GITHUB_WORKSPACE\/labs\/\$LAB_ID\/terraform"/);
   assert.match(init, /set -euo pipefail/);
   const lint = init.indexOf("lab-lint.mjs");
-  assert.ok(lint < init.indexOf("az bicep build") && lint < init.indexOf("terraform init"));
+  assert.ok(lint < init.indexOf(" build ") && lint < init.indexOf("terraform init"));
   // No step before init touches Terraform; init runs for deploy, destroy and test alike.
   for (const s of steps.slice(0, index(lab(5)))) assert.ok(!/\bterraform (init|plan|apply|destroy)\b/.test(s.run ?? ""), s.name);
   for (const a of ["deploy", "destroy", "test"]) assert.ok(String(step(lab(5)).if).includes(`'${a}'`), a);
 });
 
-test("bicep files are built before init", () => {
-  const init = step(lab(5)).run;
-  assert.match(init, /az bicep build --file "\$f"/);
-  assert.ok(init.indexOf("az bicep build") < init.indexOf("terraform init"));
+test("bicep is installed pinned by version and checksum before Terraform init", () => {
+  const s = step(lab(5));
+  const init = s.run;
+  // The pin lives in the step's env, equal to scripts/lib/bicep.mjs (labs-tf and CI use the same one).
+  assert.equal(String(s.env.BICEP_VERSION), BICEP_VERSION);
+  assert.equal(s.env.BICEP_SHA256, BICEP_SHA256["bicep-linux-x64"]);
+  // Only for a lab that has .bicep files; downloaded from the official release, checked before it is made runnable.
+  assert.match(init, /shopt -s nullglob/);
+  assert.match(init, /bicep_files=\(\*\.bicep\)/);
+  const url = init.indexOf('curl -fsSLo "$RUNNER_TEMP/bicep" "https://github.com/Azure/bicep/releases/download/v$BICEP_VERSION/bicep-linux-x64"');
+  const check = init.indexOf('echo "$BICEP_SHA256  $RUNNER_TEMP/bicep" | sha256sum -c -');
+  const chmod = init.indexOf('chmod +x "$RUNNER_TEMP/bicep"');
+  const build = init.indexOf('"$RUNNER_TEMP/bicep" build "$f" --outfile "${f%.bicep}.json"');
+  for (const [what, i] of Object.entries({ url, check, chmod, build })) assert.ok(i >= 0, `${what} missing:\n${init}`);
+  assert.ok(url < check && check < chmod && chmod < build && build < init.indexOf("terraform init"), "download, verify, chmod, build, then init");
+  // The compiler runs without the step's secrets in its environment.
+  assert.match(init, /env -i PATH=\/usr\/bin:\/bin HOME="\$RUNNER_TEMP" TMPDIR="\$RUNNER_TEMP" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "\$RUNNER_TEMP\/bicep" build/);
+  // Never the unpinned `az bicep` (it downloads whatever Bicep is newest).
+  assert.doesNotMatch(text, /az bicep/);
 });
 
 test("state key is labs/<id>/terraform.tfstate and backups keep 5", () => {

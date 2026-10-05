@@ -136,6 +136,17 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bin"
           mv hcl2json_linux_amd64 "$RUNNER_TEMP/bin/hcl2json"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      # Bicep, pinned by version and checksum (scripts/lib/bicep.mjs): checked
+      # before it is made runnable; labs-tf checks it again before each use.
+      - name: install bicep
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSLo bicep-linux-x64 https://github.com/Azure/bicep/releases/download/v0.47.16/bicep-linux-x64
+          echo "64c345a58e0c3e48b1bc98a4e62d6b3adb1d238281297de3400aeafb2697aa5a  bicep-linux-x64" | sha256sum -c -
+          chmod +x bicep-linux-x64
+          mkdir -p "$RUNNER_TEMP/bin"
+          mv bicep-linux-x64 "$RUNNER_TEMP/bin/bicep"
       - name: labs-check against main
         run: |
           git fetch --no-tags origin main
@@ -144,6 +155,8 @@ jobs:
         env:
           TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tf-plugins
           LABS_TF_REQUIRE_HCL2JSON: "1"
+          LABS_TF_REQUIRE_BICEP: "1"
+          BICEP: ${{ runner.temp }}/bin/bicep
         run: |
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           npm run labs-tf

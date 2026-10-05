@@ -51,7 +51,12 @@ test("labs-pr0-check finds a changed, a missing and an extra file, and nothing e
   assert.throws(() => pr0Differences("no-such-ref", "HEAD", dir), /git ls-tree no-such-ref/);
 });
 
+// Batch 1 only. PR 0 put lab.yml on main; from batch 2 on, a branch's own
+// lab.yml and infra/ci/ run with `--ref <branch>` and reach main in the batch
+// PR itself (labs batch 2 plan, ruling 11), so they are meant to differ from
+// PR 0's. `npm run labs-pr0-check` stays for a future PR 0 of its own.
 const fetched = spawnSync("git", ["rev-parse", "--verify", "--quiet", "origin/feat/labs-pr0"], { cwd: REPO, encoding: "utf8" }).status === 0;
-test("PR 0 (origin/feat/labs-pr0) carries exactly this branch's lab.yml and infra/ci/", { skip: fetched ? false : "origin/feat/labs-pr0 not fetched here" }, () => {
+test("PR 0 (origin/feat/labs-pr0) carries exactly this branch's lab.yml and infra/ci/", { skip: "batch 1 only: from batch 2, lab.yml and infra/ci/ change in the batch PR (batch 2 ruling 11)" }, () => {
+  assert.ok(fetched, "origin/feat/labs-pr0 is fetched");
   assert.deepEqual(pr0Differences("origin/feat/labs-pr0", "HEAD", REPO), []);
 });
