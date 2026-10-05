@@ -1,0 +1,54 @@
+# Lab 27 (labs batch 3 plan, area C3; spec §17, ruling 23). AZ-305 study
+# guide skills this lab touches (outline "Skills measured as of April 17,
+# 2026"):
+#   Design infrastructure solutions > Design network solutions: "Recommend
+#   a load-balancing and routing solution", "Recommend a connectivity
+#   solution that connects Azure resources to the internet"; Design compute
+#   solutions: "Recommend a container-based solution".
+#   Design business continuity solutions > Design for high availability:
+#   "Recommend a high availability solution for compute".
+# Costs are GBP list prices from the Retail Prices API (2026-10-05), rounded
+# up. Nothing here has a meter the price feed can use, so every item is
+# authored (ruling 2; npm run labs-verify -- --meters az305-27-multi-region
+# has no retail entry to check):
+#   ACI "Standard vCPU Duration" (shared with Logic Apps): £0.0352 per vCPU
+#     hour in uksouth, £0.0382 in ukwest; "Standard Memory Duration" is per
+#     "1 GB Hour", a unit the feed cannot read: £0.0039 uksouth, £0.0042
+#     ukwest. Each group is 0.5 vCPU and 0.5 GB, billed per second.
+#   Front Door Standard "Standard Base Fees": £26.4161 a month per profile,
+#     priced under region "Zone 1".."Zone 8" (no uksouth row); Learn's
+#     billing page: billed for each hour, or part hour, the profile exists.
+#     Requests (£0.0068 per 10,000, Zone 1) are a few hundred an hour.
+#   Traffic Manager (region Global): "Non-Azure Endpoint Health Checks"
+#     £0.4076 a month per endpoint, two of them; "DNS Queries" £0.4076 per
+#     million.
+id: az305-27-multi-region
+version: 1
+title: "Multi-region app with Traffic Manager and Front Door"
+summary: >-
+  A tiny web app running in container instances in uksouth and ukwest, behind both Traffic Manager (DNS
+  priority routing) and Front Door Standard, so you can stop one region and watch each front end fail over.
+exam: AZ-305
+skill_areas: [az305.infra, az305.continuity]
+level: expert
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Container Instances, uksouth, 0.5 vCPU", gbp_h: 0.0176 }
+    - { name: "Container Instances, uksouth, 0.5 GB memory", gbp_h: 0.002 }
+    - { name: "Container Instances, ukwest, 0.5 vCPU", gbp_h: 0.0191, region: secondary }
+    - { name: "Container Instances, ukwest, 0.5 GB memory", gbp_h: 0.0021, region: secondary }
+    - { name: "Front Door Standard, base fee", gbp_h: 0.0362 }
+    - { name: "Front Door requests, light use", gbp_h: 0.0001 }
+    - { name: "Traffic Manager health checks, external endpoint", gbp_h: 0.0006, qty: 2 }
+    - { name: "Traffic Manager DNS queries, light use", gbp_h: 0.0001 }
+  pricey: "Front Door Standard, base fee"
+timing: { deploy_min: 12, destroy_min: 12, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [] }
+regions: { secondary: ukwest }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles: []
+  governance: false

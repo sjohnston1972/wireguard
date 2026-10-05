@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { attr, lab, labContentSuite, outputs, resources, uncomment } from "./fixtures/labs/content.mjs";
 
 const SR = "az305-26-site-recovery";
+const MR = "az305-27-multi-region";
 
 /** The body of the first nested block `name { ... }` in `body` (any depth), or undefined. */
 function nested(body, name) {
@@ -319,4 +320,162 @@ test(`${SR}: no literal subscription ids or other groups in the Terraform`, () =
   assert.doesNotMatch(all, /\/subscriptions\//);
   assert.doesNotMatch(all, /resourceGroups\//i);
   assert.ok(outputs(lab(SR)).includes("peer_vnet_id"));
+});
+
+// ── Lab 27: multi-region front ends ──────────────────────────────────────
+
+labContentSuite(MR, { marker: "££", secondary: true });
+
+/** The lab's two container groups, by where they run: { uks, ukw }. */
+function aciByRegion(l) {
+  const groups = resources(l, "azurerm_container_group");
+  assert.equal(groups.length, 2, "two container groups");
+  const uks = groups.find((g) => attr(g.body, "resource_group_name") === IN_LAB);
+  const ukw = groups.find((g) => attr(g.body, "resource_group_name") === IN_SECONDARY);
+  assert.ok(uks && ukw, "one in rg-lab-<id> (uksouth) and one in rg-lab-<id>-secondary (ukwest)");
+  return { uks, ukw };
+}
+
+test(`${MR}: one container group per region, public with a DNS label, serving the region's name`, () => {
+  const l = lab(MR);
+  const { uks, ukw } = aciByRegion(l);
+  for (const [g, name, region, location] of [
+    [uks, "ci-uks", "var.region", "azurerm_resource_group.lab.location"],
+    [ukw, "ci-ukw", "var.secondary_region", "azurerm_resource_group.secondary.location"],
+  ]) {
+    const b = g.body;
+    assert.equal(attr(b, "name"), `"${name}"`);
+    assert.equal(attr(b, "location"), location);
+    assert.equal(attr(b, "os_type"), '"Linux"');
+    // Ruling 23: public by nature, as Traffic Manager and Front Door reach origins over the internet.
+    assert.equal(attr(b, "ip_address_type"), '"Public"');
+    assert.equal(attr(b, "dns_name_label"), `"\${var.name_prefix}-${name.slice(3)}"`);
+    assert.equal(attr(b, "subnet_ids"), undefined, "in no VNet");
+    const containers = allNested(b, "container");
+    assert.equal(containers.length, 1, `${name}: one container`);
+    const c = containers[0];
+    assert.equal(attr(c, "image"), '"mcr.microsoft.com/azurelinux/base/python:3.12"', "an MCR image: no registry");
+    assert.equal(attr(c, "cpu"), "0.5");
+    assert.equal(attr(c, "memory"), "0.5");
+    const cmd = attr(c, "commands") ?? "";
+    assert.ok(cmd.includes(`\${${region}}`), `${name}'s page names its region (${region})`);
+    assert.match(cmd, /python3 -m http\.server 80\b/);
+    assert.equal(attr(nested(c, "ports"), "port"), "80");
+    assert.equal(attr(nested(c, "ports"), "protocol"), '"TCP"');
+  }
+});
+
+test(`${MR}: Traffic Manager priority routing over the two external endpoints`, () => {
+  const l = lab(MR);
+  const tm = one(l, "azurerm_traffic_manager_profile");
+  assert.equal(attr(tm.body, "resource_group_name"), IN_LAB, "global, kept in rg-lab-<id>");
+  assert.equal(attr(tm.body, "name"), '"${var.name_prefix}-tm"');
+  assert.equal(attr(tm.body, "traffic_routing_method"), '"Priority"');
+  const dns = nested(tm.body, "dns_config");
+  assert.equal(attr(dns, "relative_name"), '"${var.name_prefix}-tm"');
+  assert.equal(attr(dns, "ttl"), "30");
+  const mon = nested(tm.body, "monitor_config");
+  assert.deepEqual([attr(mon, "protocol"), attr(mon, "port"), attr(mon, "path")], ['"HTTP"', "80", '"/"']);
+  assert.equal(attr(mon, "interval_in_seconds"), "30");
+  assert.equal(attr(mon, "tolerated_number_of_failures"), "3", "about 90 s from failure to failover, then the 30 s TTL");
+  // Two external endpoints: the containers' public names, uksouth first.
+  const { uks, ukw } = aciByRegion(l);
+  const eps = resources(l, "azurerm_traffic_manager_external_endpoint");
+  assert.equal(eps.length, 2);
+  for (const e of eps) assert.equal(attr(e.body, "profile_id"), `azurerm_traffic_manager_profile.${tm.labels[1]}.id`);
+  const priority = Object.fromEntries(eps.map((e) => [attr(e.body, "target"), attr(e.body, "priority")]));
+  assert.deepEqual(priority, { [`azurerm_container_group.${uks.labels[1]}.fqdn`]: "1", [`azurerm_container_group.${ukw.labels[1]}.fqdn`]: "2" });
+  assert.equal(resources(l, "azurerm_traffic_manager_azure_endpoint").length + resources(l, "azurerm_traffic_manager_nested_endpoint").length, 0);
+});
+
+test(`${MR}: Front Door Standard with one origin group of both origins and one route, no WAF`, () => {
+  const l = lab(MR);
+  const p = one(l, "azurerm_cdn_frontdoor_profile");
+  const profileId = `azurerm_cdn_frontdoor_profile.${p.labels[1]}.id`;
+  assert.equal(attr(p.body, "resource_group_name"), IN_LAB, "global, kept in rg-lab-<id>");
+  assert.equal(attr(p.body, "sku_name"), '"Standard_AzureFrontDoor"', "Standard: Premium's base fee is far higher");
+  const ep = one(l, "azurerm_cdn_frontdoor_endpoint");
+  assert.equal(attr(ep.body, "cdn_frontdoor_profile_id"), profileId);
+  const og = one(l, "azurerm_cdn_frontdoor_origin_group");
+  assert.equal(attr(og.body, "cdn_frontdoor_profile_id"), profileId);
+  const probe = nested(og.body, "health_probe");
+  assert.deepEqual([attr(probe, "protocol"), attr(probe, "path"), attr(probe, "interval_in_seconds")], ['"Http"', '"/"', "100"]);
+  const lb = nested(og.body, "load_balancing");
+  assert.deepEqual([attr(lb, "sample_size"), attr(lb, "successful_samples_required")], ["4", "3"]);
+  // Two origins, the containers' public names, uksouth first; each is sent its own host name.
+  const { uks, ukw } = aciByRegion(l);
+  const origins = resources(l, "azurerm_cdn_frontdoor_origin");
+  assert.equal(origins.length, 2);
+  const priority = {};
+  for (const o of origins) {
+    assert.equal(attr(o.body, "cdn_frontdoor_origin_group_id"), `azurerm_cdn_frontdoor_origin_group.${og.labels[1]}.id`);
+    assert.equal(attr(o.body, "origin_host_header"), attr(o.body, "host_name"));
+    assert.equal(attr(o.body, "http_port"), "80");
+    assert.equal(attr(o.body, "certificate_name_check_enabled"), "true");
+    priority[attr(o.body, "host_name")] = attr(o.body, "priority");
+  }
+  assert.deepEqual(priority, { [`azurerm_container_group.${uks.labels[1]}.fqdn`]: "1", [`azurerm_container_group.${ukw.labels[1]}.fqdn`]: "2" });
+  // One route: everything, HTTP and HTTPS in, HTTP to the origins, no caching.
+  const r = one(l, "azurerm_cdn_frontdoor_route").body;
+  assert.equal(attr(r, "cdn_frontdoor_endpoint_id"), `azurerm_cdn_frontdoor_endpoint.${ep.labels[1]}.id`);
+  assert.equal(attr(r, "cdn_frontdoor_origin_group_id"), `azurerm_cdn_frontdoor_origin_group.${og.labels[1]}.id`);
+  assert.deepEqual(strings(attr(r, "patterns_to_match")), ["/*"]);
+  assert.deepEqual(strings(attr(r, "supported_protocols")).sort(), ["Http", "Https"]);
+  assert.equal(attr(r, "forwarding_protocol"), '"HttpOnly"');
+  assert.equal(nested(r, "cache"), undefined, "no caching: every request reaches an origin, so a failover shows at once");
+  assert.equal(attr(r, "cdn_frontdoor_origin_ids"), `[${origins.map((o) => `azurerm_cdn_frontdoor_origin.${o.labels[1]}.id`).join(", ")}]`);
+  // No WAF, no custom domain, no rule set.
+  assert.deepEqual(resources(l).map((x) => x.labels[0]).filter((t) => /firewall|security_policy|custom_domain|rule_set|_rule$|secret/.test(t)), []);
+});
+
+test(`${MR}: no App Service and no azurerm_public_ip`, () => {
+  const l = lab(MR);
+  // Ruling 23: App Service quota is 0, so the backends are container instances.
+  assert.deepEqual(resources(l).map((r) => r.labels[0]).filter((t) => /service_plan|web_app|app_service|function_app|container_app/.test(t)), []);
+  assert.equal(resources(l, "azurerm_public_ip").length, 0);
+  // No network of its own: nothing to peer, no addresses from the slot.
+  assert.equal(resources(l, "azurerm_virtual_network").length, 0);
+  assert.deepEqual(l.yaml.connectivity, { peering: "off", dns_link: false, subnets_used: 0 });
+});
+
+test(`${MR}: connect lists the Traffic Manager and Front Door URLs`, () => {
+  const l = lab(MR);
+  const connect = l.blocks.find((b) => b.kind === "output" && b.labels[0] === "connect")?.body ?? "";
+  assert.match(connect, /"[^"\n]*http:\/\/\$\{azurerm_traffic_manager_profile\.[a-z0-9_]+\.fqdn\}[^"\n]*"/);
+  assert.match(connect, /"[^"\n]*https:\/\/\$\{azurerm_cdn_frontdoor_endpoint\.[a-z0-9_]+\.host_name\}[^"\n]*"/);
+  const { uks, ukw } = aciByRegion(l);
+  for (const g of [uks, ukw]) assert.ok(connect.includes(`http://\${azurerm_container_group.${g.labels[1]}.fqdn}`), `${g.labels[1]}'s own URL`);
+  assert.equal(l.blocks.find((b) => b.kind === "output" && b.labels[0] === "private_ips")?.body.trim(), "value = {}");
+});
+
+test(`${MR}: Front Door's base fee and both regions' containers are priced, authored where the feed cannot price them`, () => {
+  const y = lab(MR).yaml;
+  // Front Door Standard's base fee: £26.4161 a month per profile, priced under region "Zone N" (no uksouth row).
+  const fd = y.cost.items.find((i) => /Front Door/.test(i.name) && /base fee/i.test(i.name));
+  assert.ok(fd, "a Front Door base fee item");
+  assert.equal(fd.retail, undefined, "authored: the feed has no uksouth row for it");
+  assert.ok(fd.gbp_h >= Math.floor((26.4161 / 730) * 10000) / 10000, `£${fd.gbp_h}/h covers £26.4161 a month`);
+  assert.equal(y.cost.pricey, fd.name, "the card names the base fee as what makes it pricey");
+  // ACI in each region, vCPU and memory (ruling 2: shared meter, and a unit the feed cannot read).
+  const aci = y.cost.items.filter((i) => /Container Instances/.test(i.name));
+  assert.equal(aci.filter((i) => !i.region).length, 2, "vCPU and memory in uksouth");
+  assert.equal(aci.filter((i) => i.region === "secondary").length, 2, "vCPU and memory in ukwest");
+  // Traffic Manager: a health-checked external endpoint each.
+  const tm = y.cost.items.find((i) => /Traffic Manager/.test(i.name) && /health check/i.test(i.name));
+  assert.equal(tm?.qty, 2);
+  assert.deepEqual(y.cost.items.filter((i) => i.retail).map((i) => i.name), [], "no meter here is unique in uksouth");
+  assert.deepEqual(y.capacity.vm_sizes, []);
+  assert.deepEqual(y.timing, { deploy_min: 12, destroy_min: 12, session_h: 2, max_h: 4 });
+  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 68);
+});
+
+test(`${MR}: the readme says how Front Door is billed, that the edge takes minutes, and how each front end fails over`, () => {
+  const r = lab(MR).readme;
+  assert.match(r, /uksouth[^\n]*ukwest[^\n]*pair/, "the lab must be deployed in uksouth with ukwest as its pair");
+  assert.match(r, /`rg-lab-az305-27-multi-region-secondary`/);
+  assert.match(r, /base fee[^\n]*hour/i, "Front Door's base fee is billed by the hour");
+  assert.match(r, /minutes/);
+  assert.match(r, /az container stop/);
+  assert.match(r, /Host header/);
+  assert.match(r, /App Service/, "why no App Service (readme only)");
 });
