@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { attr, lab, labContentSuite, resources, uncomment } from "./fixtures/labs/content.mjs";
 
 const MONITOR = "az104-18-monitor";
+const BACKUP = "az104-19-backup";
 
 /** The body of the first nested block `name { ... }` in `body` (any depth), or undefined. */
 function nested(body, name) {
@@ -155,4 +156,78 @@ test(`${MONITOR}: the readme's things to try include KQL on Perf and Syslog`, ()
   assert.match(tries, /`Perf \|[^`]*`/, "a Perf query");
   assert.match(tries, /`Syslog \|[^`]*`/, "a Syslog query");
   assert.match(tries, /action group/i, "adding a receiver by hand is suggested");
+});
+
+// ── Lab 19: Backup ───────────────────────────────────────────────────────
+
+labContentSuite(BACKUP, { marker: "£" });
+
+test(`${BACKUP}: a Standard Recovery Services vault, LRS, soft delete off, immutability Disabled`, () => {
+  const v = one(lab(BACKUP), "azurerm_recovery_services_vault").body;
+  assert.equal(attr(v, "sku"), '"Standard"');
+  assert.equal(attr(v, "storage_mode_type"), '"LocallyRedundant"');
+  assert.equal(attr(v, "cross_region_restore_enabled"), "false");
+  // Soft delete on would keep deleted backup data (and the vault) for 14 days after tear-down.
+  assert.equal(attr(v, "soft_delete_enabled"), "false");
+  assert.equal(attr(v, "immutability"), '"Disabled"');
+});
+
+test(`${BACKUP}: a daily Enhanced (V2) policy keeping 7 days, instant restore 1 day in rg-lab-<id>-irp`, () => {
+  const l = lab(BACKUP);
+  const vault = one(l, "azurerm_recovery_services_vault");
+  const p = one(l, "azurerm_backup_policy_vm").body;
+  assert.equal(attr(p, "recovery_vault_name"), `azurerm_recovery_services_vault.${vault.labels[1]}.name`);
+  // V2 (Enhanced) backs up Trusted Launch VMs as well as standard ones; V1 refuses Trusted Launch.
+  assert.equal(attr(p, "policy_type"), '"V2"');
+  assert.equal(attr(nested(p, "backup"), "frequency"), '"Daily"');
+  assert.equal(attr(nested(p, "retention_daily"), "count"), "7");
+  assert.equal(nested(p, "retention_weekly"), undefined, "daily points only");
+  assert.equal(attr(p, "instant_restore_retention_days"), "1");
+  // Azure makes the restore-point group itself (appending 1): it must be rg-lab-<id>-*, or the sweep misses it.
+  assert.equal(attr(nested(p, "instant_restore_resource_group"), "prefix"), '"${var.resource_group_name}-irp"');
+});
+
+test(`${BACKUP}: the VM is protected and versions.tf stops protection and deletes data on destroy`, () => {
+  const l = lab(BACKUP);
+  const vm = one(l, "azurerm_linux_virtual_machine");
+  const vault = one(l, "azurerm_recovery_services_vault");
+  const policy = one(l, "azurerm_backup_policy_vm");
+  const pv = one(l, "azurerm_backup_protected_vm").body;
+  assert.equal(attr(pv, "source_vm_id"), `azurerm_linux_virtual_machine.${vm.labels[1]}.id`);
+  assert.equal(attr(pv, "backup_policy_id"), `azurerm_backup_policy_vm.${policy.labels[1]}.id`);
+  assert.equal(attr(pv, "recovery_vault_name"), `azurerm_recovery_services_vault.${vault.labels[1]}.name`);
+  const rs = nested(features(l), "recovery_service");
+  assert.ok(rs !== undefined, "features has a recovery_service block");
+  assert.equal(attr(rs, "vm_backup_stop_protection_and_retain_data_on_destroy"), "false", "destroy deletes the backup data");
+  // azurerm takes only one of the two retain settings; suspend is left at its default (false).
+  assert.equal(attr(rs, "vm_backup_suspend_protection_and_retain_data_on_destroy"), undefined, "destroy never just suspends");
+  assert.equal(attr(rs, "purge_protected_items_from_vault_on_destroy"), "true", "items made by hand (Backup now on another VM) are purged with the vault");
+  // Priced: one protected instance, from the price feed.
+  const item = l.yaml.cost.items.find((i) => i.retail?.meter === "Azure VM Protected Instance");
+  assert.ok(item, "an Azure VM Protected Instance cost item");
+  assert.equal(item.retail.unit, "1/Month");
+  assert.equal(item.qty ?? 1, 1);
+});
+
+test(`${BACKUP}: a staging storage account for restores, named from name_prefix and inside the lab`, () => {
+  const sa = one(lab(BACKUP), "azurerm_storage_account").body;
+  assert.match(attr(sa, "name"), /^"\$\{var\.name_prefix\}[a-z0-9]+"$/);
+  assert.equal(attr(sa, "account_tier"), '"Standard"');
+  assert.equal(attr(sa, "account_replication_type"), '"LRS"', "restores need a non-zonal account in the vault's region");
+  assert.equal(attr(sa, "allow_nested_items_to_be_public"), "false");
+});
+
+test(`${BACKUP}: destroy allows for the vault to clear its backup items`, () => {
+  const { timing } = lab(BACKUP).yaml;
+  // Unblock waits up to 5 minutes for the vault to list no items, then Terraform deletes the rest.
+  assert.ok(timing.destroy_min >= 10, `destroy_min ${timing.destroy_min} is at least 10`);
+  assert.ok(Math.min(150, 2 * (timing.deploy_min + timing.destroy_min) + 20) >= 50, "the job timeout leaves room for a slow vault");
+});
+
+test(`${BACKUP}: the readme says to restore only into rg-lab-<id> and never to lock immutability or make soft delete always-on`, () => {
+  const r = lab(BACKUP).readme;
+  assert.match(r, /[Rr]estore[^\n]*only into `rg-lab-az104-19-backup`/);
+  assert.match(r, /[Nn]ever lock[^\n]*immutability/);
+  assert.match(r, /[Nn]ever[^\n]*soft delete[^\n]*[Aa]lways[- ]on/);
+  assert.match(r, /Backup now/);
 });
