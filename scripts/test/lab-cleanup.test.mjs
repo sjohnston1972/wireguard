@@ -723,7 +723,8 @@ test("unpeer is idempotent: no gateway VNet and no lab group is a clean no-op", 
 test("ready check polls until every provisioningState is Succeeded or deploy_min passes", { skip }, () => {
   const w = world([
     { match: "^group list", out: `${RG}\tSucceeded\n${RG}x\tCreating` },
-    { match: `^resource list --resource-group ${RG} `, out: [`vnet-lab\tUpdating\nl06sa\tSucceeded`, `vnet-lab\tUpdating\nl06sa\tSucceeded`, `vnet-lab\tSucceeded\nl06sa\tSucceeded`] },
+    // name, type, provisioningState (the state last: see the batch 3 test below).
+    { match: `^resource list --resource-group ${RG} `, out: [`vnet-lab\tMicrosoft.Network/virtualNetworks\tUpdating\nl06sa\tMicrosoft.Storage/storageAccounts\tSucceeded`, `vnet-lab\tMicrosoft.Network/virtualNetworks\tUpdating\nl06sa\tMicrosoft.Storage/storageAccounts\tSucceeded`, `vnet-lab\tMicrosoft.Network/virtualNetworks\tSucceeded\nl06sa\tMicrosoft.Storage/storageAccounts\tSucceeded`] },
   ]);
   const r = w.run("infra/ci/lab-ready.sh", [ID, "4"], { LAB_READY_INTERVAL: "0" });
   assert.equal(r.status, 0, r.out);
@@ -733,7 +734,7 @@ test("ready check polls until every provisioningState is Succeeded or deploy_min
 
   const stuck = world([
     { match: "^group list", out: `${RG}\tSucceeded` },
-    { match: `^resource list --resource-group ${RG} `, out: `vnet-lab\tFailed` },
+    { match: `^resource list --resource-group ${RG} `, out: `vnet-lab\tMicrosoft.Network/virtualNetworks\tFailed` },
   ]);
   const s = stuck.run("infra/ci/lab-ready.sh", [ID, "4"], { LAB_READY_INTERVAL: "0", LAB_READY_SECONDS: "0" });
   assert.equal(s.status, 1);
@@ -940,4 +941,39 @@ test("the safety net purges soft-deleted Key Vaults that lived in a lab group, a
   assert.equal(b.status, 1);
   assert.match(b.stdout, /unverified: soft-deleted Key Vaults/);
   broken.cleanup();
+});
+
+// Ruling 36: some resource types may never report a provisioningState; one is listed (test-first, on
+// release-test evidence) in READY_NO_STATE_TYPES. The list starts empty.
+test("ready check accepts an empty state only for types listed as never giving one", { skip }, () => {
+  const src = readFileSync(join(REPO, "infra", "ci", "lab-ready.sh"), "utf8").replace(/\r\n/g, "\n");
+  assert.match(src, /^READY_NO_STATE_TYPES=\(\)$/m, "the list starts empty");
+  const scenario = [
+    { match: "^group list", out: `${RG}\tSucceeded` },
+    { match: `^resource list --resource-group ${RG} --query \\[\\]\\.\\[name, type, provisioningState\\] `, out: `tm-lab\tMicrosoft.Network/trafficManagerProfiles\t\nl06sa\tMicrosoft.Storage/storageAccounts\tSucceeded` },
+  ];
+  // As shipped: a resource with no state is never ready.
+  const w = world(scenario);
+  const r = w.run("infra/ci/lab-ready.sh", [ID, "4"], { LAB_READY_INTERVAL: "0", LAB_READY_SECONDS: "0" });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /tm-lab \(no state\)/);
+  w.cleanup();
+  // With the type listed (a copy of the script), the same resource passes; another type with no state still waits.
+  const listed = world([...scenario.slice(0, 1), { ...scenario[1], out: `${scenario[1].out}\nfd-lab\tMicrosoft.Cdn/profiles\t` }]);
+  const copy = join(listed.dir, "lab-ready.sh");
+  writeFileSync(copy, src.replace(/^READY_NO_STATE_TYPES=\(\)$/m, 'READY_NO_STATE_TYPES=("Microsoft.Network/trafficManagerProfiles")'));
+  const run = (args) => spawnSync(BASH, ["--noprofile", "--norc", "-c", 'PATH="$(cygpath -u "$FAKE_BIN" 2>/dev/null || printf %s "$FAKE_BIN"):$PATH"; exec bash --noprofile --norc "$0" "$@"', fwd(copy), ...args], { encoding: "utf8", env: listed.env({ LAB_READY_INTERVAL: "0", LAB_READY_SECONDS: "0" }) });
+  const l = run([ID, "4"]);
+  const out = (l.stdout ?? "") + (l.stderr ?? "");
+  assert.equal(l.status, 1, out);
+  assert.doesNotMatch(out, /tm-lab/);
+  assert.match(out, /fd-lab \(no state\)/);
+  listed.cleanup();
+  // Only fd-lab gone: ready.
+  const ok = world([...scenario.slice(0, 1), scenario[1]]);
+  const copy2 = join(ok.dir, "lab-ready.sh");
+  writeFileSync(copy2, src.replace(/^READY_NO_STATE_TYPES=\(\)$/m, 'READY_NO_STATE_TYPES=("Microsoft.Network/trafficManagerProfiles")'));
+  const r2 = spawnSync(BASH, ["--noprofile", "--norc", "-c", 'PATH="$(cygpath -u "$FAKE_BIN" 2>/dev/null || printf %s "$FAKE_BIN"):$PATH"; exec bash --noprofile --norc "$0" "$@"', fwd(copy2), ID, "4"], { encoding: "utf8", env: ok.env({ LAB_READY_INTERVAL: "0", LAB_READY_SECONDS: "0" }) });
+  assert.equal(r2.status, 0, (r2.stdout ?? "") + (r2.stderr ?? ""));
+  ok.cleanup();
 });
