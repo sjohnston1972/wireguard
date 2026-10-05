@@ -207,7 +207,7 @@ items are checked live or on the official page during the build; each area's rep
   `instant_restore_resource_group` prefix `rg-lab-<id>-irp`; V: Azure appends `1`), and Azure's own `NetworkWatcherRG`. No Entra objects, no role assignments
   (`identity: { creates: [], roles: [], governance: false }` for all twelve).
 - **Cheapest SKUs:** `Standard_B1s` VMs, Ubuntu 24.04 (`ubuntu-24_04-lts`/`server`), `Standard_LRS` OS disks (S4), StandardSSD
-  E1 data disks, App Gateway Basic, P0v3 Linux, ACR Basic, ACI 0.5 vCPU / 0.5 GB, internal Standard LB, RSV LRS.
+  E1 data disks, App Gateway Standard_v2 autoscaling 0–2 (Steven's choice over Basic, after review), P0v3 Linux, ACR Basic, ACI 0.5 vCPU / 0.5 GB, internal Standard LB, RSV LRS.
 - **Addresses:** every one from `cidrsubnet(var.address_space, 2, n)` (a /20) and smaller cuts of it, in `.tf` and `.bicep`.
 - **`lab.yaml`:** as batch 1 (YAML 1.1, `"off"` quoted, whole minutes); a header comment naming the AZ-104 study-guide skills
   (V: the current outline) and where each price came from, with the `labs-verify --meters` answer.
@@ -232,7 +232,7 @@ Planning figures; release tests replace the times. £/h is the authored estimate
 | 13 | az104-13-vnets | VNet, web/app subnets, NSGs, ASGs, 2 VMs | 0.021 £ | opt | 1 | 5/4 | 2/6 | — | B1s ×2 |
 | 14 | az104-14-peering-udr | hub + 2 spokes, peerings, router VM, UDRs, 2 spoke VMs | 0.032 £ | opt | 3 | 6/5 | 2/6 | 13 | B1s ×3 |
 | 15 | az104-15-dns | public zone, private `lab15.internal` (auto-registration), 1 VM | 0.012 £ | opt | 1 | 4/4 | 2/6 | 13 | B1s |
-| 16 | az104-16-lb-appgw | internal Standard LB, App Gateway Basic, 2 VMs | 0.070 ££ | opt | 1 | 12/10 | 2/4 | 13 | B1s ×2 |
+| 16 | az104-16-lb-appgw | internal Standard LB, App Gateway Standard_v2 (autoscale 0–2), 2 VMs | 0.240 ££ | opt | 1 | 12/10 | 2/4 | 13 | B1s ×2 |
 | 17 | az104-17-netwatcher-fix | break-fix: NSG deny + UDR to a dead hop, 2 VMs, NW agent | 0.021 £ | opt | 1 | 6/5 | 2/4 | 13 | B1s ×2 |
 | 18 | az104-18-monitor | workspace (capped), VM with AMA + DCR, metric and activity log alerts | 0.012 £ | opt | 1 | 6/5 | 2/6 | 8 | B1s |
 | 19 | az104-19-backup | RSV, daily policy, protected VM (restore by hand) | 0.021 £ | opt | 1 | 8/10 | 3/8 | 8 | B1s |
@@ -240,7 +240,8 @@ Planning figures; release tests replace the times. £/h is the authored estimate
 Skill areas: 8–12 `az104.compute`; 13–16 `az104.networking`; 17 `az104.networking, az104.monitor`; 18–19 `az104.monitor`.
 Levels: 13 foundation, the rest associate. Lab 17 `type: break-fix`, the rest explore. `dns_link: true` only for 15.
 Retail entries: `{ sku: Standard_B1s }`; `S4 LRS Disk` and `E1 LRS Disk` (`1/Month`); `Basic Registry Unit` (`1/Day`);
-`Basic Fixed Cost`, `Basic Capacity Units` (`1/Hour`); `Standard IPv4 Static Public IP` (`1 Hour`); `Azure VM Protected Instance`
+`Standard IPv4 Static Public IP` (`1 Hour`); (lab 16 as built on Standard_v2: `Standard Fixed Cost` £0.1887/h and
+`Standard Capacity Units` £0.006/h are shared names, so authored with no `retail`, ruling 2); `Azure VM Protected Instance`
 (`1/Month`; billed at half for a VM under 50 GB, so it overestimates). Everything else authored (ruling 2).
 
 ## Review Focus
@@ -258,7 +259,7 @@ Retail entries: `{ sku: Standard_B1s }`; `S4 LRS Disk` and `E1 LRS Disk` (`1/Mon
 3. **Fixtures tidier than real plans** (batch 1's lesson). Every new lab's plan goes through `realisticPlan` with azurerm
    4.81.0's computed attributes; the plan-attribute test keeps each fixture equal to its `main.tf`. B0: `computed.json has every
    type batch 2 labs use`; `a realistic plan with for_each instances has one configuration entry per resource block`.
-4. **Azure says no in uksouth.** Zonal B1s in zones 1–2, P0v3 quota, App Gateway Basic, the resource providers
+4. **Azure says no in uksouth.** Zonal B1s in zones 1–2, P0v3 quota, App Gateway Standard_v2, the resource providers
    (`Microsoft.App`, `ContainerInstance`, `ContainerRegistry`, `RecoveryServices`, `OperationalInsights`, `Insights`), and the
    B-series vCPU quota with the gateway's VM: Integration step 5 checks each before any spend. A resource type
    whose `provisioningState` is empty fails the ready check ("no state"); if a release test shows one, B0's owner adds it to
@@ -368,9 +369,12 @@ scripts/test/labs-compute.test.mjs scripts/test/lab-plans.test.mjs`, `npm run la
   `az104-15-dns: private zone lab15.internal linked to the lab VNet with auto-registration`; `az104-15-dns: dns_link is true and
   Terraform never links the zone to the gateway`. (V) Azure accepts a zone under `example.com`; else `<prefix>.contoso-lab.com`.
 - [ ] **B2.4 Lab 16:** `az104-16-lb-appgw: an internal Standard load balancer with a TCP 80 probe and rule over both VMs`;
-  `az104-16-lb-appgw: an Application Gateway Basic in its own /24 with the public IP it must have and its only listener on the
-  private frontend`; `az104-16-lb-appgw: the gateway subnet allows GatewayManager on 65200-65535`. (V) Basic in uksouth, a
-  private-only listener on Basic, and the deploy time; if Basic is refused, Standard_v2 (autoscale 0–1) and the marker stays ££.
+  `az104-16-lb-appgw: an Application Gateway in its own /24 with the public IP it must have and its only listener on the
+  private frontend`; `az104-16-lb-appgw: the gateway subnet allows GatewayManager on 65200-65535`. As built after review
+  (Steven chose Standard_v2 over Basic): `az104-16-lb-appgw: the gateway is Standard_v2 autoscaling from 0 to 2, priced by hand
+  (its meters are shared, ruling 2)`; autoscale 0–2, not 0–1, because azurerm 4.81 takes `max_capacity` 2 to 125 (checked with
+  `terraform validate`); £0.240/h, still ££; lab version 2. (V) live: a private-only listener (with the public IP v2 must own)
+  on Standard_v2 in uksouth, and the deploy time.
 - [ ] **B2.5 Lab 17:** `az104-17-netwatcher-fix: type break-fix, with Symptom and a closed What was broken`;
   `az104-17-netwatcher-fix: an NSG deny on 8080 outranks the allow`; `az104-17-netwatcher-fix: the app subnet routes the db
   subnet to an address nothing holds`; `az104-17-netwatcher-fix: both VMs carry the Network Watcher agent and Terraform makes no
@@ -410,7 +414,7 @@ Same step shape as B1.
 4. **One fix pass,** test-first, then repeat step 2.
 5. **Pre-flight on real Azure (read-only, no cost):** with `az` signed in as the pipeline principal, `node
    scripts/lab-release-test.mjs --check`; `az vm list-usage -l uksouth -o table` (B-series and total vCPUs, with the gateway's);
-   the zones, P0v3 and App Gateway Basic answers above; `az provider show -n <ns> --query registrationState` for each namespace in
+   the zones, P0v3 and App Gateway Standard_v2 answers above; `az provider show -n <ns> --query registrationState` for each namespace in
    Review Focus 4 (an unregistered one is Steven's to register).
 6. **STOP A: ask Steven to approve the release-test spend.** One pass, run in sequence on slot 31:
 

@@ -614,7 +614,8 @@ these win; §3.4's `az bicep build` and §5 step 5's are replaced by ruling 1.
 3. **`capacity.vm_sizes` lists one entry per VM at its maximum** (the capacity warning counts each entry as one VM); cost
    `qty` is the default count. Lab 9 lists three `Standard_B1s` and prices two.
 4. **Markers come from `costMarker`,** not §12.2's planning column: lab 10 is ££ (P0v3 Linux), lab 16 is ££ on App Gateway
-   **Basic** (Standard_v2 only if Basic is refused in uksouth), lab 19 is £ by estimate.
+   **Standard_v2** (Steven's choice over Basic after the batch review: autoscale 0–2, as azurerm takes no maximum below 2;
+   about £0.24/h, its shared meters authored by ruling 2; lab version 2), lab 19 is £ by estimate.
 5. **No public IP on any VM.** VMs serve with `python3 -m http.server` from a cloud-init systemd unit. Public by nature and
    accepted: lab 10's app and slot, lab 11's Container App ingress, lab 15's public zone. Lab 16's App Gateway must own a public
    IP; its only listener is private.

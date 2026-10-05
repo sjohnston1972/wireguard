@@ -68,7 +68,7 @@ export default () => {
         refs: { subnet_id: ref("azurerm_subnet.appgw", "id"), network_security_group_id: ref("azurerm_network_security_group.appgw", "id") },
       },
 
-      // The Application Gateway, Basic, and the public IP it must own.
+      // The Application Gateway, Standard_v2 autoscaling 0 to 2, and the public IP it must own.
       { address: "azurerm_public_ip.appgw", values: { name: "pip-appgw", resource_group_name: c.rg, location: REGION, allocation_method: "Static", sku: "Standard", tags: c.tags }, refs: IN_RG },
       {
         address: "azurerm_application_gateway.web",
@@ -77,7 +77,9 @@ export default () => {
           resource_group_name: c.rg,
           location: REGION,
           tags: c.tags,
-          sku: [{ name: "Basic", tier: "Basic", capacity: 1 }],
+          // capacity is unset (autoscale): azurerm leaves it null in the plan.
+          sku: [{ name: "Standard_v2", tier: "Standard_v2", capacity: null }],
+          autoscale_configuration: [{ min_capacity: 0, max_capacity: 2 }],
           gateway_ip_configuration: [{ name: "gateway-ip" }],
           frontend_port: [{ name: "port-80", port: 80 }],
           frontend_ip_configuration: [{ name: "fe-public" }, { name: "fe-private", private_ip_address_allocation: "Static", private_ip_address: "10.64.65.10" }],

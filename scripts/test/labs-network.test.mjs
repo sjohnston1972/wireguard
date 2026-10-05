@@ -410,7 +410,32 @@ test(`${L16}: an internal Standard load balancer with a TCP 80 probe and rule ov
   assert.equal(attr(member.body, "ip_configuration_name"), attr(nested(res(l, "azurerm_network_interface", "web").body, "ip_configuration")[0], "name"));
 });
 
-test(`${L16}: an Application Gateway Basic in its own /24 with the public IP it must have and its only listener on the private frontend`, () => {
+test(`${L16}: the gateway is Standard_v2 autoscaling from 0 to 2, priced by hand (its meters are shared, ruling 2)`, () => {
+  const l = lab(L16);
+  assert.equal(l.yaml.version, 2, "Basic to Standard_v2 is a new version");
+  const [gw] = resources(l, "azurerm_application_gateway");
+  const [sku] = nested(gw.body, "sku");
+  assert.equal(attr(sku, "name"), '"Standard_v2"');
+  assert.equal(attr(sku, "tier"), '"Standard_v2"');
+  assert.equal(attr(sku, "capacity"), undefined, "no fixed capacity: autoscale_configuration sets it");
+  const [auto, ...moreAuto] = nested(gw.body, "autoscale_configuration");
+  assert.equal(moreAuto.length, 0);
+  assert.equal(attr(auto, "min_capacity"), "0", "scales to zero instances when idle");
+  assert.equal(attr(auto, "max_capacity"), "2", "the smallest maximum azurerm accepts");
+  // Standard Fixed Cost and Standard Capacity Units are shared with WAF v2 and Application Gateway for Containers:
+  // authored (uksouth GBP, Retail Prices API), never a retail entry the feed would mismatch.
+  const items = l.yaml.cost.items;
+  const fixed = items.find((i) => /Standard_v2, fixed/.test(i.name));
+  const cu = items.find((i) => /Standard_v2, capacity unit/.test(i.name));
+  assert.ok(fixed && cu, JSON.stringify(items));
+  assert.equal(fixed.gbp_h, 0.1887);
+  assert.equal(cu.gbp_h, 0.006);
+  for (const i of [fixed, cu]) assert.equal(i.retail, undefined, `${i.name} has no retail entry`);
+  assert.ok(!items.some((i) => /Basic/.test(i.name) || /^Basic /.test(i.retail?.meter ?? "")), "no Basic gateway left");
+  assert.equal(l.yaml.cost.pricey, fixed.name);
+});
+
+test(`${L16}: an Application Gateway in its own /24 with the public IP it must have and its only listener on the private frontend`, () => {
   const l = lab(L16);
   const loc = locals(l);
   assert.equal(loc.vnet_cidr, "cidrsubnet(var.address_space, 2, 0)");
@@ -419,10 +444,6 @@ test(`${L16}: an Application Gateway Basic in its own /24 with the public IP it 
   assert.equal(attr(res(l, "azurerm_subnet", "appgw").body, "address_prefixes"), "[local.appgw_cidr]");
   const [gw, ...more] = resources(l, "azurerm_application_gateway");
   assert.equal(more.length, 0);
-  const [sku] = nested(gw.body, "sku");
-  assert.equal(attr(sku, "name"), '"Basic"');
-  assert.equal(attr(sku, "tier"), '"Basic"');
-  assert.equal(attr(sku, "capacity"), "1");
   assert.equal(attr(nested(gw.body, "gateway_ip_configuration")[0], "subnet_id"), "azurerm_subnet.appgw.id");
   // Two frontends: the public IP Azure insists on, and a private one.
   const fes = nested(gw.body, "frontend_ip_configuration").map((f) => ({ name: unq(attr(f, "name")), pip: attr(f, "public_ip_address_id"), subnet: attr(f, "subnet_id"), ip: attr(f, "private_ip_address"), alloc: unq(attr(f, "private_ip_address_allocation")) }));

@@ -6,9 +6,10 @@
 #   with a fixed private frontend in snet-web, a TCP probe on port 80 and
 #   one rule, 80 to 80. Basic load balancers are retired, so Standard it is.
 #
-#   Application Gateway (layer 7): Basic SKU, the cheapest, in a /24 of its
-#   own (snet-appgw). Azure insists it owns a public IP, so pip-appgw exists,
-#   but nothing listens on it: the only listener is on the private frontend.
+#   Application Gateway (layer 7): Standard_v2, autoscaling from 0 to 2
+#   instances, in a /24 of its own (snet-appgw). Azure insists it owns a
+#   public IP, so pip-appgw exists, but nothing listens on it: the only
+#   listener is on the private frontend.
 #   The subnet's NSG lets Azure's GatewayManager in on 65200-65535 (the
 #   gateway will not start without it) and the VNet in on 80.
 #
@@ -203,7 +204,7 @@ resource "azurerm_subnet_network_security_group_association" "appgw" {
   network_security_group_id = azurerm_network_security_group.appgw.id
 }
 
-# ── Application Gateway Basic: agw-web ───────────────────────────────────
+# ── Application Gateway Standard_v2: agw-web ─────────────────────────────
 
 # The gateway must own a public IP, even though nothing listens on it.
 resource "azurerm_public_ip" "appgw" {
@@ -221,10 +222,16 @@ resource "azurerm_application_gateway" "web" {
   location            = azurerm_resource_group.lab.location
   tags                = var.tags
 
+  # No fixed capacity: autoscale from 0 instances (idle, only the fixed cost)
+  # to 2, the smallest maximum the provider accepts.
   sku {
-    name     = "Basic"
-    tier     = "Basic"
-    capacity = 1
+    name = "Standard_v2"
+    tier = "Standard_v2"
+  }
+
+  autoscale_configuration {
+    min_capacity = 0
+    max_capacity = 2
   }
 
   gateway_ip_configuration {
