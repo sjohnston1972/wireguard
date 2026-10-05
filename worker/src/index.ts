@@ -21,9 +21,8 @@ import { startHibernate } from "./standby";
 import { consumeAction, isLabAction } from "./actions";
 import { handleLabCallback, handleLabPeer, handleLabPeeringsRemoved, handleLabSecrets, type CallbackReply } from "./labs/callbacks";
 import { runLabAction } from "./labs/act";
-import { runLabWatch } from "./labs/watch";
 import { notify } from "./notify";
-import { runScheduled } from "./monitor";
+import { runCron, CRON_CALLS } from "./cron";
 import { runInsights } from "./insights/runner";
 import { INSIGHTS_CRON } from "./insights/types";
 import { receiveCapture, MAX_CAPTURE_BYTES } from "./capture";
@@ -302,9 +301,10 @@ export default {
   // the Azure insights collector, in the same invocation. (A second trigger for the
   // collector was registered but never fired on Cloudflare, 2026-10-04.) Each is caught
   // on its own, so none can stop the others: a lab problem never delays the gateway's
-  // cost guard. The lab watch keeps a 20-call budget, the collector its own 25-call
-  // budget and soft time limit. A leftover INSIGHTS_CRON trigger, if one ever fires,
-  // runs only the collector.
+  // cost guard. Cloudflare Free allows 50 outside calls per invocation, so the three
+  // share one allowance of 45 (cron.ts), the watchman first; the lab watch takes at
+  // most 20 of what is left, the collector at most 25 (and keeps its soft time limit).
+  // A leftover INSIGHTS_CRON trigger, if one ever fires, runs only the collector.
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     const insights = () =>
       runInsights(env, new Date(event.scheduledTime)).then(
@@ -317,23 +317,15 @@ export default {
       ctx.waitUntil(insights());
       return;
     }
+    // One shared allowance of outside calls for all three (cron.ts): watchman, then labs, then insights.
     ctx.waitUntil(
-      runScheduled(env)
-        .then(
-          (notes) => {
-            if (notes.length) console.log("watchman:", notes.join(" | "));
-          },
-          (e) => console.error("watchman run failed:", e),
-        )
-        .then(() =>
-          runLabWatch(env, new Date(event.scheduledTime)).then(
-            (lines) => {
-              if (lines.length) console.log("lab watch:", lines.join(" | "));
-            },
-            (e) => console.error("lab watch failed:", e),
-          ),
-        )
-        .then(insights)
+      runCron(env, new Date(event.scheduledTime)).then(
+        ({ lines, used }) => {
+          for (const l of lines) console.log(l);
+          if (used) console.log(`cron: ${used} of ${CRON_CALLS} outside calls`);
+        },
+        (e) => console.error("cron run failed:", e),
+      ),
     );
   },
 };

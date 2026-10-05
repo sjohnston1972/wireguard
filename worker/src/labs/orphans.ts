@@ -26,13 +26,15 @@ import * as db from "../db";
 import { labDef } from "./catalogue";
 import { labNeeds } from "../../../shared/labs";
 import type { LabOrphan } from "../../../shared/api";
-import { arm, graph, type Net } from "./net";
+import { arm, graph, BudgetExceeded, type Net } from "./net";
 import { labIdOf } from "./cost";
 import { freeSlot, LIVE_SQL } from "./store";
 
 const MIN = 60_000;
 export const SWEEP_EVERY_MS = 60 * MIN;
 export const ORPHAN_GRACE_MS = 30 * MIN;
+/** The sweep's listings: resource groups, Entra users and groups, management groups, custom roles, policy definitions and assignments. */
+export const SWEEP_CALLS = 7;
 const KV_SWEEP = "labs:sweep";
 const KV_ORPHANS = "labs:orphans";
 
@@ -64,6 +66,8 @@ async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph:
     try {
       return await fn();
     } catch (e) {
+      // Out of calls is not "Azure could not answer": the whole sweep waits for the next run.
+      if (e instanceof BudgetExceeded) throw e;
       errors.push((e as Error).message);
       return null;
     }
@@ -159,6 +163,8 @@ export async function sweepOrphans(env: Env, net: Net, now: Date): Promise<strin
   if (!canAzure(env)) return null;
   const prev = await readState(env);
   if (prev && now.getTime() - Date.parse(prev.at) < SWEEP_EVERY_MS) return null;
+  // Its seven listings, or none: a half sweep is never recorded, so it stays due.
+  if (net.remaining() < SWEEP_CALLS) throw new BudgetExceeded(SWEEP_CALLS, net.remaining(), SWEEP_CALLS);
   const t = now.getTime();
   const found = await listAll(env, net);
 

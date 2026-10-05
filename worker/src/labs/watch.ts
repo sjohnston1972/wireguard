@@ -16,7 +16,8 @@
 //      when max_until is under an hour away) and Tear down.
 //   4. Every run in progress is re-read from GitHub (missed callbacks heal).
 //
-// Every outside call goes through one Net of WATCH_CALLS (20): the
+// Every outside call goes through one Net of WATCH_CALLS (20), itself taken
+// from the cron's shared allowance (cron.ts) after the watchman: the
 // tear-downs take theirs first; when the allowance runs out the rest waits
 // for the next run, five minutes later. Each lab is handled in its own
 // try/catch, so one lab's problem never stops another's tear-down. The
@@ -32,6 +33,7 @@ import { plainError } from "../insights/common";
 import { LAB_GRACE_MIN } from "../../../shared/labs";
 import { labDef } from "./catalogue";
 import { budgetedNet, BudgetExceeded, type Net } from "./net";
+import type { Budget } from "../insights/types";
 import { destroySession, hhmm, timeoutOf } from "./engine";
 import { activeRunOf, activeRuns, getSession, liveSessions, payloadOf, runsOf, updateSession, type LabSessionRow } from "./store";
 import { refreshLabRun } from "./refresh";
@@ -152,10 +154,16 @@ async function warn(env: Env, s: LabSessionRow, net: Net, cost: number, now: num
   return `${title}: 15-minute warning sent`;
 }
 
+export interface LabWatchOptions {
+  /** The cron's shared allowance (cron.ts): this run takes at most WATCH_CALLS of what the watchman left. */
+  parent?: Budget;
+}
+
 /** One watch run. Returns one line per thing it did, for the Worker's log. */
-export async function runLabWatch(env: Env, now: Date = new Date()): Promise<string[]> {
+export async function runLabWatch(env: Env, now: Date = new Date(), opts: LabWatchOptions = {}): Promise<string[]> {
   const lines: string[] = [];
-  const net = budgetedNet(WATCH_CALLS);
+  const net = budgetedNet(WATCH_CALLS, opts.parent);
+  if (net.remaining() < WATCH_CALLS) lines.push(`${net.remaining()} of its ${WATCH_CALLS} calls left after the watchman`);
   const t = now.getTime();
   const step = async (name: string, fn: () => Promise<string | null | void>) => {
     try {

@@ -39,9 +39,9 @@ export function directNet(): Net {
   };
 }
 
-/** At most `limit` calls; one more throws BudgetExceeded before anything is sent. */
-export function budgetedNet(limit: number): Net & { budget: Budget } {
-  const budget = makeBudget(limit);
+/** At most `limit` calls (and no more than `parent` has left); one more throws BudgetExceeded before anything is sent. */
+export function budgetedNet(limit: number, parent?: Budget): Net & { budget: Budget } {
+  const budget = makeBudget(limit, parent);
   return {
     budget,
     fetch: (url, init) => {
