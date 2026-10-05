@@ -655,7 +655,8 @@ these win; §3.4's `az bicep build` and §5 step 5's are replaced by ruling 1.
 20. **Vault teardown:** unblock turns an `Unlocked` vault immutability `Disabled` before soft delete (a `Locked` one is a loud
     warning), stops protection with data deleted for every management type the CLI can (`AzureIaasVM`, `AzureStorage`,
     `AzureWorkload`; `MAB` is a warning), and waits, polling every 15 s, until the vault lists no items, at most
-    `LAB_UNBLOCK_VAULT_WAIT_SECONDS` (default 300). It never fails the run.
+    `LAB_UNBLOCK_VAULT_WAIT_SECONDS` (default 300). It never fails the run. A failed item list is never read as "no items
+    left": it is a warning, and if the wait ends on one, the vault's items are reported "unverified" (review fix pass).
 21. **A template deploys only allow-listed types** (review fix pass). `templateProblems` reads keys case-insensitively, as
     ARM does, and refuses every resource type not in `TEMPLATE_TYPES` (`infra/ci/lab-scope.mjs`): today storage accounts,
     VNets and subnets, NSGs and their rules (lab 12), and `Microsoft.Resources/deployments` only as Bicep emits a module

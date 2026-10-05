@@ -167,6 +167,27 @@ test("unblock waits until a vault has no backup items, at most five minutes", { 
   for (const x of [gone, stuck, short]) x.cleanup();
 });
 
+test("unblock: a backup item list that fails is unverified, never \"no backup items left\", and the run goes on", { skip }, () => {
+  const ITEMS = { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` };
+  // Azure cannot answer the wait's list at all.
+  const down = world([...VAULT, ITEMS, { match: "^backup item list .*--query \\[\\]\\.id ", out: "", code: 1, err: "ERROR: (ServiceUnavailable) try again later" }]);
+  const r = down.run("infra/ci/lab-unblock.sh", [L19], { LAB_UNBLOCK_VAULT_WAIT_SECONDS: "30" });
+  assert.equal(r.status, 0, r.out);
+  assert.doesNotMatch(r.out, /no backup items left/);
+  assert.match(r.stderr, /::warning::unblock: rsv-lab: could not list backup items/);
+  assert.match(r.stderr, /::warning::unblock: unverified: rsv-lab backup items/);
+  assert.match(r.stdout, /unblock: done/);
+  // Still bounded by the wait.
+  assert.deepEqual(down.calls().filter((c) => c.startsWith("sleep ")), ["sleep 15", "sleep 15"]);
+  // One failed list, then an empty one: that is "no items left", and nothing is unverified.
+  const blip = world([...VAULT, ITEMS, { match: "^backup item list .*--query \\[\\]\\.id ", out: ["", ""], code: [1, 0] }]);
+  const b = blip.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(b.status, 0, b.out);
+  assert.match(b.stdout, /rsv-lab: no backup items left/);
+  assert.doesNotMatch(b.stderr, /unverified/);
+  for (const x of [down, blip]) x.cleanup();
+});
+
 test("unblock deletes Azure Files share snapshots (lab 7): a share with snapshots cannot be destroyed", { skip }, () => {
   const L7 = "az104-07-files";
   const R7 = `rg-lab-${L7}`;

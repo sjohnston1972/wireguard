@@ -17,7 +17,8 @@
 #      delete off, soft-deleted items undeleted, protection stopped with the
 #      backup data deleted for items of every management type, then a wait
 #      until the vault lists no items (LAB_UNBLOCK_VAULT_WAIT_SECONDS, default
-#      300, polled every 15 s)
+#      300, polled every 15 s; a list that fails is never "none left": if
+#      the last one fails, the vault's items are "unverified", a warning)
 #   5. Site Recovery replication: protection disabled on every replicated item
 #
 # Never fails the run: every refusal is a ::warning:: and the destroy, the
@@ -145,6 +146,7 @@ done
 # backup item list` without --backup-management-type lists them all), and a
 # bounded wait until the vault lists no items, so the group delete is not
 # refused for a vault still deleting its backups.
+UNVERIFIED=()
 VAULT_WAIT="${LAB_UNBLOCK_VAULT_WAIT_SECONDS:-300}"
 [[ "$VAULT_WAIT" =~ ^[0-9]+$ ]] || VAULT_WAIT=300
 for g in "${groups[@]}"; do
@@ -185,16 +187,27 @@ for g in "${groups[@]}"; do
         echo "unblock: $v: protection stopped and backup data deleted for ${item##*/}"
       else warn "$v: could not stop protection for ${item##*/}"; fi
     done < <(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].[id, properties.backupManagementType, properties.workloadType]" -o tsv)
-    # Wait (bounded) until the vault lists no items.
+    # Wait (bounded) until the vault lists no items. A list that fails says nothing
+    # about the items: it is never "none left", and if the last try fails too the
+    # vault is unverified (a warning; the run still goes on).
     tries=$(((VAULT_WAIT + 14) / 15))
     for ((n = 0; ; n++)); do
-      left="$(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].id" -o tsv || true)"
-      if [ -z "$left" ]; then
-        echo "unblock: $v: no backup items left"
-        break
+      if left="$(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].id" -o tsv)"; then
+        listed=true
+        if [ -z "$left" ]; then
+          echo "unblock: $v: no backup items left"
+          break
+        fi
+      else
+        listed=false
+        warn "$v: could not list backup items, so whether any are left is not known"
       fi
       if [ "$n" -ge "$tries" ]; then
-        warn "$v: $(grep -c . <<<"$left") backup item(s) still listed after $VAULT_WAIT s; the destroy goes ahead and the safety net tries again"
+        if [ "$listed" = true ]; then
+          warn "$v: $(grep -c . <<<"$left") backup item(s) still listed after $VAULT_WAIT s; the destroy goes ahead and the safety net tries again"
+        else
+          UNVERIFIED+=("$v backup items")
+        fi
         break
       fi
       sleep 15
@@ -215,5 +228,8 @@ for g in "${groups[@]}"; do
   done <<<"${vaults[$g]}"
 done
 
+if [ "${#UNVERIFIED[@]}" -gt 0 ]; then
+  warn "unverified: ${UNVERIFIED[*]} (Azure could not list them); the destroy goes ahead, and the safety net and Verify clean decide"
+fi
 echo "unblock: done"
 exit 0
