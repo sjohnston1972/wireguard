@@ -345,3 +345,95 @@ test(`${MON}: the readme says diagnostics arrive about 15 minutes after deploy`,
   assert.match(r, /remediation task/i);
   assert.match(r, /AzureDiagnostics/);
 });
+
+// ── Lab 22: Key Vault and managed identities ─────────────────────────────
+
+const KV = "az305-22-keyvault-mi";
+
+labContentSuite(KV, { marker: "£", identity: "match" });
+
+test(`${KV}: an RBAC Key Vault with 7-day retention and no purge protection`, () => {
+  const kv = one(lab(KV), "azurerm_key_vault").body;
+  assert.equal(attr(kv, "name"), '"${var.name_prefix}kv"');
+  assert.equal(attr(kv, "sku_name"), '"standard"');
+  assert.equal(attr(kv, "rbac_authorization_enabled"), "true", "Azure RBAC, not access policies");
+  assert.equal(attr(kv, "public_network_access_enabled"), "true", "the VM reaches it on its public endpoint, over default outbound access");
+  assert.equal(attr(kv, "soft_delete_retention_days"), "7");
+  assert.equal(attr(kv, "purge_protection_enabled"), "false", "ruling 30: purge protection would keep the vault for its whole retention");
+  assert.equal(attr(kv, "tenant_id"), "data.azurerm_client_config.current.tenant_id");
+  assert.equal(nested(kv, "access_policy"), undefined, "no access policies");
+});
+
+test(`${KV}: the VM has a system identity and the user-assigned identity`, () => {
+  const l = lab(KV);
+  const uai = one(l, "azurerm_user_assigned_identity");
+  assert.equal(attr(uai.body, "name"), '"id-${var.name_prefix}-app"');
+  const vm = one(l, "azurerm_linux_virtual_machine").body;
+  const id = nested(vm, "identity");
+  assert.equal(attr(id, "type"), '"SystemAssigned, UserAssigned"');
+  assert.equal(attr(id, "identity_ids"), `[azurerm_user_assigned_identity.${uai.labels[1]}.id]`);
+  assert.equal(attr(vm, "size"), '"Standard_B1s"');
+});
+
+test(`${KV}: Secrets User for the VM at the vault and for the user-assigned identity at one secret only`, () => {
+  const l = lab(KV);
+  const kv = one(l, "azurerm_key_vault");
+  const vm = one(l, "azurerm_linux_virtual_machine");
+  const uai = one(l, "azurerm_user_assigned_identity");
+  const secret = named(l, "azurerm_key_vault_secret", '"reports-api-key"');
+  const ras = resources(l, "azurerm_role_assignment").map((r) => ({
+    role: attr(r.body, "role_definition_name"),
+    scope: attr(r.body, "scope"),
+    principal: attr(r.body, "principal_id"),
+    type: attr(r.body, "principal_type"),
+  }));
+  const key = (r) => `${r.role} | ${r.scope} | ${r.principal} | ${r.type}`;
+  assert.deepEqual(
+    ras.map(key).sort(),
+    [
+      { role: '"Key Vault Secrets Officer"', scope: `azurerm_key_vault.${kv.labels[1]}.id`, principal: "data.azurerm_client_config.current.object_id", type: '"ServicePrincipal"' },
+      { role: '"Key Vault Secrets User"', scope: `azurerm_key_vault.${kv.labels[1]}.id`, principal: `azurerm_linux_virtual_machine.${vm.labels[1]}.identity[0].principal_id`, type: '"ServicePrincipal"' },
+      { role: '"Key Vault Secrets User"', scope: `azurerm_key_vault_secret.${secret.labels[1]}.resource_versionless_id`, principal: `azurerm_user_assigned_identity.${uai.labels[1]}.principal_id`, type: '"ServicePrincipal"' },
+    ]
+      .map(key)
+      .sort(),
+    "Officer for the pipeline and Secrets User for the VM at the vault; Secrets User for the user-assigned identity at reports-api-key only",
+  );
+  // The suite's view: all three at resource scope.
+  assert.deepEqual(roleAssignments(l).map((r) => r.scope), ["resource", "resource", "resource"]);
+});
+
+test(`${KV}: the secrets wait for the pipeline's Officer assignment`, () => {
+  const l = lab(KV);
+  const officer = resources(l, "azurerm_role_assignment").find((r) => attr(r.body, "role_definition_name") === '"Key Vault Secrets Officer"');
+  const wait = one(l, "time_sleep");
+  assert.equal(attr(wait.body, "create_duration"), '"120s"', "two minutes for the data-plane role to reach the vault");
+  assert.match(list(wait.body, "depends_on") ?? "", new RegExp(`azurerm_role_assignment\\.${officer.labels[1]}\\b`));
+  const secrets = resources(l, "azurerm_key_vault_secret");
+  assert.deepEqual(secrets.map((s) => attr(s.body, "name")).sort(), ['"app-db-password"', '"reports-api-key"']);
+  const passwords = resources(l, "random_password").map((p) => p.labels[1]);
+  for (const s of secrets) {
+    assert.match(list(s.body, "depends_on") ?? "", new RegExp(`time_sleep\\.${wait.labels[1]}\\b`), `${attr(s.body, "name")} waits (and is destroyed before the Officer assignment goes)`);
+    const value = /^random_password\.([A-Za-z0-9_]+)\.result$/.exec(attr(s.body, "value") ?? "");
+    assert.ok(value && passwords.includes(value[1]), `${attr(s.body, "name")}: a random_password, never a literal`);
+  }
+  // A lab using time and random says so (labs/_template pins neither).
+  const req = nested(l.blocks.find((b) => b.kind === "terraform").body, "required_providers");
+  assert.match(req, /time\s*=\s*\{[^}]*source\s*=\s*"hashicorp\/time"/);
+  assert.match(req, /random\s*=\s*\{[^}]*source\s*=\s*"hashicorp\/random"/);
+});
+
+test(`${KV}: versions.tf purges the vault on destroy and never recovers one`, () => {
+  const kvf = nested(features(lab(KV)), "key_vault");
+  assert.ok(kvf !== undefined, "features has a key_vault block");
+  assert.equal(attr(kvf, "purge_soft_delete_on_destroy"), "true");
+  assert.equal(attr(kvf, "purge_soft_deleted_secrets_on_destroy"), "false", "secrets go with the purged vault");
+  assert.equal(attr(kvf, "recover_soft_deleted_key_vaults"), "false");
+});
+
+test(`${KV}: the subnet sets default outbound access on`, () => {
+  const l = lab(KV);
+  const subnet = one(l, "azurerm_subnet").body;
+  assert.equal(attr(subnet, "default_outbound_access_enabled"), "true", "ruling 37: the VM reaches the vault's public endpoint over default outbound access");
+  assert.deepEqual(resources(l).filter((r) => /nat_gateway|public_ip/.test(r.labels[0])).map((r) => r.labels.join(".")), []);
+});
