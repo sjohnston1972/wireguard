@@ -693,9 +693,14 @@ From `docs/superpowers/plans/2026-10-06-labs-batch3-plan.md` (labs 20–27). Whe
 25. **Secondary-region resources live in `rg-lab-<id>-secondary`,** made by the lab's own Terraform in `var.secondary_region`
     (`azurerm_resource_group.secondary`, name `"${var.resource_group_name}-secondary"`). A lab with `regions.secondary` refuses
     an empty secondary region or one equal to `var.region` (variable validation). Its secondary-region VNets take /20s of the
-    lab's own slot, never addresses of their own.
-26. **A cost item may say `region: secondary`.** The price feed then prices its `retail` entry in the session's secondary
-    region, `labs-verify --meters` checks it there, and the content suite counts per-VM disk items per region.
+    lab's own slot, never addresses of their own. As built: the scope check holds an unknown id inside a nested block (a
+    failover group's partner server, a replicated VM's disk target group) to the lab's own resources, as it does top-level
+    ids, and the content suite's `secondary: true` checks both groups, `regions.secondary: ukwest` and the validation.
+26. **A cost item may say `region: secondary`** (only in a lab with `regions.secondary`). The Worker then prices its
+    `retail` entry in the session's secondary region (the lab's `regions.secondary`; the cards, modal and warnings read that
+    region's prices too), `labs-verify --meters` checks it there, and the content suite counts VM sizes and S4 disks per
+    region: a replicated VM adds a secondary-region S4 (its replica disk) and one `capacity.vm_sizes` entry (its failover
+    VM).
 27. **Lab 20's custom roles are assigned by its Terraform** (identity change 2, approved by Steven 2026-10-05, chosen over
     define-only roles, which were never built). Its two roles (`lab-az305-20-landing-zone-netops`,
     `60bdbc03-b25a-4a83-9fce-b2c5afff563c`; `lab-az305-20-landing-zone-appops`, `bd52e05a-22cb-4bd5-b56c-3396add9b7c0`) are
@@ -709,16 +714,21 @@ From `docs/superpowers/plans/2026-10-06-labs-batch3-plan.md` (labs 20–27). Whe
     identity gets exactly those roles, at the lab's own group (`role`, `outside-scope`). Lab 21's diagnostics policy needs only
     Monitoring Contributor (it holds `Microsoft.Insights/diagnosticSettings/*`, `Microsoft.Resources/deployments/*` and
     `Microsoft.OperationalInsights/workspaces/sharedKeys/action`), so lab 21 needs no identity change (Log Analytics
-    Contributor stays contingent on the lab 21 soak).
+    Contributor stays contingent on the lab 21 soak). As built: every `roleDefinitionIds` entry in the rule is read
+    (keys case-insensitive, whatever the effect says, since it may be a parameter), and in a plan a rule that is not known
+    (built from apply-time values) is refused: those values go to the assignment as parameters.
 29. **Management-group initiatives are governance definitions.** `azurerm_management_group_policy_set_definition` joins the
     governance types (governance labs only, named `lab-<id>-*`). Batch 3 defines no initiative at subscription scope, so the
     orphan sweep's lists are unchanged.
 30. **Key Vault never keeps a lab alive.** Purge protection is refused at plan (rule `immutability`: nothing could delete the
     vault for its retention); soft-delete retention is 7 days; the provider purges the vault on destroy; the safety net purges
     soft-deleted vaults that lived in a lab group, and Verify clean counts one as a leftover.
-31. **Unblock knows SQL and Site Recovery.** Before the group deletes: SQL failover groups are deleted, then geo-replication
-    links; Site Recovery test failovers are cleaned up, replication is removed and waited for (bounded, never failing the run),
-    then network mappings, container mappings and replication policies are removed.
+31. **Unblock knows SQL and Site Recovery.** Before the group deletes: SQL failover groups are deleted (on the server that
+    holds the primary, so a swapped failover is handled), then the primary databases' geo-replication links; Site Recovery
+    test failovers are cleaned up, replication is removed and waited for (every 15 s, at most
+    `LAB_UNBLOCK_ASR_WAIT_SECONDS`, default 900; a list that fails is "unverified"; never failing the run), then network
+    mappings, container mappings and replication policies are removed (an Azure-to-Azure vault needs only its items gone;
+    the rest is tidy-up).
 32. **Lab 26 is Site Recovery only,** titled "Cross-region VM recovery with Site Recovery" (confirmed by Steven
     2026-10-05). Backup cross-region restore is not built: a GRS vault's secondary-region recovery points appear hours after
     a backup, beyond any session. The source VM is
@@ -730,8 +740,11 @@ From `docs/superpowers/plans/2026-10-06-labs-batch3-plan.md` (labs 20–27). Whe
     immutability, no SFTP (billed by the hour), no data-plane resources in Terraform.
 35. **Plan fixtures are checked against real plans.** Every release test records its plan's shape (addresses, references,
     unknown and sensitive paths, never values) and the fixture test compares against it; `labs-tf` also plans each lab offline
-    with mocked providers (`terraform test`).
+    with mocked providers (`terraform test`). As built: lab.yml step 6 prints the shape as one `LAB_PLAN_SHAPE` line (gzipped
+    JSON, base64), the release test saves it as `scripts/test/fixtures/labs/plans/shapes/<id>.json`, references are compared
+    as sets; the mock plan mocks only the providers a lab installs, gives the subscription and client-config data sources
+    real-looking ids, and uses a parseable throw-away SSH key.
 36. **The ready check may accept an empty `provisioningState` only for a listed type,** added test-first on release-test
-    evidence; the list starts empty.
+    evidence; the list starts empty (`READY_NO_STATE_TYPES` in `infra/ci/lab-ready.sh`, which reads each resource's type).
 37. **Subnets that need outbound access say so.** A subnet whose VMs need to reach Azure services (Key Vault, Site Recovery)
     sets `default_outbound_access_enabled = true` explicitly instead of relying on the provider's default.

@@ -1,79 +1,117 @@
 # Labs batch 3 (labs 20–27, the first AZ-305 batch): implementation plan
 
-## C0 names (planned; the integrator rewrites this section "as built")
+## C0 names as built (`feat/labs-b3-engine`, 2026-10-05)
 
 The contract on `feat/labs-b3-engine`. Content areas branch from its head and use these names exactly; a change goes
 through the integrator, who updates this section. Batch 1's L0 names and batch 2's "B0 names as built"
-(`docs/superpowers/plans/2026-10-05-labs-batch2-plan.md`) all still hold unless changed here.
+(`docs/superpowers/plans/2026-10-05-labs-batch2-plan.md`) all still hold unless changed here. **Changed from the planned
+names** (content builders take note): no define-only roles (identity change 2: lab 20's roles are assigned by Terraform);
+`identity: "match"` also names a lab custom role from `azurerm_role_definition.<x>.role_definition_resource_id`; test 4
+counts a replicated VM's failover VM in `capacity.vm_sizes` and test 5 prices `retail.sku` items per region too;
+`time` resolves to 0.14.2 (not 0.13.x); a policy rule a plan cannot read is refused; unknown ids inside nested blocks are
+scope-checked; the ready check's columns are `name, type, provisioningState`; the mock plan mocks only the providers a lab
+installs.
 
 **Content suite, `scripts/test/fixtures/labs/content.mjs`**
-- `labContentSuite(id, { marker, secondary = false, identity = "none" })`. Unchanged for batch 1–2 callers (defaults).
+- `labContentSuite(id, { marker, secondary = false, identity = "none" })`, unchanged for batch 1–2 callers (defaults).
+  `contentChecks(id, opts)` returns the same checks as `[{ name, skip?, fn }]` without registering them (`opts.labsDir`,
+  `opts.load` for fixture labs); `lab(id, labsDir?)`.
   - `secondary: true` renames test 3 to `${id}: two resource groups, rg-lab-<id> in the region and rg-lab-<id>-secondary in
-    the secondary region, and everything else inside one of them with the tags` and expects `azurerm_resource_group.lab`
-    (`var.resource_group_name`, `var.region`) and `azurerm_resource_group.secondary` (`"${var.resource_group_name}-secondary"`,
-    `var.secondary_region`); `lab.yaml` must then have `regions.secondary: ukwest`, and `variables.tf` must validate
+    the secondary region, and everything else inside one of them with the tags` and expects exactly
+    `azurerm_resource_group.lab` (`var.resource_group_name`, `var.region`, `var.tags`) and `azurerm_resource_group.secondary`
+    (`"${var.resource_group_name}-secondary"`, `var.secondary_region`, `var.tags`); `lab.yaml` `regions.secondary: ukwest`;
+    `variables.tf`'s `secondary_region` has a `validation` whose condition is exactly
     `var.secondary_region != "" && var.secondary_region != var.region`.
-  - `identity: "match"` replaces test 4's identity clause with: `identity.roles` equals the Terraform role assignments as
-    `{ role, scope }` (role from a literal `role_definition_name`; scope `resource_group` for `azurerm_resource_group.*.id`,
-    `management_group` for `azurerm_management_group.*.id`, `resource` for any other resource id), `identity.creates` equals
-    the `azuread_user`/`azuread_group` types made, `governance` equals membership of `GOVERNANCE_LABS`; every role assignment
-    sets `principal_type`.
-  - Test 3 becomes schema-driven: a resource whose type takes `resource_group_name` must name a lab group, one whose type
-    takes `tags` must set `var.tags`. The facts come from `plans/schema-facts.json` (`{ "<type>": { rg: bool, tags: bool } }`),
-    written by `extract-computed.mjs` beside `computed.json`. `CHILD_TYPES` stays exported for batch 1–2 tests.
-  - Test 5 counts disks per region: `retail.meter: "S4 LRS Disk"` items without `region` = the primary VMs' default count;
-    with `region: secondary` = the number of `azurerm_site_recovery_replicated_vm` (replica disks).
-- New helper `roleAssignments(l)` → `[{ address, role, scope, principalType }]`.
+  - Test 3 is schema-driven: a resource whose type takes `resource_group_name` (or sets it) must name
+    `azurerm_resource_group.lab.name` (or `.secondary.name` with `secondary`), a `resource_group_id` must be one of the
+    groups' `.id`, and a type that takes `tags` must set `var.tags`. A type missing from `plans/schema-facts.json` fails
+    (the integrator adds it). `CHILD_TYPES` stays exported for batch 1–2 tests.
+  - Test 4: `capacity.vm_sizes` = one entry per VM at its maximum **plus one per `azurerm_site_recovery_replicated_vm`**
+    (its failover VM, at the size of the VM its `source_vm_id = azurerm_linux_virtual_machine.<x>.id` names).
+    `identity: "match"` replaces the identity clause: every role assignment sets `principal_type`; `identity.roles` equals
+    the role assignments as `{ role, scope }` (order free); `identity.creates` equals the `azuread_user`/`azuread_group`
+    kinds made; `identity.governance` equals membership of `GOVERNANCE_LABS`.
+  - Test 5: `retail.sku` items **without** `region` = the VMs' default count; `retail.meter: "S4 LRS Disk"` without `region`
+    = the VMs' default count, with `region: secondary` = the number of `azurerm_site_recovery_replicated_vm`.
+- `roleAssignments(l)` → `[{ address, role, scope, principalType }]`: `role` is a literal `role_definition_name`, or the
+  lab's custom role's name (`"lab-${var.lab_id}-x"` with the id filled in) when `role_definition_id` (or
+  `role_definition_name`) is `azurerm_role_definition.<x>.role_definition_resource_id` / `.role_definition_id` / `.name` /
+  `.id`; `scope` is `resource_group` (`azurerm_resource_group.*.id`), `management_group` (`azurerm_management_group.*.id`)
+  or `resource`.
+- Fixture labs for the suite's own tests: `scripts/test/fixtures/labs/suite/az305-9{1,2,3,4}-*` (not in the catalogue).
 
 **Plan fixtures, `scripts/test/fixtures/labs/plans/`**
-- `common.mjs` adds `SECONDARY` (`ukwest`), `ctx(id, n)` now also returns `rgSecondary` and `variables.secondary_region`,
-  `rgSecondaryResource(c)`, and `linuxVm(..., { image })` (`image` `{ offer, sku }`, default Ubuntu 24.04 as today).
-- `computed.json` and `schema-facts.json` regenerated from azurerm 4.81.0, azuread 3.10.0 and time 0.13.x (the version
-  `labs/_template` pins; V). `extract-computed.mjs` `TYPES` gains every batch 3 type (C0.1 lists them).
-- `shape.mjs`: `planShape(plan)` → `{ resources: { "<address>": { type, refs: { attr: [...] }, unknown: [paths],
-  sensitive: [paths] } } }`, values never included. `shapes/<id>.json` holds the shape recorded from that lab's last real
-  release test; `lab-plans.test.mjs` adds `${id}: the plan fixture has the recorded real plan's shape` (skips, with the
-  reason, when no shape is recorded).
+- `common.mjs`: `SECONDARY` (`ukwest`); `ctx(id, n)` also returns `rgSecondary` (`rg-lab-<id>-secondary`) and
+  `variables.secondary_region` (`ukwest`); `rgSecondaryResource(c)` (`azurerm_resource_group.secondary`, refs
+  `var.resource_group_name`, `var.secondary_region`, `var.tags`); `linuxVm(c, { ..., image })` with `image = { offer, sku }`
+  (default `ubuntu-24_04-lts` / `server`; lab 26: `0001-com-ubuntu-server-jammy` / `22_04-lts-gen2`).
+- `computed.json` and `schema-facts.json` from azurerm 4.81.0, azuread 3.10.0, **time 0.14.2** and random 3.9.1 (what
+  `~> 0.13` and `~> 3.7` resolve to on 2026-10-05; `labs/_template` pins neither, so a lab using them declares
+  `hashicorp/time` / `hashicorp/random` in its `versions.tf`). `TYPES` gains every C0.1 type plus
+  `data.azurerm_resource_group`. `realistic.mjs` exports `SCHEMA_FACTS`.
+- `shape.mjs`: `planShape(plan)` (re-exported from `infra/ci/lab-plan-shape.mjs`) → `{ resources: { "<address>": { type,
+  refs: { "<attr or block.0.attr>": [...] }, unknown: [paths], sensitive: [paths] } } }`, values never included, data
+  sources read at plan included; `recordedShape(id)` → `shapes/<id>.json` or `null`; `compareShapes(real, fixture)` → one
+  line per difference (references compared as sets). `lab-plans.test.mjs`: `${id}: the plan fixture has the recorded real
+  plan's shape` (skips, naming the file, until a release test records one).
 
 **Scope** (`infra/ci/lab-scope.mjs`, no new rule names):
 - `GOVERNANCE_TYPES` + `azurerm_management_group_policy_set_definition`.
-- `immutability`: an `azurerm_key_vault` with `purge_protection_enabled = true` (or unknown when configured).
-- `role`: a role assignment of a custom role whose `allowed-roles.json` entry has `"assign": false`; a policy definition
-  whose `policy_rule` (parsed JSON) has a `deployIfNotExists`/`modify` effect with a `roleDefinitionIds` entry not among the
-  built-in allow-list GUIDs.
-- `outside-scope`: such a definition with `deploymentScope` `subscription`.
-- Resource-group checks already accept `rg-lab-<id>-secondary`; new tests pin it (and refuse `rg-lab-<id>secondary`).
+- `immutability`: an `azurerm_key_vault` with `purge_protection_enabled = true`, or unknown when configured.
+- `role`: an `azurerm_policy_definition` whose `policy_rule` (JSON, keys case-insensitive, whatever the effect says) has a
+  `roleDefinitionIds` entry that is not a **built-in** on the allow-list; in a plan, a `policy_rule` that is not known (built
+  from apply-time values: pass those to the assignment as parameters) or not JSON.
+- `outside-scope`: such a rule with `deploymentScope` `subscription`; and an **unknown id inside a nested block** (last path
+  segment `id`, `*_id` or `*_ids`, not an Entra id) must come from the lab's own resources, as top-level ids already must
+  (a failover group's `partner_server.0.id`, a replicated VM's `managed_disk.0.target_resource_group_id`).
+- `rg-lab-<id>-secondary` passes and `rg-lab-<id>secondary` is refused (pinned by tests).
+- Lab 20 may assign its own two custom roles (by GUID or through its `azurerm_role_definition`), no other lab may.
 
-**Roles:** `labs/setup/allowed-roles.json` custom entries may carry `"assign": false` (one line per entry, as the safety
-net's regex reads it). `conditionText` skips them; `allowedRolesProblems` accepts the key (boolean only); `shared/labs.ts`
-`AllowedRoles` gains `assign?: boolean`; `scripts/lib/labs.mjs` refuses a `lab.yaml` `identity.roles` entry naming one.
+**Roles (identity change 2, approved by Steven 2026-10-05):** `labs/setup/allowed-roles.json` `custom` holds lab 1's
+`lab-az104-01-identity-vm-operator` and lab 20's `lab-az305-20-landing-zone-netops` (`60bdbc03-b25a-4a83-9fce-b2c5afff563c`)
+and `lab-az305-20-landing-zone-appops` (`bd52e05a-22cb-4bd5-b56c-3396add9b7c0`), ordinary entries, one per line.
+`governance-condition.txt` was regenerated with `node scripts/labs-setup.mjs --condition` (both GUIDs appended to both
+lists) and must be re-applied in Azure before lab 20's release test. No `"assign"` key exists.
 
 **Prices:** `shared/labs.ts` `LabCostItem.region?: "secondary"`; `scripts/lib/labs.mjs` accepts `region: secondary` only
-when `regions.secondary` is set; `worker/src/labs/prices.ts` `retailPrice(item, rows, region, now, secondaryRegion)` and
-`labGbpH` read both regions' rows; `labs-verify --meters` checks such an item in `ukwest`.
+with `regions.secondary` (else a `cost.items` problem); `worker/src/labs/prices.ts` `retailPrice(item, rows, region, now,
+secondaryRegion = null)` (a secondary item with no secondary region: the authored figure); `pricedItems` and `gbpHFrom`
+pass `def.regions.secondary`; `labGbpH` reads the region's and the lab's secondary region's rows; new
+`readLabPrices(env, region)` (the region plus every catalogue lab's secondary region) feeds the cards, the modal and the
+warnings. `labs-verify --meters` checks a `region: secondary` item in the lab's `regions.secondary` and prints it as
+`<meter> (ukwest): ...`; such an item in a lab without one is a problem.
 
-**Unblock** (`infra/ci/lab-unblock.sh`, new steps after 5, same "never fails" contract):
-`6. SQL`: per server in the lab's groups, `az sql failover-group list` → `delete`; then per database
-`az sql db replica list-links` → `delete-link --yes`. `5. Site Recovery` becomes: per protected item, a test failover still to
-clean up (`properties.testFailoverState` not empty or `None`) → POST `testFailoverCleanup`; POST `remove`; poll the vault's
-`replicationProtectedItems` every 15 s until empty, at most `LAB_UNBLOCK_ASR_WAIT_SECONDS` (default 900, bounded by tries);
-then DELETE every `replicationNetworkMappings`, POST `remove` on every `replicationProtectionContainerMappings`, DELETE every
-`replicationPolicies` (all `az rest`, api-version 2023-08-01).
+**Unblock** (`infra/ci/lab-unblock.sh`, same "never fails" contract): `5. Site Recovery`, per vault: list
+`replicationProtectedItems` (`value[].[id, properties.testFailoverState]`); an item whose state is not empty, `None` or
+`MarkedForDeletion` → POST `<item>/testFailoverCleanup` (`{"properties":{"comments":...}}`); POST `<item>/remove`; poll
+the vault's items every 15 s until none, at most `LAB_UNBLOCK_ASR_WAIT_SECONDS` (default 900; a failed list is
+"unverified"); then DELETE every `replicationNetworkMappings`, POST `remove` on every
+`replicationProtectionContainerMappings` (`{"properties":{"providerSpecificInput":{}}}`), DELETE every `replicationPolicies`
+(vault-level lists, `az rest`, api-version 2023-08-01). `6. SQL`: servers listed across all lab groups first; per server,
+`az sql failover-group list` (`[name, replicationRole]`) → `delete` where the role is `Primary`; then per database (not
+`master`) `az sql db replica list-links` (`[partnerServer, role]`) → `az sql db replica delete-link --resource-group <g>
+--server <s> --name <db> --partner-server <p> --partner-resource-group <p's lab group> --yes` where the role is `Primary`.
 
 **Safety net** (`infra/ci/lab-safety-net.sh`): after the group deletes, `az keyvault list-deleted --resource-type vault`
-rows whose `properties.vaultId` is in a lab group → `az keyvault purge --name <n> --location <l>`; `--verify` lists them as
-`"<name> (soft-deleted vault)"`.
+rows whose `properties.vaultId` names one of the lab's groups → `az keyvault purge --name <n> --location <l>`; `--verify`
+lists each as `"<name> (soft-deleted vault)"`, and a list that fails is `unverified: soft-deleted Key Vaults`.
 
-**Ready check** (`infra/ci/lab-ready.sh`): `READY_NO_STATE_TYPES` (empty) and the query reads `type` too; a resource with an
-empty state passes only when its type is listed.
+**Ready check** (`infra/ci/lab-ready.sh`): `READY_NO_STATE_TYPES=()` (empty); the query is `[].[name, type,
+provisioningState]` (state last: an empty middle field would collapse in `read`); a resource with an empty state passes
+only when its type is listed (case-insensitive).
 
-**labs-tf** (`scripts/labs-tf.mjs`): after validate, a mock plan per lab in its throw-away copy: writes
-`tests/labs-mock.tftest.hcl` with `mock_provider` for azurerm, azuread, random and time and one `run "plan" { command = plan }`
-with the contract variables (slot 31, `uksouth`/`ukwest`, a fake key), then `terraform test`. A failure names the lab.
+**labs-tf** (`scripts/labs-tf.mjs`): after validate, `tests/labs-mock.tftest.hcl` in the throw-away copy (`mockPlanFile`,
+`mockedProviders`): `mock_provider` for each of azurerm, azuread, random and time **that the lab installs** (its lock file;
+mocking one it does not install fails with "unknown provider"), azurerm with `mock_data` for `azurerm_subscription` and
+`azurerm_client_config` (real-looking ids: azurerm validates a role definition's scope even in a mocked plan); file-level
+`variables` (slot 31 `10.71.192.0/18`, `uksouth`/`ukwest`, `l<NN>k3x9q`, a parseable throw-away SSH key, fake password);
+one `run "plan" { command = plan }`; then `terraform test -no-color`. A failure is `mock plan (terraform test): ...` for
+that lab.
 
-**lab.yml step 6 and the release test:** after `terraform show -json`, `node infra/ci/lab-plan-shape.mjs plan.json` prints
-one line `LAB_PLAN_SHAPE <base64 of gzipped shape JSON>`; `scripts/lab-release-test.mjs` reads it from the run log (as it
-reads `LAB_RESULT`) and writes `scripts/test/fixtures/labs/plans/shapes/<id>.json`.
+**lab.yml step 6 and the release test:** after `terraform show -json`, `node "$GITHUB_WORKSPACE/infra/ci/lab-plan-shape.mjs"
+"$RUNNER_TEMP/plan.json" || echo "::warning::..."` prints `LAB_PLAN_SHAPE <base64 of gzipped shape JSON>` (before the scope
+check); `scripts/lab-release-test.mjs` `parseLabPlanShape(log)` reads the test run's line and writes
+`scripts/test/fixtures/labs/plans/shapes/<id>.json` (`SHAPES_DIR`; `deps.shapesDir` in tests).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans. The integrator lands **C0** first. Then three content areas run **in parallel**, each in its own
@@ -425,7 +463,7 @@ One identity change is in batch 3: **change 2 below, approved by Steven 2026-10-
 the suite (two groups), labs 20–22 fail its identity clause, lab 20's roles would change the ABAC condition, the plan
 fixtures cannot be checked against reality, and Key Vault, SQL failover groups and Site Recovery can each leave a lab dirty.
 
-- [ ] **C0.1 Types and fixtures.** `lab-plans.test.mjs` adds `computed.json has every type batch 3 labs use` (types:
+- [x] **C0.1 Types and fixtures.** `lab-plans.test.mjs` adds `computed.json has every type batch 3 labs use` (types:
   `azurerm_key_vault`, `_key_vault_secret`, `_user_assigned_identity`, `_log_analytics_workspace`, `_policy_set_definition`,
   `_management_group_policy_set_definition`, `_resource_group_policy_assignment`, `_mssql_server`, `_mssql_database`,
   `_mssql_failover_group`, `_private_endpoint`, `_private_dns_zone`, `_private_dns_zone_virtual_network_link`,
@@ -441,7 +479,7 @@ fixtures cannot be checked against reality, and Key Vault, SQL failover groups a
   (`extract-computed.mjs` recipe with `time` added, in the scratchpad); implement; PASS; commit.
   **Done when** `node --test scripts/test/lab-plans.test.mjs scripts/test/labs-content-suite.test.mjs` passes and every
   batch 1–2 content test still passes (`npm test`).
-- [ ] **C0.2 Real-plan shapes and the offline mock plan.** `lab-plans.test.mjs`: `planShape keeps addresses, references,
+- [x] **C0.2 Real-plan shapes and the offline mock plan.** `lab-plans.test.mjs`: `planShape keeps addresses, references,
   unknown and sensitive paths and no values` (a fixture plan holding a password: the shape has no value of it);
   `the shape test skips a lab with no recorded shape and fails a fixture whose references differ`. `lab-workflow.test.mjs`:
   `plan and scope check prints the plan's shape, never its values`. `lab-release.test.mjs`: `the release test saves the
@@ -451,7 +489,13 @@ fixtures cannot be checked against reality, and Key Vault, SQL failover groups a
   labs-tf` on all 19 labs: a lab 1–19 mock-plan failure is reported (and fixed here only if it is the mock file's fault).
   (V) `mock_provider` covers `azurerm_client_config` and `azurerm_subscription` data sources; the `s3` backend block is
   ignored by `terraform test`. Commit. **Done when** the four tests pass and `npm run labs-tf` exits 0.
-- [ ] **C0.3 Scope.** `lab-scope.test.mjs` adds the Review Focus 2 tests (C0 names) plus `a DINE definition with Monitoring
+  **(V) answers (Terraform 1.14.6, 2026-10-05):** `mock_provider` mocks data sources too, but with random strings, and
+  azurerm's own validation still runs on known values (lab 1's role definition `scope` was refused), so the mock file gives
+  `mock_data` defaults for `azurerm_subscription` and `azurerm_client_config`; the `s3` backend block is ignored; mocking a
+  provider the lab does not install fails ("unknown provider"), so only installed ones are mocked; undeclared contract
+  variables in the file's `variables` block are ignored. Labs 1–19 and the template all pass the mock plan; the only
+  failures found were the mock file's own (an unparseable fake SSH key, now a real throw-away public key).
+- [x] **C0.3 Scope.** `lab-scope.test.mjs` adds the Review Focus 2 tests (C0 names) plus `a DINE definition with Monitoring
   Contributor only passes for a governance lab`. FAIL; implement (C0 names: scope); PASS; commit. **Done when** `node --test
   scripts/test/lab-scope.test.mjs` passes and `npm run labs-check` still passes on labs 1–19.
 - [x] **C0.4 Lab 20's custom roles** (changed 2026-10-05: Steven chose Terraform-assigned roles, identity change 2, over
@@ -462,17 +506,24 @@ fixtures cannot be checked against reality, and Key Vault, SQL failover groups a
   own custom roles under identity.roles; another lab may not`. FAIL; add lab 20's two entries to `allowed-roles.json`
   `custom`; regenerate `governance-condition.txt` (`node scripts/labs-setup.mjs --condition`); PASS; commit. **Done when** the
   tests pass and the condition's only change against `origin/main` is the two GUIDs in each list.
-- [ ] **C0.5 Teardown.** `lab-cleanup.test.mjs` (fake `az`): the Review Focus 1 C0 tests, plus `unblock removes locks, legal
+- [x] **C0.5 Teardown.** `lab-cleanup.test.mjs` (fake `az`): the Review Focus 1 C0 tests, plus `unblock removes locks, legal
   holds, unlocked immutability, backup protection, replication and SQL links in that order` (replaces the batch 2 ordering
   test, keeping its assertions). (V) `az sql db replica delete-link` arguments in the runner's az; the Site Recovery REST paths
   and api-version; whether vault deletion needs the mapping and policy removals (harmless if not). FAIL; implement; PASS;
   commit. **Done when** `node --test scripts/test/lab-cleanup.test.mjs` passes and `bash -n infra/ci/*.sh` is clean.
-- [ ] **C0.6 Prices per region.** `worker/test/labs-read.test.ts`: `a secondary-region item is priced at the session's
+  **(V) answers:** az 2.86.0's `az sql db replica delete-link` takes the local database (`--resource-group --server --name`),
+  `--partner-server` (required), `--partner-resource-group` (defaults to the local group, so unblock passes the partner's lab
+  group) and `--yes`. Site Recovery REST (Learn, api-version 2023-08-01): POST `.../replicationProtectedItems/{item}/
+  testFailoverCleanup` with `{"properties":{"comments":"..."}}` (an item being cleaned up shows `MarkedForDeletion`); POST
+  `.../replicationProtectionContainerMappings/{m}/remove` with `{"properties":{"providerSpecificInput":{}}}`. Learn's
+  "Delete an Azure Site Recovery vault" (2026-02-11): an Azure-to-Azure vault needs only its protected items removed, so
+  removing mappings and policies is harmless tidy-up, kept so nothing is left half-made.
+- [x] **C0.6 Prices per region.** `worker/test/labs-read.test.ts`: `a secondary-region item is priced at the session's
   secondary region`; `an item without region keeps the session's region`. `labs-verify.test.mjs`: `labs-verify checks a
   secondary-region meter in ukwest`. `labs-lib.test.mjs`: `region: secondary needs regions.secondary`. FAIL; implement in
   `shared/labs.ts`, `scripts/lib/labs.mjs`, `worker/src/labs/prices.ts`, `scripts/labs-verify.mjs`; PASS; commit.
   **Done when** `npm test` and `npm run typecheck` pass.
-- [ ] **C0.7 Ready check.** `lab-cleanup.test.mjs` (or `lab-ready` tests where they live): `ready check accepts an empty state
+- [x] **C0.7 Ready check.** `lab-cleanup.test.mjs` (or `lab-ready` tests where they live): `ready check accepts an empty state
   only for types listed as never giving one` (list empty; a fake listed type passes, an unlisted one stays pending). FAIL;
   implement; PASS; commit. **Done when** the test passes.
 - [ ] **C0.8 Contract check.** This plan's names section rewritten "as built"; spec §17 rulings 23–37 corrected to what was
