@@ -10,9 +10,14 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { templateProblems } from "../../infra/ci/lab-scope.mjs";
+import { BICEP_VERSION, pinnedBicep } from "../lib/bicep.mjs";
 import { attr, lab, labContentSuite, outputs, resources, uncomment } from "./fixtures/labs/content.mjs";
+import lab12Plan from "./fixtures/labs/plans/labs/az104-12-bicep.mjs";
 
 /** The body of resource `type.name` (asserts it exists). */
 function body(l, type, name) {
@@ -260,4 +265,65 @@ test(`${L11}: an empty Basic registry with the admin user off, named from name_p
   // Nothing pulls from it: AcrPull is not on the allow-list (ruling 7).
   assert.doesNotMatch(tfText(l), /\.login_server\}?[^"]*\/|azurerm_container_registry_task|azurerm_role_assignment/);
   assert.ok(l.yaml.cost.items.some((i) => i.retail?.meter === "Basic Registry Unit" && i.retail.unit === "1/Day"));
+});
+
+// ── Lab 12: ARM and Bicep templates ─────────────────────────────────────
+
+const L12 = "az104-12-bicep";
+labContentSuite(L12, { marker: "£" });
+
+/** The pinned Bicep from labs-tf's cache, never downloaded here (null: skip). */
+const bicep = await pinnedBicep({ cacheDir: join(tmpdir(), "labs-bicep", BICEP_VERSION), fetch: async () => { throw new Error("no download in npm test"); }, log: () => {} });
+
+test(`${L12}: Terraform deploys main.json, built from main.bicep, into the lab's group in Incremental mode`, () => {
+  const l = lab(L12);
+  for (const f of ["main.bicep", "vnet.bicep"]) assert.ok(existsSync(join(l.tfDir, f)), `terraform/${f}`);
+  const deps = resources(l, "azurerm_resource_group_template_deployment");
+  assert.equal(deps.length, 1);
+  const d = deps[0].body;
+  assert.equal(attr(d, "resource_group_name"), "azurerm_resource_group.lab.name");
+  assert.equal(attr(d, "deployment_mode"), '"Incremental"');
+  // Built at lab.yml step 5 by the pinned Bicep; never committed (the lint's file rule) and read at plan.
+  assert.equal(attr(d, "template_content"), 'file("${path.module}/main.json")');
+  assert.doesNotMatch(d, /template_spec_version_id/);
+  assert.equal(resources(l).filter((r) => /template_deployment$/.test(r.labels[0]) && r.labels[0] !== "azurerm_resource_group_template_deployment").length, 0, "no deployment at another scope");
+  const main = readFileSync(join(l.tfDir, "main.bicep"), "utf8");
+  assert.match(main, /^module\s+vnet\s+'vnet\.bicep'/m, "one local module");
+  assert.equal([...main.matchAll(/^module\s/gm)].length, 1);
+  assert.match(main, /^param\s+\w+/m);
+  assert.match(main, /^output\s+\w+/m);
+  assert.doesNotMatch(main, /^targetScope/m, "a resource group deployment (the default scope)");
+});
+
+test(`${L12}: the template's addresses come from a parameter set from cidrsubnet(var.address_space, 2, 0)`, () => {
+  const l = lab(L12);
+  const d = resources(l, "azurerm_resource_group_template_deployment")[0].body;
+  assert.match(d, /parameters_content\s*=\s*jsonencode\(\{[\s\S]*vnetCidr\s*=\s*\{\s*value\s*=\s*cidrsubnet\(var\.address_space,\s*2,\s*0\)\s*\}/);
+  const main = readFileSync(join(l.tfDir, "main.bicep"), "utf8");
+  const vnet = readFileSync(join(l.tfDir, "vnet.bicep"), "utf8");
+  assert.match(main, /^param vnetCidr string$/m);
+  assert.match(main, /cidr:\s*vnetCidr/, "passed to the module");
+  assert.match(vnet, /addressPrefixes:\s*\[\s*cidr\s*\]/);
+  assert.match(vnet, /cidrSubnet\(cidr,\s*24,/, "each subnet a /24 of the parameter");
+});
+
+test(`${L12}: template deletion removes what the template made`, () => {
+  const l = lab(L12);
+  const provider = l.blocks.find((b) => b.kind === "provider" && b.labels[0] === "azurerm").body;
+  assert.match(provider, /template_deployment\s*\{\s*delete_nested_items_during_deletion\s*=\s*true\s*\}/);
+  assert.match(provider, /prevent_deletion_if_contains_resources\s*=\s*false/, "and the group goes whatever is left");
+});
+
+test(`${L12}: the built template passes templateProblems`, { skip: bicep ? false : "the pinned Bicep is not in the cache (npm run labs-tf -- az104-12-bicep fetches it)" }, () => {
+  const l = lab(L12);
+  const dir = mkdtempSync(join(tmpdir(), "lab12-bicep-"));
+  for (const f of ["main.bicep", "vnet.bicep"]) cpSync(join(l.tfDir, f), join(dir, f));
+  const r = spawnSync(bicep, ["build", "main.bicep", "--outfile", "main.json"], { cwd: dir, encoding: "utf8", env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: "1" } });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const built = JSON.parse(readFileSync(join(dir, "main.json"), "utf8"));
+  assert.deepEqual(templateProblems(built), []);
+  assert.match(built.$schema, /\/deploymentTemplate\.json#$/);
+  assert.ok(Object.values(built.resources).some((x) => x.type === "Microsoft.Resources/deployments"), "the module is a nested deployment");
+  // The plan fixture deploys exactly this template, so lab-plans checks the real thing.
+  assert.deepEqual(JSON.parse(lab12Plan().resources.find((x) => x.address === "azurerm_resource_group_template_deployment.bicep").values.template_content), built);
 });
