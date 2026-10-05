@@ -27,7 +27,9 @@
     "shots:diff": "node scripts/shots-diff.mjs",
     "bundle-size": "node scripts/bundle-size.mjs",
     "labs-build": "node scripts/labs-build.mjs",
-    "labs-check": "node scripts/labs-check.mjs"
+    "labs-check": "node scripts/labs-check.mjs",
+    "labs-tf": "node scripts/labs-tf.mjs",
+    "labs-setup": "node scripts/labs-setup.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260922.1",

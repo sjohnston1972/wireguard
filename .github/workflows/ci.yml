@@ -143,9 +143,10 @@ jobs:
       - name: labs-tf
         env:
           TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tf-plugins
+          LABS_TF_REQUIRE_HCL2JSON: "1"
         run: |
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
-          LABS_TF_REQUIRE_HCL2JSON=1 node scripts/labs-tf.mjs
+          npm run labs-tf
 
   scripts:
     name: typecheck + tests

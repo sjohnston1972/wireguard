@@ -110,6 +110,16 @@ test("without hcl2json the HCL check is skipped with a note locally, and fails w
   assert.equal(runLabsTf({ labsDir: dir, run: fakeRun({ missing: ["terraform"] }).run, log: quiet, only: ["_template"] }).failures.length, 1, "no terraform is a failure, never a pass");
 });
 
+test("npm run labs-tf and labs-setup exist, and CI's labs job runs labs-tf through npm with hcl2json required", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+  assert.equal(pkg.scripts["labs-tf"], "node scripts/labs-tf.mjs");
+  assert.equal(pkg.scripts["labs-setup"], "node scripts/labs-setup.mjs");
+  const step = CI.jobs.labs.steps.find((s) => s.name === "labs-tf");
+  assert.ok(step, "ci.yml labs job has a labs-tf step");
+  assert.match(step.run, /^\s*npm run labs-tf\s*$/m);
+  assert.equal(String(step.env?.LABS_TF_REQUIRE_HCL2JSON), "1");
+});
+
 test("ci labs job pins hcl2json by checksum", () => {
   const job = CI.jobs.labs;
   assert.ok(job, "ci.yml has a labs job");
@@ -124,8 +134,8 @@ test("ci labs job pins hcl2json by checksum", () => {
   assert.match(all, /sha256sum -c/);
   assert.ok(all.indexOf("sha256sum -c") < all.indexOf("chmod +x"), "checked before it is made runnable");
   assert.match(all, /npm run labs-check -- --base origin\/main/);
-  assert.match(all, /LABS_TF_REQUIRE_HCL2JSON=1 node scripts\/labs-tf\.mjs|node scripts\/labs-tf\.mjs/);
-  assert.equal(JSON.stringify(job.env ?? {}).includes("LABS_TF_REQUIRE_HCL2JSON") || all.includes("LABS_TF_REQUIRE_HCL2JSON=1"), true);
+  assert.match(all, /npm run labs-tf/);
+  assert.equal(JSON.stringify(steps.find((s) => s.name === "labs-tf")?.env ?? {}).includes("LABS_TF_REQUIRE_HCL2JSON"), true);
   // Pinned actions, no secrets.
   for (const s of steps.filter((x) => x.uses)) assert.match(s.uses, /@[0-9a-f]{40}/);
   assert.ok(!JSON.stringify(job).includes("secrets."));
