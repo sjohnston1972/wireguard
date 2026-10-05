@@ -9,12 +9,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { lintTfText } from "../lib/labs.mjs";
-import { fileProblems, lintDir } from "../../infra/ci/lab-lint.mjs";
+import { fileProblems, lintBicepText, lintDir } from "../../infra/ci/lab-lint.mjs";
 import { labFolders } from "../lib/labs.mjs";
 
 const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
@@ -78,8 +78,71 @@ test("provisioners, modules, import blocks and a backend other than the template
 });
 
 test("files Terraform reads but the lint cannot are refused", () => {
-  assert.deepEqual(fileProblems(["main.tf", "versions.tf", "cloud-init.yaml.tftpl", "site.bicep", "site.json"]), []);
+  assert.deepEqual(fileProblems(["main.tf", "versions.tf", "cloud-init.yaml.tftpl", "site.bicep", "settings.json"]), []);
   for (const f of ["main.tf.json", "x.auto.tfvars", "terraform.tfvars.json", "terraform.rc", ".terraformrc"]) assert.equal(fileProblems([f])[0]?.rule, "file", f);
+});
+
+test("a committed x.json beside x.bicep is refused", () => {
+  // The pipeline builds main.json from main.bicep with the pinned Bicep; a committed one would be deployed unchecked by the lint.
+  assert.deepEqual(fileProblems(["main.tf", "main.bicep", "main.json", "vnet.bicep"]).map((p) => [p.rule, p.file]), [["file", "main.json"]]);
+  assert.deepEqual(fileProblems(["main.tf", "Main.Bicep", "main.JSON"]).map((p) => p.rule), ["file"], "case does not matter");
+  assert.deepEqual(fileProblems(["main.tf", "main.bicep", "vnet.bicep"]), []);
+  // Through lintDir too, as lab.yml runs it before init.
+  const dir = mkdtempSync(join(tmpdir(), "lab-lint-"));
+  writeFileSync(join(dir, "main.tf"), "");
+  writeFileSync(join(dir, "main.bicep"), "param location string\n");
+  writeFileSync(join(dir, "main.json"), "{}");
+  assert.deepEqual(lintDir(dir).map((p) => [p.rule, p.file]), [["file", "main.json"]]);
+});
+
+test(".bicep files are linted for literal CIDRs and the gateway's names", () => {
+  const bicep = [
+    "// A comment may say 10.0.0.0/8 or vnet-wg without harm.",
+    "/* So may a block comment: 192.168.0.0/16",
+    "   rg-wg-ondemand */",
+    "param cidr string",
+    "var home = 'https://learn.microsoft.com//x' // 172.16.0.0/12",
+    "var bad = '10.1.0.0/16'",
+    "var anyIp = '0.0.0.0/0'",
+    "var esc = 'it\\'s 10.2.0.0/24'",
+    "var multi = '''",
+    "10.3.0.0/24",
+    "'''",
+    "resource peer 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2024-05-01' existing = {",
+    "  name: 'vnet-lab/to-vnet-wg'",
+    "}",
+    "",
+  ].join("\n");
+  const problems = lintBicepText({ "main.bicep": bicep });
+  assert.deepEqual(problems.map((p) => [p.rule, p.file, p.line]), [
+    ["literal-cidr", "main.bicep", 6],
+    ["literal-cidr", "main.bicep", 8],
+    ["literal-cidr", "main.bicep", 10],
+    ["gateway", "main.bicep", 13],
+  ]);
+  // Every file in the folder, through lintDir.
+  const dir = mkdtempSync(join(tmpdir(), "lab-lint-"));
+  writeFileSync(join(dir, "main.tf"), "");
+  writeFileSync(join(dir, "vnet.bicep"), "param cidr string\nvar x = '10.9.0.0/16'\n");
+  assert.deepEqual(lintDir(dir).map((p) => [p.rule, p.file, p.line]), [["literal-cidr", "vnet.bicep", 2]]);
+  // A clean Bicep file: addresses from parameters and cidrSubnet().
+  assert.deepEqual(lintBicepText({ "main.bicep": readFileSync(new URL("./fixtures/labs/bicep/vnet.bicep", import.meta.url), "utf8") }), []);
+});
+
+test(".bicep may not pull code from elsewhere: registry or template spec modules, extensions or imports", () => {
+  const cases = [
+    ["module m 'br:mcr.microsoft.com/bicep/avm/res/network/virtual-network:0.1.0' = {\n  name: 'm'\n}\n", "module"],
+    ["module m 'br/public:avm/res/network/virtual-network:0.1.0' = {\n  name: 'm'\n}\n", "module"],
+    ["module m 'ts:00000000-0000-0000-0000-000000000000/rg/spec:1.0' = {\n  name: 'm'\n}\n", "module"],
+    ["module m 'ts/corp:spec:1.0' = {\n  name: 'm'\n}\n", "module"],
+    ["extension microsoftGraphV1\n", "provider"],
+    ["extension 'br:mcr.microsoft.com/bicep/extensions/microsoftgraph/v1.0:0.1.8-preview'\n", "provider"],
+    ["import 'microsoftGraph@1.0.0'\n", "provider"],
+    ["provider microsoftGraph\n", "provider"],
+  ];
+  for (const [src, rule] of cases) assert.deepEqual(lintBicepText({ "main.bicep": src }).map((p) => p.rule), [rule], src);
+  // A local module is fine (lab 12 uses one).
+  assert.deepEqual(lintBicepText({ "main.bicep": "module vnet 'vnet.bicep' = {\n  name: 'vnet'\n}\n" }), []);
 });
 
 test("the command line: exit 1 with one line per problem before Terraform starts, 0 for a real lab, 2 for bad arguments", () => {
