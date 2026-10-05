@@ -3,7 +3,8 @@ version: 1
 title: "Azure Policy, tags and resource locks"
 summary: >-
   A required-tag policy and the built-in Allowed locations policy assigned at the lab's resource group,
-  and a storage account with a delete lock, so you can see policy and locks refuse changes.
+  an untagged resource that shows as non-compliant, and a storage account with a delete lock,
+  so you can see policy and locks refuse changes.
 exam: AZ-104
 skill_areas: [az104.identity]
 level: foundation
@@ -12,6 +13,8 @@ prerequisites: []
 cost:
   items:
     - { name: "Storage account, LRS hot, empty", gbp_h: 0.0001 }
+    - { name: "Network security group, no rules (free)", gbp_h: 0 }
+    - { name: "Policy definition, two assignments and a lock (free)", gbp_h: 0 }
   pricey: null
 timing: { deploy_min: 2, destroy_min: 2, session_h: 1, max_h: 4 }
 capacity: { vm_sizes: [] }

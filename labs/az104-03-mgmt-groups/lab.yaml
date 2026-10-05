@@ -11,7 +11,8 @@ type: explore
 prerequisites: [az104-02-policy]
 cost:
   items:
-    - { name: "Management groups and an audit policy (free)", gbp_h: 0 }
+    - { name: "Three management groups (free)", gbp_h: 0 }
+    - { name: "Audit policy definition and assignment (free)", gbp_h: 0 }
   pricey: null
 timing: { deploy_min: 3, destroy_min: 3, session_h: 1, max_h: 4 }
 capacity: { vm_sizes: [] }

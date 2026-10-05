@@ -11,7 +11,9 @@ type: explore
 prerequisites: []
 cost:
   items:
-    - { name: "Entra ID users, groups and role assignments (free)", gbp_h: 0 }
+    - { name: "Entra ID users and group (free)", gbp_h: 0 }
+    - { name: "Custom role and two role assignments (free)", gbp_h: 0 }
+    - { name: "Network security group, no rules (free)", gbp_h: 0 }
   pricey: null
 timing: { deploy_min: 2, destroy_min: 2, session_h: 1, max_h: 4 }
 capacity: { vm_sizes: [] }
