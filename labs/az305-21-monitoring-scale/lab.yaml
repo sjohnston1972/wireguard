@@ -1,0 +1,44 @@
+# Lab 21 (labs batch 3 plan, area C1). AZ-305 study guide skills this lab
+# touches (outline "Skills measured as of April 17, 2026"):
+#   Design identity, governance, and monitoring solutions > Design solutions
+#   for logging and monitoring: "Recommend a logging solution",
+#   "Recommend a solution for routing logs", "Recommend a monitoring
+#   solution". Design governance: "Recommend a solution for managing
+#   compliance".
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up, all authored: none has a unique uksouth meter in a unit the
+# price feed reads (batch 2 ruling 2), so labs-verify --meters has nothing to
+# check here. Log Analytics is priced per GB ("Analytics Logs Data
+# Ingestion", £2.1737/GB after the first 5 GB a month); a vault's audit
+# events and the policy evaluation details are a few hundred KB an hour, and
+# the 0.05 GB daily cap bounds it at about £0.11 a day. Key Vault Standard
+# bills operations (£0.0226 per 10,000): a session makes a few hundred. The
+# policy definition, its assignments, the managed identity and its role
+# assignment are free.
+id: az305-21-monitoring-scale
+version: 1
+title: "Monitoring at scale: workspace design, diagnostics via policy"
+summary: >-
+  A central, capped Log Analytics workspace and a deployIfNotExists policy that gives every Key Vault in
+  the group a diagnostic setting sending its logs there, remediated by the assignment's own managed
+  identity with Monitoring Contributor alone.
+exam: AZ-305
+skill_areas: [az305.identity]
+level: expert
+type: explore
+prerequisites: [az104-18-monitor]
+cost:
+  items:
+    - { name: "Log Analytics ingestion, a few hundred KB (capped at 0.05 GB a day)", gbp_h: 0.0005 }
+    - { name: "Key Vault Standard, a few hundred operations", gbp_h: 0.0001 }
+    - { name: "Policy definition, two assignments, a managed identity and its role (free)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 4, destroy_min: 4, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles:
+    - { role: "Monitoring Contributor", scope: resource_group }
+  governance: true
