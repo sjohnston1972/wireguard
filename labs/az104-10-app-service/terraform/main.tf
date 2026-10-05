@@ -1,9 +1,10 @@
 # main.tf
 #
 # Plain English: App Service from the plan up. asp-lab is a Linux App
-# Service plan on Premium v3 P0v3, the cheapest Linux tier that has both
-# deployment slots and autoscale (Basic has neither; Standard costs more on
-# Linux). On it runs one web app, <prefix>-web, with Node.js 22 as its
+# Service plan on Standard S1, the cheapest tier with both deployment slots
+# and autoscale that a new pay-as-you-go subscription can use (Basic has
+# neither; Premium v3 has no quota there by default, so an apply of P0v3 is
+# refused). On it runs one web app, <prefix>-web, with Node.js 22 as its
 # built-in runtime and no code deployed, so it shows the runtime's own
 # start page, and a deployment slot, staging, with the same settings. Both
 # are https only (TLS 1.2 or later, FTP off). An autoscale setting keeps the
@@ -23,7 +24,7 @@ resource "azurerm_service_plan" "plan" {
   resource_group_name = azurerm_resource_group.lab.name
   location            = azurerm_resource_group.lab.location
   os_type             = "Linux"
-  sku_name            = "P0v3"
+  sku_name            = "S1"
   # One instance to start; autoscale may add a second.
   worker_count = 1
   tags         = var.tags

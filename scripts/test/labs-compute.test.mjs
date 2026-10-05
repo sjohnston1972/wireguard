@@ -154,12 +154,14 @@ test(`${L9}: vm_sizes lists three Standard_B1s, the autoscale maximum, and the c
 const L10 = "az104-10-app-service";
 labContentSuite(L10, { marker: "££" });
 
-test(`${L10}: a P0v3 Linux plan, a web app and a staging slot, both https only`, () => {
+test(`${L10}: a Standard S1 Linux plan, a web app and a staging slot, both https only`, () => {
   const l = lab(L10);
   const plans = resources(l, "azurerm_service_plan");
   assert.equal(plans.length, 1);
   assert.equal(attr(plans[0].body, "os_type"), '"Linux"');
-  assert.equal(attr(plans[0].body, "sku_name"), '"P0v3"', "the cheapest Linux plan with slots and autoscale (ruling 4)");
+  // Standard has slots and autoscale. Premium v3 (P0v3) was refused at apply: a new pay-as-you-go subscription has
+  // no P0v3 quota ("Current Limit (P0v3 VMs): 0").
+  assert.equal(attr(plans[0].body, "sku_name"), '"S1"', "Standard S1: slots and autoscale with default quota");
   const apps = resources(l, "azurerm_linux_web_app");
   assert.equal(apps.length, 1);
   const app = apps[0].body;
@@ -205,7 +207,20 @@ test(`${L10}: peering off, no VNet, connect lists both default hostnames`, () =>
   assert.match(connect, /https:\/\/\$\{azurerm_linux_web_app\.web\.default_hostname\}/);
   assert.match(connect, /https:\/\/\$\{azurerm_linux_web_app_slot\.staging\.default_hostname\}/);
   // ££ for the plan: the card names what makes it pricey.
-  assert.equal(l.yaml.cost.pricey, l.yaml.cost.items.find((i) => /P0v3/.test(i.name)).name);
+  assert.equal(l.yaml.cost.pricey, l.yaml.cost.items.find((i) => /S1/.test(i.name)).name);
+});
+
+test(`${L10}: priced as Standard S1 Linux, and the readme says why it is not Premium v3`, () => {
+  const l = lab(L10);
+  // Retail Prices API, uksouth, "Azure App Service Standard Plan - Linux", S1 App: £0.0755 an hour. The meter is
+  // shared with the Windows plan (£0.0943), so the feed cannot pick it by name: the item stays authored (ruling 2).
+  const plan = l.yaml.cost.items.find((i) => /S1/.test(i.name));
+  assert.equal(plan.gbp_h, 0.0755);
+  assert.equal(plan.retail, undefined);
+  assert.ok(l.yaml.version >= 2, "a changed lab gets a new version");
+  assert.doesNotMatch(JSON.stringify(l.yaml) + l.readme, /P0v3|Premium v3 P0/);
+  assert.match(l.readme, /\*\*Standard S1\*\*/);
+  assert.match(l.readme, /Premium v3[^\n]*quota[^\n]*pay-as-you-go/);
 });
 
 // ── Lab 11: Containers, ACI and Container Apps ──────────────────────────

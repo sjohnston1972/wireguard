@@ -164,13 +164,13 @@ items are checked live or on the official page during the build; each area's rep
    refuses Graph extension resources, deployment scripts, linked templates (`templateLink`), template specs, extension imports,
    non-resource-group schemas and any template it cannot read. `labs-tf` checks the built JSON with `templateProblems`.
 2. **A `retail.meter` must be unique in uksouth.** The feed matches on meter name alone, and four names batch 2 wants are
-   shared: `P0v3 App` (Linux £0.0653, Windows £0.1257), `Standard Fixed Cost` and `Standard Capacity Units` (App Gateway v2, WAF
+   shared: `P0v3 App` (Linux £0.0653, Windows £0.1257), `S1 App` (Linux £0.0755, Windows £0.0943), `Standard Fixed Cost` and `Standard Capacity Units` (App Gateway v2, WAF
    v2, AGC), `Standard vCPU Duration` (ACI, Logic Apps). Those items, the load balancer (no regional row), DNS zones (tiered,
    region "Zone 1"), ACI memory (`1 GB Hour`) and Log Analytics stay authored. `labs-verify --meters` proves the rest.
 3. **`capacity.vm_sizes` lists one entry per VM at its maximum** (the capacity warning counts each entry as one VM); cost
    `qty` is the default count. Lab 9 lists three `Standard_B1s` and prices two.
-4. **Markers come from `costMarker`,** not §12.2's planning column: lab 10 is ££ (P0v3 Linux, the cheapest plan with slots and
-   autoscale: B1 has neither, S1 Linux is £0.0755/h); lab 16 is ££ on App Gateway **Basic** (in azurerm 4.81; Standard_v2 only
+4. **Markers come from `costMarker`,** not §12.2's planning column: lab 10 is ££ (S1 Linux, £0.0755/h: slots and autoscale, B1 has
+   neither; P0v3 was refused at apply for quota, 0 on a new pay-as-you-go subscription); lab 16 is ££ on App Gateway **Basic** (in azurerm 4.81; Standard_v2 only
    if Basic is refused in uksouth, then about £0.24/h); lab 19 is £ by estimate (§12.2 said ££).
 5. **No public IP on any VM.** VMs serve with `python3 -m http.server` from a cloud-init systemd unit: no packages, so no
    dependency on outbound access (kept on, as lab 7). Public by nature and accepted: lab 10's app and slot, lab 11's
@@ -208,7 +208,7 @@ items are checked live or on the official page during the build; each area's rep
   `instant_restore_resource_group` prefix `rg-lab-<id>-irp`; V: Azure appends `1`), and Azure's own `NetworkWatcherRG`. No Entra objects, no role assignments
   (`identity: { creates: [], roles: [], governance: false }` for all twelve).
 - **Cheapest SKUs:** `Standard_B1s` VMs, Ubuntu 24.04 (`ubuntu-24_04-lts`/`server`), `Standard_LRS` OS disks (S4), StandardSSD
-  E1 data disks, App Gateway Standard_v2 autoscaling 0–2 (Steven's choice over Basic, after review), P0v3 Linux, ACR Basic, ACI 0.5 vCPU / 0.5 GB, internal Standard LB, RSV LRS.
+  E1 data disks, App Gateway Standard_v2 autoscaling 0–2 (Steven's choice over Basic, after review), S1 Linux (P0v3 has no default quota), ACR Basic, ACI 0.5 vCPU / 0.5 GB, internal Standard LB, RSV LRS.
 - **Addresses:** every one from `cidrsubnet(var.address_space, 2, n)` (a /20) and smaller cuts of it, in `.tf` and `.bicep`.
 - **`lab.yaml`:** as batch 1 (YAML 1.1, `"off"` quoted, whole minutes); a header comment naming the AZ-104 study-guide skills
   (V: the current outline) and where each price came from, with the `labs-verify --meters` answer.
@@ -227,7 +227,7 @@ Planning figures; release tests replace the times. £/h is the authored estimate
 |---|---|---|---|---|---|---|---|---|---|
 | 8 | az104-08-vms | 2 VMs in zones 1 and 2, E1 data disk, Custom Script extension | 0.022 £ | opt | 1 | 6/5 | 2/6 | — | B1s ×2 |
 | 9 | az104-09-vmss | Uniform scale set (2, autoscale 1–3 on CPU) | 0.021 £ | opt | 1 | 6/5 | 2/6 | 8 | B1s ×3 |
-| 10 | az104-10-app-service | P0v3 Linux plan, web app, staging slot, autoscale 1–2 | 0.065 ££ | off | 0 | 4/3 | 2/6 | — | — |
+| 10 | az104-10-app-service | S1 Linux plan, web app, staging slot, autoscale 1–2 | 0.076 ££ | off | 0 | 4/3 | 2/6 | — | — |
 | 11 | az104-11-containers | ACI in a delegated subnet, Container Apps env + app (scale to 0), ACR Basic | 0.025 £ | opt | 1 | 5/6 | 2/6 | — | — |
 | 12 | az104-12-bicep | Bicep (storage account, VNet, NSG) deployed by Terraform | 0.0002 £ | off | 1 | 3/3 | 2/6 | — | — |
 | 13 | az104-13-vnets | VNet, web/app subnets, NSGs, ASGs, 2 VMs | 0.021 £ | opt | 1 | 5/4 | 2/6 | — | B1s ×2 |
@@ -337,11 +337,11 @@ scripts/test/labs-compute.test.mjs scripts/test/lab-plans.test.mjs`, `npm run la
   `az104-09-vmss: autoscale 1 to 3 on average CPU, out above 70% and in below 25%`; `az104-09-vmss: vm_sizes lists three
   Standard_B1s, the autoscale maximum, and the cost two`. Things to try: load one instance with `yes > /dev/null` via Run
   command and watch scale-out; manual scale; a Flexible scale set by hand.
-- [ ] **B1.3 Lab 10:** `az104-10-app-service: a P0v3 Linux plan, a web app and a staging slot, both https only`;
+- [ ] **B1.3 Lab 10:** `az104-10-app-service: a Standard S1 Linux plan, a web app and a staging slot, both https only`;
   `az104-10-app-service: autoscale on the plan from 1 to 2 instances`; `az104-10-app-service: peering off, no VNet, connect lists
-  both default hostnames`. Web app name `${var.name_prefix}-web`; built-in runtime, no code deploy. (V) P0v3 Linux offered and
-  in quota (`az appservice list-locations --sku P0V3 --linux-workers-enabled`). Things to try: swap slots, deployment-slot
-  settings, scale up to S1 and back, custom autoscale rule.
+  both default hostnames`. Web app name `${var.name_prefix}-web`; built-in runtime, no code deploy. (V, corrected by the release test) P0v3
+  Linux is offered but has no quota on a new pay-as-you-go subscription, so the plan is S1. Things to try: swap slots,
+  deployment-slot settings, compare tiers under Scale up, custom autoscale rule.
 - [ ] **B1.4 Lab 11:** `az104-11-containers: an ACI group of 0.5 vCPU and 0.5 GB with a private IP in a delegated subnet`;
   `az104-11-containers: a consumption-only Container Apps environment with no infrastructure subnet and an app that scales to
   zero`; `az104-11-containers: an empty Basic registry with the admin user off, named from name_prefix`. Images

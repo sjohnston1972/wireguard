@@ -608,12 +608,12 @@ these win; §3.4's `az bicep build` and §5 step 5's are replaced by ruling 1.
    (`templateLink`), template specs, extension imports, non-resource-group schemas and any template it cannot read.
    `labs-tf` checks the built JSON with `templateProblems`.
 2. **A `retail.meter` must be unique in uksouth.** The feed matches on meter name alone, and four names batch 2 wants are
-   shared: `P0v3 App` (Linux £0.0653, Windows £0.1257), `Standard Fixed Cost` and `Standard Capacity Units` (App Gateway v2,
+   shared: `P0v3 App` (Linux £0.0653, Windows £0.1257), `S1 App` (Linux £0.0755, Windows £0.0943), `Standard Fixed Cost` and `Standard Capacity Units` (App Gateway v2,
    WAF v2, AGC), `Standard vCPU Duration` (ACI, Logic Apps). Those items, the load balancer (no regional row), DNS zones
    (tiered, region "Zone 1"), ACI memory (`1 GB Hour`) and Log Analytics stay authored. `labs-verify --meters` proves the rest.
 3. **`capacity.vm_sizes` lists one entry per VM at its maximum** (the capacity warning counts each entry as one VM); cost
    `qty` is the default count. Lab 9 lists three `Standard_B1s` and prices two.
-4. **Markers come from `costMarker`,** not §12.2's planning column: lab 10 is ££ (P0v3 Linux), lab 16 is ££ on App Gateway
+4. **Markers come from `costMarker`,** not §12.2's planning column: lab 10 is ££ (S1 Linux; P0v3 has no default quota on pay-as-you-go), lab 16 is ££ on App Gateway
    **Standard_v2** (Steven's choice over Basic after the batch review: autoscale 0–2, as azurerm takes no maximum below 2;
    about £0.24/h, its shared meters authored by ruling 2; lab version 2), lab 19 is £ by estimate.
 5. **No public IP on any VM.** VMs serve with `python3 -m http.server` from a cloud-init systemd unit. Public by nature and

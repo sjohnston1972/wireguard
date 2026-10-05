@@ -1,5 +1,5 @@
 // az104-10-app-service.mjs: lab 10's first-deploy plan, as
-// labs/az104-10-app-service/terraform/main.tf builds it (a P0v3 Linux plan,
+// labs/az104-10-app-service/terraform/main.tf builds it (a Standard S1 Linux plan,
 // a web app, a staging slot and autoscale on the plan). No VNet. Fake ids;
 // realistic.mjs adds what Azure computes (hostnames, outbound addresses).
 
@@ -20,7 +20,7 @@ export default () => {
     variables: c.variables,
     resources: [
       rgResource(c),
-      { address: PLAN, values: { name: "asp-lab", resource_group_name: c.rg, location: REGION, os_type: "Linux", sku_name: "P0v3", worker_count: 1, tags: c.tags }, refs: IN_RG },
+      { address: PLAN, values: { name: "asp-lab", resource_group_name: c.rg, location: REGION, os_type: "Linux", sku_name: "S1", worker_count: 1, tags: c.tags }, refs: IN_RG },
       {
         address: "azurerm_linux_web_app.web",
         values: { name: `${c.prefix}-web`, resource_group_name: c.rg, location: REGION, https_only: true, tags: c.tags, site_config: SITE },
