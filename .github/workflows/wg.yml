@@ -300,6 +300,82 @@ jobs:
           echo "- DNS: $(jq -r .dns_name.value "$RUNNER_TEMP/outputs.json")" >> "$GITHUB_STEP_SUMMARY"
 
       # ── DESTROY ──────────────────────────────────────────────────────────
+      # Labs (see lab.yml) may be peered with vnet-wg, and may link their
+      # private DNS zones to it. Those belong to the labs, not to Terraform, so
+      # remove them first, then tell the Worker, which marks the labs
+      # "disconnected" (they keep running). Only peerings to a lab group
+      # (rg-lab-*) and links from zones in one are touched; with no labs this
+      # only looks. Best effort: whatever happens here, the destroy goes on.
+      - name: Remove lab peerings
+        if: inputs.action == 'destroy'
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Remove lab peerings"
+          set +e -uo pipefail
+          peerings=0; links=0; complete=true
+          warn() { echo "::warning::$1"; complete=false; }
+          if az login --service-principal -u "$ARM_CLIENT_ID" -p "$ARM_CLIENT_SECRET" --tenant "$ARM_TENANT_ID" -o none \
+            && az account set --subscription "$ARM_SUBSCRIPTION_ID"; then
+            wg_vnet="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/$RG/providers/Microsoft.Network/virtualNetworks/vnet-wg"
+            # Peerings from vnet-wg to a network in a lab group.
+            if [ "$(az group exists -n "$RG")" != "true" ]; then
+              echo "$RG is not there: no peerings to remove"
+            elif ! list="$(az network vnet peering list -g "$RG" --vnet-name vnet-wg -o json 2>/dev/null)"; then
+              echo "no vnet-wg to list peerings on"
+            else
+              while IFS= read -r p; do
+                [ -n "$p" ] || continue
+                if az network vnet peering delete -g "$RG" --vnet-name vnet-wg -n "$p" -o none; then
+                  peerings=$((peerings + 1)); echo "removed peering $p"
+                else
+                  warn "could not remove peering $p; it goes when vnet-wg is deleted"
+                fi
+              done < <(jq -r '.[] | select((.remoteVirtualNetwork.id // "") | ascii_downcase | contains("/resourcegroups/rg-lab-")) | .name' <<<"$list")
+            fi
+            # Links to vnet-wg from private DNS zones in a lab group.
+            if zones="$(az network private-dns zone list -o json)"; then
+              while IFS=$'\t' read -r zrg zone; do
+                [ -n "$zone" ] || continue
+                if ! zl="$(az network private-dns link vnet list -g "$zrg" -z "$zone" -o json)"; then
+                  warn "could not list the DNS links of $zone"; continue
+                fi
+                while IFS= read -r l; do
+                  [ -n "$l" ] || continue
+                  if az network private-dns link vnet delete -g "$zrg" -z "$zone" -n "$l" --yes -o none; then
+                    links=$((links + 1)); echo "removed DNS link $l from $zone"
+                  else
+                    warn "could not remove DNS link $l from $zone"
+                  fi
+                done < <(jq -r --arg v "${wg_vnet,,}" '.[] | select((.virtualNetwork.id // "") | ascii_downcase == $v) | .name' <<<"$zl")
+              done < <(jq -r '.[] | select(.resourceGroup | ascii_downcase | startswith("rg-lab-")) | [.resourceGroup, .name] | @tsv' <<<"$zones")
+            else
+              warn "could not list private DNS zones"
+            fi
+          else
+            warn "could not sign in to Azure; lab peerings go when vnet-wg is deleted"
+          fi
+          echo "lab peerings removed: $peerings; DNS links removed: $links"
+          if [ -n "${CALLBACK_URL:-}" ] && [ -n "${CALLBACK_TOKEN:-}" ]; then
+            body="$(jq -cn --arg r "${WORKER_RUN_ID:-manual}" --argjson p "$peerings" --argjson l "$links" --argjson c "$complete" \
+              '{run_id:$r, peerings_removed:$p, dns_links_removed:$l, complete:$c}')"
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -X POST \
+              -H "Authorization: Bearer $CALLBACK_TOKEN" -H 'Content-Type: application/json' \
+              -d "$body" "${CALLBACK_URL%/}/lab-peerings-removed")"
+            case "$code" in
+              2??) echo "the Worker marked any peered labs disconnected" ;;
+              404) echo "this Worker has no labs yet: nothing to tell it" ;;
+              *) echo "::warning::could not tell the Worker the lab peerings are gone (HTTP ${code:-none}); labs may still show peered" ;;
+            esac
+          fi
+          exit 0
+
       - name: terraform destroy
         if: inputs.action == 'destroy'
         id: destroy
