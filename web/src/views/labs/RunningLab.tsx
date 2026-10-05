@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { LabDetail, LabRunRow, LabSecretResponse, LabSession } from "@shared/api";
@@ -149,8 +149,21 @@ function Addresses({ s }: { s: LabSession }) {
 /** The admin password and the lab's Entra users, fetched only on Show and dropped on Hide or close. */
 function Secret({ labId, running }: { labId: string; running: boolean }) {
   const fetchSecret = useLabSecret();
-  // Held only in this component: closing the modal unmounts it and the secret goes with it (nothing is cached).
+  // Held only in this component: Hide forgets it, and closing the modal unmounts it and the secret
+  // goes with it. reset() also drops the mutation's copy from the query client (gcTime 0).
   const [shown, setShown] = useState<LabSecretResponse | null>(null);
+  const { reset } = fetchSecret;
+  useEffect(() => reset, [reset]);
+  // The lab stops running (torn down): the section goes, and so does the secret.
+  useEffect(() => {
+    if (running) return;
+    setShown(null);
+    reset();
+  }, [running, reset]);
+  const hide = () => {
+    setShown(null);
+    reset();
+  };
   if (!running) return null;
   const users = shown ? Object.entries(shown.users) : [];
   return (
@@ -160,7 +173,7 @@ function Secret({ labId, running }: { labId: string; running: boolean }) {
           Sign-in
         </h3>
         {shown ? (
-          <Button size="sm" variant="secondary" onClick={() => setShown(null)}>
+          <Button size="sm" variant="secondary" onClick={hide}>
             Hide
           </Button>
         ) : (

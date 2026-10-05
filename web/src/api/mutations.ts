@@ -238,8 +238,12 @@ export const useCleanupLabOrphans = () => useApiMutation<LabOrphanCleanupBody>(l
 /** Settings → Labs → Check permissions; refreshes Settings too. */
 export const useCheckLabPermissions = () =>
   useApiMutation<void, LabPermissionsCheckResponse>({ method: "POST", path: "/labs/permissions/check", invalidate: [...LABS, ["settings"]] });
-/** A running lab's admin password and user names, fetched when Show is pressed: no toast, no cache, nothing refreshed. */
-export const useLabSecret = () => useMutation<LabSecretResponse, Error, string>({ mutationFn: (id) => apiGet<LabSecretResponse>(`/labs/${encodeURIComponent(id)}/secret`) });
+/**
+ * A running lab's admin password and user names, fetched when Show is pressed: no toast, nothing
+ * refreshed, and not kept: gcTime 0 drops the answer from the mutation cache as soon as nothing
+ * shows it (call reset() on Hide; unmounting lets it go too).
+ */
+export const useLabSecret = () => useMutation<LabSecretResponse, Error, string>({ mutationFn: (id) => apiGet<LabSecretResponse>(`/labs/${encodeURIComponent(id)}/secret`), gcTime: 0 });
 
 /** The SSH password is fetched only when pressed; no toast, no cache. */
 export const fetchSshPassword = () => apiGet<{ password: string }>("/ssh-password");

@@ -116,6 +116,30 @@ describe("the lab modal, running", () => {
     expect(fetchMock!.callsTo("GET", `${PATH}/secret`)).toHaveLength(3);
   });
 
+  it("the password is not kept in the query client's cache after Hide or after the modal closes", async () => {
+    const user = userEvent.setup();
+    const secret = { adminPassword: "Fake-Pa55word-x", users: { ann: "lab-az104-06-blob-security-ann@contoso.onmicrosoft.com" } };
+    const { client } = open(detailRunning(), { [`GET ${PATH}/secret`]: secret });
+    const cached = () => client.getMutationCache().getAll().some((m) => JSON.stringify(m.state.data ?? null).includes("Fake-Pa55word-x"));
+    let d = await dialog();
+    await user.click(d.getByRole("button", { name: "Show" }));
+    await d.findByText("Fake-Pa55word-x");
+    await user.click(d.getByRole("button", { name: "Hide" }));
+    await waitFor(() => expect(cached()).toBe(false));
+
+    await user.click(d.getByRole("button", { name: "Show" }));
+    await d.findByText("Fake-Pa55word-x");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(cached()).toBe(false));
+
+    // Reopened: Show still works.
+    await user.click((await screen.findAllByRole("link", { name: /Blob security/ }))[0]!);
+    d = await dialog();
+    await user.click(d.getByRole("button", { name: "Show" }));
+    expect(await d.findByText("Fake-Pa55word-x")).toBeInTheDocument();
+  });
+
   it("note saves", async () => {
     const user = userEvent.setup();
     const s = session({ note: "SAS worked." });
