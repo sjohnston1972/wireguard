@@ -231,3 +231,10 @@ test(`${BACKUP}: the readme says to restore only into rg-lab-<id> and never to l
   assert.match(r, /[Nn]ever[^\n]*soft delete[^\n]*[Aa]lways[- ]on/);
   assert.match(r, /Backup now/);
 });
+
+// ── Both labs ────────────────────────────────────────────────────────────
+
+test("labs 18 and 19 build on lab 8's VMs: each names az104-08-vms as its prerequisite", () => {
+  // The batch 2 plan's table (Prereq 8); area B3 left them empty only while lab 8 was on another branch.
+  for (const id of [MONITOR, BACKUP]) assert.deepEqual(lab(id).yaml.prerequisites, ["az104-08-vms"], id);
+});

@@ -29,7 +29,7 @@ exam: AZ-104
 skill_areas: [az104.monitor]
 level: associate
 type: explore
-prerequisites: []
+prerequisites: [az104-08-vms]
 cost:
   items:
     - { name: "Linux VM, Standard_B1s", gbp_h: 0.0092, retail: { sku: Standard_B1s } }
