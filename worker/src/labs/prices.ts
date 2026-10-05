@@ -16,7 +16,7 @@ import type { LabCostLine } from "../../../shared/api";
 /** A stored price as £ per hour, or null when its unit is not a time. */
 function perHour(r: Pick<PriceRow, "gbp" | "unit">): number | null {
   if (!Number.isFinite(r.gbp)) return null;
-  if (r.unit === "1 Hour") return r.gbp;
+  if (r.unit === "1 Hour" || r.unit === "1/Hour") return r.gbp;
   if (r.unit === "1/Day") return r.gbp / 24;
   if (r.unit === "1/Month") return r.gbp / HOURS_PER_MONTH;
   return null;

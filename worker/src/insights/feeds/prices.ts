@@ -27,7 +27,8 @@ const METERS: Record<string, { item: string; unit: string }> = {
   "S4 LRS Disk": { item: "disk:S4", unit: "1/Month" },
   "Standard IPv4 Static Public IP": { item: "ip:v4", unit: "1 Hour" },
 };
-const NOT_LINUX_PAYG = /Windows|Spot|Low Priority/i;
+/** Rows skipped as not Linux pay-as-you-go (scripts/labs-verify.mjs uses the same; a test keeps them equal). */
+export const NOT_LINUX_PAYG = /Windows|Spot|Low Priority/i;
 
 export interface PriceItem {
   item: string;
@@ -38,8 +39,12 @@ export interface PriceItem {
 
 /** A lab cost item's meter (labs spec §9.1) is stored as this item: "lab:<meter name>". */
 export const labItem = (meter: string) => `lab:${meter}`;
-/** Units a lab meter may be priced in (each turns into £ per hour). */
-const LAB_UNITS = ["1 Hour", "1/Month", "1/Day"];
+/**
+ * Units a lab meter may be priced in (each turns into £ per hour, labs/prices.ts).
+ * Azure writes hourly two ways: "1 Hour" (VMs, public IPs) and "1/Hour"
+ * (Application Gateway, among others). scripts/labs-verify.mjs uses the same list.
+ */
+export const LAB_UNITS = ["1 Hour", "1/Hour", "1/Day", "1/Month"];
 /** An OData string literal ('' for a quote). */
 const odata = (s: string) => `'${s.replace(/'/g, "''")}'`;
 

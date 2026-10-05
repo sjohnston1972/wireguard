@@ -29,6 +29,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildCatalogue, parseLabYaml, variablesProblems } from "../../../lib/labs.mjs";
 import { lintDir } from "../../../../infra/ci/lab-lint.mjs";
+import { costMarker, estimateGbpH } from "./estimate.mjs";
 
 const LABS = fileURLToPath(new URL("../../../../labs/", import.meta.url));
 // No update check: it calls out to the internet and can stall a test run.
@@ -122,17 +123,8 @@ export const CHILD_TYPES = new Set([
   "azurerm_linux_web_app_slot",
 ]);
 
-/** £ per hour from the authored figures: Σ gbp_h × qty (shared/labs.ts estimateGbpH; a Worker test keeps them equal). */
-export function estimateGbpH(items) {
-  const sum = items.reduce((n, i) => n + i.gbp_h * (i.qty ?? 1), 0);
-  return Math.round(sum * 1e6) / 1e6;
-}
-
-/** The card's marker (shared/labs.ts costMarker): £ under £0.05/h, ££ under £0.50/h, £££ from £0.50/h or a 30-minute deploy. */
-export function costMarker(gbpH, deployMin) {
-  if (gbpH >= 0.5 || deployMin >= 30) return "£££";
-  return gbpH >= 0.05 ? "££" : "£";
-}
+// shared/labs.ts estimateGbpH and costMarker, in JavaScript (a Worker test keeps them equal).
+export { costMarker, estimateGbpH };
 
 const VM_TYPES = ["azurerm_linux_virtual_machine", "azurerm_windows_virtual_machine"];
 const VMSS_TYPES = ["azurerm_linux_virtual_machine_scale_set", "azurerm_windows_virtual_machine_scale_set", "azurerm_orchestrated_virtual_machine_scale_set"];
