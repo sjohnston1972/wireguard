@@ -1,0 +1,43 @@
+# Lab 19 (batch 2 plan, area B3). AZ-104 study guide skills this lab touches
+# ((V) the wording against the current outline):
+#   Monitor and maintain Azure resources > Implement backup and recovery:
+#   "Create a Recovery Services vault", "Create and configure a backup
+#   policy", "Perform backup and restore operations by using Azure Backup",
+#   "Configure and interpret reports and alerts for backups".
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. Retail entries the price feed refreshes (labs-verify --meters):
+# Standard_B1s, S4 LRS Disk and "Azure VM Protected Instance" (£7.5475 a
+# month; Azure bills a VM under 50 GB at half that, so this overestimates).
+# Authored: backup storage ("Standard LRS Data Stored", £0.0211/GB a month,
+# a couple of GB once backed up), the instant-restore snapshot ("LRS
+# Snapshots", £0.04/GB a month, the used blocks of a 30 GB disk) and the
+# empty staging account: each well under £0.0001/h, listed at that. Per GB
+# units the feed cannot read. The vault, policy and VNet cost nothing.
+id: az104-19-backup
+version: 1
+title: "Azure Backup: protect and restore a VM"
+summary: >-
+  A Recovery Services vault with a daily policy protecting a small Linux VM, so you can run a backup on
+  demand, recover a file, restore a whole VM and stop protection, then tear it all down cleanly.
+exam: AZ-104
+skill_areas: [az104.monitor]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Linux VM, Standard_B1s", gbp_h: 0.0092, retail: { sku: Standard_B1s } }
+    - { name: "OS disk, Standard HDD S4", gbp_h: 0.0018, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Backup, one protected VM", gbp_h: 0.0104, retail: { meter: "Azure VM Protected Instance", unit: "1/Month" } }
+    - { name: "Backup storage, LRS, a few GB", gbp_h: 0.0001 }
+    - { name: "Instant restore snapshot, a day", gbp_h: 0.0001 }
+    - { name: "Staging storage account, empty until a restore", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 8, destroy_min: 10, session_h: 3, max_h: 8 }
+capacity: { vm_sizes: [Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false
