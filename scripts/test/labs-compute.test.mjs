@@ -143,3 +143,62 @@ test(`${L9}: vm_sizes lists three Standard_B1s, the autoscale maximum, and the c
   assert.equal(y.cost.items.find((i) => i.retail?.meter === "S4 LRS Disk").qty, 2);
   assert.deepEqual(y.prerequisites, ["az104-08-vms"]);
 });
+
+// ── Lab 10: App Service plans, slots and scaling ────────────────────────
+
+const L10 = "az104-10-app-service";
+labContentSuite(L10, { marker: "££" });
+
+test(`${L10}: a P0v3 Linux plan, a web app and a staging slot, both https only`, () => {
+  const l = lab(L10);
+  const plans = resources(l, "azurerm_service_plan");
+  assert.equal(plans.length, 1);
+  assert.equal(attr(plans[0].body, "os_type"), '"Linux"');
+  assert.equal(attr(plans[0].body, "sku_name"), '"P0v3"', "the cheapest Linux plan with slots and autoscale (ruling 4)");
+  const apps = resources(l, "azurerm_linux_web_app");
+  assert.equal(apps.length, 1);
+  const app = apps[0].body;
+  assert.equal(attr(app, "name"), '"${var.name_prefix}-web"');
+  assert.equal(attr(app, "service_plan_id"), `azurerm_service_plan.${plans[0].labels[1]}.id`);
+  const slots = resources(l, "azurerm_linux_web_app_slot");
+  assert.equal(slots.length, 1);
+  const slot = slots[0].body;
+  assert.equal(attr(slot, "name"), '"staging"');
+  assert.equal(attr(slot, "app_service_id"), `azurerm_linux_web_app.${apps[0].labels[1]}.id`);
+  for (const b of [app, slot]) {
+    assert.equal(attr(b, "https_only"), "true");
+    assert.equal(attr(b, "minimum_tls_version"), '"1.2"');
+    assert.equal(attr(b, "ftps_state"), '"Disabled"');
+    assert.match(b, /application_stack\s*\{/, "a built-in runtime");
+    assert.doesNotMatch(b, /WEBSITE_RUN_FROM_PACKAGE|zip_deploy_file|docker_image/, "no code deploy: the runtime's own page");
+  }
+});
+
+test(`${L10}: autoscale on the plan from 1 to 2 instances`, () => {
+  const l = lab(L10);
+  const scalers = resources(l, "azurerm_monitor_autoscale_setting");
+  assert.equal(scalers.length, 1);
+  const a = scalers[0].body;
+  assert.equal(attr(a, "target_resource_id"), "azurerm_service_plan.plan.id");
+  assert.equal(attr(a, "minimum"), "1");
+  assert.equal(attr(a, "default"), "1");
+  assert.equal(attr(a, "maximum"), "2");
+  assert.equal(attr(body(l, "azurerm_service_plan", "plan"), "worker_count"), "1");
+  assert.match(a, /metric_name\s*=\s*"CpuPercentage"/);
+  assert.match(a, /direction\s*=\s*"Increase"/);
+  assert.match(a, /direction\s*=\s*"Decrease"/);
+});
+
+test(`${L10}: peering off, no VNet, connect lists both default hostnames`, () => {
+  const l = lab(L10);
+  assert.equal(l.yaml.connectivity.peering, "off");
+  assert.equal(l.yaml.connectivity.subnets_used, 0);
+  assert.equal(resources(l, "azurerm_virtual_network").length, 0);
+  assert.equal(resources(l, "azurerm_subnet").length, 0);
+  assert.ok(!outputs(l).includes("peer_vnet_id"));
+  const connect = l.blocks.find((b) => b.kind === "output" && b.labels[0] === "connect").body;
+  assert.match(connect, /https:\/\/\$\{azurerm_linux_web_app\.web\.default_hostname\}/);
+  assert.match(connect, /https:\/\/\$\{azurerm_linux_web_app_slot\.staging\.default_hostname\}/);
+  // ££ for the plan: the card names what makes it pricey.
+  assert.equal(l.yaml.cost.pricey, l.yaml.cost.items.find((i) => /P0v3/.test(i.name)).name);
+});
