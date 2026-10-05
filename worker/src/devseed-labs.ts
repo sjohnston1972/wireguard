@@ -170,7 +170,8 @@ export async function seedLabs(env: Env, now: number): Promise<void> {
     { lab: "az104-06-blob-security", daysAgo: 2, hours: 1.5, gbpH: 0.0082, reason: "manual", note: null },
   ];
   for (const [i, e] of ended.entries()) {
-    const req = Math.floor((now - e.daysAgo * DAY) / HOUR) * HOUR + 9 * HOUR;
+    // 09:00 UTC that day (10:00 in a UK summer), not midnight.
+    const req = Math.floor((now - e.daysAgo * DAY) / DAY) * DAY + 9 * HOUR;
     const ready = req + 4 * MIN;
     const end = ready + e.hours * HOUR;
     const id = sid(req, `e${i}x0`);

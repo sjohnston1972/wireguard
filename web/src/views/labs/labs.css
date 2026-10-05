@@ -62,7 +62,9 @@
 .labs-filter { display: flex; flex-direction: column; gap: 6px; }
 .labs-filter__label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
 .labs-filter--switch { flex-direction: row; align-items: center; justify-content: space-between; cursor: pointer; }
-.labs-filter .segmented { align-self: flex-start; }
+.labs-filter .segmented { align-self: flex-start; max-width: 100%; }
+/* "AZ-104" never wraps onto two lines, even with the filter column's scrollbar showing (1100 x 600). */
+.labs-filter .segmented__item { flex: 1 1 auto; justify-content: center; padding: 0 9px; white-space: nowrap; }
 .labs-filter__select .select__trigger { width: 100%; }
 .labs-filter .chips { flex-wrap: wrap; }
 
@@ -207,12 +209,12 @@
 .labs-foot__facts { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-right: auto; font-size: 12.5px; color: var(--text-secondary); }
 
 /* Your labs (/labs/history) */
-.labs-history { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr); gap: var(--gap); align-items: start; }
+.labs-history { display: grid; grid-template-columns: minmax(0, 2.6fr) minmax(300px, 1fr); gap: var(--gap); align-items: start; }
 .labs-table__lab { color: var(--text-primary); text-decoration: none; font-weight: 500; }
 .labs-table__lab:hover { text-decoration: underline; }
 .labs-table__lab:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 3px; }
 .labs-table__cost { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.labs-table__note { display: block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.labs-table__note { display: block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .labs-coverage__scroll { display: flex; flex-direction: column; gap: 14px; }
 .labs-cov__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .labs-cov__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name count" "boxes boxes"; gap: 4px 10px; font-size: 12.5px; }

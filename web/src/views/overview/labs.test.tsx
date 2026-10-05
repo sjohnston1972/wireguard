@@ -114,6 +114,19 @@ describe("Overview Running labs widget", () => {
     await waitFor(() => expect(r.fetchMock!.callsTo("POST", "/api/v1/labs/az104-06-blob-security/destroy")).toHaveLength(1));
   });
 
+  it("a lab already tearing down offers no Tear down and no time left", async () => {
+    const past = new Date(Date.now() - 4 * 60_000).toISOString();
+    const going = labSessionFixture({ state: "tearing_down", autoDestroyAt: past, endReason: "timer" });
+    renderApp("/", { routes: prefsRoutes(withLabs(overview("running"), [going, lab2()]), ON) });
+    const w = await region("Running labs");
+    const row = await within(w).findByRole("listitem", { name: /Blob security/ });
+    expect(row).toHaveTextContent("Tearing down");
+    expect(row).not.toHaveTextContent(/ending now|left/);
+    expect(within(row).queryByRole("button", { name: /Tear down/ })).toBeNull();
+    // The other lab still has its button.
+    expect(within(within(w).getByRole("listitem", { name: /Budgets/ })).getByRole("button", { name: /Tear down/ })).toBeInTheDocument();
+  });
+
   it("its settings hide cost so far and the peering word", async () => {
     renderApp("/", { routes: prefsRoutes(withLabs(overview("running"), [labSessionFixture()]), { ...saved("overview.runningLabs", { costSoFar: false, peering: false }), ...ON }) });
     const w = await region("Running labs");

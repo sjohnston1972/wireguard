@@ -57,7 +57,9 @@ export function RunningLabs({ labs, now }: { labs: LabSession[]; now: number }) 
       ) : (
         <ul className="ov-rlabs__list">
           {labs.map((s) => {
-            const left = labTimeLeft(s, now);
+            // A lab already tearing down has no timer left to show and nothing to tear down.
+            const going = s.state === "tearing_down";
+            const left = going ? null : labTimeLeft(s, now);
             return (
               <li key={s.id} className="ov-rlab" aria-label={s.title}>
                 <span className="ov-rlab__text">
@@ -71,9 +73,11 @@ export function RunningLabs({ labs, now }: { labs: LabSession[]; now: number }) 
                     {st.peering && <span>{PEERING_WORD[s.peering]}</span>}
                   </span>
                 </span>
-                <Button size="sm" variant="danger" title="Tear down" aria-label={`Tear down ${s.title}`} icon={<Trash2 size={14} aria-hidden />} onClick={() => setAsking(s)}>
-                  <span className="ov-rlab__btn">Tear down</span>
-                </Button>
+                {!going && (
+                  <Button size="sm" variant="danger" title="Tear down" aria-label={`Tear down ${s.title}`} icon={<Trash2 size={14} aria-hidden />} onClick={() => setAsking(s)}>
+                    <span className="ov-rlab__btn">Tear down</span>
+                  </Button>
+                )}
               </li>
             );
           })}
