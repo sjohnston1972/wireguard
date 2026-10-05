@@ -73,7 +73,7 @@ export const TYPES = [
   // batch 3: hashicorp/time and hashicorp/random
   "time_sleep", "random_password",
   // data sources
-  "data.azurerm_subscription", "data.azurerm_client_config",
+  "data.azurerm_subscription", "data.azurerm_client_config", "data.azurerm_resource_group",
 ];
 
 /** { rg, tags }: whether a resource type takes resource_group_name and tags as arguments (the content suite's test 3). */

@@ -1747,6 +1747,15 @@
    ],
    "blocks": {}
   },
+  "data.azurerm_resource_group": {
+   "attrs": [
+    "id",
+    "location",
+    "managed_by",
+    "tags"
+   ],
+   "blocks": {}
+  },
   "random_password": {
    "attrs": [
     "bcrypt_hash",

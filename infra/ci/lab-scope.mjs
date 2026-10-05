@@ -33,16 +33,23 @@
 //   role              a role assignment off labs/setup/allowed-roles.json, a custom
 //                     role without its fixed GUID, one that can grant access, holds
 //                     a wildcard action (only wildcard reads such as */read), or
-//                     is assignable anywhere but the lab's own group(s); in a
-//                     template: Microsoft.Authorization, .Management or .Graph
+//                     is assignable anywhere but the lab's own group(s); a policy
+//                     definition whose rule lists a roleDefinitionIds entry that is
+//                     not a built-in on the allow-list (a remediating policy's
+//                     identity gets those roles), or whose rule a plan cannot read;
+//                     in a template: Microsoft.Authorization, .Management or .Graph
 //                     resources, and any extension (Bicep `extension`/`import`)
-//   immutability      a Locked immutability policy (nothing can delete it)
+//   immutability      a Locked immutability policy (nothing can delete it), or a
+//                     Key Vault with purge protection (nothing can delete it for
+//                     its retention period)
 //   azure-made-group  AKS node groups, backup restore groups and Container Apps
 //                     infrastructure groups (an environment in a subnet) not
 //                     named rg-lab-<id>-*
 //   resource-group    a resource group other than rg-lab-<id> or rg-lab-<id>-*
-//   outside-scope     a resource group, scope or parent outside the lab, anything
-//                     at subscription scope, or a resource tied to nothing in the
+//   outside-scope     a resource group, scope or parent outside the lab (an id in a
+//                     nested block too: a failover group's partner server, a
+//                     replicated VM's target groups), anything at subscription
+//                     scope (a policy rule's deploymentScope too), or a resource tied to nothing in the
 //                     lab (an instance key, count.index or each.key, places
 //                     nothing on its own; each.value places only when for_each
 //                     ranges over the lab's own resources); template deployments at other scopes, deployment
@@ -78,6 +85,8 @@ const GOVERNANCE_TYPES = new Set([
   "azurerm_role_definition",
   "azurerm_policy_definition",
   "azurerm_policy_set_definition",
+  // A management-group initiative is a governance definition (spec §17, ruling 29).
+  "azurerm_management_group_policy_set_definition",
   "azurerm_management_group",
   "azurerm_management_group_policy_assignment",
   "azurerm_management_group_policy_exemption",
@@ -134,6 +143,18 @@ function exprRefs(expr, out = []) {
   return out;
 }
 
+/** Each "references" list under a configuration expression by its path: { "a": [...], "b.0.c": [...] }. */
+function refPaths(expr, path, out) {
+  if (Array.isArray(expr)) {
+    expr.forEach((e, i) => refPaths(e, [...path, i], out));
+    return out;
+  }
+  if (!expr || typeof expr !== "object") return out;
+  if (Array.isArray(expr.references) && path.length) out[path.join(".")] = expr.references;
+  for (const [k, v] of Object.entries(expr)) if (k !== "references" && k !== "constant_value") refPaths(v, [...path, k], out);
+  return out;
+}
+
 /** Put an Unknown wherever after_unknown says the value is not known yet. */
 function mergeUnknown(values, unknown) {
   if (unknown === true) return new Unknown();
@@ -165,6 +186,9 @@ export function planResources(plan) {
     const exprs = c.expressions ?? {};
     const refs = {};
     for (const [k, e] of Object.entries(exprs)) refs[k] = exprRefs(e);
+    // A value not known until apply carries the references its own expression makes, as an HCL Unknown does.
+    const byPath = refPaths(exprs, [], {});
+    for (const l of leaves(values)) if (l.value instanceof Unknown && byPath[l.path.join(".")]) l.value.refs = byPath[l.path.join(".")];
     seen.set(r.address, {
       address: r.address,
       mode: r.mode ?? (r.address.startsWith("data.") ? "data" : "managed"),
@@ -389,6 +413,24 @@ export function classifyId(id) {
 }
 
 const DEFINITION_REF = /^\/providers\/Microsoft\.Authorization\/(roleDefinitions|policyDefinitions|policySetDefinitions)\/[^/]+$/i;
+
+/** Every roleDefinitionIds entry and deploymentScope value in a parsed policy rule, keys read case-insensitively. */
+function policyRuleKeys(rule) {
+  const out = { roleDefinitionIds: [], deploymentScope: [] };
+  const walk = (v) => {
+    if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) {
+        const key = k.toLowerCase();
+        if (key === "roledefinitionids") out.roleDefinitionIds.push(...(Array.isArray(x) ? x : [x]));
+        else if (key === "deploymentscope") out.deploymentScope.push(x);
+        walk(x);
+      }
+    }
+  };
+  walk(rule);
+  return out;
+}
 
 // ── Templates ────────────────────────────────────────────────────────────
 
@@ -725,6 +767,27 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
         if (!ok) refuse("role", `the role is not on labs/setup/allowed-roles.json for ${labId}`);
         if (typeof v.principal_type === "string" && !ALLOWED_ROLES.principalTypes.includes(v.principal_type)) refuse("role", `principal_type ${v.principal_type} is not allowed`);
       }
+      // A remediating policy (deployIfNotExists, modify) stays inside the lab (spec §17, ruling 28): the roles its
+      // assignment's identity is given (roleDefinitionIds) only built-ins on the allow-list, and never a deployment
+      // at subscription scope. Read whatever the effect says (it may be a parameter).
+      if (r.type === "azurerm_policy_definition") {
+        const rule = v.policy_rule;
+        if (rule instanceof Unknown) {
+          if (mode === "plan") refuse("role", "policy_rule is not known at plan, so its roleDefinitionIds cannot be read; give apply-time values to the assignment as parameters");
+        } else if (typeof rule === "string" && rule !== "") {
+          let parsed = null;
+          try {
+            parsed = JSON.parse(rule);
+          } catch {
+            refuse("role", "policy_rule is not JSON this check can read");
+          }
+          const found = policyRuleKeys(parsed);
+          const roles = found.roleDefinitionIds.map((x) => String(x).split("/").pop().toLowerCase());
+          const off = roles.filter((g) => !builtInIds.has(g));
+          if (off.length) refuse("role", `policy_rule's roleDefinitionIds may name only built-in roles on labs/setup/allowed-roles.json (not ${off.join(", ")})`);
+          if (found.deploymentScope.some((s) => String(s).toLowerCase() === "subscription")) refuse("outside-scope", "policy_rule deploys at subscription scope (deploymentScope); a lab's remediation deploys into the resource's own group");
+        }
+      }
       if (r.type === "azurerm_role_definition") {
         const guid = typeof v.role_definition_id === "string" ? v.role_definition_id.toLowerCase() : null;
         const entry = custom.find((c) => c.id.toLowerCase() === guid);
@@ -775,6 +838,12 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
           refuse("immutability", `${l.path.join(".")} locks an immutability policy, which nothing can delete until it expires`);
           break;
         }
+      }
+      // Purge protection keeps a deleted vault (and its name) for the whole retention period: nothing could
+      // get the lab back to £0 and clean (spec §17, ruling 30). Unknown is refused when the lab sets it.
+      if (r.type === "azurerm_key_vault") {
+        const p = v.purge_protection_enabled;
+        if (p === true || (p instanceof Unknown && r.configured.has("purge_protection_enabled"))) refuse("immutability", "purge_protection_enabled: a vault with purge protection cannot be deleted for its whole retention period; a lab never turns it on");
       }
 
       // azure-made-group
@@ -833,6 +902,18 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
           const bad = [...rest.filter((x) => !placed(x)), ...(eachValue === "unknown" ? ["each.value"] : [])];
           const places = rest.some(placed) || eachValue === "places";
           if (bad.length || !places) refuse("outside-scope", `${attr} comes from ${bad[0] ?? refs[0] ?? "nothing this check can place"}, which the check cannot place inside the lab`);
+        }
+        // Ids inside nested blocks (a failover group's partner_server.0.id, a replicated VM's
+        // managed_disk.0.target_resource_group_id): an unknown one must come from the lab's own resources too.
+        for (const l of all) {
+          const leaf = String(l.path.at(-1));
+          if (l.path.length < 2 || !(l.value instanceof Unknown) || !(leaf === "id" || /_ids?$/.test(leaf)) || NOT_ARM.has(leaf)) continue;
+          const refs = l.value.refs ?? [];
+          if (!refs.length) continue; // computed by the provider, not configured
+          const eachValue = refs.some((x) => EACH_VALUE_REF.test(x)) ? forEachValue(r) : null;
+          const rest = refs.filter((x) => !INDEX_REF.test(x) && !EACH_VALUE_REF.test(x));
+          const bad = [...rest.filter((x) => !placed(x)), ...(eachValue === "unknown" ? ["each.value"] : [])];
+          if (bad.length || !(rest.some(placed) || eachValue === "places")) refuse("outside-scope", `${l.path.join(".")} comes from ${bad[0] ?? refs[0]}, which the check cannot place inside the lab`);
         }
         if (!anchored) refuse("outside-scope", "it is tied to nothing inside the lab's resource group");
       }
