@@ -378,8 +378,8 @@ const DEFINITION_REF = /^\/providers\/Microsoft\.Authorization\/(roleDefinitions
 
 /** A resource group deployment template's schema; subscription, management group and tenant ones are refused. */
 const RG_TEMPLATE_SCHEMA = /\/deploymentTemplate\.json#?$/i;
-/** Template keys that send a resource somewhere other than the deployment's own group. */
-const TEMPLATE_SCOPE_KEYS = ["resourceGroup", "subscriptionId", "scope", "managementGroup"];
+/** Template keys that send a resource somewhere other than the deployment's own group (lower case: templateProblems reads keys case-insensitively, as ARM does). */
+const TEMPLATE_SCOPE_KEYS = ["resourcegroup", "subscriptionid", "scope", "managementgroup"];
 /** Template resource types a lab may only make in Terraform (where the role rules see them), or never. */
 const TEMPLATE_ROLE_TYPES = /^Microsoft\.(Authorization|Management|Graph)\//i;
 const TEMPLATE_OUTSIDE_TYPES = /^Microsoft\.Resources\/(deploymentScripts|resourceGroups|templateSpecs)(\/|$)/i;
@@ -428,6 +428,25 @@ export function templateProblems(template) {
   // Nested deployments' inline templates: each is checked as a template of its own, so the string scan skips them.
   const nestedTemplates = new Set();
   const listOf = (resources) => (Array.isArray(resources) ? resources : resources && typeof resources === "object" ? Object.values(resources) : []);
+  /** A copy of a template with every object key in lower case; two keys that differ only in case are refused. */
+  const lowered = new WeakSet();
+  const lower = (v, where, path = "") => {
+    if (Array.isArray(v)) {
+      const a = v.map((x, i) => lower(x, where, `${path}[${i}]`));
+      lowered.add(a);
+      return a;
+    }
+    if (!v || typeof v !== "object") return v;
+    const o = {};
+    for (const [k, x] of Object.entries(v)) {
+      const lk = k.toLowerCase();
+      if (Object.hasOwn(o, lk)) add("outside-scope", `${where} has two keys ARM reads as one (${path ? `${path}.` : ""}${lk}), so this check cannot tell which it uses`);
+      // defineProperty: a key called __proto__ stays a key.
+      Object.defineProperty(o, lk, { value: lower(x, where, path ? `${path}.${lk}` : lk), enumerable: true, writable: true, configurable: true });
+    }
+    lowered.add(o);
+    return o;
+  };
 
   const visitResource = (res, where) => {
     if (!res || typeof res !== "object" || Array.isArray(res)) return;
@@ -438,13 +457,13 @@ export function templateProblems(template) {
     for (const k of TEMPLATE_SCOPE_KEYS) if (k in res) add("outside-scope", `${where} sends ${type || "a resource"} to another scope (${k})`);
     if (NESTED_DEPLOYMENT.test(type)) {
       const props = res.properties ?? {};
-      if (props.templateLink) add("outside-scope", `${where} links a template (${props.templateLink.id ? "a template spec" : "a URL"}) this check cannot read`);
-      if (props.parametersLink) add("outside-scope", `${where} links its parameters from a URL this check cannot read`);
+      if (props.templatelink) add("outside-scope", `${where} links a template (${props.templatelink.id ? "a template spec" : "a URL"}) this check cannot read`);
+      if (props.parameterslink) add("outside-scope", `${where} links its parameters from a URL this check cannot read`);
       if (props.template !== undefined) {
         if (props.template && typeof props.template === "object") nestedTemplates.add(props.template);
         visit(props.template, `${where} > ${res.name ?? "a nested deployment"}`);
       }
-      else if (!props.templateLink) add("outside-scope", `${where} has a nested deployment with no template`);
+      else if (!props.templatelink) add("outside-scope", `${where} has a nested deployment with no template`);
     }
     for (const child of listOf(res.resources)) visitResource(child, where);
   };
@@ -463,6 +482,9 @@ export function templateProblems(template) {
       add("outside-scope", `${where} is not a template this check can read`);
       return;
     }
+    // ARM reads property names case-insensitively ("Type", "ResourceGroup"), so every key is read in lower case;
+    // values keep theirs. A nested template arrives already lowered (it is part of its parent).
+    if (!lowered.has(tpl)) tpl = lower(tpl, where);
     if (typeof tpl.$schema !== "string" || !RG_TEMPLATE_SCHEMA.test(tpl.$schema)) add("outside-scope", `${where} has schema ${tpl.$schema ?? "(none)"}: only a resource group deployment template (deploymentTemplate.json) is allowed`);
     for (const k of ["extensions", "imports"]) {
       if (tpl[k] && typeof tpl[k] === "object" && Object.keys(tpl[k]).length) add("role", `${where} uses ${k} (${Object.keys(tpl[k]).join(", ")}): extensions such as Microsoft Graph reach beyond Azure Resource Manager`);
@@ -477,9 +499,9 @@ export function templateProblems(template) {
       described.add(s);
       for (const x of listOf(s.properties)) schema(x);
       for (const x of listOf(s.discriminator?.mapping)) schema(x);
-      for (const x of Array.isArray(s.prefixItems) ? s.prefixItems : []) schema(x);
+      for (const x of Array.isArray(s.prefixitems) ? s.prefixitems : []) schema(x);
       schema(s.items);
-      schema(s.additionalProperties);
+      schema(s.additionalproperties);
     };
     for (const k of ["parameters", "outputs", "definitions"]) for (const x of listOf(tpl[k])) schema(x);
     const resource = (r) => {

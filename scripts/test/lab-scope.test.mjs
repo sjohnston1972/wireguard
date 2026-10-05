@@ -227,6 +227,28 @@ test("templateProblems reads anything named metadata that is not ARM's metadata 
   assert.deepEqual(templateProblems(described), []);
 });
 
+test("templateProblems reads template keys case-insensitively, as ARM does", () => {
+  const cases = [
+    ["Type", template([{ Type: "Microsoft.Authorization/roleAssignments", apiVersion: "2022-04-01", name: "x" }]), "role"],
+    ["TYPE in a module", template([nested(template([{ TYPE: "Microsoft.Authorization/locks", apiVersion: "2020-05-01", name: "x" }]))]), "role"],
+    ["ResourceGroup", template([{ ...nested(template([])), ResourceGroup: "rg-prod" }]), "outside-scope"],
+    ["SubscriptionId", template([{ ...nested(template([])), SubscriptionId: "00000000-0000-0000-0000-000000000000" }]), "outside-scope"],
+    ["Scope", template({ x: { type: "Microsoft.Storage/storageAccounts", apiVersion: "2023-05-01", name: "x", Scope: "/" } }, { languageVersion: "2.0" }), "outside-scope"],
+    ["Properties.TemplateLink", template([{ type: "Microsoft.Resources/deployments", apiVersion: "2025-04-01", name: "x", Properties: { mode: "Incremental", TemplateLink: { uri: "https://example.com/t.json" } } }]), "outside-scope"],
+    ["Extension", template({ g: { type: "Microsoft.Storage/storageAccounts", Extension: "graph", name: "g" } }, { languageVersion: "2.0" }), "role"],
+    ["Extensions", template([], { languageVersion: "2.0", Extensions: { graph: { name: "MicrosoftGraph", version: "1.0.0" } } }), "role"],
+    ["$Schema", { ...template([]), $schema: undefined, $Schema: "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#" }, "outside-scope"],
+    // Two keys ARM would read as one: which one it takes is not this check's to guess.
+    ["type and Type", template([{ type: "Microsoft.Storage/storageAccounts", Type: "Microsoft.Authorization/roleAssignments", apiVersion: "2023-05-01", name: "x" }]), "outside-scope"],
+  ];
+  for (const [what, t, rule] of cases) {
+    assert.ok(rules(templateProblems(t)).includes(rule), `${what}: ${JSON.stringify(templateProblems(t))}`);
+    assert.equal(checkPlan(tplPlan(JSON.stringify(t)), TPL_LAB).length, 1, `${what} (plan)`);
+  }
+  // Values keep their meaning: a resource name or tag in capitals is just a name.
+  assert.deepEqual(templateProblems(template([{ Type: "Microsoft.Storage/storageAccounts", ApiVersion: "2023-05-01", Name: "LabSA", Location: "uksouth", Kind: "StorageV2", Sku: { Name: "Standard_LRS" }, Tags: { Owner: "Lab" } }])), []);
+});
+
 test("templateProblems refuses a subscription deployment schema", () => {
   for (const scope of ["subscriptionDeploymentTemplate", "managementGroupDeploymentTemplate", "tenantDeploymentTemplate"]) {
     const t = { ...template([]), $schema: `https://schema.management.azure.com/schemas/2018-05-01/${scope}.json#` };
