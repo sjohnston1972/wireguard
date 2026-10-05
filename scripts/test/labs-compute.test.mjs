@@ -10,6 +10,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { attr, lab, labContentSuite, outputs, resources, uncomment } from "./fixtures/labs/content.mjs";
 
 /** The body of resource `type.name` (asserts it exists). */
@@ -77,4 +79,67 @@ test(`${L8}: a Custom Script extension serves the VM's name on port 80 with pyth
   assert.match(cmd, /systemctl enable --now/, "a systemd unit, so it survives a reboot");
   assert.doesNotMatch(cmd, /\b(apt|apt-get|pip|snap|curl|wget)\b|fileUris/, "installs and downloads nothing");
   assert.ok(outputs(l).includes("peer_vnet_id"));
+});
+
+// ── Lab 9: VM Scale Sets and autoscale ──────────────────────────────────
+
+const L9 = "az104-09-vmss";
+labContentSuite(L9, { marker: "£" });
+
+test(`${L9}: a Uniform scale set of Standard_B1s, 2 instances, no public IP, upgrade mode Manual`, () => {
+  const l = lab(L9);
+  assert.equal(resources(l, "azurerm_orchestrated_virtual_machine_scale_set").length, 0, "Uniform, not Flexible (ruling 6)");
+  assert.equal(resources(l, "azurerm_linux_virtual_machine").length, 0);
+  const sets = resources(l, "azurerm_linux_virtual_machine_scale_set");
+  assert.equal(sets.length, 1);
+  const s = sets[0].body;
+  assert.equal(attr(s, "sku"), '"Standard_B1s"');
+  assert.equal(attr(s, "instances"), "2");
+  assert.equal(attr(s, "upgrade_mode"), '"Manual"');
+  assert.equal(attr(s, "overprovision"), "false", "no extra instances while scaling, so quota and cost stay as priced");
+  assert.equal(attr(s, "offer"), '"ubuntu-24_04-lts"');
+  assert.equal(attr(s, "admin_password"), "var.admin_password");
+  assert.doesNotMatch(s, /public_ip_address\s*\{/);
+  assert.match(s, /lifecycle\s*\{\s*ignore_changes\s*=\s*\[instances\]/, "autoscale owns the instance count after deploy");
+  // Each instance serves its name with python3 from a cloud-init systemd unit (ruling 5): nothing installed.
+  assert.equal(attr(s, "custom_data"), 'filebase64("${path.module}/cloud-init.yaml")');
+  const ci = readFileSync(join(l.tfDir, "cloud-init.yaml"), "utf8");
+  assert.match(ci, /^#cloud-config/);
+  assert.match(ci, /hostname > \/srv\/www\/index\.html/);
+  assert.match(ci, /python3 -m http\.server 80/);
+  assert.match(ci, /enable, --now, lab-web\.service/);
+  assert.doesNotMatch(ci, /^\s*(packages|package_update|package_upgrade)\s*:/m, "no packages");
+  assert.doesNotMatch(ci, /\b(apt|apt-get|pip|snap|curl|wget)\b/);
+});
+
+test(`${L9}: autoscale 1 to 3 on average CPU, out above 70% and in below 25%`, () => {
+  const l = lab(L9);
+  const scalers = resources(l, "azurerm_monitor_autoscale_setting");
+  assert.equal(scalers.length, 1);
+  const a = scalers[0].body;
+  assert.equal(attr(a, "target_resource_id"), "azurerm_linux_virtual_machine_scale_set.web.id");
+  assert.equal(attr(a, "minimum"), "1");
+  assert.equal(attr(a, "maximum"), "3");
+  assert.equal(attr(a, "default"), "2");
+  const rules = [...a.matchAll(/rule\s*\{([\s\S]*?scale_action\s*\{[\s\S]*?\})/g)].map((m) => m[1]);
+  assert.equal(rules.length, 2);
+  const rule = (direction) => rules.find((r) => attr(r, "direction") === `"${direction}"`);
+  for (const [direction, operator, threshold] of [["Increase", "GreaterThan", "70"], ["Decrease", "LessThan", "25"]]) {
+    const r = rule(direction);
+    assert.ok(r, `a ${direction} rule`);
+    assert.equal(attr(r, "metric_name"), '"Percentage CPU"');
+    assert.equal(attr(r, "metric_resource_id"), "azurerm_linux_virtual_machine_scale_set.web.id");
+    assert.equal(attr(r, "time_aggregation"), '"Average"');
+    assert.equal(attr(r, "operator"), `"${operator}"`);
+    assert.equal(attr(r, "threshold"), threshold);
+    assert.equal(attr(r, "value"), '"1"');
+  }
+});
+
+test(`${L9}: vm_sizes lists three Standard_B1s, the autoscale maximum, and the cost two`, () => {
+  const y = lab(L9).yaml;
+  assert.deepEqual(y.capacity.vm_sizes, ["Standard_B1s", "Standard_B1s", "Standard_B1s"]);
+  assert.equal(y.cost.items.find((i) => i.retail?.sku === "Standard_B1s").qty, 2);
+  assert.equal(y.cost.items.find((i) => i.retail?.meter === "S4 LRS Disk").qty, 2);
+  assert.deepEqual(y.prerequisites, ["az104-08-vms"]);
 });
