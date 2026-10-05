@@ -47,7 +47,7 @@ put_env() {
 }
 
 values="$("$PY" - "$ACTION" "$GITHUB_EVENT_PATH" "$ROOT" <<'PY'
-import ipaddress, json, os, re, sys
+import ipaddress, json, os, re, sys, time
 
 action, event_path, root = sys.argv[1], sys.argv[2], sys.argv[3]
 sys.stdout.reconfigure(newline="\n")  # plain line ends, even from Python on Windows
@@ -185,6 +185,9 @@ out.update({
     "LAB_HAS_TF": "true" if has_tf else "false",
     "LAB_DEPLOY_MIN": str(timing.get("deploy_min", 10)),
     "LAB_DESTROY_MIN": str(timing.get("destroy_min", 10)),
+    # When the job's timeout-minutes runs out (this step runs seconds after the job starts): the
+    # safety net stops waiting for resource group deletes in time for the steps after it.
+    "LAB_JOB_DEADLINE": str(int(time.time()) + (timeout if isinstance(timeout, int) else 60) * 60),
     "LAB_DNS_LINK": "true" if ((lab or {}).get("connectivity") or {}).get("dns_link") is True else "false",
     "LAB_ENTRA": "true" if entra else "false",
     "LAB_PEERING": "true" if peering else "false",

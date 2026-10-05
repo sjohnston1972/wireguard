@@ -49,7 +49,7 @@ fi
 RG="rg-lab-$LAB_ID"
 PREFIX="lab-$LAB_ID-"
 GRAPH="https://graph.microsoft.com/v1.0"
-WAIT_S="${LAB_DELETE_WAIT_SECONDS:-2400}"
+WAIT_S="${LAB_DELETE_WAIT_SECONDS:-1500}"
 ROLES_FILE="${LAB_ROLES_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/labs/setup/allowed-roles.json}"
 
 warn() { echo "::warning::safety net: $*" >&2; }
@@ -291,15 +291,87 @@ fi
 
 # ── Sweep ────────────────────────────────────────────────────────────────
 
-# 1. Resource groups: start every delete, then wait for each.
+# 1. Resource groups: start every delete, then poll their state. A group that
+# goes back to Succeeded (or Failed) was not deleted: Azure refused part of it
+# (a lock, a vault still holding backups). Unblock runs again and the delete is
+# issued again, at most LAB_DELETE_RETRIES times. The polling stops in time for
+# the rest of the job: by LAB_JOB_DEADLINE (Parse payload: the job's start plus
+# its timeout) less DEADLINE_RESERVE_S for this sweep's other steps, Verify
+# clean, Back up state and the report, or LAB_DELETE_WAIT_SECONDS when there is
+# no deadline. A group still there then is left behind: a warning here, and
+# Verify clean names it.
+start_delete() {
+  if az group delete --name "$1" --yes --no-wait; then echo "safety net: deleting $1"; else warn "could not start deleting $1"; fi
+}
+num() { [[ "${1:-}" =~ ^[0-9]+$ ]] && echo "$1" || echo "$2"; }
+POLL_S="$(num "${LAB_DELETE_POLL_SECONDS:-}" 30)"
+[ "$POLL_S" -ge 1 ] || POLL_S=1
+RETRIES="$(num "${LAB_DELETE_RETRIES:-}" 2)"
+DEADLINE_RESERVE_S=420
+UNBLOCK="${LAB_UNBLOCK_SCRIPT:-$(dirname "${BASH_SOURCE[0]}")/lab-unblock.sh}"
+WAIT_S="$(num "$WAIT_S" 1500)"
+budget="$WAIT_S"
+if [[ "${LAB_JOB_DEADLINE:-}" =~ ^[0-9]+$ ]]; then
+  left_s=$((LAB_JOB_DEADLINE - DEADLINE_RESERVE_S - $(date +%s)))
+  [ "$left_s" -lt 0 ] && left_s=0
+  [ "$left_s" -lt "$budget" ] && budget="$left_s"
+fi
+end=$(($(date +%s) + budget))
+polls=$((budget / POLL_S))
+
 list_groups
 groups=("${ROWS[@]}")
+declare -A tries=()
+pending=()
 for g in "${groups[@]}"; do
-  if az group delete --name "$g" --yes --no-wait; then echo "safety net: deleting $g"; else warn "could not start deleting $g"; fi
+  start_delete "$g"
+  tries["$g"]=0
+  pending+=("$g")
 done
-for g in "${groups[@]}"; do
-  if az group wait --deleted --name "$g" --timeout "$WAIT_S"; then echo "safety net: $g is gone"; else warn "$g was not gone within ${WAIT_S}s"; fi
+[ "${#pending[@]}" -gt 0 ] && echo "safety net: waiting up to ${budget}s for ${pending[*]} (polling every ${POLL_S}s, up to $RETRIES retries each)"
+for ((n = 0; ${#pending[@]} > 0 && n < polls; n++)); do
+  sleep "$POLL_S"
+  if ! states="$(azq group list --query "[].[name, properties.provisioningState]" -o tsv)"; then
+    warn "could not list resource groups to see how the deletes are going; trying again"
+    continue
+  fi
+  declare -A state=()
+  while IFS=$'\t' read -r name st; do [ -n "$name" ] && state["${name,,}"]="${st:-unknown}"; done <<<"$states"
+  still=()
+  failed=()
+  for g in "${pending[@]}"; do
+    st="${state[${g,,}]:-}"
+    if [ -z "$st" ]; then
+      echo "safety net: $g is gone"
+    elif [ "$st" = Deleting ] || [ "$st" = unknown ]; then
+      still+=("$g")
+    elif [ "${tries[$g]}" -lt "$RETRIES" ]; then
+      failed+=("$g")
+    else
+      warn "$g: the delete failed $((RETRIES + 1)) times (state $st); left behind"
+    fi
+  done
+  unset state
+  if [ "${#failed[@]}" -gt 0 ]; then
+    warn "the delete of ${failed[*]} failed (the group is back, not Deleting); unblocking again and retrying"
+    if [ -r "$UNBLOCK" ]; then
+      wait_left=$(((end - $(date +%s)) / 3))
+      [ "$wait_left" -lt 0 ] && wait_left=0
+      vault_wait="$(num "${LAB_UNBLOCK_VAULT_WAIT_SECONDS:-}" 300)"
+      [ "$wait_left" -lt "$vault_wait" ] && vault_wait="$wait_left"
+      LAB_UNBLOCK_VAULT_WAIT_SECONDS="$vault_wait" bash "$UNBLOCK" "$LAB_ID" || warn "unblock did not finish cleanly"
+    fi
+    for g in "${failed[@]}"; do
+      tries["$g"]=$((tries[$g] + 1))
+      echo "safety net: retrying the delete of $g (${tries[$g]} of $RETRIES)"
+      start_delete "$g"
+      still+=("$g")
+    done
+  fi
+  pending=("${still[@]}")
+  [ "$(date +%s)" -ge "$end" ] && break
 done
+for g in "${pending[@]}"; do warn "$g was not gone within ${budget}s (the job's time is nearly up); left behind"; done
 
 # Purge a deleted Entra object from the recycle bin (it takes a moment to arrive there).
 purge() {

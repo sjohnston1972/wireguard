@@ -665,3 +665,9 @@ these win; §3.4's `az bicep build` and §5 step 5's are replaced by ruling 1.
     applications, deployment stacks) stay off it. `subscription()`, `tenant()`, `managementGroup()`,
     `extensionResourceId()` and any literal `/subscriptions/` or `/resourceGroups/` path are refused too; `resourceGroup()`
     is the deployment's own group and is fine. `metadata` is skipped only where it is ARM's description slot.
+22. **The safety net retries a failed group delete and never outlives the job.** It issues every delete with `--no-wait`
+    and polls the groups' `provisioningState` (`LAB_DELETE_POLL_SECONDS`, default 30) instead of `az group wait --deleted`,
+    which cannot tell a failed delete from a slow one. A group back in `Succeeded`/`Failed` gets unblock run again and its
+    delete re-issued, at most `LAB_DELETE_RETRIES` (default 2) times. Polling stops by Parse payload's `LAB_JOB_DEADLINE`
+    (the job's start plus `timeout_min`) less 420 s for the rest of the job, or `LAB_DELETE_WAIT_SECONDS` (default 1500)
+    without one; a group still there is a warning, "left behind", and Verify clean names it.

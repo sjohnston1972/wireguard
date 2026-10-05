@@ -225,6 +225,9 @@ test("Parse payload sets the run's values and the §3.4 Terraform variables", { 
   assert.equal(e.LAB_DNS_LINK, "true");
   assert.equal(e.LAB_DEPLOY_MIN, "4");
   assert.equal(e.LAB_ENTRA, "true");
+  // When the job's own timeout (timeout_min from its start) ends: the safety net stops waiting for group deletes in time.
+  const deadline = Number(e.LAB_JOB_DEADLINE) - Math.floor(Date.now() / 1000);
+  assert.ok(deadline > PAYLOAD.timeout_min * 60 - 120 && deadline <= PAYLOAD.timeout_min * 60, `LAB_JOB_DEADLINE ${e.LAB_JOB_DEADLINE}`);
   assert.equal(e.CALLBACK_URL, "https://wg.example.net/api/callback/lab");
   assert.equal(e.LAB_PEER_URL, "https://wg.example.net/api/callback/lab-peer");
   assert.equal(e.LIVE_LOG_URL, "https://wg.example.net/api/callback/log");

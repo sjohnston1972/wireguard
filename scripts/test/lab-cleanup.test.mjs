@@ -212,14 +212,14 @@ const ENTRA = [
 ];
 
 test("safety net deletes rg-lab-<id> and rg-lab-<id>-* and lab-<id>- Entra objects when terraform destroy failed and state is missing", { skip }, () => {
-  const w = world([{ match: "^group list", out: GROUPS }, { match: "^account show", out: SUB }, ...ENTRA]);
+  const w = world([POLL(""), { match: "^group list", out: GROUPS }, { match: "^account show", out: SUB }, ...ENTRA]);
   // No terraform state, no terraform at all: the safety net works from Azure's own lists.
   const r = w.run("infra/ci/lab-safety-net.sh", [ID], { TF_STATE_MISSING: "1" });
   assert.equal(r.status, 0, r.out);
   const calls = w.calls();
   assert.ok(calls.includes(`az group delete --name ${RG} --yes --no-wait`), calls.join("\n"));
   assert.ok(calls.includes(`az group delete --name ${RG}-nodes --yes --no-wait`));
-  assert.ok(firstCall(calls, new RegExp(`^az group wait --deleted --name ${RG} `)) > firstCall(calls, new RegExp(`^az group delete --name ${RG} `)));
+  assert.ok(firstCall(calls, /^az group list --query \[\]\.\[name, properties\.provisioningState\]/) >firstCall(calls, new RegExp(`^az group delete --name ${RG} `)), "then polled until gone");
   assert.ok(calls.includes("az ad user delete --id u-ann"));
   assert.ok(firstCall(calls, /^az rest --method delete --url https:\/\/graph\.microsoft\.com\/v1\.0\/directory\/deletedItems\/u-ann/) > calls.indexOf("az ad user delete --id u-ann"), "then purged from the recycle bin, so the next deploy can reuse the name");
   assert.ok(calls.includes("az ad group delete --group g-readers"));
@@ -227,8 +227,81 @@ test("safety net deletes rg-lab-<id> and rg-lab-<id>-* and lab-<id>- Entra objec
   w.cleanup();
 });
 
+// The safety net polls `az group list` for each group's provisioningState: Deleting, back (the delete failed), or gone.
+const NAMES = (out) => ({ match: /^group list --query \[\]\.name /, out });
+const POLL = (out, code) => ({ match: /^group list --query \[\]\.\[name, properties\.provisioningState\]/, out, ...(code ? { code } : {}) });
+const sleptFor = (calls) => calls.filter((c) => c.startsWith("sleep ")).reduce((n, c) => n + Number(c.split(" ")[1]), 0);
+const deletesOf = (calls, g) => calls.filter((c) => c === `az group delete --name ${g} --yes --no-wait`).length;
+
+test("safety net: a group delete that failed (the group is back) is unblocked again and retried", { skip }, () => {
+  const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL([`${RG}\tDeleting`, `${RG}\tSucceeded`, `${RG}\tDeleting`, ""])]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [ID]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  assert.equal(deletesOf(calls, RG), 2, calls.join("\n"));
+  // Unblock ran (it lists the group's locks) between the first delete and the second.
+  const second = lastCall(calls, new RegExp(`^az group delete --name ${RG} `));
+  const unblock = firstCall(calls, new RegExp(`^az lock list --resource-group ${RG} `));
+  assert.ok(unblock > firstCall(calls, new RegExp(`^az group delete --name ${RG} `)) && unblock < second, calls.join("\n"));
+  assert.match(r.out, new RegExp(`retrying the delete of ${RG} \\(1 of 2\\)`));
+  assert.match(r.out, new RegExp(`safety net: ${RG} is gone`));
+  assert.equal(firstCall(calls, /^az group wait/), -1, "never az group wait, which cannot tell a failed delete from a slow one");
+  w.cleanup();
+});
+
+test("safety net: a group whose delete keeps failing is retried a bounded number of times, then left behind", { skip }, () => {
+  const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tSucceeded`), ...ENTRA]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [ID]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  assert.equal(deletesOf(calls, RG), 3, "the first delete and two retries");
+  assert.match(r.out, new RegExp(`::warning::safety net: ${RG}: the delete failed 3 times .*left behind`));
+  // And the sweep goes on to Entra rather than hanging.
+  assert.ok(calls.includes("az ad user delete --id u-ann"), calls.join("\n"));
+  // LAB_DELETE_RETRIES sets the bound.
+  const once = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tFailed`)]);
+  once.run("infra/ci/lab-safety-net.sh", [ID], { LAB_DELETE_RETRIES: "0" });
+  assert.equal(deletesOf(once.calls(), RG), 1);
+  w.cleanup();
+  once.cleanup();
+});
+
+test("safety net: a slow delete is waited for only until the job's deadline, then reported as left behind", { skip }, () => {
+  const now = Math.floor(Date.now() / 1000);
+  // Parse payload's LAB_JOB_DEADLINE: 1000 s left in the job, 420 s of it kept for the rest of the job.
+  const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tDeleting`)]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [ID], { LAB_JOB_DEADLINE: String(now + 1000) });
+  assert.equal(r.status, 0, r.out);
+  const slept = sleptFor(w.calls());
+  assert.ok(slept <= 580 && slept >= 500, `slept ${slept} s`);
+  assert.equal(deletesOf(w.calls(), RG), 1, "Deleting is slow, not failed: no retry");
+  assert.match(r.out, new RegExp(`::warning::safety net: ${RG} was not gone within \\d+s.*left behind`));
+  // A deadline already past: no waiting at all.
+  const late = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tDeleting`)]);
+  const lr = late.run("infra/ci/lab-safety-net.sh", [ID], { LAB_JOB_DEADLINE: String(now - 60) });
+  assert.equal(lr.status, 0, lr.out);
+  assert.equal(sleptFor(late.calls()), 0);
+  assert.match(lr.out, /left behind/);
+  // No deadline (a run by hand): LAB_DELETE_WAIT_SECONDS bounds it.
+  const hand = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tDeleting`)]);
+  hand.run("infra/ci/lab-safety-net.sh", [ID], { LAB_DELETE_WAIT_SECONDS: "120" });
+  assert.ok(sleptFor(hand.calls()) <= 120);
+  for (const x of [w, late, hand]) x.cleanup();
+});
+
+test("safety net: a group list that fails while polling is not read as gone", { skip }, () => {
+  const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(["", `${RG}\tDeleting`, ""], [1, 0, 0])]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [ID]);
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.stderr, /could not list resource groups to see how the deletes are going/);
+  assert.match(r.stdout, new RegExp(`safety net: ${RG} is gone`));
+  // Polled three times: the failed list, Deleting, then gone (a failure read as "gone" would stop at one).
+  assert.equal(w.calls().filter((c) => /^az group list --query \[\]\.\[name/.test(c)).length, 3);
+  w.cleanup();
+});
+
 test("safety net never touches rg-lab-<id>x, another lab or NetworkWatcherRG", { skip }, () => {
-  const w = world([{ match: "^group list", out: GROUPS }, { match: "^account show", out: SUB }, ...ENTRA]);
+  const w = world([POLL(""), { match: "^group list", out: GROUPS }, { match: "^account show", out: SUB }, ...ENTRA]);
   w.run("infra/ci/lab-safety-net.sh", [ID]);
   const deletes = w.calls().filter((c) => / delete /.test(c) || / wait /.test(c));
   for (const c of deletes) assert.ok(!/rg-lab-az104-06-blob-securityx|rg-lab-az104-07-files|NetworkWatcherRG|rg-wg-ondemand|u-x|u-steven|g-other/.test(c), c);
@@ -239,7 +312,7 @@ test("governance safety net deletes custom roles, policy assignments and definit
   const G = "az104-03-mgmt-groups";
   const MG = (n) => `/providers/Microsoft.Management/managementGroups/${n}`;
   const w = world([
-    { match: "^group list", out: `rg-lab-${G}` },
+    POLL(""), { match: "^group list", out: `rg-lab-${G}` },
     { match: "^account show", out: SUB },
     { match: "^role definition list", out: `7331dcae-0000-4000-8000-000000000001\tlab-${G}-operator\t/subscriptions/${SUB}\nb24988ac-6180-42a0-ab88-20f7382dd24c\tContributor\t/` },
     { match: "^role assignment list .*--role 7331dcae-0000-4000-8000-000000000001", out: "/subscriptions/x/providers/Microsoft.Authorization/roleAssignments/ra1" },
@@ -284,7 +357,7 @@ test("lab 1 with its Terraform state gone: the safety net asks for the lab's fix
   const GUID = "7331dcae-09d3-477e-8da7-2895697f0fc0";
   const ROLE_URL = `/subscriptions/${SUB}/providers/Microsoft.Authorization/roleDefinitions/${GUID}`;
   const w = world([
-    { match: "^group list", out: `rg-lab-${L1}` },
+    POLL(""), { match: "^group list", out: `rg-lab-${L1}` },
     { match: "^account show", out: SUB },
     // The subscription-level listing does not show a role assignable only inside rg-lab-<id>.
     { match: "^role definition list", out: "b24988ac-6180-42a0-ab88-20f7382dd24c\tContributor\t/" },
