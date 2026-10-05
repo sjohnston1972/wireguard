@@ -12,7 +12,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { attr, lab, labContentSuite, outputs, resources, uncomment } from "./fixtures/labs/content.mjs";
+import { checkPlan } from "../../infra/ci/lab-scope.mjs";
+import { attr, lab, labContentSuite, resources, uncomment } from "./fixtures/labs/content.mjs";
+import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
+import { realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -347,4 +350,147 @@ test(`${L24}: light serverless use is priced authored, and the readme says why s
   assert.match(l.readme, /serverless[^\n]*(one|single) region|(one|single) region[^\n]*serverless/i);
   assert.match(l.readme, /free tier/i);
   assert.match(l.readme, /request charge/i);
+});
+
+// ── Lab 25: storage design, data lake, immutability, tiering ─────────────
+
+const L25 = "az305-25-storage-design";
+labContentSuite(L25, { marker: "£" });
+
+/** Storage types that write through an account's data plane (blob, DFS, file, queue or table endpoints). */
+const DATA_PLANE_TYPES = [
+  "azurerm_storage_blob",
+  "azurerm_storage_data_lake_gen2_filesystem",
+  "azurerm_storage_data_lake_gen2_path",
+  "azurerm_storage_share",
+  "azurerm_storage_share_directory",
+  "azurerm_storage_share_file",
+  "azurerm_storage_queue",
+  "azurerm_storage_table",
+  "azurerm_storage_table_entity",
+];
+
+/** A management policy's rules: [{ name, prefixes, blobTypes, baseBlob: { setting: days } }]. */
+const lifecycleRules = (policy) =>
+  allNested(policy.body, "rule").map((r) => {
+    const f = nested(r, "filters");
+    const bb = nested(nested(r, "actions"), "base_blob") ?? "";
+    return {
+      name: unq(attr(r, "name")),
+      enabled: attr(r, "enabled"),
+      prefixes: [...(attr(f, "prefix_match") ?? "").matchAll(/"([^"]*)"/g)].map((m) => m[1]),
+      blobTypes: [...(attr(f, "blob_types") ?? "").matchAll(/"([^"]*)"/g)].map((m) => m[1]),
+      baseBlob: Object.fromEntries([...bb.matchAll(/^\s*([a-z_]+)\s*=\s*(\d+)\s*$/gm)].map((m) => [m[1], Number(m[2])])),
+    };
+  });
+
+test(`${L25}: an HNS account with raw and curated file systems and a lifecycle to Cool, Cold and Archive`, () => {
+  const l = lab(L25);
+  const lake = res(l, "azurerm_storage_account", "lake").body;
+  assert.equal(attr(lake, "name"), '"${var.name_prefix}lake"');
+  assert.equal(attr(lake, "account_kind"), '"StorageV2"');
+  assert.equal(attr(lake, "account_tier"), '"Standard"');
+  assert.equal(attr(lake, "account_replication_type"), '"LRS"', "LRS: Archive needs LRS, GRS or RA-GRS, and LRS is the cheapest");
+  assert.equal(attr(lake, "access_tier"), '"Hot"');
+  assert.equal(attr(lake, "is_hns_enabled"), "true", "hierarchical namespace: Data Lake Storage");
+  // The file systems are containers made through Resource Manager (management plane).
+  const onLake = resources(l, "azurerm_storage_container").filter((c) => attr(c.body, "storage_account_id") === "azurerm_storage_account.lake.id");
+  assert.deepEqual(onLake.map((c) => unq(attr(c.body, "name"))).sort(), ["curated", "raw"]);
+  for (const c of onLake) assert.equal(attr(c.body, "container_access_type"), '"private"', c.labels[1]);
+  // Lifecycle: raw ages Hot -> Cool -> Cold -> Archive; curated is kept a year.
+  const policy = one(l, "azurerm_storage_management_policy");
+  assert.equal(attr(policy.body, "storage_account_id"), "azurerm_storage_account.lake.id");
+  const rules = lifecycleRules(policy);
+  const raw = rules.find((r) => r.prefixes.includes("raw/"));
+  assert.ok(raw, "a rule for raw/");
+  assert.equal(raw.enabled, "true");
+  assert.deepEqual(raw.prefixes, ["raw/"]);
+  assert.deepEqual(raw.blobTypes, ["blockBlob"]);
+  assert.deepEqual(raw.baseBlob, {
+    tier_to_cool_after_days_since_modification_greater_than: 30,
+    tier_to_cold_after_days_since_modification_greater_than: 90,
+    tier_to_archive_after_days_since_modification_greater_than: 180,
+  });
+  const curated = rules.find((r) => r.prefixes.includes("curated/"));
+  assert.ok(curated, "a rule for curated/");
+  assert.equal(curated.enabled, "true");
+  assert.deepEqual(curated.blobTypes, ["blockBlob"]);
+  assert.deepEqual(curated.baseBlob, { delete_after_days_since_modification_greater_than: 365 });
+  assert.equal(rules.length, 2, "two rules");
+  assert.match(l.readme, /rehydrat/i);
+});
+
+test(`${L25}: an RA-GRS account whose evidence container has an unlocked 1-day policy`, () => {
+  const l = lab(L25);
+  const rec = res(l, "azurerm_storage_account", "records").body;
+  assert.equal(attr(rec, "name"), '"${var.name_prefix}rec"');
+  assert.equal(attr(rec, "account_kind"), '"StorageV2"');
+  assert.equal(attr(rec, "account_replication_type"), '"RAGRS"', "read-access geo-redundant: a readable secondary endpoint");
+  assert.notEqual(attr(rec, "is_hns_enabled"), "true");
+  assert.deepEqual(resources(l, "azurerm_storage_account").map((a) => a.labels[1]).sort(), ["lake", "records"]);
+  const evidence = resources(l, "azurerm_storage_container").filter((c) => attr(c.body, "storage_account_id") === "azurerm_storage_account.records.id");
+  assert.deepEqual(evidence.map((c) => unq(attr(c.body, "name"))), ["evidence"]);
+  const p = one(l, "azurerm_storage_container_immutability_policy").body;
+  assert.equal(attr(p, "storage_container_resource_manager_id"), `azurerm_storage_container.${evidence[0].labels[1]}.id`);
+  assert.equal(attr(p, "immutability_period_in_days"), "1", "1 day: the shortest time-based retention");
+  // Unlocked (ruling 34): tear-down can delete it; a locked one is refused at plan (immutability rule).
+  assert.equal(attr(p, "locked"), "false", "locked = false, said explicitly");
+  assert.equal(attr(p, "protected_append_writes_enabled"), "true", "append blobs can still grow");
+  assert.notEqual(attr(p, "protected_append_writes_all_enabled"), "true");
+  assert.match(output(l, "connect").body, /azurerm_storage_account\.records\.secondary_blob_endpoint/, "connect shows the read-only secondary endpoint");
+});
+
+test(`${L25}: the same plan with the policy locked is refused before anything is built`, () => {
+  const d = LAB_PLANS[L25];
+  assert.deepEqual(checkPlan(d.plan, L25), [], "unlocked: passes");
+  const locked = structuredClone(d);
+  locked.resources.find((r) => r.address === "azurerm_storage_container_immutability_policy.evidence").values.locked = true;
+  const problems = checkPlan(realisticPlan(locked), L25);
+  assert.deepEqual(problems.map((p) => [p.rule, p.address]), [["immutability", "azurerm_storage_container_immutability_policy.evidence"]]);
+});
+
+test(`${L25}: no SFTP, no public blob access, nothing written through the data plane`, () => {
+  const l = lab(L25);
+  for (const a of resources(l, "azurerm_storage_account")) {
+    const b = a.body;
+    assert.equal(attr(b, "sftp_enabled"), "false", `${a.labels[1]}: SFTP off (it bills by the hour)`);
+    assert.notEqual(attr(b, "nfsv3_enabled"), "true", `${a.labels[1]}: no NFS`);
+    assert.equal(attr(b, "allow_nested_items_to_be_public"), "false", `${a.labels[1]}: no public containers`);
+    assert.equal(attr(b, "shared_access_key_enabled"), "true", `${a.labels[1]}: shared key on, for Storage browser and SAS`);
+    assert.equal(attr(b, "https_traffic_only_enabled"), "true", a.labels[1]);
+    assert.equal(attr(b, "min_tls_version"), '"TLS1_2"', a.labels[1]);
+    // No version-level or account-level immutability, and no versioning to lean on.
+    assert.equal(nested(b, "immutability_policy"), undefined, `${a.labels[1]}: no account-level immutability`);
+    assert.equal(nested(b, "blob_properties"), undefined, `${a.labels[1]}: no blob properties (no versioning), which also keeps Terraform off the blob endpoint`);
+  }
+  for (const t of DATA_PLANE_TYPES) assert.equal(resources(l, t).length, 0, `no ${t}`);
+  for (const c of resources(l, "azurerm_storage_container")) {
+    assert.ok(attr(c.body, "storage_account_id"), `${c.labels[1]}: made through Resource Manager (storage_account_id)`);
+    assert.equal(attr(c.body, "storage_account_name"), undefined, `${c.labels[1]}: never through the blob endpoint (storage_account_name)`);
+  }
+  // The provider never calls the data plane, so tear-down works whatever is done to the accounts' networks.
+  const storage = nested(features(l), "storage");
+  assert.ok(storage !== undefined, "features has a storage block");
+  assert.equal(attr(storage, "data_plane_available"), "false");
+  assert.equal(l.yaml.connectivity.peering, "off");
+  assert.equal(l.yaml.connectivity.subnets_used, 0);
+  assert.equal(resources(l, "azurerm_private_endpoint").length, 0);
+});
+
+test(`${L25}: the readme says never to lock the policy`, () => {
+  const r = lab(L25).readme;
+  assert.match(r, /[Nn]ever lock/);
+  assert.match(r, /\*\*Lock policy\*\*|lock the policy/i);
+  // A legal hold you add is removed by tear-down, as the unlocked policy is.
+  assert.match(r, /legal hold/i);
+  assert.match(r, /[Tt]ear-down removes[^\n]*legal hold|legal hold[^\n]*[Tt]ear-down removes/);
+  assert.match(r, /secondary endpoint/i);
+  assert.match(r, /Archive/);
+});
+
+test(`${L25}: builds on lab 5: names az104-05-storage as its prerequisite, and is priced as two small accounts`, () => {
+  const { yaml } = lab(L25);
+  assert.deepEqual(yaml.prerequisites, ["az104-05-storage"]);
+  for (const i of yaml.cost.items) assert.equal(i.retail, undefined, `${i.name} is authored`);
+  assert.ok(yaml.cost.items.filter((i) => /account/i.test(i.name)).length >= 2, "an item per account");
 });
