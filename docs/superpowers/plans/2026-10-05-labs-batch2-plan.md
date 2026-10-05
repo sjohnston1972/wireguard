@@ -2,56 +2,131 @@
 
 ## B0 names as built
 
-The contract on `feat/labs-b2-engine`. Content areas branch from its head and use these names exactly; a change goes through
-the integrator, who updates this section to what was actually built. Paths are from the repo root. Batch 1's L0 names
+The contract on `feat/labs-b2-engine` (B0 as built, 2026-10-05). Content areas branch from its head and use these names
+exactly; a change goes through the integrator, who updates this section. Paths are from the repo root. Batch 1's L0 names
 (`docs/superpowers/plans/2026-10-04-labs-batch1-plan.md`) all still hold.
 
 **Content test suite, `scripts/test/fixtures/labs/content.mjs`** (one copy of what `labs-storage.test.mjs` and
-`labs-content-identity.test.mjs` each wrote out; batch 1's tests stay as they are)
-- Helpers: `lab(id)` → `{ dir, tfDir, files, yaml, readme, blocks }`, `resources(l, type?)`, `attr(body, name)`, `outputs(l)`,
-  `uncomment(src)`, `TERRAFORM` (bool), `CHILD_TYPES` (batch 1's list plus the batch 2 child types: subnet, NSG/route-table and
-  ASG associations, LB pool/probe/rule, NIC pool association, VM extension, data-disk attachment, peering, DNS records and links,
-  DCR association, backup policy and protected VM: types with no `tags` of their own).
+`labs-content-identity.test.mjs` each wrote out; batch 1's tests stay as they are; proved on lab 7 by
+`scripts/test/labs-content-suite.test.mjs`)
+- Helpers: `lab(id)` → `{ dir, tfDir, files (.tf only, LF), yaml, readme (LF), blocks }`, `resources(l, type?)`,
+  `attr(body, name)`, `outputs(l)`, `uncomment(src)`, `TERRAFORM` (bool), `estimateGbpH(items)`, `costMarker(gbpH, deployMin)`
+  (both from `estimate.mjs`, kept equal to `shared/labs.ts` by a Worker test), `CHILD_TYPES`: batch 1's seven plus
+  `azurerm_network_security_rule`, `_route`, `_subnet_network_security_group_association`, `_subnet_route_table_association`,
+  `_network_interface_security_group_association`, `_network_interface_application_security_group_association`,
+  `_lb_backend_address_pool`, `_lb_probe`, `_lb_rule`, `_network_interface_backend_address_pool_association`,
+  `_virtual_machine_extension`, `_virtual_machine_data_disk_attachment`, `_virtual_network_peering`, `_dns_a_record`,
+  `_dns_cname_record`, `_private_dns_a_record`, `_private_dns_cname_record`, `_monitor_data_collection_rule_association`,
+  `_backup_policy_vm`, `_backup_protected_vm`, `_linux_web_app_slot` (all `azurerm_`): they need neither the lab's
+  `resource_group_name` nor `var.tags`; any `resource_group_name` or `resource_group_id` still must be the lab's.
 - `labContentSuite(id, { marker })` (`marker`: `"£"` or `"££"`) registers seven tests, named exactly:
-  `${id}: lab.yaml and readme pass the catalogue rules, and the readme is no longer a stub`;
-  `${id}: Terraform passes the text lint and declares only contract variables`;
-  `${id}: one resource group, named by the pipeline, and everything else inside it with the tags`;
-  `${id}: lab.yaml agrees with the Terraform on peering, VM sizes, subnets and identity` (`peer_vnet_id` iff peering is not
-  `"off"`; `private_ips` and `connect` always; one `capacity.vm_sizes` entry per VM, a scale set counted at its autoscale
-  maximum; `subnets_used` = distinct `cidrsubnet(var.address_space, 2, n)`; no Entra, no role assignments);
-  `${id}: VMs have no public IP and use the sizes and disks lab.yaml prices`; `${id}: costs what its marker says` (£ under
-  £0.05/h, ££ under £0.50/h, from `estimateGbpH` of the authored items); `${id}: terraform fmt -check` (skips without terraform).
+  1. `${id}: lab.yaml and readme pass the catalogue rules, and the readme is no longer a stub` (also: `## What it deploys` has a
+     ` ```text ` diagram; every `## Learn more` link is `https://learn.microsoft.com/...`);
+  2. `${id}: Terraform passes the text lint and declares only contract variables` (`lintDir` of the whole `terraform/`
+     folder: `.tf`, `.bicep` and file rules; the four files exist; every declared variable is used);
+  3. `${id}: one resource group, named by the pipeline, and everything else inside it with the tags` (`azurerm_resource_group.lab`);
+  4. `${id}: lab.yaml agrees with the Terraform on peering, VM sizes, subnets and identity`: `peer_vnet_id` iff peering is not
+     `"off"`; `private_ips` and `connect` always; `capacity.vm_sizes` has one entry per VM (`count` must be a number literal), a
+     scale set counted at the `maximum` of the `azurerm_monitor_autoscale_setting` whose `target_resource_id` is
+     `<vmss address>.id` (else its `instances`); `subnets_used` = distinct `cidrsubnet(var.address_space, 2, n)`;
+     `var.address_space` used iff `subnets_used > 0`; no `azuread_*`, no role assignment, `identity` exactly
+     `{ creates: [], roles: [], governance: false }`;
+  5. `${id}: VMs have no public IP and use the sizes and disks lab.yaml prices`: no `public_ip_address_id` on any NIC, no
+     `public_ip_address {}` in a scale set, an `azurerm_public_ip` only when an `azurerm_application_gateway` references its
+     `.id`; per VM size, the `retail: { sku }` items' `qty` sum = the default count (VMs' `count`, scale sets' `instances`);
+     every OS disk `"Standard_LRS"` and the `retail.meter: "S4 LRS Disk"` items' `qty` = the VMs' default count; every
+     `azurerm_managed_disk` `"StandardSSD_LRS"` of at most 4 GiB and the `"E1 LRS Disk"` items' `qty` = the number of disks;
+  6. `${id}: costs what its marker says` (`costMarker(estimateGbpH(cost.items), timing.deploy_min)`);
+  7. `${id}: terraform fmt -check` (skips without terraform).
 
 **Plan fixtures, `scripts/test/fixtures/labs/plans/`**
-- `common.mjs`: `SUB`, `TENANT`, `UPN`, `REGION` (`uksouth`), `ctx(id, n)` (slot 1, `name_prefix` `l<n>k3x9q`, tags),
-  `rgResource(c)`, `RG_REFS`, `IN_RG`, `ref(address, attr)`, and `linuxVm(c, { name, subnet, size = "Standard_B1s", zone,
-  customData, identity })` → `[nic, vm]` descriptions shaped like lab 7's.
-- `labs/<id>.mjs`: one file per batch 2 lab, `export default () => ({ lab, variables, resources, data? })`. `labs.mjs` keeps
-  labs 1–7 and merges every file in `labs/` into `LAB_PLANS` (top-level `await import`). Addresses may carry `[0]` or
-  `["key"]`; the configuration has one entry per resource block.
-- `computed.json` regenerated from azurerm 4.81.0 with every type in the batch 2 table below (`extract-computed.mjs` `TYPES`).
-  A type missing from it throws in `realisticPlan`: ask the integrator, never edit it in an area.
-- The existing `lab-plans.test.mjs` then runs, per new lab, `${id}: the plan fixture has main.tf's resources and attributes`
-  and `${id}: lab-scope passes its realistic first-deploy plan`, and `there is a realistic plan for every lab in the catalogue`.
+- `common.mjs`: `SUB`, `TENANT`, `UPN`, `REGION` (`uksouth`), `SLOT` (`10.64.64.0/18`), `SSH_KEY`, `ctx(id, n)` (`n` two digits:
+  `{ id, rg, prefix: l<n>k3x9q, tags, variables }`), `rgResource(c)`, `RG_REFS`, `IN_RG`, `ref(address, attr)`, and
+  `linuxVm(c, { name, key, subnet, size = "Standard_B1s", zone, customData, identity })` → `[nic, vm]` shaped like lab 7's
+  (lab 7 now uses it; its plan is byte-identical): addresses `azurerm_network_interface.<key>` and
+  `azurerm_linux_virtual_machine.<key>`, `key` defaulting to `name` without `vm-` and with `-` as `_`; `subnet` is the
+  subnet's address; NIC name `nic-<name>`; `zone` a string; `customData` a string (known at plan) or an array of references
+  (unknown at plan); `identity` `"SystemAssigned"`.
+- `labs/<id>.mjs`, one per batch 2 lab, named by the lab id (a mismatch throws, naming the file):
+  `export default () => ({ lab, variables, resources, data? })`, built with `common.mjs`. `labs.mjs` keeps labs 1–7 and
+  exports `LAB_PLANS` (labs 1–7 plus `await loadLabPlans(new URL("./labs/", import.meta.url))`) and `loadLabPlans(dir)`.
+  `labs/.gitkeep` holds the folder. Addresses may carry `[0]` or `["key"]`: each instance is its own planned resource and change
+  (with `index`), the configuration has one entry per block, and the attribute test merges instances per block.
+- `computed.json`: 68 types, regenerated from azurerm 4.81.0 and azuread 3.10.0 (batch 1's types unchanged); the list is
+  `extract-computed.mjs` `TYPES` (exported), whose header has the pinned recipe. A type missing from it throws in
+  `realisticPlan`: ask the integrator, never edit it in an area.
+- `lab-plans.test.mjs` runs, per lab, `${id}: the plan fixture has main.tf's resources and attributes` and
+  `${id}: lab-scope passes its realistic first-deploy plan`, plus `there is a realistic plan for every lab in the catalogue`.
 
-**Scope and lint** (`infra/ci/lab-scope.mjs`, `lab-lint.mjs`): `templateProblems(template)` → `[{ rule, message }]` (exported;
-used by `scopeProblems` and by `labs-tf`); `scopeProblems(input, labId, { mode })` with `mode: "plan" | "hcl"` (plan by
-default). No new rule names: templates report under `role` / `outside-scope`, Azure-made groups under `azure-made-group`,
-Bicep text under `literal-cidr` / `gateway` / `file`.
+**Scope** (`infra/ci/lab-scope.mjs`): `templateProblems(template)` (an object or JSON text) → `[{ rule, message }]`;
+`scopeProblems(input, labId, { mode = "plan" })`; `checkPlan` passes `mode: "plan"`, `checkHcl` `mode: "hcl"`. No new rule names:
+- `role`: in a template, `Microsoft.Authorization/*`, `Microsoft.Management/*`, `Microsoft.Graph/*`, any resource with
+  `extension`/`import`, a template with `extensions`/`imports`, an old-style `…/providers/…` extension type.
+- `outside-scope`: a template schema other than `…/deploymentTemplate.json#` (or none, or not a template, or not JSON);
+  `Microsoft.Resources/deploymentScripts`, `resourceGroups`, `templateSpecs`; `resourceGroup`/`subscriptionId`/`scope`/
+  `managementGroup` keys; a nested deployment with `templateLink` (URL or template spec), `parametersLink` or no template;
+  a literal `/subscriptions/…` or management-group id anywhere in the template (built-in definition ids aside),
+  `resourceId()` whose first argument is not a literal type, `subscriptionResourceId()`/`tenantResourceId()`/
+  `managementGroupResourceId()`; nested templates checked as templates. In Terraform: `azurerm_subscription_`/
+  `management_group_`/`tenant_template_deployment`, `azurerm_resource_deployment_script_*`, `template_spec_version_id`, a
+  `parameters_content` id outside the lab, and (plan mode only) an unknown `template_content`.
+- `gateway`: the gateway's names anywhere in a template.
+- `azure-made-group`: a Container Apps environment with `infrastructure_subnet_id` whose `infrastructure_resource_group_name`
+  is not `rg-lab-<id>-*`.
 
-**Bicep:** `.bicep` files live in `labs/<id>/terraform/`; Terraform reads `file("${path.module}/<name>.json")`; the JSON is
-built, never committed. `lab.yml` step 5 and CI's labs job install Bicep CLI `BICEP_VERSION` by sha256 and run `bicep build`;
-`npm run labs-tf` builds into its throw-away copy with `bicep` on PATH, else `az bicep build` (local only).
+**Lint** (`infra/ci/lab-lint.mjs`): `lintDir(dir)` now = `fileProblems(names)` + `lintTfText(.tf)` + `lintBicepText(.bicep)`
+(lab.yml step 5, `labs-check`, the content suite). `lintBicepText(files)` → `[{ file, line, rule, message }]` with
+`literal-cidr`, `gateway`, `module` (`module x 'br:…'`, `'br/…'`, `'ts:…'`, `'ts/…'`; local modules are fine) and `provider`
+(`extension`, `import` or `provider` statements); `stripBicepComments(src)`. `fileProblems` adds `file` for an `x.json` beside
+`x.bicep` (any case). Built JSON is git-ignored (`labs/*/terraform/*.json`).
 
-**Scripts:** `npm run labs-verify -- [--links] [--meters] [id…]` (`scripts/labs-verify.mjs`, network, never in `npm test`):
-`readmeLinks(md)`, `meterProblems(rows, { meter, unit })` → strings; `LAB_UNITS` `["1 Hour", "1/Hour", "1/Day", "1/Month"]`,
-`NOT_LINUX_PAYG` equal to the price feed's (a Worker test). The price feed and `labs/prices.ts` accept `1/Hour` as hourly.
+**Bicep** (`scripts/lib/bicep.mjs`): `BICEP_VERSION` `0.47.16`; `BICEP_SHA256` per release asset (`bicep-linux-x64`
+`64c345a5…aa5a`, `-linux-arm64`, `-osx-arm64`, `-osx-x64`, `-win-x64.exe`; GitHub's digests, checked against downloads);
+`bicepAsset(platform?, arch?)`, `bicepUrl(asset)`, `bicepMatchesPin(path, asset, sha256?)`,
+`pinnedBicep({ cacheDir, asset?, sha256?, fetch?, log? })` → verified path or `null` (never throws; a mismatch is deleted before
+it is ever made runnable). `.bicep` files live in `labs/<id>/terraform/`; every one is built to `<name>.json` beside it (modules
+too); Terraform reads `template_content = file("${path.module}/main.json")`. `lab.yml` step 5 (env `BICEP_VERSION`,
+`BICEP_SHA256` = linux-x64), only when `.bicep` files exist: `curl` from `github.com/Azure/bicep/releases/download/v…`,
+`sha256sum -c`, `chmod +x`, then `env -i PATH=/usr/bin:/bin HOME TMPDIR DOTNET_CLI_TELEMETRY_OPTOUT=1
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 bicep build` (no keys in its environment), before `terraform init` (destroy too).
+CI's labs job: step `install bicep` → `$RUNNER_TEMP/bin/bicep`; `labs-tf` env `LABS_TF_REQUIRE_BICEP=1`, `BICEP=<that path>`.
+`npm run labs-tf` builds each `.bicep` into its throw-away copy before init/validate and fails a lab whose built template has
+`templateProblems` (`template main.json: rule: message`); it runs `$BICEP` only if it matches the pin, else the pinned download
+cached in `<tmp>/labs-bicep/0.47.16/`; never a `bicep` from PATH, never `az bicep`. Without one: the lab's build, init and
+validate are skipped with a note (fmt and the HCL scope check still run); `LABS_TF_REQUIRE_BICEP=1` makes it a failure. A
+content test that needs the built template (lab 12) gets the binary with `pinnedBicep({ cacheDir: join(tmpdir(),
+"labs-bicep", BICEP_VERSION), fetch: async () => { throw new Error("no download in npm test"); }, log: () => {} })` and skips on
+`null`, or reads the template `labs-tf` built. The fixture `scripts/test/fixtures/labs/bicep/storage-vnet.json` (from
+`storage-vnet.bicep` + `vnet.bicep`: languageVersion 2.0 and a module) is byte-identical from the Windows and Linux binaries.
 
-**Unblock** (`infra/ci/lab-unblock.sh` step 4): an `Unlocked` vault immutability is turned `Disabled` first (a `Locked` one is
-a loud warning); soft delete off; soft-deleted items undeleted; protection stopped with data deleted for items of every
-management type; then it waits until the vault lists no backup items (`LAB_UNBLOCK_VAULT_WAIT_SECONDS`, default 300).
+**Prices and labs-verify:** the price feed exports `LAB_UNITS` `["1 Hour", "1/Hour", "1/Day", "1/Month"]` and
+`NOT_LINUX_PAYG`; `labs/prices.ts` reads `1/Hour` as £ per hour. `npm run labs-verify -- [--links] [--meters] [id…]`
+(`scripts/labs-verify.mjs`; neither flag = both; no ids = every lab; exit 1 on problems, 2 on bad arguments; network, no
+credentials, never in `npm test`): `readmeLinks(md)` (markdown `https` links, each once), `meterProblems(rows, { meter, unit })`
+and `skuProblems(rows, sku)` → strings, `verifyLabs(labs, { links, meters, fetch })` → `{ problems, lines }`, `LAB_UNITS`,
+`NOT_LINUX_PAYG` (equal to the feed's: a Worker test). Links: HEAD then GET, redirects followed, final 200 required. Meters:
+one uksouth GBP pay-as-you-go row set (not Windows/Spot/Low Priority, primary region), in a feed unit, equal to lab.yaml's
+`unit`, at one price; VM sizes: one Linux hourly price. Each price is printed beside the authored £/h; more than 25% apart is
+a problem.
 
-**B0 rulings** (copied into the spec as §17): see "Rulings" below.
+**Unblock** (`infra/ci/lab-unblock.sh` step 4, per vault): `az backup vault show … --query
+properties.securitySettings.immutabilitySettings.state`; `Unlocked` → `az backup vault update --immutability-state Disabled`;
+`Locked` → `::warning::… immutability is LOCKED …`, never an update; then soft delete off, soft-deleted items undeleted; one
+`az backup item list` (no type filter: every type) of `[id, backupManagementType, workloadType]`, and
+`az backup protection disable --ids <id> --delete-backup-data true --yes --backup-management-type <t> --workload-type <w>` for
+`AzureIaasVM`/`AzureStorage`/`AzureWorkload` (a `MAB` item is a warning); then it polls `az backup item list --query [].id`
+every 15 s until empty, at most `LAB_UNBLOCK_VAULT_WAIT_SECONDS` (default 300), else a warning. Never fails the run.
+
+**B0 rulings** (copied into the spec as §17 with rulings 1–12 below): 13. no unpinned Bicep anywhere: `labs-tf` drops the
+planned `az bicep build` fallback (it downloads an unverified newest Bicep); 14. a template may not name any literal
+subscription-level id, nor use `resourceId()` with a group or subscription argument, even the lab's own (Bicep never needs to);
+15. Terraform deployment scripts and template deployments at other scopes are refused outright (`outside-scope`); 16. the Bicep
+lint also refuses registry/template-spec modules (`module`) and extension/import/provider statements (`provider`);
+17. `labs-pr0.test.mjs`'s comparison with PR 0 is skipped from batch 2 on (ruling 11); 18. the content suite's price checks
+(S4 per VM, E1 per data disk, `retail.sku` qty = default count) and "a public IP only for an App Gateway" bind every lab;
+19. `labs-verify` treats an authored price more than 25% from Azure's as a problem; lab 6's `Standard Private Endpoint` meter
+has no uksouth row (Azure prices it under region `Global` only), reported for batch 1, not fixed here; 20. the vault wait is
+bounded by tries (`ceil(wait / 15)` polls), so a fake or slow `sleep` can never stretch it.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans. The integrator lands **B0** first. Then three content areas run **in parallel**, each in its own
