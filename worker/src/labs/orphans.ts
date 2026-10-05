@@ -4,7 +4,8 @@
 // left behind that nobody is watching: the sweep lists, in 7 calls,
 // resource groups (rg-lab-*), Entra users and groups (lab-*), management
 // groups, custom role definitions, and policy definitions and assignments
-// (lab-*). A name counts only when it is a lab's (labIdOf: the longest
+// (lab-*; an assignment also by its display name or its scope). A name
+// counts only when it is a lab's (labIdOf: the longest
 // catalogue id it fits, else the id it spells), is not owned by a live
 // session of that lab, and has been there 30 minutes (Azure's creation time
 // for groups, else when the sweep first saw it). Azure's own NetworkWatcherRG,
@@ -43,7 +44,8 @@ interface SweepState {
   noted: Record<string, string>;
 }
 
-type Found = { name: string; created: string | null };
+/** One name a listing returned; `lab` when the name alone cannot tell (a policy assignment known by its scope). */
+type Found = { name: string; created: string | null; lab?: string | null };
 
 async function list<T>(r: Promise<Response>, what: string): Promise<T[]> {
   const res = await r;
@@ -66,7 +68,7 @@ async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph:
       return null;
     }
   };
-  type Named = { name?: string; createdTime?: string; properties?: { displayName?: string; roleName?: string; createdTime?: string } };
+  type Named = { name?: string; createdTime?: string; properties?: { displayName?: string; roleName?: string; createdTime?: string; scope?: string } };
   const rgs = await attempt(() => list<Named>(arm(env, net, `${sub}/resourcegroups?api-version=2021-04-01&$expand=createdTime`), "resource groups"));
   const startsLab = encodeURIComponent("startswith(displayName,'lab-') or startswith(userPrincipalName,'lab-')");
   const users = await attempt(() => list<{ displayName?: string; userPrincipalName?: string; createdDateTime?: string }>(graph(env, net, `/users?$filter=${startsLab}&$select=id,displayName,userPrincipalName,createdDateTime&$top=200`), "Entra users"));
@@ -90,12 +92,30 @@ async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph:
           ...mgs.map((m) => pick(m.name, m.properties?.displayName)),
           ...roles.map((r) => pick(r.properties?.roleName)),
           ...defs.map((d) => pick(d.name, d.properties?.displayName)),
-          ...assigns.map((a) => pick(a.name, a.properties?.displayName)),
         ]
           .filter((n): n is string => !!n)
-          .map((name) => ({ name, created: null }))
+          .map((name): Found => ({ name, created: null }))
+          .concat(assigns.map(assignmentFound).filter((f): f is Found => f !== null))
       : null;
   return { rg, graph: entra, gov, errors };
+}
+
+/**
+ * A policy assignment is a lab's by its name or display name (lab-<id>-...),
+ * or by its scope: inside rg-lab-<id> or a lab-<id>-* management group.
+ * Assignment names are capped at 24 characters, so a lab may name one
+ * plainly (lab 3's audit-environment-tag) and carry its prefix only in the
+ * display name or its scope. Anything else (the organisation's own) is not.
+ */
+export function assignmentFound(a: { name?: string; properties?: { displayName?: string; scope?: string } }): Found | null {
+  const named = [a.name, a.properties?.displayName].find((n) => starts(n, "lab-"));
+  if (named) return { name: named, created: null };
+  const scope = (a.properties?.scope ?? "").split("/");
+  const at = scope.findIndex((x) => /^(resourcegroups|managementgroups)$/i.test(x));
+  const holder = at >= 0 ? scope[at + 1] ?? "" : "";
+  if (!starts(holder, "rg-lab-") && !starts(holder, "lab-")) return null;
+  const lab = labIdOf(holder);
+  return lab && a.name ? { name: `${a.name} (${holder})`, created: null, lab } : null;
 }
 
 async function readState(env: Env): Promise<SweepState | null> {
@@ -147,7 +167,7 @@ export async function sweepOrphans(env: Env, net: Net, now: Date): Promise<strin
   const byLab = new Map<string, { names: string[]; since: number }>();
   const present = new Set<string>(); // labs with any name at all, young or old
   for (const f of [...(found.rg ?? []), ...(found.graph ?? []), ...(found.gov ?? [])]) {
-    const lab = labIdOf(f.name);
+    const lab = f.lab ?? labIdOf(f.name);
     if (!lab) continue; // not a lab's name
     present.add(lab);
     const first = Math.min(...[prev?.seen[f.name], f.created ?? undefined, now.toISOString()].map((x) => Date.parse(x ?? "")).filter(Number.isFinite));

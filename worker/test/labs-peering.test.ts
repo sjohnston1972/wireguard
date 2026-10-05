@@ -80,6 +80,30 @@ describe("peering (L2.6)", () => {
     expect((await lockStatus(env)).held).toBe(false);
   });
 
+  it("begin links DNS zones only when no other peered lab has linked its own (Azure refuses two same-named zones on one VNet)", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    // Lab 7 here also links private DNS zones.
+    const { TEST_CATALOGUE } = await import("./labs-helpers");
+    setCatalogueForTest({ ...TEST_CATALOGUE, labs: TEST_CATALOGUE.labs.map((l) => (l.id === "az104-07-files" ? { ...l, connectivity: { ...l.connectivity, dns_link: true } } : l)) });
+    await up(env);
+    const six = await deployLab(env, "az104-06-blob-security", { hours: 2, peer: true });
+    const s6 = await secrets(env, world, six.json.runId);
+    expect((await peer(env, s6.callback_token, { run_id: six.json.runId, phase: "begin" })).body).toEqual({ go: true, dns_link: true });
+    await peer(env, s6.callback_token, { run_id: six.json.runId, phase: "end", ok: true });
+    const seven = await deployLab(env, "az104-07-files", { hours: 2, peer: true });
+    const s7 = await secrets(env, world, seven.json.runId);
+    const begin = await peer(env, s7.callback_token, { run_id: seven.json.runId, phase: "begin" });
+    expect(begin.body).toMatchObject({ go: true, dns_link: false });
+    expect((begin.body as { note: string }).note).toMatch(/Blob security/);
+    await peer(env, s7.callback_token, { run_id: seven.json.runId, phase: "end", ok: true });
+    // With lab 6 no longer peered, lab 7's next peering links its zones; a lab with dns_link false never does.
+    await env.DB.prepare("UPDATE lab_sessions SET peering = 'off' WHERE id = ?1").bind(six.json.sessionId).run();
+    const again = await deployLab(env, "az305-28-hub-spoke-fw", { hours: 1, peer: true });
+    const s28 = await secrets(env, world, again.json.runId);
+    expect((await peer(env, s28.callback_token, { run_id: again.json.runId, phase: "begin" })).body).toEqual({ go: true, dns_link: false });
+  });
+
   it("peerings-removed marks peered sessions disconnected", async () => {
     freeze();
     const { env, world } = await labEnv();

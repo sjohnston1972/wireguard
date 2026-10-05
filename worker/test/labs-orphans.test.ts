@@ -132,6 +132,26 @@ describe("orphan sweep (L2.5)", () => {
     expect((await orphans(env)).length).toBe(2);
   });
 
+  it("a policy assignment is a lab's by its display name or its scope, not only its name", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    // Azure caps assignment names at 24 characters, so labs name them plainly (lab 3: audit-environment-tag).
+    world.labAzure.policyAssignments.push(
+      { name: "audit-environment-tag", displayName: "lab-az104-01-identity-audit-environment-tag", scope: "/providers/Microsoft.Management/managementGroups/lab-az104-01-identity-root" },
+      { name: "require-tag", displayName: "Require a tag", scope: "/subscriptions/sub/resourceGroups/rg-lab-az104-05-storage" },
+      { name: "audit-environment-tag", displayName: "Audit environment tag", scope: "/subscriptions/sub" },
+    );
+    await sweepOrphans(env, budgetedNet(20), new Date());
+    advance(61 * MIN);
+    await sweepOrphans(env, budgetedNet(20), new Date());
+    const o = await orphans(env);
+    expect(o.find((x) => x.labId === "az104-01-identity")!.names).toEqual(["lab-az104-01-identity-audit-environment-tag"]);
+    expect(o.find((x) => x.labId === "az104-05-storage")!.names).toEqual(["require-tag (rg-lab-az104-05-storage)"]);
+    // The organisation's own assignment at subscription scope is nobody's leftover.
+    expect(o.flatMap((x) => x.names).some((n) => n.startsWith("Audit environment tag") || n === "audit-environment-tag")).toBe(false);
+    expect(o).toHaveLength(2);
+  });
+
   it("cleanup dispatches a destroy for a lab gone from the catalogue", async () => {
     freeze();
     const { env, world } = await labEnv();

@@ -22,7 +22,8 @@ import { directNet, getGhRun, LAB_WORKFLOW } from "./net";
 import * as db from "../db";
 import { getSnapshot } from "../state";
 import { acquireLock, releaseLock, GATEWAY_LOCK } from "../lock";
-import { getLabRun, LIVE_SQL, updateRun, updateSession } from "./store";
+import { getLabRun, getSession, LIVE_SQL, updateRun, updateSession } from "./store";
+import { labDef } from "./catalogue";
 import { finishRun, readOutputs } from "./settle";
 
 export interface CallbackReply {
@@ -155,7 +156,25 @@ export async function handleLabPeer(env: Env, token: string | null, body: unknow
     return { status: 200, body: { go: false, reason: "the gateway is busy with a run; Re-peer once it has finished" } };
   }
   await updateSession(env, run.session_id, { peering: "waiting" }, live);
-  return { status: 200, body: { go: true } };
+  return { status: 200, body: { go: true, ...(await dnsLinkFor(env, run.session_id)) } };
+}
+
+/**
+ * Whether this peering links the lab's private DNS zones to vnet-wg (lab.yaml
+ * dns_link). Azure refuses to link two zones with the same name (two labs'
+ * privatelink.blob.core.windows.net) to one VNet, so while another peered
+ * lab has linked its zones this one peers without linking, and says why.
+ * The lab run reads `dns_link` from this answer (step 9).
+ */
+async function dnsLinkFor(env: Env, sid: string): Promise<{ dns_link: boolean; note?: string }> {
+  const s = await getSession(env, sid);
+  const def = s ? labDef(s.lab_id) : null;
+  if (!s || !def?.connectivity.dns_link) return { dns_link: false };
+  const others = (await env.DB.prepare(`SELECT lab_id FROM lab_sessions WHERE id <> ?1 AND peering = 'on' AND state IN (${LIVE_SQL})`).bind(sid).all<{ lab_id: string }>()).results;
+  const clash = others.find((o) => labDef(o.lab_id)?.connectivity.dns_link);
+  if (!clash) return { dns_link: true };
+  const title = labDef(clash.lab_id)?.title ?? clash.lab_id;
+  return { dns_link: false, note: `Private DNS zones not linked: ${title} has linked its zones to the gateway's VNet, and Azure refuses two zones of the same name there. Unpeer it, then re-peer this lab to link them.` };
 }
 
 /** The gateway's lock is held at most this long for one lab's peering (spec §7.6). */
