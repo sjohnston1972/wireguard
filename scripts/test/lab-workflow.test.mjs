@@ -174,9 +174,11 @@ function workspace(id = "az104-06-blob-security", { tf = true } = {}) {
   }
   return ws;
 }
+/** A lab's version as its lab.yaml says (a lab's version rises with every change, so never written out here). */
+const labVersion = (id) => parse(readFileSync(join(REPO, "labs", id, "lab.yaml"), "utf8")).version;
 const PAYLOAD = {
   lab_id: "az104-06-blob-security",
-  version: 1,
+  version: labVersion("az104-06-blob-security"),
   run_id: "lab-deploy-20261004T120000Z-ab12",
   session_id: "ls-20261004T120000Z-cd34",
   region: "uksouth",
@@ -216,7 +218,7 @@ test("Parse payload sets the run's values and the §3.4 Terraform variables", { 
   assert.equal(r.status, 0, r.out);
   const e = r.env;
   assert.equal(e.LAB_ID, "az104-06-blob-security");
-  assert.equal(e.LAB_VERSION, "1");
+  assert.equal(e.LAB_VERSION, String(PAYLOAD.version));
   assert.equal(e.WORKER_RUN_ID, PAYLOAD.run_id);
   assert.equal(e.LAB_HAS_TF, "true");
   assert.equal(e.LAB_PEERING, "true");
@@ -248,10 +250,10 @@ test("Parse payload refuses a bad lab id, a missing folder and a version that di
   const missing = runParse("deploy", { ...PAYLOAD, lab_id: "az104-99-nowhere" });
   assert.notEqual(missing.status, 0);
   assert.match(missing.out, /no labs\/az104-99-nowhere/);
-  const stale = runParse("deploy", { ...PAYLOAD, version: 2 });
+  const stale = runParse("deploy", { ...PAYLOAD, version: PAYLOAD.version + 1 });
   assert.notEqual(stale.status, 0);
-  assert.match(stale.out, /version 2.*lab\.yaml.*1|stale/i);
-  assert.notEqual(runParse("test", { ...PAYLOAD, version: 2 }).status, 0);
+  assert.match(stale.out, new RegExp(`version ${PAYLOAD.version + 1}.*lab\\.yaml.*${PAYLOAD.version}|stale`, "i"));
+  assert.notEqual(runParse("test", { ...PAYLOAD, version: PAYLOAD.version + 1 }).status, 0);
   assert.notEqual(runParse("deploy", "not json").status, 0);
   const noTf = runParse("deploy", PAYLOAD, workspace("az104-06-blob-security", { tf: false }));
   assert.notEqual(noTf.status, 0);
@@ -280,7 +282,7 @@ test("Parse payload refuses values that could smuggle a line, a slot outside the
 });
 
 test("a destroy always goes ahead: a stale version is a warning, and a lab gone from the catalogue is cleaned up by name", { skip: skipParse }, () => {
-  const stale = runParse("destroy", { ...PAYLOAD, version: 2 });
+  const stale = runParse("destroy", { ...PAYLOAD, version: PAYLOAD.version + 1 });
   assert.equal(stale.status, 0, stale.out);
   assert.match(stale.out, /::warning::/);
   const gone = runParse("destroy", { lab_id: "az104-99-nowhere", run_id: "lab-destroy-1-x", callback_url: "", secrets_url: "" }, workspace());
@@ -289,7 +291,7 @@ test("a destroy always goes ahead: a stale version is a warning, and a lab gone 
   assert.equal(gone.env.LAB_HAS_TF, "false");
   assert.equal(gone.env.LAB_ENTRA, "true", "unknown lab: check Entra strictly");
   // Peering off when the lab says off, whatever the payload asks.
-  const off = runParse("deploy", { ...PAYLOAD, lab_id: "az104-05-storage", name_prefix: "l05abcde" }, workspace("az104-05-storage"));
+  const off = runParse("deploy", { ...PAYLOAD, lab_id: "az104-05-storage", version: labVersion("az104-05-storage"), name_prefix: "l05abcde" }, workspace("az104-05-storage"));
   assert.equal(off.status, 0, off.out);
   assert.equal(off.env.LAB_PEERING, "false");
   assert.equal(off.env.LAB_ENTRA, "false");
