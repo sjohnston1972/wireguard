@@ -162,24 +162,42 @@ jobs:
 
       # ── 4 ────────────────────────────────────────────────────────────────
       # Hold back until every lab.yml run of THIS lab started before this one
-      # has finished (other labs and the gateway never block). Giving up after
-      # 10 minutes fails the run loudly; nothing after it touches Azure.
+      # has finished (other labs and the gateway never block), for 10 minutes.
+      # Then a destroy goes ahead anyway: getting back to £0 comes first, and
+      # every teardown step needs this one to succeed (a stuck deploy just
+      # loses the state lock race; the safety net does not need the lock).
+      # Anything else fails loudly, and nothing after it touches Azure.
       - name: Wait for earlier run of this lab
         id: wait
-        timeout-minutes: 10
+        # A backstop only: the step gives up by itself (a timeout would fail it).
+        timeout-minutes: 15
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Wait for earlier run of this lab"
-          set -euo pipefail
+          set -uo pipefail
+          deadline=$(( $(date +%s) + ${LAB_WAIT_SECONDS:-600} ))
           while :; do
-            earlier="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/lab.yml/runs?per_page=100" \
-              --jq "[.workflow_runs[] | select(.status != \"completed\" and .id < $GITHUB_RUN_ID and (((.display_title // \"\") | split(\" \"))[2] == \"$LAB_ID\"))] | length")"
-            [ "$earlier" = "0" ] && break
-            echo "waiting for $earlier earlier run(s) of $LAB_ID to finish"
+            if earlier="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/lab.yml/runs?per_page=100" \
+              --jq "[.workflow_runs[] | select(.status != \"completed\" and .id < $GITHUB_RUN_ID and (((.display_title // \"\") | split(\" \"))[2] == \"$LAB_ID\"))] | length")"; then
+              if [ "$earlier" = "0" ]; then
+                echo "no earlier run of $LAB_ID is active; going ahead"
+                exit 0
+              fi
+              echo "waiting for $earlier earlier run(s) of $LAB_ID to finish"
+            else
+              echo "::warning::could not ask GitHub for earlier runs of $LAB_ID"
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              if [ "$LAB_ACTION_INPUT" = destroy ]; then
+                echo "::warning::an earlier run of $LAB_ID is still going (or GitHub cannot say) after the wait; tearing down anyway"
+                exit 0
+              fi
+              echo "::error::an earlier run of $LAB_ID is still going (or GitHub cannot say) after the wait; giving up"
+              exit 1
+            fi
             sleep 20
           done
-          echo "no earlier run of $LAB_ID is active; going ahead"
 
       - name: Set up Terraform
         if: always() && steps.wait.outcome == 'success' && env.LAB_HAS_TF == 'true'

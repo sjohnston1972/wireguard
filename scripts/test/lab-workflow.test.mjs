@@ -459,9 +459,35 @@ test("the state reset runs only on a verified-clean lab, and removes the state a
   flaky.cleanup();
 });
 
+test("giving up on an earlier run: a destroy tears down anyway, anything else fails loudly", { skip: BASH ? false : "no bash found" }, async () => {
+  const { world } = await import("./fixtures/labs/harness.mjs");
+  const s = step(lab(4));
+  // The step itself decides when to give up (LAB_WAIT_SECONDS, default 10 minutes): a step
+  // timeout would fail it, and every teardown step needs it to succeed.
+  assert.ok(s["timeout-minutes"] > 10, "the step's own timeout is only a backstop");
+  assert.match(s.run, /LAB_WAIT_SECONDS:-600/);
+  const run = (action, ghRule) => {
+    const w = world([{ cmd: "gh", match: "lab\\.yml/runs", ...ghRule }]);
+    const r = spawnSync(BASH, ["--noprofile", "--norc", "-c", `PATH="$(cygpath -u "$FAKE_BIN" 2>/dev/null || printf %s "$FAKE_BIN"):$PATH"; ${s.run}`], {
+      encoding: "utf8",
+      env: w.env({ GITHUB_WORKSPACE: fwd(REPO), LAB_ID: "az104-06-blob-security", LAB_ACTION_INPUT: action, GITHUB_REPOSITORY: "o/r", GITHUB_RUN_ID: "100", LAB_WAIT_SECONDS: "0", LIVE_LOG_FILE: "" }),
+    });
+    w.cleanup();
+    return { status: r.status, out: (r.stdout ?? "") + (r.stderr ?? "") };
+  };
+  const destroy = run("destroy", { out: "1" });
+  assert.equal(destroy.status, 0, destroy.out);
+  assert.match(destroy.out, /tearing down anyway/);
+  const deploy = run("deploy", { out: "1" });
+  assert.equal(deploy.status, 1, deploy.out);
+  // GitHub not answering is waited out the same way, never a crash that skips the teardown.
+  const blind = run("destroy", { code: 1, err: "HTTP 502" });
+  assert.equal(blind.status, 0, blind.out);
+  assert.equal(run("deploy", { out: "0" }).status, 0);
+});
+
 test("the wait step looks only at earlier lab.yml runs of the same lab, for 10 minutes at most", () => {
   const s = step(lab(4));
-  assert.equal(s["timeout-minutes"], 10);
   assert.match(s.run, /actions\/workflows\/lab\.yml\/runs/);
   assert.match(s.run, /\.id < \$GITHUB_RUN_ID/);
   assert.match(s.run, /display_title/);
