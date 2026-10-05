@@ -392,6 +392,17 @@ test("LAB_RESULT carries clean, leftovers and seconds and never an address", { s
   assert.match(args, /^https:\/\/wg\.example\.net\/api\/callback\/lab$/m);
 });
 
+test("the lab's Terraform text is linted before anything of Terraform runs (init downloads providers, plan runs data sources)", () => {
+  const init = step(lab(5)).run;
+  assert.match(init, /node "\$GITHUB_WORKSPACE\/infra\/ci\/lab-lint\.mjs" "\$GITHUB_WORKSPACE\/labs\/\$LAB_ID\/terraform"/);
+  assert.match(init, /set -euo pipefail/);
+  const lint = init.indexOf("lab-lint.mjs");
+  assert.ok(lint < init.indexOf("az bicep build") && lint < init.indexOf("terraform init"));
+  // No step before init touches Terraform; init runs for deploy, destroy and test alike.
+  for (const s of steps.slice(0, index(lab(5)))) assert.ok(!/\bterraform (init|plan|apply|destroy)\b/.test(s.run ?? ""), s.name);
+  for (const a of ["deploy", "destroy", "test"]) assert.ok(String(step(lab(5)).if).includes(`'${a}'`), a);
+});
+
 test("bicep files are built before init", () => {
   const init = step(lab(5)).run;
   assert.match(init, /az bicep build --file "\$f"/);

@@ -14,6 +14,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
+import { lintTfText, stripComments } from "../../infra/ci/lab-lint.mjs";
 
 // ── Constants (copies of shared/labs.ts) ─────────────────────────────────
 
@@ -345,75 +346,9 @@ export function parseReadme(md, type, id) {
 
 // ── Terraform text (spec §3.4, §8.4 early warning) ───────────────────────
 
-// Blank out comments (#, //, and block comments), keeping strings, lines and columns.
-function stripComments(src) {
-  let out = "";
-  let i = 0;
-  let inStr = false;
-  while (i < src.length) {
-    const ch = src[i];
-    if (inStr) {
-      out += ch;
-      if (ch === "\\") {
-        out += src[i + 1] ?? "";
-        i += 2;
-        continue;
-      }
-      if (ch === '"' || ch === "\n") inStr = false;
-      i++;
-      continue;
-    }
-    if (ch === '"') {
-      inStr = true;
-      out += ch;
-      i++;
-      continue;
-    }
-    if (ch === "#" || (ch === "/" && src[i + 1] === "/")) {
-      while (i < src.length && src[i] !== "\n") {
-        out += " ";
-        i++;
-      }
-      continue;
-    }
-    if (ch === "/" && src[i + 1] === "*") {
-      const end = src.indexOf("*/", i + 2);
-      const stop = end < 0 ? src.length : end + 2;
-      out += src.slice(i, stop).replace(/[^\n]/g, " ");
-      i = stop;
-      continue;
-    }
-    out += ch;
-    i++;
-  }
-  return out;
-}
-
-const TF_RULES = [
-  { rule: "literal-cidr", re: /\b\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}\b/g, ok: (m) => m === "0.0.0.0/0", message: (m) => `literal CIDR ${m}: every address comes from cidrsubnet(var.address_space, ...)` },
-  { rule: "provisioner", re: /\bprovisioner\s+"/g, message: () => "provisioners are not allowed" },
-  { rule: "provider", re: /\b(?:resource|data)\s+"(?:null_\w*|local_\w*|external|http)"/g, message: (m) => `${m}: the null, external, http and local providers are not allowed` },
-  { rule: "provider", re: /\bprovider\s+"(?:null|external|http|local)"/g, message: (m) => `${m}: the null, external, http and local providers are not allowed` },
-  { rule: "provider", re: /^\s*(?:null|external|http|local)\s*=\s*\{/gm, message: (m) => `${m.trim()}: the null, external, http and local providers are not allowed` },
-  { rule: "provider", re: /"hashicorp\/(?:null|external|http|local)"/g, message: (m) => `${m}: the null, external, http and local providers are not allowed` },
-  { rule: "import", re: /^\s*import\s*\{/gm, message: () => "import blocks are not allowed: a lab only creates, and tear-down would delete what it adopted" },
-  { rule: "gateway", re: /\brg-wg\b|\bvnet-wg\b/g, message: (m) => `${m}: lab Terraform never names the gateway's resources (only var.gateway_vnet_id)` },
-];
-
-/** Lint a lab's Terraform files ({ "main.tf": text, ... }). Returns [{ file, line, rule, message }]. */
-export function lintTfText(files) {
-  const out = [];
-  for (const [file, src] of Object.entries(files)) {
-    const code = stripComments(src);
-    for (const r of TF_RULES) {
-      for (const m of code.matchAll(r.re)) {
-        if (r.ok?.(m[0])) continue;
-        out.push({ file, line: code.slice(0, m.index).split("\n").length, rule: r.rule, message: r.message(m[0]) });
-      }
-    }
-  }
-  return out;
-}
+// The text checks live in infra/ci/lab-lint.mjs (no packages: lab.yml runs them
+// on the runner before terraform init); labs-check uses the same ones.
+export { lintTfText };
 
 /** A variables.tf may declare only §3.4 variables (LAB_TF_VARS). Returns problem sentences. */
 export function variablesProblems(tf) {

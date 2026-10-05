@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { checkHcl, checkPlan, RULES, GOVERNANCE_LABS as SCOPE_GOVERNANCE, LAB_ID_RE as SCOPE_ID_RE } from "../../infra/ci/lab-scope.mjs";
 import { GOVERNANCE_LABS, LAB_ID_RE } from "../lib/labs.mjs";
 import { withAfterUnknown } from "./fixtures/labs/plans/realistic.mjs";
+import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 
 const DIR = fileURLToPath(new URL("./fixtures/labs/scope/", import.meta.url));
 const SCRIPT = fileURLToPath(new URL("../../infra/ci/lab-scope.mjs", import.meta.url));
@@ -96,6 +97,42 @@ test("a lab's custom role must be its own: another lab's custom role id is refus
   });
   assert.deepEqual(checkHcl(hcl, "az104-01-identity"), []);
   assert.deepEqual(verdict(checkHcl(hcl, "az104-02-policy")), [["role", "azurerm_role_assignment.x"]]);
+});
+
+test("a lab custom role: no wildcard actions, and assignable only inside the lab's group", () => {
+  const id = "az104-01-identity";
+  const role = (permissions, assignable) => ({
+    data: { azurerm_subscription: { current: [{}] } },
+    resource: {
+      azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}" }], other: [{ name: "${var.resource_group_name}-x", location: "${var.region}" }] },
+      azurerm_role_definition: {
+        r: [{ role_definition_id: "7331dcae-09d3-477e-8da7-2895697f0fc0", name: "lab-${var.lab_id}-vm-operator", scope: "${data.azurerm_subscription.current.id}", permissions: [permissions], ...(assignable === undefined ? {} : { assignable_scopes: assignable }) }],
+      },
+    },
+  });
+  const ownRg = ["${azurerm_resource_group.lab.id}"];
+  const reads = { actions: ["Microsoft.Compute/virtualMachines/read", "Microsoft.Compute/virtualMachines/start/action"], not_actions: [] };
+  assert.deepEqual(checkHcl(role(reads, ownRg), id), []);
+  // Wildcard reads grant nothing but reading.
+  assert.deepEqual(checkHcl(role({ actions: ["*/read", "Microsoft.Compute/*/read"] }, ownRg), id), []);
+  // A nested group of the lab (rg-lab-<id>-x) is still the lab's.
+  assert.deepEqual(checkHcl(role(reads, ["${azurerm_resource_group.other.id}"]), id), []);
+  for (const actions of [["*"], ["*/write"], ["*/delete"], ["Microsoft.Authorization/*"], ["Microsoft.Authorization/roleAssignments/write"], ["Microsoft.Compute/*"], ["Microsoft.Compute/virtualMachines/*"]]) {
+    assert.deepEqual(verdict(checkHcl(role({ actions }, ownRg), id)), [["role", "azurerm_role_definition.r"]], actions.join());
+  }
+  assert.deepEqual(verdict(checkHcl(role({ actions: ["Microsoft.Compute/virtualMachines/read"], data_actions: ["Microsoft.Storage/storageAccounts/blobServices/containers/blobs/*"] }, ownRg), id)), [["role", "azurerm_role_definition.r"]], "data actions");
+  // Assignable anywhere else: the subscription, another group, or left unset (Azure then uses the definition's scope, the subscription).
+  for (const assignable of [["${data.azurerm_subscription.current.id}"], ["/subscriptions/3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b"], ["/subscriptions/3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b/resourceGroups/rg-lab-az104-02-policy"], ["/subscriptions/3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b/resourceGroups/rg-prod"], undefined, []]) {
+    assert.deepEqual(verdict(checkHcl(role(reads, assignable), id)), [["role", "azurerm_role_definition.r"]], JSON.stringify(assignable));
+  }
+  // The real lab 1 plan (assignable_scopes unknown, from the lab's group) passes; a known subscription scope does not.
+  const plan = structuredClone(LAB_PLANS[id].plan);
+  assert.deepEqual(checkPlan(plan, id), []);
+  const rd = plan.planned_values.root_module.resources.find((r) => r.type === "azurerm_role_definition");
+  rd.values.assignable_scopes = ["/subscriptions/3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b"];
+  plan.resource_changes.find((c) => c.address === rd.address).change.after_unknown.assignable_scopes = false;
+  plan.configuration.root_module.resources.find((r) => r.address === rd.address).expressions.assignable_scopes = { references: ["data.azurerm_subscription.current.id", "data.azurerm_subscription.current"] };
+  assert.deepEqual(verdict(checkPlan(plan, id)), [["role", "azurerm_role_definition.vm_operator"]]);
 });
 
 test("an ARM template deployment may not reach outside the lab or assign roles", () => {

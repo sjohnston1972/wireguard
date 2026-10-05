@@ -13,6 +13,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildCatalogue, checkPool, labFolders, lintTfText, variablesProblems, versionProblems } from "./lib/labs.mjs";
+import { fileProblems } from "../infra/ci/lab-lint.mjs";
 
 const root = fileURLToPath(new URL("../labs/", import.meta.url));
 const args = process.argv.slice(2);
@@ -36,7 +37,7 @@ for (const folder of ["_template", ...labFolders(root)]) {
     continue;
   }
   const files = Object.fromEntries(readdirSync(tf).filter((f) => f.endsWith(".tf")).map((f) => [f, readFileSync(join(tf, f), "utf8")]));
-  for (const p of lintTfText(files)) lines.push(`${folder}/${folder === "_template" ? "" : "terraform/"}${p.file}:${p.line} (${p.rule}): ${p.message}`);
+  for (const p of [...fileProblems(readdirSync(tf)), ...lintTfText(files)]) lines.push(`${folder}/${folder === "_template" ? "" : "terraform/"}${p.file}:${p.line} (${p.rule}): ${p.message}`);
   if (files["variables.tf"]) for (const p of variablesProblems(files["variables.tf"])) lines.push(`${folder}/variables.tf: ${p}`);
 }
 

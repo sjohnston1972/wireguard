@@ -196,6 +196,11 @@ jobs:
           key: tf-plugins-labs-${{ hashFiles('labs/_template/versions.tf') }}
 
       # ── 5 ────────────────────────────────────────────────────────────────
+      # First the lab's Terraform text (infra/ci/lab-lint.mjs): init downloads
+      # the providers it names, and plan (destroy too) already runs data
+      # sources with the pipeline's keys, so only azurerm, azuread, random and
+      # time (full source addresses), no provisioners, modules, imports or
+      # other backends get as far as terraform init.
       # Bicep labs keep .bicep files in terraform/; they are compiled to ARM
       # JSON first, which Terraform deploys into the lab's own group.
       - name: Terraform init
@@ -209,6 +214,7 @@ jobs:
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Terraform init"
           set -euo pipefail
+          node "$GITHUB_WORKSPACE/infra/ci/lab-lint.mjs" "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
           cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
           shopt -s nullglob
           for f in *.bicep; do

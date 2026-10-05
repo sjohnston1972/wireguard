@@ -1,0 +1,24 @@
+{
+  "lab": "az104-06-blob-security",
+  "about": "A look-alike provider: its source ends /azurerm but comes from another registry, so its resources look like azurerm ones. Providers are matched on the full source address.",
+  "expect": [
+    ["provider", "azurerm_resource_group.lab"]
+  ],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.example.com/hashicorp/azurerm", "values": { "name": "rg-lab-az104-06-blob-security", "location": "uksouth" } }
+    ] } },
+    "configuration": {
+      "provider_config": { "azurerm": { "name": "azurerm", "full_name": "registry.example.com/hashicorp/azurerm" } },
+      "root_module": { "resources": [
+        { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_config_key": "azurerm", "expressions": { "name": { "references": ["var.resource_group_name"] } } }
+      ] }
+    }
+  },
+  "hcl": {
+    "terraform": [ { "required_providers": [ { "azurerm": { "source": "registry.example.com/hashicorp/azurerm", "version": "~> 4.0" } } ] } ],
+    "resource": {
+      "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] }
+    }
+  }
+}

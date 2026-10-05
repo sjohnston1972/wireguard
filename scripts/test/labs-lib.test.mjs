@@ -269,9 +269,9 @@ test("parseReadme gives blocks for each supported element", () => {
 // ── Terraform text and the pool ──────────────────────────────────────────
 
 test("a literal CIDR outside cidrsubnet is refused, 0.0.0.0/0 allowed", () => {
-  const ok = { "main.tf": 'resource "x" "y" {\n  address_prefixes = [cidrsubnet(var.address_space, 2, 0)]\n  source = "0.0.0.0/0"\n}\n' };
+  const ok = { "main.tf": 'resource "azurerm_subnet" "y" {\n  address_prefixes = [cidrsubnet(var.address_space, 2, 0)]\n  source = "0.0.0.0/0"\n}\n' };
   assert.deepEqual(lintTfText(ok), []);
-  const bad = { "main.tf": 'resource "x" "y" {\n  address_space = ["10.64.0.0/16"]\n}\n' };
+  const bad = { "main.tf": 'resource "azurerm_virtual_network" "y" {\n  address_space = ["10.64.0.0/16"]\n}\n' };
   const p = lintTfText(bad);
   assert.equal(p.length, 1);
   assert.equal(p[0].rule, "literal-cidr");
