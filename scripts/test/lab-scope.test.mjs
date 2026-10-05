@@ -197,6 +197,36 @@ test("templateProblems passes a Bicep-built storage and VNet template", () => {
   assert.deepEqual(checkHcl(tplHcl(JSON.stringify(BICEP_BUILT)), TPL_LAB), []);
 });
 
+test("templateProblems reads anything named metadata that is not ARM's metadata slot", () => {
+  // The gateway's VNet, by its literal id: what a private DNS zone link to it would name.
+  const GW = "/subscriptions/3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b/resourceGroups/rg-wg-ondemand/providers/Microsoft.Network/virtualNetworks/vnet-wg";
+  const link = (id) => ({ type: "Microsoft.Network/privateDnsZones/virtualNetworkLinks", apiVersion: "2024-06-01", name: "lab.internal/to-wg", location: "global", properties: { registrationEnabled: false, virtualNetwork: { id } } });
+  /** Each trick hides GW under a symbolic name; `name` is "metadata" for the trick, anything else for the control. */
+  const tricks = (name) => [
+    ["a variable", template([link(`[variables('${name}').id]`)], { variables: { [name]: { id: GW } } })],
+    ["a parameter", template([link(`[parameters('${name}')]`)], { parameters: { [name]: { type: "string", defaultValue: GW } } })],
+    ["a symbolic resource", template({ [name]: link(GW) }, { languageVersion: "2.0" })],
+  ];
+  for (const name of ["metadata", "link"]) {
+    for (const [what, t] of tricks(name)) {
+      const r = rules(templateProblems(t));
+      assert.ok(r.includes("gateway") && r.includes("outside-scope"), `${what} called ${name}: ${JSON.stringify(templateProblems(t))}`);
+      assert.deepEqual(verdict(checkPlan(tplPlan(JSON.stringify(t)), TPL_LAB)), [["gateway", TPL_ADDRESS]], `${what} called ${name} (plan)`);
+    }
+  }
+  // ARM's own metadata slots stay descriptions: the template's, a parameter's, an output's, a definition's and a resource's.
+  const words = { description: "Never peered to vnet-wg in rg-wg-ondemand." };
+  const sa = { type: "Microsoft.Storage/storageAccounts", apiVersion: "2023-05-01", name: "x", location: "uksouth", kind: "StorageV2", sku: { name: "Standard_LRS" }, metadata: words };
+  const described = template({ sa }, {
+    languageVersion: "2.0",
+    metadata: words,
+    parameters: { p: { type: "string", defaultValue: "x", metadata: words } },
+    definitions: { d: { type: "object", metadata: words, properties: { inner: { type: "string", metadata: words } } } },
+    outputs: { o: { type: "string", value: "x", metadata: words } },
+  });
+  assert.deepEqual(templateProblems(described), []);
+});
+
 test("templateProblems refuses a subscription deployment schema", () => {
   for (const scope of ["subscriptionDeploymentTemplate", "managementGroupDeploymentTemplate", "tenantDeploymentTemplate"]) {
     const t = { ...template([]), $schema: `https://schema.management.azure.com/schemas/2018-05-01/${scope}.json#` };

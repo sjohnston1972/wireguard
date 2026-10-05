@@ -468,9 +468,28 @@ export function templateProblems(template) {
       if (tpl[k] && typeof tpl[k] === "object" && Object.keys(tpl[k]).length) add("role", `${where} uses ${k} (${Object.keys(tpl[k]).join(", ")}): extensions such as Microsoft Graph reach beyond Azure Resource Manager`);
     }
     for (const res of listOf(tpl.resources)) visitResource(res, where);
+    // The objects whose `metadata` is ARM's description slot: the template itself, each parameter, output and
+    // definition (and the type schemas inside them), and each resource (children too). Anything else called
+    // metadata (a variable, a parameter, a languageVersion 2.0 symbolic resource, a property) is read like any value.
+    const described = new Set([tpl]);
+    const schema = (s) => {
+      if (!s || typeof s !== "object" || Array.isArray(s)) return;
+      described.add(s);
+      for (const x of listOf(s.properties)) schema(x);
+      for (const x of listOf(s.discriminator?.mapping)) schema(x);
+      for (const x of Array.isArray(s.prefixItems) ? s.prefixItems : []) schema(x);
+      schema(s.items);
+      schema(s.additionalProperties);
+    };
+    for (const k of ["parameters", "outputs", "definitions"]) for (const x of listOf(tpl[k])) schema(x);
+    const resource = (r) => {
+      if (!r || typeof r !== "object" || Array.isArray(r)) return;
+      described.add(r);
+      for (const c of listOf(r.resources)) resource(c);
+    };
+    for (const r of listOf(tpl.resources)) resource(r);
     // Every string: other groups' ids, resourceId() in another group, ids above the group, the gateway. Descriptions
-    // (the template's, its parameters', definitions', outputs' and resources' own `metadata`, two levels down at most)
-    // and nested deployments' templates (checked on their own) are skipped.
+    // (the `metadata` of the objects above) and nested deployments' templates (checked on their own) are skipped.
     const strings = (v, path) => {
       if (nestedTemplates.has(v)) return;
       if (typeof v === "string") {
@@ -486,8 +505,7 @@ export function templateProblems(template) {
         }
       } else if (Array.isArray(v)) v.forEach((x, i) => strings(x, `${path}[${i}]`));
       else if (v && typeof v === "object") {
-        const depth = path ? path.split(/\.|\[/).length : 0;
-        for (const [k, x] of Object.entries(v)) if (!(k === "metadata" && depth <= 2)) strings(x, path ? `${path}.${k}` : k);
+        for (const [k, x] of Object.entries(v)) if (!(k === "metadata" && described.has(v))) strings(x, path ? `${path}.${k}` : k);
       }
     };
     strings(tpl, "");
