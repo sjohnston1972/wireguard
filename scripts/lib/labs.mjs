@@ -91,7 +91,7 @@ const VM_SIZE = /^Standard_[A-Za-z0-9_]{1,40}$/;
 const REGION = /^[a-z][a-z0-9]{1,30}$/;
 
 // Each key: [check, what it must be, optional?]. Objects nest; arrays check each element.
-const ITEM = { name: [text, "a name"], gbp_h: [num(0), "a price of 0 or more (£ per hour)"], qty: [int(1), "a whole number of 1 or more", true], retail: [{ meter: [text, "a meter name", true], unit: [text, "a unit", true], sku: [(v) => str(v) && VM_SIZE.test(v), "a VM size (Standard_...)", true] }, "", true] };
+const ITEM = { name: [text, "a name"], gbp_h: [num(0), "a price of 0 or more (£ per hour)"], qty: [int(1), "a whole number of 1 or more", true], region: [oneOf("secondary"), "secondary (priced in the lab's secondary region)", true], retail: [{ meter: [text, "a meter name", true], unit: [text, "a unit", true], sku: [(v) => str(v) && VM_SIZE.test(v), "a VM size (Standard_...)", true] }, "", true] };
 const SCHEMA = {
   id: [str, "text"],
   version: [int(1), "a whole number of 1 or more"],
@@ -177,6 +177,8 @@ export function validateLab(raw, ctx) {
     if (str(c.pricey) && !c.items.some((i) => i?.name === c.pricey)) bad("cost.pricey", `pricey "${c.pricey}" names no cost item`);
     const sizes = Array.isArray(raw?.capacity?.vm_sizes) ? raw.capacity.vm_sizes : [];
     for (const i of c.items) {
+      // Priced in the session's secondary region (batch 3 ruling 26): only a lab that has one.
+      if (i?.region === "secondary" && !(str(raw?.regions?.secondary) && raw.regions.secondary)) bad("cost.items", `cost item "${i.name}": region: secondary needs regions.secondary`);
       if (!isObj(i?.retail)) continue;
       if (!i.retail.meter && !i.retail.sku) bad("cost.items", `cost item "${i.name}": retail needs a meter or a sku`);
       if (i.retail.unit && !i.retail.meter) bad("cost.items", `cost item "${i.name}": retail.unit goes with a meter`);

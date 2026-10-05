@@ -161,7 +161,16 @@ const RULES = [
   ["version not a positive whole number", () => [[good({ version: 0 }), lab5()]], "version"],
   ["an unknown level", () => [[good({ level: "wizard" }), lab5()]], "level"],
   ["a VM size that is not one", () => [[good({ capacity: { vm_sizes: ["B1s"] } }), lab5()]], "capacity.vm_sizes"],
+  // Labs batch 3, C0.6 (ruling 26).
+  ["region: secondary needs regions.secondary", () => [[good({ cost: { items: [{ name: "Replica disk", gbp_h: 0.0017, region: "secondary" }], pricey: null } }), lab5()]], "cost.items"],
+  ["an item region other than secondary", () => [[good({ regions: { secondary: "ukwest" }, cost: { items: [{ name: "Replica disk", gbp_h: 0.0017, region: "ukwest" }], pricey: null } }), lab5()]], "cost.items.region"],
 ];
+
+test("region: secondary needs regions.secondary, and is accepted with it", () => {
+  assert.deepEqual(problemsFor([good({ regions: { secondary: "ukwest" }, cost: { items: [{ name: "Replica disk", gbp_h: 0.0017, region: "secondary", retail: { meter: "S4 LRS Disk", unit: "1/Month" } }], pricey: null } }), lab5()]), []);
+  const p = problemsFor([good({ cost: { items: [{ name: "Replica disk", gbp_h: 0.0017, region: "secondary" }], pricey: null } }), lab5()]);
+  assert.ok(p.some((x) => x.field === "cost.items" && /regions\.secondary/.test(x.message)), JSON.stringify(p));
+});
 
 // Identity change 2 (labs batch 3 plan, approved by Steven 2026-10-05): lab 20 assigns its two custom roles from Terraform.
 test("lab 20 may list its own custom roles under identity.roles; another lab may not", () => {

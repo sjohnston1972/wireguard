@@ -69,6 +69,39 @@ test("skuProblems wants one Linux pay-as-you-go hourly price for a VM size", () 
   assert.match(skuProblems([windows], "Standard_B1s")[0], /no Linux pay-as-you-go/);
 });
 
+// Labs batch 3, C0.6 (ruling 26): an item with `region: secondary` is priced in the lab's secondary region.
+test("labs-verify checks a secondary-region meter in ukwest", async () => {
+  const asked = [];
+  const fetch = async (url) => {
+    const filter = decodeURIComponent(new URL(url).searchParams.get("$filter"));
+    asked.push(filter);
+    const region = /armRegionName eq '([a-z0-9]+)'/.exec(filter)[1];
+    if (filter.includes("B DTU")) return Response.json({ Items: [row({ armRegionName: region, meterName: "B DTU", productName: "SQL Database Single Basic", retailPrice: 0.1517, unitOfMeasure: "1/Day" })] });
+    if (filter.includes("B Secondary Active DTU")) return Response.json({ Items: region === "ukwest" ? [row({ armRegionName: "ukwest", location: "UK West", meterName: "B Secondary Active DTU", productName: "SQL Database Single Basic", retailPrice: 0.1517, unitOfMeasure: "1/Day" })] : [] });
+    return Response.json({ Items: [] });
+  };
+  const lab = {
+    id: "az305-23-sql-failover",
+    readme: "",
+    secondary: "ukwest",
+    items: [
+      { name: "Basic primary", gbp_h: 0.0063, retail: { meter: "B DTU", unit: "1/Day" } },
+      { name: "Basic geo-secondary", gbp_h: 0.0063, region: "secondary", retail: { meter: "B Secondary Active DTU", unit: "1/Day" } },
+    ],
+  };
+  const { problems, lines } = await verifyLabs([lab], { links: false, meters: true, fetch });
+  assert.deepEqual(problems, []);
+  assert.ok(asked.some((f) => f.startsWith("armRegionName eq 'ukwest' and meterName eq 'B Secondary Active DTU'")), asked.join("\n"));
+  assert.ok(asked.some((f) => f.startsWith("armRegionName eq 'uksouth' and meterName eq 'B DTU'")), asked.join("\n"));
+  assert.ok(lines.some((l) => /B Secondary Active DTU \(ukwest\): £0\.1517\/1\/Day/.test(l)), lines.join("\n"));
+  // Not in the secondary region: a problem naming it.
+  const wrong = await verifyLabs([{ ...lab, items: [{ ...lab.items[1], retail: { meter: "B DTU-only-in-uksouth", unit: "1/Day" } }] }], { links: false, meters: true, fetch });
+  assert.match(wrong.problems.join("\n"), /no ukwest row/);
+  // A secondary item in a lab with no secondary region is a problem, not a uksouth lookup.
+  const lone = await verifyLabs([{ ...lab, secondary: null }], { links: false, meters: true, fetch });
+  assert.match(lone.problems.join("\n"), /region: secondary but the lab has no regions\.secondary/);
+});
+
 test("verifyLabs checks each lab's links and meters with the fetch it is given", async () => {
   const asked = [];
   const fetch = async (url, init = {}) => {

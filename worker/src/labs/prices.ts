@@ -6,10 +6,16 @@
 // prices.ts: "lab:<meter>", or the size itself), and a price under 7 days old
 // replaces the authored figure. Older or missing: the authored gbp_h, and the
 // modal says so (source "authored"). GBP list prices before discounts and VAT.
+//
+// An item with `region: secondary` (labs batch 3, ruling 26: a replica disk, a
+// geo-secondary database) is priced in the session's secondary region, which
+// is the lab's regions.secondary (engine.ts copies it onto the session). The
+// feed reads every lab's secondary region daily, so its rows are there too.
 
 import type { Env } from "../env";
 import { readPrices, PRICE_STALE_MS, HOURS_PER_MONTH, type PriceRow } from "../insights/price";
 import { labItem } from "../insights/feeds/prices";
+import { catalogue } from "./catalogue";
 import { estimateGbpH, type LabCostItem, type LabDef } from "../../../shared/labs";
 import type { LabCostLine } from "../../../shared/api";
 
@@ -22,11 +28,17 @@ function perHour(r: Pick<PriceRow, "gbp" | "unit">): number | null {
   return null;
 }
 
-/** The fresh list price of one item in a region, with its age in seconds; null to use the authored gbp_h. */
-export function retailPrice(item: LabCostItem, rows: PriceRow[], region: string, now: Date): { gbpH: number; age: number } | null {
+/**
+ * The fresh list price of one item, with its age in seconds; null to use the
+ * authored gbp_h. `region` is the session's; an item with `region: "secondary"`
+ * is priced at `secondaryRegion` instead (none: the authored figure).
+ */
+export function retailPrice(item: LabCostItem, rows: PriceRow[], region: string, now: Date, secondaryRegion: string | null = null): { gbpH: number; age: number } | null {
   const r = item.retail;
   if (!r) return null;
-  const row = r.sku ? rows.find((x) => x.region === region && x.item === r.sku) : r.meter ? rows.find((x) => x.region === region && x.item === labItem(r.meter!)) : undefined;
+  const at = item.region === "secondary" ? secondaryRegion : region;
+  if (!at) return null;
+  const row = r.sku ? rows.find((x) => x.region === at && x.item === r.sku) : r.meter ? rows.find((x) => x.region === at && x.item === labItem(r.meter!)) : undefined;
   if (!row) return null;
   if (r.unit && !r.sku && row.unit !== r.unit) return null;
   const age = now.getTime() - Date.parse(row.fetched_at);
@@ -38,18 +50,26 @@ export function retailPrice(item: LabCostItem, rows: PriceRow[], region: string,
 /** Each item priced, for the modal (LabDetail.cost). */
 export function pricedItems(def: LabDef, rows: PriceRow[], region: string, now: Date): LabCostLine[] {
   return def.cost.items.map((i) => {
-    const p = retailPrice(i, rows, region, now);
+    const p = retailPrice(i, rows, region, now, def.regions.secondary);
     return { ...i, gbpH: p ? p.gbpH : i.gbp_h, source: p ? "azure" : "authored", priceAge: p ? p.age : null };
   });
 }
 
-/** £/h from already-read price rows. */
+/** £/h from already-read price rows (the region's and, for `region: secondary` items, the lab's secondary region's). */
 export function gbpHFrom(def: LabDef, rows: PriceRow[], region: string, now: Date): number {
-  return estimateGbpH(def.cost.items, (i) => retailPrice(i, rows, region, now)?.gbpH ?? null);
+  return estimateGbpH(def.cost.items, (i) => retailPrice(i, rows, region, now, def.regions.secondary)?.gbpH ?? null);
 }
 
-/** £/h for a lab in a region now (reads az_prices; a price problem means the authored figures). */
+/** The price rows the Labs tab needs: `region`'s and every catalogue lab's secondary region's (a failed read is none). */
+export async function readLabPrices(env: Env, region: string): Promise<PriceRow[]> {
+  const regions = [...new Set([region, ...catalogue().labs.map((l) => l.regions.secondary).filter((r): r is string => !!r)])];
+  const all = await Promise.all(regions.map((r) => readPrices(env.DB, r).catch(() => [] as PriceRow[])));
+  return all.flat();
+}
+
+/** £/h for a lab in a region now (reads az_prices for the region and the lab's secondary region; a price problem means the authored figures). */
 export async function labGbpH(env: Env, def: LabDef, region: string, now: Date): Promise<number> {
-  const rows = await readPrices(env.DB, region).catch(() => [] as PriceRow[]);
+  const regions = [...new Set([region, def.regions.secondary].filter((r): r is string => !!r))];
+  const rows = (await Promise.all(regions.map((r) => readPrices(env.DB, r).catch(() => [] as PriceRow[])))).flat();
   return gbpHFrom(def, rows, region, now);
 }

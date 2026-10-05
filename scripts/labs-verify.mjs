@@ -13,7 +13,9 @@
 //              price the wrong one: keep that item authored, ruling 2); a VM
 //              size must have a Linux pay-as-you-go hourly price. Each answer
 //              is printed beside the authored £/h, and an authored figure more
-//              than 25% from Azure's is a problem.
+//              than 25% from Azure's is a problem. An item with `region:
+//              secondary` (labs batch 3, ruling 26) is checked the same way in
+//              the lab's regions.secondary (ukwest) instead.
 //
 // With neither flag, both run. With no ids, every lab. Exit 0: no problems;
 // 1: problems, one line each; 2: bad arguments.
@@ -40,8 +42,8 @@ export function readmeLinks(md) {
 }
 
 /** The rows the feed would keep: GBP, pay as you go, uksouth, not Windows/Spot/Low Priority; primary meter regions when there are any. */
-function kept(rows) {
-  const k = rows.filter((r) => r?.currencyCode === "GBP" && r.type === "Consumption" && r.armRegionName === REGION && !NOT_LINUX_PAYG.test([r.productName, r.skuName, r.meterName].map((x) => x ?? "").join(" ")));
+function kept(rows, region = REGION) {
+  const k = rows.filter((r) => r?.currencyCode === "GBP" && r.type === "Consumption" && r.armRegionName === region && !NOT_LINUX_PAYG.test([r.productName, r.skuName, r.meterName].map((x) => x ?? "").join(" ")));
   return k.some((r) => r.isPrimaryMeterRegion !== false) ? k.filter((r) => r.isPrimaryMeterRegion !== false) : k;
 }
 
@@ -51,25 +53,25 @@ const describe = (r) => `${r.productName ?? "?"}${r.tierMinimumUnits ? ` from ${
  * What stops the price feed using `meter` (with lab.yaml's `unit`) for a lab in
  * uksouth, from Retail Prices API rows: [] when nothing does, else one line per problem.
  */
-export function meterProblems(rows, { meter, unit }) {
-  const mine = kept(rows).filter((r) => r.meterName === meter);
-  if (!mine.length) return [`${meter}: no uksouth row in the Retail Prices API (GBP, pay as you go, not Windows/Spot)`];
+export function meterProblems(rows, { meter, unit }, region = REGION) {
+  const mine = kept(rows, region).filter((r) => r.meterName === meter);
+  if (!mine.length) return [`${meter}: no ${region} row in the Retail Prices API (GBP, pay as you go, not Windows/Spot)`];
   const out = [];
   const units = [...new Set(mine.map((r) => r.unitOfMeasure))];
   for (const u of units) if (!LAB_UNITS.includes(u)) out.push(`${meter}: unit "${u}" is one the price feed cannot use (it reads ${LAB_UNITS.join(", ")}); keep this item authored`);
   if (unit && !units.includes(unit)) out.push(`${meter}: lab.yaml says "${unit}" but Azure prices it per "${units.join('", "')}"`);
   const usable = mine.filter((r) => LAB_UNITS.includes(r.unitOfMeasure) && (!unit || r.unitOfMeasure === unit));
   const prices = [...new Set(usable.map((r) => r.retailPrice))];
-  if (prices.length > 1) out.push(`${meter}: ${prices.length} prices in uksouth (${usable.map(describe).join("; ")}); the feed matches on the meter name alone, so keep this item authored`);
+  if (prices.length > 1) out.push(`${meter}: ${prices.length} prices in ${region} (${usable.map(describe).join("; ")}); the feed matches on the meter name alone, so keep this item authored`);
   return out;
 }
 
 /** What stops the price feed pricing VM size `sku` in uksouth: [] or one line per problem. */
-export function skuProblems(rows, sku) {
-  const mine = kept(rows).filter((r) => r.armSkuName === sku && r.unitOfMeasure === "1 Hour");
-  if (!mine.length) return [`${sku}: no Linux pay-as-you-go hourly price in uksouth`];
+export function skuProblems(rows, sku, region = REGION) {
+  const mine = kept(rows, region).filter((r) => r.armSkuName === sku && r.unitOfMeasure === "1 Hour");
+  if (!mine.length) return [`${sku}: no Linux pay-as-you-go hourly price in ${region}`];
   const prices = [...new Set(mine.map((r) => r.retailPrice))];
-  return prices.length > 1 ? [`${sku}: ${prices.length} Linux pay-as-you-go prices in uksouth (${mine.map(describe).join("; ")})`] : [];
+  return prices.length > 1 ? [`${sku}: ${prices.length} Linux pay-as-you-go prices in ${region} (${mine.map(describe).join("; ")})`] : [];
 }
 
 /** £ per hour for a price in one of the feed's units (labs/prices.ts perHour). */
@@ -133,19 +135,26 @@ export async function verifyLabs(labs, { links = true, meters = true, fetch = gl
       for (const item of lab.items ?? []) {
         const retail = item.retail;
         if (!retail?.meter && !retail?.sku) continue;
-        let rows;
-        try {
-          rows = await rowsFor(retail.meter ? `armRegionName eq '${REGION}' and meterName eq ${odata(retail.meter)}` : `armRegionName eq '${REGION}' and armSkuName eq ${odata(retail.sku)} and priceType eq 'Consumption'`);
-        } catch (e) {
-          problems.push(`${lab.id}: ${retail.meter ?? retail.sku}: ${e.message}`);
+        // An item with region: secondary is priced in the lab's secondary region (batch 3 ruling 26).
+        const region = item.region === "secondary" ? lab.secondary : REGION;
+        if (!region) {
+          problems.push(`${lab.id}: ${item.name}: region: secondary but the lab has no regions.secondary`);
           continue;
         }
-        const found = retail.meter ? meterProblems(rows, { meter: retail.meter, unit: retail.unit }) : skuProblems(rows, retail.sku);
+        const label = `${retail.meter ?? retail.sku}${region === REGION ? "" : ` (${region})`}`;
+        let rows;
+        try {
+          rows = await rowsFor(retail.meter ? `armRegionName eq '${region}' and meterName eq ${odata(retail.meter)}` : `armRegionName eq '${region}' and armSkuName eq ${odata(retail.sku)} and priceType eq 'Consumption'`);
+        } catch (e) {
+          problems.push(`${lab.id}: ${label}: ${e.message}`);
+          continue;
+        }
+        const found = retail.meter ? meterProblems(rows, { meter: retail.meter, unit: retail.unit }, region) : skuProblems(rows, retail.sku, region);
         for (const p of found) problems.push(`${lab.id}: ${p}`);
         if (found.length) continue;
-        const row = kept(rows).find((r) => (retail.meter ? r.meterName === retail.meter && (!retail.unit || r.unitOfMeasure === retail.unit) : r.armSkuName === retail.sku && r.unitOfMeasure === "1 Hour"));
+        const row = kept(rows, region).find((r) => (retail.meter ? r.meterName === retail.meter && (!retail.unit || r.unitOfMeasure === retail.unit) : r.armSkuName === retail.sku && r.unitOfMeasure === "1 Hour"));
         const gbpH = perHour(row.retailPrice, row.unitOfMeasure);
-        lines.push(`${lab.id}: ${retail.meter ?? retail.sku}: £${row.retailPrice}/${row.unitOfMeasure} = £${gbpH.toFixed(4)}/h (authored £${item.gbp_h.toFixed(4)}/h)`);
+        lines.push(`${lab.id}: ${label}: £${row.retailPrice}/${row.unitOfMeasure} = £${gbpH.toFixed(4)}/h (authored £${item.gbp_h.toFixed(4)}/h)`);
         if (gbpH > 0 && Math.abs(gbpH - item.gbp_h) / gbpH > DRIFT) problems.push(`${lab.id}: ${item.name}: authored £${item.gbp_h}/h is more than ${DRIFT * 100}% from Azure's £${gbpH.toFixed(4)}/h`);
       }
     }
@@ -156,7 +165,7 @@ export async function verifyLabs(labs, { links = true, meters = true, fetch = gl
 /** A lab folder as verifyLabs reads it. */
 function readLab(root, id) {
   const raw = parseLabYaml(readFileSync(join(root, id, "lab.yaml"), "utf8")).raw;
-  return { id, readme: readFileSync(join(root, id, "readme.md"), "utf8"), items: raw?.cost?.items ?? [] };
+  return { id, readme: readFileSync(join(root, id, "readme.md"), "utf8"), items: raw?.cost?.items ?? [], secondary: raw?.regions?.secondary ?? null };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
