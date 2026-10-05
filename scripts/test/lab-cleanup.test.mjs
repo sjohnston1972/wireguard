@@ -215,9 +215,10 @@ test("verify clean prints clean=true when nothing is left, and clean=false when 
 // ── Peering ──────────────────────────────────────────────────────────────
 
 const PEER_ENV = { LAB_PEER_URL: "https://wg-admin.example.net/api/callback/lab-peer", CALLBACK_TOKEN: "tok-123456", WORKER_RUN_ID: "lab-deploy-1-abc" };
-const peerWorld = (go = true) =>
+/** The Worker's begin answer: { go } plus, when go, whether this run may link DNS zones (labs/callbacks.ts dnsLinkFor). */
+const peerWorld = (go = true, begin = go ? { go, dns_link: true } : { go }) =>
   world([
-    { cmd: "curl", match: "phase\":\"begin", out: JSON.stringify({ go }) },
+    { cmd: "curl", match: "phase\":\"begin", out: JSON.stringify(begin) },
     { cmd: "curl", match: "phase\":\"end", out: "{\"ok\":true}" },
     { match: "^network vnet show --resource-group rg-wg-ondemand --name vnet-wg", out: GW_VNET },
     { match: `^network vnet list --resource-group ${RG} `, out: LAB_VNET },
@@ -258,6 +259,25 @@ test("peer creates both sides with the §7.6 flags and links private DNS zones o
   noLink.run("infra/ci/lab-peer.sh", ["peer", ID], { ...PEER_ENV, DNS_LINK: "false" });
   assert.equal(firstCall(noLink.calls(), /private-dns link vnet create/), -1);
   noLink.cleanup();
+});
+
+test("peer skips the DNS links when the Worker's begin answer says dns_link false, and says why", { skip }, () => {
+  // Another peered lab already linked a zone of the same name to vnet-wg; Azure would refuse a second.
+  const note = "Private DNS zones not linked: Lab 7 has linked its zones to the gateway's VNet";
+  const w = peerWorld(true, { go: true, dns_link: false, note });
+  const r = w.run("infra/ci/lab-peer.sh", ["peer", ID], { ...PEER_ENV, DNS_LINK: "true" });
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  assert.ok(calls.some((c) => c.startsWith("az network vnet peering create")), "still peers");
+  assert.equal(firstCall(calls, /private-dns link vnet create/), -1, calls.join("\n"));
+  assert.match(r.out, /not linked/i);
+  assert.ok(firstCall(calls, /^curl .*"phase":"end","ok":true/) >= 0, "the peering itself is ok");
+  w.cleanup();
+  // An answer with no dns_link at all never links either.
+  const bare = peerWorld(true, { go: true });
+  bare.run("infra/ci/lab-peer.sh", ["peer", ID], { ...PEER_ENV, DNS_LINK: "true" });
+  assert.equal(firstCall(bare.calls(), /private-dns link vnet create/), -1);
+  bare.cleanup();
 });
 
 test("peer waits when the Worker says wait, and skips without a Worker", { skip }, () => {
