@@ -1,0 +1,45 @@
+# Lab 16 (batch 2 plan area B2). AZ-104 study guide skills this lab touches
+# ((V) the wording against the current outline):
+#   Implement and manage virtual networking > Configure name resolution and
+#   load balancing: "Configure an internal or public load balancer",
+#   "Troubleshoot load balancing". Configure and manage virtual networks in
+#   Azure: "Configure public IP addresses". Application Gateway is beyond
+#   the current AZ-104 outline; it is here as the layer 7 comparison.
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. Retail entries the price feed refreshes, checked by npm run
+# labs-verify -- --meters az104-16-lb-appgw: Standard_B1s Linux £0.0089/h;
+# S4 LRS Disk £1.28 a month (about £0.0018/h); Application Gateway Basic v2
+# "Basic Fixed Cost" £0.02/h and "Basic Capacity Units" £0.0063 per unit
+# hour (one unit authored: an idle gateway uses less); "Standard IPv4 Static
+# Public IP" £0.0038/h. The Standard load balancer is priced under region
+# "Global" only ("Standard Included LB Rules and Outbound Rules", £0.0189/h
+# for the first five rules), so it stays authored (batch 2 ruling 2). Data
+# processed by either is pennies per GB.
+id: az104-16-lb-appgw
+version: 1
+title: "Load Balancer and Application Gateway"
+summary: >-
+  Two web VMs behind an internal Standard load balancer and an Application Gateway Basic with a private listener,
+  so you can compare layer 4 and layer 7 load balancing, probes and backend health on the same servers.
+exam: AZ-104
+skill_areas: [az104.networking]
+level: associate
+type: explore
+prerequisites: [az104-13-vnets]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0092, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Standard load balancer, first 5 rules", gbp_h: 0.0189 }
+    - { name: "Application Gateway Basic, fixed", gbp_h: 0.02, retail: { meter: "Basic Fixed Cost", unit: "1/Hour" } }
+    - { name: "Application Gateway Basic, capacity unit", gbp_h: 0.0063, retail: { meter: "Basic Capacity Units", unit: "1/Hour" } }
+    - { name: "Public IP, Standard static (Application Gateway)", gbp_h: 0.0038, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+  pricey: "Application Gateway Basic, fixed"
+timing: { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

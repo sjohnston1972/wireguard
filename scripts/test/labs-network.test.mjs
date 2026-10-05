@@ -352,3 +352,118 @@ test(`${L15}: dns_link is true and Terraform never links the zone to the gateway
   assert.match(l.readme, /vm-web\.lab15\.internal/);
   assert.match(l.readme, /tunnel/i);
 });
+
+// ── Lab 16: Load Balancer and Application Gateway ────────────────────────
+
+const L16 = "az104-16-lb-appgw";
+labContentSuite(L16, { marker: "££" });
+servesWithPython(L16, { web: 80 });
+
+/** The bodies of the nested blocks called `name` directly inside `body` (one level down). */
+function nested(body, name) {
+  const out = [];
+  const re = new RegExp(`^[ ]{2}${name}[ ]*\\{`, "gm");
+  for (const m of body.matchAll(re)) {
+    let depth = 0;
+    let i = m.index + m[0].length - 1;
+    for (; i < body.length; i++) {
+      if (body[i] === "{") depth++;
+      else if (body[i] === "}" && --depth === 0) break;
+    }
+    out.push(body.slice(m.index + m[0].length, i));
+  }
+  return out;
+}
+
+test(`${L16}: an internal Standard load balancer with a TCP 80 probe and rule over both VMs`, () => {
+  const l = lab(L16);
+  const [lb, ...more] = resources(l, "azurerm_lb");
+  assert.equal(more.length, 0);
+  assert.equal(attr(lb.body, "sku"), '"Standard"', "Standard: Basic load balancers are retired");
+  const [fe, ...moreFe] = nested(lb.body, "frontend_ip_configuration");
+  assert.equal(moreFe.length, 0, "one frontend");
+  assert.equal(attr(fe, "subnet_id"), "azurerm_subnet.web.id", "internal: a private frontend in the web subnet");
+  assert.equal(attr(fe, "private_ip_address_allocation"), '"Static"');
+  assert.equal(attr(fe, "private_ip_address"), "local.lb_ip");
+  assert.equal(locals(l).lb_ip, "cidrhost(local.web_cidr, 10)");
+  assert.doesNotMatch(lb.body, /public_ip_address_id/, "no public frontend");
+  const [pool] = resources(l, "azurerm_lb_backend_address_pool");
+  assert.equal(attr(pool.body, "loadbalancer_id"), "azurerm_lb.web.id");
+  const [probe] = resources(l, "azurerm_lb_probe");
+  assert.equal(attr(probe.body, "loadbalancer_id"), "azurerm_lb.web.id");
+  assert.equal(attr(probe.body, "protocol"), '"Tcp"');
+  assert.equal(attr(probe.body, "port"), "80");
+  const [rule] = resources(l, "azurerm_lb_rule");
+  assert.equal(attr(rule.body, "protocol"), '"Tcp"');
+  assert.equal(attr(rule.body, "frontend_port"), "80");
+  assert.equal(attr(rule.body, "backend_port"), "80");
+  assert.equal(attr(rule.body, "backend_address_pool_ids"), "[azurerm_lb_backend_address_pool.web.id]");
+  assert.equal(attr(rule.body, "probe_id"), "azurerm_lb_probe.http.id");
+  assert.equal(unq(attr(rule.body, "frontend_ip_configuration_name")), unq(attr(fe, "name")));
+  // Both VMs (count = 2) are in the pool.
+  const vm = res(l, "azurerm_linux_virtual_machine", "web");
+  assert.equal(attr(vm.body, "count"), "2");
+  const [member] = resources(l, "azurerm_network_interface_backend_address_pool_association");
+  assert.equal(attr(member.body, "count"), "2");
+  assert.equal(attr(member.body, "network_interface_id"), "azurerm_network_interface.web[count.index].id");
+  assert.equal(attr(member.body, "backend_address_pool_id"), "azurerm_lb_backend_address_pool.web.id");
+  assert.equal(attr(member.body, "ip_configuration_name"), attr(nested(res(l, "azurerm_network_interface", "web").body, "ip_configuration")[0], "name"));
+});
+
+test(`${L16}: an Application Gateway Basic in its own /24 with the public IP it must have and its only listener on the private frontend`, () => {
+  const l = lab(L16);
+  const loc = locals(l);
+  assert.equal(loc.vnet_cidr, "cidrsubnet(var.address_space, 2, 0)");
+  assert.equal(loc.web_cidr, "cidrsubnet(local.vnet_cidr, 4, 0)");
+  assert.equal(loc.appgw_cidr, "cidrsubnet(local.vnet_cidr, 4, 1)", "a /24 of its own");
+  assert.equal(attr(res(l, "azurerm_subnet", "appgw").body, "address_prefixes"), "[local.appgw_cidr]");
+  const [gw, ...more] = resources(l, "azurerm_application_gateway");
+  assert.equal(more.length, 0);
+  const [sku] = nested(gw.body, "sku");
+  assert.equal(attr(sku, "name"), '"Basic"');
+  assert.equal(attr(sku, "tier"), '"Basic"');
+  assert.equal(attr(sku, "capacity"), "1");
+  assert.equal(attr(nested(gw.body, "gateway_ip_configuration")[0], "subnet_id"), "azurerm_subnet.appgw.id");
+  // Two frontends: the public IP Azure insists on, and a private one.
+  const fes = nested(gw.body, "frontend_ip_configuration").map((f) => ({ name: unq(attr(f, "name")), pip: attr(f, "public_ip_address_id"), subnet: attr(f, "subnet_id"), ip: attr(f, "private_ip_address"), alloc: unq(attr(f, "private_ip_address_allocation")) }));
+  assert.equal(fes.length, 2);
+  const pub = fes.find((f) => f.pip);
+  const priv = fes.find((f) => f.subnet);
+  assert.equal(pub.pip, "azurerm_public_ip.appgw.id");
+  assert.equal(priv.subnet, "azurerm_subnet.appgw.id");
+  assert.equal(priv.alloc, "Static");
+  assert.equal(priv.ip, "local.appgw_ip");
+  assert.equal(loc.appgw_ip, "cidrhost(local.appgw_cidr, 10)");
+  const [ip] = resources(l, "azurerm_public_ip");
+  assert.equal(attr(ip.body, "sku"), '"Standard"');
+  assert.equal(attr(ip.body, "allocation_method"), '"Static"');
+  // Its only listener is on the private frontend: nothing listens on the public IP.
+  const listeners = nested(gw.body, "http_listener");
+  assert.equal(listeners.length, 1, "one listener");
+  assert.equal(unq(attr(listeners[0], "frontend_ip_configuration_name")), priv.name);
+  assert.equal(attr(listeners[0], "protocol"), '"Http"');
+  // Backends: both VMs on port 80, a rule with a priority (v2-family SKUs need one), a TLS policy that is not deprecated.
+  assert.equal(attr(nested(gw.body, "backend_address_pool")[0], "ip_addresses"), "azurerm_network_interface.web[*].private_ip_address");
+  assert.equal(attr(nested(gw.body, "backend_http_settings")[0], "port"), "80");
+  const [rule] = nested(gw.body, "request_routing_rule");
+  assert.ok(Number(attr(rule, "priority")) >= 1);
+  assert.match(attr(nested(gw.body, "ssl_policy")[0], "policy_name"), /AppGwSslPolicy2022/);
+  assert.match(output(l, "connect").body, /curl http:\/\/\$\{local\.appgw_ip\}/);
+  assert.match(output(l, "connect").body, /curl http:\/\/\$\{local\.lb_ip\}/);
+});
+
+test(`${L16}: the gateway subnet allows GatewayManager on 65200-65535`, () => {
+  const l = lab(L16);
+  assert.deepEqual(associations(l, "azurerm_subnet_network_security_group_association", "network_security_group_id"), { appgw: "appgw" });
+  const inbound = rulesOf(l, "appgw").filter((r) => r.direction === "Inbound" && r.access === "Allow");
+  const gm = inbound.find((r) => r.src === "GatewayManager");
+  assert.ok(gm, "a rule from the GatewayManager service tag");
+  assert.equal(gm.port, "65200-65535");
+  assert.equal(gm.protocol, "Tcp");
+  // The listener's port from the VNet (the tunnel too, when peered); never from the internet.
+  const http = inbound.find((r) => r.port === "80");
+  assert.equal(http?.src, "VirtualNetwork");
+  for (const r of inbound) assert.notEqual(r.src, "Internet", `${r.name}: nothing from the internet`);
+  assert.notEqual(l.yaml.cost.pricey, null, "the card names what makes it ££");
+  assert.match(l.readme, /5 to 15 minutes|15 minutes/i, "the readme warns the gateway is slow to deploy");
+});
