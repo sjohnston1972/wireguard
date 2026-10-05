@@ -87,6 +87,30 @@ test("unblock removes locks, legal holds, unlocked immutability, backup protecti
   w.cleanup();
 });
 
+test("unblock deletes Azure Files share snapshots (lab 7): a share with snapshots cannot be destroyed", { skip }, () => {
+  const L7 = "az104-07-files";
+  const R7 = `rg-lab-${L7}`;
+  const w = world([
+    { match: "^group list", out: `${R7}\nrg-lab-az104-06-blob-security` },
+    { match: `^storage account list --resource-group ${R7} `, out: "l07k3x9qfiles" },
+    { match: "^storage share-rm list .*--include-snapshot", out: "labshare\t2026-10-05T09:10:00.0000000Z\nlabshare\t2026-10-05T09:40:00.0000000Z" },
+    { match: "^backup vault list", out: "" },
+  ]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L7]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const list = calls.find((c) => c.startsWith("az storage share-rm list"));
+  assert.match(list, new RegExp(`--storage-account l07k3x9qfiles --resource-group ${R7} --include-snapshot`));
+  const dels = calls.filter((c) => c.startsWith("az storage share-rm delete"));
+  assert.deepEqual(dels, [
+    `az storage share-rm delete --storage-account l07k3x9qfiles --resource-group ${R7} --name labshare --snapshot 2026-10-05T09:10:00.0000000Z --yes -o none`,
+    `az storage share-rm delete --storage-account l07k3x9qfiles --resource-group ${R7} --name labshare --snapshot 2026-10-05T09:40:00.0000000Z --yes -o none`,
+  ]);
+  // The share itself is Terraform's to delete.
+  assert.ok(!calls.some((c) => c.startsWith("az storage share-rm delete") && !c.includes("--snapshot")));
+  w.cleanup();
+});
+
 test("unblock never fails the run, even when Azure refuses", { skip }, () => {
   const w = world([
     { match: "^group list", out: RG },

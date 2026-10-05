@@ -10,6 +10,8 @@
 #   3. UNLOCKED immutability policies on blob containers (a Locked one cannot
 #      be removed by anyone; the scope check refuses them before apply, and
 #      one found here is reported loudly)
+#   3b. Azure Files share snapshots (a share with snapshots cannot be deleted,
+#      so Terraform's destroy of it fails; lab 7)
 #   4. backup protection: soft delete off, soft-deleted items undeleted, then
 #      protection stopped with the backup data deleted
 #   5. Site Recovery replication: protection disabled on every replicated item
@@ -107,6 +109,22 @@ for g in "${groups[@]}"; do
         else warn "$sa/$c: could not remove the immutability policy"; fi
       fi
     done < <(azq storage container-rm list --storage-account "$sa" --resource-group "$g" --query "[?hasImmutabilityPolicy || properties.hasImmutabilityPolicy].name" -o tsv)
+  done <<<"${accounts[$g]}"
+done
+
+# 3b. Azure Files share snapshots (lab 7): a share that has snapshots cannot be
+# deleted, so terraform destroy of the share would fail. The shares themselves
+# are left for Terraform (and the group delete).
+for g in "${groups[@]}"; do
+  while IFS= read -r sa; do
+    [ -z "$sa" ] && continue
+    while IFS=$'\t' read -r share snap; do
+      [ -z "$share" ] || [ -z "$snap" ] && continue
+      if az storage share-rm delete --storage-account "$sa" --resource-group "$g" --name "$share" --snapshot "$snap" --yes -o none; then
+        echo "unblock: $sa/$share: snapshot $snap deleted"
+      else warn "$sa/$share: could not delete snapshot $snap"; fi
+    done < <(azq storage share-rm list --storage-account "$sa" --resource-group "$g" --include-snapshot \
+      --query "[?snapshotTime || properties.snapshotTime].[name, snapshotTime || properties.snapshotTime]" -o tsv || warn "$sa: could not list file share snapshots")
   done <<<"${accounts[$g]}"
 done
 
