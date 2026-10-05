@@ -65,6 +65,27 @@ describe("peering (L2.6)", () => {
     expect((await peer(env, "wrong", { run_id: r.json.runId, phase: "begin" })).status).toBe(401);
   });
 
+  it("cancelling a run that holds the gateway's lock for peering releases it; another holder's lock is left alone", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    await up(env);
+    const r = await deployLab(env, "az104-06-blob-security", { hours: 2, peer: true });
+    const s = await secrets(env, world, r.json.runId);
+    expect(await peer(env, s.callback_token, { run_id: r.json.runId, phase: "begin" })).toMatchObject({ body: { go: true } });
+    expect((await lockStatus(env)).lock?.runId).toBe(`peer:${r.json.runId}`);
+    // Cancelled mid-peering: the run never says "end", so the cancel gives the gateway its lock back.
+    expect((await api(env, "POST", "/labs/az104-06-blob-security/cancel")).status).toBe(200);
+    expect((await lockStatus(env)).held).toBe(false);
+    // A gateway run's own lock is never released by a lab's cancel.
+    const { env: env2, world: world2 } = await labEnv();
+    await up(env2);
+    const r2 = await deployLab(env2, "az104-06-blob-security", { hours: 2, peer: true });
+    await secrets(env2, world2, r2.json.runId);
+    await acquireLock(env2, "apply-20261004T115000Z-gwgwgw");
+    expect((await api(env2, "POST", "/labs/az104-06-blob-security/cancel")).status).toBe(200);
+    expect((await lockStatus(env2)).lock?.runId).toBe("apply-20261004T115000Z-gwgwgw");
+  });
+
   it("begin says wait unless the gateway is running or in Standby", async () => {
     freeze();
     const { env, world } = await labEnv();

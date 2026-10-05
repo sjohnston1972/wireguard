@@ -19,7 +19,7 @@ import type { Env } from "../env";
 import { canDispatch } from "../env";
 import { effectiveConfig } from "../settings";
 import { getSnapshot } from "../state";
-import { acquireLock, releaseLock, labLock } from "../lock";
+import { acquireLock, releaseLock, labLock, GATEWAY_LOCK } from "../lock";
 import { randomToken } from "../auth";
 import { RunError } from "../runs";
 import { labDef, labIds } from "./catalogue";
@@ -256,11 +256,15 @@ export async function deployLab(env: Env, labId: string, input: DeployInput, by:
 
 // ── Stopping runs and tearing down ───────────────────────────────────────
 
+/** The runs that may take the gateway's lock for peering (callbacks.ts handleLabPeer). */
+const PEERING_ACTIONS = new Set(["deploy", "peer", "test"]);
+
 /**
  * Stop a run in progress: GitHub's run is cancelled (found by its title if
  * GitHub had not said its number yet), the run is closed as cancelled and
- * its lock released. A run GitHub cannot find is still closed: when it does
- * start, its secrets are refused and it stops at step 2.
+ * its lock released, and the gateway's lock too if the run held it for
+ * peering. A run GitHub cannot find is still closed: when it does start, its
+ * secrets are refused and it stops at step 2.
  */
 export async function cancelRun(env: Env, run: LabRunDb, net: Net, why: string): Promise<void> {
   let gh = run.github_run_id;
@@ -268,6 +272,9 @@ export async function cancelRun(env: Env, run: LabRunDb, net: Net, why: string):
   if (gh) await cancelGh(env, net, gh).catch(() => false);
   await settleRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: why, ...(gh ? { github_run_id: gh } : {}) });
   await releaseLock(env, run.id, false, labLock(run.lab_id));
+  // A run cancelled mid-peering never says "end": give the gateway its lock back, but only if
+  // this run holds it (peer:<run id>); the lock refuses to release another holder's.
+  if (PEERING_ACTIONS.has(run.action)) await releaseLock(env, `peer:${run.id}`, false, GATEWAY_LOCK);
 }
 
 /**
