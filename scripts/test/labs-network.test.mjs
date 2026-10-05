@@ -285,3 +285,70 @@ test(`${L14}: peer_vnet_id is the hub, and the readme says the spokes are not re
   assert.match(output(l, "connect").body, /ssh azureuser@\$\{azurerm_network_interface\.router\.private_ip_address\}/);
   assert.doesNotMatch(code(l), /var\.gateway_vnet_id/);
 });
+
+// ── Lab 15: Azure DNS, public and private zones ──────────────────────────
+
+const L15 = "az104-15-dns";
+labContentSuite(L15, { marker: "£" });
+servesWithPython(L15, { web: 80 });
+
+/** RFC 5737's documentation ranges: an address there can never point at anything real. */
+const DOC_NETS = [/^192\.0\.2\.\d+$/, /^198\.51\.100\.\d+$/, /^203\.0\.113\.\d+$/];
+
+test(`${L15}: a public zone named from name_prefix under example.com, with an A and a CNAME record`, () => {
+  const l = lab(L15);
+  const [zone, ...more] = resources(l, "azurerm_dns_zone");
+  assert.equal(more.length, 0, "one public zone");
+  assert.equal(zone.labels[1], "public");
+  // example.com is reserved (RFC 2606), so the zone can never shadow a real domain; the prefix keeps sessions apart.
+  assert.equal(attr(zone.body, "name"), '"${var.name_prefix}.example.com"');
+  const [a, ...moreA] = resources(l, "azurerm_dns_a_record");
+  assert.equal(moreA.length, 0);
+  assert.equal(attr(a.body, "zone_name"), "azurerm_dns_zone.public.name");
+  assert.equal(attr(a.body, "name"), '"www"');
+  const records = JSON.parse(attr(a.body, "records"));
+  assert.ok(records.length >= 1);
+  for (const ip of records) assert.ok(DOC_NETS.some((re) => re.test(ip)), `${ip} is a documentation address (RFC 5737)`);
+  assert.ok(Number(attr(a.body, "ttl")) <= 300, "a short TTL, so changes show quickly");
+  const [cname, ...moreC] = resources(l, "azurerm_dns_cname_record");
+  assert.equal(moreC.length, 0);
+  assert.equal(attr(cname.body, "zone_name"), "azurerm_dns_zone.public.name");
+  assert.equal(attr(cname.body, "name"), '"app"');
+  assert.equal(attr(cname.body, "record"), '"www.${azurerm_dns_zone.public.name}"');
+  // The zone is never delegated: its name servers answer for it directly.
+  assert.match(output(l, "connect").body, /nslookup www\.\$\{azurerm_dns_zone\.public\.name\} \$\{tolist\(azurerm_dns_zone\.public\.name_servers\)\[0\]\}/);
+  assert.match(l.readme, /not delegated/i);
+});
+
+test(`${L15}: private zone lab15.internal linked to the lab VNet with auto-registration`, () => {
+  const l = lab(L15);
+  const [zone, ...more] = resources(l, "azurerm_private_dns_zone");
+  assert.equal(more.length, 0, "one private zone");
+  assert.equal(attr(zone.body, "name"), '"lab15.internal"', "the gateway's dnsmasq forwards internal to Azure DNS (ruling 10)");
+  const [link, ...moreLinks] = resources(l, "azurerm_private_dns_zone_virtual_network_link");
+  assert.equal(moreLinks.length, 0, "one link, to the lab VNet");
+  assert.equal(attr(link.body, "private_dns_zone_name"), `azurerm_private_dns_zone.${zone.labels[1]}.name`);
+  assert.equal(attr(link.body, "virtual_network_id"), "azurerm_virtual_network.lab.id");
+  assert.equal(attr(link.body, "registration_enabled"), "true", "auto-registration: vm-web gets its own A record");
+  // A record made by hand beside the one Azure registers; the VM waits for the link so it registers at first boot.
+  const [www, ...moreA] = resources(l, "azurerm_private_dns_a_record");
+  assert.equal(moreA.length, 0);
+  assert.equal(attr(www.body, "zone_name"), `azurerm_private_dns_zone.${zone.labels[1]}.name`);
+  assert.equal(attr(www.body, "name"), '"www"');
+  assert.equal(attr(www.body, "records"), "[azurerm_network_interface.web.private_ip_address]", "www.lab15.internal is vm-web's address");
+  assert.match(res(l, "azurerm_linux_virtual_machine", "web").body, /depends_on\s*=\s*\[azurerm_private_dns_zone_virtual_network_link\.\w+\]/);
+  assert.match(output(l, "connect").body, /nslookup vm-web\.lab15\.internal/);
+});
+
+test(`${L15}: dns_link is true and Terraform never links the zone to the gateway`, () => {
+  const l = lab(L15);
+  assert.equal(l.yaml.connectivity.dns_link, true, "the pipeline links lab15.internal to the gateway VNet while peered");
+  assert.equal(l.yaml.connectivity.peering, "optional");
+  assert.ok(!l.blocks.some((b) => b.kind === "variable" && ["gateway_vnet_id", "peered"].includes(b.labels[0])), "no gateway_vnet_id or peered variable");
+  assert.doesNotMatch(code(l), /gateway_vnet_id|vnet-wg|rg-wg/);
+  for (const link of resources(l, "azurerm_private_dns_zone_virtual_network_link")) assert.equal(attr(link.body, "virtual_network_id"), "azurerm_virtual_network.lab.id");
+  assert.equal(attr(output(l, "peer_vnet_id").body, "value"), "azurerm_virtual_network.lab.id");
+  // Over the tunnel, while peered: the readme says so, and that it needs the gateway's tunnel DNS.
+  assert.match(l.readme, /vm-web\.lab15\.internal/);
+  assert.match(l.readme, /tunnel/i);
+});
