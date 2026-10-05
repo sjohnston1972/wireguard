@@ -20,6 +20,7 @@
 // still past its timer, and a skipped insights feed is recorded "skipped" and
 // stays due. Each stage is caught on its own, so none can stop the others.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Env } from "./env";
 import { runScheduled } from "./monitor";
 import { runLabWatch } from "./labs/watch";
@@ -41,26 +42,55 @@ const STAGES: CronStages = {
   insights: (env, now, parent) => runInsights(env, now, undefined, { parent }), // the default feeds
 };
 
-/**
- * Run `fn`, counting every fetch made meanwhile. A request served at the same
- * moment in this isolate would be counted too: that only ever over-counts,
- * which leaves more calls spare, never fewer.
- */
-async function counted<T>(fn: () => Promise<T>): Promise<{ calls: number; value: T }> {
+// ── Counting the watchman's calls ────────────────────────────────────────
+// One meter wraps the global fetch while any counted run is going, however
+// many overlap (a slow run can still be going when the next cron fires): the
+// first run in puts it in place, the last one out puts the original fetch
+// back. Each run has its own counter, found through AsyncLocalStorage, so a
+// call counts for the run that made it. A call made outside any run's context
+// (a request served at the same moment in this isolate) counts for every run
+// going: that only ever over-counts, which leaves more calls spare, never fewer.
+
+interface Counter {
+  calls: number;
+}
+const running = new AsyncLocalStorage<Counter>();
+const counters = new Set<Counter>();
+let installed: { meter: typeof fetch; inner: typeof fetch } | null = null;
+
+function startCounting(c: Counter): void {
+  counters.add(c);
+  if (installed) return;
   const inner = globalThis.fetch;
-  let calls = 0;
   const meter: typeof fetch = (...args) => {
-    calls++;
+    const own = running.getStore();
+    if (own && counters.has(own)) own.calls++;
+    else for (const x of counters) x.calls++;
     return inner(...args);
   };
+  installed = { meter, inner };
   globalThis.fetch = meter;
+}
+
+function stopCounting(c: Counter): void {
+  counters.delete(c);
+  if (counters.size || !installed) return;
+  // Put back only our own wrapper: if something else replaced fetch meanwhile, leave theirs.
+  if (globalThis.fetch === installed.meter) globalThis.fetch = installed.inner;
+  installed = null;
+}
+
+/** Run `fn`, counting every fetch it makes (see above). */
+async function counted<T>(fn: () => Promise<T>): Promise<{ calls: number; value: T }> {
+  const c: Counter = { calls: 0 };
+  startCounting(c);
   try {
-    const value = await fn();
-    return { calls, value };
+    const value = await running.run(c, fn);
+    return { calls: c.calls, value };
   } catch (e) {
-    throw Object.assign(e instanceof Error ? e : new Error(String(e)), { calls });
+    throw Object.assign(e instanceof Error ? e : new Error(String(e)), { calls: c.calls });
   } finally {
-    if (globalThis.fetch === meter) globalThis.fetch = inner;
+    stopCounting(c);
   }
 }
 

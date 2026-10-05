@@ -142,3 +142,57 @@ describe("one allowance for the */5 cron", () => {
     expect(await env.STATUS.get("labs:sweep")).not.toBeNull();
   });
 });
+
+describe("counting the watchman's calls", () => {
+  /** A promise and the function that settles it. */
+  const gate = () => {
+    let open!: () => void;
+    const p = new Promise<void>((r) => (open = r));
+    return { p, open };
+  };
+  const none = async () => [] as string[];
+  /** A watchman that makes `before` calls, says it has started, waits for `go`, then makes `after` more. */
+  const pausing = (name: string, before: number, after: number, started: () => void, go: Promise<void>): CronStages => ({
+    watchman: async () => {
+      for (let i = 0; i < before; i++) await fetch(`https://cloudflare-dns.com/dns-query?${name}=${i}`);
+      started();
+      await go;
+      for (let i = 0; i < after; i++) await fetch(`https://cloudflare-dns.com/dns-query?${name}=after${i}`);
+      return [];
+    },
+    labs: none,
+    insights: none,
+  });
+
+  it("overlapping cron runs each count only their own calls and leave fetch as it was, whichever ends first", async () => {
+    const original = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", original);
+    const env = {} as Env;
+    for (const firstEnds of ["a", "b"] as const) {
+      const aStarted = gate();
+      const bStarted = gate();
+      const aGo = gate();
+      const bGo = gate();
+      const A = runCron(env, new Date(), pausing("a", 1, 2, aStarted.open, aGo.p));
+      await aStarted.p;
+      const B = runCron(env, new Date(), pausing("b", 3, 1, bStarted.open, bGo.p));
+      await bStarted.p;
+      if (firstEnds === "a") {
+        aGo.open();
+        expect((await A).used).toBe(3);
+        bGo.open();
+        expect((await B).used).toBe(4);
+      } else {
+        bGo.open();
+        expect((await B).used).toBe(4);
+        aGo.open();
+        expect((await A).used).toBe(3);
+      }
+      expect(globalThis.fetch).toBe(original);
+    }
+    expect(original).toHaveBeenCalledTimes(14);
+    // A run afterwards counts exactly its own calls.
+    expect((await runCron(env, new Date(), { watchman: watchmanOf(2), labs: none, insights: none })).used).toBe(2);
+    expect(globalThis.fetch).toBe(original);
+  });
+});
