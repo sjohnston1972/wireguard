@@ -46,9 +46,12 @@
 //                     infrastructure groups (an environment in a subnet) not
 //                     named rg-lab-<id>-*
 //   resource-group    a resource group other than rg-lab-<id> or rg-lab-<id>-*
-//   outside-scope     a resource group, scope or parent outside the lab (an id in a
-//                     nested block too: a failover group's partner server, a
-//                     replicated VM's target groups), anything at subscription
+//   outside-scope     a resource group, scope or parent outside the lab (an id at
+//                     any nested path too, known or unknown: a failover group's
+//                     partner server and databases, a replicated VM's disk target
+//                     group; an unknown one inside an attribute written as blocks
+//                     is held to all of that attribute's references, which is
+//                     how terraform show -json lists them), anything at subscription
 //                     scope (a policy rule's deploymentScope too), or a resource tied to nothing in the
 //                     lab (an instance key, count.index or each.key, places
 //                     nothing on its own; each.value places only when for_each
@@ -98,6 +101,10 @@ const GATEWAY_RE = /\b(?:rg-wg|vnet-wg)\b/i;
 const DNS_LINK = "azurerm_private_dns_zone_virtual_network_link";
 /** Attributes ending _id that hold an Entra object or tenant id, not an Azure resource id. */
 const NOT_ARM = new Set(["principal_id", "tenant_id", "object_id", "client_id", "application_id", "member_object_id", "group_object_id", "principal_object_id", "role_id", "application_object_id", "sku_id"]);
+/** A name an Azure resource id goes by: id, x_id, x_ids (Entra and other non-ARM ids excepted). */
+const ID_NAME = (name) => (name === "id" || /_ids?$/.test(name)) && !NOT_ARM.has(name);
+/** A reference to an id: azurerm_x.y.id, data.a.b.c_id, var.x_ids, azurerm_x.y[0].id. */
+const ID_REF = (ref) => ref.includes(".") && ID_NAME(ref.replace(/\[[^\]]*\]/g, "").split(".").at(-1));
 /**
  * count.index and each.key: an instance's own key, as in azurerm_network_interface.web[count.index].id,
  * which Terraform 1.14 lists as ["azurerm_network_interface.web", "count.index"]. They never reach
@@ -187,8 +194,21 @@ export function planResources(plan) {
     const refs = {};
     for (const [k, e] of Object.entries(exprs)) refs[k] = exprRefs(e);
     // A value not known until apply carries the references its own expression makes, as an HCL Unknown does.
+    // Terraform splits only schema blocks by path ("partner_server.0.id"); an attribute that holds objects or
+    // lists (azurerm's managed_disk, a failover group's databases) is one expression whose references cover
+    // every value inside it, while after_unknown still marks those values by their own nested paths. So an
+    // unknown value takes the references of the nearest enclosing path that has any.
     const byPath = refPaths(exprs, [], {});
-    for (const l of leaves(values)) if (l.value instanceof Unknown && byPath[l.path.join(".")]) l.value.refs = byPath[l.path.join(".")];
+    for (const l of leaves(values)) {
+      if (!(l.value instanceof Unknown)) continue;
+      for (let n = l.path.length; n > 0; n--) {
+        const refs = byPath[l.path.slice(0, n).join(".")];
+        if (refs) {
+          l.value.refs = refs;
+          break;
+        }
+      }
+    }
     seen.set(r.address, {
       address: r.address,
       mode: r.mode ?? (r.address.startsWith("data.") ? "data" : "managed"),
@@ -903,13 +923,17 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
           const places = rest.some(placed) || eachValue === "places";
           if (bad.length || !places) refuse("outside-scope", `${attr} comes from ${bad[0] ?? refs[0] ?? "nothing this check can place"}, which the check cannot place inside the lab`);
         }
-        // Ids inside nested blocks (a failover group's partner_server.0.id, a replicated VM's
+        // Ids at any nested path (a failover group's partner_server.0.id and databases.0, a replicated VM's
         // managed_disk.0.target_resource_group_id): an unknown one must come from the lab's own resources too.
+        // Its references are its own inside a schema block, or the whole attribute's inside an attribute
+        // written as blocks (planResources), and every one of them must place it inside the lab.
         for (const l of all) {
-          const leaf = String(l.path.at(-1));
-          if (l.path.length < 2 || !(l.value instanceof Unknown) || !(leaf === "id" || /_ids?$/.test(leaf)) || NOT_ARM.has(leaf)) continue;
+          if (l.path.length < 2 || !(l.value instanceof Unknown)) continue;
           const refs = l.value.refs ?? [];
           if (!refs.length) continue; // computed by the provider, not configured
+          const named = String([...l.path].reverse().find((k) => typeof k === "string" && !/^\d+$/.test(k)));
+          // An id by its name (…id, …_id, …_ids), or a value made from ids (databases.0, contact_groups).
+          if (!ID_NAME(named) && !refs.some(ID_REF)) continue;
           const eachValue = refs.some((x) => EACH_VALUE_REF.test(x)) ? forEachValue(r) : null;
           const rest = refs.filter((x) => !INDEX_REF.test(x) && !EACH_VALUE_REF.test(x));
           const bad = [...rest.filter((x) => !placed(x)), ...(eachValue === "unknown" ? ["each.value"] : [])];

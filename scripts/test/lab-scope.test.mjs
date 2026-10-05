@@ -744,6 +744,73 @@ test("a failover group whose partner server is outside the lab is refused", () =
   assert.deepEqual(verdict(checkPlan(plan(["var.partner_id"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
 });
 
+// Real `terraform show -json` (Terraform 1.14.6, checked offline 2026-10-05): only a schema *block* is split in
+// configuration.expressions ("partner_server": [{ "id": { references } }]). An *attribute* holding objects or
+// lists (azurerm's managed_disk and network_interface, typed set(object); a failover group's databases) has one
+// expression with every reference in it, while after_unknown marks the unknown values inside it by their own
+// nested paths ("managed_disk.0.target_resource_group_id", "databases.0").
+test("an unknown id inside an attribute written as blocks is held to the attribute's own references", () => {
+  const id = "az305-26-site-recovery";
+  const c = ctx(id, "26");
+  const IN1 = { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] };
+  const IN2 = { resource_group_name: ["azurerm_resource_group.secondary.name", "azurerm_resource_group.secondary"] };
+  const vm = "azurerm_linux_virtual_machine.vm";
+  const OWN_DISK = [`${vm}.os_disk[0].id`, `${vm}.os_disk[0]`, `${vm}.os_disk`, vm, "azurerm_storage_account.cache.id", "azurerm_storage_account.cache", "azurerm_resource_group.secondary.id", "azurerm_resource_group.secondary"];
+  const replicated = ({ disk = OWN_DISK, nic = ["azurerm_network_interface.vm.id", "azurerm_network_interface.vm"], diskKnown = {} } = {}) => ({
+    address: "azurerm_site_recovery_replicated_vm.vm",
+    values: { name: "vm-app", resource_group_name: c.rgSecondary, recovery_vault_name: "rsv-lab", managed_disk: [{ target_disk_type: "Standard_LRS", target_replica_disk_type: "Standard_LRS", ...diskKnown }], network_interface: [{ target_subnet_name: "snet-vms" }] },
+    unknown: ["source_vm_id", "managed_disk.0.disk_id", "managed_disk.0.staging_storage_account_id", ...("target_resource_group_id" in diskKnown ? [] : ["managed_disk.0.target_resource_group_id"]), "network_interface.0.source_network_interface_id"],
+    refs: { ...IN2, source_vm_id: [`${vm}.id`, vm], managed_disk: disk, network_interface: nic },
+  });
+  const base = [
+    rgResource(c),
+    rgSecondaryResource(c),
+    { address: vm, values: { name: "vm-app", resource_group_name: c.rg, location: "uksouth" }, refs: IN1 },
+    { address: "azurerm_network_interface.vm", values: { name: "nic-app", resource_group_name: c.rg, location: "uksouth" }, refs: IN1 },
+    { address: "azurerm_storage_account.cache", values: { name: `${c.prefix}cache`, resource_group_name: c.rg, location: "uksouth" }, refs: IN1 },
+  ];
+  const other = { address: "data.azurerm_resource_group.other", values: { name: "rg-prod" } };
+  const plan = (r, data = []) => realisticPlan({ resources: [...base, r], data });
+  // The shape is the real one: references under the attribute, none under the nested path.
+  const real = planResources(plan(replicated()));
+  const rv = real.resources.find((r) => r.address === "azurerm_site_recovery_replicated_vm.vm");
+  assert.ok(rv.refs.managed_disk.includes("azurerm_resource_group.secondary.id"));
+  assert.equal(rv.refs["managed_disk.0.target_resource_group_id"], undefined);
+  // Every reference the lab's own: passes (count.index, the instance's key, is no reference outside).
+  assert.deepEqual(checkPlan(plan(replicated()), id), []);
+  assert.deepEqual(checkPlan(plan(replicated({ nic: ["azurerm_network_interface.vm", "count.index"] })), id), []);
+  // A variable or a data source outside the lab among the attribute's references: refused.
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ disk: [...OWN_DISK.slice(0, 6), "var.target_group_id"] })), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ disk: [...OWN_DISK.slice(0, 6), "data.azurerm_resource_group.other.id", "data.azurerm_resource_group.other"] }), [other]), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ nic: ["var.nic_id"] })), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  const refused = checkPlan(plan(replicated({ nic: ["var.nic_id"] })), id)[0];
+  assert.match(refused.message, /network_interface\.0\.source_network_interface_id comes from var\.nic_id/);
+  // A known nested id is still read for what it is.
+  const elsewhere = `${SUB_ID}/resourceGroups/rg-prod`;
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ disk: OWN_DISK.slice(0, 6), diskKnown: { target_resource_group_id: elsewhere } })), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  assert.deepEqual(checkPlan(plan(replicated({ disk: OWN_DISK.slice(0, 6), diskKnown: { target_resource_group_id: `${SUB_ID}/resourceGroups/${c.rgSecondary}` } })), id), []);
+});
+
+test("an unknown element of a list of ids (a failover group's databases) is held to the lab's own resources", () => {
+  const id = "az305-23-sql-failover";
+  const c = ctx(id, "23");
+  const server = (key, rg, group) => ({ address: `azurerm_mssql_server.${key}`, values: { name: `${c.prefix}-sql${key}`, resource_group_name: rg, location: "uksouth", version: "12.0" }, refs: { resource_group_name: [`azurerm_resource_group.${group}.name`, `azurerm_resource_group.${group}`] } });
+  const db = { address: "azurerm_mssql_database.primary", values: { name: "sqldb-app" }, unknown: ["server_id"], refs: { server_id: ["azurerm_mssql_server.p.id", "azurerm_mssql_server.p"] } };
+  const group = (databases) => ({
+    address: "azurerm_mssql_failover_group.fog",
+    values: { name: `${c.prefix}-fog`, read_write_endpoint_failover_policy: [{ mode: "Manual" }], partner_server: [{}], databases: ["(unknown)"] },
+    unknown: ["server_id", "partner_server.0.id", "databases.0"],
+    refs: { server_id: ["azurerm_mssql_server.p.id", "azurerm_mssql_server.p"], "partner_server.0.id": ["azurerm_mssql_server.s.id", "azurerm_mssql_server.s"], databases },
+  });
+  // Something outside the lab, read at plan (a data source deferred to apply would be unknown here too).
+  const otherDb = { address: "data.azurerm_resource_group.other", values: { name: "rg-prod" } };
+  const plan = (databases) => realisticPlan({ resources: [rgResource(c), rgSecondaryResource(c), server("p", c.rg, "lab"), server("s", c.rgSecondary, "secondary"), db, group(databases)], data: [otherDb] });
+  assert.deepEqual(checkPlan(plan(["azurerm_mssql_database.primary.id", "azurerm_mssql_database.primary"]), id), []);
+  assert.deepEqual(verdict(checkPlan(plan(["data.azurerm_resource_group.other.id", "data.azurerm_resource_group.other"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.deepEqual(verdict(checkPlan(plan(["var.database_ids"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.match(checkPlan(plan(["var.database_ids"]), id)[0].message, /databases\.0 comes from var\.database_ids/);
+});
+
 // Identity change 2 (approved by Steven 2026-10-05): lab 20 assigns its two custom roles from Terraform.
 test("lab 20 may assign its own custom roles inside its group, and no other lab may", () => {
   const roles = { netops: "60bdbc03-b25a-4a83-9fce-b2c5afff563c", appops: "bd52e05a-22cb-4bd5-b56c-3396add9b7c0" };
