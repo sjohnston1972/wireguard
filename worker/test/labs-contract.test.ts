@@ -434,13 +434,17 @@ describe("devseed labs", () => {
     const { env } = apiEnv();
     await seed(env, "labs");
     const sessions = await rows<{ lab_id: string; state: string; peering: string; note: string | null; end_reason: string | null; slot: number | null }>(env, "SELECT * FROM lab_sessions ORDER BY requested_at");
-    const live = sessions.filter((s) => s.state === "running" || s.state === "deploying");
-    expect(live.map((s) => [s.lab_id, s.state, s.peering]).sort()).toEqual([["az104-05-storage", "deploying", "off"], ["az104-06-blob-security", "running", "on"]]);
+    const live = sessions.filter((s) => s.state === "running" || s.state === "deploying" || s.state === "tearing_down");
+    expect(live.map((s) => [s.lab_id, s.state, s.peering]).sort()).toEqual([["az104-02-policy", "tearing_down", "off"], ["az104-05-storage", "deploying", "off"], ["az104-06-blob-security", "running", "on"]]);
     expect(sessions.filter((s) => s.state === "ended")).toHaveLength(8);
     expect(sessions.filter((s) => s.state === "ended" && s.note).length).toBeGreaterThan(0);
     expect(sessions.filter((s) => s.state === "ended_dirty")).toHaveLength(1);
-    // Slots held: the two live sessions and the dirty one.
-    expect((await rows<{ n: number }>(env, "SELECT COUNT(*) AS n FROM lab_slots WHERE session_id IS NOT NULL"))[0].n).toBe(3);
+    // Slots held: the three live sessions and the dirty one.
+    expect((await rows<{ n: number }>(env, "SELECT COUNT(*) AS n FROM lab_slots WHERE session_id IS NOT NULL"))[0].n).toBe(4);
+    // Lab 2 is tearing down at its timer: its destroy run is going.
+    expect((await rows<{ action: string; status: string }>(env, "SELECT action, status FROM lab_runs WHERE lab_id = 'az104-02-policy' AND status = 'running'"))).toEqual([{ action: "destroy", status: "running" }]);
+    // Three live sessions: room for a fourth, so the catalogue still offers Deploy.
+    expect((await rows<{ value: string }>(env, "SELECT value FROM settings WHERE key = 'labs_max_running'"))[0]?.value).toBe("4");
     // Lab 5's deploy run is at step 7 of 16.
     const run = (await rows<{ steps_json: string; status: string }>(env, "SELECT steps_json, status FROM lab_runs WHERE lab_id = 'az104-05-storage' AND status = 'running'"))[0];
     const steps = JSON.parse(run.steps_json) as { status: string }[];
@@ -465,6 +469,7 @@ describe("devseed labs", () => {
       expect((await rows<{ n: number }>(env, "SELECT COUNT(*) AS n FROM lab_slots WHERE session_id IS NOT NULL"))[0].n, story).toBe(0);
       expect((await rows<{ n: number }>(env, "SELECT COUNT(*) AS n FROM lab_slots"))[0].n).toBe(32);
       expect(await env.STATUS.get("labs:orphans"), story).toBeNull();
+      expect((await rows<{ n: number }>(env, "SELECT COUNT(*) AS n FROM settings WHERE key LIKE 'labs_%'"))[0].n, story).toBe(0);
     }
   }, 30_000);
 });

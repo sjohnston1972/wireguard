@@ -28,7 +28,12 @@ export const LAB_TABLES = ["lab_sessions", "lab_runs", "lab_cost_days", "lab_rel
 
 /** Empty the lab tables, free every slot and forget the engine's KV records. */
 export async function wipeLabs(env: Env): Promise<void> {
-  await env.DB.batch([...LAB_TABLES.map((t) => env.DB.prepare(`DELETE FROM ${t}`)), env.DB.prepare("UPDATE lab_slots SET session_id = NULL, since = NULL")]);
+  await env.DB.batch([
+    ...LAB_TABLES.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
+    env.DB.prepare("UPDATE lab_slots SET session_id = NULL, since = NULL"),
+    // The labs story's own settings (labs_max_running); every other story starts from the defaults.
+    env.DB.prepare("DELETE FROM settings WHERE key IN ('labs_max_running', 'labs_default_peering')"),
+  ]);
   for (const k of Object.values(LABS_KV)) await env.STATUS.delete(k);
 }
 
@@ -139,6 +144,19 @@ export async function seedLabs(env: Env, now: number): Promise<void> {
     await addSession(env, { id, lab: "az104-05-storage", state: "deploying", slot: 1, peering: "off", requested: req, ready: null, ended: null, autoDestroy: null, maxH: 6, gbpH: 0.0002, endReason: null, note: null }, n);
     await addRun(env, { id: rid("deploy", req, "a5d3"), session: id, lab: "az104-05-storage", action: "deploy", status: "running", requested: req, finished: null, steps: steps("deploy", req + 20_000, 6, true), n: ++n, password: "seed-only-not-a-password" });
   }
+
+  // Lab 2: its timer ran out 4 minutes ago and it is tearing down (step 8 of its 12, Destroy).
+  {
+    const req = now - (2 * HOUR + 8 * MIN);
+    const ready = req + 4 * MIN;
+    const end = now - 4 * MIN;
+    const id = sid(req, "p2t4");
+    await addSession(env, { id, lab: "az104-02-policy", state: "tearing_down", slot: 3, peering: "off", requested: req, ready, ended: null, autoDestroy: end, maxH: 4, gbpH: 0.0001, endReason: "timer", note: null }, n);
+    await addRun(env, { id: rid("deploy", req, "p2d0"), session: id, lab: "az104-02-policy", action: "deploy", status: "succeeded", requested: req, finished: ready, steps: finished("deploy", req + 20_000), n: ++n, password: "seed-only-not-a-password" });
+    await addRun(env, { id: rid("destroy", end, "p2x1"), session: id, lab: "az104-02-policy", action: "destroy", status: "running", requested: end, finished: null, steps: steps("destroy", end + 20_000, 7, true), n: ++n, password: "seed-only-not-a-password" });
+  }
+  // Three live labs: room for one more, so the catalogue still offers Deploy.
+  await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('labs_max_running', '4') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
 
   // Eight ended sessions over the last two weeks, with notes and costs.
   const ended: { lab: string; daysAgo: number; hours: number; gbpH: number; reason: string; note: string | null }[] = [
