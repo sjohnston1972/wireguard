@@ -310,7 +310,7 @@ describe("whole runs with the real feeds", () => {
     expect(rows.housekeeping.status).toBe("ok");
   });
 
-  it("worst-case run stays within 70 D1 statements in 31 round trips (az_feed read once, results written in one batch)", async () => {
+  it("worst-case run stays within 71 D1 statements in 32 round trips (az_feed read once, results written in one batch)", async () => {
     const { env } = azureEnv({ TEST_VM: "1" });
     // The same worst case as above: every feed due and running.
     await running(env, { last_agent_at: ago(10) });
@@ -327,8 +327,10 @@ describe("whole runs with the real feeds", () => {
     expect(d1.sql.filter((s) => /^INSERT INTO az_feed/.test(s))).toHaveLength(FEED_IDS.length + 1);
     // The bound for a worst-case run, as measured: 70 statements in 31 round trips (80 in 50 when each
     // feed read all of az_feed and wrote its own row). Most of the rest are the feeds' own stores.
-    expect(d1.statements).toBeLessThanOrEqual(70);
-    expect(d1.roundTrips).toBeLessThanOrEqual(31);
+    // Labs batch 3 (ruling 26): once a catalogue lab has a secondary region (ukwest), the prices feed
+    // reads that region too: one more statement, in one more round trip.
+    expect(d1.statements).toBeLessThanOrEqual(71);
+    expect(d1.roundTrips).toBeLessThanOrEqual(32);
   });
 
   it("a feed that fails still has its status recorded in the run's one batch", async () => {
