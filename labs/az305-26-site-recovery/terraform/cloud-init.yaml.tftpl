@@ -1,0 +1,37 @@
+#cloud-config
+# Rendered by Terraform's templatefile (main.tf) with the port it serves. A
+# tiny web server and nothing to install: python3 and curl ship with
+# Ubuntu. Each time the service starts it asks the instance metadata
+# service (169.254.169.254, no internet needed) which region the VM is in
+# and writes "<hostname> in <region>" as its page, so after a failover or a
+# test failover the same disk answers "vm-app in ukwest".
+
+write_files:
+  - path: /usr/local/bin/lab-index
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      mkdir -p /srv/lab
+      region=$(curl -s --max-time 5 -H Metadata:true "http://169.254.169.254/metadata/instance/compute/location?api-version=2021-02-01&format=text")
+      echo "$(hostname) in $region" > /srv/lab/index.html
+  - path: /etc/systemd/system/lab-http.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Lab web server: python3 -m http.server on port ${port}
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      ExecStartPre=/usr/local/bin/lab-index
+      ExecStart=/usr/bin/python3 -m http.server ${port} --directory /srv/lab
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now lab-http.service
