@@ -62,6 +62,18 @@ exactly; a change goes through the integrator, who updates this section. Paths a
 `scopeProblems(input, labId, { mode = "plan" })`; `checkPlan` passes `mode: "plan"`, `checkHcl` `mode: "hcl"`. No new rule names:
 - `role`: in a template, `Microsoft.Authorization/*`, `Microsoft.Management/*`, `Microsoft.Graph/*`, any resource with
   `extension`/`import`, a template with `extensions`/`imports`, an old-style `…/providers/…` extension type.
+- Template keys are read case-insensitively, as ARM reads them (`"Type"`, `"ResourceGroup"`); two keys that differ only in
+  case are refused. `metadata` is skipped only in ARM's description slots (the template, a parameter, output or definition
+  and their type schemas, a resource), never a variable, parameter or symbolic resource called `metadata`.
+- **Template resource types are an allow-list** (`TEMPLATE_TYPES` in `lab-scope.mjs`, fix pass after review): only
+  `Microsoft.Storage/storageAccounts`, `Microsoft.Network/virtualNetworks` (+ `/subnets`),
+  `Microsoft.Network/networkSecurityGroups` (+ `/securityRules`) and `Microsoft.Resources/deployments` as Bicep emits a module
+  (inline template object, `expressionEvaluationOptions.scope` `inner`, `Incremental`, no `resourceGroup`/`subscriptionId`/
+  `scope`). Anything else is `outside-scope` with a message that says to add the type to `TEMPLATE_TYPES` with the reason
+  it can only land inside the lab's group (AKS without `nodeResourceGroup`, Container Apps environments in a subnet,
+  `Microsoft.Solutions/applications` and `Microsoft.Resources/deploymentStacks` are refused this way). Also refused: any
+  `subscription()`, `tenant()`, `managementGroup()` or `extensionResourceId()`, and a literal `/subscriptions/` or
+  `/resourceGroups/` anywhere in a value (or spread across an expression's literals). `resourceGroup()` is fine.
 - `outside-scope`: a template schema other than `…/deploymentTemplate.json#` (or none, or not a template, or not JSON);
   `Microsoft.Resources/deploymentScripts`, `resourceGroups`, `templateSpecs`; `resourceGroup`/`subscriptionId`/`scope`/
   `managementGroup` keys; a nested deployment with `templateLink` (URL or template spec), `parametersLink` or no template;

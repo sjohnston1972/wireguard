@@ -44,11 +44,14 @@
 //   outside-scope     a resource group, scope or parent outside the lab, anything
 //                     at subscription scope, or a resource tied to nothing in the
 //                     lab; template deployments at other scopes, deployment
-//                     scripts, a template spec; in a template (templateProblems):
-//                     a schema other than a resource group's, nested deployments
-//                     to other scopes, linked templates and template specs,
-//                     resource groups, deployment scripts, other groups' ids; in
-//                     a plan, a template_content it cannot read (unknown)
+//                     scripts, a template spec; in a template (templateProblems,
+//                     keys read case-insensitively, as ARM does): a schema other
+//                     than a resource group's, any resource type not on its
+//                     allow-list (TEMPLATE_TYPES), nested deployments other than
+//                     Bicep's own modules, linked templates and template specs,
+//                     /subscriptions/ or /resourceGroups/ paths, subscription(),
+//                     tenant(), managementGroup(), resourceId() with a group or
+//                     subscription; in a plan, a template_content it cannot read
 //
 // It is plain Node with no packages (the runner has Node; npm ci is not run),
 // and it never prints a value Terraform marks sensitive.
@@ -384,6 +387,20 @@ const TEMPLATE_SCOPE_KEYS = ["resourcegroup", "subscriptionid", "scope", "manage
 const TEMPLATE_ROLE_TYPES = /^Microsoft\.(Authorization|Management|Graph)\//i;
 const TEMPLATE_OUTSIDE_TYPES = /^Microsoft\.Resources\/(deploymentScripts|resourceGroups|templateSpecs)(\/|$)/i;
 const NESTED_DEPLOYMENT = /^Microsoft\.Resources\/deployments$/i;
+/**
+ * The only resource types a template may deploy (lower case), each with why it can only land inside the lab's group.
+ * Everything else is refused: AKS and Container Apps environments make groups of their own, managed applications and
+ * deployment stacks deploy elsewhere, and so on. To let a lab deploy another type from a template, add it here with the
+ * reason (labs spec §17, ruling 21); the scope keys, ids and expressions in it are still checked.
+ */
+const TEMPLATE_TYPES = new Map([
+  ["microsoft.storage/storageaccounts", "lab 12: a storage account lives in the group it is deployed to"],
+  ["microsoft.network/virtualnetworks", "lab 12: a VNet lives in its deployment's group; peerings to other groups need an id, which the string rules refuse"],
+  ["microsoft.network/virtualnetworks/subnets", "lab 12: a subnet lives in its VNet"],
+  ["microsoft.network/networksecuritygroups", "lab 12: an NSG lives in the group it is deployed to"],
+  ["microsoft.network/networksecuritygroups/securityrules", "a rule lives in its NSG"],
+  ["microsoft.resources/deployments", "lab 12's module: only as Bicep emits one (inline template, inner scope, Incremental, no resourceGroup/subscriptionId/scope), checked as a template of its own"],
+]);
 /** Template deployments at other scopes than a resource group. */
 const OTHER_SCOPE_DEPLOYMENTS = new Set(["azurerm_subscription_template_deployment", "azurerm_management_group_template_deployment", "azurerm_tenant_template_deployment"]);
 
@@ -448,24 +465,34 @@ export function templateProblems(template) {
     return o;
   };
 
-  const visitResource = (res, where) => {
+  const visitResource = (res, where, parentType = "") => {
     if (!res || typeof res !== "object" || Array.isArray(res)) return;
-    const type = String(res.type ?? "");
+    // A child declared inside its parent may give its type short ("subnets"); an extension resource carries "@version".
+    const given = String(res.type ?? "").replace(/@.*$/, "");
+    const type = parentType && given && !given.includes("/") ? `${parentType}/${given}` : given;
     if (/^Microsoft\.Graph\//i.test(type) || "extension" in res || "import" in res) add("role", `${where} deploys ${type || "a resource"} through an extension (Microsoft Graph and the like reach beyond Azure Resource Manager)`);
     else if (TEMPLATE_ROLE_TYPES.test(type) || /\/providers\//i.test(type)) add("role", `${where} deploys ${type}, which a lab may only make in Terraform`);
-    if (TEMPLATE_OUTSIDE_TYPES.test(type)) add("outside-scope", `${where} deploys ${type}, which reaches beyond the lab's group`);
+    else if (TEMPLATE_OUTSIDE_TYPES.test(type)) add("outside-scope", `${where} deploys ${type}, which reaches beyond the lab's group`);
+    else if (!TEMPLATE_TYPES.has(type.toLowerCase())) {
+      add("outside-scope", `${where} deploys ${type || "a resource with no type"}, which is not on the template allow-list (${[...TEMPLATE_TYPES.keys()].join(", ")}); if a lab needs it, add it to TEMPLATE_TYPES in infra/ci/lab-scope.mjs with the reason it can only ever land inside the lab's group (labs spec §17, ruling 21)`);
+    }
     for (const k of TEMPLATE_SCOPE_KEYS) if (k in res) add("outside-scope", `${where} sends ${type || "a resource"} to another scope (${k})`);
     if (NESTED_DEPLOYMENT.test(type)) {
+      // Only as Bicep emits a module: its template inline, its expressions its own (inner scope), Incremental.
       const props = res.properties ?? {};
+      const name = res.name ?? "a nested deployment";
       if (props.templatelink) add("outside-scope", `${where} links a template (${props.templatelink.id ? "a template spec" : "a URL"}) this check cannot read`);
       if (props.parameterslink) add("outside-scope", `${where} links its parameters from a URL this check cannot read`);
       if (props.template !== undefined) {
         if (props.template && typeof props.template === "object") nestedTemplates.add(props.template);
-        visit(props.template, `${where} > ${res.name ?? "a nested deployment"}`);
+        else add("outside-scope", `${where} gives ${name}'s template as something other than an inline template object, as Bicep never does`);
+        visit(props.template, `${where} > ${name}`);
       }
       else if (!props.templatelink) add("outside-scope", `${where} has a nested deployment with no template`);
+      if (String(props.expressionevaluationoptions?.scope ?? "").toLowerCase() !== "inner") add("outside-scope", `${where} has ${name} without expressionEvaluationOptions.scope "inner"; only Bicep-built modules (inner scope) are allowed`);
+      if (String(props.mode ?? "").toLowerCase() !== "incremental") add("outside-scope", `${where} has ${name} in ${props.mode ?? "no"} mode; only Bicep-built modules (Incremental) are allowed`);
     }
-    for (const child of listOf(res.resources)) visitResource(child, where);
+    for (const child of listOf(res.resources)) visitResource(child, where, type);
   };
 
   const visit = (t, where) => {
@@ -516,14 +543,22 @@ export function templateProblems(template) {
       if (nestedTemplates.has(v)) return;
       if (typeof v === "string") {
         if (GATEWAY_RE.test(v)) add("gateway", `${where} names the gateway's resources (${path})`);
-        const literals = v.startsWith("[") ? [...v.matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1].replace(/''/g, "'")) : [v];
+        // An expression is "[...]"; "[[..." is a literal that starts with "[".
+        const expression = v.startsWith("[") && !v.startsWith("[[") && v.endsWith("]");
+        const literals = expression ? [...v.matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1].replace(/''/g, "'")) : [v];
         for (const s of literals) {
           const c = classifyId(s);
           if (c && c.kind !== "builtin") add("outside-scope", `${where} names ${s} (${path}), which this check cannot place inside the lab's group`);
         }
-        if (v.startsWith("[")) {
+        // A subscription or resource group path anywhere in a value, or spread across an expression's literals.
+        if (literals.some((s) => /\/(subscriptions|resourcegroups)\//i.test(s)) || /\/(subscriptions|resourcegroups)\//i.test(literals.join(""))) {
+          add("outside-scope", `${where} spells out a /subscriptions/ or /resourceGroups/ path (${path}); build ids with resourceId() and a resource type only`);
+        }
+        if (expression) {
           if (resourceIdFirstArgs(v).some((a) => a === null || !a.includes("/"))) add("outside-scope", `${where} uses resourceId() with a resource group or subscription (${path})`);
-          if (/(?<![A-Za-z])(subscriptionResourceId|tenantResourceId|managementGroupResourceId)\s*\(/i.test(v)) add("outside-scope", `${where} builds an id above the resource group (${path})`);
+          if (/(?<![A-Za-z0-9_])(subscriptionResourceId|tenantResourceId|managementGroupResourceId|extensionResourceId)\s*\(/i.test(v)) add("outside-scope", `${where} builds an id above, or outside, the resource group (${path})`);
+          // resourceGroup() is the deployment's own group; these name what is above it.
+          if (/(?<![A-Za-z0-9_.])(subscription|tenant|managementGroup)\s*\(/i.test(v)) add("outside-scope", `${where} uses subscription(), tenant() or managementGroup() (${path}), which reach above the lab's group`);
         }
       } else if (Array.isArray(v)) v.forEach((x, i) => strings(x, `${path}[${i}]`));
       else if (v && typeof v === "object") {

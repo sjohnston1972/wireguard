@@ -17,6 +17,7 @@ import { checkHcl, checkPlan, hclResources, planResources, RULES, scopeProblems,
 import { GOVERNANCE_LABS, LAB_ID_RE } from "../lib/labs.mjs";
 import { realisticPlan, withAfterUnknown } from "./fixtures/labs/plans/realistic.mjs";
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
+import { TEMPLATE as LAB12_TEMPLATE } from "./fixtures/labs/plans/labs/az104-12-bicep.mjs";
 
 const DIR = fileURLToPath(new URL("./fixtures/labs/scope/", import.meta.url));
 const SCRIPT = fileURLToPath(new URL("../../infra/ci/lab-scope.mjs", import.meta.url));
@@ -247,6 +248,70 @@ test("templateProblems reads template keys case-insensitively, as ARM does", () 
   }
   // Values keep their meaning: a resource name or tag in capitals is just a name.
   assert.deepEqual(templateProblems(template([{ Type: "Microsoft.Storage/storageAccounts", ApiVersion: "2023-05-01", Name: "LabSA", Location: "uksouth", Kind: "StorageV2", Sku: { Name: "Standard_LRS" }, Tags: { Owner: "Lab" } }])), []);
+});
+
+test("templateProblems allows only the resource types on its allow-list, and Bicep's own modules", () => {
+  // Lab 12's real template, as the pinned Bicep builds it, and the storage-and-VNet fixture pass.
+  assert.deepEqual(templateProblems(LAB12_TEMPLATE), []);
+  assert.deepEqual(templateProblems(BICEP_BUILT), []);
+  // The allowed types, by full type and as a child declared inside its parent (short type), pass.
+  const vnet = { type: "Microsoft.Network/virtualNetworks", apiVersion: "2024-05-01", name: "vnet-bicep", location: "uksouth", properties: { addressSpace: { addressPrefixes: ["[parameters('cidr')]"] } }, resources: [{ type: "subnets", apiVersion: "2024-05-01", name: "snet-a", dependsOn: ["vnet-bicep"], properties: { addressPrefix: "[parameters('cidr')]" } }] };
+  const allowed = template([
+    vnet,
+    { type: "Microsoft.Network/virtualNetworks/subnets", apiVersion: "2024-05-01", name: "vnet-bicep/snet-b", properties: { addressPrefix: "[parameters('cidr')]", networkSecurityGroup: { id: "[resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-bicep')]" } } },
+    { type: "Microsoft.Network/networkSecurityGroups", apiVersion: "2024-05-01", name: "nsg-bicep", location: "[resourceGroup().location]" },
+    { type: "Microsoft.Network/networkSecurityGroups/securityRules", apiVersion: "2024-05-01", name: "nsg-bicep/allow-https", properties: { priority: 100, direction: "Inbound", access: "Allow", protocol: "Tcp", sourceAddressPrefix: "VirtualNetwork", sourcePortRange: "*", destinationAddressPrefix: "VirtualNetwork", destinationPortRange: "443" } },
+    { type: "Microsoft.Storage/storageAccounts", apiVersion: "2023-05-01", name: "labsa", location: "uksouth", kind: "StorageV2", sku: { name: "Standard_LRS" } },
+  ], { parameters: { cidr: { type: "string" } } });
+  assert.deepEqual(templateProblems(allowed), []);
+
+  const typeCases = [
+    // AKS makes its node group (MC_...) outside the lab unless nodeResourceGroup names one; here it does not.
+    ["AKS without nodeResourceGroup", template([{ type: "Microsoft.ContainerService/managedClusters", apiVersion: "2024-09-01", name: "aks", location: "uksouth", identity: { type: "SystemAssigned" }, properties: { dnsPrefix: "lab", agentPoolProfiles: [{ name: "np", count: 1, vmSize: "Standard_B2s", mode: "System" }] } }])],
+    // An environment in a subnet makes an infrastructure group (ME_...) outside the lab.
+    ["Container Apps environment with an infrastructure subnet", template([{ type: "Microsoft.App/managedEnvironments", apiVersion: "2024-03-01", name: "env", location: "uksouth", properties: { vnetConfiguration: { infrastructureSubnetId: "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'vnet-bicep', 'snet-apps')]" } } }])],
+    // A managed application's resources live in a managed group of its own.
+    ["managed application", template([{ type: "Microsoft.Solutions/applications", apiVersion: "2021-07-01", name: "app", location: "uksouth", kind: "ServiceCatalog", properties: { managedResourceGroupId: "[parameters('mrg')]" } }], { parameters: { mrg: { type: "string" } } })],
+    // A deployment stack deploys (and deny-assigns) at any scope it is given.
+    ["deployment stack", template([{ type: "Microsoft.Resources/deploymentStacks", apiVersion: "2024-03-01", name: "stack", properties: { actionOnUnmanage: { resources: "delete" }, denySettings: { mode: "none" }, template: template([]) } }])],
+    ["a child of an allowed type that is not on the list", template([{ type: "Microsoft.Storage/storageAccounts/blobServices", apiVersion: "2023-05-01", name: "labsa/default" }])],
+  ];
+  for (const [what, t] of typeCases) {
+    const p = templateProblems(t);
+    assert.ok(rules(p).includes("outside-scope"), `${what}: ${JSON.stringify(p)}`);
+    // The refusal says what to do about it.
+    assert.ok(p.some((x) => /allow-list/.test(x.message) && /TEMPLATE_TYPES in infra\/ci\/lab-scope\.mjs/.test(x.message) && /reason/.test(x.message)), `${what}: ${JSON.stringify(p)}`);
+    assert.deepEqual(verdict(checkPlan(tplPlan(JSON.stringify(t)), TPL_LAB)), [["outside-scope", TPL_ADDRESS]], `${what} (plan)`);
+  }
+
+  // Microsoft.Resources/deployments only as Bicep emits a module: same group, inline template, inner scope, Incremental.
+  const module = nested(template([]));
+  assert.deepEqual(templateProblems(template([module])), []);
+  for (const [what, t] of [
+    ["outer expression scope", template([{ ...module, properties: { mode: "Incremental", template: template([]) } }])],
+    ["Complete mode", template([{ ...module, properties: { ...module.properties, mode: "Complete" } }])],
+    ["a template given as text", template([{ ...module, properties: { ...module.properties, template: JSON.stringify(template([])) } }])],
+  ]) {
+    assert.ok(rules(templateProblems(t)).includes("outside-scope"), `${what}: ${JSON.stringify(templateProblems(t))}`);
+  }
+
+  // Expressions and values that reach above the group.
+  const sa = (x) => template([{ type: "Microsoft.Storage/storageAccounts", apiVersion: "2023-05-01", name: "labsa", location: "uksouth", kind: "StorageV2", sku: { name: "Standard_LRS" }, tags: { x } }], { parameters: { rest: { type: "string", defaultValue: "rg-prod" } } });
+  for (const [what, x] of [
+    ["concat and subscription()", "[concat(subscription().id, '/resourceGroups/', parameters('rest'))]"],
+    ["format and subscription()", "[format('{0}{1}', subscription().id, parameters('rest'))]"],
+    ["subscription() in capitals", "[SUBSCRIPTION().subscriptionId]"],
+    ["tenant()", "[tenant().tenantId]"],
+    ["managementGroup()", "[managementGroup().id]"],
+    ["resourceId() with a subscription and group", "[resourceId(parameters('rest'), 'rg-prod', 'Microsoft.Network/virtualNetworks', 'vnet-prod')]"],
+    ["extensionResourceId()", "[extensionResourceId(parameters('rest'), 'Microsoft.Network/virtualNetworks', 'vnet-prod')]"],
+    ["a literal /resourceGroups/ inside a value", "prod lives in x/resourceGroups/rg-prod"],
+    ["a literal /subscriptions/ split across literals", "[concat('/subscr', 'iptions/x/resource', 'Groups/rg-prod')]"],
+  ]) {
+    assert.ok(rules(templateProblems(sa(x))).includes("outside-scope"), `${what}: ${JSON.stringify(templateProblems(sa(x)))}`);
+  }
+  // resourceGroup() is the deployment's own group: lab 12 takes its location from it.
+  assert.deepEqual(templateProblems(sa("[resourceGroup().location]")), []);
 });
 
 test("templateProblems refuses a subscription deployment schema", () => {
