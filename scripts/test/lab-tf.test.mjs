@@ -102,7 +102,8 @@ test("labs-tf runs fmt in place, init -backend=false and validate on a copy, the
   for (const folder of ["_template", "az104-06-blob-security"]) {
     const mine = calls.filter((c) => c[2].replace(/\\/g, "/").includes(`/${folder}`) || (c[0] === "hcl2json" && c[1].includes(folder)));
     const seq = mine.map((c) => `${c[0]} ${c[1].split(" ")[0]}`);
-    assert.deepEqual(seq, ["terraform fmt", "terraform init", "terraform validate", "hcl2json " + mine.find((c) => c[0] === "hcl2json")[1].split(" ")[0]], folder);
+    // terraform test is the offline mock plan (labs batch 3 plan, C0.2), after validate.
+    assert.deepEqual(seq, ["terraform fmt", "terraform init", "terraform validate", "terraform test", "hcl2json " + mine.find((c) => c[0] === "hcl2json")[1].split(" ")[0]], folder);
     assert.match(mine[0][1], /^fmt -check -diff -recursive$/);
     assert.match(mine[1][1], /^init -backend=false -input=false -no-color$/);
     // init writes .terraform and a lock file: never inside the repo.
@@ -120,6 +121,48 @@ test("labs-tf fails a lab whose HCL breaks a scope rule, a fmt or a validate", (
   assert.match(fmt.failures[0].message, /fmt/);
   const validate = runLabsTf({ labsDir: dir, run: fakeRun({ fail: { "terraform validate": "Error: Reference to undeclared resource" } }).run, log: quiet, only: ["_template"] });
   assert.match(validate.failures[0].message, /validate/);
+});
+
+// Ruling 35: validate misses what only a plan finds (a variable's validation, a bad cidrsubnet,
+// a provider's own checks on known values), so each lab is planned offline with mocked providers.
+test("labs-tf plans each lab offline with mocked providers and names a lab whose plan fails", () => {
+  const dir = labsDir();
+  // The copy (with its test file) is deleted at the end: read the file when terraform test runs.
+  const seen = {};
+  const base = fakeRun();
+  const run = (cmd, args, opts = {}) => {
+    if (cmd === "terraform" && args[0] === "test") seen[slash(opts.cwd).split("/").pop()] = readFileSync(join(opts.cwd, "tests", "labs-mock.tftest.hcl"), "utf8");
+    return base.run(cmd, args, opts);
+  };
+  const { failures } = runLabsTf({ labsDir: dir, run, log: quiet, only: ["_template", "az104-06-blob-security"] });
+  assert.deepEqual(failures, []);
+  const tests = base.calls.filter((c) => c[0] === "terraform" && c[1].startsWith("test"));
+  assert.equal(tests.length, 2);
+  for (const c of tests) {
+    assert.equal(c[1], "test -no-color");
+    assert.ok(!slash(c[2]).startsWith(slash(dir)), `terraform test ran in ${c[2]}, not the repo`);
+  }
+  const hcl = seen["az104-06-blob-security"];
+  assert.ok(hcl, Object.keys(seen).join());
+  // The providers the lab declares are mocked (lab 6 is the template: azurerm and azuread), with data sources
+  // that give real-looking ids (azurerm checks a role definition's scope even in a mocked plan).
+  assert.match(hcl, /^mock_provider "azurerm" \{/m);
+  assert.match(hcl, /^mock_provider "azuread" \{\}/m);
+  assert.doesNotMatch(hcl, /mock_provider "(random|time)"/, "a provider the lab does not install cannot be mocked (terraform test: unknown provider)");
+  assert.match(hcl, /mock_data "azurerm_subscription" \{\s*defaults = \{\s*id\s*= "\/subscriptions\/[0-9a-f-]{36}"/);
+  assert.match(hcl, /mock_data "azurerm_client_config" \{[\s\S]*object_id\s*= "[0-9a-f-]{36}"/);
+  // One plan run with the contract variables: slot 31, uksouth and ukwest, a fake key, the lab's own names.
+  assert.match(hcl, /run "plan" \{\s*command = plan\s*\}/);
+  for (const v of [/lab_id\s*= "az104-06-blob-security"/, /resource_group_name\s*= "rg-lab-az104-06-blob-security"/, /region\s*= "uksouth"/, /secondary_region\s*= "ukwest"/, /address_space\s*= "10\.71\.192\.0\/18"/, /peered\s*= false/, /gateway_vnet_id\s*= ""/, /name_prefix\s*= "l06[a-z0-9]{5}"/, /ssh_public_key\s*= "ssh-ed25519 /, /upn_domain\s*= "contoso\.onmicrosoft\.com"/, /admin_password\s*= "/, /tags\s*= \{/]) assert.match(hcl, v);
+  assert.match(seen._template, /lab_id\s*= "az104-00-template"/);
+  // A lab whose mock plan fails is named, with Terraform's error.
+  const bad = runLabsTf({ labsDir: dir, run: fakeRun({ fail: { "terraform test": "Error: Invalid value for variable secondary_region" } }).run, log: quiet, only: ["az104-06-blob-security"] });
+  assert.deepEqual(bad.failures.map((f) => f.folder), ["az104-06-blob-security"]);
+  assert.match(bad.failures[0].message, /mock plan \(terraform test\).*secondary_region/);
+  // No plan without a valid configuration.
+  const invalid = fakeRun({ fail: { "terraform validate": "Error: bad" } });
+  runLabsTf({ labsDir: dir, run: invalid.run, log: quiet, only: ["az104-06-blob-security"] });
+  assert.equal(invalid.calls.filter((c) => c[0] === "terraform" && c[1].startsWith("test")).length, 0);
 });
 
 test("without hcl2json the HCL check is skipped with a note locally, and fails when CI requires it", () => {

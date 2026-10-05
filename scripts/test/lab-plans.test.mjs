@@ -21,6 +21,7 @@ import { labFolders } from "../lib/labs.mjs";
 import { LAB_PLANS, loadLabPlans } from "./fixtures/labs/plans/labs.mjs";
 import { COMPUTED, realisticPlan, SCHEMA_FACTS } from "./fixtures/labs/plans/realistic.mjs";
 import { ctx, linuxVm, rgResource, rgSecondaryResource, SECONDARY } from "./fixtures/labs/plans/common.mjs";
+import { compareShapes, planShape, recordedShape, SHAPES } from "./fixtures/labs/plans/shape.mjs";
 
 const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
 const PLAN_FILES = fileURLToPath(new URL("./fixtures/labs/plans/labs/", import.meta.url));
@@ -309,7 +310,75 @@ for (const id of labs) {
     const problems = checkPlan(LAB_PLANS[id].plan, id);
     assert.deepEqual(problems.map((p) => `${p.rule}: ${p.address} (${p.message})`), []);
   });
+
+  // Ruling 35: each release test records its real plan's shape (scripts/lab-release-test.mjs, from
+  // lab.yml step 6's LAB_PLAN_SHAPE line) into plans/shapes/<id>.json; the fixture must have it.
+  const recorded = recordedShape(id);
+  test(`${id}: the plan fixture has the recorded real plan's shape`, { skip: recorded ? false : `no real plan shape recorded for ${id} yet (its next release test records plans/shapes/${id}.json)` }, () => {
+    assert.deepEqual(compareShapes(recorded, planShape(LAB_PLANS[id].plan)), []);
+  });
 }
+
+// ── Real-plan shapes (labs batch 3 plan, C0.2) ───────────────────────────
+
+/** A small plan with a VM: a password (sensitive), a name prefix, references, nested blocks and unknown ids. */
+function shapedPlan() {
+  const c = ctx("az104-07-files", "07");
+  const vnet = { address: "azurerm_virtual_network.lab", values: { name: "vnet-lab", resource_group_name: c.rg, location: "uksouth", address_space: ["10.64.64.0/20"], tags: c.tags }, refs: { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"], location: ["azurerm_resource_group.lab.location", "azurerm_resource_group.lab"], tags: ["var.tags"] } };
+  const subnet = { address: "azurerm_subnet.vms", values: { name: "snet-vms", resource_group_name: c.rg, virtual_network_name: "vnet-lab", address_prefixes: ["10.64.64.0/24"] }, refs: { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"], virtual_network_name: ["azurerm_virtual_network.lab.name", "azurerm_virtual_network.lab"] } };
+  const [nic, vm] = linuxVm(c, { name: "vm-files", subnet: "azurerm_subnet.vms" });
+  vm.values.admin_password = "Sup3r-Secret-Value!";
+  return { c, plan: realisticPlan({ resources: [rgResource(c), vnet, subnet, nic, vm], variables: { ...c.variables, admin_password: "Sup3r-Secret-Value!" } }) };
+}
+
+test("planShape keeps addresses, references, unknown and sensitive paths and no values", () => {
+  const { c, plan } = shapedPlan();
+  const shape = planShape(plan);
+  assert.deepEqual(Object.keys(shape.resources).sort(), ["azurerm_linux_virtual_machine.files", "azurerm_network_interface.files", "azurerm_resource_group.lab", "azurerm_subnet.vms", "azurerm_virtual_network.lab"]);
+  const vm = shape.resources["azurerm_linux_virtual_machine.files"];
+  assert.equal(vm.type, "azurerm_linux_virtual_machine");
+  assert.deepEqual(vm.refs.network_interface_ids, ["azurerm_network_interface.files.id", "azurerm_network_interface.files"]);
+  assert.deepEqual(vm.refs.admin_password, ["var.admin_password"]);
+  // A nested block's references keep their path, as the configuration nests them.
+  assert.deepEqual(shape.resources["azurerm_network_interface.files"].refs["ip_configuration.0.subnet_id"], ["azurerm_subnet.vms.id", "azurerm_subnet.vms"]);
+  assert.ok(vm.unknown.includes("network_interface_ids"));
+  assert.ok(vm.unknown.includes("id"));
+  assert.ok(vm.unknown.includes("os_disk.0.name"), vm.unknown.join(", "));
+  assert.deepEqual(vm.sensitive, ["admin_password"]);
+  // Never a value: not the password, not a name, not an address, not a tag.
+  const text = JSON.stringify(shape);
+  for (const v of ["Sup3r-Secret-Value!", c.rg, "vnet-lab", "10.64.64.0/24", "ls-20261005T0900-ab12", "Standard_B1s", "ssh-ed25519"]) assert.ok(!text.includes(v), v);
+  // Data sources read at plan are in the shape too (by address and references).
+  const withData = realisticPlan({ resources: [rgResource(c)], data: [{ address: "data.azurerm_client_config.current", values: { tenant_id: "x", object_id: "y" } }] });
+  assert.deepEqual(Object.keys(planShape(withData).resources).sort(), ["azurerm_resource_group.lab", "data.azurerm_client_config.current"]);
+});
+
+test("the shape test skips a lab with no recorded shape and fails a fixture whose references differ", () => {
+  assert.equal(recordedShape("az104-99-none"), null);
+  assert.match(SHAPES.replace(/\\/g, "/"), /scripts\/test\/fixtures\/labs\/plans\/shapes\/$/);
+  const { plan } = shapedPlan();
+  const real = planShape(plan);
+  assert.deepEqual(compareShapes(real, planShape(plan)), []);
+  // Reference order is not compared; their content is.
+  const reordered = structuredClone(real);
+  reordered.resources["azurerm_subnet.vms"].refs.resource_group_name.reverse();
+  assert.deepEqual(compareShapes(reordered, real), []);
+  // The fixture spells a reference with a literal key where the real plan lists the iterator (lab 16's lesson).
+  const fixture = structuredClone(real);
+  fixture.resources["azurerm_linux_virtual_machine.files"].refs.network_interface_ids = ["azurerm_network_interface.files[0].id", "azurerm_network_interface.files[0]"];
+  const diff = compareShapes(real, fixture);
+  assert.equal(diff.length, 1);
+  assert.match(diff[0], /azurerm_linux_virtual_machine\.files: network_interface_ids/);
+  // A resource only one side has, an unknown path the fixture misses and a sensitive path are each named.
+  const fewer = structuredClone(real);
+  delete fewer.resources["azurerm_subnet.vms"];
+  fewer.resources["azurerm_virtual_network.lab"].unknown = fewer.resources["azurerm_virtual_network.lab"].unknown.filter((p) => p !== "guid");
+  fewer.resources["azurerm_linux_virtual_machine.files"].sensitive = [];
+  const many = compareShapes(real, fewer).join("\n");
+  assert.match(many, /azurerm_subnet\.vms: in the real plan, not in the fixture/);
+  assert.match(many, /azurerm_virtual_network\.lab: unknown/);
+  assert.match(many, /azurerm_linux_virtual_machine\.files: sensitive/);
+});
 
 test("the realistic plans mark computed, unset attributes unknown, as Terraform does", () => {
   const change = (lab, address) => LAB_PLANS[lab].plan.resource_changes.find((c) => c.address === address).change;

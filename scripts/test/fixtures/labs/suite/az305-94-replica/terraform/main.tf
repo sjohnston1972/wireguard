@@ -71,10 +71,10 @@ resource "azurerm_recovery_services_vault" "lab" {
 }
 
 resource "azurerm_site_recovery_replicated_vm" "vm" {
-  name                       = "vm-app"
-  resource_group_name        = azurerm_resource_group.secondary.name
-  recovery_vault_name        = azurerm_recovery_services_vault.lab.name
-  source_vm_id               = azurerm_linux_virtual_machine.vm.id
-  target_resource_group_id   = azurerm_resource_group.secondary.id
+  name                        = "vm-app"
+  resource_group_name         = azurerm_resource_group.secondary.name
+  recovery_vault_name         = azurerm_recovery_services_vault.lab.name
+  source_vm_id                = azurerm_linux_virtual_machine.vm.id
+  target_resource_group_id    = azurerm_resource_group.secondary.id
   source_recovery_fabric_name = "fabric-source"
 }

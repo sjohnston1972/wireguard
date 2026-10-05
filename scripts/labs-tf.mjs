@@ -7,6 +7,14 @@
 //   terraform init -backend=false and terraform validate
 //                                 on a throw-away copy, so no .terraform folder
 //                                 or lock file lands in the repo
+//   terraform test                a plan of the copy with mocked providers (labs
+//                                 spec §17, ruling 35): tests/labs-mock.tftest.hcl
+//                                 gives the contract variables (slot 31, uksouth
+//                                 and ukwest, a fake key) and data sources with
+//                                 real-looking ids, so what only a plan finds
+//                                 (variable validation, functions on known
+//                                 values, the providers' own checks) fails here;
+//                                 no credentials, no Azure
 //   hcl2json | lab-scope --hcl    the plan-time scope rules on the source, as
 //                                 an early warning (lab.yml checks the real plan)
 //
@@ -32,7 +40,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkHcl, templateProblems } from "../infra/ci/lab-scope.mjs";
 import { BICEP_VERSION, bicepAsset, bicepMatchesPin, pinnedBicep } from "./lib/bicep.mjs";
-import { labFolders } from "./lib/labs.mjs";
+import { LAB_SLOTS, labFolders, slotCidr } from "./lib/labs.mjs";
 
 const LABS = fileURLToPath(new URL("../labs/", import.meta.url));
 /** The id the template is checked as: any valid, non-governance lab id. */
@@ -48,6 +56,86 @@ export function labsTfTargets(labsDir = LABS) {
     out.push({ folder, dir, labId: folder, problem: tfFiles(dir).length ? null : "no terraform/ folder with .tf files: the lab cannot be deployed, so it cannot be released" });
   }
   return out;
+}
+
+/** The providers a lab may use; terraform test can mock only those the lab installs ("unknown provider" otherwise). */
+const MOCKABLE = ["azurerm", "azuread", "random", "time"];
+
+/**
+ * The providers to mock in a lab's copy: those its lock file lists after init,
+ * or (no lock file) those its .tf files name in required_providers.
+ */
+export function mockedProviders(copy) {
+  const lock = join(copy, ".terraform.lock.hcl");
+  if (existsSync(lock)) {
+    const text = readFileSync(lock, "utf8");
+    return MOCKABLE.filter((p) => text.includes(`provider "registry.terraform.io/hashicorp/${p}"`));
+  }
+  const tf = tfFiles(copy).map((f) => readFileSync(join(copy, f), "utf8")).join("\n");
+  return MOCKABLE.filter((p) => new RegExp(`^\\s*${p}\\s*=\\s*\\{`, "m").test(tf));
+}
+
+/** Fake ids for the mocked data sources (azurerm checks some ids' form even in a mocked plan). */
+const MOCK_SUBSCRIPTION = "00000000-0000-4000-8000-000000000000";
+const MOCK_TENANT = "11111111-1111-4111-8111-111111111111";
+/**
+ * A well-formed public key whose private half was deleted when it was made
+ * (azurerm parses a VM's admin_ssh_key even in a mocked plan). Nothing can
+ * sign in with it.
+ */
+const MOCK_SSH_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH03BQA5/AQUCJHTD+mOsPkEaHYZJ/1Dhlg2VWSBcxxC labs-tf-mock";
+
+/**
+ * tests/labs-mock.tftest.hcl for lab `labId`: the given providers mocked and
+ * one plan with the contract variables a session in slot 31 would get.
+ */
+export function mockPlanFile(labId, providers) {
+  const n = /^az\d{3}-(\d{2})-/.exec(labId)?.[1] ?? "00";
+  const azurerm = [
+    'mock_provider "azurerm" {',
+    '  mock_data "azurerm_subscription" {',
+    "    defaults = {",
+    `      id              = "/subscriptions/${MOCK_SUBSCRIPTION}"`,
+    `      subscription_id = "${MOCK_SUBSCRIPTION}"`,
+    `      tenant_id       = "${MOCK_TENANT}"`,
+    "    }",
+    "  }",
+    '  mock_data "azurerm_client_config" {',
+    "    defaults = {",
+    `      subscription_id = "${MOCK_SUBSCRIPTION}"`,
+    `      tenant_id       = "${MOCK_TENANT}"`,
+    '      client_id       = "22222222-2222-4222-8222-222222222222"',
+    '      object_id       = "33333333-3333-4333-8333-333333333333"',
+    "    }",
+    "  }",
+    "}",
+  ].join("\n");
+  const mocks = providers.map((p) => (p === "azurerm" ? azurerm : `mock_provider "${p}" {}`));
+  return [
+    "# Written by scripts/labs-tf.mjs into a throw-away copy of the lab: a plan with",
+    "# mocked providers (no credentials, no Azure) and the contract variables.",
+    ...mocks,
+    "",
+    "variables {",
+    `  lab_id              = "${labId}"`,
+    `  name_prefix         = "l${n}k3x9q"`,
+    `  resource_group_name = "rg-lab-${labId}"`,
+    '  region              = "uksouth"',
+    '  secondary_region    = "ukwest"',
+    `  address_space       = "${slotCidr(LAB_SLOTS - 1)}"`,
+    "  peered              = false",
+    '  gateway_vnet_id     = ""',
+    '  admin_password      = "Mock-Passw0rd-labs-tf-not-real"',
+    `  ssh_public_key      = "${MOCK_SSH_KEY}"`,
+    '  upn_domain          = "contoso.onmicrosoft.com"',
+    `  tags                = { project = "wg-admin-labs", lab = "${labId}", session = "ls-labs-tf-mock" }`,
+    "}",
+    "",
+    'run "plan" {',
+    "  command = plan",
+    "}",
+    "",
+  ].join("\n");
 }
 
 /**
@@ -124,6 +212,12 @@ function checkTargets({ labsDir, run, log, only, requireHcl2json, hcl2json, requ
       } else {
         const validate = run("terraform", ["validate", "-no-color"], { cwd: copy });
         if (!ran(validate)) fail(t.folder, `terraform validate: ${why(validate)}`);
+        else {
+          mkdirSync(join(copy, "tests"), { recursive: true });
+          writeFileSync(join(copy, "tests", "labs-mock.tftest.hcl"), mockPlanFile(t.labId, mockedProviders(copy)));
+          const plan = run("terraform", ["test", "-no-color"], { cwd: copy });
+          if (!ran(plan)) fail(t.folder, `mock plan (terraform test): ${why(plan)}`);
+        }
       }
     }
 
@@ -191,5 +285,5 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (failures.length) {
     console.error(`labs-tf: ${failures.length} problem(s)`);
     process.exitCode = 1;
-  } else console.log("labs-tf: fmt, init, validate and the HCL scope check pass");
+  } else console.log("labs-tf: fmt, init, validate, the mock plan and the HCL scope check pass");
 }
