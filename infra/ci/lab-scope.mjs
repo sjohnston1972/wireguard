@@ -16,6 +16,10 @@
 //                     tls (null, external, http, local, azapi, terraform_data),
 //                     or an azurerm/azuread provider pointed at other credentials
 //   provisioner       any provisioner (it would run commands with the pipeline's keys)
+//   import            adopting an object that already exists (an import block, or
+//                     a plan change that is importing): a lab only ever creates,
+//                     and tear-down deletes what it adopted, a real user renamed
+//                     lab-<id>-x included
 //   gateway           vnet-wg or rg-wg-* named, or var.gateway_vnet_id used,
 //                     anywhere but a private DNS zone link's virtual_network_id
 //   association       moving a subscription into a management group
@@ -41,7 +45,7 @@ import { fileURLToPath } from "node:url";
 export const LAB_ID_RE = /^az(104|305)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
 /** The governance labs, named in code (spec §8.3). A test keeps this equal to shared/labs.ts. */
 export const GOVERNANCE_LABS = ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az305-20-landing-zone", "az305-21-monitoring-scale"];
-export const RULES = ["provider", "provisioner", "gateway", "association", "governance", "entra-type", "entra-prefix", "role", "immutability", "azure-made-group", "resource-group", "outside-scope"];
+export const RULES = ["provider", "provisioner", "import", "gateway", "association", "governance", "entra-type", "entra-prefix", "role", "immutability", "azure-made-group", "resource-group", "outside-scope"];
 
 const ALLOWED_ROLES = JSON.parse(readFileSync(new URL("../../labs/setup/allowed-roles.json", import.meta.url), "utf8"));
 const PROVIDERS = new Set(["azurerm", "azuread", "random", "time", "tls"]);
@@ -150,7 +154,9 @@ export function planResources(plan) {
     add({ address, mode: c.mode, type: c.type, provider_name: (plan?.configuration?.provider_config ?? {})[c.provider_config_key]?.full_name ?? c.type.split("_")[0], values: {} });
   }
   const providers = Object.entries(plan?.configuration?.provider_config ?? {}).map(([key, p]) => ({ key, name: p.name ?? key.split(".")[0], keys: Object.keys(p.expressions ?? {}) }));
-  return { resources: [...seen.values()], providers };
+  // Terraform 1.5+: a change that adopts an existing object says so in change.importing.
+  const imports = (plan?.resource_changes ?? []).filter((c) => c?.change?.importing).map((c) => c.address);
+  return { resources: [...seen.values()], providers, imports };
 }
 
 // ── Reading HCL (hcl2json) ───────────────────────────────────────────────
@@ -303,7 +309,10 @@ export function hclResources(hcl, labId) {
   for (const [name, blocks] of Object.entries(hcl?.provider ?? {})) {
     for (const b of Array.isArray(blocks) ? blocks : [blocks]) providers.push({ key: b?.alias ? `${name}.${b.alias}` : name, name, keys: Object.keys(b ?? {}) });
   }
-  return { resources, providers };
+  // import { to = azuread_user.x, id = "..." } blocks, as hcl2json prints them.
+  const importBlocks = Array.isArray(hcl?.import) ? hcl.import : hcl?.import ? Object.values(hcl.import).flat() : [];
+  const imports = importBlocks.map((b) => String(b?.to ?? "import").replace(/^\$\{|\}$/g, "").trim());
+  return { resources, providers, imports };
 }
 
 // ── The rules ────────────────────────────────────────────────────────────
@@ -342,7 +351,8 @@ const DEFINITION_REF = /^\/providers\/Microsoft\.Authorization\/(roleDefinitions
  * Check a lab's resources (from planResources or hclResources). Returns
  * [{ rule, address, message }], at most one per resource.
  */
-export function scopeProblems({ resources, providers }, labId) {
+export function scopeProblems({ resources, providers, imports = [] }, labId) {
+  const importing = new Set(imports.map(stripIndex));
   const id = labId.toLowerCase();
   const rg = `rg-lab-${id}`;
   const prefix = `lab-${id}-`;
@@ -388,6 +398,8 @@ export function scopeProblems({ resources, providers }, labId) {
     if (!PROVIDERS.has(r.provider)) refuse("provider", `the ${r.provider} provider is not allowed in a lab`);
     // provisioner
     if (r.provisioners > 0) refuse("provisioner", "provisioners are not allowed in a lab");
+    // import
+    if (importing.has(stripIndex(r.address))) refuse("import", "a lab only creates: importing would adopt an object that already exists, and tear-down would delete it");
 
     // gateway
     const linkException = (attr) => r.type === DNS_LINK && attr === "virtual_network_id" && refsOf(attr).length > 0 && refsOf(attr).every((x) => x === "var.gateway_vnet_id");
@@ -546,6 +558,9 @@ export function scopeProblems({ resources, providers }, labId) {
     // One line per resource: the first rule, in RULES order.
     if (found.length) out.push(found.sort((a, b) => RULES.indexOf(a.rule) - RULES.indexOf(b.rule))[0]);
   }
+  // An import whose target is not a resource of this configuration is still refused.
+  const known = new Set(resources.map((r) => stripIndex(r.address)));
+  for (const a of importing) if (!known.has(a)) out.push({ rule: "import", address: a, message: "a lab only creates: importing would adopt an object that already exists" });
 
   for (const p of providers ?? []) {
     if (!PROVIDERS.has(p.name)) continue; // its resources are refused one by one

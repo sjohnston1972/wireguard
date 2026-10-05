@@ -396,6 +396,7 @@ const TF_RULES = [
   { rule: "provider", re: /\bprovider\s+"(?:null|external|http|local)"/g, message: (m) => `${m}: the null, external, http and local providers are not allowed` },
   { rule: "provider", re: /^\s*(?:null|external|http|local)\s*=\s*\{/gm, message: (m) => `${m.trim()}: the null, external, http and local providers are not allowed` },
   { rule: "provider", re: /"hashicorp\/(?:null|external|http|local)"/g, message: (m) => `${m}: the null, external, http and local providers are not allowed` },
+  { rule: "import", re: /^\s*import\s*\{/gm, message: () => "import blocks are not allowed: a lab only creates, and tear-down would delete what it adopted" },
   { rule: "gateway", re: /\brg-wg\b|\bvnet-wg\b/g, message: (m) => `${m}: lab Terraform never names the gateway's resources (only var.gateway_vnet_id)` },
 ];
 

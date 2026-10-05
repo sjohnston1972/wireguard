@@ -290,6 +290,9 @@ test("provisioners, forbidden providers and the gateway's names are refused", ()
     ['terraform {\n  required_providers {\n    null = { source = "hashicorp/null" }\n  }\n}\n', "provider"],
     ['locals {\n  rg = "rg-wg-ondemand"\n}\n', "gateway"],
     ['data "azurerm_virtual_network" "wg" {\n  name = "vnet-wg"\n}\n', "gateway"],
+    // Adopting an existing object (a real user, renamed lab-<id>-x): tear-down would delete it.
+    ['import {\n  to = azuread_user.x\n  id = "/users/5b0c6a1e-2f3d-4c5b-8a9e-1d2c3b4a5f6e"\n}\n', "import"],
+    ['  import   {\n  for_each = toset([])\n  to = azuread_user.x[each.key]\n  id = each.key\n}\n', "import"],
   ];
   for (const [text, rule] of cases) {
     const p = lintTfText({ "main.tf": text });
