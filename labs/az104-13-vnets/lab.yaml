@@ -1,0 +1,37 @@
+# Lab 13 (batch 2 plan area B2). AZ-104 study guide skills this lab touches
+# ((V) the wording against the current outline):
+#   Implement and manage virtual networking > Configure and manage virtual
+#   networks in Azure: "Create and configure virtual networks and subnets".
+#   Configure secure access to virtual networks: "Create and configure
+#   network security groups (NSGs) and application security groups (ASGs)",
+#   "Evaluate effective security rules in NSGs".
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. The VMs and their OS disks carry retail entries the price feed
+# refreshes; npm run labs-verify -- --meters az104-13-vnets checks them
+# (Standard_B1s Linux £0.0089/h; S4 LRS Disk £1.28 a month, about
+# £0.0018/h). The VNet, subnets, NSGs, ASGs, NICs and managed boot
+# diagnostics are free.
+id: az104-13-vnets
+version: 1
+title: "VNets, subnets, NSGs and ASGs"
+summary: >-
+  One VNet with web and app subnets, an NSG on each and application security groups for the two tiers,
+  so you can see which rule lets traffic in, and which one stops it.
+exam: AZ-104
+skill_areas: [az104.networking]
+level: foundation
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0092, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+  pricey: null
+timing: { deploy_min: 5, destroy_min: 4, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false
