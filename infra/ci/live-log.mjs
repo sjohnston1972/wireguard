@@ -74,6 +74,10 @@ export const SECRET_ENV = [
   "TF_VAR_agent_token",
   "TF_VAR_ssh_password",
   "TF_VAR_ssh_allowed_cidr",
+  // lab.yml: the lab's admin password (collected from the Worker, or made by
+  // the run) and the tenant's UPN domain (a repository secret)
+  "TF_VAR_admin_password",
+  "TF_VAR_upn_domain",
 ];
 
 /** Values shorter than this are not hidden (they would blank out ordinary words); GitHub's secrets are all far longer. */
