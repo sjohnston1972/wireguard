@@ -257,3 +257,94 @@ test(`${L23}: the readme says to deploy in uksouth with ukwest as its pair, what
   assert.match(r, /[Ff]ail back|tear-down[^\n]*failed over|failed over[^\n]*tear-down/);
   assert.match(r, /vCore/);
 });
+
+// ── Lab 24: Cosmos DB, partitioning and consistency ──────────────────────
+
+const L24 = "az305-24-cosmos";
+labContentSuite(L24, { marker: "£" });
+
+/** A container's partition key: { paths, kind, version } as main.tf writes them. */
+const partitionKey = (c) => ({ paths: [...(attr(c.body, "partition_key_paths") ?? "").matchAll(/"([^"]*)"/g)].map((m) => m[1]), kind: unq(attr(c.body, "partition_key_kind")) || "Hash", version: attr(c.body, "partition_key_version") });
+
+test(`${L24}: a serverless SQL API account in one region with the free tier off`, () => {
+  const l = lab(L24);
+  const acct = one(l, "azurerm_cosmosdb_account");
+  const a = acct.body;
+  assert.equal(acct.labels[1], "lab");
+  assert.equal(attr(a, "name"), '"${var.name_prefix}-cosmos"');
+  assert.equal(attr(a, "resource_group_name"), "azurerm_resource_group.lab.name");
+  assert.equal(attr(a, "location"), "azurerm_resource_group.lab.location");
+  assert.equal(attr(a, "kind"), '"GlobalDocumentDB"', "the NoSQL (SQL) API");
+  assert.equal(attr(a, "offer_type"), '"Standard"');
+  // Serverless: billed per request unit and GB, nothing provisioned (ruling 33).
+  assert.deepEqual(allNested(a, "capabilities").map((b) => unq(attr(b, "name"))), ["EnableServerless"]);
+  assert.equal(nested(a, "capacity"), undefined, "no account throughput limit: serverless has no provisioned throughput");
+  // One region: serverless accounts run in one region only.
+  const geo = allNested(a, "geo_location");
+  assert.equal(geo.length, 1, "one geo_location");
+  assert.equal(attr(geo[0], "location"), "azurerm_resource_group.lab.location");
+  assert.equal(attr(geo[0], "failover_priority"), "0");
+  assert.notEqual(attr(geo[0], "zone_redundant"), "true");
+  assert.notEqual(attr(a, "multiple_write_locations_enabled"), "true");
+  assert.notEqual(attr(a, "automatic_failover_enabled"), "true");
+  // The free tier is one per subscription, and creation fails if it is already taken.
+  assert.equal(attr(a, "free_tier_enabled"), "false");
+  // Reached over the internet with keys, from the portal's Data Explorer: no network of its own.
+  assert.equal(attr(a, "public_network_access_enabled"), "true");
+  assert.equal(attr(a, "local_authentication_enabled"), "true", "key authentication on, for Data Explorer and the SDK samples");
+  assert.equal(attr(a, "is_virtual_network_filter_enabled"), undefined);
+  assert.equal(attr(a, "ip_range_filter"), undefined);
+  assert.equal(resources(l, "azurerm_private_endpoint").length + resources(l, "azurerm_virtual_network").length, 0, "no VNet, no private endpoint");
+  assert.equal(l.yaml.regions.secondary, null);
+  assert.deepEqual(l.yaml.connectivity, { peering: "off", dns_link: false, subnets_used: 0 });
+  assert.match(output(l, "connect").body, /azurerm_cosmosdb_account\.lab\.endpoint/);
+});
+
+test(`${L24}: three containers with single, hierarchical and deliberately poor partition keys, and no throughput`, () => {
+  const l = lab(L24);
+  const db = one(l, "azurerm_cosmosdb_sql_database");
+  assert.equal(attr(db.body, "name"), '"shop"');
+  assert.equal(attr(db.body, "account_name"), "azurerm_cosmosdb_account.lab.name");
+  assert.equal(attr(db.body, "resource_group_name"), "azurerm_resource_group.lab.name");
+  const containers = resources(l, "azurerm_cosmosdb_sql_container");
+  const byName = Object.fromEntries(containers.map((c) => [unq(attr(c.body, "name")), partitionKey(c)]));
+  assert.deepEqual(Object.keys(byName).sort(), ["bykey-status", "events", "orders"]);
+  // A single key with many values; a hierarchical key (tenant, then user) past the 20 GB logical partition limit;
+  // and a key with a handful of values, the hot-partition example.
+  assert.deepEqual(byName.orders, { paths: ["/customerId"], kind: "Hash", version: "2" });
+  assert.deepEqual(byName.events, { paths: ["/tenantId", "/userId"], kind: "MultiHash", version: "2" }, "hierarchical keys are MultiHash, version 2");
+  assert.deepEqual(byName["bykey-status"], { paths: ["/status"], kind: "Hash", version: "2" });
+  for (const c of containers) {
+    assert.equal(attr(c.body, "account_name"), "azurerm_cosmosdb_account.lab.name", c.labels[1]);
+    assert.equal(attr(c.body, "database_name"), `azurerm_cosmosdb_sql_database.${db.labels[1]}.name`, c.labels[1]);
+    assert.equal(attr(c.body, "resource_group_name"), "azurerm_resource_group.lab.name", c.labels[1]);
+  }
+  // Serverless takes no throughput at all: setting any is refused by Azure.
+  for (const b of [db, ...containers]) {
+    assert.equal(attr(b.body, "throughput"), undefined, `${b.labels[1]}: no throughput`);
+    assert.equal(nested(b.body, "autoscale_settings"), undefined, `${b.labels[1]}: no autoscale`);
+  }
+  assert.match(l.readme, /hot partition/i);
+  assert.match(l.readme, /synthetic/i);
+});
+
+test(`${L24}: Session consistency by default`, () => {
+  const l = lab(L24);
+  const cp = nested(one(l, "azurerm_cosmosdb_account").body, "consistency_policy");
+  assert.ok(cp !== undefined, "a consistency_policy block");
+  assert.equal(attr(cp, "consistency_level"), '"Session"');
+  assert.equal(attr(cp, "max_interval_in_seconds"), undefined, "staleness bounds only go with BoundedStaleness");
+  assert.equal(attr(cp, "max_staleness_prefix"), undefined);
+  // The readme walks through all five levels.
+  for (const level of ["Strong", "Bounded staleness", "Session", "Consistent prefix", "Eventual"]) assert.match(l.readme, new RegExp(level, "i"), level);
+});
+
+test(`${L24}: light serverless use is priced authored, and the readme says why serverless refuses a second region`, () => {
+  const l = lab(L24);
+  // "1M RUs" is priced per 1M, a unit the feed cannot read; "Data Stored" is shared by several Cosmos DB products.
+  for (const i of l.yaml.cost.items) assert.equal(i.retail, undefined, `${i.name} is authored`);
+  assert.ok(l.yaml.cost.items.some((i) => /RU/.test(i.name)), "a request unit item");
+  assert.match(l.readme, /serverless[^\n]*(one|single) region|(one|single) region[^\n]*serverless/i);
+  assert.match(l.readme, /free tier/i);
+  assert.match(l.readme, /request charge/i);
+});
