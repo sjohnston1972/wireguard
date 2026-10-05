@@ -150,7 +150,7 @@ describe("Worker and lab pipeline agree (integration)", () => {
       runId,
       redact: mod.makeRedactor(mod.secretsFromEnv({ CALLBACK_TOKEN: s.callback_token, TF_VAR_admin_password: s.admin_password })),
       post: async (body: unknown) => {
-        const res = await receiveLiveLog(env, s.callback_token, body);
+        const res = await receiveLiveLog(env, s.callback_token, body as Parameters<typeof receiveLiveLog>[2]);
         answers.push(res.status);
         return { status: res.status };
       },
