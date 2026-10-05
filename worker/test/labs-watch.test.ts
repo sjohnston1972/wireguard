@@ -228,6 +228,28 @@ describe("steps between watch runs (L2.3)", () => {
   });
 });
 
+describe("calls, with pushes (L2.3)", () => {
+  it("pushes from runs the watch settles count against the same 20", async () => {
+    freeze();
+    const { env, world } = await labEnv({ MONTHLY_BUDGET_GBP: "0" });
+    await api(env, "PUT", "/settings", { labs_max_running: 5 });
+    for (const id of ["az104-01-identity", "az104-05-storage", "az104-06-blob-security", "az104-07-files", "az305-28-hub-spoke-fw"]) {
+      const r = await deployLab(env, id, { hours: 1, peer: false });
+      // No secrets collected: the watch must find each run by its title first (one more call each).
+      const gh = world.ghRuns.get(ghIdFor(world, r.json.runId))!;
+      gh.status = "completed";
+      gh.conclusion = "success";
+      gh.updated_at = new Date().toISOString();
+    }
+    advance(3 * MIN);
+    const before = world.calls.length;
+    await watch(env);
+    expect(world.calls.length - before).toBeLessThanOrEqual(WATCH_CALLS);
+    // Every session was still settled, pushes or not.
+    expect((await rows(env, "SELECT state FROM lab_sessions")).every((r) => r.state === "running")).toBe(true);
+  });
+});
+
 describe("calls (L2.3)", () => {
   it("a watch run makes at most 20 subrequests", async () => {
     freeze();

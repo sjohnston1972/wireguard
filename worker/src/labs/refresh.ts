@@ -29,13 +29,13 @@ export async function refreshLabSteps(env: Env, runId: string): Promise<void> {
 }
 
 /** One run, from GitHub (at most 3 calls). Returns a line for the log, or null. */
-export async function refreshLabRun(env: Env, run: LabRunDb, net: Net, now: Date): Promise<string | null> {
+export async function refreshLabRun(env: Env, run: LabRunDb, net: Net, now: Date, canNotify: () => boolean = () => true): Promise<string | null> {
   let ghId = run.github_run_id;
   if (!ghId) {
     const found = await findLabRun(env, net, run.id);
     if (!found) {
       if (now.getTime() - Date.parse(run.requested_at) <= NEVER_STARTED_MS) return null;
-      await finishRun(env, run, { ok: false, error: "GitHub never started the lab workflow. Check the Actions tab and the GITHUB_TOKEN permissions.", via: "watch" }, now);
+      await finishRun(env, run, { ok: false, error: "GitHub never started the lab workflow. Check the Actions tab and the GITHUB_TOKEN permissions.", via: "watch", canNotify }, now);
       return `${run.id}: GitHub never started it`;
     }
     ghId = found.id;
@@ -52,9 +52,9 @@ export async function refreshLabRun(env: Env, run: LabRunDb, net: Net, now: Date
   if (!fresh || fresh.finished_at) return null;
   if (gh.conclusion === "success") {
     if (now.getTime() - Date.parse(gh.updated_at ?? gh.created_at) <= CALLBACK_GRACE_MS) return null;
-    await finishRun(env, fresh, { ok: true, outputs: null, via: "GitHub's status (the result never arrived)" }, now);
+    await finishRun(env, fresh, { ok: true, outputs: null, via: "GitHub's status (the result never arrived)", canNotify }, now);
     return `${run.id}: settled from GitHub (no result arrived)`;
   }
-  await finishRun(env, fresh, { ok: false, error: `GitHub run finished with "${gh.conclusion}".`, via: "github" }, now);
+  await finishRun(env, fresh, { ok: false, error: `GitHub run finished with "${gh.conclusion}".`, via: "github", canNotify }, now);
   return `${run.id}: GitHub says ${gh.conclusion}`;
 }

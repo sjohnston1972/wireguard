@@ -92,7 +92,7 @@ export const DESTROY_TRIES = 3;
  * slot held, one note). Always records the estimate and forgets the
  * session's passwords.
  */
-export async function endSession(env: Env, s: LabSessionRow, clean: boolean, leftovers: string[], reason: LabEndReason, now = new Date()): Promise<void> {
+export async function endSession(env: Env, s: LabSessionRow, clean: boolean, leftovers: string[], reason: LabEndReason, now = new Date(), canNotify: () => boolean = () => true): Promise<void> {
   const ended = now.toISOString();
   const est = Math.round(s.est_gbp_h * Math.max(0, now.getTime() - Date.parse(s.requested_at)) / HOUR * 1e6) / 1e6;
   const changed = await updateSession(
@@ -112,7 +112,7 @@ export async function endSession(env: Env, s: LabSessionRow, clean: boolean, lef
   const names = leftovers.length ? leftovers.join(", ") : `something in rg-lab-${s.lab_id}`;
   const msg = `Lab leftovers: ${names}. ${titleOf(s.lab_id)} did not tear down cleanly; Clean up from the Labs tab.`;
   await db.addAlert(env, "cost_guard", msg);
-  await notify(env, "wg-admin: lab leftovers", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open Labs", "/labs")] });
+  if (canNotify()) await notify(env, "wg-admin: lab leftovers", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open Labs", "/labs")] });
 }
 
 /** Record a release test (spec §11.2). Pass needs a successful run and a clean check. */
@@ -132,7 +132,9 @@ async function recordReleaseTest(env: Env, run: LabRunDb, s: LabSessionRow, ok: 
  * Close `run` with its result and move its session on. Returns false (and
  * does nothing) when the run was already closed by someone else.
  */
-export async function finishRun(env: Env, run: LabRunDb, result: { ok: boolean; outputs?: LabOutputs | null; error?: string | null; via: string }, now = new Date()): Promise<boolean> {
+export async function finishRun(env: Env, run: LabRunDb, result: { ok: boolean; outputs?: LabOutputs | null; error?: string | null; via: string; canNotify?: () => boolean }, now = new Date()): Promise<boolean> {
+  // The lab watch passes its allowance of outside calls here: a push it cannot afford is skipped (the note still lands).
+  const canNotify = result.canNotify ?? (() => true);
   const out = result.outputs ?? EMPTY;
   const at = now.toISOString();
   const settled = await settleRun(env, run.id, {
@@ -155,7 +157,7 @@ export async function finishRun(env: Env, run: LabRunDb, result: { ok: boolean; 
         const until = Math.min(now.getTime() + hours * HOUR, Date.parse(s.max_until));
         const outputs = { private_ips: out.private_ips, connect: out.connect, users: out.users, peer_vnet_id: out.peer_vnet_id };
         await updateSession(env, s.id, { state: "running", ready_at: at, auto_destroy_at: new Date(until).toISOString(), outputs_json: JSON.stringify(outputs) }, "state = 'deploying'");
-        await notify(env, `wg-admin: lab ready`, `${title} is ready. It tears down at ${hhmm(new Date(until).toISOString())}.`, { tags: ["test_tube"], buttons: [dashboardButton(env, "Open the lab", `/labs/${s.lab_id}`)] });
+        if (canNotify()) await notify(env, `wg-admin: lab ready`, `${title} is ready. It tears down at ${hhmm(new Date(until).toISOString())}.`, { tags: ["test_tube"], buttons: [dashboardButton(env, "Open the lab", `/labs/${s.lab_id}`)] });
       } else {
         await updateSession(env, s.id, { state: "failed" }, "state = 'deploying'");
         await db.addAlert(env, "info", `Lab ${title} failed to deploy${result.error ? `: ${result.error}` : ""}. It is torn down in 15 minutes unless you tear it down first.`, null);
@@ -165,20 +167,20 @@ export async function finishRun(env: Env, run: LabRunDb, result: { ok: boolean; 
     case "test": {
       await recordReleaseTest(env, run, s, result.ok, out, now);
       const fresh = (await getSession(env, s.id)) ?? s;
-      if (out.clean === true) await endSession(env, fresh, true, [], "test", now);
-      else if (out.clean === false) await endSession(env, fresh, false, out.leftovers, "test", now);
+      if (out.clean === true) await endSession(env, fresh, true, [], "test", now, canNotify);
+      else if (out.clean === false) await endSession(env, fresh, false, out.leftovers, "test", now, canNotify);
       else await updateSession(env, s.id, { state: "failed", end_reason: s.end_reason ?? "test" }, "state NOT IN ('ended', 'ended_dirty')");
       return true;
     }
     case "destroy": {
       if (out.clean === true) {
-        await endSession(env, s, true, [], "manual", now);
+        await endSession(env, s, true, [], "manual", now, canNotify);
       } else if (out.clean === false) {
-        await endSession(env, s, false, out.leftovers, "manual", now);
+        await endSession(env, s, false, out.leftovers, "manual", now, canNotify);
       } else {
         // The clean check never ran (the run died early): try again, a few times.
         const failed = await env.DB.prepare("SELECT COUNT(*) AS n FROM lab_runs WHERE session_id = ?1 AND action = 'destroy' AND status IN ('failed', 'cancelled')").bind(s.id).first<{ n: number }>();
-        if (Number(failed?.n ?? 0) >= DESTROY_TRIES) await endSession(env, s, false, [`unknown: ${DESTROY_TRIES} tear-downs ended without a clean check`], "failed", now);
+        if (Number(failed?.n ?? 0) >= DESTROY_TRIES) await endSession(env, s, false, [`unknown: ${DESTROY_TRIES} tear-downs ended without a clean check`], "failed", now, canNotify);
         else await updateSession(env, s.id, { state: "failed", end_reason: s.end_reason ?? "failed" }, "state NOT IN ('ended', 'ended_dirty')");
       }
       return true;

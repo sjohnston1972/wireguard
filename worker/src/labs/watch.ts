@@ -180,7 +180,16 @@ export async function runLabWatch(env: Env, now: Date = new Date()): Promise<str
     // 3: the 15-minute warnings.
     for (const s of await liveSessions(env)) await step(`warn ${s.lab_id}`, () => warn(env, s, net, cost, t));
     // 4: runs in progress, from GitHub.
-    for (const run of await activeRuns(env)) await step(`refresh ${run.id}`, () => refreshLabRun(env, run, net, now));
+    // A settled run may push (ready, leftovers): only while this run's allowance covers it.
+    const canNotify = () => {
+      try {
+        net.take(cost);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    for (const run of await activeRuns(env)) await step(`refresh ${run.id}`, () => refreshLabRun(env, run, net, now, canNotify));
   }
   // 5: hourly, the orphan sweep (7 listings); 6: daily, Azure's spend per lab group.
   await step("orphans", () => sweepOrphans(env, net, now));
