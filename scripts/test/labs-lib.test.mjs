@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -366,10 +366,15 @@ test("labs-build writes the catalogue from the repo's labs, and labs-check passe
   const out = join(repo, "shared", "labs.generated.json");
   assert.ok(existsSync(out));
   const cat = JSON.parse(readFileSync(out, "utf8"));
-  assert.deepEqual(
-    cat.labs.map((l) => l.id),
-    ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az104-04-cost", "az104-05-storage", "az104-06-blob-security", "az104-07-files"],
-  );
+  // Exactly one catalogue entry per lab folder (a labs/<id>/ with a lab.yaml), so a
+  // later batch adds labs without editing this test; batch 1's seven must still be there.
+  const ids = cat.labs.map((l) => l.id);
+  const folders = readdirSync(join(repo, "labs"), { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(join(repo, "labs", d.name, "lab.yaml")))
+    .map((d) => d.name);
+  assert.equal(new Set(ids).size, ids.length, "no lab id twice");
+  assert.deepEqual([...ids].sort(), folders.sort());
+  for (const id of ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az104-04-cost", "az104-05-storage", "az104-06-blob-security", "az104-07-files"]) assert.ok(ids.includes(id), id);
   const check = spawnSync(process.execPath, [join(repo, "scripts", "labs-check.mjs")], { cwd: repo, encoding: "utf8" });
   assert.equal(check.status, 0, check.stdout + check.stderr);
 });

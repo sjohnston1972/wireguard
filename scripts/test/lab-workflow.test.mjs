@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { SECRET_ENV } from "../../infra/ci/live-log.mjs";
 import { BASH, fwd, JQ, REPO } from "./fixtures/labs/harness.mjs";
+import { BICEP_SHA256, BICEP_VERSION } from "../lib/bicep.mjs";
 
 const WF = fileURLToPath(new URL("../../.github/workflows/lab.yml", import.meta.url));
 const text = readFileSync(WF, "utf8").replace(/\r\n/g, "\n");
@@ -173,9 +174,11 @@ function workspace(id = "az104-06-blob-security", { tf = true } = {}) {
   }
   return ws;
 }
+/** A lab's version as its lab.yaml says (a lab's version rises with every change, so never written out here). */
+const labVersion = (id) => parse(readFileSync(join(REPO, "labs", id, "lab.yaml"), "utf8")).version;
 const PAYLOAD = {
   lab_id: "az104-06-blob-security",
-  version: 1,
+  version: labVersion("az104-06-blob-security"),
   run_id: "lab-deploy-20261004T120000Z-ab12",
   session_id: "ls-20261004T120000Z-cd34",
   region: "uksouth",
@@ -215,13 +218,16 @@ test("Parse payload sets the run's values and the §3.4 Terraform variables", { 
   assert.equal(r.status, 0, r.out);
   const e = r.env;
   assert.equal(e.LAB_ID, "az104-06-blob-security");
-  assert.equal(e.LAB_VERSION, "1");
+  assert.equal(e.LAB_VERSION, String(PAYLOAD.version));
   assert.equal(e.WORKER_RUN_ID, PAYLOAD.run_id);
   assert.equal(e.LAB_HAS_TF, "true");
   assert.equal(e.LAB_PEERING, "true");
   assert.equal(e.LAB_DNS_LINK, "true");
   assert.equal(e.LAB_DEPLOY_MIN, "4");
   assert.equal(e.LAB_ENTRA, "true");
+  // When the job's own timeout (timeout_min from its start) ends: the safety net stops waiting for group deletes in time.
+  const deadline = Number(e.LAB_JOB_DEADLINE) - Math.floor(Date.now() / 1000);
+  assert.ok(deadline > PAYLOAD.timeout_min * 60 - 120 && deadline <= PAYLOAD.timeout_min * 60, `LAB_JOB_DEADLINE ${e.LAB_JOB_DEADLINE}`);
   assert.equal(e.CALLBACK_URL, "https://wg.example.net/api/callback/lab");
   assert.equal(e.LAB_PEER_URL, "https://wg.example.net/api/callback/lab-peer");
   assert.equal(e.LIVE_LOG_URL, "https://wg.example.net/api/callback/log");
@@ -247,10 +253,10 @@ test("Parse payload refuses a bad lab id, a missing folder and a version that di
   const missing = runParse("deploy", { ...PAYLOAD, lab_id: "az104-99-nowhere" });
   assert.notEqual(missing.status, 0);
   assert.match(missing.out, /no labs\/az104-99-nowhere/);
-  const stale = runParse("deploy", { ...PAYLOAD, version: 2 });
+  const stale = runParse("deploy", { ...PAYLOAD, version: PAYLOAD.version + 1 });
   assert.notEqual(stale.status, 0);
-  assert.match(stale.out, /version 2.*lab\.yaml.*1|stale/i);
-  assert.notEqual(runParse("test", { ...PAYLOAD, version: 2 }).status, 0);
+  assert.match(stale.out, new RegExp(`version ${PAYLOAD.version + 1}.*lab\\.yaml.*${PAYLOAD.version}|stale`, "i"));
+  assert.notEqual(runParse("test", { ...PAYLOAD, version: PAYLOAD.version + 1 }).status, 0);
   assert.notEqual(runParse("deploy", "not json").status, 0);
   const noTf = runParse("deploy", PAYLOAD, workspace("az104-06-blob-security", { tf: false }));
   assert.notEqual(noTf.status, 0);
@@ -279,7 +285,7 @@ test("Parse payload refuses values that could smuggle a line, a slot outside the
 });
 
 test("a destroy always goes ahead: a stale version is a warning, and a lab gone from the catalogue is cleaned up by name", { skip: skipParse }, () => {
-  const stale = runParse("destroy", { ...PAYLOAD, version: 2 });
+  const stale = runParse("destroy", { ...PAYLOAD, version: PAYLOAD.version + 1 });
   assert.equal(stale.status, 0, stale.out);
   assert.match(stale.out, /::warning::/);
   const gone = runParse("destroy", { lab_id: "az104-99-nowhere", run_id: "lab-destroy-1-x", callback_url: "", secrets_url: "" }, workspace());
@@ -288,7 +294,7 @@ test("a destroy always goes ahead: a stale version is a warning, and a lab gone 
   assert.equal(gone.env.LAB_HAS_TF, "false");
   assert.equal(gone.env.LAB_ENTRA, "true", "unknown lab: check Entra strictly");
   // Peering off when the lab says off, whatever the payload asks.
-  const off = runParse("deploy", { ...PAYLOAD, lab_id: "az104-05-storage", name_prefix: "l05abcde" }, workspace("az104-05-storage"));
+  const off = runParse("deploy", { ...PAYLOAD, lab_id: "az104-05-storage", version: labVersion("az104-05-storage"), name_prefix: "l05abcde" }, workspace("az104-05-storage"));
   assert.equal(off.status, 0, off.out);
   assert.equal(off.env.LAB_PEERING, "false");
   assert.equal(off.env.LAB_ENTRA, "false");
@@ -397,16 +403,31 @@ test("the lab's Terraform text is linted before anything of Terraform runs (init
   assert.match(init, /node "\$GITHUB_WORKSPACE\/infra\/ci\/lab-lint\.mjs" "\$GITHUB_WORKSPACE\/labs\/\$LAB_ID\/terraform"/);
   assert.match(init, /set -euo pipefail/);
   const lint = init.indexOf("lab-lint.mjs");
-  assert.ok(lint < init.indexOf("az bicep build") && lint < init.indexOf("terraform init"));
+  assert.ok(lint < init.indexOf(" build ") && lint < init.indexOf("terraform init"));
   // No step before init touches Terraform; init runs for deploy, destroy and test alike.
   for (const s of steps.slice(0, index(lab(5)))) assert.ok(!/\bterraform (init|plan|apply|destroy)\b/.test(s.run ?? ""), s.name);
   for (const a of ["deploy", "destroy", "test"]) assert.ok(String(step(lab(5)).if).includes(`'${a}'`), a);
 });
 
-test("bicep files are built before init", () => {
-  const init = step(lab(5)).run;
-  assert.match(init, /az bicep build --file "\$f"/);
-  assert.ok(init.indexOf("az bicep build") < init.indexOf("terraform init"));
+test("bicep is installed pinned by version and checksum before Terraform init", () => {
+  const s = step(lab(5));
+  const init = s.run;
+  // The pin lives in the step's env, equal to scripts/lib/bicep.mjs (labs-tf and CI use the same one).
+  assert.equal(String(s.env.BICEP_VERSION), BICEP_VERSION);
+  assert.equal(s.env.BICEP_SHA256, BICEP_SHA256["bicep-linux-x64"]);
+  // Only for a lab that has .bicep files; downloaded from the official release, checked before it is made runnable.
+  assert.match(init, /shopt -s nullglob/);
+  assert.match(init, /bicep_files=\(\*\.bicep\)/);
+  const url = init.indexOf('curl -fsSLo "$RUNNER_TEMP/bicep" "https://github.com/Azure/bicep/releases/download/v$BICEP_VERSION/bicep-linux-x64"');
+  const check = init.indexOf('echo "$BICEP_SHA256  $RUNNER_TEMP/bicep" | sha256sum -c -');
+  const chmod = init.indexOf('chmod +x "$RUNNER_TEMP/bicep"');
+  const build = init.indexOf('"$RUNNER_TEMP/bicep" build "$f" --outfile "${f%.bicep}.json"');
+  for (const [what, i] of Object.entries({ url, check, chmod, build })) assert.ok(i >= 0, `${what} missing:\n${init}`);
+  assert.ok(url < check && check < chmod && chmod < build && build < init.indexOf("terraform init"), "download, verify, chmod, build, then init");
+  // The compiler runs without the step's secrets in its environment.
+  assert.match(init, /env -i PATH=\/usr\/bin:\/bin HOME="\$RUNNER_TEMP" TMPDIR="\$RUNNER_TEMP" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "\$RUNNER_TEMP\/bicep" build/);
+  // Never the unpinned `az bicep` (it downloads whatever Bicep is newest).
+  assert.doesNotMatch(text, /az bicep/);
 });
 
 test("state key is labs/<id>/terraform.tfstate and backups keep 5", () => {

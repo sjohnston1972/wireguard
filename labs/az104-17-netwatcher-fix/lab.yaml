@@ -1,0 +1,41 @@
+# Lab 17 (batch 2 plan area B2), a break-fix lab. AZ-104 study guide skills
+# this lab touches ((V) the wording against the current outline):
+#   Implement and manage virtual networking > Configure and manage virtual
+#   networks in Azure: "Configure user-defined network routes",
+#   "Troubleshoot network connectivity". Configure secure access to virtual
+#   networks: "Evaluate effective security rules in NSGs".
+#   Monitor and maintain Azure resources > Monitor resources in Azure: "Use
+#   Azure Network Watcher and Connection Monitor".
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. The VMs and their OS disks carry retail entries the price feed
+# refreshes; npm run labs-verify -- --meters az104-17-netwatcher-fix checks
+# them (Standard_B1s Linux £0.0089/h; S4 LRS Disk £1.28 a month, about
+# £0.0018/h). Network Watcher's IP flow verify, next hop and effective rules
+# are free; connection troubleshoot is billed per 1,000 checks (pennies for
+# a session), so it stays authored. The agent extension, NSG, route table
+# and VNet are free.
+id: az104-17-netwatcher-fix
+version: 1
+title: "Break-fix: connectivity troubleshooting with Network Watcher"
+summary: >-
+  An app VM that cannot reach its database VM's service, for reasons the portal will show you if you ask the right
+  Network Watcher tool. Find out why, and fix it.
+exam: AZ-104
+skill_areas: [az104.networking, az104.monitor]
+level: associate
+type: break-fix
+prerequisites: [az104-13-vnets]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0092, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Network Watcher connection troubleshoot, a few checks", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 5, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

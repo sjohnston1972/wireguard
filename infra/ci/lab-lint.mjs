@@ -21,9 +21,16 @@
 //                   cloud block (the state, with the lab's password, must go to R2)
 //   file            files Terraform would read that this check cannot:
 //                   *.tf.json, *.tfvars (they would override the pipeline's
-//                   variables) and CLI configuration (terraform.rc)
+//                   variables) and CLI configuration (terraform.rc); and an
+//                   x.json beside x.bicep (the pipeline builds it, pinned)
 //   literal-cidr    an address not from cidrsubnet(var.address_space, ...)
 //   gateway         the gateway's names (rg-wg-*, vnet-wg)
+//
+// A lab's .bicep files (built to ARM JSON after this check, lab.yml step 5)
+// get literal-cidr and gateway too, plus module (a registry or template spec
+// module, br: or ts:) and provider (extension, import or provider
+// statements: Microsoft Graph and the like). lab-scope.mjs's templateProblems
+// then reads the built template, at labs-tf and in the plan.
 //
 //   node infra/ci/lab-lint.mjs labs/<id>/terraform
 //
@@ -217,23 +224,93 @@ export function lintTfText(files) {
   return out.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
 }
 
+/** Blank out Bicep comments (// and block comments), keeping 'strings' (with \' escapes), '''multi-line''' strings, lines and columns. */
+export function stripBicepComments(src) {
+  let out = "";
+  let i = 0;
+  while (i < src.length) {
+    if (src.startsWith("'''", i)) {
+      const end = src.indexOf("'''", i + 3);
+      const stop = end < 0 ? src.length : end + 3;
+      out += src.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    const ch = src[i];
+    if (ch === "'") {
+      let j = i + 1;
+      while (j < src.length && src[j] !== "'" && src[j] !== "\n") j += src[j] === "\\" ? 2 : 1;
+      out += src.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "/") {
+      while (i < src.length && src[i] !== "\n") {
+        out += " ";
+        i++;
+      }
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "*") {
+      const end = src.indexOf("*/", i + 2);
+      const stop = end < 0 ? src.length : end + 2;
+      out += src.slice(i, stop).replace(/[^\n]/g, " ");
+      i = stop;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+const BICEP_RULES = [
+  TEXT_RULES.find((r) => r.rule === "literal-cidr"),
+  TEXT_RULES.find((r) => r.rule === "gateway"),
+  { rule: "module", re: /^\s*module\s+[A-Za-z_]\w*\s+'(?:br|ts)[:/][^']*'/gm, message: () => "a registry or template spec module brings code from elsewhere: keep every module a local .bicep file" },
+  { rule: "provider", re: /^\s*(?:extension|import|provider)\b/gm, message: (m) => `${m.trim()}: Bicep extensions (Microsoft Graph and the like) reach beyond the lab's resource group` },
+];
+
+/**
+ * Lint a lab's Bicep files ({ "main.bicep": text, ... }), which the pipeline
+ * builds to ARM JSON before init: literal CIDRs (every address comes from the
+ * parameter Terraform passes, cut from the slot), the gateway's names,
+ * registry or template spec modules, and extensions or imports.
+ * Returns [{ file, line, rule, message }].
+ */
+export function lintBicepText(files) {
+  const out = [];
+  for (const [file, src] of Object.entries(files)) {
+    const code = stripBicepComments(src.replace(/\r\n/g, "\n"));
+    for (const r of BICEP_RULES) {
+      for (const m of code.matchAll(r.re)) {
+        if (r.ok?.(m[0])) continue;
+        out.push({ file, line: lineOf(code, m.index + (m[0].length - m[0].trimStart().length)), rule: r.rule, message: r.message(m[0].trim()) });
+      }
+    }
+  }
+  return out.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
+}
+
 /** Files in a lab's terraform/ folder that Terraform would read but this check cannot. Returns [{ file, line: 1, rule: "file", message }]. */
 export function fileProblems(names) {
   const out = [];
+  const bicep = new Set(names.filter((f) => /\.bicep$/i.test(f)).map((f) => f.toLowerCase().replace(/\.bicep$/, "")));
   for (const f of names) {
     const n = f.toLowerCase();
     if (n.endsWith(".tf.json")) out.push({ file: f, line: 1, rule: "file", message: "JSON Terraform files are not allowed: write .tf, which this check reads" });
     else if (/\.tfvars(\.json)?$/.test(n)) out.push({ file: f, line: 1, rule: "file", message: "tfvars files are not allowed: they would override the variables the pipeline sets" });
     else if (n === "terraform.rc" || n === ".terraformrc") out.push({ file: f, line: 1, rule: "file", message: "Terraform CLI configuration is not allowed in a lab" });
+    else if (n.endsWith(".json") && bicep.has(n.replace(/\.json$/, ""))) out.push({ file: f, line: 1, rule: "file", message: `${f} is built from ${f.replace(/\.json$/i, ".bicep")} by the pipeline's pinned Bicep: never commit it` });
   }
   return out;
 }
 
-/** Everything about one lab's terraform/ folder: file names and the text of its .tf files. */
+/** Everything about one lab's terraform/ folder: file names, the text of its .tf files and of its .bicep files. */
 export function lintDir(dir) {
   const names = readdirSync(dir).filter((f) => statSync(join(dir, f)).isFile());
-  const files = Object.fromEntries(names.filter((f) => f.endsWith(".tf")).map((f) => [f, readFileSync(join(dir, f), "utf8")]));
-  return [...fileProblems(names), ...lintTfText(files)];
+  const read = (re) => Object.fromEntries(names.filter((f) => re.test(f)).map((f) => [f, readFileSync(join(dir, f), "utf8")]));
+  return [...fileProblems(names), ...lintTfText(read(/\.tf$/)), ...lintBicepText(read(/\.bicep$/i))];
 }
 
 function main(argv) {

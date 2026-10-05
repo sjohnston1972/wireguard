@@ -1,0 +1,47 @@
+# Lab 18 (batch 2 plan, area B3). AZ-104 study guide skills this lab touches
+# ((V) the wording against the current outline):
+#   Monitor and maintain Azure resources > Monitor resources in Azure:
+#   "Interpret metrics in Azure Monitor", "Configure log settings in Azure
+#   Monitor", "Query and analyze logs in Azure Monitor", "Set up alert
+#   rules, action groups, and alert processing rules in Azure Monitor",
+#   "Configure and interpret monitoring of virtual machines, storage
+#   accounts, and networks by using Azure Monitor Insights".
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. The VM and its disk carry retail entries the price feed
+# refreshes (labs-verify --meters: Standard_B1s and S4 LRS Disk). Authored
+# (batch 2 ruling 2): Log Analytics is priced per GB ("Analytics Logs Data
+# Ingestion", £2.1737/GB after the first 5 GB a month, which are free), a
+# unit the feed cannot read; a session sends a few MB (about 0.2 MB/h:
+# two counters a minute, the agent's heartbeat and the odd syslog warning),
+# and the 0.05 GB daily cap bounds it at about £0.11 a day. The metric alert
+# is "Alerts Metric Monitored" (£0.0755 per time series a month, the first
+# ten free: a tiered meter, so authored). Platform metrics, the activity
+# log and its alert, the action group (no receivers), the agent, the data
+# collection rule and the VNet cost nothing.
+id: az104-18-monitor
+version: 1
+title: "Azure Monitor: metrics, logs and alerts"
+summary: >-
+  A small Linux VM watched by Azure Monitor: platform metrics, the Azure Monitor agent sending counters
+  and syslog to a capped Log Analytics workspace, and metric and activity log alerts on an action group
+  that notifies nobody.
+exam: AZ-104
+skill_areas: [az104.monitor]
+level: associate
+type: explore
+prerequisites: [az104-08-vms]
+cost:
+  items:
+    - { name: "Linux VM, Standard_B1s", gbp_h: 0.0092, retail: { sku: Standard_B1s } }
+    - { name: "OS disk, Standard HDD S4", gbp_h: 0.0018, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Log Analytics ingestion, a few MB (capped at 0.05 GB a day)", gbp_h: 0.0005 }
+    - { name: "Metric alert, one time series", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 5, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

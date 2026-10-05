@@ -1,0 +1,39 @@
+# Lab 15 (batch 2 plan area B2). AZ-104 study guide skills this lab touches
+# ((V) the wording against the current outline):
+#   Implement and manage virtual networking > Configure name resolution and
+#   load balancing: "Configure Azure DNS".
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. The VM and its OS disk carry retail entries the price feed
+# refreshes; npm run labs-verify -- --meters az104-15-dns checks them
+# (Standard_B1s Linux £0.0089/h; S4 LRS Disk £1.28 a month, about
+# £0.0018/h). DNS zones are tiered and priced in region "Zone 1", so they
+# stay authored (batch 2 ruling 2): £0.3774 a zone a month for the first 25,
+# about £0.0005/h each, a monthly fee ((V) the release test's actual cost
+# shows whether a short session pays a day's share). Queries are pennies
+# per million.
+id: az104-15-dns
+version: 1
+title: "Azure DNS: public and private zones"
+summary: >-
+  A public zone with A and CNAME records, and a private zone that VMs register themselves in,
+  so you can see how Azure answers for each and how a private name reaches the tunnel.
+exam: AZ-104
+skill_areas: [az104.networking]
+level: associate
+type: explore
+prerequisites: [az104-13-vnets]
+cost:
+  items:
+    - { name: "Linux VM, Standard_B1s", gbp_h: 0.0092, retail: { sku: Standard_B1s } }
+    - { name: "OS disk, Standard HDD S4", gbp_h: 0.0018, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Public DNS zone", gbp_h: 0.0005 }
+    - { name: "Private DNS zone", gbp_h: 0.0005 }
+  pricey: null
+timing: { deploy_min: 4, destroy_min: 4, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: true, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

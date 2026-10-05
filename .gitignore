@@ -49,3 +49,7 @@ web/node_modules/
 # the setup files npm run labs-setup fills with the subscription id.
 shared/labs.generated.json
 labs/setup/*.local.*
+
+# Bicep labs: lab.yml and labs-tf build x.json from x.bicep with the pinned
+# Bicep; the lint refuses a committed one.
+labs/*/terraform/*.json

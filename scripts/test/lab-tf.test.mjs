@@ -7,22 +7,27 @@
 // labs-check, a lab with no terraform/ folder FAILS here: it cannot be
 // released. The commands are faked; CI runs them for real.
 
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, cpSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, cpSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { labFolders } from "../lib/labs.mjs";
+import { BICEP_SHA256, BICEP_VERSION, bicepAsset, bicepMatchesPin, pinnedBicep } from "../lib/bicep.mjs";
 import { labsTfTargets, runLabsTf } from "../labs-tf.mjs";
 
 const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
 const CI = parse(readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8"));
 
 /** A labs folder with the real template, one lab with Terraform and one without. */
+const made = [];
+after(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
 function labsDir() {
   const dir = mkdtempSync(join(tmpdir(), "labs-tf-"));
+  made.push(dir);
   cpSync(join(LABS, "_template"), join(dir, "_template"), { recursive: true });
   mkdirSync(join(dir, "setup"));
   for (const id of ["az104-05-storage", "az104-06-blob-security"]) {
@@ -35,8 +40,8 @@ function labsDir() {
   return dir;
 }
 
-/** A fake command runner: records [cmd, args, cwd]; hcl2json answers with `hcl` (or is missing). */
-function fakeRun({ hcl = { resource: { azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}" }] } } }, missing = [], fail = {} } = {}) {
+/** A fake command runner: records [cmd, args, cwd]; hcl2json answers with `hcl` (or is missing); bicep build writes `template` to its --outfile. */
+function fakeRun({ hcl = { resource: { azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}" }] } } }, missing = [], fail = {}, template = BICEP_BUILT } = {}) {
   const calls = [];
   const run = (cmd, args, opts = {}) => {
     calls.push([cmd, args.join(" "), opts.cwd ?? ""]);
@@ -44,11 +49,29 @@ function fakeRun({ hcl = { resource: { azurerm_resource_group: { lab: [{ name: "
     const key = `${cmd} ${args[0]}`;
     if (fail[key]) return { status: 1, stdout: "", stderr: fail[key] };
     if (cmd === "hcl2json") return { status: 0, stdout: JSON.stringify(typeof hcl === "function" ? hcl(args) : hcl), stderr: "" };
+    if (cmd === "bicep" && args[0] === "build") writeFileSync(join(opts.cwd, args[3]), JSON.stringify(template));
     return { status: 0, stdout: "", stderr: "" };
   };
   return { calls, run };
 }
 const quiet = () => {};
+const BICEP_BUILT = JSON.parse(readFileSync(new URL("./fixtures/labs/bicep/storage-vnet.json", import.meta.url), "utf8"));
+const BICEP_LAB = "az104-06-blob-security";
+/** labsDir() with lab 6 as a Bicep lab: main.bicep and its module vnet.bicep beside the .tf files. */
+function bicepLabsDir() {
+  const dir = labsDir();
+  for (const f of ["storage-vnet.bicep", "vnet.bicep"]) cpSync(fileURLToPath(new URL(`./fixtures/labs/bicep/${f}`, import.meta.url)), join(dir, BICEP_LAB, "terraform", f === "storage-vnet.bicep" ? "main.bicep" : f));
+  return dir;
+}
+const slash = (p) => p.replace(/\\/g, "/");
+
+test("labs-tf deletes its scratch copies when it finishes, even when a check fails", () => {
+  const copies = () => new Set(readdirSync(tmpdir()).filter((n) => n.startsWith("labs-tf-copy-")));
+  const before = copies();
+  runLabsTf({ labsDir: labsDir(), run: fakeRun().run, log: quiet });
+  runLabsTf({ labsDir: labsDir(), run: fakeRun({ fail: { "terraform fmt": "bad format" } }).run, log: quiet });
+  assert.deepEqual([...copies()].filter((n) => !before.has(n)), []);
+});
 
 test("labs-tf lists each lab and the template", () => {
   const targets = labsTfTargets(LABS);
@@ -139,4 +162,107 @@ test("ci labs job pins hcl2json by checksum", () => {
   // Pinned actions, no secrets.
   for (const s of steps.filter((x) => x.uses)) assert.match(s.uses, /@[0-9a-f]{40}/);
   assert.ok(!JSON.stringify(job).includes("secrets."));
+});
+
+// ── Bicep (batch 2: lab 12) ──────────────────────────────────────────────
+
+test("labs-tf builds .bicep into its copy before validate and checks each template", () => {
+  const dir = bicepLabsDir();
+  const { calls, run } = fakeRun();
+  const { failures } = runLabsTf({ labsDir: dir, run, log: quiet, only: [BICEP_LAB] });
+  assert.deepEqual(failures, []);
+  const seq = calls.map((c) => `${c[0]} ${c[1].split(" ").slice(0, 2).join(" ")}`);
+  assert.deepEqual(seq.slice(0, 5), ["terraform fmt -check", "bicep build main.bicep", "bicep build vnet.bicep", "terraform init -backend=false", "terraform validate -no-color"]);
+  const builds = calls.filter((c) => c[0] === "bicep");
+  for (const [, args, cwd] of builds) {
+    assert.match(args, /^build (\S+)\.bicep --outfile \1\.json$/);
+    // Into the throw-away copy, never the repo.
+    assert.ok(!slash(cwd).startsWith(slash(dir)), `bicep ran in ${cwd}`);
+    assert.equal(cwd, calls.find((c) => c[1].startsWith("init"))[2], "the copy terraform init reads");
+  }
+  // A template that reaches outside the lab fails the lab, naming the file and the rule.
+  const graph = { $schema: BICEP_BUILT.$schema, contentVersion: "1.0.0.0", languageVersion: "2.0", extensions: { graph: { name: "MicrosoftGraph", version: "1.0.0" } }, resources: { g: { type: "Microsoft.Graph/groups@v1.0", extension: "graph", name: "g" } } };
+  const evil = runLabsTf({ labsDir: dir, run: fakeRun({ template: graph }).run, log: quiet, only: [BICEP_LAB] });
+  // (The fake builds the same template from both files: each is reported.)
+  assert.deepEqual(evil.failures.map((f) => f.message.match(/^template (\S+): (\S+): /)?.slice(1)), [["main.json", "role"], ["vnet.json", "role"]]);
+  // A build that fails is a failure, and nothing after it runs for that lab.
+  const broken = fakeRun({ fail: { "bicep build": "Error BCP018: Expected the \"}\" character at this location." } });
+  const b = runLabsTf({ labsDir: dir, run: broken.run, log: quiet, only: [BICEP_LAB] });
+  assert.match(b.failures[0].message, /bicep build main\.bicep: .*BCP018/);
+  assert.ok(!broken.calls.some((c) => c[1].startsWith("init")), "no init after a failed build");
+});
+
+test("without bicep a Bicep lab is skipped with a note locally and fails when CI requires it", () => {
+  const dir = bicepLabsDir();
+  const lines = [];
+  const local = fakeRun({ missing: ["bicep"] });
+  const r = runLabsTf({ labsDir: dir, run: local.run, log: (l) => lines.push(l), only: ["_template", BICEP_LAB] });
+  assert.deepEqual(r.failures, []);
+  assert.match(lines.join("\n"), new RegExp(`${BICEP_LAB}.*bicep.*not installed.*skipped`, "i"));
+  // The Bicep lab's init and validate are skipped (file() of the missing JSON would fail); the template's still run.
+  const inits = local.calls.filter((c) => c[1].startsWith("init")).map((c) => slash(c[2]));
+  assert.equal(inits.length, 1);
+  assert.ok(inits[0].endsWith("/_template"));
+  // fmt and the HCL scope check still run for it.
+  assert.ok(local.calls.some((c) => c[0] === "terraform" && c[1].startsWith("fmt") && slash(c[2]).endsWith(`${BICEP_LAB}/terraform`)));
+  const ci = runLabsTf({ labsDir: dir, run: fakeRun({ missing: ["bicep"] }).run, log: quiet, only: ["_template", BICEP_LAB], requireBicep: true });
+  assert.deepEqual(ci.failures.map((f) => f.folder), [BICEP_LAB]);
+  assert.match(ci.failures[0].message, /bicep is not installed/);
+  // A lab with no .bicep files never needs it.
+  assert.deepEqual(runLabsTf({ labsDir: labsDir(), run: fakeRun({ missing: ["bicep"] }).run, log: quiet, only: [BICEP_LAB], requireBicep: true }).failures, []);
+});
+
+test("ci labs job installs bicep pinned by checksum and requires it", () => {
+  const steps = CI.jobs.labs.steps;
+  const install = steps.find((s) => s.name === "install bicep");
+  assert.ok(install, "ci.yml labs job has an install bicep step");
+  const run = install.run;
+  assert.ok(run.includes(`https://github.com/Azure/bicep/releases/download/v${BICEP_VERSION}/bicep-linux-x64`), "the pinned release, from github.com/Azure/bicep");
+  assert.ok(run.includes(`${BICEP_SHA256["bicep-linux-x64"]}  `), "the pinned checksum");
+  assert.ok(run.indexOf("sha256sum -c") >= 0 && run.indexOf("sha256sum -c") < run.indexOf("chmod +x"), "checked before it is made runnable");
+  assert.ok(steps.indexOf(install) < steps.findIndex((s) => s.name === "labs-tf"));
+  const tf = steps.find((s) => s.name === "labs-tf");
+  assert.equal(String(tf.env.LABS_TF_REQUIRE_BICEP), "1");
+  assert.match(String(tf.env.BICEP), /bicep$/, "labs-tf is pointed at the installed binary (and checks its checksum again)");
+});
+
+test("a downloaded Bicep is used only when its sha256 matches the pin", async () => {
+  assert.equal(bicepAsset("linux", "x64"), "bicep-linux-x64");
+  assert.equal(bicepAsset("win32", "x64"), "bicep-win-x64.exe");
+  assert.equal(bicepAsset("darwin", "arm64"), "bicep-osx-arm64");
+  assert.equal(bicepAsset("aix", "ppc64"), null);
+  // The pins are the official release's SHA-256 digests, one per asset.
+  assert.match(BICEP_VERSION, /^\d+\.\d+\.\d+$/);
+  for (const [asset, sha] of Object.entries(BICEP_SHA256)) assert.match(sha, /^[0-9a-f]{64}$/, asset);
+  const bytes = Buffer.from("pretend bicep binary");
+  const good = createHash("sha256").update(bytes).digest("hex");
+  const asset = "bicep-linux-x64";
+  const urls = [];
+  const fetch = async (url) => {
+    urls.push(url);
+    return new Response(bytes);
+  };
+  const cacheDir = mkdtempSync(join(tmpdir(), "bicep-"));
+  const path = await pinnedBicep({ cacheDir, asset, sha256: { [asset]: good }, fetch, log: quiet });
+  assert.equal(path, join(cacheDir, asset));
+  assert.deepEqual(urls, [`https://github.com/Azure/bicep/releases/download/v${BICEP_VERSION}/${asset}`]);
+  assert.ok(bicepMatchesPin(path, asset, { [asset]: good }));
+  // Cached: verified again, not downloaded again.
+  assert.equal(await pinnedBicep({ cacheDir, asset, sha256: { [asset]: good }, fetch, log: quiet }), path);
+  assert.equal(urls.length, 1);
+  // Tampered with in the cache: downloaded afresh.
+  writeFileSync(path, "tampered");
+  assert.equal(await pinnedBicep({ cacheDir, asset, sha256: { [asset]: good }, fetch, log: quiet }), path);
+  assert.equal(urls.length, 2);
+  assert.ok(bicepMatchesPin(path, asset, { [asset]: good }));
+  // A download that does not match the pin is thrown away and never returned.
+  const other = mkdtempSync(join(tmpdir(), "bicep-"));
+  const lines = [];
+  assert.equal(await pinnedBicep({ cacheDir: other, asset, sha256: { [asset]: "0".repeat(64) }, fetch, log: (l) => lines.push(l) }), null);
+  assert.deepEqual(readdirSync(other), []);
+  assert.match(lines.join("\n"), /checksum/i);
+  // No network, or no asset for this machine: null, never a throw.
+  assert.equal(await pinnedBicep({ cacheDir: other, asset, sha256: { [asset]: good }, fetch: async () => { throw new Error("offline"); }, log: quiet }), null);
+  assert.equal(await pinnedBicep({ cacheDir: other, asset: null, fetch, log: quiet }), null);
+  assert.equal(bicepMatchesPin(join(other, "missing"), asset, { [asset]: good }), false);
 });

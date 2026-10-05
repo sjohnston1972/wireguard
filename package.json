@@ -29,6 +29,7 @@
     "labs-build": "node scripts/labs-build.mjs",
     "labs-check": "node scripts/labs-check.mjs",
     "labs-tf": "node scripts/labs-tf.mjs",
+    "labs-verify": "node scripts/labs-verify.mjs",
     "labs-setup": "node scripts/labs-setup.mjs",
     "labs-pr0-check": "node scripts/labs-pr0-check.mjs"
   },

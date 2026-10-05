@@ -11,31 +11,16 @@
 // matches its main.tf (resources and attribute names) and that lab-scope.mjs
 // passes it, as lab.yml's "Plan and scope check" would.
 
+//
+// Batch 2's labs (8-19) each have their own file in labs/, named by the lab
+// id, so content areas never edit this one: `export default () => ({ lab,
+// variables, resources, data? })`, using common.mjs. LAB_PLANS merges them.
+
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { realisticPlan } from "./realistic.mjs";
-
-const SUB = "3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b";
-const TENANT = "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f";
-const UPN = "wgadminlabs.onmicrosoft.com";
-const REGION = "uksouth";
-
-const ctx = (id, n) => {
-  const rg = `rg-lab-${id}`;
-  const prefix = `l${n}k3x9q`;
-  const tags = { project: "wg-admin-labs", lab: id, session: "ls-20261005T0900-ab12" };
-  return {
-    id,
-    rg,
-    prefix,
-    tags,
-    variables: { lab_id: id, name_prefix: prefix, resource_group_name: rg, region: REGION, address_space: "10.64.64.0/18", peered: false, gateway_vnet_id: "", upn_domain: UPN, tags },
-  };
-};
-
-const RG_REFS = { name: ["var.resource_group_name"], location: ["var.region"], tags: ["var.tags"] };
-const IN_RG = { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"], location: ["azurerm_resource_group.lab.location", "azurerm_resource_group.lab"], tags: ["var.tags"] };
-const ref = (r, attr) => [`${r}.${attr}`, r];
-
-const rgResource = (c) => ({ address: "azurerm_resource_group.lab", values: { name: c.rg, location: REGION, tags: c.tags }, refs: RG_REFS });
+import { ctx, IN_RG, linuxVm, ref, REGION, rgResource, SUB, TENANT, UPN } from "./common.mjs";
 
 const storage = (c, name, extra = {}) => ({
   account_kind: "StorageV2",
@@ -400,47 +385,44 @@ function lab7() {
         unknown: ["storage_account_id"],
         refs: { storage_account_id: ref("azurerm_storage_account.files", "id") },
       },
-      {
-        address: "azurerm_network_interface.vm",
-        values: { name: "nic-vm-files", resource_group_name: c.rg, location: REGION, tags: c.tags, ip_configuration: [{ name: "ipconfig1", subnet_id: "(unknown)", private_ip_address_allocation: "Dynamic" }] },
-        unknown: ["ip_configuration.0.subnet_id"],
-        refs: { ...IN_RG, "ip_configuration.0.subnet_id": ref("azurerm_subnet.vms", "id") },
-      },
-      {
-        address: "azurerm_linux_virtual_machine.vm",
-        values: {
-          name: "vm-files",
-          resource_group_name: c.rg,
-          location: REGION,
-          size: "Standard_B1s",
-          admin_username: "azureuser",
-          admin_password: "(the session's admin password)",
-          disable_password_authentication: false,
-          tags: c.tags,
-          admin_ssh_key: [{ username: "azureuser", public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeFakeFakeFakeFakeFakeFakeFakeFakeFake wg-admin" }],
-          os_disk: [{ caching: "ReadWrite", storage_account_type: "Standard_LRS" }],
-          source_image_reference: [{ publisher: "Canonical", offer: "ubuntu-24_04-lts", sku: "server", version: "latest" }],
-          boot_diagnostics: [{}],
-        },
-        // The cloud-init holds the storage account's key, known only after apply.
-        unknown: ["network_interface_ids", "custom_data"],
-        refs: {
-          ...IN_RG,
-          admin_password: ["var.admin_password"],
-          admin_ssh_key: ["var.ssh_public_key"],
-          network_interface_ids: ref("azurerm_network_interface.vm", "id"),
-          custom_data: ["path.module", ...ref("azurerm_storage_account.files", "name"), ...ref("azurerm_storage_account.files", "primary_file_host"), ...ref("azurerm_storage_share.share", "name"), ...ref("azurerm_storage_account.files", "primary_access_key")],
-        },
-        sensitive: ["admin_password", "custom_data"],
-      },
+      // The cloud-init holds the storage account's key, known only after apply.
+      ...linuxVm(c, {
+        name: "vm-files",
+        key: "vm",
+        subnet: "azurerm_subnet.vms",
+        customData: [...ref("azurerm_storage_account.files", "name"), ...ref("azurerm_storage_account.files", "primary_file_host"), ...ref("azurerm_storage_share.share", "name"), ...ref("azurerm_storage_account.files", "primary_access_key")],
+      }),
     ],
   };
 }
 
-/** Each lab's description (resources as main.tf has them) and its realistic plan. */
-export const LAB_PLANS = Object.fromEntries(
-  [lab1, lab2, lab3, lab4, lab5, lab6, lab7].map((f) => {
-    const d = f();
-    return [d.lab, { ...d, plan: realisticPlan(d) }];
-  }),
-);
+const withPlan = (d) => ({ ...d, plan: realisticPlan(d) });
+
+/**
+ * Every <lab id>.mjs in `dir` (a path or file URL): { [lab]: { ...description, plan } }.
+ * A file must be named by the lab id its description gives.
+ */
+export async function loadLabPlans(dir) {
+  const path = dir instanceof URL ? fileURLToPath(dir) : dir;
+  let files = [];
+  try {
+    files = readdirSync(path).filter((f) => f.endsWith(".mjs")).sort();
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+  }
+  const out = {};
+  for (const f of files) {
+    const mod = await import(pathToFileURL(join(path, f)).href);
+    if (typeof mod.default !== "function") throw new Error(`${f}: export default () => ({ lab, variables, resources, data? })`);
+    const d = mod.default();
+    if (`${d?.lab}.mjs` !== f) throw new Error(`${f}: the file must be named by its lab id (it describes ${d?.lab})`);
+    out[d.lab] = withPlan(d);
+  }
+  return out;
+}
+
+/** Each lab's description (resources as main.tf has them) and its realistic plan: labs 1-7 here, the rest from labs/. */
+export const LAB_PLANS = {
+  ...Object.fromEntries([lab1, lab2, lab3, lab4, lab5, lab6, lab7].map((f) => withPlan(f())).map((d) => [d.lab, d])),
+  ...(await loadLabPlans(new URL("./labs/", import.meta.url))),
+};

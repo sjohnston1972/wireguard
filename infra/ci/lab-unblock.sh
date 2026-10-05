@@ -12,8 +12,15 @@
 #      one found here is reported loudly)
 #   3b. Azure Files share snapshots (a share with snapshots cannot be deleted,
 #      so Terraform's destroy of it fails; lab 7)
-#   4. backup protection: soft delete off, soft-deleted items undeleted, then
-#      protection stopped with the backup data deleted
+#   4. backup protection, per Recovery Services vault: an Unlocked vault
+#      immutability turned Disabled (a Locked one is a loud warning), soft
+#      delete off and read back (AlwaysON, or not Disabled when read back, is
+#      "unverified": lab 19's vault is made with it on, as azurerm insists),
+#      soft-deleted items undeleted, protection stopped with the
+#      backup data deleted for items of every management type, then a wait
+#      until the vault lists no items (LAB_UNBLOCK_VAULT_WAIT_SECONDS, default
+#      300, polled every 15 s; a list that fails is never "none left": if
+#      the last one fails, the vault's items are "unverified", a warning)
 #   5. Site Recovery replication: protection disabled on every replicated item
 #
 # Never fails the run: every refusal is a ::warning:: and the destroy, the
@@ -134,22 +141,116 @@ for g in "${groups[@]}"; do
   vaults["$g"]="$(azq backup vault list --resource-group "$g" --query "[].name" -o tsv || warn "$g: could not list Recovery Services vaults")"
 done
 
-# 4. Backup protection
+# 4. Backup protection. Immutability first: an Unlocked vault's is turned
+# Disabled (a Locked one cannot be, by anyone, until its data expires: said
+# loudly). Then soft delete off, soft-deleted items undeleted, protection
+# stopped with the data deleted for items of every management type (`az
+# backup item list` without --backup-management-type lists them all), and a
+# bounded wait until the vault lists no items, so the group delete is not
+# refused for a vault still deleting its backups.
+UNVERIFIED=()
+# A vault's soft delete state: Enabled, Disabled or AlwaysON (empty if unreadable).
+soft_state() { azq backup vault backup-properties show --name "$1" --resource-group "$2" --query "[].properties.softDeleteFeatureState | [0]" -o tsv; }
+VAULT_WAIT="${LAB_UNBLOCK_VAULT_WAIT_SECONDS:-300}"
+[[ "$VAULT_WAIT" =~ ^[0-9]+$ ]] || VAULT_WAIT=300
 for g in "${groups[@]}"; do
   while IFS= read -r v; do
     [ -z "$v" ] && continue
-    az backup vault backup-properties set --name "$v" --resource-group "$g" --soft-delete-feature-state Disable -o none ||
-      warn "$v: could not turn soft delete off"
-    while IFS= read -r item; do
+    immutability="$(azq backup vault show --name "$v" --resource-group "$g" --query properties.securitySettings.immutabilitySettings.state -o tsv || warn "$v: could not read its immutability")"
+    case "${immutability:-}" in
+      Unlocked)
+        if az backup vault update --name "$v" --resource-group "$g" --immutability-state Disabled -o none; then
+          echo "unblock: $v: unlocked immutability turned off"
+        else warn "$v: could not turn its unlocked immutability off"; fi
+        ;;
+      Locked)
+        warn "$v: immutability is LOCKED; nobody can turn it off or delete its backup data until it expires, so this vault and its group cannot be deleted yet (and keep costing)"
+        ;;
+    esac
+    # Soft delete: read it, turn it off unless it is already off, and read it back.
+    # `backup-properties show` answers [storage config, vault config]; the vault
+    # config holds softDeleteFeatureState (Enabled, Disabled or AlwaysON). AlwaysON
+    # cannot be turned off by anyone (az only warns and changes nothing), so it is
+    # never asked for: deleted backup data then stays soft-deleted for 14 days and
+    # the vault cannot go. Anything not read back as Disabled is unverified.
+    soft="$(soft_state "$v" "$g" || warn "$v: could not read its soft delete state")"
+    case "${soft,,}" in
+      disabled) ;;
+      alwayson)
+        warn "$v: soft delete is ALWAYS ON; nobody can turn it off, so its deleted backup data stays for 14 days and this vault and its group cannot be deleted until then"
+        UNVERIFIED+=("$v soft delete (always on)")
+        ;;
+      *)
+        if ! az backup vault backup-properties set --name "$v" --resource-group "$g" --soft-delete-feature-state Disable -o none; then
+          warn "$v: could not turn soft delete off"
+        fi
+        soft="$(soft_state "$v" "$g" || true)"
+        if [ "${soft,,}" = disabled ]; then
+          echo "unblock: $v: soft delete turned off"
+        else
+          warn "$v: soft delete is ${soft:-not readable} after turning it off, so deleted backup data may be kept for 14 days"
+          UNVERIFIED+=("$v soft delete")
+        fi
+        ;;
+    esac
+    # Items already soft-deleted (protection stopped while soft delete was on) are
+    # brought back first, so the loop below can delete their backup data for good.
+    while IFS=$'\t' read -r item bmt wt; do
       [ -z "$item" ] && continue
-      az backup protection undelete --ids "$item" -o none || warn "$v: could not undelete a soft-deleted item"
-    done < <(azq backup item list --vault-name "$v" --resource-group "$g" --query "[?properties.isScheduledForDeferredDelete].id" -o tsv)
-    while IFS= read -r item; do
+      typed=()
+      case "${bmt:-}" in
+        AzureIaasVM | AzureStorage | AzureWorkload)
+          typed=(--backup-management-type "$bmt")
+          [ -n "${wt:-}" ] && typed+=(--workload-type "$wt")
+          ;;
+      esac
+      if az backup protection undelete --ids "$item" "${typed[@]}" -o none; then
+        echo "unblock: $v: soft-deleted item ${item##*/} undeleted"
+      else warn "$v: could not undelete the soft-deleted item ${item##*/}"; fi
+    done < <(azq backup item list --vault-name "$v" --resource-group "$g" --query "[?properties.isScheduledForDeferredDelete].[id, properties.backupManagementType, properties.workloadType]" -o tsv)
+    while IFS=$'\t' read -r item bmt wt; do
       [ -z "$item" ] && continue
-      if az backup protection disable --ids "$item" --delete-backup-data true --yes -o none; then
+      typed=()
+      case "${bmt:-}" in
+        "") ;;
+        AzureIaasVM | AzureStorage | AzureWorkload)
+          typed=(--backup-management-type "$bmt")
+          [ -n "${wt:-}" ] && typed+=(--workload-type "$wt")
+          ;;
+        *)
+          warn "$v: ${item##*/} is a $bmt item, which the CLI cannot stop; stop it in the portal or the agent"
+          continue
+          ;;
+      esac
+      if az backup protection disable --ids "$item" --delete-backup-data true --yes "${typed[@]}" -o none; then
         echo "unblock: $v: protection stopped and backup data deleted for ${item##*/}"
       else warn "$v: could not stop protection for ${item##*/}"; fi
-    done < <(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].id" -o tsv)
+    done < <(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].[id, properties.backupManagementType, properties.workloadType]" -o tsv)
+    # Wait (bounded) until the vault lists no items. A list that fails says nothing
+    # about the items: it is never "none left", and if the last try fails too the
+    # vault is unverified (a warning; the run still goes on).
+    tries=$(((VAULT_WAIT + 14) / 15))
+    for ((n = 0; ; n++)); do
+      if left="$(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].id" -o tsv)"; then
+        listed=true
+        if [ -z "$left" ]; then
+          echo "unblock: $v: no backup items left"
+          break
+        fi
+      else
+        listed=false
+        warn "$v: could not list backup items, so whether any are left is not known"
+      fi
+      if [ "$n" -ge "$tries" ]; then
+        if [ "$listed" = true ]; then
+          warn "$v: $(grep -c . <<<"$left") backup item(s) still listed after $VAULT_WAIT s; the destroy goes ahead and the safety net tries again"
+        else
+          UNVERIFIED+=("$v backup items")
+        fi
+        break
+      fi
+      sleep 15
+    done
   done <<<"${vaults[$g]}"
 done
 
@@ -166,5 +267,9 @@ for g in "${groups[@]}"; do
   done <<<"${vaults[$g]}"
 done
 
+if [ "${#UNVERIFIED[@]}" -gt 0 ]; then
+  unverified="$(printf '%s; ' "${UNVERIFIED[@]}")"
+  warn "unverified: ${unverified%; } (Azure could not confirm them); the destroy goes ahead, and the safety net and Verify clean decide"
+fi
 echo "unblock: done"
 exit 0

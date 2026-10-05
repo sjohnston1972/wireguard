@@ -220,7 +220,11 @@ jobs:
       # time (full source addresses), no provisioners, modules, imports or
       # other backends get as far as terraform init.
       # Bicep labs keep .bicep files in terraform/; they are compiled to ARM
-      # JSON first, which Terraform deploys into the lab's own group.
+      # JSON first (destroy too: Terraform reads the JSON with file()), which
+      # Terraform deploys into the lab's own group, and the plan's scope check
+      # reads in full. The compiler is the pinned one (scripts/lib/bicep.mjs),
+      # downloaded from the official release and refused unless its checksum
+      # matches, before it is made runnable; it runs without this step's keys.
       - name: Terraform init
         id: init
         if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && env.LAB_HAS_TF == 'true' && (inputs.action == 'deploy' || inputs.action == 'destroy' || inputs.action == 'test')
@@ -229,16 +233,24 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          BICEP_VERSION: "0.47.16"
+          BICEP_SHA256: 64c345a58e0c3e48b1bc98a4e62d6b3adb1d238281297de3400aeafb2697aa5a
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Terraform init"
           set -euo pipefail
           node "$GITHUB_WORKSPACE/infra/ci/lab-lint.mjs" "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
           cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
           shopt -s nullglob
-          for f in *.bicep; do
-            az bicep build --file "$f" --outfile "${f%.bicep}.json"
-            echo "built ${f%.bicep}.json from $f"
-          done
+          bicep_files=(*.bicep)
+          if [ "${#bicep_files[@]}" -gt 0 ]; then
+            curl -fsSLo "$RUNNER_TEMP/bicep" "https://github.com/Azure/bicep/releases/download/v$BICEP_VERSION/bicep-linux-x64"
+            echo "$BICEP_SHA256  $RUNNER_TEMP/bicep" | sha256sum -c -
+            chmod +x "$RUNNER_TEMP/bicep"
+            for f in "${bicep_files[@]}"; do
+              env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" TMPDIR="$RUNNER_TEMP" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$RUNNER_TEMP/bicep" build "$f" --outfile "${f%.bicep}.json"
+              echo "built ${f%.bicep}.json from $f with Bicep $BICEP_VERSION"
+            done
+          fi
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           terraform init -no-color -input=false -backend-config="bucket=$R2_BUCKET" -backend-config="key=labs/$LAB_ID/terraform.tfstate"
 

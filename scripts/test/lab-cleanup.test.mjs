@@ -87,6 +87,176 @@ test("unblock removes locks, legal holds, unlocked immutability, backup protecti
   w.cleanup();
 });
 
+// Lab 19's vault, as unblock finds it (labs batch 2 plan, B0.5).
+const L19 = "az104-19-backup";
+const R19 = `rg-lab-${L19}`;
+const VAULT = [
+  { match: "^group list", out: `${R19}\n${R19}-irp1\nrg-lab-az104-07-files` },
+  { match: `^backup vault list --resource-group ${R19} `, out: "rsv-lab" },
+];
+/** Soft delete already off: for tests about other things (a test about soft delete gives its own rule). */
+const SOFT_OFF = { match: "^backup vault backup-properties show", out: "Disabled" };
+const ITEM_VM = `/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/iaasvmcontainerv2;${R19};vm-app/protectedItems/vm;iaasvmcontainerv2;${R19};vm-app`;
+
+test("unblock turns an unlocked vault's immutability off before soft delete, and warns on a locked one", { skip }, () => {
+  const w = world([...VAULT, { match: "^backup vault backup-properties show", out: ["Enabled", "Disabled"] }, { match: "^backup vault show .*immutabilitySettings", out: "Unlocked" },{ match: "^backup item list", out: "" }]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const show = firstCall(calls, /^az backup vault show --name rsv-lab --resource-group rg-lab-az104-19-backup --query properties\.securitySettings\.immutabilitySettings\.state -o tsv$/);
+  const off = firstCall(calls, /^az backup vault update --name rsv-lab --resource-group rg-lab-az104-19-backup --immutability-state Disabled -o none$/);
+  const soft = firstCall(calls, /^az backup vault backup-properties set --name rsv-lab .*--soft-delete-feature-state Disable/);
+  assert.ok(show >= 0 && off > show && soft > off, `immutability off, then soft delete off:\n${calls.join("\n")}`);
+  assert.match(r.out, /rsv-lab: unlocked immutability turned off/);
+  w.cleanup();
+
+  // Locked: nothing can turn it off. Said loudly, never "updated", and the run still ends 0.
+  const l = world([...VAULT, SOFT_OFF, { match: "^backup vault show .*immutabilitySettings", out: "Locked" }, { match: "^backup item list", out: "" }]);
+  const lr = l.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(lr.status, 0, lr.out);
+  assert.equal(firstCall(l.calls(), /^az backup vault update/), -1);
+  assert.match(lr.out, /::warning::unblock: rsv-lab: immutability is LOCKED/);
+  // Disabled (or a vault that cannot be read): nothing to do.
+  const d = world([...VAULT, SOFT_OFF, { match: "^backup vault show", out: "Disabled" }, { match: "^backup item list", out: "" }]);
+  assert.equal(d.run("infra/ci/lab-unblock.sh", [L19]).status, 0);
+  assert.equal(firstCall(d.calls(), /^az backup vault update/), -1);
+  l.cleanup();
+  d.cleanup();
+});
+
+// Lab 19's vault is made with soft delete on (azurerm refuses a vault made with it off), so unblock turns it off
+// before any backup data is deleted. `az backup vault backup-properties show` answers [storage config, vault config];
+// the vault config's properties.softDeleteFeatureState is Enabled, Disabled or AlwaysON (az 2.86, azure-cli custom.py).
+const SOFT_SHOW = /^az backup vault backup-properties show --name rsv-lab --resource-group rg-lab-az104-19-backup --query \[\]\.properties\.softDeleteFeatureState \| \[0\] -o tsv$/;
+const SOFT_SET = /^az backup vault backup-properties set --name rsv-lab --resource-group rg-lab-az104-19-backup --soft-delete-feature-state Disable -o none$/;
+const SOFT_ITEMS = { match: "^backup item list .*isScheduledForDeferredDelete", out: `${ITEM_VM}\tAzureIaasVM\tVM` };
+
+test("unblock turns soft delete off and checks it, then undeletes soft-deleted items and deletes their backup data", { skip }, () => {
+  const w = world([
+    ...VAULT,
+    { match: "^backup vault backup-properties show", out: ["Enabled", "Disabled"] },
+    SOFT_ITEMS,
+    { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` },
+    { match: "^backup item list", out: "" },
+  ]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const order = [
+    firstCall(calls, SOFT_SHOW),
+    firstCall(calls, SOFT_SET),
+    lastCall(calls, SOFT_SHOW),
+    firstCall(calls, new RegExp(`^az backup protection undelete --ids ${ITEM_VM.replace(/[.;]/g, "\\$&")} --backup-management-type AzureIaasVM --workload-type VM -o none$`)),
+    firstCall(calls, /^az backup protection disable --ids .*vm-app --delete-backup-data true --yes --backup-management-type AzureIaasVM --workload-type VM -o none$/),
+  ];
+  for (const i of order) assert.ok(i >= 0, `missing call; calls were:\n${calls.join("\n")}`);
+  assert.deepEqual([...new Set(order)].sort((a, b) => a - b), order, `out of order:\n${calls.join("\n")}`);
+  assert.match(r.stdout, /unblock: rsv-lab: soft delete turned off/);
+  assert.match(r.stdout, /unblock: rsv-lab: soft-deleted item .*vm-app undeleted/);
+  assert.doesNotMatch(r.stderr, /unverified/);
+  w.cleanup();
+
+  // Already off: nothing to set (a second run finds nothing to do).
+  const off = world([...VAULT, { match: "^backup vault backup-properties show", out: "Disabled" }, { match: "^backup item list", out: "" }]);
+  assert.equal(off.run("infra/ci/lab-unblock.sh", [L19]).status, 0);
+  assert.equal(firstCall(off.calls(), /backup-properties set/), -1);
+  off.cleanup();
+});
+
+test("unblock: soft delete always on, or not off after asking, is unverified and the run goes on", { skip }, () => {
+  // AlwaysON cannot be turned off by anyone: never asked, said loudly, and protection is still stopped.
+  const on = world([...VAULT, { match: "^backup vault backup-properties show", out: "AlwaysON" }, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list", out: "" }]);
+  const r = on.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(firstCall(on.calls(), /backup-properties set/), -1);
+  assert.match(r.stderr, /::warning::unblock: rsv-lab: soft delete is ALWAYS ON/);
+  assert.match(r.stderr, /::warning::unblock: unverified: .*rsv-lab soft delete/);
+  assert.ok(firstCall(on.calls(), /^az backup protection disable --ids .*vm-app/) >= 0);
+  assert.match(r.stdout, /unblock: done/);
+  on.cleanup();
+
+  // Asked, but still Enabled when read back (or the set failed, or the state cannot be read): unverified.
+  for (const [rules, why] of [
+    [[{ match: "^backup vault backup-properties show", out: "Enabled" }], "still on"],
+    [[{ match: "^backup vault backup-properties show", out: ["Enabled", "Enabled"] }, { match: "^backup vault backup-properties set", code: 1, err: "ERROR: (UserErrorSoftDeleteStateChangeNotAllowed)" }], "set refused"],
+    [[{ match: "^backup vault backup-properties show", out: "", code: 1, err: "ERROR: (ServiceUnavailable)" }], "unreadable"],
+  ]) {
+    const w = world([...VAULT, ...rules,{ match: "^backup item list", out: "" }]);
+    const x = w.run("infra/ci/lab-unblock.sh", [L19]);
+    assert.equal(x.status, 0, `${why}: ${x.out}`);
+    assert.ok(firstCall(w.calls(), SOFT_SET) >= 0, `${why}: soft delete off is still asked for`);
+    assert.match(x.stderr, /::warning::unblock: unverified: .*rsv-lab soft delete/, why);
+    assert.doesNotMatch(x.stdout, /soft delete turned off/, why);
+    w.cleanup();
+  }
+});
+
+test("unblock stops protection for backup items of every management type", { skip }, () => {
+  // `az backup item list` with no --backup-management-type sends no filter, so it lists every type (az 2.86, checked).
+  const items = [
+    [ITEM_VM, "AzureIaasVM", "VM"],
+    [`/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/storagecontainer;Storage;${R19};l19k3x9qsa/protectedItems/AzureFileShare;labshare`, "AzureStorage", "AzureFileShare"],
+    [`/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/vmappcontainer;compute;${R19};vm-sql/protectedItems/sqldatabase;mssqlserver;labdb`, "AzureWorkload", "SQLDataBase"],
+    [`/subscriptions/${SUB}/resourceGroups/${R19}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/backupFabrics/Azure/protectionContainers/mab;agent/protectedItems/mab;files`, "MAB", "FileFolder"],
+  ];
+  const w = world([...VAULT, SOFT_OFF, { match: "^backup item list .*\\[\\]\\.\\[id", out: [items.map((i) => i.join("\t")).join("\n"), ""] }, { match: "^backup item list", out: "" }]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  // Listed once, without a type filter, asking for each item's type.
+  const list = calls.find((c) => /^az backup item list .*\[\]\.\[id/.test(c));
+  assert.doesNotMatch(list, /--backup-management-type/);
+  const disables = calls.filter((c) => c.startsWith("az backup protection disable"));
+  assert.deepEqual(disables, items.slice(0, 3).map(([id, bmt, wt]) => `az backup protection disable --ids ${id} --delete-backup-data true --yes --backup-management-type ${bmt} --workload-type ${wt} -o none`));
+  // An agent (MAB) item cannot be stopped from the CLI: a warning names it.
+  assert.match(r.out, /::warning::unblock: rsv-lab: .*mab;files.*MAB/);
+  w.cleanup();
+});
+
+test("unblock waits until a vault has no backup items, at most five minutes", { skip }, () => {
+  // Deleting backup data takes Azure a while: the vault lists the item until it is gone.
+  const gone = world([...VAULT, SOFT_OFF, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: [ITEM_VM, ITEM_VM, ""] }]);
+  const r = gone.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(r.status, 0, r.out);
+  const sleeps = gone.calls().filter((c) => c.startsWith("sleep "));
+  assert.deepEqual(sleeps, ["sleep 15", "sleep 15"]);
+  assert.match(r.out, /rsv-lab: no backup items left/);
+  // Still there after the wait (default 300 s): a warning, and the run goes on to destroy.
+  const stuck = world([...VAULT, SOFT_OFF, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: ITEM_VM }]);
+  const s = stuck.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(s.status, 0, s.out);
+  const waited = stuck.calls().filter((c) => c.startsWith("sleep ")).reduce((n, c) => n + Number(c.split(" ")[1]), 0);
+  assert.ok(waited <= 300 && waited >= 285, `waited ${waited} s`);
+  assert.match(s.out, /::warning::unblock: rsv-lab: 1 backup item\(s\) still listed after 300 s/);
+  assert.match(s.out, /unblock: done/);
+  // The wait is configurable (a release test may want longer), still bounded.
+  const short = world([...VAULT, SOFT_OFF, { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` }, { match: "^backup item list .*--query \\[\\]\\.id ", out: ITEM_VM }]);
+  short.run("infra/ci/lab-unblock.sh", [L19], { LAB_UNBLOCK_VAULT_WAIT_SECONDS: "30" });
+  assert.deepEqual(short.calls().filter((c) => c.startsWith("sleep ")), ["sleep 15", "sleep 15"]);
+  for (const x of [gone, stuck, short]) x.cleanup();
+});
+
+test("unblock: a backup item list that fails is unverified, never \"no backup items left\", and the run goes on", { skip }, () => {
+  const ITEMS = { match: "^backup item list .*\\[\\]\\.\\[id", out: `${ITEM_VM}\tAzureIaasVM\tVM` };
+  // Azure cannot answer the wait's list at all.
+  const down = world([...VAULT, SOFT_OFF, ITEMS, { match: "^backup item list .*--query \\[\\]\\.id ", out: "", code: 1, err: "ERROR: (ServiceUnavailable) try again later" }]);
+  const r = down.run("infra/ci/lab-unblock.sh", [L19], { LAB_UNBLOCK_VAULT_WAIT_SECONDS: "30" });
+  assert.equal(r.status, 0, r.out);
+  assert.doesNotMatch(r.out, /no backup items left/);
+  assert.match(r.stderr, /::warning::unblock: rsv-lab: could not list backup items/);
+  assert.match(r.stderr, /::warning::unblock: unverified: rsv-lab backup items/);
+  assert.match(r.stdout, /unblock: done/);
+  // Still bounded by the wait.
+  assert.deepEqual(down.calls().filter((c) => c.startsWith("sleep ")), ["sleep 15", "sleep 15"]);
+  // One failed list, then an empty one: that is "no items left", and nothing is unverified.
+  const blip = world([...VAULT, SOFT_OFF, ITEMS, { match: "^backup item list .*--query \\[\\]\\.id ", out: ["", ""], code: [1, 0] }]);
+  const b = blip.run("infra/ci/lab-unblock.sh", [L19]);
+  assert.equal(b.status, 0, b.out);
+  assert.match(b.stdout, /rsv-lab: no backup items left/);
+  assert.doesNotMatch(b.stderr, /unverified/);
+  for (const x of [down, blip]) x.cleanup();
+});
+
 test("unblock deletes Azure Files share snapshots (lab 7): a share with snapshots cannot be destroyed", { skip }, () => {
   const L7 = "az104-07-files";
   const R7 = `rg-lab-${L7}`;
@@ -132,14 +302,14 @@ const ENTRA = [
 ];
 
 test("safety net deletes rg-lab-<id> and rg-lab-<id>-* and lab-<id>- Entra objects when terraform destroy failed and state is missing", { skip }, () => {
-  const w = world([{ match: "^group list", out: GROUPS }, { match: "^account show", out: SUB }, ...ENTRA]);
+  const w = world([POLL(""), { match: "^group list", out: GROUPS }, { match: "^account show", out: SUB }, ...ENTRA]);
   // No terraform state, no terraform at all: the safety net works from Azure's own lists.
   const r = w.run("infra/ci/lab-safety-net.sh", [ID], { TF_STATE_MISSING: "1" });
   assert.equal(r.status, 0, r.out);
   const calls = w.calls();
   assert.ok(calls.includes(`az group delete --name ${RG} --yes --no-wait`), calls.join("\n"));
   assert.ok(calls.includes(`az group delete --name ${RG}-nodes --yes --no-wait`));
-  assert.ok(firstCall(calls, new RegExp(`^az group wait --deleted --name ${RG} `)) > firstCall(calls, new RegExp(`^az group delete --name ${RG} `)));
+  assert.ok(firstCall(calls, /^az group list --query \[\]\.\[name, properties\.provisioningState\]/) >firstCall(calls, new RegExp(`^az group delete --name ${RG} `)), "then polled until gone");
   assert.ok(calls.includes("az ad user delete --id u-ann"));
   assert.ok(firstCall(calls, /^az rest --method delete --url https:\/\/graph\.microsoft\.com\/v1\.0\/directory\/deletedItems\/u-ann/) > calls.indexOf("az ad user delete --id u-ann"), "then purged from the recycle bin, so the next deploy can reuse the name");
   assert.ok(calls.includes("az ad group delete --group g-readers"));
@@ -147,8 +317,81 @@ test("safety net deletes rg-lab-<id> and rg-lab-<id>-* and lab-<id>- Entra objec
   w.cleanup();
 });
 
+// The safety net polls `az group list` for each group's provisioningState: Deleting, back (the delete failed), or gone.
+const NAMES = (out) => ({ match: /^group list --query \[\]\.name /, out });
+const POLL = (out, code) => ({ match: /^group list --query \[\]\.\[name, properties\.provisioningState\]/, out, ...(code ? { code } : {}) });
+const sleptFor = (calls) => calls.filter((c) => c.startsWith("sleep ")).reduce((n, c) => n + Number(c.split(" ")[1]), 0);
+const deletesOf = (calls, g) => calls.filter((c) => c === `az group delete --name ${g} --yes --no-wait`).length;
+
+test("safety net: a group delete that failed (the group is back) is unblocked again and retried", { skip }, () => {
+  const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL([`${RG}\tDeleting`, `${RG}\tSucceeded`, `${RG}\tDeleting`, ""])]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [ID]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  assert.equal(deletesOf(calls, RG), 2, calls.join("\n"));
+  // Unblock ran (it lists the group's locks) between the first delete and the second.
+  const second = lastCall(calls, new RegExp(`^az group delete --name ${RG} `));
+  const unblock = firstCall(calls, new RegExp(`^az lock list --resource-group ${RG} `));
+  assert.ok(unblock > firstCall(calls, new RegExp(`^az group delete --name ${RG} `)) && unblock < second, calls.join("\n"));
+  assert.match(r.out, new RegExp(`retrying the delete of ${RG} \\(1 of 2\\)`));
+  assert.match(r.out, new RegExp(`safety net: ${RG} is gone`));
+  assert.equal(firstCall(calls, /^az group wait/), -1, "never az group wait, which cannot tell a failed delete from a slow one");
+  w.cleanup();
+});
+
+test("safety net: a group whose delete keeps failing is retried a bounded number of times, then left behind", { skip }, () => {
+  const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tSucceeded`), ...ENTRA]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [ID]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  assert.equal(deletesOf(calls, RG), 3, "the first delete and two retries");
+  assert.match(r.out, new RegExp(`::warning::safety net: ${RG}: the delete failed 3 times .*left behind`));
+  // And the sweep goes on to Entra rather than hanging.
+  assert.ok(calls.includes("az ad user delete --id u-ann"), calls.join("\n"));
+  // LAB_DELETE_RETRIES sets the bound.
+  const once = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tFailed`)]);
+  once.run("infra/ci/lab-safety-net.sh", [ID], { LAB_DELETE_RETRIES: "0" });
+  assert.equal(deletesOf(once.calls(), RG), 1);
+  w.cleanup();
+  once.cleanup();
+});
+
+test("safety net: a slow delete is waited for only until the job's deadline, then reported as left behind", { skip }, () => {
+  const now = Math.floor(Date.now() / 1000);
+  // Parse payload's LAB_JOB_DEADLINE: 1000 s left in the job, 420 s of it kept for the rest of the job.
+  const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tDeleting`)]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [ID], { LAB_JOB_DEADLINE: String(now + 1000) });
+  assert.equal(r.status, 0, r.out);
+  const slept = sleptFor(w.calls());
+  assert.ok(slept <= 580 && slept >= 500, `slept ${slept} s`);
+  assert.equal(deletesOf(w.calls(), RG), 1, "Deleting is slow, not failed: no retry");
+  assert.match(r.out, new RegExp(`::warning::safety net: ${RG} was not gone within \\d+s.*left behind`));
+  // A deadline already past: no waiting at all.
+  const late = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tDeleting`)]);
+  const lr = late.run("infra/ci/lab-safety-net.sh", [ID], { LAB_JOB_DEADLINE: String(now - 60) });
+  assert.equal(lr.status, 0, lr.out);
+  assert.equal(sleptFor(late.calls()), 0);
+  assert.match(lr.out, /left behind/);
+  // No deadline (a run by hand): LAB_DELETE_WAIT_SECONDS bounds it.
+  const hand = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tDeleting`)]);
+  hand.run("infra/ci/lab-safety-net.sh", [ID], { LAB_DELETE_WAIT_SECONDS: "120" });
+  assert.ok(sleptFor(hand.calls()) <= 120);
+  for (const x of [w, late, hand]) x.cleanup();
+});
+
+test("safety net: a group list that fails while polling is not read as gone", { skip }, () => {
+  const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(["", `${RG}\tDeleting`, ""], [1, 0, 0])]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [ID]);
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.stderr, /could not list resource groups to see how the deletes are going/);
+  assert.match(r.stdout, new RegExp(`safety net: ${RG} is gone`));
+  // Polled three times: the failed list, Deleting, then gone (a failure read as "gone" would stop at one).
+  assert.equal(w.calls().filter((c) => /^az group list --query \[\]\.\[name/.test(c)).length, 3);
+  w.cleanup();
+});
+
 test("safety net never touches rg-lab-<id>x, another lab or NetworkWatcherRG", { skip }, () => {
-  const w = world([{ match: "^group list", out: GROUPS }, { match: "^account show", out: SUB }, ...ENTRA]);
+  const w = world([POLL(""), { match: "^group list", out: GROUPS }, { match: "^account show", out: SUB }, ...ENTRA]);
   w.run("infra/ci/lab-safety-net.sh", [ID]);
   const deletes = w.calls().filter((c) => / delete /.test(c) || / wait /.test(c));
   for (const c of deletes) assert.ok(!/rg-lab-az104-06-blob-securityx|rg-lab-az104-07-files|NetworkWatcherRG|rg-wg-ondemand|u-x|u-steven|g-other/.test(c), c);
@@ -159,7 +402,7 @@ test("governance safety net deletes custom roles, policy assignments and definit
   const G = "az104-03-mgmt-groups";
   const MG = (n) => `/providers/Microsoft.Management/managementGroups/${n}`;
   const w = world([
-    { match: "^group list", out: `rg-lab-${G}` },
+    POLL(""), { match: "^group list", out: `rg-lab-${G}` },
     { match: "^account show", out: SUB },
     { match: "^role definition list", out: `7331dcae-0000-4000-8000-000000000001\tlab-${G}-operator\t/subscriptions/${SUB}\nb24988ac-6180-42a0-ab88-20f7382dd24c\tContributor\t/` },
     { match: "^role assignment list .*--role 7331dcae-0000-4000-8000-000000000001", out: "/subscriptions/x/providers/Microsoft.Authorization/roleAssignments/ra1" },
@@ -204,7 +447,7 @@ test("lab 1 with its Terraform state gone: the safety net asks for the lab's fix
   const GUID = "7331dcae-09d3-477e-8da7-2895697f0fc0";
   const ROLE_URL = `/subscriptions/${SUB}/providers/Microsoft.Authorization/roleDefinitions/${GUID}`;
   const w = world([
-    { match: "^group list", out: `rg-lab-${L1}` },
+    POLL(""), { match: "^group list", out: `rg-lab-${L1}` },
     { match: "^account show", out: SUB },
     // The subscription-level listing does not show a role assignable only inside rg-lab-<id>.
     { match: "^role definition list", out: "b24988ac-6180-42a0-ab88-20f7382dd24c\tContributor\t/" },

@@ -10,6 +10,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCatalogueForTest } from "../src/labs/catalogue";
 import { api, advance, deployLab, freeze, labDispatches, labEnv, report, runningLab, secrets, session, MIN, NOW } from "./labs-helpers";
 import type { Env } from "../src/env";
+import { LAB_UNITS, labItem, normalisePrices, NOT_LINUX_PAYG } from "../src/insights/feeds/prices";
+import { retailPrice } from "../src/labs/prices";
+import type { PriceRow } from "../src/insights/price";
+import { costMarker, estimateGbpH } from "../../shared/labs";
+import * as verify from "../../scripts/labs-verify.mjs";
 
 afterEach(() => {
   setCatalogueForTest(null);
@@ -139,5 +144,41 @@ describe("read routes (L2.7)", () => {
     expect(o.gbpH).toBeCloseTo(0.0077 + 0.0117, 6);
     expect(o.rePeer).toBe(1); // lab 6 asked to peer and the gateway is not up
     void NOW;
+  });
+});
+
+describe("lab prices (batch 2, B0.6)", () => {
+  it('a lab meter priced per "1/Hour" is kept by the feed and read as £ per hour', () => {
+    // App Gateway Basic's meters come per "1/Hour", not "1 Hour" (uksouth, Retail Prices API).
+    const meter = "Basic Fixed Cost";
+    const reply = {
+      Items: [
+        { currencyCode: "GBP", type: "Consumption", productName: "Application Gateway Basic", skuName: "Basic", armRegionName: "uksouth", meterName: meter, retailPrice: 0.0187, unitOfMeasure: "1/Hour", isPrimaryMeterRegion: true },
+      ],
+    };
+    const rows = normalisePrices(reply, [], [meter]);
+    expect(rows).toEqual([{ item: labItem(meter), gbp: 0.0187, unit: "1/Hour", meter }]);
+    const now = new Date("2026-10-05T09:00:00.000Z");
+    const stored: PriceRow[] = rows.map((r) => ({ region: "uksouth", item: r.item, gbp: r.gbp, unit: r.unit, fetched_at: "2026-10-05T03:00:00.000Z" }));
+    const item = { name: "Application Gateway Basic, fixed", gbp_h: 0.02, retail: { meter, unit: "1/Hour" } };
+    expect(retailPrice(item, stored, "uksouth", now)?.gbpH).toBeCloseTo(0.0187, 6);
+    // The other units still convert: a day's price over 24 hours, a month's over 730.
+    expect(retailPrice({ ...item, retail: { meter, unit: "1/Day" } }, [{ ...stored[0]!, unit: "1/Day", gbp: 2.4 }], "uksouth", now)?.gbpH).toBeCloseTo(0.1, 6);
+    expect(retailPrice({ ...item, retail: { meter, unit: "1/Month" } }, [{ ...stored[0]!, unit: "1/Month", gbp: 7.3 }], "uksouth", now)?.gbpH).toBeCloseTo(0.01, 6);
+  });
+
+  it("labs-verify's units and Windows filter equal the price feed's", () => {
+    expect([...verify.LAB_UNITS]).toEqual([...LAB_UNITS]);
+    expect([...LAB_UNITS].sort()).toEqual(["1 Hour", "1/Day", "1/Hour", "1/Month"]);
+    expect(verify.NOT_LINUX_PAYG.source).toBe(NOT_LINUX_PAYG.source);
+    expect(verify.NOT_LINUX_PAYG.flags).toBe(NOT_LINUX_PAYG.flags);
+  });
+
+  it("the content suite's estimate and marker equal shared/labs.ts", async () => {
+    const content = await import("../../scripts/test/fixtures/labs/estimate.mjs");
+    for (const items of [[{ name: "a", gbp_h: 0.0092, qty: 3 }, { name: "b", gbp_h: 0.0018 }], [{ name: "c", gbp_h: 0.123456789 }], []]) {
+      expect(content.estimateGbpH(items)).toBe(estimateGbpH(items));
+    }
+    for (const [h, d] of [[0.049, 5], [0.05, 5], [0.499, 12], [0.5, 1], [0.01, 30], [0, 0]] as const) expect(content.costMarker(h, d)).toBe(costMarker(h, d));
   });
 });

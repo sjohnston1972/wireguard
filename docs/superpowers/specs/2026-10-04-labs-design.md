@@ -595,3 +595,82 @@ from the sections above, these win.
 15. **A lab run in the Activity list keeps a gateway `action`** (`apply` for deploy, peer and test; `destroy` for destroy and
     unpeer); `RunRow.lab.action` carries the lab action.
 16. **Deploy and Extend take whole hours, 1 to 12**; Extend may instead ask `toMax`.
+
+## 17. Rulings from the batch 2 plan
+
+Copied from `docs/superpowers/plans/2026-10-05-labs-batch2-plan.md` (rulings 1–12, B0's 13–20 as built on
+`feat/labs-b2-engine`, and 21 on from the batch's review fix pass; its "B0 names as built" section has the exact names). Where they differ from the sections above,
+these win; §3.4's `az bicep build` and §5 step 5's are replaced by ruling 1.
+
+1. **Bicep is the §3.4 hybrid, pinned.** `az bicep build` downloads whatever Bicep is newest; it is replaced by a
+   checksum-pinned `bicep build` (Bicep 0.47.16, `scripts/lib/bicep.mjs`). `lab-scope` reads the built template from the plan
+   (`template_content` is known at plan) and refuses Graph extension resources, deployment scripts, linked templates
+   (`templateLink`), template specs, extension imports, non-resource-group schemas and any template it cannot read.
+   `labs-tf` checks the built JSON with `templateProblems`.
+2. **A `retail.meter` must be unique in uksouth.** The feed matches on meter name alone, and four names batch 2 wants are
+   shared: `P0v3 App` (Linux £0.0653, Windows £0.1257), `S1 App` (Linux £0.0755, Windows £0.0943), `Standard Fixed Cost` and `Standard Capacity Units` (App Gateway v2,
+   WAF v2, AGC), `Standard vCPU Duration` (ACI, Logic Apps). Those items, the load balancer (no regional row), DNS zones
+   (tiered, region "Zone 1"), ACI memory (`1 GB Hour`) and Log Analytics stay authored. `labs-verify --meters` proves the rest.
+3. **`capacity.vm_sizes` lists one entry per VM at its maximum** (the capacity warning counts each entry as one VM); cost
+   `qty` is the default count. Lab 9 lists three `Standard_B1s` and prices two.
+4. **Markers come from `costMarker`,** not §12.2's planning column: lab 10 is ££ (S1 Linux; P0v3 has no default quota on pay-as-you-go), lab 16 is ££ on App Gateway
+   **Standard_v2** (Steven's choice over Basic after the batch review: autoscale 0–2, as azurerm takes no maximum below 2;
+   about £0.24/h, its shared meters authored by ruling 2; lab version 2), lab 19 is £ by estimate.
+5. **No public IP on any VM.** VMs serve with `python3 -m http.server` from a cloud-init systemd unit. Public by nature and
+   accepted: lab 10's app and slot, lab 11's Container App ingress, lab 15's public zone. Lab 16's App Gateway must own a public
+   IP; its only listener is private.
+6. **Lab 9 uses a Uniform scale set** (`azurerm_linux_virtual_machine_scale_set`); Flexible is a Things-to-try item.
+7. **Lab 11's Container Apps environment is consumption-only with no infrastructure subnet,** so Azure makes no `MC_`/`ME_`
+   group outside `rg-lab-<id>`; the scope check refuses an environment with a subnet unless its infrastructure group is
+   `rg-lab-<id>-*`. ACI runs in a delegated subnet. The registry is empty: images come from MCR.
+8. **Lab 17 makes no Network Watcher resource.** Azure's own lives in `NetworkWatcherRG`; the VMs get the
+   `NetworkWatcherAgentLinux` extension only.
+9. **Lab 18 never writes subscription diagnostic settings;** the workspace is capped and permanently deleted on destroy.
+   **Lab 19's vault** is Standard, LRS, `soft_delete_enabled = true` (Azure requires it on a new vault; unblock turns it
+   off before destroy), `immutability = "Disabled"`; instant restore goes to
+   `rg-lab-<id>-irp`.
+10. **Lab 15's private zone is `lab15.internal`**: the gateway's dnsmasq already forwards `internal` to Azure DNS (§6).
+11. **`labs-pr0-check` is not needed:** `lab.yml` is on `main`, and `--ref feat/labs-b2` runs that branch's `lab.yml` and
+    `infra/ci/`. B0's workflow changes reach `main` in the batch PR itself.
+12. **No UI change** in batch 2.
+13. **No unpinned Bicep anywhere.** lab.yml step 5 and CI download the linux-x64 asset from the official GitHub release and
+    run it only after `sha256sum -c`, with no secrets in its environment (`env -i`). `npm run labs-tf` runs `$BICEP` only if it
+    matches the pin byte for byte, else the pinned download (checked before every use); never a `bicep` from PATH, never
+    `az bicep`. Without one, a Bicep lab's build, init and validate are skipped with a note (a failure with
+    `LABS_TF_REQUIRE_BICEP=1`, as in CI).
+14. **A template may not reach beyond the lab's group,** even by name: any literal subscription-level or management-group id,
+    `resourceId()` with a resource group or subscription argument, `subscriptionResourceId()`, `tenantResourceId()` and
+    `managementGroupResourceId()` are refused (`outside-scope`), as are the gateway's names (`gateway`). A plan whose
+    `template_content` is unknown is refused; in HCL it is left to `labs-tf`.
+15. **Terraform deployment scripts** (`azurerm_resource_deployment_script_*`) **and template deployments at subscription,
+    management group or tenant scope are refused,** as is `template_spec_version_id` (`outside-scope`).
+16. **The lint reads `.bicep` too,** before the build: literal CIDRs, the gateway's names, registry or template spec modules
+    (`module`), `extension`/`import`/`provider` statements (`provider`), and a committed `x.json` beside `x.bicep` (`file`).
+17. **The PR 0 comparison test is skipped from batch 2 on** (ruling 11); `npm run labs-pr0-check` stays for a future PR 0.
+18. **The shared content suite binds every batch 2 lab:** an S4 OS disk priced per VM, an E1 item per data disk,
+    `retail.sku` `qty` = the default count, and a public IP only for an Application Gateway.
+19. **`npm run labs-verify`** (network, never in `npm test`): every readme link answers 200, every retail meter has one
+    uksouth price in a unit the feed reads (now including `1/Hour`), and an authored price more than 25% from Azure's is a
+    problem. Lab 6's `Standard Private Endpoint` has no uksouth row (Azure prices it under region `Global`), so the feed never
+    refreshes it: a batch 1 finding. The batch 2 integration drops its `retail` entry and authors it (£0.0076/h against
+    Azure's Global £0.0075/h), as ruling 2 does for meters the feed cannot read; lab 6 is version 2.
+20. **Vault teardown:** unblock turns an `Unlocked` vault immutability `Disabled` before soft delete (a `Locked` one is a loud
+    warning), stops protection with data deleted for every management type the CLI can (`AzureIaasVM`, `AzureStorage`,
+    `AzureWorkload`; `MAB` is a warning), and waits, polling every 15 s, until the vault lists no items, at most
+    `LAB_UNBLOCK_VAULT_WAIT_SECONDS` (default 300). It never fails the run. A failed item list is never read as "no items
+    left": it is a warning, and if the wait ends on one, the vault's items are reported "unverified" (review fix pass).
+21. **A template deploys only allow-listed types** (review fix pass). `templateProblems` reads keys case-insensitively, as
+    ARM does, and refuses every resource type not in `TEMPLATE_TYPES` (`infra/ci/lab-scope.mjs`): today storage accounts,
+    VNets and subnets, NSGs and their rules (lab 12), and `Microsoft.Resources/deployments` only as Bicep emits a module
+    (inline template, inner expression scope, Incremental, no `resourceGroup`/`subscriptionId`/`scope`). A lab that needs
+    another type adds it there with the reason it can only ever land inside the lab's group; the refusal says so. Types
+    that make or reach other groups (AKS without `nodeResourceGroup`, Container Apps environments in a subnet, managed
+    applications, deployment stacks) stay off it. `subscription()`, `tenant()`, `managementGroup()`,
+    `extensionResourceId()` and any literal `/subscriptions/` or `/resourceGroups/` path are refused too; `resourceGroup()`
+    is the deployment's own group and is fine. `metadata` is skipped only where it is ARM's description slot.
+22. **The safety net retries a failed group delete and never outlives the job.** It issues every delete with `--no-wait`
+    and polls the groups' `provisioningState` (`LAB_DELETE_POLL_SECONDS`, default 30) instead of `az group wait --deleted`,
+    which cannot tell a failed delete from a slow one. A group back in `Succeeded`/`Failed` gets unblock run again and its
+    delete re-issued, at most `LAB_DELETE_RETRIES` (default 2) times. Polling stops by Parse payload's `LAB_JOB_DEADLINE`
+    (the job's start plus `timeout_min`) less 420 s for the rest of the job, or `LAB_DELETE_WAIT_SECONDS` (default 1500)
+    without one; a group still there is a warning, "left behind", and Verify clean names it.
