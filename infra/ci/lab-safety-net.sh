@@ -10,6 +10,8 @@
 # this lab and nothing else:
 #
 #   resource groups        rg-lab-<id> and rg-lab-<id>-*   (never rg-lab-<id>x, NetworkWatcherRG, rg-wg-*)
+#   soft-deleted vaults    Key Vaults whose id names one of those groups, purged after the
+#                          group deletes (--verify lists one as "<name> (soft-deleted vault)")
 #   Entra users            user principal name starting lab-<id>-  (deleted, then purged from the
 #                          recycle bin so the next deploy can reuse the name)
 #   Entra groups           display name starting lab-<id>-
@@ -181,6 +183,19 @@ list_roles() {
     get_role "$guid" "$name"
   done <<<"$fixed"
 }
+# "name<TAB>location": soft-deleted Key Vaults that lived in one of the lab's groups
+# (spec §17 ruling 30: Key Vault keeps a deleted vault for its retention, 7 days in the labs).
+list_deleted_vaults() {
+  ROWS=()
+  local name loc id rg re='/resourceGroups/([^/]+)/'
+  fetch "soft-deleted Key Vaults" false keyvault list-deleted --resource-type vault --query "[].[name, properties.location, properties.vaultId]" -o tsv || return 0
+  while IFS=$'\t' read -r name loc id; do
+    [ -n "$name" ] || continue
+    [[ "$id" =~ $re ]] || continue
+    rg="${BASH_REMATCH[1]}"
+    owns_rg "$rg" && ROWS+=("$name"$'\t'"$loc")
+  done <<<"$OUT"
+}
 # "name"
 list_mgs() {
   ROWS=()
@@ -257,6 +272,8 @@ if [ "$MODE" = verify ]; then
   first() { local r; for r in "${ROWS[@]}"; do left+=("${r%%$'\t'*}"); done; }
   second() { local r x; for r in "${ROWS[@]}"; do x="${r#*$'\t'}"; left+=("${x%%$'\t'*}"); done; }
   list_groups; first
+  list_deleted_vaults
+  for r in "${ROWS[@]}"; do left+=("${r%%$'\t'*} (soft-deleted vault)"); done
   list_users; second
   list_entra_groups; second
   list_roles; second
@@ -372,6 +389,15 @@ for ((n = 0; ${#pending[@]} > 0 && n < polls; n++)); do
   [ "$(date +%s)" -ge "$end" ] && break
 done
 for g in "${pending[@]}"; do warn "$g was not gone within ${budget}s (the job's time is nearly up); left behind"; done
+
+# 1b. Key Vaults the group deletes soft-deleted (or a destroy that did not purge):
+# purged, so nothing of the lab is kept for the retention period and the next
+# session can reuse the name. Only vaults whose id names one of the lab's groups.
+list_deleted_vaults
+for row in "${ROWS[@]}"; do
+  IFS=$'\t' read -r name loc <<<"$row"
+  if az keyvault purge --name "$name" --location "$loc"; then echo "safety net: purged soft-deleted vault $name"; else warn "could not purge soft-deleted vault $name"; fi
+done
 
 # Purge a deleted Entra object from the recycle bin (it takes a moment to arrive there).
 purge() {
