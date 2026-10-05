@@ -240,3 +240,108 @@ test(`${LZ}: no Entra objects and no data source but the subscription`, () => {
   assert.deepEqual(l.blocks.filter((b) => b.kind === "data").map((b) => b.labels[0]), ["azurerm_subscription"]);
   assert.doesNotMatch(uncomment(Object.values(l.files).join("\n")), /"\/subscriptions\//, "no literal subscription ids");
 });
+
+// ── Lab 21: monitoring at scale ──────────────────────────────────────────
+
+const MON = "az305-21-monitoring-scale";
+const MONITORING_CONTRIBUTOR = "749f88d5-cbae-40b8-bcfc-e573ddc772fa";
+
+labContentSuite(MON, { marker: "£", identity: "match" });
+
+/** The DINE definition: the one azurerm_policy_definition named lab-<id>-kv-diagnostics. */
+const dine = (l) => named(l, "azurerm_policy_definition", '"lab-${var.lab_id}-kv-diagnostics"');
+
+test(`${MON}: a PerGB2018 workspace capped at 0.05 GB a day, deleted permanently on destroy`, () => {
+  const l = lab(MON);
+  const ws = one(l, "azurerm_log_analytics_workspace").body;
+  assert.equal(attr(ws, "sku"), '"PerGB2018"');
+  assert.equal(attr(ws, "daily_quota_gb"), "0.05", "ingestion can never run away");
+  assert.equal(attr(ws, "retention_in_days"), "30", "30 days: the free retention, and the least PerGB2018 takes");
+  const law = nested(features(l), "log_analytics_workspace");
+  assert.ok(law !== undefined, "features has a log_analytics_workspace block");
+  assert.equal(attr(law, "permanently_delete_on_destroy"), "true", "a soft-deleted workspace would be recovered by the next deploy");
+  const item = l.yaml.cost.items.find((i) => /Log Analytics/i.test(i.name));
+  assert.ok(item, "a Log Analytics cost item");
+  assert.equal(item.retail, undefined, "Log Analytics stays authored (batch 2 ruling 2)");
+});
+
+test(`${MON}: a DINE definition whose only role is Monitoring Contributor`, () => {
+  const l = lab(MON);
+  const d = dine(l).body;
+  assert.equal(attr(d, "policy_type"), '"Custom"');
+  assert.equal(attr(d, "mode"), '"Indexed"');
+  assert.equal(attr(d, "management_group_id"), undefined, "defined at the subscription, as lab 2's (assigned only at rg-lab-<id>)");
+  assert.match(d, /equals\s*=\s*"Microsoft\.KeyVault\/vaults"/, "it governs Key Vaults");
+  assert.match(d, /effect\s*=\s*"deployIfNotExists"/, "deployIfNotExists");
+  assert.match(d, /type\s*=\s*"Microsoft\.Insights\/diagnosticSettings"/, "it looks for, and deploys, a diagnostic setting");
+  assert.match(d, /"allLogs"/, "sending allLogs");
+  // The roles its assignment's identity needs (ruling 28): exactly Monitoring Contributor, a built-in on the allow-list.
+  const roles = strings(list(d, "roleDefinitionIds"));
+  assert.deepEqual(roles, [`/providers/Microsoft.Authorization/roleDefinitions/${MONITORING_CONTRIBUTOR}`]);
+  assert.ok(ALLOWED_ROLES.builtIn.some((b) => b.id === MONITORING_CONTRIBUTOR && b.name === "Monitoring Contributor"));
+  // Never Log Analytics Contributor (identity change 1 is contingent) and never at subscription scope.
+  assert.doesNotMatch(d, /92aaf0da-9dab-42b6-94a3-d43ce8d16293/);
+  assert.doesNotMatch(d, /deploymentScope/i, "deploys into the vault's own group (the default)");
+  // The rule is known at plan: the workspace comes in as a parameter, never as a reference.
+  assert.doesNotMatch(d, /azurerm_log_analytics_workspace\./, "the workspace id is a parameter, given by the assignment");
+  assert.match(d, /parameters\('logAnalytics'\)/);
+});
+
+test(`${MON}: its assignment at rg-lab-<id> has a system identity holding exactly that role at rg-lab-<id>`, () => {
+  const l = lab(MON);
+  const def = dine(l);
+  const ws = one(l, "azurerm_log_analytics_workspace");
+  const as = resources(l, "azurerm_resource_group_policy_assignment");
+  const a = as.find((x) => attr(x.body, "policy_definition_id") === `azurerm_policy_definition.${def.labels[1]}.id`);
+  assert.ok(a, "the DINE definition is assigned");
+  assert.equal(attr(a.body, "name"), '"lab-${var.lab_id}-kv-diagnostics"');
+  assert.equal(attr(a.body, "resource_group_id"), "azurerm_resource_group.lab.id", "assigned at rg-lab-<id>, never the subscription");
+  assert.equal(attr(nested(a.body, "identity"), "type"), '"SystemAssigned"');
+  assert.equal(attr(a.body, "location"), "var.region", "an assignment with an identity needs a location");
+  assert.match(a.body, new RegExp(`logAnalytics\\s*=\\s*\\{\\s*value\\s*=\\s*azurerm_log_analytics_workspace\\.${ws.labels[1]}\\.id`), "the workspace, as a parameter");
+  // Exactly one role assignment in the lab: Monitoring Contributor at the group, to that identity.
+  const ras = resources(l, "azurerm_role_assignment");
+  assert.equal(ras.length, 1);
+  const ra = ras[0].body;
+  assert.equal(attr(ra, "role_definition_name"), '"Monitoring Contributor"');
+  assert.equal(attr(ra, "scope"), "azurerm_resource_group.lab.id");
+  assert.equal(attr(ra, "principal_id"), `azurerm_resource_group_policy_assignment.${a.labels[1]}.identity[0].principal_id`);
+  assert.equal(attr(ra, "principal_type"), '"ServicePrincipal"');
+  assert.equal(attr(ra, "skip_service_principal_aad_check"), "true", "the identity is brand new (replication lag)");
+  // And the built-in audit: Resource logs in Key Vault should be enabled.
+  const audit = as.find((x) => policyIdOf(l, x.body).endsWith("cf820ca0-f99e-4f3e-84fb-66e913812d21"));
+  assert.ok(audit, "the built-in AuditIfNotExists is assigned");
+  assert.equal(attr(audit.body, "name"), '"lab-${var.lab_id}-kv-logs-audit"');
+  assert.equal(attr(audit.body, "resource_group_id"), "azurerm_resource_group.lab.id");
+  assert.equal(nested(audit.body, "identity"), undefined, "an audit needs no identity");
+  assert.equal(as.length, 2, "two assignments");
+});
+
+test(`${MON}: the vault is created after the assignment and its role, with no purge protection`, () => {
+  const l = lab(MON);
+  const kv = one(l, "azurerm_key_vault");
+  const a = resources(l, "azurerm_resource_group_policy_assignment").find((x) => attr(x.body, "name") === '"lab-${var.lab_id}-kv-diagnostics"');
+  const ra = one(l, "azurerm_role_assignment");
+  const deps = list(kv.body, "depends_on") ?? "";
+  assert.match(deps, new RegExp(`azurerm_resource_group_policy_assignment\\.${a.labels[1]}\\b`), "after the assignment: policy evaluates the new vault and remediates it");
+  assert.match(deps, new RegExp(`azurerm_role_assignment\\.${ra.labels[1]}\\b`), "after the identity's role, so the deployment is allowed");
+  assert.equal(attr(kv.body, "purge_protection_enabled"), "false", "ruling 30: purge protection would keep the vault for its whole retention");
+  assert.equal(attr(kv.body, "soft_delete_retention_days"), "7");
+  assert.equal(attr(kv.body, "sku_name"), '"standard"');
+  assert.equal(attr(kv.body, "rbac_authorization_enabled"), "true");
+  assert.match(attr(kv.body, "name"), /^"\$\{var\.name_prefix\}[a-z0-9]+"$/, "a fresh name each session");
+  const kvf = nested(features(l), "key_vault");
+  assert.ok(kvf !== undefined, "features has a key_vault block");
+  assert.equal(attr(kvf, "purge_soft_delete_on_destroy"), "true");
+  assert.equal(attr(kvf, "recover_soft_deleted_key_vaults"), "false");
+  // No diagnostic setting of the lab's own: policy makes it.
+  assert.deepEqual(resources(l).filter((r) => /diagnostic_setting/.test(r.labels[0])).map((r) => r.labels.join(".")), []);
+});
+
+test(`${MON}: the readme says diagnostics arrive about 15 minutes after deploy`, () => {
+  const r = lab(MON).readme;
+  assert.match(r, /about 15 minutes/);
+  assert.match(r, /Monitoring Contributor/);
+  assert.match(r, /remediation task/i);
+  assert.match(r, /AzureDiagnostics/);
+});
