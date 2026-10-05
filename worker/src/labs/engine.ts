@@ -26,7 +26,7 @@ import { labDef, labIds } from "./catalogue";
 import { readOrphans } from "./orphans";
 import { LAB_SLOTS, sessionTimeoutMin, type LabDef } from "../../../shared/labs";
 import type { LabAction, LabEndReason } from "../../../shared/api";
-import { cancelGh, directNet, dispatchLab, findLabRun, publicUrl, type Net } from "./net";
+import { BudgetExceeded, cancelGh, directNet, dispatchLab, findLabRun, publicUrl, type Net } from "./net";
 import { activeRunOf, freeSlot, getLabRun, insertRun, insertSession, liveSessionOf, reserveSlot, settleRun, slotsInUse, updateSession, getSession, type LabRunDb, type LabSessionRow } from "./store";
 import { labGbpH } from "./prices";
 import { labWarnings } from "./warnings";
@@ -107,7 +107,10 @@ export interface RunOptions {
 /**
  * Write the run and press lab.yml's button, with the lab's lock already held
  * by `runId`. On a refusal the run is closed as failed and the lock released;
- * the caller undoes its own part (a deploy's session and slot).
+ * the caller undoes its own part (a deploy's session and slot). When the
+ * watch's allowance of calls runs out first (BudgetExceeded, nothing sent),
+ * the run is removed instead, the lock released and BudgetExceeded rethrown,
+ * so the watch tries again on its next run.
  */
 async function dispatchRun(env: Env, s: LabSessionRow, action: LabAction, runId: string, by: string, reason: string | null, opts: RunOptions): Promise<LabRunDb> {
   const def = labDef(s.lab_id);
@@ -122,6 +125,17 @@ async function dispatchRun(env: Env, s: LabSessionRow, action: LabAction, runId:
   try {
     await dispatchLab(env, opts.net ?? directNet(), action, payload);
   } catch (e) {
+    if (e instanceof BudgetExceeded) {
+      // The watch's allowance ran out before anything was sent: nothing ran, so nothing is
+      // recorded as failed (a failed destroy would count towards DESTROY_TRIES). The run row
+      // goes, the lock is released, and the watch tries again on its next run.
+      try {
+        await env.DB.prepare("DELETE FROM lab_runs WHERE id = ?1 AND finished_at IS NULL").bind(runId).run();
+      } finally {
+        await releaseLock(env, runId, false, labLock(s.lab_id));
+      }
+      throw e;
+    }
     const message = (e as Error).message;
     try {
       await settleRun(env, runId, { status: "failed", finished_at: new Date().toISOString(), error: message, admin_password: null });
@@ -275,7 +289,8 @@ export async function destroySession(env: Env, s: LabSessionRow, reason: LabEndR
     run = await startLabRun(env, s.id, "destroy", by, why, { net });
   } catch (e) {
     // The deploy was stopped but the tear-down could not start: failed, so the watch tries again.
-    if (active && s.state === "deploying") await updateSession(env, s.id, { state: "failed", end_reason: s.end_reason ?? reason }, "state = 'deploying'");
+    // Out of the watch's calls: left as it is, and the watch's next run (five minutes on) tries again.
+    if (active && s.state === "deploying" && !(e instanceof BudgetExceeded)) await updateSession(env, s.id, { state: "failed", end_reason: s.end_reason ?? reason }, "state = 'deploying'");
     throw e;
   }
   await updateSession(env, s.id, { state: "tearing_down", end_reason: s.end_reason ?? reason }, "state NOT IN ('ended', 'ended_dirty')");

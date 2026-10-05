@@ -11,6 +11,10 @@ import worker from "../src/index";
 import { setCatalogueForTest } from "../src/labs/catalogue";
 import { actionButton } from "../src/actions";
 import { runLabWatch, WATCH_CALLS } from "../src/labs/watch";
+import { startLabRun } from "../src/labs/engine";
+import { budgetedNet, BudgetExceeded } from "../src/labs/net";
+import { makeBudget } from "../src/insights/types";
+import { lockStatus, labLock } from "../src/lock";
 import { api, advance, deployLab, freeze, ghIdFor, labDispatches, labEnv, labRun, report, rows, runningLab, secrets, session, HOUR, MIN } from "./labs-helpers";
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
@@ -272,5 +276,45 @@ describe("calls (L2.3)", () => {
     expect(labDispatches(world).filter((d) => d.action === "destroy")).toHaveLength(3);
     expect((await rows(env, "SELECT state FROM lab_sessions WHERE lab_id IN ('az104-01-identity', 'az305-28-hub-spoke-fw')")).map((r) => r.state)).toEqual(["failed", "failed"]);
     expect(lines.join(" | ")).toMatch(/destroy|tear/i);
+  });
+
+  it("a tear-down the allowance cannot cover waits for the next run: no failed run is written and the lock is free", async () => {
+    freeze();
+    const { env, world } = await labEnv({ MONTHLY_BUDGET_GBP: "0" });
+    const up = await runningLab(env, world, "az104-05-storage", { hours: 1, peer: false });
+    advance(2 * HOUR);
+    // Nothing left of the cron's allowance: the destroy's dispatch is refused before it is sent.
+    const lines = await runLabWatch(env, new Date(), { parent: makeBudget(0) });
+    expect(lines.join(" | ")).toMatch(/out of calls/);
+    expect(labDispatches(world).map((d) => d.action)).toEqual(["deploy"]);
+    expect(await rows(env, "SELECT id, status FROM lab_runs WHERE session_id = ?1 AND action = 'destroy'", up.sid)).toEqual([]);
+    expect((await lockStatus(env, labLock("az104-05-storage"))).held).toBe(false);
+    expect((await session(env, up.sid))!.state).toBe("running");
+    // The same straight from the engine: BudgetExceeded itself, not a GitHub refusal.
+    await expect(startLabRun(env, up.sid, "destroy", "watchman", "t", { net: budgetedNet(0) })).rejects.toBeInstanceOf(BudgetExceeded);
+    expect(await rows(env, "SELECT id FROM lab_runs WHERE session_id = ?1 AND action = 'destroy'", up.sid)).toEqual([]);
+    // Five minutes on, with calls to spare: torn down.
+    advance(5 * MIN);
+    await watch(env);
+    expect(labDispatches(world).map((d) => d.action)).toEqual(["deploy", "destroy"]);
+    expect((await session(env, up.sid))!).toMatchObject({ state: "tearing_down", end_reason: "timer" });
+    expect(await rows(env, "SELECT status FROM lab_runs WHERE session_id = ?1 AND action = 'destroy'", up.sid)).toEqual([{ status: expect.stringMatching(/^(queued|running)$/) }]);
+  });
+
+  it("a deploy cancelled at max_until whose tear-down runs out of calls is torn down on the next run, not 15 minutes later", async () => {
+    freeze();
+    const { env, world } = await labEnv({ MONTHLY_BUDGET_GBP: "0" });
+    const r = await deployLab(env, "az104-05-storage");
+    await secrets(env, world, r.json.runId);
+    advance(6 * HOUR + MIN);
+    // One call: enough to cancel the deploy on GitHub, not to dispatch the destroy.
+    await runLabWatch(env, new Date(), { parent: makeBudget(1) });
+    expect(await labRun(env, r.json.runId)).toMatchObject({ status: "cancelled" });
+    expect(labDispatches(world).map((d) => d.action)).toEqual(["deploy"]);
+    expect((await session(env, r.json.sessionId))!.state).toBe("deploying");
+    advance(5 * MIN);
+    await watch(env);
+    expect(labDispatches(world).map((d) => d.action)).toEqual(["deploy", "destroy"]);
+    expect((await session(env, r.json.sessionId))!).toMatchObject({ state: "tearing_down", end_reason: "max" });
   });
 });
