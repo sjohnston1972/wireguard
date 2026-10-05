@@ -9,7 +9,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCatalogueForTest } from "../src/labs/catalogue";
 import { runLabWatch } from "../src/labs/watch";
-import { sweepOrphans } from "../src/labs/orphans";
+import { sweepOrphans, SWEEP_CALLS } from "../src/labs/orphans";
+import { ALLOWED_ROLES } from "../../shared/labs";
 import { budgetedNet } from "../src/labs/net";
 import { api, advance, freeze, labDispatches, labEnv, report, rows, runningLab, secrets, session, HOUR, MIN, NOW } from "./labs-helpers";
 import type { Env } from "../src/env";
@@ -36,8 +37,32 @@ function litter(world: World) {
   world.labAzure.policyAssignments.push({ name: "lab-az104-01-identity-tags", scope: "/subscriptions/sub/resourceGroups/rg-lab-az104-01-identity" });
 }
 
+describe("orphan sweep: fixed custom role GUIDs", () => {
+  it("finds lab 1's custom role by its fixed GUID when the subscription's list does not show it (assignable only in its group)", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    await env.STATUS.put("azure:token", JSON.stringify({ token: "arm", expiresAt: Date.now() + 2 * HOUR }));
+    await env.STATUS.put("labs:graph-token", JSON.stringify({ token: "graph", expiresAt: Date.now() + 2 * HOUR }));
+    world.labAzure.roleDefinitions.push({ id: "7331dcae-09d3-477e-8da7-2895697f0fc0", roleName: "lab-az104-01-identity-vm-operator", rgOnly: true });
+    const net = budgetedNet(20);
+    await sweepOrphans(env, net, new Date());
+    expect(net.used()).toBe(SWEEP_CALLS);
+    expect(SWEEP_CALLS).toBe(7 + ALLOWED_ROLES.custom.length);
+    expect(world.calls.some((c) => c.path.toLowerCase().startsWith("/subscriptions/sub/providers/microsoft.authorization/roledefinitions/7331dcae-09d3-477e-8da7-2895697f0fc0"))).toBe(true);
+    // Seen now; an orphan once it has been there 30 minutes.
+    advance(61 * MIN);
+    await sweepOrphans(env, budgetedNet(20), new Date());
+    expect(await orphans(env)).toEqual([expect.objectContaining({ labId: "az104-01-identity", names: ["lab-az104-01-identity-vm-operator"] })]);
+    // Deleted: ARM answers 404 for the GUID, and the lab is clean again.
+    world.labAzure.roleDefinitions.length = 0;
+    advance(61 * MIN);
+    await sweepOrphans(env, budgetedNet(20), new Date());
+    expect(await orphans(env)).toEqual([]);
+  });
+});
+
 describe("orphan sweep (L2.5)", () => {
-  it("orphan sweep lists groups, Entra, management groups, roles and policies hourly in 7 calls", async () => {
+  it("orphan sweep lists groups, Entra, management groups, roles and policies hourly in SWEEP_CALLS calls (7 listings and each fixed custom role)", async () => {
     freeze();
     const { env, world } = await labEnv();
     litter(world);
@@ -46,7 +71,7 @@ describe("orphan sweep (L2.5)", () => {
     await env.STATUS.put("labs:graph-token", JSON.stringify({ token: "graph", expiresAt: Date.now() + 2 * HOUR }));
     const net = budgetedNet(20);
     await sweepOrphans(env, net, new Date());
-    expect(net.used()).toBe(7);
+    expect(net.used()).toBe(SWEEP_CALLS);
     const hosts = world.calls.map((c) => `${c.host}${c.path.split("?")[0].toLowerCase()}`);
     expect(hosts).toEqual(expect.arrayContaining([
       "management.azure.com/subscriptions/sub/resourcegroups",
@@ -64,7 +89,7 @@ describe("orphan sweep (L2.5)", () => {
     expect(again.used()).toBe(0);
     advance(31 * MIN);
     await sweepOrphans(env, again, new Date());
-    expect(again.used()).toBe(7);
+    expect(again.used()).toBe(SWEEP_CALLS);
   });
 
   it("orphan sweep ignores NetworkWatcherRG and non-lab names and waits 30 minutes", async () => {

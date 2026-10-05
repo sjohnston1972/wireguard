@@ -13,7 +13,10 @@
 #   Entra users            user principal name starting lab-<id>-  (deleted, then purged from the
 #                          recycle bin so the next deploy can reuse the name)
 #   Entra groups           display name starting lab-<id>-
-#   custom roles           role name starting lab-<id>- (their assignments first)
+#   custom roles           role name starting lab-<id>- (their assignments first), and each
+#                          fixed GUID labs/setup/allowed-roles.json gives the lab, read
+#                          directly (the subscription's list misses a role assignable
+#                          only inside rg-lab-<id>)
 #   policy                 assignments, then initiatives, then definitions named lab-<id>-, and
 #                          everything assigned or defined inside a lab management group
 #   management groups      id starting lab-<id>-, children before parents
@@ -47,6 +50,7 @@ RG="rg-lab-$LAB_ID"
 PREFIX="lab-$LAB_ID-"
 GRAPH="https://graph.microsoft.com/v1.0"
 WAIT_S="${LAB_DELETE_WAIT_SECONDS:-2400}"
+ROLES_FILE="${LAB_ROLES_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/labs/setup/allowed-roles.json}"
 
 warn() { echo "::warning::safety net: $*" >&2; }
 azq() { az "$@" | tr -d '\r'; }
@@ -114,14 +118,68 @@ list_entra_groups() {
     [ -n "$id" ] && prefixed "$name" && ROWS+=("$id"$'\t'"$name")
   done <<<"$OUT"
 }
-# "guid<TAB>role name<TAB>first assignable scope"
+# This lab's custom roles from labs/setup/allowed-roles.json ("guid<TAB>name"),
+# one { "lab": ..., "name": ..., "id": ... } per line as the file keeps them.
+fixed_roles() {
+  local line re='"lab"[[:space:]]*:[[:space:]]*"([^"]+)".*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*"id"[[:space:]]*:[[:space:]]*"([0-9A-Fa-f-]{36})"'
+  if ! [ -r "$ROLES_FILE" ]; then
+    warn "cannot read $ROLES_FILE"
+    return 1
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ "$line" =~ $re ]] && [ "${BASH_REMATCH[1]}" = "$LAB_ID" ] && printf '%s\t%s\n' "${BASH_REMATCH[3]}" "${BASH_REMATCH[2]}"
+  done <"$ROLES_FILE"
+  return 0
+}
+# One role definition by its GUID, straight from ARM: adds "guid<TAB>name<TAB>scope" to
+# ROWS when it exists; nothing when ARM says it does not; "unverified" when ARM cannot say.
+get_role() {
+  local guid="$1" name="$2" out rc err g n s
+  if [ -z "$SUB" ]; then
+    UNVERIFIED+=("unverified: custom role $name")
+    return 0
+  fi
+  err="$(mktemp)"
+  out="$(az rest --method get --url "/subscriptions/$SUB/providers/Microsoft.Authorization/roleDefinitions/$guid?api-version=2022-04-01" \
+    --query "[name, properties.roleName, properties.assignableScopes[0]]" -o tsv 2>"$err")"
+  rc=$?
+  out="${out//$'\r'/}"
+  local e
+  e="$(<"$err")"
+  rm -f "$err"
+  if [ "$rc" -ne 0 ]; then
+    if [[ "$e" =~ RoleDefinitionDoesNotExist|NotFound|\(404\) ]]; then return 0; fi
+    warn "could not read custom role $name ($guid)"
+    UNVERIFIED+=("unverified: custom role $name")
+    return 0
+  fi
+  IFS=$'\t' read -r g n s <<<"$out"
+  [ -n "$g" ] && ROWS+=("$g"$'\t'"${n:-$name}"$'\t'"$s")
+  return 0
+}
+# "guid<TAB>role name<TAB>first assignable scope". The subscription's list can miss a
+# role assignable only inside rg-lab-<id> (lab 1's), so each fixed GUID the lab owns
+# (allowed-roles.json) is also asked for directly.
 list_roles() {
   ROWS=()
-  local guid name scope
-  fetch "custom roles" false role definition list --custom-role-only true --query "[].[name, roleName, assignableScopes[0]]" -o tsv || return 0
-  while IFS=$'\t' read -r guid name scope; do
-    [ -n "$guid" ] && prefixed "$name" && ROWS+=("$guid"$'\t'"$name"$'\t'"$scope")
-  done <<<"$OUT"
+  local guid name scope seen=" " fixed
+  if fetch "custom roles" false role definition list --custom-role-only true --query "[].[name, roleName, assignableScopes[0]]" -o tsv; then
+    while IFS=$'\t' read -r guid name scope; do
+      if [ -n "$guid" ] && prefixed "$name"; then
+        ROWS+=("$guid"$'\t'"$name"$'\t'"$scope")
+        seen+="${guid,,} "
+      fi
+    done <<<"$OUT"
+  fi
+  if ! fixed="$(fixed_roles)"; then
+    UNVERIFIED+=("unverified: the lab's custom roles (allowed-roles.json)")
+    return 0
+  fi
+  while IFS=$'\t' read -r guid name; do
+    [ -z "$guid" ] && continue
+    [[ "$seen" == *" ${guid,,} "* ]] && continue
+    get_role "$guid" "$name"
+  done <<<"$fixed"
 }
 # "name"
 list_mgs() {
@@ -172,6 +230,8 @@ if ! az_login; then
   warn "could not sign in to Azure"
   UNVERIFIED+=("unverified: could not sign in to Azure")
 fi
+SUB="${ARM_SUBSCRIPTION_ID:-}"
+[ -n "$SUB" ] || SUB="$(azq account show --query id -o tsv)" || SUB=""
 
 # ── Verify ───────────────────────────────────────────────────────────────
 
@@ -255,7 +315,6 @@ for row in "${ROWS[@]}"; do
 done
 
 # 3. Custom roles: their assignments first.
-SUB="$(azq account show --query id -o tsv)" || SUB=""
 list_roles
 for row in "${ROWS[@]}"; do
   IFS=$'\t' read -r guid name scope <<<"$row"

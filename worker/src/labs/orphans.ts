@@ -1,7 +1,7 @@
 // labs/orphans.ts
 //
 // Plain English: the hourly orphan sweep (labs spec §7.5). Anything a lab
-// left behind that nobody is watching: the sweep lists, in 7 calls,
+// left behind that nobody is watching: the sweep lists, in SWEEP_CALLS calls,
 // resource groups (rg-lab-*), Entra users and groups (lab-*), management
 // groups, custom role definitions, and policy definitions and assignments
 // (lab-*; an assignment also by its display name or its scope). A name
@@ -24,7 +24,7 @@ import type { Env } from "../env";
 import { canAzure } from "../env";
 import * as db from "../db";
 import { labDef } from "./catalogue";
-import { labNeeds } from "../../../shared/labs";
+import { ALLOWED_ROLES, labNeeds } from "../../../shared/labs";
 import type { LabOrphan } from "../../../shared/api";
 import { arm, graph, BudgetExceeded, type Net } from "./net";
 import { labIdOf } from "./cost";
@@ -33,8 +33,13 @@ import { freeSlot, LIVE_SQL } from "./store";
 const MIN = 60_000;
 export const SWEEP_EVERY_MS = 60 * MIN;
 export const ORPHAN_GRACE_MS = 30 * MIN;
-/** The sweep's listings: resource groups, Entra users and groups, management groups, custom roles, policy definitions and assignments. */
-export const SWEEP_CALLS = 7;
+/**
+ * The sweep's calls: seven listings (resource groups, Entra users and groups, management
+ * groups, custom roles, policy definitions and assignments) plus one GET per fixed custom
+ * role GUID in labs/setup/allowed-roles.json: the subscription's role list leaves out a
+ * role assignable only inside a resource group (lab 1's), so each is asked for directly.
+ */
+export const SWEEP_CALLS = 7 + ALLOWED_ROLES.custom.length;
 const KV_SWEEP = "labs:sweep";
 const KV_ORPHANS = "labs:orphans";
 
@@ -58,7 +63,7 @@ async function list<T>(r: Promise<Response>, what: string): Promise<T[]> {
 
 const starts = (s: unknown, p: string): s is string => typeof s === "string" && s.toLowerCase().startsWith(p);
 
-/** The lab names in each listing, or null for a listing that failed. Exactly 7 calls (plus sign-ins). */
+/** The lab names in each listing, or null for a listing that failed. Exactly SWEEP_CALLS calls (plus sign-ins). */
 async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph: Found[] | null; gov: Found[] | null; errors: string[] }> {
   const sub = `/subscriptions/${env.AZURE_SUBSCRIPTION_ID}`;
   const errors: string[] = [];
@@ -81,6 +86,17 @@ async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph:
   const roles = await attempt(() => list<Named>(arm(env, net, `${sub}/providers/Microsoft.Authorization/roleDefinitions?api-version=2022-04-01&$filter=${encodeURIComponent("type eq 'CustomRole'")}`), "custom roles"));
   const defs = await attempt(() => list<Named>(arm(env, net, `${sub}/providers/Microsoft.Authorization/policyDefinitions?api-version=2023-04-01&$filter=${encodeURIComponent("policyType eq 'Custom'")}`), "policy definitions"));
   const assigns = await attempt(() => list<Named>(arm(env, net, `${sub}/providers/Microsoft.Authorization/policyAssignments?api-version=2023-04-01`), "policy assignments"));
+  // Each lab's fixed custom role GUID, directly: 404 means it is gone.
+  const fixed = await attempt(async () => {
+    const out: Named[] = [];
+    for (const c of ALLOWED_ROLES.custom) {
+      const res = await arm(env, net, `${sub}/providers/Microsoft.Authorization/roleDefinitions/${c.id}?api-version=2022-04-01`);
+      if (res.status === 404) continue;
+      if (!res.ok) throw new Error(`custom role ${c.name} (${res.status})`);
+      out.push((await res.json()) as Named);
+    }
+    return out;
+  });
 
   const pick = (...names: unknown[]): string | null => (names.find((n) => starts(n, "lab-")) as string | undefined) ?? null;
   const rg = rgs?.filter((g) => starts(g.name, "rg-lab-")).map((g) => ({ name: g.name!, created: g.createdTime ?? g.properties?.createdTime ?? null })) ?? null;
@@ -91,10 +107,10 @@ async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph:
           .map((x) => ({ name: x.name!, created: x.created }))
       : null;
   const gov =
-    mgs && roles && defs && assigns
+    mgs && roles && fixed && defs && assigns
       ? [
           ...mgs.map((m) => pick(m.name, m.properties?.displayName)),
-          ...roles.map((r) => pick(r.properties?.roleName)),
+          ...[...roles, ...fixed.filter((f) => !roles.some((r) => r.name === f.name))].map((r) => pick(r.properties?.roleName)),
           ...defs.map((d) => pick(d.name, d.properties?.displayName)),
         ]
           .filter((n): n is string => !!n)

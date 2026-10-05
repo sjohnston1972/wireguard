@@ -175,6 +175,63 @@ test("governance safety net deletes custom roles, policy assignments and definit
   w.cleanup();
 });
 
+test("lab 1 with its Terraform state gone: the safety net asks for the lab's fixed custom role GUIDs directly and deletes the role", { skip }, () => {
+  const L1 = "az104-01-identity";
+  const GUID = "7331dcae-09d3-477e-8da7-2895697f0fc0";
+  const ROLE_URL = `/subscriptions/${SUB}/providers/Microsoft.Authorization/roleDefinitions/${GUID}`;
+  const w = world([
+    { match: "^group list", out: `rg-lab-${L1}` },
+    { match: "^account show", out: SUB },
+    // The subscription-level listing does not show a role assignable only inside rg-lab-<id>.
+    { match: "^role definition list", out: "b24988ac-6180-42a0-ab88-20f7382dd24c\tContributor\t/" },
+    { match: `^rest --method get --url ${ROLE_URL}`, out: `${GUID}\tlab-${L1}-vm-operator\t/subscriptions/${SUB}/resourceGroups/rg-lab-${L1}` },
+    { match: `^role assignment list .*--role ${GUID}`, out: `/subscriptions/${SUB}/resourceGroups/rg-lab-${L1}/providers/Microsoft.Authorization/roleAssignments/ra1` },
+  ]);
+  // No terraform state, no terraform at all.
+  const r = w.run("infra/ci/lab-safety-net.sh", [L1], { TF_STATE_MISSING: "1" });
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const get = firstCall(calls, new RegExp(`^az rest --method get --url ${ROLE_URL}`));
+  const ra = firstCall(calls, /^az role assignment delete --ids .*roleAssignments\/ra1/);
+  const del = firstCall(calls, new RegExp(`^az role definition delete --name ${GUID} --scope /subscriptions/${SUB}`));
+  assert.ok(get >= 0 && ra > get && del > ra, calls.join("\n"));
+  assert.equal(calls.filter((c) => c.startsWith("terraform")).length, 0);
+  w.cleanup();
+
+  // The clean check asks the same way: still there is a leftover; gone (404) is clean; an unreadable answer is not clean.
+  const verify = (rule) => {
+    const v = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, { match: "^role definition list", out: "" }, { match: `^rest --method get --url ${ROLE_URL}`, ...rule }]);
+    const res = v.run("infra/ci/lab-safety-net.sh", ["--verify", L1]);
+    v.cleanup();
+    return res;
+  };
+  const still = verify({ out: `${GUID}\tlab-${L1}-vm-operator\t/subscriptions/${SUB}/resourceGroups/rg-lab-${L1}` });
+  assert.equal(still.status, 1, still.out);
+  assert.deepEqual(JSON.parse(/^leftovers=(.*)$/m.exec(still.stdout)[1]), [`lab-${L1}-vm-operator`]);
+  const gone = verify({ code: 3, err: "ERROR: (RoleDefinitionDoesNotExist) The specified role definition with ID '7331dcae' does not exist." });
+  assert.equal(gone.status, 0, gone.out);
+  assert.match(gone.stdout, /^clean=true$/m);
+  const unknown = verify({ code: 1, err: "ERROR: (AuthorizationFailed) The client does not have authorization" });
+  assert.equal(unknown.status, 1, unknown.out);
+  assert.match(unknown.stdout, /unverified: custom role lab-az104-01-identity-vm-operator/);
+});
+
+test("the safety net reads every lab's fixed custom role GUIDs from allowed-roles.json", { skip }, () => {
+  const roles = JSON.parse(readFileSync(join(REPO, "labs", "setup", "allowed-roles.json"), "utf8")).custom;
+  assert.ok(roles.length > 0);
+  for (const c of roles) {
+    const w = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }]);
+    w.run("infra/ci/lab-safety-net.sh", ["--verify", c.lab]);
+    assert.ok(w.calls().some((x) => x.startsWith(`az rest --method get --url /subscriptions/${SUB}/providers/Microsoft.Authorization/roleDefinitions/${c.id}?`)), `${c.lab}: ${c.id}`);
+    w.cleanup();
+  }
+  // A lab with none asks for none.
+  const w = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }]);
+  w.run("infra/ci/lab-safety-net.sh", ["--verify", ID]);
+  assert.ok(!w.calls().some((x) => /roleDefinitions\//.test(x)));
+  w.cleanup();
+});
+
 test("verify clean prints clean=false and the leftovers", { skip }, () => {
   const out = join(mkdtempSync(join(tmpdir(), "gho-")), "out");
   writeFileSync(out, "");

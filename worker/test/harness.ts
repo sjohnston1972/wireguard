@@ -131,8 +131,12 @@ export interface LabAzure {
   /** Resource groups in the subscription (any name: rg-lab-*, NetworkWatcherRG, rg-wg-ondemand). */
   groups: { name: string; location?: string; createdTime?: string; tags?: Record<string, string> }[];
   managementGroups: { name: string; displayName?: string }[];
-  /** Custom role definitions (the list is filtered to CustomRole by the caller's $filter). */
-  roleDefinitions: { id: string; roleName: string; type?: "CustomRole" | "BuiltInRole" }[];
+  /**
+   * Custom role definitions (the list is filtered to CustomRole by the caller's $filter).
+   * `rgOnly`: assignable only inside a resource group, so the subscription's list leaves it
+   * out, as ARM does; GET .../roleDefinitions/<id> still finds it (404 when there is none).
+   */
+  roleDefinitions: { id: string; roleName: string; type?: "CustomRole" | "BuiltInRole"; rgOnly?: boolean }[];
   policyDefinitions: { name: string; displayName?: string; policyType?: string }[];
   policyAssignments: { name: string; displayName?: string; scope: string }[];
   /** Resources, by group: GET .../resourceGroups/<rg>/resources lists those whose resourceGroup is <rg>. */
@@ -354,7 +358,13 @@ function labArm(az: LabAzure, method: string, u: URL, init?: RequestInit): Respo
   }
   if (method === "GET" && sub("/providers/microsoft.authorization/roledefinitions").test(p)) {
     const custom = /CustomRole/i.test(u.searchParams.get("$filter") ?? "");
-    return json({ value: az.roleDefinitions.filter((r) => !custom || (r.type ?? "CustomRole") === "CustomRole").map((r) => ({ id: `/subscriptions/sub/providers/Microsoft.Authorization/roleDefinitions/${r.id}`, name: r.id, properties: { roleName: r.roleName, type: r.type ?? "CustomRole" } })) });
+    return json({ value: az.roleDefinitions.filter((r) => !r.rgOnly && (!custom || (r.type ?? "CustomRole") === "CustomRole")).map((r) => ({ id: `/subscriptions/sub/providers/Microsoft.Authorization/roleDefinitions/${r.id}`, name: r.id, properties: { roleName: r.roleName, type: r.type ?? "CustomRole" } })) });
+  }
+  const oneRole = p.match(sub("/providers/microsoft.authorization/roledefinitions/([^/]+)"));
+  if (method === "GET" && oneRole) {
+    const r = az.roleDefinitions.find((x) => x.id.toLowerCase() === decodeURIComponent(oneRole[1]));
+    if (!r) return json({ error: { code: "RoleDefinitionDoesNotExist", message: "The specified role definition does not exist." } }, 404);
+    return json({ id: `/subscriptions/sub/providers/Microsoft.Authorization/roleDefinitions/${r.id}`, name: r.id, properties: { roleName: r.roleName, type: r.type ?? "CustomRole" } });
   }
   if (method === "GET" && sub("/providers/microsoft.authorization/policydefinitions").test(p)) {
     return json({ value: az.policyDefinitions.map((d) => ({ id: `/subscriptions/sub/providers/Microsoft.Authorization/policyDefinitions/${d.name}`, name: d.name, properties: { displayName: d.displayName ?? d.name, policyType: d.policyType ?? "Custom" } })) });
