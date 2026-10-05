@@ -13,8 +13,9 @@
 #   apply or destroy. Then, both sides:
 #     lab side   lab-<id>-to-wg  allow virtual network access, allow forwarded traffic
 #     wg side    lab-<id>        allow virtual network access
-#   and, with DNS_LINK=true, links each private DNS zone in rg-lab-<id> to
-#   vnet-wg (link lab-<id>-wg; the link lives in the lab's group). Finally
+#   and, with DNS_LINK=true (lab.yaml) and "dns_link":true in the Worker's
+#   begin answer, links each private DNS zone in rg-lab-<id> to vnet-wg (link
+#   lab-<id>-wg; the link lives in the lab's group). Finally
 #   {phase:"end", ok} releases the lock, whatever happened.
 #   {"go":false} means wait: the dashboard offers "Re-peer" once the gateway
 #   is running. Without $LAB_PEER_URL (a run with no Worker) it skips.
@@ -124,6 +125,15 @@ if ! grep -Eq '"go"[[:space:]]*:[[:space:]]*true' <<<"$answer"; then
   echo "peer: the Worker says wait (the gateway is not running, or is busy); the dashboard will offer Re-peer"
   exit 0
 fi
+# The Worker also says whether this run may link its private DNS zones to
+# vnet-wg: not when another peered lab has already linked a zone of the same
+# name (Azure refuses two). Only an explicit "dns_link": true links.
+WORKER_DNS_LINK=false
+grep -Eq '"dns_link"[[:space:]]*:[[:space:]]*true' <<<"$answer" && WORKER_DNS_LINK=true
+if [ "${DNS_LINK:-false}" = true ] && [ "$WORKER_DNS_LINK" != true ]; then
+  note="$(sed -n 's/.*"note"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$answer" | head -n1)"
+  echo "peer: private DNS zones not linked: ${note:-the Worker said not to link them for this run}"
+fi
 
 OK=false
 end_peer() { tell "{\"run_id\":\"$RUN_ID\",\"phase\":\"end\",\"ok\":$OK}" >/dev/null || warn "could not tell the Worker the peering ended"; }
@@ -153,10 +163,15 @@ failed=0
 ensure_peering "$lab_rg" "$lab_name" "$LAB_PEERING" "$gw_id" --allow-vnet-access --allow-forwarded-traffic || { warn "could not create the lab side"; failed=1; }
 ensure_peering "$GW_RG" "$GW_VNET" "$WG_PEERING" "$lab_id" --allow-vnet-access || { warn "could not create the $GW_VNET side"; failed=1; }
 
-if [ "${DNS_LINK:-false}" = true ] && [ "$failed" -eq 0 ]; then
+if [ "${DNS_LINK:-false}" = true ] && [ "$WORKER_DNS_LINK" = true ] && [ "$failed" -eq 0 ]; then
   while IFS= read -r zone; do
     [ -z "$zone" ] && continue
-    az network private-dns link vnet create --resource-group "$RG" --zone-name "$zone" --name "$DNS_LINK_NAME" --virtual-network "$gw_id" --registration-enabled false -o none ||
+    # A privatelink zone linked to vnet-wg would otherwise answer NXDOMAIN for every
+    # other storage account (or vault...) of that kind: fall back to public DNS
+    # for names the zone does not hold. Azure takes this only on privatelink zones.
+    policy=()
+    [[ "${zone,,}" == privatelink.* ]] && policy=(--resolution-policy NxDomainRedirect)
+    az network private-dns link vnet create --resource-group "$RG" --zone-name "$zone" --name "$DNS_LINK_NAME" --virtual-network "$gw_id" --registration-enabled false "${policy[@]}" -o none ||
       warn "could not link $zone to $GW_VNET (already linked by the lab's own Terraform?)"
   done < <(azq network private-dns zone list --resource-group "$RG" --query "[].name" -o tsv)
 fi

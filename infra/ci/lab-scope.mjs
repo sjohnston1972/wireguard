@@ -12,10 +12,16 @@
 //
 // The rules, in the order they are reported (one per resource, the first that
 // applies):
-//   provider          a provider other than azurerm, azuread, random, time or
-//                     tls (null, external, http, local, azapi, terraform_data),
-//                     or an azurerm/azuread provider pointed at other credentials
+//   provider          a provider whose FULL source address is not hashicorp's
+//                     azurerm, azuread, random or time on registry.terraform.io
+//                     (lab-lint.mjs's list: null, external, http, local, azapi,
+//                     terraform_data and look-alikes from elsewhere), or an
+//                     azurerm/azuread provider pointed at other credentials
 //   provisioner       any provisioner (it would run commands with the pipeline's keys)
+//   import            adopting an object that already exists (an import block, or
+//                     a plan change that is importing): a lab only ever creates,
+//                     and tear-down deletes what it adopted, a real user renamed
+//                     lab-<id>-x included
 //   gateway           vnet-wg or rg-wg-* named, or var.gateway_vnet_id used,
 //                     anywhere but a private DNS zone link's virtual_network_id
 //   association       moving a subscription into a management group
@@ -25,7 +31,9 @@
 //   entra-prefix      an Entra name, UPN or mail nickname without lab-<id>-, or a
 //                     membership of a group the lab did not make
 //   role              a role assignment off labs/setup/allowed-roles.json, a custom
-//                     role without its fixed GUID, or one that can grant access
+//                     role without its fixed GUID, one that can grant access, holds
+//                     a wildcard action (only wildcard reads such as */read), or
+//                     is assignable anywhere but the lab's own group(s)
 //   immutability      a Locked immutability policy (nothing can delete it)
 //   azure-made-group  AKS node groups or backup restore groups not named rg-lab-<id>-*
 //   resource-group    a resource group other than rg-lab-<id> or rg-lab-<id>-*
@@ -37,14 +45,18 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { ALLOWED_PROVIDER_SOURCES, normalizeSource, providerOfType } from "./lab-lint.mjs";
 
 export const LAB_ID_RE = /^az(104|305)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
 /** The governance labs, named in code (spec §8.3). A test keeps this equal to shared/labs.ts. */
 export const GOVERNANCE_LABS = ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az305-20-landing-zone", "az305-21-monitoring-scale"];
-export const RULES = ["provider", "provisioner", "gateway", "association", "governance", "entra-type", "entra-prefix", "role", "immutability", "azure-made-group", "resource-group", "outside-scope"];
+export const RULES = ["provider", "provisioner", "import", "gateway", "association", "governance", "entra-type", "entra-prefix", "role", "immutability", "azure-made-group", "resource-group", "outside-scope"];
 
 const ALLOWED_ROLES = JSON.parse(readFileSync(new URL("../../labs/setup/allowed-roles.json", import.meta.url), "utf8"));
-const PROVIDERS = new Set(["azurerm", "azuread", "random", "time", "tls"]);
+/** Allowed providers by FULL source address (a look-alike ending /azurerm from elsewhere is not azurerm). */
+const PROVIDERS = new Set(ALLOWED_PROVIDER_SOURCES);
+/** Their local names, for the provider-credentials check. */
+const PROVIDER_NAMES = new Set(ALLOWED_PROVIDER_SOURCES.map((s) => s.split("/").pop()));
 /** Provider settings that would point a provider at other credentials, another subscription or tenant. */
 const PROVIDER_CREDENTIALS = ["subscription_id", "tenant_id", "client_id", "client_secret", "client_certificate", "client_certificate_path", "client_certificate_password", "auxiliary_tenant_ids", "oidc_token", "oidc_token_file_path", "msi_endpoint", "use_cli", "use_msi"];
 const GOVERNANCE_TYPES = new Set([
@@ -74,7 +86,8 @@ export class Unknown {
 
 // ── Reading a plan (terraform show -json) ────────────────────────────────
 
-const providerOf = (full) => String(full ?? "").split("/").pop();
+/** A plan's provider_name as a full source address ("terraform.io/builtin/terraform" stays as it is). */
+const providerOf = (full) => normalizeSource(full);
 const stripIndex = (address) => address.replace(/\[[^\]]*\]/g, "");
 
 function moduleResources(mod, out = []) {
@@ -147,10 +160,12 @@ export function planResources(plan) {
   // A data source configured but not read yet (or a resource only in the configuration).
   for (const [address, c] of cfg) {
     if ([...seen.keys()].some((a) => stripIndex(a) === address)) continue;
-    add({ address, mode: c.mode, type: c.type, provider_name: (plan?.configuration?.provider_config ?? {})[c.provider_config_key]?.full_name ?? c.type.split("_")[0], values: {} });
+    add({ address, mode: c.mode, type: c.type, provider_name: (plan?.configuration?.provider_config ?? {})[c.provider_config_key]?.full_name ?? providerOfType(c.type), values: {} });
   }
   const providers = Object.entries(plan?.configuration?.provider_config ?? {}).map(([key, p]) => ({ key, name: p.name ?? key.split(".")[0], keys: Object.keys(p.expressions ?? {}) }));
-  return { resources: [...seen.values()], providers };
+  // Terraform 1.5+: a change that adopts an existing object says so in change.importing.
+  const imports = (plan?.resource_changes ?? []).filter((c) => c?.change?.importing).map((c) => c.address);
+  return { resources: [...seen.values()], providers, imports };
 }
 
 // ── Reading HCL (hcl2json) ───────────────────────────────────────────────
@@ -267,6 +282,13 @@ function blockCount(b) {
 /** Resources from hcl2json output (all of a lab's .tf files together), in this check's own shape. */
 export function hclResources(hcl, labId) {
   const ctx = hclContext(hcl ?? {}, labId);
+  // terraform { required_providers { azurerm = { source = "..." } } }: local name -> source.
+  const sources = new Map();
+  for (const t of [hcl?.terraform ?? []].flat()) {
+    for (const rp of [t?.required_providers ?? []].flat()) {
+      for (const [local, spec] of Object.entries(rp ?? {})) sources.set(local, typeof spec === "object" && spec?.source ? spec.source : local);
+    }
+  }
   const resources = [];
   for (const [mode, prefix] of [["resource", ""], ["data", "data."]]) {
     for (const [type, byName] of Object.entries(hcl?.[mode] ?? {})) {
@@ -279,7 +301,11 @@ export function hclResources(hcl, labId) {
             refs[k] = [];
             values[k] = hclValue(v, ctx, refs[k]);
           }
-          const prov = typeof block?.provider === "string" ? block.provider.replace(/^\$\{|\}$/g, "").split(".")[0] : type.split("_")[0];
+          // Left unset, azuread computes a mail nickname of its own: unknown in the
+          // plan, and never lab-<id>-. Say so here too, as an early warning.
+          if (mode === "resource" && (type === "azuread_user" || type === "azuread_group") && !("mail_nickname" in values)) values.mail_nickname = new Unknown();
+          const local = typeof block?.provider === "string" ? block.provider.replace(/^\$\{|\}$/g, "").split(".")[0] : providerOfType(type);
+          const prov = local === "terraform" ? "terraform.io/builtin/terraform" : normalizeSource(sources.get(local) ?? local);
           resources.push({
             address: `${prefix}${type}.${name}`,
             mode: mode === "resource" ? "managed" : "data",
@@ -300,7 +326,10 @@ export function hclResources(hcl, labId) {
   for (const [name, blocks] of Object.entries(hcl?.provider ?? {})) {
     for (const b of Array.isArray(blocks) ? blocks : [blocks]) providers.push({ key: b?.alias ? `${name}.${b.alias}` : name, name, keys: Object.keys(b ?? {}) });
   }
-  return { resources, providers };
+  // import { to = azuread_user.x, id = "..." } blocks, as hcl2json prints them.
+  const importBlocks = Array.isArray(hcl?.import) ? hcl.import : hcl?.import ? Object.values(hcl.import).flat() : [];
+  const imports = importBlocks.map((b) => String(b?.to ?? "import").replace(/^\$\{|\}$/g, "").trim());
+  return { resources, providers, imports };
 }
 
 // ── The rules ────────────────────────────────────────────────────────────
@@ -339,7 +368,8 @@ const DEFINITION_REF = /^\/providers\/Microsoft\.Authorization\/(roleDefinitions
  * Check a lab's resources (from planResources or hclResources). Returns
  * [{ rule, address, message }], at most one per resource.
  */
-export function scopeProblems({ resources, providers }, labId) {
+export function scopeProblems({ resources, providers, imports = [] }, labId) {
+  const importing = new Set(imports.map(stripIndex));
   const id = labId.toLowerCase();
   const rg = `rg-lab-${id}`;
   const prefix = `lab-${id}-`;
@@ -382,9 +412,11 @@ export function scopeProblems({ resources, providers }, labId) {
     const all = leaves(v);
 
     // provider
-    if (!PROVIDERS.has(r.provider)) refuse("provider", `the ${r.provider} provider is not allowed in a lab`);
+    if (!PROVIDERS.has(r.provider)) refuse("provider", `the ${r.provider} provider is not allowed in a lab (only ${ALLOWED_PROVIDER_SOURCES.join(", ")})`);
     // provisioner
     if (r.provisioners > 0) refuse("provisioner", "provisioners are not allowed in a lab");
+    // import
+    if (importing.has(stripIndex(r.address))) refuse("import", "a lab only creates: importing would adopt an object that already exists, and tear-down would delete it");
 
     // gateway
     const linkException = (attr) => r.type === DNS_LINK && attr === "virtual_network_id" && refsOf(attr).length > 0 && refsOf(attr).every((x) => x === "var.gateway_vnet_id");
@@ -405,7 +437,15 @@ export function scopeProblems({ resources, providers }, labId) {
     if (r.mode === "managed") {
       // association
       if (ASSOCIATION_TYPES.has(r.type)) refuse("association", "a lab never moves or creates a subscription");
-      if (r.type === "azurerm_management_group" && v.subscription_ids != null && (v.subscription_ids instanceof Unknown || (Array.isArray(v.subscription_ids) && v.subscription_ids.length > 0))) refuse("association", "a lab management group never holds the subscription");
+      // subscription_ids is optional and computed: left unset, every real plan has it unknown
+      // (the provider reads it back after apply). Only a lab that sets it, or a known
+      // non-empty list, is moving a subscription.
+      if (r.type === "azurerm_management_group") {
+        const ids = v.subscription_ids;
+        const knownNonEmpty = Array.isArray(ids) && ids.length > 0;
+        const setUnknown = r.configured.has("subscription_ids") && ids instanceof Unknown;
+        if (knownNonEmpty || setUnknown) refuse("association", "a lab management group never holds the subscription");
+      }
 
       // governance
       if (GOVERNANCE_TYPES.has(r.type)) {
@@ -450,8 +490,18 @@ export function scopeProblems({ resources, providers }, labId) {
         const guid = typeof v.role_definition_id === "string" ? v.role_definition_id.toLowerCase() : null;
         const entry = custom.find((c) => c.id.toLowerCase() === guid);
         if (!entry || typeof v.name !== "string" || v.name.toLowerCase() !== entry.name.toLowerCase()) refuse("role", `a custom role needs its fixed name and role_definition_id from labs/setup/allowed-roles.json`);
-        const actions = leaves(v.permissions ?? []).filter((l) => l.path.includes("actions") || l.path.includes("data_actions")).map((l) => String(l.value));
-        if (actions.some((a) => a === "*" || /^Microsoft\.Authorization\/(\*|.*\/(write|delete|\*)$)/i.test(a))) refuse("role", "a lab custom role may not grant access or hold every action");
+        // Actions (and data actions; not_* only take away): no wildcard but a wildcard read
+        // ("*/read"), and nothing that writes access (Microsoft.Authorization/.../write|delete).
+        const actions = leaves(v.permissions ?? []).filter((l) => l.path.includes("actions") || l.path.includes("data_actions"));
+        const risky = (a) => typeof a !== "string" || (a.includes("*") && !/\/read$/i.test(a)) || /^Microsoft\.Authorization\/.*\/(write|delete)$/i.test(a);
+        if (actions.some((l) => l.value !== null && risky(l.value))) refuse("role", "a lab custom role may not hold wildcard actions (only wildcard reads) or grant access");
+        // Assignable only inside the lab's own group(s). Left unset, Azure makes it the
+        // definition's scope (the subscription), so unset is refused too.
+        const scopes = v.assignable_scopes;
+        const fromLabGroup = () => refsOf("assignable_scopes").length > 0 && refsOf("assignable_scopes").every((x) => target(x)?.mode === "managed" && target(x)?.type === "azurerm_resource_group");
+        const inside = (s) => (s instanceof Unknown ? fromLabGroup() : typeof s === "string" && classifyId(s)?.kind === "rg" && ownRg(classifyId(s).name));
+        const ok = scopes instanceof Unknown ? fromLabGroup() : Array.isArray(scopes) && scopes.length > 0 && scopes.every(inside);
+        if (!ok) refuse("role", `a lab custom role is assignable only inside ${rg} (assignable_scopes from azurerm_resource_group.<name>.id)`);
       }
       if (r.type === "azurerm_resource_group_template_deployment" || r.type === "azurerm_subscription_template_deployment") {
         let tpl = null;
@@ -514,7 +564,8 @@ export function scopeProblems({ resources, providers }, labId) {
             if (!ownMg(c.name)) refuse("outside-scope", `${l.path.join(".")} is in management group ${c.name}, not one this lab owns`);
           } else if (c.kind === "sub") {
             const definitionRef = DEFINITION_REF.test(c.rest);
-            const governanceScope = governance && GOVERNANCE_TYPES.has(r.type) && (l.attr === "scope" || l.attr === "assignable_scopes") && c.rest === "";
+            // Where a governance lab's definition lives; never where it can be assigned (role rule).
+            const governanceScope = governance && GOVERNANCE_TYPES.has(r.type) && l.attr === "scope" && c.rest === "";
             if (!definitionRef && !governanceScope) refuse("outside-scope", `${l.path.join(".")} is at subscription scope; a lab works inside its own group`);
           }
         }
@@ -535,9 +586,12 @@ export function scopeProblems({ resources, providers }, labId) {
     // One line per resource: the first rule, in RULES order.
     if (found.length) out.push(found.sort((a, b) => RULES.indexOf(a.rule) - RULES.indexOf(b.rule))[0]);
   }
+  // An import whose target is not a resource of this configuration is still refused.
+  const known = new Set(resources.map((r) => stripIndex(r.address)));
+  for (const a of importing) if (!known.has(a)) out.push({ rule: "import", address: a, message: "a lab only creates: importing would adopt an object that already exists" });
 
   for (const p of providers ?? []) {
-    if (!PROVIDERS.has(p.name)) continue; // its resources are refused one by one
+    if (!PROVIDER_NAMES.has(p.name)) continue; // its resources are refused one by one
     const bad = p.keys.filter((k) => PROVIDER_CREDENTIALS.includes(k));
     if (bad.length) out.push({ rule: "provider", address: `provider.${p.key}`, message: `a lab provider may not set ${bad.join(", ")}: it uses the pipeline's own subscription and login` });
   }

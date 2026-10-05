@@ -162,24 +162,42 @@ jobs:
 
       # ── 4 ────────────────────────────────────────────────────────────────
       # Hold back until every lab.yml run of THIS lab started before this one
-      # has finished (other labs and the gateway never block). Giving up after
-      # 10 minutes fails the run loudly; nothing after it touches Azure.
+      # has finished (other labs and the gateway never block), for 10 minutes.
+      # Then a destroy goes ahead anyway: getting back to £0 comes first, and
+      # every teardown step needs this one to succeed (a stuck deploy just
+      # loses the state lock race; the safety net does not need the lock).
+      # Anything else fails loudly, and nothing after it touches Azure.
       - name: Wait for earlier run of this lab
         id: wait
-        timeout-minutes: 10
+        # A backstop only: the step gives up by itself (a timeout would fail it).
+        timeout-minutes: 15
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Wait for earlier run of this lab"
-          set -euo pipefail
+          set -uo pipefail
+          deadline=$(( $(date +%s) + ${LAB_WAIT_SECONDS:-600} ))
           while :; do
-            earlier="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/lab.yml/runs?per_page=100" \
-              --jq "[.workflow_runs[] | select(.status != \"completed\" and .id < $GITHUB_RUN_ID and (((.display_title // \"\") | split(\" \"))[2] == \"$LAB_ID\"))] | length")"
-            [ "$earlier" = "0" ] && break
-            echo "waiting for $earlier earlier run(s) of $LAB_ID to finish"
+            if earlier="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/lab.yml/runs?per_page=100" \
+              --jq "[.workflow_runs[] | select(.status != \"completed\" and .id < $GITHUB_RUN_ID and (((.display_title // \"\") | split(\" \"))[2] == \"$LAB_ID\"))] | length")"; then
+              if [ "$earlier" = "0" ]; then
+                echo "no earlier run of $LAB_ID is active; going ahead"
+                exit 0
+              fi
+              echo "waiting for $earlier earlier run(s) of $LAB_ID to finish"
+            else
+              echo "::warning::could not ask GitHub for earlier runs of $LAB_ID"
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              if [ "$LAB_ACTION_INPUT" = destroy ]; then
+                echo "::warning::an earlier run of $LAB_ID is still going (or GitHub cannot say) after the wait; tearing down anyway"
+                exit 0
+              fi
+              echo "::error::an earlier run of $LAB_ID is still going (or GitHub cannot say) after the wait; giving up"
+              exit 1
+            fi
             sleep 20
           done
-          echo "no earlier run of $LAB_ID is active; going ahead"
 
       - name: Set up Terraform
         if: always() && steps.wait.outcome == 'success' && env.LAB_HAS_TF == 'true'
@@ -196,6 +214,11 @@ jobs:
           key: tf-plugins-labs-${{ hashFiles('labs/_template/versions.tf') }}
 
       # ── 5 ────────────────────────────────────────────────────────────────
+      # First the lab's Terraform text (infra/ci/lab-lint.mjs): init downloads
+      # the providers it names, and plan (destroy too) already runs data
+      # sources with the pipeline's keys, so only azurerm, azuread, random and
+      # time (full source addresses), no provisioners, modules, imports or
+      # other backends get as far as terraform init.
       # Bicep labs keep .bicep files in terraform/; they are compiled to ARM
       # JSON first, which Terraform deploys into the lab's own group.
       - name: Terraform init
@@ -209,6 +232,7 @@ jobs:
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Terraform init"
           set -euo pipefail
+          node "$GITHUB_WORKSPACE/infra/ci/lab-lint.mjs" "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
           cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
           shopt -s nullglob
           for f in *.bicep; do
@@ -358,7 +382,9 @@ jobs:
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Destroy"
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
-          terraform destroy -no-color -input=false -auto-approve
+          # A lock a dead run left behind fails this after 5 minutes rather than at once;
+          # the safety net still finishes, and once clean, Back up state removes the lock.
+          terraform destroy -no-color -input=false -auto-approve -lock-timeout=5m
 
       # ── 13 ───────────────────────────────────────────────────────────────
       - name: Safety net
@@ -404,19 +430,32 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          # Set only by destroy and test runs (step 14).
+          VERIFY_CLEAN: ${{ steps.verify.outputs.clean }}
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Back up state"
-          set -euo pipefail
+          set -uo pipefail
           dir="$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
-          if [ ! -d "$dir/.terraform" ]; then echo "no Terraform state was opened by this run; nothing to back up"; exit 0; fi
-          cd "$dir"
-          ts="$(date -u +%Y%m%dT%H%M%SZ)"
-          terraform state pull > "$RUNNER_TEMP/state.json"
-          aws s3 cp "$RUNNER_TEMP/state.json" "s3://$R2_BUCKET/labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate" --only-show-errors
-          aws s3 ls "s3://$R2_BUCKET/labs/$LAB_ID/backups/" | awk '{print $4}' | sort | head -n -5 | while read -r old; do
-            [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/labs/$LAB_ID/backups/$old" --only-show-errors
-          done
-          echo "state backed up as labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate"
+          rc=0
+          if [ ! -d "$dir/.terraform" ]; then
+            echo "no Terraform state was opened by this run; nothing to back up"
+          else
+            (
+              set -euo pipefail
+              cd "$dir"
+              ts="$(date -u +%Y%m%dT%H%M%SZ)"
+              terraform state pull > "$RUNNER_TEMP/state.json"
+              aws s3 cp "$RUNNER_TEMP/state.json" "s3://$R2_BUCKET/labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate" --only-show-errors
+              aws s3 ls "s3://$R2_BUCKET/labs/$LAB_ID/backups/" | awk '{print $4}' | sort | head -n -5 | while read -r old; do
+                [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/labs/$LAB_ID/backups/$old" --only-show-errors
+              done
+              echo "state backed up as labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate"
+            ) || { echo "::warning::the state backup failed"; rc=1; }
+          fi
+          # A lab verified clean has nothing its state could describe: remove the state and any
+          # lock a dead run left, so the next deploy starts afresh (infra/ci/lab-state-reset.sh).
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-state-reset.sh" "$LAB_ID"
+          exit "$rc"
 
       # ── 16 ───────────────────────────────────────────────────────────────
       # First the live log's last lines (once the run is reported the Worker
