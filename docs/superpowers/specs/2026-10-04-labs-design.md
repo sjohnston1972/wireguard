@@ -152,18 +152,18 @@ Steps (D deploy, X destroy, P peer, U unpeer, T test = D then X):
 | 1 | Check out, Parse payload | all | refuses a lab id that fails the regex or has no folder, and a `version` that differs from `lab.yaml` (stale dashboard) |
 | 2 | Collect run secrets | all | OIDC (`aud wg-admin`, workflow `lab.yml` on `main`) → `callback_token`, `admin_password`; masked |
 | 3 | Start live log | all | unchanged shipper, same redaction |
-| 4 | Wait for earlier run of this lab | all | ≤ 10 min, then fail loudly |
-| 5 | Terraform init | D X T | backend key `labs/<id>/terraform.tfstate`; `az bicep build` first if `*.bicep` exist |
+| 4 | Wait for earlier run of this lab | all | ≤ 10 min; then a destroy goes ahead anyway (teardown first), anything else fails loudly |
+| 5 | Terraform init | D X T | `infra/ci/lab-lint.mjs` on the lab's Terraform text first (§8.4); backend key `labs/<id>/terraform.tfstate`; `az bicep build` first if `*.bicep` exist |
 | 6 | Plan and scope check | D T | `terraform plan -out`, `terraform show -json`, `node infra/ci/lab-scope.mjs` (§8.4); refuses before anything is built |
 | 7 | Apply | D T | `terraform apply plan.out` |
 | 8 | Ready check | D T | every resource in `rg-lab-<id>*` exists with `provisioningState = Succeeded`; polls up to `deploy_min` |
 | 9 | Peer | D P T | if `peering`: ask the Worker (`/api/callback/lab-peer` begin); on "go", create both peerings (§7.6), then "end" |
 | 10 | Unpeer | X U T | delete the `vnet-wg` side, then the lab side if the group still exists |
 | 11 | Unblock | X T | remove what stops a group delete: resource locks, legal holds and unlocked immutability policies, backup protection (stop and delete data), Site Recovery replication (`infra/ci/lab-unblock.sh`) |
-| 12 | Destroy | X T | `terraform destroy`; `continue-on-error`, like the gateway |
+| 12 | Destroy | X T | `terraform destroy -lock-timeout=5m`; `continue-on-error`, like the gateway |
 | 13 | Safety net | X T | delete `rg-lab-<id>*`; Entra users and groups starting `lab-<id>-`; governance labs also custom roles, policy assignments and definitions, and management groups (children first) starting `lab-<id>-` |
 | 14 | Verify clean | X T | re-list all of 13; outputs `clean` and `leftovers` |
-| 15 | Back up state | all | `labs/<id>/backups/`, newest 5 |
+| 15 | Back up state | all | `labs/<id>/backups/`, newest 5; once verified clean, the state and any stale `.tflock` are removed (`lab-state-reset.sh`) |
 | 16 | Finish live log, Report result | all | `{run_id, action, status, outputs: {private_ips, connect, clean, leftovers, deploy_seconds, destroy_seconds}}` |
 
 A failed deploy is destroyed after 15 minutes (§7.4). Safety net and clean check run even when Terraform fails or the state is
@@ -263,8 +263,10 @@ Every 5 minutes, in its own try/catch so a lab problem never delays the gateway'
 
 ### 7.5 Orphan detection
 
-Hourly, the Worker lists (6 calls): resource groups starting `rg-lab-`; Entra users and groups with `displayName` or
-`userPrincipalName` starting `lab-`; management groups, custom role definitions and policy definitions/assignments starting `lab-`.
+Hourly, the Worker lists (7 calls, plus one GET per fixed custom role GUID in `labs/setup/allowed-roles.json`: the
+subscription's list misses a role assignable only inside a group): resource groups starting `rg-lab-`; Entra users by
+`userPrincipalName` and groups by `displayName` starting `lab-` (the fields the safety net deletes by); management groups,
+custom role definitions and policy definitions/assignments starting `lab-`.
 Anything not owned by a `deploying`, `running` or `tearing_down` session and older than 30 minutes becomes one watchman note per
 lab ("Lab leftovers: rg-lab-az104-08-vms, lab-az104-01-identity-ann") on the Labs tab and the bell, with **Clean up**: a destroy
 run for that lab id, parsed from the name if the lab has left the catalogue. Azure's own `NetworkWatcherRG` is ignored. A clean
@@ -337,8 +339,17 @@ management groups. A deny policy at subscription scope could otherwise break the
   UPN or mail nickname does not start `lab-<id>-`; is a role assignment whose role is not on the allow-list; is a subscription or
   management-group association; locks an immutability policy (`state = "Locked"`); or comes from a disallowed provider. The only
   reference to `vnet-wg` allowed is `var.gateway_vnet_id` in a private DNS zone link. The only writes to `rg-wg-ondemand` are
-  the pipeline's own peering and DNS-link steps (§7.6), never lab Terraform.
-- **CI lint (early warning):** the same rules on HCL (`hcl2json`), on every push.
+  the pipeline's own peering and DNS-link steps (§7.6), never lab Terraform. Also refused (fix pass, 2026-10-05): any change
+  that imports an existing object (`change.importing`; an adopted real user renamed `lab-<id>-x` would be deleted at
+  tear-down); a provider whose **full** source address is not `registry.terraform.io/hashicorp/{azurerm,azuread,random,time}`;
+  a lab custom role holding a wildcard action other than a wildcard read, or assignable anywhere but the lab's own group(s).
+  A management group's `subscription_ids` is refused only when set in the configuration or known and non-empty (left unset,
+  it is unknown in every real plan).
+- **Before `terraform init` (lab.yml step 5):** `infra/ci/lab-lint.mjs` on the lab's Terraform text, because init downloads the
+  providers the files name and plan (destroy too) already runs data sources with the pipeline's keys: the same provider
+  allow-list (declared or implied, quoted or bare labels), no provisioners, `module` or `import` blocks, no backend other than
+  the template's `s3`, no `cloud` block, no `*.tf.json`, `*.tfvars` or CLI configuration files.
+- **CI lint (early warning):** the same rules on HCL (`hcl2json`), on every push, and `lab-lint.mjs` in `npm run labs-check`.
 
 ### 8.5 The risk, stated plainly
 
@@ -369,10 +380,12 @@ With no price under 7 days old, the authored `gbp_h` is used and the modal says 
 
 ### 9.3 Budget guard
 
-`budgetFigures` gains labs: `session` adds each running lab's `est_gbp_h × hours` to its timer (or `max_until`). `actual` comes from
+`budgetFigures` gains labs: `session` adds each running lab's `est_gbp_h × hours` to its timer; a lab still deploying (no timer
+yet) counts for the hours chosen at deploy, and only to `max_until` when those are not known. `actual` comes from
 Cost Management for the gateway's group **and** all `rg-lab-*` groups (the query filters on the gateway group today). The 80% push
 is unchanged and now names lab spend; at 100%, labs are torn down (§7.4 step 5), the gateway is not, and Deploy (gateway or lab)
-needs the existing "Deploy anyway".
+needs the existing "Deploy anyway". For a lab, "Deploy anyway" only skips the warning before the deploy: it never exempts the
+lab from this guard (Steven's decision B, §14).
 
 ### 9.4 Per-lab spend
 
@@ -507,6 +520,8 @@ and noted in its report before the next starts. Gateway-side changes ship as the
 | Item | Status |
 |---|---|
 | SP blast radius (§8.5) | Accepted by Steven. Tenant-wide Graph write is the largest exposure. |
+| Decision A (2026-10-05): the SP keeps `roleDefinitions/write` | **Accepted by Steven.** With it the pipeline SP could in principle define a role and so widen its own rights (escalate itself). It is kept, because labs 1, 20 and 21 teach custom roles. Mitigation is in lab content checks instead: `lab-lint.mjs` before init, and in `lab-scope.mjs` a lab custom role may hold no wildcard action other than a wildcard read and nothing that writes `Microsoft.Authorization`, must use its fixed GUID, and is assignable only inside the lab's own group(s). The code that would abuse the right still has to reach `main`. |
+| Decision B (2026-10-05): "Deploy anyway" and the budget guard | **Steven's ruling.** "Deploy anyway" only skips the warning before a deploy. At 100% of the month's budget every live lab is torn down, one deployed with "Deploy anyway" included; the gateway never. Note: the guard's total includes running labs' estimates to their timers, so a lab deployed anyway over budget is torn down at the next watch run (within 5 minutes). |
 | Teardown blockers | Locks, backup items with soft delete, Site Recovery replication, legal holds and **locked** immutability can stop a group delete. The unblock step handles the first four, and locked immutability is refused at plan. Vaults are created with soft delete off (V: still allowed on new vaults). |
 | Azure-made resource groups | AKS (`node_resource_group`), backup instant restore (`instant_restore_resource_group` prefix) and Site Recovery targets must be named `rg-lab-<id>-*` or they escape the sweep. CI checks these attributes are set. |
 | Budget size | Today's `MONTHLY_BUDGET_GBP` is £10. One 2-hour session of a £££ lab is about £2, so §15 asks Steven to set a study-period budget. |
