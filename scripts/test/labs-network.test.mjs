@@ -185,3 +185,103 @@ test(`${L13}: private_ips and connect name both VMs`, () => {
   assert.ok(outputs(l).includes("peer_vnet_id"));
   assert.doesNotMatch(code(l), /var\.gateway_vnet_id/);
 });
+
+// ── Lab 14: VNet peering and user-defined routes ─────────────────────────
+
+const L14 = "az104-14-peering-udr";
+labContentSuite(L14, { marker: "£" });
+servesWithPython(L14, { spoke1: 80, spoke2: 80 });
+
+test(`${L14}: hub and two spokes from /20s 0, 1 and 2, each spoke peered with the hub both ways, forwarded traffic allowed`, () => {
+  const l = lab(L14);
+  const loc = locals(l);
+  assert.equal(loc.hub_cidr, "cidrsubnet(var.address_space, 2, 0)");
+  assert.equal(loc.spoke1_cidr, "cidrsubnet(var.address_space, 2, 1)");
+  assert.equal(loc.spoke2_cidr, "cidrsubnet(var.address_space, 2, 2)");
+  assert.equal(l.yaml.connectivity.subnets_used, 3);
+  assert.deepEqual(resources(l, "azurerm_virtual_network").map((v) => [v.labels[1], unq(attr(v.body, "name")), attr(v.body, "address_space")]), [
+    ["hub", "vnet-hub", "[local.hub_cidr]"],
+    ["spoke1", "vnet-spoke1", "[local.spoke1_cidr]"],
+    ["spoke2", "vnet-spoke2", "[local.spoke2_cidr]"],
+  ]);
+  // Each subnet inside its own VNet's /20.
+  for (const [key, vnet, local] of [["router", "hub", "hub_cidr"], ["spoke1", "spoke1", "spoke1_cidr"], ["spoke2", "spoke2", "spoke2_cidr"]]) {
+    const s = res(l, "azurerm_subnet", key);
+    assert.equal(attr(s.body, "virtual_network_name"), `azurerm_virtual_network.${vnet}.name`);
+    assert.equal(attr(s.body, "address_prefixes"), `[local.${key}_subnet]`);
+    assert.equal(loc[`${key}_subnet`], `cidrsubnet(local.${local}, 4, 0)`);
+  }
+  const peerings = resources(l, "azurerm_virtual_network_peering").map((p) => ({
+    from: attr(p.body, "virtual_network_name").replace(/^azurerm_virtual_network\.(\w+)\.name$/, "$1"),
+    to: attr(p.body, "remote_virtual_network_id").replace(/^azurerm_virtual_network\.(\w+)\.id$/, "$1"),
+    access: attr(p.body, "allow_virtual_network_access"),
+    forwarded: attr(p.body, "allow_forwarded_traffic"),
+    transit: attr(p.body, "allow_gateway_transit") ?? "false",
+    remote: attr(p.body, "use_remote_gateways") ?? "false",
+  }));
+  const pairs = peerings.map((p) => `${p.from}->${p.to}`).sort();
+  assert.deepEqual(pairs, ["hub->spoke1", "hub->spoke2", "spoke1->hub", "spoke2->hub"], "each spoke peered with the hub both ways, and the spokes never with each other");
+  for (const p of peerings) {
+    assert.equal(p.access, "true", `${p.from}->${p.to}: virtual network access`);
+    assert.equal(p.forwarded, "true", `${p.from}->${p.to}: forwarded traffic allowed (the router forwards)`);
+    assert.equal(p.transit, "false");
+    assert.equal(p.remote, "false");
+  }
+});
+
+test(`${L14}: a router VM in the hub with IP forwarding on its NIC and in the kernel`, () => {
+  const l = lab(L14);
+  const nic = res(l, "azurerm_network_interface", "router");
+  assert.equal(attr(nic.body, "ip_forwarding_enabled"), "true", "Azure forwards packets not addressed to the NIC");
+  assert.match(nic.body, /subnet_id\s*=\s*azurerm_subnet\.router\.id/);
+  assert.equal(attr(nic.body, "private_ip_address_allocation"), '"Static"');
+  assert.equal(attr(nic.body, "private_ip_address"), "local.router_ip");
+  assert.equal(locals(l).router_ip, "cidrhost(local.router_subnet, 4)");
+  // Only the router forwards.
+  for (const other of resources(l, "azurerm_network_interface").filter((n) => n.labels[1] !== "router")) assert.notEqual(attr(other.body, "ip_forwarding_enabled"), "true", other.labels[1]);
+  const vm = res(l, "azurerm_linux_virtual_machine", "router");
+  assert.equal(attr(vm.body, "size"), '"Standard_B1s"');
+  assert.equal(attr(vm.body, "custom_data"), 'base64encode(templatefile("${path.module}/router-init.yaml.tftpl", {}))');
+  const tpl = readFileSync(join(l.tfDir, "router-init.yaml.tftpl"), "utf8").replace(/\r\n/g, "\n");
+  assert.doesNotMatch(tpl, /\$\{/, "the router's cloud-init takes no variables");
+  const doc = parseYaml(tpl);
+  assert.equal(doc.packages, undefined, "no packages");
+  const conf = doc.write_files.find((f) => f.path.startsWith("/etc/sysctl.d/"));
+  assert.match(conf.content, /^net\.ipv4\.ip_forward = 1$/m, "the kernel forwards");
+  assert.match(conf.content, /^net\.ipv4\.conf\.all\.send_redirects = 0$/m, "no ICMP redirects back to the spokes");
+  assert.ok(doc.runcmd.includes("sysctl --system"), "applied at first boot, and kept for every boot");
+});
+
+test(`${L14}: each spoke routes the other spoke's prefix to the router, and nothing routes 0.0.0.0/0`, () => {
+  const l = lab(L14);
+  assert.deepEqual(resources(l, "azurerm_route_table").map((r) => [r.labels[1], unq(attr(r.body, "name"))]), [
+    ["spoke1", "rt-spoke1"],
+    ["spoke2", "rt-spoke2"],
+  ]);
+  const routes = resources(l, "azurerm_route").map((r) => ({
+    table: attr(r.body, "route_table_name").replace(/^azurerm_route_table\.(\w+)\.name$/, "$1"),
+    prefix: attr(r.body, "address_prefix"),
+    type: unq(attr(r.body, "next_hop_type")),
+    hop: attr(r.body, "next_hop_in_ip_address"),
+  }));
+  assert.deepEqual(routes, [
+    { table: "spoke1", prefix: "local.spoke2_cidr", type: "VirtualAppliance", hop: "local.router_ip" },
+    { table: "spoke2", prefix: "local.spoke1_cidr", type: "VirtualAppliance", hop: "local.router_ip" },
+  ]);
+  assert.deepEqual(associations(l, "azurerm_subnet_route_table_association", "route_table_id"), { spoke1: "spoke1", spoke2: "spoke2" });
+  assert.doesNotMatch(code(l), /0\.0\.0\.0\/0/, "no default route: the spokes keep Azure's own way out");
+  // Each spoke VM sits behind its route table.
+  assert.match(res(l, "azurerm_network_interface", "spoke1").body, /subnet_id\s*=\s*azurerm_subnet\.spoke1\.id/);
+  assert.match(res(l, "azurerm_network_interface", "spoke2").body, /subnet_id\s*=\s*azurerm_subnet\.spoke2\.id/);
+});
+
+test(`${L14}: peer_vnet_id is the hub, and the readme says the spokes are not reachable over the tunnel`, () => {
+  const l = lab(L14);
+  assert.equal(l.yaml.connectivity.peering, "optional");
+  assert.equal(attr(output(l, "peer_vnet_id").body, "value"), "azurerm_virtual_network.hub.id");
+  assert.match(l.readme, /spokes are not reachable over the tunnel/i);
+  assert.match(l.readme, /not transitive/i);
+  for (const vm of ["vm-router", "vm-spoke1", "vm-spoke2"]) assert.match(output(l, "private_ips").body, new RegExp(`"${vm}"\\s*=`));
+  assert.match(output(l, "connect").body, /ssh azureuser@\$\{azurerm_network_interface\.router\.private_ip_address\}/);
+  assert.doesNotMatch(code(l), /var\.gateway_vnet_id/);
+});

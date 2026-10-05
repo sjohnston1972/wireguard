@@ -8,7 +8,7 @@
 # Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
 # rounded up. The VMs and their OS disks carry retail entries the price feed
 # refreshes; npm run labs-verify -- --meters az104-13-vnets checks them
-# (Standard_B1s Linux £0.0092/h; S4 LRS Disk £1.31 a month, about
+# (Standard_B1s Linux £0.0089/h; S4 LRS Disk £1.28 a month, about
 # £0.0018/h). The VNet, subnets, NSGs, ASGs, NICs and managed boot
 # diagnostics are free.
 id: az104-13-vnets

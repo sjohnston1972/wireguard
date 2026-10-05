@@ -1,0 +1,38 @@
+# Lab 14 (batch 2 plan area B2). AZ-104 study guide skills this lab touches
+# ((V) the wording against the current outline):
+#   Implement and manage virtual networking > Configure and manage virtual
+#   networks in Azure: "Create and configure virtual networks and subnets",
+#   "Create and configure virtual network peering", "Configure user-defined
+#   network routes", "Troubleshoot network connectivity".
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. The VMs and their OS disks carry retail entries the price feed
+# refreshes; npm run labs-verify -- --meters az104-14-peering-udr checks
+# them (Standard_B1s Linux £0.0089/h; S4 LRS Disk £1.28 a month, about
+# £0.0018/h). Intra-region peering is billed per GB each way (pennies per
+# GB; this lab moves a few MB), so it stays authored. VNets, route tables
+# and NICs are free.
+id: az104-14-peering-udr
+version: 1
+title: "VNet peering and user-defined routes"
+summary: >-
+  A hub and two spoke VNets, each spoke peered with the hub, and a small router VM in the hub that user-defined
+  routes send spoke-to-spoke traffic through, so you can see why peering is not transitive and how a UDR fixes it.
+exam: AZ-104
+skill_areas: [az104.networking]
+level: associate
+type: explore
+prerequisites: [az104-13-vnets]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s (router and two spokes)", gbp_h: 0.0092, qty: 3, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 3, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "VNet peering traffic, intra-region, a few MB", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 5, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 3 }
+identity:
+  creates: []
+  roles: []
+  governance: false
