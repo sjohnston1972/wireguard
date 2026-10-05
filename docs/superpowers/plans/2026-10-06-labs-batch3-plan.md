@@ -526,7 +526,7 @@ fixtures cannot be checked against reality, and Key Vault, SQL failover groups a
 - [x] **C0.7 Ready check.** `lab-cleanup.test.mjs` (or `lab-ready` tests where they live): `ready check accepts an empty state
   only for types listed as never giving one` (list empty; a fake listed type passes, an unlisted one stays pending). FAIL;
   implement; PASS; commit. **Done when** the test passes.
-- [ ] **C0.8 Contract check.** This plan's names section rewritten "as built"; spec §17 rulings 23–37 corrected to what was
+- [x] **C0.8 Contract check.** (Done 2026-10-05: gate green locally, CI green on draft PR #82.) This plan's names section rewritten "as built"; spec §17 rulings 23–37 corrected to what was
   built. Gate plus `labs-tf`; CI green on a draft PR. Push; send the areas the commit and the names section. **Done when** CI's
   `labs` job is green on the draft PR and the areas have the commit id.
 
