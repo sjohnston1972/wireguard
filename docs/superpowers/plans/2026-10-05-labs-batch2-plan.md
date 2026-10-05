@@ -454,3 +454,9 @@ Same step shape as B1.
 - **Teardown:** the vault path is proven twice (release test, soak); no workspace or vault survives a destroy.
 - **Prices:** every `retail` entry passes `labs-verify --meters`; every marker matches `costMarker`.
 - **No change** to the gateway, `wg.yml`, D1, Worker routes or the app; `.env` was never read.
+
+## Release outcome (2026-10-05)
+
+Labs 6 (v2), 8, 9, 11–19 passed real-Azure release tests (docs/labs/release-tests.md). Lab 10 (App Service) is
+parked on branch `feat/lab-10-app-service` and left out of this release: the subscription has zero App Service
+quota for P0v3 and S1 in uksouth, so it cannot deploy. Bring it back once quota exists and its release test passes.
