@@ -826,3 +826,81 @@ test("lab 20 may assign its own custom roles inside its group, and no other lab 
   assert.deepEqual(checkHcl(hcl, "az305-20-landing-zone"), []);
   assert.deepEqual(verdict(checkHcl(hcl, "az305-21-monitoring-scale")).map(([rule]) => rule), ["role", "role", "role", "role"]);
 });
+
+// Review (labs batch 3): a whole top-level attribute not known until apply is held to its references like a nested
+// one. A failover group's databases from a data source (a splat, of unknown length, has only the data source's own
+// address as its reference) or a variable must not pass because the attribute is not a scope attribute.
+test("an unknown top-level attribute built from ids is held to the lab's own resources", () => {
+  const id = "az305-23-sql-failover";
+  const c = ctx(id, "23");
+  const server = (key, rg, group) => ({ address: `azurerm_mssql_server.${key}`, values: { name: `${c.prefix}-sql${key}`, resource_group_name: rg, location: "uksouth", version: "12.0" }, refs: { resource_group_name: [`azurerm_resource_group.${group}.name`, `azurerm_resource_group.${group}`] } });
+  const db = { address: "azurerm_mssql_database.primary", values: { name: "sqldb-app" }, unknown: ["server_id"], refs: { server_id: ["azurerm_mssql_server.p.id", "azurerm_mssql_server.p"] } };
+  const group = (databases) => ({
+    address: "azurerm_mssql_failover_group.fog",
+    values: { name: `${c.prefix}-fog`, read_write_endpoint_failover_policy: [{ mode: "Manual" }], partner_server: [{}] },
+    unknown: ["server_id", "partner_server.0.id", "databases"],
+    refs: { server_id: ["azurerm_mssql_server.p.id", "azurerm_mssql_server.p"], "partner_server.0.id": ["azurerm_mssql_server.s.id", "azurerm_mssql_server.s"], databases },
+  });
+  const plan = (databases) => realisticPlan({ resources: [rgResource(c), rgSecondaryResource(c), server("p", c.rg, "lab"), server("s", c.rgSecondary, "secondary"), db, group(databases)] }); // the data source is deferred to apply: in the configuration only
+  // The lab's own databases (a splat over them lists the resource itself): passes.
+  assert.deepEqual(checkPlan(plan(["azurerm_mssql_database.primary.id", "azurerm_mssql_database.primary"]), id), []);
+  assert.deepEqual(checkPlan(plan(["azurerm_mssql_database.primary"]), id), []);
+  // data.x[*].id: Terraform lists the data source alone. Refused, as is a variable of ids.
+  assert.deepEqual(verdict(checkPlan(plan(["data.azurerm_mssql_database.other"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.match(checkPlan(plan(["data.azurerm_mssql_database.other"]), id)[0].message, /^databases comes from data\.azurerm_mssql_database\.other/);
+  assert.deepEqual(verdict(checkPlan(plan(["var.database_ids"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.deepEqual(verdict(checkPlan(plan(["data.azurerm_mssql_database.other.id", "data.azurerm_mssql_database.other"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  // In HCL: the splat, and a dynamic partner_server over a data source, are refused too. (A plan never shows a
+  // dynamic block's expressions, terraform jsonconfig skips them, so the HCL check is where a dynamic block is read.)
+  const hcl = (fog) => ({
+    data: { azurerm_mssql_server: { other: [{ name: "sql-prod", resource_group_name: "rg-prod" }] }, azurerm_mssql_database: { other: [{ name: "sqldb-prod", server_id: "${data.azurerm_mssql_server.other.id}" }] } },
+    resource: {
+      azurerm_resource_group: { lab: RG_HCL.lab, secondary: [{ name: "${var.resource_group_name}-secondary", location: "${var.secondary_region}" }] },
+      azurerm_mssql_server: {
+        p: [{ name: "${var.name_prefix}-sqlp", resource_group_name: "${azurerm_resource_group.lab.name}", location: "${azurerm_resource_group.lab.location}", version: "12.0" }],
+        s: [{ name: "${var.name_prefix}-sqls", resource_group_name: "${azurerm_resource_group.secondary.name}", location: "${azurerm_resource_group.secondary.location}", version: "12.0" }],
+      },
+      azurerm_mssql_failover_group: { fog: [{ name: "${var.name_prefix}-fog", server_id: "${azurerm_mssql_server.p.id}", read_write_endpoint_failover_policy: [{ mode: "Manual" }], ...fog }] },
+    },
+  });
+  assert.deepEqual(checkHcl(hcl({ partner_server: [{ id: "${azurerm_mssql_server.s.id}" }] }), id), []);
+  assert.deepEqual(verdict(checkHcl(hcl({ partner_server: [{ id: "${azurerm_mssql_server.s.id}" }], databases: "${data.azurerm_mssql_database.other[*].id}" }), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.deepEqual(verdict(checkHcl(hcl({ dynamic: { partner_server: [{ for_each: "${data.azurerm_mssql_server.other[*]}", content: [{ id: "${partner_server.value.id}" }] }] } }), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+});
+
+// Review (labs batch 3): an id inside a JSON string (a policy assignment's parameters, a jsonencode()) is an id.
+test("ids inside JSON strings are read for what they are", () => {
+  const id = "az305-20-landing-zone";
+  const c = ctx(id, "20");
+  const foreign = `${SUB_ID}/resourceGroups/rg-other/providers/Microsoft.OperationalInsights/workspaces/law-prod`;
+  const own = `${SUB_ID}/resourceGroups/${c.rg}/providers/Microsoft.OperationalInsights/workspaces/law-lab`;
+  const BUILTIN = "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c";
+  const hcl = (parameters) => ({
+    resource: {
+      azurerm_resource_group: RG_HCL,
+      azurerm_management_group: { corp: [{ name: "lab-${var.lab_id}-corp", display_name: "lab-${var.lab_id}-corp" }] },
+      azurerm_management_group_policy_assignment: { diag: [{ name: "diag", management_group_id: "${azurerm_management_group.corp.id}", policy_definition_id: BUILTIN, parameters }] },
+    },
+  });
+  const params = (v) => JSON.stringify({ logAnalytics: { value: v } });
+  assert.deepEqual(checkHcl(hcl(params("eastus")), id), []);
+  assert.deepEqual(checkHcl(hcl(params(own)), id), []);
+  assert.deepEqual(verdict(checkHcl(hcl(params(foreign)), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  assert.match(checkHcl(hcl(params(foreign)), id)[0].message, /parameters.*logAnalytics\.value.*rg-other/);
+  // A list, a management group not the lab's, the subscription, and keys hold ids too.
+  assert.deepEqual(verdict(checkHcl(hcl(JSON.stringify([{ scopes: [own, foreign] }])), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  assert.deepEqual(verdict(checkHcl(hcl(params("/providers/Microsoft.Management/managementGroups/corp")), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  assert.deepEqual(verdict(checkHcl(hcl(params(SUB_ID)), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  assert.deepEqual(verdict(checkHcl(hcl(JSON.stringify({ [foreign]: { value: 1 } })), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  // Not JSON after all: left as a string.
+  assert.deepEqual(checkHcl(hcl("{not json"), id), []);
+  // In a plan: a known JSON string with a foreign id is refused; a jsonencode() of an unknown id is held to its references.
+  const assignment = (parameters, refs = {}, unknown = []) => ({ address: "azurerm_management_group_policy_assignment.diag", values: { name: "diag", policy_definition_id: BUILTIN, ...(parameters === undefined ? {} : { parameters }) }, unknown: ["management_group_id", ...unknown], refs: { management_group_id: ["azurerm_management_group.corp.id", "azurerm_management_group.corp"], ...refs } });
+  const mg = { address: "azurerm_management_group.corp", values: { name: `lab-${id}-corp`, display_name: `lab-${id}-corp` } };
+  const law = { address: "azurerm_log_analytics_workspace.law", values: { name: "law-lab", resource_group_name: c.rg, location: "uksouth" }, refs: { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } };
+  const plan = (a) => realisticPlan({ resources: [rgResource(c), mg, law, a] });
+  assert.deepEqual(checkPlan(plan(assignment(params(own))), id), []);
+  assert.deepEqual(verdict(checkPlan(plan(assignment(params(foreign))), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  assert.deepEqual(checkPlan(plan(assignment(undefined, { parameters: ["azurerm_log_analytics_workspace.law.id", "azurerm_log_analytics_workspace.law"] }, ["parameters"])), id), []);
+  assert.deepEqual(verdict(checkPlan(plan(assignment(undefined, { parameters: ["data.azurerm_log_analytics_workspace.prod.id", "data.azurerm_log_analytics_workspace.prod"] }, ["parameters"])), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+});

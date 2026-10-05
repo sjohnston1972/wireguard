@@ -47,7 +47,9 @@
 //                     named rg-lab-<id>-*
 //   resource-group    a resource group other than rg-lab-<id> or rg-lab-<id>-*
 //   outside-scope     a resource group, scope or parent outside the lab (an id at
-//                     any nested path too, known or unknown: a failover group's
+//                     any path too, a whole top-level attribute included, and any
+//                     id inside a JSON string such as a policy assignment's
+//                     parameters, known or unknown: a failover group's
 //                     partner server and databases, a replicated VM's disk target
 //                     group; an unknown one inside an attribute written as blocks
 //                     is held to all of that attribute's references, which is
@@ -105,6 +107,42 @@ const NOT_ARM = new Set(["principal_id", "tenant_id", "object_id", "client_id", 
 const ID_NAME = (name) => (name === "id" || /_ids?$/.test(name)) && !NOT_ARM.has(name);
 /** A reference to an id: azurerm_x.y.id, data.a.b.c_id, var.x_ids, azurerm_x.y[0].id. */
 const ID_REF = (ref) => ref.includes(".") && ID_NAME(ref.replace(/\[[^\]]*\]/g, "").split(".").at(-1));
+/**
+ * A whole data source used as a value (data.a.b with no attribute of it among `refs`): what a splat
+ * (data.a.b[*].id) or a for expression over it lists, since Terraform stops a reference at the splat.
+ */
+const WHOLE_DATA_REF = (ref, refs) => /^data\.[a-z0-9_]+\.[A-Za-z0-9_-]+$/.test(ref.replace(/\[[^\]]*\]/g, "")) && !refs.some((x) => x !== ref && x.replace(/\[[^\]]*\]/g, "").startsWith(`${ref.replace(/\[[^\]]*\]/g, "")}.`));
+/**
+ * Every string inside a JSON string (`{...}` or `[...]`), keys too, as { path, value }; strings inside it that are
+ * JSON themselves are read as well (a few levels). Not JSON (or not a string): nothing.
+ */
+function jsonStrings(s, depth = 0) {
+  if (typeof s !== "string" || depth > 3) return [];
+  const t = s.trim();
+  if (!(t.startsWith("{") || t.startsWith("["))) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(t);
+  } catch {
+    return [];
+  }
+  const out = [];
+  const walk = (v, path) => {
+    if (typeof v === "string") {
+      out.push({ path, value: v });
+      for (const j of jsonStrings(v, depth + 1)) out.push({ path: `${path} > ${j.path}`, value: j.value });
+    } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, path ? `${path}.${i}` : String(i)));
+    else if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) {
+        const p = path ? `${path}.${k}` : k;
+        out.push({ path: `${p} (key)`, value: k });
+        walk(x, p);
+      }
+    }
+  };
+  walk(parsed, "");
+  return out;
+}
 /**
  * count.index and each.key: an instance's own key, as in azurerm_network_interface.web[count.index].id,
  * which Terraform 1.14 lists as ["azurerm_network_interface.web", "count.index"]. They never reach
@@ -197,7 +235,8 @@ export function planResources(plan) {
     // Terraform splits only schema blocks by path ("partner_server.0.id"); an attribute that holds objects or
     // lists (azurerm's managed_disk, a failover group's databases) is one expression whose references cover
     // every value inside it, while after_unknown still marks those values by their own nested paths. So an
-    // unknown value takes the references of the nearest enclosing path that has any.
+    // unknown value takes the references of the nearest enclosing path that has any. A whole block left unknown
+    // (every value in it unknown, its expressions split by path below it) takes every reference under it.
     const byPath = refPaths(exprs, [], {});
     for (const l of leaves(values)) {
       if (!(l.value instanceof Unknown)) continue;
@@ -207,6 +246,11 @@ export function planResources(plan) {
           l.value.refs = refs;
           break;
         }
+      }
+      if (!l.value.refs) {
+        const under = `${l.path.join(".")}.`;
+        const below = Object.entries(byPath).filter(([p]) => p.startsWith(under)).flatMap(([, refs]) => refs);
+        if (below.length) l.value.refs = below;
       }
     }
     seen.set(r.address, {
@@ -892,22 +936,28 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
           anchored = true;
           if (!ownRg(v.resource_group_name)) refuse("outside-scope", `resource_group_name ${show("resource_group_name")} is not the lab's group`);
         }
-        for (const l of all) {
-          if (linkException(l.attr)) continue; // the gateway VNet, through var.gateway_vnet_id only
-          const c = classifyId(l.value);
-          if (!c) continue;
+        // Every known string, and every string (keys too) inside a JSON string: a policy assignment's
+        // parameters or a jsonencode() can carry an id as well as an attribute can.
+        const judge = (where, attr, s, inJson) => {
+          const c = classifyId(s);
+          if (!c) return;
           if (c.kind === "rg") {
             anchored = true;
-            if (!ownRg(c.name)) refuse("outside-scope", `${l.path.join(".")} is in resource group ${c.name}, outside the lab`);
+            if (!ownRg(c.name)) refuse("outside-scope", `${where} is in resource group ${c.name}, outside the lab`);
           } else if (c.kind === "mg") {
             anchored = true;
-            if (!ownMg(c.name)) refuse("outside-scope", `${l.path.join(".")} is in management group ${c.name}, not one this lab owns`);
+            if (!ownMg(c.name)) refuse("outside-scope", `${where} is in management group ${c.name}, not one this lab owns`);
           } else if (c.kind === "sub") {
             const definitionRef = DEFINITION_REF.test(c.rest);
             // Where a governance lab's definition lives; never where it can be assigned (role rule).
-            const governanceScope = governance && GOVERNANCE_TYPES.has(r.type) && l.attr === "scope" && c.rest === "";
-            if (!definitionRef && !governanceScope) refuse("outside-scope", `${l.path.join(".")} is at subscription scope; a lab works inside its own group`);
+            const governanceScope = !inJson && governance && GOVERNANCE_TYPES.has(r.type) && attr === "scope" && c.rest === "";
+            if (!definitionRef && !governanceScope) refuse("outside-scope", `${where} is at subscription scope; a lab works inside its own group`);
           }
+        };
+        for (const l of all) {
+          if (linkException(l.attr)) continue; // the gateway VNet, through var.gateway_vnet_id only
+          judge(l.path.join("."), l.attr, l.value, false);
+          for (const j of jsonStrings(l.value)) judge(`${l.path.join(".")} (JSON ${j.path || "value"})`, l.attr, j.value, true);
         }
         for (const [attr, refs] of Object.entries(r.refs)) {
           if (!r.configured.has(attr)) continue;
@@ -923,17 +973,19 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
           const places = rest.some(placed) || eachValue === "places";
           if (bad.length || !places) refuse("outside-scope", `${attr} comes from ${bad[0] ?? refs[0] ?? "nothing this check can place"}, which the check cannot place inside the lab`);
         }
-        // Ids at any nested path (a failover group's partner_server.0.id and databases.0, a replicated VM's
-        // managed_disk.0.target_resource_group_id): an unknown one must come from the lab's own resources too.
-        // Its references are its own inside a schema block, or the whole attribute's inside an attribute
-        // written as blocks (planResources), and every one of them must place it inside the lab.
+        // Ids at any path, a whole top-level attribute included (a failover group's partner_server.0.id and
+        // databases, a replicated VM's managed_disk.0.target_resource_group_id, a jsonencode()d parameters):
+        // an unknown one must come from the lab's own resources too. Its references are its own inside a schema
+        // block, or the whole attribute's inside an attribute written as blocks (planResources), and every one
+        // of them must place it inside the lab.
         for (const l of all) {
-          if (l.path.length < 2 || !(l.value instanceof Unknown)) continue;
+          if (!(l.value instanceof Unknown)) continue;
           const refs = l.value.refs ?? [];
           if (!refs.length) continue; // computed by the provider, not configured
           const named = String([...l.path].reverse().find((k) => typeof k === "string" && !/^\d+$/.test(k)));
-          // An id by its name (…id, …_id, …_ids), or a value made from ids (databases.0, contact_groups).
-          if (!ID_NAME(named) && !refs.some(ID_REF)) continue;
+          // An id by its name (…id, …_id, …_ids), or a value made from ids (databases.0, contact_groups), or from a
+          // whole data source (data.x[*].id: Terraform lists only the data source, an object that holds ids).
+          if (!ID_NAME(named) && !refs.some(ID_REF) && !refs.some((x) => WHOLE_DATA_REF(x, refs))) continue;
           const eachValue = refs.some((x) => EACH_VALUE_REF.test(x)) ? forEachValue(r) : null;
           const rest = refs.filter((x) => !INDEX_REF.test(x) && !EACH_VALUE_REF.test(x));
           const bad = [...rest.filter((x) => !placed(x)), ...(eachValue === "unknown" ? ["each.value"] : [])];
