@@ -202,3 +202,62 @@ test(`${L10}: peering off, no VNet, connect lists both default hostnames`, () =>
   // ££ for the plan: the card names what makes it pricey.
   assert.equal(l.yaml.cost.pricey, l.yaml.cost.items.find((i) => /P0v3/.test(i.name)).name);
 });
+
+// ── Lab 11: Containers, ACI and Container Apps ──────────────────────────
+
+const L11 = "az104-11-containers";
+labContentSuite(L11, { marker: "£" });
+
+test(`${L11}: an ACI group of 0.5 vCPU and 0.5 GB with a private IP in a delegated subnet`, () => {
+  const l = lab(L11);
+  const groups = resources(l, "azurerm_container_group");
+  assert.equal(groups.length, 1);
+  const g = groups[0].body;
+  assert.equal(attr(g, "os_type"), '"Linux"');
+  assert.equal(attr(g, "ip_address_type"), '"Private"', "no public IP (ruling 5)");
+  assert.doesNotMatch(g, /dns_name_label/);
+  assert.equal(attr(g, "subnet_ids"), "[azurerm_subnet.aci.id]");
+  assert.equal(attr(g, "image"), '"mcr.microsoft.com/azuredocs/aci-helloworld:latest"', "from MCR: the registry stays empty");
+  assert.equal(attr(g, "cpu"), "0.5");
+  assert.equal(attr(g, "memory"), "0.5");
+  assert.equal(attr(g, "port"), "80");
+  const subnet = body(l, "azurerm_subnet", "aci");
+  assert.match(subnet, /service_delegation\s*\{[^}]*name\s*=\s*"Microsoft\.ContainerInstance\/containerGroups"/);
+  // The subnet's service association link can hold it for minutes after the group goes.
+  assert.ok(l.yaml.timing.destroy_min >= 6, "destroy_min allows for the subnet's service association link");
+});
+
+test(`${L11}: a consumption-only Container Apps environment with no infrastructure subnet and an app that scales to zero`, () => {
+  const l = lab(L11);
+  const envs = resources(l, "azurerm_container_app_environment");
+  assert.equal(envs.length, 1);
+  const e = envs[0].body;
+  // No subnet and no workload profile: consumption only, and Azure makes no
+  // infrastructure group (ME_...) outside rg-lab-<id> (ruling 7).
+  assert.doesNotMatch(e, /infrastructure_subnet_id|infrastructure_resource_group_name|workload_profile|internal_load_balancer_enabled/);
+  assert.doesNotMatch(e, /log_analytics_workspace_id/, "no workspace: nothing billed per GB");
+  const apps = resources(l, "azurerm_container_app");
+  assert.equal(apps.length, 1);
+  const a = apps[0].body;
+  assert.equal(attr(a, "container_app_environment_id"), `azurerm_container_app_environment.${envs[0].labels[1]}.id`);
+  assert.equal(attr(a, "min_replicas"), "0", "scales to zero: no charge while idle");
+  assert.equal(attr(a, "max_replicas"), "1");
+  assert.equal(attr(a, "image"), '"mcr.microsoft.com/k8se/quickstart:latest"');
+  assert.equal(attr(a, "external_enabled"), "true", "public ingress, accepted (ruling 5)");
+  assert.equal(attr(a, "target_port"), "80");
+  assert.doesNotMatch(a, /workload_profile_name|registry\s*\{|identity\s*\{/);
+});
+
+test(`${L11}: an empty Basic registry with the admin user off, named from name_prefix`, () => {
+  const l = lab(L11);
+  const regs = resources(l, "azurerm_container_registry");
+  assert.equal(regs.length, 1);
+  const r = regs[0].body;
+  assert.equal(attr(r, "name"), '"${var.name_prefix}acr"');
+  assert.equal(attr(r, "sku"), '"Basic"');
+  assert.equal(attr(r, "admin_enabled"), "false");
+  assert.doesNotMatch(r, /georeplications|identity\s*\{/);
+  // Nothing pulls from it: AcrPull is not on the allow-list (ruling 7).
+  assert.doesNotMatch(tfText(l), /\.login_server\}?[^"]*\/|azurerm_container_registry_task|azurerm_role_assignment/);
+  assert.ok(l.yaml.cost.items.some((i) => i.retail?.meter === "Basic Registry Unit" && i.retail.unit === "1/Day"));
+});
