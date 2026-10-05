@@ -814,8 +814,8 @@ const asrWorld = ({ state = "None", items = [""], itemsCode = 0 } = {}) => [
   { match: `^backup vault list --resource-group ${R26S} `, out: "rsv-lab" },
   { match: "^backup vault backup-properties show", out: "Disabled" },
   { match: "^backup item list", out: "" },
-  { match: "^rest --method get --url .*/replicationProtectedItems\\?.*value\\[\\]\\.\\[id", out: `${ASR_ITEM}\t${state}` },
-  { match: "^rest --method get --url .*/replicationProtectedItems\\?.*--query value\\[\\]\\.id ", out: items, code: itemsCode },
+  { match: "^rest --method get --url .*/replicationProtectedItems\\?.*value\\[\\]\\.\\[id, properties\\.testFailoverState", out: `${ASR_ITEM}\t${state}` },
+  { match: "^rest --method get --url .*/replicationProtectedItems\\?.*--query value\\[\\]\\.\\[id, properties\\.currentScenario", out: items, code: itemsCode },
   { match: "^rest --method get --url .*/replicationNetworkMappings\\?", out: NET_MAP },
   { match: "^rest --method get --url .*/replicationProtectionContainerMappings\\?", out: CONT_MAP },
   { match: "^rest --method get --url .*/replicationPolicies\\?", out: POLICY },
@@ -829,7 +829,7 @@ test("unblock cleans up a test failover before removing replication", { skip }, 
   const cleanup = firstCall(calls, new RegExp(`^az rest --method post --url ${ASR_ITEM}/testFailoverCleanup\\?api-version=2023-08-01 --body \\{"properties":\\{"comments":"[^"]+"\\}\\}`));
   const remove = firstCall(calls, new RegExp(`^az rest --method post --url ${ASR_ITEM}/remove\\?api-version=2023-08-01`));
   assert.ok(cleanup >= 0 && remove > cleanup, calls.join("\n"));
-  assert.match(r.out, /vm-app: test failover cleaned up/);
+  assert.match(r.out, /vm-app: test failover cleanup started/);
   w.cleanup();
   // No test failover (None, or none at all), or one already being cleaned up: no cleanup call.
   for (const state of ["None", "", "MarkedForDeletion"]) {
@@ -847,7 +847,7 @@ test("unblock waits until a vault has no replicated items, then removes network 
   assert.equal(r.status, 0, r.out);
   const calls = w.calls();
   const remove = firstCall(calls, /replicationProtectedItems\/vm-app\/remove/);
-  const lastWait = lastCall(calls, /replicationProtectedItems\?.*--query value\[\]\.id /);
+  const lastWait = lastCall(calls, /replicationProtectedItems\?.*--query value\[\]\.\[id, properties\.currentScenario/);
   const net = firstCall(calls, new RegExp(`^az rest --method delete --url ${NET_MAP}\\?api-version=2023-08-01`));
   const cont = firstCall(calls, new RegExp(`^az rest --method post --url ${CONT_MAP}/remove\\?api-version=2023-08-01 --body \\{"properties":\\{"providerSpecificInput":\\{\\}\\}\\}`));
   const pol = firstCall(calls, new RegExp(`^az rest --method delete --url ${POLICY}\\?api-version=2023-08-01`));
@@ -877,6 +877,84 @@ test("unblock waits until a vault has no replicated items, then removes network 
   assert.equal(x.status, 0, x.out);
   for (const what of ["could not disable replication for vm-app", "could not delete network mapping map-source-target", "could not remove container mapping map-uks-ukw", "could not delete replication policy policy-6h"]) assert.match(x.stderr, new RegExp(`::warning::unblock: rsv-lab: ${what}`));
   refused.cleanup();
+});
+
+// testFailoverCleanup is asynchronous (202) and az rest does not wait for it: a remove posted while the cleanup
+// still runs is refused. Unblock polls the item until its test failover state is None (or empty, or
+// MarkedForDeletion) before posting remove, and the vault wait re-sends remove for an item still listed that is not
+// already being removed (bounded), so a refused first remove is not the end of it.
+const ITEM_STATE = "^rest --method get --url [^ ]*/replicationProtectedItems/vm-app\\?api-version=2023-08-01 --query properties\\.testFailoverState -o tsv$";
+const REMOVE_RE = "^rest --method post --url [^ ]*/replicationProtectedItems/vm-app/remove\\?";
+const isRemove = (c) => /^az rest --method post --url [^ ]*\/replicationProtectedItems\/vm-app\/remove\?/.test(c);
+const isState = (c) => /^az rest --method get --url [^ ]*\/replicationProtectedItems\/vm-app\?api-version=2023-08-01 --query properties\.testFailoverState /.test(c);
+const isWaitList = (c) => /^az rest --method get --url [^ ]*\/replicationProtectedItems\?.*--query value\[\]\.\[id, properties\.currentScenario/.test(c);
+const listedAs = (scenario, protection) => `${ASR_ITEM}\t${scenario}\t${protection}`;
+
+test("unblock waits for a test failover cleanup to finish before removing replication", { skip }, () => {
+  const w = world([{ match: ITEM_STATE, out: ["Completed", "Completed", "None"] }, ...asrWorld({ state: "Completed" })]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L26]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const cleanup = firstCall(calls, /testFailoverCleanup/);
+  const polls = calls.map((c, i) => (isState(c) ? i : -1)).filter((i) => i >= 0);
+  const remove = calls.findIndex(isRemove);
+  assert.equal(polls.length, 3, `polled the item until None:\n${calls.join("\n")}`);
+  assert.ok(cleanup >= 0 && polls[0] > cleanup && remove > polls[2], calls.join("\n"));
+  assert.match(r.out, /rsv-lab: vm-app: test failover cleanup finished/);
+  w.cleanup();
+  // Empty or MarkedForDeletion count as finished too.
+  for (const state of ["", "MarkedForDeletion"]) {
+    const e = world([{ match: ITEM_STATE, out: state }, ...asrWorld({ state: "Completed" })]);
+    assert.equal(e.run("infra/ci/lab-unblock.sh", [L26]).status, 0);
+    assert.equal(e.calls().filter(isState).length, 1, state);
+    e.cleanup();
+  }
+  // A cleanup that never finishes: bounded (LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS), a warning, and remove is still sent.
+  const slow = world([{ match: ITEM_STATE, out: "Completed" }, ...asrWorld({ state: "Completed" })]);
+  const s = slow.run("infra/ci/lab-unblock.sh", [L26], { LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS: "45" });
+  assert.equal(s.status, 0, s.out);
+  assert.equal(slow.calls().filter(isState).length, 4, slow.calls().join("\n"));
+  assert.match(s.stderr, /::warning::unblock: rsv-lab: the test failover cleanup of vm-app had not finished after 45 s/);
+  assert.ok(slow.calls().some(isRemove));
+  slow.cleanup();
+  // A cleanup Azure refuses is not waited for.
+  const no = world([{ match: "testFailoverCleanup", code: 1, err: "ERROR: (BadRequest)" }, ...asrWorld({ state: "Completed" })]);
+  assert.equal(no.run("infra/ci/lab-unblock.sh", [L26]).status, 0);
+  assert.equal(no.calls().filter(isState).length, 0);
+  no.cleanup();
+});
+
+test("unblock re-sends remove for an item still listed after its first remove was refused, then sees the vault empty", { skip }, () => {
+  // The cleanup is still pending when unblock stops waiting for it; Azure refuses the first remove, then accepts.
+  const pending = listedAs("TestFailoverCleanup", "Protected");
+  const w = world([
+    { match: ITEM_STATE, out: "Completed" },
+    { match: REMOVE_RE, code: [1, 0], err: ["ERROR: (Conflict) a test failover cleanup is in progress", ""] },
+    ...asrWorld({ state: "Completed", items: [pending, pending, pending, pending, pending, listedAs("DisableDr", "Protected"), ""] }),
+  ]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L26], { LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS: "15" });
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const removes = calls.map((c, i) => (isRemove(c) ? i : -1)).filter((i) => i >= 0);
+  assert.equal(removes.length, 2, `remove sent again once:\n${calls.join("\n")}`);
+  assert.ok(removes[1] > calls.findIndex(isWaitList), "the second remove comes from the wait");
+  assert.match(r.stderr, /::warning::unblock: rsv-lab: could not disable replication for vm-app/);
+  assert.match(r.out, /unblock: rsv-lab: replication disabled for vm-app \(sent again\)/);
+  assert.match(r.out, /rsv-lab: no replicated items left/);
+  w.cleanup();
+  // An item never removed: the re-sends are bounded, and the run still ends 0 with a warning.
+  const stuck = world([{ match: REMOVE_RE, code: 1, err: "ERROR: (Conflict)" }, ...asrWorld({ items: [listedAs("", "Protected")] })]);
+  const st = stuck.run("infra/ci/lab-unblock.sh", [L26]);
+  assert.equal(st.status, 0, st.out);
+  const n = stuck.calls().filter(isRemove).length;
+  assert.ok(n >= 3 && n <= 9, `${n} removes: one, then at most 8 re-sends`);
+  assert.match(st.stderr, /::warning::unblock: rsv-lab: 1 replicated item\(s\) still listed after 900 s/);
+  stuck.cleanup();
+  // An item already being removed (DisableDr, or a disabling protection state) is not sent remove again.
+  const busy = world(asrWorld({ items: [listedAs("DisableDr", "Protected"), listedAs("", "DisablingProtection"), ...Array(8).fill(listedAs("DisableDr", "Protected")), ""] }));
+  assert.equal(busy.run("infra/ci/lab-unblock.sh", [L26]).status, 0);
+  assert.equal(busy.calls().filter(isRemove).length, 1, busy.calls().join("\n"));
+  busy.cleanup();
 });
 
 // A recovery plan a learner made by hand holds its items: Azure will not disable replication for an item in a

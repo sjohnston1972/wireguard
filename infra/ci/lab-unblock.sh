@@ -23,10 +23,12 @@
 #      the last one fails, the vault's items are "unverified", a warning)
 #   5. Site Recovery, per vault: recovery plans deleted (a learner may make
 #      one; an item in a plan cannot be unprotected), a test failover still
-#      to clean up is cleaned
-#      up, replication is removed from every item, then a wait until the vault
+#      to clean up is cleaned up and the item polled until the (asynchronous)
+#      cleanup is done (LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS, default 600),
+#      replication is removed from every item, then a wait until the vault
 #      lists none (LAB_UNBLOCK_ASR_WAIT_SECONDS, default 900, every 15 s; a
-#      list that fails is "unverified"), then its network mappings, container
+#      list that fails is "unverified"; remove is sent again, bounded, for an
+#      item still listed and not already being removed), then its network mappings, container
 #      mappings and replication policies are removed (lab 26)
 #   6. SQL: failover groups deleted on the server holding the primary, then
 #      each primary database's geo-replication links (lab 23; after a
@@ -265,7 +267,8 @@ done
 
 # 5. Site Recovery (lab 26; spec §17 ruling 31), per vault: recovery plans are deleted
 # first (an item in a plan cannot be unprotected), then a test failover still to
-# clean up is cleaned up (its VM and NIC sit in the test network), then
+# clean up is cleaned up (its VM and NIC sit in the test network) and waited for
+# (the cleanup is a 202: Azure refuses a remove while it still runs), then
 # replication is removed from every item, and a bounded wait (every 15 s, at most
 # LAB_UNBLOCK_ASR_WAIT_SECONDS, default 900) runs until the vault lists none; a
 # list that fails is never "none left". Then the network mappings, container
@@ -275,7 +278,44 @@ done
 ASR_API="api-version=2023-08-01"
 ASR_WAIT="${LAB_UNBLOCK_ASR_WAIT_SECONDS:-900}"
 [[ "$ASR_WAIT" =~ ^[0-9]+$ ]] || ASR_WAIT=900
+ASR_CLEANUP_WAIT="${LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS:-600}"
+[[ "$ASR_CLEANUP_WAIT" =~ ^[0-9]+$ ]] || ASR_CLEANUP_WAIT=600
+ASR_RESEND_EVERY=4 # polls (a minute) between re-sends of remove
+ASR_RESENDS=8      # re-sends per item at most
 asr_list() { azq rest --method get --url "/subscriptions/{subscriptionId}/resourceGroups/$1/providers/Microsoft.RecoveryServices/vaults/$2/$3?$ASR_API" --query "${4:-value[].id}" -o tsv; }
+# asr_remove <vault> <item id> [note]: post remove (disable replication); a refusal is a warning.
+asr_remove() {
+  if az rest --method post --url "${2}/remove?$ASR_API" --body '{"properties":{"disableProtectionReason":"NotSpecified"}}' -o none; then
+    echo "unblock: $1: replication disabled for ${2##*/}${3:-}"
+  else warn "$1: could not disable replication for ${2##*/}${3:-}"; fi
+}
+# asr_being_removed <scenario name> <protection state>: true when Azure is already removing the item.
+asr_being_removed() {
+  local s="${1,,} ${2,,}"
+  [[ "$s" == *disabl* || "$s" == *delet* || "$s" == *remov* ]]
+}
+# asr_cleanup_wait <vault> <item id>: testFailoverCleanup is asynchronous (202) and az rest does
+# not wait, so poll the item (every 15 s, at most ASR_CLEANUP_WAIT) until its test failover state
+# is None, empty or MarkedForDeletion. A read that fails is not "finished"; a wait that runs out
+# is a warning (remove is still sent, and the vault wait sends it again).
+asr_cleanup_wait() {
+  local tries=$(((ASR_CLEANUP_WAIT + 14) / 15)) n state
+  for ((n = 0; ; n++)); do
+    if state="$(azq rest --method get --url "${2}?$ASR_API" --query properties.testFailoverState -o tsv)"; then
+      case "${state:-None}" in
+        None | MarkedForDeletion)
+          echo "unblock: $1: ${2##*/}: test failover cleanup finished"
+          return 0
+          ;;
+      esac
+    fi
+    if [ "$n" -ge "$tries" ]; then
+      warn "$1: the test failover cleanup of ${2##*/} had not finished after $ASR_CLEANUP_WAIT s; replication removal is tried anyway"
+      return 0
+    fi
+    sleep 15
+  done
+}
 for g in "${groups[@]}"; do
   while IFS= read -r v; do
     [ -z "$v" ] && continue
@@ -293,21 +333,33 @@ for g in "${groups[@]}"; do
         None | MarkedForDeletion) ;;
         *)
           if az rest --method post --url "${item}/testFailoverCleanup?$ASR_API" --body '{"properties":{"comments":"wg-admin labs: unblock before tear-down"}}' -o none; then
-            echo "unblock: $v: ${item##*/}: test failover cleaned up"
+            echo "unblock: $v: ${item##*/}: test failover cleanup started"
+            asr_cleanup_wait "$v" "$item"
           else warn "$v: could not clean up the test failover of ${item##*/}"; fi
           ;;
       esac
-      if az rest --method post --url "${item}/remove?$ASR_API" --body '{"properties":{"disableProtectionReason":"NotSpecified"}}' -o none; then
-        echo "unblock: $v: replication disabled for ${item##*/}"
-      else warn "$v: could not disable replication for ${item##*/}"; fi
+      asr_remove "$v" "$item"
     done <<<"$items"
+    # The wait re-sends remove (every ASR_RESEND_EVERY polls, at most ASR_RESENDS times per
+    # item) for an item still listed that is not already being removed: a remove posted
+    # while a cleanup still ran is refused, and nothing else would send it again.
+    declare -A resent=()
     tries=$(((ASR_WAIT + 14) / 15))
     for ((n = 0; ; n++)); do
-      if left="$(asr_list "$g" "$v" replicationProtectedItems)"; then
+      if left="$(asr_list "$g" "$v" replicationProtectedItems "value[].[id, properties.currentScenario.scenarioName, properties.protectionState]")"; then
         listed=true
         if [ -z "$left" ]; then
           echo "unblock: $v: no replicated items left"
           break
+        fi
+        if [ "$n" -gt 0 ] && [ $((n % ASR_RESEND_EVERY)) -eq 0 ]; then
+          while IFS=$'\t' read -r item scen pstate; do
+            [ -z "$item" ] && continue
+            asr_being_removed "$scen" "$pstate" && continue
+            [ "${resent[$item]:-0}" -lt "$ASR_RESENDS" ] || continue
+            resent["$item"]=$((${resent[$item]:-0} + 1))
+            asr_remove "$v" "$item" " (sent again)"
+          done <<<"$left"
         fi
       else
         listed=false
