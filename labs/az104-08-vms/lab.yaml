@@ -1,0 +1,38 @@
+# Lab 8 (batch 2 plan area B1). AZ-104 study guide skills this lab touches
+# ((V) the wording against the current outline):
+#   Deploy and manage Azure compute resources > Create and configure virtual
+#   machines: "Create a virtual machine", "Deploy virtual machines to
+#   availability zones and availability sets", "Manage virtual machine
+#   sizes", "Manage virtual machine disks".
+# Costs are GBP list prices for UK South from the Retail Prices API
+# (2026-10-05), rounded up. npm run labs-verify -- --meters az104-08-vms:
+#   Standard_B1s    £0.0089/h Linux pay as you go (authored 0.0092, as lab 7)
+#   S4 LRS Disk     £1.2755/month = £0.0017/h (authored 0.0018)
+#   E1 LRS Disk     £0.2491/month = £0.0003/h (authored 0.0004)
+# The VNet, NICs, the extension, default outbound access and managed boot
+# diagnostics add nothing measurable.
+id: az104-08-vms
+version: 1
+title: "VMs: availability zones, disks, extensions"
+summary: >-
+  Two small Linux VMs in availability zones 1 and 2, a Standard SSD data disk to partition and mount,
+  and a Custom Script extension that serves each VM's name on port 80.
+exam: AZ-104
+skill_areas: [az104.compute]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Linux VM, Standard_B1s", gbp_h: 0.0092, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disk, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Data disk, Standard SSD E1 (4 GiB)", gbp_h: 0.0004, retail: { meter: "E1 LRS Disk", unit: "1/Month" } }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 5, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

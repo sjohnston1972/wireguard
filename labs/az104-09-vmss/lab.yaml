@@ -1,0 +1,38 @@
+# Lab 9 (batch 2 plan area B1). AZ-104 study guide skills this lab touches
+# ((V) the wording against the current outline):
+#   Deploy and manage Azure compute resources > Create and configure virtual
+#   machines: "Deploy and configure an Azure Virtual Machine Scale Sets".
+#   Monitor and maintain Azure resources (touched, not listed): autoscale
+#   reads a platform metric, Percentage CPU.
+# Costs are GBP list prices for UK South from the Retail Prices API
+# (2026-10-05), rounded up. npm run labs-verify -- --meters az104-09-vmss:
+#   Standard_B1s    £0.0089/h Linux pay as you go (authored 0.0092, as lab 7)
+#   S4 LRS Disk     £1.2755/month = £0.0017/h (authored 0.0018)
+# qty is the default instance count, 2; autoscale may run 3 for a while
+# (about £0.011/h more) and soon scales in to 1 when idle, so over a session
+# this is an overestimate. capacity.vm_sizes lists the maximum, three
+# (ruling 3). The VNet, autoscale setting and boot diagnostics are free.
+id: az104-09-vmss
+version: 1
+title: "VM Scale Sets and autoscale"
+summary: >-
+  A Uniform scale set of small Linux instances that each serve their own name, with an autoscale
+  setting that keeps 1 to 3 of them on average CPU, so you can load one and watch it scale out.
+exam: AZ-104
+skill_areas: [az104.compute]
+level: associate
+type: explore
+prerequisites: [az104-08-vms]
+cost:
+  items:
+    - { name: "Scale set instance, Standard_B1s (2 by default, up to 3)", gbp_h: 0.0092, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "Instance OS disk, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 5, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

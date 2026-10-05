@@ -1,0 +1,21 @@
+#cloud-config
+# Lab 9: every scale set instance serves its own name on port 80 with
+# python3 (already on Ubuntu) from a systemd unit, so a load test or a new
+# instance shows which one answered. Nothing is installed or downloaded.
+write_files:
+  - path: /etc/systemd/system/lab-web.service
+    content: |
+      [Unit]
+      Description=Lab web page (the instance name) on port 80
+      After=network-online.target
+
+      [Service]
+      ExecStartPre=/bin/sh -c 'mkdir -p /srv/www && hostname > /srv/www/index.html'
+      ExecStart=/usr/bin/python3 -m http.server 80 --directory /srv/www
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+runcmd:
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, lab-web.service]

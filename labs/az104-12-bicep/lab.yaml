@@ -1,0 +1,37 @@
+# Lab 12 (batch 2 plan area B1). AZ-104 study guide skills this lab touches
+# ((V) the wording against the current outline):
+#   Deploy and manage Azure compute resources > Automate deployment of
+#   resources by using Azure Resource Manager (ARM) templates or Bicep
+#   files: "Interpret an Azure Resource Manager template or a Bicep file",
+#   "Modify an existing Azure Resource Manager template", "Modify an
+#   existing Bicep file", "Deploy resources by using an Azure Resource
+#   Manager template or a Bicep file", "Export a deployment as an Azure
+#   Resource Manager template or convert an Azure Resource Manager template
+#   to a Bicep file".
+# Costs: an empty StorageV2 LRS account costs far less than the authored
+# 0.0001 (a few KB of metadata); the VNet, subnets, NSG and the deployment
+# itself are free. Nothing has a retail meter worth refreshing.
+id: az104-12-bicep
+version: 1
+title: "ARM and Bicep templates (Bicep)"
+summary: >-
+  A Bicep file with one module, built to an ARM template and deployed into the lab's group: a storage
+  account, an NSG and a VNet with two subnets, ready to read, export, what-if and redeploy.
+exam: AZ-104
+skill_areas: [az104.compute]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Storage account, StorageV2 LRS, empty", gbp_h: 0.0001 }
+    - { name: "VNet, two subnets, NSG and the deployment", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false
