@@ -45,8 +45,8 @@ const Inlines = ({ list }: { list: ReadmeInline[] }) => (
 function Block({ b }: { b: ReadmeBlock }) {
   switch (b.t) {
     case "h": {
-      // The modal's title is the lab's; readme headings sit under it.
-      const H = b.level === 1 ? "h3" : b.level === 2 ? "h4" : "h5";
+      // The modal's title (h2) is the lab's; readme headings sit under it, beside the Cost and Deploy headings (h3).
+      const H = b.level === 3 ? "h4" : "h3";
       return <H className={`labs-readme__h labs-readme__h${b.level}`}>{b.text}</H>;
     }
     case "p":
