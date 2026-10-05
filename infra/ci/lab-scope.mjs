@@ -425,6 +425,8 @@ export function templateProblems(template) {
   const add = (rule, message) => {
     if (!out.some((p) => p.rule === rule && p.message === message)) out.push({ rule, message });
   };
+  // Nested deployments' inline templates: each is checked as a template of its own, so the string scan skips them.
+  const nestedTemplates = new Set();
   const listOf = (resources) => (Array.isArray(resources) ? resources : resources && typeof resources === "object" ? Object.values(resources) : []);
 
   const visitResource = (res, where) => {
@@ -438,7 +440,10 @@ export function templateProblems(template) {
       const props = res.properties ?? {};
       if (props.templateLink) add("outside-scope", `${where} links a template (${props.templateLink.id ? "a template spec" : "a URL"}) this check cannot read`);
       if (props.parametersLink) add("outside-scope", `${where} links its parameters from a URL this check cannot read`);
-      if (props.template !== undefined) visit(props.template, `${where} > ${res.name ?? "a nested deployment"}`);
+      if (props.template !== undefined) {
+        if (props.template && typeof props.template === "object") nestedTemplates.add(props.template);
+        visit(props.template, `${where} > ${res.name ?? "a nested deployment"}`);
+      }
       else if (!props.templateLink) add("outside-scope", `${where} has a nested deployment with no template`);
     }
     for (const child of listOf(res.resources)) visitResource(child, where);
@@ -463,8 +468,11 @@ export function templateProblems(template) {
       if (tpl[k] && typeof tpl[k] === "object" && Object.keys(tpl[k]).length) add("role", `${where} uses ${k} (${Object.keys(tpl[k]).join(", ")}): extensions such as Microsoft Graph reach beyond Azure Resource Manager`);
     }
     for (const res of listOf(tpl.resources)) visitResource(res, where);
-    // Every string (descriptions aside): other groups' ids, resourceId() in another group, ids above the group, the gateway.
+    // Every string: other groups' ids, resourceId() in another group, ids above the group, the gateway. Descriptions
+    // (the template's, its parameters', definitions', outputs' and resources' own `metadata`, two levels down at most)
+    // and nested deployments' templates (checked on their own) are skipped.
     const strings = (v, path) => {
+      if (nestedTemplates.has(v)) return;
       if (typeof v === "string") {
         if (GATEWAY_RE.test(v)) add("gateway", `${where} names the gateway's resources (${path})`);
         const literals = v.startsWith("[") ? [...v.matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1].replace(/''/g, "'")) : [v];
@@ -477,7 +485,10 @@ export function templateProblems(template) {
           if (/(?<![A-Za-z])(subscriptionResourceId|tenantResourceId|managementGroupResourceId)\s*\(/i.test(v)) add("outside-scope", `${where} builds an id above the resource group (${path})`);
         }
       } else if (Array.isArray(v)) v.forEach((x, i) => strings(x, `${path}[${i}]`));
-      else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) if (k !== "metadata" && k !== "template") strings(x, path ? `${path}.${k}` : k);
+      else if (v && typeof v === "object") {
+        const depth = path ? path.split(/\.|\[/).length : 0;
+        for (const [k, x] of Object.entries(v)) if (!(k === "metadata" && depth <= 2)) strings(x, path ? `${path}.${k}` : k);
+      }
     };
     strings(tpl, "");
   };

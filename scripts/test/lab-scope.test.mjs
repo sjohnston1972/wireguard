@@ -189,6 +189,9 @@ test("templateProblems passes a Bicep-built storage and VNet template", () => {
   assert.equal(BICEP_BUILT.languageVersion, "2.0");
   assert.ok(!Array.isArray(BICEP_BUILT.resources));
   assert.deepEqual(templateProblems(BICEP_BUILT), []);
+  // Descriptions (template, parameter and resource metadata) may say anything.
+  const described = { ...BICEP_BUILT, metadata: { ...BICEP_BUILT.metadata, description: "Not peered to vnet-wg in rg-wg-ondemand; ids like /subscriptions/x/resourceGroups/rg-other are not used." } };
+  assert.deepEqual(templateProblems(described), []);
   // As a string, too, in a plan (file() of the built JSON is known at plan) and in HCL.
   assert.deepEqual(checkPlan(tplPlan(JSON.stringify(BICEP_BUILT)), TPL_LAB), []);
   assert.deepEqual(checkHcl(tplHcl(JSON.stringify(BICEP_BUILT)), TPL_LAB), []);
@@ -235,6 +238,9 @@ test("a template deployment refuses Graph extension resources, deployment script
     ["resourceId in another group", template([{ type: "Microsoft.Network/virtualNetworks/virtualNetworkPeerings", apiVersion: "2024-05-01", name: "vnet-lab/to-prod", properties: { remoteVirtualNetwork: { id: "[resourceId('rg-prod', 'Microsoft.Network/virtualNetworks', 'vnet-prod')]" } } }]), "outside-scope"],
     ["subscription-level id", template([{ type: "Microsoft.Storage/storageAccounts", apiVersion: "2023-05-01", name: "x", properties: { x: "[subscriptionResourceId('Microsoft.Resources/resourceGroups', 'rg-prod')]" } }]), "outside-scope"],
     ["Graph deep inside a module", template([nested(template([nested(template([{ type: "Microsoft.Graph/users@v1.0", name: "u" }]))]))]), "role"],
+    // A property called "template" that is not a nested deployment's is read like any other.
+    ["an id inside a container app's template", template([{ type: "Microsoft.App/containerApps", apiVersion: "2025-01-01", name: "app", properties: { template: { containers: [{ name: "c", image: "mcr.microsoft.com/k8se/quickstart:latest", env: [{ name: "VNET", value: "/subscriptions/3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod" }] }] } } }]), "outside-scope"],
+    ["the gateway inside a resource's properties.metadata", template([{ type: "Microsoft.Storage/storageAccounts", apiVersion: "2023-05-01", name: "x", properties: { metadata: { peer: "vnet-wg" } } }]), "gateway"],
     // The gateway's names, as anywhere else.
     ["gateway", template([{ type: "Microsoft.Network/virtualNetworks/virtualNetworkPeerings", apiVersion: "2024-05-01", name: "vnet-lab/to-wg", properties: { remoteVirtualNetwork: { id: "[resourceId('Microsoft.Network/virtualNetworks', 'vnet-wg')]" } } }]), "gateway"],
   ];
