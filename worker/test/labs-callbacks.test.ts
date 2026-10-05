@@ -10,6 +10,8 @@ import { setCatalogueForTest } from "../src/labs/catalogue";
 import { lockStatus, labLock } from "../src/lock";
 import { claimsProblem } from "../src/oidc";
 import { issueLabSecrets, handleLabCallback } from "../src/labs/callbacks";
+import { DESTROY_TRIES } from "../src/labs/settle";
+import { runLabWatch } from "../src/labs/watch";
 import { receiveLiveLog, readLiveLog } from "../src/livelog";
 import { api, deployLab, freeze, advance, ghIdFor, labDispatches, labEnv, labRun, report, rows, runningLab, secrets, session, HOUR, MIN, NOW } from "./labs-helpers";
 
@@ -100,6 +102,35 @@ describe("results (L2.2)", () => {
     const s2 = await secrets(env, world, run2);
     await report(env, run2, s2.callback_token, "failure", {});
     expect((await session(env, up2.sid))!).toMatchObject({ state: "failed", end_reason: "manual" });
+  });
+
+  it("destroys that report success without a clean check count towards DESTROY_TRIES, so the lab cannot loop forever", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    const up = await runningLab(env, world, "az104-05-storage");
+    for (let i = 1; i <= DESTROY_TRIES; i++) {
+      const d = await api(env, "POST", "/labs/az104-05-storage/destroy", { confirm: true });
+      expect(d.status, d.text).toBe(200);
+      const runId = labDispatches(world).at(-1)!.payload.run_id as string;
+      const s = await secrets(env, world, runId);
+      if (i < DESTROY_TRIES) {
+        // "success", but the clean check never said clean: Azure's state is unknown.
+        await report(env, runId, s.callback_token, "success", {});
+      } else {
+        // The last one: GitHub says success, the result never arrives, the watch settles it from GitHub's word.
+        const gh = world.ghRuns.get(ghIdFor(world, runId))!;
+        gh.status = "completed";
+        gh.conclusion = "success";
+        gh.updated_at = new Date().toISOString();
+        advance(3 * MIN);
+        await runLabWatch(env, new Date());
+        expect(await labRun(env, runId)).toMatchObject({ status: "succeeded" });
+      }
+      const row = (await session(env, up.sid))!;
+      if (i < DESTROY_TRIES) expect(row).toMatchObject({ state: "failed", end_reason: "manual" });
+      else expect(row.state).toBe("ended_dirty");
+    }
+    expect(JSON.parse((await session(env, up.sid))!.leftovers_json)).toEqual([`unknown: ${DESTROY_TRIES} tear-downs ended without a clean check`]);
   });
 
   it("cancel stops the GitHub run, then dispatches destroy", async () => {

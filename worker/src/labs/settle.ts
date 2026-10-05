@@ -11,8 +11,9 @@
 //            down after 15 minutes).
 //   destroy  clean: ended, slot freed. Not clean: ended_dirty, the slot kept
 //            until the orphan sweep finds Azure clean, and a note. No clean
-//            check at all (the run died early): failed again, so the watch
-//            retries, at most three times before it is ended_dirty.
+//            check at all (the run died early, or succeeded without one):
+//            failed again, so the watch retries, at most three times before
+//            it is ended_dirty.
 //   test     both halves at once: a lab_release_tests row (pass only when
 //            clean), then ended or ended_dirty with reason test.
 //   peer     peering on (or still waiting); unpeer: off.
@@ -178,8 +179,15 @@ export async function finishRun(env: Env, run: LabRunDb, result: { ok: boolean; 
       } else if (out.clean === false) {
         await endSession(env, s, false, out.leftovers, "manual", now, canNotify);
       } else {
-        // The clean check never ran (the run died early): try again, a few times.
-        const failed = await env.DB.prepare("SELECT COUNT(*) AS n FROM lab_runs WHERE session_id = ?1 AND action = 'destroy' AND status IN ('failed', 'cancelled')").bind(s.id).first<{ n: number }>();
+        // The clean check never ran (the run died early, or "succeeded" without saying clean): try
+        // again, a few times. Every finished destroy without a clean check counts, whatever its
+        // status, so a lab can never loop through tear-downs forever.
+        const failed = await env.DB.prepare(
+          `SELECT COUNT(*) AS n FROM lab_runs WHERE session_id = ?1 AND action = 'destroy' AND finished_at IS NOT NULL
+             AND (CASE WHEN json_valid(outputs_json) THEN COALESCE(json_type(outputs_json, '$.clean'), 'null') ELSE 'null' END) NOT IN ('true', 'false')`,
+        )
+          .bind(s.id)
+          .first<{ n: number }>();
         if (Number(failed?.n ?? 0) >= DESTROY_TRIES) await endSession(env, s, false, [`unknown: ${DESTROY_TRIES} tear-downs ended without a clean check`], "failed", now, canNotify);
         else await updateSession(env, s.id, { state: "failed", end_reason: s.end_reason ?? "failed" }, "state NOT IN ('ended', 'ended_dirty')");
       }

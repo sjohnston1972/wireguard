@@ -6,7 +6,8 @@
 // finished but whose result never arrived is settled from GitHub's word
 // after 2 minutes' grace (a destroy settled that way has no clean check, so
 // its session goes back to failed and the watch tears it down again: the
-// safe answer when Azure's state is unknown).
+// safe answer when Azure's state is unknown. It counts as one of the
+// session's DESTROY_TRIES, so this cannot loop forever).
 
 import type { Env } from "../env";
 import { directNet, findLabRun, getGhRun, getSteps, type Net } from "./net";
