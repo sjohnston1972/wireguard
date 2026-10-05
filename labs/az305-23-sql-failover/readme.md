@@ -1,8 +1,8 @@
 Azure SQL Database across two regions: a Basic database in UK South with a geo-secondary in UK West, a failover group
 whose listener follows the primary, and a serverless database that pauses when idle. Practise choosing service and compute
-tiers, failing a database over to another region by hand and back, and reaching both servers privately. From the AZ-305
-outline: recommend a solution for storing relational data, a database service tier and compute tier, a backup and recovery
-solution for databases, and a high availability solution for relational data.
+tiers, failing a database over to another region by hand and back, and reaching both servers privately. From the
+AZ-305 outline: recommend a solution for storing relational data, a database service tier and compute tier, a backup and
+recovery solution for databases, and a high availability solution for relational data.
 
 ## What it deploys
 
