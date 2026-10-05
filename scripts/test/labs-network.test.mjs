@@ -467,3 +467,93 @@ test(`${L16}: the gateway subnet allows GatewayManager on 65200-65535`, () => {
   assert.notEqual(l.yaml.cost.pricey, null, "the card names what makes it ££");
   assert.match(l.readme, /5 to 15 minutes|15 minutes/i, "the readme warns the gateway is slow to deploy");
 });
+
+// ── Lab 17: break-fix, connectivity troubleshooting with Network Watcher ─
+
+const L17 = "az104-17-netwatcher-fix";
+labContentSuite(L17, { marker: "£" });
+servesWithPython(L17, { app: 80, db: 8080 });
+
+/** The readme's text under one ## heading, up to the next. */
+const section = (readme, heading) => readme.split(`\n## ${heading}\n`)[1]?.split(/\n## /)[0] ?? "";
+
+test(`${L17}: type break-fix, with Symptom and a closed What was broken`, () => {
+  const l = lab(L17);
+  assert.equal(l.yaml.type, "break-fix");
+  assert.deepEqual(l.yaml.skill_areas, ["az104.networking", "az104.monitor"]);
+  assert.ok(section(l.readme, "Symptom").trim(), "a Symptom section");
+  assert.match(l.readme, /\n<details>\n<summary>What was broken<\/summary>\n[\s\S]+?\n<\/details>\n/, "a closed details block");
+  assert.doesNotMatch(l.readme, /<details open/);
+  // The answer names both faults and how to find them.
+  const answer = l.readme.split("<summary>What was broken</summary>")[1].split("</details>")[0];
+  assert.match(answer, /allow-monitoring/);
+  assert.match(answer, /rt-app/);
+  assert.match(answer, /IP flow verify/i);
+  assert.match(answer, /Next hop/i);
+});
+
+test(`${L17}: an NSG deny on 8080 outranks the allow`, () => {
+  const l = lab(L17);
+  assert.deepEqual(associations(l, "azurerm_subnet_network_security_group_association", "network_security_group_id"), { db: "db" });
+  const inbound = rulesOf(l, "db").filter((r) => r.direction === "Inbound");
+  const deny = inbound.find((r) => r.access === "Deny" && r.port === "8080");
+  const allow = inbound.find((r) => r.access === "Allow" && r.port === "8080");
+  assert.ok(deny && allow, "a deny and an allow on 8080");
+  assert.equal(deny.name, "allow-monitoring", "the deny hides behind a misleading name");
+  assert.ok(deny.priority < allow.priority, "the deny is evaluated first");
+  assert.equal(deny.src, "VirtualNetwork", "it catches vm-app's traffic");
+  assert.equal(attr(allow.body, "source_address_prefix"), "local.app_cidr", "the allow names the app subnet");
+  // ssh from the VNet (the tunnel too, while peered) still works, so the VM can be reached to look around.
+  assert.equal(inbound.find((r) => r.access === "Allow" && r.port === "22")?.src, "VirtualNetwork");
+});
+
+test(`${L17}: the app subnet routes the db subnet to an address nothing holds`, () => {
+  const l = lab(L17);
+  const loc = locals(l);
+  assert.equal(loc.vnet_cidr, "cidrsubnet(var.address_space, 2, 0)");
+  assert.equal(loc.app_cidr, "cidrsubnet(local.vnet_cidr, 4, 0)");
+  assert.equal(loc.db_cidr, "cidrsubnet(local.vnet_cidr, 4, 1)");
+  // Inside the VNet, in a /24 no subnet uses, and no NIC holds it.
+  assert.equal(loc.fw_ip, "cidrhost(cidrsubnet(local.vnet_cidr, 4, 15), 4)");
+  for (const s of resources(l, "azurerm_subnet")) assert.match(attr(s.body, "address_prefixes"), /^\[local\.(app|db)_cidr\]$/, `${s.labels[1]} is not the firewall's /24`);
+  for (const nic of resources(l, "azurerm_network_interface")) assert.doesNotMatch(nic.body, /local\.fw_ip/);
+  const [table, ...more] = resources(l, "azurerm_route_table");
+  assert.equal(more.length, 0);
+  assert.equal(unq(attr(table.body, "name")), "rt-app");
+  const [route, ...moreRoutes] = resources(l, "azurerm_route");
+  assert.equal(moreRoutes.length, 0);
+  assert.equal(attr(route.body, "route_table_name"), `azurerm_route_table.${table.labels[1]}.name`);
+  assert.equal(attr(route.body, "address_prefix"), "local.db_cidr");
+  assert.equal(unq(attr(route.body, "next_hop_type")), "VirtualAppliance");
+  assert.equal(attr(route.body, "next_hop_in_ip_address"), "local.fw_ip");
+  assert.deepEqual(associations(l, "azurerm_subnet_route_table_association", "route_table_id"), { [table.labels[1]]: "app" });
+  assert.doesNotMatch(code(l), /0\.0\.0\.0\/0/);
+});
+
+test(`${L17}: both VMs carry the Network Watcher agent and Terraform makes no Network Watcher of its own`, () => {
+  const l = lab(L17);
+  const exts = resources(l, "azurerm_virtual_machine_extension");
+  assert.deepEqual(exts.map((e) => attr(e.body, "virtual_machine_id")).sort(), ["azurerm_linux_virtual_machine.app.id", "azurerm_linux_virtual_machine.db.id"]);
+  for (const e of exts) {
+    assert.equal(attr(e.body, "publisher"), '"Microsoft.Azure.NetworkWatcher"');
+    assert.equal(attr(e.body, "type"), '"NetworkWatcherAgentLinux"');
+    assert.equal(attr(e.body, "type_handler_version"), '"1.4"');
+    assert.equal(attr(e.body, "auto_upgrade_minor_version"), "true");
+  }
+  // Azure's own NetworkWatcher_<region> in NetworkWatcherRG does the work (batch 2 ruling 8).
+  assert.doesNotMatch(code(l), /azurerm_network_watcher|NetworkWatcherRG|azurerm_network_connection_monitor|flow_log/);
+  assert.match(l.readme, /NetworkWatcherRG/);
+});
+
+test(`${L17}: the Symptom names neither fault`, () => {
+  const l = lab(L17);
+  // The Symptom's own text: up to the collapsed answer, if that follows it.
+  const symptom = section(l.readme, "Symptom").split("<details>")[0];
+  assert.ok(symptom.trim());
+  assert.match(symptom, /`curl http:\/\/vm-db:8080` from `vm-app` times out/);
+  assert.doesNotMatch(symptom, /allow-monitoring|nsg|security|rule|deny|route|udr|rt-app|next hop|appliance|firewall|10\.\d/i);
+  // Nor does the rest of the readme outside the answer, or the lab's summary and title.
+  const outside = l.readme.split("<details>")[0] + (l.readme.split("</details>")[1] ?? "");
+  assert.doesNotMatch(outside, /allow-monitoring|rt-app|nothing holds/i);
+  assert.doesNotMatch(`${l.yaml.title} ${l.yaml.summary}`, /deny|route|udr/i);
+});

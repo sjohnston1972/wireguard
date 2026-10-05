@@ -1,0 +1,27 @@
+#cloud-config
+# Rendered by Terraform's templatefile (main.tf) for each VM, with the port
+# it serves. A tiny web server and nothing to install: python3 ships with
+# Ubuntu, so the VM needs nothing from the internet. It answers on port
+# ${port} with the VM's own name, so a curl shows which VM replied.
+
+write_files:
+  - path: /etc/systemd/system/lab-http.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Lab web server: python3 -m http.server on port ${port}
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      ExecStartPre=/bin/sh -c 'mkdir -p /srv/lab && hostname > /srv/lab/index.html'
+      ExecStart=/usr/bin/python3 -m http.server ${port} --directory /srv/lab
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now lab-http.service
