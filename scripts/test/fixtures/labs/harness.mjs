@@ -51,7 +51,7 @@ export function world(rules = []) {
     writeFileSync(join(bin, name), FAKE_SH.replace("__CMD__", name));
     chmodSync(join(bin, name), 0o755);
   };
-  for (const name of ["az", "curl", "terraform", "gh", "sleep", "hcl2json"]) fake(name);
+  for (const name of ["az", "curl", "terraform", "gh", "sleep", "hcl2json", "aws"]) fake(name);
   const w = {
     dir,
     bin,

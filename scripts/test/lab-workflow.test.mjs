@@ -417,6 +417,48 @@ test("state key is labs/<id>/terraform.tfstate and backups keep 5", () => {
   assert.equal(step(lab(15))["continue-on-error"], true);
 });
 
+test("destroy waits a while for the state lock; once verified clean, the backed-up state and any stale lock are removed from R2", () => {
+  assert.match(step(lab(12)).run, /terraform destroy .*-lock-timeout=\d+m/);
+  const s = step(lab(15));
+  assert.equal(s.env.VERIFY_CLEAN, "${{ steps.verify.outputs.clean }}");
+  assert.match(s.run, /bash "\$GITHUB_WORKSPACE\/infra\/ci\/lab-state-reset\.sh" "\$LAB_ID"/);
+  // After the backup, and even when this run opened no Terraform state (init never ran).
+  assert.ok(s.run.indexOf("lab-state-reset.sh") > s.run.indexOf("terraform state pull"));
+  assert.ok(!/^\s*exit 0\s*$/m.test(s.run.slice(0, s.run.indexOf("lab-state-reset.sh"))), "no early exit skips the reset");
+  // Verify clean runs before it.
+  assert.ok(index(lab(14)) < index(lab(15)));
+});
+
+test("the state reset runs only on a verified-clean lab, and removes the state and its .tflock", { skip: BASH ? false : "no bash found" }, async () => {
+  const { world } = await import("./fixtures/labs/harness.mjs");
+  const ID = "az104-06-blob-security";
+  const w = world();
+  const clean = w.run("infra/ci/lab-state-reset.sh", [ID], { VERIFY_CLEAN: "true", R2_BUCKET: "wg-admin-state" });
+  assert.equal(clean.status, 0, clean.out);
+  assert.deepEqual(w.calls().filter((c) => c.startsWith("aws ")), [
+    `aws s3 rm s3://wg-admin-state/labs/${ID}/terraform.tfstate --only-show-errors`,
+    `aws s3 rm s3://wg-admin-state/labs/${ID}/terraform.tfstate.tflock --only-show-errors`,
+  ]);
+  w.cleanup();
+  for (const v of ["false", "", undefined]) {
+    const n = world();
+    const r = n.run("infra/ci/lab-state-reset.sh", [ID], { VERIFY_CLEAN: v ?? "", R2_BUCKET: "wg-admin-state" });
+    assert.equal(r.status, 0, r.out);
+    assert.deepEqual(n.calls(), [], `VERIFY_CLEAN=${v}`);
+    n.cleanup();
+  }
+  const bad = world();
+  assert.equal(bad.run("infra/ci/lab-state-reset.sh", ["../wg-admin"], { VERIFY_CLEAN: "true", R2_BUCKET: "b" }).status, 2);
+  assert.deepEqual(bad.calls(), []);
+  bad.cleanup();
+  // A failed delete is a warning, never a failed run.
+  const flaky = world([{ cmd: "aws", match: "tflock", code: 1, err: "AccessDenied" }]);
+  const f = flaky.run("infra/ci/lab-state-reset.sh", [ID], { VERIFY_CLEAN: "true", R2_BUCKET: "b" });
+  assert.equal(f.status, 0);
+  assert.match(f.out, /::warning::could not remove labs\/az104-06-blob-security\/terraform\.tfstate\.tflock/);
+  flaky.cleanup();
+});
+
 test("the wait step looks only at earlier lab.yml runs of the same lab, for 10 minutes at most", () => {
   const s = step(lab(4));
   assert.equal(s["timeout-minutes"], 10);

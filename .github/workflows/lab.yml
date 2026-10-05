@@ -364,7 +364,9 @@ jobs:
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Destroy"
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
-          terraform destroy -no-color -input=false -auto-approve
+          # A lock a dead run left behind fails this after 5 minutes rather than at once;
+          # the safety net still finishes, and once clean, Back up state removes the lock.
+          terraform destroy -no-color -input=false -auto-approve -lock-timeout=5m
 
       # ── 13 ───────────────────────────────────────────────────────────────
       - name: Safety net
@@ -410,19 +412,32 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          # Set only by destroy and test runs (step 14).
+          VERIFY_CLEAN: ${{ steps.verify.outputs.clean }}
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Back up state"
-          set -euo pipefail
+          set -uo pipefail
           dir="$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
-          if [ ! -d "$dir/.terraform" ]; then echo "no Terraform state was opened by this run; nothing to back up"; exit 0; fi
-          cd "$dir"
-          ts="$(date -u +%Y%m%dT%H%M%SZ)"
-          terraform state pull > "$RUNNER_TEMP/state.json"
-          aws s3 cp "$RUNNER_TEMP/state.json" "s3://$R2_BUCKET/labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate" --only-show-errors
-          aws s3 ls "s3://$R2_BUCKET/labs/$LAB_ID/backups/" | awk '{print $4}' | sort | head -n -5 | while read -r old; do
-            [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/labs/$LAB_ID/backups/$old" --only-show-errors
-          done
-          echo "state backed up as labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate"
+          rc=0
+          if [ ! -d "$dir/.terraform" ]; then
+            echo "no Terraform state was opened by this run; nothing to back up"
+          else
+            (
+              set -euo pipefail
+              cd "$dir"
+              ts="$(date -u +%Y%m%dT%H%M%SZ)"
+              terraform state pull > "$RUNNER_TEMP/state.json"
+              aws s3 cp "$RUNNER_TEMP/state.json" "s3://$R2_BUCKET/labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate" --only-show-errors
+              aws s3 ls "s3://$R2_BUCKET/labs/$LAB_ID/backups/" | awk '{print $4}' | sort | head -n -5 | while read -r old; do
+                [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/labs/$LAB_ID/backups/$old" --only-show-errors
+              done
+              echo "state backed up as labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate"
+            ) || { echo "::warning::the state backup failed"; rc=1; }
+          fi
+          # A lab verified clean has nothing its state could describe: remove the state and any
+          # lock a dead run left, so the next deploy starts afresh (infra/ci/lab-state-reset.sh).
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-state-reset.sh" "$LAB_ID"
+          exit "$rc"
 
       # ── 16 ───────────────────────────────────────────────────────────────
       # First the live log's last lines (once the run is reported the Worker

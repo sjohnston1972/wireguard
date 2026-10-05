@@ -24,7 +24,7 @@ const LAB_VNET = `/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft
 /** Every resource group a subscription might hold: the lab's two, and four it must never touch. */
 const GROUPS = [RG, `${RG}-nodes`, `${RG}x`, "rg-lab-az104-07-files", "NetworkWatcherRG", "rg-wg-ondemand"].join("\n");
 
-for (const f of ["lab-unblock.sh", "lab-safety-net.sh", "lab-peer.sh", "lab-ready.sh"]) {
+for (const f of ["lab-unblock.sh", "lab-safety-net.sh", "lab-peer.sh", "lab-ready.sh", "lab-state-reset.sh"]) {
   test(`${f} passes bash -n`, { skip }, () => {
     const r = spawnSync(BASH, ["-n", fwd(join(REPO, "infra", "ci", f))], { encoding: "utf8" });
     assert.equal(r.status, 0, r.stderr);
