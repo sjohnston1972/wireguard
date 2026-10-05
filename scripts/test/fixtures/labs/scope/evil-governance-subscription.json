@@ -1,0 +1,40 @@
+{
+  "lab": "az104-02-policy",
+  "about": "A governance lab still never assigns at subscription scope, and its definitions and management groups carry its prefix: a subscription policy assignment, a subscription lock, a deny policy definition without the prefix.",
+  "expect": [
+    ["outside-scope", "azurerm_subscription_policy_assignment.deny"],
+    ["outside-scope", "azurerm_management_lock.subscription"],
+    ["governance", "azurerm_policy_definition.unprefixed"]
+  ],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-02-policy", "location": "uksouth" } },
+      { "address": "azurerm_policy_definition.unprefixed", "mode": "managed", "type": "azurerm_policy_definition", "name": "unprefixed", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "require-costcentre-tag", "display_name": "require-costcentre-tag", "policy_type": "Custom", "mode": "Indexed" } },
+      { "address": "azurerm_subscription_policy_assignment.deny", "mode": "managed", "type": "azurerm_subscription_policy_assignment", "name": "deny", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "lab-az104-02-deny", "subscription_id": "/subscriptions/00000000-0000-0000-0000-000000000000", "policy_definition_id": "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c" } },
+      { "address": "azurerm_management_lock.subscription", "mode": "managed", "type": "azurerm_management_lock", "name": "subscription", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "name": "lab-az104-02-policy-lock", "scope": "/subscriptions/00000000-0000-0000-0000-000000000000", "lock_level": "ReadOnly" } }
+    ] } },
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+      { "address": "azurerm_policy_definition.unprefixed", "mode": "managed", "type": "azurerm_policy_definition", "name": "unprefixed", "expressions": { "name": { "constant_value": "require-costcentre-tag" } } },
+      { "address": "azurerm_subscription_policy_assignment.deny", "mode": "managed", "type": "azurerm_subscription_policy_assignment", "name": "deny", "expressions": { "subscription_id": { "references": ["data.azurerm_subscription.current.id", "data.azurerm_subscription.current"] } } },
+      { "address": "azurerm_management_lock.subscription", "mode": "managed", "type": "azurerm_management_lock", "name": "subscription", "expressions": { "scope": { "references": ["data.azurerm_subscription.current.id", "data.azurerm_subscription.current"] } } },
+      { "address": "data.azurerm_subscription.current", "mode": "data", "type": "azurerm_subscription", "name": "current", "expressions": {} }
+    ] } },
+    "prior_state": { "values": { "root_module": { "resources": [
+      { "address": "data.azurerm_subscription.current", "mode": "data", "type": "azurerm_subscription", "name": "current", "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "values": { "id": "/subscriptions/00000000-0000-0000-0000-000000000000", "subscription_id": "00000000-0000-0000-0000-000000000000" } }
+    ] } } }
+  },
+  "hcl": {
+    "data": { "azurerm_subscription": { "current": [ {} ] } },
+    "resource": {
+      "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+      "azurerm_policy_definition": { "unprefixed": [ { "name": "require-costcentre-tag", "display_name": "require-costcentre-tag", "policy_type": "Custom", "mode": "Indexed" } ] },
+      "azurerm_subscription_policy_assignment": { "deny": [ { "name": "lab-az104-02-deny", "subscription_id": "${data.azurerm_subscription.current.id}", "policy_definition_id": "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c" } ] },
+      "azurerm_management_lock": { "subscription": [ { "name": "lab-${var.lab_id}-lock", "scope": "${data.azurerm_subscription.current.id}", "lock_level": "ReadOnly" } ] }
+    }
+  }
+}

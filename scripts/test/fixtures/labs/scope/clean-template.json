@@ -1,0 +1,87 @@
+{
+  "lab": "az104-06-blob-security",
+  "about": "labs/_template as planned: its own resource group and nothing else.",
+  "expect": [],
+  "plan": {
+    "format_version": "1.2",
+    "terraform_version": "1.14.6",
+    "planned_values": {
+      "root_module": {
+        "resources": [
+          {
+            "address": "azurerm_resource_group.lab",
+            "mode": "managed",
+            "type": "azurerm_resource_group",
+            "name": "lab",
+            "provider_name": "registry.terraform.io/hashicorp/azurerm",
+            "schema_version": 0,
+            "values": {
+              "location": "uksouth",
+              "managed_by": null,
+              "name": "rg-lab-az104-06-blob-security",
+              "tags": { "lab": "az104-06-blob-security", "project": "wg-admin-labs", "session": "ls-20261004-abcd" },
+              "timeouts": null
+            },
+            "sensitive_values": { "tags": {} }
+          }
+        ]
+      }
+    },
+    "resource_changes": [
+      {
+        "address": "azurerm_resource_group.lab",
+        "mode": "managed",
+        "type": "azurerm_resource_group",
+        "name": "lab",
+        "provider_name": "registry.terraform.io/hashicorp/azurerm",
+        "change": {
+          "actions": ["create"],
+          "before": null,
+          "after": { "location": "uksouth", "managed_by": null, "name": "rg-lab-az104-06-blob-security", "tags": { "lab": "az104-06-blob-security" }, "timeouts": null },
+          "after_unknown": { "id": true, "tags": {} }
+        }
+      }
+    ],
+    "configuration": {
+      "provider_config": {
+        "azurerm": {
+          "name": "azurerm",
+          "full_name": "registry.terraform.io/hashicorp/azurerm",
+          "expressions": { "features": [ { "resource_group": [ { "prevent_deletion_if_contains_resources": { "constant_value": false } } ] } ] }
+        }
+      },
+      "root_module": {
+        "resources": [
+          {
+            "address": "azurerm_resource_group.lab",
+            "mode": "managed",
+            "type": "azurerm_resource_group",
+            "name": "lab",
+            "provider_config_key": "azurerm",
+            "expressions": {
+              "location": { "references": ["var.region"] },
+              "name": { "references": ["var.resource_group_name"] },
+              "tags": { "references": ["var.tags"] }
+            },
+            "schema_version": 0
+          }
+        ]
+      }
+    }
+  },
+  "hcl": {
+    "provider": { "azurerm": [ { "features": [ { "resource_group": [ { "prevent_deletion_if_contains_resources": false } ] } ] } ] },
+    "resource": {
+      "azurerm_resource_group": { "lab": [ { "location": "${var.region}", "name": "${var.resource_group_name}", "tags": "${var.tags}" } ] }
+    },
+    "terraform": [
+      {
+        "backend": { "s3": [ { "region": "auto", "use_lockfile": true } ] },
+        "required_providers": [
+          { "azuread": { "source": "hashicorp/azuread", "version": "~> 3.0" }, "azurerm": { "source": "hashicorp/azurerm", "version": "~> 4.0" } }
+        ],
+        "required_version": ">= 1.14.0"
+      }
+    ]
+  }
+}

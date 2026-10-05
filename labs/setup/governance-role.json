@@ -1,0 +1,28 @@
+{
+  "properties": {
+    "roleName": "wg-admin labs governance",
+    "description": "wg-admin labs (spec 8.1): what Contributor cannot do for a lab. Role assignments (limited by the assignment's condition to the allowed roles), lab custom roles, policy, locks and lab management groups. Assigned to the wg-admin service principal at subscription scope.",
+    "assignableScopes": ["/subscriptions/{subscriptionId}"],
+    "permissions": [
+      {
+        "actions": [
+          "Microsoft.Authorization/roleAssignments/write",
+          "Microsoft.Authorization/roleAssignments/delete",
+          "Microsoft.Authorization/roleDefinitions/write",
+          "Microsoft.Authorization/roleDefinitions/delete",
+          "Microsoft.Authorization/policyDefinitions/*",
+          "Microsoft.Authorization/policySetDefinitions/*",
+          "Microsoft.Authorization/policyAssignments/*",
+          "Microsoft.Authorization/policyExemptions/*",
+          "Microsoft.Authorization/locks/*",
+          "Microsoft.Management/managementGroups/read",
+          "Microsoft.Management/managementGroups/write",
+          "Microsoft.Management/managementGroups/delete"
+        ],
+        "notActions": [],
+        "dataActions": [],
+        "notDataActions": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,469 @@
+# .github/workflows/lab.yml
+#
+# Plain English: the lab runner (labs spec §5). It does for a study lab what
+# wg.yml does for the gateway: the Worker (or a person, from the Actions tab
+# or scripts/lab-release-test.mjs) starts it with an action and a JSON payload,
+# it builds or removes the lab with Terraform (state in R2 at
+# labs/<id>/terraform.tfstate), streams a live log, and reports the result.
+#
+#   deploy   build the lab, check it is ready, peer it to the gateway if asked
+#   destroy  unpeer, unblock, terraform destroy, safety net, verify clean
+#   peer     / unpeer   just the peering, for a lab that is already up
+#   test     deploy then destroy, one run: the release test (§11.2)
+#
+# Safety nets, because a lab must always get back to £0 and never touch
+# anything that is not its own:
+#   - Parse payload refuses a bad lab id, a lab not in the catalogue, and a
+#     version that differs from lab.yaml (a stale dashboard) before anything.
+#   - "Plan and scope check" shows infra/ci/lab-scope.mjs the plan; anything
+#     outside rg-lab-<id> (another group, the subscription, the gateway,
+#     unprefixed Entra names, dangerous roles, ...) stops the run before apply.
+#   - Every teardown step runs even when an earlier one failed (always()):
+#     unblock, terraform destroy (allowed to fail), the safety net, which
+#     deletes everything named for the lab from Azure's own lists with no
+#     Terraform state at all, and the clean check, whose verdict is reported.
+#   - The gateway's group is written to only by the peering steps, and only
+#     peerings named lab-<id>. This workflow never runs wg.yml or Terraform
+#     against infra/.
+#
+# Secrets and a PUBLIC repo: anyone can read these logs and GitHub prints the
+# payload, so the payload holds nothing secret. The run's secrets (callback
+# token, the lab's admin password) come from the Worker in "Collect run
+# secrets" against a GitHub OIDC token, masked before anything can print them.
+# Without a Worker (secrets_url empty, e.g. a release test from a laptop) the
+# run makes its own masked password and skips peering. Each repository
+# secret is handed only to the steps that need it; ARM_* only to steps 5-14.
+# Never the Cloudflare DNS token or the WireGuard key. Terraform's outputs
+# (addresses, user names) are masked and kept out of the log; the result line
+# LAB_RESULT carries only clean, leftovers and timings.
+#
+# Live log: as wg.yml (infra/ci/live-log.mjs and live-log.sh), started once
+# the callback token is known and flushed before the result is reported.
+#
+# Step names are shared/labs.ts LAB_STEPS[].name exactly: the dashboard shows
+# "step 7/16" from them. A few helper steps (checkout, setting up Terraform)
+# carry other names and are not counted.
+
+name: lab
+# The Worker finds this run by its title: "lab <action> <lab id> <run id>".
+run-name: "lab ${{ inputs.action }} ${{ fromJSON(inputs.payload).lab_id || 'none' }} ${{ fromJSON(inputs.payload).run_id || 'manual' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy, destroy, peer, unpeer, or test (deploy then destroy)"
+        type: choice
+        required: true
+        default: deploy
+        options: [deploy, destroy, peer, unpeer, test]
+      payload:
+        description: >-
+          JSON object, nothing secret: lab_id, version, run_id, session_id,
+          region, secondary_region, slot_cidr, name_prefix, peering,
+          timeout_min, callback_url, secrets_url.
+        type: string
+        required: true
+        default: "{}"
+
+# One line per lab and action, never cancelled: a waiting destroy can only be
+# replaced by a newer destroy of the same lab, which does the same job. Labs
+# never queue behind the gateway or each other; "Wait for earlier run of this
+# lab" orders the actions of one lab.
+concurrency:
+  group: lab-${{ fromJSON(inputs.payload).lab_id || 'none' }}-${{ inputs.action }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Lets "Wait for earlier run of this lab" see which runs are still going.
+  actions: read
+  # Lets the run ask GitHub for a signed identity token (OIDC) to show the Worker.
+  id-token: write
+
+env:
+  AWS_REGION: auto
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+  TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugins
+  LAB_ACTION_INPUT: ${{ inputs.action }}
+
+jobs:
+  lab:
+    name: lab ${{ inputs.action }}
+    runs-on: ubuntu-24.04
+    # The Worker sets 2 x (deploy_min + destroy_min) + 20, at most 150.
+    timeout-minutes: ${{ fromJSON(inputs.payload).timeout_min || 60 }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # Ready-made actions are pinned to an exact commit (the version is in the comment).
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # ── 1 ────────────────────────────────────────────────────────────────
+      - name: Check out, Parse payload
+        id: parse
+        run: bash "$GITHUB_WORKSPACE/infra/ci/lab-parse.sh"
+
+      # ── 2 ────────────────────────────────────────────────────────────────
+      # Trade a signed "this is lab.yml on main, run N" token for this run's
+      # callback token and the lab's admin password, each masked before it is
+      # stored. Without a Worker, make a password here (masked) and skip peering.
+      - name: Collect run secrets
+        id: secrets
+        run: |
+          set -euo pipefail
+          put_env() {
+            case "$2" in *$'\n'*|*$'\r'*) echo "::error::run secret $1 contains a line break; refusing it"; exit 1 ;; esac
+            local end="EOV_$(openssl rand -hex 16)"
+            { echo "$1<<$end"; printf '%s\n' "$2"; echo "$end"; } >> "$GITHUB_ENV"
+          }
+          if [ -z "${SECRETS_URL:-}" ]; then
+            raw="$(openssl rand -base64 48)"
+            pw="${raw//[^A-Za-z0-9]/}"
+            pw="${pw:0:24}#Aa1"
+            echo "::add-mask::$pw"
+            put_env TF_VAR_admin_password "$pw"
+            put_env LAB_PEERING false
+            echo "no Worker for this run: made this run's admin password (masked); peering is skipped"
+            exit 0
+          fi
+          oidc="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=wg-admin" | jq -r .value)"
+          echo "::add-mask::$oidc"
+          if ! resp="$(curl -sS --fail-with-body --max-time 20 -X POST -H "Authorization: Bearer $oidc" -H 'Content-Type: application/json' \
+                -d "$(jq -n --arg r "$WORKER_RUN_ID" '{run_id:$r}')" "$SECRETS_URL")"; then
+            echo "::error::The Worker refused to hand over this run's secrets: $resp"
+            exit 1
+          fi
+          for k in callback_token admin_password; do
+            v="$(jq -r --arg k "$k" '.[$k] // empty' <<<"$resp")"
+            [ -z "$v" ] && { echo "::error::the Worker sent no $k"; exit 1; }
+            echo "::add-mask::$v"
+            if [ "$k" = callback_token ]; then put_env CALLBACK_TOKEN "$v"; else put_env TF_VAR_admin_password "$v"; fi
+          done
+          echo "run secrets collected and masked"
+
+      # ── 3 ────────────────────────────────────────────────────────────────
+      - name: Start live log
+        if: env.LIVE_LOG_URL != '' && env.CALLBACK_TOKEN != ''
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          if ! command -v node >/dev/null 2>&1; then echo "::warning::Node is missing on this runner; no live log for this run"; exit 0; fi
+          f="$RUNNER_TEMP/live-log.txt"
+          : > "$f"
+          LIVE_LOG_FILE="$f" nohup node "$GITHUB_WORKSPACE/infra/ci/live-log.mjs" ship > "$RUNNER_TEMP/live-log-shipper.txt" 2>&1 < /dev/null &
+          echo "LIVE_LOG_PID=$!" >> "$GITHUB_ENV"
+          echo "LIVE_LOG_FILE=$f" >> "$GITHUB_ENV"
+          echo "live log started: the dashboard shows this run's output as it happens, secrets hidden"
+
+      # ── 4 ────────────────────────────────────────────────────────────────
+      # Hold back until every lab.yml run of THIS lab started before this one
+      # has finished (other labs and the gateway never block). Giving up after
+      # 10 minutes fails the run loudly; nothing after it touches Azure.
+      - name: Wait for earlier run of this lab
+        id: wait
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Wait for earlier run of this lab"
+          set -euo pipefail
+          while :; do
+            earlier="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/lab.yml/runs?per_page=100" \
+              --jq "[.workflow_runs[] | select(.status != \"completed\" and .id < $GITHUB_RUN_ID and (((.display_title // \"\") | split(\" \"))[2] == \"$LAB_ID\"))] | length")"
+            [ "$earlier" = "0" ] && break
+            echo "waiting for $earlier earlier run(s) of $LAB_ID to finish"
+            sleep 20
+          done
+          echo "no earlier run of $LAB_ID is active; going ahead"
+
+      - name: Set up Terraform
+        if: always() && steps.wait.outcome == 'success' && env.LAB_HAS_TF == 'true'
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        if: always() && steps.wait.outcome == 'success' && env.LAB_HAS_TF == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/.terraform-plugins
+          key: tf-plugins-labs-${{ hashFiles('labs/_template/versions.tf') }}
+
+      # ── 5 ────────────────────────────────────────────────────────────────
+      # Bicep labs keep .bicep files in terraform/; they are compiled to ARM
+      # JSON first, which Terraform deploys into the lab's own group.
+      - name: Terraform init
+        id: init
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && env.LAB_HAS_TF == 'true' && (inputs.action == 'deploy' || inputs.action == 'destroy' || inputs.action == 'test')
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Terraform init"
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
+          shopt -s nullglob
+          for f in *.bicep; do
+            az bicep build --file "$f" --outfile "${f%.bicep}.json"
+            echo "built ${f%.bicep}.json from $f"
+          done
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          terraform init -no-color -input=false -backend-config="bucket=$R2_BUCKET" -backend-config="key=labs/$LAB_ID/terraform.tfstate"
+
+      # ── 6 ────────────────────────────────────────────────────────────────
+      - name: Plan and scope check
+        id: plan
+        if: success() && steps.init.outcome == 'success' && (inputs.action == 'deploy' || inputs.action == 'test')
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          TF_VAR_upn_domain: ${{ secrets.LAB_UPN_DOMAIN }}
+          RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Plan and scope check"
+          set -euo pipefail
+          echo "LAB_T0=$(date +%s)" >> "$GITHUB_ENV"
+          cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
+          # Only a private DNS zone link may name the gateway VNet, and only through this.
+          if [ "$LAB_PEERING" = true ]; then
+            export TF_VAR_gateway_vnet_id="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/${RG:-rg-wg-ondemand}/providers/Microsoft.Network/virtualNetworks/vnet-wg"
+          fi
+          terraform plan -no-color -input=false -out="$RUNNER_TEMP/plan.out"
+          # The JSON holds sensitive values in the clear: it stays on the runner and is never printed.
+          terraform show -no-color -json "$RUNNER_TEMP/plan.out" > "$RUNNER_TEMP/plan.json"
+          node "$GITHUB_WORKSPACE/infra/ci/lab-scope.mjs" --plan "$RUNNER_TEMP/plan.json" --lab "$LAB_ID"
+
+      # ── 7 ────────────────────────────────────────────────────────────────
+      - name: Apply
+        id: apply
+        if: success() && steps.plan.outcome == 'success' && (inputs.action == 'deploy' || inputs.action == 'test')
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Apply"
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
+          # Exactly the plan that passed the scope check. Its "Outputs:" block
+          # (addresses, user names) is cut from this public log.
+          terraform apply -no-color -input=false "$RUNNER_TEMP/plan.out" | sed '/^Outputs:/,$d'
+          terraform output -no-color -json > "$RUNNER_TEMP/outputs.json"
+          jq -r '.. | strings' "$RUNNER_TEMP/outputs.json" | while IFS= read -r s; do
+            [ "${#s}" -ge 4 ] && echo "::add-mask::$s"
+          done
+          peer_vnet="$(jq -r '.peer_vnet_id.value // empty' "$RUNNER_TEMP/outputs.json")"
+          [ -n "$peer_vnet" ] && echo "PEER_VNET_ID=$peer_vnet" >> "$GITHUB_ENV"
+          echo "applied; outputs kept for the Worker"
+
+      # ── 8 ────────────────────────────────────────────────────────────────
+      - name: Ready check
+        id: ready
+        if: success() && steps.apply.outcome == 'success' && (inputs.action == 'deploy' || inputs.action == 'test')
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Ready check"
+          set -uo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-ready.sh" "$LAB_ID" "$LAB_DEPLOY_MIN"
+          rc=$?
+          echo "LAB_DEPLOY_SECONDS=$(( $(date +%s) - LAB_T0 ))" >> "$GITHUB_ENV"
+          exit "$rc"
+
+      # ── 9 ────────────────────────────────────────────────────────────────
+      - name: Peer
+        id: peer
+        if: success() && env.LAB_PEERING == 'true' && (inputs.action == 'deploy' || inputs.action == 'peer' || inputs.action == 'test')
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Peer"
+          set -uo pipefail
+          DNS_LINK="$LAB_DNS_LINK" bash "$GITHUB_WORKSPACE/infra/ci/lab-peer.sh" peer "$LAB_ID"
+
+      # ── 10 ── teardown: from here every step runs even after a failure ───
+      - name: Unpeer
+        id: unpeer
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && (inputs.action == 'destroy' || inputs.action == 'unpeer' || inputs.action == 'test')
+        continue-on-error: true
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Unpeer"
+          set -uo pipefail
+          echo "LAB_T1=$(date +%s)" >> "$GITHUB_ENV"
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-peer.sh" unpeer "$LAB_ID"
+
+      # ── 11 ───────────────────────────────────────────────────────────────
+      - name: Unblock
+        id: unblock
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && (inputs.action == 'destroy' || inputs.action == 'test')
+        continue-on-error: true
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Unblock"
+          set -uo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-unblock.sh" "$LAB_ID"
+
+      # ── 12 ───────────────────────────────────────────────────────────────
+      # Allowed to fail, like the gateway's: the safety net below finishes the job.
+      - name: Destroy
+        id: destroy
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && steps.init.outcome == 'success' && (inputs.action == 'destroy' || inputs.action == 'test')
+        continue-on-error: true
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          TF_VAR_upn_domain: ${{ secrets.LAB_UPN_DOMAIN }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Destroy"
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
+          terraform destroy -no-color -input=false -auto-approve
+
+      # ── 13 ───────────────────────────────────────────────────────────────
+      - name: Safety net
+        id: safety
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && (inputs.action == 'destroy' || inputs.action == 'test')
+        continue-on-error: true
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Safety net"
+          set -uo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-safety-net.sh" "$LAB_ID"
+
+      # ── 14 ───────────────────────────────────────────────────────────────
+      # The verdict: fails the run when anything of the lab is left, or when
+      # Azure could not be asked.
+      - name: Verify clean
+        id: verify
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && (inputs.action == 'destroy' || inputs.action == 'test')
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Verify clean"
+          set -uo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-safety-net.sh" --verify "$LAB_ID"
+          rc=$?
+          echo "LAB_DESTROY_SECONDS=$(( $(date +%s) - ${LAB_T1:-$(date +%s)} ))" >> "$GITHUB_ENV"
+          exit "$rc"
+
+      # ── 15 ───────────────────────────────────────────────────────────────
+      # R2 has no versioning: keep this lab's newest 5 copies.
+      - name: Back up state
+        if: always() && env.LAB_ID != ''
+        continue-on-error: true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Back up state"
+          set -euo pipefail
+          dir="$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
+          if [ ! -d "$dir/.terraform" ]; then echo "no Terraform state was opened by this run; nothing to back up"; exit 0; fi
+          cd "$dir"
+          ts="$(date -u +%Y%m%dT%H%M%SZ)"
+          terraform state pull > "$RUNNER_TEMP/state.json"
+          aws s3 cp "$RUNNER_TEMP/state.json" "s3://$R2_BUCKET/labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate" --only-show-errors
+          aws s3 ls "s3://$R2_BUCKET/labs/$LAB_ID/backups/" | awk '{print $4}' | sort | head -n -5 | while read -r old; do
+            [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/labs/$LAB_ID/backups/$old" --only-show-errors
+          done
+          echo "state backed up as labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate"
+
+      # ── 16 ───────────────────────────────────────────────────────────────
+      # First the live log's last lines (once the run is reported the Worker
+      # takes no more), then the result: LAB_RESULT in this log (no addresses:
+      # read by scripts/lab-release-test.mjs) and the full result, outputs
+      # included, to the Worker.
+      - name: Finish live log, Report result
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          VERIFY_CLEAN: ${{ steps.verify.outputs.clean }}
+          VERIFY_LEFTOVERS: ${{ steps.verify.outputs.leftovers }}
+          DESTROY_OUTCOME: ${{ steps.destroy.outcome }}
+          GH_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          if [ -n "${LIVE_LOG_PID:-}" ]; then
+            touch "$LIVE_LOG_FILE.stop"
+            for _ in $(seq 1 60); do kill -0 "$LIVE_LOG_PID" 2>/dev/null || break; sleep 0.25; done
+            kill "$LIVE_LOG_PID" 2>/dev/null || true
+            tail -n 5 "$RUNNER_TEMP/live-log-shipper.txt" 2>/dev/null || true
+          fi
+          action="${LAB_ACTION:-$LAB_ACTION_INPUT}"
+          status=success
+          [ "${JOB_STATUS:-}" != success ] && status=failure
+          if [ "$status" = success ] && [ "${DESTROY_OUTCOME:-}" = failure ]; then status=success-with-fallback; fi
+          clean=null
+          case "${VERIFY_CLEAN:-}" in true) clean=true ;; false) clean=false; status=failure ;; esac
+          leftovers="${VERIFY_LEFTOVERS:-null}"
+          jq -e 'type == "array"' <<<"$leftovers" >/dev/null 2>&1 || leftovers=null
+          num() { [[ "${1:-}" =~ ^[0-9]+$ ]] && echo "$1" || echo null; }
+          outputs="{}"
+          [ -f "$RUNNER_TEMP/outputs.json" ] && outputs="$(jq 'with_entries(.value = .value.value)' "$RUNNER_TEMP/outputs.json")"
+          result="$(jq -cn \
+            --arg lab_id "${LAB_ID:-}" --argjson version "$(num "${LAB_VERSION:-}")" --arg action "$action" \
+            --arg run_id "${WORKER_RUN_ID:-manual}" --arg status "$status" --argjson clean "$clean" --argjson leftovers "$leftovers" \
+            --argjson deploy "$(num "${LAB_DEPLOY_SECONDS:-}")" --argjson destroy "$(num "${LAB_DESTROY_SECONDS:-}")" \
+            '{lab_id:$lab_id, version:$version, action:$action, run_id:$run_id, status:$status, clean:$clean, leftovers:$leftovers, deploy_seconds:$deploy, destroy_seconds:$destroy}')"
+          # Names, a verdict and timings only: never an address (lab-release-test.mjs reads this line).
+          echo "LAB_RESULT $result"
+          if [ -n "${CALLBACK_URL:-}" ] && [ -n "${CALLBACK_TOKEN:-}" ]; then
+            body="$(jq -cn --argjson r "$result" --argjson o "$outputs" --arg gh_run_id "${GITHUB_RUN_ID:-}" --arg gh_run_url "${GH_RUN_URL:-}" \
+              '{run_id:$r.run_id, action:$r.action, status:$r.status, github_run_id:$gh_run_id, github_run_url:$gh_run_url,
+                outputs:{private_ips:($o.private_ips // {}), connect:($o.connect // []), users:($o.users // {}), peer_vnet_id:($o.peer_vnet_id // null),
+                         clean:$r.clean, leftovers:$r.leftovers, deploy_seconds:$r.deploy_seconds, destroy_seconds:$r.destroy_seconds}}')"
+            curl -fsS --max-time 20 -X POST -H "Authorization: Bearer $CALLBACK_TOKEN" -H "Content-Type: application/json" \
+              -d "$body" "$CALLBACK_URL" || echo "::warning::callback to the Worker failed"
+          fi
+          [ "$status" = failure ] && exit 1
+          exit 0

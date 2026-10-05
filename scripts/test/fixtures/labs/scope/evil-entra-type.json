@@ -1,0 +1,20 @@
+{
+  "lab": "az104-01-identity",
+  "about": "Entra objects a lab may never make, even with the prefix: a directory role assignment and an app registration.",
+  "expect": [["entra-type", "azuread_directory_role_assignment.admin"], ["entra-type", "azuread_application.app"]],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az104-01-identity", "location": "uksouth" } },
+      { "address": "azuread_directory_role_assignment.admin", "mode": "managed", "type": "azuread_directory_role_assignment", "name": "admin", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "role_id": "62e90394-69f5-4237-9190-012177145e10", "principal_object_id": "33333333-3333-3333-3333-333333333333" } },
+      { "address": "azuread_application.app", "mode": "managed", "type": "azuread_application", "name": "app", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "lab-az104-01-identity-app" } }
+    ] } },
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } }
+    ] } }
+  },
+  "hcl": { "resource": {
+    "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+    "azuread_directory_role_assignment": { "admin": [ { "role_id": "62e90394-69f5-4237-9190-012177145e10", "principal_object_id": "33333333-3333-3333-3333-333333333333" } ] },
+    "azuread_application": { "app": [ { "display_name": "lab-${var.lab_id}-app" } ] }
+  } }
+}

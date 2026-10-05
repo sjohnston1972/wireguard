@@ -1,0 +1,137 @@
+// lab-scope.test.mjs
+//
+// Plain English: the plan-time scope check (infra/ci/lab-scope.mjs, labs spec
+// §8.4) against fixture plans. Each fixture in fixtures/labs/scope/ holds the
+// same lab twice: as `terraform show -json` would print its plan, and as
+// hcl2json would print its .tf files. Clean fixtures must pass; each evil one
+// must be refused, naming its rule, in both forms.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { checkHcl, checkPlan, RULES, GOVERNANCE_LABS as SCOPE_GOVERNANCE, LAB_ID_RE as SCOPE_ID_RE } from "../../infra/ci/lab-scope.mjs";
+import { GOVERNANCE_LABS, LAB_ID_RE } from "../lib/labs.mjs";
+
+const DIR = fileURLToPath(new URL("./fixtures/labs/scope/", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("../../infra/ci/lab-scope.mjs", import.meta.url));
+const fixtures = readdirSync(DIR)
+  .filter((f) => f.endsWith(".json"))
+  .map((f) => ({ file: f, ...JSON.parse(readFileSync(join(DIR, f), "utf8")) }));
+
+/** [rule, address] pairs, sorted, with any [index] taken off the address. */
+const verdict = (problems) => problems.map((p) => [p.rule, p.address.replace(/\[[^\]]*\]/g, "")]).sort((a, b) => (a.join() < b.join() ? -1 : 1));
+const sorted = (pairs) => [...pairs].sort((a, b) => (a.join() < b.join() ? -1 : 1));
+
+test("lab-scope's own copies of the governance labs and the id pattern equal the contract's", () => {
+  // lab-scope.mjs runs on the runner without npm ci, so it cannot import scripts/lib/labs.mjs.
+  assert.deepEqual([...SCOPE_GOVERNANCE], [...GOVERNANCE_LABS]);
+  assert.equal(SCOPE_ID_RE.source, LAB_ID_RE.source);
+});
+
+test("a clean plan for the template passes", () => {
+  const f = fixtures.find((x) => x.file === "clean-template.json");
+  assert.deepEqual(checkPlan(f.plan, f.lab), []);
+  assert.deepEqual(checkHcl(f.hcl, f.lab), []);
+});
+
+test("clean plans for labs like 1, 3 and 6 pass in both forms", () => {
+  for (const f of fixtures.filter((x) => x.file.startsWith("clean-"))) {
+    assert.deepEqual(verdict(checkPlan(f.plan, f.lab)), [], `${f.file} (plan)`);
+    assert.deepEqual(verdict(checkHcl(f.hcl, f.lab)), [], `${f.file} (hcl)`);
+  }
+});
+
+test("lab-scope refuses each evil plan naming its rule", () => {
+  const evil = fixtures.filter((x) => x.file.startsWith("evil-"));
+  const covered = new Set();
+  for (const f of evil) {
+    assert.deepEqual(verdict(checkPlan(f.plan, f.lab)), sorted(f.expect), f.file);
+    for (const [rule] of f.expect) covered.add(rule);
+  }
+  // Every rule has at least one evil fixture.
+  assert.deepEqual([...covered].sort(), [...RULES].sort());
+});
+
+test("HCL mode gives the same verdicts on the HCL fixtures", () => {
+  for (const f of fixtures) assert.deepEqual(verdict(checkHcl(f.hcl, f.lab)), sorted(f.expect), f.file);
+});
+
+/** A lab's governance objects, as hcl2json prints them: a prefixed policy definition and management group. */
+const governanceHcl = (extra = {}) => ({
+  resource: {
+    azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}" }] },
+    azurerm_policy_definition: { tags: [{ name: "lab-${var.lab_id}-tags", display_name: "lab-${var.lab_id}-tags", policy_type: "Custom", mode: "All" }] },
+    azurerm_management_group: { root: [{ name: "lab-${var.lab_id}-root", display_name: "lab-${var.lab_id}-root" }] },
+    ...extra,
+  },
+});
+
+test("governance types pass only for the five governance labs and never at subscription scope", () => {
+  assert.equal(GOVERNANCE_LABS.length, 5);
+  for (const id of GOVERNANCE_LABS) assert.deepEqual(checkHcl(governanceHcl(), id), [], id);
+  for (const id of ["az104-06-blob-security", "az104-04-cost", "az305-22-keyvault-mi"]) {
+    assert.deepEqual(verdict(checkHcl(governanceHcl(), id)), [["governance", "azurerm_management_group.root"], ["governance", "azurerm_policy_definition.tags"]], id);
+  }
+  const atSubscription = {
+    azurerm_role_assignment: { sub: [{ scope: "/subscriptions/00000000-0000-0000-0000-000000000000", role_definition_name: "Reader", principal_id: "11111111-1111-1111-1111-111111111111" }] },
+    azurerm_subscription_policy_assignment: { sub: [{ name: "x", subscription_id: "${data.azurerm_subscription.current.id}", policy_definition_id: "${azurerm_policy_definition.tags.id}" }] },
+  };
+  for (const id of GOVERNANCE_LABS) {
+    assert.deepEqual(verdict(checkHcl({ data: { azurerm_subscription: { current: [{}] } }, ...governanceHcl(atSubscription) }, id)), [["outside-scope", "azurerm_role_assignment.sub"], ["outside-scope", "azurerm_subscription_policy_assignment.sub"]], id);
+  }
+});
+
+test("a lab's custom role must be its own: another lab's custom role id is refused", () => {
+  const hcl = governanceHcl({
+    azurerm_role_assignment: { x: [{ scope: "${azurerm_resource_group.lab.id}", role_definition_id: "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/7331dcae-09d3-477e-8da7-2895697f0fc0", principal_id: "11111111-1111-1111-1111-111111111111" }] },
+  });
+  assert.deepEqual(checkHcl(hcl, "az104-01-identity"), []);
+  assert.deepEqual(verdict(checkHcl(hcl, "az104-02-policy")), [["role", "azurerm_role_assignment.x"]]);
+});
+
+test("an ARM template deployment may not reach outside the lab or assign roles", () => {
+  const tpl = (resources) => ({
+    resource: {
+      azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}" }] },
+      azurerm_resource_group_template_deployment: { t: [{ name: "t", resource_group_name: "${azurerm_resource_group.lab.name}", deployment_mode: "Incremental", template_content: JSON.stringify({ $schema: "x", resources }) }] },
+    },
+  });
+  const id = "az104-12-bicep";
+  assert.deepEqual(checkHcl(tpl([{ type: "Microsoft.Storage/storageAccounts", name: "x", apiVersion: "2023-01-01" }]), id), []);
+  assert.deepEqual(verdict(checkHcl(tpl([{ type: "Microsoft.Resources/deployments", name: "n", resourceGroup: "rg-prod", apiVersion: "2022-09-01" }]), id)), [["outside-scope", "azurerm_resource_group_template_deployment.t"]]);
+  assert.deepEqual(verdict(checkHcl(tpl([{ type: "Microsoft.Authorization/roleAssignments", name: "n", apiVersion: "2022-04-01" }]), id)), [["role", "azurerm_resource_group_template_deployment.t"]]);
+});
+
+test("the command line prints one rule: address line per refusal and exits 1; a clean plan exits 0", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "lab-scope-"));
+  const evil = fixtures.find((x) => x.file === "evil-role.json");
+  const clean = fixtures.find((x) => x.file === "clean-identity.json");
+  writeFileSync(join(tmp, "evil.json"), JSON.stringify(evil.plan));
+  writeFileSync(join(tmp, "clean.json"), JSON.stringify(clean.hcl));
+  const bad = spawnSync(process.execPath, [SCRIPT, "--plan", join(tmp, "evil.json"), "--lab", evil.lab], { encoding: "utf8" });
+  assert.equal(bad.status, 1, bad.stderr);
+  const lines = bad.stdout.trim().split("\n").filter((l) => /^[a-z-]+: /.test(l));
+  assert.equal(lines.length, evil.expect.length);
+  for (const [rule, address] of evil.expect) assert.ok(lines.some((l) => l.startsWith(`${rule}: ${address}`)), `${rule}: ${address}`);
+  const good = spawnSync(process.execPath, [SCRIPT, "--hcl", join(tmp, "clean.json"), "--lab", clean.lab], { encoding: "utf8" });
+  assert.equal(good.status, 0, good.stdout + good.stderr);
+  const usage = spawnSync(process.execPath, [SCRIPT, "--plan", join(tmp, "clean.json"), "--lab", "not a lab"], { encoding: "utf8" });
+  assert.equal(usage.status, 2);
+});
+
+test("lab-scope never prints a sensitive value", () => {
+  const f = fixtures.find((x) => x.file === "evil-entra-prefix.json");
+  const plan = structuredClone(f.plan);
+  const boss = plan.planned_values.root_module.resources.find((r) => r.address === "azuread_user.boss");
+  boss.values.password = "Sup3r-Secret-Value!";
+  boss.sensitive_values = { password: true };
+  const tmp = mkdtempSync(join(tmpdir(), "lab-scope-"));
+  writeFileSync(join(tmp, "p.json"), JSON.stringify(plan));
+  const r = spawnSync(process.execPath, [SCRIPT, "--plan", join(tmp, "p.json"), "--lab", f.lab], { encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.ok(!(r.stdout + r.stderr).includes("Sup3r-Secret-Value!"));
+});
