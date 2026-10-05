@@ -7,7 +7,7 @@
 // labs-check, a lab with no terraform/ folder FAILS here: it cannot be
 // released. The commands are faked; CI runs them for real.
 
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, cpSync, rmSync } from "node:fs";
@@ -23,8 +23,11 @@ const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
 const CI = parse(readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8"));
 
 /** A labs folder with the real template, one lab with Terraform and one without. */
+const made = [];
+after(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
 function labsDir() {
   const dir = mkdtempSync(join(tmpdir(), "labs-tf-"));
+  made.push(dir);
   cpSync(join(LABS, "_template"), join(dir, "_template"), { recursive: true });
   mkdirSync(join(dir, "setup"));
   for (const id of ["az104-05-storage", "az104-06-blob-security"]) {
@@ -61,6 +64,14 @@ function bicepLabsDir() {
   return dir;
 }
 const slash = (p) => p.replace(/\\/g, "/");
+
+test("labs-tf deletes its scratch copies when it finishes, even when a check fails", () => {
+  const copies = () => new Set(readdirSync(tmpdir()).filter((n) => n.startsWith("labs-tf-copy-")));
+  const before = copies();
+  runLabsTf({ labsDir: labsDir(), run: fakeRun().run, log: quiet });
+  runLabsTf({ labsDir: labsDir(), run: fakeRun({ fail: { "terraform fmt": "bad format" } }).run, log: quiet });
+  assert.deepEqual([...copies()].filter((n) => !before.has(n)), []);
+});
 
 test("labs-tf lists each lab and the template", () => {
   const targets = labsTfTargets(LABS);

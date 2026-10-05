@@ -26,7 +26,7 @@
 //   node scripts/labs-tf.mjs [folder ...]     only these folders (e.g. _template)
 
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,8 +55,17 @@ export function labsTfTargets(labsDir = LABS) {
  * `bicep`: the Bicep command (labs-tf's CLI passes the pinned, checksum-verified binary).
  */
 export function runLabsTf({ labsDir = LABS, run, log = console.log, only = null, requireHcl2json = false, hcl2json = "hcl2json", requireBicep = false, bicep = "bicep" }) {
-  const failures = [];
   const scratch = mkdtempSync(join(tmpdir(), "labs-tf-copy-"));
+  try {
+    return checkTargets({ labsDir, run, log, only, requireHcl2json, hcl2json, requireBicep, bicep, scratch });
+  } finally {
+    // Each lab's copy (with its .terraform folder) runs to hundreds of MB: never leave them behind.
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+function checkTargets({ labsDir, run, log, only, requireHcl2json, hcl2json, requireBicep, bicep, scratch }) {
+  const failures = [];
   const fail = (folder, message) => {
     failures.push({ folder, message });
     log(`FAIL ${folder}: ${message}`);
