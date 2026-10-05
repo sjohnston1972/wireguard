@@ -305,6 +305,8 @@ test("peer creates both sides with the §7.6 flags and links private DNS zones o
   assert.match(link, new RegExp(`--resource-group ${RG} --zone-name privatelink\\.blob\\.core\\.windows\\.net`));
   assert.match(link, new RegExp(`--virtual-network ${GW_VNET}`));
   assert.match(link, /--registration-enabled false/);
+  // A privatelink zone linked to vnet-wg must not hide every other account's public name.
+  assert.match(link, /--resolution-policy NxDomainRedirect/);
   // Begin first, end last, both with the run's token.
   const begin = firstCall(calls, /^curl .*"phase":"begin"/);
   const end = firstCall(calls, /^curl .*"phase":"end","ok":true/);
@@ -316,6 +318,24 @@ test("peer creates both sides with the §7.6 flags and links private DNS zones o
   noLink.run("infra/ci/lab-peer.sh", ["peer", ID], { ...PEER_ENV, DNS_LINK: "false" });
   assert.equal(firstCall(noLink.calls(), /private-dns link vnet create/), -1);
   noLink.cleanup();
+});
+
+test("peer: only privatelink zones get NxDomainRedirect (Azure takes it only there)", { skip }, () => {
+  const w = world([
+    { cmd: "curl", match: "phase\":\"begin", out: JSON.stringify({ go: true, dns_link: true }) },
+    { cmd: "curl", match: "phase\":\"end", out: "{\"ok\":true}" },
+    { match: "^network vnet show --resource-group rg-wg-ondemand --name vnet-wg", out: GW_VNET },
+    { match: `^network vnet list --resource-group ${RG} `, out: LAB_VNET },
+    { match: "^network vnet peering show", code: 3, err: "ResourceNotFound" },
+    { match: `^network private-dns zone list --resource-group ${RG} `, out: "privatelink.file.core.windows.net\ncontoso.internal" },
+  ]);
+  const r = w.run("infra/ci/lab-peer.sh", ["peer", ID], { ...PEER_ENV, DNS_LINK: "true" });
+  assert.equal(r.status, 0, r.out);
+  const links = w.calls().filter((c) => c.startsWith("az network private-dns link vnet create"));
+  assert.equal(links.length, 2, w.calls().join("\n"));
+  assert.match(links.find((c) => c.includes("privatelink.file")), /--resolution-policy NxDomainRedirect/);
+  assert.doesNotMatch(links.find((c) => c.includes("contoso.internal")), /--resolution-policy/);
+  w.cleanup();
 });
 
 test("peer skips the DNS links when the Worker's begin answer says dns_link false, and says why", { skip }, () => {

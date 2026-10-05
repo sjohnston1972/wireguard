@@ -166,7 +166,12 @@ ensure_peering "$GW_RG" "$GW_VNET" "$WG_PEERING" "$lab_id" --allow-vnet-access |
 if [ "${DNS_LINK:-false}" = true ] && [ "$WORKER_DNS_LINK" = true ] && [ "$failed" -eq 0 ]; then
   while IFS= read -r zone; do
     [ -z "$zone" ] && continue
-    az network private-dns link vnet create --resource-group "$RG" --zone-name "$zone" --name "$DNS_LINK_NAME" --virtual-network "$gw_id" --registration-enabled false -o none ||
+    # A privatelink zone linked to vnet-wg would otherwise answer NXDOMAIN for every
+    # other storage account (or vault...) of that kind: fall back to public DNS
+    # for names the zone does not hold. Azure takes this only on privatelink zones.
+    policy=()
+    [[ "${zone,,}" == privatelink.* ]] && policy=(--resolution-policy NxDomainRedirect)
+    az network private-dns link vnet create --resource-group "$RG" --zone-name "$zone" --name "$DNS_LINK_NAME" --virtual-network "$gw_id" --registration-enabled false "${policy[@]}" -o none ||
       warn "could not link $zone to $GW_VNET (already linked by the lab's own Terraform?)"
   done < <(azq network private-dns zone list --resource-group "$RG" --query "[].name" -o tsv)
 fi
