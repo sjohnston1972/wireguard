@@ -390,7 +390,8 @@ Same step shape as B1.
   workspace takes, and AMA's need for a system-assigned identity only. Things to try: KQL on `Perf` and `Syslog`, an email
   receiver by hand, VM insights.
 - [ ] **B3.2 Lab 19:** `az104-19-backup: a Standard Recovery Services vault, LRS, soft delete off, immutability Disabled`;
-  `az104-19-backup: a daily V1 policy keeping 7 days, instant restore 1 day in rg-lab-<id>-irp`; `az104-19-backup: the VM is
+  `az104-19-backup: a daily Enhanced (V2) policy keeping 7 days, instant restore 1 day in rg-lab-<id>-irp` (as built: Enhanced,
+  `policy_type = "V2"`, because a V1 policy refuses Trusted Launch VMs, and Enhanced backs up both kinds); `az104-19-backup: the VM is
   protected and versions.tf stops protection and deletes data on destroy`; `az104-19-backup: the readme says to restore only into
   rg-lab-<id> and never to lock immutability or make soft delete always-on`. Things to try: Backup now, file recovery, restore
   to a new VM in the lab's group, stop protection. (V) `soft_delete_enabled = false` is honoured on a new vault.
