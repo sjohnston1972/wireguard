@@ -33,12 +33,22 @@
 //   role              a role assignment off labs/setup/allowed-roles.json, a custom
 //                     role without its fixed GUID, one that can grant access, holds
 //                     a wildcard action (only wildcard reads such as */read), or
-//                     is assignable anywhere but the lab's own group(s)
+//                     is assignable anywhere but the lab's own group(s); in a
+//                     template: Microsoft.Authorization, .Management or .Graph
+//                     resources, and any extension (Bicep `extension`/`import`)
 //   immutability      a Locked immutability policy (nothing can delete it)
-//   azure-made-group  AKS node groups or backup restore groups not named rg-lab-<id>-*
+//   azure-made-group  AKS node groups, backup restore groups and Container Apps
+//                     infrastructure groups (an environment in a subnet) not
+//                     named rg-lab-<id>-*
 //   resource-group    a resource group other than rg-lab-<id> or rg-lab-<id>-*
 //   outside-scope     a resource group, scope or parent outside the lab, anything
-//                     at subscription scope, or a resource tied to nothing in the lab
+//                     at subscription scope, or a resource tied to nothing in the
+//                     lab; template deployments at other scopes, deployment
+//                     scripts, a template spec; in a template (templateProblems):
+//                     a schema other than a resource group's, nested deployments
+//                     to other scopes, linked templates and template specs,
+//                     resource groups, deployment scripts, other groups' ids; in
+//                     a plan, a template_content it cannot read (unknown)
 //
 // It is plain Node with no packages (the runner has Node; npm ci is not run),
 // and it never prints a value Terraform marks sensitive.
@@ -364,11 +374,126 @@ export function classifyId(id) {
 
 const DEFINITION_REF = /^\/providers\/Microsoft\.Authorization\/(roleDefinitions|policyDefinitions|policySetDefinitions)\/[^/]+$/i;
 
+// ── Templates ────────────────────────────────────────────────────────────
+
+/** A resource group deployment template's schema; subscription, management group and tenant ones are refused. */
+const RG_TEMPLATE_SCHEMA = /\/deploymentTemplate\.json#?$/i;
+/** Template keys that send a resource somewhere other than the deployment's own group. */
+const TEMPLATE_SCOPE_KEYS = ["resourceGroup", "subscriptionId", "scope", "managementGroup"];
+/** Template resource types a lab may only make in Terraform (where the role rules see them), or never. */
+const TEMPLATE_ROLE_TYPES = /^Microsoft\.(Authorization|Management|Graph)\//i;
+const TEMPLATE_OUTSIDE_TYPES = /^Microsoft\.Resources\/(deploymentScripts|resourceGroups|templateSpecs)(\/|$)/i;
+const NESTED_DEPLOYMENT = /^Microsoft\.Resources\/deployments$/i;
+/** Template deployments at other scopes than a resource group. */
+const OTHER_SCOPE_DEPLOYMENTS = new Set(["azurerm_subscription_template_deployment", "azurerm_management_group_template_deployment", "azurerm_tenant_template_deployment"]);
+
+/** The first argument of each resourceId(...) call in an ARM expression: a literal string, or null when it is not one. */
+function resourceIdFirstArgs(expr) {
+  const out = [];
+  for (const m of expr.matchAll(/(?<![A-Za-z])resourceId\s*\(\s*/gi)) {
+    let i = m.index + m[0].length;
+    if (expr[i] !== "'") {
+      out.push(null);
+      continue;
+    }
+    let s = "";
+    for (i++; i < expr.length; i++) {
+      if (expr[i] === "'" && expr[i + 1] === "'") {
+        s += "'";
+        i++;
+      } else if (expr[i] === "'") break;
+      else s += expr[i];
+    }
+    out.push(s);
+  }
+  return out;
+}
+
+/**
+ * Check an ARM template (an object, or its JSON text; Bicep builds one) that a
+ * lab deploys into its own group with azurerm_resource_group_template_deployment.
+ * Returns [{ rule, message }]: under "role" what writes access, locks,
+ * governance or Entra (Microsoft.Graph and any other extension); under
+ * "outside-scope" what deploys or reaches beyond the lab's group (other
+ * schemas and scopes, resource groups, deployment scripts, linked templates
+ * and template specs, ids of other groups, or a template it cannot read);
+ * under "gateway" the gateway's names. Nested deployments are checked as
+ * templates of their own.
+ */
+export function templateProblems(template) {
+  const out = [];
+  const add = (rule, message) => {
+    if (!out.some((p) => p.rule === rule && p.message === message)) out.push({ rule, message });
+  };
+  const listOf = (resources) => (Array.isArray(resources) ? resources : resources && typeof resources === "object" ? Object.values(resources) : []);
+
+  const visitResource = (res, where) => {
+    if (!res || typeof res !== "object" || Array.isArray(res)) return;
+    const type = String(res.type ?? "");
+    if (/^Microsoft\.Graph\//i.test(type) || "extension" in res || "import" in res) add("role", `${where} deploys ${type || "a resource"} through an extension (Microsoft Graph and the like reach beyond Azure Resource Manager)`);
+    else if (TEMPLATE_ROLE_TYPES.test(type) || /\/providers\//i.test(type)) add("role", `${where} deploys ${type}, which a lab may only make in Terraform`);
+    if (TEMPLATE_OUTSIDE_TYPES.test(type)) add("outside-scope", `${where} deploys ${type}, which reaches beyond the lab's group`);
+    for (const k of TEMPLATE_SCOPE_KEYS) if (k in res) add("outside-scope", `${where} sends ${type || "a resource"} to another scope (${k})`);
+    if (NESTED_DEPLOYMENT.test(type)) {
+      const props = res.properties ?? {};
+      if (props.templateLink) add("outside-scope", `${where} links a template (${props.templateLink.id ? "a template spec" : "a URL"}) this check cannot read`);
+      if (props.parametersLink) add("outside-scope", `${where} links its parameters from a URL this check cannot read`);
+      if (props.template !== undefined) visit(props.template, `${where} > ${res.name ?? "a nested deployment"}`);
+      else if (!props.templateLink) add("outside-scope", `${where} has a nested deployment with no template`);
+    }
+    for (const child of listOf(res.resources)) visitResource(child, where);
+  };
+
+  const visit = (t, where) => {
+    let tpl = t;
+    if (typeof tpl === "string") {
+      try {
+        tpl = JSON.parse(tpl);
+      } catch {
+        add("outside-scope", `${where} is not JSON this check can read`);
+        return;
+      }
+    }
+    if (!tpl || typeof tpl !== "object" || Array.isArray(tpl)) {
+      add("outside-scope", `${where} is not a template this check can read`);
+      return;
+    }
+    if (typeof tpl.$schema !== "string" || !RG_TEMPLATE_SCHEMA.test(tpl.$schema)) add("outside-scope", `${where} has schema ${tpl.$schema ?? "(none)"}: only a resource group deployment template (deploymentTemplate.json) is allowed`);
+    for (const k of ["extensions", "imports"]) {
+      if (tpl[k] && typeof tpl[k] === "object" && Object.keys(tpl[k]).length) add("role", `${where} uses ${k} (${Object.keys(tpl[k]).join(", ")}): extensions such as Microsoft Graph reach beyond Azure Resource Manager`);
+    }
+    for (const res of listOf(tpl.resources)) visitResource(res, where);
+    // Every string (descriptions aside): other groups' ids, resourceId() in another group, ids above the group, the gateway.
+    const strings = (v, path) => {
+      if (typeof v === "string") {
+        if (GATEWAY_RE.test(v)) add("gateway", `${where} names the gateway's resources (${path})`);
+        const literals = v.startsWith("[") ? [...v.matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1].replace(/''/g, "'")) : [v];
+        for (const s of literals) {
+          const c = classifyId(s);
+          if (c && c.kind !== "builtin") add("outside-scope", `${where} names ${s} (${path}), which this check cannot place inside the lab's group`);
+        }
+        if (v.startsWith("[")) {
+          if (resourceIdFirstArgs(v).some((a) => a === null || !a.includes("/"))) add("outside-scope", `${where} uses resourceId() with a resource group or subscription (${path})`);
+          if (/(?<![A-Za-z])(subscriptionResourceId|tenantResourceId|managementGroupResourceId)\s*\(/i.test(v)) add("outside-scope", `${where} builds an id above the resource group (${path})`);
+        }
+      } else if (Array.isArray(v)) v.forEach((x, i) => strings(x, `${path}[${i}]`));
+      else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) if (k !== "metadata" && k !== "template") strings(x, path ? `${path}.${k}` : k);
+    };
+    strings(tpl, "");
+  };
+
+  visit(template, "the template");
+  return out;
+}
+
 /**
  * Check a lab's resources (from planResources or hclResources). Returns
- * [{ rule, address, message }], at most one per resource.
+ * [{ rule, address, message }], at most one per resource. `mode` is "plan"
+ * (the default: a value this check cannot know is refused where it matters,
+ * as a template's content) or "hcl" (CI's early warning, where file() and
+ * other expressions are left to labs-tf and the plan).
  */
-export function scopeProblems({ resources, providers, imports = [] }, labId) {
+export function scopeProblems({ resources, providers, imports = [] }, labId, { mode = "plan" } = {}) {
   const importing = new Set(imports.map(stripIndex));
   const id = labId.toLowerCase();
   const rg = `rg-lab-${id}`;
@@ -503,23 +628,30 @@ export function scopeProblems({ resources, providers, imports = [] }, labId) {
         const ok = scopes instanceof Unknown ? fromLabGroup() : Array.isArray(scopes) && scopes.length > 0 && scopes.every(inside);
         if (!ok) refuse("role", `a lab custom role is assignable only inside ${rg} (assignable_scopes from azurerm_resource_group.<name>.id)`);
       }
-      if (r.type === "azurerm_resource_group_template_deployment" || r.type === "azurerm_subscription_template_deployment") {
-        let tpl = null;
-        try {
-          tpl = typeof v.template_content === "string" ? JSON.parse(v.template_content) : null;
-        } catch {
-          tpl = null;
+      // Templates (ARM JSON, or Bicep built to it): only into the lab's own group,
+      // with a template this check can read in full (labs batch 2 plan, ruling 1).
+      if (OTHER_SCOPE_DEPLOYMENTS.has(r.type)) refuse("outside-scope", `${r.type} deploys outside a resource group; a lab deploys templates only into its own (azurerm_resource_group_template_deployment)`);
+      if (/^azurerm_resource_deployment_script_/.test(r.type)) refuse("outside-scope", "a deployment script runs code in Azure with an identity of its own, beyond what this check can see");
+      if (r.type === "azurerm_resource_group_template_deployment") {
+        const spec = v.template_spec_version_id;
+        if (r.configured.has("template_spec_version_id") || (typeof spec === "string" && spec !== "")) {
+          refuse("outside-scope", "template_spec_version_id deploys a template spec this check never reads; put the template in template_content");
+        } else if (typeof v.template_content === "string") {
+          for (const p of templateProblems(v.template_content)) refuse(p.rule, `template_content: ${p.message}`);
+        } else if (mode === "plan") {
+          refuse("outside-scope", "template_content is not known at plan, so this check cannot read the template; build it from a file (file(\"${path.module}/main.json\")) or known values");
         }
-        const walk = (list) => {
-          for (const res of Array.isArray(list) ? list : Object.values(list ?? {})) {
-            if (!res || typeof res !== "object") continue;
-            if (/^Microsoft\.(Authorization|Management)\//i.test(String(res.type ?? ""))) refuse("role", `the template deploys ${res.type}, which a lab may only make in Terraform`);
-            if (["resourceGroup", "subscriptionId", "scope", "managementGroup"].some((k) => k in res)) refuse("outside-scope", `the template sends ${res.type ?? "a resource"} to another scope`);
-            walk(res.resources);
-            walk(res.properties?.template?.resources);
-          }
-        };
-        if (tpl) walk(tpl.resources);
+        // Parameters may carry resource ids the template then reaches.
+        let params = null;
+        try {
+          params = typeof v.parameters_content === "string" ? JSON.parse(v.parameters_content) : null;
+        } catch {
+          params = null;
+        }
+        for (const l of leaves(params ?? {})) {
+          const c = classifyId(l.value);
+          if (c && !(c.kind === "rg" && ownRg(c.name)) && c.kind !== "builtin") refuse("outside-scope", `parameters_content ${l.path.join(".")} points outside the lab`);
+        }
       }
 
       // immutability
@@ -536,6 +668,11 @@ export function scopeProblems({ resources, providers, imports = [] }, labId) {
       if (r.type === "azurerm_backup_policy_vm") {
         const irg = Array.isArray(v.instant_restore_resource_group) ? v.instant_restore_resource_group[0] : null;
         if (!irg || !startsWithRg(irg.prefix)) refuse("azure-made-group", `instant_restore_resource_group.prefix must start ${rg}-`);
+      }
+      // A Container Apps environment in a subnet gets an infrastructure group (ME_...) unless it is named.
+      if (r.type === "azurerm_container_app_environment") {
+        const inSubnet = r.configured.has("infrastructure_subnet_id") || (typeof v.infrastructure_subnet_id === "string" && v.infrastructure_subnet_id !== "");
+        if (inSubnet && !startsWithRg(v.infrastructure_resource_group_name)) refuse("azure-made-group", `with an infrastructure subnet, infrastructure_resource_group_name must be named ${rg}-<suffix>`);
       }
 
       // resource-group
@@ -598,8 +735,8 @@ export function scopeProblems({ resources, providers, imports = [] }, labId) {
   return out;
 }
 
-export const checkPlan = (plan, labId) => scopeProblems(planResources(plan), labId);
-export const checkHcl = (hcl, labId) => scopeProblems(hclResources(hcl, labId), labId);
+export const checkPlan = (plan, labId) => scopeProblems(planResources(plan), labId, { mode: "plan" });
+export const checkHcl = (hcl, labId) => scopeProblems(hclResources(hcl, labId), labId, { mode: "hcl" });
 
 // ── Command line ─────────────────────────────────────────────────────────
 
