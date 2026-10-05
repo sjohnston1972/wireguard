@@ -131,6 +131,8 @@ export interface LabAzure {
   /** Resource groups in the subscription (any name: rg-lab-*, NetworkWatcherRG, rg-wg-ondemand). */
   groups: { name: string; location?: string; createdTime?: string; tags?: Record<string, string> }[];
   managementGroups: { name: string; displayName?: string }[];
+  /** Live 2026-10-05: a tenant that never used management groups refuses the list (403 AuthorizationFailed). */
+  managementGroupsForbidden?: boolean;
   /**
    * Custom role definitions (the list is filtered to CustomRole by the caller's $filter).
    * `rgOnly`: assignable only inside a resource group, so the subscription's list leaves it
@@ -355,6 +357,7 @@ function labArm(az: LabAzure, method: string, u: URL, init?: RequestInit): Respo
     return json({ value: az.resources.filter((r) => r.resourceGroup.toLowerCase() === rg).map((r) => ({ id: `/subscriptions/sub/resourceGroups/${r.resourceGroup}/providers/${r.type}/${r.name}`, name: r.name, type: r.type, properties: { provisioningState: r.provisioningState ?? "Succeeded" } })) });
   }
   if (method === "GET" && p === "/providers/microsoft.management/managementgroups") {
+    if (az.managementGroupsForbidden) return new Response(JSON.stringify({ error: { code: "AuthorizationFailed", message: "The client does not have authorization to perform action 'Microsoft.Management/managementGroups/read'" } }), { status: 403, headers: { "Content-Type": "application/json" } });
     return json({ value: az.managementGroups.map((m) => ({ id: `/providers/Microsoft.Management/managementGroups/${m.name}`, name: m.name, properties: { displayName: m.displayName ?? m.name } })) });
   }
   if (method === "GET" && sub("/providers/microsoft.authorization/roledefinitions").test(p)) {

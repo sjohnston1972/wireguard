@@ -84,7 +84,18 @@ async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph:
   // by a Clean up, so it must not become a leftover note that can never clear.
   const users = await attempt(() => list<{ userPrincipalName?: string; createdDateTime?: string }>(graph(env, net, `/users?$filter=${encodeURIComponent("startswith(userPrincipalName,'lab-')")}&$select=id,userPrincipalName,createdDateTime&$top=200`), "Entra users"));
   const groups = await attempt(() => list<{ displayName?: string; createdDateTime?: string }>(graph(env, net, `/groups?$filter=${encodeURIComponent("startswith(displayName,'lab-')")}&$select=id,displayName,createdDateTime&$top=200`), "Entra groups"));
-  const mgs = await attempt(() => list<Named>(arm(env, net, `/providers/Microsoft.Management/managementGroups?api-version=2021-04-01`), "management groups"));
+  // wg-admin's identity owns every management group it creates, so when Azure refuses the
+  // list outright (403 AuthorizationFailed, e.g. a tenant that has never used management
+  // groups) none of the labs' exist: that is "none", not "could not list" (live 2026-10-05).
+  const mgs = await attempt(async () => {
+    const res = await arm(env, net, `/providers/Microsoft.Management/managementGroups?api-version=2021-04-01`);
+    if (res.status === 403) {
+      const body = await res.text();
+      if (body.includes("AuthorizationFailed")) return [] as Named[];
+      throw new Error("management groups (403)");
+    }
+    return list<Named>(Promise.resolve(res), "management groups");
+  });
   const roles = await attempt(() => list<Named>(arm(env, net, `${sub}/providers/Microsoft.Authorization/roleDefinitions?api-version=2022-04-01&$filter=${encodeURIComponent("type eq 'CustomRole'")}`), "custom roles"));
   const defs = await attempt(() => list<Named>(arm(env, net, `${sub}/providers/Microsoft.Authorization/policyDefinitions?api-version=2023-04-01&$filter=${encodeURIComponent("policyType eq 'Custom'")}`), "policy definitions"));
   const assigns = await attempt(() => list<Named>(arm(env, net, `${sub}/providers/Microsoft.Authorization/policyAssignments?api-version=2023-04-01`), "policy assignments"));

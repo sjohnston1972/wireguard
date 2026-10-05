@@ -84,6 +84,22 @@ describe("orphan sweep: fixed custom role GUIDs", () => {
   });
 });
 
+describe("orphan sweep: a tenant that refuses the management-group list", () => {
+  // Live 2026-10-05: wg-admin's identity owns every management group it creates, so a
+  // 403 AuthorizationFailed on the list means none of the labs' exist; the sweep still runs.
+  it("counts a 403 AuthorizationFailed management-group list as none and still records the other leftovers", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    litter(world);
+    world.labAzure.managementGroups.length = 0;
+    world.labAzure.managementGroupsForbidden = true;
+    const summary = await sweepOrphans(env, budgetedNet(20), new Date());
+    expect(summary).not.toMatch(/could not list/);
+    const o = await orphans(env);
+    expect(o).toEqual(expect.arrayContaining([expect.objectContaining({ labId: "az104-07-files", names: ["rg-lab-az104-07-files"] })]));
+  });
+});
+
 describe("orphan sweep (L2.5)", () => {
   it("orphan sweep lists groups, Entra, management groups, roles and policies hourly in SWEEP_CALLS calls (7 listings and each fixed custom role)", async () => {
     freeze();

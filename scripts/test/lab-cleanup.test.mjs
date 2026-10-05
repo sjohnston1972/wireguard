@@ -293,6 +293,31 @@ test("verify clean prints clean=true when nothing is left, and clean=false when 
   broken.cleanup();
 });
 
+// Live 2026-10-05: in a tenant that has never used management groups, wg-admin's
+// identity gets AuthorizationFailed listing them. It owns every group it creates,
+// so a refusal means none of the lab's exist: clean, not "unverified".
+test("verify clean: a management-group list refused with AuthorizationFailed counts as none, any other failure stays unverified", { skip }, () => {
+  const refused = world([
+    { match: "^group list", out: `${RG}x\nNetworkWatcherRG` },
+    { match: "^account show", out: SUB },
+    { match: "^account management-group list", code: 1, err: "ERROR: (AuthorizationFailed) The client does not have authorization to perform action 'Microsoft.Management/managementGroups/read'" },
+  ]);
+  const a = refused.run("infra/ci/lab-safety-net.sh", ["--verify", ID]);
+  assert.equal(a.status, 0, a.out);
+  assert.match(a.stdout, /^clean=true$/m);
+  assert.match(a.out, /no management groups visible/);
+  refused.cleanup();
+  const down = world([
+    { match: "^group list", out: `${RG}x\nNetworkWatcherRG` },
+    { match: "^account show", out: SUB },
+    { match: "^account management-group list", code: 1, err: "ERROR: (InternalServerError) try again later" },
+  ]);
+  const b = down.run("infra/ci/lab-safety-net.sh", ["--verify", ID]);
+  assert.equal(b.status, 1, b.out);
+  assert.match(b.stdout, /unverified: management groups/);
+  down.cleanup();
+});
+
 // ── Peering ──────────────────────────────────────────────────────────────
 
 const PEER_ENV = { LAB_PEER_URL: "https://wg-admin.example.net/api/callback/lab-peer", CALLBACK_TOKEN: "tok-123456", WORKER_RUN_ID: "lab-deploy-1-abc" };
