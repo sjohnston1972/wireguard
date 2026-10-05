@@ -279,6 +279,9 @@ export function hclResources(hcl, labId) {
             refs[k] = [];
             values[k] = hclValue(v, ctx, refs[k]);
           }
+          // Left unset, azuread computes a mail nickname of its own: unknown in the
+          // plan, and never lab-<id>-. Say so here too, as an early warning.
+          if (mode === "resource" && (type === "azuread_user" || type === "azuread_group") && !("mail_nickname" in values)) values.mail_nickname = new Unknown();
           const prov = typeof block?.provider === "string" ? block.provider.replace(/^\$\{|\}$/g, "").split(".")[0] : type.split("_")[0];
           resources.push({
             address: `${prefix}${type}.${name}`,
@@ -405,7 +408,15 @@ export function scopeProblems({ resources, providers }, labId) {
     if (r.mode === "managed") {
       // association
       if (ASSOCIATION_TYPES.has(r.type)) refuse("association", "a lab never moves or creates a subscription");
-      if (r.type === "azurerm_management_group" && v.subscription_ids != null && (v.subscription_ids instanceof Unknown || (Array.isArray(v.subscription_ids) && v.subscription_ids.length > 0))) refuse("association", "a lab management group never holds the subscription");
+      // subscription_ids is optional and computed: left unset, every real plan has it unknown
+      // (the provider reads it back after apply). Only a lab that sets it, or a known
+      // non-empty list, is moving a subscription.
+      if (r.type === "azurerm_management_group") {
+        const ids = v.subscription_ids;
+        const knownNonEmpty = Array.isArray(ids) && ids.length > 0;
+        const setUnknown = r.configured.has("subscription_ids") && ids instanceof Unknown;
+        if (knownNonEmpty || setUnknown) refuse("association", "a lab management group never holds the subscription");
+      }
 
       // governance
       if (GOVERNANCE_TYPES.has(r.type)) {

@@ -1,0 +1,497 @@
+{
+ "providers": {
+  "registry.terraform.io/hashicorp/azuread": true,
+  "registry.terraform.io/hashicorp/azurerm": true
+ },
+ "types": {
+  "azuread_group": {
+   "attrs": [
+    "auto_subscribe_new_members",
+    "external_senders_allowed",
+    "hide_from_address_lists",
+    "hide_from_outlook_clients",
+    "id",
+    "mail",
+    "mail_nickname",
+    "members",
+    "object_id",
+    "onpremises_domain_name",
+    "onpremises_group_type",
+    "onpremises_netbios_name",
+    "onpremises_sam_account_name",
+    "onpremises_security_identifier",
+    "onpremises_sync_enabled",
+    "owners",
+    "preferred_language",
+    "proxy_addresses",
+    "visibility"
+   ],
+   "blocks": {}
+  },
+  "azuread_user": {
+   "attrs": [
+    "about_me",
+    "business_phones",
+    "creation_type",
+    "external_user_state",
+    "id",
+    "im_addresses",
+    "mail",
+    "mail_nickname",
+    "object_id",
+    "onpremises_distinguished_name",
+    "onpremises_domain_name",
+    "onpremises_immutable_id",
+    "onpremises_sam_account_name",
+    "onpremises_security_identifier",
+    "onpremises_sync_enabled",
+    "onpremises_user_principal_name",
+    "password",
+    "proxy_addresses",
+    "user_type"
+   ],
+   "blocks": {}
+  },
+  "azurerm_consumption_budget_resource_group": {
+   "attrs": [
+    "etag",
+    "id"
+   ],
+   "blocks": {
+    "time_period": {
+     "attrs": [
+      "end_date"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_linux_virtual_machine": {
+   "attrs": [
+    "allow_extension_operations",
+    "computer_name",
+    "disable_password_authentication",
+    "disk_controller_type",
+    "id",
+    "os_managed_disk_id",
+    "patch_assessment_mode",
+    "patch_mode",
+    "private_ip_address",
+    "private_ip_addresses",
+    "provision_vm_agent",
+    "public_ip_address",
+    "public_ip_addresses",
+    "virtual_machine_id",
+    "vm_agent_platform_updates_enabled"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "os_disk": {
+     "attrs": [
+      "disk_size_gb",
+      "id",
+      "name",
+      "storage_account_type"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_management_group": {
+   "attrs": [
+    "display_name",
+    "id",
+    "name",
+    "parent_management_group_id",
+    "subscription_ids",
+    "tenant_scoped_id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_management_group_policy_assignment": {
+   "attrs": [
+    "id",
+    "metadata"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_management_lock": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_monitor_action_group": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {
+    "event_hub_receiver": {
+     "attrs": [
+      "subscription_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "webhook_receiver": {
+     "attrs": [],
+     "blocks": {
+      "aad_auth": {
+       "attrs": [
+        "identifier_uri",
+        "tenant_id"
+       ],
+       "blocks": {}
+      }
+     }
+    }
+   }
+  },
+  "azurerm_network_interface": {
+   "attrs": [
+    "applied_dns_servers",
+    "id",
+    "internal_domain_name_suffix",
+    "mac_address",
+    "private_ip_address",
+    "private_ip_addresses",
+    "virtual_machine_id"
+   ],
+   "blocks": {
+    "ip_configuration": {
+     "attrs": [
+      "gateway_load_balancer_frontend_ip_configuration_id",
+      "primary",
+      "private_ip_address"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_network_security_group": {
+   "attrs": [
+    "id",
+    "security_rule"
+   ],
+   "blocks": {}
+  },
+  "azurerm_policy_definition": {
+   "attrs": [
+    "id",
+    "metadata",
+    "role_definition_ids"
+   ],
+   "blocks": {}
+  },
+  "azurerm_private_dns_zone": {
+   "attrs": [
+    "id",
+    "max_number_of_record_sets",
+    "max_number_of_virtual_network_links",
+    "max_number_of_virtual_network_links_with_registration",
+    "number_of_record_sets"
+   ],
+   "blocks": {
+    "soa_record": {
+     "attrs": [
+      "fqdn",
+      "host_name",
+      "serial_number"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_private_dns_zone_virtual_network_link": {
+   "attrs": [
+    "id",
+    "resolution_policy"
+   ],
+   "blocks": {}
+  },
+  "azurerm_private_endpoint": {
+   "attrs": [
+    "custom_dns_configs",
+    "id",
+    "network_interface",
+    "private_dns_zone_configs"
+   ],
+   "blocks": {
+    "ip_configuration": {
+     "attrs": [
+      "member_name"
+     ],
+     "blocks": {}
+    },
+    "private_dns_zone_group": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    },
+    "private_service_connection": {
+     "attrs": [
+      "private_ip_address"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_resource_group": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_resource_group_policy_assignment": {
+   "attrs": [
+    "id",
+    "metadata"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_role_assignment": {
+   "attrs": [
+    "condition_version",
+    "id",
+    "name",
+    "principal_type",
+    "role_definition_id",
+    "role_definition_name",
+    "skip_service_principal_aad_check"
+   ],
+   "blocks": {}
+  },
+  "azurerm_role_definition": {
+   "attrs": [
+    "assignable_scopes",
+    "id",
+    "role_definition_id",
+    "role_definition_resource_id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_storage_account": {
+   "attrs": [
+    "access_tier",
+    "id",
+    "large_file_share_enabled",
+    "primary_access_key",
+    "primary_blob_connection_string",
+    "primary_blob_endpoint",
+    "primary_blob_host",
+    "primary_blob_internet_endpoint",
+    "primary_blob_internet_host",
+    "primary_blob_microsoft_endpoint",
+    "primary_blob_microsoft_host",
+    "primary_connection_string",
+    "primary_dfs_endpoint",
+    "primary_dfs_host",
+    "primary_dfs_internet_endpoint",
+    "primary_dfs_internet_host",
+    "primary_dfs_microsoft_endpoint",
+    "primary_dfs_microsoft_host",
+    "primary_file_endpoint",
+    "primary_file_host",
+    "primary_file_internet_endpoint",
+    "primary_file_internet_host",
+    "primary_file_microsoft_endpoint",
+    "primary_file_microsoft_host",
+    "primary_location",
+    "primary_queue_endpoint",
+    "primary_queue_host",
+    "primary_queue_microsoft_endpoint",
+    "primary_queue_microsoft_host",
+    "primary_table_endpoint",
+    "primary_table_host",
+    "primary_table_microsoft_endpoint",
+    "primary_table_microsoft_host",
+    "primary_web_endpoint",
+    "primary_web_host",
+    "primary_web_internet_endpoint",
+    "primary_web_internet_host",
+    "primary_web_microsoft_endpoint",
+    "primary_web_microsoft_host",
+    "secondary_access_key",
+    "secondary_blob_connection_string",
+    "secondary_blob_endpoint",
+    "secondary_blob_host",
+    "secondary_blob_internet_endpoint",
+    "secondary_blob_internet_host",
+    "secondary_blob_microsoft_endpoint",
+    "secondary_blob_microsoft_host",
+    "secondary_connection_string",
+    "secondary_dfs_endpoint",
+    "secondary_dfs_host",
+    "secondary_dfs_internet_endpoint",
+    "secondary_dfs_internet_host",
+    "secondary_dfs_microsoft_endpoint",
+    "secondary_dfs_microsoft_host",
+    "secondary_file_endpoint",
+    "secondary_file_host",
+    "secondary_file_internet_endpoint",
+    "secondary_file_internet_host",
+    "secondary_file_microsoft_endpoint",
+    "secondary_file_microsoft_host",
+    "secondary_location",
+    "secondary_queue_endpoint",
+    "secondary_queue_host",
+    "secondary_queue_microsoft_endpoint",
+    "secondary_queue_microsoft_host",
+    "secondary_table_endpoint",
+    "secondary_table_host",
+    "secondary_table_microsoft_endpoint",
+    "secondary_table_microsoft_host",
+    "secondary_web_endpoint",
+    "secondary_web_host",
+    "secondary_web_internet_endpoint",
+    "secondary_web_internet_host",
+    "secondary_web_microsoft_endpoint",
+    "secondary_web_microsoft_host"
+   ],
+   "blocks": {
+    "blob_properties": {
+     "attrs": [
+      "default_service_version"
+     ],
+     "blocks": {}
+    },
+    "customer_managed_key": {
+     "attrs": [
+      "key_vault_key_id",
+      "managed_hsm_key_id"
+     ],
+     "blocks": {}
+    },
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "network_rules": {
+     "attrs": [
+      "bypass",
+      "ip_rules",
+      "virtual_network_subnet_ids"
+     ],
+     "blocks": {
+      "private_link_access": {
+       "attrs": [
+        "endpoint_tenant_id"
+       ],
+       "blocks": {}
+      }
+     }
+    }
+   }
+  },
+  "azurerm_storage_blob": {
+   "attrs": [
+    "access_tier",
+    "id",
+    "metadata",
+    "storage_account_name",
+    "storage_container_id",
+    "storage_container_name",
+    "url"
+   ],
+   "blocks": {}
+  },
+  "azurerm_storage_container": {
+   "attrs": [
+    "default_encryption_scope",
+    "has_immutability_policy",
+    "has_legal_hold",
+    "id",
+    "metadata",
+    "resource_manager_id",
+    "url"
+   ],
+   "blocks": {}
+  },
+  "azurerm_storage_management_policy": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_storage_share": {
+   "attrs": [
+    "access_tier",
+    "id",
+    "metadata",
+    "rbac_scope_id",
+    "resource_manager_id",
+    "url"
+   ],
+   "blocks": {}
+  },
+  "azurerm_subnet": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {
+    "ip_address_pool": {
+     "attrs": [
+      "allocated_ip_address_prefixes"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_virtual_network": {
+   "attrs": [
+    "dns_servers",
+    "guid",
+    "id",
+    "subnet"
+   ],
+   "blocks": {
+    "ip_address_pool": {
+     "attrs": [
+      "allocated_ip_address_prefixes"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "data.azurerm_subscription": {
+   "attrs": [
+    "display_name",
+    "id",
+    "location_placement_id",
+    "quota_id",
+    "spending_limit",
+    "state",
+    "subscription_id",
+    "tags",
+    "tenant_id"
+   ],
+   "blocks": {}
+  }
+ }
+}

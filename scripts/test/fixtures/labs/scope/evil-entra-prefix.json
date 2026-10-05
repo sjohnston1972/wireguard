@@ -15,7 +15,7 @@
       { "address": "azuread_group.helpdesk", "mode": "managed", "type": "azuread_group", "name": "helpdesk", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "helpdesk", "security_enabled": true } },
       { "address": "azuread_group.nickname", "mode": "managed", "type": "azuread_group", "name": "nickname", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "lab-az104-01-identity-team", "mail_nickname": "team", "mail_enabled": true } },
       { "address": "azuread_user.lookalike", "mode": "managed", "type": "azuread_user", "name": "lookalike", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "lab-az104-01-identityx-ann", "user_principal_name": "lab-az104-01-identityx-ann@contoso.onmicrosoft.com" } },
-      { "address": "azuread_user.ann", "mode": "managed", "type": "azuread_user", "name": "ann", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "lab-az104-01-identity-ann", "user_principal_name": "lab-az104-01-identity-ann@contoso.onmicrosoft.com" } },
+      { "address": "azuread_user.ann", "mode": "managed", "type": "azuread_user", "name": "ann", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "display_name": "lab-az104-01-identity-ann", "user_principal_name": "lab-az104-01-identity-ann@contoso.onmicrosoft.com", "mail_nickname": "lab-az104-01-identity-ann" } },
       { "address": "azuread_group_member.admins", "mode": "managed", "type": "azuread_group_member", "name": "admins", "provider_name": "registry.terraform.io/hashicorp/azuread", "values": { "group_object_id": "22222222-2222-2222-2222-222222222222" } }
     ] } },
     "resource_changes": [
@@ -36,7 +36,7 @@
     "azuread_user": {
       "boss": [ { "display_name": "lab-${var.lab_id}-boss", "user_principal_name": "boss@${var.upn_domain}" } ],
       "lookalike": [ { "display_name": "lab-${var.lab_id}x-ann", "user_principal_name": "lab-${var.lab_id}x-ann@${var.upn_domain}" } ],
-      "ann": [ { "display_name": "lab-${var.lab_id}-ann", "user_principal_name": "lab-${var.lab_id}-ann@${var.upn_domain}" } ]
+      "ann": [ { "display_name": "lab-${var.lab_id}-ann", "user_principal_name": "lab-${var.lab_id}-ann@${var.upn_domain}", "mail_nickname": "lab-${var.lab_id}-ann" } ]
     },
     "azuread_group": {
       "helpdesk": [ { "display_name": "helpdesk", "security_enabled": true } ],

@@ -15,12 +15,17 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkHcl, checkPlan, RULES, GOVERNANCE_LABS as SCOPE_GOVERNANCE, LAB_ID_RE as SCOPE_ID_RE } from "../../infra/ci/lab-scope.mjs";
 import { GOVERNANCE_LABS, LAB_ID_RE } from "../lib/labs.mjs";
+import { withAfterUnknown } from "./fixtures/labs/plans/realistic.mjs";
 
 const DIR = fileURLToPath(new URL("./fixtures/labs/scope/", import.meta.url));
 const SCRIPT = fileURLToPath(new URL("../../infra/ci/lab-scope.mjs", import.meta.url));
+// Each plan gets resource_changes with after_unknown as Terraform prints it for
+// a first deploy (computed attributes left unset are unknown at plan), so a
+// fixture cannot be tidier than a real plan.
 const fixtures = readdirSync(DIR)
   .filter((f) => f.endsWith(".json"))
-  .map((f) => ({ file: f, ...JSON.parse(readFileSync(join(DIR, f), "utf8")) }));
+  .map((f) => ({ file: f, ...JSON.parse(readFileSync(join(DIR, f), "utf8")) }))
+  .map((f) => ({ ...f, plan: withAfterUnknown(f.plan) }));
 
 /** [rule, address] pairs, sorted, with any [index] taken off the address. */
 const verdict = (problems) => problems.map((p) => [p.rule, p.address.replace(/\[[^\]]*\]/g, "")]).sort((a, b) => (a.join() < b.join() ? -1 : 1));
@@ -134,4 +139,33 @@ test("lab-scope never prints a sensitive value", () => {
   const r = spawnSync(process.execPath, [SCRIPT, "--plan", join(tmp, "p.json"), "--lab", f.lab], { encoding: "utf8" });
   assert.equal(r.status, 1);
   assert.ok(!(r.stdout + r.stderr).includes("Sup3r-Secret-Value!"));
+});
+
+test("a management group's subscription_ids: unknown because unset passes; set in the configuration or a known list is refused", () => {
+  const lab = "az104-03-mgmt-groups";
+  const mg = (values, expressions, after_unknown) => ({
+    planned_values: { root_module: { resources: [{ address: "azurerm_management_group.root", mode: "managed", type: "azurerm_management_group", name: "root", provider_name: "registry.terraform.io/hashicorp/azurerm", values }] } },
+    resource_changes: [{ address: "azurerm_management_group.root", change: { actions: ["create"], after_unknown } }],
+    configuration: { root_module: { resources: [{ address: "azurerm_management_group.root", mode: "managed", type: "azurerm_management_group", name: "root", expressions }] } },
+  });
+  const name = { name: "lab-az104-03-mgmt-groups-root", display_name: "lab-az104-03-mgmt-groups-root" };
+  const named = { name: { references: ["var.lab_id"] } };
+  // Unset: the provider reads it back after apply, so every real plan has it unknown.
+  assert.deepEqual(checkPlan(mg(name, named, { id: true, subscription_ids: true }), lab), []);
+  // Set from something only known at apply.
+  assert.deepEqual(verdict(checkPlan(mg(name, { ...named, subscription_ids: { references: ["data.azurerm_subscription.current.subscription_id"] } }, { id: true, subscription_ids: true }), lab)), [["association", "azurerm_management_group.root"]]);
+  // A known, non-empty list.
+  assert.deepEqual(verdict(checkPlan(mg({ ...name, subscription_ids: ["3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b"] }, named, { id: true }), lab)), [["association", "azurerm_management_group.root"]]);
+  // Set to an empty list: nothing moves.
+  assert.deepEqual(checkPlan(mg({ ...name, subscription_ids: [] }, { ...named, subscription_ids: { constant_value: [] } }, { id: true }), lab), []);
+  // HCL: a list naming a subscription is refused.
+  const hcl = { data: { azurerm_subscription: { current: [{}] } }, resource: { azurerm_management_group: { root: [{ name: "lab-${var.lab_id}-root", subscription_ids: ["${data.azurerm_subscription.current.subscription_id}"] }] } } };
+  assert.deepEqual(verdict(checkHcl(hcl, lab)), [["association", "azurerm_management_group.root"]]);
+});
+
+test("HCL mode: an Entra user or group without mail_nickname is refused early (azuread makes one up, unknown at plan)", () => {
+  const lab = "az104-06-blob-security";
+  const hcl = (group) => ({ resource: { azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}" }] }, azuread_group: { readers: [group] } } });
+  assert.deepEqual(verdict(checkHcl(hcl({ display_name: "lab-${var.lab_id}-readers", security_enabled: true }), lab)), [["entra-prefix", "azuread_group.readers"]]);
+  assert.deepEqual(checkHcl(hcl({ display_name: "lab-${var.lab_id}-readers", mail_nickname: "lab-${var.lab_id}-readers", security_enabled: true }), lab), []);
 });
