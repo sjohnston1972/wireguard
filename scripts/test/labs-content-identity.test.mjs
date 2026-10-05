@@ -64,7 +64,8 @@ function lab(id) {
   const files = existsSync(dir) ? Object.fromEntries(readdirSync(dir).filter((f) => f.endsWith(".tf")).map((f) => [f, readFileSync(join(dir, f), "utf8")])) : {};
   const all = Object.values(files).join("\n");
   const yaml = parseLabYaml(readFileSync(join(labsDir, id, "lab.yaml"), "utf8")).raw;
-  const readme = readFileSync(join(labsDir, id, "readme.md"), "utf8");
+  // Windows checkouts may turn LF into CRLF; the checks below are about content, not line endings.
+  const readme = readFileSync(join(labsDir, id, "readme.md"), "utf8").replace(/\r\n/g, "\n");
   return { dir, files, all, yaml, readme, resources: blocks(all, "resource"), data: blocks(all, "data"), outputs: blocks(all, "output") };
 }
 

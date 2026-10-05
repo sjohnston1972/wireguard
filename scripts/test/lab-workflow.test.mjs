@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -167,6 +167,8 @@ function workspace(id = "az104-06-blob-security", { tf = true } = {}) {
   const ws = mkdtempSync(join(tmpdir(), "lab-ws-"));
   mkdirSync(join(ws, "labs"), { recursive: true });
   cpSync(join(REPO, "labs", id), join(ws, "labs", id), { recursive: true });
+  // The real labs carry Terraform; a workspace has either a stub or none at all.
+  rmSync(join(ws, "labs", id, "terraform"), { recursive: true, force: true });
   if (tf) {
     mkdirSync(join(ws, "labs", id, "terraform"), { recursive: true });
     writeFileSync(join(ws, "labs", id, "terraform", "main.tf"), "# test\n");

@@ -9,7 +9,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, cpSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, cpSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,7 +25,11 @@ function labsDir() {
   const dir = mkdtempSync(join(tmpdir(), "labs-tf-"));
   cpSync(join(LABS, "_template"), join(dir, "_template"), { recursive: true });
   mkdirSync(join(dir, "setup"));
-  for (const id of ["az104-05-storage", "az104-06-blob-security"]) cpSync(join(LABS, id), join(dir, id), { recursive: true });
+  for (const id of ["az104-05-storage", "az104-06-blob-security"]) {
+    cpSync(join(LABS, id), join(dir, id), { recursive: true });
+    // The real labs now carry Terraform: drop it so 05 has none and 06 has exactly the template.
+    rmSync(join(dir, id, "terraform"), { recursive: true, force: true });
+  }
   mkdirSync(join(dir, "az104-06-blob-security", "terraform"));
   for (const f of ["versions.tf", "variables.tf", "outputs.tf", "main.tf"]) cpSync(join(LABS, "_template", f), join(dir, "az104-06-blob-security", "terraform", f));
   return dir;
