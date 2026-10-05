@@ -109,6 +109,7 @@ resource "azurerm_private_endpoint" "blob" {
 
 resource "azuread_group" "readers" {
   display_name     = "lab-${var.lab_id}-readers"
+  mail_nickname    = "lab-${var.lab_id}-readers"
   description      = "wg-admin lab ${var.lab_id}: Storage Blob Data Reader on ${var.resource_group_name}. Removed at tear-down."
   security_enabled = true
 }

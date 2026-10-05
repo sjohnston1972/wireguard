@@ -23,7 +23,7 @@
             "values": { "name": "lab-az104-06-blob-security-wg", "resource_group_name": "rg-lab-az104-06-blob-security", "private_dns_zone_name": "privatelink.blob.core.windows.net", "registration_enabled": false,
               "virtual_network_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Network/virtualNetworks/vnet-wg" } },
           { "address": "azuread_group.readers", "mode": "managed", "type": "azuread_group", "name": "readers", "provider_name": "registry.terraform.io/hashicorp/azuread",
-            "values": { "display_name": "lab-az104-06-blob-security-readers", "security_enabled": true } },
+            "values": { "display_name": "lab-az104-06-blob-security-readers", "mail_nickname": "lab-az104-06-blob-security-readers", "security_enabled": true } },
           { "address": "azurerm_role_assignment.readers", "mode": "managed", "type": "azurerm_role_assignment", "name": "readers", "provider_name": "registry.terraform.io/hashicorp/azurerm",
             "values": { "role_definition_name": "Storage Blob Data Reader", "principal_type": "Group" } }
         ]
@@ -56,7 +56,7 @@
             "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] }, "private_dns_zone_name": { "references": ["azurerm_private_dns_zone.blob.name", "azurerm_private_dns_zone.blob"] }, "virtual_network_id": { "references": ["var.gateway_vnet_id"] } },
             "count_expression": { "references": ["var.peered"] } },
           { "address": "azuread_group.readers", "mode": "managed", "type": "azuread_group", "name": "readers",
-            "expressions": { "display_name": { "references": ["var.lab_id"] } } },
+            "expressions": { "display_name": { "references": ["var.lab_id"] }, "mail_nickname": { "references": ["var.lab_id"] } } },
           { "address": "azurerm_role_assignment.readers", "mode": "managed", "type": "azurerm_role_assignment", "name": "readers",
             "expressions": { "scope": { "references": ["azurerm_storage_account.sa.id", "azurerm_storage_account.sa"] }, "role_definition_name": { "constant_value": "Storage Blob Data Reader" }, "principal_id": { "references": ["azuread_group.readers.object_id", "azuread_group.readers"] }, "principal_type": { "constant_value": "Group" } } }
         ]
@@ -72,7 +72,7 @@
       "azurerm_subnet": { "endpoints": [ { "name": "endpoints", "resource_group_name": "${azurerm_resource_group.lab.name}", "virtual_network_name": "${azurerm_virtual_network.lab.name}", "address_prefixes": ["${cidrsubnet(var.address_space, 6, 0)}"] } ] },
       "azurerm_private_dns_zone": { "blob": [ { "name": "privatelink.blob.core.windows.net", "resource_group_name": "${azurerm_resource_group.lab.name}" } ] },
       "azurerm_private_dns_zone_virtual_network_link": { "gateway": [ { "count": "${var.peered ? 1 : 0}", "name": "lab-${var.lab_id}-wg", "resource_group_name": "${azurerm_resource_group.lab.name}", "private_dns_zone_name": "${azurerm_private_dns_zone.blob.name}", "virtual_network_id": "${var.gateway_vnet_id}", "registration_enabled": false } ] },
-      "azuread_group": { "readers": [ { "display_name": "lab-${var.lab_id}-readers", "security_enabled": true } ] },
+      "azuread_group": { "readers": [ { "display_name": "lab-${var.lab_id}-readers", "mail_nickname": "lab-${var.lab_id}-readers", "security_enabled": true } ] },
       "azurerm_role_assignment": { "readers": [ { "scope": "${azurerm_storage_account.sa.id}", "role_definition_name": "Storage Blob Data Reader", "principal_id": "${azuread_group.readers.object_id}", "principal_type": "Group" } ] }
     }
   }
