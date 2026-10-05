@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { labFolders, parseReadme } from "../lib/labs.mjs";
+import { labFolders, parseLabYaml, parseReadme } from "../lib/labs.mjs";
 
 const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
 const readme = (id) => readFileSync(join(LABS, id, "readme.md"), "utf8").replace(/\r\n/g, "\n");
@@ -27,8 +27,9 @@ for (const id of labFolders(LABS)) {
     assert.ok(first >= 1, "at least one paragraph comes first");
     assert.ok(blocks.slice(0, first).every((b) => b.t === "p"), "only paragraphs before the first heading");
     assert.equal(blocks[first].text, "What it deploys");
-    // The introduction says which part of the exam outline the lab covers.
-    assert.match(md.split("## What it deploys")[0], /AZ-104 outline/);
+    // The introduction says which part of its exam's outline the lab covers (AZ-104 or AZ-305).
+    const { exam } = parseLabYaml(readFileSync(join(LABS, id, "lab.yaml"), "utf8")).raw;
+    assert.match(md.split("## What it deploys")[0], new RegExp(`${exam} outline`));
   });
 }
 
