@@ -193,7 +193,8 @@ export async function liveLogPrunedUpto(env: Env, runId: string): Promise<number
 /** Delete the live log of every run that ended more than `keepDays` before `now`, and of runs that no longer exist. */
 export async function pruneLiveLogs(env: Env, now: Date, keepDays = 14): Promise<void> {
   const cutoff = new Date(now.getTime() - keepDays * 86_400_000).toISOString();
-  const gone = `run_id NOT IN (SELECT id FROM runs) OR run_id IN (SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ?1)`;
+  // Lab runs (lab_runs, ids "lab-...") keep their live logs on the same terms.
+  const gone = `(run_id NOT IN (SELECT id FROM runs) AND run_id NOT IN (SELECT id FROM lab_runs)) OR run_id IN (SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ?1) OR run_id IN (SELECT id FROM lab_runs WHERE finished_at IS NOT NULL AND finished_at < ?1)`;
   await env.DB.batch([env.DB.prepare(`DELETE FROM run_live_log WHERE ${gone}`).bind(cutoff), env.DB.prepare(`DELETE FROM run_live_log_pruned WHERE ${gone}`).bind(cutoff)]);
 }
 

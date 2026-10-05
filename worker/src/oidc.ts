@@ -25,10 +25,16 @@ export interface GithubClaims extends JWTPayload {
   run_id?: string;
 }
 
-/** The checks on the claims, separate from the signature so they can be tested. */
-export function claimsProblem(env: Env, c: GithubClaims): string | null {
+/**
+ * The checks on the claims, separate from the signature so they can be tested.
+ * `workflow` is the one workflow file this route accepts: the gateway's
+ * (wg.yml, the default) for /api/callback/secrets, "lab.yml" only for
+ * /api/callback/lab-secrets (labs spec §7.2), so neither can collect the
+ * other's secrets.
+ */
+export function claimsProblem(env: Env, c: GithubClaims, workflow?: string): string | null {
   const repo = env.GITHUB_REPO ?? "";
-  const wf = config(env).workflow;
+  const wf = workflow ?? config(env).workflow;
   if (!repo) return "GITHUB_REPO is not set";
   if (c.repository !== repo) return `wrong repository ${c.repository}`;
   if (c.ref !== "refs/heads/main") return `wrong ref ${c.ref}`;
@@ -38,11 +44,11 @@ export function claimsProblem(env: Env, c: GithubClaims): string | null {
   return null;
 }
 
-/** Verify a GitHub Actions OIDC token. Throws with a short reason if it is not ours. */
-export async function verifyGithubOidc(env: Env, token: string): Promise<GithubClaims> {
+/** Verify a GitHub Actions OIDC token from `workflow` (default: the gateway's). Throws with a short reason if it is not ours. */
+export async function verifyGithubOidc(env: Env, token: string, workflow?: string): Promise<GithubClaims> {
   const { payload } = await jwtVerify(token, jwks, { issuer: OIDC_ISSUER, audience: OIDC_AUDIENCE });
   const c = payload as GithubClaims;
-  const problem = claimsProblem(env, c);
+  const problem = claimsProblem(env, c, workflow);
   if (problem) throw new Error(problem);
   return c;
 }

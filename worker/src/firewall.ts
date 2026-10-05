@@ -421,4 +421,6 @@ export const STARTER_RULES: Omit<FwRule, "id">[] = [
   { position: 30, enabled: 1, name: "Clients to the home LAN", src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "home", proto: "any", ports: "", action: "allow", log: 0 },
   { position: 40, enabled: 1, name: "Clients to each other", src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "clients", proto: "any", ports: "", action: "allow", log: 0 },
   { position: 50, enabled: 1, name: "Workloads to the internet (updates)", src_kind: "zone", src_value: "workloads", dst_kind: "zone", dst_value: "internet", proto: "any", ports: "", action: "allow", log: 0 },
+  // Last in the list (so earlier rules keep their ids) but placed at 25, after the Azure VNet. Labs peered to the gateway (labs spec §7.6). An install from before labs gets this as a proposed draft rule (labs/fwproposal.ts), never applied by itself.
+  { position: 25, enabled: 1, name: "Clients to labs", src_kind: "zone", src_value: "clients", dst_kind: "zone", dst_value: "labs", proto: "any", ports: "", action: "allow", log: 0 },
 ];

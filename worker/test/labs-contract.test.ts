@@ -159,10 +159,10 @@ describe("/api/v1/labs with an empty catalogue", () => {
       expect(r.status, `${m} ${p}`).toBe(404);
       expect(r.json.error.code, `${m} ${p}`).toBe("not_found");
     }
-    // Nothing waits to re-peer; the rest need the engine (L2).
+    // Nothing waits to re-peer; the engine (L2) checks permissions, and knows no leftovers of a lab it has not got.
     expect(await api(env, "POST", "/labs/repeer")).toMatchObject({ status: 200, json: { ok: true } });
-    expect((await api(env, "POST", "/labs/permissions/check")).status).toBe(501);
-    expect((await api(env, "POST", "/labs/orphans/cleanup", { lab_id: "az104-05-storage" })).status).toBe(501);
+    expect((await api(env, "POST", "/labs/permissions/check")).status).toBe(200);
+    expect((await api(env, "POST", "/labs/orphans/cleanup", { lab_id: "az104-05-storage" })).status).toBe(404);
   });
 
   it("the existing answers carry the lab fields with nothing in them", async () => {
@@ -198,8 +198,10 @@ describe("/api/v1/labs input checks", () => {
     expect(await field({ hours: 2, peer: true, region: "UK South" })).toBe("region");
     expect(await field({ hours: 2, peer: true, overBudgetOk: 1 })).toBe("overBudgetOk");
     expect(await field({ hours: 2, peer: true, capacityOk: "true" })).toBe("capacityOk");
-    // A good body reaches the engine, which L2 builds.
-    expect((await deploy({ hours: 2, peer: true, region: "uksouth", overBudgetOk: true, capacityOk: false })).status).toBe(501);
+    // A good body reaches the engine (L2), which refuses it here: the permission check has not run.
+    const engine = await deploy({ hours: 2, peer: true, region: "uksouth", overBudgetOk: true, capacityOk: false });
+    expect(engine.status).toBe(409);
+    expect(engine.json.error.code).toBe("unavailable");
   });
 
   it("the other bodies refuse what they do not take, each with its field", async () => {
@@ -242,9 +244,12 @@ describe("/api/v1/labs input checks", () => {
     expect(d.cost.items.map((i) => i.source)).toEqual(["authored", "authored", "authored"]);
     expect(d.cost.items[1].priceAge).toBeNull();
     expect(d.defaults).toEqual({ region: "uksouth", peer: true, hours: 2 });
-    expect(d).toMatchObject({ session: null, runs: [], resources: null, warnings: [], portalUrl: null });
+    expect(d).toMatchObject({ session: null, runs: [], resources: null, portalUrl: null });
+    // The engine (L2): lab 6 makes an Entra group, and the permission check has not run.
+    expect(d.warnings.map((w) => [w.kind, w.overridable])).toEqual([["unavailable", false]]);
     expect((await api(env, "GET", "/labs/az104-06-blob-security/secret")).status).toBe(409);
-    expect((await api(env, "POST", "/labs/az104-06-blob-security/destroy", { confirm: true })).status).toBe(501);
+    // Nothing is running, so the engine (L2) refuses the tear-down.
+    expect((await api(env, "POST", "/labs/az104-06-blob-security/destroy", { confirm: true })).status).toBe(409);
     const cards = (await api(env, "GET", "/labs")).json as LabsResponse;
     expect(cards.labs.map((c) => c.id)).toEqual(catalogue().labs.map((l) => l.id));
     const cov = (await api(env, "GET", "/labs/coverage")).json as LabCoverageResponse;
@@ -265,8 +270,9 @@ describe("callbacks", () => {
     for (const p of ["/api/callback/lab", "/api/callback/lab-secrets", "/api/callback/lab-peer", "/api/callback/lab-peerings-removed"]) {
       const none = await post(env, p);
       expect(none.status, p).toBe(401);
+      // With a token, the engine (L2) answers: never a success for a run it does not know or a token it cannot verify.
       const some = await post(env, p, "a-token");
-      expect(some.status, p).toBe(501);
+      expect(some.status, p).toBeGreaterThanOrEqual(400);
     }
   });
 });
