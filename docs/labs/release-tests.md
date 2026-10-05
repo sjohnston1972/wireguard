@@ -17,3 +17,19 @@ lab's hourly estimate times those minutes.
 | 2026-10-05 10:18 | az104-03-mgmt-groups | 1 | pass | yes | none | 3m 57s | 3m 23s | £0.0000 | 37294886487 |
 | 2026-10-05 10:27 | az104-06-blob-security | 1 | pass | yes | none | 2m 24s | 5m 26s | £0.0011 | 37295767424 |
 | 2026-10-05 10:36 | az104-01-identity | 1 | pass | yes | none | 1m 40s | 5m 34s | £0.0000 | 37296777396 |
+| 2026-10-05 14:53 | az104-16-lb-appgw | 2 | fail | yes | none | — | 1m 12s | £0.0048 | 37327900625 |
+| 2026-10-05 14:54 | az104-19-backup | 1 | fail | yes | none | — | 1m 11s | £0.0004 | 37327906838 |
+| 2026-10-05 15:02 | az104-06-blob-security | 2 | pass | yes | none | 2m 23s | 5m 27s | £0.0011 | 37328416085 |
+| 2026-10-05 15:09 | az104-08-vms | 1 | pass | yes | none | 2m 40s | 3m 29s | £0.0023 | 37329556090 |
+| 2026-10-05 15:15 | az104-09-vmss | 1 | pass | yes | none | 2m 19s | 3m 23s | £0.0021 | 37330509902 |
+| 2026-10-05 15:22 | az104-10-app-service | 1 | fail | yes | none | — | 2m 2s | £0.0022 | 37331396196 |
+| 2026-10-05 15:27 | az104-12-bicep | 1 | pass | yes | none | 1m 27s | 2m 20s | £0.0000 | 37332314784 |
+| 2026-10-05 15:27 | az104-11-containers | 1 | pass | yes | none | 3m 46s | 29m 3s | £0.0136 | 37328478959 |
+| 2026-10-05 15:34 | az104-13-vnets | 1 | pass | yes | none | 2m 28s | 3m 27s | £0.0022 | 37333031725 |
+| 2026-10-05 15:41 | az104-14-peering-udr | 1 | pass | yes | none | 2m 53s | 3m 29s | £0.0035 | 37333977115 |
+| 2026-10-05 15:52 | az104-15-dns | 1 | pass | yes | none | 3m 19s | 5m 58s | £0.0019 | 37334916778 |
+| 2026-10-05 15:59 | az104-17-netwatcher-fix | 1 | pass | yes | none | 3m 26s | 3m 28s | £0.0025 | 37336288394 |
+| 2026-10-05 16:08 | az104-18-monitor | 1 | pass | yes | none | 4m 18s | 3m 26s | £0.0015 | 37337319164 |
+| 2026-10-05 16:29 | az104-19-backup | 2 | pass | yes | none | 5m 41s | 10m 0s | £0.0057 | 37339121948 |
+| 2026-10-05 16:33 | az104-16-lb-appgw | 2 | pass | yes | none | 10m 15s | 9m 30s | £0.0788 | 37339119265 |
+| 2026-10-05 16:39 | az104-10-app-service | 2 | fail | yes | none | — | 1m 51s | £0.0023 | 37341793982 |
