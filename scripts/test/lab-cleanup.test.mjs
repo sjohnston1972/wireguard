@@ -1055,6 +1055,72 @@ test("the safety net purges soft-deleted Key Vaults that lived in a lab group, a
   broken.cleanup();
 });
 
+// Lab 20's readme invites a hand-made exemption at its -corp management group. The safety net deletes policy
+// exemptions at the lab's management groups and in its resource groups (the groups' resources too) before it
+// deletes any of them, and verify counts one as a leftover. Never an exemption anywhere else.
+const L20 = "az305-20-landing-zone";
+const R20 = `rg-lab-${L20}`;
+const MGS = (n) => `/providers/Microsoft.Management/managementGroups/${n}`;
+const EX = "/providers/Microsoft.Authorization/policyExemptions";
+const exemptionWorld = (extra = []) => [
+  POLL(""),
+  { match: "^group list --query \\[\\]\\.name ", out: `${R20}\n${R20}x\nNetworkWatcherRG` },
+  { match: "^account show", out: SUB },
+  { match: "^account management-group list", out: `lab-${L20}-root\tlab-${L20}-root\nlab-${L20}-corp\tlab-${L20}-corp\ncorp\tSteven corp` },
+  { match: `^account management-group show --name lab-${L20}-root `, out: "00000000-tenant-root" },
+  { match: `^account management-group show --name lab-${L20}-corp `, out: `lab-${L20}-root` },
+  // At the -corp group: the learner's own, and one inherited from Steven's parent group (never the lab's).
+  { match: `^policy exemption list --scope ${MGS(`lab-${L20}-corp`)} `, out: `${MGS(`lab-${L20}-corp`)}${EX}/learner-ex\n${MGS("corp")}${EX}/steven-ex` },
+  // In the lab group: one at the group, one on a resource (Azure's own casing), one inherited from the subscription, and a near-miss group's.
+  { match: `^policy exemption list --resource-group ${R20} `, out: [`/subscriptions/${SUB}/resourceGroups/${R20}${EX}/rg-ex`, `/subscriptions/${SUB}/resourcegroups/${R20.toUpperCase()}/providers/Microsoft.KeyVault/vaults/kv1${EX}/kv-ex`, `/subscriptions/${SUB}${EX}/sub-ex`, `/subscriptions/${SUB}/resourceGroups/${R20}x${EX}/near-ex`].join("\n") },
+  ...extra,
+];
+
+test("the safety net deletes policy exemptions at the lab's management groups and groups before deleting them, and nothing else", { skip }, () => {
+  const w = world(exemptionWorld());
+  const r = w.run("infra/ci/lab-safety-net.sh", [L20], { LAB_DELETE_POLL_SECONDS: "1" });
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const deletes = calls.filter((c) => c.startsWith("az policy exemption delete"));
+  assert.deepEqual(deletes.sort(), [
+    `az policy exemption delete --name kv-ex --scope /subscriptions/${SUB}/resourcegroups/${R20.toUpperCase()}/providers/Microsoft.KeyVault/vaults/kv1`,
+    `az policy exemption delete --name learner-ex --scope ${MGS(`lab-${L20}-corp`)}`,
+    `az policy exemption delete --name rg-ex --scope /subscriptions/${SUB}/resourceGroups/${R20}`,
+  ]);
+  const lastEx = lastCall(calls, /^az policy exemption delete/);
+  assert.ok(lastEx < firstCall(calls, /^az group delete/), calls.join("\n"));
+  assert.ok(lastEx < firstCall(calls, /^az account management-group delete/), calls.join("\n"));
+  assert.match(r.out, /safety net: deleted policy exemption learner-ex/);
+  // Never listed or deleted outside the lab's scopes.
+  for (const c of calls.filter((x) => /policy exemption/.test(x))) assert.ok(!/managementGroups\/corp\b|steven-ex|sub-ex|near-ex|rg-lab-az305-20-landing-zonex|NetworkWatcherRG/.test(c), c);
+  w.cleanup();
+  // A refused delete is a warning; the sweep still ends 0.
+  const refused = world(exemptionWorld([{ match: "^policy exemption delete", code: 1, err: "ERROR: (AuthorizationFailed)" }]));
+  const x = refused.run("infra/ci/lab-safety-net.sh", [L20], { LAB_DELETE_POLL_SECONDS: "1" });
+  assert.equal(x.status, 0, x.out);
+  assert.match(x.stderr, /::warning::safety net: could not delete policy exemption learner-ex/);
+  refused.cleanup();
+});
+
+test("verify clean counts a lab exemption as a leftover, and an exemption list it cannot read as unverified", { skip }, () => {
+  const out = join(mkdtempSync(join(tmpdir(), "gho-")), "out");
+  writeFileSync(out, "");
+  const v = world(exemptionWorld());
+  const vr = v.run("infra/ci/lab-safety-net.sh", ["--verify", L20], { GITHUB_OUTPUT: fwd(out) });
+  assert.equal(vr.status, 1, vr.out);
+  const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
+  for (const n of ["learner-ex (policy exemption)", "rg-ex (policy exemption)", "kv-ex (policy exemption)"]) assert.ok(left.includes(n), `${n} in ${JSON.stringify(left)}`);
+  assert.ok(!left.some((n) => /steven-ex|sub-ex|near-ex/.test(n)), JSON.stringify(left));
+  assert.equal(v.calls().filter((c) => / delete /.test(c)).length, 0, "verify deletes nothing");
+  v.cleanup();
+  // Nothing of the lab left but an exemption list Azure refuses: not clean.
+  const b = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, { match: "^account management-group list", out: `lab-${L20}-corp\tlab-${L20}-corp` }, { match: "^policy exemption list", code: 1, err: "ERROR: (InternalServerError)" }]);
+  const br = b.run("infra/ci/lab-safety-net.sh", ["--verify", L20]);
+  assert.equal(br.status, 1, br.out);
+  assert.match(br.stdout, /unverified: policy exemptions at lab-az305-20-landing-zone-corp/);
+  b.cleanup();
+});
+
 test("a soft-deleted vault's id is matched whatever its case (Azure returns resourcegroups and upper-case groups)", { skip }, () => {
   const MIXED = [
     `kv-lower\tuksouth\t/subscriptions/${SUB}/resourcegroups/${R22}/providers/Microsoft.KeyVault/vaults/kv-lower`,
