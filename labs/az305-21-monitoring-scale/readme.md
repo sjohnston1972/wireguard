@@ -1,4 +1,4 @@
-Monitoring at scale, the way a platform team does it: one central Log Analytics workspace, and a policy that makes every Key Vault send its logs there instead of relying on someone to remember. From the AZ-305 outline: design a solution to log and monitor Azure resources (a logging solution, routing logs, a monitoring solution) and managing compliance.
+Monitoring at scale, the way a platform team does it: one central Log Analytics workspace, and a policy that makes every Key Vault send its logs there instead of relying on someone to remember. From the AZ-305 outline: design solutions for logging and monitoring (a logging solution, routing logs, a monitoring solution) and design governance (managing compliance).
 
 ## What it deploys
 
