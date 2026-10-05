@@ -85,8 +85,9 @@ release test with `clean: true`, covering the AZ-305 identity, data and continui
 
 **Architecture:** content on the batch 1–2 engine: a folder per lab, a realistic plan fixture per lab, a content test file
 per area. C0 closes the engine gaps these labs expose: a second resource group in a second region, secondary-region prices,
-define-only custom roles, remediating policies, and teardown for Key Vault, SQL failover groups and Site Recovery. One small
-Worker change (secondary-region prices); no route, D1 or app change; the deploy bundles the new catalogue.
+lab 20's Terraform-assigned custom roles, remediating policies, and teardown for Key Vault, SQL failover groups and Site
+Recovery. One small Worker change (secondary-region prices); no route, D1 or app change; the deploy bundles the new
+catalogue.
 
 **Tech stack:** unchanged. Terraform 1.14.6, azurerm `~> 4.0` (4.81.0 in the lock), azuread 3.10.0, `hashicorp/time` for
 lab 22's wait, node:test for scripts, Vitest for the Worker, Bicep 0.47.16 (no batch 3 lab uses Bicep).
@@ -150,7 +151,7 @@ Markers from `costMarker` (ruling 13 of §16): £ under £0.05/h, ££ under £0
 
 | # | Id | Builds | £/h | Peer | Regions | /20s | Deploy/destroy | Sess/max | Prereq | Job timeout |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 20 | az305-20-landing-zone | 6 lab MGs, MG-scope initiative + 2 assignments, 2 define-only custom roles · G | 0.000 £ | off | uksouth | 0 | 8/6 | 2/4 | 3 | 48 |
+| 20 | az305-20-landing-zone | 6 lab MGs, MG-scope initiative + 2 assignments, 2 custom roles assigned to 2 managed identities · G | 0.000 £ | off | uksouth | 0 | 8/6 | 2/4 | 3 | 48 |
 | 21 | az305-21-monitoring-scale | capped workspace, Key Vault, DINE diagnostics policy at the group, MI with Monitoring Contributor, audit policy · G | 0.001 £ | off | uksouth | 0 | 4/4 | 2/6 | 18 | 36 |
 | 22 | az305-22-keyvault-mi | Key Vault (RBAC), 2 secrets, B1s VM with system MI + user-assigned MI, vault- and secret-scope roles | 0.011 £ | opt | uksouth | 1 | 7/5 | 2/6 | 8 | 44 |
 | 23 | az305-23-sql-failover | 2 SQL servers, Basic primary + Basic geo-secondary, failover group (Manual), serverless DB in ukwest, 2 private endpoints | 0.151 ££ | opt | uksouth + ukwest | 1 | 15/10 | 2/4 | — | 70 |
@@ -161,7 +162,7 @@ Markers from `costMarker` (ruling 13 of §16): £ under £0.05/h, ££ under £0
 
 Skill areas: 20–22 `az305.identity`; 23 `az305.data, az305.continuity`; 24–25 `az305.data`; 26 `az305.continuity`; 27
 `az305.infra, az305.continuity`. Level `expert`, type `explore` for all eight. `dns_link: true` only for 23. Lab 26's title
-is "Cross-region VM recovery with Site Recovery" (ruling 32); the others keep §12.2's titles.
+is "Cross-region VM recovery with Site Recovery" (ruling 32; confirmed by Steven 2026-10-05); the others keep §12.2's titles.
 
 Retail entries (all checked unique in uksouth by `labs-verify --meters`, else authored): `{ sku: Standard_B1s }` (£0.0089/h);
 `S4 LRS Disk` (`1/Month`, £1.2755); `B DTU` (`1/Day`, £0.1517, uksouth); `B Secondary Active DTU` (`1/Day`, £0.1517,
@@ -174,7 +175,8 @@ transfer (`Standard Inter-Region Data Transfer` £0.0151/GB).
 ### Per-lab design
 
 **Lab 20 `az305-20-landing-zone`: "Landing zone lite: management groups, policy initiatives, role design"** (C1)
-- Deploys: `rg-lab-<id>` (empty but for nothing billable; it anchors the custom roles' assignable scope). Management groups
+- Deploys: `rg-lab-<id>` (nothing billable in it; it anchors the custom roles' assignable scope and holds the two
+  identities they are assigned to). Management groups
   under the tenant root (lab 3's pattern): `lab-<id>-root` → `-platform`, `-landingzones` → (`-corp`, `-online`), and
   `-sandbox` under root (six). A custom audit definition `lab-<id>-audit-costcentre` at `-root`; an initiative
   `azurerm_management_group_policy_set_definition` `lab-<id>-baseline` at `-root` with policy definition groups, holding
@@ -182,15 +184,23 @@ transfer (`Standard Inter-Region Data Transfer` £0.0151/GB).
   resource groups (`96670d01-0a4d-4649-9c89-2d3abc0a5025`, `costcentre`) and the custom audit. Assignments (names at most
   24 characters, display name `lab-<id>-…`, as lab 3): `lz-baseline` (the initiative) at `-landingzones`; `sandbox-no-pip`
   (built-in Not allowed resource types `6c112d4e-5bc7-47ae-a041-ea2d9dccd749`, `Microsoft.Network/publicIPAddresses`) at
-  `-sandbox`. Two custom roles defined at the subscription, assignable only at `rg-lab-<id>`, define-only (ruling 27):
-  `lab-<id>-netops` (`60bdbc03-b25a-4a83-9fce-b2c5afff563c`: `Microsoft.Network/*/read`, NSG rule and route write/delete,
+  `-sandbox`. Two custom roles defined at the subscription, assignable only at `rg-lab-<id>`, **assigned by the lab's
+  Terraform** (identity change 2, approved by Steven 2026-10-05; ruling 27): `lab-<id>-netops`
+  (`60bdbc03-b25a-4a83-9fce-b2c5afff563c`: `Microsoft.Network/*/read`, NSG rule and route write/delete,
   `Microsoft.Resources/subscriptions/resourceGroups/read`) and `lab-<id>-appops` (`bd52e05a-22cb-4bd5-b56c-3396add9b7c0`:
-  `Microsoft.Compute/*/read`, VM start/restart/deallocate, `Microsoft.Insights/metrics/read`, resource group read).
-- Regions uksouth; no addresses; peering off. `identity: { creates: [], roles: [], governance: true }`.
+  `Microsoft.Compute/*/read`, VM start/restart/deallocate, `Microsoft.Insights/metrics/read`, resource group read). Each
+  is assigned at `rg-lab-<id>` (the only scope it is assignable at) to its own user-assigned managed identity in
+  `rg-lab-<id>` (`id-<prefix>-netops`, `id-<prefix>-appops`; free; the "persona" the role is designed for), with
+  `role_definition_id = azurerm_role_definition.<x>.role_definition_resource_id` and `principal_type = "ServicePrincipal"`.
+- Regions uksouth; no addresses; peering off. `identity: { creates: [], roles: [{ role: "lab-az305-20-landing-zone-netops",
+  scope: resource_group }, { role: "lab-az305-20-landing-zone-appops", scope: resource_group }], governance: true }`
+  (content suite `identity: "match"`).
 - Teardown blockers: management groups must be empty (children first, Terraform's dependency order; the safety net deletes
-  `lab-<id>-` MGs deepest first and everything assigned or defined in them first); custom roles (safety net by fixed GUID).
-  The MGs hold no subscription and never will (scope `association`).
-- Cost: three free items (management groups; definitions, initiative and assignments; custom roles). £0/h, marker £.
+  `lab-<id>-` MGs deepest first and everything assigned or defined in them first); custom roles: their assignments go first
+  (Terraform's order; the group delete takes RG-scope assignments with it, and the safety net deletes any assignment of the
+  fixed GUIDs before the role). The MGs hold no subscription and never will (scope `association`).
+- Cost: three free items (management groups; definitions, initiative and assignments; custom roles, their two identities
+  and assignments). £0/h, marker £.
 - Timing 8/6 (lab 3 took 4 min for three MGs; six, three deep). Session 2, max 4.
 - Things to try: compliance per scope (nothing is evaluated: no subscription is inside, and the readme says why); assign
   `lab-<id>-netops` to yourself at `rg-lab-<id>` by hand and try an NSG change; add an exemption at `-corp`; sketch where the
@@ -357,23 +367,24 @@ transfer (`Standard Inter-Region Data Transfer` £0.0151/GB).
 
 ## Identity changes (STOP: Steven approves)
 
-**None are needed for batch 3 as planned.** `labs/setup/governance-condition.txt` stays byte-identical (C0.4 proves it with
-`git diff --exit-code origin/main -- labs/setup/governance-condition.txt`), so Steven re-applies nothing:
+One identity change is in batch 3: **change 2 below, approved by Steven 2026-10-05.** Labs 21 and 22 need none:
 - Lab 21's remediation identity gets **Monitoring Contributor** (`749f88d5-cbae-40b8-bcfc-e573ddc772fa`), already allowed.
 - Lab 22 uses **Key Vault Secrets Officer** (`b86a8fe4-44ce-4948-aee5-eccb2c155cd7`) and **Key Vault Secrets User**
   (`4633458b-17de-408a-b874-0445c86b69e6`), already allowed.
-- Lab 20's two custom roles are define-only (ruling 27): they join `allowed-roles.json` with `"assign": false` and are not in
-  the condition.
 
-Contingent, each a STOP if it happens:
-1. **Log Analytics Contributor `92aaf0da-9dab-42b6-94a3-d43ce8d16293`**, only if the lab 21 soak shows the DINE deployment
-   refused with Monitoring Contributor alone. Change: add it to `allowed-roles.json` `builtIn`, the §8.1 list and
-   `lab-roles.test.mjs`'s expected list, regenerate `governance-condition.txt` (`node scripts/labs-setup.mjs --condition`),
-   Steven re-applies the condition on the governance role assignment (README "Labs: one-time setup", step 2), lab 21 version
-   bump with the role in its definition and assignment.
-2. **Assigning lab 20's custom roles from Terraform** (`60bdbc03-b25a-4a83-9fce-b2c5afff563c`,
-   `bd52e05a-22cb-4bd5-b56c-3396add9b7c0`), only if Steven prefers that to assigning them by hand: drop `"assign": false`,
-   regenerate the condition, Steven re-applies it.
+1. **Log Analytics Contributor `92aaf0da-9dab-42b6-94a3-d43ce8d16293`** (contingent, a STOP if it happens), only if the lab
+   21 soak shows the DINE deployment refused with Monitoring Contributor alone. Change: add it to `allowed-roles.json`
+   `builtIn`, the §8.1 list and `lab-roles.test.mjs`'s expected list, regenerate `governance-condition.txt` (`node
+   scripts/labs-setup.mjs --condition`), Steven re-applies the condition on the governance role assignment (README "Labs:
+   one-time setup", step 2), lab 21 version bump with the role in its definition and assignment.
+2. **Lab 20's custom roles are assigned by its Terraform** (`60bdbc03-b25a-4a83-9fce-b2c5afff563c` netops,
+   `bd52e05a-22cb-4bd5-b56c-3396add9b7c0` appops). **Change 2 APPROVED by Steven 2026-10-05; applied by Claude with Steven's
+   az login after integration (the role assignment's condition re-applied).** Steven chose this over define-only roles, so
+   the define-only mechanism (`"assign": false`) was never built. C0.4 added both roles to `allowed-roles.json` `custom` as
+   ordinary entries and regenerated `governance-condition.txt` with `node scripts/labs-setup.mjs --condition`: the only
+   change is the two GUIDs appended to both GUID lists (write and delete). **The condition must be re-applied in Azure
+   before lab 20's release test** (the integrator or the main session does it; Integration step 6); until then Azure refuses
+   lab 20's role assignments.
 
 ## Review Focus
 
@@ -386,8 +397,9 @@ Contingent, each a STOP if it happens:
    Recovery makes is in rg-lab-<id>-secondary`. Release tests prove each path once; the soaks prove the swapped-failover and
    committed-failover paths.
 2. **Escaping the scope.** C0: `a management-group initiative is a governance definition`; `a Key Vault with purge protection
-   is refused`; `a remediating policy may list only allow-listed roles and never deploy at subscription scope`; `a define-only
-   custom role can be defined but never assigned`; `rg-lab-<id>-secondary is the lab's and rg-lab-<id>secondary is not`;
+   is refused`; `a remediating policy may list only allow-listed roles and never deploy at subscription scope`; `lab 20 may
+   assign its own custom roles inside its group, and no other lab may`; `rg-lab-<id>-secondary is the lab's and
+   rg-lab-<id>secondary is not`;
    `a Site Recovery target group outside the lab is refused`; `a failover group whose partner server is outside the lab is
    refused`.
 3. **Fixtures tidier than real plans** (batch 2's lesson). Every batch 3 fixture goes through `realisticPlan`; references are
@@ -442,11 +454,14 @@ fixtures cannot be checked against reality, and Key Vault, SQL failover groups a
 - [ ] **C0.3 Scope.** `lab-scope.test.mjs` adds the Review Focus 2 tests (C0 names) plus `a DINE definition with Monitoring
   Contributor only passes for a governance lab`. FAIL; implement (C0 names: scope); PASS; commit. **Done when** `node --test
   scripts/test/lab-scope.test.mjs` passes and `npm run labs-check` still passes on labs 1–19.
-- [ ] **C0.4 Define-only roles.** `lab-roles.test.mjs`: `a custom role may be define-only, and only with a boolean`;
-  `lab-setup.test.mjs`: `a define-only role is left out of the condition`; `lab-scope.test.mjs`: the define-only test of C0.3;
-  `labs-lib.test.mjs`: `lab.yaml may not list a define-only role under identity.roles`. FAIL; implement; add lab 20's two
-  entries (`"assign": false`, ruling 27); PASS; commit. **Done when** the tests pass and `git diff --exit-code origin/main --
-  labs/setup/governance-condition.txt` exits 0.
+- [x] **C0.4 Lab 20's custom roles** (changed 2026-10-05: Steven chose Terraform-assigned roles, identity change 2, over
+  define-only ones; no `"assign": false` mechanism). `lab-roles.test.mjs`: `allowed-roles.json: the custom roles are lab 1's
+  vm-operator and lab 20's netops and appops, each with its fixed GUID, one per line`; `lab-setup.test.mjs`:
+  `governance-condition.txt allows lab 20's two custom roles, to write and to delete an assignment`; `lab-scope.test.mjs`:
+  `lab 20 may assign its own custom roles inside its group, and no other lab may`; `labs-lib.test.mjs`: `lab 20 may list its
+  own custom roles under identity.roles; another lab may not`. FAIL; add lab 20's two entries to `allowed-roles.json`
+  `custom`; regenerate `governance-condition.txt` (`node scripts/labs-setup.mjs --condition`); PASS; commit. **Done when** the
+  tests pass and the condition's only change against `origin/main` is the two GUIDs in each list.
 - [ ] **C0.5 Teardown.** `lab-cleanup.test.mjs` (fake `az`): the Review Focus 1 C0 tests, plus `unblock removes locks, legal
   holds, unlocked immutability, backup protection, replication and SQL links in that order` (replaces the batch 2 ordering
   test, keeping its assertions). (V) `az sql db replica delete-link` arguments in the runner's az; the Site Recovery REST paths
@@ -478,8 +493,8 @@ scripts/test/labs-az305-identity.test.mjs scripts/test/lab-plans.test.mjs`, `npm
 - [ ] **C1.1 Lab 20:** `az305-20-landing-zone: six lab management groups three deep under the tenant root, none holding a
   subscription`; `az305-20-landing-zone: an initiative at lab-<id>-root with grouped built-in and custom definitions`;
   `az305-20-landing-zone: the initiative is assigned at landingzones and a deny of public IPs at sandbox, names at most 24
-  characters`; `az305-20-landing-zone: two define-only custom roles with their fixed GUIDs, assignable only at rg-lab-<id>, and no
-  role assignment`. **Done when** the step's commands pass.
+  characters`; `az305-20-landing-zone: two custom roles with their fixed GUIDs, assignable only at rg-lab-<id>, each assigned
+  there to its own managed identity` (identity change 2). **Done when** the step's commands pass.
 - [ ] **C1.2 Lab 21:** `az305-21-monitoring-scale: a PerGB2018 workspace capped at 0.05 GB a day, deleted permanently on
   destroy`; `az305-21-monitoring-scale: a DINE definition whose only role is Monitoring Contributor`; `az305-21-monitoring-scale:
   its assignment at rg-lab-<id> has a system identity holding exactly that role at rg-lab-<id>`; `az305-21-monitoring-scale: the
@@ -541,7 +556,7 @@ scripts/test/labs-az305-identity.test.mjs scripts/test/lab-plans.test.mjs`, `npm
 2. **Full gate:** `labs-check -- --base origin/main`, `labs-tf` (all 27 labs, mock plans included), `labs-verify -- --links
    --meters`, `bundle-size` unchanged. CI's `labs` job green on a draft PR. **Done when** all exit 0 and CI is green.
 3. **Whole-branch review.** A fresh opus reviewer gets this plan, the spec and the diff. Ask about: the Review Focus list; the
-   define-only roles and the unchanged condition; the DINE rule; the new unblock and safety-net steps; every fixture against its
+   lab 20's Terraform-assigned custom roles and the regenerated condition; the DINE rule; the new unblock and safety-net steps; every fixture against its
    `main.tf`; prices and markers. **Done when** the review's findings are listed in the PR.
 4. **One fix pass,** test-first, then repeat step 2. **Done when** step 2 passes again.
 5. **Pre-flight on real Azure (read-only, no cost)**, `az` signed in as the pipeline principal: `node
@@ -555,8 +570,11 @@ scripts/test/labs-az305-identity.test.mjs scripts/test/lab-plans.test.mjs`, `npm
    `Microsoft.ContainerInstance`, `Microsoft.OperationalInsights`, `Microsoft.Management` and the listed ones (an unregistered
    one is Steven's to register); `az keyvault list-deleted` (no lab leftovers). **Done when** each answer is in the PR and none
    blocks; a blocker is a STOP with the finding.
-6. **STOP (identity):** confirm with Steven that no identity change is needed (the condition file is unchanged), and that lab
-   20's roles stay define-only. **Done when** Steven has answered.
+6. **Identity change 2 (approved by Steven 2026-10-05):** with Steven's `az login` (subscription Owner), re-apply
+   `labs/setup/governance-condition.txt` (as regenerated on `feat/labs-b3-engine`) on the `wg-admin labs governance` role
+   assignment (README "Labs: one-time setup", step 2, or its `az role assignment create ... --condition` form), then read it
+   back and check both lab 20 GUIDs are in both lists. Must be done **before lab 20's release test**. **Done when** the
+   condition in Azure equals the file.
 7. **STOP (spend): ask Steven to approve the release-test spend.** One pass, in sequence on slot 31:
 
    | Lab | £/h | Likely (deploy + destroy) | Worst case (a full hour, plus daily or monthly minimums) |
@@ -598,7 +616,8 @@ scripts/test/labs-az305-identity.test.mjs scripts/test/lab-plans.test.mjs`, `npm
   shape that its fixture matches.
 - **Scope:** nothing outside `rg-lab-<id>` and `rg-lab-<id>-secondary` but Azure's `NetworkWatcherRG`; lab 20's MGs and
   definitions named `lab-<id>-*` and assigned only at its own MGs; role assignments exactly as each `lab.yaml` lists;
-  `governance-condition.txt` unchanged (or Steven re-applied it after an approved identity change).
+  `governance-condition.txt` re-applied in Azure after identity change 2 (lab 20's two custom roles), and any other
+  identity change approved and re-applied the same way.
 - **Teardown:** the SQL, Site Recovery, Key Vault and storage paths each proven once by a release test and once by a soak; no
   soft-deleted lab vault left (`az keyvault list-deleted`).
 - **Prices:** every `retail` entry passes `labs-verify --meters` in its region; every marker matches `costMarker`.

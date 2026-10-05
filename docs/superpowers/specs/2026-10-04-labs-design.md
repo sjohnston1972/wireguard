@@ -696,16 +696,20 @@ From `docs/superpowers/plans/2026-10-06-labs-batch3-plan.md` (labs 20–27). Whe
     lab's own slot, never addresses of their own.
 26. **A cost item may say `region: secondary`.** The price feed then prices its `retail` entry in the session's secondary
     region, `labs-verify --meters` checks it there, and the content suite counts per-VM disk items per region.
-27. **Define-only custom roles.** An `allowed-roles.json` custom entry may carry `"assign": false`: the role may be defined by
-    its lab (fixed GUID, lab-only assignable scopes) but never assigned by the pipeline, so it is left out of the ABAC condition
-    and `governance-condition.txt` does not change; the scope check refuses any assignment of it (`role`). Lab 20's two custom
-    roles are define-only (`60bdbc03-b25a-4a83-9fce-b2c5afff563c` netops, `bd52e05a-22cb-4bd5-b56c-3396add9b7c0` appops);
-    Steven assigns them by hand if he wants to.
+27. **Lab 20's custom roles are assigned by its Terraform** (identity change 2, approved by Steven 2026-10-05, chosen over
+    define-only roles, which were never built). Its two roles (`lab-az305-20-landing-zone-netops`,
+    `60bdbc03-b25a-4a83-9fce-b2c5afff563c`; `lab-az305-20-landing-zone-appops`, `bd52e05a-22cb-4bd5-b56c-3396add9b7c0`) are
+    ordinary `allowed-roles.json` custom entries: fixed GUID, assignable only at `rg-lab-<id>`, each assigned there to its own
+    user-assigned managed identity in `rg-lab-<id>` (`principal_type = "ServicePrincipal"`), and listed in `lab.yaml`
+    `identity.roles`. `governance-condition.txt` gains both GUIDs (regenerated with `node scripts/labs-setup.mjs
+    --condition`), and the condition is re-applied in Azure, with Steven's sign-in, before lab 20's release test. The scope
+    check allows the roles' assignment to lab 20 only, as for lab 1's role.
 28. **Remediating policies stay inside the lab.** A lab policy definition with `deployIfNotExists` or `modify` may list in
     `roleDefinitionIds` only built-in roles on the allow-list and may not deploy at subscription scope; its assignment's
     identity gets exactly those roles, at the lab's own group (`role`, `outside-scope`). Lab 21's diagnostics policy needs only
     Monitoring Contributor (it holds `Microsoft.Insights/diagnosticSettings/*`, `Microsoft.Resources/deployments/*` and
-    `Microsoft.OperationalInsights/workspaces/sharedKeys/action`), so batch 3 needs no identity change.
+    `Microsoft.OperationalInsights/workspaces/sharedKeys/action`), so lab 21 needs no identity change (Log Analytics
+    Contributor stays contingent on the lab 21 soak).
 29. **Management-group initiatives are governance definitions.** `azurerm_management_group_policy_set_definition` joins the
     governance types (governance labs only, named `lab-<id>-*`). Batch 3 defines no initiative at subscription scope, so the
     orphan sweep's lists are unchanged.
@@ -715,8 +719,9 @@ From `docs/superpowers/plans/2026-10-06-labs-batch3-plan.md` (labs 20–27). Whe
 31. **Unblock knows SQL and Site Recovery.** Before the group deletes: SQL failover groups are deleted, then geo-replication
     links; Site Recovery test failovers are cleaned up, replication is removed and waited for (bounded, never failing the run),
     then network mappings, container mappings and replication policies are removed.
-32. **Lab 26 is Site Recovery only,** titled "Cross-region VM recovery with Site Recovery". Backup cross-region restore is not
-    built: a GRS vault's secondary-region recovery points appear hours after a backup, beyond any session. The source VM is
+32. **Lab 26 is Site Recovery only,** titled "Cross-region VM recovery with Site Recovery" (confirmed by Steven
+    2026-10-05). Backup cross-region restore is not built: a GRS vault's secondary-region recovery points appear hours after
+    a backup, beyond any session. The source VM is
     Ubuntu 22.04 (a Site Recovery-supported kernel series), with default outbound access set on explicitly; the vault, the target
     and test VNets and everything failover makes are in `rg-lab-<id>-secondary`.
 33. **Lab 24's Cosmos DB account is serverless,** single region, with the free tier off (one per subscription; creation fails

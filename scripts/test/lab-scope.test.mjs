@@ -743,3 +743,19 @@ test("a failover group whose partner server is outside the lab is refused", () =
   assert.deepEqual(checkPlan(plan(["azurerm_mssql_server.s.id", "azurerm_mssql_server.s"]), id), []);
   assert.deepEqual(verdict(checkPlan(plan(["var.partner_id"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
 });
+
+// Identity change 2 (approved by Steven 2026-10-05): lab 20 assigns its two custom roles from Terraform.
+test("lab 20 may assign its own custom roles inside its group, and no other lab may", () => {
+  const roles = { netops: "60bdbc03-b25a-4a83-9fce-b2c5afff563c", appops: "bd52e05a-22cb-4bd5-b56c-3396add9b7c0" };
+  const hcl = {
+    data: { azurerm_subscription: { current: [{}] } },
+    resource: {
+      azurerm_resource_group: RG_HCL,
+      azurerm_user_assigned_identity: { ops: [{ name: "id-ops", resource_group_name: "${azurerm_resource_group.lab.name}", location: "${azurerm_resource_group.lab.location}" }] },
+      azurerm_role_definition: Object.fromEntries(Object.entries(roles).map(([k, g]) => [k, [{ role_definition_id: g, name: `lab-\${var.lab_id}-${k}`, scope: "${data.azurerm_subscription.current.id}", assignable_scopes: ["${azurerm_resource_group.lab.id}"], permissions: [{ actions: ["Microsoft.Resources/subscriptions/resourceGroups/read"] }] }]])),
+      azurerm_role_assignment: Object.fromEntries(Object.keys(roles).map((k) => [k, [{ scope: "${azurerm_resource_group.lab.id}", role_definition_id: `\${azurerm_role_definition.${k}.role_definition_resource_id}`, principal_id: "${azurerm_user_assigned_identity.ops.principal_id}", principal_type: "ServicePrincipal" }]])),
+    },
+  };
+  assert.deepEqual(checkHcl(hcl, "az305-20-landing-zone"), []);
+  assert.deepEqual(verdict(checkHcl(hcl, "az305-21-monitoring-scale")).map(([rule]) => rule), ["role", "role", "role", "role"]);
+});

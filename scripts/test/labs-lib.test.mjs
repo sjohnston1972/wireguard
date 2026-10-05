@@ -163,6 +163,16 @@ const RULES = [
   ["a VM size that is not one", () => [[good({ capacity: { vm_sizes: ["B1s"] } }), lab5()]], "capacity.vm_sizes"],
 ];
 
+// Identity change 2 (labs batch 3 plan, approved by Steven 2026-10-05): lab 20 assigns its two custom roles from Terraform.
+test("lab 20 may list its own custom roles under identity.roles; another lab may not", () => {
+  const skillAreas = [...SKILLS, { key: "az305.identity", exam: "AZ-305", name: "Design identity, governance, and monitoring solutions" }];
+  const roles = [{ role: "lab-az305-20-landing-zone-netops", scope: "resource_group" }, { role: "lab-az305-20-landing-zone-appops", scope: "resource_group" }];
+  const lab20 = good({ id: "az305-20-landing-zone", exam: "AZ-305", skill_areas: ["az305.identity"], level: "expert", prerequisites: [], connectivity: { peering: "off", dns_link: false, subnets_used: 0 }, identity: { creates: [], roles, governance: true } });
+  assert.deepEqual(validateLab(lab20, { folder: lab20.id, skillAreas }).problems, []);
+  const other = good({ identity: { creates: [], roles: roles.slice(0, 1), governance: false } });
+  assert.ok(validateLab(other, { folder: other.id, skillAreas }).problems.some((p) => p.field === "identity.roles"));
+});
+
 for (const [what, make, field] of RULES) {
   test(`each §3.2 rule refused with its field: ${what} -> ${field}`, () => {
     const [labs, opts] = make();
