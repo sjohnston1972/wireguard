@@ -30,6 +30,8 @@ const ok = (c: Context<ApiEnv>, message: string) => {
   return c.json(out);
 };
 const bad = (c: Context<ApiEnv>, message: string, field?: string) => fail(c, 400, "bad_input", message, field);
+/** Settings stored as "1"/"0" that the Settings page edits with a switch (sent as true/false). */
+const BOOLEAN_SETTINGS = new Set(["test_vm", "labs_default_peering"]);
 const noId = (c: Context<ApiEnv>, what: string) => bad(c, `id must be ${what}'s number.`, "id");
 
 /** Fields in a body that are not on the allowed list, or null when all are known. */
@@ -85,7 +87,8 @@ export function registerSettings(api: Hono<ApiEnv>): void {
     for (const [k, v] of Object.entries(b)) {
       if (!Object.hasOwn(OVERRIDABLE, k)) return bad(c, `${k} is not a setting that can be changed.`, k);
       let s: string;
-      if (typeof v === "boolean" && k === "test_vm") s = v ? "1" : "0";
+      // On/off settings: the Settings page sends its switches as booleans; "1"/"0" are taken too.
+      if (typeof v === "boolean" && BOOLEAN_SETTINGS.has(k)) s = v ? "1" : "0";
       else if (typeof v === "string") s = v.trim();
       else if (typeof v === "number" && Number.isFinite(v)) s = String(v);
       else return bad(c, `${k} did not look right.`, k);
