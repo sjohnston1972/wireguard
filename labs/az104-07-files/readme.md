@@ -1,10 +1,15 @@
+An Azure Files share behind a storage firewall, mounted over SMB by a small Linux VM through a service endpoint. Practise
+creating and protecting file shares (snapshots, soft delete), and see how the storage firewall and the VNet decide who can
+reach them. From the AZ-104 outline: create and configure a file share in Azure Storage, configure snapshots and soft
+delete for Azure Files, and configure Azure Storage firewalls and virtual networks.
+
 ## What it deploys
 
 - A storage account ending `files` (StorageV2, standard, LRS) with a 5 GiB SMB share, `labshare`, and soft delete for shares (7 days)
 - A storage firewall that denies everything except the subnet `snet-vms`, which reaches the account through a **Microsoft.Storage** service endpoint
 - A small VNet, `vnet-lab` (the first /20 of the session's address slot), with `snet-vms`
 - A Standard_B1s Ubuntu 24.04 VM, `vm-files`, with no public IP and boot diagnostics on (so the portal's serial console works)
-- At first boot, cloud-init installs `cifs-utils`, mounts the share at `/mnt/labshare` (also in `/etc/fstab`) and writes `hello-from-vm.txt` to it. The account key sits only in a root-only credentials file, never in a command or a log.
+- At first boot, cloud-init installs `cifs-utils`, mounts the share at `/mnt/labshare` (also in `/etc/fstab`) and writes `hello-from-vm.txt` to it. No command or log shows the account key, but it is not only in one place: on the VM it is in a root-only credentials file (`/etc/smbcredentials/`) and in the cloud-init custom data the VM was built from (Azure keeps that with the VM, and the VM keeps a root-only copy), and it is in the lab's Terraform state in R2 until tear-down. Rotating the key is one way to cut all of those off (the mount then stops until the file is updated).
 
 The VM user is `azureuser`; its password is behind **Show**. Deploy with **Peer to gateway** to reach the VM from a tunnel client, or use the portal's serial console or Run command.
 

@@ -1,3 +1,8 @@
+Two storage accounts side by side, one locally redundant and Hot, one geo-redundant and Cool, with a blob and a lifecycle
+rule, so you can compare redundancy options, move data between access tiers and read how lifecycle management automates
+it. From the AZ-104 outline: create and configure storage accounts, configure Azure Storage redundancy, and configure
+storage tiers and blob lifecycle management.
+
 ## What it deploys
 
 - A storage account ending `hot`: StorageV2, locally redundant (LRS) and the Hot access tier
@@ -6,6 +11,8 @@
 - A lifecycle management rule on the hot account: block blobs move to Cool 30 days after their last change and are deleted after 365
 
 Both account names start with the session's random prefix; the Connect lines show them. There is no network and nothing to peer: you work in the portal, Cloud Shell or Storage Explorer. The cost is a fraction of a penny an hour.
+
+GRS copies the cool account to the session region's paired region (UK South's is UK West). A few newer regions have no pair and cannot hold a GRS account, so the deploy fails there: deploy this lab in a region with a pair.
 
 ```text
 rg-lab-<id>

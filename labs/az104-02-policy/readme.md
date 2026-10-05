@@ -1,5 +1,3 @@
-# Azure Policy, tags and resource locks
-
 Two policy assignments on the lab's resource group, a storage account with a delete lock, and a resource that is already
 out of compliance. Practise how a deny policy refuses a change, how the compliance view reports what already exists, and
 how locks stop even an Owner. From the AZ-104 outline: implement and manage Azure Policy, configure resource locks, and

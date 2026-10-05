@@ -240,7 +240,9 @@ describe("/api/v1/labs input checks", () => {
     const d = r.json as LabDetail;
     expect(d.card).toMatchObject({ id: "az104-06-blob-security", number: 6, running: null, released: false, marker: "£" });
     expect(d.card.estGbpH).toBeCloseTo(0.0082, 6);
-    expect(d.readme[0]).toEqual({ t: "h", level: 2, text: "What it deploys" });
+    // An introduction first (the modal shows the title), then What it deploys.
+    expect(d.readme[0].t).toBe("p");
+    expect(d.readme.find((b) => b.t === "h")).toEqual({ t: "h", level: 2, text: "What it deploys" });
     expect(d.cost.items.map((i) => i.source)).toEqual(["authored", "authored", "authored"]);
     expect(d.cost.items[1].priceAge).toBeNull();
     expect(d.defaults).toEqual({ region: "uksouth", peer: true, hours: 2 });

@@ -1,5 +1,3 @@
-# Management groups and subscription governance
-
 A small management group tree of the lab's own, with an audit policy assigned at its top, so you can see how policy and
 access flow down a hierarchy. From the AZ-104 outline: configure management groups, and implement and manage Azure Policy.
 

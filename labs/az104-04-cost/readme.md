@@ -1,5 +1,3 @@
-# Cost management: budgets and alerts
-
 A monthly budget on the lab's resource group, wired to an action group, so you can see how budgets, thresholds and alerts
 fit together, and a reason to explore cost analysis and Advisor. From the AZ-104 outline: manage costs by using alerts,
 budgets and Azure Advisor recommendations, and set up action groups.

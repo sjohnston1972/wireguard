@@ -1,3 +1,7 @@
+Three ways into one blob container, side by side: account keys and SAS tokens, an Entra group with a data role, and a
+private endpoint in a small VNet. Practise how keys and SAS tokens, RBAC and network access each decide who gets in. From the AZ-104 outline: configure Azure Storage security (SAS tokens, stored access policies, access keys,
+identity-based access) and configure Azure Storage firewalls and virtual networks.
+
 ## What it deploys
 
 - A storage account ending `blob` (StorageV2, LRS, Hot) with an empty private container, `private`. Shared-key access and public network access start on.

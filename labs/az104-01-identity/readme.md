@@ -1,5 +1,3 @@
-# Users, groups, roles and custom roles
-
 Two Entra users, a group and a custom role, wired together with role assignments at the lab's resource group. Practise how
 users, groups, built-in roles and custom roles combine, and how scope decides what someone can do. From the AZ-104 outline:
 manage Microsoft Entra users and groups, and manage access to Azure resources (built-in roles, roles at different scopes,
