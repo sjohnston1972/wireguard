@@ -23,7 +23,7 @@
 import type { Env } from "./env";
 import { runScheduled } from "./monitor";
 import { runLabWatch } from "./labs/watch";
-import { runInsights, FEED_MODULES } from "./insights/runner";
+import { runInsights } from "./insights/runner";
 import { makeBudget, type Budget } from "./insights/types";
 
 /** Outside calls one cron invocation may make: Cloudflare Free allows 50; five are kept spare. */
@@ -38,7 +38,7 @@ export interface CronStages {
 const STAGES: CronStages = {
   watchman: (env, now) => runScheduled(env, now),
   labs: (env, now, parent) => runLabWatch(env, now, { parent }),
-  insights: (env, now, parent) => runInsights(env, now, FEED_MODULES, { parent }),
+  insights: (env, now, parent) => runInsights(env, now, undefined, { parent }), // the default feeds
 };
 
 /**
