@@ -1055,6 +1055,20 @@ test("the safety net purges soft-deleted Key Vaults that lived in a lab group, a
   broken.cleanup();
 });
 
+test("a soft-deleted vault's id is matched whatever its case (Azure returns resourcegroups and upper-case groups)", { skip }, () => {
+  const MIXED = [
+    `kv-lower\tuksouth\t/subscriptions/${SUB}/resourcegroups/${R22}/providers/Microsoft.KeyVault/vaults/kv-lower`,
+    `kv-upper\tukwest\t/SUBSCRIPTIONS/${SUB}/RESOURCEGROUPS/${R22.toUpperCase()}-SECONDARY/providers/Microsoft.KeyVault/vaults/kv-upper`,
+    `kv-prod\tuksouth\t/subscriptions/${SUB}/resourcegroups/rg-prod/providers/Microsoft.KeyVault/vaults/kv-prod`,
+    `kv-near\tuksouth\t/subscriptions/${SUB}/RESOURCEGROUPS/${R22.toUpperCase()}X/providers/Microsoft.KeyVault/vaults/kv-near`,
+  ].join("\n");
+  const w = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, { match: "^keyvault list-deleted --resource-type vault ", out: MIXED }]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [L22], { LAB_DELETE_POLL_SECONDS: "1" });
+  assert.equal(r.status, 0, r.out);
+  assert.deepEqual(w.calls().filter((c) => c.startsWith("az keyvault purge")), ["az keyvault purge --name kv-lower --location uksouth", "az keyvault purge --name kv-upper --location ukwest"]);
+  w.cleanup();
+});
+
 // Ruling 36: some resource types may never report a provisioningState; one is listed (test-first, on
 // release-test evidence) in READY_NO_STATE_TYPES. The list starts empty.
 test("ready check accepts an empty state only for types listed as never giving one", { skip }, () => {

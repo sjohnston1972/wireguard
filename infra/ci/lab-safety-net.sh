@@ -187,11 +187,12 @@ list_roles() {
 # (spec §17 ruling 30: Key Vault keeps a deleted vault for its retention, 7 days in the labs).
 list_deleted_vaults() {
   ROWS=()
-  local name loc id rg re='/resourceGroups/([^/]+)/'
+  # Azure spells the id's segments in either case (/resourcegroups/, upper-case group names): matched in lower case.
+  local name loc id rg re='/resourcegroups/([^/]+)/'
   fetch "soft-deleted Key Vaults" false keyvault list-deleted --resource-type vault --query "[].[name, properties.location, properties.vaultId]" -o tsv || return 0
   while IFS=$'\t' read -r name loc id; do
     [ -n "$name" ] || continue
-    [[ "$id" =~ $re ]] || continue
+    [[ "${id,,}" =~ $re ]] || continue
     rg="${BASH_REMATCH[1]}"
     owns_rg "$rg" && ROWS+=("$name"$'\t'"$loc")
   done <<<"$OUT"
