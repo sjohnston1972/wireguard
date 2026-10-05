@@ -366,10 +366,11 @@ test("labs-build writes the catalogue from the repo's labs, and labs-check passe
   const out = join(repo, "shared", "labs.generated.json");
   assert.ok(existsSync(out));
   const cat = JSON.parse(readFileSync(out, "utf8"));
-  assert.deepEqual(
-    cat.labs.map((l) => l.id),
-    ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az104-04-cost", "az104-05-storage", "az104-06-blob-security", "az104-07-files"],
-  );
+  // Batch 1's seven first, then whatever labs batch 2's areas add (each a folder with a lab.yaml), in id order.
+  const ids = cat.labs.map((l) => l.id);
+  assert.deepEqual(ids.slice(0, 7), ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az104-04-cost", "az104-05-storage", "az104-06-blob-security", "az104-07-files"]);
+  assert.deepEqual(ids, [...ids].sort(), "the catalogue is in id order");
+  for (const id of ids) assert.ok(existsSync(join(repo, "labs", id, "lab.yaml")), `${id} is a lab folder`);
   const check = spawnSync(process.execPath, [join(repo, "scripts", "labs-check.mjs")], { cwd: repo, encoding: "utf8" });
   assert.equal(check.status, 0, check.stdout + check.stderr);
 });
