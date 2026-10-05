@@ -55,6 +55,32 @@ describe("budget (L2.4)", () => {
     expect(budgetFigures({ budget: 10, days: [{ day: "2026-10-01", gbp: 1 }], snap: idle, hourlyRate: 0.5, now }).total).toBe(1);
   });
 
+  it("a deploying lab counts only for the hours chosen at deploy, not to its maximum lifetime", () => {
+    const now = new Date(NOW);
+    const t = now.getTime();
+    const labs = [
+      // Chose 2 hours of a lab that may run 6: counts 2 hours from when it was requested.
+      { state: "deploying", requested_at: iso(t), auto_destroy_at: null, max_until: iso(t + 6 * HOUR), est_gbp_h: 0.5, hours: 2 },
+      // Chose more than the maximum: still never past max_until.
+      { state: "deploying", requested_at: iso(t), auto_destroy_at: null, max_until: iso(t + 3 * HOUR), est_gbp_h: 0.1, hours: 8 },
+      // No chosen hours known: to max_until, as before.
+      { state: "deploying", requested_at: iso(t), auto_destroy_at: null, max_until: iso(t + 4 * HOUR), est_gbp_h: 0.01, hours: null },
+    ];
+    const f = budgetFigures({ budget: 10, days: [], snap: idle, hourlyRate: 0.5, now, labs });
+    expect(f.session).toBeCloseTo(0.5 * 2 + 0.1 * 3 + 0.01 * 4, 6);
+  });
+
+  it("budgetStatus counts a deploying lab for its chosen hours, read from its deploy run", async () => {
+    freeze();
+    const { env } = await labEnv();
+    // Lab 7 may run 6 hours; 1 was chosen.
+    const r = await deployLab(env, "az104-07-files", { hours: 1, peer: false });
+    expect(r.status).toBe(200);
+    const gbpH = (await session(env, r.json.sessionId))!.est_gbp_h as number;
+    const b = await budgetStatus(env, undefined, undefined, new Date(NOW));
+    expect(b.session).toBeCloseTo(gbpH * 1, 6);
+  });
+
   it("budgetStatus reads running labs and Azure's lab days from D1", async () => {
     freeze();
     const { env, world } = await labEnv();
@@ -65,7 +91,7 @@ describe("budget (L2.4)", () => {
     expect(b.session).toBeCloseTo(0.42 * 2, 6);
   });
 
-  it("budget at 100% destroys running labs, cancels deploying ones and never dispatches wg.yml", async () => {
+  it("budget at 100% destroys running labs, cancels deploying ones (Deploy anyway too) and never dispatches wg.yml", async () => {
     freeze();
     const { env, world } = await labEnv();
     await api(env, "PUT", "/settings", { labs_max_running: 5 });
@@ -82,8 +108,9 @@ describe("budget (L2.4)", () => {
     expect((await session(env, b.json.sessionId))!).toMatchObject({ state: "tearing_down", end_reason: "budget" });
     expect(await labRun(env, b.json.runId)).toMatchObject({ status: "cancelled" });
     expect(world.calls.some((x) => x.method === "POST" && x.path.endsWith(`/actions/runs/${ghIdFor(world, b.json.runId)}/cancel`))).toBe(true);
-    // Deployed with "Deploy anyway": left alone.
-    expect((await session(env, c.json.sessionId))!.state).toBe("deploying");
+    // Deployed with "Deploy anyway": that only skipped the warning; at 100% it goes like any other lab.
+    expect((await session(env, c.json.sessionId))!).toMatchObject({ state: "tearing_down", end_reason: "budget" });
+    expect(await labRun(env, c.json.runId)).toMatchObject({ status: "cancelled" });
     // The gateway: untouched.
     expect(world.dispatches.filter((d) => d.workflow !== "lab.yml")).toHaveLength(0);
     expect((await getSnapshot(env)).state).toBe("running");
@@ -92,7 +119,7 @@ describe("budget (L2.4)", () => {
     expect(note).toBeTruthy();
     // The next run does not tear them down twice.
     await runLabWatch(env, new Date());
-    expect(labDispatches(world).filter((d) => d.action === "destroy")).toHaveLength(2);
+    expect(labDispatches(world).filter((d) => d.action === "destroy")).toHaveLength(3);
   });
 
   it("the 80% note names lab spend", async () => {

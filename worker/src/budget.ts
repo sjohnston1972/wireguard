@@ -54,6 +54,8 @@ export interface BudgetLab {
   auto_destroy_at: string | null;
   max_until: string;
   est_gbp_h: number;
+  /** The hours chosen at deploy (from the deploy or test run's payload); null when not known. */
+  hours?: number | null;
 }
 
 /**
@@ -65,7 +67,9 @@ export interface BudgetLab {
  * Labs (spec §9.3): `labDays` is Azure's daily spend on the rg-lab-* groups
  * (lab_cost_days), added to the actual; each live lab in `labs` adds its
  * est_gbp_h from when it started (or from where Azure's figures stop) to
- * its timer, or to max_until while it has none yet.
+ * its timer. Before it has one (still deploying) it counts for the hours
+ * chosen at deploy, never past max_until; to max_until only when those
+ * hours are not known.
  */
 export function budgetFigures(o: { budget: number; days: { day: string; gbp: number }[]; snap: Pick<Snapshot, "state" | "running_since" | "auto_destroy_at">; hourlyRate: number; now: Date; labs?: BudgetLab[]; labDays?: { day: string; gbp: number }[] }): Omit<BudgetStatus, "alerted"> {
   const month = o.now.toISOString().slice(0, 7);
@@ -94,14 +98,30 @@ export function budgetFigures(o: { budget: number; days: { day: string; gbp: num
   return { budget: o.budget, actual, session, total, pct, level: pct >= 100 ? "over" : pct >= 80 ? "warn" : "ok", month };
 }
 
-/** The live labs' estimate to their timers (or max_until), from where Azure's lab figures stop, inside this month. */
+/**
+ * Where a live lab's estimate stops: its timer; before it has one, the hours
+ * chosen at deploy from when it was requested (never past max_until); with
+ * neither, max_until.
+ */
+function labEnd(l: BudgetLab): number {
+  if (l.auto_destroy_at) return Date.parse(l.auto_destroy_at);
+  const max = Date.parse(l.max_until);
+  const hours = Number(l.hours);
+  if (l.hours != null && Number.isFinite(hours) && hours > 0) {
+    const chosen = Date.parse(l.requested_at) + hours * 3_600_000;
+    return Number.isFinite(max) ? Math.min(chosen, max) : chosen;
+  }
+  return max;
+}
+
+/** The live labs' estimate to their timers (or chosen hours, or max_until), from where Azure's lab figures stop, inside this month. */
 export function labsEstimate(labs: BudgetLab[], labDays: { day: string; gbp: number }[], now: Date, monthStart: number, monthEnd: number): number {
   const lastDay = labDays.map((d) => d.day).sort().at(-1);
   const azureUpTo = lastDay ? Date.parse(`${lastDay}T00:00:00Z`) + 86_400_000 : monthStart;
   let sum = 0;
   for (const l of labs) {
     const from = Math.max(Date.parse(l.requested_at), azureUpTo, monthStart);
-    const end = Date.parse(l.auto_destroy_at ?? l.max_until);
+    const end = labEnd(l);
     const to = Math.min(Number.isFinite(end) ? Math.max(end, now.getTime()) : now.getTime(), monthEnd);
     if (Number.isFinite(from) && to > from && l.est_gbp_h > 0) sum += ((to - from) / 3_600_000) * l.est_gbp_h;
   }
@@ -116,7 +136,14 @@ export function labsEstimate(labs: BudgetLab[], labDays: { day: string; gbp: num
 export async function budgetLabs(env: Env, month: string): Promise<{ labs: BudgetLab[]; labDays: { day: string; gbp: number }[] }> {
   try {
     const [labs, labDays] = await Promise.all([
-      env.DB.prepare("SELECT state, requested_at, auto_destroy_at, max_until, est_gbp_h FROM lab_sessions WHERE state IN ('deploying', 'running', 'failed', 'tearing_down')").all<BudgetLab>(),
+      // The hours chosen at deploy are kept in the session's deploy (or test) run's payload (labs/engine.ts deployLab).
+      env.DB.prepare(
+        `SELECT s.state, s.requested_at, s.auto_destroy_at, s.max_until, s.est_gbp_h,
+                (SELECT json_extract(r.payload_json, '$.hours') FROM lab_runs r
+                  WHERE r.session_id = s.id AND r.action IN ('deploy', 'test') AND json_valid(r.payload_json)
+                  ORDER BY r.requested_at ASC LIMIT 1) AS hours
+           FROM lab_sessions s WHERE s.state IN ('deploying', 'running', 'failed', 'tearing_down')`,
+      ).all<BudgetLab>(),
       env.DB.prepare("SELECT day, SUM(gbp) AS gbp FROM lab_cost_days WHERE day >= ?1 GROUP BY day").bind(`${month}-01`).all<{ day: string; gbp: number }>(),
     ]);
     return { labs: labs.results, labDays: labDays.results };

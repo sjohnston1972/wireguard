@@ -35,7 +35,7 @@ import { labDef } from "./catalogue";
 import { budgetedNet, BudgetExceeded, type Net } from "./net";
 import type { Budget } from "../insights/types";
 import { destroySession, hhmm, timeoutOf } from "./engine";
-import { activeRunOf, activeRuns, getSession, liveSessions, payloadOf, runsOf, updateSession, type LabSessionRow } from "./store";
+import { activeRunOf, activeRuns, getSession, liveSessions, runsOf, updateSession, type LabSessionRow } from "./store";
 import { refreshLabRun } from "./refresh";
 import { budgetStatus } from "../budget";
 import { fetchLabCostDays } from "./cost";
@@ -209,10 +209,10 @@ export async function runLabWatch(env: Env, now: Date = new Date(), opts: LabWat
 
 /**
  * Spec §7.4 step 5: at or over 100% of the month's budget (§9.3), tear down
- * every live lab, reason budget: a deploy in progress is cancelled first. A
- * session deployed with "Deploy anyway" while over budget is left alone (it
- * was a deliberate choice). Sessions already tearing down are not touched
- * again. Only lab.yml is ever dispatched; the gateway runs on.
+ * every live lab, reason budget: a deploy in progress is cancelled first.
+ * "Deploy anyway" only skipped the warning before the deploy: a lab deployed
+ * that way is torn down like any other. Sessions already tearing down are
+ * not touched again. Only lab.yml is ever dispatched; the gateway runs on.
  */
 async function budgetTeardown(env: Env, net: Net, cost: number, now: Date): Promise<string | null> {
   const b = await budgetStatus(env, undefined, undefined, now);
@@ -221,8 +221,6 @@ async function budgetTeardown(env: Env, net: Net, cost: number, now: Date): Prom
   const failed: string[] = [];
   for (const s of await liveSessions(env)) {
     if (s.state === "tearing_down") continue;
-    const first = (await runsOf(env, s.id)).filter((r) => r.action === "deploy" || r.action === "test").at(-1) ?? null;
-    if (payloadOf(first).overBudgetOk === true) continue;
     try {
       await destroySession(env, s, "budget", "watchman", "monthly budget reached", { net });
       gone.push(labTitle(s.lab_id));
