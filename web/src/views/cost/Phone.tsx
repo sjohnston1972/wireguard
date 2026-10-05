@@ -3,6 +3,7 @@ import type { CostResponse } from "@shared/api";
 import { Button, Sheet } from "@/components";
 import { Widget, useWidget } from "@/widgets";
 import { BreakdownPanel, InsightsPanel, SpendPanel } from "./Panels";
+import { LabsPanel } from "./lazyLabs";
 import { SessionsPanel } from "./Sessions";
 import { KpiRow } from "./Tiles";
 
@@ -30,6 +31,9 @@ export function CostPhone({ cost, compare, updatedAt }: { cost: CostResponse; co
       )}
       <Widget id="cost.insights">
         <InsightsPanel cost={cost} />
+      </Widget>
+      <Widget id="cost.labs">
+        <LabsPanel cost={cost} />
       </Widget>
       <Sheet open={open === "chart"} onOpenChange={close} title="Spend over time">
         <SpendPanel cost={cost} compare={compare} updatedAt={updatedAt} height={180} />

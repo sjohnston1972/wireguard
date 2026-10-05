@@ -10,12 +10,16 @@ import { AutomationSection } from "./AutomationSection";
 import { BackupSection } from "./BackupSection";
 import { DeploymentSection } from "./DeploymentSection";
 import { EditsProvider, useEdits } from "./edits";
+import { lazyPart } from "@/widgets";
 import { MaintenanceSection } from "./MaintenanceSection";
 import { MobileSection } from "./MobileSection";
 import { OverviewSection } from "./OverviewSection";
 import { SecuritySection } from "./SecuritySection";
 import { SettingsSkeleton, Stat, gbp } from "./ui";
 import "./settings.css";
+
+/** Settings → Labs loads only when opened (it is the one section most people never visit). */
+const LabsSection = lazyPart(() => import("./LabsSection").then((m) => m.LabsSection));
 
 const ICONS: Record<string, LucideIcon> = {
   overview: Cog,
@@ -120,8 +124,7 @@ function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: O
       case "mobile":
         return <MobileSection s={s} />;
       case "labs":
-        // Settings → Labs (plan L0 placeholder; plan area L4 builds LabsSection here).
-        return <p className="set-muted">Lab settings arrive with the Labs tab: how many labs may run at once, default peering, the permission check, slots in use and release tests.</p>;
+        return <LabsSection />;
       case "maintenance":
         return <MaintenanceSection s={s} ov={ov} />;
       default:

@@ -3,7 +3,7 @@ import { Bell, ChevronRight, ListChecks, Rocket } from "lucide-react";
 import type { ActivityResponse } from "@shared/api";
 import { Button, EmptyState, Panel, Sheet, StatusPill } from "@/components";
 import { useWidget } from "@/widgets";
-import { actionWord, fmtDuration, fmtWhen, noteKind, resultPill } from "./model";
+import { runWord, fmtDuration, fmtWhen, noteKind, resultPill } from "./model";
 
 type List = "runs" | "notes" | "changes";
 
@@ -45,7 +45,7 @@ export function PhoneActivity({ data, onOpenRun, onOpenChange }: PhoneActivityPr
           <button type="button" className="act__phone-card-btn" onClick={() => onOpenRun(run.id)}>
             <Rocket size={20} aria-hidden />
             <span className="act__phone-card-text">
-              <strong>{actionWord(run.action)}</strong>
+              <strong>{runWord(run)}</strong>{run.lab && <span className="act__muted">{run.lab.title}</span>}
               <span className="act__muted">
                 {fmtWhen(run.requested_at)}
                 {showDuration && fmtDuration(run.durationSeconds) ? `, ${fmtDuration(run.durationSeconds)}` : ""}
@@ -94,7 +94,8 @@ export function PhoneActivity({ data, onOpenRun, onOpenChange }: PhoneActivityPr
             <ul className="act__phone-list">
               {data.runs.map((r) => (
                 <Row key={r.id} onClick={pick(() => onOpenRun(r.id))}>
-                  <strong>{actionWord(r.action)}</strong>
+                  <strong>{runWord(r)}</strong>
+                  {r.lab && <span className="act__muted">{r.lab.title}</span>}
                   <StatusPill {...resultPill(r.status)} />
                   <span className="act__muted">{fmtWhen(r.requested_at)}</span>
                 </Row>

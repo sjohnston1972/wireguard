@@ -26,6 +26,8 @@ export const FIELDS: Record<string, FieldDef> = {
   idle_destroy_minutes: { read: (v) => num(v.idleDestroyMinutes) },
   monthly_budget_gbp: { read: (v) => num(v.monthlyBudgetGbp) },
   ssh_allowed_cidr: { read: (v) => v.sshAllowedCidr },
+  labs_max_running: { read: (v) => num(v.labsMaxRunning) },
+  labs_default_peering: { read: (v) => v.labsDefaultPeering },
 };
 
 /** Which settings belong to which section (a section with none has no form). */
@@ -33,6 +35,7 @@ export const SECTION_KEYS: Record<string, string[]> = {
   deployment: ["region", "vm_size", "test_vm"],
   automation: ["auto_destroy_default_hours", "expiry_action", "standby_max_days", "idle_destroy_minutes", "monthly_budget_gbp"],
   security: ["ssh_allowed_cidr"],
+  labs: ["labs_max_running", "labs_default_peering"],
 };
 
 export interface Edits {

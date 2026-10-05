@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import type { ActivityResponse } from "@shared/api";
 import { Button, Diff, Drawer, ErrorState, KeyValue, LogView, Skeleton, StatusPill, StepList, type Step } from "@/components";
-import { actionWord, fmtClock, fmtDuration, fmtGbp, fmtWhen, jsonLines, resultPill, stepSeconds, stepState } from "./model";
+import { runWord, fmtClock, fmtDuration, fmtGbp, fmtWhen, jsonLines, resultPill, stepSeconds, stepState } from "./model";
 import { useRunData } from "./useRunData";
 import { LIVE_LOG_WAITING } from "@/lib/parseLog";
 
@@ -17,7 +17,7 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
       onOpenChange={(o) => !o && onClose()}
       className="act__drawer"
       size="lg"
-      title={run ? `${actionWord(run.action)} run, ${fmtWhen(run.requested_at)}` : "Run"}
+      title={run ? `${runWord(run)} run, ${fmtWhen(run.requested_at)}` : "Run"}
       subtitle={<span className="act__mono">{id}</span>}
       leading={pill ? <StatusPill {...pill} /> : undefined}
       footer={
@@ -39,7 +39,8 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
           <div className="act__run-facts">
             <KeyValue
               items={[
-                { label: "Action", value: actionWord(run.action) },
+                { label: "Action", value: runWord(run) },
+                ...(run.lab ? [{ label: "Lab", value: run.lab.title }] : []),
                 { label: "Requested", value: fmtWhen(run.requested_at) },
                 { label: "Started", value: run.started_at ? fmtWhen(run.started_at) : "not started" },
                 { label: "Finished", value: run.finished_at ? fmtWhen(run.finished_at) : active ? "in progress" : "not finished" },

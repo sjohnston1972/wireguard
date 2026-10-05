@@ -2,7 +2,7 @@ import { Check, ExternalLink, Minus, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, LogView, Panel, Skeleton, StatusPill } from "@/components";
 import { useWidget } from "@/widgets";
-import { actionWord, fmtDuration, fmtWhen, resultPill, stepSeconds, stepState, type ApiStep } from "./model";
+import { runWord, fmtDuration, fmtWhen, resultPill, stepSeconds, stepState, type ApiStep } from "./model";
 import { Fill } from "./parts";
 import { useRunData } from "./useRunData";
 import { LIVE_LOG_WAITING } from "@/lib/parseLog";
@@ -63,7 +63,7 @@ export function RunDetails({ id, emptyTitle = "No runs yet", emptyHint = "A depl
       ) : (
         <>
           <p className="act__muted act__sub">
-            {actionWord(run.action)} requested by {run.requested_by ?? "unknown"}
+            {runWord(run)}{run.lab ? ` (${run.lab.title})` : ""} requested by {run.requested_by ?? "unknown"}
             {run.error ? `: ${run.error}` : run.status === "running" ? ", in progress" : ""}
           </p>
           <StepTrack steps={steps} active={active} durations={settings.durations as boolean} nameLines={settings.nameLines === "1" ? 1 : 2} />
