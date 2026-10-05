@@ -125,7 +125,7 @@ lint also refuses registry/template-spec modules (`module`) and extension/import
 17. `labs-pr0.test.mjs`'s comparison with PR 0 is skipped from batch 2 on (ruling 11); 18. the content suite's price checks
 (S4 per VM, E1 per data disk, `retail.sku` qty = default count) and "a public IP only for an App Gateway" bind every lab;
 19. `labs-verify` treats an authored price more than 25% from Azure's as a problem; lab 6's `Standard Private Endpoint` meter
-has no uksouth row (Azure prices it under region `Global` only), reported for batch 1, not fixed here; 20. the vault wait is
+has no uksouth row (Azure prices it under region `Global` only); the integration authors it (no `retail`, lab 6 v2); 20. the vault wait is
 bounded by tries (`ceil(wait / 15)` polls), so a fake or slow `sleep` can never stretch it.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or

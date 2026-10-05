@@ -250,6 +250,18 @@ test("az104-06-blob-security: the stored access policy is a thing to try (azurer
   assert.doesNotMatch(l.readme.split("## Things to try")[0], /stored access policy/i, "What it deploys does not claim one");
 });
 
+test("az104-06-blob-security: the private endpoint is authored at Azure's Global price, with no retail meter the feed cannot find", () => {
+  // The Retail Prices API has no uksouth row for "Standard Private Endpoint" (Virtual Network Private Link): Azure
+  // prices it under region Global only (£0.0075/h, 2026-10-05). The price feed reads one region, so a retail meter
+  // here would never refresh, and labs-verify --meters reports it. Authored, as batch 2 ruling 2 does for such items.
+  const items = lab("az104-06-blob-security").yaml.cost.items;
+  const pe = items.find((i) => /private endpoint/i.test(i.name));
+  assert.ok(pe, "a private endpoint cost item");
+  assert.equal(pe.retail, undefined);
+  assert.ok(Math.abs(pe.gbp_h - 0.0075) / 0.0075 <= 0.25, `£${pe.gbp_h}/h is within 25% of Azure's £0.0075/h`);
+  assert.ok(items.every((i) => i.retail?.meter !== "Standard Private Endpoint"));
+});
+
 // ── Lab 7: Azure Files from a VM ─────────────────────────────────────────
 
 commonChecks("az104-07-files");

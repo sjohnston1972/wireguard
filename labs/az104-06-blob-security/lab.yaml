@@ -9,11 +9,15 @@
 #   virtual networks: "Configure service endpoints for Azure platform as a
 #   service (PaaS)", "Configure private endpoints for Azure PaaS".
 # Costs are GBP list prices for UK South, rounded up. Private endpoint:
-# $0.01/h (the retail meter refreshes it). Private DNS zone: $0.50 a month
-# per zone, about £0.0005/h; queries are pennies per million. The VNet, the
-# Entra group and the role assignment are free.
+# "Standard Private Endpoint" (Virtual Network Private Link), £0.0075/h
+# (Retail Prices API, 2026-10-05). Authored, not a retail meter: Azure lists
+# it under region Global only, with no uksouth row, so the price feed (one
+# region) could never refresh it (labs-verify --meters: no uksouth row).
+# Private DNS zone: $0.50 a month per zone, about £0.0005/h; queries are
+# pennies per million. The VNet, the Entra group and the role assignment
+# are free.
 id: az104-06-blob-security
-version: 1
+version: 2
 title: "Blob security: SAS, access policies, private endpoint"
 summary: >-
   A storage account with a private container, a blob readers group and a private endpoint in a small VNet,
@@ -26,7 +30,7 @@ prerequisites: [az104-05-storage]
 cost:
   items:
     - { name: "Storage account, LRS hot, a few KB", gbp_h: 0.0001 }
-    - { name: "Private endpoint", gbp_h: 0.0076, retail: { meter: "Standard Private Endpoint", unit: "1 Hour" } }
+    - { name: "Private endpoint", gbp_h: 0.0076 }
     - { name: "Private DNS zone", gbp_h: 0.0005 }
   pricey: null
 timing: { deploy_min: 4, destroy_min: 3, session_h: 2, max_h: 6 }

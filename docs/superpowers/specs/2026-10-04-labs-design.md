@@ -650,7 +650,8 @@ these win; §3.4's `az bicep build` and §5 step 5's are replaced by ruling 1.
 19. **`npm run labs-verify`** (network, never in `npm test`): every readme link answers 200, every retail meter has one
     uksouth price in a unit the feed reads (now including `1/Hour`), and an authored price more than 25% from Azure's is a
     problem. Lab 6's `Standard Private Endpoint` has no uksouth row (Azure prices it under region `Global`), so the feed never
-    refreshes it: a batch 1 finding, left authored.
+    refreshes it: a batch 1 finding. The batch 2 integration drops its `retail` entry and authors it (£0.0076/h against
+    Azure's Global £0.0075/h), as ruling 2 does for meters the feed cannot read; lab 6 is version 2.
 20. **Vault teardown:** unblock turns an `Unlocked` vault immutability `Disabled` before soft delete (a `Locked` one is a loud
     warning), stops protection with data deleted for every management type the CLI can (`AzureIaasVM`, `AzureStorage`,
     `AzureWorkload`; `MAB` is a warning), and waits, polling every 15 s, until the vault lists no items, at most
