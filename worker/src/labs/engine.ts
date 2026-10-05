@@ -17,7 +17,6 @@
 
 import type { Env } from "../env";
 import { canDispatch } from "../env";
-import * as db from "../db";
 import { effectiveConfig } from "../settings";
 import { getSnapshot } from "../state";
 import { acquireLock, releaseLock, labLock } from "../lock";
@@ -25,10 +24,10 @@ import { randomToken } from "../auth";
 import { RunError } from "../runs";
 import { labDef, labIds } from "./catalogue";
 import { readOrphans } from "./orphans";
-import { LAB_SLOTS, labNeeds, labsSettingsFrom, sessionTimeoutMin, type LabDef } from "../../../shared/labs";
-import type { LabAction, LabEndReason, LabPermissions } from "../../../shared/api";
+import { LAB_SLOTS, sessionTimeoutMin, type LabDef } from "../../../shared/labs";
+import type { LabAction, LabEndReason } from "../../../shared/api";
 import { cancelGh, directNet, dispatchLab, findLabRun, publicUrl, type Net } from "./net";
-import { activeRunOf, freeSlot, getLabRun, insertRun, insertSession, liveSessionOf, reserveSlot, runningCount, settleRun, slotsInUse, updateSession, getSession, type LabRunDb, type LabSessionRow } from "./store";
+import { activeRunOf, freeSlot, getLabRun, insertRun, insertSession, liveSessionOf, reserveSlot, settleRun, slotsInUse, updateSession, getSession, type LabRunDb, type LabSessionRow } from "./store";
 import { labGbpH } from "./prices";
 import { labWarnings } from "./warnings";
 import { availability, unavailableReason } from "./availability";

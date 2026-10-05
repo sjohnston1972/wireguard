@@ -65,7 +65,7 @@ export function releaseFields(def: LabDef, tests: LabReleaseTest[]): Pick<LabCar
 }
 
 /** "Ran 2×": a session counts once it was ready for LAB_COVERAGE_MIN minutes or more (to its end, or now). */
-export const RAN_SQL = `ready_at IS NOT NULL AND (julianday(COALESCE(ended_at, ?1)) - julianday(ready_at)) * 1440 >= ${LAB_COVERAGE_MIN}`;
+export const RAN_SQL = `ready_at IS NOT NULL AND (julianday(COALESCE(ended_at, ?1)) - julianday(ready_at)) * 1440 >= ${LAB_COVERAGE_MIN} - 0.001`;
 
 export interface CardContext {
   now: number;

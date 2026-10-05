@@ -12,12 +12,12 @@
 //   PUT  /labs/sessions/:sid/note
 //   POST /labs/repeer | /labs/permissions/check | /labs/orphans/cleanup
 //
-// Contract stubs (plan L0): every route checks its input exactly as the
-// engine will (400 bad_input naming the field, an unknown key included) and
-// answers the shapes in shared/api.ts from the catalogue, lab_slots, the
-// settings and KV (`labs:permissions`, `labs:orphans`). Anything that would
-// start a run or call Azure answers 501 not_implemented until the engine
-// (plan L2) replaces it here.
+// Every route checks its input first (400 bad_input naming the field, an
+// unknown key included), then the lab (404), then asks the engine
+// (labs/engine.ts), whose refusals (RunError) become 409 (conflict or
+// unavailable), 422 (confirm_required) or 502 (GitHub or Azure refused).
+// Pages read D1 and KV only; the two exceptions call Azure: POST
+// /labs/permissions/check, and GET /labs/:id's resources while a lab runs.
 
 import type { Context, Hono } from "hono";
 import { body, fail, type ApiEnv } from "./app";
@@ -28,10 +28,11 @@ import { REGIONS } from "../region";
 import { catalogue, labDef, labReadme } from "../labs/catalogue";
 import { checkLabPermissions } from "../labs/permissions";
 import { directNet } from "../labs/net";
-import { availability, cancelLab, cleanupLab, deployLab, peerLab, rePeerLabs, unpeerLab, destroyLab, extendLab, hhmm, unavailableReason, type DeployInput } from "../labs/engine";
+import { cancelLab, cleanupLab, deployLab, destroyLab, extendLab, hhmm, peerLab, rePeerLabs, unpeerLab, type DeployInput } from "../labs/engine";
 import { activeRuns, liveSessionOf, runsOf, type LabSessionRow } from "../labs/store";
 import { labRunRow } from "../labs/view";
-import { cardContext, labCard, sessionView } from "../labs/cards";
+import { cardContext, labCard, RAN_SQL, sessionView } from "../labs/cards";
+import { labResources } from "../labs/resources";
 import { sessionCosts } from "../labs/cost";
 import { gbpHFrom, pricedItems } from "../labs/prices";
 import { labWarnings } from "../labs/warnings";
@@ -41,17 +42,15 @@ import {
   LAB_ID_RE,
   LAB_NOTE_MAX,
   LAB_SLOTS,
-  costMarker,
-  estimateGbpH,
+  labRg,
   labsSettingsFrom,
   type LabDef,
 } from "../../../shared/labs";
-import type { ApiOk, LabCard, LabCoverageResponse, LabDetail, LabOrphan, LabPermissions, LabPermissionsCheckResponse, LabSecretResponse, LabsResponse, LabSessionsResponse } from "../../../shared/api";
+import type { ApiOk, LabCoverageResponse, LabDetail, LabOrphan, LabPermissions, LabPermissionsCheckResponse, LabSecretResponse, LabsResponse, LabSessionsResponse } from "../../../shared/api";
 
 type C = Context<ApiEnv>;
 const bad = (c: C, message: string, field?: string) => fail(c, 400, "bad_input", message, field);
 const notFound = (c: C, what = "No such lab.") => fail(c, 404, "not_found", what);
-const notYet = (c: C) => fail(c, 501, "not_implemented", "Labs are not built yet.");
 
 // ── Input checks (kept by the engine) ────────────────────────────────────
 
@@ -149,16 +148,18 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     return c.json(out);
   });
 
-  api.get("/labs/coverage", (c) => {
+  api.get("/labs/coverage", async (c) => {
     const cat = catalogue();
+    // A lab counts as run with a session ready for LAB_COVERAGE_MIN minutes or more.
+    const ran = new Set((await c.env.DB.prepare(`SELECT DISTINCT lab_id FROM lab_sessions WHERE ${RAN_SQL}`).bind(new Date().toISOString()).all<{ lab_id: string }>()).results.map((r) => r.lab_id));
     const exams = (["AZ-104", "AZ-305"] as const)
       .map((exam) => ({
         exam,
         areas: cat.skillAreas
           .filter((a) => a.exam === exam)
           .map((a) => {
-            const labs = cat.labs.filter((l) => l.skill_areas.includes(a.key)).map((l) => ({ id: l.id, number: l.number, title: l.title, run: false }));
-            return { key: a.key, name: a.name, labs, run: 0, available: labs.length };
+            const labs = cat.labs.filter((l) => l.skill_areas.includes(a.key)).map((l) => ({ id: l.id, number: l.number, title: l.title, run: ran.has(l.id) }));
+            return { key: a.key, name: a.name, labs, run: labs.filter((l) => l.run).length, available: labs.length };
           }),
       }))
       .filter((e) => e.areas.length > 0);
@@ -225,8 +226,9 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       gatewayUp: snap.state === "running" || snap.state === "standby",
       session: live ? sessionView(live, ctx) : null,
       runs: liveRuns.map(labRunRow),
-      resources: null,
-      portalUrl: null,
+      // While it runs: what is in its group, from ARM (the one Azure read a page makes here), and the portal link.
+      resources: live?.state === "running" ? await labResources(c.env, def.id) : null,
+      portalUrl: live ? `https://portal.azure.com/#resource/subscriptions/${c.env.AZURE_SUBSCRIPTION_ID ?? ""}/resourceGroups/${labRg(def.id)}` : null,
     };
     return c.json(out);
   });
@@ -250,7 +252,7 @@ export function registerLabs(api: Hono<ApiEnv>): void {
 
   // The actions: check the body, then the lab, then do it (RunError becomes the error answer, api/app.ts).
   type Handler = (c: C, def: LabDef, b: Record<string, unknown>) => Promise<Response>;
-  const action = (path: string, fields: Record<string, Field>, extra?: ((b: Record<string, unknown>, c: C) => Response | null) | null, handle: Handler = async (c) => notYet(c)) =>
+  const action = (path: string, fields: Record<string, Field>, extra: ((b: Record<string, unknown>, c: C) => Response | null) | null, handle: Handler) =>
     api.post(`/labs/:id/${path}`, async (c) => {
       const r = await readBody(c, fields);
       if (!r.ok) return r.res;

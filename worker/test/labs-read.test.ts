@@ -1,0 +1,143 @@
+// labs-read.test.ts
+//
+// Plain English: plan L2.7. What the Labs tab and the Overview read: the
+// catalogue cards (estimate, live and last session, "Ran 2×", release tests,
+// "Untested"), one lab's detail (readme, priced items, warnings, resources
+// from ARM while it runs), history and coverage (sessions of 15 minutes or
+// more), the note, the password (only while running) and the Overview summary.
+
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setCatalogueForTest } from "../src/labs/catalogue";
+import { api, advance, deployLab, freeze, labDispatches, labEnv, report, runningLab, secrets, session, MIN, NOW } from "./labs-helpers";
+import type { Env } from "../src/env";
+
+afterEach(() => {
+  setCatalogueForTest(null);
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+/** An ended session, ready for `minutes`, straight into D1. */
+async function ended(env: Env, id: string, lab: string, readyAt: string, minutes: number, state = "ended") {
+  const end = new Date(Date.parse(readyAt) + minutes * MIN).toISOString();
+  await env.DB.prepare(
+    `INSERT INTO lab_sessions (id, lab_id, lab_version, state, test, region, peering, name_prefix, requested_at, ready_at, ended_at, max_until, est_gbp_h, est_gbp, end_reason)
+     VALUES (?1, ?2, CAST(1 AS INTEGER), ?3, CAST(0 AS INTEGER), 'uksouth', 'off', 'l05abcde', ?4, ?4, ?5, ?5, 0.01, 0.001, 'manual')`,
+  )
+    .bind(id, lab, state, readyAt, end)
+    .run();
+}
+
+describe("read routes (L2.7)", () => {
+  it("GET /labs cards carry estimate, running session, last session, last release test and Untested", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    await ended(env, "ls-20261003090000-aaaaaa", "az104-07-files", "2026-10-03T09:00:00.000Z", 20);
+    await ended(env, "ls-20261003120000-bbbbbb", "az104-07-files", "2026-10-03T12:00:00.000Z", 5);
+    await env.DB.prepare("INSERT INTO lab_release_tests (lab_id, version, at, run_id, result, deploy_seconds, destroy_seconds, est_gbp, leftovers_json) VALUES ('az104-07-files', CAST(1 AS INTEGER), '2026-10-02T10:00:00.000Z', 'lab-test-x', 'fail', CAST(200 AS INTEGER), CAST(100 AS INTEGER), 0.002, '[\"rg-lab-az104-07-files\"]')").run();
+    const up = await runningLab(env, world, "az104-05-storage");
+    const l = (await api(env, "GET", "/labs")).json;
+    const card = (id: string) => l.labs.find((c: { id: string }) => c.id === id);
+    expect(card("az104-05-storage")).toMatchObject({ estGbpH: 0.01, marker: "£", running: { id: up.sid, state: "running", costBasis: "estimate" }, released: false, lastReleaseTest: null });
+    expect(card("az104-07-files")).toMatchObject({ running: null, lastSession: { id: "ls-20261003120000-bbbbbb", state: "ended" }, runs: 1, released: false, lastReleaseTest: { result: "fail", clean: false, leftovers: ["rg-lab-az104-07-files"] } });
+    expect(card("az305-28-hub-spoke-fw")).toMatchObject({ estGbpH: 0.42, marker: "££", pricey: { item: "Azure Firewall Basic", gbpH: 0.4 } });
+    expect(l.running.map((s: { id: string }) => s.id)).toEqual([up.sid]);
+    expect(l.slots).toEqual({ used: 1, total: 32 });
+    // A running session counts as run once it has been up 15 minutes.
+    advance(15 * MIN);
+    expect((await api(env, "GET", "/labs")).json.labs.find((c: { id: string }) => c.id === "az104-05-storage").runs).toBe(1);
+    // Never the password, the token hash or the payload.
+    expect(JSON.stringify(l)).not.toMatch(/admin_password|adminPassword|callback_token|payload/);
+  });
+
+  it("GET /labs/:id has readme blocks, priced items with source and age, warnings, resources from ARM while running", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    let d = (await api(env, "GET", "/labs/az104-05-storage")).json;
+    expect(d.readme).toEqual([{ t: "h", level: 2, text: "What it deploys" }]);
+    expect(d.cost.items).toEqual([{ name: "Storage account", gbp_h: 0.01, gbpH: 0.01, source: "authored", priceAge: null }]);
+    expect(d).toMatchObject({ session: null, runs: [], resources: null, portalUrl: null, warnings: [] });
+    const armCalls = () => world.calls.filter((c) => c.host === "management.azure.com").length;
+    expect(armCalls()).toBe(0); // not running: no Azure call
+    const up = await runningLab(env, world, "az104-05-storage");
+    world.labAzure.resources.push({ name: "stl05abcde", type: "Microsoft.Storage/storageAccounts", resourceGroup: "rg-lab-az104-05-storage", provisioningState: "Succeeded" });
+    d = (await api(env, "GET", "/labs/az104-05-storage")).json;
+    expect(d.session).toMatchObject({ id: up.sid, state: "running", outputs: { privateIps: { vm: "10.64.0.4" }, connect: ["ssh azureuser@10.64.0.4"] } });
+    expect(d.runs.map((r: { action: string }) => r.action)).toEqual(["deploy"]);
+    expect(d.resources).toEqual([{ name: "stl05abcde", type: "Microsoft.Storage/storageAccounts", group: "rg-lab-az104-05-storage", state: "Succeeded" }]);
+    expect(d.portalUrl).toBe("https://portal.azure.com/#resource/subscriptions/sub/resourceGroups/rg-lab-az104-05-storage");
+    expect(d.warnings).toEqual([]);
+    expect(JSON.stringify(d)).not.toMatch(/admin_password|callback_token|payload_json/);
+    // ARM refusing: resources is null, the rest still answers.
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => (String(input).includes("/resources?") ? new Response("{}", { status: 403 }) : real(input, init)));
+    d = (await api(env, "GET", "/labs/az104-05-storage")).json;
+    expect(d.resources).toBeNull();
+    expect(d.session.id).toBe(up.sid);
+  });
+
+  it("sessions history and coverage count sessions of 15 minutes or more", async () => {
+    freeze();
+    const { env } = await labEnv();
+    await ended(env, "ls-20261001090000-aaaaaa", "az104-05-storage", "2026-10-01T09:00:00.000Z", 20);
+    await ended(env, "ls-20261002090000-bbbbbb", "az104-06-blob-security", "2026-10-02T09:00:00.000Z", 10);
+    await ended(env, "ls-20261003090000-cccccc", "az305-28-hub-spoke-fw", "2026-10-03T09:00:00.000Z", 60, "ended_dirty");
+    const h = (await api(env, "GET", "/labs/sessions")).json.sessions;
+    expect(h.map((s: { id: string }) => s.id)).toEqual(["ls-20261003090000-cccccc", "ls-20261002090000-bbbbbb", "ls-20261001090000-aaaaaa"]);
+    expect(h[0]).toMatchObject({ title: "Hub-spoke with Azure Firewall", state: "ended_dirty", endReason: "manual", costBasis: "estimate" });
+    expect((await api(env, "GET", "/labs/sessions?limit=1")).json.sessions).toHaveLength(1);
+    expect((await api(env, "GET", "/labs/sessions?lab=az104-05-storage")).json.sessions.map((s: { labId: string }) => s.labId)).toEqual(["az104-05-storage"]);
+    const cov = (await api(env, "GET", "/labs/coverage")).json.exams;
+    const storage = cov[0].areas.find((a: { key: string }) => a.key === "az104.storage");
+    expect(storage).toMatchObject({ run: 1, available: 4 });
+    expect(storage.labs.filter((x: { run: boolean }) => x.run).map((x: { id: string }) => x.id)).toEqual(["az104-05-storage"]);
+    const infra = cov[1].areas.find((a: { key: string }) => a.key === "az305.infra");
+    expect(infra).toMatchObject({ run: 1, available: 1 });
+  });
+
+  it("note is at most 2000 characters", async () => {
+    freeze();
+    const { env } = await labEnv();
+    await ended(env, "ls-20261001090000-aaaaaa", "az104-05-storage", "2026-10-01T09:00:00.000Z", 20);
+    expect((await api(env, "PUT", "/labs/sessions/ls-20261001090000-aaaaaa/note", { note: "x".repeat(2000) })).status).toBe(200);
+    expect((await session(env, "ls-20261001090000-aaaaaa"))!.note).toHaveLength(2000);
+    const long = await api(env, "PUT", "/labs/sessions/ls-20261001090000-aaaaaa/note", { note: "x".repeat(2001) });
+    expect(long.status).toBe(400);
+    expect(long.json.error.field).toBe("note");
+    expect((await api(env, "PUT", "/labs/sessions/ls-20261001090000-aaaaaa/note", { note: "" })).json.message).toBe("Note cleared.");
+    expect((await session(env, "ls-20261001090000-aaaaaa"))!.note).toBeNull();
+    expect((await api(env, "PUT", "/labs/sessions/ls-nope/note", { note: "x" })).status).toBe(404);
+  });
+
+  it("secret answers only while running", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    const r = await deployLab(env, "az104-05-storage");
+    expect((await api(env, "GET", "/labs/az104-05-storage/secret")).status).toBe(409);
+    const s = await secrets(env, world, r.json.runId);
+    await report(env, r.json.runId, s.callback_token, "success", { users: { ann: "lab-az104-05-storage-ann@contoso.onmicrosoft.com" } });
+    const ok = await api(env, "GET", "/labs/az104-05-storage/secret");
+    expect(ok.status).toBe(200);
+    expect(ok.json).toEqual({ adminPassword: s.admin_password, users: { ann: "lab-az104-05-storage-ann@contoso.onmicrosoft.com" } });
+    expect(ok.headers.get("Cache-Control")).toBe("no-store");
+    await api(env, "POST", "/labs/az104-05-storage/destroy", { confirm: true });
+    const torn = await api(env, "GET", "/labs/az104-05-storage/secret");
+    expect(torn.status).toBe(409);
+    expect(torn.json.error.code).toBe("not_running");
+    expect(labDispatches(world)).toHaveLength(2);
+  });
+
+  it("overview labs summary", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    const a = await runningLab(env, world, "az104-06-blob-security", { hours: 2, peer: true });
+    advance(MIN);
+    const b = await deployLab(env, "az104-07-files");
+    const o = (await api(env, "GET", "/overview")).json.labs;
+    expect(o.running.map((s: { id: string }) => s.id)).toEqual([a.sid, b.json.sessionId]);
+    expect(o.running[1]).toMatchObject({ state: "deploying", activeRun: { action: "deploy", status: "queued" } });
+    expect(o.gbpH).toBeCloseTo(0.0077 + 0.0117, 6);
+    expect(o.rePeer).toBe(1); // lab 6 asked to peer and the gateway is not up
+    void NOW;
+  });
+});
