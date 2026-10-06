@@ -676,8 +676,9 @@ test(`${AGW}: two web VMs, lab.yaml as planned and a readme that blocks an attac
   assert.deepEqual(y.skill_areas, ["az700.delivery", "az700.security"]);
   assert.deepEqual(y.prerequisites, ["az104-16-lb-appgw"]);
   assert.deepEqual(y.connectivity, { peering: "optional", dns_link: true, subnets_used: 1 });
-  assert.deepEqual(y.timing, { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 3 });
-  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 64);
+  // Release test 2026-10-06: 13m 46s and 11m 17s, so 14 and 12 (v2).
+  assert.deepEqual(y.timing, { deploy_min: 14, destroy_min: 12, session_h: 2, max_h: 3 });
+  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 72);
   // WAF v2's meters share their names with Standard v2 and Application Gateway for Containers: authored (ruling 54).
   for (const n of [/WAF_v2, fixed/, /WAF_v2, capacity unit/]) {
     const i = y.cost.items.find((x) => n.test(x.name));
@@ -836,8 +837,9 @@ test(`${AFD}: lab.yaml as planned, peering off, the base fee authored per hour`,
   assert.equal(y.level, "expert");
   assert.deepEqual(y.prerequisites, ["az305-27-multi-region"]);
   assert.deepEqual(y.connectivity, { peering: "off", dns_link: false, subnets_used: 1 });
-  assert.deepEqual(y.timing, { deploy_min: 15, destroy_min: 12, session_h: 2, max_h: 3 });
-  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 74);
+  // Release test 2026-10-06: destroy took 22m 13s (Front Door's delete), so 23 (v4).
+  assert.deepEqual(y.timing, { deploy_min: 15, destroy_min: 23, session_h: 2, max_h: 3 });
+  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 96);
   const base = y.cost.items.find((i) => /Front Door Premium, base fee/.test(i.name));
   assert.ok(base);
   assert.equal(base.gbp_h, 0.3412, "£249.066 a month / 730");
@@ -1114,8 +1116,9 @@ test(`${FL}: lab.yaml as planned`, () => {
   assert.deepEqual([y.level, y.type], ["associate", "explore"]);
   assert.deepEqual(y.prerequisites, ["az104-17-netwatcher-fix"]);
   assert.deepEqual(y.connectivity, { peering: "optional", dns_link: false, subnets_used: 1 });
-  assert.deepEqual(y.timing, { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 4 });
-  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 64);
+  // Release test 2026-10-06: 16m 29s and 12m 37s, so 17 and 13 (v2).
+  assert.deepEqual(y.timing, { deploy_min: 17, destroy_min: 13, session_h: 2, max_h: 4 });
+  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 80);
   const bastion = y.cost.items.find((i) => /Bastion Basic/.test(i.name));
   assert.equal(bastion.gbp_h, 0.1434);
   assert.equal(bastion.retail, undefined, '"Basic Gateway" is shared with other gateways (ruling 54)');

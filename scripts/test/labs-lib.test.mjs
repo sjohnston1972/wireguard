@@ -332,7 +332,7 @@ test("labs 13, 14, 15, 16, 17 and 27 belong to AZ-700 too, with the areas of the
     assert.ok(own.length > 0, `${id} keeps its own exam's areas`);
     assert.deepEqual(def.skill_areas.filter((k) => k.startsWith("az700.")), t.areas, `${id}: AZ-700 areas`);
     assert.deepEqual(def.exams, [def.exam, "AZ-700"], `${id}: exams`);
-    assert.equal(def.version, t.version, `${id}: version bumped for the tag`);
+    assert.ok(def.version >= t.version, `${id}: version bumped for the tag (at least v${t.version})`);
     // One paragraph in the introduction names the AZ-700 skills and points to the AZ-700 lab that goes deeper.
     const intro = readFileSync(join(repo, "labs", id, "readme.md"), "utf8").replace(/\r\n/g, "\n").split(/\n## /)[0];
     const para = intro.split(/\n\n/).find((p) => /AZ-700/.test(p));

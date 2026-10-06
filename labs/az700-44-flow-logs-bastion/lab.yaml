@@ -24,7 +24,7 @@
 # Interval" £2.6416/GB, about 5 MB an hour; the workspace and the log
 # account a few MB (the workspace capped at 0.05 GB a day).
 id: az700-44-flow-logs-bastion
-version: 1
+version: 2
 title: "VNet flow logs, IP flow verify and Bastion"
 summary: >-
   Two VMs reached only through Azure Bastion Basic, with NSGs to test with IP flow verify, and a VNet flow log with
@@ -45,7 +45,7 @@ cost:
     - { name: "Log Analytics, a few MB of traffic analytics", gbp_h: 0.0005 }
     - { name: "Storage account for flow logs, LRS, a few MB", gbp_h: 0.0001 }
   pricey: "Azure Bastion Basic"
-timing: { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 4 }
+timing: { deploy_min: 17, destroy_min: 13, session_h: 2, max_h: 4 }
 capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
 regions: { secondary: null }
 connectivity: { peering: optional, dns_link: false, subnets_used: 1 }

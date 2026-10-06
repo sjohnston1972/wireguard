@@ -25,7 +25,7 @@
 # 10,000) and a private zone £0.3774 a month (£0.0005/h); the workspace
 # ingests a few MB of gateway logs under its 0.05 GB daily cap.
 id: az700-41-appgw-waf
-version: 1
+version: 2
 title: "Application Gateway WAF_v2: TLS, rewrites, WAF policy"
 summary: >-
   An Application Gateway WAF_v2 with a private HTTPS listener whose certificate comes from Key Vault, an HTTP to HTTPS
@@ -46,7 +46,7 @@ cost:
     - { name: "Private DNS zone lab41.internal", gbp_h: 0.0005 }
     - { name: "Log Analytics, a few MB of gateway logs", gbp_h: 0.0005 }
   pricey: "Application Gateway WAF_v2, fixed"
-timing: { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 3 }
+timing: { deploy_min: 14, destroy_min: 12, session_h: 2, max_h: 3 }
 capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
 regions: { secondary: null }
 connectivity: { peering: optional, dns_link: true, subnets_used: 1 }

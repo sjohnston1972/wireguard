@@ -66,6 +66,8 @@ export const UNSET_BLOCKS_UNKNOWN = {
   azurerm_monitor_diagnostic_setting: ["enabled_metric", "metric"],
   azurerm_mssql_database: ["long_term_retention_policy", "short_term_retention_policy", "threat_detection_policy"],
   azurerm_private_dns_zone: ["soa_record"],
+  azurerm_virtual_hub_connection: ["routing"],
+  azurerm_virtual_network_gateway: ["bgp_settings"],
   azurerm_storage_account: ["blob_properties", "network_rules", "queue_properties", "routing", "share_properties", "static_website"],
 };
 

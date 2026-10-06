@@ -67,3 +67,9 @@ lab's hourly estimate times those minutes.
 | 2026-10-06 13:22 | az700-42-frontdoor-private | 2 | fail | yes | none | — | 22m 26s | £0.1387 | 37466412490 |
 | 2026-10-06 13:52 | az700-34-route-server | 1 | pass | yes | none | 18m 10s | 10m 38s | £0.1751 | 37470264092 |
 | 2026-10-06 13:52 | az700-44-flow-logs-bastion | 1 | pass | yes | none | 16m 29s | 12m 37s | £0.0885 | 37470060551 |
+| 2026-10-06 14:04 | az700-33-vnet-manager | 2 | pass | yes | none | 2m 56s | 4m 34s | £0.0083 | 37474825292 |
+| 2026-10-06 14:14 | az700-40-lb-advanced | 3 | pass | yes | none | 2m 26s | 6m 23s | £0.0183 | 37475947305 |
+| 2026-10-06 14:38 | az700-37-p2s-vpn | 1 | pass | yes | none | 25m 55s | 14m 32s | £0.1166 | 37474828880 |
+| 2026-10-06 14:41 | az700-36-s2s-vpn | 2 | pass | yes | none | 26m 42s | 17m 2s | £0.2522 | 37474833372 |
+| 2026-10-06 14:42 | az700-42-frontdoor-private | 3 | pass | yes | none | 4m 56s | 22m 13s | £0.1678 | 37477274659 |
+| 2026-10-06 15:18 | az700-39-vwan-secured-hub | 2 | pass | yes | none | 45m 39s | 35m 2s | £0.6971 | 37474835793 |

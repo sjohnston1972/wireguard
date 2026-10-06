@@ -26,7 +26,7 @@
 # (region "Global", first five rules) £0.0189/h. A Private Link service has
 # no hourly meter (only data processed, pennies).
 id: az700-42-frontdoor-private
-version: 3
+version: 4
 title: "Front Door Premium: rules, caching, WAF, Private Link origin"
 summary: >-
   Front Door Premium in front of a web VM that has no public address at all: the origin is an internal load balancer
@@ -46,7 +46,7 @@ cost:
     - { name: "Standard load balancer (lb-int), first 5 rules", gbp_h: 0.0189 }
     - { name: "Private Link service (no hourly charge)", gbp_h: 0 }
   pricey: "Front Door Premium, base fee"
-timing: { deploy_min: 15, destroy_min: 12, session_h: 2, max_h: 3 }
+timing: { deploy_min: 15, destroy_min: 23, session_h: 2, max_h: 3 }
 capacity: { vm_sizes: [Standard_B1s] }
 regions: { secondary: null }
 connectivity: { peering: "off", dns_link: false, subnets_used: 1 }
