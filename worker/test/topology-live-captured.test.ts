@@ -24,6 +24,12 @@ describe("captured lab 43 (Private Link)", () => {
     expect(byLabel(g, "pls-svc").folded?.map((f) => f.label)).toEqual(["pls-svc.nic.1473d5c3-1fc8-4aee-8bd7-7d26c2899c75"]);
   });
 
+  it("the client subnet → the one storage account its service endpoint policy allows (the policy folds into the subnet)", () => {
+    const sep = g.edges.filter((e) => e.label === "service endpoint policy");
+    expect(sep).toMatchObject([{ kind: "dependency", from: byLabel(g, "snet-client").id, to: byLabel(g, "l43qvmkkst").id }]);
+    expect(byLabel(g, "snet-client").folded?.map((f) => f.label)).toContain("sep-storage");
+  });
+
   it("the Private Link service → its load balancer (frontend)", () => {
     expect(g.edges.filter((e) => e.from === byLabel(g, "pls-svc").id && e.to === byLabel(g, "lb-svc").id)).toMatchObject([{ kind: "traffic", label: "frontend" }]);
   });

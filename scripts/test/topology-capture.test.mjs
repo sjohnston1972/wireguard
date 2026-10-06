@@ -57,7 +57,7 @@ test("it keeps only the paths the rules read and fakes the subscription id", () 
 
 test("the keep list is property paths only, and covers what the core live rules read", () => {
   for (const p of CAPTURE_KEEP) assert.match(p, /^[A-Za-z][A-Za-z0-9]*(\[\])?(\.[A-Za-z][A-Za-z0-9]*(\[\])?)*$/, p);
-  for (const p of ["subnets[].properties.addressPrefix", "virtualNetworkPeerings[].properties.peeringState", "routes[].properties.nextHopIpAddress", "ipConfigurations[].properties.privateIPAddress", "privateLinkServiceConnections[].properties.privateLinkServiceConnectionState.status"]) assert.ok(CAPTURE_KEEP.includes(p), p);
+  for (const p of ["subnets[].properties.addressPrefix", "virtualNetworkPeerings[].properties.peeringState", "routes[].properties.nextHopIpAddress", "ipConfigurations[].properties.privateIPAddress", "privateLinkServiceConnections[].properties.privateLinkServiceConnectionState.status", "privateLinkService.id", "loadBalancerFrontendIpConfigurations[].id", "serviceEndpointPolicyDefinitions[].properties.serviceResources", "subnets[].id"]) assert.ok(CAPTURE_KEEP.includes(p), p);
 });
 
 test("a list and an object of the same name each keep their own paths (a metric alert's actions[], a log alert's actions.actionGroups)", () => {

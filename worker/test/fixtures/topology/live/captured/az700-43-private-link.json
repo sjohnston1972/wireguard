@@ -1,5 +1,5 @@
 {
- "_about": "Resource Graph rows of a running az700-43-private-link, captured read-only by scripts/topology-capture.mjs (subscription faked, only rule-read paths kept). Reconstructed, not captured (the keep list then dropped the path): pls-svc properties.loadBalancerFrontendIpConfigurations[0].id, set to lb-svc frontend fe-svc id exactly as captured on the lb-svc row (the lab has that one frontend; main.tf passes azurerm_lb.svc.frontend_ip_configuration[0].id).",
+ "_about": "Resource Graph rows of a running az700-43-private-link, captured read-only by scripts/topology-capture.mjs (subscription faked, only rule-read paths kept). Reconstructed, not captured (the keep list then dropped the path): pls-svc properties.loadBalancerFrontendIpConfigurations[0].id, set to lb-svc frontend fe-svc id exactly as captured on the lb-svc row (the lab has that one frontend; main.tf passes azurerm_lb.svc.frontend_ip_configuration[0].id). Also reconstructed: sep-storage properties.serviceEndpointPolicyDefinitions[0].properties.serviceResources = [l43qvmkkst id exactly as captured on its row] (main.tf: one definition, service_resources = [azurerm_storage_account.st.id]).",
  "rows": [
   {
    "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/RG-LAB-AZ700-43-PRIVATE-LINK/providers/Microsoft.Compute/disks/vm-client_OsDisk_1_ca192b68467145a1b7dcbc51389eef4d",
@@ -567,6 +567,15 @@
    "identity": null,
    "properties": {
     "provisioningState": "Succeeded",
+    "serviceEndpointPolicyDefinitions": [
+     {
+      "properties": {
+       "serviceResources": [
+        "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Storage/storageAccounts/l43qvmkkst"
+       ]
+      }
+     }
+    ],
     "subnets": [
      {
       "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer/subnets/snet-client"
