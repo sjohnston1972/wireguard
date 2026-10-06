@@ -7,6 +7,13 @@ import { setViewport } from "@/test/viewport";
 import { expectBottomSheet } from "@/test/dialogs";
 import { labCoverageFixture } from "@/test/fixtures";
 import { detailIdle, labs, session } from "./testData";
+import { PLANNED_URL, layoutServer, plannedGraph } from "./topology/places.fixtures";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// The Vitest config leaves CSS out of the module graph, so the stylesheet is read as a file.
+const labsCss = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "labs.css"), "utf8").replace(/\r\n/g, "\n");
 
 vi.setConfig({ testTimeout: 20_000 });
 beforeAll(async () => {
@@ -68,5 +75,57 @@ describe("Labs on the phone", () => {
     renderApp("/labs/history", { routes: routes() });
     const sheet = await screen.findByRole("dialog", { name: "Your labs" });
     expectBottomSheet(sheet);
+  });
+});
+
+// ── Lab topology plan T2.5: the diagram on the phone ─────────────────────
+
+describe("the lab diagram on the phone", () => {
+  const ID = "az104-06-blob-security";
+  const withDiagram = () => ({ ...routes(), [`GET ${PLANNED_URL}`]: plannedGraph(), ...layoutServer().routes });
+
+  it("the lab sheet has Readme and Diagram tabs", async () => {
+    const user = userEvent.setup();
+    setViewport("phone");
+    renderApp(`/labs/${ID}`, { routes: withDiagram() });
+    const lab = await screen.findByRole("dialog", { name: /Blob security/ });
+    expectBottomSheet(lab);
+    const tabs = within(within(lab).getByRole("tablist", { name: "Readme and diagram" }));
+    expect(tabs.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Readme", "Diagram"]);
+    await user.click(tabs.getByRole("tab", { name: "Diagram" }));
+    expect(await within(lab).findByRole("tree", { name: /diagram/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("location")).toHaveTextContent(`/labs/${ID}?view=diagram`);
+  });
+
+  it("the canvas is at most 60vh", () => {
+    // jsdom does not lay out, so the rule itself is checked: inside the phone query, the diagram tab's panel is min(60vh, 480px) tall.
+    const phone = labsCss.slice(labsCss.indexOf("@media (max-width: 640px)"));
+    const block = phone.slice(0, phone.indexOf("\n}\n"));
+    expect(block).toMatch(/\.labs-tabs--diagram \.tabs__panel \{ height: min\(60vh, 480px\); \}/);
+  });
+
+  it("details open as a Sheet", async () => {
+    const user = userEvent.setup();
+    setViewport("phone");
+    renderApp(`/labs/${ID}?view=diagram`, { routes: withDiagram() });
+    const lab = await screen.findByRole("dialog", { name: /Blob security/ });
+    const tree = await within(lab).findByRole("tree", { name: /diagram/i });
+    await user.click(within(tree).getByRole("treeitem", { name: /Storage account l06…blob/ }));
+    const details = await screen.findByRole("dialog", { name: "l06…blob" });
+    expectBottomSheet(details);
+    expect(details).toHaveTextContent("Storage account");
+  });
+
+  it("full screen works at 390 px", async () => {
+    const user = userEvent.setup();
+    setViewport("phone");
+    renderApp(`/labs/${ID}/diagram`, { routes: withDiagram() });
+    const main = within(screen.getByRole("main"));
+    expect(await main.findByRole("heading", { level: 1, name: /Blob security/ })).toBeInTheDocument();
+    expect(await main.findByRole("tree", { name: /diagram/i })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(main.getByRole("button", { name: "Close" }));
+    expect(screen.getByLabelText("location")).toHaveTextContent(new RegExp(`^/labs/${ID}$`));
+    expectBottomSheet(await screen.findByRole("dialog", { name: /Blob security/ }));
   });
 });
