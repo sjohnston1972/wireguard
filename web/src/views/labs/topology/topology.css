@@ -308,16 +308,23 @@
   stroke: var(--blue-bright);
   stroke-width: 2.4;
 }
+/* React Flow draws its edge-label layer before the nodes, so the containers' fills hid every label: lift it over them. */
+.topo-canvas .react-flow__edgelabel-renderer {
+  z-index: 1000;
+}
 .topo-edge-label {
   position: absolute;
   padding: 1px 7px;
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: 9px;
   background: var(--bg-elevated);
   color: var(--text-primary);
   font-size: 10.5px;
   font-weight: 600;
-  white-space: nowrap;
+  /* Labels of edges between the same two nodes share one chip, a line each. */
+  white-space: pre;
+  text-align: center;
+  line-height: 14px;
   pointer-events: none;
 }
 .topo-edge-label--dependency {

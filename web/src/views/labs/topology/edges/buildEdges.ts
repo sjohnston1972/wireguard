@@ -22,11 +22,23 @@ export interface BuildEdgesOptions {
 
 export function buildEdges(graph: TopologyGraph, byId: ReadonlyMap<string, TopoNode>, opts: BuildEdgesOptions): Edge<TopoEdgeData>[] {
   const out: Edge<TopoEdgeData>[] = [];
-  for (const e of graph.edges) {
-    if (!byId.has(e.from) || !byId.has(e.to) || e.from === e.to) continue;
+  const drawn = graph.edges.filter((e) => byId.has(e.from) && byId.has(e.to) && e.from !== e.to);
+  // Edges of one kind between the same two nodes (either way: a rule and its outbound return) would draw their labels
+  // on top of each other: the first carries them all, a line each, and the rest none.
+  const pair = (e: (typeof drawn)[number]) => `${e.kind}|${[e.from, e.to].sort().join("|")}`;
+  const shared = new Map<string, { first: string; labels: string[] }>();
+  for (const e of drawn) {
+    if (!e.label) continue;
+    const s = shared.get(pair(e));
+    if (!s) shared.set(pair(e), { first: e.id, labels: [e.label] });
+    else if (!s.labels.includes(e.label)) s.labels.push(e.label);
+  }
+  for (const e of drawn) {
     const ghost = e.id.startsWith("ghost:");
     const dim = !!opts.dimmed && (opts.dimmed.has(e.from) || opts.dimmed.has(e.to));
-    const data: TopoEdgeData = { showLabel: opts.labels, ghost, dim, ...(e.label ? { label: e.label } : {}), ...(e.state ? { state: e.state } : {}) };
+    const s = shared.get(pair(e));
+    const label = s && s.first === e.id ? s.labels.join("\n") : undefined;
+    const data: TopoEdgeData = { showLabel: opts.labels && (!s || s.first === e.id), ghost, dim, ...(label ? { label } : {}), ...(e.state ? { state: e.state } : {}) };
     if (e.kind === "traffic") {
       const both = /^peering/i.test(e.label ?? "") || /hub connection/i.test(e.label ?? "");
       const marker = { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "var(--topo-edge)" };

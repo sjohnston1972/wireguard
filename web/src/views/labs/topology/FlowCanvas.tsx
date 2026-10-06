@@ -27,7 +27,8 @@ import { layoutTopology } from "./layout";
 import { stackGraph } from "./stacks";
 import { movesOf, searchSets, toFlowNodes, type TopoFlowNode } from "./flowNodes";
 import { buildEdges } from "./edges/buildEdges";
-import { EDGE_TYPES } from "./edges/TopoEdges";
+import { EDGE_TYPES, PlacedLabels } from "./edges/TopoEdges";
+import type { Box } from "./edges/labelSpot";
 import { NODE_TYPES } from "./nodes/FlowNodes";
 import { useSprite } from "./icons/sprite";
 import { useFitRequests } from "./fitBus";
@@ -91,6 +92,8 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
   const aspect = measured ? `${qw}x${qh}` : undefined;
   const reserve = PANEL_RESERVE[variant];
   const laid = useMemo(() => layoutTopology(stacked, saved, measured ? { space: { w: qw, h: Math.max(1, qh - reserve) } } : {}), [stacked, saved, measured, qw, qh, reserve]);
+  // Where each edge label went (labels keep off each other); a new picture places them afresh.
+  const placedLabels = useMemo(() => new Map<string, Box>(), [laid]);
   const minZoom = mini ? MIN_FIT_ZOOM.mini : phone ? PHONE_MIN_FIT_ZOOM : MIN_FIT_ZOOM[variant];
   const fitOpts = useMemo(() => ({ padding: FIT_PADDING[variant], minZoom, maxZoom: 1, reserveTop: PANEL_RESERVE[variant] }), [variant, minZoom]);
   const startAt = useCallback(() => {
@@ -152,55 +155,57 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
   useFitRequests(fitToSearch);
 
   return (
-    <ReactFlow<TopoFlowNode>
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={NODE_TYPES}
-      edgeTypes={EDGE_TYPES}
-      onNodesChange={onNodesChange}
-      onNodeDragStart={onNodeDragStart}
-      onNodeDragStop={onNodeDragStop}
-      onPaneClick={() => onSelect(null)}
-      colorMode={theme}
-      connectionMode={ConnectionMode.Loose}
-      nodesConnectable={false}
-      nodesDraggable={!mini && !!onMove}
-      nodesFocusable={!mini}
-      edgesFocusable={!mini}
-      elementsSelectable={!mini}
-      elevateNodesOnSelect={false}
-      deleteKeyCode={null}
-      selectionKeyCode={null}
-      multiSelectionKeyCode={null}
-      panOnDrag={!mini}
-      zoomOnScroll={!mini}
-      zoomOnPinch={!mini}
-      zoomOnDoubleClick={!mini}
-      panOnScroll={false}
-      preventScrolling={!mini}
-      {...(firstView ? { defaultViewport: firstView } : { fitView: true, fitViewOptions: fitOpts })}
-      minZoom={0.1}
-      maxZoom={2}
-      proOptions={{ hideAttribution: !full }}
-    >
-      {!mini && (
-        <Panel position="top-right" className="topo-panel">
-          <button type="button" className="topo-panel__button" aria-expanded={legendOpen} onClick={() => setLegendOpen((o) => !o)}>
-            Legend
-          </button>
-          {legendOpen && <Legend graph={stacked} status={status} deploying={deploying} />}
-        </Panel>
-      )}
-      {full && (
-        <Panel position="top-left" className="topo-panel topo-panel--row">
-          <label className="topo-panel__toggle">
-            <Switch checked={animate && !reduced} onCheckedChange={setAnimate} label="Animate traffic" disabled={reduced} />
-            <span aria-hidden="true">Animate traffic</span>
-          </label>
-        </Panel>
-      )}
-      {full && <Controls showInteractive={false} fitViewOptions={{ duration: reduced ? 0 : 200, padding: 0.08 }} />}
-      {full && !phone && <MiniMap pannable zoomable className="topo-minimap" style={{ width: 160, height: 110 }} bgColor="var(--bg-panel)" maskColor="color-mix(in srgb, var(--bg-app) 60%, transparent)" nodeClassName={(n) => (n.type === "topoGroup" ? "topo-minimap__group" : "topo-minimap__asset")} />}
-    </ReactFlow>
+    <PlacedLabels.Provider value={placedLabels}>
+      <ReactFlow<TopoFlowNode>
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
+        onNodesChange={onNodesChange}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDragStop={onNodeDragStop}
+        onPaneClick={() => onSelect(null)}
+        colorMode={theme}
+        connectionMode={ConnectionMode.Loose}
+        nodesConnectable={false}
+        nodesDraggable={!mini && !!onMove}
+        nodesFocusable={!mini}
+        edgesFocusable={!mini}
+        elementsSelectable={!mini}
+        elevateNodesOnSelect={false}
+        deleteKeyCode={null}
+        selectionKeyCode={null}
+        multiSelectionKeyCode={null}
+        panOnDrag={!mini}
+        zoomOnScroll={!mini}
+        zoomOnPinch={!mini}
+        zoomOnDoubleClick={!mini}
+        panOnScroll={false}
+        preventScrolling={!mini}
+        {...(firstView ? { defaultViewport: firstView } : { fitView: true, fitViewOptions: fitOpts })}
+        minZoom={0.1}
+        maxZoom={2}
+        proOptions={{ hideAttribution: !full }}
+      >
+        {!mini && (
+          <Panel position="top-right" className="topo-panel">
+            <button type="button" className="topo-panel__button" aria-expanded={legendOpen} onClick={() => setLegendOpen((o) => !o)}>
+              Legend
+            </button>
+            {legendOpen && <Legend graph={stacked} status={status} deploying={deploying} />}
+          </Panel>
+        )}
+        {full && (
+          <Panel position="top-left" className="topo-panel topo-panel--row">
+            <label className="topo-panel__toggle">
+              <Switch checked={animate && !reduced} onCheckedChange={setAnimate} label="Animate traffic" disabled={reduced} />
+              <span aria-hidden="true">Animate traffic</span>
+            </label>
+          </Panel>
+        )}
+        {full && <Controls showInteractive={false} fitViewOptions={{ duration: reduced ? 0 : 200, padding: 0.08 }} />}
+        {full && !phone && <MiniMap pannable zoomable className="topo-minimap" style={{ width: 160, height: 110 }} bgColor="var(--bg-panel)" maskColor="color-mix(in srgb, var(--bg-app) 60%, transparent)" nodeClassName={(n) => (n.type === "topoGroup" ? "topo-minimap__group" : "topo-minimap__asset")} />}
+      </ReactFlow>
+    </PlacedLabels.Provider>
   );
 }

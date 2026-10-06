@@ -7,6 +7,10 @@ import { floatingEnds } from "./edges/floating";
 import { buildEdges } from "./edges/buildEdges";
 import { EDGE_TYPES } from "./edges/TopoEdges";
 import { installFlowStandIns } from "./flowTestEnv";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const topologyCss = readFileSync([join(process.cwd(), "web/src/views/labs/topology/topology.css"), join(process.cwd(), "src/views/labs/topology/topology.css")].find((p) => existsSync(p))!, "utf8");
 
 beforeAll(installFlowStandIns);
 
@@ -75,6 +79,23 @@ describe("buildEdges", () => {
   it("the mini variant has no labels", () => {
     expect(buildEdges(graph, byId, { ...base, labels: false })[0]!.data!.showLabel).toBe(false);
   });
+
+  it("traffic edges between the same two nodes (either way) share one label chip, a line each, so labels never sit on each other", () => {
+    const g2: TopologyGraph = {
+      ...graph,
+      edges: [
+        { id: "a", from: "lb", to: "vm", kind: "traffic", label: "TCP 80→80" },
+        { id: "b", from: "lb", to: "vm", kind: "traffic", label: "TCP 8081-8090→8080" },
+        { id: "c", from: "vm", to: "lb", kind: "traffic", label: "outbound" },
+        { id: "d", from: "id", to: "vm", kind: "dependency", label: "role: Reader" },
+      ],
+    };
+    const out = buildEdges(g2, byId, base);
+    expect(out.map((e) => [e.id, e.data!.showLabel])).toEqual([["a", true], ["b", false], ["c", false], ["d", true]]);
+    expect(out[0]!.data!.label).toBe("TCP 80→80\nTCP 8081-8090→8080\noutbound");
+    // Each edge keeps its own name for screen readers.
+    expect(out[2]!.ariaLabel).toBe("vm-svc to lb-svc: outbound");
+  });
 });
 
 describe("edges on the canvas", () => {
@@ -113,6 +134,18 @@ describe("edges on the canvas", () => {
     expect(path).toHaveClass("topo-edge--traffic");
     expect(screen.getByText("TCP 80→80")).toHaveClass("topo-edge-label");
     expect(container.querySelector('[data-id="e1"]')).toHaveAttribute("tabindex", "0");
+  });
+
+  it("edge labels are drawn above the nodes: React Flow puts its label layer under the nodes, so the canvas lifts it", () => {
+    const { container } = draw();
+    const label = screen.getByText("TCP 80→80");
+    // Rendered into React Flow's label layer, with a chip background so it reads over lines.
+    expect(label.closest(".react-flow__edgelabel-renderer")).not.toBeNull();
+    const rule = (sel: string) => new RegExp(`(?:^|\n)${sel.replace(/[.[\]]/g, "\\$&")}\\s*\\{[^}]*`).exec(topologyCss)?.[0] ?? "";
+    const layer = rule(".topo-canvas .react-flow__edgelabel-renderer");
+    expect(Number(/z-index:\s*(\d+)/.exec(layer)?.[1] ?? 0)).toBeGreaterThanOrEqual(1000);
+    expect(rule(".topo-edge-label")).toMatch(/background:\s*var\(--bg-elevated\)/);
+    expect(container.querySelector(".react-flow__edgelabel-renderer")).not.toBeNull();
   });
 
   it("dependency edges are dashed and never focusable", () => {
