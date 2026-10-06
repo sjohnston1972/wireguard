@@ -278,7 +278,7 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
     else if (n.kind === "resourceGroup") key = nodeKey("Microsoft.Resources/resourceGroups", [n.label], nameCtx);
     else if (n.kind === "subnet") key = nodeKey("Microsoft.Network/virtualNetworks/subnets", subnetPath.get(n.id) ?? [n.label], nameCtx);
     else key = nodeKey(n.armType ?? "unknown", namePathOf(rowById.get(n.id)?.id ?? n.id), nameCtx);
-    return { id: n.id, key, group: rgOfNode(n) };
+    return { id: n.id, key, group: n.kind === "resourceGroup" ? null : rgOfNode(n) };
   });
   const keys = disambiguate(keyed, primaryRg);
   for (const n of nodes.values()) n.key = keys[n.id] ?? n.key;

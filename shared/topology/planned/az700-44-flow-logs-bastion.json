@@ -89,7 +89,7 @@
   },
   {
    "id": "tf:azurerm_network_watcher_flow_log.vnet",
-   "key": "microsoft.network/networkwatchers/flowlogs/networkwatcher_{r}/lab-az700-44-flow-logs-bastion-vnet",
+   "key": "microsoft.network/networkwatchers/flowlogs/networkwatcher_{r}/lab-az700-44-flow-logs-bastion-vnet#networkwatcherrg",
    "kind": "flowLog",
    "label": "lab-az700-44-flow-logs-bastion-vnet",
    "props": {

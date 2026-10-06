@@ -27,7 +27,7 @@
   },
   {
    "id": "tf:azurerm_recovery_services_vault.lab",
-   "key": "microsoft.recoveryservices/vaults/rsv-lab",
+   "key": "microsoft.recoveryservices/vaults/rsv-lab#secondary",
    "kind": "recoveryVault",
    "label": "rsv-lab",
    "props": {
@@ -144,7 +144,7 @@
   },
   {
    "id": "tf:azurerm_subnet.target",
-   "key": "microsoft.network/virtualnetworks/subnets/vnet-target/snet-vms",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-target/snet-vms#secondary",
    "kind": "subnet",
    "label": "snet-vms",
    "props": {
@@ -156,7 +156,7 @@
   },
   {
    "id": "tf:azurerm_subnet.test",
-   "key": "microsoft.network/virtualnetworks/subnets/vnet-test/snet-vms",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-test/snet-vms#secondary",
    "kind": "subnet",
    "label": "snet-vms",
    "props": {
@@ -183,7 +183,7 @@
   },
   {
    "id": "tf:azurerm_virtual_network.target",
-   "key": "microsoft.network/virtualnetworks/vnet-target",
+   "key": "microsoft.network/virtualnetworks/vnet-target#secondary",
    "kind": "vnet",
    "label": "vnet-target",
    "props": {
@@ -197,7 +197,7 @@
   },
   {
    "id": "tf:azurerm_virtual_network.test",
-   "key": "microsoft.network/virtualnetworks/vnet-test",
+   "key": "microsoft.network/virtualnetworks/vnet-test#secondary",
    "kind": "vnet",
    "label": "vnet-test",
    "props": {

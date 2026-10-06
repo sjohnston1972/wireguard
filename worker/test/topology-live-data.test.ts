@@ -36,7 +36,7 @@ describe("live private access and data (T3.4)", () => {
   it("SQL databases are cards in their own group with status as health and a dependency edge to their server; master folds into the server", () => {
     const dbs = all(g, "appdb");
     expect(dbs.map((d) => parentLabel(g, d)).sort()).toEqual(["rg-lab-az305-23-sql-failover", "rg-lab-az305-23-sql-failover-secondary"]);
-    expect(dbs.map((d) => d.key).sort()).toEqual(["microsoft.sql/servers/databases/{p}-sqlp/appdb", "microsoft.sql/servers/databases/{p}-sqls/appdb"]);
+    expect(dbs.map((d) => d.key).sort()).toEqual(["microsoft.sql/servers/databases/{p}-sqlp/appdb", "microsoft.sql/servers/databases/{p}-sqls/appdb#secondary"]);
     expect(dbs[0]!.props).toMatchObject({ status: "Online", sku: "Basic" });
     const scratch = byLabel(g, "scratch");
     expect(scratch.health).toEqual({ tone: "warn", word: "Paused" });

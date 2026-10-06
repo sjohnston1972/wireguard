@@ -19,7 +19,7 @@
   },
   {
    "id": "tf:azurerm_mssql_database.scratch",
-   "key": "microsoft.sql/servers/databases/{p}-sqls/scratch",
+   "key": "microsoft.sql/servers/databases/{p}-sqls/scratch#secondary",
    "kind": "sqlDatabase",
    "label": "scratch",
    "props": {
@@ -31,7 +31,7 @@
   },
   {
    "id": "tf:azurerm_mssql_database.secondary",
-   "key": "microsoft.sql/servers/databases/{p}-sqls/appdb",
+   "key": "microsoft.sql/servers/databases/{p}-sqls/appdb#secondary",
    "kind": "sqlDatabase",
    "label": "appdb",
    "props": {
@@ -62,7 +62,7 @@
   },
   {
    "id": "tf:azurerm_mssql_server.secondary",
-   "key": "microsoft.sql/servers/{p}-sqls",
+   "key": "microsoft.sql/servers/{p}-sqls#secondary",
    "kind": "sqlServer",
    "label": "l23…-sqls",
    "props": {

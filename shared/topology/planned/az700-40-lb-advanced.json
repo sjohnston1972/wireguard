@@ -141,7 +141,7 @@
   },
   {
    "id": "tf:azurerm_lb.ukw",
-   "key": "microsoft.network/loadbalancers/lb-ukw",
+   "key": "microsoft.network/loadbalancers/lb-ukw#secondary",
    "kind": "loadBalancer",
    "label": "lb-ukw",
    "props": {
@@ -225,7 +225,7 @@
   },
   {
    "id": "tf:azurerm_linux_virtual_machine.web2",
-   "key": "microsoft.compute/virtualmachines/vm-web2",
+   "key": "microsoft.compute/virtualmachines/vm-web2#secondary",
    "kind": "vm",
    "label": "vm-web2",
    "props": {
@@ -313,7 +313,7 @@
   },
   {
    "id": "tf:azurerm_subnet.ukw_web",
-   "key": "microsoft.network/virtualnetworks/subnets/vnet-ukw/snet-web",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-ukw/snet-web#secondary",
    "kind": "subnet",
    "label": "snet-web",
    "props": {
@@ -394,7 +394,7 @@
   },
   {
    "id": "tf:azurerm_virtual_network.ukw",
-   "key": "microsoft.network/virtualnetworks/vnet-ukw",
+   "key": "microsoft.network/virtualnetworks/vnet-ukw#secondary",
    "kind": "vnet",
    "label": "vnet-ukw",
    "props": {

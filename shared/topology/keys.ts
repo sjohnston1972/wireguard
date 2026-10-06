@@ -54,21 +54,22 @@ export function planLabel(name: string, n: string): string {
 }
 
 /**
- * Keys made unique: when two nodes share a key, a node outside the primary
- * group gets "#<group suffix>" ("#secondary" for rg-lab-<id>-secondary); any
- * that still collide get "#2", "#3" ... by id. Deterministic for any input
- * order. Returns id → key.
+ * Keys made unique: a node in a group other than the primary one always gets
+ * "#<group suffix>" ("#secondary" for rg-lab-<id>-secondary), whether or not
+ * a twin shares its name, so its key is the same in the planned diagram and
+ * in a live one where the twin is missing (saved positions never shift). A
+ * group's own node passes group null (its name already says which). Any that
+ * still collide get "#2", "#3" ... by id. Deterministic for any input order.
+ * Returns id → key.
  */
 export function disambiguate(nodes: readonly { id: string; key: string; group?: string | null }[], primaryRg: string): Record<string, string> {
   const sorted = [...nodes].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const count = new Map<string, number>();
-  for (const n of sorted) count.set(n.key, (count.get(n.key) ?? 0) + 1);
   const out: Record<string, string> = {};
   const p = primaryRg.toLowerCase();
   for (const n of sorted) {
     let key = n.key;
     const g = (n.group ?? "").toLowerCase();
-    if ((count.get(n.key) ?? 0) > 1 && g && g !== p) key = `${n.key}#${g.startsWith(`${p}-`) ? g.slice(p.length + 1) : g}`;
+    if (g && g !== p) key = `${n.key}#${g.startsWith(`${p}-`) ? g.slice(p.length + 1) : g}`;
     out[n.id] = key;
   }
   const seen = new Map<string, number>();

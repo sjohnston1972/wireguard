@@ -448,7 +448,7 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
       key = arm ? nodeKey(arm, path, nameCtx) : `terraform/${i.type}/${path.map((p) => p.toLowerCase()).join("/")}`;
       if (!n.armType && arm) n.armType = arm;
     } else key = `tf/${n.id}`;
-    keyed.push({ id: n.id, key, group: rgOfNode(n)?.label ?? null });
+    keyed.push({ id: n.id, key, group: n.kind === "resourceGroup" ? null : (rgOfNode(n)?.label ?? null) });
   }
   const keys = disambiguate(keyed, primaryRg);
   for (const n of nodes.values()) n.key = keys[n.id] ?? n.key;

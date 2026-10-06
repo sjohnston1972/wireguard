@@ -1,6 +1,7 @@
 // topology-model.test.ts: the graph model, the kinds registry and node keys (lab topology spec §4.1-§4.3, ruling 6).
 
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { TOPOLOGY_SCHEMA, sortGraph, type TopologyGraph, type TopoAssetKind, TOPO_ASSET_KINDS, TOPO_GROUP_KINDS } from "../../shared/topology/model";
 import { GROUP_KINDS, KINDS, kindOfArm, kindOfTf, LIST_VIEW_AT, STACK_AT } from "../../shared/topology/kinds";
 import { disambiguate, MOCK_NAME, nodeKey, normaliseName, planLabel } from "../../shared/topology/keys";
@@ -129,6 +130,36 @@ describe("keys", () => {
       "tf:c": "microsoft.network/virtualnetworks/vnet-hub",
     });
     expect(twice).toEqual(once);
+  });
+
+  it("a node in the secondary group keeps #secondary whether or not its twin is present (planned and live keys match)", () => {
+    const P = "rg-lab-az700-40-lb-advanced";
+    const both = disambiguate(
+      [
+        { id: "tf:a", key: "microsoft.network/virtualnetworks/vnet-app", group: P },
+        { id: "tf:b", key: "microsoft.network/virtualnetworks/vnet-app", group: `${P}-secondary` },
+      ],
+      P,
+    );
+    // Live, before the primary twin exists (or after it is deleted): the secondary key must not shift.
+    const alone = disambiguate([{ id: "/x/b", key: "microsoft.network/virtualnetworks/vnet-app", group: `${P}-secondary` }], P);
+    expect(alone["/x/b"]).toBe(both["tf:b"]);
+    expect(alone["/x/b"]).toBe("microsoft.network/virtualnetworks/vnet-app#secondary");
+    // A unique name in the secondary group carries it too; the group itself (group: null) does not.
+    expect(disambiguate([{ id: "u", key: "microsoft.network/loadbalancers/lb-ukw", group: `${P}-secondary` }, { id: "g", key: `microsoft.resources/resourcegroups/${P}-secondary`, group: null }], P)).toEqual({
+      u: "microsoft.network/loadbalancers/lb-ukw#secondary",
+      g: `microsoft.resources/resourcegroups/${P}-secondary`,
+    });
+  });
+
+  it("the live and planned builders give a secondary group's resources the same keys", async () => {
+    const { roundTrip } = await import("./fixtures/topology/round-trip");
+    const r = roundTrip("az700-40-lb-advanced");
+    expect({ added: r.added, missing: r.missing }).toEqual({ added: [], missing: [] });
+    const planned = JSON.parse(readFileSync(new URL("../../shared/topology/planned/az700-40-lb-advanced.json", import.meta.url), "utf8")) as { nodes: { key: string; label: string }[] };
+    expect(planned.nodes.find((n) => n.label === "lb-ukw")?.key).toMatch(/#secondary$/);
+    expect(planned.nodes.find((n) => n.label === "vnet-ukw")?.key).toMatch(/#secondary$/);
+    expect(planned.nodes.filter((n) => /resourcegroups\//.test(n.key)).map((n) => n.key).every((k) => !k.includes("#"))).toBe(true);
   });
 
   it("a collision inside one group falls back to a number, by id", () => {

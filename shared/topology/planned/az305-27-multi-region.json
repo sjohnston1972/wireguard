@@ -68,7 +68,7 @@
   },
   {
    "id": "tf:azurerm_container_group.ukw",
-   "key": "microsoft.containerinstance/containergroups/ci-ukw",
+   "key": "microsoft.containerinstance/containergroups/ci-ukw#secondary",
    "kind": "containerGroup",
    "label": "ci-ukw",
    "props": {
