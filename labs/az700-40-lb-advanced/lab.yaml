@@ -1,0 +1,54 @@
+# Lab 40 (AZ-700 labs plan, area Z3). AZ-700 study guide skills this lab
+# touches (outline "Skills measured as of July 27, 2026"):
+#   Design and implement application delivery services > Design and
+#   implement an Azure Load Balancer: "Select an Azure Load Balancer SKU and
+#   tier", "Choose between public and internal", "Create and configure an
+#   Azure Load Balancer (including cross-region)", "Implement a load
+#   balancing rule", "Create and configure inbound NAT rules", "Create
+#   explicit outbound rules for a load balancer", "Implement a Gateway Load
+#   Balancer".
+# Costs are GBP list prices from the Retail Prices API (2026-10-05, checked
+# again 2026-10-06), rounded up. npm run labs-verify -- --meters
+# az700-40-lb-advanced checks the retail entries:
+#   Standard_B1s               £0.0089/h Linux, the same in uksouth and ukwest,
+#                              so all three VMs are priced from the uksouth row
+#   S4 LRS Disk                £1.2755/month = £0.0018/h each (both regions)
+#   Standard IPv4 Static Public IP   £0.0038/h, uksouth and (region: secondary) ukwest
+#   Global IPv4 Static Public IP     £0.0075/h (the global tier's frontend)
+# Authored (ruling 54: non-regional rows, region "Global"): "Standard
+# Included LB Rules and Outbound Rules" £0.0189/h per regional load balancer
+# (first five rules; NAT rules are free), "Global Included LB Rules and
+# Outbound Rules" £0.0189/h, "Gateway" £0.0094/h and "Gateway Chain"
+# £0.0075/h. Data processed (£0.0038/GB, Gateway £0.003/GB) is pennies.
+id: az700-40-lb-advanced
+version: 1
+title: "Load Balancer: cross-region, Gateway LB, inbound NAT, outbound rules"
+summary: >-
+  A global-tier load balancer in front of public load balancers in uksouth and ukwest, the uksouth one chained to a
+  Gateway load balancer and a VXLAN appliance VM, with an inbound NAT rule over a port range and explicit outbound rules.
+exam: AZ-700
+skill_areas: [az700.delivery]
+level: expert
+type: explore
+prerequisites: [az104-16-lb-appgw]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s (one in ukwest, same price)", gbp_h: 0.0089, qty: 3, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 3, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Global load balancer (lb-global), first 5 rules", gbp_h: 0.0189 }
+    - { name: "Public IP, Global static (lb-global)", gbp_h: 0.0075, retail: { meter: "Global IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "Standard load balancer (lb-uks), first 5 rules", gbp_h: 0.0189 }
+    - { name: "Public IP, Standard static (lb-uks)", gbp_h: 0.0038, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "Standard load balancer (lb-ukw, ukwest), first 5 rules", gbp_h: 0.0189 }
+    - { name: "Public IP, Standard static (lb-ukw, ukwest)", gbp_h: 0.0038, region: secondary, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "Gateway Load Balancer (lb-gw)", gbp_h: 0.0094 }
+    - { name: "Gateway Load Balancer chain (lb-uks to lb-gw)", gbp_h: 0.0075 }
+  pricey: null
+timing: { deploy_min: 10, destroy_min: 8, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s, Standard_B1s] }
+regions: { secondary: ukwest }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false
