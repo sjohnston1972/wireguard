@@ -11,6 +11,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { attr, lab, labContentSuite, outputs, resources, uncomment } from "./fixtures/labs/content.mjs";
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 
@@ -153,4 +155,89 @@ test(`${NAT}: the readme explains BYOIP under Not built here`, () => {
   assert.match(nb, /\]\(https:\/\/learn\.microsoft\.com\//, "with a Learn link");
   assert.ok(outputs(l).includes("peer_vnet_id"));
   assert.doesNotMatch(uncomment(Object.values(l.files).join("\n")), /azurerm_custom_ip_prefix/);
+});
+
+// ── Lab 32: hybrid DNS with DNS Private Resolver ─────────────────────────
+
+const DNS = "az700-32-dns-resolver";
+
+labContentSuite(DNS, { marker: "££" });
+
+test(`${DNS}: inbound and outbound endpoints in their own delegated /28 subnets`, () => {
+  const l = lab(DNS);
+  const resolver = one(l, "azurerm_private_dns_resolver");
+  assert.equal(attr(resolver.body, "virtual_network_id"), "azurerm_virtual_network.hub.id");
+  const inbound = one(l, "azurerm_private_dns_resolver_inbound_endpoint");
+  const outbound = one(l, "azurerm_private_dns_resolver_outbound_endpoint");
+  assert.equal(attr(inbound.body, "private_dns_resolver_id"), "azurerm_private_dns_resolver.hub.id");
+  assert.equal(attr(outbound.body, "private_dns_resolver_id"), "azurerm_private_dns_resolver.hub.id");
+  const ipc = nested(inbound.body, "ip_configurations");
+  assert.equal(attr(ipc, "subnet_id"), "azurerm_subnet.in.id");
+  assert.equal(attr(ipc, "private_ip_allocation_method"), '"Dynamic"');
+  assert.equal(attr(outbound.body, "subnet_id"), "azurerm_subnet.out.id");
+  for (const k of ["in", "out"]) {
+    const s = byName(l, "azurerm_subnet", k);
+    assert.equal(attr(s.body, "virtual_network_name"), "azurerm_virtual_network.hub.name", `snet-${k} is in the hub`);
+    assert.equal(attr(nested(s.body, "service_delegation"), "name"), '"Microsoft.Network/dnsResolvers"', `snet-${k} is delegated to DNS resolvers`);
+    const prefix = planned(DNS, `azurerm_subnet.${k}`).address_prefixes;
+    assert.equal(prefix.length, 1);
+    assert.match(prefix[0], /\/28$/, `snet-${k} is a /28`);
+  }
+  // The two /28s are their own: neither is snet-app.
+  assert.notEqual(planned(DNS, "azurerm_subnet.in").address_prefixes[0], planned(DNS, "azurerm_subnet.out").address_prefixes[0]);
+  assert.match(planned(DNS, "azurerm_subnet.app").address_prefixes[0], /\/24$/);
+  for (const s of resources(l, "azurerm_subnet")) assert.ok(attr(s.body, "default_outbound_access_enabled") !== undefined, `${s.labels[1]}: default outbound access set explicitly (ruling 37)`);
+});
+
+test(`${DNS}: the ruleset forwards onprem.lab32.internal to the dnsmasq VM and is linked to the hub`, () => {
+  const l = lab(DNS);
+  const rs = one(l, "azurerm_private_dns_resolver_dns_forwarding_ruleset");
+  assert.equal(attr(rs.body, "private_dns_resolver_outbound_endpoint_ids"), "[azurerm_private_dns_resolver_outbound_endpoint.out.id]");
+  const rule = one(l, "azurerm_private_dns_resolver_forwarding_rule");
+  assert.equal(attr(rule.body, "dns_forwarding_ruleset_id"), `azurerm_private_dns_resolver_dns_forwarding_ruleset.${rs.labels[1]}.id`);
+  assert.equal(attr(rule.body, "domain_name"), '"onprem.lab32.internal."', "the trailing dot: a fully qualified name");
+  const target = nested(rule.body, "target_dns_servers");
+  assert.equal(attr(target, "ip_address"), "local.dns_ip", "the dnsmasq VM's fixed address");
+  assert.equal(attr(target, "port"), "53");
+  const dnsNic = nested(byName(l, "azurerm_network_interface", "dns").body, "ip_configuration");
+  assert.equal(attr(dnsNic, "private_ip_address_allocation"), '"Static"');
+  assert.equal(attr(dnsNic, "private_ip_address"), "local.dns_ip");
+  const link = one(l, "azurerm_private_dns_resolver_virtual_network_link");
+  assert.equal(attr(link.body, "dns_forwarding_ruleset_id"), `azurerm_private_dns_resolver_dns_forwarding_ruleset.${rs.labels[1]}.id`);
+  assert.equal(attr(link.body, "virtual_network_id"), "azurerm_virtual_network.hub.id");
+  // The plan knows the rule's target: the fourth host of snet-onprem, in vnet-onprem.
+  const r = planned(DNS, "azurerm_private_dns_resolver_forwarding_rule.onprem");
+  assert.deepEqual(r.target_dns_servers, [{ ip_address: "10.71.208.4", port: 53 }]);
+  // dnsmasq answers onprem.lab32.internal itself and sends azure.lab32.internal to the inbound endpoint.
+  const tpl = readFileSync(join(l.tfDir, "dnsmasq-init.yaml.tftpl"), "utf8");
+  assert.match(tpl, /local=\/onprem\.lab32\.internal\//);
+  assert.match(tpl, /host-record=fileserver\.onprem\.lab32\.internal,/);
+  assert.match(tpl, /server=\/azure\.lab32\.internal\/\$\{inbound_ip\}/);
+  assert.match(uncomment(l.files["main.tf"]), /inbound_ip\s*=\s*azurerm_private_dns_resolver_inbound_endpoint\.in\.ip_configurations\[0\]\.private_ip_address/);
+});
+
+test(`${DNS}: the on-prem VNet uses the dnsmasq VM for DNS and that VM's NIC uses Azure DNS`, () => {
+  const l = lab(DNS);
+  const onprem = byName(l, "azurerm_virtual_network", "onprem");
+  assert.equal(attr(onprem.body, "dns_servers"), "[local.dns_ip]");
+  assert.equal(attr(byName(l, "azurerm_virtual_network", "hub").body, "dns_servers"), undefined, "the hub keeps Azure DNS (the ruleset is linked there)");
+  assert.equal(attr(byName(l, "azurerm_network_interface", "dns").body, "dns_servers"), '["168.63.129.16"]', "vm-dns resolves through Azure DNS, so its apt install works before dnsmasq runs");
+  // The two VNets are peered both ways (standing in for a VPN or ExpressRoute).
+  const peerings = resources(l, "azurerm_virtual_network_peering").map((p) => `${attr(p.body, "virtual_network_name")} -> ${attr(p.body, "remote_virtual_network_id")}`).sort();
+  assert.deepEqual(peerings, ["azurerm_virtual_network.hub.name -> azurerm_virtual_network.onprem.id", "azurerm_virtual_network.onprem.name -> azurerm_virtual_network.hub.id"]);
+  assert.match(l.readme, /VPN or ExpressRoute/);
+  // vm-dns installs dnsmasq, so its subnet has default outbound access on.
+  assert.equal(attr(byName(l, "azurerm_subnet", "onprem").body, "default_outbound_access_enabled"), "true");
+  assert.deepEqual(planned(DNS, "azurerm_virtual_network.onprem").dns_servers, ["10.71.208.4"]);
+});
+
+test(`${DNS}: dns_link is true and Terraform never links a zone to the gateway`, () => {
+  const l = lab(DNS);
+  assert.equal(l.yaml.connectivity.dns_link, true);
+  const zone = one(l, "azurerm_private_dns_zone");
+  assert.equal(attr(zone.body, "name"), '"azure.lab32.internal"', "a .internal name: the gateway's dnsmasq forwards internal to Azure DNS (ruling 10)");
+  const links = resources(l, "azurerm_private_dns_zone_virtual_network_link");
+  assert.deepEqual(links.map((x) => attr(x.body, "virtual_network_id")), ["azurerm_virtual_network.hub.id"], "the zone is linked to the hub only; the Worker links it to the gateway while peered");
+  assert.equal(attr(links[0].body, "registration_enabled"), "true");
+  assert.doesNotMatch(uncomment(Object.values(l.files).join("\n")), /gateway_vnet_id/, "Terraform never names the gateway's VNet");
 });
