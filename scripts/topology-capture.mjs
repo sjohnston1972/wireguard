@@ -9,13 +9,16 @@
 // (CAPTURE_KEEP), tags but lab and project dropped, the identity column
 // dropped, and the subscription id replaced with a fake one, and writes the
 // rows to worker/test/fixtures/topology/live/captured/<id>.json (or the path
-// given). Reads only; free. Extend CAPTURE_KEEP with the rules.
+// given). Only rows in the lab's own groups are kept (ownsName, as the
+// Worker re-checks), and every public IP is mapped to a TEST-NET address.
+// Reads only; free. Extend CAPTURE_KEEP with the rules.
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { labFolders } from "./lib/labs.mjs";
 
 export const FAKE_SUBSCRIPTION = "00000000-0000-4000-8000-000000000000";
 
@@ -147,19 +150,72 @@ function cut(value, tree) {
 
 const fakeSub = (v) => (typeof v === "string" ? v.replace(/\/subscriptions\/[^/]+/gi, `/subscriptions/${FAKE_SUBSCRIPTION}`) : Array.isArray(v) ? v.map(fakeSub) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fakeSub(x)])) : v);
 
-/** Rows reduced to what the rules read, with the subscription faked. */
-export function captureRows(rows, keep = CAPTURE_KEEP) {
+const IPV4 = /\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b/g;
+const TEST_NETS = ["203.0.113", "198.51.100", "192.0.2"];
+
+/** Addresses that stay as they are: private, shared, loopback, link-local, Azure's platform address, TEST-NET, 0/8, multicast and above. */
+function keepIp(a, b, c) {
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 168 && b === 63 && c === 129) return true;
+  return TEST_NETS.includes(`${a}.${b}.${c}`);
+}
+
+/** Every public IPv4 in a value (deep) replaced by a TEST-NET address, the same one each time it appears. */
+function testNetIps(rows) {
+  const used = new Set(JSON.stringify(rows).match(IPV4) ?? []);
+  const map = new Map();
+  let next = 0;
+  const fresh = () => {
+    for (;;) {
+      const net = TEST_NETS[Math.floor(next / 254)];
+      if (!net) throw new Error("more public IPs than TEST-NET has room for");
+      const ip = `${net}.${(next++ % 254) + 1}`;
+      if (!used.has(ip)) return ip;
+    }
+  };
+  const swap = (s) =>
+    s.replace(IPV4, (m, a, b, c, d) => {
+      const n = [a, b, c, d].map(Number);
+      if (n.some((x) => x > 255) || keepIp(n[0], n[1], n[2])) return m;
+      if (!map.has(m)) map.set(m, fresh());
+      return map.get(m);
+    });
+  const walk = (v) => (typeof v === "string" ? swap(v) : Array.isArray(v) ? v.map(walk) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)])) : v);
+  return walk(rows);
+}
+
+/** ownsName (shared/labs.ts), through Vite's module runner. */
+export async function loadOwnsName() {
+  const { runnerImport } = await import("vite");
+  const { module } = await runnerImport(fileURLToPath(new URL("../shared/labs.ts", import.meta.url)), { configFile: false, logLevel: "error" });
+  return module.ownsName;
+}
+
+/**
+ * Rows reduced to what the rules read: only rows in `labId`'s own groups
+ * (owns = ownsName, ids = the catalogue's ids, as the Worker re-checks),
+ * the subscription faked and every public IP mapped to TEST-NET.
+ */
+export function captureRows(rows, { labId, ids, owns, keep = CAPTURE_KEEP } = {}) {
+  if (!labId || !Array.isArray(ids) || typeof owns !== "function") throw new Error("captureRows needs { labId, ids, owns } to keep only the lab's own rows");
   const tree = keepTree(keep);
-  return rows.map((r) => {
-    const out = {};
-    for (const c of COLUMNS) out[c] = r[c] ?? null;
-    const tags = {};
-    for (const [k, v] of Object.entries(r.tags ?? {})) if (["lab", "project"].includes(k.toLowerCase())) tags[k] = v;
-    out.tags = tags;
-    out.identity = null;
-    out.properties = cut(r.properties ?? {}, tree) ?? {};
-    return fakeSub(out);
-  });
+  const mine = rows.filter((r) => typeof r?.resourceGroup === "string" && owns(labId, r.resourceGroup, ids));
+  return testNetIps(
+    mine.map((r) => {
+      const out = {};
+      for (const c of COLUMNS) out[c] = r[c] ?? null;
+      const tags = {};
+      for (const [k, v] of Object.entries(r.tags ?? {})) if (["lab", "project"].includes(k.toLowerCase())) tags[k] = v;
+      out.tags = tags;
+      out.identity = null;
+      out.properties = cut(r.properties ?? {}, tree) ?? {};
+      return fakeSub(out);
+    }),
+  );
 }
 
 /** The Resource Graph request body: the one query, from shared/topology/query.ts. */
@@ -193,7 +249,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       console.error(`Resource Graph refused the query (az rest exit ${r.status}); nothing written`);
       process.exit(1);
     }
-    const rows = captureRows(JSON.parse(r.stdout).data ?? []);
+    const ids = labFolders(fileURLToPath(new URL("../labs/", import.meta.url)));
+    const rows = captureRows(JSON.parse(r.stdout).data ?? [], { labId, ids, owns: await loadOwnsName() });
     const out = outArg ?? fileURLToPath(new URL(`../worker/test/fixtures/topology/live/captured/${labId}.json`, import.meta.url));
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, JSON.stringify({ _about: `Resource Graph rows of a running ${labId}, captured read-only by scripts/topology-capture.mjs (subscription faked, only rule-read paths kept).`, rows }, null, 1) + "\n");

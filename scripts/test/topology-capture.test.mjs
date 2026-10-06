@@ -9,7 +9,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CAPTURE_KEEP, captureRequest, captureRows, FAKE_SUBSCRIPTION } from "../topology-capture.mjs";
+import { CAPTURE_KEEP, captureRequest, captureRows, FAKE_SUBSCRIPTION, loadOwnsName } from "../topology-capture.mjs";
 
 const SUB = "1f2e3d4c-5b6a-4978-8695-a4b3c2d1e0f9";
 const row = {
@@ -38,7 +38,7 @@ const row = {
 };
 
 test("it keeps only the paths the rules read and fakes the subscription id", () => {
-  const [out] = captureRows([row]);
+  const [out] = captureRows([row], { labId: "az104-14-peering-udr", ids: ["az104-14-peering-udr"], owns: (id, name) => name === `rg-lab-${id}` });
   const text = JSON.stringify(out);
   assert.doesNotMatch(text, new RegExp(SUB), "the real subscription id is gone");
   assert.match(text, new RegExp(FAKE_SUBSCRIPTION));
@@ -58,6 +58,38 @@ test("it keeps only the paths the rules read and fakes the subscription id", () 
 test("the keep list is property paths only, and covers what the core live rules read", () => {
   for (const p of CAPTURE_KEEP) assert.match(p, /^[A-Za-z]+(\[\])?(\.[A-Za-z]+(\[\])?)*$/, p);
   for (const p of ["subnets[].properties.addressPrefix", "virtualNetworkPeerings[].properties.peeringState", "routes[].properties.nextHopIpAddress", "ipConfigurations[].properties.privateIPAddress", "privateLinkServiceConnections[].properties.privateLinkServiceConnectionState.status"]) assert.ok(CAPTURE_KEEP.includes(p), p);
+});
+
+const LAB = "az104-14-peering-udr";
+const IDS = ["az104-14-peering-udr", "az104-14-peering-udr-extra", "az104-13-vnets"];
+const rowIn = (rg, name, extra = {}) => ({ ...row, id: `/subscriptions/${SUB}/resourceGroups/${rg}/providers/Microsoft.Network/publicIPAddresses/${name}`, name, type: "microsoft.network/publicipaddresses", resourceGroup: rg, ...extra });
+
+test("only the lab's own groups are kept (ownsName): another lab's, a longer id's and an outside group's rows are dropped", async () => {
+  const owns = await loadOwnsName();
+  const rows = [rowIn(`rg-lab-${LAB}`, "pip-a"), rowIn(`rg-lab-${LAB}-secondary`, "pip-b"), rowIn("rg-lab-az104-13-vnets", "pip-other"), rowIn(`rg-lab-${LAB}-extra`, "pip-longer"), rowIn("rg-wg-ondemand", "pip-wg")];
+  const out = captureRows(rows, { labId: LAB, ids: IDS, owns });
+  assert.deepEqual(out.map((r) => r.name), ["pip-a", "pip-b"]);
+  assert.throws(() => captureRows(rows), /labId/);
+});
+
+test("public IPs become TEST-NET addresses, consistently; private, platform and TEST-NET addresses stay", async () => {
+  const owns = await loadOwnsName();
+  const rows = [
+    rowIn(`rg-lab-${LAB}`, "pip-a", { properties: { ipAddress: "20.108.45.7", ipPrefix: "51.140.12.0/28", publicIPAllocationMethod: "Static" } }),
+    rowIn(`rg-lab-${LAB}`, "pip-b", { properties: { ipAddress: "20.108.45.7", customDnsConfigs: [{ ipAddresses: ["10.64.0.4", "168.63.129.16", "203.0.113.9", "4.250.1.2"] }] } }),
+  ];
+  const out = captureRows(rows, { labId: LAB, ids: IDS, owns });
+  const text = JSON.stringify(out);
+  for (const real of ["20.108.45.7", "51.140.12.0", "4.250.1.2"]) assert.doesNotMatch(text, new RegExp(real.replace(/\./g, "\\.")), real);
+  const a = out[0].properties.ipAddress;
+  assert.match(a, /^(192\.0\.2|198\.51\.100|203\.0\.113)\.\d+$/);
+  assert.equal(out[1].properties.ipAddress, a, "the same public IP maps to the same TEST-NET address");
+  assert.match(out[0].properties.ipPrefix, /^(192\.0\.2|198\.51\.100|203\.0\.113)\.\d+\/28$/);
+  const kept = out[1].properties.customDnsConfigs[0].ipAddresses;
+  assert.deepEqual(kept.slice(0, 3), ["10.64.0.4", "168.63.129.16", "203.0.113.9"]);
+  assert.match(kept[3], /^(192\.0\.2|198\.51\.100|203\.0\.113)\.\d+$/);
+  assert.notEqual(kept[3], a);
+  assert.notEqual(kept[3], "203.0.113.9", "a mapped address never lands on one already in the capture");
 });
 
 test("the capture runs the one query topologyQuery writes, for the subscription named", async () => {
