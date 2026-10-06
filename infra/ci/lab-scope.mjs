@@ -342,6 +342,8 @@ export function planResources(plan) {
       configured: new Set(Object.keys(exprs)),
       // for_each, as the configuration prints it ({ references } or { constant_value }), or null.
       forEach: c.for_each_expression ? { refs: exprRefs(c.for_each_expression), constant: c.for_each_expression.constant_value } : null,
+      // One block that may make many (count or for_each).
+      multi: Boolean(c.count_expression || c.for_each_expression),
       provisioners: (c.provisioners ?? []).length,
       sensitive: new Set(Object.entries(r.sensitive_values ?? {}).filter(([, v]) => v === true).map(([k]) => k)),
     });
@@ -511,6 +513,8 @@ export function hclResources(hcl, labId) {
             configured: new Set(Object.keys(refs)),
             // hcl2json's count.index and each.* are not references here (REF_RE skips them).
             forEach: null,
+            // One block that may make many (count or for_each).
+            multi: block?.count !== undefined || block?.for_each !== undefined,
             // hcl2json prints labelled blocks as { "local-exec": [...] }; count every kind.
             provisioners: blockCount(block?.provisioner),
             sensitive: new Set(),
@@ -849,6 +853,8 @@ export function scopeProblems({ resources, providers, imports = [], variables = 
   // ── S1 and S2 (AZ-700 spec §6, rulings 47-48; approved by Steven 2026-10-05) ──
   const avnmLab = AVNM_LABS.includes(labId);
   const flowLogLab = FLOW_LOG_LABS.includes(labId);
+  /** S2 approved one flow log: how many the lab makes (every planned instance; in HCL, every block). */
+  const flowLogCount = resources.filter((r) => r.mode === "managed" && r.type === FLOW_LOG).length;
   const dataAddress = (ref) => ref.replace(/\[[^\]]*\]/g, "").split(".").slice(0, 3).join(".");
   const subscriptionData = [...data.values()].filter((d) => d.type === "azurerm_subscription");
   /** Data sources that can only name the subscription the pipeline signs in to: a subscription data source given no subscription_id, and client config. */
@@ -1219,7 +1225,11 @@ export function scopeProblems({ resources, providers, imports = [], variables = 
       // is set when it passes, and only then is NetworkWatcherRG spared the resource-group refusal below.
       let s2Group = false;
       if (r.type === FLOW_LOG) {
-        const why = !flowLogLab ? `a flow log lives in NetworkWatcherRG, outside the lab; only ${FLOW_LOG_LABS.join(", ")} may make one (scope exception S2)` : flowLogProblem(r, v, fromOwn);
+        const why = !flowLogLab
+          ? `a flow log lives in NetworkWatcherRG, outside the lab; only ${FLOW_LOG_LABS.join(", ")} may make one (scope exception S2)`
+          : flowLogCount > 1 || r.multi
+            ? `S2 approved one flow log, and this lab makes ${r.multi ? "it with count or for_each" : flowLogCount}`
+            : flowLogProblem(r, v, fromOwn);
         if (why) refuse("outside-scope", `S2: ${why}`);
         else s2Group = true;
       }

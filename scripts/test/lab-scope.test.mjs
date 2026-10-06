@@ -1506,7 +1506,32 @@ test("nothing else of lab 44 may be in NetworkWatcherRG, and no lab makes a netw
     copy.values.name = "other-vnet";
     d.resources.push(copy);
   });
-  assert.deepEqual(verdict(checkPlan(two, L44)), [["outside-scope", "azurerm_network_watcher_flow_log.other"]]);
+  // Two flow logs: S2 approved one, so both are refused (the second is misnamed, too).
+  assert.deepEqual(verdict(checkPlan(two, L44)), [["outside-scope", "azurerm_network_watcher_flow_log.other"], ["outside-scope", FLOW]]);
+  // Review fix 9: a second flow log that is otherwise perfect (named lab-<id>-*, the lab's VNet, account and
+  // workspace) is still a second: refused, in a plan and in HCL, and so is one block made many by count or for_each.
+  const twin = (d) => {
+    const copy = structuredClone(res(d, FLOW));
+    copy.address = "azurerm_network_watcher_flow_log.vnet2";
+    copy.values.name = `lab-${L44}-vnet2`;
+    d.resources.push(copy);
+  };
+  assert.deepEqual(verdict(checkPlan(lab44(twin), L44)), [["outside-scope", FLOW], ["outside-scope", "azurerm_network_watcher_flow_log.vnet2"]]);
+  const hclTwin = lab44Hcl((h) => (h.resource.azurerm_network_watcher_flow_log.vnet2 = [{ ...structuredClone(h.resource.azurerm_network_watcher_flow_log.vnet[0]), name: "lab-${var.lab_id}-vnet2" }]));
+  assert.deepEqual(verdict(checkHcl(hclTwin, L44)), [["outside-scope", FLOW], ["outside-scope", "azurerm_network_watcher_flow_log.vnet2"]]);
+  for (const meta of [{ count: 2 }, { for_each: "${toset([\"a\", \"b\"])}" }]) {
+    const many = lab44Hcl((h) => Object.assign(h.resource.azurerm_network_watcher_flow_log.vnet[0], meta, { name: "lab-${var.lab_id}-vnet" }));
+    assert.deepEqual(verdict(checkHcl(many, L44)), [["outside-scope", FLOW]], JSON.stringify(meta));
+  }
+  const counted = lab44((d) => {
+    const f = res(d, FLOW);
+    const second = structuredClone(f);
+    f.address = `${FLOW}[0]`;
+    second.address = `${FLOW}[1]`;
+    second.values.name = `lab-${L44}-vnet-1`;
+    d.resources.push(second);
+  });
+  assert.equal(verdict(checkPlan(counted, L44)).filter(([, a]) => a === FLOW).length, 2);
   const watcher = lab44((d) => d.resources.push({ address: "azurerm_network_watcher.nw", values: { name: "NetworkWatcher_uksouth", resource_group_name: "NetworkWatcherRG", location: "uksouth" } }));
   assert.deepEqual(verdict(checkPlan(watcher, L44)), [["outside-scope", "azurerm_network_watcher.nw"]]);
 });
