@@ -23,6 +23,23 @@ describe("PROP_NAMES", () => {
 });
 
 describe("scrubProps", () => {
+  it("resourceId: an ARM id keeps its value even when a '/'-joined stretch reads like base64; anything else secret-like is withheld", () => {
+    const ok = [
+      "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.ContainerRegistry/registries/l11rt7xyacr",
+      "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-30-waf/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf1",
+      "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-02/providers/Microsoft.SignalRService/SignalR/sig1",
+    ];
+    for (const id of ok) expect(scrubProps({ resourceId: id }), id).toEqual({ props: { resourceId: id }, withheld: 0 });
+    const bad = [
+      "https://x.blob.core.windows.net/c?sv=2024&sig=abc%3D",
+      "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/x?sig=abc",
+      "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFy1A",
+      "Zm9vYmFy/YmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFy1A+/x9==",
+      "not an id",
+    ];
+    for (const s of bad) expect(scrubProps({ resourceId: s }), s).toEqual({ props: {}, withheld: 1 });
+  });
+
   it("scrubProps drops every name outside PROP_NAMES", () => {
     const r = scrubProps({ size: "Standard_B1s", admin_password: "x", adminPassword: "y", custom_data: "z", connectionString: "w", sku: "Standard" });
     expect(r.props).toEqual({ size: "Standard_B1s", sku: "Standard" });

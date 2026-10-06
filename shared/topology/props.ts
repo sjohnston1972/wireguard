@@ -107,6 +107,25 @@ export function secretValue(value: string): boolean {
   return /-----BEGIN|sig=|accountkey=|sharedaccesskey=|password=/i.test(value) || JWT.test(value) || base64Run(value);
 }
 
+/**
+ * An Azure resource id: /subscriptions/<guid>/resourceGroups/<name>[/providers/...],
+ * no query, no "=", no fragment. Its '/' separators are not base64, so the
+ * base64 check runs per segment: "ContainerRegistry/registries/l11rt7xyacr"
+ * is a path, not a key.
+ */
+const ARM_ID = /^\/subscriptions\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/resourceGroups\/[^/?=#&]+(\/providers\/[^?=#&]+)?$/i;
+export function armIdOk(value: string): boolean {
+  if (value.length > MAX_PROP_CHARS || !ARM_ID.test(value)) return false;
+  return !value.split("/").some((seg) => secretValue(seg));
+}
+
+/** secretLike for one prop: a resourceId must be a clean ARM id; a count may say "secrets". */
+export function propSecretLike(name: string, value: string): boolean {
+  if (name === "resourceId") return !armIdOk(value);
+  if (name === "counts" && isCount(value)) return false;
+  return secretLike(value);
+}
+
 /** A child-collection count ("secrets: 2", "rules: 5"): a word and a number, never a value, so it may say "secrets". */
 export const isCount = (s: string): boolean => /^[A-Za-z][A-Za-z ]{0,39}: \d{1,6}$/.test(s);
 
@@ -130,7 +149,7 @@ export function scrubProps(props: Record<string, unknown>): { props: Record<stri
     }
     if (!isPropValue(v)) continue;
     const strings = typeof v === "string" ? [v] : Array.isArray(v) ? v : [];
-    if (strings.some((s) => !(k === "counts" && isCount(s)) && secretLike(s))) {
+    if (strings.some((s) => propSecretLike(k, s))) {
       withheld++;
       continue;
     }
@@ -168,15 +187,15 @@ export function denyProblems(g: TopologyGraph): string[] {
   const check = (where: string, s: unknown) => {
     if (typeof s === "string" && secretValue(s)) out.push(`${where}: a secret-like value`);
   };
-  const checkProp = (where: string, s: unknown) => {
-    if (typeof s === "string" && secretLike(s)) out.push(`${where}: a secret-like value`);
+  const checkProp = (where: string, name: string, s: unknown) => {
+    if (typeof s === "string" && propSecretLike(name, s)) out.push(`${where}: a secret-like value`);
   };
   for (const n of g.nodes) {
     check(`${n.id} label`, n.label);
     check(`${n.id} key`, n.key);
     for (const [k, v] of Object.entries(n.props ?? {})) {
       if (!PROP_NAMES.has(k)) out.push(`${n.id}: prop ${k} is not in PROP_NAMES`);
-      for (const s of Array.isArray(v) ? v : [v]) if (!(k === "counts" && typeof s === "string" && isCount(s))) checkProp(`${n.id} ${k}`, s);
+      for (const s of Array.isArray(v) ? v : [v]) checkProp(`${n.id} ${k}`, k, s);
     }
     for (const f of n.folded ?? []) check(`${n.id} folded ${f.id}`, f.label);
   }

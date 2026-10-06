@@ -66,6 +66,12 @@ describe("live compute and containers (T3.5)", () => {
     expect(byLabel(g, "l11rt7xyacr").props).toMatchObject({ sku: "Basic" });
   });
 
+  it("an ordinary ARM id with digits keeps its resourceId (a portal link) and adds no withheld note", () => {
+    const acr = byLabel(g, "l11rt7xyacr");
+    expect(acr.props?.resourceId).toBe("/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.ContainerRegistry/registries/l11rt7xyacr");
+    expect((g.notes ?? []).filter((n) => /withheld/.test(n))).toEqual([]);
+  });
+
   it("a Recovery Services vault shows its SKU", () => {
     expect(byLabel(g, "rsv-lab")).toMatchObject({ kind: "recoveryVault", props: { sku: "RS0" } });
   });
