@@ -155,7 +155,7 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
         </Panel>
       )}
       {full && <Controls showInteractive={false} fitViewOptions={{ duration: reduced ? 0 : 200, padding: 0.08 }} />}
-      {full && !phone && <MiniMap pannable zoomable className="topo-minimap" nodeClassName={(n) => (n.type === "topoGroup" ? "topo-minimap__group" : "topo-minimap__asset")} />}
+      {full && !phone && <MiniMap pannable zoomable className="topo-minimap" style={{ width: 160, height: 110 }} bgColor="var(--bg-panel)" maskColor="color-mix(in srgb, var(--bg-app) 60%, transparent)" nodeClassName={(n) => (n.type === "topoGroup" ? "topo-minimap__group" : "topo-minimap__asset")} />}
     </ReactFlow>
   );
 }

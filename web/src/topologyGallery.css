@@ -1,0 +1,97 @@
+/* The dev-only diagram gallery (/__topology/:id): one screen on a desktop, stacked on the phone. Tokens only. */
+.topo-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+.topo-gallery__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  flex: none;
+}
+.topo-gallery__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+.topo-gallery__head .topo-toolbar {
+  flex: 1 1 420px;
+}
+.topo-gallery__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.topo-gallery__main {
+  display: flex;
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+}
+.topo-gallery__main > .topo-gallery__variant {
+  flex: 1;
+}
+.topo-gallery__side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.topo-gallery__side > .topo-gallery__variant--tab {
+  flex: 1;
+}
+.topo-gallery__variant {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.topo-gallery__h {
+  margin: 0 0 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.topo-gallery__canvas {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.topo-gallery__variant--mini .topo-gallery__canvas {
+  flex: none;
+  width: 320px;
+  height: 200px;
+}
+@media (max-width: 1099px) {
+  .topo-gallery {
+    height: auto;
+  }
+  .topo-gallery__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .topo-gallery__main {
+    flex-direction: column;
+  }
+  .topo-gallery__variant--full .topo-gallery__canvas {
+    flex: none;
+    height: min(60vh, 480px);
+  }
+  .topo-gallery__variant--tab .topo-gallery__canvas {
+    flex: none;
+    height: 320px;
+  }
+  .topo-gallery__variant--mini .topo-gallery__canvas {
+    max-width: 100%;
+  }
+}

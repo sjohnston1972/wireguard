@@ -409,3 +409,41 @@
 .topo-canvas .topo-minimap__asset {
   fill: var(--text-muted);
 }
+
+/* React Flow's own surface follows the app tokens; handles are invisible (nothing is connected by hand). */
+.topo-canvas .react-flow {
+  --xy-background-color: transparent;
+  --xy-node-border-radius: 10px;
+  background: transparent;
+}
+.topo-canvas .react-flow__handle.topo-handle {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+.topo-canvas .react-flow__node:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+.topo-canvas .react-flow__node.selected > .topo-card,
+.topo-canvas .react-flow__node.selected > .topo-group {
+  box-shadow: 0 0 0 2px var(--blue-bright);
+}
+.topo-canvas .react-flow__attribution {
+  background: transparent;
+  color: var(--text-muted);
+}
+.topo-canvas .react-flow__attribution a {
+  color: var(--text-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .topo-canvas .react-flow__edge.animated path {
+    animation: none;
+  }
+}

@@ -85,6 +85,13 @@ describe("the dev-only /__topology/:id route", () => {
       const region = await screen.findByRole("region", { name: new RegExp(`${v} variant`, "i") });
       expect(within(region).getByRole("region", { name: "Lab diagram" })).toBeInTheDocument();
     }
+    expect(screen.getByRole("toolbar", { name: "Diagram controls" })).toBeInTheDocument();
+  });
+
+  it("opens a node's details from ?select=", async () => {
+    const planned = { ...graph, source: "planned" as const, at: null };
+    renderApp(`/__topology/${ID}?asset=/assets/test-planned.json&select=${encodeURIComponent(`${L}/vm`)}`, { routes: { "GET /assets/test-planned.json": planned } });
+    expect(await screen.findByRole("complementary", { name: "vm-app" })).toBeInTheDocument();
   });
 
   it("is in the route table only under import.meta.env.DEV, like __gallery", () => {
