@@ -82,6 +82,8 @@ export interface TfRule {
   namePath?: (inst: TfInst, h: PlannedHelpers) => string[];
   /** What a folded entry says instead of the name (a Key Vault secret: "secret"; ruling 22, never the name). */
   foldedLabel?: string;
+  /** Its folded entry's id is opaque and counted ("tf:azurerm_key_vault_secret#1"), never the Terraform address (a block name like app_db_password). */
+  opaqueId?: boolean;
   /** A group node id to place this card in, when the kind's placement cannot find it (a secured hub's firewall). */
   place?: (inst: TfInst, h: PlannedHelpers) => string | null;
 }
@@ -653,7 +655,7 @@ export const TF_RULES: Record<string, TfRule> = {
   azurerm_cdn_frontdoor_rule_set: { arm: "Microsoft.Cdn/profiles/ruleSets", fold: fdFold },
   azurerm_cdn_frontdoor_rule: { arm: "Microsoft.Cdn/profiles/ruleSets/rules", fold: fdFold },
   azurerm_cdn_frontdoor_custom_domain: { arm: "Microsoft.Cdn/profiles/customDomains", fold: fdFold },
-  azurerm_cdn_frontdoor_secret: { arm: "Microsoft.Cdn/profiles/secrets", fold: fdFold, foldedLabel: "secret" },
+  azurerm_cdn_frontdoor_secret: { arm: "Microsoft.Cdn/profiles/secrets", fold: fdFold, foldedLabel: "secret", opaqueId: true },
   azurerm_cdn_frontdoor_security_policy: {
     arm: "Microsoft.Cdn/profiles/securityPolicies",
     fold: fdFold,
@@ -886,9 +888,9 @@ export const TF_RULES: Record<string, TfRule> = {
       return { sku: str(i.after.sku_name), mode: rbac ? "RBAC" : "access policies", counts: counts.length ? counts : undefined };
     },
   },
-  azurerm_key_vault_secret: { arm: "Microsoft.KeyVault/vaults/secrets", fold: ["key_vault_id"], foldedLabel: "secret" },
-  azurerm_key_vault_key: { arm: "Microsoft.KeyVault/vaults/keys", fold: ["key_vault_id"], foldedLabel: "key" },
-  azurerm_key_vault_certificate: { arm: "Microsoft.KeyVault/vaults/certificates", fold: ["key_vault_id"], foldedLabel: "certificate" },
+  azurerm_key_vault_secret: { arm: "Microsoft.KeyVault/vaults/secrets", fold: ["key_vault_id"], foldedLabel: "secret", opaqueId: true },
+  azurerm_key_vault_key: { arm: "Microsoft.KeyVault/vaults/keys", fold: ["key_vault_id"], foldedLabel: "key", opaqueId: true },
+  azurerm_key_vault_certificate: { arm: "Microsoft.KeyVault/vaults/certificates", fold: ["key_vault_id"], foldedLabel: "certificate", opaqueId: true },
 
   azurerm_storage_container: { arm: "Microsoft.Storage/storageAccounts/blobServices/containers", fold: ["storage_account_id", "storage_account_name"] },
 

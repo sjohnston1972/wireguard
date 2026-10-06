@@ -22,12 +22,12 @@
    "scope": "lab",
    "folded": [
     {
-     "id": "tf:azurerm_key_vault_secret.app_db_password",
+     "id": "tf:azurerm_key_vault_secret#1",
      "label": "secret",
      "armType": "Microsoft.KeyVault/vaults/secrets"
     },
     {
-     "id": "tf:azurerm_key_vault_secret.reports_api_key",
+     "id": "tf:azurerm_key_vault_secret#2",
      "label": "secret",
      "armType": "Microsoft.KeyVault/vaults/secrets"
     },

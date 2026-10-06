@@ -641,9 +641,25 @@ const shapeFiles = readdirSync(SHAPES_DIR);
 const planFixtures = LAB_PLANS as Record<string, { resources: { address: string }[] }>;
 
 /** The configuration addresses (type.name) and instance addresses a graph represents: nodes, folded entries, edge vias. */
-function represented(g: TopologyGraph): { configs: Set<string>; instances: Set<string> } {
-  const instances = new Set([...representedIds(g)].filter((x) => x.startsWith("tf:")).map((x) => x.slice(3).split("/")[0]!));
-  return { instances, configs: new Set([...instances].map((a) => a.replace(/\[[^\]]*\]/g, ""))) };
+function represented(g: TopologyGraph): { configs: Set<string>; instances: Set<string>; opaque: Map<string, number> } {
+  const all = [...representedIds(g)].filter((x) => x.startsWith("tf:")).map((x) => x.slice(3).split("/")[0]!);
+  // Opaque, counted folded ids (a Key Vault secret: "azurerm_key_vault_secret#1") stand for that many instances of the type.
+  const opaque = new Map<string, number>();
+  for (const a of all) {
+    const m = /^([a-z0-9_]+)#\d+$/.exec(a);
+    if (m) opaque.set(m[1]!, (opaque.get(m[1]!) ?? 0) + 1);
+  }
+  const instances = new Set(all.filter((a) => !a.includes("#")));
+  return { instances, configs: new Set([...instances].map((a) => a.replace(/\[[^\]]*\]/g, ""))), opaque };
+}
+/** Addresses not represented: by address, or (an opaque type) by count, `n` instances of the type needing `n` entries. */
+function unrepresented(addresses: string[], r: ReturnType<typeof represented>, set: Set<string>): string[] {
+  const typeOf = (a: string) => a.split(".")[0]!;
+  const out = addresses.filter((a) => !r.opaque.has(typeOf(a)) && !set.has(a));
+  const byType = new Map<string, number>();
+  for (const a of new Set(addresses)) if (r.opaque.has(typeOf(a))) byType.set(typeOf(a), (byType.get(typeOf(a)) ?? 0) + 1);
+  for (const [t, n] of byType) if ((r.opaque.get(t) ?? 0) < n) out.push(`${t}: ${n} instances, ${r.opaque.get(t)} folded entries`);
+  return out;
 }
 /** Every managed resource block in a lab's Terraform (data sources and never-drawn helpers left out). */
 function tfAddresses(lab: string): string[] {
@@ -674,23 +690,27 @@ describe("golden: every lab folder", () => {
       });
 
       it(`${id}: every resource address in its Terraform is represented`, () => {
-        const { configs, instances } = represented(g);
-        expect(tfAddresses(id).filter((a) => !configs.has(a))).toEqual([]);
+        const r = represented(g);
+        expect(unrepresented(tfAddresses(id), r, r.configs)).toEqual([]);
         // Instance counts (count / for_each) from the lab's plan fixture, where there is one.
         const fixture = planFixtures[id];
-        if (fixture) expect(fixture.resources.map((r) => r.address).filter((a) => !a.startsWith("data.") && !tfIgnored(a.split(".")[0]!) && !instances.has(a))).toEqual([]);
+        if (fixture) expect(unrepresented(fixture.resources.map((x) => x.address).filter((a) => !a.startsWith("data.") && !tfIgnored(a.split(".")[0]!)), r, r.instances)).toEqual([]);
       });
 
       it(`${id}: every address in its recorded real plan shape is represented`, () => {
         const file = new URL(`${id}.json`, SHAPES_DIR);
         if (!shapeFiles.includes(`${id}.json`)) return; // no recorded shape for this lab (labs 1-12)
         const shapeAddrs = Object.keys((JSON.parse(readFileSync(file, "utf8")) as { resources: Record<string, unknown> }).resources);
-        const { instances } = represented(g);
-        expect(shapeAddrs.filter((a) => !a.startsWith("data.") && !tfIgnored(a.split(".")[0]!) && !instances.has(a))).toEqual([]);
+        const r = represented(g);
+        expect(unrepresented(shapeAddrs.filter((a) => !a.startsWith("data.") && !tfIgnored(a.split(".")[0]!)), r, r.instances)).toEqual([]);
       });
 
       it(`${id}: no card the live view can list has a Terraform-only key (it would read "not deployed")`, () => {
         expect(g.nodes.filter((n) => n.key.startsWith("terraform/") && n.kind !== "lane" && KINDS[n.kind].liveVisible && n.scope !== "outside").map((n) => n.key)).toEqual([]);
+      });
+
+      it(`${id}: no Key Vault secret, key or certificate (or Front Door secret) is named by its Terraform address`, () => {
+        expect(text).not.toMatch(/tf:azurerm_(key_vault_secret|key_vault_key|key_vault_certificate|cdn_frontdoor_secret)\./);
       });
 
       it(`${id}: the planned file is under 16 kB gzip`, () => {

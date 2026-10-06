@@ -278,6 +278,15 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
     if (!n) continue;
     (n.folded ??= []).push({ id: i.id, label: ruleOf(i).foldedLabel ?? labelOf(i), armType: i.armType ?? ruleOf(i).arm ?? null });
   }
+  // A secret's, key's or certificate's folded id is opaque and counted per type, in address order: its address names it.
+  const opaque = new Map<string, string>();
+  const opaqueCount = new Map<string, number>();
+  for (const i of [...insts].filter((x) => ruleOf(x).opaqueId).sort((a, b) => cmp(a.id, b.id))) {
+    const k = (opaqueCount.get(i.type) ?? 0) + 1;
+    opaqueCount.set(i.type, k);
+    opaque.set(i.id, `tf:${i.type}#${k}`);
+  }
+  for (const n of nodes.values()) for (const f of n.folded ?? []) f.id = opaque.get(f.id) ?? f.id;
 
   const subnetNodeOfInst = (t: TfInst): string | null => (t.type === "azurerm_subnet" ? t.id : null);
   const subnetsOf = (i: TfInst): string[] => {
@@ -474,7 +483,7 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
       if (n.folded?.length) out.folded = n.folded;
       return out;
     }),
-    edges: [...edges.values()],
+    edges: [...edges.values()].map((e) => (e.via && opaque.has(e.via) ? { ...e, via: opaque.get(e.via)! } : e)),
     ...(notes.length ? { notes } : {}),
   };
   return sortGraph(g);

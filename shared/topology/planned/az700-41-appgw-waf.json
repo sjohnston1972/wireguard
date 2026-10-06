@@ -58,7 +58,7 @@
      "armType": "Microsoft.KeyVault/vaults/accessPolicies"
     },
     {
-     "id": "tf:azurerm_key_vault_certificate.app",
+     "id": "tf:azurerm_key_vault_certificate#1",
      "label": "certificate",
      "armType": "Microsoft.KeyVault/vaults/certificates"
     }

@@ -252,7 +252,9 @@ describe("planned graph: the rest of the core", () => {
     expect(kv).toMatchObject({ kind: "keyVault", props: { sku: "standard", counts: ["keys: 1", "secrets: 2"] } });
     expect(kv.folded?.map((f) => f.label).sort()).toEqual(["key", "secret", "secret"]);
     expect(JSON.stringify(g)).not.toMatch(/app-db-password|reports-api-key|"cmk"/);
-    expect(representedIds(g).has("tf:azurerm_key_vault_secret.db")).toBe(true);
+    // Folded ids are opaque and counted: the Terraform address (a secret's block name) never shows.
+    expect(kv.folded?.map((f) => f.id).sort()).toEqual(["tf:azurerm_key_vault_key#1", "tf:azurerm_key_vault_secret#1", "tf:azurerm_key_vault_secret#2"]);
+    expect(JSON.stringify(g)).not.toMatch(/azurerm_key_vault_secret\.(db|api)|azurerm_key_vault_key\.k/);
   });
 
   it("names carrying the mock prefix are shown as l35…", () => {
