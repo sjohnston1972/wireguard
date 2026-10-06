@@ -167,11 +167,10 @@ export function validateLab(raw, ctx) {
   }
   if (Array.isArray(raw?.skill_areas)) {
     if (!raw.skill_areas.length) bad("skill_areas", "skill_areas needs at least one key from labs/skill-areas.yaml");
-    for (const k of raw.skill_areas) {
-      const area = ctx.skillAreas.find((a) => a.key === k);
-      if (!area) bad("skill_areas", `skill area "${k}" is not in labs/skill-areas.yaml`);
-      else if (raw.exam && area.exam !== raw.exam) bad("skill_areas", `skill area "${k}" belongs to ${area.exam}, not ${raw.exam}`);
-    }
+    for (const k of raw.skill_areas) if (!ctx.skillAreas.some((a) => a.key === k)) bad("skill_areas", `skill area "${k}" is not in labs/skill-areas.yaml`);
+    // A lab may name any exam's areas (ruling 39), as long as one is its own exam's: that is the exam it is filed under.
+    const own = raw.skill_areas.some((k) => ctx.skillAreas.find((a) => a.key === k)?.exam === raw.exam);
+    if (raw.skill_areas.length && LAB_EXAMS.includes(raw.exam) && !own) bad("skill_areas", `skill_areas needs at least one ${raw.exam} area (the lab's own exam)`);
   }
   const t = raw?.timing;
   if (isObj(t) && Number.isInteger(t.session_h) && Number.isInteger(t.max_h) && t.session_h > t.max_h) bad("timing.session_h", `session_h (${t.session_h}) is more than max_h (${t.max_h})`);
@@ -192,7 +191,16 @@ export function validateLab(raw, ctx) {
   const k = raw?.connectivity;
   if (isObj(k) && k.subnets_used === 0 && k.peering && k.peering !== "off") bad("connectivity.subnets_used", "a lab with no subnets (subnets_used: 0) cannot peer: set peering: off");
   if (problems.length) return { def: null, problems };
-  return { def: { ...raw, number: Number(id.split("-")[1]) }, problems };
+  return { def: { ...raw, number: Number(id.split("-")[1]), exams: computeExams(raw, ctx.skillAreas) }, problems };
+}
+
+/**
+ * The exams a lab belongs to (ruling 39): its own (primary) exam first, then every other exam
+ * one of its skill areas belongs to, in LAB_EXAMS order. `def`: { exam, skill_areas }.
+ */
+export function computeExams(def, skillAreas) {
+  const named = new Set(def.skill_areas.map((k) => skillAreas.find((a) => a.key === k)?.exam).filter(Boolean));
+  return [def.exam, ...LAB_EXAMS.filter((e) => e !== def.exam && named.has(e))];
 }
 
 // ── readme.md (spec §3.3, plan ruling 2) ─────────────────────────────────

@@ -26,7 +26,7 @@ export function LabsHeader() {
   return (
     <PageHeader
       title="Labs"
-      subtitle="On-demand AZ-104 and AZ-305 lab environments, each back to £0 when it ends."
+      subtitle="On-demand AZ-104, AZ-305 and AZ-700 lab environments, each back to £0 when it ends."
       env={<EnvironmentField />}
       right={
         <>

@@ -255,7 +255,8 @@ describe("/api/v1/labs input checks", () => {
     const cards = (await api(env, "GET", "/labs")).json as LabsResponse;
     expect(cards.labs.map((c) => c.id)).toEqual(catalogue().labs.map((l) => l.id));
     const cov = (await api(env, "GET", "/labs/coverage")).json as LabCoverageResponse;
-    expect(cov.exams.map((e) => e.exam)).toEqual(["AZ-104", "AZ-305"]);
+    // Every exam with skill areas, AZ-700 the third (ruling 38).
+    expect(cov.exams.map((e) => e.exam)).toEqual(["AZ-104", "AZ-305", "AZ-700"]);
     const storage = cov.exams[0].areas.find((a) => a.key === "az104.storage")!;
     expect(storage).toMatchObject({ run: 0, available: 3 });
   });

@@ -20,6 +20,7 @@ const base = (id: string, number: number, over: Partial<LabDef> = {}): LabDef =>
   title: `Lab ${number}`,
   summary: `Lab ${number} summary.`,
   exam: id.startsWith("az305") ? "AZ-305" : "AZ-104",
+  exams: [id.startsWith("az305") ? "AZ-305" : "AZ-104"],
   skill_areas: [id.startsWith("az305") ? "az305.infra" : "az104.storage"],
   level: "associate",
   type: "explore",

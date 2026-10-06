@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react";
 import type { LabCard, LabPeering, LabSession, LabSessionState } from "@shared/api";
-import type { LabExam, LabLevel, LabType } from "@shared/labs";
+import { LAB_EXAMS, type LabExam, type LabLevel, type LabType } from "@shared/labs";
 import { useLabs } from "@/api/queries";
 
 // ── Money ────────────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ export function extendChoices(s: LabSession, now: number): ExtendChoice[] {
 
 export const LEVEL_WORD: Record<LabLevel, string> = { foundation: "Foundation", associate: "Associate", expert: "Expert" };
 export const TYPE_WORD: Record<LabType, string> = { explore: "Explore", "break-fix": "Break-fix" };
-export const EXAMS: LabExam[] = ["AZ-104", "AZ-305"];
+export const EXAMS: readonly LabExam[] = LAB_EXAMS;
 
 export type Tone = "green" | "amber" | "red" | "blue" | "grey";
 
@@ -163,7 +163,7 @@ const list = <T extends string>(raw: string | null, allowed: T[]): T[] => (raw ?
 export function readFilters(p: URLSearchParams): Filters {
   const exam = p.get("exam");
   return {
-    exam: exam === "AZ-104" || exam === "AZ-305" ? exam : null,
+    exam: (EXAMS as readonly string[]).includes(exam ?? "") ? (exam as LabExam) : null,
     area: p.get("area") || null,
     level: list(p.get("level"), LEVELS),
     type: list(p.get("type"), TYPES),
@@ -189,7 +189,8 @@ export const anyFilter = (f: Filters): boolean => !!(f.exam || f.area || f.level
 export function applyFilters(cards: LabCard[], f: Filters): LabCard[] {
   return cards.filter(
     (c) =>
-      (!f.exam || c.exam === f.exam) &&
+      // A lab belongs to every exam in its exams (ruling 39), not only its primary one.
+      (!f.exam || examsOf(c).includes(f.exam)) &&
       (!f.area || c.skillAreas.includes(f.area)) &&
       (f.level.length === 0 || f.level.includes(c.level)) &&
       (f.type.length === 0 || f.type.includes(c.type)) &&
@@ -197,7 +198,28 @@ export function applyFilters(cards: LabCard[], f: Filters): LabCard[] {
   );
 }
 
-/** AZ-104 then AZ-305, each by lab number; exams with no lab are left out. */
-export function groupByExam(cards: LabCard[]): { exam: LabExam; cards: LabCard[] }[] {
-  return EXAMS.map((exam) => ({ exam, cards: cards.filter((c) => c.exam === exam).sort((a, b) => a.number - b.number) })).filter((g) => g.cards.length > 0);
+/** A card's exams, the primary first (an older Worker sends no exams: then its one exam). */
+const examsOf = (c: Pick<LabCard, "exam" | "exams">): LabExam[] => (c.exams?.length ? c.exams : [c.exam]);
+
+/**
+ * The catalogue's groups. With no exam filter: one group per exam (AZ-104, AZ-305, AZ-700), each
+ * lab once, under its primary exam. With an exam filter: one group, every lab that belongs to that
+ * exam (a tagged lab too). Each by lab number; exams with no lab are left out.
+ */
+export function groupByExam(cards: LabCard[], exam: LabExam | null = null): { exam: LabExam; cards: LabCard[] }[] {
+  const byNumber = (xs: LabCard[]) => [...xs].sort((a, b) => a.number - b.number);
+  if (exam) {
+    const mine = byNumber(cards.filter((c) => examsOf(c).includes(exam)));
+    return mine.length ? [{ exam, cards: mine }] : [];
+  }
+  return EXAMS.map((e) => ({ exam: e, cards: byNumber(cards.filter((c) => c.exam === e)) })).filter((g) => g.cards.length > 0);
 }
+
+/** The other exams a card belongs to, beside the group it is shown in (its primary exam, or the exam filtered to): the "Also …" chip. */
+export function alsoExams(card: Pick<LabCard, "exam" | "exams">, shownUnder: LabExam | null = null): LabExam[] {
+  const under = shownUnder ?? card.exam;
+  return examsOf(card).filter((e) => e !== under);
+}
+
+/** "AZ-104, AZ-700": every exam a lab belongs to, the primary first (the modal's subtitle). */
+export const examsWord = (card: Pick<LabCard, "exam" | "exams">): string => examsOf(card).join(", ");

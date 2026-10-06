@@ -36,15 +36,21 @@ export interface LabCostItem {
   retail?: { meter?: string; unit?: string; sku?: string };
 }
 
-/** A lab, exactly as its lab.yaml says (snake_case kept), plus `number` (the NN in the id). */
+/** A lab, exactly as its lab.yaml says (snake_case kept), plus `number` (the NN in the id) and `exams`. */
 export interface LabDef {
   id: string;
   number: number;
   version: number;
   title: string;
   summary: string;
+  /** The primary exam: the one the id's prefix names (az700- is AZ-700). */
   exam: LabExam;
-  /** Keys from labs/skill-areas.yaml. */
+  /**
+   * Computed by labs-build (ruling 39): the primary exam first, then every other exam one of
+   * skill_areas belongs to, in LAB_EXAMS order. A lab counts in each one's coverage and filter.
+   */
+  exams: LabExam[];
+  /** Keys from labs/skill-areas.yaml: any exam's, at least one of the primary exam's. */
   skill_areas: string[];
   level: LabLevel;
   type: LabType;

@@ -20,6 +20,7 @@ export const LAB_ID_RE: RegExp;
 export const LAB_ID_MAX: number;
 export const LAB_EXAMS: readonly LabExam[];
 export function examOfId(id: string): LabExam;
+export function computeExams(def: Pick<LabDef, "exam" | "skill_areas">, skillAreas: SkillArea[]): LabExam[];
 export const LAB_POOL: string;
 export const LAB_SLOTS: number;
 export const GATEWAY_RANGES: readonly string[];

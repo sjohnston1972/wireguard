@@ -34,7 +34,7 @@ export function PhoneLabs({ id, history }: { id: string | null; history: boolean
   const d = q.data;
   return (
     <section className="labs labs--phone">
-      <PageHeader title="Labs" subtitle="On-demand AZ-104 and AZ-305 labs." />
+      <PageHeader title="Labs" subtitle="On-demand AZ-104, AZ-305 and AZ-700 labs." />
       {id && <LabModal key={id} id={id} />}
       <Orphans orphans={d?.orphans ?? []} />
       {q.isError && !d ? (

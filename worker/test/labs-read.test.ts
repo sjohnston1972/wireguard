@@ -147,6 +147,44 @@ describe("read routes (L2.7)", () => {
   });
 });
 
+describe("multi-exam labs (AZ-700 plan Z0.2, ruling 39)", () => {
+  /** The test catalogue plus AZ-700: a tagged AZ-104 lab (14) and an AZ-700 lab (31). */
+  const multiCatalogue = () => {
+    const tagged = { ...TEST_LABS[1], id: "az104-14-peering-udr", number: 14, title: "VNet peering and UDRs", skill_areas: ["az104.storage", "az700.core"], exams: ["AZ-104", "AZ-700"] as const };
+    const lab31 = { ...TEST_LABS[1], id: "az700-31-ip-nat-outbound", number: 31, title: "Public IP prefixes, NAT Gateway and outbound rules", exam: "AZ-700" as const, skill_areas: ["az700.core"], exams: ["AZ-700"] as const };
+    return {
+      ...TEST_CATALOGUE,
+      skillAreas: [...TEST_CATALOGUE.skillAreas, { key: "az700.core", exam: "AZ-700" as const, name: "Design and implement core networking infrastructure" }],
+      labs: [...TEST_LABS, { ...tagged, exams: [...tagged.exams] }, { ...lab31, exams: [...lab31.exams] }],
+    };
+  };
+
+  it("coverage lists AZ-700 and counts a tagged lab under each exam it belongs to", async () => {
+    freeze();
+    const { env } = await labEnv();
+    setCatalogueForTest(multiCatalogue());
+    await ended(env, "ls-20261001090000-aaaaaa", "az104-14-peering-udr", "2026-10-01T09:00:00.000Z", 20);
+    const cov = (await api(env, "GET", "/labs/coverage")).json.exams;
+    expect(cov.map((e: { exam: string }) => e.exam)).toEqual(["AZ-104", "AZ-305", "AZ-700"]);
+    const area = (exam: string, key: string) => cov.find((e: { exam: string }) => e.exam === exam).areas.find((a: { key: string }) => a.key === key);
+    // Lab 14 counts in AZ-104's storage area and in AZ-700's core area, run in both.
+    expect(area("AZ-104", "az104.storage").labs.map((l: { id: string }) => l.id)).toContain("az104-14-peering-udr");
+    expect(area("AZ-700", "az700.core")).toMatchObject({ run: 1, available: 2 });
+    expect(area("AZ-700", "az700.core").labs.map((l: { id: string; run: boolean }) => [l.id, l.run])).toEqual([["az104-14-peering-udr", true], ["az700-31-ip-nat-outbound", false]]);
+  });
+
+  it("cards carry exams, the primary first", async () => {
+    freeze();
+    const { env } = await labEnv();
+    setCatalogueForTest(multiCatalogue());
+    const labs = (await api(env, "GET", "/labs")).json.labs;
+    const card = (id: string) => labs.find((c: { id: string }) => c.id === id);
+    expect(card("az104-14-peering-udr")).toMatchObject({ exam: "AZ-104", exams: ["AZ-104", "AZ-700"] });
+    expect(card("az700-31-ip-nat-outbound")).toMatchObject({ exam: "AZ-700", exams: ["AZ-700"] });
+    expect(card("az104-05-storage")).toMatchObject({ exam: "AZ-104", exams: ["AZ-104"] });
+  });
+});
+
 describe("lab prices per region (batch 3, C0.6)", () => {
   const now = new Date("2026-10-05T09:00:00.000Z");
   const at = "2026-10-05T03:00:00.000Z";

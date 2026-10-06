@@ -2,7 +2,7 @@ import { useSearchParams } from "react-router-dom";
 import type { LabCard } from "@shared/api";
 import { Button, Chips, Panel, SegmentedControl, Select, Switch } from "@/components";
 import { useLabCoverage } from "@/api/queries";
-import { EXAMS, LEVEL_WORD, NO_FILTERS, TYPE_WORD, anyFilter, readFilters, writeFilters, type Filters as F } from "./model";
+import { EXAMS, LEVEL_WORD, NO_FILTERS, TYPE_WORD, anyFilter, applyFilters, readFilters, writeFilters, type Filters as F } from "./model";
 import type { LabExam, LabLevel, LabType } from "@shared/labs";
 
 /** The catalogue's filters, kept in the address so a reload or Back keeps them. */
@@ -23,7 +23,8 @@ export function useAreaNames(): Map<string, string> {
 export function Filters({ cards }: { cards: LabCard[] }) {
   const [f, setF] = useFilters();
   const names = useAreaNames();
-  const areas = [...new Set(cards.filter((c) => !f.exam || c.exam === f.exam).flatMap((c) => c.skillAreas))].sort();
+  // The areas of the labs the exam filter keeps (a lab tagged for that exam too, ruling 39).
+  const areas = [...new Set(applyFilters(cards, { ...NO_FILTERS, exam: f.exam }).flatMap((c) => c.skillAreas))].sort();
   const areaOptions = [{ value: "all", label: "All skill areas" }, ...areas.map((a) => ({ value: a, label: names.get(a) ?? a }))];
   if (f.area && !areas.includes(f.area)) areaOptions.push({ value: f.area, label: names.get(f.area) ?? f.area });
   return (

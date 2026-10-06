@@ -19,6 +19,7 @@ const stringify = (v) => yaml12(v, { version: "1.1" });
 import {
   buildCatalogue,
   checkPool,
+  computeExams,
   examOfId,
   LAB_EXAMS,
   lintTfText,
@@ -263,6 +264,51 @@ test("exam must match the id prefix, AZ-700 for az700-", () => {
   assert.equal(examOfId("az305-20-landing-zone"), "AZ-305");
   assert.equal(examOfId("az104-06-blob-security"), "AZ-104");
   assert.deepEqual([...LAB_EXAMS], ["AZ-104", "AZ-305", "AZ-700"]);
+});
+
+// ── Labs in more than one exam (AZ-700 plan Z0.2, ruling 39) ─────────────
+
+const AREAS3 = [
+  ...SKILLS,
+  { key: "az305.infra", exam: "AZ-305", name: "Design infrastructure solutions" },
+  { key: "az700.core", exam: "AZ-700", name: "Design and implement core networking infrastructure" },
+  { key: "az700.security", exam: "AZ-700", name: "Design and implement Azure network security services" },
+];
+const lab700 = (over = {}) => good({ id: "az700-35-forced-tunnel-fix", exam: "AZ-700", skill_areas: ["az700.core", "az305.infra"], prerequisites: [], identity: { creates: [], roles: [], governance: false }, ...over });
+
+test("a lab may list another exam's skill area when at least one is its own", () => {
+  const tagged = good({ skill_areas: ["az104.storage", "az700.core", "az700.security"] });
+  const v = validateLab(tagged, { folder: tagged.id, skillAreas: AREAS3 });
+  assert.deepEqual(v.problems, []);
+  assert.deepEqual(v.def.exams, ["AZ-104", "AZ-700"]);
+  const own = validateLab(lab700(), { folder: "az700-35-forced-tunnel-fix", skillAreas: AREAS3 });
+  assert.deepEqual(own.problems, []);
+  assert.deepEqual(own.def.exams, ["AZ-700", "AZ-305"]);
+  // An unknown key is still refused, whatever exam it claims.
+  assert.ok(validateLab(good({ skill_areas: ["az104.storage", "az700.cooking"] }), { folder: "az104-06-blob-security", skillAreas: AREAS3 }).problems.some((p) => p.field === "skill_areas"));
+});
+
+test("a lab with no area of its own exam is refused", () => {
+  const p = validateLab(lab700({ skill_areas: ["az305.infra", "az104.networking"] }), { folder: "az700-35-forced-tunnel-fix", skillAreas: AREAS3 }).problems;
+  assert.deepEqual(p.filter((x) => x.field === "skill_areas").map((x) => x.message), ["skill_areas needs at least one AZ-700 area (the lab's own exam)"]);
+  const q = validateLab(good({ skill_areas: ["az700.core"] }), { folder: "az104-06-blob-security", skillAreas: AREAS3 }).problems;
+  assert.deepEqual(q.filter((x) => x.field === "skill_areas").map((x) => x.message), ["skill_areas needs at least one AZ-104 area (the lab's own exam)"]);
+});
+
+test("exams lists the primary first, then the others in exam order", () => {
+  assert.deepEqual(computeExams({ exam: "AZ-700", skill_areas: ["az305.infra", "az700.core", "az104.networking", "az104.storage"] }, AREAS3), ["AZ-700", "AZ-104", "AZ-305"]);
+  assert.deepEqual(computeExams({ exam: "AZ-305", skill_areas: ["az700.security", "az104.storage", "az305.infra"] }, AREAS3), ["AZ-305", "AZ-104", "AZ-700"]);
+  assert.deepEqual(computeExams({ exam: "AZ-104", skill_areas: ["az104.storage"] }, AREAS3), ["AZ-104"]);
+  // The catalogue carries it on every lab, and sorts by primary exam then number.
+  const root = makeRoot([good({ skill_areas: ["az104.storage", "az700.core"] }), lab5(), lab700()]);
+  try {
+    writeFileSync(join(root, "skill-areas.yaml"), stringify(AREAS3));
+    const { catalogue, problems } = buildCatalogue(root);
+    assert.deepEqual(problems, []);
+    assert.deepEqual(catalogue.labs.map((l) => [l.id, l.exams]), [["az104-05-storage", ["AZ-104"]], ["az104-06-blob-security", ["AZ-104", "AZ-700"]], ["az700-35-forced-tunnel-fix", ["AZ-700", "AZ-305"]]]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 // ── Readmes ──────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import type { LabCard as Card } from "@shared/api";
+import type { LabExam } from "@shared/labs";
 import { LEVEL_WORD, TYPE_WORD, fmtRate, markerLabel, runBefore, stateWord } from "./model";
 
 /** The £, ££ or £££ marker; with a pricey resource, that resource shows on hover or keyboard focus. */
@@ -19,8 +20,11 @@ export function CostMarker({ card }: { card: Pick<Card, "marker" | "pricey" | "i
   );
 }
 
-/** One lab in the catalogue (spec §10). The title is the link to its modal; the whole card is the click target. */
-export function LabCard({ card }: { card: Card }) {
+/**
+ * One lab in the catalogue (spec §10). The title is the link to its modal; the whole card is the
+ * click target. `also`: the other exams it belongs to (ruling 39), shown as an "Also AZ-700" chip.
+ */
+export function LabCard({ card, also = [] }: { card: Card; also?: readonly LabExam[] }) {
   const { search } = useLocation();
   const live = card.running ? stateWord(card.running) : null;
   const before = runBefore(card.prerequisites);
@@ -29,6 +33,7 @@ export function LabCard({ card }: { card: Card }) {
       <div className="labs-card__top">
         <span className="labs-card__num">Lab {card.number}</span>
         <CostMarker card={card} />
+        {also.length > 0 && <span className="labs-chip">Also {also.join(", ")}</span>}
         {live && <span className={`labs-word labs-word--${live.tone}`}>{live.label}</span>}
       </div>
       <h4 className="labs-card__title">

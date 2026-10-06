@@ -855,7 +855,10 @@ export interface LabCard {
   version: number;
   title: string;
   summary: string;
+  /** The primary exam (the id's prefix); the catalogue groups by it. */
   exam: LabExam;
+  /** Every exam the lab belongs to, the primary first (ruling 39): LabDef.exams. */
+  exams: LabExam[];
   skillAreas: string[];
   level: LabLevel;
   type: LabType;
@@ -987,7 +990,11 @@ export interface LabCoverage {
   areas: { key: string; name: string; labs: { id: string; number: number; title: string; run: boolean }[]; run: number; available: number }[];
 }
 
-/** GET /api/v1/labs/coverage: one entry per exam that has skill areas, AZ-104 first. */
+/**
+ * GET /api/v1/labs/coverage: one entry per LAB_EXAMS member that has skill areas, in that order
+ * (AZ-104, AZ-305, AZ-700). A lab counts under every area it names, so a lab tagged for another
+ * exam (ruling 39) counts in each exam it belongs to; each area's labs go by number.
+ */
 export interface LabCoverageResponse {
   exams: LabCoverage[];
 }

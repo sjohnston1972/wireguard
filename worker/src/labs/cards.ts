@@ -118,6 +118,7 @@ export function labCard(def: LabDef, ctx: CardContext): LabCard {
     title: def.title,
     summary: def.summary,
     exam: def.exam,
+    exams: def.exams,
     skillAreas: def.skill_areas,
     level: def.level,
     type: def.type,

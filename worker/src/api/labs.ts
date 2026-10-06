@@ -37,6 +37,7 @@ import { sessionCosts } from "../labs/cost";
 import { gbpHFrom, pricedItems } from "../labs/prices";
 import { labWarnings } from "../labs/warnings";
 import {
+  LAB_EXAMS,
   LAB_HOURS_MAX,
   LAB_ID_MAX,
   LAB_ID_RE,
@@ -152,13 +153,17 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     const cat = catalogue();
     // A lab counts as run with a session ready for LAB_COVERAGE_MIN minutes or more.
     const ran = new Set((await c.env.DB.prepare(`SELECT DISTINCT lab_id FROM lab_sessions WHERE ${RAN_SQL}`).bind(new Date().toISOString()).all<{ lab_id: string }>()).results.map((r) => r.lab_id));
-    const exams = (["AZ-104", "AZ-305"] as const)
-      .map((exam) => ({
+    // One entry per exam (LAB_EXAMS order) with areas. A lab counts under every area it names, so a lab tagged
+    // for another exam (ruling 39) counts in that exam's coverage too; each area's labs go by number.
+    const exams = LAB_EXAMS.map((exam) => ({
         exam,
         areas: cat.skillAreas
           .filter((a) => a.exam === exam)
           .map((a) => {
-            const labs = cat.labs.filter((l) => l.skill_areas.includes(a.key)).map((l) => ({ id: l.id, number: l.number, title: l.title, run: ran.has(l.id) }));
+            const labs = cat.labs
+              .filter((l) => l.skill_areas.includes(a.key))
+              .sort((x, y) => x.number - y.number)
+              .map((l) => ({ id: l.id, number: l.number, title: l.title, run: ran.has(l.id) }));
             return { key: a.key, name: a.name, labs, run: labs.filter((l) => l.run).length, available: labs.length };
           }),
       }))

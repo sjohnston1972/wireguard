@@ -41,6 +41,7 @@ const def = (over: Partial<LabDef> = {}): LabDef => ({
   title: "Blob security",
   summary: "A storage account.",
   exam: "AZ-104",
+  exams: ["AZ-104"],
   skill_areas: ["az104.storage"],
   level: "associate",
   type: "explore",
