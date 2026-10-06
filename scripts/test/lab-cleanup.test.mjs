@@ -75,7 +75,7 @@ const NETWORKS = (status = ["uksouth\tConnectivity\tDeployed\t1\nuksouth\tSecuri
   // Read back after a delete: gone.
   { match: "^rest --method get --url \\S+\\?api-version=\\S+ --query id -o tsv$", code: 1, err: "ERROR: (ResourceNotFound) The Resource was not found." },
   { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/networkManagers\\?`, out: `${NM}\tuksouth` },
-  { match: "^rest --method post --url \\S+/listDeploymentStatus\\?", out: status },
+  ...statusRules("\\S+", status),
   { match: `^network private-link-service list --resource-group ${RG} `, out: PLS_CONN },
   { match: `^network vpn-connection list --resource-group ${RG} `, out: VPN_CONN },
   { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/virtualHubs\\?`, out: HUB },
@@ -95,6 +95,19 @@ const NETWORKS = (status = ["uksouth\tConnectivity\tDeployed\t1\nuksouth\tSecuri
 ];
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const restDelete = (id) => new RegExp(`^az rest --method delete --url ${esc(id)}\\?api-version=\\S+ -o none$`);
+const AVNM_TYPES = ["Connectivity", "SecurityAdmin", "Routing"];
+/**
+ * listDeploymentStatus answers for the network manager(s) whose id matches `urlRe` (review fix 15: unblock asks for
+ * each type on its own). `outs` is one combined answer per read (an array: the nth read's), split into each type's rows.
+ */
+const statusRules = (urlRe, outs, extra = {}) =>
+  AVNM_TYPES.map((t) => ({
+    match: `^rest --method post --url ${urlRe}/listDeploymentStatus\\?\\S+ --body \\{"regions":\\[[^]]*\\],"deploymentTypes":\\["${t}"\\]\\}`,
+    out: (Array.isArray(outs) ? outs : [outs]).map((o) => o.split("\n").filter((l) => l.split("\t")[1] === t).join("\n")),
+    ...(extra[t] ?? {}),
+  }));
+/** The calls that read a status, one per read (each read asks Connectivity first). */
+const statusReads = (calls, nm = "\\S+") => calls.map((c, i) => (new RegExp(`^az rest --method post --url ${nm}/listDeploymentStatus\\?\\S+ --body \\S+"deploymentTypes":\\["Connectivity"\\]`).test(c) ? i : -1)).filter((i) => i >= 0);
 
 test("unblock runs locks, holds, immutability, snapshots, backup, replication, SQL, then networks, in that order", { skip }, () => {
   const w = world([
@@ -177,7 +190,7 @@ test("unblock deploys None for every network manager in a lab group and waits un
     { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/networkManagers\\?api-version=2024-05-01 --query value\\[\\]\\.\\[id, location\\] -o tsv$`, out: `${NM}\tuksouth` },
     { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}-nodes/providers/Microsoft.Network/networkManagers\\?`, out: `${NM2}\tuksouth` },
     // avnm-l06: Connectivity in uksouth and SecurityAdmin in uksouth and ukwest, still Deploying after the first None, then empty.
-    { match: `^rest --method post --url ${esc(NM)}/listDeploymentStatus\\?`, out: ["uksouth\tConnectivity\tDeployed\t1\nuksouth\tSecurityAdmin\tDeployed\t1\nukwest\tSecurityAdmin\tDeployed\t1", "uksouth\tConnectivity\tDeploying\t0\nuksouth\tSecurityAdmin\tDeployed\t0\nukwest\tSecurityAdmin\tDeployed\t0", "uksouth\tConnectivity\tDeployed\t0\nuksouth\tSecurityAdmin\tDeployed\t0\nukwest\tSecurityAdmin\tDeployed\t0"] },
+    ...statusRules(esc(NM), ["uksouth\tConnectivity\tDeployed\t1\nuksouth\tSecurityAdmin\tDeployed\t1\nukwest\tSecurityAdmin\tDeployed\t1", "uksouth\tConnectivity\tDeploying\t0\nuksouth\tSecurityAdmin\tDeployed\t0\nukwest\tSecurityAdmin\tDeployed\t0", "uksouth\tConnectivity\tDeployed\t0\nuksouth\tSecurityAdmin\tDeployed\t0\nukwest\tSecurityAdmin\tDeployed\t0"]),
     // avnm-two: nothing deployed (a manager made by hand and never committed): nothing to commit.
     { match: `^rest --method post --url ${esc(NM2)}/listDeploymentStatus\\?`, out: "" },
   ]);
@@ -189,11 +202,11 @@ test("unblock deploys None for every network manager in a lab group and waits un
     `az rest --method post --url ${NM}/commit?api-version=2024-05-01 --body {"targetLocations":["uksouth"],"configurationIds":[],"commitType":"Connectivity"} -o none`,
     `az rest --method post --url ${NM}/commit?api-version=2024-05-01 --body {"targetLocations":["uksouth","ukwest"],"configurationIds":[],"commitType":"SecurityAdmin"} -o none`,
   ]);
-  // The status is asked for the lab's regions and every deployment type, and polled until nothing is left deployed.
+  // The status is asked for the lab's regions and each deployment type on its own, and polled until nothing is left deployed.
   const status = calls.filter((c) => c.startsWith(`az rest --method post --url ${NM}/listDeploymentStatus`));
-  assert.equal(status.length, 3, calls.join("\n"));
-  assert.match(status[0], /--body \{"regions":\["uksouth","ukwest"\],"deploymentTypes":\["Connectivity","SecurityAdmin","Routing"\]\}/);
-  const statusAt = calls.map((c, i) => (c.startsWith(`az rest --method post --url ${NM}/listDeploymentStatus`) ? i : -1)).filter((i) => i >= 0);
+  assert.equal(status.length, 3 * 3, calls.join("\n"));
+  AVNM_TYPES.forEach((t, i) => assert.match(status[i], new RegExp(`--body \\{"regions":\\["uksouth","ukwest"\\],"deploymentTypes":\\["${t}"\\]\\}`)));
+  const statusAt = statusReads(calls, esc(NM));
   assert.ok(statusAt[0] < calls.indexOf(commits[0]) && calls.indexOf(commits[1]) < statusAt[1], "read, None committed, then the wait");
   assert.match(r.stdout, /unblock: avnm-l06: nothing deployed any more/);
   assert.equal(commits.filter((c) => c.includes("avnm-two")).length, 0);
@@ -222,8 +235,7 @@ test("unblock deploys None for every network manager in a lab group and waits un
 // counts as none rather than breaking the query.
 test("unblock commits None again once a Deploying deployment finishes, or after a refused commit", { skip }, () => {
   const isCommit = (c) => /^az rest --method post --url \S+\/commit\?/.test(c);
-  const isStatus = (c) => /^az rest --method post --url \S+\/listDeploymentStatus\?/.test(c);
-  const avnm = (status, commit = {}) => world([ONE_GROUP, { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` }, { match: "^rest --method post --url \\S+/listDeploymentStatus\\?", out: status }, { match: "^rest --method post --url \\S+/commit\\?", ...commit }]);
+  const avnm = (status, commit = {}) => world([ONE_GROUP, { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` }, ...statusRules("\\S+", status), { match: "^rest --method post --url \\S+/commit\\?", ...commit }]);
   // First read: the learner's own deploy still Deploying (a commit now would be refused). Then Deployed: commit None.
   const w = avnm(["uksouth\tConnectivity\tDeploying\t1", "uksouth\tConnectivity\tDeployed\t1", "uksouth\tConnectivity\tDeploying\t0", "uksouth\tConnectivity\tDeployed\t0"]);
   const r = w.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth" });
@@ -231,7 +243,7 @@ test("unblock commits None again once a Deploying deployment finishes, or after 
   let calls = w.calls();
   const commits = calls.filter(isCommit);
   assert.deepEqual(commits, [`az rest --method post --url ${NM}/commit?api-version=2024-05-01 --body {"targetLocations":["uksouth"],"configurationIds":[],"commitType":"Connectivity"} -o none`], calls.join("\n"));
-  const statusAt = calls.map((c, i) => (isStatus(c) ? i : -1)).filter((i) => i >= 0);
+  const statusAt = statusReads(calls);
   assert.ok(calls.indexOf(commits[0]) > statusAt[1], "None is committed after the status said Deployed, not while Deploying");
   assert.match(r.stdout, /unblock: avnm-l06: nothing deployed any more/);
   w.cleanup();
@@ -249,6 +261,38 @@ test("unblock commits None again once a Deploying deployment finishes, or after 
   const n = stuck.calls().filter(isCommit).length;
   assert.ok(n >= 2 && n <= 5, `${n} commits`);
   stuck.cleanup();
+});
+
+// Review fix 15: a type the api-version (or the region) refuses, Routing the newest, must not hide the others.
+test("unblock asks for each AVNM deployment type on its own, so a refused Routing query still deploys None for the rest", { skip }, () => {
+  const w = world([
+    ONE_GROUP,
+    { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` },
+    ...statusRules("\\S+", ["uksouth\tConnectivity\tDeployed\t1\nuksouth\tSecurityAdmin\tDeployed\t1", "uksouth\tConnectivity\tDeployed\t0\nuksouth\tSecurityAdmin\tDeployed\t0"], {
+      Routing: { code: 1, err: "ERROR: (InvalidRequestFormat) Cannot parse the request: 'Routing' is not a valid deployment type." },
+    }),
+  ]);
+  const r = w.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth" });
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const commits = calls.filter((c) => /^az rest --method post --url \S+\/commit\?/.test(c));
+  assert.deepEqual(commits.map((c) => /"commitType":"(\w+)"/.exec(c)[1]), ["Connectivity", "SecurityAdmin"], calls.join("\n"));
+  assert.match(r.stdout, /unblock: avnm-l06: nothing deployed any more/);
+  // One warning about Routing, however many reads; not "unverified" for the types that were read.
+  assert.equal((r.stderr.match(/could not read its Routing deployments/g) ?? []).length, 1, r.stderr);
+  assert.doesNotMatch(r.stderr, /unverified: .*avnm-l06 deployments/);
+  w.cleanup();
+  // Connectivity refused too: what could be read is still committed, and the manager is unverified.
+  const half = world([
+    ONE_GROUP,
+    { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` },
+    ...statusRules("\\S+", "uksouth\tSecurityAdmin\tDeployed\t1", { Connectivity: { code: 1, err: "ERROR: (InternalServerError)" } }),
+  ]);
+  const h = half.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth", LAB_UNBLOCK_AVNM_WAIT_SECONDS: "15" });
+  assert.equal(h.status, 0, h.out);
+  assert.ok(half.calls().some((c) => /"commitType":"SecurityAdmin"/.test(c)), half.calls().join("\n"));
+  assert.match(h.stderr, /unverified: .*avnm-l06 deployments/);
+  half.cleanup();
 });
 
 test("unblock's deployment status query counts a null configurationIds as none", { skip }, () => {

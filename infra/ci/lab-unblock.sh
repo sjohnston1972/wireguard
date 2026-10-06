@@ -536,9 +536,29 @@ for g in "${groups[@]}"; do
     name="${nm##*/}"
     regions=("${AVNM_REGIONS[@]}")
     [ -n "${loc:-}" ] && [[ " ${regions[*]} " != *" $loc "* ]] && regions+=("$loc")
-    body="{\"regions\":$(json_list "${regions[@]}"),\"deploymentTypes\":[\"Connectivity\",\"SecurityAdmin\",\"Routing\"]}"
+    regions_json="$(json_list "${regions[@]}")"
+    # read_status: each type's deployment status, asked for on its own (review fix 15): a type the api-version or
+    # the region refuses (Routing, the newest) must not hide the others. Fills status (region, type, status,
+    # count) with whatever was read; returns 1 when Connectivity or SecurityAdmin could not be read. A Routing
+    # read that fails is a warning, once per manager (lab 33 deploys none; one made by hand is the safety net's).
     # configurationIds is null for a type never deployed in a region: counted as none (length(null) fails the query).
-    status_of() { azq rest --method post --url "$nm/listDeploymentStatus?$NET_API" --body "$body" --query "value[].[region, deploymentType, deploymentStatus, length(configurationIds || \`[]\`)]" -o tsv; }
+    routing_warned=false
+    read_status() {
+      local type out ok=0
+      status=""
+      for type in Connectivity SecurityAdmin Routing; do
+        if out="$(azq rest --method post --url "$nm/listDeploymentStatus?$NET_API" --body "{\"regions\":$regions_json,\"deploymentTypes\":[\"$type\"]}" --query "value[].[region, deploymentType, deploymentStatus, length(configurationIds || \`[]\`)]" -o tsv)"; then
+          out="$(awk -F'\t' -v t="$type" '$2 == t' <<<"$out")"
+          [ -n "$out" ] && status+="${status:+$'\n'}$out"
+        elif [ "$type" = Routing ]; then
+          [ "$routing_warned" = true ] || warn "$name: could not read its Routing deployments ($NET_API may not take the type there); Connectivity and SecurityAdmin go ahead"
+          routing_warned=true
+        else
+          ok=1
+        fi
+      done
+      return "$ok"
+    }
     # commit_none: deploy None (an empty commit) for each type, in the regions where it still has configurations
     # deployed and is not Deploying: Azure refuses a commit while a deployment runs, so a region that is Deploying
     # waits for the next read. Sent again from the wait (a refused or lost commit), at most AVNM_COMMITS times a type.
@@ -561,28 +581,31 @@ for g in "${groups[@]}"; do
         else warn "$name: could not deploy None for $type in ${targets[*]} (sent again once nothing is Deploying)"; fi
       done
     }
-    if ! status="$(status_of)"; then
-      warn "$name: could not read what it has deployed"
-      UNVERIFIED+=("$name deployments")
-      continue
+    if ! read_status; then
+      if [ -z "$status" ]; then
+        warn "$name: could not read what it has deployed"
+        UNVERIFIED+=("$name deployments")
+        continue
+      fi
+      warn "$name: could not read every type it has deployed; None goes to what could be read"
     fi
     commit_none
     avnm_wait="$(capped "$AVNM_WAIT")"
     tries=$(((avnm_wait + 14) / 15))
     for ((n = 0; ; n++)); do
-      if status="$(status_of)"; then
+      if read_status; then
         listed=true
         busy="$(awk -F'\t' '$3 == "Deploying" || ($4 != "" && $4 != "0")' <<<"$status")"
         if [ -z "$busy" ]; then
           echo "unblock: $name: nothing deployed any more"
           break
         fi
-        # Committable again (a deployment that was Deploying has finished, or a commit was refused): None again.
-        commit_none
       else
         listed=false
         warn "$name: could not read what it has deployed, so whether anything is left is not known"
       fi
+      # Committable again (a deployment that was Deploying has finished, or a commit was refused): None again.
+      commit_none
       if [ "$n" -ge "$tries" ] || past_until; then
         if [ "$listed" = true ]; then warn "$name: configurations still deployed after $avnm_wait s$(waited_note "$avnm_wait" "$AVNM_WAIT"); the destroy goes ahead and the safety net tries again"; else UNVERIFIED+=("$name deployments"); fi
         break
