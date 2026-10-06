@@ -8,6 +8,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ALLOWED_ROLES,
+  AVNM_LABS,
+  FLOW_LOG_LABS,
   GATEWAY_RANGES,
   GOVERNANCE_LABS,
   LAB_EXAMS,
@@ -230,6 +232,8 @@ describe("contract lists", () => {
     expect(scripts.LAB_POOL).toBe(LAB_POOL);
     expect(scripts.LAB_SLOTS).toBe(LAB_SLOTS);
     expect([...scripts.GOVERNANCE_LABS]).toEqual([...GOVERNANCE_LABS]);
+    expect([...scripts.AVNM_LABS]).toEqual([...AVNM_LABS]);
+    expect([...scripts.FLOW_LOG_LABS]).toEqual([...FLOW_LOG_LABS]);
     expect([...scripts.GATEWAY_RANGES]).toEqual([...GATEWAY_RANGES]);
     expect([...scripts.LAB_TF_VARS]).toEqual([...LAB_TF_VARS]);
     expect(scripts.slotCidr(31)).toBe(slotCidr(31));

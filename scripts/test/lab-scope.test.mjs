@@ -13,8 +13,8 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkHcl, checkPlan, hclResources, planResources, RULES, scopeProblems, templateProblems, GOVERNANCE_LABS as SCOPE_GOVERNANCE, LAB_ID_RE as SCOPE_ID_RE } from "../../infra/ci/lab-scope.mjs";
-import { GOVERNANCE_LABS, LAB_ID_RE } from "../lib/labs.mjs";
+import { checkHcl, checkPlan, hclResources, planResources, RULES, scopeProblems, templateProblems, AVNM_LABS as SCOPE_AVNM, FLOW_LOG_LABS as SCOPE_FLOW_LOG, GOVERNANCE_LABS as SCOPE_GOVERNANCE, LAB_ID_RE as SCOPE_ID_RE } from "../../infra/ci/lab-scope.mjs";
+import { AVNM_LABS, FLOW_LOG_LABS, GOVERNANCE_LABS, LAB_ID_RE } from "../lib/labs.mjs";
 import { realisticPlan, withAfterUnknown } from "./fixtures/labs/plans/realistic.mjs";
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 import { ctx, IN_RG, linuxVm, ref, rgResource, rgSecondaryResource } from "./fixtures/labs/plans/common.mjs";
@@ -1048,4 +1048,406 @@ test("a list of ids a plan leaves wholly unknown is held to its references, and 
   });
   assert.deepEqual(checkHcl(hcl(["${azurerm_private_dns_zone.sql.id}"]), id), []);
   assert.deepEqual(verdict(checkHcl(hcl(["${azurerm_private_dns_zone.sql.id}", foreign]), id)), [["outside-scope", "azurerm_private_endpoint.primary"]]);
+});
+
+// ── AZ-700 (AZ-700 plan Z0.5): the never rule and scope exceptions S1 and S2 ──
+// S1 and S2 approved by Steven 2026-10-05, each as narrow as it can be: S1, lab 33's Virtual Network Manager may be
+// scoped to the current subscription, with static members that are the lab's own VNets only; S2, lab 44 may make one
+// flow log named lab-<id>-* under the existing NetworkWatcher_<region> in NetworkWatcherRG. Nothing else changes.
+
+test("the id pattern accepts az700 and refuses az701", () => {
+  assert.ok(SCOPE_ID_RE.test("az700-33-vnet-manager"));
+  assert.ok(!SCOPE_ID_RE.test("az701-33-vnet-manager"));
+});
+
+test("GOVERNANCE_LABS, AVNM_LABS and FLOW_LOG_LABS match shared/labs.ts", () => {
+  const shared = readFileSync(new URL("../../shared/labs.ts", import.meta.url), "utf8");
+  const list = (name) => JSON.parse(new RegExp(`export const ${name}: readonly string\\[\\] = (\\[[^\\]]*\\]);`).exec(shared)[1]);
+  assert.deepEqual([...SCOPE_GOVERNANCE], list("GOVERNANCE_LABS"));
+  assert.deepEqual([...SCOPE_AVNM], list("AVNM_LABS"));
+  assert.deepEqual([...SCOPE_FLOW_LOG], list("FLOW_LOG_LABS"));
+  assert.deepEqual([...SCOPE_AVNM], [...AVNM_LABS]);
+  assert.deepEqual([...SCOPE_FLOW_LOG], [...FLOW_LOG_LABS]);
+  assert.deepEqual([...AVNM_LABS], ["az700-33-vnet-manager"]);
+  assert.deepEqual([...FLOW_LOG_LABS], ["az700-44-flow-logs-bastion"]);
+});
+
+const SUB = "3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b";
+const L33 = "az700-33-vnet-manager";
+const CURRENT_SUB = { address: "data.azurerm_subscription.current", values: { id: `/subscriptions/${SUB}`, subscription_id: SUB, display_name: "Pay-As-You-Go", tenant_id: "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f" } };
+const IDS = (address) => ref(address, "id");
+
+/**
+ * Lab 33 as the AZ-700 plan designs it, as a plan description at slot 31: a hub and two spokes, a network manager
+ * scoped to the current subscription, a network group with the two spokes as static members, hub-and-spoke
+ * connectivity, a security admin rule and both deployments. `edit(d)` changes it before it is planned.
+ */
+function lab33(edit = () => {}, id = L33) {
+  const c = ctx(id, "33", { slot: 31 });
+  const vnet = (key, cidr) => ({ address: `azurerm_virtual_network.${key}`, values: { name: `vnet-${key}`, resource_group_name: c.rg, location: "uksouth", address_space: [cidr], tags: c.tags }, refs: { ...IN_RG, address_space: ["var.address_space"] } });
+  const member = (key) => ({ address: `azurerm_network_manager_static_member.${key}`, values: { name: `sm-${key}` }, unknown: ["network_group_id", "target_virtual_network_id"], refs: { network_group_id: IDS("azurerm_network_manager_network_group.spokes"), target_virtual_network_id: IDS(`azurerm_virtual_network.${key}`) } });
+  const deployment = (key, access, config) => ({
+    address: `azurerm_network_manager_deployment.${key}`,
+    values: { location: "uksouth", scope_access: access },
+    unknown: ["network_manager_id", "configuration_ids"],
+    refs: { location: IN_RG.location, network_manager_id: IDS("azurerm_network_manager.avnm"), configuration_ids: IDS(config) },
+  });
+  const d = {
+    lab: id,
+    variables: c.variables,
+    data: [structuredClone(CURRENT_SUB)],
+    resources: [
+      rgResource(c),
+      vnet("hub", "10.71.192.0/20"),
+      vnet("spoke1", "10.71.208.0/20"),
+      vnet("spoke2", "10.71.224.0/20"),
+      {
+        address: "azurerm_network_manager.avnm",
+        values: { name: "avnm-l33k3x9q", resource_group_name: c.rg, location: "uksouth", scope_accesses: ["Connectivity", "SecurityAdmin"], tags: c.tags, scope: [{ subscription_ids: [`/subscriptions/${SUB}`] }] },
+        refs: { ...IN_RG, name: ["var.name_prefix"], "scope.0.subscription_ids": IDS("data.azurerm_subscription.current") },
+      },
+      { address: "azurerm_network_manager_network_group.spokes", values: { name: "ng-spokes" }, unknown: ["network_manager_id"], refs: { network_manager_id: IDS("azurerm_network_manager.avnm") } },
+      member("spoke1"),
+      member("spoke2"),
+      {
+        address: "azurerm_network_manager_connectivity_configuration.hub_spoke",
+        values: { name: "cc-hub-spoke", connectivity_topology: "HubAndSpoke", global_mesh_enabled: false, applies_to_group: [{ group_connectivity: "DirectlyConnected" }], hub: [{ resource_type: "Microsoft.Network/virtualNetworks" }] },
+        unknown: ["network_manager_id", "applies_to_group.0.network_group_id", "hub.0.resource_id"],
+        refs: { network_manager_id: IDS("azurerm_network_manager.avnm"), "applies_to_group.0.network_group_id": IDS("azurerm_network_manager_network_group.spokes"), "hub.0.resource_id": IDS("azurerm_virtual_network.hub") },
+      },
+      { address: "azurerm_network_manager_security_admin_configuration.lab", values: { name: "sac-lab" }, unknown: ["network_manager_id"], refs: { network_manager_id: IDS("azurerm_network_manager.avnm") } },
+      {
+        address: "azurerm_network_manager_admin_rule_collection.spokes",
+        values: { name: "rc-spokes" },
+        unknown: ["security_admin_configuration_id", "network_group_ids"],
+        refs: { security_admin_configuration_id: IDS("azurerm_network_manager_security_admin_configuration.lab"), network_group_ids: IDS("azurerm_network_manager_network_group.spokes") },
+      },
+      {
+        address: "azurerm_network_manager_admin_rule.deny_ssh",
+        values: { name: "deny-ssh-internet", action: "Deny", direction: "Inbound", priority: 100, protocol: "Tcp", destination_port_ranges: ["22"], source: [{ address_prefix_type: "ServiceTag", address_prefix: "Internet" }] },
+        unknown: ["admin_rule_collection_id"],
+        refs: { admin_rule_collection_id: IDS("azurerm_network_manager_admin_rule_collection.spokes") },
+      },
+      deployment("connectivity", "Connectivity", "azurerm_network_manager_connectivity_configuration.hub_spoke"),
+      deployment("security", "SecurityAdmin", "azurerm_network_manager_security_admin_configuration.lab"),
+    ],
+  };
+  edit(d);
+  return realisticPlan(d);
+}
+const res = (d, address) => d.resources.find((r) => r.address === address);
+
+/** Lab 33 in HCL, as hcl2json prints its .tf files; `edit(hcl)` changes it first. */
+function lab33Hcl(edit = () => {}) {
+  const inRg = { resource_group_name: "${azurerm_resource_group.lab.name}", location: "${azurerm_resource_group.lab.location}", tags: "${var.tags}" };
+  const vnet = (n) => [{ name: `vnet-${n}`, address_space: [`\${cidrsubnet(var.address_space, 2, ${["hub", "spoke1", "spoke2"].indexOf(n)})}`], ...inRg }];
+  const hcl = {
+    data: { azurerm_subscription: { current: [{}] } },
+    resource: {
+      azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}", tags: "${var.tags}" }] },
+      azurerm_virtual_network: { hub: vnet("hub"), spoke1: vnet("spoke1"), spoke2: vnet("spoke2") },
+      azurerm_network_manager: { avnm: [{ name: "avnm-${var.name_prefix}", ...inRg, scope_accesses: ["Connectivity", "SecurityAdmin"], scope: [{ subscription_ids: ["${data.azurerm_subscription.current.id}"] }] }] },
+      azurerm_network_manager_network_group: { spokes: [{ name: "ng-spokes", network_manager_id: "${azurerm_network_manager.avnm.id}" }] },
+      azurerm_network_manager_static_member: {
+        spoke1: [{ name: "sm-spoke1", network_group_id: "${azurerm_network_manager_network_group.spokes.id}", target_virtual_network_id: "${azurerm_virtual_network.spoke1.id}" }],
+        spoke2: [{ name: "sm-spoke2", network_group_id: "${azurerm_network_manager_network_group.spokes.id}", target_virtual_network_id: "${azurerm_virtual_network.spoke2.id}" }],
+      },
+      azurerm_network_manager_connectivity_configuration: {
+        hub_spoke: [{ name: "cc-hub-spoke", network_manager_id: "${azurerm_network_manager.avnm.id}", connectivity_topology: "HubAndSpoke", applies_to_group: [{ group_connectivity: "DirectlyConnected", network_group_id: "${azurerm_network_manager_network_group.spokes.id}" }], hub: [{ resource_id: "${azurerm_virtual_network.hub.id}", resource_type: "Microsoft.Network/virtualNetworks" }] }],
+      },
+      azurerm_network_manager_security_admin_configuration: { lab: [{ name: "sac-lab", network_manager_id: "${azurerm_network_manager.avnm.id}" }] },
+      azurerm_network_manager_admin_rule_collection: { spokes: [{ name: "rc-spokes", security_admin_configuration_id: "${azurerm_network_manager_security_admin_configuration.lab.id}", network_group_ids: ["${azurerm_network_manager_network_group.spokes.id}"] }] },
+      azurerm_network_manager_deployment: {
+        connectivity: [{ network_manager_id: "${azurerm_network_manager.avnm.id}", location: "${azurerm_resource_group.lab.location}", scope_access: "Connectivity", configuration_ids: ["${azurerm_network_manager_connectivity_configuration.hub_spoke.id}"] }],
+      },
+    },
+  };
+  edit(hcl);
+  return hcl;
+}
+
+test("lab 33's network manager passes with the current subscription and static lab members", () => {
+  assert.deepEqual(checkPlan(lab33(), L33), []);
+  assert.deepEqual(checkHcl(lab33Hcl(), L33), []);
+  // The subscription id as client config spells it is the current subscription too.
+  const viaClient = lab33((d) => {
+    d.data.push({ address: "data.azurerm_client_config.current", values: { subscription_id: SUB, tenant_id: "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f", client_id: "c1", object_id: "o1" } });
+    res(d, "azurerm_network_manager.avnm").refs["scope.0.subscription_ids"] = ["data.azurerm_client_config.current.subscription_id", "data.azurerm_client_config.current"];
+  });
+  assert.deepEqual(checkPlan(viaClient, L33), []);
+});
+
+test("a network manager is refused unless the lab is lab 33, its scope is exactly the current subscription and every member is the lab's own VNet", () => {
+  const AVNM = "azurerm_network_manager.avnm";
+  // Another lab, built just as lab 33 is: every AVNM resource is refused, and nothing else.
+  const AVNM_ALL = [AVNM, "azurerm_network_manager_network_group.spokes", "azurerm_network_manager_static_member.spoke1", "azurerm_network_manager_static_member.spoke2", "azurerm_network_manager_connectivity_configuration.hub_spoke", "azurerm_network_manager_security_admin_configuration.lab", "azurerm_network_manager_admin_rule_collection.spokes", "azurerm_network_manager_admin_rule.deny_ssh", "azurerm_network_manager_deployment.connectivity", "azurerm_network_manager_deployment.security"];
+  for (const lab of ["az700-38-hub-firewall", "az104-14-peering-udr", "az700-44-flow-logs-bastion"]) {
+    assert.deepEqual(verdict(checkPlan(lab33(() => {}, lab), lab)), sorted(AVNM_ALL.map((a) => ["outside-scope", a])), lab);
+  }
+  assert.deepEqual(verdict(checkHcl(lab33Hcl(), "az104-14-peering-udr")).map(([, a]) => a).filter((a) => !a.startsWith("azurerm_network_manager")), []);
+  assert.ok(verdict(checkHcl(lab33Hcl(), "az104-14-peering-udr")).some(([, a]) => a === AVNM));
+  // Lab 33's scope: another subscription, two subscriptions, a management group, or a subscription data source pointed elsewhere.
+  const scope = (fn) => verdict(checkPlan(lab33(fn), L33));
+  const avnmRefused = [["outside-scope", AVNM]];
+  assert.deepEqual(scope((d) => (res(d, AVNM).values.scope[0].subscription_ids = ["/subscriptions/0b1c2d3e-0000-4000-8000-000000000000"])), avnmRefused);
+  assert.deepEqual(scope((d) => res(d, AVNM).values.scope[0].subscription_ids.push("/subscriptions/0b1c2d3e-0000-4000-8000-000000000000")), avnmRefused);
+  assert.deepEqual(scope((d) => (res(d, AVNM).values.scope[0].management_group_ids = ["/providers/Microsoft.Management/managementGroups/corp"])), avnmRefused);
+  assert.deepEqual(scope((d) => (res(d, AVNM).values.scope[0].management_group_ids = ["/providers/Microsoft.Management/managementGroups/lab-az700-33-vnet-manager-x"])), avnmRefused);
+  assert.deepEqual(scope((d) => (res(d, AVNM).values.scope = [{ subscription_ids: [] }])), avnmRefused);
+  assert.deepEqual(
+    scope((d) => {
+      d.data[0].values.id = "/subscriptions/0b1c2d3e-0000-4000-8000-000000000000";
+      d.data[0].refs = { subscription_id: ["var.lab_id"] };
+      res(d, AVNM).values.scope[0].subscription_ids = ["/subscriptions/0b1c2d3e-0000-4000-8000-000000000000"];
+    }),
+    avnmRefused,
+  );
+  // A literal subscription id, even the right one, cannot be shown to be the current one.
+  assert.deepEqual(scope((d) => delete res(d, AVNM).refs["scope.0.subscription_ids"]), avnmRefused);
+  // In HCL: another subscription, a management group, or a subscription data source given a subscription_id.
+  const hclScope = (fn) => verdict(checkHcl(lab33Hcl(fn), L33));
+  assert.deepEqual(hclScope((h) => (h.resource.azurerm_network_manager.avnm[0].scope = [{ subscription_ids: ["/subscriptions/0b1c2d3e-0000-4000-8000-000000000000"] }])), avnmRefused);
+  assert.deepEqual(hclScope((h) => (h.resource.azurerm_network_manager.avnm[0].scope[0].management_group_ids = ["${var.tags}"])), avnmRefused);
+  assert.deepEqual(hclScope((h) => (h.data.azurerm_subscription.current = [{ subscription_id: "0b1c2d3e-0000-4000-8000-000000000000" }])), avnmRefused);
+  // Members: another group's VNet (a literal id, a data source, the gateway's VNet) or a member the lab did not make.
+  const MEMBER = "azurerm_network_manager_static_member.spoke1";
+  const member = (fn) => verdict(checkPlan(lab33(fn), L33)).filter(([, a]) => a === MEMBER);
+  const prodVnet = `/subscriptions/${SUB}/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod`;
+  assert.equal(member((d) => {
+    const m = res(d, MEMBER);
+    m.unknown = ["network_group_id"];
+    m.values.target_virtual_network_id = prodVnet;
+    delete m.refs.target_virtual_network_id;
+  }).length, 1);
+  assert.equal(member((d) => {
+    d.data.push({ address: "data.azurerm_virtual_network.prod", values: { id: prodVnet, name: "vnet-prod", resource_group_name: "rg-prod" } });
+    res(d, MEMBER).refs.target_virtual_network_id = IDS("data.azurerm_virtual_network.prod");
+  }).length, 1);
+  assert.deepEqual(member((d) => (res(d, MEMBER).refs.target_virtual_network_id = ["var.gateway_vnet_id"])), [["gateway", MEMBER]]);
+  // Even a known id inside the lab's group must be written as the lab's own VNet resource (azurerm_virtual_network.<name>.id).
+  assert.equal(member((d) => {
+    const m = res(d, MEMBER);
+    m.unknown = ["network_group_id"];
+    m.values.target_virtual_network_id = `/subscriptions/${SUB}/resourceGroups/rg-lab-${L33}/providers/Microsoft.Network/virtualNetworks/vnet-hub`;
+    delete m.refs.target_virtual_network_id;
+  }).length, 1);
+  assert.equal(member((d) => (res(d, MEMBER).refs.target_virtual_network_id = IDS("azurerm_subnet.spoke1"))).length, 1);
+  assert.equal(member((d) => (res(d, MEMBER).refs.network_group_id = IDS("azurerm_virtual_network.spoke1"))).length, 1);
+  // In HCL, a member that is not a lab VNet.
+  const hclMember = verdict(checkHcl(lab33Hcl((h) => (h.resource.azurerm_network_manager_static_member.spoke1[0].target_virtual_network_id = prodVnet)), L33));
+  assert.deepEqual(hclMember, [["outside-scope", MEMBER]]);
+});
+
+test("cross-tenant scopes and scope connections are refused, and lab 33 makes only the AVNM types it needs", () => {
+  // cross_tenant_scopes is computed (unknown at plan): only a known non-empty value is a cross-tenant scope.
+  assert.equal(lab33().resource_changes.find((c) => c.address === "azurerm_network_manager.avnm").change.after_unknown.cross_tenant_scopes, true);
+  assert.deepEqual(
+    verdict(checkPlan(lab33((d) => (res(d, "azurerm_network_manager.avnm").values.cross_tenant_scopes = [{ tenant_id: "x", subscriptions: ["/subscriptions/y"], management_groups: [] }])), L33)),
+    [["outside-scope", "azurerm_network_manager.avnm"]],
+  );
+  const extra = (address, values, refs) => (d) => d.resources.push({ address, values, unknown: Object.keys(refs), refs });
+  for (const [address, values, refs] of [
+    ["azurerm_network_manager_scope_connection.other", { name: "sc", target_scope_id: "/subscriptions/0b1c2d3e-0000-4000-8000-000000000000", tenant_id: "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f" }, { network_manager_id: IDS("azurerm_network_manager.avnm") }],
+    ["azurerm_network_manager_subscription_connection.sub", { name: "conn", subscription_id: `/subscriptions/${SUB}` }, { network_manager_id: IDS("azurerm_network_manager.avnm") }],
+    ["azurerm_network_manager_management_group_connection.mg", { name: "conn", management_group_id: "/providers/Microsoft.Management/managementGroups/corp" }, { network_manager_id: IDS("azurerm_network_manager.avnm") }],
+    ["azurerm_network_manager_routing_configuration.rt", { name: "rt" }, { network_manager_id: IDS("azurerm_network_manager.avnm") }],
+  ]) {
+    const v = verdict(checkPlan(lab33(extra(address, values, refs)), L33));
+    assert.deepEqual(v, [["outside-scope", address]], address);
+  }
+});
+
+test("lab 33's connectivity and security configurations may target only the lab's own network groups and VNets", () => {
+  const prodGroup = `/subscriptions/${SUB}/resourceGroups/rg-prod/providers/Microsoft.Network/networkManagers/avnm-prod/networkGroups/ng-all`;
+  const one = (address, fn) => verdict(checkPlan(lab33(fn), L33));
+  // A connectivity configuration over another manager's group, or with another VNet as its hub.
+  const CC = "azurerm_network_manager_connectivity_configuration.hub_spoke";
+  assert.deepEqual(one(CC, (d) => {
+    const c = res(d, CC);
+    c.unknown = c.unknown.filter((p) => p !== "applies_to_group.0.network_group_id");
+    c.values.applies_to_group[0].network_group_id = prodGroup;
+    delete c.refs["applies_to_group.0.network_group_id"];
+  }), [["outside-scope", CC]]);
+  assert.deepEqual(one(CC, (d) => {
+    d.data.push({ address: "data.azurerm_virtual_network.wg", values: { id: "/x", name: "vnet-prod", resource_group_name: "rg-prod" } });
+    res(d, CC).refs["hub.0.resource_id"] = IDS("data.azurerm_virtual_network.wg");
+  }), [["outside-scope", CC]]);
+  assert.deepEqual(one(CC, (d) => (res(d, CC).values.hub[0].resource_type = "Microsoft.Network/virtualHubs")), [["outside-scope", CC]]);
+  // A rule collection over a group the lab did not make, or over something that is not a network group.
+  const RC = "azurerm_network_manager_admin_rule_collection.spokes";
+  assert.deepEqual(one(RC, (d) => (res(d, RC).refs.network_group_ids = ["var.tags"])), [["outside-scope", RC]]);
+  assert.deepEqual(one(RC, (d) => (res(d, RC).refs.network_group_ids = IDS("azurerm_virtual_network.spoke1"))), [["outside-scope", RC]]);
+  // A deployment of a configuration the lab did not make.
+  const DEP = "azurerm_network_manager_deployment.connectivity";
+  assert.deepEqual(one(DEP, (d) => (res(d, DEP).refs.configuration_ids = ["var.tags"])), [["outside-scope", DEP]]);
+  // A network group for subnets (routing) rather than VNets.
+  const NG = "azurerm_network_manager_network_group.spokes";
+  assert.deepEqual(one(NG, (d) => (res(d, NG).values.member_type = "Subnet")), [["outside-scope", NG]]);
+  // Dynamic membership needs Azure Policy: lab 33 assigns no policy, and no lab defines an addToNetworkGroup policy.
+  const PA = "azurerm_resource_group_policy_assignment.members";
+  assert.deepEqual(
+    one(PA, (d) => d.resources.push({ address: PA, values: { name: "ng-members", policy_definition_id: "/providers/Microsoft.Authorization/policyDefinitions/0a1b2c3d-0000-4000-8000-000000000000" }, unknown: ["resource_group_id"], refs: { resource_group_id: IDS("azurerm_resource_group.lab") } })),
+    [["outside-scope", PA]],
+  );
+  const dynamic = governanceHcl({ azurerm_policy_definition: { members: [{ name: "lab-${var.lab_id}-members", display_name: "lab-${var.lab_id}-members", policy_type: "Custom", mode: "Microsoft.Network.Data", policy_rule: JSON.stringify({ if: { field: "type", equals: "Microsoft.Network/virtualNetworks" }, then: { effect: "addToNetworkGroup", details: { networkGroupId: "/x" } } }) }] } });
+  assert.ok(verdict(checkHcl(dynamic, "az104-02-policy")).some(([, a]) => a === "azurerm_policy_definition.members"));
+});
+
+const L44 = "az700-44-flow-logs-bastion";
+const FLOW = "azurerm_network_watcher_flow_log.vnet";
+/** Lab 44's flow log and what it points at (slot 31): the VNet, the log storage account and the capped workspace. */
+function lab44(edit = () => {}, id = L44) {
+  const c = ctx(id, "44", { slot: 31 });
+  const d = {
+    lab: id,
+    variables: c.variables,
+    resources: [
+      rgResource(c),
+      { address: "azurerm_virtual_network.hub", values: { name: "vnet-hub", resource_group_name: c.rg, location: "uksouth", address_space: ["10.71.192.0/20"], tags: c.tags }, refs: { ...IN_RG, address_space: ["var.address_space"] } },
+      { address: "azurerm_storage_account.logs", values: { name: "l44k3x9qlogs", resource_group_name: c.rg, location: "uksouth", account_tier: "Standard", account_replication_type: "LRS", tags: c.tags }, refs: { ...IN_RG, name: ["var.name_prefix"] } },
+      { address: "azurerm_log_analytics_workspace.lab", values: { name: "law-l44k3x9q", resource_group_name: c.rg, location: "uksouth", sku: "PerGB2018", retention_in_days: 30, daily_quota_gb: 0.05, tags: c.tags }, refs: { ...IN_RG, name: ["var.name_prefix"] } },
+      {
+        address: FLOW,
+        values: { name: `lab-${id}-vnet`, resource_group_name: "NetworkWatcherRG", network_watcher_name: "NetworkWatcher_uksouth", enabled: true, version: 2, tags: c.tags, retention_policy: [{ enabled: true, days: 1 }], traffic_analytics: [{ enabled: true, interval_in_minutes: 10, workspace_region: "uksouth" }] },
+        unknown: ["target_resource_id", "storage_account_id", "traffic_analytics.0.workspace_id", "traffic_analytics.0.workspace_resource_id"],
+        refs: {
+          name: ["var.lab_id"],
+          network_watcher_name: ["var.region"],
+          tags: ["var.tags"],
+          target_resource_id: IDS("azurerm_virtual_network.hub"),
+          storage_account_id: IDS("azurerm_storage_account.logs"),
+          "traffic_analytics.0.workspace_id": ref("azurerm_log_analytics_workspace.lab", "workspace_id"),
+          "traffic_analytics.0.workspace_resource_id": IDS("azurerm_log_analytics_workspace.lab"),
+          "traffic_analytics.0.workspace_region": ref("azurerm_log_analytics_workspace.lab", "location"),
+        },
+      },
+    ],
+  };
+  edit(d);
+  return realisticPlan(d);
+}
+
+/** Lab 44's flow log in HCL; `edit(hcl)` changes it first. */
+function lab44Hcl(edit = () => {}) {
+  const inRg = { resource_group_name: "${azurerm_resource_group.lab.name}", location: "${azurerm_resource_group.lab.location}", tags: "${var.tags}" };
+  const hcl = {
+    resource: {
+      azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}", tags: "${var.tags}" }] },
+      azurerm_virtual_network: { hub: [{ name: "vnet-hub", address_space: ["${cidrsubnet(var.address_space, 2, 0)}"], ...inRg }] },
+      azurerm_storage_account: { logs: [{ name: "${var.name_prefix}logs", account_tier: "Standard", account_replication_type: "LRS", ...inRg }] },
+      azurerm_log_analytics_workspace: { lab: [{ name: "law-${var.name_prefix}", sku: "PerGB2018", daily_quota_gb: 0.05, ...inRg }] },
+      azurerm_network_watcher_flow_log: {
+        vnet: [
+          {
+            name: "lab-${var.lab_id}-vnet",
+            resource_group_name: "NetworkWatcherRG",
+            network_watcher_name: "NetworkWatcher_${var.region}",
+            target_resource_id: "${azurerm_virtual_network.hub.id}",
+            storage_account_id: "${azurerm_storage_account.logs.id}",
+            enabled: true,
+            version: 2,
+            tags: "${var.tags}",
+            retention_policy: [{ enabled: true, days: 1 }],
+            traffic_analytics: [{ enabled: true, interval_in_minutes: 10, workspace_id: "${azurerm_log_analytics_workspace.lab.workspace_id}", workspace_region: "${azurerm_log_analytics_workspace.lab.location}", workspace_resource_id: "${azurerm_log_analytics_workspace.lab.id}" }],
+          },
+        ],
+      },
+    },
+  };
+  edit(hcl);
+  return hcl;
+}
+
+test("lab 44's flow log passes", () => {
+  assert.deepEqual(checkPlan(lab44(), L44), []);
+  assert.deepEqual(checkHcl(lab44Hcl(), L44), []);
+  // Azure spells the group in any case.
+  assert.deepEqual(checkPlan(lab44((d) => (res(d, FLOW).values.resource_group_name = "networkwatcherrg")), L44), []);
+});
+
+test("a flow log is refused unless the lab is lab 44, it is in NetworkWatcherRG on NetworkWatcher_<region>, named lab-<id>-, and targets and stores in the lab", () => {
+  const flow = (fn, lab = L44) => verdict(checkPlan(lab44(fn, lab), lab)).filter(([, a]) => a === FLOW);
+  const refused = [["outside-scope", FLOW]];
+  // Another lab, built just as lab 44 is (its own name prefix and group): the flow log is refused, and nothing else.
+  for (const lab of ["az104-17-netwatcher-fix", "az700-33-vnet-manager", "az104-13-vnets"]) {
+    assert.deepEqual(verdict(checkPlan(lab44(() => {}, lab), lab)), refused, lab);
+    assert.deepEqual(verdict(checkHcl(lab44Hcl(), lab)), refused, lab);
+  }
+  // Lab 44: another name, another group, another watcher (another region's or one named by hand), a watcher name not from var.region.
+  assert.deepEqual(flow((d) => (res(d, FLOW).values.name = "fl-hub")), refused);
+  assert.deepEqual(flow((d) => (res(d, FLOW).values.name = "lab-az700-44-flow-logs-bastionx")), refused);
+  assert.deepEqual(flow((d) => (res(d, FLOW).values.resource_group_name = "rg-prod")), refused);
+  assert.deepEqual(flow((d) => (res(d, FLOW).values.resource_group_name = "NetworkWatcherRG-x")), refused);
+  assert.deepEqual(flow((d) => (res(d, FLOW).values.network_watcher_name = "NetworkWatcher_ukwest")), refused);
+  assert.deepEqual(flow((d) => (res(d, FLOW).values.network_watcher_name = "nw-prod")), refused);
+  assert.deepEqual(flow((d) => (res(d, FLOW).refs.network_watcher_name = ["var.tags"])), refused);
+  // What it logs, where it stores and where analytics go: the lab's own VNet, account and workspace only.
+  assert.deepEqual(flow((d) => (res(d, FLOW).refs.target_resource_id = IDS("azurerm_storage_account.logs"))), refused);
+  assert.deepEqual(flow((d) => {
+    d.data = [{ address: "data.azurerm_virtual_network.wg", values: { id: "/x", name: "vnet-prod", resource_group_name: "rg-prod" } }];
+    res(d, FLOW).refs.target_resource_id = IDS("data.azurerm_virtual_network.wg");
+  }), refused);
+  assert.deepEqual(flow((d) => (res(d, FLOW).refs.target_resource_id = ["var.gateway_vnet_id"])), [["gateway", FLOW]]);
+  assert.deepEqual(flow((d) => (res(d, FLOW).refs.storage_account_id = ["var.tags"])), refused);
+  assert.deepEqual(flow((d) => (res(d, FLOW).refs["traffic_analytics.0.workspace_resource_id"] = ["var.tags"])), refused);
+  assert.deepEqual(flow((d) => {
+    const f = res(d, FLOW);
+    f.values.network_security_group_id = `/subscriptions/${SUB}/resourceGroups/rg-lab-${L44}/providers/Microsoft.Network/networkSecurityGroups/nsg-web`;
+  }), refused);
+  // HCL: a watcher name that is not NetworkWatcher_${var.region}, another group, another name.
+  const hclFlow = (fn) => verdict(checkHcl(lab44Hcl(fn), L44)).filter(([, a]) => a === FLOW);
+  const f = (h) => h.resource.azurerm_network_watcher_flow_log.vnet[0];
+  assert.deepEqual(hclFlow((h) => (f(h).network_watcher_name = "NetworkWatcher_${var.secondary_region}")), refused);
+  assert.deepEqual(hclFlow((h) => (f(h).network_watcher_name = "NetworkWatcher_uksouth")), refused);
+  assert.deepEqual(hclFlow((h) => (f(h).resource_group_name = "${azurerm_resource_group.lab.name}")), refused);
+  assert.deepEqual(hclFlow((h) => (f(h).name = "fl-${var.lab_id}")), refused);
+});
+
+test("nothing else of lab 44 may be in NetworkWatcherRG, and no lab makes a network watcher there", () => {
+  // The storage account, a second flow log named otherwise, or a watcher of its own in NetworkWatcherRG: refused.
+  const SA = "azurerm_storage_account.logs";
+  assert.deepEqual(verdict(checkPlan(lab44((d) => (res(d, SA).values.resource_group_name = "NetworkWatcherRG")), L44)), [["outside-scope", SA]]);
+  const two = lab44((d) => {
+    const copy = structuredClone(res(d, FLOW));
+    copy.address = "azurerm_network_watcher_flow_log.other";
+    copy.values.name = "other-vnet";
+    d.resources.push(copy);
+  });
+  assert.deepEqual(verdict(checkPlan(two, L44)), [["outside-scope", "azurerm_network_watcher_flow_log.other"]]);
+  const watcher = lab44((d) => d.resources.push({ address: "azurerm_network_watcher.nw", values: { name: "NetworkWatcher_uksouth", resource_group_name: "NetworkWatcherRG", location: "uksouth" } }));
+  assert.deepEqual(verdict(checkPlan(watcher, L44)), [["outside-scope", "azurerm_network_watcher.nw"]]);
+});
+
+test("a DDoS plan, DDoS IP protection, an ExpressRoute circuit, port or gateway and a custom IP prefix are refused (never)", () => {
+  assert.ok(RULES.includes("never"));
+  assert.equal(RULES.indexOf("never"), RULES.indexOf("immutability") + 1, "never comes right after immutability");
+  const f = fixtures.find((x) => x.file === "evil-never.json");
+  assert.ok(f, "fixtures/labs/scope/evil-never.json");
+  assert.deepEqual(verdict(checkPlan(f.plan, f.lab)), sorted(f.expect));
+  assert.deepEqual(verdict(checkHcl(f.hcl, f.lab)), sorted(f.expect));
+  for (const [, a] of f.expect) assert.ok(f.expect.every(([rule]) => rule === "never"), a);
+  // A Standard public IP with the default DDoS mode, and a VNet with no DDoS plan, pass.
+  const c = ctx("az700-31-ip-nat-outbound", "31", { slot: 31 });
+  const plain = realisticPlan({
+    resources: [
+      rgResource(c),
+      { address: "azurerm_public_ip.lb", values: { name: "pip-lb", resource_group_name: c.rg, location: "uksouth", allocation_method: "Static", sku: "Standard", ddos_protection_mode: "VirtualNetworkInherited", tags: c.tags }, refs: IN_RG },
+      { address: "azurerm_virtual_network.hub", values: { name: "vnet-hub", resource_group_name: c.rg, location: "uksouth", address_space: ["10.71.192.0/20"], tags: c.tags }, refs: IN_RG },
+    ],
+    variables: c.variables,
+  });
+  assert.deepEqual(checkPlan(plain, c.id), []);
+});
+
+test("an S1 or S2 refusal says which exception the resource falls outside, and why", () => {
+  const first = (plan, lab, address) => checkPlan(plan, lab).find((p) => p.address === address)?.message ?? "";
+  const MEMBER = "azurerm_network_manager_static_member.spoke1";
+  assert.match(first(lab33(() => {}, "az700-38-hub-firewall"), "az700-38-hub-firewall", "azurerm_network_manager.avnm"), /^S1: .*only az700-33-vnet-manager/);
+  assert.match(first(lab33((d) => (res(d, "azurerm_network_manager.avnm").values.scope[0].subscription_ids = ["/subscriptions/0b1c2d3e-0000-4000-8000-000000000000"])), L33, "azurerm_network_manager.avnm"), /^S1: its scope must be exactly the current subscription/);
+  assert.match(first(lab33((d) => (res(d, MEMBER).refs.target_virtual_network_id = IDS("azurerm_subnet.spoke1"))), L33, MEMBER), /^S1: target_virtual_network_id must be one of the lab's own VNets/);
+  assert.match(first(lab44(() => {}, "az104-17-netwatcher-fix"), "az104-17-netwatcher-fix", FLOW), /^S2: .*only az700-44-flow-logs-bastion/);
+  assert.match(first(lab44((d) => (res(d, FLOW).values.network_watcher_name = "NetworkWatcher_ukwest")), L44, FLOW), /^S2: network_watcher_name/);
+  assert.match(first(lab44((d) => (res(d, FLOW).values.name = "fl-hub")), L44, FLOW), /^S2: name "fl-hub" must start lab-az700-44-flow-logs-bastion-/);
+  assert.match(first(lab44((d) => (res(d, FLOW).refs.storage_account_id = ["var.tags"])), L44, FLOW), /^S2: storage_account_id/);
+  assert.match(first(lab44((d) => (res(d, FLOW).values.resource_group_name = "rg-prod")), L44, FLOW), /^S2: resource_group_name must be "NetworkWatcherRG"/);
 });

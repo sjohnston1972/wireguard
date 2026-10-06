@@ -1,7 +1,7 @@
 # wg-admin Labs: the AZ-700 suite (design)
 
 Date: 2026-10-05 (planned for 2026-10-06). Status: scope **pre-approved by Steven 2026-10-05**; the details below are decided
-here and two scope exceptions (§6) wait for his yes. Builds on `docs/superpowers/specs/2026-10-04-labs-design.md` (the main
+here, and the two scope exceptions (§6) were approved by Steven on 2026-10-05. Builds on `docs/superpowers/specs/2026-10-04-labs-design.md` (the main
 spec, binding, with decisions A and B, §16 and §17 rulings 1–37) as integrated on `feat/labs-b3` (52a8fcc). The plan is
 `docs/superpowers/plans/2026-10-06-labs-az700-plan.md`. **(V)** marks a fact to check live or on the official page during the
 build; the area reports record the answer.
@@ -203,7 +203,7 @@ Plus, in the **safety net** (S2): flow logs named `lab-<id>-*` on each `NetworkW
 secondary region) are deleted after the group deletes, and Verify clean lists any left (`"<name> (flow log)"`, a failed list
 "unverified: flow logs"). Nothing else in `NetworkWatcherRG` is ever touched.
 
-## 6. Scope exceptions (STOP: Steven decides)
+## 6. Scope exceptions (both APPROVED by Steven 2026-10-05)
 
 Both widen what lab Terraform may touch beyond `rg-lab-<id>*`. The pipeline service principal already has the rights
 (Contributor on the subscription), so neither is an Azure permission change; both are changes to the safety model, named in
@@ -312,10 +312,10 @@ Already copied into the main spec's §17 by this commit, under "Rulings from the
     destroy_min)` within the job deadline; £££ labs are session 2 h, max 3 h.
 46. **Special subnets** are sized as §3.8, all from the slot; a lab's VNets, hub prefix and P2S pool never overlap.
 47. **Scope exception S1** (§6): a subscription-scoped Virtual Network Manager, for `az700-33-vnet-manager` only
-    (`AVNM_LABS`), static lab members only. *Pending Steven's approval.*
+    (`AVNM_LABS`), static lab members only. *Approved by Steven 2026-10-05.*
 48. **Scope exception S2** (§6): `azurerm_network_watcher_flow_log` in `NetworkWatcherRG` on `NetworkWatcher_<region>`, named
     `lab-<id>-*`, for `az700-44-flow-logs-bastion` only (`FLOW_LOG_LABS`); the safety net, Verify clean and the orphan sweep
-    find them by name. *Pending Steven's approval.*
+    find them by name. *Approved by Steven 2026-10-05.*
 49. **Unblock knows networks** (§5): AVNM deploy-None, Private Link service connections, VPN connections, Virtual WAN hub
     children, Route Server peers, firewalls before policies, resolver links and rulesets, global and gateway load balancer
     links, in that order, never failing the run.
@@ -342,7 +342,7 @@ Already copied into the main spec's §17 by this commit, under "Rulings from the
 
 | Item | Status |
 |---|---|
-| S1 and S2 | Safety-model exceptions, each one lab, each pending Steven (§6). |
+| S1 and S2 | Safety-model exceptions, each one lab, approved by Steven 2026-10-05 (§6); built as narrow as the scope check can make them. |
 | Two VPN gateways in one lab | 45-minute deploy measured by the release test; a gateway slower than 150 minutes total fails the job, the destroy still runs, and the next sweep cleans. |
 | Front Door base fee | Learn bills each hour or part hour a profile exists (lab 27's finding); a daily minimum would make lab 42's worst case £8.20 a day (V, Review Focus). |
 | VPN gateway billing | Billed by the hour; a 45-minute deploy and 25-minute destroy bill two hours. |

@@ -182,6 +182,17 @@ export function ownsName(id: string, name: string, ids: readonly string[] = [id]
 
 export const isGovernanceLab = (id: string): boolean => GOVERNANCE_LABS.includes(id);
 
+/**
+ * Scope exception S1 (AZ-700 spec §6, ruling 47; approved by Steven 2026-10-05): the only lab whose Virtual
+ * Network Manager may be scoped to the subscription, with static members that are its own VNets only.
+ */
+export const AVNM_LABS: readonly string[] = ["az700-33-vnet-manager"];
+/**
+ * Scope exception S2 (AZ-700 spec §6, ruling 48; approved by Steven 2026-10-05): the only lab that may make a flow
+ * log, named lab-<id>-*, under the region's NetworkWatcher_<region> in Azure's NetworkWatcherRG.
+ */
+export const FLOW_LOG_LABS: readonly string[] = ["az700-44-flow-logs-bastion"];
+
 /** What a lab needs beyond Contributor (§8.1): the governance role (any role assignment, or a governance lab) and Graph (Entra users or groups). */
 export function labNeeds(def: Pick<LabDef, "id" | "identity">): { role: boolean; graph: boolean } {
   return { role: def.identity.governance || isGovernanceLab(def.id) || def.identity.roles.length > 0, graph: def.identity.creates.length > 0 };

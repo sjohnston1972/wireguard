@@ -45,6 +45,11 @@
 //   immutability      a Locked immutability policy (nothing can delete it), or a
 //                     Key Vault with purge protection (nothing can delete it for
 //                     its retention period)
+//   never             what a lab only explains (AZ-700 ruling 43): DDoS Network
+//                     Protection plans, DDoS IP Protection on a public IP (its
+//                     mode Enabled or a plan id), a VNet on a DDoS plan, every
+//                     ExpressRoute type, a VNet gateway of type ExpressRoute, and
+//                     custom IP prefixes (BYOIP)
 //   azure-made-group  AKS node groups, backup restore groups and Container Apps
 //                     infrastructure groups (an environment in a subnet) not
 //                     named rg-lab-<id>-*
@@ -70,7 +75,26 @@
 //                     Bicep's own modules, linked templates and template specs,
 //                     /subscriptions/ or /resourceGroups/ paths, subscription(),
 //                     tenant(), managementGroup(), resourceId() with a group or
-//                     subscription; in a plan, a template_content it cannot read
+//                     subscription; in a plan, a template_content it cannot read;
+//                     the two named scope exceptions, as narrow as they can be
+//                     (approved by Steven 2026-10-05), and everything outside them:
+//                     S1  a Virtual Network Manager (any azurerm_network_manager*)
+//                         outside AVNM_LABS (lab 33); in lab 33, a type it does not
+//                         need (connections to scopes, routing, IPAM), a scope other
+//                         than exactly the current subscription (a subscription data
+//                         source with no subscription_id, or client config), a
+//                         management group or cross-tenant scope, a network group
+//                         that is not of VNets, a static member, configuration,
+//                         rule collection or deployment pointing at anything but the
+//                         lab's own manager, groups, configurations and VNets (by
+//                         reference), any policy assignment, and in every lab an
+//                         addToNetworkGroup policy (dynamic membership)
+//                     S2  a flow log outside FLOW_LOG_LABS (lab 44); in lab 44, one
+//                         not in NetworkWatcherRG on NetworkWatcher_<var.region>, not
+//                         named lab-<id>-*, or logging, storing or analysing anything
+//                         but the lab's own VNet, account and workspace (by
+//                         reference), or an NSG; every other resource in
+//                         NetworkWatcherRG stays refused, a watcher of its own too
 //
 // It is plain Node with no packages (the runner has Node; npm ci is not run),
 // and it never prints a value Terraform marks sensitive.
@@ -82,7 +106,19 @@ import { ALLOWED_PROVIDER_SOURCES, normalizeSource, providerOfType } from "./lab
 export const LAB_ID_RE = /^az(104|305|700)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
 /** The governance labs, named in code (spec §8.3). A test keeps this equal to shared/labs.ts. */
 export const GOVERNANCE_LABS = ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az305-20-landing-zone", "az305-21-monitoring-scale"];
-export const RULES = ["provider", "provisioner", "import", "gateway", "association", "governance", "entra-type", "entra-prefix", "role", "immutability", "azure-made-group", "resource-group", "outside-scope"];
+/**
+ * Scope exception S1 (AZ-700 spec §6, ruling 47; approved by Steven 2026-10-05): the only lab whose Virtual Network
+ * Manager may be scoped to the subscription (the only scope AVNM takes that a lab can use), with static members that
+ * are its own VNets only. A test keeps this equal to shared/labs.ts.
+ */
+export const AVNM_LABS = ["az700-33-vnet-manager"];
+/**
+ * Scope exception S2 (AZ-700 spec §6, ruling 48; approved by Steven 2026-10-05): the only lab that may make a flow log,
+ * named lab-<id>-*, on its region's NetworkWatcher_<region> in Azure's own NetworkWatcherRG (one watcher per region per
+ * subscription, so a lab cannot make its own). A test keeps this equal to shared/labs.ts.
+ */
+export const FLOW_LOG_LABS = ["az700-44-flow-logs-bastion"];
+export const RULES = ["provider", "provisioner", "import", "gateway", "association", "governance", "entra-type", "entra-prefix", "role", "immutability", "never", "azure-made-group", "resource-group", "outside-scope"];
 
 const ALLOWED_ROLES = JSON.parse(readFileSync(new URL("../../labs/setup/allowed-roles.json", import.meta.url), "utf8"));
 /** Allowed providers by FULL source address (a look-alike ending /azurerm from elsewhere is not azurerm). */
@@ -106,6 +142,37 @@ const ASSOCIATION_TYPES = new Set(["azurerm_management_group_subscription_associ
 const ENTRA_TYPES = new Set(["azuread_user", "azuread_group", "azuread_group_member"]);
 const GATEWAY_RE = /\b(?:rg-wg|vnet-wg)\b/i;
 const DNS_LINK = "azurerm_private_dns_zone_virtual_network_link";
+/**
+ * S1: the Virtual Network Manager types lab 33 may make, and what each may point at (the lab's own resources of these
+ * types, by id). Every other azurerm_network_manager* type (scope, subscription and management group connections,
+ * routing, IPAM, verifier workspaces) is refused even there, and every one of them in any other lab.
+ */
+const AVNM_TYPES = new Set([
+  "azurerm_network_manager",
+  "azurerm_network_manager_network_group",
+  "azurerm_network_manager_static_member",
+  "azurerm_network_manager_connectivity_configuration",
+  "azurerm_network_manager_security_admin_configuration",
+  "azurerm_network_manager_admin_rule_collection",
+  "azurerm_network_manager_admin_rule",
+  "azurerm_network_manager_deployment",
+]);
+/** S1: what a lab-33 network manager may manage. Routing would need subnet groups; nothing else is offered. */
+const AVNM_ACCESSES = ["Connectivity", "SecurityAdmin"];
+/** S2: the flow log type, its group (Azure's own, one per subscription) and the watcher name per region. */
+const FLOW_LOG = "azurerm_network_watcher_flow_log";
+const NETWORK_WATCHER_RG = "networkwatcherrg";
+/**
+ * never (AZ-700 spec §3.5, ruling 43): what costs hundreds a month or needs a contract or a registered range, so a lab
+ * explains it in its readme instead. ExpressRoute in every form (circuits, ports, gateways, connections, peerings and
+ * authorizations), DDoS Network Protection plans and custom IP prefixes (BYOIP) by type; DDoS IP Protection on a public
+ * IP, a VNet on a DDoS plan and a VNet gateway of type ExpressRoute by their settings (neverReason).
+ */
+const NEVER_TYPES = [
+  [/^azurerm_network_ddos_protection_plan$/, "a DDoS Network Protection plan costs about £2,220 a month"],
+  [/^azurerm_custom_ip_prefix$/, "a custom IP prefix (BYOIP) needs a registered range of your own"],
+  [/^azurerm_(\w+_)?express_route/, "ExpressRoute needs a circuit from a provider, under contract"],
+];
 /** Attributes ending _id that hold an Entra object or tenant id, not an Azure resource id. */
 const NOT_ARM = new Set(["principal_id", "tenant_id", "object_id", "client_id", "application_id", "member_object_id", "group_object_id", "principal_object_id", "role_id", "application_object_id", "sku_id"]);
 /** A name an Azure resource id goes by: id, x_id, x_ids (Entra and other non-ARM ids excepted). */
@@ -289,7 +356,9 @@ export function planResources(plan) {
   const providers = Object.entries(plan?.configuration?.provider_config ?? {}).map(([key, p]) => ({ key, name: p.name ?? key.split(".")[0], keys: Object.keys(p.expressions ?? {}) }));
   // Terraform 1.5+: a change that adopts an existing object says so in change.importing.
   const imports = (plan?.resource_changes ?? []).filter((c) => c?.change?.importing).map((c) => c.address);
-  return { resources: [...seen.values()], providers, imports };
+  // The pipeline's variables as the plan holds them (region: S2's NetworkWatcher_<region>). Sensitive ones are not read.
+  const variables = Object.fromEntries(Object.entries(plan?.variables ?? {}).filter(([k]) => k === "region").map(([k, v]) => [k, v?.value]));
+  return { resources: [...seen.values()], providers, imports, variables };
 }
 
 // ── Reading HCL (hcl2json) ───────────────────────────────────────────────
@@ -726,7 +795,7 @@ export function templateProblems(template, { extraTypes = new Map() } = {}) {
  * as a template's content) or "hcl" (CI's early warning, where file() and
  * other expressions are left to labs-tf and the plan).
  */
-export function scopeProblems({ resources, providers, imports = [] }, labId, { mode = "plan" } = {}) {
+export function scopeProblems({ resources, providers, imports = [], variables = {} }, labId, { mode = "plan" } = {}) {
   const importing = new Set(imports.map(stripIndex));
   const id = labId.toLowerCase();
   const rg = `rg-lab-${id}`;
@@ -775,6 +844,117 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
   };
   const ownMg = (name) => governance && String(name).toLowerCase().startsWith(prefix);
 
+  // ── S1 and S2 (AZ-700 spec §6, rulings 47-48; approved by Steven 2026-10-05) ──
+  const avnmLab = AVNM_LABS.includes(labId);
+  const flowLogLab = FLOW_LOG_LABS.includes(labId);
+  const dataAddress = (ref) => ref.replace(/\[[^\]]*\]/g, "").split(".").slice(0, 3).join(".");
+  const subscriptionData = [...data.values()].filter((d) => d.type === "azurerm_subscription");
+  /** Data sources that can only name the subscription the pipeline signs in to: a subscription data source given no subscription_id, and client config. */
+  const currentSubData = new Set(
+    [...data.values()].filter((d) => (d.type === "azurerm_subscription" && !d.configured.has("subscription_id")) || d.type === "azurerm_client_config").map((d) => stripIndex(d.address)),
+  );
+  /** The current subscription's id as the plan read it (lower case); in HCL, as hclContext spells any of them. */
+  const currentSubIds = new Set();
+  for (const d of data.values()) {
+    if (!currentSubData.has(stripIndex(d.address))) continue;
+    if (d.type === "azurerm_subscription" && typeof d.values.id === "string") currentSubIds.add(d.values.id.toLowerCase());
+    if (d.type === "azurerm_client_config" && typeof d.values.subscription_id === "string") currentSubIds.add(`/subscriptions/${d.values.subscription_id}`.toLowerCase());
+  }
+  if (mode === "hcl") currentSubIds.add("/subscriptions/{subscription}");
+
+  /**
+   * S1, in lab 33: why an AVNM resource is refused, or null. The manager: scoped to exactly the current subscription
+   * (a subscription data source given no subscription_id, or client config), no management group, no cross-tenant
+   * scope, Connectivity and SecurityAdmin only. Everything else: one of AVNM_TYPES, each pointing only at the lab's
+   * own manager, network groups, configurations and VNets, and a network group of VNets, filled by static members.
+   */
+  const avnmProblem = (r, v, fromOwn) => {
+    const MANAGER = ["azurerm_network_manager"];
+    const GROUP = ["azurerm_network_manager_network_group"];
+    const own = (path, types, what) => (fromOwn(path, types) ? null : `${path} must be ${what} (${types.join(" or ")}.<name>.id)`);
+    if (!AVNM_TYPES.has(r.type)) return `${r.type} is not one lab 33 needs (only ${[...AVNM_TYPES].join(", ")})`;
+    switch (r.type) {
+      case "azurerm_network_manager": {
+        const sc = Array.isArray(v.scope) && v.scope.length === 1 && v.scope[0] && typeof v.scope[0] === "object" && !(v.scope[0] instanceof Unknown) ? v.scope[0] : null;
+        if (!sc) return "its scope block must be written out, once";
+        const subs = sc.subscription_ids;
+        if (!Array.isArray(subs) || subs.length !== 1 || typeof subs[0] !== "string" || !currentSubIds.has(subs[0].toLowerCase())) {
+          return "its scope must be exactly the current subscription: subscription_ids = [data.azurerm_subscription.<name>.id], from a subscription data source given no subscription_id";
+        }
+        if (subscriptionData.some((d) => d.configured.has("subscription_id"))) return "a subscription data source here names a subscription_id, so the scope cannot be shown to be the current subscription";
+        if (mode === "plan") {
+          const refs = (r.refs.scope ?? []).filter((x) => !INDEX_REF.test(x));
+          if (!refs.length || !refs.every((x) => currentSubData.has(dataAddress(x)))) return "its scope's subscription must come from data.azurerm_subscription (with no subscription_id) or data.azurerm_client_config, never a literal or a variable";
+        }
+        const mg = sc.management_group_ids;
+        if (mg instanceof Unknown || (Array.isArray(mg) && mg.length > 0) || (mg != null && !Array.isArray(mg))) return "its scope may not name a management group";
+        const ct = v.cross_tenant_scopes;
+        if (r.configured.has("cross_tenant_scopes") || (Array.isArray(ct) && ct.length > 0)) return "it may have no cross-tenant scope";
+        const acc = v.scope_accesses;
+        if (!Array.isArray(acc) || !acc.length || !acc.every((a) => AVNM_ACCESSES.includes(a))) return `scope_accesses must be ${AVNM_ACCESSES.join(" and/or ")}`;
+        return null;
+      }
+      case "azurerm_network_manager_network_group":
+        if (v.member_type != null && v.member_type !== "VirtualNetwork") return "member_type must be VirtualNetwork (a group of the lab's VNets)";
+        return own("network_manager_id", MANAGER, "the lab's own network manager");
+      case "azurerm_network_manager_static_member":
+        return own("network_group_id", GROUP, "the lab's own network group") ?? own("target_virtual_network_id", ["azurerm_virtual_network"], "one of the lab's own VNets");
+      case "azurerm_network_manager_connectivity_configuration": {
+        const groups = Array.isArray(v.applies_to_group) ? v.applies_to_group : [];
+        if (!groups.length) return "applies_to_group must name the lab's own network group";
+        for (let i = 0; i < groups.length; i++) {
+          const p = own(`applies_to_group.${i}.network_group_id`, GROUP, "the lab's own network group");
+          if (p) return p;
+        }
+        const hubs = Array.isArray(v.hub) ? v.hub : v.hub == null ? [] : [null];
+        for (let i = 0; i < hubs.length; i++) {
+          if (hubs[i]?.resource_type !== "Microsoft.Network/virtualNetworks") return "the hub must be one of the lab's own VNets (resource_type Microsoft.Network/virtualNetworks)";
+          const p = own(`hub.${i}.resource_id`, ["azurerm_virtual_network"], "one of the lab's own VNets");
+          if (p) return p;
+        }
+        return own("network_manager_id", MANAGER, "the lab's own network manager");
+      }
+      case "azurerm_network_manager_security_admin_configuration":
+        return own("network_manager_id", MANAGER, "the lab's own network manager");
+      case "azurerm_network_manager_admin_rule_collection":
+        return own("security_admin_configuration_id", ["azurerm_network_manager_security_admin_configuration"], "the lab's own security admin configuration") ?? own("network_group_ids", GROUP, "the lab's own network groups");
+      case "azurerm_network_manager_admin_rule":
+        return own("admin_rule_collection_id", ["azurerm_network_manager_admin_rule_collection"], "the lab's own rule collection");
+      case "azurerm_network_manager_deployment":
+        if (!AVNM_ACCESSES.includes(v.scope_access)) return `scope_access must be ${AVNM_ACCESSES.join(" or ")}`;
+        return own("network_manager_id", MANAGER, "the lab's own network manager") ?? own("configuration_ids", ["azurerm_network_manager_connectivity_configuration", "azurerm_network_manager_security_admin_configuration"], "the lab's own configurations");
+    }
+    return null;
+  };
+
+  /**
+   * S2, in lab 44: why a flow log is refused, or null. In NetworkWatcherRG, on NetworkWatcher_<var.region>, named
+   * lab-<id>-*, logging one of the lab's VNets (never an NSG) into the lab's storage account, with any traffic
+   * analytics going to the lab's own workspace.
+   */
+  const flowLogProblem = (r, v, fromOwn) => {
+    if (!(typeof v.resource_group_name === "string" && v.resource_group_name.toLowerCase() === NETWORK_WATCHER_RG)) return 'resource_group_name must be "NetworkWatcherRG", where the region\'s Network Watcher is';
+    const wn = v.network_watcher_name;
+    const wnRefs = (r.refs.network_watcher_name ?? []).filter((x) => x !== "var.region");
+    if (wnRefs.length) return "network_watcher_name must be NetworkWatcher_${var.region}";
+    if (mode === "plan") {
+      const region = variables.region;
+      if (typeof region !== "string" || typeof wn !== "string" || wn.toLowerCase() !== `networkwatcher_${region}`.toLowerCase()) return "network_watcher_name must be NetworkWatcher_${var.region}, the session's region's own watcher";
+    } else if (!(wn instanceof Unknown && wn.prefix === "NetworkWatcher_" && (r.refs.network_watcher_name ?? []).includes("var.region"))) {
+      return "network_watcher_name must be NetworkWatcher_${var.region}, the session's region's own watcher";
+    }
+    if (!prefixed(v.name)) return `name ${JSON.stringify(v.name instanceof Unknown ? `${v.name.prefix}…` : v.name)} must start ${prefix}, so the safety net and the orphan sweep can find it`;
+    if (!fromOwn("target_resource_id", ["azurerm_virtual_network"])) return "target_resource_id must be one of the lab's own VNets (azurerm_virtual_network.<name>.id)";
+    if (r.configured.has("network_security_group_id") || (typeof v.network_security_group_id === "string" && v.network_security_group_id !== "")) return "a lab's flow log logs its VNet (target_resource_id), never an NSG";
+    if (!fromOwn("storage_account_id", ["azurerm_storage_account"])) return "storage_account_id must be the lab's own storage account (azurerm_storage_account.<name>.id)";
+    const ta = Array.isArray(v.traffic_analytics) ? v.traffic_analytics : v.traffic_analytics == null ? [] : [null];
+    for (let i = 0; i < ta.length; i++) {
+      if (!fromOwn(`traffic_analytics.${i}.workspace_resource_id`, ["azurerm_log_analytics_workspace"])) return "traffic analytics must go to the lab's own workspace (workspace_resource_id = azurerm_log_analytics_workspace.<name>.id)";
+      if (!fromOwn(`traffic_analytics.${i}.workspace_id`, ["azurerm_log_analytics_workspace"], ["workspace_id"])) return "traffic analytics must go to the lab's own workspace (workspace_id = azurerm_log_analytics_workspace.<name>.workspace_id)";
+    }
+    return null;
+  };
+
   const out = [];
   for (const r of resources) {
     const found = [];
@@ -783,6 +963,27 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
     const v = r.values ?? {};
     const show = (attr) => (r.sensitive.has(attr) ? "(sensitive)" : v[attr] instanceof Unknown ? `${v[attr].prefix}…` : JSON.stringify(v[attr]));
     const all = leaves(v);
+    /**
+     * S1 and S2: is every value at `path` (an attribute, or a path into a block: "hub.0.resource_id") one of the lab's
+     * own resources of these `types`, by `attrs` (its id)? Only an unknown value written as a reference can be: a
+     * literal, a variable, a data source or a mix is not, even a literal id inside the lab's group.
+     */
+    const fromOwn = (path, types, attrs = ["id"]) => {
+      const at = all.filter((l) => {
+        const p = l.path.join(".");
+        return p === path || p.startsWith(`${path}.`);
+      });
+      if (!at.length || !at.every((l) => l.value instanceof Unknown)) return false;
+      const refs = at.flatMap((l) => l.value.refs ?? []).filter((x) => !INDEX_REF.test(x));
+      return (
+        refs.length > 0 &&
+        refs.every((x) => {
+          const t = target(x);
+          const parts = x.replace(/\[[^\]]*\]/g, "").split(".");
+          return t?.mode === "managed" && types.includes(t.type) && (parts.length === 2 || (parts.length === 3 && attrs.includes(parts[2])));
+        })
+      );
+    };
 
     // provider
     if (!PROVIDERS.has(r.provider)) refuse("provider", `the ${r.provider} provider is not allowed in a lab (only ${ALLOWED_PROVIDER_SOURCES.join(", ")})`);
@@ -957,6 +1158,19 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
         if (p === true || (p instanceof Unknown && r.configured.has("purge_protection_enabled"))) refuse("immutability", "purge_protection_enabled: a vault with purge protection cannot be deleted for its whole retention period; a lab never turns it on");
       }
 
+      // never (AZ-700 spec §3.5, ruling 43): explained in a readme's "Not built here", never built.
+      const never = NEVER_TYPES.find(([re]) => re.test(r.type));
+      if (never) refuse("never", `${never[1]}; a lab explains it under "Not built here" instead`);
+      const setTo = (attr, re) => (typeof v[attr] === "string" && re.test(v[attr])) || (v[attr] instanceof Unknown && r.configured.has(attr));
+      if (r.type === "azurerm_public_ip") {
+        if (setTo("ddos_protection_mode", /^enabled$/i)) refuse("never", "ddos_protection_mode Enabled is DDoS IP Protection, about £150 a month per address; a lab explains it instead");
+        else if (r.configured.has("ddos_protection_plan_id") || (typeof v.ddos_protection_plan_id === "string" && v.ddos_protection_plan_id !== "")) refuse("never", "ddos_protection_plan_id puts the address on a DDoS Network Protection plan; a lab explains it instead");
+      }
+      if (r.type === "azurerm_virtual_network" && ((Array.isArray(v.ddos_protection_plan) && v.ddos_protection_plan.length > 0) || v.ddos_protection_plan instanceof Unknown)) {
+        refuse("never", "ddos_protection_plan puts the VNet on a DDoS Network Protection plan; a lab explains it instead");
+      }
+      if (r.type === "azurerm_virtual_network_gateway" && setTo("type", /^expressroute$/i)) refuse("never", "an ExpressRoute gateway is only of use with a circuit from a provider; a lab explains ExpressRoute instead");
+
       // azure-made-group
       if (r.type === "azurerm_kubernetes_cluster" && !startsWithRg(v.node_resource_group)) refuse("azure-made-group", `node_resource_group must be named ${rg}-<suffix>`);
       if (r.type === "azurerm_backup_policy_vm") {
@@ -976,12 +1190,35 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
         if (!ok) refuse("resource-group", `name ${show("name")} must be ${rg} or ${rg}-<suffix>`);
       }
 
+      // S1 (ruling 47, approved by Steven 2026-10-05): a Virtual Network Manager scoped to the current subscription,
+      // in lab 33 only, managing only the lab's own VNets, statically. `s1Scope` is set when the manager's scope
+      // passes, and only then is its subscription id spared the subscription-scope refusal below.
+      let s1Scope = false;
+      if (r.type.startsWith("azurerm_network_manager")) {
+        const why = !avnmLab ? `a Virtual Network Manager reaches beyond the lab's group (its scope is a subscription or management group); only ${AVNM_LABS.join(", ")} may make one (scope exception S1)` : avnmProblem(r, v, fromOwn);
+        if (why) refuse("outside-scope", `S1: ${why}`);
+        else if (r.type === "azurerm_network_manager") s1Scope = true;
+      }
+      // S1: dynamic membership is Azure Policy's addToNetworkGroup effect, which would add VNets beyond the lab; no
+      // lab defines it, and lab 33 assigns no policy at all.
+      if (r.type === "azurerm_policy_definition" && typeof v.policy_rule === "string" && /addtonetworkgroup/i.test(v.policy_rule)) refuse("outside-scope", "S1: an addToNetworkGroup policy adds VNets to a network group by rule (dynamic membership), which can reach any VNet; network groups take the lab's own VNets as static members only");
+      if (avnmLab && /policy_assignment$/.test(r.type)) refuse("outside-scope", "S1: lab 33 assigns no policy (dynamic membership in a network group is a policy assignment)");
+      // S2 (ruling 48, approved by Steven 2026-10-05): one flow log, in lab 44 only, on the region's own watcher in
+      // NetworkWatcherRG, named lab-<id>-*, logging the lab's VNet into the lab's account and workspace. `s2Group`
+      // is set when it passes, and only then is NetworkWatcherRG spared the resource-group refusal below.
+      let s2Group = false;
+      if (r.type === FLOW_LOG) {
+        const why = !flowLogLab ? `a flow log lives in NetworkWatcherRG, outside the lab; only ${FLOW_LOG_LABS.join(", ")} may make one (scope exception S2)` : flowLogProblem(r, v, fromOwn);
+        if (why) refuse("outside-scope", `S2: ${why}`);
+        else s2Group = true;
+      }
+
       // outside-scope (Azure resources only)
       if (r.type.startsWith("azurerm_") && r.type !== "azurerm_resource_group") {
         let anchored = GOVERNANCE_TYPES.has(r.type);
         if (typeof v.resource_group_name === "string") {
           anchored = true;
-          if (!ownRg(v.resource_group_name)) refuse("outside-scope", `resource_group_name ${show("resource_group_name")} is not the lab's group`);
+          if (!ownRg(v.resource_group_name) && !s2Group) refuse("outside-scope", `resource_group_name ${show("resource_group_name")} is not the lab's group`);
         }
         // Every known string, and every string (keys too) inside a JSON string: a policy assignment's
         // parameters or a jsonencode() can carry an id as well as an attribute can.
@@ -1003,6 +1240,8 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
         };
         for (const l of all) {
           if (linkException(l.attr)) continue; // the gateway VNet, through var.gateway_vnet_id only
+          // S1: lab 33's manager names the current subscription as its scope, which avnmProblem has proved.
+          if (s1Scope && l.path[0] === "scope" && l.path[1] === 0 && l.path[2] === "subscription_ids") continue;
           judge(l.path.join("."), l.attr, l.value, false);
           for (const j of jsonStrings(l.value)) judge(`${l.path.join(".")} (JSON ${j.path || "value"})`, l.attr, j.value, true);
         }

@@ -1,0 +1,61 @@
+{
+  "lab": "az700-31-ip-nat-outbound",
+  "about": "What a lab never makes (AZ-700 spec §3.5, ruling 43), each costing hundreds a month or needing a contract or a registered range: a DDoS Network Protection plan, DDoS IP Protection on a public IP (by mode or by plan), a VNet on a DDoS plan, ExpressRoute circuits, ports and gateways (a vWAN one and a VNet gateway of type ExpressRoute) and a custom IP prefix.",
+  "expect": [
+    ["never", "azurerm_network_ddos_protection_plan.ddos"],
+    ["never", "azurerm_public_ip.protected"],
+    ["never", "azurerm_public_ip.planned"],
+    ["never", "azurerm_virtual_network.vnet"],
+    ["never", "azurerm_express_route_circuit.er"],
+    ["never", "azurerm_express_route_port.port"],
+    ["never", "azurerm_express_route_gateway.ergw"],
+    ["never", "azurerm_virtual_network_gateway.er"],
+    ["never", "azurerm_custom_ip_prefix.byoip"]
+  ],
+  "plan": {
+    "planned_values": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "rg-lab-az700-31-ip-nat-outbound", "location": "uksouth" } },
+      { "address": "azurerm_network_ddos_protection_plan.ddos", "mode": "managed", "type": "azurerm_network_ddos_protection_plan", "name": "ddos", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "ddos-lab", "resource_group_name": "rg-lab-az700-31-ip-nat-outbound", "location": "uksouth" } },
+      { "address": "azurerm_public_ip.protected", "mode": "managed", "type": "azurerm_public_ip", "name": "protected", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "pip-protected", "resource_group_name": "rg-lab-az700-31-ip-nat-outbound", "location": "uksouth", "allocation_method": "Static", "sku": "Standard", "ddos_protection_mode": "Enabled" } },
+      { "address": "azurerm_public_ip.planned", "mode": "managed", "type": "azurerm_public_ip", "name": "planned", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "pip-planned", "resource_group_name": "rg-lab-az700-31-ip-nat-outbound", "location": "uksouth", "allocation_method": "Static", "sku": "Standard", "ddos_protection_mode": "Enabled" } },
+      { "address": "azurerm_virtual_network.vnet", "mode": "managed", "type": "azurerm_virtual_network", "name": "vnet", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "vnet-hub", "resource_group_name": "rg-lab-az700-31-ip-nat-outbound", "location": "uksouth", "address_space": ["10.71.192.0/20"], "ddos_protection_plan": [ { "enable": true } ] } },
+      { "address": "azurerm_express_route_circuit.er", "mode": "managed", "type": "azurerm_express_route_circuit", "name": "er", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "er-lab", "resource_group_name": "rg-lab-az700-31-ip-nat-outbound", "location": "uksouth", "service_provider_name": "Equinix", "peering_location": "London", "bandwidth_in_mbps": 50, "sku": [ { "tier": "Standard", "family": "MeteredData" } ] } },
+      { "address": "azurerm_express_route_port.port", "mode": "managed", "type": "azurerm_express_route_port", "name": "port", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "erp-lab", "resource_group_name": "rg-lab-az700-31-ip-nat-outbound", "location": "uksouth", "peering_location": "London", "bandwidth_in_gbps": 10, "encapsulation": "Dot1Q" } },
+      { "address": "azurerm_express_route_gateway.ergw", "mode": "managed", "type": "azurerm_express_route_gateway", "name": "ergw", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "ergw-lab", "resource_group_name": "rg-lab-az700-31-ip-nat-outbound", "location": "uksouth", "scale_units": 1 } },
+      { "address": "azurerm_virtual_network_gateway.er", "mode": "managed", "type": "azurerm_virtual_network_gateway", "name": "er", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "vgw-er", "resource_group_name": "rg-lab-az700-31-ip-nat-outbound", "location": "uksouth", "type": "ExpressRoute", "sku": "ErGw1AZ", "ip_configuration": [ { "name": "gw" } ] } },
+      { "address": "azurerm_custom_ip_prefix.byoip", "mode": "managed", "type": "azurerm_custom_ip_prefix", "name": "byoip", "provider_name": "registry.terraform.io/hashicorp/azurerm", "values": { "name": "cip-lab", "resource_group_name": "rg-lab-az700-31-ip-nat-outbound", "location": "uksouth", "cidr": "203.0.113.0/24" } }
+    ] } },
+    "resource_changes": [
+      { "address": "azurerm_public_ip.planned", "mode": "managed", "type": "azurerm_public_ip", "name": "planned", "provider_name": "registry.terraform.io/hashicorp/azurerm", "change": { "actions": ["create"], "after_unknown": { "id": true, "ip_address": true, "fqdn": true, "ddos_protection_plan_id": true } } },
+      { "address": "azurerm_virtual_network.vnet", "mode": "managed", "type": "azurerm_virtual_network", "name": "vnet", "provider_name": "registry.terraform.io/hashicorp/azurerm", "change": { "actions": ["create"], "after_unknown": { "id": true, "guid": true, "subnet": true, "ddos_protection_plan": [ { "id": true } ] } } },
+      { "address": "azurerm_express_route_gateway.ergw", "mode": "managed", "type": "azurerm_express_route_gateway", "name": "ergw", "provider_name": "registry.terraform.io/hashicorp/azurerm", "change": { "actions": ["create"], "after_unknown": { "id": true, "virtual_hub_id": true } } },
+      { "address": "azurerm_virtual_network_gateway.er", "mode": "managed", "type": "azurerm_virtual_network_gateway", "name": "er", "provider_name": "registry.terraform.io/hashicorp/azurerm", "change": { "actions": ["create"], "after_unknown": { "id": true, "ip_configuration": [ { "subnet_id": true } ] } } }
+    ],
+    "configuration": { "root_module": { "resources": [
+      { "address": "azurerm_resource_group.lab", "mode": "managed", "type": "azurerm_resource_group", "name": "lab", "expressions": { "name": { "references": ["var.resource_group_name"] } } },
+      { "address": "azurerm_network_ddos_protection_plan.ddos", "mode": "managed", "type": "azurerm_network_ddos_protection_plan", "name": "ddos", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } },
+      { "address": "azurerm_public_ip.protected", "mode": "managed", "type": "azurerm_public_ip", "name": "protected", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] }, "ddos_protection_mode": { "constant_value": "Enabled" } } },
+      { "address": "azurerm_public_ip.planned", "mode": "managed", "type": "azurerm_public_ip", "name": "planned", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] }, "ddos_protection_mode": { "constant_value": "Enabled" }, "ddos_protection_plan_id": { "references": ["azurerm_network_ddos_protection_plan.ddos.id", "azurerm_network_ddos_protection_plan.ddos"] } } },
+      { "address": "azurerm_virtual_network.vnet", "mode": "managed", "type": "azurerm_virtual_network", "name": "vnet", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] }, "ddos_protection_plan": [ { "id": { "references": ["azurerm_network_ddos_protection_plan.ddos.id", "azurerm_network_ddos_protection_plan.ddos"] }, "enable": { "constant_value": true } } ] } },
+      { "address": "azurerm_express_route_circuit.er", "mode": "managed", "type": "azurerm_express_route_circuit", "name": "er", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } },
+      { "address": "azurerm_express_route_port.port", "mode": "managed", "type": "azurerm_express_route_port", "name": "port", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } },
+      { "address": "azurerm_express_route_gateway.ergw", "mode": "managed", "type": "azurerm_express_route_gateway", "name": "ergw", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] }, "virtual_hub_id": { "references": ["azurerm_virtual_network.vnet.id", "azurerm_virtual_network.vnet"] } } },
+      { "address": "azurerm_virtual_network_gateway.er", "mode": "managed", "type": "azurerm_virtual_network_gateway", "name": "er", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] }, "type": { "constant_value": "ExpressRoute" }, "ip_configuration": [ { "subnet_id": { "references": ["azurerm_virtual_network.vnet.id", "azurerm_virtual_network.vnet"] } } ] } },
+      { "address": "azurerm_custom_ip_prefix.byoip", "mode": "managed", "type": "azurerm_custom_ip_prefix", "name": "byoip", "expressions": { "resource_group_name": { "references": ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } } }
+    ] } }
+  },
+  "hcl": { "resource": {
+    "azurerm_resource_group": { "lab": [ { "name": "${var.resource_group_name}", "location": "${var.region}" } ] },
+    "azurerm_network_ddos_protection_plan": { "ddos": [ { "name": "ddos-lab", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${azurerm_resource_group.lab.location}" } ] },
+    "azurerm_public_ip": {
+      "protected": [ { "name": "pip-protected", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${azurerm_resource_group.lab.location}", "allocation_method": "Static", "sku": "Standard", "ddos_protection_mode": "Enabled" } ],
+      "planned": [ { "name": "pip-planned", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${azurerm_resource_group.lab.location}", "allocation_method": "Static", "sku": "Standard", "ddos_protection_mode": "Enabled", "ddos_protection_plan_id": "${azurerm_network_ddos_protection_plan.ddos.id}" } ]
+    },
+    "azurerm_virtual_network": { "vnet": [ { "name": "vnet-hub", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${azurerm_resource_group.lab.location}", "address_space": ["${cidrsubnet(var.address_space, 2, 0)}"], "ddos_protection_plan": [ { "id": "${azurerm_network_ddos_protection_plan.ddos.id}", "enable": true } ] } ] },
+    "azurerm_express_route_circuit": { "er": [ { "name": "er-lab", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${azurerm_resource_group.lab.location}", "service_provider_name": "Equinix", "peering_location": "London", "bandwidth_in_mbps": 50, "sku": [ { "tier": "Standard", "family": "MeteredData" } ] } ] },
+    "azurerm_express_route_port": { "port": [ { "name": "erp-lab", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${azurerm_resource_group.lab.location}", "peering_location": "London", "bandwidth_in_gbps": 10, "encapsulation": "Dot1Q" } ] },
+    "azurerm_express_route_gateway": { "ergw": [ { "name": "ergw-lab", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${azurerm_resource_group.lab.location}", "virtual_hub_id": "${azurerm_virtual_network.vnet.id}", "scale_units": 1 } ] },
+    "azurerm_virtual_network_gateway": { "er": [ { "name": "vgw-er", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${azurerm_resource_group.lab.location}", "type": "ExpressRoute", "sku": "ErGw1AZ", "ip_configuration": [ { "name": "gw", "subnet_id": "${azurerm_virtual_network.vnet.id}" } ] } ] },
+    "azurerm_custom_ip_prefix": { "byoip": [ { "name": "cip-lab", "resource_group_name": "${azurerm_resource_group.lab.name}", "location": "${azurerm_resource_group.lab.location}", "cidr": "203.0.113.0/24" } ] }
+  } }
+}

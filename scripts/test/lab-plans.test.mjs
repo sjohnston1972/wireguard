@@ -238,6 +238,17 @@ test("ctx takes a slot: AZ-700 fixtures are at slot 31, 10.71.192.0/18", () => {
   assert.equal(c.slot, "10.71.192.0/18");
 });
 
+test("a data source's configuration holds only its arguments, never what it read", () => {
+  // data "azurerm_subscription" "current" {} prints no expressions; what it read is in prior_state only. The AVNM scope
+  // check (S1) tells the current subscription by a subscription data source that sets no subscription_id.
+  const cfg = LAB_PLANS["az104-01-identity"].plan.configuration.root_module.resources.find((r) => r.address === "data.azurerm_subscription.current");
+  assert.deepEqual(cfg.expressions, {});
+  const read = LAB_PLANS["az104-01-identity"].plan.prior_state.values.root_module.resources.find((r) => r.address === "data.azurerm_subscription.current");
+  assert.match(read.values.id, /^\/subscriptions\//);
+  const named = realisticPlan({ data: [{ address: "data.azurerm_resource_group.x", values: { name: "rg-lab-az104-07-files", location: "uksouth" }, args: ["name"] }] });
+  assert.deepEqual(Object.keys(named.configuration.root_module.resources[0].expressions), ["name"]);
+});
+
 test("computed.json has every type AZ-700 labs use", () => {
   assert.deepEqual(AZ700_TYPES.filter((t) => !COMPUTED.types[t]), []);
   // The block a flow log's traffic analytics and a gateway's P2S settings go in, and what a plan cannot know.

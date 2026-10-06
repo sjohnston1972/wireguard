@@ -812,10 +812,10 @@ in them are to the AZ-700 design spec.
     destroy_min)` within the job deadline; £££ labs are session 2 h, max 3 h.
 46. **Special subnets** are sized as §3.8, all from the slot; a lab's VNets, hub prefix and P2S pool never overlap.
 47. **Scope exception S1** (§6): a subscription-scoped Virtual Network Manager, for `az700-33-vnet-manager` only
-    (`AVNM_LABS`), static lab members only. *Pending Steven's approval.*
+    (`AVNM_LABS`), static lab members only. *Approved by Steven 2026-10-05.*
 48. **Scope exception S2** (§6): `azurerm_network_watcher_flow_log` in `NetworkWatcherRG` on `NetworkWatcher_<region>`, named
     `lab-<id>-*`, for `az700-44-flow-logs-bastion` only (`FLOW_LOG_LABS`); the safety net, Verify clean and the orphan sweep
-    find them by name. *Pending Steven's approval.*
+    find them by name. *Approved by Steven 2026-10-05.*
 49. **Unblock knows networks** (§5): AVNM deploy-None, Private Link service connections, VPN connections, Virtual WAN hub
     children, Route Server peers, firewalls before policies, resolver links and rulesets, global and gateway load balancer
     links, in that order, never failing the run.

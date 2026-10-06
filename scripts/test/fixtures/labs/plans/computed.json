@@ -2677,6 +2677,20 @@
    ],
    "blocks": {}
   },
+  "data.azurerm_virtual_network": {
+   "attrs": [
+    "address_space",
+    "dns_servers",
+    "guid",
+    "id",
+    "location",
+    "subnets",
+    "tags",
+    "vnet_peerings",
+    "vnet_peerings_addresses"
+   ],
+   "blocks": {}
+  },
   "random_password": {
    "attrs": [
     "bcrypt_hash",

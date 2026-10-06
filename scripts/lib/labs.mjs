@@ -28,6 +28,10 @@ export const LAB_POOL = "10.64.0.0/13";
 export const LAB_SLOTS = 32;
 export const GATEWAY_RANGES = ["10.13.13.0/24", "10.13.255.1/32", "10.50.0.0/16", "192.168.1.0/24", "172.17.0.0/16", "168.63.129.16/32"];
 export const GOVERNANCE_LABS = ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az305-20-landing-zone", "az305-21-monitoring-scale"];
+/** Scope exception S1 (ruling 47): the lab whose network manager may be scoped to the subscription. */
+export const AVNM_LABS = ["az700-33-vnet-manager"];
+/** Scope exception S2 (ruling 48): the lab that may make a lab-<id>-* flow log in NetworkWatcherRG. */
+export const FLOW_LOG_LABS = ["az700-44-flow-logs-bastion"];
 export const LAB_TF_VARS = ["lab_id", "name_prefix", "resource_group_name", "region", "secondary_region", "address_space", "peered", "gateway_vnet_id", "admin_password", "ssh_public_key", "upn_domain", "tags"];
 
 /** The roles a lab may assign (plan ruling 3). */

@@ -43,7 +43,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCatalogue, cidrOverlaps, GOVERNANCE_LABS, parseLabYaml, variablesProblems } from "../../../lib/labs.mjs";
+import { buildCatalogue, cidrOverlaps, FLOW_LOG_LABS, GOVERNANCE_LABS, parseLabYaml, variablesProblems } from "../../../lib/labs.mjs";
 import { lintDir } from "../../../../infra/ci/lab-lint.mjs";
 import { costMarker, estimateGbpH } from "./estimate.mjs";
 import { LAB_PLANS } from "./plans/labs.mjs";
@@ -351,7 +351,10 @@ export function contentChecks(id, { marker, secondary = false, identity = "none"
       const facts = SCHEMA_FACTS[r.labels[0]];
       assert.ok(facts, `${r.labels[0]} is not in plans/schema-facts.json: the integrator adds it to extract-computed.mjs and regenerates`);
       const rgName = attr(r.body, "resource_group_name");
-      if (facts.rg || rgName !== undefined) assert.ok(rgNames.includes(rgName), `${at} is inside ${where} (resource_group_name = ${rgName})`);
+      // Scope exception S2 (ruling 48, approved by Steven 2026-10-05): lab 44's flow log is a child of the region's
+      // Network Watcher, which lives in Azure's NetworkWatcherRG. That one type, in that one lab, only.
+      const flowLog = r.labels[0] === "azurerm_network_watcher_flow_log" && FLOW_LOG_LABS.includes(id) && rgName === '"NetworkWatcherRG"';
+      if ((facts.rg || rgName !== undefined) && !flowLog) assert.ok(rgNames.includes(rgName), `${at} is inside ${where} (resource_group_name = ${rgName})`);
       const rgId = attr(r.body, "resource_group_id");
       if (rgId !== undefined) assert.ok(rgIds.includes(rgId), `${at} is inside ${where} (resource_group_id = ${rgId})`);
       if (facts.tags) assert.equal(attr(r.body, "tags"), "var.tags", `${at} carries var.tags`);

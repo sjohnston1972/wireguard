@@ -181,6 +181,23 @@ test("every lab's plan fixture passes the address check (labs 1 to 27)", () => {
   for (const [id, d] of Object.entries(LAB_PLANS)) assert.deepEqual(addressProblems(d), [], id);
 });
 
+// AZ-700 plan Z0.5, scope exception S2 (approved by Steven 2026-10-05): lab 44's flow log lives under the region's
+// Network Watcher in NetworkWatcherRG; test 3 lets exactly that resource of exactly that lab name that group.
+test("test 3 lets lab 44's flow log, and nothing else, be in NetworkWatcherRG (S2)", () => {
+  const ONE_GROUP = "one resource group, named by the pipeline, and everything else inside it with the tags";
+  const withFlowLog = (type = "azurerm_network_watcher_flow_log", rg = '"NetworkWatcherRG"') => {
+    const l = lab(L95, SUITE);
+    l.blocks.push({ kind: "resource", labels: [type, "vnet"], body: `\n  name                 = "lab-\${var.lab_id}-vnet"\n  resource_group_name  = ${rg}\n  network_watcher_name = "NetworkWatcher_\${var.region}"\n  tags                 = var.tags\n` });
+    return l;
+  };
+  const run = (id, l) => contentChecks(id, { marker: "£££", labsDir: SUITE, load: () => l }).find((c) => c.name === `${id}: ${ONE_GROUP}`).fn();
+  run("az700-44-flow-logs-bastion", withFlowLog());
+  // Another lab, another type, or another group: refused.
+  assert.throws(() => run(L95, withFlowLog()), /azurerm_network_watcher_flow_log\.vnet/);
+  assert.throws(() => run("az700-44-flow-logs-bastion", withFlowLog("azurerm_storage_account")), /azurerm_storage_account\.vnet/);
+  assert.throws(() => run("az700-44-flow-logs-bastion", withFlowLog(undefined, '"rg-prod"')), /azurerm_network_watcher_flow_log\.vnet/);
+});
+
 const PUBLIC_IPS = "VMs have no public IP and use the sizes and disks lab.yaml prices";
 test("a public IP belongs to a gateway, Route Server, firewall, Bastion, App Gateway or load balancer frontend, never a VM (ruling 50)", () => {
   // The VPN gateway owns pip-gw.

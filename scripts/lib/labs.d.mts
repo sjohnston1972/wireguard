@@ -25,6 +25,8 @@ export const LAB_POOL: string;
 export const LAB_SLOTS: number;
 export const GATEWAY_RANGES: readonly string[];
 export const GOVERNANCE_LABS: readonly string[];
+export const AVNM_LABS: readonly string[];
+export const FLOW_LOG_LABS: readonly string[];
 export const LAB_TF_VARS: readonly string[];
 export const ALLOWED_ROLES: { builtIn: { name: string; id: string }[]; custom: { lab: string; name: string; id: string }[]; principalTypes: string[] };
 

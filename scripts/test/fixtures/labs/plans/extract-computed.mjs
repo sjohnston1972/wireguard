@@ -98,6 +98,8 @@ export const TYPES = [
   "azurerm_resource_group_policy_assignment",
   // data sources
   "data.azurerm_subscription", "data.azurerm_client_config", "data.azurerm_resource_group",
+  // AZ-700: what the S1 and S2 scope tests read to show a VNet outside the lab is refused
+  "data.azurerm_virtual_network",
 ];
 
 /** { rg, tags }: whether a resource type takes resource_group_name and tags as arguments (the content suite's test 3). */
