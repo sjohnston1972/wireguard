@@ -90,9 +90,11 @@
   {
    "id": "tf:azurerm_network_watcher_flow_log.vnet",
    "key": "microsoft.network/networkwatchers/flowlogs/networkwatcher_{r}/lab-az700-44-flow-logs-bastion-vnet",
-   "kind": "generic",
+   "kind": "flowLog",
    "label": "lab-az700-44-flow-logs-bastion-vnet",
-   "props": {},
+   "props": {
+    "retentionDays": 1
+   },
    "parent": "tf:rg/networkwatcherrg",
    "armType": "Microsoft.Network/networkWatchers/flowLogs",
    "scope": "outside"
@@ -331,8 +333,5 @@
    "label": "watches",
    "via": "tf:azurerm_network_watcher_flow_log.vnet"
   }
- ],
- "notes": [
-  "1 resource of a type the diagram draws plainly"
  ]
 }

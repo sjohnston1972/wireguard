@@ -104,6 +104,7 @@ export const KINDS: Record<TopoKind, KindDef> = {
     ["azurerm_monitor_*"],
     ["status"],
   ),
+  flowLog: def("Flow log", "Flow logs", "network-watcher", "rg", 65, ["Microsoft.Network/networkWatchers/flowLogs"], ["azurerm_network_watcher_flow_log"], ["retentionDays"]),
   recoveryVault: def("Recovery Services vault", "Recovery Services vaults", "recovery-services-vaults", "rg", 55, ["Microsoft.RecoveryServices/vaults"], ["azurerm_recovery_services_vault"], ["sku", "counts"]),
   networkManager: def("Virtual network manager", "Virtual network managers", "network-managers", "rg", 56, ["Microsoft.Network/networkManagers"], ["azurerm_network_manager"], ["scopeAccess"]),
   virtualWan: def("Virtual WAN", "Virtual WANs", "virtual-wans", "rg", 57, ["Microsoft.Network/virtualWans"], ["azurerm_virtual_wan"], ["sku"]),

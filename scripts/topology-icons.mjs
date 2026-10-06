@@ -75,6 +75,7 @@ export const ICON_FILES = {
   "network-security-groups": "networking/10067-icon-service-Network-Security-Groups.svg",
   "route-tables": "networking/10082-icon-service-Route-Tables.svg",
   "network-managers": "other/02237-icon-service-Network-Managers.svg",
+  "network-watcher": "networking/10066-icon-service-Network-Watcher.svg",
   "virtual-machine": "compute/10021-icon-service-Virtual-Machine.svg",
   "vm-scale-sets": "compute/10034-icon-service-VM-Scale-Sets.svg",
   "container-instances": "containers/10104-icon-service-Container-Instances.svg",

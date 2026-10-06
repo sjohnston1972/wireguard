@@ -52,6 +52,7 @@ export const TOPO_ASSET_KINDS = [
   "registry",
   "logAnalytics",
   "monitor",
+  "flowLog",
   "frontDoor",
   "trafficManager",
   "recoveryVault",

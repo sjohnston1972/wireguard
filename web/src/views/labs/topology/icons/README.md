@@ -56,6 +56,7 @@ that exact name.
 | `nat` | `networking/10310-icon-service-NAT.svg` |  |
 | `network-managers` | `other/02237-icon-service-Network-Managers.svg` |  |
 | `network-security-groups` | `networking/10067-icon-service-Network-Security-Groups.svg` |  |
+| `network-watcher` | `networking/10066-icon-service-Network-Watcher.svg` |  |
 | `policy` | `management + governance/10316-icon-service-Policy.svg` |  |
 | `private-dns-zones` | `networking/10064-icon-service-DNS-Zones.svg` | no private DNS zone icon; DNS Zones |
 | `private-endpoints` | `other/02579-icon-service-Private-Endpoints.svg` |  |

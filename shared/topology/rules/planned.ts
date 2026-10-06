@@ -1028,6 +1028,7 @@ export const TF_RULES: Record<string, TfRule> = {
   azurerm_network_watcher_flow_log: {
     arm: "Microsoft.Network/networkWatchers/flowLogs",
     namePath: (i) => [str(i.after.network_watcher_name) ?? "", nameOf(i)],
+    props: (i) => ({ retentionDays: first(i.after.retention_policy).enabled === false ? undefined : num(first(i.after.retention_policy).days) }),
     edges: (i, h) => [
       ...h.refs(i, ["target_resource_id", "network_security_group_id"]).map((t) => ({ from: i, to: t, kind: "dependency" as const, label: "watches" })),
       ...h.refs(i, ["storage_account_id"]).map((t) => ({ from: i, to: t, kind: "dependency" as const, label: "stores logs" })),

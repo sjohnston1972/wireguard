@@ -51,6 +51,31 @@ describe("live governance and monitoring (T3.6)", () => {
     expect(parentLabel(g, byLabel(g, "bas-dev"))).toBe("vnet-lab");
   });
 
+  it("a flow log is a flowLog card (Network Watcher icon) with what it watches, where it stores logs and its analytics workspace", () => {
+    const L = "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-44-flow-logs-bastion/providers";
+    const flow: ArgRow = {
+      id: `${L}/Microsoft.Network/networkWatchers/nw-lab/flowLogs/fl-vnet`,
+      name: "fl-vnet",
+      type: "microsoft.network/networkwatchers/flowlogs",
+      location: "uksouth",
+      resourceGroup: "rg-lab-az700-44-flow-logs-bastion",
+      properties: {
+        provisioningState: "Succeeded",
+        enabled: true,
+        targetResourceId: `${L}/Microsoft.Network/virtualNetworks/vnet-hub`,
+        storageId: `${L}/Microsoft.Storage/storageAccounts/l44abcdeflow`,
+        retentionPolicy: { days: 7, enabled: true },
+        flowAnalyticsConfiguration: { networkWatcherFlowAnalyticsConfiguration: { enabled: true, workspaceResourceId: `${L}/Microsoft.OperationalInsights/workspaces/log-flow` } },
+      },
+    } as ArgRow;
+    const at = (type: string, name: string, extra: Record<string, unknown> = {}): ArgRow => ({ id: `${L}/${type}/${name}`, name, type: type.toLowerCase(), location: "uksouth", resourceGroup: "rg-lab-az700-44-flow-logs-bastion", properties: { provisioningState: "Succeeded", ...extra } }) as ArgRow;
+    const fg = liveGraph([flow, at("Microsoft.Network/virtualNetworks", "vnet-hub", { addressSpace: { addressPrefixes: ["10.64.0.0/20"] }, subnets: [] }), at("Microsoft.Storage/storageAccounts", "l44abcdeflow"), at("Microsoft.OperationalInsights/workspaces", "log-flow")], liveCtxFor("az700-44-flow-logs-bastion"));
+    expect(byLabel(fg, "fl-vnet")).toMatchObject({ kind: "flowLog", props: { retentionDays: 7 } });
+    expect(edgesBetween(fg, "fl-vnet", "vnet-hub")).toMatchObject([{ kind: "dependency", label: "watches" }]);
+    expect(edgesBetween(fg, "fl-vnet", "l44abcdeflow")).toMatchObject([{ kind: "dependency", label: "stores logs" }]);
+    expect(edgesBetween(fg, "fl-vnet", "log-flow")).toMatchObject([{ kind: "dependency", label: "traffic analytics" }]);
+  });
+
   it("planned-only kinds are 'not listed', never 'not deployed' (labs 1, 2, 3, 20 against an empty live graph)", () => {
     for (const id of ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az305-20-landing-zone"]) {
       const planned = plannedOf(id);

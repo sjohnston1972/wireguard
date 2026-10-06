@@ -532,6 +532,22 @@ export const ARM_RULES: Record<string, ArmRule> = {
         .filter((x): x is string => !!x)
         .map((w) => ({ from: lower(r.id), to: lower(w), kind: "dependency" as const, label: "sends to" })),
   },
+  // A flow log (a Network Watcher child; normally in NetworkWatcherRG, outside the lab): what it watches, where it writes.
+  "microsoft.network/networkwatchers/flowlogs": {
+    props: (r) => ({ retentionDays: obj(props(r).retentionPolicy).enabled === false ? undefined : obj(props(r).retentionPolicy).days }),
+    edges: (r) => {
+      const p = props(r);
+      const out: LiveEdgeSpec[] = [];
+      const t = str(p.targetResourceId);
+      if (t) out.push({ from: lower(r.id), to: lower(t), kind: "dependency", label: "watches" });
+      const s = str(p.storageId);
+      if (s) out.push({ from: lower(r.id), to: lower(s), kind: "dependency", label: "stores logs" });
+      const fa = obj(obj(p.flowAnalyticsConfiguration).networkWatcherFlowAnalyticsConfiguration);
+      const w = fa.enabled === false ? undefined : str(fa.workspaceResourceId);
+      if (w) out.push({ from: lower(r.id), to: lower(w), kind: "dependency", label: "traffic analytics" });
+      return out;
+    },
+  },
   "microsoft.network/bastionhosts": {
     props: (r) => ({ sku: str(obj(r.sku).name) }),
     // A Developer Bastion names its VNet, not a subnet.

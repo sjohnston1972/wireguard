@@ -612,7 +612,7 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
   "az700-44-flow-logs-bastion": {
     nodes: [
       "bastion bas-hub < AzureBastionSubnet",
-      "generic lab-az700-44-flow-logs-bastion-vnet < NetworkWatcherRG",
+      "flowLog lab-az700-44-flow-logs-bastion-vnet < NetworkWatcherRG",
       "logAnalytics log-flow < rg-lab-az700-44-flow-logs-bastion",
       "resourceGroup NetworkWatcherRG",
       "resourceGroup rg-lab-az700-44-flow-logs-bastion",
