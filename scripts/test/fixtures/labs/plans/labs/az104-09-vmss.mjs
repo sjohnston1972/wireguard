@@ -48,7 +48,9 @@ export default () => {
           boot_diagnostics: [{}],
         },
         unknown: ["network_interface.0.ip_configuration.0.subnet_id"],
-        refs: { ...IN_RG, admin_password: ["var.admin_password"], admin_ssh_key: ["var.ssh_public_key"], custom_data: ["path.module"], "network_interface.0.ip_configuration.0.subnet_id": ref("azurerm_subnet.vms", "id") },
+        refs: { ...IN_RG, admin_password: ["var.admin_password"], custom_data: ["path.module"], "network_interface.0.ip_configuration.0.subnet_id": ref("azurerm_subnet.vms", "id") },
+        // A dynamic block: planned, but left out of the configuration (no references), as real plans print it.
+        dynamic: ["admin_ssh_key"],
         sensitive: ["admin_password", "custom_data"],
       },
       {

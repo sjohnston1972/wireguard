@@ -148,6 +148,9 @@ export default () => {
           "managed_disk.0.staging_storage_account_id",
           "managed_disk.0.target_resource_group_id",
           "network_interface.0.source_network_interface_id",
+          // Optional and computed inside the attribute, left unset: the provider plans them unknown (the real plan).
+          "network_interface.0.failover_test_public_ip_address_id",
+          "network_interface.0.failover_test_static_ip",
         ],
         refs: inVault({
           source_recovery_fabric_name: ref("azurerm_site_recovery_fabric.source", "name"),

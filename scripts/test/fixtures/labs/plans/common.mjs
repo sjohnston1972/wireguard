@@ -63,7 +63,8 @@ export const rgSecondaryResource = (c) => ({
 /**
  * A Linux VM and its NIC, as lab 7 builds them: no public IP, Ubuntu 24.04,
  * a Standard_LRS OS disk, boot diagnostics (serial console), the session's
- * password and the operator's SSH key (a dynamic block).
+ * password and the operator's SSH key (a dynamic block: planned, but with no
+ * expressions in the configuration, as the real labs 22 and 26 recorded it).
  *
  *   name        the VM's name (vm-web); the NIC is nic-<name>
  *   key         the resource name in main.tf (default: name without "vm-", "-" as "_")
@@ -104,7 +105,7 @@ export function linuxVm(c, { name, key = name.replace(/^vm-/, "").replace(/-/g, 
   if (zone !== undefined) values.zone = String(zone);
   if (identity) values.identity = [{ type: identity }];
   const unknown = ["network_interface_ids"];
-  const refs = { ...IN_RG, admin_password: ["var.admin_password"], admin_ssh_key: ["var.ssh_public_key"], network_interface_ids: ref(nicAddress, "id") };
+  const refs = { ...IN_RG, admin_password: ["var.admin_password"], network_interface_ids: ref(nicAddress, "id") };
   const sensitive = ["admin_password"];
   if (typeof customData === "string") {
     values.custom_data = customData;
@@ -115,5 +116,5 @@ export function linuxVm(c, { name, key = name.replace(/^vm-/, "").replace(/-/g, 
     refs.custom_data = ["path.module", ...customData];
     sensitive.push("custom_data");
   }
-  return [nic, { address: `azurerm_linux_virtual_machine.${key}`, values, unknown, refs, sensitive }];
+  return [nic, { address: `azurerm_linux_virtual_machine.${key}`, values, unknown, refs, sensitive, dynamic: ["admin_ssh_key"] }];
 }

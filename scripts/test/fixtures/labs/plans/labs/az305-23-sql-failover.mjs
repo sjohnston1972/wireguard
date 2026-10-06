@@ -7,8 +7,10 @@
 // known at plan; every id is not: the databases' server_id, the geo-secondary's
 // source, the failover group's databases and partner server (an unknown id
 // in a nested block, which the scope check holds to the lab's own resources),
-// and the endpoints' targets. A list holding one unknown id is a known list
-// whose element is unknown ("databases.0"), as Terraform prints it.
+// and the endpoints' targets. A list holding one unknown id is unknown as a
+// whole ("databases", "private_dns_zone_ids"), as the release test's real
+// plan printed it (2026-10-06): azurerm plans such a list wholly unknown, not
+// a known list with one unknown element.
 
 import { ctx, IN_RG, ref, REGION, rgResource, rgSecondaryResource, SECONDARY } from "../common.mjs";
 
@@ -51,9 +53,9 @@ export default () => {
         custom_network_interface_name: `nic-pe-${name}`,
         tags: c.tags,
         private_service_connection: [{ name: `psc-sql${key[0]}`, private_connection_resource_id: "(unknown)", subresource_names: ["sqlServer"], is_manual_connection: false }],
-        private_dns_zone_group: [{ name: "sql", private_dns_zone_ids: ["(unknown)"] }],
+        private_dns_zone_group: [{ name: "sql" }],
       },
-      unknown: ["subnet_id", "private_service_connection.0.private_connection_resource_id", "private_dns_zone_group.0.private_dns_zone_ids.0"],
+      unknown: ["subnet_id", "private_service_connection.0.private_connection_resource_id", "private_dns_zone_group.0.private_dns_zone_ids"],
       refs: {
         ...IN_RG,
         name: ref(target, "name"),
@@ -90,8 +92,8 @@ export default () => {
       // The failover group over appdb, Manual, partnered with the ukwest server.
       {
         address: "azurerm_mssql_failover_group.fog",
-        values: { name: `${c.prefix}-fog`, databases: ["(unknown)"], tags: c.tags, partner_server: [{ id: "(unknown)" }], read_write_endpoint_failover_policy: [{ mode: "Manual" }] },
-        unknown: ["server_id", "databases.0", "partner_server.0.id"],
+        values: { name: `${c.prefix}-fog`, tags: c.tags, partner_server: [{ id: "(unknown)" }], read_write_endpoint_failover_policy: [{ mode: "Manual" }] },
+        unknown: ["server_id", "databases", "partner_server.0.id"],
         refs: { name: ["var.name_prefix"], server_id: ref(primary, "id"), databases: ref("azurerm_mssql_database.primary", "id"), tags: ["var.tags"], "partner_server.0.id": ref(secondary, "id") },
       },
       // scratch: serverless, on the ukwest server only.

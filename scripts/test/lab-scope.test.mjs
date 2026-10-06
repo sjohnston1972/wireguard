@@ -17,7 +17,7 @@ import { checkHcl, checkPlan, hclResources, planResources, RULES, scopeProblems,
 import { GOVERNANCE_LABS, LAB_ID_RE } from "../lib/labs.mjs";
 import { realisticPlan, withAfterUnknown } from "./fixtures/labs/plans/realistic.mjs";
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
-import { ctx, rgResource, rgSecondaryResource } from "./fixtures/labs/plans/common.mjs";
+import { ctx, IN_RG, linuxVm, ref, rgResource, rgSecondaryResource } from "./fixtures/labs/plans/common.mjs";
 import { TEMPLATE as LAB12_TEMPLATE } from "./fixtures/labs/plans/labs/az104-12-bicep.mjs";
 
 const DIR = fileURLToPath(new URL("./fixtures/labs/scope/", import.meta.url));
@@ -748,7 +748,8 @@ test("a failover group whose partner server is outside the lab is refused", () =
 // configuration.expressions ("partner_server": [{ "id": { references } }]). An *attribute* holding objects or
 // lists (azurerm's managed_disk and network_interface, typed set(object); a failover group's databases) has one
 // expression with every reference in it, while after_unknown marks the unknown values inside it by their own
-// nested paths ("managed_disk.0.target_resource_group_id", "databases.0").
+// nested paths ("managed_disk.0.target_resource_group_id", "databases.0"). (Lab 23's real plan, 2026-10-06, left
+// its databases wholly unknown, "databases": true; both forms are held to the references, below.)
 test("an unknown id inside an attribute written as blocks is held to the attribute's own references", () => {
   const id = "az305-26-site-recovery";
   const c = ctx(id, "26");
@@ -937,4 +938,114 @@ test("a DINE rule's embedded template is checked as a template, and its deployme
   assert.deepEqual(checkHcl(withTemplate([DIAG], { resourceGroup: `rg-lab-${id}` }), id), []);
   // Lab 21's real plan still passes.
   assert.deepEqual(checkPlan(LAB_PLANS[id].plan, id), []);
+});
+
+// ── What batch 3's real plans showed (release tests, 2026-10-06) ─────────
+
+// Labs 22 and 26 recorded their VMs' admin_ssh_key with no references at all: `terraform show -json` leaves a
+// dynamic block out of configuration.expressions, while its values are in the plan. So an unknown value inside a
+// dynamic block carried no references and looked computed by the provider, and an id from a data source deferred
+// to apply (a subnet in another group) passed. A plan now refuses an unknown value inside a dynamic block: the
+// check cannot see where it comes from. (The HCL check reads dynamic blocks; a VM's admin_ssh_key, all known, passes.)
+test("an unknown value inside a dynamic block is refused in a plan, which leaves dynamic blocks out of its configuration", () => {
+  const id = "az104-07-files";
+  const c = ctx(id, "07");
+  const vnet = { address: "azurerm_virtual_network.lab", values: { name: "vnet-lab", resource_group_name: c.rg, location: "uksouth", address_space: ["10.64.64.0/20"], tags: c.tags }, refs: IN_RG };
+  const subnet = { address: "azurerm_subnet.vms", values: { name: "snet-vms", resource_group_name: c.rg, virtual_network_name: "vnet-lab", address_prefixes: ["10.64.64.0/24"] }, refs: { resource_group_name: IN_RG.resource_group_name, virtual_network_name: ref("azurerm_virtual_network.lab", "name") } };
+  const nic = (dynamic, subnetRefs) => ({
+    address: "azurerm_network_interface.x",
+    values: { name: "nic-x", resource_group_name: c.rg, location: "uksouth", tags: c.tags, ip_configuration: [{ name: "ipconfig1", subnet_id: "(unknown)", private_ip_address_allocation: "Dynamic" }] },
+    unknown: ["ip_configuration.0.subnet_id"],
+    refs: dynamic ? { ...IN_RG } : { ...IN_RG, "ip_configuration.0.subnet_id": subnetRefs },
+    ...(dynamic ? { dynamic: ["ip_configuration"] } : {}),
+  });
+  const plan = (r) => {
+    const p = realisticPlan({ resources: [rgResource(c), vnet, subnet, r], variables: c.variables });
+    // A data source in another group, deferred to apply (it depends on a lab resource): in the configuration only.
+    p.configuration.root_module.resources.push({
+      address: "data.azurerm_subnet.prod",
+      mode: "data",
+      type: "azurerm_subnet",
+      name: "prod",
+      provider_config_key: "azurerm",
+      expressions: { name: { constant_value: "snet-app" }, virtual_network_name: { constant_value: "vnet-prod" }, resource_group_name: { constant_value: "rg-prod" } },
+      depends_on: ["azurerm_resource_group.lab"],
+    });
+    return p;
+  };
+  // Written out, the block is held to its references: the lab's own subnet passes, the deferred data source does not.
+  assert.deepEqual(checkPlan(plan(nic(false, ref("azurerm_subnet.vms", "id"))), id), []);
+  assert.deepEqual(verdict(checkPlan(plan(nic(false, ref("data.azurerm_subnet.prod", "id"))), id)), [["outside-scope", "azurerm_network_interface.x"]]);
+  // As a dynamic block the plan shows the unknown id and nothing of where it comes from: refused. So is any
+  // unknown value in it, the provider's own too (which this check cannot tell from a configured one).
+  const p = plan(nic(true));
+  assert.equal(p.configuration.root_module.resources.find((r) => r.address === "azurerm_network_interface.x").expressions.ip_configuration, undefined, "the plan's configuration leaves the dynamic block out");
+  const refused = checkPlan(p, id);
+  assert.deepEqual(verdict(refused), [["outside-scope", "azurerm_network_interface.x"]]);
+  assert.match(refused[0].message, /^ip_configuration\.0\.[a-z_]+ is unknown inside a dynamic block/);
+  assert.ok(planResources(p).resources.find((r) => r.address === "azurerm_network_interface.x").values.ip_configuration[0].subnet_id.dynamic, "the subnet id is marked as inside a dynamic block");
+  // A VM's dynamic admin_ssh_key holds only known values: it passes, as the real labs 22 and 26 did.
+  const [vmNic, vm] = linuxVm(c, { name: "vm-files", subnet: "azurerm_subnet.vms" });
+  const withVm = realisticPlan({ resources: [rgResource(c), vnet, subnet, vmNic, vm], variables: c.variables });
+  assert.equal(withVm.configuration.root_module.resources.find((r) => r.address === vm.address).expressions.admin_ssh_key, undefined);
+  assert.ok(withVm.planned_values.root_module.resources.find((r) => r.address === vm.address).values.admin_ssh_key.length);
+  assert.deepEqual(checkPlan(withVm, id), []);
+});
+
+// Lab 23's real plan left two lists of ids wholly unknown (after_unknown "databases": true and
+// "private_dns_zone_group.0.private_dns_zone_ids": true, not their ".0" elements, which the fixture had). A wholly
+// unknown list is held to the whole expression's references, so a zone or a database from outside the lab is
+// refused. A literal id mixed into such a list never reaches the plan (Terraform prints only references for an
+// expression that is not constant): the HCL check, in CI, is where it is caught.
+test("a list of ids a plan leaves wholly unknown is held to its references, and a literal in it is caught in HCL", () => {
+  const id = "az305-23-sql-failover";
+  const c = ctx(id, "23");
+  const zone = { address: "azurerm_private_dns_zone.sql", values: { name: "privatelink.database.windows.net", resource_group_name: c.rg, tags: c.tags }, refs: { resource_group_name: IN_RG.resource_group_name, tags: ["var.tags"] } };
+  const endpoint = (zoneRefs) => ({
+    address: "azurerm_private_endpoint.primary",
+    values: {
+      name: "pe-sqlp",
+      resource_group_name: c.rg,
+      location: "uksouth",
+      tags: c.tags,
+      private_service_connection: [{ name: "psc-sqlp", subresource_names: ["sqlServer"], is_manual_connection: false }],
+      private_dns_zone_group: [{ name: "sql" }],
+    },
+    unknown: ["subnet_id", "private_service_connection.0.private_connection_resource_id", "private_dns_zone_group.0.private_dns_zone_ids"],
+    refs: {
+      ...IN_RG,
+      subnet_id: ref("azurerm_resource_group.lab", "id"),
+      "private_service_connection.0.private_connection_resource_id": ref("azurerm_resource_group.lab", "id"),
+      "private_dns_zone_group.0.private_dns_zone_ids": zoneRefs,
+    },
+  });
+  const plan = (zoneRefs) => realisticPlan({ resources: [rgResource(c), zone, endpoint(zoneRefs)], variables: c.variables });
+  const own = ref("azurerm_private_dns_zone.sql", "id");
+  assert.equal(plan(own).resource_changes.at(-1).change.after_unknown.private_dns_zone_group[0].private_dns_zone_ids, true, "wholly unknown, as the real plan printed it");
+  assert.deepEqual(checkPlan(plan(own), id), []);
+  // The gateway's own privatelink zone, or any zone found by a data source or passed in: refused.
+  assert.deepEqual(verdict(checkPlan(plan(ref("data.azurerm_private_dns_zone.shared", "id")), id)), [["outside-scope", "azurerm_private_endpoint.primary"]]);
+  assert.deepEqual(verdict(checkPlan(plan([...own, "var.zone_ids"]), id)), [["outside-scope", "azurerm_private_endpoint.primary"]]);
+  // In HCL, a literal id in the list is read for what it is.
+  const foreign = `${SUB_ID}/resourceGroups/rg-prod/providers/Microsoft.Network/privateDnsZones/privatelink.database.windows.net`;
+  const hcl = (ids) => ({
+    resource: {
+      azurerm_resource_group: RG_HCL,
+      azurerm_private_dns_zone: { sql: [{ name: "privatelink.database.windows.net", resource_group_name: "${azurerm_resource_group.lab.name}" }] },
+      azurerm_private_endpoint: {
+        primary: [
+          {
+            name: "pe-sqlp",
+            resource_group_name: "${azurerm_resource_group.lab.name}",
+            location: "${azurerm_resource_group.lab.location}",
+            subnet_id: "${azurerm_resource_group.lab.id}",
+            private_service_connection: [{ name: "psc-sqlp", private_connection_resource_id: "${azurerm_resource_group.lab.id}", subresource_names: ["sqlServer"], is_manual_connection: false }],
+            private_dns_zone_group: [{ name: "sql", private_dns_zone_ids: ids }],
+          },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(checkHcl(hcl(["${azurerm_private_dns_zone.sql.id}"]), id), []);
+  assert.deepEqual(verdict(checkHcl(hcl(["${azurerm_private_dns_zone.sql.id}", foreign]), id)), [["outside-scope", "azurerm_private_endpoint.primary"]]);
 });

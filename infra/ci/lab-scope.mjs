@@ -56,7 +56,9 @@
 //                     partner server and databases, a replicated VM's disk target
 //                     group; an unknown one inside an attribute written as blocks
 //                     is held to all of that attribute's references, which is
-//                     how terraform show -json lists them), anything at subscription
+//                     how terraform show -json lists them; an unknown one inside a
+//                     dynamic block, whose expressions a plan leaves out, is refused
+//                     in a plan), anything at subscription
 //                     scope (a policy rule's deploymentScope too), or a resource tied to nothing in the
 //                     lab (an instance key, count.index or each.key, places
 //                     nothing on its own; each.value places only when for_each
@@ -241,8 +243,15 @@ export function planResources(plan) {
     // unknown value takes the references of the nearest enclosing path that has any. A whole block left unknown
     // (every value in it unknown, its expressions split by path below it) takes every reference under it.
     const byPath = refPaths(exprs, [], {});
+    // A dynamic block: Terraform plans its values but leaves it out of configuration.expressions (labs 22 and
+    // 26's real plans: admin_ssh_key with no references), so where an unknown value in it comes from is hidden.
+    const dynamicBlock = (k) => Array.isArray(r.values?.[k]) && r.values[k].length > 0 && !(k in exprs) && cfg.has(stripIndex(r.address));
     for (const l of leaves(values)) {
       if (!(l.value instanceof Unknown)) continue;
+      if (dynamicBlock(l.path[0])) {
+        l.value.dynamic = true;
+        continue;
+      }
       for (let n = l.path.length; n > 0; n--) {
         const refs = byPath[l.path.slice(0, n).join(".")];
         if (refs) {
@@ -1018,6 +1027,12 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
         // of them must place it inside the lab.
         for (const l of all) {
           if (!(l.value instanceof Unknown)) continue;
+          // A plan shows a dynamic block's values but not its expressions: an unknown value in one could come
+          // from anywhere (a data source deferred to apply, say), so it cannot be placed. Write the block out.
+          if (l.value.dynamic) {
+            refuse("outside-scope", `${l.path.join(".")} is unknown inside a dynamic block, whose references a plan does not show, so the check cannot place it inside the lab; write the block out`);
+            continue;
+          }
           const refs = l.value.refs ?? [];
           if (!refs.length) continue; // computed by the provider, not configured
           const named = String([...l.path].reverse().find((k) => typeof k === "string" && !/^\d+$/.test(k)));

@@ -8,7 +8,9 @@
 // parts (after_unknown) true to the real providers: an attribute the
 // provider computes and the configuration leaves unset is unknown at plan,
 // exactly as `terraform show -json` prints it (azuread_group.mail_nickname,
-// azurerm_management_group.subscription_ids, ...).
+// azurerm_management_group.subscription_ids, ...). It also lists which
+// attributes the schema calls sensitive: Terraform marks each of those in
+// after_sensitive whether it is set or not (batch 3's real plans).
 //
 // Regenerate after a provider upgrade (no cloud calls; terraform init only
 // downloads the providers). Pin the versions the labs' lock files hold
@@ -82,15 +84,20 @@ function facts(block) {
   return { rg: arg("resource_group_name"), tags: arg("tags") };
 }
 
-/** { attrs: [computed attribute names], blocks: { name: tree } } for one schema block. */
+/**
+ * { attrs: [computed attribute names], blocks: { name: tree }, sensitive?: [sensitive attribute names] } for one
+ * schema block. Terraform marks a sensitive attribute in after_sensitive whether it is set or not (lab 23's real
+ * plan: administrator_login_password_wo, never set), so realisticPlan marks every one.
+ */
 function tree(block) {
   const attrs = Object.entries(block.attributes ?? {}).filter(([, a]) => a.computed).map(([k]) => k).sort();
+  const sensitive = Object.entries(block.attributes ?? {}).filter(([, a]) => a.sensitive).map(([k]) => k).sort();
   const blocks = {};
   for (const [k, b] of Object.entries(block.block_types ?? {})) {
     const t = tree(b.block);
-    if (t.attrs.length || Object.keys(t.blocks).length) blocks[k] = t;
+    if (t.attrs.length || t.sensitive?.length || Object.keys(t.blocks).length) blocks[k] = t;
   }
-  return { attrs, blocks };
+  return { attrs, blocks, ...(sensitive.length ? { sensitive } : {}) };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

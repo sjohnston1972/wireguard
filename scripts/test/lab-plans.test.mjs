@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { checkPlan } from "../../infra/ci/lab-scope.mjs";
 import { labFolders } from "../lib/labs.mjs";
 import { LAB_PLANS, loadLabPlans } from "./fixtures/labs/plans/labs.mjs";
-import { COMPUTED, realisticPlan, SCHEMA_FACTS } from "./fixtures/labs/plans/realistic.mjs";
+import { COMPUTED, PLAN_DEFAULTS, realisticPlan, SCHEMA_FACTS, UNSET_BLOCKS_UNKNOWN } from "./fixtures/labs/plans/realistic.mjs";
 import { ctx, linuxVm, rgResource, rgSecondaryResource, SECONDARY } from "./fixtures/labs/plans/common.mjs";
 import { compareShapes, planShape, recordedShape, SHAPES } from "./fixtures/labs/plans/shape.mjs";
 
@@ -347,7 +347,8 @@ test("planShape keeps addresses, references, unknown and sensitive paths and no 
   assert.ok(vm.unknown.includes("network_interface_ids"));
   assert.ok(vm.unknown.includes("id"));
   assert.ok(vm.unknown.includes("os_disk.0.name"), vm.unknown.join(", "));
-  assert.deepEqual(vm.sensitive, ["admin_password"]);
+  // Both attributes the schema calls sensitive, custom_data too though this VM sets none (as lab 22's real plan).
+  assert.deepEqual(vm.sensitive, ["admin_password", "custom_data"]);
   // Never a value: not the password, not a name, not an address, not a tag.
   const text = JSON.stringify(shape);
   for (const v of ["Sup3r-Secret-Value!", c.rg, "vnet-lab", "10.64.64.0/24", "ls-20261005T0900-ab12", "Standard_B1s", "ssh-ed25519"]) assert.ok(!text.includes(v), v);
@@ -398,4 +399,54 @@ test("the realistic plans mark computed, unset attributes unknown, as Terraform 
   assert.equal(pe.after_unknown.subnet_id, true);
   assert.equal(pe.after_unknown.private_service_connection[0].private_connection_resource_id, true);
   assert.equal("subnet_id" in pe.after, false);
+});
+
+// Batch 3's release tests (2026-10-06) recorded real plan shapes that every fixture differed from in the same few
+// ways; realistic.mjs now prints them as Terraform does, for every lab, recorded or not.
+test("the realistic plans print sensitive attributes, unset optional-computed blocks, plan-time defaults and dynamic blocks as the real plans did", () => {
+  const change = (lab, address) => LAB_PLANS[lab].plan.resource_changes.find((c) => c.address === address).change;
+  const config = (lab, address) => LAB_PLANS[lab].plan.configuration.root_module.resources.find((r) => r.address === address);
+  // Every attribute the schema calls sensitive, set or not: lab 23 never sets administrator_login_password_wo, lab 27
+  // no secure_environment_variables (inside each container block), lab 22's VM no custom_data.
+  assert.ok(COMPUTED.types.azurerm_mssql_server.sensitive.includes("administrator_login_password_wo"));
+  assert.equal(change("az305-23-sql-failover", "azurerm_mssql_server.primary").after_sensitive.administrator_login_password_wo, true);
+  assert.equal(change("az305-27-multi-region", "azurerm_container_group.uks").after_sensitive.container[0].secure_environment_variables, true);
+  assert.equal(change("az305-22-keyvault-mi", "azurerm_linux_virtual_machine.vm").after_sensitive.custom_data, true);
+  assert.equal(change("az305-26-site-recovery", "azurerm_storage_account.cache").after_sensitive.primary_access_key, true);
+  // An Optional and Computed block left unset is wholly unknown; one the lab sets is not.
+  assert.equal(change("az305-25-storage-design", "azurerm_storage_account.lake").after_unknown.blob_properties, true);
+  assert.equal(change("az305-26-site-recovery", "azurerm_linux_virtual_machine.vm").after_unknown.termination_notification, true);
+  assert.ok(UNSET_BLOCKS_UNKNOWN.azurerm_storage_account.includes("network_rules"));
+  assert.notEqual(change("az104-07-files", "azurerm_storage_account.files").after_unknown.network_rules, true, "lab 7 sets network_rules");
+  assert.equal(change("az104-07-files", "azurerm_storage_account.files").after_unknown.network_rules[0].virtual_network_subnet_ids, true);
+  // A default the provider fills in at plan: known, planned, and not in the configuration.
+  const law = change("az305-21-monitoring-scale", "azurerm_log_analytics_workspace.lab");
+  assert.equal(law.after_unknown.local_authentication_enabled, undefined);
+  assert.equal(law.after.local_authentication_enabled, PLAN_DEFAULTS.azurerm_log_analytics_workspace.local_authentication_enabled);
+  assert.equal(config("az305-21-monitoring-scale", "azurerm_log_analytics_workspace.lab").expressions.local_authentication_enabled, undefined);
+  const pw = change("az305-22-keyvault-mi", "random_password.app_db");
+  assert.equal(pw.after_unknown.lower, undefined);
+  assert.equal(pw.after.lower, true);
+  assert.equal(pw.after.special, false, "a value the lab sets is kept, never replaced by the default");
+  // A dynamic block: planned values, no expressions (so no references) in the configuration.
+  assert.equal(change("az305-26-site-recovery", "azurerm_linux_virtual_machine.vm").after.admin_ssh_key.length, 1);
+  assert.equal(config("az305-26-site-recovery", "azurerm_linux_virtual_machine.vm").expressions.admin_ssh_key, undefined);
+  assert.throws(() => realisticPlan({ resources: [{ address: "azurerm_linux_virtual_machine.x", values: { admin_ssh_key: [{ username: "u" }] }, dynamic: ["admin_ssh_key"], refs: { "admin_ssh_key.0.public_key": ["var.ssh_public_key"] } }] }), /dynamic block/);
+});
+
+// Lab 26's recorded shape is from its first release test, on Ubuntu 22.04 (v2). Version 3 runs AlmaLinux 9.7: the
+// image's publisher, offer, sku and version and the cloud-init text are values, which a shape never holds, and no
+// address, reference, unknown or sensitive path changed. So the Ubuntu shape is still the shape to match, compared
+// in full rather than skipped; the retest of v3 records its own (lab-release-test.mjs saves shapes/<id>.json).
+test("az305-26-site-recovery: the switch to AlmaLinux changes no part of the plan's shape, so the recorded one still applies", () => {
+  const d = LAB_PLANS["az305-26-site-recovery"];
+  const vm = d.resources.find((r) => r.address === "azurerm_linux_virtual_machine.vm");
+  assert.deepEqual(vm.values.source_image_reference, [{ publisher: "almalinux", offer: "almalinux-x86_64", sku: "9-gen2", version: "9.7.2026051801" }]);
+  const ubuntu = structuredClone(d);
+  ubuntu.resources.find((r) => r.address === vm.address).values.source_image_reference = [{ publisher: "Canonical", offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2", version: "latest" }];
+  assert.deepEqual(planShape(realisticPlan(ubuntu)), planShape(d.plan));
+  // The main.tf change is in values only: the image block and custom_data keep the same references.
+  const tf = tfResources(join(LABS, "az305-26-site-recovery", "terraform"))["azurerm_linux_virtual_machine.vm"];
+  assert.ok(tf.has("source_image_reference") && tf.has("custom_data") && !tf.has("plan"), "no plan block (a free image)");
+  assert.ok(recordedShape("az305-26-site-recovery"), "the v2 shape is recorded");
 });
