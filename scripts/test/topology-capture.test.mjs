@@ -98,3 +98,11 @@ test("the capture runs the one query topologyQuery writes, for the subscription 
   assert.equal(body.query, "resources | where resourceGroup =~ 'rg-lab-az104-14-peering-udr' or resourceGroup startswith 'rg-lab-az104-14-peering-udr-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ 'rg-lab-az104-14-peering-udr' or name startswith 'rg-lab-az104-14-peering-udr-') | project id, name, type, location, resourceGroup = name, tags) | order by id asc");
   await assert.rejects(() => captureRequest("sub-x", "rg-wg-ondemand"));
 });
+
+test("faking the subscription replaces only a subscription GUID, never the word after it (a group row's type)", () => {
+  const sub = "/subscriptions/394c7881-dd1d-4cac-86c0-61cf3fc03f58";
+  const groupRow = { id: `${sub}/resourceGroups/rg-lab-az104-14-peering-udr`, name: "rg-lab-az104-14-peering-udr", type: "microsoft.resources/subscriptions/resourcegroups", resourceGroup: "rg-lab-az104-14-peering-udr", location: "uksouth", tags: {}, properties: {} };
+  const [out] = captureRows([groupRow], { labId: "az104-14-peering-udr", ids: ["az104-14-peering-udr"], owns: (id, name) => name === `rg-lab-${id}` });
+  assert.equal(out.type, "microsoft.resources/subscriptions/resourcegroups");
+  assert.equal(out.id, `/subscriptions/${FAKE_SUBSCRIPTION}/resourceGroups/rg-lab-az104-14-peering-udr`);
+});

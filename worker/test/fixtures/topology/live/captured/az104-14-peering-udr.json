@@ -1,0 +1,567 @@
+{
+ "_about": "Resource Graph rows of a running az104-14-peering-udr, captured read-only by scripts/topology-capture.mjs (subscription faked, only rule-read paths kept).",
+ "rows": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/RG-LAB-AZ104-14-PEERING-UDR/providers/Microsoft.Compute/disks/vm-router_OsDisk_1_c5a50f62c5084da59deca9e8cfd34c51",
+   "name": "vm-router_OsDisk_1_c5a50f62c5084da59deca9e8cfd34c51",
+   "type": "microsoft.compute/disks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": {
+    "name": "Standard_LRS",
+    "tier": "Standard"
+   },
+   "zones": null,
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Compute/virtualMachines/vm-router",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/RG-LAB-AZ104-14-PEERING-UDR/providers/Microsoft.Compute/disks/vm-spoke1_OsDisk_1_b5e30db008f844938dc80764a6935d48",
+   "name": "vm-spoke1_OsDisk_1_b5e30db008f844938dc80764a6935d48",
+   "type": "microsoft.compute/disks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": {
+    "name": "Standard_LRS",
+    "tier": "Standard"
+   },
+   "zones": null,
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Compute/virtualMachines/vm-spoke1",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/RG-LAB-AZ104-14-PEERING-UDR/providers/Microsoft.Compute/disks/vm-spoke2_OsDisk_1_ff9e74857bac49a0a9a9d11b211f23e8",
+   "name": "vm-spoke2_OsDisk_1_ff9e74857bac49a0a9a9d11b211f23e8",
+   "type": "microsoft.compute/disks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": {
+    "name": "Standard_LRS",
+    "tier": "Standard"
+   },
+   "zones": null,
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Compute/virtualMachines/vm-spoke2",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr",
+   "name": "rg-lab-az104-14-peering-udr",
+   "type": "microsoft.resources/subscriptions/resourcegroups",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {}
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Compute/virtualMachines/vm-router",
+   "name": "vm-router",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running"
+      }
+     }
+    },
+    "networkProfile": {
+     "networkInterfaces": [
+      {
+       "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/networkInterfaces/nic-vm-router"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Compute/virtualMachines/vm-spoke1",
+   "name": "vm-spoke1",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running"
+      }
+     }
+    },
+    "networkProfile": {
+     "networkInterfaces": [
+      {
+       "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/networkInterfaces/nic-vm-spoke1"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Compute/virtualMachines/vm-spoke2",
+   "name": "vm-spoke2",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running"
+      }
+     }
+    },
+    "networkProfile": {
+     "networkInterfaces": [
+      {
+       "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/networkInterfaces/nic-vm-spoke2"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/networkInterfaces/nic-vm-router",
+   "name": "nic-vm-router",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "Regular",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Compute/virtualMachines/vm-router"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/networkInterfaces/nic-vm-router/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.71.192.4",
+       "privateIPAllocationMethod": "Static",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-router"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/networkInterfaces/nic-vm-spoke1",
+   "name": "nic-vm-spoke1",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "Regular",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Compute/virtualMachines/vm-spoke1"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/networkInterfaces/nic-vm-spoke1/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.71.208.4",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke1/subnets/snet-workload"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/networkInterfaces/nic-vm-spoke2",
+   "name": "nic-vm-spoke2",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "Regular",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Compute/virtualMachines/vm-spoke2"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/networkInterfaces/nic-vm-spoke2/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.71.224.4",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke2/subnets/snet-workload"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/routeTables/rt-spoke1",
+   "name": "rt-spoke1",
+   "type": "microsoft.network/routetables",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke1/subnets/snet-workload"
+     }
+    ],
+    "routes": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/routeTables/rt-spoke1/routes/to-spoke2-via-router",
+      "name": "to-spoke2-via-router",
+      "properties": {
+       "addressPrefix": "10.71.224.0/20",
+       "nextHopType": "VirtualAppliance",
+       "nextHopIpAddress": "10.71.192.4"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/routeTables/rt-spoke2",
+   "name": "rt-spoke2",
+   "type": "microsoft.network/routetables",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke2/subnets/snet-workload"
+     }
+    ],
+    "routes": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/routeTables/rt-spoke2/routes/to-spoke1-via-router",
+      "name": "to-spoke1-via-router",
+      "properties": {
+       "addressPrefix": "10.71.208.0/20",
+       "nextHopType": "VirtualAppliance",
+       "nextHopIpAddress": "10.71.192.4"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-hub",
+   "name": "vnet-hub",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.71.192.0/20"
+     ]
+    },
+    "dhcpOptions": {
+     "dnsServers": []
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-router",
+      "name": "snet-router",
+      "properties": {
+       "addressPrefix": "10.71.192.0/24",
+       "delegations": [],
+       "serviceEndpoints": [],
+       "defaultOutboundAccess": true
+      }
+     }
+    ],
+    "virtualNetworkPeerings": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-hub/virtualNetworkPeerings/peer-hub-to-spoke1",
+      "name": "peer-hub-to-spoke1",
+      "properties": {
+       "peeringState": "Connected",
+       "allowGatewayTransit": false,
+       "useRemoteGateways": false,
+       "allowForwardedTraffic": true,
+       "remoteVirtualNetwork": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke1"
+       }
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-hub/virtualNetworkPeerings/peer-hub-to-spoke2",
+      "name": "peer-hub-to-spoke2",
+      "properties": {
+       "peeringState": "Connected",
+       "allowGatewayTransit": false,
+       "useRemoteGateways": false,
+       "allowForwardedTraffic": true,
+       "remoteVirtualNetwork": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke2"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke1",
+   "name": "vnet-spoke1",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.71.208.0/20"
+     ]
+    },
+    "dhcpOptions": {
+     "dnsServers": []
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke1/subnets/snet-workload",
+      "name": "snet-workload",
+      "properties": {
+       "addressPrefix": "10.71.208.0/24",
+       "routeTable": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/routeTables/rt-spoke1"
+       },
+       "delegations": [],
+       "serviceEndpoints": [],
+       "defaultOutboundAccess": true
+      }
+     }
+    ],
+    "virtualNetworkPeerings": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke1/virtualNetworkPeerings/peer-spoke1-to-hub",
+      "name": "peer-spoke1-to-hub",
+      "properties": {
+       "peeringState": "Connected",
+       "allowGatewayTransit": false,
+       "useRemoteGateways": false,
+       "allowForwardedTraffic": true,
+       "remoteVirtualNetwork": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-hub"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke2",
+   "name": "vnet-spoke2",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-14-peering-udr",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az104-14-peering-udr",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.71.224.0/20"
+     ]
+    },
+    "dhcpOptions": {
+     "dnsServers": []
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke2/subnets/snet-workload",
+      "name": "snet-workload",
+      "properties": {
+       "addressPrefix": "10.71.224.0/24",
+       "routeTable": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/routeTables/rt-spoke2"
+       },
+       "delegations": [],
+       "serviceEndpoints": [],
+       "defaultOutboundAccess": true
+      }
+     }
+    ],
+    "virtualNetworkPeerings": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-spoke2/virtualNetworkPeerings/peer-spoke2-to-hub",
+      "name": "peer-spoke2-to-hub",
+      "properties": {
+       "peeringState": "Connected",
+       "allowGatewayTransit": false,
+       "useRemoteGateways": false,
+       "allowForwardedTraffic": true,
+       "remoteVirtualNetwork": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Network/virtualNetworks/vnet-hub"
+       }
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

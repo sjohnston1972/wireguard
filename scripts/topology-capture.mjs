@@ -148,7 +148,7 @@ function cut(value, tree) {
   return out;
 }
 
-const fakeSub = (v) => (typeof v === "string" ? v.replace(/\/subscriptions\/[^/]+/gi, `/subscriptions/${FAKE_SUBSCRIPTION}`) : Array.isArray(v) ? v.map(fakeSub) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fakeSub(x)])) : v);
+const fakeSub = (v) => (typeof v === "string" ? v.replace(/\/subscriptions\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, `/subscriptions/${FAKE_SUBSCRIPTION}`) : Array.isArray(v) ? v.map(fakeSub) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fakeSub(x)])) : v);
 
 const IPV4 = /\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b/g;
 const TEST_NETS = ["203.0.113", "198.51.100", "192.0.2"];

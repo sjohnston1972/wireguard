@@ -1,0 +1,725 @@
+{
+ "_about": "Resource Graph rows of a running az700-43-private-link, captured read-only by scripts/topology-capture.mjs (subscription faked, only rule-read paths kept).",
+ "rows": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/RG-LAB-AZ700-43-PRIVATE-LINK/providers/Microsoft.Compute/disks/vm-client_OsDisk_1_ca192b68467145a1b7dcbc51389eef4d",
+   "name": "vm-client_OsDisk_1_ca192b68467145a1b7dcbc51389eef4d",
+   "type": "microsoft.compute/disks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": {
+    "name": "Standard_LRS",
+    "tier": "Standard"
+   },
+   "zones": null,
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Compute/virtualMachines/vm-client",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/RG-LAB-AZ700-43-PRIVATE-LINK/providers/Microsoft.Compute/disks/vm-svc_OsDisk_1_eb6f53bbb92a494583bd96623d43a8ff",
+   "name": "vm-svc_OsDisk_1_eb6f53bbb92a494583bd96623d43a8ff",
+   "type": "microsoft.compute/disks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": {
+    "name": "Standard_LRS",
+    "tier": "Standard"
+   },
+   "zones": null,
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Compute/virtualMachines/vm-svc",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link",
+   "name": "rg-lab-az700-43-private-link",
+   "type": "microsoft.resources/subscriptions/resourcegroups",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {}
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Compute/virtualMachines/vm-client",
+   "name": "vm-client",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running"
+      }
+     }
+    },
+    "networkProfile": {
+     "networkInterfaces": [
+      {
+       "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-vm-client"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Compute/virtualMachines/vm-svc",
+   "name": "vm-svc",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running"
+      }
+     }
+    },
+    "networkProfile": {
+     "networkInterfaces": [
+      {
+       "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-vm-svc"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/loadBalancers/lb-svc",
+   "name": "lb-svc",
+   "type": "microsoft.network/loadbalancers",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "frontendIPConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/loadBalancers/lb-svc/frontendIPConfigurations/fe-svc",
+      "properties": {
+       "privateIPAddress": "10.71.192.10",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-provider/subnets/snet-svc"
+       }
+      }
+     }
+    ],
+    "backendAddressPools": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/loadBalancers/lb-svc/backendAddressPools/pool-svc",
+      "properties": {
+       "backendIPConfigurations": [
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-vm-svc/ipConfigurations/ipconfig1"
+        }
+       ]
+      }
+     }
+    ],
+    "loadBalancingRules": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/loadBalancers/lb-svc/loadBalancingRules/rule-http-80",
+      "properties": {
+       "protocol": "Tcp",
+       "frontendPort": 80,
+       "backendPort": 80,
+       "backendAddressPool": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/loadBalancers/lb-svc/backendAddressPools/pool-svc"
+       },
+       "backendAddressPools": [
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/loadBalancers/lb-svc/backendAddressPools/pool-svc"
+        }
+       ]
+      }
+     }
+    ],
+    "inboundNatRules": [],
+    "outboundRules": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-pe-blob",
+   "name": "nic-pe-blob",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "Regular",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateEndpoints/pe-blob",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "privateEndpoint": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateEndpoints/pe-blob"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-pe-blob/ipConfigurations/privateEndpointIpConfig.7478fb13-e1fb-4f9b-94b8-dda67642296a",
+      "name": "privateEndpointIpConfig.7478fb13-e1fb-4f9b-94b8-dda67642296a",
+      "properties": {
+       "privateIPAddress": "10.71.208.5",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer/subnets/snet-pe"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-pe-svc",
+   "name": "nic-pe-svc",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "Regular",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateEndpoints/pe-svc",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "privateEndpoint": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateEndpoints/pe-svc"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-pe-svc/ipConfigurations/privateEndpointIpConfig.99edb202-1cc3-45e5-887c-78e8bcc49a46",
+      "name": "privateEndpointIpConfig.99edb202-1cc3-45e5-887c-78e8bcc49a46",
+      "properties": {
+       "privateIPAddress": "10.71.208.4",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer/subnets/snet-pe"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-vm-client",
+   "name": "nic-vm-client",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "Regular",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Compute/virtualMachines/vm-client"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-vm-client/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.71.209.4",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer/subnets/snet-client"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-vm-svc",
+   "name": "nic-vm-svc",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "Regular",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Compute/virtualMachines/vm-svc"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-vm-svc/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.71.192.11",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-provider/subnets/snet-svc"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/pls-svc.nic.1473d5c3-1fc8-4aee-8bd7-7d26c2899c75",
+   "name": "pls-svc.nic.1473d5c3-1fc8-4aee-8bd7-7d26c2899c75",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "Regular",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/pls-svc.nic.1473d5c3-1fc8-4aee-8bd7-7d26c2899c75/ipConfigurations/nat-pls",
+      "name": "nat-pls",
+      "properties": {
+       "privateIPAddress": "10.71.193.4",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-provider/subnets/snet-pls"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net",
+   "name": "privatelink.blob.core.windows.net",
+   "type": "microsoft.network/privatednszones",
+   "kind": "",
+   "location": "global",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net/virtualNetworkLinks/link-vnet-consumer",
+   "name": "link-vnet-consumer",
+   "type": "microsoft.network/privatednszones/virtualnetworklinks",
+   "kind": "",
+   "location": "global",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualNetwork": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer"
+    },
+    "registrationEnabled": false
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateEndpoints/pe-blob",
+   "name": "pe-blob",
+   "type": "microsoft.network/privateendpoints",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipConfigurations": [],
+    "networkInterfaces": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-pe-blob"
+     }
+    ],
+    "privateLinkServiceConnections": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateEndpoints/pe-blob/privateLinkServiceConnections/psc-blob",
+      "properties": {
+       "privateLinkServiceId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Storage/storageAccounts/l43qvmkkst",
+       "groupIds": [
+        "blob"
+       ],
+       "privateLinkServiceConnectionState": {
+        "status": "Approved"
+       }
+      }
+     }
+    ],
+    "manualPrivateLinkServiceConnections": [],
+    "customDnsConfigs": [],
+    "subnet": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer/subnets/snet-pe"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateEndpoints/pe-svc",
+   "name": "pe-svc",
+   "type": "microsoft.network/privateendpoints",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipConfigurations": [],
+    "networkInterfaces": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/nic-pe-svc"
+     }
+    ],
+    "privateLinkServiceConnections": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateEndpoints/pe-svc/privateLinkServiceConnections/psc-svc",
+      "properties": {
+       "privateLinkServiceId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateLinkServices/pls-svc",
+       "groupIds": [],
+       "privateLinkServiceConnectionState": {
+        "status": "Approved"
+       }
+      }
+     }
+    ],
+    "manualPrivateLinkServiceConnections": [],
+    "customDnsConfigs": [],
+    "subnet": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer/subnets/snet-pe"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateLinkServices/pls-svc",
+   "name": "pls-svc",
+   "type": "microsoft.network/privatelinkservices",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/privateLinkServices/pls-svc/ipConfigurations/nat-pls",
+      "name": "nat-pls",
+      "properties": {
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-provider/subnets/snet-pls"
+       }
+      }
+     }
+    ],
+    "networkInterfaces": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/networkInterfaces/pls-svc.nic.1473d5c3-1fc8-4aee-8bd7-7d26c2899c75"
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/serviceEndpointPolicies/sep-storage",
+   "name": "sep-storage",
+   "type": "microsoft.network/serviceendpointpolicies",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer/subnets/snet-client"
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer",
+   "name": "vnet-consumer",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.71.208.0/20"
+     ]
+    },
+    "dhcpOptions": {
+     "dnsServers": []
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer/subnets/snet-pe",
+      "name": "snet-pe",
+      "properties": {
+       "addressPrefix": "10.71.208.0/24",
+       "delegations": [],
+       "serviceEndpoints": [],
+       "defaultOutboundAccess": false
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-consumer/subnets/snet-client",
+      "name": "snet-client",
+      "properties": {
+       "addressPrefix": "10.71.209.0/24",
+       "delegations": [],
+       "serviceEndpoints": [
+        {
+         "service": "Microsoft.Storage"
+        }
+       ],
+       "defaultOutboundAccess": true
+      }
+     }
+    ],
+    "virtualNetworkPeerings": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-provider",
+   "name": "vnet-provider",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": null,
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.71.192.0/20"
+     ]
+    },
+    "dhcpOptions": {
+     "dnsServers": []
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-provider/subnets/snet-pls",
+      "name": "snet-pls",
+      "properties": {
+       "addressPrefix": "10.71.193.0/24",
+       "delegations": [],
+       "serviceEndpoints": [],
+       "defaultOutboundAccess": false
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Network/virtualNetworks/vnet-provider/subnets/snet-svc",
+      "name": "snet-svc",
+      "properties": {
+       "addressPrefix": "10.71.192.0/24",
+       "delegations": [],
+       "serviceEndpoints": [],
+       "defaultOutboundAccess": false
+      }
+     }
+    ],
+    "virtualNetworkPeerings": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Storage/storageAccounts/l43qvmkkother",
+   "name": "l43qvmkkother",
+   "type": "microsoft.storage/storageaccounts",
+   "kind": "StorageV2",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": {
+    "name": "Standard_LRS",
+    "tier": "Standard"
+   },
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "accessTier": "Hot",
+    "allowBlobPublicAccess": false
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.Storage/storageAccounts/l43qvmkkst",
+   "name": "l43qvmkkst",
+   "type": "microsoft.storage/storageaccounts",
+   "kind": "StorageV2",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-43-private-link",
+   "sku": {
+    "name": "Standard_LRS",
+    "tier": "Standard"
+   },
+   "zones": null,
+   "managedBy": "",
+   "tags": {
+    "lab": "az700-43-private-link",
+    "project": "wg-admin-labs"
+   },
+   "identity": null,
+   "properties": {
+    "provisioningState": "Succeeded",
+    "accessTier": "Hot",
+    "allowBlobPublicAccess": false
+   }
+  }
+ ]
+}
