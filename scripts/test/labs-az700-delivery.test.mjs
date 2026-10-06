@@ -793,6 +793,21 @@ test(`${AFD}: a Premium WAF policy in Prevention with managed rule sets, attache
   assert.deepEqual(strings(attr(nested(sp, "association"), "patterns_to_match")), ["/*"]);
 });
 
+// Review fix 8: Front Door Premium's base fee is priced as billed by the hour. If it were billed by the day, one
+// session would be about £8.20, so the readme states the assumption and the plan checks the bill before lab 42 runs again.
+test(`${AFD}: the readme states the hourly billing assumption, and the plan checks the bill before lab 42 runs again`, () => {
+  const l = lab(AFD);
+  assert.match(l.readme, /assum\w*[^.]*\bby the hour\b|\bby the hour\b[^.]*assum/i, "the readme says the price assumes hourly billing");
+  assert.match(l.readme, /£8\.20/, "and what a daily charge would be");
+  const plan = readFileSync(join(l.dir, "..", "..", "docs", "superpowers", "plans", "2026-10-06-labs-az700-plan.md"), "utf8").replace(/\r\n/g, "\n");
+  const step7 = plan.split("\n7. **Release tests, pass 1")[1]?.split("\n8. **")[0] ?? "";
+  assert.match(step7, /lab 42's first release test/i);
+  assert.match(step7, /next day's Cost Management/i);
+  assert.match(step7, /Premium base fee/i);
+  assert.match(step7, /before any further lab 42 run/i);
+  assert.match(step7, /billed (by the day|daily)[^.]*£8\.20[^.]*stop/i);
+});
+
 test(`${AFD}: the readme's first Things to try approves the connection`, () => {
   const l = lab(AFD);
   const tries = l.readme.split("## Things to try")[1].split(/\n## /)[0];
