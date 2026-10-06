@@ -97,8 +97,20 @@ async function fetchLive(env: Env, s: LabSessionRow, now: number): Promise<LabTo
   }
   const rows = Array.isArray(data.data) ? (data.data as ArgRow[]) : [];
   const truncated = typeof data.$skipToken === "string" && data.$skipToken !== "";
-  const live = liveGraph(rows, ctxOf(s, at));
-  return answer("ok", truncated ? TRUNCATED : null, { live, fetchedAt: at, truncated });
+  const built = build(rows, ctxOf(s, at));
+  if ("failed" in built) return built.failed;
+  return answer("ok", truncated ? TRUNCATED : null, { live: built.live, fetchedAt: at, truncated });
+}
+
+/** liveGraph, with a builder error answered as failed (its reason kept), never a 500. */
+function build(rows: ArgRow[], ctx: LiveCtx): { live: ReturnType<typeof liveGraph> } | { failed: LabTopologyResponse } {
+  try {
+    return { live: liveGraph(rows, ctx) };
+  } catch (e) {
+    const reason = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").slice(0, 160) || "unknown error";
+    console.error(`labs topology: the live builder failed for ${ctx.labId}: ${reason}`);
+    return { failed: answer("failed", `The live diagram could not be drawn from Azure's answer (${reason}). Showing the planned diagram.`) };
+  }
 }
 
 /**
@@ -112,7 +124,8 @@ export async function labTopology(env: Env, labId: string, now: number = Date.no
     const rows = env.AUTH_DEV_BYPASS === "1" ? await devRows(env, labId) : null;
     if (!rows) return answer("no_azure", "Azure is not connected, so the diagram shows the plan.");
     const at = new Date(now).toISOString();
-    return answer("ok", null, { live: liveGraph(rows, ctxOf(s, at)), fetchedAt: at });
+    const built = build(rows, ctxOf(s, at));
+    return "failed" in built ? built.failed : answer("ok", null, { live: built.live, fetchedAt: at });
   }
   const key = `${labId}:${s.id}`;
   const hit = cache.get(key);

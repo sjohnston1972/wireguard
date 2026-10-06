@@ -41,7 +41,7 @@ const ROWS = [
 ];
 
 interface Arg {
-  calls: { url: string; body: { subscriptions: string[]; query: string; options: { resultFormat: string; $top: number } } }[];
+  calls: { url: string; body: { subscriptions: string[]; query: string; options: { resultFormat: string; $top: number } }; signal?: AbortSignal | null }[];
   reply: (n: number) => Response | Promise<Response>;
 }
 
@@ -52,7 +52,7 @@ function fakeArg(): Arg {
   vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {
     const u = new URL(String(url));
     if (u.hostname === "management.azure.com" && u.pathname.toLowerCase() === "/providers/microsoft.resourcegraph/resources") {
-      arg.calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      arg.calls.push({ url: String(url), body: JSON.parse(String(init?.body)), signal: init?.signal });
       return arg.reply(arg.calls.length);
     }
     return prev(url as string, init);
@@ -232,6 +232,17 @@ describe("GET /labs/:id/topology", () => {
     arg.reply = () => Response.json({ data: ROWS, $skipToken: "next-page" });
     await liveSession(env, "ls-1");
     expect(await labTopology(env, LAB)).toMatchObject({ status: "ok", truncated: true, message: expect.stringMatching(/first 1000/) });
+  });
+
+  it("rows the builder cannot read answer failed (not a 500), with the reason", async () => {
+    const { env } = await labEnv();
+    const arg = fakeArg();
+    arg.reply = () => Response.json({ data: [{ id: `${rg(`rg-lab-${LAB}`)}/providers/x/y/z`, name: "z", type: 5, resourceGroup: `rg-lab-${LAB}`, properties: {} }] });
+    await liveSession(env, "ls-1");
+    const r = await api(env, "GET", `/labs/${LAB}/topology`);
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ status: "failed", live: null });
+    expect(r.json.message).toMatch(/could not be drawn.*\(.+\).*planned diagram/);
   });
 
   it("the dev fixture is read only under AUTH_DEV_BYPASS when Azure is not configured", async () => {
