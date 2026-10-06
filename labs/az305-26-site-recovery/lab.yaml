@@ -19,12 +19,16 @@
 #                                    usually £0
 # Authored: the cache account's few MB and the replica's recovery-point
 # snapshots (per GB, a unit the feed cannot read), and the initial copy of
-# the used blocks of the 30 GB disk, about 3 GB, at "Standard Inter-Region
+# the used blocks of the OS disk, about 3 GB, at "Standard Inter-Region
 # Data Transfer" £0.0151/GB, spread over a 3-hour session. The test
 # failover VM is priced as if one ran all session; it only exists while a
 # test failover does. The vault, fabrics, policy and mappings cost nothing.
+# The VM runs AlmaLinux 9.7 (a free image, no marketplace plan), pinned to
+# 9.7.2026051801: Site Recovery's Mobility agent supports a fixed list of
+# kernels and Ubuntu 22.04's current Azure kernel was past it (ruling 32).
+# Version 3: the switch from Ubuntu 22.04.
 id: az305-26-site-recovery
-version: 2
+version: 3
 title: "Cross-region VM recovery with Site Recovery"
 summary: >-
   A small Linux VM in uksouth replicated by Azure Site Recovery to ukwest, so you can run a test failover

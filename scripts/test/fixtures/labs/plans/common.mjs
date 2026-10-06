@@ -73,8 +73,9 @@ export const rgSecondaryResource = (c) => ({
  *   customData  a string: known at plan (templatefile of known values, base64);
  *               an array of references: unknown at plan (built from apply-time values)
  *   identity    "SystemAssigned" for a system-assigned identity, or left out
- *   image       { offer, sku } of a Canonical image (default Ubuntu 24.04,
- *               ubuntu-24_04-lts / server; lab 26 uses 22.04 Gen2)
+ *   image       { publisher?, offer, sku, version? } (default Canonical
+ *               Ubuntu 24.04, ubuntu-24_04-lts / server, at "latest"; lab 26
+ *               uses AlmaLinux 9.7 Gen2, pinned to one version)
  *
  * Returns [nic, vm]: azurerm_network_interface.<key> and azurerm_linux_virtual_machine.<key>.
  */
@@ -97,7 +98,7 @@ export function linuxVm(c, { name, key = name.replace(/^vm-/, "").replace(/-/g, 
     tags: c.tags,
     admin_ssh_key: [{ username: "azureuser", public_key: SSH_KEY }],
     os_disk: [{ caching: "ReadWrite", storage_account_type: "Standard_LRS" }],
-    source_image_reference: [{ publisher: "Canonical", offer: image.offer, sku: image.sku, version: "latest" }],
+    source_image_reference: [{ publisher: image.publisher ?? "Canonical", offer: image.offer, sku: image.sku, version: image.version ?? "latest" }],
     boot_diagnostics: [{}],
   };
   if (zone !== undefined) values.zone = String(zone);

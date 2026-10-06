@@ -733,8 +733,14 @@ From `docs/superpowers/plans/2026-10-06-labs-batch3-plan.md` (labs 20–27). Whe
 32. **Lab 26 is Site Recovery only,** titled "Cross-region VM recovery with Site Recovery" (confirmed by Steven
     2026-10-05). Backup cross-region restore is not built: a GRS vault's secondary-region recovery points appear hours after
     a backup, beyond any session. The source VM is
-    Ubuntu 22.04 (a Site Recovery-supported kernel series), with default outbound access set on explicitly; the vault, the target
-    and test VNets and everything failover makes are in `rg-lab-<id>-secondary`.
+    AlmaLinux 9.7 Gen2 (`almalinux`/`almalinux-x86_64`/`9-gen2`), pinned to version `9.7.2026051801` (free, no marketplace
+    plan), with default outbound access set on explicitly; the vault, the target and test VNets and everything failover makes
+    are in `rg-lab-<id>-secondary`. *Changed 2026-10-06 (v3):* it was Ubuntu 22.04, but the first release test failed because
+    Mobility agent 9.66 did not support that image's current Azure kernel (6.8.0-1064; the matrix listed 22.04 Azure kernels
+    only to 6.8.0-1041), and Ubuntu's kernel cadence keeps outpacing the agent. Agent 9.66 supports RHEL-family 9.0–9.7
+    (kernel 5.14.0-611.5.1 and later); 9.8 images need agent 9.67, which uksouth did not deploy, hence the exact 9.7 pin and
+    never `latest`. Its cloud-init installs and upgrades nothing, so the kernel never moves under the agent; SELinux stays
+    enforcing (the systemd unit runs unconfined) and firewalld, where running, has port 80 opened permanently.
 33. **Lab 24's Cosmos DB account is serverless,** single region, with the free tier off (one per subscription; creation fails
     if it is already taken). Consistency and multi-region writes are taught on that account and in the readme.
 34. **Lab 25 uses container-level, unlocked immutability only** (1 day; `locked = true` is refused at plan). No version-level

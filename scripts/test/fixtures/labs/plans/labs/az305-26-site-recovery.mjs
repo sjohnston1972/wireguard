@@ -39,7 +39,7 @@ export default () => {
       rgSecondaryResource(c),
       // The source, in uksouth.
       ...net("source", c.rg, REGION, "10.64.64.0/20", "10.64.64.0/24", IN_RG, "source_cidr"),
-      ...linuxVm(c, { name: "vm-app", key: "vm", subnet: "azurerm_subnet.source", customData: "I2Nsb3VkLWNvbmZpZwo= (cloud-init.yaml.tftpl, port 80)", image: { offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2" } }),
+      ...linuxVm(c, { name: "vm-app", key: "vm", subnet: "azurerm_subnet.source", customData: "I2Nsb3VkLWNvbmZpZwo= (cloud-init.yaml.tftpl, port 80)", image: { publisher: "almalinux", offer: "almalinux-x86_64", sku: "9-gen2", version: "9.7.2026051801" } }),
       {
         address: "azurerm_storage_account.cache",
         values: {

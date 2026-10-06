@@ -213,8 +213,11 @@ test("ctx gives a secondary group and region", () => {
   const IN_RG2 = { resource_group_name: ["azurerm_resource_group.secondary.name", "azurerm_resource_group.secondary"], location: ["azurerm_resource_group.secondary.location", "azurerm_resource_group.secondary"], tags: ["var.tags"] };
   const vnet = { address: "azurerm_virtual_network.target", values: { name: "vnet-target", resource_group_name: c.rgSecondary, location: SECONDARY, address_space: ["10.64.80.0/20"], tags: c.tags }, refs: IN_RG2 };
   const subnet = { address: "azurerm_subnet.target", values: { name: "snet-vms", resource_group_name: c.rgSecondary, virtual_network_name: "vnet-target", address_prefixes: ["10.64.80.0/24"] }, refs: { resource_group_name: IN_RG2.resource_group_name } };
-  const [nic, vm] = linuxVm(c, { name: "vm-app", subnet: "azurerm_subnet.target", image: { offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2" } });
-  assert.deepEqual(vm.values.source_image_reference, [{ publisher: "Canonical", offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2", version: "latest" }]);
+  // An image from another publisher, pinned to one version (lab 26's AlmaLinux 9.7).
+  const [nic, vm] = linuxVm(c, { name: "vm-app", subnet: "azurerm_subnet.target", image: { publisher: "almalinux", offer: "almalinux-x86_64", sku: "9-gen2", version: "9.7.2026051801" } });
+  assert.deepEqual(vm.values.source_image_reference, [{ publisher: "almalinux", offer: "almalinux-x86_64", sku: "9-gen2", version: "9.7.2026051801" }]);
+  // A Canonical image at "latest" unless a publisher or version is given.
+  assert.deepEqual(linuxVm(c, { name: "vm-y", subnet: "azurerm_subnet.target", image: { offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2" } })[1].values.source_image_reference, [{ publisher: "Canonical", offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2", version: "latest" }]);
   assert.deepEqual(linuxVm(c, { name: "vm-x", subnet: "azurerm_subnet.target" })[1].values.source_image_reference, [{ publisher: "Canonical", offer: "ubuntu-24_04-lts", sku: "server", version: "latest" }]);
   const plan = realisticPlan({ resources: [rgResource(c), rg2, vnet, subnet, nic, vm], variables: c.variables });
   assert.deepEqual(checkPlan(plan, c.id), []);

@@ -4,7 +4,7 @@
 # Azure Site Recovery (labs spec §17, ruling 32).
 #
 # The source, in rg-lab-<id> (the session's region, uksouth): vnet-source
-# (the first /20 of the slot) with one Standard_B1s Ubuntu 22.04 VM, vm-app,
+# (the first /20 of the slot) with one Standard_B1s AlmaLinux 9.7 VM, vm-app,
 # no public IP, serving "<hostname> in <region>" on port 80; and a cache
 # storage account, where Site Recovery stages the VM's disk writes before
 # they cross to the other region.
@@ -103,14 +103,19 @@ resource "azurerm_linux_virtual_machine" "vm" {
     storage_account_type = "Standard_LRS"
   }
 
-  # Ubuntu 22.04 Gen2: its kernel series is on Site Recovery's
-  # Azure-to-Azure support matrix. The standard security type (no Trusted
+  # AlmaLinux 9.7 Gen2, pinned to one image (ruling 32). Site Recovery's
+  # Mobility agent supports a fixed list of kernels: Ubuntu 22.04's current
+  # Azure kernel had already outrun it (6.8.0-1064 against agent 9.66,
+  # release test 2026-10-06), and Ubuntu's kernels will keep doing so. Agent
+  # 9.66 supports RHEL-family 9.0 to 9.7 (kernel 5.14.0-611.5.1 and later);
+  # a 9.8 image needs agent 9.67, so never "latest". A free image: no plan
+  # block, no marketplace terms. The standard security type (no Trusted
   # Launch settings), as the support matrix's widest row.
   source_image_reference {
-    publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-jammy"
-    sku       = "22_04-lts-gen2"
-    version   = "latest"
+    publisher = "almalinux"
+    offer     = "almalinux-x86_64"
+    sku       = "9-gen2"
+    version   = "9.7.2026051801"
   }
 
   # Managed boot diagnostics: the portal's serial console works with no

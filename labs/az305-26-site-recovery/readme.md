@@ -4,12 +4,14 @@ Deploy this lab in uksouth: it replicates to ukwest, uksouth's Azure pair. Besid
 
 ## What it deploys
 
-- `vm-app`, a Standard_B1s Ubuntu 22.04 VM in `vnet-source` (the first /20 of the session's address slot), with no public IP and boot diagnostics on. It serves `vm-app in <region>` on port 80, asking the instance metadata service which region it is in each time it starts, so a failed-over copy answers `vm-app in ukwest`
+- `vm-app`, a Standard_B1s AlmaLinux 9.7 VM in `vnet-source` (the first /20 of the session's address slot), with no public IP and boot diagnostics on. It serves `vm-app in <region>` on port 80, asking the instance metadata service which region it is in each time it starts, so a failed-over copy answers `vm-app in ukwest`
 - An empty storage account ending `cache` (Standard, LRS, uksouth), where Site Recovery stages the disk's writes before they cross regions
 - In `rg-lab-az305-26-site-recovery-secondary`: `rsv-lab`, a Recovery Services vault (Standard, locally redundant) with **soft delete on** (Azure requires it on a new vault; tear-down turns it off) and **immutability Disabled**; `vnet-target` (the second /20), where a failover puts the VM; and `vnet-test` (the third /20), an isolated network for test failovers
 - Site Recovery inside `rsv-lab`: a fabric and a protection container for each region, `policy-6h` (crash-consistent recovery points kept 6 hours, no app-consistent snapshots), the container mapping (agent auto-update off, so no automation account), the network mapping from `vnet-source` to `vnet-target`, and replication of `vm-app` to a Standard HDD replica disk
 
 Deploying takes about 40 minutes: Terraform waits for the initial replication to finish. The VM user is `azureuser`; its password is behind **Show**. Deploy with **Peer to gateway** to reach `vm-app` from a tunnel client. Only `vnet-source` is peered: after a failover the VM is in ukwest, so reach it through the portal's serial console (turn on boot diagnostics, managed, on the failed-over VM first if they are off) or Run command.
+
+Why AlmaLinux, and why one fixed image: Site Recovery installs its Mobility agent on the VM, and the agent works only with the Linux kernels on its support matrix. This lab first ran Ubuntu 22.04, whose current Azure kernel (6.8.0-1064) had already moved past what the agent supports, so replication would not start. Ubuntu's kernels change faster than the agent catches up, so the VM now runs AlmaLinux 9.7 Gen2, a free image with no marketplace terms, pinned to version `9.7.2026051801`: the agent supports AlmaLinux 9.0 to 9.7, while a 9.8 image needs a newer agent than Azure deploys today. Nothing on the VM updates its packages, so its kernel never changes underneath the agent.
 
 Never re-protect the VM into another resource group, and never fail over into one: everything Site Recovery makes must stay in `rg-lab-az305-26-site-recovery` or `rg-lab-az305-26-site-recovery-secondary`, or tear-down cannot remove it. Site Recovery charges nothing for a protected VM's first 31 days, and every session protects a new one, so a session usually pays only for the VM, the disks and the initial copy across regions.
 
@@ -17,7 +19,7 @@ Never re-protect the VM into another resource group, and never fail over into on
 rg-lab-<id> (uksouth)                        rg-lab-<id>-secondary (ukwest)
   vnet-source (slot /20 0)                     rsv-lab (Standard, LRS, soft delete on)
     snet-vms (/24)                               fabric + container per region, policy-6h
-      vm-app (B1s, Ubuntu 22.04) ==replicates==> vm-app replica disk (S4)
+      vm-app (B1s, AlmaLinux 9.7) =replicates=> vm-app replica disk (S4)
   <prefix>cache (staging)                      vnet-target (slot /20 1) <-- failover
                                                vnet-test   (slot /20 2) <-- test failover
 vnet-source <--peering (optional)--> gateway VNet <--> WireGuard tunnel <--> you
@@ -29,6 +31,7 @@ vnet-source <--peering (optional)--> gateway VNet <--> WireGuard tunnel <--> you
 - Read the recovery objectives: on `vm-app`'s overview, the RPO and the latest crash-consistent recovery point; under **Recovery points**, the 6 hours `policy-6h` keeps. Write a file on `vm-app` and work out from the RPO how soon a failover would bring it along.
 - Build a recovery plan by hand: **Recovery Plans (Site Recovery)** → **Recovery plan**, from uksouth to ukwest, with `vm-app`, and add a manual action to it. Run a test failover of the plan and clean it up. Delete the plan before you tear down.
 - Fail over for real: **Failover** `vm-app` to the latest recovery point, check the copy in ukwest with Run command, then **Commit**. Do not **Re-protect**: tear the lab down instead. The original VM stays in uksouth, and the failed-over one is deleted with `rg-lab-az305-26-site-recovery-secondary`.
+- Treat the kernel as a design constraint: on `vm-app`, run `uname -r`, then find that kernel in the support matrix's Linux table (below). A recovery design has to say who keeps workloads on supported operating systems and kernels, how agent updates are rolled out (this lab turns automatic updates off), and what happens to replication when someone patches a VM to a kernel the agent does not know yet.
 - Sketch the design choices: Site Recovery's RPO of minutes against Azure Backup's daily points (lab 19), availability zones (a datacenter, not a region), and what a real workload would also need in the target region: DNS, a load balancer, the database's own geo-replication.
 
 ## Learn more

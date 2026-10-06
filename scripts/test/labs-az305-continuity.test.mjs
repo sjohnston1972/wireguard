@@ -10,6 +10,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parse as parseYaml } from "yaml";
 import { attr, lab, labContentSuite, outputs, resources, uncomment } from "./fixtures/labs/content.mjs";
 
 const SR = "az305-26-site-recovery";
@@ -103,15 +106,23 @@ const IN_SECONDARY = "azurerm_resource_group.secondary.name";
 
 labContentSuite(SR, { marker: "£££", secondary: true });
 
-test(`${SR}: one Ubuntu 22.04 Standard_B1s source VM with no public IP and default outbound on`, () => {
+test(`${SR}: one AlmaLinux 9.7 Standard_B1s source VM, its image pinned, with no public IP and default outbound on`, () => {
   const l = lab(SR);
   const vm = one(l, "azurerm_linux_virtual_machine");
   assert.equal(attr(vm.body, "resource_group_name"), IN_LAB, "the source VM is in rg-lab-<id>, in the session's region");
   assert.equal(attr(vm.body, "location"), "azurerm_resource_group.lab.location");
   assert.equal(attr(vm.body, "size"), '"Standard_B1s"');
   const image = nested(vm.body, "source_image_reference");
-  // Ubuntu 22.04 Gen2: a kernel series Site Recovery's Azure-to-Azure support matrix lists (ruling 32).
-  assert.deepEqual([attr(image, "publisher"), attr(image, "offer"), attr(image, "sku")], ['"Canonical"', '"0001-com-ubuntu-server-jammy"', '"22_04-lts-gen2"']);
+  // Ruling 32: AlmaLinux 9.7 Gen2, pinned to one image version. Site Recovery's Mobility agent
+  // supports a fixed list of kernels; Ubuntu 22.04's current Azure kernel (6.8.0-1064) was past
+  // it (agent 9.66, release test 2026-10-06). 9.7's kernel is on the list; a 9.8 image needs
+  // agent 9.67, so never "latest".
+  assert.deepEqual(
+    [attr(image, "publisher"), attr(image, "offer"), attr(image, "sku"), attr(image, "version")],
+    ['"almalinux"', '"almalinux-x86_64"', '"9-gen2"', '"9.7.2026051801"'],
+  );
+  // A free image: no marketplace plan, so no terms to accept.
+  assert.equal(nested(vm.body, "plan"), undefined, "no plan block");
   // The standard security type: no Trusted Launch settings of its own.
   for (const a of ["secure_boot_enabled", "vtpm_enabled", "encryption_at_host_enabled"]) assert.equal(attr(vm.body, a), undefined, `${a} is not set`);
   // Its one NIC has no public IP; nothing in the lab has one.
@@ -129,6 +140,51 @@ test(`${SR}: one Ubuntu 22.04 Standard_B1s source VM with no public IP and defau
   // The VM's VNet is the one the pipeline peers to the gateway.
   const vnet = /^azurerm_virtual_network\.([A-Za-z0-9_-]+)\.name$/.exec(attr(subnet.body, "virtual_network_name") ?? "")?.[1];
   assert.equal(l.blocks.find((b) => b.kind === "output" && b.labels[0] === "peer_vnet_id")?.body.trim(), `value = azurerm_virtual_network.${vnet}.id`);
+});
+
+test(`${SR}: cloud-init serves "vm-app in <region>" on port 80 on AlmaLinux and never touches the kernel`, () => {
+  const l = lab(SR);
+  const vm = one(l, "azurerm_linux_virtual_machine");
+  assert.equal(attr(vm.body, "custom_data"), 'base64encode(templatefile("${path.module}/cloud-init.yaml.tftpl", { port = 80 }))');
+  const tpl = readFileSync(join(l.tfDir, "cloud-init.yaml.tftpl"), "utf8").replace(/\r\n/g, "\n");
+  // Terraform's templatefile fills ${port}; shell variables are written $name, never ${name}.
+  const rendered = tpl.replace(/\$\{(\w+)\}/g, (_, k) => {
+    assert.equal(k, "port", `the template takes only port (found \${${k}})`);
+    return "80";
+  });
+  assert.doesNotMatch(rendered, /%\{/, "no template directives");
+  assert.match(tpl, /^#cloud-config\n/);
+  const doc = parseYaml(rendered);
+  // Nothing installed or upgraded: a newer kernel could be one the Mobility agent does not support.
+  assert.equal(doc.packages, undefined, "no packages");
+  assert.equal(doc.package_update, false, "package_update: false");
+  assert.equal(doc.package_upgrade, false, "package_upgrade: false");
+  assert.equal(doc.package_reboot_if_required, false, "package_reboot_if_required: false");
+  const all = rendered.replace(/^\s*#.*$/gm, "");
+  assert.doesNotMatch(all, /\b(apt|apt-get|yum|dnf|rpm|pip|snap|wget)\b/, "no package manager, no downloads");
+  // The page: the VM's name and the region the instance metadata service reports, written each time the service starts.
+  const index = doc.write_files.find((f) => f.path === "/usr/local/bin/lab-index");
+  assert.ok(index, "/usr/local/bin/lab-index");
+  assert.equal(index.permissions, "0755");
+  assert.match(index.content, /169\.254\.169\.254\/metadata\/instance\/compute\/location/);
+  assert.match(index.content, /> \/srv\/lab\/index\.html/);
+  assert.doesNotMatch(index.content, /\bhostname\b/, "uname -n: the hostname command is not on every image");
+  const unit = doc.write_files.find((f) => f.path === "/etc/systemd/system/lab-http.service");
+  assert.ok(unit, "a systemd unit lab-http.service");
+  // A systemd service runs unconfined under SELinux (enforcing on AlmaLinux) and may bind port 80.
+  assert.match(unit.content, /^ExecStartPre=\/usr\/local\/bin\/lab-index$/m);
+  assert.match(unit.content, /^ExecStart=\/usr\/bin\/python3 -m http\.server 80 --directory \/srv\/lab$/m);
+  assert.match(unit.content, /^Restart=always$/m);
+  assert.match(unit.content, /^WantedBy=multi-user\.target$/m);
+  // firewalld, where the image runs it, lets port 80 in (permanently, so a failed-over copy answers too).
+  const cmds = doc.runcmd.map((c) => (Array.isArray(c) ? c.join(" ") : c));
+  const fw = cmds.find((c) => /firewall-cmd/.test(c));
+  assert.ok(fw, "a runcmd opens port 80 in firewalld");
+  assert.match(fw, /systemctl is-active --quiet firewalld/, "only when firewalld is running");
+  assert.match(fw, /firewall-cmd --permanent --add-port=80\/tcp/);
+  assert.match(fw, /firewall-cmd --reload/);
+  assert.ok(cmds.includes("systemctl enable --now lab-http.service"));
+  assert.ok(cmds.indexOf(fw) < cmds.indexOf("systemctl enable --now lab-http.service"), "the port is open before the server starts");
 });
 
 test(`${SR}: the vault and the target and test VNets are in rg-lab-<id>-secondary, the VNets from /20s 1 and 2`, () => {
@@ -300,7 +356,7 @@ test(`${SR}: deploy allows for the initial replication, destroy for disabling it
   const { timing, prerequisites, regions, connectivity, version } = lab(SR).yaml;
   assert.deepEqual(timing, { deploy_min: 40, destroy_min: 20, session_h: 3, max_h: 8 });
   assert.equal(Math.min(150, 2 * (timing.deploy_min + timing.destroy_min) + 20), 140);
-  assert.ok(version >= 2, "the timing change bumps the version");
+  assert.ok(version >= 3, "the timing change (v2) and the switch to AlmaLinux (v3) each bump the version");
   assert.match(lab(SR).readme, /about 40 minutes/, "the readme gives the deploy time");
   assert.deepEqual(prerequisites, ["az104-08-vms"]);
   assert.deepEqual(regions, { secondary: "ukwest" });
@@ -318,6 +374,17 @@ test(`${SR}: the readme says never to re-protect into another group`, () => {
   const tries = r.split("## Things to try")[1].split("## Learn more")[0];
   assert.match(tries, /[Cc]lean up test failover/);
   assert.match(tries, /recovery plan/i);
+});
+
+test(`${SR}: the readme says why the VM runs AlmaLinux, pinned, and makes the kernel lesson a design point`, () => {
+  const r = lab(SR).readme;
+  assert.doesNotMatch(r, /Ubuntu 22\.04 VM|Ubuntu 22\.04\)/, "the VM is no longer Ubuntu");
+  assert.match(r, /AlmaLinux 9\.7/);
+  assert.match(r, /9\.7\.2026051801/, "the pinned image version");
+  assert.match(r, /support matrix/i, "the Mobility agent's supported kernels");
+  assert.match(r, /kernel/i);
+  const tries = r.split("## Things to try")[1].split("## Learn more")[0];
+  assert.match(tries, /kernel/i, "a thing to try: the supported-kernel lesson as a design point");
 });
 
 test(`${SR}: no literal subscription ids or other groups in the Terraform`, () => {
