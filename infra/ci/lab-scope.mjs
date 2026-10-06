@@ -455,6 +455,8 @@ function hclValue(v, ctx, refs) {
     const r = ctx.resolve(v);
     if (r instanceof Unknown) {
       refs.push(...r.refs);
+      // The expression as written: S1 and S2 need it to be exactly one reference (hclRefs drops quoted strings).
+      r.raw = v;
       return r;
     }
     return r.value;
@@ -966,7 +968,11 @@ export function scopeProblems({ resources, providers, imports = [], variables = 
     /**
      * S1 and S2: is every value at `path` (an attribute, or a path into a block: "hub.0.resource_id") one of the lab's
      * own resources of these `types`, by `attrs` (its id)? Only an unknown value written as a reference can be: a
-     * literal, a variable, a data source or a mix is not, even a literal id inside the lab's group.
+     * literal, a variable, a data source or a mix is not, even a literal id inside the lab's group. A plan lists only
+     * an expression's references and HCL's refs leave quoted strings out, so replace(<own>.id, "<lab>", "<other>")
+     * would read as the lab's own (review fix 3). In HCL, each value must be written exactly ${<type>.<name>.<attr>}
+     * (no function, no literal around it); in a plan, its references must all be one resource's (Terraform lists
+     * every step of one traversal), and a value already known is never taken as proved.
      */
     const fromOwn = (path, types, attrs = ["id"]) => {
       const at = all.filter((l) => {
@@ -974,15 +980,20 @@ export function scopeProblems({ resources, providers, imports = [], variables = 
         return p === path || p.startsWith(`${path}.`);
       });
       if (!at.length || !at.every((l) => l.value instanceof Unknown)) return false;
+      const ownRef = (x) => {
+        const t = target(x);
+        const parts = x.replace(/\[[^\]]*\]/g, "").split(".");
+        return t?.mode === "managed" && types.includes(t.type) && (parts.length === 2 || (parts.length === 3 && attrs.includes(parts[2])));
+      };
+      if (mode === "hcl") {
+        return at.every((l) => {
+          const m = /^\$\{\s*([a-z][a-z0-9_]*\.[A-Za-z0-9_-]+)(?:\[\d+\])?\.([A-Za-z0-9_]+)\s*\}$/.exec(typeof l.value.raw === "string" ? l.value.raw : "");
+          return m !== null && attrs.includes(m[2]) && ownRef(`${m[1]}.${m[2]}`);
+        });
+      }
       const refs = at.flatMap((l) => l.value.refs ?? []).filter((x) => !INDEX_REF.test(x));
-      return (
-        refs.length > 0 &&
-        refs.every((x) => {
-          const t = target(x);
-          const parts = x.replace(/\[[^\]]*\]/g, "").split(".");
-          return t?.mode === "managed" && types.includes(t.type) && (parts.length === 2 || (parts.length === 3 && attrs.includes(parts[2])));
-        })
-      );
+      const resourcesNamed = new Set(refs.map((x) => x.replace(/\[[^\]]*\]/g, "").split(".").slice(0, 2).join(".")));
+      return refs.length > 0 && resourcesNamed.size === 1 && refs.every(ownRef);
     };
 
     // provider

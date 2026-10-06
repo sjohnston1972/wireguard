@@ -19,6 +19,11 @@ import { realisticPlan, withAfterUnknown } from "./fixtures/labs/plans/realistic
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 import { ctx, IN_RG, linuxVm, ref, rgResource, rgSecondaryResource } from "./fixtures/labs/plans/common.mjs";
 import { TEMPLATE as LAB12_TEMPLATE } from "./fixtures/labs/plans/labs/az104-12-bicep.mjs";
+import { parse as parseYaml } from "yaml";
+import { runLabsTf } from "../labs-tf.mjs";
+
+/** .github/workflows/ci.yml, parsed. */
+const CI = parseYaml(readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8"));
 
 const DIR = fileURLToPath(new URL("./fixtures/labs/scope/", import.meta.url));
 const SCRIPT = fileURLToPath(new URL("../../infra/ci/lab-scope.mjs", import.meta.url));
@@ -1401,6 +1406,94 @@ test("a flow log is refused unless the lab is lab 44, it is in NetworkWatcherRG 
   assert.deepEqual(hclFlow((h) => (f(h).network_watcher_name = "NetworkWatcher_uksouth")), refused);
   assert.deepEqual(hclFlow((h) => (f(h).resource_group_name = "${azurerm_resource_group.lab.name}")), refused);
   assert.deepEqual(hclFlow((h) => (f(h).name = "fl-${var.lab_id}")), refused);
+});
+
+// Review fix 3: a plan lists only an expression's references, and hclRefs drops quoted strings, so
+// replace(azurerm_virtual_network.spoke1.id, "<lab path>", "<vnet-wg path>") read as "the lab's own VNet". In HCL each
+// S1/S2 attribute must be exactly ${<type>.<name>.<attr>}; in a plan, one resource's references only, never a known value.
+test("HCL mode: an S1/S2 attribute must be exactly a reference to the lab's own resource, never a function of one", () => {
+  const evil = [
+    'replace(azurerm_virtual_network.spoke1.id, "rg-lab-az700-33-vnet-manager/providers/Microsoft.Network/virtualNetworks/vnet-spoke1", "rg-wg-ondemand/providers/Microsoft.Network/virtualNetworks/vnet-wg")',
+    "lower(azurerm_virtual_network.spoke1.id)",
+    'format("%s", azurerm_virtual_network.spoke1.id)',
+    'coalesce(azurerm_virtual_network.spoke1.id, "/subscriptions/x/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod")',
+    'true ? azurerm_virtual_network.spoke1.id : "x"',
+  ];
+  const S1 = "azurerm_network_manager_static_member.spoke1";
+  const sm = (h) => h.resource.azurerm_network_manager_static_member.spoke1[0];
+  const s1 = (fn) => verdict(checkHcl(lab33Hcl(fn), L33)).filter(([, a]) => a === S1);
+  for (const e of evil) assert.deepEqual(s1((h) => (sm(h).target_virtual_network_id = `\${${e}}`)), [["outside-scope", S1]], e);
+  // A literal around the reference, or a reference to the right type's other attribute, is not the id either.
+  assert.deepEqual(s1((h) => (sm(h).target_virtual_network_id = "${azurerm_virtual_network.spoke1.id}/../vnet-wg")), [["outside-scope", S1]]);
+  assert.deepEqual(s1((h) => (sm(h).target_virtual_network_id = "${azurerm_virtual_network.spoke1.name}")), [["outside-scope", S1]]);
+  // Other S1 paths: the hub, a list of configurations, a list of groups.
+  const CC = "azurerm_network_manager_connectivity_configuration.hub_spoke";
+  assert.ok(verdict(checkHcl(lab33Hcl((h) => (h.resource[CC.split(".")[0]].hub_spoke[0].hub[0].resource_id = `\${${evil[0].replace("spoke1", "hub")}}`)), L33)).some(([, a]) => a === CC));
+  const DEP = "azurerm_network_manager_deployment.connectivity";
+  assert.ok(verdict(checkHcl(lab33Hcl((h) => (h.resource.azurerm_network_manager_deployment.connectivity[0].configuration_ids = ["${upper(azurerm_network_manager_connectivity_configuration.hub_spoke.id)}"])), L33)).some(([, a]) => a === DEP));
+  // Whitespace inside ${ } is still exactly the reference; the clean lab passes.
+  assert.deepEqual(checkHcl(lab33Hcl((h) => (sm(h).target_virtual_network_id = "${ azurerm_virtual_network.spoke1.id }")), L33), []);
+  assert.deepEqual(checkHcl(lab33Hcl(), L33), []);
+  // S2: the flow log's target, its storage account and its workspace.
+  const f = (h) => h.resource.azurerm_network_watcher_flow_log.vnet[0];
+  const s2 = (fn) => verdict(checkHcl(lab44Hcl(fn), L44)).filter(([, a]) => a === FLOW);
+  assert.deepEqual(s2((h) => (f(h).target_resource_id = `\${${evil[0].replace("spoke1", "hub")}}`)), [["outside-scope", FLOW]]);
+  assert.deepEqual(s2((h) => (f(h).storage_account_id = '${replace(azurerm_storage_account.logs.id, "rg-lab-az700-44-flow-logs-bastion", "rg-prod")}')), [["outside-scope", FLOW]]);
+  assert.deepEqual(s2((h) => (f(h).traffic_analytics[0].workspace_resource_id = "${trimspace(azurerm_log_analytics_workspace.lab.id)}")), [["outside-scope", FLOW]]);
+  assert.deepEqual(s2((h) => (f(h).traffic_analytics[0].workspace_id = '${replace(azurerm_log_analytics_workspace.lab.workspace_id, "a", "b")}')), [["outside-scope", FLOW]]);
+  assert.deepEqual(checkHcl(lab44Hcl(), L44), []);
+});
+
+test("plan mode: an S1/S2 attribute is refused when its value is known, or its expression names more than one resource", () => {
+  const S1 = "azurerm_network_manager_static_member.spoke1";
+  const one = (fn) => verdict(checkPlan(lab33(fn), L33)).filter(([, a]) => a === S1);
+  // coalesce(spoke1.id, spoke2.id) or a list of two: the plan shows two resources' references.
+  assert.deepEqual(one((d) => (res(d, S1).refs.target_virtual_network_id = [...IDS("azurerm_virtual_network.spoke1"), ...IDS("azurerm_virtual_network.spoke2")])), [["outside-scope", S1]]);
+  // The lab's own reference plus a variable (replace(x.id, var.a, var.b)).
+  assert.deepEqual(one((d) => (res(d, S1).refs.target_virtual_network_id = [...IDS("azurerm_virtual_network.spoke1"), "var.tags"])), [["outside-scope", S1]]);
+  // A known value: even one that names the lab's group is not proved to be the lab's VNet.
+  assert.deepEqual(
+    one((d) => {
+      const m = res(d, S1);
+      m.unknown = m.unknown.filter((p) => p !== "target_virtual_network_id");
+      m.values.target_virtual_network_id = `/subscriptions/${SUB}/resourceGroups/rg-wg-ondemand/providers/Microsoft.Network/virtualNetworks/vnet-wg`;
+    }),
+    [["gateway", S1]],
+  );
+  assert.deepEqual(
+    one((d) => {
+      const m = res(d, S1);
+      m.unknown = m.unknown.filter((p) => p !== "target_virtual_network_id");
+      m.values.target_virtual_network_id = `/subscriptions/${SUB}/resourceGroups/rg-lab-${L33}/providers/Microsoft.Network/virtualNetworks/vnet-spoke1`;
+    }),
+    [["outside-scope", S1]],
+  );
+  // One resource's references, every step of the traversal (as Terraform lists them), still pass.
+  assert.deepEqual(checkPlan(lab33(), L33), []);
+  const FL = (fn) => verdict(checkPlan(lab44(fn), L44)).filter(([, a]) => a === FLOW);
+  assert.deepEqual(FL((d) => (res(d, FLOW).refs.storage_account_id = [...IDS("azurerm_storage_account.logs"), ...IDS("azurerm_log_analytics_workspace.lab")])), [["outside-scope", FLOW]]);
+  assert.deepEqual(checkPlan(lab44(), L44), []);
+});
+
+test("CI's labs job runs the HCL scope check over every lab on every pull request, and a bypass fails it", () => {
+  // Every pull request and push to main, with no path filter that could skip a lab change.
+  for (const ev of ["pull_request", "push"]) {
+    const on = CI.on?.[ev];
+    assert.ok(ev in (CI.on ?? {}), `ci.yml runs on ${ev}`);
+    assert.equal(on?.paths, undefined, `${ev}: no paths filter`);
+    assert.equal(on?.["paths-ignore"], undefined, `${ev}: no paths-ignore`);
+  }
+  const job = CI.jobs.labs;
+  assert.equal(job.if, undefined, "the labs job always runs");
+  const step = job.steps.find((s) => s.name === "labs-tf");
+  assert.equal(step.if, undefined);
+  assert.match(step.run, /^\s*npm run labs-tf\s*$/m, "every lab, not a chosen few");
+  assert.equal(String(step.env?.LABS_TF_REQUIRE_HCL2JSON), "1");
+  // labs-tf, given hcl2json's view of lab 33 with the replace() bypass, fails lab 33.
+  const evil = lab33Hcl((h) => (h.resource.azurerm_network_manager_static_member.spoke1[0].target_virtual_network_id = '${replace(azurerm_virtual_network.spoke1.id, "a", "b")}'));
+  const run = (cmd) => (cmd === "hcl2json" ? { status: 0, stdout: JSON.stringify(evil), stderr: "" } : { status: 0, stdout: "", stderr: "" });
+  const { failures } = runLabsTf({ run, log: () => {}, only: [L33], requireHcl2json: true });
+  assert.ok(failures.some((x) => x.folder === L33 && /S1/.test(x.message ?? x.why ?? JSON.stringify(x))), JSON.stringify(failures));
 });
 
 test("nothing else of lab 44 may be in NetworkWatcherRG, and no lab makes a network watcher there", () => {
