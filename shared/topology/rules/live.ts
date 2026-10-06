@@ -582,7 +582,7 @@ export const ARM_RULES: Record<string, ArmRule> = {
       const vms = (h.rowsOfType?.("microsoft.compute/virtualmachines") ?? []).filter((v) => lower(idOf(props(v).virtualMachineScaleSet)) === lower(r.id)).map((v) => lower(v.id));
       for (const nic of h.rowsOfType?.("microsoft.network/networkinterfaces") ?? [])
         if (vms.includes(lower(idOf(props(nic).virtualMachine)))) {
-          const s = idsUnder(props(nic).ipConfigurations).map(subnetIdOf).find(Boolean);
+          const s = arr(props(nic).ipConfigurations).map((c) => subnetIdOf(idOf(obj(c.properties).subnet) ?? "")).find(Boolean);
           if (s) return s;
         }
       return null;

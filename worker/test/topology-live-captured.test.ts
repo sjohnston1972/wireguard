@@ -2,15 +2,11 @@
 // (scripts/topology-capture.mjs → fixtures/topology/live/captured/<lab id>.json), lab topology spec §6.1 (V).
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { liveGraph, type ArgRow } from "../../shared/topology/live";
+import { liveGraph } from "../../shared/topology/live";
 import type { TopologyGraph, TopoNode } from "../../shared/topology/model";
 import { liveCtxFor } from "./fixtures/topology/round-trip";
+import { CAPTURED, capturedRows } from "./fixtures/topology/captured";
 
-/** The captured labs and the name prefix their session had. */
-export const CAPTURED: Record<string, string> = { "az104-14-peering-udr": "l14rt7xy", "az700-43-private-link": "l43qvmkk" };
-
-export const capturedRows = (labId: string): ArgRow[] => (JSON.parse(readFileSync(new URL(`./fixtures/topology/live/captured/${labId}.json`, import.meta.url), "utf8")) as { rows: ArgRow[] }).rows;
 const capturedGraph = (labId: string): TopologyGraph => liveGraph(capturedRows(labId), liveCtxFor(labId, { namePrefix: CAPTURED[labId]! }));
 
 const byLabel = (g: TopologyGraph, label: string): TopoNode => {
@@ -26,5 +22,9 @@ describe("captured lab 43 (Private Link)", () => {
     expect(g.nodes.filter((n) => n.kind === "generic").map((n) => n.label)).toEqual([]);
     expect(g.nodes.some((n) => /^pls-svc\.nic\./.test(n.label))).toBe(false);
     expect(byLabel(g, "pls-svc").folded?.map((f) => f.label)).toEqual(["pls-svc.nic.1473d5c3-1fc8-4aee-8bd7-7d26c2899c75"]);
+  });
+
+  it("the Private Link service → its load balancer (frontend)", () => {
+    expect(g.edges.filter((e) => e.from === byLabel(g, "pls-svc").id && e.to === byLabel(g, "lb-svc").id)).toMatchObject([{ kind: "traffic", label: "frontend" }]);
   });
 });

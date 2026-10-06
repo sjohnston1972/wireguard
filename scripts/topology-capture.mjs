@@ -11,7 +11,9 @@
 // rows to worker/test/fixtures/topology/live/captured/<id>.json (or the path
 // given). Only rows in the lab's own groups are kept (ownsName, as the
 // Worker re-checks), and every public IP is mapped to a TEST-NET address.
-// Reads only; free. Extend CAPTURE_KEEP with the rules.
+// Reads only; free. Extend CAPTURE_KEEP with the rules:
+// worker/test/topology-capture-keep.test.ts fails when the live builder or
+// a rule reads a property path this list drops.
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -23,14 +25,34 @@ import { labFolders } from "./lib/labs.mjs";
 export const FAKE_SUBSCRIPTION = "00000000-0000-4000-8000-000000000000";
 
 /** The columns kept as they are (identity is dropped, tags filtered, properties cut to CAPTURE_KEEP). */
-const COLUMNS = ["id", "name", "type", "kind", "location", "resourceGroup", "sku", "zones", "managedBy"];
+export const CAPTURE_COLUMNS = ["id", "name", "type", "kind", "location", "resourceGroup", "sku", "zones", "managedBy"];
 
 /** Property paths the live rules read ("[]" = every member of a list). */
 export const CAPTURE_KEEP = [
+  // ── Health, and what every row may say about where it sits ──
   "provisioningState",
   "status",
   "connectionStatus",
   "operationalState",
+  "sku",
+  "type",
+  "subnet",
+  "virtualNetwork",
+  "ipConfigurations[].id",
+  "ipConfigurations[].name",
+  "ipConfigurations[].privateIpAddress",
+  "ipConfigurations[].properties.privateIPAddress",
+  "ipConfigurations[].properties.privateIPAllocationMethod",
+  "ipConfigurations[].properties.subnet",
+  "ipConfigurations[].properties.publicIPAddress.id",
+  "ipConfigurations[].properties.applicationSecurityGroups[].id",
+  "frontendIPConfigurations[].id",
+  "frontendIPConfigurations[].properties.privateIPAddress",
+  "frontendIPConfigurations[].properties.subnet",
+  "frontendIPConfigurations[].properties.publicIPAddress.id",
+  "frontendIPConfigurations[].properties.gatewayLoadBalancer.id",
+  "gatewayIPConfigurations[].properties.subnet",
+  // ── VNets, peerings, subnets ──
   "addressSpace.addressPrefixes",
   "dhcpOptions.dnsServers",
   "subnets[].id",
@@ -50,19 +72,24 @@ export const CAPTURE_KEEP = [
   "virtualNetworkPeerings[].properties.useRemoteGateways",
   "virtualNetworkPeerings[].properties.allowForwardedTraffic",
   "virtualNetworkPeerings[].properties.remoteVirtualNetwork.id",
+  // ── NICs, VMs, scale sets ──
   "virtualMachine.id",
   "privateEndpoint.id",
-  "ipConfigurations[].id",
-  "ipConfigurations[].name",
-  "ipConfigurations[].properties.privateIPAddress",
-  "ipConfigurations[].properties.privateIPAllocationMethod",
-  "ipConfigurations[].properties.subnet.id",
-  "ipConfigurations[].properties.publicIPAddress.id",
+  "privateLinkService.id",
+  "networkSecurityGroup.id",
   "hardwareProfile.vmSize",
   "storageProfile.osDisk.osType",
   "extended.instanceView.powerState.code",
   "networkProfile.networkInterfaces[].id",
   "networkInterfaces[].id",
+  "virtualMachineScaleSet.id",
+  "virtualMachineProfile.networkProfile",
+  "virtualMachineProfile.storageProfile.osDisk.osType",
+  "targetResourceUri",
+  "profiles[].capacity.minimum",
+  "profiles[].capacity.maximum",
+  "principalId",
+  // ── NSGs, route tables, public IPs and prefixes, NAT ──
   "securityRules[].name",
   "routes[].id",
   "routes[].name",
@@ -71,15 +98,15 @@ export const CAPTURE_KEEP = [
   "routes[].properties.nextHopIpAddress",
   "ipConfiguration.id",
   "natGateway.id",
+  "loadBalancerFrontendIpConfiguration.id",
   "ipAddress",
   "publicIPAllocationMethod",
   "ipPrefix",
-  "frontendIPConfigurations[].id",
-  "frontendIPConfigurations[].properties.privateIPAddress",
-  "frontendIPConfigurations[].properties.subnet.id",
-  "frontendIPConfigurations[].properties.publicIPAddress.id",
+  // ── Load balancers ──
   "backendAddressPools[].id",
   "backendAddressPools[].properties.backendIPConfigurations[].id",
+  "backendAddressPools[].properties.loadBalancerBackendAddresses[].properties.loadBalancerFrontendIPConfiguration.id",
+  "backendAddressPools[].properties.backendAddresses[].ipAddress",
   "loadBalancingRules[].id",
   "loadBalancingRules[].properties.protocol",
   "loadBalancingRules[].properties.frontendPort",
@@ -96,6 +123,7 @@ export const CAPTURE_KEEP = [
   "inboundNatRules[].properties.backendAddressPool.id",
   "outboundRules[].id",
   "outboundRules[].properties.backendAddressPool.id",
+  // ── Private endpoints, Private Link services, service endpoint policies ──
   "privateLinkServiceConnections[].id",
   "privateLinkServiceConnections[].properties.privateLinkServiceId",
   "privateLinkServiceConnections[].properties.groupIds",
@@ -105,12 +133,98 @@ export const CAPTURE_KEEP = [
   "manualPrivateLinkServiceConnections[].properties.groupIds",
   "manualPrivateLinkServiceConnections[].properties.privateLinkServiceConnectionState.status",
   "customDnsConfigs[].ipAddresses",
-  "subnet.id",
-  "virtualNetwork.id",
+  "loadBalancerFrontendIpConfigurations[].id",
+  "serviceEndpointPolicyDefinitions[].properties.serviceResources",
+  // ── Application gateways, WAF policies, Front Door, Traffic Manager ──
+  "autoscaleConfiguration.minCapacity",
+  "autoscaleConfiguration.maxCapacity",
+  "httpListeners[].id",
+  "httpListeners[].properties.protocol",
+  "httpListeners[].properties.frontendPort.id",
+  "frontendPorts[].id",
+  "frontendPorts[].properties.port",
+  "backendHttpSettingsCollection[].id",
+  "backendHttpSettingsCollection[].properties.port",
+  "requestRoutingRules[].id",
+  "requestRoutingRules[].properties.priority",
+  "requestRoutingRules[].properties.httpListener.id",
+  "requestRoutingRules[].properties.backendAddressPool.id",
+  "requestRoutingRules[].properties.backendHttpSettings.id",
+  "policySettings.mode",
+  "applicationGateways[].id",
+  "securityPolicyLinks[].id",
+  "hostName",
+  "sharedPrivateLinkResource.privateLink.id",
+  "sharedPrivateLinkResource.status",
+  "trafficRoutingMethod",
+  "endpoints[].id",
+  "endpoints[].properties.targetResourceId",
+  "endpoints[].properties.target",
+  "endpoints[].properties.priority",
+  "endpoints[].properties.weight",
+  "endpoints[].properties.endpointMonitorStatus",
+  // ── DNS ──
   "registrationEnabled",
-  "gatewayIPConfigurations[].properties.subnet.id",
+  "numberOfRecordSets",
+  "dnsResolverOutboundEndpoints[].id",
+  // ── Monitoring ──
+  "retentionInDays",
+  "workspaceCapping.dailyQuotaGb",
+  "scopes",
+  "actions[].actionGroupId",
+  "actions.actionGroups",
+  "destinations.logAnalytics[].workspaceResourceId",
+  "targetResourceId",
+  "storageId",
+  "retentionPolicy.enabled",
+  "retentionPolicy.days",
+  "flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration.enabled",
+  "flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration.workspaceResourceId",
+  // ── Containers ──
+  "containers[].properties.resources.requests.cpu",
+  "containers[].properties.resources.requests.memoryInGB",
+  "subnetIds[].id",
+  "workloadProfiles[].workloadProfileType",
+  "vnetConfiguration.infrastructureSubnetId",
+  "configuration.ingress",
+  "configuration.registries[].server",
+  "managedEnvironmentId",
+  "environmentId",
+  "loginServer",
+  // ── Data ──
   "accessTier",
   "allowBlobPublicAccess",
+  "publicNetworkAccess",
+  "networkAcls.virtualNetworkRules[].id",
+  "capabilities[].name",
+  "consistencyPolicy.defaultConsistencyLevel",
+  "enableRbacAuthorization",
+  "accessPolicies[].objectId",
+  // ── VPN, hubs, BGP, firewalls, AVNM ──
+  "enableBgp",
+  "bgpSettings.asn",
+  "vpnType",
+  "vpnClientConfiguration.vpnClientAddressPool.addressPrefixes",
+  "localNetworkAddressSpace.addressPrefixes",
+  "gatewayIpAddress",
+  "connectionType",
+  "virtualNetworkGateway1.id",
+  "virtualNetworkGateway2.id",
+  "localNetworkGateway2.id",
+  "peer.id",
+  "addressPrefix",
+  "virtualRouterAsn",
+  "virtualRouterIps",
+  "virtualWan.id",
+  "peerIp",
+  "peerAsn",
+  "connectionState",
+  "virtualHub.id",
+  "hubIPAddresses.privateIPAddress",
+  "firewallPolicy.id",
+  "basePolicy.id",
+  "ruleCollectionGroups[].id",
+  "networkManagerScopeAccesses",
 ];
 
 /** The kept paths as a tree: { name: true | subtree }, "[]" marking a list. */
@@ -207,7 +321,7 @@ export function captureRows(rows, { labId, ids, owns, keep = CAPTURE_KEEP } = {}
   return testNetIps(
     mine.map((r) => {
       const out = {};
-      for (const c of COLUMNS) out[c] = r[c] ?? null;
+      for (const c of CAPTURE_COLUMNS) out[c] = r[c] ?? null;
       const tags = {};
       for (const [k, v] of Object.entries(r.tags ?? {})) if (["lab", "project"].includes(k.toLowerCase())) tags[k] = v;
       out.tags = tags;
