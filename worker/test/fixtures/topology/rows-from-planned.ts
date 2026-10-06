@@ -130,8 +130,11 @@ export function rowsFromPlanned(g: TopologyGraph, ctx: RowsCtx = rowsCtx(g.labId
   /** The name path of a node, from its key (the key's type segments are its ARM type's). */
   const namesOf = (n: TopoNode): string[] => {
     const t = n.armType ?? "";
-    const segs = n.key.replace(/#[^/]*$/, "").split("/");
-    return segs.slice(t.split("/").length).map(real);
+    const segs = n.key.replace(/#[^/]*$/, "").split("/").slice(t.split("/").length).map(real);
+    // The key is lower case; the name keeps its case from the label (Azure keeps "RouteServerSubnet" as written).
+    const own = real(n.label);
+    if (segs.length && own.toLowerCase() === segs.at(-1)) segs[segs.length - 1] = own;
+    return segs;
   };
   const armId = (rg: string, armType: string, names: string[]) => {
     const [ns, ...types] = armType.split("/");
@@ -195,6 +198,7 @@ export function rowsFromPlanned(g: TopologyGraph, ctx: RowsCtx = rowsCtx(g.labId
     return null;
   };
   let ipSeq = 10;
+  let pipSeq = 0;
   const ipFor = (n: TopoNode): string => (typeof n.props.privateIp === "string" ? n.props.privateIp : `10.71.${200 + (ipSeq % 50)}.${ipSeq++}`);
   const nicIds = new Map<string, string>(); // node id → its (first) NIC ipConfiguration id
   const folded = (n: TopoNode, armType: string) => (n.folded ?? []).filter((f) => lower(f.armType) === lower(armType));
@@ -333,7 +337,7 @@ export function rowsFromPlanned(g: TopologyGraph, ctx: RowsCtx = rowsCtx(g.labId
       .map((e) => {
         const other = byId.get(e.from === v.id ? e.to : e.from);
         const remote = other ? nodeArmId(other) : null;
-        const name = `peer-${row.name}-to-${remote?.split("/").at(-1)}`;
+        const name = e.label === "peering (AVNM)" ? `ANM_${hex32(row.name).slice(0, 12).toUpperCase()}_${remote?.split("/").at(-1)}` : `peer-${row.name}-to-${remote?.split("/").at(-1)}`;
         return { id: `${row.id}/virtualNetworkPeerings/${name}`, name, properties: { peeringState: "Connected", peeringSyncLevel: "FullyInSync", allowForwardedTraffic: true, allowGatewayTransit: e.label?.includes("gateway transit") && e.from === v.id, useRemoteGateways: e.label?.includes("gateway transit") && e.to === v.id, remoteVirtualNetwork: { id: remote } } };
       });
     Object.assign(P(row), { addressSpace: { addressPrefixes: v.props.addressSpace ?? [] }, subnets, virtualNetworkPeerings: peerings, ...(v.props.dnsServers ? { dhcpOptions: { dnsServers: v.props.dnsServers } } : {}) });
@@ -352,7 +356,7 @@ export function rowsFromPlanned(g: TopologyGraph, ctx: RowsCtx = rowsCtx(g.labId
       else {
         const child = n.kind === "loadBalancer" || n.kind === "appGateway" ? "frontendIPConfigurations" : "ipConfigurations";
         P(r).ipConfiguration = { id: `${owner}/${child}/ipconfig-${r.name}` };
-        P(r).ipAddress = "203.0.113.20";
+        P(r).ipAddress = `203.0.113.${100 + (pipSeq++ % 150)}`;
       }
       r.sku = { name: "Standard", tier: n.props.sku === "Standard Global" ? "Global" : "Regional" };
     }
@@ -454,6 +458,105 @@ export interface TemplateKit {
 /** Family templates (T3.2-T3.6). */
 function extraTemplates(k: TemplateKit): void {
   delivery(k);
+  hybrid(k);
+}
+
+/** T3.3: VPN gateways, local network gateways and connections, Route Server, firewalls and policies, vWAN, AVNM. */
+function hybrid(k: TemplateKit): void {
+  const { g, byId, rowOf, nodeArmId, subnetOf, edgesFrom, edgesTo, folded, foldedRow, rows } = k;
+  const live = (n: { scope?: string }) => n.scope !== "outside";
+  const rowIdOf = (id: string) => {
+    const n = byId.get(id);
+    return n ? nodeArmId(n) : null;
+  };
+  for (const n of g.nodes.filter((x) => x.kind === "vpnGateway" && live(x))) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const pip = folded(n, "Microsoft.Network/publicIPAddresses").map((f) => foldedRow(n, f, true)).find(Boolean);
+    Object.assign(P(r), {
+      gatewayType: "Vpn",
+      vpnType: n.props.vpnType ?? "RouteBased",
+      sku: { name: n.props.sku ?? "VpnGw1AZ", tier: n.props.sku ?? "VpnGw1AZ" },
+      enableBgp: n.props.bgp === true,
+      ...(n.props.asn ? { bgpSettings: { asn: n.props.asn } } : {}),
+      ...(n.props.clientPool ? { vpnClientConfiguration: { vpnClientAddressPool: { addressPrefixes: String(n.props.clientPool).split(", ") } } } : {}),
+      ipConfigurations: [{ id: `${r.id}/ipConfigurations/gwipconfig`, name: "gwipconfig", properties: { subnet: { id: subnetOf(n) }, ...(pip ? { publicIPAddress: { id: pip.id } } : {}) } }],
+    });
+    for (const f of folded(n, "Microsoft.Network/connections")) {
+      const c = foldedRow(n, f, true);
+      const e = edgesFrom(n.id).find((x) => x.via === f.id);
+      const to = e ? byId.get(e.to) : undefined;
+      if (!c) continue;
+      Object.assign(P(c), {
+        connectionType: e?.label?.startsWith("VNet-to-VNet") ? "Vnet2Vnet" : "IPsec",
+        connectionStatus: "Connected",
+        enableBgp: !!e?.label?.includes("BGP"),
+        virtualNetworkGateway1: { id: r.id },
+        ...(to?.kind === "localNetworkGateway" ? { localNetworkGateway2: { id: nodeArmId(to) } } : to ? { virtualNetworkGateway2: { id: nodeArmId(to) } } : {}),
+      });
+    }
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "localNetworkGateway" && live(x))) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const e = edgesFrom(n.id).find((x) => x.label === "gateway address");
+    const gwId = e ? rowIdOf(e.to) : null;
+    const pip = gwId ? [...rows.values()].find((x) => x.type === "microsoft.network/publicipaddresses" && String(P(x).ipConfiguration && (P(x).ipConfiguration as { id: string }).id).toLowerCase().startsWith(gwId.toLowerCase())) : undefined;
+    Object.assign(P(r), { gatewayIpAddress: pip ? P(pip).ipAddress : "198.51.100.10", localNetworkAddressSpace: { addressPrefixes: n.props.addressSpace ?? [] }, ...(n.props.asn ? { bgpSettings: { asn: n.props.asn } } : {}) });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "routeServer" && live(x))) {
+    const r = rowOf(n);
+    if (!r) continue;
+    r.kind = "RouteServer";
+    const sn = n.parent ? byId.get(n.parent) : undefined;
+    const base = String(sn?.props.prefix ?? "10.71.199.0/27").split("/")[0]!.split(".");
+    const ips = [4, 5].map((x) => [...base.slice(0, 3), String(Number(base[3]) + x)].join("."));
+    Object.assign(P(r), { sku: "Standard", virtualRouterAsn: 65515, virtualRouterIps: ips, routingState: "Provisioned" });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "virtualHub" && live(x))) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const wan = edgesTo(n.id).find((e) => e.label === "virtual hub");
+    Object.assign(P(r), { addressPrefix: n.props.prefix, sku: n.props.sku ?? "Standard", ...(wan ? { virtualWan: { id: rowIdOf(wan.from) } } : {}), virtualRouterAsn: 65515 });
+    // Each hub connection shows on its spoke as a peering to the hub's Microsoft-managed VNet.
+    for (const e of edgesFrom(n.id).filter((x) => x.label === "hub connection")) {
+      const spoke = rowOf(byId.get(e.to)!);
+      if (!spoke) continue;
+      const guid = k.guid(`${r.name}${spoke.name}`);
+      const pe = { id: `${spoke.id}/virtualNetworkPeerings/RemoteVnetToHubPeering_${guid}`, name: `RemoteVnetToHubPeering_${guid}`, properties: { peeringState: "Connected", useRemoteGateways: true, remoteVirtualNetwork: { id: `/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/RG_${r.name}_${guid}/providers/Microsoft.Network/virtualNetworks/HV_${r.name}_${guid}` } } };
+      P(spoke).virtualNetworkPeerings = [...((P(spoke).virtualNetworkPeerings as unknown[]) ?? []), pe];
+    }
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "virtualWan" && live(x))) {
+    const r = rowOf(n);
+    if (r) P(r).type = n.props.sku ?? "Standard";
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "firewall" && live(x))) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const hub = n.parent && byId.get(n.parent)?.kind === "virtualHub" ? nodeArmId(byId.get(n.parent)!) : null;
+    const pips = folded(n, "Microsoft.Network/publicIPAddresses").map((f) => foldedRow(n, f, true)).filter(Boolean);
+    const policy = edgesFrom(n.id).find((e) => e.label === "policy");
+    Object.assign(P(r), {
+      sku: { name: hub ? "AZFW_Hub" : "AZFW_VNet", tier: n.props.tier ?? "Standard" },
+      ...(hub
+        ? { virtualHub: { id: hub }, hubIPAddresses: { privateIPAddress: "10.71.240.132", publicIPs: { count: 1 } } }
+        : { ipConfigurations: [{ id: `${r.id}/azureFirewallIpConfigurations/ipconfig-data`, name: "ipconfig-data", properties: { privateIPAddress: n.props.privateIp ?? "10.71.199.4", subnet: { id: subnetOf(n) }, ...(pips[0] ? { publicIPAddress: { id: pips[0]!.id } } : {}) } }] }),
+      ...(policy ? { firewallPolicy: { id: rowIdOf(policy.to) } } : {}),
+    });
+    // Folded public IPs point at the firewall's IP configurations (any name: the top resource is what counts).
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "firewallPolicy" && live(x))) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const base = edgesTo(n.id).find((e) => e.label === "base policy");
+    const groups = Number(/rule collection groups: (\d+)/.exec((n.props.counts as string[] | undefined)?.join(" ") ?? "")?.[1] ?? 0);
+    Object.assign(P(r), { sku: { tier: n.props.tier ?? "Standard" }, ...(base ? { basePolicy: { id: rowIdOf(base.from) } } : {}), ruleCollectionGroups: Array.from({ length: groups }, (_, i) => ({ id: `${r.id}/ruleCollectionGroups/rcg-${i}` })) });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "networkManager" && live(x))) {
+    const r = rowOf(n);
+    if (r) P(r).networkManagerScopeAccesses = n.props.scopeAccess ?? [];
+  }
 }
 
 const P = (r: ArgRow) => r.properties as Record<string, unknown>;

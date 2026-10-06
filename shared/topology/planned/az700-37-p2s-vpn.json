@@ -101,7 +101,12 @@
    "key": "microsoft.network/virtualnetworkgateways/vpngw-hub",
    "kind": "vpnGateway",
    "label": "vpngw-hub",
-   "props": {},
+   "props": {
+    "sku": "VpnGw1AZ",
+    "bgp": false,
+    "vpnType": "RouteBased",
+    "clientPool": "10.71.255.0/24"
+   },
    "parent": "tf:azurerm_subnet.gateway",
    "armType": "Microsoft.Network/virtualNetworkGateways",
    "scope": "lab",

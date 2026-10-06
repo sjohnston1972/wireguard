@@ -59,6 +59,8 @@ export interface ArmRule {
   fold?: (row: ArgRow, h: LiveHelpers) => string | null | undefined;
   props?: (row: ArgRow, h: LiveHelpers) => Record<string, unknown>;
   edges?: (row: ArgRow, h: LiveHelpers) => LiveEdgeSpec[];
+  /** A group's ARM id to place this card in, when the kind's placement cannot find it (a secured hub's firewall). */
+  place?: (row: ArgRow, h: LiveHelpers) => string | null | undefined;
 }
 
 export const lower = (s: string | null | undefined): string => (s ?? "").toLowerCase();
@@ -206,6 +208,31 @@ function byFqdn(fqdn: string, h: LiveHelpers): string | null {
   return null;
 }
 
+const ipNum = (ip: string): number | null => {
+  const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(ip);
+  return m ? ((Number(m[1]) << 24) >>> 0) + (Number(m[2]) << 16) + (Number(m[3]) << 8) + Number(m[4]) : null;
+};
+/** Is an IPv4 address inside a CIDR? */
+export function inCidr(ip: string, cidr: string): boolean {
+  const [base, bits] = cidr.split("/");
+  const a = ipNum(ip);
+  const b = ipNum(base ?? "");
+  const n = Number(bits);
+  if (a === null || b === null || !Number.isInteger(n) || n < 0 || n > 32) return false;
+  const mask = n === 0 ? 0 : (~0 << (32 - n)) >>> 0;
+  return ((a & mask) >>> 0) === ((b & mask) >>> 0);
+}
+/** The subnet (of the lab's VNets) whose prefix holds an IP. */
+function subnetHolding(ip: string, h: LiveHelpers): string | null {
+  for (const v of h.rowsOfType?.("microsoft.network/virtualnetworks") ?? [])
+    for (const s of arr(props(v).subnets)) {
+      const sp = obj(s.properties);
+      const prefixes = [str(sp.addressPrefix), ...((sp.addressPrefixes as string[] | undefined) ?? [])].filter((x): x is string => !!x);
+      if (prefixes.some((c) => inCidr(ip, c))) return lower(str(s.id) ?? "");
+    }
+  return null;
+}
+
 /** A resource's user-assigned identities: resource → identity ("identity"). */
 const identityEdges = (r: ArgRow): LiveEdgeSpec[] =>
   Object.keys(obj(obj(r.identity).userAssignedIdentities))
@@ -306,6 +333,14 @@ export const ARM_RULES: Record<string, ArmRule> = {
   },
   "microsoft.network/virtualnetworks": {
     props: (r) => ({ addressSpace: (obj(props(r).addressSpace).addressPrefixes as string[] | undefined) ?? [], dnsServers: (obj(props(r).dhcpOptions).dnsServers as string[] | undefined)?.length ? (obj(props(r).dhcpOptions).dnsServers as string[]) : undefined }),
+    // A Virtual WAN hub connection shows on the spoke as a peering to the hub's Microsoft-managed VNet (HV_<hub>_<guid>): hub → spoke.
+    edges: (r, h) =>
+      arr(props(r).virtualNetworkPeerings).flatMap((pe) => {
+        const remote = idOf(obj(pe.properties).remoteVirtualNetwork) ?? "";
+        const m = /\/virtualnetworks\/hv_(.+)_[0-9a-f]{8}-[0-9a-f-]{27}$/i.exec(remote);
+        const hub = m ? (h.rowsOfType?.("microsoft.network/virtualhubs") ?? []).find((x) => lower(x.name) === lower(m[1]) && lower(x.kind) !== "routeserver") : undefined;
+        return hub ? [{ from: lower(hub.id), to: lower(r.id), kind: "traffic" as const, label: "hub connection", via: lower(str(pe.id) ?? r.id), state: stateWord(str(obj(pe.properties).peeringState)) }] : [];
+      }),
   },
   "microsoft.network/loadbalancers": {
     props: (r) => {
@@ -459,6 +494,91 @@ export const ARM_RULES: Record<string, ArmRule> = {
         .filter((x): x is string => !!x)
         .map((f) => ({ from: lower(r.id), to: lower(topResource(f)), kind: "traffic" as const, label: "frontend" })),
   },
+
+  // ── VPN (T3.3) ──
+  "microsoft.network/virtualnetworkgateways": {
+    props: (r) => {
+      const p = props(r);
+      const bgp = p.enableBgp === true;
+      const pool = (obj(obj(p.vpnClientConfiguration).vpnClientAddressPool).addressPrefixes as string[] | undefined) ?? [];
+      return { sku: str(obj(p.sku).name), bgp, asn: bgp ? obj(p.bgpSettings).asn : undefined, vpnType: str(p.vpnType), clientPool: pool.length ? pool.join(", ") : undefined };
+    },
+  },
+  "microsoft.network/localnetworkgateways": {
+    props: (r) => ({ addressSpace: (obj(props(r).localNetworkAddressSpace).addressPrefixes as string[] | undefined) ?? [], asn: obj(props(r).bgpSettings).asn }),
+    // The gateway whose public address it names (by the public IP row holding it).
+    edges: (r, h) => {
+      const ip = str(props(r).gatewayIpAddress);
+      const pip = ip ? (h.rowsOfType?.("microsoft.network/publicipaddresses") ?? []).find((x) => str(props(x).ipAddress) === ip) : undefined;
+      return pip ? [{ from: lower(r.id), to: lower(pip.id), kind: "dependency" as const, label: "gateway address" }] : [];
+    },
+  },
+  "microsoft.network/connections": {
+    fold: (r) => idOf(props(r).virtualNetworkGateway1) ?? null,
+    edges: (r) => {
+      const p = props(r);
+      const gw = idOf(p.virtualNetworkGateway1);
+      const to = idOf(p.localNetworkGateway2) ?? idOf(p.virtualNetworkGateway2) ?? idOf(p.peer);
+      if (!gw || !to) return [];
+      const t = lower(str(p.connectionType));
+      const base = t === "vnet2vnet" ? "VNet-to-VNet" : t === "expressroute" ? "ExpressRoute" : "IPsec";
+      return [{ from: lower(gw), to: lower(to), kind: "traffic" as const, label: p.enableBgp === true ? `${base}, BGP` : base, via: lower(r.id), state: stateWord(str(p.connectionStatus)) }];
+    },
+  },
+
+  // ── Virtual hubs (T3.3): a Route Server (kind RouteServer) is a card placed by its router IPs; a vWAN hub is a group ──
+  "microsoft.network/virtualhubs": {
+    props: (r) => {
+      const p = props(r);
+      if (lower(r.kind) === "routeserver") return { asn: p.virtualRouterAsn, privateIp: ((p.virtualRouterIps as string[] | undefined) ?? [])[0], sku: str(p.sku) };
+      return { prefix: str(p.addressPrefix), sku: str(p.sku) };
+    },
+    edges: (r) => {
+      const wan = idOf(props(r).virtualWan);
+      return wan ? [{ from: lower(wan), to: lower(r.id), kind: "dependency" as const, label: "virtual hub" }] : [];
+    },
+    // A Route Server row names no subnet; its router IPs sit in RouteServerSubnet.
+    place: (r, h) => {
+      if (lower(r.kind) !== "routeserver") return null;
+      const ip = ((props(r).virtualRouterIps as string[] | undefined) ?? [])[0];
+      return ip ? subnetHolding(ip, h) : null;
+    },
+  },
+  "microsoft.network/virtualhubs/bgpconnections": {
+    fold: (r) => topResource(r.id),
+    edges: (r, h) => {
+      const p = props(r);
+      const to = str(p.peerIp) ? h.nodeByPrivateIp(str(p.peerIp)!) : null;
+      return to ? [{ from: lower(topResource(r.id)), to, kind: "traffic" as const, label: `BGP ${p.peerAsn ?? ""}`.trim(), via: lower(r.id), state: stateWord(str(p.connectionState)) }] : [];
+    },
+  },
+  "microsoft.network/virtualwans": { props: (r) => ({ sku: str(props(r).type) }) },
+
+  // ── Firewall and policies (T3.3) ──
+  "microsoft.network/azurefirewalls": {
+    props: (r) => {
+      const p = props(r);
+      return { tier: str(obj(p.sku).tier), privateIp: str(obj(arr(p.ipConfigurations)[0]?.properties).privateIPAddress) ?? str(obj(p.hubIPAddresses).privateIPAddress) };
+    },
+    edges: (r) => {
+      const fp = idOf(props(r).firewallPolicy);
+      return fp ? [{ from: lower(r.id), to: lower(fp), kind: "dependency" as const, label: "policy" }] : [];
+    },
+    place: (r) => idOf(props(r).virtualHub) ?? null,
+  },
+  "microsoft.network/firewallpolicies": {
+    props: (r) => {
+      const n = arr(props(r).ruleCollectionGroups).length;
+      return { tier: str(obj(props(r).sku).tier), counts: n ? [`rule collection groups: ${n}`] : undefined };
+    },
+    edges: (r) => {
+      const base = idOf(props(r).basePolicy);
+      return base ? [{ from: lower(base), to: lower(r.id), kind: "dependency" as const, label: "base policy" }] : [];
+    },
+  },
+
+  // ── Virtual Network Manager (T3.3): its children are not rows; its peerings come as ANM_ (peeringEdges) ──
+  "microsoft.network/networkmanagers": { props: (r) => ({ scopeAccess: (props(r).networkManagerScopeAccesses as string[] | undefined) ?? [] }) },
 
   "microsoft.network/privatednszones/virtualnetworklinks": {
     fold: (r) => topResource(r.id),

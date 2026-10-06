@@ -64,30 +64,27 @@
   },
   {
    "id": "tf:azurerm_route_server.rs",
-   "key": "terraform/azurerm_route_server/rs-hub",
+   "key": "microsoft.network/virtualhubs/rs-hub",
    "kind": "routeServer",
    "label": "rs-hub",
-   "props": {},
+   "props": {
+    "sku": "Standard"
+   },
    "parent": "tf:azurerm_subnet.rs",
-   "armType": null,
+   "armType": "Microsoft.Network/virtualHubs",
    "scope": "lab",
    "folded": [
     {
      "id": "tf:azurerm_public_ip.rs",
      "label": "pip-rs",
      "armType": "Microsoft.Network/publicIPAddresses"
+    },
+    {
+     "id": "tf:azurerm_route_server_bgp_connection.nva",
+     "label": "bgp-nva",
+     "armType": "Microsoft.Network/virtualHubs/bgpConnections"
     }
    ]
-  },
-  {
-   "id": "tf:azurerm_route_server_bgp_connection.nva",
-   "key": "terraform/azurerm_route_server_bgp_connection/bgp-nva",
-   "kind": "generic",
-   "label": "bgp-nva",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
   },
   {
    "id": "tf:azurerm_subnet.app",
@@ -171,6 +168,14 @@
  ],
  "edges": [
   {
+   "id": "traffic:tf:azurerm_route_server.rs>tf:azurerm_linux_virtual_machine.nva:BGP 65010",
+   "from": "tf:azurerm_route_server.rs",
+   "to": "tf:azurerm_linux_virtual_machine.nva",
+   "kind": "traffic",
+   "label": "BGP 65010",
+   "via": "tf:azurerm_route_server_bgp_connection.nva"
+  },
+  {
    "id": "traffic:tf:azurerm_virtual_network.hub>tf:azurerm_virtual_network.spoke:peering (gateway transit)",
    "from": "tf:azurerm_virtual_network.hub",
    "to": "tf:azurerm_virtual_network.spoke",
@@ -178,8 +183,5 @@
    "label": "peering (gateway transit)",
    "via": "tf:azurerm_virtual_network_peering.hub_to_spoke"
   }
- ],
- "notes": [
-  "1 resource of a type the diagram draws plainly"
  ]
 }

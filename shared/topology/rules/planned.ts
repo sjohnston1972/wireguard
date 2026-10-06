@@ -82,6 +82,8 @@ export interface TfRule {
   namePath?: (inst: TfInst, h: PlannedHelpers) => string[];
   /** What a folded entry says instead of the name (a Key Vault secret: "secret"; ruling 22, never the name). */
   foldedLabel?: string;
+  /** A group node id to place this card in, when the kind's placement cannot find it (a secured hub's firewall). */
+  place?: (inst: TfInst, h: PlannedHelpers) => string | null;
 }
 
 /** Types that are never Azure resources (spec §4.4): random_*, time_*, terraform_data, null_resource. */
@@ -279,6 +281,40 @@ const tmEndpoint = (arm: string, targetAttrs: string[]): TfRule => ({
 
 const lbChildFold: TfRule = { fold: ["loadbalancer_id"], arm: undefined };
 
+/** What can own a public IP (it folds into the first, by address). */
+const PIP_OWNERS = [
+  "azurerm_network_interface",
+  "azurerm_lb",
+  "azurerm_application_gateway",
+  "azurerm_virtual_network_gateway",
+  "azurerm_bastion_host",
+  "azurerm_firewall",
+  "azurerm_route_server",
+  "azurerm_nat_gateway",
+  "azurerm_nat_gateway_public_ip_association",
+  "azurerm_virtual_hub_ip",
+  "azurerm_express_route_gateway",
+  "azurerm_vpn_gateway",
+];
+
+/** A VPN connection's label: "IPsec", "IPsec, BGP", "VNet-to-VNet". */
+const connectionLabel = (i: TfInst): string => {
+  const t = str(i.after.type)?.toLowerCase();
+  const base = t === "vnet2vnet" ? "VNet-to-VNet" : t === "expressroute" ? "ExpressRoute" : "IPsec";
+  return i.after.bgp_enabled === true || i.after.enable_bgp === true ? `${base}, BGP` : base;
+};
+
+/** AVNM children fold into the manager (through their group, collection or configuration). */
+const avnmFold = ["network_manager_id", "network_group_id", "security_admin_configuration_id", "admin_rule_collection_id", "connectivity_configuration_id"];
+const avnmManagerOf = (i: TfInst, h: PlannedHelpers): TfInst | undefined => {
+  for (let cur: TfInst | undefined = i, d = 0; cur && d < 5; d++) {
+    if (cur.type === "azurerm_network_manager") return cur;
+    cur = h.refs(cur, avnmFold)[0];
+  }
+  return undefined;
+};
+const avnmMembers = (group: TfInst, h: PlannedHelpers): TfInst[] => h.referrers(group, ["azurerm_network_manager_static_member"], ["network_group_id"]).flatMap((m) => h.refs(m, ["target_virtual_network_id"]));
+
 export const TF_RULES: Record<string, TfRule> = {
   // ── Groups ──
   azurerm_resource_group: {
@@ -301,7 +337,16 @@ export const TF_RULES: Record<string, TfRule> = {
       return { prefix: strings(i.after.address_prefixes)[0], chips };
     },
   },
-  azurerm_virtual_hub: { arm: "Microsoft.Network/virtualHubs", props: (i) => ({ prefix: str(i.after.address_prefix), sku: str(i.after.sku) }) },
+  azurerm_virtual_hub: {
+    arm: "Microsoft.Network/virtualHubs",
+    props: (i, h) => {
+      // Routing intent (folded into the hub): its destinations, as the hub's routing.
+      const ri = h.referrers(i, ["azurerm_virtual_hub_routing_intent"], ["virtual_hub_id"])[0];
+      const dest = ri ? list(ri.after.routing_policy).flatMap((p) => strings((p as Record<string, unknown>)?.destinations)) : [];
+      return { prefix: str(i.after.address_prefix), sku: str(i.after.sku), routing: dest.length ? `routing intent: ${dest.join(", ")}` : undefined };
+    },
+    edges: (i, h) => h.refs(i, ["virtual_wan_id"]).map((w) => ({ from: w, to: i, kind: "dependency" as const, label: "virtual hub" })),
+  },
 
   // ── Compute ──
   azurerm_linux_virtual_machine: { arm: "Microsoft.Compute/virtualMachines", props: vmProps("Linux") },
@@ -358,7 +403,9 @@ export const TF_RULES: Record<string, TfRule> = {
   },
   azurerm_public_ip: {
     arm: "Microsoft.Network/publicIPAddresses",
-    foldToReferrer: {},
+    // Its owner (ruling 9): what attaches it as an IP configuration. Not a local network gateway naming its address,
+    // a DNS record or a Traffic Manager endpoint pointing at it: those only refer to it.
+    foldToReferrer: { types: PIP_OWNERS },
     props: (i) => ({ sku: str(i.after.sku), allocation: str(i.after.allocation_method), zones: strings(i.after.zones).length ? strings(i.after.zones) : undefined }),
   },
   // Like a public IP (ruling 9): a prefix an owner uses (an LB frontend, a NAT gateway) folds into it; an unused one is a card.
@@ -508,6 +555,100 @@ export const TF_RULES: Record<string, TfRule> = {
     arm: "Microsoft.Network/privateLinkServices",
     edges: (i, h) => h.refs(i, ["load_balancer_frontend_ip_configuration_ids"]).map((lb) => ({ from: i, to: lb, kind: "traffic" as const, label: "frontend" })),
   },
+
+  // ── VPN (T3.3): gateways, local network gateways, connections (folded into the gateway, drawn as edges) ──
+  azurerm_virtual_network_gateway: {
+    arm: "Microsoft.Network/virtualNetworkGateways",
+    props: (i) => {
+      const bgp = i.after.bgp_enabled === true || i.after.enable_bgp === true;
+      const pool = strings(first(i.after.vpn_client_configuration).address_space);
+      return { sku: str(i.after.sku), bgp, asn: bgp ? num(first(i.after.bgp_settings).asn) : undefined, vpnType: str(i.after.vpn_type), clientPool: pool.length ? pool.join(", ") : undefined };
+    },
+  },
+  azurerm_local_network_gateway: {
+    arm: "Microsoft.Network/localNetworkGateways",
+    props: (i) => ({ addressSpace: strings(i.after.address_space), asn: num(first(i.after.bgp_settings).asn) }),
+    // The gateway whose public address it names (a lab's simulated on-premises side is another VPN gateway).
+    edges: (i, h) => h.refs(i, ["gateway_address"]).map((p) => ({ from: i, to: p, kind: "dependency" as const, label: "gateway address" })),
+  },
+  azurerm_virtual_network_gateway_connection: {
+    arm: "Microsoft.Network/connections",
+    fold: ["virtual_network_gateway_id"],
+    edges: (i, h) => {
+      const gw = h.refs(i, ["virtual_network_gateway_id"])[0];
+      return gw ? h.refs(i, ["local_network_gateway_id", "peer_virtual_network_gateway_id", "express_route_circuit_id"]).map((t) => ({ from: gw, to: t, kind: "traffic" as const, label: connectionLabel(i) })) : [];
+    },
+  },
+
+  // ── Route Server (T3.3): a virtual hub of kind RouteServer; BGP connections fold into it as BGP edges to their peer ──
+  azurerm_route_server: { arm: "Microsoft.Network/virtualHubs", props: (i) => ({ sku: str(i.after.sku), asn: num(i.after.virtual_router_asn) }) },
+  azurerm_route_server_bgp_connection: {
+    arm: "Microsoft.Network/virtualHubs/bgpConnections",
+    fold: ["route_server_id"],
+    namePath: childPath("route_server_id"),
+    edges: (i, h) => {
+      const rs = h.refs(i, ["route_server_id"])[0];
+      const to = str(i.after.peer_ip) ? h.nodeByPrivateIp(str(i.after.peer_ip)!) : null;
+      return rs && to ? [{ from: rs, to: `node:${to}`, kind: "traffic" as const, label: `BGP ${num(i.after.peer_asn) ?? ""}`.trim() }] : [];
+    },
+  },
+
+  // ── Firewall and policies (T3.3) ──
+  azurerm_firewall: {
+    arm: "Microsoft.Network/azureFirewalls",
+    props: (i) => ({ tier: str(i.after.sku_tier), privateIp: staticIp(i.after.ip_configuration) }),
+    edges: (i, h) => h.refs(i, ["firewall_policy_id"]).map((p) => ({ from: i, to: p, kind: "dependency" as const, label: "policy" })),
+    // A secured hub's firewall lives in its virtual hub.
+    place: (i, h) => h.refs(i, ["virtual_hub"]).map((x) => h.home(x)).find((x): x is string => !!x) ?? null,
+  },
+  azurerm_firewall_policy: {
+    arm: "Microsoft.Network/firewallPolicies",
+    props: (i, h) => {
+      const n = h.referrers(i, ["azurerm_firewall_policy_rule_collection_group"], ["firewall_policy_id"]).length;
+      return { tier: str(i.after.sku), counts: n ? [`rule collection groups: ${n}`] : undefined };
+    },
+    edges: (i, h) => h.refs(i, ["base_policy_id"]).map((b) => ({ from: b, to: i, kind: "dependency" as const, label: "base policy" })),
+  },
+  azurerm_firewall_policy_rule_collection_group: { arm: "Microsoft.Network/firewallPolicies/ruleCollectionGroups", fold: ["firewall_policy_id"], namePath: childPath("firewall_policy_id") },
+
+  // ── Virtual WAN (T3.3): the hub is a group; its connections fold into it as edges to the spokes ──
+  azurerm_virtual_wan: { arm: "Microsoft.Network/virtualWans", props: (i) => ({ sku: str(i.after.type) }) },
+  azurerm_virtual_hub_connection: {
+    arm: "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections",
+    fold: ["virtual_hub_id"],
+    namePath: childPath("virtual_hub_id"),
+    edges: (i, h) => h.refs(i, ["virtual_hub_id"]).flatMap((hub) => h.refs(i, ["remote_virtual_network_id"]).map((v) => ({ from: hub, to: v, kind: "traffic" as const, label: "hub connection" }))),
+  },
+  azurerm_virtual_hub_routing_intent: { arm: "Microsoft.Network/virtualHubs/routingIntent", fold: ["virtual_hub_id"], namePath: childPath("virtual_hub_id") },
+
+  // ── Virtual Network Manager (T3.3): every child folds into the manager; members and connectivity as edges ──
+  azurerm_network_manager: {
+    arm: "Microsoft.Network/networkManagers",
+    props: (i) => ({ scopeAccess: strings(i.after.scope_accesses) }),
+  },
+  azurerm_network_manager_network_group: { arm: "Microsoft.Network/networkManagers/networkGroups", fold: avnmFold },
+  azurerm_network_manager_static_member: {
+    arm: "Microsoft.Network/networkManagers/networkGroups/staticMembers",
+    fold: avnmFold,
+    edges: (i, h) => {
+      const m = avnmManagerOf(i, h);
+      return m ? h.refs(i, ["target_virtual_network_id"]).map((v) => ({ from: m, to: v, kind: "dependency" as const, label: "member" })) : [];
+    },
+  },
+  azurerm_network_manager_connectivity_configuration: {
+    arm: "Microsoft.Network/networkManagers/connectivityConfigurations",
+    fold: avnmFold,
+    // Hub and spoke: the peerings AVNM makes, hub ↔ each member of the groups it applies to (one per pair).
+    edges: (i, h) => {
+      const hubs = h.refs(i, ["hub"]);
+      const members = h.refs(i, ["applies_to_group"]).flatMap((gr) => avnmMembers(gr, h));
+      return hubs.flatMap((hub) => members.filter((m) => m !== hub).map((m) => ({ from: hub, to: m, kind: "traffic" as const, label: "peering (AVNM)", undirected: true })));
+    },
+  },
+  azurerm_network_manager_security_admin_configuration: { arm: "Microsoft.Network/networkManagers/securityAdminConfigurations", fold: avnmFold },
+  azurerm_network_manager_admin_rule_collection: { arm: "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections", fold: avnmFold },
+  azurerm_network_manager_admin_rule: { arm: "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections/rules", fold: avnmFold },
+  azurerm_network_manager_deployment: { arm: "Microsoft.Network/networkManagers/commits", fold: avnmFold },
 
   // ── Diagnostics and identities (T3.2 labs; T3.6 extends) ──
   // A diagnostic setting folds into the resource it watches and is drawn as resource → workspace.

@@ -1,0 +1,1119 @@
+{
+ "_about": "T3.3 hybrid and hubs: Resource Graph rows for a running az700-36-s2s-vpn in slot 5 (10.66.192.0/18) with the hybrid types of labs 33, 34, 37, 38 and 39 grafted in. Shapes from Learn's REST references: virtualNetworkGateways (2024-05-01: sku, enableBgp, bgpSettings.asn, vpnType, vpnClientConfiguration.vpnClientAddressPool), localNetworkGateways (gatewayIpAddress, localNetworkAddressSpace, bgpSettings), connections (connectionType, connectionStatus, enableBgp, virtualNetworkGateway1, localNetworkGateway2), virtualHubs of kind RouteServer (virtualRouterAsn, virtualRouterIps; bgpConnections rows are (V)), azureFirewalls (ipConfigurations, managementIpConfiguration, firewallPolicy, virtualHub, hubIPAddresses), firewallPolicies (basePolicy, childPolicies, ruleCollectionGroups), virtualWans, virtualHubs (virtualWan, azureFirewall), a spoke's HV_ peering to the hub's Microsoft-managed VNet, networkManagers (networkManagerScopeAccesses) and an ANM_ peering. Fake subscription, TEST-NET public addresses.",
+ "rows": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-azure",
+   "name": "vnet-azure",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.66.192.0/20"
+     ]
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-azure/subnets/GatewaySubnet",
+      "name": "GatewaySubnet",
+      "properties": {
+       "provisioningState": "Succeeded",
+       "addressPrefix": "10.66.192.0/27"
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-azure/subnets/RouteServerSubnet",
+      "name": "RouteServerSubnet",
+      "properties": {
+       "provisioningState": "Succeeded",
+       "addressPrefix": "10.66.194.0/27"
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-azure/subnets/snet-nva",
+      "name": "snet-nva",
+      "properties": {
+       "provisioningState": "Succeeded",
+       "addressPrefix": "10.66.193.0/24"
+      }
+     }
+    ],
+    "virtualNetworkPeerings": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-onprem",
+   "name": "vnet-onprem",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.66.208.0/20"
+     ]
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-onprem/subnets/GatewaySubnet",
+      "name": "GatewaySubnet",
+      "properties": {
+       "provisioningState": "Succeeded",
+       "addressPrefix": "10.66.208.0/27"
+      }
+     }
+    ],
+    "virtualNetworkPeerings": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-azure",
+   "name": "vpngw-azure",
+   "type": "microsoft.network/virtualnetworkgateways",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "gatewayType": "Vpn",
+    "vpnType": "RouteBased",
+    "vpnGatewayGeneration": "Generation1",
+    "activeActive": false,
+    "sku": {
+     "name": "VpnGw1AZ",
+     "tier": "VpnGw1AZ",
+     "capacity": 2
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-azure/ipConfigurations/gwipconfig",
+      "name": "gwipconfig",
+      "properties": {
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-azure/subnets/GatewaySubnet"
+       },
+       "publicIPAddress": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-vpngw-azure"
+       }
+      }
+     }
+    ],
+    "enableBgp": true,
+    "bgpSettings": {
+     "asn": 65010,
+     "bgpPeeringAddress": "10.66.192.30",
+     "peerWeight": 0
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-vpngw-azure",
+   "name": "pip-vpngw-azure",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": [
+    "1",
+    "2",
+    "3"
+   ],
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.81",
+    "publicIPAllocationMethod": "Static",
+    "ipConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-azure/ipConfigurations/gwipconfig"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-onprem",
+   "name": "vpngw-onprem",
+   "type": "microsoft.network/virtualnetworkgateways",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "gatewayType": "Vpn",
+    "vpnType": "RouteBased",
+    "vpnGatewayGeneration": "Generation1",
+    "activeActive": false,
+    "sku": {
+     "name": "VpnGw1AZ",
+     "tier": "VpnGw1AZ",
+     "capacity": 2
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-onprem/ipConfigurations/gwipconfig",
+      "name": "gwipconfig",
+      "properties": {
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-onprem/subnets/GatewaySubnet"
+       },
+       "publicIPAddress": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-vpngw-onprem"
+       }
+      }
+     }
+    ],
+    "enableBgp": true,
+    "bgpSettings": {
+     "asn": 65020,
+     "bgpPeeringAddress": "10.66.208.30"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-vpngw-onprem",
+   "name": "pip-vpngw-onprem",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": [
+    "1",
+    "2",
+    "3"
+   ],
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.82",
+    "publicIPAllocationMethod": "Static",
+    "ipConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-onprem/ipConfigurations/gwipconfig"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/localNetworkGateways/lgw-onprem",
+   "name": "lgw-onprem",
+   "type": "microsoft.network/localnetworkgateways",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "gatewayIpAddress": "203.0.113.82",
+    "localNetworkAddressSpace": {
+     "addressPrefixes": [
+      "10.66.208.0/20"
+     ]
+    },
+    "bgpSettings": {
+     "asn": 65020,
+     "bgpPeeringAddress": "10.66.208.30"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/localNetworkGateways/lgw-azure",
+   "name": "lgw-azure",
+   "type": "microsoft.network/localnetworkgateways",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "gatewayIpAddress": "203.0.113.81",
+    "localNetworkAddressSpace": {
+     "addressPrefixes": [
+      "10.66.192.0/20"
+     ]
+    },
+    "bgpSettings": {
+     "asn": 65010,
+     "bgpPeeringAddress": "10.66.192.30"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/connections/cn-azure-to-onprem",
+   "name": "cn-azure-to-onprem",
+   "type": "microsoft.network/connections",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "connectionType": "IPsec",
+    "connectionProtocol": "IKEv2",
+    "connectionStatus": "Connected",
+    "enableBgp": true,
+    "routingWeight": 0,
+    "ingressBytesTransferred": 1024,
+    "egressBytesTransferred": 2048,
+    "virtualNetworkGateway1": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-azure"
+    },
+    "localNetworkGateway2": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/localNetworkGateways/lgw-onprem"
+    },
+    "ipsecPolicies": [
+     {
+      "ikeEncryption": "AES256",
+      "ikeIntegrity": "SHA256",
+      "dhGroup": "DHGroup14",
+      "ipsecEncryption": "GCMAES256",
+      "ipsecIntegrity": "GCMAES256",
+      "pfsGroup": "PFS14"
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/connections/cn-onprem-to-azure",
+   "name": "cn-onprem-to-azure",
+   "type": "microsoft.network/connections",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "connectionType": "IPsec",
+    "connectionStatus": "Connecting",
+    "enableBgp": true,
+    "virtualNetworkGateway1": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-onprem"
+    },
+    "localNetworkGateway2": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/localNetworkGateways/lgw-azure"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-p2s",
+   "name": "vnet-p2s",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.66.224.0/20"
+     ]
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-p2s/subnets/GatewaySubnet",
+      "name": "GatewaySubnet",
+      "properties": {
+       "provisioningState": "Succeeded",
+       "addressPrefix": "10.66.224.0/27"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-p2s",
+   "name": "vpngw-p2s",
+   "type": "microsoft.network/virtualnetworkgateways",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "gatewayType": "Vpn",
+    "vpnType": "RouteBased",
+    "vpnGatewayGeneration": "Generation1",
+    "activeActive": false,
+    "sku": {
+     "name": "VpnGw1AZ",
+     "tier": "VpnGw1AZ",
+     "capacity": 2
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-p2s/ipConfigurations/gwipconfig",
+      "name": "gwipconfig",
+      "properties": {
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-p2s/subnets/GatewaySubnet"
+       },
+       "publicIPAddress": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-vpngw-p2s"
+       }
+      }
+     }
+    ],
+    "enableBgp": false,
+    "vpnClientConfiguration": {
+     "vpnClientAddressPool": {
+      "addressPrefixes": [
+       "10.66.255.0/24"
+      ]
+     },
+     "vpnClientProtocols": [
+      "OpenVPN"
+     ],
+     "vpnAuthenticationTypes": [
+      "AAD"
+     ],
+     "aadTenant": "https://login.microsoftonline.com/11111111-1111-4111-8111-111111111111/",
+     "aadAudience": "c632b3df-fb67-4d84-bdcf-b95ad541b5c8"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-vpngw-p2s",
+   "name": "pip-vpngw-p2s",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": [
+    "1",
+    "2",
+    "3"
+   ],
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.83",
+    "publicIPAllocationMethod": "Static",
+    "ipConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworkGateways/vpngw-p2s/ipConfigurations/gwipconfig"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualHubs/rs-hub",
+   "name": "rs-hub",
+   "type": "microsoft.network/virtualhubs",
+   "kind": "RouteServer",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "sku": "Standard",
+    "virtualRouterAsn": 65515,
+    "virtualRouterIps": [
+     "10.66.194.4",
+     "10.66.194.5"
+    ],
+    "allowBranchToBranchTraffic": false,
+    "hubRoutingPreference": "ExpressRoute",
+    "routingState": "Provisioned"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-rs",
+   "name": "pip-rs",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.84",
+    "ipConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualHubs/rs-hub/ipConfigurations/ipconfig1"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualHubs/rs-hub/bgpConnections/bgp-nva",
+   "name": "bgp-nva",
+   "type": "microsoft.network/virtualhubs/bgpconnections",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "peerIp": "10.66.193.4",
+    "peerAsn": 65010,
+    "connectionState": "Connected"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/networkInterfaces/nic-vm-nva",
+   "name": "nic-vm-nva",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Compute/virtualMachines/vm-nva"
+    },
+    "enableIPForwarding": true,
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/networkInterfaces/nic-vm-nva/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.66.193.4",
+       "privateIPAllocationMethod": "Static",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-azure/subnets/snet-nva"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Compute/virtualMachines/vm-nva",
+   "name": "vm-nva",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-hub",
+   "name": "vnet-hub",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.66.230.0/24"
+     ]
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet",
+      "name": "AzureFirewallSubnet",
+      "properties": {
+       "provisioningState": "Succeeded",
+       "addressPrefix": "10.66.230.0/26"
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallManagementSubnet",
+      "name": "AzureFirewallManagementSubnet",
+      "properties": {
+       "provisioningState": "Succeeded",
+       "addressPrefix": "10.66.230.64/26"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/azureFirewalls/afw-hub",
+   "name": "afw-hub",
+   "type": "microsoft.network/azurefirewalls",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "sku": {
+     "name": "AZFW_VNet",
+     "tier": "Basic"
+    },
+    "threatIntelMode": "Alert",
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/azureFirewalls/afw-hub/azureFirewallIpConfigurations/ipconfig-data",
+      "name": "ipconfig-data",
+      "properties": {
+       "privateIPAddress": "10.66.230.4",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallSubnet"
+       },
+       "publicIPAddress": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-afw"
+       }
+      }
+     }
+    ],
+    "managementIpConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/azureFirewalls/afw-hub/azureFirewallIpConfigurations/ipconfig-mgmt",
+     "name": "ipconfig-mgmt",
+     "properties": {
+      "subnet": {
+       "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/AzureFirewallManagementSubnet"
+      },
+      "publicIPAddress": {
+       "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-afw-mgmt"
+      }
+     }
+    },
+    "firewallPolicy": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/firewallPolicies/fwp-hub"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-afw",
+   "name": "pip-afw",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": {
+    "name": "Standard"
+   },
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.85",
+    "ipConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/azureFirewalls/afw-hub/azureFirewallIpConfigurations/ipconfig-data"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/publicIPAddresses/pip-afw-mgmt",
+   "name": "pip-afw-mgmt",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": {
+    "name": "Standard"
+   },
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.86",
+    "ipConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/azureFirewalls/afw-hub/azureFirewallIpConfigurations/ipconfig-mgmt"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/firewallPolicies/fwp-base",
+   "name": "fwp-base",
+   "type": "microsoft.network/firewallpolicies",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "sku": {
+     "tier": "Basic"
+    },
+    "threatIntelMode": "Alert",
+    "childPolicies": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/firewallPolicies/fwp-hub"
+     }
+    ],
+    "ruleCollectionGroups": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/firewallPolicies/fwp-base/ruleCollectionGroups/rcg-base"
+     }
+    ],
+    "firewalls": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/firewallPolicies/fwp-hub",
+   "name": "fwp-hub",
+   "type": "microsoft.network/firewallpolicies",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "sku": {
+     "tier": "Basic"
+    },
+    "basePolicy": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/firewallPolicies/fwp-base"
+    },
+    "ruleCollectionGroups": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/firewallPolicies/fwp-hub/ruleCollectionGroups/rcg-hub"
+     }
+    ],
+    "firewalls": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/azureFirewalls/afw-hub"
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualWans/vwan-lab",
+   "name": "vwan-lab",
+   "type": "microsoft.network/virtualwans",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "type": "Standard",
+    "allowBranchToBranchTraffic": true,
+    "virtualHubs": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualHubs/vhub-lab"
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualHubs/vhub-lab",
+   "name": "vhub-lab",
+   "type": "microsoft.network/virtualhubs",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressPrefix": "10.66.240.0/23",
+    "sku": "Standard",
+    "virtualWan": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualWans/vwan-lab"
+    },
+    "azureFirewall": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/azureFirewalls/afw-vhub"
+    },
+    "routingState": "Provisioned",
+    "virtualRouterAsn": 65515,
+    "virtualRouterIps": [
+     "10.66.240.68",
+     "10.66.240.69"
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/azureFirewalls/afw-vhub",
+   "name": "afw-vhub",
+   "type": "microsoft.network/azurefirewalls",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "sku": {
+     "name": "AZFW_Hub",
+     "tier": "Basic"
+    },
+    "virtualHub": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualHubs/vhub-lab"
+    },
+    "hubIPAddresses": {
+     "privateIPAddress": "10.66.240.132",
+     "publicIPs": {
+      "count": 1,
+      "addresses": [
+       {
+        "address": "203.0.113.87"
+       }
+      ]
+     }
+    },
+    "firewallPolicy": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/firewallPolicies/fwp-hub"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-spoke1",
+   "name": "vnet-spoke1",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.66.208.0/24"
+     ]
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-spoke1/subnets/snet-workload",
+      "name": "snet-workload",
+      "properties": {
+       "provisioningState": "Succeeded",
+       "addressPrefix": "10.66.208.0/25"
+      }
+     }
+    ],
+    "virtualNetworkPeerings": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-spoke1/virtualNetworkPeerings/RemoteVnetToHubPeering_8e2d6a1c-3b4f-4c5d-9e6f-7a8b9c0d1e2f",
+      "name": "RemoteVnetToHubPeering_8e2d6a1c-3b4f-4c5d-9e6f-7a8b9c0d1e2f",
+      "properties": {
+       "peeringState": "Connected",
+       "peeringSyncLevel": "FullyInSync",
+       "allowForwardedTraffic": true,
+       "remoteVirtualNetwork": {
+        "id": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/RG_vhub-lab_8e2d6a1c-3b4f-4c5d-9e6f-7a8b9c0d1e2f/providers/Microsoft.Network/virtualNetworks/HV_vhub-lab_8e2d6a1c-3b4f-4c5d-9e6f-7a8b9c0d1e2f"
+       },
+       "useRemoteGateways": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/networkManagers/avnm-l36rt7xy",
+   "name": "avnm-l36rt7xy",
+   "type": "microsoft.network/networkmanagers",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "description": "Lab 33: manages only this lab's spokes (static members).",
+    "networkManagerScopeAccesses": [
+     "Connectivity",
+     "SecurityAdmin"
+    ],
+    "networkManagerScopes": {
+     "subscriptions": [
+      "/subscriptions/00000000-0000-4000-8000-000000000000"
+     ],
+     "managementGroups": []
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-spoke2",
+   "name": "vnet-spoke2",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null,
+   "tags": {
+    "lab": "az700-36-s2s-vpn",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.66.209.0/24"
+     ]
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-spoke2/subnets/snet-workload",
+      "name": "snet-workload",
+      "properties": {
+       "provisioningState": "Succeeded",
+       "addressPrefix": "10.66.209.0/25"
+      }
+     }
+    ],
+    "virtualNetworkPeerings": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-spoke2/virtualNetworkPeerings/ANM_A1B2C3D4E5F6_vnet-azure",
+      "name": "ANM_A1B2C3D4E5F6_vnet-azure",
+      "properties": {
+       "peeringState": "Connected",
+       "peeringSyncLevel": "FullyInSync",
+       "allowForwardedTraffic": true,
+       "remoteVirtualNetwork": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-azure"
+       }
+      }
+     }
+    ]
+   }
+  }
+ ]
+}
