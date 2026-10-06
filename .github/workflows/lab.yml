@@ -369,6 +369,8 @@ jobs:
         id: unblock
         if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && (inputs.action == 'destroy' || inputs.action == 'test')
         continue-on-error: true
+        # A backstop only: the script caps its own waits at LAB_JOB_DEADLINE less the destroy's and safety net's reserve.
+        timeout-minutes: 60
         env:
           ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}

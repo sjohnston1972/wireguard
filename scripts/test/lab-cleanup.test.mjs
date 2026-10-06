@@ -9,7 +9,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -286,6 +286,70 @@ test("unblock empties a virtual hub (routing intent, connections, gateways, fire
   assert.match(s.stderr, /::warning::unblock: vpngw-hub is still there after 90 s/);
   assert.ok(slow.calls().filter((c) => c === "sleep 15").length <= 6);
   slow.cleanup();
+});
+
+// Review fix 2: the AVNM wait (600 s), the hub gateway wait (1800 s) and every per-item wait (600 s) run one after
+// another, so each is capped at the time left before LAB_JOB_DEADLINE less the reserve the steps after unblock need
+// (420 s plus 60 s per minute of LAB_DESTROY_MIN, default 10). The fake sleep takes no time, so the caps are exact.
+test("unblock caps every wait at the job's deadline less the reserve the destroy and safety net need", { skip }, () => {
+  const now = Math.floor(Date.now() / 1000);
+  // AVNM still deployed, a hub gateway and a firewall that never go: three waits that would take 600 + 1800 + 600 s.
+  const stuck = () =>
+    world([
+      ONE_GROUP,
+      { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` },
+      { match: "^rest --method post --url \\S+/listDeploymentStatus\\?", out: "uksouth\tConnectivity\tDeployed\t1" },
+      { match: "^rest --method get --url \\S+/virtualHubs\\?", out: HUB },
+      { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/vpnGateways\\?`, out: `${HUB_VPN}\t${HUB}` },
+      { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/azureFirewalls\\?`, out: `${FW_VNET}\t` },
+      { match: "^rest --method get --url \\S+\\?api-version=\\S+ --query id -o tsv$", out: "still-there" },
+    ]);
+  const sleeps = (w) => w.calls().filter((c) => c.startsWith("sleep ")).length;
+  // A deadline far off: the waits' own settings bound them (2 polls each at 30 s).
+  const far = stuck();
+  const h = far.run("infra/ci/lab-unblock.sh", [ID], { LAB_JOB_DEADLINE: String(now + 7200), LAB_UNBLOCK_AVNM_WAIT_SECONDS: "30", LAB_UNBLOCK_VWAN_WAIT_SECONDS: "30", LAB_UNBLOCK_NET_WAIT_SECONDS: "30" });
+  assert.equal(h.status, 0, h.out);
+  assert.equal(sleeps(far), 6);
+  assert.match(h.stderr, /avnm-l06: configurations still deployed after 30 s;/);
+  far.cleanup();
+  // 1080 s left before the deadline: 1020 s of it (420 + 60 × 10) is the reserve, so each wait gets at most 60 s.
+  const near = stuck();
+  const n = near.run("infra/ci/lab-unblock.sh", [ID], { LAB_JOB_DEADLINE: String(now + 1080) });
+  assert.equal(n.status, 0, n.out);
+  assert.ok(sleeps(near) <= 3 * 4 && sleeps(near) >= 3, `slept ${sleeps(near)} times`);
+  assert.match(n.stderr, /::warning::unblock: avnm-l06: configurations still deployed after \d+ s \(the job's deadline\)/);
+  assert.match(n.stderr, /::warning::unblock: vpngw-hub is still there after \d+ s \(the job's deadline\)/);
+  assert.match(n.stdout, /unblock: done/);
+  near.cleanup();
+  // LAB_DESTROY_MIN sets the reserve: 30 minutes of destroy keeps 420 + 1800 s back, so 1080 s left is no wait at all.
+  const slowDestroy = stuck();
+  slowDestroy.run("infra/ci/lab-unblock.sh", [ID], { LAB_JOB_DEADLINE: String(now + 1080), LAB_DESTROY_MIN: "30" });
+  assert.equal(sleeps(slowDestroy), 0);
+  slowDestroy.cleanup();
+  // A deadline already past: every resource is still asked about once, nothing is waited for, and the run ends.
+  const late = stuck();
+  const l = late.run("infra/ci/lab-unblock.sh", [ID], { LAB_JOB_DEADLINE: String(now - 60) });
+  assert.equal(l.status, 0, l.out);
+  assert.equal(sleeps(late), 0);
+  assert.ok(late.calls().some((c) => c.startsWith(`az rest --method delete --url ${FW_VNET}?`)), "the firewall delete is still sent");
+  assert.match(l.stdout, /unblock: done/);
+  late.cleanup();
+  // LAB_UNBLOCK_UNTIL (the safety net's retry) caps them too, when it is sooner than the deadline.
+  const until = stuck();
+  until.run("infra/ci/lab-unblock.sh", [ID], { LAB_JOB_DEADLINE: String(now + 7200), LAB_UNBLOCK_UNTIL: String(now + 30) });
+  assert.ok(sleeps(until) <= 3 * 2, `slept ${sleeps(until)} times`);
+  until.cleanup();
+  // The vault and Site Recovery waits are capped the same way.
+  const src = readFileSync(join(REPO, "infra", "ci", "lab-unblock.sh"), "utf8");
+  for (const v of ["VAULT_WAIT", "ASR_WAIT", "ASR_CLEANUP_WAIT", "AVNM_WAIT"]) assert.match(src, new RegExp(`capped "\\$${v}"`), `${v} is capped`);
+  assert.match(src, /gone_wait\(\) \{[^}]*capped "\$3"/, "every per-item wait is capped");
+});
+
+test("lab.yml's Unblock step has its own timeout as a backstop", () => {
+  const wf = readFileSync(join(REPO, ".github", "workflows", "lab.yml"), "utf8");
+  const step = /- name: Unblock\n([\s\S]*?)\n\n/.exec(wf.replace(/\r\n/g, "\n"))?.[1] ?? "";
+  const t = Number(/^\s*timeout-minutes: (\d+)$/m.exec(step)?.[1]);
+  assert.ok(t >= 30 && t < 150, `Unblock timeout-minutes ${t}`);
 });
 
 test("unblock deletes Route Server peers, firewalls before policies, resolver links before rulesets, global load balancers first", { skip }, () => {
@@ -621,6 +685,33 @@ test("safety net: a slow delete is waited for only until the job's deadline, the
   hand.run("infra/ci/lab-safety-net.sh", [ID], { LAB_DELETE_WAIT_SECONDS: "120" });
   assert.ok(sleptFor(hand.calls()) <= 120);
   for (const x of [w, late, hand]) x.cleanup();
+});
+
+test("safety net: the retry's unblock gets every wait as min(its default, the time left), and an end time", { skip }, () => {
+  const now = Math.floor(Date.now() / 1000);
+  const dir = mkdtempSync(join(tmpdir(), "unblock-env-"));
+  const seen = join(dir, "env.txt");
+  const fake = join(dir, "unblock.sh");
+  writeFileSync(fake, `env | grep -E '^LAB_UNBLOCK_' | sort > "${seen.replace(/\\/g, "/")}"\n`);
+  const waits = (extra) => {
+    const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL([`${RG}\tSucceeded`, ""])]);
+    const r = w.run("infra/ci/lab-safety-net.sh", [ID], { LAB_UNBLOCK_SCRIPT: fake.replace(/\\/g, "/"), ...extra });
+    assert.equal(r.status, 0, r.out);
+    w.cleanup();
+    return Object.fromEntries(readFileSync(seen, "utf8").trim().split("\n").map((l) => l.split("=")));
+  };
+  // 300 s of polling left (720 s to the deadline, 420 s kept back): a third of it, 100 s, for each wait.
+  const e = waits({ LAB_JOB_DEADLINE: String(now + 720) });
+  for (const k of ["VAULT", "ASR", "ASR_CLEANUP", "AVNM", "VWAN", "NET"]) {
+    const v = Number(e[`LAB_UNBLOCK_${k}_WAIT_SECONDS`]);
+    assert.ok(v <= 100 && v >= 90, `LAB_UNBLOCK_${k}_WAIT_SECONDS=${v}`);
+  }
+  const until = Number(e.LAB_UNBLOCK_UNTIL);
+  assert.ok(until >= now + 90 && until <= now + 101, `LAB_UNBLOCK_UNTIL ${until - now} s from now`);
+  // Plenty of time: each wait keeps its own default (or the setting it was given).
+  const big = waits({ LAB_DELETE_WAIT_SECONDS: "36000", LAB_UNBLOCK_NET_WAIT_SECONDS: "45" });
+  assert.deepEqual([big.LAB_UNBLOCK_VAULT_WAIT_SECONDS, big.LAB_UNBLOCK_ASR_WAIT_SECONDS, big.LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS, big.LAB_UNBLOCK_AVNM_WAIT_SECONDS, big.LAB_UNBLOCK_VWAN_WAIT_SECONDS, big.LAB_UNBLOCK_NET_WAIT_SECONDS], ["300", "900", "600", "600", "1800", "45"]);
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test("safety net: a group list that fails while polling is not read as gone", { skip }, () => {

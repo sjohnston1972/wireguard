@@ -465,11 +465,24 @@ for ((n = 0; ${#pending[@]} > 0 && n < polls; n++)); do
   if [ "${#failed[@]}" -gt 0 ]; then
     warn "the delete of ${failed[*]} failed (the group is back, not Deleting); unblocking again and retrying"
     if [ -r "$UNBLOCK" ]; then
+      # A third of the polling time left, for unblock as a whole (LAB_UNBLOCK_UNTIL) and for each of its waits
+      # (min(the wait's setting or default, wait_left)): its waits run one after another, so each is capped.
       wait_left=$(((end - $(date +%s)) / 3))
       [ "$wait_left" -lt 0 ] && wait_left=0
-      vault_wait="$(num "${LAB_UNBLOCK_VAULT_WAIT_SECONDS:-}" 300)"
-      [ "$wait_left" -lt "$vault_wait" ] && vault_wait="$wait_left"
-      LAB_UNBLOCK_VAULT_WAIT_SECONDS="$vault_wait" bash "$UNBLOCK" "$LAB_ID" || warn "unblock did not finish cleanly"
+      at_most() {
+        local w
+        w="$(num "$1" "$2")"
+        [ "$wait_left" -lt "$w" ] && w="$wait_left"
+        echo "$w"
+      }
+      LAB_UNBLOCK_UNTIL=$(($(date +%s) + wait_left)) \
+        LAB_UNBLOCK_VAULT_WAIT_SECONDS="$(at_most "${LAB_UNBLOCK_VAULT_WAIT_SECONDS:-}" 300)" \
+        LAB_UNBLOCK_ASR_WAIT_SECONDS="$(at_most "${LAB_UNBLOCK_ASR_WAIT_SECONDS:-}" 900)" \
+        LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS="$(at_most "${LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS:-}" 600)" \
+        LAB_UNBLOCK_AVNM_WAIT_SECONDS="$(at_most "${LAB_UNBLOCK_AVNM_WAIT_SECONDS:-}" 600)" \
+        LAB_UNBLOCK_VWAN_WAIT_SECONDS="$(at_most "${LAB_UNBLOCK_VWAN_WAIT_SECONDS:-}" 1800)" \
+        LAB_UNBLOCK_NET_WAIT_SECONDS="$(at_most "${LAB_UNBLOCK_NET_WAIT_SECONDS:-}" 600)" \
+        bash "$UNBLOCK" "$LAB_ID" || warn "unblock did not finish cleanly"
     fi
     for g in "${failed[@]}"; do
       tries["$g"]=$((tries[$g] + 1))

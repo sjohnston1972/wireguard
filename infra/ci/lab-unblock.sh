@@ -46,6 +46,10 @@
 #      extension (nothing is installed); each az rest delete is read back
 #      until gone (LAB_UNBLOCK_NET_WAIT_SECONDS, default 600)
 #
+# Every wait above is also capped at the time left before LAB_JOB_DEADLINE less
+# the reserve the later steps need (or LAB_UNBLOCK_UNTIL, when sooner), so
+# serial waits never run the job out of time (AZ-700 review fix 2).
+#
 # Never fails the run: every refusal is a ::warning:: and the destroy, the
 # safety net and the clean check still run after it. Idempotent: a second run
 # finds nothing to do. Only the lab's own groups are ever listed into.
@@ -70,6 +74,31 @@ owns_rg() {
   local n="${1,,}"
   [[ "$n" == "$RG" || "$n" == "$RG"-* ]]
 }
+# The waits below run one after another, so each is capped at the time left before UNTIL: LAB_JOB_DEADLINE (Parse
+# payload: the job's start plus its timeout) less the reserve the steps after this one need (the destroy, the safety
+# net, Verify clean, Back up state, the report: 420 s, the safety net's own reserve, plus 60 s per minute of
+# LAB_DESTROY_MIN, default 10), or LAB_UNBLOCK_UNTIL (an epoch second; the safety net's retry passes it) when that is
+# sooner. With neither (a run by hand), each wait's own setting alone bounds it.
+UNTIL=""
+if [[ "${LAB_JOB_DEADLINE:-}" =~ ^[0-9]+$ ]]; then
+  destroy_min=10
+  [[ "${LAB_DESTROY_MIN:-}" =~ ^[0-9]+$ ]] && destroy_min="$LAB_DESTROY_MIN"
+  UNTIL=$((LAB_JOB_DEADLINE - 420 - 60 * destroy_min))
+fi
+if [[ "${LAB_UNBLOCK_UNTIL:-}" =~ ^[0-9]+$ ]] && { [ -z "$UNTIL" ] || [ "$LAB_UNBLOCK_UNTIL" -lt "$UNTIL" ]; }; then UNTIL="$LAB_UNBLOCK_UNTIL"; fi
+# capped <seconds>: the wait, no longer than the time left before UNTIL (never below 0).
+capped() {
+  local w="$1" left
+  [ -n "$UNTIL" ] || { echo "$w"; return; }
+  left=$((UNTIL - $(date +%s)))
+  [ "$left" -lt 0 ] && left=0
+  [ "$left" -lt "$w" ] && w="$left"
+  echo "$w"
+}
+# waited_note <capped seconds> <setting>: " (the job's deadline)" when the deadline, not the setting, set the wait.
+waited_note() { [ "$1" -lt "$2" ] && echo " (the job's deadline)"; }
+# past_until: true once UNTIL has passed (a wait's polls take real time too).
+past_until() { [ -n "$UNTIL" ] && [ "$(date +%s)" -ge "$UNTIL" ]; }
 az_login() {
   [ -n "${ARM_CLIENT_ID:-}" ] || return 0
   AZURE_CONFIG_DIR="$(mktemp -d)"
@@ -252,7 +281,8 @@ for g in "${groups[@]}"; do
     # Wait (bounded) until the vault lists no items. A list that fails says nothing
     # about the items: it is never "none left", and if the last try fails too the
     # vault is unverified (a warning; the run still goes on).
-    tries=$(((VAULT_WAIT + 14) / 15))
+    vault_wait="$(capped "$VAULT_WAIT")"
+    tries=$(((vault_wait + 14) / 15))
     for ((n = 0; ; n++)); do
       if left="$(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].id" -o tsv)"; then
         listed=true
@@ -264,9 +294,9 @@ for g in "${groups[@]}"; do
         listed=false
         warn "$v: could not list backup items, so whether any are left is not known"
       fi
-      if [ "$n" -ge "$tries" ]; then
+      if [ "$n" -ge "$tries" ] || past_until; then
         if [ "$listed" = true ]; then
-          warn "$v: $(grep -c . <<<"$left") backup item(s) still listed after $VAULT_WAIT s; the destroy goes ahead and the safety net tries again"
+          warn "$v: $(grep -c . <<<"$left") backup item(s) still listed after $vault_wait s$(waited_note "$vault_wait" "$VAULT_WAIT"); the destroy goes ahead and the safety net tries again"
         else
           UNVERIFIED+=("$v backup items")
         fi
@@ -311,7 +341,9 @@ asr_being_removed() {
 # is None, empty or MarkedForDeletion. A read that fails is not "finished"; a wait that runs out
 # is a warning (remove is still sent, and the vault wait sends it again).
 asr_cleanup_wait() {
-  local tries=$(((ASR_CLEANUP_WAIT + 14) / 15)) n state
+  local wait n state tries
+  wait="$(capped "$ASR_CLEANUP_WAIT")"
+  tries=$(((wait + 14) / 15))
   for ((n = 0; ; n++)); do
     if state="$(azq rest --method get --url "${2}?$ASR_API" --query properties.testFailoverState -o tsv)"; then
       case "${state:-None}" in
@@ -321,8 +353,8 @@ asr_cleanup_wait() {
           ;;
       esac
     fi
-    if [ "$n" -ge "$tries" ]; then
-      warn "$1: the test failover cleanup of ${2##*/} had not finished after $ASR_CLEANUP_WAIT s; replication removal is tried anyway"
+    if [ "$n" -ge "$tries" ] || past_until; then
+      warn "$1: the test failover cleanup of ${2##*/} had not finished after $wait s$(waited_note "$wait" "$ASR_CLEANUP_WAIT"); replication removal is tried anyway"
       return 0
     fi
     sleep 15
@@ -356,7 +388,8 @@ for g in "${groups[@]}"; do
     # item) for an item still listed that is not already being removed: a remove posted
     # while a cleanup still ran is refused, and nothing else would send it again.
     declare -A resent=()
-    tries=$(((ASR_WAIT + 14) / 15))
+    asr_wait="$(capped "$ASR_WAIT")"
+    tries=$(((asr_wait + 14) / 15))
     for ((n = 0; ; n++)); do
       if left="$(asr_list "$g" "$v" replicationProtectedItems "value[].[id, properties.currentScenario.scenarioName, properties.protectionState]")"; then
         listed=true
@@ -377,9 +410,9 @@ for g in "${groups[@]}"; do
         listed=false
         warn "$v: could not list replicated items, so whether any are left is not known"
       fi
-      if [ "$n" -ge "$tries" ]; then
+      if [ "$n" -ge "$tries" ] || past_until; then
         if [ "$listed" = true ]; then
-          warn "$v: $(grep -c . <<<"$left") replicated item(s) still listed after $ASR_WAIT s; the destroy goes ahead and the safety net tries again"
+          warn "$v: $(grep -c . <<<"$left") replicated item(s) still listed after $asr_wait s$(waited_note "$asr_wait" "$ASR_WAIT"); the destroy goes ahead and the safety net tries again"
         else
           UNVERIFIED+=("$v replicated items")
         fi
@@ -457,7 +490,8 @@ net_ids() { azq rest --method get --url "/subscriptions/{subscriptionId}/resourc
 # gone_wait <id> <api> <seconds>: read the resource back every 15 s until Azure says it is not found. A read that
 # fails for any other reason is not "gone"; at the end, what is still there is a warning.
 gone_wait() {
-  local id="$1" api="$2" wait="$3" n err rc tries
+  local id="$1" api="$2" wait n err rc tries
+  wait="$(capped "$3")"
   tries=$(((wait + 14) / 15))
   err="$(mktemp)"
   for ((n = 0; ; n++)); do
@@ -467,9 +501,9 @@ gone_wait() {
       rm -f "$err"
       return 0
     fi
-    if [ "$n" -ge "$tries" ]; then
+    if [ "$n" -ge "$tries" ] || past_until; then
       rm -f "$err"
-      warn "${id##*/} is still there after $wait s; the destroy goes ahead and the safety net tries again"
+      warn "${id##*/} is still there after $wait s$(waited_note "$wait" "$3"); the destroy goes ahead and the safety net tries again"
       return 1
     fi
     sleep 15
@@ -520,7 +554,8 @@ for g in "${groups[@]}"; do
         echo "unblock: $name: deployed None for $type in ${targets[*]}"
       else warn "$name: could not deploy None for $type in ${targets[*]}"; fi
     done
-    tries=$(((AVNM_WAIT + 14) / 15))
+    avnm_wait="$(capped "$AVNM_WAIT")"
+    tries=$(((avnm_wait + 14) / 15))
     for ((n = 0; ; n++)); do
       if status="$(status_of)"; then
         listed=true
@@ -533,8 +568,8 @@ for g in "${groups[@]}"; do
         listed=false
         warn "$name: could not read what it has deployed, so whether anything is left is not known"
       fi
-      if [ "$n" -ge "$tries" ]; then
-        if [ "$listed" = true ]; then warn "$name: configurations still deployed after $AVNM_WAIT s; the destroy goes ahead and the safety net tries again"; else UNVERIFIED+=("$name deployments"); fi
+      if [ "$n" -ge "$tries" ] || past_until; then
+        if [ "$listed" = true ]; then warn "$name: configurations still deployed after $avnm_wait s$(waited_note "$avnm_wait" "$AVNM_WAIT"); the destroy goes ahead and the safety net tries again"; else UNVERIFIED+=("$name deployments"); fi
         break
       fi
       sleep 15
