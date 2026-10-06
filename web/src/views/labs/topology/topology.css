@@ -1,0 +1,27 @@
+/* The lab diagram (lab topology spec §9.2). Tokens only; light and dark follow the app theme. */
+.topo-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.topo-canvas--list {
+  overflow: auto;
+}
+.topo-canvas__note {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-tile);
+  color: var(--text-secondary);
+}
+.topo-canvas__link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--blue-bright);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}

@@ -17,6 +17,8 @@ export interface ListViewProps {
   onSelect?: (id: string | null) => void;
   /** While the session deploys, missing reads "Not deployed yet". */
   deploying?: boolean;
+  /** Highlights matches by name, kind word and prop values. */
+  search?: string;
 }
 
 const order = (a: TopoNode, b: TopoNode) => KINDS[a.kind].order - KINDS[b.kind].order || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
