@@ -21,6 +21,8 @@ import {
 // Dev-only component gallery. `import.meta.env.DEV` is a build-time constant, so
 // production builds drop both the lazy import and the route.
 const Gallery = import.meta.env.DEV ? lazy(() => import("@/gallery")) : null;
+// Dev-only: any lab's planned diagram in each canvas variant (lab topology ruling 26); dropped from builds the same way.
+const TopologyGallery = import.meta.env.DEV ? lazy(() => import("@/topologyGallery")) : null;
 
 /**
  * The route table, inside whatever data router the caller provides (the app
@@ -41,6 +43,16 @@ export function AppRoutes() {
             }
           />
         )}
+        {TopologyGallery && (
+          <Route
+            path="__topology/:id"
+            element={
+              <Suspense fallback={null}>
+                <TopologyGallery />
+              </Suspense>
+            }
+          />
+        )}
         <Route index element={<OverviewPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="clients/:id" element={<ClientDetailPage />} />
@@ -55,6 +67,8 @@ export function AppRoutes() {
         <Route path="labs" element={<LabsPage />} />
         <Route path="labs/history" element={<LabsPage />} />
         <Route path="labs/:id" element={<LabsPage />} />
+        {/* The lab's diagram, full screen (lab topology spec §9.1): the same lazy page, which draws it. */}
+        <Route path="labs/:id/diagram" element={<LabsPage />} />
         <Route path="settings/:section?" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

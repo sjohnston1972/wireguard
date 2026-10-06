@@ -1,0 +1,42 @@
+/* The diagram's List view (T0 stub; T1 finishes it). Tokens only. */
+.topo-list,
+.topo-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.topo-list ul {
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+}
+.topo-list__item {
+  cursor: default;
+}
+.topo-list__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  padding: 2px 4px;
+  color: var(--text-primary);
+}
+.topo-list__item[aria-selected="true"] > .topo-list__row {
+  background: var(--blue-fill);
+  border-radius: var(--radius-control);
+}
+.topo-list__kind {
+  color: var(--text-muted);
+}
+.topo-list__health--ok {
+  color: var(--green);
+}
+.topo-list__health--warn {
+  color: var(--amber);
+}
+.topo-list__health--bad {
+  color: var(--red);
+}
+.topo-list__health--unknown,
+.topo-list__badge {
+  color: var(--text-secondary);
+}
