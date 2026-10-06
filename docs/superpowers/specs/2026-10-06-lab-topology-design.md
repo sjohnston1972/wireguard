@@ -433,7 +433,11 @@ export interface LabTopologyResponse {
 | unlisted | planned only, not `liveVisible` or `scope: "outside"` | ghost card **Not listed by the live view** |
 
 While the session is deploying, missing nodes are expected: their badge reads **Not deployed yet**. Edges follow their nodes
-(a ghost's edges are ghost edges). The **Live / Planned** toggle shows the live view (default) or the planned graph rebased to
+(a ghost's edges are ghost edges). A planned edge between two live nodes that the live view draws nothing between (a child
+or link Resource Graph does not return: Front Door origins, hub and BGP connections, forwarding rules, failover groups, DNS
+zone groups, AVNM members, backup items, DCR associations, diagnostic settings) is a ghost edge marked **Not listed by the
+live view**, never "not deployed". The live query also returns the lab's groups' own rows (`resourcecontainers`, same
+request), so an empty group is drawn. The **Live / Planned** toggle shows the live view (default) or the planned graph rebased to
 the session's slot (ruling 23).
 
 ## 8. Layout and saved arrangements

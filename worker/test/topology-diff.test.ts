@@ -88,6 +88,22 @@ describe("mergeForView", () => {
     expect(g.edges).toEqual([expect.objectContaining({ from: `${L}/providers/microsoft.compute/virtualmachines/vm-web`, to: "tf:vm-gone", label: "TCP 80→80" })]);
   });
 
+  it("a planned edge between two live nodes that the live view does not draw (a child Resource Graph does not return) is a ghost edge 'Not listed by the live view', never dropped", () => {
+    const VM = `${L}/providers/microsoft.compute/virtualmachines/vm-web`;
+    const NSG = `${L}/providers/microsoft.network/networksecuritygroups/nsg-handmade`;
+    const p2 = graph("planned", [...planned.nodes, node("tf:nsg", "microsoft.network/networksecuritygroups/nsg-handmade", "nsg", { parent: "tf:rg", scope: "lab" })], [
+      ...planned.edges,
+      { id: "e2", from: "tf:vm-web", to: "tf:nsg", kind: "dependency", label: "member", via: "tf:azurerm_network_manager_static_member.x" },
+      { id: "e3", from: "tf:snet", to: "tf:vm-web", kind: "traffic", label: "0.0.0.0/0" },
+    ]);
+    // The live view draws the subnet → VM edge itself (any label, either way round), so e3 is not repeated.
+    const l2 = graph("live", live.nodes, [{ id: "live1", from: VM, to: `${L}/providers/microsoft.network/virtualnetworks/vnet-lab/subnets/snet-web`, kind: "traffic", label: "next hop" }]);
+    const m = mergeForView(p2, l2);
+    expect(m.graph.edges.filter((e) => e.id === "ghost:e2")).toEqual([{ id: "ghost:e2", from: VM, to: NSG, kind: "dependency", label: "member", via: "tf:azurerm_network_manager_static_member.x", state: { tone: "unknown", word: "Not listed by the live view" } }]);
+    expect(m.graph.edges.filter((e) => e.id === "ghost:e3")).toEqual([]);
+    expect(m.graph.edges.find((e) => e.id === "live1")).toBeDefined();
+  });
+
   it("a ghost whose planned parent is also missing keeps that parent as a ghost", () => {
     const p2 = graph("planned", [...planned.nodes, node("tf:snet2", "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-db", "subnet", { parent: "tf:vnet" }), node("tf:vm-db", "microsoft.compute/virtualmachines/vm-db", "vm", { parent: "tf:snet2", scope: "lab" })]);
     const m = mergeForView(p2, live);

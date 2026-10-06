@@ -84,12 +84,18 @@ export function mergeForView(planned: TopologyGraph, live: TopologyGraph, opts: 
   }
   const ghostIds = new Set(ghosts.map((n) => n.id));
   const edges = new Map<string, TopoEdge>(live.edges.map((e) => [e.id, e]));
+  const pair = (kind: string, a: string, b: string) => `${kind}|${a < b ? `${a}|${b}` : `${b}|${a}`}`;
+  const livePairs = new Set(live.edges.map((e) => pair(e.kind, e.from, e.to)));
   for (const e of planned.edges) {
     const from = mapped(e.from);
     const to = mapped(e.to);
-    if (!from || !to || (!ghostIds.has(from) && !ghostIds.has(to))) continue;
+    if (!from || !to || from === to) continue;
     const id = `ghost:${e.id}`;
-    edges.set(id, { ...e, id, from, to });
+    if (ghostIds.has(from) || ghostIds.has(to)) edges.set(id, { ...e, id, from, to });
+    // Both ends live but the live view draws nothing between them: a child or link Resource Graph does not return
+    // (Front Door origins, hub and BGP connections, forwarding rules, failover groups, DNS zone groups, AVNM members,
+    // backup items, DCR associations, diagnostic settings). Shown from the plan, never as "not deployed".
+    else if (!livePairs.has(pair(e.kind, from, to))) edges.set(id, { ...e, id, from, to, state: { tone: "unknown", word: badgeOf("unlisted")! } });
   }
   return { graph: sortGraph({ ...live, nodes: [...live.nodes, ...ghosts], edges: [...edges.values()] }), status };
 }
