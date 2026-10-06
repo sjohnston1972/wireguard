@@ -1424,6 +1424,15 @@ test("the safety net deletes the lab's flow logs in NetworkWatcherRG and nothing
   assert.equal(n.status, 0, n.out);
   assert.match(n.stdout, /clean=true/);
   none.cleanup();
+  // Review fix 4: what az really prints for a region whose watcher is off, in any case, is none too.
+  for (const err of ["ERROR: Network watcher is not enabled for region ukwest.", "ERROR: NETWORK WATCHER IS NOT ENABLED FOR REGION UKWEST"]) {
+    const off = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, { match: "^network watcher flow-log list --location uksouth", out: "" }, { match: "^network watcher flow-log list --location ukwest", code: 1, err }]);
+    const o = off.run("infra/ci/lab-safety-net.sh", ["--verify", L44], { LAB_REGION: "uksouth", LAB_SECONDARY_REGION: "ukwest" });
+    assert.equal(o.status, 0, `${err}\n${o.out}`);
+    assert.match(o.stdout, /clean=true/);
+    assert.doesNotMatch(o.out, /unverified: flow logs/);
+    off.cleanup();
+  }
   // Parse payload's TF_VAR_region stands in when LAB_REGION is not set (a destroy run by hand).
   const hand = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, FLOW_LOGS("uksouth")]);
   assert.equal(hand.run("infra/ci/lab-safety-net.sh", ["--verify", L44], { TF_VAR_region: "uksouth" }).status, 1);

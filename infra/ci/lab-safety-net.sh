@@ -225,7 +225,8 @@ list_flow_logs() {
     rc=$?
     OUT="${OUT//$'\r'/}"
     if [ "$rc" -ne 0 ]; then
-      if grep -qiE "no Network Watcher|NotFound" "$err"; then
+      # No watcher in the region: no flow logs there. az says "network watcher is not enabled for region <x>".
+      if grep -qiE "no Network Watcher|Network Watcher is not enabled|NotFound" "$err"; then
         rm -f "$err"
         continue
       fi
