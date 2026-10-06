@@ -909,3 +909,152 @@ test(`${PL}: lab.yaml as planned and a readme that compares the two kinds of end
   assert.match(r, /NAT/);
   assert.match(r, /lab 6/i, "the zone name lab 6 links too");
 });
+
+// ── Lab 44: VNet flow logs, IP flow verify and Bastion ───────────────────
+
+const FL = "az700-44-flow-logs-bastion";
+
+labContentSuite(FL, { marker: "££" });
+
+/** An NSG's rules by name: { "<rule name>": body }. */
+const rulesOf = (l, nsgKey) => Object.fromEntries(nsgRules(l).filter((r) => r.nsg === nsgKey).map((r) => [ruleString(r.body, "name"), r.body]));
+/** A rule's essentials: [direction, access, protocol, source, destination, ports], ports as a sorted list. */
+const essentials = (b) => [
+  ruleString(b, "direction"),
+  ruleString(b, "access"),
+  ruleString(b, "protocol"),
+  ruleString(b, "source_address_prefix"),
+  ruleString(b, "destination_address_prefix"),
+  (attr(b, "destination_port_ranges") ? strings(attr(b, "destination_port_ranges")) : [ruleString(b, "destination_port_range")]).sort().join(","),
+];
+
+test(`${FL}: a Basic Bastion with the documented AzureBastionSubnet NSG rules`, () => {
+  const l = lab(FL);
+  const b = one(l, "azurerm_bastion_host").body;
+  assert.equal(attr(b, "sku"), '"Basic"', "Basic: the exam's subnet and NSG; Developer needs neither");
+  const sn = subnetIn(l, "hub", "AzureBastionSubnet");
+  assert.equal(cidrOf(l, sn.body, "address_prefixes"), "cidrsubnet(cidrsubnet(var.address_space, 2, 0), 6, 0)", "a /26, the smallest Bastion takes");
+  const ipc = nested(b, "ip_configuration");
+  assert.equal(attr(ipc, "subnet_id"), `azurerm_subnet.${sn.labels[1]}.id`);
+  const pip = /^azurerm_public_ip\.([a-z0-9_]+)\.id$/.exec(attr(ipc, "public_ip_address_id"))[1];
+  assert.deepEqual([attr(byName(l, "azurerm_public_ip", pip).body, "sku"), attr(byName(l, "azurerm_public_ip", pip).body, "allocation_method")], ['"Standard"', '"Static"']);
+  // Learn, "Working with NSG access and Azure Bastion": the inbound and outbound rules the subnet needs.
+  const assoc = resources(l, "azurerm_subnet_network_security_group_association").find((a) => attr(a.body, "subnet_id") === `azurerm_subnet.${sn.labels[1]}.id`);
+  assert.ok(assoc, "AzureBastionSubnet has an NSG");
+  const nsgKey = /^azurerm_network_security_group\.([a-z0-9_]+)\.id$/.exec(attr(assoc.body, "network_security_group_id"))[1];
+  const got = Object.values(rulesOf(l, nsgKey)).map(essentials).map((x) => x.join(" ")).sort();
+  const want = [
+    ["Inbound", "Allow", "Tcp", "Internet", "*", "443"],
+    ["Inbound", "Allow", "Tcp", "GatewayManager", "*", "443"],
+    ["Inbound", "Allow", "Tcp", "AzureLoadBalancer", "*", "443"],
+    ["Inbound", "Allow", "*", "VirtualNetwork", "VirtualNetwork", "5701,8080"],
+    ["Outbound", "Allow", "*", "*", "VirtualNetwork", "22,3389"],
+    ["Outbound", "Allow", "Tcp", "*", "AzureCloud", "443"],
+    ["Outbound", "Allow", "*", "VirtualNetwork", "VirtualNetwork", "5701,8080"],
+    ["Outbound", "Allow", "*", "*", "Internet", "80"],
+  ]
+    .map((x) => x.join(" "))
+    .sort();
+  assert.deepEqual(got, want);
+  // The rules exist before Bastion is made, or Azure refuses it.
+  assert.match(b.replace(/\s+/g, " "), new RegExp(`depends_on = \\[[^\\]]*azurerm_subnet_network_security_group_association\\.${assoc.labels[1]}`));
+  noInternetSsh(l);
+});
+
+test(`${FL}: SSH reaches the VMs only from the Bastion subnet, web may reach app on 80 and app may not reach web`, () => {
+  const l = lab(FL);
+  const bastion = "local.bastion_cidr";
+  for (const [key, vm] of [["web", "vm-web"], ["app", "vm-app"]]) {
+    const r = rulesOf(l, key);
+    const ssh = Object.values(r).filter((b) => ruleString(b, "access") === "Allow" && portsInclude(attr(b, "destination_port_range") ?? '"*"', 22));
+    assert.equal(ssh.length, 1, `${vm}: one rule allows 22`);
+    assert.equal(attr(ssh[0], "source_address_prefix"), bastion, `${vm}: 22 from the Bastion subnet only`);
+    const denySsh = Object.values(r).find((b) => ruleString(b, "access") === "Deny" && ruleString(b, "source_address_prefix") === "VirtualNetwork");
+    assert.ok(denySsh, `${vm}: a deny from the rest of the VNet`);
+    assert.ok(Number(attr(denySsh, "priority")) > Number(attr(ssh[0], "priority")));
+  }
+  const app = rulesOf(l, "app");
+  const http = Object.values(app).find((b) => ruleString(b, "access") === "Allow" && ruleString(b, "destination_port_range") === "80");
+  assert.equal(attr(http, "source_address_prefix"), "local.web_cidr", "web -> app 80 allowed");
+  const web = rulesOf(l, "web");
+  const fromApp = Object.values(web).find((b) => ruleString(b, "access") === "Deny" && attr(b, "source_address_prefix") === "local.app_cidr");
+  assert.ok(fromApp, "app -> web denied");
+  // The Network Watcher agent on both VMs, for IP flow verify's cousins (packet capture, connection troubleshoot).
+  const ext = resources(l, "azurerm_virtual_machine_extension").filter((e) => attr(e.body, "type") === '"NetworkWatcherAgentLinux"');
+  assert.deepEqual(ext.map((e) => attr(e.body, "virtual_machine_id")).sort(), ["azurerm_linux_virtual_machine.app.id", "azurerm_linux_virtual_machine.web.id"]);
+  assert.equal(resources(l, "azurerm_network_watcher").length, 0, "never a Network Watcher of its own: one per region already exists");
+});
+
+test(`${FL}: the flow log is in NetworkWatcherRG on NetworkWatcher_<region>, named lab-<id>-, targeting the lab VNet and storing in the lab's account`, () => {
+  const l = lab(FL);
+  const f = one(l, "azurerm_network_watcher_flow_log").body;
+  // Scope exception S2 (ruling 48, approved by Steven 2026-10-05), exactly as the scope check holds it.
+  assert.equal(top(f, "resource_group_name"), '"NetworkWatcherRG"');
+  assert.equal(attr(f, "network_watcher_name"), '"NetworkWatcher_${var.region}"');
+  assert.equal(attr(f, "name"), '"lab-${var.lab_id}-vnet"', "attr(): topLevel() would drop the interpolation's braces");
+  assert.equal(top(f, "target_resource_id"), "azurerm_virtual_network.hub.id");
+  assert.equal(top(f, "storage_account_id"), `azurerm_storage_account.${one(l, "azurerm_storage_account").labels[1]}.id`);
+  assert.equal(top(f, "network_security_group_id"), undefined, "a VNet flow log, never an NSG's");
+  assert.equal(top(f, "location"), "var.region", "the watcher's region");
+  assert.equal(top(f, "enabled"), "true");
+  assert.equal(top(f, "version"), "2");
+  const ret = nested(f, "retention_policy");
+  assert.deepEqual([attr(ret, "enabled"), attr(ret, "days")], ["true", "1"]);
+  // Nothing else names NetworkWatcherRG, and the storage account is in the region (flow logs need that).
+  const others = resources(l).filter((r) => r.labels[0] !== "azurerm_network_watcher_flow_log" && /NetworkWatcherRG/i.test(r.body));
+  assert.deepEqual(others.map((r) => r.labels.join(".")), []);
+  const sa = one(l, "azurerm_storage_account").body;
+  assert.equal(attr(sa, "location"), "azurerm_resource_group.lab.location");
+  assert.equal(attr(sa, "account_replication_type"), '"LRS"');
+  // The plan's watcher is the session's region's own.
+  const p = planned(FL, "azurerm_network_watcher_flow_log.vnet");
+  assert.equal(p.network_watcher_name, "NetworkWatcher_uksouth");
+  assert.equal(p.name, `lab-${FL}-vnet`);
+});
+
+test(`${FL}: traffic analytics every 10 minutes into the lab's capped workspace`, () => {
+  const l = lab(FL);
+  const f = one(l, "azurerm_network_watcher_flow_log").body;
+  const ws = one(l, "azurerm_log_analytics_workspace");
+  const ta = nested(f, "traffic_analytics");
+  assert.equal(attr(ta, "enabled"), "true");
+  assert.equal(attr(ta, "interval_in_minutes"), "10");
+  assert.equal(attr(ta, "workspace_resource_id"), `azurerm_log_analytics_workspace.${ws.labels[1]}.id`);
+  assert.equal(attr(ta, "workspace_id"), `azurerm_log_analytics_workspace.${ws.labels[1]}.workspace_id`);
+  assert.equal(attr(ta, "workspace_region"), `azurerm_log_analytics_workspace.${ws.labels[1]}.location`);
+  assert.equal(attr(ws.body, "daily_quota_gb"), "0.05");
+  assert.equal(attr(ws.body, "resource_group_name"), IN_LAB, "traffic analytics' NWTA* rule and endpoint land in the workspace's group: the lab's");
+});
+
+test(`${FL}: the readme explains DDoS, Defender for Cloud and Bastion Developer`, () => {
+  const l = lab(FL);
+  const r = l.readme;
+  const nbh = r.split("## Not built here")[1]?.split("## Learn more")[0] ?? "";
+  assert.match(nbh, /DDoS Network Protection/);
+  assert.match(nbh, /DDoS IP Protection/);
+  assert.match(nbh, /Defender for Cloud/);
+  assert.match(nbh, /attack path/i);
+  assert.match(nbh, /Cloud Security Explorer/);
+  assert.match(nbh, /network insights/i);
+  assert.match(r, /Bastion Developer/);
+  assert.match(r, /NetworkWatcherRG/);
+  assert.match(r, /NTANetAnalytics/);
+  assert.match(r, /IP flow verify/);
+  const tries = r.split("## Things to try")[1].split("\n## ")[0];
+  assert.match(tries, /[Rr]emove[^\n]*Bastion[^\n]*rule|rule[^\n]*Bastion[^\n]*break/i);
+});
+
+test(`${FL}: lab.yaml as planned`, () => {
+  const l = lab(FL);
+  const y = l.yaml;
+  assert.deepEqual(y.skill_areas, ["az700.security", "az700.core"]);
+  assert.deepEqual([y.level, y.type], ["associate", "explore"]);
+  assert.deepEqual(y.prerequisites, ["az104-17-netwatcher-fix"]);
+  assert.deepEqual(y.connectivity, { peering: "optional", dns_link: false, subnets_used: 1 });
+  assert.deepEqual(y.timing, { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 4 });
+  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 64);
+  const bastion = y.cost.items.find((i) => /Bastion Basic/.test(i.name));
+  assert.equal(bastion.gbp_h, 0.1434);
+  assert.equal(bastion.retail, undefined, '"Basic Gateway" is shared with other gateways (ruling 54)');
+  for (const s of ["snet-web", "snet-app", "AzureBastionSubnet"]) assert.equal(attr(subnetIn(l, "hub", s).body, "default_outbound_access_enabled"), "true", s);
+});

@@ -1,0 +1,27 @@
+#cloud-config
+# Rendered by Terraform's templatefile (main.tf) for each VM, with its name.
+# A tiny web server and nothing to install: python3 ships with Ubuntu. It
+# answers on port 80 with the VM's name, so curl from one VM to the other
+# shows which NSG rules let it through, and the flow log records the try.
+
+write_files:
+  - path: /etc/systemd/system/lab-http.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Lab web server: python3 -m http.server on port 80
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      ExecStartPre=/bin/sh -c 'mkdir -p /srv/lab && echo "${name}" > /srv/lab/index.html'
+      ExecStart=/usr/bin/python3 -m http.server 80 --directory /srv/lab
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now lab-http.service
