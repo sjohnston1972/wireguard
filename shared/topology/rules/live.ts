@@ -264,7 +264,13 @@ const recordCounts = (r: ArgRow, made: number): string[] | undefined => {
 
 export const ARM_RULES: Record<string, ArmRule> = {
   "microsoft.network/networkinterfaces": {
-    fold: (r) => idOf(props(r).virtualMachine) ?? idOf(props(r).privateEndpoint) ?? idOf(props(r).privateLinkService) ?? null,
+    // A Private Link service's NIC (made by Azure) folds into the service: by the NIC's own link, else by the service's NIC list.
+    fold: (r, h) =>
+      idOf(props(r).virtualMachine) ??
+      idOf(props(r).privateEndpoint) ??
+      idOf(props(r).privateLinkService) ??
+      (h.rowsOfType?.("microsoft.network/privatelinkservices") ?? []).find((s) => arr(props(s).networkInterfaces).some((n) => lower(str(n.id)) === lower(r.id)))?.id ??
+      null,
   },
   // An ASG folds into the first member's VM (by NIC id), as the planned graph pulls it into the VM it is associated with.
   "microsoft.network/applicationsecuritygroups": {
