@@ -151,4 +151,13 @@ describe("the query", () => {
   it("refuses anything that is not a lab id", () => {
     for (const bad of ["az104-13-vnets' or 1==1 //", "rg-wg", "", "AZ104-13-VNETS", "az104-13-vnets\n"]) expect(() => topologyQuery(bad), bad).toThrow();
   });
+
+  it("a group's own row never becomes a card, even with an odd type (it is told by its id's shape too)", () => {
+    const groupRow = { id: `${SUB}/resourceGroups/rg-lab-az700-35-forced-tunnel-fix`, name: "rg-lab-az700-35-forced-tunnel-fix", type: "microsoft.resources/subscriptions/00000000-0000-4000-8000-000000000000", resourceGroup: "rg-lab-az700-35-forced-tunnel-fix", location: "uksouth", tags: {}, properties: {} } as unknown as ArgRow;
+    const h = liveGraph([groupRow, ...rows], ctx);
+    const rg = h.nodes.filter((n) => n.label === "rg-lab-az700-35-forced-tunnel-fix");
+    expect(rg.map((n) => n.kind)).toEqual(["resourceGroup"]);
+    expect(h.nodes.some((n) => n.kind === "generic" && n.label === "rg-lab-az700-35-forced-tunnel-fix")).toBe(false);
+  });
 });
+

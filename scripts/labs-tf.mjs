@@ -139,6 +139,32 @@ export function mockPlanFile(labId, providers) {
 }
 
 /**
+ * Calls `work(run)` with the runner every offline Terraform run uses (labs-tf, labs-topology): real executables, no
+ * shell, the plugin cache shared, and TMP, TEMP and TMPDIR pointing at a scratch folder of its own. Terraform leaves a
+ * terraform-provider<digits> folder (~48 MB) in its temp folder on each run (1,275 of them once filled 61 GB), so that
+ * folder is emptied after each child and deleted, whatever happens, when the work ends.
+ */
+export async function withTfRunner({ cache, maxBuffer }, work) {
+  const tmp = mkdtempSync(join(tmpdir(), "labs-tf-tmp-"));
+  const clear = () => {
+    for (const f of readdirSync(tmp)) rmSync(join(tmp, f), { recursive: true, force: true, maxRetries: 5 });
+  };
+  const env = { ...process.env, TF_PLUGIN_CACHE_DIR: cache, TF_IN_AUTOMATION: "1", DOTNET_CLI_TELEMETRY_OPTOUT: "1", TMP: tmp, TEMP: tmp, TMPDIR: tmp };
+  const run = (cmd, args, opts = {}) => {
+    try {
+      return spawnSync(cmd, args, { ...opts, encoding: "utf8", ...(maxBuffer ? { maxBuffer } : {}), env });
+    } finally {
+      clear();
+    }
+  };
+  try {
+    return await work(run);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  }
+}
+
+/**
  * Run the checks. `run(cmd, args, { cwd })` -> spawnSync-like result. Returns { failures: [{ folder, message }] }.
  * `bicep`: the Bicep command (labs-tf's CLI passes the pinned, checksum-verified binary).
  */
@@ -273,15 +299,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   mkdirSync(cache, { recursive: true });
   const bicep = needsBicep(only.length ? only : null) ? await resolveBicep() : "bicep-pinned-not-available";
   // terraform, hcl2json and bicep are real executables: no shell, so arguments stay exact.
-  const run = (cmd, args, opts) => spawnSync(cmd, args, { ...opts, encoding: "utf8", env: { ...process.env, TF_PLUGIN_CACHE_DIR: cache, TF_IN_AUTOMATION: "1", DOTNET_CLI_TELEMETRY_OPTOUT: "1" } });
-  const { failures } = runLabsTf({
-    run,
-    only: only.length ? only : null,
-    requireHcl2json: process.env.LABS_TF_REQUIRE_HCL2JSON === "1",
-    hcl2json: process.env.HCL2JSON || "hcl2json",
-    requireBicep: process.env.LABS_TF_REQUIRE_BICEP === "1",
-    bicep,
-  });
+  const { failures } = await withTfRunner({ cache }, async (run) =>
+    runLabsTf({
+      run,
+      only: only.length ? only : null,
+      requireHcl2json: process.env.LABS_TF_REQUIRE_HCL2JSON === "1",
+      hcl2json: process.env.HCL2JSON || "hcl2json",
+      requireBicep: process.env.LABS_TF_REQUIRE_BICEP === "1",
+      bicep,
+    }),
+  );
   if (failures.length) {
     console.error(`labs-tf: ${failures.length} problem(s)`);
     process.exitCode = 1;

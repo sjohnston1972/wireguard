@@ -60,6 +60,13 @@ describe("live delivery (T3.2)", () => {
     expect(edgesBetween(g, "lb-int", "vm-web").map((e) => e.label)).toEqual(["TCP 80→80"]);
   });
 
+  it("a Private Link service's NIC folds into it by the service's own NIC list when the NIC row names no service", () => {
+    const bare = rows.map((r) => (/\/networkinterfaces\/pls-web\.nic\./i.test(r.id) ? { ...r, properties: { ...r.properties, privateLinkService: undefined } } : r));
+    const h = liveGraph(bare, liveCtxFor("az700-42-frontdoor-private"));
+    expect(h.nodes.some((n) => /^pls-web\.nic\./.test(n.label))).toBe(false);
+    expect(byLabel(h, "pls-web").folded?.map((f) => f.label)).toEqual(["pls-web.nic.6f0d2c3b-1a4e-4b5c-9d8e-7f6a5b4c3d2e"]);
+  });
+
   it("Front Door is a card in the Global lane with its SKU and endpoint host (endpoint folded); an origin row's Private Link edge carries its approval state", () => {
     const fd = byLabel(g, "afd-premium");
     expect(fd).toMatchObject({ kind: "frontDoor", props: { sku: "Premium_AzureFrontDoor", hostName: "l42rt7xy-afd-abcdefgh.z01.azurefd.net" } });

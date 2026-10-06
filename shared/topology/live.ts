@@ -65,7 +65,8 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
   // ── 1. Only the lab's own groups ──
   const owned = allRows.filter((r) => typeof r?.id === "string" && typeof r.resourceGroup === "string" && ownsName(ctx.labId, r.resourceGroup, ctx.catalogueIds)).sort((a, b) => cmp(lower(a.id), lower(b.id)));
   // A group's own row (resourcecontainers) only draws the group: an empty group is drawn too, never a card.
-  const isGroupOwnRow = (r: ArgRow) => lower(r.type) === "microsoft.resources/subscriptions/resourcegroups";
+  // Told by its id's shape too (/subscriptions/<s>/resourceGroups/<name>, no provider), so an odd type never makes it a card.
+  const isGroupOwnRow = (r: ArgRow) => lower(r.type) === "microsoft.resources/subscriptions/resourcegroups" || /^\/subscriptions\/[^/]+\/resourcegroups\/[^/]+$/i.test(r.id);
   const groupRows = owned.filter(isGroupOwnRow);
   const rows = owned.filter((r) => !isGroupOwnRow(r));
   const rowById = new Map(rows.map((r) => [lower(r.id), r]));

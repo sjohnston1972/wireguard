@@ -28,14 +28,13 @@
 //
 //   node scripts/labs-topology.mjs [--check] [id ...]     only these labs
 
-import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { hclResources } from "../infra/ci/lab-scope.mjs";
-import { mockedProviders, mockPlanFile } from "./labs-tf.mjs";
+import { mockedProviders, mockPlanFile, withTfRunner } from "./labs-tf.mjs";
 import { labFolders } from "./lib/labs.mjs";
 import { diagnostics, planFromTestStream, refsFromHcl } from "./lib/topology-stream.mjs";
 import { BICEP_VERSION, bicepAsset, bicepMatchesPin, pinnedBicep } from "./lib/bicep.mjs";
@@ -210,9 +209,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const cache = process.env.TF_PLUGIN_CACHE_DIR || join(tmpdir(), "labs-tf-plugin-cache");
   mkdirSync(cache, { recursive: true });
   const tools = await resolveTools(only.length ? only : null);
-  // Real executables, no shell; the stream can be several MB.
-  const run = (cmd, a, opts) => spawnSync(cmd, a, { ...opts, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, env: { ...process.env, TF_PLUGIN_CACHE_DIR: cache, TF_IN_AUTOMATION: "1", DOTNET_CLI_TELEMETRY_OPTOUT: "1" } });
-  const { failures, written } = await runLabsTopology({ run, check, only: only.length ? only : null, ...tools });
+  // Real executables, no shell, a temp folder of their own (withTfRunner); the stream can be several MB.
+  const { failures, written } = await withTfRunner({ cache, maxBuffer: 256 * 1024 * 1024 }, (run) => runLabsTopology({ run, check, only: only.length ? only : null, ...tools }));
   if (failures.length) {
     console.error(`labs-topology: ${failures.length} problem(s)${check ? " (run npm run labs-topology and commit shared/topology/planned)" : ""}`);
     process.exitCode = 1;

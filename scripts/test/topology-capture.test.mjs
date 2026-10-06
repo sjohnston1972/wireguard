@@ -56,8 +56,19 @@ test("it keeps only the paths the rules read and fakes the subscription id", () 
 });
 
 test("the keep list is property paths only, and covers what the core live rules read", () => {
-  for (const p of CAPTURE_KEEP) assert.match(p, /^[A-Za-z]+(\[\])?(\.[A-Za-z]+(\[\])?)*$/, p);
-  for (const p of ["subnets[].properties.addressPrefix", "virtualNetworkPeerings[].properties.peeringState", "routes[].properties.nextHopIpAddress", "ipConfigurations[].properties.privateIPAddress", "privateLinkServiceConnections[].properties.privateLinkServiceConnectionState.status"]) assert.ok(CAPTURE_KEEP.includes(p), p);
+  for (const p of CAPTURE_KEEP) assert.match(p, /^[A-Za-z][A-Za-z0-9]*(\[\])?(\.[A-Za-z][A-Za-z0-9]*(\[\])?)*$/, p);
+  for (const p of ["subnets[].properties.addressPrefix", "virtualNetworkPeerings[].properties.peeringState", "routes[].properties.nextHopIpAddress", "ipConfigurations[].properties.privateIPAddress", "privateLinkServiceConnections[].properties.privateLinkServiceConnectionState.status", "privateLinkService.id", "loadBalancerFrontendIpConfigurations[].id", "serviceEndpointPolicyDefinitions[].properties.serviceResources", "subnets[].id"]) assert.ok(CAPTURE_KEEP.includes(p), p);
+});
+
+test("a list and an object of the same name each keep their own paths (a metric alert's actions[], a log alert's actions.actionGroups)", () => {
+  const owns = (id, name) => name === `rg-lab-${id}`;
+  const ag = `/subscriptions/${SUB}/resourceGroups/rg-lab-az104-14-peering-udr/providers/Microsoft.Insights/actionGroups/ag`;
+  const metric = { ...row, properties: { actions: [{ actionGroupId: ag, webHookProperties: { secret: "x" } }] } };
+  const log = { ...row, properties: { actions: { actionGroups: [ag], customProperties: { secret: "x" } } } };
+  const [m, l] = captureRows([metric, log], { labId: "az104-14-peering-udr", ids: ["az104-14-peering-udr"], owns });
+  const fake = ag.replace(SUB, FAKE_SUBSCRIPTION);
+  assert.deepEqual(m.properties, { actions: [{ actionGroupId: fake }] });
+  assert.deepEqual(l.properties, { actions: { actionGroups: [fake] } });
 });
 
 const LAB = "az104-14-peering-udr";
@@ -97,4 +108,12 @@ test("the capture runs the one query topologyQuery writes, for the subscription 
   assert.deepEqual(body.subscriptions, ["sub-x"]);
   assert.equal(body.query, "resources | where resourceGroup =~ 'rg-lab-az104-14-peering-udr' or resourceGroup startswith 'rg-lab-az104-14-peering-udr-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ 'rg-lab-az104-14-peering-udr' or name startswith 'rg-lab-az104-14-peering-udr-') | project id, name, type, location, resourceGroup = name, tags) | order by id asc");
   await assert.rejects(() => captureRequest("sub-x", "rg-wg-ondemand"));
+});
+
+test("faking the subscription replaces only a subscription GUID, never the word after it (a group row's type)", () => {
+  const sub = "/subscriptions/394c7881-dd1d-4cac-86c0-61cf3fc03f58";
+  const groupRow = { id: `${sub}/resourceGroups/rg-lab-az104-14-peering-udr`, name: "rg-lab-az104-14-peering-udr", type: "microsoft.resources/subscriptions/resourcegroups", resourceGroup: "rg-lab-az104-14-peering-udr", location: "uksouth", tags: {}, properties: {} };
+  const [out] = captureRows([groupRow], { labId: "az104-14-peering-udr", ids: ["az104-14-peering-udr"], owns: (id, name) => name === `rg-lab-${id}` });
+  assert.equal(out.type, "microsoft.resources/subscriptions/resourcegroups");
+  assert.equal(out.id, `/subscriptions/${FAKE_SUBSCRIPTION}/resourceGroups/rg-lab-az104-14-peering-udr`);
 });
