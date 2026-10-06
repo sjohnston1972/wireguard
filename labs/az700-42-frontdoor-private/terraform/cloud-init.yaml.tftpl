@@ -1,5 +1,6 @@
 #cloud-config
-# Read by Terraform's file() (main.tf) for vm-web. A tiny web server and
+# Rendered by Terraform's templatefile (main.tf) for vm-web, with no values
+# (a .tftpl keeps Unix line ends on any checkout). A tiny web server and
 # nothing to install: python3 ships with Ubuntu, and the VM's subnet has no
 # default outbound access. It serves a page at / and a file under /static/,
 # which Front Door's rule set caches for an hour.

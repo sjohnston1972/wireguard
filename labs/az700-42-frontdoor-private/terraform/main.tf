@@ -123,7 +123,7 @@ resource "azurerm_linux_virtual_machine" "web" {
   # Managed boot diagnostics: the serial console works with no storage account.
   boot_diagnostics {}
 
-  custom_data = base64encode(file("${path.module}/cloud-init.yaml"))
+  custom_data = base64encode(templatefile("${path.module}/cloud-init.yaml.tftpl", {}))
 }
 
 # ── lb-int and pls-web ───────────────────────────────────────────────────

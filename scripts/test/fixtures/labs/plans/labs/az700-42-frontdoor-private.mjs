@@ -35,8 +35,8 @@ export default () => {
         values: { name: "snet-pls", resource_group_name: c.rg, virtual_network_name: "vnet-app", address_prefixes: ["10.71.193.0/24"], private_link_service_network_policies_enabled: false, default_outbound_access_enabled: false },
         refs: { ...inRg, virtual_network_name: ref("azurerm_virtual_network.app", "name"), address_prefixes: ["local.pls_cidr"] },
       },
-      // custom_data: file() of the cloud-init, known at plan.
-      ...linuxVm(c, { name: "vm-web", key: "web", subnet: "azurerm_subnet.web", customData: "I2Nsb3VkLWNvbmZpZwo= (cloud-init.yaml)" }),
+      // custom_data: the cloud-init template with no values, known at plan.
+      ...linuxVm(c, { name: "vm-web", key: "web", subnet: "azurerm_subnet.web", customData: "I2Nsb3VkLWNvbmZpZwo= (cloud-init.yaml.tftpl)" }),
 
       // lb-int and pls-web.
       {
