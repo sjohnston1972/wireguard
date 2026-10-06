@@ -1,0 +1,56 @@
+# Lab 42 (AZ-700 labs plan, area Z3). AZ-700 study guide skills this lab
+# touches (outline "Skills measured as of July 27, 2026"):
+#   Design and implement application delivery services > Design and
+#   implement Azure Front Door: "Select an Azure Front Door SKU and tier",
+#   "Configure endpoints, routes, origin groups and origins", "Configure
+#   rule sets", "Configure caching and compression", "Configure Private
+#   Link for Azure Front Door origins".
+#   Design and implement Azure network security services > Design and
+#   implement a Web Application Firewall (WAF) deployment: "Configure rule
+#   sets for Azure Front Door", "Implement a WAF policy custom rule
+#   (rate limiting)", "Associate a WAF policy".
+#   Design and implement private access to Azure services > "Create a
+#   Private Link service" (the consumer here is Front Door).
+# Costs are GBP list prices from the Retail Prices API (2026-10-05, checked
+# again 2026-10-06), rounded up. npm run labs-verify -- --meters
+# az700-42-frontdoor-private checks the retail entries:
+#   Standard_B1s   £0.0089/h Linux pay as you go
+#   S4 LRS Disk    £1.2755/month = £0.0018/h
+# Authored (ruling 54): Front Door "Premium Base Fees" £249.066 a month
+# (£0.3412/h) per profile, priced under region "Zone 1" (no uksouth row);
+# Learn's billing page (2026-08-31): "Each Front Door profile incurs an
+# hourly fee. You're billed for each hour, or partial hour, that your
+# profile is deployed", and Premium's managed WAF rule sets and Private Link
+# origins cost nothing extra, so the WAF policy is priced at £0. Requests
+# (£0.01 per 10,000) are a few hundred an hour. The Standard load balancer
+# (region "Global", first five rules) £0.0189/h. A Private Link service has
+# no hourly meter (only data processed, pennies).
+id: az700-42-frontdoor-private
+version: 1
+title: "Front Door Premium: rules, caching, WAF, Private Link origin"
+summary: >-
+  Front Door Premium in front of a web VM that has no public address at all: the origin is an internal load balancer
+  reached over Private Link, with a rule set, caching and compression, and a WAF policy with managed rules and a rate limit.
+exam: AZ-700
+skill_areas: [az700.delivery, az700.security, az700.private]
+level: expert
+type: explore
+prerequisites: [az305-27-multi-region]
+cost:
+  items:
+    - { name: "Linux VM, Standard_B1s", gbp_h: 0.0089, retail: { sku: Standard_B1s } }
+    - { name: "OS disk, Standard HDD S4", gbp_h: 0.0018, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Front Door Premium, base fee", gbp_h: 0.3412 }
+    - { name: "Front Door requests, light use", gbp_h: 0.0001 }
+    - { name: "Front Door WAF policy, managed rules (included in Premium)", gbp_h: 0 }
+    - { name: "Standard load balancer (lb-int), first 5 rules", gbp_h: 0.0189 }
+    - { name: "Private Link service (no hourly charge)", gbp_h: 0 }
+  pricey: "Front Door Premium, base fee"
+timing: { deploy_min: 15, destroy_min: 12, session_h: 2, max_h: 3 }
+capacity: { vm_sizes: [Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

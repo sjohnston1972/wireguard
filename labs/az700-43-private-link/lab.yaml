@@ -1,0 +1,56 @@
+# Lab 43 (AZ-700 labs plan, area Z3; was AZ-305 lab 30, ruling 40). AZ-700
+# study guide skills this lab touches (outline "Skills measured as of July
+# 27, 2026"):
+#   Design and implement private access to Azure services > Design and
+#   implement Azure Private Link service and Azure private endpoints: "Create
+#   a Private Link service", "Plan private endpoints", "Create private
+#   endpoints", "Configure access to private endpoints", "Integrate a
+#   private endpoint with DNS"; Design and implement service endpoints:
+#   "Create service endpoints", "Configure service endpoint policies",
+#   "Choose when to use a service endpoint".
+# Also AZ-305 (outline "Skills measured as of April 17, 2026"): Design
+# infrastructure solutions > "Recommend a connectivity solution that
+# connects Azure resources to the internet / on-premises" (private
+# connectivity), and Design data storage solutions (securing access to
+# storage accounts).
+# Costs are GBP list prices for UK South from the Retail Prices API
+# (2026-10-05, checked again 2026-10-06), rounded up. npm run labs-verify --
+# --meters az700-43-private-link checks the retail entries:
+#   Standard_B1s   £0.0089/h Linux pay as you go
+#   S4 LRS Disk    £1.2755/month = £0.0018/h
+# Authored (ruling 54, non-regional rows): "Standard Private Endpoint"
+# £0.0075/h each (region Global); a Private Link service has no hourly
+# charge (data processed only, £0.0075/GB, pennies); the Standard load
+# balancer (region Global) £0.0189/h; a private zone £0.3774 a month
+# (£0.0005/h); two empty LRS accounts a few operations (£0.0001/h each).
+# Service endpoints and service endpoint policies are free.
+id: az700-43-private-link
+version: 1
+title: "Private Link service, private endpoints, service endpoint policies"
+summary: >-
+  A provider VNet publishing a web service through a Private Link service and a consumer VNet reaching it through a
+  private endpoint, with a blob private endpoint and its DNS zone, and a service endpoint policy that lets the client
+  subnet reach one storage account and no other.
+exam: AZ-700
+skill_areas: [az700.private, az305.infra, az305.data]
+level: associate
+type: explore
+prerequisites: [az104-06-blob-security]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Standard load balancer (lb-svc), first 5 rules", gbp_h: 0.0189 }
+    - { name: "Private endpoints (pe-svc, pe-blob)", gbp_h: 0.0075, qty: 2 }
+    - { name: "Private Link service (no hourly charge)", gbp_h: 0 }
+    - { name: "Private DNS zone privatelink.blob.core.windows.net", gbp_h: 0.0005 }
+    - { name: "Storage accounts, LRS, a few operations", gbp_h: 0.0001, qty: 2 }
+  pricey: null
+timing: { deploy_min: 8, destroy_min: 6, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: true, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false

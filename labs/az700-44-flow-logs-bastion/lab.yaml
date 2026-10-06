@@ -1,0 +1,55 @@
+# Lab 44 (AZ-700 labs plan, area Z3; scope exception S2, ruling 48). AZ-700
+# study guide skills this lab touches (outline "Skills measured as of July
+# 27, 2026"):
+#   Design and implement Azure network security services > Implement and
+#   manage network security groups: "Create a network security group",
+#   "Associate an NSG to a resource", "Verify NSG flow rules by using IP
+#   flow verify", "Configure flow logs" (VNet flow logs, which replace NSG
+#   flow logs); Implement Azure Bastion: "Deploy Bastion", "Configure the
+#   AzureBastionSubnet NSG".
+#   Design and implement core networking infrastructure > Monitor networks:
+#   "Configure monitoring, network diagnostics, and logs in Azure Network
+#   Watcher", "Configure VNet flow logs", "Enable and configure traffic
+#   analytics", "Use IP flow verify".
+# Costs are GBP list prices for UK South from the Retail Prices API
+# (2026-10-05, checked again 2026-10-06), rounded up. npm run labs-verify --
+# --meters az700-44-flow-logs-bastion checks the retail entries:
+#   Standard_B1s                     £0.0089/h Linux pay as you go
+#   S4 LRS Disk                      £1.2755/month = £0.0018/h
+#   Standard IPv4 Static Public IP   £0.0038/h (Bastion's)
+# Authored (ruling 54): Azure Bastion "Basic Gateway" £0.1434/h (the meter
+# name is shared with VPN and other gateways); "Standard VNet Flow Logs
+# Collected" is tiered (the first 5 GB a month free, then £0.3774/GB), a lab
+# makes a few MB; "Standard Traffic Analytics Processing at 10-Minute
+# Interval" £2.6416/GB, about 5 MB an hour; the workspace and the log
+# account a few MB (the workspace capped at 0.05 GB a day).
+id: az700-44-flow-logs-bastion
+version: 1
+title: "VNet flow logs, IP flow verify and Bastion"
+summary: >-
+  Two VMs reached only through Azure Bastion Basic, with NSGs to test with IP flow verify, and a VNet flow log with
+  traffic analytics into the lab's own storage account and workspace.
+exam: AZ-700
+skill_areas: [az700.security, az700.core]
+level: associate
+type: explore
+prerequisites: [az104-17-netwatcher-fix]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Azure Bastion Basic", gbp_h: 0.1434 }
+    - { name: "Public IP, Standard static (Bastion)", gbp_h: 0.0038, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "VNet flow logs, inside the free 5 GB a month", gbp_h: 0.0001 }
+    - { name: "Traffic analytics, 10-minute interval, about 5 MB an hour", gbp_h: 0.0132 }
+    - { name: "Log Analytics, a few MB of traffic analytics", gbp_h: 0.0005 }
+    - { name: "Storage account for flow logs, LRS, a few MB", gbp_h: 0.0001 }
+  pricey: "Azure Bastion Basic"
+timing: { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

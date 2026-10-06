@@ -1,0 +1,52 @@
+#cloud-config
+# Rendered by Terraform's templatefile (main.tf) for vm-nva, with the Gateway
+# load balancer's frontend address. The appliance is a "bump in the wire":
+# the Gateway load balancer sends it every packet for lb-uks's frontend
+# wrapped in VXLAN, on the internal tunnel (VNI 800, UDP 10800) or the
+# external one (VNI 801, UDP 10801). A Linux bridge joins the two tunnels,
+# so a packet that arrives on one leaves on the other, unchanged, and goes
+# back to the load balancer. Nothing to install: iproute2 ships with Ubuntu.
+# A systemd unit builds the tunnels at every boot. Try tcpdump on eth0 (UDP
+# 10800 and 10801) or on br-gwlb (the plain packets) to watch them pass.
+
+write_files:
+  - path: /usr/local/bin/lab-vxlan
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Rebuild the two tunnels and the bridge between them.
+      for link in br-gwlb vxlan800 vxlan801; do
+        ip link del "$link" 2>/dev/null || true
+      done
+      # Room for VXLAN's 50 bytes around a full 1500-byte packet, where the NIC allows it.
+      ip link set dev eth0 mtu 1550 2>/dev/null || true
+      ip link add vxlan800 type vxlan id 800 remote ${gateway_lb_ip} dstport 10800 nolearning
+      ip link add vxlan801 type vxlan id 801 remote ${gateway_lb_ip} dstport 10801 nolearning
+      ip link add br-gwlb type bridge
+      for link in vxlan800 vxlan801; do
+        ip link set dev "$link" mtu 1500
+        ip link set "$link" master br-gwlb
+        ip link set dev "$link" up
+      done
+      ip link set dev br-gwlb up
+  - path: /etc/systemd/system/lab-vxlan.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Lab appliance: VXLAN tunnels 800 and 801 to the Gateway load balancer, bridged
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/bin/lab-vxlan
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now lab-vxlan.service
