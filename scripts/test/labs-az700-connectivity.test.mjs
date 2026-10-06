@@ -481,3 +481,119 @@ test(`${FW}: timing is 15/12, the job timeout 74, and it is priced as a Basic fi
   assert.equal(cost.items.find((i) => i.retail?.meter === "Standard IPv4 Static Public IP")?.qty, 2, "two Standard public IPs");
   assert.equal(estimateGbpH(cost.items).toFixed(4), "0.3325");
 });
+
+// ── Lab 39: Virtual WAN with a secured hub ───────────────────────────────
+
+const VWAN = "az700-39-vwan-secured-hub";
+
+labContentSuite(VWAN, { marker: "£££" });
+sharedChecks(VWAN);
+
+/** The resource addresses a block's depends_on lists. */
+const dependsOn = (body) => [...(/depends_on\s*=\s*\[([^\]]*)\]/.exec(body ?? "")?.[1] ?? "").matchAll(/[a-z0-9_]+\.[A-Za-z0-9_-]+/g)].map((m) => m[0]);
+
+test(`${VWAN}: a Standard virtual WAN with a /23 hub from the slot`, () => {
+  const l = lab(VWAN);
+  const wans = resources(l, "azurerm_virtual_wan");
+  assert.equal(wans.length, 1, "one virtual WAN");
+  assert.equal(attr(wans[0].body, "type"), '"Standard"', "Standard: Basic has no firewall, no VNet-to-VNet through the hub and no routing intent");
+  const hubs = resources(l, "azurerm_virtual_hub");
+  assert.equal(hubs.length, 1, "one virtual hub");
+  const h = hubs[0].body;
+  assert.equal(refTo(attr(h, "virtual_wan_id"), "azurerm_virtual_wan"), wans[0].labels[1], "the hub is in the WAN");
+  assert.equal(attr(h, "sku"), '"Standard"');
+  assert.equal(expand(l, attr(h, "address_prefix")), "cidrsubnet(cidrsubnet(var.address_space, 2, 3), 3, 0)", "a /23 (the minimum is a /24), the first of the slot's fourth /20");
+  assert.equal(planned(VWAN, `azurerm_virtual_hub.${hubs[0].labels[1]}`).after.address_prefix, "10.71.240.0/23", "known at plan, in the slot");
+  assert.equal(nested(h, "route"), undefined, "no static routes: routing intent does the routing");
+  for (const t of ["azurerm_vpn_gateway", "azurerm_point_to_site_vpn_gateway", "azurerm_express_route_gateway", "azurerm_virtual_hub_bgp_connection"]) assert.equal(resources(l, t).length, 0, `no ${t} (Not built here)`);
+});
+
+test(`${VWAN}: a Basic hub firewall with routing intent for private and internet traffic`, () => {
+  const l = lab(VWAN);
+  const fws = resources(l, "azurerm_firewall");
+  assert.equal(fws.length, 1);
+  const f = fws[0].body;
+  assert.equal(top(f, "sku_name"), '"AZFW_Hub"', "a firewall in a virtual hub (a secured hub)");
+  assert.equal(top(f, "sku_tier"), '"Basic"');
+  assert.equal(nested(f, "ip_configuration"), undefined, "a hub firewall has no subnet of its own");
+  const vh = nested(f, "virtual_hub");
+  assert.equal(refTo(attr(vh, "virtual_hub_id"), "azurerm_virtual_hub"), resources(l, "azurerm_virtual_hub")[0].labels[1]);
+  assert.equal(attr(vh, "public_ip_count"), "1", "one public IP, which Azure makes and owns");
+  assert.equal(resources(l, "azurerm_public_ip").length, 0, "no azurerm_public_ip: the hub firewall's address is Azure's");
+  const pol = byName(l, "azurerm_firewall_policy", refTo(top(f, "firewall_policy_id"), "azurerm_firewall_policy"));
+  assert.equal(attr(pol.body, "sku"), '"Basic"');
+  // Its rules: spoke to spoke SSH and ping, and Ubuntu's mirrors.
+  const rcg = resources(l, "azurerm_firewall_policy_rule_collection_group");
+  assert.equal(rcg.length, 1);
+  const rules = allNested(nested(rcg[0].body, "network_rule_collection"), "rule");
+  assert.ok(rules.some((r) => strings(attr(r, "destination_ports")).includes("22") && strings(attr(r, "protocols")).includes("TCP")), "spoke-to-spoke SSH");
+  assert.ok(rules.some((r) => strings(attr(r, "protocols")).includes("ICMP")), "spoke-to-spoke ping");
+  assert.deepEqual(allNested(nested(rcg[0].body, "application_rule_collection"), "rule").flatMap((r) => strings(attr(r, "destination_fqdns"))), ["*.ubuntu.com"]);
+  // Routing intent: both kinds of traffic to the firewall.
+  const ri = resources(l, "azurerm_virtual_hub_routing_intent");
+  assert.equal(ri.length, 1, "routing intent");
+  const policies = allNested(ri[0].body, "routing_policy").map((p) => ({ name: strings(attr(p, "name"))[0], destinations: strings(attr(p, "destinations")), next_hop: attr(p, "next_hop") }));
+  assert.deepEqual(
+    policies.sort((a, b) => a.name.localeCompare(b.name)),
+    [
+      { name: "InternetTrafficPolicy", destinations: ["Internet"], next_hop: `azurerm_firewall.${fws[0].labels[1]}.id` },
+      { name: "PrivateTrafficPolicy", destinations: ["PrivateTraffic"], next_hop: `azurerm_firewall.${fws[0].labels[1]}.id` },
+    ],
+  );
+  // Teardown order (AZ-700 plan Review Focus 1): routing intent before the connections and the firewall, so it is
+  // made after the connections and destroyed first; the connections wait for the firewall.
+  const conns = resources(l, "azurerm_virtual_hub_connection").map((c) => `azurerm_virtual_hub_connection.${c.labels[1]}`);
+  assert.deepEqual(dependsOn(ri[0].body).sort(), conns.sort(), "routing intent depends on both hub connections");
+  for (const c of resources(l, "azurerm_virtual_hub_connection")) assert.deepEqual(dependsOn(c.body), [`azurerm_firewall.${fws[0].labels[1]}`], `azurerm_virtual_hub_connection.${c.labels[1]} waits for the firewall`);
+});
+
+test(`${VWAN}: two spoke connections with internet security on`, () => {
+  const l = lab(VWAN);
+  const conns = resources(l, "azurerm_virtual_hub_connection");
+  assert.equal(conns.length, 2);
+  const hub = resources(l, "azurerm_virtual_hub")[0].labels[1];
+  const spokes = [];
+  for (const c of conns) {
+    assert.equal(refTo(attr(c.body, "virtual_hub_id"), "azurerm_virtual_hub"), hub);
+    assert.equal(attr(c.body, "internet_security_enabled"), "true", "the spoke learns 0.0.0.0/0 from routing intent");
+    spokes.push(refTo(attr(c.body, "remote_virtual_network_id"), "azurerm_virtual_network"));
+  }
+  assert.deepEqual(spokes.sort(), ["spoke1", "spoke2"]);
+  for (const s of ["spoke1", "spoke2"]) {
+    const v = byName(l, "azurerm_virtual_network", s);
+    assert.equal(attr(v.body, "name"), `"vnet-${s}"`);
+    for (const sn of resources(l, "azurerm_subnet").filter((x) => refTo(attr(x.body, "virtual_network_name"), "azurerm_virtual_network", "name") === s)) {
+      assert.equal(attr(sn.body, "default_outbound_access_enabled"), "false", `vnet-${s}'s subnets are private: the way out is the hub firewall`);
+    }
+  }
+  assert.deepEqual(resources(l, "azurerm_virtual_network").map((v) => expand(l, only(l, v.body, "address_space"))).sort(), ["cidrsubnet(var.address_space, 2, 0)", "cidrsubnet(var.address_space, 2, 1)"]);
+});
+
+test(`${VWAN}: peering is off`, () => {
+  const l = lab(VWAN);
+  assert.equal(l.yaml.connectivity.peering, "off", "a virtual hub cannot be peered with the gateway's VNet");
+  assert.ok(!outputs(l).includes("peer_vnet_id"), "no peer_vnet_id");
+  assert.equal(resources(l, "azurerm_virtual_network_peering").length, 0);
+  assert.match(l.readme, /serial console/, "the readme says how to reach the VMs");
+});
+
+test(`${VWAN}: timing is 35/30 and the job timeout is 150`, () => {
+  const { timing } = lab(VWAN).yaml;
+  assert.deepEqual(timing, { deploy_min: 35, destroy_min: 30, session_h: 2, max_h: 3 });
+  assert.equal(timeoutMin(timing), 150, "2 × (35 + 30) + 20");
+});
+
+test(`${VWAN}: the readme explains hub gateways, ExpressRoute and third-party NVAs under Not built here`, () => {
+  const s = notBuiltHere(lab(VWAN));
+  for (const w of ["site-to-site", "point-to-site", "ExpressRoute", "scale unit", "NVA"]) assert.match(s, new RegExp(w, "i"), `Not built here mentions ${w}`);
+});
+
+test(`${VWAN}: priced as a Standard hub, a Basic secured-hub firewall and two small VMs`, () => {
+  const { cost } = lab(VWAN).yaml;
+  const hub = cost.items.find((i) => i.retail?.meter === "Standard Hub Unit");
+  assert.deepEqual([hub?.gbp_h, hub?.retail.unit], [0.1887, "1 Hour"]);
+  const fw = cost.items.find((i) => i.retail?.meter === "Basic Secured Virtual Hub Deployment");
+  assert.deepEqual([fw?.gbp_h, fw?.retail.unit], [0.2981, "1 Hour"]);
+  assert.equal(cost.pricey, fw.name);
+  assert.equal(estimateGbpH(cost.items).toFixed(4), "0.5184");
+});
