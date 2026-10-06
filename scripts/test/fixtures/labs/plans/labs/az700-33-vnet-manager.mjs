@@ -59,7 +59,8 @@ export default () => {
   });
   const deployment = (key, access, config) => ({
     address: `azurerm_network_manager_deployment.${key}`,
-    values: { location: REGION, scope_access: access },
+    // timeouts as `terraform show -json` prints the block: every operation, unset ones null.
+    values: { location: REGION, scope_access: access, timeouts: { create: "30m", delete: "30m", read: null, update: null } },
     unknown: ["network_manager_id", "configuration_ids"],
     refs: { network_manager_id: IDS(AVNM), location: IN_RG.location, configuration_ids: IDS(config) },
   });

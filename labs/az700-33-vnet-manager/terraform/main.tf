@@ -265,6 +265,12 @@ resource "azurerm_network_manager_deployment" "connectivity" {
   scope_access       = "Connectivity"
   configuration_ids  = [azurerm_network_manager_connectivity_configuration.hub_spoke.id]
 
+  # azurerm waits up to 24 hours by default; no job runs that long.
+  timeouts {
+    create = "30m"
+    delete = "30m"
+  }
+
   depends_on = [azurerm_network_manager_static_member.spoke1, azurerm_network_manager_static_member.spoke2]
 }
 
@@ -273,6 +279,11 @@ resource "azurerm_network_manager_deployment" "security" {
   location           = azurerm_resource_group.lab.location
   scope_access       = "SecurityAdmin"
   configuration_ids  = [azurerm_network_manager_security_admin_configuration.lab.id]
+
+  timeouts {
+    create = "30m"
+    delete = "30m"
+  }
 
   depends_on = [azurerm_network_manager_admin_rule.deny_ssh, azurerm_network_manager_admin_rule.allow_hub_ssh, azurerm_network_manager_static_member.spoke1, azurerm_network_manager_static_member.spoke2]
 }

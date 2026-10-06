@@ -15,7 +15,7 @@
 # VNet it manages (the hub and two spokes). AVNM's own peerings move a few
 # kB here.
 id: az700-33-vnet-manager
-version: 1
+version: 2
 title: "Virtual Network Manager: hub-and-spoke and security admin rules"
 summary: >-
   Three unpeered VNets that Azure Virtual Network Manager joins into a hub and spoke, with security admin rules

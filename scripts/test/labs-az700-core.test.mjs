@@ -341,6 +341,19 @@ test(`${AVNM}: hub-and-spoke connectivity and a security admin rule collection a
   assert.match(byAccess.Connectivity, /depends_on\s*=\s*\[[^\]]*azurerm_network_manager_static_member\.spoke1[^\]]*\]/);
 });
 
+// Review fix 5: azurerm's default timeout for a deployment is 24 hours, longer than any job: 30 minutes each way.
+test(`${AVNM}: each deployment times out after 30 minutes to create or delete, not azurerm's 24 hours`, () => {
+  const l = lab(AVNM);
+  const deps = resources(l, "azurerm_network_manager_deployment");
+  assert.equal(deps.length, 2);
+  for (const d of deps) {
+    const t = nested(d.body, "timeouts");
+    assert.ok(t !== undefined, `${d.labels[1]} has a timeouts block`);
+    assert.equal(attr(t, "create"), '"30m"', d.labels[1]);
+    assert.equal(attr(t, "delete"), '"30m"', d.labels[1]);
+  }
+});
+
 test(`${AVNM}: no NSG allows SSH from the internet; a spoke NSG's deny from the hub is what the always-allow rule overrides`, () => {
   const l = lab(AVNM);
   const rules = resources(l, "azurerm_network_security_rule");
