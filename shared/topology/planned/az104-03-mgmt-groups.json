@@ -41,21 +41,21 @@
   },
   {
    "id": "tf:azurerm_management_group_policy_assignment.audit_environment_tag",
-   "key": "terraform/azurerm_management_group_policy_assignment/audit-environment-tag",
+   "key": "microsoft.authorization/policyassignments/audit-environment-tag",
    "kind": "policy",
    "label": "audit-environment-tag",
    "props": {},
    "parent": "lane/tenant",
-   "armType": null
+   "armType": "Microsoft.Authorization/policyAssignments"
   },
   {
    "id": "tf:azurerm_policy_definition.audit_environment_tag",
-   "key": "terraform/azurerm_policy_definition/lab-az104-03-mgmt-groups-audit-environment-tag",
+   "key": "microsoft.authorization/policydefinitions/lab-az104-03-mgmt-groups-audit-environment-tag",
    "kind": "policy",
    "label": "lab-az104-03-mgmt-groups-audit-environment-tag",
    "props": {},
    "parent": "lane/tenant",
-   "armType": null
+   "armType": "Microsoft.Authorization/policyDefinitions"
   },
   {
    "id": "tf:azurerm_resource_group.lab",
@@ -74,5 +74,38 @@
    "scope": "lab"
   }
  ],
- "edges": []
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_management_group.dev>tf:azurerm_management_group.root:parent",
+   "from": "tf:azurerm_management_group.dev",
+   "to": "tf:azurerm_management_group.root",
+   "kind": "dependency",
+   "label": "parent",
+   "via": "tf:azurerm_management_group.dev"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group.prod>tf:azurerm_management_group.root:parent",
+   "from": "tf:azurerm_management_group.prod",
+   "to": "tf:azurerm_management_group.root",
+   "kind": "dependency",
+   "label": "parent",
+   "via": "tf:azurerm_management_group.prod"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group_policy_assignment.audit_environment_tag>tf:azurerm_management_group.root:scope",
+   "from": "tf:azurerm_management_group_policy_assignment.audit_environment_tag",
+   "to": "tf:azurerm_management_group.root",
+   "kind": "dependency",
+   "label": "scope",
+   "via": "tf:azurerm_management_group_policy_assignment.audit_environment_tag"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group_policy_assignment.audit_environment_tag>tf:azurerm_policy_definition.audit_environment_tag:assigns",
+   "from": "tf:azurerm_management_group_policy_assignment.audit_environment_tag",
+   "to": "tf:azurerm_policy_definition.audit_environment_tag",
+   "kind": "dependency",
+   "label": "assigns",
+   "via": "tf:azurerm_management_group_policy_assignment.audit_environment_tag"
+  }
+ ]
 }

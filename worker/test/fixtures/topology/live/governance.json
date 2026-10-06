@@ -1,0 +1,471 @@
+{
+ "_about": "T3.6 governance and monitoring: Resource Graph rows for a running az104-18-monitor in slot 5 (10.66.192.0/18), with lab 44's Bastion and traffic analytics' own rows grafted in. Shapes from Learn's REST references: OperationalInsights workspaces (retentionInDays, workspaceCapping.dailyQuotaGb), Insights actionGroups, metricAlerts (scopes, actions[].actionGroupId, severity), activityLogAlerts (scopes, actions.actionGroups[].actionGroupId), dataCollectionRules (destinations.logAnalytics[].workspaceResourceId) and dataCollectionEndpoints, bastionHosts (sku Basic with ipConfigurations; Developer with virtualNetwork). Policy, role, management-group, lock, budget and diagnostic-setting objects are not rows of the resources table, so none appear. Fake subscription and ids, TEST-NET addresses.",
+ "rows": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/virtualNetworks/vnet-lab",
+   "name": "vnet-lab",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": null,
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.66.192.0/20"
+     ]
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-vms",
+      "name": "snet-vms",
+      "properties": {
+       "addressPrefix": "10.66.192.0/24"
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/AzureBastionSubnet",
+      "name": "AzureBastionSubnet",
+      "properties": {
+       "addressPrefix": "10.66.193.0/26"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/networkInterfaces/nic-vm-monitor",
+   "name": "nic-vm-monitor",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": null,
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Compute/virtualMachines/vm-monitor"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/networkInterfaces/nic-vm-monitor/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.66.192.4",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-vms"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Compute/virtualMachines/vm-monitor",
+   "name": "vm-monitor",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": null,
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.OperationalInsights/workspaces/log-lab",
+   "name": "log-lab",
+   "type": "microsoft.operationalinsights/workspaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": null,
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "customerId": "dddddddd-4444-4444-8444-000000000001",
+    "sku": {
+     "name": "PerGB2018"
+    },
+    "retentionInDays": 30,
+    "workspaceCapping": {
+     "dailyQuotaGb": 0.05,
+     "dataIngestionStatus": "RespectQuota"
+    },
+    "publicNetworkAccessForIngestion": "Enabled"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Insights/actionGroups/ag-lab",
+   "name": "ag-lab",
+   "type": "microsoft.insights/actiongroups",
+   "kind": "",
+   "location": "Global",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": null,
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "groupShortName": "labag",
+    "enabled": true,
+    "emailReceivers": [],
+    "smsReceivers": [],
+    "webhookReceivers": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Insights/metricAlerts/alert-vm-cpu-high",
+   "name": "alert-vm-cpu-high",
+   "type": "microsoft.insights/metricalerts",
+   "kind": "",
+   "location": "global",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": null,
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "description": "vm-monitor's average CPU above 80% for 5 minutes",
+    "severity": 2,
+    "enabled": true,
+    "scopes": [
+     "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Compute/virtualMachines/vm-monitor"
+    ],
+    "evaluationFrequency": "PT1M",
+    "windowSize": "PT5M",
+    "criteria": {
+     "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+     "allOf": [
+      {
+       "name": "cpu",
+       "metricName": "Percentage CPU",
+       "operator": "GreaterThan",
+       "threshold": 80,
+       "timeAggregation": "Average"
+      }
+     ]
+    },
+    "actions": [
+     {
+      "actionGroupId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Insights/actionGroups/ag-lab",
+      "webHookProperties": {}
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Insights/activityLogAlerts/alert-vm-restart",
+   "name": "alert-vm-restart",
+   "type": "microsoft.insights/activitylogalerts",
+   "kind": "",
+   "location": "Global",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": null,
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "enabled": true,
+    "scopes": [
+     "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor"
+    ],
+    "condition": {
+     "allOf": [
+      {
+       "field": "category",
+       "equals": "Administrative"
+      },
+      {
+       "field": "operationName",
+       "equals": "Microsoft.Compute/virtualMachines/restart/action"
+      }
+     ]
+    },
+    "actions": {
+     "actionGroups": [
+      {
+       "actionGroupId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Insights/actionGroups/ag-lab",
+       "webhookProperties": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Insights/dataCollectionRules/dcr-vm-linux",
+   "name": "dcr-vm-linux",
+   "type": "microsoft.insights/datacollectionrules",
+   "kind": "Linux",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": null,
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "immutableId": "dcr-0123456789abcdef0123456789abcdef",
+    "dataSources": {
+     "performanceCounters": [
+      {
+       "name": "perf-basic",
+       "streams": [
+        "Microsoft-Perf"
+       ],
+       "samplingFrequencyInSeconds": 60,
+       "counterSpecifiers": [
+        "Processor(*)\\% Processor Time"
+       ]
+      }
+     ],
+     "syslog": [
+      {
+       "name": "syslog",
+       "streams": [
+        "Microsoft-Syslog"
+       ],
+       "facilityNames": [
+        "auth"
+       ],
+       "logLevels": [
+        "Warning"
+       ]
+      }
+     ]
+    },
+    "destinations": {
+     "logAnalytics": [
+      {
+       "name": "log-lab",
+       "workspaceResourceId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.OperationalInsights/workspaces/log-lab",
+       "workspaceId": "dddddddd-4444-4444-8444-000000000001"
+      }
+     ]
+    },
+    "dataFlows": [
+     {
+      "streams": [
+       "Microsoft-Perf",
+       "Microsoft-Syslog"
+      ],
+      "destinations": [
+       "log-lab"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Insights/dataCollectionRules/NWTA-0f1e2d3c-4b5a-4697-8a9b-0c1d2e3f4a5b",
+   "name": "NWTA-0f1e2d3c-4b5a-4697-8a9b-0c1d2e3f4a5b",
+   "type": "microsoft.insights/datacollectionrules",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": null,
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "description": "Data collection rule for traffic analytics",
+    "destinations": {
+     "logAnalytics": [
+      {
+       "name": "ta",
+       "workspaceResourceId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.OperationalInsights/workspaces/log-lab"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Insights/dataCollectionEndpoints/NWTA-0f1e2d3c-4b5a-4697-8a9b-0c1d2e3f4a5b",
+   "name": "NWTA-0f1e2d3c-4b5a-4697-8a9b-0c1d2e3f4a5b",
+   "type": "microsoft.insights/datacollectionendpoints",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": null,
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "networkAcls": {
+     "publicNetworkAccess": "Enabled"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/bastionHosts/bas-hub",
+   "name": "bas-hub",
+   "type": "microsoft.network/bastionhosts",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": {
+    "name": "Basic"
+   },
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "dnsName": "bst-0123abcd-4567-89ef-0123-456789abcdef.bastion.azure.com",
+    "scaleUnits": 2,
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/bastionHosts/bas-hub/bastionHostIpConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/AzureBastionSubnet"
+       },
+       "publicIPAddress": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/publicIPAddresses/pip-bastion"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/publicIPAddresses/pip-bastion",
+   "name": "pip-bastion",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": {
+    "name": "Standard"
+   },
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.95",
+    "ipConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/bastionHosts/bas-hub/bastionHostIpConfigurations/ipconfig1"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/bastionHosts/bas-dev",
+   "name": "bas-dev",
+   "type": "microsoft.network/bastionhosts",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-18-monitor",
+   "sku": {
+    "name": "Developer"
+   },
+   "tags": {
+    "lab": "az104-18-monitor",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualNetwork": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-18-monitor/providers/Microsoft.Network/virtualNetworks/vnet-lab"
+    }
+   }
+  }
+ ]
+}

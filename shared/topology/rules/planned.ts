@@ -146,6 +146,40 @@ const vmssProps = (os: string) => (inst: TfInst, h: PlannedHelpers) => {
   };
 };
 
+/** A policy's effect from its parameters JSON: an assignment's value, or (for a definition) the default. */
+function policyEffect(parameters: unknown, isDefinition = false): string | undefined {
+  const s = str(parameters);
+  if (!s) return undefined;
+  try {
+    const p = JSON.parse(s) as Record<string, { value?: unknown; defaultValue?: unknown }>;
+    const e = p.effect ?? p.Effect;
+    const v = isDefinition ? e?.defaultValue : e?.value;
+    return typeof v === "string" ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A policy assignment: in its RG (RG scope) or the Tenant lane; edges to its definition, its scope (a management group) and what its parameters name. */
+function policyAssignment(scopeAttr?: string): TfRule {
+  return {
+    arm: "Microsoft.Authorization/policyAssignments",
+    props: (i) => ({ effect: policyEffect(i.after.parameters), enforcement: i.after.enforce === false ? "DoNotEnforce" : undefined }),
+    edges: (i, h) => [
+      ...h.refs(i, ["policy_definition_id"]).map((d) => ({ from: i, to: d, kind: "dependency" as const, label: "assigns" })),
+      ...(scopeAttr ? h.refs(i, [scopeAttr]).filter((s) => s.type !== "azurerm_resource_group").map((s) => ({ from: i, to: s, kind: "dependency" as const, label: "scope" })) : []),
+      ...h.refs(i, ["parameters"]).map((p) => ({ from: i, to: p, kind: "dependency" as const, label: "parameter" })),
+    ],
+  };
+}
+const policySetEdges = (i: TfInst, h: PlannedHelpers): EdgeSpec[] => h.refs(i, ["policy_definition_reference"]).map((d) => ({ from: i, to: d, kind: "dependency" as const, label: "includes" }));
+
+/** An alert: → each scope it watches ("alert"), → each action group it notifies. */
+const alertEdges = (i: TfInst, h: PlannedHelpers): EdgeSpec[] => [
+  ...h.refs(i, ["scopes"]).map((s) => ({ from: i, to: s, kind: "dependency" as const, label: "alert" })),
+  ...h.refs(i, ["action"]).filter((a) => a.type === "azurerm_monitor_action_group").map((a) => ({ from: i, to: a, kind: "dependency" as const, label: "notifies" })),
+];
+
 /** Every route of a route table instance: inline `route` blocks, and azurerm_route resources naming it. */
 function routesOf(rt: TfInst, h: PlannedHelpers): { via: TfInst; prefix?: string; hopType?: string; hopIp?: string; hopRefs: TfInst[] }[] {
   const out: { via: TfInst; prefix?: string; hopType?: string; hopIp?: string; hopRefs: TfInst[] }[] = [];
@@ -938,11 +972,69 @@ export const TF_RULES: Record<string, TfRule> = {
       );
     },
   },
-  azuread_group: { kind: "entraPrincipal" },
+  // Entra groups (Tenant lane, planned only): each member → the group.
+  azuread_group: { kind: "entraPrincipal", edges: (i, h) => h.refs(i, ["members"]).map((m) => ({ from: m, to: i, kind: "dependency" as const, label: "member" })) },
   azuread_user: { kind: "entraPrincipal" },
+  azuread_group_member: {
+    fold: ["group_object_id"],
+    edges: (i, h) => h.refs(i, ["group_object_id"]).flatMap((gr) => h.refs(i, ["member_object_id"]).map((m) => ({ from: m, to: gr, kind: "dependency" as const, label: "member" }))),
+  },
 
+  // ── Governance (T3.6): management groups, policy and roles in the Tenant lane; RG-scoped assignments in their RG ──
+  azurerm_management_group: {
+    arm: "Microsoft.Management/managementGroups",
+    edges: (i, h) => h.refs(i, ["parent_management_group_id"]).map((p) => ({ from: i, to: p, kind: "dependency" as const, label: "parent" })),
+  },
+  azurerm_policy_definition: { arm: "Microsoft.Authorization/policyDefinitions", props: (i) => ({ effect: policyEffect(i.after.parameters, true) }) },
+  azurerm_policy_set_definition: { arm: "Microsoft.Authorization/policySetDefinitions", edges: (i, h) => policySetEdges(i, h) },
+  azurerm_management_group_policy_set_definition: { arm: "Microsoft.Authorization/policySetDefinitions", edges: (i, h) => policySetEdges(i, h) },
+  azurerm_resource_group_policy_assignment: policyAssignment(),
+  azurerm_management_group_policy_assignment: policyAssignment("management_group_id"),
+  azurerm_subscription_policy_assignment: policyAssignment(),
+  azurerm_resource_policy_assignment: policyAssignment("resource_id"),
+  azurerm_role_definition: { arm: "Microsoft.Authorization/roleDefinitions" },
+  // A lock folds into what it locks, as a chip there (an RG lock: a chip on the group).
+  azurerm_management_lock: {
+    arm: "Microsoft.Authorization/locks",
+    fold: ["scope"],
+    chips: (i) => [{ on: "home", chip: `lock ${str(i.after.lock_level) ?? ""}`.trim() }],
+  },
+  // A budget folds into its group as a chip; its alerts are an edge group → action group.
+  azurerm_consumption_budget_resource_group: {
+    arm: "Microsoft.Consumption/budgets",
+    fold: ["resource_group_id"],
+    chips: (i) => [{ on: "home", chip: `budget ${num(i.after.amount) ?? ""}`.trim() }],
+    edges: (i, h) => h.refs(i, ["resource_group_id"]).flatMap((rg) => h.refs(i, ["notification"]).filter((x) => x.type === "azurerm_monitor_action_group").map((a) => ({ from: rg, to: a, kind: "dependency" as const, label: "budget alert" }))),
+  },
+
+  // ── Monitoring (T3.6) ──
   azurerm_log_analytics_workspace: { arm: "Microsoft.OperationalInsights/workspaces", props: (i) => ({ retentionDays: num(i.after.retention_in_days), dailyCapGb: num(i.after.daily_quota_gb) }) },
-  azurerm_network_watcher_flow_log: { arm: "Microsoft.Network/networkWatchers/flowLogs" },
+  azurerm_monitor_action_group: { arm: "Microsoft.Insights/actionGroups" },
+  azurerm_monitor_metric_alert: { arm: "Microsoft.Insights/metricAlerts", edges: (i, h) => alertEdges(i, h) },
+  azurerm_monitor_activity_log_alert: { arm: "Microsoft.Insights/activityLogAlerts", edges: (i, h) => alertEdges(i, h) },
+  azurerm_monitor_scheduled_query_rules_alert_v2: { arm: "Microsoft.Insights/scheduledQueryRules", edges: (i, h) => alertEdges(i, h) },
+  azurerm_monitor_data_collection_endpoint: { arm: "Microsoft.Insights/dataCollectionEndpoints" },
+  azurerm_monitor_data_collection_rule: {
+    arm: "Microsoft.Insights/dataCollectionRules",
+    edges: (i, h) => h.refs(i, ["destinations"]).map((w) => ({ from: i, to: w, kind: "dependency" as const, label: "sends to" })),
+  },
+  // The association folds into its rule and is drawn rule → the resource it collects from.
+  azurerm_monitor_data_collection_rule_association: {
+    arm: "Microsoft.Insights/dataCollectionRuleAssociations",
+    fold: ["data_collection_rule_id", "data_collection_endpoint_id"],
+    edges: (i, h) => h.refs(i, ["data_collection_rule_id"]).flatMap((r) => h.refs(i, ["target_resource_id"]).map((t) => ({ from: r, to: t, kind: "dependency" as const, label: "collects from" }))),
+  },
+  // A flow log lives in NetworkWatcherRG (outside the lab): drawn there, with edges to what it watches and where it writes.
+  azurerm_network_watcher_flow_log: {
+    arm: "Microsoft.Network/networkWatchers/flowLogs",
+    namePath: (i) => [str(i.after.network_watcher_name) ?? "", nameOf(i)],
+    edges: (i, h) => [
+      ...h.refs(i, ["target_resource_id", "network_security_group_id"]).map((t) => ({ from: i, to: t, kind: "dependency" as const, label: "watches" })),
+      ...h.refs(i, ["storage_account_id"]).map((t) => ({ from: i, to: t, kind: "dependency" as const, label: "stores logs" })),
+      ...h.refs(i, ["traffic_analytics"]).map((t) => ({ from: i, to: t, kind: "dependency" as const, label: "traffic analytics" })),
+    ],
+  },
+  azurerm_bastion_host: { arm: "Microsoft.Network/bastionHosts", props: (i) => ({ sku: str(i.after.sku) }) },
 };
 
 /** The rule for a type ({} when none). */

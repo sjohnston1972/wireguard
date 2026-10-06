@@ -250,6 +250,12 @@ const identityEdges = (r: ArgRow): LiveEdgeSpec[] =>
     .sort()
     .map((i) => ({ from: lower(r.id), to: lower(i), kind: "dependency" as const, label: "identity" }));
 
+/** An alert: → each scope it watches ("alert"), → each action group it notifies. */
+const alertEdges = (r: ArgRow, actionGroups: (string | undefined)[]): LiveEdgeSpec[] => [
+  ...((props(r).scopes as string[] | undefined) ?? []).filter((s) => typeof s === "string").map((s) => ({ from: lower(r.id), to: lower(s), kind: "dependency" as const, label: "alert" })),
+  ...actionGroups.filter((x): x is string => !!x).map((a) => ({ from: lower(r.id), to: lower(a), kind: "dependency" as const, label: "notifies" })),
+];
+
 /** A zone's own records: Resource Graph's numberOfRecordSets less the ones Azure makes (SOA, and NS for a public zone). */
 const recordCounts = (r: ArgRow, made: number): string[] | undefined => {
   const n = props(r).numberOfRecordSets;
@@ -507,6 +513,29 @@ export const ARM_RULES: Record<string, ArmRule> = {
         .map((f) => str(f.id))
         .filter((x): x is string => !!x)
         .map((f) => ({ from: lower(r.id), to: lower(topResource(f)), kind: "traffic" as const, label: "frontend" })),
+  },
+
+  // ── Monitoring (T3.6) ──
+  "microsoft.operationalinsights/workspaces": {
+    props: (r) => {
+      const cap = obj(props(r).workspaceCapping).dailyQuotaGb;
+      return { retentionDays: props(r).retentionInDays, dailyCapGb: typeof cap === "number" && cap >= 0 ? cap : undefined };
+    },
+  },
+  "microsoft.insights/metricalerts": { edges: (r) => alertEdges(r, arr(props(r).actions).map((a) => str(a.actionGroupId))) },
+  "microsoft.insights/activitylogalerts": { edges: (r) => alertEdges(r, arr(obj(props(r).actions).actionGroups).map((a) => str(a.actionGroupId))) },
+  "microsoft.insights/scheduledqueryrules": { edges: (r) => alertEdges(r, ((obj(props(r).actions).actionGroups as string[] | undefined) ?? []).map((a) => str(a))) },
+  "microsoft.insights/datacollectionrules": {
+    edges: (r) =>
+      arr(obj(props(r).destinations).logAnalytics)
+        .map((d) => str(d.workspaceResourceId))
+        .filter((x): x is string => !!x)
+        .map((w) => ({ from: lower(r.id), to: lower(w), kind: "dependency" as const, label: "sends to" })),
+  },
+  "microsoft.network/bastionhosts": {
+    props: (r) => ({ sku: str(obj(r.sku).name) }),
+    // A Developer Bastion names its VNet, not a subnet.
+    place: (r) => (arr(props(r).ipConfigurations).length ? null : (idOf(props(r).virtualNetwork) ?? null)),
   },
 
   // ── Compute (T3.5): scale sets as one card (ruling 19), autoscale and flexible VMs folded in ──
