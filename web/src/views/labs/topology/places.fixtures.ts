@@ -7,7 +7,7 @@
 // not listed by the live view. Fake GUIDs; addresses as the lab slots give them.
 
 import type { LabTopologyResponse } from "@shared/api";
-import type { TopologyGraph } from "@shared/topology/model";
+import type { TopologyGraph, TopoNode } from "@shared/topology/model";
 import type { TopologyLayout, TopologyLayoutPage } from "@shared/topology/layout";
 import { PLANNED_URLS } from "@/api/topology";
 
@@ -65,20 +65,21 @@ export const LIVE_IDS = {
 
 /** The live graph: the private endpoint is gone and an NSG was made by hand. `subnetProps` lets a test change a chip. */
 export function liveGraph(subnetProps: Record<string, string> = { prefix: "10.64.0.0/24" }): TopologyGraph {
+  const nodes: TopoNode[] = [
+    { id: LIVE_IDS.rg, key: KEYS.rg, kind: "resourceGroup", label: "rg-lab-az104-06-blob-security", props: {} },
+    { id: LIVE_IDS.vnet, key: KEYS.vnet, kind: "vnet", parent: LIVE_IDS.rg, label: "vnet-lab", props: { addressSpace: ["10.64.0.0/20"] }, health: { tone: "ok", word: "Ready" } },
+    { id: LIVE_IDS.subnet, key: KEYS.subnet, kind: "subnet", parent: LIVE_IDS.vnet, label: "snet-endpoints", props: subnetProps },
+    { id: LIVE_IDS.storage, key: KEYS.storage, kind: "storage", parent: LIVE_IDS.rg, label: "l06k3x9qblob", props: { sku: "Standard LRS" }, health: { tone: "ok", word: "Ready" } },
+    { id: LIVE_IDS.zone, key: KEYS.zone, kind: "privateDnsZone", parent: LIVE_IDS.rg, label: "privatelink.blob.core.windows.net", props: {}, health: { tone: "ok", word: "Ready" } },
+    { id: LIVE_IDS.nsg, key: KEYS.nsg, kind: "nsg", parent: LIVE_IDS.rg, label: "nsg-handmade", props: {}, health: { tone: "ok", word: "Ready" } },
+  ];
   return {
     schema: 1,
     labId: LAB,
     version: 2,
     source: "live",
     at: "2026-10-02T12:00:00.000Z",
-    nodes: [
-      { id: LIVE_IDS.rg, key: KEYS.rg, kind: "resourceGroup", label: "rg-lab-az104-06-blob-security", props: {} },
-      { id: LIVE_IDS.vnet, key: KEYS.vnet, kind: "vnet", parent: LIVE_IDS.rg, label: "vnet-lab", props: { addressSpace: ["10.64.0.0/20"] }, health: { tone: "ok", word: "Ready" } },
-      { id: LIVE_IDS.subnet, key: KEYS.subnet, kind: "subnet", parent: LIVE_IDS.vnet, label: "snet-endpoints", props: subnetProps },
-      { id: LIVE_IDS.storage, key: KEYS.storage, kind: "storage", parent: LIVE_IDS.rg, label: "l06k3x9qblob", props: { sku: "Standard LRS" }, health: { tone: "ok", word: "Ready" } },
-      { id: LIVE_IDS.zone, key: KEYS.zone, kind: "privateDnsZone", parent: LIVE_IDS.rg, label: "privatelink.blob.core.windows.net", props: {}, health: { tone: "ok", word: "Ready" } },
-      { id: LIVE_IDS.nsg, key: KEYS.nsg, kind: "nsg", parent: LIVE_IDS.rg, label: "nsg-handmade", props: {}, health: { tone: "ok", word: "Ready" } },
-    ].sort((a, b) => (a.id < b.id ? -1 : 1)),
+    nodes: nodes.sort((a, b) => (a.id < b.id ? -1 : 1)),
     edges: [],
   };
 }

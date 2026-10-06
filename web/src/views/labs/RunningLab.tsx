@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { LabDetail, LabRunRow, LabSecretResponse, LabSession } from "@shared/api";
-import { Button, CopyButton, KeyValue, LogView, Skeleton, StatusPill } from "@/components";
+import { Button, CopyButton, KeyValue, LogView, Skeleton, StatusPill, Tabs, cx } from "@/components";
 import { useLabSecret, useSaveLabNote } from "@/api/mutations";
 import { StepTrack } from "@/views/activity/RunPanels";
 import { useRunData } from "@/views/activity/useRunData";
@@ -236,6 +236,56 @@ function Facts({ s }: { s: LabSession }) {
   );
 }
 
+// The diagram is its own lazy chunk (lab topology spec ruling 21): it loads the
+// first time the Diagram tab opens, never with the labs chunk.
+const DiagramTab = lazy(() => import("./topology").then((m) => ({ default: m.default.DiagramTab })));
+
+/**
+ * The readme column as two tabs, Readme and Diagram (lab topology spec §9.1),
+ * in the idle and running panels. `?view=diagram` selects Diagram; switching
+ * replaces the URL (no new history entry), so Back still closes the lab.
+ */
+export function LabReadmeTabs({ d }: { d: LabDetail }) {
+  const [params, setParams] = useSearchParams();
+  const view = params.get("view") === "diagram" ? "diagram" : "readme";
+  const onChange = (v: string) =>
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        if (v === "diagram") next.set("view", "diagram");
+        else next.delete("view");
+        return next;
+      },
+      { replace: true },
+    );
+  return (
+    <Tabs
+      aria-label="Readme and diagram"
+      className={cx("labs-tabs", view === "diagram" && "labs-tabs--diagram")}
+      value={view}
+      onValueChange={onChange}
+      items={[
+        { value: "readme", label: "Readme", content: <ReadmeView blocks={d.readme} /> },
+        {
+          value: "diagram",
+          label: "Diagram",
+          content: (
+            <Suspense
+              fallback={
+                <p className="labs-muted labs-tabs__loading" role="status">
+                  Loading the diagram…
+                </p>
+              }
+            >
+              <DiagramTab labId={d.card.id} session={d.session} />
+            </Suspense>
+          ),
+        },
+      ]}
+    />
+  );
+}
+
 /** The lab modal while a session is live (spec §10): pipeline and log, resources, addresses, sign-in, note; the readme beside them. */
 export function RunningLab({ d }: { d: LabDetail }) {
   const s = d.session!;
@@ -251,7 +301,7 @@ export function RunningLab({ d }: { d: LabDetail }) {
         <Secret labId={d.card.id} running={s.state === "running"} />
         <Note key={s.id} s={s} />
       </div>
-      <ReadmeView blocks={d.readme} />
+      <LabReadmeTabs d={d} />
     </div>
   );
 }

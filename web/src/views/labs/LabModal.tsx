@@ -4,8 +4,7 @@ import { Button, Drawer } from "@/components";
 import { useLab } from "@/api/queries";
 import { CostTable, DeployFields, DeployFooter, useDeployForm } from "./DeployForm";
 import { LEVEL_WORD, TYPE_WORD, examsWord, stateWord } from "./model";
-import { ReadmeView } from "./ReadmeView";
-import { RunningFooter, RunningLab } from "./RunningLab";
+import { LabReadmeTabs, RunningFooter, RunningLab } from "./RunningLab";
 import { Word } from "./RunningStrip";
 
 /** "Lab 14 · AZ-104, AZ-700 · Associate · Explore · v3": every exam the lab belongs to, the primary first. */
@@ -17,7 +16,7 @@ function IdleLab({ d, onClose }: { d: LabDetail; onClose: () => void }) {
   return (
     <Drawer open onOpenChange={(o) => !o && onClose()} side="auto" size="lg" title={d.card.title} subtitle={subtitle(d)} className="labs-modal" footer={<DeployFooter f={f} />}>
       <div className="labs-modal__cols">
-        <ReadmeView blocks={d.readme} />
+        <LabReadmeTabs d={d} />
         <div className="labs-modal__side">
           <section aria-labelledby="labs-cost-h" className="labs-section">
             <h3 className="labs-section__title" id="labs-cost-h">

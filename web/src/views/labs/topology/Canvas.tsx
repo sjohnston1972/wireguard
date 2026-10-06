@@ -7,6 +7,6 @@
 import type { CanvasProps } from "./contract";
 import { ListView } from "./ListView";
 
-export function Canvas({ graph, status, selected, onSelect }: CanvasProps) {
-  return <ListView graph={graph} status={status} selected={selected} onSelect={onSelect} />;
+export function Canvas({ graph, status, selected, onSelect, deploying }: CanvasProps) {
+  return <ListView graph={graph} status={status} selected={selected} onSelect={onSelect} deploying={deploying} />;
 }

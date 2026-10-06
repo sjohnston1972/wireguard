@@ -27,6 +27,8 @@ export interface CanvasProps {
   /** Node id. */
   selected: string | null;
   onSelect: (id: string | null) => void;
+  /** The session is deploying: a missing node's badge reads "Not deployed yet" (badgeOf's `deploying`). T2 addition. */
+  deploying?: boolean;
 }
 
 export interface ToolbarProps {

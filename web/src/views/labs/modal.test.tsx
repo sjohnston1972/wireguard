@@ -1,11 +1,19 @@
 // Plan L3.3: the lab modal while the lab is not running.
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { LabDetail } from "@shared/api";
 import { renderApp } from "@/test/render";
 import { expectCentredModal } from "@/test/dialogs";
 import { card, detailIdle, labs } from "./testData";
+import { PLANNED_URL, layoutServer, plannedGraph } from "./topology/places.fixtures";
+
+// The diagram's lazy chunk, counted as it loads (lab topology plan T2.3).
+const { chunkLoads } = vi.hoisted(() => ({ chunkLoads: { n: 0 } }));
+vi.mock("@/views/labs/topology", async (importOriginal) => {
+  chunkLoads.n++;
+  return await importOriginal();
+});
 
 vi.setConfig({ testTimeout: 20_000 });
 beforeAll(async () => {
@@ -202,5 +210,119 @@ describe("the lab modal, not running", () => {
     const d = await dialog();
     expect(d.getByRole("button", { name: "Deploy" })).toBeDisabled();
     expect(d.getByText("Needs the permissions check (Settings → Labs).")).toBeInTheDocument();
+  });
+});
+
+// ── Lab topology plan T2.3: the Diagram tab beside the readme ────────────
+
+describe("the Diagram tab, lab not running", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    try {
+      localStorage.clear();
+    } catch {
+      /* nothing to clear */
+    }
+  });
+  const withDiagram = (more: Record<string, unknown> = {}) => ({ [`GET ${PLANNED_URL}`]: plannedGraph(), ...layoutServer().routes, ...more });
+  const openAt = (url: string, more: Record<string, unknown> = {}) => renderApp(url, { routes: { "GET /api/v1/labs": labs(), [`GET ${PATH}`]: detailIdle(), ...withDiagram(more) } });
+
+  it("the diagram chunk loads only when the Diagram tab first opens", async () => {
+    const user = userEvent.setup();
+    expect(chunkLoads.n).toBe(0);
+    openAt(`/labs/${ID}`);
+    const d = await dialog();
+    expect(d.getByRole("article", { name: "Readme" })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(chunkLoads.n).toBe(0);
+    await user.click(d.getByRole("tab", { name: "Diagram" }));
+    expect(await d.findByRole("tree", { name: /diagram/i })).toBeInTheDocument();
+    expect(chunkLoads.n).toBe(1);
+  });
+
+  it("the idle panel shows Readme and Diagram tabs", async () => {
+    openAt(`/labs/${ID}`);
+    const d = await dialog();
+    const tabs = within(d.getByRole("tablist", { name: "Readme and diagram" }));
+    expect(tabs.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Readme", "Diagram"]);
+    expect(tabs.getByRole("tab", { name: "Readme" })).toHaveAttribute("aria-selected", "true");
+    expect(d.getByRole("article", { name: "Readme" })).toBeInTheDocument();
+    // The cost and Deploy column is where it was.
+    expect(d.getByRole("heading", { name: "Deploy" })).toBeInTheDocument();
+  });
+
+  it("?view=diagram opens Diagram and switching tabs updates the URL without a new history entry", async () => {
+    const user = userEvent.setup();
+    const r = openAt(`/labs/${ID}?view=diagram`);
+    const d = await dialog();
+    expect(d.getByRole("tab", { name: "Diagram" })).toHaveAttribute("aria-selected", "true");
+    const tree = await d.findByRole("tree", { name: /diagram/i });
+    expect(within(tree).getByRole("treeitem", { name: /Storage account l06…blob/ })).toBeInTheDocument();
+    expect(d.getByText("Example addresses (slot 31); each session gets its own /18.")).toBeInTheDocument();
+    expect(d.queryByRole("article", { name: "Readme" })).toBeNull();
+    await user.click(d.getByRole("tab", { name: "Readme" }));
+    expect(screen.getByLabelText("location")).toHaveTextContent(new RegExp(`^/labs/${ID}$`));
+    expect(r.router.state.historyAction).toBe("REPLACE");
+    expect(d.getByRole("article", { name: "Readme" })).toBeInTheDocument();
+    await user.click(d.getByRole("tab", { name: "Diagram" }));
+    expect(screen.getByLabelText("location")).toHaveTextContent(`/labs/${ID}?view=diagram`);
+    expect(r.router.state.historyAction).toBe("REPLACE");
+  });
+
+  it("the Live/Planned toggle appears only while a session is live (not here)", async () => {
+    openAt(`/labs/${ID}?view=diagram`);
+    const d = await dialog();
+    expect(await d.findByRole("tree", { name: /diagram/i })).toBeInTheDocument();
+    expect(d.queryByRole("radiogroup", { name: "Diagram source" })).toBeNull();
+    // The other controls are there.
+    expect(d.getByRole("searchbox", { name: "Search the diagram" })).toBeInTheDocument();
+    expect(d.getByRole("button", { name: "Reset layout" })).toBeInTheDocument();
+    expect(d.getByRole("link", { name: "Full screen" })).toHaveAttribute("href", `/labs/${ID}/diagram?view=diagram`);
+  });
+
+  it("the dependency toggle and Diagram/List choice are remembered on this device", async () => {
+    const user = userEvent.setup();
+    const first = openAt(`/labs/${ID}?view=diagram`);
+    let d = await dialog();
+    await d.findByRole("tree", { name: /diagram/i });
+    const deps = d.getByRole("switch", { name: "Show dependencies" });
+    expect(deps).toBeChecked();
+    expect(d.getByRole("radio", { name: "Diagram" })).toBeChecked();
+    await user.click(deps);
+    await user.click(d.getByRole("radio", { name: "List" }));
+    expect(JSON.parse(localStorage.getItem("wg.topology.v1")!)).toEqual({ showDependencies: false, view: "list" });
+    first.unmount();
+    openAt(`/labs/${ID}?view=diagram`);
+    d = await dialog();
+    await d.findByRole("tree", { name: /diagram/i });
+    expect(d.getByRole("switch", { name: "Show dependencies" })).not.toBeChecked();
+    expect(d.getByRole("radio", { name: "List" })).toBeChecked();
+  });
+
+  it("a broken localStorage only forgets the choice", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    const user = userEvent.setup();
+    openAt(`/labs/${ID}?view=diagram`);
+    const d = await dialog();
+    await d.findByRole("tree", { name: /diagram/i });
+    await user.click(d.getByRole("radio", { name: "List" }));
+    expect(d.getByRole("radio", { name: "List" })).toBeChecked();
+  });
+
+  it("the planned file failing to load says so with Try again", async () => {
+    const user = userEvent.setup();
+    let fail = true;
+    openAt(`/labs/${ID}?view=diagram`, { [`GET ${PLANNED_URL}`]: () => (fail ? { status: 503, json: {} } : plannedGraph()) });
+    const d = await dialog();
+    const alert = await d.findByRole("alert");
+    expect(alert).toHaveTextContent("Could not load the diagram: The planned diagram did not load (503).");
+    fail = false;
+    await user.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await d.findByRole("tree", { name: /diagram/i })).toBeInTheDocument();
   });
 });
