@@ -278,8 +278,8 @@ The budget guard still tears down every lab at 100% (decision B).
 
 **Release tests:** Steven approved **up to £15** for this suite, including one retry for the cheap labs, the dashboard pass
 after deploy (which marks versions released) and the soaks; merge and deploy without stopping. The plan's Integration step
-7 gives per-lab likely and worst figures: about **£2.85 likely and £4.90 worst per full pass** (worst: every billed hour rounded up), so two passes, retries and
-soaks come to about £13.25 worst and £6.80 likely, under £15. A projected overrun is a STOP. Release tests through `lab-release-test.mjs` bypass the
+7 gives per-lab likely and worst figures: about **£2.61 likely and £4.86 worst per full pass** of all 20 labs (worst: every billed hour rounded up), so two passes, one retry of each cheap lab, one
+£££ retry and the soaks come to about £13.16 worst and £6.70 likely, under £15. A projected overrun is a STOP. Release tests through `lab-release-test.mjs` bypass the
 dashboard's guard but land in the month's actual spend; the plan checks the month-to-date figure first, and if the dashboard
 pass would cross £10 it is a STOP for Steven to raise the budget (a setting change).
 
