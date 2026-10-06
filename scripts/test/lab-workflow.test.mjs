@@ -355,27 +355,37 @@ test("the live log starts after secrets and finishes before the result", () => {
   }
 });
 
+/** Plan and scope check, Apply and Destroy run these scripts (a retried apply plans and checks scope again). */
+/** A script's commands, its comments left out. */
+const code = (f) => readFileSync(join(REPO, "infra", "ci", f), "utf8").replace(/\r\n/g, "\n").replace(/^\s*#.*$/gm, "");
+const PLAN_SH = code("lab-plan.sh");
+const TF_RUN_SH = code("lab-tf-run.sh");
+
 test("the plan is scope-checked before apply, and apply uses that plan", () => {
-  const plan = step(lab(6)).run;
+  assert.match(step(lab(6)).run, /bash "\$GITHUB_WORKSPACE\/infra\/ci\/lab-plan\.sh"/);
+  const plan = PLAN_SH;
+  assert.match(plan, /set -euo pipefail/);
   assert.match(plan, /terraform plan .*-out=/);
   assert.match(plan, /terraform show (-no-color )?-json/);
-  assert.match(plan, /node "\$GITHUB_WORKSPACE\/infra\/ci\/lab-scope\.mjs" --plan "\$RUNNER_TEMP\/plan\.json" --lab "\$LAB_ID"/);
+  assert.match(plan, /node "\$here\/lab-scope\.mjs" --plan "\$RUNNER_TEMP\/plan\.json" --lab "\$LAB_ID"/);
   assert.ok(plan.indexOf("terraform plan") < plan.indexOf("lab-scope.mjs"));
-  const apply = step(lab(7)).run;
+  assert.match(step(lab(7)).run, /bash "\$GITHUB_WORKSPACE\/infra\/ci\/lab-tf-run\.sh" apply/);
+  const apply = TF_RUN_SH;
   assert.match(apply, /terraform apply .*"\$RUNNER_TEMP\/plan\.out"/);
   // The public log never shows the outputs block, and every output is masked.
-  assert.match(apply, /sed '\/\^Outputs:\/,\$d'/);
-  assert.match(apply, /::add-mask::/);
+  assert.match(apply, /sed -u '\/\^Outputs:\/,\$d'/);
+  assert.match(step(lab(7)).run, /::add-mask::/);
   assert.equal(step(lab(12))["continue-on-error"], true);
-  assert.match(step(lab(12)).run, /terraform destroy .*-auto-approve/);
+  assert.match(step(lab(12)).run, /bash "\$GITHUB_WORKSPACE\/infra\/ci\/lab-tf-run\.sh" destroy/);
+  assert.match(TF_RUN_SH, /terraform destroy .*-auto-approve/);
   assert.match(String(step(lab(9)).if), /env\.LAB_PEERING == 'true'/);
 });
 
 // Ruling 35: the release test records each lab's real plan shape from this line.
 test("plan and scope check prints the plan's shape, never its values", () => {
-  const plan = step(lab(6)).run;
-  const line = /^.*infra\/ci\/lab-plan-shape\.mjs.*$/m.exec(plan)?.[0] ?? "";
-  assert.match(line, /node "\$GITHUB_WORKSPACE\/infra\/ci\/lab-plan-shape\.mjs" "\$RUNNER_TEMP\/plan\.json"/);
+  const plan = PLAN_SH;
+  const line = /^.*lab-plan-shape\.mjs.*$/m.exec(plan.replace(/^#.*$/gm, ""))?.[0] ?? "";
+  assert.match(line, /node "\$here\/lab-plan-shape\.mjs" "\$RUNNER_TEMP\/plan\.json"/);
   // After the JSON is written; a shape that cannot be made is a warning, never a failed plan.
   assert.ok(plan.indexOf("terraform show") < plan.indexOf("lab-plan-shape.mjs"));
   assert.match(line, /\|\| echo "::warning::/);
@@ -503,7 +513,7 @@ test("state key is labs/<id>/terraform.tfstate and backups keep 5", () => {
 });
 
 test("destroy waits a while for the state lock; once verified clean, the backed-up state and any stale lock are removed from R2", () => {
-  assert.match(step(lab(12)).run, /terraform destroy .*-lock-timeout=\d+m/);
+  assert.match(TF_RUN_SH, /terraform destroy .*-lock-timeout=\d+m/);
   const s = step(lab(15));
   assert.equal(s.env.VERIFY_CLEAN, "${{ steps.verify.outputs.clean }}");
   assert.match(s.run, /bash "\$GITHUB_WORKSPACE\/infra\/ci\/lab-state-reset\.sh" "\$LAB_ID"/);
