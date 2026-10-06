@@ -1,60 +1,114 @@
 # Lab topology diagram: implementation plan
 
-## T0 names (planned; T0.13 rewrites this section "as built")
+## T0 names (as built, T0.13)
 
-The contract on `feat/lab-topology-engine`. Areas (T1, T2, T3) branch from its head and use these names exactly; a change goes
-through the integrator, who updates this section and the spec together.
+The contract on **`feat/topo-engine`** (T0's branch as built; the plan's `feat/lab-topology-engine`). Areas (T1, T2, T3) branch
+from its head and use these names exactly; a change goes through the integrator, who updates this section and the spec
+together. Everything below exists and is tested on that branch.
 
-**Graph model** (`shared/topology/`, pure; app, Worker and the generator)
-- `model.ts`: `TOPOLOGY_SCHEMA = 1`; `TopoSource`, `TopoGroupKind`, `TopoAssetKind`, `TopoKind`, `TopoTone`, `TopoHealth`,
-  `TopoPropValue`, `TopoNode`, `TopoEdge`, `TopologyGraph` as spec §4.1; `sortGraph(g)`.
-- `kinds.ts`: `KINDS: Record<TopoKind, KindDef>` with `KindDef = { word, plural, icon, placement: "subnet" | "vnet" | "rg" |
-  "global" | "tenant" | "root", liveVisible, armTypes: string[], tfTypes: string[], cardProps: string[], order }`;
-  `GROUP_KINDS`; `kindOfArm(type, kind?)`, `kindOfTf(type)`; `STACK_AT = 8`, `LIST_VIEW_AT = 300`.
-- `keys.ts`: `nodeKey(armType, namePath, ctx)`, `normaliseName(name, { prefix, region, secondaryRegion })` (`{p}`, `{r}`,
-  `{r2}`), `MOCK_NAME = { prefix: (n) => "l" + n + "k3x9q", region: "uksouth", secondaryRegion: "ukwest" }`,
-  `planLabel(name, n)` (`l06…st`), `disambiguate(nodes)`.
-- `props.ts`: `PROP_NAMES` (spec §4.5), `scrubProps(props) → { props, withheld }`, `secretLike(value): boolean`,
-  `MOCK_SECRETS` (labs-tf's admin password and SSH key, copied; a test keeps them equal).
-- `rules/planned.ts`: `TF_RULES: Record<tfType, TfRule>` (`{ kind? , fold?: { into: refPath, count?: string }, edge?: EdgeRule[],
-  props?: Record<propName, attrPath>, ignore?: true }`), `TF_IGNORED_PREFIXES` (`random_`, `time_`, `terraform_data`,
-  `null_resource`). `rules/live.ts`: `ARM_RULES: Record<armTypeLower, ArmRule>`, `AZURE_MADE: { test(row): boolean; why }[]`,
-  `healthOf(row)`.
-- `planned.ts`: `plannedGraph(input: PlannedInput): TopologyGraph`, `PlannedInput = { labId, version, number, changes:
-  ResourceChange[], outputs: Record<string, unknown>, refs: Record<configAddress, Record<attrPath, string[]>> }`.
-- `armTemplate.ts`: `expandTemplate(template, parameters, rgLocation) → { type, name, dependsOn, properties }[]`, throws
-  `UnsupportedArm(expression)`.
-- `live.ts`: `liveGraph(rows: ArgRow[], ctx: LiveCtx): TopologyGraph`; `ArgRow` (the projected columns); `LiveCtx = { labId,
-  version, namePrefix, region, secondaryRegion, catalogueIds, gatewayVnetId, at }`.
-- `query.ts`: `topologyQuery(labId): string` (the one KQL text, spec §6.1), `ARG_API = "2022-10-01"`, `ARG_TOP = 1000`.
-- `diff.ts`: `NodeDiffStatus = "both" | "added" | "missing" | "azure" | "unlisted"`; `diffGraphs(planned, live, { deploying })
-  → { status: Record<key, NodeDiffStatus> }`; `mergeForView(planned, live, opts) → { graph, status }` (live plus ghosts);
-  `rebaseSlot(graph, cidr)`, `MOCK_SLOT = "10.71.192.0/18"`.
+**Graph model** (`shared/topology/`, pure TypeScript; the app, the Worker and the generator share it)
+- `model.ts`: `TOPOLOGY_SCHEMA = 1`; `TopoSource`; `TOPO_GROUP_KINDS` / `TopoGroupKind` (`resourceGroup`, `vnet`, `subnet`,
+  `virtualHub`, `lane`); `TOPO_ASSET_KINDS` / `TopoAssetKind` (spec §4.3's kinds **plus `gateway`**, the synthetic WireGuard
+  gateway node `wg/gateway`, and `generic`); `TopoKind`, `TopoTone`, `TopoHealth`, `TopoPropValue`, `TopoFolded`
+  (`{ id, label, armType }`), `TopoNode`, `TopoEdge`, `TopologyGraph` as spec §4.1; `sortGraph(g)` (a copy, nodes, edges and
+  each `folded` list by id); `isGroupKind(k)`.
+- `kinds.ts`: `KINDS: Record<TopoKind, KindDef>`, `KindDef = { word, plural, icon, placement, liveVisible, armTypes, tfTypes,
+  cardProps, order }` (`placement: KindPlacement = "subnet" | "vnet" | "rg" | "global" | "tenant" | "root"`; `tfTypes` may end
+  or start with `*`; `icon` is the sprite symbol without its `az-` prefix; `order`: groups 0-4, edge devices 10-16, compute
+  20-25, data 30-35, the rest 40-70, `generic` 99); `GROUP_KINDS`; `kindOfArm(type, kind?)` (case-insensitive; a
+  `virtualHubs` row of kind `RouteServer` is `routeServer`; unknown → `generic`); `kindOfTf(type)` (unknown → `generic`);
+  `isAssetKind(k)`; `STACK_AT = 8`, `LIST_VIEW_AT = 300`.
+- `keys.ts`: `NameCtx = { prefix, region, secondaryRegion }`; `nodeKey(armType, namePath, ctx)`; `normaliseName(name, ctx)`
+  (`{p}`, `{r}`, `{r2}`, the longer region first); `MOCK_NAME` (`prefix(n) = "l" + n + "k3x9q"`, `uksouth`, `ukwest`);
+  `mockNameCtx(n)`; `planLabel(name, n)` (`l06k3x9qst` → `l06…st`); `disambiguate(nodes: { id, key, group }[], primaryRg) →
+  Record<id, key>` (`#<group suffix>`, then `#2`, `#3` by id); `SYNTHETIC_KEYS = { globalLane: "lane/global", tenantLane:
+  "lane/tenant", gateway: "wg/gateway" }`. Planned keys of types with no ARM type are `terraform/<tf type>/<name>`.
+- `props.ts`: `PROP_NAMES` (spec §4.5, unchanged); `MOCK_SECRETS = { adminPassword, sshPublicKey }` (a test keeps them equal to
+  labs-tf's); `MAX_PROP_CHARS = 256`; `secretLike(value)` (props: the words password/secret/sharedkey/accountkey, `sig=`, PEM,
+  JWT, a 40+ base64 run mixing digits and both cases, the mock secrets, over 256 characters); `secretValue(value)` (names,
+  keys, ids, edge labels, notes: the same **without** the bare words, so "Key Vault Secrets User" is a name, not a secret);
+  `isCount(s)` (`"secrets: 2"`: a word and a number, allowed in `counts`); `scrubProps(props) → { props, withheld }`;
+  `tagProps(tags) → string[]` (`"lab: <v>"`, `"project: <v>"`, `"+N tags"`); `withheldNote(n)`; `denyProblems(graph) →
+  string[]` (the deny check: each line names where, never the value).
+- `rules/planned.ts`: `TfInst` (`{ id: "tf:<address>", address, config: "type.name", type, name, index, after, armType? }`),
+  `EdgeSpec`, `PlannedHelpers` (`refs`, `referrers`, `byType`, `home`, `label`, `nodeByPrivateIp`, `subnetsOf`), `TfRule = { arm?,
+  kind?, ignore?, fold?: attr[], foldToReferrer?: { types?, attrs? }, pull?: attr[], chips?, props?, edges?, namePath?,
+  foldedLabel? }`, `TF_RULES: Record<tfType, TfRule>`, `TF_IGNORED_PREFIXES` (`random_`, `time_`, `terraform_data`,
+  `null_resource`), `tfRule(type)`, `tfIgnored(type)`, `staticIp(ipConfigs)`, `VM_TYPES`. Core rules at T0: groups, VMs (NICs,
+  disks, extensions, NSG/ASG associations folded, chips), NSG, route table and routes (next-hop edges), peering, public IP
+  (folds into whatever references it), public IP prefix, NAT gateway and its associations, LB core (pools, probes, rules,
+  NAT and outbound rules, pool associations), template deployment (folds into its RG), storage account and container, Key
+  Vault and its secrets/keys/certificates (folded as `secret`/`key`/`certificate`, counted, never named), private endpoint
+  (edge to its target), private DNS zone and its VNet links (folded, `link` edge), role assignment (folded into its scope,
+  `role: <name>` dependency edge), Entra users and groups (Tenant lane), Log Analytics, flow logs.
+- `rules/live.ts`: `ArgRow` (the projected columns), `LiveEdgeSpec`, `LiveHelpers` (`row`, `home`, `nodeByPrivateIp`,
+  `nicsOf`), `ArmRule = { fold?, props?, edges? }`, `ARM_RULES: Record<armTypeLower, ArmRule>`, `AZURE_MADE: { test(row), why
+  }[]` (managedBy set; a VM's OS disk; a private endpoint's NIC; an `-infra`/`-managed` group; `NWTA*` data collection rules
+  and endpoints; `NetworkWatcher_*`), `healthOf(row)` (VM power words "Running", "Stopped (deallocated)" …; SQL database
+  `status`; connection `connectionStatus`; App Gateway `operationalState`; else provisioningState: Succeeded → ok "Ready",
+  Failed → bad, Updating/Creating/… → warn; none → unknown "No data"), `stateWord(s)` ("Pending" → "Pending approval"),
+  `topResource(id)`, `subnetIdOf(id)`, `namePathOf(id)`, `lower(s)`, `peeringEdges(row, isGateway)`.
+- `planned.ts`: `ResourceChange` (`{ address, type, name, index?, after, after_unknown? }`), `PlannedInput = { labId,
+  version, number, changes, outputs, refs }` (`refs`: configuration address, or `output.<name>`, → top-level attribute →
+  referenced configuration addresses `type.name`; resolved to instances by matching instance key), `plannedGraph(input)`,
+  `representedIds(graph)` (nodes, folded entries and edge vias).
+- `armTemplate.ts`: `ArmResource` (`{ type, name, dependsOn, properties, location?, kind?, sku?, refs, subnetRefs }`),
+  `UnsupportedArm` (`.expression`), `ArmCtx`, `evaluateArm(value, ctx)`, `expandTemplate(template, parameters, rgLocation)`,
+  `expandDeployment(inst, rgLocation)`. Supports `parameters`, `variables`, `format`, `concat`, `resourceGroup().location`,
+  `resourceId` (→ `/providers/<type>/<name>`), resource and property `copy`, `copyIndex`, `length`, `cidrSubnet`, `toLower`,
+  `toUpper`, `string`, `int`, `add`, `sub`, `mul`, `equals`, `not`, `and`, `or`, `if`, `true`, `false`, `empty`,
+  `createArray`, nested inline deployments (inner and outer scope), symbolic-name templates; anything else throws.
+- `live.ts`: `LiveCtx = { labId, version, namePrefix, region, secondaryRegion, catalogueIds, gatewayVnetId, at }`,
+  `liveGraph(rows, ctx)`; re-exports `ArgRow`. Live resource groups carry no region or tags (the `resources` table has no
+  group rows).
+- `query.ts`: `ARG_API = "2022-10-01"`, `ARG_TOP = 1000`, `topologyQuery(labId)` (throws for anything that is not a lab id),
+  `topologyRequest(subscriptionId, labId)` (`{ subscriptions, query, options: { resultFormat: "objectArray", $top } }`).
+- `diff.ts`: `NodeDiffStatus`, `MOCK_SLOT = "10.71.192.0/18"`, `diffGraphs(planned, live, opts?) → { status: Record<key,
+  NodeDiffStatus> }`, `badgeOf(status, { deploying? }) → string | null` ("Added by hand", "Made by Azure", "Not deployed or
+  removed" / "Not deployed yet", "Not listed by the live view"), `mergeForView(planned, live, opts?) → { graph, status }`
+  (ghosts keep their planned ids `tf:…`, their parent mapped to its live twin by key; ghost edges have ids `ghost:<planned
+  edge id>`), `rebaseSlot(graph, cidr)`.
 - `layout.ts` (prefs): `TopologyLayout`, `TopologyLayoutPage`, `TopologyLayoutPutBody`, `MAX_TOPOLOGY_BODY_BYTES` (20 KiB),
-  `MAX_TOPOLOGY_LAYOUT_BYTES` (16 KiB), `MAX_TOPOLOGY_ENTRIES` (300), `topologyPage(labId)` (`"topology:<id>"`),
-  `validateTopologyLayout(raw) → PrefsProblem | null`, `normaliseTopologyLayout(raw)`, `EMPTY_LAYOUT`.
-- `planned/<id>.json`: one per lab folder (40), generated.
+  `MAX_TOPOLOGY_LAYOUT_BYTES` (16 KiB), `MAX_TOPOLOGY_ENTRIES` (300), `MAX_TOPOLOGY_KEY_CHARS` (200), `MAX_TOPOLOGY_COORD`
+  (100 000), `topologyPage(labId)`, `validTopologyKey(k)`, `validateTopologyLayout(raw) → PrefsProblem | null` (`PrefsProblem`
+  re-exported from `shared/widgets.ts`), `normaliseTopologyLayout(raw)`, `EMPTY_LAYOUT`.
+- `planned/<id>.json`: one per lab folder (40), generated, LF (`.gitattributes`), each well under 2 kB gzip at T0.
 
 **API** (`shared/api.ts`): `LabTopologyResponse` (spec §6.6). Routes: `GET /api/v1/labs/:id/topology`; `GET` and `PUT
-/api/v1/prefs/topology/:labId`. Migration `worker/migrations/0021_ui_prefs_topology.sql`.
+/api/v1/prefs/topology/:labId` (registered before `/prefs/:page`). Migration `worker/migrations/0021_ui_prefs_topology.sql`.
 
 **Worker:** `worker/src/labs/topology.ts`: `labTopology(env, labId, now?) → LabTopologyResponse`, `TOPOLOGY_CACHE_MS =
-30_000`, `resetTopologyCache()` (tests); `worker/src/api/labs.ts` registers the route; `worker/src/prefs.ts` gains
-`getTopologyLayout(env, user, labId)`, `putTopologyLayout(env, user, labId, baseVersion, layout)`; `worker/src/api/prefs.ts`
-the two routes; `worker/src/devseed-labs.ts` seeds KV `labs:topology:dev` (`LABS_KV.topologyDev`).
+30_000`, `resetTopologyCache()`; `worker/src/api/labs.ts` registers the route; `worker/src/prefs.ts`:
+`getTopologyLayout(env, user, labId)`, `putTopologyLayout(env, user, labId, baseVersion, layout)`, `TopologyPutResult`;
+`worker/src/api/prefs.ts` the two routes; `worker/src/devseed-labs.ts`: `LABS_KV.topologyDev = "labs:topology:dev"`,
+`topologyDevRows()` (lab 6 in slot 0, prefix `l06k3x9q`, peered, one hand-made `nsg-handmade`), `seedTopologyDev(env)`
+(called by `seedLabs`).
 
-**Scripts:** `npm run labs-topology` (`scripts/labs-topology.mjs [--check] [id ...]`), `scripts/lib/hcl2json.mjs`
-(`HCL2JSON_VERSION = "0.6.9"`, `pinnedHcl2json()`), `scripts/lib/topology-stream.mjs` (`planFromTestStream(text) → {
-changes, outputs }`, `diagnostics(text)`), `scripts/topology-icons.mjs`, `scripts/topology-capture.mjs` (integration's
-read-only capture: runs `topologyQuery` with `az rest`, keeps only the paths the rules read, fakes the subscription id).
-`scripts/lib/bundle.mjs`: `LIMITS.jsGzip = 450_000`, `LIMITS.topologyDataGzip = 16_000`, `LIMITS.spriteGzip = 60_000`,
-entry check `FORBIDDEN_IN_ENTRY = ["react-flow__", "@xyflow"]`.
+**Scripts:** `npm run labs-topology` (`scripts/labs-topology.mjs [--check] [id ...]`: `runLabsTopology({ labsDir, outDir,
+only, check, run, hcl2json, bicep, log, build?, deny? }) → { failures, written }`, `loadBuilder()` (Vite's `runnerImport`),
+`fileText(graph)`); `scripts/lib/hcl2json.mjs` (`HCL2JSON_VERSION = "0.6.9"`, `HCL2JSON_SHA256`, `hcl2jsonAsset()`,
+`hcl2jsonUrl()`, `hcl2jsonMatchesPin()`, `pinnedHcl2json()`); `scripts/lib/topology-stream.mjs` (`PLAN_OUTPUTS`,
+`planFromTestStream(text) → { changes, outputs }`, `scrubChanges(changes)`, `refsFromHcl(hcl, labId, hclResources)`,
+`diagnostics(text)`); `scripts/topology-icons.mjs` (`PACK_VERSION = "V24"`, `PACK_URL`, `PACK_SHA256`, `ICON_FILES`,
+`NEAREST`, `optimiseIcon()`, `buildSprite()`, `buildReadme()`); `scripts/topology-capture.mjs` (`CAPTURE_KEEP`,
+`captureRows(rows)`, `captureRequest(subscriptionId, labId)`, `FAKE_SUBSCRIPTION`). `scripts/lib/bundle.mjs`: `LIMITS = {
+entryJsGzip: 320_000, jsGzip: 450_000, cssGzip: 50_000, topologyDataGzip: 16_000, spriteGzip: 60_000 }`,
+`FORBIDDEN_IN_ENTRY = ["react-flow__", "@xyflow"]` (every `assets/*.json` is a planned file; every `assets/azure*.svg` the
+sprite). CI's `labs` job runs `npm run labs-topology -- --check` after `labs-tf` with `TF_PLUGIN_CACHE_DIR`, `BICEP` and
+`HCL2JSON` set.
 
-**App:** dependency `@xyflow/react` `12.12.0` (exact). `web/src/api/queries.ts`: `useLabTopology(id, { enabled })`,
-`usePlannedTopology(id)` (fetches the hashed asset; `plannedTopologyUrl(id)`), `useTopologyLayoutQuery(id)`;
-`web/src/api/mutations.ts`: `putTopologyLayout(id, body)`. `web/src/App.tsx`: route `labs/:id/diagram` → the labs page.
-`web/src/views/labs/topology/` (the lazy chunk): `index.ts` (default export `{ DiagramTab, FullScreen, LabMini }` for
-`lazy()`), `contract.ts` (below), a stub `Canvas.tsx` that renders `ListView`, and `ListView.tsx`.
+**App:** dependency `@xyflow/react` `12.12.0` (exact). **`web/src/api/topology.ts`** (not `queries.ts`/`mutations.ts`: only the
+lazy chunk imports it, so the entry never carries it): `TOPOLOGY_REFRESH_MS`, `PLANNED_URLS` (eager `import.meta.glob(…, {
+query: "?url", import: "default", eager: true })`), `plannedTopologyUrl(id, urls?)`, `usePlannedTopology(id, urls?)`,
+`useLabTopology(id, { enabled })`, `useTopologyLayoutQuery(id, { enabled? })`, `putTopologyLayout(id, body, opts?)`.
+`web/src/App.tsx`: route `labs/:id/diagram` → the labs page; dev-only `__topology/:id` → `web/src/topologyGallery.tsx` (T1
+may edit; `?asset=` points it at another planned file). `web/src/views/pages.tsx`: `LabDiagramTab` (a `lazy()` of the chunk's
+`DiagramTab`, so every build carries the chunk; T2 uses it or its own `lazy()`). `web/vite.config.ts` never inlines `.json`
+or `.svg` assets. `web/src/views/labs/topology/` (the lazy chunk): `index.ts` (default `{ DiagramTab, FullScreen, LabMini }`,
+each `({ labId })`), `contract.ts` (below), a stub `Canvas.tsx` that renders `ListView`, `ListView.tsx` (`ListView`,
+`ListViewProps`: a nested `role="tree"` with kind words, health words and badges) and `ListView.css`; T2's
+`DiagramTab.tsx` (`PlannedDiagram`, `PlacementProps`), `FullScreen.tsx` and `LabMini.tsx` exist as stubs; the sprite
+`icons/azure.svg` (one `<symbol id="az-<icon>">` per KINDS icon plus `generic`) with `icons/README.md`.
 
 ```ts
 // web/src/views/labs/topology/contract.ts
@@ -76,6 +130,17 @@ export interface ToolbarProps { source: "live" | "planned" | null; onSource?: (s
   onView: (v: "diagram" | "list") => void; onReset?: () => void; fullScreenHref?: string; onClose?: () => void; variant: DiagramVariant }
 export interface DetailsProps { graph: TopologyGraph; status: Record<string, NodeDiffStatus>; nodeId: string | null; onClose: () => void }
 ```
+
+**(V) answers at T0:** Vite's `runnerImport` (Vite 8.3.2) runs the TypeScript builder from `.mjs`; hcl2json v0.6.9's Windows
+asset is `hcl2json_windows_amd64.exe`, SHA-256 `be798d4c…d4f4f` (GitHub's digest, checked on download); the icon pack is
+**V24** (`Azure_Public_Service_Icons_V24.zip`, SHA-256 `921594cc…c35141`), terms quoted in `icons/README.md`, six nearest
+matches (Route Server → Virtual Router, DNS forwarding ruleset → DNS Private Resolver, private DNS zones → DNS Zones,
+Container Apps → Worker Container App, role → Entra Identity Roles and Administrators, generic → All Resources).
+
+**Bundle at T0** (`npm run bundle-size`): entry 311.3 kB (main 311.2), all JS 347.1 kB of 450 (main 342.1), CSS 33.3 kB; the
+lazy `topology` chunk 4.9 kB gzip (no React Flow in it yet: T1's real Canvas brings it); 40 planned assets, largest 1.5 kB
+gzip (`az700-40-lb-advanced`); the sprite is not emitted until T1's Canvas references it. `labs-topology` regenerated
+twice locally (Windows) with no change, and CI's Linux `--check` passed on the same files.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans. The integrator lands **T0** first. Then three areas run **in parallel**, each in its own git

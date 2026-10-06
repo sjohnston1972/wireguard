@@ -141,6 +141,31 @@ gateway, `wg.yml`, `lab.yml`, the lab Terraform or the lab versions.
     each from the dashboard, unpeered unless the gateway is already running. A free NSG made by hand in lab 43's group checks
     "added by hand"; deleting `pe-svc` by hand checks "not deployed / removed". Likely £0.10, worst £0.50 with a retry.
 
+**As built at T0** (`feat/topo-engine`; the plan's names section lists every name). The rulings hold, with these
+corrections and (V) answers:
+
+- Ruling 1: references are per **top-level** attribute (lab-scope's `hclResources`), stripped to `type.name` and resolved to
+  instances by matching instance key; outputs' references come from hcl2json's `output` blocks (`output.<name>`).
+- Ruling 2: the stream reader keeps only managed resources' `address`, `type`, `name`, `index`, `after` (sensitive paths,
+  secret-named attributes, nulls and the mock secrets removed) and `after_unknown`, and the outputs in `PLAN_OUTPUTS`
+  (`peer_vnet_id`); a failed run prints only the stream's diagnostics, redacted.
+- Ruling 3 (V): the Windows asset is `hcl2json_windows_amd64.exe`, SHA-256 `be798d4c…d4f4f`. CI passes `HCL2JSON` (its
+  installed copy), used only when it matches the pin.
+- Ruling 5 (V): `runnerImport` from Vite 8.3.2.
+- Ruling 7: one more asset kind, **`gateway`** (the synthetic `wg/gateway` node); `TopoFolded` is a named type.
+- Ruling 22 and §4.5: Key Vault secrets, keys and certificates fold into the vault labelled `secret`, `key`, `certificate`
+  (never their names) and are counted (`secrets: 2`). The deny check applies `secretLike` to props and a narrower
+  `secretValue` (no bare "password"/"secret" words) to names, ids, edge labels and notes, so a role named "Key Vault
+  Secrets User" or a resource named `kv-password-policy` is a name, not a withheld secret; a `counts` entry of the form
+  "word: number" is allowed.
+- §6.2 / ruling 14: live resource groups carry no region or tags (the `resources` table has no group rows); a succeeded
+  provisioning state reads "Ready".
+- §9.1 and ruling 21: the app's topology hooks live in `web/src/api/topology.ts`, imported only by the lazy chunk, so the
+  entry never carries them; `views/pages.tsx` declares `LabDiagramTab` so every build carries the chunk and its planned
+  assets.
+- §10 (V): pack **V24** (`https://arch-center.azureedge.net/icons/Azure_Public_Service_Icons_V24.zip`); six icons are the
+  nearest official match (listed in `icons/README.md`).
+
 ## 4. The graph model (`shared/topology/`)
 
 ### 4.1 Types (`model.ts`)
