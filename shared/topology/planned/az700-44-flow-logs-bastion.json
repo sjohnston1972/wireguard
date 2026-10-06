@@ -10,7 +10,9 @@
    "key": "microsoft.network/bastionhosts/bas-hub",
    "kind": "bastion",
    "label": "bas-hub",
-   "props": {},
+   "props": {
+    "sku": "Basic"
+   },
    "parent": "tf:azurerm_subnet.bastion",
    "armType": "Microsoft.Network/bastionHosts",
    "scope": "lab",
@@ -87,7 +89,7 @@
   },
   {
    "id": "tf:azurerm_network_watcher_flow_log.vnet",
-   "key": "microsoft.network/networkwatchers/flowlogs/lab-az700-44-flow-logs-bastion-vnet",
+   "key": "microsoft.network/networkwatchers/flowlogs/networkwatcher_{r}/lab-az700-44-flow-logs-bastion-vnet",
    "kind": "generic",
    "label": "lab-az700-44-flow-logs-bastion-vnet",
    "props": {},
@@ -304,7 +306,32 @@
    "scope": "outside"
   }
  ],
- "edges": [],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_network_watcher_flow_log.vnet>tf:azurerm_log_analytics_workspace.lab:traffic analytics",
+   "from": "tf:azurerm_network_watcher_flow_log.vnet",
+   "to": "tf:azurerm_log_analytics_workspace.lab",
+   "kind": "dependency",
+   "label": "traffic analytics",
+   "via": "tf:azurerm_network_watcher_flow_log.vnet"
+  },
+  {
+   "id": "dependency:tf:azurerm_network_watcher_flow_log.vnet>tf:azurerm_storage_account.flow:stores logs",
+   "from": "tf:azurerm_network_watcher_flow_log.vnet",
+   "to": "tf:azurerm_storage_account.flow",
+   "kind": "dependency",
+   "label": "stores logs",
+   "via": "tf:azurerm_network_watcher_flow_log.vnet"
+  },
+  {
+   "id": "dependency:tf:azurerm_network_watcher_flow_log.vnet>tf:azurerm_virtual_network.hub:watches",
+   "from": "tf:azurerm_network_watcher_flow_log.vnet",
+   "to": "tf:azurerm_virtual_network.hub",
+   "kind": "dependency",
+   "label": "watches",
+   "via": "tf:azurerm_network_watcher_flow_log.vnet"
+  }
+ ],
  "notes": [
   "1 resource of a type the diagram draws plainly"
  ]

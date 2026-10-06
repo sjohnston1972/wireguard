@@ -13,6 +13,7 @@
 // Types are lower case (Resource Graph's `type` column).
 
 import type { TopoHealth } from "../model";
+import { cosmosApi } from "./planned";
 
 /** One Resource Graph row: the columns topologyQuery projects. */
 export interface ArgRow {
@@ -50,6 +51,8 @@ export interface LiveHelpers {
   nodeByPrivateIp(ip: string): string | null;
   /** The NIC rows attached to a VM (by id). */
   nicsOf(vmId: string): ArgRow[];
+  /** Every row (of the lab's groups) of a type, lower case. Optional so a rule's unit test can leave it out. */
+  rowsOfType?(type: string): ArgRow[];
 }
 
 export interface ArmRule {
@@ -57,6 +60,8 @@ export interface ArmRule {
   fold?: (row: ArgRow, h: LiveHelpers) => string | null | undefined;
   props?: (row: ArgRow, h: LiveHelpers) => Record<string, unknown>;
   edges?: (row: ArgRow, h: LiveHelpers) => LiveEdgeSpec[];
+  /** A group's ARM id to place this card in, when the kind's placement cannot find it (a secured hub's firewall). */
+  place?: (row: ArgRow, h: LiveHelpers) => string | null | undefined;
 }
 
 export const lower = (s: string | null | undefined): string => (s ?? "").toLowerCase();
@@ -114,10 +119,10 @@ const POWER: Record<string, TopoHealth> = {
 export function stateWord(s: string | undefined): TopoHealth | undefined {
   if (!s) return undefined;
   const k = s.toLowerCase();
-  if (["connected", "approved", "succeeded"].includes(k)) return { tone: "ok", word: s };
+  if (["connected", "approved", "succeeded", "online"].includes(k)) return { tone: "ok", word: s };
   if (k === "pending") return { tone: "warn", word: "Pending approval" };
-  if (["initiated", "connecting", "updating"].includes(k)) return { tone: "warn", word: s };
-  if (["disconnected", "rejected", "failed", "notconnected"].includes(k)) return { tone: "bad", word: s };
+  if (["initiated", "connecting", "updating", "degraded", "checkingendpoint"].includes(k)) return { tone: "warn", word: s };
+  if (["disconnected", "rejected", "failed", "notconnected", "stopped", "inactive", "disabled"].includes(k)) return { tone: "bad", word: s };
   return { tone: "unknown", word: s };
 }
 
@@ -155,6 +160,8 @@ export const AZURE_MADE: { test(row: ArgRow): boolean; why: string }[] = [
   { why: "a group Azure made for a lab resource (rg-lab-<id>-infra and the like)", test: (r) => lower(r.type) === "microsoft.resources/resourcegroups" && /-(infra|managed)$/i.test(r.name) },
   { why: "traffic analytics' data collection rule or endpoint", test: (r) => /^microsoft\.insights\/datacollection(rules|endpoints)$/.test(lower(r.type)) && /^nwta/i.test(r.name) },
   { why: "a network watcher Azure made for the region", test: (r) => lower(r.type) === "microsoft.network/networkwatchers" && /^networkwatcher_/i.test(r.name) },
+  { why: "a VNet peering Azure Virtual Network Manager made (ANM_…)", test: (r) => /\/virtualnetworkpeerings\/anm_[^/]*$/i.test(r.id) },
+  { why: "a SQL server's master database", test: (r) => lower(r.type) === "microsoft.sql/servers/databases" && lower(r.name) === "master" },
 ];
 
 /** VNet peerings as edges: one per pair (undirected), the gateway VNet as wg/gateway. */
@@ -165,7 +172,9 @@ function peeringEdges(row: ArgRow, gatewayIds: (id: string) => boolean): LiveEdg
     const remote = idOf(pp.remoteVirtualNetwork);
     if (!remote) continue;
     const transit = pp.allowGatewayTransit === true || pp.useRemoteGateways === true;
-    out.push({ from: lower(row.id), to: gatewayIds(remote) ? "wg/gateway" : lower(remote), kind: "traffic", label: transit ? "peering (gateway transit)" : "peering", via: lower(str(pe.id) ?? ""), state: stateWord(str(pp.peeringState)), undirected: true });
+    // AVNM's connectivity configuration makes its own peerings, named ANM_… (made by Azure, never by hand).
+    const avnm = /\/virtualnetworkpeerings\/anm_[^/]*$/i.test(str(pe.id) ?? "") || /^anm_/i.test(str(pe.name) ?? "");
+    out.push({ from: lower(row.id), to: gatewayIds(remote) ? "wg/gateway" : lower(remote), kind: "traffic", label: avnm ? "peering (AVNM)" : transit ? "peering (gateway transit)" : "peering", via: lower(str(pe.id) ?? ""), state: stateWord(str(pp.peeringState)), undirected: true });
   }
   return out;
 }
@@ -178,14 +187,92 @@ function poolMembers(pool: Record<string, unknown>, h: LiveHelpers): string[] {
     const home = id ? h.home(topResource(id)) : null;
     if (home) out.add(home);
   }
+  // A Global-tier pool's members are regional LB frontends.
+  for (const a of arr(obj(pool.properties).loadBalancerBackendAddresses)) {
+    const fe = idOf(obj(a.properties).loadBalancerFrontendIPConfiguration);
+    const home = fe ? h.home(topResource(fe)) : null;
+    if (home) out.add(home);
+  }
   return [...out].sort();
 }
 
 const nameOfId = (id: string | undefined) => (id ? id.split("/").at(-1) ?? id : undefined);
 
+/** The resource whose public FQDN this is (a container group's, a public IP's DNS name, an App Service's host), by the rows. */
+function byFqdn(fqdn: string, h: LiveHelpers): string | null {
+  const f = lower(fqdn).replace(/\.$/, "");
+  const types: [string, (r: ArgRow) => unknown][] = [
+    ["microsoft.containerinstance/containergroups", (r) => obj(props(r).ipAddress).fqdn],
+    ["microsoft.network/publicipaddresses", (r) => obj(props(r).dnsSettings).fqdn],
+    ["microsoft.app/containerapps", (r) => obj(obj(props(r).configuration).ingress).fqdn],
+  ];
+  for (const [t, get] of types) for (const r of h.rowsOfType?.(t) ?? []) if (lower(str(get(r))) === f) return lower(r.id);
+  return null;
+}
+
+/** Every ARM id inside a value, deep (as found, not lower-cased). */
+function idsUnder(v: unknown, out: string[] = []): string[] {
+  if (typeof v === "string") {
+    if (/^\/subscriptions\//i.test(v)) out.push(v);
+  } else if (Array.isArray(v)) v.forEach((x) => idsUnder(x, out));
+  else if (v && typeof v === "object") for (const x of Object.values(v)) idsUnder(x, out);
+  return out;
+}
+
+const ipNum = (ip: string): number | null => {
+  const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(ip);
+  return m ? ((Number(m[1]) << 24) >>> 0) + (Number(m[2]) << 16) + (Number(m[3]) << 8) + Number(m[4]) : null;
+};
+/** Is an IPv4 address inside a CIDR? */
+export function inCidr(ip: string, cidr: string): boolean {
+  const [base, bits] = cidr.split("/");
+  const a = ipNum(ip);
+  const b = ipNum(base ?? "");
+  const n = Number(bits);
+  if (a === null || b === null || !Number.isInteger(n) || n < 0 || n > 32) return false;
+  const mask = n === 0 ? 0 : (~0 << (32 - n)) >>> 0;
+  return ((a & mask) >>> 0) === ((b & mask) >>> 0);
+}
+/** The subnet (of the lab's VNets) whose prefix holds an IP. */
+function subnetHolding(ip: string, h: LiveHelpers): string | null {
+  for (const v of h.rowsOfType?.("microsoft.network/virtualnetworks") ?? [])
+    for (const s of arr(props(v).subnets)) {
+      const sp = obj(s.properties);
+      const prefixes = [str(sp.addressPrefix), ...((sp.addressPrefixes as string[] | undefined) ?? [])].filter((x): x is string => !!x);
+      if (prefixes.some((c) => inCidr(ip, c))) return lower(str(s.id) ?? "");
+    }
+  return null;
+}
+
+/** A resource's user-assigned identities: resource → identity ("identity"). */
+const identityEdges = (r: ArgRow): LiveEdgeSpec[] =>
+  Object.keys(obj(obj(r.identity).userAssignedIdentities))
+    .sort()
+    .map((i) => ({ from: lower(r.id), to: lower(i), kind: "dependency" as const, label: "identity" }));
+
+/** An alert: → each scope it watches ("alert"), → each action group it notifies. */
+const alertEdges = (r: ArgRow, actionGroups: (string | undefined)[]): LiveEdgeSpec[] => [
+  ...((props(r).scopes as string[] | undefined) ?? []).filter((s) => typeof s === "string").map((s) => ({ from: lower(r.id), to: lower(s), kind: "dependency" as const, label: "alert" })),
+  ...actionGroups.filter((x): x is string => !!x).map((a) => ({ from: lower(r.id), to: lower(a), kind: "dependency" as const, label: "notifies" })),
+];
+
+/** A zone's own records: Resource Graph's numberOfRecordSets less the ones Azure makes (SOA, and NS for a public zone). */
+const recordCounts = (r: ArgRow, made: number): string[] | undefined => {
+  const n = props(r).numberOfRecordSets;
+  return typeof n === "number" && n - made > 0 ? [`records: ${n - made}`] : undefined;
+};
+
 export const ARM_RULES: Record<string, ArmRule> = {
   "microsoft.network/networkinterfaces": {
-    fold: (r) => idOf(props(r).virtualMachine) ?? idOf(props(r).privateEndpoint) ?? null,
+    fold: (r) => idOf(props(r).virtualMachine) ?? idOf(props(r).privateEndpoint) ?? idOf(props(r).privateLinkService) ?? null,
+  },
+  // An ASG folds into the first member's VM (by NIC id), as the planned graph pulls it into the VM it is associated with.
+  "microsoft.network/applicationsecuritygroups": {
+    fold: (r, h) =>
+      (h.rowsOfType?.("microsoft.network/networkinterfaces") ?? [])
+        .filter((nic) => arr(props(nic).ipConfigurations).some((c) => arr(obj(c.properties).applicationSecurityGroups).some((a) => lower(str(a.id)) === lower(r.id))))
+        .map((nic) => nic.id)
+        .sort((a, b) => (lower(a) < lower(b) ? -1 : 1))[0] ?? null,
   },
   "microsoft.compute/disks": { fold: (r) => str(r.managedBy) ?? null },
   "microsoft.compute/virtualmachines/extensions": { fold: (r) => topResource(r.id) },
@@ -222,29 +309,77 @@ export const ARM_RULES: Record<string, ArmRule> = {
     },
     props: (r) => ({ sku: str(obj(r.sku).name), publicIp: str(props(r).ipAddress), allocation: str(props(r).publicIPAllocationMethod) }),
   },
-  "microsoft.network/publicipprefixes": { fold: (r) => idOf(props(r).natGateway) ?? null, props: (r) => ({ prefix: str(props(r).ipPrefix) }) },
+  // Like a public IP (ruling 9): a prefix a NAT gateway or an LB frontend uses folds into it.
+  "microsoft.network/publicipprefixes": {
+    fold: (r) => {
+      const fe = idOf(props(r).loadBalancerFrontendIpConfiguration);
+      return idOf(props(r).natGateway) ?? (fe ? topResource(fe) : null);
+    },
+    props: (r) => ({ prefix: str(props(r).ipPrefix) }),
+  },
+  "microsoft.network/natgateways": { props: (r) => ({ sku: str(obj(r.sku).name), zones: r.zones?.length ? r.zones : undefined }) },
+  "microsoft.network/dnszones": { props: (r) => ({ counts: recordCounts(r, 2) }) },
+  "microsoft.network/privatednszones": { props: (r) => ({ counts: recordCounts(r, 1) }) },
+  // ── DNS private resolver: endpoints fold into it; the ruleset depends on the outbound endpoint (its resolver) ──
+  "microsoft.network/dnsresolvers": {
+    props: (r, h) => {
+      const inbound = (h.rowsOfType?.("microsoft.network/dnsresolvers/inboundendpoints") ?? []).filter((e) => lower(topResource(e.id)) === lower(r.id));
+      return { privateIp: inbound.map((e) => str(obj(arr(props(e).ipConfigurations)[0]).privateIpAddress)).find(Boolean) };
+    },
+  },
+  "microsoft.network/dnsresolvers/inboundendpoints": { fold: (r) => topResource(r.id) },
+  "microsoft.network/dnsresolvers/outboundendpoints": { fold: (r) => topResource(r.id) },
+  "microsoft.network/dnsforwardingrulesets": {
+    edges: (r) => arr(props(r).dnsResolverOutboundEndpoints).map((o) => str(o.id)).filter((x): x is string => !!x).map((o) => ({ from: lower(r.id), to: lower(o), kind: "dependency" as const, label: "outbound endpoint" })),
+  },
   "microsoft.compute/virtualmachines": {
+    // A flexible scale set's VM folds into the scale set (ruling 19).
+    fold: (r) => idOf(props(r).virtualMachineScaleSet) ?? null,
     props: (r, h) => {
       const p = props(r);
-      const nic = h.nicsOf(r.id)[0];
+      const nics = h.nicsOf(r.id);
+      const nic = nics[0];
       const ip = nic ? str(obj(arr(props(nic).ipConfigurations)[0]?.properties).privateIPAddress) : undefined;
-      return { size: str(obj(p.hardwareProfile).vmSize), os: str(obj(obj(p.storageProfile).osDisk).osType), privateIp: ip, zones: r.zones?.length ? r.zones : undefined };
+      // The NIC-level NSG and ASGs as chips, as the planned graph shows its associations.
+      const chips = new Set<string>();
+      for (const n of nics) {
+        const nsg = idOf(props(n).networkSecurityGroup);
+        if (nsg) chips.add(`NSG ${nameOfId(nsg)}`);
+        for (const c of arr(props(n).ipConfigurations)) for (const a of arr(obj(c.properties).applicationSecurityGroups)) if (str(a.id)) chips.add(`ASG ${nameOfId(str(a.id))}`);
+      }
+      return { size: str(obj(p.hardwareProfile).vmSize), os: str(obj(obj(p.storageProfile).osDisk).osType), privateIp: ip, zones: r.zones?.length ? r.zones : undefined, chips: chips.size ? [...chips].sort() : undefined };
     },
+    edges: (r) => identityEdges(r),
   },
   "microsoft.network/virtualnetworks": {
     props: (r) => ({ addressSpace: (obj(props(r).addressSpace).addressPrefixes as string[] | undefined) ?? [], dnsServers: (obj(props(r).dhcpOptions).dnsServers as string[] | undefined)?.length ? (obj(props(r).dhcpOptions).dnsServers as string[]) : undefined }),
+    // A Virtual WAN hub connection shows on the spoke as a peering to the hub's Microsoft-managed VNet (HV_<hub>_<guid>): hub → spoke.
+    edges: (r, h) =>
+      arr(props(r).virtualNetworkPeerings).flatMap((pe) => {
+        const remote = idOf(obj(pe.properties).remoteVirtualNetwork) ?? "";
+        const m = /\/virtualnetworks\/hv_(.+)_[0-9a-f]{8}-[0-9a-f-]{27}$/i.exec(remote);
+        const hub = m ? (h.rowsOfType?.("microsoft.network/virtualhubs") ?? []).find((x) => lower(x.name) === lower(m[1]) && lower(x.kind) !== "routeserver") : undefined;
+        return hub ? [{ from: lower(hub.id), to: lower(r.id), kind: "traffic" as const, label: "hub connection", via: lower(str(pe.id) ?? r.id), state: stateWord(str(obj(pe.properties).peeringState)) }] : [];
+      }),
   },
   "microsoft.network/loadbalancers": {
     props: (r) => {
       const fe = obj(arr(props(r).frontendIPConfigurations)[0]?.properties);
-      return { sku: [str(obj(r.sku).name), str(obj(r.sku).tier)].filter(Boolean).join(" ") || undefined, privateIp: str(fe.privateIPAddress) };
+      // The planned graph says "Standard Global" for a global-tier LB and "Standard" for a regional one (its sku_tier is unset).
+      const tier = lower(str(obj(r.sku).tier)) === "global" ? "Global" : undefined;
+      return { sku: [str(obj(r.sku).name), tier].filter(Boolean).join(" ") || undefined, privateIp: str(fe.privateIPAddress) };
     },
     edges: (r, h) => {
       const pools = new Map(arr(props(r).backendAddressPools).map((p) => [lower(str(p.id)), p]));
       const out: LiveEdgeSpec[] = [];
+      // A frontend chained to a Gateway LB: this LB → the gateway LB.
+      for (const fe of arr(props(r).frontendIPConfigurations)) {
+        const gw = idOf(obj(fe.properties).gatewayLoadBalancer);
+        if (gw) out.push({ from: lower(r.id), to: lower(topResource(gw)), kind: "traffic", label: "chain", via: lower(str(fe.id) ?? r.id) });
+      }
       for (const rule of arr(props(r).loadBalancingRules)) {
         const rp = obj(rule.properties);
-        const label = `${(str(rp.protocol) ?? "any").toUpperCase()} ${rp.frontendPort ?? "?"}→${rp.backendPort ?? "?"}`;
+        const label = lower(str(rp.protocol)) === "all" && !rp.frontendPort && !rp.backendPort ? "HA ports" : `${(str(rp.protocol) ?? "any").toUpperCase()} ${rp.frontendPort ?? "?"}→${rp.backendPort ?? "?"}`;
         const ids = [idOf(rp.backendAddressPool), ...arr(rp.backendAddressPools).map((x) => str(x.id))].filter((x): x is string => !!x);
         for (const pid of ids) for (const m of poolMembers(pools.get(lower(pid)) ?? {}, h)) out.push({ from: lower(r.id), to: m, kind: "traffic", label, via: lower(str(rule.id) ?? r.id) });
       }
@@ -279,6 +414,323 @@ export const ARM_RULES: Record<string, ArmRule> = {
         return [{ from: lower(r.id), to: lower(target), kind: "traffic" as const, label: ((cp.groupIds as string[] | undefined) ?? [])[0] ?? "private link", via: lower(str(c.id) ?? r.id), state: stateWord(str(obj(cp.privateLinkServiceConnectionState).status)) }];
       }),
   },
+  // ── Application gateway and WAF policies (T3.2) ──
+  "microsoft.network/applicationgateways": {
+    props: (r) => {
+      const p = props(r);
+      const sku = obj(p.sku);
+      const auto = obj(p.autoscaleConfiguration);
+      const fe = arr(p.frontendIPConfigurations).map((x) => obj(x.properties)).find((x) => str(x.privateIPAddress));
+      return {
+        sku: str(sku.name),
+        capacity: typeof auto.minCapacity === "number" ? `${auto.minCapacity}-${auto.maxCapacity ?? "?"}` : typeof sku.capacity === "number" ? sku.capacity : undefined,
+        privateIp: str(fe?.privateIPAddress),
+      };
+    },
+    // Request routing: listener (protocol, frontend port) → pool members (NIC configurations by their VM, addresses by IP), backend port.
+    edges: (r, h) => {
+      const p = props(r);
+      const byId = (k: string) => new Map(arr(p[k]).map((x) => [lower(str(x.id)), obj(x.properties)]));
+      const listeners = byId("httpListeners");
+      const ports = byId("frontendPorts");
+      const settings = byId("backendHttpSettingsCollection");
+      const pools = byId("backendAddressPools");
+      const out: LiveEdgeSpec[] = [];
+      const rules = arr(p.requestRoutingRules).sort((a, b) => Number(obj(a.properties).priority ?? 0) - Number(obj(b.properties).priority ?? 0));
+      for (const rule of rules) {
+        const rp = obj(rule.properties);
+        const pool = pools.get(lower(idOf(rp.backendAddressPool)));
+        if (!pool) continue;
+        const l = listeners.get(lower(idOf(rp.httpListener))) ?? {};
+        const fp = ports.get(lower(idOf(l.frontendPort)))?.port;
+        const bp = settings.get(lower(idOf(rp.backendHttpSettings)))?.port;
+        const label = `${(str(l.protocol) ?? "any").toUpperCase()} ${fp ?? "?"}→${bp ?? "?"}`;
+        const members = new Set<string>();
+        for (const c of arr(pool.backendIPConfigurations)) {
+          const home = str(c.id) ? h.home(topResource(str(c.id)!)) : null;
+          if (home) members.add(home);
+        }
+        for (const a of arr(pool.backendAddresses)) {
+          const n = str(a.ipAddress) ? h.nodeByPrivateIp(str(a.ipAddress)!) : null;
+          if (n) members.add(n);
+        }
+        for (const m of [...members].sort()) out.push({ from: lower(r.id), to: m, kind: "traffic", label, via: lower(str(rule.id) ?? r.id) });
+      }
+      return [...out, ...identityEdges(r)];
+    },
+  },
+  "microsoft.network/applicationgatewaywebapplicationfirewallpolicies": {
+    props: (r) => ({ mode: str(obj(props(r).policySettings).mode) }),
+    edges: (r) => arr(props(r).applicationGateways).map((a) => str(a.id)).filter((x): x is string => !!x).map((a) => ({ from: lower(r.id), to: lower(a), kind: "dependency" as const, label: "WAF policy" })),
+  },
+  "microsoft.network/frontdoorwebapplicationfirewallpolicies": {
+    props: (r) => ({ mode: str(obj(props(r).policySettings).mode), sku: str(obj(r.sku).name) }),
+    // Its security policy links name the Front Door profile (…/profiles/<p>/securityPolicies/<s>).
+    edges: (r) => arr(props(r).securityPolicyLinks).map((s) => str(s.id)).filter((x): x is string => !!x).map((s) => ({ from: lower(r.id), to: lower(topResource(s)), kind: "dependency" as const, label: "WAF policy" })),
+  },
+
+  // ── Front Door (T3.2): the profile is the card; endpoints (listed) and origins (if listed: (V)) fold into it ──
+  "microsoft.cdn/profiles": {
+    props: (r, h) => ({
+      sku: str(obj(r.sku).name),
+      hostName: (h.rowsOfType?.("microsoft.cdn/profiles/afdendpoints") ?? []).filter((e) => lower(topResource(e.id)) === lower(r.id)).map((e) => str(props(e).hostName)).find(Boolean),
+    }),
+  },
+  "microsoft.cdn/profiles/afdendpoints": { fold: (r) => topResource(r.id) },
+  "microsoft.cdn/profiles/origingroups/origins": {
+    fold: (r) => topResource(r.id),
+    edges: (r, h) => {
+      const p = props(r);
+      const from = lower(topResource(r.id));
+      const spl = obj(p.sharedPrivateLinkResource);
+      const pls = idOf(spl.privateLink);
+      if (pls) return [{ from, to: lower(pls), kind: "traffic", label: "Private Link", via: lower(r.id), state: stateWord(str(spl.status)) }];
+      const host = str(p.hostName);
+      const to = host ? (h.nodeByPrivateIp(host) ?? byFqdn(host, h)) : null;
+      return to ? [{ from, to, kind: "traffic", label: "origin", via: lower(r.id) }] : [];
+    },
+  },
+
+  // ── Traffic Manager (T3.2): endpoints are inline; each is an edge to its target (resource id, else FQDN) ──
+  "microsoft.network/trafficmanagerprofiles": {
+    props: (r) => ({ routing: str(props(r).trafficRoutingMethod) }),
+    edges: (r, h) => {
+      const method = lower(str(props(r).trafficRoutingMethod));
+      return arr(props(r).endpoints).flatMap((ep) => {
+        const ep_ = obj(ep.properties);
+        const target = str(ep_.targetResourceId) ? lower(str(ep_.targetResourceId)) : str(ep_.target) ? byFqdn(str(ep_.target)!, h) : null;
+        if (!target) return [];
+        const label = method === "priority" && ep_.priority !== undefined ? `priority ${ep_.priority}` : method === "weighted" && ep_.weight !== undefined ? `weight ${ep_.weight}` : (str(props(r).trafficRoutingMethod) ?? "endpoint");
+        return [{ from: lower(r.id), to: target, kind: "traffic" as const, label, via: lower(str(ep.id) ?? r.id), state: stateWord(str(ep_.endpointMonitorStatus)) }];
+      });
+    },
+  },
+
+  // ── Private Link service (T3.2/T3.4): → its LB; Azure's NIC folds into it ──
+  "microsoft.network/privatelinkservices": {
+    edges: (r) =>
+      arr(props(r).loadBalancerFrontendIpConfigurations)
+        .map((f) => str(f.id))
+        .filter((x): x is string => !!x)
+        .map((f) => ({ from: lower(r.id), to: lower(topResource(f)), kind: "traffic" as const, label: "frontend" })),
+  },
+
+  // ── Monitoring (T3.6) ──
+  "microsoft.operationalinsights/workspaces": {
+    props: (r) => {
+      const cap = obj(props(r).workspaceCapping).dailyQuotaGb;
+      return { retentionDays: props(r).retentionInDays, dailyCapGb: typeof cap === "number" && cap >= 0 ? cap : undefined };
+    },
+  },
+  "microsoft.insights/metricalerts": { edges: (r) => alertEdges(r, arr(props(r).actions).map((a) => str(a.actionGroupId))) },
+  "microsoft.insights/activitylogalerts": { edges: (r) => alertEdges(r, arr(obj(props(r).actions).actionGroups).map((a) => str(a.actionGroupId))) },
+  "microsoft.insights/scheduledqueryrules": { edges: (r) => alertEdges(r, ((obj(props(r).actions).actionGroups as string[] | undefined) ?? []).map((a) => str(a))) },
+  "microsoft.insights/datacollectionrules": {
+    edges: (r) =>
+      arr(obj(props(r).destinations).logAnalytics)
+        .map((d) => str(d.workspaceResourceId))
+        .filter((x): x is string => !!x)
+        .map((w) => ({ from: lower(r.id), to: lower(w), kind: "dependency" as const, label: "sends to" })),
+  },
+  "microsoft.network/bastionhosts": {
+    props: (r) => ({ sku: str(obj(r.sku).name) }),
+    // A Developer Bastion names its VNet, not a subnet.
+    place: (r) => (arr(props(r).ipConfigurations).length ? null : (idOf(props(r).virtualNetwork) ?? null)),
+  },
+
+  // ── Compute (T3.5): scale sets as one card (ruling 19), autoscale and flexible VMs folded in ──
+  "microsoft.compute/virtualmachinescalesets": {
+    props: (r, h) => {
+      const auto = (h.rowsOfType?.("microsoft.insights/autoscalesettings") ?? []).find((a) => lower(str(props(a).targetResourceUri)) === lower(r.id));
+      const cap = obj(arr(auto ? props(auto).profiles : [])[0]?.capacity);
+      const os = str(obj(obj(obj(props(r).virtualMachineProfile).storageProfile).osDisk).osType);
+      return {
+        size: str(obj(r.sku).name),
+        os,
+        instances: typeof obj(r.sku).capacity === "number" ? obj(r.sku).capacity : undefined,
+        autoscale: cap.minimum !== undefined ? `${cap.minimum}-${cap.maximum ?? "?"}` : undefined,
+        zones: r.zones?.length ? r.zones : undefined,
+      };
+    },
+    edges: (r) => identityEdges(r),
+    // Its NIC configurations' subnet (uniform); else the subnet of its VMs (flexible).
+    place: (r, h) => {
+      const sub = idsUnder(obj(props(r).virtualMachineProfile).networkProfile).map(subnetIdOf).find(Boolean);
+      if (sub) return sub;
+      const vms = (h.rowsOfType?.("microsoft.compute/virtualmachines") ?? []).filter((v) => lower(idOf(props(v).virtualMachineScaleSet)) === lower(r.id)).map((v) => lower(v.id));
+      for (const nic of h.rowsOfType?.("microsoft.network/networkinterfaces") ?? [])
+        if (vms.includes(lower(idOf(props(nic).virtualMachine)))) {
+          const s = idsUnder(props(nic).ipConfigurations).map(subnetIdOf).find(Boolean);
+          if (s) return s;
+        }
+      return null;
+    },
+  },
+  "microsoft.insights/autoscalesettings": { fold: (r) => str(props(r).targetResourceUri) ?? null },
+  "microsoft.recoveryservices/vaults": { props: (r) => ({ sku: str(obj(r.sku).name) }) },
+
+  // ── Containers (T3.5) ──
+  "microsoft.containerinstance/containergroups": {
+    props: (r) => {
+      const p = props(r);
+      const req = arr(p.containers).map((c) => obj(obj(obj(c.properties).resources).requests));
+      const sum = (k: string) => Math.round(req.reduce((a, x) => a + (typeof x[k] === "number" ? (x[k] as number) : 0), 0) * 100) / 100;
+      const ip = obj(p.ipAddress);
+      const type = lower(str(ip.type));
+      return {
+        cpu: req.length ? sum("cpu") : undefined,
+        memoryGb: req.length ? sum("memoryInGB") : undefined,
+        privateIp: type === "private" ? str(ip.ip) : undefined,
+        publicIp: type === "public" ? str(ip.ip) : undefined,
+        hostName: str(ip.fqdn),
+        chips: type ? [type === "private" ? "private IP" : "public IP"] : ["no IP"],
+      };
+    },
+    edges: (r) => identityEdges(r),
+    place: (r) => idOf(arr(props(r).subnetIds)[0]) ?? null,
+  },
+  "microsoft.app/managedenvironments": {
+    props: (r) => ({ sku: str(arr(props(r).workloadProfiles)[0]?.workloadProfileType) ?? "Consumption" }),
+    place: (r) => str(obj(props(r).vnetConfiguration).infrastructureSubnetId) ?? null,
+  },
+  "microsoft.app/containerapps": {
+    props: (r) => {
+      const ing = obj(obj(props(r).configuration).ingress);
+      return { ingress: Object.keys(ing).length ? (ing.external === true ? "external" : "internal") : undefined, targetPort: typeof ing.targetPort === "number" ? ing.targetPort : undefined };
+    },
+    edges: (r, h) => {
+      const env = str(props(r).managedEnvironmentId) ?? str(props(r).environmentId);
+      const servers = arr(obj(props(r).configuration).registries).map((x) => lower(str(x.server))).filter(Boolean);
+      const regs = (h.rowsOfType?.("microsoft.containerregistry/registries") ?? []).filter((x) => servers.includes(lower(str(props(x).loginServer))));
+      return [
+        ...(env ? [{ from: lower(r.id), to: lower(env), kind: "dependency" as const, label: "environment" }] : []),
+        ...regs.map((x) => ({ from: lower(r.id), to: lower(x.id), kind: "dependency" as const, label: "pulls images" })),
+        ...identityEdges(r),
+      ];
+    },
+  },
+  "microsoft.containerregistry/registries": { props: (r) => ({ sku: str(obj(r.sku).name) }) },
+
+  // ── Data (T3.4) ──
+  "microsoft.network/serviceendpointpolicies": {
+    fold: (r) => idOf(arr(props(r).subnets)[0]) ?? null,
+    edges: (r) => {
+      const subnets = arr(props(r).subnets).map((s) => str(s.id)).filter((x): x is string => !!x);
+      const targets = arr(props(r).serviceEndpointPolicyDefinitions).flatMap((d) => ((obj(d.properties).serviceResources as string[] | undefined) ?? []).filter((x) => /^\/subscriptions\/[^/]+\/resourcegroups\//i.test(x)));
+      return subnets.flatMap((s) => targets.map((t) => ({ from: lower(s), to: lower(t), kind: "dependency" as const, label: "service endpoint policy" })));
+    },
+  },
+  "microsoft.sql/servers": { props: (r) => ({ publicAccess: str(props(r).publicNetworkAccess) ? lower(str(props(r).publicNetworkAccess)) !== "disabled" : undefined }) },
+  "microsoft.sql/servers/databases": {
+    // The master database Azure makes folds into its server.
+    fold: (r) => (lower(r.name) === "master" ? topResource(r.id) : null),
+    props: (r) => ({ status: str(props(r).status), sku: str(obj(r.sku).name) }),
+    edges: (r) => [{ from: lower(r.id), to: lower(topResource(r.id)), kind: "dependency" as const, label: "server" }],
+  },
+  "microsoft.documentdb/databaseaccounts": {
+    props: (r) => ({ apiKind: cosmosApi(str(r.kind), arr(props(r).capabilities).map((c) => str(c.name) ?? "")), consistency: str(obj(props(r).consistencyPolicy).defaultConsistencyLevel) }),
+  },
+  "microsoft.keyvault/vaults": {
+    props: (r) => ({ sku: str(obj(props(r).sku).name), mode: props(r).enableRbacAuthorization === true ? "RBAC" : "access policies" }),
+    // An access policy whose object id is a principal in the graph (a managed identity, a resource's own identity).
+    edges: (r, h) => {
+      const policies = arr(props(r).accessPolicies).map((p) => lower(str(p.objectId))).filter(Boolean);
+      if (!policies.length) return [];
+      const holders = new Map<string, string>();
+      for (const t of ["microsoft.managedidentity/userassignedidentities", "microsoft.compute/virtualmachines", "microsoft.compute/virtualmachinescalesets", "microsoft.network/applicationgateways", "microsoft.containerinstance/containergroups", "microsoft.app/containerapps"])
+        for (const x of h.rowsOfType?.(t) ?? []) {
+          const pid = lower(str(props(x).principalId) ?? str(obj(x.identity).principalId));
+          if (pid && !holders.has(pid)) holders.set(pid, lower(x.id));
+        }
+      return policies.map((p) => holders.get(p)).filter((x): x is string => !!x).map((from) => ({ from, to: lower(r.id), kind: "dependency" as const, label: "access policy" }));
+    },
+  },
+
+  // ── VPN (T3.3) ──
+  "microsoft.network/virtualnetworkgateways": {
+    props: (r) => {
+      const p = props(r);
+      const bgp = p.enableBgp === true;
+      const pool = (obj(obj(p.vpnClientConfiguration).vpnClientAddressPool).addressPrefixes as string[] | undefined) ?? [];
+      return { sku: str(obj(p.sku).name), bgp, asn: bgp ? obj(p.bgpSettings).asn : undefined, vpnType: str(p.vpnType), clientPool: pool.length ? pool.join(", ") : undefined };
+    },
+  },
+  "microsoft.network/localnetworkgateways": {
+    props: (r) => ({ addressSpace: (obj(props(r).localNetworkAddressSpace).addressPrefixes as string[] | undefined) ?? [], asn: obj(props(r).bgpSettings).asn }),
+    // The gateway whose public address it names (by the public IP row holding it).
+    edges: (r, h) => {
+      const ip = str(props(r).gatewayIpAddress);
+      const pip = ip ? (h.rowsOfType?.("microsoft.network/publicipaddresses") ?? []).find((x) => str(props(x).ipAddress) === ip) : undefined;
+      return pip ? [{ from: lower(r.id), to: lower(pip.id), kind: "dependency" as const, label: "gateway address" }] : [];
+    },
+  },
+  "microsoft.network/connections": {
+    fold: (r) => idOf(props(r).virtualNetworkGateway1) ?? null,
+    edges: (r) => {
+      const p = props(r);
+      const gw = idOf(p.virtualNetworkGateway1);
+      const to = idOf(p.localNetworkGateway2) ?? idOf(p.virtualNetworkGateway2) ?? idOf(p.peer);
+      if (!gw || !to) return [];
+      const t = lower(str(p.connectionType));
+      const base = t === "vnet2vnet" ? "VNet-to-VNet" : t === "expressroute" ? "ExpressRoute" : "IPsec";
+      return [{ from: lower(gw), to: lower(to), kind: "traffic" as const, label: p.enableBgp === true ? `${base}, BGP` : base, via: lower(r.id), state: stateWord(str(p.connectionStatus)) }];
+    },
+  },
+
+  // ── Virtual hubs (T3.3): a Route Server (kind RouteServer) is a card placed by its router IPs; a vWAN hub is a group ──
+  "microsoft.network/virtualhubs": {
+    props: (r) => {
+      const p = props(r);
+      if (lower(r.kind) === "routeserver") return { asn: p.virtualRouterAsn, privateIp: ((p.virtualRouterIps as string[] | undefined) ?? [])[0], sku: str(p.sku) };
+      return { prefix: str(p.addressPrefix), sku: str(p.sku) };
+    },
+    edges: (r) => {
+      const wan = idOf(props(r).virtualWan);
+      return wan ? [{ from: lower(wan), to: lower(r.id), kind: "dependency" as const, label: "virtual hub" }] : [];
+    },
+    // A Route Server row names no subnet; its router IPs sit in RouteServerSubnet.
+    place: (r, h) => {
+      if (lower(r.kind) !== "routeserver") return null;
+      const ip = ((props(r).virtualRouterIps as string[] | undefined) ?? [])[0];
+      return ip ? subnetHolding(ip, h) : null;
+    },
+  },
+  "microsoft.network/virtualhubs/bgpconnections": {
+    fold: (r) => topResource(r.id),
+    edges: (r, h) => {
+      const p = props(r);
+      const to = str(p.peerIp) ? h.nodeByPrivateIp(str(p.peerIp)!) : null;
+      return to ? [{ from: lower(topResource(r.id)), to, kind: "traffic" as const, label: `BGP ${p.peerAsn ?? ""}`.trim(), via: lower(r.id), state: stateWord(str(p.connectionState)) }] : [];
+    },
+  },
+  "microsoft.network/virtualwans": { props: (r) => ({ sku: str(props(r).type) }) },
+
+  // ── Firewall and policies (T3.3) ──
+  "microsoft.network/azurefirewalls": {
+    props: (r) => {
+      const p = props(r);
+      return { tier: str(obj(p.sku).tier), privateIp: str(obj(arr(p.ipConfigurations)[0]?.properties).privateIPAddress) ?? str(obj(p.hubIPAddresses).privateIPAddress) };
+    },
+    edges: (r) => {
+      const fp = idOf(props(r).firewallPolicy);
+      return fp ? [{ from: lower(r.id), to: lower(fp), kind: "dependency" as const, label: "policy" }] : [];
+    },
+    place: (r) => idOf(props(r).virtualHub) ?? null,
+  },
+  "microsoft.network/firewallpolicies": {
+    props: (r) => {
+      const n = arr(props(r).ruleCollectionGroups).length;
+      return { tier: str(obj(props(r).sku).tier), counts: n ? [`rule collection groups: ${n}`] : undefined };
+    },
+    edges: (r) => {
+      const base = idOf(props(r).basePolicy);
+      return base ? [{ from: lower(base), to: lower(r.id), kind: "dependency" as const, label: "base policy" }] : [];
+    },
+  },
+
+  // ── Virtual Network Manager (T3.3): its children are not rows; its peerings come as ANM_ (peeringEdges) ──
+  "microsoft.network/networkmanagers": { props: (r) => ({ scopeAccess: (props(r).networkManagerScopeAccesses as string[] | undefined) ?? [] }) },
+
   "microsoft.network/privatednszones/virtualnetworklinks": {
     fold: (r) => topResource(r.id),
     edges: (r) => {
@@ -287,7 +739,14 @@ export const ARM_RULES: Record<string, ArmRule> = {
     },
   },
   "microsoft.storage/storageaccounts": {
-    props: (r) => ({ accountKind: str(r.kind), sku: str(obj(r.sku).name), accessTier: str(props(r).accessTier), publicAccess: typeof props(r).allowBlobPublicAccess === "boolean" ? props(r).allowBlobPublicAccess : undefined }),
+    // publicAccess is public network access (as planned: public_network_access_enabled), not anonymous blob access.
+    props: (r) => ({ accountKind: str(r.kind), sku: str(obj(r.sku).name), accessTier: str(props(r).accessTier), publicAccess: str(props(r).publicNetworkAccess) ? lower(str(props(r).publicNetworkAccess)) !== "disabled" : undefined }),
+    // The storage firewall's allowed subnets (service endpoints): subnet → account.
+    edges: (r) =>
+      arr(obj(props(r).networkAcls).virtualNetworkRules)
+        .map((v) => str(v.id))
+        .filter((x): x is string => !!x)
+        .map((s) => ({ from: lower(s), to: lower(r.id), kind: "dependency" as const, label: "service endpoint" })),
   },
 };
 

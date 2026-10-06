@@ -43,42 +43,33 @@
    "props": {
     "accountKind": "StorageV2",
     "sku": "Standard LRS",
-    "accessTier": "Hot"
+    "accessTier": "Hot",
+    "counts": [
+     "containers: 1",
+     "blobs: 1"
+    ]
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Storage/storageAccounts",
    "scope": "lab",
    "folded": [
     {
+     "id": "tf:azurerm_storage_blob.hello",
+     "label": "hello.txt",
+     "armType": "Microsoft.Storage/storageAccounts/blobServices/containers/blobs"
+    },
+    {
      "id": "tf:azurerm_storage_container.samples",
      "label": "samples",
      "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    },
+    {
+     "id": "tf:azurerm_storage_management_policy.hot",
+     "label": "hot",
+     "armType": "Microsoft.Storage/storageAccounts/managementPolicies"
     }
    ]
-  },
-  {
-   "id": "tf:azurerm_storage_blob.hello",
-   "key": "terraform/azurerm_storage_blob/hello.txt",
-   "kind": "generic",
-   "label": "hello.txt",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_storage_management_policy.hot",
-   "key": "terraform/azurerm_storage_management_policy/hot",
-   "kind": "generic",
-   "label": "hot",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
   }
  ],
- "edges": [],
- "notes": [
-  "2 resources of a type the diagram draws plainly"
- ]
+ "edges": []
 }

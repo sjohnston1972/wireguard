@@ -50,34 +50,30 @@
    "key": "microsoft.network/localnetworkgateways/lgw-azure",
    "kind": "localNetworkGateway",
    "label": "lgw-azure",
-   "props": {},
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "asn": 65010
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Network/localNetworkGateways",
-   "scope": "lab",
-   "folded": [
-    {
-     "id": "tf:azurerm_public_ip.azure_gateway",
-     "label": "pip-vpngw-azure",
-     "armType": "Microsoft.Network/publicIPAddresses"
-    }
-   ]
+   "scope": "lab"
   },
   {
    "id": "tf:azurerm_local_network_gateway.onprem",
    "key": "microsoft.network/localnetworkgateways/lgw-onprem",
    "kind": "localNetworkGateway",
    "label": "lgw-onprem",
-   "props": {},
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ],
+    "asn": 65020
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Network/localNetworkGateways",
-   "scope": "lab",
-   "folded": [
-    {
-     "id": "tf:azurerm_public_ip.onprem_gateway",
-     "label": "pip-vpngw-onprem",
-     "armType": "Microsoft.Network/publicIPAddresses"
-    }
-   ]
+   "scope": "lab"
   },
   {
    "id": "tf:azurerm_resource_group.lab",
@@ -177,44 +173,88 @@
    "key": "microsoft.network/virtualnetworkgateways/vpngw-azure",
    "kind": "vpnGateway",
    "label": "vpngw-azure",
-   "props": {},
+   "props": {
+    "sku": "VpnGw1AZ",
+    "bgp": true,
+    "asn": 65010,
+    "vpnType": "RouteBased"
+   },
    "parent": "tf:azurerm_subnet.azure_gateway",
    "armType": "Microsoft.Network/virtualNetworkGateways",
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_public_ip.azure_gateway",
+     "label": "pip-vpngw-azure",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    },
+    {
+     "id": "tf:azurerm_virtual_network_gateway_connection.azure_to_onprem",
+     "label": "cn-azure-to-onprem",
+     "armType": "Microsoft.Network/connections"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_virtual_network_gateway.onprem",
    "key": "microsoft.network/virtualnetworkgateways/vpngw-onprem",
    "kind": "vpnGateway",
    "label": "vpngw-onprem",
-   "props": {},
+   "props": {
+    "sku": "VpnGw1AZ",
+    "bgp": true,
+    "asn": 65020,
+    "vpnType": "RouteBased"
+   },
    "parent": "tf:azurerm_subnet.onprem_gateway",
    "armType": "Microsoft.Network/virtualNetworkGateways",
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_virtual_network_gateway_connection.azure_to_onprem",
-   "key": "terraform/azurerm_virtual_network_gateway_connection/cn-azure-to-onprem",
-   "kind": "generic",
-   "label": "cn-azure-to-onprem",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_virtual_network_gateway_connection.onprem_to_azure",
-   "key": "terraform/azurerm_virtual_network_gateway_connection/cn-onprem-to-azure",
-   "kind": "generic",
-   "label": "cn-onprem-to-azure",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_public_ip.onprem_gateway",
+     "label": "pip-vpngw-onprem",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    },
+    {
+     "id": "tf:azurerm_virtual_network_gateway_connection.onprem_to_azure",
+     "label": "cn-onprem-to-azure",
+     "armType": "Microsoft.Network/connections"
+    }
+   ]
   }
  ],
- "edges": [],
- "notes": [
-  "2 resources of a type the diagram draws plainly"
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_local_network_gateway.azure>tf:azurerm_virtual_network_gateway.azure:gateway address",
+   "from": "tf:azurerm_local_network_gateway.azure",
+   "to": "tf:azurerm_virtual_network_gateway.azure",
+   "kind": "dependency",
+   "label": "gateway address",
+   "via": "tf:azurerm_local_network_gateway.azure"
+  },
+  {
+   "id": "dependency:tf:azurerm_local_network_gateway.onprem>tf:azurerm_virtual_network_gateway.onprem:gateway address",
+   "from": "tf:azurerm_local_network_gateway.onprem",
+   "to": "tf:azurerm_virtual_network_gateway.onprem",
+   "kind": "dependency",
+   "label": "gateway address",
+   "via": "tf:azurerm_local_network_gateway.onprem"
+  },
+  {
+   "id": "traffic:tf:azurerm_virtual_network_gateway.azure>tf:azurerm_local_network_gateway.onprem:IPsec, BGP",
+   "from": "tf:azurerm_virtual_network_gateway.azure",
+   "to": "tf:azurerm_local_network_gateway.onprem",
+   "kind": "traffic",
+   "label": "IPsec, BGP",
+   "via": "tf:azurerm_virtual_network_gateway_connection.azure_to_onprem"
+  },
+  {
+   "id": "traffic:tf:azurerm_virtual_network_gateway.onprem>tf:azurerm_local_network_gateway.azure:IPsec, BGP",
+   "from": "tf:azurerm_virtual_network_gateway.onprem",
+   "to": "tf:azurerm_local_network_gateway.azure",
+   "kind": "traffic",
+   "label": "IPsec, BGP",
+   "via": "tf:azurerm_virtual_network_gateway_connection.onprem_to_azure"
+  }
  ]
 }

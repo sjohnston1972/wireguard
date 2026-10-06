@@ -54,57 +54,45 @@
    "props": {},
    "parent": "tf:azurerm_virtual_network.hub",
    "armType": "Microsoft.Network/dnsResolvers",
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_private_dns_resolver_inbound_endpoint.in",
+     "label": "in-hub",
+     "armType": "Microsoft.Network/dnsResolvers/inboundEndpoints"
+    },
+    {
+     "id": "tf:azurerm_private_dns_resolver_outbound_endpoint.out",
+     "label": "out-hub",
+     "armType": "Microsoft.Network/dnsResolvers/outboundEndpoints"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_private_dns_resolver_dns_forwarding_ruleset.onprem",
    "key": "microsoft.network/dnsforwardingrulesets/frs-onprem",
    "kind": "dnsRuleset",
    "label": "frs-onprem",
-   "props": {},
+   "props": {
+    "counts": [
+     "rules: 1"
+    ]
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Network/dnsForwardingRulesets",
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_private_dns_resolver_forwarding_rule.onprem",
-   "key": "terraform/azurerm_private_dns_resolver_forwarding_rule/onprem-lab32",
-   "kind": "generic",
-   "label": "onprem-lab32",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_private_dns_resolver_inbound_endpoint.in",
-   "key": "terraform/azurerm_private_dns_resolver_inbound_endpoint/in-hub",
-   "kind": "generic",
-   "label": "in-hub",
-   "props": {},
-   "parent": "tf:azurerm_subnet.in",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_private_dns_resolver_outbound_endpoint.out",
-   "key": "terraform/azurerm_private_dns_resolver_outbound_endpoint/out-hub",
-   "kind": "generic",
-   "label": "out-hub",
-   "props": {},
-   "parent": "tf:azurerm_subnet.out",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_private_dns_resolver_virtual_network_link.hub",
-   "key": "terraform/azurerm_private_dns_resolver_virtual_network_link/link-hub",
-   "kind": "generic",
-   "label": "link-hub",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_private_dns_resolver_forwarding_rule.onprem",
+     "label": "onprem-lab32",
+     "armType": "Microsoft.Network/dnsForwardingRulesets/forwardingRules"
+    },
+    {
+     "id": "tf:azurerm_private_dns_resolver_virtual_network_link.hub",
+     "label": "link-hub",
+     "armType": "Microsoft.Network/dnsForwardingRulesets/virtualNetworkLinks"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_private_dns_zone.azure",
@@ -242,12 +230,36 @@
  ],
  "edges": [
   {
+   "id": "dependency:tf:azurerm_private_dns_resolver_dns_forwarding_ruleset.onprem>tf:azurerm_private_dns_resolver.hub:outbound endpoint",
+   "from": "tf:azurerm_private_dns_resolver_dns_forwarding_ruleset.onprem",
+   "to": "tf:azurerm_private_dns_resolver.hub",
+   "kind": "dependency",
+   "label": "outbound endpoint",
+   "via": "tf:azurerm_private_dns_resolver_dns_forwarding_ruleset.onprem"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_dns_resolver_dns_forwarding_ruleset.onprem>tf:azurerm_virtual_network.hub:link",
+   "from": "tf:azurerm_private_dns_resolver_dns_forwarding_ruleset.onprem",
+   "to": "tf:azurerm_virtual_network.hub",
+   "kind": "dependency",
+   "label": "link",
+   "via": "tf:azurerm_private_dns_resolver_virtual_network_link.hub"
+  },
+  {
    "id": "dependency:tf:azurerm_private_dns_zone.azure>tf:azurerm_virtual_network.hub:link (auto-registration)",
    "from": "tf:azurerm_private_dns_zone.azure",
    "to": "tf:azurerm_virtual_network.hub",
    "kind": "dependency",
    "label": "link (auto-registration)",
    "via": "tf:azurerm_private_dns_zone_virtual_network_link.hub"
+  },
+  {
+   "id": "traffic:tf:azurerm_private_dns_resolver_dns_forwarding_ruleset.onprem>tf:azurerm_linux_virtual_machine.dns:DNS 53",
+   "from": "tf:azurerm_private_dns_resolver_dns_forwarding_ruleset.onprem",
+   "to": "tf:azurerm_linux_virtual_machine.dns",
+   "kind": "traffic",
+   "label": "DNS 53",
+   "via": "tf:azurerm_private_dns_resolver_forwarding_rule.onprem"
   },
   {
    "id": "traffic:tf:azurerm_virtual_network.hub>tf:azurerm_virtual_network.onprem:peering",
@@ -257,8 +269,5 @@
    "label": "peering",
    "via": "tf:azurerm_virtual_network_peering.hub_to_onprem"
   }
- ],
- "notes": [
-  "4 resources of a type the diagram draws plainly"
  ]
 }

@@ -21,7 +21,7 @@
 // same file byte for byte. Every resource is represented: a card, a folded
 // entry, or the `via` of an edge.
 
-import { TOPOLOGY_SCHEMA, sortGraph, type TopoEdge, type TopoKind, type TopologyGraph, type TopoNode } from "./model";
+import { isGroupKind, TOPOLOGY_SCHEMA, sortGraph, type TopoEdge, type TopoKind, type TopologyGraph, type TopoNode } from "./model";
 import { KINDS, kindOfArm, kindOfTf } from "./kinds";
 import { disambiguate, mockNameCtx, nodeKey, planLabel, SYNTHETIC_KEYS } from "./keys";
 import { scrubProps, withheldNote } from "./props";
@@ -342,6 +342,11 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
     nodeByPrivateIp,
     subnetsOf,
   };
+  // A rule may place its card in a group the kind's placement cannot find (a secured hub's firewall in the virtual hub).
+  for (const i of cards) {
+    const p = ruleOf(i).place?.(i, helpers);
+    if (p && nodes.has(p) && isGroupKind(nodes.get(p)!.kind)) nodes.get(i.id)!.parent = p;
+  }
   const raw = new Map<string, Record<string, unknown>>();
   for (const i of insts) {
     const n = nodes.get(i.id);

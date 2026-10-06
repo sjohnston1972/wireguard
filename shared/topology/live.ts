@@ -18,7 +18,7 @@
 //
 // Raw properties never leave: only scrubbed props, labels and ids do.
 
-import { TOPOLOGY_SCHEMA, sortGraph, type TopoEdge, type TopologyGraph, type TopoNode } from "./model";
+import { isGroupKind, TOPOLOGY_SCHEMA, sortGraph, type TopoEdge, type TopologyGraph, type TopoNode } from "./model";
 import { KINDS, kindOfArm } from "./kinds";
 import { disambiguate, nodeKey, SYNTHETIC_KEYS, type NameCtx } from "./keys";
 import { scrubProps, withheldNote } from "./props";
@@ -132,6 +132,7 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
       return null;
     },
     nicsOf: (vmId) => nicsByVm.get(lower(vmId)) ?? [],
+    rowsOfType: (t) => rows.filter((r) => lower(r.type) === t),
   };
   for (const r of rows) {
     if (isGroupRow(r)) continue;
@@ -196,6 +197,9 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
       parent = v && nodes.get(v)?.kind === "vnet" ? v : rgId(r);
     } else if (place === "global") parent = lane();
     else parent = rgId(r);
+    // A rule may name a group the kind's placement cannot find (a secured hub's firewall, a Route Server by its IPs).
+    const placed = ARM_RULES[lower(r.type)]?.place?.(r, helpers);
+    if (placed && nodes.has(lower(placed)) && isGroupKind(nodes.get(lower(placed))!.kind)) parent = lower(placed);
     n.parent = parent;
   }
 
@@ -218,8 +222,8 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
     if (AZURE_MADE.some((m) => m.test(r))) n.madeBy = "azure";
   }
   for (const r of rows) {
-    if (lower(r.type) !== "microsoft.network/virtualnetworks") continue;
-    const p = ARM_RULES["microsoft.network/virtualnetworks"]!.props!(r, helpers);
+    if (!isGroupRow(r)) continue;
+    const p = ARM_RULES[lower(r.type)]?.props?.(r, helpers) ?? {};
     raw.set(lower(r.id), { ...p, resourceId: r.id });
   }
 

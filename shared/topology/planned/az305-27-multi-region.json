@@ -13,70 +13,55 @@
    "props": {}
   },
   {
-   "id": "tf:azurerm_cdn_frontdoor_endpoint.lab",
-   "key": "terraform/azurerm_cdn_frontdoor_endpoint/l27k3x9q-afd",
-   "kind": "generic",
-   "label": "l27…-afd",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_origin.uks",
-   "key": "terraform/azurerm_cdn_frontdoor_origin/origin-uks",
-   "kind": "generic",
-   "label": "origin-uks",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_origin.ukw",
-   "key": "terraform/azurerm_cdn_frontdoor_origin/origin-ukw",
-   "kind": "generic",
-   "label": "origin-ukw",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_origin_group.lab",
-   "key": "terraform/azurerm_cdn_frontdoor_origin_group/og-aci",
-   "kind": "generic",
-   "label": "og-aci",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
    "id": "tf:azurerm_cdn_frontdoor_profile.lab",
    "key": "microsoft.cdn/profiles/afd-lab",
    "kind": "frontDoor",
    "label": "afd-lab",
-   "props": {},
+   "props": {
+    "sku": "Standard_AzureFrontDoor"
+   },
    "parent": "lane/global",
-   "armType": "Microsoft.Cdn/profiles"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_route.lab",
-   "key": "terraform/azurerm_cdn_frontdoor_route/route-all",
-   "kind": "generic",
-   "label": "route-all",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
+   "armType": "Microsoft.Cdn/profiles",
+   "folded": [
+    {
+     "id": "tf:azurerm_cdn_frontdoor_endpoint.lab",
+     "label": "l27…-afd",
+     "armType": "Microsoft.Cdn/profiles/afdEndpoints"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin.uks",
+     "label": "origin-uks",
+     "armType": "Microsoft.Cdn/profiles/originGroups/origins"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin.ukw",
+     "label": "origin-ukw",
+     "armType": "Microsoft.Cdn/profiles/originGroups/origins"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin_group.lab",
+     "label": "og-aci",
+     "armType": "Microsoft.Cdn/profiles/originGroups"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_route.lab",
+     "label": "route-all",
+     "armType": "Microsoft.Cdn/profiles/afdEndpoints/routes"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_container_group.uks",
    "key": "microsoft.containerinstance/containergroups/ci-uks",
    "kind": "containerGroup",
    "label": "ci-uks",
-   "props": {},
+   "props": {
+    "cpu": 0.5,
+    "memoryGb": 0.5,
+    "chips": [
+     "public IP"
+    ]
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.ContainerInstance/containerGroups",
    "scope": "lab"
@@ -86,7 +71,13 @@
    "key": "microsoft.containerinstance/containergroups/ci-ukw",
    "kind": "containerGroup",
    "label": "ci-ukw",
-   "props": {},
+   "props": {
+    "cpu": 0.5,
+    "memoryGb": 0.5,
+    "chips": [
+     "public IP"
+    ]
+   },
    "parent": "tf:azurerm_resource_group.secondary",
    "armType": "Microsoft.ContainerInstance/containerGroups",
    "scope": "lab"
@@ -127,37 +118,61 @@
    "scope": "lab"
   },
   {
-   "id": "tf:azurerm_traffic_manager_external_endpoint.uks",
-   "key": "terraform/azurerm_traffic_manager_external_endpoint/ep-uks",
-   "kind": "generic",
-   "label": "ep-uks",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_traffic_manager_external_endpoint.ukw",
-   "key": "terraform/azurerm_traffic_manager_external_endpoint/ep-ukw",
-   "kind": "generic",
-   "label": "ep-ukw",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
    "id": "tf:azurerm_traffic_manager_profile.lab",
    "key": "microsoft.network/trafficmanagerprofiles/{p}-tm",
    "kind": "trafficManager",
    "label": "l27…-tm",
-   "props": {},
+   "props": {
+    "routing": "Priority"
+   },
    "parent": "lane/global",
-   "armType": "Microsoft.Network/trafficManagerProfiles"
+   "armType": "Microsoft.Network/trafficManagerProfiles",
+   "folded": [
+    {
+     "id": "tf:azurerm_traffic_manager_external_endpoint.uks",
+     "label": "ep-uks",
+     "armType": "Microsoft.Network/trafficManagerProfiles/externalEndpoints"
+    },
+    {
+     "id": "tf:azurerm_traffic_manager_external_endpoint.ukw",
+     "label": "ep-ukw",
+     "armType": "Microsoft.Network/trafficManagerProfiles/externalEndpoints"
+    }
+   ]
   }
  ],
- "edges": [],
- "notes": [
-  "7 resources of a type the diagram draws plainly"
+ "edges": [
+  {
+   "id": "traffic:tf:azurerm_cdn_frontdoor_profile.lab>tf:azurerm_container_group.uks:HTTP",
+   "from": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "to": "tf:azurerm_container_group.uks",
+   "kind": "traffic",
+   "label": "HTTP",
+   "via": "tf:azurerm_cdn_frontdoor_origin.uks"
+  },
+  {
+   "id": "traffic:tf:azurerm_cdn_frontdoor_profile.lab>tf:azurerm_container_group.ukw:HTTP",
+   "from": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "to": "tf:azurerm_container_group.ukw",
+   "kind": "traffic",
+   "label": "HTTP",
+   "via": "tf:azurerm_cdn_frontdoor_origin.ukw"
+  },
+  {
+   "id": "traffic:tf:azurerm_traffic_manager_profile.lab>tf:azurerm_container_group.uks:priority 1",
+   "from": "tf:azurerm_traffic_manager_profile.lab",
+   "to": "tf:azurerm_container_group.uks",
+   "kind": "traffic",
+   "label": "priority 1",
+   "via": "tf:azurerm_traffic_manager_external_endpoint.uks"
+  },
+  {
+   "id": "traffic:tf:azurerm_traffic_manager_profile.lab>tf:azurerm_container_group.ukw:priority 2",
+   "from": "tf:azurerm_traffic_manager_profile.lab",
+   "to": "tf:azurerm_container_group.ukw",
+   "kind": "traffic",
+   "label": "priority 2",
+   "via": "tf:azurerm_traffic_manager_external_endpoint.ukw"
+  }
  ]
 }

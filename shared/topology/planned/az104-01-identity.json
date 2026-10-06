@@ -101,11 +101,19 @@
    "via": "tf:azurerm_role_assignment.helpdesk_reader"
   },
   {
-   "id": "dependency:tf:azuread_user.ben>tf:azurerm_resource_group.lab:role: custom",
+   "id": "dependency:tf:azuread_user.ann>tf:azuread_group.helpdesk:member",
+   "from": "tf:azuread_user.ann",
+   "to": "tf:azuread_group.helpdesk",
+   "kind": "dependency",
+   "label": "member",
+   "via": "tf:azuread_group.helpdesk"
+  },
+  {
+   "id": "dependency:tf:azuread_user.ben>tf:azurerm_resource_group.lab:role: lab-az104-01-identity-vm-operator",
    "from": "tf:azuread_user.ben",
    "to": "tf:azurerm_resource_group.lab",
    "kind": "dependency",
-   "label": "role: custom",
+   "label": "role: lab-az104-01-identity-vm-operator",
    "via": "tf:azurerm_role_assignment.ben_vm_operator"
   }
  ]

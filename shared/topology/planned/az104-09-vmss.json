@@ -10,20 +10,22 @@
    "key": "microsoft.compute/virtualmachinescalesets/vmss-web",
    "kind": "vmss",
    "label": "vmss-web",
-   "props": {},
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux",
+    "instances": 2,
+    "autoscale": "1-3"
+   },
    "parent": "tf:azurerm_subnet.vms",
    "armType": "Microsoft.Compute/virtualMachineScaleSets",
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_monitor_autoscale_setting.web",
-   "key": "terraform/azurerm_monitor_autoscale_setting/autoscale-vmss-web",
-   "kind": "monitor",
-   "label": "autoscale-vmss-web",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_monitor_autoscale_setting.web",
+     "label": "autoscale-vmss-web",
+     "armType": "Microsoft.Insights/autoscaleSettings"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_resource_group.lab",

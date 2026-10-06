@@ -10,7 +10,11 @@
    "key": "microsoft.network/applicationgateways/agw-web",
    "kind": "appGateway",
    "label": "agw-web",
-   "props": {},
+   "props": {
+    "sku": "Standard_v2",
+    "capacity": "0-2",
+    "privateIp": "10.71.193.10"
+   },
    "parent": "tf:azurerm_subnet.appgw",
    "armType": "Microsoft.Network/applicationGateways",
    "scope": "lab",
@@ -184,6 +188,22 @@
   }
  ],
  "edges": [
+  {
+   "id": "traffic:tf:azurerm_application_gateway.web>tf:azurerm_linux_virtual_machine.web[0]:HTTP 80→80",
+   "from": "tf:azurerm_application_gateway.web",
+   "to": "tf:azurerm_linux_virtual_machine.web[0]",
+   "kind": "traffic",
+   "label": "HTTP 80→80",
+   "via": "tf:azurerm_application_gateway.web"
+  },
+  {
+   "id": "traffic:tf:azurerm_application_gateway.web>tf:azurerm_linux_virtual_machine.web[1]:HTTP 80→80",
+   "from": "tf:azurerm_application_gateway.web",
+   "to": "tf:azurerm_linux_virtual_machine.web[1]",
+   "kind": "traffic",
+   "label": "HTTP 80→80",
+   "via": "tf:azurerm_application_gateway.web"
+  },
   {
    "id": "traffic:tf:azurerm_lb.web>tf:azurerm_linux_virtual_machine.web[0]:TCP 80→80",
    "from": "tf:azurerm_lb.web",

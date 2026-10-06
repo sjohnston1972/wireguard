@@ -82,7 +82,10 @@
     "accountKind": "StorageV2",
     "sku": "Standard LRS",
     "accessTier": "Hot",
-    "publicAccess": true
+    "publicAccess": true,
+    "counts": [
+     "containers: 1"
+    ]
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Storage/storageAccounts",
@@ -139,6 +142,14 @@
    "kind": "dependency",
    "label": "link",
    "via": "tf:azurerm_private_dns_zone_virtual_network_link.lab"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_endpoint.blob>tf:azurerm_private_dns_zone.blob:DNS zone group",
+   "from": "tf:azurerm_private_endpoint.blob",
+   "to": "tf:azurerm_private_dns_zone.blob",
+   "kind": "dependency",
+   "label": "DNS zone group",
+   "via": "tf:azurerm_private_endpoint.blob"
   },
   {
    "id": "traffic:tf:azurerm_private_endpoint.blob>tf:azurerm_storage_account.blob:blob",

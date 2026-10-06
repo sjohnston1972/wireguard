@@ -13,112 +13,74 @@
    "props": {}
   },
   {
-   "id": "tf:azurerm_cdn_frontdoor_endpoint.lab",
-   "key": "terraform/azurerm_cdn_frontdoor_endpoint/l42k3x9q-afd",
-   "kind": "generic",
-   "label": "l42…-afd",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
    "id": "tf:azurerm_cdn_frontdoor_firewall_policy.lab",
-   "key": "terraform/azurerm_cdn_frontdoor_firewall_policy/wafpremium",
+   "key": "microsoft.network/frontdoorwebapplicationfirewallpolicies/wafpremium",
    "kind": "wafPolicy",
    "label": "wafpremium",
-   "props": {},
+   "props": {
+    "mode": "Prevention",
+    "sku": "Premium_AzureFrontDoor"
+   },
    "parent": "lane/global",
-   "armType": null
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_origin.web",
-   "key": "terraform/azurerm_cdn_frontdoor_origin/origin-lb-int",
-   "kind": "generic",
-   "label": "origin-lb-int",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_origin_group.lab",
-   "key": "terraform/azurerm_cdn_frontdoor_origin_group/og-web",
-   "kind": "generic",
-   "label": "og-web",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
+   "armType": "Microsoft.Network/FrontDoorWebApplicationFirewallPolicies"
   },
   {
    "id": "tf:azurerm_cdn_frontdoor_profile.lab",
    "key": "microsoft.cdn/profiles/afd-premium",
    "kind": "frontDoor",
    "label": "afd-premium",
-   "props": {},
+   "props": {
+    "sku": "Premium_AzureFrontDoor"
+   },
    "parent": "lane/global",
-   "armType": "Microsoft.Cdn/profiles"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_route.lab",
-   "key": "terraform/azurerm_cdn_frontdoor_route/route-all",
-   "kind": "generic",
-   "label": "route-all",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_rule.cache_static",
-   "key": "terraform/azurerm_cdn_frontdoor_rule/cachestatic",
-   "kind": "generic",
-   "label": "cachestatic",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_rule.header",
-   "key": "terraform/azurerm_cdn_frontdoor_rule/addheader",
-   "kind": "generic",
-   "label": "addheader",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_rule.redirect_old",
-   "key": "terraform/azurerm_cdn_frontdoor_rule/redirectold",
-   "kind": "generic",
-   "label": "redirectold",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_rule_set.lab",
-   "key": "terraform/azurerm_cdn_frontdoor_rule_set/ruleslab42",
-   "kind": "generic",
-   "label": "ruleslab42",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_cdn_frontdoor_security_policy.lab",
-   "key": "terraform/azurerm_cdn_frontdoor_security_policy/sp-afd",
-   "kind": "generic",
-   "label": "sp-afd",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
+   "armType": "Microsoft.Cdn/profiles",
+   "folded": [
+    {
+     "id": "tf:azurerm_cdn_frontdoor_endpoint.lab",
+     "label": "l42…-afd",
+     "armType": "Microsoft.Cdn/profiles/afdEndpoints"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin.web",
+     "label": "origin-lb-int",
+     "armType": "Microsoft.Cdn/profiles/originGroups/origins"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin_group.lab",
+     "label": "og-web",
+     "armType": "Microsoft.Cdn/profiles/originGroups"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_route.lab",
+     "label": "route-all",
+     "armType": "Microsoft.Cdn/profiles/afdEndpoints/routes"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_rule.cache_static",
+     "label": "cachestatic",
+     "armType": "Microsoft.Cdn/profiles/ruleSets/rules"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_rule.header",
+     "label": "addheader",
+     "armType": "Microsoft.Cdn/profiles/ruleSets/rules"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_rule.redirect_old",
+     "label": "redirectold",
+     "armType": "Microsoft.Cdn/profiles/ruleSets/rules"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_rule_set.lab",
+     "label": "ruleslab42",
+     "armType": "Microsoft.Cdn/profiles/ruleSets"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_security_policy.lab",
+     "label": "sp-afd",
+     "armType": "Microsoft.Cdn/profiles/securityPolicies"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_lb.int",
@@ -248,15 +210,36 @@
  ],
  "edges": [
   {
+   "id": "dependency:tf:azurerm_cdn_frontdoor_firewall_policy.lab>tf:azurerm_cdn_frontdoor_profile.lab:WAF policy",
+   "from": "tf:azurerm_cdn_frontdoor_firewall_policy.lab",
+   "to": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "kind": "dependency",
+   "label": "WAF policy",
+   "via": "tf:azurerm_cdn_frontdoor_security_policy.lab"
+  },
+  {
+   "id": "traffic:tf:azurerm_cdn_frontdoor_profile.lab>tf:azurerm_private_link_service.web:Private Link",
+   "from": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "to": "tf:azurerm_private_link_service.web",
+   "kind": "traffic",
+   "label": "Private Link",
+   "via": "tf:azurerm_cdn_frontdoor_origin.web"
+  },
+  {
    "id": "traffic:tf:azurerm_lb.int>tf:azurerm_linux_virtual_machine.web:TCP 80→80",
    "from": "tf:azurerm_lb.int",
    "to": "tf:azurerm_linux_virtual_machine.web",
    "kind": "traffic",
    "label": "TCP 80→80",
    "via": "tf:azurerm_lb_rule.int"
+  },
+  {
+   "id": "traffic:tf:azurerm_private_link_service.web>tf:azurerm_lb.int:frontend",
+   "from": "tf:azurerm_private_link_service.web",
+   "to": "tf:azurerm_lb.int",
+   "kind": "traffic",
+   "label": "frontend",
+   "via": "tf:azurerm_private_link_service.web"
   }
- ],
- "notes": [
-  "9 resources of a type the diagram draws plainly"
  ]
 }

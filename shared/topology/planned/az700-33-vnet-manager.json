@@ -50,110 +50,67 @@
    "key": "microsoft.network/networkmanagers/avnm-{p}",
    "kind": "networkManager",
    "label": "avnm-l33…",
-   "props": {},
+   "props": {
+    "scopeAccess": [
+     "Connectivity",
+     "SecurityAdmin"
+    ]
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Network/networkManagers",
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_network_manager_admin_rule.allow_hub_ssh",
-   "key": "terraform/azurerm_network_manager_admin_rule/always-allow-hub-ssh",
-   "kind": "generic",
-   "label": "always-allow-hub-ssh",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_network_manager_admin_rule.deny_ssh",
-   "key": "terraform/azurerm_network_manager_admin_rule/deny-ssh-internet",
-   "kind": "generic",
-   "label": "deny-ssh-internet",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_network_manager_admin_rule_collection.spokes",
-   "key": "terraform/azurerm_network_manager_admin_rule_collection/rc-spokes",
-   "kind": "generic",
-   "label": "rc-spokes",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_network_manager_connectivity_configuration.hub_spoke",
-   "key": "terraform/azurerm_network_manager_connectivity_configuration/cc-hub-spoke",
-   "kind": "generic",
-   "label": "cc-hub-spoke",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_network_manager_deployment.connectivity",
-   "key": "terraform/azurerm_network_manager_deployment/connectivity",
-   "kind": "generic",
-   "label": "connectivity",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_network_manager_deployment.security",
-   "key": "terraform/azurerm_network_manager_deployment/security",
-   "kind": "generic",
-   "label": "security",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_network_manager_network_group.spokes",
-   "key": "terraform/azurerm_network_manager_network_group/ng-spokes",
-   "kind": "generic",
-   "label": "ng-spokes",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_network_manager_security_admin_configuration.lab",
-   "key": "terraform/azurerm_network_manager_security_admin_configuration/sac-lab",
-   "kind": "generic",
-   "label": "sac-lab",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_network_manager_static_member.spoke1",
-   "key": "terraform/azurerm_network_manager_static_member/sm-spoke1",
-   "kind": "generic",
-   "label": "sm-spoke1",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_network_manager_static_member.spoke2",
-   "key": "terraform/azurerm_network_manager_static_member/sm-spoke2",
-   "kind": "generic",
-   "label": "sm-spoke2",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_manager_admin_rule.allow_hub_ssh",
+     "label": "always-allow-hub-ssh",
+     "armType": "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections/rules"
+    },
+    {
+     "id": "tf:azurerm_network_manager_admin_rule.deny_ssh",
+     "label": "deny-ssh-internet",
+     "armType": "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections/rules"
+    },
+    {
+     "id": "tf:azurerm_network_manager_admin_rule_collection.spokes",
+     "label": "rc-spokes",
+     "armType": "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections"
+    },
+    {
+     "id": "tf:azurerm_network_manager_connectivity_configuration.hub_spoke",
+     "label": "cc-hub-spoke",
+     "armType": "Microsoft.Network/networkManagers/connectivityConfigurations"
+    },
+    {
+     "id": "tf:azurerm_network_manager_deployment.connectivity",
+     "label": "connectivity",
+     "armType": "Microsoft.Network/networkManagers/commits"
+    },
+    {
+     "id": "tf:azurerm_network_manager_deployment.security",
+     "label": "security",
+     "armType": "Microsoft.Network/networkManagers/commits"
+    },
+    {
+     "id": "tf:azurerm_network_manager_network_group.spokes",
+     "label": "ng-spokes",
+     "armType": "Microsoft.Network/networkManagers/networkGroups"
+    },
+    {
+     "id": "tf:azurerm_network_manager_security_admin_configuration.lab",
+     "label": "sac-lab",
+     "armType": "Microsoft.Network/networkManagers/securityAdminConfigurations"
+    },
+    {
+     "id": "tf:azurerm_network_manager_static_member.spoke1",
+     "label": "sm-spoke1",
+     "armType": "Microsoft.Network/networkManagers/networkGroups/staticMembers"
+    },
+    {
+     "id": "tf:azurerm_network_manager_static_member.spoke2",
+     "label": "sm-spoke2",
+     "armType": "Microsoft.Network/networkManagers/networkGroups/staticMembers"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_resource_group.lab",
@@ -291,8 +248,38 @@
    "scope": "lab"
   }
  ],
- "edges": [],
- "notes": [
-  "10 resources of a type the diagram draws plainly"
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_network_manager.avnm>tf:azurerm_virtual_network.spoke1:member",
+   "from": "tf:azurerm_network_manager.avnm",
+   "to": "tf:azurerm_virtual_network.spoke1",
+   "kind": "dependency",
+   "label": "member",
+   "via": "tf:azurerm_network_manager_static_member.spoke1"
+  },
+  {
+   "id": "dependency:tf:azurerm_network_manager.avnm>tf:azurerm_virtual_network.spoke2:member",
+   "from": "tf:azurerm_network_manager.avnm",
+   "to": "tf:azurerm_virtual_network.spoke2",
+   "kind": "dependency",
+   "label": "member",
+   "via": "tf:azurerm_network_manager_static_member.spoke2"
+  },
+  {
+   "id": "traffic:tf:azurerm_virtual_network.hub>tf:azurerm_virtual_network.spoke1:peering (AVNM)",
+   "from": "tf:azurerm_virtual_network.hub",
+   "to": "tf:azurerm_virtual_network.spoke1",
+   "kind": "traffic",
+   "label": "peering (AVNM)",
+   "via": "tf:azurerm_network_manager_connectivity_configuration.hub_spoke"
+  },
+  {
+   "id": "traffic:tf:azurerm_virtual_network.hub>tf:azurerm_virtual_network.spoke2:peering (AVNM)",
+   "from": "tf:azurerm_virtual_network.hub",
+   "to": "tf:azurerm_virtual_network.spoke2",
+   "kind": "traffic",
+   "label": "peering (AVNM)",
+   "via": "tf:azurerm_network_manager_connectivity_configuration.hub_spoke"
+  }
  ]
 }

@@ -10,7 +10,10 @@
    "key": "microsoft.app/containerapps/ca-hello",
    "kind": "containerApp",
    "label": "ca-hello",
-   "props": {},
+   "props": {
+    "ingress": "external",
+    "targetPort": 80
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.App/containerApps",
    "scope": "lab"
@@ -20,7 +23,9 @@
    "key": "microsoft.app/managedenvironments/cae-lab",
    "kind": "containerAppEnv",
    "label": "cae-lab",
-   "props": {},
+   "props": {
+    "sku": "Consumption"
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.App/managedEnvironments",
    "scope": "lab"
@@ -30,7 +35,13 @@
    "key": "microsoft.containerinstance/containergroups/aci-hello",
    "kind": "containerGroup",
    "label": "aci-hello",
-   "props": {},
+   "props": {
+    "cpu": 0.5,
+    "memoryGb": 0.5,
+    "chips": [
+     "private IP"
+    ]
+   },
    "parent": "tf:azurerm_subnet.aci",
    "armType": "Microsoft.ContainerInstance/containerGroups",
    "scope": "lab"
@@ -40,7 +51,9 @@
    "key": "microsoft.containerregistry/registries/{p}acr",
    "kind": "registry",
    "label": "l11…acr",
-   "props": {},
+   "props": {
+    "sku": "Basic"
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.ContainerRegistry/registries",
    "scope": "lab"
@@ -92,5 +105,14 @@
    "scope": "lab"
   }
  ],
- "edges": []
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_container_app.hello>tf:azurerm_container_app_environment.lab:environment",
+   "from": "tf:azurerm_container_app.hello",
+   "to": "tf:azurerm_container_app_environment.lab",
+   "kind": "dependency",
+   "label": "environment",
+   "via": "tf:azurerm_container_app.hello"
+  }
+ ]
 }

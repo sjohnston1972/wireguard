@@ -45,52 +45,49 @@
   },
   {
    "id": "tf:azurerm_monitor_action_group.lab",
-   "key": "terraform/azurerm_monitor_action_group/ag-lab",
+   "key": "microsoft.insights/actiongroups/ag-lab",
    "kind": "monitor",
    "label": "ag-lab",
    "props": {},
    "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
+   "armType": "Microsoft.Insights/actionGroups",
    "scope": "lab"
   },
   {
    "id": "tf:azurerm_monitor_activity_log_alert.restart",
-   "key": "terraform/azurerm_monitor_activity_log_alert/alert-vm-restart",
+   "key": "microsoft.insights/activitylogalerts/alert-vm-restart",
    "kind": "monitor",
    "label": "alert-vm-restart",
    "props": {},
    "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
+   "armType": "Microsoft.Insights/activityLogAlerts",
    "scope": "lab"
   },
   {
    "id": "tf:azurerm_monitor_data_collection_rule.vm",
-   "key": "terraform/azurerm_monitor_data_collection_rule/dcr-vm-linux",
+   "key": "microsoft.insights/datacollectionrules/dcr-vm-linux",
    "kind": "monitor",
    "label": "dcr-vm-linux",
    "props": {},
    "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_monitor_data_collection_rule_association.vm",
-   "key": "terraform/azurerm_monitor_data_collection_rule_association/dcra-vm-monitor",
-   "kind": "monitor",
-   "label": "dcra-vm-monitor",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
+   "armType": "Microsoft.Insights/dataCollectionRules",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_monitor_data_collection_rule_association.vm",
+     "label": "dcra-vm-monitor",
+     "armType": "Microsoft.Insights/dataCollectionRuleAssociations"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_monitor_metric_alert.cpu",
-   "key": "terraform/azurerm_monitor_metric_alert/alert-vm-cpu-high",
+   "key": "microsoft.insights/metricalerts/alert-vm-cpu-high",
    "kind": "monitor",
    "label": "alert-vm-cpu-high",
    "props": {},
    "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
+   "armType": "Microsoft.Insights/metricAlerts",
    "scope": "lab"
   },
   {
@@ -137,5 +134,54 @@
    "scope": "lab"
   }
  ],
- "edges": []
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_monitor_activity_log_alert.restart>tf:azurerm_monitor_action_group.lab:notifies",
+   "from": "tf:azurerm_monitor_activity_log_alert.restart",
+   "to": "tf:azurerm_monitor_action_group.lab",
+   "kind": "dependency",
+   "label": "notifies",
+   "via": "tf:azurerm_monitor_activity_log_alert.restart"
+  },
+  {
+   "id": "dependency:tf:azurerm_monitor_activity_log_alert.restart>tf:azurerm_resource_group.lab:alert",
+   "from": "tf:azurerm_monitor_activity_log_alert.restart",
+   "to": "tf:azurerm_resource_group.lab",
+   "kind": "dependency",
+   "label": "alert",
+   "via": "tf:azurerm_monitor_activity_log_alert.restart"
+  },
+  {
+   "id": "dependency:tf:azurerm_monitor_data_collection_rule.vm>tf:azurerm_linux_virtual_machine.vm:collects from",
+   "from": "tf:azurerm_monitor_data_collection_rule.vm",
+   "to": "tf:azurerm_linux_virtual_machine.vm",
+   "kind": "dependency",
+   "label": "collects from",
+   "via": "tf:azurerm_monitor_data_collection_rule_association.vm"
+  },
+  {
+   "id": "dependency:tf:azurerm_monitor_data_collection_rule.vm>tf:azurerm_log_analytics_workspace.lab:sends to",
+   "from": "tf:azurerm_monitor_data_collection_rule.vm",
+   "to": "tf:azurerm_log_analytics_workspace.lab",
+   "kind": "dependency",
+   "label": "sends to",
+   "via": "tf:azurerm_monitor_data_collection_rule.vm"
+  },
+  {
+   "id": "dependency:tf:azurerm_monitor_metric_alert.cpu>tf:azurerm_linux_virtual_machine.vm:alert",
+   "from": "tf:azurerm_monitor_metric_alert.cpu",
+   "to": "tf:azurerm_linux_virtual_machine.vm",
+   "kind": "dependency",
+   "label": "alert",
+   "via": "tf:azurerm_monitor_metric_alert.cpu"
+  },
+  {
+   "id": "dependency:tf:azurerm_monitor_metric_alert.cpu>tf:azurerm_monitor_action_group.lab:notifies",
+   "from": "tf:azurerm_monitor_metric_alert.cpu",
+   "to": "tf:azurerm_monitor_action_group.lab",
+   "kind": "dependency",
+   "label": "notifies",
+   "via": "tf:azurerm_monitor_metric_alert.cpu"
+  }
+ ]
 }

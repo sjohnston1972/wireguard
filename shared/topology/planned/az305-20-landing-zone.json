@@ -68,39 +68,39 @@
   },
   {
    "id": "tf:azurerm_management_group_policy_assignment.baseline",
-   "key": "terraform/azurerm_management_group_policy_assignment/lz-baseline",
+   "key": "microsoft.authorization/policyassignments/lz-baseline",
    "kind": "policy",
    "label": "lz-baseline",
    "props": {},
    "parent": "lane/tenant",
-   "armType": null
+   "armType": "Microsoft.Authorization/policyAssignments"
   },
   {
    "id": "tf:azurerm_management_group_policy_assignment.sandbox_no_pip",
-   "key": "terraform/azurerm_management_group_policy_assignment/sandbox-no-pip",
+   "key": "microsoft.authorization/policyassignments/sandbox-no-pip",
    "kind": "policy",
    "label": "sandbox-no-pip",
    "props": {},
    "parent": "lane/tenant",
-   "armType": null
+   "armType": "Microsoft.Authorization/policyAssignments"
   },
   {
    "id": "tf:azurerm_management_group_policy_set_definition.baseline",
-   "key": "terraform/azurerm_management_group_policy_set_definition/lab-az305-20-landing-zone-baseline",
+   "key": "microsoft.authorization/policysetdefinitions/lab-az305-20-landing-zone-baseline",
    "kind": "policy",
    "label": "lab-az305-20-landing-zone-baseline",
    "props": {},
    "parent": "lane/tenant",
-   "armType": null
+   "armType": "Microsoft.Authorization/policySetDefinitions"
   },
   {
    "id": "tf:azurerm_policy_definition.audit_costcentre",
-   "key": "terraform/azurerm_policy_definition/lab-az305-20-landing-zone-audit-costcentre",
+   "key": "microsoft.authorization/policydefinitions/lab-az305-20-landing-zone-audit-costcentre",
    "kind": "policy",
    "label": "lab-az305-20-landing-zone-audit-costcentre",
    "props": {},
    "parent": "lane/tenant",
-   "armType": null
+   "armType": "Microsoft.Authorization/policyDefinitions"
   },
   {
    "id": "tf:azurerm_resource_group.lab",
@@ -171,19 +171,91 @@
  ],
  "edges": [
   {
-   "id": "dependency:tf:azurerm_user_assigned_identity.appops>tf:azurerm_resource_group.lab:role: custom",
+   "id": "dependency:tf:azurerm_management_group.corp>tf:azurerm_management_group.landingzones:parent",
+   "from": "tf:azurerm_management_group.corp",
+   "to": "tf:azurerm_management_group.landingzones",
+   "kind": "dependency",
+   "label": "parent",
+   "via": "tf:azurerm_management_group.corp"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group.landingzones>tf:azurerm_management_group.root:parent",
+   "from": "tf:azurerm_management_group.landingzones",
+   "to": "tf:azurerm_management_group.root",
+   "kind": "dependency",
+   "label": "parent",
+   "via": "tf:azurerm_management_group.landingzones"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group.online>tf:azurerm_management_group.landingzones:parent",
+   "from": "tf:azurerm_management_group.online",
+   "to": "tf:azurerm_management_group.landingzones",
+   "kind": "dependency",
+   "label": "parent",
+   "via": "tf:azurerm_management_group.online"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group.platform>tf:azurerm_management_group.root:parent",
+   "from": "tf:azurerm_management_group.platform",
+   "to": "tf:azurerm_management_group.root",
+   "kind": "dependency",
+   "label": "parent",
+   "via": "tf:azurerm_management_group.platform"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group.sandbox>tf:azurerm_management_group.root:parent",
+   "from": "tf:azurerm_management_group.sandbox",
+   "to": "tf:azurerm_management_group.root",
+   "kind": "dependency",
+   "label": "parent",
+   "via": "tf:azurerm_management_group.sandbox"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group_policy_assignment.baseline>tf:azurerm_management_group.landingzones:scope",
+   "from": "tf:azurerm_management_group_policy_assignment.baseline",
+   "to": "tf:azurerm_management_group.landingzones",
+   "kind": "dependency",
+   "label": "scope",
+   "via": "tf:azurerm_management_group_policy_assignment.baseline"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group_policy_assignment.baseline>tf:azurerm_management_group_policy_set_definition.baseline:assigns",
+   "from": "tf:azurerm_management_group_policy_assignment.baseline",
+   "to": "tf:azurerm_management_group_policy_set_definition.baseline",
+   "kind": "dependency",
+   "label": "assigns",
+   "via": "tf:azurerm_management_group_policy_assignment.baseline"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group_policy_assignment.sandbox_no_pip>tf:azurerm_management_group.sandbox:scope",
+   "from": "tf:azurerm_management_group_policy_assignment.sandbox_no_pip",
+   "to": "tf:azurerm_management_group.sandbox",
+   "kind": "dependency",
+   "label": "scope",
+   "via": "tf:azurerm_management_group_policy_assignment.sandbox_no_pip"
+  },
+  {
+   "id": "dependency:tf:azurerm_management_group_policy_set_definition.baseline>tf:azurerm_policy_definition.audit_costcentre:includes",
+   "from": "tf:azurerm_management_group_policy_set_definition.baseline",
+   "to": "tf:azurerm_policy_definition.audit_costcentre",
+   "kind": "dependency",
+   "label": "includes",
+   "via": "tf:azurerm_management_group_policy_set_definition.baseline"
+  },
+  {
+   "id": "dependency:tf:azurerm_user_assigned_identity.appops>tf:azurerm_resource_group.lab:role: lab-az305-20-landing-zone-appops",
    "from": "tf:azurerm_user_assigned_identity.appops",
    "to": "tf:azurerm_resource_group.lab",
    "kind": "dependency",
-   "label": "role: custom",
+   "label": "role: lab-az305-20-landing-zone-appops",
    "via": "tf:azurerm_role_assignment.appops"
   },
   {
-   "id": "dependency:tf:azurerm_user_assigned_identity.netops>tf:azurerm_resource_group.lab:role: custom",
+   "id": "dependency:tf:azurerm_user_assigned_identity.netops>tf:azurerm_resource_group.lab:role: lab-az305-20-landing-zone-netops",
    "from": "tf:azurerm_user_assigned_identity.netops",
    "to": "tf:azurerm_resource_group.lab",
    "kind": "dependency",
-   "label": "role: custom",
+   "label": "role: lab-az305-20-landing-zone-netops",
    "via": "tf:azurerm_role_assignment.netops"
   }
  ]

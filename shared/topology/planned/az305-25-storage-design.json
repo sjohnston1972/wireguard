@@ -30,7 +30,10 @@
     "accountKind": "StorageV2",
     "sku": "Standard LRS",
     "accessTier": "Hot",
-    "publicAccess": true
+    "publicAccess": true,
+    "counts": [
+     "containers: 2"
+    ]
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Storage/storageAccounts",
@@ -45,6 +48,11 @@
      "id": "tf:azurerm_storage_container.raw",
      "label": "raw",
      "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    },
+    {
+     "id": "tf:azurerm_storage_management_policy.lake",
+     "label": "lake",
+     "armType": "Microsoft.Storage/storageAccounts/managementPolicies"
     }
    ]
   },
@@ -57,7 +65,10 @@
     "accountKind": "StorageV2",
     "sku": "Standard RAGRS",
     "accessTier": "Hot",
-    "publicAccess": true
+    "publicAccess": true,
+    "counts": [
+     "containers: 1"
+    ]
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Storage/storageAccounts",
@@ -67,32 +78,14 @@
      "id": "tf:azurerm_storage_container.evidence",
      "label": "evidence",
      "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    },
+    {
+     "id": "tf:azurerm_storage_container_immutability_policy.evidence",
+     "label": "evidence",
+     "armType": "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies"
     }
    ]
-  },
-  {
-   "id": "tf:azurerm_storage_container_immutability_policy.evidence",
-   "key": "terraform/azurerm_storage_container_immutability_policy/evidence",
-   "kind": "generic",
-   "label": "evidence",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_storage_management_policy.lake",
-   "key": "terraform/azurerm_storage_management_policy/lake",
-   "kind": "generic",
-   "label": "lake",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
   }
  ],
- "edges": [],
- "notes": [
-  "2 resources of a type the diagram draws plainly"
- ]
+ "edges": []
 }

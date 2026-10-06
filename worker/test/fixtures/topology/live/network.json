@@ -1,0 +1,246 @@
+{
+ "_about": "T3.1 network core: Resource Graph rows (query.ts's projected columns) for a running az700-32-dns-resolver in slot 5 (10.66.192.0/18), with the network-core types the family's labs use grafted in (an ASG, a NAT gateway and prefixes, an outbound LB, a public DNS zone, a route table). Shapes from Learn's REST references: virtualNetworks (2024-05-01: subnets with delegations, serviceEndpoints, natGateway, networkSecurityGroup, routeTable, defaultOutboundAccess; virtualNetworkPeerings with peeringState), networkInterfaces (ipConfigurations[].properties.applicationSecurityGroups), natGateways, publicIPPrefixes (natGateway, loadBalancerFrontendIpConfiguration), dnsResolvers (virtualNetwork), dnsResolvers/inboundEndpoints (ipConfigurations[].privateIpAddress), dnsForwardingRulesets (dnsResolverOutboundEndpoints), dnszones and privateDnsZones (numberOfRecordSets), privateDnsZones/virtualNetworkLinks (virtualNetwork, registrationEnabled). Fake subscription, TEST-NET public addresses.",
+ "rows": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub",
+   "name": "vnet-hub", "type": "microsoft.network/virtualnetworks", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver", "project": "wg-admin-labs", "session": "ls-0042" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded", "resourceGuid": "3f1c2a8e-5d0b-4c7e-9a21-6b8f0d4e2c11",
+    "addressSpace": { "addressPrefixes": ["10.66.192.0/20"] },
+    "subnets": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-app", "name": "snet-app", "type": "Microsoft.Network/virtualNetworks/subnets",
+       "properties": { "provisioningState": "Succeeded", "addressPrefix": "10.66.192.0/24", "defaultOutboundAccess": false,
+         "networkSecurityGroup": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkSecurityGroups/nsg-app" },
+         "routeTable": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/routeTables/rt-app" },
+         "natGateway": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/natGateways/ng-hub" },
+         "serviceEndpoints": [{ "provisioningState": "Succeeded", "service": "Microsoft.Storage", "locations": ["uksouth", "ukwest"] }],
+         "ipConfigurations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-app/ipConfigurations/ipconfig1" }],
+         "privateEndpointNetworkPolicies": "Disabled", "privateLinkServiceNetworkPolicies": "Enabled" } },
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-in", "name": "snet-in", "type": "Microsoft.Network/virtualNetworks/subnets",
+       "properties": { "provisioningState": "Succeeded", "addressPrefix": "10.66.193.0/28",
+         "delegations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-in/delegations/Microsoft.Network.dnsResolvers", "name": "Microsoft.Network.dnsResolvers", "type": "Microsoft.Network/virtualNetworks/subnets/delegations", "properties": { "provisioningState": "Succeeded", "serviceName": "Microsoft.Network/dnsResolvers", "actions": ["Microsoft.Network/virtualNetworks/subnets/join/action"] } }] } },
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-out", "name": "snet-out", "type": "Microsoft.Network/virtualNetworks/subnets",
+       "properties": { "provisioningState": "Succeeded", "addressPrefix": "10.66.193.16/28",
+         "delegations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-out/delegations/Microsoft.Network.dnsResolvers", "name": "Microsoft.Network.dnsResolvers", "properties": { "serviceName": "Microsoft.Network/dnsResolvers" } }] } },
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-lb", "name": "snet-lb", "type": "Microsoft.Network/virtualNetworks/subnets",
+       "properties": { "provisioningState": "Succeeded", "addressPrefix": "10.66.194.0/24", "defaultOutboundAccess": false,
+         "ipConfigurations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-lb/ipConfigurations/ipconfig1" }] } }
+    ],
+    "virtualNetworkPeerings": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/virtualNetworkPeerings/hub-to-onprem", "name": "hub-to-onprem",
+       "properties": { "provisioningState": "Succeeded", "peeringState": "Connected", "peeringSyncLevel": "FullyInSync", "allowVirtualNetworkAccess": true, "allowForwardedTraffic": true, "allowGatewayTransit": false, "useRemoteGateways": false,
+         "remoteVirtualNetwork": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-onprem" },
+         "remoteAddressSpace": { "addressPrefixes": ["10.66.208.0/20"] } } }
+    ],
+    "enableDdosProtection": false
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-onprem",
+   "name": "vnet-onprem", "type": "microsoft.network/virtualnetworks", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver", "project": "wg-admin-labs" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": { "addressPrefixes": ["10.66.208.0/20"] },
+    "dhcpOptions": { "dnsServers": ["10.66.208.4"] },
+    "subnets": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-onprem/subnets/snet-onprem", "name": "snet-onprem",
+       "properties": { "provisioningState": "Succeeded", "addressPrefix": "10.66.208.0/24",
+         "ipConfigurations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-dns/ipConfigurations/ipconfig1" }] } }
+    ],
+    "virtualNetworkPeerings": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-onprem/virtualNetworkPeerings/onprem-to-hub", "name": "onprem-to-hub",
+       "properties": { "provisioningState": "Succeeded", "peeringState": "Connected", "allowForwardedTraffic": true,
+         "remoteVirtualNetwork": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub" } } }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-app",
+   "name": "nic-vm-app", "type": "microsoft.network/networkinterfaces", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded", "macAddress": "00-0D-3A-11-22-33", "nicType": "Standard", "enableAcceleratedNetworking": false, "primary": true,
+    "virtualMachine": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Compute/virtualMachines/vm-app" },
+    "ipConfigurations": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-app/ipConfigurations/ipconfig1", "name": "ipconfig1",
+       "properties": { "provisioningState": "Succeeded", "privateIPAddress": "10.66.192.4", "privateIPAllocationMethod": "Dynamic", "privateIPAddressVersion": "IPv4", "primary": true,
+         "subnet": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-app" },
+         "applicationSecurityGroups": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/applicationSecurityGroups/asg-app" }] } }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/applicationSecurityGroups/asg-app",
+   "name": "asg-app", "type": "microsoft.network/applicationsecuritygroups", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "resourceGuid": "a3d8e2f1-0b7c-4e9a-8d21-5c6f1b2e3a40" }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Compute/virtualMachines/vm-app",
+   "name": "vm-app", "type": "microsoft.compute/virtualmachines", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded", "vmId": "6c1d0e9a-2b3f-4a5d-8e7c-1f0a9b8c7d6e",
+    "hardwareProfile": { "vmSize": "Standard_B1s" },
+    "storageProfile": { "osDisk": { "osType": "Linux", "name": "vm-app_OsDisk_1_5b2c9d0e1f2a3b4c5d6e7f8091a2b3c4", "createOption": "FromImage" }, "dataDisks": [] },
+    "osProfile": { "computerName": "vm-app", "adminUsername": "azureuser", "linuxConfiguration": { "disablePasswordAuthentication": false } },
+    "networkProfile": { "networkInterfaces": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-app" }] },
+    "extended": { "instanceView": { "computerName": "vm-app", "osName": "ubuntu", "powerState": { "code": "PowerState/running", "displayStatus": "VM running", "level": "Info" } } }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-dns",
+   "name": "nic-vm-dns", "type": "microsoft.network/networkinterfaces", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Compute/virtualMachines/vm-dns" },
+    "ipConfigurations": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-dns/ipConfigurations/ipconfig1", "name": "ipconfig1",
+       "properties": { "privateIPAddress": "10.66.208.4", "privateIPAllocationMethod": "Static",
+         "subnet": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-onprem/subnets/snet-onprem" } } }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Compute/virtualMachines/vm-dns",
+   "name": "vm-dns", "type": "microsoft.compute/virtualmachines", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": { "vmSize": "Standard_B1s" },
+    "storageProfile": { "osDisk": { "osType": "Linux" } },
+    "extended": { "instanceView": { "powerState": { "code": "PowerState/running", "displayStatus": "VM running" } } }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-lb",
+   "name": "nic-vm-lb", "type": "microsoft.network/networkinterfaces", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Compute/virtualMachines/vm-lb" },
+    "ipConfigurations": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-lb/ipConfigurations/ipconfig1", "name": "ipconfig1",
+       "properties": { "privateIPAddress": "10.66.194.4", "privateIPAllocationMethod": "Dynamic",
+         "subnet": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-lb" },
+         "loadBalancerBackendAddressPools": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/loadBalancers/lb-out/backendAddressPools/pool-out" }] } }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Compute/virtualMachines/vm-lb",
+   "name": "vm-lb", "type": "microsoft.compute/virtualmachines", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "hardwareProfile": { "vmSize": "Standard_B1s" }, "storageProfile": { "osDisk": { "osType": "Linux" } },
+    "extended": { "instanceView": { "powerState": { "code": "PowerState/deallocated", "displayStatus": "VM deallocated" } } } }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkSecurityGroups/nsg-app",
+   "name": "nsg-app", "type": "microsoft.network/networksecuritygroups", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded",
+    "securityRules": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkSecurityGroups/nsg-app/securityRules/allow-ssh-from-vnet", "name": "allow-ssh-from-vnet", "properties": { "protocol": "Tcp", "sourcePortRange": "*", "destinationPortRange": "22", "sourceAddressPrefix": "VirtualNetwork", "destinationAddressPrefix": "*", "access": "Allow", "priority": 100, "direction": "Inbound" } }
+    ],
+    "defaultSecurityRules": [],
+    "subnets": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-app" }] }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/routeTables/rt-app",
+   "name": "rt-app", "type": "microsoft.network/routetables", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "disableBgpRoutePropagation": true,
+    "routes": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/routeTables/rt-app/routes/to-onprem", "name": "to-onprem", "properties": { "provisioningState": "Succeeded", "addressPrefix": "10.66.208.0/20", "nextHopType": "VirtualAppliance", "nextHopIpAddress": "10.66.208.4" } },
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/routeTables/rt-app/routes/internet", "name": "internet", "properties": { "addressPrefix": "203.0.113.0/24", "nextHopType": "Internet" } }
+    ],
+    "subnets": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-app" }] }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/natGateways/ng-hub",
+   "name": "ng-hub", "type": "microsoft.network/natgateways", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": { "name": "Standard" }, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "idleTimeoutInMinutes": 4,
+    "publicIpPrefixes": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/publicIPPrefixes/pfx-nat" }],
+    "subnets": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-app" }] }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/publicIPPrefixes/pfx-nat",
+   "name": "pfx-nat", "type": "microsoft.network/publicipprefixes", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": { "name": "Standard", "tier": "Regional" }, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "prefixLength": 31, "ipPrefix": "203.0.113.64/31", "publicIPAddressVersion": "IPv4",
+    "natGateway": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/natGateways/ng-hub" } }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/publicIPPrefixes/pfx-lb",
+   "name": "pfx-lb", "type": "microsoft.network/publicipprefixes", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": { "name": "Standard", "tier": "Regional" }, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "prefixLength": 31, "ipPrefix": "203.0.113.66/31",
+    "loadBalancerFrontendIpConfiguration": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/loadBalancers/lb-out/frontendIPConfigurations/fe-out" } }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/loadBalancers/lb-out",
+   "name": "lb-out", "type": "microsoft.network/loadbalancers", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": { "name": "Standard", "tier": "Regional" }, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded",
+    "frontendIPConfigurations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/loadBalancers/lb-out/frontendIPConfigurations/fe-out", "name": "fe-out",
+      "properties": { "publicIPPrefix": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/publicIPPrefixes/pfx-lb" }, "outboundRules": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/loadBalancers/lb-out/outboundRules/out-all" }] } }],
+    "backendAddressPools": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/loadBalancers/lb-out/backendAddressPools/pool-out", "name": "pool-out",
+      "properties": { "backendIPConfigurations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/networkInterfaces/nic-vm-lb/ipConfigurations/ipconfig1" }] } }],
+    "loadBalancingRules": [], "probes": [], "inboundNatRules": [],
+    "outboundRules": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/loadBalancers/lb-out/outboundRules/out-all", "name": "out-all",
+      "properties": { "allocatedOutboundPorts": 1024, "protocol": "All", "idleTimeoutInMinutes": 4, "enableTcpReset": true,
+        "frontendIPConfigurations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/loadBalancers/lb-out/frontendIPConfigurations/fe-out" }],
+        "backendAddressPool": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/loadBalancers/lb-out/backendAddressPools/pool-out" } } }] }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/dnsResolvers/dnspr-hub",
+   "name": "dnspr-hub", "type": "microsoft.network/dnsresolvers", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "dnsResolverState": "Connected", "resourceGuid": "b0e4c1d2-3a5f-4e6b-9c7d-8e9f0a1b2c3d",
+    "virtualNetwork": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub" } }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/dnsResolvers/dnspr-hub/inboundEndpoints/in-hub",
+   "name": "in-hub", "type": "microsoft.network/dnsresolvers/inboundendpoints", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded",
+    "ipConfigurations": [{ "privateIpAddress": "10.66.193.4", "privateIpAllocationMethod": "Dynamic", "subnet": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-in" } }] }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/dnsResolvers/dnspr-hub/outboundEndpoints/out-hub",
+   "name": "out-hub", "type": "microsoft.network/dnsresolvers/outboundendpoints", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "subnet": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-out" } }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/dnsForwardingRulesets/frs-onprem",
+   "name": "frs-onprem", "type": "microsoft.network/dnsforwardingrulesets", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded",
+    "dnsResolverOutboundEndpoints": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/dnsResolvers/dnspr-hub/outboundEndpoints/out-hub" }] }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/privateDnsZones/azure.lab32.internal",
+   "name": "azure.lab32.internal", "type": "microsoft.network/privatednszones", "kind": "", "location": "global", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "maxNumberOfRecordSets": 25000, "numberOfRecordSets": 3, "numberOfVirtualNetworkLinks": 1, "numberOfVirtualNetworkLinksWithRegistration": 1 }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/privateDnsZones/azure.lab32.internal/virtualNetworkLinks/link-hub",
+   "name": "link-hub", "type": "microsoft.network/privatednszones/virtualnetworklinks", "kind": "", "location": "global", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "registrationEnabled": true, "virtualNetworkLinkState": "Completed",
+    "virtualNetwork": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/virtualNetworks/vnet-hub" } }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-32-dns-resolver/providers/Microsoft.Network/dnszones/l32rt7xy.example.com",
+   "name": "l32rt7xy.example.com", "type": "microsoft.network/dnszones", "kind": "", "location": "global", "resourceGroup": "rg-lab-az700-32-dns-resolver",
+   "sku": null, "tags": { "lab": "az700-32-dns-resolver" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "maxNumberOfRecordSets": 10000, "numberOfRecordSets": 4, "nameServers": ["ns1-01.azure-dns.com.", "ns2-01.azure-dns.net.", "ns3-01.azure-dns.org.", "ns4-01.azure-dns.info."], "zoneType": "Public" }
+  }
+ ]
+}

@@ -40,12 +40,12 @@
   },
   {
    "id": "tf:azurerm_policy_definition.kv_diagnostics",
-   "key": "terraform/azurerm_policy_definition/lab-az305-21-monitoring-scale-kv-diagnostics",
+   "key": "microsoft.authorization/policydefinitions/lab-az305-21-monitoring-scale-kv-diagnostics",
    "kind": "policy",
    "label": "lab-az305-21-monitoring-scale-kv-diagnostics",
    "props": {},
    "parent": "lane/tenant",
-   "armType": null
+   "armType": "Microsoft.Authorization/policyDefinitions"
   },
   {
    "id": "tf:azurerm_resource_group.lab",
@@ -72,26 +72,42 @@
   },
   {
    "id": "tf:azurerm_resource_group_policy_assignment.kv_diagnostics",
-   "key": "terraform/azurerm_resource_group_policy_assignment/lab-az305-21-monitoring-scale-kv-diagnostics",
+   "key": "microsoft.authorization/policyassignments/lab-az305-21-monitoring-scale-kv-diagnostics",
    "kind": "policy",
    "label": "lab-az305-21-monitoring-scale-kv-diagnostics",
    "props": {},
    "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
+   "armType": "Microsoft.Authorization/policyAssignments",
    "scope": "lab"
   },
   {
    "id": "tf:azurerm_resource_group_policy_assignment.kv_logs_audit",
-   "key": "terraform/azurerm_resource_group_policy_assignment/lab-az305-21-monitoring-scale-kv-logs-audit",
+   "key": "microsoft.authorization/policyassignments/lab-az305-21-monitoring-scale-kv-logs-audit",
    "kind": "policy",
    "label": "lab-az305-21-monitoring-scale-kv-logs-audit",
    "props": {},
    "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
+   "armType": "Microsoft.Authorization/policyAssignments",
    "scope": "lab"
   }
  ],
  "edges": [
+  {
+   "id": "dependency:tf:azurerm_resource_group_policy_assignment.kv_diagnostics>tf:azurerm_log_analytics_workspace.lab:parameter",
+   "from": "tf:azurerm_resource_group_policy_assignment.kv_diagnostics",
+   "to": "tf:azurerm_log_analytics_workspace.lab",
+   "kind": "dependency",
+   "label": "parameter",
+   "via": "tf:azurerm_resource_group_policy_assignment.kv_diagnostics"
+  },
+  {
+   "id": "dependency:tf:azurerm_resource_group_policy_assignment.kv_diagnostics>tf:azurerm_policy_definition.kv_diagnostics:assigns",
+   "from": "tf:azurerm_resource_group_policy_assignment.kv_diagnostics",
+   "to": "tf:azurerm_policy_definition.kv_diagnostics",
+   "kind": "dependency",
+   "label": "assigns",
+   "via": "tf:azurerm_resource_group_policy_assignment.kv_diagnostics"
+  },
   {
    "id": "dependency:tf:azurerm_resource_group_policy_assignment.kv_diagnostics>tf:azurerm_resource_group.lab:role: Monitoring Contributor",
    "from": "tf:azurerm_resource_group_policy_assignment.kv_diagnostics",

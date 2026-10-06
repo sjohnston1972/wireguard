@@ -10,11 +10,20 @@
    "key": "microsoft.network/applicationgateways/agw-hub",
    "kind": "appGateway",
    "label": "agw-hub",
-   "props": {},
+   "props": {
+    "sku": "WAF_v2",
+    "capacity": "0-2",
+    "privateIp": "10.71.192.10"
+   },
    "parent": "tf:azurerm_subnet.agw",
    "armType": "Microsoft.Network/applicationGateways",
    "scope": "lab",
    "folded": [
+    {
+     "id": "tf:azurerm_monitor_diagnostic_setting.agw",
+     "label": "diag-agw",
+     "armType": "Microsoft.Insights/diagnosticSettings"
+    },
     {
      "id": "tf:azurerm_public_ip.agw",
      "label": "pip-agw",
@@ -29,6 +38,7 @@
    "label": "l41…kv",
    "props": {
     "sku": "standard",
+    "mode": "access policies",
     "counts": [
      "certificates: 1"
     ]
@@ -38,31 +48,21 @@
    "scope": "lab",
    "folded": [
     {
+     "id": "tf:azurerm_key_vault_access_policy.agw",
+     "label": "agw",
+     "armType": "Microsoft.KeyVault/vaults/accessPolicies"
+    },
+    {
+     "id": "tf:azurerm_key_vault_access_policy.pipeline",
+     "label": "pipeline",
+     "armType": "Microsoft.KeyVault/vaults/accessPolicies"
+    },
+    {
      "id": "tf:azurerm_key_vault_certificate.app",
      "label": "certificate",
      "armType": "Microsoft.KeyVault/vaults/certificates"
     }
    ]
-  },
-  {
-   "id": "tf:azurerm_key_vault_access_policy.agw",
-   "key": "terraform/azurerm_key_vault_access_policy/agw",
-   "kind": "generic",
-   "label": "agw",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_key_vault_access_policy.pipeline",
-   "key": "terraform/azurerm_key_vault_access_policy/pipeline",
-   "kind": "generic",
-   "label": "pipeline",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
   },
   {
    "id": "tf:azurerm_linux_virtual_machine.web1",
@@ -118,35 +118,24 @@
    "scope": "lab"
   },
   {
-   "id": "tf:azurerm_monitor_diagnostic_setting.agw",
-   "key": "terraform/azurerm_monitor_diagnostic_setting/diag-agw",
-   "kind": "monitor",
-   "label": "diag-agw",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_private_dns_a_record.app",
-   "key": "terraform/azurerm_private_dns_a_record/app",
-   "kind": "generic",
-   "label": "app",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
    "id": "tf:azurerm_private_dns_zone.lab",
    "key": "microsoft.network/privatednszones/lab41.internal",
    "kind": "privateDnsZone",
    "label": "lab41.internal",
-   "props": {},
+   "props": {
+    "counts": [
+     "records: 1"
+    ]
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Network/privateDnsZones",
    "scope": "lab",
    "folded": [
+    {
+     "id": "tf:azurerm_private_dns_a_record.app",
+     "label": "app",
+     "armType": "Microsoft.Network/privateDnsZones/A"
+    },
     {
      "id": "tf:azurerm_private_dns_zone_virtual_network_link.hub",
      "label": "link-vnet-hub",
@@ -249,16 +238,50 @@
   },
   {
    "id": "tf:azurerm_web_application_firewall_policy.hub",
-   "key": "terraform/azurerm_web_application_firewall_policy/waf-hub",
+   "key": "microsoft.network/applicationgatewaywebapplicationfirewallpolicies/waf-hub",
    "kind": "wafPolicy",
    "label": "waf-hub",
-   "props": {},
+   "props": {
+    "mode": "Prevention"
+   },
    "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
+   "armType": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
    "scope": "lab"
   }
  ],
  "edges": [
+  {
+   "id": "dependency:tf:azurerm_application_gateway.hub>tf:azurerm_key_vault.lab:TLS certificate",
+   "from": "tf:azurerm_application_gateway.hub",
+   "to": "tf:azurerm_key_vault.lab",
+   "kind": "dependency",
+   "label": "TLS certificate",
+   "via": "tf:azurerm_application_gateway.hub"
+  },
+  {
+   "id": "dependency:tf:azurerm_application_gateway.hub>tf:azurerm_log_analytics_workspace.lab:diagnostics",
+   "from": "tf:azurerm_application_gateway.hub",
+   "to": "tf:azurerm_log_analytics_workspace.lab",
+   "kind": "dependency",
+   "label": "diagnostics",
+   "via": "tf:azurerm_monitor_diagnostic_setting.agw"
+  },
+  {
+   "id": "dependency:tf:azurerm_application_gateway.hub>tf:azurerm_user_assigned_identity.agw:identity",
+   "from": "tf:azurerm_application_gateway.hub",
+   "to": "tf:azurerm_user_assigned_identity.agw",
+   "kind": "dependency",
+   "label": "identity",
+   "via": "tf:azurerm_application_gateway.hub"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_dns_zone.lab>tf:azurerm_application_gateway.hub:A app",
+   "from": "tf:azurerm_private_dns_zone.lab",
+   "to": "tf:azurerm_application_gateway.hub",
+   "kind": "dependency",
+   "label": "A app",
+   "via": "tf:azurerm_private_dns_a_record.app"
+  },
   {
    "id": "dependency:tf:azurerm_private_dns_zone.lab>tf:azurerm_virtual_network.hub:link",
    "from": "tf:azurerm_private_dns_zone.lab",
@@ -266,9 +289,38 @@
    "kind": "dependency",
    "label": "link",
    "via": "tf:azurerm_private_dns_zone_virtual_network_link.hub"
+  },
+  {
+   "id": "dependency:tf:azurerm_user_assigned_identity.agw>tf:azurerm_key_vault.lab:access policy",
+   "from": "tf:azurerm_user_assigned_identity.agw",
+   "to": "tf:azurerm_key_vault.lab",
+   "kind": "dependency",
+   "label": "access policy",
+   "via": "tf:azurerm_key_vault_access_policy.agw"
+  },
+  {
+   "id": "dependency:tf:azurerm_web_application_firewall_policy.hub>tf:azurerm_application_gateway.hub:WAF policy",
+   "from": "tf:azurerm_web_application_firewall_policy.hub",
+   "to": "tf:azurerm_application_gateway.hub",
+   "kind": "dependency",
+   "label": "WAF policy",
+   "via": "tf:azurerm_web_application_firewall_policy.hub"
+  },
+  {
+   "id": "traffic:tf:azurerm_application_gateway.hub>tf:azurerm_linux_virtual_machine.web1:HTTPS 443→80",
+   "from": "tf:azurerm_application_gateway.hub",
+   "to": "tf:azurerm_linux_virtual_machine.web1",
+   "kind": "traffic",
+   "label": "HTTPS 443→80",
+   "via": "tf:azurerm_application_gateway.hub"
+  },
+  {
+   "id": "traffic:tf:azurerm_application_gateway.hub>tf:azurerm_linux_virtual_machine.web2:HTTPS 443→80",
+   "from": "tf:azurerm_application_gateway.hub",
+   "to": "tf:azurerm_linux_virtual_machine.web2",
+   "kind": "traffic",
+   "label": "HTTPS 443→80",
+   "via": "tf:azurerm_application_gateway.hub"
   }
- ],
- "notes": [
-  "3 resources of a type the diagram draws plainly"
  ]
 }

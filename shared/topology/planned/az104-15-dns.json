@@ -13,33 +13,29 @@
    "props": {}
   },
   {
-   "id": "tf:azurerm_dns_a_record.www",
-   "key": "terraform/azurerm_dns_a_record/www",
-   "kind": "generic",
-   "label": "www",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_dns_cname_record.app",
-   "key": "terraform/azurerm_dns_cname_record/app",
-   "kind": "generic",
-   "label": "app",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
    "id": "tf:azurerm_dns_zone.public",
    "key": "microsoft.network/dnszones/{p}.example.com",
    "kind": "dnsZone",
    "label": "l15….example.com",
-   "props": {},
+   "props": {
+    "counts": [
+     "records: 2"
+    ]
+   },
    "parent": "lane/global",
-   "armType": "Microsoft.Network/dnszones"
+   "armType": "Microsoft.Network/dnszones",
+   "folded": [
+    {
+     "id": "tf:azurerm_dns_a_record.www",
+     "label": "www",
+     "armType": "Microsoft.Network/dnszones/A"
+    },
+    {
+     "id": "tf:azurerm_dns_cname_record.app",
+     "label": "app",
+     "armType": "Microsoft.Network/dnszones/CNAME"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_linux_virtual_machine.web",
@@ -62,25 +58,24 @@
    ]
   },
   {
-   "id": "tf:azurerm_private_dns_a_record.www",
-   "key": "terraform/azurerm_private_dns_a_record/www",
-   "kind": "generic",
-   "label": "www",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
    "id": "tf:azurerm_private_dns_zone.internal",
    "key": "microsoft.network/privatednszones/lab15.internal",
    "kind": "privateDnsZone",
    "label": "lab15.internal",
-   "props": {},
+   "props": {
+    "counts": [
+     "records: 1"
+    ]
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Network/privateDnsZones",
    "scope": "lab",
    "folded": [
+    {
+     "id": "tf:azurerm_private_dns_a_record.www",
+     "label": "www",
+     "armType": "Microsoft.Network/privateDnsZones/A"
+    },
     {
      "id": "tf:azurerm_private_dns_zone_virtual_network_link.lab",
      "label": "link-vnet-lab",
@@ -134,6 +129,14 @@
  ],
  "edges": [
   {
+   "id": "dependency:tf:azurerm_private_dns_zone.internal>tf:azurerm_linux_virtual_machine.web:A www",
+   "from": "tf:azurerm_private_dns_zone.internal",
+   "to": "tf:azurerm_linux_virtual_machine.web",
+   "kind": "dependency",
+   "label": "A www",
+   "via": "tf:azurerm_private_dns_a_record.www"
+  },
+  {
    "id": "dependency:tf:azurerm_private_dns_zone.internal>tf:azurerm_virtual_network.lab:link (auto-registration)",
    "from": "tf:azurerm_private_dns_zone.internal",
    "to": "tf:azurerm_virtual_network.lab",
@@ -141,8 +144,5 @@
    "label": "link (auto-registration)",
    "via": "tf:azurerm_private_dns_zone_virtual_network_link.lab"
   }
- ],
- "notes": [
-  "3 resources of a type the diagram draws plainly"
  ]
 }
