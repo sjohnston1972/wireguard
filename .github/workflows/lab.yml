@@ -18,6 +18,8 @@
 #   - "Plan and scope check" shows infra/ci/lab-scope.mjs the plan; anything
 #     outside rg-lab-<id> (another group, the subscription, the gateway,
 #     unprefixed Entra names, dangerous roles, ...) stops the run before apply.
+#     When Azure only drops the connection mid-apply, apply is retried
+#     (infra/ci/lab-tf-run.sh) after a fresh plan that passes the same check.
 #   - Every teardown step runs even when an earlier one failed (always()):
 #     unblock, terraform destroy (allowed to fail), the safety net, which
 #     deletes everything named for the lab from Azure's own lists with no
@@ -275,20 +277,15 @@ jobs:
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Plan and scope check"
           set -euo pipefail
           echo "LAB_T0=$(date +%s)" >> "$GITHUB_ENV"
-          cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
-          # Only a private DNS zone link may name the gateway VNet, and only through this.
-          if [ "$LAB_PEERING" = true ]; then
-            export TF_VAR_gateway_vnet_id="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/${RG:-rg-wg-ondemand}/providers/Microsoft.Network/virtualNetworks/vnet-wg"
-          fi
-          terraform plan -no-color -input=false -out="$RUNNER_TEMP/plan.out"
-          # The JSON holds sensitive values in the clear: it stays on the runner and is never printed.
-          terraform show -no-color -json "$RUNNER_TEMP/plan.out" > "$RUNNER_TEMP/plan.json"
-          # The plan's shape (addresses, references, unknown and sensitive paths; never a value), one
-          # LAB_PLAN_SHAPE line the release test saves to check the lab's plan fixture against (ruling 35).
-          node "$GITHUB_WORKSPACE/infra/ci/lab-plan-shape.mjs" "$RUNNER_TEMP/plan.json" || echo "::warning::could not record the plan's shape"
-          node "$GITHUB_WORKSPACE/infra/ci/lab-scope.mjs" --plan "$RUNNER_TEMP/plan.json" --lab "$LAB_ID"
+          # Plan, the plan's LAB_PLAN_SHAPE line, then infra/ci/lab-scope.mjs on it. Apply runs
+          # the same script again (--retry) before it applies a fresh plan after a dropped connection.
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-plan.sh"
 
       # ── 7 ────────────────────────────────────────────────────────────────
+      # When Azure only dropped the connection (infra/ci/lab-transient.mjs: never
+      # a 4xx refusal), apply is tried again at most twice, each time after a
+      # fresh plan that passes the scope check, within the job's deadline. So
+      # it gets the plan step's keys and variables as well.
       - name: Apply
         id: apply
         if: success() && steps.plan.outcome == 'success' && (inputs.action == 'deploy' || inputs.action == 'test')
@@ -300,13 +297,16 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          TF_VAR_upn_domain: ${{ secrets.LAB_UPN_DOMAIN }}
+          RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Apply"
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
           # Exactly the plan that passed the scope check. Its "Outputs:" block
           # (addresses, user names) is cut from this public log.
-          terraform apply -no-color -input=false "$RUNNER_TEMP/plan.out" | sed '/^Outputs:/,$d'
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-tf-run.sh" apply
+          cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
           terraform output -no-color -json > "$RUNNER_TEMP/outputs.json"
           jq -r '.. | strings' "$RUNNER_TEMP/outputs.json" | while IFS= read -r s; do
             [ "${#s}" -ge 4 ] && echo "::add-mask::$s"
@@ -400,10 +400,9 @@ jobs:
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Destroy"
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
-          # A lock a dead run left behind fails this after 5 minutes rather than at once;
-          # the safety net still finishes, and once clean, Back up state removes the lock.
-          terraform destroy -no-color -input=false -auto-approve -lock-timeout=5m
+          # terraform destroy -lock-timeout=5m (a lock a dead run left fails it after 5 minutes),
+          # tried once more when Azure only dropped the connection and the deadline allows.
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-tf-run.sh" destroy
 
       # ── 13 ───────────────────────────────────────────────────────────────
       - name: Safety net
