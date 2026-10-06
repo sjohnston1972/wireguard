@@ -784,3 +784,128 @@ test(`${AFD}: lab.yaml as planned, peering off, the base fee authored per hour`,
   assert.equal(attr(subnetIn(l, "app", "snet-web").body, "default_outbound_access_enabled"), "false");
   assert.equal(attr(subnetIn(l, "app", "snet-pls").body, "default_outbound_access_enabled"), "false");
 });
+
+// ── Lab 43: Private Link service, private endpoints, service endpoint policies ──
+
+const PL = "az700-43-private-link";
+
+labContentSuite(PL, { marker: "££" });
+
+/** Lab 43's private endpoints by what they reach: { svc, blob }. */
+function endpoints(l) {
+  const pes = resources(l, "azurerm_private_endpoint");
+  assert.equal(pes.length, 2, "two private endpoints");
+  const svc = pes.find((p) => /azurerm_private_link_service\./.test(attr(nested(p.body, "private_service_connection"), "private_connection_resource_id") ?? ""));
+  const blob = pes.find((p) => /azurerm_storage_account\./.test(attr(nested(p.body, "private_service_connection"), "private_connection_resource_id") ?? ""));
+  assert.ok(svc && blob, "one to the Private Link service and one to a storage account");
+  return { svc, blob };
+}
+
+test(`${PL}: a Private Link service auto-approving only the current subscription`, () => {
+  const l = lab(PL);
+  const pls = one(l, "azurerm_private_link_service");
+  const s = pls.body;
+  assert.equal(attr(s, "name"), '"pls-svc"');
+  // Ruling 51: the subscription id (a GUID, never a path) from the subscription the pipeline signs in to.
+  const sub = l.blocks.find((b) => b.kind === "data" && b.labels[0] === "azurerm_subscription");
+  assert.ok(sub, 'data "azurerm_subscription"');
+  assert.equal(sub.body.trim(), "", "no subscription_id: always the current subscription");
+  const current = `[data.azurerm_subscription.${sub.labels[1]}.subscription_id]`;
+  assert.equal(attr(s, "auto_approval_subscription_ids"), current);
+  assert.equal(attr(s, "visibility_subscription_ids"), current);
+  assert.equal(attr(s, "load_balancer_frontend_ip_configuration_ids"), `[azurerm_lb.${one(l, "azurerm_lb").labels[1]}.frontend_ip_configuration[0].id]`);
+  const pls_subnet = subnetIn(l, "provider", "snet-pls");
+  assert.equal(attr(nested(s, "nat_ip_configuration"), "subnet_id"), `azurerm_subnet.${pls_subnet.labels[1]}.id`);
+  assert.equal(attr(pls_subnet.body, "private_link_service_network_policies_enabled"), "false");
+  // The provider's load balancer is internal, in snet-svc, over vm-svc.
+  const lb = one(l, "azurerm_lb").body;
+  assert.equal(attr(nested(lb, "frontend_ip_configuration"), "subnet_id"), `azurerm_subnet.${subnetIn(l, "provider", "snet-svc").labels[1]}.id`);
+  assert.equal(attr(nested(lb, "frontend_ip_configuration"), "public_ip_address_id"), undefined);
+  assert.equal(resources(l, "azurerm_public_ip").length, 0);
+  // The consumer's endpoint to it, automatic (no manual approval), in snet-pe.
+  const { svc } = endpoints(l);
+  const psc = nested(svc.body, "private_service_connection");
+  assert.equal(attr(psc, "private_connection_resource_id"), `azurerm_private_link_service.${pls.labels[1]}.id`);
+  assert.equal(attr(psc, "is_manual_connection"), "false");
+  assert.equal(attr(psc, "subresource_names"), undefined, "a Private Link service has no sub-resources");
+  assert.equal(attr(svc.body, "subnet_id"), `azurerm_subnet.${subnetIn(l, "consumer", "snet-pe").labels[1]}.id`);
+  noInternetSsh(l);
+});
+
+test(`${PL}: a blob private endpoint with its privatelink zone group on the consumer VNet`, () => {
+  const l = lab(PL);
+  const { blob } = endpoints(l);
+  const st = byName(l, "azurerm_storage_account", "st");
+  assert.equal(attr(st.body, "name"), '"${var.name_prefix}st"');
+  const psc = nested(blob.body, "private_service_connection");
+  assert.equal(attr(psc, "private_connection_resource_id"), "azurerm_storage_account.st.id");
+  assert.deepEqual(strings(attr(psc, "subresource_names")), ["blob"]);
+  assert.equal(attr(psc, "is_manual_connection"), "false");
+  assert.equal(attr(blob.body, "subnet_id"), `azurerm_subnet.${subnetIn(l, "consumer", "snet-pe").labels[1]}.id`);
+  const zone = one(l, "azurerm_private_dns_zone");
+  assert.equal(attr(zone.body, "name"), '"privatelink.blob.core.windows.net"');
+  assert.equal(attr(nested(blob.body, "private_dns_zone_group"), "private_dns_zone_ids"), `[azurerm_private_dns_zone.${zone.labels[1]}.id]`);
+  const link = one(l, "azurerm_private_dns_zone_virtual_network_link").body;
+  assert.equal(attr(link, "virtual_network_id"), "azurerm_virtual_network.consumer.id");
+  assert.equal(attr(link, "registration_enabled"), "false");
+  assert.equal(l.yaml.connectivity.dns_link, true, "the pipeline links the zone to the gateway VNet while peered");
+  assert.doesNotMatch(code(l), /gateway_vnet_id|vnet-wg|rg-wg/);
+  // Both accounts: StorageV2 LRS, nothing public, containers through the management plane only.
+  for (const sa of resources(l, "azurerm_storage_account")) {
+    assert.deepEqual([attr(sa.body, "account_kind"), attr(sa.body, "account_tier"), attr(sa.body, "account_replication_type")], ['"StorageV2"', '"Standard"', '"LRS"']);
+    assert.equal(attr(sa.body, "allow_nested_items_to_be_public"), "false");
+  }
+  for (const c of resources(l, "azurerm_storage_container")) {
+    assert.match(attr(c.body, "storage_account_id") ?? "", /^azurerm_storage_account\.[a-z]+\.id$/, "storage_account_id: the management plane, no data-plane call from the pipeline");
+    assert.equal(attr(c.body, "container_access_type"), '"private"');
+  }
+});
+
+test(`${PL}: a service endpoint policy that allows only the lab's first account, on the client subnet with the storage service endpoint`, () => {
+  const l = lab(PL);
+  const policy = one(l, "azurerm_subnet_service_endpoint_storage_policy");
+  const defs = allNested(policy.body, "definition");
+  assert.equal(defs.length, 1);
+  assert.equal(attr(defs[0], "service"), '"Microsoft.Storage"');
+  assert.equal(attr(defs[0], "service_resources"), "[azurerm_storage_account.st.id]", "only ${prefix}st, never ${prefix}other");
+  assert.equal(attr(byName(l, "azurerm_storage_account", "other").body, "name"), '"${var.name_prefix}other"');
+  const client = subnetIn(l, "consumer", "snet-client");
+  assert.deepEqual(strings(attr(client.body, "service_endpoints")), ["Microsoft.Storage"]);
+  assert.equal(attr(client.body, "service_endpoint_policy_ids"), `[azurerm_subnet_service_endpoint_storage_policy.${policy.labels[1]}.id]`);
+  assert.equal(attr(client.body, "default_outbound_access_enabled"), "true", "vm-client reaches the storage service endpoints");
+  const vmc = resources(l, "azurerm_network_interface").find((n) => attr(n.body, "name") === '"nic-vm-client"');
+  assert.equal(attr(nested(vmc.body, "ip_configuration"), "subnet_id"), `azurerm_subnet.${client.labels[1]}.id`);
+  // Both accounts in the session's region: a policy applies to accounts in its own region.
+  for (const sa of resources(l, "azurerm_storage_account")) assert.equal(attr(sa.body, "location"), "azurerm_resource_group.lab.location");
+});
+
+test(`${PL}: the two VNets are not peered`, () => {
+  const l = lab(PL);
+  const vnets = Object.fromEntries(resources(l, "azurerm_virtual_network").map((v) => [v.labels[1], v.body]));
+  assert.deepEqual(Object.keys(vnets).sort(), ["consumer", "provider"]);
+  assert.equal(cidrOf(l, vnets.provider, "address_space"), "cidrsubnet(var.address_space, 2, 0)");
+  assert.equal(cidrOf(l, vnets.consumer, "address_space"), "cidrsubnet(var.address_space, 2, 1)");
+  assert.equal(resources(l, "azurerm_virtual_network_peering").length, 0, "no peering: the consumer reaches the provider only through Private Link");
+  for (const [vnet, name, n] of [["provider", "snet-svc", 0], ["provider", "snet-pls", 1], ["consumer", "snet-pe", 0], ["consumer", "snet-client", 1]]) {
+    assert.equal(cidrOf(l, subnetIn(l, vnet, name).body, "address_prefixes"), `cidrsubnet(cidrsubnet(var.address_space, 2, ${vnet === "provider" ? 0 : 1}), 4, ${n})`, `${vnet} ${name}`);
+  }
+  // The pipeline peers the consumer to the gateway: from the tunnel, the endpoints are what you reach.
+  assert.equal(attr(output(l, "peer_vnet_id").body, "value"), "azurerm_virtual_network.consumer.id");
+});
+
+test(`${PL}: lab.yaml as planned and a readme that compares the two kinds of endpoint`, () => {
+  const l = lab(PL);
+  const y = l.yaml;
+  assert.deepEqual(y.skill_areas, ["az700.private", "az305.infra", "az305.data"]);
+  assert.deepEqual([y.level, y.type], ["associate", "explore"]);
+  assert.deepEqual(y.prerequisites, ["az104-06-blob-security"]);
+  assert.deepEqual(y.connectivity, { peering: "optional", dns_link: true, subnets_used: 2 });
+  assert.deepEqual(y.timing, { deploy_min: 8, destroy_min: 6, session_h: 2, max_h: 4 });
+  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 48);
+  assert.equal(y.cost.items.filter((i) => /Private endpoint/.test(i.name)).reduce((n, i) => n + (i.qty ?? 1), 0), 2);
+  const r = l.readme;
+  assert.match(r, /service endpoint polic/i);
+  assert.match(r, /[Rr]eject/);
+  assert.match(r, /NAT/);
+  assert.match(r, /lab 6/i, "the zone name lab 6 links too");
+});
