@@ -5,8 +5,17 @@
 // rewires anything fails here first.
 
 import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
+import { parse } from "yaml";
 import type { TopologyGraph } from "../../shared/topology/model";
-import { plannedOf } from "./fixtures/topology/round-trip";
+import { representedIds } from "../../shared/topology/planned";
+import { denyProblems } from "../../shared/topology/props";
+import { KINDS } from "../../shared/topology/kinds";
+import { tfIgnored } from "../../shared/topology/rules/planned";
+// @ts-expect-error: a plain .mjs test fixture with no type declarations (scripts/ is frozen)
+import { LAB_PLANS } from "../../scripts/test/fixtures/labs/plans/labs.mjs";
+import { LAB_IDS, plannedOf } from "./fixtures/topology/round-trip";
 
 /** A graph in the table's form. */
 function shape(g: TopologyGraph): { nodes: string[]; edges: string[] } {
@@ -431,6 +440,11 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
   },
 
   // ── T3.5 Compute and containers (7, 8 with the network core; 27 with delivery; 18 with governance) ──
+  // Lab 12 is the Bicep lab: its template deployment folds into the group and its resources are expanded (ruling 24).
+  "az104-12-bicep": {
+    nodes: ["resourceGroup rg-lab-az104-12-bicep", "storage l12…bicep < rg-lab-az104-12-bicep", "subnet snet-app < vnet-bicep", "subnet snet-web < vnet-bicep", "vnet vnet-bicep < rg-lab-az104-12-bicep"],
+    edges: [],
+  },
   "az104-09-vmss": {
     nodes: ["resourceGroup rg-lab-az104-09-vmss", "subnet snet-vms < vnet-lab", "vmss vmss-web < snet-vms", "vnet vnet-lab < rg-lab-az104-09-vmss"],
     edges: [],
@@ -617,6 +631,74 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
   },
 };
+
+const LABS_DIR = new URL("../../labs/", import.meta.url);
+const SHAPES_DIR = new URL("../../scripts/test/fixtures/labs/plans/shapes/", import.meta.url);
+const labFolders = readdirSync(LABS_DIR)
+  .filter((d) => /^az\d{3}-\d{2}-[a-z0-9-]+$/.test(d))
+  .sort();
+const shapeFiles = readdirSync(SHAPES_DIR);
+const planFixtures = LAB_PLANS as Record<string, { resources: { address: string }[] }>;
+
+/** The configuration addresses (type.name) and instance addresses a graph represents: nodes, folded entries, edge vias. */
+function represented(g: TopologyGraph): { configs: Set<string>; instances: Set<string> } {
+  const instances = new Set([...representedIds(g)].filter((x) => x.startsWith("tf:")).map((x) => x.slice(3).split("/")[0]!));
+  return { instances, configs: new Set([...instances].map((a) => a.replace(/\[[^\]]*\]/g, ""))) };
+}
+/** Every managed resource block in a lab's Terraform (data sources and never-drawn helpers left out). */
+function tfAddresses(lab: string): string[] {
+  const dir = new URL(`${lab}/terraform/`, LABS_DIR);
+  const out: string[] = [];
+  for (const f of readdirSync(dir).filter((x) => x.endsWith(".tf")).sort())
+    for (const m of readFileSync(new URL(f, dir), "utf8").matchAll(/^resource\s+"([^"]+)"\s+"([^"]+)"/gm)) if (!tfIgnored(m[1]!)) out.push(`${m[1]}.${m[2]}`);
+  return out;
+}
+
+describe("golden: every lab folder", () => {
+  it("the table, the round trip's list and the planned files cover exactly the lab folders", () => {
+    expect(Object.keys(GOLDEN).sort()).toEqual(labFolders);
+    expect([...LAB_IDS].sort()).toEqual(labFolders);
+    const files = readdirSync(new URL("../../shared/topology/planned/", import.meta.url)).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort();
+    expect(files).toEqual(labFolders);
+  });
+
+  for (const id of labFolders) {
+    describe(id, () => {
+      const g = plannedOf(id);
+      const text = readFileSync(new URL(`../../shared/topology/planned/${id}.json`, import.meta.url), "utf8");
+
+      it(`${id}: the planned graph exists, is fresh for its lab.yaml version and passes the deny check`, () => {
+        const version = Number((parse(readFileSync(new URL(`${id}/lab.yaml`, LABS_DIR), "utf8")) as { version?: unknown }).version);
+        expect(g).toMatchObject({ schema: 1, labId: id, version, source: "planned", at: null });
+        expect(denyProblems(g)).toEqual([]);
+      });
+
+      it(`${id}: every resource address in its Terraform is represented`, () => {
+        const { configs, instances } = represented(g);
+        expect(tfAddresses(id).filter((a) => !configs.has(a))).toEqual([]);
+        // Instance counts (count / for_each) from the lab's plan fixture, where there is one.
+        const fixture = planFixtures[id];
+        if (fixture) expect(fixture.resources.map((r) => r.address).filter((a) => !a.startsWith("data.") && !tfIgnored(a.split(".")[0]!) && !instances.has(a))).toEqual([]);
+      });
+
+      it(`${id}: every address in its recorded real plan shape is represented`, () => {
+        const file = new URL(`${id}.json`, SHAPES_DIR);
+        if (!shapeFiles.includes(`${id}.json`)) return; // no recorded shape for this lab (labs 1-12)
+        const shapeAddrs = Object.keys((JSON.parse(readFileSync(file, "utf8")) as { resources: Record<string, unknown> }).resources);
+        const { instances } = represented(g);
+        expect(shapeAddrs.filter((a) => !a.startsWith("data.") && !tfIgnored(a.split(".")[0]!) && !instances.has(a))).toEqual([]);
+      });
+
+      it(`${id}: no card the live view can list has a Terraform-only key (it would read "not deployed")`, () => {
+        expect(g.nodes.filter((n) => n.key.startsWith("terraform/") && n.kind !== "lane" && KINDS[n.kind].liveVisible && n.scope !== "outside").map((n) => n.key)).toEqual([]);
+      });
+
+      it(`${id}: the planned file is under 16 kB gzip`, () => {
+        expect(gzipSync(new TextEncoder().encode(text)).length).toBeLessThan(16_000);
+      });
+    });
+  }
+});
 
 describe("golden: each lab's planned graph has its reviewed shape", () => {
   for (const [id, want] of Object.entries(GOLDEN)) {
