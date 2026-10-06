@@ -133,6 +133,19 @@ const childPath =
     return [nameOf(i)];
   };
 
+/** A scale set's props: size, instances and the autoscale range of the setting that targets it. */
+const vmssProps = (os: string) => (inst: TfInst, h: PlannedHelpers) => {
+  const auto = h.referrers(inst, ["azurerm_monitor_autoscale_setting"], ["target_resource_id"])[0];
+  const cap = auto ? first(first(auto.after.profile).capacity) : {};
+  return {
+    size: str(inst.after.sku) ?? str(inst.after.sku_name),
+    os: os || undefined,
+    instances: num(inst.after.instances),
+    autoscale: num(cap.minimum) !== undefined ? `${num(cap.minimum)}-${num(cap.maximum) ?? "?"}` : undefined,
+    zones: strings(inst.after.zones).length ? strings(inst.after.zones) : undefined,
+  };
+};
+
 /** Every route of a route table instance: inline `route` blocks, and azurerm_route resources naming it. */
 function routesOf(rt: TfInst, h: PlannedHelpers): { via: TfInst; prefix?: string; hopType?: string; hopIp?: string; hopRefs: TfInst[] }[] {
   const out: { via: TfInst; prefix?: string; hopType?: string; hopIp?: string; hopRefs: TfInst[] }[] = [];
@@ -377,6 +390,70 @@ export const TF_RULES: Record<string, TfRule> = {
     chips: (i, h) => h.refs(i, ["application_security_group_id"]).map((n) => ({ on: "home", chip: `ASG ${h.label(n)}` })),
   },
   azurerm_application_security_group: { arm: "Microsoft.Network/applicationSecurityGroups" },
+
+  // ── Scale sets (T3.5): one card with its instances and autoscale range (ruling 19); the autoscale setting folds in ──
+  azurerm_linux_virtual_machine_scale_set: { arm: "Microsoft.Compute/virtualMachineScaleSets", props: vmssProps("Linux"), edges: (i, h) => identityEdges(i, h) },
+  azurerm_windows_virtual_machine_scale_set: { arm: "Microsoft.Compute/virtualMachineScaleSets", props: vmssProps("Windows"), edges: (i, h) => identityEdges(i, h) },
+  azurerm_orchestrated_virtual_machine_scale_set: { arm: "Microsoft.Compute/virtualMachineScaleSets", props: vmssProps(""), edges: (i, h) => identityEdges(i, h) },
+  azurerm_monitor_autoscale_setting: { arm: "Microsoft.Insights/autoscaleSettings", fold: ["target_resource_id"] },
+
+  // ── Containers (T3.5) ──
+  azurerm_container_group: {
+    arm: "Microsoft.ContainerInstance/containerGroups",
+    props: (i) => {
+      const cs = list(i.after.container).map((c) => (c ?? {}) as Record<string, unknown>);
+      const sum = (k: string) => Math.round(cs.reduce((a, c) => a + (num(c[k]) ?? 0), 0) * 100) / 100;
+      const type = str(i.after.ip_address_type)?.toLowerCase();
+      return { cpu: cs.length ? sum("cpu") : undefined, memoryGb: cs.length ? sum("memory") : undefined, chips: type ? [type === "private" ? "private IP" : type === "public" ? "public IP" : "no IP"] : undefined };
+    },
+    edges: (i, h) => [...identityEdges(i, h), ...h.refs(i, ["image_registry_credential"]).filter((r) => r.type === "azurerm_container_registry").map((r) => ({ from: i, to: r, kind: "dependency" as const, label: "pulls images" }))],
+  },
+  azurerm_container_app_environment: {
+    arm: "Microsoft.App/managedEnvironments",
+    props: (i) => ({ sku: str(first(i.after.workload_profile).workload_profile_type) ?? "Consumption" }),
+  },
+  azurerm_container_app: {
+    arm: "Microsoft.App/containerApps",
+    props: (i) => {
+      const ing = first(i.after.ingress);
+      return { ingress: Object.keys(ing).length ? (ing.external_enabled === true ? "external" : "internal") : undefined, targetPort: num(ing.target_port) };
+    },
+    edges: (i, h) => [
+      ...h.refs(i, ["container_app_environment_id"]).map((e) => ({ from: i, to: e, kind: "dependency" as const, label: "environment" })),
+      ...h.refs(i, ["registry"]).filter((r) => r.type === "azurerm_container_registry").map((r) => ({ from: i, to: r, kind: "dependency" as const, label: "pulls images" })),
+      ...identityEdges(i, h),
+    ],
+  },
+  azurerm_container_registry: { arm: "Microsoft.ContainerRegistry/registries", props: (i) => ({ sku: str(i.after.sku) }) },
+
+  // ── Recovery Services (T3.5): backup and site-recovery children fold into the vault; protected VMs are edges ──
+  azurerm_recovery_services_vault: {
+    arm: "Microsoft.RecoveryServices/vaults",
+    props: (i, h) => {
+      const protectedItems = h.referrers(i, ["azurerm_backup_protected_vm", "azurerm_site_recovery_replicated_vm"], ["recovery_vault_name"]).length;
+      return { sku: str(i.after.sku), counts: protectedItems ? [`protected items: ${protectedItems}`] : undefined };
+    },
+  },
+  azurerm_backup_policy_vm: { arm: "Microsoft.RecoveryServices/vaults/backupPolicies", fold: ["recovery_vault_name"] },
+  azurerm_backup_protected_vm: {
+    arm: "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems",
+    fold: ["recovery_vault_name"],
+    edges: (i, h) => h.refs(i, ["recovery_vault_name"]).flatMap((v) => h.refs(i, ["source_vm_id"]).map((vm) => ({ from: v, to: vm, kind: "dependency" as const, label: "backup" }))),
+  },
+  azurerm_site_recovery_fabric: { arm: "Microsoft.RecoveryServices/vaults/replicationFabrics", fold: ["recovery_vault_name"] },
+  azurerm_site_recovery_protection_container: { arm: "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers", fold: ["recovery_vault_name"] },
+  azurerm_site_recovery_protection_container_mapping: { arm: "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectionContainerMappings", fold: ["recovery_vault_name"] },
+  azurerm_site_recovery_replication_policy: { arm: "Microsoft.RecoveryServices/vaults/replicationPolicies", fold: ["recovery_vault_name"] },
+  azurerm_site_recovery_network_mapping: {
+    arm: "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationNetworks/replicationNetworkMappings",
+    fold: ["recovery_vault_name"],
+    edges: (i, h) => h.refs(i, ["source_network_id"]).flatMap((s) => h.refs(i, ["target_network_id"]).map((t) => ({ from: s, to: t, kind: "dependency" as const, label: "network mapping" }))),
+  },
+  azurerm_site_recovery_replicated_vm: {
+    arm: "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems",
+    fold: ["recovery_vault_name"],
+    edges: (i, h) => h.refs(i, ["recovery_vault_name"]).flatMap((v) => h.refs(i, ["source_vm_id"]).map((vm) => ({ from: v, to: vm, kind: "dependency" as const, label: "replication" }))),
+  },
 
   // ── Network core ──
   azurerm_network_security_group: {

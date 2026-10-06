@@ -55,7 +55,13 @@
    "key": "microsoft.containerinstance/containergroups/ci-uks",
    "kind": "containerGroup",
    "label": "ci-uks",
-   "props": {},
+   "props": {
+    "cpu": 0.5,
+    "memoryGb": 0.5,
+    "chips": [
+     "public IP"
+    ]
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.ContainerInstance/containerGroups",
    "scope": "lab"
@@ -65,7 +71,13 @@
    "key": "microsoft.containerinstance/containergroups/ci-ukw",
    "kind": "containerGroup",
    "label": "ci-ukw",
-   "props": {},
+   "props": {
+    "cpu": 0.5,
+    "memoryGb": 0.5,
+    "chips": [
+     "public IP"
+    ]
+   },
    "parent": "tf:azurerm_resource_group.secondary",
    "armType": "Microsoft.ContainerInstance/containerGroups",
    "scope": "lab"

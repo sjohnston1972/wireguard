@@ -30,10 +30,57 @@
    "key": "microsoft.recoveryservices/vaults/rsv-lab",
    "kind": "recoveryVault",
    "label": "rsv-lab",
-   "props": {},
+   "props": {
+    "sku": "Standard",
+    "counts": [
+     "protected items: 1"
+    ]
+   },
    "parent": "tf:azurerm_resource_group.secondary",
    "armType": "Microsoft.RecoveryServices/vaults",
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_site_recovery_fabric.source",
+     "label": "fabric-uksouth",
+     "armType": "Microsoft.RecoveryServices/vaults/replicationFabrics"
+    },
+    {
+     "id": "tf:azurerm_site_recovery_fabric.target",
+     "label": "fabric-ukwest",
+     "armType": "Microsoft.RecoveryServices/vaults/replicationFabrics"
+    },
+    {
+     "id": "tf:azurerm_site_recovery_network_mapping.lab",
+     "label": "map-vnet-source-vnet-target",
+     "armType": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationNetworks/replicationNetworkMappings"
+    },
+    {
+     "id": "tf:azurerm_site_recovery_protection_container.source",
+     "label": "container-uksouth",
+     "armType": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers"
+    },
+    {
+     "id": "tf:azurerm_site_recovery_protection_container.target",
+     "label": "container-ukwest",
+     "armType": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers"
+    },
+    {
+     "id": "tf:azurerm_site_recovery_protection_container_mapping.lab",
+     "label": "mapping-uksouth-ukwest",
+     "armType": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectionContainerMappings"
+    },
+    {
+     "id": "tf:azurerm_site_recovery_replicated_vm.vm",
+     "label": "vm-app",
+     "armType": "Microsoft.RecoveryServices/vaults/replicationFabrics/replicationProtectionContainers/replicationProtectedItems"
+    },
+    {
+     "id": "tf:azurerm_site_recovery_replication_policy.lab",
+     "label": "policy-6h",
+     "armType": "Microsoft.RecoveryServices/vaults/replicationPolicies"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_resource_group.lab",
@@ -68,86 +115,6 @@
     ]
    },
    "armType": "Microsoft.Resources/resourceGroups",
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_site_recovery_fabric.source",
-   "key": "terraform/azurerm_site_recovery_fabric/fabric-uksouth",
-   "kind": "generic",
-   "label": "fabric-uksouth",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.secondary",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_site_recovery_fabric.target",
-   "key": "terraform/azurerm_site_recovery_fabric/fabric-ukwest",
-   "kind": "generic",
-   "label": "fabric-ukwest",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.secondary",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_site_recovery_network_mapping.lab",
-   "key": "terraform/azurerm_site_recovery_network_mapping/map-vnet-source-vnet-target",
-   "kind": "generic",
-   "label": "map-vnet-source-vnet-target",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.secondary",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_site_recovery_protection_container.source",
-   "key": "terraform/azurerm_site_recovery_protection_container/container-uksouth",
-   "kind": "generic",
-   "label": "container-uksouth",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.secondary",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_site_recovery_protection_container.target",
-   "key": "terraform/azurerm_site_recovery_protection_container/container-ukwest",
-   "kind": "generic",
-   "label": "container-ukwest",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.secondary",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_site_recovery_protection_container_mapping.lab",
-   "key": "terraform/azurerm_site_recovery_protection_container_mapping/mapping-uksouth-ukwest",
-   "kind": "generic",
-   "label": "mapping-uksouth-ukwest",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.secondary",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_site_recovery_replicated_vm.vm",
-   "key": "terraform/azurerm_site_recovery_replicated_vm/vm-app",
-   "kind": "generic",
-   "label": "vm-app",
-   "props": {},
-   "parent": "tf:azurerm_subnet.target",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_site_recovery_replication_policy.lab",
-   "key": "terraform/azurerm_site_recovery_replication_policy/policy-6h",
-   "kind": "generic",
-   "label": "policy-6h",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.secondary",
-   "armType": null,
    "scope": "lab"
   },
   {
@@ -243,8 +210,22 @@
    "scope": "lab"
   }
  ],
- "edges": [],
- "notes": [
-  "8 resources of a type the diagram draws plainly"
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_recovery_services_vault.lab>tf:azurerm_linux_virtual_machine.vm:replication",
+   "from": "tf:azurerm_recovery_services_vault.lab",
+   "to": "tf:azurerm_linux_virtual_machine.vm",
+   "kind": "dependency",
+   "label": "replication",
+   "via": "tf:azurerm_site_recovery_replicated_vm.vm"
+  },
+  {
+   "id": "dependency:tf:azurerm_virtual_network.source>tf:azurerm_virtual_network.target:network mapping",
+   "from": "tf:azurerm_virtual_network.source",
+   "to": "tf:azurerm_virtual_network.target",
+   "kind": "dependency",
+   "label": "network mapping",
+   "via": "tf:azurerm_site_recovery_network_mapping.lab"
+  }
  ]
 }

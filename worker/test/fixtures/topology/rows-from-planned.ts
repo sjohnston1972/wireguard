@@ -464,6 +464,52 @@ export interface TemplateKit {
 function extraTemplates(k: TemplateKit): void {
   delivery(k);
   hybrid(k);
+  compute(k);
+}
+
+/** T3.5: scale sets (and their autoscale rows), container apps and environments, registries, vaults. */
+function compute(k: TemplateKit): void {
+  const { g, byId, rowOf, nodeArmId, subnetOf, edgesFrom, folded, foldedRow } = k;
+  for (const n of g.nodes.filter((x) => x.kind === "vmss" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    r.sku = { name: n.props.size ?? "Standard_B1s", tier: "Standard", capacity: Number(n.props.instances ?? 2) };
+    Object.assign(P(r), {
+      orchestrationMode: "Uniform",
+      virtualMachineProfile: { storageProfile: { osDisk: { osType: n.props.os ?? "Linux" } }, networkProfile: { networkInterfaceConfigurations: [{ name: "nic", properties: { ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: subnetOf(n) } } }] } }] } },
+    });
+    for (const f of folded(n, "Microsoft.Insights/autoscaleSettings")) {
+      const a = foldedRow(n, f, true);
+      const [min, max] = String(n.props.autoscale ?? "1-2").split("-");
+      if (a) Object.assign(P(a), { enabled: true, targetResourceUri: r.id, profiles: [{ name: "default", capacity: { minimum: min, maximum: max, default: min } }] });
+    }
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "containerAppEnv" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const sid = subnetOf(n);
+    Object.assign(P(r), { workloadProfiles: [{ name: String(n.props.sku ?? "Consumption"), workloadProfileType: n.props.sku ?? "Consumption" }], ...(sid ? { vnetConfiguration: { infrastructureSubnetId: sid } } : {}) });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "containerApp" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const env = edgesFrom(n.id).find((e) => e.label === "environment");
+    const reg = edgesFrom(n.id).find((e) => e.label === "pulls images");
+    Object.assign(P(r), {
+      managedEnvironmentId: env ? nodeArmId(byId.get(env.to)!) : null,
+      configuration: { ingress: n.props.ingress ? { external: n.props.ingress === "external", targetPort: n.props.targetPort } : null, registries: reg ? [{ server: `${nodeArmId(byId.get(reg.to)!)?.split("/").at(-1)}.azurecr.io` }] : [] },
+    });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "registry" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    r.sku = { name: n.props.sku ?? "Basic", tier: n.props.sku ?? "Basic" };
+    P(r).loginServer = `${r.name}.azurecr.io`;
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "recoveryVault" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (r) r.sku = { name: "RS0", tier: "Standard" };
+  }
 }
 
 /** T3.3: VPN gateways, local network gateways and connections, Route Server, firewalls and policies, vWAN, AVNM. */

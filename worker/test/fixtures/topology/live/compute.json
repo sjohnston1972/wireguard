@@ -1,0 +1,796 @@
+{
+ "_about": "T3.5 compute and containers: Resource Graph rows for a running az104-11-containers in slot 5 (10.66.192.0/18) with the compute types of labs 8, 9, 19 and 26 grafted in. Shapes from Learn's REST references: virtualMachineScaleSets (2024-07-01: sku.capacity, orchestrationMode, virtualMachineProfile.networkProfile.networkInterfaceConfigurations[].properties.ipConfigurations[].properties.subnet), Insights autoscaleSettings (targetResourceUri, profiles[].capacity), a flexible scale set's VM (virtualMachineScaleSet), disks (managedBy), virtualMachines/extensions, RecoveryServices vaults (sku), containerGroups (containers[].properties.resources.requests, ipAddress.type, subnetIds), managedEnvironments (vnetConfiguration.infrastructureSubnetId, workloadProfiles), containerApps (managedEnvironmentId, configuration.ingress, configuration.registries), ContainerRegistry registries (loginServer). Fake subscription and ids, TEST-NET addresses.",
+ "rows": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/virtualNetworks/vnet-lab",
+   "name": "vnet-lab",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.66.192.0/20"
+     ]
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-vms",
+      "name": "snet-vms",
+      "properties": {
+       "addressPrefix": "10.66.192.0/24"
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-aci",
+      "name": "snet-aci",
+      "properties": {
+       "addressPrefix": "10.66.193.0/24",
+       "delegations": [
+        {
+         "name": "aci",
+         "properties": {
+          "serviceName": "Microsoft.ContainerInstance/containerGroups"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-cae",
+      "name": "snet-cae",
+      "properties": {
+       "addressPrefix": "10.66.194.0/23",
+       "delegations": [
+        {
+         "name": "cae",
+         "properties": {
+          "serviceName": "Microsoft.App/environments"
+         }
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachineScaleSets/vmss-web",
+   "name": "vmss-web",
+   "type": "microsoft.compute/virtualmachinescalesets",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": {
+    "name": "Standard_B1s",
+    "tier": "Standard",
+    "capacity": 2
+   },
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": [
+    "1",
+    "2"
+   ],
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "orchestrationMode": "Uniform",
+    "upgradePolicy": {
+     "mode": "Manual"
+    },
+    "virtualMachineProfile": {
+     "osProfile": {
+      "computerNamePrefix": "vmss-web",
+      "adminUsername": "azureuser",
+      "linuxConfiguration": {
+       "disablePasswordAuthentication": false
+      }
+     },
+     "storageProfile": {
+      "osDisk": {
+       "osType": "Linux",
+       "createOption": "FromImage"
+      }
+     },
+     "networkProfile": {
+      "networkInterfaceConfigurations": [
+       {
+        "name": "nic-vmss-web",
+        "properties": {
+         "primary": true,
+         "ipConfigurations": [
+          {
+           "name": "ipconfig1",
+           "properties": {
+            "subnet": {
+             "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-vms"
+            },
+            "loadBalancerBackendAddressPools": [
+             {
+              "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/loadBalancers/lb-web/backendAddressPools/pool-web"
+             }
+            ]
+           }
+          }
+         ]
+        }
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Insights/autoscaleSettings/autoscale-vmss-web",
+   "name": "autoscale-vmss-web",
+   "type": "microsoft.insights/autoscalesettings",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "enabled": true,
+    "name": "autoscale-vmss-web",
+    "targetResourceUri": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachineScaleSets/vmss-web",
+    "profiles": [
+     {
+      "name": "cpu",
+      "capacity": {
+       "minimum": "1",
+       "maximum": "3",
+       "default": "2"
+      },
+      "rules": [
+       {
+        "metricTrigger": {
+         "metricName": "Percentage CPU",
+         "operator": "GreaterThan",
+         "threshold": 70
+        },
+        "scaleAction": {
+         "direction": "Increase",
+         "type": "ChangeCount",
+         "value": "1",
+         "cooldown": "PT5M"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/loadBalancers/lb-web",
+   "name": "lb-web",
+   "type": "microsoft.network/loadbalancers",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "frontendIPConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/loadBalancers/lb-web/frontendIPConfigurations/fe-web",
+      "name": "fe-web",
+      "properties": {
+       "privateIPAddress": "10.66.192.10",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-vms"
+       }
+      }
+     }
+    ],
+    "backendAddressPools": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/loadBalancers/lb-web/backendAddressPools/pool-web",
+      "name": "pool-web",
+      "properties": {
+       "backendIPConfigurations": [
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachineScaleSets/vmss-web/virtualMachines/0/networkInterfaces/nic-vmss-web/ipConfigurations/ipconfig1"
+        },
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachineScaleSets/vmss-web/virtualMachines/1/networkInterfaces/nic-vmss-web/ipConfigurations/ipconfig1"
+        }
+       ]
+      }
+     }
+    ],
+    "loadBalancingRules": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/loadBalancers/lb-web/loadBalancingRules/http",
+      "name": "http",
+      "properties": {
+       "protocol": "Tcp",
+       "frontendPort": 80,
+       "backendPort": 80,
+       "backendAddressPool": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/loadBalancers/lb-web/backendAddressPools/pool-web"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachineScaleSets/vmss-flex",
+   "name": "vmss-flex",
+   "type": "microsoft.compute/virtualmachinescalesets",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": {
+    "name": "Standard_B1s",
+    "capacity": 1
+   },
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "orchestrationMode": "Flexible",
+    "platformFaultDomainCount": 1
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachines/vmss-flex_a1b2c3d4",
+   "name": "vmss-flex_a1b2c3d4",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachineScaleSet": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachineScaleSets/vmss-flex"
+    },
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/networkInterfaces/vmss-flex_a1b2c3d4-nic01",
+   "name": "vmss-flex_a1b2c3d4-nic01",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachines/vmss-flex_a1b2c3d4"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/networkInterfaces/vmss-flex_a1b2c3d4-nic01/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.66.192.20",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-vms"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachines/vm-backup",
+   "name": "vm-backup",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": [
+    "1"
+   ],
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B2s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux",
+      "name": "vm-backup_OsDisk_1_0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+     },
+     "dataDisks": [
+      {
+       "lun": 0,
+       "name": "disk-data",
+       "managedDisk": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/disks/disk-data"
+       }
+      }
+     ]
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/stopped",
+       "displayStatus": "VM stopped"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/networkInterfaces/nic-vm-backup",
+   "name": "nic-vm-backup",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachines/vm-backup"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/networkInterfaces/nic-vm-backup/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.66.192.30",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-vms"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/disks/disk-data",
+   "name": "disk-data",
+   "type": "microsoft.compute/disks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": {
+    "name": "StandardSSD_LRS"
+   },
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": [
+    "1"
+   ],
+   "identity": null,
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachines/vm-backup",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "diskSizeGB": 4,
+    "diskState": "Attached"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/disks/vm-backup_OsDisk_1_0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+   "name": "vm-backup_OsDisk_1_0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+   "type": "microsoft.compute/disks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachines/vm-backup",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "osType": "Linux",
+    "diskSizeGB": 30,
+    "diskState": "Attached"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Compute/virtualMachines/vm-backup/extensions/AzureMonitorLinuxAgent",
+   "name": "AzureMonitorLinuxAgent",
+   "type": "microsoft.compute/virtualmachines/extensions",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "publisher": "Microsoft.Azure.Monitor",
+    "type": "AzureMonitorLinuxAgent",
+    "typeHandlerVersion": "1.0"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.RecoveryServices/vaults/rsv-lab",
+   "name": "rsv-lab",
+   "type": "microsoft.recoveryservices/vaults",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": {
+    "name": "RS0",
+    "tier": "Standard"
+   },
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "publicNetworkAccess": "Enabled",
+    "redundancySettings": {
+     "standardTierStorageRedundancy": "LocallyRedundant"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.ContainerInstance/containerGroups/aci-hello",
+   "name": "aci-hello",
+   "type": "microsoft.containerinstance/containergroups",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": {
+    "type": "UserAssigned",
+    "userAssignedIdentities": {
+     "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-aci": {
+      "principalId": "cccccccc-3333-4333-8333-000000000001",
+      "clientId": "cccccccc-3333-4333-8333-000000000002"
+     }
+    }
+   },
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "sku": "Standard",
+    "osType": "Linux",
+    "restartPolicy": "Always",
+    "containers": [
+     {
+      "name": "hello",
+      "properties": {
+       "image": "mcr.microsoft.com/azuredocs/aci-helloworld:latest",
+       "ports": [
+        {
+         "port": 80
+        }
+       ],
+       "resources": {
+        "requests": {
+         "cpu": 0.5,
+         "memoryInGB": 0.5
+        }
+       }
+      }
+     },
+     {
+      "name": "sidecar",
+      "properties": {
+       "image": "mcr.microsoft.com/azurelinux/base/core:3.0",
+       "resources": {
+        "requests": {
+         "cpu": 0.25,
+         "memoryInGB": 0.5
+        }
+       }
+      }
+     }
+    ],
+    "ipAddress": {
+     "type": "Private",
+     "ip": "10.66.193.4",
+     "ports": [
+      {
+       "port": 80,
+       "protocol": "TCP"
+      }
+     ]
+    },
+    "subnetIds": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-aci"
+     }
+    ],
+    "instanceView": {
+     "state": "Running"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-aci",
+   "name": "id-aci",
+   "type": "microsoft.managedidentity/userassignedidentities",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "principalId": "cccccccc-3333-4333-8333-000000000001",
+    "clientId": "cccccccc-3333-4333-8333-000000000002",
+    "tenantId": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.ContainerInstance/containerGroups/aci-public",
+   "name": "aci-public",
+   "type": "microsoft.containerinstance/containergroups",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "osType": "Linux",
+    "containers": [
+     {
+      "name": "web",
+      "properties": {
+       "image": "mcr.microsoft.com/azurelinux/base/python:3.12",
+       "resources": {
+        "requests": {
+         "cpu": 1,
+         "memoryInGB": 1.5
+        }
+       }
+      }
+     }
+    ],
+    "ipAddress": {
+     "type": "Public",
+     "ip": "203.0.113.90",
+     "dnsNameLabel": "l11rt7xy-public",
+     "fqdn": "l11rt7xy-public.uksouth.azurecontainer.io",
+     "ports": [
+      {
+       "port": 80,
+       "protocol": "TCP"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.App/managedEnvironments/cae-lab",
+   "name": "cae-lab",
+   "type": "microsoft.app/managedenvironments",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "vnetConfiguration": {
+     "infrastructureSubnetId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-cae",
+     "internal": false
+    },
+    "workloadProfiles": [
+     {
+      "name": "Consumption",
+      "workloadProfileType": "Consumption"
+     }
+    ],
+    "defaultDomain": "happy-sea-0123abcd.uksouth.azurecontainerapps.io",
+    "staticIp": "10.66.194.10"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.App/containerApps/ca-hello",
+   "name": "ca-hello",
+   "type": "microsoft.app/containerapps",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": null,
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "managedEnvironmentId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.App/managedEnvironments/cae-lab",
+    "environmentId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.App/managedEnvironments/cae-lab",
+    "latestRevisionName": "ca-hello--abc123",
+    "runningStatus": "Running",
+    "configuration": {
+     "activeRevisionsMode": "Single",
+     "ingress": {
+      "external": true,
+      "targetPort": 80,
+      "fqdn": "ca-hello.happy-sea-0123abcd.uksouth.azurecontainerapps.io",
+      "transport": "Auto"
+     },
+     "registries": [
+      {
+       "server": "l11rt7xyacr.azurecr.io",
+       "identity": "system"
+      }
+     ]
+    },
+    "template": {
+     "containers": [
+      {
+       "name": "hello",
+       "image": "l11rt7xyacr.azurecr.io/hello:1",
+       "resources": {
+        "cpu": 0.25,
+        "memory": "0.5Gi"
+       }
+      }
+     ],
+     "scale": {
+      "minReplicas": 0,
+      "maxReplicas": 2
+     }
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az104-11-containers/providers/Microsoft.ContainerRegistry/registries/l11rt7xyacr",
+   "name": "l11rt7xyacr",
+   "type": "microsoft.containerregistry/registries",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az104-11-containers",
+   "sku": {
+    "name": "Basic",
+    "tier": "Basic"
+   },
+   "tags": {
+    "lab": "az104-11-containers",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "loginServer": "l11rt7xyacr.azurecr.io",
+    "adminUserEnabled": false,
+    "publicNetworkAccess": "Enabled"
+   }
+  }
+ ]
+}

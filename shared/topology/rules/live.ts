@@ -210,6 +210,15 @@ function byFqdn(fqdn: string, h: LiveHelpers): string | null {
   return null;
 }
 
+/** Every ARM id inside a value, deep (as found, not lower-cased). */
+function idsUnder(v: unknown, out: string[] = []): string[] {
+  if (typeof v === "string") {
+    if (/^\/subscriptions\//i.test(v)) out.push(v);
+  } else if (Array.isArray(v)) v.forEach((x) => idsUnder(x, out));
+  else if (v && typeof v === "object") for (const x of Object.values(v)) idsUnder(x, out);
+  return out;
+}
+
 const ipNum = (ip: string): number | null => {
   const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(ip);
   return m ? ((Number(m[1]) << 24) >>> 0) + (Number(m[2]) << 16) + (Number(m[3]) << 8) + Number(m[4]) : null;
@@ -318,6 +327,8 @@ export const ARM_RULES: Record<string, ArmRule> = {
     edges: (r) => arr(props(r).dnsResolverOutboundEndpoints).map((o) => str(o.id)).filter((x): x is string => !!x).map((o) => ({ from: lower(r.id), to: lower(o), kind: "dependency" as const, label: "outbound endpoint" })),
   },
   "microsoft.compute/virtualmachines": {
+    // A flexible scale set's VM folds into the scale set (ruling 19).
+    fold: (r) => idOf(props(r).virtualMachineScaleSet) ?? null,
     props: (r, h) => {
       const p = props(r);
       const nics = h.nicsOf(r.id);
@@ -497,6 +508,79 @@ export const ARM_RULES: Record<string, ArmRule> = {
         .filter((x): x is string => !!x)
         .map((f) => ({ from: lower(r.id), to: lower(topResource(f)), kind: "traffic" as const, label: "frontend" })),
   },
+
+  // ── Compute (T3.5): scale sets as one card (ruling 19), autoscale and flexible VMs folded in ──
+  "microsoft.compute/virtualmachinescalesets": {
+    props: (r, h) => {
+      const auto = (h.rowsOfType?.("microsoft.insights/autoscalesettings") ?? []).find((a) => lower(str(props(a).targetResourceUri)) === lower(r.id));
+      const cap = obj(arr(auto ? props(auto).profiles : [])[0]?.capacity);
+      const os = str(obj(obj(obj(props(r).virtualMachineProfile).storageProfile).osDisk).osType);
+      return {
+        size: str(obj(r.sku).name),
+        os,
+        instances: typeof obj(r.sku).capacity === "number" ? obj(r.sku).capacity : undefined,
+        autoscale: cap.minimum !== undefined ? `${cap.minimum}-${cap.maximum ?? "?"}` : undefined,
+        zones: r.zones?.length ? r.zones : undefined,
+      };
+    },
+    edges: (r) => identityEdges(r),
+    // Its NIC configurations' subnet (uniform); else the subnet of its VMs (flexible).
+    place: (r, h) => {
+      const sub = idsUnder(obj(props(r).virtualMachineProfile).networkProfile).map(subnetIdOf).find(Boolean);
+      if (sub) return sub;
+      const vms = (h.rowsOfType?.("microsoft.compute/virtualmachines") ?? []).filter((v) => lower(idOf(props(v).virtualMachineScaleSet)) === lower(r.id)).map((v) => lower(v.id));
+      for (const nic of h.rowsOfType?.("microsoft.network/networkinterfaces") ?? [])
+        if (vms.includes(lower(idOf(props(nic).virtualMachine)))) {
+          const s = idsUnder(props(nic).ipConfigurations).map(subnetIdOf).find(Boolean);
+          if (s) return s;
+        }
+      return null;
+    },
+  },
+  "microsoft.insights/autoscalesettings": { fold: (r) => str(props(r).targetResourceUri) ?? null },
+  "microsoft.recoveryservices/vaults": { props: (r) => ({ sku: str(obj(r.sku).name) }) },
+
+  // ── Containers (T3.5) ──
+  "microsoft.containerinstance/containergroups": {
+    props: (r) => {
+      const p = props(r);
+      const req = arr(p.containers).map((c) => obj(obj(obj(c.properties).resources).requests));
+      const sum = (k: string) => Math.round(req.reduce((a, x) => a + (typeof x[k] === "number" ? (x[k] as number) : 0), 0) * 100) / 100;
+      const ip = obj(p.ipAddress);
+      const type = lower(str(ip.type));
+      return {
+        cpu: req.length ? sum("cpu") : undefined,
+        memoryGb: req.length ? sum("memoryInGB") : undefined,
+        privateIp: type === "private" ? str(ip.ip) : undefined,
+        publicIp: type === "public" ? str(ip.ip) : undefined,
+        hostName: str(ip.fqdn),
+        chips: type ? [type === "private" ? "private IP" : "public IP"] : ["no IP"],
+      };
+    },
+    edges: (r) => identityEdges(r),
+    place: (r) => idOf(arr(props(r).subnetIds)[0]) ?? null,
+  },
+  "microsoft.app/managedenvironments": {
+    props: (r) => ({ sku: str(arr(props(r).workloadProfiles)[0]?.workloadProfileType) ?? "Consumption" }),
+    place: (r) => str(obj(props(r).vnetConfiguration).infrastructureSubnetId) ?? null,
+  },
+  "microsoft.app/containerapps": {
+    props: (r) => {
+      const ing = obj(obj(props(r).configuration).ingress);
+      return { ingress: Object.keys(ing).length ? (ing.external === true ? "external" : "internal") : undefined, targetPort: typeof ing.targetPort === "number" ? ing.targetPort : undefined };
+    },
+    edges: (r, h) => {
+      const env = str(props(r).managedEnvironmentId) ?? str(props(r).environmentId);
+      const servers = arr(obj(props(r).configuration).registries).map((x) => lower(str(x.server))).filter(Boolean);
+      const regs = (h.rowsOfType?.("microsoft.containerregistry/registries") ?? []).filter((x) => servers.includes(lower(str(props(x).loginServer))));
+      return [
+        ...(env ? [{ from: lower(r.id), to: lower(env), kind: "dependency" as const, label: "environment" }] : []),
+        ...regs.map((x) => ({ from: lower(r.id), to: lower(x.id), kind: "dependency" as const, label: "pulls images" })),
+        ...identityEdges(r),
+      ];
+    },
+  },
+  "microsoft.containerregistry/registries": { props: (r) => ({ sku: str(obj(r.sku).name) }) },
 
   // ── Data (T3.4) ──
   "microsoft.network/serviceendpointpolicies": {

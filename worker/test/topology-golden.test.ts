@@ -429,6 +429,51 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
       "snet-client ..> l43…st : service endpoint policy",
     ],
   },
+
+  // ── T3.5 Compute and containers (7, 8 with the network core; 27 with delivery; 18 with governance) ──
+  "az104-09-vmss": {
+    nodes: ["resourceGroup rg-lab-az104-09-vmss", "subnet snet-vms < vnet-lab", "vmss vmss-web < snet-vms", "vnet vnet-lab < rg-lab-az104-09-vmss"],
+    edges: [],
+  },
+  "az104-11-containers": {
+    nodes: [
+      "containerApp ca-hello < rg-lab-az104-11-containers",
+      "containerAppEnv cae-lab < rg-lab-az104-11-containers",
+      "containerGroup aci-hello < snet-aci",
+      "registry l11…acr < rg-lab-az104-11-containers",
+      "resourceGroup rg-lab-az104-11-containers",
+      "subnet snet-aci < vnet-lab",
+      "vnet vnet-lab < rg-lab-az104-11-containers",
+    ],
+    edges: ["ca-hello ..> cae-lab : environment"],
+  },
+  "az104-19-backup": {
+    nodes: [
+      "recoveryVault rsv-lab < rg-lab-az104-19-backup",
+      "resourceGroup rg-lab-az104-19-backup",
+      "storage l19…stage < rg-lab-az104-19-backup",
+      "subnet snet-vms < vnet-lab",
+      "vm vm-backup < snet-vms",
+      "vnet vnet-lab < rg-lab-az104-19-backup",
+    ],
+    edges: ["rsv-lab ..> vm-backup : backup"],
+  },
+  "az305-26-site-recovery": {
+    nodes: [
+      "recoveryVault rsv-lab < rg-lab-az305-26-site-recovery-secondary",
+      "resourceGroup rg-lab-az305-26-site-recovery",
+      "resourceGroup rg-lab-az305-26-site-recovery-secondary",
+      "storage l26…cache < rg-lab-az305-26-site-recovery",
+      "subnet snet-vms < vnet-source",
+      "subnet snet-vms < vnet-target",
+      "subnet snet-vms < vnet-test",
+      "vm vm-app < snet-vms",
+      "vnet vnet-source < rg-lab-az305-26-site-recovery",
+      "vnet vnet-target < rg-lab-az305-26-site-recovery-secondary",
+      "vnet vnet-test < rg-lab-az305-26-site-recovery-secondary",
+    ],
+    edges: ["rsv-lab ..> vm-app : replication", "vnet-source ..> vnet-target : network mapping"],
+  },
 };
 
 describe("golden: each lab's planned graph has its reviewed shape", () => {

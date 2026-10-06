@@ -6,26 +6,6 @@
  "at": null,
  "nodes": [
   {
-   "id": "tf:azurerm_backup_policy_vm.daily",
-   "key": "terraform/azurerm_backup_policy_vm/policy-daily-7d",
-   "kind": "generic",
-   "label": "policy-daily-7d",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_backup_protected_vm.vm",
-   "key": "terraform/azurerm_backup_protected_vm/vm",
-   "kind": "generic",
-   "label": "vm",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
-  },
-  {
    "id": "tf:azurerm_linux_virtual_machine.vm",
    "key": "microsoft.compute/virtualmachines/vm-backup",
    "kind": "vm",
@@ -50,10 +30,27 @@
    "key": "microsoft.recoveryservices/vaults/rsv-lab",
    "kind": "recoveryVault",
    "label": "rsv-lab",
-   "props": {},
+   "props": {
+    "sku": "Standard",
+    "counts": [
+     "protected items: 1"
+    ]
+   },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.RecoveryServices/vaults",
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_backup_policy_vm.daily",
+     "label": "policy-daily-7d",
+     "armType": "Microsoft.RecoveryServices/vaults/backupPolicies"
+    },
+    {
+     "id": "tf:azurerm_backup_protected_vm.vm",
+     "label": "vm",
+     "armType": "Microsoft.RecoveryServices/vaults/backupFabrics/protectionContainers/protectedItems"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_resource_group.lab",
@@ -112,8 +109,14 @@
    "scope": "lab"
   }
  ],
- "edges": [],
- "notes": [
-  "2 resources of a type the diagram draws plainly"
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_recovery_services_vault.lab>tf:azurerm_linux_virtual_machine.vm:backup",
+   "from": "tf:azurerm_recovery_services_vault.lab",
+   "to": "tf:azurerm_linux_virtual_machine.vm",
+   "kind": "dependency",
+   "label": "backup",
+   "via": "tf:azurerm_backup_protected_vm.vm"
+  }
  ]
 }
