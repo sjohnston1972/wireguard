@@ -1,0 +1,108 @@
+#cloud-config
+# Rendered by Terraform's templatefile (main.tf) for vm-nva, with its ASN
+# (asn), its own address (router_id), the Route Server's two instance
+# addresses (rs_ips) and the prefix it announces (advertised_prefix, with
+# advertised_ip, the first host, on a dummy interface).
+#
+# What it sets up, robust on a first boot:
+#   - net.ipv4.ip_forward on (Azure delivers the advertised prefix's traffic
+#     here because the NIC has IP forwarding on; Linux passes it on only
+#     with this set too)
+#   - lab0, a dummy interface holding advertised_ip, made by systemd-networkd
+#     (and by hand if networkd has not made it), so the announced /24 has a
+#     real address behind it: ping it from vm-app
+#   - FRR from Ubuntu's own archive, pinned to the 8.4.4 series Ubuntu 24.04
+#     ships (the configuration below is written for it), installed with
+#     retries for up to about ten minutes (a first boot can race apt's own
+#     timers or a slow mirror), then bgpd on and the configuration in place
+#
+# FRR peers with BOTH Route Server instances (ASN 65515) over eBGP
+# multihop: they are in RouteServerSubnet, not the NVA's own subnet.
+
+write_files:
+  - path: /etc/sysctl.d/90-lab-nva.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      net.ipv4.ip_forward = 1
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+  - path: /etc/systemd/network/10-lab0.netdev
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [NetDev]
+      Name=lab0
+      Kind=dummy
+  - path: /etc/systemd/network/10-lab0.network
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Match]
+      Name=lab0
+
+      [Network]
+      Address=${advertised_ip}/24
+  - path: /etc/apt/preferences.d/lab-frr
+    owner: root:root
+    permissions: "0644"
+    content: |
+      Package: frr frr-pythontools frr-doc
+      Pin: version 8.4.4-*
+      Pin-Priority: 1001
+  - path: /etc/lab/frr.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      frr defaults traditional
+      hostname vm-nva
+      log syslog informational
+      service integrated-vtysh-config
+      !
+      router bgp ${asn}
+       bgp router-id ${router_id}
+       no bgp ebgp-requires-policy
+       no bgp network import-check
+%{ for ip in rs_ips ~}
+       neighbor ${ip} remote-as 65515
+       neighbor ${ip} ebgp-multihop 2
+%{ endfor ~}
+       !
+       address-family ipv4 unicast
+        network ${advertised_prefix}
+       exit-address-family
+      exit
+      !
+  - path: /usr/local/sbin/lab-install-frr
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Install FRR (retried), turn bgpd on and put the lab's configuration in place.
+      export DEBIAN_FRONTEND=noninteractive
+      installed=no
+      for i in $(seq 1 30); do
+        if apt-get -o DPkg::Lock::Timeout=300 update && apt-get -o DPkg::Lock::Timeout=300 install -y frr; then
+          installed=yes
+          break
+        fi
+        echo "lab: frr install failed (try $i), retrying"
+        sleep 20
+      done
+      if [ "$installed" != yes ]; then
+        echo "lab: frr could not be installed"
+        exit 1
+      fi
+      sed -i 's/^bgpd=no/bgpd=yes/' /etc/frr/daemons
+      install -o frr -g frr -m 0640 /etc/lab/frr.conf /etc/frr/frr.conf
+      systemctl enable frr
+      systemctl restart frr
+
+runcmd:
+  - sysctl --system
+  - networkctl reload || true
+  - sleep 2
+  - ip link show lab0 >/dev/null 2>&1 || ip link add lab0 type dummy
+  - ip -4 addr show dev lab0 | grep -q "${advertised_ip}/" || ip addr add ${advertised_ip}/24 dev lab0
+  - ip link set lab0 up
+  - /usr/local/sbin/lab-install-frr

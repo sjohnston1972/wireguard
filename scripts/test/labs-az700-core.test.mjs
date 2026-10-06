@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { attr, lab, labContentSuite, outputs, resources, uncomment } from "./fixtures/labs/content.mjs";
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
+import { cidrOverlaps } from "../lib/labs.mjs";
 
 const NAT = "az700-31-ip-nat-outbound";
 
@@ -359,6 +360,92 @@ test(`${AVNM}: the readme warns never to add vnet-wg to a group`, () => {
   assert.match(l.readme, /never add `vnet-wg`[^.]*network group/i);
   assert.match(l.readme, /deploy(ing)? \*\*None\*\*|"None"/i, "the readme says how configurations are removed (deploy None)");
   assert.match(l.readme, /Azure Policy/, "why dynamic membership is not built");
+});
+
+// ── Lab 34: Route Server with a BGP router VM ────────────────────────────
+
+const RS = "az700-34-route-server";
+
+labContentSuite(RS, { marker: "££" });
+
+test(`${RS}: a Route Server in a /26 RouteServerSubnet with a Standard public IP`, () => {
+  const l = lab(RS);
+  const rs = one(l, "azurerm_route_server");
+  assert.equal(attr(rs.body, "sku"), '"Standard"');
+  assert.equal(attr(rs.body, "subnet_id"), "azurerm_subnet.rs.id");
+  assert.equal(attr(rs.body, "public_ip_address_id"), "azurerm_public_ip.rs.id");
+  assert.equal(attr(rs.body, "branch_to_branch_traffic_enabled"), "false");
+  const subnet = byName(l, "azurerm_subnet", "rs");
+  assert.equal(attr(subnet.body, "name"), '"RouteServerSubnet"');
+  assert.equal(attr(subnet.body, "virtual_network_name"), "azurerm_virtual_network.hub.name");
+  assert.deepEqual(planned(RS, "azurerm_subnet.rs").address_prefixes, ["10.71.192.0/26"]);
+  const pip = one(l, "azurerm_public_ip");
+  assert.equal(attr(pip.body, "sku"), '"Standard"');
+  assert.equal(attr(pip.body, "allocation_method"), '"Static"');
+  assert.deepEqual(strings(attr(pip.body, "zones")), ["1", "2", "3"]);
+  // Nothing on RouteServerSubnet: no NSG, no route table.
+  for (const t of ["azurerm_subnet_network_security_group_association", "azurerm_subnet_route_table_association"]) assert.ok(!resources(l, t).some((a) => attr(a.body, "subnet_id") === "azurerm_subnet.rs.id"), `no ${t} on RouteServerSubnet`);
+});
+
+test(`${RS}: the NVA has IP forwarding on and its BGP connection uses ASN 65010`, () => {
+  const l = lab(RS);
+  const nic = byName(l, "azurerm_network_interface", "nva");
+  assert.equal(attr(nic.body, "ip_forwarding_enabled"), "true");
+  const ipc = nested(nic.body, "ip_configuration");
+  assert.equal(attr(ipc, "private_ip_address_allocation"), '"Static"');
+  assert.equal(attr(ipc, "private_ip_address"), "local.nva_ip");
+  const bgp = one(l, "azurerm_route_server_bgp_connection");
+  assert.equal(attr(bgp.body, "route_server_id"), "azurerm_route_server.rs.id");
+  assert.equal(attr(bgp.body, "peer_asn"), "65010");
+  assert.equal(attr(bgp.body, "peer_ip"), "local.nva_ip");
+  // FRR from cloud-init: both Route Server instances as eBGP multihop neighbours, retried and pinned.
+  const vm = byName(l, "azurerm_linux_virtual_machine", "nva");
+  assert.match(vm.body, /templatefile\("\$\{path\.module\}\/frr-init\.yaml\.tftpl"/);
+  assert.match(vm.body, /rs_ips\s*=\s*azurerm_route_server\.rs\.virtual_router_ips/, "the neighbours are the Route Server's own addresses, so the VM is made after it");
+  assert.match(vm.body, /asn\s*=\s*65010/);
+  const tpl = readFileSync(join(l.tfDir, "frr-init.yaml.tftpl"), "utf8");
+  assert.match(tpl, /%\{ for ip in rs_ips ~\}/);
+  assert.match(tpl, /neighbor \$\{ip\} remote-as 65515/);
+  assert.match(tpl, /neighbor \$\{ip\} ebgp-multihop/);
+  assert.match(tpl, /router bgp \$\{asn\}/);
+  assert.match(tpl, /network \$\{advertised_prefix\}/);
+  assert.match(tpl, /Pin: version 8\.4\.4-\*/, "FRR pinned to Ubuntu 24.04's 8.4.4 series");
+  assert.match(tpl, /for i in \$\(seq 1 30\)/, "the install is retried");
+  assert.match(tpl, /bgpd=yes/);
+  assert.match(tpl, /net\.ipv4\.ip_forward = 1/);
+  // FRR comes from Ubuntu's archive, so snet-nva has default outbound access on.
+  assert.equal(attr(byName(l, "azurerm_subnet", "nva").body, "default_outbound_access_enabled"), "true");
+  assert.deepEqual(planned(RS, "azurerm_route_server_bgp_connection.nva").peer_asn, 65010);
+});
+
+test(`${RS}: the spoke uses the hub's remote gateway after the Route Server exists`, () => {
+  const l = lab(RS);
+  const hubToSpoke = byName(l, "azurerm_virtual_network_peering", "hub_to_spoke");
+  assert.equal(attr(hubToSpoke.body, "allow_gateway_transit"), "true");
+  const spokeToHub = byName(l, "azurerm_virtual_network_peering", "spoke_to_hub");
+  assert.equal(attr(spokeToHub.body, "use_remote_gateways"), "true");
+  assert.equal(attr(spokeToHub.body, "remote_virtual_network_id"), "azurerm_virtual_network.hub.id");
+  assert.match(spokeToHub.body, /depends_on\s*=\s*\[[^\]]*azurerm_route_server\.rs\b/, "a peering may use remote gateways only once the hub has one");
+  assert.match(spokeToHub.body, /depends_on\s*=\s*\[[^\]]*azurerm_virtual_network_peering\.hub_to_spoke\b/);
+  assert.equal(planned(RS, "azurerm_virtual_network_peering.spoke_to_hub").use_remote_gateways, true);
+});
+
+test(`${RS}: the advertised prefix is in the slot and in no VNet`, () => {
+  const l = lab(RS);
+  const main = uncomment(l.files["main.tf"]);
+  assert.match(main, /advertised_prefix\s*=\s*cidrsubnet\(cidrsubnet\(var\.address_space,\s*2,\s*3\),\s*4,\s*0\)/, "the first /24 of the slot's last /20");
+  assert.equal(l.yaml.connectivity.subnets_used, 3, "the advertised prefix takes /20 #3 of the slot, so it counts");
+  // At slot 31 it is 10.71.240.0/24: inside the slot, outside both VNets.
+  const vm = LAB_PLANS[RS].plan.configuration.root_module.resources.find((r) => r.address === "azurerm_linux_virtual_machine.nva");
+  assert.ok(vm, "the plan has vm-nva");
+  const vnets = ["hub", "spoke"].map((k) => planned(RS, `azurerm_virtual_network.${k}`).address_space[0]);
+  assert.deepEqual(vnets, ["10.71.192.0/20", "10.71.208.0/20"]);
+  for (const v of vnets) assert.equal(cidrOverlaps(v, "10.71.240.0/24"), false, `${v} does not hold the advertised prefix`);
+  assert.equal(cidrOverlaps("10.71.192.0/18", "10.71.240.0/24"), true);
+  // A dummy interface on the NVA holds an address in it, so the route has somewhere to go.
+  const tpl = readFileSync(join(l.tfDir, "frr-init.yaml.tftpl"), "utf8");
+  assert.match(tpl, /Kind=dummy/);
+  assert.match(tpl, /Address=\$\{advertised_ip\}\/24/);
 });
 
 /** An admin rule's name attribute, unquoted. */
