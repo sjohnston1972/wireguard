@@ -9,7 +9,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { CHILD_TYPES, contentChecks, costMarker, estimateGbpH, lab, labContentSuite, resources, roleAssignments } from "./fixtures/labs/content.mjs";
+import { addressProblems, CHILD_TYPES, contentChecks, costMarker, estimateGbpH, lab, labContentSuite, resources, roleAssignments } from "./fixtures/labs/content.mjs";
+import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 
 labContentSuite("az104-07-files", { marker: "£" });
 
@@ -138,4 +139,65 @@ test("the suite prices S4 disks per region and counts a replicated VM's failover
   const short = lab(id, SUITE);
   short.yaml.capacity.vm_sizes = ["Standard_B1s"];
   assert.throws(() => check(id, IDENTITY, { load: () => short })(), /vm_sizes/);
+});
+
+// ── AZ-700 plan Z0.4: test 6, addresses, and ruling 50's public IPs ──────
+// suite/az700-95-addresses: two VNets and a P2S client pool at slot 31, its plan fixture in plan.mjs.
+
+const ADDRESSES = "every VNet, hub prefix and client pool is inside the slot and none overlap";
+const L95 = "az700-95-addresses";
+const plan95 = (await import("./fixtures/labs/suite/az700-95-addresses/plan.mjs")).default;
+/** The plan description with `edit` applied to the resource at `address` (and the whole description). */
+const plan95With = (address, edit) => () => {
+  const d = plan95();
+  edit(d.resources.find((r) => r.address === address), d);
+  return d;
+};
+
+test("the address test refuses two VNets that overlap and a client pool outside the slot", () => {
+  check(L95, ADDRESSES, { plan: plan95 })();
+  assert.equal(plan95().variables.address_space, "10.71.192.0/18", "AZ-700 fixtures are at slot 31");
+  // Two VNets sharing addresses.
+  assert.throws(() => check(L95, ADDRESSES, { plan: plan95With("azurerm_virtual_network.onprem", (r) => (r.values.address_space = ["10.71.200.0/21"])) })(), /azurerm_virtual_network\.hub .*overlaps.*azurerm_virtual_network\.onprem/);
+  // A client pool outside the slot, and one inside a VNet.
+  assert.throws(() => check(L95, ADDRESSES, { plan: plan95With("azurerm_virtual_network_gateway.gw", (r) => (r.values.vpn_client_configuration[0].address_space = ["10.72.0.0/24"])) })(), /client pool 10\.72\.0\.0\/24 is outside the slot/);
+  assert.throws(() => check(L95, ADDRESSES, { plan: plan95With("azurerm_virtual_network_gateway.gw", (r) => (r.values.vpn_client_configuration[0].address_space = ["10.71.193.0/24"])) })(), /overlaps/);
+  // A VNet outside the slot.
+  assert.throws(() => check(L95, ADDRESSES, { plan: plan95With("azurerm_virtual_network.onprem", (r) => (r.values.address_space = ["10.64.0.0/20"])) })(), /outside the slot/);
+  // A virtual hub's prefix: inside the slot and clear of the VNets.
+  const hub = (prefix) => (_, d) => d.resources.push({ address: "azurerm_virtual_hub.hub", values: { name: "vhub", address_prefix: prefix } });
+  check(L95, ADDRESSES, { plan: plan95With("azurerm_resource_group.lab", hub("10.71.240.0/23")) })();
+  assert.throws(() => check(L95, ADDRESSES, { plan: plan95With("azurerm_resource_group.lab", hub("10.71.208.0/23")) })(), /azurerm_virtual_hub\.hub/);
+  assert.throws(() => check(L95, ADDRESSES, { plan: plan95With("azurerm_resource_group.lab", hub("10.80.0.0/23")) })(), /outside the slot/);
+  // A VNet whose address space the plan does not know cannot be checked: the fixture gives it (cidrsubnet of the slot is known at plan).
+  assert.throws(() => check(L95, ADDRESSES, { plan: plan95With("azurerm_virtual_network.onprem", (r) => delete r.values.address_space) })(), /address_space/);
+  // Without a plan fixture the check says so.
+  assert.throws(() => check(L95, ADDRESSES, { plan: () => undefined })(), /plan fixture/);
+  // addresses: false leaves the check out.
+  assert.ok(!contentChecks(L95, { marker: "££", labsDir: SUITE, plan: plan95, addresses: false }).some((c) => c.name.endsWith(ADDRESSES)));
+});
+
+test("every lab's plan fixture passes the address check (labs 1 to 27)", () => {
+  for (const [id, d] of Object.entries(LAB_PLANS)) assert.deepEqual(addressProblems(d), [], id);
+});
+
+const PUBLIC_IPS = "VMs have no public IP and use the sizes and disks lab.yaml prices";
+test("a public IP belongs to a gateway, Route Server, firewall, Bastion, App Gateway or load balancer frontend, never a VM (ruling 50)", () => {
+  // The VPN gateway owns pip-gw.
+  check(L95, PUBLIC_IPS)();
+  /** Lab 95 with the gateway's public IP taken off it and given to a resource of `type` instead. */
+  const withOwner = (type, body) => {
+    const l = lab(L95, SUITE);
+    const gw = l.blocks.find((b) => b.labels.join(".") === "azurerm_virtual_network_gateway.gw");
+    gw.body = gw.body.replace("azurerm_public_ip.gw.id", '"none"');
+    if (type) l.blocks.push({ kind: "resource", labels: [type, "owner"], body });
+    return l;
+  };
+  for (const type of ["azurerm_route_server", "azurerm_firewall", "azurerm_bastion_host", "azurerm_lb", "azurerm_application_gateway", "azurerm_nat_gateway_public_ip_association"]) {
+    check(L95, PUBLIC_IPS, { load: () => withOwner(type, "x {\n  public_ip_address_id = azurerm_public_ip.gw.id\n}") })();
+  }
+  // Owned by nothing, by a type not on ruling 50's list, or by a VM's NIC: refused.
+  assert.throws(() => check(L95, PUBLIC_IPS, { load: () => withOwner(null) })(), /azurerm_public_ip\.gw/);
+  assert.throws(() => check(L95, PUBLIC_IPS, { load: () => withOwner("azurerm_container_group", "ip = azurerm_public_ip.gw.id") })(), /azurerm_public_ip\.gw/);
+  assert.throws(() => check(L95, PUBLIC_IPS, { load: () => withOwner("azurerm_network_interface", "ip_configuration {\n  public_ip_address_id = azurerm_public_ip.gw.id\n}") })(), /public IP/);
 });

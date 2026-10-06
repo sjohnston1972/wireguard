@@ -2040,6 +2040,610 @@
    ],
    "blocks": {}
   },
+  "azurerm_public_ip_prefix": {
+   "attrs": [
+    "id",
+    "ip_prefix"
+   ],
+   "blocks": {}
+  },
+  "azurerm_nat_gateway": {
+   "attrs": [
+    "id",
+    "resource_guid"
+   ],
+   "blocks": {}
+  },
+  "azurerm_nat_gateway_public_ip_prefix_association": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_nat_gateway_public_ip_association": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_subnet_nat_gateway_association": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_lb_outbound_rule": {
+   "attrs": [
+    "enable_tcp_reset",
+    "id",
+    "tcp_reset_enabled"
+   ],
+   "blocks": {
+    "frontend_ip_configuration": {
+     "attrs": [
+      "id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_lb_nat_rule": {
+   "attrs": [
+    "backend_ip_configuration_id",
+    "enable_floating_ip",
+    "enable_tcp_reset",
+    "floating_ip_enabled",
+    "frontend_ip_configuration_id",
+    "id",
+    "tcp_reset_enabled"
+   ],
+   "blocks": {}
+  },
+  "azurerm_lb_backend_address_pool_address": {
+   "attrs": [
+    "id",
+    "inbound_nat_rule_port_mapping"
+   ],
+   "blocks": {}
+  },
+  "azurerm_private_dns_resolver": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_private_dns_resolver_inbound_endpoint": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {
+    "ip_configurations": {
+     "attrs": [
+      "private_ip_address"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_private_dns_resolver_outbound_endpoint": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_private_dns_resolver_dns_forwarding_ruleset": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_private_dns_resolver_forwarding_rule": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_private_dns_resolver_virtual_network_link": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager": {
+   "attrs": [
+    "cross_tenant_scopes",
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_network_group": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_static_member": {
+   "attrs": [
+    "id",
+    "region"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_connectivity_configuration": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_security_admin_configuration": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_admin_rule_collection": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_admin_rule": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_deployment": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_route_server": {
+   "attrs": [
+    "id",
+    "routing_state",
+    "virtual_router_asn",
+    "virtual_router_ips"
+   ],
+   "blocks": {}
+  },
+  "azurerm_route_server_bgp_connection": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_firewall": {
+   "attrs": [
+    "dns_proxy_enabled",
+    "id",
+    "threat_intel_mode"
+   ],
+   "blocks": {
+    "ip_configuration": {
+     "attrs": [
+      "private_ip_address"
+     ],
+     "blocks": {}
+    },
+    "management_ip_configuration": {
+     "attrs": [
+      "private_ip_address"
+     ],
+     "blocks": {}
+    },
+    "virtual_hub": {
+     "attrs": [
+      "private_ip_address",
+      "public_ip_addresses"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_firewall_policy": {
+   "attrs": [
+    "child_policies",
+    "firewalls",
+    "id",
+    "rule_collection_groups"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_firewall_policy_rule_collection_group": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_virtual_network_gateway": {
+   "attrs": [
+    "active_active",
+    "bgp_enabled",
+    "enable_bgp",
+    "generation",
+    "id",
+    "maximum_scale_unit",
+    "minimum_scale_unit"
+   ],
+   "blocks": {
+    "bgp_settings": {
+     "attrs": [],
+     "blocks": {
+      "peering_addresses": {
+       "attrs": [
+        "default_addresses",
+        "ip_configuration_name",
+        "tunnel_ip_addresses"
+       ],
+       "blocks": {}
+      }
+     }
+    },
+    "vpn_client_configuration": {
+     "attrs": [
+      "vpn_auth_types",
+      "vpn_client_protocols"
+     ],
+     "blocks": {
+      "radius_server": {
+       "attrs": [],
+       "blocks": {},
+       "sensitive": [
+        "secret"
+       ]
+      }
+     },
+     "sensitive": [
+      "radius_server_secret"
+     ]
+    }
+   }
+  },
+  "azurerm_local_network_gateway": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_virtual_network_gateway_connection": {
+   "attrs": [
+    "bgp_enabled",
+    "connection_protocol",
+    "enable_bgp",
+    "express_route_gateway_bypass",
+    "id",
+    "routing_weight",
+    "shared_key",
+    "use_policy_based_traffic_selectors"
+   ],
+   "blocks": {
+    "ipsec_policy": {
+     "attrs": [
+      "sa_datasize",
+      "sa_lifetime"
+     ],
+     "blocks": {}
+    }
+   },
+   "sensitive": [
+    "authorization_key",
+    "shared_key"
+   ]
+  },
+  "azurerm_virtual_wan": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_virtual_hub": {
+   "attrs": [
+    "default_route_table_id",
+    "id",
+    "virtual_router_asn",
+    "virtual_router_ips"
+   ],
+   "blocks": {}
+  },
+  "azurerm_virtual_hub_connection": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {
+    "routing": {
+     "attrs": [
+      "associated_route_table_id"
+     ],
+     "blocks": {
+      "propagated_route_table": {
+       "attrs": [
+        "labels",
+        "route_table_ids"
+       ],
+       "blocks": {}
+      }
+     }
+    }
+   }
+  },
+  "azurerm_virtual_hub_routing_intent": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_web_application_firewall_policy": {
+   "attrs": [
+    "http_listener_ids",
+    "id",
+    "path_based_rule_ids"
+   ],
+   "blocks": {
+    "policy_settings": {
+     "attrs": [
+      "file_upload_enforcement"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_key_vault_certificate": {
+   "attrs": [
+    "certificate_attribute",
+    "certificate_data",
+    "certificate_data_base64",
+    "id",
+    "resource_manager_id",
+    "resource_manager_versionless_id",
+    "secret_id",
+    "thumbprint",
+    "version",
+    "versionless_id",
+    "versionless_secret_id"
+   ],
+   "blocks": {
+    "certificate": {
+     "attrs": [],
+     "blocks": {},
+     "sensitive": [
+      "contents",
+      "password"
+     ]
+    },
+    "certificate_policy": {
+     "attrs": [],
+     "blocks": {
+      "key_properties": {
+       "attrs": [
+        "curve",
+        "key_size"
+       ],
+       "blocks": {}
+      },
+      "x509_certificate_properties": {
+       "attrs": [
+        "extended_key_usage"
+       ],
+       "blocks": {}
+      }
+     }
+    }
+   }
+  },
+  "azurerm_key_vault_access_policy": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_cdn_frontdoor_firewall_policy": {
+   "attrs": [
+    "captcha_cookie_expiration_in_minutes",
+    "frontend_endpoint_ids",
+    "id",
+    "js_challenge_cookie_expiration_in_minutes"
+   ],
+   "blocks": {}
+  },
+  "azurerm_cdn_frontdoor_security_policy": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {
+    "security_policies": {
+     "attrs": [],
+     "blocks": {
+      "firewall": {
+       "attrs": [],
+       "blocks": {
+        "association": {
+         "attrs": [],
+         "blocks": {
+          "domain": {
+           "attrs": [
+            "active"
+           ],
+           "blocks": {}
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "azurerm_cdn_frontdoor_rule_set": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_cdn_frontdoor_rule": {
+   "attrs": [
+    "cdn_frontdoor_rule_set_name",
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_private_link_service": {
+   "attrs": [
+    "alias",
+    "enable_proxy_protocol",
+    "id",
+    "proxy_protocol_enabled"
+   ],
+   "blocks": {}
+  },
+  "azurerm_subnet_service_endpoint_storage_policy": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_watcher_flow_log": {
+   "attrs": [
+    "id",
+    "location",
+    "network_security_group_id",
+    "target_resource_id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_bastion_host": {
+   "attrs": [
+    "dns_name",
+    "id",
+    "private_only_enabled"
+   ],
+   "blocks": {}
+  },
+  "azurerm_monitor_diagnostic_setting": {
+   "attrs": [
+    "id",
+    "log_analytics_destination_type"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_scope_connection": {
+   "attrs": [
+    "connection_state",
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_subscription_connection": {
+   "attrs": [
+    "connection_state",
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_management_group_connection": {
+   "attrs": [
+    "connection_state",
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_routing_configuration": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_manager_routing_rule_collection": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_ddos_protection_plan": {
+   "attrs": [
+    "id",
+    "virtual_network_ids"
+   ],
+   "blocks": {}
+  },
+  "azurerm_express_route_circuit": {
+   "attrs": [
+    "id",
+    "service_key",
+    "service_provider_provisioning_state"
+   ],
+   "blocks": {},
+   "sensitive": [
+    "authorization_key",
+    "service_key"
+   ]
+  },
+  "azurerm_express_route_port": {
+   "attrs": [
+    "ethertype",
+    "guid",
+    "id",
+    "mtu"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "link1": {
+     "attrs": [
+      "connector_type",
+      "id",
+      "interface_name",
+      "patch_panel_id",
+      "rack_id",
+      "router_name"
+     ],
+     "blocks": {}
+    },
+    "link2": {
+     "attrs": [
+      "connector_type",
+      "id",
+      "interface_name",
+      "patch_panel_id",
+      "rack_id",
+      "router_name"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_express_route_gateway": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_custom_ip_prefix": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
+  "azurerm_network_watcher": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {}
+  },
   "data.azurerm_subscription": {
    "attrs": [
     "display_name",

@@ -1,0 +1,26 @@
+# A fixture for labs-content-suite.test.mjs (AZ-700 plan Z0.4): two VNets
+# and a point-to-site VPN gateway whose client pool is a /24 of the slot,
+# outside both VNets, and whose public IP belongs to the gateway (ruling 50).
+# Its plan fixture is plan.mjs, at slot 31. Not a catalogue lab.
+id: az700-95-addresses
+version: 1
+title: "Addresses"
+summary: Two VNets and a VPN gateway's client pool, all inside the slot.
+exam: AZ-700
+skill_areas: [az700.connectivity]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "VPN gateway VpnGw1AZ", gbp_h: 0.1585 }
+    - { name: "Public IP, Standard", gbp_h: 0.0038 }
+  pricey: null
+timing: { deploy_min: 40, destroy_min: 20, session_h: 2, max_h: 3 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 3 }
+identity:
+  creates: []
+  roles: []
+  governance: false

@@ -13,6 +13,10 @@
 //     const c = ctx("az104-08-vms", "08");
 //     return { lab: c.id, variables: c.variables, resources: [rgResource(c), ...] };
 //   };
+//
+// AZ-700 fixtures are at slot 31: ctx("az700-31-ip-nat-outbound", "31", { slot: 31 }).
+
+import { slotCidr } from "../../../../lib/labs.mjs";
 
 export const SUB = "3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b";
 export const TENANT = "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f";
@@ -20,26 +24,31 @@ export const UPN = "wgadminlabs.onmicrosoft.com";
 export const REGION = "uksouth";
 /** The secondary region every batch 3 lab with regions.secondary names (uksouth's pair). */
 export const SECONDARY = "ukwest";
-/** Slot 1, as lab.yml passes it in address_space. */
+/** Slot 1, as lab.yml passes it in address_space (batches 1-3). */
 export const SLOT = "10.64.64.0/18";
+/** Slot 31, the AZ-700 fixtures' slot (AZ-700 plan, "Address layout"). */
+export const SLOT31 = "10.71.192.0/18";
 export const SSH_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeFakeFakeFakeFakeFakeFakeFakeFakeFake wg-admin";
 
 /**
  * A session's values for lab `id` (number `n`, two digits): rg, rgSecondary
- * (rg-lab-<id>-secondary), prefix (l<n>k3x9q), tags and the pipeline's
+ * (rg-lab-<id>-secondary), prefix (l<n>k3x9q), tags, slot and the pipeline's
  * variables (secondary_region ukwest, as a lab with regions.secondary gets it).
+ * `slot`: 1 (the default, batches 1-3) or 31 (AZ-700, 10.71.192.0/18).
  */
-export const ctx = (id, n) => {
+export const ctx = (id, n, { slot = 1 } = {}) => {
   const rg = `rg-lab-${id}`;
   const prefix = `l${n}k3x9q`;
   const tags = { project: "wg-admin-labs", lab: id, session: "ls-20261005T0900-ab12" };
+  const cidr = slotCidr(slot);
   return {
     id,
     rg,
     rgSecondary: `${rg}-secondary`,
     prefix,
     tags,
-    variables: { lab_id: id, name_prefix: prefix, resource_group_name: rg, region: REGION, secondary_region: SECONDARY, address_space: SLOT, peered: false, gateway_vnet_id: "", upn_domain: UPN, tags },
+    slot: cidr,
+    variables: { lab_id: id, name_prefix: prefix, resource_group_name: rg, region: REGION, secondary_region: SECONDARY, address_space: cidr, peered: false, gateway_vnet_id: "", upn_domain: UPN, tags },
   };
 };
 

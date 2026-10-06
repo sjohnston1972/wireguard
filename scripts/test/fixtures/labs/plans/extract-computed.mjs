@@ -74,6 +74,28 @@ export const TYPES = [
   "azurerm_cdn_frontdoor_origin_group", "azurerm_cdn_frontdoor_origin", "azurerm_cdn_frontdoor_route",
   // batch 3: hashicorp/time and hashicorp/random
   "time_sleep", "random_password",
+  // AZ-700 (labs 31-44, AZ-700 plan Z0.4): core networking and routing
+  "azurerm_public_ip_prefix", "azurerm_nat_gateway", "azurerm_nat_gateway_public_ip_prefix_association", "azurerm_nat_gateway_public_ip_association",
+  "azurerm_subnet_nat_gateway_association", "azurerm_lb_outbound_rule", "azurerm_lb_nat_rule", "azurerm_lb_backend_address_pool_address",
+  "azurerm_private_dns_resolver", "azurerm_private_dns_resolver_inbound_endpoint", "azurerm_private_dns_resolver_outbound_endpoint",
+  "azurerm_private_dns_resolver_dns_forwarding_ruleset", "azurerm_private_dns_resolver_forwarding_rule", "azurerm_private_dns_resolver_virtual_network_link",
+  "azurerm_network_manager", "azurerm_network_manager_network_group", "azurerm_network_manager_static_member",
+  "azurerm_network_manager_connectivity_configuration", "azurerm_network_manager_security_admin_configuration",
+  "azurerm_network_manager_admin_rule_collection", "azurerm_network_manager_admin_rule", "azurerm_network_manager_deployment",
+  "azurerm_route_server", "azurerm_route_server_bgp_connection",
+  // AZ-700: hybrid connectivity and hubs
+  "azurerm_firewall", "azurerm_firewall_policy", "azurerm_firewall_policy_rule_collection_group", "azurerm_virtual_network_gateway",
+  "azurerm_local_network_gateway", "azurerm_virtual_network_gateway_connection", "azurerm_virtual_wan", "azurerm_virtual_hub",
+  "azurerm_virtual_hub_connection", "azurerm_virtual_hub_routing_intent",
+  // AZ-700: delivery, private access and monitoring
+  "azurerm_web_application_firewall_policy", "azurerm_key_vault_certificate", "azurerm_key_vault_access_policy", "azurerm_cdn_frontdoor_firewall_policy",
+  "azurerm_cdn_frontdoor_security_policy", "azurerm_cdn_frontdoor_rule_set", "azurerm_cdn_frontdoor_rule", "azurerm_private_link_service",
+  "azurerm_subnet_service_endpoint_storage_policy", "azurerm_network_watcher_flow_log", "azurerm_bastion_host", "azurerm_monitor_diagnostic_setting",
+  // AZ-700: what the scope tests plan in order to refuse (S1's other AVNM types, the never rule's types, a second watcher, a policy assignment)
+  "azurerm_network_manager_scope_connection", "azurerm_network_manager_subscription_connection", "azurerm_network_manager_management_group_connection",
+  "azurerm_network_manager_routing_configuration", "azurerm_network_manager_routing_rule_collection", "azurerm_network_ddos_protection_plan",
+  "azurerm_express_route_circuit", "azurerm_express_route_port", "azurerm_express_route_gateway", "azurerm_custom_ip_prefix", "azurerm_network_watcher",
+  "azurerm_resource_group_policy_assignment",
   // data sources
   "data.azurerm_subscription", "data.azurerm_client_config", "data.azurerm_resource_group",
 ];
