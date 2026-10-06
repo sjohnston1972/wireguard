@@ -4,7 +4,9 @@
 // left behind that nobody is watching: the sweep lists, in SWEEP_CALLS calls,
 // resource groups (rg-lab-*), Entra users (user principal name lab-*) and groups (display name lab-*, the fields the safety net deletes by), management
 // groups, custom role definitions, and policy definitions and assignments
-// (lab-*; an assignment also by its display name or its scope). A name
+// (lab-*; an assignment also by its display name or its scope), and VNet flow
+// logs named lab-* (AZ-700 scope exception S2: lab 44's lives on Azure's own
+// NetworkWatcher_<region> in NetworkWatcherRG, outside every lab group). A name
 // counts only when it is a lab's (labIdOf: the longest
 // catalogue id it fits, else the id it spells), is not owned by a live
 // session of that lab, and has been there 30 minutes (Azure's creation time
@@ -24,7 +26,7 @@ import type { Env } from "../env";
 import { canAzure } from "../env";
 import * as db from "../db";
 import { labDef } from "./catalogue";
-import { ALLOWED_ROLES, labNeeds } from "../../../shared/labs";
+import { ALLOWED_ROLES, FLOW_LOG_LABS, labNeeds } from "../../../shared/labs";
 import type { LabOrphan } from "../../../shared/api";
 import { arm, graph, BudgetExceeded, type Net } from "./net";
 import { labIdOf } from "./cost";
@@ -34,12 +36,13 @@ const MIN = 60_000;
 export const SWEEP_EVERY_MS = 60 * MIN;
 export const ORPHAN_GRACE_MS = 30 * MIN;
 /**
- * The sweep's calls: seven listings (resource groups, Entra users and groups, management
- * groups, custom roles, policy definitions and assignments) plus one GET per fixed custom
- * role GUID in labs/setup/allowed-roles.json: the subscription's role list leaves out a
- * role assignable only inside a resource group (lab 1's), so each is asked for directly.
+ * The sweep's calls: eight listings (resource groups, Entra users and groups, management
+ * groups, custom roles, policy definitions and assignments, and flow logs) plus one GET per
+ * fixed custom role GUID in labs/setup/allowed-roles.json: the subscription's role list
+ * leaves out a role assignable only inside a resource group (lab 1's), so each is asked for
+ * directly.
  */
-export const SWEEP_CALLS = 7 + ALLOWED_ROLES.custom.length;
+export const SWEEP_CALLS = 8 + ALLOWED_ROLES.custom.length;
 const KV_SWEEP = "labs:sweep";
 const KV_ORPHANS = "labs:orphans";
 
@@ -64,7 +67,7 @@ async function list<T>(r: Promise<Response>, what: string): Promise<T[]> {
 const starts = (s: unknown, p: string): s is string => typeof s === "string" && s.toLowerCase().startsWith(p);
 
 /** The lab names in each listing, or null for a listing that failed. Exactly SWEEP_CALLS calls (plus sign-ins). */
-async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph: Found[] | null; gov: Found[] | null; errors: string[] }> {
+async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph: Found[] | null; gov: Found[] | null; flow: Found[] | null; errors: string[] }> {
   const sub = `/subscriptions/${env.AZURE_SUBSCRIPTION_ID}`;
   const errors: string[] = [];
   const attempt = async <T>(fn: () => Promise<T[]>): Promise<T[] | null> => {
@@ -111,6 +114,10 @@ async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph:
     return out;
   });
 
+  // VNet flow logs (S2): ARM lists the nested type across the subscription in one call, every region's watcher at
+  // once. Only a flow log named lab-<id>-* is a lab's (the name the safety net deletes by); its group is Azure's own.
+  const flowLogs = await attempt(() => list<{ id?: string; createdTime?: string }>(arm(env, net, `${sub}/resources?api-version=2021-04-01&$filter=${encodeURIComponent("resourceType eq 'Microsoft.Network/networkWatchers/flowLogs'")}&$expand=createdTime`), "flow logs"));
+
   const pick = (...names: unknown[]): string | null => (names.find((n) => starts(n, "lab-")) as string | undefined) ?? null;
   const rg = rgs?.filter((g) => starts(g.name, "rg-lab-")).map((g) => ({ name: g.name!, created: g.createdTime ?? g.properties?.createdTime ?? null })) ?? null;
   const entra =
@@ -130,7 +137,12 @@ async function listAll(env: Env, net: Net): Promise<{ rg: Found[] | null; graph:
           .map((name): Found => ({ name, created: null }))
           .concat(assigns.map(assignmentFound).filter((f): f is Found => f !== null))
       : null;
-  return { rg, graph: entra, gov, errors };
+  const flow =
+    flowLogs
+      ?.map((f) => ({ name: (f.id ?? "").split("/").pop() ?? "", created: f.createdTime ?? null }))
+      .filter((f) => starts(f.name, "lab-"))
+      .map((f): Found => ({ name: `${f.name} (flow log)`, created: f.created, lab: labIdOf(f.name) })) ?? null;
+  return { rg, graph: entra, gov, flow, errors };
 }
 
 /**
@@ -192,7 +204,7 @@ export async function sweepOrphans(env: Env, net: Net, now: Date): Promise<strin
   if (!canAzure(env)) return null;
   const prev = await readState(env);
   if (prev && now.getTime() - Date.parse(prev.at) < SWEEP_EVERY_MS) return null;
-  // Its seven listings, or none: a half sweep is never recorded, so it stays due.
+  // Its eight listings and the fixed roles, or none: a half sweep is never recorded, so it stays due.
   if (net.remaining() < SWEEP_CALLS) throw new BudgetExceeded(SWEEP_CALLS, net.remaining(), SWEEP_CALLS);
   const t = now.getTime();
   const found = await listAll(env, net);
@@ -201,7 +213,7 @@ export async function sweepOrphans(env: Env, net: Net, now: Date): Promise<strin
   const seen: Record<string, string> = {};
   const byLab = new Map<string, { names: string[]; since: number }>();
   const present = new Set<string>(); // labs with any name at all, young or old
-  for (const f of [...(found.rg ?? []), ...(found.graph ?? []), ...(found.gov ?? [])]) {
+  for (const f of [...(found.rg ?? []), ...(found.graph ?? []), ...(found.gov ?? []), ...(found.flow ?? [])]) {
     const lab = f.lab ?? labIdOf(f.name);
     if (!lab) continue; // not a lab's name
     present.add(lab);
@@ -238,7 +250,7 @@ export async function sweepOrphans(env: Env, net: Net, now: Date): Promise<strin
   for (const { lab_id } of dirty) {
     const def = labDef(lab_id);
     const needs = def ? labNeeds(def) : { role: true, graph: true };
-    const sawAll = found.rg !== null && (found.graph !== null || !needs.graph) && (found.gov !== null || !needs.role);
+    const sawAll = found.rg !== null && (found.graph !== null || !needs.graph) && (found.gov !== null || !needs.role) && (found.flow !== null || !FLOW_LOG_LABS.includes(lab_id));
     if (sawAll && !present.has(lab_id)) released += await releaseDirtySlots(env, lab_id);
   }
 

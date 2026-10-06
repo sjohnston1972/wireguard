@@ -15,7 +15,7 @@ export const HOUR = 60 * MIN;
 export const at = (msFromNow: number) => new Date(NOW_MS + msFromNow).toISOString();
 
 /** A catalogue card: lab 6 by default, not running, never run. */
-export const card = (over: Partial<LabCard> = {}): LabCard => ({ ...labDetailFixture().card, running: null, lastSession: null, runs: 0, ...over });
+export const card = (over: Partial<LabCard> = {}): LabCard => ({ ...labDetailFixture().card, exams: [over.exam ?? labDetailFixture().card.exam], running: null, lastSession: null, runs: 0, ...over });
 
 export const session = (over: Partial<LabSession> = {}): LabSession => labSessionFixture(over);
 

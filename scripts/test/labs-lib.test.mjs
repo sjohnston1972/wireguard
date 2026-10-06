@@ -19,6 +19,9 @@ const stringify = (v) => yaml12(v, { version: "1.1" });
 import {
   buildCatalogue,
   checkPool,
+  computeExams,
+  examOfId,
+  LAB_EXAMS,
   lintTfText,
   parseLabYaml,
   parseReadme,
@@ -27,6 +30,7 @@ import {
   variablesProblems,
   versionProblems,
 } from "../lib/labs.mjs";
+import { BASH } from "./fixtures/labs/harness.mjs";
 
 const repo = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -198,6 +202,146 @@ test("parseLabYaml refuses YAML that does not parse, and validateLab works on on
   assert.deepEqual(v.problems, []);
   assert.equal(v.def.number, 6);
   assert.equal(validateLab({ ...raw, title: "" }, { folder: "az104-06-blob-security", skillAreas: SKILLS }).problems[0].field, "title");
+});
+
+// ── AZ-700, the third exam (AZ-700 plan Z0.1, ruling 38) ─────────────────
+
+/** The nine copies of the lab id pattern: the two contracts, the scope check and every pipeline script. */
+const ID_RE_COPIES = ["shared/labs.ts", "scripts/lib/labs.mjs", "infra/ci/lab-scope.mjs", "infra/ci/lab-parse.sh", "infra/ci/lab-peer.sh", "infra/ci/lab-ready.sh", "infra/ci/lab-safety-net.sh", "infra/ci/lab-state-reset.sh", "infra/ci/lab-unblock.sh"];
+
+test("the lab id pattern is the same in all nine copies, accepts az700-31-ip-nat-outbound and refuses az701-31-x", () => {
+  const found = {};
+  for (const f of ID_RE_COPIES) {
+    const text = readFileSync(join(repo, f), "utf8");
+    // JS /…/, Python re.compile(r"…") or bash '…', each as LAB_ID_RE.
+    const m = /LAB_ID_RE\s*=\s*(?:\/(.+?)\/;|re\.compile\(r"(.+?)"\)|'(.+?)')/.exec(text);
+    assert.ok(m, `${f} has a LAB_ID_RE`);
+    // bash's ERE spells \d as [0-9].
+    found[f] = (m[1] ?? m[2] ?? m[3]).replace(/\[0-9\]/g, "\\d");
+  }
+  for (const [f, re] of Object.entries(found)) assert.equal(re, "^az(104|305|700)-\\d{2}-[a-z0-9]+(-[a-z0-9]+)*$", f);
+  const re = new RegExp(found["scripts/lib/labs.mjs"]);
+  for (const ok of ["az700-31-ip-nat-outbound", "az700-44-flow-logs-bastion", "az104-06-blob-security", "az305-20-landing-zone"]) assert.ok(re.test(ok), ok);
+  for (const bad of ["az701-31-x", "az70-31-x", "az7000-31-x", "az900-01-x", "az700-3-x"]) assert.ok(!re.test(bad), bad);
+  // The bash copies match the same way (ERE, as the scripts test it).
+  if (BASH) {
+    const r = spawnSync(BASH, ["-c", `re='^az(104|305|700)-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$'; for x in az700-31-ip-nat-outbound az701-31-x; do [[ "$x" =~ $re ]] && echo "$x yes" || echo "$x no"; done`], { encoding: "utf8" });
+    assert.equal(r.stdout.trim().replace(/\r/g, ""), "az700-31-ip-nat-outbound yes\naz701-31-x no");
+  }
+});
+
+test("skill-areas.yaml has five AZ-700 areas with the study guide's names", () => {
+  const { catalogue } = buildCatalogue(join(repo, "labs"));
+  const az700 = catalogue.skillAreas.filter((a) => a.exam === "AZ-700");
+  // Microsoft Learn, AZ-700 study guide, "Skills measured as of July 27, 2026".
+  assert.deepEqual(az700, [
+    { key: "az700.core", exam: "AZ-700", name: "Design and implement core networking infrastructure" },
+    { key: "az700.connectivity", exam: "AZ-700", name: "Design, implement, and manage connectivity services" },
+    { key: "az700.delivery", exam: "AZ-700", name: "Design and implement application delivery services" },
+    { key: "az700.private", exam: "AZ-700", name: "Design and implement private access to Azure services" },
+    { key: "az700.security", exam: "AZ-700", name: "Design and implement Azure network security services" },
+  ]);
+  // An area of an exam that does not exist is refused.
+  const root = makeRoot([good(), lab5()]);
+  try {
+    writeFileSync(join(root, "skill-areas.yaml"), stringify([...SKILLS, { key: "az900.x", exam: "AZ-900", name: "Nothing" }]));
+    assert.ok(buildCatalogue(root).problems.some((x) => x.file === "skill-areas.yaml"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("exam must match the id prefix, AZ-700 for az700-", () => {
+  const skillAreas = [...SKILLS, { key: "az700.core", exam: "AZ-700", name: "Design and implement core networking infrastructure" }];
+  const lab31 = good({ id: "az700-31-ip-nat-outbound", exam: "AZ-700", skill_areas: ["az700.core"], prerequisites: [], identity: { creates: [], roles: [], governance: false } });
+  assert.deepEqual(validateLab(lab31, { folder: lab31.id, skillAreas }).problems, []);
+  assert.equal(validateLab(lab31, { folder: lab31.id, skillAreas }).def.number, 31);
+  for (const exam of ["AZ-104", "AZ-305"]) assert.ok(validateLab({ ...lab31, exam }, { folder: lab31.id, skillAreas }).problems.some((p) => p.field === "exam"), exam);
+  // An AZ-104 id may not say AZ-700, and an unknown exam is refused by the schema.
+  assert.ok(validateLab(good({ exam: "AZ-700" }), { folder: "az104-06-blob-security", skillAreas }).problems.some((p) => p.field === "exam"));
+  assert.ok(validateLab({ ...lab31, exam: "AZ-900" }, { folder: lab31.id, skillAreas }).problems.some((p) => p.field === "exam"));
+  assert.equal(examOfId("az700-31-ip-nat-outbound"), "AZ-700");
+  assert.equal(examOfId("az305-20-landing-zone"), "AZ-305");
+  assert.equal(examOfId("az104-06-blob-security"), "AZ-104");
+  assert.deepEqual([...LAB_EXAMS], ["AZ-104", "AZ-305", "AZ-700"]);
+});
+
+// ── Labs in more than one exam (AZ-700 plan Z0.2, ruling 39) ─────────────
+
+const AREAS3 = [
+  ...SKILLS,
+  { key: "az305.infra", exam: "AZ-305", name: "Design infrastructure solutions" },
+  { key: "az700.core", exam: "AZ-700", name: "Design and implement core networking infrastructure" },
+  { key: "az700.security", exam: "AZ-700", name: "Design and implement Azure network security services" },
+];
+const lab700 = (over = {}) => good({ id: "az700-35-forced-tunnel-fix", exam: "AZ-700", skill_areas: ["az700.core", "az305.infra"], prerequisites: [], identity: { creates: [], roles: [], governance: false }, ...over });
+
+test("a lab may list another exam's skill area when at least one is its own", () => {
+  const tagged = good({ skill_areas: ["az104.storage", "az700.core", "az700.security"] });
+  const v = validateLab(tagged, { folder: tagged.id, skillAreas: AREAS3 });
+  assert.deepEqual(v.problems, []);
+  assert.deepEqual(v.def.exams, ["AZ-104", "AZ-700"]);
+  const own = validateLab(lab700(), { folder: "az700-35-forced-tunnel-fix", skillAreas: AREAS3 });
+  assert.deepEqual(own.problems, []);
+  assert.deepEqual(own.def.exams, ["AZ-700", "AZ-305"]);
+  // An unknown key is still refused, whatever exam it claims.
+  assert.ok(validateLab(good({ skill_areas: ["az104.storage", "az700.cooking"] }), { folder: "az104-06-blob-security", skillAreas: AREAS3 }).problems.some((p) => p.field === "skill_areas"));
+});
+
+test("a lab with no area of its own exam is refused", () => {
+  const p = validateLab(lab700({ skill_areas: ["az305.infra", "az104.networking"] }), { folder: "az700-35-forced-tunnel-fix", skillAreas: AREAS3 }).problems;
+  assert.deepEqual(p.filter((x) => x.field === "skill_areas").map((x) => x.message), ["skill_areas needs at least one AZ-700 area (the lab's own exam)"]);
+  const q = validateLab(good({ skill_areas: ["az700.core"] }), { folder: "az104-06-blob-security", skillAreas: AREAS3 }).problems;
+  assert.deepEqual(q.filter((x) => x.field === "skill_areas").map((x) => x.message), ["skill_areas needs at least one AZ-104 area (the lab's own exam)"]);
+});
+
+test("exams lists the primary first, then the others in exam order", () => {
+  assert.deepEqual(computeExams({ exam: "AZ-700", skill_areas: ["az305.infra", "az700.core", "az104.networking", "az104.storage"] }, AREAS3), ["AZ-700", "AZ-104", "AZ-305"]);
+  assert.deepEqual(computeExams({ exam: "AZ-305", skill_areas: ["az700.security", "az104.storage", "az305.infra"] }, AREAS3), ["AZ-305", "AZ-104", "AZ-700"]);
+  assert.deepEqual(computeExams({ exam: "AZ-104", skill_areas: ["az104.storage"] }, AREAS3), ["AZ-104"]);
+  // The catalogue carries it on every lab, and sorts by primary exam then number.
+  const root = makeRoot([good({ skill_areas: ["az104.storage", "az700.core"] }), lab5(), lab700()]);
+  try {
+    writeFileSync(join(root, "skill-areas.yaml"), stringify(AREAS3));
+    const { catalogue, problems } = buildCatalogue(root);
+    assert.deepEqual(problems, []);
+    assert.deepEqual(catalogue.labs.map((l) => [l.id, l.exams]), [["az104-05-storage", ["AZ-104"]], ["az104-06-blob-security", ["AZ-104", "AZ-700"]], ["az700-35-forced-tunnel-fix", ["AZ-700", "AZ-305"]]]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ── The six labs tagged for AZ-700 (AZ-700 plan Z0.3, ruling 42) ─────────
+
+test("labs 13, 14, 15, 16, 17 and 27 belong to AZ-700 too, with the areas of the AZ-700 spec §3.4", () => {
+  // AZ-700 spec §3.4: the areas each adds, the version that carries them, and the AZ-700 lab its readme points to.
+  const TAGGED = {
+    "az104-13-vnets": { areas: ["az700.core", "az700.security"], version: 2, deeper: [33, 44] },
+    "az104-14-peering-udr": { areas: ["az700.core"], version: 2, deeper: [34, 35] },
+    "az104-15-dns": { areas: ["az700.core"], version: 2, deeper: [32] },
+    "az104-16-lb-appgw": { areas: ["az700.delivery"], version: 3, deeper: [40, 41] },
+    "az104-17-netwatcher-fix": { areas: ["az700.core", "az700.security"], version: 2, deeper: [44] },
+    "az305-27-multi-region": { areas: ["az700.delivery"], version: 3, deeper: [42] },
+  };
+  const { catalogue, problems } = buildCatalogue(join(repo, "labs"));
+  assert.deepEqual(problems, []);
+  for (const [id, t] of Object.entries(TAGGED)) {
+    const def = catalogue.labs.find((l) => l.id === id);
+    assert.ok(def, id);
+    const own = def.skill_areas.filter((k) => !k.startsWith("az700."));
+    assert.ok(own.length > 0, `${id} keeps its own exam's areas`);
+    assert.deepEqual(def.skill_areas.filter((k) => k.startsWith("az700.")), t.areas, `${id}: AZ-700 areas`);
+    assert.deepEqual(def.exams, [def.exam, "AZ-700"], `${id}: exams`);
+    assert.ok(def.version >= t.version, `${id}: version bumped for the tag (at least v${t.version})`);
+    // One paragraph in the introduction names the AZ-700 skills and points to the AZ-700 lab that goes deeper.
+    const intro = readFileSync(join(repo, "labs", id, "readme.md"), "utf8").replace(/\r\n/g, "\n").split(/\n## /)[0];
+    const para = intro.split(/\n\n/).find((p) => /AZ-700/.test(p));
+    assert.ok(para, `${id}: the readme introduction has an AZ-700 paragraph`);
+    assert.match(para, /AZ-700 outline/, `${id}: it names the AZ-700 outline's skills`);
+    for (const n of t.deeper) assert.match(para, new RegExp(`\\blab ${n}\\b`), `${id}: it points to lab ${n}`);
+  }
+  // No other lab before 28 is tagged: the rest of AZ-700 is labs 31 to 44.
+  for (const def of catalogue.labs.filter((l) => l.number < 31 && !(l.id in TAGGED))) assert.deepEqual(def.exams, [def.exam], def.id);
 });
 
 // ── Readmes ──────────────────────────────────────────────────────────────

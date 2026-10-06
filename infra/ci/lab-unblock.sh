@@ -33,6 +33,23 @@
 #   6. SQL: failover groups deleted on the server holding the primary, then
 #      each primary database's geo-replication links (lab 23; after a
 #      failover the primary is in the secondary group)
+#   7. Networks (AZ-700 ruling 49), in this order: 7a Virtual Network
+#      Manager deploy None per type and region, then a wait until nothing is
+#      deployed, committing None again once a Deploying region is committable
+#      (LAB_UNBLOCK_AVNM_WAIT_SECONDS, default 600; a status that
+#      cannot be read is "unverified"); 7b Private Link service connections;
+#      7c VPN connections; 7d each virtual hub's routing intent, connections,
+#      VPN/P2S/ExpressRoute gateways (LAB_UNBLOCK_VWAN_WAIT_SECONDS, default
+#      1800) and firewall; 7e Route Server BGP peers; 7f firewalls, then
+#      firewall policies child first; 7g DNS resolver ruleset links,
+#      rulesets and outbound endpoints; 7h global load balancers, then
+#      Gateway Load Balancer chains. az rest for the types whose CLI is an
+#      extension (nothing is installed); each az rest delete is read back
+#      until gone (LAB_UNBLOCK_NET_WAIT_SECONDS, default 600)
+#
+# Every wait above is also capped at the time left before LAB_JOB_DEADLINE less
+# the reserve the later steps need (or LAB_UNBLOCK_UNTIL, when sooner), so
+# serial waits never run the job out of time (AZ-700 review fix 2).
 #
 # Never fails the run: every refusal is a ::warning:: and the destroy, the
 # safety net and the clean check still run after it. Idempotent: a second run
@@ -44,7 +61,7 @@
 set -uo pipefail
 
 LAB_ID="${1:-}"
-LAB_ID_RE='^az(104|305)-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$'
+LAB_ID_RE='^az(104|305|700)-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$'
 if ! [[ "$LAB_ID" =~ $LAB_ID_RE ]] || [ "${#LAB_ID}" -gt 40 ]; then
   echo "::error::lab-unblock: refusing lab id '${LAB_ID}'"
   exit 2
@@ -58,6 +75,31 @@ owns_rg() {
   local n="${1,,}"
   [[ "$n" == "$RG" || "$n" == "$RG"-* ]]
 }
+# The waits below run one after another, so each is capped at the time left before UNTIL: LAB_JOB_DEADLINE (Parse
+# payload: the job's start plus its timeout) less the reserve the steps after this one need (the destroy, the safety
+# net, Verify clean, Back up state, the report: 420 s, the safety net's own reserve, plus 60 s per minute of
+# LAB_DESTROY_MIN, default 10), or LAB_UNBLOCK_UNTIL (an epoch second; the safety net's retry passes it) when that is
+# sooner. With neither (a run by hand), each wait's own setting alone bounds it.
+UNTIL=""
+if [[ "${LAB_JOB_DEADLINE:-}" =~ ^[0-9]+$ ]]; then
+  destroy_min=10
+  [[ "${LAB_DESTROY_MIN:-}" =~ ^[0-9]+$ ]] && destroy_min="$LAB_DESTROY_MIN"
+  UNTIL=$((LAB_JOB_DEADLINE - 420 - 60 * destroy_min))
+fi
+if [[ "${LAB_UNBLOCK_UNTIL:-}" =~ ^[0-9]+$ ]] && { [ -z "$UNTIL" ] || [ "$LAB_UNBLOCK_UNTIL" -lt "$UNTIL" ]; }; then UNTIL="$LAB_UNBLOCK_UNTIL"; fi
+# capped <seconds>: the wait, no longer than the time left before UNTIL (never below 0).
+capped() {
+  local w="$1" left
+  [ -n "$UNTIL" ] || { echo "$w"; return; }
+  left=$((UNTIL - $(date +%s)))
+  [ "$left" -lt 0 ] && left=0
+  [ "$left" -lt "$w" ] && w="$left"
+  echo "$w"
+}
+# waited_note <capped seconds> <setting>: " (the job's deadline)" when the deadline, not the setting, set the wait.
+waited_note() { [ "$1" -lt "$2" ] && echo " (the job's deadline)"; }
+# past_until: true once UNTIL has passed (a wait's polls take real time too).
+past_until() { [ -n "$UNTIL" ] && [ "$(date +%s)" -ge "$UNTIL" ]; }
 az_login() {
   [ -n "${ARM_CLIENT_ID:-}" ] || return 0
   AZURE_CONFIG_DIR="$(mktemp -d)"
@@ -240,7 +282,8 @@ for g in "${groups[@]}"; do
     # Wait (bounded) until the vault lists no items. A list that fails says nothing
     # about the items: it is never "none left", and if the last try fails too the
     # vault is unverified (a warning; the run still goes on).
-    tries=$(((VAULT_WAIT + 14) / 15))
+    vault_wait="$(capped "$VAULT_WAIT")"
+    tries=$(((vault_wait + 14) / 15))
     for ((n = 0; ; n++)); do
       if left="$(azq backup item list --vault-name "$v" --resource-group "$g" --query "[].id" -o tsv)"; then
         listed=true
@@ -252,9 +295,9 @@ for g in "${groups[@]}"; do
         listed=false
         warn "$v: could not list backup items, so whether any are left is not known"
       fi
-      if [ "$n" -ge "$tries" ]; then
+      if [ "$n" -ge "$tries" ] || past_until; then
         if [ "$listed" = true ]; then
-          warn "$v: $(grep -c . <<<"$left") backup item(s) still listed after $VAULT_WAIT s; the destroy goes ahead and the safety net tries again"
+          warn "$v: $(grep -c . <<<"$left") backup item(s) still listed after $vault_wait s$(waited_note "$vault_wait" "$VAULT_WAIT"); the destroy goes ahead and the safety net tries again"
         else
           UNVERIFIED+=("$v backup items")
         fi
@@ -299,7 +342,9 @@ asr_being_removed() {
 # is None, empty or MarkedForDeletion. A read that fails is not "finished"; a wait that runs out
 # is a warning (remove is still sent, and the vault wait sends it again).
 asr_cleanup_wait() {
-  local tries=$(((ASR_CLEANUP_WAIT + 14) / 15)) n state
+  local wait n state tries
+  wait="$(capped "$ASR_CLEANUP_WAIT")"
+  tries=$(((wait + 14) / 15))
   for ((n = 0; ; n++)); do
     if state="$(azq rest --method get --url "${2}?$ASR_API" --query properties.testFailoverState -o tsv)"; then
       case "${state:-None}" in
@@ -309,8 +354,8 @@ asr_cleanup_wait() {
           ;;
       esac
     fi
-    if [ "$n" -ge "$tries" ]; then
-      warn "$1: the test failover cleanup of ${2##*/} had not finished after $ASR_CLEANUP_WAIT s; replication removal is tried anyway"
+    if [ "$n" -ge "$tries" ] || past_until; then
+      warn "$1: the test failover cleanup of ${2##*/} had not finished after $wait s$(waited_note "$wait" "$ASR_CLEANUP_WAIT"); replication removal is tried anyway"
       return 0
     fi
     sleep 15
@@ -344,7 +389,8 @@ for g in "${groups[@]}"; do
     # item) for an item still listed that is not already being removed: a remove posted
     # while a cleanup still ran is refused, and nothing else would send it again.
     declare -A resent=()
-    tries=$(((ASR_WAIT + 14) / 15))
+    asr_wait="$(capped "$ASR_WAIT")"
+    tries=$(((asr_wait + 14) / 15))
     for ((n = 0; ; n++)); do
       if left="$(asr_list "$g" "$v" replicationProtectedItems "value[].[id, properties.currentScenario.scenarioName, properties.protectionState]")"; then
         listed=true
@@ -365,9 +411,9 @@ for g in "${groups[@]}"; do
         listed=false
         warn "$v: could not list replicated items, so whether any are left is not known"
       fi
-      if [ "$n" -ge "$tries" ]; then
+      if [ "$n" -ge "$tries" ] || past_until; then
         if [ "$listed" = true ]; then
-          warn "$v: $(grep -c . <<<"$left") replicated item(s) still listed after $ASR_WAIT s; the destroy goes ahead and the safety net tries again"
+          warn "$v: $(grep -c . <<<"$left") replicated item(s) still listed after $asr_wait s$(waited_note "$asr_wait" "$ASR_WAIT"); the destroy goes ahead and the safety net tries again"
         else
           UNVERIFIED+=("$v replicated items")
         fi
@@ -428,6 +474,258 @@ for pair in "${sql_pairs[@]}"; do
       else warn "$db: could not remove the geo-replication link to $partner"; fi
     done < <(azq sql db replica list-links --resource-group "$g" --server "$s" --name "$db" --query "[].[partnerServer, role]" -o tsv || warn "$db: could not list its replication links")
   done < <(azq sql db list --resource-group "$g" --server "$s" --query "[?name!='master'].name" -o tsv || warn "$s: could not list databases")
+done
+
+# 7. Networks (AZ-700 spec §5, ruling 49): what stops a network's group delete, in this order. Microsoft.Network types
+# that need a CLI extension (AVNM, Virtual WAN, Azure Firewall, DNS Private Resolver) are read and deleted with az rest,
+# so nothing is installed on the runner. Each az rest delete is read back (every 15 s) until Azure says it is gone,
+# bounded; a refusal is a warning and a wait that runs out says what is still there. Never fails the run.
+NET_API="api-version=2024-05-01"
+DNS_API="api-version=2022-07-01"
+num_or() { [[ "${1:-}" =~ ^[0-9]+$ ]] && echo "$1" || echo "$2"; }
+AVNM_WAIT="$(num_or "${LAB_UNBLOCK_AVNM_WAIT_SECONDS:-}" 600)"
+AVNM_COMMITS=4 # deploy None sent at most this many times per network manager and type
+VWAN_WAIT="$(num_or "${LAB_UNBLOCK_VWAN_WAIT_SECONDS:-}" 1800)"
+NET_WAIT="$(num_or "${LAB_UNBLOCK_NET_WAIT_SECONDS:-}" 600)"
+# net_ids <group> <Microsoft.Network type> [query] [api]: a group's resources of a type, by az rest.
+net_ids() { azq rest --method get --url "/subscriptions/{subscriptionId}/resourceGroups/$1/providers/Microsoft.Network/$2?${4:-$NET_API}" --query "${3:-value[].id}" -o tsv; }
+# gone_wait <id> <api> <seconds>: read the resource back every 15 s until Azure says it is not found. A read that
+# fails for any other reason is not "gone"; at the end, what is still there is a warning.
+gone_wait() {
+  local id="$1" api="$2" wait n err rc tries
+  wait="$(capped "$3")"
+  tries=$(((wait + 14) / 15))
+  err="$(mktemp)"
+  for ((n = 0; ; n++)); do
+    az rest --method get --url "${id}?${api}" --query id -o tsv >/dev/null 2>"$err"
+    rc=$?
+    if [ "$rc" -ne 0 ] && grep -qiE "NotFound|Not Found|\(404\)" "$err"; then
+      rm -f "$err"
+      return 0
+    fi
+    if [ "$n" -ge "$tries" ] || past_until; then
+      rm -f "$err"
+      warn "${id##*/} is still there after $wait s$(waited_note "$wait" "$3"); the destroy goes ahead and the safety net tries again"
+      return 1
+    fi
+    sleep 15
+  done
+}
+# net_delete <what> <id> <api> <wait seconds>: delete by az rest, then wait until it is gone.
+net_delete() {
+  if az rest --method delete --url "${2}?${3}" -o none; then
+    gone_wait "$2" "$3" "$4" && echo "unblock: $1 deleted"
+  else warn "could not delete $1"; fi
+}
+
+# 7a. Virtual Network Manager: deploy None (an empty commit) for each type and region that has configurations
+# deployed, then wait until nothing is deployed or deploying (LAB_UNBLOCK_AVNM_WAIT_SECONDS, default 600). A
+# deployed configuration blocks its own deletion and leaves AVNM-made peerings behind (Learn, AVNM FAQ).
+AVNM_REGIONS=()
+for x in "${LAB_REGION:-${TF_VAR_region:-}}" "${LAB_SECONDARY_REGION:-${TF_VAR_secondary_region:-}}"; do
+  [ -n "$x" ] && [[ " ${AVNM_REGIONS[*]} " != *" $x "* ]] && AVNM_REGIONS+=("$x")
+done
+json_list() {
+  local s="" x
+  for x in "$@"; do s+="${s:+,}\"$x\""; done
+  printf '[%s]' "$s"
+}
+for g in "${groups[@]}"; do
+  while IFS=$'\t' read -r nm loc; do
+    [ -z "$nm" ] && continue
+    name="${nm##*/}"
+    regions=("${AVNM_REGIONS[@]}")
+    [ -n "${loc:-}" ] && [[ " ${regions[*]} " != *" $loc "* ]] && regions+=("$loc")
+    regions_json="$(json_list "${regions[@]}")"
+    # read_status: each type's deployment status, asked for on its own (review fix 15): a type the api-version or
+    # the region refuses (Routing, the newest) must not hide the others. Fills status (region, type, status,
+    # count) with whatever was read; returns 1 when Connectivity or SecurityAdmin could not be read. A Routing
+    # read that fails is a warning, once per manager (lab 33 deploys none; one made by hand is the safety net's).
+    # configurationIds is null for a type never deployed in a region: counted as none (length(null) fails the query).
+    routing_warned=false
+    read_status() {
+      local type out ok=0
+      status=""
+      for type in Connectivity SecurityAdmin Routing; do
+        if out="$(azq rest --method post --url "$nm/listDeploymentStatus?$NET_API" --body "{\"regions\":$regions_json,\"deploymentTypes\":[\"$type\"]}" --query "value[].[region, deploymentType, deploymentStatus, length(configurationIds || \`[]\`)]" -o tsv)"; then
+          out="$(awk -F'\t' -v t="$type" '$2 == t' <<<"$out")"
+          [ -n "$out" ] && status+="${status:+$'\n'}$out"
+        elif [ "$type" = Routing ]; then
+          [ "$routing_warned" = true ] || warn "$name: could not read its Routing deployments ($NET_API may not take the type there); Connectivity and SecurityAdmin go ahead"
+          routing_warned=true
+        else
+          ok=1
+        fi
+      done
+      return "$ok"
+    }
+    # commit_none: deploy None (an empty commit) for each type, in the regions where it still has configurations
+    # deployed and is not Deploying: Azure refuses a commit while a deployment runs, so a region that is Deploying
+    # waits for the next read. Sent again from the wait (a refused or lost commit), at most AVNM_COMMITS times a type.
+    declare -A commits_of=()
+    commit_none() {
+      local type targets region dtype dstatus count
+      for type in Connectivity SecurityAdmin Routing; do
+        targets=()
+        while IFS=$'\t' read -r region dtype dstatus count; do
+          [ "$dtype" = "$type" ] || continue
+          if [ "${count:-0}" != 0 ] && [ "$dstatus" != Deploying ]; then
+            [[ " ${targets[*]} " != *" $region "* ]] && targets+=("$region")
+          fi
+        done <<<"$status"
+        [ "${#targets[@]}" -eq 0 ] && continue
+        [ "${commits_of[$type]:-0}" -lt "$AVNM_COMMITS" ] || continue
+        commits_of["$type"]=$((${commits_of[$type]:-0} + 1))
+        if az rest --method post --url "$nm/commit?$NET_API" --body "{\"targetLocations\":$(json_list "${targets[@]}"),\"configurationIds\":[],\"commitType\":\"$type\"}" -o none; then
+          echo "unblock: $name: deployed None for $type in ${targets[*]}"
+        else warn "$name: could not deploy None for $type in ${targets[*]} (sent again once nothing is Deploying)"; fi
+      done
+    }
+    if ! read_status; then
+      if [ -z "$status" ]; then
+        warn "$name: could not read what it has deployed"
+        UNVERIFIED+=("$name deployments")
+        continue
+      fi
+      warn "$name: could not read every type it has deployed; None goes to what could be read"
+    fi
+    commit_none
+    avnm_wait="$(capped "$AVNM_WAIT")"
+    tries=$(((avnm_wait + 14) / 15))
+    for ((n = 0; ; n++)); do
+      if read_status; then
+        listed=true
+        busy="$(awk -F'\t' '$3 == "Deploying" || ($4 != "" && $4 != "0")' <<<"$status")"
+        if [ -z "$busy" ]; then
+          echo "unblock: $name: nothing deployed any more"
+          break
+        fi
+      else
+        listed=false
+        warn "$name: could not read what it has deployed, so whether anything is left is not known"
+      fi
+      # Committable again (a deployment that was Deploying has finished, or a commit was refused): None again.
+      commit_none
+      if [ "$n" -ge "$tries" ] || past_until; then
+        if [ "$listed" = true ]; then warn "$name: configurations still deployed after $avnm_wait s$(waited_note "$avnm_wait" "$AVNM_WAIT"); the destroy goes ahead and the safety net tries again"; else UNVERIFIED+=("$name deployments"); fi
+        break
+      fi
+      sleep 15
+    done
+  done < <(net_ids "$g" networkManagers "value[].[id, location]" || warn "$g: could not list network managers")
+done
+
+# 7b. Private Link services: a service with private endpoint connections refuses deletion (Front Door's managed one in
+# lab 42, a consumer's in lab 43). Each connection is deleted, waited for by the CLI.
+for g in "${groups[@]}"; do
+  while IFS= read -r c; do
+    [ -z "$c" ] && continue
+    svc="${c%/privateEndpointConnections/*}"
+    if az network private-link-service connection delete --ids "$c" -o none; then
+      echo "unblock: ${svc##*/}: private endpoint connection ${c##*/} deleted"
+    else warn "${svc##*/}: could not delete private endpoint connection ${c##*/}"; fi
+  done < <(azq network private-link-service list --resource-group "$g" --query "[].privateEndpointConnections[].id" -o tsv || warn "$g: could not list Private Link services")
+done
+
+# 7c. VPN connections, each waited for by the CLI, before any gateway (the destroy and the group delete take the
+# gateways and local network gateways, free once their connections are gone).
+for g in "${groups[@]}"; do
+  while IFS= read -r c; do
+    [ -z "$c" ] && continue
+    if az network vpn-connection delete --ids "$c" -o none; then echo "unblock: VPN connection ${c##*/} deleted"; else warn "could not delete VPN connection ${c##*/}"; fi
+  done < <(azq network vpn-connection list --resource-group "$g" --query "[].id" -o tsv || warn "$g: could not list VPN connections")
+done
+
+# 7d. Virtual WAN, per hub (a Route Server is a virtualHubs resource too, of kind RouteServer: 7e): routing intent,
+# then hub virtual network connections, then any VPN, point-to-site or ExpressRoute gateway in the hub (20-30 minute
+# deletes, waited for up to LAB_UNBLOCK_VWAN_WAIT_SECONDS, default 1800), then the hub's firewall. The hub and the
+# WAN go with the group.
+for g in "${groups[@]}"; do
+  while IFS= read -r hub; do
+    [ -z "$hub" ] && continue
+    hname="${hub##*/}"
+    while IFS= read -r ri; do
+      [ -n "$ri" ] && net_delete "$hname: routing intent ${ri##*/}" "$ri" "$NET_API" "$NET_WAIT"
+    done < <(azq rest --method get --url "$hub/routingIntent?$NET_API" --query "value[].id" -o tsv || warn "$hname: could not list its routing intent")
+    while IFS= read -r hc; do
+      [ -n "$hc" ] && net_delete "$hname: hub connection ${hc##*/}" "$hc" "$NET_API" "$NET_WAIT"
+    done < <(azq rest --method get --url "$hub/hubVirtualNetworkConnections?$NET_API" --query "value[].id" -o tsv || warn "$hname: could not list its virtual network connections")
+    for type in vpnGateways p2sVpnGateways expressRouteGateways azureFirewalls; do
+      wait_s="$VWAN_WAIT"
+      [ "$type" = azureFirewalls ] && wait_s="$NET_WAIT"
+      while IFS=$'\t' read -r id on; do
+        [ -n "$id" ] && [ "${on,,}" = "${hub,,}" ] && net_delete "$hname: ${type%s} ${id##*/}" "$id" "$NET_API" "$wait_s"
+      done < <(net_ids "$g" "$type" "value[].[id, properties.virtualHub.id]" || warn "$g: could not list $type")
+    done
+  done < <(net_ids "$g" virtualHubs "value[?kind!='RouteServer'].id" || warn "$g: could not list virtual hubs")
+done
+
+# 7e. Route Server: every BGP peer connection.
+for g in "${groups[@]}"; do
+  while IFS= read -r rs; do
+    [ -z "$rs" ] && continue
+    while IFS= read -r p; do
+      [ -z "$p" ] && continue
+      if az network routeserver peering delete --ids "$p" --yes -o none; then echo "unblock: $rs: BGP peer ${p##*/} deleted"; else warn "$rs: could not delete BGP peer ${p##*/}"; fi
+    done < <(azq network routeserver peering list --resource-group "$g" --routeserver "$rs" --query "[].id" -o tsv || warn "$rs: could not list its BGP peers")
+  done < <(azq network routeserver list --resource-group "$g" --query "[].name" -o tsv || warn "$g: could not list Route Servers")
+done
+
+# 7f. Azure Firewall: firewalls (in a VNet, or a hub's left over), then firewall policies child first (a base policy
+# cannot be deleted while a child inherits from it).
+for g in "${groups[@]}"; do
+  while IFS=$'\t' read -r fw on; do
+    [ -n "$fw" ] && net_delete "firewall ${fw##*/}" "$fw" "$NET_API" "$NET_WAIT"
+  done < <(net_ids "$g" azureFirewalls "value[].[id, properties.virtualHub.id]" || warn "$g: could not list firewalls")
+  declare -A base_of=()
+  pols=()
+  while IFS=$'\t' read -r p b; do
+    [ -z "$p" ] && continue
+    pols+=("$p")
+    base_of["${p,,}"]="${b,,}"
+  done < <(net_ids "$g" firewallPolicies "value[].[id, properties.basePolicy.id]" || warn "$g: could not list firewall policies")
+  # Repeatedly delete every policy no remaining policy inherits from (bounded by the number of policies).
+  for ((round = 0; ${#pols[@]} > 0 && round <= ${#pols[@]} + 1; round++)); do
+    left=()
+    for p in "${pols[@]}"; do
+      parent=false
+      for q in "${pols[@]}"; do [ "${base_of[${q,,}]:-}" = "${p,,}" ] && parent=true; done
+      if [ "$parent" = true ]; then left+=("$p"); else net_delete "firewall policy ${p##*/}" "$p" "$NET_API" "$NET_WAIT"; fi
+    done
+    pols=("${left[@]}")
+  done
+  unset base_of
+done
+
+# 7g. DNS Private Resolver: forwarding ruleset virtual network links, then the rulesets, then outbound endpoints (a
+# ruleset holds its outbound endpoint, and a resolver its endpoints).
+for g in "${groups[@]}"; do
+  while IFS= read -r rs; do
+    [ -z "$rs" ] && continue
+    while IFS= read -r l; do
+      [ -n "$l" ] && net_delete "${rs##*/}: virtual network link ${l##*/}" "$l" "$DNS_API" "$NET_WAIT"
+    done < <(azq rest --method get --url "$rs/virtualNetworkLinks?$DNS_API" --query "value[].id" -o tsv || warn "${rs##*/}: could not list its virtual network links")
+    net_delete "DNS forwarding ruleset ${rs##*/}" "$rs" "$DNS_API" "$NET_WAIT"
+  done < <(net_ids "$g" dnsForwardingRulesets "value[].id" "$DNS_API" || warn "$g: could not list DNS forwarding rulesets")
+  while IFS= read -r r; do
+    [ -z "$r" ] && continue
+    while IFS= read -r e; do
+      [ -n "$e" ] && net_delete "${r##*/}: outbound endpoint ${e##*/}" "$e" "$DNS_API" "$NET_WAIT"
+    done < <(azq rest --method get --url "$r/outboundEndpoints?$DNS_API" --query "value[].id" -o tsv || warn "${r##*/}: could not list its outbound endpoints")
+  done < <(net_ids "$g" dnsResolvers "value[].id" "$DNS_API" || warn "$g: could not list DNS resolvers")
+done
+
+# 7h. Load balancers: global-tier ones first (their backends are regional frontends, other groups' too), then any
+# frontend's chain to a Gateway Load Balancer is cleared.
+for g in "${groups[@]}"; do
+  while IFS= read -r lb; do
+    [ -z "$lb" ] && continue
+    if az network lb delete --ids "$lb" -o none; then echo "unblock: global load balancer ${lb##*/} deleted"; else warn "could not delete global load balancer ${lb##*/}"; fi
+  done < <(azq network lb list --resource-group "$g" --query "[?sku.tier=='Global'].id" -o tsv || warn "$g: could not list load balancers")
+  while IFS= read -r fe; do
+    [ -z "$fe" ] && continue
+    if az network lb frontend-ip update --ids "$fe" --remove gatewayLoadBalancer -o none; then echo "unblock: ${fe##*/}: Gateway Load Balancer chain cleared"; else warn "${fe##*/}: could not clear its Gateway Load Balancer chain"; fi
+  done < <(azq network lb list --resource-group "$g" --query "[].frontendIPConfigurations[?gatewayLoadBalancer.id].id | []" -o tsv || warn "$g: could not list load balancer frontends")
 done
 
 if [ "${#UNVERIFIED[@]}" -gt 0 ]; then

@@ -11,14 +11,16 @@
 # £0.0018/h). Intra-region peering is billed per GB each way (pennies per
 # GB; this lab moves a few MB), so it stays authored. VNets, route tables
 # and NICs are free.
+# Version 2 (AZ-700 plan Z0.3, ruling 42): also an AZ-700 lab, az700.core (AZ-700
+# outline "Skills measured as of July 27, 2026"); the readme says which skills. Nothing in terraform/ changed.
 id: az104-14-peering-udr
-version: 1
+version: 2
 title: "VNet peering and user-defined routes"
 summary: >-
   A hub and two spoke VNets, each spoke peered with the hub, and a small router VM in the hub that user-defined
   routes send spoke-to-spoke traffic through, so you can see why peering is not transitive and how a UDR fixes it.
 exam: AZ-104
-skill_areas: [az104.networking]
+skill_areas: [az104.networking, az700.core]
 level: associate
 type: explore
 prerequisites: [az104-13-vnets]

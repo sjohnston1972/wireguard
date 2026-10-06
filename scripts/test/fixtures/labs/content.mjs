@@ -43,9 +43,10 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCatalogue, GOVERNANCE_LABS, parseLabYaml, variablesProblems } from "../../../lib/labs.mjs";
+import { buildCatalogue, cidrOverlaps, FLOW_LOG_LABS, GOVERNANCE_LABS, parseLabYaml, variablesProblems } from "../../../lib/labs.mjs";
 import { lintDir } from "../../../../infra/ci/lab-lint.mjs";
 import { costMarker, estimateGbpH } from "./estimate.mjs";
+import { LAB_PLANS } from "./plans/labs.mjs";
 
 const LABS = fileURLToPath(new URL("../../../../labs/", import.meta.url));
 /** { "<type>": { rg, tags } } from the provider schemas (plans/extract-computed.mjs writes it). */
@@ -211,16 +212,89 @@ export function roleAssignments(l) {
   });
 }
 
+const ipToInt = (ip) => ip.split(".").reduce((n, x) => n * 256 + Number(x), 0);
+/** A CIDR's first and last address as numbers, or null when it is not an IPv4 CIDR. */
+function cidrSpan(cidr) {
+  const m = /^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})$/.exec(String(cidr));
+  if (!m || Number(m[2]) > 32) return null;
+  const size = 2 ** (32 - Number(m[2]));
+  const start = Math.floor(ipToInt(m[1]) / size) * size;
+  return [start, start + size - 1];
+}
+
+/**
+ * The address ranges a lab's plan fixture gives itself (AZ-700 plan Z0.4, ruling 46): every VNet's
+ * address_space, every virtual hub's address_prefix and every VPN gateway's point-to-site client pool
+ * (vpn_client_configuration.address_space). Each must be inside the session's slot
+ * (variables.address_space) and none may overlap another. A range the plan does not know is a problem
+ * too: cidrsubnet() of the slot is known at plan, so the fixture gives it. Returns problem sentences.
+ * `d`: a plan description ({ variables, resources }, plans/labs.mjs).
+ */
+export function addressProblems(d) {
+  if (!d) return ["no plan fixture for this lab (scripts/test/fixtures/labs/plans/labs/<id>.mjs)"];
+  const slot = d.variables?.address_space;
+  const slotSpan = cidrSpan(slot);
+  if (!slotSpan) return [`the plan fixture's address_space variable (the session's slot) is not a CIDR: ${JSON.stringify(slot)}`];
+  const out = [];
+  const ranges = [];
+  const add = (what, cidr) => {
+    const span = cidrSpan(cidr);
+    if (!span) out.push(`${what} ${JSON.stringify(cidr)} is not an IPv4 CIDR the plan knows`);
+    else if (span[0] < slotSpan[0] || span[1] > slotSpan[1]) out.push(`${what} ${cidr} is outside the slot ${slot}`);
+    else ranges.push({ what, cidr });
+  };
+  const unknown = (r, attr) => (r.unknown ?? []).some((p) => p === attr || p.startsWith(`${attr}.`));
+  for (const r of d.resources ?? []) {
+    const type = r.address.split(".")[0];
+    const v = r.values ?? {};
+    if (type === "azurerm_virtual_network") {
+      if (!Array.isArray(v.address_space) || !v.address_space.length || unknown(r, "address_space")) out.push(`${r.address}: address_space must be known at plan (cidrsubnet of var.address_space)`);
+      else for (const c of v.address_space) add(`${r.address} address space`, c);
+    }
+    if (type === "azurerm_virtual_hub") {
+      if (typeof v.address_prefix !== "string" || unknown(r, "address_prefix")) out.push(`${r.address}: address_prefix must be known at plan (cidrsubnet of var.address_space)`);
+      else add(`${r.address} hub prefix`, v.address_prefix);
+    }
+    if (type === "azurerm_virtual_network_gateway") {
+      (v.vpn_client_configuration ?? []).forEach((p, i) => {
+        if (!Array.isArray(p?.address_space) || unknown(r, `vpn_client_configuration.${i}.address_space`)) out.push(`${r.address}: vpn_client_configuration's address_space must be known at plan`);
+        else for (const c of p.address_space) add(`${r.address} client pool`, c);
+      });
+    }
+  }
+  for (let i = 0; i < ranges.length; i++) for (let j = i + 1; j < ranges.length; j++) if (cidrOverlaps(ranges[i].cidr, ranges[j].cidr)) out.push(`${ranges[i].what} ${ranges[i].cidr} overlaps ${ranges[j].what} ${ranges[j].cidr}`);
+  return out;
+}
+
+/**
+ * Who may own a public IP (labs spec §17 rulings 5 and 50): the services that must have one. A public
+ * IP belongs to one of these, never to a VM (whose NIC may not name one at all).
+ */
+const PUBLIC_IP_OWNERS = [
+  "azurerm_application_gateway",
+  "azurerm_virtual_network_gateway",
+  "azurerm_route_server",
+  "azurerm_firewall",
+  "azurerm_bastion_host",
+  // A public load balancer's frontend (lab 40's static page, lab 31's outbound-only frontend).
+  "azurerm_lb",
+  // A NAT gateway's outbound address.
+  "azurerm_nat_gateway_public_ip_association",
+];
+
 /**
  * The checks every batch 2 and 3 lab shares, as [{ name, skip?, fn }] (names
  * as in the batch 2 plan's "B0 names as built" and the batch 3 plan's C0
  * names). `marker`: "£", "££" or "£££" (£££ from £0.50/h or a deploy of 30
  * minutes or more). `secondary`: the lab has rg-lab-<id>-secondary
  * in the secondary region. `identity`: "none" (no role assignments) or "match"
- * (lab.yaml identity lists them). `labsDir` and `load` are for the suite's own
- * tests (fixture labs, or a lab changed in memory).
+ * (lab.yaml identity lists them). `addresses` (default true, AZ-700 plan
+ * Z0.4): test 6, the plan fixture's VNets, hub prefixes and client pools are
+ * inside the slot and do not overlap. `labsDir`, `load` and `plan` (the plan
+ * description, plans/labs.mjs) are for the suite's own tests (fixture labs,
+ * or a lab changed in memory).
  */
-export function contentChecks(id, { marker, secondary = false, identity = "none", labsDir = LABS, load = () => lab(id, labsDir) } = {}) {
+export function contentChecks(id, { marker, secondary = false, identity = "none", addresses = true, labsDir = LABS, load = () => lab(id, labsDir), plan = () => LAB_PLANS[id] } = {}) {
   assert.ok(marker === "£" || marker === "££" || marker === "£££", `labContentSuite(${id}): marker is "£", "££" or "£££"`);
   assert.ok(identity === "none" || identity === "match", `labContentSuite(${id}): identity is "none" or "match"`);
   const groups = secondary ? ["lab", "secondary"] : ["lab"];
@@ -277,7 +351,10 @@ export function contentChecks(id, { marker, secondary = false, identity = "none"
       const facts = SCHEMA_FACTS[r.labels[0]];
       assert.ok(facts, `${r.labels[0]} is not in plans/schema-facts.json: the integrator adds it to extract-computed.mjs and regenerates`);
       const rgName = attr(r.body, "resource_group_name");
-      if (facts.rg || rgName !== undefined) assert.ok(rgNames.includes(rgName), `${at} is inside ${where} (resource_group_name = ${rgName})`);
+      // Scope exception S2 (ruling 48, approved by Steven 2026-10-05): lab 44's flow log is a child of the region's
+      // Network Watcher, which lives in Azure's NetworkWatcherRG. That one type, in that one lab, only.
+      const flowLog = r.labels[0] === "azurerm_network_watcher_flow_log" && FLOW_LOG_LABS.includes(id) && rgName === '"NetworkWatcherRG"';
+      if ((facts.rg || rgName !== undefined) && !flowLog) assert.ok(rgNames.includes(rgName), `${at} is inside ${where} (resource_group_name = ${rgName})`);
       const rgId = attr(r.body, "resource_group_id");
       if (rgId !== undefined) assert.ok(rgIds.includes(rgId), `${at} is inside ${where} (resource_group_id = ${rgId})`);
       if (facts.tags) assert.equal(attr(r.body, "tags"), "var.tags", `${at} carries var.tags`);
@@ -319,9 +396,10 @@ export function contentChecks(id, { marker, secondary = false, identity = "none"
     const l = load();
     for (const nic of resources(l, "azurerm_network_interface")) assert.doesNotMatch(nic.body, /public_ip_address_id/, `${nic.labels[1]}: no public IP on a VM's NIC`);
     for (const v of vms(l)) assert.doesNotMatch(v.r.body, /public_ip_address\s*\{/, `${v.address}: no public IP on scale set instances`);
-    // A public IP only where Azure insists on one: an Application Gateway's frontend.
-    const gateways = resources(l, "azurerm_application_gateway").map((g) => g.body).join("\n");
-    for (const ip of resources(l, "azurerm_public_ip")) assert.ok(gateways.includes(`azurerm_public_ip.${ip.labels[1]}.id`), `azurerm_public_ip.${ip.labels[1]} belongs to an Application Gateway`);
+    // A public IP only where Azure insists on one (rulings 5 and 50): an Application Gateway, a VPN gateway,
+    // a Route Server, a firewall, Bastion, a public load balancer's frontend or a NAT gateway.
+    const owners = resources(l).filter((r) => PUBLIC_IP_OWNERS.includes(r.labels[0])).map((g) => g.body).join("\n");
+    for (const ip of resources(l, "azurerm_public_ip")) assert.ok(new RegExp(`\\bazurerm_public_ip\\.${ip.labels[1]}\\.id\\b`).test(owners), `azurerm_public_ip.${ip.labels[1]} belongs to one of ${PUBLIC_IP_OWNERS.join(", ")} (rulings 5 and 50), never a VM`);
     // Sizes: each priced by a retail.sku item in the session's region, qty = the default count.
     const bySize = {};
     for (const v of vms(l)) bySize[v.size] = (bySize[v.size] ?? 0) + v.count;
@@ -339,6 +417,13 @@ export function contentChecks(id, { marker, secondary = false, identity = "none"
     }
     assert.equal(pricedQty(l, (i) => i.retail?.meter === "E1 LRS Disk"), disks.reduce((n, d) => n + countOf(d), 0), "one E1 LRS Disk per data disk");
   });
+
+  // Test 6 (AZ-700 plan Z0.4, ruling 46): from the plan fixture, at its slot (slot 31 for AZ-700 labs).
+  if (addresses) {
+    check("every VNet, hub prefix and client pool is inside the slot and none overlap", () => {
+      assert.deepEqual(addressProblems(plan()), []);
+    });
+  }
 
   check("costs what its marker says", () => {
     const y = load().yaml;

@@ -7,7 +7,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderApp } from "@/test/render";
 import { labCoverageFixture } from "@/test/fixtures";
-import { card, labs } from "./testData";
+import { card, catalogue as catalogueCards, detailIdle, labs } from "./testData";
+import { readFilters } from "./model";
 
 vi.setConfig({ testTimeout: 20_000 });
 beforeAll(async () => {
@@ -134,5 +135,70 @@ describe("the catalogue", () => {
     expect(desktop).toMatch(/\.labs\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0/);
     expect(desktop).toMatch(/\.labs-catalogue__scroll\s*\{[^}]*overflow:\s*auto/);
     expect(desktop).toMatch(/\.labs-filters__scroll\s*\{[^}]*overflow:\s*auto/);
+  });
+});
+
+// AZ-700 plan Z0.2 (ruling 39): a lab may belong to more than one exam.
+describe("labs in more than one exam", () => {
+  /** The five test labs plus lab 14 (AZ-104, tagged AZ-700) and lab 31 (AZ-700). */
+  const multi = () =>
+    labs({
+      labs: [
+        ...catalogueCards(),
+        card({ id: "az104-14-peering-udr", number: 14, title: "VNet peering and UDRs", exam: "AZ-104", exams: ["AZ-104", "AZ-700"], skillAreas: ["az104.networking", "az700.core"], prerequisites: [], released: true }),
+        card({ id: "az700-31-ip-nat-outbound", number: 31, title: "Public IP prefixes, NAT Gateway and outbound rules", exam: "AZ-700", exams: ["AZ-700"], skillAreas: ["az700.core"], prerequisites: [], released: true }),
+      ],
+    });
+
+  it('with no exam filter a tagged lab appears once, under its primary exam, with an "Also AZ-700" chip', async () => {
+    renderApp("/labs", { routes: routes({ "GET /api/v1/labs": multi() }) });
+    const c = await catalogue();
+    await c.findByRole("heading", { name: "AZ-700" });
+    expect(c.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["AZ-104", "AZ-305", "AZ-700"]);
+    expect(c.getAllByRole("link", { name: "VNet peering and UDRs" })).toHaveLength(1);
+    const az104 = within(c.getByRole("region", { name: "AZ-104" }));
+    expect(az104.getByRole("link", { name: "VNet peering and UDRs" })).toBeInTheDocument();
+    expect(cardOf(c, "VNet peering and UDRs").getByText("Also AZ-700")).toBeInTheDocument();
+    // A lab in one exam has no chip.
+    expect(cardOf(c, "Public IP prefixes, NAT Gateway and outbound rules").queryByText(/^Also /)).toBeNull();
+    expect(cardOf(c, /Blob security/).queryByText(/^Also /)).toBeNull();
+    expect(within(c.getByRole("region", { name: "AZ-700" })).getAllByRole("link").map((a) => a.textContent)).toEqual(["Public IP prefixes, NAT Gateway and outbound rules"]);
+  });
+
+  it("the AZ-700 filter shows tagged and AZ-700 labs together by number", async () => {
+    const user = userEvent.setup();
+    renderApp("/labs", { routes: routes({ "GET /api/v1/labs": multi() }) });
+    const c = await catalogue();
+    await c.findByRole("link", { name: "VNet peering and UDRs" });
+    const filters = within(screen.getByRole("region", { name: "Filters" }));
+    await user.click(filters.getByRole("radio", { name: "AZ-700" }));
+    expect(c.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["AZ-700"]);
+    expect(c.getAllByRole("link").map((a) => a.textContent)).toEqual(["VNet peering and UDRs", "Public IP prefixes, NAT Gateway and outbound rules"]);
+    // Filtered to one exam, the chip names the other exams the lab belongs to.
+    expect(cardOf(c, "VNet peering and UDRs").getByText("Also AZ-104")).toBeInTheDocument();
+    // The skill areas offered are those of the labs shown.
+    await user.click(filters.getByRole("combobox", { name: "Skill area" }));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toContain("az700.core");
+    expect(options).toContain("az104.networking");
+    expect(options).not.toContain("Implement and manage storage");
+  });
+
+  it("readFilters accepts AZ-700", () => {
+    expect(readFilters(new URLSearchParams("exam=AZ-700")).exam).toBe("AZ-700");
+    expect(readFilters(new URLSearchParams("exam=AZ-305")).exam).toBe("AZ-305");
+    expect(readFilters(new URLSearchParams("exam=AZ-900")).exam).toBeNull();
+  });
+
+  it("the modal subtitle lists every exam", async () => {
+    const tagged = card({ id: "az104-14-peering-udr", number: 14, title: "VNet peering and UDRs", exam: "AZ-104", exams: ["AZ-104", "AZ-700"], level: "associate", type: "explore", version: 3 });
+    renderApp("/labs/az104-14-peering-udr", { routes: routes({ "GET /api/v1/labs": multi(), "GET /api/v1/labs/az104-14-peering-udr": detailIdle({ card: tagged }) }) });
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Lab 14 · AZ-104, AZ-700 · Associate · Explore · v3")).toBeInTheDocument();
+  });
+
+  it("the page says the labs cover AZ-104, AZ-305 and AZ-700", async () => {
+    renderApp("/labs", { routes: routes() });
+    expect(await screen.findByText(/AZ-104, AZ-305 and AZ-700/)).toBeInTheDocument();
   });
 });

@@ -18,12 +18,20 @@ import { lintTfText, stripComments } from "../../infra/ci/lab-lint.mjs";
 
 // ── Constants (copies of shared/labs.ts) ─────────────────────────────────
 
-export const LAB_ID_RE = /^az(104|305)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
+export const LAB_ID_RE = /^az(104|305|700)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
 export const LAB_ID_MAX = 40;
+/** The exams, in order (ruling 38). */
+export const LAB_EXAMS = ["AZ-104", "AZ-305", "AZ-700"];
+/** A lab's primary exam, from its id's prefix. */
+export const examOfId = (id) => (id.startsWith("az104-") ? "AZ-104" : id.startsWith("az305-") ? "AZ-305" : "AZ-700");
 export const LAB_POOL = "10.64.0.0/13";
 export const LAB_SLOTS = 32;
 export const GATEWAY_RANGES = ["10.13.13.0/24", "10.13.255.1/32", "10.50.0.0/16", "192.168.1.0/24", "172.17.0.0/16", "168.63.129.16/32"];
 export const GOVERNANCE_LABS = ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az305-20-landing-zone", "az305-21-monitoring-scale"];
+/** Scope exception S1 (ruling 47): the lab whose network manager may be scoped to the subscription. */
+export const AVNM_LABS = ["az700-33-vnet-manager"];
+/** Scope exception S2 (ruling 48): the lab that may make a lab-<id>-* flow log in NetworkWatcherRG. */
+export const FLOW_LOG_LABS = ["az700-44-flow-logs-bastion"];
 export const LAB_TF_VARS = ["lab_id", "name_prefix", "resource_group_name", "region", "secondary_region", "address_space", "peered", "gateway_vnet_id", "admin_password", "ssh_public_key", "upn_domain", "tags"];
 
 /** The roles a lab may assign (plan ruling 3). */
@@ -97,7 +105,7 @@ const SCHEMA = {
   version: [int(1), "a whole number of 1 or more"],
   title: [text, "a title"],
   summary: [text, "a summary"],
-  exam: [oneOf("AZ-104", "AZ-305"), "AZ-104 or AZ-305"],
+  exam: [oneOf(...LAB_EXAMS), "AZ-104, AZ-305 or AZ-700"],
   skill_areas: [[str], "a list of skill area keys"],
   level: [oneOf("foundation", "associate", "expert"), "foundation, associate or expert"],
   type: [oneOf("explore", "break-fix"), "explore or break-fix"],
@@ -147,10 +155,10 @@ export function validateLab(raw, ctx) {
   const bad = (field, message) => problems.push({ field, message });
   const id = raw?.id;
   if (str(id)) {
-    if (!LAB_ID_RE.test(id)) bad("id", `id "${id}" must look like az104-NN-slug or az305-NN-slug (lowercase letters, digits and single hyphens)`);
+    if (!LAB_ID_RE.test(id)) bad("id", `id "${id}" must look like az104-NN-slug, az305-NN-slug or az700-NN-slug (lowercase letters, digits and single hyphens)`);
     if (id.length > LAB_ID_MAX) bad("id", `id "${id}" is longer than ${LAB_ID_MAX} characters`);
     if (ctx.folder !== undefined && id !== ctx.folder) bad("id", `id "${id}" must equal its folder name "${ctx.folder}"`);
-    if (raw.exam && LAB_ID_RE.test(id) && raw.exam !== (id.startsWith("az104-") ? "AZ-104" : "AZ-305")) bad("exam", `exam ${raw.exam} does not match the id ${id}`);
+    if (raw.exam && LAB_ID_RE.test(id) && raw.exam !== examOfId(id)) bad("exam", `exam ${raw.exam} does not match the id ${id}`);
     if (typeof raw.identity?.governance === "boolean" && raw.identity.governance !== GOVERNANCE_LABS.includes(id)) {
       bad("identity.governance", GOVERNANCE_LABS.includes(id) ? `${id} is a governance lab: set identity.governance: true` : `only labs 1, 2, 3, 20 and 21 may set identity.governance: true`);
     }
@@ -163,11 +171,10 @@ export function validateLab(raw, ctx) {
   }
   if (Array.isArray(raw?.skill_areas)) {
     if (!raw.skill_areas.length) bad("skill_areas", "skill_areas needs at least one key from labs/skill-areas.yaml");
-    for (const k of raw.skill_areas) {
-      const area = ctx.skillAreas.find((a) => a.key === k);
-      if (!area) bad("skill_areas", `skill area "${k}" is not in labs/skill-areas.yaml`);
-      else if (raw.exam && area.exam !== raw.exam) bad("skill_areas", `skill area "${k}" belongs to ${area.exam}, not ${raw.exam}`);
-    }
+    for (const k of raw.skill_areas) if (!ctx.skillAreas.some((a) => a.key === k)) bad("skill_areas", `skill area "${k}" is not in labs/skill-areas.yaml`);
+    // A lab may name any exam's areas (ruling 39), as long as one is its own exam's: that is the exam it is filed under.
+    const own = raw.skill_areas.some((k) => ctx.skillAreas.find((a) => a.key === k)?.exam === raw.exam);
+    if (raw.skill_areas.length && LAB_EXAMS.includes(raw.exam) && !own) bad("skill_areas", `skill_areas needs at least one ${raw.exam} area (the lab's own exam)`);
   }
   const t = raw?.timing;
   if (isObj(t) && Number.isInteger(t.session_h) && Number.isInteger(t.max_h) && t.session_h > t.max_h) bad("timing.session_h", `session_h (${t.session_h}) is more than max_h (${t.max_h})`);
@@ -188,7 +195,16 @@ export function validateLab(raw, ctx) {
   const k = raw?.connectivity;
   if (isObj(k) && k.subnets_used === 0 && k.peering && k.peering !== "off") bad("connectivity.subnets_used", "a lab with no subnets (subnets_used: 0) cannot peer: set peering: off");
   if (problems.length) return { def: null, problems };
-  return { def: { ...raw, number: Number(id.split("-")[1]) }, problems };
+  return { def: { ...raw, number: Number(id.split("-")[1]), exams: computeExams(raw, ctx.skillAreas) }, problems };
+}
+
+/**
+ * The exams a lab belongs to (ruling 39): its own (primary) exam first, then every other exam
+ * one of its skill areas belongs to, in LAB_EXAMS order. `def`: { exam, skill_areas }.
+ */
+export function computeExams(def, skillAreas) {
+  const named = new Set(def.skill_areas.map((k) => skillAreas.find((a) => a.key === k)?.exam).filter(Boolean));
+  return [def.exam, ...LAB_EXAMS.filter((e) => e !== def.exam && named.has(e))];
 }
 
 // ── readme.md (spec §3.3, plan ruling 2) ─────────────────────────────────
@@ -373,14 +389,14 @@ export function labFolders(root) {
  * Read every lab under `root` (the repo's labs/ folder) and build the
  * catalogue (LabCatalogue in shared/labs.ts). Returns { catalogue, problems };
  * problems are { lab, file, field, message }. The catalogue holds only the
- * labs that passed, sorted AZ-104 then AZ-305 by number.
+ * labs that passed, sorted by exam (AZ-104, AZ-305, AZ-700) then number.
  */
 export function buildCatalogue(root) {
   const problems = [];
   let skillAreas = [];
   try {
     skillAreas = parseYaml(readFileSync(join(root, "skill-areas.yaml"), "utf8"));
-    if (!Array.isArray(skillAreas) || !skillAreas.every((a) => isObj(a) && text(a.key) && oneOf("AZ-104", "AZ-305")(a.exam) && text(a.name) && Object.keys(a).length === 3)) {
+    if (!Array.isArray(skillAreas) || !skillAreas.every((a) => isObj(a) && text(a.key) && oneOf(...LAB_EXAMS)(a.exam) && text(a.name) && Object.keys(a).length === 3)) {
       problems.push({ lab: null, file: "skill-areas.yaml", field: null, message: "skill-areas.yaml must be a list of { key, exam, name }" });
       skillAreas = [];
     }
@@ -435,7 +451,7 @@ export function buildCatalogue(root) {
   };
   for (const id of ids) visit(id, []);
   const bad = new Set(problems.map((p) => p.lab));
-  const labs = defs.filter((d) => !bad.has(d.id)).sort((a, b) => a.exam.localeCompare(b.exam) || a.number - b.number);
+  const labs = defs.filter((d) => !bad.has(d.id)).sort((a, b) => LAB_EXAMS.indexOf(a.exam) - LAB_EXAMS.indexOf(b.exam) || a.number - b.number);
   for (const id of Object.keys(readmes)) if (bad.has(id)) delete readmes[id];
   return { catalogue: { schema: 1, skillAreas, labs, readmes }, problems };
 }

@@ -1,0 +1,38 @@
+# Lab 35 (AZ-700 plan area Z1), a break-fix lab (was AZ-305 34, ruling 40).
+# AZ-700 study guide skills this lab touches (outline "Skills measured as of
+# July 27, 2026"):
+#   Design and implement core networking infrastructure > Design and
+#   implement Azure Virtual Network connectivity and routing: "Design and
+#   implement user-defined routes (UDRs)", "Implement forced tunneling",
+#   "Diagnose and resolve routing issues", network virtual appliances.
+#   AZ-305 Design infrastructure solutions: network routing through an NVA.
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. The VMs and their OS disks carry retail entries the price feed
+# refreshes; npm run labs-verify -- --meters az700-35-forced-tunnel-fix
+# checks them (Standard_B1s Linux £0.0089/h; S4 LRS Disk £1.28 a month,
+# about £0.0018/h). Route tables, peerings and VNets are free (intra-region
+# peering traffic here is a few kB).
+id: az700-35-forced-tunnel-fix
+version: 1
+title: "Break-fix: hub-spoke routing fault (forced tunnelling)"
+summary: >-
+  A spoke whose default route sends all its internet traffic to an appliance in the hub, and an appliance that
+  drops it. Find out why with next hop and effective routes, then make the appliance forward and translate.
+exam: AZ-700
+skill_areas: [az700.core, az305.infra]
+level: associate
+type: break-fix
+prerequisites: [az104-14-peering-udr]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 5, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false

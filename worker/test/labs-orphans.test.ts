@@ -12,7 +12,7 @@ import { runLabWatch } from "../src/labs/watch";
 import { sweepOrphans, SWEEP_CALLS } from "../src/labs/orphans";
 import { ALLOWED_ROLES } from "../../shared/labs";
 import { budgetedNet } from "../src/labs/net";
-import { api, advance, freeze, labDispatches, labEnv, report, rows, runningLab, secrets, session, HOUR, MIN, NOW } from "./labs-helpers";
+import { api, advance, freeze, labDispatches, labEnv, report, rows, runningLab, secrets, session, HOUR, MIN, NOW, TEST_CATALOGUE, TEST_LABS } from "./labs-helpers";
 import type { Env } from "../src/env";
 import type { World } from "./harness";
 
@@ -70,7 +70,7 @@ describe("orphan sweep: fixed custom role GUIDs", () => {
     const net = budgetedNet(20);
     await sweepOrphans(env, net, new Date());
     expect(net.used()).toBe(SWEEP_CALLS);
-    expect(SWEEP_CALLS).toBe(7 + ALLOWED_ROLES.custom.length);
+    expect(SWEEP_CALLS).toBe(8 + ALLOWED_ROLES.custom.length);
     expect(world.calls.some((c) => c.path.toLowerCase().startsWith("/subscriptions/sub/providers/microsoft.authorization/roledefinitions/7331dcae-09d3-477e-8da7-2895697f0fc0"))).toBe(true);
     // Seen now; an orphan once it has been there 30 minutes.
     advance(61 * MIN);
@@ -81,6 +81,44 @@ describe("orphan sweep: fixed custom role GUIDs", () => {
     advance(61 * MIN);
     await sweepOrphans(env, budgetedNet(20), new Date());
     expect(await orphans(env)).toEqual([]);
+  });
+});
+
+// AZ-700 plan Z0.7, scope exception S2 (approved by Steven 2026-10-05): lab 44's flow log lives in Azure's
+// NetworkWatcherRG, outside every lab group, so the sweep lists flow logs too, by name (lab-<id>-*).
+describe("orphan sweep: flow logs (S2)", () => {
+  const withLab44 = () =>
+    setCatalogueForTest({ ...TEST_CATALOGUE, labs: [...TEST_LABS, { ...TEST_LABS[1], id: "az700-44-flow-logs-bastion", number: 44, exam: "AZ-700", exams: ["AZ-700"], title: "VNet flow logs, IP flow verify and Bastion" }] });
+
+  it("the sweep lists flow logs named lab- and reports them under their lab", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withLab44();
+    world.labAzure.flowLogs = [{ name: "lab-az700-44-flow-logs-bastion-vnet", region: "uksouth" }];
+    const net = budgetedNet(20);
+    await sweepOrphans(env, net, new Date());
+    // One listing for every flow log in the subscription, whichever region's watcher holds it.
+    const call = world.calls.find((c) => c.path.toLowerCase().startsWith("/subscriptions/sub/resources"));
+    expect(decodeURIComponent(call?.path ?? "")).toContain("$filter=resourceType eq 'Microsoft.Network/networkWatchers/flowLogs'");
+    advance(61 * MIN);
+    await sweepOrphans(env, budgetedNet(20), new Date());
+    expect(await orphans(env)).toEqual([expect.objectContaining({ labId: "az700-44-flow-logs-bastion", names: ["lab-az700-44-flow-logs-bastion-vnet (flow log)"] })]);
+    expect((await leftoverNotes(env)).map((n) => n.message)).toEqual([expect.stringContaining("lab-az700-44-flow-logs-bastion-vnet (flow log)")]);
+  });
+
+  it("a flow log not named lab- is ignored", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withLab44();
+    world.labAzure.flowLogs = [{ name: "fl-prod-hub", region: "uksouth" }, { name: "NetworkWatcher_uksouth-default", region: "uksouth" }, { name: "lab-unknown", region: "ukwest" }];
+    await sweepOrphans(env, budgetedNet(20), new Date());
+    advance(61 * MIN);
+    await sweepOrphans(env, budgetedNet(20), new Date());
+    expect(await orphans(env)).toEqual([]);
+  });
+
+  it("SWEEP_CALLS is eight listings and one call per fixed custom role", () => {
+    expect(SWEEP_CALLS).toBe(8 + ALLOWED_ROLES.custom.length);
   });
 });
 
@@ -101,7 +139,7 @@ describe("orphan sweep: a tenant that refuses the management-group list", () => 
 });
 
 describe("orphan sweep (L2.5)", () => {
-  it("orphan sweep lists groups, Entra, management groups, roles and policies hourly in SWEEP_CALLS calls (7 listings and each fixed custom role)", async () => {
+  it("orphan sweep lists groups, Entra, management groups, roles, policies and flow logs hourly in SWEEP_CALLS calls (8 listings and each fixed custom role)", async () => {
     freeze();
     const { env, world } = await labEnv();
     litter(world);
@@ -120,6 +158,7 @@ describe("orphan sweep (L2.5)", () => {
       "management.azure.com/subscriptions/sub/providers/microsoft.authorization/roledefinitions",
       "management.azure.com/subscriptions/sub/providers/microsoft.authorization/policydefinitions",
       "management.azure.com/subscriptions/sub/providers/microsoft.authorization/policyassignments",
+      "management.azure.com/subscriptions/sub/resources",
     ]));
     // Not again within the hour.
     advance(30 * MIN);

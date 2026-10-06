@@ -8,8 +8,11 @@
 import { describe, expect, it } from "vitest";
 import {
   ALLOWED_ROLES,
+  AVNM_LABS,
+  FLOW_LOG_LABS,
   GATEWAY_RANGES,
   GOVERNANCE_LABS,
+  LAB_EXAMS,
   LAB_ID_MAX,
   LAB_ID_RE,
   LAB_POOL,
@@ -19,6 +22,7 @@ import {
   cidrOverlaps,
   costMarker,
   estimateGbpH,
+  examOfId,
   isGovernanceLab,
   labIdFromName,
   labLockName,
@@ -39,6 +43,7 @@ const def = (over: Partial<LabDef> = {}): LabDef => ({
   title: "Blob security",
   summary: "A storage account.",
   exam: "AZ-104",
+  exams: ["AZ-104"],
   skill_areas: ["az104.storage"],
   level: "associate",
   type: "explore",
@@ -122,9 +127,16 @@ describe("lab names", () => {
   });
 
   it("LAB_ID_RE takes the spec's ids and refuses the rest", () => {
-    for (const ok of ["az104-06-blob-security", "az305-34-forced-tunnel-fix", "az104-01-identity"]) expect(LAB_ID_RE.test(ok), ok).toBe(true);
-    for (const bad of ["az900-01-x", "az104-6-x", "az104-06-", "AZ104-06-x", "az104-06-x_y", "az104-06-x y", " az104-06-x"]) expect(LAB_ID_RE.test(bad), bad).toBe(false);
+    for (const ok of ["az104-06-blob-security", "az305-34-forced-tunnel-fix", "az104-01-identity", "az700-31-ip-nat-outbound"]) expect(LAB_ID_RE.test(ok), ok).toBe(true);
+    for (const bad of ["az900-01-x", "az701-31-x", "az104-6-x", "az104-06-", "AZ104-06-x", "az104-06-x_y", "az104-06-x y", " az104-06-x"]) expect(LAB_ID_RE.test(bad), bad).toBe(false);
     expect(LAB_ID_MAX).toBe(40);
+  });
+
+  it("AZ-700 is the third exam, and a lab's primary exam is its id's prefix (ruling 38)", () => {
+    expect([...LAB_EXAMS]).toEqual(["AZ-104", "AZ-305", "AZ-700"]);
+    expect(examOfId("az700-31-ip-nat-outbound")).toBe("AZ-700");
+    expect(examOfId("az305-20-landing-zone")).toBe("AZ-305");
+    expect(examOfId("az104-06-blob-security")).toBe("AZ-104");
   });
 });
 
@@ -215,9 +227,13 @@ describe("contract lists", () => {
     expect(scripts.LAB_ID_RE.source).toBe(LAB_ID_RE.source);
     expect(scripts.LAB_ID_RE.flags).toBe(LAB_ID_RE.flags);
     expect(scripts.LAB_ID_MAX).toBe(LAB_ID_MAX);
+    expect([...scripts.LAB_EXAMS]).toEqual([...LAB_EXAMS]);
+    for (const id of ["az104-01-identity", "az305-20-landing-zone", "az700-44-flow-logs-bastion"]) expect(scripts.examOfId(id)).toBe(examOfId(id));
     expect(scripts.LAB_POOL).toBe(LAB_POOL);
     expect(scripts.LAB_SLOTS).toBe(LAB_SLOTS);
     expect([...scripts.GOVERNANCE_LABS]).toEqual([...GOVERNANCE_LABS]);
+    expect([...scripts.AVNM_LABS]).toEqual([...AVNM_LABS]);
+    expect([...scripts.FLOW_LOG_LABS]).toEqual([...FLOW_LOG_LABS]);
     expect([...scripts.GATEWAY_RANGES]).toEqual([...GATEWAY_RANGES]);
     expect([...scripts.LAB_TF_VARS]).toEqual([...LAB_TF_VARS]);
     expect(scripts.slotCidr(31)).toBe(slotCidr(31));

@@ -1,0 +1,613 @@
+{
+ "resources": {
+  "azurerm_linux_virtual_machine.azure": {
+   "type": "azurerm_linux_virtual_machine",
+   "refs": {
+    "admin_password": [
+     "var.admin_password"
+    ],
+    "custom_data": [
+     "path.module"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "network_interface_ids": [
+     "azurerm_network_interface.azure.id",
+     "azurerm_network_interface.azure"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "allow_extension_operations",
+    "computer_name",
+    "disk_controller_type",
+    "id",
+    "network_interface_ids",
+    "os_disk.0.disk_size_gb",
+    "os_disk.0.id",
+    "os_disk.0.name",
+    "os_managed_disk_id",
+    "patch_assessment_mode",
+    "patch_mode",
+    "private_ip_address",
+    "private_ip_addresses",
+    "provision_vm_agent",
+    "public_ip_address",
+    "public_ip_addresses",
+    "termination_notification",
+    "virtual_machine_id",
+    "vm_agent_platform_updates_enabled"
+   ],
+   "sensitive": [
+    "admin_password",
+    "custom_data"
+   ]
+  },
+  "azurerm_linux_virtual_machine.onprem": {
+   "type": "azurerm_linux_virtual_machine",
+   "refs": {
+    "admin_password": [
+     "var.admin_password"
+    ],
+    "custom_data": [
+     "path.module"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "network_interface_ids": [
+     "azurerm_network_interface.onprem.id",
+     "azurerm_network_interface.onprem"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "allow_extension_operations",
+    "computer_name",
+    "disk_controller_type",
+    "id",
+    "network_interface_ids",
+    "os_disk.0.disk_size_gb",
+    "os_disk.0.id",
+    "os_disk.0.name",
+    "os_managed_disk_id",
+    "patch_assessment_mode",
+    "patch_mode",
+    "private_ip_address",
+    "private_ip_addresses",
+    "provision_vm_agent",
+    "public_ip_address",
+    "public_ip_addresses",
+    "termination_notification",
+    "virtual_machine_id",
+    "vm_agent_platform_updates_enabled"
+   ],
+   "sensitive": [
+    "admin_password",
+    "custom_data"
+   ]
+  },
+  "azurerm_local_network_gateway.azure": {
+   "type": "azurerm_local_network_gateway",
+   "refs": {
+    "address_space": [
+     "local.azure_cidr"
+    ],
+    "bgp_settings.0.bgp_peering_address": [
+     "azurerm_virtual_network_gateway.azure.bgp_settings[0].peering_addresses[0].default_addresses[0]",
+     "azurerm_virtual_network_gateway.azure.bgp_settings[0].peering_addresses[0].default_addresses",
+     "azurerm_virtual_network_gateway.azure.bgp_settings[0].peering_addresses[0]",
+     "azurerm_virtual_network_gateway.azure.bgp_settings[0].peering_addresses",
+     "azurerm_virtual_network_gateway.azure.bgp_settings[0]",
+     "azurerm_virtual_network_gateway.azure.bgp_settings",
+     "azurerm_virtual_network_gateway.azure"
+    ],
+    "gateway_address": [
+     "azurerm_public_ip.azure_gateway.ip_address",
+     "azurerm_public_ip.azure_gateway"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "bgp_settings.0.bgp_peering_address",
+    "gateway_address",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_local_network_gateway.onprem": {
+   "type": "azurerm_local_network_gateway",
+   "refs": {
+    "address_space": [
+     "local.onprem_cidr"
+    ],
+    "bgp_settings.0.bgp_peering_address": [
+     "azurerm_virtual_network_gateway.onprem.bgp_settings[0].peering_addresses[0].default_addresses[0]",
+     "azurerm_virtual_network_gateway.onprem.bgp_settings[0].peering_addresses[0].default_addresses",
+     "azurerm_virtual_network_gateway.onprem.bgp_settings[0].peering_addresses[0]",
+     "azurerm_virtual_network_gateway.onprem.bgp_settings[0].peering_addresses",
+     "azurerm_virtual_network_gateway.onprem.bgp_settings[0]",
+     "azurerm_virtual_network_gateway.onprem.bgp_settings",
+     "azurerm_virtual_network_gateway.onprem"
+    ],
+    "gateway_address": [
+     "azurerm_public_ip.onprem_gateway.ip_address",
+     "azurerm_public_ip.onprem_gateway"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "bgp_settings.0.bgp_peering_address",
+    "gateway_address",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_network_interface.azure": {
+   "type": "azurerm_network_interface",
+   "refs": {
+    "ip_configuration.0.subnet_id": [
+     "azurerm_subnet.azure_app.id",
+     "azurerm_subnet.azure_app"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "applied_dns_servers",
+    "id",
+    "internal_domain_name_suffix",
+    "ip_configuration.0.gateway_load_balancer_frontend_ip_configuration_id",
+    "ip_configuration.0.primary",
+    "ip_configuration.0.private_ip_address",
+    "ip_configuration.0.subnet_id",
+    "mac_address",
+    "private_ip_address",
+    "private_ip_addresses",
+    "virtual_machine_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_network_interface.onprem": {
+   "type": "azurerm_network_interface",
+   "refs": {
+    "ip_configuration.0.subnet_id": [
+     "azurerm_subnet.onprem_app.id",
+     "azurerm_subnet.onprem_app"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "applied_dns_servers",
+    "id",
+    "internal_domain_name_suffix",
+    "ip_configuration.0.gateway_load_balancer_frontend_ip_configuration_id",
+    "ip_configuration.0.primary",
+    "ip_configuration.0.private_ip_address",
+    "ip_configuration.0.subnet_id",
+    "mac_address",
+    "private_ip_address",
+    "private_ip_addresses",
+    "virtual_machine_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_public_ip.azure_gateway": {
+   "type": "azurerm_public_ip",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "fqdn",
+    "id",
+    "ip_address"
+   ],
+   "sensitive": []
+  },
+  "azurerm_public_ip.onprem_gateway": {
+   "type": "azurerm_public_ip",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "fqdn",
+    "id",
+    "ip_address"
+   ],
+   "sensitive": []
+  },
+  "azurerm_resource_group.lab": {
+   "type": "azurerm_resource_group",
+   "refs": {
+    "location": [
+     "var.region"
+    ],
+    "name": [
+     "var.resource_group_name"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_subnet.azure_app": {
+   "type": "azurerm_subnet",
+   "refs": {
+    "address_prefixes": [
+     "local.azure_app_cidr"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "virtual_network_name": [
+     "azurerm_virtual_network.azure.name",
+     "azurerm_virtual_network.azure"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_subnet.azure_gateway": {
+   "type": "azurerm_subnet",
+   "refs": {
+    "address_prefixes": [
+     "local.azure_gateway_cidr"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "virtual_network_name": [
+     "azurerm_virtual_network.azure.name",
+     "azurerm_virtual_network.azure"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_subnet.onprem_app": {
+   "type": "azurerm_subnet",
+   "refs": {
+    "address_prefixes": [
+     "local.onprem_app_cidr"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "virtual_network_name": [
+     "azurerm_virtual_network.onprem.name",
+     "azurerm_virtual_network.onprem"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_subnet.onprem_gateway": {
+   "type": "azurerm_subnet",
+   "refs": {
+    "address_prefixes": [
+     "local.onprem_gateway_cidr"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "virtual_network_name": [
+     "azurerm_virtual_network.onprem.name",
+     "azurerm_virtual_network.onprem"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_virtual_network.azure": {
+   "type": "azurerm_virtual_network",
+   "refs": {
+    "address_space": [
+     "local.azure_cidr"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "dns_servers",
+    "guid",
+    "id",
+    "subnet"
+   ],
+   "sensitive": []
+  },
+  "azurerm_virtual_network.onprem": {
+   "type": "azurerm_virtual_network",
+   "refs": {
+    "address_space": [
+     "local.onprem_cidr"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "dns_servers",
+    "guid",
+    "id",
+    "subnet"
+   ],
+   "sensitive": []
+  },
+  "azurerm_virtual_network_gateway.azure": {
+   "type": "azurerm_virtual_network_gateway",
+   "refs": {
+    "ip_configuration.0.public_ip_address_id": [
+     "azurerm_public_ip.azure_gateway.id",
+     "azurerm_public_ip.azure_gateway"
+    ],
+    "ip_configuration.0.subnet_id": [
+     "azurerm_subnet.azure_gateway.id",
+     "azurerm_subnet.azure_gateway"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "bgp_settings.0.peering_addresses",
+    "enable_bgp",
+    "id",
+    "ip_configuration.0.public_ip_address_id",
+    "ip_configuration.0.subnet_id",
+    "maximum_scale_unit",
+    "minimum_scale_unit"
+   ],
+   "sensitive": []
+  },
+  "azurerm_virtual_network_gateway.onprem": {
+   "type": "azurerm_virtual_network_gateway",
+   "refs": {
+    "ip_configuration.0.public_ip_address_id": [
+     "azurerm_public_ip.onprem_gateway.id",
+     "azurerm_public_ip.onprem_gateway"
+    ],
+    "ip_configuration.0.subnet_id": [
+     "azurerm_subnet.onprem_gateway.id",
+     "azurerm_subnet.onprem_gateway"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "bgp_settings.0.peering_addresses",
+    "enable_bgp",
+    "id",
+    "ip_configuration.0.public_ip_address_id",
+    "ip_configuration.0.subnet_id",
+    "maximum_scale_unit",
+    "minimum_scale_unit"
+   ],
+   "sensitive": []
+  },
+  "azurerm_virtual_network_gateway_connection.azure_to_onprem": {
+   "type": "azurerm_virtual_network_gateway_connection",
+   "refs": {
+    "local_network_gateway_id": [
+     "azurerm_local_network_gateway.onprem.id",
+     "azurerm_local_network_gateway.onprem"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "shared_key": [
+     "random_password.psk.result",
+     "random_password.psk"
+    ],
+    "tags": [
+     "var.tags"
+    ],
+    "virtual_network_gateway_id": [
+     "azurerm_virtual_network_gateway.azure.id",
+     "azurerm_virtual_network_gateway.azure"
+    ]
+   },
+   "unknown": [
+    "connection_protocol",
+    "enable_bgp",
+    "express_route_gateway_bypass",
+    "id",
+    "ipsec_policy.0.sa_datasize",
+    "local_network_gateway_id",
+    "routing_weight",
+    "shared_key",
+    "use_policy_based_traffic_selectors",
+    "virtual_network_gateway_id"
+   ],
+   "sensitive": [
+    "authorization_key",
+    "shared_key"
+   ]
+  },
+  "azurerm_virtual_network_gateway_connection.onprem_to_azure": {
+   "type": "azurerm_virtual_network_gateway_connection",
+   "refs": {
+    "local_network_gateway_id": [
+     "azurerm_local_network_gateway.azure.id",
+     "azurerm_local_network_gateway.azure"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "shared_key": [
+     "random_password.psk.result",
+     "random_password.psk"
+    ],
+    "tags": [
+     "var.tags"
+    ],
+    "virtual_network_gateway_id": [
+     "azurerm_virtual_network_gateway.onprem.id",
+     "azurerm_virtual_network_gateway.onprem"
+    ]
+   },
+   "unknown": [
+    "connection_protocol",
+    "enable_bgp",
+    "express_route_gateway_bypass",
+    "id",
+    "ipsec_policy.0.sa_datasize",
+    "local_network_gateway_id",
+    "routing_weight",
+    "shared_key",
+    "use_policy_based_traffic_selectors",
+    "virtual_network_gateway_id"
+   ],
+   "sensitive": [
+    "authorization_key",
+    "shared_key"
+   ]
+  },
+  "random_password.psk": {
+   "type": "random_password",
+   "refs": {},
+   "unknown": [
+    "bcrypt_hash",
+    "id",
+    "result"
+   ],
+   "sensitive": [
+    "bcrypt_hash",
+    "result"
+   ]
+  }
+ }
+}

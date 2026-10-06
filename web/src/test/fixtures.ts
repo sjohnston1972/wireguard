@@ -515,6 +515,7 @@ const labCard = (over: Partial<LabCard> = {}): LabCard => ({
   title: "Blob security: SAS, access policies, private endpoint",
   summary: "A storage account with a private container, a stored access policy and a private endpoint in a small VNet.",
   exam: "AZ-104",
+  exams: ["AZ-104"],
   skillAreas: ["az104.storage", "az104.networking"],
   level: "associate",
   type: "explore",

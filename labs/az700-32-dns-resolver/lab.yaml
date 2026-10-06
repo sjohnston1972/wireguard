@@ -1,0 +1,45 @@
+# Lab 32 (AZ-700 plan area Z1). AZ-700 study guide skills this lab touches
+# (outline "Skills measured as of July 27, 2026"):
+#   Design and implement core networking infrastructure > Design and
+#   implement name resolution: "Design and implement Azure DNS Private
+#   Resolver", "Design and implement private DNS zones", "Design name
+#   resolution inside a virtual network", "Configure DNS settings for a
+#   virtual network". Also subnet delegation (IP addressing).
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. The VMs and their OS disks carry retail entries the price feed
+# refreshes; npm run labs-verify -- --meters az700-32-dns-resolver checks
+# them (Standard_B1s Linux £0.0089/h; S4 LRS Disk £1.28 a month, about
+# £0.0018/h). DNS Private Resolver has no uksouth row (Azure prices it under
+# region Global), so it stays authored (ruling 54): an inbound or outbound
+# endpoint £135.8542 a month each (£0.1861/h), a forwarding ruleset £1.8869 a
+# month (£0.0026/h). The private zone is tiered (region "Zone 1"), authored as
+# lab 15's: £0.0005/h. Intra-region peering moves a few kB of DNS here.
+id: az700-32-dns-resolver
+version: 1
+title: "Hybrid DNS with DNS Private Resolver"
+summary: >-
+  An Azure VNet and an "on-prem" VNet with its own dnsmasq server, joined by DNS Private Resolver: a forwarding
+  ruleset sends the on-prem domain out through the outbound endpoint, and on-prem forwards the Azure private zone
+  to the inbound endpoint, so names resolve both ways.
+exam: AZ-700
+skill_areas: [az700.core]
+level: associate
+type: explore
+prerequisites: [az104-15-dns]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "DNS Private Resolver inbound endpoint", gbp_h: 0.1861 }
+    - { name: "DNS Private Resolver outbound endpoint", gbp_h: 0.1861 }
+    - { name: "DNS forwarding ruleset", gbp_h: 0.0026 }
+    - { name: "Private DNS zone", gbp_h: 0.0005 }
+  pricey: "DNS Private Resolver inbound endpoint"
+timing: { deploy_min: 10, destroy_min: 10, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: true, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false

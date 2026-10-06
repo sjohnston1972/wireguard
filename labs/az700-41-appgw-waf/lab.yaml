@@ -1,0 +1,56 @@
+# Lab 41 (AZ-700 labs plan, area Z3). AZ-700 study guide skills this lab
+# touches (outline "Skills measured as of July 27, 2026"):
+#   Design and implement application delivery services > Design and
+#   implement Azure Application Gateway: "Select an Azure Application
+#   Gateway SKU and tier", "Implement TLS (Transport Layer Security)
+#   certificates", "Configure listeners, routing rules, backend settings and
+#   health probes", "Configure rewrite sets", "Implement Azure Application
+#   Gateway autoscaling".
+#   Design and implement Azure network security services > Design and
+#   implement a Web Application Firewall (WAF) deployment: "Implement a WAF
+#   policy", "Configure detection or prevention mode", "Configure rule sets
+#   for Azure Application Gateway", "Implement a WAF policy custom rule",
+#   "Monitor a WAF".
+# Costs are GBP list prices for UK South from the Retail Prices API
+# (2026-10-05, checked again 2026-10-06), rounded up. npm run labs-verify --
+# --meters az700-41-appgw-waf checks the retail entries:
+#   Standard_B1s                     £0.0089/h Linux pay as you go
+#   S4 LRS Disk                      £1.2755/month = £0.0018/h
+#   Standard IPv4 Static Public IP   £0.0038/h
+# Authored (ruling 54): Application Gateway WAF v2 "Standard Fixed Cost"
+# £0.3396/h and "Standard Capacity Units" £0.0109 per unit hour share their
+# meter names with Standard v2 (£0.1887, £0.006) and the discounted WAF rows,
+# so the feed cannot tell them apart; one capacity unit is authored (an idle
+# gateway uses less). Key Vault Standard bills operations (£0.0226 per
+# 10,000) and a private zone £0.3774 a month (£0.0005/h); the workspace
+# ingests a few MB of gateway logs under its 0.05 GB daily cap.
+id: az700-41-appgw-waf
+version: 2
+title: "Application Gateway WAF_v2: TLS, rewrites, WAF policy"
+summary: >-
+  An Application Gateway WAF_v2 with a private HTTPS listener whose certificate comes from Key Vault, an HTTP to HTTPS
+  redirect, a header rewrite set and a WAF policy in Prevention mode with a custom rule, in front of two web VMs.
+exam: AZ-700
+skill_areas: [az700.delivery, az700.security]
+level: associate
+type: explore
+prerequisites: [az104-16-lb-appgw]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Application Gateway WAF_v2, fixed", gbp_h: 0.3396 }
+    - { name: "Application Gateway WAF_v2, capacity unit", gbp_h: 0.0109 }
+    - { name: "Public IP, Standard static (Application Gateway)", gbp_h: 0.0038, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "Key Vault Standard, a few hundred operations", gbp_h: 0.0001 }
+    - { name: "Private DNS zone lab41.internal", gbp_h: 0.0005 }
+    - { name: "Log Analytics, a few MB of gateway logs", gbp_h: 0.0005 }
+  pricey: "Application Gateway WAF_v2, fixed"
+timing: { deploy_min: 14, destroy_min: 12, session_h: 2, max_h: 3 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: true, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

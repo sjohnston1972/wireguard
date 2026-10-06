@@ -38,7 +38,9 @@
 //                  works out from count or for_each, such as
 //                  azurerm_network_interface.web[count.index].id, as the
 //                  resource and the key: ["azurerm_network_interface.web", "count.index"]
-//     data: [{ address, values, refs? }] data sources read at plan (prior_state)
+//     data: [{ address, values, refs?, args? }] data sources read at plan (prior_state); values are
+//                  what was read, and only refs and the constant arguments named in args are in the
+//                  configuration's expressions (data "azurerm_subscription" "current" {} has none)
 //
 //   withAfterUnknown(plan)   adds resource_changes with real after_unknown to an
 //                            older fixture plan that only has planned_values
@@ -58,19 +60,24 @@ export const SCHEMA_FACTS = JSON.parse(readFileSync(new URL("./schema-facts.json
 export const UNSET_BLOCKS_UNKNOWN = {
   azurerm_cosmosdb_account: ["analytical_storage", "backup", "capacity"],
   azurerm_cosmosdb_sql_container: ["conflict_resolution_policy", "indexing_policy"],
+  azurerm_dns_zone: ["soa_record"],
   azurerm_key_vault: ["contact", "network_acls"],
   azurerm_linux_virtual_machine: ["termination_notification"],
+  azurerm_monitor_diagnostic_setting: ["enabled_metric", "metric"],
   azurerm_mssql_database: ["long_term_retention_policy", "short_term_retention_policy", "threat_detection_policy"],
   azurerm_private_dns_zone: ["soa_record"],
+  azurerm_virtual_hub_connection: ["routing"],
+  azurerm_virtual_network_gateway: ["bgp_settings"],
   azurerm_storage_account: ["blob_properties", "network_rules", "queue_properties", "routing", "share_properties", "static_website"],
 };
 
 /**
  * Computed attributes a provider already knows at plan when the configuration leaves them unset: the defaults it
  * fills in. Known (in the planned values, not in after_unknown) and not configured (no expression). As the real
- * plans recorded them: lab 21's workspace, lab 22's random passwords (hashicorp/random 3.9.1's defaults).
+ * plans recorded them: lab 21's workspace, lab 22's random passwords, lab 42's WAF policy (hashicorp/random 3.9.1's defaults).
  */
 export const PLAN_DEFAULTS = {
+  azurerm_cdn_frontdoor_firewall_policy: { captcha_cookie_expiration_in_minutes: 30, js_challenge_cookie_expiration_in_minutes: 30 },
   azurerm_log_analytics_workspace: { local_authentication_enabled: true },
   random_password: { lower: true, min_lower: 0, min_numeric: 0, min_special: 0, min_upper: 0, number: true, numeric: true, special: true, upper: true },
 };
@@ -159,7 +166,10 @@ function resourceParts(def, mode) {
   for (const p of unknown) setPath(au, p, true);
   // An Optional and Computed block left unset: the provider plans the whole block as unknown.
   if (mode !== "data") for (const b of UNSET_BLOCKS_UNKNOWN[type] ?? []) if (!(b in held)) au[b] = true;
-  const expressions = Object.fromEntries(Object.entries(values).filter(([k]) => !dynamic.has(k)).map(([k, v]) => [k, expressionFor(v)]));
+  // A data source's values are what it read, not what the configuration set: `data "azurerm_subscription" "current" {}`
+  // has no expressions at all. Only its refs, and any constant arguments it lists in `args`, are configured.
+  const configuredValues = mode === "data" ? Object.entries(values).filter(([k]) => (def.args ?? []).includes(k)) : Object.entries(values);
+  const expressions = Object.fromEntries(configuredValues.filter(([k]) => !dynamic.has(k)).map(([k, v]) => [k, expressionFor(v)]));
   for (const p of unknown) if (!(p[0] in expressions) && !dynamic.has(p[0])) expressions[p[0]] = typeof p[1] === "number" ? [] : {};
   for (const [path, refs] of Object.entries(def.refs ?? {})) setPath(expressions, split(path), { references: refs });
   Object.assign(values, defaults);

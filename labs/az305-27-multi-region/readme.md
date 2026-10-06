@@ -2,6 +2,8 @@ One small web app running in two Azure regions, with two global front ends in fr
 
 Deploy this lab in uksouth: its second region is ukwest, uksouth's Azure pair. Besides `rg-lab-az305-27-multi-region` it makes a second resource group in ukwest, `rg-lab-az305-27-multi-region-secondary`, which holds the ukwest container group. Traffic Manager and Front Door are global, so they live in `rg-lab-az305-27-multi-region`.
 
+This lab also counts for AZ-700, in Design and implement application delivery services. From the AZ-700 outline: design and implement Azure Traffic Manager (routing methods and endpoints) and Azure Front Door (endpoints, routes, origin groups and origins). For more, lab 42 builds Front Door Premium with rules, caching, a WAF policy and a Private Link origin.
+
 ## What it deploys
 
 - `ci-uks` in `rg-lab-az305-27-multi-region` (uksouth) and `ci-ukw` in `rg-lab-az305-27-multi-region-secondary` (ukwest): Azure Container Instances groups of 0.5 vCPU and 0.5 GB, each running Microsoft's Azure Linux Python image, which writes `Hello from <region>` into a page and serves it with `python3 -m http.server` on port 80. Each has a public IP and a DNS name, `<prefix>-uks.uksouth.azurecontainer.io` and `<prefix>-ukw.ukwest.azurecontainer.io`

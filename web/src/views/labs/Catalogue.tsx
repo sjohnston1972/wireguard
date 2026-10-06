@@ -1,14 +1,18 @@
 import type { LabCard as Card } from "@shared/api";
 import { EmptyState, Panel } from "@/components";
 import { LabCard } from "./LabCard";
-import { NO_FILTERS, anyFilter, applyFilters, groupByExam } from "./model";
+import { NO_FILTERS, alsoExams, anyFilter, applyFilters, groupByExam } from "./model";
 import { useFilters } from "./Filters";
 
-/** The catalogue (spec §10): AZ-104 then AZ-305, by number; the list scrolls inside the panel. */
+/**
+ * The catalogue (spec §10): AZ-104, AZ-305 then AZ-700, by number; the list scrolls inside the
+ * panel. A lab in more than one exam (ruling 39) appears once, under its primary exam, unless an
+ * exam is filtered to: then every lab of that exam, tagged ones included.
+ */
 export function Catalogue({ cards, bare = false }: { cards: Card[]; bare?: boolean }) {
   const [f, setF] = useFilters();
   const shown = applyFilters(cards, f);
-  const groups = groupByExam(shown);
+  const groups = groupByExam(shown, f.exam);
   const body = (
     <div className="labs-catalogue__scroll">
       {cards.length === 0 ? (
@@ -23,7 +27,7 @@ export function Catalogue({ cards, bare = false }: { cards: Card[]; bare?: boole
             </h3>
             <div className="labs-grid">
               {g.cards.map((c) => (
-                <LabCard key={c.id} card={c} />
+                <LabCard key={c.id} card={c} also={alsoExams(c, g.exam)} />
               ))}
             </div>
           </section>

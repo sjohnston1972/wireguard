@@ -1,0 +1,52 @@
+# Lab 39 (AZ-700 plan, area Z2). AZ-700 study guide skills this lab covers
+# (outline "Skills measured as of July 27, 2026"):
+#   Design, implement, and manage connectivity services > Design and
+#   implement an Azure Virtual WAN architecture: "Select a Virtual WAN SKU",
+#   "Design a Virtual WAN architecture, including selecting types and
+#   services", "Create a hub in Virtual WAN", "Configure virtual hub
+#   routing"; "Choose an appropriate scale unit for each gateway type",
+#   "Deploy a gateway into a Virtual WAN hub" and "Integrate a Virtual WAN
+#   hub with a third-party NVA" are explained in the readme (Not built
+#   here, ruling 43).
+#   Design and implement Azure network security services > Implement Azure
+#   Firewall: "Create a secure hub by deploying Azure Firewall inside an
+#   Azure Virtual WAN hub", "Create and implement Azure Firewall Manager
+#   policies".
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-06),
+# rounded up. Retail entries, checked by npm run labs-verify -- --meters
+# az700-39-vwan-secured-hub: "Standard Hub Unit" (Virtual WAN Standard Hub,
+# 1 Hour) £0.1887/h; "Basic Secured Virtual Hub Deployment" (Azure Firewall,
+# 1 Hour) £0.2981/h; "Standard IPv4 Static Public IP" £0.0038/h (the
+# firewall's one public IP); Standard_B1s Linux £0.0089/h; "S4 LRS Disk"
+# £1.2755 a month (about £0.0018/h). Authored (ruling 54): data through the
+# hub and its firewall, about 0.1 GB an hour at "Basic Data Processed"
+# £0.0491/GB plus hub data processing £0.0151/GB (per-GB units the feed
+# cannot read). The WAN itself and its VNet connections cost nothing.
+id: az700-39-vwan-secured-hub
+version: 2
+title: "Virtual WAN with a secured hub"
+summary: >-
+  A Standard Virtual WAN hub secured by Azure Firewall Basic, with routing intent sending private and internet traffic
+  through the firewall and two spoke VNets connected to the hub, so you can read the hub's routes and filter spoke traffic.
+exam: AZ-700
+skill_areas: [az700.connectivity, az700.security]
+level: expert
+type: explore
+prerequisites: [az700-38-hub-firewall]
+cost:
+  items:
+    - { name: "Virtual WAN hub, Standard (one hub unit)", gbp_h: 0.1887, retail: { meter: "Standard Hub Unit", unit: "1 Hour" } }
+    - { name: "Azure Firewall Basic in a secured hub", gbp_h: 0.2981, retail: { meter: "Basic Secured Virtual Hub Deployment", unit: "1 Hour" } }
+    - { name: "Public IP, Standard static (the hub firewall's)", gbp_h: 0.0038, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "Hub and firewall data processed, about 0.1 GB an hour", gbp_h: 0.0064 }
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+  pricey: "Azure Firewall Basic in a secured hub"
+timing: { deploy_min: 55, destroy_min: 45, session_h: 2, max_h: 3 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 3 }
+identity:
+  creates: []
+  roles: []
+  governance: false

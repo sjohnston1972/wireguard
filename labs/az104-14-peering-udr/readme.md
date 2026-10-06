@@ -3,6 +3,11 @@ routes (UDRs) send spoke-to-spoke traffic through. Practise peering VNets, see t
 two spokes talk through a network virtual appliance with route tables. From the AZ-104 outline: create and configure
 virtual network peering, configure user-defined network routes, and troubleshoot network connectivity.
 
+This lab also counts for AZ-700, in Design and implement core networking infrastructure. From the AZ-700 outline: design
+and implement virtual network peering, and user-defined routes in route tables sending traffic through a network virtual
+appliance. For more, lab 34 learns routes over BGP with Azure Route Server, and lab 35 is a break-fix on a hub and spoke
+whose default route goes nowhere (forced tunnelling).
+
 ## What it deploys
 
 - Three VNets from the first three /20s of the session's address slot: `vnet-hub`, `vnet-spoke1` and `vnet-spoke2`, each with one /24 subnet

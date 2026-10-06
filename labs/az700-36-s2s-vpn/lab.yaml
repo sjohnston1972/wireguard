@@ -1,0 +1,50 @@
+# Lab 36 (AZ-700 plan, area Z2; was AZ-305 29, ruling 40). AZ-700 study
+# guide skills this lab covers (outline "Skills measured as of July 27,
+# 2026"):
+#   Design, implement, and manage connectivity services > Design, implement,
+#   and manage a site-to-site VPN connection: "Select an appropriate virtual
+#   network gateway SKU for site-to-site VPN requirements", "Implement a
+#   virtual network gateway", "Implement a local network gateway",
+#   "Implement IP addressing and BGP for site-to-site VPN connections",
+#   "Implement a custom IPsec/IKE policy", "Diagnose and resolve virtual
+#   network gateway connectivity issues"; "Design and implement Azure
+#   ExpressRoute" and "Implement Azure Extended Network" are explained in
+#   the readme (Not built here, ruling 43).
+#   Also AZ-305 Design infrastructure solutions (network connectivity).
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-06),
+# rounded up. Retail entries, checked by npm run labs-verify -- --meters
+# az700-36-s2s-vpn: "VpnGw1AZ" (VPN Gateway, 1 Hour) £0.1585/h each;
+# "Standard IPv4 Static Public IP" £0.0038/h; Standard_B1s Linux £0.0089/h;
+# "S4 LRS Disk" £1.2755 a month (about £0.0018/h). Authored (ruling 54):
+# the S2S tunnels, "S2S Connection" £0.0113/h each, a meter every gateway
+# SKU shares, but VpnGw1AZ includes 10 site-to-site tunnels, so these two
+# cost nothing. Data out over the tunnel is pennies per GB. A gateway bills
+# every hour or part hour it exists, so a 45-minute deploy and a 25-minute
+# destroy bill about two hours each.
+id: az700-36-s2s-vpn
+version: 2
+title: "Site-to-site VPN between two VNets, one as on-prem"
+summary: >-
+  Two VNets, one standing in for an on-premises site, joined only by a site-to-site IPsec VPN between two VpnGw1AZ
+  gateways with BGP and a custom IPsec/IKE policy, so you can read BGP peers and learned routes, break the tunnel and fix it.
+exam: AZ-700
+skill_areas: [az700.connectivity, az305.infra]
+level: associate
+type: explore
+prerequisites: [az104-14-peering-udr]
+cost:
+  items:
+    - { name: "VPN gateways, VpnGw1AZ", gbp_h: 0.1585, qty: 2, retail: { meter: "VpnGw1AZ", unit: "1 Hour" } }
+    - { name: "Public IPs, Standard static (one per gateway)", gbp_h: 0.0038, qty: 2, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "Site-to-site tunnels (10 included in VpnGw1AZ)", gbp_h: 0, qty: 2 }
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+  pricey: "VPN gateways, VpnGw1AZ"
+timing: { deploy_min: 45, destroy_min: 25, session_h: 2, max_h: 3 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false

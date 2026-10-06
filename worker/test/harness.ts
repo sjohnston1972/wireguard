@@ -147,6 +147,11 @@ export interface LabAzure {
   roleAssignments: { principalId: string; roleDefinitionId: string; scope: string }[];
   /** Cost Management rows for the query grouped by ResourceGroupName: one per day and group, in £. */
   costRows: { day: string; rg: string; gbp: number }[];
+  /**
+   * VNet flow logs (AZ-700 S2): children of NetworkWatcher_<region> in NetworkWatcherRG. GET /subscriptions/<s>/resources
+   * with $filter=resourceType eq 'Microsoft.Network/networkWatchers/flowLogs' lists them, as ARM lists nested types.
+   */
+  flowLogs?: { name: string; region: string; createdTime?: string }[];
 }
 
 /** Microsoft Graph as the lab code sees it: Entra users and groups. `fail` answers every Graph call with that status. */
@@ -355,6 +360,11 @@ function labArm(az: LabAzure, method: string, u: URL, init?: RequestInit): Respo
   if (method === "GET" && inGroup) {
     const rg = decodeURIComponent(inGroup[1]);
     return json({ value: az.resources.filter((r) => r.resourceGroup.toLowerCase() === rg).map((r) => ({ id: `/subscriptions/sub/resourceGroups/${r.resourceGroup}/providers/${r.type}/${r.name}`, name: r.name, type: r.type, properties: { provisioningState: r.provisioningState ?? "Succeeded" } })) });
+  }
+  if (method === "GET" && sub("/resources").test(p)) {
+    const type = (u.searchParams.get("$filter") ?? "").match(/resourceType eq '([^']+)'/i)?.[1]?.toLowerCase();
+    if (type !== "microsoft.network/networkwatchers/flowlogs") return json({ value: [] });
+    return json({ value: (az.flowLogs ?? []).map((f) => ({ id: `/subscriptions/sub/resourceGroups/NetworkWatcherRG/providers/Microsoft.Network/networkWatchers/NetworkWatcher_${f.region}/flowLogs/${f.name}`, name: `NetworkWatcher_${f.region}/${f.name}`, type: "Microsoft.Network/networkWatchers/flowLogs", location: f.region, createdTime: f.createdTime ?? null })) });
   }
   if (method === "GET" && p === "/providers/microsoft.management/managementgroups") {
     if (az.managementGroupsForbidden) return new Response(JSON.stringify({ error: { code: "AuthorizationFailed", message: "The client does not have authorization to perform action 'Microsoft.Management/managementGroups/read'" } }), { status: 403, headers: { "Content-Type": "application/json" } });

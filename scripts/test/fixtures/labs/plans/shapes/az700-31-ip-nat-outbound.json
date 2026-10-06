@@ -1,0 +1,507 @@
+{
+ "resources": {
+  "azurerm_lb.out": {
+   "type": "azurerm_lb",
+   "refs": {
+    "frontend_ip_configuration.0.public_ip_prefix_id": [
+     "azurerm_public_ip_prefix.lb.id",
+     "azurerm_public_ip_prefix.lb"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "frontend_ip_configuration.0.gateway_load_balancer_frontend_ip_configuration_id",
+    "frontend_ip_configuration.0.id",
+    "frontend_ip_configuration.0.inbound_nat_rules",
+    "frontend_ip_configuration.0.load_balancer_rules",
+    "frontend_ip_configuration.0.outbound_rules",
+    "frontend_ip_configuration.0.private_ip_address",
+    "frontend_ip_configuration.0.private_ip_address_allocation",
+    "frontend_ip_configuration.0.private_ip_address_version",
+    "frontend_ip_configuration.0.public_ip_prefix_id",
+    "id",
+    "private_ip_address",
+    "private_ip_addresses",
+    "public_ip_address_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_lb_backend_address_pool.out": {
+   "type": "azurerm_lb_backend_address_pool",
+   "refs": {
+    "loadbalancer_id": [
+     "azurerm_lb.out.id",
+     "azurerm_lb.out"
+    ]
+   },
+   "unknown": [
+    "backend_ip_configurations",
+    "id",
+    "inbound_nat_rules",
+    "load_balancing_rules",
+    "loadbalancer_id",
+    "outbound_rules"
+   ],
+   "sensitive": []
+  },
+  "azurerm_lb_outbound_rule.out": {
+   "type": "azurerm_lb_outbound_rule",
+   "refs": {
+    "backend_address_pool_id": [
+     "azurerm_lb_backend_address_pool.out.id",
+     "azurerm_lb_backend_address_pool.out"
+    ],
+    "loadbalancer_id": [
+     "azurerm_lb.out.id",
+     "azurerm_lb.out"
+    ]
+   },
+   "unknown": [
+    "backend_address_pool_id",
+    "enable_tcp_reset",
+    "frontend_ip_configuration.0.id",
+    "id",
+    "loadbalancer_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_linux_virtual_machine.lb": {
+   "type": "azurerm_linux_virtual_machine",
+   "refs": {
+    "admin_password": [
+     "var.admin_password"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "network_interface_ids": [
+     "azurerm_network_interface.lb.id",
+     "azurerm_network_interface.lb"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "allow_extension_operations",
+    "computer_name",
+    "disk_controller_type",
+    "id",
+    "network_interface_ids",
+    "os_disk.0.disk_size_gb",
+    "os_disk.0.id",
+    "os_disk.0.name",
+    "os_managed_disk_id",
+    "patch_assessment_mode",
+    "patch_mode",
+    "private_ip_address",
+    "private_ip_addresses",
+    "provision_vm_agent",
+    "public_ip_address",
+    "public_ip_addresses",
+    "termination_notification",
+    "virtual_machine_id",
+    "vm_agent_platform_updates_enabled"
+   ],
+   "sensitive": [
+    "admin_password",
+    "custom_data"
+   ]
+  },
+  "azurerm_linux_virtual_machine.nat": {
+   "type": "azurerm_linux_virtual_machine",
+   "refs": {
+    "admin_password": [
+     "var.admin_password"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "network_interface_ids": [
+     "azurerm_network_interface.nat.id",
+     "azurerm_network_interface.nat"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "allow_extension_operations",
+    "computer_name",
+    "disk_controller_type",
+    "id",
+    "network_interface_ids",
+    "os_disk.0.disk_size_gb",
+    "os_disk.0.id",
+    "os_disk.0.name",
+    "os_managed_disk_id",
+    "patch_assessment_mode",
+    "patch_mode",
+    "private_ip_address",
+    "private_ip_addresses",
+    "provision_vm_agent",
+    "public_ip_address",
+    "public_ip_addresses",
+    "termination_notification",
+    "virtual_machine_id",
+    "vm_agent_platform_updates_enabled"
+   ],
+   "sensitive": [
+    "admin_password",
+    "custom_data"
+   ]
+  },
+  "azurerm_nat_gateway.hub": {
+   "type": "azurerm_nat_gateway",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id",
+    "resource_guid"
+   ],
+   "sensitive": []
+  },
+  "azurerm_nat_gateway_public_ip_prefix_association.nat": {
+   "type": "azurerm_nat_gateway_public_ip_prefix_association",
+   "refs": {
+    "nat_gateway_id": [
+     "azurerm_nat_gateway.hub.id",
+     "azurerm_nat_gateway.hub"
+    ],
+    "public_ip_prefix_id": [
+     "azurerm_public_ip_prefix.nat.id",
+     "azurerm_public_ip_prefix.nat"
+    ]
+   },
+   "unknown": [
+    "id",
+    "nat_gateway_id",
+    "public_ip_prefix_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_network_interface.lb": {
+   "type": "azurerm_network_interface",
+   "refs": {
+    "ip_configuration.0.subnet_id": [
+     "azurerm_subnet.lb.id",
+     "azurerm_subnet.lb"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "applied_dns_servers",
+    "id",
+    "internal_domain_name_suffix",
+    "ip_configuration.0.gateway_load_balancer_frontend_ip_configuration_id",
+    "ip_configuration.0.primary",
+    "ip_configuration.0.private_ip_address",
+    "ip_configuration.0.subnet_id",
+    "mac_address",
+    "private_ip_address",
+    "private_ip_addresses",
+    "virtual_machine_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_network_interface.nat": {
+   "type": "azurerm_network_interface",
+   "refs": {
+    "ip_configuration.0.subnet_id": [
+     "azurerm_subnet.nat.id",
+     "azurerm_subnet.nat"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "applied_dns_servers",
+    "id",
+    "internal_domain_name_suffix",
+    "ip_configuration.0.gateway_load_balancer_frontend_ip_configuration_id",
+    "ip_configuration.0.primary",
+    "ip_configuration.0.private_ip_address",
+    "ip_configuration.0.subnet_id",
+    "mac_address",
+    "private_ip_address",
+    "private_ip_addresses",
+    "virtual_machine_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_network_interface_backend_address_pool_association.lb": {
+   "type": "azurerm_network_interface_backend_address_pool_association",
+   "refs": {
+    "backend_address_pool_id": [
+     "azurerm_lb_backend_address_pool.out.id",
+     "azurerm_lb_backend_address_pool.out"
+    ],
+    "network_interface_id": [
+     "azurerm_network_interface.lb.id",
+     "azurerm_network_interface.lb"
+    ]
+   },
+   "unknown": [
+    "backend_address_pool_id",
+    "id",
+    "network_interface_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_network_security_group.hub": {
+   "type": "azurerm_network_security_group",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id",
+    "security_rule"
+   ],
+   "sensitive": []
+  },
+  "azurerm_public_ip_prefix.lb": {
+   "type": "azurerm_public_ip_prefix",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id",
+    "ip_prefix"
+   ],
+   "sensitive": []
+  },
+  "azurerm_public_ip_prefix.nat": {
+   "type": "azurerm_public_ip_prefix",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id",
+    "ip_prefix"
+   ],
+   "sensitive": []
+  },
+  "azurerm_resource_group.lab": {
+   "type": "azurerm_resource_group",
+   "refs": {
+    "location": [
+     "var.region"
+    ],
+    "name": [
+     "var.resource_group_name"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_subnet.lb": {
+   "type": "azurerm_subnet",
+   "refs": {
+    "address_prefixes": [
+     "local.lb_subnet"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "virtual_network_name": [
+     "azurerm_virtual_network.hub.name",
+     "azurerm_virtual_network.hub"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_subnet.nat": {
+   "type": "azurerm_subnet",
+   "refs": {
+    "address_prefixes": [
+     "local.nat_subnet"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "virtual_network_name": [
+     "azurerm_virtual_network.hub.name",
+     "azurerm_virtual_network.hub"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_subnet_nat_gateway_association.nat": {
+   "type": "azurerm_subnet_nat_gateway_association",
+   "refs": {
+    "nat_gateway_id": [
+     "azurerm_nat_gateway.hub.id",
+     "azurerm_nat_gateway.hub"
+    ],
+    "subnet_id": [
+     "azurerm_subnet.nat.id",
+     "azurerm_subnet.nat"
+    ]
+   },
+   "unknown": [
+    "id",
+    "nat_gateway_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_subnet_network_security_group_association.lb": {
+   "type": "azurerm_subnet_network_security_group_association",
+   "refs": {
+    "network_security_group_id": [
+     "azurerm_network_security_group.hub.id",
+     "azurerm_network_security_group.hub"
+    ],
+    "subnet_id": [
+     "azurerm_subnet.lb.id",
+     "azurerm_subnet.lb"
+    ]
+   },
+   "unknown": [
+    "id",
+    "network_security_group_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_subnet_network_security_group_association.nat": {
+   "type": "azurerm_subnet_network_security_group_association",
+   "refs": {
+    "network_security_group_id": [
+     "azurerm_network_security_group.hub.id",
+     "azurerm_network_security_group.hub"
+    ],
+    "subnet_id": [
+     "azurerm_subnet.nat.id",
+     "azurerm_subnet.nat"
+    ]
+   },
+   "unknown": [
+    "id",
+    "network_security_group_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_virtual_network.hub": {
+   "type": "azurerm_virtual_network",
+   "refs": {
+    "address_space": [
+     "local.hub_cidr"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "dns_servers",
+    "guid",
+    "id",
+    "subnet"
+   ],
+   "sensitive": []
+  }
+ }
+}

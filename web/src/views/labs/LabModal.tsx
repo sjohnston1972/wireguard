@@ -3,12 +3,13 @@ import type { LabDetail } from "@shared/api";
 import { Button, Drawer } from "@/components";
 import { useLab } from "@/api/queries";
 import { CostTable, DeployFields, DeployFooter, useDeployForm } from "./DeployForm";
-import { LEVEL_WORD, TYPE_WORD, stateWord } from "./model";
+import { LEVEL_WORD, TYPE_WORD, examsWord, stateWord } from "./model";
 import { ReadmeView } from "./ReadmeView";
 import { RunningFooter, RunningLab } from "./RunningLab";
 import { Word } from "./RunningStrip";
 
-const subtitle = (d: LabDetail) => `Lab ${d.card.number} · ${d.card.exam} · ${LEVEL_WORD[d.card.level]} · ${TYPE_WORD[d.card.type]} · v${d.card.version}`;
+/** "Lab 14 · AZ-104, AZ-700 · Associate · Explore · v3": every exam the lab belongs to, the primary first. */
+const subtitle = (d: LabDetail) => `Lab ${d.card.number} · ${examsWord(d.card)} · ${LEVEL_WORD[d.card.level]} · ${TYPE_WORD[d.card.type]} · v${d.card.version}`;
 
 /** Not running: the readme on the left; cost, warnings and the Deploy form on the right. */
 function IdleLab({ d, onClose }: { d: LabDetail; onClose: () => void }) {

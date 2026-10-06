@@ -11,14 +11,16 @@
 # (Standard_B1s Linux £0.0089/h; S4 LRS Disk £1.28 a month, about
 # £0.0018/h). The VNet, subnets, NSGs, ASGs, NICs and managed boot
 # diagnostics are free.
+# Version 2 (AZ-700 plan Z0.3, ruling 42): also an AZ-700 lab, az700.core and az700.security (AZ-700
+# outline "Skills measured as of July 27, 2026"); the readme says which skills. Nothing in terraform/ changed.
 id: az104-13-vnets
-version: 1
+version: 2
 title: "VNets, subnets, NSGs and ASGs"
 summary: >-
   One VNet with web and app subnets, an NSG on each and application security groups for the two tiers,
   so you can see which rule lets traffic in, and which one stops it.
 exam: AZ-104
-skill_areas: [az104.networking]
+skill_areas: [az104.networking, az700.core, az700.security]
 level: foundation
 type: explore
 prerequisites: []

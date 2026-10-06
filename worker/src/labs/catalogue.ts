@@ -11,7 +11,7 @@ import type { LabCatalogue, LabDef, ReadmeBlock } from "../../../shared/labs";
 
 let override: LabCatalogue | null = null;
 
-/** The catalogue: labs sorted AZ-104 then AZ-305 by number, the skill areas and each lab's readme blocks. */
+/** The catalogue: labs sorted by primary exam (AZ-104, AZ-305, AZ-700) then number, the skill areas and each lab's readme blocks. */
 export function catalogue(): LabCatalogue {
   return override ?? (generated as unknown as LabCatalogue);
 }

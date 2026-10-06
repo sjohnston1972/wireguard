@@ -12,7 +12,8 @@ way as the WireGuard gateway: the Worker dispatches a GitHub Actions workflow, T
 dashboard shows a live log, and a timer tears it down. The gateway stays the base connectivity: a lab can peer to it so tunnel
 clients reach the lab's private addresses.
 
-Goals: 34 labs (§12) covering the official skill areas of both exams; each says its cost per hour and per session before
+Goals: 44 labs (§12) covering the official skill areas of AZ-104, AZ-305 and, since the AZ-700 suite (rulings 38–55),
+AZ-700; each says its cost per hour and per session before
 deploy, and the month's budget covers labs; a lab always goes back to £0 (timer, maximum lifetime, budget guard, safety-net
 delete, orphan sweep); a lab never touches the gateway's resource group, any other group, or Entra objects without its prefix;
 several labs can run at once, alongside the gateway, within budget.
@@ -60,7 +61,7 @@ labs/
     terraform/                   main.tf, variables.tf, outputs.tf, versions.tf; optional *.bicep
 ```
 
-Lab id: `^az(104|305)-\d{2}-[a-z0-9-]+$`, at most 40 characters, equal to the folder name, never a prefix of another lab's id.
+Lab id: `^az(104|305)-\d{2}-[a-z0-9-]+$` (`az700` too, and single hyphens: rulings 9 and 38), at most 40 characters, equal to the folder name, never a prefix of another lab's id.
 Resource group: `rg-lab-<id>`. Azure-made groups the lab must name (AKS nodes, backup restore points, DR targets):
 `rg-lab-<id>-<suffix>`. Entra users, groups, custom roles, policy definitions, management groups: `lab-<id>-<name>`.
 
@@ -454,8 +455,15 @@ Recorded in `lab_release_tests` (deploy and destroy times, estimated cost). A ve
   `az104.monitor` Monitor and maintain Azure resources.
 - **AZ-305:** `az305.identity` Design identity, governance, and monitoring solutions · `az305.data` Design data storage solutions ·
   `az305.continuity` Design business continuity solutions · `az305.infra` Design infrastructure solutions.
+- **AZ-700** (outline "Skills measured as of July 27, 2026"; ruling 38): `az700.core` Design and implement core networking
+  infrastructure · `az700.connectivity` Design, implement, and manage connectivity services · `az700.delivery` Design and
+  implement application delivery services · `az700.private` Design and implement private access to Azure services ·
+  `az700.security` Design and implement Azure network security services.
 
-### 12.2 The 34 labs
+A lab may list skill areas of several exams (ruling 39); it then counts in each exam's coverage, and its `exam` (the id's
+prefix) stays the primary.
+
+### 12.2 The labs
 
 Cost markers: £ pennies an hour, ££ up to about 50p an hour, £££ about £1 an hour or more, or a long deploy. Peer: off / opt /
 req. Session and max are hours. G = governance lab. Times and SKUs are planning figures; release tests replace them.
@@ -489,16 +497,31 @@ req. Session and max are hours. G = governance lab. Times and SKUs are planning 
 | 25 | az305-25-storage-design | Storage design: data lake, immutability, tiering | data | E | explore | £ | off | 3 | 2/6 | none |
 | 26 | az305-26-site-recovery | Cross-region VM restore and Site Recovery | continuity | E | explore | ££ | opt | 20 | 3/8 | none |
 | 27 | az305-27-multi-region | Multi-region app with Traffic Manager and Front Door | infra, continuity | E | explore | ££ | off | 15 | 2/4 | none |
-| 28 | az305-28-hub-spoke-fw | Hub-spoke with Azure Firewall | infra | E | explore | £££ | opt | 15 | 2/3 | none |
-| 29 | az305-29-s2s-vpn | Site-to-site VPN Gateway (two VNets as on-prem) | infra | E | explore | £££ | opt | ~35 | 3/6 | none |
-| 30 | az305-30-private-link | Private Link and private DNS for PaaS | infra, data | E | explore | £ | req | 6 | 2/6 | none |
-| 31 | az305-31-three-tier | Three-tier app: App Service, SQL, Front Door + WAF | infra | E | explore | £££ | off | 15 | 2/3 | none |
-| 32 | az305-32-aks | AKS small cluster, networking, ingress | infra | E | explore | ££ | opt | 12 | 2/4 | MI, AcrPull (V) |
-| 33 | az305-33-messaging | Messaging and events: Service Bus, Event Grid, Functions | infra | E | explore | £ | off | 5 | 2/6 | none |
-| 34 | az305-34-forced-tunnel-fix | Break-fix: hub-spoke routing fault (forced tunnelling) | infra | E | break-fix | £ | opt | 8 | 2/4 | none |
+| 28 | az305-28-three-tier | Three-tier app: Container Apps, SQL, Front Door + WAF (ruling 41) | infra | E | explore | ££ | off | 15 | 2/3 | none |
+| 29 | az305-29-aks | AKS small cluster, networking, ingress | infra | E | explore | ££ | opt | 12 | 2/4 | MI, AcrPull (V) |
+| 30 | az305-30-messaging | Messaging and events: Service Bus, Event Grid, Functions | infra | E | explore | £ | off | 5 | 2/6 | none |
+| 31 | az700-31-ip-nat-outbound | Public IP prefixes, NAT Gateway and outbound rules | 700 core | A | explore | ££ | opt | 6 | 2/4 | none |
+| 32 | az700-32-dns-resolver | Hybrid DNS with DNS Private Resolver | 700 core | A | explore | ££ | opt | 10 | 2/4 | none |
+| 33 | az700-33-vnet-manager | Virtual Network Manager: hub-and-spoke and security admin rules | 700 core, security | A | explore | ££ | opt | 10 | 2/4 | none · S1 |
+| 34 | az700-34-route-server | Route Server with a BGP router VM | 700 core | E | explore | ££ | opt | 25 | 2/3 | none |
+| 35 | az700-35-forced-tunnel-fix | Break-fix: hub-spoke routing fault (forced tunnelling) | 700 core; 305 infra | A | break-fix | £ | opt | 6 | 2/4 | none |
+| 36 | az700-36-s2s-vpn | Site-to-site VPN between two VNets, one as on-prem | 700 connectivity; 305 infra | A | explore | £££ | opt | 45 | 2/3 | none |
+| 37 | az700-37-p2s-vpn | Point-to-site VPN with Entra ID sign-in | 700 connectivity | A | explore | £££ | opt | 40 | 2/3 | user |
+| 38 | az700-38-hub-firewall | Hub-spoke with Azure Firewall and Firewall Manager policy | 700 security, core; 305 infra | A | explore | ££ | opt | 15 | 2/3 | none |
+| 39 | az700-39-vwan-secured-hub | Virtual WAN with a secured hub | 700 connectivity, security | E | explore | £££ | off | 35 | 2/3 | none |
+| 40 | az700-40-lb-advanced | Load Balancer: cross-region, Gateway LB, inbound NAT, outbound rules | 700 delivery | E | explore | ££ | opt | 10 | 2/4 | none |
+| 41 | az700-41-appgw-waf | Application Gateway WAF_v2: TLS, rewrites, WAF policy | 700 delivery, security | A | explore | ££ | opt | 12 | 2/3 | none |
+| 42 | az700-42-frontdoor-private | Front Door Premium: rules, caching, WAF, Private Link origin | 700 delivery, security, private | E | explore | ££ | off | 15 | 2/3 | none |
+| 43 | az700-43-private-link | Private Link service, private endpoints, service endpoint policies | 700 private; 305 infra, data | A | explore | ££ | opt | 8 | 2/4 | none |
+| 44 | az700-44-flow-logs-bastion | VNet flow logs, IP flow verify and Bastion | 700 security, core | A | explore | ££ | opt | 12 | 2/4 | none · S2 |
 
-Cheap SKUs are listed in §15 item 13; lab 23 adds a separate serverless database to show auto-pause, and lab 34 uses a small Linux
-router VM, not Azure Firewall. Break-fix faults: lab 17, an NSG deny at higher priority plus a UDR to a dead next hop; lab 34, a
+Batch 4 changed this table (rulings 40–41, 2026-10-05): AZ-305 batch 4 is labs 28–30; the never-built AZ-305 labs 28
+(hub-spoke firewall), 29 (S2S VPN), 30 (Private Link) and 34 (forced-tunnel break-fix) are AZ-700 labs 38, 36, 43 and 35.
+Labs 13, 14, 15, 16, 17 and 27 also belong to AZ-700 (ruling 42). S1 and S2 are the scope exceptions of rulings 47–48.
+AZ-700 rows show their planning marker from `costMarker`; designs are in `docs/superpowers/specs/2026-10-06-labs-az700-design.md`.
+
+Cheap SKUs are listed in §15 item 13; lab 23 adds a separate serverless database to show auto-pause, and lab 35 uses a small Linux
+router VM, not Azure Firewall. Break-fix faults: lab 17, an NSG deny at higher priority plus a UDR to a dead next hop; lab 35, a
 0.0.0.0/0 UDR on the spoke to an NVA that does not forward.
 
 ## 13. Delivery
@@ -513,7 +536,9 @@ and noted in its report before the next starts. Gateway-side changes ship as the
    governance permission and the lock "unblock" early.
 2. **Labs 8–19:** compute, networking, monitoring, backup (the first vault "unblock" case).
 3. **Labs 20–27:** AZ-305 governance, identity, data and continuity (cross-region and Site Recovery).
-4. **Labs 28–34:** infrastructure, including the £££ and slow labs, and both break-fix labs' final checks.
+4. **Labs 28–30:** AZ-305 infrastructure (three-tier, AKS, messaging; rulings 40–41).
+5. **The AZ-700 suite, labs 31–44,** plus AZ-700 tags on labs 13–17 and 27, including the £££ and slow labs
+   (`docs/superpowers/plans/2026-10-06-labs-az700-plan.md`).
 
 ## 14. Risks and open questions
 
@@ -561,7 +586,7 @@ Open questions for Steven: none block batch 1, apart from running §8.2 and choo
 15. **UI:** tear down a lab with a confirm dialog (not typing `destroy`); Labs is the phone's seventh bottom-bar icon, after Cost;
     the Running labs widget lives in row `r4` and suggests replacing Cost impact.
 16. **Lab VMs have no public IP.** Reach them through peering, or the portal's Serial console or Run command.
-17. **Lab ids `az104-NN-slug` / `az305-NN-slug`,** with resource groups and Entra names derived from them (§3.1).
+17. **Lab ids `az104-NN-slug` / `az305-NN-slug` / `az700-NN-slug` (ruling 38),** with resource groups and Entra names derived from them (§3.1).
 
 ## 16. Rulings from the batch 1 plan
 
@@ -755,3 +780,122 @@ From `docs/superpowers/plans/2026-10-06-labs-batch3-plan.md` (labs 20–27). Whe
     evidence; the list starts empty (`READY_NO_STATE_TYPES` in `infra/ci/lab-ready.sh`, which reads each resource's type).
 37. **Subnets that need outbound access say so.** A subnet whose VMs need to reach Azure services (Key Vault, Site Recovery)
     sets `default_outbound_access_enabled = true` explicitly instead of relying on the provider's default.
+
+### Rulings from the AZ-700 suite (38 on)
+
+From `docs/superpowers/specs/2026-10-06-labs-az700-design.md` (its §9) and `docs/superpowers/plans/2026-10-06-labs-az700-plan.md`
+(labs 31–44, the AZ-305 batch 4 shrink, tags on labs 13–17 and 27). Where they differ from the sections above, these win; §-references
+in them are to the AZ-700 design spec.
+
+38. **AZ-700 is the third exam.** Ids `az700-NN-slug`; `LAB_ID_RE` is `^az(104|305|700)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$` in every
+    copy (a test keeps the nine equal); `LabExam` adds `"AZ-700"`, `LAB_EXAMS = ["AZ-104", "AZ-305", "AZ-700"]`; skill areas
+    `az700.core`, `az700.connectivity`, `az700.delivery`, `az700.private`, `az700.security` with Learn's names (outline of July
+    27, 2026).
+39. **A lab may belong to several exams** (§3.1): `exam` is the primary and matches the id; `skill_areas` may name any
+    exam's areas, at least one the primary's; `exams` is computed (primary first, then AZ-104, AZ-305, AZ-700 order); coverage
+    counts the lab in each; the catalogue groups by primary with an "Also …" chip and an exam filter matches any of `exams`.
+40. **Numbering:** AZ-305 batch 4 is `az305-28-three-tier`, `az305-29-aks`, `az305-30-messaging`. The unbuilt AZ-305 ids 28
+    (hub-spoke-fw), 29 (s2s-vpn), 30 (private-link) and 34 (forced-tunnel-fix) retire; their labs are AZ-700 38, 36, 43 and 35,
+    tagged `az305.infra` (43 also `az305.data`). AZ-700 is 31–44.
+41. **Lab 28 three-tier** is Front Door Standard + WAF custom rules → Container Apps web (external) and app (internal) in a
+    workload-profiles environment in a lab subnet, infrastructure group `rg-lab-<id>-infra` → SQL Basic (DTU) with a private
+    endpoint and public access off. No App Service, no vCore in uksouth.
+42. **Tagged labs** (13, 14, 15, 16, 17, 27) get the AZ-700 areas of §3.4, a readme paragraph naming the AZ-700 skills, a
+    version bump and a release test of that version. No rebuild.
+43. **Readme-only concepts** go under an optional `## Not built here` heading in the nearest lab (§3.5). A new scope rule,
+    `never`, refuses DDoS protection plans and DDoS IP protection on a public IP, ExpressRoute circuits, ports and gateways,
+    and custom IP prefixes. As built (Z0): `never` comes right after `immutability` in `RULES`; it refuses
+    `azurerm_network_ddos_protection_plan`, `azurerm_custom_ip_prefix`, every `azurerm_*express_route*` type, a public IP with
+    `ddos_protection_mode = "Enabled"` or a `ddos_protection_plan_id`, a VNet with a `ddos_protection_plan` block and a
+    `azurerm_virtual_network_gateway` of `type = "ExpressRoute"`.
+44. **VPN gateways are `VpnGw1AZ`**, route-based, active-standby, with Standard zone-redundant public IPs; never Basic or
+    non-AZ VpnGw1–5. P2S uses OpenVPN and Entra ID with the Microsoft-registered audience
+    `c632b3df-fb67-4d84-bdcf-b95ad541b5c8` (no consent; not an identity change); the client pool is a /24 of the slot.
+45. **Long deploys:** the timeout formula and its 150 cap stay; `LAB_DELETE_WAIT_SECONDS` defaults to `max(1500, 90 ×
+    destroy_min)` within the job deadline; £££ labs are session 2 h, max 3 h. As built: Parse payload exports
+    `LAB_DELETE_WAIT_SECONDS` (and `LAB_REGION`, `LAB_SECONDARY_REGION`); the safety net computes the same default from
+    `LAB_DESTROY_MIN` when it is run without it.
+46. **Special subnets** are sized as §3.8, all from the slot; a lab's VNets, hub prefix and P2S pool never overlap.
+47. **Scope exception S1** (§6): a subscription-scoped Virtual Network Manager, for `az700-33-vnet-manager` only
+    (`AVNM_LABS`), static lab members only. *Approved by Steven 2026-10-05.* As built: in lab 33 only the eight AVNM types it
+    needs (manager, network group, static member, connectivity and security admin configurations, admin rule collection
+    and rule, deployment); the manager's scope is exactly the current subscription (from `data.azurerm_subscription` with no
+    `subscription_id`, or `data.azurerm_client_config`), no management group or cross-tenant scope, `scope_accesses`
+    Connectivity and SecurityAdmin only; a network group of VNets (`member_type` unset or `VirtualNetwork`) filled by static
+    members whose `target_virtual_network_id` is `azurerm_virtual_network.<name>.id` (a reference, never a literal); every
+    configuration, rule collection and deployment points only at the lab's own manager, groups, configurations and VNets by
+    reference; no policy assignment in lab 33 and no `addToNetworkGroup` policy in any lab (dynamic membership); any
+    `azurerm_network_manager*` in another lab is refused (`outside-scope`, messages start `S1:`).
+48. **Scope exception S2** (§6): `azurerm_network_watcher_flow_log` in `NetworkWatcherRG` on `NetworkWatcher_<region>`, named
+    `lab-<id>-*`, for `az700-44-flow-logs-bastion` only (`FLOW_LOG_LABS`); the safety net, Verify clean and the orphan sweep
+    find them by name. *Approved by Steven 2026-10-05.* As built: in lab 44 only, `resource_group_name = "NetworkWatcherRG"`
+    (any case), `network_watcher_name = "NetworkWatcher_${var.region}"` (the plan's value must equal the session's region's),
+    `name` starting `lab-<id>-`, `target_resource_id` the lab's own VNet and `storage_account_id` its own account (by
+    reference), no `network_security_group_id`, traffic analytics only to the lab's own workspace; every other resource in
+    `NetworkWatcherRG` (a watcher of its own included) stays refused, and a flow log in any other lab is refused (`S2:`). The
+    content suite lets only that resource of that lab name `NetworkWatcherRG`. The orphan sweep's eighth listing is
+    `GET /subscriptions/<s>/resources` filtered to `Microsoft.Network/networkWatchers/flowLogs` (V at lab 44's release test).
+49. **Unblock knows networks** (§5): AVNM deploy-None, Private Link service connections, VPN connections, Virtual WAN hub
+    children, Route Server peers, firewalls before policies, resolver links and rulesets, global and gateway load balancer
+    links, in that order, never failing the run. As built: `lab-unblock.sh` section 7, sub-steps 7a-7h; the types whose CLI is
+    an extension (AVNM, Virtual WAN, Azure Firewall, DNS Private Resolver) go through `az rest` (api-version 2024-05-01, the
+    resolver 2022-07-01), so nothing is installed on the runner; every `az rest` delete is read back until Azure answers not
+    found, bounded by `LAB_UNBLOCK_NET_WAIT_SECONDS` (default 600; hub gateways `LAB_UNBLOCK_VWAN_WAIT_SECONDS`, 1800); AVNM
+    commits an empty configuration per type and region that has one deployed, then waits until nothing is deployed or
+    deploying (`LAB_UNBLOCK_AVNM_WAIT_SECONDS`, 600; a status it cannot read is "unverified").
+50. **Public by nature, extended** (§3.9): gateway, Route Server, firewall, Bastion and App Gateway public IPs; public load
+    balancer frontends serving a static page; Front Door endpoints. Never a VM public IP. As built: the content suite's test 5
+    lets an `azurerm_public_ip` belong (by `azurerm_public_ip.<name>.id`) to an Application Gateway, a VPN gateway, a Route
+    Server, a firewall, Bastion, a load balancer or a NAT gateway association, never a NIC; test 6 checks every VNet, virtual
+    hub prefix and P2S client pool in the plan fixture is inside the slot and none overlap (ruling 46).
+51. **No pipeline approval of private endpoint connections.** Lab 42's readme starts by approving Front Door's connection;
+    lab 43's consumer endpoint is auto-approved by subscription id.
+52. **App Gateway TLS comes from a Key Vault self-signed certificate** read through vault access policies (the pipeline's
+    own, to create it, and the gateway identity's `Get` on secrets); the vault follows ruling 30 (no purge protection, purged on
+    destroy).
+53. **Budget:** £10 covers about six to nine 2-hour £££ sessions with nothing else spent; Steven is advised to set £30 for
+    the AZ-700 study month. The guard is unchanged.
+54. **Authored prices (ruling 2) for AZ-700:** shared meters `S2S Connection`, `P2S Connection`, `Basic Gateway` (VPN,
+    Bastion and Route Server share it), `Standard Fixed Cost` and `Standard Capacity Units` (App Gateway v2 and WAF v2 share
+    them); non-regional rows (NAT Gateway, Load Balancer, AVNM, Route Server, DNS Private Resolver, Front Door, Private
+    Endpoint: regions Global, "", or "Zone N"); tiered rows (VNet flow logs collected, first 5 GB free). `retail` candidates,
+    each proven by `labs-verify --meters` (V): `VpnGw1AZ`, `Basic Deployment`, `Basic Secured Virtual Hub Deployment`,
+    `Standard Hub Unit`, `Standard IPv4 Static Public IP`, `Standard Static IP Addresses`, `Global IPv4 Static Public IP`,
+    `{ sku: Standard_B1s }`, `S4 LRS Disk`.
+55. **Bastion is Basic** in lab 44, with the documented AzureBastionSubnet NSG; Developer (free, no subnet, one VM, no
+    peering) is a readme comparison.
+
+Rulings 56–61 are the AZ-700 integrator's (2026-10-06, `feat/labs-az700`): the content areas' calls, each checked and
+accepted as built.
+
+56. **`subnets_used` counts every /20 of the slot a lab's Terraform takes, VNet or not** (the content suite counts the
+    distinct `cidrsubnet(var.address_space, 2, n)`). Lab 34 is 3 (hub /20 0, spoke /20 1, the FRR-advertised /24 in /20 3);
+    lab 37 is 2 (hub /20 0; the P2S pool, the last /24 of /20 3); lab 39 is 3 (spokes /20 0 and 1, the hub /23 in /20 3).
+    **Lab 37's client pool is derived from the slot** (`cidrsubnet(cidrsubnet(var.address_space, 2, 3), 4, 15)`), never
+    fixed: it stays inside the session's own /18, so it cannot meet another lab's slot (the 32 slots of 10.64.0.0/13 are
+    disjoint, so two labs at once never collide) or the gateway's own ranges (outside the pool, §4); on Steven's PC the P2S
+    routes are more specific than WireGuard's 10.64.0.0/13 route. Test 6 checks the pool against the lab's VNets.
+57. **Service subnets say `default_outbound_access_enabled = true`** (ruling 37's "say so", for subnets with no VM):
+    `GatewaySubnet`, `RouteServerSubnet`, `AzureFirewallSubnet`, `AzureFirewallManagementSubnet`, `AzureBastionSubnet`, the
+    resolver's delegated subnets and the App Gateway subnet keep the value those services were proven on (Learn, "Default
+    outbound access", 2026-07-24: private subnets do not apply to delegated or managed service subnets). VM subnets say
+    `false` where the lab teaches or forces explicit outbound (31; 35's spoke; 38 and 39's spokes) or where nothing needs the
+    internet (40, 41's web, 42, 43's provider and endpoint subnets: no package installs, pages from `python3`), and `true`
+    where cloud-init installs a package or the learner needs the internet (32, 33, 34, 35's NVA, 36, 37, 43's client, 44).
+    Lab 33's spoke NSGs deny SSH from the hub (the AlwaysAllow admin rule visibly wins) instead of allowing it from anywhere:
+    ruling 50 forbids an inbound internet SSH rule.
+58. **Lab 36's local network gateways read the far gateway's BGP address through `try(…default_addresses[0], "")`.**
+    Accepted: a real plan has the address unknown (the gateway does not exist yet) and `try()` passes an unknown through
+    (Terraform 1.14 plans `try(<unknown>, "")` as "known after apply", checked), so the `""` fallback is reached only in
+    labs-tf's mocked plan, whose computed peering list is empty. It cannot hide a real misconfiguration: at apply the
+    address is known, and if Azure ever returned none the local network gateway would carry an empty BGP address, which
+    fails the apply or leaves BGP down (the lab 36 soak checks BGP `Connected`). The plan fixture keeps the attribute
+    unknown with the reference, and the release test records the real shape.
+59. **Lab 40's web NSGs allow TCP 80 only, not the NAT rule's 8081–8090:** an NSG sees inbound NAT traffic after the load
+    balancer has translated it to backend port 80, so a rule for the frontend ports would never match.
+60. **Lab 43's `peer_vnet_id` is `vnet-consumer`,** not the first VNet: the learner works from the consumer side (`pe-svc`,
+    `pe-blob`, `vm-client`, the blob zone), and peering the provider would go round the Private Link service the lab
+    teaches. The provider is never peered.
+61. **Lab 41's certificate goes with the vault purge:** `purge_soft_delete_on_destroy = true`,
+    `purge_soft_deleted_certificates_on_destroy = false` and no recovery of vaults or certificates, as lab 22 does for
+    secrets (ruling 30): the destroyed certificate is soft-deleted inside the vault, and purging the vault removes it.

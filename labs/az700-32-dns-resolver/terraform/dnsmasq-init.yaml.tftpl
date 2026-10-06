@@ -1,0 +1,51 @@
+#cloud-config
+# Rendered by Terraform's templatefile (main.tf) for vm-dns, with its own
+# fixed address (dns_ip) and the resolver inbound endpoint's (inbound_ip).
+#
+# dnsmasq is this "on-prem" site's DNS server:
+#   onprem.lab32.internal   answered here and nowhere else (fileserver, dns)
+#   azure.lab32.internal    forwarded to the DNS Private Resolver's inbound
+#                           endpoint, which answers from the Azure private zone
+#   anything else           Azure DNS
+#
+# The config is written before dnsmasq is installed, so the package's own
+# start already uses it. It listens on the VM's own address only
+# (bind-dynamic), because systemd-resolved holds 127.0.0.53:53. The install
+# is retried, since a first boot can race apt's own timers or a slow mirror.
+
+write_files:
+  - path: /etc/dnsmasq.d/lab32.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      listen-address=${dns_ip}
+      bind-dynamic
+      no-resolv
+      no-hosts
+      server=168.63.129.16
+      server=/azure.lab32.internal/${inbound_ip}
+      local=/onprem.lab32.internal/
+      host-record=fileserver.onprem.lab32.internal,${dns_ip}
+      host-record=dns.onprem.lab32.internal,${dns_ip}
+      log-queries
+  - path: /usr/local/sbin/lab-install-dnsmasq
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Install dnsmasq, retrying for up to about ten minutes.
+      export DEBIAN_FRONTEND=noninteractive
+      for i in $(seq 1 30); do
+        if apt-get -o DPkg::Lock::Timeout=300 update && apt-get -o DPkg::Lock::Timeout=300 install -y dnsmasq; then
+          systemctl enable dnsmasq
+          systemctl restart dnsmasq
+          exit 0
+        fi
+        echo "lab: dnsmasq install failed (try $i), retrying"
+        sleep 20
+      done
+      echo "lab: dnsmasq could not be installed"
+      exit 1
+
+runcmd:
+  - /usr/local/sbin/lab-install-dnsmasq

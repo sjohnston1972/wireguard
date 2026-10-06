@@ -19,14 +19,16 @@
 # "Global" only ("Standard Included LB Rules and Outbound Rules", £0.0189/h
 # for the first five rules), so it stays authored too. Data processed by
 # either is pennies per GB.
+# Version 3 (AZ-700 plan Z0.3, ruling 42): also an AZ-700 lab, az700.delivery (AZ-700
+# outline "Skills measured as of July 27, 2026"); the readme says which skills. Nothing in terraform/ changed.
 id: az104-16-lb-appgw
-version: 2
+version: 3
 title: "Load Balancer and Application Gateway"
 summary: >-
   Two web VMs behind an internal Standard load balancer and an Application Gateway Standard_v2 with a private listener,
   so you can compare layer 4 and layer 7 load balancing, probes and backend health on the same servers.
 exam: AZ-104
-skill_areas: [az104.networking]
+skill_areas: [az104.networking, az700.delivery]
 level: associate
 type: explore
 prerequisites: [az104-13-vnets]

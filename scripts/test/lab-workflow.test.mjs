@@ -245,6 +245,30 @@ test("Parse payload sets the run's values and the §3.4 Terraform variables", { 
   assert.equal(runParse("deploy", { ...PAYLOAD, callback_url: "https://wg.example.net/api/callback/lab" }).env.LAB_PEER_URL, "https://wg.example.net/api/callback/lab-peer");
 });
 
+// AZ-700 plan Z0.6 (ruling 45): VPN gateways and virtual hubs take 20-30 minutes to delete, so the safety net's wait for
+// the group deletes follows the lab's destroy_min, still bounded by the job's deadline. And the safety net looks for
+// flow logs (scope exception S2) in the session's region and secondary region.
+test("Parse payload exports LAB_DELETE_WAIT_SECONDS from destroy_min", { skip: skipParse }, () => {
+  const lab6 = runParse("deploy", PAYLOAD);
+  assert.equal(lab6.status, 0, lab6.out);
+  assert.equal(lab6.env.LAB_DESTROY_MIN, "3");
+  assert.equal(lab6.env.LAB_DELETE_WAIT_SECONDS, "1500", "max(1500, 90 × 3)");
+  assert.equal(lab6.env.LAB_REGION, "uksouth");
+  assert.equal(lab6.env.LAB_SECONDARY_REGION, "");
+  // A lab whose destroy takes 25 minutes (lab 36's two VPN gateways): 90 × 25 = 2250 s.
+  const ws = workspace();
+  const y = join(ws, "labs", PAYLOAD.lab_id, "lab.yaml");
+  writeFileSync(y, readFileSync(y, "utf8").replace(/destroy_min: \d+/, "destroy_min: 25"));
+  const slow = runParse("destroy", { ...PAYLOAD, secondary_region: "ukwest" }, ws);
+  assert.equal(slow.status, 0, slow.out);
+  assert.equal(slow.env.LAB_DELETE_WAIT_SECONDS, "2250");
+  assert.equal(slow.env.LAB_SECONDARY_REGION, "ukwest");
+  // A lab gone from the catalogue (a destroy by name only): the default.
+  const gone = runParse("destroy", { ...PAYLOAD, lab_id: "az700-99-gone", version: 1, name_prefix: "l99k3x9q" }, workspace());
+  assert.equal(gone.status, 0, gone.out);
+  assert.equal(gone.env.LAB_DELETE_WAIT_SECONDS, "1500");
+});
+
 test("Parse payload refuses a bad lab id, a missing folder and a version that differs from lab.yaml", { skip: skipParse }, () => {
   for (const id of ["../../etc", "az104-06-Blob", "az104-06-x--y", "az104-06-blob-security-", "rm -rf", ""]) {
     const r = runParse("deploy", { ...PAYLOAD, lab_id: id });

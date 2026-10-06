@@ -197,6 +197,64 @@ test("schema-facts.json says which types take a resource group and tags", () => 
   assert.deepEqual(SCHEMA_FACTS.azurerm_user_assigned_identity, { rg: true, tags: true });
   assert.deepEqual(SCHEMA_FACTS.azurerm_resource_group, { rg: false, tags: true });
   assert.deepEqual(SCHEMA_FACTS.time_sleep, { rg: false, tags: false });
+  // AZ-700 plan Z0.4: the suite's types, as azurerm 4.81.0 declares them.
+  assert.deepEqual(SCHEMA_FACTS.azurerm_network_watcher_flow_log, { rg: true, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_network_manager, { rg: true, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_network_manager_static_member, { rg: false, tags: false });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_network_manager_deployment, { rg: false, tags: false });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_key_vault_certificate, { rg: false, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_private_dns_resolver_forwarding_rule, { rg: false, tags: false });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_virtual_hub, { rg: true, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_lb_outbound_rule, { rg: false, tags: false });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_subnet_service_endpoint_storage_policy, { rg: true, tags: true });
+});
+
+/** Every resource type the AZ-700 labs (31-44) use, from the AZ-700 plan's Z0.4 list, and the ones the scope tests plan. */
+const AZ700_TYPES = [
+  "azurerm_public_ip_prefix", "azurerm_nat_gateway", "azurerm_nat_gateway_public_ip_prefix_association", "azurerm_subnet_nat_gateway_association",
+  "azurerm_lb_outbound_rule", "azurerm_lb_nat_rule", "azurerm_lb_backend_address_pool_address", "azurerm_private_dns_resolver",
+  "azurerm_private_dns_resolver_inbound_endpoint", "azurerm_private_dns_resolver_outbound_endpoint", "azurerm_private_dns_resolver_dns_forwarding_ruleset",
+  "azurerm_private_dns_resolver_forwarding_rule", "azurerm_private_dns_resolver_virtual_network_link", "azurerm_network_manager",
+  "azurerm_network_manager_network_group", "azurerm_network_manager_static_member", "azurerm_network_manager_connectivity_configuration",
+  "azurerm_network_manager_security_admin_configuration", "azurerm_network_manager_admin_rule_collection", "azurerm_network_manager_admin_rule",
+  "azurerm_network_manager_deployment", "azurerm_route_server", "azurerm_route_server_bgp_connection", "azurerm_firewall", "azurerm_firewall_policy",
+  "azurerm_firewall_policy_rule_collection_group", "azurerm_virtual_network_gateway", "azurerm_local_network_gateway",
+  "azurerm_virtual_network_gateway_connection", "azurerm_virtual_wan", "azurerm_virtual_hub", "azurerm_virtual_hub_connection",
+  "azurerm_virtual_hub_routing_intent", "azurerm_web_application_firewall_policy", "azurerm_key_vault_certificate", "azurerm_key_vault_access_policy",
+  "azurerm_cdn_frontdoor_firewall_policy", "azurerm_cdn_frontdoor_security_policy", "azurerm_cdn_frontdoor_rule_set", "azurerm_cdn_frontdoor_rule",
+  "azurerm_private_link_service", "azurerm_subnet_service_endpoint_storage_policy", "azurerm_network_watcher_flow_log", "azurerm_bastion_host",
+  "azurerm_route_table", "azurerm_subnet_route_table_association", "azurerm_monitor_diagnostic_setting", "azuread_user",
+  // What the scope tests plan and refuse: AVNM's other types (S1) and the never rule's.
+  "azurerm_network_manager_scope_connection", "azurerm_network_manager_subscription_connection", "azurerm_network_manager_management_group_connection",
+  "azurerm_network_manager_routing_configuration", "azurerm_network_manager_routing_rule_collection", "azurerm_network_ddos_protection_plan",
+  "azurerm_express_route_circuit", "azurerm_express_route_port", "azurerm_express_route_gateway", "azurerm_custom_ip_prefix", "azurerm_network_watcher",
+  "azurerm_resource_group_policy_assignment",
+];
+
+test("ctx takes a slot: AZ-700 fixtures are at slot 31, 10.71.192.0/18", () => {
+  assert.equal(ctx("az104-07-files", "07").variables.address_space, "10.64.64.0/18", "slot 1 by default, as batches 1-3");
+  const c = ctx("az700-31-ip-nat-outbound", "31", { slot: 31 });
+  assert.equal(c.variables.address_space, "10.71.192.0/18");
+  assert.equal(c.slot, "10.71.192.0/18");
+});
+
+test("a data source's configuration holds only its arguments, never what it read", () => {
+  // data "azurerm_subscription" "current" {} prints no expressions; what it read is in prior_state only. The AVNM scope
+  // check (S1) tells the current subscription by a subscription data source that sets no subscription_id.
+  const cfg = LAB_PLANS["az104-01-identity"].plan.configuration.root_module.resources.find((r) => r.address === "data.azurerm_subscription.current");
+  assert.deepEqual(cfg.expressions, {});
+  const read = LAB_PLANS["az104-01-identity"].plan.prior_state.values.root_module.resources.find((r) => r.address === "data.azurerm_subscription.current");
+  assert.match(read.values.id, /^\/subscriptions\//);
+  const named = realisticPlan({ data: [{ address: "data.azurerm_resource_group.x", values: { name: "rg-lab-az104-07-files", location: "uksouth" }, args: ["name"] }] });
+  assert.deepEqual(Object.keys(named.configuration.root_module.resources[0].expressions), ["name"]);
+});
+
+test("computed.json has every type AZ-700 labs use", () => {
+  assert.deepEqual(AZ700_TYPES.filter((t) => !COMPUTED.types[t]), []);
+  // The block a flow log's traffic analytics and a gateway's P2S settings go in, and what a plan cannot know.
+  assert.ok(COMPUTED.types.azurerm_network_manager.attrs.includes("cross_tenant_scopes"), "cross_tenant_scopes is computed: unknown at plan, never set");
+  assert.ok(COMPUTED.types.azurerm_network_watcher_flow_log.attrs.includes("target_resource_id"));
+  assert.ok(COMPUTED.types.azurerm_virtual_network_gateway_connection.sensitive.includes("shared_key"), "a connection's shared key is sensitive in every plan");
 });
 
 test("ctx gives a secondary group and region", () => {
