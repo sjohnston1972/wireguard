@@ -2,21 +2,29 @@
 // placement (planned when idle, live merged with ghosts while running, the
 // planned fallback with a banner), the synced arrangement (the widgets' save
 // discipline, per lab), the full-screen view and the badges end to end.
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, renderHook, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { act, renderHook, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
-import type { LabSession } from "@shared/api";
+import type { LabDetail, LabSession } from "@shared/api";
 import type { TopologyLayout } from "@shared/topology/layout";
 import { makeQueryClient } from "@/api/queryClient";
 import { resetConnection } from "@/api/connection";
 import { mockFetch } from "@/test/mockFetch";
 import { labSessionFixture } from "@/test/fixtures";
-import { renderWithProviders } from "@/test/render";
+import { renderApp, renderWithProviders } from "@/test/render";
+import { detailIdle, detailRunning, labs } from "../testData";
+import { Canvas } from "./Canvas";
 import { EXAMPLE_ADDRESSES_NOTE, useDiagramData } from "./data";
 import { LAYOUT_SAVE_DELAY_MS, useTopologyLayout } from "./useTopologyLayout";
 import { KEYS, LAB, LAYOUT_API, LIVE_IDS, PLANNED_URL, TOPOLOGY_API, layoutPage, layoutServer, liveDown, liveOk, plannedGraph } from "./places.fixtures";
+
+// The canvas (T0's stub until T1's lands) as it is, with its props recorded: what the placements hand it.
+vi.mock("./Canvas", async (importOriginal) => {
+  const m = await importOriginal<typeof import("./Canvas")>();
+  return { ...m, Canvas: vi.fn(m.Canvas) };
+});
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -311,5 +319,87 @@ describe("T2.2 the saved arrangement", () => {
     await userEvent.click(screen.getByRole("button", { name: "move nsg" }));
     r.unmount();
     await waitFor(() => expect(server.puts).toHaveLength(1));
+  });
+});
+
+// ── T2.4 the full screen ─────────────────────────────────────────────────
+
+const appRoutes = (detail: LabDetail = detailIdle(), more: Record<string, unknown> = {}) => ({
+  "GET /api/v1/labs": labs({ running: detail.session ? [detail.session] : [] }),
+  [`GET /api/v1/labs/${LAB}`]: detail,
+  [`GET ${PLANNED_URL}`]: plannedGraph(),
+  [`GET ${TOPOLOGY_API}`]: liveOk(),
+  ...layoutServer().routes,
+  ...more,
+});
+const lastCanvasProps = () => vi.mocked(Canvas).mock.calls.at(-1)![0];
+
+describe("T2.4 the full screen", () => {
+  beforeAll(async () => {
+    await import("@/views/labs");
+    await import("./index");
+  });
+
+  it("/labs/:id/diagram shows the header, canvas, minimap and details", async () => {
+    const user = userEvent.setup();
+    renderApp(`/labs/${LAB}/diagram`, { routes: appRoutes() });
+    const main = within(screen.getByRole("main"));
+    expect(await main.findByRole("heading", { level: 1, name: /Blob security/ })).toBeInTheDocument();
+    // Not a modal over the catalogue: the diagram is the page.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(main.queryByRole("heading", { level: 1, name: "Labs" })).toBeNull();
+    const tree = await main.findByRole("tree", { name: /diagram/i });
+    // The header's controls.
+    expect(main.getByRole("searchbox", { name: "Search the diagram" })).toBeInTheDocument();
+    expect(main.getByRole("switch", { name: "Show dependencies" })).toBeInTheDocument();
+    expect(main.getByRole("radiogroup", { name: "Diagram or list" })).toBeInTheDocument();
+    expect(main.getByRole("button", { name: "Reset layout" })).toBeInTheDocument();
+    expect(main.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(main.queryByRole("link", { name: "Full screen" })).toBeNull();
+    // The canvas is the full variant (T1 draws the MiniMap and Controls there).
+    expect(lastCanvasProps().variant).toBe("full");
+    expect(lastCanvasProps().onMove).toBeTypeOf("function");
+    // Details beside it.
+    await user.click(within(tree).getByRole("treeitem", { name: /Storage account l06…blob/ }));
+    const details = await main.findByRole("complementary", { name: "l06…blob" });
+    expect(details).toHaveTextContent("Storage account");
+  });
+
+  it("Close returns to /labs/:id keeping the search", async () => {
+    const user = userEvent.setup();
+    renderApp(`/labs/${LAB}/diagram?exam=az104&view=diagram`, { routes: appRoutes() });
+    await user.click(await within(screen.getByRole("main")).findByRole("button", { name: "Close" }));
+    expect(screen.getByLabelText("location")).toHaveTextContent(`/labs/${LAB}?exam=az104&view=diagram`);
+    // Back in the lab panel, on its Diagram tab.
+    const d = within(await screen.findByRole("dialog", { name: /Blob security/ }));
+    expect(d.getByRole("tab", { name: "Diagram" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("the full-screen link from the tab opens it", async () => {
+    const user = userEvent.setup();
+    renderApp(`/labs/${LAB}?view=diagram`, { routes: appRoutes() });
+    const d = within(await screen.findByRole("dialog", { name: /Blob security/ }));
+    await user.click(await d.findByRole("link", { name: "Full screen" }));
+    expect(screen.getByLabelText("location")).toHaveTextContent(`/labs/${LAB}/diagram?view=diagram`);
+    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: /Blob security/ })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("a running lab's full screen is live, with the Live/Planned toggle", async () => {
+    renderApp(`/labs/${LAB}/diagram`, { routes: appRoutes(detailRunning()) });
+    const main = within(screen.getByRole("main"));
+    expect(await main.findByRole("radiogroup", { name: "Diagram source" })).toBeInTheDocument();
+    const tree = await main.findByRole("tree", { name: /diagram/i });
+    expect(within(tree).getByRole("treeitem", { name: /nsg-handmade/ })).toHaveTextContent("Added by hand");
+  });
+
+  it("a lab id outside the catalogue shows the existing could-not-open notice", async () => {
+    const user = userEvent.setup();
+    renderApp("/labs/az104-99-nothing/diagram", { routes: { "GET /api/v1/labs": labs() } });
+    const notice = within(await screen.findByRole("alert"));
+    expect(notice.getByText(/Could not open az104-99-nothing: No such lab\./)).toBeInTheDocument();
+    expect(within(screen.getByRole("main")).getByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
+    await user.click(notice.getByRole("button", { name: "Dismiss" }));
+    expect(screen.getByLabelText("location")).toHaveTextContent(/^\/labs$/);
   });
 });

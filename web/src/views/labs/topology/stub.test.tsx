@@ -48,10 +48,10 @@ const props = (over: Partial<CanvasProps> = {}): CanvasProps => ({
 });
 
 describe("the diagram's route", () => {
-  it("/labs/:id/diagram renders the labs page", async () => {
-    renderApp(`/labs/${ID}/diagram`, { routes: { "GET /api/v1/labs": labs(), [`GET /api/v1/labs/${ID}`]: detailIdle() } });
-    expect(await within(await screen.findByRole("main")).findByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
-    expect(await screen.findByRole("dialog", { name: /Blob security/ })).toBeInTheDocument();
+  // T2.4 made the route the lab's full-screen diagram (places.test.tsx has the rest).
+  it("/labs/:id/diagram renders the lab's full-screen diagram in the labs page", async () => {
+    renderApp(`/labs/${ID}/diagram`, { routes: { "GET /api/v1/labs": labs(), [`GET /api/v1/labs/${ID}`]: detailIdle(), [`GET /api/v1/prefs/topology/${ID}`]: { version: 0, updatedAt: null, layout: { v: 1, nodes: {} } } } });
+    expect(await within(await screen.findByRole("main")).findByRole("heading", { level: 1, name: /Blob security/ })).toBeInTheDocument();
     expect(screen.getByLabelText("location")).toHaveTextContent(`/labs/${ID}/diagram`);
   });
 });
