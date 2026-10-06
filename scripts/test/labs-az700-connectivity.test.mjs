@@ -241,3 +241,106 @@ test(`${S2S}: priced as two VpnGw1AZ gateways, two Standard public IPs and two s
   assert.equal(cost.pricey, gw.name, "the gateways are the pricey item");
   assert.equal(estimateGbpH(cost.items).toFixed(4), "0.3460");
 });
+
+// ── Lab 37: point-to-site VPN with Entra ID ──────────────────────────────
+
+const P2S = "az700-37-p2s-vpn";
+/** The Azure VPN Client's Microsoft-registered app (Learn, 2025-02-13): no app registration, no consent. */
+const AZURE_VPN_AUDIENCE = "c632b3df-fb67-4d84-bdcf-b95ad541b5c8";
+
+labContentSuite(P2S, { marker: "£££", identity: "match" });
+sharedChecks(P2S);
+
+test(`${P2S}: OpenVPN with Entra ID and the Microsoft-registered audience`, () => {
+  const l = lab(P2S);
+  const gws = resources(l, "azurerm_virtual_network_gateway");
+  assert.equal(gws.length, 1, "one VPN gateway");
+  const g = gws[0].body;
+  assert.deepEqual([top(g, "type"), top(g, "vpn_type"), top(g, "sku"), top(g, "generation"), top(g, "active_active")], ['"Vpn"', '"RouteBased"', '"VpnGw1AZ"', '"Generation1"', "false"], "a route-based VpnGw1AZ (Basic has no OpenVPN or Entra ID), Generation1, active-standby");
+  const pip = byName(l, "azurerm_public_ip", refTo(attr(nested(g, "ip_configuration"), "public_ip_address_id"), "azurerm_public_ip"));
+  assert.deepEqual([attr(pip.body, "sku"), attr(pip.body, "allocation_method"), strings(attr(pip.body, "zones")).join(",")], ['"Standard"', '"Static"', "1,2,3"], "a Standard, static, zone-redundant public IP");
+  const subnet = byName(l, "azurerm_subnet", refTo(attr(nested(g, "ip_configuration"), "subnet_id"), "azurerm_subnet"));
+  assert.equal(attr(subnet.body, "name"), '"GatewaySubnet"');
+  assert.equal(prefixLength(only(l, subnet.body, "address_prefixes")), 27, "GatewaySubnet is a /27 (ruling 46)");
+  const p2s = nested(g, "vpn_client_configuration");
+  assert.ok(p2s, "a point-to-site configuration");
+  assert.deepEqual(strings(attr(p2s, "vpn_client_protocols")), ["OpenVPN"], "OpenVPN only (Entra ID needs it)");
+  assert.deepEqual(strings(attr(p2s, "vpn_auth_types")), ["AAD"], "Entra ID authentication only");
+  assert.equal(attr(p2s, "aad_audience"), `"${AZURE_VPN_AUDIENCE}"`, "the Microsoft-registered Azure VPN Client audience");
+  for (const b of ["root_certificate", "revoked_certificate", "radius_server", "ipsec_policy"]) assert.equal(nested(p2s, b), undefined, `no ${b}`);
+  assert.equal(attr(p2s, "radius_server_address"), undefined, "no RADIUS");
+  // No app registration, service principal or consent: not an identity change (ruling 44).
+  assert.deepEqual(l.blocks.filter((b) => b.kind === "resource" && b.labels[0].startsWith("azuread_")).map((b) => b.labels[0]), ["azuread_user"], "the only Entra object is the lab user (no application, service principal or grant)");
+  assert.equal(top(g, "bgp_enabled") ?? "false", "false", "no BGP: nothing to peer with");
+});
+
+test(`${P2S}: the tenant and issuer come from the client config, the issuer with a trailing slash`, () => {
+  const l = lab(P2S);
+  const cfg = l.blocks.find((b) => b.kind === "data" && b.labels[0] === "azurerm_client_config");
+  assert.ok(cfg, 'data "azurerm_client_config" exists');
+  assert.equal(cfg.body.trim(), "", "it takes no arguments: the tenant the pipeline signs in to");
+  const tenant = `data.azurerm_client_config.${cfg.labels[1]}.tenant_id`;
+  const p2s = nested(resources(l, "azurerm_virtual_network_gateway")[0].body, "vpn_client_configuration");
+  assert.equal(attr(p2s, "aad_tenant"), `"https://login.microsoftonline.com/\${${tenant}}/"`);
+  assert.equal(attr(p2s, "aad_issuer"), `"https://sts.windows.net/\${${tenant}}/"`, "the issuer ends with a slash, or sign-in fails");
+  // The plan knows both (a data source is read at plan).
+  const after = planned(P2S, "azurerm_virtual_network_gateway.hub").after.vpn_client_configuration[0];
+  assert.match(after.aad_tenant, /^https:\/\/login\.microsoftonline\.com\/[0-9a-f-]{36}\/$/);
+  assert.match(after.aad_issuer, /^https:\/\/sts\.windows\.net\/[0-9a-f-]{36}\/$/);
+});
+
+test(`${P2S}: the client pool is a /24 of the slot outside the VNet`, () => {
+  const l = lab(P2S);
+  const p2s = nested(resources(l, "azurerm_virtual_network_gateway")[0].body, "vpn_client_configuration");
+  const pool = only(l, p2s, "address_space");
+  assert.equal(pool, "cidrsubnet(cidrsubnet(var.address_space, 2, 3), 4, 15)", "the last /24 of the slot's fourth /20");
+  const vnets = resources(l, "azurerm_virtual_network");
+  assert.equal(vnets.length, 1, "one VNet, vnet-hub");
+  assert.equal(only(l, vnets[0].body, "address_space"), "cidrsubnet(var.address_space, 2, 0)", "vnet-hub is the first /20, so the pool is outside it");
+  // In the plan: a known /24 inside the slot, overlapping no VNet (test 6 checks the overlap).
+  const after = planned(P2S, "azurerm_virtual_network_gateway.hub").after.vpn_client_configuration[0];
+  assert.deepEqual(after.address_space, ["10.71.255.0/24"]);
+});
+
+test(`${P2S}: one Entra user named lab-<id>-vpnuser, listed in lab.yaml and the users output`, () => {
+  const l = lab(P2S);
+  const users = resources(l, "azuread_user");
+  assert.equal(users.length, 1, "one Entra user");
+  const u = users[0];
+  assert.equal(attr(u.body, "display_name"), '"lab-${var.lab_id}-vpnuser"');
+  assert.equal(attr(u.body, "user_principal_name"), '"lab-${var.lab_id}-vpnuser@${var.upn_domain}"');
+  assert.equal(attr(u.body, "mail_nickname"), '"lab-${var.lab_id}-vpnuser"');
+  assert.equal(attr(u.body, "password"), "var.admin_password", "the session's password, behind Show");
+  assert.equal(attr(u.body, "force_password_change"), "false", "no forced change, so the first VPN sign-in works");
+  assert.deepEqual(l.yaml.identity, { creates: ["user"], roles: [], governance: false });
+  assert.ok(outputs(l).includes("users"), "output users");
+  const out = l.blocks.find((b) => b.kind === "output" && b.labels[0] === "users");
+  assert.match(out.body, new RegExp(`vpnuser\\s*=\\s*azuread_user\\.${u.labels[1]}\\.user_principal_name`), "users lists the lab user's sign-in name");
+  assert.match(uncomment(l.files["versions.tf"]).replace(/\s+/g, " "), /azuread = \{ source = "hashicorp\/azuread"/, "versions.tf declares azuread");
+});
+
+test(`${P2S}: timing is 40/20 and the job timeout is 140`, () => {
+  const { timing } = lab(P2S).yaml;
+  assert.deepEqual(timing, { deploy_min: 40, destroy_min: 20, session_h: 2, max_h: 3 });
+  assert.equal(timeoutMin(timing), 140, "2 × (40 + 20) + 20");
+});
+
+test(`${P2S}: the readme explains the Azure VPN Client beside WireGuard, and RADIUS, Always On and Azure Network Adapter under Not built here`, () => {
+  const l = lab(P2S);
+  assert.match(l.readme, /Azure VPN Client/);
+  assert.match(l.readme, /WireGuard/);
+  assert.match(l.readme, /10\.64\.0\.0\/13/, "the WireGuard route the P2S routes are more specific than");
+  assert.match(l.readme, /more specific/);
+  assert.match(l.readme, /MFA|multifactor/i, "MFA registration may be asked at first sign-in");
+  const s = notBuiltHere(l);
+  for (const w of ["RADIUS", "Always On", "Azure Network Adapter", "certificate"]) assert.match(s, new RegExp(w), `Not built here mentions ${w}`);
+  assert.match(s, /app registration|register/i, "user and group restriction needs a custom app registration");
+});
+
+test(`${P2S}: priced as one VpnGw1AZ gateway, its public IP and one small VM`, () => {
+  const { cost } = lab(P2S).yaml;
+  const gw = cost.items.find((i) => i.retail?.meter === "VpnGw1AZ");
+  assert.deepEqual([gw?.qty ?? 1, gw?.gbp_h], [1, 0.1585]);
+  assert.equal(cost.pricey, gw.name);
+  assert.equal(estimateGbpH(cost.items).toFixed(4), "0.1730");
+});

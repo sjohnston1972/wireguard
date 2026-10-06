@@ -1,0 +1,51 @@
+# Lab 37 (AZ-700 plan, area Z2). AZ-700 study guide skills this lab covers
+# (outline "Skills measured as of July 27, 2026"):
+#   Design, implement, and manage connectivity services > Design, implement,
+#   and manage a point-to-site VPN connection: "Select an appropriate
+#   virtual network gateway SKU for point-to-site VPN requirements", "Select
+#   and configure a tunnel type", "Select an appropriate authentication
+#   method", "Configure authentication by using Microsoft Entra ID",
+#   "Implement a VPN client configuration file", "Diagnose and resolve
+#   client-side and authentication issues"; "Configure RADIUS
+#   authentication", "Specify Azure requirements for Always On VPN" and
+#   "Specify Azure requirements for Azure Network Adapter" are explained in
+#   the readme (Not built here, ruling 43).
+# Identity: one Entra user, lab-<id>-vpnuser, under the pipeline's existing
+# Graph rights; no role assignment. Entra ID sign-in uses the Azure VPN
+# Client's Microsoft-registered app (audience
+# c632b3df-fb67-4d84-bdcf-b95ad541b5c8): no app registration, no consent.
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-06),
+# rounded up. Retail entries, checked by npm run labs-verify -- --meters
+# az700-37-p2s-vpn: "VpnGw1AZ" (VPN Gateway, 1 Hour) £0.1585/h; "Standard
+# IPv4 Static Public IP" £0.0038/h; Standard_B1s Linux £0.0089/h; "S4 LRS
+# Disk" £1.2755 a month (about £0.0018/h). Authored (ruling 54): "P2S
+# Connection" £0.0075/h per connected client, a meter every gateway SKU
+# shares, but VpnGw1AZ includes 128 point-to-site connections, so a session
+# pays nothing for them. A gateway bills every hour or part hour it exists.
+id: az700-37-p2s-vpn
+version: 1
+title: "Point-to-site VPN with Entra ID sign-in"
+summary: >-
+  A VpnGw1AZ gateway with a point-to-site configuration for OpenVPN and Entra ID sign-in, so you can download the
+  profile, connect from your own PC with the Azure VPN Client, reach a VM in the VNet and see your session on the gateway.
+exam: AZ-700
+skill_areas: [az700.connectivity]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "VPN gateway, VpnGw1AZ", gbp_h: 0.1585, retail: { meter: "VpnGw1AZ", unit: "1 Hour" } }
+    - { name: "Public IP, Standard static (the gateway)", gbp_h: 0.0038, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "Point-to-site connections (128 included in VpnGw1AZ)", gbp_h: 0 }
+    - { name: "Linux VM, Standard_B1s", gbp_h: 0.0089, retail: { sku: Standard_B1s } }
+    - { name: "OS disk, Standard HDD S4", gbp_h: 0.0018, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+  pricey: "VPN gateway, VpnGw1AZ"
+timing: { deploy_min: 40, destroy_min: 20, session_h: 2, max_h: 3 }
+capacity: { vm_sizes: [Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: [user]
+  roles: []
+  governance: false
