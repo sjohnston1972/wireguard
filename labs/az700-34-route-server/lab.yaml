@@ -1,0 +1,45 @@
+# Lab 34 (AZ-700 plan area Z1). AZ-700 study guide skills this lab touches
+# (outline "Skills measured as of July 27, 2026"):
+#   Design and implement core networking infrastructure > Design and
+#   implement Azure Virtual Network connectivity and routing: "Design and
+#   implement Azure Route Server", "Design service chaining, including
+#   gateway transit", "Configure virtual network peering", and network
+#   virtual appliances (BGP, effective routes).
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. The VMs, their OS disks and the public IP carry retail entries
+# the price feed refreshes; npm run labs-verify -- --meters
+# az700-34-route-server checks them (Standard_B1s Linux £0.0089/h; S4 LRS
+# Disk £1.28 a month, about £0.0018/h; Standard IPv4 Static Public IP
+# £0.0038/h). Route Server has no uksouth row (Azure prices it under region
+# Global, and shares the "Basic Gateway" meter name with VPN Gateway and
+# Bastion), so it stays authored (ruling 54): £0.3396/h. Planning deploy
+# time 25 minutes (Learn: a Route Server "might take 30-60 minutes" beside a
+# gateway); if the release test measures 30 or more, deploy_min goes up and
+# the marker becomes £££ (a version bump).
+id: az700-34-route-server
+version: 1
+title: "Route Server with a BGP router VM"
+summary: >-
+  A hub with Azure Route Server and a small Linux router running FRR that announces a prefix over BGP, and a
+  spoke that learns the route through the hub's remote gateway, so you can see dynamic routing between an NVA and
+  the virtual network.
+exam: AZ-700
+skill_areas: [az700.core]
+level: expert
+type: explore
+prerequisites: [az104-14-peering-udr]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Route Server", gbp_h: 0.3396 }
+    - { name: "Public IP, Standard static (Route Server)", gbp_h: 0.0038, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+  pricey: "Route Server"
+timing: { deploy_min: 25, destroy_min: 20, session_h: 2, max_h: 3 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 3 }
+identity:
+  creates: []
+  roles: []
+  governance: false

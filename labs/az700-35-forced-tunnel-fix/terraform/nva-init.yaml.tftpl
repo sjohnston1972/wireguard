@@ -1,0 +1,16 @@
+#cloud-config
+# Rendered by Terraform's templatefile (main.tf) for vm-nva; it takes no
+# variables. This is a break-fix lab: it sets the kernel's forwarding OFF
+# explicitly (fault 2), so the appliance drops what the spoke sends it even
+# once Azure delivers it, and it sets up no address translation (fault 3).
+# Nothing to install: sysctl is part of every Ubuntu image.
+
+write_files:
+  - path: /etc/sysctl.d/90-lab-nva.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      net.ipv4.ip_forward = 0
+
+runcmd:
+  - sysctl --system
