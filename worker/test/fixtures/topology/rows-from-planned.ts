@@ -204,6 +204,12 @@ export function rowsFromPlanned(g: TopologyGraph, ctx: RowsCtx = rowsCtx(g.labId
   const folded = (n: TopoNode, armType: string) => (n.folded ?? []).filter((f) => lower(f.armType) === lower(armType));
 
   // ── Pass 1: every node and folded entry of a listed type becomes a row ──
+  // The lab's groups answer from resourcecontainers (the query's union), each as its own row.
+  for (const n of g.nodes) {
+    if (n.kind !== "resourceGroup" || outside(n)) continue;
+    const name = real(n.label);
+    base(`${SUB}/resourceGroups/${name}`, "Microsoft.Resources/subscriptions/resourceGroups", n, { resourceGroup: name, properties: { provisioningState: "Succeeded" } });
+  }
   for (const n of g.nodes) {
     if (outside(n) || n.kind === "subnet" || n.kind === "resourceGroup") continue;
     const id = nodeArmId(n);

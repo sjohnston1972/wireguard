@@ -80,12 +80,11 @@ describe("made by Azure (ruling 13): one row per AZURE_MADE pattern", () => {
 });
 
 describe("every lab's planned graph turned into rows and back has no added or missing node", () => {
-  /** Groups the one query cannot see when nothing it lists is in them (resources has no group rows; T0's diff, reported). */
-  const emptyGroups: Record<string, string[]> = { "az104-03-mgmt-groups": ["microsoft.resources/resourcegroups/rg-lab-az104-03-mgmt-groups"] };
+  // An empty group (lab 3) is drawn from its own row: the query unions resourcecontainers.
   for (const id of LAB_IDS) {
     it(`${id}`, () => {
       const r = roundTrip(id);
-      expect({ added: r.added, missing: r.missing, deny: r.deny }).toEqual({ added: [], missing: emptyGroups[id] ?? [], deny: [] });
+      expect({ added: r.added, missing: r.missing, deny: r.deny }).toEqual({ added: [], missing: [], deny: [] });
     });
   }
 });

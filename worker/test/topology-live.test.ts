@@ -100,6 +100,15 @@ describe("live graph", () => {
     expect(gd.armType).toBe("microsoft.contoso/gadgets");
   });
 
+  it("a group's own row (resourcecontainers) draws the group, never a card; an empty group is still drawn", () => {
+    const rgRow = (name: string): ArgRow => ({ id: `${SUB}/resourceGroups/${name}`, name, type: "microsoft.resources/subscriptions/resourcegroups", location: "uksouth", resourceGroup: name, tags: {} }) as ArgRow;
+    const empty = liveGraph([rgRow("rg-lab-az700-35-forced-tunnel-fix"), rgRow("rg-lab-az700-36-s2s-vpn")], ctx);
+    expect(empty.nodes.map((n) => [n.kind, n.label, n.key])).toEqual([["resourceGroup", "rg-lab-az700-35-forced-tunnel-fix", "microsoft.resources/resourcegroups/rg-lab-az700-35-forced-tunnel-fix"]]);
+    // With the resources too: one group node, the same as without the group's row.
+    const withRow = liveGraph([...rows, rgRow("rg-lab-az700-35-forced-tunnel-fix")], ctx);
+    expect(withRow).toEqual(g);
+  });
+
   it("an unattached public IP is a card with its address", () => {
     expect(byLabel(g, "pip-handmade")).toMatchObject({ kind: "publicIp", props: { publicIp: "203.0.113.10", sku: "Standard" } });
   });
@@ -129,9 +138,11 @@ describe("live graph", () => {
 });
 
 describe("the query", () => {
-  it("names only rg-lab-<id> and rg-lab-<id>-*, in one fixed form", () => {
+  it("names only rg-lab-<id> and rg-lab-<id>-*, in one fixed form, with the groups themselves (an empty group still shows)", () => {
     expect(topologyQuery("az104-13-vnets")).toBe(
-      "resources | where resourceGroup =~ 'rg-lab-az104-13-vnets' or resourceGroup startswith 'rg-lab-az104-13-vnets-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties | order by id asc",
+      "resources | where resourceGroup =~ 'rg-lab-az104-13-vnets' or resourceGroup startswith 'rg-lab-az104-13-vnets-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties" +
+        " | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ 'rg-lab-az104-13-vnets' or name startswith 'rg-lab-az104-13-vnets-') | project id, name, type, location, resourceGroup = name, tags)" +
+        " | order by id asc",
     );
     expect(ARG_API).toBe("2022-10-01");
     expect(ARG_TOP).toBe(1000);

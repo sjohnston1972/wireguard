@@ -74,8 +74,9 @@ describe("round trip: the governance and monitoring labs", () => {
     });
   }
 
-  it("az104-03-mgmt-groups: only its empty resource group is missing (the query has no group rows: T0's diff, reported to the integrator)", () => {
+  it("az104-03-mgmt-groups: its empty resource group is drawn from the group's own row, not 'not deployed'", () => {
     const r = roundTrip("az104-03-mgmt-groups");
-    expect({ added: r.added, missing: r.missing, deny: r.deny }).toEqual({ added: [], missing: ["microsoft.resources/resourcegroups/rg-lab-az104-03-mgmt-groups"], deny: [] });
+    expect({ added: r.added, missing: r.missing, deny: r.deny }).toEqual({ added: [], missing: [], deny: [] });
+    expect(r.live.nodes.find((n) => n.kind === "resourceGroup")?.label).toBe("rg-lab-az104-03-mgmt-groups");
   });
 });

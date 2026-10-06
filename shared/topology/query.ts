@@ -2,7 +2,8 @@
 //
 // Plain English: the one Azure Resource Graph query a live diagram makes
 // (lab topology spec §6.1, ruling 16). It lists every resource in the lab's
-// own groups, rg-lab-<id> and rg-lab-<id>-*, and nothing else; the Worker
+// own groups, rg-lab-<id> and rg-lab-<id>-*, and those groups' own rows (from
+// resourcecontainers, in the same request), and nothing else; the Worker
 // names the subscription in the request and re-checks every row's group with
 // ownsName afterwards, so a longer lab id sharing the prefix can never leak
 // in. The lab id must be a catalogue id (the caller checks) and must match
@@ -20,7 +21,12 @@ export const ARG_TOP = 1000;
 export function topologyQuery(labId: string): string {
   if (typeof labId !== "string" || labId.length > LAB_ID_MAX || !LAB_ID_RE.test(labId)) throw new Error("not a lab id");
   const rg = `rg-lab-${labId}`;
-  return `resources | where resourceGroup =~ '${rg}' or resourceGroup startswith '${rg}-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties | order by id asc`;
+  // The groups' own rows (resourcecontainers) come too, so a group with nothing in it yet is drawn, not "not deployed".
+  return (
+    `resources | where resourceGroup =~ '${rg}' or resourceGroup startswith '${rg}-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties` +
+    ` | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ '${rg}' or name startswith '${rg}-') | project id, name, type, location, resourceGroup = name, tags)` +
+    ` | order by id asc`
+  );
 }
 
 /** The request body for one lab in one subscription. */

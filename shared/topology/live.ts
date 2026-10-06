@@ -63,7 +63,11 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
   const notes: string[] = [];
 
   // ── 1. Only the lab's own groups ──
-  const rows = allRows.filter((r) => typeof r?.id === "string" && typeof r.resourceGroup === "string" && ownsName(ctx.labId, r.resourceGroup, ctx.catalogueIds)).sort((a, b) => cmp(lower(a.id), lower(b.id)));
+  const owned = allRows.filter((r) => typeof r?.id === "string" && typeof r.resourceGroup === "string" && ownsName(ctx.labId, r.resourceGroup, ctx.catalogueIds)).sort((a, b) => cmp(lower(a.id), lower(b.id)));
+  // A group's own row (resourcecontainers) only draws the group: an empty group is drawn too, never a card.
+  const isGroupOwnRow = (r: ArgRow) => lower(r.type) === "microsoft.resources/subscriptions/resourcegroups";
+  const groupRows = owned.filter(isGroupOwnRow);
+  const rows = owned.filter((r) => !isGroupOwnRow(r));
   const rowById = new Map(rows.map((r) => [lower(r.id), r]));
   const nodes = new Map<string, TopoNode>();
   const raw = new Map<string, Record<string, unknown>>();
@@ -71,7 +75,7 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
 
   // ── 2. Groups ──
   const rgId = (r: ArgRow) => lower(r.id.split("/").slice(0, 5).join("/"));
-  for (const r of rows) {
+  for (const r of [...groupRows, ...rows]) {
     const id = rgId(r);
     if (nodes.has(id)) continue;
     const name = r.resourceGroup;
