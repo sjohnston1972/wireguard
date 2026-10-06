@@ -1,0 +1,632 @@
+{
+ "changes": [
+  {
+   "address": "azurerm_linux_virtual_machine.app",
+   "type": "azurerm_linux_virtual_machine",
+   "name": "app",
+   "index": null,
+   "after": {
+    "additional_capabilities": [],
+    "admin_username": "azureuser",
+    "boot_diagnostics": [
+     {}
+    ],
+    "gallery_application": [],
+    "identity": [],
+    "location": "uksouth",
+    "name": "vm-app",
+    "network_interface_ids": [
+     null
+    ],
+    "os_disk": [
+     {
+      "caching": "ReadWrite",
+      "diff_disk_settings": [],
+      "storage_account_type": "Standard_LRS"
+     }
+    ],
+    "os_image_notification": [],
+    "plan": [],
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "size": "Standard_B1s",
+    "source_image_reference": [
+     {
+      "offer": "ubuntu-24_04-lts",
+      "publisher": "Canonical",
+      "sku": "server",
+      "version": "latest"
+     }
+    ],
+    "tags": {
+     "lab": "az700-35-forced-tunnel-fix",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    },
+    "termination_notification": []
+   },
+   "after_unknown": {
+    "additional_capabilities": [],
+    "admin_ssh_key": [
+     {}
+    ],
+    "allow_extension_operations": true,
+    "boot_diagnostics": [
+     {}
+    ],
+    "computer_name": true,
+    "disk_controller_type": true,
+    "gallery_application": [],
+    "id": true,
+    "identity": [],
+    "network_interface_ids": [
+     true
+    ],
+    "os_disk": [
+     {
+      "diff_disk_settings": [],
+      "disk_size_gb": true,
+      "id": true,
+      "name": true
+     }
+    ],
+    "os_image_notification": [],
+    "os_managed_disk_id": true,
+    "patch_assessment_mode": true,
+    "patch_mode": true,
+    "plan": [],
+    "private_ip_address": true,
+    "private_ip_addresses": true,
+    "provision_vm_agent": true,
+    "public_ip_address": true,
+    "public_ip_addresses": true,
+    "secret": [],
+    "source_image_reference": [
+     {}
+    ],
+    "tags": {},
+    "termination_notification": [],
+    "virtual_machine_id": true,
+    "vm_agent_platform_updates_enabled": true
+   }
+  },
+  {
+   "address": "azurerm_linux_virtual_machine.nva",
+   "type": "azurerm_linux_virtual_machine",
+   "name": "nva",
+   "index": null,
+   "after": {
+    "additional_capabilities": [],
+    "admin_username": "azureuser",
+    "boot_diagnostics": [
+     {}
+    ],
+    "gallery_application": [],
+    "identity": [],
+    "location": "uksouth",
+    "name": "vm-nva",
+    "network_interface_ids": [
+     null
+    ],
+    "os_disk": [
+     {
+      "caching": "ReadWrite",
+      "diff_disk_settings": [],
+      "storage_account_type": "Standard_LRS"
+     }
+    ],
+    "os_image_notification": [],
+    "plan": [],
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "size": "Standard_B1s",
+    "source_image_reference": [
+     {
+      "offer": "ubuntu-24_04-lts",
+      "publisher": "Canonical",
+      "sku": "server",
+      "version": "latest"
+     }
+    ],
+    "tags": {
+     "lab": "az700-35-forced-tunnel-fix",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    },
+    "termination_notification": []
+   },
+   "after_unknown": {
+    "additional_capabilities": [],
+    "admin_ssh_key": [
+     {}
+    ],
+    "allow_extension_operations": true,
+    "boot_diagnostics": [
+     {}
+    ],
+    "computer_name": true,
+    "disk_controller_type": true,
+    "gallery_application": [],
+    "id": true,
+    "identity": [],
+    "network_interface_ids": [
+     true
+    ],
+    "os_disk": [
+     {
+      "diff_disk_settings": [],
+      "disk_size_gb": true,
+      "id": true,
+      "name": true
+     }
+    ],
+    "os_image_notification": [],
+    "os_managed_disk_id": true,
+    "patch_assessment_mode": true,
+    "patch_mode": true,
+    "plan": [],
+    "private_ip_address": true,
+    "private_ip_addresses": true,
+    "provision_vm_agent": true,
+    "public_ip_address": true,
+    "public_ip_addresses": true,
+    "secret": [],
+    "source_image_reference": [
+     {}
+    ],
+    "tags": {},
+    "termination_notification": [],
+    "virtual_machine_id": true,
+    "vm_agent_platform_updates_enabled": true
+   }
+  },
+  {
+   "address": "azurerm_network_interface.app",
+   "type": "azurerm_network_interface",
+   "name": "app",
+   "index": null,
+   "after": {
+    "ip_configuration": [
+     {
+      "name": "ipconfig1",
+      "private_ip_address_allocation": "Dynamic"
+     }
+    ],
+    "location": "uksouth",
+    "name": "nic-vm-app",
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "tags": {
+     "lab": "az700-35-forced-tunnel-fix",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "applied_dns_servers": true,
+    "id": true,
+    "internal_domain_name_suffix": true,
+    "ip_configuration": [
+     {
+      "gateway_load_balancer_frontend_ip_configuration_id": true,
+      "primary": true,
+      "private_ip_address": true,
+      "subnet_id": true
+     }
+    ],
+    "mac_address": true,
+    "private_ip_address": true,
+    "private_ip_addresses": true,
+    "tags": {},
+    "virtual_machine_id": true
+   }
+  },
+  {
+   "address": "azurerm_network_interface.nva",
+   "type": "azurerm_network_interface",
+   "name": "nva",
+   "index": null,
+   "after": {
+    "ip_configuration": [
+     {
+      "name": "ipconfig1",
+      "private_ip_address": "10.71.192.4",
+      "private_ip_address_allocation": "Static"
+     }
+    ],
+    "ip_forwarding_enabled": false,
+    "location": "uksouth",
+    "name": "nic-vm-nva",
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "tags": {
+     "lab": "az700-35-forced-tunnel-fix",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "applied_dns_servers": true,
+    "id": true,
+    "internal_domain_name_suffix": true,
+    "ip_configuration": [
+     {
+      "gateway_load_balancer_frontend_ip_configuration_id": true,
+      "primary": true,
+      "subnet_id": true
+     }
+    ],
+    "mac_address": true,
+    "private_ip_address": true,
+    "private_ip_addresses": true,
+    "tags": {},
+    "virtual_machine_id": true
+   }
+  },
+  {
+   "address": "azurerm_resource_group.lab",
+   "type": "azurerm_resource_group",
+   "name": "lab",
+   "index": null,
+   "after": {
+    "location": "uksouth",
+    "name": "rg-lab-az700-35-forced-tunnel-fix",
+    "tags": {
+     "lab": "az700-35-forced-tunnel-fix",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "id": true,
+    "tags": {}
+   }
+  },
+  {
+   "address": "azurerm_route.default",
+   "type": "azurerm_route",
+   "name": "default",
+   "index": null,
+   "after": {
+    "address_prefix": "0.0.0.0/0",
+    "name": "default-via-nva",
+    "next_hop_in_ip_address": "10.71.192.4",
+    "next_hop_type": "VirtualAppliance",
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "route_table_name": "rt-spoke"
+   },
+   "after_unknown": {
+    "id": true
+   }
+  },
+  {
+   "address": "azurerm_route_table.spoke",
+   "type": "azurerm_route_table",
+   "name": "spoke",
+   "index": null,
+   "after": {
+    "location": "uksouth",
+    "name": "rt-spoke",
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "tags": {
+     "lab": "az700-35-forced-tunnel-fix",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "id": true,
+    "route": true,
+    "subnets": true,
+    "tags": {}
+   }
+  },
+  {
+   "address": "azurerm_subnet.app",
+   "type": "azurerm_subnet",
+   "name": "app",
+   "index": null,
+   "after": {
+    "address_prefixes": [
+     "10.71.208.0/24"
+    ],
+    "default_outbound_access_enabled": false,
+    "delegation": [],
+    "ip_address_pool": [],
+    "name": "snet-app",
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "virtual_network_name": "vnet-spoke"
+   },
+   "after_unknown": {
+    "address_prefixes": [
+     false
+    ],
+    "delegation": [],
+    "id": true,
+    "ip_address_pool": []
+   }
+  },
+  {
+   "address": "azurerm_subnet.nva",
+   "type": "azurerm_subnet",
+   "name": "nva",
+   "index": null,
+   "after": {
+    "address_prefixes": [
+     "10.71.192.0/24"
+    ],
+    "default_outbound_access_enabled": true,
+    "delegation": [],
+    "ip_address_pool": [],
+    "name": "snet-nva",
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "virtual_network_name": "vnet-hub"
+   },
+   "after_unknown": {
+    "address_prefixes": [
+     false
+    ],
+    "delegation": [],
+    "id": true,
+    "ip_address_pool": []
+   }
+  },
+  {
+   "address": "azurerm_subnet_route_table_association.app",
+   "type": "azurerm_subnet_route_table_association",
+   "name": "app",
+   "index": null,
+   "after": {},
+   "after_unknown": {
+    "id": true,
+    "route_table_id": true,
+    "subnet_id": true
+   }
+  },
+  {
+   "address": "azurerm_virtual_network.hub",
+   "type": "azurerm_virtual_network",
+   "name": "hub",
+   "index": null,
+   "after": {
+    "address_space": [
+     "10.71.192.0/20"
+    ],
+    "ddos_protection_plan": [],
+    "encryption": [],
+    "ip_address_pool": [],
+    "location": "uksouth",
+    "name": "vnet-hub",
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "tags": {
+     "lab": "az700-35-forced-tunnel-fix",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "address_space": [
+     false
+    ],
+    "ddos_protection_plan": [],
+    "dns_servers": true,
+    "encryption": [],
+    "guid": true,
+    "id": true,
+    "ip_address_pool": [],
+    "subnet": true,
+    "tags": {}
+   }
+  },
+  {
+   "address": "azurerm_virtual_network.spoke",
+   "type": "azurerm_virtual_network",
+   "name": "spoke",
+   "index": null,
+   "after": {
+    "address_space": [
+     "10.71.208.0/20"
+    ],
+    "ddos_protection_plan": [],
+    "encryption": [],
+    "ip_address_pool": [],
+    "location": "uksouth",
+    "name": "vnet-spoke",
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "tags": {
+     "lab": "az700-35-forced-tunnel-fix",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "address_space": [
+     false
+    ],
+    "ddos_protection_plan": [],
+    "dns_servers": true,
+    "encryption": [],
+    "guid": true,
+    "id": true,
+    "ip_address_pool": [],
+    "subnet": true,
+    "tags": {}
+   }
+  },
+  {
+   "address": "azurerm_virtual_network_peering.hub_to_spoke",
+   "type": "azurerm_virtual_network_peering",
+   "name": "hub_to_spoke",
+   "index": null,
+   "after": {
+    "allow_forwarded_traffic": true,
+    "allow_virtual_network_access": true,
+    "name": "peer-hub-to-spoke",
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "virtual_network_name": "vnet-hub"
+   },
+   "after_unknown": {
+    "id": true,
+    "remote_virtual_network_id": true
+   }
+  },
+  {
+   "address": "azurerm_virtual_network_peering.spoke_to_hub",
+   "type": "azurerm_virtual_network_peering",
+   "name": "spoke_to_hub",
+   "index": null,
+   "after": {
+    "allow_forwarded_traffic": true,
+    "allow_virtual_network_access": true,
+    "name": "peer-spoke-to-hub",
+    "resource_group_name": "rg-lab-az700-35-forced-tunnel-fix",
+    "virtual_network_name": "vnet-spoke"
+   },
+   "after_unknown": {
+    "id": true,
+    "remote_virtual_network_id": true
+   }
+  }
+ ],
+ "outputs": {
+  "peer_vnet_id": null
+ },
+ "refs": {
+  "azurerm_linux_virtual_machine.app": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "network_interface_ids": [
+    "azurerm_network_interface.app"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_linux_virtual_machine.nva": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "network_interface_ids": [
+    "azurerm_network_interface.nva"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_network_interface.app": {
+   "ip_configuration": [
+    "azurerm_subnet.app"
+   ],
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_network_interface.nva": {
+   "ip_configuration": [
+    "azurerm_subnet.nva"
+   ],
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_resource_group.lab": {},
+  "azurerm_route.default": {
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ],
+   "route_table_name": [
+    "azurerm_route_table.spoke"
+   ]
+  },
+  "azurerm_route_table.spoke": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_subnet.app": {
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ],
+   "virtual_network_name": [
+    "azurerm_virtual_network.spoke"
+   ]
+  },
+  "azurerm_subnet.nva": {
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ],
+   "virtual_network_name": [
+    "azurerm_virtual_network.hub"
+   ]
+  },
+  "azurerm_subnet_route_table_association.app": {
+   "route_table_id": [
+    "azurerm_route_table.spoke"
+   ],
+   "subnet_id": [
+    "azurerm_subnet.app"
+   ]
+  },
+  "azurerm_virtual_network.hub": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_virtual_network.spoke": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_virtual_network_peering.hub_to_spoke": {
+   "remote_virtual_network_id": [
+    "azurerm_virtual_network.spoke"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ],
+   "virtual_network_name": [
+    "azurerm_virtual_network.hub"
+   ]
+  },
+  "azurerm_virtual_network_peering.spoke_to_hub": {
+   "remote_virtual_network_id": [
+    "azurerm_virtual_network.hub"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ],
+   "virtual_network_name": [
+    "azurerm_virtual_network.spoke"
+   ]
+  },
+  "output.connect": {
+   "value": [
+    "azurerm_network_interface.app",
+    "azurerm_network_interface.nva"
+   ]
+  },
+  "output.peer_vnet_id": {
+   "value": [
+    "azurerm_virtual_network.hub"
+   ]
+  },
+  "output.private_ips": {
+   "value": [
+    "azurerm_network_interface.app",
+    "azurerm_network_interface.nva"
+   ]
+  }
+ }
+}
