@@ -6,7 +6,11 @@
 // (deploy, ready check, destroy, safety net, verify clean, all in one run),
 // waits for it, reads the LAB_RESULT line from the run's log and appends a
 // row to docs/labs/release-tests.md. No callback and no peering: the
-// dashboard is not involved, so the run makes its own masked password.
+// dashboard is not involved, so the run makes its own masked password. It
+// also saves the test run's LAB_PLAN_SHAPE line (the real plan with no
+// values, labs spec §17 ruling 35) as
+// scripts/test/fixtures/labs/plans/shapes/<id>.json, which the lab's plan
+// fixture must then match (commit it with the release-tests.md row).
 //
 // IT COSTS MONEY (pennies per lab for labs 1-7), so it refuses to start
 // without --confirm-cost, and prints the estimate either way. It ALWAYS gets
@@ -27,10 +31,13 @@ import { randomBytes } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 import { buildCatalogue, LAB_SLOTS, slotCidr } from "./lib/labs.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 export const RESULTS_FILE = join(ROOT, "docs", "labs", "release-tests.md");
+/** Where each test run's real plan shape is saved (scripts/test/fixtures/labs/plans/shape.mjs reads them). */
+export const SHAPES_DIR = join(ROOT, "scripts", "test", "fixtures", "labs", "plans", "shapes");
 const HEADER = [
   "# Lab release tests",
   "",
@@ -78,6 +85,25 @@ export function buildPayload(def, { slot, region, runId, namePrefix }) {
     callback_url: "",
     secrets_url: "",
   };
+}
+
+/**
+ * The last LAB_PLAN_SHAPE line in a run's log (lab.yml step 6, infra/ci/lab-plan-shape.mjs:
+ * base64 of the gzipped shape JSON), decoded; null if none or unreadable.
+ */
+export function parseLabPlanShape(log) {
+  let found = null;
+  for (const line of String(log).split(/\r?\n/)) {
+    const m = /LAB_PLAN_SHAPE ([A-Za-z0-9+/=]+)\s*$/.exec(line);
+    if (!m) continue;
+    try {
+      const shape = JSON.parse(gunzipSync(Buffer.from(m[1], "base64")).toString("utf8"));
+      if (shape && typeof shape === "object" && shape.resources && typeof shape.resources === "object") found = shape;
+    } catch {
+      /* not a shape line */
+    }
+  }
+  return found;
 }
 
 /** The last LAB_RESULT {...} line in a run's log, parsed; null if none. */
@@ -159,10 +185,12 @@ async function dispatch(gh, ref, action, payload, sleep) {
   throw new Error(`dispatched, but no run titled "${title}" appeared`);
 }
 
-/** Wait for a run and read its LAB_RESULT (null if none). */
-async function finish(gh, id) {
+/** Wait for a run and read its LAB_RESULT (null if none); `onLog` sees the whole log too. */
+async function finish(gh, id, onLog = () => {}) {
   await gh(["run", "watch", String(id), "--exit-status", "--interval", "30"]);
-  return parseLabResult((await gh(["run", "view", String(id), "--log"])).stdout);
+  const log = (await gh(["run", "view", String(id), "--log"])).stdout;
+  onLog(log);
+  return parseLabResult(log);
 }
 
 /**
@@ -170,7 +198,16 @@ async function finish(gh, id) {
  * log, sleep(ms), now(), file, exit(code), defs, signals (default: process) }. Returns one result per lab.
  */
 export async function runRelease({ ids, ref, slot, region }, deps) {
-  const { gh, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => new Date(), file = RESULTS_FILE, exit = (c) => process.exit(c) } = deps;
+  const { gh, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => new Date(), file = RESULTS_FILE, shapesDir = SHAPES_DIR, exit = (c) => process.exit(c) } = deps;
+  /** Save a test run's plan shape (ruling 35) as <shapesDir>/<id>.json, for the lab's fixture test. */
+  const saveShape = (id, runLog) => {
+    const shape = parseLabPlanShape(runLog);
+    if (!shape) return log(`${id}: no plan shape in the run's log (the plan did not run), so none was saved`);
+    mkdirSync(shapesDir, { recursive: true });
+    const out = join(shapesDir, `${id}.json`);
+    writeFileSync(out, `${JSON.stringify(shape, null, 1)}\n`);
+    log(`${id}: plan shape saved to ${out}`);
+  };
   const defs = deps.defs ?? labDefs();
   const signals = deps.signals ?? process;
   let active = null; // the lab being tested: { def, payload, ghId, settled, tornDown }
@@ -220,7 +257,7 @@ export async function runRelease({ ids, ref, slot, region }, deps) {
       try {
         active.ghId = await dispatch(gh, ref, "test", payload, sleep);
         log(`watching run ${active.ghId}`);
-        result = await finish(gh, active.ghId);
+        result = await finish(gh, active.ghId, (runLog) => saveShape(id, runLog));
       } catch (e) {
         log(`test of ${id} did not complete: ${e.message}`);
       }

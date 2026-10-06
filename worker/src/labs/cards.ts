@@ -9,11 +9,11 @@
 
 import type { Env } from "../env";
 import { effectiveConfig } from "../settings";
-import { readPrices, type PriceRow } from "../insights/price";
+import type { PriceRow } from "../insights/price";
 import type { LabCard, LabReleaseTest, LabSession } from "../../../shared/api";
 import { LAB_COVERAGE_MIN, costMarker, estimateGbpH, type LabDef } from "../../../shared/labs";
 import { availability, unavailableReason, type Availability } from "./availability";
-import { gbpHFrom, retailPrice } from "./prices";
+import { gbpHFrom, readLabPrices, retailPrice } from "./prices";
 import { sessionCosts } from "./cost";
 import { activeRuns, liveSessions, type LabRunDb, type LabSessionRow } from "./store";
 import { labSession } from "./view";
@@ -85,7 +85,7 @@ export async function cardContext(env: Env, now = Date.now()): Promise<CardConte
   const nowIso = new Date(now).toISOString();
   const cfg = await effectiveConfig(env);
   const [prices, tests, avail, live, runs, last, ran] = await Promise.all([
-    readPrices(env.DB, cfg.region).catch(() => [] as PriceRow[]),
+    readLabPrices(env, cfg.region),
     releaseTests(env),
     availability(env),
     liveSessions(env),
@@ -125,7 +125,7 @@ export function labCard(def: LabDef, ctx: CardContext): LabCard {
     peering: def.connectivity.peering,
     estGbpH,
     marker: costMarker(estGbpH, def.timing.deploy_min),
-    pricey: pricey ? { item: pricey.name, gbpH: estimateGbpH([pricey], (i) => retailPrice(i, ctx.prices, ctx.region, now)?.gbpH ?? null) } : null,
+    pricey: pricey ? { item: pricey.name, gbpH: estimateGbpH([pricey], (i) => retailPrice(i, ctx.prices, ctx.region, now, def.regions.secondary)?.gbpH ?? null) } : null,
     timing: { deployMin: def.timing.deploy_min, destroyMin: def.timing.destroy_min, sessionH: def.timing.session_h, maxH: def.timing.max_h },
     running: live ? sessionView(live, ctx) : null,
     lastSession: last ? sessionView(last, ctx) : null,

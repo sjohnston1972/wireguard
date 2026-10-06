@@ -1,0 +1,44 @@
+# Lab 22 (labs batch 3 plan, area C1). AZ-305 study guide skills this lab
+# touches (outline "Skills measured as of April 17, 2026"):
+#   Design identity, governance, and monitoring solutions > Design
+#   authentication and authorization solutions: "Recommend a solution for
+#   authorizing access to Azure resources", "Recommend a solution to manage
+#   secrets, certificates, and keys".
+# Costs are GBP list prices for UK South from the Retail Prices API
+# (2026-10-05), rounded up. npm run labs-verify -- --meters
+# az305-22-keyvault-mi:
+#   Standard_B1s    £0.0089/h Linux pay as you go
+#   S4 LRS Disk     £1.2755/month = £0.0017/h (authored 0.0018)
+# Authored (batch 2 ruling 2): Key Vault Standard bills operations (£0.0226
+# per 10,000, a meter the feed's units cannot read); a session makes a few
+# hundred. The VNet, NIC, managed identities, role assignments, default
+# outbound access and managed boot diagnostics cost nothing.
+id: az305-22-keyvault-mi
+version: 2
+title: "Key Vault and managed identities"
+summary: >-
+  A Key Vault using Azure RBAC with two secrets, and a small Linux VM with a system-assigned identity
+  that may read both and a user-assigned identity that may read only one, so you can fetch tokens from
+  the metadata service and see least privilege at secret scope.
+exam: AZ-305
+skill_areas: [az305.identity]
+level: expert
+type: explore
+prerequisites: [az104-08-vms]
+cost:
+  items:
+    - { name: "Linux VM, Standard_B1s", gbp_h: 0.0089, retail: { sku: Standard_B1s } }
+    - { name: "OS disk, Standard HDD S4", gbp_h: 0.0018, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Key Vault Standard, a few hundred operations", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 7, destroy_min: 4, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles:
+    - { role: "Key Vault Secrets Officer", scope: resource }
+    - { role: "Key Vault Secrets User", scope: resource }
+    - { role: "Key Vault Secrets User", scope: resource }
+  governance: false

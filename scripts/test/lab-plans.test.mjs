@@ -19,7 +19,9 @@ import { fileURLToPath } from "node:url";
 import { checkPlan } from "../../infra/ci/lab-scope.mjs";
 import { labFolders } from "../lib/labs.mjs";
 import { LAB_PLANS, loadLabPlans } from "./fixtures/labs/plans/labs.mjs";
-import { COMPUTED, realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
+import { COMPUTED, PLAN_DEFAULTS, realisticPlan, SCHEMA_FACTS, UNSET_BLOCKS_UNKNOWN } from "./fixtures/labs/plans/realistic.mjs";
+import { ctx, linuxVm, rgResource, rgSecondaryResource, SECONDARY } from "./fixtures/labs/plans/common.mjs";
+import { compareShapes, planShape, recordedShape, SHAPES } from "./fixtures/labs/plans/shape.mjs";
 
 const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
 const PLAN_FILES = fileURLToPath(new URL("./fixtures/labs/plans/labs/", import.meta.url));
@@ -44,6 +46,18 @@ const BATCH2_TYPES = [
   "azurerm_backup_policy_vm", "azurerm_backup_protected_vm",
   // data sources
   "data.azurerm_client_config",
+];
+/** Every resource type batch 3's labs (20-27) use, from the batch 3 plan's C0.1 list: computed.json must know each one. */
+const BATCH3_TYPES = [
+  "azurerm_key_vault", "azurerm_key_vault_secret", "azurerm_user_assigned_identity", "azurerm_log_analytics_workspace", "azurerm_policy_set_definition",
+  "azurerm_management_group_policy_set_definition", "azurerm_resource_group_policy_assignment", "azurerm_mssql_server", "azurerm_mssql_database",
+  "azurerm_mssql_failover_group", "azurerm_private_endpoint", "azurerm_private_dns_zone", "azurerm_private_dns_zone_virtual_network_link",
+  "azurerm_cosmosdb_account", "azurerm_cosmosdb_sql_database", "azurerm_cosmosdb_sql_container", "azurerm_storage_container_immutability_policy",
+  "azurerm_storage_management_policy", "azurerm_recovery_services_vault", "azurerm_site_recovery_fabric", "azurerm_site_recovery_protection_container",
+  "azurerm_site_recovery_replication_policy", "azurerm_site_recovery_protection_container_mapping", "azurerm_site_recovery_network_mapping",
+  "azurerm_site_recovery_replicated_vm", "azurerm_container_group", "azurerm_traffic_manager_profile", "azurerm_traffic_manager_external_endpoint",
+  "azurerm_cdn_frontdoor_profile", "azurerm_cdn_frontdoor_endpoint", "azurerm_cdn_frontdoor_origin_group", "azurerm_cdn_frontdoor_origin",
+  "azurerm_cdn_frontdoor_route", "time_sleep", "random_password",
 ];
 /** An address without its instance key: azurerm_subnet.s["web"] -> azurerm_subnet.s. */
 const block = (address) => address.replace(/\[[^\]]*\]/g, "");
@@ -164,6 +178,51 @@ test("computed.json has every type batch 2 labs use", () => {
   assert.deepEqual(BATCH2_TYPES.filter((t) => !COMPUTED.types[t]), []);
 });
 
+test("computed.json has every type batch 3 labs use", () => {
+  assert.deepEqual(BATCH3_TYPES.filter((t) => !COMPUTED.types[t]), []);
+  // The providers they come from, at the versions labs/_template's constraints resolve to.
+  for (const p of ["azurerm", "azuread", "random", "time"]) assert.ok(COMPUTED.providers[`registry.terraform.io/hashicorp/${p}`], p);
+});
+
+test("schema-facts.json says which types take a resource group and tags", () => {
+  // One entry for every resource type computed.json knows (data sources take neither).
+  assert.deepEqual(Object.keys(SCHEMA_FACTS).sort(), Object.keys(COMPUTED.types).filter((t) => !t.startsWith("data.")).sort());
+  for (const [t, f] of Object.entries(SCHEMA_FACTS)) assert.deepEqual(Object.keys(f).sort(), ["rg", "tags"], t);
+  // As azurerm 4.81.0 declares them (resource_group_name and tags as arguments).
+  assert.deepEqual(SCHEMA_FACTS.azurerm_subnet, { rg: true, tags: false });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_storage_container, { rg: false, tags: false });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_key_vault_secret, { rg: false, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_mssql_database, { rg: false, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_site_recovery_replicated_vm, { rg: true, tags: false });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_user_assigned_identity, { rg: true, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.azurerm_resource_group, { rg: false, tags: true });
+  assert.deepEqual(SCHEMA_FACTS.time_sleep, { rg: false, tags: false });
+});
+
+test("ctx gives a secondary group and region", () => {
+  const c = ctx("az305-23-sql-failover", "23");
+  assert.equal(SECONDARY, "ukwest");
+  assert.equal(c.rgSecondary, "rg-lab-az305-23-sql-failover-secondary");
+  assert.equal(c.variables.secondary_region, "ukwest");
+  assert.notEqual(c.variables.secondary_region, c.variables.region);
+  const rg2 = rgSecondaryResource(c);
+  assert.equal(rg2.address, "azurerm_resource_group.secondary");
+  assert.deepEqual(rg2.values, { name: c.rgSecondary, location: SECONDARY, tags: c.tags });
+  assert.deepEqual(rg2.refs, { name: ["var.resource_group_name"], location: ["var.secondary_region"], tags: ["var.tags"] });
+  // Both groups are the lab's own; a VM in the secondary group passes the scope check too.
+  const IN_RG2 = { resource_group_name: ["azurerm_resource_group.secondary.name", "azurerm_resource_group.secondary"], location: ["azurerm_resource_group.secondary.location", "azurerm_resource_group.secondary"], tags: ["var.tags"] };
+  const vnet = { address: "azurerm_virtual_network.target", values: { name: "vnet-target", resource_group_name: c.rgSecondary, location: SECONDARY, address_space: ["10.64.80.0/20"], tags: c.tags }, refs: IN_RG2 };
+  const subnet = { address: "azurerm_subnet.target", values: { name: "snet-vms", resource_group_name: c.rgSecondary, virtual_network_name: "vnet-target", address_prefixes: ["10.64.80.0/24"] }, refs: { resource_group_name: IN_RG2.resource_group_name } };
+  // An image from another publisher, pinned to one version (lab 26's AlmaLinux 9.7).
+  const [nic, vm] = linuxVm(c, { name: "vm-app", subnet: "azurerm_subnet.target", image: { publisher: "almalinux", offer: "almalinux-x86_64", sku: "9-gen2", version: "9.7.2026051801" } });
+  assert.deepEqual(vm.values.source_image_reference, [{ publisher: "almalinux", offer: "almalinux-x86_64", sku: "9-gen2", version: "9.7.2026051801" }]);
+  // A Canonical image at "latest" unless a publisher or version is given.
+  assert.deepEqual(linuxVm(c, { name: "vm-y", subnet: "azurerm_subnet.target", image: { offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2" } })[1].values.source_image_reference, [{ publisher: "Canonical", offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2", version: "latest" }]);
+  assert.deepEqual(linuxVm(c, { name: "vm-x", subnet: "azurerm_subnet.target" })[1].values.source_image_reference, [{ publisher: "Canonical", offer: "ubuntu-24_04-lts", sku: "server", version: "latest" }]);
+  const plan = realisticPlan({ resources: [rgResource(c), rg2, vnet, subnet, nic, vm], variables: c.variables });
+  assert.deepEqual(checkPlan(plan, c.id), []);
+});
+
 test("a realistic plan with for_each instances has one configuration entry per resource block", () => {
   const id = "az104-13-vnets";
   const rg = `rg-lab-${id}`;
@@ -254,7 +313,76 @@ for (const id of labs) {
     const problems = checkPlan(LAB_PLANS[id].plan, id);
     assert.deepEqual(problems.map((p) => `${p.rule}: ${p.address} (${p.message})`), []);
   });
+
+  // Ruling 35: each release test records its real plan's shape (scripts/lab-release-test.mjs, from
+  // lab.yml step 6's LAB_PLAN_SHAPE line) into plans/shapes/<id>.json; the fixture must have it.
+  const recorded = recordedShape(id);
+  test(`${id}: the plan fixture has the recorded real plan's shape`, { skip: recorded ? false : `no real plan shape recorded for ${id} yet (its next release test records plans/shapes/${id}.json)` }, () => {
+    assert.deepEqual(compareShapes(recorded, planShape(LAB_PLANS[id].plan)), []);
+  });
 }
+
+// ── Real-plan shapes (labs batch 3 plan, C0.2) ───────────────────────────
+
+/** A small plan with a VM: a password (sensitive), a name prefix, references, nested blocks and unknown ids. */
+function shapedPlan() {
+  const c = ctx("az104-07-files", "07");
+  const vnet = { address: "azurerm_virtual_network.lab", values: { name: "vnet-lab", resource_group_name: c.rg, location: "uksouth", address_space: ["10.64.64.0/20"], tags: c.tags }, refs: { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"], location: ["azurerm_resource_group.lab.location", "azurerm_resource_group.lab"], tags: ["var.tags"] } };
+  const subnet = { address: "azurerm_subnet.vms", values: { name: "snet-vms", resource_group_name: c.rg, virtual_network_name: "vnet-lab", address_prefixes: ["10.64.64.0/24"] }, refs: { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"], virtual_network_name: ["azurerm_virtual_network.lab.name", "azurerm_virtual_network.lab"] } };
+  const [nic, vm] = linuxVm(c, { name: "vm-files", subnet: "azurerm_subnet.vms" });
+  vm.values.admin_password = "Sup3r-Secret-Value!";
+  return { c, plan: realisticPlan({ resources: [rgResource(c), vnet, subnet, nic, vm], variables: { ...c.variables, admin_password: "Sup3r-Secret-Value!" } }) };
+}
+
+test("planShape keeps addresses, references, unknown and sensitive paths and no values", () => {
+  const { c, plan } = shapedPlan();
+  const shape = planShape(plan);
+  assert.deepEqual(Object.keys(shape.resources).sort(), ["azurerm_linux_virtual_machine.files", "azurerm_network_interface.files", "azurerm_resource_group.lab", "azurerm_subnet.vms", "azurerm_virtual_network.lab"]);
+  const vm = shape.resources["azurerm_linux_virtual_machine.files"];
+  assert.equal(vm.type, "azurerm_linux_virtual_machine");
+  assert.deepEqual(vm.refs.network_interface_ids, ["azurerm_network_interface.files.id", "azurerm_network_interface.files"]);
+  assert.deepEqual(vm.refs.admin_password, ["var.admin_password"]);
+  // A nested block's references keep their path, as the configuration nests them.
+  assert.deepEqual(shape.resources["azurerm_network_interface.files"].refs["ip_configuration.0.subnet_id"], ["azurerm_subnet.vms.id", "azurerm_subnet.vms"]);
+  assert.ok(vm.unknown.includes("network_interface_ids"));
+  assert.ok(vm.unknown.includes("id"));
+  assert.ok(vm.unknown.includes("os_disk.0.name"), vm.unknown.join(", "));
+  // Both attributes the schema calls sensitive, custom_data too though this VM sets none (as lab 22's real plan).
+  assert.deepEqual(vm.sensitive, ["admin_password", "custom_data"]);
+  // Never a value: not the password, not a name, not an address, not a tag.
+  const text = JSON.stringify(shape);
+  for (const v of ["Sup3r-Secret-Value!", c.rg, "vnet-lab", "10.64.64.0/24", "ls-20261005T0900-ab12", "Standard_B1s", "ssh-ed25519"]) assert.ok(!text.includes(v), v);
+  // Data sources read at plan are in the shape too (by address and references).
+  const withData = realisticPlan({ resources: [rgResource(c)], data: [{ address: "data.azurerm_client_config.current", values: { tenant_id: "x", object_id: "y" } }] });
+  assert.deepEqual(Object.keys(planShape(withData).resources).sort(), ["azurerm_resource_group.lab", "data.azurerm_client_config.current"]);
+});
+
+test("the shape test skips a lab with no recorded shape and fails a fixture whose references differ", () => {
+  assert.equal(recordedShape("az104-99-none"), null);
+  assert.match(SHAPES.replace(/\\/g, "/"), /scripts\/test\/fixtures\/labs\/plans\/shapes\/$/);
+  const { plan } = shapedPlan();
+  const real = planShape(plan);
+  assert.deepEqual(compareShapes(real, planShape(plan)), []);
+  // Reference order is not compared; their content is.
+  const reordered = structuredClone(real);
+  reordered.resources["azurerm_subnet.vms"].refs.resource_group_name.reverse();
+  assert.deepEqual(compareShapes(reordered, real), []);
+  // The fixture spells a reference with a literal key where the real plan lists the iterator (lab 16's lesson).
+  const fixture = structuredClone(real);
+  fixture.resources["azurerm_linux_virtual_machine.files"].refs.network_interface_ids = ["azurerm_network_interface.files[0].id", "azurerm_network_interface.files[0]"];
+  const diff = compareShapes(real, fixture);
+  assert.equal(diff.length, 1);
+  assert.match(diff[0], /azurerm_linux_virtual_machine\.files: network_interface_ids/);
+  // A resource only one side has, an unknown path the fixture misses and a sensitive path are each named.
+  const fewer = structuredClone(real);
+  delete fewer.resources["azurerm_subnet.vms"];
+  fewer.resources["azurerm_virtual_network.lab"].unknown = fewer.resources["azurerm_virtual_network.lab"].unknown.filter((p) => p !== "guid");
+  fewer.resources["azurerm_linux_virtual_machine.files"].sensitive = [];
+  const many = compareShapes(real, fewer).join("\n");
+  assert.match(many, /azurerm_subnet\.vms: in the real plan, not in the fixture/);
+  assert.match(many, /azurerm_virtual_network\.lab: unknown/);
+  assert.match(many, /azurerm_linux_virtual_machine\.files: sensitive/);
+});
 
 test("the realistic plans mark computed, unset attributes unknown, as Terraform does", () => {
   const change = (lab, address) => LAB_PLANS[lab].plan.resource_changes.find((c) => c.address === address).change;
@@ -271,4 +399,54 @@ test("the realistic plans mark computed, unset attributes unknown, as Terraform 
   assert.equal(pe.after_unknown.subnet_id, true);
   assert.equal(pe.after_unknown.private_service_connection[0].private_connection_resource_id, true);
   assert.equal("subnet_id" in pe.after, false);
+});
+
+// Batch 3's release tests (2026-10-06) recorded real plan shapes that every fixture differed from in the same few
+// ways; realistic.mjs now prints them as Terraform does, for every lab, recorded or not.
+test("the realistic plans print sensitive attributes, unset optional-computed blocks, plan-time defaults and dynamic blocks as the real plans did", () => {
+  const change = (lab, address) => LAB_PLANS[lab].plan.resource_changes.find((c) => c.address === address).change;
+  const config = (lab, address) => LAB_PLANS[lab].plan.configuration.root_module.resources.find((r) => r.address === address);
+  // Every attribute the schema calls sensitive, set or not: lab 23 never sets administrator_login_password_wo, lab 27
+  // no secure_environment_variables (inside each container block), lab 22's VM no custom_data.
+  assert.ok(COMPUTED.types.azurerm_mssql_server.sensitive.includes("administrator_login_password_wo"));
+  assert.equal(change("az305-23-sql-failover", "azurerm_mssql_server.primary").after_sensitive.administrator_login_password_wo, true);
+  assert.equal(change("az305-27-multi-region", "azurerm_container_group.uks").after_sensitive.container[0].secure_environment_variables, true);
+  assert.equal(change("az305-22-keyvault-mi", "azurerm_linux_virtual_machine.vm").after_sensitive.custom_data, true);
+  assert.equal(change("az305-26-site-recovery", "azurerm_storage_account.cache").after_sensitive.primary_access_key, true);
+  // An Optional and Computed block left unset is wholly unknown; one the lab sets is not.
+  assert.equal(change("az305-25-storage-design", "azurerm_storage_account.lake").after_unknown.blob_properties, true);
+  assert.equal(change("az305-26-site-recovery", "azurerm_linux_virtual_machine.vm").after_unknown.termination_notification, true);
+  assert.ok(UNSET_BLOCKS_UNKNOWN.azurerm_storage_account.includes("network_rules"));
+  assert.notEqual(change("az104-07-files", "azurerm_storage_account.files").after_unknown.network_rules, true, "lab 7 sets network_rules");
+  assert.equal(change("az104-07-files", "azurerm_storage_account.files").after_unknown.network_rules[0].virtual_network_subnet_ids, true);
+  // A default the provider fills in at plan: known, planned, and not in the configuration.
+  const law = change("az305-21-monitoring-scale", "azurerm_log_analytics_workspace.lab");
+  assert.equal(law.after_unknown.local_authentication_enabled, undefined);
+  assert.equal(law.after.local_authentication_enabled, PLAN_DEFAULTS.azurerm_log_analytics_workspace.local_authentication_enabled);
+  assert.equal(config("az305-21-monitoring-scale", "azurerm_log_analytics_workspace.lab").expressions.local_authentication_enabled, undefined);
+  const pw = change("az305-22-keyvault-mi", "random_password.app_db");
+  assert.equal(pw.after_unknown.lower, undefined);
+  assert.equal(pw.after.lower, true);
+  assert.equal(pw.after.special, false, "a value the lab sets is kept, never replaced by the default");
+  // A dynamic block: planned values, no expressions (so no references) in the configuration.
+  assert.equal(change("az305-26-site-recovery", "azurerm_linux_virtual_machine.vm").after.admin_ssh_key.length, 1);
+  assert.equal(config("az305-26-site-recovery", "azurerm_linux_virtual_machine.vm").expressions.admin_ssh_key, undefined);
+  assert.throws(() => realisticPlan({ resources: [{ address: "azurerm_linux_virtual_machine.x", values: { admin_ssh_key: [{ username: "u" }] }, dynamic: ["admin_ssh_key"], refs: { "admin_ssh_key.0.public_key": ["var.ssh_public_key"] } }] }), /dynamic block/);
+});
+
+// Lab 26's recorded shape is from its first release test, on Ubuntu 22.04 (v2). Version 3 runs AlmaLinux 9.7: the
+// image's publisher, offer, sku and version and the cloud-init text are values, which a shape never holds, and no
+// address, reference, unknown or sensitive path changed. So the Ubuntu shape is still the shape to match, compared
+// in full rather than skipped; the retest of v3 records its own (lab-release-test.mjs saves shapes/<id>.json).
+test("az305-26-site-recovery: the switch to AlmaLinux changes no part of the plan's shape, so the recorded one still applies", () => {
+  const d = LAB_PLANS["az305-26-site-recovery"];
+  const vm = d.resources.find((r) => r.address === "azurerm_linux_virtual_machine.vm");
+  assert.deepEqual(vm.values.source_image_reference, [{ publisher: "almalinux", offer: "almalinux-x86_64", sku: "9-gen2", version: "9.7.2026051801" }]);
+  const ubuntu = structuredClone(d);
+  ubuntu.resources.find((r) => r.address === vm.address).values.source_image_reference = [{ publisher: "Canonical", offer: "0001-com-ubuntu-server-jammy", sku: "22_04-lts-gen2", version: "latest" }];
+  assert.deepEqual(planShape(realisticPlan(ubuntu)), planShape(d.plan));
+  // The main.tf change is in values only: the image block and custom_data keep the same references.
+  const tf = tfResources(join(LABS, "az305-26-site-recovery", "terraform"))["azurerm_linux_virtual_machine.vm"];
+  assert.ok(tf.has("source_image_reference") && tf.has("custom_data") && !tf.has("plan"), "no plan block (a free image)");
+  assert.ok(recordedShape("az305-26-site-recovery"), "the v2 shape is recorded");
 });

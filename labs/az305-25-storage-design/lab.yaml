@@ -1,0 +1,45 @@
+# Lab 25 (labs batch 3 plan, area C2; spec §17, ruling 34). AZ-305 study
+# guide skills this lab touches (the outline "as of April 17, 2026"):
+#   Design data storage solutions > Design data storage solutions for
+#   semi-structured and unstructured data: "Recommend a solution for storing
+#   unstructured data", "Recommend a data storage solution to balance
+#   features, performance, and costs", "Recommend a data solution for
+#   protection and durability".
+#   Design business continuity solutions > Design for high availability:
+#   "Recommend a high availability solution for semi-structured and
+#   unstructured data".
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up, all authored: storage accounts have no hourly fee of their
+# own, and "Hot LRS Data Stored" and the like are tiered meter names that
+# Blob Storage and Data Lake Storage share (ruling 2). A few MB in each
+# (Data Lake Hot LRS £0.0145 a GB a month, Hot RA-GRS £0.0362) and a
+# handful of transactions cost far less than the authored £0.0001 an
+# account. Lifecycle
+# management and container immutability policies are free. Anything moved
+# to Archive by hand is billed for at least 180 days of Archive storage
+# (pennies for a few MB), and rehydration is billed per GB read.
+id: az305-25-storage-design
+version: 2
+title: "Storage design: data lake, immutability, tiering"
+summary: >-
+  A Data Lake Storage account with raw and curated file systems and a lifecycle down to Archive, and an RA-GRS account
+  whose evidence container keeps every blob unchangeable for a day.
+exam: AZ-305
+skill_areas: [az305.data]
+level: expert
+type: explore
+prerequisites: [az104-05-storage]
+cost:
+  items:
+    - { name: "Storage account, Data Lake (LRS, Hot), a few MB", gbp_h: 0.0001 }
+    - { name: "Storage account, records (RA-GRS, Hot), a few MB", gbp_h: 0.0001 }
+    - { name: "Lifecycle management and the container retention policy", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 2, destroy_min: 3, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles: []
+  governance: false

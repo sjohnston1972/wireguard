@@ -14,7 +14,9 @@
     { "name": "Backup Operator", "id": "00c29273-979b-4161-815c-10b084fb9324" }
   ],
   "custom": [
-    { "lab": "az104-01-identity", "name": "lab-az104-01-identity-vm-operator", "id": "7331dcae-09d3-477e-8da7-2895697f0fc0" }
+    { "lab": "az104-01-identity", "name": "lab-az104-01-identity-vm-operator", "id": "7331dcae-09d3-477e-8da7-2895697f0fc0" },
+    { "lab": "az305-20-landing-zone", "name": "lab-az305-20-landing-zone-netops", "id": "60bdbc03-b25a-4a83-9fce-b2c5afff563c" },
+    { "lab": "az305-20-landing-zone", "name": "lab-az305-20-landing-zone-appops", "id": "bd52e05a-22cb-4bd5-b56c-3396add9b7c0" }
   ],
   "principalTypes": ["User", "Group", "ServicePrincipal"]
 }

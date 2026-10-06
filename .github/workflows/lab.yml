@@ -35,7 +35,9 @@
 # secret is handed only to the steps that need it; ARM_* only to steps 5-14.
 # Never the Cloudflare DNS token or the WireGuard key. Terraform's outputs
 # (addresses, user names) are masked and kept out of the log; the result line
-# LAB_RESULT carries only clean, leftovers and timings.
+# LAB_RESULT carries only clean, leftovers and timings, and the plan's
+# LAB_PLAN_SHAPE line only addresses, references and which paths are unknown
+# or sensitive (infra/ci/lab-plan-shape.mjs), never a value.
 #
 # Live log: as wg.yml (infra/ci/live-log.mjs and live-log.sh), started once
 # the callback token is known and flushed before the result is reported.
@@ -281,6 +283,9 @@ jobs:
           terraform plan -no-color -input=false -out="$RUNNER_TEMP/plan.out"
           # The JSON holds sensitive values in the clear: it stays on the runner and is never printed.
           terraform show -no-color -json "$RUNNER_TEMP/plan.out" > "$RUNNER_TEMP/plan.json"
+          # The plan's shape (addresses, references, unknown and sensitive paths; never a value), one
+          # LAB_PLAN_SHAPE line the release test saves to check the lab's plan fixture against (ruling 35).
+          node "$GITHUB_WORKSPACE/infra/ci/lab-plan-shape.mjs" "$RUNNER_TEMP/plan.json" || echo "::warning::could not record the plan's shape"
           node "$GITHUB_WORKSPACE/infra/ci/lab-scope.mjs" --plan "$RUNNER_TEMP/plan.json" --lab "$LAB_ID"
 
       # ── 7 ────────────────────────────────────────────────────────────────

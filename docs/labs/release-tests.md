@@ -33,3 +33,20 @@ lab's hourly estimate times those minutes.
 | 2026-10-05 16:29 | az104-19-backup | 2 | pass | yes | none | 5m 41s | 10m 0s | £0.0057 | 37339121948 |
 | 2026-10-05 16:33 | az104-16-lb-appgw | 2 | pass | yes | none | 10m 15s | 9m 30s | £0.0788 | 37339119265 |
 | 2026-10-05 16:39 | az104-10-app-service | 2 | fail | yes | none | — | 1m 51s | £0.0023 | 37341793982 |
+| 2026-10-06 04:46 | az305-25-storage-design | 1 | pass | yes | none | 1m 38s | 2m 33s | £0.0000 | 37414873088 |
+| 2026-10-06 05:03 | az305-20-landing-zone | 1 | pass | yes | none | 3m 56s | 12m 45s | £0.0000 | 37415260283 |
+| 2026-10-06 05:06 | az305-27-multi-region | 1 | pass | yes | none | 4m 19s | 20m 11s | £0.0320 | 37414875062 |
+| 2026-10-06 05:16 | az305-21-monitoring-scale | 1 | pass | yes | none | 6m 54s | 5m 23s | £0.0001 | 37416640571 |
+| 2026-10-06 05:23 | az305-23-sql-failover | 1 | pass | yes | none | 9m 27s | 6m 36s | £0.0405 | 37416882171 |
+| 2026-10-06 05:27 | az305-22-keyvault-mi | 1 | pass | yes | none | 6m 23s | 3m 16s | £0.0017 | 37417724811 |
+| 2026-10-06 05:42 | az305-24-cosmos | 1 | pass | yes | none | 3m 27s | 10m 45s | £0.0006 | 37418603934 |
+| 2026-10-06 05:49 | az305-26-site-recovery | 2 | fail | yes | none | — | 6m 14s | £0.0066 | 37418264048 |
+| 2026-10-06 06:46 | az305-25-storage-design | 2 | pass | yes | none | 1m 27s | 2m 22s | £0.0000 | 37425201115 |
+| 2026-10-06 07:02 | az305-20-landing-zone | 2 | pass | yes | none | 3m 59s | 11m 25s | £0.0000 | 37425632226 |
+| 2026-10-06 07:17 | az305-22-keyvault-mi | 2 | pass | yes | none | 6m 15s | 3m 35s | £0.0018 | 37427708400 |
+| 2026-10-06 07:23 | az305-23-sql-failover | 2 | pass | yes | none | 9m 7s | 6m 4s | £0.0383 | 37427709522 |
+| 2026-10-06 07:23 | az305-21-monitoring-scale | 2 | pass | yes | none | 6m 35s | 5m 15s | £0.0001 | 37427238049 |
+| 2026-10-06 07:32 | az305-24-cosmos | 2 | pass | yes | none | 2m 57s | 10m 33s | £0.0006 | 37428794963 |
+| 2026-10-06 07:50 | az305-26-site-recovery | 3 | pass | yes | none | 60m 11s | 7m 18s | £0.0710 | 37425197793 |
+| 2026-10-06 07:58 | az305-27-multi-region | 2 | pass | yes | none | 4m 24s | 20m 39s | £0.0327 | 37430276351 |
+| 2026-10-06 08:52 | az305-26-site-recovery | 4 | pass | yes | none | 40m 7s | 8m 29s | £0.0511 | 37433506191 |

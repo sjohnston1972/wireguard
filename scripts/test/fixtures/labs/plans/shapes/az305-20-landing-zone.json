@@ -1,0 +1,402 @@
+{
+ "resources": {
+  "azurerm_management_group.corp": {
+   "type": "azurerm_management_group",
+   "refs": {
+    "display_name": [
+     "var.lab_id"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "parent_management_group_id": [
+     "azurerm_management_group.landingzones.id",
+     "azurerm_management_group.landingzones"
+    ]
+   },
+   "unknown": [
+    "id",
+    "parent_management_group_id",
+    "subscription_ids",
+    "tenant_scoped_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_management_group.landingzones": {
+   "type": "azurerm_management_group",
+   "refs": {
+    "display_name": [
+     "var.lab_id"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "parent_management_group_id": [
+     "azurerm_management_group.root.id",
+     "azurerm_management_group.root"
+    ]
+   },
+   "unknown": [
+    "id",
+    "parent_management_group_id",
+    "subscription_ids",
+    "tenant_scoped_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_management_group.online": {
+   "type": "azurerm_management_group",
+   "refs": {
+    "display_name": [
+     "var.lab_id"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "parent_management_group_id": [
+     "azurerm_management_group.landingzones.id",
+     "azurerm_management_group.landingzones"
+    ]
+   },
+   "unknown": [
+    "id",
+    "parent_management_group_id",
+    "subscription_ids",
+    "tenant_scoped_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_management_group.platform": {
+   "type": "azurerm_management_group",
+   "refs": {
+    "display_name": [
+     "var.lab_id"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "parent_management_group_id": [
+     "azurerm_management_group.root.id",
+     "azurerm_management_group.root"
+    ]
+   },
+   "unknown": [
+    "id",
+    "parent_management_group_id",
+    "subscription_ids",
+    "tenant_scoped_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_management_group.root": {
+   "type": "azurerm_management_group",
+   "refs": {
+    "display_name": [
+     "var.lab_id"
+    ],
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "id",
+    "parent_management_group_id",
+    "subscription_ids",
+    "tenant_scoped_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_management_group.sandbox": {
+   "type": "azurerm_management_group",
+   "refs": {
+    "display_name": [
+     "var.lab_id"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "parent_management_group_id": [
+     "azurerm_management_group.root.id",
+     "azurerm_management_group.root"
+    ]
+   },
+   "unknown": [
+    "id",
+    "parent_management_group_id",
+    "subscription_ids",
+    "tenant_scoped_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_management_group_policy_assignment.baseline": {
+   "type": "azurerm_management_group_policy_assignment",
+   "refs": {
+    "display_name": [
+     "var.lab_id"
+    ],
+    "management_group_id": [
+     "azurerm_management_group.landingzones.id",
+     "azurerm_management_group.landingzones"
+    ],
+    "policy_definition_id": [
+     "azurerm_management_group_policy_set_definition.baseline.id",
+     "azurerm_management_group_policy_set_definition.baseline"
+    ]
+   },
+   "unknown": [
+    "id",
+    "management_group_id",
+    "metadata",
+    "policy_definition_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_management_group_policy_assignment.sandbox_no_pip": {
+   "type": "azurerm_management_group_policy_assignment",
+   "refs": {
+    "display_name": [
+     "var.lab_id"
+    ],
+    "management_group_id": [
+     "azurerm_management_group.sandbox.id",
+     "azurerm_management_group.sandbox"
+    ],
+    "policy_definition_id": [
+     "local.not_allowed_types_id"
+    ]
+   },
+   "unknown": [
+    "id",
+    "management_group_id",
+    "metadata"
+   ],
+   "sensitive": []
+  },
+  "azurerm_management_group_policy_set_definition.baseline": {
+   "type": "azurerm_management_group_policy_set_definition",
+   "refs": {
+    "display_name": [
+     "var.lab_id"
+    ],
+    "management_group_id": [
+     "azurerm_management_group.root.id",
+     "azurerm_management_group.root"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "policy_definition_reference.0.parameter_values": [
+     "var.region"
+    ],
+    "policy_definition_reference.2.policy_definition_id": [
+     "azurerm_policy_definition.audit_costcentre.id",
+     "azurerm_policy_definition.audit_costcentre"
+    ]
+   },
+   "unknown": [
+    "id",
+    "management_group_id",
+    "policy_definition_reference.0.version",
+    "policy_definition_reference.1.version",
+    "policy_definition_reference.2.policy_definition_id",
+    "policy_definition_reference.2.version"
+   ],
+   "sensitive": []
+  },
+  "azurerm_policy_definition.audit_costcentre": {
+   "type": "azurerm_policy_definition",
+   "refs": {
+    "display_name": [
+     "var.lab_id"
+    ],
+    "management_group_id": [
+     "azurerm_management_group.root.id",
+     "azurerm_management_group.root"
+    ],
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "id",
+    "management_group_id",
+    "role_definition_ids"
+   ],
+   "sensitive": []
+  },
+  "azurerm_resource_group.lab": {
+   "type": "azurerm_resource_group",
+   "refs": {
+    "location": [
+     "var.region"
+    ],
+    "name": [
+     "var.resource_group_name"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_role_assignment.appops": {
+   "type": "azurerm_role_assignment",
+   "refs": {
+    "principal_id": [
+     "azurerm_user_assigned_identity.appops.principal_id",
+     "azurerm_user_assigned_identity.appops"
+    ],
+    "role_definition_id": [
+     "azurerm_role_definition.appops.role_definition_resource_id",
+     "azurerm_role_definition.appops"
+    ],
+    "scope": [
+     "azurerm_resource_group.lab.id",
+     "azurerm_resource_group.lab"
+    ]
+   },
+   "unknown": [
+    "condition_version",
+    "id",
+    "name",
+    "principal_id",
+    "role_definition_id",
+    "role_definition_name",
+    "scope"
+   ],
+   "sensitive": []
+  },
+  "azurerm_role_assignment.netops": {
+   "type": "azurerm_role_assignment",
+   "refs": {
+    "principal_id": [
+     "azurerm_user_assigned_identity.netops.principal_id",
+     "azurerm_user_assigned_identity.netops"
+    ],
+    "role_definition_id": [
+     "azurerm_role_definition.netops.role_definition_resource_id",
+     "azurerm_role_definition.netops"
+    ],
+    "scope": [
+     "azurerm_resource_group.lab.id",
+     "azurerm_resource_group.lab"
+    ]
+   },
+   "unknown": [
+    "condition_version",
+    "id",
+    "name",
+    "principal_id",
+    "role_definition_id",
+    "role_definition_name",
+    "scope"
+   ],
+   "sensitive": []
+  },
+  "azurerm_role_definition.appops": {
+   "type": "azurerm_role_definition",
+   "refs": {
+    "assignable_scopes": [
+     "azurerm_resource_group.lab.id",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "scope": [
+     "data.azurerm_subscription.current.id",
+     "data.azurerm_subscription.current"
+    ]
+   },
+   "unknown": [
+    "assignable_scopes",
+    "id",
+    "role_definition_resource_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_role_definition.netops": {
+   "type": "azurerm_role_definition",
+   "refs": {
+    "assignable_scopes": [
+     "azurerm_resource_group.lab.id",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "scope": [
+     "data.azurerm_subscription.current.id",
+     "data.azurerm_subscription.current"
+    ]
+   },
+   "unknown": [
+    "assignable_scopes",
+    "id",
+    "role_definition_resource_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_user_assigned_identity.appops": {
+   "type": "azurerm_user_assigned_identity",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "client_id",
+    "id",
+    "principal_id",
+    "tenant_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_user_assigned_identity.netops": {
+   "type": "azurerm_user_assigned_identity",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "client_id",
+    "id",
+    "principal_id",
+    "tenant_id"
+   ],
+   "sensitive": []
+  },
+  "data.azurerm_subscription.current": {
+   "type": "azurerm_subscription",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  }
+ }
+}

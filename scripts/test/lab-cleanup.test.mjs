@@ -49,7 +49,7 @@ test("every script refuses a lab id that fails the pattern before calling Azure"
 
 // ── Unblock ──────────────────────────────────────────────────────────────
 
-test("unblock removes locks, legal holds, unlocked immutability, backup protection and replication in that order", { skip }, () => {
+test("unblock removes locks, legal holds, unlocked immutability, backup protection, replication and SQL links in that order", { skip }, () => {
   const w = world([
     { match: "^group list", out: GROUPS },
     { match: `^lock list --resource-group ${RG} `, out: `/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.Authorization/locks/nodelete\n/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.Storage/storageAccounts/sa1/providers/Microsoft.Authorization/locks/sa-lock` },
@@ -62,7 +62,13 @@ test("unblock removes locks, legal holds, unlocked immutability, backup protecti
     { match: `^backup vault list --resource-group ${RG} `, out: "rsv-lab" },
     { match: "^backup item list .*isScheduledForDeferredDelete", out: "/subscriptions/x/item-soft" },
     { match: "^backup item list", out: "/subscriptions/x/item-1\n/subscriptions/x/item-soft" },
-    { match: "^rest --method get --url .*replicationProtectedItems", out: `/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/replicationFabrics/f/replicationProtectionContainers/c/replicationProtectedItems/vm1` },
+    { match: "^rest --method get --url .*replicationProtectedItems\\?.*value\\[\\]\\.\\[id", out: `/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/replicationFabrics/f/replicationProtectionContainers/c/replicationProtectedItems/vm1\tNone` },
+    // SQL (batch 3): a failover group and its geo-link to a server in the lab's other group.
+    { match: `^sql server list --resource-group ${RG} `, out: "sql1" },
+    { match: `^sql server list --resource-group ${RG}-nodes `, out: "sql2" },
+    { match: `^sql failover-group list --resource-group ${RG} --server sql1 `, out: "fog1\tPrimary" },
+    { match: `^sql db list --resource-group ${RG} --server sql1 `, out: "db1" },
+    { match: "^sql db replica list-links .*--server sql1 --name db1 ", out: "sql2\tPrimary" },
   ]);
   const r = w.run("infra/ci/lab-unblock.sh", [ID]);
   assert.equal(r.status, 0, r.out);
@@ -75,6 +81,8 @@ test("unblock removes locks, legal holds, unlocked immutability, backup protecti
     firstCall(calls, /^az backup protection undelete --ids \/subscriptions\/x\/item-soft/),
     firstCall(calls, /^az backup protection disable --ids \/subscriptions\/x\/item-1 --delete-backup-data true --yes/),
     firstCall(calls, /^az rest --method post --url .*replicationProtectedItems\/vm1\/remove/),
+    firstCall(calls, /^az sql failover-group delete --resource-group rg-lab-az104-06-blob-security --server sql1 --name fog1/),
+    firstCall(calls, /^az sql db replica delete-link --resource-group rg-lab-az104-06-blob-security --server sql1 --name db1 --partner-server sql2 --partner-resource-group rg-lab-az104-06-blob-security-nodes --yes/),
   ];
   for (const i of order) assert.ok(i >= 0, `missing call; calls were:\n${calls.join("\n")}`);
   assert.deepEqual([...order].sort((a, b) => a - b), order, `out of order:\n${calls.join("\n")}`);
@@ -715,7 +723,8 @@ test("unpeer is idempotent: no gateway VNet and no lab group is a clean no-op", 
 test("ready check polls until every provisioningState is Succeeded or deploy_min passes", { skip }, () => {
   const w = world([
     { match: "^group list", out: `${RG}\tSucceeded\n${RG}x\tCreating` },
-    { match: `^resource list --resource-group ${RG} `, out: [`vnet-lab\tUpdating\nl06sa\tSucceeded`, `vnet-lab\tUpdating\nl06sa\tSucceeded`, `vnet-lab\tSucceeded\nl06sa\tSucceeded`] },
+    // name, type, provisioningState (the state last: see the batch 3 test below).
+    { match: `^resource list --resource-group ${RG} `, out: [`vnet-lab\tMicrosoft.Network/virtualNetworks\tUpdating\nl06sa\tMicrosoft.Storage/storageAccounts\tSucceeded`, `vnet-lab\tMicrosoft.Network/virtualNetworks\tUpdating\nl06sa\tMicrosoft.Storage/storageAccounts\tSucceeded`, `vnet-lab\tMicrosoft.Network/virtualNetworks\tSucceeded\nl06sa\tMicrosoft.Storage/storageAccounts\tSucceeded`] },
   ]);
   const r = w.run("infra/ci/lab-ready.sh", [ID, "4"], { LAB_READY_INTERVAL: "0" });
   assert.equal(r.status, 0, r.out);
@@ -725,7 +734,7 @@ test("ready check polls until every provisioningState is Succeeded or deploy_min
 
   const stuck = world([
     { match: "^group list", out: `${RG}\tSucceeded` },
-    { match: `^resource list --resource-group ${RG} `, out: `vnet-lab\tFailed` },
+    { match: `^resource list --resource-group ${RG} `, out: `vnet-lab\tMicrosoft.Network/virtualNetworks\tFailed` },
   ]);
   const s = stuck.run("infra/ci/lab-ready.sh", [ID, "4"], { LAB_READY_INTERVAL: "0", LAB_READY_SECONDS: "0" });
   assert.equal(s.status, 1);
@@ -736,4 +745,427 @@ test("ready check polls until every provisioningState is Succeeded or deploy_min
   const n = none.run("infra/ci/lab-ready.sh", [ID, "4"], { LAB_READY_INTERVAL: "0", LAB_READY_SECONDS: "0" });
   assert.equal(n.status, 1, "no lab group is not ready");
   none.cleanup();
+});
+
+// ── Batch 3 teardown (labs batch 3 plan, C0.5; spec §17 rulings 30-31) ───
+
+// Lab 23: a failover group over a Basic primary (uksouth group) and its geo-secondary (secondary group).
+const L23 = "az305-23-sql-failover";
+const R23 = `rg-lab-${L23}`;
+const R23S = `${R23}-secondary`;
+/** SQL as unblock finds lab 23; `swapped` after a failover (the ukwest server is primary). */
+const sqlWorld = (swapped = false, extra = []) => [
+  { match: "^group list", out: `${R23}\n${R23S}\nrg-lab-az104-07-files` },
+  { match: `^sql server list --resource-group ${R23} `, out: "l23k3x9q-sqlp" },
+  { match: `^sql server list --resource-group ${R23S} `, out: "l23k3x9q-sqls" },
+  { match: `^sql failover-group list --resource-group ${R23} --server l23k3x9q-sqlp `, out: `l23k3x9q-fog\t${swapped ? "Secondary" : "Primary"}` },
+  { match: `^sql failover-group list --resource-group ${R23S} --server l23k3x9q-sqls `, out: `l23k3x9q-fog\t${swapped ? "Primary" : "Secondary"}` },
+  { match: `^sql db list --resource-group ${R23} --server l23k3x9q-sqlp `, out: "appdb" },
+  { match: `^sql db list --resource-group ${R23S} --server l23k3x9q-sqls `, out: "appdb\nscratch" },
+  { match: `^sql db replica list-links --resource-group ${R23} --server l23k3x9q-sqlp --name appdb `, out: `l23k3x9q-sqls\t${swapped ? "Secondary" : "Primary"}` },
+  { match: `^sql db replica list-links --resource-group ${R23S} --server l23k3x9q-sqls --name appdb `, out: `l23k3x9q-sqlp\t${swapped ? "Primary" : "Secondary"}` },
+  ...extra,
+];
+
+test("unblock deletes SQL failover groups, then geo-replication links", { skip }, () => {
+  const w = world(sqlWorld());
+  const r = w.run("infra/ci/lab-unblock.sh", [L23]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  // The group is deleted once, on the server that holds the primary.
+  const fog = calls.filter((c) => c.startsWith("az sql failover-group delete"));
+  assert.deepEqual(fog, [`az sql failover-group delete --resource-group ${R23} --server l23k3x9q-sqlp --name l23k3x9q-fog -o none`]);
+  // Then the geo-replication link, from the primary database, naming the partner's own group.
+  const links = calls.filter((c) => c.startsWith("az sql db replica delete-link"));
+  assert.deepEqual(links, [`az sql db replica delete-link --resource-group ${R23} --server l23k3x9q-sqlp --name appdb --partner-server l23k3x9q-sqls --partner-resource-group ${R23S} --yes -o none`]);
+  assert.ok(firstCall(calls, /^az sql failover-group delete/) < firstCall(calls, /^az sql db replica delete-link/), calls.join("\n"));
+  assert.match(r.out, /l23k3x9q-fog: failover group deleted/);
+  assert.match(r.out, /appdb: geo-replication link to l23k3x9q-sqls removed/);
+  // Never another lab's servers.
+  assert.ok(!calls.some((c) => /rg-lab-az104-07-files/.test(c) && !c.startsWith("az group list")));
+  w.cleanup();
+  // After a failover the roles are swapped: the ukwest server holds the primary, and Terraform's view is stale.
+  const s = world(sqlWorld(true));
+  assert.equal(s.run("infra/ci/lab-unblock.sh", [L23]).status, 0);
+  assert.deepEqual(s.calls().filter((c) => c.startsWith("az sql failover-group delete")), [`az sql failover-group delete --resource-group ${R23S} --server l23k3x9q-sqls --name l23k3x9q-fog -o none`]);
+  assert.deepEqual(s.calls().filter((c) => c.startsWith("az sql db replica delete-link")), [`az sql db replica delete-link --resource-group ${R23S} --server l23k3x9q-sqls --name appdb --partner-server l23k3x9q-sqlp --partner-resource-group ${R23} --yes -o none`]);
+  s.cleanup();
+  // Azure refusing either is a warning, and the run still ends 0.
+  const f = world(sqlWorld(false, []).map((x) => x).concat([{ match: "^sql failover-group delete", code: 1, err: "ERROR: Conflict" }, { match: "^sql db replica delete-link", code: 1, err: "ERROR: Conflict" }]));
+  const fr = f.run("infra/ci/lab-unblock.sh", [L23]);
+  assert.equal(fr.status, 0, fr.out);
+  assert.match(fr.stderr, /::warning::unblock: l23k3x9q-fog: could not delete the failover group/);
+  assert.match(fr.stderr, /::warning::unblock: appdb: could not remove the geo-replication link/);
+  f.cleanup();
+});
+
+// Lab 26: Site Recovery replicating a uksouth VM into the vault in the secondary group.
+const L26 = "az305-26-site-recovery";
+const R26 = `rg-lab-${L26}`;
+const R26S = `${R26}-secondary`;
+const RSV = `/subscriptions/${SUB}/resourceGroups/${R26S}/providers/Microsoft.RecoveryServices/vaults/rsv-lab`;
+const ASR_ITEM = `${RSV}/replicationFabrics/fabric-uksouth/replicationProtectionContainers/pc-uksouth/replicationProtectedItems/vm-app`;
+const NET_MAP = `${RSV}/replicationFabrics/fabric-uksouth/replicationNetworks/azureNetwork/replicationNetworkMappings/map-source-target`;
+const CONT_MAP = `${RSV}/replicationFabrics/fabric-uksouth/replicationProtectionContainers/pc-uksouth/replicationProtectionContainerMappings/map-uks-ukw`;
+const POLICY = `${RSV}/replicationPolicies/policy-6h`;
+/** Site Recovery as unblock finds lab 26; `items` answers the wait's list of replicated items in turn. */
+const asrWorld = ({ state = "None", items = [""], itemsCode = 0 } = {}) => [
+  { match: "^group list", out: `${R26}\n${R26S}` },
+  { match: `^backup vault list --resource-group ${R26S} `, out: "rsv-lab" },
+  { match: "^backup vault backup-properties show", out: "Disabled" },
+  { match: "^backup item list", out: "" },
+  { match: "^rest --method get --url .*/replicationProtectedItems\\?.*value\\[\\]\\.\\[id, properties\\.testFailoverState", out: `${ASR_ITEM}\t${state}` },
+  { match: "^rest --method get --url .*/replicationProtectedItems\\?.*--query value\\[\\]\\.\\[id, properties\\.currentScenario", out: items, code: itemsCode },
+  { match: "^rest --method get --url .*/replicationNetworkMappings\\?", out: NET_MAP },
+  { match: "^rest --method get --url .*/replicationProtectionContainerMappings\\?", out: CONT_MAP },
+  { match: "^rest --method get --url .*/replicationPolicies\\?", out: POLICY },
+];
+
+test("unblock cleans up a test failover before removing replication", { skip }, () => {
+  const w = world(asrWorld({ state: "Completed" }));
+  const r = w.run("infra/ci/lab-unblock.sh", [L26]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const cleanup = firstCall(calls, new RegExp(`^az rest --method post --url ${ASR_ITEM}/testFailoverCleanup\\?api-version=2023-08-01 --body \\{"properties":\\{"comments":"[^"]+"\\}\\}`));
+  const remove = firstCall(calls, new RegExp(`^az rest --method post --url ${ASR_ITEM}/remove\\?api-version=2023-08-01`));
+  assert.ok(cleanup >= 0 && remove > cleanup, calls.join("\n"));
+  assert.match(r.out, /vm-app: test failover cleanup started/);
+  w.cleanup();
+  // No test failover (None, or none at all), or one already being cleaned up: no cleanup call.
+  for (const state of ["None", "", "MarkedForDeletion"]) {
+    const n = world(asrWorld({ state }));
+    assert.equal(n.run("infra/ci/lab-unblock.sh", [L26]).status, 0);
+    assert.equal(firstCall(n.calls(), /testFailoverCleanup/), -1, state);
+    assert.ok(firstCall(n.calls(), /replicationProtectedItems\/vm-app\/remove/) >= 0, state);
+    n.cleanup();
+  }
+});
+
+test("unblock waits until a vault has no replicated items, then removes network mappings, container mappings and policies, never failing the run", { skip }, () => {
+  const w = world(asrWorld({ items: [ASR_ITEM, ASR_ITEM, ""] }));
+  const r = w.run("infra/ci/lab-unblock.sh", [L26]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const remove = firstCall(calls, /replicationProtectedItems\/vm-app\/remove/);
+  const lastWait = lastCall(calls, /replicationProtectedItems\?.*--query value\[\]\.\[id, properties\.currentScenario/);
+  const net = firstCall(calls, new RegExp(`^az rest --method delete --url ${NET_MAP}\\?api-version=2023-08-01`));
+  const cont = firstCall(calls, new RegExp(`^az rest --method post --url ${CONT_MAP}/remove\\?api-version=2023-08-01 --body \\{"properties":\\{"providerSpecificInput":\\{\\}\\}\\}`));
+  const pol = firstCall(calls, new RegExp(`^az rest --method delete --url ${POLICY}\\?api-version=2023-08-01`));
+  assert.ok(remove >= 0 && lastWait > remove && net > lastWait && cont > net && pol > cont, calls.join("\n"));
+  assert.deepEqual(calls.filter((c) => c.startsWith("sleep ")), ["sleep 15", "sleep 15"]);
+  assert.match(r.out, /rsv-lab: no replicated items left/);
+  w.cleanup();
+  // Still replicating after the wait (default 900 s, bounded): a warning, and the run goes on.
+  const stuck = world(asrWorld({ items: [ASR_ITEM] }));
+  const s = stuck.run("infra/ci/lab-unblock.sh", [L26]);
+  assert.equal(s.status, 0, s.out);
+  const waited = stuck.calls().filter((c) => c.startsWith("sleep ")).reduce((n, c) => n + Number(c.split(" ")[1]), 0);
+  assert.ok(waited <= 900 && waited >= 885, `waited ${waited} s`);
+  assert.match(s.stderr, /::warning::unblock: rsv-lab: 1 replicated item\(s\) still listed after 900 s/);
+  stuck.cleanup();
+  // The wait is configurable; a list that fails is never "none left": unverified.
+  const down = world(asrWorld({ items: [""], itemsCode: 1 }));
+  const d = down.run("infra/ci/lab-unblock.sh", [L26], { LAB_UNBLOCK_ASR_WAIT_SECONDS: "30" });
+  assert.equal(d.status, 0, d.out);
+  assert.deepEqual(down.calls().filter((c) => c.startsWith("sleep ")), ["sleep 15", "sleep 15"]);
+  assert.doesNotMatch(d.out, /no replicated items left/);
+  assert.match(d.stderr, /::warning::unblock: unverified: .*rsv-lab replicated items/);
+  down.cleanup();
+  // Every removal Azure refuses is a warning.
+  const refused = world([...asrWorld(), { match: "^rest --method (post|delete) ", code: 1, err: "ERROR: (BadRequest)" }]);
+  const x = refused.run("infra/ci/lab-unblock.sh", [L26]);
+  assert.equal(x.status, 0, x.out);
+  for (const what of ["could not disable replication for vm-app", "could not delete network mapping map-source-target", "could not remove container mapping map-uks-ukw", "could not delete replication policy policy-6h"]) assert.match(x.stderr, new RegExp(`::warning::unblock: rsv-lab: ${what}`));
+  refused.cleanup();
+});
+
+// testFailoverCleanup is asynchronous (202) and az rest does not wait for it: a remove posted while the cleanup
+// still runs is refused. Unblock polls the item until its test failover state is None (or empty, or
+// MarkedForDeletion) before posting remove, and the vault wait re-sends remove for an item still listed that is not
+// already being removed (bounded), so a refused first remove is not the end of it.
+const ITEM_STATE = "^rest --method get --url [^ ]*/replicationProtectedItems/vm-app\\?api-version=2023-08-01 --query properties\\.testFailoverState -o tsv$";
+const REMOVE_RE = "^rest --method post --url [^ ]*/replicationProtectedItems/vm-app/remove\\?";
+const isRemove = (c) => /^az rest --method post --url [^ ]*\/replicationProtectedItems\/vm-app\/remove\?/.test(c);
+const isState = (c) => /^az rest --method get --url [^ ]*\/replicationProtectedItems\/vm-app\?api-version=2023-08-01 --query properties\.testFailoverState /.test(c);
+const isWaitList = (c) => /^az rest --method get --url [^ ]*\/replicationProtectedItems\?.*--query value\[\]\.\[id, properties\.currentScenario/.test(c);
+const listedAs = (scenario, protection) => `${ASR_ITEM}\t${scenario}\t${protection}`;
+
+test("unblock waits for a test failover cleanup to finish before removing replication", { skip }, () => {
+  const w = world([{ match: ITEM_STATE, out: ["Completed", "Completed", "None"] }, ...asrWorld({ state: "Completed" })]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L26]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const cleanup = firstCall(calls, /testFailoverCleanup/);
+  const polls = calls.map((c, i) => (isState(c) ? i : -1)).filter((i) => i >= 0);
+  const remove = calls.findIndex(isRemove);
+  assert.equal(polls.length, 3, `polled the item until None:\n${calls.join("\n")}`);
+  assert.ok(cleanup >= 0 && polls[0] > cleanup && remove > polls[2], calls.join("\n"));
+  assert.match(r.out, /rsv-lab: vm-app: test failover cleanup finished/);
+  w.cleanup();
+  // Empty or MarkedForDeletion count as finished too.
+  for (const state of ["", "MarkedForDeletion"]) {
+    const e = world([{ match: ITEM_STATE, out: state }, ...asrWorld({ state: "Completed" })]);
+    assert.equal(e.run("infra/ci/lab-unblock.sh", [L26]).status, 0);
+    assert.equal(e.calls().filter(isState).length, 1, state);
+    e.cleanup();
+  }
+  // A cleanup that never finishes: bounded (LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS), a warning, and remove is still sent.
+  const slow = world([{ match: ITEM_STATE, out: "Completed" }, ...asrWorld({ state: "Completed" })]);
+  const s = slow.run("infra/ci/lab-unblock.sh", [L26], { LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS: "45" });
+  assert.equal(s.status, 0, s.out);
+  assert.equal(slow.calls().filter(isState).length, 4, slow.calls().join("\n"));
+  assert.match(s.stderr, /::warning::unblock: rsv-lab: the test failover cleanup of vm-app had not finished after 45 s/);
+  assert.ok(slow.calls().some(isRemove));
+  slow.cleanup();
+  // A cleanup Azure refuses is not waited for.
+  const no = world([{ match: "testFailoverCleanup", code: 1, err: "ERROR: (BadRequest)" }, ...asrWorld({ state: "Completed" })]);
+  assert.equal(no.run("infra/ci/lab-unblock.sh", [L26]).status, 0);
+  assert.equal(no.calls().filter(isState).length, 0);
+  no.cleanup();
+});
+
+test("unblock re-sends remove for an item still listed after its first remove was refused, then sees the vault empty", { skip }, () => {
+  // The cleanup is still pending when unblock stops waiting for it; Azure refuses the first remove, then accepts.
+  const pending = listedAs("TestFailoverCleanup", "Protected");
+  const w = world([
+    { match: ITEM_STATE, out: "Completed" },
+    { match: REMOVE_RE, code: [1, 0], err: ["ERROR: (Conflict) a test failover cleanup is in progress", ""] },
+    ...asrWorld({ state: "Completed", items: [pending, pending, pending, pending, pending, listedAs("DisableDr", "Protected"), ""] }),
+  ]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L26], { LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS: "15" });
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const removes = calls.map((c, i) => (isRemove(c) ? i : -1)).filter((i) => i >= 0);
+  assert.equal(removes.length, 2, `remove sent again once:\n${calls.join("\n")}`);
+  assert.ok(removes[1] > calls.findIndex(isWaitList), "the second remove comes from the wait");
+  assert.match(r.stderr, /::warning::unblock: rsv-lab: could not disable replication for vm-app/);
+  assert.match(r.out, /unblock: rsv-lab: replication disabled for vm-app \(sent again\)/);
+  assert.match(r.out, /rsv-lab: no replicated items left/);
+  w.cleanup();
+  // An item never removed: the re-sends are bounded, and the run still ends 0 with a warning.
+  const stuck = world([{ match: REMOVE_RE, code: 1, err: "ERROR: (Conflict)" }, ...asrWorld({ items: [listedAs("", "Protected")] })]);
+  const st = stuck.run("infra/ci/lab-unblock.sh", [L26]);
+  assert.equal(st.status, 0, st.out);
+  const n = stuck.calls().filter(isRemove).length;
+  assert.ok(n >= 3 && n <= 9, `${n} removes: one, then at most 8 re-sends`);
+  assert.match(st.stderr, /::warning::unblock: rsv-lab: 1 replicated item\(s\) still listed after 900 s/);
+  stuck.cleanup();
+  // An item already being removed (DisableDr, or a disabling protection state) is not sent remove again.
+  const busy = world(asrWorld({ items: [listedAs("DisableDr", "Protected"), listedAs("", "DisablingProtection"), ...Array(8).fill(listedAs("DisableDr", "Protected")), ""] }));
+  assert.equal(busy.run("infra/ci/lab-unblock.sh", [L26]).status, 0);
+  assert.equal(busy.calls().filter(isRemove).length, 1, busy.calls().join("\n"));
+  busy.cleanup();
+});
+
+// A recovery plan a learner made by hand holds its items: Azure will not disable replication for an item in a
+// plan, and a vault with a plan left in it cannot be deleted.
+const RECOVERY_PLAN = `${RSV}/replicationRecoveryPlans/rp-learner`;
+test("unblock deletes a vault's recovery plans before removing replication, never failing the run", { skip }, () => {
+  const plans = { match: "^rest --method get --url .*/replicationRecoveryPlans\\?", out: RECOVERY_PLAN };
+  const w = world([...asrWorld(), plans]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L26]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const list = firstCall(calls, new RegExp(`^az rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${R26S}/providers/Microsoft.RecoveryServices/vaults/rsv-lab/replicationRecoveryPlans\\?api-version=2023-08-01 `));
+  const del = firstCall(calls, new RegExp(`^az rest --method delete --url ${RECOVERY_PLAN}\\?api-version=2023-08-01`));
+  const remove = firstCall(calls, /replicationProtectedItems\/vm-app\/remove/);
+  assert.ok(list >= 0 && del > list && remove > del, calls.join("\n"));
+  assert.match(r.out, /unblock: rsv-lab: recovery plan rp-learner deleted/);
+  w.cleanup();
+  // A vault with no replicated items left still has its plans deleted.
+  const empty = world([{ match: "^rest --method get --url .*/replicationProtectedItems\\?", out: "" }, ...asrWorld(), plans]);
+  assert.equal(empty.run("infra/ci/lab-unblock.sh", [L26]).status, 0);
+  assert.ok(firstCall(empty.calls(), new RegExp(`^az rest --method delete --url ${RECOVERY_PLAN}\\?`)) >= 0, empty.calls().join("\n"));
+  empty.cleanup();
+  // Azure refuses the delete, or the list: a warning each, and replication is still removed.
+  for (const [extra, warning] of [
+    [{ match: "^rest --method delete --url .*/replicationRecoveryPlans/", code: 1, err: "ERROR: (BadRequest)" }, /::warning::unblock: rsv-lab: could not delete recovery plan rp-learner/],
+    [{ match: "^rest --method get --url .*/replicationRecoveryPlans\\?", code: 1, err: "ERROR: (Forbidden)" }, /::warning::unblock: rsv-lab: could not list recovery plans/],
+  ]) {
+    const x = world([...asrWorld(), extra, plans]);
+    const out = x.run("infra/ci/lab-unblock.sh", [L26]);
+    assert.equal(out.status, 0, out.out);
+    assert.match(out.stderr, warning);
+    assert.ok(firstCall(x.calls(), /replicationProtectedItems\/vm-app\/remove/) >= 0);
+    x.cleanup();
+  }
+});
+
+test("unblock removes an unlocked policy and a legal hold on an HNS account", { skip }, () => {
+  // Lab 25's data lake (is_hns_enabled): its file systems are blob containers to the management plane.
+  const L25 = "az305-25-storage-design";
+  const R25 = `rg-lab-${L25}`;
+  const w = world([
+    { match: "^group list", out: R25 },
+    { match: `^storage account list --resource-group ${R25} `, out: "l25k3x9qlake" },
+    { match: "^storage container-rm list .*hasLegalHold", out: "raw" },
+    { match: "^storage container legal-hold show .*--container-name raw", out: "case1" },
+    { match: "^storage container-rm list .*hasImmutabilityPolicy", out: "curated" },
+    { match: "^storage container immutability-policy show .*--container-name curated", out: 'Unlocked\t"0x8DD"' },
+  ]);
+  const r = w.run("infra/ci/lab-unblock.sh", [L25]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  assert.ok(firstCall(calls, new RegExp(`^az storage container legal-hold clear --account-name l25k3x9qlake --container-name raw --resource-group ${R25} --tags case1`)) >= 0, calls.join("\n"));
+  assert.ok(firstCall(calls, new RegExp(`^az storage container immutability-policy delete --account-name l25k3x9qlake --container-name curated --resource-group ${R25} --if-match "0x8DD"`)) >= 0, calls.join("\n"));
+  w.cleanup();
+});
+
+// Lab 22's vault (and lab 21's): Key Vault keeps a deleted vault for its retention (7 days in the labs).
+const L22 = "az305-22-keyvault-mi";
+const R22 = `rg-lab-${L22}`;
+const DELETED_VAULTS = [
+  `l22k3x9qkv\tuksouth\t/subscriptions/${SUB}/resourceGroups/${R22}/providers/Microsoft.KeyVault/vaults/l22k3x9qkv`,
+  `kv-prod\tuksouth\t/subscriptions/${SUB}/resourceGroups/rg-prod/providers/Microsoft.KeyVault/vaults/kv-prod`,
+  `kv-near\tukwest\t/subscriptions/${SUB}/resourceGroups/${R22}x/providers/Microsoft.KeyVault/vaults/kv-near`,
+  `kv-two\tukwest\t/subscriptions/${SUB}/resourceGroups/${R22}-secondary/providers/Microsoft.KeyVault/vaults/kv-two`,
+].join("\n");
+
+test("the safety net purges soft-deleted Key Vaults that lived in a lab group, and verify counts one as a leftover", { skip }, () => {
+  const w = world([
+    { match: "^group list --query \\[\\]\\.name ", out: R22 },
+    { match: "^group list --query \\[\\]\\.\\[name", out: "" },
+    { match: "^account show", out: SUB },
+    { match: "^keyvault list-deleted --resource-type vault ", out: DELETED_VAULTS },
+  ]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [L22], { LAB_DELETE_POLL_SECONDS: "1" });
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const purges = calls.filter((c) => c.startsWith("az keyvault purge"));
+  assert.deepEqual(purges, ["az keyvault purge --name l22k3x9qkv --location uksouth", "az keyvault purge --name kv-two --location ukwest"]);
+  // After the group deletes (deleting the group is what soft-deletes the vault).
+  assert.ok(firstCall(calls, /^az keyvault purge/) > lastCall(calls, /^az group delete/), calls.join("\n"));
+  assert.match(r.out, /purged soft-deleted vault l22k3x9qkv/);
+  w.cleanup();
+  // Verify: a soft-deleted lab vault is a leftover; another group's never is.
+  const out = join(mkdtempSync(join(tmpdir(), "gho-")), "out");
+  writeFileSync(out, "");
+  const v = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, { match: "^keyvault list-deleted --resource-type vault ", out: DELETED_VAULTS }]);
+  const vr = v.run("infra/ci/lab-safety-net.sh", ["--verify", L22], { GITHUB_OUTPUT: fwd(out) });
+  assert.equal(vr.status, 1, vr.out);
+  const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
+  assert.deepEqual(left.sort(), ["kv-two (soft-deleted vault)", "l22k3x9qkv (soft-deleted vault)"]);
+  assert.equal(v.calls().filter((c) => / purge /.test(c)).length, 0, "verify deletes nothing");
+  v.cleanup();
+  // A list Azure cannot answer is unverified, never clean.
+  const broken = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, { match: "^keyvault list-deleted", code: 1, err: "AuthorizationFailed" }]);
+  const b = broken.run("infra/ci/lab-safety-net.sh", ["--verify", L22]);
+  assert.equal(b.status, 1);
+  assert.match(b.stdout, /unverified: soft-deleted Key Vaults/);
+  broken.cleanup();
+});
+
+// Lab 20's readme invites a hand-made exemption at its -corp management group. The safety net deletes policy
+// exemptions at the lab's management groups and in its resource groups (the groups' resources too) before it
+// deletes any of them, and verify counts one as a leftover. Never an exemption anywhere else.
+const L20 = "az305-20-landing-zone";
+const R20 = `rg-lab-${L20}`;
+const MGS = (n) => `/providers/Microsoft.Management/managementGroups/${n}`;
+const EX = "/providers/Microsoft.Authorization/policyExemptions";
+const exemptionWorld = (extra = []) => [
+  POLL(""),
+  { match: "^group list --query \\[\\]\\.name ", out: `${R20}\n${R20}x\nNetworkWatcherRG` },
+  { match: "^account show", out: SUB },
+  { match: "^account management-group list", out: `lab-${L20}-root\tlab-${L20}-root\nlab-${L20}-corp\tlab-${L20}-corp\ncorp\tSteven corp` },
+  { match: `^account management-group show --name lab-${L20}-root `, out: "00000000-tenant-root" },
+  { match: `^account management-group show --name lab-${L20}-corp `, out: `lab-${L20}-root` },
+  // At the -corp group: the learner's own, and one inherited from Steven's parent group (never the lab's).
+  { match: `^policy exemption list --scope ${MGS(`lab-${L20}-corp`)} `, out: `${MGS(`lab-${L20}-corp`)}${EX}/learner-ex\n${MGS("corp")}${EX}/steven-ex` },
+  // In the lab group: one at the group, one on a resource (Azure's own casing), one inherited from the subscription, and a near-miss group's.
+  { match: `^policy exemption list --resource-group ${R20} `, out: [`/subscriptions/${SUB}/resourceGroups/${R20}${EX}/rg-ex`, `/subscriptions/${SUB}/resourcegroups/${R20.toUpperCase()}/providers/Microsoft.KeyVault/vaults/kv1${EX}/kv-ex`, `/subscriptions/${SUB}${EX}/sub-ex`, `/subscriptions/${SUB}/resourceGroups/${R20}x${EX}/near-ex`].join("\n") },
+  ...extra,
+];
+
+test("the safety net deletes policy exemptions at the lab's management groups and groups before deleting them, and nothing else", { skip }, () => {
+  const w = world(exemptionWorld());
+  const r = w.run("infra/ci/lab-safety-net.sh", [L20], { LAB_DELETE_POLL_SECONDS: "1" });
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const deletes = calls.filter((c) => c.startsWith("az policy exemption delete"));
+  assert.deepEqual(deletes.sort(), [
+    `az policy exemption delete --name kv-ex --scope /subscriptions/${SUB}/resourcegroups/${R20.toUpperCase()}/providers/Microsoft.KeyVault/vaults/kv1`,
+    `az policy exemption delete --name learner-ex --scope ${MGS(`lab-${L20}-corp`)}`,
+    `az policy exemption delete --name rg-ex --scope /subscriptions/${SUB}/resourceGroups/${R20}`,
+  ]);
+  const lastEx = lastCall(calls, /^az policy exemption delete/);
+  assert.ok(lastEx < firstCall(calls, /^az group delete/), calls.join("\n"));
+  assert.ok(lastEx < firstCall(calls, /^az account management-group delete/), calls.join("\n"));
+  assert.match(r.out, /safety net: deleted policy exemption learner-ex/);
+  // Never listed or deleted outside the lab's scopes.
+  for (const c of calls.filter((x) => /policy exemption/.test(x))) assert.ok(!/managementGroups\/corp\b|steven-ex|sub-ex|near-ex|rg-lab-az305-20-landing-zonex|NetworkWatcherRG/.test(c), c);
+  w.cleanup();
+  // A refused delete is a warning; the sweep still ends 0.
+  const refused = world(exemptionWorld([{ match: "^policy exemption delete", code: 1, err: "ERROR: (AuthorizationFailed)" }]));
+  const x = refused.run("infra/ci/lab-safety-net.sh", [L20], { LAB_DELETE_POLL_SECONDS: "1" });
+  assert.equal(x.status, 0, x.out);
+  assert.match(x.stderr, /::warning::safety net: could not delete policy exemption learner-ex/);
+  refused.cleanup();
+});
+
+test("verify clean counts a lab exemption as a leftover, and an exemption list it cannot read as unverified", { skip }, () => {
+  const out = join(mkdtempSync(join(tmpdir(), "gho-")), "out");
+  writeFileSync(out, "");
+  const v = world(exemptionWorld());
+  const vr = v.run("infra/ci/lab-safety-net.sh", ["--verify", L20], { GITHUB_OUTPUT: fwd(out) });
+  assert.equal(vr.status, 1, vr.out);
+  const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
+  for (const n of ["learner-ex (policy exemption)", "rg-ex (policy exemption)", "kv-ex (policy exemption)"]) assert.ok(left.includes(n), `${n} in ${JSON.stringify(left)}`);
+  assert.ok(!left.some((n) => /steven-ex|sub-ex|near-ex/.test(n)), JSON.stringify(left));
+  assert.equal(v.calls().filter((c) => / delete /.test(c)).length, 0, "verify deletes nothing");
+  v.cleanup();
+  // Nothing of the lab left but an exemption list Azure refuses: not clean.
+  const b = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, { match: "^account management-group list", out: `lab-${L20}-corp\tlab-${L20}-corp` }, { match: "^policy exemption list", code: 1, err: "ERROR: (InternalServerError)" }]);
+  const br = b.run("infra/ci/lab-safety-net.sh", ["--verify", L20]);
+  assert.equal(br.status, 1, br.out);
+  assert.match(br.stdout, /unverified: policy exemptions at lab-az305-20-landing-zone-corp/);
+  b.cleanup();
+});
+
+test("a soft-deleted vault's id is matched whatever its case (Azure returns resourcegroups and upper-case groups)", { skip }, () => {
+  const MIXED = [
+    `kv-lower\tuksouth\t/subscriptions/${SUB}/resourcegroups/${R22}/providers/Microsoft.KeyVault/vaults/kv-lower`,
+    `kv-upper\tukwest\t/SUBSCRIPTIONS/${SUB}/RESOURCEGROUPS/${R22.toUpperCase()}-SECONDARY/providers/Microsoft.KeyVault/vaults/kv-upper`,
+    `kv-prod\tuksouth\t/subscriptions/${SUB}/resourcegroups/rg-prod/providers/Microsoft.KeyVault/vaults/kv-prod`,
+    `kv-near\tuksouth\t/subscriptions/${SUB}/RESOURCEGROUPS/${R22.toUpperCase()}X/providers/Microsoft.KeyVault/vaults/kv-near`,
+  ].join("\n");
+  const w = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, { match: "^keyvault list-deleted --resource-type vault ", out: MIXED }]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [L22], { LAB_DELETE_POLL_SECONDS: "1" });
+  assert.equal(r.status, 0, r.out);
+  assert.deepEqual(w.calls().filter((c) => c.startsWith("az keyvault purge")), ["az keyvault purge --name kv-lower --location uksouth", "az keyvault purge --name kv-upper --location ukwest"]);
+  w.cleanup();
+});
+
+// Ruling 36: some resource types may never report a provisioningState; one is listed (test-first, on
+// release-test evidence) in READY_NO_STATE_TYPES. The list starts empty.
+test("ready check accepts an empty state only for types listed as never giving one", { skip }, () => {
+  const src = readFileSync(join(REPO, "infra", "ci", "lab-ready.sh"), "utf8").replace(/\r\n/g, "\n");
+  assert.match(src, /^READY_NO_STATE_TYPES=\(\)$/m, "the list starts empty");
+  const scenario = [
+    { match: "^group list", out: `${RG}\tSucceeded` },
+    { match: `^resource list --resource-group ${RG} --query \\[\\]\\.\\[name, type, provisioningState\\] `, out: `tm-lab\tMicrosoft.Network/trafficManagerProfiles\t\nl06sa\tMicrosoft.Storage/storageAccounts\tSucceeded` },
+  ];
+  // As shipped: a resource with no state is never ready.
+  const w = world(scenario);
+  const r = w.run("infra/ci/lab-ready.sh", [ID, "4"], { LAB_READY_INTERVAL: "0", LAB_READY_SECONDS: "0" });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /tm-lab \(no state\)/);
+  w.cleanup();
+  // With the type listed (a copy of the script), the same resource passes; another type with no state still waits.
+  const listed = world([...scenario.slice(0, 1), { ...scenario[1], out: `${scenario[1].out}\nfd-lab\tMicrosoft.Cdn/profiles\t` }]);
+  const copy = join(listed.dir, "lab-ready.sh");
+  writeFileSync(copy, src.replace(/^READY_NO_STATE_TYPES=\(\)$/m, 'READY_NO_STATE_TYPES=("Microsoft.Network/trafficManagerProfiles")'));
+  const run = (args) => spawnSync(BASH, ["--noprofile", "--norc", "-c", 'PATH="$(cygpath -u "$FAKE_BIN" 2>/dev/null || printf %s "$FAKE_BIN"):$PATH"; exec bash --noprofile --norc "$0" "$@"', fwd(copy), ...args], { encoding: "utf8", env: listed.env({ LAB_READY_INTERVAL: "0", LAB_READY_SECONDS: "0" }) });
+  const l = run([ID, "4"]);
+  const out = (l.stdout ?? "") + (l.stderr ?? "");
+  assert.equal(l.status, 1, out);
+  assert.doesNotMatch(out, /tm-lab/);
+  assert.match(out, /fd-lab \(no state\)/);
+  listed.cleanup();
+  // Only fd-lab gone: ready.
+  const ok = world([...scenario.slice(0, 1), scenario[1]]);
+  const copy2 = join(ok.dir, "lab-ready.sh");
+  writeFileSync(copy2, src.replace(/^READY_NO_STATE_TYPES=\(\)$/m, 'READY_NO_STATE_TYPES=("Microsoft.Network/trafficManagerProfiles")'));
+  const r2 = spawnSync(BASH, ["--noprofile", "--norc", "-c", 'PATH="$(cygpath -u "$FAKE_BIN" 2>/dev/null || printf %s "$FAKE_BIN"):$PATH"; exec bash --noprofile --norc "$0" "$@"', fwd(copy2), ID, "4"], { encoding: "utf8", env: ok.env({ LAB_READY_INTERVAL: "0", LAB_READY_SECONDS: "0" }) });
+  assert.equal(r2.status, 0, (r2.stdout ?? "") + (r2.stderr ?? ""));
+  ok.cleanup();
 });

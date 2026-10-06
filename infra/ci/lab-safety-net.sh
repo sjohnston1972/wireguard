@@ -10,6 +10,8 @@
 # this lab and nothing else:
 #
 #   resource groups        rg-lab-<id> and rg-lab-<id>-*   (never rg-lab-<id>x, NetworkWatcherRG, rg-wg-*)
+#   soft-deleted vaults    Key Vaults whose id names one of those groups, purged after the
+#                          group deletes (--verify lists one as "<name> (soft-deleted vault)")
 #   Entra users            user principal name starting lab-<id>-  (deleted, then purged from the
 #                          recycle bin so the next deploy can reuse the name)
 #   Entra groups           display name starting lab-<id>-
@@ -17,6 +19,8 @@
 #                          fixed GUID labs/setup/allowed-roles.json gives the lab, read
 #                          directly (the subscription's list misses a role assignable
 #                          only inside rg-lab-<id>)
+#   policy exemptions      at a lab management group, or in a lab resource group (its resources
+#                          too), deleted first, before any group goes (an inherited one never)
 #   policy                 assignments, then initiatives, then definitions named lab-<id>-, and
 #                          everything assigned or defined inside a lab management group
 #   management groups      id starting lab-<id>-, children before parents
@@ -181,6 +185,20 @@ list_roles() {
     get_role "$guid" "$name"
   done <<<"$fixed"
 }
+# "name<TAB>location": soft-deleted Key Vaults that lived in one of the lab's groups
+# (spec §17 ruling 30: Key Vault keeps a deleted vault for its retention, 7 days in the labs).
+list_deleted_vaults() {
+  ROWS=()
+  # Azure spells the id's segments in either case (/resourcegroups/, upper-case group names): matched in lower case.
+  local name loc id rg re='/resourcegroups/([^/]+)/'
+  fetch "soft-deleted Key Vaults" false keyvault list-deleted --resource-type vault --query "[].[name, properties.location, properties.vaultId]" -o tsv || return 0
+  while IFS=$'\t' read -r name loc id; do
+    [ -n "$name" ] || continue
+    [[ "${id,,}" =~ $re ]] || continue
+    rg="${BASH_REMATCH[1]}"
+    owns_rg "$rg" && ROWS+=("$name"$'\t'"$loc")
+  done <<<"$OUT"
+}
 # "name"
 list_mgs() {
   ROWS=()
@@ -224,6 +242,38 @@ list_assignments() {
     if prefixed "$name" || prefixed "$display"; then ROWS+=("$name"$'\t'"${id%/providers/Microsoft.Authorization/policyAssignments/*}"); fi
   done <<<"$OUT"
 }
+# "name<TAB>scope": policy exemptions at the lab's management groups ($2...) and in the lab's resource
+# groups ($1: a newline-separated list), the groups' own resources included (a learner may make one by
+# hand: lab 20's readme invites one at its -corp group). Only an exemption whose own scope is a lab
+# management group, or a lab group or something inside it, is kept: one inherited from above never is.
+list_exemptions() {
+  local rgs="$1" mg g id scope s
+  shift
+  local -a found=()
+  for mg in "$@"; do
+    prefixed "$mg" || continue
+    scope="/providers/Microsoft.Management/managementGroups/$mg"
+    fetch "policy exemptions at $mg" false policy exemption list --scope "$scope" --query "[].id" -o tsv || continue
+    while IFS= read -r id; do
+      [ -z "$id" ] && continue
+      s="${id%/providers/Microsoft.Authorization/policyExemptions/*}"
+      [ "$s" != "$id" ] && [ "${s,,}" = "${scope,,}" ] && found+=("${id##*/}"$'\t'"$s")
+    done <<<"$OUT"
+  done
+  while IFS= read -r g; do
+    [ -n "$g" ] && owns_rg "$g" || continue
+    fetch "policy exemptions in $g" false policy exemption list --resource-group "$g" --disable-scope-strict-match --query "[].id" -o tsv || continue
+    while IFS= read -r id; do
+      [ -z "$id" ] && continue
+      s="${id%/providers/Microsoft.Authorization/policyExemptions/*}"
+      [ "$s" != "$id" ] || continue
+      # The exemption's own scope: this group, or a resource inside it (Azure spells the id in either case).
+      local low="${s,,}" want="/resourcegroups/${g,,}"
+      [[ "$low" =~ ^/subscriptions/[^/]+(/resourcegroups/[^/]+)(/.*)?$ ]] && [ "${BASH_REMATCH[1]}" = "$want" ] && found+=("${id##*/}"$'\t'"$s")
+    done <<<"$OUT"
+  done <<<"$rgs"
+  ROWS=("${found[@]}")
+}
 # "name<TAB>management group (or empty)". $1: definition | set-definition; then the lab's management groups.
 list_definitions() {
   ROWS=()
@@ -256,11 +306,15 @@ if [ "$MODE" = verify ]; then
   left=()
   first() { local r; for r in "${ROWS[@]}"; do left+=("${r%%$'\t'*}"); done; }
   second() { local r x; for r in "${ROWS[@]}"; do x="${r#*$'\t'}"; left+=("${x%%$'\t'*}"); done; }
-  list_groups; first
+  list_groups; vgroups=("${ROWS[@]}"); first
+  list_deleted_vaults
+  for r in "${ROWS[@]}"; do left+=("${r%%$'\t'*} (soft-deleted vault)"); done
   list_users; second
   list_entra_groups; second
   list_roles; second
   list_mgs; mgs=("${ROWS[@]}"); first
+  list_exemptions "$(printf '%s\n' "${vgroups[@]}")" "${mgs[@]}"
+  for r in "${ROWS[@]}"; do left+=("${r%%$'\t'*} (policy exemption)"); done
   list_assignments "${mgs[@]}"; first
   list_definitions set-definition "${mgs[@]}"; first
   list_definitions definition "${mgs[@]}"; first
@@ -321,6 +375,16 @@ polls=$((budget / POLL_S))
 
 list_groups
 groups=("${ROWS[@]}")
+
+# 0. Policy exemptions, before any group or management group is deleted: at the lab's
+# management groups and in its resource groups only (list_exemptions), never anywhere else.
+list_mgs
+list_exemptions "$(printf '%s\n' "${groups[@]}")" "${ROWS[@]}"
+for row in "${ROWS[@]}"; do
+  IFS=$'\t' read -r name scope <<<"$row"
+  if az policy exemption delete --name "$name" --scope "$scope"; then echo "safety net: deleted policy exemption $name"; else warn "could not delete policy exemption $name"; fi
+done
+
 declare -A tries=()
 pending=()
 for g in "${groups[@]}"; do
@@ -372,6 +436,15 @@ for ((n = 0; ${#pending[@]} > 0 && n < polls; n++)); do
   [ "$(date +%s)" -ge "$end" ] && break
 done
 for g in "${pending[@]}"; do warn "$g was not gone within ${budget}s (the job's time is nearly up); left behind"; done
+
+# 1b. Key Vaults the group deletes soft-deleted (or a destroy that did not purge):
+# purged, so nothing of the lab is kept for the retention period and the next
+# session can reuse the name. Only vaults whose id names one of the lab's groups.
+list_deleted_vaults
+for row in "${ROWS[@]}"; do
+  IFS=$'\t' read -r name loc <<<"$row"
+  if az keyvault purge --name "$name" --location "$loc"; then echo "safety net: purged soft-deleted vault $name"; else warn "could not purge soft-deleted vault $name"; fi
+done
 
 # Purge a deleted Entra object from the recycle bin (it takes a moment to arrive there).
 purge() {

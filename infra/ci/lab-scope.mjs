@@ -33,16 +33,33 @@
 //   role              a role assignment off labs/setup/allowed-roles.json, a custom
 //                     role without its fixed GUID, one that can grant access, holds
 //                     a wildcard action (only wildcard reads such as */read), or
-//                     is assignable anywhere but the lab's own group(s); in a
-//                     template: Microsoft.Authorization, .Management or .Graph
+//                     is assignable anywhere but the lab's own group(s); a policy
+//                     definition whose rule lists a roleDefinitionIds entry that is
+//                     not a built-in on the allow-list (a remediating policy's
+//                     identity gets those roles), or whose rule a plan cannot read;
+//                     a deployIfNotExists rule's deployment template is checked as
+//                     any template (templateProblems, plus POLICY_TEMPLATE_TYPES),
+//                     and its deployment may not name another group or subscription;
+//                     in a template: Microsoft.Authorization, .Management or .Graph
 //                     resources, and any extension (Bicep `extension`/`import`)
-//   immutability      a Locked immutability policy (nothing can delete it)
+//   immutability      a Locked immutability policy (nothing can delete it), or a
+//                     Key Vault with purge protection (nothing can delete it for
+//                     its retention period)
 //   azure-made-group  AKS node groups, backup restore groups and Container Apps
 //                     infrastructure groups (an environment in a subnet) not
 //                     named rg-lab-<id>-*
 //   resource-group    a resource group other than rg-lab-<id> or rg-lab-<id>-*
-//   outside-scope     a resource group, scope or parent outside the lab, anything
-//                     at subscription scope, or a resource tied to nothing in the
+//   outside-scope     a resource group, scope or parent outside the lab (an id at
+//                     any path too, a whole top-level attribute included, and any
+//                     id inside a JSON string such as a policy assignment's
+//                     parameters, known or unknown: a failover group's
+//                     partner server and databases, a replicated VM's disk target
+//                     group; an unknown one inside an attribute written as blocks
+//                     is held to all of that attribute's references, which is
+//                     how terraform show -json lists them; an unknown one inside a
+//                     dynamic block, whose expressions a plan leaves out, is refused
+//                     in a plan), anything at subscription
+//                     scope (a policy rule's deploymentScope too), or a resource tied to nothing in the
 //                     lab (an instance key, count.index or each.key, places
 //                     nothing on its own; each.value places only when for_each
 //                     ranges over the lab's own resources); template deployments at other scopes, deployment
@@ -78,6 +95,8 @@ const GOVERNANCE_TYPES = new Set([
   "azurerm_role_definition",
   "azurerm_policy_definition",
   "azurerm_policy_set_definition",
+  // A management-group initiative is a governance definition (spec §17, ruling 29).
+  "azurerm_management_group_policy_set_definition",
   "azurerm_management_group",
   "azurerm_management_group_policy_assignment",
   "azurerm_management_group_policy_exemption",
@@ -89,6 +108,46 @@ const GATEWAY_RE = /\b(?:rg-wg|vnet-wg)\b/i;
 const DNS_LINK = "azurerm_private_dns_zone_virtual_network_link";
 /** Attributes ending _id that hold an Entra object or tenant id, not an Azure resource id. */
 const NOT_ARM = new Set(["principal_id", "tenant_id", "object_id", "client_id", "application_id", "member_object_id", "group_object_id", "principal_object_id", "role_id", "application_object_id", "sku_id"]);
+/** A name an Azure resource id goes by: id, x_id, x_ids (Entra and other non-ARM ids excepted). */
+const ID_NAME = (name) => (name === "id" || /_ids?$/.test(name)) && !NOT_ARM.has(name);
+/** A reference to an id: azurerm_x.y.id, data.a.b.c_id, var.x_ids, azurerm_x.y[0].id. */
+const ID_REF = (ref) => ref.includes(".") && ID_NAME(ref.replace(/\[[^\]]*\]/g, "").split(".").at(-1));
+/**
+ * A whole data source used as a value (data.a.b with no attribute of it among `refs`): what a splat
+ * (data.a.b[*].id) or a for expression over it lists, since Terraform stops a reference at the splat.
+ */
+const WHOLE_DATA_REF = (ref, refs) => /^data\.[a-z0-9_]+\.[A-Za-z0-9_-]+$/.test(ref.replace(/\[[^\]]*\]/g, "")) && !refs.some((x) => x !== ref && x.replace(/\[[^\]]*\]/g, "").startsWith(`${ref.replace(/\[[^\]]*\]/g, "")}.`));
+/**
+ * Every string inside a JSON string (`{...}` or `[...]`), keys too, as { path, value }; strings inside it that are
+ * JSON themselves are read as well (a few levels). Not JSON (or not a string): nothing.
+ */
+function jsonStrings(s, depth = 0) {
+  if (typeof s !== "string" || depth > 3) return [];
+  const t = s.trim();
+  if (!(t.startsWith("{") || t.startsWith("["))) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(t);
+  } catch {
+    return [];
+  }
+  const out = [];
+  const walk = (v, path) => {
+    if (typeof v === "string") {
+      out.push({ path, value: v });
+      for (const j of jsonStrings(v, depth + 1)) out.push({ path: `${path} > ${j.path}`, value: j.value });
+    } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, path ? `${path}.${i}` : String(i)));
+    else if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) {
+        const p = path ? `${path}.${k}` : k;
+        out.push({ path: `${p} (key)`, value: k });
+        walk(x, p);
+      }
+    }
+  };
+  walk(parsed, "");
+  return out;
+}
 /**
  * count.index and each.key: an instance's own key, as in azurerm_network_interface.web[count.index].id,
  * which Terraform 1.14 lists as ["azurerm_network_interface.web", "count.index"]. They never reach
@@ -134,6 +193,18 @@ function exprRefs(expr, out = []) {
   return out;
 }
 
+/** Each "references" list under a configuration expression by its path: { "a": [...], "b.0.c": [...] }. */
+function refPaths(expr, path, out) {
+  if (Array.isArray(expr)) {
+    expr.forEach((e, i) => refPaths(e, [...path, i], out));
+    return out;
+  }
+  if (!expr || typeof expr !== "object") return out;
+  if (Array.isArray(expr.references) && path.length) out[path.join(".")] = expr.references;
+  for (const [k, v] of Object.entries(expr)) if (k !== "references" && k !== "constant_value") refPaths(v, [...path, k], out);
+  return out;
+}
+
 /** Put an Unknown wherever after_unknown says the value is not known yet. */
 function mergeUnknown(values, unknown) {
   if (unknown === true) return new Unknown();
@@ -165,6 +236,35 @@ export function planResources(plan) {
     const exprs = c.expressions ?? {};
     const refs = {};
     for (const [k, e] of Object.entries(exprs)) refs[k] = exprRefs(e);
+    // A value not known until apply carries the references its own expression makes, as an HCL Unknown does.
+    // Terraform splits only schema blocks by path ("partner_server.0.id"); an attribute that holds objects or
+    // lists (azurerm's managed_disk, a failover group's databases) is one expression whose references cover
+    // every value inside it, while after_unknown still marks those values by their own nested paths. So an
+    // unknown value takes the references of the nearest enclosing path that has any. A whole block left unknown
+    // (every value in it unknown, its expressions split by path below it) takes every reference under it.
+    const byPath = refPaths(exprs, [], {});
+    // A dynamic block: Terraform plans its values but leaves it out of configuration.expressions (labs 22 and
+    // 26's real plans: admin_ssh_key with no references), so where an unknown value in it comes from is hidden.
+    const dynamicBlock = (k) => Array.isArray(r.values?.[k]) && r.values[k].length > 0 && !(k in exprs) && cfg.has(stripIndex(r.address));
+    for (const l of leaves(values)) {
+      if (!(l.value instanceof Unknown)) continue;
+      if (dynamicBlock(l.path[0])) {
+        l.value.dynamic = true;
+        continue;
+      }
+      for (let n = l.path.length; n > 0; n--) {
+        const refs = byPath[l.path.slice(0, n).join(".")];
+        if (refs) {
+          l.value.refs = refs;
+          break;
+        }
+      }
+      if (!l.value.refs) {
+        const under = `${l.path.join(".")}.`;
+        const below = Object.entries(byPath).filter(([p]) => p.startsWith(under)).flatMap(([, refs]) => refs);
+        if (below.length) l.value.refs = below;
+      }
+    }
     seen.set(r.address, {
       address: r.address,
       mode: r.mode ?? (r.address.startsWith("data.") ? "data" : "managed"),
@@ -390,6 +490,29 @@ export function classifyId(id) {
 
 const DEFINITION_REF = /^\/providers\/Microsoft\.Authorization\/(roleDefinitions|policyDefinitions|policySetDefinitions)\/[^/]+$/i;
 
+/** Every roleDefinitionIds entry, deploymentScope value and deployment object in a parsed policy rule, keys read case-insensitively. */
+function policyRuleKeys(rule) {
+  const out = { roleDefinitionIds: [], deploymentScope: [], deployments: [] };
+  const walk = (v) => {
+    if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) {
+        const key = k.toLowerCase();
+        if (key === "roledefinitionids") out.roleDefinitionIds.push(...(Array.isArray(x) ? x : [x]));
+        else if (key === "deploymentscope") out.deploymentScope.push(x);
+        else if (key === "deployment" && x && typeof x === "object" && !Array.isArray(x)) {
+          // A deployment's own template is read by templateProblems, not walked here.
+          out.deployments.push(x);
+          continue;
+        }
+        walk(x);
+      }
+    }
+  };
+  walk(rule);
+  return out;
+}
+
 // ── Templates ────────────────────────────────────────────────────────────
 
 /** A resource group deployment template's schema; subscription, management group and tenant ones are refused. */
@@ -413,6 +536,14 @@ const TEMPLATE_TYPES = new Map([
   ["microsoft.network/networksecuritygroups", "lab 12: an NSG lives in the group it is deployed to"],
   ["microsoft.network/networksecuritygroups/securityrules", "a rule lives in its NSG"],
   ["microsoft.resources/deployments", "lab 12's module: only as Bicep emits one (inline template, inner scope, Incremental, no resourceGroup/subscriptionId/scope), checked as a template of its own"],
+]);
+/**
+ * The extra types a deployIfNotExists rule's remediation template may deploy (lower case), each with its reason.
+ * The template is otherwise checked as any other (templateProblems), and its deployment lands in the resource's
+ * own group (deploymentScope subscription and a deployment's resourceGroup/subscriptionId elsewhere are refused).
+ */
+const POLICY_TEMPLATE_TYPES = new Map([
+  ["microsoft.keyvault/vaults/providers/diagnosticsettings", "lab 21: a Key Vault's diagnostic setting is an extension of the vault, in the vault's own group; where it sends logs is an assignment parameter, which the id rules read"],
 ]);
 /** Template deployments at other scopes than a resource group. */
 const OTHER_SCOPE_DEPLOYMENTS = new Set(["azurerm_subscription_template_deployment", "azurerm_management_group_template_deployment", "azurerm_tenant_template_deployment"]);
@@ -448,9 +579,10 @@ function resourceIdFirstArgs(expr) {
  * schemas and scopes, resource groups, deployment scripts, linked templates
  * and template specs, ids of other groups, or a template it cannot read);
  * under "gateway" the gateway's names. Nested deployments are checked as
- * templates of their own.
+ * templates of their own. `extraTypes`: more allowed types for this template
+ * (a policy's remediation template: POLICY_TEMPLATE_TYPES).
  */
-export function templateProblems(template) {
+export function templateProblems(template, { extraTypes = new Map() } = {}) {
   const out = [];
   const add = (rule, message) => {
     if (!out.some((p) => p.rule === rule && p.message === message)) out.push({ rule, message });
@@ -484,10 +616,12 @@ export function templateProblems(template) {
     const given = String(res.type ?? "").replace(/@.*$/, "");
     const type = parentType && given && !given.includes("/") ? `${parentType}/${given}` : given;
     if (/^Microsoft\.Graph\//i.test(type) || "extension" in res || "import" in res) add("role", `${where} deploys ${type || "a resource"} through an extension (Microsoft Graph and the like reach beyond Azure Resource Manager)`);
-    else if (TEMPLATE_ROLE_TYPES.test(type) || /\/providers\//i.test(type)) add("role", `${where} deploys ${type}, which a lab may only make in Terraform`);
+    else if (extraTypes.has(type.toLowerCase())) {
+      // On this template's own allow-list (a policy's remediation template: POLICY_TEMPLATE_TYPES).
+    } else if (TEMPLATE_ROLE_TYPES.test(type) || /\/providers\//i.test(type)) add("role", `${where} deploys ${type}, which a lab may only make in Terraform`);
     else if (TEMPLATE_OUTSIDE_TYPES.test(type)) add("outside-scope", `${where} deploys ${type}, which reaches beyond the lab's group`);
     else if (!TEMPLATE_TYPES.has(type.toLowerCase())) {
-      add("outside-scope", `${where} deploys ${type || "a resource with no type"}, which is not on the template allow-list (${[...TEMPLATE_TYPES.keys()].join(", ")}); if a lab needs it, add it to TEMPLATE_TYPES in infra/ci/lab-scope.mjs with the reason it can only ever land inside the lab's group (labs spec §17, ruling 21)`);
+      add("outside-scope", `${where} deploys ${type || "a resource with no type"}, which is not on the template allow-list (${[...TEMPLATE_TYPES.keys(), ...extraTypes.keys()].join(", ")}); if a lab needs it, add it to TEMPLATE_TYPES in infra/ci/lab-scope.mjs (POLICY_TEMPLATE_TYPES for a policy's remediation) with the reason it can only ever land inside the lab's group (labs spec §17, ruling 21)`);
     }
     for (const k of TEMPLATE_SCOPE_KEYS) if (k in res) add("outside-scope", `${where} sends ${type || "a resource"} to another scope (${k})`);
     if (NESTED_DEPLOYMENT.test(type)) {
@@ -725,6 +859,46 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
         if (!ok) refuse("role", `the role is not on labs/setup/allowed-roles.json for ${labId}`);
         if (typeof v.principal_type === "string" && !ALLOWED_ROLES.principalTypes.includes(v.principal_type)) refuse("role", `principal_type ${v.principal_type} is not allowed`);
       }
+      // A remediating policy (deployIfNotExists, modify) stays inside the lab (spec §17, ruling 28): the roles its
+      // assignment's identity is given (roleDefinitionIds) only built-ins on the allow-list, and never a deployment
+      // at subscription scope. Read whatever the effect says (it may be a parameter).
+      if (r.type === "azurerm_policy_definition") {
+        const rule = v.policy_rule;
+        if (rule instanceof Unknown) {
+          if (mode === "plan") refuse("role", "policy_rule is not known at plan, so its roleDefinitionIds cannot be read; give apply-time values to the assignment as parameters");
+        } else if (typeof rule === "string" && rule !== "") {
+          let parsed = null;
+          try {
+            parsed = JSON.parse(rule);
+          } catch {
+            refuse("role", "policy_rule is not JSON this check can read");
+          }
+          const found = policyRuleKeys(parsed);
+          const roles = found.roleDefinitionIds.map((x) => String(x).split("/").pop().toLowerCase());
+          const off = roles.filter((g) => !builtInIds.has(g));
+          if (off.length) refuse("role", `policy_rule's roleDefinitionIds may name only built-in roles on labs/setup/allowed-roles.json (not ${off.join(", ")})`);
+          if (found.deploymentScope.some((s) => String(s).toLowerCase() === "subscription")) refuse("outside-scope", "policy_rule deploys at subscription scope (deploymentScope); a lab's remediation deploys into the resource's own group");
+          // The remediation's deployment: its template checked as any template a lab deploys, never linked, and
+          // never sent to another group or subscription (keys read case-insensitively, as ARM does).
+          const ci = (o, key) => (o && typeof o === "object" && !Array.isArray(o) ? Object.entries(o).find(([k]) => k.toLowerCase() === key)?.[1] : undefined);
+          const ownGroupExpr = (s) => typeof s === "string" && (/^\[\s*resourceGroup\s*\(\s*\)\s*\.\s*name\s*\]$/i.test(s) || (!s.startsWith("[") && ownRg(s)));
+          const ownSubExpr = (s) => typeof s === "string" && /^\[\s*subscription\s*\(\s*\)\s*\.\s*subscriptionId\s*\]$/i.test(s);
+          for (const dep of found.deployments) {
+            const props = ci(dep, "properties");
+            for (const [where, o] of [["deployment", dep], ["deployment.properties", props]]) {
+              const group = ci(o, "resourcegroup");
+              const sub = ci(o, "subscriptionid");
+              if (group !== undefined && !ownGroupExpr(group)) refuse("outside-scope", `policy_rule's ${where} sends the remediation to resource group ${JSON.stringify(group)}; it deploys into the resource's own group`);
+              if (sub !== undefined && !ownSubExpr(sub)) refuse("outside-scope", `policy_rule's ${where} sends the remediation to subscription ${JSON.stringify(sub)}`);
+              if (ci(o, "scope") !== undefined || ci(o, "managementgroup") !== undefined) refuse("outside-scope", `policy_rule's ${where} sends the remediation to another scope`);
+            }
+            const template = ci(props, "template");
+            if (ci(props, "templatelink") !== undefined) refuse("outside-scope", "policy_rule's deployment links a template this check cannot read; put it inline");
+            else if (template === undefined) refuse("outside-scope", "policy_rule's deployment has no template this check can read");
+            else for (const p of templateProblems(template, { extraTypes: POLICY_TEMPLATE_TYPES })) refuse(p.rule, `policy_rule's deployment template: ${p.message}`);
+          }
+        }
+      }
       if (r.type === "azurerm_role_definition") {
         const guid = typeof v.role_definition_id === "string" ? v.role_definition_id.toLowerCase() : null;
         const entry = custom.find((c) => c.id.toLowerCase() === guid);
@@ -776,6 +950,12 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
           break;
         }
       }
+      // Purge protection keeps a deleted vault (and its name) for the whole retention period: nothing could
+      // get the lab back to £0 and clean (spec §17, ruling 30). Unknown is refused when the lab sets it.
+      if (r.type === "azurerm_key_vault") {
+        const p = v.purge_protection_enabled;
+        if (p === true || (p instanceof Unknown && r.configured.has("purge_protection_enabled"))) refuse("immutability", "purge_protection_enabled: a vault with purge protection cannot be deleted for its whole retention period; a lab never turns it on");
+      }
 
       // azure-made-group
       if (r.type === "azurerm_kubernetes_cluster" && !startsWithRg(v.node_resource_group)) refuse("azure-made-group", `node_resource_group must be named ${rg}-<suffix>`);
@@ -803,22 +983,28 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
           anchored = true;
           if (!ownRg(v.resource_group_name)) refuse("outside-scope", `resource_group_name ${show("resource_group_name")} is not the lab's group`);
         }
-        for (const l of all) {
-          if (linkException(l.attr)) continue; // the gateway VNet, through var.gateway_vnet_id only
-          const c = classifyId(l.value);
-          if (!c) continue;
+        // Every known string, and every string (keys too) inside a JSON string: a policy assignment's
+        // parameters or a jsonencode() can carry an id as well as an attribute can.
+        const judge = (where, attr, s, inJson) => {
+          const c = classifyId(s);
+          if (!c) return;
           if (c.kind === "rg") {
             anchored = true;
-            if (!ownRg(c.name)) refuse("outside-scope", `${l.path.join(".")} is in resource group ${c.name}, outside the lab`);
+            if (!ownRg(c.name)) refuse("outside-scope", `${where} is in resource group ${c.name}, outside the lab`);
           } else if (c.kind === "mg") {
             anchored = true;
-            if (!ownMg(c.name)) refuse("outside-scope", `${l.path.join(".")} is in management group ${c.name}, not one this lab owns`);
+            if (!ownMg(c.name)) refuse("outside-scope", `${where} is in management group ${c.name}, not one this lab owns`);
           } else if (c.kind === "sub") {
             const definitionRef = DEFINITION_REF.test(c.rest);
             // Where a governance lab's definition lives; never where it can be assigned (role rule).
-            const governanceScope = governance && GOVERNANCE_TYPES.has(r.type) && l.attr === "scope" && c.rest === "";
-            if (!definitionRef && !governanceScope) refuse("outside-scope", `${l.path.join(".")} is at subscription scope; a lab works inside its own group`);
+            const governanceScope = !inJson && governance && GOVERNANCE_TYPES.has(r.type) && attr === "scope" && c.rest === "";
+            if (!definitionRef && !governanceScope) refuse("outside-scope", `${where} is at subscription scope; a lab works inside its own group`);
           }
+        };
+        for (const l of all) {
+          if (linkException(l.attr)) continue; // the gateway VNet, through var.gateway_vnet_id only
+          judge(l.path.join("."), l.attr, l.value, false);
+          for (const j of jsonStrings(l.value)) judge(`${l.path.join(".")} (JSON ${j.path || "value"})`, l.attr, j.value, true);
         }
         for (const [attr, refs] of Object.entries(r.refs)) {
           if (!r.configured.has(attr)) continue;
@@ -833,6 +1019,30 @@ export function scopeProblems({ resources, providers, imports = [] }, labId, { m
           const bad = [...rest.filter((x) => !placed(x)), ...(eachValue === "unknown" ? ["each.value"] : [])];
           const places = rest.some(placed) || eachValue === "places";
           if (bad.length || !places) refuse("outside-scope", `${attr} comes from ${bad[0] ?? refs[0] ?? "nothing this check can place"}, which the check cannot place inside the lab`);
+        }
+        // Ids at any path, a whole top-level attribute included (a failover group's partner_server.0.id and
+        // databases, a replicated VM's managed_disk.0.target_resource_group_id, a jsonencode()d parameters):
+        // an unknown one must come from the lab's own resources too. Its references are its own inside a schema
+        // block, or the whole attribute's inside an attribute written as blocks (planResources), and every one
+        // of them must place it inside the lab.
+        for (const l of all) {
+          if (!(l.value instanceof Unknown)) continue;
+          // A plan shows a dynamic block's values but not its expressions: an unknown value in one could come
+          // from anywhere (a data source deferred to apply, say), so it cannot be placed. Write the block out.
+          if (l.value.dynamic) {
+            refuse("outside-scope", `${l.path.join(".")} is unknown inside a dynamic block, whose references a plan does not show, so the check cannot place it inside the lab; write the block out`);
+            continue;
+          }
+          const refs = l.value.refs ?? [];
+          if (!refs.length) continue; // computed by the provider, not configured
+          const named = String([...l.path].reverse().find((k) => typeof k === "string" && !/^\d+$/.test(k)));
+          // An id by its name (…id, …_id, …_ids), or a value made from ids (databases.0, contact_groups), or from a
+          // whole data source (data.x[*].id: Terraform lists only the data source, an object that holds ids).
+          if (!ID_NAME(named) && !refs.some(ID_REF) && !refs.some((x) => WHOLE_DATA_REF(x, refs))) continue;
+          const eachValue = refs.some((x) => EACH_VALUE_REF.test(x)) ? forEachValue(r) : null;
+          const rest = refs.filter((x) => !INDEX_REF.test(x) && !EACH_VALUE_REF.test(x));
+          const bad = [...rest.filter((x) => !placed(x)), ...(eachValue === "unknown" ? ["each.value"] : [])];
+          if (bad.length || !(rest.some(placed) || eachValue === "places")) refuse("outside-scope", `${l.path.join(".")} comes from ${bad[0] ?? refs[0]}, which the check cannot place inside the lab`);
         }
         if (!anchored) refuse("outside-scope", "it is tied to nothing inside the lab's resource group");
       }

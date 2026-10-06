@@ -1,0 +1,58 @@
+# Lab 26 (labs batch 3 plan, area C3; spec §17, ruling 32). AZ-305 study
+# guide skills this lab touches (outline "Skills measured as of April 17,
+# 2026"):
+#   Design business continuity solutions > Design solutions for backup and
+#   disaster recovery: "Recommend a recovery solution for Azure and hybrid
+#   workloads that meets recovery objectives", "Recommend a backup and
+#   recovery solution for compute"; Design for high availability:
+#   "Recommend a high availability solution for compute".
+# Costs are GBP list prices from the Retail Prices API (2026-10-05), in
+# uksouth unless the item says `region: secondary` (ukwest, where the vault,
+# the replica disk and any failover VM are). npm run labs-verify -- --meters
+# az305-26-site-recovery:
+#   Standard_B1s                     £0.0089/h (uksouth and ukwest)
+#   S4 LRS Disk                      £1.2755/month = £0.0017/h (both)
+#   VM Replicated to Azure (ukwest)  £18.8686/month = £0.0258/h; Azure
+#                                    charges nothing for a protected
+#                                    instance's first 31 days, and every
+#                                    session makes a new one, so this is
+#                                    usually £0
+# Authored: the cache account's few MB and the replica's recovery-point
+# snapshots (per GB, a unit the feed cannot read), and the initial copy of
+# the used blocks of the OS disk, about 3 GB, at "Standard Inter-Region
+# Data Transfer" £0.0151/GB, spread over a 3-hour session. The test
+# failover VM is priced as if one ran all session; it only exists while a
+# test failover does. The vault, fabrics, policy and mappings cost nothing.
+# The VM runs AlmaLinux 9.7 (a free image, no marketplace plan), pinned to
+# 9.7.2026051801: Site Recovery's Mobility agent supports a fixed list of
+# kernels and Ubuntu 22.04's current Azure kernel was past it (ruling 32).
+# Version 3: the switch from Ubuntu 22.04.
+id: az305-26-site-recovery
+version: 4
+title: "Cross-region VM recovery with Site Recovery"
+summary: >-
+  A small Linux VM in uksouth replicated by Azure Site Recovery to ukwest, so you can run a test failover
+  into an isolated network, read recovery points and RPO, build a recovery plan, and fail over for real.
+exam: AZ-305
+skill_areas: [az305.continuity]
+level: expert
+type: explore
+prerequisites: [az104-08-vms]
+cost:
+  items:
+    - { name: "Linux VM, Standard_B1s", gbp_h: 0.0089, retail: { sku: Standard_B1s } }
+    - { name: "OS disk, Standard HDD S4", gbp_h: 0.0017, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Site Recovery, one protected VM (free for its first 31 days)", gbp_h: 0.0258, region: secondary, retail: { meter: "VM Replicated to Azure", unit: "1/Month" } }
+    - { name: "Replica disk, Standard HDD S4", gbp_h: 0.0017, region: secondary, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Cache storage and recovery-point snapshots", gbp_h: 0.001 }
+    - { name: "Initial replication, about 3 GB uksouth to ukwest (inter-region transfer)", gbp_h: 0.0151 }
+    - { name: "Test failover VM, Standard_B1s (only while a test failover runs)", gbp_h: 0.0089, region: secondary, retail: { sku: Standard_B1s } }
+  pricey: null
+timing: { deploy_min: 61, destroy_min: 20, session_h: 3, max_h: 8 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: ukwest }
+connectivity: { peering: optional, dns_link: false, subnets_used: 3 }
+identity:
+  creates: []
+  roles: []
+  governance: false

@@ -28,6 +28,8 @@ export interface LabCostItem {
   gbp_h: number;
   /** How many; default 1. */
   qty?: number;
+  /** "secondary": priced in the session's secondary region (lab.yaml regions.secondary); otherwise the session's region. */
+  region?: "secondary";
   /** Azure's list price for it, when Azure has one: a meter name (with its unit) or a VM size. The price feed refreshes gbp_h from it (§9.1). */
   retail?: { meter?: string; unit?: string; sku?: string };
 }

@@ -1,0 +1,174 @@
+{
+ "resources": {
+  "azurerm_cosmosdb_account.lab": {
+   "type": "azurerm_cosmosdb_account",
+   "refs": {
+    "geo_location.0.location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "analytical_storage",
+    "backup",
+    "capacity",
+    "create_mode",
+    "endpoint",
+    "geo_location.0.id",
+    "id",
+    "local_authentication_disabled",
+    "mongo_server_version",
+    "primary_key",
+    "primary_mongodb_connection_string",
+    "primary_readonly_key",
+    "primary_readonly_mongodb_connection_string",
+    "primary_readonly_sql_connection_string",
+    "primary_sql_connection_string",
+    "read_endpoints",
+    "secondary_key",
+    "secondary_mongodb_connection_string",
+    "secondary_readonly_key",
+    "secondary_readonly_mongodb_connection_string",
+    "secondary_readonly_sql_connection_string",
+    "secondary_sql_connection_string",
+    "write_endpoints"
+   ],
+   "sensitive": [
+    "primary_key",
+    "primary_mongodb_connection_string",
+    "primary_readonly_key",
+    "primary_readonly_mongodb_connection_string",
+    "primary_readonly_sql_connection_string",
+    "primary_sql_connection_string",
+    "secondary_key",
+    "secondary_mongodb_connection_string",
+    "secondary_readonly_key",
+    "secondary_readonly_mongodb_connection_string",
+    "secondary_readonly_sql_connection_string",
+    "secondary_sql_connection_string"
+   ]
+  },
+  "azurerm_cosmosdb_sql_container.by_status": {
+   "type": "azurerm_cosmosdb_sql_container",
+   "refs": {
+    "account_name": [
+     "azurerm_cosmosdb_account.lab.name",
+     "azurerm_cosmosdb_account.lab"
+    ],
+    "database_name": [
+     "azurerm_cosmosdb_sql_database.shop.name",
+     "azurerm_cosmosdb_sql_database.shop"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ]
+   },
+   "unknown": [
+    "conflict_resolution_policy",
+    "id",
+    "indexing_policy",
+    "throughput"
+   ],
+   "sensitive": []
+  },
+  "azurerm_cosmosdb_sql_container.events": {
+   "type": "azurerm_cosmosdb_sql_container",
+   "refs": {
+    "account_name": [
+     "azurerm_cosmosdb_account.lab.name",
+     "azurerm_cosmosdb_account.lab"
+    ],
+    "database_name": [
+     "azurerm_cosmosdb_sql_database.shop.name",
+     "azurerm_cosmosdb_sql_database.shop"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ]
+   },
+   "unknown": [
+    "conflict_resolution_policy",
+    "id",
+    "indexing_policy",
+    "throughput"
+   ],
+   "sensitive": []
+  },
+  "azurerm_cosmosdb_sql_container.orders": {
+   "type": "azurerm_cosmosdb_sql_container",
+   "refs": {
+    "account_name": [
+     "azurerm_cosmosdb_account.lab.name",
+     "azurerm_cosmosdb_account.lab"
+    ],
+    "database_name": [
+     "azurerm_cosmosdb_sql_database.shop.name",
+     "azurerm_cosmosdb_sql_database.shop"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ]
+   },
+   "unknown": [
+    "conflict_resolution_policy",
+    "id",
+    "indexing_policy",
+    "throughput"
+   ],
+   "sensitive": []
+  },
+  "azurerm_cosmosdb_sql_database.shop": {
+   "type": "azurerm_cosmosdb_sql_database",
+   "refs": {
+    "account_name": [
+     "azurerm_cosmosdb_account.lab.name",
+     "azurerm_cosmosdb_account.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ]
+   },
+   "unknown": [
+    "id",
+    "throughput"
+   ],
+   "sensitive": []
+  },
+  "azurerm_resource_group.lab": {
+   "type": "azurerm_resource_group",
+   "refs": {
+    "location": [
+     "var.region"
+    ],
+    "name": [
+     "var.resource_group_name"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  }
+ }
+}

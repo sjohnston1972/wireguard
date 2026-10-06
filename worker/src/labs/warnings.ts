@@ -19,14 +19,13 @@ import type { Env, Config } from "../env";
 import { effectiveConfig } from "../settings";
 import { getSnapshot, type Snapshot } from "../state";
 import { budgetStatus } from "../budget";
-import { readPrices, type PriceRow } from "../insights/price";
 import { readCapacity, TEST_VM_SIZE } from "../insights/feeds/capacity";
 import { azureRegionName } from "../region";
 import type { CapacityDoc } from "../insights/types";
 import { estimateGbpH, type LabDef } from "../../../shared/labs";
 import type { LabWarning } from "../../../shared/api";
 import { availability, unavailableReason } from "./availability";
-import { gbpHFrom, retailPrice } from "./prices";
+import { gbpHFrom, readLabPrices, retailPrice } from "./prices";
 
 const money = (n: number) => `£${n.toFixed(2)}`;
 
@@ -85,7 +84,7 @@ async function capacityWarning(env: Env, def: LabDef, region: string, cfg: Confi
 
 /** The warnings for deploying `def` now for `hours` in `region`. */
 export async function labWarnings(env: Env, def: LabDef, o: { hours: number; region: string }, now = new Date()): Promise<LabWarning[]> {
-  const [cfg, snap, rows, avail] = await Promise.all([effectiveConfig(env), getSnapshot(env), readPrices(env.DB, o.region).catch(() => [] as PriceRow[]), availability(env)]);
+  const [cfg, snap, rows, avail] = await Promise.all([effectiveConfig(env), getSnapshot(env), readLabPrices(env, o.region), availability(env)]);
   const out: LabWarning[] = [];
   const b = await budgetStatus(env, cfg, snap, now);
   const gbpH = gbpHFrom(def, rows, o.region, now);
@@ -98,7 +97,7 @@ export async function labWarnings(env: Env, def: LabDef, o: { hours: number; reg
   const cap = await capacityWarning(env, def, o.region, cfg, snap);
   if (cap) out.push(cap);
   const pricey = def.cost.pricey ? def.cost.items.find((i) => i.name === def.cost.pricey) : undefined;
-  if (pricey) out.push({ kind: "pricey", message: `Pricey: ${pricey.name}, about ${money(estimateGbpH([pricey], (i) => retailPrice(i, rows, o.region, now)?.gbpH ?? null))}/h.`, overridable: false });
+  if (pricey) out.push({ kind: "pricey", message: `Pricey: ${pricey.name}, about ${money(estimateGbpH([pricey], (i) => retailPrice(i, rows, o.region, now, def.regions.secondary)?.gbpH ?? null))}/h.`, overridable: false });
   if (def.timing.deploy_min >= 15) out.push({ kind: "slow", message: `Takes about ${def.timing.deploy_min} minutes to deploy and ${def.timing.destroy_min} to tear down.`, overridable: false });
   const why = unavailableReason(def, avail);
   if (why) out.push({ kind: "unavailable", message: why, overridable: false });

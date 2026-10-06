@@ -11,17 +11,18 @@
 import { test } from "node:test";
 import { EventEmitter } from "node:events";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { slotCidr } from "../lib/labs.mjs";
-import { buildPayload, checkPermissions, estimateGbp, labDefs, parseArgs, parseLabResult, releaseRow, runRelease, timeoutMin } from "../lab-release-test.mjs";
+import { buildPayload, checkPermissions, estimateGbp, labDefs, parseArgs, parseLabPlanShape, parseLabResult, releaseRow, runRelease, timeoutMin } from "../lab-release-test.mjs";
+import { gzipSync } from "node:zlib";
 
 const DEFS = labDefs();
 const lab7 = DEFS.get("az104-07-files");
 
 /** A fake gh: records calls; dispatches get a run id; `results` maps "<action> <lab>" to the LAB_RESULT the run prints. */
-function fakeGh({ results = {}, watch = () => 0, failDispatch = false } = {}) {
+function fakeGh({ results = {}, watch = () => 0, failDispatch = false, shapes = {} } = {}) {
   const calls = [];
   const runs = [];
   const gh = async (args) => {
@@ -39,6 +40,8 @@ function fakeGh({ results = {}, watch = () => 0, failDispatch = false } = {}) {
       const r = runs.find((x) => String(x.id) === args[2]);
       const res = results[`${r.action} ${r.lab}`];
       const lines = ['lab\tFinish live log, Report result\t2026-10-04T12:00:00Z echo "LAB_RESULT $result"'];
+      // lab.yml step 6 prints the plan's shape (ruling 35); `shapes` maps "<action> <lab>" to it.
+      if (shapes[`${r.action} ${r.lab}`]) lines.unshift(`lab\tPlan and scope check\t2026-10-04T11:58:00Z LAB_PLAN_SHAPE ${gzipSync(JSON.stringify(shapes[`${r.action} ${r.lab}`])).toString("base64")}`);
       if (res) lines.push(`lab\tFinish live log, Report result\t2026-10-04T12:00:01Z LAB_RESULT ${JSON.stringify(res)}`);
       return { status: 0, stdout: lines.join("\n"), stderr: "" };
     }
@@ -119,6 +122,28 @@ test("writes one row per lab", async () => {
   const again = readFileSync(file, "utf8");
   assert.equal(again.match(/^\| Date \(UTC\)/gm).length, 1);
   assert.equal(again.split("\n").filter((l) => /^\| 20\d\d-/.test(l)).length, 3);
+});
+
+test("the release test saves the LAB_PLAN_SHAPE line as the lab's shape file", async () => {
+  const shape = { resources: { "azurerm_resource_group.lab": { type: "azurerm_resource_group", refs: { name: ["var.resource_group_name"] }, unknown: ["id"], sensitive: [] } } };
+  // The line as `gh run view --log` prints it (job, step, time, then the text).
+  const log = `lab\tPlan and scope check\t2026-10-04T11:58:00Z LAB_PLAN_SHAPE ${gzipSync(JSON.stringify(shape)).toString("base64")}\nlab\tApply\t2026-10-04T11:59:00Z done`;
+  assert.deepEqual(parseLabPlanShape(log), shape);
+  assert.equal(parseLabPlanShape("no shape here"), null);
+  assert.equal(parseLabPlanShape("x LAB_PLAN_SHAPE not-base64-gzip!"), null);
+  // A test run's shape lands in <shapesDir>/<id>.json; the destroy run that may follow writes none.
+  const shapesDir = mkdtempSync(join(tmpdir(), "lab-shapes-"));
+  const { gh } = fakeGh({ results: { "test az104-07-files": pass("az104-07-files", { clean: false, leftovers: ["rg-lab-az104-07-files"] }), "destroy az104-07-files": pass("az104-07-files", { action: "destroy" }) }, shapes: { "test az104-07-files": shape, "destroy az104-07-files": { resources: {} } } });
+  const lines = [];
+  await runRelease({ ids: ["az104-07-files"], ref: "feat/labs", slot: 31, region: "uksouth" }, { ...deps(gh, tmpFile()), shapesDir, log: (l) => lines.push(l) });
+  assert.deepEqual(JSON.parse(readFileSync(join(shapesDir, "az104-07-files.json"), "utf8")), shape);
+  assert.match(lines.join("\n"), /plan shape saved to .*az104-07-files\.json/);
+  // No shape line (a plan that never ran): nothing is written, and it says so.
+  const none = mkdtempSync(join(tmpdir(), "lab-shapes-"));
+  const quietLines = [];
+  await runRelease({ ids: ["az104-07-files"], ref: "feat/labs", slot: 31, region: "uksouth" }, { ...deps(fakeGh({ results: { "test az104-07-files": pass("az104-07-files") } }).gh, tmpFile()), shapesDir: none, log: (l) => quietLines.push(l) });
+  assert.deepEqual(readdirSync(none), []);
+  assert.match(quietLines.join("\n"), /no plan shape in the run's log/);
 });
 
 test("a failed or dirty test is always followed by a destroy run, and recorded as fail", async () => {

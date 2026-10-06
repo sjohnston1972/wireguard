@@ -56,6 +56,16 @@ test("governance-condition.txt is built from allowed-roles.json: every allowed G
   for (const [o, c] of [["(", ")"], ["{", "}"]]) assert.equal(condition.split(o).length, condition.split(c).length);
 });
 
+// Identity change 2 (labs batch 3 plan; approved by Steven 2026-10-05): lab 20 assigns its custom roles, so the
+// condition allows them. Steven re-applies it on the governance role assignment before lab 20's release test.
+test("governance-condition.txt allows lab 20's two custom roles, to write and to delete an assignment", () => {
+  for (const id of ["60bdbc03-b25a-4a83-9fce-b2c5afff563c", "bd52e05a-22cb-4bd5-b56c-3396add9b7c0"]) assert.equal(condition.split(id).length - 1, 2, id);
+  // The full list, in allowed-roles.json's order: the eleven built-ins, then lab 1's role and lab 20's two.
+  const list = /@Request\[Microsoft\.Authorization\/roleAssignments:RoleDefinitionId\] ForAnyOfAnyValues:GuidEquals \{([^}]*)\}/.exec(condition)[1].split(", ");
+  assert.equal(list.length, 14);
+  assert.deepEqual(list.slice(-3), ["7331dcae-09d3-477e-8da7-2895697f0fc0", "60bdbc03-b25a-4a83-9fce-b2c5afff563c", "bd52e05a-22cb-4bd5-b56c-3396add9b7c0"]);
+});
+
 test("labs-setup substitutes the subscription id and never prints it", () => {
   const dir = mkdtempSync(join(tmpdir(), "labs-setup-"));
   const lines = [];

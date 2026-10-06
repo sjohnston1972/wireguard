@@ -65,6 +65,24 @@ test("allowed-roles.json: custom roles are lab-<lab>- named, belong to a real la
   assert.deepEqual(ALLOWED_ROLES.principalTypes, ["User", "Group", "ServicePrincipal"]);
 });
 
+// Identity change 2 (labs batch 3 plan; approved by Steven 2026-10-05): lab 20's two custom roles are assigned
+// by its Terraform, so they are ordinary allow-list entries and in the ABAC condition.
+test("allowed-roles.json: the custom roles are lab 1's vm-operator and lab 20's netops and appops, each with its fixed GUID, one per line", () => {
+  assert.deepEqual(
+    ALLOWED_ROLES.custom.map((r) => [r.lab, r.name, r.id]),
+    [
+      ["az104-01-identity", "lab-az104-01-identity-vm-operator", "7331dcae-09d3-477e-8da7-2895697f0fc0"],
+      ["az305-20-landing-zone", "lab-az305-20-landing-zone-netops", "60bdbc03-b25a-4a83-9fce-b2c5afff563c"],
+      ["az305-20-landing-zone", "lab-az305-20-landing-zone-appops", "bd52e05a-22cb-4bd5-b56c-3396add9b7c0"],
+    ],
+  );
+  // The safety net (infra/ci/lab-safety-net.sh) reads each entry from one line.
+  const lines = readFileSync(new URL("../../labs/setup/allowed-roles.json", import.meta.url), "utf8").split(/\r?\n/);
+  for (const r of ALLOWED_ROLES.custom) assert.ok(lines.some((l) => l.includes(`"${r.lab}"`) && l.includes(`"${r.name}"`) && l.includes(`"${r.id}"`)), r.name);
+  // Nothing in the file is define-only: every entry is assignable (the define-only idea was dropped).
+  for (const r of ALLOWED_ROLES.custom) assert.deepEqual(Object.keys(r).sort(), ["id", "lab", "name"], r.name);
+});
+
 test("allowedRolesProblems refuses a malformed GUID, a duplicate GUID, a forbidden role and a badly named custom role", () => {
   const good = JSON.parse(readFileSync(new URL("../../labs/setup/allowed-roles.json", import.meta.url), "utf8"));
   const bad = (mutate) => {

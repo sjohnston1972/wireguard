@@ -10,8 +10,17 @@
 // fixtures left these out (lab 6's group mail_nickname, lab 3's management
 // group subscription_ids).
 //
+// Batch 3's release tests recorded real plan shapes (shapes/*.json) and
+// taught it three more things a plan does: it marks every attribute the
+// provider schema calls sensitive, set or not (computed.json's "sensitive");
+// it marks an Optional and Computed block the configuration leaves unset as
+// wholly unknown (UNSET_BLOCKS_UNKNOWN: a schema cannot say which blocks
+// those are); and it knows some computed attributes at plan, the defaults a
+// provider fills in (PLAN_DEFAULTS). It also leaves a dynamic block out of
+// the configuration's expressions while its values are planned.
+//
 //   realisticPlan({ resources, data, providers, variables })
-//     resources: [{ address, values, refs?, unknown?, sensitive?, importing?, actions?, count?, forEach? }]
+//     resources: [{ address, values, refs?, unknown?, sensitive?, dynamic?, importing?, actions?, count?, forEach? }]
 //       address    may carry an instance key, azurerm_subnet.s[0] or azurerm_subnet.s["web"]
 //                  (count or for_each): each instance is its own planned resource
 //                  and change (with "index"), and the configuration has one
@@ -19,7 +28,9 @@
 //       values     what the plan knows (nested blocks as arrays of objects)
 //       refs       { "attr" or "block.0.attr": [references] } as in the configuration
 //       unknown    ["attr" or "block.0.attr"]: known only after apply (built from unknowns)
-//       sensitive  ["attr"]
+//       sensitive  ["attr"], beyond what the schema marks sensitive (it marks those itself)
+//       dynamic    ["block"]: blocks main.tf writes as dynamic "block" {}: their values are
+//                  planned, but the configuration has no expressions for them (no references)
 //       count      the block's count (a number), printed as count_expression
 //       forEach    the block's for_each as Terraform prints it: { references: [...] }
 //                  or { constant_value: {...} } (for_each_expression)
@@ -35,6 +46,46 @@
 import { readFileSync } from "node:fs";
 
 export const COMPUTED = JSON.parse(readFileSync(new URL("./computed.json", import.meta.url), "utf8"));
+/** { "<type>": { rg, tags } }: whether a resource type takes resource_group_name and tags (extract-computed.mjs writes it). */
+export const SCHEMA_FACTS = JSON.parse(readFileSync(new URL("./schema-facts.json", import.meta.url), "utf8"));
+
+/**
+ * Blocks a provider plans as wholly unknown when the configuration leaves them unset (SDKv2 blocks that are
+ * Optional and Computed). The provider schema has no "computed" on a block, so these are as the release tests'
+ * real plans recorded them (shapes/*.json; azurerm 4.81.0, 2026-10-06). A type not listed here may have some
+ * too: its first recorded shape will say, and the shape test fails until they are added.
+ */
+export const UNSET_BLOCKS_UNKNOWN = {
+  azurerm_cosmosdb_account: ["analytical_storage", "backup", "capacity"],
+  azurerm_cosmosdb_sql_container: ["conflict_resolution_policy", "indexing_policy"],
+  azurerm_key_vault: ["contact", "network_acls"],
+  azurerm_linux_virtual_machine: ["termination_notification"],
+  azurerm_mssql_database: ["long_term_retention_policy", "short_term_retention_policy", "threat_detection_policy"],
+  azurerm_private_dns_zone: ["soa_record"],
+  azurerm_storage_account: ["blob_properties", "network_rules", "queue_properties", "routing", "share_properties", "static_website"],
+};
+
+/**
+ * Computed attributes a provider already knows at plan when the configuration leaves them unset: the defaults it
+ * fills in. Known (in the planned values, not in after_unknown) and not configured (no expression). As the real
+ * plans recorded them: lab 21's workspace, lab 22's random passwords (hashicorp/random 3.9.1's defaults).
+ */
+export const PLAN_DEFAULTS = {
+  azurerm_log_analytics_workspace: { local_authentication_enabled: true },
+  random_password: { lower: true, min_lower: 0, min_numeric: 0, min_special: 0, min_upper: 0, number: true, numeric: true, special: true, upper: true },
+};
+
+/** after_sensitive for one object (a resource or one nested block): every attribute the schema marks sensitive, set or not. */
+function sensitiveFor(values, tree) {
+  const out = {};
+  for (const a of tree?.sensitive ?? []) out[a] = true;
+  for (const [b, sub] of Object.entries(tree?.blocks ?? {})) {
+    if (!Array.isArray(values[b])) continue;
+    const inner = values[b].map((el) => sensitiveFor(el ?? {}, sub));
+    if (inner.some((x) => Object.keys(x).length)) out[b] = inner;
+  }
+  return out;
+}
 
 /** An address's parts: data.TYPE.NAME or TYPE.NAME, with an optional [0] or ["key"] instance key. */
 function parseAddress(address) {
@@ -95,17 +146,26 @@ function resourceParts(def, mode) {
   if (!tree && (type.startsWith("azurerm_") || type.startsWith("azuread_"))) throw new Error(`computed.json has no ${type}: add it to extract-computed.mjs`);
   const values = structuredClone(def.values ?? {});
   const unknown = (def.unknown ?? []).map(split);
+  const dynamic = new Set(def.dynamic ?? []);
+  for (const path of Object.keys(def.refs ?? {})) if (dynamic.has(split(path)[0])) throw new Error(`${def.address}: ${path} is in a dynamic block, which a plan's configuration leaves out: give it no refs`);
   // An unknown value is not in the planned values; its place is held so the schema does not count it as unset.
   const held = structuredClone(values);
   for (const p of unknown) setPath(held, p, "(unknown)");
   for (const p of Object.keys(def.refs ?? {}).map(split)) if (p.length === 1 && !(p[0] in held)) held[p[0]] = "(from config)";
   for (const p of unknown) deletePath(values, p);
-  const au = unknownFor(held, tree);
+  // Defaults the provider fills in at plan: known, planned, never configured.
+  const defaults = mode === "data" ? {} : Object.fromEntries(Object.entries(PLAN_DEFAULTS[type] ?? {}).filter(([k]) => !(k in held)));
+  const au = unknownFor({ ...held, ...defaults }, tree);
   for (const p of unknown) setPath(au, p, true);
-  const expressions = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, expressionFor(v)]));
-  for (const p of unknown) if (!(p[0] in expressions)) expressions[p[0]] = typeof p[1] === "number" ? [] : {};
+  // An Optional and Computed block left unset: the provider plans the whole block as unknown.
+  if (mode !== "data") for (const b of UNSET_BLOCKS_UNKNOWN[type] ?? []) if (!(b in held)) au[b] = true;
+  const expressions = Object.fromEntries(Object.entries(values).filter(([k]) => !dynamic.has(k)).map(([k, v]) => [k, expressionFor(v)]));
+  for (const p of unknown) if (!(p[0] in expressions) && !dynamic.has(p[0])) expressions[p[0]] = typeof p[1] === "number" ? [] : {};
   for (const [path, refs] of Object.entries(def.refs ?? {})) setPath(expressions, split(path), { references: refs });
-  const sensitive = Object.fromEntries((def.sensitive ?? []).map((k) => [k, true]));
+  Object.assign(values, defaults);
+  // Every attribute the schema marks sensitive, set or not, and any the description adds.
+  const sensitive = mode === "data" ? {} : sensitiveFor(values, tree);
+  for (const p of (def.sensitive ?? []).map(split)) setPath(sensitive, p, true);
   return { type, values, au, expressions, sensitive };
 }
 

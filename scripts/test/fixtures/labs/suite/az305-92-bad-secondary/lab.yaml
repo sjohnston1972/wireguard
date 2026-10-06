@@ -1,0 +1,23 @@
+# A fixture for labs-content-suite.test.mjs: its second group is named
+# rg-lab-<id>secondary (no hyphen), which is not the lab's. Not a catalogue lab.
+id: az305-92-bad-secondary
+version: 1
+title: "Two regions"
+summary: A storage account in each region.
+exam: AZ-305
+skill_areas: [az305.continuity]
+level: expert
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Two storage accounts, a few KB", gbp_h: 0.0002 }
+  pricey: null
+timing: { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [] }
+regions: { secondary: ukwest }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles: []
+  governance: false

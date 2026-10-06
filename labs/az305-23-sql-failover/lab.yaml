@@ -1,0 +1,51 @@
+# Lab 23 (labs batch 3 plan, area C2; spec §17, ruling 24). AZ-305 study
+# guide skills this lab touches (the outline "as of April 17, 2026"):
+#   Design data storage solutions > Design data storage solutions for
+#   relational data: "Recommend a solution for storing relational data",
+#   "Recommend a database service tier and compute tier", "Recommend a
+#   solution for database scalability".
+#   Design business continuity solutions > Design solutions for backup and
+#   disaster recovery: "Recommend a backup and recovery solution for
+#   databases"; Design for high availability: "Recommend a high availability
+#   solution for relational data".
+# Costs are GBP list prices (Retail Prices API, 2026-10-05), rounded up.
+# Retail entries the price feed refreshes, checked by npm run labs-verify --
+# --meters az305-23-sql-failover: "B DTU" £0.1517 a day in uksouth (about
+# £0.0063/h) and "B Secondary Active DTU" £0.1517 a day, checked in ukwest
+# (region: secondary). Serverless stays authored (ruling 2): its meter,
+# "vCore", is shared by several SQL products at different prices; General
+# Purpose serverless Gen5 is £0.4922 per vCore-hour in ukwest, billed per
+# second only while the database is online, at least its 0.5 vCore minimum;
+# authored as 0.5 vCore for half the session (it pauses after 15 idle
+# minutes). Its 1 GB of storage is a fraction of a penny. Private endpoints
+# are priced in region "Global" only (£0.0075/h, authored at £0.0076 as lab
+# 6) and private DNS zones are tiered (region "Zone 1"), so both stay
+# authored. The failover group itself is free; geo-replication traffic for
+# an empty database is pennies.
+id: az305-23-sql-failover
+version: 2
+title: "Azure SQL Database: serverless, geo-replication, failover groups"
+summary: >-
+  A Basic database in UK South with a geo-secondary in UK West, a failover group you fail over by hand, and a
+  serverless database that pauses itself, all reachable over the tunnel through private endpoints.
+exam: AZ-305
+skill_areas: [az305.data, az305.continuity]
+level: expert
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "SQL Database Basic, appdb primary (uksouth)", gbp_h: 0.0063, retail: { meter: "B DTU", unit: "1/Day" } }
+    - { name: "SQL Database Basic, appdb geo-secondary (ukwest)", gbp_h: 0.0063, region: secondary, retail: { meter: "B Secondary Active DTU", unit: "1/Day" } }
+    - { name: "SQL Database serverless, scratch (0.5 vCore, online about half the session)", gbp_h: 0.1231 }
+    - { name: "Private endpoint", gbp_h: 0.0076, qty: 2 }
+    - { name: "Private DNS zone", gbp_h: 0.0005 }
+  pricey: "SQL Database serverless, scratch (0.5 vCore, online about half the session)"
+timing: { deploy_min: 10, destroy_min: 7, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [] }
+regions: { secondary: ukwest }
+connectivity: { peering: optional, dns_link: true, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

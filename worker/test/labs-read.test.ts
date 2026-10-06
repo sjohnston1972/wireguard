@@ -8,10 +8,10 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCatalogueForTest } from "../src/labs/catalogue";
-import { api, advance, deployLab, freeze, labDispatches, labEnv, report, runningLab, secrets, session, MIN, NOW } from "./labs-helpers";
+import { api, advance, deployLab, freeze, labDispatches, labEnv, report, runningLab, secrets, session, MIN, NOW, TEST_CATALOGUE, TEST_LABS } from "./labs-helpers";
 import type { Env } from "../src/env";
 import { LAB_UNITS, labItem, normalisePrices, NOT_LINUX_PAYG } from "../src/insights/feeds/prices";
-import { retailPrice } from "../src/labs/prices";
+import { gbpHFrom, labGbpH, pricedItems, readLabPrices, retailPrice } from "../src/labs/prices";
 import type { PriceRow } from "../src/insights/price";
 import { costMarker, estimateGbpH } from "../../shared/labs";
 import * as verify from "../../scripts/labs-verify.mjs";
@@ -144,6 +144,49 @@ describe("read routes (L2.7)", () => {
     expect(o.gbpH).toBeCloseTo(0.0077 + 0.0117, 6);
     expect(o.rePeer).toBe(1); // lab 6 asked to peer and the gateway is not up
     void NOW;
+  });
+});
+
+describe("lab prices per region (batch 3, C0.6)", () => {
+  const now = new Date("2026-10-05T09:00:00.000Z");
+  const at = "2026-10-05T03:00:00.000Z";
+  const s4 = (region: string, gbp: number): PriceRow => ({ region, item: labItem("S4 LRS Disk"), gbp, unit: "1/Month", fetched_at: at });
+  const rows = [s4("uksouth", 1.2775), s4("ukwest", 1.46)];
+  const primary = { name: "OS disk, S4", gbp_h: 0.0017, retail: { meter: "S4 LRS Disk", unit: "1/Month" } };
+  const replica = { name: "Replica disk, S4", gbp_h: 0.0017, region: "secondary" as const, retail: { meter: "S4 LRS Disk", unit: "1/Month" } };
+  const def = { ...TEST_LABS[0]!, id: "az305-26-site-recovery", regions: { secondary: "ukwest" }, cost: { items: [primary, replica], pricey: null } };
+
+  it("a secondary-region item is priced at the session's secondary region", async () => {
+    expect(retailPrice(replica, rows, "uksouth", now, "ukwest")?.gbpH).toBeCloseTo(1.46 / 730, 8);
+    // No secondary region known (or no row there): the authored figure.
+    expect(retailPrice(replica, rows, "uksouth", now, null)).toBeNull();
+    expect(retailPrice(replica, rows, "uksouth", now)).toBeNull();
+    expect(retailPrice(replica, [rows[0]!], "uksouth", now, "ukwest")).toBeNull();
+    // The lab's own regions.secondary is the session's secondary region (engine.ts), so the modal and estimate use it.
+    const lines = pricedItems(def, rows, "uksouth", now);
+    expect(lines.map((l) => [l.name, l.source, Number(l.gbpH.toFixed(8))])).toEqual([
+      ["OS disk, S4", "azure", Number((1.2775 / 730).toFixed(8))],
+      ["Replica disk, S4", "azure", Number((1.46 / 730).toFixed(8))],
+    ]);
+    expect(gbpHFrom(def, rows, "uksouth", now)).toBeCloseTo((1.2775 + 1.46) / 730, 6);
+    // labGbpH reads both regions' rows from az_prices.
+    const { env } = await labEnv();
+    await env.DB.prepare("INSERT INTO az_prices (region, item, gbp, unit, meter, fetched_at) VALUES ('uksouth', ?1, 1.2775, '1/Month', 'S4 LRS Disk', ?2), ('ukwest', ?1, 1.46, '1/Month', 'S4 LRS Disk', ?2)").bind(labItem("S4 LRS Disk"), at).run();
+    expect(await labGbpH(env, def, "uksouth", now)).toBeCloseTo((1.2775 + 1.46) / 730, 6);
+    // The cards, the modal and the warnings read the catalogue's secondary regions' rows too.
+    expect((await readLabPrices(env, "uksouth")).map((r) => r.region)).toEqual(["uksouth"]);
+    setCatalogueForTest({ ...TEST_CATALOGUE, labs: [...TEST_LABS, def] });
+    expect((await readLabPrices(env, "uksouth")).map((r) => r.region).sort()).toEqual(["uksouth", "ukwest"]);
+    const cards = (await api(env, "GET", "/labs")).json.labs as { id: string; estGbpH: number }[];
+    expect(cards.find((l) => l.id === def.id)?.estGbpH).toBeCloseTo((1.2775 + 1.46) / 730, 6);
+  });
+
+  it("an item without region keeps the session's region", () => {
+    expect(retailPrice(primary, rows, "uksouth", now, "ukwest")?.gbpH).toBeCloseTo(1.2775 / 730, 8);
+    expect(retailPrice(primary, rows, "ukwest", now, null)?.gbpH).toBeCloseTo(1.46 / 730, 8);
+    // A lab without a secondary region prices a secondary item at the authored figure.
+    const single = { ...def, regions: { secondary: null } };
+    expect(pricedItems(single, rows, "uksouth", now)[1]).toMatchObject({ source: "authored", gbpH: 0.0017 });
   });
 });
 

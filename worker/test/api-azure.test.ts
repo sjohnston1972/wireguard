@@ -327,6 +327,8 @@ describe("whole runs with the real feeds", () => {
     expect(d1.sql.filter((s) => /^INSERT INTO az_feed/.test(s))).toHaveLength(FEED_IDS.length + 1);
     // The bound for a worst-case run, as measured: 70 statements in 31 round trips (80 in 50 when each
     // feed read all of az_feed and wrote its own row). Most of the rest are the feeds' own stores.
+    // The prices feed reads every region's freshness in one grouped statement, so a lab's secondary
+    // region (labs batch 3, ruling 26) adds none: 69 statements measured with ukwest in the catalogue.
     expect(d1.statements).toBeLessThanOrEqual(70);
     expect(d1.roundTrips).toBeLessThanOrEqual(31);
   });

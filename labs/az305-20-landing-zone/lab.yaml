@@ -1,0 +1,41 @@
+# Lab 20 (labs batch 3 plan, area C1). AZ-305 study guide skills this lab
+# touches (outline "Skills measured as of April 17, 2026"):
+#   Design identity, governance, and monitoring solutions > Design governance:
+#   "Recommend a structure for management groups, subscriptions, and resource
+#   groups, and a strategy for resource tagging", "Recommend a solution for
+#   managing compliance". Design authentication and authorization solutions:
+#   "Recommend a solution for authorizing access to Azure resources".
+# Costs: nothing here is billed. Management groups, policy definitions,
+# initiatives and assignments, custom roles, role assignments and
+# user-assigned managed identities are free (no Retail Prices API meter
+# exists for any of them, so there is nothing for labs-verify --meters to
+# check). The two custom roles are assigned by this lab's Terraform (identity
+# change 2, approved by Steven 2026-10-05; spec §17 ruling 27).
+id: az305-20-landing-zone
+version: 2
+title: "Landing zone lite: management groups, policy initiatives, role design"
+summary: >-
+  A six-group management group tree shaped like an Azure landing zone, a policy initiative and a deny
+  assigned where they belong, and two least-privilege custom roles assigned to the managed identities
+  they were designed for.
+exam: AZ-305
+skill_areas: [az305.identity]
+level: expert
+type: explore
+prerequisites: [az104-03-mgmt-groups]
+cost:
+  items:
+    - { name: "Six management groups (free)", gbp_h: 0 }
+    - { name: "Policy definition, initiative and two assignments (free)", gbp_h: 0 }
+    - { name: "Two custom roles, two managed identities and their role assignments (free)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 4, destroy_min: 13, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles:
+    - { role: "lab-az305-20-landing-zone-netops", scope: resource_group }
+    - { role: "lab-az305-20-landing-zone-appops", scope: resource_group }
+  governance: true

@@ -17,6 +17,7 @@ import { checkHcl, checkPlan, hclResources, planResources, RULES, scopeProblems,
 import { GOVERNANCE_LABS, LAB_ID_RE } from "../lib/labs.mjs";
 import { realisticPlan, withAfterUnknown } from "./fixtures/labs/plans/realistic.mjs";
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
+import { ctx, IN_RG, linuxVm, ref, rgResource, rgSecondaryResource } from "./fixtures/labs/plans/common.mjs";
 import { TEMPLATE as LAB12_TEMPLATE } from "./fixtures/labs/plans/labs/az104-12-bicep.mjs";
 
 const DIR = fileURLToPath(new URL("./fixtures/labs/scope/", import.meta.url));
@@ -556,4 +557,495 @@ test("HCL mode: an Entra user or group without mail_nickname is refused early (a
   const hcl = (group) => ({ resource: { azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}" }] }, azuread_group: { readers: [group] } } });
   assert.deepEqual(verdict(checkHcl(hcl({ display_name: "lab-${var.lab_id}-readers", security_enabled: true }), lab)), [["entra-prefix", "azuread_group.readers"]]);
   assert.deepEqual(checkHcl(hcl({ display_name: "lab-${var.lab_id}-readers", mail_nickname: "lab-${var.lab_id}-readers", security_enabled: true }), lab), []);
+});
+
+// ── Batch 3 (labs batch 3 plan, C0.3; spec §17 rulings 25, 28-31) ────────
+
+const SUB_ID = "/subscriptions/3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b";
+const MONITORING_CONTRIBUTOR = "749f88d5-cbae-40b8-bcfc-e573ddc772fa";
+const OWNER = "8e3af657-a8ff-443c-a75c-2fe8c4bcb635";
+const LOG_ANALYTICS_CONTRIBUTOR = "92aaf0da-9dab-42b6-94a3-d43ce8d16293";
+const RG_HCL = { lab: [{ name: "${var.resource_group_name}", location: "${var.region}" }] };
+
+test("a management-group initiative is a governance definition", () => {
+  const set = (name) => ({
+    resource: {
+      azurerm_resource_group: RG_HCL,
+      azurerm_management_group: { root: [{ name: "lab-${var.lab_id}-root", display_name: "lab-${var.lab_id}-root" }] },
+      azurerm_management_group_policy_set_definition: { baseline: [{ name, display_name: name, policy_type: "Custom", management_group_id: "${azurerm_management_group.root.id}", policy_definition_reference: [{ policy_definition_id: "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c" }] }] },
+    },
+  });
+  assert.deepEqual(checkHcl(set("lab-${var.lab_id}-baseline"), "az305-20-landing-zone"), []);
+  // Only for the governance labs, and only named lab-<id>-.
+  assert.deepEqual(verdict(checkHcl(set("lab-${var.lab_id}-baseline"), "az305-22-keyvault-mi")), [["governance", "azurerm_management_group.root"], ["governance", "azurerm_management_group_policy_set_definition.baseline"]]);
+  assert.deepEqual(verdict(checkHcl(set("baseline"), "az305-20-landing-zone")), [["governance", "azurerm_management_group_policy_set_definition.baseline"]]);
+  // At a management group the lab does not own.
+  const other = set("lab-${var.lab_id}-baseline");
+  other.resource.azurerm_management_group_policy_set_definition.baseline[0].management_group_id = "/providers/Microsoft.Management/managementGroups/corp";
+  assert.deepEqual(verdict(checkHcl(other, "az305-20-landing-zone")), [["outside-scope", "azurerm_management_group_policy_set_definition.baseline"]]);
+});
+
+test("a Key Vault with purge protection is refused", () => {
+  const id = "az305-22-keyvault-mi";
+  const kv = (extra) => ({ resource: { azurerm_resource_group: RG_HCL, azurerm_key_vault: { kv: [{ name: "${var.name_prefix}kv", resource_group_name: "${azurerm_resource_group.lab.name}", location: "${azurerm_resource_group.lab.location}", sku_name: "standard", tenant_id: "${data.azurerm_client_config.current.tenant_id}", soft_delete_retention_days: 7, ...extra }] } }, data: { azurerm_client_config: { current: [{}] } } });
+  assert.deepEqual(checkHcl(kv({}), id), []);
+  assert.deepEqual(checkHcl(kv({ purge_protection_enabled: false }), id), []);
+  assert.deepEqual(verdict(checkHcl(kv({ purge_protection_enabled: true }), id)), [["immutability", "azurerm_key_vault.kv"]]);
+  assert.match(checkHcl(kv({ purge_protection_enabled: true }), id)[0].message, /purge protection/);
+  // Set from something this check cannot know: refused too.
+  assert.deepEqual(verdict(checkHcl(kv({ purge_protection_enabled: "${var.peered}" }), id)), [["immutability", "azurerm_key_vault.kv"]]);
+  // In a plan: known true refused; unknown because configured refused; false passes.
+  const c = ctx(id, "22");
+  const plan = (values, unknown = []) =>
+    realisticPlan({
+      resources: [rgResource(c), { address: "azurerm_key_vault.kv", values: { name: `${c.prefix}kv`, resource_group_name: c.rg, location: "uksouth", sku_name: "standard", tenant_id: "x", soft_delete_retention_days: 7, ...values }, unknown, refs: { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"], ...(unknown.length ? { purge_protection_enabled: ["azurerm_resource_group.lab.id", "azurerm_resource_group.lab"] } : {}) } }],
+    });
+  assert.deepEqual(checkPlan(plan({ purge_protection_enabled: false }), id), []);
+  assert.deepEqual(verdict(checkPlan(plan({ purge_protection_enabled: true }), id)), [["immutability", "azurerm_key_vault.kv"]]);
+  assert.deepEqual(verdict(checkPlan(plan({}, ["purge_protection_enabled"]), id)), [["immutability", "azurerm_key_vault.kv"]]);
+});
+
+/** A lab policy definition whose rule deploys (DINE) with these role ids, at this deployment scope. */
+const dineRule = (roleIds, deploymentScope) => ({
+  if: { field: "type", equals: "Microsoft.KeyVault/vaults" },
+  then: {
+    effect: "deployIfNotExists",
+    details: {
+      type: "Microsoft.Insights/diagnosticSettings",
+      roleDefinitionIds: roleIds.map((g) => `/providers/Microsoft.Authorization/roleDefinitions/${g}`),
+      ...(deploymentScope ? { deploymentScope } : {}),
+      deployment: { properties: { mode: "incremental", template: { $schema: RG_SCHEMA, resources: [] } } },
+    },
+  },
+});
+const dineHcl = (rule) => ({
+  resource: {
+    azurerm_resource_group: RG_HCL,
+    azurerm_policy_definition: { kv: [{ name: "lab-${var.lab_id}-kv-diagnostics", display_name: "lab-${var.lab_id}-kv-diagnostics", policy_type: "Custom", mode: "Indexed", policy_rule: JSON.stringify(rule) }] },
+  },
+});
+
+test("a DINE definition with Monitoring Contributor only passes for a governance lab", () => {
+  const id = "az305-21-monitoring-scale";
+  assert.deepEqual(checkHcl(dineHcl(dineRule([MONITORING_CONTRIBUTOR])), id), []);
+  // A modify effect is held to the same rule.
+  const modify = dineRule([MONITORING_CONTRIBUTOR]);
+  modify.then.effect = "Modify";
+  modify.then.details = { roleDefinitionIds: modify.then.details.roleDefinitionIds, operations: [] };
+  assert.deepEqual(checkHcl(dineHcl(modify), id), []);
+  // Not a governance lab: no policy definitions at all.
+  assert.deepEqual(verdict(checkHcl(dineHcl(dineRule([MONITORING_CONTRIBUTOR])), "az305-22-keyvault-mi")), [["governance", "azurerm_policy_definition.kv"]]);
+});
+
+test("a remediating policy may list only allow-listed roles and never deploy at subscription scope", () => {
+  const id = "az305-21-monitoring-scale";
+  // Owner, a built-in not on the allow-list (Log Analytics Contributor: identity change 1 if it is ever needed), or a lab custom role.
+  for (const roles of [[OWNER], [MONITORING_CONTRIBUTOR, LOG_ANALYTICS_CONTRIBUTOR], ["7331dcae-09d3-477e-8da7-2895697f0fc0"]]) {
+    const r = checkHcl(dineHcl(dineRule(roles)), id);
+    assert.deepEqual(verdict(r), [["role", "azurerm_policy_definition.kv"]], roles.join());
+    assert.match(r[0].message, /roleDefinitionIds/);
+  }
+  // An effect given as a parameter still has its roleDefinitionIds read.
+  const param = dineRule([OWNER]);
+  param.then.effect = "[parameters('effect')]";
+  assert.deepEqual(verdict(checkHcl(dineHcl(param), id)), [["role", "azurerm_policy_definition.kv"]]);
+  // A deployment at subscription scope, however its roles look.
+  const sub = checkHcl(dineHcl(dineRule([MONITORING_CONTRIBUTOR], "subscription")), id);
+  assert.deepEqual(verdict(sub), [["outside-scope", "azurerm_policy_definition.kv"]]);
+  assert.match(sub[0].message, /deploymentScope/);
+  assert.deepEqual(checkHcl(dineHcl(dineRule([MONITORING_CONTRIBUTOR], "resourceGroup")), id), []);
+  // In a plan, a rule the check cannot read (built from apply-time values) is refused: pass those as assignment parameters.
+  const c = ctx(id, "21");
+  const plan = (values, unknown = []) => realisticPlan({ resources: [rgResource(c), { address: "azurerm_policy_definition.kv", values: { name: `lab-${id}-kv-diagnostics`, display_name: `lab-${id}-kv-diagnostics`, policy_type: "Custom", mode: "Indexed", ...values }, unknown, refs: { name: ["var.lab_id"], ...(unknown.length ? { policy_rule: ["azurerm_resource_group.lab.id", "azurerm_resource_group.lab"] } : {}) } }] });
+  assert.deepEqual(checkPlan(plan({ policy_rule: JSON.stringify(dineRule([MONITORING_CONTRIBUTOR])) }), id), []);
+  assert.deepEqual(verdict(checkPlan(plan({ policy_rule: JSON.stringify(dineRule([OWNER])) }), id)), [["role", "azurerm_policy_definition.kv"]]);
+  const unread = checkPlan(plan({}, ["policy_rule"]), id);
+  assert.deepEqual(verdict(unread), [["role", "azurerm_policy_definition.kv"]]);
+  assert.match(unread[0].message, /not known at plan/);
+  // An audit rule (lab 2's) has no roles and needs none.
+  assert.deepEqual(checkPlan(LAB_PLANS["az104-02-policy"].plan, "az104-02-policy"), []);
+});
+
+test("rg-lab-<id>-secondary is the lab's and rg-lab-<id>secondary is not", () => {
+  const id = "az305-23-sql-failover";
+  const groups = (secondaryName) => ({
+    resource: {
+      azurerm_resource_group: { lab: RG_HCL.lab, secondary: [{ name: secondaryName, location: "${var.secondary_region}" }] },
+      azurerm_mssql_server: { s: [{ name: "${var.name_prefix}-sqls", resource_group_name: "${azurerm_resource_group.secondary.name}", location: "${azurerm_resource_group.secondary.location}", version: "12.0" }] },
+    },
+  });
+  assert.deepEqual(checkHcl(groups("${var.resource_group_name}-secondary"), id), []);
+  assert.deepEqual(verdict(checkHcl(groups("${var.resource_group_name}secondary"), id)), [["resource-group", "azurerm_resource_group.secondary"]]);
+  // A resource naming rg-lab-<id>secondary outright.
+  const named = groups("${var.resource_group_name}-secondary");
+  named.resource.azurerm_mssql_server.s[0].resource_group_name = `rg-lab-${id}secondary`;
+  assert.deepEqual(verdict(checkHcl(named, id)), [["outside-scope", "azurerm_mssql_server.s"]]);
+  // In a plan.
+  const c = ctx(id, "23");
+  assert.deepEqual(checkPlan(realisticPlan({ resources: [rgResource(c), rgSecondaryResource(c)] }), id), []);
+  const bad = rgSecondaryResource(c);
+  bad.values.name = `${c.rg}secondary`;
+  assert.deepEqual(verdict(checkPlan(realisticPlan({ resources: [rgResource(c), bad] }), id)), [["resource-group", "azurerm_resource_group.secondary"]]);
+});
+
+test("a Site Recovery target group outside the lab is refused", () => {
+  const id = "az305-26-site-recovery";
+  const c = ctx(id, "26");
+  const IN2 = { resource_group_name: ["azurerm_resource_group.secondary.name", "azurerm_resource_group.secondary"] };
+  const replicated = ({ target, disk }) => ({
+    address: "azurerm_site_recovery_replicated_vm.vm",
+    values: { name: "vm-app", resource_group_name: c.rgSecondary, recovery_vault_name: "rsv-lab", source_recovery_fabric_name: "fabric-uksouth", managed_disk: [{ target_disk_type: "Standard_LRS", target_replica_disk_type: "Standard_LRS", ...(disk.known ? { target_resource_group_id: disk.known } : {}) }], ...(target.known ? { target_resource_group_id: target.known } : {}) },
+    unknown: ["source_vm_id", "managed_disk.0.staging_storage_account_id", "managed_disk.0.disk_id", ...(target.refs ? ["target_resource_group_id"] : []), ...(disk.refs ? ["managed_disk.0.target_resource_group_id"] : [])],
+    refs: {
+      ...IN2,
+      source_vm_id: ["azurerm_linux_virtual_machine.vm.id", "azurerm_linux_virtual_machine.vm"],
+      "managed_disk.0.staging_storage_account_id": ["azurerm_storage_account.cache.id", "azurerm_storage_account.cache"],
+      "managed_disk.0.disk_id": ["azurerm_linux_virtual_machine.vm.os_disk[0].id", "azurerm_linux_virtual_machine.vm"],
+      ...(target.refs ? { target_resource_group_id: target.refs } : {}),
+      ...(disk.refs ? { "managed_disk.0.target_resource_group_id": disk.refs } : {}),
+    },
+  });
+  const IN1 = { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] };
+  const base = [rgResource(c), rgSecondaryResource(c), { address: "azurerm_linux_virtual_machine.vm", values: { name: "vm-app", resource_group_name: c.rg, location: "uksouth" }, refs: IN1 }, { address: "azurerm_storage_account.cache", values: { name: `${c.prefix}cache`, resource_group_name: c.rg, location: "uksouth" }, refs: IN1 }];
+  const own = ["azurerm_resource_group.secondary.id", "azurerm_resource_group.secondary"];
+  const other = { address: "data.azurerm_resource_group.other", values: { name: "rg-prod" } };
+  const plan = (r, data = []) => realisticPlan({ resources: [...base, r], data });
+  assert.deepEqual(checkPlan(plan(replicated({ target: { refs: own }, disk: { refs: own } })), id), []);
+  // A known id in another group, at the top or inside the disk block.
+  const elsewhere = `${SUB_ID}/resourceGroups/rg-prod`;
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ target: { known: elsewhere }, disk: { refs: own } })), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ target: { refs: own }, disk: { known: elsewhere } })), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  // From something the lab does not make (a variable, or a data source), even inside a block.
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ target: { refs: ["var.target_group_id"] }, disk: { refs: own } })), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ target: { refs: own }, disk: { refs: ["data.azurerm_resource_group.other.id", "data.azurerm_resource_group.other"] } }), [other]), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+});
+
+test("a failover group whose partner server is outside the lab is refused", () => {
+  const id = "az305-23-sql-failover";
+  const fog = (partner) => ({
+    resource: {
+      azurerm_resource_group: { lab: RG_HCL.lab, secondary: [{ name: "${var.resource_group_name}-secondary", location: "${var.secondary_region}" }] },
+      azurerm_mssql_server: {
+        p: [{ name: "${var.name_prefix}-sqlp", resource_group_name: "${azurerm_resource_group.lab.name}", location: "${azurerm_resource_group.lab.location}", version: "12.0" }],
+        s: [{ name: "${var.name_prefix}-sqls", resource_group_name: "${azurerm_resource_group.secondary.name}", location: "${azurerm_resource_group.secondary.location}", version: "12.0" }],
+      },
+      azurerm_mssql_failover_group: { fog: [{ name: "${var.name_prefix}-fog", server_id: "${azurerm_mssql_server.p.id}", partner_server: [{ id: partner }], read_write_endpoint_failover_policy: [{ mode: "Manual" }] }] },
+    },
+  });
+  assert.deepEqual(checkHcl(fog("${azurerm_mssql_server.s.id}"), id), []);
+  assert.deepEqual(verdict(checkHcl(fog(`${SUB_ID}/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/sql-prod`), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.deepEqual(verdict(checkHcl(fog("${var.partner_id}"), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  // In a plan the partner's id is unknown: from the lab's own server it passes, from a variable it does not.
+  const c = ctx(id, "23");
+  const server = (key, rg, group) => ({ address: `azurerm_mssql_server.${key}`, values: { name: `${c.prefix}-sql${key}`, resource_group_name: rg, location: "uksouth", version: "12.0" }, refs: { resource_group_name: [`azurerm_resource_group.${group}.name`, `azurerm_resource_group.${group}`] } });
+  const group = (refs) => ({ address: "azurerm_mssql_failover_group.fog", values: { name: `${c.prefix}-fog`, read_write_endpoint_failover_policy: [{ mode: "Manual" }], partner_server: [{}] }, unknown: ["server_id", "partner_server.0.id"], refs: { server_id: ["azurerm_mssql_server.p.id", "azurerm_mssql_server.p"], "partner_server.0.id": refs } });
+  const plan = (refs) => realisticPlan({ resources: [rgResource(c), rgSecondaryResource(c), server("p", c.rg, "lab"), server("s", c.rgSecondary, "secondary"), group(refs)] });
+  assert.deepEqual(checkPlan(plan(["azurerm_mssql_server.s.id", "azurerm_mssql_server.s"]), id), []);
+  assert.deepEqual(verdict(checkPlan(plan(["var.partner_id"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+});
+
+// Real `terraform show -json` (Terraform 1.14.6, checked offline 2026-10-05): only a schema *block* is split in
+// configuration.expressions ("partner_server": [{ "id": { references } }]). An *attribute* holding objects or
+// lists (azurerm's managed_disk and network_interface, typed set(object); a failover group's databases) has one
+// expression with every reference in it, while after_unknown marks the unknown values inside it by their own
+// nested paths ("managed_disk.0.target_resource_group_id", "databases.0"). (Lab 23's real plan, 2026-10-06, left
+// its databases wholly unknown, "databases": true; both forms are held to the references, below.)
+test("an unknown id inside an attribute written as blocks is held to the attribute's own references", () => {
+  const id = "az305-26-site-recovery";
+  const c = ctx(id, "26");
+  const IN1 = { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] };
+  const IN2 = { resource_group_name: ["azurerm_resource_group.secondary.name", "azurerm_resource_group.secondary"] };
+  const vm = "azurerm_linux_virtual_machine.vm";
+  const OWN_DISK = [`${vm}.os_disk[0].id`, `${vm}.os_disk[0]`, `${vm}.os_disk`, vm, "azurerm_storage_account.cache.id", "azurerm_storage_account.cache", "azurerm_resource_group.secondary.id", "azurerm_resource_group.secondary"];
+  const replicated = ({ disk = OWN_DISK, nic = ["azurerm_network_interface.vm.id", "azurerm_network_interface.vm"], diskKnown = {} } = {}) => ({
+    address: "azurerm_site_recovery_replicated_vm.vm",
+    values: { name: "vm-app", resource_group_name: c.rgSecondary, recovery_vault_name: "rsv-lab", managed_disk: [{ target_disk_type: "Standard_LRS", target_replica_disk_type: "Standard_LRS", ...diskKnown }], network_interface: [{ target_subnet_name: "snet-vms" }] },
+    unknown: ["source_vm_id", "managed_disk.0.disk_id", "managed_disk.0.staging_storage_account_id", ...("target_resource_group_id" in diskKnown ? [] : ["managed_disk.0.target_resource_group_id"]), "network_interface.0.source_network_interface_id"],
+    refs: { ...IN2, source_vm_id: [`${vm}.id`, vm], managed_disk: disk, network_interface: nic },
+  });
+  const base = [
+    rgResource(c),
+    rgSecondaryResource(c),
+    { address: vm, values: { name: "vm-app", resource_group_name: c.rg, location: "uksouth" }, refs: IN1 },
+    { address: "azurerm_network_interface.vm", values: { name: "nic-app", resource_group_name: c.rg, location: "uksouth" }, refs: IN1 },
+    { address: "azurerm_storage_account.cache", values: { name: `${c.prefix}cache`, resource_group_name: c.rg, location: "uksouth" }, refs: IN1 },
+  ];
+  const other = { address: "data.azurerm_resource_group.other", values: { name: "rg-prod" } };
+  const plan = (r, data = []) => realisticPlan({ resources: [...base, r], data });
+  // The shape is the real one: references under the attribute, none under the nested path.
+  const real = planResources(plan(replicated()));
+  const rv = real.resources.find((r) => r.address === "azurerm_site_recovery_replicated_vm.vm");
+  assert.ok(rv.refs.managed_disk.includes("azurerm_resource_group.secondary.id"));
+  assert.equal(rv.refs["managed_disk.0.target_resource_group_id"], undefined);
+  // Every reference the lab's own: passes (count.index, the instance's key, is no reference outside).
+  assert.deepEqual(checkPlan(plan(replicated()), id), []);
+  assert.deepEqual(checkPlan(plan(replicated({ nic: ["azurerm_network_interface.vm", "count.index"] })), id), []);
+  // A variable or a data source outside the lab among the attribute's references: refused.
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ disk: [...OWN_DISK.slice(0, 6), "var.target_group_id"] })), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ disk: [...OWN_DISK.slice(0, 6), "data.azurerm_resource_group.other.id", "data.azurerm_resource_group.other"] }), [other]), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ nic: ["var.nic_id"] })), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  const refused = checkPlan(plan(replicated({ nic: ["var.nic_id"] })), id)[0];
+  assert.match(refused.message, /network_interface\.0\.source_network_interface_id comes from var\.nic_id/);
+  // A known nested id is still read for what it is.
+  const elsewhere = `${SUB_ID}/resourceGroups/rg-prod`;
+  assert.deepEqual(verdict(checkPlan(plan(replicated({ disk: OWN_DISK.slice(0, 6), diskKnown: { target_resource_group_id: elsewhere } })), id)), [["outside-scope", "azurerm_site_recovery_replicated_vm.vm"]]);
+  assert.deepEqual(checkPlan(plan(replicated({ disk: OWN_DISK.slice(0, 6), diskKnown: { target_resource_group_id: `${SUB_ID}/resourceGroups/${c.rgSecondary}` } })), id), []);
+});
+
+test("an unknown element of a list of ids (a failover group's databases) is held to the lab's own resources", () => {
+  const id = "az305-23-sql-failover";
+  const c = ctx(id, "23");
+  const server = (key, rg, group) => ({ address: `azurerm_mssql_server.${key}`, values: { name: `${c.prefix}-sql${key}`, resource_group_name: rg, location: "uksouth", version: "12.0" }, refs: { resource_group_name: [`azurerm_resource_group.${group}.name`, `azurerm_resource_group.${group}`] } });
+  const db = { address: "azurerm_mssql_database.primary", values: { name: "sqldb-app" }, unknown: ["server_id"], refs: { server_id: ["azurerm_mssql_server.p.id", "azurerm_mssql_server.p"] } };
+  const group = (databases) => ({
+    address: "azurerm_mssql_failover_group.fog",
+    values: { name: `${c.prefix}-fog`, read_write_endpoint_failover_policy: [{ mode: "Manual" }], partner_server: [{}], databases: ["(unknown)"] },
+    unknown: ["server_id", "partner_server.0.id", "databases.0"],
+    refs: { server_id: ["azurerm_mssql_server.p.id", "azurerm_mssql_server.p"], "partner_server.0.id": ["azurerm_mssql_server.s.id", "azurerm_mssql_server.s"], databases },
+  });
+  // Something outside the lab, read at plan (a data source deferred to apply would be unknown here too).
+  const otherDb = { address: "data.azurerm_resource_group.other", values: { name: "rg-prod" } };
+  const plan = (databases) => realisticPlan({ resources: [rgResource(c), rgSecondaryResource(c), server("p", c.rg, "lab"), server("s", c.rgSecondary, "secondary"), db, group(databases)], data: [otherDb] });
+  assert.deepEqual(checkPlan(plan(["azurerm_mssql_database.primary.id", "azurerm_mssql_database.primary"]), id), []);
+  assert.deepEqual(verdict(checkPlan(plan(["data.azurerm_resource_group.other.id", "data.azurerm_resource_group.other"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.deepEqual(verdict(checkPlan(plan(["var.database_ids"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.match(checkPlan(plan(["var.database_ids"]), id)[0].message, /databases\.0 comes from var\.database_ids/);
+});
+
+// Identity change 2 (approved by Steven 2026-10-05): lab 20 assigns its two custom roles from Terraform.
+test("lab 20 may assign its own custom roles inside its group, and no other lab may", () => {
+  const roles = { netops: "60bdbc03-b25a-4a83-9fce-b2c5afff563c", appops: "bd52e05a-22cb-4bd5-b56c-3396add9b7c0" };
+  const hcl = {
+    data: { azurerm_subscription: { current: [{}] } },
+    resource: {
+      azurerm_resource_group: RG_HCL,
+      azurerm_user_assigned_identity: { ops: [{ name: "id-ops", resource_group_name: "${azurerm_resource_group.lab.name}", location: "${azurerm_resource_group.lab.location}" }] },
+      azurerm_role_definition: Object.fromEntries(Object.entries(roles).map(([k, g]) => [k, [{ role_definition_id: g, name: `lab-\${var.lab_id}-${k}`, scope: "${data.azurerm_subscription.current.id}", assignable_scopes: ["${azurerm_resource_group.lab.id}"], permissions: [{ actions: ["Microsoft.Resources/subscriptions/resourceGroups/read"] }] }]])),
+      azurerm_role_assignment: Object.fromEntries(Object.keys(roles).map((k) => [k, [{ scope: "${azurerm_resource_group.lab.id}", role_definition_id: `\${azurerm_role_definition.${k}.role_definition_resource_id}`, principal_id: "${azurerm_user_assigned_identity.ops.principal_id}", principal_type: "ServicePrincipal" }]])),
+    },
+  };
+  assert.deepEqual(checkHcl(hcl, "az305-20-landing-zone"), []);
+  assert.deepEqual(verdict(checkHcl(hcl, "az305-21-monitoring-scale")).map(([rule]) => rule), ["role", "role", "role", "role"]);
+});
+
+// Review (labs batch 3): a whole top-level attribute not known until apply is held to its references like a nested
+// one. A failover group's databases from a data source (a splat, of unknown length, has only the data source's own
+// address as its reference) or a variable must not pass because the attribute is not a scope attribute.
+test("an unknown top-level attribute built from ids is held to the lab's own resources", () => {
+  const id = "az305-23-sql-failover";
+  const c = ctx(id, "23");
+  const server = (key, rg, group) => ({ address: `azurerm_mssql_server.${key}`, values: { name: `${c.prefix}-sql${key}`, resource_group_name: rg, location: "uksouth", version: "12.0" }, refs: { resource_group_name: [`azurerm_resource_group.${group}.name`, `azurerm_resource_group.${group}`] } });
+  const db = { address: "azurerm_mssql_database.primary", values: { name: "sqldb-app" }, unknown: ["server_id"], refs: { server_id: ["azurerm_mssql_server.p.id", "azurerm_mssql_server.p"] } };
+  const group = (databases) => ({
+    address: "azurerm_mssql_failover_group.fog",
+    values: { name: `${c.prefix}-fog`, read_write_endpoint_failover_policy: [{ mode: "Manual" }], partner_server: [{}] },
+    unknown: ["server_id", "partner_server.0.id", "databases"],
+    refs: { server_id: ["azurerm_mssql_server.p.id", "azurerm_mssql_server.p"], "partner_server.0.id": ["azurerm_mssql_server.s.id", "azurerm_mssql_server.s"], databases },
+  });
+  const plan = (databases) => realisticPlan({ resources: [rgResource(c), rgSecondaryResource(c), server("p", c.rg, "lab"), server("s", c.rgSecondary, "secondary"), db, group(databases)] }); // the data source is deferred to apply: in the configuration only
+  // The lab's own databases (a splat over them lists the resource itself): passes.
+  assert.deepEqual(checkPlan(plan(["azurerm_mssql_database.primary.id", "azurerm_mssql_database.primary"]), id), []);
+  assert.deepEqual(checkPlan(plan(["azurerm_mssql_database.primary"]), id), []);
+  // data.x[*].id: Terraform lists the data source alone. Refused, as is a variable of ids.
+  assert.deepEqual(verdict(checkPlan(plan(["data.azurerm_mssql_database.other"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.match(checkPlan(plan(["data.azurerm_mssql_database.other"]), id)[0].message, /^databases comes from data\.azurerm_mssql_database\.other/);
+  assert.deepEqual(verdict(checkPlan(plan(["var.database_ids"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.deepEqual(verdict(checkPlan(plan(["data.azurerm_mssql_database.other.id", "data.azurerm_mssql_database.other"]), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  // In HCL: the splat, and a dynamic partner_server over a data source, are refused too. (A plan never shows a
+  // dynamic block's expressions, terraform jsonconfig skips them, so the HCL check is where a dynamic block is read.)
+  const hcl = (fog) => ({
+    data: { azurerm_mssql_server: { other: [{ name: "sql-prod", resource_group_name: "rg-prod" }] }, azurerm_mssql_database: { other: [{ name: "sqldb-prod", server_id: "${data.azurerm_mssql_server.other.id}" }] } },
+    resource: {
+      azurerm_resource_group: { lab: RG_HCL.lab, secondary: [{ name: "${var.resource_group_name}-secondary", location: "${var.secondary_region}" }] },
+      azurerm_mssql_server: {
+        p: [{ name: "${var.name_prefix}-sqlp", resource_group_name: "${azurerm_resource_group.lab.name}", location: "${azurerm_resource_group.lab.location}", version: "12.0" }],
+        s: [{ name: "${var.name_prefix}-sqls", resource_group_name: "${azurerm_resource_group.secondary.name}", location: "${azurerm_resource_group.secondary.location}", version: "12.0" }],
+      },
+      azurerm_mssql_failover_group: { fog: [{ name: "${var.name_prefix}-fog", server_id: "${azurerm_mssql_server.p.id}", read_write_endpoint_failover_policy: [{ mode: "Manual" }], ...fog }] },
+    },
+  });
+  assert.deepEqual(checkHcl(hcl({ partner_server: [{ id: "${azurerm_mssql_server.s.id}" }] }), id), []);
+  assert.deepEqual(verdict(checkHcl(hcl({ partner_server: [{ id: "${azurerm_mssql_server.s.id}" }], databases: "${data.azurerm_mssql_database.other[*].id}" }), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+  assert.deepEqual(verdict(checkHcl(hcl({ dynamic: { partner_server: [{ for_each: "${data.azurerm_mssql_server.other[*]}", content: [{ id: "${partner_server.value.id}" }] }] } }), id)), [["outside-scope", "azurerm_mssql_failover_group.fog"]]);
+});
+
+// Review (labs batch 3): an id inside a JSON string (a policy assignment's parameters, a jsonencode()) is an id.
+test("ids inside JSON strings are read for what they are", () => {
+  const id = "az305-20-landing-zone";
+  const c = ctx(id, "20");
+  const foreign = `${SUB_ID}/resourceGroups/rg-other/providers/Microsoft.OperationalInsights/workspaces/law-prod`;
+  const own = `${SUB_ID}/resourceGroups/${c.rg}/providers/Microsoft.OperationalInsights/workspaces/law-lab`;
+  const BUILTIN = "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c";
+  const hcl = (parameters) => ({
+    resource: {
+      azurerm_resource_group: RG_HCL,
+      azurerm_management_group: { corp: [{ name: "lab-${var.lab_id}-corp", display_name: "lab-${var.lab_id}-corp" }] },
+      azurerm_management_group_policy_assignment: { diag: [{ name: "diag", management_group_id: "${azurerm_management_group.corp.id}", policy_definition_id: BUILTIN, parameters }] },
+    },
+  });
+  const params = (v) => JSON.stringify({ logAnalytics: { value: v } });
+  assert.deepEqual(checkHcl(hcl(params("eastus")), id), []);
+  assert.deepEqual(checkHcl(hcl(params(own)), id), []);
+  assert.deepEqual(verdict(checkHcl(hcl(params(foreign)), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  assert.match(checkHcl(hcl(params(foreign)), id)[0].message, /parameters.*logAnalytics\.value.*rg-other/);
+  // A list, a management group not the lab's, the subscription, and keys hold ids too.
+  assert.deepEqual(verdict(checkHcl(hcl(JSON.stringify([{ scopes: [own, foreign] }])), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  assert.deepEqual(verdict(checkHcl(hcl(params("/providers/Microsoft.Management/managementGroups/corp")), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  assert.deepEqual(verdict(checkHcl(hcl(params(SUB_ID)), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  assert.deepEqual(verdict(checkHcl(hcl(JSON.stringify({ [foreign]: { value: 1 } })), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  // Not JSON after all: left as a string.
+  assert.deepEqual(checkHcl(hcl("{not json"), id), []);
+  // In a plan: a known JSON string with a foreign id is refused; a jsonencode() of an unknown id is held to its references.
+  const assignment = (parameters, refs = {}, unknown = []) => ({ address: "azurerm_management_group_policy_assignment.diag", values: { name: "diag", policy_definition_id: BUILTIN, ...(parameters === undefined ? {} : { parameters }) }, unknown: ["management_group_id", ...unknown], refs: { management_group_id: ["azurerm_management_group.corp.id", "azurerm_management_group.corp"], ...refs } });
+  const mg = { address: "azurerm_management_group.corp", values: { name: `lab-${id}-corp`, display_name: `lab-${id}-corp` } };
+  const law = { address: "azurerm_log_analytics_workspace.law", values: { name: "law-lab", resource_group_name: c.rg, location: "uksouth" }, refs: { resource_group_name: ["azurerm_resource_group.lab.name", "azurerm_resource_group.lab"] } };
+  const plan = (a) => realisticPlan({ resources: [rgResource(c), mg, law, a] });
+  assert.deepEqual(checkPlan(plan(assignment(params(own))), id), []);
+  assert.deepEqual(verdict(checkPlan(plan(assignment(params(foreign))), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+  assert.deepEqual(checkPlan(plan(assignment(undefined, { parameters: ["azurerm_log_analytics_workspace.law.id", "azurerm_log_analytics_workspace.law"] }, ["parameters"])), id), []);
+  assert.deepEqual(verdict(checkPlan(plan(assignment(undefined, { parameters: ["data.azurerm_log_analytics_workspace.prod.id", "data.azurerm_log_analytics_workspace.prod"] }, ["parameters"])), id)), [["outside-scope", "azurerm_management_group_policy_assignment.diag"]]);
+});
+
+// Review (labs batch 3): a deployIfNotExists rule carries a template the remediation deploys; it is checked like
+// any template a lab deploys (templateProblems), and its deployment may not be sent to another group or subscription.
+test("a DINE rule's embedded template is checked as a template, and its deployment stays in the resource's group", () => {
+  const id = "az305-21-monitoring-scale";
+  const DIAG = { type: "Microsoft.KeyVault/vaults/providers/diagnosticSettings", apiVersion: "2021-05-01-preview", name: "[concat(parameters('vaultName'), '/Microsoft.Insights/setbypolicy-alllogs')]", properties: { workspaceId: "[parameters('logAnalytics')]", logs: [{ categoryGroup: "allLogs", enabled: true }] } };
+  const withTemplate = (resources, deployment = {}, extra = {}) => {
+    const rule = dineRule([MONITORING_CONTRIBUTOR]);
+    rule.then.details.deployment = { ...deployment, properties: { mode: "incremental", template: { $schema: RG_SCHEMA, contentVersion: "1.0.0.0", parameters: { vaultName: { type: "string" }, logAnalytics: { type: "string" } }, resources, ...extra }, parameters: { vaultName: { value: "[field('name')]" } } } };
+    return dineHcl(rule);
+  };
+  // Lab 21's own: a Key Vault's diagnostic setting.
+  assert.deepEqual(checkHcl(withTemplate([DIAG]), id), []);
+  const refused = (hcl) => verdict(checkHcl(hcl, id)).map(([rule]) => rule);
+  // A role assignment, a deployment script, a type off the list, a foreign id, subscription() in the template: refused.
+  assert.deepEqual(refused(withTemplate([{ type: "Microsoft.Authorization/roleAssignments", apiVersion: "2022-04-01", name: "[guid('x')]", properties: { roleDefinitionId: `/providers/Microsoft.Authorization/roleDefinitions/${OWNER}`, principalId: "x" } }])), ["role"]);
+  assert.deepEqual(refused(withTemplate([{ type: "Microsoft.Resources/deploymentScripts", apiVersion: "2023-08-01", name: "s", kind: "AzureCLI", properties: {} }])), ["outside-scope"]);
+  assert.deepEqual(refused(withTemplate([{ type: "Microsoft.Compute/virtualMachines", apiVersion: "2024-03-01", name: "vm", properties: {} }])), ["outside-scope"]);
+  assert.deepEqual(refused(withTemplate([{ ...DIAG, properties: { ...DIAG.properties, workspaceId: `${SUB_ID}/resourceGroups/rg-other/providers/Microsoft.OperationalInsights/workspaces/law` } }])), ["outside-scope"]);
+  assert.deepEqual(refused(withTemplate([{ ...DIAG, properties: { ...DIAG.properties, workspaceId: "[concat(subscription().id, '/x')]" } }])), ["outside-scope"]);
+  assert.deepEqual(refused(withTemplate([DIAG], {}, { $schema: "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#" })), ["outside-scope"]);
+  assert.match(checkHcl(withTemplate([{ type: "Microsoft.Compute/virtualMachines", apiVersion: "2024-03-01", name: "vm", properties: {} }]), id)[0].message, /policy_rule's deployment template/);
+  // The deployment sent to another group or subscription (any case of the key), or a linked template.
+  assert.deepEqual(refused(withTemplate([DIAG], { resourceGroup: "rg-other" })), ["outside-scope"]);
+  assert.deepEqual(refused(withTemplate([DIAG], { SubscriptionId: "00000000-0000-0000-0000-000000000000" })), ["outside-scope"]);
+  const linked = dineRule([MONITORING_CONTRIBUTOR]);
+  linked.then.details.deployment = { properties: { mode: "incremental", templateLink: { uri: "https://example.com/t.json" } } };
+  assert.deepEqual(refused(dineHcl(linked)), ["outside-scope"]);
+  // The lab's own group, by name or as the resource's group, is fine.
+  assert.deepEqual(checkHcl(withTemplate([DIAG], { resourceGroup: "[resourceGroup().name]" }), id), []);
+  assert.deepEqual(checkHcl(withTemplate([DIAG], { resourceGroup: `rg-lab-${id}` }), id), []);
+  // Lab 21's real plan still passes.
+  assert.deepEqual(checkPlan(LAB_PLANS[id].plan, id), []);
+});
+
+// ── What batch 3's real plans showed (release tests, 2026-10-06) ─────────
+
+// Labs 22 and 26 recorded their VMs' admin_ssh_key with no references at all: `terraform show -json` leaves a
+// dynamic block out of configuration.expressions, while its values are in the plan. So an unknown value inside a
+// dynamic block carried no references and looked computed by the provider, and an id from a data source deferred
+// to apply (a subnet in another group) passed. A plan now refuses an unknown value inside a dynamic block: the
+// check cannot see where it comes from. (The HCL check reads dynamic blocks; a VM's admin_ssh_key, all known, passes.)
+test("an unknown value inside a dynamic block is refused in a plan, which leaves dynamic blocks out of its configuration", () => {
+  const id = "az104-07-files";
+  const c = ctx(id, "07");
+  const vnet = { address: "azurerm_virtual_network.lab", values: { name: "vnet-lab", resource_group_name: c.rg, location: "uksouth", address_space: ["10.64.64.0/20"], tags: c.tags }, refs: IN_RG };
+  const subnet = { address: "azurerm_subnet.vms", values: { name: "snet-vms", resource_group_name: c.rg, virtual_network_name: "vnet-lab", address_prefixes: ["10.64.64.0/24"] }, refs: { resource_group_name: IN_RG.resource_group_name, virtual_network_name: ref("azurerm_virtual_network.lab", "name") } };
+  const nic = (dynamic, subnetRefs) => ({
+    address: "azurerm_network_interface.x",
+    values: { name: "nic-x", resource_group_name: c.rg, location: "uksouth", tags: c.tags, ip_configuration: [{ name: "ipconfig1", subnet_id: "(unknown)", private_ip_address_allocation: "Dynamic" }] },
+    unknown: ["ip_configuration.0.subnet_id"],
+    refs: dynamic ? { ...IN_RG } : { ...IN_RG, "ip_configuration.0.subnet_id": subnetRefs },
+    ...(dynamic ? { dynamic: ["ip_configuration"] } : {}),
+  });
+  const plan = (r) => {
+    const p = realisticPlan({ resources: [rgResource(c), vnet, subnet, r], variables: c.variables });
+    // A data source in another group, deferred to apply (it depends on a lab resource): in the configuration only.
+    p.configuration.root_module.resources.push({
+      address: "data.azurerm_subnet.prod",
+      mode: "data",
+      type: "azurerm_subnet",
+      name: "prod",
+      provider_config_key: "azurerm",
+      expressions: { name: { constant_value: "snet-app" }, virtual_network_name: { constant_value: "vnet-prod" }, resource_group_name: { constant_value: "rg-prod" } },
+      depends_on: ["azurerm_resource_group.lab"],
+    });
+    return p;
+  };
+  // Written out, the block is held to its references: the lab's own subnet passes, the deferred data source does not.
+  assert.deepEqual(checkPlan(plan(nic(false, ref("azurerm_subnet.vms", "id"))), id), []);
+  assert.deepEqual(verdict(checkPlan(plan(nic(false, ref("data.azurerm_subnet.prod", "id"))), id)), [["outside-scope", "azurerm_network_interface.x"]]);
+  // As a dynamic block the plan shows the unknown id and nothing of where it comes from: refused. So is any
+  // unknown value in it, the provider's own too (which this check cannot tell from a configured one).
+  const p = plan(nic(true));
+  assert.equal(p.configuration.root_module.resources.find((r) => r.address === "azurerm_network_interface.x").expressions.ip_configuration, undefined, "the plan's configuration leaves the dynamic block out");
+  const refused = checkPlan(p, id);
+  assert.deepEqual(verdict(refused), [["outside-scope", "azurerm_network_interface.x"]]);
+  assert.match(refused[0].message, /^ip_configuration\.0\.[a-z_]+ is unknown inside a dynamic block/);
+  assert.ok(planResources(p).resources.find((r) => r.address === "azurerm_network_interface.x").values.ip_configuration[0].subnet_id.dynamic, "the subnet id is marked as inside a dynamic block");
+  // A VM's dynamic admin_ssh_key holds only known values: it passes, as the real labs 22 and 26 did.
+  const [vmNic, vm] = linuxVm(c, { name: "vm-files", subnet: "azurerm_subnet.vms" });
+  const withVm = realisticPlan({ resources: [rgResource(c), vnet, subnet, vmNic, vm], variables: c.variables });
+  assert.equal(withVm.configuration.root_module.resources.find((r) => r.address === vm.address).expressions.admin_ssh_key, undefined);
+  assert.ok(withVm.planned_values.root_module.resources.find((r) => r.address === vm.address).values.admin_ssh_key.length);
+  assert.deepEqual(checkPlan(withVm, id), []);
+});
+
+// Lab 23's real plan left two lists of ids wholly unknown (after_unknown "databases": true and
+// "private_dns_zone_group.0.private_dns_zone_ids": true, not their ".0" elements, which the fixture had). A wholly
+// unknown list is held to the whole expression's references, so a zone or a database from outside the lab is
+// refused. A literal id mixed into such a list never reaches the plan (Terraform prints only references for an
+// expression that is not constant): the HCL check, in CI, is where it is caught.
+test("a list of ids a plan leaves wholly unknown is held to its references, and a literal in it is caught in HCL", () => {
+  const id = "az305-23-sql-failover";
+  const c = ctx(id, "23");
+  const zone = { address: "azurerm_private_dns_zone.sql", values: { name: "privatelink.database.windows.net", resource_group_name: c.rg, tags: c.tags }, refs: { resource_group_name: IN_RG.resource_group_name, tags: ["var.tags"] } };
+  const endpoint = (zoneRefs) => ({
+    address: "azurerm_private_endpoint.primary",
+    values: {
+      name: "pe-sqlp",
+      resource_group_name: c.rg,
+      location: "uksouth",
+      tags: c.tags,
+      private_service_connection: [{ name: "psc-sqlp", subresource_names: ["sqlServer"], is_manual_connection: false }],
+      private_dns_zone_group: [{ name: "sql" }],
+    },
+    unknown: ["subnet_id", "private_service_connection.0.private_connection_resource_id", "private_dns_zone_group.0.private_dns_zone_ids"],
+    refs: {
+      ...IN_RG,
+      subnet_id: ref("azurerm_resource_group.lab", "id"),
+      "private_service_connection.0.private_connection_resource_id": ref("azurerm_resource_group.lab", "id"),
+      "private_dns_zone_group.0.private_dns_zone_ids": zoneRefs,
+    },
+  });
+  const plan = (zoneRefs) => realisticPlan({ resources: [rgResource(c), zone, endpoint(zoneRefs)], variables: c.variables });
+  const own = ref("azurerm_private_dns_zone.sql", "id");
+  assert.equal(plan(own).resource_changes.at(-1).change.after_unknown.private_dns_zone_group[0].private_dns_zone_ids, true, "wholly unknown, as the real plan printed it");
+  assert.deepEqual(checkPlan(plan(own), id), []);
+  // The gateway's own privatelink zone, or any zone found by a data source or passed in: refused.
+  assert.deepEqual(verdict(checkPlan(plan(ref("data.azurerm_private_dns_zone.shared", "id")), id)), [["outside-scope", "azurerm_private_endpoint.primary"]]);
+  assert.deepEqual(verdict(checkPlan(plan([...own, "var.zone_ids"]), id)), [["outside-scope", "azurerm_private_endpoint.primary"]]);
+  // In HCL, a literal id in the list is read for what it is.
+  const foreign = `${SUB_ID}/resourceGroups/rg-prod/providers/Microsoft.Network/privateDnsZones/privatelink.database.windows.net`;
+  const hcl = (ids) => ({
+    resource: {
+      azurerm_resource_group: RG_HCL,
+      azurerm_private_dns_zone: { sql: [{ name: "privatelink.database.windows.net", resource_group_name: "${azurerm_resource_group.lab.name}" }] },
+      azurerm_private_endpoint: {
+        primary: [
+          {
+            name: "pe-sqlp",
+            resource_group_name: "${azurerm_resource_group.lab.name}",
+            location: "${azurerm_resource_group.lab.location}",
+            subnet_id: "${azurerm_resource_group.lab.id}",
+            private_service_connection: [{ name: "psc-sqlp", private_connection_resource_id: "${azurerm_resource_group.lab.id}", subresource_names: ["sqlServer"], is_manual_connection: false }],
+            private_dns_zone_group: [{ name: "sql", private_dns_zone_ids: ids }],
+          },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(checkHcl(hcl(["${azurerm_private_dns_zone.sql.id}"]), id), []);
+  assert.deepEqual(verdict(checkHcl(hcl(["${azurerm_private_dns_zone.sql.id}", foreign]), id)), [["outside-scope", "azurerm_private_endpoint.primary"]]);
 });

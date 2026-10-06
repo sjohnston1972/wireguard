@@ -13,7 +13,7 @@ import { runInsights } from "../src/insights/runner";
 import { effectiveConfig, fixedConfig } from "../src/settings";
 import { saveSnapshot } from "../src/state";
 import { api, base } from "./api-helpers";
-import { azureEnv, allNotDue, setFeed, feedRows, callsTo, fixture, json, running, NOW, ago, MIN, NO_AZURE } from "./insights-helpers";
+import { azureEnv, allNotDue, setFeed, feedRows, callsTo, countD1, fixture, json, running, NOW, ago, MIN, NO_AZURE } from "./insights-helpers";
 import type { Env } from "../src/env";
 
 afterEach(() => {
@@ -167,6 +167,27 @@ describe("prices", () => {
     await env.DB.prepare("DELETE FROM az_prices").run();
     await runInsights(env, NOW);
     expect(callsTo(az, "prices.azure.com")).toHaveLength(1 + 3);
+  });
+
+  it("the feed reads every region's freshness in one statement and still picks the first stale region", async () => {
+    const { env, az } = azureEnv();
+    await env.DB.prepare("DELETE FROM profiles").run();
+    await env.DB.prepare("INSERT INTO profiles (name, region, vm_size) VALUES ('US', 'eastus', 'Standard_B2s')").run();
+    // uksouth fresh, eastus never read, ukwest (a lab's secondary region) two days old.
+    await seedPrices(env, "uksouth", ago(10));
+    await seedPrices(env, "ukwest", ago(2 * 24 * 60));
+    await allNotDue(env);
+    await setFeed(env, "prices", { status: "ok", next_due_at: ago(1) });
+    const d1 = countD1(env);
+    await runInsights(env, NOW);
+    d1.stop();
+    // The freshness read: MIN(fetched_at) per region, every region in one statement.
+    expect(d1.sql.filter((s) => /^SELECT .*MIN\(fetched_at\).* FROM az_prices/.test(s))).toHaveLength(1);
+    const calls = callsTo(az, "prices.azure.com");
+    expect(calls).toHaveLength(1);
+    expect(decodeURIComponent(calls[0]!.url)).toContain("armRegionName eq 'eastus'");
+    // Another stale region (ukwest) remains, so the feed comes back in five minutes.
+    expect((await feedRows(env)).prices.next_due_at).toBe(new Date(NOW.getTime() + 5 * MIN).toISOString());
   });
 
   it("settings PUT accepts rate_source", async () => {

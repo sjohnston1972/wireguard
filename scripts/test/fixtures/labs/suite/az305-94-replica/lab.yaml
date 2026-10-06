@@ -1,0 +1,28 @@
+# A fixture for labs-content-suite.test.mjs: one VM replicated by Site
+# Recovery into the secondary group. Its replica disk is priced in the
+# secondary region, and its failover VM is one more entry in vm_sizes (labs
+# batch 3 plan, C0 names). Not a catalogue lab.
+id: az305-94-replica
+version: 1
+title: "Replica"
+summary: One VM replicated to the secondary region.
+exam: AZ-305
+skill_areas: [az305.continuity]
+level: expert
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Linux VM, Standard_B1s", gbp_h: 0.0089, retail: { sku: Standard_B1s } }
+    - { name: "OS disk, Standard HDD S4", gbp_h: 0.0017, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Replica disk, Standard HDD S4", gbp_h: 0.0017, region: secondary, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Test failover VM, Standard_B1s", gbp_h: 0.0089, region: secondary, retail: { sku: Standard_B1s } }
+  pricey: null
+timing: { deploy_min: 25, destroy_min: 20, session_h: 3, max_h: 8 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: ukwest }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

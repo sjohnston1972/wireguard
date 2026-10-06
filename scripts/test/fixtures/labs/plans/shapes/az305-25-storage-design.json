@@ -1,0 +1,328 @@
+{
+ "resources": {
+  "azurerm_resource_group.lab": {
+   "type": "azurerm_resource_group",
+   "refs": {
+    "location": [
+     "var.region"
+    ],
+    "name": [
+     "var.resource_group_name"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_storage_account.lake": {
+   "type": "azurerm_storage_account",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "blob_properties",
+    "id",
+    "large_file_share_enabled",
+    "network_rules",
+    "primary_access_key",
+    "primary_blob_connection_string",
+    "primary_blob_endpoint",
+    "primary_blob_host",
+    "primary_blob_internet_endpoint",
+    "primary_blob_internet_host",
+    "primary_blob_microsoft_endpoint",
+    "primary_blob_microsoft_host",
+    "primary_connection_string",
+    "primary_dfs_endpoint",
+    "primary_dfs_host",
+    "primary_dfs_internet_endpoint",
+    "primary_dfs_internet_host",
+    "primary_dfs_microsoft_endpoint",
+    "primary_dfs_microsoft_host",
+    "primary_file_endpoint",
+    "primary_file_host",
+    "primary_file_internet_endpoint",
+    "primary_file_internet_host",
+    "primary_file_microsoft_endpoint",
+    "primary_file_microsoft_host",
+    "primary_location",
+    "primary_queue_endpoint",
+    "primary_queue_host",
+    "primary_queue_microsoft_endpoint",
+    "primary_queue_microsoft_host",
+    "primary_table_endpoint",
+    "primary_table_host",
+    "primary_table_microsoft_endpoint",
+    "primary_table_microsoft_host",
+    "primary_web_endpoint",
+    "primary_web_host",
+    "primary_web_internet_endpoint",
+    "primary_web_internet_host",
+    "primary_web_microsoft_endpoint",
+    "primary_web_microsoft_host",
+    "queue_properties",
+    "routing",
+    "secondary_access_key",
+    "secondary_blob_connection_string",
+    "secondary_blob_endpoint",
+    "secondary_blob_host",
+    "secondary_blob_internet_endpoint",
+    "secondary_blob_internet_host",
+    "secondary_blob_microsoft_endpoint",
+    "secondary_blob_microsoft_host",
+    "secondary_connection_string",
+    "secondary_dfs_endpoint",
+    "secondary_dfs_host",
+    "secondary_dfs_internet_endpoint",
+    "secondary_dfs_internet_host",
+    "secondary_dfs_microsoft_endpoint",
+    "secondary_dfs_microsoft_host",
+    "secondary_file_endpoint",
+    "secondary_file_host",
+    "secondary_file_internet_endpoint",
+    "secondary_file_internet_host",
+    "secondary_file_microsoft_endpoint",
+    "secondary_file_microsoft_host",
+    "secondary_location",
+    "secondary_queue_endpoint",
+    "secondary_queue_host",
+    "secondary_queue_microsoft_endpoint",
+    "secondary_queue_microsoft_host",
+    "secondary_table_endpoint",
+    "secondary_table_host",
+    "secondary_table_microsoft_endpoint",
+    "secondary_table_microsoft_host",
+    "secondary_web_endpoint",
+    "secondary_web_host",
+    "secondary_web_internet_endpoint",
+    "secondary_web_internet_host",
+    "secondary_web_microsoft_endpoint",
+    "secondary_web_microsoft_host",
+    "share_properties",
+    "static_website"
+   ],
+   "sensitive": [
+    "primary_access_key",
+    "primary_blob_connection_string",
+    "primary_connection_string",
+    "secondary_access_key",
+    "secondary_blob_connection_string",
+    "secondary_connection_string"
+   ]
+  },
+  "azurerm_storage_account.records": {
+   "type": "azurerm_storage_account",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "blob_properties",
+    "id",
+    "large_file_share_enabled",
+    "network_rules",
+    "primary_access_key",
+    "primary_blob_connection_string",
+    "primary_blob_endpoint",
+    "primary_blob_host",
+    "primary_blob_internet_endpoint",
+    "primary_blob_internet_host",
+    "primary_blob_microsoft_endpoint",
+    "primary_blob_microsoft_host",
+    "primary_connection_string",
+    "primary_dfs_endpoint",
+    "primary_dfs_host",
+    "primary_dfs_internet_endpoint",
+    "primary_dfs_internet_host",
+    "primary_dfs_microsoft_endpoint",
+    "primary_dfs_microsoft_host",
+    "primary_file_endpoint",
+    "primary_file_host",
+    "primary_file_internet_endpoint",
+    "primary_file_internet_host",
+    "primary_file_microsoft_endpoint",
+    "primary_file_microsoft_host",
+    "primary_location",
+    "primary_queue_endpoint",
+    "primary_queue_host",
+    "primary_queue_microsoft_endpoint",
+    "primary_queue_microsoft_host",
+    "primary_table_endpoint",
+    "primary_table_host",
+    "primary_table_microsoft_endpoint",
+    "primary_table_microsoft_host",
+    "primary_web_endpoint",
+    "primary_web_host",
+    "primary_web_internet_endpoint",
+    "primary_web_internet_host",
+    "primary_web_microsoft_endpoint",
+    "primary_web_microsoft_host",
+    "queue_properties",
+    "routing",
+    "secondary_access_key",
+    "secondary_blob_connection_string",
+    "secondary_blob_endpoint",
+    "secondary_blob_host",
+    "secondary_blob_internet_endpoint",
+    "secondary_blob_internet_host",
+    "secondary_blob_microsoft_endpoint",
+    "secondary_blob_microsoft_host",
+    "secondary_connection_string",
+    "secondary_dfs_endpoint",
+    "secondary_dfs_host",
+    "secondary_dfs_internet_endpoint",
+    "secondary_dfs_internet_host",
+    "secondary_dfs_microsoft_endpoint",
+    "secondary_dfs_microsoft_host",
+    "secondary_file_endpoint",
+    "secondary_file_host",
+    "secondary_file_internet_endpoint",
+    "secondary_file_internet_host",
+    "secondary_file_microsoft_endpoint",
+    "secondary_file_microsoft_host",
+    "secondary_location",
+    "secondary_queue_endpoint",
+    "secondary_queue_host",
+    "secondary_queue_microsoft_endpoint",
+    "secondary_queue_microsoft_host",
+    "secondary_table_endpoint",
+    "secondary_table_host",
+    "secondary_table_microsoft_endpoint",
+    "secondary_table_microsoft_host",
+    "secondary_web_endpoint",
+    "secondary_web_host",
+    "secondary_web_internet_endpoint",
+    "secondary_web_internet_host",
+    "secondary_web_microsoft_endpoint",
+    "secondary_web_microsoft_host",
+    "share_properties",
+    "static_website"
+   ],
+   "sensitive": [
+    "primary_access_key",
+    "primary_blob_connection_string",
+    "primary_connection_string",
+    "secondary_access_key",
+    "secondary_blob_connection_string",
+    "secondary_connection_string"
+   ]
+  },
+  "azurerm_storage_container.curated": {
+   "type": "azurerm_storage_container",
+   "refs": {
+    "storage_account_id": [
+     "azurerm_storage_account.lake.id",
+     "azurerm_storage_account.lake"
+    ]
+   },
+   "unknown": [
+    "default_encryption_scope",
+    "has_immutability_policy",
+    "has_legal_hold",
+    "id",
+    "metadata",
+    "resource_manager_id",
+    "storage_account_id",
+    "url"
+   ],
+   "sensitive": []
+  },
+  "azurerm_storage_container.evidence": {
+   "type": "azurerm_storage_container",
+   "refs": {
+    "storage_account_id": [
+     "azurerm_storage_account.records.id",
+     "azurerm_storage_account.records"
+    ]
+   },
+   "unknown": [
+    "default_encryption_scope",
+    "has_immutability_policy",
+    "has_legal_hold",
+    "id",
+    "metadata",
+    "resource_manager_id",
+    "storage_account_id",
+    "url"
+   ],
+   "sensitive": []
+  },
+  "azurerm_storage_container.raw": {
+   "type": "azurerm_storage_container",
+   "refs": {
+    "storage_account_id": [
+     "azurerm_storage_account.lake.id",
+     "azurerm_storage_account.lake"
+    ]
+   },
+   "unknown": [
+    "default_encryption_scope",
+    "has_immutability_policy",
+    "has_legal_hold",
+    "id",
+    "metadata",
+    "resource_manager_id",
+    "storage_account_id",
+    "url"
+   ],
+   "sensitive": []
+  },
+  "azurerm_storage_container_immutability_policy.evidence": {
+   "type": "azurerm_storage_container_immutability_policy",
+   "refs": {
+    "storage_container_resource_manager_id": [
+     "azurerm_storage_container.evidence.id",
+     "azurerm_storage_container.evidence"
+    ]
+   },
+   "unknown": [
+    "id",
+    "storage_container_resource_manager_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_storage_management_policy.lake": {
+   "type": "azurerm_storage_management_policy",
+   "refs": {
+    "storage_account_id": [
+     "azurerm_storage_account.lake.id",
+     "azurerm_storage_account.lake"
+    ]
+   },
+   "unknown": [
+    "id",
+    "storage_account_id"
+   ],
+   "sensitive": []
+  }
+ }
+}

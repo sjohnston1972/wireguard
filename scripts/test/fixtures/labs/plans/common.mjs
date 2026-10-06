@@ -18,11 +18,17 @@ export const SUB = "3f2b7c1e-5a4d-4e8f-9b6a-2c1d0e9f8a7b";
 export const TENANT = "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f";
 export const UPN = "wgadminlabs.onmicrosoft.com";
 export const REGION = "uksouth";
+/** The secondary region every batch 3 lab with regions.secondary names (uksouth's pair). */
+export const SECONDARY = "ukwest";
 /** Slot 1, as lab.yml passes it in address_space. */
 export const SLOT = "10.64.64.0/18";
 export const SSH_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeFakeFakeFakeFakeFakeFakeFakeFakeFake wg-admin";
 
-/** A session's values for lab `id` (number `n`, two digits): rg, prefix (l<n>k3x9q), tags and the pipeline's variables. */
+/**
+ * A session's values for lab `id` (number `n`, two digits): rg, rgSecondary
+ * (rg-lab-<id>-secondary), prefix (l<n>k3x9q), tags and the pipeline's
+ * variables (secondary_region ukwest, as a lab with regions.secondary gets it).
+ */
 export const ctx = (id, n) => {
   const rg = `rg-lab-${id}`;
   const prefix = `l${n}k3x9q`;
@@ -30,9 +36,10 @@ export const ctx = (id, n) => {
   return {
     id,
     rg,
+    rgSecondary: `${rg}-secondary`,
     prefix,
     tags,
-    variables: { lab_id: id, name_prefix: prefix, resource_group_name: rg, region: REGION, address_space: SLOT, peered: false, gateway_vnet_id: "", upn_domain: UPN, tags },
+    variables: { lab_id: id, name_prefix: prefix, resource_group_name: rg, region: REGION, secondary_region: SECONDARY, address_space: SLOT, peered: false, gateway_vnet_id: "", upn_domain: UPN, tags },
   };
 };
 
@@ -46,10 +53,18 @@ export const ref = (address, attr) => [`${address}.${attr}`, address];
 /** azurerm_resource_group.lab, as every lab makes it. */
 export const rgResource = (c) => ({ address: "azurerm_resource_group.lab", values: { name: c.rg, location: REGION, tags: c.tags }, refs: RG_REFS });
 
+/** azurerm_resource_group.secondary, as a lab with regions.secondary makes it: "${var.resource_group_name}-secondary" in var.secondary_region. */
+export const rgSecondaryResource = (c) => ({
+  address: "azurerm_resource_group.secondary",
+  values: { name: c.rgSecondary, location: SECONDARY, tags: c.tags },
+  refs: { name: ["var.resource_group_name"], location: ["var.secondary_region"], tags: ["var.tags"] },
+});
+
 /**
  * A Linux VM and its NIC, as lab 7 builds them: no public IP, Ubuntu 24.04,
  * a Standard_LRS OS disk, boot diagnostics (serial console), the session's
- * password and the operator's SSH key (a dynamic block).
+ * password and the operator's SSH key (a dynamic block: planned, but with no
+ * expressions in the configuration, as the real labs 22 and 26 recorded it).
  *
  *   name        the VM's name (vm-web); the NIC is nic-<name>
  *   key         the resource name in main.tf (default: name without "vm-", "-" as "_")
@@ -59,10 +74,13 @@ export const rgResource = (c) => ({ address: "azurerm_resource_group.lab", value
  *   customData  a string: known at plan (templatefile of known values, base64);
  *               an array of references: unknown at plan (built from apply-time values)
  *   identity    "SystemAssigned" for a system-assigned identity, or left out
+ *   image       { publisher?, offer, sku, version? } (default Canonical
+ *               Ubuntu 24.04, ubuntu-24_04-lts / server, at "latest"; lab 26
+ *               uses AlmaLinux 9.7 Gen2, pinned to one version)
  *
  * Returns [nic, vm]: azurerm_network_interface.<key> and azurerm_linux_virtual_machine.<key>.
  */
-export function linuxVm(c, { name, key = name.replace(/^vm-/, "").replace(/-/g, "_"), subnet, size = "Standard_B1s", zone, customData, identity }) {
+export function linuxVm(c, { name, key = name.replace(/^vm-/, "").replace(/-/g, "_"), subnet, size = "Standard_B1s", zone, customData, identity, image = { offer: "ubuntu-24_04-lts", sku: "server" } }) {
   const nicAddress = `azurerm_network_interface.${key}`;
   const nic = {
     address: nicAddress,
@@ -81,13 +99,13 @@ export function linuxVm(c, { name, key = name.replace(/^vm-/, "").replace(/-/g, 
     tags: c.tags,
     admin_ssh_key: [{ username: "azureuser", public_key: SSH_KEY }],
     os_disk: [{ caching: "ReadWrite", storage_account_type: "Standard_LRS" }],
-    source_image_reference: [{ publisher: "Canonical", offer: "ubuntu-24_04-lts", sku: "server", version: "latest" }],
+    source_image_reference: [{ publisher: image.publisher ?? "Canonical", offer: image.offer, sku: image.sku, version: image.version ?? "latest" }],
     boot_diagnostics: [{}],
   };
   if (zone !== undefined) values.zone = String(zone);
   if (identity) values.identity = [{ type: identity }];
   const unknown = ["network_interface_ids"];
-  const refs = { ...IN_RG, admin_password: ["var.admin_password"], admin_ssh_key: ["var.ssh_public_key"], network_interface_ids: ref(nicAddress, "id") };
+  const refs = { ...IN_RG, admin_password: ["var.admin_password"], network_interface_ids: ref(nicAddress, "id") };
   const sensitive = ["admin_password"];
   if (typeof customData === "string") {
     values.custom_data = customData;
@@ -98,5 +116,5 @@ export function linuxVm(c, { name, key = name.replace(/^vm-/, "").replace(/-/g, 
     refs.custom_data = ["path.module", ...customData];
     sensitive.push("custom_data");
   }
-  return [nic, { address: `azurerm_linux_virtual_machine.${key}`, values, unknown, refs, sensitive }];
+  return [nic, { address: `azurerm_linux_virtual_machine.${key}`, values, unknown, refs, sensitive, dynamic: ["admin_ssh_key"] }];
 }

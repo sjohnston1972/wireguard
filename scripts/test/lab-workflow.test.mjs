@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
@@ -344,6 +345,45 @@ test("the plan is scope-checked before apply, and apply uses that plan", () => {
   assert.equal(step(lab(12))["continue-on-error"], true);
   assert.match(step(lab(12)).run, /terraform destroy .*-auto-approve/);
   assert.match(String(step(lab(9)).if), /env\.LAB_PEERING == 'true'/);
+});
+
+// Ruling 35: the release test records each lab's real plan shape from this line.
+test("plan and scope check prints the plan's shape, never its values", () => {
+  const plan = step(lab(6)).run;
+  const line = /^.*infra\/ci\/lab-plan-shape\.mjs.*$/m.exec(plan)?.[0] ?? "";
+  assert.match(line, /node "\$GITHUB_WORKSPACE\/infra\/ci\/lab-plan-shape\.mjs" "\$RUNNER_TEMP\/plan\.json"/);
+  // After the JSON is written; a shape that cannot be made is a warning, never a failed plan.
+  assert.ok(plan.indexOf("terraform show") < plan.indexOf("lab-plan-shape.mjs"));
+  assert.match(line, /\|\| echo "::warning::/);
+  // The script on a plan holding a password and names: one line, a gzipped base64 shape, no values.
+  const dir = mkdtempSync(join(tmpdir(), "lab-shape-"));
+  const password = "Pl4n-Secret-Never-Shown";
+  const planJson = {
+    format_version: "1.2",
+    planned_values: { root_module: { resources: [{ address: "azurerm_resource_group.lab", mode: "managed", type: "azurerm_resource_group", name: "lab", values: { name: "rg-lab-az104-07-files", location: "uksouth" }, sensitive_values: {} }, { address: "azurerm_linux_virtual_machine.vm", mode: "managed", type: "azurerm_linux_virtual_machine", name: "vm", values: { name: "vm-files", admin_password: password }, sensitive_values: { admin_password: true } }] } },
+    resource_changes: [
+      { address: "azurerm_resource_group.lab", mode: "managed", type: "azurerm_resource_group", name: "lab", change: { actions: ["create"], after: { name: "rg-lab-az104-07-files" }, after_unknown: { id: true }, after_sensitive: {} } },
+      { address: "azurerm_linux_virtual_machine.vm", mode: "managed", type: "azurerm_linux_virtual_machine", name: "vm", change: { actions: ["create"], after: { admin_password: password }, after_unknown: { id: true, network_interface_ids: true }, after_sensitive: { admin_password: true } } },
+    ],
+    configuration: { root_module: { resources: [{ address: "azurerm_resource_group.lab", mode: "managed", type: "azurerm_resource_group", name: "lab", expressions: { name: { references: ["var.resource_group_name"] } } }, { address: "azurerm_linux_virtual_machine.vm", mode: "managed", type: "azurerm_linux_virtual_machine", name: "vm", expressions: { admin_password: { references: ["var.admin_password"] }, name: { constant_value: "vm-files" } } }] } },
+    variables: { admin_password: { value: password } },
+  };
+  writeFileSync(join(dir, "plan.json"), JSON.stringify(planJson));
+  const r = spawnSync(process.execPath, [join(REPO, "infra", "ci", "lab-plan-shape.mjs"), join(dir, "plan.json")], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  const out = r.stdout.trim().split("\n");
+  assert.equal(out.length, 1);
+  const m = /^LAB_PLAN_SHAPE ([A-Za-z0-9+/=]+)$/.exec(out[0]);
+  assert.ok(m, out[0]);
+  const shape = JSON.parse(gunzipSync(Buffer.from(m[1], "base64")).toString("utf8"));
+  assert.deepEqual(shape.resources["azurerm_linux_virtual_machine.vm"], { type: "azurerm_linux_virtual_machine", refs: { admin_password: ["var.admin_password"] }, unknown: ["id", "network_interface_ids"], sensitive: ["admin_password"] });
+  for (const v of [password, "rg-lab-az104-07-files", "vm-files"]) assert.ok(!JSON.stringify(shape).includes(v) && !r.stdout.includes(v) && !r.stderr.includes(v), v);
+  // Unreadable input: no shape line, exit 2.
+  writeFileSync(join(dir, "bad.json"), "{ not json");
+  const bad = spawnSync(process.execPath, [join(REPO, "infra", "ci", "lab-plan-shape.mjs"), join(dir, "bad.json")], { encoding: "utf8" });
+  assert.equal(bad.status, 2);
+  assert.doesNotMatch(bad.stdout, /LAB_PLAN_SHAPE/);
+  rmSync(dir, { recursive: true, force: true });
 });
 
 // ── Results and state ────────────────────────────────────────────────────

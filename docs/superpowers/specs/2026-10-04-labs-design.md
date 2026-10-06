@@ -596,7 +596,7 @@ from the sections above, these win.
     unpeer); `RunRow.lab.action` carries the lab action.
 16. **Deploy and Extend take whole hours, 1 to 12**; Extend may instead ask `toMax`.
 
-## 17. Rulings from the batch 2 plan
+## 17. Rulings from the batch 2 and batch 3 plans
 
 Copied from `docs/superpowers/plans/2026-10-05-labs-batch2-plan.md` (rulings 1–12, B0's 13–20 as built on
 `feat/labs-b2-engine`, and 21 on from the batch's review fix pass; its "B0 names as built" section has the exact names). Where they differ from the sections above,
@@ -674,3 +674,84 @@ these win; §3.4's `az bicep build` and §5 step 5's are replaced by ruling 1.
     delete re-issued, at most `LAB_DELETE_RETRIES` (default 2) times. Polling stops by Parse payload's `LAB_JOB_DEADLINE`
     (the job's start plus `timeout_min`) less 420 s for the rest of the job, or `LAB_DELETE_WAIT_SECONDS` (default 1500)
     without one; a group still there is a warning, "left behind", and Verify clean names it.
+
+### Rulings from the batch 3 plan (23 on)
+
+From `docs/superpowers/plans/2026-10-06-labs-batch3-plan.md` (labs 20–27). Where they differ from the sections above, these win.
+
+23. **No App Service in batch 3.** The subscription has 0 App Service quota for P0v3 and S1 in uksouth (lab 10 is parked on
+    `feat/lab-10-app-service`). Lab 27's backends are two Azure Container Instances groups (uksouth and the secondary region),
+    each with a public IP and DNS label, serving one static page with `python3 -m http.server` from an MCR image. Public by
+    nature and accepted, like ruling 5's list: Traffic Manager and Front Door reach origins over the internet. No App
+    Gateway Basic (preview, not registered) and no preview SKU anywhere.
+24. **Lab 23 is DTU in uksouth.** The SQL vCore quota is 0 in uksouth (320 in ukwest), so lab 23 keeps its id and title but
+    builds a Basic primary database in uksouth, an explicit Basic geo-secondary (`create_mode = "Secondary"`) on a ukwest server,
+    and a failover group over them with the customer-managed (`Manual`) policy. Serverless is one separate GP_S_Gen5_1 database
+    (minimum 0.5 vCore, auto-pause) on the ukwest server, outside the failover group (auto-pause is not available to
+    geo-replicated serverless databases). Not the free offer: azurerm 4.81 has no free-limit attribute, and the subscription's
+    free databases may already be in use.
+25. **Secondary-region resources live in `rg-lab-<id>-secondary`,** made by the lab's own Terraform in `var.secondary_region`
+    (`azurerm_resource_group.secondary`, name `"${var.resource_group_name}-secondary"`). A lab with `regions.secondary` refuses
+    an empty secondary region or one equal to `var.region` (variable validation). Its secondary-region VNets take /20s of the
+    lab's own slot, never addresses of their own. As built: the scope check holds an unknown id at any nested path (a
+    failover group's partner server and databases, a replicated VM's disk target group) to the lab's own resources, as it
+    does top-level ids; inside an attribute written as blocks (`managed_disk`, typed `set(object)`), where
+    `terraform show -json` lists every reference under the attribute, all of the attribute's references must; and the content suite's `secondary: true` checks both groups, `regions.secondary: ukwest` and the validation.
+26. **A cost item may say `region: secondary`** (only in a lab with `regions.secondary`). The Worker then prices its
+    `retail` entry in the session's secondary region (the lab's `regions.secondary`; the cards, modal and warnings read that
+    region's prices too), `labs-verify --meters` checks it there, and the content suite counts VM sizes and S4 disks per
+    region: a replicated VM adds a secondary-region S4 (its replica disk) and one `capacity.vm_sizes` entry (its failover
+    VM).
+27. **Lab 20's custom roles are assigned by its Terraform** (identity change 2, approved by Steven 2026-10-05, chosen over
+    define-only roles, which were never built). Its two roles (`lab-az305-20-landing-zone-netops`,
+    `60bdbc03-b25a-4a83-9fce-b2c5afff563c`; `lab-az305-20-landing-zone-appops`, `bd52e05a-22cb-4bd5-b56c-3396add9b7c0`) are
+    ordinary `allowed-roles.json` custom entries: fixed GUID, assignable only at `rg-lab-<id>`, each assigned there to its own
+    user-assigned managed identity in `rg-lab-<id>` (`principal_type = "ServicePrincipal"`), and listed in `lab.yaml`
+    `identity.roles`. `governance-condition.txt` gains both GUIDs (regenerated with `node scripts/labs-setup.mjs
+    --condition`), and the condition is re-applied in Azure, with Steven's sign-in, before lab 20's release test. The scope
+    check allows the roles' assignment to lab 20 only, as for lab 1's role.
+28. **Remediating policies stay inside the lab.** A lab policy definition with `deployIfNotExists` or `modify` may list in
+    `roleDefinitionIds` only built-in roles on the allow-list and may not deploy at subscription scope; its assignment's
+    identity gets exactly those roles, at the lab's own group (`role`, `outside-scope`). Lab 21's diagnostics policy needs only
+    Monitoring Contributor (it holds `Microsoft.Insights/diagnosticSettings/*`, `Microsoft.Resources/deployments/*` and
+    `Microsoft.OperationalInsights/workspaces/sharedKeys/action`), so lab 21 needs no identity change (Log Analytics
+    Contributor stays contingent on the lab 21 soak). As built: every `roleDefinitionIds` entry in the rule is read
+    (keys case-insensitive, whatever the effect says, since it may be a parameter), and in a plan a rule that is not known
+    (built from apply-time values) is refused: those values go to the assignment as parameters.
+29. **Management-group initiatives are governance definitions.** `azurerm_management_group_policy_set_definition` joins the
+    governance types (governance labs only, named `lab-<id>-*`). Batch 3 defines no initiative at subscription scope, so the
+    orphan sweep's lists are unchanged.
+30. **Key Vault never keeps a lab alive.** Purge protection is refused at plan (rule `immutability`: nothing could delete the
+    vault for its retention); soft-delete retention is 7 days; the provider purges the vault on destroy; the safety net purges
+    soft-deleted vaults that lived in a lab group, and Verify clean counts one as a leftover.
+31. **Unblock knows SQL and Site Recovery.** Before the group deletes: SQL failover groups are deleted (on the server that
+    holds the primary, so a swapped failover is handled), then the primary databases' geo-replication links; Site Recovery
+    recovery plans are deleted (a learner may make one; it holds its items), test failovers are cleaned up, replication is removed and waited for (every 15 s, at most
+    `LAB_UNBLOCK_ASR_WAIT_SECONDS`, default 900; a list that fails is "unverified"; never failing the run), then network
+    mappings, container mappings and replication policies are removed (an Azure-to-Azure vault needs only its items gone;
+    the rest is tidy-up).
+32. **Lab 26 is Site Recovery only,** titled "Cross-region VM recovery with Site Recovery" (confirmed by Steven
+    2026-10-05). Backup cross-region restore is not built: a GRS vault's secondary-region recovery points appear hours after
+    a backup, beyond any session. The source VM is
+    AlmaLinux 9.7 Gen2 (`almalinux`/`almalinux-x86_64`/`9-gen2`), pinned to version `9.7.2026051801` (free, no marketplace
+    plan), with default outbound access set on explicitly; the vault, the target and test VNets and everything failover makes
+    are in `rg-lab-<id>-secondary`. *Changed 2026-10-06 (v3):* it was Ubuntu 22.04, but the first release test failed because
+    Mobility agent 9.66 did not support that image's current Azure kernel (6.8.0-1064; the matrix listed 22.04 Azure kernels
+    only to 6.8.0-1041), and Ubuntu's kernel cadence keeps outpacing the agent. Agent 9.66 supports RHEL-family 9.0–9.7
+    (kernel 5.14.0-611.5.1 and later); 9.8 images need agent 9.67, which uksouth did not deploy, hence the exact 9.7 pin and
+    never `latest`. Its cloud-init installs and upgrades nothing, so the kernel never moves under the agent; SELinux stays
+    enforcing (the systemd unit runs unconfined) and firewalld, where running, has port 80 opened permanently.
+33. **Lab 24's Cosmos DB account is serverless,** single region, with the free tier off (one per subscription; creation fails
+    if it is already taken). Consistency and multi-region writes are taught on that account and in the readme.
+34. **Lab 25 uses container-level, unlocked immutability only** (1 day; `locked = true` is refused at plan). No version-level
+    immutability, no SFTP (billed by the hour), no data-plane resources in Terraform.
+35. **Plan fixtures are checked against real plans.** Every release test records its plan's shape (addresses, references,
+    unknown and sensitive paths, never values) and the fixture test compares against it; `labs-tf` also plans each lab offline
+    with mocked providers (`terraform test`). As built: lab.yml step 6 prints the shape as one `LAB_PLAN_SHAPE` line (gzipped
+    JSON, base64), the release test saves it as `scripts/test/fixtures/labs/plans/shapes/<id>.json`, references are compared
+    as sets; the mock plan mocks only the providers a lab installs, gives the subscription and client-config data sources
+    real-looking ids, and uses a parseable throw-away SSH key.
+36. **The ready check may accept an empty `provisioningState` only for a listed type,** added test-first on release-test
+    evidence; the list starts empty (`READY_NO_STATE_TYPES` in `infra/ci/lab-ready.sh`, which reads each resource's type).
+37. **Subnets that need outbound access say so.** A subnet whose VMs need to reach Azure services (Key Vault, Site Recovery)
+    sets `default_outbound_access_enabled = true` explicitly instead of relying on the provider's default.

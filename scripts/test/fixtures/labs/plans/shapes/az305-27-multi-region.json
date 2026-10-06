@@ -1,0 +1,293 @@
+{
+ "resources": {
+  "azurerm_cdn_frontdoor_endpoint.lab": {
+   "type": "azurerm_cdn_frontdoor_endpoint",
+   "refs": {
+    "cdn_frontdoor_profile_id": [
+     "azurerm_cdn_frontdoor_profile.lab.id",
+     "azurerm_cdn_frontdoor_profile.lab"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "cdn_frontdoor_profile_id",
+    "host_name",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_cdn_frontdoor_origin.uks": {
+   "type": "azurerm_cdn_frontdoor_origin",
+   "refs": {
+    "cdn_frontdoor_origin_group_id": [
+     "azurerm_cdn_frontdoor_origin_group.lab.id",
+     "azurerm_cdn_frontdoor_origin_group.lab"
+    ],
+    "host_name": [
+     "azurerm_container_group.uks.fqdn",
+     "azurerm_container_group.uks"
+    ],
+    "origin_host_header": [
+     "azurerm_container_group.uks.fqdn",
+     "azurerm_container_group.uks"
+    ]
+   },
+   "unknown": [
+    "cdn_frontdoor_origin_group_id",
+    "host_name",
+    "id",
+    "origin_host_header"
+   ],
+   "sensitive": []
+  },
+  "azurerm_cdn_frontdoor_origin.ukw": {
+   "type": "azurerm_cdn_frontdoor_origin",
+   "refs": {
+    "cdn_frontdoor_origin_group_id": [
+     "azurerm_cdn_frontdoor_origin_group.lab.id",
+     "azurerm_cdn_frontdoor_origin_group.lab"
+    ],
+    "host_name": [
+     "azurerm_container_group.ukw.fqdn",
+     "azurerm_container_group.ukw"
+    ],
+    "origin_host_header": [
+     "azurerm_container_group.ukw.fqdn",
+     "azurerm_container_group.ukw"
+    ]
+   },
+   "unknown": [
+    "cdn_frontdoor_origin_group_id",
+    "host_name",
+    "id",
+    "origin_host_header"
+   ],
+   "sensitive": []
+  },
+  "azurerm_cdn_frontdoor_origin_group.lab": {
+   "type": "azurerm_cdn_frontdoor_origin_group",
+   "refs": {
+    "cdn_frontdoor_profile_id": [
+     "azurerm_cdn_frontdoor_profile.lab.id",
+     "azurerm_cdn_frontdoor_profile.lab"
+    ]
+   },
+   "unknown": [
+    "cdn_frontdoor_profile_id",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_cdn_frontdoor_profile.lab": {
+   "type": "azurerm_cdn_frontdoor_profile",
+   "refs": {
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id",
+    "resource_guid"
+   ],
+   "sensitive": []
+  },
+  "azurerm_cdn_frontdoor_route.lab": {
+   "type": "azurerm_cdn_frontdoor_route",
+   "refs": {
+    "cdn_frontdoor_endpoint_id": [
+     "azurerm_cdn_frontdoor_endpoint.lab.id",
+     "azurerm_cdn_frontdoor_endpoint.lab"
+    ],
+    "cdn_frontdoor_origin_group_id": [
+     "azurerm_cdn_frontdoor_origin_group.lab.id",
+     "azurerm_cdn_frontdoor_origin_group.lab"
+    ],
+    "cdn_frontdoor_origin_ids": [
+     "azurerm_cdn_frontdoor_origin.uks.id",
+     "azurerm_cdn_frontdoor_origin.uks",
+     "azurerm_cdn_frontdoor_origin.ukw.id",
+     "azurerm_cdn_frontdoor_origin.ukw"
+    ]
+   },
+   "unknown": [
+    "cdn_frontdoor_endpoint_id",
+    "cdn_frontdoor_origin_group_id",
+    "cdn_frontdoor_origin_ids",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_container_group.uks": {
+   "type": "azurerm_container_group",
+   "refs": {
+    "container.0.commands": [
+     "var.region"
+    ],
+    "dns_name_label": [
+     "var.name_prefix"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "exposed_port",
+    "fqdn",
+    "id",
+    "ip_address",
+    "network_profile_id"
+   ],
+   "sensitive": [
+    "container.0.secure_environment_variables"
+   ]
+  },
+  "azurerm_container_group.ukw": {
+   "type": "azurerm_container_group",
+   "refs": {
+    "container.0.commands": [
+     "var.secondary_region"
+    ],
+    "dns_name_label": [
+     "var.name_prefix"
+    ],
+    "location": [
+     "azurerm_resource_group.secondary.location",
+     "azurerm_resource_group.secondary"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.secondary.name",
+     "azurerm_resource_group.secondary"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "exposed_port",
+    "fqdn",
+    "id",
+    "ip_address",
+    "network_profile_id"
+   ],
+   "sensitive": [
+    "container.0.secure_environment_variables"
+   ]
+  },
+  "azurerm_resource_group.lab": {
+   "type": "azurerm_resource_group",
+   "refs": {
+    "location": [
+     "var.region"
+    ],
+    "name": [
+     "var.resource_group_name"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_resource_group.secondary": {
+   "type": "azurerm_resource_group",
+   "refs": {
+    "location": [
+     "var.secondary_region"
+    ],
+    "name": [
+     "var.resource_group_name"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_traffic_manager_external_endpoint.uks": {
+   "type": "azurerm_traffic_manager_external_endpoint",
+   "refs": {
+    "profile_id": [
+     "azurerm_traffic_manager_profile.lab.id",
+     "azurerm_traffic_manager_profile.lab"
+    ],
+    "target": [
+     "azurerm_container_group.uks.fqdn",
+     "azurerm_container_group.uks"
+    ]
+   },
+   "unknown": [
+    "endpoint_location",
+    "id",
+    "profile_id",
+    "target"
+   ],
+   "sensitive": []
+  },
+  "azurerm_traffic_manager_external_endpoint.ukw": {
+   "type": "azurerm_traffic_manager_external_endpoint",
+   "refs": {
+    "profile_id": [
+     "azurerm_traffic_manager_profile.lab.id",
+     "azurerm_traffic_manager_profile.lab"
+    ],
+    "target": [
+     "azurerm_container_group.ukw.fqdn",
+     "azurerm_container_group.ukw"
+    ]
+   },
+   "unknown": [
+    "endpoint_location",
+    "id",
+    "profile_id",
+    "target"
+   ],
+   "sensitive": []
+  },
+  "azurerm_traffic_manager_profile.lab": {
+   "type": "azurerm_traffic_manager_profile",
+   "refs": {
+    "dns_config.0.relative_name": [
+     "var.name_prefix"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "fqdn",
+    "id"
+   ],
+   "sensitive": []
+  }
+ }
+}

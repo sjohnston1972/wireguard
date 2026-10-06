@@ -1,0 +1,374 @@
+{
+ "azuread_group": {
+  "rg": false,
+  "tags": false
+ },
+ "azuread_user": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_application_gateway": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_application_security_group": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_backup_policy_vm": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_backup_protected_vm": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_cdn_frontdoor_endpoint": {
+  "rg": false,
+  "tags": true
+ },
+ "azurerm_cdn_frontdoor_origin": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_cdn_frontdoor_origin_group": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_cdn_frontdoor_profile": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_cdn_frontdoor_route": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_consumption_budget_resource_group": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_container_app": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_container_app_environment": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_container_group": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_container_registry": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_cosmosdb_account": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_cosmosdb_sql_container": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_cosmosdb_sql_database": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_dns_a_record": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_dns_cname_record": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_dns_zone": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_key_vault": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_key_vault_secret": {
+  "rg": false,
+  "tags": true
+ },
+ "azurerm_lb": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_lb_backend_address_pool": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_lb_probe": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_lb_rule": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_linux_virtual_machine": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_linux_virtual_machine_scale_set": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_linux_web_app": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_linux_web_app_slot": {
+  "rg": false,
+  "tags": true
+ },
+ "azurerm_log_analytics_workspace": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_managed_disk": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_management_group": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_management_group_policy_assignment": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_management_group_policy_set_definition": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_management_lock": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_monitor_action_group": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_monitor_activity_log_alert": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_monitor_autoscale_setting": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_monitor_data_collection_rule": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_monitor_data_collection_rule_association": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_monitor_metric_alert": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_mssql_database": {
+  "rg": false,
+  "tags": true
+ },
+ "azurerm_mssql_failover_group": {
+  "rg": false,
+  "tags": true
+ },
+ "azurerm_mssql_server": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_network_interface": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_network_interface_application_security_group_association": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_network_interface_backend_address_pool_association": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_network_interface_security_group_association": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_network_security_group": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_network_security_rule": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_policy_definition": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_policy_set_definition": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_private_dns_a_record": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_private_dns_zone": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_private_dns_zone_virtual_network_link": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_private_endpoint": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_public_ip": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_recovery_services_vault": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_resource_group": {
+  "rg": false,
+  "tags": true
+ },
+ "azurerm_resource_group_policy_assignment": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_resource_group_template_deployment": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_role_assignment": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_role_definition": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_route": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_route_table": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_service_plan": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_site_recovery_fabric": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_site_recovery_network_mapping": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_site_recovery_protection_container": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_site_recovery_protection_container_mapping": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_site_recovery_replicated_vm": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_site_recovery_replication_policy": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_storage_account": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_storage_blob": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_storage_container": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_storage_container_immutability_policy": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_storage_management_policy": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_storage_share": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_subnet": {
+  "rg": true,
+  "tags": false
+ },
+ "azurerm_subnet_network_security_group_association": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_subnet_route_table_association": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_traffic_manager_external_endpoint": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_traffic_manager_profile": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_user_assigned_identity": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_virtual_machine_data_disk_attachment": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_virtual_machine_extension": {
+  "rg": false,
+  "tags": true
+ },
+ "azurerm_virtual_network": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_virtual_network_peering": {
+  "rg": true,
+  "tags": false
+ },
+ "random_password": {
+  "rg": false,
+  "tags": false
+ },
+ "time_sleep": {
+  "rg": false,
+  "tags": false
+ }
+}

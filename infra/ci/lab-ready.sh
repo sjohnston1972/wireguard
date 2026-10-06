@@ -33,6 +33,16 @@ else
   LIMIT=$(((DEPLOY_MIN < 2 ? 2 : DEPLOY_MIN) * 60))
 fi
 
+# Resource types that never report a provisioningState (labs spec §17, ruling 36):
+# one with an empty state passes only when its type is here. Added test-first, on
+# a release test's evidence; the list starts empty.
+READY_NO_STATE_TYPES=()
+no_state_ok() {
+  local t
+  for t in "${READY_NO_STATE_TYPES[@]}"; do [ "${1,,}" = "${t,,}" ] && return 0; done
+  return 1
+}
+
 azq() { az "$@" | tr -d '\r'; }
 owns_rg() {
   local n="${1,,}"
@@ -58,9 +68,11 @@ while :; do
       owns_rg "$g" || continue
       groups=$((groups + 1))
       [ "$state" = "Succeeded" ] || pending+=("$g ($state)")
-      if res="$(azq resource list --resource-group "$g" --query "[].[name, provisioningState]" -o tsv)"; then
-        while IFS=$'\t' read -r name rstate; do
+      if res="$(azq resource list --resource-group "$g" --query "[].[name, type, provisioningState]" -o tsv)"; then
+        # The state last: tab is whitespace to read, so an empty field in the middle would collapse.
+        while IFS=$'\t' read -r name rtype rstate; do
           [ -z "$name" ] && continue
+          [ -z "$rstate" ] && no_state_ok "${rtype:-}" && continue
           [ "$rstate" = "Succeeded" ] || pending+=("$name (${rstate:-no state})")
         done <<<"$res"
       else
