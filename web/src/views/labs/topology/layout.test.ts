@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import type { TopologyGraph, TopoNode, TopoKind, TopoPropValue } from "@shared/topology/model";
 import type { TopologyLayout } from "@shared/topology/layout";
-import { CARD_H, CARD_W, GAP, HEADER, PAD, ROOT_GAP, SUBNET_HEADER, layoutTopology, type LaidNode } from "./layout";
+import { CARD_H, CARD_W, GAP, HEADER, HEADER_MAX_W, PAD, ROOT_GAP, SUBNET_HEADER, headerWidth, layoutTopology, type LaidNode } from "./layout";
+import { stackGraph } from "./stacks";
 
 const LAB = "az104-06-blob-security";
 const RG_KEY = `microsoft.resources/resourcegroups/rg-lab-${LAB}`;
@@ -223,5 +224,99 @@ describe("saved positions", () => {
   it("saved root positions apply with p null", () => {
     const r = byId(layoutTopology(g(sample()), layout({ [RG_KEY]: { x: 120, y: 80, p: null } })));
     expect([r.rg!.x, r.rg!.y]).toEqual([120, 80]);
+  });
+});
+
+// ── Packing for the space the diagram is shown in ──────────────────────
+
+/** The zoom at which the laid-out picture fits a W × H space (React Flow's fit with 8% padding, at most 100%). */
+function fitZoom(laid: { nodes: LaidNode[] }, w: number, h: number): number {
+  const roots = laid.nodes.filter((x) => !x.parent);
+  const bw = Math.max(...roots.map((r) => r.x + r.w)) - Math.min(...roots.map((r) => r.x));
+  const bh = Math.max(...roots.map((r) => r.y + r.h)) - Math.min(...roots.map((r) => r.y));
+  return Math.min(1, w / (bw * 1.16), h / (bh * 1.16));
+}
+
+/** The Global lane, three groups (each a VNet with two subnets of two VMs, and a load balancer) and the Tenant lane. */
+function wide(): TopoNode[] {
+  const out: TopoNode[] = [n("lane/global", "lane", undefined, "Global", {}, "lane/global"), n("glb", "loadBalancer", "lane/global", "lb-global")];
+  for (const [i, rg] of ["", "-secondary", "-third"].entries()) {
+    out.push(n(`rg${i}`, "resourceGroup", undefined, `rg-lab-${LAB}${rg}`, { region: "uksouth" }, `microsoft.resources/resourcegroups/rg-lab-${LAB}${rg}`));
+    out.push(n(`v${i}`, "vnet", `rg${i}`, `vnet-${i}`, { addressSpace: [`10.71.${i * 16}.0/20`] }));
+    for (const s of [0, 1]) {
+      out.push(n(`v${i}s${s}`, "subnet", `v${i}`, `snet-${s}`, { prefix: `10.71.${i * 16 + s}.0/24` }));
+      for (const a of [0, 1]) out.push(n(`v${i}s${s}a${a}`, "vm", `v${i}s${s}`, `vm-${i}${s}${a}`));
+    }
+    out.push(n(`lb${i}`, "loadBalancer", `rg${i}`, `lb-${i}`));
+  }
+  out.push(n("lane/tenant", "lane", undefined, "Tenant and Entra ID", {}, "lane/tenant"), n("id", "managedIdentity", "lane/tenant", "id-app"));
+  return out;
+}
+
+const PLANNED = import.meta.glob<TopologyGraph>("../../../../../shared/topology/planned/*.json", { eager: true, import: "default" });
+const planned = (id: string) => stackGraph(Object.entries(PLANNED).find(([k]) => k.endsWith(`/${id}.json`))![1]).graph;
+/** The spaces the diagram is shown in (canvas pixels): the lab panel's tab and the full screen at 1600 × 900 and 1100 × 600. */
+const TAB = [550, 445] as const;
+const FULL_1600 = [1535, 660] as const;
+const FULL_1100 = [1035, 380] as const;
+
+describe("packing for the space's shape", () => {
+  it("in a tab-shaped space the top level and the groups wrap into rows, so the picture fits at a much larger zoom", () => {
+    const graph = g(wide());
+    const flat = layoutTopology(graph, null);
+    const packed = layoutTopology(graph, null, { aspect: TAB[0] / TAB[1] });
+    expect(new Set(flat.nodes.filter((x) => !x.parent).map((x) => x.y))).toEqual(new Set([0]));
+    expect(new Set(packed.nodes.filter((x) => !x.parent).map((x) => x.y)).size).toBeGreaterThan(1);
+    expect(fitZoom(packed, ...TAB)).toBeGreaterThan(fitZoom(flat, ...TAB) * 1.5);
+    expectContained(graph, packed);
+    // The root order still reads gateway, Global, groups, Tenant: row by row, left to right.
+    const roots = packed.nodes.filter((x) => !x.parent).sort((a, b) => a.y - b.y || a.x - b.x).map((x) => x.id);
+    expect(roots).toEqual(["lane/global", "rg0", "rg1", "rg2", "lane/tenant"]);
+  });
+
+  it("is deterministic for the same input and shape, in any order", () => {
+    const a = layoutTopology(g(wide()), null, { aspect: 1.3 });
+    for (const seed of [3, 11, 58]) expect(layoutTopology(g(shuffle(wide(), seed)), null, { aspect: 1.3 })).toEqual(a);
+    expect(layoutTopology(g(wide()), null, { aspect: 2.3 })).not.toEqual(a);
+  });
+
+  it("nothing overlaps, at any shape", () => {
+    for (const aspect of [0.6, 1, 1.25, 1.8, 2.3, 3]) {
+      const laid = layoutTopology(g(wide()), null, { aspect });
+      const byParent = new Map<string | null, LaidNode[]>();
+      for (const x of laid.nodes) byParent.set(x.parent, [...(byParent.get(x.parent) ?? []), x]);
+      for (const kids of byParent.values()) for (const p of kids) for (const q of kids) if (p !== q) expect(overlaps(p, q), `${aspect}: ${p.id} / ${q.id}`).toBe(false);
+    }
+  });
+
+  it("saved positions still win", () => {
+    const saved: TopologyLayout = { v: 1, nodes: { "k/v1s0a0": { x: 300, y: 200, p: "k/v1s0" }, "microsoft.resources/resourcegroups/rg-lab-az104-06-blob-security-third": { x: 0, y: 2000, p: null } } };
+    const r = byId(layoutTopology(g(wide()), saved, { aspect: 1.25 }));
+    expect([r.v1s0a0!.x, r.v1s0a0!.y]).toEqual([300, 200]);
+    expect([r.rg2!.x, r.rg2!.y]).toEqual([0, 2000]);
+  });
+
+  it("a container is wide enough for its header's chips (up to a cap)", () => {
+    const sn = n("s", "subnet", "v", "snet-nva", { prefix: "10.71.193.0/24", chips: ["no default outbound", "NSG nsg-nva"] });
+    const laid = byId(layoutTopology(g([n("rg", "resourceGroup", undefined, "rg", {}, RG_KEY), n("v", "vnet", "rg", "vnet-uks", { addressSpace: ["10.71.192.0/20"] }), sn, n("vm", "vm", "s", "vm-nva")]), null));
+    expect(laid.s!.w).toBeGreaterThanOrEqual(headerWidth(sn));
+    expect(headerWidth(sn)).toBeGreaterThan(CARD_W + 2 * PAD);
+    expect(headerWidth(n("x", "subnet", "v", "snet", { chips: Array.from({ length: 30 }, (_, i) => `NSG nsg-${i}`) }))).toBe(HEADER_MAX_W);
+  });
+
+  it("real labs: az104-06 and az700-40 read at 70% or more in the tab's shape where it can; every lab fills the full screen readably", () => {
+    expect(fitZoom(layoutTopology(planned("az104-06-blob-security"), null, { aspect: TAB[0] / TAB[1] }), ...TAB)).toBeGreaterThanOrEqual(0.7);
+    // az700-40 has three VNets, eight cards and two lanes: packed, it is still too big for the tab at 70% (the view
+    // starts there at the top-left: viewport.ts), but far bigger than the one long row.
+    const lb = planned("az700-40-lb-advanced");
+    expect(fitZoom(layoutTopology(lb, null, { aspect: TAB[0] / TAB[1] }), ...TAB)).toBeGreaterThan(fitZoom(layoutTopology(lb, null), ...TAB) * 1.6);
+    for (const k of Object.keys(PLANNED)) {
+      const id = k.split("/").at(-1)!.replace(".json", "");
+      const graph = planned(id);
+      expect(fitZoom(layoutTopology(graph, null, { aspect: FULL_1600[0] / FULL_1600[1] }), ...FULL_1600), `${id} at 1600 × 900`).toBeGreaterThanOrEqual(0.85);
+      expect(fitZoom(layoutTopology(graph, null, { aspect: FULL_1100[0] / FULL_1100[1] }), ...FULL_1100), `${id} at 1100 × 600`).toBeGreaterThanOrEqual(0.6);
+      // Never worse than the fixed packing.
+      for (const [w, h] of [TAB, FULL_1600, FULL_1100]) expect(fitZoom(layoutTopology(graph, null, { aspect: w / h }), w, h) + 1e-9, `${id} ${w}`).toBeGreaterThanOrEqual(fitZoom(layoutTopology(graph, null), w, h));
+    }
   });
 });

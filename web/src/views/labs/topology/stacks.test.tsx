@@ -79,6 +79,12 @@ describe("the 300 limit", () => {
     const r = layoutTopology(graph, null);
     expect(performance.now() - t0).toBeLessThan(50);
     expect(r.nodes).toHaveLength(LIST_VIEW_AT);
+    // Packed for a screen's shape (several packings tried): still quick.
+    const space = { w: 1535, h: 616 };
+    layoutTopology(graph, null, { space });
+    const t1 = performance.now();
+    expect(layoutTopology(graph, null, { space }).nodes).toHaveLength(LIST_VIEW_AT);
+    expect(performance.now() - t1).toBeLessThan(250);
   });
 });
 

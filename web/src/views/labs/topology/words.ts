@@ -74,6 +74,40 @@ export function propText(name: string, v: TopoPropValue): string {
   return String(v);
 }
 
+const textList = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : typeof v === "string" && v ? [v] : []);
+
+/** What a container's header says after its name: a mono sub-line (an address) and chips. The layout sizes headers from it. */
+export function groupHeaderBits(node: TopoNode): { sub: string | null; chips: string[] } {
+  const p = node.props;
+  switch (node.kind) {
+    case "resourceGroup":
+      return { sub: null, chips: [...textList(p.region), ...textList(p.chips), ...textList(p.tags)] };
+    case "vnet":
+      return {
+        sub: p.addressSpace !== undefined ? propText("addressSpace", p.addressSpace) : null,
+        chips: [...(p.peerTarget === true ? ["Peered to the gateway"] : []), ...(p.dnsServers !== undefined ? [`DNS ${propText("dnsServers", p.dnsServers)}`] : []), ...textList(p.chips)],
+      };
+    case "subnet":
+      return { sub: p.prefix !== undefined ? propText("prefix", p.prefix) : null, chips: textList(p.chips) };
+    case "virtualHub":
+      return {
+        sub: p.prefix !== undefined ? propText("prefix", p.prefix) : null,
+        chips: ["hub", ...(p.sku !== undefined ? [String(p.sku)] : []), ...(p.routing !== undefined ? [`routing ${propText("routing", p.routing)}`] : []), ...textList(p.chips)],
+      };
+    default:
+      return { sub: null, chips: textList(p.chips) };
+  }
+}
+
+/** About how wide a container's header is drawn (name, address, chips): from character counts at its type sizes. */
+export function headerTextWidth(node: TopoNode, bits: { sub: string | null; chips: string[] } = groupHeaderBits(node)): number {
+  const subnet = node.kind === "subnet";
+  let w = (subnet ? 20 : 24) + (node.kind === "lane" ? 0 : 22) + node.label.length * (subnet ? 6.6 : 7);
+  if (bits.sub) w += 6 + bits.sub.length * 6.7;
+  for (const c of bits.chips) w += 6 + 16 + c.length * 5.9;
+  return Math.ceil(w);
+}
+
 /** Props that hold IP addresses (copy buttons, mono type). */
 export const IP_PROPS: ReadonlySet<string> = new Set(["privateIp", "publicIp", "addressSpace", "prefix", "dnsServers", "clientPool"]);
 

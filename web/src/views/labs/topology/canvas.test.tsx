@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { TopologyGraph } from "@shared/topology/model";
 import { Canvas } from "./Canvas";
-import { PHONE_MIN_FIT_ZOOM } from "./FlowCanvas";
+import { PHONE_MIN_FIT_ZOOM, quantiseLength } from "./FlowCanvas";
 import type { CanvasProps } from "./contract";
 import { toFlowNodes, movesOf } from "./flowNodes";
 import { layoutTopology } from "./layout";
@@ -198,6 +198,31 @@ describe("Canvas", () => {
       const scale = Number(viewport(container).match(/scale\(([\d.]+)\)/)![1]);
       expect(scale).toBeGreaterThanOrEqual(PHONE_MIN_FIT_ZOOM);
       expect(PHONE_MIN_FIT_ZOOM).toBeGreaterThanOrEqual(0.4);
+    } finally {
+      undo();
+    }
+  });
+
+  /** The canvas measured as a browser lays it out: `w` × `h`. */
+  function sized(w: number, h: number) {
+    const proto = HTMLElement.prototype;
+    const had = Object.hasOwn(proto, "clientWidth");
+    Object.defineProperty(proto, "clientWidth", { configurable: true, get(this: HTMLElement) { return this.classList.contains("topo-canvas") ? w : 0; } });
+    Object.defineProperty(proto, "clientHeight", { configurable: true, get(this: HTMLElement) { return this.classList.contains("topo-canvas") ? h : 0; } });
+    return () => {
+      if (!had) Reflect.deleteProperty(proto, "clientWidth");
+      if (!had) Reflect.deleteProperty(proto, "clientHeight");
+    };
+  }
+
+  it("measured, the layout packs for the canvas's shape (the tab's, the full screen's)", () => {
+    const undo = sized(550, 445);
+    try {
+      const { container } = draw(props());
+      const want = layoutTopology(graph, null, { space: { w: quantiseLength(550), h: quantiseLength(445) } }).nodes.find((n) => n.id === "lb")!;
+      const lb = nodeEl(container, "lb");
+      expect(lb.style.transform.replace(/\s/g, "")).toBe(`translate(${want.x}px,${want.y}px)`);
+      expect(quantiseLength(550)).toBe(quantiseLength(556));
     } finally {
       undo();
     }

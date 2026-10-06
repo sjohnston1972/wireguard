@@ -13,7 +13,7 @@
 // (instantly under prefers-reduced-motion). The mini variant is a still
 // picture: no pan, zoom, drag, selection or edge labels.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { applyNodeChanges, ConnectionMode, Controls, MiniMap, Panel, ReactFlow, ReactFlowProvider, useReactFlow, type NodeChange, type NodeSelectionChange, type OnNodeDrag } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import { useTheme } from "@/shell/theme";
@@ -37,17 +37,41 @@ export const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 /** On the phone the first fit stops shrinking here, so names stay readable; the rest is a pan away (Controls' fit shows all). */
 export const PHONE_MIN_FIT_ZOOM = 0.6;
 
+/** A canvas size in steps of 10%, so a small resize does not re-pack the picture. */
+export const quantiseLength = (n: number): number => Math.round(1.1 ** Math.round(Math.log(n) / Math.log(1.1)));
+
+interface Size {
+  w: number;
+  h: number;
+}
+
 export function FlowCanvas(props: CanvasProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  // The space the diagram is shown in: the layout packs for its shape and the first view fits it. 0 × 0 where
+  // nothing is laid out (tests): the fixed packing and React Flow's own fit.
+  const [size, setSize] = useState<Size | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const read = () => setSize((s) => (s && s.w === el.clientWidth && s.h === el.clientHeight ? s : { w: el.clientWidth, h: el.clientHeight }));
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <div className={`topo-canvas topo-canvas--${props.variant}`} role="region" aria-label="Lab diagram">
-      <ReactFlowProvider>
-        <Flow {...props} />
-      </ReactFlowProvider>
+    <div ref={ref} className={`topo-canvas topo-canvas--${props.variant}`} role="region" aria-label="Lab diagram">
+      {size && (
+        <ReactFlowProvider>
+          <Flow {...props} size={size} />
+        </ReactFlowProvider>
+      )}
     </div>
   );
 }
 
-function Flow({ graph, status, saved, onMove, showDependencies, search, variant, selected, onSelect, deploying = false }: CanvasProps) {
+function Flow({ graph, status, saved, onMove, showDependencies, search, variant, selected, onSelect, deploying = false, size }: CanvasProps & { size: Size }) {
   useSprite();
   const theme = useTheme();
   const reduced = useMedia(REDUCED_MOTION);
@@ -60,7 +84,10 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
 
   const stacked = useMemo(() => stackGraph(graph).graph, [graph]);
   const byId = useMemo(() => nodeIndex(stacked), [stacked]);
-  const laid = useMemo(() => layoutTopology(stacked, saved), [stacked, saved]);
+  const measured = size.w > 0 && size.h > 0;
+  const qw = measured ? quantiseLength(size.w) : 0;
+  const qh = measured ? quantiseLength(size.h) : 0;
+  const laid = useMemo(() => layoutTopology(stacked, saved, measured ? { space: { w: qw, h: qh } } : {}), [stacked, saved, measured, qw, qh]);
   const base = useMemo(() => toFlowNodes(laid, byId, { status, variant, selected, search, deploying }), [laid, byId, status, variant, selected, search, deploying]);
   const sets = useMemo(() => searchSets(byId.values(), byId, search), [byId, search]);
   const edges = useMemo(
