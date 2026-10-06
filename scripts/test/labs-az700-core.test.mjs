@@ -241,3 +241,127 @@ test(`${DNS}: dns_link is true and Terraform never links a zone to the gateway`,
   assert.equal(attr(links[0].body, "registration_enabled"), "true");
   assert.doesNotMatch(uncomment(Object.values(l.files).join("\n")), /gateway_vnet_id/, "Terraform never names the gateway's VNet");
 });
+
+// ── Lab 33: Virtual Network Manager (scope exception S1) ─────────────────
+
+const AVNM = "az700-33-vnet-manager";
+
+labContentSuite(AVNM, { marker: "££" });
+
+test(`${AVNM}: the network manager's scope is exactly the current subscription and it has no cross-tenant scope`, () => {
+  const l = lab(AVNM);
+  const m = one(l, "azurerm_network_manager");
+  assert.equal(m.labels[1], "avnm");
+  assert.equal(attr(m.body, "name"), '"avnm-${var.name_prefix}"');
+  assert.equal(attr(m.body, "resource_group_name"), "azurerm_resource_group.lab.name", "the manager lives in rg-lab-<id>; only its reach is the subscription (S1)");
+  const scope = allNested(m.body, "scope");
+  assert.equal(scope.length, 1, "one scope block");
+  assert.equal(attr(scope[0], "subscription_ids"), "[data.azurerm_subscription.current.id]");
+  assert.equal(attr(scope[0], "management_group_ids"), undefined, "no management group scope");
+  assert.doesNotMatch(m.body, /cross_tenant_scopes/, "no cross-tenant scope");
+  assert.deepEqual(strings(attr(m.body, "scope_accesses")), ["Connectivity", "SecurityAdmin"]);
+  // The current subscription: a data source that names no subscription of its own.
+  const subs = l.blocks.filter((b) => b.kind === "data" && b.labels[0] === "azurerm_subscription");
+  assert.deepEqual(subs.map((b) => b.labels[1]), ["current"]);
+  assert.doesNotMatch(subs[0].body, /subscription_id/);
+  // Only the eight AVNM types S1 allows, and no policy of any kind (dynamic membership needs one).
+  const S1_TYPES = ["azurerm_network_manager", "azurerm_network_manager_network_group", "azurerm_network_manager_static_member", "azurerm_network_manager_connectivity_configuration", "azurerm_network_manager_security_admin_configuration", "azurerm_network_manager_admin_rule_collection", "azurerm_network_manager_admin_rule", "azurerm_network_manager_deployment"];
+  for (const r of resources(l).filter((x) => x.labels[0].startsWith("azurerm_network_manager"))) assert.ok(S1_TYPES.includes(r.labels[0]), `${r.labels[0]} is not one of the AVNM types S1 allows`);
+  assert.equal(resources(l).filter((x) => /policy/.test(x.labels[0])).length, 0, "no policy definition or assignment");
+  const plannedScope = planned(AVNM, "azurerm_network_manager.avnm").scope;
+  assert.equal(plannedScope.length, 1);
+  assert.equal(plannedScope[0].subscription_ids.length, 1);
+});
+
+test(`${AVNM}: the network group's members are the two spokes, statically`, () => {
+  const l = lab(AVNM);
+  const g = one(l, "azurerm_network_manager_network_group");
+  assert.equal(attr(g.body, "name"), '"ng-spokes"');
+  assert.equal(attr(g.body, "network_manager_id"), "azurerm_network_manager.avnm.id");
+  assert.ok([undefined, '"VirtualNetwork"'].includes(attr(g.body, "member_type")), "a group of VNets");
+  const members = resources(l, "azurerm_network_manager_static_member");
+  assert.deepEqual(members.map((x) => attr(x.body, "target_virtual_network_id")).sort(), ["azurerm_virtual_network.spoke1.id", "azurerm_virtual_network.spoke2.id"], "each member is the lab's own spoke, by reference");
+  for (const x of members) assert.equal(attr(x.body, "network_group_id"), "azurerm_network_manager_network_group.spokes.id");
+  // Three VNets, from the first three /20s; the hub is not a member.
+  assert.deepEqual(resources(l, "azurerm_virtual_network").map((v) => attr(v.body, "name")).sort(), ['"vnet-hub"', '"vnet-spoke1"', '"vnet-spoke2"']);
+  assert.deepEqual(["hub", "spoke1", "spoke2"].map((k) => planned(AVNM, `azurerm_virtual_network.${k}`).address_space[0]), ["10.71.192.0/20", "10.71.208.0/20", "10.71.224.0/20"]);
+});
+
+test(`${AVNM}: hub-and-spoke connectivity and a security admin rule collection are deployed in the lab's region`, () => {
+  const l = lab(AVNM);
+  const cc = one(l, "azurerm_network_manager_connectivity_configuration");
+  assert.equal(attr(cc.body, "network_manager_id"), "azurerm_network_manager.avnm.id");
+  assert.equal(attr(cc.body, "connectivity_topology"), '"HubAndSpoke"');
+  assert.equal(attr(cc.body, "global_mesh_enabled"), "false");
+  const group = nested(cc.body, "applies_to_group");
+  assert.equal(attr(group, "group_connectivity"), '"DirectlyConnected"');
+  assert.equal(attr(group, "network_group_id"), "azurerm_network_manager_network_group.spokes.id");
+  assert.equal(attr(group, "use_hub_gateway"), "false", "no hub gateway");
+  const hub = nested(cc.body, "hub");
+  assert.equal(attr(hub, "resource_id"), "azurerm_virtual_network.hub.id");
+  assert.equal(attr(hub, "resource_type"), '"Microsoft.Network/virtualNetworks"');
+  const sac = one(l, "azurerm_network_manager_security_admin_configuration");
+  assert.equal(attr(sac.body, "network_manager_id"), "azurerm_network_manager.avnm.id");
+  const rc = one(l, "azurerm_network_manager_admin_rule_collection");
+  assert.equal(attr(rc.body, "security_admin_configuration_id"), `azurerm_network_manager_security_admin_configuration.${sac.labels[1]}.id`);
+  assert.equal(attr(rc.body, "network_group_ids"), "[azurerm_network_manager_network_group.spokes.id]");
+  // Two rules: deny SSH from the internet, and always allow it from the hub (lower number, evaluated first).
+  const rules = Object.fromEntries(resources(l, "azurerm_network_manager_admin_rule").map((r) => [unquoteName(r), r.body]));
+  assert.deepEqual(Object.keys(rules).sort(), ["always-allow-hub-ssh", "deny-ssh-internet"]);
+  for (const body of Object.values(rules)) {
+    assert.equal(attr(body, "admin_rule_collection_id"), `azurerm_network_manager_admin_rule_collection.${rc.labels[1]}.id`);
+    assert.equal(attr(body, "direction"), '"Inbound"');
+    assert.equal(attr(body, "protocol"), '"Tcp"');
+    assert.deepEqual(strings(attr(body, "destination_port_ranges")), ["22"]);
+  }
+  const deny = rules["deny-ssh-internet"];
+  assert.equal(attr(deny, "action"), '"Deny"');
+  assert.equal(attr(deny, "priority"), "100");
+  assert.equal(attr(nested(deny, "source"), "address_prefix_type"), '"ServiceTag"');
+  assert.equal(attr(nested(deny, "source"), "address_prefix"), '"Internet"');
+  const allow = rules["always-allow-hub-ssh"];
+  assert.equal(attr(allow, "action"), '"AlwaysAllow"');
+  assert.equal(attr(allow, "priority"), "90");
+  assert.equal(attr(nested(allow, "source"), "address_prefix_type"), '"IPPrefix"');
+  assert.equal(attr(nested(allow, "source"), "address_prefix"), "local.hub_cidr");
+  // Both configurations deployed, each in the lab's region.
+  const deps = resources(l, "azurerm_network_manager_deployment");
+  const byAccess = Object.fromEntries(deps.map((d) => [strings(attr(d.body, "scope_access"))[0], d.body]));
+  assert.deepEqual(Object.keys(byAccess).sort(), ["Connectivity", "SecurityAdmin"]);
+  assert.equal(attr(byAccess.Connectivity, "configuration_ids"), `[azurerm_network_manager_connectivity_configuration.${cc.labels[1]}.id]`);
+  assert.equal(attr(byAccess.SecurityAdmin, "configuration_ids"), `[azurerm_network_manager_security_admin_configuration.${sac.labels[1]}.id]`);
+  for (const d of deps) {
+    assert.equal(attr(d.body, "network_manager_id"), "azurerm_network_manager.avnm.id");
+    assert.equal(attr(d.body, "location"), "azurerm_resource_group.lab.location");
+  }
+  // The security rules must be in place only once the rules are: the deployment waits for them.
+  assert.match(byAccess.SecurityAdmin, /depends_on\s*=\s*\[[^\]]*azurerm_network_manager_admin_rule\.deny_ssh[^\]]*\]/);
+  assert.match(byAccess.SecurityAdmin, /depends_on\s*=\s*\[[^\]]*azurerm_network_manager_admin_rule\.allow_hub_ssh[^\]]*\]/);
+  assert.match(byAccess.Connectivity, /depends_on\s*=\s*\[[^\]]*azurerm_network_manager_static_member\.spoke1[^\]]*\]/);
+});
+
+test(`${AVNM}: no NSG allows SSH from the internet; a spoke NSG's deny from the hub is what the always-allow rule overrides`, () => {
+  const l = lab(AVNM);
+  const rules = resources(l, "azurerm_network_security_rule");
+  for (const r of rules) {
+    if (attr(r.body, "access") === '"Allow"' && attr(r.body, "direction") === '"Inbound"') assert.doesNotMatch(attr(r.body, "source_address_prefix") ?? "", /"(\*|Internet|0\.0\.0\.0\/0)"/, `${r.labels[1]}: never an inbound rule from the internet (spec §3.9)`);
+  }
+  const deny = rules.filter((r) => attr(r.body, "access") === '"Deny"' && attr(r.body, "destination_port_range") === '"22"');
+  assert.deepEqual(deny.map((r) => attr(r.body, "source_address_prefix")), ["local.hub_cidr", "local.hub_cidr"], "each spoke's NSG denies SSH from the hub");
+  for (const k of ["spoke1", "spoke2"]) {
+    const a = resources(l, "azurerm_subnet_network_security_group_association").find((x) => attr(x.body, "subnet_id") === `azurerm_subnet.${k}.id`);
+    assert.ok(a, `snet-app in vnet-${k} has its NSG`);
+  }
+});
+
+test(`${AVNM}: the readme warns never to add vnet-wg to a group`, () => {
+  const l = lab(AVNM);
+  assert.match(l.readme, /never add `vnet-wg`[^.]*network group/i);
+  assert.match(l.readme, /deploy(ing)? \*\*None\*\*|"None"/i, "the readme says how configurations are removed (deploy None)");
+  assert.match(l.readme, /Azure Policy/, "why dynamic membership is not built");
+});
+
+/** An admin rule's name attribute, unquoted. */
+function unquoteName(r) {
+  return (attr(r.body, "name") ?? "").replace(/^"|"$/g, "");
+}

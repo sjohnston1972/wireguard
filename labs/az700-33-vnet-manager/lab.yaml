@@ -1,0 +1,41 @@
+# Lab 33 (AZ-700 plan area Z1; scope exception S1, approved by Steven
+# 2026-10-05). AZ-700 study guide skills this lab touches (outline "Skills
+# measured as of July 27, 2026"):
+#   Design and implement core networking infrastructure > Design and
+#   implement Azure Virtual Network connectivity and routing: "Design and
+#   implement Azure Virtual Network Manager" (network groups, connectivity
+#   configurations, hub and spoke). Design and implement Azure network
+#   security services: security admin rules in Azure Virtual Network Manager.
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. The VMs and their OS disks carry retail entries the price feed
+# refreshes; npm run labs-verify -- --meters az700-33-vnet-manager checks
+# them (Standard_B1s Linux £0.0089/h; S4 LRS Disk £1.28 a month, about
+# £0.0018/h). Virtual Network Manager has no uksouth row (Azure prices it
+# under region Global), so it stays authored (ruling 54): £0.0151/h for each
+# VNet it manages (the hub and two spokes). AVNM's own peerings move a few
+# kB here.
+id: az700-33-vnet-manager
+version: 1
+title: "Virtual Network Manager: hub-and-spoke and security admin rules"
+summary: >-
+  Three unpeered VNets that Azure Virtual Network Manager joins into a hub and spoke, with security admin rules
+  that sit above every NSG: deny SSH from the internet, and always allow it from the hub.
+exam: AZ-700
+skill_areas: [az700.core, az700.security]
+level: associate
+type: explore
+prerequisites: [az104-14-peering-udr]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Virtual Network Manager, per managed VNet", gbp_h: 0.0151, qty: 3 }
+  pricey: null
+timing: { deploy_min: 10, destroy_min: 10, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 3 }
+identity:
+  creates: []
+  roles: []
+  governance: false
