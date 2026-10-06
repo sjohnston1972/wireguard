@@ -1298,6 +1298,31 @@ test("lab 33's connectivity and security configurations may target only the lab'
   assert.ok(verdict(checkHcl(dynamic, "az104-02-policy")).some(([, a]) => a === "azurerm_policy_definition.members"));
 });
 
+// Review fix 11: the effect can be a parameter, "[parameters('effect')]", whose allowed values or default carry
+// addToNetworkGroup; and an assignment can pass it. Any policy object in any lab that names it is refused.
+test("an addToNetworkGroup effect behind a parameter, or passed by an assignment, is refused in every lab", () => {
+  const rule = JSON.stringify({ if: { field: "type", equals: "Microsoft.Network/virtualNetworks" }, then: { effect: "[parameters('effect')]" } });
+  const def = (parameters) => ({ azurerm_policy_definition: { members: [{ name: "lab-${var.lab_id}-members", display_name: "lab-${var.lab_id}-members", policy_type: "Custom", mode: "Microsoft.Network.Data", policy_rule: rule, parameters: JSON.stringify(parameters) }] } });
+  const refusedHere = (hcl) => verdict(checkHcl(hcl, "az104-02-policy")).some(([r, a]) => r === "outside-scope" && a === "azurerm_policy_definition.members");
+  // Allowed values that include it, or a default of it (any spelling).
+  assert.ok(refusedHere(governanceHcl(def({ effect: { type: "String", allowedValues: ["audit", "addToNetworkGroup"], defaultValue: "audit" } }))));
+  assert.ok(refusedHere(governanceHcl(def({ effect: { type: "String", defaultValue: "AddToNetworkGroup" } }))));
+  // A parameterised effect that cannot be it passes.
+  assert.ok(!refusedHere(governanceHcl(def({ effect: { type: "String", allowedValues: ["Audit", "Deny", "Disabled"], defaultValue: "Audit" } }))));
+  assert.deepEqual(checkHcl(governanceHcl(def({ effect: { type: "String", allowedValues: ["Audit", "Deny"], defaultValue: "Audit" } })), "az104-02-policy"), []);
+  // An assignment (or an initiative's reference) that passes it as the effect's value.
+  const assign = governanceHcl({
+    ...def({ effect: { type: "String", defaultValue: "Audit" } }),
+    azurerm_resource_group_policy_assignment: { members: [{ name: "lab-${var.lab_id}-members", resource_group_id: "${azurerm_resource_group.lab.id}", policy_definition_id: "${azurerm_policy_definition.members.id}", parameters: JSON.stringify({ effect: { value: "addToNetworkGroup" } }) }] },
+  });
+  assert.ok(verdict(checkHcl(assign, "az104-02-policy")).some(([r, a]) => r === "outside-scope" && a === "azurerm_resource_group_policy_assignment.members"));
+  const initiative = governanceHcl({
+    ...def({ effect: { type: "String", defaultValue: "Audit" } }),
+    azurerm_policy_set_definition: { set: [{ name: "lab-${var.lab_id}-set", display_name: "lab-${var.lab_id}-set", policy_type: "Custom", policy_definition_reference: [{ policy_definition_id: "${azurerm_policy_definition.members.id}", parameter_values: JSON.stringify({ effect: { value: "addToNetworkGroup" } }) }] }] },
+  });
+  assert.ok(verdict(checkHcl(initiative, "az104-02-policy")).some(([r, a]) => r === "outside-scope" && a === "azurerm_policy_set_definition.set"));
+});
+
 const L44 = "az700-44-flow-logs-bastion";
 const FLOW = "azurerm_network_watcher_flow_log.vnet";
 /** Lab 44's flow log and what it points at (slot 31): the VNet, the log storage account and the capped workspace. */

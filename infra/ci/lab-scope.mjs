@@ -1217,8 +1217,12 @@ export function scopeProblems({ resources, providers, imports = [], variables = 
         else if (r.type === "azurerm_network_manager") s1Scope = true;
       }
       // S1: dynamic membership is Azure Policy's addToNetworkGroup effect, which would add VNets beyond the lab; no
-      // lab defines it, and lab 33 assigns no policy at all.
-      if (r.type === "azurerm_policy_definition" && typeof v.policy_rule === "string" && /addtonetworkgroup/i.test(v.policy_rule)) refuse("outside-scope", "S1: an addToNetworkGroup policy adds VNets to a network group by rule (dynamic membership), which can reach any VNet; network groups take the lab's own VNets as static members only");
+      // lab defines it, and lab 33 assigns no policy at all. The effect may be a parameter ("[parameters('effect')]")
+      // whose allowed values or default carry it, or a value an assignment or initiative passes (review fix 11), so
+      // any policy definition, initiative or assignment naming it anywhere (its rule, parameters, parameter values;
+      // in HCL, the expression as written) is refused.
+      const namesAddToNetworkGroup = (l) => (typeof l.value === "string" && /addtonetworkgroup/i.test(l.value)) || (l.value instanceof Unknown && typeof l.value.raw === "string" && /addtonetworkgroup/i.test(l.value.raw));
+      if (/policy_(set_)?definition$|policy_assignment$/.test(r.type) && all.some(namesAddToNetworkGroup)) refuse("outside-scope", "S1: an addToNetworkGroup policy adds VNets to a network group by rule (dynamic membership), which can reach any VNet; network groups take the lab's own VNets as static members only");
       if (avnmLab && /policy_assignment$/.test(r.type)) refuse("outside-scope", "S1: lab 33 assigns no policy (dynamic membership in a network group is a policy assignment)");
       // S2 (ruling 48, approved by Steven 2026-10-05): one flow log, in lab 44 only, on the region's own watcher in
       // NetworkWatcherRG, named lab-<id>-*, logging the lab's VNet into the lab's account and workspace. `s2Group`
