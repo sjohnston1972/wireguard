@@ -344,3 +344,140 @@ test(`${P2S}: priced as one VpnGw1AZ gateway, its public IP and one small VM`, (
   assert.equal(cost.pricey, gw.name);
   assert.equal(estimateGbpH(cost.items).toFixed(4), "0.1730");
 });
+
+// ── Lab 38: hub-spoke with Azure Firewall ────────────────────────────────
+
+const FW = "az700-38-hub-firewall";
+
+labContentSuite(FW, { marker: "££" });
+sharedChecks(FW);
+
+test(`${FW}: a Basic firewall with data and management IP configurations`, () => {
+  const l = lab(FW);
+  const fws = resources(l, "azurerm_firewall");
+  assert.equal(fws.length, 1, "one firewall");
+  const f = fws[0].body;
+  assert.equal(top(f, "sku_name"), '"AZFW_VNet"', "a firewall in a VNet (a hub VNet, not a Virtual WAN hub)");
+  assert.equal(top(f, "sku_tier"), '"Basic"');
+  assert.equal(refTo(top(f, "firewall_policy_id"), "azurerm_firewall_policy"), "hub", "the firewall uses fwp-hub");
+  const data = allNested(f, "ip_configuration");
+  assert.equal(data.length, 1, "one data IP configuration");
+  const mgmt = nested(f, "management_ip_configuration");
+  assert.ok(mgmt, "a management IP configuration (Basic needs one)");
+  const ips = {};
+  for (const [what, block, name] of [["data", data[0], "AzureFirewallSubnet"], ["management", mgmt, "AzureFirewallManagementSubnet"]]) {
+    const s = byName(l, "azurerm_subnet", refTo(attr(block, "subnet_id"), "azurerm_subnet"));
+    assert.equal(attr(s.body, "name"), `"${name}"`, `the ${what} configuration is in ${name}`);
+    assert.equal(prefixLength(only(l, s.body, "address_prefixes")), 26, `${name} is a /26 (ruling 46)`);
+    assert.equal(refTo(attr(s.body, "virtual_network_name"), "azurerm_virtual_network", "name"), "hub", `${name} is in vnet-hub`);
+    const pip = byName(l, "azurerm_public_ip", refTo(attr(block, "public_ip_address_id"), "azurerm_public_ip"));
+    assert.deepEqual([attr(pip.body, "sku"), attr(pip.body, "allocation_method")], ['"Standard"', '"Static"'], `the ${what} public IP is Standard and static`);
+    ips[what] = pip.labels[1];
+  }
+  assert.notEqual(ips.data, ips.management, "two different public IPs");
+  assert.equal(resources(l, "azurerm_public_ip").length, 2, "only the firewall's two public IPs");
+  assert.equal(top(f, "dns_proxy_enabled"), undefined, "no DNS proxy (Basic has none)");
+});
+
+test(`${FW}: the hub policy inherits the base policy`, () => {
+  const l = lab(FW);
+  const base = byName(l, "azurerm_firewall_policy", "base");
+  const hub = byName(l, "azurerm_firewall_policy", "hub");
+  assert.equal(attr(base.body, "name"), '"fwp-base"');
+  assert.equal(attr(hub.body, "name"), '"fwp-hub"');
+  assert.equal(attr(base.body, "base_policy_id"), undefined, "fwp-base is the parent");
+  assert.equal(attr(hub.body, "base_policy_id"), "azurerm_firewall_policy.base.id", "fwp-hub inherits fwp-base");
+  const groups = resources(l, "azurerm_firewall_policy_rule_collection_group");
+  const of = (p) => groups.filter((g) => refTo(attr(g.body, "firewall_policy_id"), "azurerm_firewall_policy") === p);
+  // The base: spoke-to-spoke SSH and ICMP, as network rules.
+  const [bg] = of("base");
+  assert.ok(bg, "fwp-base has a rule collection group");
+  const net = nested(bg.body, "network_rule_collection");
+  assert.equal(attr(net, "action"), '"Allow"');
+  const rules = allNested(net, "rule");
+  const ssh = rules.find((r) => strings(attr(r, "destination_ports")).includes("22"));
+  assert.ok(ssh, "a rule for port 22");
+  assert.deepEqual(strings(attr(ssh, "protocols")), ["TCP"]);
+  assert.ok(rules.some((r) => strings(attr(r, "protocols")).includes("ICMP")), "a rule for ICMP");
+  for (const r of rules) {
+    assert.equal(attr(r, "source_addresses"), "[local.spoke1_cidr, local.spoke2_cidr]", "from the spokes");
+    assert.equal(attr(r, "destination_addresses"), "[local.spoke1_cidr, local.spoke2_cidr]", "to the spokes");
+  }
+  assert.equal(nested(bg.body, "application_rule_collection"), undefined, "the base has network rules only");
+  // The hub (child): web access to Ubuntu's mirrors and one Microsoft page, as application rules.
+  const [hg] = of("hub");
+  assert.ok(hg, "fwp-hub has a rule collection group");
+  const app = nested(hg.body, "application_rule_collection");
+  assert.equal(attr(app, "action"), '"Allow"');
+  const fqdns = allNested(app, "rule").flatMap((r) => strings(attr(r, "destination_fqdns")));
+  assert.deepEqual(fqdns.sort(), ["*.ubuntu.com", "www.microsoft.com"]);
+  const ports = allNested(app, "protocols").map((p) => `${strings(attr(p, "type"))[0]}:${attr(p, "port")}`);
+  assert.deepEqual([...new Set(ports)].sort(), ["Http:80", "Https:443"]);
+  assert.equal(nested(hg.body, "network_rule_collection"), undefined, "the child adds application rules only");
+});
+
+test(`${FW}: each spoke sends 0.0.0.0/0 and the other spoke to the firewall`, () => {
+  const l = lab(FW);
+  const fwIp = "azurerm_firewall.hub.ip_configuration[0].private_ip_address";
+  for (const [me, other] of [["spoke1", "spoke2"], ["spoke2", "spoke1"]]) {
+    const rt = byName(l, "azurerm_route_table", me);
+    assert.equal(attr(rt.body, "name"), `"rt-${me}"`);
+    const routes = resources(l, "azurerm_route").filter((r) => refTo(attr(r.body, "route_table_name"), "azurerm_route_table", "name") === me);
+    const prefixes = routes.map((r) => expand(l, attr(r.body, "address_prefix"))).sort();
+    assert.deepEqual(prefixes, ['"0.0.0.0/0"', expand(l, `local.${other}_cidr`)].sort(), `rt-${me}: 0.0.0.0/0 and ${other}'s /20`);
+    for (const r of routes) {
+      assert.equal(attr(r.body, "next_hop_type"), '"VirtualAppliance"');
+      assert.equal(attr(r.body, "next_hop_in_ip_address"), fwIp, "the next hop is the firewall's private IP");
+    }
+    const assoc = resources(l, "azurerm_subnet_route_table_association").find((a) => refTo(attr(a.body, "route_table_id"), "azurerm_route_table") === me);
+    assert.ok(assoc, `rt-${me} is associated`);
+    const subnet = byName(l, "azurerm_subnet", refTo(attr(assoc.body, "subnet_id"), "azurerm_subnet"));
+    assert.equal(refTo(attr(subnet.body, "virtual_network_name"), "azurerm_virtual_network", "name"), me, `with ${me}'s subnet`);
+    assert.equal(attr(subnet.body, "default_outbound_access_enabled"), "false", `${me}'s subnet is private: its way out is the firewall (ruling 37)`);
+    // Peered with the hub both ways, forwarded traffic allowed (the firewall forwards the other spoke's packets).
+    for (const [from, to] of [["hub", me], [me, "hub"]]) {
+      const p = resources(l, "azurerm_virtual_network_peering").find((x) => refTo(attr(x.body, "virtual_network_name"), "azurerm_virtual_network", "name") === from && refTo(attr(x.body, "remote_virtual_network_id"), "azurerm_virtual_network") === to);
+      assert.ok(p, `vnet-${from} peers with vnet-${to}`);
+      assert.equal(attr(p.body, "allow_forwarded_traffic"), "true");
+    }
+  }
+  assert.equal(resources(l, "azurerm_virtual_network_peering").length, 4, "no spoke-to-spoke peering: the firewall joins them");
+});
+
+test(`${FW}: no Standard or Premium firewall or policy`, () => {
+  const l = lab(FW);
+  for (const f of resources(l, "azurerm_firewall")) assert.equal(top(f.body, "sku_tier"), '"Basic"', `azurerm_firewall.${f.labels[1]} is Basic`);
+  const policies = resources(l, "azurerm_firewall_policy");
+  assert.equal(policies.length, 2);
+  for (const p of policies) {
+    assert.equal(attr(p.body, "sku"), '"Basic"', `azurerm_firewall_policy.${p.labels[1]} is Basic`);
+    // Standard and Premium features a Basic policy cannot have.
+    for (const b of ["intrusion_detection", "tls_certificate", "dns", "explicit_proxy"]) assert.equal(nested(p.body, b), undefined, `azurerm_firewall_policy.${p.labels[1]}: no ${b}`);
+  }
+});
+
+test(`${FW}: the firewall logs to a capped workspace in resource-specific tables`, () => {
+  const l = lab(FW);
+  const ws = resources(l, "azurerm_log_analytics_workspace");
+  assert.equal(ws.length, 1);
+  assert.equal(attr(ws[0].body, "daily_quota_gb"), "0.05", "capped at 50 MB a day");
+  assert.equal(attr(ws[0].body, "sku"), '"PerGB2018"');
+  const ds = resources(l, "azurerm_monitor_diagnostic_setting");
+  assert.equal(ds.length, 1);
+  assert.equal(attr(ds[0].body, "target_resource_id"), "azurerm_firewall.hub.id");
+  assert.equal(attr(ds[0].body, "log_analytics_workspace_id"), `azurerm_log_analytics_workspace.${ws[0].labels[1]}.id`);
+  assert.equal(attr(ds[0].body, "log_analytics_destination_type"), '"Dedicated"', "resource-specific tables (AZFWApplicationRule and friends)");
+  const cats = allNested(ds[0].body, "enabled_log").map((b) => strings(attr(b, "category"))[0]);
+  assert.ok(cats.includes("AZFWApplicationRule") && cats.includes("AZFWNetworkRule"), `application and network rule logs (${cats.join(", ")})`);
+});
+
+test(`${FW}: timing is 15/12, the job timeout 74, and it is priced as a Basic firewall`, () => {
+  const { timing, cost } = lab(FW).yaml;
+  assert.deepEqual(timing, { deploy_min: 15, destroy_min: 12, session_h: 2, max_h: 3 });
+  assert.equal(timeoutMin(timing), 74);
+  const fw = cost.items.find((i) => i.retail?.meter === "Basic Deployment");
+  assert.deepEqual([fw?.gbp_h, fw?.retail.unit], [0.2981, "1 Hour"], "Azure Firewall Basic, Basic Deployment");
+  assert.equal(cost.pricey, fw.name);
+  assert.equal(cost.items.find((i) => i.retail?.meter === "Standard IPv4 Static Public IP")?.qty, 2, "two Standard public IPs");
+  assert.equal(estimateGbpH(cost.items).toFixed(4), "0.3325");
+});
