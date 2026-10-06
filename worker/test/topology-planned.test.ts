@@ -201,6 +201,42 @@ describe("planned graph: the rest of the core", () => {
     expect(parentOf(g, f)).toMatchObject({ kind: "resourceGroup", label: "NetworkWatcherRG", scope: "outside" });
   });
 
+  it("a private endpoint sits in its subnet with an edge to its target; a zone link folds into the zone with a link edge; a role assignment is a dependency edge", () => {
+    const rg = "rg-lab-az700-35-forced-tunnel-fix";
+    const g = extra(
+      [
+        { address: "azurerm_storage_account.sa", type: "azurerm_storage_account", name: "sa", index: null, after: { name: "l35k3x9qblob", resource_group_name: rg }, after_unknown: {} },
+        { address: "azurerm_storage_container.c", type: "azurerm_storage_container", name: "c", index: null, after: { name: "private" }, after_unknown: {} },
+        { address: "azurerm_private_endpoint.pe", type: "azurerm_private_endpoint", name: "pe", index: null, after: { name: "pe-blob", resource_group_name: rg, private_service_connection: [{ name: "psc", subresource_names: ["blob"] }] }, after_unknown: {} },
+        { address: "azurerm_private_dns_zone.z", type: "azurerm_private_dns_zone", name: "z", index: null, after: { name: "privatelink.blob.core.windows.net", resource_group_name: rg }, after_unknown: {} },
+        { address: "azurerm_private_dns_zone_virtual_network_link.l", type: "azurerm_private_dns_zone_virtual_network_link", name: "l", index: null, after: { name: "link-hub", resource_group_name: rg, registration_enabled: false }, after_unknown: {} },
+        { address: "azuread_group.readers", type: "azuread_group", name: "readers", index: null, after: { display_name: "lab-az700-35-forced-tunnel-fix-readers" }, after_unknown: {} },
+        { address: "azurerm_role_assignment.r", type: "azurerm_role_assignment", name: "r", index: null, after: { role_definition_name: "Storage Blob Data Reader" }, after_unknown: {} },
+      ],
+      {
+        "azurerm_storage_container.c": { storage_account_id: ["azurerm_storage_account.sa"] },
+        "azurerm_private_endpoint.pe": { subnet_id: ["azurerm_subnet.app"], private_service_connection: ["azurerm_storage_account.sa"], private_dns_zone_group: ["azurerm_private_dns_zone.z"] },
+        "azurerm_private_dns_zone_virtual_network_link.l": { private_dns_zone_name: ["azurerm_private_dns_zone.z"], virtual_network_id: ["azurerm_virtual_network.hub"] },
+        "azurerm_role_assignment.r": { scope: ["azurerm_resource_group.lab"], principal_id: ["azuread_group.readers"] },
+      },
+    );
+    const pe = byLabel(g, "pe-blob");
+    expect(pe).toMatchObject({ kind: "privateEndpoint", props: { groupId: "blob" } });
+    expect(parentOf(g, pe)?.label).toBe("snet-app");
+    const sa = byLabel(g, "l35…blob");
+    expect(g.edges).toEqual(expect.arrayContaining([expect.objectContaining({ from: pe.id, to: sa.id, kind: "traffic", label: "blob" })]));
+    expect(sa.folded?.map((f) => f.id)).toEqual(["tf:azurerm_storage_container.c"]);
+    const zone = byLabel(g, "privatelink.blob.core.windows.net");
+    expect(zone.kind).toBe("privateDnsZone");
+    expect(zone.folded?.map((f) => f.id)).toEqual(["tf:azurerm_private_dns_zone_virtual_network_link.l"]);
+    expect(g.edges).toEqual(expect.arrayContaining([expect.objectContaining({ from: zone.id, to: byLabel(g, "vnet-hub").id, kind: "dependency", label: "link" })]));
+    const group = byLabel(g, "lab-az700-35-forced-tunnel-fix-readers");
+    expect(group.kind).toBe("entraPrincipal");
+    expect(parentOf(g, group)).toMatchObject({ kind: "lane", key: "lane/tenant" });
+    const rgNode = g.nodes.find((n) => n.kind === "resourceGroup")!;
+    expect(g.edges).toEqual(expect.arrayContaining([expect.objectContaining({ from: group.id, to: rgNode.id, kind: "dependency", label: "role: Storage Blob Data Reader", via: "tf:azurerm_role_assignment.r" })]));
+  });
+
   it("names carrying the mock prefix are shown as l35…", () => {
     const g = extra([
       { address: "azurerm_storage_account.sa", type: "azurerm_storage_account", name: "sa", index: null, after: { name: "l35k3x9qdiag", resource_group_name: "rg-lab-az700-35-forced-tunnel-fix", account_kind: "StorageV2", account_tier: "Standard", account_replication_type: "LRS" }, after_unknown: {} },

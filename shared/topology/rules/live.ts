@@ -279,6 +279,13 @@ export const ARM_RULES: Record<string, ArmRule> = {
         return [{ from: lower(r.id), to: lower(target), kind: "traffic" as const, label: ((cp.groupIds as string[] | undefined) ?? [])[0] ?? "private link", via: lower(str(c.id) ?? r.id), state: stateWord(str(obj(cp.privateLinkServiceConnectionState).status)) }];
       }),
   },
+  "microsoft.network/privatednszones/virtualnetworklinks": {
+    fold: (r) => topResource(r.id),
+    edges: (r) => {
+      const v = idOf(props(r).virtualNetwork);
+      return v ? [{ from: lower(topResource(r.id)), to: lower(v), kind: "dependency" as const, label: props(r).registrationEnabled === true ? "link (auto-registration)" : "link", via: lower(r.id) }] : [];
+    },
+  },
   "microsoft.storage/storageaccounts": {
     props: (r) => ({ accountKind: str(r.kind), sku: str(obj(r.sku).name), accessTier: str(props(r).accessTier), publicAccess: typeof props(r).allowBlobPublicAccess === "boolean" ? props(r).allowBlobPublicAccess : undefined }),
   },

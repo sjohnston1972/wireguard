@@ -131,7 +131,7 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
     return GROUP_TYPES[i.type] ?? null;
   };
   const labelOf = (i: TfInst): string => planLabel(nameOf(i), input.number);
-  const nameOf = (i: TfInst): string => str(i.after.name) ?? (i.index !== null ? `${i.name}[${i.index}]` : i.name);
+  const nameOf = (i: TfInst): string => str(i.after.name) ?? str(i.after.display_name) ?? (i.index !== null ? `${i.name}[${i.index}]` : i.name);
 
   // ── 2. Groups ──
   const nodes = new Map<string, TopoNode>();

@@ -21,8 +21,11 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const stamp = (ms: number) => iso(ms).replace(/[-:TZ.]/g, "").slice(0, 14);
 const ghUrl = (n: number) => `https://ci.example.invalid/actions/runs/${7_100_000_000 + n}`;
 
-/** The KV keys the lab engine keeps (shared/api.ts LabPermissions, LabOrphan[]). */
-export const LABS_KV = { permissions: "labs:permissions", orphans: "labs:orphans" } as const;
+/**
+ * The KV keys the lab engine keeps (shared/api.ts LabPermissions, LabOrphan[]), and the dev-only Resource Graph rows
+ * the live diagram reads under `wrangler dev` when Azure is not connected (labs/topology.ts).
+ */
+export const LABS_KV = { permissions: "labs:permissions", orphans: "labs:orphans", topologyDev: "labs:topology:dev" } as const;
 /** The lab tables every story empties (lab_slots is kept, all 32 freed). */
 export const LAB_TABLES = ["lab_sessions", "lab_runs", "lab_cost_days", "lab_release_tests"] as const;
 
@@ -216,4 +219,73 @@ export async function seedLabs(env: Env, now: number): Promise<void> {
   const permissions: LabPermissions = { checkedAt: iso(now - DAY), role: true, users: true, groups: true, message: null };
   await env.STATUS.put(LABS_KV.permissions, JSON.stringify(permissions));
 
+  await seedTopologyDev(env);
+}
+
+/**
+ * The Resource Graph rows of the running lab 6 (slot 0, name prefix l06k3x9q,
+ * peered), for the live diagram under `wrangler dev` (labs/topology.ts reads
+ * them only with AUTH_DEV_BYPASS and no Azure). Shaped like Learn's REST
+ * answers, with a fake subscription; one NSG was "made by hand" in the
+ * portal, so the diagram shows the Added by hand badge.
+ */
+export function topologyDevRows(): Record<string, unknown[]> {
+  const lab = "az104-06-blob-security";
+  const g = `/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-${lab}`;
+  const p = (type: string, name: string) => `${g}/providers/${type}/${name}`;
+  const vnet = p("Microsoft.Network/virtualNetworks", "vnet-lab");
+  const subnet = `${vnet}/subnets/snet-endpoints`;
+  const sa = p("Microsoft.Storage/storageAccounts", "l06k3x9qblob");
+  const pe = p("Microsoft.Network/privateEndpoints", "pe-l06k3x9qblob-blob");
+  const nic = p("Microsoft.Network/networkInterfaces", "nic-pe-l06k3x9qblob-blob");
+  const zone = p("Microsoft.Network/privateDnsZones", "privatelink.blob.core.windows.net");
+  const row = (id: string, name: string, type: string, properties: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    id,
+    name,
+    type,
+    kind: "",
+    location: "uksouth",
+    resourceGroup: `rg-lab-${lab}`,
+    sku: null,
+    tags: { lab, project: "wg-admin-labs" },
+    zones: null,
+    identity: null,
+    managedBy: "",
+    properties: { provisioningState: "Succeeded", ...properties },
+    ...extra,
+  });
+  return {
+    [lab]: [
+      row(vnet, "vnet-lab", "microsoft.network/virtualnetworks", {
+        addressSpace: { addressPrefixes: ["10.64.0.0/20"] },
+        subnets: [{ id: subnet, name: "snet-endpoints", properties: { addressPrefix: "10.64.0.0/24" } }],
+        virtualNetworkPeerings: [
+          {
+            id: `${vnet}/virtualNetworkPeerings/peer-lab-to-wg`,
+            name: "peer-lab-to-wg",
+            properties: { peeringState: "Connected", remoteVirtualNetwork: { id: "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Network/virtualNetworks/vnet-wg" } },
+          },
+        ],
+      }),
+      row(sa, "l06k3x9qblob", "microsoft.storage/storageaccounts", { accessTier: "Hot", allowBlobPublicAccess: false, publicNetworkAccess: "Enabled" }, { kind: "StorageV2", sku: { name: "Standard_LRS", tier: "Standard" } }),
+      row(zone, "privatelink.blob.core.windows.net", "microsoft.network/privatednszones", { numberOfRecordSets: 2 }, { location: "global" }),
+      row(`${zone}/virtualNetworkLinks/link-vnet-lab`, "privatelink.blob.core.windows.net/link-vnet-lab", "microsoft.network/privatednszones/virtualnetworklinks", { registrationEnabled: false, virtualNetwork: { id: vnet } }, { location: "global" }),
+      row(pe, "pe-l06k3x9qblob-blob", "microsoft.network/privateendpoints", {
+        subnet: { id: subnet },
+        networkInterfaces: [{ id: nic }],
+        privateLinkServiceConnections: [{ id: `${pe}/privateLinkServiceConnections/psc-blob`, name: "psc-blob", properties: { privateLinkServiceId: sa, groupIds: ["blob"], privateLinkServiceConnectionState: { status: "Approved" } } }],
+      }),
+      row(nic, "nic-pe-l06k3x9qblob-blob", "microsoft.network/networkinterfaces", {
+        privateEndpoint: { id: pe },
+        ipConfigurations: [{ id: `${nic}/ipConfigurations/privateEndpointIpConfig.blob`, name: "privateEndpointIpConfig.blob", properties: { privateIPAddress: "10.64.0.4", privateIPAllocationMethod: "Dynamic", subnet: { id: subnet } } }],
+      }),
+      // Made by hand in the portal during the session.
+      row(p("Microsoft.Network/networkSecurityGroups", "nsg-handmade"), "nsg-handmade", "microsoft.network/networksecuritygroups", { securityRules: [] }, { tags: {} }),
+    ],
+  };
+}
+
+/** Put the dev-only live diagram rows in KV (scenario labs). */
+export async function seedTopologyDev(env: Env): Promise<void> {
+  await env.STATUS.put(LABS_KV.topologyDev, JSON.stringify(topologyDevRows()));
 }

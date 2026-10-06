@@ -14,6 +14,7 @@ import type { BudgetStatus } from "../worker/src/budget";
 import type { ClientHistory, HistoryRange, RuleHistory, VmHistory } from "../worker/src/history";
 import type { ActivityEvent, ActivityKpis, ActivityRange, EventType, RunRow } from "../worker/src/activity";
 import type { RotationStatus } from "../worker/src/keyrotation";
+import type { TopologyGraph } from "./topology/model";
 import type { BackupStatus, ExportTable } from "../worker/src/backup";
 import type { PageId } from "./widgets";
 import type { LabCostItem, LabDef, LabExam, LabLevel, LabType, PeeringMode, ReadmeBlock, LAB_ACTIONS, LAB_END_REASONS, LAB_PEERINGS, LAB_SESSION_STATES, LAB_WARNING_KINDS } from "./labs";
@@ -1004,6 +1005,21 @@ export interface LabSecretResponse {
   adminPassword: string;
   /** Entra users the lab made: name -> user principal name (the lab's `users` output). */
   users: Record<string, string>;
+}
+
+/**
+ * GET /api/v1/labs/:id/topology (lab topology spec §6.6): the running lab's live diagram from one Resource Graph
+ * query of its own groups, cached 30 s. Always 200 with a status; anything but "ok" means the app shows the planned
+ * graph with `message` as a banner. 404 not_found for an id outside the catalogue.
+ */
+export interface LabTopologyResponse {
+  status: "ok" | "not_running" | "no_azure" | "failed" | "throttled";
+  /** Plain words for the banner (null when ok). */
+  message: string | null;
+  live: TopologyGraph | null;
+  fetchedAt: string | null;
+  /** More than ARG_TOP rows: the first page only. */
+  truncated: boolean;
 }
 
 /** POST /api/v1/labs/permissions/check */

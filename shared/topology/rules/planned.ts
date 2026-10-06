@@ -309,6 +309,41 @@ export const TF_RULES: Record<string, TfRule> = {
       publicAccess: typeof i.after.public_network_access_enabled === "boolean" ? i.after.public_network_access_enabled : undefined,
     }),
   },
+  azurerm_storage_container: { arm: "Microsoft.Storage/storageAccounts/blobServices/containers", fold: ["storage_account_id", "storage_account_name"] },
+
+  // ── Private access (core; T3.4 extends) ──
+  azurerm_private_endpoint: {
+    arm: "Microsoft.Network/privateEndpoints",
+    props: (i) => {
+      const c = first(i.after.private_service_connection);
+      return { groupId: strings(c.subresource_names)[0], privateIp: str(first(i.after.ip_configuration).private_ip_address) };
+    },
+    edges: (i, h) => {
+      const c = first(i.after.private_service_connection);
+      return h.refs(i, ["private_service_connection"]).map((t) => ({ from: i, to: t, kind: "traffic" as const, label: strings(c.subresource_names)[0] ?? "private link" }));
+    },
+  },
+  azurerm_private_dns_zone: { arm: "Microsoft.Network/privateDnsZones" },
+  azurerm_private_dns_zone_virtual_network_link: {
+    arm: "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+    fold: ["private_dns_zone_name"],
+    namePath: (i, h) => [h.refs(i, ["private_dns_zone_name"])[0]?.after.name as string ?? "", str(i.after.name) ?? i.name],
+    edges: (i, h) =>
+      h.refs(i, ["private_dns_zone_name"]).flatMap((z) => h.refs(i, ["virtual_network_id"]).map((v) => ({ from: z, to: v, kind: "dependency" as const, label: i.after.registration_enabled === true ? "link (auto-registration)" : "link" }))),
+  },
+
+  // ── Identity (core; T3.4 and T3.6 extend) ──
+  azurerm_role_assignment: {
+    arm: "Microsoft.Authorization/roleAssignments",
+    fold: ["scope"],
+    edges: (i, h) => {
+      const label = `role: ${str(i.after.role_definition_name) ?? "custom"}`;
+      return h.refs(i, ["principal_id"]).flatMap((p) => h.refs(i, ["scope"]).map((s) => ({ from: p, to: s, kind: "dependency" as const, label })));
+    },
+  },
+  azuread_group: { kind: "entraPrincipal" },
+  azuread_user: { kind: "entraPrincipal" },
+
   azurerm_log_analytics_workspace: { arm: "Microsoft.OperationalInsights/workspaces", props: (i) => ({ retentionDays: num(i.after.retention_in_days), dailyCapGb: num(i.after.daily_quota_gb) }) },
   azurerm_network_watcher_flow_log: { arm: "Microsoft.Network/networkWatchers/flowLogs" },
 };
