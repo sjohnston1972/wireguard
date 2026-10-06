@@ -165,10 +165,10 @@ describe("T2.1 the data hook", () => {
 
 // ── T2.2 the saved arrangement ───────────────────────────────────────────
 
-function LayoutProbe() {
+function LayoutProbe({ label = "probe" }: { label?: string }) {
   const l = useTopologyLayout(LAB);
   return (
-    <div>
+    <section aria-label={label}>
       <output aria-label="status">{l.status}</output>
       <output aria-label="layout">{JSON.stringify(l.saved)}</output>
       <output aria-label="note">{l.note ?? ""}</output>
@@ -176,7 +176,7 @@ function LayoutProbe() {
       <button onClick={() => l.move(KEYS.nsg, { x: 50, y: 60, p: KEYS.rg })}>move nsg again</button>
       <button onClick={() => l.move(KEYS.storage, { x: 300, y: 40, p: KEYS.rg })}>move storage</button>
       <button onClick={() => l.reset()}>reset</button>
-    </div>
+    </section>
   );
 }
 
@@ -310,6 +310,60 @@ describe("T2.2 the saved arrangement", () => {
     expect(performance.now() - clickedAt).toBeLessThan(LAYOUT_SAVE_DELAY_MS - 100);
     expect(fetchMock!.callsTo("PUT", LAYOUT_API)[0]!.init.keepalive).toBe(true);
     vis.mockRestore();
+  });
+
+  it("a move made while the arrangement is loading is kept on top of it and saved once it loads", async () => {
+    const server = layoutServer(layoutPage({ [KEYS.zone]: { x: 1, y: 2, p: KEYS.rg } }, 3));
+    const get = server.routes[`GET ${LAYOUT_API}`] as () => unknown;
+    const gate = deferred<void>();
+    server.routes[`GET ${LAYOUT_API}`] = async () => {
+      await gate.promise;
+      return get();
+    };
+    renderWithProviders(<LayoutProbe />, { routes: server.routes });
+    expect(out("status")).toHaveTextContent("loading");
+    await userEvent.click(screen.getByRole("button", { name: "move nsg" }));
+    expect(shown()!.nodes[KEYS.nsg]).toEqual({ x: 10, y: 21, p: KEYS.rg });
+    await act(async () => gate.resolve());
+    await ready();
+    // The loaded arrangement and the early move, together.
+    await waitFor(() => expect(shown()).toEqual({ v: 1, nodes: { [KEYS.zone]: { x: 1, y: 2, p: KEYS.rg }, [KEYS.nsg]: { x: 10, y: 21, p: KEYS.rg } } }));
+    await waitFor(() => expect(server.puts).toHaveLength(1));
+    expect(server.puts[0]).toEqual({ baseVersion: 3, layout: { v: 1, nodes: { [KEYS.zone]: { x: 1, y: 2, p: KEYS.rg }, [KEYS.nsg]: { x: 10, y: 21, p: KEYS.rg } } } });
+    await waitFor(() => expect(server.state.page.version).toBe(4));
+  });
+
+  it("two diagrams of one lab (the tab and the full screen) share one saver: their moves never 409 each other", async () => {
+    const server = layoutServer(layoutPage({}, 1));
+    const put = server.routes[`PUT ${LAYOUT_API}`] as (r: unknown) => unknown;
+    const gate = deferred<void>();
+    let calls = 0;
+    server.routes[`PUT ${LAYOUT_API}`] = async (r: unknown) => {
+      calls++;
+      if (calls === 1) await gate.promise;
+      return put(r);
+    };
+    renderWithProviders(
+      <>
+        <LayoutProbe label="tab" />
+        <LayoutProbe label="full" />
+      </>,
+      { routes: server.routes },
+    );
+    const tab = screen.getByRole("region", { name: "tab" });
+    const full = screen.getByRole("region", { name: "full" });
+    await waitFor(() => expect(within(tab).getByRole("status", { name: "status" })).toHaveTextContent("ready"));
+    await userEvent.click(within(tab).getByRole("button", { name: "move nsg" }));
+    await waitFor(() => expect(calls).toBe(1));
+    // While the tab's save is in flight, the full screen moves something else.
+    await userEvent.click(within(full).getByRole("button", { name: "move storage" }));
+    await new Promise((r) => setTimeout(r, LAYOUT_SAVE_DELAY_MS + 100));
+    await act(async () => gate.resolve());
+    await waitFor(() => expect(server.state.page.version).toBe(3));
+    expect(server.puts.map((p) => p.baseVersion)).toEqual([1, 2]);
+    expect(server.state.page.layout.nodes).toEqual({ [KEYS.nsg]: { x: 10, y: 21, p: KEYS.rg }, [KEYS.storage]: { x: 300, y: 40, p: KEYS.rg } });
+    expect(screen.queryByText("Changed on another device. Showing the latest.")).toBeNull();
+    for (const r of [tab, full]) expect(JSON.parse(within(r).getByRole("status", { name: "layout" }).textContent!).nodes).toEqual(server.state.page.layout.nodes);
   });
 
   it("closing the diagram sends the pending save rather than dropping it", async () => {

@@ -6,6 +6,10 @@
 // §7, web/src/widgets/store.ts):
 //
 // - a move shows at once and is saved after 600 ms of quiet;
+// - one saver per lab, shared by every diagram of it on screen (the tab and
+//   the full screen), so they never save over each other's version;
+// - a move made while the arrangement is loading shows at once and is saved
+//   on top of it once it loads;
 // - one save at a time; moves made meanwhile go after it, on the version it
 //   produced;
 // - a failed save puts the arrangement back as it was and says why;
@@ -33,7 +37,11 @@ export const LAYOUT_NOT_KEPT = "The saved arrangement did not load, so changes m
 const queryKey = (labId: string) => ["prefs", "topology", labId] as const;
 const clamp = (n: number) => Math.max(-MAX_TOPOLOGY_COORD, Math.min(MAX_TOPOLOGY_COORD, Math.round(n)));
 
-/** The save queue of one lab's arrangement, for one diagram on screen. */
+/**
+ * The save queue of one lab's arrangement, shared by every diagram of that
+ * lab on screen (the tab and the full screen), so one never saves on a
+ * version the other has already moved past.
+ */
 class LayoutSaver {
   /** The arrangement as shown, ahead of the server; null = what the server confirmed. */
   override: TopologyLayout | null = null;
@@ -44,9 +52,30 @@ class LayoutSaver {
   private base: number | null = null;
   private keepalive = false;
   private listeners = new Set<() => void>();
-  /** The arrangement could not be read: nothing may be saved. Set by the hook on every render. */
-  readOnly = false;
+  /** Where the saved arrangement is: loading (moves wait for it), ready, or failed (nothing may be saved). */
+  private state: "loading" | "ready" | "failed" = "loading";
+  /** Moves made while loading, replayed on top of the arrangement once it is read. */
+  private early: ((l: TopologyLayout) => TopologyLayout)[] = [];
   toast: (t: ToastInput) => void = () => {};
+
+  private get readOnly(): boolean {
+    return this.state !== "ready";
+  }
+
+  /** The hook says where the read is. Becoming ready replays the moves made while loading and saves them. */
+  setState(state: "loading" | "ready" | "failed"): void {
+    if (state === this.state) return;
+    this.state = state;
+    if (state === "failed") this.early = [];
+    if (state !== "ready" || !this.early.length) return;
+    const moves = this.early;
+    this.early = [];
+    this.base = this.confirmed()?.version ?? 0;
+    this.override = normaliseTopologyLayout(moves.reduce((l, fn) => fn(structuredClone(l)), this.confirmed()?.layout ?? EMPTY_LAYOUT));
+    this.notify();
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.flush(), LAYOUT_SAVE_DELAY_MS);
+  }
 
   constructor(
     private client: QueryClient,
@@ -74,6 +103,8 @@ class LayoutSaver {
     const shown = this.override ?? this.confirmed()?.layout ?? EMPTY_LAYOUT;
     this.override = normaliseTopologyLayout(fn(structuredClone(shown)));
     this.notify();
+    // Still loading: shown now, kept to go on top of the arrangement when it arrives.
+    if (this.state === "loading") this.early.push(fn);
     if (this.readOnly) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
@@ -154,15 +185,25 @@ export interface TopologyLayoutState {
   reset: () => void;
 }
 
+/** One saver per lab per query client: every diagram of a lab on screen shares it. */
+const savers = new WeakMap<QueryClient, Map<string, LayoutSaver>>();
+function saverFor(client: QueryClient, labId: string): LayoutSaver {
+  let byLab = savers.get(client);
+  if (!byLab) savers.set(client, (byLab = new Map()));
+  let s = byLab.get(labId);
+  if (!s) byLab.set(labId, (s = new LayoutSaver(client, labId)));
+  return s;
+}
+
 /** One lab's synced arrangement. `enabled: false` reads nothing (and never saves). */
 export function useTopologyLayout(labId: string, opts: { enabled?: boolean } = {}): TopologyLayoutState {
   const client = useQueryClient();
   const { toast } = useToast();
   const q = useTopologyLayoutQuery(labId, opts);
-  const saver = useMemo(() => new LayoutSaver(client, labId), [client, labId]);
+  const saver = useMemo(() => saverFor(client, labId), [client, labId]);
   saver.toast = toast;
   const status: TopologyLayoutState["status"] = q.data ? "ready" : q.isError ? "failed" : "loading";
-  saver.readOnly = status !== "ready";
+  useEffect(() => saver.setState(status), [saver, status]);
   const override = useSyncExternalStore(saver.subscribe, () => saver.override);
 
   useEffect(() => {
