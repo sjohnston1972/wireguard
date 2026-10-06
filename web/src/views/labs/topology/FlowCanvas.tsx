@@ -14,7 +14,7 @@
 // picture: no pan, zoom, drag, selection or edge labels.
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { applyNodeChanges, ConnectionMode, ReactFlow, ReactFlowProvider, useReactFlow, type NodeChange, type OnNodeDrag } from "@xyflow/react";
+import { applyNodeChanges, ConnectionMode, ReactFlow, ReactFlowProvider, useReactFlow, type NodeChange, type NodeSelectionChange, type OnNodeDrag } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import { useTheme } from "@/shell/theme";
 import { useMedia } from "@/lib/useMedia";
@@ -73,7 +73,7 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
 
   const onNodesChange = useCallback((changes: NodeChange<TopoFlowNode>[]) => {
     const { byId, selected, onSelect, onMove } = latest.current;
-    const picked = changes.find((c) => c.type === "select" && c.selected);
+    const picked = changes.find((c): c is NodeSelectionChange => c.type === "select" && c.selected);
     if (picked) onSelect(picked.id);
     else if (changes.some((c) => c.type === "select" && !c.selected && c.id === selected)) onSelect(null);
     const rest = changes.filter((c) => c.type !== "select");

@@ -1,0 +1,72 @@
+/* The diagram's details panel (lab topology spec §9.2). Tokens only. */
+.topo-details .side-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.topo-details__badge {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-tile);
+}
+.topo-details__badge p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+.topo-details__h {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.topo-details__list,
+.topo-details__chips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.topo-details__chips {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.topo-details__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-primary);
+}
+.topo-details__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.topo-details__muted {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.topo-details__source {
+  margin: 4px 0 0;
+}
+.topo-details__portal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--blue-bright);
+  font-weight: 600;
+  text-decoration: none;
+}
+.topo-details__portal:hover {
+  text-decoration: underline;
+}

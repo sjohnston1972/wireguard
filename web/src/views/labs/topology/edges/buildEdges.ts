@@ -53,7 +53,7 @@ export function buildEdges(graph: TopologyGraph, byId: ReadonlyMap<string, TopoN
         focusable: false,
         selectable: false,
         deletable: false,
-        ariaLabel: null,
+        ariaLabel: edgeName(e, byId),
         hidden: !opts.showDependencies,
         animated: false,
         interactionWidth: 0,
