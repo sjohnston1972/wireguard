@@ -1,0 +1,65 @@
+{
+ "schema": 1,
+ "labId": "az305-24-cosmos",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_cosmosdb_account.lab",
+   "key": "microsoft.documentdb/databaseaccounts/{p}-cosmos",
+   "kind": "cosmos",
+   "label": "l24…-cosmos",
+   "props": {
+    "apiKind": "NoSQL",
+    "consistency": "Session",
+    "counts": [
+     "databases: 1",
+     "containers: 3"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.DocumentDB/databaseAccounts",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_cosmosdb_sql_container.by_status",
+     "label": "bykey-status",
+     "armType": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers"
+    },
+    {
+     "id": "tf:azurerm_cosmosdb_sql_container.events",
+     "label": "events",
+     "armType": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers"
+    },
+    {
+     "id": "tf:azurerm_cosmosdb_sql_container.orders",
+     "label": "orders",
+     "armType": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers"
+    },
+    {
+     "id": "tf:azurerm_cosmosdb_sql_database.shop",
+     "label": "shop",
+     "armType": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-24-cosmos",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-24-cosmos",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-24-cosmos",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  }
+ ],
+ "edges": []
+}

@@ -1,0 +1,151 @@
+{
+ "schema": 1,
+ "labId": "az305-22-keyvault-mi",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_key_vault.lab",
+   "key": "microsoft.keyvault/vaults/{p}kv",
+   "kind": "keyVault",
+   "label": "l22…kv",
+   "props": {
+    "sku": "standard",
+    "mode": "RBAC",
+    "counts": [
+     "secrets: 2"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.KeyVault/vaults",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_key_vault_secret#1",
+     "label": "secret",
+     "armType": "Microsoft.KeyVault/vaults/secrets"
+    },
+    {
+     "id": "tf:azurerm_key_vault_secret#2",
+     "label": "secret",
+     "armType": "Microsoft.KeyVault/vaults/secrets"
+    },
+    {
+     "id": "tf:azurerm_role_assignment.app_reports_key",
+     "label": "app_reports_key",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    },
+    {
+     "id": "tf:azurerm_role_assignment.pipeline_officer",
+     "label": "pipeline_officer",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    },
+    {
+     "id": "tf:azurerm_role_assignment.vm_secrets_user",
+     "label": "vm_secrets_user",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.vm",
+   "key": "microsoft.compute/virtualmachines/vm-app",
+   "kind": "vm",
+   "label": "vm-app",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.vms",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.vm",
+     "label": "nic-vm-app",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-22-keyvault-mi",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-22-keyvault-mi",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-22-keyvault-mi",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.vms",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-vms",
+   "kind": "subnet",
+   "label": "snet-vms",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_user_assigned_identity.app",
+   "key": "microsoft.managedidentity/userassignedidentities/id-{p}-app",
+   "kind": "managedIdentity",
+   "label": "id-l22…-app",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.ManagedIdentity/userAssignedIdentities",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_linux_virtual_machine.vm>tf:azurerm_key_vault.lab:role: Key Vault Secrets User",
+   "from": "tf:azurerm_linux_virtual_machine.vm",
+   "to": "tf:azurerm_key_vault.lab",
+   "kind": "dependency",
+   "label": "role: Key Vault Secrets User",
+   "via": "tf:azurerm_role_assignment.vm_secrets_user"
+  },
+  {
+   "id": "dependency:tf:azurerm_linux_virtual_machine.vm>tf:azurerm_user_assigned_identity.app:identity",
+   "from": "tf:azurerm_linux_virtual_machine.vm",
+   "to": "tf:azurerm_user_assigned_identity.app",
+   "kind": "dependency",
+   "label": "identity",
+   "via": "tf:azurerm_linux_virtual_machine.vm"
+  },
+  {
+   "id": "dependency:tf:azurerm_user_assigned_identity.app>tf:azurerm_key_vault.lab:role: Key Vault Secrets User (one secret)",
+   "from": "tf:azurerm_user_assigned_identity.app",
+   "to": "tf:azurerm_key_vault.lab",
+   "kind": "dependency",
+   "label": "role: Key Vault Secrets User (one secret)",
+   "via": "tf:azurerm_role_assignment.app_reports_key"
+  }
+ ]
+}

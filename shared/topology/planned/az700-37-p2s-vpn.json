@@ -1,0 +1,123 @@
+{
+ "schema": 1,
+ "labId": "az700-37-p2s-vpn",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/tenant",
+   "key": "lane/tenant",
+   "kind": "lane",
+   "label": "Tenant and Entra ID",
+   "props": {}
+  },
+  {
+   "id": "tf:azuread_user.vpnuser",
+   "key": "terraform/azuread_user/lab-az700-37-p2s-vpn-vpnuser",
+   "kind": "entraPrincipal",
+   "label": "lab-az700-37-p2s-vpn-vpnuser",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.app",
+   "key": "microsoft.compute/virtualmachines/vm-app",
+   "kind": "vm",
+   "label": "vm-app",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.app",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.app",
+     "label": "nic-vm-app",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-37-p2s-vpn",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-37-p2s-vpn",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-37-p2s-vpn",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.app",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/snet-app",
+   "kind": "subnet",
+   "label": "snet-app",
+   "props": {
+    "prefix": "10.71.193.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.gateway",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/gatewaysubnet",
+   "kind": "subnet",
+   "label": "GatewaySubnet",
+   "props": {
+    "prefix": "10.71.192.0/27"
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.hub",
+   "key": "microsoft.network/virtualnetworks/vnet-hub",
+   "kind": "vnet",
+   "label": "vnet-hub",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network_gateway.hub",
+   "key": "microsoft.network/virtualnetworkgateways/vpngw-hub",
+   "kind": "vpnGateway",
+   "label": "vpngw-hub",
+   "props": {
+    "sku": "VpnGw1AZ",
+    "bgp": false,
+    "vpnType": "RouteBased",
+    "clientPool": "10.71.255.0/24"
+   },
+   "parent": "tf:azurerm_subnet.gateway",
+   "armType": "Microsoft.Network/virtualNetworkGateways",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_public_ip.gateway",
+     "label": "pip-vpngw-hub",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    }
+   ]
+  }
+ ],
+ "edges": []
+}

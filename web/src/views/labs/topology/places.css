@@ -1,0 +1,42 @@
+/* The diagram's placements (lab topology spec §9.1): the lab panel's Diagram
+   tab, the full-screen view and the Overview's mini. The canvas fills the
+   room it is given and pans; the page around it never scrolls. */
+
+.topo-place { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; height: 100%; }
+
+
+.topo-place__banner {
+  margin: 0; padding: 6px 10px; border-radius: 8px; font-size: 12.5px; color: var(--text-primary);
+  background: color-mix(in srgb, var(--amber) 10%, var(--bg-panel)); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+}
+.topo-place__error {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-radius: 10px; font-size: 13px;
+  background: color-mix(in srgb, var(--red) 10%, var(--bg-panel)); border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
+}
+.topo-place__error > span { flex: 1; min-width: 0; }
+.topo-place__loading { margin: 0; padding: 24px 0; font-size: 12.5px; color: var(--text-secondary); text-align: center; }
+
+/* The canvas and, beside it, the details panel (a sheet on the phone). */
+.topo-place__stage { flex: 1 1 auto; min-height: 0; }
+.topo-place__canvas {
+  height: 100%; min-height: 0; overflow: auto; border-radius: 10px;
+  background: var(--bg-tile); border: 1px solid var(--border); padding: 8px;
+}
+
+.topo-place__notes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12px; color: var(--text-secondary); }
+
+/* Full screen: the labs page area, the diagram filling it. */
+.topo-full { display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; }
+.topo-full__head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.topo-full__title { margin: 0; font-size: 18px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topo-full__sub { font-size: 12.5px; color: var(--text-secondary); }
+.topo-place--full { flex: 1 1 auto; }
+
+/* The Overview's mini: icons and names only, no controls. */
+.topo-mini { display: flex; flex-direction: column; gap: 6px; width: 320px; }
+.topo-mini__canvas { height: 200px; overflow: hidden; border-radius: 8px; background: var(--bg-tile); border: 1px solid var(--border); padding: 6px; font-size: 11.5px; }
+.topo-mini__caption { margin: 0; font-size: 12px; color: var(--text-secondary); }
+
+@media (max-width: 640px) {
+  .topo-full__title { font-size: 16px; }
+}

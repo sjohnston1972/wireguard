@@ -1,0 +1,285 @@
+{
+ "schema": 1,
+ "labId": "az700-33-vnet-manager",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_linux_virtual_machine.spoke1",
+   "key": "microsoft.compute/virtualmachines/vm-spoke1",
+   "kind": "vm",
+   "label": "vm-spoke1",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.spoke1",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.spoke1",
+     "label": "nic-vm-spoke1",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.spoke2",
+   "key": "microsoft.compute/virtualmachines/vm-spoke2",
+   "kind": "vm",
+   "label": "vm-spoke2",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.spoke2",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.spoke2",
+     "label": "nic-vm-spoke2",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_network_manager.avnm",
+   "key": "microsoft.network/networkmanagers/avnm-{p}",
+   "kind": "networkManager",
+   "label": "avnm-l33…",
+   "props": {
+    "scopeAccess": [
+     "Connectivity",
+     "SecurityAdmin"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/networkManagers",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_manager_admin_rule.allow_hub_ssh",
+     "label": "always-allow-hub-ssh",
+     "armType": "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections/rules"
+    },
+    {
+     "id": "tf:azurerm_network_manager_admin_rule.deny_ssh",
+     "label": "deny-ssh-internet",
+     "armType": "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections/rules"
+    },
+    {
+     "id": "tf:azurerm_network_manager_admin_rule_collection.spokes",
+     "label": "rc-spokes",
+     "armType": "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections"
+    },
+    {
+     "id": "tf:azurerm_network_manager_connectivity_configuration.hub_spoke",
+     "label": "cc-hub-spoke",
+     "armType": "Microsoft.Network/networkManagers/connectivityConfigurations"
+    },
+    {
+     "id": "tf:azurerm_network_manager_deployment.connectivity",
+     "label": "connectivity",
+     "armType": "Microsoft.Network/networkManagers/commits"
+    },
+    {
+     "id": "tf:azurerm_network_manager_deployment.security",
+     "label": "security",
+     "armType": "Microsoft.Network/networkManagers/commits"
+    },
+    {
+     "id": "tf:azurerm_network_manager_network_group.spokes",
+     "label": "ng-spokes",
+     "armType": "Microsoft.Network/networkManagers/networkGroups"
+    },
+    {
+     "id": "tf:azurerm_network_manager_security_admin_configuration.lab",
+     "label": "sac-lab",
+     "armType": "Microsoft.Network/networkManagers/securityAdminConfigurations"
+    },
+    {
+     "id": "tf:azurerm_network_manager_static_member.spoke1",
+     "label": "sm-spoke1",
+     "armType": "Microsoft.Network/networkManagers/networkGroups/staticMembers"
+    },
+    {
+     "id": "tf:azurerm_network_manager_static_member.spoke2",
+     "label": "sm-spoke2",
+     "armType": "Microsoft.Network/networkManagers/networkGroups/staticMembers"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-33-vnet-manager",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-33-vnet-manager",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-33-vnet-manager",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.shared",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/snet-shared",
+   "kind": "subnet",
+   "label": "snet-shared",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.spoke1",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-spoke1/snet-app",
+   "kind": "subnet",
+   "label": "snet-app",
+   "props": {
+    "prefix": "10.71.208.0/24",
+    "chips": [
+     "NSG nsg-spoke1"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.spoke1",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.spoke1",
+     "label": "nsg-spoke1",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.spoke1_deny_hub_ssh",
+     "label": "deny-ssh-from-hub",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.spoke1",
+     "label": "spoke1",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.spoke2",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-spoke2/snet-app",
+   "kind": "subnet",
+   "label": "snet-app",
+   "props": {
+    "prefix": "10.71.224.0/24",
+    "chips": [
+     "NSG nsg-spoke2"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.spoke2",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.spoke2",
+     "label": "nsg-spoke2",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.spoke2_deny_hub_ssh",
+     "label": "deny-ssh-from-hub",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.spoke2",
+     "label": "spoke2",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.hub",
+   "key": "microsoft.network/virtualnetworks/vnet-hub",
+   "kind": "vnet",
+   "label": "vnet-hub",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.spoke1",
+   "key": "microsoft.network/virtualnetworks/vnet-spoke1",
+   "kind": "vnet",
+   "label": "vnet-spoke1",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.spoke2",
+   "key": "microsoft.network/virtualnetworks/vnet-spoke2",
+   "kind": "vnet",
+   "label": "vnet-spoke2",
+   "props": {
+    "addressSpace": [
+     "10.71.224.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_network_manager.avnm>tf:azurerm_virtual_network.spoke1:member",
+   "from": "tf:azurerm_network_manager.avnm",
+   "to": "tf:azurerm_virtual_network.spoke1",
+   "kind": "dependency",
+   "label": "member",
+   "via": "tf:azurerm_network_manager_static_member.spoke1"
+  },
+  {
+   "id": "dependency:tf:azurerm_network_manager.avnm>tf:azurerm_virtual_network.spoke2:member",
+   "from": "tf:azurerm_network_manager.avnm",
+   "to": "tf:azurerm_virtual_network.spoke2",
+   "kind": "dependency",
+   "label": "member",
+   "via": "tf:azurerm_network_manager_static_member.spoke2"
+  },
+  {
+   "id": "traffic:tf:azurerm_virtual_network.hub>tf:azurerm_virtual_network.spoke1:peering (AVNM)",
+   "from": "tf:azurerm_virtual_network.hub",
+   "to": "tf:azurerm_virtual_network.spoke1",
+   "kind": "traffic",
+   "label": "peering (AVNM)",
+   "via": "tf:azurerm_network_manager_connectivity_configuration.hub_spoke"
+  },
+  {
+   "id": "traffic:tf:azurerm_virtual_network.hub>tf:azurerm_virtual_network.spoke2:peering (AVNM)",
+   "from": "tf:azurerm_virtual_network.hub",
+   "to": "tf:azurerm_virtual_network.spoke2",
+   "kind": "traffic",
+   "label": "peering (AVNM)",
+   "via": "tf:azurerm_network_manager_connectivity_configuration.hub_spoke"
+  }
+ ]
+}

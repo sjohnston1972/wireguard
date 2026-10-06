@@ -1,0 +1,187 @@
+{
+ "schema": 1,
+ "labId": "az104-18-monitor",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_linux_virtual_machine.vm",
+   "key": "microsoft.compute/virtualmachines/vm-monitor",
+   "kind": "vm",
+   "label": "vm-monitor",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.vms",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.vm",
+     "label": "nic-vm-monitor",
+     "armType": "Microsoft.Network/networkInterfaces"
+    },
+    {
+     "id": "tf:azurerm_virtual_machine_extension.ama",
+     "label": "AzureMonitorLinuxAgent",
+     "armType": "Microsoft.Compute/virtualMachines/extensions"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_log_analytics_workspace.lab",
+   "key": "microsoft.operationalinsights/workspaces/log-lab",
+   "kind": "logAnalytics",
+   "label": "log-lab",
+   "props": {
+    "retentionDays": 30,
+    "dailyCapGb": 0.05
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.OperationalInsights/workspaces",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_monitor_action_group.lab",
+   "key": "microsoft.insights/actiongroups/ag-lab",
+   "kind": "monitor",
+   "label": "ag-lab",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Insights/actionGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_monitor_activity_log_alert.restart",
+   "key": "microsoft.insights/activitylogalerts/alert-vm-restart",
+   "kind": "monitor",
+   "label": "alert-vm-restart",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Insights/activityLogAlerts",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_monitor_data_collection_rule.vm",
+   "key": "microsoft.insights/datacollectionrules/dcr-vm-linux",
+   "kind": "monitor",
+   "label": "dcr-vm-linux",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Insights/dataCollectionRules",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_monitor_data_collection_rule_association.vm",
+     "label": "dcra-vm-monitor",
+     "armType": "Microsoft.Insights/dataCollectionRuleAssociations"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_monitor_metric_alert.cpu",
+   "key": "microsoft.insights/metricalerts/alert-vm-cpu-high",
+   "kind": "monitor",
+   "label": "alert-vm-cpu-high",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Insights/metricAlerts",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-18-monitor",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-18-monitor",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-18-monitor",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.vms",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-vms",
+   "kind": "subnet",
+   "label": "snet-vms",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_monitor_activity_log_alert.restart>tf:azurerm_monitor_action_group.lab:notifies",
+   "from": "tf:azurerm_monitor_activity_log_alert.restart",
+   "to": "tf:azurerm_monitor_action_group.lab",
+   "kind": "dependency",
+   "label": "notifies",
+   "via": "tf:azurerm_monitor_activity_log_alert.restart"
+  },
+  {
+   "id": "dependency:tf:azurerm_monitor_activity_log_alert.restart>tf:azurerm_resource_group.lab:alert",
+   "from": "tf:azurerm_monitor_activity_log_alert.restart",
+   "to": "tf:azurerm_resource_group.lab",
+   "kind": "dependency",
+   "label": "alert",
+   "via": "tf:azurerm_monitor_activity_log_alert.restart"
+  },
+  {
+   "id": "dependency:tf:azurerm_monitor_data_collection_rule.vm>tf:azurerm_linux_virtual_machine.vm:collects from",
+   "from": "tf:azurerm_monitor_data_collection_rule.vm",
+   "to": "tf:azurerm_linux_virtual_machine.vm",
+   "kind": "dependency",
+   "label": "collects from",
+   "via": "tf:azurerm_monitor_data_collection_rule_association.vm"
+  },
+  {
+   "id": "dependency:tf:azurerm_monitor_data_collection_rule.vm>tf:azurerm_log_analytics_workspace.lab:sends to",
+   "from": "tf:azurerm_monitor_data_collection_rule.vm",
+   "to": "tf:azurerm_log_analytics_workspace.lab",
+   "kind": "dependency",
+   "label": "sends to",
+   "via": "tf:azurerm_monitor_data_collection_rule.vm"
+  },
+  {
+   "id": "dependency:tf:azurerm_monitor_metric_alert.cpu>tf:azurerm_linux_virtual_machine.vm:alert",
+   "from": "tf:azurerm_monitor_metric_alert.cpu",
+   "to": "tf:azurerm_linux_virtual_machine.vm",
+   "kind": "dependency",
+   "label": "alert",
+   "via": "tf:azurerm_monitor_metric_alert.cpu"
+  },
+  {
+   "id": "dependency:tf:azurerm_monitor_metric_alert.cpu>tf:azurerm_monitor_action_group.lab:notifies",
+   "from": "tf:azurerm_monitor_metric_alert.cpu",
+   "to": "tf:azurerm_monitor_action_group.lab",
+   "kind": "dependency",
+   "label": "notifies",
+   "via": "tf:azurerm_monitor_metric_alert.cpu"
+  }
+ ]
+}

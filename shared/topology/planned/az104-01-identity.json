@@ -1,0 +1,120 @@
+{
+ "schema": 1,
+ "labId": "az104-01-identity",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/tenant",
+   "key": "lane/tenant",
+   "kind": "lane",
+   "label": "Tenant and Entra ID",
+   "props": {}
+  },
+  {
+   "id": "tf:azuread_group.helpdesk",
+   "key": "terraform/azuread_group/lab-az104-01-identity-helpdesk",
+   "kind": "entraPrincipal",
+   "label": "lab-az104-01-identity-helpdesk",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azuread_user.ann",
+   "key": "terraform/azuread_user/lab-az104-01-identity-ann",
+   "kind": "entraPrincipal",
+   "label": "lab-az104-01-identity-ann",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azuread_user.ben",
+   "key": "terraform/azuread_user/lab-az104-01-identity-ben",
+   "kind": "entraPrincipal",
+   "label": "lab-az104-01-identity-ben",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_network_security_group.demo",
+   "key": "microsoft.network/networksecuritygroups/nsg-lab-demo",
+   "kind": "nsg",
+   "label": "nsg-lab-demo",
+   "props": {
+    "counts": [
+     "rules: 0"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/networkSecurityGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-01-identity",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-01-identity",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-01-identity",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_role_assignment.ben_vm_operator",
+     "label": "ben_vm_operator",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    },
+    {
+     "id": "tf:azurerm_role_assignment.helpdesk_reader",
+     "label": "helpdesk_reader",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_role_definition.vm_operator",
+   "key": "microsoft.authorization/roledefinitions/lab-az104-01-identity-vm-operator",
+   "kind": "role",
+   "label": "lab-az104-01-identity-vm-operator",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Authorization/roleDefinitions"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azuread_group.helpdesk>tf:azurerm_resource_group.lab:role: Reader",
+   "from": "tf:azuread_group.helpdesk",
+   "to": "tf:azurerm_resource_group.lab",
+   "kind": "dependency",
+   "label": "role: Reader",
+   "via": "tf:azurerm_role_assignment.helpdesk_reader"
+  },
+  {
+   "id": "dependency:tf:azuread_user.ann>tf:azuread_group.helpdesk:member",
+   "from": "tf:azuread_user.ann",
+   "to": "tf:azuread_group.helpdesk",
+   "kind": "dependency",
+   "label": "member",
+   "via": "tf:azuread_group.helpdesk"
+  },
+  {
+   "id": "dependency:tf:azuread_user.ben>tf:azurerm_resource_group.lab:role: lab-az104-01-identity-vm-operator",
+   "from": "tf:azuread_user.ben",
+   "to": "tf:azurerm_resource_group.lab",
+   "kind": "dependency",
+   "label": "role: lab-az104-01-identity-vm-operator",
+   "via": "tf:azurerm_role_assignment.ben_vm_operator"
+  }
+ ]
+}

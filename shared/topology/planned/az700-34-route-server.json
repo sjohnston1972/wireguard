@@ -1,0 +1,187 @@
+{
+ "schema": 1,
+ "labId": "az700-34-route-server",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_linux_virtual_machine.app",
+   "key": "microsoft.compute/virtualmachines/vm-app",
+   "kind": "vm",
+   "label": "vm-app",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.app",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.app",
+     "label": "nic-vm-app",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.nva",
+   "key": "microsoft.compute/virtualmachines/vm-nva",
+   "kind": "vm",
+   "label": "vm-nva",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux",
+    "privateIp": "10.71.193.4"
+   },
+   "parent": "tf:azurerm_subnet.nva",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.nva",
+     "label": "nic-vm-nva",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-34-route-server",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-34-route-server",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-34-route-server",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_route_server.rs",
+   "key": "microsoft.network/virtualhubs/rs-hub",
+   "kind": "routeServer",
+   "label": "rs-hub",
+   "props": {
+    "sku": "Standard"
+   },
+   "parent": "tf:azurerm_subnet.rs",
+   "armType": "Microsoft.Network/virtualHubs",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_public_ip.rs",
+     "label": "pip-rs",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    },
+    {
+     "id": "tf:azurerm_route_server_bgp_connection.nva",
+     "label": "bgp-nva",
+     "armType": "Microsoft.Network/virtualHubs/bgpConnections"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.app",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-spoke/snet-app",
+   "kind": "subnet",
+   "label": "snet-app",
+   "props": {
+    "prefix": "10.71.208.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.spoke",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.nva",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/snet-nva",
+   "kind": "subnet",
+   "label": "snet-nva",
+   "props": {
+    "prefix": "10.71.193.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.rs",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/routeserversubnet",
+   "kind": "subnet",
+   "label": "RouteServerSubnet",
+   "props": {
+    "prefix": "10.71.192.0/26"
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.hub",
+   "key": "microsoft.network/virtualnetworks/vnet-hub",
+   "kind": "vnet",
+   "label": "vnet-hub",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_virtual_network_peering.hub_to_spoke",
+     "label": "peer-hub-to-spoke",
+     "armType": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.spoke",
+   "key": "microsoft.network/virtualnetworks/vnet-spoke",
+   "kind": "vnet",
+   "label": "vnet-spoke",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_virtual_network_peering.spoke_to_hub",
+     "label": "peer-spoke-to-hub",
+     "armType": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "id": "traffic:tf:azurerm_route_server.rs>tf:azurerm_linux_virtual_machine.nva:BGP 65010",
+   "from": "tf:azurerm_route_server.rs",
+   "to": "tf:azurerm_linux_virtual_machine.nva",
+   "kind": "traffic",
+   "label": "BGP 65010",
+   "via": "tf:azurerm_route_server_bgp_connection.nva"
+  },
+  {
+   "id": "traffic:tf:azurerm_virtual_network.hub>tf:azurerm_virtual_network.spoke:peering (gateway transit)",
+   "from": "tf:azurerm_virtual_network.hub",
+   "to": "tf:azurerm_virtual_network.spoke",
+   "kind": "traffic",
+   "label": "peering (gateway transit)",
+   "via": "tf:azurerm_virtual_network_peering.hub_to_spoke"
+  }
+ ]
+}

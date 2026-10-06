@@ -1,0 +1,234 @@
+{
+ "schema": 1,
+ "labId": "az700-39-vwan-secured-hub",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_firewall.hub",
+   "key": "microsoft.network/azurefirewalls/afw-vhub",
+   "kind": "firewall",
+   "label": "afw-vhub",
+   "props": {
+    "tier": "Basic"
+   },
+   "parent": "tf:azurerm_virtual_hub.lab",
+   "armType": "Microsoft.Network/azureFirewalls",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_firewall_policy.hub",
+   "key": "microsoft.network/firewallpolicies/fwp-vhub",
+   "kind": "firewallPolicy",
+   "label": "fwp-vhub",
+   "props": {
+    "tier": "Basic",
+    "counts": [
+     "rule collection groups: 1"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/firewallPolicies",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_firewall_policy_rule_collection_group.hub",
+     "label": "rcg-vhub",
+     "armType": "Microsoft.Network/firewallPolicies/ruleCollectionGroups"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.spoke1",
+   "key": "microsoft.compute/virtualmachines/vm-spoke1",
+   "kind": "vm",
+   "label": "vm-spoke1",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.spoke1",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.spoke1",
+     "label": "nic-vm-spoke1",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.spoke2",
+   "key": "microsoft.compute/virtualmachines/vm-spoke2",
+   "kind": "vm",
+   "label": "vm-spoke2",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.spoke2",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.spoke2",
+     "label": "nic-vm-spoke2",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-39-vwan-secured-hub",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-39-vwan-secured-hub",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-39-vwan-secured-hub",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.spoke1",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-spoke1/snet-workload",
+   "kind": "subnet",
+   "label": "snet-workload",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "no default outbound"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.spoke1",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.spoke2",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-spoke2/snet-workload",
+   "kind": "subnet",
+   "label": "snet-workload",
+   "props": {
+    "prefix": "10.71.208.0/24",
+    "chips": [
+     "no default outbound"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.spoke2",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_hub.lab",
+   "key": "microsoft.network/virtualhubs/vhub-lab",
+   "kind": "virtualHub",
+   "label": "vhub-lab",
+   "props": {
+    "prefix": "10.71.240.0/23",
+    "sku": "Standard",
+    "routing": "routing intent: Internet, PrivateTraffic"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualHubs",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_virtual_hub_connection.spoke1",
+     "label": "conn-spoke1",
+     "armType": "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections"
+    },
+    {
+     "id": "tf:azurerm_virtual_hub_connection.spoke2",
+     "label": "conn-spoke2",
+     "armType": "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections"
+    },
+    {
+     "id": "tf:azurerm_virtual_hub_routing_intent.hub",
+     "label": "ri-vhub",
+     "armType": "Microsoft.Network/virtualHubs/routingIntent"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.spoke1",
+   "key": "microsoft.network/virtualnetworks/vnet-spoke1",
+   "kind": "vnet",
+   "label": "vnet-spoke1",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.spoke2",
+   "key": "microsoft.network/virtualnetworks/vnet-spoke2",
+   "kind": "vnet",
+   "label": "vnet-spoke2",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_wan.lab",
+   "key": "microsoft.network/virtualwans/vwan-lab",
+   "kind": "virtualWan",
+   "label": "vwan-lab",
+   "props": {
+    "sku": "Standard"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualWans",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_firewall.hub>tf:azurerm_firewall_policy.hub:policy",
+   "from": "tf:azurerm_firewall.hub",
+   "to": "tf:azurerm_firewall_policy.hub",
+   "kind": "dependency",
+   "label": "policy",
+   "via": "tf:azurerm_firewall.hub"
+  },
+  {
+   "id": "dependency:tf:azurerm_virtual_wan.lab>tf:azurerm_virtual_hub.lab:virtual hub",
+   "from": "tf:azurerm_virtual_wan.lab",
+   "to": "tf:azurerm_virtual_hub.lab",
+   "kind": "dependency",
+   "label": "virtual hub",
+   "via": "tf:azurerm_virtual_hub.lab"
+  },
+  {
+   "id": "traffic:tf:azurerm_virtual_hub.lab>tf:azurerm_virtual_network.spoke1:hub connection",
+   "from": "tf:azurerm_virtual_hub.lab",
+   "to": "tf:azurerm_virtual_network.spoke1",
+   "kind": "traffic",
+   "label": "hub connection",
+   "via": "tf:azurerm_virtual_hub_connection.spoke1"
+  },
+  {
+   "id": "traffic:tf:azurerm_virtual_hub.lab>tf:azurerm_virtual_network.spoke2:hub connection",
+   "from": "tf:azurerm_virtual_hub.lab",
+   "to": "tf:azurerm_virtual_network.spoke2",
+   "kind": "traffic",
+   "label": "hub connection",
+   "via": "tf:azurerm_virtual_hub_connection.spoke2"
+  }
+ ]
+}

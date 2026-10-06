@@ -8,6 +8,7 @@
 //   GET  /labs/coverage             per exam and skill area: labs available and run
 //   GET  /labs/:id                  one lab: readme blocks, priced items, warnings, session, runs
 //   GET  /labs/:id/secret           the admin password and lab user names, while running
+//   GET  /labs/:id/topology         the live diagram: one Resource Graph query of the lab's groups (labs/topology.ts)
 //   POST /labs/:id/deploy | extend | destroy | peer | unpeer | test | cancel
 //   PUT  /labs/sessions/:sid/note
 //   POST /labs/repeer | /labs/permissions/check | /labs/orphans/cleanup
@@ -36,6 +37,7 @@ import { labResources } from "../labs/resources";
 import { sessionCosts } from "../labs/cost";
 import { gbpHFrom, pricedItems } from "../labs/prices";
 import { labWarnings } from "../labs/warnings";
+import { labTopology } from "../labs/topology";
 import {
   LAB_EXAMS,
   LAB_HOURS_MAX,
@@ -236,6 +238,14 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       portalUrl: live ? `https://portal.azure.com/#resource/subscriptions/${c.env.AZURE_SUBSCRIPTION_ID ?? ""}/resourceGroups/${labRg(def.id)}` : null,
     };
     return c.json(out);
+  });
+
+  // The running lab's live diagram (lab topology spec §6): one Resource Graph query of its own groups, cached 30 s
+  // per isolate. Always 200 with a status; 404 for an id outside the catalogue, before anything is asked of Azure.
+  api.get("/labs/:id/topology", async (c) => {
+    const def = labDef(c.req.param("id"));
+    if (!def) return notFound(c);
+    return c.json(await labTopology(c.env, def.id));
   });
 
   // The admin password and lab user names: only while the session is running, fetched on Show, never cached.

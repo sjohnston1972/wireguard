@@ -1,0 +1,815 @@
+{
+ "changes": [
+  {
+   "address": "azurerm_application_security_group.app",
+   "type": "azurerm_application_security_group",
+   "name": "app",
+   "index": null,
+   "after": {
+    "location": "uksouth",
+    "name": "asg-app",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "tags": {
+     "lab": "az104-13-vnets",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "id": true,
+    "tags": {}
+   }
+  },
+  {
+   "address": "azurerm_application_security_group.web",
+   "type": "azurerm_application_security_group",
+   "name": "web",
+   "index": null,
+   "after": {
+    "location": "uksouth",
+    "name": "asg-web",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "tags": {
+     "lab": "az104-13-vnets",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "id": true,
+    "tags": {}
+   }
+  },
+  {
+   "address": "azurerm_linux_virtual_machine.app",
+   "type": "azurerm_linux_virtual_machine",
+   "name": "app",
+   "index": null,
+   "after": {
+    "additional_capabilities": [],
+    "admin_username": "azureuser",
+    "boot_diagnostics": [
+     {}
+    ],
+    "gallery_application": [],
+    "identity": [],
+    "location": "uksouth",
+    "name": "vm-app",
+    "network_interface_ids": [
+     null
+    ],
+    "os_disk": [
+     {
+      "caching": "ReadWrite",
+      "diff_disk_settings": [],
+      "storage_account_type": "Standard_LRS"
+     }
+    ],
+    "os_image_notification": [],
+    "plan": [],
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "size": "Standard_B1s",
+    "source_image_reference": [
+     {
+      "offer": "ubuntu-24_04-lts",
+      "publisher": "Canonical",
+      "sku": "server",
+      "version": "latest"
+     }
+    ],
+    "tags": {
+     "lab": "az104-13-vnets",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    },
+    "termination_notification": []
+   },
+   "after_unknown": {
+    "additional_capabilities": [],
+    "admin_ssh_key": [
+     {}
+    ],
+    "allow_extension_operations": true,
+    "boot_diagnostics": [
+     {}
+    ],
+    "computer_name": true,
+    "disk_controller_type": true,
+    "gallery_application": [],
+    "id": true,
+    "identity": [],
+    "network_interface_ids": [
+     true
+    ],
+    "os_disk": [
+     {
+      "diff_disk_settings": [],
+      "disk_size_gb": true,
+      "id": true,
+      "name": true
+     }
+    ],
+    "os_image_notification": [],
+    "os_managed_disk_id": true,
+    "patch_assessment_mode": true,
+    "patch_mode": true,
+    "plan": [],
+    "private_ip_address": true,
+    "private_ip_addresses": true,
+    "provision_vm_agent": true,
+    "public_ip_address": true,
+    "public_ip_addresses": true,
+    "secret": [],
+    "source_image_reference": [
+     {}
+    ],
+    "tags": {},
+    "termination_notification": [],
+    "virtual_machine_id": true,
+    "vm_agent_platform_updates_enabled": true
+   }
+  },
+  {
+   "address": "azurerm_linux_virtual_machine.web",
+   "type": "azurerm_linux_virtual_machine",
+   "name": "web",
+   "index": null,
+   "after": {
+    "additional_capabilities": [],
+    "admin_username": "azureuser",
+    "boot_diagnostics": [
+     {}
+    ],
+    "gallery_application": [],
+    "identity": [],
+    "location": "uksouth",
+    "name": "vm-web",
+    "network_interface_ids": [
+     null
+    ],
+    "os_disk": [
+     {
+      "caching": "ReadWrite",
+      "diff_disk_settings": [],
+      "storage_account_type": "Standard_LRS"
+     }
+    ],
+    "os_image_notification": [],
+    "plan": [],
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "size": "Standard_B1s",
+    "source_image_reference": [
+     {
+      "offer": "ubuntu-24_04-lts",
+      "publisher": "Canonical",
+      "sku": "server",
+      "version": "latest"
+     }
+    ],
+    "tags": {
+     "lab": "az104-13-vnets",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    },
+    "termination_notification": []
+   },
+   "after_unknown": {
+    "additional_capabilities": [],
+    "admin_ssh_key": [
+     {}
+    ],
+    "allow_extension_operations": true,
+    "boot_diagnostics": [
+     {}
+    ],
+    "computer_name": true,
+    "disk_controller_type": true,
+    "gallery_application": [],
+    "id": true,
+    "identity": [],
+    "network_interface_ids": [
+     true
+    ],
+    "os_disk": [
+     {
+      "diff_disk_settings": [],
+      "disk_size_gb": true,
+      "id": true,
+      "name": true
+     }
+    ],
+    "os_image_notification": [],
+    "os_managed_disk_id": true,
+    "patch_assessment_mode": true,
+    "patch_mode": true,
+    "plan": [],
+    "private_ip_address": true,
+    "private_ip_addresses": true,
+    "provision_vm_agent": true,
+    "public_ip_address": true,
+    "public_ip_addresses": true,
+    "secret": [],
+    "source_image_reference": [
+     {}
+    ],
+    "tags": {},
+    "termination_notification": [],
+    "virtual_machine_id": true,
+    "vm_agent_platform_updates_enabled": true
+   }
+  },
+  {
+   "address": "azurerm_network_interface.app",
+   "type": "azurerm_network_interface",
+   "name": "app",
+   "index": null,
+   "after": {
+    "ip_configuration": [
+     {
+      "name": "ipconfig1",
+      "private_ip_address_allocation": "Dynamic"
+     }
+    ],
+    "location": "uksouth",
+    "name": "nic-vm-app",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "tags": {
+     "lab": "az104-13-vnets",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "applied_dns_servers": true,
+    "id": true,
+    "internal_domain_name_suffix": true,
+    "ip_configuration": [
+     {
+      "gateway_load_balancer_frontend_ip_configuration_id": true,
+      "primary": true,
+      "private_ip_address": true,
+      "subnet_id": true
+     }
+    ],
+    "mac_address": true,
+    "private_ip_address": true,
+    "private_ip_addresses": true,
+    "tags": {},
+    "virtual_machine_id": true
+   }
+  },
+  {
+   "address": "azurerm_network_interface.web",
+   "type": "azurerm_network_interface",
+   "name": "web",
+   "index": null,
+   "after": {
+    "ip_configuration": [
+     {
+      "name": "ipconfig1",
+      "private_ip_address_allocation": "Dynamic"
+     }
+    ],
+    "location": "uksouth",
+    "name": "nic-vm-web",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "tags": {
+     "lab": "az104-13-vnets",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "applied_dns_servers": true,
+    "id": true,
+    "internal_domain_name_suffix": true,
+    "ip_configuration": [
+     {
+      "gateway_load_balancer_frontend_ip_configuration_id": true,
+      "primary": true,
+      "private_ip_address": true,
+      "subnet_id": true
+     }
+    ],
+    "mac_address": true,
+    "private_ip_address": true,
+    "private_ip_addresses": true,
+    "tags": {},
+    "virtual_machine_id": true
+   }
+  },
+  {
+   "address": "azurerm_network_interface_application_security_group_association.app",
+   "type": "azurerm_network_interface_application_security_group_association",
+   "name": "app",
+   "index": null,
+   "after": {},
+   "after_unknown": {
+    "application_security_group_id": true,
+    "id": true,
+    "network_interface_id": true
+   }
+  },
+  {
+   "address": "azurerm_network_interface_application_security_group_association.web",
+   "type": "azurerm_network_interface_application_security_group_association",
+   "name": "web",
+   "index": null,
+   "after": {},
+   "after_unknown": {
+    "application_security_group_id": true,
+    "id": true,
+    "network_interface_id": true
+   }
+  },
+  {
+   "address": "azurerm_network_security_group.app",
+   "type": "azurerm_network_security_group",
+   "name": "app",
+   "index": null,
+   "after": {
+    "location": "uksouth",
+    "name": "nsg-app",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "tags": {
+     "lab": "az104-13-vnets",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "id": true,
+    "security_rule": true,
+    "tags": {}
+   }
+  },
+  {
+   "address": "azurerm_network_security_group.web",
+   "type": "azurerm_network_security_group",
+   "name": "web",
+   "index": null,
+   "after": {
+    "location": "uksouth",
+    "name": "nsg-web",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "tags": {
+     "lab": "az104-13-vnets",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "id": true,
+    "security_rule": true,
+    "tags": {}
+   }
+  },
+  {
+   "address": "azurerm_network_security_rule.app_deny_vnet",
+   "type": "azurerm_network_security_rule",
+   "name": "app_deny_vnet",
+   "index": null,
+   "after": {
+    "access": "Deny",
+    "destination_address_prefix": "*",
+    "destination_port_range": "*",
+    "direction": "Inbound",
+    "name": "deny-other-vnet",
+    "network_security_group_name": "nsg-app",
+    "priority": 4000,
+    "protocol": "*",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "source_address_prefix": "VirtualNetwork",
+    "source_port_range": "*"
+   },
+   "after_unknown": {
+    "id": true
+   }
+  },
+  {
+   "address": "azurerm_network_security_rule.app_from_web",
+   "type": "azurerm_network_security_rule",
+   "name": "app_from_web",
+   "index": null,
+   "after": {
+    "access": "Allow",
+    "destination_application_security_group_ids": [
+     null
+    ],
+    "destination_port_range": "8080",
+    "direction": "Inbound",
+    "name": "allow-asg-web-to-asg-app-8080",
+    "network_security_group_name": "nsg-app",
+    "priority": 100,
+    "protocol": "Tcp",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "source_application_security_group_ids": [
+     null
+    ],
+    "source_port_range": "*"
+   },
+   "after_unknown": {
+    "destination_application_security_group_ids": [
+     true
+    ],
+    "id": true,
+    "source_application_security_group_ids": [
+     true
+    ]
+   }
+  },
+  {
+   "address": "azurerm_network_security_rule.web_deny_vnet",
+   "type": "azurerm_network_security_rule",
+   "name": "web_deny_vnet",
+   "index": null,
+   "after": {
+    "access": "Deny",
+    "destination_address_prefix": "*",
+    "destination_port_range": "*",
+    "direction": "Inbound",
+    "name": "deny-other-vnet",
+    "network_security_group_name": "nsg-web",
+    "priority": 4000,
+    "protocol": "*",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "source_address_prefix": "VirtualNetwork",
+    "source_port_range": "*"
+   },
+   "after_unknown": {
+    "id": true
+   }
+  },
+  {
+   "address": "azurerm_network_security_rule.web_http",
+   "type": "azurerm_network_security_rule",
+   "name": "web_http",
+   "index": null,
+   "after": {
+    "access": "Allow",
+    "destination_address_prefix": "*",
+    "destination_port_range": "80",
+    "direction": "Inbound",
+    "name": "allow-http-from-vnet",
+    "network_security_group_name": "nsg-web",
+    "priority": 110,
+    "protocol": "Tcp",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "source_address_prefix": "VirtualNetwork",
+    "source_port_range": "*"
+   },
+   "after_unknown": {
+    "id": true
+   }
+  },
+  {
+   "address": "azurerm_network_security_rule.web_ssh",
+   "type": "azurerm_network_security_rule",
+   "name": "web_ssh",
+   "index": null,
+   "after": {
+    "access": "Allow",
+    "destination_address_prefix": "*",
+    "destination_port_range": "22",
+    "direction": "Inbound",
+    "name": "allow-ssh-from-vnet",
+    "network_security_group_name": "nsg-web",
+    "priority": 100,
+    "protocol": "Tcp",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "source_address_prefix": "VirtualNetwork",
+    "source_port_range": "*"
+   },
+   "after_unknown": {
+    "id": true
+   }
+  },
+  {
+   "address": "azurerm_resource_group.lab",
+   "type": "azurerm_resource_group",
+   "name": "lab",
+   "index": null,
+   "after": {
+    "location": "uksouth",
+    "name": "rg-lab-az104-13-vnets",
+    "tags": {
+     "lab": "az104-13-vnets",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "id": true,
+    "tags": {}
+   }
+  },
+  {
+   "address": "azurerm_subnet.app",
+   "type": "azurerm_subnet",
+   "name": "app",
+   "index": null,
+   "after": {
+    "address_prefixes": [
+     "10.71.193.0/24"
+    ],
+    "delegation": [],
+    "ip_address_pool": [],
+    "name": "snet-app",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "virtual_network_name": "vnet-lab"
+   },
+   "after_unknown": {
+    "address_prefixes": [
+     false
+    ],
+    "delegation": [],
+    "id": true,
+    "ip_address_pool": []
+   }
+  },
+  {
+   "address": "azurerm_subnet.web",
+   "type": "azurerm_subnet",
+   "name": "web",
+   "index": null,
+   "after": {
+    "address_prefixes": [
+     "10.71.192.0/24"
+    ],
+    "delegation": [],
+    "ip_address_pool": [],
+    "name": "snet-web",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "virtual_network_name": "vnet-lab"
+   },
+   "after_unknown": {
+    "address_prefixes": [
+     false
+    ],
+    "delegation": [],
+    "id": true,
+    "ip_address_pool": []
+   }
+  },
+  {
+   "address": "azurerm_subnet_network_security_group_association.app",
+   "type": "azurerm_subnet_network_security_group_association",
+   "name": "app",
+   "index": null,
+   "after": {},
+   "after_unknown": {
+    "id": true,
+    "network_security_group_id": true,
+    "subnet_id": true
+   }
+  },
+  {
+   "address": "azurerm_subnet_network_security_group_association.web",
+   "type": "azurerm_subnet_network_security_group_association",
+   "name": "web",
+   "index": null,
+   "after": {},
+   "after_unknown": {
+    "id": true,
+    "network_security_group_id": true,
+    "subnet_id": true
+   }
+  },
+  {
+   "address": "azurerm_virtual_network.lab",
+   "type": "azurerm_virtual_network",
+   "name": "lab",
+   "index": null,
+   "after": {
+    "address_space": [
+     "10.71.192.0/20"
+    ],
+    "ddos_protection_plan": [],
+    "encryption": [],
+    "ip_address_pool": [],
+    "location": "uksouth",
+    "name": "vnet-lab",
+    "resource_group_name": "rg-lab-az104-13-vnets",
+    "tags": {
+     "lab": "az104-13-vnets",
+     "project": "wg-admin-labs",
+     "session": "ls-labs-tf-mock"
+    }
+   },
+   "after_unknown": {
+    "address_space": [
+     false
+    ],
+    "ddos_protection_plan": [],
+    "dns_servers": true,
+    "encryption": [],
+    "guid": true,
+    "id": true,
+    "ip_address_pool": [],
+    "subnet": true,
+    "tags": {}
+   }
+  }
+ ],
+ "outputs": {
+  "peer_vnet_id": null
+ },
+ "refs": {
+  "azurerm_application_security_group.app": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_application_security_group.web": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_linux_virtual_machine.app": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "network_interface_ids": [
+    "azurerm_network_interface.app"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_linux_virtual_machine.web": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "network_interface_ids": [
+    "azurerm_network_interface.web"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_network_interface.app": {
+   "ip_configuration": [
+    "azurerm_subnet.app"
+   ],
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_network_interface.web": {
+   "ip_configuration": [
+    "azurerm_subnet.web"
+   ],
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_network_interface_application_security_group_association.app": {
+   "application_security_group_id": [
+    "azurerm_application_security_group.app"
+   ],
+   "network_interface_id": [
+    "azurerm_network_interface.app"
+   ]
+  },
+  "azurerm_network_interface_application_security_group_association.web": {
+   "application_security_group_id": [
+    "azurerm_application_security_group.web"
+   ],
+   "network_interface_id": [
+    "azurerm_network_interface.web"
+   ]
+  },
+  "azurerm_network_security_group.app": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_network_security_group.web": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_network_security_rule.app_deny_vnet": {
+   "network_security_group_name": [
+    "azurerm_network_security_group.app"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_network_security_rule.app_from_web": {
+   "destination_application_security_group_ids": [
+    "azurerm_application_security_group.app"
+   ],
+   "network_security_group_name": [
+    "azurerm_network_security_group.app"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ],
+   "source_application_security_group_ids": [
+    "azurerm_application_security_group.web"
+   ]
+  },
+  "azurerm_network_security_rule.web_deny_vnet": {
+   "network_security_group_name": [
+    "azurerm_network_security_group.web"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_network_security_rule.web_http": {
+   "network_security_group_name": [
+    "azurerm_network_security_group.web"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_network_security_rule.web_ssh": {
+   "network_security_group_name": [
+    "azurerm_network_security_group.web"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "azurerm_resource_group.lab": {},
+  "azurerm_subnet.app": {
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ],
+   "virtual_network_name": [
+    "azurerm_virtual_network.lab"
+   ]
+  },
+  "azurerm_subnet.web": {
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ],
+   "virtual_network_name": [
+    "azurerm_virtual_network.lab"
+   ]
+  },
+  "azurerm_subnet_network_security_group_association.app": {
+   "network_security_group_id": [
+    "azurerm_network_security_group.app"
+   ],
+   "subnet_id": [
+    "azurerm_subnet.app"
+   ]
+  },
+  "azurerm_subnet_network_security_group_association.web": {
+   "network_security_group_id": [
+    "azurerm_network_security_group.web"
+   ],
+   "subnet_id": [
+    "azurerm_subnet.web"
+   ]
+  },
+  "azurerm_virtual_network.lab": {
+   "location": [
+    "azurerm_resource_group.lab"
+   ],
+   "resource_group_name": [
+    "azurerm_resource_group.lab"
+   ]
+  },
+  "output.connect": {
+   "value": [
+    "azurerm_network_interface.app",
+    "azurerm_network_interface.web"
+   ]
+  },
+  "output.peer_vnet_id": {
+   "value": [
+    "azurerm_virtual_network.lab"
+   ]
+  },
+  "output.private_ips": {
+   "value": [
+    "azurerm_network_interface.app",
+    "azurerm_network_interface.web"
+   ]
+  }
+ }
+}

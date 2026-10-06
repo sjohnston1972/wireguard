@@ -1,0 +1,113 @@
+{
+ "schema": 1,
+ "labId": "az104-02-policy",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/tenant",
+   "key": "lane/tenant",
+   "kind": "lane",
+   "label": "Tenant and Entra ID",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_network_security_group.untagged",
+   "key": "microsoft.network/networksecuritygroups/nsg-untagged",
+   "kind": "nsg",
+   "label": "nsg-untagged",
+   "props": {
+    "counts": [
+     "rules: 0"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/networkSecurityGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_policy_definition.require_costcentre_tag",
+   "key": "microsoft.authorization/policydefinitions/lab-az104-02-policy-require-costcentre-tag",
+   "kind": "policy",
+   "label": "lab-az104-02-policy-require-costcentre-tag",
+   "props": {
+    "effect": "Deny"
+   },
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Authorization/policyDefinitions"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-02-policy",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-02-policy",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-02-policy",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group_policy_assignment.allowed_locations",
+   "key": "microsoft.authorization/policyassignments/lab-az104-02-policy-allowed-locations",
+   "kind": "policy",
+   "label": "lab-az104-02-policy-allowed-locations",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Authorization/policyAssignments",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group_policy_assignment.require_tag",
+   "key": "microsoft.authorization/policyassignments/lab-az104-02-policy-require-tag",
+   "kind": "policy",
+   "label": "lab-az104-02-policy-require-tag",
+   "props": {
+    "effect": "Deny"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Authorization/policyAssignments",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_storage_account.tagged",
+   "key": "microsoft.storage/storageaccounts/{p}tags",
+   "kind": "storage",
+   "label": "l02…tags",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS",
+    "accessTier": "Hot",
+    "chips": [
+     "lock CanNotDelete"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_management_lock.no_delete",
+     "label": "lab-az104-02-policy-no-delete",
+     "armType": "Microsoft.Authorization/locks"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_resource_group_policy_assignment.require_tag>tf:azurerm_policy_definition.require_costcentre_tag:assigns",
+   "from": "tf:azurerm_resource_group_policy_assignment.require_tag",
+   "to": "tf:azurerm_policy_definition.require_costcentre_tag",
+   "kind": "dependency",
+   "label": "assigns",
+   "via": "tf:azurerm_resource_group_policy_assignment.require_tag"
+  }
+ ]
+}

@@ -55,8 +55,10 @@ export default defineConfig({
     emptyOutDir: true,
     // Fonts always ship as files: Vite would otherwise inline the small subsets
     // into the CSS as data: URIs, which the CSP's font-src 'self' blocks.
-    // (npm run bundle-size fails the build if one slips through.)
-    assetsInlineLimit: (file: string) => (/\.(woff2?|ttf|otf)$/i.test(file) ? false : undefined),
+    // (npm run bundle-size fails the build if one slips through.) The lab
+    // diagrams' planned graphs (JSON) and the icon sprite (SVG) are files too:
+    // inlined, a small planned graph would become a data: URI inside JS.
+    assetsInlineLimit: (file: string) => (/\.(woff2?|ttf|otf|json|svg)$/i.test(file.split("?")[0]!) ? false : undefined),
     rolldownOptions: {
       output: {
         codeSplitting: {

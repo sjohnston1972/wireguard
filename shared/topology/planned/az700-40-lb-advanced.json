@@ -1,0 +1,484 @@
+{
+ "schema": 1,
+ "labId": "az700-40-lb-advanced",
+ "version": 3,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/global",
+   "key": "lane/global",
+   "kind": "lane",
+   "label": "Global",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_lb.global",
+   "key": "microsoft.network/loadbalancers/lb-global",
+   "kind": "loadBalancer",
+   "label": "lb-global",
+   "props": {
+    "sku": "Standard Global"
+   },
+   "parent": "lane/global",
+   "armType": "Microsoft.Network/loadBalancers",
+   "folded": [
+    {
+     "id": "tf:azurerm_lb_backend_address_pool.global",
+     "label": "pool-regions",
+     "armType": "Microsoft.Network/loadBalancers/backendAddressPools"
+    },
+    {
+     "id": "tf:azurerm_lb_backend_address_pool_address.uks",
+     "label": "lb-uks",
+     "armType": null
+    },
+    {
+     "id": "tf:azurerm_lb_backend_address_pool_address.ukw",
+     "label": "lb-ukw",
+     "armType": null
+    },
+    {
+     "id": "tf:azurerm_lb_rule.global",
+     "label": "rule-http-80",
+     "armType": "Microsoft.Network/loadBalancers/loadBalancingRules"
+    },
+    {
+     "id": "tf:azurerm_public_ip.global",
+     "label": "pip-lb-global",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_lb.gw",
+   "key": "microsoft.network/loadbalancers/lb-gw",
+   "kind": "loadBalancer",
+   "label": "lb-gw",
+   "props": {
+    "sku": "Gateway",
+    "privateIp": "10.71.193.10"
+   },
+   "parent": "tf:azurerm_subnet.nva",
+   "armType": "Microsoft.Network/loadBalancers",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_lb_backend_address_pool.gw",
+     "label": "pool-nva",
+     "armType": "Microsoft.Network/loadBalancers/backendAddressPools"
+    },
+    {
+     "id": "tf:azurerm_lb_probe.gw",
+     "label": "probe-ssh",
+     "armType": "Microsoft.Network/loadBalancers/probes"
+    },
+    {
+     "id": "tf:azurerm_lb_rule.gw",
+     "label": "rule-ha-ports",
+     "armType": "Microsoft.Network/loadBalancers/loadBalancingRules"
+    },
+    {
+     "id": "tf:azurerm_network_interface_backend_address_pool_association.nva",
+     "label": "nva",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_lb.uks",
+   "key": "microsoft.network/loadbalancers/lb-uks",
+   "kind": "loadBalancer",
+   "label": "lb-uks",
+   "props": {
+    "sku": "Standard"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/loadBalancers",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_lb_backend_address_pool.uks",
+     "label": "pool-web",
+     "armType": "Microsoft.Network/loadBalancers/backendAddressPools"
+    },
+    {
+     "id": "tf:azurerm_lb_nat_rule.uks",
+     "label": "nat-web-8081-8090",
+     "armType": "Microsoft.Network/loadBalancers/inboundNatRules"
+    },
+    {
+     "id": "tf:azurerm_lb_outbound_rule.uks",
+     "label": "outbound-web",
+     "armType": "Microsoft.Network/loadBalancers/outboundRules"
+    },
+    {
+     "id": "tf:azurerm_lb_probe.uks",
+     "label": "probe-http",
+     "armType": "Microsoft.Network/loadBalancers/probes"
+    },
+    {
+     "id": "tf:azurerm_lb_rule.uks",
+     "label": "rule-http-80",
+     "armType": "Microsoft.Network/loadBalancers/loadBalancingRules"
+    },
+    {
+     "id": "tf:azurerm_network_interface_backend_address_pool_association.web1",
+     "label": "web1",
+     "armType": null
+    },
+    {
+     "id": "tf:azurerm_public_ip.uks",
+     "label": "pip-lb-uks",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    },
+    {
+     "id": "tf:azurerm_public_ip.uks_chained",
+     "label": "pip-lb-uks-chained",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_lb.ukw",
+   "key": "microsoft.network/loadbalancers/lb-ukw#secondary",
+   "kind": "loadBalancer",
+   "label": "lb-ukw",
+   "props": {
+    "sku": "Standard"
+   },
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": "Microsoft.Network/loadBalancers",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_lb_backend_address_pool.ukw",
+     "label": "pool-web",
+     "armType": "Microsoft.Network/loadBalancers/backendAddressPools"
+    },
+    {
+     "id": "tf:azurerm_lb_outbound_rule.ukw",
+     "label": "outbound-web",
+     "armType": "Microsoft.Network/loadBalancers/outboundRules"
+    },
+    {
+     "id": "tf:azurerm_lb_probe.ukw",
+     "label": "probe-http",
+     "armType": "Microsoft.Network/loadBalancers/probes"
+    },
+    {
+     "id": "tf:azurerm_lb_rule.ukw",
+     "label": "rule-http-80",
+     "armType": "Microsoft.Network/loadBalancers/loadBalancingRules"
+    },
+    {
+     "id": "tf:azurerm_network_interface_backend_address_pool_association.web2",
+     "label": "web2",
+     "armType": null
+    },
+    {
+     "id": "tf:azurerm_public_ip.ukw",
+     "label": "pip-lb-ukw",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.nva",
+   "key": "microsoft.compute/virtualmachines/vm-nva",
+   "kind": "vm",
+   "label": "vm-nva",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.nva",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.nva",
+     "label": "nic-vm-nva",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.web1",
+   "key": "microsoft.compute/virtualmachines/vm-web1",
+   "kind": "vm",
+   "label": "vm-web1",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.web",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.web1",
+     "label": "nic-vm-web1",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.web2",
+   "key": "microsoft.compute/virtualmachines/vm-web2#secondary",
+   "kind": "vm",
+   "label": "vm-web2",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.ukw_web",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.web2",
+     "label": "nic-vm-web2",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-40-lb-advanced",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-40-lb-advanced",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-40-lb-advanced",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.secondary",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-40-lb-advanced-secondary",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-40-lb-advanced-secondary",
+   "props": {
+    "region": "ukwest",
+    "tags": [
+     "lab: az700-40-lb-advanced",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ],
+    "chips": [
+     "secondary"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.nva",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-uks/snet-nva",
+   "kind": "subnet",
+   "label": "snet-nva",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "no default outbound",
+     "NSG nsg-nva"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.uks",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.nva",
+     "label": "nsg-nva",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.nva_vxlan",
+     "label": "allow-vxlan-from-vnet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.nva",
+     "label": "nva",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.ukw_web",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-ukw/snet-web#secondary",
+   "kind": "subnet",
+   "label": "snet-web",
+   "props": {
+    "prefix": "10.71.208.0/24",
+    "chips": [
+     "no default outbound",
+     "NSG nsg-web-ukw"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.ukw",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.ukw_web",
+     "label": "nsg-web-ukw",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.ukw_web_http",
+     "label": "allow-http-from-internet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.ukw_web",
+     "label": "ukw_web",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.web",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-uks/snet-web",
+   "kind": "subnet",
+   "label": "snet-web",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "no default outbound",
+     "NSG nsg-web-uks"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.uks",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.web",
+     "label": "nsg-web-uks",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.web_http",
+     "label": "allow-http-from-internet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.web",
+     "label": "web",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.uks",
+   "key": "microsoft.network/virtualnetworks/vnet-uks",
+   "kind": "vnet",
+   "label": "vnet-uks",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.ukw",
+   "key": "microsoft.network/virtualnetworks/vnet-ukw#secondary",
+   "kind": "vnet",
+   "label": "vnet-ukw",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "traffic:tf:azurerm_lb.global>tf:azurerm_lb.uks:TCP 80→80",
+   "from": "tf:azurerm_lb.global",
+   "to": "tf:azurerm_lb.uks",
+   "kind": "traffic",
+   "label": "TCP 80→80",
+   "via": "tf:azurerm_lb_rule.global"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.global>tf:azurerm_lb.ukw:TCP 80→80",
+   "from": "tf:azurerm_lb.global",
+   "to": "tf:azurerm_lb.ukw",
+   "kind": "traffic",
+   "label": "TCP 80→80",
+   "via": "tf:azurerm_lb_rule.global"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.gw>tf:azurerm_linux_virtual_machine.nva:HA ports",
+   "from": "tf:azurerm_lb.gw",
+   "to": "tf:azurerm_linux_virtual_machine.nva",
+   "kind": "traffic",
+   "label": "HA ports",
+   "via": "tf:azurerm_lb_rule.gw"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.uks>tf:azurerm_lb.gw:chain",
+   "from": "tf:azurerm_lb.uks",
+   "to": "tf:azurerm_lb.gw",
+   "kind": "traffic",
+   "label": "chain",
+   "via": "tf:azurerm_lb.uks"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.uks>tf:azurerm_linux_virtual_machine.web1:TCP 8081-8090→8080",
+   "from": "tf:azurerm_lb.uks",
+   "to": "tf:azurerm_linux_virtual_machine.web1",
+   "kind": "traffic",
+   "label": "TCP 8081-8090→8080",
+   "via": "tf:azurerm_lb_nat_rule.uks"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.uks>tf:azurerm_linux_virtual_machine.web1:TCP 80→80",
+   "from": "tf:azurerm_lb.uks",
+   "to": "tf:azurerm_linux_virtual_machine.web1",
+   "kind": "traffic",
+   "label": "TCP 80→80",
+   "via": "tf:azurerm_lb_rule.uks"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.ukw>tf:azurerm_linux_virtual_machine.web2:TCP 80→80",
+   "from": "tf:azurerm_lb.ukw",
+   "to": "tf:azurerm_linux_virtual_machine.web2",
+   "kind": "traffic",
+   "label": "TCP 80→80",
+   "via": "tf:azurerm_lb_rule.ukw"
+  },
+  {
+   "id": "traffic:tf:azurerm_linux_virtual_machine.web1>tf:azurerm_lb.uks:outbound",
+   "from": "tf:azurerm_linux_virtual_machine.web1",
+   "to": "tf:azurerm_lb.uks",
+   "kind": "traffic",
+   "label": "outbound",
+   "via": "tf:azurerm_lb_outbound_rule.uks"
+  },
+  {
+   "id": "traffic:tf:azurerm_linux_virtual_machine.web2>tf:azurerm_lb.ukw:outbound",
+   "from": "tf:azurerm_linux_virtual_machine.web2",
+   "to": "tf:azurerm_lb.ukw",
+   "kind": "traffic",
+   "label": "outbound",
+   "via": "tf:azurerm_lb_outbound_rule.ukw"
+  }
+ ]
+}

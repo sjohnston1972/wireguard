@@ -1,0 +1,677 @@
+{
+ "_about": "T3.4 private access and data: Resource Graph rows for a running az305-23-sql-failover in slot 5 (10.66.192.0/18) with the data types of labs 5, 22, 24, 25 and 43 grafted in. Shapes from Learn's REST references: Sql servers (version, publicNetworkAccess) and databases (status, sku; the master database Azure makes; a geo secondary's secondaryType), privateEndpoints (privateLinkServiceConnections with groupIds and privateLinkServiceConnectionState, networkInterfaces) and their NICs (privateEndpoint; a custom NIC name), storageAccounts (kind, sku, accessTier, networkAcls.virtualNetworkRules), serviceEndpointPolicies (serviceEndpointPolicyDefinitions[].serviceResources, subnets), DocumentDB databaseAccounts (kind, consistencyPolicy), KeyVault vaults (sku, enableRbacAuthorization, accessPolicies[].objectId), userAssignedIdentities (principalId), a VM's identity (system and user-assigned). Fake subscription and object ids.",
+ "rows": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/virtualNetworks/vnet-lab",
+   "name": "vnet-lab",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.66.192.0/20"
+     ]
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-pe",
+      "name": "snet-pe",
+      "properties": {
+       "addressPrefix": "10.66.192.0/24",
+       "privateEndpointNetworkPolicies": "Disabled"
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-client",
+      "name": "snet-client",
+      "properties": {
+       "addressPrefix": "10.66.193.0/24",
+       "serviceEndpoints": [
+        {
+         "service": "Microsoft.Storage",
+         "locations": [
+          "uksouth"
+         ]
+        }
+       ],
+       "serviceEndpointPolicies": [
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/serviceEndpointPolicies/sep-storage"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Sql/servers/l23rt7xy-sqlp",
+   "name": "l23rt7xy-sqlp",
+   "type": "microsoft.sql/servers",
+   "kind": "v12.0",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "administratorLogin": "labadmin",
+    "version": "12.0",
+    "state": "Ready",
+    "fullyQualifiedDomainName": "l23rt7xy-sqlp.database.windows.net",
+    "publicNetworkAccess": "Enabled",
+    "minimalTlsVersion": "1.2"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover-secondary/providers/Microsoft.Sql/servers/l23rt7xy-sqls",
+   "name": "l23rt7xy-sqls",
+   "type": "microsoft.sql/servers",
+   "kind": "v12.0",
+   "location": "ukwest",
+   "resourceGroup": "rg-lab-az305-23-sql-failover-secondary",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "administratorLogin": "labadmin",
+    "version": "12.0",
+    "state": "Ready",
+    "publicNetworkAccess": "Disabled"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Sql/servers/l23rt7xy-sqlp/databases/appdb",
+   "name": "appdb",
+   "type": "microsoft.sql/servers/databases",
+   "kind": "v12.0,user",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": {
+    "name": "Basic",
+    "tier": "Basic",
+    "capacity": 5
+   },
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "status": "Online",
+    "collation": "SQL_Latin1_General_CP1_CI_AS",
+    "maxSizeBytes": 2147483648,
+    "currentServiceObjectiveName": "Basic",
+    "databaseId": "0d1c2b3a-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover-secondary/providers/Microsoft.Sql/servers/l23rt7xy-sqls/databases/appdb",
+   "name": "appdb",
+   "type": "microsoft.sql/servers/databases",
+   "kind": "v12.0,user",
+   "location": "ukwest",
+   "resourceGroup": "rg-lab-az305-23-sql-failover-secondary",
+   "sku": {
+    "name": "Basic",
+    "tier": "Basic"
+   },
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "status": "Online",
+    "secondaryType": "Geo"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover-secondary/providers/Microsoft.Sql/servers/l23rt7xy-sqls/databases/scratch",
+   "name": "scratch",
+   "type": "microsoft.sql/servers/databases",
+   "kind": "v12.0,user,vcore,serverless",
+   "location": "ukwest",
+   "resourceGroup": "rg-lab-az305-23-sql-failover-secondary",
+   "sku": {
+    "name": "GP_S_Gen5",
+    "tier": "GeneralPurpose",
+    "family": "Gen5",
+    "capacity": 1
+   },
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "status": "Paused",
+    "autoPauseDelay": 15,
+    "minCapacity": 0.5
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Sql/servers/l23rt7xy-sqlp/databases/master",
+   "name": "master",
+   "type": "microsoft.sql/servers/databases",
+   "kind": "v12.0,system",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": {
+    "name": "System",
+    "tier": "System"
+   },
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "status": "Online"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/privateEndpoints/pe-sqlp",
+   "name": "pe-sqlp",
+   "type": "microsoft.network/privateendpoints",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "subnet": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-pe"
+    },
+    "networkInterfaces": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/networkInterfaces/pe-sqlp.nic.5e4d3c2b-1a0f-4e9d-8c7b-6a5f4e3d2c1b"
+     }
+    ],
+    "privateLinkServiceConnections": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/privateEndpoints/pe-sqlp/privateLinkServiceConnections/psc-sqlServer",
+      "name": "psc-sqlServer",
+      "properties": {
+       "privateLinkServiceId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Sql/servers/l23rt7xy-sqlp",
+       "groupIds": [
+        "sqlServer"
+       ],
+       "privateLinkServiceConnectionState": {
+        "status": "Approved",
+        "description": "Auto-Approved",
+        "actionsRequired": "None"
+       }
+      }
+     }
+    ],
+    "manualPrivateLinkServiceConnections": [],
+    "customDnsConfigs": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/networkInterfaces/pe-sqlp.nic.5e4d3c2b-1a0f-4e9d-8c7b-6a5f4e3d2c1b",
+   "name": "pe-sqlp.nic.5e4d3c2b-1a0f-4e9d-8c7b-6a5f4e3d2c1b",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "privateEndpoint": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/privateEndpoints/pe-sqlp"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/networkInterfaces/pe-sqlp.nic.5e4d3c2b-1a0f-4e9d-8c7b-6a5f4e3d2c1b/ipConfigurations/privateEndpointIpConfig.sqlServer",
+      "name": "privateEndpointIpConfig.sqlServer",
+      "properties": {
+       "privateIPAddress": "10.66.192.4",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-pe"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/privateEndpoints/pe-blob",
+   "name": "pe-blob",
+   "type": "microsoft.network/privateendpoints",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "subnet": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-pe"
+    },
+    "networkInterfaces": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/networkInterfaces/nic-pe-blob"
+     }
+    ],
+    "privateLinkServiceConnections": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/privateEndpoints/pe-blob/privateLinkServiceConnections/psc-blob",
+      "name": "psc-blob",
+      "properties": {
+       "privateLinkServiceId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Storage/storageAccounts/l23rt7xyst",
+       "groupIds": [
+        "blob"
+       ],
+       "privateLinkServiceConnectionState": {
+        "status": "Pending",
+        "description": "Awaiting approval",
+        "actionsRequired": "None"
+       }
+      }
+     }
+    ],
+    "manualPrivateLinkServiceConnections": [],
+    "customDnsConfigs": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/networkInterfaces/nic-pe-blob",
+   "name": "nic-pe-blob",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "privateEndpoint": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/privateEndpoints/pe-blob"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/networkInterfaces/nic-pe-blob/ipConfigurations/privateEndpointIpConfig.blob",
+      "name": "privateEndpointIpConfig.blob",
+      "properties": {
+       "privateIPAddress": "10.66.192.5",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-pe"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/privateDnsZones/privatelink.database.windows.net",
+   "name": "privatelink.database.windows.net",
+   "type": "microsoft.network/privatednszones",
+   "kind": "",
+   "location": "global",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "numberOfRecordSets": 2
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Storage/storageAccounts/l23rt7xyst",
+   "name": "l23rt7xyst",
+   "type": "microsoft.storage/storageaccounts",
+   "kind": "StorageV2",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": {
+    "name": "Standard_RAGRS",
+    "tier": "Standard"
+   },
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "accessTier": "Hot",
+    "allowBlobPublicAccess": false,
+    "publicNetworkAccess": "Enabled",
+    "isHnsEnabled": true,
+    "minimumTlsVersion": "TLS1_2",
+    "networkAcls": {
+     "bypass": "AzureServices",
+     "defaultAction": "Deny",
+     "virtualNetworkRules": [
+      {
+       "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-client",
+       "action": "Allow",
+       "state": "Succeeded"
+      }
+     ],
+     "ipRules": []
+    },
+    "primaryEndpoints": {
+     "blob": "https://l23rt7xyst.blob.core.windows.net/",
+     "dfs": "https://l23rt7xyst.dfs.core.windows.net/"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/serviceEndpointPolicies/sep-storage",
+   "name": "sep-storage",
+   "type": "microsoft.network/serviceendpointpolicies",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "serviceEndpointPolicyDefinitions": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/serviceEndpointPolicies/sep-storage/serviceEndpointPolicyDefinitions/allow-lab-st",
+      "name": "allow-lab-st",
+      "properties": {
+       "service": "Microsoft.Storage",
+       "serviceResources": [
+        "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Storage/storageAccounts/l23rt7xyst"
+       ]
+      }
+     }
+    ],
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-client"
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.DocumentDB/databaseAccounts/l23rt7xy-cosmos",
+   "name": "l23rt7xy-cosmos",
+   "type": "microsoft.documentdb/databaseaccounts",
+   "kind": "GlobalDocumentDB",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "databaseAccountOfferType": "Standard",
+    "consistencyPolicy": {
+     "defaultConsistencyLevel": "Session"
+    },
+    "capabilities": [
+     {
+      "name": "EnableServerless"
+     }
+    ],
+    "locations": [
+     {
+      "locationName": "UK South",
+      "failoverPriority": 0
+     }
+    ],
+    "documentEndpoint": "https://l23rt7xy-cosmos.documents.azure.com:443/"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.KeyVault/vaults/l23rt7xykv",
+   "name": "l23rt7xykv",
+   "type": "microsoft.keyvault/vaults",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "sku": {
+     "family": "A",
+     "name": "standard"
+    },
+    "tenantId": "11111111-1111-4111-8111-111111111111",
+    "enableRbacAuthorization": false,
+    "enableSoftDelete": true,
+    "vaultUri": "https://l23rt7xykv.vault.azure.net/",
+    "accessPolicies": [
+     {
+      "tenantId": "11111111-1111-4111-8111-111111111111",
+      "objectId": "aaaaaaaa-1111-4111-8111-000000000001",
+      "permissions": {
+       "secrets": [
+        "get",
+        "list"
+       ],
+       "certificates": [],
+       "keys": []
+      }
+     },
+     {
+      "tenantId": "11111111-1111-4111-8111-111111111111",
+      "objectId": "33333333-3333-4333-8333-333333333333",
+      "permissions": {
+       "secrets": [
+        "get",
+        "list",
+        "set",
+        "delete"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-l23rt7xy-app",
+   "name": "id-l23rt7xy-app",
+   "type": "microsoft.managedidentity/userassignedidentities",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "tenantId": "11111111-1111-4111-8111-111111111111",
+    "principalId": "aaaaaaaa-1111-4111-8111-000000000001",
+    "clientId": "aaaaaaaa-1111-4111-8111-000000000002"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/networkInterfaces/nic-vm-app",
+   "name": "nic-vm-app",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Compute/virtualMachines/vm-app"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/networkInterfaces/nic-vm-app/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.66.193.4",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Network/virtualNetworks/vnet-lab/subnets/snet-client"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.Compute/virtualMachines/vm-app",
+   "name": "vm-app",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-23-sql-failover",
+   "sku": null,
+   "tags": {
+    "lab": "az305-23-sql-failover",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": {
+    "type": "SystemAssigned, UserAssigned",
+    "principalId": "bbbbbbbb-2222-4222-8222-000000000001",
+    "tenantId": "11111111-1111-4111-8111-111111111111",
+    "userAssignedIdentities": {
+     "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-23-sql-failover/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-l23rt7xy-app": {
+      "principalId": "aaaaaaaa-1111-4111-8111-000000000001",
+      "clientId": "aaaaaaaa-1111-4111-8111-000000000002"
+     }
+    }
+   },
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

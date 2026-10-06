@@ -1,0 +1,138 @@
+{
+ "_about": "Resource Graph rows (the projected columns of shared/topology/query.ts) for a running az700-35-forced-tunnel-fix in slot 3 (10.64.192.0/18), written from Learn's REST shapes; fake subscription, TEST-NET public addresses. Plus rows that must be dropped (another lab, a longer id), a hand-made unknown type, and odd provisioning states.",
+ "rows": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-hub",
+   "name": "vnet-hub", "type": "microsoft.network/virtualnetworks", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": null, "tags": { "lab": "az700-35-forced-tunnel-fix", "project": "wg-admin-labs", "session": "ls-0123" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": { "addressPrefixes": ["10.64.192.0/20"] },
+    "subnets": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-nva", "name": "snet-nva",
+       "properties": { "provisioningState": "Succeeded", "addressPrefix": "10.64.192.0/24", "defaultOutboundAccess": true,
+         "ipConfigurations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/networkInterfaces/nic-vm-nva/ipConfigurations/ipconfig1" }] } }
+    ],
+    "virtualNetworkPeerings": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-hub/virtualNetworkPeerings/peer-hub-to-spoke", "name": "peer-hub-to-spoke",
+       "properties": { "peeringState": "Connected", "allowForwardedTraffic": true, "remoteVirtualNetwork": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-spoke" } } },
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-hub/virtualNetworkPeerings/peer-to-wg", "name": "peer-to-wg",
+       "properties": { "peeringState": "Connected", "remoteVirtualNetwork": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-wg-ondemand/providers/Microsoft.Network/virtualNetworks/vnet-wg" } } }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-spoke",
+   "name": "vnet-spoke", "type": "microsoft.network/virtualnetworks", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": null, "tags": { "lab": "az700-35-forced-tunnel-fix" }, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": { "addressPrefixes": ["10.64.208.0/20"] },
+    "subnets": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-spoke/subnets/snet-app", "name": "snet-app",
+       "properties": { "provisioningState": "Succeeded", "addressPrefix": "10.64.208.0/24", "defaultOutboundAccess": false,
+         "routeTable": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/routeTables/rt-spoke" } } }
+    ],
+    "virtualNetworkPeerings": [
+     { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-spoke/virtualNetworkPeerings/peer-spoke-to-hub", "name": "peer-spoke-to-hub",
+       "properties": { "peeringState": "Connected", "allowForwardedTraffic": true, "remoteVirtualNetwork": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-hub" } } }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/routeTables/rt-spoke",
+   "name": "rt-spoke", "type": "microsoft.network/routetables", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": null, "tags": {}, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded", "disableBgpRoutePropagation": false,
+    "routes": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/routeTables/rt-spoke/routes/default-via-nva", "name": "default-via-nva",
+      "properties": { "addressPrefix": "0.0.0.0/0", "nextHopType": "VirtualAppliance", "nextHopIpAddress": "10.64.192.4" } }],
+    "subnets": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-spoke/subnets/snet-app" }]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/networkInterfaces/nic-vm-nva",
+   "name": "nic-vm-nva", "type": "microsoft.network/networkinterfaces", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": null, "tags": {}, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded", "enableIPForwarding": false,
+    "virtualMachine": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Compute/virtualMachines/vm-nva" },
+    "ipConfigurations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/networkInterfaces/nic-vm-nva/ipConfigurations/ipconfig1", "name": "ipconfig1",
+      "properties": { "privateIPAddress": "10.64.192.4", "privateIPAllocationMethod": "Static", "primary": true,
+        "subnet": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-nva" } } }]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/networkInterfaces/nic-vm-app",
+   "name": "nic-vm-app", "type": "microsoft.network/networkinterfaces", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": null, "tags": {}, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Compute/virtualMachines/vm-app" },
+    "ipConfigurations": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/networkInterfaces/nic-vm-app/ipConfigurations/ipconfig1", "name": "ipconfig1",
+      "properties": { "privateIPAddress": "10.64.208.4", "privateIPAllocationMethod": "Dynamic", "primary": true,
+        "subnet": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-spoke/subnets/snet-app" } } }]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Compute/virtualMachines/vm-nva",
+   "name": "vm-nva", "type": "microsoft.compute/virtualmachines", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": null, "tags": {}, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": { "vmSize": "Standard_B1s" },
+    "storageProfile": { "osDisk": { "osType": "Linux", "name": "vm-nva_OsDisk_1_0123456789abcdef0123456789abcdef", "managedDisk": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Compute/disks/vm-nva_OsDisk_1_0123456789abcdef0123456789abcdef" } } },
+    "osProfile": { "computerName": "vm-nva", "adminUsername": "azureuser", "customData": "I2Nsb3VkLWNvbmZpZwpwYWNrYWdlczogW10KcnVuY21kOiBbXQ==" },
+    "networkProfile": { "networkInterfaces": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/networkInterfaces/nic-vm-nva" }] },
+    "extended": { "instanceView": { "powerState": { "code": "PowerState/running", "displayStatus": "VM running" } } }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Compute/virtualMachines/vm-app",
+   "name": "vm-app", "type": "microsoft.compute/virtualmachines", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": null, "tags": {}, "zones": null, "identity": null, "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": { "vmSize": "Standard_B1s" },
+    "storageProfile": { "osDisk": { "osType": "Linux" } },
+    "networkProfile": { "networkInterfaces": [{ "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/networkInterfaces/nic-vm-app" }] },
+    "extended": { "instanceView": { "powerState": { "code": "PowerState/deallocated", "displayStatus": "VM deallocated" } } }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Compute/disks/vm-nva_OsDisk_1_0123456789abcdef0123456789abcdef",
+   "name": "vm-nva_OsDisk_1_0123456789abcdef0123456789abcdef", "type": "microsoft.compute/disks", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": { "name": "Standard_LRS", "tier": "Standard" }, "tags": {}, "zones": null, "identity": null,
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Compute/virtualMachines/vm-nva",
+   "properties": { "provisioningState": "Succeeded", "diskSizeGB": 30, "diskState": "Attached" }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/publicIPAddresses/pip-handmade",
+   "name": "pip-handmade", "type": "microsoft.network/publicipaddresses", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": { "name": "Standard", "tier": "Regional" }, "tags": {}, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Updating", "publicIPAllocationMethod": "Static", "ipAddress": "203.0.113.10" }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Contoso/widgets/widget-1",
+   "name": "widget-1", "type": "microsoft.contoso/widgets", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": null, "tags": {}, "zones": null, "identity": null, "managedBy": "",
+   "properties": { "provisioningState": "Failed", "connectionString": "Endpoint=sb://x;SharedAccessKey=abc", "subnet": { "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Network/virtualNetworks/vnet-spoke/subnets/snet-app" } }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix/providers/Microsoft.Contoso/gadgets/gadget-1",
+   "name": "gadget-1", "type": "microsoft.contoso/gadgets", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix",
+   "sku": null, "tags": {}, "zones": null, "identity": null, "managedBy": "",
+   "properties": {}
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-36-s2s-vpn/providers/Microsoft.Network/virtualNetworks/vnet-onprem",
+   "name": "vnet-onprem", "type": "microsoft.network/virtualnetworks", "kind": "", "location": "uksouth", "resourceGroup": "rg-lab-az700-36-s2s-vpn",
+   "sku": null, "tags": {}, "zones": null, "identity": null, "managedBy": "", "properties": { "addressSpace": { "addressPrefixes": ["10.65.0.0/20"] }, "subnets": [] }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-35-forced-tunnel-fix-extra/providers/Microsoft.Storage/storageAccounts/l99abcdefst",
+   "name": "l99abcdefst", "type": "microsoft.storage/storageaccounts", "kind": "StorageV2", "location": "uksouth", "resourceGroup": "rg-lab-az700-35-forced-tunnel-fix-extra",
+   "sku": { "name": "Standard_LRS" }, "tags": {}, "zones": null, "identity": null, "managedBy": "", "properties": {}
+  }
+ ]
+}

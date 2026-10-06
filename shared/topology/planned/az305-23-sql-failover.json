@@ -1,0 +1,261 @@
+{
+ "schema": 1,
+ "labId": "az305-23-sql-failover",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_mssql_database.primary",
+   "key": "microsoft.sql/servers/databases/{p}-sqlp/appdb",
+   "kind": "sqlDatabase",
+   "label": "appdb",
+   "props": {
+    "sku": "Basic"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Sql/servers/databases",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_mssql_database.scratch",
+   "key": "microsoft.sql/servers/databases/{p}-sqls/scratch#secondary",
+   "kind": "sqlDatabase",
+   "label": "scratch",
+   "props": {
+    "sku": "GP_S_Gen5_1"
+   },
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": "Microsoft.Sql/servers/databases",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_mssql_database.secondary",
+   "key": "microsoft.sql/servers/databases/{p}-sqls/appdb#secondary",
+   "kind": "sqlDatabase",
+   "label": "appdb",
+   "props": {
+    "sku": "Basic"
+   },
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": "Microsoft.Sql/servers/databases",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_mssql_server.primary",
+   "key": "microsoft.sql/servers/{p}-sqlp",
+   "kind": "sqlServer",
+   "label": "l23…-sqlp",
+   "props": {
+    "publicAccess": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Sql/servers",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_mssql_failover_group.fog",
+     "label": "l23…-fog",
+     "armType": "Microsoft.Sql/servers/failoverGroups"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_mssql_server.secondary",
+   "key": "microsoft.sql/servers/{p}-sqls#secondary",
+   "kind": "sqlServer",
+   "label": "l23…-sqls",
+   "props": {
+    "publicAccess": true
+   },
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": "Microsoft.Sql/servers",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_private_dns_zone.sql",
+   "key": "microsoft.network/privatednszones/privatelink.database.windows.net",
+   "kind": "privateDnsZone",
+   "label": "privatelink.database.windows.net",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/privateDnsZones",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_private_dns_zone_virtual_network_link.lab",
+     "label": "link-vnet-lab",
+     "armType": "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_private_endpoint.primary",
+   "key": "microsoft.network/privateendpoints/pe-{p}-sqlp",
+   "kind": "privateEndpoint",
+   "label": "pe-l23…-sqlp",
+   "props": {
+    "groupId": "sqlServer"
+   },
+   "parent": "tf:azurerm_subnet.endpoints",
+   "armType": "Microsoft.Network/privateEndpoints",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_private_endpoint.secondary",
+   "key": "microsoft.network/privateendpoints/pe-{p}-sqls",
+   "kind": "privateEndpoint",
+   "label": "pe-l23…-sqls",
+   "props": {
+    "groupId": "sqlServer"
+   },
+   "parent": "tf:azurerm_subnet.endpoints",
+   "armType": "Microsoft.Network/privateEndpoints",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-23-sql-failover",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-23-sql-failover",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-23-sql-failover",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.secondary",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-23-sql-failover-secondary",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-23-sql-failover-secondary",
+   "props": {
+    "region": "ukwest",
+    "tags": [
+     "lab: az305-23-sql-failover",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ],
+    "chips": [
+     "secondary"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.endpoints",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-pe",
+   "kind": "subnet",
+   "label": "snet-pe",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_mssql_database.primary>tf:azurerm_mssql_database.secondary:geo-replica",
+   "from": "tf:azurerm_mssql_database.primary",
+   "to": "tf:azurerm_mssql_database.secondary",
+   "kind": "dependency",
+   "label": "geo-replica",
+   "via": "tf:azurerm_mssql_database.secondary"
+  },
+  {
+   "id": "dependency:tf:azurerm_mssql_database.primary>tf:azurerm_mssql_server.primary:server",
+   "from": "tf:azurerm_mssql_database.primary",
+   "to": "tf:azurerm_mssql_server.primary",
+   "kind": "dependency",
+   "label": "server",
+   "via": "tf:azurerm_mssql_database.primary"
+  },
+  {
+   "id": "dependency:tf:azurerm_mssql_database.scratch>tf:azurerm_mssql_server.secondary:server",
+   "from": "tf:azurerm_mssql_database.scratch",
+   "to": "tf:azurerm_mssql_server.secondary",
+   "kind": "dependency",
+   "label": "server",
+   "via": "tf:azurerm_mssql_database.scratch"
+  },
+  {
+   "id": "dependency:tf:azurerm_mssql_database.secondary>tf:azurerm_mssql_server.secondary:server",
+   "from": "tf:azurerm_mssql_database.secondary",
+   "to": "tf:azurerm_mssql_server.secondary",
+   "kind": "dependency",
+   "label": "server",
+   "via": "tf:azurerm_mssql_database.secondary"
+  },
+  {
+   "id": "dependency:tf:azurerm_mssql_server.primary>tf:azurerm_mssql_server.secondary:failover group",
+   "from": "tf:azurerm_mssql_server.primary",
+   "to": "tf:azurerm_mssql_server.secondary",
+   "kind": "dependency",
+   "label": "failover group",
+   "via": "tf:azurerm_mssql_failover_group.fog"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_dns_zone.sql>tf:azurerm_virtual_network.lab:link",
+   "from": "tf:azurerm_private_dns_zone.sql",
+   "to": "tf:azurerm_virtual_network.lab",
+   "kind": "dependency",
+   "label": "link",
+   "via": "tf:azurerm_private_dns_zone_virtual_network_link.lab"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_endpoint.primary>tf:azurerm_private_dns_zone.sql:DNS zone group",
+   "from": "tf:azurerm_private_endpoint.primary",
+   "to": "tf:azurerm_private_dns_zone.sql",
+   "kind": "dependency",
+   "label": "DNS zone group",
+   "via": "tf:azurerm_private_endpoint.primary"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_endpoint.secondary>tf:azurerm_private_dns_zone.sql:DNS zone group",
+   "from": "tf:azurerm_private_endpoint.secondary",
+   "to": "tf:azurerm_private_dns_zone.sql",
+   "kind": "dependency",
+   "label": "DNS zone group",
+   "via": "tf:azurerm_private_endpoint.secondary"
+  },
+  {
+   "id": "traffic:tf:azurerm_private_endpoint.primary>tf:azurerm_mssql_server.primary:sqlServer",
+   "from": "tf:azurerm_private_endpoint.primary",
+   "to": "tf:azurerm_mssql_server.primary",
+   "kind": "traffic",
+   "label": "sqlServer",
+   "via": "tf:azurerm_private_endpoint.primary"
+  },
+  {
+   "id": "traffic:tf:azurerm_private_endpoint.secondary>tf:azurerm_mssql_server.secondary:sqlServer",
+   "from": "tf:azurerm_private_endpoint.secondary",
+   "to": "tf:azurerm_mssql_server.secondary",
+   "kind": "traffic",
+   "label": "sqlServer",
+   "via": "tf:azurerm_private_endpoint.secondary"
+  }
+ ]
+}

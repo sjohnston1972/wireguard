@@ -1,0 +1,38 @@
+/* The diagram's toolbar (lab topology spec §9.1). Tokens only; wraps on narrow screens. */
+.topo-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+.topo-toolbar__search {
+  flex: 1 1 160px;
+  min-width: 140px;
+  max-width: 280px;
+}
+.topo-toolbar__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.topo-toolbar__end {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.topo-toolbar__end .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+@media (max-width: 640px) {
+  .topo-toolbar__search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}

@@ -1,0 +1,245 @@
+{
+ "schema": 1,
+ "labId": "az700-42-frontdoor-private",
+ "version": 4,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/global",
+   "key": "lane/global",
+   "kind": "lane",
+   "label": "Global",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_firewall_policy.lab",
+   "key": "microsoft.network/frontdoorwebapplicationfirewallpolicies/wafpremium",
+   "kind": "wafPolicy",
+   "label": "wafpremium",
+   "props": {
+    "mode": "Prevention",
+    "sku": "Premium_AzureFrontDoor"
+   },
+   "parent": "lane/global",
+   "armType": "Microsoft.Network/FrontDoorWebApplicationFirewallPolicies"
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "key": "microsoft.cdn/profiles/afd-premium",
+   "kind": "frontDoor",
+   "label": "afd-premium",
+   "props": {
+    "sku": "Premium_AzureFrontDoor"
+   },
+   "parent": "lane/global",
+   "armType": "Microsoft.Cdn/profiles",
+   "folded": [
+    {
+     "id": "tf:azurerm_cdn_frontdoor_endpoint.lab",
+     "label": "l42…-afd",
+     "armType": "Microsoft.Cdn/profiles/afdEndpoints"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin.web",
+     "label": "origin-lb-int",
+     "armType": "Microsoft.Cdn/profiles/originGroups/origins"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin_group.lab",
+     "label": "og-web",
+     "armType": "Microsoft.Cdn/profiles/originGroups"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_route.lab",
+     "label": "route-all",
+     "armType": "Microsoft.Cdn/profiles/afdEndpoints/routes"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_rule.cache_static",
+     "label": "cachestatic",
+     "armType": "Microsoft.Cdn/profiles/ruleSets/rules"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_rule.header",
+     "label": "addheader",
+     "armType": "Microsoft.Cdn/profiles/ruleSets/rules"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_rule.redirect_old",
+     "label": "redirectold",
+     "armType": "Microsoft.Cdn/profiles/ruleSets/rules"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_rule_set.lab",
+     "label": "ruleslab42",
+     "armType": "Microsoft.Cdn/profiles/ruleSets"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_security_policy.lab",
+     "label": "sp-afd",
+     "armType": "Microsoft.Cdn/profiles/securityPolicies"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_lb.int",
+   "key": "microsoft.network/loadbalancers/lb-int",
+   "kind": "loadBalancer",
+   "label": "lb-int",
+   "props": {
+    "sku": "Standard",
+    "privateIp": "10.71.192.10"
+   },
+   "parent": "tf:azurerm_subnet.web",
+   "armType": "Microsoft.Network/loadBalancers",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_lb_backend_address_pool.int",
+     "label": "pool-web",
+     "armType": "Microsoft.Network/loadBalancers/backendAddressPools"
+    },
+    {
+     "id": "tf:azurerm_lb_probe.int",
+     "label": "probe-http",
+     "armType": "Microsoft.Network/loadBalancers/probes"
+    },
+    {
+     "id": "tf:azurerm_lb_rule.int",
+     "label": "rule-http-80",
+     "armType": "Microsoft.Network/loadBalancers/loadBalancingRules"
+    },
+    {
+     "id": "tf:azurerm_network_interface_backend_address_pool_association.web",
+     "label": "web",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.web",
+   "key": "microsoft.compute/virtualmachines/vm-web",
+   "kind": "vm",
+   "label": "vm-web",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.web",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.web",
+     "label": "nic-vm-web",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_private_link_service.web",
+   "key": "microsoft.network/privatelinkservices/pls-web",
+   "kind": "privateLinkService",
+   "label": "pls-web",
+   "props": {},
+   "parent": "tf:azurerm_subnet.pls",
+   "armType": "Microsoft.Network/privateLinkServices",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-42-frontdoor-private",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-42-frontdoor-private",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-42-frontdoor-private",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.pls",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-app/snet-pls",
+   "kind": "subnet",
+   "label": "snet-pls",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "no default outbound"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.app",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.web",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-app/snet-web",
+   "kind": "subnet",
+   "label": "snet-web",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "no default outbound"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.app",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.app",
+   "key": "microsoft.network/virtualnetworks/vnet-app",
+   "kind": "vnet",
+   "label": "vnet-app",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_cdn_frontdoor_firewall_policy.lab>tf:azurerm_cdn_frontdoor_profile.lab:WAF policy",
+   "from": "tf:azurerm_cdn_frontdoor_firewall_policy.lab",
+   "to": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "kind": "dependency",
+   "label": "WAF policy",
+   "via": "tf:azurerm_cdn_frontdoor_security_policy.lab"
+  },
+  {
+   "id": "traffic:tf:azurerm_cdn_frontdoor_profile.lab>tf:azurerm_private_link_service.web:Private Link",
+   "from": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "to": "tf:azurerm_private_link_service.web",
+   "kind": "traffic",
+   "label": "Private Link",
+   "via": "tf:azurerm_cdn_frontdoor_origin.web"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.int>tf:azurerm_linux_virtual_machine.web:TCP 80→80",
+   "from": "tf:azurerm_lb.int",
+   "to": "tf:azurerm_linux_virtual_machine.web",
+   "kind": "traffic",
+   "label": "TCP 80→80",
+   "via": "tf:azurerm_lb_rule.int"
+  },
+  {
+   "id": "traffic:tf:azurerm_private_link_service.web>tf:azurerm_lb.int:frontend",
+   "from": "tf:azurerm_private_link_service.web",
+   "to": "tf:azurerm_lb.int",
+   "kind": "traffic",
+   "label": "frontend",
+   "via": "tf:azurerm_private_link_service.web"
+  }
+ ]
+}

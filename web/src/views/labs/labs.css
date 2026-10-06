@@ -149,6 +149,19 @@
 .labs-readme code { font-variant-ligatures: none; font-family: var(--font-mono); font-size: 12px; padding: 1px 5px; border-radius: 5px; background: var(--bg-tile); border: 1px solid var(--border); }
 .labs-readme__pre { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg-tile); border: 1px solid var(--border); overflow-x: auto; }
 .labs-readme__pre code { padding: 0; border: 0; background: none; white-space: pre; line-height: 1.45; }
+
+/* The readme column's two tabs, Readme and Diagram (lab topology spec §9.1).
+   The diagram has a fixed height inside the panel and pans: it never makes
+   the panel or the page scroll. */
+.labs-tabs { min-width: 0; }
+.labs-tabs .tabs__panel { padding-top: 10px; }
+.labs-tabs--diagram .tabs__panel { height: clamp(300px, calc(88vh - 230px), 640px); }
+.labs-tabs__loading { margin: 0; padding: 24px 0; text-align: center; }
+
+/* /labs/:id/diagram: the diagram is the page. */
+/* A definite height (not a min-height), so the canvas's 100% heights resolve: React Flow needs a sized box. */
+.labs--full { gap: 0; height: calc(100dvh - 100px); min-height: 320px; }
+.labs--full > .topo-full { flex: 1 1 auto; min-height: 0; }
 .labs-readme a { color: var(--blue-bright); text-decoration: underline; text-underline-offset: 2px; }
 .labs-readme a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 3px; }
 .labs-readme__ext { margin-left: 3px; vertical-align: -1px; }
@@ -249,6 +262,9 @@
   .labs-foot > .labs-muted, .labs-foot__facts { width: 100%; }
   .labs-foot > .labs-actions, .labs-foot > .btn { flex: 1; }
   .labs-foot > .labs-actions .btn { flex: 1; }
+  /* The lab sheet's diagram: at most 60% of the screen, so the sheet's header and tabs stay in view. */
+  .labs-tabs--diagram .tabs__panel { height: min(60vh, 480px); }
+  .labs--full { height: calc(100dvh - 128px); }
 }
 @media (max-width: 860px) {
   .labs-modal__cols { grid-template-columns: 1fr; }

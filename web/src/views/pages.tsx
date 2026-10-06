@@ -17,6 +17,13 @@ export const NotFoundPage = () => <Placeholder title="Not found" />;
 // so the entry never carries it (plan L0). views/labs/index.tsx's default
 // export is the whole tab and reads the route itself.
 const LabsView = lazy(() => import("./labs"));
+
+// The lab diagram (lab topology spec ruling 21): its own lazy chunk (React
+// Flow, the topology code, the planned graphs as hashed assets), never in the
+// entry or the labs chunk. The labs tab's Diagram tab, the full-screen route
+// and the Overview hover render it (topology/index.ts's DiagramTab, FullScreen
+// and LabMini); declared here so every build carries the chunk.
+export const LabDiagramTab = lazy(() => import("./labs/topology").then((m) => ({ default: m.default.DiagramTab })));
 export const LabsPage = () => (
   <Suspense fallback={<section className="placeholder" aria-busy="true" aria-label="Loading Labs" />}>
     <LabsView />

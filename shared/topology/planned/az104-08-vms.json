@@ -1,0 +1,119 @@
+{
+ "schema": 1,
+ "labId": "az104-08-vms",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_linux_virtual_machine.zone1",
+   "key": "microsoft.compute/virtualmachines/vm-zone1",
+   "kind": "vm",
+   "label": "vm-zone1",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux",
+    "zones": [
+     "1"
+    ]
+   },
+   "parent": "tf:azurerm_subnet.vms",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_managed_disk.data",
+     "label": "disk-zone1-data",
+     "armType": "Microsoft.Compute/disks"
+    },
+    {
+     "id": "tf:azurerm_network_interface.zone1",
+     "label": "nic-vm-zone1",
+     "armType": "Microsoft.Network/networkInterfaces"
+    },
+    {
+     "id": "tf:azurerm_virtual_machine_data_disk_attachment.data",
+     "label": "data",
+     "armType": null
+    },
+    {
+     "id": "tf:azurerm_virtual_machine_extension.web_zone1",
+     "label": "serve-web",
+     "armType": "Microsoft.Compute/virtualMachines/extensions"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.zone2",
+   "key": "microsoft.compute/virtualmachines/vm-zone2",
+   "kind": "vm",
+   "label": "vm-zone2",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux",
+    "zones": [
+     "2"
+    ]
+   },
+   "parent": "tf:azurerm_subnet.vms",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.zone2",
+     "label": "nic-vm-zone2",
+     "armType": "Microsoft.Network/networkInterfaces"
+    },
+    {
+     "id": "tf:azurerm_virtual_machine_extension.web_zone2",
+     "label": "serve-web",
+     "armType": "Microsoft.Compute/virtualMachines/extensions"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-08-vms",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-08-vms",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-08-vms",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.vms",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-vms",
+   "kind": "subnet",
+   "label": "snet-vms",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": []
+}

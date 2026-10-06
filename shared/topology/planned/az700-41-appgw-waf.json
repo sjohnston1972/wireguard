@@ -1,0 +1,326 @@
+{
+ "schema": 1,
+ "labId": "az700-41-appgw-waf",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_application_gateway.hub",
+   "key": "microsoft.network/applicationgateways/agw-hub",
+   "kind": "appGateway",
+   "label": "agw-hub",
+   "props": {
+    "sku": "WAF_v2",
+    "capacity": "0-2",
+    "privateIp": "10.71.192.10"
+   },
+   "parent": "tf:azurerm_subnet.agw",
+   "armType": "Microsoft.Network/applicationGateways",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_monitor_diagnostic_setting.agw",
+     "label": "diag-agw",
+     "armType": "Microsoft.Insights/diagnosticSettings"
+    },
+    {
+     "id": "tf:azurerm_public_ip.agw",
+     "label": "pip-agw",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_key_vault.lab",
+   "key": "microsoft.keyvault/vaults/{p}kv",
+   "kind": "keyVault",
+   "label": "l41…kv",
+   "props": {
+    "sku": "standard",
+    "mode": "access policies",
+    "counts": [
+     "certificates: 1"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.KeyVault/vaults",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_key_vault_access_policy.agw",
+     "label": "agw",
+     "armType": "Microsoft.KeyVault/vaults/accessPolicies"
+    },
+    {
+     "id": "tf:azurerm_key_vault_access_policy.pipeline",
+     "label": "pipeline",
+     "armType": "Microsoft.KeyVault/vaults/accessPolicies"
+    },
+    {
+     "id": "tf:azurerm_key_vault_certificate#1",
+     "label": "certificate",
+     "armType": "Microsoft.KeyVault/vaults/certificates"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.web1",
+   "key": "microsoft.compute/virtualmachines/vm-web1",
+   "kind": "vm",
+   "label": "vm-web1",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.web",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.web1",
+     "label": "nic-vm-web1",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.web2",
+   "key": "microsoft.compute/virtualmachines/vm-web2",
+   "kind": "vm",
+   "label": "vm-web2",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.web",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.web2",
+     "label": "nic-vm-web2",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_log_analytics_workspace.lab",
+   "key": "microsoft.operationalinsights/workspaces/log-agw",
+   "kind": "logAnalytics",
+   "label": "log-agw",
+   "props": {
+    "retentionDays": 30,
+    "dailyCapGb": 0.05
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.OperationalInsights/workspaces",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_private_dns_zone.lab",
+   "key": "microsoft.network/privatednszones/lab41.internal",
+   "kind": "privateDnsZone",
+   "label": "lab41.internal",
+   "props": {
+    "counts": [
+     "records: 1"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/privateDnsZones",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_private_dns_a_record.app",
+     "label": "app",
+     "armType": "Microsoft.Network/privateDnsZones/A"
+    },
+    {
+     "id": "tf:azurerm_private_dns_zone_virtual_network_link.hub",
+     "label": "link-vnet-hub",
+     "armType": "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-41-appgw-waf",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-41-appgw-waf",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-41-appgw-waf",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.agw",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/snet-agw",
+   "kind": "subnet",
+   "label": "snet-agw",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "NSG nsg-agw"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.agw",
+     "label": "nsg-agw",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.agw_manager",
+     "label": "allow-gateway-manager",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.agw_web",
+     "label": "allow-web-from-vnet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.agw",
+     "label": "agw",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.web",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/snet-web",
+   "kind": "subnet",
+   "label": "snet-web",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "no default outbound"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_user_assigned_identity.agw",
+   "key": "microsoft.managedidentity/userassignedidentities/id-{p}-agw",
+   "kind": "managedIdentity",
+   "label": "id-l41…-agw",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.ManagedIdentity/userAssignedIdentities",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.hub",
+   "key": "microsoft.network/virtualnetworks/vnet-hub",
+   "kind": "vnet",
+   "label": "vnet-hub",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_web_application_firewall_policy.hub",
+   "key": "microsoft.network/applicationgatewaywebapplicationfirewallpolicies/waf-hub",
+   "kind": "wafPolicy",
+   "label": "waf-hub",
+   "props": {
+    "mode": "Prevention"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_application_gateway.hub>tf:azurerm_key_vault.lab:TLS certificate",
+   "from": "tf:azurerm_application_gateway.hub",
+   "to": "tf:azurerm_key_vault.lab",
+   "kind": "dependency",
+   "label": "TLS certificate",
+   "via": "tf:azurerm_application_gateway.hub"
+  },
+  {
+   "id": "dependency:tf:azurerm_application_gateway.hub>tf:azurerm_log_analytics_workspace.lab:diagnostics",
+   "from": "tf:azurerm_application_gateway.hub",
+   "to": "tf:azurerm_log_analytics_workspace.lab",
+   "kind": "dependency",
+   "label": "diagnostics",
+   "via": "tf:azurerm_monitor_diagnostic_setting.agw"
+  },
+  {
+   "id": "dependency:tf:azurerm_application_gateway.hub>tf:azurerm_user_assigned_identity.agw:identity",
+   "from": "tf:azurerm_application_gateway.hub",
+   "to": "tf:azurerm_user_assigned_identity.agw",
+   "kind": "dependency",
+   "label": "identity",
+   "via": "tf:azurerm_application_gateway.hub"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_dns_zone.lab>tf:azurerm_application_gateway.hub:A app",
+   "from": "tf:azurerm_private_dns_zone.lab",
+   "to": "tf:azurerm_application_gateway.hub",
+   "kind": "dependency",
+   "label": "A app",
+   "via": "tf:azurerm_private_dns_a_record.app"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_dns_zone.lab>tf:azurerm_virtual_network.hub:link",
+   "from": "tf:azurerm_private_dns_zone.lab",
+   "to": "tf:azurerm_virtual_network.hub",
+   "kind": "dependency",
+   "label": "link",
+   "via": "tf:azurerm_private_dns_zone_virtual_network_link.hub"
+  },
+  {
+   "id": "dependency:tf:azurerm_user_assigned_identity.agw>tf:azurerm_key_vault.lab:access policy",
+   "from": "tf:azurerm_user_assigned_identity.agw",
+   "to": "tf:azurerm_key_vault.lab",
+   "kind": "dependency",
+   "label": "access policy",
+   "via": "tf:azurerm_key_vault_access_policy.agw"
+  },
+  {
+   "id": "dependency:tf:azurerm_web_application_firewall_policy.hub>tf:azurerm_application_gateway.hub:WAF policy",
+   "from": "tf:azurerm_web_application_firewall_policy.hub",
+   "to": "tf:azurerm_application_gateway.hub",
+   "kind": "dependency",
+   "label": "WAF policy",
+   "via": "tf:azurerm_web_application_firewall_policy.hub"
+  },
+  {
+   "id": "traffic:tf:azurerm_application_gateway.hub>tf:azurerm_linux_virtual_machine.web1:HTTPS 443→80",
+   "from": "tf:azurerm_application_gateway.hub",
+   "to": "tf:azurerm_linux_virtual_machine.web1",
+   "kind": "traffic",
+   "label": "HTTPS 443→80",
+   "via": "tf:azurerm_application_gateway.hub"
+  },
+  {
+   "id": "traffic:tf:azurerm_application_gateway.hub>tf:azurerm_linux_virtual_machine.web2:HTTPS 443→80",
+   "from": "tf:azurerm_application_gateway.hub",
+   "to": "tf:azurerm_linux_virtual_machine.web2",
+   "kind": "traffic",
+   "label": "HTTPS 443→80",
+   "via": "tf:azurerm_application_gateway.hub"
+  }
+ ]
+}

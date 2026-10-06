@@ -1,0 +1,178 @@
+{
+ "schema": 1,
+ "labId": "az305-27-multi-region",
+ "version": 3,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/global",
+   "key": "lane/global",
+   "kind": "lane",
+   "label": "Global",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "key": "microsoft.cdn/profiles/afd-lab",
+   "kind": "frontDoor",
+   "label": "afd-lab",
+   "props": {
+    "sku": "Standard_AzureFrontDoor"
+   },
+   "parent": "lane/global",
+   "armType": "Microsoft.Cdn/profiles",
+   "folded": [
+    {
+     "id": "tf:azurerm_cdn_frontdoor_endpoint.lab",
+     "label": "l27…-afd",
+     "armType": "Microsoft.Cdn/profiles/afdEndpoints"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin.uks",
+     "label": "origin-uks",
+     "armType": "Microsoft.Cdn/profiles/originGroups/origins"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin.ukw",
+     "label": "origin-ukw",
+     "armType": "Microsoft.Cdn/profiles/originGroups/origins"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin_group.lab",
+     "label": "og-aci",
+     "armType": "Microsoft.Cdn/profiles/originGroups"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_route.lab",
+     "label": "route-all",
+     "armType": "Microsoft.Cdn/profiles/afdEndpoints/routes"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_container_group.uks",
+   "key": "microsoft.containerinstance/containergroups/ci-uks",
+   "kind": "containerGroup",
+   "label": "ci-uks",
+   "props": {
+    "cpu": 0.5,
+    "memoryGb": 0.5,
+    "chips": [
+     "public IP"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.ContainerInstance/containerGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_container_group.ukw",
+   "key": "microsoft.containerinstance/containergroups/ci-ukw#secondary",
+   "kind": "containerGroup",
+   "label": "ci-ukw",
+   "props": {
+    "cpu": 0.5,
+    "memoryGb": 0.5,
+    "chips": [
+     "public IP"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": "Microsoft.ContainerInstance/containerGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-27-multi-region",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-27-multi-region",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-27-multi-region",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.secondary",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-27-multi-region-secondary",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-27-multi-region-secondary",
+   "props": {
+    "region": "ukwest",
+    "tags": [
+     "lab: az305-27-multi-region",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ],
+    "chips": [
+     "secondary"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_traffic_manager_profile.lab",
+   "key": "microsoft.network/trafficmanagerprofiles/{p}-tm",
+   "kind": "trafficManager",
+   "label": "l27…-tm",
+   "props": {
+    "routing": "Priority"
+   },
+   "parent": "lane/global",
+   "armType": "Microsoft.Network/trafficManagerProfiles",
+   "folded": [
+    {
+     "id": "tf:azurerm_traffic_manager_external_endpoint.uks",
+     "label": "ep-uks",
+     "armType": "Microsoft.Network/trafficManagerProfiles/externalEndpoints"
+    },
+    {
+     "id": "tf:azurerm_traffic_manager_external_endpoint.ukw",
+     "label": "ep-ukw",
+     "armType": "Microsoft.Network/trafficManagerProfiles/externalEndpoints"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "id": "traffic:tf:azurerm_cdn_frontdoor_profile.lab>tf:azurerm_container_group.uks:HTTP",
+   "from": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "to": "tf:azurerm_container_group.uks",
+   "kind": "traffic",
+   "label": "HTTP",
+   "via": "tf:azurerm_cdn_frontdoor_origin.uks"
+  },
+  {
+   "id": "traffic:tf:azurerm_cdn_frontdoor_profile.lab>tf:azurerm_container_group.ukw:HTTP",
+   "from": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "to": "tf:azurerm_container_group.ukw",
+   "kind": "traffic",
+   "label": "HTTP",
+   "via": "tf:azurerm_cdn_frontdoor_origin.ukw"
+  },
+  {
+   "id": "traffic:tf:azurerm_traffic_manager_profile.lab>tf:azurerm_container_group.uks:priority 1",
+   "from": "tf:azurerm_traffic_manager_profile.lab",
+   "to": "tf:azurerm_container_group.uks",
+   "kind": "traffic",
+   "label": "priority 1",
+   "via": "tf:azurerm_traffic_manager_external_endpoint.uks"
+  },
+  {
+   "id": "traffic:tf:azurerm_traffic_manager_profile.lab>tf:azurerm_container_group.ukw:priority 2",
+   "from": "tf:azurerm_traffic_manager_profile.lab",
+   "to": "tf:azurerm_container_group.ukw",
+   "kind": "traffic",
+   "label": "priority 2",
+   "via": "tf:azurerm_traffic_manager_external_endpoint.ukw"
+  }
+ ]
+}
