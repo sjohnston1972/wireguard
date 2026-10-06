@@ -5,13 +5,75 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { judgeBundle, entryFiles, LIMITS } from "../lib/bundle.mjs";
+import { judgeBundle, entryFiles, FORBIDDEN_IN_ENTRY, LIMITS } from "../lib/bundle.mjs";
 
 const script = fileURLToPath(new URL("../bundle-size.mjs", import.meta.url));
 const f = (name, gzip, extra = {}) => ({ name, bytes: gzip * 3, gzip, ...extra });
 
-test("the budget: the page's entry JS 320 kB gzip (ruling 8), all JS 400 kB, CSS 50 kB", () => {
-  assert.deepEqual(LIMITS, { entryJsGzip: 320_000, jsGzip: 400_000, cssGzip: 50_000 });
+test("the budget: the page's entry JS 320 kB gzip (ruling 8), the JS limit is 450 kB, CSS 50 kB, each planned diagram 16 kB, the icon sprite 60 kB", () => {
+  assert.deepEqual(LIMITS, { entryJsGzip: 320_000, jsGzip: 450_000, cssGzip: 50_000, topologyDataGzip: 16_000, spriteGzip: 60_000 });
+  assert.deepEqual(FORBIDDEN_IN_ENTRY, ["react-flow__", "@xyflow"]);
+});
+
+test("an entry file mentioning @xyflow or react-flow__ fails; a lazy chunk may", () => {
+  const r = judgeBundle([f("assets/index-a.js", 200_000, { entry: true, forbidden: ["@xyflow"] }), f("assets/vendor-b.js", 10_000, { entry: true, forbidden: ["react-flow__"] })], LIMITS);
+  assert.equal(r.ok, false);
+  const fail = r.lines.filter((l) => /^FAIL/.test(l)).join("\n");
+  assert.match(fail, /assets\/index-a\.js.*@xyflow/);
+  assert.match(fail, /assets\/vendor-b\.js.*react-flow__/);
+  const lazy = judgeBundle([f("assets/index-a.js", 200_000, { entry: true }), f("assets/Topology-x.js", 70_000, { forbidden: ["@xyflow", "react-flow__"] })], LIMITS);
+  assert.equal(lazy.ok, true, lazy.lines.join("\n"));
+});
+
+test("a planned asset over 16 kB gzip fails; the table names the largest and the count", () => {
+  const ok = judgeBundle([f("assets/index-a.js", 200_000, { entry: true }), f("assets/az104-13-vnets-AbC123.json", 4_000), f("assets/az700-40-lb-advanced-x.json", 9_000)], LIMITS);
+  assert.equal(ok.ok, true, ok.lines.join("\n"));
+  assert.ok(ok.lines.some((l) => /^Planned diagrams 2 files, largest 9\.0 kB gzip \(assets\/az700-40-lb-advanced-x\.json\) \(limit 16\.0 kB each\)/.test(l)), ok.lines.join("\n"));
+  const r = judgeBundle([f("assets/index-a.js", 200_000, { entry: true }), f("assets/az104-13-vnets-AbC123.json", 16_001)], LIMITS);
+  assert.equal(r.ok, false);
+  assert.ok(r.lines.some((l) => /^FAIL/.test(l) && /planned diagram/.test(l) && /az104-13-vnets-AbC123\.json/.test(l)), r.lines.join("\n"));
+});
+
+test("planned files are emitted as assets, not JS: json never counts toward the JS total", () => {
+  const r = judgeBundle([f("assets/index-a.js", 300_000, { entry: true }), ...Array.from({ length: 40 }, (_, i) => f(`assets/lab-${i}.json`, 5_000))], LIMITS);
+  assert.equal(r.ok, true, r.lines.join("\n"));
+  assert.ok(r.lines.some((l) => /^JS total 300\.0 kB/.test(l)), r.lines.join("\n"));
+});
+
+test("a sprite over 60 kB gzip fails", () => {
+  const ok = judgeBundle([f("assets/index-a.js", 100_000, { entry: true }), f("assets/azure-Dx9.svg", 22_600)], LIMITS);
+  assert.equal(ok.ok, true, ok.lines.join("\n"));
+  assert.ok(ok.lines.some((l) => /^Icon sprite 22\.6 kB gzip \(limit 60\.0 kB\)/.test(l)), ok.lines.join("\n"));
+  const r = judgeBundle([f("assets/index-a.js", 100_000, { entry: true }), f("assets/azure-Dx9.svg", 60_001)], LIMITS);
+  assert.equal(r.ok, false);
+  assert.ok(r.lines.some((l) => /^FAIL/.test(l) && /sprite/.test(l) && /azure-Dx9\.svg/.test(l)), r.lines.join("\n"));
+});
+
+test("bundle-size.mjs marks the diagram chunk lazy and fails an entry carrying @xyflow", () => {
+  const ok = fakeDist({
+    "index.html": '<!doctype html><script type="module" src="/assets/index-a.js"></script>',
+    "assets/index-a.js": "import('./Topology-x.js')",
+    "assets/Topology-x.js": 'const c="react-flow__node";export{c} // @xyflow/react',
+    "assets/az104-13-vnets-Ab1.json": '{"schema":1}',
+    "assets/azure-Q1.svg": "<svg/>",
+  });
+  const bad = fakeDist({
+    "index.html": '<!doctype html><script type="module" src="/assets/index-a.js"></script>',
+    "assets/index-a.js": 'import "@xyflow/react";',
+  });
+  try {
+    const good = spawnSync(process.execPath, [script, ok], { encoding: "utf8" });
+    assert.equal(good.status, 0, good.stdout + good.stderr);
+    assert.match(good.stdout, /assets\/Topology-x\.js.*lazy/);
+    assert.match(good.stdout, /Planned diagrams 1 file/);
+    assert.match(good.stdout, /Icon sprite/);
+    const r = spawnSync(process.execPath, [script, bad], { encoding: "utf8" });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /FAIL.*assets\/index-a\.js.*@xyflow/);
+  } finally {
+    rmSync(ok, { recursive: true, force: true });
+    rmSync(bad, { recursive: true, force: true });
+  }
 });
 
 test("the entry is index.html's module script and its modulepreloads; lazy chunks and sw.js are not", () => {
@@ -24,7 +86,7 @@ test("lazy chunks count toward the JS total but not the entry", () => {
   const r = judgeBundle([f("assets/index-a.js", 300_000, { entry: true }), f("assets/Insights-b.js", 60_000), f("sw.js", 3_000)], LIMITS);
   assert.equal(r.ok, true, r.lines.join("\n"));
   assert.ok(r.lines.some((l) => /^Entry JS/.test(l) && /300\.0 kB/.test(l) && /320\.0 kB/.test(l)), r.lines.join("\n"));
-  assert.ok(r.lines.some((l) => /^JS total/.test(l) && /363\.0 kB/.test(l) && /400\.0 kB/.test(l)), r.lines.join("\n"));
+  assert.ok(r.lines.some((l) => /^JS total/.test(l) && /363\.0 kB/.test(l) && /450\.0 kB/.test(l)), r.lines.join("\n"));
   assert.ok(r.lines.some((l) => l.includes("assets/Insights-b.js") && /lazy/.test(l)), "the table marks lazy chunks");
 });
 
@@ -61,7 +123,7 @@ test("under budget passes", () => {
 });
 
 test("over the JS total fails and names the files", () => {
-  const r = judgeBundle([f("assets/index-a.js", 200_000, { entry: true }), f("assets/vendor-b.js", 210_000), f("assets/index-c.css", 30_000)], LIMITS);
+  const r = judgeBundle([f("assets/index-a.js", 200_000, { entry: true }), f("assets/vendor-b.js", 260_000), f("assets/index-c.css", 30_000)], LIMITS);
   assert.equal(r.ok, false);
   const fail = r.lines.filter((l) => /^FAIL/.test(l)).join("\n");
   assert.match(fail, /JS/);
