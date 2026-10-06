@@ -241,6 +241,40 @@ describe("GET and PUT /prefs/topology/:labId", () => {
     expect((await getPrefs(env, A)).pages).not.toHaveProperty(`topology:${LAB}`);
   });
 
+  it("getPrefs reads only widget rows: a person's topology rows (up to 16 KiB each) are never fetched", async () => {
+    const { env } = makeEnv();
+    const A = "a@example.com";
+    await putTopologyLayout(env, A, LAB, 0, one);
+    await putTopologyLayout(env, A, "az700-43-private-link", 0, one);
+    const read: { sql: string; rows: { page: string }[] }[] = [];
+    const real = env.DB;
+    const spy = {
+      ...real,
+      prepare: (sql: string) => {
+        const st = real.prepare(sql);
+        return {
+          bind: (...args: unknown[]) => {
+            const b = st.bind(...args);
+            return {
+              ...b,
+              all: async <T,>() => {
+                const r = await b.all<T>();
+                read.push({ sql, rows: r.results as { page: string }[] });
+                return r;
+              },
+              first: b.first.bind(b),
+              run: b.run.bind(b),
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    const got = await getPrefs({ ...env, DB: spy } as Env, A);
+    expect(Object.keys(got.pages)).toEqual(["overview", "clients", "firewall", "activity", "cost"]);
+    expect(read.length).toBeGreaterThan(0);
+    expect(read.flatMap((r) => r.rows.map((x) => x.page)).filter((p) => p.startsWith("topology:"))).toEqual([]);
+  });
+
   it("an unreadable stored row reads as an empty layout at its version", async () => {
     const { env } = makeEnv();
     await env.DB.prepare("INSERT INTO ui_prefs (user, page, json, version, updated_at) VALUES ('a@example.com', ?1, 'not json', 3, '2026-10-01T00:00:00.000Z')").bind(`topology:${LAB}`).run();

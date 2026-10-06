@@ -34,7 +34,13 @@ export function schemaRefusal(schema: unknown): { status: 400 | 409; code: "bad_
 
 /** Every widget page for `user`, normalised; a page never saved is version 0 with {}. */
 export async function getPrefs(env: Env, user: string, reg: Registry = REGISTRY): Promise<PrefsResponse> {
-  const rows = (await env.DB.prepare("SELECT page, json, version, updated_at FROM ui_prefs WHERE user = ?1").bind(user).all<{ page: string; json: string; version: number; updated_at: string }>()).results;
+  // Only the widget pages: a person's topology rows (one per lab, up to 16 KiB each) are never read here.
+  const inList = PAGE_IDS.map((_, i) => `?${i + 2}`).join(", ");
+  const rows = (
+    await env.DB.prepare(`SELECT page, json, version, updated_at FROM ui_prefs WHERE user = ?1 AND page IN (${inList})`)
+      .bind(user, ...PAGE_IDS)
+      .all<{ page: string; json: string; version: number; updated_at: string }>()
+  ).results;
   const pages = {} as Record<PageId, PrefsPage>;
   for (const page of PAGE_IDS) {
     const r = rows.find((x) => x.page === page);
@@ -82,7 +88,7 @@ export async function putPrefs(env: Env, user: string, page: PageId, baseVersion
 
 // ── A lab diagram's saved arrangement (lab topology spec §8.3) ──────────
 // Same table, page "topology:<lab id>" (migration 0021). getPrefs above
-// answers the widget pages only, so these rows never reach it.
+// reads the widget pages only (page IN (...)), so these rows never reach it.
 
 /** What a topology save came to: the layout as now stored, or the refusal. */
 export type TopologyPutResult = { ok: true; page: TopologyLayoutPage } | { ok: false; status: 400 | 409; code: "bad_input" | "stale"; message: string; field?: string };
