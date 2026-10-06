@@ -347,6 +347,88 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["afw-vhub ..> fwp-vhub : policy", "vhub-lab -> vnet-spoke1 : hub connection", "vhub-lab -> vnet-spoke2 : hub connection", "vwan-lab ..> vhub-lab : virtual hub"],
   },
+
+  // ── T3.4 Private access and data (lab 6 is with the network core above) ──
+  "az104-05-storage": {
+    nodes: ["resourceGroup rg-lab-az104-05-storage", "storage l05…cool < rg-lab-az104-05-storage", "storage l05…hot < rg-lab-az104-05-storage"],
+    edges: [],
+  },
+  "az305-22-keyvault-mi": {
+    nodes: [
+      "keyVault l22…kv < rg-lab-az305-22-keyvault-mi",
+      "managedIdentity id-l22…-app < rg-lab-az305-22-keyvault-mi",
+      "resourceGroup rg-lab-az305-22-keyvault-mi",
+      "subnet snet-vms < vnet-lab",
+      "vm vm-app < snet-vms",
+      "vnet vnet-lab < rg-lab-az305-22-keyvault-mi",
+    ],
+    edges: ["id-l22…-app ..> l22…kv : role: Key Vault Secrets User (one secret)", "vm-app ..> id-l22…-app : identity", "vm-app ..> l22…kv : role: Key Vault Secrets User"],
+  },
+  "az305-23-sql-failover": {
+    nodes: [
+      "privateDnsZone privatelink.database.windows.net < rg-lab-az305-23-sql-failover",
+      "privateEndpoint pe-l23…-sqlp < snet-pe",
+      "privateEndpoint pe-l23…-sqls < snet-pe",
+      "resourceGroup rg-lab-az305-23-sql-failover",
+      "resourceGroup rg-lab-az305-23-sql-failover-secondary",
+      "sqlDatabase appdb < rg-lab-az305-23-sql-failover",
+      "sqlDatabase appdb < rg-lab-az305-23-sql-failover-secondary",
+      "sqlDatabase scratch < rg-lab-az305-23-sql-failover-secondary",
+      "sqlServer l23…-sqlp < rg-lab-az305-23-sql-failover",
+      "sqlServer l23…-sqls < rg-lab-az305-23-sql-failover-secondary",
+      "subnet snet-pe < vnet-lab",
+      "vnet vnet-lab < rg-lab-az305-23-sql-failover",
+    ],
+    edges: [
+      "appdb ..> appdb : geo-replica",
+      "appdb ..> l23…-sqlp : server",
+      "appdb ..> l23…-sqls : server",
+      "l23…-sqlp ..> l23…-sqls : failover group",
+      "pe-l23…-sqlp ..> privatelink.database.windows.net : DNS zone group",
+      "pe-l23…-sqlp -> l23…-sqlp : sqlServer",
+      "pe-l23…-sqls ..> privatelink.database.windows.net : DNS zone group",
+      "pe-l23…-sqls -> l23…-sqls : sqlServer",
+      "privatelink.database.windows.net ..> vnet-lab : link",
+      "scratch ..> l23…-sqls : server",
+    ],
+  },
+  "az305-24-cosmos": {
+    nodes: ["cosmos l24…-cosmos < rg-lab-az305-24-cosmos", "resourceGroup rg-lab-az305-24-cosmos"],
+    edges: [],
+  },
+  "az305-25-storage-design": {
+    nodes: ["resourceGroup rg-lab-az305-25-storage-design", "storage l25…lake < rg-lab-az305-25-storage-design", "storage l25…rec < rg-lab-az305-25-storage-design"],
+    edges: [],
+  },
+  "az700-43-private-link": {
+    nodes: [
+      "loadBalancer lb-svc < snet-svc",
+      "privateDnsZone privatelink.blob.core.windows.net < rg-lab-az700-43-private-link",
+      "privateEndpoint pe-blob < snet-pe",
+      "privateEndpoint pe-svc < snet-pe",
+      "privateLinkService pls-svc < snet-pls",
+      "resourceGroup rg-lab-az700-43-private-link",
+      "storage l43…other < rg-lab-az700-43-private-link",
+      "storage l43…st < rg-lab-az700-43-private-link",
+      "subnet snet-client < vnet-consumer",
+      "subnet snet-pe < vnet-consumer",
+      "subnet snet-pls < vnet-provider",
+      "subnet snet-svc < vnet-provider",
+      "vm vm-client < snet-client",
+      "vm vm-svc < snet-svc",
+      "vnet vnet-consumer < rg-lab-az700-43-private-link",
+      "vnet vnet-provider < rg-lab-az700-43-private-link",
+    ],
+    edges: [
+      "lb-svc -> vm-svc : TCP 80→80",
+      "pe-blob ..> privatelink.blob.core.windows.net : DNS zone group",
+      "pe-blob -> l43…st : blob",
+      "pe-svc -> pls-svc : private link",
+      "pls-svc -> lb-svc : frontend",
+      "privatelink.blob.core.windows.net ..> vnet-consumer : link",
+      "snet-client ..> l43…st : service endpoint policy",
+    ],
+  },
 };
 
 describe("golden: each lab's planned graph has its reviewed shape", () => {

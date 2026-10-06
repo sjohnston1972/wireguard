@@ -297,6 +297,16 @@ const PIP_OWNERS = [
   "azurerm_vpn_gateway",
 ];
 
+/** A Cosmos DB account's API, from its kind and capabilities (the same words live, rules/live.ts). */
+export function cosmosApi(kind: string | undefined, capabilities: string[]): string | undefined {
+  const caps = capabilities.map((c) => c.toLowerCase());
+  if ((kind ?? "").toLowerCase() === "mongodb") return "MongoDB";
+  if (caps.includes("enablecassandra")) return "Cassandra";
+  if (caps.includes("enablegremlin")) return "Gremlin";
+  if (caps.includes("enabletable")) return "Table";
+  return kind ? "NoSQL" : undefined;
+}
+
 /** A VPN connection's label: "IPsec", "IPsec, BGP", "VNet-to-VNet". */
 const connectionLabel = (i: TfInst): string => {
   const t = str(i.after.type)?.toLowerCase();
@@ -349,9 +359,9 @@ export const TF_RULES: Record<string, TfRule> = {
   },
 
   // ── Compute ──
-  azurerm_linux_virtual_machine: { arm: "Microsoft.Compute/virtualMachines", props: vmProps("Linux") },
-  azurerm_windows_virtual_machine: { arm: "Microsoft.Compute/virtualMachines", props: vmProps("Windows") },
-  azurerm_virtual_machine: { arm: "Microsoft.Compute/virtualMachines", props: vmProps("") },
+  azurerm_linux_virtual_machine: { arm: "Microsoft.Compute/virtualMachines", props: vmProps("Linux"), edges: (i, h) => identityEdges(i, h) },
+  azurerm_windows_virtual_machine: { arm: "Microsoft.Compute/virtualMachines", props: vmProps("Windows"), edges: (i, h) => identityEdges(i, h) },
+  azurerm_virtual_machine: { arm: "Microsoft.Compute/virtualMachines", props: vmProps(""), edges: (i, h) => identityEdges(i, h) },
   azurerm_network_interface: { arm: "Microsoft.Network/networkInterfaces", foldToReferrer: { types: VM_TYPES, attrs: ["network_interface_ids"] } },
   azurerm_managed_disk: { arm: "Microsoft.Compute/disks", foldToReferrer: { types: ["azurerm_virtual_machine_data_disk_attachment"] } },
   azurerm_virtual_machine_data_disk_attachment: { fold: ["virtual_machine_id"], pull: ["managed_disk_id"] },
@@ -672,23 +682,97 @@ export const TF_RULES: Record<string, TfRule> = {
   // ── A few plain cards with their ARM type, so keys match the live view ──
   azurerm_storage_account: {
     arm: "Microsoft.Storage/storageAccounts",
-    props: (i) => ({
-      accountKind: str(i.after.account_kind),
-      sku: [str(i.after.account_tier), str(i.after.account_replication_type)].filter(Boolean).join(" ") || undefined,
-      accessTier: str(i.after.access_tier),
-      publicAccess: typeof i.after.public_network_access_enabled === "boolean" ? i.after.public_network_access_enabled : undefined,
-    }),
+    props: (i, h) => {
+      // Child collections as counts (ruling 22): containers, shares, queues, tables, blobs.
+      const n = (types: string[]) => h.referrers(i, types, ["storage_account_id", "storage_account_name"]).length;
+      const containers = h.referrers(i, ["azurerm_storage_container"], ["storage_account_id", "storage_account_name"]);
+      const blobs = h.byType("azurerm_storage_blob").filter((b) => h.refs(b, ["storage_container_id", "storage_container_name"]).some((c) => containers.includes(c))).length;
+      const counts = [["containers", containers.length], ["shares", n(["azurerm_storage_share"])], ["queues", n(["azurerm_storage_queue"])], ["tables", n(["azurerm_storage_table"])], ["blobs", blobs]]
+        .filter(([, c]) => c)
+        .map(([w, c]) => `${w}: ${c}`);
+      return {
+        accountKind: str(i.after.account_kind),
+        sku: [str(i.after.account_tier), str(i.after.account_replication_type)].filter(Boolean).join(" ") || undefined,
+        accessTier: str(i.after.access_tier),
+        publicAccess: typeof i.after.public_network_access_enabled === "boolean" ? i.after.public_network_access_enabled : undefined,
+        counts: counts.length ? counts : undefined,
+      };
+    },
     // The storage firewall's allowed subnets (service endpoints): subnet → account.
     edges: (i, h) => h.refs(i, ["network_rules"]).filter((s) => s.type === "azurerm_subnet").map((s) => ({ from: s, to: i, kind: "dependency" as const, label: "service endpoint" })),
   },
   azurerm_storage_share: { arm: "Microsoft.Storage/storageAccounts/fileServices/shares", fold: ["storage_account_id", "storage_account_name"] },
+  azurerm_storage_queue: { arm: "Microsoft.Storage/storageAccounts/queueServices/queues", fold: ["storage_account_id", "storage_account_name"] },
+  azurerm_storage_table: { arm: "Microsoft.Storage/storageAccounts/tableServices/tables", fold: ["storage_account_id", "storage_account_name"] },
+  azurerm_storage_blob: { arm: "Microsoft.Storage/storageAccounts/blobServices/containers/blobs", fold: ["storage_container_id", "storage_container_name", "storage_account_name"] },
+  azurerm_storage_management_policy: { arm: "Microsoft.Storage/storageAccounts/managementPolicies", fold: ["storage_account_id"] },
+  azurerm_storage_container_immutability_policy: { arm: "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies", fold: ["storage_container_resource_manager_id", "storage_container_id"] },
+  azurerm_storage_account_network_rules: {
+    arm: "Microsoft.Storage/storageAccounts/networkRules",
+    fold: ["storage_account_id"],
+    edges: (i, h) => h.refs(i, ["storage_account_id"]).flatMap((a) => h.refs(i, ["virtual_network_subnet_ids"]).map((s) => ({ from: s, to: a, kind: "dependency" as const, label: "service endpoint" }))),
+  },
+  // A service endpoint policy folds into the subnets that carry it (a chip) and is drawn subnet → each resource it allows.
+  azurerm_subnet_service_endpoint_storage_policy: {
+    arm: "Microsoft.Network/serviceEndpointPolicies",
+    foldToReferrer: { types: ["azurerm_subnet"], attrs: ["service_endpoint_policy_ids"] },
+    chips: (i, h) => [{ on: "home", chip: `service endpoint policy ${h.label(i)}` }],
+    edges: (i, h) => h.referrers(i, ["azurerm_subnet"], ["service_endpoint_policy_ids"]).flatMap((s) => h.refs(i, ["definition"]).map((t) => ({ from: s, to: t, kind: "dependency" as const, label: "service endpoint policy" }))),
+  },
+
+  // ── SQL (T3.4): databases are cards (status prominent) under their server's group; failover groups are edges ──
+  azurerm_mssql_server: {
+    arm: "Microsoft.Sql/servers",
+    props: (i) => ({ publicAccess: typeof i.after.public_network_access_enabled === "boolean" ? i.after.public_network_access_enabled : undefined }),
+  },
+  azurerm_mssql_database: {
+    arm: "Microsoft.Sql/servers/databases",
+    namePath: childPath("server_id"),
+    props: (i) => ({ sku: str(i.after.sku_name) }),
+    edges: (i, h) => [
+      ...h.refs(i, ["server_id"]).map((s) => ({ from: i, to: s, kind: "dependency" as const, label: "server" })),
+      ...h.refs(i, ["creation_source_database_id"]).map((src) => ({ from: src, to: i, kind: "dependency" as const, label: str(i.after.create_mode)?.toLowerCase() === "secondary" ? "geo-replica" : "copy" })),
+    ],
+    // In its server's resource group (the database names no group of its own).
+    place: (i, h) => {
+      const server = h.refs(i, ["server_id"])[0];
+      const rg = str(server?.after.resource_group_name)?.toLowerCase();
+      const r = rg ? h.byType("azurerm_resource_group").find((x) => str(x.after.name)?.toLowerCase() === rg) : undefined;
+      return r ? h.home(r) : null;
+    },
+  },
+  azurerm_mssql_failover_group: {
+    arm: "Microsoft.Sql/servers/failoverGroups",
+    fold: ["server_id"],
+    namePath: childPath("server_id"),
+    edges: (i, h) => h.refs(i, ["server_id"]).flatMap((s) => h.refs(i, ["partner_server"]).map((p) => ({ from: s, to: p, kind: "dependency" as const, label: "failover group" }))),
+  },
+  azurerm_mssql_firewall_rule: { arm: "Microsoft.Sql/servers/firewallRules", fold: ["server_id"] },
+  azurerm_mssql_virtual_network_rule: { arm: "Microsoft.Sql/servers/virtualNetworkRules", fold: ["server_id"] },
+
+  // ── Cosmos DB (T3.4): databases and containers fold into the account (counted) ──
+  azurerm_cosmosdb_account: {
+    arm: "Microsoft.DocumentDB/databaseAccounts",
+    props: (i, h) => {
+      const caps = list(i.after.capabilities).map((c) => str((c as Record<string, unknown>)?.name) ?? "");
+      const dbs = h.referrers(i, ["azurerm_cosmosdb_sql_database", "azurerm_cosmosdb_mongo_database", "azurerm_cosmosdb_cassandra_keyspace", "azurerm_cosmosdb_gremlin_database"], ["account_name"]).length;
+      const cs = h.referrers(i, ["azurerm_cosmosdb_sql_container", "azurerm_cosmosdb_mongo_collection", "azurerm_cosmosdb_cassandra_table", "azurerm_cosmosdb_gremlin_graph", "azurerm_cosmosdb_table"], ["account_name"]).length;
+      const counts = [["databases", dbs], ["containers", cs]].filter(([, c]) => c).map(([w, c]) => `${w}: ${c}`);
+      return { apiKind: cosmosApi(str(i.after.kind), caps), consistency: str(first(i.after.consistency_policy).consistency_level), counts: counts.length ? counts : undefined };
+    },
+  },
+  azurerm_cosmosdb_sql_database: { arm: "Microsoft.DocumentDB/databaseAccounts/sqlDatabases", fold: ["account_name"] },
+  azurerm_cosmosdb_sql_container: { arm: "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers", fold: ["database_name", "account_name"] },
+  azurerm_cosmosdb_mongo_database: { arm: "Microsoft.DocumentDB/databaseAccounts/mongodbDatabases", fold: ["account_name"] },
+  azurerm_cosmosdb_mongo_collection: { arm: "Microsoft.DocumentDB/databaseAccounts/mongodbDatabases/collections", fold: ["database_name", "account_name"] },
   // ── Key Vault (core; T3.4 extends): child objects are counts, never names (ruling 22) ──
   azurerm_key_vault: {
     arm: "Microsoft.KeyVault/vaults",
     props: (i, h) => {
       const n = (t: string) => h.referrers(i, [t], ["key_vault_id"]).length;
       const counts = [["certificates", n("azurerm_key_vault_certificate")], ["keys", n("azurerm_key_vault_key")], ["secrets", n("azurerm_key_vault_secret")]].filter(([, c]) => c).map(([w, c]) => `${w}: ${c}`);
-      return { sku: str(i.after.sku_name), mode: i.after.enable_rbac_authorization === true || i.after.rbac_authorization_enabled === true ? "RBAC" : undefined, counts: counts.length ? counts : undefined };
+      const rbac = i.after.enable_rbac_authorization === true || i.after.rbac_authorization_enabled === true;
+      return { sku: str(i.after.sku_name), mode: rbac ? "RBAC" : "access policies", counts: counts.length ? counts : undefined };
     },
   },
   azurerm_key_vault_secret: { arm: "Microsoft.KeyVault/vaults/secrets", fold: ["key_vault_id"], foldedLabel: "secret" },
@@ -766,8 +850,15 @@ export const TF_RULES: Record<string, TfRule> = {
     arm: "Microsoft.Authorization/roleAssignments",
     fold: ["scope"],
     edges: (i, h) => {
-      const label = `role: ${str(i.after.role_definition_name) ?? "custom"}`;
-      return h.refs(i, ["principal_id"]).flatMap((p) => h.refs(i, ["scope"]).map((s) => ({ from: p, to: s, kind: "dependency" as const, label })));
+      // The role's name, or a custom role definition's (by reference); a scope that is one vault object says so (never which).
+      const def = h.refs(i, ["role_definition_id"]).find((d) => d.type === "azurerm_role_definition");
+      const name = str(i.after.role_definition_name) ?? (def ? h.label(def) : "custom");
+      return h.refs(i, ["principal_id"]).flatMap((p) =>
+        h.refs(i, ["scope"]).map((s) => {
+          const one = s.type === "azurerm_key_vault_secret" ? " (one secret)" : s.type === "azurerm_key_vault_key" ? " (one key)" : s.type === "azurerm_key_vault_certificate" ? " (one certificate)" : "";
+          return { from: p, to: s, kind: "dependency" as const, label: `role: ${name}${one}` };
+        }),
+      );
     },
   },
   azuread_group: { kind: "entraPrincipal" },

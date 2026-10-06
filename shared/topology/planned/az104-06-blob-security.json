@@ -82,7 +82,10 @@
     "accountKind": "StorageV2",
     "sku": "Standard LRS",
     "accessTier": "Hot",
-    "publicAccess": true
+    "publicAccess": true,
+    "counts": [
+     "containers: 1"
+    ]
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Storage/storageAccounts",

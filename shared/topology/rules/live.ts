@@ -13,6 +13,7 @@
 // Types are lower case (Resource Graph's `type` column).
 
 import type { TopoHealth } from "../model";
+import { cosmosApi } from "./planned";
 
 /** One Resource Graph row: the columns topologyQuery projects. */
 export interface ArgRow {
@@ -160,6 +161,7 @@ export const AZURE_MADE: { test(row: ArgRow): boolean; why: string }[] = [
   { why: "traffic analytics' data collection rule or endpoint", test: (r) => /^microsoft\.insights\/datacollection(rules|endpoints)$/.test(lower(r.type)) && /^nwta/i.test(r.name) },
   { why: "a network watcher Azure made for the region", test: (r) => lower(r.type) === "microsoft.network/networkwatchers" && /^networkwatcher_/i.test(r.name) },
   { why: "a VNet peering Azure Virtual Network Manager made (ANM_…)", test: (r) => /\/virtualnetworkpeerings\/anm_[^/]*$/i.test(r.id) },
+  { why: "a SQL server's master database", test: (r) => lower(r.type) === "microsoft.sql/servers/databases" && lower(r.name) === "master" },
 ];
 
 /** VNet peerings as edges: one per pair (undirected), the gateway VNet as wg/gateway. */
@@ -330,6 +332,7 @@ export const ARM_RULES: Record<string, ArmRule> = {
       }
       return { size: str(obj(p.hardwareProfile).vmSize), os: str(obj(obj(p.storageProfile).osDisk).osType), privateIp: ip, zones: r.zones?.length ? r.zones : undefined, chips: chips.size ? [...chips].sort() : undefined };
     },
+    edges: (r) => identityEdges(r),
   },
   "microsoft.network/virtualnetworks": {
     props: (r) => ({ addressSpace: (obj(props(r).addressSpace).addressPrefixes as string[] | undefined) ?? [], dnsServers: (obj(props(r).dhcpOptions).dnsServers as string[] | undefined)?.length ? (obj(props(r).dhcpOptions).dnsServers as string[]) : undefined }),
@@ -495,6 +498,41 @@ export const ARM_RULES: Record<string, ArmRule> = {
         .map((f) => ({ from: lower(r.id), to: lower(topResource(f)), kind: "traffic" as const, label: "frontend" })),
   },
 
+  // ── Data (T3.4) ──
+  "microsoft.network/serviceendpointpolicies": {
+    fold: (r) => idOf(arr(props(r).subnets)[0]) ?? null,
+    edges: (r) => {
+      const subnets = arr(props(r).subnets).map((s) => str(s.id)).filter((x): x is string => !!x);
+      const targets = arr(props(r).serviceEndpointPolicyDefinitions).flatMap((d) => ((obj(d.properties).serviceResources as string[] | undefined) ?? []).filter((x) => /^\/subscriptions\/[^/]+\/resourcegroups\//i.test(x)));
+      return subnets.flatMap((s) => targets.map((t) => ({ from: lower(s), to: lower(t), kind: "dependency" as const, label: "service endpoint policy" })));
+    },
+  },
+  "microsoft.sql/servers": { props: (r) => ({ publicAccess: str(props(r).publicNetworkAccess) ? lower(str(props(r).publicNetworkAccess)) !== "disabled" : undefined }) },
+  "microsoft.sql/servers/databases": {
+    // The master database Azure makes folds into its server.
+    fold: (r) => (lower(r.name) === "master" ? topResource(r.id) : null),
+    props: (r) => ({ status: str(props(r).status), sku: str(obj(r.sku).name) }),
+    edges: (r) => [{ from: lower(r.id), to: lower(topResource(r.id)), kind: "dependency" as const, label: "server" }],
+  },
+  "microsoft.documentdb/databaseaccounts": {
+    props: (r) => ({ apiKind: cosmosApi(str(r.kind), arr(props(r).capabilities).map((c) => str(c.name) ?? "")), consistency: str(obj(props(r).consistencyPolicy).defaultConsistencyLevel) }),
+  },
+  "microsoft.keyvault/vaults": {
+    props: (r) => ({ sku: str(obj(props(r).sku).name), mode: props(r).enableRbacAuthorization === true ? "RBAC" : "access policies" }),
+    // An access policy whose object id is a principal in the graph (a managed identity, a resource's own identity).
+    edges: (r, h) => {
+      const policies = arr(props(r).accessPolicies).map((p) => lower(str(p.objectId))).filter(Boolean);
+      if (!policies.length) return [];
+      const holders = new Map<string, string>();
+      for (const t of ["microsoft.managedidentity/userassignedidentities", "microsoft.compute/virtualmachines", "microsoft.compute/virtualmachinescalesets", "microsoft.network/applicationgateways", "microsoft.containerinstance/containergroups", "microsoft.app/containerapps"])
+        for (const x of h.rowsOfType?.(t) ?? []) {
+          const pid = lower(str(props(x).principalId) ?? str(obj(x.identity).principalId));
+          if (pid && !holders.has(pid)) holders.set(pid, lower(x.id));
+        }
+      return policies.map((p) => holders.get(p)).filter((x): x is string => !!x).map((from) => ({ from, to: lower(r.id), kind: "dependency" as const, label: "access policy" }));
+    },
+  },
+
   // ── VPN (T3.3) ──
   "microsoft.network/virtualnetworkgateways": {
     props: (r) => {
@@ -588,7 +626,8 @@ export const ARM_RULES: Record<string, ArmRule> = {
     },
   },
   "microsoft.storage/storageaccounts": {
-    props: (r) => ({ accountKind: str(r.kind), sku: str(obj(r.sku).name), accessTier: str(props(r).accessTier), publicAccess: typeof props(r).allowBlobPublicAccess === "boolean" ? props(r).allowBlobPublicAccess : undefined }),
+    // publicAccess is public network access (as planned: public_network_access_enabled), not anonymous blob access.
+    props: (r) => ({ accountKind: str(r.kind), sku: str(obj(r.sku).name), accessTier: str(props(r).accessTier), publicAccess: str(props(r).publicNetworkAccess) ? lower(str(props(r).publicNetworkAccess)) !== "disabled" : undefined }),
     // The storage firewall's allowed subnets (service endpoints): subnet → account.
     edges: (r) =>
       arr(obj(props(r).networkAcls).virtualNetworkRules)

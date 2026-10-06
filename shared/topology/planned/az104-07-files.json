@@ -49,7 +49,10 @@
    "props": {
     "accountKind": "StorageV2",
     "sku": "Standard LRS",
-    "publicAccess": true
+    "publicAccess": true,
+    "counts": [
+     "shares: 1"
+    ]
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Storage/storageAccounts",

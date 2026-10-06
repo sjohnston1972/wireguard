@@ -301,6 +301,11 @@ export function rowsFromPlanned(g: TopologyGraph, ctx: RowsCtx = rowsCtx(g.labId
         P(r).subnets = [...((P(r).subnets as unknown[]) ?? []), { id: sid }];
         P(r).securityRules ??= (s.folded ?? []).filter((x) => lower(x.armType) === "microsoft.network/networksecuritygroups/securityrules").map((x, i) => ({ id: `${r.id}/securityRules/${real(x.label)}`, name: real(x.label), properties: { priority: 100 + i, access: "Allow", direction: "Inbound", protocol: "Tcp" } }));
       }
+      if (r.type === "microsoft.network/serviceendpointpolicies") {
+        refs.serviceEndpointPolicies = [{ id: r.id }];
+        P(r).subnets = [...((P(r).subnets as unknown[]) ?? []), { id: sid }];
+        P(r).serviceEndpointPolicyDefinitions = [{ name: "allow", properties: { service: "Microsoft.Storage", serviceResources: edgesFrom(s.id).filter((e) => e.label === "service endpoint policy").map((e) => nodeArmId(byId.get(e.to)!)) } }];
+      }
       if (r.type === "microsoft.network/routetables") {
         refs.routeTable = { id: r.id };
         P(r).subnets = [...((P(r).subnets as unknown[]) ?? []), { id: sid }];

@@ -38,6 +38,7 @@
    "label": "l41…kv",
    "props": {
     "sku": "standard",
+    "mode": "access policies",
     "counts": [
      "certificates: 1"
     ]

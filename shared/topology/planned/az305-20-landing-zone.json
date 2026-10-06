@@ -171,19 +171,19 @@
  ],
  "edges": [
   {
-   "id": "dependency:tf:azurerm_user_assigned_identity.appops>tf:azurerm_resource_group.lab:role: custom",
+   "id": "dependency:tf:azurerm_user_assigned_identity.appops>tf:azurerm_resource_group.lab:role: lab-az305-20-landing-zone-appops",
    "from": "tf:azurerm_user_assigned_identity.appops",
    "to": "tf:azurerm_resource_group.lab",
    "kind": "dependency",
-   "label": "role: custom",
+   "label": "role: lab-az305-20-landing-zone-appops",
    "via": "tf:azurerm_role_assignment.appops"
   },
   {
-   "id": "dependency:tf:azurerm_user_assigned_identity.netops>tf:azurerm_resource_group.lab:role: custom",
+   "id": "dependency:tf:azurerm_user_assigned_identity.netops>tf:azurerm_resource_group.lab:role: lab-az305-20-landing-zone-netops",
    "from": "tf:azurerm_user_assigned_identity.netops",
    "to": "tf:azurerm_resource_group.lab",
    "kind": "dependency",
-   "label": "role: custom",
+   "label": "role: lab-az305-20-landing-zone-netops",
    "via": "tf:azurerm_role_assignment.netops"
   }
  ]

@@ -153,7 +153,10 @@
    "props": {
     "accountKind": "StorageV2",
     "sku": "Standard LRS",
-    "publicAccess": true
+    "publicAccess": true,
+    "counts": [
+     "containers: 1"
+    ]
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Storage/storageAccounts",
@@ -174,7 +177,10 @@
    "props": {
     "accountKind": "StorageV2",
     "sku": "Standard LRS",
-    "publicAccess": true
+    "publicAccess": true,
+    "counts": [
+     "containers: 1"
+    ]
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Storage/storageAccounts",
@@ -195,12 +201,20 @@
    "props": {
     "prefix": "10.71.209.0/24",
     "chips": [
-     "service endpoints Microsoft.Storage"
+     "service endpoints Microsoft.Storage",
+     "service endpoint policy sep-storage"
     ]
    },
    "parent": "tf:azurerm_virtual_network.consumer",
    "armType": "Microsoft.Network/virtualNetworks/subnets",
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_subnet_service_endpoint_storage_policy.client",
+     "label": "sep-storage",
+     "armType": "Microsoft.Network/serviceEndpointPolicies"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_subnet.pe",
@@ -245,16 +259,6 @@
    },
    "parent": "tf:azurerm_virtual_network.provider",
    "armType": "Microsoft.Network/virtualNetworks/subnets",
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_subnet_service_endpoint_storage_policy.client",
-   "key": "terraform/azurerm_subnet_service_endpoint_storage_policy/sep-storage",
-   "kind": "generic",
-   "label": "sep-storage",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
    "scope": "lab"
   },
   {
@@ -305,6 +309,14 @@
    "via": "tf:azurerm_private_endpoint.blob"
   },
   {
+   "id": "dependency:tf:azurerm_subnet.client>tf:azurerm_storage_account.st:service endpoint policy",
+   "from": "tf:azurerm_subnet.client",
+   "to": "tf:azurerm_storage_account.st",
+   "kind": "dependency",
+   "label": "service endpoint policy",
+   "via": "tf:azurerm_subnet_service_endpoint_storage_policy.client"
+  },
+  {
    "id": "traffic:tf:azurerm_lb.svc>tf:azurerm_linux_virtual_machine.svc:TCP 80→80",
    "from": "tf:azurerm_lb.svc",
    "to": "tf:azurerm_linux_virtual_machine.svc",
@@ -336,8 +348,5 @@
    "label": "frontend",
    "via": "tf:azurerm_private_link_service.svc"
   }
- ],
- "notes": [
-  "1 resource of a type the diagram draws plainly"
  ]
 }
