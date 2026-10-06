@@ -325,12 +325,12 @@
      "azurerm_storage_account.cache"
     ],
     "network_interface": [
+     "azurerm_subnet.target.name",
+     "azurerm_subnet.target",
      "azurerm_subnet.test.name",
      "azurerm_subnet.test",
      "azurerm_network_interface.vm.id",
-     "azurerm_network_interface.vm",
-     "azurerm_subnet.target.name",
-     "azurerm_subnet.target"
+     "azurerm_network_interface.vm"
     ],
     "recovery_replication_policy_id": [
      "azurerm_site_recovery_replication_policy.lab.id",

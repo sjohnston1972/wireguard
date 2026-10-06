@@ -49,3 +49,4 @@ lab's hourly estimate times those minutes.
 | 2026-10-06 07:32 | az305-24-cosmos | 2 | pass | yes | none | 2m 57s | 10m 33s | £0.0006 | 37428794963 |
 | 2026-10-06 07:50 | az305-26-site-recovery | 3 | pass | yes | none | 60m 11s | 7m 18s | £0.0710 | 37425197793 |
 | 2026-10-06 07:58 | az305-27-multi-region | 2 | pass | yes | none | 4m 24s | 20m 39s | £0.0327 | 37430276351 |
+| 2026-10-06 08:52 | az305-26-site-recovery | 4 | pass | yes | none | 40m 7s | 8m 29s | £0.0511 | 37433506191 |
