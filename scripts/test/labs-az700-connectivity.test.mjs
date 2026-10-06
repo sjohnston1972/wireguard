@@ -216,6 +216,20 @@ test(`${S2S}: both connections use the same IPsec policy and a sensitive shared 
   assert.ok(!outputs(l).some((o) => /key|psk|secret/i.test(o)), "no output shows the shared key");
 });
 
+// Review fix 13: the session cost above prorates the gateways by the minute; billed by the whole hour, the 3 hours
+// 10 minutes from deploy to the end of tear-down is 4 gateway hours. The readme says so, and what that comes to.
+test(`${S2S}: the readme states what a session costs if the gateways bill by the whole hour`, () => {
+  const l = lab(S2S);
+  const { deploy_min: d, destroy_min: t } = l.yaml.timing;
+  const hours = Math.ceil(2 + (d + t) / 60);
+  assert.equal(hours, 4);
+  const whole = estimateGbpH(l.yaml.cost.items) * hours;
+  const m = /whole hour[^.]*about £(\d+\.\d{2})/i.exec(l.readme);
+  assert.ok(m, "the readme gives the whole-hour figure");
+  assert.ok(Math.abs(Number(m[1]) - whole) <= 0.05, `£${m[1]} is within 5p of £${whole.toFixed(2)} (${hours} hours)`);
+  assert.match(l.readme, /assum/i);
+});
+
 test(`${S2S}: timing is 45/25 and the job timeout is 150`, () => {
   const { timing } = lab(S2S).yaml;
   assert.deepEqual(timing, { deploy_min: 45, destroy_min: 25, session_h: 2, max_h: 3 });

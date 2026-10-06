@@ -8,7 +8,7 @@ A site-to-site VPN between two VNets, one of them standing in for an on-premises
 - `cn-azure-to-onprem` and `cn-onprem-to-azure`, IPsec connections with BGP over the tunnel, one random pre-shared key (never shown) and the same IPsec/IKE policy at both ends: IKEv2 with AES256, SHA256 and DH group 14; IPsec with GCMAES256 and PFS 14; a security association lifetime of 27,000 seconds
 - `vm-azure` and `vm-onprem`: Standard_B1s Ubuntu 24.04 VMs with no public IP that serve their names on port 80
 
-Deploying takes about 45 minutes: Azure builds the two gateways side by side, and each takes 30 to 45 minutes. Tear-down takes about 25. A 2-hour session costs about £1.10 from deploy to the end of tear-down, almost all of it the two gateways. Deploy with **Peer to gateway** to reach `vm-azure` from a tunnel client, then hop across the VPN to `vm-onprem` (the Connect lines); otherwise use the serial console or Run command. The VM user is `azureuser`; its password is behind **Show**.
+Deploying takes about 45 minutes: Azure builds the two gateways side by side, and each takes 30 to 45 minutes. Tear-down takes about 25. A 2-hour session costs about £1.10 from deploy to the end of tear-down, almost all of it the two gateways. That figure counts the gateways by the minute; assume instead that a gateway is billed for every whole hour, or part of one, that it exists, and the 3 hours 10 minutes from deploy to the end of tear-down is 4 hours: about £1.40. Deploy with **Peer to gateway** to reach `vm-azure` from a tunnel client, then hop across the VPN to `vm-onprem` (the Connect lines); otherwise use the serial console or Run command. The VM user is `azureuser`; its password is behind **Show**.
 
 ```text
 rg-lab-<id>

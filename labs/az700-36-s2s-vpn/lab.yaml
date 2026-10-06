@@ -22,7 +22,7 @@
 # every hour or part hour it exists, so a 45-minute deploy and a 25-minute
 # destroy bill about two hours each.
 id: az700-36-s2s-vpn
-version: 1
+version: 2
 title: "Site-to-site VPN between two VNets, one as on-prem"
 summary: >-
   Two VNets, one standing in for an on-premises site, joined only by a site-to-site IPsec VPN between two VpnGw1AZ
