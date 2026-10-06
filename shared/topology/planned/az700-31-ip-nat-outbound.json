@@ -31,6 +31,11 @@
      "id": "tf:azurerm_network_interface_backend_address_pool_association.lb",
      "label": "lb",
      "armType": null
+    },
+    {
+     "id": "tf:azurerm_public_ip_prefix.lb",
+     "label": "pfx-lb",
+     "armType": "Microsoft.Network/publicIPPrefixes"
     }
    ]
   },
@@ -97,18 +102,6 @@
      "armType": "Microsoft.Network/publicIPPrefixes"
     }
    ]
-  },
-  {
-   "id": "tf:azurerm_public_ip_prefix.lb",
-   "key": "microsoft.network/publicipprefixes/pfx-lb",
-   "kind": "publicIpPrefix",
-   "label": "pfx-lb",
-   "props": {
-    "prefix": "/31"
-   },
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": "Microsoft.Network/publicIPPrefixes",
-   "scope": "lab"
   },
   {
    "id": "tf:azurerm_resource_group.lab",

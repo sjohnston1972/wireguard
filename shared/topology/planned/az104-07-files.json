@@ -53,17 +53,14 @@
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.Storage/storageAccounts",
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_storage_share.share",
-   "key": "terraform/azurerm_storage_share/labshare",
-   "kind": "generic",
-   "label": "labshare",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_storage_share.share",
+     "label": "labshare",
+     "armType": "Microsoft.Storage/storageAccounts/fileServices/shares"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_subnet.vms",
@@ -96,8 +93,14 @@
    "scope": "lab"
   }
  ],
- "edges": [],
- "notes": [
-  "1 resource of a type the diagram draws plainly"
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_subnet.vms>tf:azurerm_storage_account.files:service endpoint",
+   "from": "tf:azurerm_subnet.vms",
+   "to": "tf:azurerm_storage_account.files",
+   "kind": "dependency",
+   "label": "service endpoint",
+   "via": "tf:azurerm_storage_account.files"
+  }
  ]
 }

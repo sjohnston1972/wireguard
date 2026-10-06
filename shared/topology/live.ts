@@ -132,6 +132,7 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
       return null;
     },
     nicsOf: (vmId) => nicsByVm.get(lower(vmId)) ?? [],
+    rowsOfType: (t) => rows.filter((r) => lower(r.type) === t),
   };
   for (const r of rows) {
     if (isGroupRow(r)) continue;

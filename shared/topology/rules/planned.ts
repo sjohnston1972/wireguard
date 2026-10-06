@@ -115,31 +115,83 @@ const vmProps = (os: string) => (inst: TfInst, h: PlannedHelpers) => {
   };
 };
 
+/** The name an instance is shown by in a key path (its planned `name`, else its address name). */
+const nameOf = (i: TfInst | undefined): string => (i ? (str(i.after.name) ?? (i.index !== null ? `${i.name}[${i.index}]` : i.name)) : "");
+
+/** A child resource's key path: its parent's name (the instance `attr` references), then its own (ruling 6). */
+const childPath =
+  (...attrs: string[]) =>
+  (i: TfInst, h: PlannedHelpers): string[] => {
+    for (const a of attrs) {
+      const p = h.refs(i, [a])[0];
+      if (p) return [nameOf(p), nameOf(i)];
+    }
+    // The parent named by value (a `*_name` attribute) when it is not a reference.
+    for (const a of attrs) if (str(i.after[a])) return [str(i.after[a])!, nameOf(i)];
+    return [nameOf(i)];
+  };
+
 /** Every route of a route table instance: inline `route` blocks, and azurerm_route resources naming it. */
-function routesOf(rt: TfInst, h: PlannedHelpers): { via: TfInst; prefix?: string; hopType?: string; hopIp?: string }[] {
-  const out: { via: TfInst; prefix?: string; hopType?: string; hopIp?: string }[] = [];
-  for (const r of list(rt.after.route)) {
+function routesOf(rt: TfInst, h: PlannedHelpers): { via: TfInst; prefix?: string; hopType?: string; hopIp?: string; hopRefs: TfInst[] }[] {
+  const out: { via: TfInst; prefix?: string; hopType?: string; hopIp?: string; hopRefs: TfInst[] }[] = [];
+  const inline = list(rt.after.route);
+  // An inline route's next hop by reference (a firewall's private IP, unknown at plan): the table's `route` refs, when it has one route.
+  const inlineRefs = inline.length === 1 ? h.refs(rt, ["route"]) : [];
+  for (const r of inline) {
     const o = (r ?? {}) as Record<string, unknown>;
-    out.push({ via: rt, prefix: str(o.address_prefix), hopType: str(o.next_hop_type), hopIp: str(o.next_hop_in_ip_address) });
+    out.push({ via: rt, prefix: str(o.address_prefix), hopType: str(o.next_hop_type), hopIp: str(o.next_hop_in_ip_address), hopRefs: inlineRefs });
   }
-  for (const r of h.referrers(rt, ["azurerm_route"], ["route_table_name"])) out.push({ via: r, prefix: str(r.after.address_prefix), hopType: str(r.after.next_hop_type), hopIp: str(r.after.next_hop_in_ip_address) });
+  for (const r of h.referrers(rt, ["azurerm_route"], ["route_table_name", "route_table_id"]))
+    out.push({ via: r, prefix: str(r.after.address_prefix), hopType: str(r.after.next_hop_type), hopIp: str(r.after.next_hop_in_ip_address), hopRefs: h.refs(r, ["next_hop_in_ip_address"]) });
   return out;
 }
 
-/** The next-hop edges of a route table: from each subnet it serves (or the table's own card) to the appliance holding the hop IP. */
+/**
+ * The next-hop edges of a route table: from each subnet it serves (or the table's own card) to the appliance holding
+ * the hop IP (a VM's static IP), or, when the IP is only known after apply, the appliance the hop references (a
+ * firewall's private IP).
+ */
 function nextHopEdges(rt: TfInst, h: PlannedHelpers): EdgeSpec[] {
   const assoc = h.referrers(rt, ["azurerm_subnet_route_table_association"], ["route_table_id"]);
   const subnets = assoc.flatMap((a) => h.refs(a, ["subnet_id"]));
   const froms: (TfInst | string)[] = subnets.length ? subnets : [rt];
   const out: EdgeSpec[] = [];
   for (const r of routesOf(rt, h)) {
-    if (r.hopType?.toLowerCase() !== "virtualappliance" || !r.hopIp) continue;
-    const to = h.nodeByPrivateIp(r.hopIp);
+    if (r.hopType?.toLowerCase() !== "virtualappliance") continue;
+    const to: TfInst | string | null = (r.hopIp ? h.nodeByPrivateIp(r.hopIp) : null) ?? r.hopRefs.find((x) => !x.type.startsWith("azurerm_subnet") && x.type !== "azurerm_route_table") ?? null;
     if (!to) continue;
     for (const from of froms) out.push({ from, to, kind: "traffic", label: r.prefix ?? "route", via: r.via });
   }
   return out;
 }
+
+/** DNS record types: each folds into its zone (keyed under it), never a card; zones count them. */
+const DNS_RECORD_TYPES = ["a", "aaaa", "caa", "cname", "mx", "ns", "ptr", "srv", "txt"];
+const recordRules = (): Record<string, TfRule> => {
+  const out: Record<string, TfRule> = {};
+  for (const t of DNS_RECORD_TYPES) {
+    const T = t.toUpperCase();
+    out[`azurerm_dns_${t}_record`] = { arm: `Microsoft.Network/dnszones/${T}`, fold: ["zone_name"], namePath: childPath("zone_name") };
+    out[`azurerm_private_dns_${t}_record`] = {
+      arm: `Microsoft.Network/privateDnsZones/${T}`,
+      fold: ["zone_name"],
+      namePath: childPath("zone_name"),
+      // A private record naming a resource's address (a NIC, an LB, an endpoint): a dependency edge from the zone.
+      edges: (i, h) =>
+        h.refs(i, ["zone_name"]).flatMap((z) =>
+          h
+            .refs(i, ["records", "record"])
+            .filter((x) => x !== z)
+            .map((x) => ({ from: z, to: x, kind: "dependency" as const, label: `${T} ${nameOf(i)}` })),
+        ),
+    };
+  }
+  return out;
+};
+const recordCount = (zone: TfInst, h: PlannedHelpers, prefix: string): string[] | undefined => {
+  const n = h.referrers(zone, DNS_RECORD_TYPES.map((t) => `${prefix}${t}_record`), ["zone_name"]).length;
+  return n ? [`records: ${n}`] : undefined;
+};
 
 /** The homes of an LB backend pool's members: NICs associated with it, and anything (a VMSS) that references it. */
 function poolBackends(pool: TfInst, h: PlannedHelpers): string[] {
@@ -242,7 +294,8 @@ export const TF_RULES: Record<string, TfRule> = {
     foldToReferrer: {},
     props: (i) => ({ sku: str(i.after.sku), allocation: str(i.after.allocation_method), zones: strings(i.after.zones).length ? strings(i.after.zones) : undefined }),
   },
-  azurerm_public_ip_prefix: { arm: "Microsoft.Network/publicIPPrefixes", props: (i) => ({ prefix: num(i.after.prefix_length) !== undefined ? `/${num(i.after.prefix_length)}` : undefined }) },
+  // Like a public IP (ruling 9): a prefix an owner uses (an LB frontend, a NAT gateway) folds into it; an unused one is a card.
+  azurerm_public_ip_prefix: { arm: "Microsoft.Network/publicIPPrefixes", foldToReferrer: {}, props: (i) => ({ prefix: num(i.after.prefix_length) !== undefined ? `/${num(i.after.prefix_length)}` : undefined }) },
   azurerm_nat_gateway: { arm: "Microsoft.Network/natGateways", props: (i) => ({ sku: str(i.after.sku_name) }) },
   azurerm_nat_gateway_public_ip_association: { fold: ["nat_gateway_id"], pull: ["public_ip_address_id"] },
   azurerm_nat_gateway_public_ip_prefix_association: { fold: ["nat_gateway_id"], pull: ["public_ip_prefix_id"] },
@@ -310,7 +363,10 @@ export const TF_RULES: Record<string, TfRule> = {
       accessTier: str(i.after.access_tier),
       publicAccess: typeof i.after.public_network_access_enabled === "boolean" ? i.after.public_network_access_enabled : undefined,
     }),
+    // The storage firewall's allowed subnets (service endpoints): subnet → account.
+    edges: (i, h) => h.refs(i, ["network_rules"]).filter((s) => s.type === "azurerm_subnet").map((s) => ({ from: s, to: i, kind: "dependency" as const, label: "service endpoint" })),
   },
+  azurerm_storage_share: { arm: "Microsoft.Storage/storageAccounts/fileServices/shares", fold: ["storage_account_id", "storage_account_name"] },
   // ── Key Vault (core; T3.4 extends): child objects are counts, never names (ruling 22) ──
   azurerm_key_vault: {
     arm: "Microsoft.KeyVault/vaults",
@@ -335,10 +391,53 @@ export const TF_RULES: Record<string, TfRule> = {
     },
     edges: (i, h) => {
       const c = first(i.after.private_service_connection);
-      return h.refs(i, ["private_service_connection"]).map((t) => ({ from: i, to: t, kind: "traffic" as const, label: strings(c.subresource_names)[0] ?? "private link" }));
+      return [
+        ...h.refs(i, ["private_service_connection"]).map((t) => ({ from: i, to: t, kind: "traffic" as const, label: strings(c.subresource_names)[0] ?? "private link" })),
+        // Its DNS zone group: the private zones that hold its address.
+        ...h.refs(i, ["private_dns_zone_group"]).filter((z) => z.type === "azurerm_private_dns_zone").map((z) => ({ from: i, to: z, kind: "dependency" as const, label: "DNS zone group" })),
+      ];
     },
   },
-  azurerm_private_dns_zone: { arm: "Microsoft.Network/privateDnsZones" },
+  azurerm_private_dns_zone: { arm: "Microsoft.Network/privateDnsZones", props: (i, h) => ({ counts: recordCount(i, h, "azurerm_private_dns_") }) },
+  azurerm_dns_zone: { arm: "Microsoft.Network/dnszones", props: (i, h) => ({ counts: recordCount(i, h, "azurerm_dns_") }) },
+  ...recordRules(),
+
+  // ── DNS private resolver (lab 32): endpoints fold into the resolver, rules and links into the ruleset ──
+  azurerm_private_dns_resolver: {
+    arm: "Microsoft.Network/dnsResolvers",
+    props: (i, h) => ({ privateIp: h.referrers(i, ["azurerm_private_dns_resolver_inbound_endpoint"], ["private_dns_resolver_id"]).map((e) => staticIp(e.after.ip_configurations))[0] }),
+  },
+  azurerm_private_dns_resolver_inbound_endpoint: { arm: "Microsoft.Network/dnsResolvers/inboundEndpoints", fold: ["private_dns_resolver_id"], namePath: childPath("private_dns_resolver_id") },
+  azurerm_private_dns_resolver_outbound_endpoint: { arm: "Microsoft.Network/dnsResolvers/outboundEndpoints", fold: ["private_dns_resolver_id"], namePath: childPath("private_dns_resolver_id") },
+  azurerm_private_dns_resolver_dns_forwarding_ruleset: {
+    arm: "Microsoft.Network/dnsForwardingRulesets",
+    props: (i, h) => {
+      const n = h.referrers(i, ["azurerm_private_dns_resolver_forwarding_rule"], ["dns_forwarding_ruleset_id"]).length;
+      return { counts: n ? [`rules: ${n}`] : undefined };
+    },
+    edges: (i, h) => h.refs(i, ["private_dns_resolver_outbound_endpoint_ids"]).map((o) => ({ from: i, to: o, kind: "dependency" as const, label: "outbound endpoint" })),
+  },
+  azurerm_private_dns_resolver_forwarding_rule: {
+    arm: "Microsoft.Network/dnsForwardingRulesets/forwardingRules",
+    fold: ["dns_forwarding_ruleset_id"],
+    namePath: childPath("dns_forwarding_ruleset_id"),
+    // The DNS forward edge: the ruleset → the server each target IP is (a VM's static IP), port as the label.
+    edges: (i, h) => {
+      const rs = h.refs(i, ["dns_forwarding_ruleset_id"])[0];
+      if (!rs) return [];
+      return list(i.after.target_dns_servers).flatMap((t) => {
+        const o = (t ?? {}) as Record<string, unknown>;
+        const to = str(o.ip_address) ? h.nodeByPrivateIp(str(o.ip_address)!) : null;
+        return to ? [{ from: rs, to: `node:${to}`, kind: "traffic" as const, label: `DNS ${num(o.port) ?? 53}` }] : [];
+      });
+    },
+  },
+  azurerm_private_dns_resolver_virtual_network_link: {
+    arm: "Microsoft.Network/dnsForwardingRulesets/virtualNetworkLinks",
+    fold: ["dns_forwarding_ruleset_id"],
+    namePath: childPath("dns_forwarding_ruleset_id"),
+    edges: (i, h) => h.refs(i, ["dns_forwarding_ruleset_id"]).flatMap((rs) => h.refs(i, ["virtual_network_id"]).map((v) => ({ from: rs, to: v, kind: "dependency" as const, label: "link" }))),
+  },
   azurerm_private_dns_zone_virtual_network_link: {
     arm: "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
     fold: ["private_dns_zone_name"],

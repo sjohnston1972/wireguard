@@ -50,6 +50,8 @@ export interface LiveHelpers {
   nodeByPrivateIp(ip: string): string | null;
   /** The NIC rows attached to a VM (by id). */
   nicsOf(vmId: string): ArgRow[];
+  /** Every row (of the lab's groups) of a type, lower case. Optional so a rule's unit test can leave it out. */
+  rowsOfType?(type: string): ArgRow[];
 }
 
 export interface ArmRule {
@@ -155,6 +157,7 @@ export const AZURE_MADE: { test(row: ArgRow): boolean; why: string }[] = [
   { why: "a group Azure made for a lab resource (rg-lab-<id>-infra and the like)", test: (r) => lower(r.type) === "microsoft.resources/resourcegroups" && /-(infra|managed)$/i.test(r.name) },
   { why: "traffic analytics' data collection rule or endpoint", test: (r) => /^microsoft\.insights\/datacollection(rules|endpoints)$/.test(lower(r.type)) && /^nwta/i.test(r.name) },
   { why: "a network watcher Azure made for the region", test: (r) => lower(r.type) === "microsoft.network/networkwatchers" && /^networkwatcher_/i.test(r.name) },
+  { why: "a VNet peering Azure Virtual Network Manager made (ANM_…)", test: (r) => /\/virtualnetworkpeerings\/anm_[^/]*$/i.test(r.id) },
 ];
 
 /** VNet peerings as edges: one per pair (undirected), the gateway VNet as wg/gateway. */
@@ -165,7 +168,9 @@ function peeringEdges(row: ArgRow, gatewayIds: (id: string) => boolean): LiveEdg
     const remote = idOf(pp.remoteVirtualNetwork);
     if (!remote) continue;
     const transit = pp.allowGatewayTransit === true || pp.useRemoteGateways === true;
-    out.push({ from: lower(row.id), to: gatewayIds(remote) ? "wg/gateway" : lower(remote), kind: "traffic", label: transit ? "peering (gateway transit)" : "peering", via: lower(str(pe.id) ?? ""), state: stateWord(str(pp.peeringState)), undirected: true });
+    // AVNM's connectivity configuration makes its own peerings, named ANM_… (made by Azure, never by hand).
+    const avnm = /\/virtualnetworkpeerings\/anm_[^/]*$/i.test(str(pe.id) ?? "") || /^anm_/i.test(str(pe.name) ?? "");
+    out.push({ from: lower(row.id), to: gatewayIds(remote) ? "wg/gateway" : lower(remote), kind: "traffic", label: avnm ? "peering (AVNM)" : transit ? "peering (gateway transit)" : "peering", via: lower(str(pe.id) ?? ""), state: stateWord(str(pp.peeringState)), undirected: true });
   }
   return out;
 }
@@ -183,9 +188,23 @@ function poolMembers(pool: Record<string, unknown>, h: LiveHelpers): string[] {
 
 const nameOfId = (id: string | undefined) => (id ? id.split("/").at(-1) ?? id : undefined);
 
+/** A zone's own records: Resource Graph's numberOfRecordSets less the ones Azure makes (SOA, and NS for a public zone). */
+const recordCounts = (r: ArgRow, made: number): string[] | undefined => {
+  const n = props(r).numberOfRecordSets;
+  return typeof n === "number" && n - made > 0 ? [`records: ${n - made}`] : undefined;
+};
+
 export const ARM_RULES: Record<string, ArmRule> = {
   "microsoft.network/networkinterfaces": {
     fold: (r) => idOf(props(r).virtualMachine) ?? idOf(props(r).privateEndpoint) ?? null,
+  },
+  // An ASG folds into the first member's VM (by NIC id), as the planned graph pulls it into the VM it is associated with.
+  "microsoft.network/applicationsecuritygroups": {
+    fold: (r, h) =>
+      (h.rowsOfType?.("microsoft.network/networkinterfaces") ?? [])
+        .filter((nic) => arr(props(nic).ipConfigurations).some((c) => arr(obj(c.properties).applicationSecurityGroups).some((a) => lower(str(a.id)) === lower(r.id))))
+        .map((nic) => nic.id)
+        .sort((a, b) => (lower(a) < lower(b) ? -1 : 1))[0] ?? null,
   },
   "microsoft.compute/disks": { fold: (r) => str(r.managedBy) ?? null },
   "microsoft.compute/virtualmachines/extensions": { fold: (r) => topResource(r.id) },
@@ -222,13 +241,43 @@ export const ARM_RULES: Record<string, ArmRule> = {
     },
     props: (r) => ({ sku: str(obj(r.sku).name), publicIp: str(props(r).ipAddress), allocation: str(props(r).publicIPAllocationMethod) }),
   },
-  "microsoft.network/publicipprefixes": { fold: (r) => idOf(props(r).natGateway) ?? null, props: (r) => ({ prefix: str(props(r).ipPrefix) }) },
+  // Like a public IP (ruling 9): a prefix a NAT gateway or an LB frontend uses folds into it.
+  "microsoft.network/publicipprefixes": {
+    fold: (r) => {
+      const fe = idOf(props(r).loadBalancerFrontendIpConfiguration);
+      return idOf(props(r).natGateway) ?? (fe ? topResource(fe) : null);
+    },
+    props: (r) => ({ prefix: str(props(r).ipPrefix) }),
+  },
+  "microsoft.network/natgateways": { props: (r) => ({ sku: str(obj(r.sku).name), zones: r.zones?.length ? r.zones : undefined }) },
+  "microsoft.network/dnszones": { props: (r) => ({ counts: recordCounts(r, 2) }) },
+  "microsoft.network/privatednszones": { props: (r) => ({ counts: recordCounts(r, 1) }) },
+  // ── DNS private resolver: endpoints fold into it; the ruleset depends on the outbound endpoint (its resolver) ──
+  "microsoft.network/dnsresolvers": {
+    props: (r, h) => {
+      const inbound = (h.rowsOfType?.("microsoft.network/dnsresolvers/inboundendpoints") ?? []).filter((e) => lower(topResource(e.id)) === lower(r.id));
+      return { privateIp: inbound.map((e) => str(obj(arr(props(e).ipConfigurations)[0]).privateIpAddress)).find(Boolean) };
+    },
+  },
+  "microsoft.network/dnsresolvers/inboundendpoints": { fold: (r) => topResource(r.id) },
+  "microsoft.network/dnsresolvers/outboundendpoints": { fold: (r) => topResource(r.id) },
+  "microsoft.network/dnsforwardingrulesets": {
+    edges: (r) => arr(props(r).dnsResolverOutboundEndpoints).map((o) => str(o.id)).filter((x): x is string => !!x).map((o) => ({ from: lower(r.id), to: lower(o), kind: "dependency" as const, label: "outbound endpoint" })),
+  },
   "microsoft.compute/virtualmachines": {
     props: (r, h) => {
       const p = props(r);
-      const nic = h.nicsOf(r.id)[0];
+      const nics = h.nicsOf(r.id);
+      const nic = nics[0];
       const ip = nic ? str(obj(arr(props(nic).ipConfigurations)[0]?.properties).privateIPAddress) : undefined;
-      return { size: str(obj(p.hardwareProfile).vmSize), os: str(obj(obj(p.storageProfile).osDisk).osType), privateIp: ip, zones: r.zones?.length ? r.zones : undefined };
+      // The NIC-level NSG and ASGs as chips, as the planned graph shows its associations.
+      const chips = new Set<string>();
+      for (const n of nics) {
+        const nsg = idOf(props(n).networkSecurityGroup);
+        if (nsg) chips.add(`NSG ${nameOfId(nsg)}`);
+        for (const c of arr(props(n).ipConfigurations)) for (const a of arr(obj(c.properties).applicationSecurityGroups)) if (str(a.id)) chips.add(`ASG ${nameOfId(str(a.id))}`);
+      }
+      return { size: str(obj(p.hardwareProfile).vmSize), os: str(obj(obj(p.storageProfile).osDisk).osType), privateIp: ip, zones: r.zones?.length ? r.zones : undefined, chips: chips.size ? [...chips].sort() : undefined };
     },
   },
   "microsoft.network/virtualnetworks": {
@@ -288,6 +337,12 @@ export const ARM_RULES: Record<string, ArmRule> = {
   },
   "microsoft.storage/storageaccounts": {
     props: (r) => ({ accountKind: str(r.kind), sku: str(obj(r.sku).name), accessTier: str(props(r).accessTier), publicAccess: typeof props(r).allowBlobPublicAccess === "boolean" ? props(r).allowBlobPublicAccess : undefined }),
+    // The storage firewall's allowed subnets (service endpoints): subnet → account.
+    edges: (r) =>
+      arr(obj(props(r).networkAcls).virtualNetworkRules)
+        .map((v) => str(v.id))
+        .filter((x): x is string => !!x)
+        .map((s) => ({ from: lower(s), to: lower(r.id), kind: "dependency" as const, label: "service endpoint" })),
   },
 };
 

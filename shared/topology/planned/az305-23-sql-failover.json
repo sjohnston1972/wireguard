@@ -179,6 +179,22 @@
    "via": "tf:azurerm_private_dns_zone_virtual_network_link.lab"
   },
   {
+   "id": "dependency:tf:azurerm_private_endpoint.primary>tf:azurerm_private_dns_zone.sql:DNS zone group",
+   "from": "tf:azurerm_private_endpoint.primary",
+   "to": "tf:azurerm_private_dns_zone.sql",
+   "kind": "dependency",
+   "label": "DNS zone group",
+   "via": "tf:azurerm_private_endpoint.primary"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_endpoint.secondary>tf:azurerm_private_dns_zone.sql:DNS zone group",
+   "from": "tf:azurerm_private_endpoint.secondary",
+   "to": "tf:azurerm_private_dns_zone.sql",
+   "kind": "dependency",
+   "label": "DNS zone group",
+   "via": "tf:azurerm_private_endpoint.secondary"
+  },
+  {
    "id": "traffic:tf:azurerm_private_endpoint.primary>tf:azurerm_mssql_server.primary:sqlServer",
    "from": "tf:azurerm_private_endpoint.primary",
    "to": "tf:azurerm_mssql_server.primary",

@@ -297,6 +297,14 @@
    "via": "tf:azurerm_private_dns_zone_virtual_network_link.consumer"
   },
   {
+   "id": "dependency:tf:azurerm_private_endpoint.blob>tf:azurerm_private_dns_zone.blob:DNS zone group",
+   "from": "tf:azurerm_private_endpoint.blob",
+   "to": "tf:azurerm_private_dns_zone.blob",
+   "kind": "dependency",
+   "label": "DNS zone group",
+   "via": "tf:azurerm_private_endpoint.blob"
+  },
+  {
    "id": "traffic:tf:azurerm_lb.svc>tf:azurerm_linux_virtual_machine.svc:TCP 80→80",
    "from": "tf:azurerm_lb.svc",
    "to": "tf:azurerm_linux_virtual_machine.svc",
