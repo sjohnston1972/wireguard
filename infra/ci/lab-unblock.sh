@@ -35,7 +35,8 @@
 #      failover the primary is in the secondary group)
 #   7. Networks (AZ-700 ruling 49), in this order: 7a Virtual Network
 #      Manager deploy None per type and region, then a wait until nothing is
-#      deployed (LAB_UNBLOCK_AVNM_WAIT_SECONDS, default 600; a status that
+#      deployed, committing None again once a Deploying region is committable
+#      (LAB_UNBLOCK_AVNM_WAIT_SECONDS, default 600; a status that
 #      cannot be read is "unverified"); 7b Private Link service connections;
 #      7c VPN connections; 7d each virtual hub's routing intent, connections,
 #      VPN/P2S/ExpressRoute gateways (LAB_UNBLOCK_VWAN_WAIT_SECONDS, default
@@ -483,6 +484,7 @@ NET_API="api-version=2024-05-01"
 DNS_API="api-version=2022-07-01"
 num_or() { [[ "${1:-}" =~ ^[0-9]+$ ]] && echo "$1" || echo "$2"; }
 AVNM_WAIT="$(num_or "${LAB_UNBLOCK_AVNM_WAIT_SECONDS:-}" 600)"
+AVNM_COMMITS=4 # deploy None sent at most this many times per network manager and type
 VWAN_WAIT="$(num_or "${LAB_UNBLOCK_VWAN_WAIT_SECONDS:-}" 1800)"
 NET_WAIT="$(num_or "${LAB_UNBLOCK_NET_WAIT_SECONDS:-}" 600)"
 # net_ids <group> <Microsoft.Network type> [query] [api]: a group's resources of a type, by az rest.
@@ -535,25 +537,36 @@ for g in "${groups[@]}"; do
     regions=("${AVNM_REGIONS[@]}")
     [ -n "${loc:-}" ] && [[ " ${regions[*]} " != *" $loc "* ]] && regions+=("$loc")
     body="{\"regions\":$(json_list "${regions[@]}"),\"deploymentTypes\":[\"Connectivity\",\"SecurityAdmin\",\"Routing\"]}"
-    status_of() { azq rest --method post --url "$nm/listDeploymentStatus?$NET_API" --body "$body" --query "value[].[region, deploymentType, deploymentStatus, length(configurationIds)]" -o tsv; }
+    # configurationIds is null for a type never deployed in a region: counted as none (length(null) fails the query).
+    status_of() { azq rest --method post --url "$nm/listDeploymentStatus?$NET_API" --body "$body" --query "value[].[region, deploymentType, deploymentStatus, length(configurationIds || \`[]\`)]" -o tsv; }
+    # commit_none: deploy None (an empty commit) for each type, in the regions where it still has configurations
+    # deployed and is not Deploying: Azure refuses a commit while a deployment runs, so a region that is Deploying
+    # waits for the next read. Sent again from the wait (a refused or lost commit), at most AVNM_COMMITS times a type.
+    declare -A commits_of=()
+    commit_none() {
+      local type targets region dtype dstatus count
+      for type in Connectivity SecurityAdmin Routing; do
+        targets=()
+        while IFS=$'\t' read -r region dtype dstatus count; do
+          [ "$dtype" = "$type" ] || continue
+          if [ "${count:-0}" != 0 ] && [ "$dstatus" != Deploying ]; then
+            [[ " ${targets[*]} " != *" $region "* ]] && targets+=("$region")
+          fi
+        done <<<"$status"
+        [ "${#targets[@]}" -eq 0 ] && continue
+        [ "${commits_of[$type]:-0}" -lt "$AVNM_COMMITS" ] || continue
+        commits_of["$type"]=$((${commits_of[$type]:-0} + 1))
+        if az rest --method post --url "$nm/commit?$NET_API" --body "{\"targetLocations\":$(json_list "${targets[@]}"),\"configurationIds\":[],\"commitType\":\"$type\"}" -o none; then
+          echo "unblock: $name: deployed None for $type in ${targets[*]}"
+        else warn "$name: could not deploy None for $type in ${targets[*]} (sent again once nothing is Deploying)"; fi
+      done
+    }
     if ! status="$(status_of)"; then
       warn "$name: could not read what it has deployed"
       UNVERIFIED+=("$name deployments")
       continue
     fi
-    for type in Connectivity SecurityAdmin Routing; do
-      targets=()
-      while IFS=$'\t' read -r region dtype dstatus count; do
-        [ "$dtype" = "$type" ] || continue
-        if [ "${count:-0}" != 0 ] || [ "$dstatus" = Deploying ]; then
-          [[ " ${targets[*]} " != *" $region "* ]] && targets+=("$region")
-        fi
-      done <<<"$status"
-      [ "${#targets[@]}" -eq 0 ] && continue
-      if az rest --method post --url "$nm/commit?$NET_API" --body "{\"targetLocations\":$(json_list "${targets[@]}"),\"configurationIds\":[],\"commitType\":\"$type\"}" -o none; then
-        echo "unblock: $name: deployed None for $type in ${targets[*]}"
-      else warn "$name: could not deploy None for $type in ${targets[*]}"; fi
-    done
+    commit_none
     avnm_wait="$(capped "$AVNM_WAIT")"
     tries=$(((avnm_wait + 14) / 15))
     for ((n = 0; ; n++)); do
@@ -564,6 +577,8 @@ for g in "${groups[@]}"; do
           echo "unblock: $name: nothing deployed any more"
           break
         fi
+        # Committable again (a deployment that was Deploying has finished, or a commit was refused): None again.
+        commit_none
       else
         listed=false
         warn "$name: could not read what it has deployed, so whether anything is left is not known"

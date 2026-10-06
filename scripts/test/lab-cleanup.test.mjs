@@ -217,6 +217,49 @@ test("unblock deploys None for every network manager in a lab group and waits un
   blind.cleanup();
 });
 
+// Review fix 6: Azure refuses a commit while a deployment is still Deploying, so a None sent then is lost. Unblock
+// commits None once the type's status is committable again (inside the wait), and a configurationIds that is null
+// counts as none rather than breaking the query.
+test("unblock commits None again once a Deploying deployment finishes, or after a refused commit", { skip }, () => {
+  const isCommit = (c) => /^az rest --method post --url \S+\/commit\?/.test(c);
+  const isStatus = (c) => /^az rest --method post --url \S+\/listDeploymentStatus\?/.test(c);
+  const avnm = (status, commit = {}) => world([ONE_GROUP, { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` }, { match: "^rest --method post --url \\S+/listDeploymentStatus\\?", out: status }, { match: "^rest --method post --url \\S+/commit\\?", ...commit }]);
+  // First read: the learner's own deploy still Deploying (a commit now would be refused). Then Deployed: commit None.
+  const w = avnm(["uksouth\tConnectivity\tDeploying\t1", "uksouth\tConnectivity\tDeployed\t1", "uksouth\tConnectivity\tDeploying\t0", "uksouth\tConnectivity\tDeployed\t0"]);
+  const r = w.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth" });
+  assert.equal(r.status, 0, r.out);
+  let calls = w.calls();
+  const commits = calls.filter(isCommit);
+  assert.deepEqual(commits, [`az rest --method post --url ${NM}/commit?api-version=2024-05-01 --body {"targetLocations":["uksouth"],"configurationIds":[],"commitType":"Connectivity"} -o none`], calls.join("\n"));
+  const statusAt = calls.map((c, i) => (isStatus(c) ? i : -1)).filter((i) => i >= 0);
+  assert.ok(calls.indexOf(commits[0]) > statusAt[1], "None is committed after the status said Deployed, not while Deploying");
+  assert.match(r.stdout, /unblock: avnm-l06: nothing deployed any more/);
+  w.cleanup();
+  // A commit Azure refused is sent again when the status still shows something deployed and nothing Deploying.
+  const x = avnm(["uksouth\tSecurityAdmin\tDeployed\t1", "uksouth\tSecurityAdmin\tDeployed\t1", "uksouth\tSecurityAdmin\tDeployed\t0"], { code: [1, 0], err: "ERROR: (CannotCommitWhileDeploying)" });
+  const xr = x.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth" });
+  assert.equal(xr.status, 0, xr.out);
+  calls = x.calls();
+  assert.equal(calls.filter(isCommit).length, 2, calls.join("\n"));
+  assert.match(xr.stdout, /unblock: avnm-l06: nothing deployed any more/);
+  x.cleanup();
+  // Bounded: a commit refused every time is not sent on every poll.
+  const stuck = avnm("uksouth\tSecurityAdmin\tDeployed\t1", { code: 1, err: "ERROR: (Conflict)" });
+  stuck.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth", LAB_UNBLOCK_AVNM_WAIT_SECONDS: "600" });
+  const n = stuck.calls().filter(isCommit).length;
+  assert.ok(n >= 2 && n <= 5, `${n} commits`);
+  stuck.cleanup();
+});
+
+test("unblock's deployment status query counts a null configurationIds as none", { skip }, () => {
+  const w = world([ONE_GROUP, { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` }, { match: "^rest --method post --url \\S+/listDeploymentStatus\\?", out: "" }]);
+  w.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth" });
+  const status = w.calls().filter((c) => /\/listDeploymentStatus\?/.test(c));
+  assert.ok(status.length > 0);
+  for (const c of status) assert.match(c, /--query value\[\]\.\[region, deploymentType, deploymentStatus, length\(configurationIds \|\| `\[\]`\)\]/, c);
+  w.cleanup();
+});
+
 test("unblock deletes Private Link service connections before the group delete", { skip }, () => {
   const second = `${NET}/privateLinkServices/pls-svc/privateEndpointConnections/pe-consumer`;
   const w = world([ONE_GROUP, NOT_FOUND, { match: `^network private-link-service list --resource-group ${RG} --query \\[\\]\\.privateEndpointConnections\\[\\]\\.id -o tsv$`, out: `${PLS_CONN}\n${second}` }, { match: "^network private-link-service connection delete --ids \\S+pe-consumer", code: 1, err: "ERROR: (Conflict)" }]);
