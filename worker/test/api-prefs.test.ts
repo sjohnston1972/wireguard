@@ -8,7 +8,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import worker from "../src/index";
 import { api, apiEnv, base } from "./api-helpers";
-import { EXPORT_TABLES } from "../src/backup";
+import { buildExport, EXPORT_TABLES } from "../src/backup";
 import type { Env } from "../src/env";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -217,8 +217,14 @@ describe("PUT /prefs/:page", () => {
     await api(env, "PUT", "/prefs/cost", { schema: 2, baseVersion: 1, prefs: {} });
     expect(await Promise.all(tables.map((t) => count(env, t)))).toEqual(before);
     expect(await count(env, "ui_prefs")).toBe(1);
+    // A lab diagram's saved arrangement is a ui_prefs row too (lab topology spec §8.3).
+    const t = await api(env, "PUT", "/prefs/topology/az104-13-vnets", { baseVersion: 0, layout: { v: 1, nodes: { "microsoft.compute/virtualmachines/vm-web": { x: 0, y: 0, p: null } } } });
+    expect(t.status, t.text).toBe(200);
+    expect(await Promise.all(tables.map((t) => count(env, t)))).toEqual(before);
+    expect(await count(env, "ui_prefs")).toBe(2);
     // Cosmetic and per user: never in the backup export.
     expect(Object.values(EXPORT_TABLES)).not.toContain("ui_prefs");
+    expect(JSON.stringify(await buildExport(env))).not.toContain("topology:");
   });
 
   it("PUT without same-origin is refused", async () => {

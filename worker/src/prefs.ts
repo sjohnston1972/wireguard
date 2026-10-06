@@ -12,6 +12,7 @@
 import type { Env } from "./env";
 import { MAX_PAGE_PREFS_BYTES, PAGE_IDS, PREFS_SCHEMA, REGISTRY, normalisePagePrefs, validatePagePrefs, type PageId, type Registry } from "../../shared/widgets";
 import type { PrefsPage, PrefsResponse } from "../../shared/api";
+import { MAX_TOPOLOGY_LAYOUT_BYTES, normaliseTopologyLayout, topologyPage, validateTopologyLayout, type TopologyLayoutPage } from "../../shared/topology/layout";
 
 /** What a save came to: the page as now stored, or the refusal (status, code, message, field). */
 export type PutResult = { ok: true; page: PrefsPage } | { ok: false; status: 400 | 409; code: "bad_input" | "stale" | "outdated"; message: string; field?: string };
@@ -77,4 +78,52 @@ export async function putPrefs(env: Env, user: string, page: PageId, baseVersion
       : await env.DB.prepare("UPDATE ui_prefs SET json = ?3, version = version + 1, updated_at = ?4 WHERE user = ?1 AND page = ?2 AND version = CAST(?5 AS INTEGER)").bind(user, page, json, now, baseVersion).run();
   if (!r.meta.changes) return { ok: false, status: 409, code: "stale", message: STALE_MESSAGE };
   return { ok: true, page: { version: baseVersion + 1, updatedAt: now, prefs: stored } };
+}
+
+// ── A lab diagram's saved arrangement (lab topology spec §8.3) ──────────
+// Same table, page "topology:<lab id>" (migration 0021). getPrefs above
+// answers the widget pages only, so these rows never reach it.
+
+/** What a topology save came to: the layout as now stored, or the refusal. */
+export type TopologyPutResult = { ok: true; page: TopologyLayoutPage } | { ok: false; status: 400 | 409; code: "bad_input" | "stale"; message: string; field?: string };
+
+/** `user`'s saved layout of lab `labId`; never saved is version 0 with the empty layout. The caller checks the lab id. */
+export async function getTopologyLayout(env: Env, user: string, labId: string): Promise<TopologyLayoutPage> {
+  const r = await env.DB.prepare("SELECT json, version, updated_at FROM ui_prefs WHERE user = ?1 AND page = ?2").bind(user, topologyPage(labId)).first<{ json: string; version: number; updated_at: string }>();
+  if (!r) return { version: 0, updatedAt: null, layout: { v: 1, nodes: {} } };
+  let raw: unknown = null;
+  try {
+    raw = JSON.parse(r.json);
+  } catch {
+    raw = null; // an unreadable row reads as the empty layout; the next save replaces it
+  }
+  return { version: Number(r.version), updatedAt: r.updated_at, layout: normaliseTopologyLayout(raw) };
+}
+
+/**
+ * Save `user`'s layout of lab `labId`, made on `baseVersion` (0 = never
+ * saved). Refused, nothing written: 400 for a layout the strict check or the
+ * 16 KiB cap refuses, 409 stale when the stored version is not `baseVersion`.
+ * The caller checks the lab id is in the catalogue.
+ */
+export async function putTopologyLayout(env: Env, user: string, labId: string, baseVersion: number, layout: unknown): Promise<TopologyPutResult> {
+  if (typeof baseVersion !== "number" || !Number.isInteger(baseVersion) || baseVersion < 0) {
+    return { ok: false, status: 400, code: "bad_input", message: "baseVersion must be the layout's version as last read (0 if never saved).", field: "baseVersion" };
+  }
+  const problem = validateTopologyLayout(layout);
+  if (problem) return { ok: false, status: 400, code: "bad_input", message: problem.message, field: problem.field };
+  const stored = normaliseTopologyLayout(layout);
+  const json = JSON.stringify(stored);
+  if (new TextEncoder().encode(json).length > MAX_TOPOLOGY_LAYOUT_BYTES) {
+    return { ok: false, status: 400, code: "bad_input", message: `This diagram layout is too large to save (over ${MAX_TOPOLOGY_LAYOUT_BYTES / 1024} KiB).`, field: "layout" };
+  }
+  const page = topologyPage(labId);
+  const now = new Date().toISOString();
+  // D1 binds every JS number as REAL: the version is cast so it compares and stores as an INTEGER.
+  const r =
+    baseVersion === 0
+      ? await env.DB.prepare("INSERT OR IGNORE INTO ui_prefs (user, page, json, version, updated_at) VALUES (?1, ?2, ?3, 1, ?4)").bind(user, page, json, now).run()
+      : await env.DB.prepare("UPDATE ui_prefs SET json = ?3, version = version + 1, updated_at = ?4 WHERE user = ?1 AND page = ?2 AND version = CAST(?5 AS INTEGER)").bind(user, page, json, now, baseVersion).run();
+  if (!r.meta.changes) return { ok: false, status: 409, code: "stale", message: STALE_MESSAGE };
+  return { ok: true, page: { version: baseVersion + 1, updatedAt: now, layout: stored } };
 }
