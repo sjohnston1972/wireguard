@@ -14,10 +14,13 @@
 // picture: no pan, zoom, drag, selection or edge labels.
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { applyNodeChanges, ConnectionMode, ReactFlow, ReactFlowProvider, useReactFlow, type NodeChange, type NodeSelectionChange, type OnNodeDrag } from "@xyflow/react";
+import { applyNodeChanges, ConnectionMode, Controls, MiniMap, Panel, ReactFlow, ReactFlowProvider, useReactFlow, type NodeChange, type NodeSelectionChange, type OnNodeDrag } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import { useTheme } from "@/shell/theme";
 import { useMedia } from "@/lib/useMedia";
+import { useIsPhone } from "@/components/layout/SidePanel";
+import { Switch } from "@/components/forms/Switch";
+import { Legend } from "./Legend";
 import type { CanvasProps } from "./contract";
 import { layoutTopology } from "./layout";
 import { stackGraph } from "./stacks";
@@ -47,7 +50,11 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
   const theme = useTheme();
   const reduced = useMedia(REDUCED_MOTION);
   const rf = useReactFlow();
+  const phone = useIsPhone();
   const mini = variant === "mini";
+  const full = variant === "full";
+  const [animate, setAnimate] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
 
   const stacked = useMemo(() => stackGraph(graph).graph, [graph]);
   const byId = useMemo(() => nodeIndex(stacked), [stacked]);
@@ -55,8 +62,8 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
   const base = useMemo(() => toFlowNodes(laid, byId, { status, variant, selected, search }), [laid, byId, status, variant, selected, search]);
   const sets = useMemo(() => searchSets(byId.values(), byId, search), [byId, search]);
   const edges = useMemo(
-    () => buildEdges(stacked, byId, { showDependencies, labels: !mini, animate: false, reducedMotion: reduced, dimmed: sets ? new Set([...byId.keys()].filter((id) => !sets.match.has(id))) : undefined }),
-    [stacked, byId, showDependencies, mini, reduced, sets],
+    () => buildEdges(stacked, byId, { showDependencies, labels: !mini, animate: full && animate, reducedMotion: reduced, dimmed: sets ? new Set([...byId.keys()].filter((id) => !sets.match.has(id))) : undefined }),
+    [stacked, byId, showDependencies, mini, full, animate, reduced, sets],
   );
 
   // Local positions while dragging; a new layout (a refresh, a save, a reset) replaces them.
@@ -129,7 +136,26 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
       fitViewOptions={{ padding: mini ? 0.04 : 0.08, maxZoom: 1 }}
       minZoom={0.1}
       maxZoom={2}
-      proOptions={{ hideAttribution: variant !== "full" }}
-    />
+      proOptions={{ hideAttribution: !full }}
+    >
+      {!mini && (
+        <Panel position="top-right" className="topo-panel">
+          <button type="button" className="topo-panel__button" aria-expanded={legendOpen} onClick={() => setLegendOpen((o) => !o)}>
+            Legend
+          </button>
+          {legendOpen && <Legend graph={stacked} status={status} />}
+        </Panel>
+      )}
+      {full && (
+        <Panel position="top-left" className="topo-panel topo-panel--row">
+          <label className="topo-panel__toggle">
+            <Switch checked={animate && !reduced} onCheckedChange={setAnimate} label="Animate traffic" disabled={reduced} />
+            <span aria-hidden="true">Animate traffic</span>
+          </label>
+        </Panel>
+      )}
+      {full && <Controls showInteractive={false} fitViewOptions={{ duration: reduced ? 0 : 200, padding: 0.08 }} />}
+      {full && !phone && <MiniMap pannable zoomable className="topo-minimap" nodeClassName={(n) => (n.type === "topoGroup" ? "topo-minimap__group" : "topo-minimap__asset")} />}
+    </ReactFlow>
   );
 }
