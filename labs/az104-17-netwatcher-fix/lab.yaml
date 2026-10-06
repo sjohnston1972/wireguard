@@ -14,14 +14,16 @@
 # are free; connection troubleshoot is billed per 1,000 checks (pennies for
 # a session), so it stays authored. The agent extension, NSG, route table
 # and VNet are free.
+# Version 2 (AZ-700 plan Z0.3, ruling 42): also an AZ-700 lab, az700.core and az700.security (AZ-700
+# outline "Skills measured as of July 27, 2026"); the readme says which skills. Nothing in terraform/ changed.
 id: az104-17-netwatcher-fix
-version: 1
+version: 2
 title: "Break-fix: connectivity troubleshooting with Network Watcher"
 summary: >-
   An app VM that cannot reach its database VM's service, for reasons the portal will show you if you ask the right
   Network Watcher tool. Find out why, and fix it.
 exam: AZ-104
-skill_areas: [az104.networking, az104.monitor]
+skill_areas: [az104.networking, az104.monitor, az700.core, az700.security]
 level: associate
 type: break-fix
 prerequisites: [az104-13-vnets]

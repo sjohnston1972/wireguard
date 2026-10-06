@@ -2,6 +2,11 @@ A break-fix lab: an app VM that should reach its database VM's service, and cann
 tools, fix it in the portal, and prove the fix. From the AZ-104 outline: troubleshoot network connectivity, evaluate
 effective security rules in NSGs, configure user-defined network routes, and use Azure Network Watcher.
 
+This lab also counts for AZ-700, in Design and implement core networking infrastructure and Design and implement Azure
+network security services. From the AZ-700 outline: monitor and troubleshoot networks with Network Watcher (next hop,
+connection troubleshoot and IP flow verify), and evaluate network security group rules. For more, lab 44 adds VNet flow
+logs with traffic analytics and Azure Bastion.
+
 ## What it deploys
 
 - A VNet, `vnet-lab` (the first /20 of the session's address slot), with `snet-app` and `snet-db` (each a /24)

@@ -3,6 +3,12 @@ Standard_v2 (layer 7) with a private listener. Practise configuring frontends, b
 troubleshooting a backend that stops answering. From the AZ-104 outline: configure an internal or public load balancer,
 troubleshoot load balancing, and configure public IP addresses.
 
+This lab also counts for AZ-700, in Design and implement application delivery services. From the AZ-700 outline: design
+and implement Azure Load Balancer (frontends, backend pools, health probes and load-balancing rules) and Azure
+Application Gateway (listeners, routing rules, backend settings and health probes). For more, lab 40 adds a cross-region
+load balancer, a Gateway load balancer, inbound NAT and outbound rules, and lab 41 adds TLS, rewrites and a WAF policy
+on Application Gateway `WAF_v2`.
+
 ## What it deploys
 
 - A VNet, `vnet-lab` (the first /20 of the session's address slot), with `snet-web` and, for the gateway alone, `snet-appgw` (each a /24)

@@ -2,6 +2,10 @@ Azure DNS both ways: a public zone with A and CNAME records, and a private zone 
 creating zones and record sets, asking a zone's own name servers, and linking a private zone to a VNet with
 auto-registration. From the AZ-104 outline: configure Azure DNS.
 
+This lab also counts for AZ-700, in Design and implement core networking infrastructure. From the AZ-700 outline: design
+and implement Azure DNS: public zones and record sets, and private DNS zones linked to virtual networks with
+auto-registration. For more, lab 32 resolves between Azure and an on-premises network with DNS Private Resolver.
+
 ## What it deploys
 
 - A public DNS zone named `<prefix>.example.com` (the session's name prefix). `example.com` is reserved for documentation, so the zone can never shadow a real domain. It is not delegated: nothing on the internet points at it, so only its own Azure name servers answer for it, when you ask them directly

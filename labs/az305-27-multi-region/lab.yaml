@@ -22,14 +22,16 @@
 #   Traffic Manager (region Global): "Non-Azure Endpoint Health Checks"
 #     £0.4076 a month per endpoint, two of them; "DNS Queries" £0.4076 per
 #     million.
+# Version 3 (AZ-700 plan Z0.3, ruling 42): also an AZ-700 lab, az700.delivery (AZ-700
+# outline "Skills measured as of July 27, 2026"); the readme says which skills. Nothing in terraform/ changed.
 id: az305-27-multi-region
-version: 2
+version: 3
 title: "Multi-region app with Traffic Manager and Front Door"
 summary: >-
   A tiny web app running in container instances in uksouth and ukwest, behind both Traffic Manager (DNS
   priority routing) and Front Door Standard, so you can stop one region and watch each front end fail over.
 exam: AZ-305
-skill_areas: [az305.infra, az305.continuity]
+skill_areas: [az305.infra, az305.continuity, az700.delivery]
 level: expert
 type: explore
 prerequisites: []

@@ -412,7 +412,8 @@ test(`${L16}: an internal Standard load balancer with a TCP 80 probe and rule ov
 
 test(`${L16}: the gateway is Standard_v2 autoscaling from 0 to 2, priced by hand (its meters are shared, ruling 2)`, () => {
   const l = lab(L16);
-  assert.equal(l.yaml.version, 2, "Basic to Standard_v2 is a new version");
+  // Version 2 moved Basic to Standard_v2; version 3 tags it for AZ-700 (AZ-700 plan Z0.3), with no Terraform change.
+  assert.ok(l.yaml.version >= 2, "Basic to Standard_v2 is a new version");
   const [gw] = resources(l, "azurerm_application_gateway");
   const [sku] = nested(gw.body, "sku");
   assert.equal(attr(sku, "name"), '"Standard_v2"');
@@ -501,7 +502,8 @@ const section = (readme, heading) => readme.split(`\n## ${heading}\n`)[1]?.split
 test(`${L17}: type break-fix, with Symptom and a closed What was broken`, () => {
   const l = lab(L17);
   assert.equal(l.yaml.type, "break-fix");
-  assert.deepEqual(l.yaml.skill_areas, ["az104.networking", "az104.monitor"]);
+  // Its AZ-104 areas, plus AZ-700's from version 2 (AZ-700 plan Z0.3, ruling 42).
+  assert.deepEqual(l.yaml.skill_areas, ["az104.networking", "az104.monitor", "az700.core", "az700.security"]);
   assert.ok(section(l.readme, "Symptom").trim(), "a Symptom section");
   assert.match(l.readme, /\n<details>\n<summary>What was broken<\/summary>\n[\s\S]+?\n<\/details>\n/, "a closed details block");
   assert.doesNotMatch(l.readme, /<details open/);

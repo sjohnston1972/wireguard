@@ -3,6 +3,11 @@ application security groups (ASGs) naming the two tiers. Practise reading NSG ru
 between ASGs instead of addresses, and checking what Azure actually applies. From the AZ-104 outline: create and
 configure virtual networks and subnets, create and configure NSGs and ASGs, and evaluate effective security rules in NSGs.
 
+This lab also counts for AZ-700, in Design and implement core networking infrastructure and Design and implement Azure
+network security services. From the AZ-700 outline: design and implement virtual networks and subnets, and implement
+network security groups and application security groups, including their effective security rules. For more, lab 33 adds
+Virtual Network Manager security admin rules, and lab 44 adds VNet flow logs, IP flow verify and Azure Bastion.
+
 ## What it deploys
 
 - A VNet, `vnet-lab` (the first /20 of the session's address slot), with two /24 subnets: `snet-web` and `snet-app`

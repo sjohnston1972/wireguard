@@ -11,14 +11,16 @@
 # about £0.0005/h each, a monthly fee ((V) the release test's actual cost
 # shows whether a short session pays a day's share). Queries are pennies
 # per million.
+# Version 2 (AZ-700 plan Z0.3, ruling 42): also an AZ-700 lab, az700.core (AZ-700
+# outline "Skills measured as of July 27, 2026"); the readme says which skills. Nothing in terraform/ changed.
 id: az104-15-dns
-version: 1
+version: 2
 title: "Azure DNS: public and private zones"
 summary: >-
   A public zone with A and CNAME records, and a private zone that VMs register themselves in,
   so you can see how Azure answers for each and how a private name reaches the tunnel.
 exam: AZ-104
-skill_areas: [az104.networking]
+skill_areas: [az104.networking, az700.core]
 level: associate
 type: explore
 prerequisites: [az104-13-vnets]

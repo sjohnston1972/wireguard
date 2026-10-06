@@ -311,6 +311,39 @@ test("exams lists the primary first, then the others in exam order", () => {
   }
 });
 
+// ── The six labs tagged for AZ-700 (AZ-700 plan Z0.3, ruling 42) ─────────
+
+test("labs 13, 14, 15, 16, 17 and 27 belong to AZ-700 too, with the areas of the AZ-700 spec §3.4", () => {
+  // AZ-700 spec §3.4: the areas each adds, the version that carries them, and the AZ-700 lab its readme points to.
+  const TAGGED = {
+    "az104-13-vnets": { areas: ["az700.core", "az700.security"], version: 2, deeper: [33, 44] },
+    "az104-14-peering-udr": { areas: ["az700.core"], version: 2, deeper: [34, 35] },
+    "az104-15-dns": { areas: ["az700.core"], version: 2, deeper: [32] },
+    "az104-16-lb-appgw": { areas: ["az700.delivery"], version: 3, deeper: [40, 41] },
+    "az104-17-netwatcher-fix": { areas: ["az700.core", "az700.security"], version: 2, deeper: [44] },
+    "az305-27-multi-region": { areas: ["az700.delivery"], version: 3, deeper: [42] },
+  };
+  const { catalogue, problems } = buildCatalogue(join(repo, "labs"));
+  assert.deepEqual(problems, []);
+  for (const [id, t] of Object.entries(TAGGED)) {
+    const def = catalogue.labs.find((l) => l.id === id);
+    assert.ok(def, id);
+    const own = def.skill_areas.filter((k) => !k.startsWith("az700."));
+    assert.ok(own.length > 0, `${id} keeps its own exam's areas`);
+    assert.deepEqual(def.skill_areas.filter((k) => k.startsWith("az700.")), t.areas, `${id}: AZ-700 areas`);
+    assert.deepEqual(def.exams, [def.exam, "AZ-700"], `${id}: exams`);
+    assert.equal(def.version, t.version, `${id}: version bumped for the tag`);
+    // One paragraph in the introduction names the AZ-700 skills and points to the AZ-700 lab that goes deeper.
+    const intro = readFileSync(join(repo, "labs", id, "readme.md"), "utf8").replace(/\r\n/g, "\n").split(/\n## /)[0];
+    const para = intro.split(/\n\n/).find((p) => /AZ-700/.test(p));
+    assert.ok(para, `${id}: the readme introduction has an AZ-700 paragraph`);
+    assert.match(para, /AZ-700 outline/, `${id}: it names the AZ-700 outline's skills`);
+    for (const n of t.deeper) assert.match(para, new RegExp(`\\blab ${n}\\b`), `${id}: it points to lab ${n}`);
+  }
+  // No other lab before 28 is tagged: the rest of AZ-700 is labs 31 to 44.
+  for (const def of catalogue.labs.filter((l) => l.number < 31 && !(l.id in TAGGED))) assert.deepEqual(def.exams, [def.exam], def.id);
+});
+
 // ── Readmes ──────────────────────────────────────────────────────────────
 
 test("readme without a required heading is refused", () => {
