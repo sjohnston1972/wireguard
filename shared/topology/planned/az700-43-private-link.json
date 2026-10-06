@@ -327,6 +327,14 @@
    "kind": "traffic",
    "label": "private link",
    "via": "tf:azurerm_private_endpoint.svc"
+  },
+  {
+   "id": "traffic:tf:azurerm_private_link_service.svc>tf:azurerm_lb.svc:frontend",
+   "from": "tf:azurerm_private_link_service.svc",
+   "to": "tf:azurerm_lb.svc",
+   "kind": "traffic",
+   "label": "frontend",
+   "via": "tf:azurerm_private_link_service.svc"
   }
  ],
  "notes": [

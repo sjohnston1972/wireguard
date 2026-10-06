@@ -116,10 +116,10 @@ const POWER: Record<string, TopoHealth> = {
 export function stateWord(s: string | undefined): TopoHealth | undefined {
   if (!s) return undefined;
   const k = s.toLowerCase();
-  if (["connected", "approved", "succeeded"].includes(k)) return { tone: "ok", word: s };
+  if (["connected", "approved", "succeeded", "online"].includes(k)) return { tone: "ok", word: s };
   if (k === "pending") return { tone: "warn", word: "Pending approval" };
-  if (["initiated", "connecting", "updating"].includes(k)) return { tone: "warn", word: s };
-  if (["disconnected", "rejected", "failed", "notconnected"].includes(k)) return { tone: "bad", word: s };
+  if (["initiated", "connecting", "updating", "degraded", "checkingendpoint"].includes(k)) return { tone: "warn", word: s };
+  if (["disconnected", "rejected", "failed", "notconnected", "stopped", "inactive", "disabled"].includes(k)) return { tone: "bad", word: s };
   return { tone: "unknown", word: s };
 }
 
@@ -183,10 +183,34 @@ function poolMembers(pool: Record<string, unknown>, h: LiveHelpers): string[] {
     const home = id ? h.home(topResource(id)) : null;
     if (home) out.add(home);
   }
+  // A Global-tier pool's members are regional LB frontends.
+  for (const a of arr(obj(pool.properties).loadBalancerBackendAddresses)) {
+    const fe = idOf(obj(a.properties).loadBalancerFrontendIPConfiguration);
+    const home = fe ? h.home(topResource(fe)) : null;
+    if (home) out.add(home);
+  }
   return [...out].sort();
 }
 
 const nameOfId = (id: string | undefined) => (id ? id.split("/").at(-1) ?? id : undefined);
+
+/** The resource whose public FQDN this is (a container group's, a public IP's DNS name, an App Service's host), by the rows. */
+function byFqdn(fqdn: string, h: LiveHelpers): string | null {
+  const f = lower(fqdn).replace(/\.$/, "");
+  const types: [string, (r: ArgRow) => unknown][] = [
+    ["microsoft.containerinstance/containergroups", (r) => obj(props(r).ipAddress).fqdn],
+    ["microsoft.network/publicipaddresses", (r) => obj(props(r).dnsSettings).fqdn],
+    ["microsoft.app/containerapps", (r) => obj(obj(props(r).configuration).ingress).fqdn],
+  ];
+  for (const [t, get] of types) for (const r of h.rowsOfType?.(t) ?? []) if (lower(str(get(r))) === f) return lower(r.id);
+  return null;
+}
+
+/** A resource's user-assigned identities: resource → identity ("identity"). */
+const identityEdges = (r: ArgRow): LiveEdgeSpec[] =>
+  Object.keys(obj(obj(r.identity).userAssignedIdentities))
+    .sort()
+    .map((i) => ({ from: lower(r.id), to: lower(i), kind: "dependency" as const, label: "identity" }));
 
 /** A zone's own records: Resource Graph's numberOfRecordSets less the ones Azure makes (SOA, and NS for a public zone). */
 const recordCounts = (r: ArgRow, made: number): string[] | undefined => {
@@ -196,7 +220,7 @@ const recordCounts = (r: ArgRow, made: number): string[] | undefined => {
 
 export const ARM_RULES: Record<string, ArmRule> = {
   "microsoft.network/networkinterfaces": {
-    fold: (r) => idOf(props(r).virtualMachine) ?? idOf(props(r).privateEndpoint) ?? null,
+    fold: (r) => idOf(props(r).virtualMachine) ?? idOf(props(r).privateEndpoint) ?? idOf(props(r).privateLinkService) ?? null,
   },
   // An ASG folds into the first member's VM (by NIC id), as the planned graph pulls it into the VM it is associated with.
   "microsoft.network/applicationsecuritygroups": {
@@ -286,14 +310,21 @@ export const ARM_RULES: Record<string, ArmRule> = {
   "microsoft.network/loadbalancers": {
     props: (r) => {
       const fe = obj(arr(props(r).frontendIPConfigurations)[0]?.properties);
-      return { sku: [str(obj(r.sku).name), str(obj(r.sku).tier)].filter(Boolean).join(" ") || undefined, privateIp: str(fe.privateIPAddress) };
+      // The planned graph says "Standard Global" for a global-tier LB and "Standard" for a regional one (its sku_tier is unset).
+      const tier = lower(str(obj(r.sku).tier)) === "global" ? "Global" : undefined;
+      return { sku: [str(obj(r.sku).name), tier].filter(Boolean).join(" ") || undefined, privateIp: str(fe.privateIPAddress) };
     },
     edges: (r, h) => {
       const pools = new Map(arr(props(r).backendAddressPools).map((p) => [lower(str(p.id)), p]));
       const out: LiveEdgeSpec[] = [];
+      // A frontend chained to a Gateway LB: this LB → the gateway LB.
+      for (const fe of arr(props(r).frontendIPConfigurations)) {
+        const gw = idOf(obj(fe.properties).gatewayLoadBalancer);
+        if (gw) out.push({ from: lower(r.id), to: lower(topResource(gw)), kind: "traffic", label: "chain", via: lower(str(fe.id) ?? r.id) });
+      }
       for (const rule of arr(props(r).loadBalancingRules)) {
         const rp = obj(rule.properties);
-        const label = `${(str(rp.protocol) ?? "any").toUpperCase()} ${rp.frontendPort ?? "?"}→${rp.backendPort ?? "?"}`;
+        const label = lower(str(rp.protocol)) === "all" && !rp.frontendPort && !rp.backendPort ? "HA ports" : `${(str(rp.protocol) ?? "any").toUpperCase()} ${rp.frontendPort ?? "?"}→${rp.backendPort ?? "?"}`;
         const ids = [idOf(rp.backendAddressPool), ...arr(rp.backendAddressPools).map((x) => str(x.id))].filter((x): x is string => !!x);
         for (const pid of ids) for (const m of poolMembers(pools.get(lower(pid)) ?? {}, h)) out.push({ from: lower(r.id), to: m, kind: "traffic", label, via: lower(str(rule.id) ?? r.id) });
       }
@@ -328,6 +359,107 @@ export const ARM_RULES: Record<string, ArmRule> = {
         return [{ from: lower(r.id), to: lower(target), kind: "traffic" as const, label: ((cp.groupIds as string[] | undefined) ?? [])[0] ?? "private link", via: lower(str(c.id) ?? r.id), state: stateWord(str(obj(cp.privateLinkServiceConnectionState).status)) }];
       }),
   },
+  // ── Application gateway and WAF policies (T3.2) ──
+  "microsoft.network/applicationgateways": {
+    props: (r) => {
+      const p = props(r);
+      const sku = obj(p.sku);
+      const auto = obj(p.autoscaleConfiguration);
+      const fe = arr(p.frontendIPConfigurations).map((x) => obj(x.properties)).find((x) => str(x.privateIPAddress));
+      return {
+        sku: str(sku.name),
+        capacity: typeof auto.minCapacity === "number" ? `${auto.minCapacity}-${auto.maxCapacity ?? "?"}` : typeof sku.capacity === "number" ? sku.capacity : undefined,
+        privateIp: str(fe?.privateIPAddress),
+      };
+    },
+    // Request routing: listener (protocol, frontend port) → pool members (NIC configurations by their VM, addresses by IP), backend port.
+    edges: (r, h) => {
+      const p = props(r);
+      const byId = (k: string) => new Map(arr(p[k]).map((x) => [lower(str(x.id)), obj(x.properties)]));
+      const listeners = byId("httpListeners");
+      const ports = byId("frontendPorts");
+      const settings = byId("backendHttpSettingsCollection");
+      const pools = byId("backendAddressPools");
+      const out: LiveEdgeSpec[] = [];
+      const rules = arr(p.requestRoutingRules).sort((a, b) => Number(obj(a.properties).priority ?? 0) - Number(obj(b.properties).priority ?? 0));
+      for (const rule of rules) {
+        const rp = obj(rule.properties);
+        const pool = pools.get(lower(idOf(rp.backendAddressPool)));
+        if (!pool) continue;
+        const l = listeners.get(lower(idOf(rp.httpListener))) ?? {};
+        const fp = ports.get(lower(idOf(l.frontendPort)))?.port;
+        const bp = settings.get(lower(idOf(rp.backendHttpSettings)))?.port;
+        const label = `${(str(l.protocol) ?? "any").toUpperCase()} ${fp ?? "?"}→${bp ?? "?"}`;
+        const members = new Set<string>();
+        for (const c of arr(pool.backendIPConfigurations)) {
+          const home = str(c.id) ? h.home(topResource(str(c.id)!)) : null;
+          if (home) members.add(home);
+        }
+        for (const a of arr(pool.backendAddresses)) {
+          const n = str(a.ipAddress) ? h.nodeByPrivateIp(str(a.ipAddress)!) : null;
+          if (n) members.add(n);
+        }
+        for (const m of [...members].sort()) out.push({ from: lower(r.id), to: m, kind: "traffic", label, via: lower(str(rule.id) ?? r.id) });
+      }
+      return [...out, ...identityEdges(r)];
+    },
+  },
+  "microsoft.network/applicationgatewaywebapplicationfirewallpolicies": {
+    props: (r) => ({ mode: str(obj(props(r).policySettings).mode) }),
+    edges: (r) => arr(props(r).applicationGateways).map((a) => str(a.id)).filter((x): x is string => !!x).map((a) => ({ from: lower(r.id), to: lower(a), kind: "dependency" as const, label: "WAF policy" })),
+  },
+  "microsoft.network/frontdoorwebapplicationfirewallpolicies": {
+    props: (r) => ({ mode: str(obj(props(r).policySettings).mode), sku: str(obj(r.sku).name) }),
+    // Its security policy links name the Front Door profile (…/profiles/<p>/securityPolicies/<s>).
+    edges: (r) => arr(props(r).securityPolicyLinks).map((s) => str(s.id)).filter((x): x is string => !!x).map((s) => ({ from: lower(r.id), to: lower(topResource(s)), kind: "dependency" as const, label: "WAF policy" })),
+  },
+
+  // ── Front Door (T3.2): the profile is the card; endpoints (listed) and origins (if listed: (V)) fold into it ──
+  "microsoft.cdn/profiles": {
+    props: (r, h) => ({
+      sku: str(obj(r.sku).name),
+      hostName: (h.rowsOfType?.("microsoft.cdn/profiles/afdendpoints") ?? []).filter((e) => lower(topResource(e.id)) === lower(r.id)).map((e) => str(props(e).hostName)).find(Boolean),
+    }),
+  },
+  "microsoft.cdn/profiles/afdendpoints": { fold: (r) => topResource(r.id) },
+  "microsoft.cdn/profiles/origingroups/origins": {
+    fold: (r) => topResource(r.id),
+    edges: (r, h) => {
+      const p = props(r);
+      const from = lower(topResource(r.id));
+      const spl = obj(p.sharedPrivateLinkResource);
+      const pls = idOf(spl.privateLink);
+      if (pls) return [{ from, to: lower(pls), kind: "traffic", label: "Private Link", via: lower(r.id), state: stateWord(str(spl.status)) }];
+      const host = str(p.hostName);
+      const to = host ? (h.nodeByPrivateIp(host) ?? byFqdn(host, h)) : null;
+      return to ? [{ from, to, kind: "traffic", label: "origin", via: lower(r.id) }] : [];
+    },
+  },
+
+  // ── Traffic Manager (T3.2): endpoints are inline; each is an edge to its target (resource id, else FQDN) ──
+  "microsoft.network/trafficmanagerprofiles": {
+    props: (r) => ({ routing: str(props(r).trafficRoutingMethod) }),
+    edges: (r, h) => {
+      const method = lower(str(props(r).trafficRoutingMethod));
+      return arr(props(r).endpoints).flatMap((ep) => {
+        const ep_ = obj(ep.properties);
+        const target = str(ep_.targetResourceId) ? lower(str(ep_.targetResourceId)) : str(ep_.target) ? byFqdn(str(ep_.target)!, h) : null;
+        if (!target) return [];
+        const label = method === "priority" && ep_.priority !== undefined ? `priority ${ep_.priority}` : method === "weighted" && ep_.weight !== undefined ? `weight ${ep_.weight}` : (str(props(r).trafficRoutingMethod) ?? "endpoint");
+        return [{ from: lower(r.id), to: target, kind: "traffic" as const, label, via: lower(str(ep.id) ?? r.id), state: stateWord(str(ep_.endpointMonitorStatus)) }];
+      });
+    },
+  },
+
+  // ── Private Link service (T3.2/T3.4): → its LB; Azure's NIC folds into it ──
+  "microsoft.network/privatelinkservices": {
+    edges: (r) =>
+      arr(props(r).loadBalancerFrontendIpConfigurations)
+        .map((f) => str(f.id))
+        .filter((x): x is string => !!x)
+        .map((f) => ({ from: lower(r.id), to: lower(topResource(f)), kind: "traffic" as const, label: "frontend" })),
+  },
+
   "microsoft.network/privatednszones/virtualnetworklinks": {
     fold: (r) => topResource(r.id),
     edges: (r) => {

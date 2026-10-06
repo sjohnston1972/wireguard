@@ -1,0 +1,1252 @@
+{
+ "_about": "T3.2 delivery: Resource Graph rows for a running az700-42-frontdoor-private in slot 5 (10.66.192.0/18) with the delivery types of labs 16, 27, 40 and 41 grafted in. Shapes from Learn's REST references: applicationGateways (2024-05-01: gatewayIPConfigurations, frontendIPConfigurations, frontendPorts, httpListeners, backendAddressPools with backendAddresses and backendIPConfigurations, backendHttpSettingsCollection, requestRoutingRules, firewallPolicy, operationalState), ApplicationGatewayWebApplicationFirewallPolicies (policySettings.mode, applicationGateways), loadBalancers (Global tier pools of loadBalancerBackendAddresses naming regional frontends; frontendIPConfigurations[].gatewayLoadBalancer; HA-ports rule), privateLinkServices (loadBalancerFrontendIpConfigurations, ipConfigurations, privateEndpointConnections), Cdn profiles and afdEndpoints (hostName), Cdn origins (sharedPrivateLinkResource; whether Resource Graph lists origin rows is (V) at integration), FrontDoorWebApplicationFirewallPolicies (securityPolicyLinks), trafficManagerProfiles (endpoints inline: externalEndpoints target, azureEndpoints targetResourceId), containerGroups (ipAddress.fqdn). Fake subscription, TEST-NET public addresses.",
+ "rows": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app",
+   "name": "vnet-app",
+   "type": "microsoft.network/virtualnetworks",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "addressSpace": {
+     "addressPrefixes": [
+      "10.66.192.0/20"
+     ]
+    },
+    "subnets": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-web",
+      "name": "snet-web",
+      "properties": {
+       "addressPrefix": "10.66.192.0/24",
+       "defaultOutboundAccess": false
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-pls",
+      "name": "snet-pls",
+      "properties": {
+       "addressPrefix": "10.66.193.0/24",
+       "defaultOutboundAccess": false,
+       "privateLinkServiceNetworkPolicies": "Disabled"
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-agw",
+      "name": "snet-agw",
+      "properties": {
+       "addressPrefix": "10.66.194.0/24"
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-nva",
+      "name": "snet-nva",
+      "properties": {
+       "addressPrefix": "10.66.195.0/24"
+      }
+     }
+    ],
+    "virtualNetworkPeerings": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/nic-vm-web",
+   "name": "nic-vm-web",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Compute/virtualMachines/vm-web"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/nic-vm-web/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.66.192.4",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-web"
+       },
+       "loadBalancerBackendAddressPools": [
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-int/backendAddressPools/pool-web"
+        }
+       ],
+       "applicationGatewayBackendAddressPools": [
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/backendAddressPools/pool-web"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Compute/virtualMachines/vm-web",
+   "name": "vm-web",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running",
+       "displayStatus": "VM running"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/nic-vm-web2",
+   "name": "nic-vm-web2",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Compute/virtualMachines/vm-web2"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/nic-vm-web2/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.66.192.5",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-web"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Compute/virtualMachines/vm-web2",
+   "name": "vm-web2",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running",
+       "displayStatus": "VM running"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/nic-vm-nva",
+   "name": "nic-vm-nva",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "virtualMachine": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Compute/virtualMachines/vm-nva"
+    },
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/nic-vm-nva/ipConfigurations/ipconfig1",
+      "name": "ipconfig1",
+      "properties": {
+       "privateIPAddress": "10.66.195.4",
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-nva"
+       },
+       "loadBalancerBackendAddressPools": [
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-gw/backendAddressPools/pool-nva"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Compute/virtualMachines/vm-nva",
+   "name": "vm-nva",
+   "type": "microsoft.compute/virtualmachines",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hardwareProfile": {
+     "vmSize": "Standard_B1s"
+    },
+    "storageProfile": {
+     "osDisk": {
+      "osType": "Linux"
+     }
+    },
+    "extended": {
+     "instanceView": {
+      "powerState": {
+       "code": "PowerState/running",
+       "displayStatus": "VM running"
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-int",
+   "name": "lb-int",
+   "type": "microsoft.network/loadbalancers",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "frontendIPConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-int/frontendIPConfigurations/fe-int",
+      "name": "fe-int",
+      "properties": {
+       "privateIPAddress": "10.66.192.10",
+       "privateIPAllocationMethod": "Static",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-web"
+       }
+      }
+     }
+    ],
+    "backendAddressPools": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-int/backendAddressPools/pool-web",
+      "name": "pool-web",
+      "properties": {
+       "backendIPConfigurations": [
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/nic-vm-web/ipConfigurations/ipconfig1"
+        }
+       ]
+      }
+     }
+    ],
+    "loadBalancingRules": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-int/loadBalancingRules/rule-http",
+      "name": "rule-http",
+      "properties": {
+       "protocol": "Tcp",
+       "frontendPort": 80,
+       "backendPort": 80,
+       "backendAddressPool": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-int/backendAddressPools/pool-web"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/privateLinkServices/pls-web",
+   "name": "pls-web",
+   "type": "microsoft.network/privatelinkservices",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "visibility": {
+     "subscriptions": []
+    },
+    "loadBalancerFrontendIpConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-int/frontendIPConfigurations/fe-int"
+     }
+    ],
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/privateLinkServices/pls-web/ipConfigurations/nat-pls",
+      "name": "nat-pls",
+      "properties": {
+       "privateIPAllocationMethod": "Dynamic",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-pls"
+       },
+       "primary": true
+      }
+     }
+    ],
+    "networkInterfaces": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/pls-web.nic.6f0d2c3b-1a4e-4b5c-9d8e-7f6a5b4c3d2e"
+     }
+    ],
+    "privateEndpointConnections": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/privateLinkServices/pls-web/privateEndpointConnections/afd-conn",
+      "name": "afd-conn",
+      "properties": {
+       "privateLinkServiceConnectionState": {
+        "status": "Pending",
+        "description": "Front Door lab 42 asks to reach pls-web"
+       }
+      }
+     }
+    ],
+    "alias": "pls-web.6f0d2c3b-1a4e-4b5c-9d8e-7f6a5b4c3d2e.uksouth.azure.privatelinkservice"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/pls-web.nic.6f0d2c3b-1a4e-4b5c-9d8e-7f6a5b4c3d2e",
+   "name": "pls-web.nic.6f0d2c3b-1a4e-4b5c-9d8e-7f6a5b4c3d2e",
+   "type": "microsoft.network/networkinterfaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/pls-web.nic.6f0d2c3b-1a4e-4b5c-9d8e-7f6a5b4c3d2e/ipConfigurations/nat-pls",
+      "name": "nat-pls",
+      "properties": {
+       "privateIPAddress": "10.66.193.4",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-pls"
+       }
+      }
+     }
+    ],
+    "privateLinkService": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/privateLinkServices/pls-web"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Cdn/profiles/afd-premium",
+   "name": "afd-premium",
+   "type": "microsoft.cdn/profiles",
+   "kind": "frontdoor",
+   "location": "Global",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": {
+    "name": "Premium_AzureFrontDoor"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "frontDoorId": "5d1c0b9a-8e7f-4a6b-9c5d-4e3f2a1b0c9d",
+    "originResponseTimeoutSeconds": 60
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Cdn/profiles/afd-premium/afdEndpoints/l42rt7xy-afd",
+   "name": "l42rt7xy-afd",
+   "type": "microsoft.cdn/profiles/afdendpoints",
+   "kind": "",
+   "location": "Global",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hostName": "l42rt7xy-afd-abcdefgh.z01.azurefd.net",
+    "enabledState": "Enabled",
+    "deploymentStatus": "Succeeded"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Cdn/profiles/afd-premium/originGroups/og-web/origins/origin-lb-int",
+   "name": "origin-lb-int",
+   "type": "microsoft.cdn/profiles/origingroups/origins",
+   "kind": "",
+   "location": null,
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "hostName": "10.66.192.10",
+    "httpPort": 80,
+    "httpsPort": 443,
+    "originHostHeader": "10.66.192.10",
+    "priority": 1,
+    "weight": 1000,
+    "enabledState": "Enabled",
+    "sharedPrivateLinkResource": {
+     "privateLink": {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/privateLinkServices/pls-web"
+     },
+     "privateLinkLocation": "uksouth",
+     "requestMessage": "Front Door lab 42 asks to reach pls-web",
+     "status": "Pending"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/FrontDoorWebApplicationFirewallPolicies/wafpremium",
+   "name": "wafpremium",
+   "type": "microsoft.network/frontdoorwebapplicationfirewallpolicies",
+   "kind": "",
+   "location": "Global",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": {
+    "name": "Premium_AzureFrontDoor"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "policySettings": {
+     "enabledState": "Enabled",
+     "mode": "Prevention"
+    },
+    "customRules": {
+     "rules": [
+      {
+       "name": "RateLimitPerClient",
+       "priority": 10,
+       "ruleType": "RateLimitRule",
+       "action": "Block"
+      }
+     ]
+    },
+    "securityPolicyLinks": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Cdn/profiles/afd-premium/securityPolicies/sp-afd"
+     }
+    ],
+    "frontendEndpointLinks": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub",
+   "name": "agw-hub",
+   "type": "microsoft.network/applicationgateways",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": {
+    "type": "UserAssigned",
+    "userAssignedIdentities": {
+     "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-agw": {
+      "principalId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "clientId": "aaaaaaaa-0000-4000-8000-000000000002"
+     }
+    }
+   },
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "sku": {
+     "name": "WAF_v2",
+     "tier": "WAF_v2"
+    },
+    "autoscaleConfiguration": {
+     "minCapacity": 0,
+     "maxCapacity": 2
+    },
+    "operationalState": "Running",
+    "gatewayIPConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/gatewayIPConfigurations/gateway-ip",
+      "name": "gateway-ip",
+      "properties": {
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-agw"
+       }
+      }
+     }
+    ],
+    "frontendIPConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/frontendIPConfigurations/fe-public",
+      "name": "fe-public",
+      "properties": {
+       "publicIPAddress": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/publicIPAddresses/pip-agw"
+       }
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/frontendIPConfigurations/fe-private",
+      "name": "fe-private",
+      "properties": {
+       "privateIPAddress": "10.66.194.10",
+       "privateIPAllocationMethod": "Static",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-agw"
+       }
+      }
+     }
+    ],
+    "frontendPorts": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/frontendPorts/port-443",
+      "name": "port-443",
+      "properties": {
+       "port": 443
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/frontendPorts/port-80",
+      "name": "port-80",
+      "properties": {
+       "port": 80
+      }
+     }
+    ],
+    "httpListeners": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/httpListeners/listener-https",
+      "name": "listener-https",
+      "properties": {
+       "protocol": "Https",
+       "frontendPort": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/frontendPorts/port-443"
+       },
+       "frontendIPConfiguration": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/frontendIPConfigurations/fe-private"
+       }
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/httpListeners/listener-http",
+      "name": "listener-http",
+      "properties": {
+       "protocol": "Http",
+       "frontendPort": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/frontendPorts/port-80"
+       }
+      }
+     }
+    ],
+    "backendAddressPools": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/backendAddressPools/pool-web",
+      "name": "pool-web",
+      "properties": {
+       "backendAddresses": [
+        {
+         "ipAddress": "10.66.192.5"
+        }
+       ],
+       "backendIPConfigurations": [
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/nic-vm-web/ipConfigurations/ipconfig1"
+        }
+       ]
+      }
+     }
+    ],
+    "backendHttpSettingsCollection": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/backendHttpSettingsCollection/http-80",
+      "name": "http-80",
+      "properties": {
+       "port": 80,
+       "protocol": "Http"
+      }
+     }
+    ],
+    "requestRoutingRules": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/requestRoutingRules/rule-https",
+      "name": "rule-https",
+      "properties": {
+       "ruleType": "Basic",
+       "priority": 110,
+       "httpListener": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/httpListeners/listener-https"
+       },
+       "backendAddressPool": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/backendAddressPools/pool-web"
+       },
+       "backendHttpSettings": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/backendHttpSettingsCollection/http-80"
+       }
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/requestRoutingRules/rule-http-redirect",
+      "name": "rule-http-redirect",
+      "properties": {
+       "ruleType": "Basic",
+       "priority": 100,
+       "httpListener": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/httpListeners/listener-http"
+       },
+       "redirectConfiguration": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/redirectConfigurations/http-to-https"
+       }
+      }
+     }
+    ],
+    "sslCertificates": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/sslCertificates/cert-app",
+      "name": "cert-app",
+      "properties": {
+       "keyVaultSecretId": "https://l42rt7xykv.vault.azure.net/secrets/cert-app"
+      }
+     }
+    ],
+    "firewallPolicy": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-hub"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/publicIPAddresses/pip-agw",
+   "name": "pip-agw",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.40",
+    "publicIPAllocationMethod": "Static",
+    "ipConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub/frontendIPConfigurations/fe-public"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-hub",
+   "name": "waf-hub",
+   "type": "microsoft.network/applicationgatewaywebapplicationfirewallpolicies",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "policySettings": {
+     "state": "Enabled",
+     "mode": "Prevention",
+     "requestBodyCheck": true
+    },
+    "managedRules": {
+     "managedRuleSets": [
+      {
+       "ruleSetType": "Microsoft_DefaultRuleSet",
+       "ruleSetVersion": "2.1"
+      }
+     ]
+    },
+    "customRules": [
+     {
+      "name": "BlockAttackQuery",
+      "priority": 10,
+      "ruleType": "MatchRule",
+      "action": "Block"
+     }
+    ],
+    "applicationGateways": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/applicationGateways/agw-hub"
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-global",
+   "name": "lb-global",
+   "type": "microsoft.network/loadbalancers",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": {
+    "name": "Standard",
+    "tier": "Global"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "frontendIPConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-global/frontendIPConfigurations/fe-global",
+      "name": "fe-global",
+      "properties": {
+       "publicIPAddress": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/publicIPAddresses/pip-global"
+       }
+      }
+     }
+    ],
+    "backendAddressPools": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-global/backendAddressPools/pool-regions",
+      "name": "pool-regions",
+      "properties": {
+       "loadBalancerBackendAddresses": [
+        {
+         "name": "lb-uks",
+         "properties": {
+          "loadBalancerFrontendIPConfiguration": {
+           "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-uks/frontendIPConfigurations/fe-uks"
+          }
+         }
+        },
+        {
+         "name": "lb-ukw",
+         "properties": {
+          "loadBalancerFrontendIPConfiguration": {
+           "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private-secondary/providers/Microsoft.Network/loadBalancers/lb-ukw/frontendIPConfigurations/fe-ukw"
+          }
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "loadBalancingRules": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-global/loadBalancingRules/rule-http-80",
+      "name": "rule-http-80",
+      "properties": {
+       "protocol": "Tcp",
+       "frontendPort": 80,
+       "backendPort": 80,
+       "backendAddressPool": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-global/backendAddressPools/pool-regions"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/publicIPAddresses/pip-global",
+   "name": "pip-global",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": {
+    "name": "Standard",
+    "tier": "Global"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.50",
+    "publicIPAllocationMethod": "Static",
+    "ipConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-global/frontendIPConfigurations/fe-global"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-uks",
+   "name": "lb-uks",
+   "type": "microsoft.network/loadbalancers",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "frontendIPConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-uks/frontendIPConfigurations/fe-uks",
+      "name": "fe-uks",
+      "properties": {
+       "publicIPAddress": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/publicIPAddresses/pip-uks"
+       },
+       "gatewayLoadBalancer": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-gw/frontendIPConfigurations/fe-gw"
+       }
+      }
+     }
+    ],
+    "backendAddressPools": [],
+    "loadBalancingRules": []
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/publicIPAddresses/pip-uks",
+   "name": "pip-uks",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.51",
+    "ipConfiguration": {
+     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-uks/frontendIPConfigurations/fe-uks"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private-secondary/providers/Microsoft.Network/loadBalancers/lb-ukw",
+   "name": "lb-ukw",
+   "type": "microsoft.network/loadbalancers",
+   "kind": "",
+   "location": "ukwest",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private-secondary",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "frontendIPConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private-secondary/providers/Microsoft.Network/loadBalancers/lb-ukw/frontendIPConfigurations/fe-ukw",
+      "name": "fe-ukw",
+      "properties": {
+       "publicIPAddress": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private-secondary/providers/Microsoft.Network/publicIPAddresses/pip-ukw"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-gw",
+   "name": "lb-gw",
+   "type": "microsoft.network/loadbalancers",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": {
+    "name": "Gateway",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "frontendIPConfigurations": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-gw/frontendIPConfigurations/fe-gw",
+      "name": "fe-gw",
+      "properties": {
+       "privateIPAddress": "10.66.195.10",
+       "privateIPAllocationMethod": "Static",
+       "subnet": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/virtualNetworks/vnet-app/subnets/snet-nva"
+       }
+      }
+     }
+    ],
+    "backendAddressPools": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-gw/backendAddressPools/pool-nva",
+      "name": "pool-nva",
+      "properties": {
+       "tunnelInterfaces": [
+        {
+         "port": 10800,
+         "identifier": 800,
+         "protocol": "VXLAN",
+         "type": "Internal"
+        }
+       ],
+       "backendIPConfigurations": [
+        {
+         "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/networkInterfaces/nic-vm-nva/ipConfigurations/ipconfig1"
+        }
+       ]
+      }
+     }
+    ],
+    "loadBalancingRules": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-gw/loadBalancingRules/rule-ha-ports",
+      "name": "rule-ha-ports",
+      "properties": {
+       "protocol": "All",
+       "frontendPort": 0,
+       "backendPort": 0,
+       "backendAddressPool": {
+        "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/loadBalancers/lb-gw/backendAddressPools/pool-nva"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/trafficManagerProfiles/l42rt7xy-tm",
+   "name": "l42rt7xy-tm",
+   "type": "microsoft.network/trafficmanagerprofiles",
+   "kind": "",
+   "location": "global",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "profileStatus": "Enabled",
+    "trafficRoutingMethod": "Priority",
+    "dnsConfig": {
+     "relativeName": "l42rt7xy-tm",
+     "fqdn": "l42rt7xy-tm.trafficmanager.net",
+     "ttl": 30
+    },
+    "monitorConfig": {
+     "profileMonitorStatus": "Online",
+     "protocol": "HTTP",
+     "port": 80,
+     "path": "/"
+    },
+    "endpoints": [
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/trafficManagerProfiles/l42rt7xy-tm/externalEndpoints/ep-uks",
+      "name": "ep-uks",
+      "type": "Microsoft.Network/trafficManagerProfiles/externalEndpoints",
+      "properties": {
+       "endpointStatus": "Enabled",
+       "endpointMonitorStatus": "Online",
+       "target": "l42rt7xy-uks.uksouth.azurecontainer.io",
+       "priority": 1
+      }
+     },
+     {
+      "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/trafficManagerProfiles/l42rt7xy-tm/azureEndpoints/ep-pip",
+      "name": "ep-pip",
+      "type": "Microsoft.Network/trafficManagerProfiles/azureEndpoints",
+      "properties": {
+       "endpointStatus": "Enabled",
+       "endpointMonitorStatus": "Degraded",
+       "targetResourceId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/publicIPAddresses/pip-tm",
+       "target": "l42rt7xy-pip.uksouth.cloudapp.azure.com",
+       "priority": 2
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.ContainerInstance/containerGroups/ci-uks",
+   "name": "ci-uks",
+   "type": "microsoft.containerinstance/containergroups",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": null,
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "sku": "Standard",
+    "osType": "Linux",
+    "restartPolicy": "Always",
+    "containers": [
+     {
+      "name": "web",
+      "properties": {
+       "image": "mcr.microsoft.com/azurelinux/base/python:3.12",
+       "ports": [
+        {
+         "port": 80,
+         "protocol": "TCP"
+        }
+       ],
+       "resources": {
+        "requests": {
+         "cpu": 0.5,
+         "memoryInGB": 0.5
+        }
+       }
+      }
+     }
+    ],
+    "ipAddress": {
+     "type": "Public",
+     "ip": "203.0.113.60",
+     "dnsNameLabel": "l42rt7xy-uks",
+     "fqdn": "l42rt7xy-uks.uksouth.azurecontainer.io",
+     "ports": [
+      {
+       "port": 80,
+       "protocol": "TCP"
+      }
+     ]
+    },
+    "instanceView": {
+     "state": "Running"
+    }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-42-frontdoor-private/providers/Microsoft.Network/publicIPAddresses/pip-tm",
+   "name": "pip-tm",
+   "type": "microsoft.network/publicipaddresses",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az700-42-frontdoor-private",
+   "sku": {
+    "name": "Standard",
+    "tier": "Regional"
+   },
+   "tags": {
+    "lab": "az700-42-frontdoor-private",
+    "project": "wg-admin-labs",
+    "session": "ls-0042"
+   },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "ipAddress": "203.0.113.61",
+    "publicIPAllocationMethod": "Static",
+    "dnsSettings": {
+     "domainNameLabel": "l42rt7xy-pip",
+     "fqdn": "l42rt7xy-pip.uksouth.cloudapp.azure.com"
+    }
+   }
+  }
+ ]
+}

@@ -16,6 +16,11 @@
    "scope": "lab",
    "folded": [
     {
+     "id": "tf:azurerm_monitor_diagnostic_setting.firewall",
+     "label": "diag-afw-hub",
+     "armType": "Microsoft.Insights/diagnosticSettings"
+    },
+    {
      "id": "tf:azurerm_public_ip.firewall",
      "label": "pip-afw-hub",
      "armType": "Microsoft.Network/publicIPAddresses"
@@ -118,16 +123,6 @@
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.OperationalInsights/workspaces",
-   "scope": "lab"
-  },
-  {
-   "id": "tf:azurerm_monitor_diagnostic_setting.firewall",
-   "key": "terraform/azurerm_monitor_diagnostic_setting/diag-afw-hub",
-   "kind": "monitor",
-   "label": "diag-afw-hub",
-   "props": {},
-   "parent": "tf:azurerm_resource_group.lab",
-   "armType": null,
    "scope": "lab"
   },
   {
@@ -317,6 +312,14 @@
   }
  ],
  "edges": [
+  {
+   "id": "dependency:tf:azurerm_firewall.hub>tf:azurerm_log_analytics_workspace.lab:diagnostics",
+   "from": "tf:azurerm_firewall.hub",
+   "to": "tf:azurerm_log_analytics_workspace.lab",
+   "kind": "dependency",
+   "label": "diagnostics",
+   "via": "tf:azurerm_monitor_diagnostic_setting.firewall"
+  },
   {
    "id": "traffic:tf:azurerm_subnet.spoke1>tf:azurerm_firewall.hub:0.0.0.0/0",
    "from": "tf:azurerm_subnet.spoke1",

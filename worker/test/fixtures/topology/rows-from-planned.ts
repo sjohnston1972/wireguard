@@ -451,8 +451,150 @@ export interface TemplateKit {
   hex32(seed: string): string;
 }
 
-/** Family templates (filled in by T3.2-T3.6). */
-function extraTemplates(_k: TemplateKit): void {}
+/** Family templates (T3.2-T3.6). */
+function extraTemplates(k: TemplateKit): void {
+  delivery(k);
+}
+
+const P = (r: ArgRow) => r.properties as Record<string, unknown>;
+const parsePorts = (label: string | undefined) => {
+  const m = /^(\w+) (\d+|\d+-\d+)→(\d+)$/.exec(label ?? "");
+  if (label === "HA ports") return { protocol: "All", frontendPort: 0, backendPort: 0 };
+  return m ? { protocol: m[1] === "ALL" ? "All" : m[1]![0] + m[1]!.slice(1).toLowerCase(), frontendPort: Number(m[2]!.split("-")[0]), backendPort: Number(m[3]) } : { protocol: "Tcp", frontendPort: 80, backendPort: 80 };
+};
+
+/** T3.2: load balancers (rules, NAT, outbound, global pools, chain), App Gateway, WAF policies, Front Door, Traffic Manager, PLS. */
+function delivery(k: TemplateKit): void {
+  const { g, byId, rowOf, nodeArmId, subnetOf, nicIds, edgesFrom, edgesTo, folded, foldedRow } = k;
+  const memberConfig = (n: { id: string; kind: string } | undefined, lbId: string): Record<string, unknown> | null => {
+    if (!n) return null;
+    const ipc = nicIds.get(n.id);
+    if (ipc) return { backendIPConfigurations: [{ id: ipc }] };
+    const id = nodeArmId(byId.get(n.id)!);
+    if (n.kind === "loadBalancer" && id) return { loadBalancerBackendAddresses: [{ name: id.split("/").at(-1), properties: { loadBalancerFrontendIPConfiguration: { id: `${id}/frontendIPConfigurations/fe-0` } } }] };
+    if (n.kind === "vmss" && id) return { backendIPConfigurations: [{ id: `${id}/virtualMachines/0/networkInterfaces/nic-0/ipConfigurations/ipconfig1` }] };
+    void lbId;
+    return null;
+  };
+  for (const n of g.nodes.filter((x) => x.kind === "loadBalancer" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const global = String(n.props.sku ?? "").includes("Global");
+    r.sku = { name: String(n.props.sku ?? "Standard").split(" ")[0], tier: global ? "Global" : "Regional" };
+    if (global) r.location = k.ctx.region;
+    const sid = subnetOf(n);
+    const pips = folded(n, "Microsoft.Network/publicIPAddresses").map((f) => foldedRow(n, f, true)).filter(Boolean);
+    const chain = edgesFrom(n.id).find((e) => e.label === "chain");
+    const chainTo = chain ? nodeArmId(byId.get(chain.to)!) : null;
+    const fe = `${r.id}/frontendIPConfigurations/fe-0`;
+    P(r).frontendIPConfigurations = [
+      { id: fe, name: "fe-0", properties: { ...(sid ? { subnet: { id: sid }, privateIPAddress: n.props.privateIp ?? "10.71.199.10", privateIPAllocationMethod: "Static" } : {}), ...(pips[0] ? { publicIPAddress: { id: pips[0]!.id } } : {}), ...(chainTo ? { gatewayLoadBalancer: { id: `${chainTo}/frontendIPConfigurations/fe-0` } } : {}) } },
+    ];
+    // One pool per rule edge set; rules, NAT rules and outbound rules from the planned edges' labels.
+    const pool = `${r.id}/backendAddressPools/pool-0`;
+    const members = new Map<string, Record<string, unknown>>();
+    const rules: unknown[] = [];
+    const nats: unknown[] = [];
+    const outs: unknown[] = [];
+    for (const e of edgesFrom(n.id).filter((x) => x.kind === "traffic" && x.label !== "chain")) {
+      const t = byId.get(e.to);
+      const mc = memberConfig(t, r.id);
+      if (mc) members.set(e.to, mc);
+      const ports = parsePorts(e.label);
+      if (/\d+-\d+→/.test(e.label ?? "")) nats.push({ id: `${r.id}/inboundNatRules/nat-${nats.length}`, name: `nat-${nats.length}`, properties: { protocol: ports.protocol, frontendPortRangeStart: ports.frontendPort, frontendPortRangeEnd: Number(/-(\d+)→/.exec(e.label!)![1]), backendPort: ports.backendPort, backendAddressPool: { id: pool } } });
+      else rules.push({ id: `${r.id}/loadBalancingRules/rule-${rules.length}`, name: `rule-${rules.length}`, properties: { ...ports, backendAddressPool: { id: pool } } });
+    }
+    for (const e of edgesTo(n.id).filter((x) => x.label === "outbound")) {
+      const mc = memberConfig(byId.get(e.from), r.id);
+      if (mc) members.set(e.from, mc);
+      if (!outs.length) outs.push({ id: `${r.id}/outboundRules/outbound-0`, name: "outbound-0", properties: { protocol: "All", allocatedOutboundPorts: 1024, backendAddressPool: { id: pool }, frontendIPConfigurations: [{ id: fe }] } });
+    }
+    const merged: Record<string, unknown[]> = { backendIPConfigurations: [], loadBalancerBackendAddresses: [] };
+    for (const m of members.values()) for (const [key, v] of Object.entries(m)) merged[key] = [...(merged[key] ?? []), ...(v as unknown[])];
+    P(r).backendAddressPools = [{ id: pool, name: "pool-0", properties: merged }];
+    P(r).loadBalancingRules = rules;
+    P(r).inboundNatRules = nats;
+    P(r).outboundRules = outs;
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "appGateway" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const sid = subnetOf(n);
+    const pips = folded(n, "Microsoft.Network/publicIPAddresses").map((f) => foldedRow(n, f, true)).filter(Boolean);
+    const cap = String(n.props.capacity ?? "");
+    const label = edgesFrom(n.id).find((e) => e.kind === "traffic")?.label ?? "HTTP 80→80";
+    const [proto, fp, bp] = /^(\w+) (\d+)→(\d+)$/.exec(label)?.slice(1) ?? ["HTTP", "80", "80"];
+    const members = edgesFrom(n.id).filter((e) => e.kind === "traffic").map((e) => nicIds.get(e.to)).filter((x): x is string => !!x).map((id) => ({ id }));
+    const pip = pips[0] ? [{ id: `${r.id}/frontendIPConfigurations/fe-public`, name: "fe-public", properties: { publicIPAddress: { id: pips[0]!.id } } }] : [];
+    Object.assign(P(r), {
+      sku: { name: n.props.sku ?? "Standard_v2", tier: n.props.sku ?? "Standard_v2" },
+      ...(cap.includes("-") ? { autoscaleConfiguration: { minCapacity: Number(cap.split("-")[0]), maxCapacity: Number(cap.split("-")[1]) } } : {}),
+      operationalState: "Running",
+      gatewayIPConfigurations: [{ id: `${r.id}/gatewayIPConfigurations/gw`, name: "gw", properties: { subnet: { id: sid } } }],
+      frontendIPConfigurations: [...pip, ...(n.props.privateIp ? [{ id: `${r.id}/frontendIPConfigurations/fe-private`, name: "fe-private", properties: { privateIPAddress: n.props.privateIp, subnet: { id: sid } } }] : [])],
+      frontendPorts: [{ id: `${r.id}/frontendPorts/p`, name: "p", properties: { port: Number(fp) } }],
+      httpListeners: [{ id: `${r.id}/httpListeners/l`, name: "l", properties: { protocol: proto![0] + proto!.slice(1).toLowerCase(), frontendPort: { id: `${r.id}/frontendPorts/p` } } }],
+      backendAddressPools: [{ id: `${r.id}/backendAddressPools/pool`, name: "pool", properties: { backendIPConfigurations: members, backendAddresses: [] } }],
+      backendHttpSettingsCollection: [{ id: `${r.id}/backendHttpSettingsCollection/s`, name: "s", properties: { port: Number(bp), protocol: "Http" } }],
+      requestRoutingRules: [{ id: `${r.id}/requestRoutingRules/rr`, name: "rr", properties: { priority: 100, httpListener: { id: `${r.id}/httpListeners/l` }, backendAddressPool: { id: `${r.id}/backendAddressPools/pool` }, backendHttpSettings: { id: `${r.id}/backendHttpSettingsCollection/s` } } }],
+    });
+    const ids = edgesFrom(n.id).filter((e) => e.label === "identity").map((e) => nodeArmId(byId.get(e.to)!)).filter((x): x is string => !!x);
+    if (ids.length) r.identity = { type: "UserAssigned", userAssignedIdentities: Object.fromEntries(ids.map((i) => [i, { principalId: k.guid(i), clientId: k.guid(`${i}c`) }])) };
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "wafPolicy" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const targets = edgesFrom(n.id).filter((e) => e.label === "WAF policy").map((e) => nodeArmId(byId.get(e.to)!)).filter((x): x is string => !!x);
+    if (r.type.includes("frontdoor")) {
+      r.location = "Global";
+      Object.assign(P(r), { policySettings: { enabledState: "Enabled", mode: n.props.mode ?? "Prevention" }, securityPolicyLinks: targets.map((t) => ({ id: `${t}/securityPolicies/sp-0` })) });
+    } else Object.assign(P(r), { policySettings: { state: "Enabled", mode: n.props.mode ?? "Prevention" }, applicationGateways: targets.map((id) => ({ id })) });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "frontDoor" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    r.location = "Global";
+    r.sku = { name: n.props.sku ?? "Standard_AzureFrontDoor" };
+    for (const f of folded(n, "Microsoft.Cdn/profiles/afdEndpoints")) {
+      const e = foldedRow(n, f);
+      if (e) Object.assign(e, { location: "Global" }) && Object.assign(P(e), { hostName: `${e.name}-abcdefgh.z01.azurefd.net`, enabledState: "Enabled" });
+    }
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "trafficManager" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    r.location = "global";
+    P(r).trafficRoutingMethod = n.props.routing ?? "Priority";
+    P(r).endpoints = edgesFrom(n.id)
+      .filter((e) => e.kind === "traffic")
+      .map((e, i) => {
+        const t = byId.get(e.to)!;
+        const tid = nodeArmId(t);
+        const m = /^(priority|weight) (\d+)$/.exec(e.label ?? "");
+        return { id: `${r.id}/azureEndpoints/ep-${i}`, name: `ep-${i}`, type: "Microsoft.Network/trafficManagerProfiles/azureEndpoints", properties: { targetResourceId: tid, endpointStatus: "Enabled", endpointMonitorStatus: "Online", ...(m ? { [m[1]!]: Number(m[2]) } : {}) } };
+      });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "privateLinkService" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const lbs = edgesFrom(n.id).filter((e) => e.label === "frontend").map((e) => nodeArmId(byId.get(e.to)!));
+    const nic = k.base(k.armId(r.resourceGroup, "Microsoft.Network/networkInterfaces", [`${r.name}.nic.${k.guid(r.name)}`]), "Microsoft.Network/networkInterfaces", null);
+    Object.assign(P(nic), { privateLinkService: { id: r.id }, ipConfigurations: [{ id: `${nic.id}/ipConfigurations/nat`, name: "nat", properties: { privateIPAddress: "10.71.198.4", subnet: { id: subnetOf(n) } } }] });
+    Object.assign(P(r), { loadBalancerFrontendIpConfigurations: lbs.map((id) => ({ id: `${id}/frontendIPConfigurations/fe-0` })), ipConfigurations: [{ id: `${r.id}/ipConfigurations/nat`, name: "nat", properties: { subnet: { id: subnetOf(n) } } }], networkInterfaces: [{ id: nic.id }] });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "containerGroup" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const sid = subnetOf(n);
+    Object.assign(P(r), {
+      osType: "Linux",
+      containers: [{ name: "web", properties: { image: "mcr.microsoft.com/azurelinux/base/python:3.12", resources: { requests: { cpu: Number(n.props.cpu ?? 0.5), memoryInGB: Number(n.props.memoryGb ?? 0.5) } } } }],
+      ipAddress: sid ? { type: "Private", ip: "10.71.197.4" } : { type: "Public", ip: "203.0.113.70", fqdn: `${r.name}.${k.ctx.region}.azurecontainer.io` },
+      ...(sid ? { subnetIds: [{ id: sid }] } : {}),
+      instanceView: { state: "Running" },
+    });
+  }
+}
 
 /** Planned nodes the live query should list (a kind it lists, inside the lab's groups). */
 export const listable = (n: TopoNode): boolean => n.kind !== "lane" && n.kind !== "gateway" && n.scope !== "outside" && KINDS[n.kind].liveVisible;

@@ -409,12 +409,36 @@
  ],
  "edges": [
   {
-   "id": "traffic:tf:azurerm_lb.gw>tf:azurerm_linux_virtual_machine.nva:ALL 0→0",
+   "id": "traffic:tf:azurerm_lb.global>tf:azurerm_lb.uks:TCP 80→80",
+   "from": "tf:azurerm_lb.global",
+   "to": "tf:azurerm_lb.uks",
+   "kind": "traffic",
+   "label": "TCP 80→80",
+   "via": "tf:azurerm_lb_rule.global"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.global>tf:azurerm_lb.ukw:TCP 80→80",
+   "from": "tf:azurerm_lb.global",
+   "to": "tf:azurerm_lb.ukw",
+   "kind": "traffic",
+   "label": "TCP 80→80",
+   "via": "tf:azurerm_lb_rule.global"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.gw>tf:azurerm_linux_virtual_machine.nva:HA ports",
    "from": "tf:azurerm_lb.gw",
    "to": "tf:azurerm_linux_virtual_machine.nva",
    "kind": "traffic",
-   "label": "ALL 0→0",
+   "label": "HA ports",
    "via": "tf:azurerm_lb_rule.gw"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.uks>tf:azurerm_lb.gw:chain",
+   "from": "tf:azurerm_lb.uks",
+   "to": "tf:azurerm_lb.gw",
+   "kind": "traffic",
+   "label": "chain",
+   "via": "tf:azurerm_lb.uks"
   },
   {
    "id": "traffic:tf:azurerm_lb.uks>tf:azurerm_linux_virtual_machine.web1:TCP 8081-8090→8080",

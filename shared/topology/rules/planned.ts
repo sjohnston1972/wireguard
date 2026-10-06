@@ -178,12 +178,17 @@ const recordRules = (): Record<string, TfRule> => {
       namePath: childPath("zone_name"),
       // A private record naming a resource's address (a NIC, an LB, an endpoint): a dependency edge from the zone.
       edges: (i, h) =>
-        h.refs(i, ["zone_name"]).flatMap((z) =>
-          h
+        h.refs(i, ["zone_name"]).flatMap((z) => [
+          ...h
             .refs(i, ["records", "record"])
             .filter((x) => x !== z)
-            .map((x) => ({ from: z, to: x, kind: "dependency" as const, label: `${T} ${nameOf(i)}` })),
-        ),
+            .map((x) => ({ from: z, to: x as TfInst | string, kind: "dependency" as const, label: `${T} ${nameOf(i)}` })),
+          // An address written out (a gateway's static frontend): whatever holds it.
+          ...strings(i.after.records)
+            .map((ip) => h.nodeByPrivateIp(ip))
+            .filter((x): x is string => !!x)
+            .map((n) => ({ from: z, to: `node:${n}`, kind: "dependency" as const, label: `${T} ${nameOf(i)}` })),
+        ]),
     };
   }
   return out;
@@ -193,12 +198,21 @@ const recordCount = (zone: TfInst, h: PlannedHelpers, prefix: string): string[] 
   return n ? [`records: ${n}`] : undefined;
 };
 
-/** The homes of an LB backend pool's members: NICs associated with it, and anything (a VMSS) that references it. */
+/**
+ * The homes of an LB backend pool's members: NICs associated with it, anything (a VMSS) that references it, and a
+ * Global-tier pool's regional LB frontends (azurerm_lb_backend_address_pool_address's ip configuration).
+ */
 function poolBackends(pool: TfInst, h: PlannedHelpers): string[] {
   const out = new Set<string>();
   for (const a of h.referrers(pool, ["azurerm_network_interface_backend_address_pool_association"], ["backend_address_pool_id"])) {
     for (const nic of h.refs(a, ["network_interface_id"])) {
       const home = h.home(nic);
+      if (home) out.add(home);
+    }
+  }
+  for (const a of h.referrers(pool, ["azurerm_lb_backend_address_pool_address"], ["backend_address_pool_id"])) {
+    for (const t of h.refs(a, ["backend_address_ip_configuration_id"])) {
+      const home = h.home(t);
       if (home) out.add(home);
     }
   }
@@ -209,6 +223,59 @@ function poolBackends(pool: TfInst, h: PlannedHelpers): string[] {
   }
   return [...out].sort();
 }
+
+/** An LB rule's label: "TCP 80→80"; HA ports (protocol All, port 0) say so. */
+const lbRuleLabel = (protocol: unknown, fe: unknown, be: unknown): string =>
+  str(protocol)?.toLowerCase() === "all" && (num(fe) ?? 0) === 0 && (num(be) ?? 0) === 0 ? "HA ports" : `${proto(protocol)} ${num(fe) ?? "?"}→${num(be) ?? "?"}`;
+
+/** An App Gateway's request routing as labels per backend pool name: "HTTPS 443→80" (listener protocol and port → backend port). */
+function appGwLabels(after: Record<string, unknown>): Map<string, string> {
+  const byName = (k: string) => new Map(list(after[k]).map((x) => [str((x as Record<string, unknown>)?.name) ?? "", (x ?? {}) as Record<string, unknown>]));
+  const listeners = byName("http_listener");
+  const ports = byName("frontend_port");
+  const settings = byName("backend_http_settings");
+  const out = new Map<string, string>();
+  const rules = list(after.request_routing_rule).map((x) => (x ?? {}) as Record<string, unknown>).sort((a, b) => (num(a.priority) ?? 0) - (num(b.priority) ?? 0));
+  for (const r of rules) {
+    const pool = str(r.backend_address_pool_name);
+    if (!pool || out.has(pool)) continue;
+    const l = listeners.get(str(r.http_listener_name) ?? "") ?? {};
+    const fp = num(ports.get(str(l.frontend_port_name) ?? "")?.port);
+    const bp = num(settings.get(str(r.backend_http_settings_name) ?? "")?.port);
+    out.set(pool, `${proto(l.protocol)} ${fp ?? "?"}→${bp ?? "?"}`);
+  }
+  return out;
+}
+
+/** Front Door: the profile an origin (through its group) or a child belongs to. */
+const fdProfileOf = (i: TfInst, h: PlannedHelpers): TfInst | undefined => {
+  const direct = h.refs(i, ["cdn_frontdoor_profile_id"])[0];
+  if (direct) return direct;
+  const group = h.refs(i, ["cdn_frontdoor_origin_group_id"])[0];
+  return group ? h.refs(group, ["cdn_frontdoor_profile_id"])[0] : undefined;
+};
+const fdFold: TfRule["fold"] = ["cdn_frontdoor_profile_id", "cdn_frontdoor_origin_group_id", "cdn_frontdoor_rule_set_id", "cdn_frontdoor_endpoint_id"];
+
+/** The resource a user-assigned identity block names, as a dependency edge resource → identity. */
+const identityEdges = (i: TfInst, h: PlannedHelpers): EdgeSpec[] => h.refs(i, ["identity"]).filter((x) => x.type === "azurerm_user_assigned_identity").map((x) => ({ from: i, to: x, kind: "dependency" as const, label: "identity" }));
+
+/** A Traffic Manager endpoint's label: its priority or weight under the profile's routing method. */
+const tmLabel = (ep: TfInst, profile: TfInst | undefined): string => {
+  const method = str(profile?.after.traffic_routing_method)?.toLowerCase();
+  if (method === "priority" && num(ep.after.priority) !== undefined) return `priority ${num(ep.after.priority)}`;
+  if (method === "weighted" && num(ep.after.weight) !== undefined) return `weight ${num(ep.after.weight)}`;
+  return str(profile?.after.traffic_routing_method) ?? "endpoint";
+};
+const tmEndpoint = (arm: string, targetAttrs: string[]): TfRule => ({
+  arm,
+  fold: ["profile_id"],
+  namePath: childPath("profile_id"),
+  edges: (i, h) => {
+    const profile = h.refs(i, ["profile_id"])[0];
+    if (!profile) return [];
+    return h.refs(i, targetAttrs).map((t) => ({ from: profile, to: t, kind: "traffic" as const, label: tmLabel(i, profile) }));
+  },
+});
 
 const lbChildFold: TfRule = { fold: ["loadbalancer_id"], arm: undefined };
 
@@ -312,6 +379,8 @@ export const TF_RULES: Record<string, TfRule> = {
       const fe = first(i.after.frontend_ip_configuration);
       return { sku: [str(i.after.sku), str(i.after.sku_tier)].filter(Boolean).join(" ") || undefined, privateIp: staticIp([{ ...fe, private_ip_address_allocation: fe.private_ip_address_allocation ?? (fe.private_ip_address ? "Static" : undefined) }]) };
     },
+    // A frontend chained to a Gateway LB (gateway_load_balancer_frontend_ip_configuration_id): LB → gateway LB.
+    edges: (i, h) => h.refs(i, ["frontend_ip_configuration"]).filter((t) => t.type === "azurerm_lb" && t !== i).map((t) => ({ from: i, to: t, kind: "traffic" as const, label: "chain" })),
   },
   azurerm_lb_backend_address_pool: { ...lbChildFold, arm: "Microsoft.Network/loadBalancers/backendAddressPools" },
   azurerm_lb_backend_address_pool_address: { fold: ["backend_address_pool_id"] },
@@ -322,7 +391,7 @@ export const TF_RULES: Record<string, TfRule> = {
     edges: (i, h) => {
       const lb = h.refs(i, ["loadbalancer_id"])[0];
       if (!lb) return [];
-      const label = `${proto(i.after.protocol)} ${num(i.after.frontend_port) ?? "?"}→${num(i.after.backend_port) ?? "?"}`;
+      const label = lbRuleLabel(i.after.protocol, i.after.frontend_port, i.after.backend_port);
       return h.refs(i, ["backend_address_pool_ids"]).flatMap((p) => poolBackends(p, h).map((b) => ({ from: lb, to: `node:${b}`, kind: "traffic" as const, label })));
     },
   },
@@ -350,6 +419,111 @@ export const TF_RULES: Record<string, TfRule> = {
     },
   },
   azurerm_network_interface_backend_address_pool_association: { fold: ["backend_address_pool_id"] },
+
+  // ── Application gateway and WAF policies (T3.2) ──
+  azurerm_application_gateway: {
+    arm: "Microsoft.Network/applicationGateways",
+    props: (i) => {
+      const sku = first(i.after.sku);
+      const auto = first(i.after.autoscale_configuration);
+      const fe = list(i.after.frontend_ip_configuration).map((x) => (x ?? {}) as Record<string, unknown>).find((x) => str(x.private_ip_address));
+      return {
+        sku: str(sku.name),
+        capacity: num(auto.min_capacity) !== undefined ? `${num(auto.min_capacity)}-${num(auto.max_capacity) ?? "?"}` : num(sku.capacity),
+        privateIp: fe ? str(fe.private_ip_address) : undefined,
+      };
+    },
+    edges: (i, h) => {
+      const labels = appGwLabels(i.after);
+      const label = [...labels.values()][0] ?? "HTTP";
+      return [
+        // Backends: the instances its pools reference (NICs, by their VM), labelled by the first rule into a pool.
+        ...h.refs(i, ["backend_address_pool"]).map((t) => ({ from: i, to: t, kind: "traffic" as const, label })),
+        // Pool members by address: a VM (or anything) holding that private IP.
+        ...list(i.after.backend_address_pool).flatMap((p) => {
+          const o = (p ?? {}) as Record<string, unknown>;
+          const l = labels.get(str(o.name) ?? "") ?? label;
+          return strings(o.ip_addresses)
+            .map((ip) => h.nodeByPrivateIp(ip))
+            .filter((x): x is string => !!x)
+            .map((n) => ({ from: i, to: `node:${n}`, kind: "traffic" as const, label: l }));
+        }),
+        ...identityEdges(i, h),
+        // Its TLS certificate from a Key Vault (the vault the certificate folds into).
+        ...h.refs(i, ["ssl_certificate"]).map((c) => ({ from: i, to: c, kind: "dependency" as const, label: "TLS certificate" })),
+      ];
+    },
+  },
+  azurerm_web_application_firewall_policy: {
+    arm: "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
+    props: (i) => ({ mode: str(first(i.after.policy_settings).mode) }),
+    edges: (i, h) => h.referrers(i, ["azurerm_application_gateway"], ["firewall_policy_id"]).map((a) => ({ from: i, to: a, kind: "dependency" as const, label: "WAF policy" })),
+  },
+
+  // ── Front Door: the profile is the card (Global lane); every child folds into it (T3.2) ──
+  azurerm_cdn_frontdoor_profile: { arm: "Microsoft.Cdn/profiles", props: (i) => ({ sku: str(i.after.sku_name) }) },
+  azurerm_cdn_frontdoor_endpoint: { arm: "Microsoft.Cdn/profiles/afdEndpoints", fold: fdFold, namePath: childPath("cdn_frontdoor_profile_id") },
+  azurerm_cdn_frontdoor_origin_group: { arm: "Microsoft.Cdn/profiles/originGroups", fold: fdFold, namePath: childPath("cdn_frontdoor_profile_id") },
+  azurerm_cdn_frontdoor_origin: {
+    arm: "Microsoft.Cdn/profiles/originGroups/origins",
+    fold: fdFold,
+    // Front Door → the origin: through Private Link (a PLS), or the resource its host name references (a container group, an LB, a public IP).
+    edges: (i, h) => {
+      const profile = fdProfileOf(i, h);
+      if (!profile) return [];
+      const pls = h.refs(i, ["private_link"]);
+      if (pls.length) return pls.map((t) => ({ from: profile, to: t, kind: "traffic" as const, label: "Private Link" }));
+      const routes = h.referrers(i, ["azurerm_cdn_frontdoor_route"], ["cdn_frontdoor_origin_ids"]);
+      const fwd = str(routes[0]?.after.forwarding_protocol)?.toLowerCase();
+      const label = fwd === "httponly" ? "HTTP" : fwd === "httpsonly" ? "HTTPS" : "HTTP/HTTPS";
+      const byRef = h.refs(i, ["host_name"]).map((t) => ({ from: profile, to: t as TfInst | string, kind: "traffic" as const, label }));
+      const ip = str(i.after.host_name) ? h.nodeByPrivateIp(str(i.after.host_name)!) : null;
+      return byRef.length ? byRef : ip ? [{ from: profile, to: `node:${ip}`, kind: "traffic" as const, label }] : [];
+    },
+  },
+  azurerm_cdn_frontdoor_route: { arm: "Microsoft.Cdn/profiles/afdEndpoints/routes", fold: fdFold },
+  azurerm_cdn_frontdoor_rule_set: { arm: "Microsoft.Cdn/profiles/ruleSets", fold: fdFold },
+  azurerm_cdn_frontdoor_rule: { arm: "Microsoft.Cdn/profiles/ruleSets/rules", fold: fdFold },
+  azurerm_cdn_frontdoor_custom_domain: { arm: "Microsoft.Cdn/profiles/customDomains", fold: fdFold },
+  azurerm_cdn_frontdoor_secret: { arm: "Microsoft.Cdn/profiles/secrets", fold: fdFold, foldedLabel: "secret" },
+  azurerm_cdn_frontdoor_security_policy: {
+    arm: "Microsoft.Cdn/profiles/securityPolicies",
+    fold: fdFold,
+    // The WAF policy it applies: WAF policy → profile.
+    edges: (i, h) => {
+      const profile = h.refs(i, ["cdn_frontdoor_profile_id"])[0];
+      return profile ? h.refs(i, ["security_policies"]).filter((x) => x.type === "azurerm_cdn_frontdoor_firewall_policy").map((w) => ({ from: w, to: profile, kind: "dependency" as const, label: "WAF policy" })) : [];
+    },
+  },
+  azurerm_cdn_frontdoor_firewall_policy: { arm: "Microsoft.Network/FrontDoorWebApplicationFirewallPolicies", props: (i) => ({ mode: str(i.after.mode), sku: str(i.after.sku_name) }) },
+
+  // ── Traffic Manager: endpoints fold into the profile and are drawn as edges to their targets (T3.2) ──
+  azurerm_traffic_manager_profile: { arm: "Microsoft.Network/trafficManagerProfiles", props: (i) => ({ routing: str(i.after.traffic_routing_method) }) },
+  azurerm_traffic_manager_external_endpoint: tmEndpoint("Microsoft.Network/trafficManagerProfiles/externalEndpoints", ["target"]),
+  azurerm_traffic_manager_azure_endpoint: tmEndpoint("Microsoft.Network/trafficManagerProfiles/azureEndpoints", ["target_resource_id"]),
+  azurerm_traffic_manager_nested_endpoint: tmEndpoint("Microsoft.Network/trafficManagerProfiles/nestedEndpoints", ["target_resource_id"]),
+
+  // ── Private Link service → its LB frontend (T3.2/T3.4) ──
+  azurerm_private_link_service: {
+    arm: "Microsoft.Network/privateLinkServices",
+    edges: (i, h) => h.refs(i, ["load_balancer_frontend_ip_configuration_ids"]).map((lb) => ({ from: i, to: lb, kind: "traffic" as const, label: "frontend" })),
+  },
+
+  // ── Diagnostics and identities (T3.2 labs; T3.6 extends) ──
+  // A diagnostic setting folds into the resource it watches and is drawn as resource → workspace.
+  azurerm_monitor_diagnostic_setting: {
+    arm: "Microsoft.Insights/diagnosticSettings",
+    fold: ["target_resource_id"],
+    edges: (i, h) =>
+      h.refs(i, ["target_resource_id"]).flatMap((t) => h.refs(i, ["log_analytics_workspace_id", "storage_account_id", "eventhub_authorization_rule_id"]).map((w) => ({ from: t, to: w, kind: "dependency" as const, label: "diagnostics" }))),
+  },
+  azurerm_user_assigned_identity: { arm: "Microsoft.ManagedIdentity/userAssignedIdentities" },
+  // An access policy folds into its vault and is drawn as principal → vault (its permissions are scrubbed: "access policy").
+  azurerm_key_vault_access_policy: {
+    arm: "Microsoft.KeyVault/vaults/accessPolicies",
+    fold: ["key_vault_id"],
+    edges: (i, h) => h.refs(i, ["key_vault_id"]).flatMap((v) => h.refs(i, ["object_id"]).map((p) => ({ from: p, to: v, kind: "dependency" as const, label: "access policy" }))),
+  },
 
   // ── Template deployments (Bicep labs, ruling 24): the deployment folds into its group; its resources are expanded. ──
   azurerm_resource_group_template_deployment: { arm: "Microsoft.Resources/deployments", fold: ["resource_group_name"] },
