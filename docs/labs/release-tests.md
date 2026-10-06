@@ -41,3 +41,11 @@ lab's hourly estimate times those minutes.
 | 2026-10-06 05:27 | az305-22-keyvault-mi | 1 | pass | yes | none | 6m 23s | 3m 16s | £0.0017 | 37417724811 |
 | 2026-10-06 05:42 | az305-24-cosmos | 1 | pass | yes | none | 3m 27s | 10m 45s | £0.0006 | 37418603934 |
 | 2026-10-06 05:49 | az305-26-site-recovery | 2 | fail | yes | none | — | 6m 14s | £0.0066 | 37418264048 |
+| 2026-10-06 06:46 | az305-25-storage-design | 2 | pass | yes | none | 1m 27s | 2m 22s | £0.0000 | 37425201115 |
+| 2026-10-06 07:02 | az305-20-landing-zone | 2 | pass | yes | none | 3m 59s | 11m 25s | £0.0000 | 37425632226 |
+| 2026-10-06 07:17 | az305-22-keyvault-mi | 2 | pass | yes | none | 6m 15s | 3m 35s | £0.0018 | 37427708400 |
+| 2026-10-06 07:23 | az305-23-sql-failover | 2 | pass | yes | none | 9m 7s | 6m 4s | £0.0383 | 37427709522 |
+| 2026-10-06 07:23 | az305-21-monitoring-scale | 2 | pass | yes | none | 6m 35s | 5m 15s | £0.0001 | 37427238049 |
+| 2026-10-06 07:32 | az305-24-cosmos | 2 | pass | yes | none | 2m 57s | 10m 33s | £0.0006 | 37428794963 |
+| 2026-10-06 07:50 | az305-26-site-recovery | 3 | pass | yes | none | 60m 11s | 7m 18s | £0.0710 | 37425197793 |
+| 2026-10-06 07:58 | az305-27-multi-region | 2 | pass | yes | none | 4m 24s | 20m 39s | £0.0327 | 37430276351 |

@@ -315,14 +315,14 @@
    "type": "azurerm_site_recovery_replicated_vm",
    "refs": {
     "managed_disk": [
-     "azurerm_storage_account.cache.id",
-     "azurerm_storage_account.cache",
      "azurerm_resource_group.secondary.id",
      "azurerm_resource_group.secondary",
      "azurerm_linux_virtual_machine.vm.os_disk[0].id",
      "azurerm_linux_virtual_machine.vm.os_disk[0]",
      "azurerm_linux_virtual_machine.vm.os_disk",
-     "azurerm_linux_virtual_machine.vm"
+     "azurerm_linux_virtual_machine.vm",
+     "azurerm_storage_account.cache.id",
+     "azurerm_storage_account.cache"
     ],
     "network_interface": [
      "azurerm_subnet.test.name",

@@ -349,15 +349,16 @@ test(`${SR}: vm_sizes lists two Standard_B1s and the replica disk is priced in t
   assert.equal(transfer.retail, undefined);
 });
 
-test(`${SR}: deploy allows for the initial replication, destroy for disabling it, and the job timeout is 140`, () => {
-  // azurerm's replicated-VM create waits for the initial replication, so the
-  // first release test gets 40 minutes (job timeout 140); the measured time
-  // replaces it afterwards. A deploy of 30 or more makes the lab £££.
+test(`${SR}: deploy allows for the initial replication, destroy for disabling it, and the job timeout is the 150 cap`, () => {
+  // azurerm's replicated-VM create waits for the initial replication. The
+  // AlmaLinux release test (2026-10-06) deployed in 60m 11s, so 61; destroy
+  // took 7m 18s but stays 20 for the unblock's Site Recovery waits after a
+  // failover. A deploy of 30 or more makes the lab £££.
   const { timing, prerequisites, regions, connectivity, version } = lab(SR).yaml;
-  assert.deepEqual(timing, { deploy_min: 40, destroy_min: 20, session_h: 3, max_h: 8 });
-  assert.equal(Math.min(150, 2 * (timing.deploy_min + timing.destroy_min) + 20), 140);
-  assert.ok(version >= 3, "the timing change (v2) and the switch to AlmaLinux (v3) each bump the version");
-  assert.match(lab(SR).readme, /about 40 minutes/, "the readme gives the deploy time");
+  assert.deepEqual(timing, { deploy_min: 61, destroy_min: 20, session_h: 3, max_h: 8 });
+  assert.equal(Math.min(150, 2 * (timing.deploy_min + timing.destroy_min) + 20), 150);
+  assert.ok(version >= 4, "timings (v2), AlmaLinux (v3) and the measured deploy (v4) each bump the version");
+  assert.match(lab(SR).readme, /about an hour/, "the readme gives the deploy time");
   assert.deepEqual(prerequisites, ["az104-08-vms"]);
   assert.deepEqual(regions, { secondary: "ukwest" });
   assert.deepEqual(connectivity, { peering: "optional", dns_link: false, subnets_used: 3 });
