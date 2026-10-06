@@ -1,0 +1,48 @@
+# Lab 31 (AZ-700 plan area Z1). AZ-700 study guide skills this lab touches
+# (outline "Skills measured as of July 27, 2026"):
+#   Design and implement core networking infrastructure > Design and
+#   implement IP addressing for Azure resources: "Create a prefix for public
+#   IP addresses", "Choose when to use a public IP address prefix",
+#   "Associate public IP addresses to resources". Design and implement
+#   Azure Virtual Network connectivity and routing: "Implement a NAT
+#   gateway" and outbound connectivity (default outbound access, load
+#   balancer outbound rules). BYOIP custom prefixes are readme-only (ruling 43).
+# Costs are GBP list prices for UK South (Retail Prices API, 2026-10-05),
+# rounded up. The VMs, their OS disks and the prefix addresses carry retail
+# entries the price feed refreshes; npm run labs-verify -- --meters
+# az700-31-ip-nat-outbound checks them (Standard_B1s Linux £0.0089/h; S4 LRS
+# Disk £1.28 a month, about £0.0018/h; "Standard Static IP Addresses", a
+# public IP prefix's addresses, £0.0045/h each, two /31s = four). NAT
+# Gateway and Load Balancer have no uksouth row (Azure prices them under
+# region Global), so they stay authored (ruling 54): NAT gateway £0.034/h
+# plus £0.034/GB processed (a few MB here); Standard load balancer, first 5
+# rules £0.0189/h (the outbound rule counts as one).
+id: az700-31-ip-nat-outbound
+version: 1
+title: "Public IP prefixes, NAT Gateway and outbound rules"
+summary: >-
+  Two VMs in subnets with default outbound access turned off: one leaves through a NAT gateway, one through a
+  load balancer's outbound rule, each on the addresses of its own public IP prefix, so you can see explicit
+  outbound connectivity and which way wins.
+exam: AZ-700
+skill_areas: [az700.core]
+level: associate
+type: explore
+prerequisites: [az104-13-vnets]
+cost:
+  items:
+    - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
+    - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
+    - { name: "Public IP prefix addresses (two /31s)", gbp_h: 0.0045, qty: 4, retail: { meter: "Standard Static IP Addresses", unit: "1 Hour" } }
+    - { name: "NAT gateway", gbp_h: 0.034 }
+    - { name: "NAT gateway data processed, a few MB", gbp_h: 0.0001 }
+    - { name: "Standard load balancer, first 5 rules", gbp_h: 0.0189 }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 5, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false
