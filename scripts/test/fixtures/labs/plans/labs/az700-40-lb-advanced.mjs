@@ -105,13 +105,13 @@ export default () => {
 
       // NSGs.
       nsg("web", "nsg-web-uks", false),
-      rule("web_http", "web", "nsg-web-uks", false, { name: "allow-http-from-internet", protocol: "Tcp", destination_port_range: "80", source_address_prefix: "Internet" }),
+      rule("web_http", "web", "nsg-web-uks", false, { name: "allow-http-from-internet", protocol: "Tcp", destination_port_ranges: ["80", "8080"], source_address_prefix: "Internet" }),
       nsgOn("web", "web"),
       nsg("nva", "nsg-nva", false),
       rule("nva_vxlan", "nva", "nsg-nva", false, { name: "allow-vxlan-from-vnet", protocol: "Udp", destination_port_range: "10800-10801", source_address_prefix: "VirtualNetwork" }),
       nsgOn("nva", "nva"),
       nsg("ukw_web", "nsg-web-ukw", true),
-      rule("ukw_web_http", "ukw_web", "nsg-web-ukw", true, { name: "allow-http-from-internet", protocol: "Tcp", destination_port_range: "80", source_address_prefix: "Internet" }),
+      rule("ukw_web_http", "ukw_web", "nsg-web-ukw", true, { name: "allow-http-from-internet", protocol: "Tcp", destination_port_ranges: ["80", "8080"], source_address_prefix: "Internet" }),
       nsgOn("ukw_web", "ukw_web"),
 
       // VMs.
@@ -155,7 +155,7 @@ export default () => {
       lbRule("uks", "fe-uks", { disable_outbound_snat: true }),
       {
         address: "azurerm_lb_nat_rule.uks",
-        values: { name: "nat-web-8081-8090", resource_group_name: c.rg, protocol: "Tcp", frontend_port_start: 8081, frontend_port_end: 8090, backend_port: 80, frontend_ip_configuration_name: "fe-uks-chained" },
+        values: { name: "nat-web-8081-8090", resource_group_name: c.rg, protocol: "Tcp", frontend_port_start: 8081, frontend_port_end: 8090, backend_port: 8080, frontend_ip_configuration_name: "fe-uks-chained" },
         unknown: ["loadbalancer_id", "backend_address_pool_id"],
         refs: { ...inRg, loadbalancer_id: ref("azurerm_lb.uks", "id"), backend_address_pool_id: ref("azurerm_lb_backend_address_pool.uks", "id") },
       },

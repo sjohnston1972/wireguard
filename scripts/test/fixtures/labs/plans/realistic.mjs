@@ -60,8 +60,10 @@ export const SCHEMA_FACTS = JSON.parse(readFileSync(new URL("./schema-facts.json
 export const UNSET_BLOCKS_UNKNOWN = {
   azurerm_cosmosdb_account: ["analytical_storage", "backup", "capacity"],
   azurerm_cosmosdb_sql_container: ["conflict_resolution_policy", "indexing_policy"],
+  azurerm_dns_zone: ["soa_record"],
   azurerm_key_vault: ["contact", "network_acls"],
   azurerm_linux_virtual_machine: ["termination_notification"],
+  azurerm_monitor_diagnostic_setting: ["enabled_metric", "metric"],
   azurerm_mssql_database: ["long_term_retention_policy", "short_term_retention_policy", "threat_detection_policy"],
   azurerm_private_dns_zone: ["soa_record"],
   azurerm_storage_account: ["blob_properties", "network_rules", "queue_properties", "routing", "share_properties", "static_website"],
@@ -70,9 +72,10 @@ export const UNSET_BLOCKS_UNKNOWN = {
 /**
  * Computed attributes a provider already knows at plan when the configuration leaves them unset: the defaults it
  * fills in. Known (in the planned values, not in after_unknown) and not configured (no expression). As the real
- * plans recorded them: lab 21's workspace, lab 22's random passwords (hashicorp/random 3.9.1's defaults).
+ * plans recorded them: lab 21's workspace, lab 22's random passwords, lab 42's WAF policy (hashicorp/random 3.9.1's defaults).
  */
 export const PLAN_DEFAULTS = {
+  azurerm_cdn_frontdoor_firewall_policy: { captcha_cookie_expiration_in_minutes: 30, js_challenge_cookie_expiration_in_minutes: 30 },
   azurerm_log_analytics_workspace: { local_authentication_enabled: true },
   random_password: { lower: true, min_lower: 0, min_numeric: 0, min_special: 0, min_upper: 0, number: true, numeric: true, special: true, upper: true },
 };

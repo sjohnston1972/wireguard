@@ -108,8 +108,9 @@ resource "azurerm_network_security_group" "web" {
   tags                = var.tags
 }
 
-# The NAT rule's frontend ports (8081-8090) reach the VM as port 80, and an
-# NSG sees the packet after the load balancer has translated it.
+# The NAT rule's frontend ports (8081-8090) reach the VM as port 8080, and an
+# NSG sees the packet after the load balancer has translated it. Port 80 is
+# the load-balancing rules'.
 resource "azurerm_network_security_rule" "web_http" {
   name                        = "allow-http-from-internet"
   resource_group_name         = azurerm_resource_group.lab.name
@@ -119,7 +120,7 @@ resource "azurerm_network_security_rule" "web_http" {
   access                      = "Allow"
   protocol                    = "Tcp"
   source_port_range           = "*"
-  destination_port_range      = "80"
+  destination_port_ranges     = ["80", "8080"]
   source_address_prefix       = "Internet"
   destination_address_prefix  = "*"
 }
@@ -173,7 +174,7 @@ resource "azurerm_network_security_rule" "ukw_web_http" {
   access                      = "Allow"
   protocol                    = "Tcp"
   source_port_range           = "*"
-  destination_port_range      = "80"
+  destination_port_ranges     = ["80", "8080"]
   source_address_prefix       = "Internet"
   destination_address_prefix  = "*"
 }
@@ -469,7 +470,9 @@ resource "azurerm_lb_rule" "uks" {
 }
 
 # Inbound NAT rule, version 2: a frontend port range over the pool. Each
-# member gets the next port (vm-web1 is 8081), always to port 80, never 22.
+# member gets the next port (vm-web1 is 8081), always to port 8080, never 22.
+# Not 80: Azure refuses a NAT rule on the same backend port, protocol and IP
+# configuration as a load-balancing rule (rule-http-80) without floating IP.
 # It is on the chained frontend, so this is the path through vm-nva.
 resource "azurerm_lb_nat_rule" "uks" {
   name                           = "nat-web-8081-8090"
@@ -478,7 +481,7 @@ resource "azurerm_lb_nat_rule" "uks" {
   protocol                       = "Tcp"
   frontend_port_start            = 8081
   frontend_port_end              = 8090
-  backend_port                   = 80
+  backend_port                   = 8080
   frontend_ip_configuration_name = "fe-uks-chained"
   backend_address_pool_id        = azurerm_lb_backend_address_pool.uks.id
 }

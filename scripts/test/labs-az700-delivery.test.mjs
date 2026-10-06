@@ -317,7 +317,7 @@ test(`${LB}: an inbound NAT rule maps a port range to port 80 and never to 22`, 
   assert.equal(attr(n, "loadbalancer_id"), `azurerm_lb.${uks.labels[1]}.id`);
   assert.equal(attr(n, "resource_group_name"), IN_LAB);
   // Version 2: a frontend port range over a backend pool, not one rule per NIC.
-  assert.deepEqual([attr(n, "protocol"), attr(n, "frontend_port_start"), attr(n, "frontend_port_end"), attr(n, "backend_port")], ['"Tcp"', "8081", "8090", "80"]);
+  assert.deepEqual([attr(n, "protocol"), attr(n, "frontend_port_start"), attr(n, "frontend_port_end"), attr(n, "backend_port")], ['"Tcp"', "8081", "8090", "8080"]);
   assert.equal(attr(n, "frontend_port"), undefined);
   const pool = onLb(l, "azurerm_lb_backend_address_pool", uks.labels[1])[0];
   assert.equal(attr(n, "backend_address_pool_id"), `azurerm_lb_backend_address_pool.${pool.labels[1]}.id`);
@@ -411,8 +411,10 @@ test(`${LB}: the web subnets let port 80 in from the internet, the NAT rule's ra
     assert.equal(ruleString(r.body, "access"), "Allow");
     assert.equal(ruleString(r.body, "direction"), "Inbound");
     assert.equal(ruleString(r.body, "protocol"), "Tcp");
-    // An NSG sees the packet after the load balancer translates it: 8081-8090 arrive as 80.
-    assert.equal(ruleString(r.body, "destination_port_range"), "80", `${r.key}: port 80 only`);
+    // An NSG sees the packet after the load balancer translates it: 8081-8090 arrive as 8080
+    // (Azure refuses a NAT rule on the same backend port as a load-balancing rule, release test 2026-10-06).
+    assert.equal(attr(r.body, "destination_port_range"), undefined, `${r.key}: a list of ports`);
+    assert.deepEqual(strings(attr(r.body, "destination_port_ranges")).sort(), ["80", "8080"], `${r.key}: ports 80 and 8080 only`);
     const nsg = byName(l, "azurerm_network_security_group", r.nsg).body;
     assert.match(attr(nsg, "name"), /^"nsg-web-/);
   }
@@ -435,8 +437,10 @@ test(`${LB}: three Standard_B1s VMs, one in ukwest, each web VM serving its name
     assert.equal(attr(v.body, "custom_data"), `base64encode(templatefile("\${path.module}/cloud-init.yaml.tftpl", { name = "${name}", region = ${region} }))`);
   }
   const { doc } = renderCloudInit(l, "cloud-init.yaml.tftpl", { name: "vm-web1", region: "uksouth" });
-  const unit = doc.write_files.find((f) => f.path === "/etc/systemd/system/lab-http.service");
-  assert.match(unit.content, /^ExecStart=\/usr\/bin\/python3 -m http\.server 80 --directory \/srv\/lab$/m);
+  // A template unit, one instance per port: 80 for the load-balancing rules, 8080 for the NAT rule.
+  const unit = doc.write_files.find((f) => f.path === "/etc/systemd/system/lab-http@.service");
+  assert.match(unit.content, /^ExecStart=\/usr\/bin\/python3 -m http\.server %i --directory \/srv\/lab$/m);
+  assert.ok(doc.runcmd.some((c) => String(c).includes("lab-http@80.service") && String(c).includes("lab-http@8080.service")), "both ports enabled");
   assert.match(unit.content, /vm-web1 in uksouth/);
   assert.equal(doc.packages, undefined, "nothing to install: the web subnets have no default outbound access");
 });
@@ -471,7 +475,8 @@ test(`${LB}: lab.yaml prices both regions and the readme says what the chain and
   assert.match(r, /VXLAN/);
   assert.match(r, /tcpdump/);
   assert.match(r, /8081/);
-  assert.match(r, /after (the load balancer )?translat/i, "why the NSG allows 80 and not 8081-8090");
+  assert.match(r, /after (the load balancer )?translat/i, "why the NSG allows 8080 and not 8081-8090");
+  assert.match(r, /same backend port/i, "why the NAT rule goes to 8080, not 80");
   assert.equal(attr(output(l, "peer_vnet_id").body, "value"), "azurerm_virtual_network.uks.id");
   for (const o of ["private_ips", "connect"]) assert.ok(outputs(l).includes(o));
 });
@@ -780,12 +785,14 @@ test(`${AFD}: a Premium WAF policy in Prevention with managed rule sets, attache
   assert.equal(attr(custom[0], "type"), '"RateLimitRule"');
   assert.equal(attr(custom[0], "action"), '"Block"');
   assert.ok(Number(attr(custom[0], "rate_limit_threshold")) > 0);
-  // Review fix 14: RequestUri is the whole URL (scheme and host too), so BeginsWith "/" may never match and the
-  // rate limit would never trip. Any matches every request.
+  // RequestUri may be the whole URL (scheme and host too), so BeginsWith "/" might never match. Any would
+  // match everything, but Azure refuses match values with Any and azurerm requires one (release test
+  // 2026-10-06), so Contains "/" counts every request either way.
   const mc = allNested(custom[0], "match_condition");
   assert.equal(mc.length, 1);
-  assert.equal(attr(mc[0], "operator"), '"Any"');
-  assert.equal(planned(AFD, `azurerm_cdn_frontdoor_firewall_policy.${w.labels[1]}`).custom_rule[0].match_condition[0].operator, "Any");
+  assert.equal(attr(mc[0], "operator"), '"Contains"');
+  assert.deepEqual(strings(attr(mc[0], "match_values")), ["/"]);
+  assert.equal(planned(AFD, `azurerm_cdn_frontdoor_firewall_policy.${w.labels[1]}`).custom_rule[0].match_condition[0].operator, "Contains");
   const sp = one(l, "azurerm_cdn_frontdoor_security_policy").body;
   assert.equal(attr(sp, "cdn_frontdoor_profile_id"), `azurerm_cdn_frontdoor_profile.${one(l, "azurerm_cdn_frontdoor_profile").labels[1]}.id`);
   assert.equal(attr(nested(sp, "firewall"), "cdn_frontdoor_firewall_policy_id"), `azurerm_cdn_frontdoor_firewall_policy.${w.labels[1]}.id`);

@@ -21,7 +21,7 @@
 # Outbound Rules" £0.0189/h, "Gateway" £0.0094/h and "Gateway Chain"
 # £0.0075/h. Data processed (£0.0038/GB, Gateway £0.003/GB) is pennies.
 id: az700-40-lb-advanced
-version: 2
+version: 3
 title: "Load Balancer: cross-region, Gateway LB, inbound NAT, outbound rules"
 summary: >-
   A global-tier load balancer in front of public load balancers in uksouth and ukwest, the uksouth one with a second

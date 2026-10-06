@@ -360,11 +360,12 @@ resource "azurerm_cdn_frontdoor_firewall_policy" "lab" {
     rate_limit_duration_in_minutes = 1
     rate_limit_threshold           = 100
 
-    # Every request counts: RequestUri is the whole URL, so BeginsWith "/"
-    # might never match. Any ignores match_values (azurerm requires one).
+    # Every request counts: RequestUri may be the whole URL, so BeginsWith "/"
+    # might never match. Any would, but Azure refuses match values with Any
+    # and azurerm requires one, so Contains "/" (every URL has one).
     match_condition {
       match_variable = "RequestUri"
-      operator       = "Any"
+      operator       = "Contains"
       match_values   = ["/"]
     }
   }

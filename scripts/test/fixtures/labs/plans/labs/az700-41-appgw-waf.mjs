@@ -180,6 +180,8 @@ export default () => {
           ],
           ssl_policy: [{ policy_type: "Predefined", policy_name: "AppGwSslPolicy20220101" }],
         },
+        // The real plan (2026-10-06) marks the whole ssl_certificate set sensitive (it holds data and password).
+        sensitive: ["ssl_certificate"],
         unknown: [
           "firewall_policy_id",
           "identity.0.identity_ids",

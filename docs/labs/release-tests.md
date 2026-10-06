@@ -50,3 +50,20 @@ lab's hourly estimate times those minutes.
 | 2026-10-06 07:50 | az305-26-site-recovery | 3 | pass | yes | none | 60m 11s | 7m 18s | £0.0710 | 37425197793 |
 | 2026-10-06 07:58 | az305-27-multi-region | 2 | pass | yes | none | 4m 24s | 20m 39s | £0.0327 | 37430276351 |
 | 2026-10-06 08:52 | az305-26-site-recovery | 4 | pass | yes | none | 40m 7s | 8m 29s | £0.0511 | 37433506191 |
+| 2026-10-06 11:38 | az104-13-vnets | 2 | pass | yes | none | 3m 7s | 4m 9s | £0.0027 | 37456851757 |
+| 2026-10-06 11:46 | az104-14-peering-udr | 2 | pass | yes | none | 2m 52s | 3m 55s | £0.0037 | 37457752516 |
+| 2026-10-06 11:50 | az104-16-lb-appgw | 3 | pass | yes | none | 9m 54s | 10m 6s | £0.0798 | 37456855442 |
+| 2026-10-06 11:56 | az104-15-dns | 2 | pass | yes | none | 2m 48s | 6m 25s | £0.0018 | 37458594223 |
+| 2026-10-06 12:04 | az104-17-netwatcher-fix | 2 | pass | yes | none | 3m 8s | 4m 10s | £0.0027 | 37459739721 |
+| 2026-10-06 12:14 | az700-38-hub-firewall | 1 | pass | yes | none | 10m 3s | 11m 59s | £0.1221 | 37459151590 |
+| 2026-10-06 12:26 | az700-32-dns-resolver | 1 | pass | yes | none | 3m 57s | 7m 25s | £0.0752 | 37461811263 |
+| 2026-10-06 12:32 | az305-27-multi-region | 3 | pass | yes | none | 4m 21s | 22m 55s | £0.0356 | 37460660230 |
+| 2026-10-06 12:39 | az700-31-ip-nat-outbound | 1 | pass | yes | none | 2m 40s | 3m 53s | £0.0101 | 37463932093 |
+| 2026-10-06 12:45 | az700-35-forced-tunnel-fix | 1 | pass | yes | none | 2m 14s | 3m 16s | £0.0020 | 37464855594 |
+| 2026-10-06 12:52 | az700-41-appgw-waf | 1 | pass | yes | none | 13m 46s | 11m 17s | £0.1573 | 37463244307 |
+| 2026-10-06 12:56 | az700-43-private-link | 1 | pass | yes | none | 4m 14s | 6m 19s | £0.0098 | 37465605223 |
+| 2026-10-06 13:09 | az700-40-lb-advanced | 2 | fail | yes | none | — | 5m 55s | £0.0123 | 37466999221 |
+| 2026-10-06 13:20 | az700-33-vnet-manager | 2 | fail | yes | none | — | 6m 30s | £0.0072 | 37468580167 |
+| 2026-10-06 13:22 | az700-42-frontdoor-private | 2 | fail | yes | none | — | 22m 26s | £0.1387 | 37466412490 |
+| 2026-10-06 13:52 | az700-34-route-server | 1 | pass | yes | none | 18m 10s | 10m 38s | £0.1751 | 37470264092 |
+| 2026-10-06 13:52 | az700-44-flow-logs-bastion | 1 | pass | yes | none | 16m 29s | 12m 37s | £0.0885 | 37470060551 |
