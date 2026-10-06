@@ -864,3 +864,38 @@ in them are to the AZ-700 design spec.
     `{ sku: Standard_B1s }`, `S4 LRS Disk`.
 55. **Bastion is Basic** in lab 44, with the documented AzureBastionSubnet NSG; Developer (free, no subnet, one VM, no
     peering) is a readme comparison.
+
+Rulings 56–61 are the AZ-700 integrator's (2026-10-06, `feat/labs-az700`): the content areas' calls, each checked and
+accepted as built.
+
+56. **`subnets_used` counts every /20 of the slot a lab's Terraform takes, VNet or not** (the content suite counts the
+    distinct `cidrsubnet(var.address_space, 2, n)`). Lab 34 is 3 (hub /20 0, spoke /20 1, the FRR-advertised /24 in /20 3);
+    lab 37 is 2 (hub /20 0; the P2S pool, the last /24 of /20 3); lab 39 is 3 (spokes /20 0 and 1, the hub /23 in /20 3).
+    **Lab 37's client pool is derived from the slot** (`cidrsubnet(cidrsubnet(var.address_space, 2, 3), 4, 15)`), never
+    fixed: it stays inside the session's own /18, so it cannot meet another lab's slot (the 32 slots of 10.64.0.0/13 are
+    disjoint, so two labs at once never collide) or the gateway's own ranges (outside the pool, §4); on Steven's PC the P2S
+    routes are more specific than WireGuard's 10.64.0.0/13 route. Test 6 checks the pool against the lab's VNets.
+57. **Service subnets say `default_outbound_access_enabled = true`** (ruling 37's "say so", for subnets with no VM):
+    `GatewaySubnet`, `RouteServerSubnet`, `AzureFirewallSubnet`, `AzureFirewallManagementSubnet`, `AzureBastionSubnet`, the
+    resolver's delegated subnets and the App Gateway subnet keep the value those services were proven on (Learn, "Default
+    outbound access", 2026-07-24: private subnets do not apply to delegated or managed service subnets). VM subnets say
+    `false` where the lab teaches or forces explicit outbound (31; 35's spoke; 38 and 39's spokes) or where nothing needs the
+    internet (40, 41's web, 42, 43's provider and endpoint subnets: no package installs, pages from `python3`), and `true`
+    where cloud-init installs a package or the learner needs the internet (32, 33, 34, 35's NVA, 36, 37, 43's client, 44).
+    Lab 33's spoke NSGs deny SSH from the hub (the AlwaysAllow admin rule visibly wins) instead of allowing it from anywhere:
+    ruling 50 forbids an inbound internet SSH rule.
+58. **Lab 36's local network gateways read the far gateway's BGP address through `try(…default_addresses[0], "")`.**
+    Accepted: a real plan has the address unknown (the gateway does not exist yet) and `try()` passes an unknown through
+    (Terraform 1.14 plans `try(<unknown>, "")` as "known after apply", checked), so the `""` fallback is reached only in
+    labs-tf's mocked plan, whose computed peering list is empty. It cannot hide a real misconfiguration: at apply the
+    address is known, and if Azure ever returned none the local network gateway would carry an empty BGP address, which
+    fails the apply or leaves BGP down (the lab 36 soak checks BGP `Connected`). The plan fixture keeps the attribute
+    unknown with the reference, and the release test records the real shape.
+59. **Lab 40's web NSGs allow TCP 80 only, not the NAT rule's 8081–8090:** an NSG sees inbound NAT traffic after the load
+    balancer has translated it to backend port 80, so a rule for the frontend ports would never match.
+60. **Lab 43's `peer_vnet_id` is `vnet-consumer`,** not the first VNet: the learner works from the consumer side (`pe-svc`,
+    `pe-blob`, `vm-client`, the blob zone), and peering the provider would go round the Private Link service the lab
+    teaches. The provider is never peered.
+61. **Lab 41's certificate goes with the vault purge:** `purge_soft_delete_on_destroy = true`,
+    `purge_soft_deleted_certificates_on_destroy = false` and no recovery of vaults or certificates, as lab 22 does for
+    secrets (ruling 30): the destroyed certificate is soft-deleted inside the vault, and purging the vault removes it.

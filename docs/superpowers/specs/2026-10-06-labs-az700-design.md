@@ -364,6 +364,10 @@ Already copied into the main spec's §17 by this commit, under "Rulings from the
     `{ sku: Standard_B1s }`, `S4 LRS Disk`.
 55. **Bastion is Basic** in lab 44, with the documented AzureBastionSubnet NSG; Developer (free, no subnet, one VM, no
     peering) is a readme comparison.
+56–61. **The integrator's rulings** (2026-10-06): `subnets_used` counts every /20 taken (34: 3, 37: 2, 39: 3) and lab 37's
+    client pool is derived from the slot; service subnets set default outbound access on; lab 36's `try()` on the far BGP
+    address; lab 40's NSGs allow port 80 only; lab 43 peers `vnet-consumer`; lab 41's certificate goes with the vault purge.
+    Full text in the main spec's §17.
 
 ## 10. Risks
 
