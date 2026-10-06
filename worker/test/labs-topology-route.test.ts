@@ -260,6 +260,31 @@ describe("GET /labs/:id/topology", () => {
     expect(t.message).toMatch(/did not answer the diagram.s read within 10 s/);
   });
 
+  it("a failed answer is cached for 30 s too, then asked again", async () => {
+    const { env } = await labEnv();
+    const arg = fakeArg();
+    arg.reply = () => new Response("{}", { status: 500 });
+    await liveSession(env, "ls-1");
+    expect((await labTopology(env, LAB, 13_000_000)).status).toBe("failed");
+    expect((await labTopology(env, LAB, 13_000_000 + TOPOLOGY_CACHE_MS - 1)).status).toBe("failed");
+    expect(arg.calls).toHaveLength(1);
+    arg.reply = () => Response.json({ data: ROWS });
+    expect((await labTopology(env, LAB, 13_000_000 + TOPOLOGY_CACHE_MS)).status).toBe("ok");
+    expect(arg.calls).toHaveLength(2);
+  });
+
+  it("a cached failure does not lose the last good graph for a later 429", async () => {
+    const { env } = await labEnv();
+    const arg = fakeArg();
+    await liveSession(env, "ls-1");
+    const first = await labTopology(env, LAB, 15_000_000);
+    arg.reply = () => new Response("{}", { status: 500 });
+    await labTopology(env, LAB, 15_000_000 + TOPOLOGY_CACHE_MS);
+    arg.reply = () => new Response("{}", { status: 429 });
+    const later = await labTopology(env, LAB, 15_000_000 + 2 * TOPOLOGY_CACHE_MS);
+    expect(later).toMatchObject({ status: "throttled", live: first.live });
+  });
+
   it("the dev fixture is read only under AUTH_DEV_BYPASS when Azure is not configured", async () => {
     const { env } = await labEnv({ AZURE_CLIENT_ID: undefined, AZURE_CLIENT_SECRET: undefined });
     const arg = fakeArg();

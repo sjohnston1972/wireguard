@@ -9,7 +9,7 @@
 // when the token has expired, and the query), through directNet like the
 // dashboard's other reads.
 //
-// Cache: this isolate's memory, 30 s per lab and session, with requests in
+// Cache: this isolate's memory, 30 s per lab and session (failures too), with requests in
 // flight shared; nothing is written to KV (a diagram open for an hour would
 // spend 120 of KV's daily writes). The answer is always a status:
 //   ok            the live graph
@@ -37,12 +37,16 @@ export const TOPOLOGY_CACHE_MS = 30_000;
 /** How long the Resource Graph read may take before the diagram falls back to the plan. */
 export const TOPOLOGY_TIMEOUT_MS = 10_000;
 
+/** The last answer (ok or failed), reused for 30 s. */
 const cache = new Map<string, { at: number; response: LabTopologyResponse }>();
+/** The last ok answer, for a 429's fallback (a cached failure must not lose it). */
+const lastGood = new Map<string, { at: number; response: LabTopologyResponse }>();
 const inflight = new Map<string, Promise<LabTopologyResponse>>();
 
 /** Tests: forget every cached graph. */
 export function resetTopologyCache(): void {
   cache.clear();
+  lastGood.clear();
   inflight.clear();
 }
 
@@ -87,7 +91,7 @@ async function fetchLive(env: Env, s: LabSessionRow, now: number): Promise<LabTo
     return answer("failed", "Azure did not answer the diagram's read. Showing the planned diagram.");
   }
   if (r.status === 429) {
-    const last = cache.get(`${s.lab_id}:${s.id}`)?.response;
+    const last = lastGood.get(`${s.lab_id}:${s.id}`)?.response;
     return answer("throttled", "Azure is busy (too many requests). Showing the last diagram it gave.", last?.live ? { live: last.live, fetchedAt: last.fetchedAt, truncated: last.truncated } : {});
   }
   if (!r.ok) {
@@ -139,10 +143,12 @@ export async function labTopology(env: Env, labId: string, now: number = Date.no
   if (pending) return pending;
   const p = fetchLive(env, s, now)
     .then((response) => {
-      if (response.status === "ok") {
-        // Ended sessions' graphs are let go (kept a while for a 429's fallback).
-        for (const [k, v] of cache) if (now - v.at > 20 * TOPOLOGY_CACHE_MS) cache.delete(k);
+      // A failure is cached too, so an open diagram does not hammer a failing Azure (it asks again after 30 s).
+      if (response.status === "ok" || response.status === "failed") {
+        // Ended sessions' graphs are let go (the last good one kept a while for a 429's fallback).
+        for (const m of [cache, lastGood]) for (const [k, v] of m) if (now - v.at > 20 * TOPOLOGY_CACHE_MS) m.delete(k);
         cache.set(key, { at: now, response });
+        if (response.status === "ok") lastGood.set(key, { at: now, response });
       }
       return response;
     })
