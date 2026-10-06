@@ -440,3 +440,214 @@ test(`${LB}: lab.yaml prices both regions and the readme says what the chain and
   assert.equal(attr(output(l, "peer_vnet_id").body, "value"), "azurerm_virtual_network.uks.id");
   for (const o of ["private_ips", "connect"]) assert.ok(outputs(l).includes(o));
 });
+
+// ── Lab 41: Application Gateway WAF_v2, TLS, rewrites, WAF policy ────────
+
+const AGW = "az700-41-appgw-waf";
+
+labContentSuite(AGW, { marker: "££" });
+
+test(`${AGW}: WAF_v2 with autoscale 0 to 2 and only private listeners`, () => {
+  const l = lab(AGW);
+  const g = one(l, "azurerm_application_gateway").body;
+  assert.equal(top(g, "name"), '"agw-hub"');
+  assert.deepEqual([attr(nested(g, "sku"), "name"), attr(nested(g, "sku"), "tier"), attr(nested(g, "sku"), "capacity")], ['"WAF_v2"', '"WAF_v2"', undefined], "WAF_v2, no fixed capacity");
+  const auto = nested(g, "autoscale_configuration");
+  assert.deepEqual([attr(auto, "min_capacity"), attr(auto, "max_capacity")], ["0", "2"]);
+  // In snet-agw, a /24 of its own.
+  const agw = subnetIn(l, "hub", "snet-agw");
+  assert.equal(attr(nested(g, "gateway_ip_configuration"), "subnet_id"), `azurerm_subnet.${agw.labels[1]}.id`);
+  assert.equal(cidrOf(l, agw.body, "address_prefixes"), "cidrsubnet(cidrsubnet(var.address_space, 2, 0), 4, 0)");
+  // Two frontends: the public IP Azure insists on, and a fixed private address; every listener is on the private one.
+  const fes = allNested(g, "frontend_ip_configuration");
+  assert.equal(fes.length, 2);
+  const pub = fes.find((f) => attr(f, "public_ip_address_id"));
+  const priv = fes.find((f) => attr(f, "subnet_id"));
+  assert.equal(attr(pub, "public_ip_address_id"), `azurerm_public_ip.${one(l, "azurerm_public_ip").labels[1]}.id`);
+  assert.equal(attr(priv, "private_ip_address_allocation"), '"Static"');
+  assert.equal(attr(priv, "private_ip_address"), "local.agw_ip");
+  const listeners = allNested(g, "http_listener");
+  assert.equal(listeners.length, 2, "HTTP and HTTPS");
+  for (const x of listeners) assert.equal(attr(x, "frontend_ip_configuration_name"), attr(priv, "name"), "every listener on the private frontend");
+  assert.deepEqual(listeners.map((x) => attr(x, "protocol")).sort(), ['"Http"', '"Https"']);
+  assert.equal(attr(one(l, "azurerm_public_ip").body, "sku"), '"Standard"');
+  // Both web VMs in the pool, probed on / with Host 127.0.0.1.
+  const pool = nested(g, "backend_address_pool");
+  assert.equal(attr(pool, "ip_addresses"), "[azurerm_network_interface.web1.private_ip_address, azurerm_network_interface.web2.private_ip_address]");
+  const probe = nested(g, "probe");
+  assert.deepEqual([attr(probe, "protocol"), attr(probe, "path")], ['"Http"', '"/"']);
+  assert.equal(attr(nested(g, "backend_http_settings"), "probe_name"), attr(probe, "name"));
+  assert.equal(attr(nested(g, "ssl_policy"), "policy_name"), '"AppGwSslPolicy20220101"');
+  // The subnet's NSG lets GatewayManager in on 65200-65535; the gateway will not start without it.
+  const gm = nsgRules(l).find((r) => ruleString(r.body, "source_address_prefix") === "GatewayManager");
+  assert.ok(gm, "a GatewayManager rule");
+  assert.equal(ruleString(gm.body, "destination_port_range"), "65200-65535");
+  noInternetSsh(l);
+});
+
+test(`${AGW}: the HTTPS listener's certificate is the vault's self-signed certificate read by the gateway's identity through an access policy`, () => {
+  const l = lab(AGW);
+  const g = one(l, "azurerm_application_gateway").body;
+  const uai = one(l, "azurerm_user_assigned_identity");
+  assert.equal(attr(uai.body, "name"), '"id-${var.name_prefix}-agw"');
+  const id = nested(g, "identity");
+  assert.equal(attr(id, "type"), '"UserAssigned"');
+  assert.equal(attr(id, "identity_ids"), `[azurerm_user_assigned_identity.${uai.labels[1]}.id]`);
+  const cert = one(l, "azurerm_key_vault_certificate");
+  const ssl = nested(g, "ssl_certificate");
+  assert.equal(attr(ssl, "key_vault_secret_id"), `azurerm_key_vault_certificate.${cert.labels[1]}.versionless_secret_id`, "versionless: a renewed certificate is picked up");
+  assert.equal(attr(ssl, "data"), undefined, "no certificate in the state or the plan");
+  const https = allNested(g, "http_listener").find((x) => attr(x, "protocol") === '"Https"');
+  assert.equal(attr(https, "ssl_certificate_name"), attr(ssl, "name"));
+  // Self-signed, CN=app.lab41.internal, 12 months, in the lab's vault.
+  const c = cert.body;
+  const vault = one(l, "azurerm_key_vault");
+  assert.equal(attr(c, "key_vault_id"), `azurerm_key_vault.${vault.labels[1]}.id`);
+  assert.equal(attr(nested(c, "issuer_parameters"), "name"), '"Self"');
+  const x509 = nested(c, "x509_certificate_properties");
+  assert.equal(attr(x509, "subject"), '"CN=app.lab41.internal"');
+  assert.equal(attr(x509, "validity_in_months"), "12");
+  assert.deepEqual(strings(attr(nested(x509, "subject_alternative_names"), "dns_names")), ["app.lab41.internal"]);
+  assert.equal(attr(nested(c, "secret_properties"), "content_type"), '"application/x-pkcs12"');
+  // Access policies, not RBAC (no role assignment: the allow-list has no Certificates Officer).
+  assert.equal(attr(vault.body, "rbac_authorization_enabled"), "false");
+  assert.equal(attr(vault.body, "tenant_id"), "data.azurerm_client_config.current.tenant_id");
+  assert.equal(resources(l, "azurerm_role_assignment").length, 0);
+  const policies = resources(l, "azurerm_key_vault_access_policy");
+  assert.equal(policies.length, 2, "the pipeline's and the gateway's");
+  for (const p of policies) {
+    assert.equal(attr(p.body, "key_vault_id"), `azurerm_key_vault.${vault.labels[1]}.id`);
+    assert.equal(attr(p.body, "tenant_id"), "data.azurerm_client_config.current.tenant_id");
+  }
+  const pipeline = policies.find((p) => attr(p.body, "object_id") === "data.azurerm_client_config.current.object_id");
+  assert.ok(pipeline, "one for the pipeline (client config)");
+  assert.deepEqual(strings(attr(pipeline.body, "certificate_permissions")).sort(), ["Create", "Delete", "Get", "List", "Purge"]);
+  assert.deepEqual(strings(attr(pipeline.body, "secret_permissions")), ["Get"]);
+  assert.equal(attr(pipeline.body, "key_permissions"), undefined);
+  const gateway = policies.find((p) => attr(p.body, "object_id") === `azurerm_user_assigned_identity.${uai.labels[1]}.principal_id`);
+  assert.ok(gateway, "one for the gateway's identity");
+  assert.deepEqual(strings(attr(gateway.body, "secret_permissions")), ["Get"], "the gateway reads the certificate as a secret, nothing more");
+  assert.equal(attr(gateway.body, "certificate_permissions"), undefined);
+  // The certificate waits for the pipeline's policy, the gateway for its own.
+  assert.match(c.replace(/\s+/g, " "), new RegExp(`depends_on = \\[ ?azurerm_key_vault_access_policy\\.${pipeline.labels[1]},? ?\\]`));
+  assert.match(g.replace(/\s+/g, " "), new RegExp(`depends_on = \\[[^\\]]*azurerm_key_vault_access_policy\\.${gateway.labels[1]}`));
+});
+
+test(`${AGW}: HTTP redirects to HTTPS and a rewrite set adds and removes headers`, () => {
+  const l = lab(AGW);
+  const g = one(l, "azurerm_application_gateway").body;
+  const listeners = allNested(g, "http_listener");
+  const http = listeners.find((x) => attr(x, "protocol") === '"Http"');
+  const https = listeners.find((x) => attr(x, "protocol") === '"Https"');
+  const ports = Object.fromEntries(allNested(g, "frontend_port").map((p) => [attr(p, "name"), attr(p, "port")]));
+  assert.equal(ports[attr(http, "frontend_port_name")], "80");
+  assert.equal(ports[attr(https, "frontend_port_name")], "443");
+  const redirect = nested(g, "redirect_configuration");
+  assert.equal(attr(redirect, "redirect_type"), '"Permanent"');
+  assert.equal(attr(redirect, "target_listener_name"), attr(https, "name"));
+  assert.equal(attr(redirect, "include_path"), "true");
+  assert.equal(attr(redirect, "include_query_string"), "true");
+  const rules = allNested(g, "request_routing_rule");
+  assert.equal(rules.length, 2);
+  const toRedirect = rules.find((r) => attr(r, "http_listener_name") === attr(http, "name"));
+  assert.equal(attr(toRedirect, "redirect_configuration_name"), attr(redirect, "name"));
+  assert.equal(attr(toRedirect, "backend_address_pool_name"), undefined);
+  const toPool = rules.find((r) => attr(r, "http_listener_name") === attr(https, "name"));
+  assert.equal(attr(toPool, "backend_address_pool_name"), attr(nested(g, "backend_address_pool"), "name"));
+  const rw = nested(g, "rewrite_rule_set");
+  assert.equal(attr(toPool, "rewrite_rule_set_name"), attr(rw, "name"));
+  const headers = allNested(rw, "response_header_configuration").map((h) => [attr(h, "header_name"), attr(h, "header_value")]);
+  assert.deepEqual(headers, [['"X-Lab"', '"41"'], ['"Server"', '""']], "adds X-Lab: 41, removes Server (an empty value deletes it)");
+});
+
+test(`${AGW}: a Prevention WAF policy with DRS 2.1 and one custom rule`, () => {
+  const l = lab(AGW);
+  const g = one(l, "azurerm_application_gateway").body;
+  const waf = one(l, "azurerm_web_application_firewall_policy");
+  assert.equal(top(g, "firewall_policy_id"), `azurerm_web_application_firewall_policy.${waf.labels[1]}.id`);
+  assert.equal(nested(g, "waf_configuration"), undefined, "the policy, not the old inline configuration");
+  const w = waf.body;
+  assert.equal(top(w, "resource_group_name"), IN_LAB);
+  const ps = nested(w, "policy_settings");
+  assert.deepEqual([attr(ps, "enabled"), attr(ps, "mode")], ["true", '"Prevention"']);
+  const sets = allNested(nested(w, "managed_rules"), "managed_rule_set").map((s) => [attr(s, "type"), attr(s, "version")]);
+  assert.deepEqual(sets, [['"Microsoft_DefaultRuleSet"', '"2.1"']]);
+  const custom = allNested(w, "custom_rules");
+  assert.equal(custom.length, 1, "one custom rule");
+  const c = custom[0];
+  assert.deepEqual([attr(c, "rule_type"), attr(c, "action")], ['"MatchRule"', '"Block"']);
+  assert.match(attr(c, "name"), /^"[A-Za-z][A-Za-z0-9]*"$/, "letters and digits only");
+  const m = nested(c, "match_conditions");
+  assert.equal(attr(nested(m, "match_variables"), "variable_name"), '"QueryString"');
+  assert.equal(attr(m, "operator"), '"Contains"');
+  assert.deepEqual(strings(attr(m, "match_values")), ["attack=1"]);
+});
+
+test(`${AGW}: the vault has no purge protection and versions.tf purges it on destroy`, () => {
+  const l = lab(AGW);
+  const v = one(l, "azurerm_key_vault").body;
+  assert.equal(attr(v, "name"), '"${var.name_prefix}kv"');
+  assert.equal(attr(v, "sku_name"), '"standard"');
+  assert.equal(attr(v, "purge_protection_enabled"), "false");
+  assert.equal(attr(v, "soft_delete_retention_days"), "7");
+  assert.equal(attr(v, "access_policy"), undefined, "policies as their own resources, never inline as well");
+  const kv = nested(features(l), "key_vault");
+  assert.equal(attr(kv, "purge_soft_delete_on_destroy"), "true");
+  assert.equal(attr(kv, "recover_soft_deleted_key_vaults"), "false");
+  assert.equal(attr(kv, "recover_soft_deleted_certificates"), "false");
+  assert.equal(attr(nested(features(l), "resource_group"), "prevent_deletion_if_contains_resources"), "false");
+});
+
+test(`${AGW}: app.lab41.internal is the private frontend, in a zone linked to vnet-hub, with dns_link on`, () => {
+  const l = lab(AGW);
+  const zone = one(l, "azurerm_private_dns_zone");
+  assert.equal(attr(zone.body, "name"), '"lab41.internal"');
+  const a = one(l, "azurerm_private_dns_a_record").body;
+  assert.equal(attr(a, "name"), '"app"');
+  assert.equal(attr(a, "records"), "[local.agw_ip]");
+  const link = one(l, "azurerm_private_dns_zone_virtual_network_link").body;
+  assert.equal(attr(link, "virtual_network_id"), "azurerm_virtual_network.hub.id");
+  assert.equal(attr(link, "registration_enabled"), "false");
+  assert.equal(l.yaml.connectivity.dns_link, true, "the pipeline links lab41.internal to the gateway VNet while peered");
+  assert.doesNotMatch(code(l), /gateway_vnet_id|vnet-wg|rg-wg/);
+  assert.equal(attr(output(l, "peer_vnet_id").body, "value"), "azurerm_virtual_network.hub.id");
+});
+
+test(`${AGW}: the gateway's access and firewall logs go to a capped workspace in resource-specific tables`, () => {
+  const l = lab(AGW);
+  const ws = one(l, "azurerm_log_analytics_workspace").body;
+  assert.equal(attr(ws, "sku"), '"PerGB2018"');
+  assert.equal(attr(ws, "daily_quota_gb"), "0.05");
+  const d = one(l, "azurerm_monitor_diagnostic_setting").body;
+  assert.equal(attr(d, "target_resource_id"), `azurerm_application_gateway.${one(l, "azurerm_application_gateway").labels[1]}.id`);
+  assert.equal(attr(d, "log_analytics_workspace_id"), `azurerm_log_analytics_workspace.${one(l, "azurerm_log_analytics_workspace").labels[1]}.id`);
+  assert.equal(attr(d, "log_analytics_destination_type"), '"Dedicated"', "AGWAccessLogs and AGWFirewallLogs");
+  assert.deepEqual(allNested(d, "enabled_log").map((e) => attr(e, "category")).sort(), ['"ApplicationGatewayAccessLog"', '"ApplicationGatewayFirewallLog"']);
+  assert.match(l.readme, /AGWFirewallLogs/);
+});
+
+test(`${AGW}: two web VMs, lab.yaml as planned and a readme that blocks an attack`, () => {
+  const l = lab(AGW);
+  const y = l.yaml;
+  assert.deepEqual(resources(l, "azurerm_linux_virtual_machine").map((v) => attr(v.body, "name")).sort(), ['"vm-web1"', '"vm-web2"']);
+  assert.equal(attr(subnetIn(l, "hub", "snet-web").body, "default_outbound_access_enabled"), "false", "nothing to install");
+  assert.equal(attr(subnetIn(l, "hub", "snet-agw").body, "default_outbound_access_enabled"), "true", "the gateway reaches the vault");
+  assert.deepEqual([y.exam, y.level, y.type], ["AZ-700", "associate", "explore"]);
+  assert.deepEqual(y.skill_areas, ["az700.delivery", "az700.security"]);
+  assert.deepEqual(y.prerequisites, ["az104-16-lb-appgw"]);
+  assert.deepEqual(y.connectivity, { peering: "optional", dns_link: true, subnets_used: 1 });
+  assert.deepEqual(y.timing, { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 3 });
+  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 64);
+  // WAF v2's meters share their names with Standard v2 and Application Gateway for Containers: authored (ruling 54).
+  for (const n of [/WAF_v2, fixed/, /WAF_v2, capacity unit/]) {
+    const i = y.cost.items.find((x) => n.test(x.name));
+    assert.ok(i, String(n));
+    assert.equal(i.retail, undefined);
+  }
+  assert.equal(y.cost.pricey, "Application Gateway WAF_v2, fixed");
+  const r = l.readme;
+  assert.match(r, /403/);
+  assert.match(r, /Detection/);
+  assert.match(r, /app\.lab41\.internal/);
+  assert.match(r, /access polic/i);
+});
