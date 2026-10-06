@@ -14,7 +14,9 @@ import allowedRoles from "../labs/setup/allowed-roles.json";
 
 // ── Lab definitions (lab.yaml, spec §3.2) ────────────────────────────────
 
-export type LabExam = "AZ-104" | "AZ-305";
+export type LabExam = "AZ-104" | "AZ-305" | "AZ-700";
+/** The exams, in the order the catalogue, coverage and a lab's `exams` list them (ruling 38). */
+export const LAB_EXAMS: readonly LabExam[] = ["AZ-104", "AZ-305", "AZ-700"];
 export type LabLevel = "foundation" | "associate" | "expert";
 export type LabType = "explore" | "break-fix";
 /** lab.yaml connectivity.peering: off (never), optional (a tick on Deploy), required (always on). */
@@ -81,7 +83,7 @@ export type ReadmeBlock =
 /**
  * shared/labs.generated.json, written by `npm run labs-build` (gitignored).
  * Only the Worker imports it (worker/src/labs/catalogue.ts); the app reads GET /labs.
- * Labs are sorted AZ-104 then AZ-305, by number.
+ * Labs are sorted by exam (AZ-104, AZ-305, AZ-700), then by number.
  */
 export interface LabCatalogue {
   /** Bumped when this shape changes. */
@@ -94,9 +96,11 @@ export interface LabCatalogue {
 
 // ── Ids, names and the address pool (spec §3.1, §4) ──────────────────────
 
-/** A lab id: az104-NN-slug or az305-NN-slug, at most LAB_ID_MAX characters. */
-export const LAB_ID_RE = /^az(104|305)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
+/** A lab id: az104-NN-slug, az305-NN-slug or az700-NN-slug, at most LAB_ID_MAX characters. */
+export const LAB_ID_RE = /^az(104|305|700)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
 export const LAB_ID_MAX = 40;
+/** A lab's primary exam, from its id's prefix (az700-31-x is AZ-700). */
+export const examOfId = (id: string): LabExam => (id.startsWith("az104-") ? "AZ-104" : id.startsWith("az305-") ? "AZ-305" : "AZ-700");
 /** 10.64.0.0 - 10.71.255.255: 32 slots of /18 (§4). IPv4 only. */
 export const LAB_POOL = "10.64.0.0/13";
 export const LAB_SLOTS = 32;

@@ -1,7 +1,7 @@
 // Types for scripts/lib/labs.mjs, so TypeScript tests (worker/test) can import it.
 // The shapes it builds are the ones in shared/labs.ts.
 
-import type { LabCatalogue, LabDef, ReadmeBlock, SkillArea } from "../../shared/labs";
+import type { LabCatalogue, LabDef, LabExam, ReadmeBlock, SkillArea } from "../../shared/labs";
 
 export interface LabProblem {
   lab: string | null;
@@ -18,6 +18,8 @@ export interface TfProblem {
 
 export const LAB_ID_RE: RegExp;
 export const LAB_ID_MAX: number;
+export const LAB_EXAMS: readonly LabExam[];
+export function examOfId(id: string): LabExam;
 export const LAB_POOL: string;
 export const LAB_SLOTS: number;
 export const GATEWAY_RANGES: readonly string[];

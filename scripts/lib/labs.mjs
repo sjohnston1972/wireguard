@@ -18,8 +18,12 @@ import { lintTfText, stripComments } from "../../infra/ci/lab-lint.mjs";
 
 // ── Constants (copies of shared/labs.ts) ─────────────────────────────────
 
-export const LAB_ID_RE = /^az(104|305)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
+export const LAB_ID_RE = /^az(104|305|700)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
 export const LAB_ID_MAX = 40;
+/** The exams, in order (ruling 38). */
+export const LAB_EXAMS = ["AZ-104", "AZ-305", "AZ-700"];
+/** A lab's primary exam, from its id's prefix. */
+export const examOfId = (id) => (id.startsWith("az104-") ? "AZ-104" : id.startsWith("az305-") ? "AZ-305" : "AZ-700");
 export const LAB_POOL = "10.64.0.0/13";
 export const LAB_SLOTS = 32;
 export const GATEWAY_RANGES = ["10.13.13.0/24", "10.13.255.1/32", "10.50.0.0/16", "192.168.1.0/24", "172.17.0.0/16", "168.63.129.16/32"];
@@ -97,7 +101,7 @@ const SCHEMA = {
   version: [int(1), "a whole number of 1 or more"],
   title: [text, "a title"],
   summary: [text, "a summary"],
-  exam: [oneOf("AZ-104", "AZ-305"), "AZ-104 or AZ-305"],
+  exam: [oneOf(...LAB_EXAMS), "AZ-104, AZ-305 or AZ-700"],
   skill_areas: [[str], "a list of skill area keys"],
   level: [oneOf("foundation", "associate", "expert"), "foundation, associate or expert"],
   type: [oneOf("explore", "break-fix"), "explore or break-fix"],
@@ -147,10 +151,10 @@ export function validateLab(raw, ctx) {
   const bad = (field, message) => problems.push({ field, message });
   const id = raw?.id;
   if (str(id)) {
-    if (!LAB_ID_RE.test(id)) bad("id", `id "${id}" must look like az104-NN-slug or az305-NN-slug (lowercase letters, digits and single hyphens)`);
+    if (!LAB_ID_RE.test(id)) bad("id", `id "${id}" must look like az104-NN-slug, az305-NN-slug or az700-NN-slug (lowercase letters, digits and single hyphens)`);
     if (id.length > LAB_ID_MAX) bad("id", `id "${id}" is longer than ${LAB_ID_MAX} characters`);
     if (ctx.folder !== undefined && id !== ctx.folder) bad("id", `id "${id}" must equal its folder name "${ctx.folder}"`);
-    if (raw.exam && LAB_ID_RE.test(id) && raw.exam !== (id.startsWith("az104-") ? "AZ-104" : "AZ-305")) bad("exam", `exam ${raw.exam} does not match the id ${id}`);
+    if (raw.exam && LAB_ID_RE.test(id) && raw.exam !== examOfId(id)) bad("exam", `exam ${raw.exam} does not match the id ${id}`);
     if (typeof raw.identity?.governance === "boolean" && raw.identity.governance !== GOVERNANCE_LABS.includes(id)) {
       bad("identity.governance", GOVERNANCE_LABS.includes(id) ? `${id} is a governance lab: set identity.governance: true` : `only labs 1, 2, 3, 20 and 21 may set identity.governance: true`);
     }
@@ -373,14 +377,14 @@ export function labFolders(root) {
  * Read every lab under `root` (the repo's labs/ folder) and build the
  * catalogue (LabCatalogue in shared/labs.ts). Returns { catalogue, problems };
  * problems are { lab, file, field, message }. The catalogue holds only the
- * labs that passed, sorted AZ-104 then AZ-305 by number.
+ * labs that passed, sorted by exam (AZ-104, AZ-305, AZ-700) then number.
  */
 export function buildCatalogue(root) {
   const problems = [];
   let skillAreas = [];
   try {
     skillAreas = parseYaml(readFileSync(join(root, "skill-areas.yaml"), "utf8"));
-    if (!Array.isArray(skillAreas) || !skillAreas.every((a) => isObj(a) && text(a.key) && oneOf("AZ-104", "AZ-305")(a.exam) && text(a.name) && Object.keys(a).length === 3)) {
+    if (!Array.isArray(skillAreas) || !skillAreas.every((a) => isObj(a) && text(a.key) && oneOf(...LAB_EXAMS)(a.exam) && text(a.name) && Object.keys(a).length === 3)) {
       problems.push({ lab: null, file: "skill-areas.yaml", field: null, message: "skill-areas.yaml must be a list of { key, exam, name }" });
       skillAreas = [];
     }
@@ -435,7 +439,7 @@ export function buildCatalogue(root) {
   };
   for (const id of ids) visit(id, []);
   const bad = new Set(problems.map((p) => p.lab));
-  const labs = defs.filter((d) => !bad.has(d.id)).sort((a, b) => a.exam.localeCompare(b.exam) || a.number - b.number);
+  const labs = defs.filter((d) => !bad.has(d.id)).sort((a, b) => LAB_EXAMS.indexOf(a.exam) - LAB_EXAMS.indexOf(b.exam) || a.number - b.number);
   for (const id of Object.keys(readmes)) if (bad.has(id)) delete readmes[id];
   return { catalogue: { schema: 1, skillAreas, labs, readmes }, problems };
 }

@@ -45,7 +45,7 @@ if [ "${1:-}" = "--verify" ]; then
   shift
 fi
 LAB_ID="${1:-}"
-LAB_ID_RE='^az(104|305)-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$'
+LAB_ID_RE='^az(104|305|700)-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$'
 if ! [[ "$LAB_ID" =~ $LAB_ID_RE ]] || [ "${#LAB_ID}" -gt 40 ]; then
   echo "::error::lab-safety-net: refusing lab id '${LAB_ID}'"
   exit 2

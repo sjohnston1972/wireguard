@@ -6,7 +6,7 @@
 # checks every value, and saves what later steps need in $GITHUB_ENV (labs
 # spec §5). It refuses the run, before anything touches Azure, when:
 #
-#   - the lab id fails the pattern (^az(104|305)-NN-word(-word)*$, 40 at most)
+#   - the lab id fails the pattern (^az(104|305|700)-NN-word(-word)*$, 40 at most)
 #   - labs/<id>/lab.yaml does not exist, or names another id
 #   - the payload's version differs from lab.yaml's (a stale dashboard), or
 #     a deploy or test finds no terraform/ folder
@@ -57,7 +57,7 @@ def fail(msg):
     problems.append(msg)
 
 ACTIONS = ("deploy", "destroy", "peer", "unpeer", "test")
-LAB_ID_RE = re.compile(r"^az(104|305)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$")
+LAB_ID_RE = re.compile(r"^az(104|305|700)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$")
 SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 REGION = re.compile(r"^[a-z][a-z0-9]{1,30}$")
 URL = re.compile(r"^https://[A-Za-z0-9.-]+(:\d+)?(/[A-Za-z0-9._~/-]*)?$")

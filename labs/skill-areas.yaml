@@ -1,7 +1,9 @@
 # labs/skill-areas.yaml
 #
-# The official skill areas of both exams (spec §12.1), from Microsoft's study
-# guides (V: checked against the current outlines before batches 1 and 3).
+# The official skill areas of the three exams (spec §12.1), from Microsoft's
+# study guides (V: checked against the current outlines before batches 1 and
+# 3; AZ-700's from its outline "Skills measured as of July 27, 2026", read
+# 2026-10-05, ruling 38).
 # lab.yaml skill_areas lists keys from here; the coverage map is one row each.
 
 - { key: az104.identity, exam: AZ-104, name: "Manage Azure identities and governance" }
@@ -13,3 +15,8 @@
 - { key: az305.data, exam: AZ-305, name: "Design data storage solutions" }
 - { key: az305.continuity, exam: AZ-305, name: "Design business continuity solutions" }
 - { key: az305.infra, exam: AZ-305, name: "Design infrastructure solutions" }
+- { key: az700.core, exam: AZ-700, name: "Design and implement core networking infrastructure" }
+- { key: az700.connectivity, exam: AZ-700, name: "Design, implement, and manage connectivity services" }
+- { key: az700.delivery, exam: AZ-700, name: "Design and implement application delivery services" }
+- { key: az700.private, exam: AZ-700, name: "Design and implement private access to Azure services" }
+- { key: az700.security, exam: AZ-700, name: "Design and implement Azure network security services" }

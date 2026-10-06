@@ -19,6 +19,8 @@ const stringify = (v) => yaml12(v, { version: "1.1" });
 import {
   buildCatalogue,
   checkPool,
+  examOfId,
+  LAB_EXAMS,
   lintTfText,
   parseLabYaml,
   parseReadme,
@@ -27,6 +29,7 @@ import {
   variablesProblems,
   versionProblems,
 } from "../lib/labs.mjs";
+import { BASH } from "./fixtures/labs/harness.mjs";
 
 const repo = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -198,6 +201,68 @@ test("parseLabYaml refuses YAML that does not parse, and validateLab works on on
   assert.deepEqual(v.problems, []);
   assert.equal(v.def.number, 6);
   assert.equal(validateLab({ ...raw, title: "" }, { folder: "az104-06-blob-security", skillAreas: SKILLS }).problems[0].field, "title");
+});
+
+// ── AZ-700, the third exam (AZ-700 plan Z0.1, ruling 38) ─────────────────
+
+/** The nine copies of the lab id pattern: the two contracts, the scope check and every pipeline script. */
+const ID_RE_COPIES = ["shared/labs.ts", "scripts/lib/labs.mjs", "infra/ci/lab-scope.mjs", "infra/ci/lab-parse.sh", "infra/ci/lab-peer.sh", "infra/ci/lab-ready.sh", "infra/ci/lab-safety-net.sh", "infra/ci/lab-state-reset.sh", "infra/ci/lab-unblock.sh"];
+
+test("the lab id pattern is the same in all nine copies, accepts az700-31-ip-nat-outbound and refuses az701-31-x", () => {
+  const found = {};
+  for (const f of ID_RE_COPIES) {
+    const text = readFileSync(join(repo, f), "utf8");
+    // JS /…/, Python re.compile(r"…") or bash '…', each as LAB_ID_RE.
+    const m = /LAB_ID_RE\s*=\s*(?:\/(.+?)\/;|re\.compile\(r"(.+?)"\)|'(.+?)')/.exec(text);
+    assert.ok(m, `${f} has a LAB_ID_RE`);
+    // bash's ERE spells \d as [0-9].
+    found[f] = (m[1] ?? m[2] ?? m[3]).replace(/\[0-9\]/g, "\\d");
+  }
+  for (const [f, re] of Object.entries(found)) assert.equal(re, "^az(104|305|700)-\\d{2}-[a-z0-9]+(-[a-z0-9]+)*$", f);
+  const re = new RegExp(found["scripts/lib/labs.mjs"]);
+  for (const ok of ["az700-31-ip-nat-outbound", "az700-44-flow-logs-bastion", "az104-06-blob-security", "az305-20-landing-zone"]) assert.ok(re.test(ok), ok);
+  for (const bad of ["az701-31-x", "az70-31-x", "az7000-31-x", "az900-01-x", "az700-3-x"]) assert.ok(!re.test(bad), bad);
+  // The bash copies match the same way (ERE, as the scripts test it).
+  if (BASH) {
+    const r = spawnSync(BASH, ["-c", `re='^az(104|305|700)-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$'; for x in az700-31-ip-nat-outbound az701-31-x; do [[ "$x" =~ $re ]] && echo "$x yes" || echo "$x no"; done`], { encoding: "utf8" });
+    assert.equal(r.stdout.trim().replace(/\r/g, ""), "az700-31-ip-nat-outbound yes\naz701-31-x no");
+  }
+});
+
+test("skill-areas.yaml has five AZ-700 areas with the study guide's names", () => {
+  const { catalogue } = buildCatalogue(join(repo, "labs"));
+  const az700 = catalogue.skillAreas.filter((a) => a.exam === "AZ-700");
+  // Microsoft Learn, AZ-700 study guide, "Skills measured as of July 27, 2026".
+  assert.deepEqual(az700, [
+    { key: "az700.core", exam: "AZ-700", name: "Design and implement core networking infrastructure" },
+    { key: "az700.connectivity", exam: "AZ-700", name: "Design, implement, and manage connectivity services" },
+    { key: "az700.delivery", exam: "AZ-700", name: "Design and implement application delivery services" },
+    { key: "az700.private", exam: "AZ-700", name: "Design and implement private access to Azure services" },
+    { key: "az700.security", exam: "AZ-700", name: "Design and implement Azure network security services" },
+  ]);
+  // An area of an exam that does not exist is refused.
+  const root = makeRoot([good(), lab5()]);
+  try {
+    writeFileSync(join(root, "skill-areas.yaml"), stringify([...SKILLS, { key: "az900.x", exam: "AZ-900", name: "Nothing" }]));
+    assert.ok(buildCatalogue(root).problems.some((x) => x.file === "skill-areas.yaml"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("exam must match the id prefix, AZ-700 for az700-", () => {
+  const skillAreas = [...SKILLS, { key: "az700.core", exam: "AZ-700", name: "Design and implement core networking infrastructure" }];
+  const lab31 = good({ id: "az700-31-ip-nat-outbound", exam: "AZ-700", skill_areas: ["az700.core"], prerequisites: [], identity: { creates: [], roles: [], governance: false } });
+  assert.deepEqual(validateLab(lab31, { folder: lab31.id, skillAreas }).problems, []);
+  assert.equal(validateLab(lab31, { folder: lab31.id, skillAreas }).def.number, 31);
+  for (const exam of ["AZ-104", "AZ-305"]) assert.ok(validateLab({ ...lab31, exam }, { folder: lab31.id, skillAreas }).problems.some((p) => p.field === "exam"), exam);
+  // An AZ-104 id may not say AZ-700, and an unknown exam is refused by the schema.
+  assert.ok(validateLab(good({ exam: "AZ-700" }), { folder: "az104-06-blob-security", skillAreas }).problems.some((p) => p.field === "exam"));
+  assert.ok(validateLab({ ...lab31, exam: "AZ-900" }, { folder: lab31.id, skillAreas }).problems.some((p) => p.field === "exam"));
+  assert.equal(examOfId("az700-31-ip-nat-outbound"), "AZ-700");
+  assert.equal(examOfId("az305-20-landing-zone"), "AZ-305");
+  assert.equal(examOfId("az104-06-blob-security"), "AZ-104");
+  assert.deepEqual([...LAB_EXAMS], ["AZ-104", "AZ-305", "AZ-700"]);
 });
 
 // ── Readmes ──────────────────────────────────────────────────────────────
