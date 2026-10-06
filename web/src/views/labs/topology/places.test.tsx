@@ -18,7 +18,7 @@ import { detailIdle, detailRunning, labs } from "../testData";
 import { Canvas } from "./Canvas";
 import { EXAMPLE_ADDRESSES_NOTE, useDiagramData } from "./data";
 import { LAYOUT_SAVE_DELAY_MS, useTopologyLayout } from "./useTopologyLayout";
-import { KEYS, LAB, LAYOUT_API, LIVE_IDS, PLANNED_URL, TOPOLOGY_API, layoutPage, layoutServer, liveDown, liveOk, plannedGraph } from "./places.fixtures";
+import { KEYS, LAB, LAYOUT_API, LIVE_IDS, PLANNED_URL, TOPOLOGY_API, layoutPage, layoutServer, liveDown, liveGraph, liveOk, plannedGraph } from "./places.fixtures";
 
 // The canvas (T0's stub until T1's lands) as it is, with its props recorded: what the placements hand it.
 vi.mock("./Canvas", async (importOriginal) => {
@@ -401,5 +401,67 @@ describe("T2.4 the full screen", () => {
     expect(within(screen.getByRole("main")).getByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
     await user.click(notice.getByRole("button", { name: "Dismiss" }));
     expect(screen.getByLabelText("location")).toHaveTextContent(/^\/labs$/);
+  });
+});
+
+// ── T2.7 badges end to end ───────────────────────────────────────────────
+
+describe("T2.7 badges end to end", () => {
+  beforeAll(async () => {
+    await import("@/views/labs");
+    await import("./index");
+  });
+  const treeIn = async (el: HTMLElement) => within(await within(el).findByRole("tree", { name: /diagram/i }));
+  const tabTree = async () => treeIn(await screen.findByRole("dialog", { name: /Blob security/ }));
+
+  it("a hand-made live node shows Added by hand in the tab, the full screen and the mini", async () => {
+    const tab = renderApp(`/labs/${LAB}?view=diagram`, { routes: appRoutes(detailRunning()) });
+    expect((await tabTree()).getByRole("treeitem", { name: /nsg-handmade/ })).toHaveTextContent("Added by hand");
+    tab.unmount();
+
+    const full = renderApp(`/labs/${LAB}/diagram`, { routes: appRoutes(detailRunning()) });
+    expect((await treeIn(screen.getByRole("main"))).getByRole("treeitem", { name: /nsg-handmade/ })).toHaveTextContent("Added by hand");
+    full.unmount();
+
+    const { LabMini } = await import("./LabMini");
+    const mini = renderWithProviders(<LabMini labId={LAB} session={running()} />, { routes: appRoutes(detailRunning()) });
+    expect((await treeIn(mini.container)).getByRole("treeitem", { name: /nsg-handmade/ })).toHaveTextContent("Added by hand");
+    expect(lastCanvasProps().variant).toBe("mini");
+    expect(lastCanvasProps().onMove).toBeUndefined();
+  });
+
+  it("a deleted planned node shows Not deployed or removed", async () => {
+    renderApp(`/labs/${LAB}?view=diagram`, { routes: appRoutes(detailRunning()) });
+    const pe = (await tabTree()).getByRole("treeitem", { name: /pe-l06…blob-blob/ });
+    expect(pe).toHaveTextContent("Not deployed or removed");
+    // A kind the live view cannot list is never "not deployed".
+    expect((await tabTree()).getByRole("treeitem", { name: /lab-az104-06-blob-security-readers/ })).toHaveTextContent("Not listed by the live view");
+  });
+
+  it("deploying shows Not deployed yet", async () => {
+    const s = running({ state: "deploying", readyAt: null, outputs: null });
+    renderApp(`/labs/${LAB}?view=diagram`, { routes: appRoutes(detailRunning({ session: s, card: { ...detailRunning().card, running: s } })) });
+    const pe = (await tabTree()).getByRole("treeitem", { name: /pe-l06…blob-blob/ });
+    expect(pe).toHaveTextContent("Not deployed yet");
+    expect(pe).not.toHaveTextContent("removed");
+    expect(lastCanvasProps().deploying).toBe(true);
+  });
+
+  it("an NSG chip disappearing from a subnet after a refresh does not move any saved node", async () => {
+    const saved = { [KEYS.nsg]: { x: 40, y: 50, p: KEYS.rg }, [KEYS.subnet]: { x: 16, y: 44, p: KEYS.vnet } };
+    const server = layoutServer(layoutPage(saved, 5));
+    let live = liveOk({ live: liveGraph({ prefix: "10.64.0.0/24", nsg: "nsg-endpoints" }) });
+    const r = renderApp(`/labs/${LAB}?view=diagram`, { routes: { ...appRoutes(detailRunning()), ...server.routes, [`GET ${TOPOLOGY_API}`]: () => live } });
+    await tabTree();
+    await waitFor(() => expect(lastCanvasProps().graph.nodes.find((n) => n.key === KEYS.subnet)?.props).toEqual({ prefix: "10.64.0.0/24", nsg: "nsg-endpoints" }));
+    expect(lastCanvasProps().saved).toEqual({ v: 1, nodes: saved });
+    // The NSG is dissociated by hand; the next refresh no longer has the chip.
+    live = liveOk({ live: liveGraph({ prefix: "10.64.0.0/24" }) });
+    await act(async () => r.client.invalidateQueries({ queryKey: ["labs", LAB, "topology"] }));
+    await waitFor(() => expect(lastCanvasProps().graph.nodes.find((n) => n.key === KEYS.subnet)?.props).toEqual({ prefix: "10.64.0.0/24" }));
+    // Every saved position is handed to the canvas unchanged, and nothing was saved.
+    expect(lastCanvasProps().saved).toEqual({ v: 1, nodes: saved });
+    await new Promise((res) => setTimeout(res, LAYOUT_SAVE_DELAY_MS + 100));
+    expect(server.puts).toHaveLength(0);
   });
 });
