@@ -1,31 +1,56 @@
-/* The diagram's List view (T0 stub; T1 finishes it). Tokens only. */
+/* The diagram's List view (lab topology spec §9.3). Tokens only. */
 .topo-list,
 .topo-list ul {
   list-style: none;
   margin: 0;
   padding: 0;
 }
+.topo-list {
+  font-size: 13px;
+}
 .topo-list ul {
-  padding-left: 16px;
+  margin-left: 8px;
+  padding-left: 12px;
   border-left: 1px solid var(--border);
 }
 .topo-list__item {
   cursor: default;
+  outline: none;
+}
+.topo-list__item:focus-visible > .topo-list__row {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-radius: var(--radius-control);
 }
 .topo-list__row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 2px 6px;
   align-items: baseline;
-  padding: 2px 4px;
+  padding: 3px 6px;
   color: var(--text-primary);
 }
 .topo-list__item[aria-selected="true"] > .topo-list__row {
-  background: var(--blue-fill);
+  background: color-mix(in srgb, var(--blue-fill) 22%, transparent);
   border-radius: var(--radius-control);
 }
+.topo-list__item--match > .topo-list__row .topo-list__name {
+  outline: 2px solid var(--blue-bright);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+.topo-list__item--dim > .topo-list__row {
+  opacity: 0.55;
+}
+.topo-list__item--ghost > .topo-list__row .topo-list__name {
+  text-decoration: underline dashed var(--text-muted);
+}
 .topo-list__kind {
-  color: var(--text-muted);
+  color: var(--text-secondary);
+}
+.topo-list__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .topo-list__health--ok {
   color: var(--green);
@@ -39,4 +64,15 @@
 .topo-list__health--unknown,
 .topo-list__badge {
   color: var(--text-secondary);
+}
+.topo-list__badge {
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 11.5px;
+}
+.topo-list__conns {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+  font-size: 12px;
 }

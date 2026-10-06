@@ -1,0 +1,41 @@
+/* The diagram's legend (lab topology spec §9.2). Tokens only. */
+.topo-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(60vh, 420px);
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+}
+.topo-legend__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.topo-legend__list + .topo-legend__list {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.topo-legend__list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.topo-legend__traffic {
+  stroke: var(--text-secondary);
+  stroke-width: 2;
+}
+.topo-legend__dependency {
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}

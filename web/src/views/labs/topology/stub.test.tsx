@@ -57,8 +57,8 @@ describe("the diagram's route", () => {
 });
 
 describe("the stub Canvas", () => {
-  it("the stub Canvas renders the List view's tree with health words", () => {
-    renderWithProviders(<Canvas {...props()} />, { routes: null });
+  it("the Canvas renders the List view's tree with health words when view is list", () => {
+    renderWithProviders(<Canvas {...props({ view: "list" })} />, { routes: null });
     const tree = screen.getByRole("tree", { name: /diagram/i });
     const rg = within(tree).getByRole("treeitem", { name: /Resource group rg-lab-az104-06-blob-security/ });
     // Nested: group → VNet → subnet → VM.
@@ -83,8 +83,15 @@ describe("the dev-only /__topology/:id route", () => {
     renderApp(`/__topology/${ID}?asset=/assets/test-planned.json`, { routes: { "GET /assets/test-planned.json": planned } });
     for (const v of ["tab", "full", "mini"]) {
       const region = await screen.findByRole("region", { name: new RegExp(`${v} variant`, "i") });
-      expect(within(region).getByRole("treeitem", { name: /VM vm-app/ })).toBeInTheDocument();
+      expect(within(region).getByRole("region", { name: "Lab diagram" })).toBeInTheDocument();
     }
+    expect(screen.getByRole("toolbar", { name: "Diagram controls" })).toBeInTheDocument();
+  });
+
+  it("opens a node's details from ?select=", async () => {
+    const planned = { ...graph, source: "planned" as const, at: null };
+    renderApp(`/__topology/${ID}?asset=/assets/test-planned.json&select=${encodeURIComponent(`${L}/vm`)}`, { routes: { "GET /assets/test-planned.json": planned } });
+    expect(await screen.findByRole("complementary", { name: "vm-app" })).toBeInTheDocument();
   });
 
   it("is in the route table only under import.meta.env.DEV, like __gallery", () => {
