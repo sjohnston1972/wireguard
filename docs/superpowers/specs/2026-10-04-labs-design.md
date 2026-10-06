@@ -804,23 +804,50 @@ in them are to the AZ-700 design spec.
     version bump and a release test of that version. No rebuild.
 43. **Readme-only concepts** go under an optional `## Not built here` heading in the nearest lab (§3.5). A new scope rule,
     `never`, refuses DDoS protection plans and DDoS IP protection on a public IP, ExpressRoute circuits, ports and gateways,
-    and custom IP prefixes.
+    and custom IP prefixes. As built (Z0): `never` comes right after `immutability` in `RULES`; it refuses
+    `azurerm_network_ddos_protection_plan`, `azurerm_custom_ip_prefix`, every `azurerm_*express_route*` type, a public IP with
+    `ddos_protection_mode = "Enabled"` or a `ddos_protection_plan_id`, a VNet with a `ddos_protection_plan` block and a
+    `azurerm_virtual_network_gateway` of `type = "ExpressRoute"`.
 44. **VPN gateways are `VpnGw1AZ`**, route-based, active-standby, with Standard zone-redundant public IPs; never Basic or
     non-AZ VpnGw1–5. P2S uses OpenVPN and Entra ID with the Microsoft-registered audience
     `c632b3df-fb67-4d84-bdcf-b95ad541b5c8` (no consent; not an identity change); the client pool is a /24 of the slot.
 45. **Long deploys:** the timeout formula and its 150 cap stay; `LAB_DELETE_WAIT_SECONDS` defaults to `max(1500, 90 ×
-    destroy_min)` within the job deadline; £££ labs are session 2 h, max 3 h.
+    destroy_min)` within the job deadline; £££ labs are session 2 h, max 3 h. As built: Parse payload exports
+    `LAB_DELETE_WAIT_SECONDS` (and `LAB_REGION`, `LAB_SECONDARY_REGION`); the safety net computes the same default from
+    `LAB_DESTROY_MIN` when it is run without it.
 46. **Special subnets** are sized as §3.8, all from the slot; a lab's VNets, hub prefix and P2S pool never overlap.
 47. **Scope exception S1** (§6): a subscription-scoped Virtual Network Manager, for `az700-33-vnet-manager` only
-    (`AVNM_LABS`), static lab members only. *Approved by Steven 2026-10-05.*
+    (`AVNM_LABS`), static lab members only. *Approved by Steven 2026-10-05.* As built: in lab 33 only the eight AVNM types it
+    needs (manager, network group, static member, connectivity and security admin configurations, admin rule collection
+    and rule, deployment); the manager's scope is exactly the current subscription (from `data.azurerm_subscription` with no
+    `subscription_id`, or `data.azurerm_client_config`), no management group or cross-tenant scope, `scope_accesses`
+    Connectivity and SecurityAdmin only; a network group of VNets (`member_type` unset or `VirtualNetwork`) filled by static
+    members whose `target_virtual_network_id` is `azurerm_virtual_network.<name>.id` (a reference, never a literal); every
+    configuration, rule collection and deployment points only at the lab's own manager, groups, configurations and VNets by
+    reference; no policy assignment in lab 33 and no `addToNetworkGroup` policy in any lab (dynamic membership); any
+    `azurerm_network_manager*` in another lab is refused (`outside-scope`, messages start `S1:`).
 48. **Scope exception S2** (§6): `azurerm_network_watcher_flow_log` in `NetworkWatcherRG` on `NetworkWatcher_<region>`, named
     `lab-<id>-*`, for `az700-44-flow-logs-bastion` only (`FLOW_LOG_LABS`); the safety net, Verify clean and the orphan sweep
-    find them by name. *Approved by Steven 2026-10-05.*
+    find them by name. *Approved by Steven 2026-10-05.* As built: in lab 44 only, `resource_group_name = "NetworkWatcherRG"`
+    (any case), `network_watcher_name = "NetworkWatcher_${var.region}"` (the plan's value must equal the session's region's),
+    `name` starting `lab-<id>-`, `target_resource_id` the lab's own VNet and `storage_account_id` its own account (by
+    reference), no `network_security_group_id`, traffic analytics only to the lab's own workspace; every other resource in
+    `NetworkWatcherRG` (a watcher of its own included) stays refused, and a flow log in any other lab is refused (`S2:`). The
+    content suite lets only that resource of that lab name `NetworkWatcherRG`. The orphan sweep's eighth listing is
+    `GET /subscriptions/<s>/resources` filtered to `Microsoft.Network/networkWatchers/flowLogs` (V at lab 44's release test).
 49. **Unblock knows networks** (§5): AVNM deploy-None, Private Link service connections, VPN connections, Virtual WAN hub
     children, Route Server peers, firewalls before policies, resolver links and rulesets, global and gateway load balancer
-    links, in that order, never failing the run.
+    links, in that order, never failing the run. As built: `lab-unblock.sh` section 7, sub-steps 7a-7h; the types whose CLI is
+    an extension (AVNM, Virtual WAN, Azure Firewall, DNS Private Resolver) go through `az rest` (api-version 2024-05-01, the
+    resolver 2022-07-01), so nothing is installed on the runner; every `az rest` delete is read back until Azure answers not
+    found, bounded by `LAB_UNBLOCK_NET_WAIT_SECONDS` (default 600; hub gateways `LAB_UNBLOCK_VWAN_WAIT_SECONDS`, 1800); AVNM
+    commits an empty configuration per type and region that has one deployed, then waits until nothing is deployed or
+    deploying (`LAB_UNBLOCK_AVNM_WAIT_SECONDS`, 600; a status it cannot read is "unverified").
 50. **Public by nature, extended** (§3.9): gateway, Route Server, firewall, Bastion and App Gateway public IPs; public load
-    balancer frontends serving a static page; Front Door endpoints. Never a VM public IP.
+    balancer frontends serving a static page; Front Door endpoints. Never a VM public IP. As built: the content suite's test 5
+    lets an `azurerm_public_ip` belong (by `azurerm_public_ip.<name>.id`) to an Application Gateway, a VPN gateway, a Route
+    Server, a firewall, Bastion, a load balancer or a NAT gateway association, never a NIC; test 6 checks every VNet, virtual
+    hub prefix and P2S client pool in the plan fixture is inside the slot and none overlap (ruling 46).
 51. **No pipeline approval of private endpoint connections.** Lab 42's readme starts by approving Front Door's connection;
     lab 43's consumer endpoint is auto-approved by subscription id.
 52. **App Gateway TLS comes from a Key Vault self-signed certificate** read through vault access policies (the pipeline's
