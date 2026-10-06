@@ -908,6 +908,9 @@ export function scopeProblems({ resources, providers, imports = [], variables = 
       case "azurerm_network_manager_static_member":
         return own("network_group_id", GROUP, "the lab's own network group") ?? own("target_virtual_network_id", ["azurerm_virtual_network"], "one of the lab's own VNets");
       case "azurerm_network_manager_connectivity_configuration": {
+        // Pinned, never left to a default: true would delete the peerings the hub and spokes already have (the
+        // hub's with the gateway's vnet-wg among them) when the configuration is deployed (review fix 10).
+        if (v.delete_existing_peering_enabled !== false) return "delete_existing_peering_enabled must be set to false (deploying would otherwise delete the VNets' existing peerings, the gateway's among them)";
         const groups = Array.isArray(v.applies_to_group) ? v.applies_to_group : [];
         if (!groups.length) return "applies_to_group must name the lab's own network group";
         for (let i = 0; i < groups.length; i++) {

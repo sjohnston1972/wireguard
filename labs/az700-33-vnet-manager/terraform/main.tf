@@ -197,6 +197,9 @@ resource "azurerm_network_manager_connectivity_configuration" "hub_spoke" {
   network_manager_id    = azurerm_network_manager.avnm.id
   connectivity_topology = "HubAndSpoke"
   global_mesh_enabled   = false
+  # Never delete the hub's or spokes' existing peerings: the hub's peering
+  # with the gateway (vnet-wg) must stay. The scope check requires false.
+  delete_existing_peering_enabled = false
 
   applies_to_group {
     group_connectivity = "DirectlyConnected"

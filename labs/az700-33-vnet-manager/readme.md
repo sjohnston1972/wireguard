@@ -9,7 +9,7 @@ services): design and implement Azure Virtual Network Manager, hub-and-spoke con
 - `vnet-hub`, `vnet-spoke1` and `vnet-spoke2` from the first three /20s of the session's address slot, each with one /24 subnet, and **no peerings** in the Terraform
 - `avnm-<prefix>`, a network manager in the lab's resource group with the **Connectivity** and **SecurityAdmin** features. Its scope is the subscription (AVNM scopes can only be subscriptions or management groups), but it only ever touches its group's members
 - `ng-spokes`, a network group with two **static members**: the two spokes
-- `cc-hub-spoke`, a hub-and-spoke connectivity configuration: hub `vnet-hub`, spokes **directly connected** to each other, no global mesh, no hub gateway
+- `cc-hub-spoke`, a hub-and-spoke connectivity configuration: hub `vnet-hub`, spokes **directly connected** to each other, no global mesh, no hub gateway, and **delete existing peerings** off, so the hub's peering with the gateway stays
 - `sac-lab`, a security admin configuration with the rule collection `rc-spokes` on `ng-spokes`: `deny-ssh-internet` (Deny, inbound TCP 22 from the **Internet** service tag, priority 100) and `always-allow-hub-ssh` (**AlwaysAllow**, inbound TCP 22 from the hub's /20, priority 90)
 - Two **deployments**, Connectivity and SecurityAdmin, committing both configurations in the session's region. Nothing applies until it is deployed
 - `nsg-spoke1` and `nsg-spoke2` on the spokes' subnets, each denying TCP 22 from the hub's /20: the AlwaysAllow admin rule overrides that deny

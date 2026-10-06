@@ -294,6 +294,9 @@ test(`${AVNM}: hub-and-spoke connectivity and a security admin rule collection a
   assert.equal(attr(cc.body, "network_manager_id"), "azurerm_network_manager.avnm.id");
   assert.equal(attr(cc.body, "connectivity_topology"), '"HubAndSpoke"');
   assert.equal(attr(cc.body, "global_mesh_enabled"), "false");
+  // Review fix 10: never delete the hub's existing peerings (its peering with the gateway's vnet-wg among them).
+  assert.equal(attr(cc.body, "delete_existing_peering_enabled"), "false");
+  assert.equal(planned(AVNM, `azurerm_network_manager_connectivity_configuration.${cc.labels[1]}`).delete_existing_peering_enabled, false);
   const group = nested(cc.body, "applies_to_group");
   assert.equal(attr(group, "group_connectivity"), '"DirectlyConnected"');
   assert.equal(attr(group, "network_group_id"), "azurerm_network_manager_network_group.spokes.id");

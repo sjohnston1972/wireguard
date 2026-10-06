@@ -1116,7 +1116,7 @@ function lab33(edit = () => {}, id = L33) {
       member("spoke2"),
       {
         address: "azurerm_network_manager_connectivity_configuration.hub_spoke",
-        values: { name: "cc-hub-spoke", connectivity_topology: "HubAndSpoke", global_mesh_enabled: false, applies_to_group: [{ group_connectivity: "DirectlyConnected" }], hub: [{ resource_type: "Microsoft.Network/virtualNetworks" }] },
+        values: { name: "cc-hub-spoke", connectivity_topology: "HubAndSpoke", global_mesh_enabled: false, delete_existing_peering_enabled: false, applies_to_group: [{ group_connectivity: "DirectlyConnected" }], hub: [{ resource_type: "Microsoft.Network/virtualNetworks" }] },
         unknown: ["network_manager_id", "applies_to_group.0.network_group_id", "hub.0.resource_id"],
         refs: { network_manager_id: IDS("azurerm_network_manager.avnm"), "applies_to_group.0.network_group_id": IDS("azurerm_network_manager_network_group.spokes"), "hub.0.resource_id": IDS("azurerm_virtual_network.hub") },
       },
@@ -1158,7 +1158,7 @@ function lab33Hcl(edit = () => {}) {
         spoke2: [{ name: "sm-spoke2", network_group_id: "${azurerm_network_manager_network_group.spokes.id}", target_virtual_network_id: "${azurerm_virtual_network.spoke2.id}" }],
       },
       azurerm_network_manager_connectivity_configuration: {
-        hub_spoke: [{ name: "cc-hub-spoke", network_manager_id: "${azurerm_network_manager.avnm.id}", connectivity_topology: "HubAndSpoke", applies_to_group: [{ group_connectivity: "DirectlyConnected", network_group_id: "${azurerm_network_manager_network_group.spokes.id}" }], hub: [{ resource_id: "${azurerm_virtual_network.hub.id}", resource_type: "Microsoft.Network/virtualNetworks" }] }],
+        hub_spoke: [{ name: "cc-hub-spoke", network_manager_id: "${azurerm_network_manager.avnm.id}", connectivity_topology: "HubAndSpoke", delete_existing_peering_enabled: false, applies_to_group: [{ group_connectivity: "DirectlyConnected", network_group_id: "${azurerm_network_manager_network_group.spokes.id}" }], hub: [{ resource_id: "${azurerm_virtual_network.hub.id}", resource_type: "Microsoft.Network/virtualNetworks" }] }],
       },
       azurerm_network_manager_security_admin_configuration: { lab: [{ name: "sac-lab", network_manager_id: "${azurerm_network_manager.avnm.id}" }] },
       azurerm_network_manager_admin_rule_collection: { spokes: [{ name: "rc-spokes", security_admin_configuration_id: "${azurerm_network_manager_security_admin_configuration.lab.id}", network_group_ids: ["${azurerm_network_manager_network_group.spokes.id}"] }] },
@@ -1278,6 +1278,14 @@ test("lab 33's connectivity and security configurations may target only the lab'
     res(d, CC).refs["hub.0.resource_id"] = IDS("data.azurerm_virtual_network.wg");
   }), [["outside-scope", CC]]);
   assert.deepEqual(one(CC, (d) => (res(d, CC).values.hub[0].resource_type = "Microsoft.Network/virtualHubs")), [["outside-scope", CC]]);
+  // Review fix 10: a connectivity configuration that deletes the hub's and spokes' existing peerings (true), or
+  // leaves it to a default (unset), is refused; lab 33 pins it false. Peerings the hub had (vnet-wg's) must stay.
+  assert.deepEqual(one(CC, (d) => (res(d, CC).values.delete_existing_peering_enabled = true)), [["outside-scope", CC]]);
+  assert.deepEqual(one(CC, (d) => delete res(d, CC).values.delete_existing_peering_enabled), [["outside-scope", CC]]);
+  const ccHcl = (fn) => verdict(checkHcl(lab33Hcl((h) => fn(h.resource.azurerm_network_manager_connectivity_configuration.hub_spoke[0])), L33)).filter(([, a]) => a === CC);
+  assert.deepEqual(ccHcl((c) => (c.delete_existing_peering_enabled = true)), [["outside-scope", CC]]);
+  assert.deepEqual(ccHcl((c) => delete c.delete_existing_peering_enabled), [["outside-scope", CC]]);
+  assert.deepEqual(ccHcl((c) => (c.delete_existing_peering_enabled = "${var.tags}")), [["outside-scope", CC]]);
   // A rule collection over a group the lab did not make, or over something that is not a network group.
   const RC = "azurerm_network_manager_admin_rule_collection.spokes";
   assert.deepEqual(one(RC, (d) => (res(d, RC).refs.network_group_ids = ["var.tags"])), [["outside-scope", RC]]);

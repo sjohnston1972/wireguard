@@ -89,7 +89,7 @@ export default () => {
       member("spoke2"),
       {
         address: "azurerm_network_manager_connectivity_configuration.hub_spoke",
-        values: { name: "cc-hub-spoke", connectivity_topology: "HubAndSpoke", global_mesh_enabled: false, applies_to_group: [{ group_connectivity: "DirectlyConnected", use_hub_gateway: false }], hub: [{ resource_type: "Microsoft.Network/virtualNetworks" }] },
+        values: { name: "cc-hub-spoke", connectivity_topology: "HubAndSpoke", global_mesh_enabled: false, delete_existing_peering_enabled: false, applies_to_group: [{ group_connectivity: "DirectlyConnected", use_hub_gateway: false }], hub: [{ resource_type: "Microsoft.Network/virtualNetworks" }] },
         unknown: ["network_manager_id", "applies_to_group.0.network_group_id", "hub.0.resource_id"],
         refs: { network_manager_id: IDS(AVNM), "applies_to_group.0.network_group_id": IDS(GROUP), "hub.0.resource_id": IDS("azurerm_virtual_network.hub") },
       },
