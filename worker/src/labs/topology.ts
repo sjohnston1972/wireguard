@@ -34,6 +34,9 @@ import { LABS_KV } from "../devseed-labs";
 /** How long one lab's live graph is reused (per session, per isolate). */
 export const TOPOLOGY_CACHE_MS = 30_000;
 
+/** How long the Resource Graph read may take before the diagram falls back to the plan. */
+export const TOPOLOGY_TIMEOUT_MS = 10_000;
+
 const cache = new Map<string, { at: number; response: LabTopologyResponse }>();
 const inflight = new Map<string, Promise<LabTopologyResponse>>();
 
@@ -77,8 +80,10 @@ async function fetchLive(env: Env, s: LabSessionRow, now: number): Promise<LabTo
     r = await arm(env, directNet(), `/providers/Microsoft.ResourceGraph/resources?api-version=${ARG_API}`, {
       method: "POST",
       body: JSON.stringify(topologyRequest(env.AZURE_SUBSCRIPTION_ID ?? "", s.lab_id)),
+      signal: AbortSignal.timeout(TOPOLOGY_TIMEOUT_MS),
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) return answer("failed", `Azure did not answer the diagram's read within ${TOPOLOGY_TIMEOUT_MS / 1000} s. Showing the planned diagram.`);
     return answer("failed", "Azure did not answer the diagram's read. Showing the planned diagram.");
   }
   if (r.status === 429) {

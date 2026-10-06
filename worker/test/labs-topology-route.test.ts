@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, labEnv as baseLabEnv, TEST_CATALOGUE, TEST_LABS } from "./labs-helpers";
 import { setCatalogueForTest } from "../src/labs/catalogue";
-import { labTopology, resetTopologyCache, TOPOLOGY_CACHE_MS } from "../src/labs/topology";
+import { labTopology, resetTopologyCache, TOPOLOGY_CACHE_MS, TOPOLOGY_TIMEOUT_MS } from "../src/labs/topology";
 import { LABS_KV, seedTopologyDev } from "../src/devseed-labs";
 import { topologyQuery } from "../../shared/topology/query";
 import { denyProblems } from "../../shared/topology/props";
@@ -243,6 +243,21 @@ describe("GET /labs/:id/topology", () => {
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({ status: "failed", live: null });
     expect(r.json.message).toMatch(/could not be drawn.*\(.+\).*planned diagram/);
+  });
+
+  it("the Resource Graph read carries a timeout; a timed-out read answers failed", async () => {
+    const { env } = await labEnv();
+    const arg = fakeArg();
+    await liveSession(env, "ls-1");
+    await labTopology(env, LAB, 11_000_000);
+    expect(arg.calls[0]!.signal).toBeInstanceOf(AbortSignal);
+    expect(TOPOLOGY_TIMEOUT_MS).toBeLessThanOrEqual(15_000);
+    arg.reply = () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    };
+    const t = await labTopology(env, LAB, 11_000_000 + TOPOLOGY_CACHE_MS);
+    expect(t).toMatchObject({ status: "failed", live: null });
+    expect(t.message).toMatch(/did not answer the diagram.s read within 10 s/);
   });
 
   it("the dev fixture is read only under AUTH_DEV_BYPASS when Azure is not configured", async () => {
