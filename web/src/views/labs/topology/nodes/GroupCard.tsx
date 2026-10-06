@@ -8,7 +8,7 @@
 // The box itself is sized by the layout; this draws its header.
 
 import type { TopoNode } from "@shared/topology/model";
-import { groupHeaderBits } from "../words";
+import { groupHeaderBits, rgChipsFor } from "../words";
 import { TopoIcon } from "./TopoIcon";
 
 export interface GroupCardProps {
@@ -16,12 +16,15 @@ export interface GroupCardProps {
   badge: string | null;
   ghost?: boolean;
   compact?: boolean;
+  /** The box's width: a resource group folds its tag chips into "+N tags" to fit it. */
+  room?: number;
   dim?: boolean;
   match?: boolean;
 }
 
-export function GroupCard({ node, badge, ghost = false, compact = false, dim = false, match = false }: GroupCardProps) {
-  const { sub, chips } = groupHeaderBits(node);
+export function GroupCard({ node, badge, ghost = false, compact = false, dim = false, match = false, room }: GroupCardProps) {
+  const { sub, chips: all } = groupHeaderBits(node);
+  const chips = room ? rgChipsFor(node, room) : all;
   const cls = ["topo-group", `topo-group--${node.kind}`, ghost && "topo-group--ghost", dim && "topo-group--dim", match && "topo-group--match"].filter(Boolean).join(" ");
   return (
     <div className={cls} data-testid="topo-group">
@@ -33,7 +36,7 @@ export function GroupCard({ node, badge, ghost = false, compact = false, dim = f
         {!compact && sub && <span className="topo-group__sub topo-mono">{sub}</span>}
         {!compact &&
           chips.map((c) => (
-            <span key={c} className="topo-chip">
+            <span key={c} className={c.length <= 14 ? "topo-chip topo-chip--keep" : "topo-chip"} title={c}>
               {c}
             </span>
           ))}

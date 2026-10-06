@@ -31,11 +31,11 @@ export const AssetFlowNode = memo(function AssetFlowNode({ data }: NodeProps<Top
   );
 });
 
-export const GroupFlowNode = memo(function GroupFlowNode({ data }: NodeProps<TopoFlowNode>) {
+export const GroupFlowNode = memo(function GroupFlowNode({ data, width }: NodeProps<TopoFlowNode>) {
   return (
     <>
       <Handles />
-      <GroupCard node={data.node} badge={data.badge} ghost={data.ghost} compact={data.compact} dim={data.dim} match={data.match} />
+      <GroupCard node={data.node} badge={data.badge} ghost={data.ghost} compact={data.compact} dim={data.dim} match={data.match} room={width} />
     </>
   );
 });

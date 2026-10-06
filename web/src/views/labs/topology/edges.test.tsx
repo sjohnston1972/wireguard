@@ -148,6 +148,14 @@ describe("edges on the canvas", () => {
     expect(container.querySelector(".react-flow__edgelabel-renderer")).not.toBeNull();
   });
 
+  it("edges run under the containers (whose bodies are see-through) and so under their headers and the cards", () => {
+    for (const e of buildEdges(graph, byId, base)) expect(e.zIndex, e.id).toBeLessThan(0);
+    const rule = (sel: string) => new RegExp(`(?:^|\n)${sel.replace(/[.[\]]/g, "\\$&")}\\s*\\{[^}]*`).exec(topologyCss)?.[0] ?? "";
+    // Each container's header strip is opaque, so a line passing under it never crosses its name or chips.
+    expect(rule(".topo-group__head")).toMatch(/background:\s*var\(--topo-head-bg\)/);
+    for (const k of ["--topo-vnet-fill", "--topo-subnet-fill", "--topo-rg-fill"]) expect(new RegExp(`${k}:[^;]*transparent`).test(topologyCss), k).toBe(true);
+  });
+
   it("dependency edges are dashed and never focusable", () => {
     const { container } = draw();
     const dep = container.querySelector('[data-id="e2"]');

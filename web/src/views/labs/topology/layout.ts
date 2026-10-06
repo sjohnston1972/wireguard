@@ -20,7 +20,7 @@ import { isGroupKind } from "@shared/topology/model";
 import { KINDS } from "@shared/topology/kinds";
 import { SYNTHETIC_KEYS } from "@shared/topology/keys";
 import type { TopologyLayout } from "@shared/topology/layout";
-import { headerTextWidth } from "./words";
+import { groupHeaderBits, headerTextWidth, rgChipsFor } from "./words";
 
 export const CARD_W = 200;
 export const CARD_H = 84;
@@ -109,7 +109,10 @@ export const HEADER_MAX_W = 520;
  * from character counts at the header's type sizes; deterministic.
  */
 export function headerWidth(n: TopoNode): number {
-  return Math.min(HEADER_MAX_W, headerTextWidth(n));
+  // A resource group's tags fold into "+N tags" rather than widen it (GroupCard: rgChipsFor).
+  const bits = groupHeaderBits(n);
+  const w = n.kind === "resourceGroup" ? headerTextWidth(n, { sub: bits.sub, chips: rgChipsFor(n, 0) }) : headerTextWidth(n, bits);
+  return Math.min(HEADER_MAX_W, w);
 }
 
 export interface LayoutOptions {

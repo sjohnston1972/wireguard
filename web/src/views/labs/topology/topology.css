@@ -6,8 +6,12 @@
   min-height: 0;
   --topo-azure: var(--blue);
   --topo-rg-fill: color-mix(in srgb, var(--bg-tile) 55%, transparent);
-  --topo-vnet-fill: color-mix(in srgb, var(--blue) 4%, var(--bg-panel));
-  --topo-subnet-fill: color-mix(in srgb, var(--blue) 9%, var(--bg-panel));
+  /* Container bodies are see-through (edges run under them); their header strips are the same colour, opaque. */
+  --topo-vnet-fill: color-mix(in srgb, var(--blue) 5%, transparent);
+  --topo-subnet-fill: color-mix(in srgb, var(--blue) 8%, transparent);
+  --topo-rg-head: var(--bg-tile);
+  --topo-vnet-head: color-mix(in srgb, var(--blue) 5%, var(--topo-rg-head));
+  --topo-subnet-head: color-mix(in srgb, var(--blue) 8%, var(--topo-vnet-head));
   --topo-subnet-border: color-mix(in srgb, var(--blue) 38%, var(--border));
   --topo-edge: var(--text-secondary);
   --topo-edge-dep: var(--text-muted);
@@ -217,6 +221,9 @@
   padding: 0 12px;
   overflow: hidden;
   font-size: 12px;
+  /* Opaque, the body's colour: an edge passing under the container never crosses its name or chips. */
+  background: var(--topo-head-bg);
+  border-radius: 10px 10px 0 0;
 }
 .topo-group__icon {
   flex: none;
@@ -234,7 +241,9 @@
   color: var(--text-secondary);
 }
 .topo-chip {
-  flex: none;
+  /* Shrinks (with an ellipsis and the whole text on hover) rather than being cut off by the box. */
+  flex: 0 1 auto;
+  min-width: 28px;
   max-width: 220px;
   padding: 1px 7px;
   border: 1px solid var(--border-strong);
@@ -246,20 +255,31 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A short chip (a region, a role, an NSG name) keeps its words; the long ones (tags) give way first. */
+.topo-chip--keep {
+  flex: none;
+}
 .topo-group--resourceGroup {
+  --topo-head-bg: var(--topo-rg-head);
   border: 1.5px dashed var(--border-strong);
   background: var(--topo-rg-fill);
 }
 .topo-group--vnet {
+  --topo-head-bg: var(--topo-vnet-head);
   border: 1.5px solid var(--topo-azure);
   background: var(--topo-vnet-fill);
 }
 .topo-group--virtualHub {
+  --topo-head-bg: var(--topo-vnet-head);
   border: 1.5px solid var(--topo-azure);
   border-radius: 18px;
   background: var(--topo-vnet-fill);
 }
+.topo-group--virtualHub > .topo-group__head {
+  border-radius: 16px 16px 0 0;
+}
 .topo-group--subnet {
+  --topo-head-bg: var(--topo-subnet-head);
   border: 1px solid var(--topo-subnet-border);
   border-radius: 10px;
   background: var(--topo-subnet-fill);
@@ -268,12 +288,17 @@
   height: 28px;
   padding: 0 10px;
   font-size: 11.5px;
+  border-radius: 9px 9px 0 0;
 }
 .topo-group--lane {
+  --topo-head-bg: var(--topo-rg-head);
   border: 1px solid var(--border);
   border-top: 3px solid var(--border-strong);
   border-radius: 6px;
   background: color-mix(in srgb, var(--bg-tile) 70%, transparent);
+}
+.topo-group--lane > .topo-group__head {
+  border-radius: 4px 4px 0 0;
 }
 .topo-group--lane > .topo-group__head .topo-group__name {
   max-width: none;

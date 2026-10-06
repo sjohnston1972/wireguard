@@ -6,6 +6,10 @@ import { badgeOf, type NodeDiffStatus } from "@shared/topology/diff";
 import { AssetCard } from "./nodes/AssetCard";
 import { GroupCard } from "./nodes/GroupCard";
 import { propText } from "./words";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const topologyCss = readFileSync([join(process.cwd(), "web/src/views/labs/topology/topology.css"), join(process.cwd(), "src/views/labs/topology/topology.css")].find((p) => existsSync(p))!, "utf8");
 
 const rg: TopoNode = {
   id: "tf:azurerm_resource_group.secondary",
@@ -47,6 +51,26 @@ describe("GroupCard", () => {
     const card = screen.getByTestId("topo-group");
     expect(within(card).getByText("10.71.192.0/24")).toBeInTheDocument();
     for (const chip of ["NSG nsg-app", "route table rt-app", "delegation Microsoft.ContainerInstance/containerGroups"]) expect(within(card).getByText(chip)).toHaveClass("topo-chip");
+  });
+
+  it("a narrow resource group folds its tag chips into +N tags, keeping its region and role whole", () => {
+    render(<GroupCard node={rg} badge={null} room={360} />);
+    const card = screen.getByTestId("topo-group");
+    for (const chip of ["ukwest", "secondary"]) expect(within(card).getByText(chip)).toHaveClass("topo-chip--keep");
+    expect(within(card).queryByText("project: wg-admin-labs")).toBeNull();
+    expect(within(card).getByText(/^\+\d+ tags$/)).toHaveClass("topo-chip");
+    // Wide enough: every tag shows.
+    render(<GroupCard node={rg} badge={null} room={2000} />);
+    expect(screen.getAllByText("project: wg-admin-labs")).toHaveLength(1);
+  });
+
+  it("a header chip cut short by its box says the whole of itself on hover, and chips shrink rather than vanish", () => {
+    render(<GroupCard node={subnet} badge={null} />);
+    for (const chip of ["NSG nsg-app", "route table rt-app", "delegation Microsoft.ContainerInstance/containerGroups"]) expect(screen.getByText(chip)).toHaveAttribute("title", chip);
+    const rule = /\.topo-chip\s*\{[^}]*/.exec(topologyCss)![0];
+    expect(rule).toMatch(/text-overflow:\s*ellipsis/);
+    expect(rule).toMatch(/flex:\s*0 1 auto/);
+    expect(rule).toMatch(/min-width:\s*\d/);
   });
 
   it("a VNet shows its address space and the gateway marker", () => {

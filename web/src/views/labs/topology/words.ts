@@ -108,6 +108,26 @@ export function headerTextWidth(node: TopoNode, bits: { sub: string | null; chip
   return Math.ceil(w);
 }
 
+/**
+ * A resource group's header chips for a box `room` wide: its tags ("lab: …",
+ * "project: …", "+1 tag") folded from the end into one "+N tags" until the
+ * header fits, so the region and role chips are never cut short by tags.
+ */
+export function rgChipsFor(node: TopoNode, room: number): string[] {
+  const bits = groupHeaderBits(node);
+  if (node.kind !== "resourceGroup" || headerTextWidth(node, bits) <= room) return bits.chips;
+  const tags = textList(node.props.tags);
+  const keep = bits.chips.slice(0, bits.chips.length - tags.length);
+  const named = tags.filter((t) => !/^\+\d+ tags?$/.test(t));
+  const more = tags.reduce((n, t) => n + Number(/^\+(\d+) tags?$/.exec(t)?.[1] ?? 0), 0);
+  for (let k = named.length; k >= 0; k--) {
+    const folded = named.length - k + more;
+    const chips = [...keep, ...named.slice(0, k), ...(folded ? [`+${folded} tag${folded === 1 ? "" : "s"}`] : [])];
+    if (k === 0 || headerTextWidth(node, { sub: bits.sub, chips }) <= room) return chips;
+  }
+  return bits.chips;
+}
+
 /** Props that hold IP addresses (copy buttons, mono type). */
 export const IP_PROPS: ReadonlySet<string> = new Set(["privateIp", "publicIp", "addressSpace", "prefix", "dnsServers", "clientPool"]);
 

@@ -4,15 +4,17 @@
 // Traffic edges (load balancer rules, peerings, next hops, private
 // endpoints...) are solid smoothstep lines with a label pill. Dependency
 // edges (role assignments, diagnostics, zone links...) are thinner dashed
-// lines, never focusable or clickable, and can be hidden. Both leave and enter
-// at the nearest sides of their two boxes (floating.ts), so they follow a
-// dragged node. Labels keep off the cards, the headers and each other
-// (labelSpot.ts).
+// lines, never focusable or clickable, and can be hidden. Both run under the
+// nodes (containers are see-through) and leave and enter
+// at the nearest sides of their two boxes, or the sides that keep them from
+// passing under another card or a header (route.ts), so they follow a
+// dragged node.
 
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position, useInternalNode, useStore, type Edge, type EdgeProps, type InternalNode, type ReactFlowState } from "@xyflow/react";
+import { BaseEdge, EdgeLabelRenderer, useInternalNode, useStore, type Edge, type EdgeProps, type InternalNode, type ReactFlowState } from "@xyflow/react";
 import { createContext, useContext, useEffect } from "react";
 import type { TopoHealth } from "@shared/topology/model";
-import { floatingEnds, type Bounds, type Side } from "./floating";
+import type { Bounds } from "./floating";
+import { routeEdge, type Obstacle } from "./route";
 import { labelSize, labelSpot, type Box } from "./labelSpot";
 import { HEADER, SUBNET_HEADER } from "../layout";
 
@@ -27,8 +29,6 @@ export interface TopoEdgeData extends Record<string, unknown> {
 export type TrafficFlowEdge = Edge<TopoEdgeData, "traffic">;
 export type DependencyFlowEdge = Edge<TopoEdgeData, "dependency">;
 
-const POS: Record<Side, Position> = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
-
 const boundsOf = (n: InternalNode): Bounds => ({
   x: n.internals.positionAbsolute.x,
   y: n.internals.positionAbsolute.y,
@@ -36,37 +36,26 @@ const boundsOf = (n: InternalNode): Bounds => ({
   h: n.measured?.height ?? n.height ?? 0,
 });
 
-/** What a label should not cover: every card, and every container's header strip. */
-function obstaclesOf(s: ReactFlowState): Box[] {
-  const out: Box[] = [];
+/** What a line should not pass under and a label should not cover: every card, and every container's header strip. */
+function obstaclesOf(s: ReactFlowState): Obstacle[] {
+  const out: Obstacle[] = [];
   for (const n of s.nodeLookup.values()) {
     const w = n.measured?.width ?? n.width ?? 0;
     const h = n.measured?.height ?? n.height ?? 0;
     const { x, y } = n.internals.positionAbsolute;
-    if (n.type === "topoAsset") out.push({ x, y, w, h });
-    else if (n.type === "topoGroup") out.push({ x, y, w, h: (n.data as { node?: { kind?: string } }).node?.kind === "subnet" ? SUBNET_HEADER : HEADER });
+    if (n.type === "topoAsset") out.push({ id: n.id, x, y, w, h, head: false });
+    else if (n.type === "topoGroup") out.push({ id: n.id, x, y, w, h: (n.data as { node?: { kind?: string } }).node?.kind === "subnet" ? SUBNET_HEADER : HEADER, head: true });
   }
   return out;
 }
-const sameBoxes = (a: Box[], b: Box[]) => a.length === b.length && a.every((p, i) => p.x === b[i]!.x && p.y === b[i]!.y && p.w === b[i]!.w && p.h === b[i]!.h);
+const sameBoxes = (a: Obstacle[], b: Obstacle[]) => a.length === b.length && a.every((p, i) => p.id === b[i]!.id && p.x === b[i]!.x && p.y === b[i]!.y && p.w === b[i]!.w && p.h === b[i]!.h);
 
 function useGeometry(source: string, target: string) {
   const s = useInternalNode(source);
   const t = useInternalNode(target);
   const obstacles = useStore(obstaclesOf, sameBoxes);
   if (!s || !t) return null;
-  const e = floatingEnds(boundsOf(s), boundsOf(t));
-  const [path, labelX, labelY] = getSmoothStepPath({
-    sourceX: e.sx,
-    sourceY: e.sy,
-    sourcePosition: POS[e.sourceSide],
-    targetX: e.tx,
-    targetY: e.ty,
-    targetPosition: POS[e.targetSide],
-    borderRadius: 10,
-    offset: 18,
-  });
-  return { path, labelX, labelY, obstacles };
+  return { ...routeEdge(boundsOf(s), boundsOf(t), obstacles, source, target), obstacles };
 }
 
 /**

@@ -10,6 +10,9 @@ import type { TopologyGraph, TopoNode } from "@shared/topology/model";
 import { edgeName } from "../words";
 import type { TopoEdgeData } from "./TopoEdges";
 
+/** Edges sit under the nodes (React Flow adds a node's depth, at most a few, to this). */
+export const EDGE_Z = -100;
+
 export interface BuildEdgesOptions {
   showDependencies: boolean;
   /** Labels on (false in the mini variant). */
@@ -39,6 +42,7 @@ export function buildEdges(graph: TopologyGraph, byId: ReadonlyMap<string, TopoN
     const s = shared.get(pair(e));
     const label = s && s.first === e.id ? s.labels.join("\n") : undefined;
     const data: TopoEdgeData = { showLabel: opts.labels && (!s || s.first === e.id), ghost, dim, ...(label ? { label } : {}), ...(e.state ? { state: e.state } : {}) };
+    // Under every node: containers are see-through, so a line shows across their bodies but never over a header or a card.
     if (e.kind === "traffic") {
       const both = /^peering/i.test(e.label ?? "") || /hub connection/i.test(e.label ?? "");
       const marker = { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "var(--topo-edge)" };
@@ -47,6 +51,7 @@ export function buildEdges(graph: TopologyGraph, byId: ReadonlyMap<string, TopoN
         source: e.from,
         target: e.to,
         type: "traffic",
+        zIndex: EDGE_Z,
         data,
         focusable: true,
         selectable: true,
@@ -61,6 +66,7 @@ export function buildEdges(graph: TopologyGraph, byId: ReadonlyMap<string, TopoN
         source: e.from,
         target: e.to,
         type: "dependency",
+        zIndex: EDGE_Z,
         data,
         focusable: false,
         selectable: false,

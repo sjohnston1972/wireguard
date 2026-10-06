@@ -302,6 +302,8 @@ describe("packing for the space's shape", () => {
     expect(laid.s!.w).toBeGreaterThanOrEqual(headerWidth(sn));
     expect(headerWidth(sn)).toBeGreaterThan(CARD_W + 2 * PAD);
     expect(headerWidth(n("x", "subnet", "v", "snet", { chips: Array.from({ length: 30 }, (_, i) => `NSG nsg-${i}`) }))).toBe(HEADER_MAX_W);
+    // A resource group's tags fold into "+N tags" rather than widen it.
+    expect(headerWidth(n("x", "resourceGroup", undefined, "rg", { region: "uksouth", tags: ["lab: az700-40-lb-advanced", "project: wg-admin-labs", "+1 tag"] }))).toBeLessThan(260);
   });
 
   it("real labs: az104-06 and az700-40 read at 70% or more in the tab's shape where it can; every lab fills the full screen readably", () => {
