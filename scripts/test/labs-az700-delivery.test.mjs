@@ -651,3 +651,136 @@ test(`${AGW}: two web VMs, lab.yaml as planned and a readme that blocks an attac
   assert.match(r, /app\.lab41\.internal/);
   assert.match(r, /access polic/i);
 });
+
+// ── Lab 42: Front Door Premium, rules, caching, WAF, Private Link origin ─
+
+const AFD = "az700-42-frontdoor-private";
+
+labContentSuite(AFD, { marker: "££" });
+
+test(`${AFD}: a Premium profile whose origin uses Private Link to the lab's Private Link service`, () => {
+  const l = lab(AFD);
+  const p = one(l, "azurerm_cdn_frontdoor_profile");
+  assert.equal(attr(p.body, "sku_name"), '"Premium_AzureFrontDoor"', "Private Link origins need Premium");
+  assert.equal(attr(p.body, "resource_group_name"), IN_LAB);
+  const pls = one(l, "azurerm_private_link_service");
+  const o = one(l, "azurerm_cdn_frontdoor_origin").body;
+  const pl = nested(o, "private_link");
+  assert.ok(pl, "the origin has a private_link block");
+  assert.equal(attr(pl, "private_link_target_id"), `azurerm_private_link_service.${pls.labels[1]}.id`);
+  assert.equal(attr(pl, "location"), "var.region");
+  assert.ok(attr(pl, "request_message"), "a request message the approver reads");
+  assert.equal(attr(pl, "target_type"), undefined, "no target_type for a Private Link service (a load balancer origin)");
+  // The origin is the internal load balancer's private address, over HTTP.
+  assert.equal(attr(o, "host_name"), "local.lb_ip");
+  assert.equal(attr(o, "origin_host_header"), "local.lb_ip");
+  assert.equal(attr(o, "http_port"), "80");
+  // The Private Link service fronts lb-int, NATs into snet-pls, and is never auto-approved (ruling 51).
+  const s = pls.body;
+  assert.equal(attr(s, "load_balancer_frontend_ip_configuration_ids"), `[azurerm_lb.${one(l, "azurerm_lb").labels[1]}.frontend_ip_configuration[0].id]`);
+  assert.equal(attr(nested(s, "nat_ip_configuration"), "subnet_id"), `azurerm_subnet.${subnetIn(l, "app", "snet-pls").labels[1]}.id`);
+  assert.equal(attr(s, "auto_approval_subscription_ids"), undefined, "Front Door's connection waits for a person to approve it");
+  assert.equal(attr(s, "visibility_subscription_ids"), undefined);
+  assert.equal(attr(subnetIn(l, "app", "snet-pls").body, "private_link_service_network_policies_enabled"), "false");
+  // lb-int: internal, Standard, a rule and probe on 80 over vm-web.
+  const lb = one(l, "azurerm_lb").body;
+  assert.equal(attr(lb, "sku"), '"Standard"');
+  assert.equal(attr(nested(lb, "frontend_ip_configuration"), "subnet_id"), `azurerm_subnet.${subnetIn(l, "app", "snet-web").labels[1]}.id`);
+  assert.equal(attr(nested(lb, "frontend_ip_configuration"), "private_ip_address"), "local.lb_ip");
+  assert.equal(attr(nested(lb, "frontend_ip_configuration"), "public_ip_address_id"), undefined);
+  assert.equal(resources(l, "azurerm_public_ip").length, 0, "no public IP anywhere: Front Door is the only way in");
+  assert.deepEqual([attr(one(l, "azurerm_lb_rule").body, "frontend_port"), attr(one(l, "azurerm_lb_rule").body, "backend_port")], ["80", "80"]);
+  // The origin group probes over HTTP every 100 seconds; the route forwards HTTP only, HTTPS redirect on, cached and compressed.
+  const og = one(l, "azurerm_cdn_frontdoor_origin_group").body;
+  assert.deepEqual([attr(nested(og, "health_probe"), "protocol"), attr(nested(og, "health_probe"), "path"), attr(nested(og, "health_probe"), "interval_in_seconds")], ['"Http"', '"/"', "100"]);
+  const route = one(l, "azurerm_cdn_frontdoor_route").body;
+  assert.deepEqual(strings(attr(route, "patterns_to_match")), ["/*"]);
+  assert.equal(attr(route, "https_redirect_enabled"), "true");
+  assert.equal(attr(route, "forwarding_protocol"), '"HttpOnly"');
+  const cache = nested(route, "cache");
+  assert.ok(cache, "caching on");
+  assert.equal(attr(cache, "compression_enabled"), "true");
+  noInternetSsh(l);
+});
+
+test(`${AFD}: a rule set with a redirect, a header and a cache override`, () => {
+  const l = lab(AFD);
+  const rs = one(l, "azurerm_cdn_frontdoor_rule_set");
+  assert.match(attr(rs.body, "name"), /^"[A-Za-z][A-Za-z0-9]*"$/, "letters and digits only");
+  const route = one(l, "azurerm_cdn_frontdoor_route").body;
+  assert.equal(attr(route, "cdn_frontdoor_rule_set_ids"), `[azurerm_cdn_frontdoor_rule_set.${rs.labels[1]}.id]`);
+  const rules = resources(l, "azurerm_cdn_frontdoor_rule");
+  assert.equal(rules.length, 3);
+  for (const r of rules) {
+    assert.equal(attr(r.body, "cdn_frontdoor_rule_set_id"), `azurerm_cdn_frontdoor_rule_set.${rs.labels[1]}.id`);
+    assert.match(attr(r.body, "name"), /^"[A-Za-z][A-Za-z0-9]*"$/);
+  }
+  const redirect = rules.find((r) => nested(r.body, "url_redirect_action"));
+  assert.ok(redirect, "a redirect rule");
+  assert.deepEqual(strings(attr(nested(redirect.body, "url_path_condition"), "match_values")), ["old"]);
+  assert.equal(attr(nested(redirect.body, "url_redirect_action"), "destination_path"), '"/"');
+  const header = rules.find((r) => nested(r.body, "response_header_action"));
+  assert.ok(header, "a response header rule");
+  const h = nested(header.body, "response_header_action");
+  assert.deepEqual([attr(h, "header_name"), attr(h, "value")], ['"X-Lab"', '"42"']);
+  const cache = rules.find((r) => nested(r.body, "route_configuration_override_action"));
+  assert.ok(cache, "a cache override rule");
+  assert.deepEqual(strings(attr(nested(cache.body, "url_path_condition"), "match_values")), ["static/"]);
+  assert.equal(attr(nested(cache.body, "route_configuration_override_action"), "cache_behavior"), '"OverrideAlways"');
+  assert.deepEqual(rules.map((r) => Number(attr(r.body, "order"))).sort(), [1, 2, 3]);
+});
+
+test(`${AFD}: a Premium WAF policy in Prevention with managed rule sets, attached by a security policy`, () => {
+  const l = lab(AFD);
+  const w = one(l, "azurerm_cdn_frontdoor_firewall_policy");
+  const b = w.body;
+  assert.equal(attr(b, "sku_name"), '"Premium_AzureFrontDoor"');
+  assert.equal(attr(b, "mode"), '"Prevention"');
+  assert.equal(attr(b, "enabled"), "true");
+  assert.match(attr(b, "name"), /^"[A-Za-z][A-Za-z0-9]*"$/);
+  const managed = Object.fromEntries(allNested(b, "managed_rule").map((m) => [attr(m, "type"), attr(m, "version")]));
+  assert.deepEqual(managed, { '"Microsoft_DefaultRuleSet"': '"2.1"', '"Microsoft_BotManagerRuleSet"': '"1.1"' });
+  const custom = allNested(b, "custom_rule");
+  assert.equal(custom.length, 1);
+  assert.equal(attr(custom[0], "type"), '"RateLimitRule"');
+  assert.equal(attr(custom[0], "action"), '"Block"');
+  assert.ok(Number(attr(custom[0], "rate_limit_threshold")) > 0);
+  const sp = one(l, "azurerm_cdn_frontdoor_security_policy").body;
+  assert.equal(attr(sp, "cdn_frontdoor_profile_id"), `azurerm_cdn_frontdoor_profile.${one(l, "azurerm_cdn_frontdoor_profile").labels[1]}.id`);
+  assert.equal(attr(nested(sp, "firewall"), "cdn_frontdoor_firewall_policy_id"), `azurerm_cdn_frontdoor_firewall_policy.${w.labels[1]}.id`);
+  assert.equal(attr(nested(sp, "domain"), "cdn_frontdoor_domain_id"), `azurerm_cdn_frontdoor_endpoint.${one(l, "azurerm_cdn_frontdoor_endpoint").labels[1]}.id`);
+  assert.deepEqual(strings(attr(nested(sp, "association"), "patterns_to_match")), ["/*"]);
+});
+
+test(`${AFD}: the readme's first Things to try approves the connection`, () => {
+  const l = lab(AFD);
+  const tries = l.readme.split("## Things to try")[1].split(/\n## /)[0];
+  const first = tries.split("\n").find((x) => x.startsWith("- "));
+  assert.match(first, /approve/i);
+  assert.match(first, /pls-web/);
+  assert.match(first, /502/);
+  assert.match(l.readme, /x-cache/i);
+  assert.match(l.readme, /each hour, or part(ial)? hour/i, "the base fee is billed per hour (Learn, Front Door billing)");
+  assert.match(l.readme, /about 15 minutes/, "the deploy time");
+  // Ruling 51: the pipeline never approves; nothing in the Terraform does either.
+  for (const r of resources(l)) assert.doesNotMatch(r.body, /is_manual_connection|approv/i, r.labels.join("."));
+});
+
+test(`${AFD}: lab.yaml as planned, peering off, the base fee authored per hour`, () => {
+  const l = lab(AFD);
+  const y = l.yaml;
+  assert.deepEqual(y.skill_areas, ["az700.delivery", "az700.security", "az700.private"]);
+  assert.equal(y.level, "expert");
+  assert.deepEqual(y.prerequisites, ["az305-27-multi-region"]);
+  assert.deepEqual(y.connectivity, { peering: "off", dns_link: false, subnets_used: 1 });
+  assert.deepEqual(y.timing, { deploy_min: 15, destroy_min: 12, session_h: 2, max_h: 3 });
+  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 74);
+  const base = y.cost.items.find((i) => /Front Door Premium, base fee/.test(i.name));
+  assert.ok(base);
+  assert.equal(base.gbp_h, 0.3412, "£249.066 a month / 730");
+  assert.equal(base.retail, undefined, "priced under Zone 1, no uksouth row");
+  assert.equal(y.cost.pricey, base.name);
+  assert.ok(!outputs(l).includes("peer_vnet_id"));
+  assert.equal(attr(subnetIn(l, "app", "snet-web").body, "default_outbound_access_enabled"), "false");
+  assert.equal(attr(subnetIn(l, "app", "snet-pls").body, "default_outbound_access_enabled"), "false");
+});

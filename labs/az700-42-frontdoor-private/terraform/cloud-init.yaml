@@ -1,0 +1,36 @@
+#cloud-config
+# Read by Terraform's file() (main.tf) for vm-web. A tiny web server and
+# nothing to install: python3 ships with Ubuntu, and the VM's subnet has no
+# default outbound access. It serves a page at / and a file under /static/,
+# which Front Door's rule set caches for an hour.
+
+write_files:
+  - path: /srv/lab/index.html
+    owner: root:root
+    permissions: "0644"
+    content: |
+      <html><body><h1>vm-web, behind lb-int, through pls-web and Front Door Premium</h1></body></html>
+  - path: /srv/lab/static/hello.txt
+    owner: root:root
+    permissions: "0644"
+    content: |
+      A static file: Front Door's cachestatic rule keeps it at the edge for an hour.
+  - path: /etc/systemd/system/lab-http.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Lab web server: python3 -m http.server on port 80
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      ExecStart=/usr/bin/python3 -m http.server 80 --directory /srv/lab
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now lab-http.service
