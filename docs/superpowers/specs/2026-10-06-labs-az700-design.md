@@ -130,7 +130,7 @@ gateways 100; App Gateway Basic preview not registered; one Network Watcher per 
 ### 3.7 Long deploys (ruling 45)
 
 VPN gateways take 30–45 minutes (two built in parallel in lab 36), a Virtual WAN hub about 30, a Route Server 15–60 (Learn
-FAQ: "might take 30-60 minutes" beside a gateway). Planning figures: lab 36 45/25, lab 37 40/20, lab 39 35/30, lab 34 25/20.
+FAQ: "might take 30-60 minutes" beside a gateway). Planning figures: lab 36 45/25, lab 37 40/20, lab 39 55/45 (review fix 7: hub 30 + firewall 10 before the connections and routing intent), lab 34 25/20.
 - **Job timeout unchanged:** `2 × (deploy + destroy) + 20`, capped at 150. A test run is deploy + destroy once (about 70–85
   minutes for lab 36), so 150 holds with room for a slow gateway. No cap change.
 - **The safety net's delete wait follows the lab:** `LAB_DELETE_WAIT_SECONDS` defaults to `max(1500, 90 × destroy_min)`
@@ -278,8 +278,8 @@ The budget guard still tears down every lab at 100% (decision B).
 
 **Release tests:** Steven approved **up to £15** for this suite, including one retry for the cheap labs, the dashboard pass
 after deploy (which marks versions released) and the soaks; merge and deploy without stopping. The plan's Integration step
-7 gives per-lab likely and worst figures: about **£2.61 likely and £4.86 worst per full pass** of all 20 labs (worst: every billed hour rounded up), so two passes, one retry of each cheap lab, one
-£££ retry and the soaks come to about £13.16 worst and £6.70 likely, under £15. A projected overrun is a STOP. Release tests through `lab-release-test.mjs` bypass the
+7 gives per-lab likely and worst figures: about **£2.92 likely and £4.86 worst per full pass** of all 20 labs (worst: every billed hour rounded up), so two passes, one retry of each cheap lab, one
+£££ retry and the soaks come to about £13.16 worst and £7.30 likely, under £15. A projected overrun is a STOP. Release tests through `lab-release-test.mjs` bypass the
 dashboard's guard but land in the month's actual spend; the plan checks the month-to-date figure first, and if the dashboard
 pass would cross £10 it is a STOP for Steven to raise the budget (a setting change).
 

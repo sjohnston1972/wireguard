@@ -23,7 +23,7 @@
 # £0.0491/GB plus hub data processing £0.0151/GB (per-GB units the feed
 # cannot read). The WAN itself and its VNet connections cost nothing.
 id: az700-39-vwan-secured-hub
-version: 1
+version: 2
 title: "Virtual WAN with a secured hub"
 summary: >-
   A Standard Virtual WAN hub secured by Azure Firewall Basic, with routing intent sending private and internet traffic
@@ -42,7 +42,7 @@ cost:
     - { name: "Linux VMs, Standard_B1s", gbp_h: 0.0089, qty: 2, retail: { sku: Standard_B1s } }
     - { name: "OS disks, Standard HDD S4", gbp_h: 0.0018, qty: 2, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
   pricey: "Azure Firewall Basic in a secured hub"
-timing: { deploy_min: 35, destroy_min: 30, session_h: 2, max_h: 3 }
+timing: { deploy_min: 55, destroy_min: 45, session_h: 2, max_h: 3 }
 capacity: { vm_sizes: [Standard_B1s, Standard_B1s] }
 regions: { secondary: null }
 connectivity: { peering: "off", dns_link: false, subnets_used: 3 }

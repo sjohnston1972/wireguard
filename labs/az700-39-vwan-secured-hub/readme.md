@@ -9,7 +9,7 @@ A Virtual WAN with a secured hub: a Standard hub with Azure Firewall Basic insid
 - `vnet-spoke1` and `vnet-spoke2` (the first and second /20s), connected to the hub (`conn-spoke1`, `conn-spoke2`) with internet security on, so they learn the hub's 0.0.0.0/0. Their `snet-workload` subnets have **no default outbound access**: the firewall is the only way out
 - `vm-spoke1` and `vm-spoke2`: Standard_B1s Ubuntu 24.04 VMs with no public IP that serve their names on port 80
 
-Deploying takes about 35 minutes: the hub takes about 30, the firewall a few more, then the connections and routing intent, one at a time. Tear-down takes about 30, in the reverse order. A 2-hour session costs about £1.60 from deploy to the end of tear-down, most of it the hub and its firewall. There is no **Peer to gateway** for this lab: a virtual hub owns its connections, and the gateway's VNet cannot be peered with it. Reach the VMs through the portal's serial console or Run command, and go from one spoke to the other from there. The VM user is `azureuser`; its password is behind **Show**.
+Deploying takes about 55 minutes: the hub takes about 30, the firewall about 10 more, then the connections and routing intent, one at a time. Tear-down takes about 45, in the reverse order. A 2-hour session costs about £1.90 from deploy to the end of tear-down, most of it the hub and its firewall. There is no **Peer to gateway** for this lab: a virtual hub owns its connections, and the gateway's VNet cannot be peered with it. Reach the VMs through the portal's serial console or Run command, and go from one spoke to the other from there. The VM user is `azureuser`; its password is behind **Show**.
 
 ```text
 rg-lab-<id>

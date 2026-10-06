@@ -577,10 +577,17 @@ test(`${VWAN}: peering is off`, () => {
   assert.match(l.readme, /serial console/, "the readme says how to reach the VMs");
 });
 
-test(`${VWAN}: timing is 35/30 and the job timeout is 150`, () => {
-  const { timing } = lab(VWAN).yaml;
-  assert.deepEqual(timing, { deploy_min: 35, destroy_min: 30, session_h: 2, max_h: 3 });
-  assert.equal(timeoutMin(timing), 150, "2 × (35 + 30) + 20");
+// Review fix 7: main.tf's own comment sums to 40 minutes (hub 30, firewall 10) before the connections and routing
+// intent, so 35 was too short: 55 to deploy, 45 to destroy. The job timeout stays at the 150 cap; still £££.
+test(`${VWAN}: timing is 55/45 and the job timeout is the 150 cap`, () => {
+  const l = lab(VWAN);
+  const { timing } = l.yaml;
+  assert.deepEqual(timing, { deploy_min: 55, destroy_min: 45, session_h: 2, max_h: 3 });
+  assert.equal(timeoutMin(timing), 150, "min(150, 2 × (55 + 45) + 20)");
+  const comment = /The hub takes about (\d+) minutes to create, the firewall (\d+) more/.exec(l.files["main.tf"]);
+  assert.ok(comment, "main.tf says how long the hub and firewall take");
+  assert.ok(timing.deploy_min >= Number(comment[1]) + Number(comment[2]) + 10, "deploy_min covers the hub, the firewall and the connections and routing intent after them");
+  assert.match(l.readme, /Tear-down takes about 45/);
 });
 
 test(`${VWAN}: the readme explains hub gateways, ExpressRoute and third-party NVAs under Not built here`, () => {
