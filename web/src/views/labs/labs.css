@@ -159,7 +159,8 @@
 .labs-tabs__loading { margin: 0; padding: 24px 0; text-align: center; }
 
 /* /labs/:id/diagram: the diagram is the page. */
-.labs--full { gap: 0; min-height: calc(100dvh - 140px); }
+/* A definite height (not a min-height), so the canvas's 100% heights resolve: React Flow needs a sized box. */
+.labs--full { gap: 0; height: calc(100dvh - 100px); min-height: 320px; }
 .labs--full > .topo-full { flex: 1 1 auto; min-height: 0; }
 .labs-readme a { color: var(--blue-bright); text-decoration: underline; text-underline-offset: 2px; }
 .labs-readme a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 3px; }
@@ -263,7 +264,7 @@
   .labs-foot > .labs-actions .btn { flex: 1; }
   /* The lab sheet's diagram: at most 60% of the screen, so the sheet's header and tabs stay in view. */
   .labs-tabs--diagram .tabs__panel { height: min(60vh, 480px); }
-  .labs--full { min-height: calc(100dvh - 120px); }
+  .labs--full { height: calc(100dvh - 128px); }
 }
 @media (max-width: 860px) {
   .labs-modal__cols { grid-template-columns: 1fr; }

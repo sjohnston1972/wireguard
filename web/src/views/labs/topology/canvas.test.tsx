@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { TopologyGraph } from "@shared/topology/model";
 import { Canvas } from "./Canvas";
+import { PHONE_MIN_FIT_ZOOM } from "./FlowCanvas";
 import type { CanvasProps } from "./contract";
 import { toFlowNodes, movesOf } from "./flowNodes";
 import { layoutTopology } from "./layout";
@@ -179,6 +180,24 @@ describe("Canvas", () => {
       await act(async () => requestFit());
       // No transition: the view is at the matches as soon as the request is handled.
       expect(viewport(container)).not.toBe(fitted);
+    } finally {
+      undo();
+    }
+  });
+
+  it("on the phone the first fit never shrinks cards past readable (zoom at least PHONE_MIN_FIT_ZOOM; pan for the rest)", async () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("max-width"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    const undo = measureFromStyle();
+    try {
+      const { container } = render(
+        <div style={{ width: 120, height: 120 }}>
+          <Canvas {...props()} />
+        </div>,
+      );
+      await waitFor(() => expect(viewport(container).replace(/\s/g, "")).not.toBe("translate(0px,0px)scale(1)"));
+      const scale = Number(viewport(container).match(/scale\(([\d.]+)\)/)![1]);
+      expect(scale).toBeGreaterThanOrEqual(PHONE_MIN_FIT_ZOOM);
+      expect(PHONE_MIN_FIT_ZOOM).toBeGreaterThanOrEqual(0.4);
     } finally {
       undo();
     }

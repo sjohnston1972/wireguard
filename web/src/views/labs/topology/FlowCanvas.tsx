@@ -34,6 +34,8 @@ import { nodeIndex } from "./words";
 import "./topology.css";
 
 export const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+/** On the phone the first fit stops shrinking here, so names stay readable; the rest is a pan away (Controls' fit shows all). */
+export const PHONE_MIN_FIT_ZOOM = 0.6;
 
 export function FlowCanvas(props: CanvasProps) {
   return (
@@ -133,7 +135,7 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
       panOnScroll={false}
       preventScrolling={!mini}
       fitView
-      fitViewOptions={{ padding: mini ? 0.04 : 0.08, maxZoom: 1 }}
+      fitViewOptions={{ padding: mini ? 0.04 : 0.08, maxZoom: 1, ...(phone && !mini ? { minZoom: PHONE_MIN_FIT_ZOOM } : {}) }}
       minZoom={0.1}
       maxZoom={2}
       proOptions={{ hideAttribution: !full }}

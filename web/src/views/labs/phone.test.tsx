@@ -104,6 +104,13 @@ describe("the lab diagram on the phone", () => {
     expect(block).toMatch(/\.labs-tabs--diagram \.tabs__panel \{ height: min\(60vh, 480px\); \}/);
   });
 
+  it("the full screen has a definite height (a min-height alone left React Flow's box 0 px tall)", () => {
+    const phone = labsCss.slice(labsCss.indexOf("@media (max-width: 640px)"));
+    const block = phone.slice(0, phone.indexOf("\n}\n"));
+    expect(block).toMatch(/\.labs--full \{ height: calc\(100dvh - \d+px\); \}/);
+    expect(labsCss).toMatch(/^\.labs--full \{[^}]*\bheight: calc\(100dvh - \d+px\);/m);
+  });
+
   it("details open as a Sheet", async () => {
     const user = userEvent.setup();
     setViewport("phone");
