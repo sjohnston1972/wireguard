@@ -10,7 +10,9 @@
 //   does not have), every key's status for the badges. The Planned toggle
 //   shows the planned graph moved into the session's own /18.
 // - The live view cannot answer (Azure not configured, refused, throttled, or
-//   the request failed): the planned graph with a banner naming why.
+//   the request failed): the planned graph with a banner naming why. A
+//   refetch failing after a good answer keeps that live view, with a banner
+//   saying it is out of date and as of when.
 //
 // Also the two per-device choices (ruling 18): show dependency edges, and
 // Diagram or List, kept in localStorage `wg.topology.v1` (every access in
@@ -59,6 +61,11 @@ export interface DiagramData {
 
 const isLive = (s: LabSession | null | undefined): s is LabSession => !!s && (LAB_LIVE_STATES as readonly string[]).includes(s.state);
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/\.$/, "");
+/** When the last live view was read, as this device's hours and minutes. */
+const clock = (iso: string | null) => {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "an earlier read";
+};
 
 /**
  * The diagram of `labId` for its session (null: idle). `source` is the
@@ -91,9 +98,12 @@ export function useDiagramData(labId: string, session: LabSession | null, opts: 
   if (topo.isError && !r) return { ...base, graph: rebased, status: {}, source: "planned", loading: false, error: null, banner: `The live view did not load: ${why(topo.error)}. ${FALLBACK}` };
   if (!r) return { ...base, graph: null, status: {}, source: null, loading: true, error: null };
   if (merged) {
-    const banner = r.status !== "ok" ? `${r.message ?? REASON[r.status]} Showing the last live view.` : r.truncated ? TRUNCATED : null;
+    // A refetch failed after an earlier answer: the last live view stays, said to be out of date.
+    const stale = topo.isError ? `The live view is out of date (as of ${clock(r.fetchedAt)}): ${why(topo.error)}.` : null;
+    const banner = stale ?? (r.status !== "ok" ? `${r.message ?? REASON[r.status]} Showing the last live view.` : r.truncated ? TRUNCATED : null);
     return { ...base, graph: merged.graph, status: merged.status, source: "live", loading: false, error: null, banner };
   }
+  if (topo.isError) return { ...base, graph: rebased, status: {}, source: "planned", loading: false, error: null, banner: `The live view did not load: ${why(topo.error)}. ${FALLBACK}` };
   const reason = r.status === "ok" ? "The live view answered with no diagram." : (r.message ?? REASON[r.status]);
   return { ...base, graph: rebased, status: {}, source: "planned", loading: false, error: null, banner: `${reason} ${FALLBACK}` };
 }

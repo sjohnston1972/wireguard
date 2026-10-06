@@ -130,6 +130,27 @@ describe("T2.1 the data hook", () => {
     expect(r.result.current.source).toBe("planned");
   });
 
+  it("a refetch failing after a good answer keeps the last live view, with an out-of-date banner naming when it was read", async () => {
+    let fail = false;
+    mockFetch({
+      [`GET ${PLANNED_URL}`]: plannedGraph(),
+      [`GET ${TOPOLOGY_API}`]: () => (fail ? { status: 500, json: { error: { code: "internal", message: "Something broke (reference ab12)." } } } : liveOk()),
+    });
+    const { W, client } = wrapper();
+    const r = renderHook(() => useDiagramData(LAB, running()), { wrapper: W });
+    await waitFor(() => expect(r.result.current.source).toBe("live"));
+    expect(r.result.current.banner).toBeNull();
+    fail = true;
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ["labs", LAB, "topology"] }).catch(() => {});
+    });
+    await waitFor(() => expect(r.result.current.banner).not.toBeNull());
+    const at = new Date(liveOk().fetchedAt!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    expect(r.result.current.banner).toBe(`The live view is out of date (as of ${at}): Something broke (reference ab12).`);
+    expect(r.result.current.source).toBe("live");
+    expect(r.result.current.status[KEYS.nsg]).toBe("added");
+  });
+
   it("truncated adds its banner", async () => {
     mockFetch({ [`GET ${PLANNED_URL}`]: plannedGraph(), [`GET ${TOPOLOGY_API}`]: liveOk({ truncated: true }) });
     const { W } = wrapper();
