@@ -16,7 +16,7 @@
 # policy definition, its assignments, the managed identity and its role
 # assignment are free.
 id: az305-21-monitoring-scale
-version: 1
+version: 2
 title: "Monitoring at scale: workspace design, diagnostics via policy"
 summary: >-
   A central, capped Log Analytics workspace and a deployIfNotExists policy that gives every Key Vault in
@@ -33,7 +33,7 @@ cost:
     - { name: "Key Vault Standard, a few hundred operations", gbp_h: 0.0001 }
     - { name: "Policy definition, two assignments, a managed identity and its role (free)", gbp_h: 0 }
   pricey: null
-timing: { deploy_min: 4, destroy_min: 4, session_h: 2, max_h: 6 }
+timing: { deploy_min: 7, destroy_min: 6, session_h: 2, max_h: 6 }
 capacity: { vm_sizes: [] }
 regions: { secondary: null }
 connectivity: { peering: "off", dns_link: false, subnets_used: 0 }

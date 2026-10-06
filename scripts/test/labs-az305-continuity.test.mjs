@@ -537,8 +537,10 @@ test(`${MR}: Front Door's base fee and both regions' containers are priced, auth
   assert.equal(tm?.qty, 2);
   assert.deepEqual(y.cost.items.filter((i) => i.retail).map((i) => i.name), [], "no meter here is unique in uksouth");
   assert.deepEqual(y.capacity.vm_sizes, []);
-  assert.deepEqual(y.timing, { deploy_min: 12, destroy_min: 12, session_h: 2, max_h: 4 });
-  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 68);
+  // The first release test (2026-10-06) took 4m 19s and 20m 11s, rounded up; that change made it version 2.
+  assert.deepEqual(y.timing, { deploy_min: 5, destroy_min: 21, session_h: 2, max_h: 4 });
+  assert.equal(Math.min(150, 2 * (y.timing.deploy_min + y.timing.destroy_min) + 20), 72);
+  assert.ok(y.version >= 2, "the measured timings bump the version");
 });
 
 test(`${MR}: the readme says how Front Door is billed, that the edge takes minutes, and how each front end fails over`, () => {

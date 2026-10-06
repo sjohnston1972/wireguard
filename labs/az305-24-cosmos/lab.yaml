@@ -14,7 +14,7 @@
 # backup's two copies are free. An idle serverless account costs only its
 # storage.
 id: az305-24-cosmos
-version: 1
+version: 2
 title: "Cosmos DB: partitioning and consistency"
 summary: >-
   A serverless Azure Cosmos DB for NoSQL account with three containers partitioned three ways, so you can see what a
@@ -29,7 +29,7 @@ cost:
     - { name: "Cosmos DB serverless, about 10,000 RU an hour", gbp_h: 0.0022 }
     - { name: "Cosmos DB storage, under 1 GB", gbp_h: 0.0003 }
   pricey: null
-timing: { deploy_min: 10, destroy_min: 10, session_h: 2, max_h: 4 }
+timing: { deploy_min: 4, destroy_min: 11, session_h: 2, max_h: 4 }
 capacity: { vm_sizes: [] }
 regions: { secondary: null }
 connectivity: { peering: "off", dns_link: false, subnets_used: 0 }

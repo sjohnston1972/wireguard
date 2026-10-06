@@ -437,3 +437,21 @@ test(`${KV}: the subnet sets default outbound access on`, () => {
   assert.equal(attr(subnet, "default_outbound_access_enabled"), "true", "ruling 37: the VM reaches the vault's public endpoint over default outbound access");
   assert.deepEqual(resources(l).filter((r) => /nat_gateway|public_ip/.test(r.labels[0])).map((r) => r.labels.join(".")), []);
 });
+
+// ── Measured timings (batch 3 plan, Integration step 8) ──────────────────
+
+// The first release tests (docs/labs/release-tests.md, 2026-10-06), rounded up to the next whole
+// minute; each change of timing bumps the lab's version. The job timeout is 2 x (deploy + destroy) + 20.
+for (const [id, deploy, destroy, measured, timeout] of [
+  [LZ, 4, 13, "3m 56s and 12m 45s", 54],
+  [MON, 7, 6, "6m 54s and 5m 23s", 46],
+  [KV, 7, 4, "6m 23s and 3m 16s", 42],
+]) {
+  test(`${id}: deploy ${deploy} and destroy ${destroy} minutes, the release test's ${measured} rounded up, at version 2`, () => {
+    const { timing, version } = lab(id).yaml;
+    assert.equal(timing.deploy_min, deploy);
+    assert.equal(timing.destroy_min, destroy);
+    assert.equal(Math.min(150, 2 * (timing.deploy_min + timing.destroy_min) + 20), timeout, "job timeout");
+    assert.ok(version >= 2, "the measured timings bump the version");
+  });
+}

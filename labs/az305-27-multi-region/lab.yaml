@@ -23,7 +23,7 @@
 #     £0.4076 a month per endpoint, two of them; "DNS Queries" £0.4076 per
 #     million.
 id: az305-27-multi-region
-version: 1
+version: 2
 title: "Multi-region app with Traffic Manager and Front Door"
 summary: >-
   A tiny web app running in container instances in uksouth and ukwest, behind both Traffic Manager (DNS
@@ -44,7 +44,7 @@ cost:
     - { name: "Traffic Manager health checks, external endpoint", gbp_h: 0.0006, qty: 2 }
     - { name: "Traffic Manager DNS queries, light use", gbp_h: 0.0001 }
   pricey: "Front Door Standard, base fee"
-timing: { deploy_min: 12, destroy_min: 12, session_h: 2, max_h: 4 }
+timing: { deploy_min: 5, destroy_min: 21, session_h: 2, max_h: 4 }
 capacity: { vm_sizes: [] }
 regions: { secondary: ukwest }
 connectivity: { peering: "off", dns_link: false, subnets_used: 0 }

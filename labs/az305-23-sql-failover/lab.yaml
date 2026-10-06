@@ -23,7 +23,7 @@
 # authored. The failover group itself is free; geo-replication traffic for
 # an empty database is pennies.
 id: az305-23-sql-failover
-version: 1
+version: 2
 title: "Azure SQL Database: serverless, geo-replication, failover groups"
 summary: >-
   A Basic database in UK South with a geo-secondary in UK West, a failover group you fail over by hand, and a
@@ -41,7 +41,7 @@ cost:
     - { name: "Private endpoint", gbp_h: 0.0076, qty: 2 }
     - { name: "Private DNS zone", gbp_h: 0.0005 }
   pricey: "SQL Database serverless, scratch (0.5 vCore, online about half the session)"
-timing: { deploy_min: 15, destroy_min: 10, session_h: 2, max_h: 4 }
+timing: { deploy_min: 10, destroy_min: 7, session_h: 2, max_h: 4 }
 capacity: { vm_sizes: [] }
 regions: { secondary: ukwest }
 connectivity: { peering: optional, dns_link: true, subnets_used: 1 }

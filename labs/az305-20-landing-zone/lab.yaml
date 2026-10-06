@@ -12,7 +12,7 @@
 # check). The two custom roles are assigned by this lab's Terraform (identity
 # change 2, approved by Steven 2026-10-05; spec §17 ruling 27).
 id: az305-20-landing-zone
-version: 1
+version: 2
 title: "Landing zone lite: management groups, policy initiatives, role design"
 summary: >-
   A six-group management group tree shaped like an Azure landing zone, a policy initiative and a deny
@@ -29,7 +29,7 @@ cost:
     - { name: "Policy definition, initiative and two assignments (free)", gbp_h: 0 }
     - { name: "Two custom roles, two managed identities and their role assignments (free)", gbp_h: 0 }
   pricey: null
-timing: { deploy_min: 8, destroy_min: 6, session_h: 2, max_h: 4 }
+timing: { deploy_min: 4, destroy_min: 13, session_h: 2, max_h: 4 }
 capacity: { vm_sizes: [] }
 regions: { secondary: null }
 connectivity: { peering: "off", dns_link: false, subnets_used: 0 }

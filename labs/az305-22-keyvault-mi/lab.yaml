@@ -14,7 +14,7 @@
 # hundred. The VNet, NIC, managed identities, role assignments, default
 # outbound access and managed boot diagnostics cost nothing.
 id: az305-22-keyvault-mi
-version: 1
+version: 2
 title: "Key Vault and managed identities"
 summary: >-
   A Key Vault using Azure RBAC with two secrets, and a small Linux VM with a system-assigned identity
@@ -31,7 +31,7 @@ cost:
     - { name: "OS disk, Standard HDD S4", gbp_h: 0.0018, retail: { meter: "S4 LRS Disk", unit: "1/Month" } }
     - { name: "Key Vault Standard, a few hundred operations", gbp_h: 0.0001 }
   pricey: null
-timing: { deploy_min: 7, destroy_min: 5, session_h: 2, max_h: 6 }
+timing: { deploy_min: 7, destroy_min: 4, session_h: 2, max_h: 6 }
 capacity: { vm_sizes: [Standard_B1s] }
 regions: { secondary: null }
 connectivity: { peering: optional, dns_link: false, subnets_used: 1 }

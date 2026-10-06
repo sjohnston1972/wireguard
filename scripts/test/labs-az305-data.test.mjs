@@ -495,3 +495,21 @@ test(`${L25}: builds on lab 5: names az104-05-storage as its prerequisite, and i
   for (const i of yaml.cost.items) assert.equal(i.retail, undefined, `${i.name} is authored`);
   assert.ok(yaml.cost.items.filter((i) => /account/i.test(i.name)).length >= 2, "an item per account");
 });
+
+// ── Measured timings (batch 3 plan, Integration step 8) ──────────────────
+
+// The first release tests (docs/labs/release-tests.md, 2026-10-06), rounded up to the next whole
+// minute; each change of timing bumps the lab's version. The job timeout is 2 x (deploy + destroy) + 20.
+for (const [id, deploy, destroy, measured, timeout] of [
+  [L23, 10, 7, "9m 27s and 6m 36s", 54],
+  [L24, 4, 11, "3m 27s and 10m 45s", 50],
+  [L25, 2, 3, "1m 38s and 2m 33s", 30],
+]) {
+  test(`${id}: deploy ${deploy} and destroy ${destroy} minutes, the release test's ${measured} rounded up, at version 2`, () => {
+    const { timing, version } = lab(id).yaml;
+    assert.equal(timing.deploy_min, deploy);
+    assert.equal(timing.destroy_min, destroy);
+    assert.equal(Math.min(150, 2 * (timing.deploy_min + timing.destroy_min) + 20), timeout, "job timeout");
+    assert.ok(version >= 2, "the measured timings bump the version");
+  });
+}

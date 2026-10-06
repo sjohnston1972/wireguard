@@ -19,7 +19,7 @@
 # to Archive by hand is billed for at least 180 days of Archive storage
 # (pennies for a few MB), and rehydration is billed per GB read.
 id: az305-25-storage-design
-version: 1
+version: 2
 title: "Storage design: data lake, immutability, tiering"
 summary: >-
   A Data Lake Storage account with raw and curated file systems and a lifecycle down to Archive, and an RA-GRS account
@@ -35,7 +35,7 @@ cost:
     - { name: "Storage account, records (RA-GRS, Hot), a few MB", gbp_h: 0.0001 }
     - { name: "Lifecycle management and the container retention policy", gbp_h: 0 }
   pricey: null
-timing: { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 6 }
+timing: { deploy_min: 2, destroy_min: 3, session_h: 2, max_h: 6 }
 capacity: { vm_sizes: [] }
 regions: { secondary: null }
 connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
