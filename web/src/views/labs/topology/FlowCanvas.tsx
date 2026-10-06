@@ -2,18 +2,19 @@
 //
 // Plain English: the lab diagram on React Flow (lab topology spec §9.2). The
 // graph is stacked (big runs of one kind become one card), laid out by the
-// packing layout (the saved arrangement wins) and drawn as nested boxes:
-// resource groups holding VNets holding subnets holding resource cards, with
-// traffic and dependency edges between them.
+// packing layout for the canvas's measured shape (the saved arrangement wins)
+// and drawn as nested boxes: resource groups holding VNets holding subnets
+// holding resource cards, with traffic and dependency edges between them.
 //
 // Dragging a node (or moving the selected one with the arrow keys) tidies the
 // picture and reports the move through onMove with the position relative to
-// its parent and the parent's key; nothing in Azure changes. The view fits
-// the diagram on first render and fits the search's matches on request
+// its parent and the parent's key; nothing in Azure changes. The first view
+// fits the diagram, or, too big to read whole, starts at its top-left at a
+// readable zoom (viewport.ts); it fits the search's matches on request
 // (instantly under prefers-reduced-motion). The mini variant is a still
 // picture: no pan, zoom, drag, selection or edge labels.
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { applyNodeChanges, ConnectionMode, Controls, MiniMap, Panel, ReactFlow, ReactFlowProvider, useReactFlow, type NodeChange, type NodeSelectionChange, type OnNodeDrag } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import { useTheme } from "@/shell/theme";
@@ -31,11 +32,11 @@ import { NODE_TYPES } from "./nodes/FlowNodes";
 import { useSprite } from "./icons/sprite";
 import { useFitRequests } from "./fitBus";
 import { nodeIndex } from "./words";
+import { boundsOf, FIT_PADDING, MIN_FIT_ZOOM, PANEL_RESERVE, PHONE_MIN_FIT_ZOOM, startViewport } from "./viewport";
 import "./topology.css";
 
 export const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
-/** On the phone the first fit stops shrinking here, so names stay readable; the rest is a pan away (Controls' fit shows all). */
-export const PHONE_MIN_FIT_ZOOM = 0.6;
+export { PHONE_MIN_FIT_ZOOM };
 
 /** A canvas size in steps of 10%, so a small resize does not re-pack the picture. */
 export const quantiseLength = (n: number): number => Math.round(1.1 ** Math.round(Math.log(n) / Math.log(1.1)));
@@ -87,7 +88,23 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
   const measured = size.w > 0 && size.h > 0;
   const qw = measured ? quantiseLength(size.w) : 0;
   const qh = measured ? quantiseLength(size.h) : 0;
-  const laid = useMemo(() => layoutTopology(stacked, saved, measured ? { space: { w: qw, h: qh } } : {}), [stacked, saved, measured, qw, qh]);
+  const aspect = measured ? `${qw}x${qh}` : undefined;
+  const reserve = PANEL_RESERVE[variant];
+  const laid = useMemo(() => layoutTopology(stacked, saved, measured ? { space: { w: qw, h: Math.max(1, qh - reserve) } } : {}), [stacked, saved, measured, qw, qh, reserve]);
+  const minZoom = mini ? MIN_FIT_ZOOM.mini : phone ? PHONE_MIN_FIT_ZOOM : MIN_FIT_ZOOM[variant];
+  const fitOpts = useMemo(() => ({ padding: FIT_PADDING[variant], minZoom, maxZoom: 1, reserveTop: PANEL_RESERVE[variant] }), [variant, minZoom]);
+  const startAt = useCallback(() => {
+    const b = boundsOf(laid.nodes.filter((n) => !n.parent));
+    return b ? startViewport(b, size.w, size.h, fitOpts) : { x: 0, y: 0, zoom: 1 };
+  }, [laid, size.w, size.h, fitOpts]);
+  // The first view: fitted, or (too big to fit readably) at the top-left. A new shape of space starts it again.
+  const [firstView] = useState(() => (measured ? startAt() : undefined));
+  const lastAspect = useRef(aspect);
+  useEffect(() => {
+    if (lastAspect.current === aspect || !measured) return;
+    lastAspect.current = aspect;
+    void rf.setViewport(startAt());
+  }, [aspect, measured, rf, startAt]);
   const base = useMemo(() => toFlowNodes(laid, byId, { status, variant, selected, search, deploying }), [laid, byId, status, variant, selected, search, deploying]);
   const sets = useMemo(() => searchSets(byId.values(), byId, search), [byId, search]);
   const edges = useMemo(
@@ -161,8 +178,7 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
       zoomOnDoubleClick={!mini}
       panOnScroll={false}
       preventScrolling={!mini}
-      fitView
-      fitViewOptions={{ padding: mini ? 0.04 : 0.08, maxZoom: 1, ...(phone && !mini ? { minZoom: PHONE_MIN_FIT_ZOOM } : {}) }}
+      {...(firstView ? { defaultViewport: firstView } : { fitView: true, fitViewOptions: fitOpts })}
       minZoom={0.1}
       maxZoom={2}
       proOptions={{ hideAttribution: !full }}

@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { TopologyGraph } from "@shared/topology/model";
 import { Canvas } from "./Canvas";
 import { PHONE_MIN_FIT_ZOOM, quantiseLength } from "./FlowCanvas";
+import { PANEL_RESERVE, START_INSET } from "./viewport";
 import type { CanvasProps } from "./contract";
 import { toFlowNodes, movesOf } from "./flowNodes";
 import { layoutTopology } from "./layout";
@@ -219,10 +220,21 @@ describe("Canvas", () => {
     const undo = sized(550, 445);
     try {
       const { container } = draw(props());
-      const want = layoutTopology(graph, null, { space: { w: quantiseLength(550), h: quantiseLength(445) } }).nodes.find((n) => n.id === "lb")!;
+      const want = layoutTopology(graph, null, { space: { w: quantiseLength(550), h: quantiseLength(445) - PANEL_RESERVE.tab } }).nodes.find((n) => n.id === "lb")!;
       const lb = nodeEl(container, "lb");
       expect(lb.style.transform.replace(/\s/g, "")).toBe(`translate(${want.x}px,${want.y}px)`);
       expect(quantiseLength(550)).toBe(quantiseLength(556));
+    } finally {
+      undo();
+    }
+  });
+
+  it("on the phone a picture too big to read whole starts at its top-left at the readable zoom, not in the middle", () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("max-width"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    const undo = sized(120, 200);
+    try {
+      const { container } = draw(props({ variant: "full" }));
+      expect(viewport(container).replace(/\s/g, "")).toBe(`translate(${START_INSET.left}px,${START_INSET.top}px)scale(${PHONE_MIN_FIT_ZOOM})`);
     } finally {
       undo();
     }
