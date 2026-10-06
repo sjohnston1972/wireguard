@@ -219,3 +219,20 @@
 }
 .ov-lab__title { font-size: 12px; font-weight: 600; }
 .ov-lab__word { font-size: 11px; color: var(--text-secondary); }
+
+/* The mini diagram on hover or focus (lab topology spec §9.1): fixed, so the
+   scrolling list of boxes never clips it; it takes no pointer, so moving off
+   the box closes it. Placed by LabMiniHover. */
+.ov-lab__hover { display: flex; flex: 1; min-width: 0; }
+.ov-mini {
+  position: fixed;
+  z-index: 50;
+  width: 338px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.ov-mini__loading { margin: 0; padding: 12px; font-size: 12px; color: var(--text-secondary); }

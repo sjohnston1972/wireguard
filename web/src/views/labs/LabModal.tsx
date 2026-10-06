@@ -4,12 +4,11 @@ import { Button, Drawer } from "@/components";
 import { useLab } from "@/api/queries";
 import { CostTable, DeployFields, DeployFooter, useDeployForm } from "./DeployForm";
 import { LEVEL_WORD, TYPE_WORD, examsWord, stateWord } from "./model";
-import { ReadmeView } from "./ReadmeView";
-import { RunningFooter, RunningLab } from "./RunningLab";
+import { LabReadmeTabs, RunningFooter, RunningLab } from "./RunningLab";
 import { Word } from "./RunningStrip";
 
 /** "Lab 14 · AZ-104, AZ-700 · Associate · Explore · v3": every exam the lab belongs to, the primary first. */
-const subtitle = (d: LabDetail) => `Lab ${d.card.number} · ${examsWord(d.card)} · ${LEVEL_WORD[d.card.level]} · ${TYPE_WORD[d.card.type]} · v${d.card.version}`;
+export const subtitle = (d: LabDetail) => `Lab ${d.card.number} · ${examsWord(d.card)} · ${LEVEL_WORD[d.card.level]} · ${TYPE_WORD[d.card.type]} · v${d.card.version}`;
 
 /** Not running: the readme on the left; cost, warnings and the Deploy form on the right. */
 function IdleLab({ d, onClose }: { d: LabDetail; onClose: () => void }) {
@@ -17,7 +16,7 @@ function IdleLab({ d, onClose }: { d: LabDetail; onClose: () => void }) {
   return (
     <Drawer open onOpenChange={(o) => !o && onClose()} side="auto" size="lg" title={d.card.title} subtitle={subtitle(d)} className="labs-modal" footer={<DeployFooter f={f} />}>
       <div className="labs-modal__cols">
-        <ReadmeView blocks={d.readme} />
+        <LabReadmeTabs d={d} />
         <div className="labs-modal__side">
           <section aria-labelledby="labs-cost-h" className="labs-section">
             <h3 className="labs-section__title" id="labs-cost-h">
@@ -34,6 +33,23 @@ function IdleLab({ d, onClose }: { d: LabDetail; onClose: () => void }) {
         </div>
       </div>
     </Drawer>
+  );
+}
+
+/** A lab that cannot be opened (an old link): a notice on the page, which stays usable behind it. */
+export function CouldNotOpen({ id, error, onRetry, onDismiss }: { id: string; error: unknown; onRetry: () => void; onDismiss: () => void }) {
+  return (
+    <div className="labs-notice" role="alert">
+      <span>
+        Could not open {id}: {error instanceof Error ? error.message : "the lab could not be loaded."}
+      </span>
+      <Button size="sm" variant="secondary" onClick={onRetry}>
+        Try again
+      </Button>
+      <Button size="sm" variant="ghost" onClick={onDismiss}>
+        Dismiss
+      </Button>
+    </div>
   );
 }
 
@@ -58,19 +74,7 @@ export function LabModal({ id, closeTo = "/labs" }: { id: string; closeTo?: stri
           Opening the lab…
         </p>
       );
-    return (
-      <div className="labs-notice" role="alert">
-        <span>
-          Could not open {id}: {q.error instanceof Error ? q.error.message : "the lab could not be loaded."}
-        </span>
-        <Button size="sm" variant="secondary" onClick={() => void q.refetch()}>
-          Try again
-        </Button>
-        <Button size="sm" variant="ghost" onClick={close}>
-          Dismiss
-        </Button>
-      </div>
-    );
+    return <CouldNotOpen id={id} error={q.error} onRetry={() => void q.refetch()} onDismiss={close} />;
   }
   if (!d.session) return <IdleLab key={d.card.id} d={d} onClose={close} />;
   const st = stateWord(d.session);

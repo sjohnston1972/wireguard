@@ -7,13 +7,20 @@
 // offers Re-peer when sessions wait, and the off-by-default Running labs
 // widget lists time left, cost so far and Tear down.
 import "./testSetup";
-import { beforeAll, describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { LabSession, OverviewResponse } from "@shared/api";
 import { renderApp } from "@/test/render";
-import { labSessionFixture } from "@/test/fixtures";
+import { labDetailFixture, labSessionFixture } from "@/test/fixtures";
+import { PLANNED_URL, TOPOLOGY_API, layoutServer, liveDown, liveOk, nodeOn, plannedGraph } from "@/views/labs/topology/places.fixtures";
+import { MINI_DELAY_MS } from "./LabMiniHover";
 import { overview, prefsRoutes, routes, saved } from "./testData";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 beforeAll(async () => {
   await import("./LabsParts");
@@ -138,5 +145,108 @@ describe("Overview Running labs widget", () => {
   it("says nothing is running when it is on and no lab runs", async () => {
     renderApp("/", { routes: prefsRoutes(overview("running"), ON) });
     expect(await region("Running labs")).toHaveTextContent("No labs running");
+  });
+});
+
+// ── Lab topology plan T2.6: a mini diagram on hover of a running lab's box ──
+
+describe("the mini diagram on a running lab's box", () => {
+  const LAB = "az104-06-blob-security";
+  const miniRoutes = (more: Record<string, unknown> = {}) =>
+    routes(withLabs(overview("running"), [labSessionFixture()]), { [`GET ${PLANNED_URL}`]: plannedGraph(), [`GET ${TOPOLOGY_API}`]: liveOk(), ...layoutServer().routes, ...more });
+  /** A device with a mouse: (hover: hover) matches; everything else as the test's desktop. */
+  const withHover = () => {
+    const plain = window.matchMedia;
+    vi.stubGlobal("matchMedia", (q: string) => (q.trim() === "(hover: hover)" ? { ...plain("(min-width: 0px)"), media: q, matches: true } : plain(q)));
+  };
+  const box = async () => within(await region("Live topology")).findByRole("link", { name: /^Lab Blob security/ });
+
+  beforeAll(async () => {
+    await import("./LabMiniHover");
+    await import("@/views/labs/topology");
+  });
+
+  it("hovering a running lab's box for 400 ms opens the mini diagram", async () => {
+    withHover();
+    const user = userEvent.setup();
+    renderApp("/", { routes: miniRoutes() });
+    const b = await box();
+    // The hover wrapper is there once its small chunk has loaded.
+    await waitFor(() => expect(b.closest(".ov-lab__hover")).not.toBeNull());
+    const t0 = performance.now();
+    await user.hover(b);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    const tip = await screen.findByRole("tooltip");
+    expect(performance.now() - t0).toBeGreaterThanOrEqual(MINI_DELAY_MS - 5);
+    expect(MINI_DELAY_MS).toBe(400);
+    expect(b).toHaveAttribute("aria-describedby", tip.id);
+    // Live: the lab's resources, the hand-made one badged; no controls in the mini.
+    const tree = await within(tip).findByRole("region", { name: "Lab diagram" });
+    expect(nodeOn(tree, /nsg-handmade/)).toHaveTextContent("Added by hand");
+    expect(within(tip).getByText("Live · 3 resources · Open the lab")).toBeInTheDocument();
+    expect(within(tip).queryByRole("button")).toBeNull();
+    expect(within(tip).queryByRole("searchbox")).toBeNull();
+    await user.unhover(b);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+  });
+
+  it("keyboard focus opens it and Escape closes it", async () => {
+    const user = userEvent.setup();
+    renderApp("/", { routes: miniRoutes() });
+    const b = await box();
+    await waitFor(() => expect(b.closest(".ov-lab__hover")).not.toBeNull());
+    act(() => b.focus());
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+    expect(b).toHaveFocus();
+  });
+
+  it("the box is still a link to the lab", async () => {
+    withHover();
+    const user = userEvent.setup();
+    renderApp("/", { routes: { ...miniRoutes(), [`GET /api/v1/labs/${LAB}`]: labDetailFixture() } });
+    const b = await box();
+    await waitFor(() => expect(b.closest(".ov-lab__hover")).not.toBeNull());
+    expect(b).toHaveAttribute("href", `/labs/${LAB}`);
+    await user.click(b);
+    expect(screen.getByLabelText("location")).toHaveTextContent(`/labs/${LAB}`);
+  });
+
+  it("no mini on a hover-less device", async () => {
+    const user = userEvent.setup();
+    const r = renderApp("/", { routes: miniRoutes() });
+    const b = await box();
+    await waitFor(() => expect(b.closest(".ov-lab__hover")).not.toBeNull());
+    await user.hover(b);
+    await new Promise((res) => setTimeout(res, MINI_DELAY_MS + 300));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    // Nothing of the diagram was asked for.
+    expect(r.fetchMock!.calls.some((c) => c.url.startsWith(TOPOLOGY_API) || c.url.startsWith(PLANNED_URL))).toBe(false);
+  });
+
+  it("the entry does not import the diagram chunk", () => {
+    const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gm, "");
+    const topo = strip(readFileSync(join(HERE, "Topology.tsx"), "utf8"));
+    const hover = strip(readFileSync(join(HERE, "LabMiniHover.tsx"), "utf8"));
+    // The Overview (in the entry) reaches the hover wrapper only through lazy(); the wrapper reaches the diagram only through lazy().
+    expect(topo).toMatch(/lazy\(\(\) => import\("\.\/LabMiniHover"\)\)/);
+    expect(topo).not.toMatch(/^import[^;]*["']\.\/LabMiniHover["']/m);
+    expect(topo).not.toMatch(/views\/labs\/topology|@xyflow/);
+    expect(hover).toMatch(/lazy\(\(\) => import\("@\/views\/labs\/topology"\)/);
+    expect(hover).not.toMatch(/^import[^;]*["'][^"']*labs\/topology["']/m);
+    expect(hover).not.toMatch(/@xyflow/);
+  });
+
+  it("failed live data shows the planned graph in the mini with a word", async () => {
+    withHover();
+    const user = userEvent.setup();
+    renderApp("/", { routes: miniRoutes({ [`GET ${TOPOLOGY_API}`]: liveDown("failed", "Azure Resource Graph refused the query (403).") }) });
+    const b = await box();
+    await waitFor(() => expect(b.closest(".ov-lab__hover")).not.toBeNull());
+    await user.hover(b);
+    const tip = await screen.findByRole("tooltip");
+    expect(await within(tip).findByText("Planned · 4 resources · live view unavailable · Open the lab")).toBeInTheDocument();
+    expect(nodeOn(within(tip).getByRole("region", { name: "Lab diagram" }), /pe-l06…blob-blob/)).toBeInTheDocument();
   });
 });

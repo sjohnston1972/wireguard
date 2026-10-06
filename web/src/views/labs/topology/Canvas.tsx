@@ -27,7 +27,7 @@ export function Canvas(props: CanvasProps) {
             </button>
           </p>
         )}
-        <ListView graph={graph} status={status} selected={selected} onSelect={onSelect} search={props.search} />
+        <ListView graph={graph} status={status} selected={selected} onSelect={onSelect} search={props.search} deploying={props.deploying} />
       </div>
     );
   }

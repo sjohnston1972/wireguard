@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Cloud, FlaskConical, Server, Users } from "lucide-react";
 import type { LabSession, OverviewResponse } from "@shared/api";
@@ -44,22 +44,31 @@ function Edge({ status, label }: { status: NodeStatus; label?: string }) {
   );
 }
 
+// The mini diagram on hover (lab topology spec §9.1): only through lazy(), so
+// the entry carries neither the hover wrapper nor the diagram's chunk.
+const LabMiniHover = lazy(() => import("./LabMiniHover"));
+
 /** Running labs beside the Azure VNet: a small box each, joined by a solid line when peered, a dashed one when waiting or disconnected, none when not peered. */
 function LabBoxes({ labs }: { labs: LabSession[] }) {
   return (
     <ul className="ov-labs" aria-label="Running labs">
       {labs.map((s) => {
         const word = PEERING_WORD[s.peering];
+        const box = (
+          <Link className="ov-lab__box" to={`/labs/${s.labId}`} aria-label={`Lab ${s.title}: ${word}`} data-peering={s.peering}>
+            <FlaskConical size={14} aria-hidden />
+            <span className="ov-lab__text">
+              <span className="ov-lab__title">{s.title}</span>
+              <span className="ov-lab__word">{word}</span>
+            </span>
+          </Link>
+        );
         return (
           <li key={s.id} className="ov-lab">
             {s.peering !== "off" && <span className="ov-lab__edge" data-peering={s.peering} aria-hidden />}
-            <Link className="ov-lab__box" to={`/labs/${s.labId}`} aria-label={`Lab ${s.title}: ${word}`} data-peering={s.peering}>
-              <FlaskConical size={14} aria-hidden />
-              <span className="ov-lab__text">
-                <span className="ov-lab__title">{s.title}</span>
-                <span className="ov-lab__word">{word}</span>
-              </span>
-            </Link>
+            <Suspense fallback={box}>
+              <LabMiniHover session={s}>{box}</LabMiniHover>
+            </Suspense>
           </li>
         );
       })}

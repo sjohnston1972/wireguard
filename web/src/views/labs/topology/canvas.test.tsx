@@ -93,6 +93,22 @@ describe("Canvas", () => {
     expect(xy(vm)[1]).toBeGreaterThan(xy(snet)[1]);
   });
 
+  it("a missing node's badge reads Not deployed yet while deploying, on the cards and in the legend", () => {
+    const { container, unmount } = draw(props({ status: { "lb-key": "missing" } }));
+    expect(nodeEl(container, "lb")).toHaveTextContent("Not deployed or removed");
+    unmount();
+    const again = draw(props({ status: { "lb-key": "missing" }, deploying: true }));
+    expect(nodeEl(again.container, "lb")).toHaveTextContent("Not deployed yet");
+    fireEvent.click(screen.getByRole("button", { name: "Legend" }));
+    expect(screen.getAllByText("Not deployed yet").length).toBeGreaterThan(1);
+    expect(screen.queryByText("Not deployed or removed")).toBeNull();
+  });
+
+  it("the List view gets deploying too", () => {
+    draw(props({ view: "list", status: { "lb-key": "missing" }, deploying: true }));
+    expect(screen.getByRole("treeitem", { name: /lb-app/ })).toHaveTextContent("Not deployed yet");
+  });
+
   it("colorMode follows the app theme", () => {
     const { container, unmount } = draw(props());
     expect(container.querySelector(".react-flow")).toHaveClass("dark");

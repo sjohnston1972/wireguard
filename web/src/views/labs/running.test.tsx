@@ -6,6 +6,7 @@ import type { LabDetail, RunDetailResponse, RunLogResponse } from "@shared/api";
 import { renderApp } from "@/test/render";
 import { runDetailFixture } from "@/test/fixtures";
 import { card, detailRunning, labs, run, session } from "./testData";
+import { PLANNED_URL, TOPOLOGY_API, layoutServer, liveDown, liveOk, nodeOn, nodesOn, plannedGraph } from "./topology/places.fixtures";
 
 vi.setConfig({ testTimeout: 20_000 });
 beforeAll(async () => {
@@ -199,5 +200,46 @@ describe("the lab modal, running", () => {
     expect(foot.getByText("£0.0071 so far")).toBeInTheDocument();
     await user.click(foot.getByRole("button", { name: "Extend" }));
     expect(await screen.findByRole("menuitem", { name: "1 hour" })).toBeInTheDocument();
+  });
+});
+
+// ── Lab topology plan T2.3: the Diagram tab while the lab runs ───────────
+
+describe("the Diagram tab, lab running", () => {
+  const withDiagram = (more: Record<string, unknown> = {}) => ({ [`GET ${PLANNED_URL}`]: plannedGraph(), [`GET ${TOPOLOGY_API}`]: liveOk(), ...layoutServer().routes, ...more });
+
+  it("the running panel shows Readme and Diagram tabs", async () => {
+    open(detailRunning(), withDiagram());
+    const d = await dialog();
+    const tabs = within(d.getByRole("tablist", { name: "Readme and diagram" }));
+    expect(tabs.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Readme", "Diagram"]);
+    expect(d.getByRole("article", { name: "Readme" })).toBeInTheDocument();
+    // The session's column is where it was.
+    expect(d.getByRole("heading", { name: "Resources" })).toBeInTheDocument();
+  });
+
+  it("the Live/Planned toggle appears while a session is live: Live by default, Planned at the session's addresses", async () => {
+    const user = userEvent.setup();
+    renderApp(`/labs/${ID}?view=diagram`, { routes: { "GET /api/v1/labs": labs({ running: [detailRunning().session!] }), [`GET ${PATH}`]: detailRunning(), ...withDiagram() } });
+    const d = await dialog();
+    const source = await d.findByRole("radiogroup", { name: "Diagram source" });
+    expect(within(source).getByRole("radio", { name: "Live" })).toBeChecked();
+    let tree = await d.findByRole("region", { name: "Lab diagram" });
+    expect(nodeOn(tree, /nsg-handmade/)).toHaveTextContent("Added by hand");
+    expect(nodeOn(tree, /pe-l06…blob-blob/)).toHaveTextContent("Not deployed or removed");
+    expect(d.queryByText(/Example addresses/)).toBeNull();
+    await user.click(within(source).getByRole("radio", { name: "Planned" }));
+    await waitFor(() => expect(nodesOn(d.getByRole("region", { name: "Lab diagram" }), /nsg-handmade/)).toHaveLength(0));
+    tree = d.getByRole("region", { name: "Lab diagram" });
+    expect(nodeOn(tree, /pe-l06…blob-blob/)).not.toHaveTextContent("Not deployed");
+  });
+
+  it("the live view falling back shows the planned graph with a banner", async () => {
+    renderApp(`/labs/${ID}?view=diagram`, {
+      routes: { "GET /api/v1/labs": labs({ running: [detailRunning().session!] }), [`GET ${PATH}`]: detailRunning(), ...withDiagram({ [`GET ${TOPOLOGY_API}`]: liveDown("failed", "Azure Resource Graph refused the query (403).") }) },
+    });
+    const d = await dialog();
+    expect(await d.findByText("Azure Resource Graph refused the query (403). Showing the planned diagram.")).toBeInTheDocument();
+    expect(nodeOn(await d.findByRole("region", { name: "Lab diagram" }), /pe-l06…blob-blob/)).toBeInTheDocument();
   });
 });

@@ -29,7 +29,7 @@ export function Toolbar({ source, onSource, search, onSearch, showDependencies, 
     <div className={`topo-toolbar topo-toolbar--${variant}`} role="toolbar" aria-label="Diagram controls">
       {source && onSource && (
         <SegmentedControl
-          aria-label="Data source"
+          aria-label="Diagram source"
           items={[
             { value: "live", label: "Live", dot: "green" },
             { value: "planned", label: "Planned" },
@@ -46,7 +46,7 @@ export function Toolbar({ source, onSource, search, onSearch, showDependencies, 
         <span aria-hidden="true">Dependencies</span>
       </label>
       <SegmentedControl
-        aria-label="Show as"
+        aria-label="Diagram or list"
         items={[
           { value: "diagram", label: "Diagram" },
           { value: "list", label: "List" },
@@ -66,7 +66,7 @@ export function Toolbar({ source, onSource, search, onSearch, showDependencies, 
           </Link>
         )}
         {onClose && (
-          <Button size="sm" variant="ghost" icon={<X size={14} aria-hidden />} onClick={onClose} aria-label="Close the diagram">
+          <Button size="sm" variant="ghost" icon={<X size={14} aria-hidden />} onClick={onClose}>
             Close
           </Button>
         )}

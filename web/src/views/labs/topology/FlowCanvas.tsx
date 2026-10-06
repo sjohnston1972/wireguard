@@ -45,7 +45,7 @@ export function FlowCanvas(props: CanvasProps) {
   );
 }
 
-function Flow({ graph, status, saved, onMove, showDependencies, search, variant, selected, onSelect }: CanvasProps) {
+function Flow({ graph, status, saved, onMove, showDependencies, search, variant, selected, onSelect, deploying = false }: CanvasProps) {
   useSprite();
   const theme = useTheme();
   const reduced = useMedia(REDUCED_MOTION);
@@ -59,7 +59,7 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
   const stacked = useMemo(() => stackGraph(graph).graph, [graph]);
   const byId = useMemo(() => nodeIndex(stacked), [stacked]);
   const laid = useMemo(() => layoutTopology(stacked, saved), [stacked, saved]);
-  const base = useMemo(() => toFlowNodes(laid, byId, { status, variant, selected, search }), [laid, byId, status, variant, selected, search]);
+  const base = useMemo(() => toFlowNodes(laid, byId, { status, variant, selected, search, deploying }), [laid, byId, status, variant, selected, search, deploying]);
   const sets = useMemo(() => searchSets(byId.values(), byId, search), [byId, search]);
   const edges = useMemo(
     () => buildEdges(stacked, byId, { showDependencies, labels: !mini, animate: full && animate, reducedMotion: reduced, dimmed: sets ? new Set([...byId.keys()].filter((id) => !sets.match.has(id))) : undefined }),
@@ -143,7 +143,7 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
           <button type="button" className="topo-panel__button" aria-expanded={legendOpen} onClick={() => setLegendOpen((o) => !o)}>
             Legend
           </button>
-          {legendOpen && <Legend graph={stacked} status={status} />}
+          {legendOpen && <Legend graph={stacked} status={status} deploying={deploying} />}
         </Panel>
       )}
       {full && (
