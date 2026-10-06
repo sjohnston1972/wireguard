@@ -243,6 +243,16 @@ test(`${DNS}: dns_link is true and Terraform never links a zone to the gateway`,
   assert.doesNotMatch(uncomment(Object.values(l.files).join("\n")), /gateway_vnet_id/, "Terraform never names the gateway's VNet");
 });
 
+// Review fix 16: the plan's table of the fourteen labs says how many /20s each uses; it must agree with each lab.yaml.
+test("the AZ-700 plan's table gives each lab's subnets_used as its lab.yaml does", () => {
+  const plan = readFileSync(join(lab(NAT).dir, "..", "..", "docs", "superpowers", "plans", "2026-10-06-labs-az700-plan.md"), "utf8").replace(/\r\n/g, "\n");
+  const table = plan.split("\n## The fourteen labs\n")[1].split("\n### ")[0];
+  const rows = [...table.matchAll(/^\| (\d{2}) \| (az700-\d{2}-[a-z0-9-]+) \|(.*)\|$/gm)].map((m) => ({ id: m[2], cells: m[3].split("|").map((c) => c.trim()) }));
+  assert.equal(rows.length, 14);
+  // Columns after the id: Builds, £/h, Peer, Regions, /20s, ...
+  for (const r of rows) assert.equal(Number(r.cells[4]), lab(r.id).yaml.connectivity.subnets_used, `${r.id}: /20s`);
+});
+
 // ── Lab 33: Virtual Network Manager (scope exception S1) ─────────────────
 
 const AVNM = "az700-33-vnet-manager";
