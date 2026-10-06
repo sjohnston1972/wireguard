@@ -80,16 +80,16 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
 
   // ── 1. Instances ──
   const insts: TfInst[] = [];
-  const expanded: { inst: TfInst; dependsOn: string[] }[] = [];
+  const rgLocation = new Map<string, string>();
+  for (const c of input.changes) if (c.type === "azurerm_resource_group" && str(c.after?.name) && str(c.after?.location)) rgLocation.set(str(c.after.name)!.toLowerCase(), str(c.after.location)!);
   for (const c of [...input.changes].sort((a, b) => cmp(a.address, b.address))) {
     if (c.address.startsWith("data.") || tfIgnored(c.type)) continue;
     const inst: TfInst = { id: `tf:${c.address}`, address: c.address, config: configOf(c.address), type: c.type, name: c.name, index: c.index ?? null, after: c.after ?? {} };
     insts.push(inst);
     if (c.type === "azurerm_resource_group_template_deployment") {
-      for (const r of expandDeployment(inst)) {
+      for (const r of expandDeployment(inst, rgLocation.get((str(inst.after.resource_group_name) ?? "").toLowerCase()) ?? nameCtx.region)) {
         const x: TfInst = { id: `${inst.id}/${r.type.toLowerCase()}/${r.name}`, address: `${c.address}/${r.type}/${r.name}`, config: "", type: "", name: r.name, index: null, after: { ...r.properties, name: r.name, resource_group_name: str(inst.after.resource_group_name), __arm: r }, armType: r.type };
         insts.push(x);
-        expanded.push({ inst: x, dependsOn: r.dependsOn });
       }
     }
   }
@@ -192,6 +192,7 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
   }
   // Inline subnet blocks (azurerm_virtual_network's `subnet`; a template VNet's properties.subnets).
   const inlineSubnets = new Map<string, Map<string, string>>(); // vnet id → subnet name (lower) → node id
+  const inlineRefs: { subnet: string; ids: string[] }[] = []; // a template subnet's NSG, route table, NAT gateway ids
   for (const v of vnets) {
     const blocks = Array.isArray(v.after.subnet) ? v.after.subnet : Array.isArray(v.after.subnets) ? v.after.subnets : [];
     for (const b of blocks as Record<string, unknown>[]) {
@@ -201,6 +202,8 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
       const p = (b.properties ?? {}) as Record<string, unknown>;
       const prefix = (Array.isArray(b.address_prefixes) ? str(b.address_prefixes[0]) : undefined) ?? str(b.address_prefix) ?? str(p.addressPrefix) ?? (Array.isArray(p.addressPrefixes) ? str(p.addressPrefixes[0]) : undefined);
       addNode({ id, key: "", kind: "subnet", label: planLabel(name, input.number), parent: v.id, props: prefix ? { prefix } : {}, armType: "Microsoft.Network/virtualNetworks/subnets" });
+      const ids = [p.networkSecurityGroup, p.routeTable, p.natGateway].map((x) => str((x as { id?: unknown } | undefined)?.id)).filter((x): x is string => !!x);
+      if (ids.length) inlineRefs.push({ subnet: id, ids });
       subnetPath.set(id, [nameOf(v), name]);
       const m = inlineSubnets.get(v.id) ?? new Map<string, string>();
       m.set(name.toLowerCase(), id);
@@ -231,8 +234,24 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
     const rule = ruleOf(i);
     for (const a of rule.pull ?? []) for (const t of refs(i, [a])) if (!owner.has(t.id) && !isGroup(t) && t !== i) owner.set(t.id, i);
   }
+  // A template subnet's NSG, route table or NAT gateway: a chip on each subnet, folded into the first.
+  const directOwner = new Map<string, string>();
+  const inlineChips = new Map<string, string[]>();
+  const CHIP_WORD: Record<string, string> = { networksecuritygroups: "NSG", routetables: "route table", natgateways: "NAT gateway" };
+  for (const { subnet, ids } of inlineRefs) {
+    for (const ref of ids) {
+      const m = /\/providers\/([^/]+\/[^/]+)\/([^/]+)$/.exec(ref);
+      const t = m ? insts.find((x) => x.armType?.toLowerCase() === m[1]!.toLowerCase() && x.name.toLowerCase() === m[2]!.toLowerCase()) : undefined;
+      if (!t) continue;
+      const word = CHIP_WORD[(t.armType ?? "").split("/")[1]?.toLowerCase() ?? ""] ?? "";
+      inlineChips.set(subnet, [...(inlineChips.get(subnet) ?? []), `${word} ${labelOf(t)}`.trim()]);
+      if (!owner.has(t.id) && !directOwner.has(t.id)) directOwner.set(t.id, subnet);
+    }
+  }
   const home = (i: TfInst, seen = new Set<string>()): string | null => {
     if (isGroup(i)) return groupOf.get(i.id) ?? i.id;
+    const d = directOwner.get(i.id);
+    if (d) return d;
     const o = owner.get(i.id);
     if (!o) return i.id;
     if (seen.has(i.id)) return null;
@@ -248,12 +267,12 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
     if (i.type === "azurerm_virtual_hub") return "routeServer";
     return kindOfTf(i.type);
   };
-  const cards = insts.filter((i) => !isGroup(i) && !owner.has(i.id));
+  const cards = insts.filter((i) => !isGroup(i) && !owner.has(i.id) && !directOwner.has(i.id));
   for (const i of cards) addNode({ id: i.id, key: "", kind: kindOf(i), label: labelOf(i), props: {}, armType: i.armType ?? ruleOf(i).arm ?? null });
 
   // Folded lists: every folded instance is listed on its home's card.
   for (const i of insts) {
-    if (!owner.has(i.id)) continue;
+    if (!owner.has(i.id) && !directOwner.has(i.id)) continue;
     const h = home(i);
     const n = h ? nodes.get(h) : undefined;
     if (!n) continue;
@@ -331,7 +350,7 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
     const p = rule.props ? rule.props(i, helpers) : i.armType ? armProps(i) : {};
     raw.set(n.id, { ...(raw.get(n.id) ?? {}), ...p });
   }
-  for (const n of nodes.values()) if (n.kind === "subnet" && !raw.has(n.id)) raw.set(n.id, { ...n.props });
+  for (const n of nodes.values()) if (n.kind === "subnet" && !raw.has(n.id)) raw.set(n.id, { ...n.props, ...(inlineChips.has(n.id) ? { chips: inlineChips.get(n.id) } : {}) });
   // Template VNets' and subnets' props.
   for (const v of vnets) if (v.armType) raw.set(v.id, { addressSpace: ((v.after.addressSpace as { addressPrefixes?: string[] } | undefined)?.addressPrefixes ?? []).filter((x) => typeof x === "string") });
   // RG role chip and a resource group's tags.
@@ -435,7 +454,6 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
   if (withheld) notes.push(withheldNote(withheld));
   void laneGlobal;
   void laneTenant;
-  void expanded;
 
   const g: TopologyGraph = {
     schema: TOPOLOGY_SCHEMA,
