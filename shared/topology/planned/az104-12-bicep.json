@@ -1,0 +1,99 @@
+{
+ "schema": 1,
+ "labId": "az104-12-bicep",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-12-bicep",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-12-bicep",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-12-bicep",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_resource_group_template_deployment.bicep",
+     "label": "bicep-main",
+     "armType": "Microsoft.Resources/deployments"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group_template_deployment.bicep/microsoft.network/virtualnetworks/vnet-bicep",
+   "key": "microsoft.network/virtualnetworks/vnet-bicep",
+   "kind": "vnet",
+   "label": "vnet-bicep",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group_template_deployment.bicep/microsoft.network/virtualnetworks/vnet-bicep/subnet/snet-app",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-bicep/snet-app",
+   "kind": "subnet",
+   "label": "snet-app",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "NSG nsg-bicep"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group_template_deployment.bicep/microsoft.network/virtualnetworks/vnet-bicep",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group_template_deployment.bicep/microsoft.network/virtualnetworks/vnet-bicep/subnet/snet-web",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-bicep/snet-web",
+   "kind": "subnet",
+   "label": "snet-web",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "NSG nsg-bicep"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group_template_deployment.bicep/microsoft.network/virtualnetworks/vnet-bicep",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_resource_group_template_deployment.bicep/microsoft.network/networksecuritygroups/nsg-bicep",
+     "label": "nsg-bicep",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group_template_deployment.bicep/microsoft.storage/storageaccounts/l12k3x9qbicep",
+   "key": "microsoft.storage/storageaccounts/{p}bicep",
+   "kind": "storage",
+   "label": "l12…bicep",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard_LRS",
+    "accessTier": "Hot",
+    "publicAccess": false
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab"
+  }
+ ],
+ "edges": []
+}

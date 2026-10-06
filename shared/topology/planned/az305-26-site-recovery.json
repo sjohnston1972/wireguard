@@ -1,0 +1,250 @@
+{
+ "schema": 1,
+ "labId": "az305-26-site-recovery",
+ "version": 4,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_linux_virtual_machine.vm",
+   "key": "microsoft.compute/virtualmachines/vm-app",
+   "kind": "vm",
+   "label": "vm-app",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.source",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.vm",
+     "label": "nic-vm-app",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_recovery_services_vault.lab",
+   "key": "microsoft.recoveryservices/vaults/rsv-lab",
+   "kind": "recoveryVault",
+   "label": "rsv-lab",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": "Microsoft.RecoveryServices/vaults",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-26-site-recovery",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-26-site-recovery",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-26-site-recovery",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.secondary",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-26-site-recovery-secondary",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-26-site-recovery-secondary",
+   "props": {
+    "region": "ukwest",
+    "tags": [
+     "lab: az305-26-site-recovery",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ],
+    "chips": [
+     "secondary"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_site_recovery_fabric.source",
+   "key": "terraform/azurerm_site_recovery_fabric/fabric-uksouth",
+   "kind": "generic",
+   "label": "fabric-uksouth",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_site_recovery_fabric.target",
+   "key": "terraform/azurerm_site_recovery_fabric/fabric-ukwest",
+   "kind": "generic",
+   "label": "fabric-ukwest",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_site_recovery_network_mapping.lab",
+   "key": "terraform/azurerm_site_recovery_network_mapping/map-vnet-source-vnet-target",
+   "kind": "generic",
+   "label": "map-vnet-source-vnet-target",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_site_recovery_protection_container.source",
+   "key": "terraform/azurerm_site_recovery_protection_container/container-uksouth",
+   "kind": "generic",
+   "label": "container-uksouth",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_site_recovery_protection_container.target",
+   "key": "terraform/azurerm_site_recovery_protection_container/container-ukwest",
+   "kind": "generic",
+   "label": "container-ukwest",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_site_recovery_protection_container_mapping.lab",
+   "key": "terraform/azurerm_site_recovery_protection_container_mapping/mapping-uksouth-ukwest",
+   "kind": "generic",
+   "label": "mapping-uksouth-ukwest",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_site_recovery_replicated_vm.vm",
+   "key": "terraform/azurerm_site_recovery_replicated_vm/vm-app",
+   "kind": "generic",
+   "label": "vm-app",
+   "props": {},
+   "parent": "tf:azurerm_subnet.target",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_site_recovery_replication_policy.lab",
+   "key": "terraform/azurerm_site_recovery_replication_policy/policy-6h",
+   "kind": "generic",
+   "label": "policy-6h",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_storage_account.cache",
+   "key": "microsoft.storage/storageaccounts/{p}cache",
+   "kind": "storage",
+   "label": "l26…cache",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.source",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-source/snet-vms",
+   "kind": "subnet",
+   "label": "snet-vms",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.source",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.target",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-target/snet-vms",
+   "kind": "subnet",
+   "label": "snet-vms",
+   "props": {
+    "prefix": "10.71.208.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.target",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.test",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-test/snet-vms",
+   "kind": "subnet",
+   "label": "snet-vms",
+   "props": {
+    "prefix": "10.71.224.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.test",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.source",
+   "key": "microsoft.network/virtualnetworks/vnet-source",
+   "kind": "vnet",
+   "label": "vnet-source",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.target",
+   "key": "microsoft.network/virtualnetworks/vnet-target",
+   "kind": "vnet",
+   "label": "vnet-target",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.test",
+   "key": "microsoft.network/virtualnetworks/vnet-test",
+   "kind": "vnet",
+   "label": "vnet-test",
+   "props": {
+    "addressSpace": [
+     "10.71.224.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "8 resources of a type the diagram draws plainly"
+ ]
+}

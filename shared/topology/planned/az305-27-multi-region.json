@@ -1,0 +1,163 @@
+{
+ "schema": 1,
+ "labId": "az305-27-multi-region",
+ "version": 3,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/global",
+   "key": "lane/global",
+   "kind": "lane",
+   "label": "Global",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_endpoint.lab",
+   "key": "terraform/azurerm_cdn_frontdoor_endpoint/l27k3x9q-afd",
+   "kind": "generic",
+   "label": "l27…-afd",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_origin.uks",
+   "key": "terraform/azurerm_cdn_frontdoor_origin/origin-uks",
+   "kind": "generic",
+   "label": "origin-uks",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_origin.ukw",
+   "key": "terraform/azurerm_cdn_frontdoor_origin/origin-ukw",
+   "kind": "generic",
+   "label": "origin-ukw",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_origin_group.lab",
+   "key": "terraform/azurerm_cdn_frontdoor_origin_group/og-aci",
+   "kind": "generic",
+   "label": "og-aci",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "key": "microsoft.cdn/profiles/afd-lab",
+   "kind": "frontDoor",
+   "label": "afd-lab",
+   "props": {},
+   "parent": "lane/global",
+   "armType": "Microsoft.Cdn/profiles"
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_route.lab",
+   "key": "terraform/azurerm_cdn_frontdoor_route/route-all",
+   "kind": "generic",
+   "label": "route-all",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_container_group.uks",
+   "key": "microsoft.containerinstance/containergroups/ci-uks",
+   "kind": "containerGroup",
+   "label": "ci-uks",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.ContainerInstance/containerGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_container_group.ukw",
+   "key": "microsoft.containerinstance/containergroups/ci-ukw",
+   "kind": "containerGroup",
+   "label": "ci-ukw",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.secondary",
+   "armType": "Microsoft.ContainerInstance/containerGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-27-multi-region",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-27-multi-region",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-27-multi-region",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.secondary",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-27-multi-region-secondary",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-27-multi-region-secondary",
+   "props": {
+    "region": "ukwest",
+    "tags": [
+     "lab: az305-27-multi-region",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ],
+    "chips": [
+     "secondary"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_traffic_manager_external_endpoint.uks",
+   "key": "terraform/azurerm_traffic_manager_external_endpoint/ep-uks",
+   "kind": "generic",
+   "label": "ep-uks",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_traffic_manager_external_endpoint.ukw",
+   "key": "terraform/azurerm_traffic_manager_external_endpoint/ep-ukw",
+   "kind": "generic",
+   "label": "ep-ukw",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_traffic_manager_profile.lab",
+   "key": "microsoft.network/trafficmanagerprofiles/{p}-tm",
+   "kind": "trafficManager",
+   "label": "l27…-tm",
+   "props": {},
+   "parent": "lane/global",
+   "armType": "Microsoft.Network/trafficManagerProfiles"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "7 resources of a type the diagram draws plainly"
+ ]
+}

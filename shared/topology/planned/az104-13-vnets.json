@@ -1,0 +1,186 @@
+{
+ "schema": 1,
+ "labId": "az104-13-vnets",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_linux_virtual_machine.app",
+   "key": "microsoft.compute/virtualmachines/vm-app",
+   "kind": "vm",
+   "label": "vm-app",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux",
+    "chips": [
+     "ASG asg-app"
+    ]
+   },
+   "parent": "tf:azurerm_subnet.app",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_application_security_group.app",
+     "label": "asg-app",
+     "armType": "Microsoft.Network/applicationSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_interface.app",
+     "label": "nic-vm-app",
+     "armType": "Microsoft.Network/networkInterfaces"
+    },
+    {
+     "id": "tf:azurerm_network_interface_application_security_group_association.app",
+     "label": "app",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.web",
+   "key": "microsoft.compute/virtualmachines/vm-web",
+   "kind": "vm",
+   "label": "vm-web",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux",
+    "chips": [
+     "ASG asg-web"
+    ]
+   },
+   "parent": "tf:azurerm_subnet.web",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_application_security_group.web",
+     "label": "asg-web",
+     "armType": "Microsoft.Network/applicationSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_interface.web",
+     "label": "nic-vm-web",
+     "armType": "Microsoft.Network/networkInterfaces"
+    },
+    {
+     "id": "tf:azurerm_network_interface_application_security_group_association.web",
+     "label": "web",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-13-vnets",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-13-vnets",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-13-vnets",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.app",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-app",
+   "kind": "subnet",
+   "label": "snet-app",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "NSG nsg-app"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.app",
+     "label": "nsg-app",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.app_deny_vnet",
+     "label": "deny-other-vnet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.app_from_web",
+     "label": "allow-asg-web-to-asg-app-8080",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.app",
+     "label": "app",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.web",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-web",
+   "kind": "subnet",
+   "label": "snet-web",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "NSG nsg-web"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.web",
+     "label": "nsg-web",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.web_deny_vnet",
+     "label": "deny-other-vnet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.web_http",
+     "label": "allow-http-from-vnet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.web_ssh",
+     "label": "allow-ssh-from-vnet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.web",
+     "label": "web",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": []
+}

@@ -1,0 +1,327 @@
+{
+ "schema": 1,
+ "labId": "az700-43-private-link",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_lb.svc",
+   "key": "microsoft.network/loadbalancers/lb-svc",
+   "kind": "loadBalancer",
+   "label": "lb-svc",
+   "props": {
+    "sku": "Standard",
+    "privateIp": "10.71.192.10"
+   },
+   "parent": "tf:azurerm_subnet.svc",
+   "armType": "Microsoft.Network/loadBalancers",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_lb_backend_address_pool.svc",
+     "label": "pool-svc",
+     "armType": "Microsoft.Network/loadBalancers/backendAddressPools"
+    },
+    {
+     "id": "tf:azurerm_lb_probe.svc",
+     "label": "probe-http",
+     "armType": "Microsoft.Network/loadBalancers/probes"
+    },
+    {
+     "id": "tf:azurerm_lb_rule.svc",
+     "label": "rule-http-80",
+     "armType": "Microsoft.Network/loadBalancers/loadBalancingRules"
+    },
+    {
+     "id": "tf:azurerm_network_interface_backend_address_pool_association.svc",
+     "label": "svc",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.client",
+   "key": "microsoft.compute/virtualmachines/vm-client",
+   "kind": "vm",
+   "label": "vm-client",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.client",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.client",
+     "label": "nic-vm-client",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.svc",
+   "key": "microsoft.compute/virtualmachines/vm-svc",
+   "kind": "vm",
+   "label": "vm-svc",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.svc",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.svc",
+     "label": "nic-vm-svc",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_private_dns_zone.blob",
+   "key": "microsoft.network/privatednszones/privatelink.blob.core.windows.net",
+   "kind": "privateDnsZone",
+   "label": "privatelink.blob.core.windows.net",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/privateDnsZones",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_private_dns_zone_virtual_network_link.consumer",
+     "label": "link-vnet-consumer",
+     "armType": "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_private_endpoint.blob",
+   "key": "microsoft.network/privateendpoints/pe-blob",
+   "kind": "privateEndpoint",
+   "label": "pe-blob",
+   "props": {
+    "groupId": "blob"
+   },
+   "parent": "tf:azurerm_subnet.pe",
+   "armType": "Microsoft.Network/privateEndpoints",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_private_endpoint.svc",
+   "key": "microsoft.network/privateendpoints/pe-svc",
+   "kind": "privateEndpoint",
+   "label": "pe-svc",
+   "props": {},
+   "parent": "tf:azurerm_subnet.pe",
+   "armType": "Microsoft.Network/privateEndpoints",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_private_link_service.svc",
+   "key": "microsoft.network/privatelinkservices/pls-svc",
+   "kind": "privateLinkService",
+   "label": "pls-svc",
+   "props": {},
+   "parent": "tf:azurerm_subnet.pls",
+   "armType": "Microsoft.Network/privateLinkServices",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-43-private-link",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-43-private-link",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-43-private-link",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_storage_account.other",
+   "key": "microsoft.storage/storageaccounts/{p}other",
+   "kind": "storage",
+   "label": "l43…other",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS",
+    "publicAccess": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_storage_container.other",
+     "label": "data",
+     "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_storage_account.st",
+   "key": "microsoft.storage/storageaccounts/{p}st",
+   "kind": "storage",
+   "label": "l43…st",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS",
+    "publicAccess": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_storage_container.st",
+     "label": "data",
+     "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.client",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-consumer/snet-client",
+   "kind": "subnet",
+   "label": "snet-client",
+   "props": {
+    "prefix": "10.71.209.0/24",
+    "chips": [
+     "service endpoints Microsoft.Storage"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.consumer",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.pe",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-consumer/snet-pe",
+   "kind": "subnet",
+   "label": "snet-pe",
+   "props": {
+    "prefix": "10.71.208.0/24",
+    "chips": [
+     "no default outbound"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.consumer",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.pls",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-provider/snet-pls",
+   "kind": "subnet",
+   "label": "snet-pls",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "no default outbound"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.provider",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.svc",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-provider/snet-svc",
+   "kind": "subnet",
+   "label": "snet-svc",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "no default outbound"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.provider",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet_service_endpoint_storage_policy.client",
+   "key": "terraform/azurerm_subnet_service_endpoint_storage_policy/sep-storage",
+   "kind": "generic",
+   "label": "sep-storage",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.consumer",
+   "key": "microsoft.network/virtualnetworks/vnet-consumer",
+   "kind": "vnet",
+   "label": "vnet-consumer",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.provider",
+   "key": "microsoft.network/virtualnetworks/vnet-provider",
+   "kind": "vnet",
+   "label": "vnet-provider",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_private_dns_zone.blob>tf:azurerm_virtual_network.consumer:link",
+   "from": "tf:azurerm_private_dns_zone.blob",
+   "to": "tf:azurerm_virtual_network.consumer",
+   "kind": "dependency",
+   "label": "link",
+   "via": "tf:azurerm_private_dns_zone_virtual_network_link.consumer"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.svc>tf:azurerm_linux_virtual_machine.svc:TCP 80→80",
+   "from": "tf:azurerm_lb.svc",
+   "to": "tf:azurerm_linux_virtual_machine.svc",
+   "kind": "traffic",
+   "label": "TCP 80→80",
+   "via": "tf:azurerm_lb_rule.svc"
+  },
+  {
+   "id": "traffic:tf:azurerm_private_endpoint.blob>tf:azurerm_storage_account.st:blob",
+   "from": "tf:azurerm_private_endpoint.blob",
+   "to": "tf:azurerm_storage_account.st",
+   "kind": "traffic",
+   "label": "blob",
+   "via": "tf:azurerm_private_endpoint.blob"
+  },
+  {
+   "id": "traffic:tf:azurerm_private_endpoint.svc>tf:azurerm_private_link_service.svc:private link",
+   "from": "tf:azurerm_private_endpoint.svc",
+   "to": "tf:azurerm_private_link_service.svc",
+   "kind": "traffic",
+   "label": "private link",
+   "via": "tf:azurerm_private_endpoint.svc"
+  }
+ ],
+ "notes": [
+  "1 resource of a type the diagram draws plainly"
+ ]
+}

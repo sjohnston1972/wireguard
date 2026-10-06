@@ -1,0 +1,98 @@
+{
+ "schema": 1,
+ "labId": "az305-25-storage-design",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-25-storage-design",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-25-storage-design",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-25-storage-design",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_storage_account.lake",
+   "key": "microsoft.storage/storageaccounts/{p}lake",
+   "kind": "storage",
+   "label": "l25…lake",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS",
+    "accessTier": "Hot",
+    "publicAccess": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_storage_container.curated",
+     "label": "curated",
+     "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    },
+    {
+     "id": "tf:azurerm_storage_container.raw",
+     "label": "raw",
+     "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_storage_account.records",
+   "key": "microsoft.storage/storageaccounts/{p}rec",
+   "kind": "storage",
+   "label": "l25…rec",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard RAGRS",
+    "accessTier": "Hot",
+    "publicAccess": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_storage_container.evidence",
+     "label": "evidence",
+     "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_storage_container_immutability_policy.evidence",
+   "key": "terraform/azurerm_storage_container_immutability_policy/evidence",
+   "kind": "generic",
+   "label": "evidence",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_storage_management_policy.lake",
+   "key": "terraform/azurerm_storage_management_policy/lake",
+   "kind": "generic",
+   "label": "lake",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "2 resources of a type the diagram draws plainly"
+ ]
+}

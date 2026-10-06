@@ -1,0 +1,73 @@
+{
+ "schema": 1,
+ "labId": "az104-09-vmss",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_linux_virtual_machine_scale_set.web",
+   "key": "microsoft.compute/virtualmachinescalesets/vmss-web",
+   "kind": "vmss",
+   "label": "vmss-web",
+   "props": {},
+   "parent": "tf:azurerm_subnet.vms",
+   "armType": "Microsoft.Compute/virtualMachineScaleSets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_monitor_autoscale_setting.web",
+   "key": "terraform/azurerm_monitor_autoscale_setting/autoscale-vmss-web",
+   "kind": "monitor",
+   "label": "autoscale-vmss-web",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-09-vmss",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-09-vmss",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-09-vmss",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.vms",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-vms",
+   "kind": "subnet",
+   "label": "snet-vms",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": []
+}

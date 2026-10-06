@@ -1,0 +1,311 @@
+{
+ "schema": 1,
+ "labId": "az700-44-flow-logs-bastion",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_bastion_host.hub",
+   "key": "microsoft.network/bastionhosts/bas-hub",
+   "kind": "bastion",
+   "label": "bas-hub",
+   "props": {},
+   "parent": "tf:azurerm_subnet.bastion",
+   "armType": "Microsoft.Network/bastionHosts",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_public_ip.bastion",
+     "label": "pip-bastion",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.app",
+   "key": "microsoft.compute/virtualmachines/vm-app",
+   "kind": "vm",
+   "label": "vm-app",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.app",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.app",
+     "label": "nic-vm-app",
+     "armType": "Microsoft.Network/networkInterfaces"
+    },
+    {
+     "id": "tf:azurerm_virtual_machine_extension.nw_app",
+     "label": "AzureNetworkWatcherExtension",
+     "armType": "Microsoft.Compute/virtualMachines/extensions"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.web",
+   "key": "microsoft.compute/virtualmachines/vm-web",
+   "kind": "vm",
+   "label": "vm-web",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.web",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.web",
+     "label": "nic-vm-web",
+     "armType": "Microsoft.Network/networkInterfaces"
+    },
+    {
+     "id": "tf:azurerm_virtual_machine_extension.nw_web",
+     "label": "AzureNetworkWatcherExtension",
+     "armType": "Microsoft.Compute/virtualMachines/extensions"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_log_analytics_workspace.lab",
+   "key": "microsoft.operationalinsights/workspaces/log-flow",
+   "kind": "logAnalytics",
+   "label": "log-flow",
+   "props": {
+    "retentionDays": 30,
+    "dailyCapGb": 0.05
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.OperationalInsights/workspaces",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_network_watcher_flow_log.vnet",
+   "key": "microsoft.network/networkwatchers/flowlogs/lab-az700-44-flow-logs-bastion-vnet",
+   "kind": "generic",
+   "label": "lab-az700-44-flow-logs-bastion-vnet",
+   "props": {},
+   "parent": "tf:rg/networkwatcherrg",
+   "armType": "Microsoft.Network/networkWatchers/flowLogs",
+   "scope": "outside"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-44-flow-logs-bastion",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-44-flow-logs-bastion",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-44-flow-logs-bastion",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_storage_account.flow",
+   "key": "microsoft.storage/storageaccounts/{p}flow",
+   "kind": "storage",
+   "label": "l44…flow",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.app",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/snet-app",
+   "kind": "subnet",
+   "label": "snet-app",
+   "props": {
+    "prefix": "10.71.194.0/24",
+    "chips": [
+     "NSG nsg-app"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.app",
+     "label": "nsg-app",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.app_deny_vnet",
+     "label": "deny-vnet-inbound",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.app_http_web",
+     "label": "allow-http-from-web",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.app_ssh_bastion",
+     "label": "allow-ssh-from-bastion",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.app",
+     "label": "app",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.bastion",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/azurebastionsubnet",
+   "kind": "subnet",
+   "label": "AzureBastionSubnet",
+   "props": {
+    "prefix": "10.71.192.0/26",
+    "chips": [
+     "NSG nsg-bastion"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.bastion",
+     "label": "nsg-bastion",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.bastion_azure_cloud_out",
+     "label": "AllowAzureCloudOutbound",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.bastion_gateway_manager_in",
+     "label": "AllowGatewayManagerInbound",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.bastion_host_in",
+     "label": "AllowBastionHostCommunication",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.bastion_host_out",
+     "label": "AllowBastionCommunication",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.bastion_http_out",
+     "label": "AllowHttpOutbound",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.bastion_https_in",
+     "label": "AllowHttpsInbound",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.bastion_load_balancer_in",
+     "label": "AllowAzureLoadBalancerInbound",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.bastion_ssh_rdp_out",
+     "label": "AllowSshRdpOutbound",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.bastion",
+     "label": "bastion",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.web",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/snet-web",
+   "kind": "subnet",
+   "label": "snet-web",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "NSG nsg-web"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.web",
+     "label": "nsg-web",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.web_deny_app",
+     "label": "deny-from-app",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.web_deny_ssh",
+     "label": "deny-ssh-from-vnet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.web_ssh_bastion",
+     "label": "allow-ssh-from-bastion",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.web",
+     "label": "web",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.hub",
+   "key": "microsoft.network/virtualnetworks/vnet-hub",
+   "kind": "vnet",
+   "label": "vnet-hub",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:rg/networkwatcherrg",
+   "key": "microsoft.resources/resourcegroups/networkwatcherrg",
+   "kind": "resourceGroup",
+   "label": "NetworkWatcherRG",
+   "props": {
+    "chips": [
+     "outside the lab"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "outside"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "1 resource of a type the diagram draws plainly"
+ ]
+}

@@ -1,0 +1,78 @@
+{
+ "schema": 1,
+ "labId": "az104-03-mgmt-groups",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/tenant",
+   "key": "lane/tenant",
+   "kind": "lane",
+   "label": "Tenant and Entra ID",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_management_group.dev",
+   "key": "microsoft.management/managementgroups/lab-az104-03-mgmt-groups-dev",
+   "kind": "managementGroup",
+   "label": "lab-az104-03-mgmt-groups-dev",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Management/managementGroups"
+  },
+  {
+   "id": "tf:azurerm_management_group.prod",
+   "key": "microsoft.management/managementgroups/lab-az104-03-mgmt-groups-prod",
+   "kind": "managementGroup",
+   "label": "lab-az104-03-mgmt-groups-prod",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Management/managementGroups"
+  },
+  {
+   "id": "tf:azurerm_management_group.root",
+   "key": "microsoft.management/managementgroups/lab-az104-03-mgmt-groups-root",
+   "kind": "managementGroup",
+   "label": "lab-az104-03-mgmt-groups-root",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Management/managementGroups"
+  },
+  {
+   "id": "tf:azurerm_management_group_policy_assignment.audit_environment_tag",
+   "key": "terraform/azurerm_management_group_policy_assignment/audit-environment-tag",
+   "kind": "policy",
+   "label": "audit-environment-tag",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_policy_definition.audit_environment_tag",
+   "key": "terraform/azurerm_policy_definition/lab-az104-03-mgmt-groups-audit-environment-tag",
+   "kind": "policy",
+   "label": "lab-az104-03-mgmt-groups-audit-environment-tag",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-03-mgmt-groups",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-03-mgmt-groups",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-03-mgmt-groups",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  }
+ ],
+ "edges": []
+}

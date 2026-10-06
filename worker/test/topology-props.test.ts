@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { MOCK_SECRETS, PROP_NAMES, scrubProps, secretLike, tagProps, denyProblems } from "../../shared/topology/props";
+import { MOCK_SECRETS, PROP_NAMES, scrubProps, secretLike, secretValue, tagProps, denyProblems } from "../../shared/topology/props";
 
 describe("PROP_NAMES", () => {
   it("is the closed set of spec §4.5", () => {
@@ -68,8 +68,21 @@ describe("scrubProps", () => {
     expect(scrubProps(props)).toEqual({ props, withheld: 0 });
   });
 
+  it("counts may name a collection that sounds secret (secrets: 2), but only as a word and a number", () => {
+    expect(scrubProps({ counts: ["secrets: 2", "keys: 1"] })).toEqual({ props: { counts: ["secrets: 2", "keys: 1"] }, withheld: 0 });
+    expect(scrubProps({ counts: ["secret: hunter2"] })).toEqual({ props: {}, withheld: 1 });
+    expect(scrubProps({ hostName: "secrets: 2" })).toEqual({ props: {}, withheld: 1 });
+  });
+
   it("values of other types (objects, null) are dropped without counting", () => {
     expect(scrubProps({ sku: null as never, size: { a: 1 } as never, zones: ["1", "2"] })).toEqual({ props: { zones: ["1", "2"] }, withheld: 0 });
+  });
+
+  it("names may say secret or password (a role, a resource name); a secret value in a name is still caught", () => {
+    expect(secretValue("role: Key Vault Secrets User")).toBe(false);
+    expect(secretValue("tf:azurerm_role_assignment.vm_secrets_user")).toBe(false);
+    expect(secretValue("kv-password-policy")).toBe(false);
+    for (const s of [MOCK_SECRETS.adminPassword, "https://x/c?sig=abc", "AccountKey=abc", "-----BEGIN CERTIFICATE-----", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl", "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFy1A=="]) expect(secretValue(s), s).toBe(true);
   });
 
   it("secretLike says the same as the scrub", () => {

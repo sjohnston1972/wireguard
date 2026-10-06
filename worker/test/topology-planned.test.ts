@@ -237,6 +237,24 @@ describe("planned graph: the rest of the core", () => {
     expect(g.edges).toEqual(expect.arrayContaining([expect.objectContaining({ from: group.id, to: rgNode.id, kind: "dependency", label: "role: Storage Blob Data Reader", via: "tf:azurerm_role_assignment.r" })]));
   });
 
+  it("Key Vault secrets, keys and certificates fold into the vault as counts, never by name (ruling 22)", () => {
+    const rg = "rg-lab-az700-35-forced-tunnel-fix";
+    const g = extra(
+      [
+        { address: "azurerm_key_vault.kv", type: "azurerm_key_vault", name: "kv", index: null, after: { name: "kv-l35k3x9q", resource_group_name: rg, sku_name: "standard", enable_rbac_authorization: true }, after_unknown: {} },
+        { address: "azurerm_key_vault_secret.db", type: "azurerm_key_vault_secret", name: "db", index: null, after: { name: "app-db-password" }, after_unknown: {} },
+        { address: "azurerm_key_vault_secret.api", type: "azurerm_key_vault_secret", name: "api", index: null, after: { name: "reports-api-key" }, after_unknown: {} },
+        { address: "azurerm_key_vault_key.k", type: "azurerm_key_vault_key", name: "k", index: null, after: { name: "cmk" }, after_unknown: {} },
+      ],
+      { "azurerm_key_vault_secret.db": { key_vault_id: ["azurerm_key_vault.kv"] }, "azurerm_key_vault_secret.api": { key_vault_id: ["azurerm_key_vault.kv"] }, "azurerm_key_vault_key.k": { key_vault_id: ["azurerm_key_vault.kv"] } },
+    );
+    const kv = byLabel(g, "kv-l35…");
+    expect(kv).toMatchObject({ kind: "keyVault", props: { sku: "standard", counts: ["keys: 1", "secrets: 2"] } });
+    expect(kv.folded?.map((f) => f.label).sort()).toEqual(["key", "secret", "secret"]);
+    expect(JSON.stringify(g)).not.toMatch(/app-db-password|reports-api-key|"cmk"/);
+    expect(representedIds(g).has("tf:azurerm_key_vault_secret.db")).toBe(true);
+  });
+
   it("names carrying the mock prefix are shown as l35…", () => {
     const g = extra([
       { address: "azurerm_storage_account.sa", type: "azurerm_storage_account", name: "sa", index: null, after: { name: "l35k3x9qdiag", resource_group_name: "rg-lab-az700-35-forced-tunnel-fix", account_kind: "StorageV2", account_tier: "Standard", account_replication_type: "LRS" }, after_unknown: {} },

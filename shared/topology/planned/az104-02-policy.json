@@ -1,0 +1,103 @@
+{
+ "schema": 1,
+ "labId": "az104-02-policy",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/tenant",
+   "key": "lane/tenant",
+   "kind": "lane",
+   "label": "Tenant and Entra ID",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_management_lock.no_delete",
+   "key": "terraform/azurerm_management_lock/lab-az104-02-policy-no-delete",
+   "kind": "generic",
+   "label": "lab-az104-02-policy-no-delete",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_network_security_group.untagged",
+   "key": "microsoft.network/networksecuritygroups/nsg-untagged",
+   "kind": "nsg",
+   "label": "nsg-untagged",
+   "props": {
+    "counts": [
+     "rules: 0"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/networkSecurityGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_policy_definition.require_costcentre_tag",
+   "key": "terraform/azurerm_policy_definition/lab-az104-02-policy-require-costcentre-tag",
+   "kind": "policy",
+   "label": "lab-az104-02-policy-require-costcentre-tag",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-02-policy",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-02-policy",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-02-policy",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group_policy_assignment.allowed_locations",
+   "key": "terraform/azurerm_resource_group_policy_assignment/lab-az104-02-policy-allowed-locations",
+   "kind": "policy",
+   "label": "lab-az104-02-policy-allowed-locations",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group_policy_assignment.require_tag",
+   "key": "terraform/azurerm_resource_group_policy_assignment/lab-az104-02-policy-require-tag",
+   "kind": "policy",
+   "label": "lab-az104-02-policy-require-tag",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_storage_account.tagged",
+   "key": "microsoft.storage/storageaccounts/{p}tags",
+   "kind": "storage",
+   "label": "l02…tags",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS",
+    "accessTier": "Hot"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "1 resource of a type the diagram draws plainly"
+ ]
+}

@@ -1,0 +1,49 @@
+{
+ "schema": 1,
+ "labId": "az104-04-cost",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_consumption_budget_resource_group.monthly",
+   "key": "terraform/azurerm_consumption_budget_resource_group/lab-az104-04-cost-monthly",
+   "kind": "generic",
+   "label": "lab-az104-04-cost-monthly",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_monitor_action_group.budget",
+   "key": "terraform/azurerm_monitor_action_group/lab-az104-04-cost-budget-alerts",
+   "kind": "monitor",
+   "label": "lab-az104-04-cost-budget-alerts",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-04-cost",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-04-cost",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-04-cost",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "1 resource of a type the diagram draws plainly"
+ ]
+}

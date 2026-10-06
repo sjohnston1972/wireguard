@@ -80,6 +80,8 @@ export interface TfRule {
   edges?: (inst: TfInst, h: PlannedHelpers) => EdgeSpec[];
   /** The name path for the key (default [name]). */
   namePath?: (inst: TfInst, h: PlannedHelpers) => string[];
+  /** What a folded entry says instead of the name (a Key Vault secret: "secret"; ruling 22, never the name). */
+  foldedLabel?: string;
 }
 
 /** Types that are never Azure resources (spec §4.4): random_*, time_*, terraform_data, null_resource. */
@@ -309,6 +311,19 @@ export const TF_RULES: Record<string, TfRule> = {
       publicAccess: typeof i.after.public_network_access_enabled === "boolean" ? i.after.public_network_access_enabled : undefined,
     }),
   },
+  // ── Key Vault (core; T3.4 extends): child objects are counts, never names (ruling 22) ──
+  azurerm_key_vault: {
+    arm: "Microsoft.KeyVault/vaults",
+    props: (i, h) => {
+      const n = (t: string) => h.referrers(i, [t], ["key_vault_id"]).length;
+      const counts = [["certificates", n("azurerm_key_vault_certificate")], ["keys", n("azurerm_key_vault_key")], ["secrets", n("azurerm_key_vault_secret")]].filter(([, c]) => c).map(([w, c]) => `${w}: ${c}`);
+      return { sku: str(i.after.sku_name), mode: i.after.enable_rbac_authorization === true || i.after.rbac_authorization_enabled === true ? "RBAC" : undefined, counts: counts.length ? counts : undefined };
+    },
+  },
+  azurerm_key_vault_secret: { arm: "Microsoft.KeyVault/vaults/secrets", fold: ["key_vault_id"], foldedLabel: "secret" },
+  azurerm_key_vault_key: { arm: "Microsoft.KeyVault/vaults/keys", fold: ["key_vault_id"], foldedLabel: "key" },
+  azurerm_key_vault_certificate: { arm: "Microsoft.KeyVault/vaults/certificates", fold: ["key_vault_id"], foldedLabel: "certificate" },
+
   azurerm_storage_container: { arm: "Microsoft.Storage/storageAccounts/blobServices/containers", fold: ["storage_account_id", "storage_account_name"] },
 
   // ── Private access (core; T3.4 extends) ──

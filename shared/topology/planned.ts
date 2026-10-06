@@ -276,7 +276,7 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
     const h = home(i);
     const n = h ? nodes.get(h) : undefined;
     if (!n) continue;
-    (n.folded ??= []).push({ id: i.id, label: labelOf(i), armType: i.armType ?? ruleOf(i).arm ?? null });
+    (n.folded ??= []).push({ id: i.id, label: ruleOf(i).foldedLabel ?? labelOf(i), armType: i.armType ?? ruleOf(i).arm ?? null });
   }
 
   const subnetNodeOfInst = (t: TfInst): string | null => (t.type === "azurerm_subnet" ? t.id : null);

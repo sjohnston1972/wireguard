@@ -1,0 +1,204 @@
+{
+ "schema": 1,
+ "labId": "az104-16-lb-appgw",
+ "version": 3,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_application_gateway.web",
+   "key": "microsoft.network/applicationgateways/agw-web",
+   "kind": "appGateway",
+   "label": "agw-web",
+   "props": {},
+   "parent": "tf:azurerm_subnet.appgw",
+   "armType": "Microsoft.Network/applicationGateways",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_public_ip.appgw",
+     "label": "pip-appgw",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_lb.web",
+   "key": "microsoft.network/loadbalancers/lbi-web",
+   "kind": "loadBalancer",
+   "label": "lbi-web",
+   "props": {
+    "sku": "Standard",
+    "privateIp": "10.71.192.10"
+   },
+   "parent": "tf:azurerm_subnet.web",
+   "armType": "Microsoft.Network/loadBalancers",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_lb_backend_address_pool.web",
+     "label": "pool-web",
+     "armType": "Microsoft.Network/loadBalancers/backendAddressPools"
+    },
+    {
+     "id": "tf:azurerm_lb_probe.http",
+     "label": "probe-tcp-80",
+     "armType": "Microsoft.Network/loadBalancers/probes"
+    },
+    {
+     "id": "tf:azurerm_lb_rule.http",
+     "label": "rule-http-80",
+     "armType": "Microsoft.Network/loadBalancers/loadBalancingRules"
+    },
+    {
+     "id": "tf:azurerm_network_interface_backend_address_pool_association.web[0]",
+     "label": "web[0]",
+     "armType": null
+    },
+    {
+     "id": "tf:azurerm_network_interface_backend_address_pool_association.web[1]",
+     "label": "web[1]",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.web[0]",
+   "key": "microsoft.compute/virtualmachines/vm-web1",
+   "kind": "vm",
+   "label": "vm-web1",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.web",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.web[0]",
+     "label": "nic-vm-web1",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.web[1]",
+   "key": "microsoft.compute/virtualmachines/vm-web2",
+   "kind": "vm",
+   "label": "vm-web2",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.web",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.web[1]",
+     "label": "nic-vm-web2",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-16-lb-appgw",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-16-lb-appgw",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-16-lb-appgw",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.appgw",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-appgw",
+   "kind": "subnet",
+   "label": "snet-appgw",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "NSG nsg-appgw"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.appgw",
+     "label": "nsg-appgw",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.appgw_http",
+     "label": "allow-http-from-vnet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.appgw_manager",
+     "label": "allow-gateway-manager",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.appgw",
+     "label": "appgw",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.web",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-web",
+   "kind": "subnet",
+   "label": "snet-web",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "traffic:tf:azurerm_lb.web>tf:azurerm_linux_virtual_machine.web[0]:TCP 80→80",
+   "from": "tf:azurerm_lb.web",
+   "to": "tf:azurerm_linux_virtual_machine.web[0]",
+   "kind": "traffic",
+   "label": "TCP 80→80",
+   "via": "tf:azurerm_lb_rule.http"
+  },
+  {
+   "id": "traffic:tf:azurerm_lb.web>tf:azurerm_linux_virtual_machine.web[1]:TCP 80→80",
+   "from": "tf:azurerm_lb.web",
+   "to": "tf:azurerm_linux_virtual_machine.web[1]",
+   "kind": "traffic",
+   "label": "TCP 80→80",
+   "via": "tf:azurerm_lb_rule.http"
+  }
+ ]
+}

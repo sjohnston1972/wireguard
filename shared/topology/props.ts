@@ -95,6 +95,21 @@ export function secretLike(value: string): boolean {
   return SECRET_WORDS.test(value) || JWT.test(value) || base64Run(value);
 }
 
+/**
+ * A name-like string (a label, key, id, edge label, note) that holds a secret
+ * VALUE: a PEM block, a JWT, a SAS signature, an account or shared access
+ * key, a long base64 run, the mock secrets. Unlike secretLike, the words
+ * "password" and "secret" alone do not count: "Key Vault Secrets User" and a
+ * route named "default" are names, not secrets.
+ */
+export function secretValue(value: string): boolean {
+  if (value.includes(MOCK_SECRETS.adminPassword) || value.includes(MOCK_KEY_BODY)) return true;
+  return /-----BEGIN|sig=|accountkey=|sharedaccesskey=|password=/i.test(value) || JWT.test(value) || base64Run(value);
+}
+
+/** A child-collection count ("secrets: 2", "rules: 5"): a word and a number, never a value, so it may say "secrets". */
+export const isCount = (s: string): boolean => /^[A-Za-z][A-Za-z ]{0,39}: \d{1,6}$/.test(s);
+
 const isPropValue = (v: unknown): v is TopoPropValue =>
   typeof v === "string" || typeof v === "boolean" || (typeof v === "number" && Number.isFinite(v)) || (Array.isArray(v) && v.every((x) => typeof x === "string"));
 
@@ -115,7 +130,7 @@ export function scrubProps(props: Record<string, unknown>): { props: Record<stri
     }
     if (!isPropValue(v)) continue;
     const strings = typeof v === "string" ? [v] : Array.isArray(v) ? v : [];
-    if (strings.some(secretLike)) {
+    if (strings.some((s) => !(k === "counts" && isCount(s)) && secretLike(s))) {
       withheld++;
       continue;
     }
@@ -149,7 +164,11 @@ export const withheldNote = (n: number): string => `${n} value${n === 1 ? "" : "
  */
 export function denyProblems(g: TopologyGraph): string[] {
   const out: string[] = [];
+  // Names (labels, keys, ids, edge labels, notes): a secret value. Props: anything secret-like.
   const check = (where: string, s: unknown) => {
+    if (typeof s === "string" && secretValue(s)) out.push(`${where}: a secret-like value`);
+  };
+  const checkProp = (where: string, s: unknown) => {
     if (typeof s === "string" && secretLike(s)) out.push(`${where}: a secret-like value`);
   };
   for (const n of g.nodes) {
@@ -157,13 +176,14 @@ export function denyProblems(g: TopologyGraph): string[] {
     check(`${n.id} key`, n.key);
     for (const [k, v] of Object.entries(n.props ?? {})) {
       if (!PROP_NAMES.has(k)) out.push(`${n.id}: prop ${k} is not in PROP_NAMES`);
-      for (const s of Array.isArray(v) ? v : [v]) check(`${n.id} ${k}`, s);
+      for (const s of Array.isArray(v) ? v : [v]) if (!(k === "counts" && typeof s === "string" && isCount(s))) checkProp(`${n.id} ${k}`, s);
     }
     for (const f of n.folded ?? []) check(`${n.id} folded ${f.id}`, f.label);
   }
+  // Problems name where (node ids, never an edge id: it carries the label), never the value.
   for (const e of g.edges) {
-    check(`${e.id} label`, e.label);
-    check(`${e.id} via`, e.via);
+    check(`edge ${e.from} > ${e.to} label`, e.label);
+    check(`edge ${e.from} > ${e.to} via`, e.via);
   }
   for (const note of g.notes ?? []) check("note", note);
   const text = JSON.stringify(g);

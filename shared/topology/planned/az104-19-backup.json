@@ -1,0 +1,119 @@
+{
+ "schema": 1,
+ "labId": "az104-19-backup",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_backup_policy_vm.daily",
+   "key": "terraform/azurerm_backup_policy_vm/policy-daily-7d",
+   "kind": "generic",
+   "label": "policy-daily-7d",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_backup_protected_vm.vm",
+   "key": "terraform/azurerm_backup_protected_vm/vm",
+   "kind": "generic",
+   "label": "vm",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.vm",
+   "key": "microsoft.compute/virtualmachines/vm-backup",
+   "kind": "vm",
+   "label": "vm-backup",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.vms",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.vm",
+     "label": "nic-vm-backup",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_recovery_services_vault.lab",
+   "key": "microsoft.recoveryservices/vaults/rsv-lab",
+   "kind": "recoveryVault",
+   "label": "rsv-lab",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.RecoveryServices/vaults",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-19-backup",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-19-backup",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-19-backup",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_storage_account.staging",
+   "key": "microsoft.storage/storageaccounts/{p}stage",
+   "kind": "storage",
+   "label": "l19…stage",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.vms",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-vms",
+   "kind": "subnet",
+   "label": "snet-vms",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "2 resources of a type the diagram draws plainly"
+ ]
+}

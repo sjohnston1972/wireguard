@@ -1,0 +1,103 @@
+{
+ "schema": 1,
+ "labId": "az104-07-files",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_linux_virtual_machine.vm",
+   "key": "microsoft.compute/virtualmachines/vm-files",
+   "kind": "vm",
+   "label": "vm-files",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.vms",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.vm",
+     "label": "nic-vm-files",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-07-files",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-07-files",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-07-files",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_storage_account.files",
+   "key": "microsoft.storage/storageaccounts/{p}files",
+   "kind": "storage",
+   "label": "l07…files",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS",
+    "publicAccess": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_storage_share.share",
+   "key": "terraform/azurerm_storage_share/labshare",
+   "kind": "generic",
+   "label": "labshare",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.vms",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-vms",
+   "kind": "subnet",
+   "label": "snet-vms",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "service endpoints Microsoft.Storage"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "1 resource of a type the diagram draws plainly"
+ ]
+}

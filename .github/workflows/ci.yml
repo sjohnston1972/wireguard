@@ -160,6 +160,14 @@ jobs:
         run: |
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           npm run labs-tf
+      # Each lab's planned diagram (lab topology spec §5): regenerated from the
+      # mock plan and compared with shared/topology/planned; a stale file fails.
+      - name: labs-topology (planned diagrams are fresh)
+        env:
+          TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tf-plugins
+          BICEP: ${{ runner.temp }}/bin/bicep
+          HCL2JSON: ${{ runner.temp }}/bin/hcl2json
+        run: npm run labs-topology -- --check
 
   scripts:
     name: typecheck + tests

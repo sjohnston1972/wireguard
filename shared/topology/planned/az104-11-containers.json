@@ -1,0 +1,96 @@
+{
+ "schema": 1,
+ "labId": "az104-11-containers",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_container_app.hello",
+   "key": "microsoft.app/containerapps/ca-hello",
+   "kind": "containerApp",
+   "label": "ca-hello",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.App/containerApps",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_container_app_environment.lab",
+   "key": "microsoft.app/managedenvironments/cae-lab",
+   "kind": "containerAppEnv",
+   "label": "cae-lab",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.App/managedEnvironments",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_container_group.hello",
+   "key": "microsoft.containerinstance/containergroups/aci-hello",
+   "kind": "containerGroup",
+   "label": "aci-hello",
+   "props": {},
+   "parent": "tf:azurerm_subnet.aci",
+   "armType": "Microsoft.ContainerInstance/containerGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_container_registry.acr",
+   "key": "microsoft.containerregistry/registries/{p}acr",
+   "kind": "registry",
+   "label": "l11…acr",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.ContainerRegistry/registries",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-11-containers",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-11-containers",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-11-containers",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.aci",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-aci",
+   "kind": "subnet",
+   "label": "snet-aci",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "delegation Microsoft.ContainerInstance/containerGroups"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": []
+}

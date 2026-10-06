@@ -1,0 +1,165 @@
+{
+ "schema": 1,
+ "labId": "az104-17-netwatcher-fix",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_linux_virtual_machine.app",
+   "key": "microsoft.compute/virtualmachines/vm-app",
+   "kind": "vm",
+   "label": "vm-app",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.app",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.app",
+     "label": "nic-vm-app",
+     "armType": "Microsoft.Network/networkInterfaces"
+    },
+    {
+     "id": "tf:azurerm_virtual_machine_extension.nw_app",
+     "label": "AzureNetworkWatcherExtension",
+     "armType": "Microsoft.Compute/virtualMachines/extensions"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.db",
+   "key": "microsoft.compute/virtualmachines/vm-db",
+   "kind": "vm",
+   "label": "vm-db",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.db",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.db",
+     "label": "nic-vm-db",
+     "armType": "Microsoft.Network/networkInterfaces"
+    },
+    {
+     "id": "tf:azurerm_virtual_machine_extension.nw_db",
+     "label": "AzureNetworkWatcherExtension",
+     "armType": "Microsoft.Compute/virtualMachines/extensions"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-17-netwatcher-fix",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-17-netwatcher-fix",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-17-netwatcher-fix",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.app",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-app",
+   "kind": "subnet",
+   "label": "snet-app",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "route table rt-app"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_route.app_to_db",
+     "label": "to-db-via-firewall",
+     "armType": "Microsoft.Network/routeTables/routes"
+    },
+    {
+     "id": "tf:azurerm_route_table.app",
+     "label": "rt-app",
+     "armType": "Microsoft.Network/routeTables"
+    },
+    {
+     "id": "tf:azurerm_subnet_route_table_association.app",
+     "label": "app",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.db",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-db",
+   "kind": "subnet",
+   "label": "snet-db",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "NSG nsg-db"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.db",
+     "label": "nsg-db",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.db_from_app",
+     "label": "allow-app-8080",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.db_monitoring",
+     "label": "allow-monitoring",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_network_security_rule.db_ssh",
+     "label": "allow-ssh-from-vnet",
+     "armType": "Microsoft.Network/networkSecurityGroups/securityRules"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.db",
+     "label": "db",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": []
+}

@@ -1,0 +1,152 @@
+{
+ "schema": 1,
+ "labId": "az104-06-blob-security",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/tenant",
+   "key": "lane/tenant",
+   "kind": "lane",
+   "label": "Tenant and Entra ID",
+   "props": {}
+  },
+  {
+   "id": "tf:azuread_group.readers",
+   "key": "terraform/azuread_group/lab-az104-06-blob-security-readers",
+   "kind": "entraPrincipal",
+   "label": "lab-az104-06-blob-security-readers",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_private_dns_zone.blob",
+   "key": "microsoft.network/privatednszones/privatelink.blob.core.windows.net",
+   "kind": "privateDnsZone",
+   "label": "privatelink.blob.core.windows.net",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/privateDnsZones",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_private_dns_zone_virtual_network_link.lab",
+     "label": "link-vnet-lab",
+     "armType": "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_private_endpoint.blob",
+   "key": "microsoft.network/privateendpoints/pe-{p}blob-blob",
+   "kind": "privateEndpoint",
+   "label": "pe-l06…blob-blob",
+   "props": {
+    "groupId": "blob"
+   },
+   "parent": "tf:azurerm_subnet.endpoints",
+   "armType": "Microsoft.Network/privateEndpoints",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-06-blob-security",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-06-blob-security",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-06-blob-security",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_role_assignment.readers",
+     "label": "readers",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_storage_account.blob",
+   "key": "microsoft.storage/storageaccounts/{p}blob",
+   "kind": "storage",
+   "label": "l06…blob",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS",
+    "accessTier": "Hot",
+    "publicAccess": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_storage_container.private",
+     "label": "private",
+     "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.endpoints",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-endpoints",
+   "kind": "subnet",
+   "label": "snet-endpoints",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azuread_group.readers>tf:azurerm_resource_group.lab:role: Storage Blob Data Reader",
+   "from": "tf:azuread_group.readers",
+   "to": "tf:azurerm_resource_group.lab",
+   "kind": "dependency",
+   "label": "role: Storage Blob Data Reader",
+   "via": "tf:azurerm_role_assignment.readers"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_dns_zone.blob>tf:azurerm_virtual_network.lab:link",
+   "from": "tf:azurerm_private_dns_zone.blob",
+   "to": "tf:azurerm_virtual_network.lab",
+   "kind": "dependency",
+   "label": "link",
+   "via": "tf:azurerm_private_dns_zone_virtual_network_link.lab"
+  },
+  {
+   "id": "traffic:tf:azurerm_private_endpoint.blob>tf:azurerm_storage_account.blob:blob",
+   "from": "tf:azurerm_private_endpoint.blob",
+   "to": "tf:azurerm_storage_account.blob",
+   "kind": "traffic",
+   "label": "blob",
+   "via": "tf:azurerm_private_endpoint.blob"
+  }
+ ]
+}

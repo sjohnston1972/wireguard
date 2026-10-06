@@ -1,0 +1,148 @@
+{
+ "schema": 1,
+ "labId": "az104-15-dns",
+ "version": 3,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/global",
+   "key": "lane/global",
+   "kind": "lane",
+   "label": "Global",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_dns_a_record.www",
+   "key": "terraform/azurerm_dns_a_record/www",
+   "kind": "generic",
+   "label": "www",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_dns_cname_record.app",
+   "key": "terraform/azurerm_dns_cname_record/app",
+   "kind": "generic",
+   "label": "app",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_dns_zone.public",
+   "key": "microsoft.network/dnszones/{p}.example.com",
+   "kind": "dnsZone",
+   "label": "l15….example.com",
+   "props": {},
+   "parent": "lane/global",
+   "armType": "Microsoft.Network/dnszones"
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.web",
+   "key": "microsoft.compute/virtualmachines/vm-web",
+   "kind": "vm",
+   "label": "vm-web",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.vms",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.web",
+     "label": "nic-vm-web",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_private_dns_a_record.www",
+   "key": "terraform/azurerm_private_dns_a_record/www",
+   "kind": "generic",
+   "label": "www",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_private_dns_zone.internal",
+   "key": "microsoft.network/privatednszones/lab15.internal",
+   "kind": "privateDnsZone",
+   "label": "lab15.internal",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/privateDnsZones",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_private_dns_zone_virtual_network_link.lab",
+     "label": "link-vnet-lab",
+     "armType": "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az104-15-dns",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az104-15-dns",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az104-15-dns",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.vms",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-vms",
+   "kind": "subnet",
+   "label": "snet-vms",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_private_dns_zone.internal>tf:azurerm_virtual_network.lab:link (auto-registration)",
+   "from": "tf:azurerm_private_dns_zone.internal",
+   "to": "tf:azurerm_virtual_network.lab",
+   "kind": "dependency",
+   "label": "link (auto-registration)",
+   "via": "tf:azurerm_private_dns_zone_virtual_network_link.lab"
+  }
+ ],
+ "notes": [
+  "3 resources of a type the diagram draws plainly"
+ ]
+}

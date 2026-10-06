@@ -1,0 +1,104 @@
+{
+ "schema": 1,
+ "labId": "az305-21-monitoring-scale",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/tenant",
+   "key": "lane/tenant",
+   "kind": "lane",
+   "label": "Tenant and Entra ID",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_key_vault.lab",
+   "key": "microsoft.keyvault/vaults/{p}kv",
+   "kind": "keyVault",
+   "label": "l21…kv",
+   "props": {
+    "sku": "standard",
+    "mode": "RBAC"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.KeyVault/vaults",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_log_analytics_workspace.lab",
+   "key": "microsoft.operationalinsights/workspaces/log-central",
+   "kind": "logAnalytics",
+   "label": "log-central",
+   "props": {
+    "retentionDays": 30,
+    "dailyCapGb": 0.05
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.OperationalInsights/workspaces",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_policy_definition.kv_diagnostics",
+   "key": "terraform/azurerm_policy_definition/lab-az305-21-monitoring-scale-kv-diagnostics",
+   "kind": "policy",
+   "label": "lab-az305-21-monitoring-scale-kv-diagnostics",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-21-monitoring-scale",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-21-monitoring-scale",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-21-monitoring-scale",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_role_assignment.remediation",
+     "label": "remediation",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_resource_group_policy_assignment.kv_diagnostics",
+   "key": "terraform/azurerm_resource_group_policy_assignment/lab-az305-21-monitoring-scale-kv-diagnostics",
+   "kind": "policy",
+   "label": "lab-az305-21-monitoring-scale-kv-diagnostics",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group_policy_assignment.kv_logs_audit",
+   "key": "terraform/azurerm_resource_group_policy_assignment/lab-az305-21-monitoring-scale-kv-logs-audit",
+   "kind": "policy",
+   "label": "lab-az305-21-monitoring-scale-kv-logs-audit",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_resource_group_policy_assignment.kv_diagnostics>tf:azurerm_resource_group.lab:role: Monitoring Contributor",
+   "from": "tf:azurerm_resource_group_policy_assignment.kv_diagnostics",
+   "to": "tf:azurerm_resource_group.lab",
+   "kind": "dependency",
+   "label": "role: Monitoring Contributor",
+   "via": "tf:azurerm_role_assignment.remediation"
+  }
+ ]
+}

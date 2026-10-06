@@ -1,0 +1,190 @@
+{
+ "schema": 1,
+ "labId": "az305-20-landing-zone",
+ "version": 2,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/tenant",
+   "key": "lane/tenant",
+   "kind": "lane",
+   "label": "Tenant and Entra ID",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_management_group.corp",
+   "key": "microsoft.management/managementgroups/lab-az305-20-landing-zone-corp",
+   "kind": "managementGroup",
+   "label": "lab-az305-20-landing-zone-corp",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Management/managementGroups"
+  },
+  {
+   "id": "tf:azurerm_management_group.landingzones",
+   "key": "microsoft.management/managementgroups/lab-az305-20-landing-zone-landingzones",
+   "kind": "managementGroup",
+   "label": "lab-az305-20-landing-zone-landingzones",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Management/managementGroups"
+  },
+  {
+   "id": "tf:azurerm_management_group.online",
+   "key": "microsoft.management/managementgroups/lab-az305-20-landing-zone-online",
+   "kind": "managementGroup",
+   "label": "lab-az305-20-landing-zone-online",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Management/managementGroups"
+  },
+  {
+   "id": "tf:azurerm_management_group.platform",
+   "key": "microsoft.management/managementgroups/lab-az305-20-landing-zone-platform",
+   "kind": "managementGroup",
+   "label": "lab-az305-20-landing-zone-platform",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Management/managementGroups"
+  },
+  {
+   "id": "tf:azurerm_management_group.root",
+   "key": "microsoft.management/managementgroups/lab-az305-20-landing-zone-root",
+   "kind": "managementGroup",
+   "label": "lab-az305-20-landing-zone-root",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Management/managementGroups"
+  },
+  {
+   "id": "tf:azurerm_management_group.sandbox",
+   "key": "microsoft.management/managementgroups/lab-az305-20-landing-zone-sandbox",
+   "kind": "managementGroup",
+   "label": "lab-az305-20-landing-zone-sandbox",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Management/managementGroups"
+  },
+  {
+   "id": "tf:azurerm_management_group_policy_assignment.baseline",
+   "key": "terraform/azurerm_management_group_policy_assignment/lz-baseline",
+   "kind": "policy",
+   "label": "lz-baseline",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_management_group_policy_assignment.sandbox_no_pip",
+   "key": "terraform/azurerm_management_group_policy_assignment/sandbox-no-pip",
+   "kind": "policy",
+   "label": "sandbox-no-pip",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_management_group_policy_set_definition.baseline",
+   "key": "terraform/azurerm_management_group_policy_set_definition/lab-az305-20-landing-zone-baseline",
+   "kind": "policy",
+   "label": "lab-az305-20-landing-zone-baseline",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_policy_definition.audit_costcentre",
+   "key": "terraform/azurerm_policy_definition/lab-az305-20-landing-zone-audit-costcentre",
+   "kind": "policy",
+   "label": "lab-az305-20-landing-zone-audit-costcentre",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": null
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-20-landing-zone",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-20-landing-zone",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-20-landing-zone",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_role_assignment.appops",
+     "label": "appops",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    },
+    {
+     "id": "tf:azurerm_role_assignment.netops",
+     "label": "netops",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_role_definition.appops",
+   "key": "microsoft.authorization/roledefinitions/lab-az305-20-landing-zone-appops",
+   "kind": "role",
+   "label": "lab-az305-20-landing-zone-appops",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Authorization/roleDefinitions"
+  },
+  {
+   "id": "tf:azurerm_role_definition.netops",
+   "key": "microsoft.authorization/roledefinitions/lab-az305-20-landing-zone-netops",
+   "kind": "role",
+   "label": "lab-az305-20-landing-zone-netops",
+   "props": {},
+   "parent": "lane/tenant",
+   "armType": "Microsoft.Authorization/roleDefinitions"
+  },
+  {
+   "id": "tf:azurerm_user_assigned_identity.appops",
+   "key": "microsoft.managedidentity/userassignedidentities/id-{p}-appops",
+   "kind": "managedIdentity",
+   "label": "id-l20…-appops",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.ManagedIdentity/userAssignedIdentities",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_user_assigned_identity.netops",
+   "key": "microsoft.managedidentity/userassignedidentities/id-{p}-netops",
+   "kind": "managedIdentity",
+   "label": "id-l20…-netops",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.ManagedIdentity/userAssignedIdentities",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_user_assigned_identity.appops>tf:azurerm_resource_group.lab:role: custom",
+   "from": "tf:azurerm_user_assigned_identity.appops",
+   "to": "tf:azurerm_resource_group.lab",
+   "kind": "dependency",
+   "label": "role: custom",
+   "via": "tf:azurerm_role_assignment.appops"
+  },
+  {
+   "id": "dependency:tf:azurerm_user_assigned_identity.netops>tf:azurerm_resource_group.lab:role: custom",
+   "from": "tf:azurerm_user_assigned_identity.netops",
+   "to": "tf:azurerm_resource_group.lab",
+   "kind": "dependency",
+   "label": "role: custom",
+   "via": "tf:azurerm_role_assignment.netops"
+  }
+ ]
+}

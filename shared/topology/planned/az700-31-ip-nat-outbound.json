@@ -1,0 +1,220 @@
+{
+ "schema": 1,
+ "labId": "az700-31-ip-nat-outbound",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_lb.out",
+   "key": "microsoft.network/loadbalancers/lb-out",
+   "kind": "loadBalancer",
+   "label": "lb-out",
+   "props": {
+    "sku": "Standard"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/loadBalancers",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_lb_backend_address_pool.out",
+     "label": "be-out",
+     "armType": "Microsoft.Network/loadBalancers/backendAddressPools"
+    },
+    {
+     "id": "tf:azurerm_lb_outbound_rule.out",
+     "label": "ob-all",
+     "armType": "Microsoft.Network/loadBalancers/outboundRules"
+    },
+    {
+     "id": "tf:azurerm_network_interface_backend_address_pool_association.lb",
+     "label": "lb",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.lb",
+   "key": "microsoft.compute/virtualmachines/vm-lb",
+   "kind": "vm",
+   "label": "vm-lb",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.lb",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.lb",
+     "label": "nic-vm-lb",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.nat",
+   "key": "microsoft.compute/virtualmachines/vm-nat",
+   "kind": "vm",
+   "label": "vm-nat",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.nat",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.nat",
+     "label": "nic-vm-nat",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_nat_gateway.hub",
+   "key": "microsoft.network/natgateways/ng-hub",
+   "kind": "natGateway",
+   "label": "ng-hub",
+   "props": {
+    "sku": "Standard"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/natGateways",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_nat_gateway_public_ip_prefix_association.nat",
+     "label": "nat",
+     "armType": null
+    },
+    {
+     "id": "tf:azurerm_public_ip_prefix.nat",
+     "label": "pfx-nat",
+     "armType": "Microsoft.Network/publicIPPrefixes"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_public_ip_prefix.lb",
+   "key": "microsoft.network/publicipprefixes/pfx-lb",
+   "kind": "publicIpPrefix",
+   "label": "pfx-lb",
+   "props": {
+    "prefix": "/31"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/publicIPPrefixes",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-31-ip-nat-outbound",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-31-ip-nat-outbound",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-31-ip-nat-outbound",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.lb",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/snet-lb",
+   "kind": "subnet",
+   "label": "snet-lb",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "no default outbound",
+     "NSG nsg-hub"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_security_group.hub",
+     "label": "nsg-hub",
+     "armType": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.lb",
+     "label": "lb",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.nat",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/snet-nat",
+   "kind": "subnet",
+   "label": "snet-nat",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "no default outbound",
+     "NAT gateway ng-hub",
+     "NSG nsg-hub"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_subnet_nat_gateway_association.nat",
+     "label": "nat",
+     "armType": null
+    },
+    {
+     "id": "tf:azurerm_subnet_network_security_group_association.nat",
+     "label": "nat",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.hub",
+   "key": "microsoft.network/virtualnetworks/vnet-hub",
+   "kind": "vnet",
+   "label": "vnet-hub",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "traffic:tf:azurerm_linux_virtual_machine.lb>tf:azurerm_lb.out:outbound",
+   "from": "tf:azurerm_linux_virtual_machine.lb",
+   "to": "tf:azurerm_lb.out",
+   "kind": "traffic",
+   "label": "outbound",
+   "via": "tf:azurerm_lb_outbound_rule.out"
+  },
+  {
+   "id": "traffic:tf:azurerm_subnet.nat>tf:azurerm_nat_gateway.hub:outbound",
+   "from": "tf:azurerm_subnet.nat",
+   "to": "tf:azurerm_nat_gateway.hub",
+   "kind": "traffic",
+   "label": "outbound",
+   "via": "tf:azurerm_subnet_nat_gateway_association.nat"
+  }
+ ]
+}

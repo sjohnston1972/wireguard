@@ -1,0 +1,340 @@
+{
+ "schema": 1,
+ "labId": "az700-38-hub-firewall",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_firewall.hub",
+   "key": "microsoft.network/azurefirewalls/afw-hub",
+   "kind": "firewall",
+   "label": "afw-hub",
+   "props": {},
+   "parent": "tf:azurerm_subnet.firewall",
+   "armType": "Microsoft.Network/azureFirewalls",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_public_ip.firewall",
+     "label": "pip-afw-hub",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    },
+    {
+     "id": "tf:azurerm_public_ip.firewall_management",
+     "label": "pip-afw-hub-mgmt",
+     "armType": "Microsoft.Network/publicIPAddresses"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_firewall_policy.base",
+   "key": "microsoft.network/firewallpolicies/fwp-base",
+   "kind": "firewallPolicy",
+   "label": "fwp-base",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/firewallPolicies",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_firewall_policy.hub",
+   "key": "microsoft.network/firewallpolicies/fwp-hub",
+   "kind": "firewallPolicy",
+   "label": "fwp-hub",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/firewallPolicies",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_firewall_policy_rule_collection_group.base",
+   "key": "terraform/azurerm_firewall_policy_rule_collection_group/rcg-base",
+   "kind": "generic",
+   "label": "rcg-base",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_firewall_policy_rule_collection_group.hub",
+   "key": "terraform/azurerm_firewall_policy_rule_collection_group/rcg-hub",
+   "kind": "generic",
+   "label": "rcg-hub",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.spoke1",
+   "key": "microsoft.compute/virtualmachines/vm-spoke1",
+   "kind": "vm",
+   "label": "vm-spoke1",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.spoke1",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.spoke1",
+     "label": "nic-vm-spoke1",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_linux_virtual_machine.spoke2",
+   "key": "microsoft.compute/virtualmachines/vm-spoke2",
+   "kind": "vm",
+   "label": "vm-spoke2",
+   "props": {
+    "size": "Standard_B1s",
+    "os": "Linux"
+   },
+   "parent": "tf:azurerm_subnet.spoke2",
+   "armType": "Microsoft.Compute/virtualMachines",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_network_interface.spoke2",
+     "label": "nic-vm-spoke2",
+     "armType": "Microsoft.Network/networkInterfaces"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_log_analytics_workspace.lab",
+   "key": "microsoft.operationalinsights/workspaces/log-hub",
+   "kind": "logAnalytics",
+   "label": "log-hub",
+   "props": {
+    "retentionDays": 30,
+    "dailyCapGb": 0.05
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.OperationalInsights/workspaces",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_monitor_diagnostic_setting.firewall",
+   "key": "terraform/azurerm_monitor_diagnostic_setting/diag-afw-hub",
+   "kind": "monitor",
+   "label": "diag-afw-hub",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": null,
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az700-38-hub-firewall",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az700-38-hub-firewall",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az700-38-hub-firewall",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.firewall",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/azurefirewallsubnet",
+   "kind": "subnet",
+   "label": "AzureFirewallSubnet",
+   "props": {
+    "prefix": "10.71.192.0/26"
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.firewall_management",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-hub/azurefirewallmanagementsubnet",
+   "kind": "subnet",
+   "label": "AzureFirewallManagementSubnet",
+   "props": {
+    "prefix": "10.71.192.64/26"
+   },
+   "parent": "tf:azurerm_virtual_network.hub",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.spoke1",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-spoke1/snet-workload",
+   "kind": "subnet",
+   "label": "snet-workload",
+   "props": {
+    "prefix": "10.71.208.0/24",
+    "chips": [
+     "no default outbound",
+     "route table rt-spoke1"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.spoke1",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_route.spoke1_default",
+     "label": "default-via-firewall",
+     "armType": "Microsoft.Network/routeTables/routes"
+    },
+    {
+     "id": "tf:azurerm_route.spoke1_to_spoke2",
+     "label": "to-spoke2-via-firewall",
+     "armType": "Microsoft.Network/routeTables/routes"
+    },
+    {
+     "id": "tf:azurerm_route_table.spoke1",
+     "label": "rt-spoke1",
+     "armType": "Microsoft.Network/routeTables"
+    },
+    {
+     "id": "tf:azurerm_subnet_route_table_association.spoke1",
+     "label": "spoke1",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_subnet.spoke2",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-spoke2/snet-workload",
+   "kind": "subnet",
+   "label": "snet-workload",
+   "props": {
+    "prefix": "10.71.224.0/24",
+    "chips": [
+     "no default outbound",
+     "route table rt-spoke2"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.spoke2",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_route.spoke2_default",
+     "label": "default-via-firewall",
+     "armType": "Microsoft.Network/routeTables/routes"
+    },
+    {
+     "id": "tf:azurerm_route.spoke2_to_spoke1",
+     "label": "to-spoke1-via-firewall",
+     "armType": "Microsoft.Network/routeTables/routes"
+    },
+    {
+     "id": "tf:azurerm_route_table.spoke2",
+     "label": "rt-spoke2",
+     "armType": "Microsoft.Network/routeTables"
+    },
+    {
+     "id": "tf:azurerm_subnet_route_table_association.spoke2",
+     "label": "spoke2",
+     "armType": null
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.hub",
+   "key": "microsoft.network/virtualnetworks/vnet-hub",
+   "kind": "vnet",
+   "label": "vnet-hub",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_virtual_network_peering.hub_to_spoke1",
+     "label": "peer-hub-to-spoke1",
+     "armType": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"
+    },
+    {
+     "id": "tf:azurerm_virtual_network_peering.hub_to_spoke2",
+     "label": "peer-hub-to-spoke2",
+     "armType": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.spoke1",
+   "key": "microsoft.network/virtualnetworks/vnet-spoke1",
+   "kind": "vnet",
+   "label": "vnet-spoke1",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_virtual_network_peering.spoke1_to_hub",
+     "label": "peer-spoke1-to-hub",
+     "armType": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_virtual_network.spoke2",
+   "key": "microsoft.network/virtualnetworks/vnet-spoke2",
+   "kind": "vnet",
+   "label": "vnet-spoke2",
+   "props": {
+    "addressSpace": [
+     "10.71.224.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_virtual_network_peering.spoke2_to_hub",
+     "label": "peer-spoke2-to-hub",
+     "armType": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "id": "traffic:tf:azurerm_virtual_network.hub>tf:azurerm_virtual_network.spoke1:peering",
+   "from": "tf:azurerm_virtual_network.hub",
+   "to": "tf:azurerm_virtual_network.spoke1",
+   "kind": "traffic",
+   "label": "peering",
+   "via": "tf:azurerm_virtual_network_peering.hub_to_spoke1"
+  },
+  {
+   "id": "traffic:tf:azurerm_virtual_network.hub>tf:azurerm_virtual_network.spoke2:peering",
+   "from": "tf:azurerm_virtual_network.hub",
+   "to": "tf:azurerm_virtual_network.spoke2",
+   "kind": "traffic",
+   "label": "peering",
+   "via": "tf:azurerm_virtual_network_peering.hub_to_spoke2"
+  }
+ ],
+ "notes": [
+  "2 resources of a type the diagram draws plainly"
+ ]
+}
