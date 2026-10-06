@@ -167,7 +167,7 @@ export default () => {
               action: "Block",
               rate_limit_duration_in_minutes: 1,
               rate_limit_threshold: 100,
-              match_condition: [{ match_variable: "RequestUri", operator: "BeginsWith", match_values: ["/"] }],
+              match_condition: [{ match_variable: "RequestUri", operator: "Any", match_values: ["/"] }],
             },
           ],
           managed_rule: [

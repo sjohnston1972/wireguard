@@ -360,9 +360,11 @@ resource "azurerm_cdn_frontdoor_firewall_policy" "lab" {
     rate_limit_duration_in_minutes = 1
     rate_limit_threshold           = 100
 
+    # Every request counts: RequestUri is the whole URL, so BeginsWith "/"
+    # might never match. Any ignores match_values (azurerm requires one).
     match_condition {
       match_variable = "RequestUri"
-      operator       = "BeginsWith"
+      operator       = "Any"
       match_values   = ["/"]
     }
   }

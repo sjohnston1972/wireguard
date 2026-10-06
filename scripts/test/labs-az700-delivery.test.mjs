@@ -780,6 +780,12 @@ test(`${AFD}: a Premium WAF policy in Prevention with managed rule sets, attache
   assert.equal(attr(custom[0], "type"), '"RateLimitRule"');
   assert.equal(attr(custom[0], "action"), '"Block"');
   assert.ok(Number(attr(custom[0], "rate_limit_threshold")) > 0);
+  // Review fix 14: RequestUri is the whole URL (scheme and host too), so BeginsWith "/" may never match and the
+  // rate limit would never trip. Any matches every request.
+  const mc = allNested(custom[0], "match_condition");
+  assert.equal(mc.length, 1);
+  assert.equal(attr(mc[0], "operator"), '"Any"');
+  assert.equal(planned(AFD, `azurerm_cdn_frontdoor_firewall_policy.${w.labels[1]}`).custom_rule[0].match_condition[0].operator, "Any");
   const sp = one(l, "azurerm_cdn_frontdoor_security_policy").body;
   assert.equal(attr(sp, "cdn_frontdoor_profile_id"), `azurerm_cdn_frontdoor_profile.${one(l, "azurerm_cdn_frontdoor_profile").labels[1]}.id`);
   assert.equal(attr(nested(sp, "firewall"), "cdn_frontdoor_firewall_policy_id"), `azurerm_cdn_frontdoor_firewall_policy.${w.labels[1]}.id`);

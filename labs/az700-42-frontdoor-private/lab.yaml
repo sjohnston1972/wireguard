@@ -26,7 +26,7 @@
 # (region "Global", first five rules) £0.0189/h. A Private Link service has
 # no hourly meter (only data processed, pennies).
 id: az700-42-frontdoor-private
-version: 1
+version: 2
 title: "Front Door Premium: rules, caching, WAF, Private Link origin"
 summary: >-
   Front Door Premium in front of a web VM that has no public address at all: the origin is an internal load balancer
