@@ -204,7 +204,7 @@ export function DiagramTab(props: PlacementProps) {
   return <Placement {...props} variant="tab" />;
 }
 
-/** The planned graph of `labId` drawn in one variant, with nothing else (T0's stub; the mini until T2.6). */
+/** The planned graph of `labId` drawn in one variant, with nothing else (T0's name, kept for the dev gallery). */
 export function PlannedDiagram({ labId, variant }: PlacementProps & { variant: DiagramVariant }) {
   const q = usePlannedTopology(labId);
   const [selected, setSelected] = useState<string | null>(null);
