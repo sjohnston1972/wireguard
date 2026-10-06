@@ -371,6 +371,24 @@ test(`${AVNM}: no NSG allows SSH from the internet; a spoke NSG's deny from the 
   }
 });
 
+// Review fix 12: DirectlyConnected makes a connected group (no spoke-to-spoke peering), and nothing in the hub can
+// send SSH to a spoke, so the readme must not promise ANM_ peerings between spokes or a test the lab cannot run.
+test(`${AVNM}: the readme describes a connected group, not spoke peerings, and only things the lab can show`, () => {
+  const l = lab(AVNM);
+  const r = l.readme;
+  assert.doesNotMatch(r, /spoke\s*<->\s*spoke/i, "no spoke <-> spoke peering");
+  assert.doesNotMatch(r, /ANM_ peerings? (between|spoke)/i);
+  assert.match(r, /connected group/i);
+  assert.match(r, /no peering between the spokes|not a peering|no spoke-to-spoke peering/i);
+  const tries = section(l, "Things to try");
+  // The hub holds no VM, so "allowed from the hub" cannot be tried; the effective rules show the order instead.
+  assert.doesNotMatch(tries, /allowed by `always-allow-hub-ssh`/);
+  assert.match(tries, /[Ee]ffective security rules/);
+  assert.match(tries, /no VM in the hub|hub has no VM/i);
+  assert.equal(resources(l, "azurerm_linux_virtual_machine").filter((v) => /hub/.test(attr(v.body, "name") ?? "")).length, 0, "no hub VM (cost)");
+  assert.doesNotMatch(r.split("## What it deploys")[0], /see an AlwaysAllow rule override an NSG/);
+});
+
 test(`${AVNM}: the readme warns never to add vnet-wg to a group`, () => {
   const l = lab(AVNM);
   assert.match(l.readme, /never add `vnet-wg`[^.]*network group/i);
