@@ -448,6 +448,63 @@ test(`${RS}: the advertised prefix is in the slot and in no VNet`, () => {
   assert.match(tpl, /Address=\$\{advertised_ip\}\/24/);
 });
 
+// ── Lab 35: break-fix, forced tunnelling to an NVA that does not forward ─
+
+const FT = "az700-35-forced-tunnel-fix";
+
+labContentSuite(FT, { marker: "£" });
+
+test(`${FT}: the spoke's route table sends 0.0.0.0/0 to the NVA`, () => {
+  const l = lab(FT);
+  const rt = one(l, "azurerm_route_table");
+  assert.equal(attr(rt.body, "name"), '"rt-spoke"');
+  assert.equal(allNested(rt.body, "route").length, 0, "routes are azurerm_route resources");
+  const route = one(l, "azurerm_route");
+  assert.equal(attr(route.body, "route_table_name"), `azurerm_route_table.${rt.labels[1]}.name`);
+  assert.equal(attr(route.body, "address_prefix"), '"0.0.0.0/0"');
+  assert.equal(attr(route.body, "next_hop_type"), '"VirtualAppliance"');
+  assert.equal(attr(route.body, "next_hop_in_ip_address"), "local.nva_ip");
+  const assoc = one(l, "azurerm_subnet_route_table_association");
+  assert.equal(attr(assoc.body, "subnet_id"), "azurerm_subnet.app.id");
+  assert.equal(attr(assoc.body, "route_table_id"), `azurerm_route_table.${rt.labels[1]}.id`);
+  // The spoke has no way out of its own: default outbound off, so the route is its only path.
+  assert.equal(attr(byName(l, "azurerm_subnet", "app").body, "default_outbound_access_enabled"), "false");
+  assert.equal(attr(byName(l, "azurerm_subnet", "nva").body, "default_outbound_access_enabled"), "true", "the NVA itself can reach the internet");
+  // Peered both ways with forwarded traffic allowed: the peering is not one of the faults.
+  const peerings = resources(l, "azurerm_virtual_network_peering");
+  assert.equal(peerings.length, 2);
+  for (const p of peerings) assert.equal(attr(p.body, "allow_forwarded_traffic"), "true");
+  assert.deepEqual(planned(FT, "azurerm_route.default"), { ...planned(FT, "azurerm_route.default"), address_prefix: "0.0.0.0/0", next_hop_in_ip_address: "10.71.192.4" });
+});
+
+test(`${FT}: the NVA's NIC has IP forwarding off`, () => {
+  const l = lab(FT);
+  const nic = byName(l, "azurerm_network_interface", "nva");
+  assert.equal(attr(nic.body, "ip_forwarding_enabled"), "false", "fault 1, set explicitly");
+  assert.equal(attr(nested(nic.body, "ip_configuration"), "private_ip_address"), "local.nva_ip");
+  // Fault 2 in the OS: kernel forwarding off. Fault 3: no masquerade anywhere.
+  const tpl = readFileSync(join(l.tfDir, "nva-init.yaml.tftpl"), "utf8");
+  assert.match(tpl, /net\.ipv4\.ip_forward = 0/);
+  assert.doesNotMatch(tpl.replace(/^\s*#.*$/gm, ""), /MASQUERADE|masquerade|nat/i, "no SNAT set up");
+  assert.equal(planned(FT, "azurerm_network_interface.nva").ip_forwarding_enabled, false);
+});
+
+test(`${FT}: the readme has a Symptom and a closed What was broken naming the three faults`, () => {
+  const l = lab(FT);
+  assert.equal(l.yaml.type, "break-fix");
+  const symptom = section(l, "Symptom");
+  assert.match(symptom, /curl -I https:\/\/www\.microsoft\.com/);
+  assert.match(symptom, /time[sd]? out/);
+  assert.match(l.readme, /<details>\n<summary>What was broken<\/summary>/);
+  const broken = l.readme.split("<summary>What was broken</summary>")[1].split("</details>")[0];
+  assert.match(broken, /IP forwarding/);
+  assert.match(broken, /ip_forward/);
+  assert.match(broken, /MASQUERADE|SNAT/);
+  assert.match(broken, /[Nn]ext hop/);
+  assert.match(broken, /[Ee]ffective routes/);
+  assert.ok(l.readme.indexOf("## Symptom") < l.readme.indexOf("<details>") && l.readme.indexOf("<details>") < l.readme.indexOf("## Things to try"), "Symptom, then the details, then Things to try");
+});
+
 /** An admin rule's name attribute, unquoted. */
 function unquoteName(r) {
   return (attr(r.body, "name") ?? "").replace(/^"|"$/g, "");
