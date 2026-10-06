@@ -175,6 +175,11 @@ timing = (lab or {}).get("timing") or {}
 identity = (lab or {}).get("identity") or {}
 creates = identity.get("creates")
 entra = True if lab is None else bool(creates)
+# How long the safety net waits for the group deletes (AZ-700 ruling 45): VPN gateways and virtual hubs take
+# 20-30 minutes, so 90 s per minute of destroy_min, never under 1500 s; LAB_JOB_DEADLINE still bounds it.
+destroy_min = timing.get("destroy_min", 10)
+if not (isinstance(destroy_min, int) and not isinstance(destroy_min, bool) and destroy_min > 0):
+    destroy_min = 10
 
 out.update({
     "LAB_ID": lab_id,
@@ -185,6 +190,10 @@ out.update({
     "LAB_HAS_TF": "true" if has_tf else "false",
     "LAB_DEPLOY_MIN": str(timing.get("deploy_min", 10)),
     "LAB_DESTROY_MIN": str(timing.get("destroy_min", 10)),
+    "LAB_DELETE_WAIT_SECONDS": str(max(1500, 90 * destroy_min)),
+    # The safety net and Verify clean look for the lab's flow logs (scope exception S2) on these regions' watchers.
+    "LAB_REGION": region,
+    "LAB_SECONDARY_REGION": secondary,
     # When the job's timeout-minutes runs out (this step runs seconds after the job starts): the
     # safety net stops waiting for resource group deletes in time for the steps after it.
     "LAB_JOB_DEADLINE": str(int(time.time()) + (timeout if isinstance(timeout, int) else 60) * 60),

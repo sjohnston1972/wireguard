@@ -49,9 +49,58 @@ test("every script refuses a lab id that fails the pattern before calling Azure"
 
 // ── Unblock ──────────────────────────────────────────────────────────────
 
-test("unblock removes locks, legal holds, unlocked immutability, backup protection, replication and SQL links in that order", { skip }, () => {
+// AZ-700 plan Z0.6: section 7, networks (spec §5, ruling 49). Resources a learner or a lab leaves that stop a group
+// delete, by id, in the lab's main group. Every az rest delete is then read back until Azure says it is gone.
+const NET = `/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.Network`;
+const NM = `${NET}/networkManagers/avnm-l06`;
+const PLS_CONN = `${NET}/privateLinkServices/pls-svc/privateEndpointConnections/fd-conn`;
+const VPN_CONN = `${NET}/connections/cn-azure-to-onprem`;
+const HUB = `${NET}/virtualHubs/vhub`;
+const RI = `${HUB}/routingIntent/ri`;
+const HUB_CONN = `${HUB}/hubVirtualNetworkConnections/spoke1`;
+const HUB_VPN = `${NET}/vpnGateways/vpngw-hub`;
+const FW_HUB = `${NET}/azureFirewalls/afw-hub`;
+const FW_VNET = `${NET}/azureFirewalls/afw-vnet`;
+const FWP_BASE = `${NET}/firewallPolicies/fwp-base`;
+const FWP_CHILD = `${NET}/firewallPolicies/fwp-hub`;
+const RS_PEER = `${NET}/virtualHubs/rs-hub/bgpConnections/nva`;
+const RULESET = `${NET}/dnsForwardingRulesets/rs-lab`;
+const RS_LINK = `${RULESET}/virtualNetworkLinks/hub`;
+const RESOLVER = `${NET}/dnsResolvers/dnspr-lab`;
+const OUT_EP = `${RESOLVER}/outboundEndpoints/out`;
+const GLB = `${NET}/loadBalancers/lb-global`;
+const FE = `${NET}/loadBalancers/lb-uks/frontendIPConfigurations/fe-public`;
+/** Rules for a lab group holding one of everything section 7 removes. `status`: the AVNM deployment status answers. */
+const NETWORKS = (status = ["uksouth\tConnectivity\tDeployed\t1\nuksouth\tSecurityAdmin\tDeployed\t1", "uksouth\tConnectivity\tDeployed\t0\nuksouth\tSecurityAdmin\tDeployed\t0"]) => [
+  // Read back after a delete: gone.
+  { match: "^rest --method get --url \\S+\\?api-version=\\S+ --query id -o tsv$", code: 1, err: "ERROR: (ResourceNotFound) The Resource was not found." },
+  { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/networkManagers\\?`, out: `${NM}\tuksouth` },
+  { match: "^rest --method post --url \\S+/listDeploymentStatus\\?", out: status },
+  { match: `^network private-link-service list --resource-group ${RG} `, out: PLS_CONN },
+  { match: `^network vpn-connection list --resource-group ${RG} `, out: VPN_CONN },
+  { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/virtualHubs\\?`, out: HUB },
+  { match: "^rest --method get --url \\S+/routingIntent\\?", out: RI },
+  { match: "^rest --method get --url \\S+/hubVirtualNetworkConnections\\?", out: HUB_CONN },
+  { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/vpnGateways\\?`, out: `${HUB_VPN}\t${HUB}` },
+  { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/azureFirewalls\\?`, out: [`${FW_HUB}\t${HUB}\n${FW_VNET}\t`, `${FW_VNET}\t`] },
+  { match: `^network routeserver list --resource-group ${RG} `, out: "rs-hub" },
+  { match: `^network routeserver peering list --resource-group ${RG} --routeserver rs-hub `, out: RS_PEER },
+  { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/firewallPolicies\\?`, out: `${FWP_BASE}\t\n${FWP_CHILD}\t${FWP_BASE}` },
+  { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/dnsForwardingRulesets\\?`, out: RULESET },
+  { match: "^rest --method get --url \\S+/virtualNetworkLinks\\?", out: RS_LINK },
+  { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/dnsResolvers\\?`, out: RESOLVER },
+  { match: "^rest --method get --url \\S+/outboundEndpoints\\?", out: OUT_EP },
+  { match: `^network lb list --resource-group ${RG} --query \\[\\?sku\\.tier`, out: GLB },
+  { match: `^network lb list --resource-group ${RG} --query \\[\\]\\.frontendIPConfigurations`, out: FE },
+];
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const restDelete = (id) => new RegExp(`^az rest --method delete --url ${esc(id)}\\?api-version=\\S+ -o none$`);
+
+test("unblock runs locks, holds, immutability, snapshots, backup, replication, SQL, then networks, in that order", { skip }, () => {
   const w = world([
+    ...NETWORKS(),
     { match: "^group list", out: GROUPS },
+    { match: "^storage share-rm list .*--include-snapshot", out: "files\t2026-10-01T09:00:00.0000000Z" },
     { match: `^lock list --resource-group ${RG} `, out: `/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.Authorization/locks/nodelete\n/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.Storage/storageAccounts/sa1/providers/Microsoft.Authorization/locks/sa-lock` },
     { match: `^storage account list --resource-group ${RG} `, out: "l06k3x9qsa" },
     { match: "^storage container-rm list .*hasLegalHold", out: "held" },
@@ -77,22 +126,209 @@ test("unblock removes locks, legal holds, unlocked immutability, backup protecti
     firstCall(calls, /^az lock delete --ids .*locks\/nodelete/),
     firstCall(calls, /^az storage container legal-hold clear .*--container-name held .*--tags case1 case2/),
     firstCall(calls, /^az storage container immutability-policy delete .*--container-name worm .*--if-match "0x8D"/),
+    firstCall(calls, /^az storage share-rm delete .*--name files --snapshot 2026-10-01T09:00:00\.0000000Z/),
     firstCall(calls, /^az backup vault backup-properties set .*--soft-delete-feature-state Disable/),
     firstCall(calls, /^az backup protection undelete --ids \/subscriptions\/x\/item-soft/),
     firstCall(calls, /^az backup protection disable --ids \/subscriptions\/x\/item-1 --delete-backup-data true --yes/),
     firstCall(calls, /^az rest --method post --url .*replicationProtectedItems\/vm1\/remove/),
     firstCall(calls, /^az sql failover-group delete --resource-group rg-lab-az104-06-blob-security --server sql1 --name fog1/),
     firstCall(calls, /^az sql db replica delete-link --resource-group rg-lab-az104-06-blob-security --server sql1 --name db1 --partner-server sql2 --partner-resource-group rg-lab-az104-06-blob-security-nodes --yes/),
+    // 7. Networks: AVNM deploy None, Private Link connections, VPN connections, the virtual hub's children,
+    // Route Server peers, firewalls then policies (child first), resolver links, rulesets and endpoints, load balancers.
+    firstCall(calls, new RegExp(`^az rest --method post --url ${esc(NM)}/commit\\?`)),
+    firstCall(calls, new RegExp(`^az network private-link-service connection delete --ids ${esc(PLS_CONN)} -o none$`)),
+    firstCall(calls, new RegExp(`^az network vpn-connection delete --ids ${esc(VPN_CONN)} -o none$`)),
+    firstCall(calls, restDelete(RI)),
+    firstCall(calls, restDelete(HUB_CONN)),
+    firstCall(calls, restDelete(HUB_VPN)),
+    firstCall(calls, restDelete(FW_HUB)),
+    firstCall(calls, new RegExp(`^az network routeserver peering delete --ids ${esc(RS_PEER)} --yes -o none$`)),
+    firstCall(calls, restDelete(FW_VNET)),
+    firstCall(calls, restDelete(FWP_CHILD)),
+    firstCall(calls, restDelete(FWP_BASE)),
+    firstCall(calls, restDelete(RS_LINK)),
+    firstCall(calls, restDelete(RULESET)),
+    firstCall(calls, restDelete(OUT_EP)),
+    firstCall(calls, new RegExp(`^az network lb delete --ids ${esc(GLB)} -o none$`)),
+    firstCall(calls, new RegExp(`^az network lb frontend-ip update --ids ${esc(FE)} --remove gatewayLoadBalancer -o none$`)),
   ];
-  for (const i of order) assert.ok(i >= 0, `missing call; calls were:\n${calls.join("\n")}`);
+  for (const i of order) assert.ok(i >= 0, `missing call (${order.indexOf(i)}); calls were:\n${calls.join("\n")}`);
   assert.deepEqual([...order].sort((a, b) => a - b), order, `out of order:\n${calls.join("\n")}`);
   assert.equal(lastCall(calls, /^az lock delete/) < order[1], true, "every lock goes before the first legal hold");
+  assert.match(r.stdout, /unblock: done/);
   // A Locked policy cannot be removed: it is reported, never "deleted".
   assert.equal(firstCall(calls, /immutability-policy delete .*--container-name locked/), -1);
   assert.match(r.out, /locked.*Locked/i);
   // Only the lab's own groups.
   for (const c of calls) assert.ok(!/rg-lab-az104-06-blob-securityx|rg-lab-az104-07|NetworkWatcherRG|rg-wg-ondemand/.test(c.replace(/^az group list.*/, "")), c);
   w.cleanup();
+});
+
+// ── Unblock section 7, networks (AZ-700 plan Z0.6, spec §5, ruling 49) ──
+
+/** Only the lab's group (RG) exists, so each network test reads one group. */
+const ONE_GROUP = { match: "^group list", out: RG };
+const NOT_FOUND = { match: "^rest --method get --url \\S+\\?api-version=\\S+ --query id -o tsv$", code: 1, err: "ERROR: (ResourceNotFound) The Resource was not found." };
+
+test("unblock deploys None for every network manager in a lab group and waits until nothing is deployed", { skip }, () => {
+  const NM2 = `/subscriptions/${SUB}/resourceGroups/${RG}-nodes/providers/Microsoft.Network/networkManagers/avnm-two`;
+  const w = world([
+    { match: "^group list", out: `${RG}\n${RG}-nodes\nNetworkWatcherRG\nrg-wg-ondemand` },
+    { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/networkManagers\\?api-version=2024-05-01 --query value\\[\\]\\.\\[id, location\\] -o tsv$`, out: `${NM}\tuksouth` },
+    { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}-nodes/providers/Microsoft.Network/networkManagers\\?`, out: `${NM2}\tuksouth` },
+    // avnm-l06: Connectivity in uksouth and SecurityAdmin in uksouth and ukwest, still Deploying after the first None, then empty.
+    { match: `^rest --method post --url ${esc(NM)}/listDeploymentStatus\\?`, out: ["uksouth\tConnectivity\tDeployed\t1\nuksouth\tSecurityAdmin\tDeployed\t1\nukwest\tSecurityAdmin\tDeployed\t1", "uksouth\tConnectivity\tDeploying\t0\nuksouth\tSecurityAdmin\tDeployed\t0\nukwest\tSecurityAdmin\tDeployed\t0", "uksouth\tConnectivity\tDeployed\t0\nuksouth\tSecurityAdmin\tDeployed\t0\nukwest\tSecurityAdmin\tDeployed\t0"] },
+    // avnm-two: nothing deployed (a manager made by hand and never committed): nothing to commit.
+    { match: `^rest --method post --url ${esc(NM2)}/listDeploymentStatus\\?`, out: "" },
+  ]);
+  const r = w.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth", LAB_SECONDARY_REGION: "ukwest" });
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const commits = calls.filter((c) => /^az rest --method post --url \S+\/commit\?/.test(c));
+  assert.deepEqual(commits, [
+    `az rest --method post --url ${NM}/commit?api-version=2024-05-01 --body {"targetLocations":["uksouth"],"configurationIds":[],"commitType":"Connectivity"} -o none`,
+    `az rest --method post --url ${NM}/commit?api-version=2024-05-01 --body {"targetLocations":["uksouth","ukwest"],"configurationIds":[],"commitType":"SecurityAdmin"} -o none`,
+  ]);
+  // The status is asked for the lab's regions and every deployment type, and polled until nothing is left deployed.
+  const status = calls.filter((c) => c.startsWith(`az rest --method post --url ${NM}/listDeploymentStatus`));
+  assert.equal(status.length, 3, calls.join("\n"));
+  assert.match(status[0], /--body \{"regions":\["uksouth","ukwest"\],"deploymentTypes":\["Connectivity","SecurityAdmin","Routing"\]\}/);
+  const statusAt = calls.map((c, i) => (c.startsWith(`az rest --method post --url ${NM}/listDeploymentStatus`) ? i : -1)).filter((i) => i >= 0);
+  assert.ok(statusAt[0] < calls.indexOf(commits[0]) && calls.indexOf(commits[1]) < statusAt[1], "read, None committed, then the wait");
+  assert.match(r.stdout, /unblock: avnm-l06: nothing deployed any more/);
+  assert.equal(commits.filter((c) => c.includes("avnm-two")).length, 0);
+  // Never a network manager outside the lab's groups.
+  for (const c of calls) assert.ok(!/NetworkWatcherRG|rg-wg-ondemand/.test(c.replace(/^az group list.*/, "")), c);
+  w.cleanup();
+
+  // Still deployed when the wait (LAB_UNBLOCK_AVNM_WAIT_SECONDS) runs out: a warning, and the run goes on.
+  const slow = world([ONE_GROUP, { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` }, { match: "^rest --method post --url \\S+/listDeploymentStatus\\?", out: "uksouth\tConnectivity\tDeployed\t1" }]);
+  const s = slow.run("infra/ci/lab-unblock.sh", [ID], { LAB_UNBLOCK_AVNM_WAIT_SECONDS: "60" });
+  assert.equal(s.status, 0, s.out);
+  assert.equal(slow.calls().filter((c) => c === "sleep 15").length, 4, "every 15 s for 60 s");
+  assert.match(s.stderr, /::warning::unblock: avnm-l06: configurations still deployed after 60 s/);
+  slow.cleanup();
+  // A status that cannot be read is unverified, never "nothing deployed".
+  const blind = world([ONE_GROUP, { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` }, { match: "^rest --method post --url \\S+/listDeploymentStatus\\?", code: 1, err: "ERROR: (AuthorizationFailed)" }]);
+  const b = blind.run("infra/ci/lab-unblock.sh", [ID], { LAB_UNBLOCK_AVNM_WAIT_SECONDS: "30" });
+  assert.equal(b.status, 0, b.out);
+  assert.doesNotMatch(b.stdout, /nothing deployed any more/);
+  assert.match(b.stderr, /::warning::unblock: unverified: .*avnm-l06 deployments/);
+  blind.cleanup();
+});
+
+test("unblock deletes Private Link service connections before the group delete", { skip }, () => {
+  const second = `${NET}/privateLinkServices/pls-svc/privateEndpointConnections/pe-consumer`;
+  const w = world([ONE_GROUP, NOT_FOUND, { match: `^network private-link-service list --resource-group ${RG} --query \\[\\]\\.privateEndpointConnections\\[\\]\\.id -o tsv$`, out: `${PLS_CONN}\n${second}` }, { match: "^network private-link-service connection delete --ids \\S+pe-consumer", code: 1, err: "ERROR: (Conflict)" }]);
+  const r = w.run("infra/ci/lab-unblock.sh", [ID]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  // Each connection, Front Door's managed one and a consumer's, waited for (no --no-wait).
+  assert.ok(calls.includes(`az network private-link-service connection delete --ids ${PLS_CONN} -o none`), calls.join("\n"));
+  assert.ok(calls.includes(`az network private-link-service connection delete --ids ${second} -o none`));
+  assert.match(r.stdout, /unblock: pls-svc: private endpoint connection fd-conn deleted/);
+  assert.match(r.stderr, /::warning::unblock: pls-svc: could not delete private endpoint connection pe-consumer/);
+  w.cleanup();
+});
+
+test("unblock deletes VPN connections before gateways", { skip }, () => {
+  const lng = `${NET}/connections/cn-onprem-to-azure`;
+  const w = world([ONE_GROUP, NOT_FOUND, { match: `^network vpn-connection list --resource-group ${RG} --query \\[\\]\\.id -o tsv$`, out: `${VPN_CONN}\n${lng}` }]);
+  const r = w.run("infra/ci/lab-unblock.sh", [ID]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  // Both connections, each waited for; no gateway is deleted here (the destroy and the group delete take them, free now).
+  assert.deepEqual(calls.filter((c) => c.startsWith("az network vpn-connection delete")), [`az network vpn-connection delete --ids ${VPN_CONN} -o none`, `az network vpn-connection delete --ids ${lng} -o none`]);
+  assert.equal(firstCall(calls, /vnet-gateway delete|local-gateway delete|--no-wait/), -1, calls.join("\n"));
+  assert.match(r.stdout, /unblock: VPN connection cn-azure-to-onprem deleted/);
+  w.cleanup();
+});
+
+test("unblock empties a virtual hub (routing intent, connections, gateways, firewall) in order", { skip }, () => {
+  const P2S = `${NET}/p2sVpnGateways/p2sgw-hub`;
+  const OTHER_HUB_GW = `${NET}/vpnGateways/vpngw-other`;
+  const list = (type, out) => ({ match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/${type}\\?api-version=2024-05-01 --query value\\[\\]\\.\\[id, properties\\.virtualHub\\.id\\] -o tsv$`, out });
+  const w = world([
+    ONE_GROUP,
+    NOT_FOUND,
+    { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/virtualHubs\\?api-version=2024-05-01 --query value\\[\\?kind!='RouteServer'\\]\\.id -o tsv$`, out: HUB },
+    { match: `^rest --method get --url ${esc(HUB)}/routingIntent\\?api-version=2024-05-01 --query value\\[\\]\\.id -o tsv$`, out: RI },
+    { match: `^rest --method get --url ${esc(HUB)}/hubVirtualNetworkConnections\\?api-version=2024-05-01 --query value\\[\\]\\.id -o tsv$`, out: HUB_CONN },
+    list("vpnGateways", `${HUB_VPN}\t${HUB.toUpperCase()}\n${OTHER_HUB_GW}\t${NET}/virtualHubs/other`),
+    list("p2sVpnGateways", `${P2S}\t${HUB}`),
+    list("azureFirewalls", `${FW_HUB}\t${HUB}`),
+  ]);
+  const r = w.run("infra/ci/lab-unblock.sh", [ID]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const order = [restDelete(RI), restDelete(HUB_CONN), restDelete(HUB_VPN), restDelete(P2S), restDelete(FW_HUB)].map((re) => firstCall(calls, re));
+  for (const i of order) assert.ok(i >= 0, `missing call; calls were:\n${calls.join("\n")}`);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, `out of order:\n${calls.join("\n")}`);
+  // Each delete is read back until gone before the next starts.
+  for (const id of [RI, HUB_CONN, HUB_VPN, P2S, FW_HUB]) {
+    const get = firstCall(calls, new RegExp(`^az rest --method get --url ${esc(id)}\\?api-version=\\S+ --query id -o tsv$`));
+    assert.ok(get > firstCall(calls, restDelete(id)), `${id} read back`);
+  }
+  // A gateway on another hub (matched case-insensitively against this hub's id) is not this hub's child.
+  assert.equal(firstCall(calls, restDelete(OTHER_HUB_GW)), -1);
+  assert.match(r.stdout, /unblock: vhub: routing intent ri deleted/);
+  w.cleanup();
+
+  // A hub gateway that is still deleting when LAB_UNBLOCK_VWAN_WAIT_SECONDS runs out: a warning, and the run goes on.
+  const slow = world([
+    ONE_GROUP,
+    { match: "^rest --method get --url \\S+/virtualHubs\\?", out: HUB },
+    list("vpnGateways", `${HUB_VPN}\t${HUB}`),
+    { match: `^rest --method get --url ${esc(HUB_VPN)}\\?`, out: HUB_VPN },
+  ]);
+  const s = slow.run("infra/ci/lab-unblock.sh", [ID], { LAB_UNBLOCK_VWAN_WAIT_SECONDS: "90" });
+  assert.equal(s.status, 0, s.out);
+  assert.match(s.stderr, /::warning::unblock: vpngw-hub is still there after 90 s/);
+  assert.ok(slow.calls().filter((c) => c === "sleep 15").length <= 6);
+  slow.cleanup();
+});
+
+test("unblock deletes Route Server peers, firewalls before policies, resolver links before rulesets, global load balancers first", { skip }, () => {
+  const FWP_GRANDCHILD = `${NET}/firewallPolicies/fwp-spoke`;
+  const w = world([
+    ONE_GROUP,
+    NOT_FOUND,
+    { match: `^network routeserver list --resource-group ${RG} --query \\[\\]\\.name -o tsv$`, out: "rs-hub" },
+    { match: `^network routeserver peering list --resource-group ${RG} --routeserver rs-hub --query \\[\\]\\.id -o tsv$`, out: RS_PEER },
+    { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/azureFirewalls\\?`, out: `${FW_VNET}\t` },
+    // Listed base first: the children must still go first (fwp-spoke inherits fwp-hub, which inherits fwp-base).
+    { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/firewallPolicies\\?api-version=2024-05-01 --query value\\[\\]\\.\\[id, properties\\.basePolicy\\.id\\] -o tsv$`, out: `${FWP_BASE}\t\n${FWP_CHILD}\t${FWP_BASE}\n${FWP_GRANDCHILD}\t${FWP_CHILD}` },
+    { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/dnsForwardingRulesets\\?api-version=2022-07-01 --query value\\[\\]\\.id -o tsv$`, out: RULESET },
+    { match: `^rest --method get --url ${esc(RULESET)}/virtualNetworkLinks\\?api-version=2022-07-01 --query value\\[\\]\\.id -o tsv$`, out: RS_LINK },
+    { match: `^rest --method get --url /subscriptions/\\{subscriptionId\\}/resourceGroups/${RG}/providers/Microsoft.Network/dnsResolvers\\?api-version=2022-07-01 --query value\\[\\]\\.id -o tsv$`, out: RESOLVER },
+    { match: `^rest --method get --url ${esc(RESOLVER)}/outboundEndpoints\\?api-version=2022-07-01 --query value\\[\\]\\.id -o tsv$`, out: OUT_EP },
+    { match: `^network lb list --resource-group ${RG} --query \\[\\?sku\\.tier=='Global'\\]\\.id -o tsv$`, out: GLB },
+    { match: `^network lb list --resource-group ${RG} --query \\[\\]\\.frontendIPConfigurations\\[\\?gatewayLoadBalancer\\.id\\]\\.id \\| \\[\\] -o tsv$`, out: FE },
+  ]);
+  const r = w.run("infra/ci/lab-unblock.sh", [ID]);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const at = (re) => firstCall(calls, re);
+  const peer = at(new RegExp(`^az network routeserver peering delete --ids ${esc(RS_PEER)} --yes -o none$`));
+  const fw = at(restDelete(FW_VNET));
+  const [grand, child, base] = [FWP_GRANDCHILD, FWP_CHILD, FWP_BASE].map((p) => at(restDelete(p)));
+  const [link, ruleset, outEp] = [RS_LINK, RULESET, OUT_EP].map((p) => at(restDelete(p)));
+  const glb = at(new RegExp(`^az network lb delete --ids ${esc(GLB)} -o none$`));
+  const chain = at(new RegExp(`^az network lb frontend-ip update --ids ${esc(FE)} --remove gatewayLoadBalancer -o none$`));
+  for (const [name, i] of Object.entries({ peer, fw, grand, child, base, link, ruleset, outEp, glb, chain })) assert.ok(i >= 0, `${name} missing:\n${calls.join("\n")}`);
+  assert.ok(peer < fw, "Route Server peers first");
+  assert.ok(fw < grand && grand < child && child < base, "firewalls, then policies child first");
+  assert.ok(link < ruleset && ruleset < outEp, "ruleset links, then rulesets, then outbound endpoints");
+  assert.ok(outEp < glb && glb < chain, "global load balancers, then gateway load balancer chains");
+  // Nothing in this section ever fails the run, even when Azure refuses.
+  const refusing = world([ONE_GROUP, { match: "^network routeserver list", out: "rs-hub" }, { match: "^network routeserver peering list", out: RS_PEER }, { match: "^network routeserver peering delete", code: 1, err: "ERROR: (Conflict)" }, { match: "^rest --method get --url \\S+/dnsForwardingRulesets\\?", code: 1, err: "ERROR: (AuthorizationFailed)" }]);
+  const x = refusing.run("infra/ci/lab-unblock.sh", [ID]);
+  assert.equal(x.status, 0, x.out);
+  assert.match(x.stderr, /::warning::unblock: rs-hub: could not delete BGP peer nva/);
+  assert.match(x.stderr, /::warning::unblock: rg-lab-az104-06-blob-security: could not list DNS forwarding rulesets/);
+  assert.match(x.stdout, /unblock: done/);
+  w.cleanup();
+  refusing.cleanup();
 });
 
 // Lab 19's vault, as unblock finds it (labs batch 2 plan, B0.5).
@@ -1053,6 +1289,75 @@ test("the safety net purges soft-deleted Key Vaults that lived in a lab group, a
   assert.equal(b.status, 1);
   assert.match(b.stdout, /unverified: soft-deleted Key Vaults/);
   broken.cleanup();
+});
+
+// AZ-700 plan Z0.6, scope exception S2 (approved by Steven 2026-10-05): lab 44's flow log lives on the region's
+// Network Watcher in NetworkWatcherRG. The safety net deletes the lab's flow logs there by name (lab-<id>-*), in
+// the session's region and secondary region, after the group deletes; nothing else in NetworkWatcherRG, ever.
+const L44 = "az700-44-flow-logs-bastion";
+const R44 = `rg-lab-${L44}`;
+const FLOW_LOGS = (region) => ({ match: `^network watcher flow-log list --location ${region} --query \\[\\]\\.name -o tsv$`, out: region === "uksouth" ? `lab-${L44}-vnet\nfl-prod-hub\nlab-${L44}x-vnet\nlab-az104-17-netwatcher-fix-vnet` : `lab-${L44}-ukw` });
+
+test("the safety net deletes the lab's flow logs in NetworkWatcherRG and nothing else there, and verify counts one as a leftover", { skip }, () => {
+  const w = world([{ match: "^group list --query \\[\\]\\.name ", out: `${R44}\nNetworkWatcherRG` }, { match: "^group list --query \\[\\]\\.\\[name", out: "" }, { match: "^account show", out: SUB }, FLOW_LOGS("uksouth"), FLOW_LOGS("ukwest")]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [L44], { LAB_DELETE_POLL_SECONDS: "1", LAB_REGION: "uksouth", LAB_SECONDARY_REGION: "ukwest" });
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  assert.deepEqual(calls.filter((c) => c.startsWith("az network watcher flow-log delete")), [
+    `az network watcher flow-log delete --location uksouth --name lab-${L44}-vnet`,
+    `az network watcher flow-log delete --location ukwest --name lab-${L44}-ukw`,
+  ]);
+  // After the group deletes, and never anything else in NetworkWatcherRG: not its group, not another flow log or watcher.
+  assert.ok(firstCall(calls, /^az network watcher flow-log delete/) > lastCall(calls, /^az group delete/), calls.join("\n"));
+  for (const c of calls.filter((x) => / delete /.test(x))) assert.ok(!/NetworkWatcherRG|fl-prod-hub|netwatcher-fix|bastionx/.test(c), c);
+  assert.match(r.stdout, new RegExp(`safety net: deleted flow log lab-${L44}-vnet \\(uksouth\\)`));
+  w.cleanup();
+
+  // Verify: the lab's flow log is a leftover; another's never is; a list Azure cannot read is unverified.
+  const out = join(mkdtempSync(join(tmpdir(), "gho-")), "out");
+  writeFileSync(out, "");
+  const v = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, FLOW_LOGS("uksouth")]);
+  const vr = v.run("infra/ci/lab-safety-net.sh", ["--verify", L44], { GITHUB_OUTPUT: fwd(out), LAB_REGION: "uksouth" });
+  assert.equal(vr.status, 1, vr.out);
+  assert.deepEqual(JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]), [`lab-${L44}-vnet (flow log)`]);
+  assert.equal(v.calls().filter((c) => / delete /.test(c)).length, 0, "verify deletes nothing");
+  v.cleanup();
+  const broken = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, { match: "^network watcher flow-log list", code: 1, err: "ERROR: (AuthorizationFailed)" }]);
+  const b = broken.run("infra/ci/lab-safety-net.sh", ["--verify", L44], { LAB_REGION: "uksouth" });
+  assert.equal(b.status, 1);
+  assert.match(b.stdout, /unverified: flow logs/);
+  broken.cleanup();
+  // A region with no Network Watcher has no flow logs: none, not unverified (a lab that never used ukwest).
+  const none = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, { match: "^network watcher flow-log list --location uksouth", out: "" }, { match: "^network watcher flow-log list --location ukwest", code: 1, err: "ERROR: There is no Network Watcher in location ukwest" }]);
+  const n = none.run("infra/ci/lab-safety-net.sh", ["--verify", L44], { LAB_REGION: "uksouth", LAB_SECONDARY_REGION: "ukwest" });
+  assert.equal(n.status, 0, n.out);
+  assert.match(n.stdout, /clean=true/);
+  none.cleanup();
+  // Parse payload's TF_VAR_region stands in when LAB_REGION is not set (a destroy run by hand).
+  const hand = world([{ match: "^group list", out: "" }, { match: "^account show", out: SUB }, FLOW_LOGS("uksouth")]);
+  assert.equal(hand.run("infra/ci/lab-safety-net.sh", ["--verify", L44], { TF_VAR_region: "uksouth" }).status, 1);
+  assert.ok(hand.calls().some((c) => c.startsWith("az network watcher flow-log list --location uksouth")));
+  hand.cleanup();
+});
+
+test("the delete wait follows destroy_min", { skip }, () => {
+  // No LAB_DELETE_WAIT_SECONDS and no deadline: max(1500, 90 × LAB_DESTROY_MIN) seconds (ruling 45).
+  const waitFor = (destroyMin) => {
+    const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tDeleting`)]);
+    const r = w.run("infra/ci/lab-safety-net.sh", [ID], { LAB_DESTROY_MIN: String(destroyMin), LAB_DELETE_POLL_SECONDS: "150" });
+    assert.equal(r.status, 0, r.out);
+    const m = /waiting up to (\d+)s/.exec(r.stdout);
+    const slept = sleptFor(w.calls());
+    w.cleanup();
+    return [Number(m?.[1]), slept];
+  };
+  assert.deepEqual(waitFor(25), [2250, 2250]);
+  assert.deepEqual(waitFor(5), [1500, 1500]);
+  // LAB_DELETE_WAIT_SECONDS, when Parse payload set it, wins.
+  const w = world([NAMES(RG), { match: "^account show", out: SUB }, POLL(`${RG}\tDeleting`)]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [ID], { LAB_DESTROY_MIN: "25", LAB_DELETE_WAIT_SECONDS: "300", LAB_DELETE_POLL_SECONDS: "150" });
+  assert.match(r.stdout, /waiting up to 300s/);
+  w.cleanup();
 });
 
 // Lab 20's readme invites a hand-made exemption at its -corp management group. The safety net deletes policy

@@ -12,6 +12,10 @@
 #   resource groups        rg-lab-<id> and rg-lab-<id>-*   (never rg-lab-<id>x, NetworkWatcherRG, rg-wg-*)
 #   soft-deleted vaults    Key Vaults whose id names one of those groups, purged after the
 #                          group deletes (--verify lists one as "<name> (soft-deleted vault)")
+#   flow logs              named lab-<id>-*, on the Network Watcher of LAB_REGION and
+#                          LAB_SECONDARY_REGION (in NetworkWatcherRG: scope exception S2, lab 44),
+#                          deleted after the group deletes (--verify: "<name> (flow log)",
+#                          a list that fails "unverified: flow logs"); nothing else there
 #   Entra users            user principal name starting lab-<id>-  (deleted, then purged from the
 #                          recycle bin so the next deploy can reuse the name)
 #   Entra groups           display name starting lab-<id>-
@@ -53,7 +57,16 @@ fi
 RG="rg-lab-$LAB_ID"
 PREFIX="lab-$LAB_ID-"
 GRAPH="https://graph.microsoft.com/v1.0"
-WAIT_S="${LAB_DELETE_WAIT_SECONDS:-1500}"
+# How long to wait for the group deletes (AZ-700 ruling 45): Parse payload's LAB_DELETE_WAIT_SECONDS, else
+# max(1500, 90 × LAB_DESTROY_MIN) (VPN gateways and virtual hubs take 20-30 minutes to delete), else 1500.
+DEFAULT_WAIT_S=1500
+if [[ "${LAB_DESTROY_MIN:-}" =~ ^[0-9]+$ ]] && [ $((90 * LAB_DESTROY_MIN)) -gt "$DEFAULT_WAIT_S" ]; then DEFAULT_WAIT_S=$((90 * LAB_DESTROY_MIN)); fi
+WAIT_S="${LAB_DELETE_WAIT_SECONDS:-$DEFAULT_WAIT_S}"
+# The regions whose Network Watcher may hold the lab's flow logs (scope exception S2): the session's and its secondary.
+FLOW_LOG_REGIONS=()
+for x in "${LAB_REGION:-${TF_VAR_region:-}}" "${LAB_SECONDARY_REGION:-${TF_VAR_secondary_region:-}}"; do
+  [ -n "$x" ] && [[ " ${FLOW_LOG_REGIONS[*]} " != *" $x "* ]] && FLOW_LOG_REGIONS+=("$x")
+done
 ROLES_FILE="${LAB_ROLES_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/labs/setup/allowed-roles.json}"
 
 warn() { echo "::warning::safety net: $*" >&2; }
@@ -199,6 +212,37 @@ list_deleted_vaults() {
     owns_rg "$rg" && ROWS+=("$name"$'\t'"$loc")
   done <<<"$OUT"
 }
+# "name<TAB>region": flow logs named lab-<id>-* on the Network Watcher of the session's region and secondary region
+# (scope exception S2, ruling 48: lab 44's flow log is a child of Azure's own NetworkWatcher_<region> in
+# NetworkWatcherRG, the one thing of a lab's outside its groups). Only flow logs, only by that name: nothing else in
+# NetworkWatcherRG is ever listed into or touched. A region with no watcher has no flow logs.
+list_flow_logs() {
+  ROWS=()
+  local region name err rc failed=false
+  for region in "${FLOW_LOG_REGIONS[@]}"; do
+    err="$(mktemp)"
+    OUT="$(az network watcher flow-log list --location "$region" --query "[].name" -o tsv 2>"$err")"
+    rc=$?
+    OUT="${OUT//$'\r'/}"
+    if [ "$rc" -ne 0 ]; then
+      if grep -qiE "no Network Watcher|NotFound" "$err"; then
+        rm -f "$err"
+        continue
+      fi
+      cat "$err" >&2
+      rm -f "$err"
+      warn "could not list flow logs in $region"
+      failed=true
+      continue
+    fi
+    rm -f "$err"
+    while IFS= read -r name; do
+      [ -n "$name" ] && prefixed "$name" && ROWS+=("$name"$'\t'"$region")
+    done <<<"$OUT"
+  done
+  [ "$failed" = true ] && UNVERIFIED+=("unverified: flow logs")
+  return 0
+}
 # "name"
 list_mgs() {
   ROWS=()
@@ -309,6 +353,8 @@ if [ "$MODE" = verify ]; then
   list_groups; vgroups=("${ROWS[@]}"); first
   list_deleted_vaults
   for r in "${ROWS[@]}"; do left+=("${r%%$'\t'*} (soft-deleted vault)"); done
+  list_flow_logs
+  for r in "${ROWS[@]}"; do left+=("${r%%$'\t'*} (flow log)"); done
   list_users; second
   list_entra_groups; second
   list_roles; second
@@ -363,7 +409,7 @@ POLL_S="$(num "${LAB_DELETE_POLL_SECONDS:-}" 30)"
 RETRIES="$(num "${LAB_DELETE_RETRIES:-}" 2)"
 DEADLINE_RESERVE_S=420
 UNBLOCK="${LAB_UNBLOCK_SCRIPT:-$(dirname "${BASH_SOURCE[0]}")/lab-unblock.sh}"
-WAIT_S="$(num "$WAIT_S" 1500)"
+WAIT_S="$(num "$WAIT_S" "$DEFAULT_WAIT_S")"
 budget="$WAIT_S"
 if [[ "${LAB_JOB_DEADLINE:-}" =~ ^[0-9]+$ ]]; then
   left_s=$((LAB_JOB_DEADLINE - DEADLINE_RESERVE_S - $(date +%s)))
@@ -444,6 +490,14 @@ list_deleted_vaults
 for row in "${ROWS[@]}"; do
   IFS=$'\t' read -r name loc <<<"$row"
   if az keyvault purge --name "$name" --location "$loc"; then echo "safety net: purged soft-deleted vault $name"; else warn "could not purge soft-deleted vault $name"; fi
+done
+
+# 1c. Flow logs (scope exception S2): the lab's own, by name (lab-<id>-*), on the watchers of the session's
+# regions, after the group deletes (deleting the VNet may already have taken them, V). Nothing else there.
+list_flow_logs
+for row in "${ROWS[@]}"; do
+  IFS=$'\t' read -r name region <<<"$row"
+  if az network watcher flow-log delete --location "$region" --name "$name"; then echo "safety net: deleted flow log $name ($region)"; else warn "could not delete flow log $name ($region)"; fi
 done
 
 # Purge a deleted Entra object from the recycle bin (it takes a moment to arrive there).
