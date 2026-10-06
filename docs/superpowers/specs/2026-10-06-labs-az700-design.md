@@ -259,7 +259,7 @@ plus other exams' keys.
 | 37 | az700-37-p2s-vpn | Point-to-site VPN with Entra ID sign-in | conn | A | explore | £££ (0.173, 40 min) | opt | 40 | 2/3 | user |
 | 38 | az700-38-hub-firewall | Hub-spoke with Azure Firewall and Firewall Manager policy | sec, core, az305.infra | A | explore | ££ (0.333) | opt | 15 | 2/3 | none |
 | 39 | az700-39-vwan-secured-hub | Virtual WAN with a secured hub | conn, sec | E | explore | £££ (0.518) | off | 35 | 2/3 | none |
-| 40 | az700-40-lb-advanced | Load Balancer: cross-region, Gateway LB, inbound NAT, outbound rules | deliv | E | explore | ££ (0.121) | opt | 10 | 2/4 | none |
+| 40 | az700-40-lb-advanced | Load Balancer: cross-region, Gateway LB, inbound NAT, outbound rules | deliv | E | explore | ££ (0.125) | opt | 10 | 2/4 | none |
 | 41 | az700-41-appgw-waf | Application Gateway WAF_v2: TLS, rewrites, WAF policy | deliv, sec | A | explore | ££ (0.377) | opt | 12 | 2/3 | none |
 | 42 | az700-42-frontdoor-private | Front Door Premium: rules, caching, WAF, Private Link origin | deliv, sec, priv | E | explore | ££ (0.371) | off | 15 | 2/3 | none |
 | 43 | az700-43-private-link | Private Link service, private endpoints, service endpoint policies | priv, az305.infra, az305.data | A | explore | ££ (0.056) | opt | 8 | 2/4 | none |

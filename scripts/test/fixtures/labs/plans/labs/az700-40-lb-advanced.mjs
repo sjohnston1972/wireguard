@@ -15,7 +15,7 @@ import { ctx, IN_RG, linuxVm, ref, REGION, rgResource, rgSecondaryResource, SECO
 /** A resource inside rg-lab-<id>-secondary: its group's name and location, and var.tags. */
 const IN_RG2 = { resource_group_name: ref("azurerm_resource_group.secondary", "name"), location: ref("azurerm_resource_group.secondary", "location"), tags: ["var.tags"] };
 /** azurerm_lb.<key>.frontend_ip_configuration[0].id, as Terraform lists its references. */
-const frontendOf = (key) => [`azurerm_lb.${key}.frontend_ip_configuration[0].id`, `azurerm_lb.${key}.frontend_ip_configuration[0]`, `azurerm_lb.${key}.frontend_ip_configuration`, `azurerm_lb.${key}`];
+const frontendOf = (key, i = 0) => [`azurerm_lb.${key}.frontend_ip_configuration[${i}].id`, `azurerm_lb.${key}.frontend_ip_configuration[${i}]`, `azurerm_lb.${key}.frontend_ip_configuration`, `azurerm_lb.${key}`];
 
 export default () => {
   const c = ctx("az700-40-lb-advanced", "40", { slot: 31 });
@@ -136,16 +136,18 @@ export default () => {
       lbRule("gw", "fe-gw", { name: "rule-ha-ports", protocol: "All", frontend_port: 0, backend_port: 0 }),
       member("nva", "nva", "gw"),
 
-      // lb-uks, chained to lb-gw.
+      // lb-uks: fe-uks (lb-global's member, not chained) and fe-uks-chained (chained to lb-gw).
       pip("uks", "pip-lb-uks", false),
+      pip("uks_chained", "pip-lb-uks-chained", false),
       {
         address: "azurerm_lb.uks",
-        values: { name: "lb-uks", resource_group_name: c.rg, location: REGION, sku: "Standard", tags: c.tags, frontend_ip_configuration: [{ name: "fe-uks" }] },
-        unknown: ["frontend_ip_configuration.0.public_ip_address_id", "frontend_ip_configuration.0.gateway_load_balancer_frontend_ip_configuration_id"],
+        values: { name: "lb-uks", resource_group_name: c.rg, location: REGION, sku: "Standard", tags: c.tags, frontend_ip_configuration: [{ name: "fe-uks" }, { name: "fe-uks-chained" }] },
+        unknown: ["frontend_ip_configuration.0.public_ip_address_id", "frontend_ip_configuration.1.public_ip_address_id", "frontend_ip_configuration.1.gateway_load_balancer_frontend_ip_configuration_id"],
         refs: {
           ...IN_RG,
           "frontend_ip_configuration.0.public_ip_address_id": ref("azurerm_public_ip.uks", "id"),
-          "frontend_ip_configuration.0.gateway_load_balancer_frontend_ip_configuration_id": frontendOf("gw"),
+          "frontend_ip_configuration.1.public_ip_address_id": ref("azurerm_public_ip.uks_chained", "id"),
+          "frontend_ip_configuration.1.gateway_load_balancer_frontend_ip_configuration_id": frontendOf("gw"),
         },
       },
       pool("uks", "pool-web"),
@@ -153,7 +155,7 @@ export default () => {
       lbRule("uks", "fe-uks", { disable_outbound_snat: true }),
       {
         address: "azurerm_lb_nat_rule.uks",
-        values: { name: "nat-web-8081-8090", resource_group_name: c.rg, protocol: "Tcp", frontend_port_start: 8081, frontend_port_end: 8090, backend_port: 80, frontend_ip_configuration_name: "fe-uks" },
+        values: { name: "nat-web-8081-8090", resource_group_name: c.rg, protocol: "Tcp", frontend_port_start: 8081, frontend_port_end: 8090, backend_port: 80, frontend_ip_configuration_name: "fe-uks-chained" },
         unknown: ["loadbalancer_id", "backend_address_pool_id"],
         refs: { ...inRg, loadbalancer_id: ref("azurerm_lb.uks", "id"), backend_address_pool_id: ref("azurerm_lb_backend_address_pool.uks", "id") },
       },

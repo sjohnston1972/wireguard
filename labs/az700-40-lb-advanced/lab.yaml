@@ -21,11 +21,12 @@
 # Outbound Rules" £0.0189/h, "Gateway" £0.0094/h and "Gateway Chain"
 # £0.0075/h. Data processed (£0.0038/GB, Gateway £0.003/GB) is pennies.
 id: az700-40-lb-advanced
-version: 1
+version: 2
 title: "Load Balancer: cross-region, Gateway LB, inbound NAT, outbound rules"
 summary: >-
-  A global-tier load balancer in front of public load balancers in uksouth and ukwest, the uksouth one chained to a
-  Gateway load balancer and a VXLAN appliance VM, with an inbound NAT rule over a port range and explicit outbound rules.
+  A global-tier load balancer in front of public load balancers in uksouth and ukwest, the uksouth one with a second
+  frontend chained to a Gateway load balancer and a VXLAN appliance VM, with an inbound NAT rule over a port range and
+  explicit outbound rules.
 exam: AZ-700
 skill_areas: [az700.delivery]
 level: expert
@@ -38,11 +39,11 @@ cost:
     - { name: "Global load balancer (lb-global), first 5 rules", gbp_h: 0.0189 }
     - { name: "Public IP, Global static (lb-global)", gbp_h: 0.0075, retail: { meter: "Global IPv4 Static Public IP", unit: "1 Hour" } }
     - { name: "Standard load balancer (lb-uks), first 5 rules", gbp_h: 0.0189 }
-    - { name: "Public IP, Standard static (lb-uks)", gbp_h: 0.0038, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "Public IPs, Standard static (lb-uks: fe-uks and fe-uks-chained)", gbp_h: 0.0038, qty: 2, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
     - { name: "Standard load balancer (lb-ukw, ukwest), first 5 rules", gbp_h: 0.0189 }
     - { name: "Public IP, Standard static (lb-ukw, ukwest)", gbp_h: 0.0038, region: secondary, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
     - { name: "Gateway Load Balancer (lb-gw)", gbp_h: 0.0094 }
-    - { name: "Gateway Load Balancer chain (lb-uks to lb-gw)", gbp_h: 0.0075 }
+    - { name: "Gateway Load Balancer chain (lb-uks fe-uks-chained to lb-gw)", gbp_h: 0.0075 }
   pricey: null
 timing: { deploy_min: 10, destroy_min: 8, session_h: 2, max_h: 4 }
 capacity: { vm_sizes: [Standard_B1s, Standard_B1s, Standard_B1s] }

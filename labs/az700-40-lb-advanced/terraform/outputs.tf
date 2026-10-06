@@ -2,7 +2,7 @@
 #
 # Plain English: what the dashboard shows once the lab is up (spec §3.4).
 # The three load balancers' public addresses answer from anywhere on port 80
-# (and lb-uks on 8081 for the NAT rule); the VMs' private addresses in
+# (and lb-uks's chained frontend on 8081, the NAT rule); the VMs' private addresses in
 # vnet-uks are reachable from tunnel clients while the lab is peered.
 # peer_vnet_id is vnet-uks, the VNet the pipeline peers to the gateway when
 # asked; vnet-ukw is never peered.
@@ -19,9 +19,9 @@ output "private_ips" {
 output "connect" {
   value = [
     "curl http://${azurerm_public_ip.global.ip_address}   # lb-global: the nearest healthy region",
-    "curl http://${azurerm_public_ip.uks.ip_address}   # lb-uks (through lb-gw and vm-nva)",
+    "curl http://${azurerm_public_ip.uks.ip_address}   # lb-uks fe-uks (lb-global's member, not chained)",
     "curl http://${azurerm_public_ip.ukw.ip_address}   # lb-ukw",
-    "curl http://${azurerm_public_ip.uks.ip_address}:8081   # lb-uks's inbound NAT rule to vm-web1",
+    "curl http://${azurerm_public_ip.uks_chained.ip_address}:8081   # lb-uks fe-uks-chained: the NAT rule to vm-web1, through lb-gw and vm-nva",
     "ssh azureuser@${azurerm_network_interface.nva.private_ip_address}   # vm-nva: sudo tcpdump -ni eth0 udp portrange 10800-10801",
     "ssh azureuser@${azurerm_network_interface.web1.private_ip_address}   # vm-web1",
   ]

@@ -223,11 +223,37 @@ test(`${LB}: a global-tier load balancer in uksouth over the two regional fronte
   assert.equal(onLb(l, "azurerm_lb_outbound_rule", global.labels[1]).length, 0, "no outbound rules on the global tier");
 });
 
-test(`${LB}: the uksouth frontend is chained to a Gateway load balancer whose pool has VXLAN tunnel interfaces`, () => {
+test(`${LB}: lb-uks's second frontend, on its own public IP, is chained to a Gateway load balancer whose pool has VXLAN tunnel interfaces`, () => {
   const l = lab(LB);
   const { gw, uks } = lbs(l);
-  const fe = nested(uks.body, "frontend_ip_configuration");
-  assert.equal(attr(fe, "gateway_load_balancer_frontend_ip_configuration_id"), `azurerm_lb.${gw.labels[1]}.frontend_ip_configuration[0].id`);
+  // Learn: "Gateway Load Balancer doesn't work with the Global Load Balancer tier." lb-uks has two
+  // frontends: fe-uks (first, unchained) is lb-global's member; the second is chained to lb-gw.
+  const fes = allNested(uks.body, "frontend_ip_configuration");
+  assert.equal(fes.length, 2, "lb-uks has two frontends: one for lb-global, one chained to lb-gw");
+  const [plain, chained] = fes;
+  assert.equal(attr(plain, "name"), '"fe-uks"');
+  assert.equal(attr(plain, "gateway_load_balancer_frontend_ip_configuration_id"), undefined, "fe-uks (lb-global's member) is never chained");
+  assert.equal(attr(chained, "name"), '"fe-uks-chained"');
+  assert.equal(attr(chained, "gateway_load_balancer_frontend_ip_configuration_id"), `azurerm_lb.${gw.labels[1]}.frontend_ip_configuration[0].id`);
+  // Each frontend on its own Standard static public IP in rg-lab-<id>.
+  const pipOf = (fe) => /^azurerm_public_ip\.([a-z0-9_]+)\.id$/.exec(attr(fe, "public_ip_address_id") ?? "")?.[1];
+  assert.ok(pipOf(plain) && pipOf(chained), "both frontends have a public IP");
+  assert.notEqual(pipOf(plain), pipOf(chained), "two different public IPs");
+  const cpip = byName(l, "azurerm_public_ip", pipOf(chained)).body;
+  assert.equal(attr(cpip, "name"), '"pip-lb-uks-chained"');
+  assert.deepEqual([attr(cpip, "sku"), attr(cpip, "allocation_method"), attr(cpip, "sku_tier"), attr(cpip, "resource_group_name")], ['"Standard"', '"Static"', undefined, IN_LAB]);
+  // No chained frontend anywhere is a member of lb-global's pool.
+  const chainedRefs = resources(l, "azurerm_lb")
+    .flatMap((x) => allNested(x.body, "frontend_ip_configuration").map((f, i) => ({ ref: `azurerm_lb.${x.labels[1]}.frontend_ip_configuration[${i}].id`, f })))
+    .filter((x) => attr(x.f, "gateway_load_balancer_frontend_ip_configuration_id"))
+    .map((x) => x.ref);
+  assert.deepEqual(chainedRefs, [`azurerm_lb.${uks.labels[1]}.frontend_ip_configuration[1].id`]);
+  for (const m of resources(l, "azurerm_lb_backend_address_pool_address")) assert.ok(!chainedRefs.includes(attr(m.body, "backend_address_ip_configuration_id")), `${m.labels[1]}: lb-global's member is not chained`);
+  // Only the inbound NAT rule uses the chained frontend; the load-balancing and outbound rules use fe-uks.
+  for (const r of onLb(l, "azurerm_lb_rule", uks.labels[1])) assert.equal(attr(r.body, "frontend_ip_configuration_name"), '"fe-uks"', r.labels[1]);
+  for (const r of onLb(l, "azurerm_lb_outbound_rule", uks.labels[1])) assert.equal(attr(nested(r.body, "frontend_ip_configuration"), "name"), '"fe-uks"', r.labels[1]);
+  // The plan fixture has both frontends.
+  assert.deepEqual(planned(LB, `azurerm_lb.${uks.labels[1]}`).frontend_ip_configuration.map((f) => f.name), ["fe-uks", "fe-uks-chained"]);
   // The Gateway load balancer: an internal frontend in snet-nva at a fixed address.
   const g = gw.body;
   assert.equal(attr(g, "name"), '"lb-gw"');
@@ -295,7 +321,9 @@ test(`${LB}: an inbound NAT rule maps a port range to port 80 and never to 22`, 
   assert.equal(attr(n, "frontend_port"), undefined);
   const pool = onLb(l, "azurerm_lb_backend_address_pool", uks.labels[1])[0];
   assert.equal(attr(n, "backend_address_pool_id"), `azurerm_lb_backend_address_pool.${pool.labels[1]}.id`);
-  assert.equal(attr(n, "frontend_ip_configuration_name"), attr(nested(uks.body, "frontend_ip_configuration"), "name"));
+  // On the chained frontend: curl its address on 8081 and the packets pass through vm-nva.
+  assert.equal(attr(n, "frontend_ip_configuration_name"), '"fe-uks-chained"');
+  assert.ok(allNested(uks.body, "frontend_ip_configuration").some((f) => attr(f, "name") === '"fe-uks-chained"'));
   for (const x of resources(l, "azurerm_lb_nat_rule")) for (const a of ["backend_port", "frontend_port", "frontend_port_start", "frontend_port_end"]) assert.notEqual(attr(x.body, a), "22", `${a} is never 22`);
   noInternetSsh(l);
 });
@@ -430,7 +458,14 @@ test(`${LB}: lab.yaml prices both regions and the readme says what the chain and
   assert.ok(y.cost.items.some((i) => i.retail?.meter === "Global IPv4 Static Public IP"), "the global public IP");
   assert.ok(y.cost.items.some((i) => /Gateway Load Balancer/.test(i.name) && !i.retail), "the Gateway load balancer, authored");
   assert.ok(y.cost.items.some((i) => /chain/i.test(i.name) && !i.retail), "the chain, authored");
+  // Four public IPs: lb-global's, lb-uks's two (fe-uks and the chained frontend) and lb-ukw's.
+  assert.equal(resources(l, "azurerm_public_ip").length, 4);
+  const std = y.cost.items.filter((i) => i.retail?.meter === "Standard IPv4 Static Public IP");
+  assert.deepEqual(std.map((i) => [i.region ?? "primary", i.qty ?? 1]).sort(), [["primary", 2], ["secondary", 1]], "lb-uks's two IPs in uksouth, lb-ukw's in ukwest");
+  assert.ok(std.some((i) => /chained/.test(i.name)), "the chained frontend's IP is named in the price list");
   const r = l.readme;
+  assert.match(r, /fe-uks-chained/);
+  assert.match(r, /doesn't work with the Global/, "the readme says why lb-global's member is not chained");
   assert.match(r, /`rg-lab-az700-40-lb-advanced-secondary`/);
   assert.match(r, /home region/i);
   assert.match(r, /VXLAN/);
