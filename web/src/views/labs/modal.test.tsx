@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { LabDetail } from "@shared/api";
 import { renderApp } from "@/test/render";
 import { expectCentredModal } from "@/test/dialogs";
-import { card, detailIdle, labs } from "./testData";
+import { card, detailIdle, labs, session } from "./testData";
 import { PLANNED_URL, layoutServer, nodeOn, plannedGraph } from "./topology/places.fixtures";
 
 // The diagram's lazy chunk, counted as it loads (lab topology plan T2.3).
@@ -39,9 +39,11 @@ describe("the lab modal, not running", () => {
   });
 
   it("a card opens its lab", async () => {
+    // Labs redesign: a card's title selects it; its session link (and the details' Start lab) opens the dialog.
     const user = userEvent.setup();
-    renderApp("/labs", { routes: { "GET /api/v1/labs": labs(), [`GET ${PATH}`]: detailIdle() } });
-    await user.click(await screen.findByRole("link", { name: /Blob security/ }));
+    const live = labs({ labs: labs().labs.map((c) => (c.id === ID ? { ...c, running: session() } : c)) });
+    renderApp("/labs", { routes: { "GET /api/v1/labs": live, [`GET ${PATH}`]: detailIdle() } });
+    await user.click(await screen.findByRole("link", { name: "Open session" }));
     expect(await screen.findByRole("dialog", { name: /Blob security/ })).toBeInTheDocument();
     expect(screen.getByLabelText("location")).toHaveTextContent(`/labs/${ID}`);
   });
@@ -53,7 +55,7 @@ describe("the lab modal, not running", () => {
     expect(notice.getByText(/Could not open az104-99-nothing: No such lab\./)).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).toBeNull();
     // The page stays usable behind it.
-    expect(within(screen.getByRole("main")).getByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
+    expect(within(screen.getByRole("main")).getByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
     await user.click(notice.getByRole("button", { name: "Dismiss" }));
     expect(screen.getByLabelText("location")).toHaveTextContent(/^\/labs$/);
   });

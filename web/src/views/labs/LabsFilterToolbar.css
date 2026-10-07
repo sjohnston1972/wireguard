@@ -1,0 +1,37 @@
+/* The search and filter toolbar (labs redesign spec §8.3): one wrapping row, then the result count. */
+.labs-toolbar { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.labs-toolbar__row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
+.labs-toolbar__search { flex: 1 1 200px; max-width: 320px; background: var(--bg-panel); }
+.labs-toolbar__exam { flex: none; }
+.labs-toolbar__exam .segmented__item { white-space: nowrap; }
+.labs-toolbar__select .select__trigger { min-width: 150px; background: var(--bg-panel); }
+.labs-toolbar__switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-primary); cursor: pointer; white-space: nowrap; }
+.labs-toolbar__more { flex: none; }
+.labs-toolbar__count {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--blue-fill); color: white; font-size: 11px; font-weight: 600;
+}
+.labs-toolbar__status { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.labs-toolbar__result { margin: 0; font-size: 12.5px; color: var(--text-secondary); }
+.labs-toolbar__field { display: flex; flex-direction: column; gap: 6px; }
+.labs-toolbar__caption { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+
+/* More filters (a Radix popover, portalled to the body). */
+.labs-more {
+  z-index: 60; display: flex; flex-direction: column; gap: 14px; min-width: 220px; padding: 14px;
+  background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-control);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+.labs-more:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* The phone's Filters sheet: every control, stacked; Clear and Show N labs in its footer. */
+.labs-filter-sheet__body { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.labs-filter-sheet__body .select, .labs-filter-sheet__body .select__trigger { width: 100%; }
+.labs-filter-sheet__body .select { align-self: stretch; }
+.labs-filter-sheet__body .segmented { max-width: 100%; }
+.labs-filter-sheet__foot { display: flex; justify-content: space-between; gap: 10px; width: 100%; }
+.labs-filter-sheet__foot > .btn--primary { flex: 1; }
+
+@media (max-width: 640px) {
+  .labs-toolbar__search { max-width: none; }
+}

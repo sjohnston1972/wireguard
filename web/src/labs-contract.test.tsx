@@ -52,7 +52,7 @@ describe("the Labs tab", () => {
 
   it.each(["/labs", "/labs/az104-06-blob-security", "/labs/history"])("%s loads the lazy page", { timeout: 20_000 }, async (url) => {
     renderApp(url);
-    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
+    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
     const marked = within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link", { current: "page" });
     expect(marked.map((l) => l.textContent)).toEqual(["Labs"]);
   });

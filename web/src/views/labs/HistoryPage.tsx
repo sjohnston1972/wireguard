@@ -3,7 +3,7 @@ import type { LabEndReason, LabSession } from "@shared/api";
 import { DataTable, EmptyState, Panel, type Column } from "@/components";
 import { useLabSessions } from "@/api/queries";
 import { CoverageMap } from "./CoverageMap";
-import { LabsHeader } from "./LabsPage";
+import { LabsHeader } from "./LabsHeader";
 import { fmtGbp, fmtSpan, fmtWhen, stateWord, useLabClock, type Tone } from "./model";
 import { Word } from "./RunningStrip";
 
@@ -91,7 +91,7 @@ export function SessionsTable({ sessions, loading, error, onRetry }: { sessions:
 export function HistoryPage() {
   const q = useLabSessions(undefined, 200);
   return (
-    <section className="labs">
+    <section className="labs labs--history">
       <LabsHeader />
       <div className="labs-history">
         <Panel title="Sessions" className="labs-sessions-panel" bodyClassName="labs-sessions__body" flush widgetChrome={false}>
