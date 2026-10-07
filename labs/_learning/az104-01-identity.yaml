@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Combine Entra users, a group and a custom role, then see how scope decides what each person can do.
+learn:
+  - Sign in as a lab user and read why a Reader's changes are refused
+  - Use Check access to trace roles from a group and a direct assignment
+  - Edit a custom role's JSON and assign a built-in role at resource scope
+learning_min: 65

@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Send two spokes' traffic through Azure Firewall in a hub and control it with parent and child firewall policies.
+learn:
+  - Allow and deny traffic by FQDN, address and port with firewall rules
+  - See a child Firewall Manager policy inherit its parent's rule collections
+  - Query the firewall's application and network rule logs in Log Analytics
+learning_min: 55

@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Give VMs with no default outbound access a way out, through a NAT gateway and a load balancer outbound rule.
+learn:
+  - Match each VM's outbound address to its own public IP prefix
+  - Compare a NAT gateway with a load balancer outbound rule and its SNAT ports
+  - Create a public IP address from a public IP prefix
+learning_min: 55

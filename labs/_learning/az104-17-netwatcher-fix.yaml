@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Find out why an app VM cannot reach its database service, fix it in the portal and prove the fix.
+learn:
+  - Run connection troubleshoot, IP flow verify and next hop between two VMs
+  - Read effective security rules and effective routes on a network interface
+  - Fix what you find and prove the request between the VMs now succeeds
+learning_min: 60

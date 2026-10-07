@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: See how policy and access assigned at a management group flow down to every group beneath it.
+learn:
+  - Explore a management group tree and the ids used in templates and the CLI
+  - Trace an audit policy assignment inherited from the top of the tree
+  - Assign Reader at the lab's own root group and find it inherited lower down
+learning_min: 50

@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Replicate a VM to its paired region with Site Recovery, run a recovery drill, then fail over for real.
+learn:
+  - Run a test failover into an isolated network and clean it up
+  - Read the RPO and the recovery points a replication policy keeps
+  - Build a recovery plan and commit a real failover to the paired region
+learning_min: 75

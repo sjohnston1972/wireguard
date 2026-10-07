@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Compare locally and geo-redundant storage accounts and move a blob between access tiers.
+learn:
+  - Compare LRS, GRS and RA-GRS redundancy and their secondary endpoints
+  - Move a blob to Cool and Archive, then start a rehydration back to Hot
+  - Read and add lifecycle management rules that tier and delete blobs
+learning_min: 50

@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Join three VNets into a hub and spoke with Virtual Network Manager, and apply security admin rules ahead of NSGs.
+learn:
+  - Trace hub-and-spoke connectivity built from a network group and a connected group
+  - Read how security admin rules, AlwaysAllow included, sit ahead of NSG rules
+  - Deploy and remove connectivity configurations and watch the peerings change
+learning_min: 55

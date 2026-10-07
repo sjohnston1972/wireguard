@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Run a workload on a small AKS cluster, expose it publicly and privately, and pull an image from your own registry.
+learn:
+  - Read node, pod and service addressing on Azure CNI Overlay with kubectl
+  - Expose a deployment through public and internal load balancer services
+  - Pull an image from an attached registry with the kubelet's managed identity
+learning_min: 70

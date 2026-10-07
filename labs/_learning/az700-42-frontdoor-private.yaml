@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Reach a web server with no public address through Front Door Premium over Private Link, with caching and a WAF.
+learn:
+  - Approve a Front Door Private Link connection to an internal load balancer
+  - Test rule set redirects, headers and cache overrides at the edge
+  - Trigger managed WAF rules and a rate limit, then switch to Detection mode
+learning_min: 55
