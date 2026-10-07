@@ -69,6 +69,7 @@ export const KINDS: Record<TopoKind, KindDef> = {
   containerGroup: def("Container group", "Container groups", "container-instances", "subnet", 22, ["Microsoft.ContainerInstance/containerGroups"], ["azurerm_container_group"], ["cpu", "memoryGb"]),
   containerApp: def("Container app", "Container apps", "container-apps", "rg", 23, ["Microsoft.App/containerApps"], ["azurerm_container_app"], ["ingress", "targetPort"]),
   containerAppEnv: def("Container Apps environment", "Container Apps environments", "container-apps-environments", "subnet", 24, ["Microsoft.App/managedEnvironments"], ["azurerm_container_app_environment"], ["sku"]),
+  containerAppJob: def("Container Apps job", "Container Apps jobs", "container-apps", "rg", 26, ["Microsoft.App/jobs"], ["azurerm_container_app_job"], ["cpu", "chips"]),
   appServicePlan: def("App Service plan", "App Service plans", "app-service-plans", "rg", 25, ["Microsoft.Web/serverFarms"], ["azurerm_service_plan"], ["sku"]),
 
   // ── Data ──
@@ -105,6 +106,8 @@ export const KINDS: Record<TopoKind, KindDef> = {
     ["status"],
   ),
   flowLog: def("Flow log", "Flow logs", "network-watcher", "rg", 65, ["Microsoft.Network/networkWatchers/flowLogs"], ["azurerm_network_watcher_flow_log"], ["retentionDays"]),
+  serviceBus: def("Service Bus namespace", "Service Bus namespaces", "service-bus", "rg", 66, ["Microsoft.ServiceBus/namespaces"], ["azurerm_servicebus_namespace"], ["sku", "counts"]),
+  eventGrid: def("Event Grid topic", "Event Grid topics", "event-grid-system-topics", "rg", 67, ["Microsoft.EventGrid/systemTopics", "Microsoft.EventGrid/topics"], ["azurerm_eventgrid_system_topic", "azurerm_eventgrid_topic"], ["counts"]),
   recoveryVault: def("Recovery Services vault", "Recovery Services vaults", "recovery-services-vaults", "rg", 55, ["Microsoft.RecoveryServices/vaults"], ["azurerm_recovery_services_vault"], ["sku", "counts"]),
   networkManager: def("Virtual network manager", "Virtual network managers", "network-managers", "rg", 56, ["Microsoft.Network/networkManagers"], ["azurerm_network_manager"], ["scopeAccess"]),
   virtualWan: def("Virtual WAN", "Virtual WANs", "virtual-wans", "rg", 57, ["Microsoft.Network/virtualWans"], ["azurerm_virtual_wan"], ["sku"]),

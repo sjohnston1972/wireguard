@@ -257,6 +257,9 @@ and the 1–2 props its card shows. Placement **subnet** means the subnet its NI
 | `containerApp` | `Microsoft.App/containerApps` | `azurerm_container_app` | RG | ingress, target port |
 | `containerAppEnv` | `Microsoft.App/managedEnvironments` | `azurerm_container_app_environment` | its infrastructure subnet, else RG | workload profiles |
 | `registry` | `Microsoft.ContainerRegistry/registries` | `azurerm_container_registry` | RG | SKU |
+| `containerAppJob` | `Microsoft.App/jobs` | `azurerm_container_app_job` | RG | CPU, trigger chip (`event-driven`, `scheduled`, `manual`); icon `container-apps` (the pack has no job icon) |
+| `serviceBus` | `Microsoft.ServiceBus/namespaces` | `azurerm_servicebus_namespace` (+ queues, topics, subscriptions, rules, access policies folded) | RG | SKU, counts (queues, topics, subscriptions) |
+| `eventGrid` | `Microsoft.EventGrid/systemTopics`, `…/topics` | `azurerm_eventgrid_system_topic`, `azurerm_eventgrid_topic` (+ event subscriptions folded) | RG | subscription count |
 | `logAnalytics` | `Microsoft.OperationalInsights/workspaces` | `azurerm_log_analytics_workspace` | RG | daily cap, retention |
 | `monitor` | `microsoft.insights/metricalerts`, `activitylogalerts`, `actiongroups`, `datacollectionrules` | `azurerm_monitor_*` (but autoscale and diagnostic settings) | RG | type, severity |
 | `frontDoor` | `Microsoft.Cdn/profiles` (+ children folded) | `azurerm_cdn_frontdoor_profile` (+ children) | Global lane | SKU, endpoint host |
@@ -285,7 +288,8 @@ then data, then everything else, then `generic`.
   outbound rules, pool addresses into the LB; App Gateway children (inline); firewall policy rule collection groups into the
   policy; Front Door endpoints, origin groups, origins, routes, rule sets, rules and security policies into the profile;
   resolver endpoints into the resolver; forwarding rules into the ruleset; DNS records into the zone; storage containers,
-  shares, blobs, management and immutability policies into the account; Cosmos databases and containers into the account; Key
+  shares, blobs, management and immutability policies into the account; Cosmos databases and containers into the account; Service Bus queues, topics, subscriptions, rules and access
+  policies into the namespace (counts); Event Grid event subscriptions into their topic; Key
   Vault secrets, certificates and keys into the vault (counts); AVNM groups, static members, configurations, rule collections,
   rules and deployments into the manager; site-recovery fabrics, containers, mappings, policies and backup policies into the
   vault; autoscale settings into the VMSS; routing intent into the hub; virtual hub connections' route config into the edge;
@@ -337,7 +341,9 @@ file and every live fixture's output.
 | Diagnostics | dependency | resource → workspace | `diagnostics` | `azurerm_monitor_diagnostic_setting` | not listed live (planned only) |
 | Backup / replication | dependency | vault → VM | `backup`, `replication` | protected VM, replicated VM | vault rows (V) |
 | Zone link | dependency | private DNS zone → VNet | `link` (`auto-registration`) | zone links | zone link rows (V) |
-| Others | dependency | data collection rule association, alert → target, App GW → Key Vault, SQL DB → server, failover group, container app → environment, AVNM → member VNets, policy base → child, WAF policy → App GW/endpoint | as named | refs | properties |
+| Event subscription | traffic | Event Grid topic → destination (a queue or topic is drawn as its namespace) | the destination's name (`blob-events`) | the subscription's endpoint refs; also topic → dead-letter account (dependency, `dead-letter`) | not listed live (planned only) |
+| KEDA consumer | traffic | Container Apps job → Service Bus namespace | the queues its rules watch (`orders, blob-events`) | `event_trigger_config` queue refs | `configuration.eventTriggerConfig.scale.rules[].metadata` (`namespace`, `queueName`) |
+| Others | dependency | data collection rule association, alert → target, App GW → Key Vault, SQL DB → server, failover group, container app or job → environment, Container Apps environment → workspace (`logs`), Event Grid topic → source (`source`), AVNM → member VNets, policy base → child, WAF policy → App GW/endpoint | as named | refs | properties |
 
 Edges are deduplicated (a peering pair is one edge) and sorted. An edge to a node outside the graph is dropped with a note,
 except the WireGuard gateway (§4.2).

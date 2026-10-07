@@ -1,0 +1,145 @@
+{
+ "_about": "AZ-305 batch 4, lab 30: Resource Graph rows for a running az305-30-messaging. Shapes from Learn's REST references: ServiceBus namespaces (2022-10-01-preview: sku.name, properties.serviceBusEndpoint, status), EventGrid systemTopics (2022-06-15: properties.source, topicType), App jobs (2024-03-01: properties.environmentId, configuration.triggerType, configuration.eventTriggerConfig.scale.{minExecutions,maxExecutions,rules[].{name,type,metadata,auth[].{secretRef,triggerParameter}}}, configuration.secrets[].name, template.containers[].resources), App managedEnvironments (appLogsConfiguration.logAnalyticsConfiguration.customerId), OperationalInsights workspaces (customerId). Queues, topics, subscriptions, authorization rules and event subscriptions are not rows of the resources table. Fake subscription and ids.",
+ "rows": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-30-messaging/providers/Microsoft.ServiceBus/namespaces/sb-l30rt7xy",
+   "name": "sb-l30rt7xy",
+   "type": "microsoft.servicebus/namespaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-30-messaging",
+   "sku": { "name": "Standard", "tier": "Standard" },
+   "tags": { "lab": "az305-30-messaging", "project": "wg-admin-labs", "session": "ls-0042" },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "status": "Active",
+    "serviceBusEndpoint": "https://sb-l30rt7xy.servicebus.windows.net:443/",
+    "minimumTlsVersion": "1.2",
+    "disableLocalAuth": false,
+    "publicNetworkAccess": "Enabled"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-30-messaging/providers/Microsoft.Storage/storageAccounts/l30rt7xyevt",
+   "name": "l30rt7xyevt",
+   "type": "microsoft.storage/storageaccounts",
+   "kind": "StorageV2",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-30-messaging",
+   "sku": { "name": "Standard_LRS", "tier": "Standard" },
+   "tags": { "lab": "az305-30-messaging", "project": "wg-admin-labs", "session": "ls-0042" },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": { "provisioningState": "Succeeded", "accessTier": "Hot", "publicNetworkAccess": "Enabled", "allowBlobPublicAccess": false }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-30-messaging/providers/Microsoft.EventGrid/systemTopics/egst-storage",
+   "name": "egst-storage",
+   "type": "microsoft.eventgrid/systemtopics",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-30-messaging",
+   "sku": null,
+   "tags": { "lab": "az305-30-messaging", "project": "wg-admin-labs", "session": "ls-0042" },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "source": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-30-messaging/providers/Microsoft.Storage/storageAccounts/l30rt7xyevt",
+    "topicType": "Microsoft.Storage.StorageAccounts",
+    "metricResourceId": "1f2e3d4c-5b6a-4978-8a9b-0c1d2e3f4a5b"
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-30-messaging/providers/Microsoft.OperationalInsights/workspaces/log-lab",
+   "name": "log-lab",
+   "type": "microsoft.operationalinsights/workspaces",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-30-messaging",
+   "sku": null,
+   "tags": { "lab": "az305-30-messaging", "project": "wg-admin-labs", "session": "ls-0042" },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "customerId": "7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d",
+    "retentionInDays": 30,
+    "workspaceCapping": { "dailyQuotaGb": 0.05 },
+    "sku": { "name": "PerGB2018" }
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-30-messaging/providers/Microsoft.App/managedEnvironments/cae-lab",
+   "name": "cae-lab",
+   "type": "microsoft.app/managedenvironments",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-30-messaging",
+   "sku": null,
+   "tags": { "lab": "az305-30-messaging", "project": "wg-admin-labs", "session": "ls-0042" },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "appLogsConfiguration": { "destination": "log-analytics", "logAnalyticsConfiguration": { "customerId": "7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d" } },
+    "defaultDomain": "purplebeach-0a1b2c3d.uksouth.azurecontainerapps.io",
+    "zoneRedundant": false
+   }
+  },
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-30-messaging/providers/Microsoft.App/jobs/caj-consumer",
+   "name": "caj-consumer",
+   "type": "microsoft.app/jobs",
+   "kind": "",
+   "location": "uksouth",
+   "resourceGroup": "rg-lab-az305-30-messaging",
+   "sku": null,
+   "tags": { "lab": "az305-30-messaging", "project": "wg-admin-labs", "session": "ls-0042" },
+   "zones": null,
+   "identity": null,
+   "managedBy": "",
+   "properties": {
+    "provisioningState": "Succeeded",
+    "environmentId": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az305-30-messaging/providers/Microsoft.App/managedEnvironments/cae-lab",
+    "configuration": {
+     "triggerType": "Event",
+     "replicaTimeout": 120,
+     "replicaRetryLimit": 0,
+     "secrets": [{ "name": "sb-listen" }, { "name": "sb-scaler" }],
+     "eventTriggerConfig": {
+      "parallelism": 1,
+      "replicaCompletionCount": 1,
+      "scale": {
+       "minExecutions": 0,
+       "maxExecutions": 2,
+       "pollingInterval": 30,
+       "rules": [
+        { "name": "orders", "type": "azure-servicebus", "metadata": { "queueName": "orders", "namespace": "sb-l30rt7xy", "messageCount": "1" }, "auth": [{ "secretRef": "sb-scaler", "triggerParameter": "connection" }] },
+        { "name": "blob-events", "type": "azure-servicebus", "metadata": { "queueName": "blob-events", "namespace": "sb-l30rt7xy", "messageCount": "1" }, "auth": [{ "secretRef": "sb-scaler", "triggerParameter": "connection" }] }
+       ]
+      }
+     }
+    },
+    "template": {
+     "containers": [
+      {
+       "name": "consumer",
+       "image": "mcr.microsoft.com/azurelinux/base/python:3.12",
+       "command": ["python3", "-c", "import os"],
+       "env": [{ "name": "SB_CONNECTION", "secretRef": "sb-listen" }, { "name": "QUEUES", "value": "orders,blob-events" }],
+       "resources": { "cpu": 0.25, "memory": "0.5Gi", "ephemeralStorage": "1Gi" }
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

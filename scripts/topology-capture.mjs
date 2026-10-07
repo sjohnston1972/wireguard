@@ -191,6 +191,17 @@ export const CAPTURE_KEEP = [
   "managedEnvironmentId",
   "environmentId",
   "loginServer",
+  // A job's trigger and the queues its KEDA rules name (never the rules' auth or the secrets); an environment's
+  // workspace (by customer id) and the workspace's; a system topic's source (lab 30)
+  "configuration.triggerType",
+  "configuration.eventTriggerConfig.scale.rules[].type",
+  "configuration.eventTriggerConfig.scale.rules[].metadata.namespace",
+  "configuration.eventTriggerConfig.scale.rules[].metadata.queueName",
+  "configuration.eventTriggerConfig.scale.rules[].metadata.topicName",
+  "template.containers[].resources.cpu",
+  "appLogsConfiguration.logAnalyticsConfiguration.customerId",
+  "customerId",
+  "source",
   // ── Data ──
   "accessTier",
   "allowBlobPublicAccess",

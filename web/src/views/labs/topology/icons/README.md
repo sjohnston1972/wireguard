@@ -42,6 +42,7 @@ that exact name.
 | `dns-forwarding-ruleset` | `networking/02882-icon-service-DNS-Private-Resolver.svg` | no ruleset icon; the DNS Private Resolver it belongs to |
 | `dns-private-resolver` | `networking/02882-icon-service-DNS-Private-Resolver.svg` |  |
 | `dns-zones` | `networking/10064-icon-service-DNS-Zones.svg` |  |
+| `event-grid-system-topics` | `integration/02073-icon-service-System-Topic.svg` |  |
 | `firewall-policies` | `networking/00272-icon-service-Azure-Firewall-Policy.svg` |  |
 | `firewalls` | `networking/10084-icon-service-Firewalls.svg` |  |
 | `front-door` | `networking/10073-icon-service-Front-Door-and-CDN-Profiles.svg` |  |
@@ -68,6 +69,7 @@ that exact name.
 | `role` | `identity/10340-icon-service-Entra-Identity-Roles-and-Administrators.svg` | no role definition icon; Entra Identity Roles and Administrators |
 | `route-server` | `networking/02496-icon-service-Virtual-Router.svg` | the pack has no Route Server icon; Virtual Router is the portal's icon for it |
 | `route-tables` | `networking/10082-icon-service-Route-Tables.svg` |  |
+| `service-bus` | `integration/10836-icon-service-Azure-Service-Bus.svg` |  |
 | `sql-database` | `databases/10130-icon-service-SQL-Database.svg` |  |
 | `sql-server` | `databases/10132-icon-service-SQL-Server.svg` |  |
 | `storage-accounts` | `storage/10086-icon-service-Storage-Accounts.svg` |  |
