@@ -347,6 +347,16 @@ test(`${L30}: the readme teaches queues against topics, filters and $Default, de
   assert.match(r, /about £0\.01 an hour|£0\.0101/);
 });
 
+// A locked `fail` message still counts as waiting, so KEDA starts a run at every poll until it is dead-lettered: the
+// learner sees a burst of short runs in the Execution history and should not mistake it for a fault.
+test(`${L30}: the readme says a locked fail message starts a run every poll (about 30 s) until its fifth delivery dead-letters it`, () => {
+  const r = lab(L30).readme;
+  const para = r.split("\n").find((l) => /Send a message whose body contains `fail`/.test(l)) ?? "";
+  assert.match(para, /every poll/, "the run-per-poll behaviour is in the fail paragraph");
+  assert.match(para, /about 30 seconds/);
+  assert.match(para, /dead-lettered after (the fifth|5) deliver/);
+});
+
 test(`${L30}: the realistic plan passes the scope check, and a Service Bus data role or a key in an output would not slip by unnoticed`, () => {
   const d = LAB_PLANS[L30];
   assert.ok(d, "a plan fixture");
