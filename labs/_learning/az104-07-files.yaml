@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Mount an Azure Files share from a VM, protect it with snapshots and soft delete, and lock it to one subnet.
+learn:
+  - Inspect an SMB mount of an Azure Files share from a Linux VM
+  - Limit a storage account to one subnet with its firewall and a service endpoint
+  - Restore a file from a share snapshot and undelete a soft-deleted share
+learning_min: 65

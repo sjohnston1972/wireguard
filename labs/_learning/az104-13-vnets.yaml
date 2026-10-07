@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Control traffic between web and app subnets with NSG rules written against application security groups.
+learn:
+  - Read NSG rules in priority order and the effective rules on a network interface
+  - Name tiers with application security groups and allow traffic between them
+  - Use IP flow verify to find which rule allows or denies a flow
+learning_min: 65

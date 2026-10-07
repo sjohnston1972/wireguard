@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Back up a Linux VM to a Recovery Services vault, then recover a single file and restore the whole VM.
+learn:
+  - Run an on-demand backup and follow its jobs in the vault
+  - Recover one file with File Recovery and restore the VM as a new VM
+  - Stop protection and see how soft delete keeps deleted backup data
+learning_min: 70

@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Control who can reach a blob container with keys and SAS tokens, Entra roles and a private endpoint.
+learn:
+  - Issue SAS tokens and revoke them by rotating keys or editing an access policy
+  - Grant blob data access through an Entra group and make a user delegation SAS
+  - Resolve the account to a private endpoint and turn off public network access
+learning_min: 70

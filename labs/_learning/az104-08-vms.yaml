@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Place Linux VMs in availability zones, then manage their sizes, data disks and extensions.
+learn:
+  - Partition, format, mount and grow a managed data disk on a Linux VM
+  - Resize a VM and see which sizes need it stopped first
+  - Compare what availability zones and availability sets protect you from
+learning_min: 55

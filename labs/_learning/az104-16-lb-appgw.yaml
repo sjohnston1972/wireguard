@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Spread web traffic over two VMs with an internal load balancer and an Application Gateway, then break a backend.
+learn:
+  - Compare a layer 4 load balancer frontend with a layer 7 Application Gateway one
+  - Stop a backend and watch health probes and backend health react
+  - Change session persistence and add a custom health probe on the gateway
+learning_min: 65

@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Watch a VM with metrics, logs and alerts, and send those alerts to an action group.
+learn:
+  - Chart platform metrics and trigger a CPU metric alert under load
+  - Query performance counters and syslog in Log Analytics with KQL
+  - Wire alerts to an action group and suppress them with a processing rule
+learning_min: 70

@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Push a scale set's CPU up and watch autoscale add an instance, then remove it again.
+learn:
+  - Read and test autoscale rules that scale a set on average CPU
+  - Upgrade instances to the latest model under a Manual upgrade policy
+  - Compare a Uniform scale set with a Flexible one you create by hand
+learning_min: 60
