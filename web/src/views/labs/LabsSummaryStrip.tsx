@@ -8,7 +8,7 @@
 // placeholder number.
 
 import { Link } from "react-router-dom";
-import { GraduationCap, Play, Recycle } from "lucide-react";
+import { ListChecks, Play, RefreshCw } from "lucide-react";
 import type { LabsResponse } from "@shared/api";
 import type { LabExam } from "@shared/labs";
 import { Skeleton } from "@/components";
@@ -43,7 +43,7 @@ export function LabsSummaryStrip({ data, exam }: { data: LabsResponse | undefine
     <section className="labs-summary" aria-label="Labs summary">
       <ul className="labs-summary__list">
         <li className="labs-summary__item">
-          <GraduationCap size={16} aria-hidden className="labs-summary__icon" />
+          <ListChecks size={16} aria-hidden className="labs-summary__icon" />
           <span className="labs-summary__strong">{exam ?? "All exams"}</span>
           <span title="A lab counts once it has run for 15 minutes or more">
             {run} of {total} labs run
@@ -68,7 +68,7 @@ export function LabsSummaryStrip({ data, exam }: { data: LabsResponse | undefine
         </li>
         {data.autoCleanup && (
           <li className="labs-summary__item labs-summary__item--green" title="Checked every 5 minutes: each lab is torn down at its timer or hard stop.">
-            <Recycle size={16} aria-hidden className="labs-summary__icon" />
+            <RefreshCw size={16} aria-hidden className="labs-summary__icon" />
             <span>Auto-cleanup on</span>
           </li>
         )}

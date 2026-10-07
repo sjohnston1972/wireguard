@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { SlidersHorizontal } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { LabExam, LabLevel, LabType } from "@shared/labs";
 import { Button, Chips, EmptyState, SearchInput, SegmentedControl, Select, Sheet, Switch } from "@/components";
@@ -148,13 +148,14 @@ function MoreFilters({ f, set }: Omit<ControlsProps, "views">) {
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
-        <Button variant="secondary" icon={<SlidersHorizontal size={14} aria-hidden />} aria-label={n ? `More filters, ${n} active` : "More filters"} className="labs-toolbar__more">
+        <Button variant="secondary" aria-label={n ? `More filters, ${n} active` : "More filters"} className="labs-toolbar__more">
           More filters
           {n > 0 && (
             <span className="labs-toolbar__count" aria-hidden="true">
               {n}
             </span>
           )}
+          <ChevronDown size={14} aria-hidden />
         </Button>
       </Popover.Trigger>
       <Popover.Portal>
@@ -177,7 +178,7 @@ export function LabsFilterToolbar({ views, visible }: { views: readonly LabView[
       <div className="labs-toolbar__row">
         <SearchField />
         {phone ? (
-          <Button variant="secondary" icon={<SlidersHorizontal size={14} aria-hidden />} onClick={() => setSheet(true)}>
+          <Button variant="secondary" onClick={() => setSheet(true)}>
             {n ? `Filters (${n})` : "Filters"}
           </Button>
         ) : (

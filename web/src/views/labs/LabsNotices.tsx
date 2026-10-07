@@ -10,7 +10,7 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { GitBranch, TriangleAlert, Wallet, X } from "lucide-react";
+import { CircleAlert, TriangleAlert, X } from "lucide-react";
 import type { LabsResponse } from "@shared/api";
 import { IconButton } from "@/components";
 import { fmtWhen } from "./model";
@@ -82,12 +82,12 @@ export function LabsNotices({ data }: { data: LabsResponse }) {
       {github && (
         <Notice
           label="GitHub not connected"
-          icon={<GitBranch size={18} aria-hidden className="labs-banner__icon labs-banner__icon--grey" />}
+          icon={<CircleAlert size={18} aria-hidden className="labs-banner__icon labs-banner__icon--grey" />}
           text="Labs can't be deployed: GitHub is not connected."
           fix={blockerFix("github")}
         />
       )}
-      {budget && <Notice label="Budget reached" icon={<Wallet size={18} aria-hidden className="labs-banner__icon labs-banner__icon--red" />} text={budget.message} fix={blockerFix("budget")} />}
+      {budget && <Notice label="Budget reached" icon={<CircleAlert size={18} aria-hidden className="labs-banner__icon labs-banner__icon--red" />} text={budget.message} fix={blockerFix("budget")} />}
       {!hidden && <LabsSetupBanner data={data} onHide={() => setHidden(true)} />}
     </>
   );
