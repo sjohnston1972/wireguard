@@ -61,6 +61,10 @@ export const UNSET_BLOCKS_UNKNOWN = {
   azurerm_cosmosdb_account: ["analytical_storage", "backup", "capacity"],
   azurerm_cosmosdb_sql_container: ["conflict_resolution_policy", "indexing_policy"],
   azurerm_dns_zone: ["soa_record"],
+  // Read from azurerm 4.81.0's kubernetes_cluster_resource.go (lab 29, before its first release test): four top-level
+  // blocks, network_profile itself, and two inside network_profile ("block.0.child": unknown when the parent is set
+  // and the child is not).
+  azurerm_kubernetes_cluster: ["auto_scaler_profile", "bootstrap_profile", "kubelet_identity", "network_profile", "network_profile.0.load_balancer_profile", "network_profile.0.nat_gateway_profile", "windows_profile"],
   azurerm_key_vault: ["contact", "network_acls"],
   azurerm_linux_virtual_machine: ["termination_notification"],
   azurerm_monitor_diagnostic_setting: ["enabled_metric", "metric"],
@@ -165,7 +169,14 @@ function resourceParts(def, mode) {
   const au = unknownFor({ ...held, ...defaults }, tree);
   for (const p of unknown) setPath(au, p, true);
   // An Optional and Computed block left unset: the provider plans the whole block as unknown.
-  if (mode !== "data") for (const b of UNSET_BLOCKS_UNKNOWN[type] ?? []) if (!(b in held)) au[b] = true;
+  if (mode !== "data") {
+    for (const b of UNSET_BLOCKS_UNKNOWN[type] ?? []) {
+      const path = split(b);
+      const parent = path.slice(0, -1).reduce((o, k) => (o == null ? o : o[k]), held);
+      const auParent = path.slice(0, -1).reduce((o, k) => (o == null ? o : o[k]), au);
+      if (parent && typeof parent === "object" && !(path.at(-1) in parent) && auParent && typeof auParent === "object") auParent[path.at(-1)] = true;
+    }
+  }
   // A data source's values are what it read, not what the configuration set: `data "azurerm_subscription" "current" {}`
   // has no expressions at all. Only its refs, and any constant arguments it lists in `args`, are configured.
   const configuredValues = mode === "data" ? Object.entries(values).filter(([k]) => (def.args ?? []).includes(k)) : Object.entries(values);
