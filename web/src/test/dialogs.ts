@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 
 /** The dialog is the desktop's centred modal (Drawer side="auto" off the phone) at this size. */
-export function expectCentredModal(dialog: HTMLElement, size: "md" | "lg") {
+export function expectCentredModal(dialog: HTMLElement, size: "md" | "lg" | "xl") {
   expect(dialog).toHaveAttribute("role", "dialog");
   expect(dialog).toHaveAttribute("aria-modal", "true");
   expect(dialog).toHaveClass("drawer--modal");

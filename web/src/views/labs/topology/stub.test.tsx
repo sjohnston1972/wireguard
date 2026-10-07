@@ -70,8 +70,8 @@ describe("the Canvas's List view and the lazy chunk", () => {
     expect(within(tree).getByRole("treeitem", { name: /nsg-handmade/ })).toHaveTextContent("Added by hand");
   });
 
-  it("the lazy chunk's default export is the three placements", () => {
-    expect(Object.keys(diagram).sort()).toEqual(["DiagramTab", "FullScreen", "LabMini"]);
+  it("the lazy chunk's default export is the four placements (the pop-out window: issue #93)", () => {
+    expect(Object.keys(diagram).sort()).toEqual(["DiagramTab", "FullScreen", "LabMini", "PopOut"]);
   });
 });
 

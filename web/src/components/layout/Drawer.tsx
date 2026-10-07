@@ -24,8 +24,11 @@ export interface DrawerProps {
    * the labs catalogue's tablet details), still the bottom sheet on the phone.
    */
   side?: "auto" | "bottom" | "right";
-  /** The centred modal's width: "md" about 640 px (default), "lg" up to 1100 px. The phone sheet ignores it. */
-  size?: "md" | "lg";
+  /**
+   * The centred modal's width: "md" about 640 px (default), "lg" up to 1100 px, "xl" up to 1400 px and a
+   * little taller (a lab's diagram). The phone sheet ignores it.
+   */
+  size?: "md" | "lg" | "xl";
   /**
    * "modal" (default): an overlay dialog. "inline": the non-modal split-view
    * panel beside the page (see SidePanel; put it in a SplitView), which is

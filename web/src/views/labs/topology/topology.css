@@ -16,6 +16,9 @@
   --topo-edge: var(--text-secondary);
   --topo-edge-dep: var(--text-muted);
 }
+/* Focused from script (the pop-out window); Tab goes on to the nodes. */
+.topo-canvas:focus { outline: none; }
+.topo-canvas:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 6px; }
 .topo-canvas--list {
   overflow: auto;
 }

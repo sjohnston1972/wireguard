@@ -11,7 +11,8 @@
 //   every 30 s only while a diagram is mounted and the tab visible (the
 //   query client never polls in the background).
 // - useTopologyLayoutQuery(id) / putTopologyLayout(id, body): the person's
-//   saved arrangement of the lab's diagram (ui_prefs page topology:<id>).
+//   saved arrangement of the lab's diagram (ui_prefs page topology:<id>),
+//   read again whenever the window gets focus (the pop-out window's moves).
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { LabTopologyResponse } from "@shared/api";
@@ -71,6 +72,9 @@ export function useTopologyLayoutQuery(id: string, opts: { enabled?: boolean } =
     queryFn: () => apiGet<TopologyLayoutPage>(`/prefs/topology/${encodeURIComponent(id)}`),
     enabled: opts.enabled ?? true,
     staleTime: Infinity,
+    // Read again when the window gets focus: a move made in the diagram's pop-out window (issue #93), or on
+    // another device, shows when the person comes back to this one.
+    refetchOnWindowFocus: "always",
   });
 }
 

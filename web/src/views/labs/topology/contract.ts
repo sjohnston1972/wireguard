@@ -42,6 +42,8 @@ export interface ToolbarProps {
   onView: (v: "diagram" | "list") => void;
   onReset?: () => void;
   fullScreenHref?: string;
+  /** Pop the diagram out into its own window (issue #93); absent inside the pop-out itself. */
+  onPopOut?: () => void;
   onClose?: () => void;
   variant: DiagramVariant;
 }
