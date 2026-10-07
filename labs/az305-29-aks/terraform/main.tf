@@ -9,11 +9,12 @@
 # ranges are left to AKS's defaults, which the readme names; they are
 # outside the lab pool and every gateway range (labs-az305-aks.test.mjs).
 #
-# (V) at the first release test: Learn says B-series sizes are not supported
-# for system node pools (the portal refuses them), and recommends two nodes;
-# the AKS API is believed to accept one B2s node. If it refuses, the
-# fallback is Standard_A2_v2 (2 vCPU, 4 GiB, about £0.066/h; its Av2 quota
-# to check), a new lab version.
+# Learn says B-series sizes are not supported for system node pools (the
+# portal refuses them), and recommends two nodes; the AKS API accepted one
+# B2s node at the first release test (2026-10-07, spec §17 ruling 69). If
+# Azure ever refuses it, the fallback is Standard_A2_v2 with a Standard SSD
+# OS disk (no Premium storage on Av2), a new lab version: ruling 69 lists
+# every change.
 #
 # Azure makes the cluster's node resource group itself: the node scale set,
 # the Standard load balancer and its outbound public IP, the NSG and the

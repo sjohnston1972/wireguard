@@ -498,7 +498,7 @@ req. Session and max are hours. G = governance lab. Times and SKUs are planning 
 | 26 | az305-26-site-recovery | Cross-region VM restore and Site Recovery | continuity | E | explore | ££ | opt | 20 | 3/8 | none |
 | 27 | az305-27-multi-region | Multi-region app with Traffic Manager and Front Door | infra, continuity | E | explore | ££ | off | 15 | 2/4 | none |
 | 28 | az305-28-three-tier | Three-tier app: Container Apps, SQL, Front Door + WAF (ruling 41) | infra | E | explore | ££ | off | 7 | 2/3 | none |
-| 29 | az305-29-aks | AKS small cluster, networking, ingress | infra | E | explore | ££ | opt | 12 | 2/4 | MI, AcrPull (V) |
+| 29 | az305-29-aks | AKS small cluster, networking, ingress | infra | E | explore | ££ | opt | 12 | 2/4 | MI, AcrPull (ruling 71) |
 | 30 | az305-30-messaging | Messaging and events: Service Bus, Event Grid, an event-driven consumer (ruling 62) | infra | E | explore | £ | off | 5 | 2/6 | none |
 | 31 | az700-31-ip-nat-outbound | Public IP prefixes, NAT Gateway and outbound rules | 700 core | A | explore | ££ | opt | 6 | 2/4 | none |
 | 32 | az700-32-dns-resolver | Hybrid DNS with DNS Private Resolver | 700 core | A | explore | ££ | opt | 10 | 2/4 | none |
@@ -927,3 +927,71 @@ renumbers if their rulings take these numbers. Where they differ from the sectio
     `1/Hour`), so the feed cannot use it (ruling 2): authored at £0.0104/h. Operations (13 million a month included),
     Event Grid (100,000 operations a month free) and the job (consumption free grant) are £0; total about £0.011/h, marker
     £. The namespace is `sb-<prefix>`: Azure refuses a namespace name ending in `-sb` (found by labs-tf's mock plan).
+
+### Rulings from AZ-305 batch 4: labs 28 and 29, and the first release tests (65 on)
+
+From the lab 28 and 29 builds and the batch's first release tests (2026-10-07: lab 28 deploy 6m 34s / destroy 28m 16s,
+lab 29 7m 26s / 9m 0s, lab 30 4m 1s / 29m 2s, all clean). Each (V) the builds left is answered here.
+
+65. **Lab 28's environment is a workload-profiles environment in a delegated /24, and Azure's group for it is
+    `rg-lab-<id>-infra`.** `cae-lab` takes `snet-apps` (the slot's first /20's first /24, delegated to
+    `Microsoft.App/environments`, default outbound kept for MCR pulls, ruling 57) with the Consumption profile only (no
+    Dedicated plan management fee). An environment in a subnet makes its own group for its load balancer and two public
+    IPs (ingress and egress); `infrastructure_resource_group_name = "${var.resource_group_name}-infra"` names it inside the
+    lab (ruling 7; scope rule `azure-made-group`), so the safety net, Verify clean and the orphan sweep (all `rg-lab-<id>*`)
+    see it, and the live diagram draws it "made by Azure". (V answered at the release test: Azure accepted the name, made
+    the group, deleted it with the environment, and Verify found nothing left.) The two IPs and the load balancer are
+    priced in `lab.yaml` (the load balancer authored: a Global row, ruling 54).
+66. **A Container Apps environment is slow to delete: about 28 minutes,** with a subnet (lab 28, 28m 16s) or without
+    (lab 30, 29m 2s; lab 11, 29m 3s). Destroy times are the release tests', rounded up: lab 28 **29**, lab 30 **30**. Deploy
+    times too: lab 28 **7** (6m 34s) and lab 30 **5** (4m 1s). Lab 28's 7 is not padded for "first pull" variance: every
+    deploy builds a new environment, so every deploy pulls its images (the SQL Server image for the sidecar the largest)
+    cold, and the release test measured exactly that; there is no warm cache a later run could lose. Lab 29 keeps 12/10
+    (it ran in 7m 26s / 9m 0s: an AKS create varies more than most, and 12 leaves room). Job timeouts follow
+    (`2 × (deploy + destroy) + 20`): 92, 64 and 90 minutes. The readmes give both times. Still version 1: none of the three
+    is on `main` yet.
+67. **Lab 28's WAF is Front Door Standard: custom rules only.** `waflab` (Prevention) holds `BlockAdminPath` (a match rule)
+    and `RateLimitPerClient` (100 a minute per client; `Contains "/"` as lab 42, since Azure refuses match values with
+    `Any`). Standard takes match, rate-limit and geo custom rules; Microsoft's managed rule sets (the Default Rule Set) and
+    bot protection need Premium, which lab 42 builds at about ten times the base fee. The readme's Things to try opens the
+    greyed-out **Managed rules** blade to show it. The policy's JS challenge and CAPTCHA cookie lifetimes are Premium
+    settings: a Standard policy's real plan has them unknown, not Premium's defaults of 30 (the plan fixtures'
+    `PLAN_DEFAULTS` follow the SKU). The web tier answers only requests carrying the profile's `X-Azure-FDID` (403
+    otherwise), because Standard cannot reach a private origin over Private Link.
+68. **Lab 28's sqlcmd is a sidecar on Microsoft's SQL Server image, whose engine never starts.** Python's standard library
+    cannot speak TDS without a driver, and no lab builds an image or installs packages at start, so the API container
+    queries nothing itself: the sidecar on `mcr.microsoft.com/mssql/server:2022-latest` (which ships `sqlcmd`) runs
+    `terraform/sqltools.sh` (`file()` on its command line) to log in to `appdb` once a minute and write the answer to a
+    shared `EmptyDir` volume the API container shows. The password reaches it only as the Container Apps secret
+    `sql-password` (`SQLCMDPASSWORD` is a secret reference), never an output or a plain setting; a real plan marks the app's
+    whole `secret` block sensitive. Its image is the largest pull in the lab, inside ruling 66's 7 minutes.
+69. **Lab 29's system pool is one Standard_B2s node: accepted** (release test 2026-10-07). Learn says B-series sizes are
+    not supported for system pools and the portal refuses them; the AKS API accepted one B2s node (2 vCPU, 4 GiB, the
+    system-pool minimum), the cluster came up and destroyed clean. Its OS disk is Premium SSD P6 (64 GiB): AKS picks a
+    Premium managed disk for any size that supports Premium storage.
+    **Fallback, should Azure refuse B2s in a system pool** (a new lab version, no other design change):
+    `vm_size = "Standard_A2_v2"` (2 vCPU, 4 GiB, about £0.066/h). The Av2 series has **no Premium storage**, so AKS gives
+    the node a **Standard SSD** OS disk: the 64 GiB size becomes an **E6**. So, in one change: `main.tf`'s `vm_size`;
+    `lab.yaml`'s node item `retail: { sku: Standard_A2_v2 }`, the disk item renamed "Node OS disk, Standard SSD E6
+    (64 GiB)" with `retail: { meter: "E6 LRS Disk", unit: "1/Month" }` (priced by the feed; `labs-verify -- --meters`
+    checks both), and `capacity.vm_sizes: [Standard_A2_v2]`; the quota to check becomes **Standard Av2 Family vCPUs** in
+    uksouth instead of Standard BS Family (the readme's "the B-series quota is 10 vCPUs per region" line and the scale-out
+    try change with it); the cost marker stays ££ (about 10p an hour, under £0.50); the content tests that name B2s and P6
+    change. `os_disk_type` stays at its default, `Managed`.
+70. **Lab 29's node resource group is `rg-lab-<id>-nodes`.** `node_resource_group = "${var.resource_group_name}-nodes"`;
+    left to Azure it would be `MC_<group>_<cluster>_<region>`, outside the sweep, and the scope check refuses any name that
+    does not start `rg-lab-<id>-` (rule `azure-made-group`). It holds the node scale set, the `kubernetes` load balancer
+    and its outbound public IP, an NSG and the kubelet identity. (V answered: Azure accepted the name, the cluster's delete
+    deleted the group, Verify found nothing left.) The live diagram draws it "made by Azure" because the cluster's
+    `nodeResourceGroup` names it (topology spec), and folds the node scale set into the cluster.
+71. **Lab 29's kubelet identity gets AcrPull on the lab's registry only: identity change 3.** AcrPull
+    (`7f951dda-4ed3-4680-a7ca-43fe172d538d`) is on `labs/setup/allowed-roles.json` and in the ABAC condition (§8.1,
+    Steven 2026-10-07), so the pipeline may assign it, at a registry scope inside the lab, to a ServicePrincipal. This is
+    what `az aks update --attach-acr` does; no pull secret, no admin user. The control plane has its own user-assigned
+    identity with Network Contributor on `snet-aks` only, a minute's `time_sleep` before the cluster. (V answered: the
+    release test's apply made the AcrPull assignment under the condition.)
+72. **The AcrPull assignment reads the kubelet principal through `try(…kubelet_identity[0].object_id, "")`,** as lab 36
+    does (ruling 58). A real plan has `kubelet_identity` wholly unknown (the release test's recorded shape) and `try()`
+    passes the unknown through to apply, where it is the real object id; only labs-tf's mocked plan, whose computed block
+    is empty, reaches `""`, and an empty principal would fail an apply, never pass one. Lab 29's real plan also has
+    `node_provisioning_profile` unknown when unset (now in the fixtures' `UNSET_BLOCKS_UNKNOWN`).
