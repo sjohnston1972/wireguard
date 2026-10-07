@@ -38,6 +38,9 @@ brief). The labs spec (`2026-10-04-labs-design.md`) and the lab topology spec (`
   for lab 7 and passed permissions. `.env.example` has an empty `GITHUB_TOKEN` (so `canDispatch` is false in dev).
 - Labs authored at £0/h: 01, 03, 04, 20 (cost words must handle exact zero).
 - Bundle at the topology plan's T0: entry 311.3 kB of 320, all JS 347.1 kB of 450, CSS 33.3 kB of 50 (E1 re-measures).
+- **E1 baseline** (2026-10-07, `main` at d404427, gzip): entry **311.5 kB** of 320 (so B and C may grow it to 312.5 kB at
+  most); all JS **423.1 kB** of 450; CSS **38.1 kB** of 50; the labs chunk (`labs-*.js`, the `/labs` page) **10.8 kB** JS
+  (38.0 kB raw) and **3.5 kB** CSS; the topology chunk 79.2 kB.
 - External links to `/labs/:id`: command palette, Overview (running labs, topology), Cost labs panel, history table.
 
 ## E names (planned; E updates this section as built, E9)
