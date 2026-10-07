@@ -91,7 +91,7 @@ export function SessionsTable({ sessions, loading, error, onRetry }: { sessions:
 export function HistoryPage() {
   const q = useLabSessions(undefined, 200);
   return (
-    <section className="labs">
+    <section className="labs labs--history">
       <LabsHeader />
       <div className="labs-history">
         <Panel title="Sessions" className="labs-sessions-panel" bodyClassName="labs-sessions__body" flush widgetChrome={false}>

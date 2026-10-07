@@ -33,7 +33,7 @@ const ok = { ok: true, message: "Done." };
 describe("the running strip", () => {
   it("hidden when nothing runs", async () => {
     renderApp("/labs", { routes: { "GET /api/v1/labs": labs() } });
-    await screen.findByRole("region", { name: "Catalogue" });
+    await screen.findByRole("list", { name: "Labs" });
     expect(screen.queryByRole("region", { name: "Running labs" })).toBeNull();
   });
 

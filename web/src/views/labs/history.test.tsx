@@ -96,7 +96,7 @@ describe("Your labs", () => {
     const nav = within(await screen.findByRole("navigation", { name: "Labs pages" }));
     expect(nav.getByRole("link", { name: "Your labs" })).toHaveAttribute("aria-current", "page");
     await user.click(nav.getByRole("link", { name: "Catalogue" }));
-    expect(await screen.findByRole("region", { name: "Catalogue" })).toBeInTheDocument();
+    expect(await screen.findByRole("list", { name: "Labs" })).toBeInTheDocument();
   });
 
   it("/labs/history fits 1100×600", () => {

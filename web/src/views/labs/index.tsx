@@ -3,19 +3,17 @@
 // Plain English: the Labs tab (/labs, /labs/:id, /labs/:id/diagram,
 // /labs/history), loaded lazily by views/pages.tsx, so the first page load
 // never carries it. The default export is the whole tab: the catalogue page
-// (with a lab's modal at /labs/:id), a lab's full-screen diagram, the history
-// page, or the phone's own composition.
+// (with a lab's dialog at /labs/:id drawn over it), a lab's full-screen
+// diagram, or the history page. One composition for every screen size: the
+// catalogue lays itself out for wide, tablet and phone (labs redesign spec §9).
 
 import { lazy, Suspense } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useIsPhone } from "@/components";
 import { useLab } from "@/api/queries";
 import { HistoryPage } from "./HistoryPage";
 import { CouldNotOpen, LabModal, subtitle } from "./LabModal";
-import { LabsHeader } from "./LabsHeader";
 import { LabsPage } from "./LabsPage";
 import { stateWord } from "./model";
-import { PhoneLabs } from "./PhoneLabs";
 import { Word } from "./RunningStrip";
 import "./labs.css";
 
@@ -24,24 +22,20 @@ const FullScreen = lazy(() => import("./topology").then((m) => ({ default: m.def
 
 /**
  * /labs/:id/diagram (lab topology spec §9.1): the lab's diagram filling the
- * page, desktop and phone. A lab that cannot be opened shows the page with the
- * lab modal's could-not-open notice, as /labs/:id does.
+ * page, desktop and phone. A lab that cannot be opened shows the catalogue
+ * with the lab dialog's could-not-open notice, as /labs/:id does.
  */
-function LabFullScreen({ id, phone }: { id: string; phone: boolean }) {
+function LabFullScreen({ id }: { id: string }) {
   const q = useLab(id);
   const navigate = useNavigate();
   const { search } = useLocation();
   const d = q.data;
   if (!d) {
     if (q.isError) {
-      const notice = <CouldNotOpen id={id} error={q.error} onRetry={() => void q.refetch()} onDismiss={() => navigate({ pathname: "/labs", search })} />;
-      return phone ? (
-        <section className="labs labs--phone">
-          <LabsHeader />
-          {notice}
-        </section>
-      ) : (
-        <LabsPage>{notice}</LabsPage>
+      return (
+        <LabsPage>
+          <CouldNotOpen id={id} error={q.error} onRetry={() => void q.refetch()} onDismiss={() => navigate({ pathname: "/labs", search })} />
+        </LabsPage>
       );
     }
     return (
@@ -71,11 +65,8 @@ function LabFullScreen({ id, phone }: { id: string; phone: boolean }) {
 export default function LabsTab() {
   const { pathname } = useLocation();
   const { id } = useParams();
-  const phone = useIsPhone();
   const path = pathname.replace(/\/+$/, "");
-  const history = path === "/labs/history";
-  if (id && path.endsWith("/diagram")) return <LabFullScreen key={id} id={id} phone={phone} />;
-  if (phone) return <PhoneLabs id={history ? null : (id ?? null)} history={history} />;
-  if (history) return <HistoryPage />;
-  return <LabsPage>{id && <LabModal key={id} id={id} />}</LabsPage>;
+  if (id && path.endsWith("/diagram")) return <LabFullScreen key={id} id={id} />;
+  if (path === "/labs/history") return <HistoryPage />;
+  return <LabsPage dialogId={id ?? null}>{id && <LabModal key={id} id={id} />}</LabsPage>;
 }

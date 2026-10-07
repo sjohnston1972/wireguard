@@ -166,8 +166,8 @@ function MoreFilters({ f, set }: Omit<ControlsProps, "views">) {
   );
 }
 
-/** The toolbar (spec §8.3). `visible`: how many labs the filters keep; `views`: every lab. */
-export function LabsFilterToolbar({ views, visible }: { views: readonly LabView[]; visible: number }) {
+/** The toolbar (spec §8.3). `visible`: how many labs the filters keep (null while the catalogue loads); `views`: every lab. */
+export function LabsFilterToolbar({ views, visible }: { views: readonly LabView[]; visible: number | null }) {
   const [f, set] = useLabFilters();
   const phone = useLabsLayout() === "phone";
   const [sheet, setSheet] = useState(false);
@@ -189,7 +189,7 @@ export function LabsFilterToolbar({ views, visible }: { views: readonly LabView[
       </div>
       <div className="labs-toolbar__status">
         <p className="labs-toolbar__result" aria-live="polite">
-          Showing {visible} of {views.length} labs
+          {visible === null ? "Loading the labs…" : `Showing ${visible} of ${views.length} labs`}
         </p>
         {anyFilter(f) && (
           <Button variant="ghost" size="sm" onClick={() => set(NO_FILTERS)}>
@@ -209,7 +209,7 @@ export function LabsFilterToolbar({ views, visible }: { views: readonly LabView[
                 Clear
               </Button>
               <Button variant="primary" onClick={() => setSheet(false)}>
-                Show {visible} {visible === 1 ? "lab" : "labs"}
+                {visible === null ? "Show labs" : `Show ${visible} ${visible === 1 ? "lab" : "labs"}`}
               </Button>
             </div>
           }
