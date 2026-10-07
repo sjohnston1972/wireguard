@@ -2,7 +2,7 @@
 //
 // Plain English: the Labs tab's words and sums. Money (labs cost pennies, so
 // small amounts keep more places), time left, the catalogue's filters (kept in
-// the address), grouping by exam, the state and peering words, and which
+// the address), the selection, the state and peering words, and which
 // Extend choices fit before a lab's hard stop.
 
 import { useEffect, useState } from "react";
@@ -128,25 +128,6 @@ export function peeringWord(p: LabPeering): { label: string; tone: Tone } {
     default:
       return { label: "Not peered", tone: "grey" };
   }
-}
-
-/** The NN of az104-NN-slug, else null. */
-export function labNumber(id: string): number | null {
-  const m = /^az\d{3}-(\d{2})-/.exec(id);
-  return m ? Number(m[1]) : null;
-}
-
-/** "Run before: Lab 5" (or the id when it has no number). */
-export function runBefore(prereqs: string[]): string | null {
-  if (prereqs.length === 0) return null;
-  return `Run before: ${prereqs.map((p) => (labNumber(p) !== null ? `Lab ${labNumber(p)}` : p)).join(", ")}`;
-}
-
-/** The cost marker's accessible words, with the pricey resource when there is one. */
-export function markerLabel(c: Pick<LabCard, "marker" | "pricey">): string {
-  if (c.pricey) return `Cost ${c.marker}: pricey, ${c.pricey.item} about ${fmtRate(c.pricey.gbpH)}`;
-  const words = { "£": "pennies an hour", "££": "up to about 50p an hour", "£££": "about £1 an hour or more, or a slow deploy" } as const;
-  return `Cost ${c.marker}: ${words[c.marker]}`;
 }
 
 // ── Catalogue filters (labs redesign spec §8.3; kept in the address:
@@ -304,26 +285,6 @@ export function labHref(id: string, search: string, layout: LabsLayout, view?: "
 
 /** A card's exams, the primary first (an older Worker sends no exams: then its one exam). */
 const examsOf = (c: Pick<LabCard, "exam" | "exams">): LabExam[] => (c.exams?.length ? c.exams : [c.exam]);
-
-/**
- * The catalogue's groups. With no exam filter: one group per exam (AZ-104, AZ-305, AZ-700), each
- * lab once, under its primary exam. With an exam filter: one group, every lab that belongs to that
- * exam (a tagged lab too). Each by lab number; exams with no lab are left out.
- */
-export function groupByExam(cards: LabCard[], exam: LabExam | null = null): { exam: LabExam; cards: LabCard[] }[] {
-  const byNumber = (xs: LabCard[]) => [...xs].sort((a, b) => a.number - b.number);
-  if (exam) {
-    const mine = byNumber(cards.filter((c) => examsOf(c).includes(exam)));
-    return mine.length ? [{ exam, cards: mine }] : [];
-  }
-  return EXAMS.map((e) => ({ exam: e, cards: byNumber(cards.filter((c) => c.exam === e)) })).filter((g) => g.cards.length > 0);
-}
-
-/** The other exams a card belongs to, beside the group it is shown in (its primary exam, or the exam filtered to): the "Also …" chip. */
-export function alsoExams(card: Pick<LabCard, "exam" | "exams">, shownUnder: LabExam | null = null): LabExam[] {
-  const under = shownUnder ?? card.exam;
-  return examsOf(card).filter((e) => e !== under);
-}
 
 /** "AZ-104, AZ-700": every exam a lab belongs to, the primary first (the modal's subtitle). */
 export const examsWord = (card: Pick<LabCard, "exam" | "exams">): string => examsOf(card).join(", ");
