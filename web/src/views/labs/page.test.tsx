@@ -288,6 +288,27 @@ describe("phone (390 px)", () => {
   });
 });
 
+describe("Start lab from the drawer or view, then closing the dialog (Review Focus 7)", () => {
+  it.each([
+    ["tablet", 1024],
+    ["phone", "phone"],
+  ] as const)("on the %s closing the dialog focuses the lab's card", async (_, size) => {
+    const user = userEvent.setup();
+    setViewport(size);
+    renderApp("/labs?exam=AZ-104", { routes: routes() });
+    await user.click(await screen.findByRole("button", { name: /^Blob security/ }));
+    const details = size === "phone" ? await screen.findByRole("region", { name: /^Blob security/ }) : await screen.findByRole("dialog", { name: /^Blob security/ });
+    await user.click(within(details).getByRole("link", { name: "Start lab" }));
+    const dialog = await screen.findByRole("dialog", { name: /Blob security/ });
+    expect(dialog).toHaveClass("labs-modal");
+    expect(loc()).toBe("/labs/az104-06-blob-security?exam=AZ-104");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(loc()).toBe("/labs?exam=AZ-104");
+    await waitFor(() => expect(selectBtn(/^Blob security/)).toHaveFocus());
+  });
+});
+
 describe("states", () => {
   it("loading shows 6 skeleton cards and a panel skeleton", async () => {
     renderApp("/labs", { routes: routes({ "GET /api/v1/labs": () => new Promise(() => {}) }) });
