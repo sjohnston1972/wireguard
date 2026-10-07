@@ -16,7 +16,9 @@ import { WIDGETS } from "../../shared/widgets";
 import { LAB_LIVE_STATES } from "../../shared/labs";
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
+/** The screenshot moment (npm run shots -- --freeze-time), the second of a month; and mid-month, with more of the month behind it. */
 const NOW = "2026-10-02T14:00:00.000Z";
+const MID_MONTH = "2026-10-20T14:00:00.000Z";
 
 type Json = any;
 
@@ -54,8 +56,8 @@ async function get(env: Env, path: string): Promise<Json> {
   return r.json;
 }
 
-async function seedEverything(env: Env): Promise<Json> {
-  const r = await worker.fetch(new Request(`http://localhost:8787/__dev/seed?scenario=everything&now=${NOW}`, { method: "POST" }), env, ctx);
+async function seedEverything(env: Env, now = NOW): Promise<Json> {
+  const r = await worker.fetch(new Request(`http://localhost:8787/__dev/seed?scenario=everything&now=${now}`, { method: "POST" }), env, ctx);
   const text = await r.text();
   expect(r.status, text).toBe(200);
   return JSON.parse(text);
@@ -112,7 +114,7 @@ const WIDGET_DATA: Record<string, (s: Seen) => boolean> = {
   "overview.keyMetrics": (s) => !!s.overview.snapshot.public_ip && s.overview.derived.clientsOnline > 0 && s.vmHist.availability.pct !== null && s.overview.budget.level !== "none" && Object.keys(s.overview.snapshot.latency).length > 0,
   "overview.run": (s) => some(s.overview.snapshot.steps) && s.runLog.status === 200 && /\S/.test(s.runLog.json.log),
   "overview.traffic": (s) => some(s.overview.snapshot.traffic_hist) && some(s.vmHist.points),
-  "overview.events": (s) => s.activity.all.filter((e: Json) => Date.parse(NOW) - Date.parse(e.at) <= 86_400_000).length >= 3,
+  "overview.events": (s) => s.activity.all.filter((e: Json) => Date.parse(s.overview.now) - Date.parse(e.at) <= 86_400_000).length >= 3,
   "overview.speedTest": (s) => some(s.overview.speedtests),
   "overview.health": (s) => !!s.overview.snapshot.selftest && !!s.overview.snapshot.agent && s.overview.derived.heartbeatStale === false,
   "overview.costImpact": (s) => s.costMonth.session.estimateGbp !== null && s.costMonth.sessions.filter((x: Json) => !x.stillRunning).length > 0,
@@ -162,7 +164,7 @@ const WIDGET_DATA: Record<string, (s: Seen) => boolean> = {
   "cost.labs": (s) => some(s.costMonth.labs) && s.costMonth.labs.some((l: Json) => l.actualGbp !== null) && s.costMonth.labs.some((l: Json) => l.running),
 };
 
-describe("the everything scenario (issue #96)", () => {
+describe.each([NOW, MID_MONTH])("the everything scenario (issue #96), seeded at %s", (now) => {
   let seen: Seen;
   let env: Env;
   let callsWhileSeeding: unknown[];
@@ -170,10 +172,10 @@ describe("the everything scenario (issue #96)", () => {
   beforeAll(async () => {
     // Only the clock is faked: the API reads "now" itself, so it must agree with the seed.
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(NOW));
+    vi.setSystemTime(new Date(now));
     const made = makeEnv({ AUTH_DEV_BYPASS: "1", PUBLIC_URL: "http://localhost:8787" });
     env = made.env;
-    await seedEverything(env);
+    await seedEverything(env, now);
     callsWhileSeeding = [...made.world.calls];
     seen = await look(env);
   }, 60_000);
@@ -255,6 +257,9 @@ describe("the everything scenario (issue #96)", () => {
     expect(st.backups.state.count).toBeGreaterThan(0);
     expect(st.backups.config.count).toBeGreaterThan(0);
     expect(seen.labs.permissions.checkedAt).not.toBeNull();
+    // Security: the server key was rotated, and the stale tablet has not reconnected since.
+    expect(st.key.rotation.changedAt).not.toBeNull();
+    expect(st.key.rotation.clients.filter((c: Json) => !c.done).map((c: Json) => c.name)).toEqual(["tablet"]);
   });
 
   it("seeds without a single outside call (no Azure, no GitHub, no DNS)", () => {
@@ -266,6 +271,9 @@ describe("the everything scenario (issue #96)", () => {
     expect(dump).not.toMatch(/github\.com\/[^"]*\/actions/);
     const runs = (await env.DB.prepare("SELECT github_run_url FROM runs").all<{ github_run_url: string | null }>()).results;
     for (const r of runs) if (r.github_run_url) expect(r.github_run_url).toMatch(/^https:\/\/ci\.example\.invalid\//);
+    // Clients dial in from TEST-NET-2; the VM's address is TEST-NET-3.
+    for (const c of seen.clients.clients as Json[]) if (c.live?.endpoint) expect(c.live.endpoint, c.name).toMatch(/^198\.51\.100\.\d+:\d+$/);
+    expect(seen.overview.snapshot.public_ip).toMatch(/^203\.0\.113\.\d+$/);
   });
 });
 

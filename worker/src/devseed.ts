@@ -34,6 +34,7 @@ import { freezeDevClock } from "./devclock";
 import { AZ_TABLES } from "./insights/types";
 import { seedInsights } from "./devseed-insights";
 import { buildExport } from "./backup";
+import { isWgKey } from "./peers";
 import { seedLabs, seedLabsMore, wipeLabs } from "./devseed-labs";
 
 export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs", "labs-setup", "everything"] as const;
@@ -173,7 +174,9 @@ async function insertPeers(env: Env, rng: Rng, now: number, names: string[]): Pr
     const created = iso(now - rng.int(20, 90) * DAY);
     const seen = c.lastSeenDays === 0 ? iso(now - rng.int(1, 9) * MIN) : iso(now - c.lastSeenDays * DAY);
     await env.DB.prepare("UPDATE peers SET created_at = ?2, last_handshake_at = ?3, routes = ?4 WHERE id = ?1").bind(p.id, created, seen, c.routes).run();
-    out.push({ id: p.id, public_key: p.public_key, ip: p.ip, cast: c, endpoint: `${rng.int(31, 92)}.${rng.int(1, 250)}.${rng.int(1, 250)}.${rng.int(2, 250)}:${rng.int(20000, 60000)}` });
+    // Where it dials in from: TEST-NET-2 (RFC 5737), never a real address. The three unused draws keep every later random number as it was.
+    const [, , , host] = [rng.int(31, 92), rng.int(1, 250), rng.int(1, 250), rng.int(2, 250)];
+    out.push({ id: p.id, public_key: p.public_key, ip: p.ip, cast: c, endpoint: `198.51.100.${host}:${rng.int(20000, 60000)}` });
   }
   return out;
 }
@@ -521,6 +524,8 @@ async function wipe(env: Env, now: number): Promise<void> {
   await env.DB.prepare(`DELETE FROM settings WHERE key IN ('monthly_budget_gbp', ${EVERYTHING_SETTINGS.map(([k]) => `'${k}'`).join(", ")})`).run();
   // Only everything's own: its phone, the cached backup count and this month's budget alert mark.
   await env.DB.prepare("DELETE FROM push_subs WHERE endpoint LIKE ?1").bind(`${SEED_PUSH_HOST}%`).run();
+  // The seeded key rotation, only (a real one is kept): the next read records the key afresh.
+  await env.DB.prepare("DELETE FROM settings WHERE key = 'server_key' AND value LIKE ?1").bind(`%${SEED_OLD_SERVER_KEY}%`).run();
   await env.STATUS.delete(`budget:alerted:${iso(now).slice(0, 7)}`);
   // This dev server's own R2 backups (local to the PC): only everything writes any. Then the cached count.
   for (const prefix of BACKUP_PREFIXES) {
@@ -825,6 +830,8 @@ const EVERYTHING_SETTINGS: [string, string][] = [
 ];
 /** The seeded phone's push address: a made-up host, so nothing is ever delivered. */
 const SEED_PUSH_HOST = "https://push.example.invalid/";
+/** The server key "before" the seeded rotation: made up, never a key anything trusted. */
+const SEED_OLD_SERVER_KEY = "SeedOnlyOldServerKeyNotRealAAAAAAAAAAAAAAAA=";
 
 /**
  * The running story already told, with the insights and labs layers on top:
@@ -865,6 +872,14 @@ async function seedEverything(env: Env, rng: Rng, o: { now: number; nowDate: Dat
     env.DB.prepare("UPDATE peers SET last_handshake_at = ?1 WHERE name = 'tablet'").bind(iso(now - 41 * DAY)),
     env.DB.prepare("UPDATE peers SET labs_config_due = 1 WHERE name = 'laptop'"),
   ]);
+  // The server key was rotated 20 days ago: every client older than that has reconnected with it, except the stale tablet.
+  const pub = env.WG_SERVER_PUBLIC_KEY ?? "";
+  if (isWgKey(pub)) {
+    const rotated = now - 20 * DAY;
+    await db.setSetting(env, "server_key", JSON.stringify({ pub, changed_at: iso(rotated), previous: SEED_OLD_SERVER_KEY }));
+    await env.DB.prepare("UPDATE peers SET needs_config = 1 WHERE name = 'tablet' AND created_at < ?1").bind(iso(rotated)).run();
+    await note(env, rotated, "key_rotation", "Server key changed: configs now trust a new key. Clients need a new config: press Get config on each on the Clients page.", null, true);
+  }
 
   // Azure's split of each day's spend: mostly the VM, then disk, address and bandwidth (bandwidth has no region in Azure's export).
   const days = (await env.DB.prepare("SELECT day, gbp FROM cost_days ORDER BY day").all<{ day: string; gbp: number }>()).results;
