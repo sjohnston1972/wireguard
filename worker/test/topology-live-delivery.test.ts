@@ -97,7 +97,7 @@ describe("live delivery (T3.2)", () => {
 });
 
 describe("round trip: the delivery labs", () => {
-  for (const id of ["az104-16-lb-appgw", "az305-27-multi-region", "az700-40-lb-advanced", "az700-41-appgw-waf", "az700-42-frontdoor-private"]) {
+  for (const id of ["az104-16-lb-appgw", "az305-27-multi-region", "az305-28-three-tier", "az700-40-lb-advanced", "az700-41-appgw-waf", "az700-42-frontdoor-private"]) {
     it(`${id}: planned → rows → live has no added and no missing node, and passes the deny check`, () => {
       const r = roundTrip(id);
       expect({ added: r.added, missing: r.missing, deny: r.deny }).toEqual({ added: [], missing: [], deny: [] });
