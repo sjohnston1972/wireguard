@@ -79,3 +79,6 @@ lab's hourly estimate times those minutes.
 | 2026-10-06 16:04 | az700-42-frontdoor-private | 4 | pass | yes | none | 4m 28s | 19m 49s | £0.1501 | 37489265536 |
 | 2026-10-06 16:30 | az700-44-flow-logs-bastion | 2 | pass | yes | none | 13m 18s | 12m 12s | £0.0776 | 37492756118 |
 | 2026-10-06 22:32 | az104-14-peering-udr | 2 | pass | yes | none | 2m 51s | 3m 57s | £0.0038 | 37540459971 |
+| 2026-10-07 07:59 | az305-30-messaging | 1 | pass | yes | none | 4m 1s | 29m 2s | £0.0061 | 37587213098 |
+| 2026-10-07 08:00 | az305-28-three-tier | 1 | pass | yes | none | 6m 34s | 28m 16s | £0.0586 | 37587215807 |
+| 2026-10-07 08:17 | az305-29-aks | 1 | pass | yes | none | 7m 26s | 9m 0s | £0.0209 | 37590798443 |

@@ -1,0 +1,260 @@
+{
+ "resources": {
+  "azurerm_container_registry.acr": {
+   "type": "azurerm_container_registry",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "admin_password",
+    "admin_username",
+    "data_endpoint_host_names",
+    "encryption",
+    "id",
+    "login_server",
+    "network_rule_set"
+   ],
+   "sensitive": [
+    "admin_password"
+   ]
+  },
+  "azurerm_kubernetes_cluster.aks": {
+   "type": "azurerm_kubernetes_cluster",
+   "refs": {
+    "default_node_pool.0.tags": [
+     "var.tags"
+    ],
+    "default_node_pool.0.vnet_subnet_id": [
+     "azurerm_subnet.aks.id",
+     "azurerm_subnet.aks"
+    ],
+    "dns_prefix": [
+     "var.name_prefix"
+    ],
+    "identity.0.identity_ids": [
+     "azurerm_user_assigned_identity.aks.id",
+     "azurerm_user_assigned_identity.aks"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "node_resource_group": [
+     "var.resource_group_name"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "auto_scaler_profile",
+    "bootstrap_profile",
+    "current_kubernetes_version",
+    "default_node_pool.0.kubelet_disk_type",
+    "default_node_pool.0.max_pods",
+    "default_node_pool.0.node_labels",
+    "default_node_pool.0.orchestrator_version",
+    "default_node_pool.0.os_sku",
+    "default_node_pool.0.vnet_subnet_id",
+    "default_node_pool.0.workload_runtime",
+    "fqdn",
+    "http_application_routing_zone_name",
+    "id",
+    "identity.0.identity_ids",
+    "identity.0.principal_id",
+    "identity.0.tenant_id",
+    "kube_admin_config",
+    "kube_admin_config_raw",
+    "kube_config",
+    "kube_config_raw",
+    "kubelet_identity",
+    "kubernetes_version",
+    "network_profile.0.dns_service_ip",
+    "network_profile.0.ip_versions",
+    "network_profile.0.load_balancer_profile",
+    "network_profile.0.nat_gateway_profile",
+    "network_profile.0.network_mode",
+    "network_profile.0.network_policy",
+    "network_profile.0.pod_cidr",
+    "network_profile.0.pod_cidrs",
+    "network_profile.0.service_cidr",
+    "network_profile.0.service_cidrs",
+    "node_provisioning_profile",
+    "node_resource_group_id",
+    "oidc_issuer_enabled",
+    "oidc_issuer_url",
+    "portal_fqdn",
+    "private_dns_zone_id",
+    "private_fqdn",
+    "windows_profile"
+   ],
+   "sensitive": [
+    "kube_admin_config",
+    "kube_admin_config_raw",
+    "kube_config",
+    "kube_config_raw"
+   ]
+  },
+  "azurerm_resource_group.lab": {
+   "type": "azurerm_resource_group",
+   "refs": {
+    "location": [
+     "var.region"
+    ],
+    "name": [
+     "var.resource_group_name"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_role_assignment.aks_subnet": {
+   "type": "azurerm_role_assignment",
+   "refs": {
+    "principal_id": [
+     "azurerm_user_assigned_identity.aks.principal_id",
+     "azurerm_user_assigned_identity.aks"
+    ],
+    "scope": [
+     "azurerm_subnet.aks.id",
+     "azurerm_subnet.aks"
+    ]
+   },
+   "unknown": [
+    "condition_version",
+    "id",
+    "name",
+    "principal_id",
+    "role_definition_id",
+    "scope"
+   ],
+   "sensitive": []
+  },
+  "azurerm_role_assignment.kubelet_acr": {
+   "type": "azurerm_role_assignment",
+   "refs": {
+    "principal_id": [
+     "azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id",
+     "azurerm_kubernetes_cluster.aks.kubelet_identity[0]",
+     "azurerm_kubernetes_cluster.aks.kubelet_identity",
+     "azurerm_kubernetes_cluster.aks"
+    ],
+    "scope": [
+     "azurerm_container_registry.acr.id",
+     "azurerm_container_registry.acr"
+    ]
+   },
+   "unknown": [
+    "condition_version",
+    "id",
+    "name",
+    "principal_id",
+    "role_definition_id",
+    "scope"
+   ],
+   "sensitive": []
+  },
+  "azurerm_subnet.aks": {
+   "type": "azurerm_subnet",
+   "refs": {
+    "address_prefixes": [
+     "local.aks_cidr"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "virtual_network_name": [
+     "azurerm_virtual_network.lab.name",
+     "azurerm_virtual_network.lab"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_user_assigned_identity.aks": {
+   "type": "azurerm_user_assigned_identity",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "client_id",
+    "id",
+    "principal_id",
+    "tenant_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_virtual_network.lab": {
+   "type": "azurerm_virtual_network",
+   "refs": {
+    "address_space": [
+     "local.vnet_cidr"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "dns_servers",
+    "guid",
+    "id",
+    "subnet"
+   ],
+   "sensitive": []
+  },
+  "time_sleep.aks_subnet_role": {
+   "type": "time_sleep",
+   "refs": {},
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  }
+ }
+}

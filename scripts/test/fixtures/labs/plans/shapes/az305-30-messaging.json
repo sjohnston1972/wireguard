@@ -1,0 +1,535 @@
+{
+ "resources": {
+  "azurerm_container_app_environment.lab": {
+   "type": "azurerm_container_app_environment",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "log_analytics_workspace_id": [
+     "azurerm_log_analytics_workspace.lab.id",
+     "azurerm_log_analytics_workspace.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "custom_domain_verification_id",
+    "default_domain",
+    "docker_bridge_cidr",
+    "id",
+    "log_analytics_workspace_id",
+    "platform_reserved_cidr",
+    "platform_reserved_dns_ip_address",
+    "public_network_access",
+    "static_ip_address"
+   ],
+   "sensitive": [
+    "dapr_application_insights_connection_string"
+   ]
+  },
+  "azurerm_container_app_job.consumer": {
+   "type": "azurerm_container_app_job",
+   "refs": {
+    "container_app_environment_id": [
+     "azurerm_container_app_environment.lab.id",
+     "azurerm_container_app_environment.lab"
+    ],
+    "event_trigger_config.0.scale.0.rules.0.metadata": [
+     "azurerm_servicebus_queue.orders.name",
+     "azurerm_servicebus_queue.orders",
+     "azurerm_servicebus_namespace.sb.name",
+     "azurerm_servicebus_namespace.sb"
+    ],
+    "event_trigger_config.0.scale.0.rules.1.metadata": [
+     "azurerm_servicebus_queue.blob_events.name",
+     "azurerm_servicebus_queue.blob_events",
+     "azurerm_servicebus_namespace.sb.name",
+     "azurerm_servicebus_namespace.sb"
+    ],
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "secret.0.value": [
+     "azurerm_servicebus_namespace_authorization_rule.consumer.primary_connection_string",
+     "azurerm_servicebus_namespace_authorization_rule.consumer"
+    ],
+    "secret.1.value": [
+     "azurerm_servicebus_namespace_authorization_rule.scaler.primary_connection_string",
+     "azurerm_servicebus_namespace_authorization_rule.scaler"
+    ],
+    "tags": [
+     "var.tags"
+    ],
+    "template.0.container.0.command": [
+     "path.module"
+    ],
+    "template.0.container.0.env.1.value": [
+     "azurerm_servicebus_queue.orders.name",
+     "azurerm_servicebus_queue.orders",
+     "azurerm_servicebus_queue.blob_events.name",
+     "azurerm_servicebus_queue.blob_events"
+    ]
+   },
+   "unknown": [
+    "container_app_environment_id",
+    "event_stream_endpoint",
+    "id",
+    "outbound_ip_addresses",
+    "secret.0.value",
+    "secret.1.value",
+    "template.0.container.0.ephemeral_storage"
+   ],
+   "sensitive": [
+    "secret"
+   ]
+  },
+  "azurerm_eventgrid_system_topic.storage": {
+   "type": "azurerm_eventgrid_system_topic",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "source_resource_id": [
+     "azurerm_storage_account.events.id",
+     "azurerm_storage_account.events"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id",
+    "metric_arm_resource_id",
+    "metric_resource_id",
+    "source_arm_resource_id",
+    "source_resource_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_eventgrid_system_topic_event_subscription.blob_to_queue": {
+   "type": "azurerm_eventgrid_system_topic_event_subscription",
+   "refs": {
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "service_bus_queue_endpoint_id": [
+     "azurerm_servicebus_queue.blob_events.id",
+     "azurerm_servicebus_queue.blob_events"
+    ],
+    "storage_blob_dead_letter_destination.0.storage_account_id": [
+     "azurerm_storage_account.events.id",
+     "azurerm_storage_account.events"
+    ],
+    "storage_blob_dead_letter_destination.0.storage_blob_container_name": [
+     "azurerm_storage_container.deadletter.name",
+     "azurerm_storage_container.deadletter"
+    ],
+    "system_topic": [
+     "azurerm_eventgrid_system_topic.storage.name",
+     "azurerm_eventgrid_system_topic.storage"
+    ]
+   },
+   "unknown": [
+    "eventhub_endpoint_id",
+    "hybrid_connection_endpoint_id",
+    "id",
+    "service_bus_queue_endpoint_id",
+    "storage_blob_dead_letter_destination.0.storage_account_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_log_analytics_workspace.lab": {
+   "type": "azurerm_log_analytics_workspace",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id",
+    "local_authentication_disabled",
+    "primary_shared_key",
+    "secondary_shared_key",
+    "workspace_id"
+   ],
+   "sensitive": [
+    "primary_shared_key",
+    "secondary_shared_key"
+   ]
+  },
+  "azurerm_resource_group.lab": {
+   "type": "azurerm_resource_group",
+   "refs": {
+    "location": [
+     "var.region"
+    ],
+    "name": [
+     "var.resource_group_name"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_servicebus_namespace.sb": {
+   "type": "azurerm_servicebus_namespace",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "default_primary_connection_string",
+    "default_primary_key",
+    "default_secondary_connection_string",
+    "default_secondary_key",
+    "endpoint",
+    "id",
+    "network_rule_set"
+   ],
+   "sensitive": [
+    "default_primary_connection_string",
+    "default_primary_key",
+    "default_secondary_connection_string",
+    "default_secondary_key"
+   ]
+  },
+  "azurerm_servicebus_namespace_authorization_rule.consumer": {
+   "type": "azurerm_servicebus_namespace_authorization_rule",
+   "refs": {
+    "namespace_id": [
+     "azurerm_servicebus_namespace.sb.id",
+     "azurerm_servicebus_namespace.sb"
+    ]
+   },
+   "unknown": [
+    "id",
+    "namespace_id",
+    "primary_connection_string",
+    "primary_connection_string_alias",
+    "primary_key",
+    "secondary_connection_string",
+    "secondary_connection_string_alias",
+    "secondary_key"
+   ],
+   "sensitive": [
+    "primary_connection_string",
+    "primary_connection_string_alias",
+    "primary_key",
+    "secondary_connection_string",
+    "secondary_connection_string_alias",
+    "secondary_key"
+   ]
+  },
+  "azurerm_servicebus_namespace_authorization_rule.scaler": {
+   "type": "azurerm_servicebus_namespace_authorization_rule",
+   "refs": {
+    "namespace_id": [
+     "azurerm_servicebus_namespace.sb.id",
+     "azurerm_servicebus_namespace.sb"
+    ]
+   },
+   "unknown": [
+    "id",
+    "namespace_id",
+    "primary_connection_string",
+    "primary_connection_string_alias",
+    "primary_key",
+    "secondary_connection_string",
+    "secondary_connection_string_alias",
+    "secondary_key"
+   ],
+   "sensitive": [
+    "primary_connection_string",
+    "primary_connection_string_alias",
+    "primary_key",
+    "secondary_connection_string",
+    "secondary_connection_string_alias",
+    "secondary_key"
+   ]
+  },
+  "azurerm_servicebus_queue.blob_events": {
+   "type": "azurerm_servicebus_queue",
+   "refs": {
+    "namespace_id": [
+     "azurerm_servicebus_namespace.sb.id",
+     "azurerm_servicebus_namespace.sb"
+    ]
+   },
+   "unknown": [
+    "auto_delete_on_idle",
+    "id",
+    "max_message_size_in_kilobytes",
+    "max_size_in_megabytes",
+    "namespace_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_servicebus_queue.orders": {
+   "type": "azurerm_servicebus_queue",
+   "refs": {
+    "namespace_id": [
+     "azurerm_servicebus_namespace.sb.id",
+     "azurerm_servicebus_namespace.sb"
+    ]
+   },
+   "unknown": [
+    "auto_delete_on_idle",
+    "id",
+    "max_message_size_in_kilobytes",
+    "max_size_in_megabytes",
+    "namespace_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_servicebus_subscription.all": {
+   "type": "azurerm_servicebus_subscription",
+   "refs": {
+    "topic_id": [
+     "azurerm_servicebus_topic.notifications.id",
+     "azurerm_servicebus_topic.notifications"
+    ]
+   },
+   "unknown": [
+    "id",
+    "topic_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_servicebus_subscription.high_priority": {
+   "type": "azurerm_servicebus_subscription",
+   "refs": {
+    "topic_id": [
+     "azurerm_servicebus_topic.notifications.id",
+     "azurerm_servicebus_topic.notifications"
+    ]
+   },
+   "unknown": [
+    "id",
+    "topic_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_servicebus_subscription_rule.high_priority": {
+   "type": "azurerm_servicebus_subscription_rule",
+   "refs": {
+    "subscription_id": [
+     "azurerm_servicebus_subscription.high_priority.id",
+     "azurerm_servicebus_subscription.high_priority"
+    ]
+   },
+   "unknown": [
+    "id",
+    "sql_filter_compatibility_level",
+    "subscription_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_servicebus_topic.notifications": {
+   "type": "azurerm_servicebus_topic",
+   "refs": {
+    "namespace_id": [
+     "azurerm_servicebus_namespace.sb.id",
+     "azurerm_servicebus_namespace.sb"
+    ]
+   },
+   "unknown": [
+    "id",
+    "max_message_size_in_kilobytes",
+    "max_size_in_megabytes",
+    "namespace_id"
+   ],
+   "sensitive": []
+  },
+  "azurerm_storage_account.events": {
+   "type": "azurerm_storage_account",
+   "refs": {
+    "location": [
+     "azurerm_resource_group.lab.location",
+     "azurerm_resource_group.lab"
+    ],
+    "name": [
+     "var.name_prefix"
+    ],
+    "resource_group_name": [
+     "azurerm_resource_group.lab.name",
+     "azurerm_resource_group.lab"
+    ],
+    "tags": [
+     "var.tags"
+    ]
+   },
+   "unknown": [
+    "blob_properties",
+    "id",
+    "large_file_share_enabled",
+    "network_rules",
+    "primary_access_key",
+    "primary_blob_connection_string",
+    "primary_blob_endpoint",
+    "primary_blob_host",
+    "primary_blob_internet_endpoint",
+    "primary_blob_internet_host",
+    "primary_blob_microsoft_endpoint",
+    "primary_blob_microsoft_host",
+    "primary_connection_string",
+    "primary_dfs_endpoint",
+    "primary_dfs_host",
+    "primary_dfs_internet_endpoint",
+    "primary_dfs_internet_host",
+    "primary_dfs_microsoft_endpoint",
+    "primary_dfs_microsoft_host",
+    "primary_file_endpoint",
+    "primary_file_host",
+    "primary_file_internet_endpoint",
+    "primary_file_internet_host",
+    "primary_file_microsoft_endpoint",
+    "primary_file_microsoft_host",
+    "primary_location",
+    "primary_queue_endpoint",
+    "primary_queue_host",
+    "primary_queue_microsoft_endpoint",
+    "primary_queue_microsoft_host",
+    "primary_table_endpoint",
+    "primary_table_host",
+    "primary_table_microsoft_endpoint",
+    "primary_table_microsoft_host",
+    "primary_web_endpoint",
+    "primary_web_host",
+    "primary_web_internet_endpoint",
+    "primary_web_internet_host",
+    "primary_web_microsoft_endpoint",
+    "primary_web_microsoft_host",
+    "queue_properties",
+    "routing",
+    "secondary_access_key",
+    "secondary_blob_connection_string",
+    "secondary_blob_endpoint",
+    "secondary_blob_host",
+    "secondary_blob_internet_endpoint",
+    "secondary_blob_internet_host",
+    "secondary_blob_microsoft_endpoint",
+    "secondary_blob_microsoft_host",
+    "secondary_connection_string",
+    "secondary_dfs_endpoint",
+    "secondary_dfs_host",
+    "secondary_dfs_internet_endpoint",
+    "secondary_dfs_internet_host",
+    "secondary_dfs_microsoft_endpoint",
+    "secondary_dfs_microsoft_host",
+    "secondary_file_endpoint",
+    "secondary_file_host",
+    "secondary_file_internet_endpoint",
+    "secondary_file_internet_host",
+    "secondary_file_microsoft_endpoint",
+    "secondary_file_microsoft_host",
+    "secondary_location",
+    "secondary_queue_endpoint",
+    "secondary_queue_host",
+    "secondary_queue_microsoft_endpoint",
+    "secondary_queue_microsoft_host",
+    "secondary_table_endpoint",
+    "secondary_table_host",
+    "secondary_table_microsoft_endpoint",
+    "secondary_table_microsoft_host",
+    "secondary_web_endpoint",
+    "secondary_web_host",
+    "secondary_web_internet_endpoint",
+    "secondary_web_internet_host",
+    "secondary_web_microsoft_endpoint",
+    "secondary_web_microsoft_host",
+    "share_properties",
+    "static_website"
+   ],
+   "sensitive": [
+    "primary_access_key",
+    "primary_blob_connection_string",
+    "primary_connection_string",
+    "secondary_access_key",
+    "secondary_blob_connection_string",
+    "secondary_connection_string"
+   ]
+  },
+  "azurerm_storage_container.deadletter": {
+   "type": "azurerm_storage_container",
+   "refs": {
+    "storage_account_id": [
+     "azurerm_storage_account.events.id",
+     "azurerm_storage_account.events"
+    ]
+   },
+   "unknown": [
+    "default_encryption_scope",
+    "has_immutability_policy",
+    "has_legal_hold",
+    "id",
+    "metadata",
+    "resource_manager_id",
+    "storage_account_id",
+    "url"
+   ],
+   "sensitive": []
+  },
+  "azurerm_storage_container.uploads": {
+   "type": "azurerm_storage_container",
+   "refs": {
+    "storage_account_id": [
+     "azurerm_storage_account.events.id",
+     "azurerm_storage_account.events"
+    ]
+   },
+   "unknown": [
+    "default_encryption_scope",
+    "has_immutability_policy",
+    "has_legal_hold",
+    "id",
+    "metadata",
+    "resource_manager_id",
+    "storage_account_id",
+    "url"
+   ],
+   "sensitive": []
+  }
+ }
+}
