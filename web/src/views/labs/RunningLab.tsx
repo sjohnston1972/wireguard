@@ -291,7 +291,7 @@ export function RunningLab({ d }: { d: LabDetail }) {
   const s = d.session!;
   const r = s.activeRun;
   return (
-    <div className="labs-modal__cols">
+    <div className="labs-modal__cols labs-modal__cols--side-first">
       <div className="labs-modal__side">
         <Facts s={s} />
         {r ? <Pipeline r={r} /> : <LastRun r={d.runs[0]} />}

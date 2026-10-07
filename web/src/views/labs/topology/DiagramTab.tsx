@@ -9,7 +9,7 @@
 // the view through fitBus) and the details panel is Details, beside the
 // canvas on a desktop and a sheet on the phone.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import type { LabSession } from "@shared/api";
 import { Button, SplitView, cx } from "@/components";
@@ -19,6 +19,7 @@ import { Details } from "./Details";
 import type { DiagramVariant } from "./contract";
 import { useDevicePrefs, useDiagramData } from "./data";
 import { useTopologyLayout } from "./useTopologyLayout";
+import { openPopOut, popOutUrl } from "./popOutWindow";
 import "./places.css";
 
 export interface PlacementProps {
@@ -29,11 +30,24 @@ export interface PlacementProps {
 
 // ── The placement ────────────────────────────────────────────────────────
 
+export interface PlacementOptions {
+  variant: Exclude<DiagramVariant, "mini">;
+  onClose?: () => void;
+  /** Above the toolbar (the full screen's and the pop-out's title). */
+  header?: ReactNode;
+  /** Offer Pop out (its own window, issue #93); false inside the pop-out itself. */
+  popOut?: boolean;
+  /** A banner of the placement's own, shown when the data has none (the pop-out's "Lab ended"). */
+  notice?: string | null;
+  /** Focus the canvas once it is drawn (the pop-out window). */
+  autoFocus?: boolean;
+}
+
 /**
- * A lab's diagram with its controls, for the tab ("tab") and the full screen
- * ("full"). `header` goes above the toolbar (the full screen's title).
+ * A lab's diagram with its controls, for the tab ("tab"), the full screen
+ * and the pop-out window ("full").
  */
-export function Placement({ labId, session = null, variant, onClose, header }: PlacementProps & { variant: Exclude<DiagramVariant, "mini">; onClose?: () => void; header?: ReactNode }) {
+export function Placement({ labId, session = null, variant, onClose, header, popOut = true, notice = null, autoFocus = false }: PlacementProps & PlacementOptions) {
   const { search: query } = useLocation();
   const [source, setSource] = useState<"live" | "planned">("live");
   const data = useDiagramData(labId, session, { source });
@@ -41,6 +55,19 @@ export function Placement({ labId, session = null, variant, onClose, header }: P
   const [device, setDevice] = useDevicePrefs();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState(false);
+  const stage = useRef<HTMLDivElement>(null);
+  const drawn = !data.error && !!data.graph && layout.status !== "loading";
+
+  // The pop-out window: focus lands on the canvas (the diagram's region, or the List view's current item).
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!autoFocus || !drawn || focused.current) return;
+    const el = stage.current?.querySelector<HTMLElement>('[role="region"][aria-label="Lab diagram"], [role="tree"] [tabindex="0"]');
+    if (!el) return;
+    focused.current = true;
+    el.focus({ preventScroll: true });
+  });
 
   let body: ReactNode;
   if (data.error) {
@@ -61,7 +88,7 @@ export function Placement({ labId, session = null, variant, onClose, header }: P
   } else {
     body = (
       <SplitView className="topo-place__stage" panel={<Details graph={data.graph} status={data.status} nodeId={selected} onClose={() => setSelected(null)} deploying={data.deploying} />}>
-        <div className="topo-place__canvas">
+        <div className="topo-place__canvas" ref={stage}>
           <Canvas
             graph={data.graph}
             status={data.status}
@@ -96,11 +123,21 @@ export function Placement({ labId, session = null, variant, onClose, header }: P
         onView={(v) => setDevice({ view: v })}
         onReset={layout.reset}
         fullScreenHref={variant === "tab" ? `/labs/${encodeURIComponent(labId)}/diagram${query}` : undefined}
+        onPopOut={popOut ? () => setBlocked(!openPopOut(labId)) : undefined}
         onClose={onClose}
       />
-      {data.banner && (
+      {blocked && (
+        <p className="topo-place__banner" role="status" aria-label="The pop-up was blocked">
+          The browser blocked the pop-up window.{" "}
+          <a className="topo-place__link" href={popOutUrl(labId)} target="_blank" rel="noopener">
+            Open the diagram in a new tab
+          </a>{" "}
+          instead, or allow pop-ups for this site and try Pop out again.
+        </p>
+      )}
+      {(data.banner ?? notice) && (
         <p className="topo-place__banner" role="status">
-          {data.banner}
+          {data.banner ?? notice}
         </p>
       )}
       {body}

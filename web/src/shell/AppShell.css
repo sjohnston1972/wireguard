@@ -33,6 +33,10 @@
 .app-shell__page:focus {
   outline: none;
 }
+/* A pop-out window (shell/Chromeless.tsx): no top bar or tab bar, a tighter gutter, at every width. */
+.app-shell__page.app-shell__page--chromeless {
+  padding: 12px 16px;
+}
 
 /* ---- top bar ---- */
 .topbar {

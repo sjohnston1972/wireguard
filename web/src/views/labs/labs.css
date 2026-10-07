@@ -86,11 +86,22 @@
 .labs-tabs .tabs__panel { padding-top: 10px; }
 .labs-tabs--diagram .tabs__panel { height: clamp(300px, calc(88vh - 230px), 640px); }
 .labs-tabs__loading { margin: 0; padding: 24px 0; text-align: center; }
+/* The Diagram tab shown (issue #93): the dialog is the "xl" size, the diagram's column takes about two thirds of
+   it and the canvas is taller. Desktop and tablet only; the phone sheet keeps its own height (below). */
+@media (min-width: 861px) {
+  .labs-modal--diagram .labs-modal__cols { grid-template-columns: minmax(0, 2.1fr) minmax(300px, 1fr); }
+  .labs-modal--diagram .labs-modal__cols--side-first { grid-template-columns: minmax(300px, 1fr) minmax(0, 2.1fr); }
+}
+@media (min-width: 641px) {
+  .labs-modal--diagram .labs-tabs--diagram .tabs__panel { height: clamp(300px, calc(94vh - 224px), 900px); }
+}
 
 /* /labs/:id/diagram: the diagram is the page. */
 /* A definite height (not a min-height), so the canvas's 100% heights resolve: React Flow needs a sized box. */
 .labs--full { gap: 0; height: calc(100dvh - 100px); min-height: 320px; }
 .labs--full > .topo-full { flex: 1 1 auto; min-height: 0; }
+/* The pop-out window (issue #93): no top bar, so the diagram fills the window at every width. */
+.labs.labs--popout { height: 100%; min-height: 320px; }
 .labs-readme a { color: var(--blue-bright); text-decoration: underline; text-underline-offset: 2px; }
 .labs-readme a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 3px; }
 .labs-readme__ext { margin-left: 3px; vertical-align: -1px; }
@@ -204,6 +215,7 @@
   .labs-sessions__body, .labs-coverage__body { display: flex; flex-direction: column; overflow: hidden; }
   .labs-sessions__scroll { flex: 1; min-height: 0; overflow: auto; }
   .labs-coverage__scroll { flex: 1; min-height: 0; overflow: auto; }
+  .labs.labs--popout { height: auto; padding: 12px 16px 14px; }
 }
 
 /* A short window (1100 x 600): a smaller header, so the history keeps its room. */

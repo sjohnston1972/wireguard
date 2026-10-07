@@ -516,6 +516,15 @@ be kept.
 - **Full screen** (`/labs/:id/diagram`): the content area holds a header (lab title, Live/Planned, search, dependency toggle,
   Diagram/List, Reset layout, Close back to `/labs/:id`), the canvas with MiniMap and Controls, the details panel and the legend.
   Works on the phone too (no MiniMap there).
+- **Larger tab and pop-out window (issue #93, as built):** while the Diagram tab is shown the lab dialog is the Drawer's
+  `xl` size (up to 1400 px, 92vw) with the diagram's column about two thirds and a taller canvas. **Pop out** (tab and full
+  screen) opens `/labs/:id/diagram?popout=1` in a named pop-up (`wg-lab-diagram-<id>`, 1400 × 900; a second click focuses
+  it; blocked → a new-tab link and a note). That route is chromeless (`shell/Chromeless.tsx`: no top bar or tab bar, the
+  same disconnected banner and Session expired screen), titled "<lab id> diagram · wg-admin", with the full screen's
+  controls minus Close/Full screen/Pop out, plus **Back to dashboard** (focuses the opener, or opens the app in a new
+  tab). Focus lands on the canvas. A session that ends while it is open shows the planned design with "Lab ended —
+  showing the planned design." The saved arrangement query re-reads on window focus, so a move in one window shows in
+  the other when it is next focused.
 - **Overview hover:** hovering (or focusing) a running lab's box for 400 ms opens a popover with a 320 × 200 mini diagram
   (no pan, zoom or drag; icons and names only; the saved arrangement; live data, planned on failure) and a caption ("Live · 14
   resources · Open the lab"). `@media (hover: hover)` only for pointer hover; keyboard focus opens it everywhere; Escape

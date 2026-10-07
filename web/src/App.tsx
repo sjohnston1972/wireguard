@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from "react";
 import { createBrowserRouter, Navigate, Route, RouterProvider, Routes } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { makeQueryClient } from "@/api/queryClient";
-import { AppShell } from "@/shell/AppShell";
+import { Shell } from "@/shell/Chromeless";
 import { ToastProvider } from "@/components/feedback/Toast";
 import {
   ActivityPage,
@@ -32,7 +32,8 @@ const TopologyGallery = import.meta.env.DEV ? lazy(() => import("@/topologyGalle
 export function AppRoutes() {
   return (
     <Routes>
-      <Route element={<AppShell />}>
+      {/* The AppShell around every page; chromeless for a lab diagram's pop-out window (?popout=1, issue #93). */}
+      <Route element={<Shell />}>
         {Gallery && (
           <Route
             path="__gallery"
@@ -67,7 +68,7 @@ export function AppRoutes() {
         <Route path="labs" element={<LabsPage />} />
         <Route path="labs/history" element={<LabsPage />} />
         <Route path="labs/:id" element={<LabsPage />} />
-        {/* The lab's diagram, full screen (lab topology spec §9.1): the same lazy page, which draws it. */}
+        {/* The lab's diagram, full screen (lab topology spec §9.1), or with ?popout=1 its own window: the same lazy page, which draws it. */}
         <Route path="labs/:id/diagram" element={<LabsPage />} />
         <Route path="settings/:section?" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />

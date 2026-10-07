@@ -63,7 +63,7 @@ export function FlowCanvas(props: CanvasProps) {
     return () => ro.disconnect();
   }, []);
   return (
-    <div ref={ref} className={`topo-canvas topo-canvas--${props.variant}`} role="region" aria-label="Lab diagram">
+    <div ref={ref} className={`topo-canvas topo-canvas--${props.variant}`} role="region" aria-label="Lab diagram" tabIndex={-1}>
       {size && (
         <ReactFlowProvider>
           <Flow {...props} size={size} />

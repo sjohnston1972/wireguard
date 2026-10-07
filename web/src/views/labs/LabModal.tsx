@@ -1,6 +1,6 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { LabDetail } from "@shared/api";
-import { Button, Drawer } from "@/components";
+import { Button, Drawer, cx } from "@/components";
 import { useLab } from "@/api/queries";
 import { CostTable, DeployFields, DeployFooter, useDeployForm } from "./DeployForm";
 import { focusCard } from "./LabLaunchAction";
@@ -12,11 +12,19 @@ import { Word } from "./RunningStrip";
 /** "Lab 14 · AZ-104, AZ-700 · Associate · Explore · v3": every exam the lab belongs to, the primary first. */
 export const subtitle = (d: LabDetail) => `Lab ${d.card.number} · ${examsWord(d.card)} · ${LEVEL_WORD[d.card.level]} · ${TYPE_WORD[d.card.type]} · v${d.card.version}`;
 
+/** The Diagram tab is shown (?view=diagram): the dialog widens to give the canvas room (issue #93). */
+function useDiagramShown(): boolean {
+  const [params] = useSearchParams();
+  return params.get("view") === "diagram";
+}
+const modalClass = (diagram: boolean) => cx("labs-modal", diagram && "labs-modal--diagram");
+
 /** Not running: the readme on the left; cost, warnings and the Deploy form on the right. */
 function IdleLab({ d, onClose, onCloseAutoFocus }: { d: LabDetail; onClose: () => void; onCloseAutoFocus: (e: Event) => void }) {
   const f = useDeployForm(d);
+  const wide = useDiagramShown();
   return (
-    <Drawer open onOpenChange={(o) => !o && onClose()} side="auto" size="lg" title={d.card.title} subtitle={subtitle(d)} className="labs-modal" footer={<DeployFooter f={f} />} onCloseAutoFocus={onCloseAutoFocus}>
+    <Drawer open onOpenChange={(o) => !o && onClose()} side="auto" size={wide ? "xl" : "lg"} title={d.card.title} subtitle={subtitle(d)} className={modalClass(wide)} footer={<DeployFooter f={f} />} onCloseAutoFocus={onCloseAutoFocus}>
       <div className="labs-modal__cols">
         <LabReadmeTabs d={d} />
         <div className="labs-modal__side">
@@ -71,6 +79,7 @@ export function LabModal({ id, closeTo = "/labs" }: { id: string; closeTo?: stri
   const focusBack = (e: Event) => {
     if (layout !== "wide" && focusCard(id)) e.preventDefault();
   };
+  const wide = useDiagramShown();
   const d = q.data;
   // The modal opens once the lab has answered, so there is never an empty
   // dialog over the page; a lab that cannot be opened (an old link) is a
@@ -91,11 +100,11 @@ export function LabModal({ id, closeTo = "/labs" }: { id: string; closeTo?: stri
       open
       onOpenChange={(o) => !o && close()}
       side="auto"
-      size="lg"
+      size={wide ? "xl" : "lg"}
       title={d.card.title}
       subtitle={subtitle(d)}
       leading={<Word {...st} className="labs-modal__state" />}
-      className="labs-modal"
+      className={modalClass(wide)}
       footer={<RunningFooter d={d} />}
       onCloseAutoFocus={focusBack}
     >
