@@ -219,7 +219,12 @@ const labPost = <V,>(path: (v: V) => string, body?: (v: V) => unknown) => ({ met
 const labPath = (id: string, action: string) => `/labs/${encodeURIComponent(id)}/${action}`;
 
 /** Deploy: `{ id, hours, peer, region?, overBudgetOk?, capacityOk? }`; 422 confirm_required asks for an override. */
-export const useDeployLab = () => useApiMutation<{ id: string } & LabDeployBody>(labPost(({ id }) => labPath(id, "deploy"), ({ id: _id, ...rest }) => rest));
+export const useDeployLab = () =>
+  useApiMutation<{ id: string } & LabDeployBody>({
+    ...labPost<{ id: string } & LabDeployBody>(({ id }) => labPath(id, "deploy"), ({ id: _id, ...rest }) => rest),
+    // A refusal (409 unavailable, 422 confirm_required) means the cards' blockers and warnings are out of date (labs redesign spec §13.4).
+    invalidateOnError: () => [["labs"]],
+  });
 /** Extend: `{ id, hours }` or `{ id, toMax: true }`; refused past max_until, saying until when. */
 export const useExtendLab = () => useApiMutation<{ id: string } & LabExtendBody>(labPost(({ id }) => labPath(id, "extend"), ({ id: _id, ...rest }) => rest));
 /** Tear down (after the confirm dialog); also cancels a deploy in progress. */

@@ -181,6 +181,22 @@ describe("lab hooks", () => {
     expect(keys(invalidate)).toEqual(expect.arrayContaining(['["labs"]', '["overview"]']));
   });
 
+  // Labs redesign spec §13.4: a refusal means the cards' blockers and warnings are out of date.
+  it('a refused deploy invalidates ["labs"]', async () => {
+    for (const [status, code] of [
+      [409, "unavailable"],
+      [422, "confirm_required"],
+    ] as const) {
+      mockFetch({ [`POST /api/v1/labs/${id}/deploy`]: { status, json: { error: { code, message: "Needs the labs governance role." } } } });
+      const { W, invalidate } = setup();
+      const { result } = renderHook(() => useDeployLab(), { wrapper: W });
+      await act(async () => {
+        await result.current.mutateAsync({ id, hours: 2, peer: false }).catch(() => undefined);
+      });
+      expect(keys(invalidate), code).toEqual(['["labs"]']);
+    }
+  });
+
   it("useLabSecret fetches the secret when asked, and keeps nothing", async () => {
     const { calls } = mockFetch({ [`GET /api/v1/labs/${id}/secret`]: { adminPassword: "pw-from-test", users: { ann: "lab-x-ann@contoso.onmicrosoft.com" } } });
     const { W, invalidate } = setup();
