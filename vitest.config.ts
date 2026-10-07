@@ -18,6 +18,9 @@ export default defineConfig({
           name: "worker",
           include: ["worker/test/**/*.test.ts"],
           environment: "node",
+          // Worker threads, not child processes: each test file still gets a fresh one (isolate), but a thread starts
+          // far faster than a Node process, most of all on Windows.
+          pool: "threads",
         },
       },
       "web/vitest.config.ts",

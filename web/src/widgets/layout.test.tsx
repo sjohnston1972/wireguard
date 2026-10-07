@@ -19,6 +19,10 @@ import { LayoutMenu, Widget, WidgetArrangement, WidgetCorner, WidgetRow, WidgetS
 import { canMoveIn, moveWithin, rowView, dropMove, type Arranged } from "./layout";
 import { preloadLazy } from "@/test/lazy";
 
+// Walks journeys through menus, dialogs and saves, which can take a few seconds while every test file
+// runs at once: room beyond Vitest's default 5 s, as the view folders' own suites have.
+vi.setConfig({ testTimeout: 20_000 });
+
 beforeAll(preloadLazy);
 
 afterEach(() => {

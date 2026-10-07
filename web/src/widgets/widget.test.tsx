@@ -13,6 +13,10 @@ import { setViewport } from "@/test/viewport";
 import { Panel } from "@/components";
 import { LayoutMenu, SAVE_DELAY_MS, Widget, WidgetCorner, useWidget, usePrefsStatus } from "@/widgets";
 
+// Walks journeys through menus, dialogs and saves, which can take a few seconds while every test file
+// runs at once: room beyond Vitest's default 5 s, as the view folders' own suites have.
+vi.setConfig({ testTimeout: 20_000 });
+
 afterEach(() => {
   try {
     localStorage.clear();

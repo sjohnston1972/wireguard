@@ -344,6 +344,6 @@ describe("Overview widget settings: display", () => {
     await waitFor(() => expect(sw).toBeEnabled());
     await user.click(sw);
     await waitFor(() => expect(t).not.toHaveTextContent("UDP 51820"));
-    await waitFor(() => expect(r.fetchMock!.calls.filter((c) => c.method === "PUT" && c.url.includes("/prefs/overview"))).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(r.fetchMock!.calls.filter((c) => c.method === "PUT" && c.url.includes("/prefs/overview"))).toHaveLength(1));
   });
 });

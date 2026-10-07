@@ -361,7 +361,7 @@ describe("activity: layout", () => {
     const dialog = await screen.findByRole("dialog", { name: "Runs and activity settings" });
     await user.click(within(dialog).getByRole("button", { name: "Move column left" }));
     await waitFor(() => expect([...row.children].map((c) => c.className.split(" ")[0])).toEqual(["act__left", "act__right"]));
-    await waitFor(() => expect(server.puts.length).toBeGreaterThan(0), { timeout: 3000 });
+    await waitFor(() => expect(server.puts.length).toBeGreaterThan(0));
   });
 
   it("swapping run details and live output", async () => {
