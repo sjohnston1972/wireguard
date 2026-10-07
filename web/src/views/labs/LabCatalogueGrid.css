@@ -1,0 +1,19 @@
+/* The card grid (labs redesign spec §8.4): columns by the grid's own width (3 × 280 px + 2 gaps = 872 px). */
+.lab-catalogue { container-type: inline-size; min-width: 0; --lab-card-min: 250px; }
+.lab-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+/* Each item stretches to its row's height and the card fills it, so footers align across a row. */
+.lab-grid > li { display: flex; min-width: 0; }
+@container (min-width: 576px) {
+  .lab-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container (min-width: 872px) {
+  .lab-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* "Skip to lab details": visible only when focused. */
+.lab-catalogue__skip { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.lab-catalogue__skip:focus {
+  position: static; width: auto; height: auto; clip: auto; display: inline-block; margin-bottom: 8px;
+  padding: 4px 10px; border-radius: var(--radius-control); background: var(--bg-elevated); color: var(--blue-bright);
+  outline: 2px solid var(--focus-ring); outline-offset: 2px; font-size: 13px;
+}
