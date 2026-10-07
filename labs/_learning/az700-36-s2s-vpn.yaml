@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Connect two VNets with a site-to-site VPN using BGP, then break the tunnel on purpose and diagnose it.
+learn:
+  - Read BGP peer status and learned routes on a VPN gateway
+  - Break a connection with a mismatched key or IPsec policy and troubleshoot it
+  - Force a subnet's internet traffic through the tunnel with a default site
+learning_min: 60

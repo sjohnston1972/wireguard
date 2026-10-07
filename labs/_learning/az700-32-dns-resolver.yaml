@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Resolve private names both ways between Azure and an on-premises network with DNS Private Resolver.
+learn:
+  - Forward an on-premises domain through an outbound endpoint and a ruleset
+  - Answer on-premises queries for an Azure private zone at an inbound endpoint
+  - Add forwarding rules and link one ruleset to more than one VNet
+learning_min: 55

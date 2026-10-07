@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Compare three ways to reach a service privately, a Private Link service, a private endpoint and a service endpoint.
+learn:
+  - Publish a web server to an unpeered VNet with a Private Link service
+  - Resolve a storage account to its private endpoint through a private DNS zone
+  - Limit a subnet to one storage account with a service endpoint policy
+learning_min: 55

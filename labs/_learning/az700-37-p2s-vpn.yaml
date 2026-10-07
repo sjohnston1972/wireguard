@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Connect your own PC to a VNet over a point-to-site VPN, signing in with Microsoft Entra ID.
+learn:
+  - Download a VPN profile and connect with the Azure VPN Client
+  - Find your session and client address on the gateway, then reach a VM
+  - Diagnose a failed sign-in and compare tunnel types and authentication
+learning_min: 55

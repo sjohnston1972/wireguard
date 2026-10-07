@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Secure a Virtual WAN hub with Azure Firewall and routing intent, and control spoke and internet traffic through it.
+learn:
+  - Read a virtual hub's effective routes with routing intent in place
+  - Filter spoke-to-spoke and internet traffic in a Firewall Manager policy
+  - Turn internet security off on a hub connection and see its default route go
+learning_min: 55

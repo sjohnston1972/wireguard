@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Reach VMs only through Azure Bastion, test NSG decisions with IP flow verify and record every flow in a flow log.
+learn:
+  - Connect to VMs with no public IP through Azure Bastion in the portal
+  - Check which NSG rule decides a flow with IP flow verify and NSG diagnostics
+  - Read VNet flow log records and query traffic analytics in Log Analytics
+learning_min: 60

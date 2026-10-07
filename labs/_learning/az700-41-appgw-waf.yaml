@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Protect two web VMs with an Application Gateway WAF_v2, using a Key Vault certificate, rewrites and a WAF policy.
+learn:
+  - Terminate TLS with a Key Vault certificate and redirect HTTP to HTTPS
+  - Add and remove response headers with an Application Gateway rewrite set
+  - Trigger managed and custom WAF rules and find them in the firewall logs
+learning_min: 55
