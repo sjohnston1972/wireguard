@@ -177,6 +177,9 @@ describe("phone (390 px)", () => {
     expect(await screen.findByRole("region", { name: /^Blob security/ })).toHaveClass("labs-details-view");
     expect(grid()).toBeNull();
     expect(screen.queryByRole("search", { name: "Filter labs" })).toBeNull();
+    // A full-width view right under the header: the strip and notices wait on the catalogue.
+    expect(screen.queryByRole("region", { name: "Labs summary" })).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Back to labs" }));
     await waitFor(() => expect(grid()).toBeInTheDocument());
     expect(loc()).toBe("/labs");

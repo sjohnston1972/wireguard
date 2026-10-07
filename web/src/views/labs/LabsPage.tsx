@@ -129,6 +129,17 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
   const phoneView = layout === "phone" && !!shown;
   const details = { view: shown, data, layout, onSelect: select };
 
+  // The phone's details are a full-width view right under the header; the strip, notices and running labs wait on the catalogue.
+  if (phoneView && !failed) {
+    return (
+      <section className="labs labs-page">
+        <LabsHeader />
+        {children}
+        <LabDetailsView {...details} onBack={close} />
+      </section>
+    );
+  }
+
   return (
     <section className="labs labs-page">
       <LabsHeader />
@@ -139,8 +150,6 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
       {stale && <StaleBanner at={q.dataUpdatedAt || null} message={`Couldn't refresh the labs; showing them as of ${fmtClock(new Date(q.dataUpdatedAt).toISOString())}.`} onRetry={() => void q.refetch()} />}
       {failed ? (
         <ErrorState title="Couldn't load the labs" message={q.error instanceof Error ? q.error.message : "The catalogue could not be loaded."} onRetry={() => void q.refetch()} />
-      ) : phoneView ? (
-        <LabDetailsView {...details} onBack={close} />
       ) : (
         <>
           <LabsFilterToolbar views={views} visible={data ? visible.length : null} />
