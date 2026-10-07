@@ -13,7 +13,7 @@
 // Types are lower case (Resource Graph's `type` column).
 
 import type { TopoHealth } from "../model";
-import { cosmosApi } from "./planned";
+import { aksNetworkWord, cosmosApi } from "./planned";
 
 /** One Resource Graph row: the columns topologyQuery projects. */
 export interface ArgRow {
@@ -157,7 +157,9 @@ export const AZURE_MADE: { test(row: ArgRow): boolean; why: string }[] = [
   { why: "managed by another resource (managedBy set)", test: (r) => !!str(r.managedBy) },
   { why: "a VM's OS disk, named by Azure", test: (r) => lower(r.type) === "microsoft.compute/disks" && /_(osdisk|disk1)_/i.test(r.name) },
   { why: "a private endpoint's network interface", test: (r) => lower(r.type) === "microsoft.network/networkinterfaces" && (!!idOf(props(r).privateEndpoint) || /\.nic\.[0-9a-f-]{36}$/i.test(r.name)) },
-  { why: "a group Azure made for a lab resource (rg-lab-<id>-infra and the like)", test: (r) => lower(r.type) === "microsoft.resources/resourcegroups" && /-(infra|managed)$/i.test(r.name) },
+  { why: "a group Azure made for a lab resource (rg-lab-<id>-infra and the like)", test: (r) => lower(r.type) === "microsoft.resources/resourcegroups" && /-(infra|managed|nodes)$/i.test(r.name) },
+  // An AKS node group (rg-lab-<id>-nodes) or a Container Apps infrastructure group holds only what Azure made there.
+  { why: "anything in a group Azure made for a lab resource (an AKS node group, a Container Apps infrastructure group)", test: (r) => lower(r.type) !== "microsoft.resources/resourcegroups" && /^rg-lab-.+-(infra|managed|nodes)$/i.test(r.resourceGroup ?? "") },
   { why: "traffic analytics' data collection rule or endpoint", test: (r) => /^microsoft\.insights\/datacollection(rules|endpoints)$/.test(lower(r.type)) && /^nwta/i.test(r.name) },
   { why: "a network watcher Azure made for the region", test: (r) => lower(r.type) === "microsoft.network/networkwatchers" && /^networkwatcher_/i.test(r.name) },
   { why: "a VNet peering Azure Virtual Network Manager made (ANM_…)", test: (r) => /\/virtualnetworkpeerings\/anm_[^/]*$/i.test(r.id) },
@@ -562,6 +564,8 @@ export const ARM_RULES: Record<string, ArmRule> = {
 
   // ── Compute (T3.5): scale sets as one card (ruling 19), autoscale and flexible VMs folded in ──
   "microsoft.compute/virtualmachinescalesets": {
+    // An AKS node pool: a scale set in a cluster's node resource group folds into the cluster (lab 29).
+    fold: (r, h) => (h.rowsOfType?.("microsoft.containerservice/managedclusters") ?? []).find((c) => lower(str(props(c).nodeResourceGroup)) === lower(r.resourceGroup))?.id ?? null,
     props: (r, h) => {
       const auto = (h.rowsOfType?.("microsoft.insights/autoscalesettings") ?? []).find((a) => lower(str(props(a).targetResourceUri)) === lower(r.id));
       const cap = obj(arr(auto ? props(auto).profiles : [])[0]?.capacity);
@@ -632,6 +636,24 @@ export const ARM_RULES: Record<string, ArmRule> = {
     },
   },
   "microsoft.containerregistry/registries": { props: (r) => ({ sku: str(obj(r.sku).name) }) },
+  // AKS (lab 29): the cluster sits in its first pool's subnet; its node scale sets (in the node resource group) fold into it.
+  "microsoft.containerservice/managedclusters": {
+    props: (r) => {
+      const pool = arr(props(r).agentPoolProfiles)[0] ?? {};
+      const net = obj(props(r).networkProfile);
+      const network = aksNetworkWord(str(net.networkPlugin), str(net.networkPluginMode));
+      const nodeGroup = str(props(r).nodeResourceGroup);
+      return {
+        tier: str(obj(r.sku).tier),
+        size: str(pool.vmSize),
+        instances: typeof pool.count === "number" ? pool.count : undefined,
+        autoscale: pool.enableAutoScaling === true && typeof pool.minCount === "number" ? `${pool.minCount}-${typeof pool.maxCount === "number" ? pool.maxCount : "?"}` : undefined,
+        chips: [...(network ? [network] : []), ...(nodeGroup ? [`node group ${nodeGroup}`] : [])],
+      };
+    },
+    edges: (r) => identityEdges(r),
+    place: (r) => subnetIdOf(str(arr(props(r).agentPoolProfiles)[0]?.vnetSubnetID) ?? ""),
+  },
 
   // ── Data (T3.4) ──
   "microsoft.network/serviceendpointpolicies": {

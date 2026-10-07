@@ -70,6 +70,7 @@ export const KINDS: Record<TopoKind, KindDef> = {
   containerApp: def("Container app", "Container apps", "container-apps", "rg", 23, ["Microsoft.App/containerApps"], ["azurerm_container_app"], ["ingress", "targetPort"]),
   containerAppEnv: def("Container Apps environment", "Container Apps environments", "container-apps-environments", "subnet", 24, ["Microsoft.App/managedEnvironments"], ["azurerm_container_app_environment"], ["sku"]),
   appServicePlan: def("App Service plan", "App Service plans", "app-service-plans", "rg", 25, ["Microsoft.Web/serverFarms"], ["azurerm_service_plan"], ["sku"]),
+  aks: def("Kubernetes cluster", "Kubernetes clusters", "kubernetes-services", "subnet", 26, ["Microsoft.ContainerService/managedClusters"], ["azurerm_kubernetes_cluster"], ["size", "instances"]),
 
   // ── Data ──
   storage: def("Storage account", "Storage accounts", "storage-accounts", "rg", 30, ["Microsoft.Storage/storageAccounts"], ["azurerm_storage_account"], ["accountKind", "publicAccess"]),

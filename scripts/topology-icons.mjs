@@ -49,6 +49,7 @@ export const ICON_FILES = {
   "management-groups": "general/10011-icon-service-Management-Groups.svg",
   generic: "general/10001-icon-service-All-Resources.svg",
   "virtual-networks": "networking/10061-icon-service-Virtual-Networks.svg",
+  "kubernetes-services": "containers/10023-icon-service-Kubernetes-Services.svg",
   subnet: "networking/02742-icon-service-Subnet.svg",
   "virtual-wan-hub": "networking/00860-icon-service-Virtual-WAN-Hub.svg",
   "virtual-wans": "networking/10353-icon-service-Virtual-WANs.svg",

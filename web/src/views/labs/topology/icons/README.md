@@ -47,6 +47,7 @@ that exact name.
 | `front-door` | `networking/10073-icon-service-Front-Door-and-CDN-Profiles.svg` |  |
 | `generic` | `general/10001-icon-service-All-Resources.svg` | a resource of a kind the diagram does not know: All Resources |
 | `key-vaults` | `security/10245-icon-service-Key-Vaults.svg` |  |
+| `kubernetes-services` | `containers/10023-icon-service-Kubernetes-Services.svg` |  |
 | `load-balancers` | `networking/10062-icon-service-Load-Balancers.svg` |  |
 | `local-network-gateways` | `networking/10077-icon-service-Local-Network-Gateways.svg` |  |
 | `log-analytics-workspaces` | `monitor/00009-icon-service-Log-Analytics-Workspaces.svg` |  |

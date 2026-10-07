@@ -81,6 +81,7 @@ export const LISTED = new Set(
     "Microsoft.App/containerApps",
     "Microsoft.App/managedEnvironments",
     "Microsoft.ContainerRegistry/registries",
+    "Microsoft.ContainerService/managedClusters",
     "Microsoft.OperationalInsights/workspaces",
     "Microsoft.Insights/metricAlerts",
     "Microsoft.Insights/activityLogAlerts",
@@ -505,6 +506,20 @@ function compute(k: TemplateKit): void {
       managedEnvironmentId: env ? nodeArmId(byId.get(env.to)!) : null,
       configuration: { ingress: n.props.ingress ? { external: n.props.ingress === "external", targetPort: n.props.targetPort } : null, registries: reg ? [{ server: `${nodeArmId(byId.get(reg.to)!)?.split("/").at(-1)}.azurecr.io` }] : [] },
     });
+  }
+  // AKS (lab 29): the default pool in the cluster's subnet, its network words and node group from the card's chips.
+  for (const n of g.nodes.filter((x) => x.kind === "aks" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const chips = Array.isArray(n.props.chips) ? (n.props.chips as string[]) : [];
+    r.sku = { name: "Base", tier: n.props.tier ?? "Free" };
+    Object.assign(P(r), {
+      agentPoolProfiles: [{ name: "system", mode: "System", count: Number(n.props.instances ?? 1), vmSize: n.props.size ?? "Standard_B2s", vnetSubnetID: subnetOf(n) }],
+      networkProfile: chips.includes("Azure CNI Overlay") ? { networkPlugin: "azure", networkPluginMode: "overlay" } : { networkPlugin: "azure" },
+      nodeResourceGroup: chips.find((c) => c.startsWith("node group "))?.slice("node group ".length) ?? null,
+    });
+    const ids = edgesFrom(n.id).filter((e) => e.label === "identity").map((e) => nodeArmId(byId.get(e.to)!)).filter((x): x is string => !!x);
+    if (ids.length) r.identity = { type: "UserAssigned", userAssignedIdentities: Object.fromEntries(ids.map((i) => [i, { principalId: k.guid(i), clientId: k.guid(`${i}c`) }])) };
   }
   for (const n of g.nodes.filter((x) => x.kind === "registry" && x.scope !== "outside")) {
     const r = rowOf(n);

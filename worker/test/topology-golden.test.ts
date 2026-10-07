@@ -461,6 +461,19 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["ca-hello ..> cae-lab : environment"],
   },
+  // AZ-305 batch 4: the AKS cluster in its node subnet (its node pool is a block of the cluster, drawn on its card);
+  // the node resource group is Azure's, so only the live view has it ("Made by Azure"). The registry is not attached.
+  "az305-29-aks": {
+    nodes: [
+      "aks aks-lab < snet-aks",
+      "managedIdentity id-l29…-aks < rg-lab-az305-29-aks",
+      "registry l29…acr < rg-lab-az305-29-aks",
+      "resourceGroup rg-lab-az305-29-aks",
+      "subnet snet-aks < vnet-lab",
+      "vnet vnet-lab < rg-lab-az305-29-aks",
+    ],
+    edges: ["aks-lab ..> id-l29…-aks : identity", "id-l29…-aks ..> snet-aks : role: Network Contributor"],
+  },
   "az104-19-backup": {
     nodes: [
       "recoveryVault rsv-lab < rg-lab-az104-19-backup",
