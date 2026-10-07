@@ -240,10 +240,10 @@ describe("the grid", () => {
     expect(css).toMatch(/\.lab-card__footer\s*\{[^}]*margin-top:\s*auto;[^}]*padding-top:\s*16px/);
   });
 
-  it("topic chips stay on one row: a long word shrinks with an ellipsis (its full word in a tooltip) and +N never wraps alone", () => {
-    expect(css).toMatch(/\.lab-card__topics\s*\{[^}]*flex-wrap:\s*nowrap/);
+  it("topic chips wrap like words and never run past the card: a very long one ends in an ellipsis, its full word in a tooltip", () => {
+    expect(css).toMatch(/\.lab-card__topics\s*\{[^}]*flex-wrap:\s*wrap/);
     const chip = css.match(/\.lab-card__chip\s*\{([^}]*)\}/)?.[1] ?? "";
-    expect(chip).toMatch(/min-width:\s*0/);
+    expect(chip).toMatch(/max-width:\s*100%/);
     expect(chip).toMatch(/overflow:\s*hidden/);
     expect(chip).toMatch(/text-overflow:\s*ellipsis/);
     expect(css).toMatch(/\.lab-card__chip--more\s*\{[^}]*flex:\s*none/);
