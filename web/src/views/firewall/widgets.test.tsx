@@ -368,7 +368,7 @@ describe("W3.4 layout", () => {
     act(() => handle.focus());
     fireEvent.keyDown(handle, { key: "ArrowRight", altKey: true });
     await waitFor(async () => expect(before(await region("Network zones"), await region("Test specific traffic"))).toBe(true));
-    await waitFor(() => expect(server.puts.length).toBeGreaterThan(0), { timeout: 3000 });
+    await waitFor(() => expect(server.puts.length).toBeGreaterThan(0));
     expect(server.puts.at(-1)!.body.prefs.layout?.order?.bottom).toBeUndefined();
   });
 
@@ -484,7 +484,7 @@ describe("W3.4 layout", () => {
     act(() => handle.focus());
     fireEvent.keyDown(handle, { key: "ArrowDown", altKey: true });
     fireEvent.keyDown(handle, { key: "ArrowRight", altKey: true });
-    await waitFor(() => expect(server.puts).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(server.puts).toHaveLength(1));
     expect(server.puts[0].body.prefs.layout?.order?.bottom).toEqual(["firewall.simulator", "firewall.zones"]);
     expect(moves()).toHaveLength(1);
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Move Network zones" }));
@@ -518,7 +518,7 @@ describe("W3.4 layout", () => {
     expect(within(dialog).getByRole("button", { name: "Move column left" })).toBeDisabled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Move column right" }));
     await waitFor(() => expect(document.querySelector(".fw__body")).not.toHaveClass("fw__body--reversed"));
-    await waitFor(() => expect(server.puts.length).toBeGreaterThan(0), { timeout: 3000 });
+    await waitFor(() => expect(server.puts.length).toBeGreaterThan(0));
   });
 
   it("the tabbed right column carries its column's handle whichever tab is shown", async () => {
@@ -537,7 +537,7 @@ describe("W3.4 layout", () => {
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Hide widget" })).toBeEnabled());
     fireEvent.click(within(dialog).getByRole("button", { name: "Hide widget" }));
     await waitFor(() => expect(screen.queryByRole("region", { name: "Published ports" })).toBeNull());
-    await waitFor(() => expect(server.puts).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(server.puts).toHaveLength(1));
     expect(server.puts[0].body.prefs.layout?.hidden).toEqual(["firewall.ports"]);
   });
 });

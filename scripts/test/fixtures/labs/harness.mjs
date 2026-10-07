@@ -26,6 +26,11 @@ function findBash() {
   return null;
 }
 export const BASH = findBash();
+/**
+ * bash's path as bash sees it, for the fakes' #! line. "#!/usr/bin/env bash" starts env and then bash: two process
+ * starts for every fake call, and process starts are what make these tests slow in Git Bash.
+ */
+const BASH_PATH = (BASH && spawnSync(BASH, ["-c", "command -v bash"], { encoding: "utf8" }).stdout.trim()) || "/usr/bin/env bash";
 export const JQ = BASH ? spawnSync(BASH, ["-c", "command -v jq"], { encoding: "utf8" }).stdout.trim() || null : null;
 
 /** Forward slashes: Git Bash takes C:/... paths, and they read the same on Linux. */
@@ -48,7 +53,7 @@ export function world(rules = []) {
   const log = join(dir, "calls.log");
   writeFileSync(scenario, scenarioSh(rules));
   const fake = (name) => {
-    writeFileSync(join(bin, name), FAKE_SH.replace("__CMD__", name));
+    writeFileSync(join(bin, name), FAKE_SH.replace("__BASH__", BASH_PATH).replace("__CMD__", name));
     chmodSync(join(bin, name), 0o755);
   };
   for (const name of ["az", "curl", "terraform", "gh", "sleep", "hcl2json", "aws"]) fake(name);
@@ -97,7 +102,7 @@ function scenarioSh(rules) {
 }
 
 /** One fake command: log the call, answer from the first matching rule. Pure bash. */
-const FAKE_SH = `#!/usr/bin/env bash
+const FAKE_SH = `#!__BASH__
 cmd=__CMD__
 joined="$*"
 printf '%s\\n' "$cmd \${joined//$'\\n'/\\\\n}" >> "$FAKE_LOG"

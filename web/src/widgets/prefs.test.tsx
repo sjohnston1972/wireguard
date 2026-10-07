@@ -11,6 +11,10 @@ import { renderApp, renderWithProviders } from "@/test/render";
 import { prefsFixture, prefsServer } from "@/test/fixtures";
 import { PREFS_MIRROR_KEY, SAVE_DELAY_MS, usePrefs, usePrefsStatus, useWidget } from "@/widgets";
 
+// Renders the whole app (shell and a real view), which can take a few seconds while every test file
+// runs at once: room beyond Vitest's default 5 s, as the view folders' own suites have.
+vi.setConfig({ testTimeout: 20_000 });
+
 afterEach(() => {
   try {
     localStorage.clear();

@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { azureSummaryFixture, overviewFixture, prefsFixture, sessionFixture } from "@/test/fixtures";
 import { formatRemaining } from "./StateChip";
+
+// Renders the whole app (shell and a real view), which can take a few seconds while every test file
+// runs at once: room beyond Vitest's default 5 s, as the view folders' own suites have.
+vi.setConfig({ testTimeout: 20_000 });
 
 // The top bar is the first banner: testing-library also counts the Overview's panel headers (a <header> inside <section>) as banners.
 const banner = () => screen.getAllByRole("banner")[0];

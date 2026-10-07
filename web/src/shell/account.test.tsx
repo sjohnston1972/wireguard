@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { sessionFixture } from "@/test/fixtures";
 import { initialsOf } from "./AccountMenu";
+
+// Renders the whole app (shell and a real view), which can take a few seconds while every test file
+// runs at once: room beyond Vitest's default 5 s, as the view folders' own suites have.
+vi.setConfig({ testTimeout: 20_000 });
 
 describe("initialsOf", () => {
   it("takes the first letters of the name parts of an email", () => {

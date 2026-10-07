@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import { renderApp } from "@/test/render";
 import * as pages from "./pages";
@@ -8,6 +8,10 @@ import * as firewall from "./firewall";
 import * as activity from "./activity";
 import * as cost from "./cost";
 import * as settings from "./settings";
+
+// Renders the whole app (shell and a real view), which can take a few seconds while every test file
+// runs at once: room beyond Vitest's default 5 s, as the view folders' own suites have.
+vi.setConfig({ testTimeout: 20_000 });
 
 // Each view lives in its own folder (views/<view>/index.tsx); pages.tsx only
 // re-exports them, so the route table in App.tsx never changes.

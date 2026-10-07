@@ -151,20 +151,19 @@ jobs:
         run: |
           git fetch --no-tags origin main
           npm run labs-check -- --base origin/main
+      # labs-tf and labs-topology give terraform a plugin cache of each run's own
+      # (withTfRunner, scripts/labs-tf.mjs): with no lock file a shared cache is
+      # never reused, only rewritten in place, which races between runs.
       - name: labs-tf
         env:
-          TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tf-plugins
           LABS_TF_REQUIRE_HCL2JSON: "1"
           LABS_TF_REQUIRE_BICEP: "1"
           BICEP: ${{ runner.temp }}/bin/bicep
-        run: |
-          mkdir -p "$TF_PLUGIN_CACHE_DIR"
-          npm run labs-tf
+        run: npm run labs-tf
       # Each lab's planned diagram (lab topology spec §5): regenerated from the
       # mock plan and compared with shared/topology/planned; a stale file fails.
       - name: labs-topology (planned diagrams are fresh)
         env:
-          TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tf-plugins
           BICEP: ${{ runner.temp }}/bin/bicep
           HCL2JSON: ${{ runner.temp }}/bin/hcl2json
         run: npm run labs-topology -- --check

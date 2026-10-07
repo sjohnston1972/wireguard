@@ -6,7 +6,7 @@
 //
 //   1. a throw-away copy of its terraform/ (a Bicep lab's .bicep built into
 //      it with the pinned Bicep, as labs-tf does), terraform init
-//      -backend=false (sharing labs-tf's plugin cache), labs-tf's mock plan
+//      -backend=false (a plugin cache of the run's own), labs-tf's mock plan
 //      file, then `terraform test -verbose -json`: a plan with mocked
 //      providers whose values are real for everything configured
 //   2. the plan's managed resources and outputs, read in memory and scrubbed
@@ -206,11 +206,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const args = process.argv.slice(2);
   const check = args.includes("--check");
   const only = args.filter((a) => !a.startsWith("-"));
-  const cache = process.env.TF_PLUGIN_CACHE_DIR || join(tmpdir(), "labs-tf-plugin-cache");
-  mkdirSync(cache, { recursive: true });
   const tools = await resolveTools(only.length ? only : null);
-  // Real executables, no shell, a temp folder of their own (withTfRunner); the stream can be several MB.
-  const { failures, written } = await withTfRunner({ cache, maxBuffer: 256 * 1024 * 1024 }, (run) => runLabsTopology({ run, check, only: only.length ? only : null, ...tools }));
+  // Real executables, no shell, a temp folder and plugin cache of their own (withTfRunner); the stream can be several MB.
+  const { failures, written } = await withTfRunner({ maxBuffer: 256 * 1024 * 1024 }, (run) => runLabsTopology({ run, check, only: only.length ? only : null, ...tools }));
   if (failures.length) {
     console.error(`labs-topology: ${failures.length} problem(s)${check ? " (run npm run labs-topology and commit shared/topology/planned)" : ""}`);
     process.exitCode = 1;

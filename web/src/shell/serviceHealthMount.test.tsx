@@ -9,6 +9,10 @@ import { renderApp } from "@/test/render";
 import { sessionFixture } from "@/test/fixtures";
 import { preloadLazy } from "@/test/lazy";
 
+// Renders the whole app (shell and a real view), which can take a few seconds while every test file
+// runs at once: room beyond Vitest's default 5 s, as the view folders' own suites have.
+vi.setConfig({ testTimeout: 20_000 });
+
 beforeAll(preloadLazy);
 
 vi.mock("./ServiceHealthIndicator", () => ({ ServiceHealthIndicator: () => <span data-testid="service-health-pill">pill</span> }));

@@ -140,12 +140,24 @@ export function mockPlanFile(labId, providers) {
 
 /**
  * Calls `work(run)` with the runner every offline Terraform run uses (labs-tf, labs-topology): real executables, no
- * shell, the plugin cache shared, and TMP, TEMP and TMPDIR pointing at a scratch folder of its own. Terraform leaves a
- * terraform-provider<digits> folder (~48 MB) in its temp folder on each run (1,275 of them once filled 61 GB), so that
- * folder is emptied after each child and deleted, whatever happens, when the work ends.
+ * shell, and a scratch folder of the run's own holding two folders:
+ *
+ *   tmp/      TMP, TEMP and TMPDIR. Terraform leaves a terraform-provider<digits> folder (~48 MB) in its temp folder on
+ *             each run (1,275 of them once filled 61 GB), so it is emptied after each child.
+ *   plugins/  TF_PLUGIN_CACHE_DIR, whatever the caller's environment (or a CLI config's plugin_cache_dir) says. The labs
+ *             commit no lock file, and without one Terraform never reuses a cache entry (it cannot check it): it
+ *             downloads the provider again and rewrites the entry in place. A cache shared by two runs at once so
+ *             handed one run's terraform a provider binary the other was half way through rewriting ("plugin didn't
+ *             start"), and saved no downloads. A cache of the run's own cannot race, and costs nothing.
+ *
+ * The whole scratch folder is deleted, whatever happens, when the work ends.
  */
-export async function withTfRunner({ cache, maxBuffer }, work) {
-  const tmp = mkdtempSync(join(tmpdir(), "labs-tf-tmp-"));
+export async function withTfRunner({ maxBuffer } = {}, work) {
+  const root = mkdtempSync(join(tmpdir(), "labs-tf-tmp-"));
+  const tmp = join(root, "tmp");
+  const cache = join(root, "plugins");
+  mkdirSync(tmp);
+  mkdirSync(cache);
   const clear = () => {
     for (const f of readdirSync(tmp)) rmSync(join(tmp, f), { recursive: true, force: true, maxRetries: 5 });
   };
@@ -160,7 +172,7 @@ export async function withTfRunner({ cache, maxBuffer }, work) {
   try {
     return await work(run);
   } finally {
-    rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 });
   }
 }
 
@@ -295,11 +307,9 @@ async function resolveBicep() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const only = process.argv.slice(2).filter((a) => !a.startsWith("-"));
-  const cache = process.env.TF_PLUGIN_CACHE_DIR || join(tmpdir(), "labs-tf-plugin-cache");
-  mkdirSync(cache, { recursive: true });
   const bicep = needsBicep(only.length ? only : null) ? await resolveBicep() : "bicep-pinned-not-available";
   // terraform, hcl2json and bicep are real executables: no shell, so arguments stay exact.
-  const { failures } = await withTfRunner({ cache }, async (run) =>
+  const { failures } = await withTfRunner({}, async (run) =>
     runLabsTf({
       run,
       only: only.length ? only : null,
