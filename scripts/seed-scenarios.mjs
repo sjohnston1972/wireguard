@@ -11,7 +11,7 @@
 
 import { pathToFileURL } from "node:url";
 
-export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs", "labs-setup"];
+export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs", "labs-setup", "everything"];
 
 /**
  * Seed one scenario on the dev server at `api`. Returns the Worker's summary or throws with a plain reason.

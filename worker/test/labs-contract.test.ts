@@ -467,8 +467,8 @@ describe("devseed labs", () => {
     expect((await rows<{ n: number }>(env, "SELECT COUNT(*) AS n FROM lab_runs r JOIN lab_sessions s ON s.id = r.session_id WHERE s.state LIKE 'ended%' AND r.admin_password IS NOT NULL"))[0].n).toBe(0);
     for (const r of await rows<{ github_run_url: string | null }>(env, "SELECT github_run_url FROM lab_runs")) if (r.github_run_url) expect(r.github_run_url).toMatch(/^https:\/\/ci\.example\.invalid\/actions\/runs\/\d+$/);
 
-    // labs-setup tells the labs story too (with the permission check failed: devseed.test.ts).
-    for (const story of SCENARIOS.filter((s) => s !== "labs" && s !== "labs-setup")) {
+    // labs-setup tells the labs story too (with the permission check failed: devseed.test.ts), and everything (devseed-everything.test.ts).
+    for (const story of SCENARIOS.filter((s) => s !== "labs" && s !== "labs-setup" && s !== "everything")) {
       await seed(env, "labs");
       await seed(env, story);
       for (const t of ["lab_sessions", "lab_runs", "lab_cost_days", "lab_release_tests"]) expect((await rows<{ n: number }>(env, `SELECT COUNT(*) AS n FROM ${t}`))[0].n, `${story} ${t}`).toBe(0);
