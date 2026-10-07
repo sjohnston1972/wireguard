@@ -15,7 +15,14 @@
    },
    "parent": "tf:azurerm_resource_group.lab",
    "armType": "Microsoft.ContainerRegistry/registries",
-   "scope": "lab"
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_role_assignment.kubelet_acr",
+     "label": "kubelet_acr",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    }
+   ]
   },
   {
    "id": "tf:azurerm_kubernetes_cluster.aks",
@@ -97,6 +104,14 @@
   }
  ],
  "edges": [
+  {
+   "id": "dependency:tf:azurerm_kubernetes_cluster.aks>tf:azurerm_container_registry.acr:role: AcrPull (kubelet identity)",
+   "from": "tf:azurerm_kubernetes_cluster.aks",
+   "to": "tf:azurerm_container_registry.acr",
+   "kind": "dependency",
+   "label": "role: AcrPull (kubelet identity)",
+   "via": "tf:azurerm_role_assignment.kubelet_acr"
+  },
   {
    "id": "dependency:tf:azurerm_kubernetes_cluster.aks>tf:azurerm_user_assigned_identity.aks:identity",
    "from": "tf:azurerm_kubernetes_cluster.aks",

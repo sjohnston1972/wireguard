@@ -4,7 +4,8 @@
 // it (realistic.mjs adds what azurerm 4.81.0 and time 0.14.2 compute). A VNet
 // and the node subnet, the control plane's user-assigned identity with
 // Network Contributor on that subnet (scope and principal unknown: built from
-// ids), a one-minute wait, the AKS cluster and a Basic registry. The
+// ids), a one-minute wait, the AKS cluster, a Basic registry and AcrPull on
+// it for the cluster's kubelet identity (both ids unknown at plan). The
 // cluster's node resource group is known at plan ("${var.resource_group_name}-nodes");
 // its subnet and identity ids are not. Left unset and so unknown at plan, as
 // the provider computes them: the network profile's pod and service ranges,
@@ -66,6 +67,17 @@ export default () => {
         address: "azurerm_container_registry.acr",
         values: { name: `${c.prefix}acr`, resource_group_name: c.rg, location: REGION, sku: "Basic", admin_enabled: false, tags: c.tags },
         refs: { ...IN_RG, name: ["var.name_prefix"] },
+      },
+      {
+        // Identity change 3: AcrPull for the kubelet identity AKS makes, at the registry. Both ids are known only after apply.
+        address: "azurerm_role_assignment.kubelet_acr",
+        values: { role_definition_name: "AcrPull", principal_type: "ServicePrincipal", skip_service_principal_aad_check: true },
+        unknown: ["scope", "principal_id"],
+        refs: {
+          scope: ref("azurerm_container_registry.acr", "id"),
+          // Terraform lists every step of a traversal through a nested block, longest first.
+          principal_id: ["azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id", "azurerm_kubernetes_cluster.aks.kubelet_identity[0]", "azurerm_kubernetes_cluster.aks.kubelet_identity", "azurerm_kubernetes_cluster.aks"],
+        },
       },
     ],
   };

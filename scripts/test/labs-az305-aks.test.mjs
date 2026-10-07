@@ -3,16 +3,16 @@
 // Plain English: lab 29, az305-29-aks (AZ-305 batch 4, rulings 40-41), the
 // AKS small cluster, checked without touching Azure. It runs the shared
 // content suite (fixtures/labs/content.mjs; with identity "match", lab.yaml's
-// role list against the Terraform's one role assignment), then its own
+// role list against the Terraform's two role assignments), then its own
 // tests: the cheapest cluster AKS accepts (Free tier, one Standard_B2s
 // node), Azure CNI Overlay in a subnet of the slot with pod and service
 // ranges left to AKS's defaults, which sit outside the lab pool and every
 // gateway range, the node resource group named inside the lab's prefix (so
 // the safety net, Verify clean and the orphan sweep find it), the control
 // plane's user-assigned identity with Network Contributor on its subnet only,
-// and no AcrPull (not on the allow-list: attaching the registry is a Things
-// to try step the learner does with their own rights). init, validate and
-// the mock plan are npm run labs-tf's job.
+// and AcrPull for the kubelet identity on the lab's registry (identity
+// change 3, Steven 2026-10-07). init, validate and the mock plan are npm run
+// labs-tf's job.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -114,20 +114,39 @@ test(`${AKS}: a user-assigned control-plane identity with Network Contributor on
   assert.equal(attr(id, "type"), '"UserAssigned"', "a user-assigned identity can be given its role before the cluster exists (Learn: the recommendation outside the Azure CLI)");
   assert.equal(attr(id, "identity_ids"), `[azurerm_user_assigned_identity.${uai.labels[1]}.id]`);
   assert.equal(nested(c, "kubelet_identity"), undefined, "AKS makes the kubelet identity in the node group (deleted with it); bringing one would need Managed Identity Operator, not on the allow-list");
-  const ra = one(l, "azurerm_role_assignment");
-  assert.equal(attr(ra.body, "role_definition_name"), '"Network Contributor"');
+  const ra = resources(l, "azurerm_role_assignment").find((r) => attr(r.body, "role_definition_name") === '"Network Contributor"');
+  assert.ok(ra, "a Network Contributor assignment");
   assert.equal(attr(ra.body, "scope"), "azurerm_subnet.aks.id", "the node subnet, nothing wider");
   assert.equal(attr(ra.body, "principal_id"), `azurerm_user_assigned_identity.${uai.labels[1]}.principal_id`);
   assert.equal(attr(ra.body, "principal_type"), '"ServicePrincipal"');
   const wait = one(l, "time_sleep");
   assert.match(wait.body, new RegExp(`depends_on\\s*=\\s*\\[azurerm_role_assignment\\.${ra.labels[1]}\\]`));
   assert.match(c, new RegExp(`depends_on\\s*=\\s*\\[time_sleep\\.${wait.labels[1]}\\]`), "the cluster is created after the role has had time to reach Azure Resource Manager");
-  // Every role the lab assigns is on the allow-list. AcrPull is not (labs/setup/allowed-roles.json): adding it is an
-  // identity change for Steven, so the registry is attached by the learner (Things to try), never by Terraform.
+  // Every role the lab assigns is on the allow-list.
   const allowed = ALLOWED_ROLES.builtIn.map((r) => r.name);
   for (const r of roleAssignments(l)) assert.ok(allowed.includes(r.role), `${r.role} is on the allow-list`);
-  assert.equal(roleAssignments(l).some((r) => r.role === "AcrPull"), false);
-  assert.match(lab(AKS).readme, /--attach-acr/, "the readme has the learner attach the registry");
+  assert.deepEqual(roleAssignments(l).map((r) => r.role).sort(), ["AcrPull", "Network Contributor"]);
+});
+
+// Identity change 3 (Steven, 2026-10-07): AcrPull is on the allow-list, so Terraform attaches the registry.
+test(`${AKS}: the kubelet identity has AcrPull on the lab's registry only, so the node pulls images from it`, () => {
+  const l = lab(AKS);
+  const ra = resources(l, "azurerm_role_assignment").find((r) => attr(r.body, "role_definition_name") === '"AcrPull"');
+  assert.ok(ra, "an AcrPull assignment");
+  assert.equal(attr(ra.body, "scope"), "azurerm_container_registry.acr.id", "the lab's registry, nothing wider");
+  // try() as lab 36 (ruling 58): unknown in a real plan, "" only in labs-tf's mocked plan, whose computed block is empty.
+  assert.equal(attr(ra.body, "principal_id"), 'try(azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id, "")', "the kubelet identity AKS made in the node group, not the control plane's");
+  assert.equal(attr(ra.body, "principal_type"), '"ServicePrincipal"');
+  assert.ok(ALLOWED_ROLES.builtIn.some((r) => r.name === "AcrPull" && r.id === "7f951dda-4ed3-4680-a7ca-43fe172d538d"), "AcrPull is on the allow-list by Azure's GUID");
+  assert.ok(l.yaml.identity.roles.some((r) => r.role === "AcrPull" && r.scope === "resource"));
+  // The readme no longer has the learner attach it; it shows the pull working instead.
+  assert.doesNotMatch(l.readme, /--attach-acr/);
+  assert.match(l.readme, /az acr import/);
+  assert.match(l.readme, /<prefix>acr\.azurecr\.io\/hello:v1/);
+  // The plan fixture: the principal is the cluster's kubelet identity, unknown until the cluster exists.
+  const fx = LAB_PLANS[AKS].resources.find((r) => r.address === `azurerm_role_assignment.${ra.labels[1]}`);
+  assert.deepEqual(fx.refs.principal_id, ["azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id", "azurerm_kubernetes_cluster.aks.kubelet_identity[0]", "azurerm_kubernetes_cluster.aks.kubelet_identity", "azurerm_kubernetes_cluster.aks"]);
+  assert.deepEqual(checkPlan(LAB_PLANS[AKS].plan, AKS), []);
 });
 
 test(`${AKS}: a Basic registry with the admin user off`, () => {

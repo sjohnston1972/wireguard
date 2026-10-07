@@ -462,7 +462,8 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     edges: ["ca-hello ..> cae-lab : environment"],
   },
   // AZ-305 batch 4: the AKS cluster in its node subnet (its node pool is a block of the cluster, drawn on its card);
-  // the node resource group is Azure's, so only the live view has it ("Made by Azure"). The registry is not attached.
+  // the node resource group is Azure's, so only the live view has it ("Made by Azure"). The kubelet identity (in the
+  // node group) is drawn on the cluster's card: its AcrPull on the registry is an edge from the cluster.
   "az305-29-aks": {
     nodes: [
       "aks aks-lab < snet-aks",
@@ -472,7 +473,7 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
       "subnet snet-aks < vnet-lab",
       "vnet vnet-lab < rg-lab-az305-29-aks",
     ],
-    edges: ["aks-lab ..> id-l29…-aks : identity", "id-l29…-aks ..> snet-aks : role: Network Contributor"],
+    edges: ["aks-lab ..> id-l29…-aks : identity", "aks-lab ..> l29…acr : role: AcrPull (kubelet identity)", "id-l29…-aks ..> snet-aks : role: Network Contributor"],
   },
   "az104-19-backup": {
     nodes: [

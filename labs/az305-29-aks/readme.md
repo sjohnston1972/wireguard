@@ -1,4 +1,4 @@
-The smallest Azure Kubernetes Service cluster that does real work: a Free-tier control plane, one small node on Azure CNI Overlay in a subnet of the lab's VNet, and an empty container registry. Deploy a workload with `kubectl`, expose it publicly and privately through the load balancer AKS manages, and attach the registry so the node can pull your own image. From the AZ-305 outline, in Design infrastructure solutions: recommend a container-based solution, and recommend connectivity and load-balancing solutions for it.
+The smallest Azure Kubernetes Service cluster that does real work: a Free-tier control plane, one small node on Azure CNI Overlay in a subnet of the lab's VNet, and an empty container registry. Deploy a workload with `kubectl`, expose it publicly and privately through the load balancer AKS manages, and run your own image from the lab's registry, pulled with the node's managed identity. From the AZ-305 outline, in Design infrastructure solutions: recommend a container-based solution, and recommend connectivity and load-balancing solutions for it.
 
 ## What it deploys
 
@@ -7,7 +7,7 @@ The smallest Azure Kubernetes Service cluster that does real work: a Free-tier c
 - Outbound through a **Standard load balancer** that AKS makes, with one outbound public IP (`outbound_type` loadBalancer)
 - The **node resource group**, `rg-lab-az305-29-aks-nodes`: Azure makes it and everything in it (the node scale set, the `kubernetes` load balancer and its public IPs, an NSG and the kubelet's managed identity). It is named inside the lab so tear-down and the leftover checks see it; deleting the cluster deletes it
 - `id-<prefix>-aks`, the control plane's user-assigned identity, with **Network Contributor** on `snet-aks` only, so it can join the subnet and put internal load balancers in it
-- `<prefix>acr`, a Basic container registry with the admin user off. It is empty and **not attached**: the kubelet identity has no AcrPull until you give it one (below)
+- `<prefix>acr`, a Basic container registry with the admin user off, empty, and **attached**: the kubelet identity (`aks-lab-agentpool`, in the node resource group) has **AcrPull** on this registry only, so the node pulls from it with no password or pull secret
 
 ```text
 rg-lab-az305-29-aks
@@ -16,7 +16,7 @@ rg-lab-az305-29-aks
       aks-lab (Free tier, Kubernetes default version)
         system pool: 1 x Standard_B2s   pods 10.244.0.0/16 (overlay), services 10.0.0.0/16
         identity id-<prefix>-aks --Network Contributor--> snet-aks
-  <prefix>acr (Basic, empty, not attached)
+  <prefix>acr (Basic, empty) <--AcrPull-- kubelet identity (node group)
        peering (optional) <--> gateway VNet <--> WireGuard tunnel <--> you
 rg-lab-az305-29-aks-nodes (made by AKS)
   node scale set, load balancer "kubernetes" + outbound public IP, NSG, kubelet identity
@@ -31,7 +31,7 @@ Cost: about 8p an hour, most of it the node and its disk; the registry is billed
 - Look at the networking from both sides: `kubectl get nodes -o wide` (the node's address is in `snet-aks`), `kubectl get pods -A -o wide` (pod addresses from `10.244.0.0/16`) and `kubectl get svc -A` (service addresses from `10.0.0.0/16`). Then open `rg-lab-az305-29-aks-nodes` in the portal and find the scale set behind the node and the NIC that has only the node's address.
 - Run and expose a workload: `kubectl create deployment hello --image=mcr.microsoft.com/k8se/quickstart:latest --port=80`, then `kubectl expose deployment hello --type=LoadBalancer --port=80` and `kubectl get svc hello -w` until it has an external IP. Open it in a browser, and find the new frontend IP and rule on the `kubernetes` load balancer in the node resource group.
 - Expose the same deployment privately: `kubectl expose deployment hello --name=hello-internal --type=LoadBalancer --port=80 --overrides='{"metadata":{"annotations":{"service.beta.kubernetes.io/azure-load-balancer-internal":"true"}}}'`. AKS makes a second, internal load balancer with an address in `snet-aks` (the control plane's Network Contributor role is what lets it); `curl` that address from a tunnel client while peered.
-- Use the registry: `az acr import -n <prefix>acr --source mcr.microsoft.com/k8se/quickstart:latest --image hello:v1`, then `kubectl create deployment from-acr --image=<prefix>acr.azurecr.io/hello:v1` and see the pod stuck in `ErrImagePull`: the kubelet identity may not pull. Fix it with `az aks update --resource-group rg-lab-az305-29-aks --name aks-lab --attach-acr <prefix>acr` (your own rights make the **AcrPull** assignment; it goes with the registry at tear-down), check with `az aks check-acr --resource-group rg-lab-az305-29-aks --name aks-lab --acr <prefix>acr.azurecr.io`, and watch the pod start.
+- Run your own image from the registry: `az acr import -n <prefix>acr --source mcr.microsoft.com/k8se/quickstart:latest --image hello:v1`, then `kubectl create deployment from-acr --image=<prefix>acr.azurecr.io/hello:v1 --port=80` and watch `kubectl get pods -w` until it runs. `kubectl describe pod` shows the pull from your registry: the kubelet identity's **AcrPull** made it, with no pull secret. Check the path with `az aks check-acr --resource-group rg-lab-az305-29-aks --name aks-lab --acr <prefix>acr.azurecr.io`, and find the role on the registry's **Access control (IAM)** blade.
 - Scale: `az aks scale --resource-group rg-lab-az305-29-aks --name aks-lab --node-count 2` and see a second node join with its own /24 of pod addresses, then turn on the cluster autoscaler instead with `az aks update ... --enable-cluster-autoscaler --min-count 1 --max-count 2`. A second B2s doubles the node cost, and the B-series quota is 10 vCPUs per region.
 - Read the cluster's **Networking** and **Cluster configuration** blades and compare with what the exam asks you to choose: Free against Standard tier (an uptime SLA), overlay against flat pod addressing, a load balancer against a NAT gateway for outbound, a public against a private API server.
 

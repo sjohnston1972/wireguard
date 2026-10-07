@@ -27,9 +27,9 @@
 # exists before the cluster, so it can be given Network Contributor on the
 # node subnet first (Learn: the way to do it outside the Azure CLI); the
 # cluster waits a minute for that role to reach Azure Resource Manager.
-# AcrPull for the kubelet identity is NOT assigned: it is not on the
-# allow-list (labs/setup/allowed-roles.json), so attaching the registry is a
-# Things to try step the learner does with their own rights.
+# The kubelet identity, which AKS makes in the node resource group, gets
+# AcrPull on the lab's registry only, so the node can pull images from it
+# (identity change 3: AcrPull is on labs/setup/allowed-roles.json).
 
 locals {
   # The first /20 of the slot; the node subnet is its first /24 (overlay
@@ -127,7 +127,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   depends_on = [time_sleep.aks_subnet_role]
 }
 
-# ── Azure Container Registry: Basic, admin user off, empty ───────────────
+# ── Azure Container Registry: Basic, admin user off, empty, attached ─────
 
 resource "azurerm_container_registry" "acr" {
   name                = "${var.name_prefix}acr"
@@ -136,4 +136,18 @@ resource "azurerm_container_registry" "acr" {
   sku                 = "Basic"
   admin_enabled       = false
   tags                = var.tags
+}
+
+# The node pulls from the registry as the kubelet identity: AcrPull on this
+# registry, nothing wider (what az aks update --attach-acr would do).
+# try() as lab 36 does (ruling 58): a real plan has the kubelet identity
+# unknown and try() passes the unknown through; only labs-tf's mocked plan,
+# where the computed block is empty, reaches the "" (an empty principal
+# would fail the apply, never pass it).
+resource "azurerm_role_assignment" "kubelet_acr" {
+  scope                            = azurerm_container_registry.acr.id
+  role_definition_name             = "AcrPull"
+  principal_id                     = try(azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id, "")
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
 }

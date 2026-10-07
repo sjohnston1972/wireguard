@@ -16,7 +16,7 @@
 # Authored (ruling 54: a non-regional row, region Global): "Standard
 # Included LB Rules and Outbound Rules" £0.0189/h for the Standard load
 # balancer AKS makes with its outbound rule. The Free tier control plane
-# costs nothing; the VNet, identities, role assignment and NSG cost nothing.
+# costs nothing; the VNet, identities, role assignments and NSG cost nothing.
 # A LoadBalancer service the learner adds takes one more public IP
 # (£0.0038/h) on the same load balancer. The registry is billed by the day,
 # so a short session still pays about £0.13 for it.
@@ -25,7 +25,7 @@ version: 1
 title: "AKS small cluster, networking, ingress"
 summary: >-
   A Free-tier AKS cluster with one small node on Azure CNI Overlay in a subnet of the lab's VNet, its node resource
-  group named inside the lab, and an empty Basic registry, so you can deploy, expose and pull images with kubectl.
+  group named inside the lab, and a Basic registry it pulls from, so you can deploy, expose and pull images with kubectl.
 exam: AZ-305
 skill_areas: [az305.infra]
 level: expert
@@ -48,4 +48,5 @@ identity:
   creates: []
   roles:
     - { role: "Network Contributor", scope: resource }
+    - { role: "AcrPull", scope: resource }
   governance: false

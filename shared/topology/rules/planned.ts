@@ -999,7 +999,10 @@ export const TF_RULES: Record<string, TfRule> = {
       return h.refs(i, ["principal_id"]).flatMap((p) =>
         h.refs(i, ["scope"]).map((s) => {
           const one = s.type === "azurerm_key_vault_secret" ? " (one secret)" : s.type === "azurerm_key_vault_key" ? " (one key)" : s.type === "azurerm_key_vault_certificate" ? " (one certificate)" : "";
-          return { from: p, to: s, kind: "dependency" as const, label: `role: ${name}${one}` };
+          // An AKS cluster whose control plane has a user-assigned identity (its own card) can only be the principal
+          // through its kubelet identity, which AKS makes in the node group and the cluster's card stands for (lab 29).
+          const kubelet = p.type === "azurerm_kubernetes_cluster" && str(first(p.after.identity).type) === "UserAssigned" ? " (kubelet identity)" : "";
+          return { from: p, to: s, kind: "dependency" as const, label: `role: ${name}${one}${kubelet}` };
         }),
       );
     },
