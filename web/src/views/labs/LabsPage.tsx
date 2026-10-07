@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { EmptyState, ErrorState, Skeleton, StaleBanner, useToast } from "@/components";
+import { EmptyState, ErrorState, Skeleton, StaleBanner, cx, useToast } from "@/components";
 import { useLabs } from "@/api/queries";
 import { useLabViews } from "./contract";
 import { LabCatalogueGrid } from "./LabCatalogueGrid";
@@ -127,6 +127,8 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
   const failed = q.isError && !data;
   const stale = q.isError && !!data;
   const phoneView = layout === "phone" && !!shown;
+  // An empty catalogue or no matches: the empty state has the workspace to itself (no "Select a lab" box beside it).
+  const nothingShown = !!data && visible.length === 0;
   const details = { view: shown, data, layout, onSelect: select };
 
   // The phone's details are a full-width view right under the header; the strip, notices and running labs wait on the catalogue.
@@ -153,7 +155,7 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
       ) : (
         <>
           <LabsFilterToolbar views={views} visible={data ? visible.length : null} />
-          <div className="labs-workspace" aria-busy={data ? undefined : true}>
+          <div className={cx("labs-workspace", nothingShown && "labs-workspace--single")} aria-busy={data ? undefined : true}>
             <div className="labs-workspace__main">
               {data && data.labs.length === 0 ? (
                 <EmptyState title="No labs in the catalogue yet" description="Labs arrive with a Worker deploy that includes them." />
@@ -163,7 +165,7 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
                 <LabCatalogueGrid views={data ? visible : null} selectedId={shown?.card.id ?? null} onSelect={select} search={search} layout={layout} skeletons={layout === "phone" ? 3 : 6} />
               )}
             </div>
-            {layout === "wide" && (data ? <LabDetailsPanel {...details} /> : <PanelSkeleton />)}
+            {layout === "wide" && !nothingShown && (data ? <LabDetailsPanel {...details} /> : <PanelSkeleton />)}
           </div>
           {layout === "tablet" && <LabDetailsDrawer {...details} open={!!shown} onOpenChange={(o) => !o && close()} />}
         </>

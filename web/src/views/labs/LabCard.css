@@ -30,12 +30,14 @@
 
 .lab-card__objective { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
 
-.lab-card__topics { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+/* One row of chips, so cards in a row keep the same rhythm: a long word shrinks with an ellipsis (full word in its title). */
+.lab-card__topics { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: nowrap; gap: 6px; min-width: 0; }
 .lab-card__chip {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   padding: 2px 9px; border-radius: 999px; font-size: 11.5px; line-height: 1.5; white-space: nowrap;
   background: var(--bg-tile); border: 1px solid var(--border); color: var(--text-secondary);
 }
-.lab-card__chip--more { color: var(--text-primary); }
+.lab-card__chip--more { flex: none; color: var(--text-primary); }
 
 .lab-card__meta { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12.5px; color: var(--text-secondary); }
 .lab-card__meta li { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
@@ -47,6 +49,7 @@
 .lab-card__action--disabled { background: var(--disabled-bg); border-color: var(--disabled-border); color: var(--disabled-fg); }
 /* The twin follows the card's hover, as the button it stands for. */
 .lab-card:hover .lab-card__action.btn--secondary:not(.lab-card__action--link) { background: var(--bg-elevated); }
+.lab-card:hover .lab-card__action.btn--primary:not(.lab-card__action--link) { background: var(--blue-fill-hover); }
 
 /* Loading: the same box as a real card. */
 .lab-card--skeleton { gap: 12px; box-shadow: none; }

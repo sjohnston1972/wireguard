@@ -241,6 +241,7 @@ describe("states", () => {
     renderApp("/labs", { routes: routes({ "GET /api/v1/labs": labs({ labs: [] }) }) });
     expect(await screen.findByText("No labs in the catalogue yet")).toBeInTheDocument();
     expect(grid()).toBeNull();
+    expect(document.querySelector(".labs-details")).toBeNull();
   });
 
   it("no matches shows the empty state with Clear filters", async () => {
@@ -249,6 +250,9 @@ describe("states", () => {
     expect(await screen.findByText("No labs match these filters")).toBeInTheDocument();
     // Nothing is shown, so nothing is selected: the panel is empty and ?lab is dropped.
     await waitFor(() => expect(loc()).toBe("/labs?exam=AZ-305&type=break-fix"));
+    // No empty "Select a lab" box beside it: the empty state has the workspace to itself.
+    expect(document.querySelector(".labs-details")).toBeNull();
+    expect(document.querySelector(".labs-workspace")).toHaveClass("labs-workspace--single");
     const empty = screen.getByText("No labs match these filters").closest(".empty") as HTMLElement;
     await user.click(within(empty).getByRole("button", { name: "Clear filters" }));
     expect(await screen.findByRole("button", { name: /^Landing zone/ })).toBeInTheDocument();

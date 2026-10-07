@@ -133,6 +133,9 @@ export function cardAction(readiness: LabReadiness, status: LabSessionStatus, ca
       return { kind: "disabled", label: "Checking…", detail: "Checking…", variant: "secondary" };
     case "setup-required":
       return { kind: "select", label: "Review setup", labId: card?.id, variant: "secondary" };
+    case "ready":
+      // Filled blue, as in Steven's mockup: the obvious next step for a lab that can start now.
+      return { kind: "select", label: "View lab", labId: card?.id, variant: "primary" };
     default:
       return { kind: "select", label: "View lab", labId: card?.id, variant: "secondary" };
   }

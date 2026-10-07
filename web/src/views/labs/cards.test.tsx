@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import type { LabCard, LabsResponse } from "@shared/api";
 import { renderWithProviders } from "@/test/render";
 import { card, labs, run, session } from "./testData";
-import { useLabViews } from "./contract";
+import { labView, useLabViews } from "./contract";
+import { LabCard as LabCardView } from "./LabCard";
 import type { LabsLayout } from "./layout";
 import { LabCatalogueGrid } from "./LabCatalogueGrid";
 
@@ -237,6 +238,18 @@ describe("the grid", () => {
     expect(css).toMatch(/\.lab-grid > li\s*\{[^}]*display:\s*flex/);
     expect(css).toMatch(/\.lab-card\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column/);
     expect(css).toMatch(/\.lab-card__footer\s*\{[^}]*margin-top:\s*auto;[^}]*padding-top:\s*16px/);
+  });
+
+  it("topic chips stay on one row: a long word shrinks with an ellipsis (its full word in a tooltip) and +N never wraps alone", () => {
+    expect(css).toMatch(/\.lab-card__topics\s*\{[^}]*flex-wrap:\s*nowrap/);
+    const chip = css.match(/\.lab-card__chip\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(chip).toMatch(/min-width:\s*0/);
+    expect(chip).toMatch(/overflow:\s*hidden/);
+    expect(chip).toMatch(/text-overflow:\s*ellipsis/);
+    expect(css).toMatch(/\.lab-card__chip--more\s*\{[^}]*flex:\s*none/);
+    renderWithProviders(<LabCardView view={labView(card({ resources: { managedIdentity: 1, keyVault: 1, vm: 1, vnet: 1 } }), true)} selected={false} onSelect={() => {}} search="" layout="wide" />);
+    const chips = within(screen.getByRole("list", { name: "Topics" })).getAllByRole("listitem");
+    expect(chips.slice(0, 3).map((c) => c.getAttribute("title"))).toEqual(["Managed identities", "Key Vault", "Virtual machines"]);
   });
 
   it("columns follow the grid's own width: 3 at 872 px, 2 at 576 px, else 1", () => {

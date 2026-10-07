@@ -14,10 +14,11 @@
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
-import { Check } from "lucide-react";
+import { Check, ChevronLeft } from "lucide-react";
 import type { LabCard, LabsResponse } from "@shared/api";
 import { Button, Drawer, Skeleton } from "@/components";
 import { useLab } from "@/api/queries";
+import { regionLabel } from "@/shell/StateChip";
 import type { DetailsProps, LabView } from "./contract";
 import { LabLaunchAction, focusCard } from "./LabLaunchAction";
 import { LabPrerequisites } from "./LabPrerequisites";
@@ -38,6 +39,12 @@ function measuredDeploy(card: LabCard): string | null {
   const m = Math.floor(t.deploySeconds / 60);
   const s = Math.round(t.deploySeconds % 60);
   return `measured ${m > 0 ? `${m} min ` : ""}${s} s`;
+}
+
+/** "UK South (uksouth)": the region's name and the code the deploy uses; the code alone when it is not one we know. */
+function regionWords(code: string): string {
+  const name = regionLabel(code);
+  return name && name !== code ? `${name} (${code})` : code;
 }
 
 /** Keep a figure and its unit together ("2 h" never breaks before the h). */
@@ -89,19 +96,23 @@ function DetailsHead({ view, headingId, titleRef, showTitle = true }: { view: La
 }
 
 /** The deploy checks from GET /labs/:id (one per selected lab, cached): warnings, a skeleton while loading, Retry when it fails. */
-function Checks({ q }: { q: ReturnType<typeof useLab> }) {
+function Checks({ q, card }: { q: ReturnType<typeof useLab>; card: LabCard }) {
   const h = useId();
   const d = q.data;
+  // The launch action above already says each blocker's sentence (with its fix): never twice.
+  const said = new Set((card.blockers ?? []).map((b) => b.message));
+  const warnings = d ? d.warnings.filter((w) => !said.has(w.message)) : [];
+  const dropped = d ? d.warnings.length - warnings.length : 0;
   return (
     <section className="lab-details__section" aria-labelledby={h} aria-busy={!d && !q.isError ? true : undefined}>
       <h3 className="lab-details__h" id={h}>
         Deploy checks
       </h3>
       {d ? (
-        d.warnings.length > 0 ? (
-          <Warnings warnings={d.warnings} />
+        warnings.length > 0 ? (
+          <Warnings warnings={warnings} />
         ) : (
-          <p className="lab-details__muted">{d.session ? "A session is live: see it in the lab's dialog." : "No warnings for a deploy now."}</p>
+          <p className="lab-details__muted">{d.session ? "A session is live: see it in the lab's dialog." : dropped > 0 ? "No other warnings for a deploy." : "No warnings for a deploy now."}</p>
         )
       ) : q.isError ? (
         <p className="lab-details__retry">
@@ -127,7 +138,8 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
   const q = useLab(c.id);
   const learnId = useId();
   const cleanupId = useId();
-  const destination = c.running ? c.running.region : q.data ? q.data.defaults.region : q.isError ? null : <Skeleton width={80} />;
+  const region = c.running ? c.running.region : q.data ? q.data.defaults.region : null;
+  const destination = region ? regionWords(region) : q.isError ? null : <Skeleton width={80} />;
   const autoCleanup = data?.autoCleanup ?? false;
   const measured = measuredDeploy(c);
   return (
@@ -173,7 +185,7 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
         </Fact>
         <Fact label="Estimated cost">
           <span className="lab-facts__main">{fmtHourlyPrecise(c.estGbpH)}</span>
-          {Number.isFinite(c.estGbpH) && c.estGbpH >= 0 && <span className="lab-facts__sub">{keepUnits(fmtSessionCost(c.estGbpH, c.timing.sessionH))}</span>}
+          {Number.isFinite(c.estGbpH) && c.estGbpH > 0 && <span className="lab-facts__sub">{keepUnits(fmtSessionCost(c.estGbpH, c.timing.sessionH))}</span>}
         </Fact>
       </dl>
       <dl className="lab-facts" aria-label="Lab facts">
@@ -186,7 +198,7 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
         <Fact label="History">{historyWords(c)}</Fact>
       </dl>
 
-      <Checks q={q} />
+      <Checks q={q} card={c} />
 
       <LabPrerequisites ids={c.prerequisites} labs={data?.labs} onSelect={onSelect} />
 
@@ -315,6 +327,7 @@ export function LabDetailsView({ view, data, layout, onSelect, onBack }: Details
   return (
     <section className="labs-details-view lab-details lab-details--view" aria-labelledby={view ? id : undefined} aria-label={view ? undefined : "Lab details"}>
       <Button variant="ghost" size="sm" onClick={back} className="lab-details__back">
+        <ChevronLeft size={16} aria-hidden="true" />
         Back to labs
       </Button>
       {view ? (

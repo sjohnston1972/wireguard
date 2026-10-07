@@ -17,11 +17,11 @@
 .labs-word--blue { --c: var(--blue-bright); }
 .labs-word--grey { --c: var(--text-secondary); }
 
-/* Running strip: one chip per live session, side by side (at most 5 can run). */
-.labs-strip__list { list-style: none; margin: 0; padding: 0; display: flex; gap: var(--gap); overflow-x: auto; }
+/* Running strip: one chip per live session, side by side, wrapping onto a second row rather than scrolling sideways (at most 5 can run). */
+.labs-strip__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--gap); }
 .labs-chip {
   --c: var(--green);
-  flex: 1 1 0; min-width: 340px; max-width: 560px;
+  flex: 1 1 340px; min-width: 0; max-width: 560px;
   display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head actions" "facts actions"; gap: 6px 12px; align-items: center;
   padding: 10px 14px; border-radius: var(--radius-panel); background: var(--bg-panel); border: 1px solid var(--border);
   border-left: 3px solid var(--c);

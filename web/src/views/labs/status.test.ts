@@ -229,6 +229,15 @@ describe("badge and actions (spec §6.3 table)", () => {
     expect(cardAction("unavailable", "running", c)).toMatchObject({ kind: "open", label: "Open session" });
   });
 
+  it("the card's footer is filled blue (primary) for a lab ready to start and a running session, as in Steven's mockup; outlined otherwise", () => {
+    expect(cardAction("ready", "none", card()).variant).toBe("primary");
+    expect(cardAction("ready", "running", card({ running: session() })).variant).toBe("primary");
+    expect(cardAction("setup-required", "none", card({ blockers: [B.role] })).variant).toBe("secondary");
+    expect(cardAction("unavailable", "none", card({ blockers: [B.slots] })).variant).toBe("secondary");
+    expect(cardAction("ready", "deploying", card({ running: deploying })).variant).toBe("secondary");
+    expect(cardAction("checking", "none", card()).variant).toBe("secondary");
+  });
+
   it("a running lab doing something else says so (stateWord)", () => {
     const c = card({ running: session({ state: "running", activeRun: run({ action: "peer", step: { done: 2, of: 7, name: null } }) }) });
     expect(statusBadge("ready", "running", c)).toEqual({ label: "Running, peer 2/7", tone: "green" });

@@ -62,6 +62,8 @@ describe("details panel content (spec §8.5)", () => {
     open({ estGbpH: 0 });
     expect(fact("Estimated cost")).toHaveTextContent("No hourly charge at list price");
     expect(panel().queryByText(/£0\.00/)).toBeNull();
+    // Said once: no "no charge at list price for 1 h" line repeating it.
+    expect(fact("Estimated cost")).not.toHaveTextContent(/for \d/);
   });
 
   it("a missing estimate says Estimate unavailable", () => {

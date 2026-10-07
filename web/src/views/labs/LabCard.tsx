@@ -69,7 +69,7 @@ export const LabCard = memo(function LabCard({ view, selected, onSelect, search,
       {chips.shown.length > 0 && (
         <ul className="lab-card__topics" aria-label="Topics">
           {chips.shown.map((t) => (
-            <li key={t} className="lab-card__chip">
+            <li key={t} className="lab-card__chip" title={t}>
               {t}
             </li>
           ))}
