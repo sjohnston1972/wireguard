@@ -218,3 +218,36 @@ test("a public IP belongs to a gateway, Route Server, firewall, Bastion, App Gat
   assert.throws(() => check(L95, PUBLIC_IPS, { load: () => withOwner("azurerm_container_group", "ip = azurerm_public_ip.gw.id") })(), /azurerm_public_ip\.gw/);
   assert.throws(() => check(L95, PUBLIC_IPS, { load: () => withOwner("azurerm_network_interface", "ip_configuration {\n  public_ip_address_id = azurerm_public_ip.gw.id\n}") })(), /public IP/);
 });
+
+// AZ-305 batch 4, lab 29: an AKS cluster's default node pool is VMs too. capacity.vm_sizes lists its nodes at their
+// maximum (max_count when autoscaling, else node_count), a retail.sku item prices node_count of them, and its OS disks
+// are managed Premium SSD (AKS picks the tier from the size; os_disk_size_gb 64 is a P6): one "P6 LRS Disk" per node.
+test("the suite counts an AKS cluster's nodes for capacity, size prices and OS disks", () => {
+  const AKS = "az305-29-aks";
+  const run = (l) => {
+    for (const name of [IDENTITY, PUBLIC_IPS]) contentChecks(AKS, { marker: "££", identity: "match", load: () => l }).find((c) => c.name === `${AKS}: ${name}`).fn();
+  };
+  const fresh = () => lab(AKS);
+  run(fresh());
+  const pool = (l, from, to) => {
+    const c = l.blocks.find((b) => b.labels[0] === "azurerm_kubernetes_cluster");
+    c.body = c.body.replace(from, to);
+    return l;
+  };
+  // No capacity entry for the node: refused.
+  const noSizes = fresh();
+  noSizes.yaml.capacity.vm_sizes = [];
+  assert.throws(() => run(noSizes), /capacity\.vm_sizes/);
+  // Autoscaling to 3: three capacity entries (the maximum), still one priced node.
+  const scaled = pool(fresh(), /node_count\s*=\s*1/, "node_count = 1\n    auto_scaling_enabled = true\n    min_count = 1\n    max_count = 3");
+  assert.throws(() => run(scaled), /capacity\.vm_sizes/);
+  scaled.yaml.capacity.vm_sizes = ["Standard_B2s", "Standard_B2s", "Standard_B2s"];
+  run(scaled);
+  // Two nodes but one priced: refused; and one P6 disk per node.
+  const two = pool(fresh(), /node_count\s*=\s*1/, "node_count = 2");
+  two.yaml.capacity.vm_sizes = ["Standard_B2s", "Standard_B2s"];
+  assert.throws(() => run(two), /Standard_B2s: 2 priced/);
+  const noDisk = fresh();
+  noDisk.yaml.cost.items = noDisk.yaml.cost.items.filter((i) => i.retail?.meter !== "P6 LRS Disk");
+  assert.throws(() => run(noDisk), /P6 LRS Disk/);
+});
