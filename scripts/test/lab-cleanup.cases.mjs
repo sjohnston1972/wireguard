@@ -1,4 +1,4 @@
-// lab-cleanup.test.mjs
+// lab-cleanup.cases.mjs   (run by lab-cleanup.shard-<i>.test.mjs; all of it: node --test scripts/test/lab-cleanup.cases.mjs)
 //
 // Plain English: the lab pipeline's bash steps that talk to Azure, run for
 // real in bash against a pretend az (fixtures/labs/harness.mjs records every
@@ -6,8 +6,11 @@
 // clean check (what gets a lab back to £0 when Terraform cannot), peering to
 // the gateway and back, and the ready check. Skipped where bash is missing
 // (CI's Ubuntu runner has it; so does Git Bash on Windows).
+//
+// Several minutes of bash on Windows, so the tests are split across the
+// shard files, which node --test runs in parallel (fixtures/shard.mjs).
 
-import { test } from "node:test";
+import { test } from "./fixtures/shard.mjs";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -233,29 +236,34 @@ test("unblock deploys None for every network manager in a lab group and waits un
 // Review fix 6: Azure refuses a commit while a deployment is still Deploying, so a None sent then is lost. Unblock
 // commits None once the type's status is committable again (inside the wait), and a configurationIds that is null
 // counts as none rather than breaking the query.
-test("unblock commits None again once a Deploying deployment finishes, or after a refused commit", { skip }, () => {
-  const isCommit = (c) => /^az rest --method post --url \S+\/commit\?/.test(c);
-  const avnm = (status, commit = {}) => world([ONE_GROUP, { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` }, ...statusRules("\\S+", status), { match: "^rest --method post --url \\S+/commit\\?", ...commit }]);
+const isCommit = (c) => /^az rest --method post --url \S+\/commit\?/.test(c);
+const avnm = (status, commit = {}) => world([ONE_GROUP, { match: "^rest --method get --url \\S+/networkManagers\\?", out: `${NM}\tuksouth` }, ...statusRules("\\S+", status), { match: "^rest --method post --url \\S+/commit\\?", ...commit }]);
+
+test("unblock commits None once a Deploying deployment finishes, not while it is Deploying", { skip }, () => {
   // First read: the learner's own deploy still Deploying (a commit now would be refused). Then Deployed: commit None.
   const w = avnm(["uksouth\tConnectivity\tDeploying\t1", "uksouth\tConnectivity\tDeployed\t1", "uksouth\tConnectivity\tDeploying\t0", "uksouth\tConnectivity\tDeployed\t0"]);
   const r = w.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth" });
   assert.equal(r.status, 0, r.out);
-  let calls = w.calls();
+  const calls = w.calls();
   const commits = calls.filter(isCommit);
   assert.deepEqual(commits, [`az rest --method post --url ${NM}/commit?api-version=2024-05-01 --body {"targetLocations":["uksouth"],"configurationIds":[],"commitType":"Connectivity"} -o none`], calls.join("\n"));
   const statusAt = statusReads(calls);
   assert.ok(calls.indexOf(commits[0]) > statusAt[1], "None is committed after the status said Deployed, not while Deploying");
   assert.match(r.stdout, /unblock: avnm-l06: nothing deployed any more/);
   w.cleanup();
-  // A commit Azure refused is sent again when the status still shows something deployed and nothing Deploying.
+});
+
+test("unblock sends a commit Azure refused again when the status still shows something deployed and nothing Deploying", { skip }, () => {
   const x = avnm(["uksouth\tSecurityAdmin\tDeployed\t1", "uksouth\tSecurityAdmin\tDeployed\t1", "uksouth\tSecurityAdmin\tDeployed\t0"], { code: [1, 0], err: "ERROR: (CannotCommitWhileDeploying)" });
   const xr = x.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth" });
   assert.equal(xr.status, 0, xr.out);
-  calls = x.calls();
+  const calls = x.calls();
   assert.equal(calls.filter(isCommit).length, 2, calls.join("\n"));
   assert.match(xr.stdout, /unblock: avnm-l06: nothing deployed any more/);
   x.cleanup();
-  // Bounded: a commit refused every time is not sent on every poll.
+});
+
+test("unblock's commits are bounded: one refused every time is not sent on every poll", { skip }, () => {
   const stuck = avnm("uksouth\tSecurityAdmin\tDeployed\t1", { code: 1, err: "ERROR: (Conflict)" });
   stuck.run("infra/ci/lab-unblock.sh", [ID], { LAB_REGION: "uksouth", LAB_UNBLOCK_AVNM_WAIT_SECONDS: "600" });
   const n = stuck.calls().filter(isCommit).length;
@@ -787,14 +795,17 @@ test("safety net: the retry's unblock gets every wait as min(its default, the ti
     w.cleanup();
     return Object.fromEntries(readFileSync(seen, "utf8").trim().split("\n").map((l) => l.split("=")));
   };
-  // 300 s of polling left (720 s to the deadline, 420 s kept back): a third of it, 100 s, for each wait.
+  // 300 s of polling left (720 s to the deadline, 420 s kept back): a third of it, 100 s, for each wait. The script
+  // reads the clock some s seconds after `now` (0 <= s <= took, longer on a busy machine): each wait is then
+  // (300 - s) / 3, and the end time that read plus the wait.
   const e = waits({ LAB_JOB_DEADLINE: String(now + 720) });
+  const took = Math.ceil(Date.now() / 1000) - now;
   for (const k of ["VAULT", "ASR", "ASR_CLEANUP", "AVNM", "VWAN", "NET"]) {
     const v = Number(e[`LAB_UNBLOCK_${k}_WAIT_SECONDS`]);
-    assert.ok(v <= 100 && v >= 90, `LAB_UNBLOCK_${k}_WAIT_SECONDS=${v}`);
+    assert.ok(v <= 100 && v >= Math.floor((300 - took) / 3) - 1, `LAB_UNBLOCK_${k}_WAIT_SECONDS=${v} (the run took up to ${took} s)`);
   }
   const until = Number(e.LAB_UNBLOCK_UNTIL);
-  assert.ok(until >= now + 90 && until <= now + 101, `LAB_UNBLOCK_UNTIL ${until - now} s from now`);
+  assert.ok(until >= now + 90 && until <= now + took + 101, `LAB_UNBLOCK_UNTIL ${until - now} s from now (the run took up to ${took} s)`);
   // Plenty of time: each wait keeps its own default (or the setting it was given).
   const big = waits({ LAB_DELETE_WAIT_SECONDS: "36000", LAB_UNBLOCK_NET_WAIT_SECONDS: "45" });
   assert.deepEqual([big.LAB_UNBLOCK_VAULT_WAIT_SECONDS, big.LAB_UNBLOCK_ASR_WAIT_SECONDS, big.LAB_UNBLOCK_ASR_CLEANUP_WAIT_SECONDS, big.LAB_UNBLOCK_AVNM_WAIT_SECONDS, big.LAB_UNBLOCK_VWAN_WAIT_SECONDS, big.LAB_UNBLOCK_NET_WAIT_SECONDS], ["300", "900", "600", "600", "1800", "45"]);
