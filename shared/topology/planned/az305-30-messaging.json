@@ -1,0 +1,225 @@
+{
+ "schema": 1,
+ "labId": "az305-30-messaging",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_container_app_environment.lab",
+   "key": "microsoft.app/managedenvironments/cae-lab",
+   "kind": "containerAppEnv",
+   "label": "cae-lab",
+   "props": {
+    "sku": "Consumption"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.App/managedEnvironments",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_container_app_job.consumer",
+   "key": "microsoft.app/jobs/caj-consumer",
+   "kind": "containerAppJob",
+   "label": "caj-consumer",
+   "props": {
+    "cpu": 0.25,
+    "chips": [
+     "event-driven"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.App/jobs",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_eventgrid_system_topic.storage",
+   "key": "microsoft.eventgrid/systemtopics/egst-storage",
+   "kind": "eventGrid",
+   "label": "egst-storage",
+   "props": {
+    "counts": [
+     "subscriptions: 1"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.EventGrid/systemTopics",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_eventgrid_system_topic_event_subscription.blob_to_queue",
+     "label": "blob-to-queue",
+     "armType": "Microsoft.EventGrid/systemTopics/eventSubscriptions"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_log_analytics_workspace.lab",
+   "key": "microsoft.operationalinsights/workspaces/log-lab",
+   "kind": "logAnalytics",
+   "label": "log-lab",
+   "props": {
+    "retentionDays": 30,
+    "dailyCapGb": 0.05
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.OperationalInsights/workspaces",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-30-messaging",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-30-messaging",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-30-messaging",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_servicebus_namespace.sb",
+   "key": "microsoft.servicebus/namespaces/sb-{p}",
+   "kind": "serviceBus",
+   "label": "sb-l30…",
+   "props": {
+    "sku": "Standard",
+    "counts": [
+     "queues: 2",
+     "topics: 1",
+     "subscriptions: 2"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.ServiceBus/namespaces",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_servicebus_namespace_authorization_rule.consumer",
+     "label": "consumer",
+     "armType": "Microsoft.ServiceBus/namespaces/authorizationRules"
+    },
+    {
+     "id": "tf:azurerm_servicebus_namespace_authorization_rule.scaler",
+     "label": "scaler",
+     "armType": "Microsoft.ServiceBus/namespaces/authorizationRules"
+    },
+    {
+     "id": "tf:azurerm_servicebus_queue.blob_events",
+     "label": "blob-events",
+     "armType": "Microsoft.ServiceBus/namespaces/queues"
+    },
+    {
+     "id": "tf:azurerm_servicebus_queue.orders",
+     "label": "orders",
+     "armType": "Microsoft.ServiceBus/namespaces/queues"
+    },
+    {
+     "id": "tf:azurerm_servicebus_subscription.all",
+     "label": "all",
+     "armType": "Microsoft.ServiceBus/namespaces/topics/subscriptions"
+    },
+    {
+     "id": "tf:azurerm_servicebus_subscription.high_priority",
+     "label": "high-priority",
+     "armType": "Microsoft.ServiceBus/namespaces/topics/subscriptions"
+    },
+    {
+     "id": "tf:azurerm_servicebus_subscription_rule.high_priority",
+     "label": "priority-high",
+     "armType": "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules"
+    },
+    {
+     "id": "tf:azurerm_servicebus_topic.notifications",
+     "label": "notifications",
+     "armType": "Microsoft.ServiceBus/namespaces/topics"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_storage_account.events",
+   "key": "microsoft.storage/storageaccounts/{p}evt",
+   "kind": "storage",
+   "label": "l30…evt",
+   "props": {
+    "accountKind": "StorageV2",
+    "sku": "Standard LRS",
+    "accessTier": "Hot",
+    "publicAccess": true,
+    "counts": [
+     "containers: 2"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Storage/storageAccounts",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_storage_container.deadletter",
+     "label": "eventgrid-deadletter",
+     "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    },
+    {
+     "id": "tf:azurerm_storage_container.uploads",
+     "label": "uploads",
+     "armType": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_container_app_environment.lab>tf:azurerm_log_analytics_workspace.lab:logs",
+   "from": "tf:azurerm_container_app_environment.lab",
+   "to": "tf:azurerm_log_analytics_workspace.lab",
+   "kind": "dependency",
+   "label": "logs",
+   "via": "tf:azurerm_container_app_environment.lab"
+  },
+  {
+   "id": "dependency:tf:azurerm_container_app_job.consumer>tf:azurerm_container_app_environment.lab:environment",
+   "from": "tf:azurerm_container_app_job.consumer",
+   "to": "tf:azurerm_container_app_environment.lab",
+   "kind": "dependency",
+   "label": "environment",
+   "via": "tf:azurerm_container_app_job.consumer"
+  },
+  {
+   "id": "dependency:tf:azurerm_eventgrid_system_topic.storage>tf:azurerm_storage_account.events:dead-letter",
+   "from": "tf:azurerm_eventgrid_system_topic.storage",
+   "to": "tf:azurerm_storage_account.events",
+   "kind": "dependency",
+   "label": "dead-letter",
+   "via": "tf:azurerm_eventgrid_system_topic_event_subscription.blob_to_queue"
+  },
+  {
+   "id": "dependency:tf:azurerm_eventgrid_system_topic.storage>tf:azurerm_storage_account.events:source",
+   "from": "tf:azurerm_eventgrid_system_topic.storage",
+   "to": "tf:azurerm_storage_account.events",
+   "kind": "dependency",
+   "label": "source",
+   "via": "tf:azurerm_eventgrid_system_topic.storage"
+  },
+  {
+   "id": "traffic:tf:azurerm_container_app_job.consumer>tf:azurerm_servicebus_namespace.sb:orders, blob-events",
+   "from": "tf:azurerm_container_app_job.consumer",
+   "to": "tf:azurerm_servicebus_namespace.sb",
+   "kind": "traffic",
+   "label": "orders, blob-events",
+   "via": "tf:azurerm_container_app_job.consumer"
+  },
+  {
+   "id": "traffic:tf:azurerm_eventgrid_system_topic.storage>tf:azurerm_servicebus_namespace.sb:blob-events",
+   "from": "tf:azurerm_eventgrid_system_topic.storage",
+   "to": "tf:azurerm_servicebus_namespace.sb",
+   "kind": "traffic",
+   "label": "blob-events",
+   "via": "tf:azurerm_eventgrid_system_topic_event_subscription.blob_to_queue"
+  }
+ ]
+}

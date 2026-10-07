@@ -438,6 +438,27 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     nodes: ["resourceGroup rg-lab-az305-25-storage-design", "storage l25…lake < rg-lab-az305-25-storage-design", "storage l25…rec < rg-lab-az305-25-storage-design"],
     edges: [],
   },
+  // AZ-305 batch 4: queues, topic, subscriptions, the rule and both access policies fold into the namespace; the
+  // event subscription into its system topic; the containers into the account.
+  "az305-30-messaging": {
+    nodes: [
+      "containerAppEnv cae-lab < rg-lab-az305-30-messaging",
+      "containerAppJob caj-consumer < rg-lab-az305-30-messaging",
+      "eventGrid egst-storage < rg-lab-az305-30-messaging",
+      "logAnalytics log-lab < rg-lab-az305-30-messaging",
+      "resourceGroup rg-lab-az305-30-messaging",
+      "serviceBus sb-l30… < rg-lab-az305-30-messaging",
+      "storage l30…evt < rg-lab-az305-30-messaging",
+    ],
+    edges: [
+      "caj-consumer -> sb-l30… : orders, blob-events",
+      "caj-consumer ..> cae-lab : environment",
+      "cae-lab ..> log-lab : logs",
+      "egst-storage -> sb-l30… : blob-events",
+      "egst-storage ..> l30…evt : dead-letter",
+      "egst-storage ..> l30…evt : source",
+    ],
+  },
   "az700-43-private-link": {
     nodes: [
       "loadBalancer lb-svc < snet-svc",

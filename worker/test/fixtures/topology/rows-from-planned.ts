@@ -80,6 +80,9 @@ export const LISTED = new Set(
     "Microsoft.ContainerInstance/containerGroups",
     "Microsoft.App/containerApps",
     "Microsoft.App/managedEnvironments",
+    "Microsoft.App/jobs",
+    "Microsoft.ServiceBus/namespaces",
+    "Microsoft.EventGrid/systemTopics",
     "Microsoft.ContainerRegistry/registries",
     "Microsoft.ContainerService/managedClusters",
     "Microsoft.OperationalInsights/workspaces",
@@ -530,6 +533,41 @@ function compute(k: TemplateKit): void {
   for (const n of g.nodes.filter((x) => x.kind === "recoveryVault" && x.scope !== "outside")) {
     const r = rowOf(n);
     if (r) r.sku = { name: "RS0", tier: "Standard" };
+  }
+  // AZ-305 batch 4, lab 30: a job (Learn's Microsoft.App/jobs: environmentId, configuration.triggerType and
+  // eventTriggerConfig.scale.rules[].metadata), a namespace (sku), a system topic (source), an environment's
+  // workspace (appLogsConfiguration.logAnalyticsConfiguration.customerId against the workspace's customerId).
+  for (const n of g.nodes.filter((x) => x.kind === "containerAppJob" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const env = edgesFrom(n.id).find((e) => e.label === "environment");
+    const rules = edgesFrom(n.id)
+      .filter((e) => e.kind === "traffic" && byId.get(e.to)?.kind === "serviceBus")
+      .flatMap((e) => (e.label ?? "").split(", ").map((q) => ({ name: q, type: "azure-servicebus", metadata: { queueName: q, namespace: nodeArmId(byId.get(e.to)!)?.split("/").at(-1), messageCount: "1" } })));
+    const trigger = (n.props.chips as string[] | undefined)?.[0];
+    Object.assign(P(r), {
+      environmentId: env ? nodeArmId(byId.get(env.to)!) : null,
+      configuration: { triggerType: trigger === "scheduled" ? "Schedule" : trigger === "manual" ? "Manual" : "Event", eventTriggerConfig: { scale: { minExecutions: 0, maxExecutions: 2, rules } } },
+      template: { containers: [{ name: "main", resources: { cpu: n.props.cpu ?? 0.25, memory: "0.5Gi" } }] },
+    });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "serviceBus" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (r) r.sku = { name: String(n.props.sku ?? "Standard"), tier: String(n.props.sku ?? "Standard") };
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "eventGrid" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    const src = edgesFrom(n.id).find((e) => e.label === "source");
+    if (r && src) Object.assign(P(r), { source: nodeArmId(byId.get(src.to)!), topicType: "Microsoft.Storage.StorageAccounts" });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "containerAppEnv" && x.scope !== "outside")) {
+    const logs = edgesFrom(n.id).find((e) => e.label === "logs");
+    const r = rowOf(n);
+    const w = logs ? rowOf(byId.get(logs.to)!) : null;
+    if (!r || !w) continue;
+    const customerId = `7a6b5c4d-3e2f-4a1b-8c9d-${w.name.length.toString(16).padStart(12, "0")}`;
+    P(w).customerId = customerId;
+    P(r).appLogsConfiguration = { destination: "log-analytics", logAnalyticsConfiguration: { customerId } };
   }
 }
 

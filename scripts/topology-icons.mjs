@@ -83,6 +83,8 @@ export const ICON_FILES = {
   "container-apps": "other/02884-icon-service-Worker-Container-App.svg",
   "container-apps-environments": "other/02989-icon-service-Container-Apps-Environments.svg",
   "container-registries": "containers/10105-icon-service-Container-Registries.svg",
+  "service-bus": "integration/10836-icon-service-Azure-Service-Bus.svg",
+  "event-grid-system-topics": "integration/02073-icon-service-System-Topic.svg",
   "app-service-plans": "app services/00046-icon-service-App-Service-Plans.svg",
   "storage-accounts": "storage/10086-icon-service-Storage-Accounts.svg",
   "sql-server": "databases/10132-icon-service-SQL-Server.svg",

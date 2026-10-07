@@ -75,6 +75,10 @@
   "rg": true,
   "tags": true
  },
+ "azurerm_container_app_job": {
+  "rg": true,
+  "tags": true
+ },
  "azurerm_container_group": {
   "rg": true,
   "tags": true
@@ -110,6 +114,14 @@
  "azurerm_dns_zone": {
   "rg": true,
   "tags": true
+ },
+ "azurerm_eventgrid_system_topic": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_eventgrid_system_topic_event_subscription": {
+  "rg": true,
+  "tags": false
  },
  "azurerm_express_route_circuit": {
   "rg": true,
@@ -470,6 +482,30 @@
  "azurerm_service_plan": {
   "rg": true,
   "tags": true
+ },
+ "azurerm_servicebus_namespace": {
+  "rg": true,
+  "tags": true
+ },
+ "azurerm_servicebus_namespace_authorization_rule": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_servicebus_queue": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_servicebus_subscription": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_servicebus_subscription_rule": {
+  "rg": false,
+  "tags": false
+ },
+ "azurerm_servicebus_topic": {
+  "rg": false,
+  "tags": false
  },
  "azurerm_site_recovery_fabric": {
   "rg": true,

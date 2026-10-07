@@ -618,6 +618,49 @@ export const ARM_RULES: Record<string, ArmRule> = {
   "microsoft.app/managedenvironments": {
     props: (r) => ({ sku: str(arr(props(r).workloadProfiles)[0]?.workloadProfileType) ?? "Consumption" }),
     place: (r) => str(obj(props(r).vnetConfiguration).infrastructureSubnetId) ?? null,
+    // Its logs go to the workspace whose customer id it names.
+    edges: (r, h) => {
+      const customer = lower(str(obj(obj(props(r).appLogsConfiguration).logAnalyticsConfiguration).customerId));
+      if (!customer) return [];
+      return (h.rowsOfType?.("microsoft.operationalinsights/workspaces") ?? [])
+        .filter((w) => lower(str(props(w).customerId)) === customer)
+        .map((w) => ({ from: lower(r.id), to: lower(w.id), kind: "dependency" as const, label: "logs" }));
+    },
+  },
+  // A job: its trigger as a chip; → each Service Bus namespace its KEDA rules watch (traffic, the queues' names).
+  "microsoft.app/jobs": {
+    props: (r) => {
+      const cs = arr(obj(props(r).template).containers).map((c) => obj(c.resources));
+      const trigger = lower(str(obj(props(r).configuration).triggerType));
+      const chip = trigger === "event" ? "event-driven" : trigger === "schedule" ? "scheduled" : trigger === "manual" ? "manual" : undefined;
+      return { cpu: cs.length ? Math.round(cs.reduce((a, c) => a + (typeof c.cpu === "number" ? c.cpu : 0), 0) * 100) / 100 : undefined, chips: chip ? [chip] : undefined };
+    },
+    edges: (r, h) => {
+      const env = str(props(r).environmentId);
+      const rules = arr(obj(obj(obj(props(r).configuration).eventTriggerConfig).scale).rules).filter((x) => lower(str(x.type)) === "azure-servicebus");
+      const byNs = new Map<string, string[]>();
+      for (const x of rules) {
+        const md = obj(x.metadata);
+        const ns = lower(str(md.namespace));
+        const q = str(md.queueName) ?? str(md.topicName);
+        if (ns && q) byNs.set(ns, [...(byNs.get(ns) ?? []), q]);
+      }
+      const namespaces = h.rowsOfType?.("microsoft.servicebus/namespaces") ?? [];
+      return [
+        ...[...byNs].flatMap(([ns, qs]) => namespaces.filter((n) => lower(n.name) === ns).map((n) => ({ from: lower(r.id), to: lower(n.id), kind: "traffic" as const, label: qs.join(", ") }))),
+        ...(env ? [{ from: lower(r.id), to: lower(env), kind: "dependency" as const, label: "environment" }] : []),
+        ...identityEdges(r),
+      ];
+    },
+  },
+
+  // ── Messaging and events (AZ-305 batch 4, lab 30): queues, topics and event subscriptions are not rows ──
+  "microsoft.servicebus/namespaces": { props: (r) => ({ sku: str(obj(r.sku).name) }) },
+  "microsoft.eventgrid/systemtopics": {
+    edges: (r) => {
+      const source = str(props(r).source);
+      return source ? [{ from: lower(r.id), to: lower(source), kind: "dependency" as const, label: "source" }] : [];
+    },
   },
   "microsoft.app/containerapps": {
     props: (r) => {
