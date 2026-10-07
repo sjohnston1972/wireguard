@@ -1,46 +1,9 @@
-import { NavLink } from "react-router-dom";
-import { ErrorState, PageHeader, Skeleton } from "@/components";
+import { ErrorState, Skeleton } from "@/components";
 import { useLabs } from "@/api/queries";
-import { EnvironmentField } from "@/shell/StateChip";
+import { LabsHeader } from "./LabsHeader";
 import { Catalogue } from "./Catalogue";
 import { Filters } from "./Filters";
 import { Orphans, RunningStrip } from "./RunningStrip";
-
-/** Catalogue | Your labs: the tab's two pages, as links (so each has its address). */
-export function LabsNav() {
-  return (
-    <nav className="labs-nav" aria-label="Labs pages">
-      <NavLink end to="/labs" className={({ isActive }) => (isActive ? "labs-nav__link labs-nav__link--on" : "labs-nav__link")}>
-        Catalogue
-      </NavLink>
-      <NavLink to="/labs/history" className={({ isActive }) => (isActive ? "labs-nav__link labs-nav__link--on" : "labs-nav__link")}>
-        Your labs
-      </NavLink>
-    </nav>
-  );
-}
-
-export function LabsHeader() {
-  const q = useLabs();
-  const d = q.data;
-  return (
-    <PageHeader
-      title="Labs"
-      subtitle="On-demand AZ-104, AZ-305 and AZ-700 lab environments, each back to £0 when it ends."
-      env={<EnvironmentField />}
-      right={
-        <>
-          {d && (
-            <span className="labs-capacity">
-              {d.running.length} of {d.maxRunning} running · {d.slots.used} of {d.slots.total} slots
-            </span>
-          )}
-          <LabsNav />
-        </>
-      }
-    />
-  );
-}
 
 /** /labs on a desktop or tablet: the running strip, filters on the left and the catalogue. */
 export function LabsPage({ children }: { children?: React.ReactNode }) {

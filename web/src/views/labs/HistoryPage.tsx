@@ -3,7 +3,7 @@ import type { LabEndReason, LabSession } from "@shared/api";
 import { DataTable, EmptyState, Panel, type Column } from "@/components";
 import { useLabSessions } from "@/api/queries";
 import { CoverageMap } from "./CoverageMap";
-import { LabsHeader } from "./LabsPage";
+import { LabsHeader } from "./LabsHeader";
 import { fmtGbp, fmtSpan, fmtWhen, stateWord, useLabClock, type Tone } from "./model";
 import { Word } from "./RunningStrip";
 

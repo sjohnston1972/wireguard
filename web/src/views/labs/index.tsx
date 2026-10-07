@@ -8,10 +8,11 @@
 
 import { lazy, Suspense } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { PageHeader, useIsPhone } from "@/components";
+import { useIsPhone } from "@/components";
 import { useLab } from "@/api/queries";
 import { HistoryPage } from "./HistoryPage";
 import { CouldNotOpen, LabModal, subtitle } from "./LabModal";
+import { LabsHeader } from "./LabsHeader";
 import { LabsPage } from "./LabsPage";
 import { stateWord } from "./model";
 import { PhoneLabs } from "./PhoneLabs";
@@ -36,7 +37,7 @@ function LabFullScreen({ id, phone }: { id: string; phone: boolean }) {
       const notice = <CouldNotOpen id={id} error={q.error} onRetry={() => void q.refetch()} onDismiss={() => navigate({ pathname: "/labs", search })} />;
       return phone ? (
         <section className="labs labs--phone">
-          <PageHeader title="Labs" subtitle="On-demand AZ-104, AZ-305 and AZ-700 labs." />
+          <LabsHeader />
           {notice}
         </section>
       ) : (

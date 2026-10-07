@@ -53,7 +53,7 @@ describe("the lab modal, not running", () => {
     expect(notice.getByText(/Could not open az104-99-nothing: No such lab\./)).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).toBeNull();
     // The page stays usable behind it.
-    expect(within(screen.getByRole("main")).getByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
+    expect(within(screen.getByRole("main")).getByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
     await user.click(notice.getByRole("button", { name: "Dismiss" }));
     expect(screen.getByLabelText("location")).toHaveTextContent(/^\/labs$/);
   });

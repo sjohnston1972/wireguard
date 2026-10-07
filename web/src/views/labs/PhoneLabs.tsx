@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, ErrorState, PageHeader, Sheet, Skeleton } from "@/components";
+import { Button, ErrorState, Sheet, Skeleton } from "@/components";
 import { useLabSessions, useLabs } from "@/api/queries";
 import { Catalogue } from "./Catalogue";
 import { CoverageMap } from "./CoverageMap";
 import { SessionsTable } from "./HistoryPage";
 import { LabModal } from "./LabModal";
+import { LabsHeader } from "./LabsHeader";
 import { Orphans, RunningStrip } from "./RunningStrip";
 
 function YourLabs() {
@@ -34,7 +35,7 @@ export function PhoneLabs({ id, history }: { id: string | null; history: boolean
   const d = q.data;
   return (
     <section className="labs labs--phone">
-      <PageHeader title="Labs" subtitle="On-demand AZ-104, AZ-305 and AZ-700 labs." />
+      <LabsHeader />
       {id && <LabModal key={id} id={id} />}
       <Orphans orphans={d?.orphans ?? []} />
       {q.isError && !d ? (

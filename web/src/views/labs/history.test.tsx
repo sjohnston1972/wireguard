@@ -51,7 +51,7 @@ const routes = () => ({ "GET /api/v1/labs": labs({ running: [session()] }), "GET
 describe("Your labs", () => {
   it("sessions table: date, lab, duration, estimate or actual, end reason, note", async () => {
     renderApp("/labs/history", { routes: routes() });
-    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
+    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
     const table = within(await screen.findByRole("table", { name: "Sessions" }));
     expect(table.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Date", "Lab", "Duration", "Cost", "Ended", "Note"]);
     await table.findByText("Lifecycle rules take a day to run.");
