@@ -3,7 +3,7 @@
 // Plain English: the Labs tab's data API (labs spec §7.2 and plan ruling 7),
 // under /api/v1 behind the login like every other route.
 //
-//   GET  /labs                      catalogue cards, live sessions, slots, permissions, orphans
+//   GET  /labs                      catalogue cards (with blockers, learning, resources), live sessions, slots, permissions, orphans, autoCleanup
 //   GET  /labs/sessions?lab=&limit= history (registered before /labs/:id)
 //   GET  /labs/coverage             per exam and skill area: labs available and run
 //   GET  /labs/:id                  one lab: readme blocks, priced items, warnings, session, runs
@@ -23,6 +23,7 @@
 import type { Context, Hono } from "hono";
 import { body, fail, type ApiEnv } from "./app";
 import * as db from "../db";
+import { canDispatch } from "../env";
 import { fixedConfig } from "../settings";
 import { getSnapshot } from "../state";
 import { REGIONS } from "../region";
@@ -131,7 +132,8 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       maxRunning: labsSettingsFrom(stored).labsMaxRunning,
       permissions: await kvJson(c, "labs:permissions", NO_PERMISSIONS),
       orphans: await kvJson<LabOrphan[]>(c, "labs:orphans", []),
-      autoCleanup: false,
+      // The watchman's tear-down at the timer or hard stop dispatches the lab workflow (spec ruling 7).
+      autoCleanup: canDispatch(c.env),
     };
     return c.json(out);
   });

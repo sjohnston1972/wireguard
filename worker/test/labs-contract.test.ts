@@ -115,7 +115,9 @@ describe("locks", () => {
 
 describe("catalogue", () => {
   it("is the generated one unless a test sets its own", () => {
-    expect(catalogue().schema).toBe(1);
+    expect(catalogue().schema).toBe(2);
+    // Every real lab has a planned diagram, so resources (labs redesign spec §6.2).
+    expect(catalogue().resources["az104-06-blob-security"]).toMatchObject({ storage: 1, privateEndpoint: 1 });
     expect(catalogue().labs.map((l) => l.id)).toContain("az104-06-blob-security");
     expect(labDef("az104-06-blob-security")?.number).toBe(6);
     setCatalogueForTest(EMPTY);
