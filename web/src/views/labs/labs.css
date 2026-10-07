@@ -176,7 +176,7 @@
 
 @media (max-width: 640px) {
   .labs-strip__list { flex-direction: column; overflow: visible; }
-  .labs-chip { min-width: 0; max-width: none; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "facts" "actions"; }
+  .labs-chip { flex: none; min-width: 0; max-width: none; grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "facts" "actions"; }
   .labs-chip > .labs-actions .btn { flex: 1; min-height: 40px; }
   .labs-modal__cols { grid-template-columns: minmax(0, 1fr); }
   .labs-deploy__row { grid-template-columns: minmax(0, 1fr); }

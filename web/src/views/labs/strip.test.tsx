@@ -4,6 +4,11 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { HOUR, MIN, at, labs, run, session } from "./testData";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "labs.css"), "utf8");
 
 vi.setConfig({ testTimeout: 20_000 });
 beforeAll(async () => {
@@ -135,5 +140,16 @@ describe("the running strip", () => {
     expect(s.getByText("Tearing down 4/11")).toBeInTheDocument();
     expect(s.queryByRole("button", { name: "Extend" })).toBeNull();
     expect(s.queryByRole("button", { name: "Tear down" })).toBeNull();
+  });
+});
+
+describe("running strip layout (labs.css)", () => {
+  it("chips wrap onto another row instead of scrolling sideways; on the phone each sizes to its content", () => {
+    const list = css.match(/\.labs-strip__list\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(list).toMatch(/flex-wrap:\s*wrap/);
+    expect(list).not.toMatch(/overflow-x:\s*auto/);
+    // In the phone's column a flex-basis would be a height: 340 px tall chips.
+    const phone = css.slice(css.indexOf("@media (max-width: 640px)"));
+    expect(phone).toMatch(/\.labs-chip\s*\{[^}]*flex:\s*none/);
   });
 });
