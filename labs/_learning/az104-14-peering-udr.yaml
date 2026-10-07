@@ -1,7 +1,7 @@
 # Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
 objective: Route traffic between two spoke VNets through a hub appliance, and see why peering is not transitive.
 learn:
-  - Peer a hub with two spokes and read the effective routes peering adds
+  - Read the routes hub peering adds, then peer the two spokes by hand
   - Send spoke-to-spoke traffic through a network virtual appliance with route tables
   - Use Network Watcher next hop to see which route a packet takes
 learning_min: 65

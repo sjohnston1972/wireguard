@@ -3,5 +3,5 @@ objective: Spread web traffic over two VMs with an internal load balancer and an
 learn:
   - Compare a layer 4 load balancer frontend with a layer 7 Application Gateway one
   - Stop a backend and watch health probes and backend health react
-  - Change session persistence and add a custom health probe on the gateway
+  - Set Client IP persistence on the load balancer and add a gateway health probe
 learning_min: 65

@@ -3,5 +3,5 @@ objective: Watch a VM with metrics, logs and alerts, and send those alerts to an
 learn:
   - Chart platform metrics and trigger a CPU metric alert under load
   - Query performance counters and syslog in Log Analytics with KQL
-  - Wire alerts to an action group and suppress them with a processing rule
+  - Add an email receiver to an action group and suppress it with a processing rule
 learning_min: 70
