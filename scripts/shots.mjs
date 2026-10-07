@@ -190,7 +190,7 @@ function printPlan(plan, opts) {
   console.log(`Dry run: ${plan.length} shots into ${opts.out}`);
   for (const s of plan) {
     const where = s.path ?? `${s.route} (needs data: id found from the API)`;
-    console.log(`  ${s.file.padEnd(40)} ${where}  ${s.width}x${s.height}${s.mobile ? " phone" : ""} ${s.theme}${s.checkOverflow ? "  [one-screen check]" : ""}`);
+    console.log(`  ${s.file.padEnd(40)} ${where}  ${s.width}x${s.height}${s.mobile ? " phone" : ""} ${s.theme}${s.checkOverflow === "x" ? "  [sideways check]" : s.checkOverflow ? "  [one-screen check]" : ""}`);
   }
 }
 
@@ -316,7 +316,7 @@ async function main() {
       }
       results.push(rec);
       const scroll = `scroll ${rec.overflowY}px, #main ${rec.mainOverflowY ?? "-"}px`;
-      const flag = rec.error ? `ERROR ${rec.error}` : s.checkOverflow ? `${scroll}${rec.ok ? "" : `  <-- FAILS the one-screen rule (${rec.reason})`}` : `${scroll} (not checked)`;
+      const flag = rec.error ? `ERROR ${rec.error}` : s.checkOverflow ? `${scroll}${rec.ok ? "" : `  <-- FAILS the ${s.checkOverflow === "x" ? "no-sideways-scroll" : "one-screen"} rule (${rec.reason})`}` : `${scroll} (not checked)`;
       console.log(`${rec.ok ? "ok  " : "FAIL"} ${s.file.padEnd(40)} ${flag}${rec.overflowX > 0 ? `  (sideways overflow ${rec.overflowX}px)` : ""}`);
     }
     // A frozen run is only good if the dev Worker's clock stood still throughout.
