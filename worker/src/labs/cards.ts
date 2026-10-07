@@ -133,5 +133,8 @@ export function labCard(def: LabDef, ctx: CardContext): LabCard {
     runs: ctx.ran.get(def.id) ?? 0,
     ...releaseFields(def, ctx.tests),
     unavailable: unavailableReason(def, ctx.avail),
+    blockers: [],
+    learning: null,
+    resources: null,
   };
 }

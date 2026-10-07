@@ -23,7 +23,7 @@ import { LAB_POOL, LAB_SLOTS, slotCidr, type LabCatalogue } from "../../shared/l
 import type { LabsResponse, LabCoverageResponse, LabSessionsResponse, LabDetail } from "../../shared/api";
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
-const EMPTY: LabCatalogue = { schema: 1, skillAreas: [], labs: [], readmes: {} };
+const EMPTY: LabCatalogue = { schema: 2, skillAreas: [], labs: [], readmes: {}, learning: {}, resources: {} };
 const base = "http://localhost:8787";
 
 afterEach(() => {

@@ -882,6 +882,32 @@ export interface LabCard {
   released: boolean;
   /** Why Deploy is disabled (permissions, no free slot, labs_max_running); null when it can deploy. */
   unavailable: string | null;
+  /**
+   * Every reason Deploy would be refused before its confirmation (labs redesign spec §6.1), in
+   * deployLab's order: github, role, graph, slots, max_running, leftovers, budget. [] when it can
+   * deploy now. The app's readiness comes from these, never from raw permission flags.
+   */
+  blockers: LabBlocker[];
+  /** The lab's learning content (labs/_learning/<id>.yaml), or null when it has none yet. */
+  learning: LabLearning | null;
+  /** Planned resources: TopoKind -> count, from the lab's planned diagram; null when it has none. */
+  resources: Record<string, number> | null;
+}
+
+/** Why a lab cannot be deployed now (labs redesign spec §6.1). An app that meets a kind it does not know treats it as unavailable. */
+export type LabBlockerKind = "github" | "role" | "graph" | "slots" | "max_running" | "leftovers" | "budget";
+export interface LabBlocker {
+  kind: LabBlockerKind;
+  /** The sentence deployLab refuses with. */
+  message: string;
+}
+
+/** A card's learning content (LabLearningDef in camelCase). */
+export interface LabLearning {
+  objective: string;
+  learn: [string, string, string];
+  /** Learning time in minutes (not deploy time, not session length). */
+  learningMin: number;
 }
 
 /** Settings → Labs → Check permissions (§8.2): each null until checked. The Worker keeps it in KV `labs:permissions`. */
@@ -916,6 +942,11 @@ export interface LabsResponse {
   maxRunning: number;
   permissions: LabPermissions;
   orphans: LabOrphan[];
+  /**
+   * The watchman tears labs down at their timer or hard stop by itself (the 5-minute cron dispatching
+   * the lab workflow, which needs GitHub): canDispatch. "Auto-cleanup on" is shown only when true.
+   */
+  autoCleanup: boolean;
 }
 
 /** One priced line of GET /labs/:id. */

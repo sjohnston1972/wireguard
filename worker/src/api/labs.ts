@@ -131,6 +131,7 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       maxRunning: labsSettingsFrom(stored).labsMaxRunning,
       permissions: await kvJson(c, "labs:permissions", NO_PERMISSIONS),
       orphans: await kvJson<LabOrphan[]>(c, "labs:orphans", []),
+      autoCleanup: false,
     };
     return c.json(out);
   });
