@@ -1,0 +1,53 @@
+# Lab 30 (AZ-305 batch 4; spec §12.2 row 30, renumbered by ruling 40; §17,
+# lab 30's ruling). AZ-305 study guide skills this lab touches (the outline
+# "as of April 17, 2026"):
+#   Design infrastructure solutions > Design an application architecture:
+#   "Recommend a messaging architecture", "Recommend an event-driven
+#   architecture".
+#   Design infrastructure solutions > Design compute solutions: "Recommend a
+#   serverless-based solution", "Recommend a container-based solution".
+# Costs are GBP list prices for UK South from the Retail Prices API
+# (2026-10-07), rounded up, all authored:
+#   Service Bus "Standard Base Unit" has two uksouth rows, £7.5475 1/Month
+#   and £0.0101 1/Hour, so the feed (which matches on the meter name alone)
+#   cannot use it (ruling 2): authored at £0.0104/h, the monthly figure over
+#   730 hours, the higher of the two. Standard includes 13 million
+#   operations a month; KEDA's two queue checks every 30 seconds are about
+#   240 an hour.
+#   Event Grid: the first 100,000 operations a month are free (then £0.0453
+#   per 100,000); a session raises a few hundred.
+#   Container Apps: a consumption-only environment has no fixed charge, and
+#   the job runs only while a queue holds messages, a few seconds at 0.25
+#   vCPU each time, inside the monthly free grant (180,000 vCPU-seconds).
+#   Log Analytics: a few KB of console logs, capped at 0.05 GB a day.
+# No App Service: the subscription's App Service quota is 0, and every Azure
+# Functions plan (Consumption, Flex Consumption, Premium, Dedicated) is an
+# App Service plan; see the readme's "Not built here".
+id: az305-30-messaging
+version: 1
+title: "Messaging and events: Service Bus, Event Grid, an event-driven consumer"
+summary: >-
+  A Standard Service Bus namespace with queues, a filtered topic and dead-lettering, Event Grid sending a storage
+  account's blob events to a queue, and a Container Apps job that KEDA starts whenever a message is waiting.
+exam: AZ-305
+skill_areas: [az305.infra]
+level: expert
+type: explore
+prerequisites: [az104-11-containers]
+cost:
+  items:
+    - { name: "Service Bus namespace, Standard (base charge)", gbp_h: 0.0104 }
+    - { name: "Service Bus operations (13 million a month included)", gbp_h: 0 }
+    - { name: "Event Grid system topic and subscription, a few hundred events (100,000 a month free)", gbp_h: 0 }
+    - { name: "Storage account, LRS hot, a few KB", gbp_h: 0.0001 }
+    - { name: "Log Analytics ingestion, a few KB (capped at 0.05 GB a day)", gbp_h: 0.0005 }
+    - { name: "Container Apps environment and job (consumption, runs only on messages)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 6, session_h: 2, max_h: 6 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles: []
+  governance: false
