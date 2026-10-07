@@ -20,6 +20,7 @@ import { attr, lab, labContentSuite, outputs, resources, uncomment } from "./fix
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 import { realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
 import { checkPlan } from "../../infra/ci/lab-scope.mjs";
+import { BASH, world } from "./fixtures/labs/harness.mjs";
 
 const TT = "az305-28-three-tier";
 const IN_LAB = "azurerm_resource_group.lab.name";
@@ -401,4 +402,31 @@ test(`${TT}: the readme explains the tiers, the Front Door lock, the WAF tier li
   assert.match(r, /az containerapp exec/);
   assert.match(r, /base fee[^\n]*hour/i);
   assert.match(r, /## Not built here/);
+});
+
+// The environment's infrastructure group is Azure's, but named by the lab: tear-down's safety net deletes it with
+// the lab's own group, and Verify clean reports it while it is left.
+const SUB = "00000000-0000-0000-0000-000000000000";
+const RG = `rg-lab-${TT}`;
+const POLL = { match: /^group list --query \[\]\.\[name, properties\.provisioningState\]/, out: "" };
+const noBash = BASH ? false : "no bash found";
+
+test(`${TT}: the safety net deletes rg-lab-<id>-infra with the lab's group, and nothing near it`, { skip: noBash }, () => {
+  const groups = [RG, `${RG}-infra`, `${RG}x`, `${RG}x-infra`, "rg-lab-az305-29-aks-nodes", "NetworkWatcherRG"].join("\n");
+  const w = world([POLL, { match: "^group list", out: groups }, { match: "^account show", out: SUB }]);
+  const r = w.run("infra/ci/lab-safety-net.sh", [TT], { LAB_ENTRA: "false" });
+  assert.equal(r.status, 0, r.out);
+  const deleted = w.calls().filter((c) => c.startsWith("az group delete ")).map((c) => / --name (\S+) /.exec(c)[1]);
+  assert.deepEqual(deleted.sort(), [RG, `${RG}-infra`].sort());
+  w.cleanup();
+});
+
+test(`${TT}: Verify clean reports a leftover rg-lab-<id>-infra`, { skip: noBash }, () => {
+  const w = world([{ match: "^group list", out: `${RG}-infra\nNetworkWatcherRG` }, { match: "^account show", out: SUB }]);
+  const r = w.run("infra/ci/lab-safety-net.sh", ["--verify", TT], { LAB_ENTRA: "false" });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.stdout, /^clean=false$/m);
+  assert.match(r.stdout, new RegExp(`^leftovers=.*"${RG}-infra"`, "m"));
+  assert.equal(w.calls().filter((c) => / delete /.test(c)).length, 0);
+  w.cleanup();
 });
