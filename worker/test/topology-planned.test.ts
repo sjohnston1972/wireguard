@@ -257,6 +257,32 @@ describe("planned graph: the rest of the core", () => {
     expect(JSON.stringify(g)).not.toMatch(/azurerm_key_vault_secret\.(db|api)|azurerm_key_vault_key\.k/);
   });
 
+  // Lab 28's three-tier path: a container app calls the next tier through an env value. A reference in the app's template
+  // to another app (its ingress FQDN) or a SQL server (its FQDN), or a known value naming the other app in the same
+  // environment ("http://ca-app"), is a traffic edge: HTTP or HTTPS by the URL's scheme, "SQL 1433" to a server.
+  it("a container app's env values draw the next tier: app -> app (HTTP/HTTPS) and app -> SQL server (SQL 1433)", () => {
+    const rg = "rg-lab-az700-35-forced-tunnel-fix";
+    const app = (name: string, env: { name: string; value?: string }[]) => ({ address: `azurerm_container_app.${name}`, type: "azurerm_container_app", name, index: null, after: { name: `ca-${name}`, resource_group_name: rg, ingress: [{ external_enabled: name === "web", target_port: 8080 }], template: [{ container: [{ name: "c", env }] }] }, after_unknown: {} });
+    const g = extra(
+      [
+        { address: "azurerm_container_app_environment.env", type: "azurerm_container_app_environment", name: "env", index: null, after: { name: "cae-lab", resource_group_name: rg }, after_unknown: {} },
+        { address: "azurerm_mssql_server.sql", type: "azurerm_mssql_server", name: "sql", index: null, after: { name: "l35k3x9q-sql", resource_group_name: rg }, after_unknown: {} },
+        { address: "azurerm_cdn_frontdoor_profile.fd", type: "azurerm_cdn_frontdoor_profile", name: "fd", index: null, after: { name: "afd-lab", resource_group_name: rg, sku_name: "Standard_AzureFrontDoor" }, after_unknown: {} },
+        app("web", [{ name: "APP_URL", value: "http://ca-app" }, { name: "FRONT_DOOR_ID" }, { name: "OTHER", value: "http://ca-nowhere" }]),
+        app("app", [{ name: "SQL_SERVER" }, { name: "USER", value: "labadmin" }]),
+        app("api", [{ name: "BACKEND" }]),
+      ],
+      {
+        "azurerm_container_app.web": { container_app_environment_id: ["azurerm_container_app_environment.env"], template: ["azurerm_cdn_frontdoor_profile.fd"] },
+        "azurerm_container_app.app": { container_app_environment_id: ["azurerm_container_app_environment.env"], template: ["azurerm_mssql_server.sql"] },
+        "azurerm_container_app.api": { container_app_environment_id: ["azurerm_container_app_environment.env"], template: ["azurerm_container_app.app"] },
+      },
+    );
+    const label = new Map(g.nodes.map((n) => [n.id, n.label]));
+    const tiers = g.edges.filter((e) => e.kind === "traffic" && /^(HTTPS?|SQL 1433)$/.test(e.label ?? "")).map((e) => `${label.get(e.from)} -> ${label.get(e.to)} : ${e.label}`).sort();
+    expect(tiers).toEqual(["ca-api -> ca-app : HTTPS", "ca-app -> l35…-sql : SQL 1433", "ca-web -> ca-app : HTTP"]);
+  });
+
   it("names carrying the mock prefix are shown as l35…", () => {
     const g = extra([
       { address: "azurerm_storage_account.sa", type: "azurerm_storage_account", name: "sa", index: null, after: { name: "l35k3x9qdiag", resource_group_name: "rg-lab-az700-35-forced-tunnel-fix", account_kind: "StorageV2", account_tier: "Standard", account_replication_type: "LRS" }, after_unknown: {} },

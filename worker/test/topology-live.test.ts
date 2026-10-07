@@ -138,10 +138,10 @@ describe("live graph", () => {
 });
 
 describe("the query", () => {
-  it("names only rg-lab-<id> and rg-lab-<id>-*, in one fixed form, with the groups themselves (an empty group still shows)", () => {
+  it("names only rg-lab-<id> and rg-lab-<id>-*, in one fixed form, with the groups themselves (an empty group still shows) and their managedBy (a group Azure made says so)", () => {
     expect(topologyQuery("az104-13-vnets")).toBe(
       "resources | where resourceGroup =~ 'rg-lab-az104-13-vnets' or resourceGroup startswith 'rg-lab-az104-13-vnets-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties" +
-        " | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ 'rg-lab-az104-13-vnets' or name startswith 'rg-lab-az104-13-vnets-') | project id, name, type, location, resourceGroup = name, tags)" +
+        " | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ 'rg-lab-az104-13-vnets' or name startswith 'rg-lab-az104-13-vnets-') | project id, name, type, location, resourceGroup = name, tags, managedBy)" +
         " | order by id asc",
     );
     expect(ARG_API).toBe("2022-10-01");

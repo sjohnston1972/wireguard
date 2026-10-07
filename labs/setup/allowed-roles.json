@@ -11,7 +11,8 @@
     { "name": "Monitoring Reader", "id": "43d0d8ad-25c7-4714-9337-8ba259a9fe05" },
     { "name": "Monitoring Contributor", "id": "749f88d5-cbae-40b8-bcfc-e573ddc772fa" },
     { "name": "Network Contributor", "id": "4d97b98b-1d4f-4787-a291-c67834d212e7" },
-    { "name": "Backup Operator", "id": "00c29273-979b-4161-815c-10b084fb9324" }
+    { "name": "Backup Operator", "id": "00c29273-979b-4161-815c-10b084fb9324" },
+    { "name": "AcrPull", "id": "7f951dda-4ed3-4680-a7ca-43fe172d538d" }
   ],
   "custom": [
     { "lab": "az104-01-identity", "name": "lab-az104-01-identity-vm-operator", "id": "7331dcae-09d3-477e-8da7-2895697f0fc0" },

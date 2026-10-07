@@ -80,7 +80,11 @@ export const LISTED = new Set(
     "Microsoft.ContainerInstance/containerGroups",
     "Microsoft.App/containerApps",
     "Microsoft.App/managedEnvironments",
+    "Microsoft.App/jobs",
+    "Microsoft.ServiceBus/namespaces",
+    "Microsoft.EventGrid/systemTopics",
     "Microsoft.ContainerRegistry/registries",
+    "Microsoft.ContainerService/managedClusters",
     "Microsoft.OperationalInsights/workspaces",
     "Microsoft.Insights/metricAlerts",
     "Microsoft.Insights/activityLogAlerts",
@@ -494,7 +498,9 @@ function compute(k: TemplateKit): void {
     const r = rowOf(n);
     if (!r) continue;
     const sid = subnetOf(n);
-    Object.assign(P(r), { workloadProfiles: [{ name: String(n.props.sku ?? "Consumption"), workloadProfileType: n.props.sku ?? "Consumption" }], ...(sid ? { vnetConfiguration: { infrastructureSubnetId: sid } } : {}) });
+    const chips = Array.isArray(n.props.chips) ? (n.props.chips as string[]) : [];
+    const infra = chips.find((c) => c.startsWith("infra group "))?.slice("infra group ".length);
+    Object.assign(P(r), { workloadProfiles: [{ name: String(n.props.sku ?? "Consumption"), workloadProfileType: n.props.sku ?? "Consumption" }], ...(sid ? { vnetConfiguration: { infrastructureSubnetId: sid } } : {}), ...(infra ? { infrastructureResourceGroup: infra } : {}) });
   }
   for (const n of g.nodes.filter((x) => x.kind === "containerApp" && x.scope !== "outside")) {
     const r = rowOf(n);
@@ -505,6 +511,33 @@ function compute(k: TemplateKit): void {
       managedEnvironmentId: env ? nodeArmId(byId.get(env.to)!) : null,
       configuration: { ingress: n.props.ingress ? { external: n.props.ingress === "external", targetPort: n.props.targetPort } : null, registries: reg ? [{ server: `${nodeArmId(byId.get(reg.to)!)?.split("/").at(-1)}.azurecr.io` }] : [] },
     });
+    // Lab 28's tiers: the env values that name the next tier (another app by name, a SQL server by its FQDN).
+    const vars: { name: string; value: string }[] = [];
+    for (const e of edgesFrom(n.id).filter((x) => x.kind === "traffic")) {
+      const t = byId.get(e.to);
+      const tr = t ? rowOf(t) : undefined;
+      if (!t || !tr) continue;
+      if (t.kind === "containerApp" && (e.label === "HTTP" || e.label === "HTTPS")) vars.push({ name: `URL_${vars.length}`, value: `${e.label.toLowerCase()}://${tr.name}` });
+      if (t.kind === "sqlServer" && e.label === "SQL 1433") {
+        P(tr).fullyQualifiedDomainName = `${tr.name}.database.windows.net`;
+        vars.push({ name: `SQL_${vars.length}`, value: `${tr.name}.database.windows.net` });
+      }
+    }
+    if (vars.length) P(r).template = { containers: [{ name: "app", env: vars }] };
+  }
+  // AKS (lab 29): the default pool in the cluster's subnet, its network words and node group from the card's chips.
+  for (const n of g.nodes.filter((x) => x.kind === "aks" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const chips = Array.isArray(n.props.chips) ? (n.props.chips as string[]) : [];
+    r.sku = { name: "Base", tier: n.props.tier ?? "Free" };
+    Object.assign(P(r), {
+      agentPoolProfiles: [{ name: "system", mode: "System", count: Number(n.props.instances ?? 1), vmSize: n.props.size ?? "Standard_B2s", vnetSubnetID: subnetOf(n) }],
+      networkProfile: chips.includes("Azure CNI Overlay") ? { networkPlugin: "azure", networkPluginMode: "overlay" } : { networkPlugin: "azure" },
+      nodeResourceGroup: chips.find((c) => c.startsWith("node group "))?.slice("node group ".length) ?? null,
+    });
+    const ids = edgesFrom(n.id).filter((e) => e.label === "identity").map((e) => nodeArmId(byId.get(e.to)!)).filter((x): x is string => !!x);
+    if (ids.length) r.identity = { type: "UserAssigned", userAssignedIdentities: Object.fromEntries(ids.map((i) => [i, { principalId: k.guid(i), clientId: k.guid(`${i}c`) }])) };
   }
   for (const n of g.nodes.filter((x) => x.kind === "registry" && x.scope !== "outside")) {
     const r = rowOf(n);
@@ -515,6 +548,41 @@ function compute(k: TemplateKit): void {
   for (const n of g.nodes.filter((x) => x.kind === "recoveryVault" && x.scope !== "outside")) {
     const r = rowOf(n);
     if (r) r.sku = { name: "RS0", tier: "Standard" };
+  }
+  // AZ-305 batch 4, lab 30: a job (Learn's Microsoft.App/jobs: environmentId, configuration.triggerType and
+  // eventTriggerConfig.scale.rules[].metadata), a namespace (sku), a system topic (source), an environment's
+  // workspace (appLogsConfiguration.logAnalyticsConfiguration.customerId against the workspace's customerId).
+  for (const n of g.nodes.filter((x) => x.kind === "containerAppJob" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (!r) continue;
+    const env = edgesFrom(n.id).find((e) => e.label === "environment");
+    const rules = edgesFrom(n.id)
+      .filter((e) => e.kind === "traffic" && byId.get(e.to)?.kind === "serviceBus")
+      .flatMap((e) => (e.label ?? "").split(", ").map((q) => ({ name: q, type: "azure-servicebus", metadata: { queueName: q, namespace: nodeArmId(byId.get(e.to)!)?.split("/").at(-1), messageCount: "1" } })));
+    const trigger = (n.props.chips as string[] | undefined)?.[0];
+    Object.assign(P(r), {
+      environmentId: env ? nodeArmId(byId.get(env.to)!) : null,
+      configuration: { triggerType: trigger === "scheduled" ? "Schedule" : trigger === "manual" ? "Manual" : "Event", eventTriggerConfig: { scale: { minExecutions: 0, maxExecutions: 2, rules } } },
+      template: { containers: [{ name: "main", resources: { cpu: n.props.cpu ?? 0.25, memory: "0.5Gi" } }] },
+    });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "serviceBus" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    if (r) r.sku = { name: String(n.props.sku ?? "Standard"), tier: String(n.props.sku ?? "Standard") };
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "eventGrid" && x.scope !== "outside")) {
+    const r = rowOf(n);
+    const src = edgesFrom(n.id).find((e) => e.label === "source");
+    if (r && src) Object.assign(P(r), { source: nodeArmId(byId.get(src.to)!), topicType: "Microsoft.Storage.StorageAccounts" });
+  }
+  for (const n of g.nodes.filter((x) => x.kind === "containerAppEnv" && x.scope !== "outside")) {
+    const logs = edgesFrom(n.id).find((e) => e.label === "logs");
+    const r = rowOf(n);
+    const w = logs ? rowOf(byId.get(logs.to)!) : null;
+    if (!r || !w) continue;
+    const customerId = `7a6b5c4d-3e2f-4a1b-8c9d-${w.name.length.toString(16).padStart(12, "0")}`;
+    P(w).customerId = customerId;
+    P(r).appLogsConfiguration = { destination: "log-analytics", logAnalyticsConfiguration: { customerId } };
   }
 }
 

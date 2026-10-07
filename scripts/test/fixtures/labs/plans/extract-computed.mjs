@@ -96,6 +96,12 @@ export const TYPES = [
   "azurerm_network_manager_routing_configuration", "azurerm_network_manager_routing_rule_collection", "azurerm_network_ddos_protection_plan",
   "azurerm_express_route_circuit", "azurerm_express_route_port", "azurerm_express_route_gateway", "azurerm_custom_ip_prefix", "azurerm_network_watcher",
   "azurerm_resource_group_policy_assignment",
+  // AZ-305 batch 4: lab 29's AKS cluster
+  "azurerm_kubernetes_cluster",
+  // AZ-305 batch 4, lab 30 (messaging and events): Service Bus, Event Grid, a Container Apps job
+  "azurerm_servicebus_namespace", "azurerm_servicebus_namespace_authorization_rule", "azurerm_servicebus_queue", "azurerm_servicebus_topic",
+  "azurerm_servicebus_subscription", "azurerm_servicebus_subscription_rule", "azurerm_eventgrid_system_topic",
+  "azurerm_eventgrid_system_topic_event_subscription", "azurerm_container_app_job",
   // data sources
   "data.azurerm_subscription", "data.azurerm_client_config", "data.azurerm_resource_group",
   // AZ-700: what the S1 and S2 scope tests read to show a VNet outside the lab is refused

@@ -121,6 +121,18 @@ test("scrubChanges drops what after_sensitive marks, at any depth", () => {
   assert.deepEqual(c.after, { a: { b: "keep" }, list: [{}, { s: "keep" }] });
 });
 
+// Lab 28's web tier calls the app tier at "http://ca-app": a container env value that is only a URL to a bare host
+// name (another app of the environment) can hold no secret, and is what draws the planned web -> app edge. Every
+// other `value` stays unread: a host with dots, credentials, a path or query, a plain word, a value outside `env`.
+test("scrubChanges keeps a container env value that is a URL to a bare app name, and no other value", () => {
+  const env = (value) => ({ template: [{ container: [{ name: "c", env: [{ name: "X", value }] }] }] });
+  const kept = (after) => JSON.stringify(scrubChanges([{ address: "a.b", type: "azurerm_container_app", name: "b", change: { after, after_unknown: {}, after_sensitive: {} } }])[0].after);
+  for (const v of ["http://ca-app", "https://ca-app/", "http://ca-app:8080"]) assert.match(kept(env(v)), new RegExp(v.replace(/[/.]/g, "\\$&")), v);
+  for (const v of ["http://user:pw@ca-app", "https://example.org", "http://ca-app/x?sig=abc", "labadmin", "Server=tcp:x,1433;Password=p", "http://Mock-Passw0rd-labs-tf-not-real"]) assert.doesNotMatch(kept(env(v)), /"value"/, v);
+  assert.doesNotMatch(kept({ value: "http://ca-app", tags: { value: "http://ca-app" } }), /"value"/, "only inside a container's env");
+  assert.doesNotMatch(JSON.stringify(scrubChanges([{ address: "a.b", type: "azurerm_container_app", name: "b", change: { after: env("http://ca-app"), after_unknown: {}, after_sensitive: { template: [{ container: [{ env: [{ value: true }] }] }] } } }])[0].after), /"value"/, "never a sensitive one");
+});
+
 test("refsFromHcl gives each resource's references by top-level attribute, and the outputs' references", () => {
   // hcl2json's shape for: a NIC in a subnet, a VM using it, and an output naming a VNet.
   const hcl = {

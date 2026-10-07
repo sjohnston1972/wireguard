@@ -13,7 +13,7 @@
 // Types are lower case (Resource Graph's `type` column).
 
 import type { TopoHealth } from "../model";
-import { cosmosApi } from "./planned";
+import { aksNetworkWord, appCallLabel, cosmosApi, urlHost } from "./planned";
 
 /** One Resource Graph row: the columns topologyQuery projects. */
 export interface ArgRow {
@@ -149,15 +149,39 @@ export function healthOf(row: ArgRow): TopoHealth {
   return PROVISIONING[ps.toLowerCase()] ?? { tone: "unknown", word: ps };
 }
 
+const isGroupType = (t: string) => t === "microsoft.resources/resourcegroups" || t === "microsoft.resources/subscriptions/resourcegroups";
+
+/**
+ * The groups Azure made for a lab resource (lower-case names), as rows in the same graph name them: an AKS cluster's
+ * nodeResourceGroup, a Container Apps environment's infrastructureResourceGroup, or a group whose own row has
+ * managedBy set. Never by name alone: a learner's hand-made rg-lab-<id>-managed is theirs.
+ */
+export function azureMadeGroups(rows: readonly ArgRow[]): Set<string> {
+  const out = new Set<string>();
+  for (const r of rows) {
+    const t = lower(r.type);
+    const named = t === "microsoft.containerservice/managedclusters" ? str(props(r).nodeResourceGroup) : t === "microsoft.app/managedenvironments" ? str(props(r).infrastructureResourceGroup) : undefined;
+    if (named) out.add(lower(named));
+    if (isGroupType(t) && str(r.managedBy)) out.add(lower(r.name));
+  }
+  return out;
+}
+
 /**
  * What Azure makes by itself (ruling 13): never "added by hand". Each entry
- * has a test (T3.7 adds one per pattern as families land).
+ * has a test (T3.7 adds one per pattern as families land). `made` is
+ * azureMadeGroups over the graph's rows.
  */
-export const AZURE_MADE: { test(row: ArgRow): boolean; why: string }[] = [
+export const AZURE_MADE: { test(row: ArgRow, made: ReadonlySet<string>): boolean; why: string }[] = [
   { why: "managed by another resource (managedBy set)", test: (r) => !!str(r.managedBy) },
   { why: "a VM's OS disk, named by Azure", test: (r) => lower(r.type) === "microsoft.compute/disks" && /_(osdisk|disk1)_/i.test(r.name) },
   { why: "a private endpoint's network interface", test: (r) => lower(r.type) === "microsoft.network/networkinterfaces" && (!!idOf(props(r).privateEndpoint) || /\.nic\.[0-9a-f-]{36}$/i.test(r.name)) },
-  { why: "a group Azure made for a lab resource (rg-lab-<id>-infra and the like)", test: (r) => lower(r.type) === "microsoft.resources/resourcegroups" && /-(infra|managed)$/i.test(r.name) },
+  {
+    why: "a group Azure made for a lab resource (named by a cluster's nodeResourceGroup or an environment's infrastructureResourceGroup, or managedBy set)",
+    test: (r, made) => isGroupType(lower(r.type)) && made.has(lower(r.name)),
+  },
+  // An AKS node group (rg-lab-<id>-nodes) or a Container Apps infrastructure group holds only what Azure made there.
+  { why: "anything in a group Azure made for a lab resource (an AKS node group, a Container Apps infrastructure group)", test: (r, made) => !isGroupType(lower(r.type)) && made.has(lower(r.resourceGroup)) },
   { why: "traffic analytics' data collection rule or endpoint", test: (r) => /^microsoft\.insights\/datacollection(rules|endpoints)$/.test(lower(r.type)) && /^nwta/i.test(r.name) },
   { why: "a network watcher Azure made for the region", test: (r) => lower(r.type) === "microsoft.network/networkwatchers" && /^networkwatcher_/i.test(r.name) },
   { why: "a VNet peering Azure Virtual Network Manager made (ANM_…)", test: (r) => /\/virtualnetworkpeerings\/anm_[^/]*$/i.test(r.id) },
@@ -208,6 +232,30 @@ function byFqdn(fqdn: string, h: LiveHelpers): string | null {
   ];
   for (const [t, get] of types) for (const r of h.rowsOfType?.(t) ?? []) if (lower(str(get(r))) === f) return lower(r.id);
   return null;
+}
+
+/**
+ * A container app's calls to the next tier (lab 28), from its containers' plain env values (a secretRef has none): a
+ * value naming another app of the same environment, or its ingress FQDN, is "HTTP"/"HTTPS" by the URL's scheme; one
+ * naming a SQL server's FQDN is "SQL 1433". As the planned rule draws them (rules/planned.ts tierEdges).
+ */
+function tierEdges(r: ArgRow, h: LiveHelpers): LiveEdgeSpec[] {
+  const out = new Map<string, LiveEdgeSpec>();
+  const env = lower(str(props(r).managedEnvironmentId) ?? str(props(r).environmentId));
+  const apps = (h.rowsOfType?.("microsoft.app/containerapps") ?? []).filter((a) => lower(a.id) !== lower(r.id));
+  const servers = h.rowsOfType?.("microsoft.sql/servers") ?? [];
+  for (const c of arr(obj(props(r).template).containers)) {
+    for (const e of arr(c.env)) {
+      const v = str(e.value);
+      const u = v ? urlHost(v) : null;
+      if (!u) continue;
+      const app = apps.find((a) => (lower(a.name) === u.host && lower(str(props(a).managedEnvironmentId)) === env) || [obj(obj(props(a).configuration).ingress).fqdn, props(a).latestRevisionFqdn].some((f) => lower(str(f)) === u.host));
+      if (app && !out.has(lower(app.id))) out.set(lower(app.id), { from: lower(r.id), to: lower(app.id), kind: "traffic", label: appCallLabel(u.scheme) });
+      const sql = servers.find((s) => lower(str(props(s).fullyQualifiedDomainName)) === u.host);
+      if (sql && !out.has(lower(sql.id))) out.set(lower(sql.id), { from: lower(r.id), to: lower(sql.id), kind: "traffic", label: "SQL 1433" });
+    }
+  }
+  return [...out.values()];
 }
 
 /** Every ARM id inside a value, deep (as found, not lower-cased). */
@@ -562,6 +610,8 @@ export const ARM_RULES: Record<string, ArmRule> = {
 
   // ── Compute (T3.5): scale sets as one card (ruling 19), autoscale and flexible VMs folded in ──
   "microsoft.compute/virtualmachinescalesets": {
+    // An AKS node pool: a scale set in a cluster's node resource group folds into the cluster (lab 29).
+    fold: (r, h) => (h.rowsOfType?.("microsoft.containerservice/managedclusters") ?? []).find((c) => lower(str(props(c).nodeResourceGroup)) === lower(r.resourceGroup))?.id ?? null,
     props: (r, h) => {
       const auto = (h.rowsOfType?.("microsoft.insights/autoscalesettings") ?? []).find((a) => lower(str(props(a).targetResourceUri)) === lower(r.id));
       const cap = obj(arr(auto ? props(auto).profiles : [])[0]?.capacity);
@@ -612,8 +662,55 @@ export const ARM_RULES: Record<string, ArmRule> = {
     place: (r) => idOf(arr(props(r).subnetIds)[0]) ?? null,
   },
   "microsoft.app/managedenvironments": {
-    props: (r) => ({ sku: str(arr(props(r).workloadProfiles)[0]?.workloadProfileType) ?? "Consumption" }),
+    // The group Azure makes for it (in a subnet) as a chip, as the planned card has it: azureMadeGroups reads the same.
+    props: (r) => {
+      const infra = str(props(r).infrastructureResourceGroup);
+      return { sku: str(arr(props(r).workloadProfiles)[0]?.workloadProfileType) ?? "Consumption", chips: infra ? [`infra group ${infra}`] : undefined };
+    },
     place: (r) => str(obj(props(r).vnetConfiguration).infrastructureSubnetId) ?? null,
+    // Its logs go to the workspace whose customer id it names.
+    edges: (r, h) => {
+      const customer = lower(str(obj(obj(props(r).appLogsConfiguration).logAnalyticsConfiguration).customerId));
+      if (!customer) return [];
+      return (h.rowsOfType?.("microsoft.operationalinsights/workspaces") ?? [])
+        .filter((w) => lower(str(props(w).customerId)) === customer)
+        .map((w) => ({ from: lower(r.id), to: lower(w.id), kind: "dependency" as const, label: "logs" }));
+    },
+  },
+  // A job: its trigger as a chip; → each Service Bus namespace its KEDA rules watch (traffic, the queues' names).
+  "microsoft.app/jobs": {
+    props: (r) => {
+      const cs = arr(obj(props(r).template).containers).map((c) => obj(c.resources));
+      const trigger = lower(str(obj(props(r).configuration).triggerType));
+      const chip = trigger === "event" ? "event-driven" : trigger === "schedule" ? "scheduled" : trigger === "manual" ? "manual" : undefined;
+      return { cpu: cs.length ? Math.round(cs.reduce((a, c) => a + (typeof c.cpu === "number" ? c.cpu : 0), 0) * 100) / 100 : undefined, chips: chip ? [chip] : undefined };
+    },
+    edges: (r, h) => {
+      const env = str(props(r).environmentId);
+      const rules = arr(obj(obj(obj(props(r).configuration).eventTriggerConfig).scale).rules).filter((x) => lower(str(x.type)) === "azure-servicebus");
+      const byNs = new Map<string, string[]>();
+      for (const x of rules) {
+        const md = obj(x.metadata);
+        const ns = lower(str(md.namespace));
+        const q = str(md.queueName) ?? str(md.topicName);
+        if (ns && q) byNs.set(ns, [...(byNs.get(ns) ?? []), q]);
+      }
+      const namespaces = h.rowsOfType?.("microsoft.servicebus/namespaces") ?? [];
+      return [
+        ...[...byNs].flatMap(([ns, qs]) => namespaces.filter((n) => lower(n.name) === ns).map((n) => ({ from: lower(r.id), to: lower(n.id), kind: "traffic" as const, label: qs.join(", ") }))),
+        ...(env ? [{ from: lower(r.id), to: lower(env), kind: "dependency" as const, label: "environment" }] : []),
+        ...identityEdges(r),
+      ];
+    },
+  },
+
+  // ── Messaging and events (AZ-305 batch 4, lab 30): queues, topics and event subscriptions are not rows ──
+  "microsoft.servicebus/namespaces": { props: (r) => ({ sku: str(obj(r.sku).name) }) },
+  "microsoft.eventgrid/systemtopics": {
+    edges: (r) => {
+      const source = str(props(r).source);
+      return source ? [{ from: lower(r.id), to: lower(source), kind: "dependency" as const, label: "source" }] : [];
+    },
   },
   "microsoft.app/containerapps": {
     props: (r) => {
@@ -628,10 +725,29 @@ export const ARM_RULES: Record<string, ArmRule> = {
         ...(env ? [{ from: lower(r.id), to: lower(env), kind: "dependency" as const, label: "environment" }] : []),
         ...regs.map((x) => ({ from: lower(r.id), to: lower(x.id), kind: "dependency" as const, label: "pulls images" })),
         ...identityEdges(r),
+        ...tierEdges(r, h),
       ];
     },
   },
   "microsoft.containerregistry/registries": { props: (r) => ({ sku: str(obj(r.sku).name) }) },
+  // AKS (lab 29): the cluster sits in its first pool's subnet; its node scale sets (in the node resource group) fold into it.
+  "microsoft.containerservice/managedclusters": {
+    props: (r) => {
+      const pool = arr(props(r).agentPoolProfiles)[0] ?? {};
+      const net = obj(props(r).networkProfile);
+      const network = aksNetworkWord(str(net.networkPlugin), str(net.networkPluginMode));
+      const nodeGroup = str(props(r).nodeResourceGroup);
+      return {
+        tier: str(obj(r.sku).tier),
+        size: str(pool.vmSize),
+        instances: typeof pool.count === "number" ? pool.count : undefined,
+        autoscale: pool.enableAutoScaling === true && typeof pool.minCount === "number" ? `${pool.minCount}-${typeof pool.maxCount === "number" ? pool.maxCount : "?"}` : undefined,
+        chips: [...(network ? [network] : []), ...(nodeGroup ? [`node group ${nodeGroup}`] : [])],
+      };
+    },
+    edges: (r) => identityEdges(r),
+    place: (r) => subnetIdOf(str(arr(props(r).agentPoolProfiles)[0]?.vnetSubnetID) ?? ""),
+  },
 
   // ── Data (T3.4) ──
   "microsoft.network/serviceendpointpolicies": {

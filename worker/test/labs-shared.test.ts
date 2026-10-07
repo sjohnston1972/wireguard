@@ -156,7 +156,7 @@ describe("governance and permissions", () => {
 
   it("ALLOWED_ROLES lists the §8.1 built-ins by GUID and never Owner or User Access Administrator", () => {
     const names = ALLOWED_ROLES.builtIn.map((r) => r.name);
-    for (const n of ["Reader", "Contributor", "Storage Blob Data Reader", "Storage Blob Data Contributor", "Virtual Machine Contributor", "Key Vault Secrets User", "Key Vault Secrets Officer", "Monitoring Reader", "Monitoring Contributor", "Network Contributor", "Backup Operator"]) {
+    for (const n of ["Reader", "Contributor", "Storage Blob Data Reader", "Storage Blob Data Contributor", "Virtual Machine Contributor", "Key Vault Secrets User", "Key Vault Secrets Officer", "Monitoring Reader", "Monitoring Contributor", "Network Contributor", "Backup Operator", "AcrPull"]) {
       expect(names).toContain(n);
     }
     expect(names).not.toContain("Owner");

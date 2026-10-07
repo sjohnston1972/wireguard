@@ -1,0 +1,52 @@
+# Lab 29 (AZ-305 batch 4, rulings 40-41). AZ-305 study guide skills this lab
+# touches (outline "Skills measured as of April 17, 2026"):
+#   Design infrastructure solutions > Design compute solutions: "Recommend a
+#   container-based solution"; Design network solutions: "Recommend a
+#   connectivity solution that connects Azure resources to the internet",
+#   "Recommend a load-balancing and routing solution".
+# Costs are GBP list prices for UK South from the Retail Prices API
+# (2026-10-07), rounded up. npm run labs-verify -- --meters az305-29-aks:
+#   Standard_B2s                     £0.0356/h Linux pay as you go
+#   P6 LRS Disk                      £9.321/month = £0.0128/h (the node's
+#                                    64 GiB OS disk: AKS gives a VM size
+#                                    that supports Premium storage, as the
+#                                    B2s does, a Premium SSD)
+#   Standard IPv4 Static Public IP   £0.0038/h (the outbound address)
+#   Basic Registry Unit              £0.1257/day = £0.0053/h
+# Authored (ruling 54: a non-regional row, region Global): "Standard
+# Included LB Rules and Outbound Rules" £0.0189/h for the Standard load
+# balancer AKS makes with its outbound rule. The Free tier control plane
+# costs nothing; the VNet, identities, role assignments and NSG cost nothing.
+# A LoadBalancer service the learner adds takes one more public IP
+# (£0.0038/h) on the same load balancer. The registry is billed by the day,
+# so a short session still pays about £0.13 for it.
+id: az305-29-aks
+version: 1
+title: "AKS small cluster, networking, ingress"
+summary: >-
+  A Free-tier AKS cluster with one small node on Azure CNI Overlay in a subnet of the lab's VNet, its node resource
+  group named inside the lab, and a Basic registry it pulls from, so you can deploy, expose and pull images with kubectl.
+exam: AZ-305
+skill_areas: [az305.infra]
+level: expert
+type: explore
+prerequisites: [az104-11-containers]
+cost:
+  items:
+    - { name: "AKS control plane, Free tier", gbp_h: 0 }
+    - { name: "Node VM, Standard_B2s (one, in the node resource group)", gbp_h: 0.0356, retail: { sku: Standard_B2s } }
+    - { name: "Node OS disk, Premium SSD P6 (64 GiB)", gbp_h: 0.0128, retail: { meter: "P6 LRS Disk", unit: "1/Month" } }
+    - { name: "Standard load balancer AKS makes (outbound rule), first 5 rules", gbp_h: 0.0189 }
+    - { name: "Public IP, Standard static (the load balancer's outbound address)", gbp_h: 0.0038, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "Container registry, Basic", gbp_h: 0.0053, retail: { meter: "Basic Registry Unit", unit: "1/Day" } }
+  pricey: null
+timing: { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 4 }
+capacity: { vm_sizes: [Standard_B2s] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles:
+    - { role: "Network Contributor", scope: resource }
+    - { role: "AcrPull", scope: resource }
+  governance: false

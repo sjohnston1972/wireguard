@@ -89,9 +89,13 @@ gateway, `wg.yml`, `lab.yml`, the lab Terraform or the lab versions.
     policy and role objects, management groups, Entra principals, locks, budgets, diagnostic settings and resources outside the
     lab's groups (lab 44's flow log in `NetworkWatcherRG`) are planned-only and say "Not listed by the live view".
 13. **"Made by Azure", never "added by hand",** for a live resource Terraform does not declare when Azure made it: `managedBy`
-    set, an Azure-named child (a private endpoint's NIC, a VM's OS disk), a lab group Azure created (`rg-lab-<id>-infra`), or a
-    known pattern (traffic analytics' `NWTA*` data collection rule and endpoint, AVNM's `ANM_` peerings). The patterns are one
-    list in `shared/topology/rules/live.ts`, each with a test.
+    set, an Azure-named child (a private endpoint's NIC, a VM's OS disk), a lab group Azure created, everything in such a
+    group, or a known pattern (traffic analytics' `NWTA*` data collection rule and endpoint, AVNM's `ANM_` peerings). A group
+    is Azure's only when a row of the same graph says so, never by its name: an AKS cluster's `nodeResourceGroup` (lab 29's
+    `rg-lab-<id>-nodes`), a Container Apps environment's `infrastructureResourceGroup` (lab 28's `rg-lab-<id>-infra`), or
+    the group's own row with `managedBy` set (the query projects it for groups too). A learner's hand-made
+    `rg-lab-<id>-managed`, and what is in it, is "Added by hand". The patterns are one list in
+    `shared/topology/rules/live.ts` (`AZURE_MADE`, with `azureMadeGroups`), each with a test.
 14. **Health without new calls.** The insights feeds read Resource Health for `vm-wg` only, so no lab resource has a Resource
     Health record and none is fetched. Health = `provisioningState`, plus the VM power state from Resource Graph's
     `properties.extended.instanceView.powerState` (V), plus per-type status already in the properties: SQL database `status`,
@@ -255,8 +259,12 @@ and the 1–2 props its card shows. Placement **subnet** means the subnet its NI
 | `keyVault` | `Microsoft.KeyVault/vaults` | `azurerm_key_vault` | RG | SKU, RBAC |
 | `containerGroup` | `Microsoft.ContainerInstance/containerGroups` | `azurerm_container_group` | subnet if VNet-injected, else RG | CPU/memory, IP type |
 | `containerApp` | `Microsoft.App/containerApps` | `azurerm_container_app` | RG | ingress, target port |
-| `containerAppEnv` | `Microsoft.App/managedEnvironments` | `azurerm_container_app_environment` | its infrastructure subnet, else RG | workload profiles |
+| `containerAppEnv` | `Microsoft.App/managedEnvironments` | `azurerm_container_app_environment` | its infrastructure subnet, else RG | workload profiles; chip `infra group <name>` (the group Azure makes for an environment in a subnet) |
+| `aks` | `Microsoft.ContainerService/managedClusters` | `azurerm_kubernetes_cluster` (+ `azurerm_kubernetes_cluster_node_pool` folded) | its first pool's subnet (`vnetSubnetID`), else RG | node size, node count (autoscale range); chips: network (`Azure CNI Overlay`, …), `node group <name>`; tier; icon `kubernetes-services` |
 | `registry` | `Microsoft.ContainerRegistry/registries` | `azurerm_container_registry` | RG | SKU |
+| `containerAppJob` | `Microsoft.App/jobs` | `azurerm_container_app_job` | RG | CPU, trigger chip (`event-driven`, `scheduled`, `manual`); icon `container-apps` (the pack has no job icon) |
+| `serviceBus` | `Microsoft.ServiceBus/namespaces` | `azurerm_servicebus_namespace` (+ queues, topics, subscriptions, rules, access policies folded) | RG | SKU, counts (queues, topics, subscriptions) |
+| `eventGrid` | `Microsoft.EventGrid/systemTopics`, `…/topics` | `azurerm_eventgrid_system_topic`, `azurerm_eventgrid_topic` (+ event subscriptions folded) | RG | subscription count |
 | `logAnalytics` | `Microsoft.OperationalInsights/workspaces` | `azurerm_log_analytics_workspace` | RG | daily cap, retention |
 | `monitor` | `microsoft.insights/metricalerts`, `activitylogalerts`, `actiongroups`, `datacollectionrules` | `azurerm_monitor_*` (but autoscale and diagnostic settings) | RG | type, severity |
 | `frontDoor` | `Microsoft.Cdn/profiles` (+ children folded) | `azurerm_cdn_frontdoor_profile` (+ children) | Global lane | SKU, endpoint host |
@@ -275,8 +283,9 @@ and the 1–2 props its card shows. Placement **subnet** means the subnet its NI
 | `generic` | anything else | anything else | subnet if a subnet id is found in its properties, else RG | short type |
 
 `liveVisible` is false for `managementGroup`, `policy`, `role` and `entraPrincipal`. Kind order inside a container (for the
-packing, §8.1): edge devices first (firewall, VPN gateway, App Gateway, LB, Bastion, Route Server, NAT gateway), then compute,
-then data, then everything else, then `generic`.
+packing, §8.1): edge devices first (firewall, VPN gateway, App Gateway, LB, Bastion, Route Server, NAT gateway), then compute
+(VM 20, scale set, container group, container app, environment, App Service plan, Container Apps job 26, AKS 27), then data,
+then everything else, then `generic`. No two kinds share an order (a test), so packing never depends on input order.
 
 ### 4.4 Folded and edge resources (`rules/planned.ts`, `rules/live.ts`)
 
@@ -285,10 +294,13 @@ then data, then everything else, then `generic`.
   outbound rules, pool addresses into the LB; App Gateway children (inline); firewall policy rule collection groups into the
   policy; Front Door endpoints, origin groups, origins, routes, rule sets, rules and security policies into the profile;
   resolver endpoints into the resolver; forwarding rules into the ruleset; DNS records into the zone; storage containers,
-  shares, blobs, management and immutability policies into the account; Cosmos databases and containers into the account; Key
+  shares, blobs, management and immutability policies into the account; Cosmos databases and containers into the account; Service Bus queues, topics, subscriptions, rules and access
+  policies into the namespace (counts); Event Grid event subscriptions into their topic; Key
   Vault secrets, certificates and keys into the vault (counts); AVNM groups, static members, configurations, rule collections,
   rules and deployments into the manager; site-recovery fabrics, containers, mappings, policies and backup policies into the
-  vault; autoscale settings into the VMSS; routing intent into the hub; virtual hub connections' route config into the edge;
+  vault; autoscale settings into the VMSS; an AKS cluster's extra node pools into the cluster (planned), and live, every
+  scale set in the group a cluster's `nodeResourceGroup` names (its node pools) into that cluster, so the node group shows
+  the load balancer, public IP, NSG and kubelet identity Azure made, never a scale set card; routing intent into the hub; virtual hub connections' route config into the edge;
   `azurerm_resource_group_template_deployment` into its RG; NSG rules into the NSG; routes into the route table; subnet
   associations into the subnet's chips.
 - **Drawn as edges** (`via`): §4.6.
@@ -310,7 +322,10 @@ here.
 plan's admin password and SSH key, and records a note ("1 value withheld"). Never read: `admin_password`, `admin_ssh_key`,
 `custom_data`, `user_data`, `shared_key`, `*_key`, `*connection_string*`, `*secret*`, `*password*`, certificate data,
 `identity.principal_id` values (an edge uses the reference, not the GUID). Tests (§12) run the deny check over every planned
-file and every live fixture's output.
+file and every live fixture's output. The mock plan's `value` attributes are never read, with one exception
+(`scripts/lib/topology-stream.mjs`): a container's `env[].value` that is only a URL to a bare host name
+(`^https?://<name>(:port)?/?$`, no dots, credentials, path or query), as lab 28's web tier calls `http://ca-app`. It can
+hold no secret, and it is what draws the planned "next tier" edge.
 
 ### 4.6 Edges
 
@@ -337,7 +352,10 @@ file and every live fixture's output.
 | Diagnostics | dependency | resource → workspace | `diagnostics` | `azurerm_monitor_diagnostic_setting` | not listed live (planned only) |
 | Backup / replication | dependency | vault → VM | `backup`, `replication` | protected VM, replicated VM | vault rows (V) |
 | Zone link | dependency | private DNS zone → VNet | `link` (`auto-registration`) | zone links | zone link rows (V) |
-| Others | dependency | data collection rule association, alert → target, App GW → Key Vault, SQL DB → server, failover group, container app → environment, AVNM → member VNets, policy base → child, WAF policy → App GW/endpoint | as named | refs | properties |
+| Event subscription | traffic | Event Grid topic → destination (a queue or topic is drawn as its namespace) | the destination's name (`blob-events`) | the subscription's endpoint refs; also topic → dead-letter account (dependency, `dead-letter`) | not listed live (planned only) |
+| KEDA consumer | traffic | Container Apps job → Service Bus namespace | the queues its rules watch (`orders, blob-events`) | `event_trigger_config` queue refs | `configuration.eventTriggerConfig.scale.rules[].metadata` (`namespace`, `queueName`) |
+| Next tier | traffic | container app → container app; container app → SQL server (lab 28) | the URL's scheme (`HTTP`, `HTTPS`; a reference with no known value is `HTTPS`); `SQL 1433` | a reference in the app's `template` to the other app or the server, or a known env value that is a URL to another app of the same environment (`http://ca-app`) | `template.containers[].env[].value` naming another app (by name in the same environment, its ingress FQDN or latest revision FQDN) or a server's `fullyQualifiedDomainName` |
+| Others | dependency | data collection rule association, alert → target, App GW → Key Vault, SQL DB → server, failover group, container app or job → environment, Container Apps environment → workspace (`logs`), Event Grid topic → source (`source`), AVNM → member VNets, policy base → child, WAF policy → App GW/endpoint | as named | refs | properties |
 
 Edges are deduplicated (a peering pair is one edge) and sorted. An edge to a node outside the graph is dropped with a note,
 except the WireGuard gateway (§4.2).
@@ -372,7 +390,7 @@ when the token has expired), body:
 
 ```json
 { "subscriptions": ["<AZURE_SUBSCRIPTION_ID>"],
-  "query": "resources | where resourceGroup =~ 'rg-lab-<id>' or resourceGroup startswith 'rg-lab-<id>-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties | order by id asc",
+  "query": "resources | where resourceGroup =~ 'rg-lab-<id>' or resourceGroup startswith 'rg-lab-<id>-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ 'rg-lab-<id>' or name startswith 'rg-lab-<id>-') | project id, name, type, location, resourceGroup = name, tags, managedBy) | order by id asc",
   "options": { "resultFormat": "objectArray", "$top": 1000 } }
 ```
 

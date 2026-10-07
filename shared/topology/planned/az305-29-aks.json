@@ -1,0 +1,132 @@
+{
+ "schema": 1,
+ "labId": "az305-29-aks",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:azurerm_container_registry.acr",
+   "key": "microsoft.containerregistry/registries/{p}acr",
+   "kind": "registry",
+   "label": "l29…acr",
+   "props": {
+    "sku": "Basic"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.ContainerRegistry/registries",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_role_assignment.kubelet_acr",
+     "label": "kubelet_acr",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_kubernetes_cluster.aks",
+   "key": "microsoft.containerservice/managedclusters/aks-lab",
+   "kind": "aks",
+   "label": "aks-lab",
+   "props": {
+    "tier": "Free",
+    "size": "Standard_B2s",
+    "instances": 1,
+    "chips": [
+     "Azure CNI Overlay",
+     "node group rg-lab-az305-29-aks-nodes"
+    ]
+   },
+   "parent": "tf:azurerm_subnet.aks",
+   "armType": "Microsoft.ContainerService/managedClusters",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-29-aks",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-29-aks",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-29-aks",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.aks",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-aks",
+   "kind": "subnet",
+   "label": "snet-aks",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_role_assignment.aks_subnet",
+     "label": "aks_subnet",
+     "armType": "Microsoft.Authorization/roleAssignments"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_user_assigned_identity.aks",
+   "key": "microsoft.managedidentity/userassignedidentities/id-{p}-aks",
+   "kind": "managedIdentity",
+   "label": "id-l29…-aks",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.ManagedIdentity/userAssignedIdentities",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_kubernetes_cluster.aks>tf:azurerm_container_registry.acr:role: AcrPull (kubelet identity)",
+   "from": "tf:azurerm_kubernetes_cluster.aks",
+   "to": "tf:azurerm_container_registry.acr",
+   "kind": "dependency",
+   "label": "role: AcrPull (kubelet identity)",
+   "via": "tf:azurerm_role_assignment.kubelet_acr"
+  },
+  {
+   "id": "dependency:tf:azurerm_kubernetes_cluster.aks>tf:azurerm_user_assigned_identity.aks:identity",
+   "from": "tf:azurerm_kubernetes_cluster.aks",
+   "to": "tf:azurerm_user_assigned_identity.aks",
+   "kind": "dependency",
+   "label": "identity",
+   "via": "tf:azurerm_kubernetes_cluster.aks"
+  },
+  {
+   "id": "dependency:tf:azurerm_user_assigned_identity.aks>tf:azurerm_subnet.aks:role: Network Contributor",
+   "from": "tf:azurerm_user_assigned_identity.aks",
+   "to": "tf:azurerm_subnet.aks",
+   "kind": "dependency",
+   "label": "role: Network Contributor",
+   "via": "tf:azurerm_role_assignment.aks_subnet"
+  }
+ ]
+}

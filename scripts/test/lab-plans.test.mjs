@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { checkPlan } from "../../infra/ci/lab-scope.mjs";
 import { labFolders } from "../lib/labs.mjs";
 import { LAB_PLANS, loadLabPlans } from "./fixtures/labs/plans/labs.mjs";
-import { COMPUTED, PLAN_DEFAULTS, realisticPlan, SCHEMA_FACTS, UNSET_BLOCKS_UNKNOWN } from "./fixtures/labs/plans/realistic.mjs";
+import { COMPUTED, PLAN_DEFAULTS, realisticPlan, SCHEMA_FACTS, SENSITIVE_BLOCKS, UNSET_BLOCKS_UNKNOWN } from "./fixtures/labs/plans/realistic.mjs";
 import { ctx, linuxVm, rgResource, rgSecondaryResource, SECONDARY } from "./fixtures/labs/plans/common.mjs";
 import { compareShapes, planShape, recordedShape, SHAPES } from "./fixtures/labs/plans/shape.mjs";
 
@@ -255,6 +255,75 @@ test("computed.json has every type AZ-700 labs use", () => {
   assert.ok(COMPUTED.types.azurerm_network_manager.attrs.includes("cross_tenant_scopes"), "cross_tenant_scopes is computed: unknown at plan, never set");
   assert.ok(COMPUTED.types.azurerm_network_watcher_flow_log.attrs.includes("target_resource_id"));
   assert.ok(COMPUTED.types.azurerm_virtual_network_gateway_connection.sensitive.includes("shared_key"), "a connection's shared key is sensitive in every plan");
+});
+
+// AZ-305 batch 4, lab 29 (az305-29-aks): the AKS cluster. azurerm 4.81.0 declares four of its top-level blocks
+// Optional and Computed (auto_scaler_profile, bootstrap_profile, kubelet_identity, windows_profile) and two inside
+// network_profile (load_balancer_profile, nat_gateway_profile), read from the provider's kubernetes_cluster_resource.go:
+// left unset, a plan has each wholly unknown, the nested ones too when the lab sets network_profile.
+test("computed.json has the AKS cluster lab 29 uses, and its unset Optional and Computed blocks plan as unknown", () => {
+  const t = COMPUTED.types.azurerm_kubernetes_cluster;
+  assert.ok(t, "azurerm_kubernetes_cluster is in computed.json");
+  for (const a of ["kube_config", "kube_config_raw", "kube_admin_config", "kube_admin_config_raw"]) assert.ok(t.sensitive.includes(a), `${a} is sensitive in every plan`);
+  for (const a of ["node_resource_group", "kubernetes_version", "fqdn", "node_resource_group_id"]) assert.ok(t.attrs.includes(a), `${a} is computed`);
+  assert.ok(t.blocks.network_profile.attrs.includes("pod_cidr"), "pod_cidr is Optional and Computed: unknown when left to AKS's default");
+  assert.deepEqual(SCHEMA_FACTS.azurerm_kubernetes_cluster, { rg: true, tags: true });
+  // node_provisioning_profile: lab 29's first release test (2026-10-07) recorded it unknown too.
+  assert.deepEqual([...UNSET_BLOCKS_UNKNOWN.azurerm_kubernetes_cluster].sort(), ["auto_scaler_profile", "bootstrap_profile", "kubelet_identity", "network_profile", "network_profile.0.load_balancer_profile", "network_profile.0.nat_gateway_profile", "node_provisioning_profile", "windows_profile"]);
+  const plan = realisticPlan({
+    resources: [
+      {
+        address: "azurerm_kubernetes_cluster.x",
+        values: { name: "aks", default_node_pool: [{ name: "system", vm_size: "Standard_B2s", node_count: 1 }], network_profile: [{ network_plugin: "azure", network_plugin_mode: "overlay" }] },
+      },
+      { address: "azurerm_kubernetes_cluster.bare", values: { name: "aks2", default_node_pool: [{ name: "system", vm_size: "Standard_B2s", node_count: 1 }] } },
+    ],
+  });
+  const au = (a) => plan.resource_changes.find((c) => c.address === a).change.after_unknown;
+  const x = au("azurerm_kubernetes_cluster.x");
+  for (const b of ["auto_scaler_profile", "bootstrap_profile", "kubelet_identity", "windows_profile"]) assert.equal(x[b], true, b);
+  assert.equal(x.network_profile[0].load_balancer_profile, true, "a nested Optional and Computed block, unset: unknown");
+  assert.equal(x.network_profile[0].nat_gateway_profile, true);
+  assert.equal(x.network_profile[0].pod_cidr, true, "Optional and Computed, unset: unknown");
+  assert.equal(x.network_profile[0].network_plugin, undefined, "set: known");
+  assert.equal(x.default_node_pool[0].os_sku, true);
+  assert.equal(x.node_resource_group, true, "computed and unset");
+  // network_profile itself is Optional and Computed: left out, the whole block is unknown (and nothing inside it is listed).
+  assert.equal(au("azurerm_kubernetes_cluster.bare").network_profile, true);
+});
+
+// Batch 4's release tests (2026-10-07) recorded three more things a plan does: a container app's (or job's) secret
+// block, when set, is sensitive as a whole (not value by value); a Service Bus namespace's unset network_rule_set is
+// wholly unknown; and Front Door's WAF captcha and JS challenge cookie lifetimes are plan-time defaults only on
+// Premium (lab 42) — on Standard (lab 28) they are unknown.
+test("the realistic plans print batch 4's secret blocks, Service Bus network rules and Standard WAF cookie lifetimes as the real plans did", () => {
+  assert.deepEqual(SENSITIVE_BLOCKS.azurerm_container_app, ["secret"]);
+  assert.deepEqual(SENSITIVE_BLOCKS.azurerm_container_app_job, ["secret"]);
+  assert.ok(UNSET_BLOCKS_UNKNOWN.azurerm_servicebus_namespace.includes("network_rule_set"));
+  const waf = (sku) => ({ address: `azurerm_cdn_frontdoor_firewall_policy.${sku}`, values: { name: sku, sku_name: `${sku}_AzureFrontDoor`, mode: "Prevention" } });
+  const plan = realisticPlan({
+    resources: [
+      { address: "azurerm_container_app.with", values: { name: "a", secret: [{ name: "s", value: "x" }] }, refs: { "secret.0.value": ["var.p"] } },
+      { address: "azurerm_container_app.without", values: { name: "b" } },
+      { address: "azurerm_container_app_job.j", values: { name: "j", secret: [{ name: "s" }] }, unknown: ["secret.0.value"] },
+      { address: "azurerm_servicebus_namespace.sb", values: { name: "sb", sku: "Standard" } },
+      waf("Premium"),
+      waf("Standard"),
+    ],
+  });
+  const change = (a) => plan.resource_changes.find((c) => c.address === a).change;
+  assert.equal(change("azurerm_container_app.with").after_sensitive.secret, true, "a set secret block is sensitive as a whole");
+  assert.equal(change("azurerm_container_app.without").after_sensitive.secret, undefined, "an unset one is not marked");
+  assert.equal(change("azurerm_container_app_job.j").after_sensitive.secret, true);
+  assert.equal(change("azurerm_container_app_job.j").after_unknown.secret[0].value, true, "its values can still be unknown");
+  assert.equal(change("azurerm_servicebus_namespace.sb").after_unknown.network_rule_set, true);
+  const premium = change("azurerm_cdn_frontdoor_firewall_policy.Premium");
+  assert.equal(premium.after.captcha_cookie_expiration_in_minutes, 30, "Premium: a plan-time default");
+  assert.equal(premium.after_unknown.captcha_cookie_expiration_in_minutes, undefined);
+  const standard = change("azurerm_cdn_frontdoor_firewall_policy.Standard");
+  assert.equal(standard.after.captcha_cookie_expiration_in_minutes, undefined, "Standard: no default");
+  assert.equal(standard.after_unknown.captcha_cookie_expiration_in_minutes, true);
+  assert.equal(standard.after_unknown.js_challenge_cookie_expiration_in_minutes, true);
 });
 
 test("ctx gives a secondary group and region", () => {

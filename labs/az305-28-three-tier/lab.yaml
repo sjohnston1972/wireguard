@@ -1,0 +1,74 @@
+# Lab 28 (AZ-305 batch 4; spec §17, rulings 40 and 41). AZ-305 study guide
+# skills this lab touches (outline "Skills measured as of April 17, 2026"):
+#   Design infrastructure solutions > Design compute solutions: "Recommend a
+#   container-based solution"; Design an application architecture:
+#   "Recommend an API integration solution" (a tier behind internal
+#   ingress); Design network solutions: "Recommend a solution to optimize
+#   network security" (WAF at the edge, a private endpoint),
+#   "Recommend a load-balancing and routing solution".
+#   Design data storage solutions > Design data storage solutions for
+#   relational data: "Recommend a database service tier and compute tier".
+# Costs are GBP list prices from the Retail Prices API (2026-10-07), rounded
+# up. npm run labs-verify -- --meters az305-28-three-tier checks the retail
+# entries:
+#   B DTU                           £0.1517 a day in uksouth = £0.0063/h
+#   Standard IPv4 Static Public IP  £0.0038/h
+# Authored (ruling 2 and ruling 54):
+#   Front Door Standard "Standard Base Fees" £26.4161 a month per profile
+#     (£0.0362/h), priced under region "Zone 1".."Zone 8" (no uksouth row);
+#     Learn: billed for each hour, or part hour, the profile exists.
+#     Requests (£0.0068 per 10,000) are a few hundred an hour.
+#   Front Door WAF, Standard: "Standard Policy" £3.7737 a month per policy
+#     and "Standard Rule" £0.7547 a month per custom rule (regions "Zone N"
+#     and "": no uksouth row). Managed rule sets ("Standard Default
+#     Ruleset", £15.09 a month) are not offered on Front Door Standard.
+#   Private endpoint £0.0075/h, region "Global" (authored £0.0076 as labs 6
+#     and 23); private DNS zone tiered, region "Zone 1".
+#   The environment's managed resources (Learn, "Configure virtual networks
+#     in Azure Container Apps environments": an external workload-profiles
+#     environment in your own VNet is also billed one Standard static public
+#     IP for egress, one for ingress and one Standard load balancer), in
+#     rg-lab-<id>-infra. The load balancer's row is region "Global"
+#     (£0.0189/h, first five rules), so it is authored.
+#   Container Apps, Consumption profile, uksouth: vCPU $0.000034 a second
+#     active and $0.000004 idle, memory $0.000004 a GiB-second (the GBP rows
+#     round to 0 at four places; converted at the Front Door rows' rate,
+#     0.7547). The app tier (0.5 vCPU, 1 GiB, one replica always) is idle
+#     between the sidecar's once-a-minute queries: £0.0163/h (£0.057/h if
+#     it were active all hour). The web tier scales to zero. The
+#     subscription's monthly free grant (180,000 vCPU-seconds, 360,000
+#     GiB-seconds) usually covers both. No Dedicated profile, so no plan
+#     management fee.
+id: az305-28-three-tier
+version: 1
+title: "Three-tier app: Container Apps, SQL, Front Door + WAF"
+summary: >-
+  A web tier and an app tier in Azure Container Apps, the web tier reachable only through Front Door Standard and its
+  WAF policy, the app tier internal, and an Azure SQL Basic database with public access off behind a private endpoint.
+exam: AZ-305
+skill_areas: [az305.infra, az305.data]
+level: expert
+type: explore
+prerequisites: [az305-27-multi-region]
+cost:
+  items:
+    - { name: "Front Door Standard, base fee", gbp_h: 0.0362 }
+    - { name: "Front Door requests, light use", gbp_h: 0.0001 }
+    - { name: "Front Door WAF policy, Standard", gbp_h: 0.0052 }
+    - { name: "Front Door WAF custom rule, Standard", gbp_h: 0.0011, qty: 2 }
+    - { name: "SQL Database Basic, appdb", gbp_h: 0.0063, retail: { meter: "B DTU", unit: "1/Day" } }
+    - { name: "Private endpoint", gbp_h: 0.0076 }
+    - { name: "Private DNS zone", gbp_h: 0.0005 }
+    - { name: "Container Apps environment's public IPs, Standard static (ingress and egress)", gbp_h: 0.0038, qty: 2, retail: { meter: "Standard IPv4 Static Public IP", unit: "1 Hour" } }
+    - { name: "Container Apps environment's Standard load balancer, first 5 rules", gbp_h: 0.0189 }
+    - { name: "Container Apps app tier, 0.5 vCPU and 1 GiB at the idle rate", gbp_h: 0.0163 }
+    - { name: "Container Apps web tier, scales to zero (a few active minutes)", gbp_h: 0.0001 }
+  pricey: "Front Door Standard, base fee"
+timing: { deploy_min: 7, destroy_min: 29, session_h: 2, max_h: 3 }
+capacity: { vm_sizes: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

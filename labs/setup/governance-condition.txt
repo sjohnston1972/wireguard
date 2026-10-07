@@ -4,7 +4,7 @@
  )
  OR
  (
-  @Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {acdd72a7-3385-48ef-bd42-f606fba81ae7, b24988ac-6180-42a0-ab88-20f7382dd24c, 2a2b9908-6ea1-4ae2-8e65-a410df84e7d1, ba92f5b4-2d11-453d-a403-e96b0029c9fe, 9980e02c-c2be-4d73-94e8-173b1dc7cf3c, 4633458b-17de-408a-b874-0445c86b69e6, b86a8fe4-44ce-4948-aee5-eccb2c155cd7, 43d0d8ad-25c7-4714-9337-8ba259a9fe05, 749f88d5-cbae-40b8-bcfc-e573ddc772fa, 4d97b98b-1d4f-4787-a291-c67834d212e7, 00c29273-979b-4161-815c-10b084fb9324, 7331dcae-09d3-477e-8da7-2895697f0fc0, 60bdbc03-b25a-4a83-9fce-b2c5afff563c, bd52e05a-22cb-4bd5-b56c-3396add9b7c0}
+  @Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {acdd72a7-3385-48ef-bd42-f606fba81ae7, b24988ac-6180-42a0-ab88-20f7382dd24c, 2a2b9908-6ea1-4ae2-8e65-a410df84e7d1, ba92f5b4-2d11-453d-a403-e96b0029c9fe, 9980e02c-c2be-4d73-94e8-173b1dc7cf3c, 4633458b-17de-408a-b874-0445c86b69e6, b86a8fe4-44ce-4948-aee5-eccb2c155cd7, 43d0d8ad-25c7-4714-9337-8ba259a9fe05, 749f88d5-cbae-40b8-bcfc-e573ddc772fa, 4d97b98b-1d4f-4787-a291-c67834d212e7, 00c29273-979b-4161-815c-10b084fb9324, 7f951dda-4ed3-4680-a7ca-43fe172d538d, 7331dcae-09d3-477e-8da7-2895697f0fc0, 60bdbc03-b25a-4a83-9fce-b2c5afff563c, bd52e05a-22cb-4bd5-b56c-3396add9b7c0}
   AND
   @Request[Microsoft.Authorization/roleAssignments:PrincipalType] ForAnyOfAnyValues:StringEqualsIgnoreCase {'User', 'Group', 'ServicePrincipal'}
  )
@@ -16,7 +16,7 @@ AND
  )
  OR
  (
-  @Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {acdd72a7-3385-48ef-bd42-f606fba81ae7, b24988ac-6180-42a0-ab88-20f7382dd24c, 2a2b9908-6ea1-4ae2-8e65-a410df84e7d1, ba92f5b4-2d11-453d-a403-e96b0029c9fe, 9980e02c-c2be-4d73-94e8-173b1dc7cf3c, 4633458b-17de-408a-b874-0445c86b69e6, b86a8fe4-44ce-4948-aee5-eccb2c155cd7, 43d0d8ad-25c7-4714-9337-8ba259a9fe05, 749f88d5-cbae-40b8-bcfc-e573ddc772fa, 4d97b98b-1d4f-4787-a291-c67834d212e7, 00c29273-979b-4161-815c-10b084fb9324, 7331dcae-09d3-477e-8da7-2895697f0fc0, 60bdbc03-b25a-4a83-9fce-b2c5afff563c, bd52e05a-22cb-4bd5-b56c-3396add9b7c0}
+  @Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {acdd72a7-3385-48ef-bd42-f606fba81ae7, b24988ac-6180-42a0-ab88-20f7382dd24c, 2a2b9908-6ea1-4ae2-8e65-a410df84e7d1, ba92f5b4-2d11-453d-a403-e96b0029c9fe, 9980e02c-c2be-4d73-94e8-173b1dc7cf3c, 4633458b-17de-408a-b874-0445c86b69e6, b86a8fe4-44ce-4948-aee5-eccb2c155cd7, 43d0d8ad-25c7-4714-9337-8ba259a9fe05, 749f88d5-cbae-40b8-bcfc-e573ddc772fa, 4d97b98b-1d4f-4787-a291-c67834d212e7, 00c29273-979b-4161-815c-10b084fb9324, 7f951dda-4ed3-4680-a7ca-43fe172d538d, 7331dcae-09d3-477e-8da7-2895697f0fc0, 60bdbc03-b25a-4a83-9fce-b2c5afff563c, bd52e05a-22cb-4bd5-b56c-3396add9b7c0}
   AND
   @Resource[Microsoft.Authorization/roleAssignments:PrincipalType] ForAnyOfAnyValues:StringEqualsIgnoreCase {'User', 'Group', 'ServicePrincipal'}
  )

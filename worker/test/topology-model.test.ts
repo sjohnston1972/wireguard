@@ -51,6 +51,20 @@ describe("kinds", () => {
     expect([...GROUP_KINDS].sort()).toEqual([...TOPO_GROUP_KINDS].sort());
   });
 
+  it("an AKS cluster is its own kind (lab 29), drawn in its node subnet with the Kubernetes Services icon", () => {
+    expect(kindOfArm("Microsoft.ContainerService/managedClusters")).toBe("aks");
+    expect(kindOfTf("azurerm_kubernetes_cluster")).toBe("aks");
+    expect(KINDS.aks).toMatchObject({ word: "Kubernetes cluster", icon: "kubernetes-services", placement: "subnet", liveVisible: true, cardProps: ["size", "instances"] });
+  });
+
+  it("no two kinds share a packing order, so cards pack the same way every time", () => {
+    const byOrder = new Map<number, string[]>();
+    for (const [k, d] of Object.entries(KINDS)) byOrder.set(d.order, [...(byOrder.get(d.order) ?? []), k]);
+    expect([...byOrder.values()].filter((ks) => ks.length > 1)).toEqual([]);
+    // Compute is 20-29: a Container Apps job, then the AKS cluster.
+    expect([KINDS.containerAppJob.order, KINDS.aks.order]).toEqual([26, 27]);
+  });
+
   it("kinds the live query cannot list are not liveVisible", () => {
     for (const k of ["managementGroup", "policy", "role", "entraPrincipal"] as TopoAssetKind[]) expect(KINDS[k].liveVisible, k).toBe(false);
     expect(KINDS.vm.liveVisible).toBe(true);

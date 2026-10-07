@@ -42,11 +42,13 @@ that exact name.
 | `dns-forwarding-ruleset` | `networking/02882-icon-service-DNS-Private-Resolver.svg` | no ruleset icon; the DNS Private Resolver it belongs to |
 | `dns-private-resolver` | `networking/02882-icon-service-DNS-Private-Resolver.svg` |  |
 | `dns-zones` | `networking/10064-icon-service-DNS-Zones.svg` |  |
+| `event-grid-system-topics` | `integration/02073-icon-service-System-Topic.svg` |  |
 | `firewall-policies` | `networking/00272-icon-service-Azure-Firewall-Policy.svg` |  |
 | `firewalls` | `networking/10084-icon-service-Firewalls.svg` |  |
 | `front-door` | `networking/10073-icon-service-Front-Door-and-CDN-Profiles.svg` |  |
 | `generic` | `general/10001-icon-service-All-Resources.svg` | a resource of a kind the diagram does not know: All Resources |
 | `key-vaults` | `security/10245-icon-service-Key-Vaults.svg` |  |
+| `kubernetes-services` | `containers/10023-icon-service-Kubernetes-Services.svg` |  |
 | `load-balancers` | `networking/10062-icon-service-Load-Balancers.svg` |  |
 | `local-network-gateways` | `networking/10077-icon-service-Local-Network-Gateways.svg` |  |
 | `log-analytics-workspaces` | `monitor/00009-icon-service-Log-Analytics-Workspaces.svg` |  |
@@ -68,6 +70,7 @@ that exact name.
 | `role` | `identity/10340-icon-service-Entra-Identity-Roles-and-Administrators.svg` | no role definition icon; Entra Identity Roles and Administrators |
 | `route-server` | `networking/02496-icon-service-Virtual-Router.svg` | the pack has no Route Server icon; Virtual Router is the portal's icon for it |
 | `route-tables` | `networking/10082-icon-service-Route-Tables.svg` |  |
+| `service-bus` | `integration/10836-icon-service-Azure-Service-Bus.svg` |  |
 | `sql-database` | `databases/10130-icon-service-SQL-Database.svg` |  |
 | `sql-server` | `databases/10132-icon-service-SQL-Server.svg` |  |
 | `storage-accounts` | `storage/10086-icon-service-Storage-Accounts.svg` |  |

@@ -88,6 +88,47 @@ export interface TfRule {
   place?: (inst: TfInst, h: PlannedHelpers) => string | null;
 }
 
+/** An env value's scheme and host: "http://ca-app/x" → { scheme: "http", host: "ca-app" }; "tcp:srv,1433" → srv. */
+export function urlHost(v: string): { scheme?: string; host: string } | null {
+  const m = /^(?:([a-z][a-z0-9+.-]*):(?:\/\/)?)?([a-z0-9-]+(?:\.[a-z0-9-]+)*)\.?(?=$|[:,/?#])/i.exec(v.trim());
+  return m ? { scheme: m[1]?.toLowerCase(), host: m[2]!.toLowerCase() } : null;
+}
+const lower = (s: string | undefined) => (s ?? "").toLowerCase();
+
+/** The label of a call from one container app to another: the URL's scheme, HTTPS unless it says http. */
+export const appCallLabel = (scheme: string | undefined) => (scheme === "http" ? "HTTP" : "HTTPS");
+
+/**
+ * A container app's calls to the next tier (lab 28), from its containers' env values: a reference in its template to
+ * another container app (its ingress FQDN) or a SQL server (its FQDN), or a known value naming another app of the same
+ * environment ("http://ca-app"). Traffic edges, "HTTP"/"HTTPS" by the URL's scheme, "SQL 1433" to a server.
+ */
+function tierEdges(i: TfInst, h: PlannedHelpers): EdgeSpec[] {
+  const out = new Map<string, EdgeSpec>();
+  const add = (to: TfInst, label: string) => {
+    if (to !== i && !out.has(to.id)) out.set(to.id, { from: i, to, kind: "traffic", label });
+  };
+  const env = (x: TfInst) => h.refs(x, ["container_app_environment_id"])[0];
+  const apps = h.byType("azurerm_container_app").filter((a) => a !== i);
+  // Known values first: they say the scheme.
+  for (const c of list(first(i.after.template).container)) {
+    for (const e of list((c as Record<string, unknown> | null)?.env)) {
+      const v = str((e as Record<string, unknown> | null)?.value);
+      const u = v ? urlHost(v) : null;
+      if (!u) continue;
+      const app = apps.find((a) => (lower(str(a.after.name)) === u.host && env(a) === env(i)) || lower(str(first(a.after.ingress).fqdn)) === u.host);
+      if (app) add(app, appCallLabel(u.scheme));
+      const sql = h.byType("azurerm_mssql_server").find((s) => lower(str(s.after.fully_qualified_domain_name)) === u.host);
+      if (sql) add(sql, "SQL 1433");
+    }
+  }
+  for (const r of h.refs(i, ["template"])) {
+    if (r.type === "azurerm_container_app") add(r, "HTTPS");
+    else if (r.type === "azurerm_mssql_server") add(r, "SQL 1433");
+  }
+  return [...out.values()];
+}
+
 /** Types that are never Azure resources (spec §4.4): random_*, time_*, terraform_data, null_resource. */
 export const TF_IGNORED_PREFIXES = ["random_", "time_", "terraform_data", "null_resource"];
 
@@ -356,6 +397,15 @@ export function cosmosApi(kind: string | undefined, capabilities: string[]): str
   return kind ? "NoSQL" : undefined;
 }
 
+/** An AKS cluster's pod networking in words, from its network plugin and mode (the same words live, rules/live.ts). */
+export function aksNetworkWord(plugin: string | undefined, mode: string | undefined): string | undefined {
+  const p = (plugin ?? "").toLowerCase();
+  if (p === "azure") return (mode ?? "").toLowerCase() === "overlay" ? "Azure CNI Overlay" : "Azure CNI";
+  if (p === "kubenet") return "kubenet";
+  if (p === "none") return "bring-your-own CNI";
+  return undefined;
+}
+
 /** A VPN connection's label: "IPsec", "IPsec, BGP", "VNet-to-VNet". */
 const connectionLabel = (i: TfInst): string => {
   const t = str(i.after.type)?.toLowerCase();
@@ -446,7 +496,12 @@ export const TF_RULES: Record<string, TfRule> = {
   },
   azurerm_container_app_environment: {
     arm: "Microsoft.App/managedEnvironments",
-    props: (i) => ({ sku: str(first(i.after.workload_profile).workload_profile_type) ?? "Consumption" }),
+    // The group Azure makes for an environment in a subnet, named by the lab (lab 28: rg-lab-<id>-infra), as a chip.
+    props: (i) => {
+      const infra = str(i.after.infrastructure_resource_group_name);
+      return { sku: str(first(i.after.workload_profile).workload_profile_type) ?? "Consumption", chips: infra ? [`infra group ${infra}`] : undefined };
+    },
+    edges: (i, h) => h.refs(i, ["log_analytics_workspace_id"]).map((w) => ({ from: i, to: w, kind: "dependency" as const, label: "logs" })),
   },
   azurerm_container_app: {
     arm: "Microsoft.App/containerApps",
@@ -458,9 +513,109 @@ export const TF_RULES: Record<string, TfRule> = {
       ...h.refs(i, ["container_app_environment_id"]).map((e) => ({ from: i, to: e, kind: "dependency" as const, label: "environment" })),
       ...h.refs(i, ["registry"]).filter((r) => r.type === "azurerm_container_registry").map((r) => ({ from: i, to: r, kind: "dependency" as const, label: "pulls images" })),
       ...identityEdges(i, h),
+      ...tierEdges(i, h),
     ],
   },
   azurerm_container_registry: { arm: "Microsoft.ContainerRegistry/registries", props: (i) => ({ sku: str(i.after.sku) }) },
+  // AKS (lab 29): one card in its node subnet; the default node pool is a block of the cluster (its size and count on the
+  // card), another pool folds in. The node resource group is Azure's: only the live view has it (made by Azure).
+  azurerm_kubernetes_cluster: {
+    arm: "Microsoft.ContainerService/managedClusters",
+    props: (i) => {
+      const pool = first(i.after.default_node_pool);
+      const net = first(i.after.network_profile);
+      const auto = pool.auto_scaling_enabled === true;
+      const network = aksNetworkWord(str(net.network_plugin), str(net.network_plugin_mode));
+      const nodeGroup = str(i.after.node_resource_group);
+      return {
+        tier: str(i.after.sku_tier),
+        size: str(pool.vm_size),
+        instances: num(pool.node_count),
+        autoscale: auto && num(pool.min_count) !== undefined ? `${num(pool.min_count)}-${num(pool.max_count) ?? "?"}` : undefined,
+        chips: [...(network ? [network] : []), ...(nodeGroup ? [`node group ${nodeGroup}`] : [])],
+      };
+    },
+    edges: (i, h) => identityEdges(i, h),
+  },
+  azurerm_kubernetes_cluster_node_pool: { arm: "Microsoft.ContainerService/managedClusters/agentPools", fold: ["kubernetes_cluster_id"], namePath: childPath("kubernetes_cluster_id") },
+  // A job: its trigger as a chip; → the namespace whose queues its KEDA rules watch (traffic, the queues' names).
+  azurerm_container_app_job: {
+    arm: "Microsoft.App/jobs",
+    props: (i) => {
+      const cs = list(first(i.after.template).container).map((c) => (c ?? {}) as Record<string, unknown>);
+      const trigger = list(i.after.event_trigger_config).length ? "event-driven" : list(i.after.schedule_trigger_config).length ? "scheduled" : list(i.after.manual_trigger_config).length ? "manual" : undefined;
+      return { cpu: cs.length ? Math.round(cs.reduce((a, c) => a + (num(c.cpu) ?? 0), 0) * 100) / 100 : undefined, chips: trigger ? [trigger] : undefined };
+    },
+    edges: (i, h) => {
+      // The rules' queue names in the rules' order, so the label reads as main.tf does.
+      const order = list(first(first(i.after.event_trigger_config).scale).rules).map((r) => str(((r ?? {}) as { metadata?: Record<string, unknown> }).metadata?.queueName));
+      const byNs = new Map<TfInst, string[]>();
+      for (const q of h.refs(i, ["event_trigger_config"]).filter((x) => x.type === "azurerm_servicebus_queue")) {
+        const ns = h.refs(q, ["namespace_id"])[0];
+        if (ns) byNs.set(ns, [...(byNs.get(ns) ?? []), str(q.after.name) ?? q.name]);
+      }
+      const label = (names: string[]) => [...order.filter((n): n is string => !!n && names.includes(n)), ...names.filter((n) => !order.includes(n))].join(", ");
+      return [
+        ...[...byNs].map(([ns, names]) => ({ from: i, to: ns, kind: "traffic" as const, label: label(names) })),
+        ...h.refs(i, ["container_app_environment_id"]).map((e) => ({ from: i, to: e, kind: "dependency" as const, label: "environment" })),
+        ...h.refs(i, ["registry"]).filter((r) => r.type === "azurerm_container_registry").map((r) => ({ from: i, to: r, kind: "dependency" as const, label: "pulls images" })),
+        ...identityEdges(i, h),
+      ];
+    },
+  },
+
+  // ── Messaging and events (AZ-305 batch 4, lab 30) ──
+  // Queues, topics, subscriptions, their rules and the access policies fold into the namespace (counts). An event
+  // subscription folds into its topic and is drawn topic → destination (traffic, labelled with the destination's
+  // name) and topic → dead-letter account (dependency).
+  azurerm_servicebus_namespace: {
+    arm: "Microsoft.ServiceBus/namespaces",
+    props: (i, h) => {
+      const topics = h.referrers(i, ["azurerm_servicebus_topic"], ["namespace_id"]);
+      const subs = h.byType("azurerm_servicebus_subscription").filter((s) => h.refs(s, ["topic_id"]).some((t) => topics.includes(t)));
+      const counts = (
+        [
+          ["queues", h.referrers(i, ["azurerm_servicebus_queue"], ["namespace_id"]).length],
+          ["topics", topics.length],
+          ["subscriptions", subs.length],
+        ] as [string, number][]
+      )
+        .filter(([, c]) => c)
+        .map(([w, c]) => `${w}: ${c}`);
+      return { sku: str(i.after.sku), counts: counts.length ? counts : undefined };
+    },
+  },
+  azurerm_servicebus_queue: { arm: "Microsoft.ServiceBus/namespaces/queues", fold: ["namespace_id"] },
+  azurerm_servicebus_topic: { arm: "Microsoft.ServiceBus/namespaces/topics", fold: ["namespace_id"] },
+  azurerm_servicebus_subscription: { arm: "Microsoft.ServiceBus/namespaces/topics/subscriptions", fold: ["topic_id"] },
+  azurerm_servicebus_subscription_rule: { arm: "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules", fold: ["subscription_id"] },
+  azurerm_servicebus_namespace_authorization_rule: { arm: "Microsoft.ServiceBus/namespaces/authorizationRules", fold: ["namespace_id"] },
+  azurerm_servicebus_queue_authorization_rule: { arm: "Microsoft.ServiceBus/namespaces/queues/authorizationRules", fold: ["queue_id"] },
+  azurerm_servicebus_topic_authorization_rule: { arm: "Microsoft.ServiceBus/namespaces/topics/authorizationRules", fold: ["topic_id"] },
+  azurerm_eventgrid_system_topic: {
+    arm: "Microsoft.EventGrid/systemTopics",
+    props: (i, h) => {
+      const n = h.referrers(i, ["azurerm_eventgrid_system_topic_event_subscription"], ["system_topic"]).length;
+      return { counts: n ? [`subscriptions: ${n}`] : undefined };
+    },
+    edges: (i, h) => h.refs(i, ["source_resource_id", "source_arm_resource_id"]).map((s) => ({ from: i, to: s, kind: "dependency" as const, label: "source" })),
+  },
+  azurerm_eventgrid_system_topic_event_subscription: {
+    arm: "Microsoft.EventGrid/systemTopics/eventSubscriptions",
+    fold: ["system_topic"],
+    edges: (i, h) => {
+      const topic = h.refs(i, ["system_topic"])[0];
+      if (!topic) return [];
+      const to = h.refs(i, ["service_bus_queue_endpoint_id", "service_bus_topic_endpoint_id", "eventhub_endpoint_id", "hybrid_connection_endpoint_id", "storage_queue_endpoint", "azure_function_endpoint"]);
+      return [
+        ...to.map((d) => ({ from: topic, to: d, kind: "traffic" as const, label: str(d.after.name) ?? "events" })),
+        ...h
+          .refs(i, ["storage_blob_dead_letter_destination"])
+          .filter((a) => a.type === "azurerm_storage_account")
+          .map((a) => ({ from: topic, to: a, kind: "dependency" as const, label: "dead-letter" })),
+      ];
+    },
+  },
 
   // ── Recovery Services (T3.5): backup and site-recovery children fold into the vault; protected VMs are edges ──
   azurerm_recovery_services_vault: {
@@ -969,7 +1124,10 @@ export const TF_RULES: Record<string, TfRule> = {
       return h.refs(i, ["principal_id"]).flatMap((p) =>
         h.refs(i, ["scope"]).map((s) => {
           const one = s.type === "azurerm_key_vault_secret" ? " (one secret)" : s.type === "azurerm_key_vault_key" ? " (one key)" : s.type === "azurerm_key_vault_certificate" ? " (one certificate)" : "";
-          return { from: p, to: s, kind: "dependency" as const, label: `role: ${name}${one}` };
+          // An AKS cluster whose control plane has a user-assigned identity (its own card) can only be the principal
+          // through its kubelet identity, which AKS makes in the node group and the cluster's card stands for (lab 29).
+          const kubelet = p.type === "azurerm_kubernetes_cluster" && str(first(p.after.identity).type) === "UserAssigned" ? " (kubelet identity)" : "";
+          return { from: p, to: s, kind: "dependency" as const, label: `role: ${name}${one}${kubelet}` };
         }),
       );
     },

@@ -23,7 +23,7 @@ import { KINDS, kindOfArm } from "./kinds";
 import { disambiguate, nodeKey, SYNTHETIC_KEYS, type NameCtx } from "./keys";
 import { scrubProps, withheldNote } from "./props";
 import { ownsName } from "../labs";
-import { ARM_RULES, AZURE_MADE, healthOf, lower, namePathOf, peeringEdges, subnetIdOf, type ArgRow, type LiveEdgeSpec, type LiveHelpers } from "./rules/live";
+import { ARM_RULES, AZURE_MADE, azureMadeGroups, healthOf, lower, namePathOf, peeringEdges, subnetIdOf, type ArgRow, type LiveEdgeSpec, type LiveHelpers } from "./rules/live";
 
 export type { ArgRow };
 
@@ -70,6 +70,9 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
   const groupRows = owned.filter(isGroupOwnRow);
   const rows = owned.filter((r) => !isGroupOwnRow(r));
   const rowById = new Map(rows.map((r) => [lower(r.id), r]));
+  // The groups Azure made, as this graph's rows name them (a cluster's node group, an environment's infrastructure
+  // group, a group row with managedBy): never by name alone (ruling 13).
+  const made = azureMadeGroups(owned);
   const nodes = new Map<string, TopoNode>();
   const raw = new Map<string, Record<string, unknown>>();
   const addNode = (n: TopoNode) => nodes.set(n.id, n);
@@ -83,7 +86,7 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
     addNode({ id, key: "", kind: "resourceGroup", label: name, props: {}, armType: "Microsoft.Resources/resourceGroups", scope: "lab" });
     const role = lower(name).startsWith(`${primaryRg}-`) ? lower(name).slice(primaryRg.length + 1) : null;
     raw.set(id, role ? { chips: [role] } : {});
-    if (AZURE_MADE.some((m) => m.test({ id, name, type: "microsoft.resources/resourcegroups", resourceGroup: name }))) nodes.get(id)!.madeBy = "azure";
+    if (AZURE_MADE.some((m) => m.test({ id, name, type: "microsoft.resources/resourcegroups", resourceGroup: name }, made))) nodes.get(id)!.madeBy = "azure";
   }
   const isGateway = (remote: string) => (ctx.gatewayVnetId ? lower(remote) === lower(ctx.gatewayVnetId) : false) || /\/virtualnetworks\/vnet-wg$/i.test(remote);
   const subnetPath = new Map<string, string[]>();
@@ -224,7 +227,7 @@ export function liveGraph(allRows: readonly ArgRow[], ctx: LiveCtx): TopologyGra
     raw.set(id, { ...p, resourceId: r.id });
     const n = nodes.get(id)!;
     n.health = healthOf(r);
-    if (AZURE_MADE.some((m) => m.test(r))) n.madeBy = "azure";
+    if (AZURE_MADE.some((m) => m.test(r, made))) n.madeBy = "azure";
   }
   for (const r of rows) {
     if (!isGroupRow(r)) continue;

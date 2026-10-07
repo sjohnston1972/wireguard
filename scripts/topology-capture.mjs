@@ -187,10 +187,37 @@ export const CAPTURE_KEEP = [
   "workloadProfiles[].workloadProfileType",
   "vnetConfiguration.infrastructureSubnetId",
   "configuration.ingress",
+  // Lab 28's tiers: plain env values naming the next app or a SQL server (a secretRef has no value), the FQDNs they name.
+  "template.containers[].env[].value",
+  "latestRevisionFqdn",
+  "fullyQualifiedDomainName",
   "configuration.registries[].server",
   "managedEnvironmentId",
   "environmentId",
   "loginServer",
+  // AKS (lab 29): the first pool's size, count, autoscale range and subnet; pod networking; the node resource group.
+  "agentPoolProfiles[].vmSize",
+  "agentPoolProfiles[].count",
+  "agentPoolProfiles[].enableAutoScaling",
+  "agentPoolProfiles[].minCount",
+  "agentPoolProfiles[].maxCount",
+  "agentPoolProfiles[].vnetSubnetID",
+  "networkProfile.networkPlugin",
+  "networkProfile.networkPluginMode",
+  "nodeResourceGroup",
+  // A Container Apps environment's infrastructure group (lab 28): with the node group, what makes a group Azure's.
+  "infrastructureResourceGroup",
+  // A job's trigger and the queues its KEDA rules name (never the rules' auth or the secrets); an environment's
+  // workspace (by customer id) and the workspace's; a system topic's source (lab 30)
+  "configuration.triggerType",
+  "configuration.eventTriggerConfig.scale.rules[].type",
+  "configuration.eventTriggerConfig.scale.rules[].metadata.namespace",
+  "configuration.eventTriggerConfig.scale.rules[].metadata.queueName",
+  "configuration.eventTriggerConfig.scale.rules[].metadata.topicName",
+  "template.containers[].resources.cpu",
+  "appLogsConfiguration.logAnalyticsConfiguration.customerId",
+  "customerId",
+  "source",
   // ── Data ──
   "accessTier",
   "allowBlobPublicAccess",

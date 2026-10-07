@@ -177,6 +177,37 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["afd-lab -> ci-uks : HTTP", "afd-lab -> ci-ukw : HTTP", "l27…-tm -> ci-uks : priority 1", "l27…-tm -> ci-ukw : priority 2"],
   },
+  // Lab 28 (AZ-305 batch 4, ruling 41): Front Door Standard + WAF to the web tier; the app tier and the database are private.
+  "az305-28-three-tier": {
+    nodes: [
+      "containerApp ca-app < rg-lab-az305-28-three-tier",
+      "containerApp ca-web < rg-lab-az305-28-three-tier",
+      "containerAppEnv cae-lab < snet-apps",
+      "frontDoor afd-lab < Global",
+      "lane Global",
+      "privateDnsZone privatelink.database.windows.net < rg-lab-az305-28-three-tier",
+      "privateEndpoint pe-l28…-sql < snet-pe",
+      "resourceGroup rg-lab-az305-28-three-tier",
+      "sqlDatabase appdb < rg-lab-az305-28-three-tier",
+      "sqlServer l28…-sql < rg-lab-az305-28-three-tier",
+      "subnet snet-apps < vnet-lab",
+      "subnet snet-pe < vnet-lab",
+      "vnet vnet-lab < rg-lab-az305-28-three-tier",
+      "wafPolicy waflab < Global",
+    ],
+    edges: [
+      "afd-lab -> ca-web : HTTPS",
+      "appdb ..> l28…-sql : server",
+      "ca-app -> l28…-sql : SQL 1433",
+      "ca-app ..> cae-lab : environment",
+      "ca-web -> ca-app : HTTP",
+      "ca-web ..> cae-lab : environment",
+      "pe-l28…-sql ..> privatelink.database.windows.net : DNS zone group",
+      "pe-l28…-sql -> l28…-sql : sqlServer",
+      "privatelink.database.windows.net ..> vnet-lab : link",
+      "waflab ..> afd-lab : WAF policy",
+    ],
+  },
   "az700-40-lb-advanced": {
     nodes: [
       "lane Global",
@@ -409,6 +440,27 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     nodes: ["resourceGroup rg-lab-az305-25-storage-design", "storage l25…lake < rg-lab-az305-25-storage-design", "storage l25…rec < rg-lab-az305-25-storage-design"],
     edges: [],
   },
+  // AZ-305 batch 4: queues, topic, subscriptions, the rule and both access policies fold into the namespace; the
+  // event subscription into its system topic; the containers into the account.
+  "az305-30-messaging": {
+    nodes: [
+      "containerAppEnv cae-lab < rg-lab-az305-30-messaging",
+      "containerAppJob caj-consumer < rg-lab-az305-30-messaging",
+      "eventGrid egst-storage < rg-lab-az305-30-messaging",
+      "logAnalytics log-lab < rg-lab-az305-30-messaging",
+      "resourceGroup rg-lab-az305-30-messaging",
+      "serviceBus sb-l30… < rg-lab-az305-30-messaging",
+      "storage l30…evt < rg-lab-az305-30-messaging",
+    ],
+    edges: [
+      "caj-consumer -> sb-l30… : orders, blob-events",
+      "caj-consumer ..> cae-lab : environment",
+      "cae-lab ..> log-lab : logs",
+      "egst-storage -> sb-l30… : blob-events",
+      "egst-storage ..> l30…evt : dead-letter",
+      "egst-storage ..> l30…evt : source",
+    ],
+  },
   "az700-43-private-link": {
     nodes: [
       "loadBalancer lb-svc < snet-svc",
@@ -460,6 +512,20 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
       "vnet vnet-lab < rg-lab-az104-11-containers",
     ],
     edges: ["ca-hello ..> cae-lab : environment"],
+  },
+  // AZ-305 batch 4: the AKS cluster in its node subnet (its node pool is a block of the cluster, drawn on its card);
+  // the node resource group is Azure's, so only the live view has it ("Made by Azure"). The kubelet identity (in the
+  // node group) is drawn on the cluster's card: its AcrPull on the registry is an edge from the cluster.
+  "az305-29-aks": {
+    nodes: [
+      "aks aks-lab < snet-aks",
+      "managedIdentity id-l29…-aks < rg-lab-az305-29-aks",
+      "registry l29…acr < rg-lab-az305-29-aks",
+      "resourceGroup rg-lab-az305-29-aks",
+      "subnet snet-aks < vnet-lab",
+      "vnet vnet-lab < rg-lab-az305-29-aks",
+    ],
+    edges: ["aks-lab ..> id-l29…-aks : identity", "aks-lab ..> l29…acr : role: AcrPull (kubelet identity)", "id-l29…-aks ..> snet-aks : role: Network Contributor"],
   },
   "az104-19-backup": {
     nodes: [

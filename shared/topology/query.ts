@@ -24,7 +24,7 @@ export function topologyQuery(labId: string): string {
   // The groups' own rows (resourcecontainers) come too, so a group with nothing in it yet is drawn, not "not deployed".
   return (
     `resources | where resourceGroup =~ '${rg}' or resourceGroup startswith '${rg}-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties` +
-    ` | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ '${rg}' or name startswith '${rg}-') | project id, name, type, location, resourceGroup = name, tags)` +
+    ` | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ '${rg}' or name startswith '${rg}-') | project id, name, type, location, resourceGroup = name, tags, managedBy)` +
     ` | order by id asc`
   );
 }

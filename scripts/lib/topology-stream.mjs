@@ -35,13 +35,20 @@ function* messages(text) {
   }
 }
 
-/** `after` with sensitive paths, denied names and secret-like strings taken out. */
-function clean(value, sensitive) {
+/**
+ * The one `value` read: a container env value that is only a URL to a bare host name, as lab 28's web tier calls
+ * its app tier ("http://ca-app"): no dots, credentials, path or query, so it can hold no secret. It draws the
+ * planned app -> app edge (rules/planned.ts tierEdges).
+ */
+const BARE_APP_URL = /^https?:\/\/[a-z][a-z0-9-]{0,31}(:\d{1,5})?\/?$/i;
+
+/** `after` with sensitive paths, denied names and secret-like strings taken out. `envMember`: an element of an `env` list. */
+function clean(value, sensitive, envMember = false) {
   if (sensitive === true) return undefined;
   if (Array.isArray(value)) {
     const out = [];
     value.forEach((v, i) => {
-      const c = clean(v, Array.isArray(sensitive) ? sensitive[i] : undefined);
+      const c = clean(v, Array.isArray(sensitive) ? sensitive[i] : undefined, envMember);
       // Keep positions (an index means something); a dropped member becomes {} or null.
       out.push(c === undefined ? (v && typeof v === "object" ? {} : null) : c);
     });
@@ -50,8 +57,9 @@ function clean(value, sensitive) {
   if (value && typeof value === "object") {
     const out = {};
     for (const [k, v] of Object.entries(value)) {
-      if (DENY_NAME.test(k)) continue;
-      const c = clean(v, sensitive && typeof sensitive === "object" ? sensitive[k] : undefined);
+      const appUrl = envMember && k === "value" && typeof v === "string" && BARE_APP_URL.test(v);
+      if (DENY_NAME.test(k) && !appUrl) continue;
+      const c = clean(v, sensitive && typeof sensitive === "object" ? sensitive[k] : undefined, k === "env" && Array.isArray(v));
       // null (unset) is left out too: the builder reads absent and null alike, and the input stays small.
       if (c !== undefined && c !== null) out[k] = c;
     }
