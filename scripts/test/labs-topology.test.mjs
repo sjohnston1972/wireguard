@@ -336,7 +336,10 @@ test("CI's labs job runs labs-topology --check after labs-tf, with the pinned to
   const tf = steps.findIndex((s) => s.name === "labs-tf");
   const topo = steps.findIndex((s) => typeof s.run === "string" && s.run.includes("npm run labs-topology -- --check"));
   assert.ok(tf >= 0 && topo > tf, "labs-topology --check runs after labs-tf");
-  assert.ok(steps[topo].env.TF_PLUGIN_CACHE_DIR && steps[topo].env.BICEP && steps[topo].env.HCL2JSON);
+  assert.ok(steps[topo].env.BICEP && steps[topo].env.HCL2JSON);
+  // Each run's plugin cache is its own (withTfRunner): CI hands none in to share.
+  assert.equal(steps[tf].env.TF_PLUGIN_CACHE_DIR, undefined);
+  assert.equal(steps[topo].env.TF_PLUGIN_CACHE_DIR, undefined);
 });
 
 // ── The committed planned files ───────────────────────────────────────────
