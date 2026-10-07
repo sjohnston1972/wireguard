@@ -89,9 +89,13 @@ gateway, `wg.yml`, `lab.yml`, the lab Terraform or the lab versions.
     policy and role objects, management groups, Entra principals, locks, budgets, diagnostic settings and resources outside the
     lab's groups (lab 44's flow log in `NetworkWatcherRG`) are planned-only and say "Not listed by the live view".
 13. **"Made by Azure", never "added by hand",** for a live resource Terraform does not declare when Azure made it: `managedBy`
-    set, an Azure-named child (a private endpoint's NIC, a VM's OS disk), a lab group Azure created (`rg-lab-<id>-infra`), or a
-    known pattern (traffic analytics' `NWTA*` data collection rule and endpoint, AVNM's `ANM_` peerings). The patterns are one
-    list in `shared/topology/rules/live.ts`, each with a test.
+    set, an Azure-named child (a private endpoint's NIC, a VM's OS disk), a lab group Azure created, everything in such a
+    group, or a known pattern (traffic analytics' `NWTA*` data collection rule and endpoint, AVNM's `ANM_` peerings). A group
+    is Azure's only when a row of the same graph says so, never by its name: an AKS cluster's `nodeResourceGroup` (lab 29's
+    `rg-lab-<id>-nodes`), a Container Apps environment's `infrastructureResourceGroup` (lab 28's `rg-lab-<id>-infra`), or
+    the group's own row with `managedBy` set (the query projects it for groups too). A learner's hand-made
+    `rg-lab-<id>-managed`, and what is in it, is "Added by hand". The patterns are one list in
+    `shared/topology/rules/live.ts` (`AZURE_MADE`, with `azureMadeGroups`), each with a test.
 14. **Health without new calls.** The insights feeds read Resource Health for `vm-wg` only, so no lab resource has a Resource
     Health record and none is fetched. Health = `provisioningState`, plus the VM power state from Resource Graph's
     `properties.extended.instanceView.powerState` (V), plus per-type status already in the properties: SQL database `status`,
@@ -255,7 +259,8 @@ and the 1–2 props its card shows. Placement **subnet** means the subnet its NI
 | `keyVault` | `Microsoft.KeyVault/vaults` | `azurerm_key_vault` | RG | SKU, RBAC |
 | `containerGroup` | `Microsoft.ContainerInstance/containerGroups` | `azurerm_container_group` | subnet if VNet-injected, else RG | CPU/memory, IP type |
 | `containerApp` | `Microsoft.App/containerApps` | `azurerm_container_app` | RG | ingress, target port |
-| `containerAppEnv` | `Microsoft.App/managedEnvironments` | `azurerm_container_app_environment` | its infrastructure subnet, else RG | workload profiles |
+| `containerAppEnv` | `Microsoft.App/managedEnvironments` | `azurerm_container_app_environment` | its infrastructure subnet, else RG | workload profiles; chip `infra group <name>` (the group Azure makes for an environment in a subnet) |
+| `aks` | `Microsoft.ContainerService/managedClusters` | `azurerm_kubernetes_cluster` (+ `azurerm_kubernetes_cluster_node_pool` folded) | its first pool's subnet (`vnetSubnetID`), else RG | node size, node count (autoscale range); chips: network (`Azure CNI Overlay`, …), `node group <name>`; tier; icon `kubernetes-services` |
 | `registry` | `Microsoft.ContainerRegistry/registries` | `azurerm_container_registry` | RG | SKU |
 | `containerAppJob` | `Microsoft.App/jobs` | `azurerm_container_app_job` | RG | CPU, trigger chip (`event-driven`, `scheduled`, `manual`); icon `container-apps` (the pack has no job icon) |
 | `serviceBus` | `Microsoft.ServiceBus/namespaces` | `azurerm_servicebus_namespace` (+ queues, topics, subscriptions, rules, access policies folded) | RG | SKU, counts (queues, topics, subscriptions) |
@@ -278,8 +283,9 @@ and the 1–2 props its card shows. Placement **subnet** means the subnet its NI
 | `generic` | anything else | anything else | subnet if a subnet id is found in its properties, else RG | short type |
 
 `liveVisible` is false for `managementGroup`, `policy`, `role` and `entraPrincipal`. Kind order inside a container (for the
-packing, §8.1): edge devices first (firewall, VPN gateway, App Gateway, LB, Bastion, Route Server, NAT gateway), then compute,
-then data, then everything else, then `generic`.
+packing, §8.1): edge devices first (firewall, VPN gateway, App Gateway, LB, Bastion, Route Server, NAT gateway), then compute
+(VM 20, scale set, container group, container app, environment, App Service plan, Container Apps job 26, AKS 27), then data,
+then everything else, then `generic`. No two kinds share an order (a test), so packing never depends on input order.
 
 ### 4.4 Folded and edge resources (`rules/planned.ts`, `rules/live.ts`)
 
@@ -292,7 +298,9 @@ then data, then everything else, then `generic`.
   policies into the namespace (counts); Event Grid event subscriptions into their topic; Key
   Vault secrets, certificates and keys into the vault (counts); AVNM groups, static members, configurations, rule collections,
   rules and deployments into the manager; site-recovery fabrics, containers, mappings, policies and backup policies into the
-  vault; autoscale settings into the VMSS; routing intent into the hub; virtual hub connections' route config into the edge;
+  vault; autoscale settings into the VMSS; an AKS cluster's extra node pools into the cluster (planned), and live, every
+  scale set in the group a cluster's `nodeResourceGroup` names (its node pools) into that cluster, so the node group shows
+  the load balancer, public IP, NSG and kubelet identity Azure made, never a scale set card; routing intent into the hub; virtual hub connections' route config into the edge;
   `azurerm_resource_group_template_deployment` into its RG; NSG rules into the NSG; routes into the route table; subnet
   associations into the subnet's chips.
 - **Drawn as edges** (`via`): §4.6.
@@ -382,7 +390,7 @@ when the token has expired), body:
 
 ```json
 { "subscriptions": ["<AZURE_SUBSCRIPTION_ID>"],
-  "query": "resources | where resourceGroup =~ 'rg-lab-<id>' or resourceGroup startswith 'rg-lab-<id>-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties | order by id asc",
+  "query": "resources | where resourceGroup =~ 'rg-lab-<id>' or resourceGroup startswith 'rg-lab-<id>-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ 'rg-lab-<id>' or name startswith 'rg-lab-<id>-') | project id, name, type, location, resourceGroup = name, tags, managedBy) | order by id asc",
   "options": { "resultFormat": "objectArray", "$top": 1000 } }
 ```
 
