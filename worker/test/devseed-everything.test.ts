@@ -14,6 +14,7 @@ import type { Env } from "../src/env";
 import { SCENARIOS } from "../src/devseed";
 import { WIDGETS } from "../../shared/widgets";
 import { LAB_LIVE_STATES } from "../../shared/labs";
+import { insightsShown } from "../src/insights/read";
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
 /** The screenshot moment (npm run shots -- --freeze-time), the second of a month; and mid-month, with more of the month behind it. */
@@ -274,6 +275,43 @@ describe.each([NOW, MID_MONTH])("the everything scenario (issue #96), seeded at 
     // Clients dial in from TEST-NET-2; the VM's address is TEST-NET-3.
     for (const c of seen.clients.clients as Json[]) if (c.live?.endpoint) expect(c.live.endpoint, c.name).toMatch(/^198\.51\.100\.\d+:\d+$/);
     expect(seen.overview.snapshot.public_ip).toMatch(/^203\.0\.113\.\d+$/);
+  });
+});
+
+// The dev server runs from .env.example: no Azure credentials. The seeded
+// Azure data must still show (the screens are what the story is for), and
+// only there: the live Worker never has AUTH_DEV_BYPASS.
+describe("the seeded Azure data on a dev server without Azure", () => {
+  const noAzure = { AUTH_DEV_BYPASS: "1", PUBLIC_URL: "http://localhost:8787", AZURE_TENANT_ID: "", AZURE_CLIENT_ID: "", AZURE_CLIENT_SECRET: "", AZURE_SUBSCRIPTION_ID: "" };
+
+  it("reads as connected after a seed, so the Azure widgets show it, and nothing is fetched", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+    try {
+      const { env, world } = makeEnv(noAzure);
+      await seedEverything(env);
+      const sum = await get(env, "/azure/summary");
+      expect(sum.configured).toBe(true);
+      expect(sum.feeds.every((f: Json) => f.status === "ok")).toBe(true);
+      expect((await get(env, "/azure/changes?range=7d")).feed.status).toBe("ok");
+      expect(world.calls).toEqual([]);
+      // A story without Azure data still says Azure is not connected.
+      const r = await worker.fetch(new Request(`http://localhost:8787/__dev/seed?scenario=running&now=${NOW}`, { method: "POST" }), env, ctx);
+      expect(r.status).toBe(200);
+      const plain = await get(env, "/azure/summary");
+      expect(plain.configured).toBe(false);
+      expect(plain.feeds.every((f: Json) => f.status === "not_configured")).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 60_000);
+
+  it("never without the dev bypass", () => {
+    const { env } = makeEnv({ ...noAzure, AUTH_DEV_BYPASS: undefined });
+    const ok = new Map([["health", { feed: "health", last_try_at: NOW, last_ok_at: NOW, status: "ok", error: null, next_due_at: null }]]);
+    expect(insightsShown(env, ok)).toBe(false);
+    expect(insightsShown({ ...env, AUTH_DEV_BYPASS: "1" }, ok)).toBe(true);
+    expect(insightsShown({ ...env, AUTH_DEV_BYPASS: "1" }, new Map())).toBe(false);
   });
 });
 
