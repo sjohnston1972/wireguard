@@ -15,6 +15,7 @@ import { SCENARIOS } from "../src/devseed";
 import { WIDGETS } from "../../shared/widgets";
 import { LAB_LIVE_STATES } from "../../shared/labs";
 import { insightsShown } from "../src/insights/read";
+import { DEVSEED_KV } from "../src/devmarks";
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
 /** The screenshot moment (npm run shots -- --freeze-time), the second of a month; and mid-month, with more of the month behind it. */
@@ -306,13 +307,73 @@ describe("the seeded Azure data on a dev server without Azure", () => {
     }
   }, 60_000);
 
-  it("never without the dev bypass", () => {
+  it("never without the dev bypass, nor without the seed's own marker", async () => {
     const { env } = makeEnv({ ...noAzure, AUTH_DEV_BYPASS: undefined });
     const ok = new Map([["health", { feed: "health", last_try_at: NOW, last_ok_at: NOW, status: "ok", error: null, next_due_at: null }]]);
-    expect(insightsShown(env, ok)).toBe(false);
-    expect(insightsShown({ ...env, AUTH_DEV_BYPASS: "1" }, ok)).toBe(true);
-    expect(insightsShown({ ...env, AUTH_DEV_BYPASS: "1" }, new Map())).toBe(false);
+    // No marker: the bypass alone (set on the live Worker by mistake, with stale ok rows) never shows Azure as connected.
+    expect(await insightsShown({ ...env, AUTH_DEV_BYPASS: "1" }, ok)).toBe(false);
+    await env.STATUS.put(DEVSEED_KV.insights, "1");
+    expect(await insightsShown(env, ok)).toBe(false);
+    expect(await insightsShown({ ...env, AUTH_DEV_BYPASS: "1" }, ok)).toBe(true);
+    expect(await insightsShown({ ...env, AUTH_DEV_BYPASS: "1" }, new Map())).toBe(false);
   });
+
+  it("with the bypass and ok feed rows but no seed marker, the summary and diagnostics say Azure isn't connected", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+    try {
+      const { env } = makeEnv(noAzure);
+      await seedEverything(env);
+      expect((await get(env, "/azure/diagnostics")).configured).toBe(true);
+      // As if the live Worker had the bypass on and stale ok rows: no marker, because only the seed route writes it.
+      await env.STATUS.delete(DEVSEED_KV.insights);
+      const sum = await get(env, "/azure/summary");
+      expect(sum.configured).toBe(false);
+      expect(sum.feeds.every((f: Json) => f.status === "not_configured")).toBe(true);
+      expect((await get(env, "/azure/diagnostics")).configured).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 60_000);
+});
+
+// wrangler.toml binds STATE to the production bucket: the seeder must never
+// touch the real backup prefixes, whatever it writes for its own story.
+describe("the seeded backups stay out of the real backup prefixes", () => {
+  it("no story's wipe deletes backups/ or config-backups/, and everything's backups live under devseed/", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+    try {
+      const { env } = makeEnv({ AUTH_DEV_BYPASS: "1", PUBLIC_URL: "http://localhost:8787" });
+      const real = ["backups/20260901T100000Z-apply.tfstate", "config-backups/2026-09-01.json"];
+      for (const k of real) await env.STATE.put(k, "{}");
+      const keys = async (prefix = "") => (await env.STATE.list({ prefix })).objects.map((o) => o.key);
+      for (const s of SCENARIOS) {
+        const r = await worker.fetch(new Request(`http://localhost:8787/__dev/seed?scenario=${s}&now=${NOW}`, { method: "POST" }), env, ctx);
+        expect(r.status, s).toBe(200);
+        for (const k of real) expect(await keys(k), `${s} kept ${k}`).toEqual([k]);
+        expect((await keys("backups/")).length, s).toBe(1);
+        expect((await keys("config-backups/")).length, s).toBe(1);
+      }
+      // everything last: its backups are all under devseed/, and the dev server's Settings reads them there.
+      const r = await worker.fetch(new Request(`http://localhost:8787/__dev/seed?scenario=everything&now=${NOW}`, { method: "POST" }), env, ctx);
+      expect(r.status).toBe(200);
+      const seeded = await keys("devseed/");
+      expect(seeded.length).toBeGreaterThan(5);
+      expect((await keys()).filter((k) => !k.startsWith("devseed/")).sort()).toEqual([...real].sort());
+      const st = await get(env, "/settings");
+      expect(st.backups.state.count).toBe(seeded.filter((k) => k.startsWith("devseed/backups/")).length);
+      expect(st.backups.config.days.length).toBe(seeded.filter((k) => k.startsWith("devseed/config-backups/")).length);
+      const day = st.backups.config.days[0];
+      expect((await api(env, "GET", `/backup/config/${day}`)).status).toBe(200);
+      // A story without the marker reads the real prefixes again.
+      await worker.fetch(new Request(`http://localhost:8787/__dev/seed?scenario=running&now=${NOW}`, { method: "POST" }), env, ctx);
+      expect((await get(env, "/settings")).backups.config.days).toEqual(["2026-09-01"]);
+      expect(await keys("devseed/")).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 120_000);
 });
 
 describe("the everything scenario is repeatable", () => {

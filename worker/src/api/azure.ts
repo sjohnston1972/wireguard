@@ -30,7 +30,8 @@ import type { HistoryRange } from "../history";
 import { insightsConfigured } from "../insights/types";
 import { fixedPrice as fixedPriceInfo, priceInfo, rateSource, readPrices } from "../insights/price";
 import { capacityFor, fetchBootLogNow, storedBootLog } from "../insights/ondemand";
-import { feedStatus, feedStatuses, metricNames, readChanges, readMetrics, readSummary } from "../insights/read";
+import { feedStatus, feedStatuses, insightsShown, metricNames, readChanges, readMetrics, readSummary } from "../insights/read";
+import { readFeedRows } from "../insights/common";
 import { regionalEvents } from "../insights/feeds/serviceHealth";
 import type {
   AzureChangesResponse,
@@ -148,7 +149,9 @@ export function registerAzure(api: Hono<ApiEnv>): void {
   api.get("/azure/diagnostics", async (c) => {
     const q = readQuery(c, {});
     if (q instanceof Response) return q;
-    const out: AzureDiagnosticsResponse = { configured: insightsConfigured(c.env), feeds: await feedStatuses(c.env, await getSnapshot(c.env), new Date()), metricNames: await metricNames(c.env.DB) };
+    // configured as the screens show it (insightsShown), so the diagnostics agree with the widgets.
+    const rows = await readFeedRows(c.env.DB);
+    const out: AzureDiagnosticsResponse = { configured: await insightsShown(c.env, rows), feeds: await feedStatuses(c.env, await getSnapshot(c.env), new Date(), rows), metricNames: await metricNames(c.env.DB) };
     return c.json(out);
   });
 

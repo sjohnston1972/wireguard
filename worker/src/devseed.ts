@@ -35,6 +35,7 @@ import { AZ_TABLES } from "./insights/types";
 import { seedInsights } from "./devseed-insights";
 import { buildExport } from "./backup";
 import { isWgKey } from "./peers";
+import { DEVSEED_BACKUP_ROOT, DEVSEED_KV } from "./devmarks";
 import { seedLabs, seedLabsMore, wipeLabs } from "./devseed-labs";
 
 export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs", "labs-setup", "everything"] as const;
@@ -527,11 +528,12 @@ async function wipe(env: Env, now: number): Promise<void> {
   // The seeded key rotation, only (a real one is kept): the next read records the key afresh.
   await env.DB.prepare("DELETE FROM settings WHERE key = 'server_key' AND value LIKE ?1").bind(`%${SEED_OLD_SERVER_KEY}%`).run();
   await env.STATUS.delete(`budget:alerted:${iso(now).slice(0, 7)}`);
-  // This dev server's own R2 backups (local to the PC): only everything writes any. Then the cached count.
-  for (const prefix of BACKUP_PREFIXES) {
-    const keys = (await env.STATE.list({ prefix })).objects.map((o) => o.key);
-    if (keys.length) await env.STATE.delete(keys);
-  }
+  // The seed's own markers (devmarks.ts): only a story that writes one again shows its stand-ins.
+  for (const k of Object.values(DEVSEED_KV)) await env.STATUS.delete(k);
+  // The seeded backups, only ever under DEVSEED_BACKUP_ROOT: STATE is production's bucket in wrangler.toml, so the real
+  // backups/ and config-backups/ prefixes are never listed for deletion here. Then the cached count.
+  const seeded = (await env.STATE.list({ prefix: DEVSEED_BACKUP_ROOT })).objects.map((o) => o.key).filter((k) => k.startsWith(DEVSEED_BACKUP_ROOT));
+  if (seeded.length) await env.STATE.delete(seeded);
   await env.STATUS.delete("backup:status");
   // The lab tables and the lab engine's KV records: only the labs story fills them.
   await wipeLabs(env);
@@ -814,7 +816,11 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
   await db.setSetting(env, "monthly_budget_gbp", String(Math.max(0.01, Math.round((spent / 0.4) * 100) / 100)));
   await insertDraft(env);
   // Last, so everything above is exactly the running story.
-  if (scenario === "insights" || scenario === "everything") await seedInsights(env, now, startMs, region);
+  if (scenario === "insights" || scenario === "everything") {
+    await seedInsights(env, now, startMs, region);
+    // The dev server shows these rows as connected without Azure credentials (insights/read.ts insightsShown).
+    await env.STATUS.put(DEVSEED_KV.insights, "1");
+  }
   if (scenario === "labs" || scenario === "labs-setup" || scenario === "everything") await seedLabs(env, now, { setup: scenario === "labs-setup" });
   if (scenario === "everything") await seedEverything(env, rng, { now, nowDate, earlier, applyId: cur.applyId });
   return { ok: true, scenario, now: iso(now), counts: await counts(env) };
@@ -937,26 +943,27 @@ async function addRunLogs(env: Env): Promise<void> {
   if (stmts.length) await env.DB.batch(stmts);
 }
 
-/** R2 keys of the backups the everything story writes (every story removes them: wipe). */
-const BACKUP_PREFIXES = ["backups/", "config-backups/"];
-
 /**
- * The backups a week of use leaves in R2: Terraform's state after each
- * finished gateway run (as wg.yml names them), and a nightly config export
- * for each of the last 7 days (the real export of the seeded settings).
+ * The backups a week of use leaves: Terraform's state after each finished
+ * gateway run (as wg.yml names them), and a nightly config export for each of
+ * the last 7 days (the real export of the seeded settings). All under
+ * DEVSEED_BACKUP_ROOT, never the real prefixes; the marker points the dev
+ * server's backup list and downloads there (backup.ts backupRoot).
  */
 async function addBackups(env: Env, now: number): Promise<void> {
+  const root = DEVSEED_BACKUP_ROOT;
   const runs = (await env.DB.prepare("SELECT action, finished_at FROM runs WHERE status = 'success' AND finished_at IS NOT NULL ORDER BY finished_at").all<{ action: string; finished_at: string }>()).results;
   for (const [i, r] of runs.entries()) {
     const ts = r.finished_at.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
     const state = { version: 4, terraform_version: "1.9.5", serial: i + 1, lineage: "00000000-0000-4000-8000-0000000005ed", outputs: {}, resources: [] };
-    await env.STATE.put(`backups/${ts}-${r.action}.tfstate`, JSON.stringify(state));
+    await env.STATE.put(`${root}backups/${ts}-${r.action}.tfstate`, JSON.stringify(state));
   }
   for (let d = 6; d >= 0; d--) {
     const at = new Date(midnight(now - d * DAY) + 2 * HOUR);
     if (at.getTime() > now) continue;
-    await env.STATE.put(`config-backups/${day(at.getTime())}.json`, JSON.stringify(await buildExport(env, at), null, 1), { httpMetadata: { contentType: "application/json" } });
+    await env.STATE.put(`${root}config-backups/${day(at.getTime())}.json`, JSON.stringify(await buildExport(env, at), null, 1), { httpMetadata: { contentType: "application/json" } });
   }
+  await env.STATUS.put(DEVSEED_KV.backups, "1");
 }
 
 /** An unapplied firewall draft with two changes: one rule edited, one added. The live rules (and the VM) are untouched. */

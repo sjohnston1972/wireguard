@@ -12,7 +12,7 @@ import type { Hono } from "hono";
 import { body, fail, type ApiEnv } from "./app";
 import * as db from "../db";
 import { randomToken } from "../auth";
-import { buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, restoreBlocked, MAX_RESTORE_BYTES, TABLE_LABEL, type RestorePlan } from "../backup";
+import { backupRoot, buildExport, exportFileName, checkRestoreFile, applyRestore, currentCounts, restoreBlocked, MAX_RESTORE_BYTES, TABLE_LABEL, type RestorePlan } from "../backup";
 import { syncPublished } from "../published";
 import type { ApiOk, RestorePreviewResponse } from "../../../shared/api";
 
@@ -26,7 +26,7 @@ export function registerBackup(api: Hono<ApiEnv>): void {
 
   api.get("/backup/config/:day", async (c) => {
     const day = c.req.param("day");
-    const obj = /^\d{4}-\d{2}-\d{2}$/.test(day) ? await c.env.STATE.get(`config-backups/${day}.json`) : null;
+    const obj = /^\d{4}-\d{2}-\d{2}$/.test(day) ? await c.env.STATE.get(`${await backupRoot(c.env)}config-backups/${day}.json`) : null;
     if (!obj) return fail(c, 404, "not_found", "That nightly export is no longer kept.");
     return new Response(obj.body, { headers: { "Content-Type": "application/json", "Content-Disposition": `attachment; filename="${exportFileName(day)}"`, "Cache-Control": "no-store" } });
   });

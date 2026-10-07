@@ -13,6 +13,7 @@ import { insightsConfigured, type HealthDoc, type MetricDefsDoc } from "./types"
 import { MIN, getLatest, readFeedRows, slotOf, type FeedRow } from "./common";
 import { activityCadence, healthAnnotations, lastRunEnd } from "./feeds/activity";
 import { activeRegionalIssues } from "./feeds/serviceHealth";
+import { DEVSEED_KV, devSeeded } from "../devmarks";
 
 const STATES: readonly FeedState[] = ["ok", "error", "not_configured", "skipped", "idle"];
 /** How old the newest metric slot may be to count as "latest". */
@@ -24,19 +25,22 @@ export const VITALS_AGENT_VERSION = 7;
 /**
  * Whether the screens show Azure's stored data as connected. Yes with the four
  * service principal values (insightsConfigured). On a developer's PC only
- * (AUTH_DEV_BYPASS "1", never set on the live Worker) also when a dev seed left
- * feeds that worked (npm run seed -- insights or everything), so the Azure
- * widgets can be seen filled on a dev server run from .env.example. Nothing is
+ * also when a dev seed left feeds that worked (npm run seed -- insights or
+ * everything), so the Azure widgets can be seen filled on a dev server run
+ * from .env.example: that needs the login bypass AND the marker only the
+ * locked seed route writes (devmarks.ts), so the bypass set on the live Worker
+ * by mistake, with stale ok rows, still reads as not connected. Nothing is
  * ever fetched on the strength of this: every fetch asks insightsConfigured.
  */
-export function insightsShown(env: Env, feeds: Map<string, FeedRow>): boolean {
-  return insightsConfigured(env) || (env.AUTH_DEV_BYPASS === "1" && [...feeds.values()].some((r) => r.status === "ok"));
+export async function insightsShown(env: Env, feeds: Map<string, FeedRow>): Promise<boolean> {
+  if (insightsConfigured(env)) return true;
+  return [...feeds.values()].some((r) => r.status === "ok") && (await devSeeded(env, DEVSEED_KV.insights));
 }
 
 /** Every feed's status, in priority order, with the activity feed's current cadence. */
 export async function feedStatuses(env: Env, snap: Snapshot, now: Date, rows?: Map<string, FeedRow>): Promise<(FeedStatus & { lastTryAt: string | null; nextDueAt: string | null })[]> {
   const have = rows ?? (await readFeedRows(env.DB));
-  const configured = insightsShown(env, have);
+  const configured = await insightsShown(env, have);
   const activity = activityCadence(snap, await lastRunEnd(env.DB), now.getTime());
   return FEEDS.map((f) => {
     const r = have.get(f.id);
@@ -145,7 +149,7 @@ export async function readSummary(env: Env, cfg: Config, snap: Snapshot, now: Da
   const name = azureRegionName(cfg.region);
   const rows = await readFeedRows(env.DB);
   return {
-    configured: insightsShown(env, rows),
+    configured: await insightsShown(env, rows),
     region: { id: cfg.region, name },
     feeds: (await feedStatuses(env, snap, now, rows)).map(({ lastTryAt: _t, nextDueAt: _n, ...f }) => f),
     health: await health(env, snap),
