@@ -27,9 +27,11 @@ import { applyFilters, fmtClock, readFilters, readSelection, revealFilters, sele
 import { RunningStrip } from "./RunningStrip";
 import "./LabsPage.css";
 
-/** History state on an entry this page pushed to open a lab's drawer or view: Back closes it. */
+/** History state on an entry this page pushed to open a lab's drawer or view (with `from`, the grid's query): Back closes it. */
 const PUSHED = { labsSelect: true } as const;
 const pushed = (state: unknown) => !!state && typeof state === "object" && (state as { labsSelect?: boolean }).labsSelect === true;
+/** A query without ?lab, as URLSearchParams writes it. */
+const sansLab = (search: string) => withSelection(new URLSearchParams(search), null).toString();
 
 /** The details panel's place while the catalogue loads. */
 function PanelSkeleton() {
@@ -87,13 +89,14 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
     replace((p) => withSelection(p, null));
   }, [drop, urlLab, loaded, byId, replace, toast]);
 
-  // Select a lab: wide replaces ?lab (the panel follows); tablet and phone push it, so Back closes the drawer or view.
-  // A lab the filters hide (a prerequisite) first clears exactly the filters that hide it, and says so: never
-  // the first visible lab in its place.
+  // Select a lab. From a card: wide replaces ?lab (the panel follows); tablet and phone push it, so Back closes the
+  // drawer or view. From inside the details (a prerequisite): always a replace, so closing never lands on the lab
+  // before. A lab the filters hide first clears exactly the filters that hide it, and says so: never the first
+  // visible lab in its place.
   const latest = useRef({ location, layout, byId });
   latest.current = { location, layout, byId };
-  const select = useCallback(
-    (id: string) => {
+  const go = useCallback(
+    (id: string, from: "card" | "details") => {
       const { location: l, layout: lay, byId: views } = latest.current;
       let p = new URLSearchParams(l.search);
       const v = views.get(id);
@@ -104,23 +107,28 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
       }
       const next = withSelection(p, id).toString();
       const to = { pathname: l.pathname, search: next ? `?${next}` : "" };
-      if (lay === "wide") {
+      if (lay === "wide" || from === "details") {
         if (to.search !== l.search) navigate(to, { replace: true, state: l.state });
         return;
       }
-      else navigate(to, { state: PUSHED });
+      navigate(to, { state: { ...PUSHED, from: sansLab(l.search) } });
     },
     [navigate, toast],
   );
+  const select = useCallback((id: string) => go(id, "card"), [go]);
+  const selectWithin = useCallback((id: string) => go(id, "details"), [go]);
 
-  // Close the drawer or the phone view: Back when this page opened it, else drop ?lab. The phone then focuses the card.
+  // Close the drawer or the phone view, always to the grid (no ?lab): Back when this page opened it from that same
+  // grid, else a replace that drops ?lab (a prerequisite cleared filters since). The phone then focuses the card.
   const refocus = useRef<string | null>(null);
   const close = useCallback(() => {
     const { location: l, layout: lay } = latest.current;
     if (lay === "phone") refocus.current = readSelection(new URLSearchParams(l.search));
-    if (pushed(l.state)) navigate(-1);
-    else replace((p) => withSelection(p, null));
-  }, [navigate, replace]);
+    const st = l.state as { labsSelect?: boolean; from?: string } | null;
+    if (pushed(st) && st?.from === sansLab(l.search)) return navigate(-1);
+    const next = withSelection(new URLSearchParams(l.search), null).toString();
+    navigate({ pathname: l.pathname, search: next ? `?${next}` : "" }, { replace: true, state: null });
+  }, [navigate]);
   useEffect(() => {
     if (shown || !refocus.current) return;
     const id = refocus.current;
@@ -142,7 +150,7 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
   const phoneView = layout === "phone" && !!shown;
   // An empty catalogue or no matches: the empty state has the workspace to itself (no "Select a lab" box beside it).
   const nothingShown = !!data && visible.length === 0;
-  const details = { view: shown, data, layout, onSelect: select };
+  const details = { view: shown, data, layout, onSelect: selectWithin };
 
   // The phone's details are a full-width view right under the header; the strip, notices and running labs wait on the catalogue.
   if (phoneView && !failed) {

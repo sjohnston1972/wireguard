@@ -184,6 +184,38 @@ describe("tablet (1024 px)", () => {
     expect(loc()).toBe("/labs");
   });
 
+  it("a prerequisite chosen in the drawer replaces ?lab; closing returns to the grid, not the previous lab, and focuses its card", async () => {
+    const user = userEvent.setup();
+    setViewport(1024);
+    const { router } = renderApp("/labs?exam=AZ-104", { routes: routes() });
+    await user.click(await screen.findByRole("button", { name: /^Blob security/ }));
+    const drawer = await screen.findByRole("dialog", { name: /^Blob security/ });
+    const navs = track(router);
+    await user.click(within(drawer).getByRole("link", { name: /^Lab 5: Storage accounts/ }));
+    expect(await screen.findByRole("dialog", { name: /^Storage accounts/ })).toBeInTheDocument();
+    expect(navs).toEqual(["REPLACE /labs?exam=AZ-104&lab=az104-05-storage"]);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(loc()).toBe("/labs?exam=AZ-104");
+    await waitFor(() => expect(selectBtn(/^Storage accounts/)).toHaveFocus());
+  });
+
+  it("a hidden prerequisite chosen in the drawer clears its filters; closing drops ?lab and focuses its card", async () => {
+    const user = userEvent.setup();
+    setViewport(1024);
+    const data = labs({ labs: labs().labs.map((c) => (c.number === 6 ? { ...c, runs: 0 } : c.number === 5 ? { ...c, runs: 3 } : c)) });
+    renderApp("/labs?notrun=1", { routes: routes({ "GET /api/v1/labs": data }) });
+    await user.click(await screen.findByRole("button", { name: /^Blob security/ }));
+    const drawer = await screen.findByRole("dialog", { name: /^Blob security/ });
+    await user.click(within(drawer).getByRole("link", { name: /^Lab 5: Storage accounts/ }));
+    expect(await screen.findByRole("dialog", { name: /^Storage accounts/ })).toBeInTheDocument();
+    expect(loc()).toBe("/labs?lab=az104-05-storage");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(loc()).toBe("/labs");
+    await waitFor(() => expect(selectBtn(/^Storage accounts/)).toHaveFocus());
+  });
+
   it("a ?lab link opens the drawer whatever the filters hide", async () => {
     setViewport(1024);
     renderApp("/labs?exam=AZ-305&lab=az104-06-blob-security", { routes: routes() });
@@ -215,6 +247,22 @@ describe("phone (390 px)", () => {
     expect(loc()).toBe("/labs");
     // Back focuses the card it came from.
     await waitFor(() => expect(selectBtn(/^Blob security/)).toHaveFocus());
+  });
+
+  it("phone: a prerequisite chosen in the view replaces ?lab; Back to labs returns to the grid and focuses its card", async () => {
+    const user = userEvent.setup();
+    setViewport("phone");
+    const { router } = renderApp("/labs", { routes: routes() });
+    await user.click(await screen.findByRole("button", { name: /^Blob security/ }));
+    const view = await screen.findByRole("region", { name: /^Blob security/ });
+    const navs = track(router);
+    await user.click(within(view).getByRole("link", { name: /^Lab 5: Storage accounts/ }));
+    expect(await screen.findByRole("region", { name: /^Storage accounts/ })).toBeInTheDocument();
+    expect(navs).toEqual(["REPLACE /labs?lab=az104-05-storage"]);
+    await user.click(screen.getByRole("button", { name: "Back to labs" }));
+    await waitFor(() => expect(grid()).toBeInTheDocument());
+    expect(loc()).toBe("/labs");
+    await waitFor(() => expect(selectBtn(/^Storage accounts/)).toHaveFocus());
   });
 
   it("phone /labs/history is the Your labs page with the same header", async () => {
