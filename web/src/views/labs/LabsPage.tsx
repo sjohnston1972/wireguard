@@ -3,7 +3,8 @@ import { useLabs } from "@/api/queries";
 import { LabsHeader } from "./LabsHeader";
 import { Catalogue } from "./Catalogue";
 import { Filters } from "./Filters";
-import { Orphans, RunningStrip } from "./RunningStrip";
+import { LabsNotices } from "./LabsNotices";
+import { RunningStrip } from "./RunningStrip";
 
 /** /labs on a desktop or tablet: the running strip, filters on the left and the catalogue. */
 export function LabsPage({ children }: { children?: React.ReactNode }) {
@@ -22,7 +23,7 @@ export function LabsPage({ children }: { children?: React.ReactNode }) {
         </div>
       ) : (
         <>
-          <Orphans orphans={d.orphans} />
+          <LabsNotices data={d} />
           <RunningStrip sessions={d.running} />
           <div className="labs-main">
             <Filters cards={d.labs} />
