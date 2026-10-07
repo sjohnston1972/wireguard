@@ -2644,6 +2644,191 @@
    ],
    "blocks": {}
   },
+  "azurerm_servicebus_namespace": {
+   "attrs": [
+    "default_primary_connection_string",
+    "default_primary_key",
+    "default_secondary_connection_string",
+    "default_secondary_key",
+    "endpoint",
+    "id"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   },
+   "sensitive": [
+    "default_primary_connection_string",
+    "default_primary_key",
+    "default_secondary_connection_string",
+    "default_secondary_key"
+   ]
+  },
+  "azurerm_servicebus_namespace_authorization_rule": {
+   "attrs": [
+    "id",
+    "primary_connection_string",
+    "primary_connection_string_alias",
+    "primary_key",
+    "secondary_connection_string",
+    "secondary_connection_string_alias",
+    "secondary_key"
+   ],
+   "blocks": {},
+   "sensitive": [
+    "primary_connection_string",
+    "primary_connection_string_alias",
+    "primary_key",
+    "secondary_connection_string",
+    "secondary_connection_string_alias",
+    "secondary_key"
+   ]
+  },
+  "azurerm_servicebus_queue": {
+   "attrs": [
+    "auto_delete_on_idle",
+    "default_message_ttl",
+    "id",
+    "max_message_size_in_kilobytes",
+    "max_size_in_megabytes"
+   ],
+   "blocks": {}
+  },
+  "azurerm_servicebus_topic": {
+   "attrs": [
+    "id",
+    "max_message_size_in_kilobytes",
+    "max_size_in_megabytes"
+   ],
+   "blocks": {}
+  },
+  "azurerm_servicebus_subscription": {
+   "attrs": [
+    "id"
+   ],
+   "blocks": {
+    "client_scoped_subscription": {
+     "attrs": [
+      "is_client_scoped_subscription_durable"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_servicebus_subscription_rule": {
+   "attrs": [
+    "id",
+    "sql_filter_compatibility_level"
+   ],
+   "blocks": {}
+  },
+  "azurerm_eventgrid_system_topic": {
+   "attrs": [
+    "id",
+    "metric_arm_resource_id",
+    "metric_resource_id",
+    "source_arm_resource_id",
+    "source_resource_id"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_eventgrid_system_topic_event_subscription": {
+   "attrs": [
+    "eventhub_endpoint_id",
+    "hybrid_connection_endpoint_id",
+    "id",
+    "included_event_types"
+   ],
+   "blocks": {
+    "delivery_property": {
+     "attrs": [],
+     "blocks": {},
+     "sensitive": [
+      "value"
+     ]
+    },
+    "webhook_endpoint": {
+     "attrs": [
+      "base_url"
+     ],
+     "blocks": {}
+    }
+   }
+  },
+  "azurerm_container_app_job": {
+   "attrs": [
+    "event_stream_endpoint",
+    "id",
+    "outbound_ip_addresses"
+   ],
+   "blocks": {
+    "identity": {
+     "attrs": [
+      "principal_id",
+      "tenant_id"
+     ],
+     "blocks": {}
+    },
+    "secret": {
+     "attrs": [],
+     "blocks": {},
+     "sensitive": [
+      "value"
+     ]
+    },
+    "template": {
+     "attrs": [],
+     "blocks": {
+      "container": {
+       "attrs": [
+        "ephemeral_storage"
+       ],
+       "blocks": {
+        "liveness_probe": {
+         "attrs": [
+          "path",
+          "termination_grace_period_seconds"
+         ],
+         "blocks": {}
+        },
+        "readiness_probe": {
+         "attrs": [
+          "path"
+         ],
+         "blocks": {}
+        },
+        "startup_probe": {
+         "attrs": [
+          "path",
+          "termination_grace_period_seconds"
+         ],
+         "blocks": {}
+        }
+       }
+      },
+      "init_container": {
+       "attrs": [
+        "ephemeral_storage"
+       ],
+       "blocks": {}
+      }
+     }
+    }
+   }
+  },
   "data.azurerm_subscription": {
    "attrs": [
     "display_name",
