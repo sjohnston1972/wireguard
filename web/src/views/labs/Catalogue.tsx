@@ -1,8 +1,8 @@
 import type { LabCard as Card } from "@shared/api";
 import { EmptyState, Panel } from "@/components";
 import { LabCard } from "./LabCard";
-import { NO_FILTERS, alsoExams, anyFilter, applyFilters, groupByExam } from "./model";
-import { useFilters } from "./Filters";
+import { NO_FILTERS, alsoExams, anyFilter, groupByExam } from "./model";
+import { filterCards, useFilters } from "./Filters";
 
 /**
  * The catalogue (spec §10): AZ-104, AZ-305 then AZ-700, by number; the list scrolls inside the
@@ -11,7 +11,7 @@ import { useFilters } from "./Filters";
  */
 export function Catalogue({ cards, bare = false }: { cards: Card[]; bare?: boolean }) {
   const [f, setF] = useFilters();
-  const shown = applyFilters(cards, f);
+  const shown = filterCards(cards, f);
   const groups = groupByExam(shown, f.exam);
   const body = (
     <div className="labs-catalogue__scroll">
