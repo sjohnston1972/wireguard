@@ -33,6 +33,7 @@
 /* Chips wrap as words do; one never runs past the card (a very long word ends in an ellipsis, the full word in its title). */
 .lab-card__topics { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .lab-card__chip {
+  position: relative; z-index: 1; /* above the stretched select button, so the full word's tooltip reaches the pointer */
   max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   padding: 2px 9px; border-radius: 999px; font-size: 11.5px; line-height: 1.5; white-space: nowrap;
   background: var(--bg-tile); border: 1px solid var(--border); color: var(--text-secondary);
@@ -40,7 +41,8 @@
 .lab-card__chip--more { flex: none; color: var(--text-primary); }
 
 .lab-card__meta { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12.5px; color: var(--text-secondary); }
-.lab-card__meta li { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+/* Above the stretched select button, so the precise cost's tooltip reaches the pointer (its words are also the button's description). */
+.lab-card__meta li { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
 
 .lab-card__footer { margin-top: auto; padding-top: 16px; }
 .lab-card__action { width: 100%; text-decoration: none; }

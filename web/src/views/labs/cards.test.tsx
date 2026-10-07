@@ -76,6 +76,26 @@ describe("a card", () => {
     expect(cost).toHaveAttribute("title", "£1.10/hour · Pricey: Azure Firewall, about £0.95/hour");
   });
 
+  it("the precise cost and the pricey resource reach the keyboard: the card's one tab stop is described by them", async () => {
+    setup(one({ estGbpH: 1.1, pricey: { item: "Azure Firewall", gbpH: 0.95 } }), { layout: "tablet" });
+    const btn = screen.getByRole("button", { name: /^Blob security/ });
+    await userEvent.setup().tab();
+    expect(btn).toHaveFocus();
+    expect(btn).toHaveAccessibleDescription("Estimated cost £1.10/hour · Pricey: Azure Firewall, about £0.95/hour");
+  });
+
+  it("chips and meta sit above the stretched select button (their tooltips reach the pointer), and a click on them still selects", async () => {
+    // The title button's ::after covers the card; positioned chips and meta with a z-index are drawn above it.
+    expect(css).toMatch(/\.lab-card__meta li\s*\{[^}]*position:\s*relative;[^}]*z-index:\s*1/);
+    expect(css).toMatch(/\.lab-card__chip\s*\{[^}]*position:\s*relative;[^}]*z-index:\s*1/);
+    const user = userEvent.setup();
+    setup(labs());
+    await user.click(cardOf(/^Blob security/).getByText("Entra ID"));
+    expect(screen.getByRole("button", { name: /^Blob security/ })).toHaveAttribute("aria-current", "true");
+    await user.click(cardOf(/^Azure Files/).getByLabelText(/^Estimated cost/));
+    expect(screen.getByRole("button", { name: /^Azure Files/ })).toHaveAttribute("aria-current", "true");
+  });
+
   it("a card without learning shows the summary's first sentence and no learning time", () => {
     setup(one({ learning: null, summary: "Two storage accounts, LRS hot and GRS cool. Then a lifecycle policy moves blobs." }));
     const c = cardOf(/^Blob security/);

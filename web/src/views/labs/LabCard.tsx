@@ -9,7 +9,7 @@
 // a live session has a real link to its dialog instead (a second tab stop).
 // Memoised: a selection change re-renders only the two cards it touches.
 
-import { memo } from "react";
+import { memo, useId, type MouseEvent } from "react";
 import { ArrowRight, Clock, Coins } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cx } from "@/components";
@@ -48,8 +48,13 @@ export const LabCard = memo(function LabCard({ view, selected, onSelect, search,
   const also = exams.filter((e) => e !== c.exam);
   const tip = fmtHourlyPrecise(c.estGbpH) + (c.pricey ? ` · Pricey: ${c.pricey.item}, about ${fmtHourlyPrecise(c.pricey.gbpH)}` : "");
   const selectWords = action.kind === "select" ? action.label : "View lab";
+  const costId = useId();
+  // Chips and meta sit above the stretched title button (so their tooltips reach the pointer); a click on them still selects.
+  const selectFromInfo = (e: MouseEvent<HTMLElement>) => {
+    if ((e.target as Element).closest(".lab-card__topics, .lab-card__meta")) onSelect(c.id);
+  };
   return (
-    <article className={cx("lab-card", selected && "lab-card--selected")} data-lab-card={c.id}>
+    <article className={cx("lab-card", selected && "lab-card--selected")} data-lab-card={c.id} onClick={selectFromInfo}>
       <div className="lab-card__eyebrow">
         <span className="lab-card__id">
           Lab {c.number} · {c.exam}
@@ -60,7 +65,7 @@ export const LabCard = memo(function LabCard({ view, selected, onSelect, search,
       </div>
       <Icon size={28} aria-hidden="true" className="lab-card__icon" />
       <h3 className="lab-card__title">
-        <button type="button" className="lab-card__select" aria-current={selected ? "true" : undefined} onClick={() => onSelect(c.id)}>
+        <button type="button" className="lab-card__select" aria-current={selected ? "true" : undefined} aria-describedby={costId} onClick={() => onSelect(c.id)}>
           {c.title}
           <span className="visually-hidden">, {selectWords}</span>
         </button>
@@ -90,6 +95,10 @@ export const LabCard = memo(function LabCard({ view, selected, onSelect, search,
         <li aria-label={`Estimated cost ${hourlyAria(c.estGbpH)}`} title={tip}>
           <Coins size={14} aria-hidden="true" />
           {fmtHourlyShort(c.estGbpH)}
+          {/* The tooltip's words without hover (spec §10): the select button's description. */}
+          <span id={costId} className="visually-hidden">
+            Estimated cost {tip}
+          </span>
         </li>
       </ul>
       <div className="lab-card__footer">
