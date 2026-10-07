@@ -207,7 +207,8 @@ describe("the insights scenario", () => {
     const { env } = makeEnv({ AUTH_DEV_BYPASS: "1", PUBLIC_URL: "http://localhost:8787" });
     await seed(env, "insights");
     for (const t of AZ_TABLES) expect(await rows(env, t), t).toBeGreaterThan(0);
-    for (const s of SCENARIOS.filter((x) => x !== "insights")) {
+    // everything tells the insights story too (devseed-everything.test.ts).
+    for (const s of SCENARIOS.filter((x) => x !== "insights" && x !== "everything")) {
       await seed(env, "insights");
       await seed(env, s);
       for (const t of AZ_TABLES) expect(await rows(env, t), `${s} ${t}`).toBe(0);

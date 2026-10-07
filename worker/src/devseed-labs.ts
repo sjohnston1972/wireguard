@@ -239,6 +239,41 @@ export async function seedLabs(env: Env, now: number, opts: { setup?: boolean } 
 }
 
 /**
+ * The everything story's extra lab sessions (issue #96), on top of seedLabs: lab 1's deploy failed at Apply 35
+ * minutes ago (the session holds slot 4 until it is torn down), so the strip has a live lab in every state; lab 3
+ * ended yesterday with Azure's figure in, so this month has lab spend of its own; and room for a fifth live lab,
+ * so the catalogue still offers Deploy.
+ */
+export async function seedLabsMore(env: Env, now: number): Promise<void> {
+  // Run numbers after seedLabs' own, so every GitHub link stays unique.
+  let n = 40;
+  const sid = (at: number, tail: string) => `ls-${stamp(at)}-${tail}`;
+  const rid = (action: string, at: number, tail: string) => `lab-${action}-${stamp(at)}-${tail}`;
+  {
+    const lab = "az104-01-identity";
+    const req = now - 35 * MIN;
+    const id = sid(req, "f1a8");
+    const error = "Apply: AuthorizationFailed: the service principal cannot create role assignments at this scope (00000000-0000-4000-8000-000000000000).";
+    // Six steps done, then Apply failed; the rest never ran.
+    const ran = steps("deploy", req + 20_000, 6, true).map((s): Step => (s.status === "in_progress" ? { ...s, status: "completed", conclusion: "failure", completed_at: iso(Date.parse(s.started_at!) + 95_000) } : s.status === "queued" ? { ...s, status: "completed", conclusion: "skipped" } : s));
+    await addSession(env, { id, lab, state: "failed", slot: 4, peering: "off", requested: req, ready: null, ended: null, autoDestroy: null, maxH: 4, gbpH: 0, endReason: null, note: null }, n);
+    await addRun(env, { id: rid("deploy", req, "f1d0"), session: id, lab, action: "deploy", status: "failed", requested: req, finished: req + 5 * MIN, steps: ran, n: ++n, error });
+  }
+  {
+    const lab = "az104-03-mgmt-groups";
+    const req = Math.floor((now - DAY) / DAY) * DAY + 9 * HOUR;
+    const ready = req + 4 * MIN;
+    const end = ready + 90 * MIN;
+    const id = sid(req, "y3x0");
+    await addSession(env, { id, lab, state: "ended", slot: null, peering: "off", requested: req, ready, ended: end + 3 * MIN, autoDestroy: ready + 2 * HOUR, maxH: 6, gbpH: 0.0004, endReason: "manual", note: "Moved the subscription under the new group; policy followed it within ten minutes." }, n);
+    await addRun(env, { id: rid("deploy", req, "y3d0"), session: id, lab, action: "deploy", status: "succeeded", requested: req, finished: ready, steps: finished("deploy", req + 20_000), n: ++n });
+    await addRun(env, { id: rid("destroy", end, "y3x1"), session: id, lab, action: "destroy", status: "succeeded", requested: end, finished: end + 3 * MIN, steps: finished("destroy", end + 20_000), n: ++n });
+    await env.DB.prepare("INSERT OR REPLACE INTO lab_cost_days (day, rg, lab_id, gbp, fetched_at) VALUES (?1, ?2, ?3, ?4, ?5)").bind(iso(req).slice(0, 10), `rg-lab-${lab}`, lab, 0.0031, iso(now - 6 * HOUR)).run();
+  }
+  await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('labs_max_running', '5') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+}
+
+/**
  * The Resource Graph rows of the running lab 6 (slot 0, name prefix l06k3x9q,
  * peered), for the live diagram under `wrangler dev` (labs/topology.ts reads
  * them only with AUTH_DEV_BYPASS and no Azure). Shaped like Learn's REST

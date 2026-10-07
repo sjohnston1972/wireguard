@@ -33,10 +33,21 @@ import { budgetStatus } from "./budget";
 import { freezeDevClock } from "./devclock";
 import { AZ_TABLES } from "./insights/types";
 import { seedInsights } from "./devseed-insights";
-import { seedLabs, wipeLabs } from "./devseed-labs";
+import { buildExport } from "./backup";
+import { isWgKey } from "./peers";
+import { DEVSEED_BACKUP_ROOT, DEVSEED_KV } from "./devmarks";
+import { seedLabs, seedLabsMore, wipeLabs } from "./devseed-labs";
 
-export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs", "labs-setup"] as const;
+export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs", "labs-setup", "everything"] as const;
 export type Scenario = (typeof SCENARIOS)[number];
+
+/**
+ * The stories told on top of the running one: the running story first, then
+ * their own layers. everything (issue #96) is all of them at once, plus the
+ * busy-month kinds of history and the few things no other story shows, so
+ * every widget on every page has data (seedEverything, below).
+ */
+const ON_RUNNING: readonly Scenario[] = ["insights", "labs", "labs-setup", "everything"];
 
 /** True only on a developer's PC: the login bypass is on and the request is for localhost. */
 export function devSeedAllowed(env: Env, url: string): boolean {
@@ -164,7 +175,9 @@ async function insertPeers(env: Env, rng: Rng, now: number, names: string[]): Pr
     const created = iso(now - rng.int(20, 90) * DAY);
     const seen = c.lastSeenDays === 0 ? iso(now - rng.int(1, 9) * MIN) : iso(now - c.lastSeenDays * DAY);
     await env.DB.prepare("UPDATE peers SET created_at = ?2, last_handshake_at = ?3, routes = ?4 WHERE id = ?1").bind(p.id, created, seen, c.routes).run();
-    out.push({ id: p.id, public_key: p.public_key, ip: p.ip, cast: c, endpoint: `${rng.int(31, 92)}.${rng.int(1, 250)}.${rng.int(1, 250)}.${rng.int(2, 250)}:${rng.int(20000, 60000)}` });
+    // Where it dials in from: TEST-NET-2 (RFC 5737), never a real address. The three unused draws keep every later random number as it was.
+    const [, , , host] = [rng.int(31, 92), rng.int(1, 250), rng.int(1, 250), rng.int(2, 250)];
+    out.push({ id: p.id, public_key: p.public_key, ip: p.ip, cast: c, endpoint: `198.51.100.${host}:${rng.int(20000, 60000)}` });
   }
   return out;
 }
@@ -300,16 +313,66 @@ async function addSession(env: Env, rng: Rng, s: Session0, now: number, o: { pee
   return { applyId, destroyId, publicIp };
 }
 
-async function addFailedRun(env: Env, rng: Rng, atMs: number, error: string): Promise<string> {
-  const id = runId("apply", atMs, rng);
+/** A run that failed partway: a deploy at "Apply Terraform configuration", or a tear-down at "Destroy Azure resources". */
+async function addFailedRun(env: Env, rng: Rng, atMs: number, error: string, action: "apply" | "destroy" = "apply"): Promise<string> {
+  const id = runId(action, atMs, rng);
   const started = atMs + 8000;
-  const failAt = 6;
-  const steps = stepList(DEPLOY_STEPS, started, { failAt });
+  const failAt = action === "apply" ? 6 : 2;
+  const steps = stepList(action === "apply" ? DEPLOY_STEPS : DESTROY_STEPS, started, { failAt });
   const finished = Date.parse(steps[failAt].completed_at!);
-  await db.createRun(env, { id, action: "apply", status: "queued", requested_at: iso(atMs), requested_by: USER, callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region: "uksouth", vm_size: "Standard_B1s", run_id: id }), auto_destroy_at: null, reason: null, ssh_password: null });
+  const payload = action === "apply" ? JSON.stringify({ region: "uksouth", vm_size: "Standard_B1s", run_id: id }) : null;
+  await db.createRun(env, { id, action, status: "queued", requested_at: iso(atMs), requested_by: USER, callback_token_hash: null, agent_token_hash: null, payload_json: payload, auto_destroy_at: null, reason: null, ssh_password: null });
   await db.updateRun(env, id, { status: "failure", started_at: iso(started), finished_at: iso(finished), github_run_id: 7_000_000_000 + rng.int(1, 999_999), github_run_url: `https://ci.example.invalid/actions/runs/7000${rng.int(10000, 99999)}`, error, steps_json: JSON.stringify(steps) });
-  await note(env, finished, "failure", `Deploy failed: ${error}`, id, false);
+  await note(env, finished, "failure", `${action === "apply" ? "Deploy" : "Tear-down"} failed: ${error}`, id, false);
   return id;
+}
+
+/** A deploy cancelled by hand while the Azure resources were being made. */
+async function addCancelledRun(env: Env, rng: Rng, atMs: number): Promise<string> {
+  const id = runId("apply", atMs, rng);
+  await db.createRun(env, { id, action: "apply", status: "queued", requested_at: iso(atMs), requested_by: USER, callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region: "uksouth", vm_size: "Standard_B1s" }), auto_destroy_at: null, reason: null, ssh_password: null });
+  await db.updateRun(env, id, { status: "cancelled", started_at: iso(atMs + 9000), finished_at: iso(atMs + 80_000), steps_json: JSON.stringify(stepList(DEPLOY_STEPS, atMs + 9000, { failAt: 3 }).map((s) => (s.conclusion === "failure" ? { ...s, conclusion: "cancelled" } : s))) });
+  return id;
+}
+
+/** What the watchman writes about problems, one of each kind it uses. */
+const WATCHMAN_NOTES: [string, string][] = [
+  ["idle", "No client activity for 30 minutes; tearing down in 10 minutes unless someone connects."],
+  ["cost_guard", "Auto-destroy extended once; the cost guard stopped it at the 4 hour limit."],
+  ["drift", "DNS mismatch: wg.clydeford.net resolves to 192.0.2.1 but the VM is at 203.0.113.12."],
+  ["unreachable", "No heartbeat from the VM for 2 minutes. It may be down, or the agent token may be wrong."],
+  ["info", "Heartbeat from the VM is back."],
+  ["info", 'Client "guest-ipad" expired and was switched off.'],
+];
+
+/** `count` watchman notes at random times in the last `hours` hours, taking the kinds in turn; the first four unread. */
+async function addWatchmanNotes(env: Env, rng: Rng, now: number, count: number, hours: number): Promise<void> {
+  for (let i = 0; i < count; i++) {
+    const [kind, msg] = WATCHMAN_NOTES[i % WATCHMAN_NOTES.length];
+    await note(env, now - rng.int(2, hours) * HOUR, kind, msg, null, i > 3);
+  }
+}
+
+/** Changes made in the dashboard: clients, firewall rules and ports, settings, profiles and schedules. */
+const CHANGE_LOG: [string, string, unknown, unknown][] = [
+  ["client.add", "k8s-node", null, { name: "k8s-node", ip: "10.13.13.11", full_tunnel: 0 }],
+  ["client.edit", "laptop", { enabled: 1 }, { enabled: 0 }],
+  ["client.edit", "phone", { note: null }, { note: "Android" }],
+  ["firewall.rule.add", "Block SSH to the home LAN", null, { action: "deny", proto: "tcp", ports: "22" }],
+  ["firewall.rule.toggle", "Clients to each other", { enabled: 1 }, { enabled: 0 }],
+  ["firewall.forward.add", "Test VM web page (TCP 8080)", null, { public_port: 8080, target_ip: "10.50.2.4" }],
+  ["settings.save", "settings", { auto_destroy_default_hours: "4" }, { auto_destroy_default_hours: "6" }],
+  ["settings.save", "settings", { monthly_budget_gbp: "5" }, { monthly_budget_gbp: "10" }],
+  ["profile.add", "EU exit", null, { region: "westeurope", vm_size: "Standard_B1s" }],
+  ["schedule.add", "Weekdays 08:00-18:00", null, { days: "12345", start_time: "08:00", end_time: "18:00" }],
+];
+
+/** `count` changes at random times in the last `hours` hours, taking CHANGE_LOG in turn. */
+async function addChangeLog(env: Env, rng: Rng, now: number, count: number, hours: number): Promise<void> {
+  for (let i = 0; i < count; i++) {
+    const [a, tgt, b, af] = CHANGE_LOG[i % CHANGE_LOG.length];
+    await auditAt(env, now - rng.int(1, hours) * HOUR, a, tgt, b, af);
+  }
 }
 
 // ── Sessions on the calendar ──────────────────────────────────────────────
@@ -445,10 +508,10 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
 }
 
 /** Wipe everything the seeder owns. */
-async function wipe(env: Env): Promise<void> {
+async function wipe(env: Env, now: number): Promise<void> {
   // ui_prefs too: every story starts with the widgets as they ship (shots --prefs saves its own after seeding).
-  // And the Azure insights tables: only the insights story fills them.
-  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules", "ui_prefs", ...AZ_TABLES];
+  // And the Azure insights tables: only the insights story fills them. The cost split and the runs' live logs: only everything.
+  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "cost_breakdown", "run_live_log", "run_live_log_pruned", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules", "ui_prefs", ...AZ_TABLES];
   await env.DB.batch([
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
     // No draft, and the live rule set back at version 1.
@@ -459,7 +522,19 @@ async function wipe(env: Env): Promise<void> {
   } catch {
     /* ids simply carry on counting where this database does not allow the reset */
   }
-  await env.DB.prepare("DELETE FROM settings WHERE key = 'monthly_budget_gbp'").run();
+  await env.DB.prepare(`DELETE FROM settings WHERE key IN ('monthly_budget_gbp', ${EVERYTHING_SETTINGS.map(([k]) => `'${k}'`).join(", ")})`).run();
+  // Only everything's own: its phone, the cached backup count and this month's budget alert mark.
+  await env.DB.prepare("DELETE FROM push_subs WHERE endpoint LIKE ?1").bind(`${SEED_PUSH_HOST}%`).run();
+  // The seeded key rotation, only (a real one is kept): the next read records the key afresh.
+  await env.DB.prepare("DELETE FROM settings WHERE key = 'server_key' AND value LIKE ?1").bind(`%${SEED_OLD_SERVER_KEY}%`).run();
+  await env.STATUS.delete(`budget:alerted:${iso(now).slice(0, 7)}`);
+  // The seed's own markers (devmarks.ts): only a story that writes one again shows its stand-ins.
+  for (const k of Object.values(DEVSEED_KV)) await env.STATUS.delete(k);
+  // The seeded backups, only ever under DEVSEED_BACKUP_ROOT: STATE is production's bucket in wrangler.toml, so the real
+  // backups/ and config-backups/ prefixes are never listed for deletion here. Then the cached count.
+  const seeded = (await env.STATE.list({ prefix: DEVSEED_BACKUP_ROOT })).objects.map((o) => o.key).filter((k) => k.startsWith(DEVSEED_BACKUP_ROOT));
+  if (seeded.length) await env.STATE.delete(seeded);
+  await env.STATUS.delete("backup:status");
   // The lab tables and the lab engine's KV records: only the labs story fills them.
   await wipeLabs(env);
 }
@@ -511,11 +586,12 @@ async function counts(env: Env): Promise<Record<string, number>> {
 /** Wipe the local data and build one scenario. `now` is injectable so a run can be repeated exactly. */
 export async function seedScenario(env: Env, scenario: Scenario, nowDate = new Date()): Promise<SeedResult> {
   // insights tells the running story, then adds what the Azure collector and a version-7 agent would have stored;
-  // labs tells it too, then adds the lab story (devseed-labs.ts); labs-setup is the lab story with the permission check failed.
-  const story: Exclude<Scenario, "insights" | "labs" | "labs-setup"> = scenario === "insights" || scenario === "labs" || scenario === "labs-setup" ? "running" : scenario;
+  // labs tells it too, then adds the lab story (devseed-labs.ts); labs-setup is the lab story with the permission check failed;
+  // everything is the running story with all of those layers and its own (ON_RUNNING).
+  const story = (ON_RUNNING.includes(scenario) ? "running" : scenario) as Exclude<Scenario, "insights" | "labs" | "labs-setup" | "everything">;
   const now = nowDate.getTime();
   const rng = makeRng(SEED);
-  await wipe(env);
+  await wipe(env, now);
   await insertRules(env, story !== "empty");
   await env.STATUS.delete("cost:fetched_day").catch(() => {});
   await saveSnapshot(env, { ...EMPTY, updated_at: iso(now) });
@@ -569,38 +645,9 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
       if (d !== 0 && rng.chance(0.12)) await addFailedRun(env, rng, dayStart + rng.int(9, 20) * HOUR, rng.pick(["Terraform apply failed: SkuNotAvailable for Standard_B1s in uksouth.", "Terraform apply failed: QuotaExceeded for the regional vCPU limit.", "Could not collect secrets from GitHub Actions (timeout)."]));
     }
     // One run cancelled by hand.
-    const cancelAt = midnight(now - 11 * DAY) + 21 * HOUR;
-    const cid = runId("apply", cancelAt, rng);
-    await db.createRun(env, { id: cid, action: "apply", status: "queued", requested_at: iso(cancelAt), requested_by: USER, callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region: "uksouth", vm_size: "Standard_B1s" }), auto_destroy_at: null, reason: null, ssh_password: null });
-    await db.updateRun(env, cid, { status: "cancelled", started_at: iso(cancelAt + 9000), finished_at: iso(cancelAt + 80_000), steps_json: JSON.stringify(stepList(DEPLOY_STEPS, cancelAt + 9000, { failAt: 3 }).map((s) => (s.conclusion === "failure" ? { ...s, conclusion: "cancelled" } : s))) });
-    const problems: [string, string][] = [
-      ["idle", "No client activity for 30 minutes; tearing down in 10 minutes unless someone connects."],
-      ["cost_guard", "Auto-destroy extended once; the cost guard stopped it at the 4 hour limit."],
-      ["drift", "DNS mismatch: wg.clydeford.net resolves to 192.0.2.1 but the VM is at 203.0.113.12."],
-      ["unreachable", "No heartbeat from the VM for 2 minutes. It may be down, or the agent token may be wrong."],
-      ["info", "Heartbeat from the VM is back."],
-      ["info", 'Client "guest-ipad" expired and was switched off.'],
-    ];
-    for (let i = 0; i < 12; i++) {
-      const [kind, msg] = problems[i % problems.length];
-      await note(env, now - rng.int(2, 28 * 24) * HOUR, kind, msg, null, i > 3);
-    }
-    const changes: [string, string, unknown, unknown][] = [
-      ["client.add", "k8s-node", null, { name: "k8s-node", ip: "10.13.13.11", full_tunnel: 0 }],
-      ["client.edit", "laptop", { enabled: 1 }, { enabled: 0 }],
-      ["client.edit", "phone", { note: null }, { note: "Android" }],
-      ["firewall.rule.add", "Block SSH to the home LAN", null, { action: "deny", proto: "tcp", ports: "22" }],
-      ["firewall.rule.toggle", "Clients to each other", { enabled: 1 }, { enabled: 0 }],
-      ["firewall.forward.add", "Test VM web page (TCP 8080)", null, { public_port: 8080, target_ip: "10.50.2.4" }],
-      ["settings.save", "settings", { auto_destroy_default_hours: "4" }, { auto_destroy_default_hours: "6" }],
-      ["settings.save", "settings", { monthly_budget_gbp: "5" }, { monthly_budget_gbp: "10" }],
-      ["profile.add", "EU exit", null, { region: "westeurope", vm_size: "Standard_B1s" }],
-      ["schedule.add", "Weekdays 08:00-18:00", null, { days: "12345", start_time: "08:00", end_time: "18:00" }],
-    ];
-    for (let i = 0; i < 24; i++) {
-      const [a, tgt, b, af] = changes[i % changes.length];
-      await auditAt(env, now - rng.int(1, 29 * 24) * HOUR, a, tgt, b, af);
-    }
+    await addCancelledRun(env, rng, midnight(now - 11 * DAY) + 21 * HOUR);
+    await addWatchmanNotes(env, rng, now, 12, 28 * 24);
+    await addChangeLog(env, rng, now, 24, 29 * 24);
     await seedCost(env, rng, now, 40, spans);
     await insertSpeedTests(env, rng, now, false);
     return { ok: true, scenario, now: iso(now), counts: await counts(env) };
@@ -769,9 +816,154 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
   await db.setSetting(env, "monthly_budget_gbp", String(Math.max(0.01, Math.round((spent / 0.4) * 100) / 100)));
   await insertDraft(env);
   // Last, so everything above is exactly the running story.
-  if (scenario === "insights") await seedInsights(env, now, startMs, region);
-  if (scenario === "labs" || scenario === "labs-setup") await seedLabs(env, now, { setup: scenario === "labs-setup" });
+  if (scenario === "insights" || scenario === "everything") {
+    await seedInsights(env, now, startMs, region);
+    // The dev server shows these rows as connected without Azure credentials (insights/read.ts insightsShown).
+    await env.STATUS.put(DEVSEED_KV.insights, "1");
+  }
+  if (scenario === "labs" || scenario === "labs-setup" || scenario === "everything") await seedLabs(env, now, { setup: scenario === "labs-setup" });
+  if (scenario === "everything") await seedEverything(env, rng, { now, nowDate, earlier, applyId: cur.applyId });
   return { ok: true, scenario, now: iso(now), counts: await counts(env) };
+}
+
+// ── everything (issue #96) ────────────────────────────────────────────────
+
+/** Settings the everything story changes from their defaults, so each Settings section shows a value of its own. */
+const EVERYTHING_SETTINGS: [string, string][] = [
+  ["idle_destroy_minutes", "30"],
+  ["ssh_allowed_cidr", "203.0.113.9/32"],
+  ["labs_default_peering", "1"],
+];
+/** The seeded phone's push address: a made-up host, so nothing is ever delivered. */
+const SEED_PUSH_HOST = "https://push.example.invalid/";
+/** The server key "before" the seeded rotation: made up, never a key anything trusted. */
+const SEED_OLD_SERVER_KEY = "SeedOnlyOldServerKeyNotRealAAAAAAAAAAAAAAAA=";
+
+/**
+ * The running story already told, with the insights and labs layers on top:
+ * add what only busy-month or no story at all shows, so every widget on every
+ * page has data. A week of history of every kind (a failed deploy, a
+ * cancelled one, a failed tear-down, watchman notes of each kind, changes of
+ * each kind, a re-key), a live log on every run, Azure's split of the
+ * spend, a stale client and one whose config is out of date, the lab story's
+ * failed lab and yesterday's lab spend, a phone, backups, settings of its
+ * own, and the budget at its warning level (86 %).
+ */
+async function seedEverything(env: Env, rng: Rng, o: { now: number; nowDate: Date; earlier: Session0[]; applyId: string }): Promise<void> {
+  const { now } = o;
+  // Runs of every kind and outcome. Three days ago had no session, so its two runs stand alone.
+  const quiet = midnight(now - 3 * DAY);
+  await addFailedRun(env, rng, quiet + 10 * HOUR + 20 * MIN, "Terraform apply failed: azurerm_linux_virtual_machine.wg: SkuNotAvailable: Standard_B1s is not available in uksouth right now.");
+  await addCancelledRun(env, rng, quiet + 15 * HOUR + 5 * MIN);
+  // Yesterday's session ended at the second try: the first tear-down hit a lock on the disk.
+  const last = o.earlier.at(-1);
+  if (last?.end) await addFailedRun(env, rng, last.end - 9 * MIN, "Destroy failed: the OS disk is locked by a pending Azure operation; retry in a few minutes.", "destroy");
+  await addWatchmanNotes(env, rng, now, 6, 6 * 24);
+  await addChangeLog(env, rng, now, CHANGE_LOG.length, 6 * 24);
+
+  // The kinds of change only everything has: a re-keyed client, a phone signed up, a capture, the lock released, a restore.
+  const phone = await env.DB.prepare("SELECT * FROM peers WHERE name = 'phone'").first<Record<string, unknown>>();
+  if (phone) await auditAt(env, now - 30 * HOUR, "client.rekey", "phone", phone, { ...phone, public_key: wgKey(rng) });
+  await auditAt(env, now - 50 * HOUR, "push.add", "Pixel 8", null, { label: "Pixel 8" });
+  await auditAt(env, now - 95 * MIN, "capture.start", "wg0", null, { iface: "wg0", filter: "host 10.13.13.3", seconds: 30 });
+  await auditAt(env, now - 4 * DAY, "lock.release", "lock", { held: true }, { held: false });
+  await auditAt(env, now - 5 * DAY - 3 * HOUR, "config.restore", "config", null, { exported_at: iso(now - 6 * DAY) });
+
+  // Every client's Changes tab has its own entry: when it was added, for those the stories above did not log.
+  const logged = new Set((await env.DB.prepare("SELECT target FROM audit WHERE action = 'client.add'").all<{ target: string }>()).results.map((r) => r.target));
+  for (const p of await db.listPeers(env)) if (!logged.has(p.name)) await auditAt(env, Date.parse(p.created_at), "client.add", p.name, null, { name: p.name, ip: p.ip, full_tunnel: p.full_tunnel });
+
+  // Clients: one not seen for 41 days (stale), one whose config predates the lab pool.
+  await env.DB.batch([
+    env.DB.prepare("UPDATE peers SET last_handshake_at = ?1 WHERE name = 'tablet'").bind(iso(now - 41 * DAY)),
+    env.DB.prepare("UPDATE peers SET labs_config_due = 1 WHERE name = 'laptop'"),
+  ]);
+  // The server key was rotated 20 days ago: every client older than that has reconnected with it, except the stale tablet.
+  const pub = env.WG_SERVER_PUBLIC_KEY ?? "";
+  if (isWgKey(pub)) {
+    const rotated = now - 20 * DAY;
+    await db.setSetting(env, "server_key", JSON.stringify({ pub, changed_at: iso(rotated), previous: SEED_OLD_SERVER_KEY }));
+    await env.DB.prepare("UPDATE peers SET needs_config = 1 WHERE name = 'tablet' AND created_at < ?1").bind(iso(rotated)).run();
+    await note(env, rotated, "key_rotation", "Server key changed: configs now trust a new key. Clients need a new config: press Get config on each on the Clients page.", null, true);
+  }
+
+  // Azure's split of each day's spend: mostly the VM, then disk, address and bandwidth (bandwidth has no region in Azure's export).
+  const days = (await env.DB.prepare("SELECT day, gbp FROM cost_days ORDER BY day").all<{ day: string; gbp: number }>()).results;
+  const parts: [string, string, number][] = [
+    ["Virtual Machines", "uksouth", 0.62],
+    ["Storage", "uksouth", 0.2],
+    ["Virtual Network", "uksouth", 0.12],
+    ["Bandwidth", "", 0.06],
+  ];
+  await db.upsertCostBreakdown(env, days.flatMap((d) => parts.map(([category, location, share]) => ({ day: d.day, category, location, gbp: Math.round(d.gbp * share * 10000) / 10000 }))));
+
+  // The lab story's extra sessions (a failed lab, yesterday's spend), and settings of everything's own.
+  await seedLabsMore(env, now);
+  // Every run's log (the gateway's and the labs'), as the workflow's live log would have kept it.
+  await addRunLogs(env);
+  for (const [k, v] of EVERYTHING_SETTINGS) await db.setSetting(env, k, v);
+  await env.DB.prepare("INSERT INTO push_subs (endpoint, p256dh, auth, label, created_at, last_ok, last_error) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)")
+    .bind(`${SEED_PUSH_HOST}seed-0001`, "BSeedOnlyNotARealKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "seed-only-auth", "Pixel 8", iso(now - 50 * HOUR), iso(now - 26 * MIN))
+    .run();
+  await addBackups(env, now);
+
+  // The budget at 86 %, counting the labs; the 80 % alert already sent this month, as the watchman would have.
+  const cfg = await effectiveConfig(env);
+  const spent = (await budgetStatus(env, cfg, await getSnapshot(env), o.nowDate)).total;
+  await db.setSetting(env, "monthly_budget_gbp", String(Math.max(0.01, Math.round((spent / 0.86) * 100) / 100)));
+  await env.STATUS.put(`budget:alerted:${iso(now).slice(0, 7)}`, "80");
+  await note(env, now - 70 * MIN, "budget", "80% of the monthly budget is used.", null, false);
+}
+
+/** A live log for every run, the gateway's and the labs', built from its steps: GitHub's line format, a group per step, the error where it stopped. */
+async function addRunLogs(env: Env): Promise<void> {
+  type Row = { id: string; error: string | null; steps_json: string | null; finished_at: string | null };
+  const cols = "id, error, steps_json, finished_at";
+  const runs = [...(await env.DB.prepare(`SELECT ${cols} FROM runs`).all<Row>()).results, ...(await env.DB.prepare(`SELECT ${cols} FROM lab_runs`).all<Row>()).results];
+  const stmts: D1PreparedStatement[] = [];
+  for (const r of runs) {
+    const steps: Step[] = r.steps_json ? JSON.parse(r.steps_json) : [];
+    const lines: string[] = [];
+    for (const s of steps) {
+      if (!s.started_at) continue;
+      const t = (secs: number) => iso(Date.parse(s.started_at!) + secs * 1000);
+      lines.push(`${t(0)} ##[group]${s.name}`, `${t(1)} [INFO] ${s.name}: started`);
+      if (s.status === "in_progress") {
+        lines.push(`${t(2)} [INFO] ${s.name}: still working...`);
+        continue;
+      }
+      if (s.conclusion === "failure") lines.push(`${t(2)} ##[error]${r.error ?? "The step failed."}`);
+      else if (s.conclusion === "cancelled") lines.push(`${t(2)} ##[error]The operation was canceled.`);
+      else lines.push(`${s.completed_at ?? t(2)} [INFO] ${s.name}: done`);
+      lines.push(`${s.completed_at ?? t(2)} ##[endgroup]`);
+    }
+    if (!lines.length) continue;
+    stmts.push(env.DB.prepare("INSERT INTO run_live_log (run_id, seq, at, text) VALUES (?1, CAST(1 AS INTEGER), ?2, ?3)").bind(r.id, r.finished_at ?? lines.at(-1)!.slice(0, 24), lines.join("\n")));
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+}
+
+/**
+ * The backups a week of use leaves: Terraform's state after each finished
+ * gateway run (as wg.yml names them), and a nightly config export for each of
+ * the last 7 days (the real export of the seeded settings). All under
+ * DEVSEED_BACKUP_ROOT, never the real prefixes; the marker points the dev
+ * server's backup list and downloads there (backup.ts backupRoot).
+ */
+async function addBackups(env: Env, now: number): Promise<void> {
+  const root = DEVSEED_BACKUP_ROOT;
+  const runs = (await env.DB.prepare("SELECT action, finished_at FROM runs WHERE status = 'success' AND finished_at IS NOT NULL ORDER BY finished_at").all<{ action: string; finished_at: string }>()).results;
+  for (const [i, r] of runs.entries()) {
+    const ts = r.finished_at.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+    const state = { version: 4, terraform_version: "1.9.5", serial: i + 1, lineage: "00000000-0000-4000-8000-0000000005ed", outputs: {}, resources: [] };
+    await env.STATE.put(`${root}backups/${ts}-${r.action}.tfstate`, JSON.stringify(state));
+  }
+  for (let d = 6; d >= 0; d--) {
+    const at = new Date(midnight(now - d * DAY) + 2 * HOUR);
+    if (at.getTime() > now) continue;
+    await env.STATE.put(`${root}config-backups/${day(at.getTime())}.json`, JSON.stringify(await buildExport(env, at), null, 1), { httpMetadata: { contentType: "application/json" } });
+  }
+  await env.STATUS.put(DEVSEED_KV.backups, "1");
 }
 
 /** An unapplied firewall draft with two changes: one rule edited, one added. The live rules (and the VM) are untouched. */

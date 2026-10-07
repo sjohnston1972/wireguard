@@ -22,6 +22,7 @@ import { isWgKey } from "./peers";
 import * as db from "./db";
 import { lockStatus } from "./lock";
 import { getSnapshot } from "./state";
+import { DEVSEED_BACKUP_ROOT, DEVSEED_KV, devSeeded } from "./devmarks";
 
 /** What the file says it is, and the format version this code writes and reads. */
 export const EXPORT_KIND = "wg-admin-config";
@@ -150,6 +151,15 @@ function summarise(objs: { key: string; uploaded: Date }[]): BackupSet {
  * How many backups of each kind R2 holds, and the newest. The Overview asks
  * every 20 seconds, so the answer is kept for 10 minutes unless `fresh`.
  */
+/**
+ * Where the backups are read from: the bucket's root, or, on a developer's PC
+ * after the everything seed, DEVSEED_BACKUP_ROOT, where that story wrote its
+ * own (it never touches the real prefixes; the bucket is production's).
+ */
+export async function backupRoot(env: Env): Promise<string> {
+  return (await devSeeded(env, DEVSEED_KV.backups)) ? DEVSEED_BACKUP_ROOT : "";
+}
+
 export async function backupStatus(env: Env, fresh = false): Promise<BackupStatus> {
   if (!fresh) {
     const cached = await env.STATUS.get<BackupStatus>("backup:status", "json").catch(() => null);
@@ -157,9 +167,10 @@ export async function backupStatus(env: Env, fresh = false): Promise<BackupStatu
   }
   let status: BackupStatus;
   try {
-    const [state, config] = await Promise.all([listKeys(env, "backups/"), listKeys(env, "config-backups/")]);
+    const root = await backupRoot(env);
+    const [state, config] = await Promise.all([listKeys(env, `${root}backups/`), listKeys(env, `${root}config-backups/`)]);
     const tf = state.filter((o) => o.key.endsWith(".tfstate"));
-    const days = config.map((o) => o.key.match(/^config-backups\/(\d{4}-\d{2}-\d{2})\.json$/)?.[1]).filter((d): d is string => !!d).sort().reverse();
+    const days = config.map((o) => o.key.slice(root.length).match(/^config-backups\/(\d{4}-\d{2}-\d{2})\.json$/)?.[1]).filter((d): d is string => !!d).sort().reverse();
     status = { state: summarise(tf), config: { ...summarise(config), days }, checked_at: new Date().toISOString() };
   } catch (e) {
     return { state: { count: 0, newest: null }, config: { count: 0, newest: null, days: [] }, checked_at: new Date().toISOString(), error: (e as Error).message };
