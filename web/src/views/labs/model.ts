@@ -236,6 +236,23 @@ export function applyFilters<V extends FilterableView>(views: readonly V[], f: F
   );
 }
 
+/**
+ * The filters with exactly those that hide `view` cleared (each filter alone, as they combine by AND),
+ * so the lab shows; the rest (a search that finds it, say) kept. `cleared` is false when none hid it.
+ */
+export function revealFilters<V extends FilterableView>(f: Filters, view: V): { filters: Filters; cleared: boolean } {
+  const out: Filters = { ...f, type: [...f.type] };
+  const hides = (one: Partial<Filters>) => applyFilters([view], { ...NO_FILTERS, ...one }).length === 0;
+  if (f.q.trim() && hides({ q: f.q })) out.q = "";
+  if (f.exam && hides({ exam: f.exam })) out.exam = null;
+  if (f.area && hides({ area: f.area })) out.area = null;
+  if (f.level && hides({ level: f.level })) out.level = null;
+  if (f.type.length && hides({ type: f.type })) out.type = [];
+  if (f.notRun && hides({ notRun: true })) out.notRun = false;
+  if (f.ready && hides({ ready: true })) out.ready = false;
+  return { filters: out, cleared: JSON.stringify(out) !== JSON.stringify(f) };
+}
+
 // ── Selection (spec §9: ?lab=<id> is a selection, never a dialog) ─────────
 
 /** ?lab, or null. */

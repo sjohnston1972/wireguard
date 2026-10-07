@@ -23,7 +23,7 @@ import { LabsHeader } from "./LabsHeader";
 import { LabsNotices } from "./LabsNotices";
 import { LabsSummaryStrip } from "./LabsSummaryStrip";
 import { useLabsLayout } from "./layout";
-import { applyFilters, fmtClock, readFilters, readSelection, selectedLab, withSelection } from "./model";
+import { applyFilters, fmtClock, readFilters, readSelection, revealFilters, selectedLab, withSelection, writeFilters } from "./model";
 import { RunningStrip } from "./RunningStrip";
 import "./LabsPage.css";
 
@@ -88,16 +88,29 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
   }, [drop, urlLab, loaded, byId, replace, toast]);
 
   // Select a lab: wide replaces ?lab (the panel follows); tablet and phone push it, so Back closes the drawer or view.
-  const latest = useRef({ location, layout });
-  latest.current = { location, layout };
+  // A lab the filters hide (a prerequisite) first clears exactly the filters that hide it, and says so: never
+  // the first visible lab in its place.
+  const latest = useRef({ location, layout, byId });
+  latest.current = { location, layout, byId };
   const select = useCallback(
     (id: string) => {
-      const { location: l, layout: lay } = latest.current;
-      if (lay === "wide") return replace((p) => withSelection(p, id));
-      const next = withSelection(new URLSearchParams(l.search), id).toString();
-      navigate({ pathname: l.pathname, search: next ? `?${next}` : "" }, { state: PUSHED });
+      const { location: l, layout: lay, byId: views } = latest.current;
+      let p = new URLSearchParams(l.search);
+      const v = views.get(id);
+      const shown = v ? revealFilters(readFilters(p), v) : null;
+      if (v && shown?.cleared) {
+        p = writeFilters(p, shown.filters);
+        toast({ title: `Filters cleared to show Lab ${v.card.number}.`, tone: "info" });
+      }
+      const next = withSelection(p, id).toString();
+      const to = { pathname: l.pathname, search: next ? `?${next}` : "" };
+      if (lay === "wide") {
+        if (to.search !== l.search) navigate(to, { replace: true, state: l.state });
+        return;
+      }
+      else navigate(to, { state: PUSHED });
     },
-    [navigate, replace],
+    [navigate, toast],
   );
 
   // Close the drawer or the phone view: Back when this page opened it, else drop ?lab. The phone then focuses the card.

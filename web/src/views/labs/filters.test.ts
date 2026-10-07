@@ -10,7 +10,7 @@ import { act, renderHook } from "@testing-library/react";
 import type { LabCard } from "@shared/api";
 import { setViewport } from "@/test/viewport";
 import { card, catalogue, session } from "./testData";
-import { NO_FILTERS, anyFilter, applyFilters, labHref, readFilters, readSelection, searchText, selectedLab, withSelection, writeFilters, type Filters } from "./model";
+import { NO_FILTERS, anyFilter, applyFilters, labHref, readFilters, readSelection, revealFilters, searchText, selectedLab, withSelection, writeFilters, type Filters } from "./model";
 import { labReadiness, labSessionStatus } from "./status";
 import { WIDE_QUERY, useLabsLayout } from "./layout";
 
@@ -21,6 +21,19 @@ const view = (c: LabCard) => ({ card: c, readiness: labReadiness(c, true), statu
 /** The ids applyFilters keeps from these cards in lab number order (the order useLabViews gives it). */
 const ids = (f: Partial<Filters>, cards: LabCard[] = catalogue()) =>
   applyFilters([...cards].sort((a, b) => a.number - b.number).map(view), { ...NO_FILTERS, ...f }).map((v) => v.card.id);
+
+describe("revealFilters", () => {
+  const five = view(catalogue().find((c) => c.number === 5)!);
+  it("clears exactly the filters that hide the lab, keeping the rest", () => {
+    const f: Filters = { ...NO_FILTERS, q: "storage", exam: "AZ-305", level: "foundation", type: ["break-fix"], notRun: false };
+    expect(revealFilters(f, five)).toEqual({ filters: { ...f, exam: null, type: [] }, cleared: true });
+    expect(applyFilters([five], revealFilters(f, five).filters)).toHaveLength(1);
+  });
+  it("leaves filters that show the lab alone", () => {
+    const f: Filters = { ...NO_FILTERS, q: "lab 5", exam: "AZ-104" };
+    expect(revealFilters(f, five)).toEqual({ filters: f, cleared: false });
+  });
+});
 
 describe("readFilters and writeFilters", () => {
   it("reads every parameter, and nothing for an empty address", () => {

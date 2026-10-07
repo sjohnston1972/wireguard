@@ -117,6 +117,36 @@ describe("wide (1600 px)", () => {
     expect(fetchMock!.calls.filter((c) => c.method === "POST")).toHaveLength(0);
   });
 
+  it("a prerequisite hidden by 'Not run yet' clears only that filter, then is selected and announced", async () => {
+    const user = userEvent.setup();
+    // Lab 6 never run (shown by Not run yet); its prerequisite Lab 5 has run (hidden by it).
+    const data = labs({ labs: labs().labs.map((c) => (c.number === 6 ? { ...c, runs: 0 } : c.number === 5 ? { ...c, runs: 3 } : c)) });
+    const { router } = renderApp("/labs?q=storage&notrun=1&lab=az104-06-blob-security", { routes: routes({ "GET /api/v1/labs": data }) });
+    const panel = await screen.findByRole("complementary", { name: /^Blob security/ });
+    const navs = track(router);
+    await user.click(within(panel).getByRole("link", { name: /^Lab 5: Storage accounts/ }));
+    // Never the first visible lab: Lab 5 itself, with the search (which shows it) kept.
+    expect(await screen.findByRole("complementary", { name: /^Storage accounts/ })).toBeInTheDocument();
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(navs).toEqual(["REPLACE /labs?q=storage&lab=az104-05-storage"]);
+    expect(selectBtn(/^Storage accounts/)).toHaveAttribute("aria-current", "true");
+    expect(await screen.findByText("Filters cleared to show Lab 5.")).toBeInTheDocument();
+  });
+
+  it("a prerequisite in another exam clears the exam filter only (other filters kept)", async () => {
+    const user = userEvent.setup();
+    const data = labs({ labs: labs().labs.map((c) => (c.number === 20 ? { ...c, prerequisites: ["az104-05-storage"] } : c)) });
+    const { router } = renderApp("/labs?exam=AZ-305&type=explore&lab=az305-20-landing-zone", { routes: routes({ "GET /api/v1/labs": data }) });
+    const panel = await screen.findByRole("complementary", { name: /^Landing zone/ });
+    const navs = track(router);
+    await user.click(within(panel).getByRole("link", { name: /^Lab 5: Storage accounts/ }));
+    expect(await screen.findByRole("complementary", { name: /^Storage accounts/ })).toBeInTheDocument();
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(navs).toEqual(["REPLACE /labs?type=explore&lab=az104-05-storage"]);
+    expect(within(screen.getByRole("search", { name: "Filter labs" })).getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+    expect(await screen.findByText("Filters cleared to show Lab 5.")).toBeInTheDocument();
+  });
+
   it("/labs/:id/diagram unchanged: the diagram is the page", async () => {
     renderApp("/labs/az104-06-blob-security/diagram", { routes: routes() });
     expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: /Blob security/ })).toBeInTheDocument();
