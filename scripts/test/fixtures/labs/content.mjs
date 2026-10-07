@@ -174,6 +174,33 @@ function vms(l) {
 }
 
 /**
+ * The nodes of each AKS cluster's default (system) node pool: [{ address, size, count, max, diskSizeGb }]
+ * (count: node_count; max: max_count when the autoscaler is on, else node_count). They are VMs in Azure's
+ * node resource group, so capacity.vm_sizes and the size prices count them; their OS disks are managed
+ * Premium SSD (AKS picks Premium for a size that supports it), priced per node by the P-tier that holds
+ * os_disk_size_gb.
+ */
+function aksNodes(l) {
+  return resources(l, "azurerm_kubernetes_cluster").map((r) => {
+    const address = r.labels.join(".");
+    const pool = r.body.match(/\n[ \t]*default_node_pool[ \t]*\{([\s\S]*?)\n[ \t]*\}/)?.[1] ?? "";
+    const num = (name) => {
+      const v = attr(pool, name);
+      if (v === undefined) return undefined;
+      assert.match(v, /^\d+$/, `${address}: default_node_pool ${name} is a number, so the checks can count nodes`);
+      return Number(v);
+    };
+    const count = num("node_count");
+    assert.ok(count !== undefined, `${address}: default_node_pool sets node_count`);
+    const max = attr(pool, "auto_scaling_enabled") === "true" ? num("max_count") : count;
+    return { address, size: unquote(attr(pool, "vm_size")), count, max, diskSizeGb: num("os_disk_size_gb") };
+  });
+}
+
+/** The Premium SSD tier that holds a disk of `gb` (P4 32 GiB, P6 64, P10 128, P15 256). */
+const premiumTier = (gb) => [[32, "P4"], [64, "P6"], [128, "P10"], [256, "P15"]].find(([cap]) => gb <= cap)?.[1] ?? null;
+
+/**
  * Site Recovery's replicated VMs: [{ address, size }]. Each has a replica disk
  * in the secondary region, and a failover (or test failover) makes a VM there
  * of its source VM's size, so capacity.vm_sizes lists it too (ruling 3).
@@ -367,8 +394,8 @@ export function contentChecks(id, { marker, secondary = false, identity = "none"
     assert.equal(outputs(l).includes("peer_vnet_id"), k.peering !== "off", "peer_vnet_id only when the lab can peer");
     for (const o of ["private_ips", "connect"]) assert.ok(outputs(l).includes(o), `output ${o}`);
     // One vm_sizes entry per VM at its maximum (a scale set at its autoscale maximum), and one per replicated VM's failover VM.
-    const sizes = [...vms(l).flatMap((v) => Array(v.max).fill(v.size)), ...replicatedVms(l).map((v) => v.size)];
-    assert.deepEqual([...l.yaml.capacity.vm_sizes].sort(), sizes.sort(), "capacity.vm_sizes: one entry per VM at its maximum, and one per replicated VM");
+    const sizes = [...vms(l).flatMap((v) => Array(v.max).fill(v.size)), ...replicatedVms(l).map((v) => v.size), ...aksNodes(l).flatMap((n) => Array(n.max).fill(n.size))];
+    assert.deepEqual([...l.yaml.capacity.vm_sizes].sort(), sizes.sort(), "capacity.vm_sizes: one entry per VM at its maximum, one per replicated VM, and one per AKS node at its maximum");
     // Each /20 of the slot from cidrsubnet(var.address_space, 2, n); subnets_used counts them.
     const all = uncomment(Object.entries(l.files).filter(([f]) => f !== "variables.tf").map(([, t]) => t).join("\n"));
     const twenties = new Set([...all.matchAll(/cidrsubnet\(var\.address_space,\s*2,\s*(\d+)\)/g)].map((m) => m[1]));
@@ -403,12 +430,22 @@ export function contentChecks(id, { marker, secondary = false, identity = "none"
     // Sizes: each priced by a retail.sku item in the session's region, qty = the default count.
     const bySize = {};
     for (const v of vms(l)) bySize[v.size] = (bySize[v.size] ?? 0) + v.count;
+    for (const n of aksNodes(l)) bySize[n.size] = (bySize[n.size] ?? 0) + n.count;
     for (const [size, n] of Object.entries(bySize)) assert.equal(pricedQty(l, (i) => i.retail?.sku === size && !i.region), n, `${size}: ${n} priced (cost qty is the default count)`);
     // OS disks: Standard HDD (S4), priced per VM in the region; a replicated VM's replica disk in the secondary region.
     const vmCount = vms(l).reduce((n, v) => n + v.count, 0);
     for (const v of vms(l)) assert.equal(attr(v.r.body, "storage_account_type"), '"Standard_LRS"', `${v.address}: a Standard_LRS OS disk`);
     assert.equal(pricedQty(l, (i) => i.retail?.meter === "S4 LRS Disk" && !i.region), vmCount, "one S4 LRS Disk per VM");
     assert.equal(pricedQty(l, (i) => i.retail?.meter === "S4 LRS Disk" && i.region === "secondary"), replicatedVms(l).length, "one S4 LRS Disk with region: secondary per replicated VM (its replica disk)");
+    // AKS nodes: a managed Premium SSD OS disk each, at the P tier that holds os_disk_size_gb (set, so the price is known).
+    const tiers = {};
+    for (const n of aksNodes(l)) {
+      assert.ok(n.diskSizeGb !== undefined, `${n.address}: default_node_pool sets os_disk_size_gb (AKS's default, 128 GiB, is a P10), so the disk's price is known`);
+      const tier = premiumTier(n.diskSizeGb);
+      assert.ok(tier, `${n.address}: os_disk_size_gb ${n.diskSizeGb} fits a P4 to P15 disk`);
+      tiers[tier] = (tiers[tier] ?? 0) + n.count;
+    }
+    for (const [tier, n] of Object.entries(tiers)) assert.equal(pricedQty(l, (i) => i.retail?.meter === `${tier} LRS Disk` && !i.region), n, `one ${tier} LRS Disk per AKS node`);
     // Data disks: StandardSSD E1 (4 GiB at most), priced each.
     const disks = resources(l, "azurerm_managed_disk");
     for (const d of disks) {

@@ -257,6 +257,40 @@ test("computed.json has every type AZ-700 labs use", () => {
   assert.ok(COMPUTED.types.azurerm_virtual_network_gateway_connection.sensitive.includes("shared_key"), "a connection's shared key is sensitive in every plan");
 });
 
+// AZ-305 batch 4, lab 29 (az305-29-aks): the AKS cluster. azurerm 4.81.0 declares four of its top-level blocks
+// Optional and Computed (auto_scaler_profile, bootstrap_profile, kubelet_identity, windows_profile) and two inside
+// network_profile (load_balancer_profile, nat_gateway_profile), read from the provider's kubernetes_cluster_resource.go:
+// left unset, a plan has each wholly unknown, the nested ones too when the lab sets network_profile.
+test("computed.json has the AKS cluster lab 29 uses, and its unset Optional and Computed blocks plan as unknown", () => {
+  const t = COMPUTED.types.azurerm_kubernetes_cluster;
+  assert.ok(t, "azurerm_kubernetes_cluster is in computed.json");
+  for (const a of ["kube_config", "kube_config_raw", "kube_admin_config", "kube_admin_config_raw"]) assert.ok(t.sensitive.includes(a), `${a} is sensitive in every plan`);
+  for (const a of ["node_resource_group", "kubernetes_version", "fqdn", "node_resource_group_id"]) assert.ok(t.attrs.includes(a), `${a} is computed`);
+  assert.ok(t.blocks.network_profile.attrs.includes("pod_cidr"), "pod_cidr is Optional and Computed: unknown when left to AKS's default");
+  assert.deepEqual(SCHEMA_FACTS.azurerm_kubernetes_cluster, { rg: true, tags: true });
+  assert.deepEqual([...UNSET_BLOCKS_UNKNOWN.azurerm_kubernetes_cluster].sort(), ["auto_scaler_profile", "bootstrap_profile", "kubelet_identity", "network_profile", "network_profile.0.load_balancer_profile", "network_profile.0.nat_gateway_profile", "windows_profile"]);
+  const plan = realisticPlan({
+    resources: [
+      {
+        address: "azurerm_kubernetes_cluster.x",
+        values: { name: "aks", default_node_pool: [{ name: "system", vm_size: "Standard_B2s", node_count: 1 }], network_profile: [{ network_plugin: "azure", network_plugin_mode: "overlay" }] },
+      },
+      { address: "azurerm_kubernetes_cluster.bare", values: { name: "aks2", default_node_pool: [{ name: "system", vm_size: "Standard_B2s", node_count: 1 }] } },
+    ],
+  });
+  const au = (a) => plan.resource_changes.find((c) => c.address === a).change.after_unknown;
+  const x = au("azurerm_kubernetes_cluster.x");
+  for (const b of ["auto_scaler_profile", "bootstrap_profile", "kubelet_identity", "windows_profile"]) assert.equal(x[b], true, b);
+  assert.equal(x.network_profile[0].load_balancer_profile, true, "a nested Optional and Computed block, unset: unknown");
+  assert.equal(x.network_profile[0].nat_gateway_profile, true);
+  assert.equal(x.network_profile[0].pod_cidr, true, "Optional and Computed, unset: unknown");
+  assert.equal(x.network_profile[0].network_plugin, undefined, "set: known");
+  assert.equal(x.default_node_pool[0].os_sku, true);
+  assert.equal(x.node_resource_group, true, "computed and unset");
+  // network_profile itself is Optional and Computed: left out, the whole block is unknown (and nothing inside it is listed).
+  assert.equal(au("azurerm_kubernetes_cluster.bare").network_profile, true);
+});
+
 test("ctx gives a secondary group and region", () => {
   const c = ctx("az305-23-sql-failover", "23");
   assert.equal(SECONDARY, "ukwest");

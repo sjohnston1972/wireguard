@@ -356,6 +356,15 @@ export function cosmosApi(kind: string | undefined, capabilities: string[]): str
   return kind ? "NoSQL" : undefined;
 }
 
+/** An AKS cluster's pod networking in words, from its network plugin and mode (the same words live, rules/live.ts). */
+export function aksNetworkWord(plugin: string | undefined, mode: string | undefined): string | undefined {
+  const p = (plugin ?? "").toLowerCase();
+  if (p === "azure") return (mode ?? "").toLowerCase() === "overlay" ? "Azure CNI Overlay" : "Azure CNI";
+  if (p === "kubenet") return "kubenet";
+  if (p === "none") return "bring-your-own CNI";
+  return undefined;
+}
+
 /** A VPN connection's label: "IPsec", "IPsec, BGP", "VNet-to-VNet". */
 const connectionLabel = (i: TfInst): string => {
   const t = str(i.after.type)?.toLowerCase();
@@ -461,6 +470,27 @@ export const TF_RULES: Record<string, TfRule> = {
     ],
   },
   azurerm_container_registry: { arm: "Microsoft.ContainerRegistry/registries", props: (i) => ({ sku: str(i.after.sku) }) },
+  // AKS (lab 29): one card in its node subnet; the default node pool is a block of the cluster (its size and count on the
+  // card), another pool folds in. The node resource group is Azure's: only the live view has it (made by Azure).
+  azurerm_kubernetes_cluster: {
+    arm: "Microsoft.ContainerService/managedClusters",
+    props: (i) => {
+      const pool = first(i.after.default_node_pool);
+      const net = first(i.after.network_profile);
+      const auto = pool.auto_scaling_enabled === true;
+      const network = aksNetworkWord(str(net.network_plugin), str(net.network_plugin_mode));
+      const nodeGroup = str(i.after.node_resource_group);
+      return {
+        tier: str(i.after.sku_tier),
+        size: str(pool.vm_size),
+        instances: num(pool.node_count),
+        autoscale: auto && num(pool.min_count) !== undefined ? `${num(pool.min_count)}-${num(pool.max_count) ?? "?"}` : undefined,
+        chips: [...(network ? [network] : []), ...(nodeGroup ? [`node group ${nodeGroup}`] : [])],
+      };
+    },
+    edges: (i, h) => identityEdges(i, h),
+  },
+  azurerm_kubernetes_cluster_node_pool: { arm: "Microsoft.ContainerService/managedClusters/agentPools", fold: ["kubernetes_cluster_id"], namePath: childPath("kubernetes_cluster_id") },
 
   // ── Recovery Services (T3.5): backup and site-recovery children fold into the vault; protected VMs are edges ──
   azurerm_recovery_services_vault: {
@@ -969,7 +999,10 @@ export const TF_RULES: Record<string, TfRule> = {
       return h.refs(i, ["principal_id"]).flatMap((p) =>
         h.refs(i, ["scope"]).map((s) => {
           const one = s.type === "azurerm_key_vault_secret" ? " (one secret)" : s.type === "azurerm_key_vault_key" ? " (one key)" : s.type === "azurerm_key_vault_certificate" ? " (one certificate)" : "";
-          return { from: p, to: s, kind: "dependency" as const, label: `role: ${name}${one}` };
+          // An AKS cluster whose control plane has a user-assigned identity (its own card) can only be the principal
+          // through its kubelet identity, which AKS makes in the node group and the cluster's card stands for (lab 29).
+          const kubelet = p.type === "azurerm_kubernetes_cluster" && str(first(p.after.identity).type) === "UserAssigned" ? " (kubelet identity)" : "";
+          return { from: p, to: s, kind: "dependency" as const, label: `role: ${name}${one}${kubelet}` };
         }),
       );
     },

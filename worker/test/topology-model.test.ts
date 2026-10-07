@@ -51,6 +51,12 @@ describe("kinds", () => {
     expect([...GROUP_KINDS].sort()).toEqual([...TOPO_GROUP_KINDS].sort());
   });
 
+  it("an AKS cluster is its own kind (lab 29), drawn in its node subnet with the Kubernetes Services icon", () => {
+    expect(kindOfArm("Microsoft.ContainerService/managedClusters")).toBe("aks");
+    expect(kindOfTf("azurerm_kubernetes_cluster")).toBe("aks");
+    expect(KINDS.aks).toMatchObject({ word: "Kubernetes cluster", icon: "kubernetes-services", placement: "subnet", liveVisible: true, cardProps: ["size", "instances"] });
+  });
+
   it("kinds the live query cannot list are not liveVisible", () => {
     for (const k of ["managementGroup", "policy", "role", "entraPrincipal"] as TopoAssetKind[]) expect(KINDS[k].liveVisible, k).toBe(false);
     expect(KINDS.vm.liveVisible).toBe(true);

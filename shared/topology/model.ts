@@ -49,6 +49,7 @@ export const TOPO_ASSET_KINDS = [
   "containerGroup",
   "containerApp",
   "containerAppEnv",
+  "aks",
   "registry",
   "logAnalytics",
   "monitor",

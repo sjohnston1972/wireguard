@@ -151,6 +151,10 @@
   "rg": false,
   "tags": true
  },
+ "azurerm_kubernetes_cluster": {
+  "rg": true,
+  "tags": true
+ },
  "azurerm_lb": {
   "rg": true,
   "tags": true

@@ -416,6 +416,25 @@
      "status": "Online"
     }
    }
+  },
+  {
+   "pattern": "anything in a group Azure made for a lab resource (an AKS node group, a Container Apps infrastructure group)",
+   "row": {
+    "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link-nodes/providers/Microsoft.Network/networkSecurityGroups/aks-agentpool-31415926-nsg",
+    "name": "aks-agentpool-31415926-nsg",
+    "type": "microsoft.network/networksecuritygroups",
+    "kind": "",
+    "location": "uksouth",
+    "resourceGroup": "rg-lab-az700-43-private-link-nodes",
+    "sku": null,
+    "tags": {},
+    "zones": null,
+    "identity": null,
+    "managedBy": "",
+    "properties": {
+     "provisioningState": "Succeeded"
+    }
+   }
   }
  ]
 }

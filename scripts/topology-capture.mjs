@@ -191,6 +191,16 @@ export const CAPTURE_KEEP = [
   "managedEnvironmentId",
   "environmentId",
   "loginServer",
+  // AKS (lab 29): the first pool's size, count, autoscale range and subnet; pod networking; the node resource group.
+  "agentPoolProfiles[].vmSize",
+  "agentPoolProfiles[].count",
+  "agentPoolProfiles[].enableAutoScaling",
+  "agentPoolProfiles[].minCount",
+  "agentPoolProfiles[].maxCount",
+  "agentPoolProfiles[].vnetSubnetID",
+  "networkProfile.networkPlugin",
+  "networkProfile.networkPluginMode",
+  "nodeResourceGroup",
   // ── Data ──
   "accessTier",
   "allowBlobPublicAccess",
