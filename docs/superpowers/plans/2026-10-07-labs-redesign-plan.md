@@ -41,50 +41,83 @@ brief). The labs spec (`2026-10-04-labs-design.md`) and the lab topology spec (`
 - **E1 baseline** (2026-10-07, `main` at d404427, gzip): entry **311.5 kB** of 320 (so B and C may grow it to 312.5 kB at
   most); all JS **423.1 kB** of 450; CSS **38.1 kB** of 50; the labs chunk (`labs-*.js`, the `/labs` page) **10.8 kB** JS
   (38.0 kB raw) and **3.5 kB** CSS; the topology chunk 79.2 kB.
+- **E9 gate** (E's head with A merged): entry **311.5 kB** (unchanged), all JS **424.5 kB**, CSS **38.2 kB**, labs chunk
+  **11.9 kB** JS (41.1 kB raw) and 3.5 kB CSS. `npm test`, `typecheck`, `build:web`, `bundle-size`, `labs-check`, `labs-check
+  -- --base origin/main` and `labs-topology -- --check` exit 0; `git diff --stat origin/main -- 'labs/az*'` is empty.
+  (V) all 12 topic-family icons exist in lucide-react 1.50.0. With `labs-setup`, the labs with setup blockers are 1, 2, 3, 6,
+  20, 21, 22, 29 and 37 (9 of 43).
 - External links to `/labs/:id`: command palette, Overview (running labs, topology), Cost labs panel, history table.
 
-## E names (planned; E updates this section as built, E9)
+## E names (as built, E9, 2026-10-07)
 
 Branches from E's head use these names exactly; a change goes through the integrator, who updates this section and the spec.
+Differences from the planned names are marked **(as built)**.
 
-**Shared** (`shared/api.ts`, `shared/labs.ts`): `LabBlockerKind`, `LabBlocker`; `LabCard.blockers`, `LabCard.learning`
-(`{ objective, learn: [string, string, string], learningMin }` or null), `LabCard.resources` (`Record<kind, count>` or null);
-`LabsResponse.autoCleanup`; `LabLearningDef` (`{ objective, learn, learning_min }`); `LabCatalogue.schema: 2`,
-`.learning`, `.resources`.
+**Shared** (`shared/api.ts`, `shared/labs.ts`): `LabBlockerKind` (`"github" | "role" | "graph" | "slots" | "max_running" |
+"leftovers" | "budget"`), `LabBlocker` (`{ kind, message }`); `LabCard.blockers` (deployLab's order; `[]` = can deploy now),
+`LabCard.learning` (`LabLearning | null`, **(as built)** the named type `LabLearning = { objective, learn: [string, string,
+string], learningMin }`), `LabCard.resources` (`Record<kind, count> | null`); `LabsResponse.autoCleanup: boolean`;
+`LabLearningDef` (`{ objective, learn, learning_min }`); `LabCatalogue.schema: 2`, `.learning` (id → `LabLearningDef`, absent
+without a file), `.resources` (id → kind → count, keys sorted, absent without a planned graph).
 
-**Scripts:** `scripts/lib/labs.mjs`: `LEARNING_DIR = "_learning"`, `readLearning(root, ids, defs, { requireLearning })` →
-`{ learning, problems }`, `validateLearning(raw, def)` → problems, `countPlanned(graph)` → `Record<kind, count>`,
-`buildCatalogue(root, { requireLearning = false, plannedDir })` (default `plannedDir` = `<root>/../shared/topology/planned`);
-`labs-check` passes `{ requireLearning: true }`. `scripts/lib/shots.mjs`: `SCROLLING_ROUTES` (`/^\/labs(?:\?.*)?$/`), shot
-field `checkOverflow: "all" | "x" | false`. `seed-scenarios.mjs` `SCENARIOS` gains `labs-setup`.
+**Scripts:** `scripts/lib/labs.mjs` (+ `labs.d.mts`): `LEARNING_DIR = "_learning"`, `validateLearning(raw, def?)` →
+`{ field, message }[]` (field `null` for a non-mapping; an unknown key names itself), `readLearning(root, ids, defs, {
+requireLearning })` → `{ learning, problems }` (problems `{ lab, file: "_learning/<id>.yaml", field, message }`; `ids` = every
+lab folder, `defs` = valid `LabDef`s for `max_h`; "no lab <id>" for a file naming no folder), `countPlanned(graph)` →
+`Record<kind, count>` (skips `lane`, `gateway`; keys sorted), `buildCatalogue(root, { requireLearning = false, plannedDir })`
+(default `plannedDir` = `<root>/../shared/topology/planned`; a learning problem stops labs-build like any lab problem).
+`labs-check` passes `{ requireLearning: true }`. `scripts/lib/shots.mjs`: `SCROLLING_ROUTES = [/^\/labs(?:\?.*)?$/]`
+(matched against the shot's path), shot field `checkOverflow: "all" | "x" | false` (`true` from an older caller = `"all"`;
+`judgeOverflow` with `"x"` reports only sideways scroll of the page or `#main`). `seed-scenarios.mjs` `SCENARIOS` gains
+`labs-setup`. Tests: `scripts/test/labs-learning.test.mjs` (rules), `scripts/test/labs-learning-content.test.mjs` (the real 43).
 
-**Worker:** `availability.ts`: `blockersOf(def, a)`; `unavailableReason` = first blocker's message. `budget.ts` (or
-`labs/warnings.ts`): `budgetFullMessage(b)`. `cards.ts`: `CardContext` gains `dirty: Set<string>`, `orphanIds: Set<string>`,
-`budgetFull: string | null`; `labCard` fills `blockers`, `learning`, `resources`. `api/labs.ts`: `autoCleanup:
-canDispatch(env)`. `devseed-labs.ts`: `seedLabs(env, { setup: true })` for `labs-setup` (role, users, groups false, message set).
+**Worker:** `labs/availability.ts`: `blockersOf(def, a)` (github, role, graph, slots, max_running), `unavailableReason` =
+`blockersOf(...)[0]?.message ?? null`, **(as built)** `leftoversMessage(def)` (deployLab's leftovers sentence, used by both).
+`labs/warnings.ts`: `budgetFull(b)` **(as built)** and `budgetFullMessage(b)` (the modal's non-overridable budget warning uses
+both). `labs/cards.ts`: `CardContext` gains `dirty: Set<string>`, `orphanIds: Set<string>`, `budgetFull: string | null` (a
+budget read failure gives `null`); **(as built)** `cardBlockers(def, ctx)` and `catalogueExtras(id)`; `labCard` fills
+`blockers`, `learning`, `resources` (`GET /labs/:id`'s `card` too). `api/labs.ts`: `autoCleanup: canDispatch(env)`.
+`devseed.ts`: `SCENARIOS` gains `labs-setup` (the running story plus the labs story). `devseed-labs.ts`: **(as built)**
+`seedLabs(env, now, { setup: true })` and `FAILED_PERMISSIONS(now)` (role, users, groups false, checked a day ago, a
+`checkLabPermissions`-style message): the 9 labs 1, 2, 3, 6, 20, 21, 22, 29, 37 show Setup required.
 
 **App (lazy labs chunk, `web/src/views/labs/`):**
-- `status.ts`: `LabReadiness`, `LabSessionStatus`, `labReadiness(card, loaded)`, `labSessionStatus(session)`,
-  `statusBadge(readiness, status, card) → { label, tone }`, `cardAction(...)`, `panelAction(...)` → `{ kind: "select" | "open"
-  | "start" | "setup" | "prerequisite" | "disabled", label, href?, variant }`, `blockerFix(kind, ctx) → { label, href } | null`,
-  `setupAffected(cards)`, `SETUP_KINDS = ["role", "graph"]`.
-- `money.ts`: `fmtHourlyShort`, `fmtHourlyPrecise`, `fmtSessionCost`, `fmtMinutes`, `hourlyAria`.
-- `topics.ts`: `TOPICS`, `TopicFamily`, `FAMILY_ICON`, `labTopics(resources)`, `labFamily(resources)`,
-  `resourceSummary(resources)`.
+- `status.ts`: `LabReadiness`, `LabSessionStatus`, `SETUP_KINDS = ["role", "graph"]`, `labReadiness(card, loaded)` (an older
+  card without `blockers` but with `unavailable` is unavailable), `labSessionStatus(session)`, `statusBadge(readiness, status,
+  card?) → LabBadge { label, tone }` (session states use `stateWord`, so "Deploying 3/16", "Running, peer 2/7"),
+  `cardAction(readiness, status, card?)` and `panelAction(...)` → **(as built)** `LabAction = { kind: "select" | "open" |
+  "start" | "setup" | "prerequisite" | "disabled"; label; href?; labId?; detail?; variant: "primary" | "secondary" }`: `href`
+  is the bare path (`/labs/:id` or `/settings/labs`; add the page's search with `labHref`), `labId` the lab to select (the
+  prerequisite's for `prerequisite`), `detail` why a `disabled` action is disabled ("Checking…" or the first blocker's
+  sentence). `blockerFix(kind, ctx?: { labId?, orphans? }) → { label, href } | null` (leftovers → `#labs-orphans` only when
+  the lab is in `orphans`), `setupAffected(cards)`.
+- `money.ts`: `fmtHourlyShort`, `hourlyAria`, `fmtHourlyPrecise`, `fmtSessionCost(gbpH, hours)` (zero: "no charge at list
+  price for 2 h"), `fmtMinutes`, **(as built)** `ESTIMATE_UNAVAILABLE`.
+- `topics.ts`: `TOPICS` (`{ topic, family, kinds }[]`), `TopicFamily`, `FAMILY_ICON` (by family, plus `none` = `FlaskConical`;
+  all 12 icons exist in lucide-react 1.50.0), `labTopics(resources)`, `labFamily(resources)`, **(as built)**
+  `topicChips(topics, n = 3) → { shown, more }`, `resourceSummary(resources) → ResourceLine[] { kind, label, count, icon }`
+  (groups in the order vnet, subnet, virtualHub, resourceGroup; generic and unknown kinds as "Other resource(s)").
 - `layout.ts`: `LabsLayout = "wide" | "tablet" | "phone"`, `WIDE_QUERY = "(min-width: 1200px)"`, `useLabsLayout()`.
 - `model.ts` (extended): `Filters = { q, exam, area, level: LabLevel | null, type, notRun, ready }`, `readFilters`,
-  `writeFilters`, `NO_FILTERS`, `anyFilter`, `applyFilters(views, f)`, `searchText(card)`, `selectedLab(visibleIds, urlLab,
-  layout, knownIds) → { shown: string | null; drop: boolean }`, `readSelection(params)`, `withSelection(params, id | null)`,
-  `labHref(id, search, layout, view?)` (keeps `lab` on wide, drops it otherwise).
-- `contract.ts`: `LabView = { card, readiness, status, badge, topics, family, search }`, `useLabViews(q) → { views, byId,
-  loaded }`, `DetailsProps = { view: LabView | null; data: LabsResponse | undefined; layout: LabsLayout; onSelect(id) }`.
-- `LabStatusBadge.tsx` (StatusPill from `badge`), used by B and C.
-- `LabDetailsPanel.tsx` **stub** exporting `LabDetailsPanel(DetailsProps)`, `LabDetailsDrawer(DetailsProps & { open,
-  onOpenChange })`, `LabDetailsView(DetailsProps & { onBack })` (title and badge only): C replaces the bodies, B renders them.
+  `writeFilters` (trims `q`; other parameters kept), `NO_FILTERS`, `anyFilter`, `applyFilters(views, f)` (generic over
+  **(as built)** `FilterableView = { card, readiness, status, search }`; keeps the order given; "lab 6" matches lab 6 only),
+  `searchText(card)`, `selectedLab(visibleIds, urlLab, layout, knownIds) → { shown, drop }` (nothing is dropped while
+  `knownIds` is empty, that is before the first answer), `readSelection(params)`, `withSelection(params, id | null)`,
+  `labHref(id, search, layout, view?)`: **(as built)** on wide it sets `lab=<id>` (the dialog's lab becomes the selection),
+  otherwise it drops `lab`; `view` "diagram" sets `view=diagram`.
+- `contract.ts`: `LabView = { card, readiness, status, badge, topics, family, search }`, **(as built)** `labView(card,
+  loaded)` and `labViews(cards, loaded)` (lab number order), `useLabViews(q: { data? }) → { views, byId, loaded }` (memoised
+  on `q.data`), `DetailsProps = { view: LabView | null; data: LabsResponse | undefined; layout: LabsLayout; onSelect(id) }`.
+- `LabStatusBadge.tsx`: `LabStatusBadge({ badge, className? })` (StatusPill), used by B and C.
+- `LabDetailsPanel.tsx` **stub** exporting `LabDetailsPanel(DetailsProps)` (`<aside class="labs-details">`),
+  `LabDetailsDrawer(DetailsProps & { open, onOpenChange })` (`Drawer side="right"`), `LabDetailsView(DetailsProps & { onBack
+  })` ("Back to labs"): title and badge only; C replaces the bodies, B renders them.
+- **(as built)** the old `Filters.tsx` exports `filterCards(cards, f)` so the old page keeps working on the new `Filters`
+  until B deletes `Filters.tsx` and `Catalogue.tsx`; its Level chips act as a single select.
 
-**Components:** `Drawer` `side?: "auto" | "bottom" | "right"` (`data-side="right"`, width `min(440px, 100vw - 32px)`, full
-height, slide from the right, none under reduced motion; still the bottom sheet at ≤ 640 px). **API:** `useDeployLab` gains
-`invalidateOnError: () => [["labs"]]`.
+**Components:** `Drawer` `side?: "auto" | "bottom" | "right"` (`data-side="right"`, class `drawer--right`, no `data-size`,
+width `min(440px, calc(100vw - 32px))`, full height, slides from the right, no animation under reduced motion; still the
+bottom sheet at ≤ 640 px). **API:** `useDeployLab` gains `invalidateOnError: () => [["labs"]]`.
 
 ## Global Constraints
 
@@ -161,13 +194,13 @@ height, slide from the right, none under reduced motion; still the bottom sheet 
 for readiness (the Worker's own checks), the content and topology data the cards need, and a contract so B and C can build in
 parallel without touching each other's files.
 
-- [ ] **E1 Baseline.** Worktree, `cp .env.example .env`, `npm ci`, `npm run build:web`, `npm run bundle-size`. Record entry,
+- [x] **E1 Baseline.** Worktree, `cp .env.example .env`, `npm ci`, `npm run build:web`, `npm run bundle-size`. Record entry,
   all JS, CSS and the labs chunk in this plan's facts. **Done when** the four figures are recorded and pushed.
-- [ ] **E2 Shared types and fixtures.** Add the names section's shared types; update `web/src/test/fixtures.ts`
+- [x] **E2 Shared types and fixtures.** Add the names section's shared types; update `web/src/test/fixtures.ts`
   (`labsFixture`, `labDetailFixture`: `blockers: []`, `learning`, `resources`, `autoCleanup: true`), `web/src/views/labs/testData.ts`
   defaults, `worker/test/labs-helpers.ts` (`TEST_CATALOGUE` schema 2 with `learning`, `resources`) and the literal schema-1
   catalogues in `labs-contract.test.ts` and `labs-orphans.test.ts`. **Done when** `npm run typecheck` passes.
-- [ ] **E3 Learning loader, resources, schema 2.** Tests first (`scripts/test/labs-learning.test.mjs`): one refusal per spec
+- [x] **E3 Learning loader, resources, schema 2.** Tests first (`scripts/test/labs-learning.test.mjs`): one refusal per spec
   §5.2 rule (unknown key, two sentences, 141 characters, markdown, 2 bullets, 4 bullets, a 91-character bullet, a trailing full
   stop, duplicate bullets, `learning_min` 12 / 17 / over `max_h × 60`); `a good file is merged as learning[id]`; `a missing file
   is tolerated by buildCatalogue and refused with requireLearning`; `a file for an unknown id is a problem`; `countPlanned skips
@@ -177,14 +210,14 @@ parallel without touching each other's files.
   not to). FAIL; implement in `scripts/lib/labs.mjs`, `labs.d.mts`, `labs-check.mjs`; PASS; commit. **Done when** `node --test
   scripts/test/labs-learning.test.mjs scripts/test/labs-lib.test.mjs` passes except the real-repo labs-check test, which waits
   for E9 (note it in the commit).
-- [ ] **E4 Worker: blockers, cards, autoCleanup.** Tests first (`worker/test/labs-blockers.test.ts`): Review Focus 1's E names;
+- [x] **E4 Worker: blockers, cards, autoCleanup.** Tests first (`worker/test/labs-blockers.test.ts`): Review Focus 1's E names;
   `blockersOf lists github, role, graph, slots, max_running in order with unavailableReason's sentences`; `unavailableReason is
   the first blocker's message` (every existing case still passes); `a dirty session holding a slot or an orphan entry is a
   leftovers blocker with deployLab's sentence`; `cards carry learning (camelCase) and resources from the catalogue, null when
   absent`; `GET /labs answers autoCleanup = canDispatch`. FAIL; implement (`availability.ts`, `cards.ts`, `budget.ts` or
   `warnings.ts` helper, `api/labs.ts`); PASS; commit. **Done when** `npx vitest run worker/test/labs-blockers.test.ts
   worker/test/labs-read.test.ts worker/test/labs-contract.test.ts` passes.
-- [ ] **E5 App pure modules.** Tests first (`web/src/views/labs/status.test.ts`, `money.test.ts`, `topics.test.ts`,
+- [x] **E5 App pure modules.** Tests first (`web/src/views/labs/status.test.ts`, `money.test.ts`, `topics.test.ts`,
   `filters.test.ts`): spec §6.3's two tables row by row (readiness, session, badge, card action, panel action, fixes);
   Review Focus 12; `every one of the 43 planned graphs gives at least one topic and one resource` (reads
   `shared/topology/planned/*.json`); `topics follow TOPICS order and the card shows 3 plus "+N"`; `resourceSummary puts assets
@@ -193,19 +226,19 @@ parallel without touching each other's files.
   kept by each of its exams`; selection: `wide shows the URL lab when visible, else the first visible, and asks to drop a hidden
   known lab`, `tablet and phone never select implicitly`, `labHref keeps lab on wide and drops it otherwise`. FAIL; implement
   `status.ts`, `money.ts`, `topics.ts`, `layout.ts`, `model.ts`; PASS; commit. **Done when** the four test files pass.
-- [ ] **E6 Drawer right, deploy invalidation.** Tests first (`web/src/components/layout/layout.test.tsx`): `side="right" is a
+- [x] **E6 Drawer right, deploy invalidation.** Tests first (`web/src/components/layout/layout.test.tsx`): `side="right" is a
   modal dialog on the right with a focus trap, Escape closes and focus returns`, `at 640 px it is the bottom sheet`, `no slide
   under reduced motion`; `web/src/labs-contract.test.tsx`: `a refused deploy invalidates ["labs"]`. FAIL; implement `Drawer.tsx`,
   `Drawer.css`, `mutations.ts`; PASS; commit. **Done when** both files pass.
-- [ ] **E7 Shots and the labs-setup scenario.** Tests first: `scripts/test/shots.test.mjs`: `/labs and /labs?… are judged for
+- [x] **E7 Shots and the labs-setup scenario.** Tests first: `scripts/test/shots.test.mjs`: `/labs and /labs?… are judged for
   sideways scroll only, at every size including the phone`, `/labs/history keeps the one-screen rule`; `worker/test`
   (seed): `labs-setup seeds the labs story with role, users and groups false, so 9 cards have setup blockers`. FAIL; implement
   `scripts/lib/shots.mjs`, `scripts/shots.mjs` (if the judge call changes), `scripts/seed-scenarios.mjs`, `worker/src/devseed*.ts`;
   PASS; commit. **Done when** both tests pass.
-- [ ] **E8 Contract for B and C.** `contract.ts` (`LabView`, `useLabViews`, `DetailsProps`), `LabStatusBadge.tsx` (+ test:
+- [x] **E8 Contract for B and C.** `contract.ts` (`LabView`, `useLabViews`, `DetailsProps`), `LabStatusBadge.tsx` (+ test:
   word and tone from `badge`), `LabDetailsPanel.tsx` stub with the three exports. **Done when** `npm run typecheck` passes and
   the badge test passes.
-- [ ] **E9 Merge A, gate, names.** Merge `feat/labs-redesign-content` (`--no-ff`). Add `scripts/test/labs-learning-content.test.mjs`
+- [x] **E9 Merge A, gate, names.** Merge `feat/labs-redesign-content` (`--no-ff`). Add `scripts/test/labs-learning-content.test.mjs`
   (real repo: every catalogue lab has a valid file; no file without a lab; `labs-check` passes). Run the area gate plus `npm
   run labs-check` and `npm run labs-check -- --base origin/main`. Update the names section as built. **Done when** all pass,
   `git diff --stat origin/main -- 'labs/az*'` is empty, and the head is pushed (B and C branch from it).
