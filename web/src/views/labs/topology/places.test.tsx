@@ -422,7 +422,7 @@ describe("T2.4 the full screen", () => {
     expect(await main.findByRole("heading", { level: 1, name: /Blob security/ })).toBeInTheDocument();
     // Not a modal over the catalogue: the diagram is the page.
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(main.queryByRole("heading", { level: 1, name: "Labs" })).toBeNull();
+    expect(main.queryByRole("heading", { level: 1, name: "Azure Labs" })).toBeNull();
     const tree = await main.findByRole("region", { name: "Lab diagram" });
     // The header's controls.
     expect(main.getByRole("searchbox", { name: "Search the diagram" })).toBeInTheDocument();
@@ -474,7 +474,7 @@ describe("T2.4 the full screen", () => {
     renderApp("/labs/az104-99-nothing/diagram", { routes: { "GET /api/v1/labs": labs() } });
     const notice = within(await screen.findByRole("alert"));
     expect(notice.getByText(/Could not open az104-99-nothing: No such lab\./)).toBeInTheDocument();
-    expect(within(screen.getByRole("main")).getByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
+    expect(within(screen.getByRole("main")).getByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
     await user.click(notice.getByRole("button", { name: "Dismiss" }));
     expect(screen.getByLabelText("location")).toHaveTextContent(/^\/labs$/);
   });

@@ -1,8 +1,10 @@
 // scripts/labs-build.mjs   (npm run labs-build)
 //
-// Plain English: turns every labs/<id>/lab.yaml and readme.md into one file,
-// shared/labs.generated.json (gitignored), which the Worker bundles as its
-// lab catalogue. A lab with a problem stops the build, so a broken lab can
+// Plain English: turns every labs/<id>/lab.yaml and readme.md, each lab's
+// learning content (labs/_learning/<id>.yaml) and its planned diagram's
+// resource counts into one file, shared/labs.generated.json (gitignored),
+// which the Worker bundles as its lab catalogue. A lab with no learning file
+// yet builds with none (labs-check refuses it). A lab with a problem stops the build, so a broken lab can
 // never reach the dashboard. npm test, typecheck, build:web, dev, dev:api and
 // deploy-worker run this first.
 //

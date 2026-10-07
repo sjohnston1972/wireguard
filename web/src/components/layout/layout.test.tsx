@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Panel } from "./Panel";
 import { PageHeader } from "./PageHeader";
 import { Grid, Col } from "./Grid";
@@ -149,6 +152,68 @@ describe("Drawer", () => {
       </Drawer>,
     );
     expect(screen.getByRole("dialog")).toHaveAttribute("data-side", "bottom");
+  });
+
+  // Labs redesign spec ruling 10: the tablet's details drawer.
+  it('side="right" is a modal dialog on the right with a focus trap, Escape closes and focus returns', async () => {
+    setViewport([1024, 768]);
+    function Right() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>open lab</button>
+          <Drawer open={open} onOpenChange={setOpen} title="Lab 6" subtitle="az104-06-blob-security" side="right" footer={<button>Start lab</button>}>
+            <button>inside one</button>
+            <a href="/labs/az104-06-blob-security">Lab guide</a>
+          </Drawer>
+        </>
+      );
+    }
+    render(<Right />);
+    const trigger = screen.getByRole("button", { name: "open lab" });
+    await userEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Lab 6" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAttribute("data-side", "right");
+    expect(dialog).toHaveClass("drawer", "drawer--right");
+    expect(dialog).not.toHaveClass("drawer--modal");
+    expect(dialog).not.toHaveAttribute("data-size");
+    expect(document.querySelector(".drawer__overlay")).toHaveAttribute("data-side", "right");
+    expect(dialog.querySelector(".drawer__foot")).toHaveTextContent("Start lab");
+    for (let i = 0; i < 6; i++) {
+      await userEvent.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it('side="right" at 640 px is the bottom sheet', () => {
+    setViewport(640);
+    render(
+      <Drawer open onOpenChange={() => {}} title="T" side="right">
+        x
+      </Drawer>,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("data-side", "bottom");
+    expect(dialog).not.toHaveClass("drawer--right");
+  });
+
+  it('side="right": full height, min(440px, 100vw - 32px) wide, slides in from the right, no slide under reduced motion', () => {
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "Drawer.css"), "utf8");
+    const rule = css.match(/\.drawer\[data-side="right"\]\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(rule).toMatch(/top:\s*0/);
+    expect(rule).toMatch(/bottom:\s*0/);
+    expect(rule).toMatch(/right:\s*0/);
+    expect(rule).toMatch(/width:\s*min\(440px,\s*calc\(100vw - 32px\)\)/);
+    expect(rule).toMatch(/animation:\s*drawer-in-right/);
+    expect(css).toMatch(/@keyframes drawer-in-right\s*\{\s*from\s*\{\s*transform:\s*translateX\(/);
+    const reduced = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/g)].map((m) => m[1]).join("\n");
+    expect(reduced).toMatch(/\.drawer\[data-side="right"\][^{]*\{[^}]*animation:\s*none/);
+    // Tokens only in the new rules: no hex colour.
+    expect(rule).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 });
 

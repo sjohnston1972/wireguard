@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Read Key Vault secrets from a VM using managed identities, with no credential stored anywhere.
+learn:
+  - Fetch a token from the instance metadata service and read a secret with it
+  - Compare a Key Vault role at vault scope with one on a single secret
+  - Contrast system-assigned and user-assigned managed identities on one VM
+learning_min: 55

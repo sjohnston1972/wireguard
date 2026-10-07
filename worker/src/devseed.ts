@@ -35,7 +35,7 @@ import { AZ_TABLES } from "./insights/types";
 import { seedInsights } from "./devseed-insights";
 import { seedLabs, wipeLabs } from "./devseed-labs";
 
-export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs"] as const;
+export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs", "labs-setup"] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
 /** True only on a developer's PC: the login bypass is on and the request is for localhost. */
@@ -511,8 +511,8 @@ async function counts(env: Env): Promise<Record<string, number>> {
 /** Wipe the local data and build one scenario. `now` is injectable so a run can be repeated exactly. */
 export async function seedScenario(env: Env, scenario: Scenario, nowDate = new Date()): Promise<SeedResult> {
   // insights tells the running story, then adds what the Azure collector and a version-7 agent would have stored;
-  // labs tells it too, then adds the lab story (devseed-labs.ts).
-  const story: Exclude<Scenario, "insights" | "labs"> = scenario === "insights" || scenario === "labs" ? "running" : scenario;
+  // labs tells it too, then adds the lab story (devseed-labs.ts); labs-setup is the lab story with the permission check failed.
+  const story: Exclude<Scenario, "insights" | "labs" | "labs-setup"> = scenario === "insights" || scenario === "labs" || scenario === "labs-setup" ? "running" : scenario;
   const now = nowDate.getTime();
   const rng = makeRng(SEED);
   await wipe(env);
@@ -770,7 +770,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
   await insertDraft(env);
   // Last, so everything above is exactly the running story.
   if (scenario === "insights") await seedInsights(env, now, startMs, region);
-  if (scenario === "labs") await seedLabs(env, now);
+  if (scenario === "labs" || scenario === "labs-setup") await seedLabs(env, now, { setup: scenario === "labs-setup" });
   return { ok: true, scenario, now: iso(now), counts: await counts(env) };
 }
 

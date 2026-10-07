@@ -96,15 +96,27 @@ const readme = (id, type = "explore", extra = "") =>
     "",
   ].join("\n");
 
-/** A temporary labs/ root with the skill areas and these labs (folder name = lab id unless given). */
-function makeRoot(labs, { readmes = {}, folders = {} } = {}) {
+/** A learning file (labs/_learning/<id>.yaml) that passes every rule (labs redesign spec §5.2). */
+const learningFor = (id) => ({
+  objective: `Work through lab ${id} and see what each part does.`,
+  learn: ["Deploy the lab's resources and look at each one", "Change a setting and watch what it changes", "Tear the lab down and confirm it is clean"],
+  learning_min: 30,
+});
+
+/**
+ * A temporary labs/ root with the skill areas and these labs (folder name = lab id unless given),
+ * each with a valid learning file unless `learning: false`.
+ */
+function makeRoot(labs, { readmes = {}, folders = {}, learning = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), "labs-"));
   writeFileSync(join(root, "skill-areas.yaml"), stringify(SKILLS));
+  if (learning) mkdirSync(join(root, "_learning"));
   for (const l of labs) {
     const folder = folders[l.id] ?? l.id;
     mkdirSync(join(root, folder), { recursive: true });
     writeFileSync(join(root, folder, "lab.yaml"), stringify(l));
     writeFileSync(join(root, folder, "readme.md"), readmes[l.id] ?? readme(l.id, l.type));
+    if (learning && l.id === folder) writeFileSync(join(root, "_learning", `${l.id}.yaml`), stringify(learningFor(l.id)));
   }
   return root;
 }
@@ -123,7 +135,10 @@ test("a good catalogue builds with no problems, sorted, with numbers and readme 
   try {
     const { catalogue, problems } = buildCatalogue(root);
     assert.deepEqual(problems, []);
-    assert.equal(catalogue.schema, 1);
+    assert.equal(catalogue.schema, 2);
+    assert.deepEqual(Object.keys(catalogue.learning), ["az104-05-storage", "az104-06-blob-security"]);
+    assert.deepEqual(catalogue.learning["az104-05-storage"], learningFor("az104-05-storage"));
+    assert.deepEqual(catalogue.resources, {}, "no planned diagrams beside a temp root");
     assert.deepEqual(catalogue.labs.map((l) => [l.id, l.number]), [["az104-05-storage", 5], ["az104-06-blob-security", 6]]);
     assert.deepEqual(catalogue.skillAreas, SKILLS);
     assert.equal(catalogue.readmes["az104-06-blob-security"][0].t, "h");
@@ -523,7 +538,7 @@ test("--base flags a changed lab folder whose version did not rise", () => {
 
 // ── The scripts ──────────────────────────────────────────────────────────
 
-test("labs-build writes the catalogue from the repo's labs, and labs-check passes on them", () => {
+test("labs-build writes the catalogue from the repo's labs, with schema 2 and every lab's planned resources", () => {
   const build = spawnSync(process.execPath, [join(repo, "scripts", "labs-build.mjs")], { cwd: repo, encoding: "utf8" });
   assert.equal(build.status, 0, build.stdout + build.stderr);
   const out = join(repo, "shared", "labs.generated.json");
@@ -538,6 +553,15 @@ test("labs-build writes the catalogue from the repo's labs, and labs-check passe
   assert.equal(new Set(ids).size, ids.length, "no lab id twice");
   assert.deepEqual([...ids].sort(), folders.sort());
   for (const id of ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az104-04-cost", "az104-05-storage", "az104-06-blob-security", "az104-07-files"]) assert.ok(ids.includes(id), id);
+  assert.equal(cat.schema, 2);
+  // Every lab has a planned diagram (shared/topology/planned), so every lab has resources.
+  assert.deepEqual(Object.keys(cat.resources).sort(), [...ids].sort());
+});
+
+// labs-check refuses a lab with no learning file (labs redesign spec ruling 15), so on the real repo it
+// waits for the learning content (plan area A, labs/_learning); from then on it always runs.
+const LEARNING_LANDED = existsSync(join(repo, "labs", "_learning"));
+test("labs-check passes on the repo's labs", { skip: LEARNING_LANDED ? false : "waits for labs/_learning (plan E9 merges area A)" }, () => {
   const check = spawnSync(process.execPath, [join(repo, "scripts", "labs-check.mjs")], { cwd: repo, encoding: "utf8" });
   assert.equal(check.status, 0, check.stdout + check.stderr);
 });

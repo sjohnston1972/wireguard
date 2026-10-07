@@ -29,6 +29,12 @@ export const SIZES = [
 
 export const THEMES = ["dark", "light"];
 
+/**
+ * Pages that may scroll down (labs redesign spec ruling 8: the Labs catalogue, with any query) but
+ * never sideways, at any size including the phone. Matched against the shot's path.
+ */
+export const SCROLLING_ROUTES = [/^\/labs(?:\?.*)?$/];
+
 /** The one-screen rule: desktop windows of 1100 x 600 and larger must not scroll the page. */
 export function isOneScreenSize(s) {
   return !s.mobile && s.width >= 1100 && s.height >= 600;
@@ -75,15 +81,20 @@ export function measureOverflow(document, window) {
 /** The expression the browser evaluates: a JSON string of measureOverflow's answer. */
 export const OVERFLOW_PROBE = `JSON.stringify((${measureOverflow.toString()})(document, window))`;
 
-/** Whether a shot passes the one-screen rule, and why not. */
+/**
+ * Whether a shot passes its overflow check, and why not. `shot.checkOverflow`: "all" (the
+ * one-screen rule; true from older callers means the same), "x" (a scrolling page: sideways only)
+ * or false (not checked).
+ */
 export function judgeOverflow(m, shot) {
   if (!shot.checkOverflow) return { ok: true, reason: null };
+  const sidewaysOnly = shot.checkOverflow === "x";
   const problems = [];
-  if (m.y > 0) problems.push(`the page scrolls ${m.y}px`);
-  if (m.mainY !== null && m.mainY > 0) problems.push(`#main scrolls ${m.mainY}px`);
+  if (!sidewaysOnly && m.y > 0) problems.push(`the page scrolls ${m.y}px`);
+  if (!sidewaysOnly && m.mainY !== null && m.mainY > 0) problems.push(`#main scrolls ${m.mainY}px`);
   if (m.x > 0) problems.push(`the page scrolls sideways ${m.x}px`);
   if (m.mainX !== null && m.mainX > 0) problems.push(`#main scrolls sideways ${m.mainX}px`);
-  if (m.innerScroller) problems.push(`${m.innerScroller.what} scrolls ${m.innerScroller.by}px (a page-wide scroller holding several panels)`);
+  if (!sidewaysOnly && m.innerScroller) problems.push(`${m.innerScroller.what} scrolls ${m.innerScroller.by}px (a page-wide scroller holding several panels)`);
   return problems.length ? { ok: false, reason: problems.join(", ") } : { ok: true, reason: null };
 }
 
@@ -313,6 +324,12 @@ export function prefsPuts(current, pages) {
   return Object.entries(pages).map(([page, prefs]) => ({ page, body: { schema: 2, baseVersion: current.pages[page]?.version ?? 0, prefs } }));
 }
 
+/** A shot's overflow check: "x" on a scrolling page at every size, "all" for the one-screen rule, else false. */
+function overflowCheck(path, size, r) {
+  if (SCROLLING_ROUTES.some((re) => re.test(path))) return "x";
+  return isOneScreenSize(size) && !r.exemptFromOneScreen ? "all" : false;
+}
+
 /**
  * Every shot to take. `ids` are the client, rule and run found from the API
  * (any may be missing); a detail page with no id yet has `path: null`.
@@ -336,7 +353,7 @@ export function buildPlan(opts, ids) {
           height: size.height,
           mobile: !!size.mobile,
           file: shotName(path ?? r.route.replace(":id", "x"), size, theme),
-          checkOverflow: isOneScreenSize(size) && !r.exemptFromOneScreen,
+          checkOverflow: overflowCheck(path ?? r.route, size, r),
         });
       }
     }

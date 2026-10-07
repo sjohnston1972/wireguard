@@ -29,6 +29,14 @@ import { gbpHFrom, readLabPrices, retailPrice } from "./prices";
 
 const money = (n: number) => `£${n.toFixed(2)}`;
 
+/** The month is at or over a set budget: no lab may deploy (the budget guard removes labs at 100%). */
+export const budgetFull = (b: { total: number; budget: number }): boolean => b.budget > 0 && b.total >= b.budget;
+
+/** The non-overridable budget warning's sentence, also the cards' budget blocker (labs redesign spec §6.1). */
+export function budgetFullMessage(b: { total: number; budget: number }): string {
+  return `This month is already at ${money(b.total)} of ${money(b.budget)}, and the budget guard removes labs at 100%. Raise the budget in Settings to deploy.`;
+}
+
 function familyWords(family: string): string {
   if (family === "standardBSFamily") return "B-series";
   return `${family.replace(/^standard/i, "").replace(/Family$/i, "")}-series`;
@@ -88,9 +96,9 @@ export async function labWarnings(env: Env, def: LabDef, o: { hours: number; reg
   const out: LabWarning[] = [];
   const b = await budgetStatus(env, cfg, snap, now);
   const gbpH = gbpHFrom(def, rows, o.region, now);
-  if (b.budget > 0 && b.total >= b.budget) {
+  if (budgetFull(b)) {
     // The budget guard tears labs down at 100%, so there is nothing to "Deploy anyway" into.
-    out.push({ kind: "budget", message: `This month is already at ${money(b.total)} of ${money(b.budget)}, and the budget guard removes labs at 100%. Raise the budget in Settings to deploy.`, overridable: false });
+    out.push({ kind: "budget", message: budgetFullMessage(b), overridable: false });
   } else if (b.budget > 0 && b.total + gbpH * o.hours > b.budget) {
     out.push({ kind: "budget", message: `This session would take the month to ${money(b.total + gbpH * o.hours)} of ${money(b.budget)}.`, overridable: true });
   }

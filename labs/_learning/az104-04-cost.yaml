@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Set up a budget with alert thresholds and an action group, then explore where your Azure spend goes.
+learn:
+  - Edit a resource group budget and add a forecast alert threshold
+  - Add an email receiver to an action group and send a test alert
+  - Group cost analysis by resource group and tag, then review Advisor's cost advice
+learning_min: 50

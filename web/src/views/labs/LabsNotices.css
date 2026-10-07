@@ -1,0 +1,26 @@
+/* The page's notices (labs redesign spec §8.2): the amber setup banner and the GitHub and budget notices. Tokens only. */
+.labs-banner {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 12px 10px 16px; border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--amber) 12%, var(--bg-panel));
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);
+  color: var(--text-primary);
+}
+.labs-banner__icon { flex: none; color: var(--amber); }
+.labs-banner__icon--grey { color: var(--text-secondary); }
+.labs-banner__icon--red { color: var(--red); }
+.labs-banner__text { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.labs-banner__title { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.labs-banner__detail { margin: 0; font-size: 12.5px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.labs-banner__actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.labs-banner__actions .btn { text-decoration: none; }
+.labs-banner__actions .btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* GitHub: a plain surface; budget: a red edge. Both their own blocks, never merged into the banner. */
+.labs-banner--notice { background: var(--bg-panel); border-color: var(--border-strong); }
+.labs-banner--notice:has(.labs-banner__icon--red) { background: color-mix(in srgb, var(--red) 8%, var(--bg-panel)); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
+
+@media (max-width: 640px) {
+  .labs-banner { align-items: flex-start; }
+  .labs-banner__actions { width: 100%; justify-content: space-between; }
+}

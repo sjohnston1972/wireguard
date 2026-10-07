@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Announce a prefix over BGP from a router VM and watch Azure Route Server program it into a hub and spoke.
+learn:
+  - Check BGP sessions and learned routes on an FRR router and on Route Server
+  - Follow an announced route into a peered spoke through gateway transit
+  - Withdraw a route and prepend the AS path to change how it is preferred
+learning_min: 65

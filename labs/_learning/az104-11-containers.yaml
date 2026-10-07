@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Run containers without a VM in Container Instances and Container Apps, and keep images in a registry.
+learn:
+  - Watch a container app scale from zero on the first request and back again
+  - Import an image into an Azure Container Registry and see who can pull it
+  - Compare sizing, networking and scaling in ACI and Container Apps
+learning_min: 55

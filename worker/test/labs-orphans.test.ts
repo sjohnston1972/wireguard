@@ -277,7 +277,7 @@ describe("orphan sweep (L2.5)", () => {
     // A lab id nobody knows, or one whose prefix would reach a catalogue lab, is refused.
     expect((await api(env, "POST", "/labs/orphans/cleanup", { lab_id: "az104-11-containers" })).status).toBe(404);
     await env.STATUS.put("labs:orphans", JSON.stringify([{ labId: "az104-07-x", names: ["rg-lab-az104-07-x"], since: NOW }]));
-    setCatalogueForTest({ schema: 1, skillAreas: [], labs: [{ ...(await import("./labs-helpers")).TEST_LABS[3], id: "az104-07-x-files" }], readmes: {} });
+    setCatalogueForTest({ schema: 2, skillAreas: [], labs: [{ ...(await import("./labs-helpers")).TEST_LABS[3], id: "az104-07-x-files" }], readmes: {}, learning: {}, resources: {} });
     const prefix = await api(env, "POST", "/labs/orphans/cleanup", { lab_id: "az104-07-x" });
     expect(prefix.status).toBe(409);
     expect(prefix.json.error.message).toMatch(/az104-07-x-files/);

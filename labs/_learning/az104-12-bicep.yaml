@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Read a Bicep file and its ARM template, preview a change with what-if, then redeploy and export it.
+learn:
+  - Trace Bicep lines and a module to the ARM template and nested deployment
+  - Preview a parameter change with what-if and redeploy in Incremental mode
+  - Export a resource group as a template and decompile it to Bicep
+learning_min: 55

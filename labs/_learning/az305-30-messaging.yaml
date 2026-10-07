@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Send messages and events through Service Bus and Event Grid to a consumer that runs only when there is work.
+learn:
+  - Send queue messages and follow one to the dead-letter queue and back
+  - Route blob storage events through Event Grid to a Service Bus queue
+  - Filter topic subscriptions with SQL rules and compare messaging services
+learning_min: 60

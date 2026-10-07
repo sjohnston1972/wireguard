@@ -1,9 +1,14 @@
-import { useState } from "react";
-import type { LabDetail } from "@shared/api";
+import { useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import type { LabDetail, LabOrphan } from "@shared/api";
 import { Button, Select, Switch } from "@/components";
+import { ApiError } from "@/api/client";
 import { useDeployLab } from "@/api/mutations";
+import { useLabs } from "@/api/queries";
 import { fmtGbp, fmtRate } from "./model";
+import { blockerFix } from "./status";
 import { Warnings, overridesFor } from "./Warnings";
+import "./DeployForm.css";
 
 const LAB_HOURS_MAX = 12; // shared/labs.ts LAB_HOURS_MAX: deploy and extend take whole hours, 1 to 12
 
@@ -16,23 +21,57 @@ function ageWords(seconds: number): string {
   return `${Math.round(seconds / 86_400)} d old`;
 }
 
-/** What the Deploy form holds; the body and the footer both read it. */
+/**
+ * What the Deploy form holds; the body and the footer both read it. A deploy is sent once (labs
+ * redesign spec §13, ruling 19): a synchronous latch stops a second click before React re-renders,
+ * and after success Deploy stays off ("Starting the deploy…") until the lab's session appears and
+ * the dialog shows its progress. A refusal stays in the form with the server's sentence and, once
+ * the lab has refreshed, the place to fix it.
+ */
 export function useDeployForm(d: LabDetail) {
   const [hours, setHours] = useState(() => Math.min(d.defaults.hours, d.card.timing.maxH));
   const [peer, setPeer] = useState(d.connectivity.peering === "required" ? true : d.connectivity.peering === "off" ? false : d.defaults.peer);
   const [region, setRegion] = useState(d.defaults.region);
   const deploy = useDeployLab();
-  // "unavailable", or a budget warning with no override (the month is already over budget, so
-  // the budget guard would remove the lab at once): Deploy is off and the reason is shown.
-  const unavailable = d.warnings.find((w) => w.kind === "unavailable" || (w.kind === "budget" && !w.overridable))?.message ?? d.card.unavailable;
+  const latch = useRef(false);
+  const [started, setStarted] = useState(false);
+  const listed = useLabs().data;
+  const orphans = listed?.orphans;
+  // The card's blockers, as the catalogue shows them (leftovers and a full budget too, which the
+  // card's `unavailable` leaves out); the catalogue's card when this one has none listed.
+  const blockers = Array.isArray(d.card.blockers) ? d.card.blockers : (listed?.labs.find((c) => c.id === d.card.id)?.blockers ?? []);
+  // "unavailable", a budget warning with no override (the month is already over budget, so the
+  // budget guard would remove the lab at once), or any card blocker: Deploy is off and the reason is shown.
+  const unavailable = d.warnings.find((w) => w.kind === "unavailable" || (w.kind === "budget" && !w.overridable))?.message ?? blockers[0]?.message ?? d.card.unavailable;
   const overrides = overridesFor(d.warnings);
   const anyway = Object.keys(overrides).length > 0;
+  const busy = deploy.isPending || started;
   const submit = () => {
-    if (unavailable || deploy.isPending) return;
+    if (unavailable || busy || latch.current) return;
+    latch.current = true;
     const r = region.trim();
-    deploy.mutate({ id: d.card.id, hours, peer: d.connectivity.peering === "required" ? true : d.connectivity.peering === "off" ? false : peer, ...(r ? { region: r } : {}), ...overrides });
+    deploy.mutate(
+      { id: d.card.id, hours, peer: d.connectivity.peering === "required" ? true : d.connectivity.peering === "off" ? false : peer, ...(r ? { region: r } : {}), ...overrides },
+      {
+        onSuccess: () => setStarted(true),
+        onSettled: () => {
+          latch.current = false;
+        },
+      },
+    );
   };
-  return { d, hours, setHours, peer, setPeer, region, setRegion, deploy, unavailable, anyway, submit };
+  const failure = !busy && deploy.error ? deploy.error : null;
+  return { d, hours, setHours, peer, setPeer, region, setRegion, deploy, unavailable, anyway, submit, busy, started, failure, refusal: refusalOf(d, failure, orphans) };
+}
+
+/** A refused deploy: the server's sentence and, from the refreshed card's blockers, where to fix it. */
+function refusalOf(d: LabDetail, err: Error | null, orphans: LabOrphan[] | undefined): { message: string; fix: { label: string; href: string } | null } | null {
+  if (!err) return null;
+  const blockers = Array.isArray(d.card.blockers) ? d.card.blockers : [];
+  const code = err instanceof ApiError ? err.code : null;
+  const b = blockers.find((x) => x.message === err.message) ?? (code === "unavailable" ? blockers[0] : undefined);
+  const fix = b ? blockerFix(b.kind, { labId: d.card.id, orphans }) : null;
+  return { message: err.message, fix: fix && !fix.href.startsWith("#") ? fix : null };
 }
 export type DeployFormState = ReturnType<typeof useDeployForm>;
 
@@ -90,8 +129,18 @@ export function DeployFields({ f }: { f: DeployFormState }) {
         f.submit();
       }}
     >
+      {f.refusal && (
+        <div className="labs-deploy__refused" role="alert">
+          <p>{f.refusal.message}</p>
+          {f.refusal.fix && (
+            <Link className="labs-deploy__fix" to={f.refusal.fix.href}>
+              {f.refusal.fix.label}
+            </Link>
+          )}
+        </div>
+      )}
       <Warnings warnings={d.warnings} />
-      {f.unavailable && !d.warnings.some((w) => w.kind === "unavailable") && <p className="labs-deploy__blocked">{f.unavailable}</p>}
+      {f.unavailable && !d.warnings.some((w) => w.kind === "unavailable") && f.refusal?.message !== f.unavailable && <p className="labs-deploy__blocked">{f.unavailable}</p>}
       <div className="labs-deploy__row">
         <span className="labs-deploy__label">Session length</span>
         <Select label="Session length" options={options} value={String(f.hours)} onValueChange={(v) => f.setHours(Number(v))} />
@@ -120,10 +169,16 @@ export function DeployFields({ f }: { f: DeployFormState }) {
 export function DeployFooter({ f }: { f: DeployFormState }) {
   return (
     <div className="labs-foot">
-      <span className="labs-muted">
-        About {fmtGbp(f.d.cost.gbpH * f.hours)} for {hoursLabel(f.hours)}
-      </span>
-      <Button variant="primary" onClick={f.submit} loading={f.deploy.isPending} disabled={!!f.unavailable || f.deploy.isPending}>
+      {f.started ? (
+        <span className="labs-muted" role="status">
+          Starting the deploy…
+        </span>
+      ) : (
+        <span className="labs-muted">
+          About {fmtGbp(f.d.cost.gbpH * f.hours)} for {hoursLabel(f.hours)}
+        </span>
+      )}
+      <Button variant="primary" onClick={f.submit} loading={f.busy} disabled={!!f.unavailable || f.busy}>
         {f.anyway ? "Deploy anyway" : "Deploy"}
       </Button>
     </div>

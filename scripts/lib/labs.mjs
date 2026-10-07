@@ -375,6 +375,100 @@ export function variablesProblems(tf) {
   return out;
 }
 
+// ── Learning content (labs redesign spec §5) ─────────────────────────────
+
+/** labs/<LEARNING_DIR>/<id>.yaml, one per lab. A "_" name, so labFolders (and so versions, labs-tf and labs-topology) never sees it. */
+export const LEARNING_DIR = "_learning";
+const LEARNING_KEYS = ["objective", "learn", "learning_min"];
+const MARKDOWN = /[*`[#]/;
+const capital = (v) => /^[A-Z]/.test(v);
+const oneLine = (v) => !/[\r\n]/.test(v);
+
+/**
+ * One learning file's problems (spec §5.2) as { field, message }; [] when it is good. `def` is the
+ * lab's definition (its timing.max_h caps learning_min); without one only the 240-minute cap applies.
+ */
+export function validateLearning(raw, def) {
+  const out = [];
+  const bad = (field, message) => out.push({ field, message });
+  if (!isObj(raw)) return [{ field: null, message: "a learning file must be a mapping of objective, learn and learning_min" }];
+  for (const k of Object.keys(raw)) if (!LEARNING_KEYS.includes(k)) bad(k, `${k} is not a learning field (only ${LEARNING_KEYS.join(", ")})`);
+  for (const k of LEARNING_KEYS) if (raw[k] === undefined) bad(k, `${k} is missing`);
+  const o = raw.objective;
+  if (o !== undefined) {
+    if (!str(o) || !oneLine(o)) bad("objective", "objective must be one line of text");
+    else if (o.length < 30 || o.length > 140) bad("objective", `objective must be 30 to 140 characters (has ${o.length})`);
+    else if (MARKDOWN.test(o)) bad("objective", "objective must be plain text: no *, `, [ or #");
+    else if (!capital(o) || !o.endsWith(".") || o.slice(0, -1).includes(". ") || /[!?]/.test(o)) bad("objective", "objective must be one sentence: a capital first, a full stop last, no other sentence, ! or ?");
+  }
+  const l = raw.learn;
+  if (l !== undefined) {
+    if (!Array.isArray(l) || l.length !== 3) bad("learn", `learn must be a list of exactly 3 points (has ${Array.isArray(l) ? l.length : "none"})`);
+    else {
+      for (const [i, x] of l.entries()) {
+        const at = `learn point ${i + 1}`;
+        if (!str(x) || !oneLine(x)) bad("learn", `${at} must be one line of text`);
+        else if (x.length < 15 || x.length > 90) bad("learn", `${at} must be 15 to 90 characters (has ${x.length})`);
+        else if (MARKDOWN.test(x)) bad("learn", `${at} must be plain text: no *, \`, [ or #`);
+        else if (!capital(x)) bad("learn", `${at} must start with a capital letter (a verb)`);
+        else if (x.endsWith(".")) bad("learn", `${at} must not end with a full stop`);
+      }
+      const seen = l.filter(str).map((x) => x.trim().toLowerCase());
+      if (new Set(seen).size !== seen.length) bad("learn", "the 3 learn points must all be different");
+    }
+  }
+  const m = raw.learning_min;
+  if (m !== undefined) {
+    const max = Math.min(240, Number.isInteger(def?.timing?.max_h) ? def.timing.max_h * 60 : 240);
+    if (!Number.isInteger(m) || m % 5 !== 0 || m < 15 || m > max) bad("learning_min", `learning_min must be whole minutes, a multiple of 5, from 15 to ${max} (the lab's max_h × 60, at most 240)`);
+  }
+  return out;
+}
+
+/**
+ * Read labs/_learning/*.yaml (spec §5.2). `ids`: every lab folder's id (a file naming none of them
+ * is a problem, "no lab <id>"); `defs`: the valid definitions (for max_h). A missing file is a
+ * problem only with requireLearning (labs-check). Returns { learning: id -> LabLearningDef, problems }.
+ */
+export function readLearning(root, ids, defs, { requireLearning = false } = {}) {
+  const dir = join(root, LEARNING_DIR);
+  const learning = {};
+  const problems = [];
+  const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".yaml")).sort() : [];
+  const at = (lab, field, message) => problems.push({ lab, file: `${LEARNING_DIR}/${lab}.yaml`, field, message });
+  for (const f of files) {
+    const id = f.slice(0, -".yaml".length);
+    if (!ids.includes(id)) {
+      at(id, null, `no lab ${id}`);
+      continue;
+    }
+    let raw;
+    try {
+      raw = parseYaml(readFileSync(join(dir, f), "utf8"), { version: "1.1" });
+    } catch (e) {
+      at(id, null, `not valid YAML: ${e.message.split("\n")[0]}`);
+      continue;
+    }
+    const v = validateLearning(raw, defs.find((d) => d.id === id));
+    for (const p of v) at(id, p.field, p.message);
+    if (!v.length) learning[id] = { objective: raw.objective, learn: [...raw.learn], learning_min: raw.learning_min };
+  }
+  if (requireLearning) for (const id of ids) if (!files.includes(`${id}.yaml`)) at(id, null, `no learning content: write labs/${LEARNING_DIR}/${id}.yaml (labs redesign spec §5)`);
+  return { learning, problems };
+}
+
+// ── Resources from the planned diagrams (labs redesign spec §6.2) ────────
+
+/** A planned graph's resources: TopoKind -> count of its nodes, without lanes and the gateway (folded entries live inside a node, so never count); keys sorted. */
+export function countPlanned(graph) {
+  const counts = {};
+  for (const n of Array.isArray(graph?.nodes) ? graph.nodes : []) {
+    if (!str(n?.kind) || n.kind === "lane" || n.kind === "gateway") continue;
+    counts[n.kind] = (counts[n.kind] ?? 0) + 1;
+  }
+  return Object.fromEntries(Object.entries(counts).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
 // ── The catalogue ────────────────────────────────────────────────────────
 
 /** Lab folders under `root`: directories not starting with "_" and not "setup". */
@@ -389,9 +483,12 @@ export function labFolders(root) {
  * Read every lab under `root` (the repo's labs/ folder) and build the
  * catalogue (LabCatalogue in shared/labs.ts). Returns { catalogue, problems };
  * problems are { lab, file, field, message }. The catalogue holds only the
- * labs that passed, sorted by exam (AZ-104, AZ-305, AZ-700) then number.
+ * labs that passed, sorted by exam (AZ-104, AZ-305, AZ-700) then number, with
+ * each one's learning content (labs/_learning; a missing file is a problem
+ * only with requireLearning, as labs-check asks) and its planned resources
+ * (plannedDir, default <root>/../shared/topology/planned; none without a file).
  */
-export function buildCatalogue(root) {
+export function buildCatalogue(root, { requireLearning = false, plannedDir = join(root, "..", "shared", "topology", "planned") } = {}) {
   const problems = [];
   let skillAreas = [];
   try {
@@ -450,10 +547,24 @@ export function buildCatalogue(root) {
     state.set(id, "done");
   };
   for (const id of ids) visit(id, []);
+  // Learning content. Every folder counts as a lab id, so a file for a lab whose lab.yaml failed is not "no lab".
+  const read = readLearning(root, labFolders(root), defs, { requireLearning });
+  problems.push(...read.problems);
   const bad = new Set(problems.map((p) => p.lab));
   const labs = defs.filter((d) => !bad.has(d.id)).sort((a, b) => LAB_EXAMS.indexOf(a.exam) - LAB_EXAMS.indexOf(b.exam) || a.number - b.number);
   for (const id of Object.keys(readmes)) if (bad.has(id)) delete readmes[id];
-  return { catalogue: { schema: 1, skillAreas, labs, readmes }, problems };
+  const learning = Object.fromEntries(labs.filter((d) => read.learning[d.id]).map((d) => [d.id, read.learning[d.id]]));
+  const resources = {};
+  for (const d of labs) {
+    const file = join(plannedDir, `${d.id}.json`);
+    if (!existsSync(file)) continue;
+    try {
+      resources[d.id] = countPlanned(JSON.parse(readFileSync(file, "utf8")));
+    } catch (e) {
+      problems.push({ lab: d.id, file: `planned/${d.id}.json`, field: null, message: `the planned diagram is not valid JSON: ${e.message.split("\n")[0]}` });
+    }
+  }
+  return { catalogue: { schema: 2, skillAreas, labs, readmes, learning, resources }, problems };
 }
 
 // ── Versions against a base (spec §11.1) ─────────────────────────────────

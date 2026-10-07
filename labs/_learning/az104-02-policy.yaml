@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Apply a deny policy and a resource lock, then watch both refuse changes.
+learn:
+  - Read compliance results and start an on-demand evaluation scan
+  - See deny and Allowed locations policies refuse changes, then switch to Audit
+  - Use CanNotDelete and ReadOnly locks to stop changes, even by an Owner
+learning_min: 55

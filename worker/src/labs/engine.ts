@@ -30,8 +30,8 @@ import { BudgetExceeded, cancelGh, directNet, dispatchLab, findLabRun, publicUrl
 import { activeRunOf, freeSlot, getLabRun, insertRun, insertSession, liveSessionOf, reserveSlot, settleRun, slotsInUse, updateSession, getSession, type LabRunDb, type LabSessionRow } from "./store";
 import { labGbpH } from "./prices";
 import { labWarnings } from "./warnings";
-import { availability, unavailableReason } from "./availability";
-export { availability, permissions, unavailableReason, type Availability } from "./availability";
+import { availability, leftoversMessage, unavailableReason } from "./availability";
+export { availability, blockersOf, permissions, unavailableReason, type Availability } from "./availability";
 
 const MIN = 60_000;
 const HOUR = 3_600_000;
@@ -184,7 +184,7 @@ export async function deployLab(env: Env, labId: string, input: DeployInput, by:
   if (why) throw new RunError(why, "unavailable");
   // Leftovers of an earlier session would clash with a new one (same group, same names).
   const dirty = await env.DB.prepare("SELECT id FROM lab_sessions WHERE lab_id = ?1 AND state = 'ended_dirty' AND slot IS NOT NULL LIMIT 1").bind(labId).first<{ id: string }>();
-  if (dirty || (await readOrphans(env)).some((o) => o.labId === labId)) throw new RunError(`${def.title} still has leftovers in Azure from an earlier session. Clean them up from the Labs tab first.`, "unavailable");
+  if (dirty || (await readOrphans(env)).some((o) => o.labId === labId)) throw new RunError(leftoversMessage(def), "unavailable");
 
   const cfg = await effectiveConfig(env);
   const region = input.region ?? cfg.region;

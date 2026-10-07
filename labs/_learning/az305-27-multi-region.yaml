@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Stop one region of a two-region app and compare how Traffic Manager and Front Door each fail over.
+learn:
+  - Watch Traffic Manager fail over by changing its DNS answers
+  - Watch Front Door's health probes move every request to the healthy origin
+  - Switch to weighted or performance routing to spread load across regions
+learning_min: 55

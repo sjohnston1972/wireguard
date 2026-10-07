@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Put a cross-region load balancer in front of two regions, and chain a Gateway load balancer to an appliance.
+learn:
+  - Fail traffic over between regions behind a global-tier load balancer
+  - Map a port range to backend VMs with a version 2 inbound NAT rule
+  - Watch VXLAN traffic through a Gateway load balancer and read outbound rules
+learning_min: 60

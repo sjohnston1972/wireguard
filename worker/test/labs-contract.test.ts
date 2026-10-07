@@ -23,7 +23,7 @@ import { LAB_POOL, LAB_SLOTS, slotCidr, type LabCatalogue } from "../../shared/l
 import type { LabsResponse, LabCoverageResponse, LabSessionsResponse, LabDetail } from "../../shared/api";
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
-const EMPTY: LabCatalogue = { schema: 1, skillAreas: [], labs: [], readmes: {} };
+const EMPTY: LabCatalogue = { schema: 2, skillAreas: [], labs: [], readmes: {}, learning: {}, resources: {} };
 const base = "http://localhost:8787";
 
 afterEach(() => {
@@ -115,7 +115,9 @@ describe("locks", () => {
 
 describe("catalogue", () => {
   it("is the generated one unless a test sets its own", () => {
-    expect(catalogue().schema).toBe(1);
+    expect(catalogue().schema).toBe(2);
+    // Every real lab has a planned diagram, so resources (labs redesign spec §6.2).
+    expect(catalogue().resources["az104-06-blob-security"]).toMatchObject({ storage: 1, privateEndpoint: 1 });
     expect(catalogue().labs.map((l) => l.id)).toContain("az104-06-blob-security");
     expect(labDef("az104-06-blob-security")?.number).toBe(6);
     setCatalogueForTest(EMPTY);
@@ -465,7 +467,8 @@ describe("devseed labs", () => {
     expect((await rows<{ n: number }>(env, "SELECT COUNT(*) AS n FROM lab_runs r JOIN lab_sessions s ON s.id = r.session_id WHERE s.state LIKE 'ended%' AND r.admin_password IS NOT NULL"))[0].n).toBe(0);
     for (const r of await rows<{ github_run_url: string | null }>(env, "SELECT github_run_url FROM lab_runs")) if (r.github_run_url) expect(r.github_run_url).toMatch(/^https:\/\/ci\.example\.invalid\/actions\/runs\/\d+$/);
 
-    for (const story of SCENARIOS.filter((s) => s !== "labs")) {
+    // labs-setup tells the labs story too (with the permission check failed: devseed.test.ts).
+    for (const story of SCENARIOS.filter((s) => s !== "labs" && s !== "labs-setup")) {
       await seed(env, "labs");
       await seed(env, story);
       for (const t of ["lab_sessions", "lab_runs", "lab_cost_days", "lab_release_tests"]) expect((await rows<{ n: number }>(env, `SELECT COUNT(*) AS n FROM ${t}`))[0].n, `${story} ${t}`).toBe(0);

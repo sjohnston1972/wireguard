@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { parseArgs, buildPlan, SIZES, ROUTES, shotName, isOneScreenSize, measureOverflow, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, freezeTimeScript, WIDGET_CHROME_OFF_CSS, widgetChromeOffScript, prefsPuts, FROZEN_NOW, frozenClockProblem } from "../lib/shots.mjs";
+import { parseArgs, buildPlan, SIZES, ROUTES, SCROLLING_ROUTES, shotName, isOneScreenSize, measureOverflow, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, freezeTimeScript, WIDGET_CHROME_OFF_CSS, widgetChromeOffScript, prefsPuts, FROZEN_NOW, frozenClockProblem } from "../lib/shots.mjs";
 
 const script = fileURLToPath(new URL("../shots.mjs", import.meta.url));
 
@@ -33,6 +33,41 @@ test("the one-screen rule applies to desktop sizes of 1100x600 and up, not the p
   const plan = buildPlan(parseArgs([]), {});
   assert.ok(plan.filter((s) => s.path === "/__gallery").every((s) => !s.checkOverflow));
   assert.ok(plan.filter((s) => s.path === "/" && s.width === 1100).every((s) => s.checkOverflow));
+});
+
+// Labs redesign spec ruling 8: the catalogue page scrolls down, never sideways.
+test("/labs and /labs?… are judged for sideways scroll only, at every size including the phone", () => {
+  assert.ok(SCROLLING_ROUTES.some((re) => re.test("/labs")));
+  const routes = ["/labs", "/labs?lab=az104-02-policy", "/labs?exam=AZ-305&ready=1"];
+  const plan = buildPlan(parseArgs(["--routes", routes.join(","), "--sizes", "1600x900,1100x600,1024x768,390x844", "--themes", "dark"]), {});
+  assert.equal(plan.length, 12);
+  for (const s of plan) assert.equal(s.checkOverflow, "x", `${s.path} at ${s.width}x${s.height}`);
+  assert.equal(plan.find((s) => s.width === 390).mobile, true);
+  // Tall is fine, sideways is not, inside #main too.
+  assert.deepEqual(judgeOverflow({ y: 0, x: 0, mainY: 2400, mainX: 0, innerScroller: null }, { checkOverflow: "x" }), { ok: true, reason: null });
+  assert.equal(judgeOverflow({ y: 0, x: 18, mainY: 2400, mainX: 0, innerScroller: null }, { checkOverflow: "x" }).ok, false);
+  const side = judgeOverflow({ y: 0, x: 0, mainY: 0, mainX: 6, innerScroller: null }, { checkOverflow: "x" });
+  assert.equal(side.ok, false);
+  assert.match(side.reason, /sideways 6px/);
+  assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 0, mainX: 0, innerScroller: { what: "div.x", by: 9 } }, { checkOverflow: "x" }).ok, true, "a page-wide scroller is allowed on a scrolling page");
+  // The full rule ("all", or true from older callers) still fails a tall page.
+  assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 10, mainX: 0 }, { checkOverflow: "all" }).ok, false);
+  assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 10, mainX: 0 }, { checkOverflow: true }).ok, false);
+});
+
+test("/labs/history keeps the one-screen rule", () => {
+  assert.ok(!SCROLLING_ROUTES.some((re) => re.test("/labs/history")));
+  assert.ok(!SCROLLING_ROUTES.some((re) => re.test("/labs/az104-02-policy")));
+  const plan = buildPlan(parseArgs(["--routes", "/labs/history,/cost", "--sizes", "1600x900,390x844", "--themes", "dark"]), {});
+  assert.deepEqual(
+    plan.map((s) => [s.path, s.width, s.checkOverflow]),
+    [
+      ["/labs/history", 1600, "all"],
+      ["/labs/history", 390, false],
+      ["/cost", 1600, "all"],
+      ["/cost", 390, false],
+    ],
+  );
 });
 
 test("detail routes use ids found from the API; without them they are listed as pending", () => {

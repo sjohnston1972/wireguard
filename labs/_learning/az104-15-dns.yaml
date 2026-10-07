@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Create public and private DNS zones and see how each answers, including for a VM that registers itself.
+learn:
+  - Query a public zone's own name servers for A, CNAME and TXT records
+  - Resolve a VM's auto-registered name in a private zone linked to its VNet
+  - Add record sets by hand and meet the one registration zone per VNet limit
+learning_min: 65

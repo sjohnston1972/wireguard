@@ -60,13 +60,25 @@ export const TEST_LABS: LabDef[] = [
 ];
 
 export const TEST_CATALOGUE: LabCatalogue = {
-  schema: 1,
+  schema: 2,
   skillAreas: [
     { key: "az104.storage", exam: "AZ-104", name: "Implement and manage storage" },
     { key: "az305.infra", exam: "AZ-305", name: "Design infrastructure solutions" },
   ],
   labs: TEST_LABS,
   readmes: { "az104-05-storage": [{ t: "h", level: 2, text: "What it deploys" }] },
+  // Lab 6 has learning content and a planned diagram; lab 5 a diagram only; the others neither.
+  learning: {
+    "az104-06-blob-security": {
+      objective: "Control who reaches one blob container with keys and SAS tokens, Entra roles and a private endpoint.",
+      learn: ["Make a SAS from a stored access policy and revoke it", "Grant blob data access to an Entra group", "Resolve the account to a private endpoint address"],
+      learning_min: 50,
+    },
+  },
+  resources: {
+    "az104-05-storage": { resourceGroup: 1, storage: 2 },
+    "az104-06-blob-security": { entraPrincipal: 1, privateDnsZone: 1, privateEndpoint: 1, resourceGroup: 1, storage: 1, subnet: 1, vnet: 1 },
+  },
 };
 
 export const NOW = "2026-10-04T12:00:00.000Z";

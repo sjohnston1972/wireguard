@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Make every Key Vault send its logs to one central workspace with a deployIfNotExists policy.
+learn:
+  - Find the diagnostic setting a deployIfNotExists policy deployed for a new vault
+  - Query Key Vault logs in a central Log Analytics workspace with KQL
+  - Break compliance and repair it with a policy remediation task
+learning_min: 60

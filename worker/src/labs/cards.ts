@@ -4,15 +4,23 @@
 // §10, §11.2): £/h now (fresh list prices where the lab has them), its live
 // session, its last session, how often it has been run (sessions of 15
 // minutes or more: "Ran 2×"), its newest release test and whether the
-// current version has passed one ("Untested v2" until it has), and why Deploy
-// is unavailable. Everything is read once per request from D1 and KV.
+// current version has passed one ("Untested v2" until it has), why Deploy
+// is unavailable and every blocker (labs redesign spec §6.1: availability's,
+// then leftovers, then a full budget, the checks deployLab makes before its
+// confirmation), and the catalogue's learning content and planned resources
+// (§6.2). Everything is read once per request from D1 and KV.
 
 import type { Env } from "../env";
 import { effectiveConfig } from "../settings";
+import { getSnapshot } from "../state";
+import { budgetStatus } from "../budget";
 import type { PriceRow } from "../insights/price";
-import type { LabCard, LabReleaseTest, LabSession } from "../../../shared/api";
+import type { LabBlocker, LabCard, LabReleaseTest, LabSession } from "../../../shared/api";
 import { LAB_COVERAGE_MIN, costMarker, estimateGbpH, type LabDef } from "../../../shared/labs";
-import { availability, unavailableReason, type Availability } from "./availability";
+import { availability, blockersOf, leftoversMessage, unavailableReason, type Availability } from "./availability";
+import { catalogue } from "./catalogue";
+import { readOrphans } from "./orphans";
+import { budgetFull, budgetFullMessage } from "./warnings";
 import { gbpHFrom, readLabPrices, retailPrice } from "./prices";
 import { sessionCosts } from "./cost";
 import { activeRuns, liveSessions, type LabRunDb, type LabSessionRow } from "./store";
@@ -78,13 +86,29 @@ export interface CardContext {
   last: Map<string, LabSessionRow>;
   ran: Map<string, number>;
   costs: Map<string, { gbp: number | null; basis: "estimate" | "actual" }>;
+  /** Labs with an ended_dirty session still holding a slot (deployLab refuses them). */
+  dirty: Set<string>;
+  /** Labs with an entry in KV labs:orphans (deployLab refuses them). */
+  orphanIds: Set<string>;
+  /** The full-budget sentence when the month is at or over budget; null otherwise, or when the budget could not be read. */
+  budgetFull: string | null;
+}
+
+/** budgetFullMessage when the month is at or over budget; null under it, with no budget, or when it cannot be read (ruling 17: the deploy route re-checks). */
+async function budgetBlocker(env: Env, cfg: Awaited<ReturnType<typeof effectiveConfig>>, now: number): Promise<string | null> {
+  try {
+    const b = await budgetStatus(env, cfg, await getSnapshot(env), new Date(now));
+    return budgetFull(b) ? budgetFullMessage(b) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Read everything the cards need, once. */
 export async function cardContext(env: Env, now = Date.now()): Promise<CardContext> {
   const nowIso = new Date(now).toISOString();
   const cfg = await effectiveConfig(env);
-  const [prices, tests, avail, live, runs, last, ran] = await Promise.all([
+  const [prices, tests, avail, live, runs, last, ran, dirty, orphans, budgetFull] = await Promise.all([
     readLabPrices(env, cfg.region),
     releaseTests(env),
     availability(env),
@@ -94,14 +118,49 @@ export async function cardContext(env: Env, now = Date.now()): Promise<CardConte
       "SELECT * FROM lab_sessions s WHERE state IN ('ended', 'ended_dirty') AND requested_at = (SELECT MAX(requested_at) FROM lab_sessions x WHERE x.lab_id = s.lab_id AND x.state IN ('ended', 'ended_dirty'))",
     ).all<LabSessionRow>(),
     env.DB.prepare(`SELECT lab_id, COUNT(*) AS n FROM lab_sessions WHERE ${RAN_SQL} GROUP BY lab_id`).bind(nowIso).all<{ lab_id: string; n: number }>(),
+    env.DB.prepare("SELECT DISTINCT lab_id FROM lab_sessions WHERE state = 'ended_dirty' AND slot IS NOT NULL").all<{ lab_id: string }>(),
+    readOrphans(env),
+    budgetBlocker(env, cfg, now),
   ]);
   const costs = await sessionCosts(env, [...live, ...last.results], now);
-  return { now, region: cfg.region, prices, tests, avail, live, runs, last: new Map(last.results.map((s) => [s.lab_id, s])), ran: new Map(ran.results.map((r) => [r.lab_id, Number(r.n)])), costs };
+  return {
+    now,
+    region: cfg.region,
+    prices,
+    tests,
+    avail,
+    live,
+    runs,
+    last: new Map(last.results.map((s) => [s.lab_id, s])),
+    ran: new Map(ran.results.map((r) => [r.lab_id, Number(r.n)])),
+    costs,
+    dirty: new Set(dirty.results.map((r) => r.lab_id)),
+    orphanIds: new Set(orphans.map((o) => o.labId).filter((id): id is string => typeof id === "string")),
+    budgetFull,
+  };
 }
 
 /** A session with its cost, for the screens. */
 export function sessionView(s: LabSessionRow, ctx: Pick<CardContext, "runs" | "costs" | "now">): LabSession {
   return labSession(s, ctx.runs.find((r) => r.session_id === s.id) ?? null, ctx.now, ctx.costs.get(s.id));
+}
+
+/** Every reason deployLab would refuse this lab before its confirmation, in its order (spec §6.1). */
+export function cardBlockers(def: LabDef, ctx: Pick<CardContext, "avail" | "dirty" | "orphanIds" | "budgetFull">): LabBlocker[] {
+  const out = blockersOf(def, ctx.avail);
+  if (ctx.dirty.has(def.id) || ctx.orphanIds.has(def.id)) out.push({ kind: "leftovers", message: leftoversMessage(def) });
+  if (ctx.budgetFull) out.push({ kind: "budget", message: ctx.budgetFull });
+  return out;
+}
+
+/** The card's learning content (camelCase) and planned resources from the catalogue; null when it has none. */
+export function catalogueExtras(id: string): Pick<LabCard, "learning" | "resources"> {
+  const cat = catalogue();
+  const l = cat.learning?.[id];
+  return {
+    learning: l ? { objective: l.objective, learn: [l.learn[0], l.learn[1], l.learn[2]], learningMin: l.learning_min } : null,
+    resources: cat.resources?.[id] ? { ...cat.resources[id] } : null,
+  };
 }
 
 /** One catalogue card. */
@@ -133,5 +192,7 @@ export function labCard(def: LabDef, ctx: CardContext): LabCard {
     runs: ctx.ran.get(def.id) ?? 0,
     ...releaseFields(def, ctx.tests),
     unavailable: unavailableReason(def, ctx.avail),
+    blockers: cardBlockers(def, ctx),
+    ...catalogueExtras(def.id),
   };
 }

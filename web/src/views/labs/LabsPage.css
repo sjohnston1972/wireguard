@@ -1,0 +1,22 @@
+/* The catalogue page (labs redesign spec §4, §9): it scrolls with #main; no fixed heights, no enclosing panel. */
+.labs-page { gap: 14px; padding-bottom: 12px; }
+.labs-page > .page-header { margin-bottom: 0; }
+
+/* Wide (1200 px and up): the cards and a 400 px details panel that stays in view while the cards scroll. */
+.labs-workspace { display: block; min-width: 0; }
+.labs-workspace__main { min-width: 0; }
+@media (min-width: 1200px) {
+  .labs-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 20px; align-items: start; }
+  .labs-workspace--single { grid-template-columns: minmax(0, 1fr); }
+  .labs-workspace > .labs-details,
+  .labs-workspace > .labs-details-skeleton {
+    position: sticky; top: 0;
+    max-height: calc(100dvh - var(--bar-height) - 28px); overflow-y: auto;
+  }
+}
+
+/* The panel's place while the catalogue loads. */
+.labs-details-skeleton {
+  display: flex; flex-direction: column; gap: 12px; padding: 20px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-panel);
+}

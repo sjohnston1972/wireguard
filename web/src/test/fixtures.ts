@@ -531,6 +531,13 @@ const labCard = (over: Partial<LabCard> = {}): LabCard => ({
   lastReleaseTest: null,
   released: false,
   unavailable: null,
+  blockers: [],
+  learning: {
+    objective: "Control who reaches one blob container with keys and SAS tokens, Entra roles and a private endpoint.",
+    learn: ["Make a SAS from a stored access policy and revoke it without rotating keys", "Grant blob data access to an Entra group and test it with your own sign-in", "Resolve the account to a private endpoint address through the tunnel"],
+    learningMin: 50,
+  },
+  resources: { entraPrincipal: 1, privateDnsZone: 1, privateEndpoint: 1, resourceGroup: 1, storage: 1, subnet: 1, vnet: 1 },
   ...over,
 });
 
@@ -543,6 +550,7 @@ export const labsFixture = (over: Partial<LabsResponse> = {}): LabsResponse => (
   maxRunning: 3,
   permissions: { checkedAt: null, role: null, users: null, groups: null, message: null },
   orphans: [],
+  autoCleanup: true,
   ...over,
 });
 

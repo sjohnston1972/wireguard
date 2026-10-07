@@ -52,7 +52,7 @@ describe("the Labs tab", () => {
 
   it.each(["/labs", "/labs/az104-06-blob-security", "/labs/history"])("%s loads the lazy page", { timeout: 20_000 }, async (url) => {
     renderApp(url);
-    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
+    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
     const marked = within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link", { current: "page" });
     expect(marked.map((l) => l.textContent)).toEqual(["Labs"]);
   });
@@ -179,6 +179,22 @@ describe("lab hooks", () => {
     expect(call.method).toBe(method);
     expect(call.body).toEqual(body);
     expect(keys(invalidate)).toEqual(expect.arrayContaining(['["labs"]', '["overview"]']));
+  });
+
+  // Labs redesign spec §13.4: a refusal means the cards' blockers and warnings are out of date.
+  it('a refused deploy invalidates ["labs"]', async () => {
+    for (const [status, code] of [
+      [409, "unavailable"],
+      [422, "confirm_required"],
+    ] as const) {
+      mockFetch({ [`POST /api/v1/labs/${id}/deploy`]: { status, json: { error: { code, message: "Needs the labs governance role." } } } });
+      const { W, invalidate } = setup();
+      const { result } = renderHook(() => useDeployLab(), { wrapper: W });
+      await act(async () => {
+        await result.current.mutateAsync({ id, hours: 2, peer: false }).catch(() => undefined);
+      });
+      expect(keys(invalidate), code).toEqual(['["labs"]']);
+    }
   });
 
   it("useLabSecret fetches the secret when asked, and keeps nothing", async () => {

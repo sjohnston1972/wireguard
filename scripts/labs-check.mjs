@@ -3,8 +3,10 @@
 // Plain English: the static checks for every lab (spec §11.1), with no cloud
 // calls: each lab.yaml against the schema, readmes, the address pool, each
 // lab's Terraform text (no literal CIDRs, provisioners, forbidden providers
-// or gateway names; only §3.4 variables) and, with --base, that a lab whose
-// folder changed against that git ref bumped its version. Terraform fmt and
+// or gateway names; only §3.4 variables), every lab's learning content
+// (labs/_learning/<id>.yaml: present and valid, labs redesign spec §5) and,
+// with --base, that a lab whose folder changed against that git ref bumped its
+// version (labs/_learning is no lab's folder, so it never needs a bump). Terraform fmt and
 // validate live in npm run labs-tf (plan area L1).
 //
 //   node scripts/labs-check.mjs [--base origin/main]
@@ -26,7 +28,7 @@ if (bi >= 0 && !base) {
 
 const lines = [];
 const notes = [];
-const { catalogue, problems } = buildCatalogue(root);
+const { catalogue, problems } = buildCatalogue(root, { requireLearning: true });
 for (const p of problems) lines.push(`${p.lab ?? "labs"}/${p.file}${p.field ? ` (${p.field})` : ""}: ${p.message}`);
 for (const p of checkPool()) lines.push(`pool: ${p}`);
 

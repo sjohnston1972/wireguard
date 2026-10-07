@@ -92,12 +92,29 @@ export type ReadmeBlock =
  * Labs are sorted by exam (AZ-104, AZ-305, AZ-700), then by number.
  */
 export interface LabCatalogue {
-  /** Bumped when this shape changes. */
-  schema: 1;
+  /** Bumped when this shape changes (2: learning and resources, labs redesign spec §6.2). */
+  schema: 2;
   skillAreas: SkillArea[];
   labs: LabDef[];
   /** Lab id -> its readme. */
   readmes: Record<string, ReadmeBlock[]>;
+  /** Lab id -> its learning content (labs/_learning/<id>.yaml); a lab with no file yet has no entry. */
+  learning: Record<string, LabLearningDef>;
+  /** Lab id -> planned TopoKind -> count (shared/topology/planned/<id>.json, keys sorted); a lab with no planned graph has no entry. */
+  resources: Record<string, Record<string, number>>;
+}
+
+/**
+ * A lab's learning content (labs redesign spec §5), from labs/_learning/<id>.yaml, outside the lab
+ * folder so editing it never needs a version bump. snake_case as authored.
+ */
+export interface LabLearningDef {
+  /** One sentence, 30-140 characters. */
+  objective: string;
+  /** "What you will learn": exactly three, each 15-90 characters, starting with a verb. */
+  learn: [string, string, string];
+  /** Learning time in minutes: a multiple of 5 from 15 to min(240, max_h × 60). */
+  learning_min: number;
 }
 
 // ── Ids, names and the address pool (spec §3.1, §4) ──────────────────────

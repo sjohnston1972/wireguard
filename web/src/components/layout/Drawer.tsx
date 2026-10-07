@@ -20,8 +20,10 @@ export interface DrawerProps {
   /**
    * "auto" (default): a centred modal dialog on the desktop and tablet, the
    * bottom sheet on the phone (640 px and below). "bottom": always a sheet.
+   * "right": a full-height modal panel sliding in from the right (about 440 px,
+   * the labs catalogue's tablet details), still the bottom sheet on the phone.
    */
-  side?: "auto" | "bottom";
+  side?: "auto" | "bottom" | "right";
   /** The centred modal's width: "md" about 640 px (default), "lg" up to 1100 px. The phone sheet ignores it. */
   size?: "md" | "lg";
   /**
@@ -58,7 +60,7 @@ function ModalDrawer({ open, onOpenChange, title, subtitle, leading, footer, sid
   const returnFocus = useReturnFocus(open);
   const phone = useIsPhone();
   const sheet = side === "bottom" || phone;
-  const where = sheet ? "bottom" : "center";
+  const where = sheet ? "bottom" : side === "right" ? "right" : "center";
   const onCloseAutoFocus = (e: Event) => {
     onClose?.(e);
     if (!e.defaultPrevented) returnFocus.onCloseAutoFocus(e);
@@ -68,9 +70,9 @@ function ModalDrawer({ open, onOpenChange, title, subtitle, leading, footer, sid
       <Dialog.Portal>
         <Dialog.Overlay className="drawer__overlay" data-side={where} />
         <Dialog.Content
-          className={cx("drawer", !sheet && "drawer--modal", className)}
+          className={cx("drawer", where === "center" && "drawer--modal", where === "right" && "drawer--right", className)}
           data-side={where}
-          data-size={sheet ? undefined : size}
+          data-size={where === "center" ? size : undefined}
           aria-modal="true"
           aria-describedby={undefined}
           onCloseAutoFocus={onCloseAutoFocus}

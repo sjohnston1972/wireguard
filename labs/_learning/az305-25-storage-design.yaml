@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Design storage for two jobs, a tiered data lake and an immutable, geo-redundant records store.
+learn:
+  - Use time-based retention and a legal hold to make blobs unchangeable
+  - Manage directories and ACLs in a Data Lake Storage hierarchical namespace
+  - Tier data with lifecycle rules and read from an RA-GRS secondary endpoint
+learning_min: 65

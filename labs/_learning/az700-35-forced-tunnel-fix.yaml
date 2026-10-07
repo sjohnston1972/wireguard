@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Find out why a spoke's internet traffic dies on its way through a hub appliance, fix it and prove the fix.
+learn:
+  - Follow forced-tunnelled traffic with Next hop and effective routes
+  - Capture packets on the appliance with tcpdump to see where traffic stops
+  - Fix what you find and prove the spoke VM reaches the internet again
+learning_min: 55

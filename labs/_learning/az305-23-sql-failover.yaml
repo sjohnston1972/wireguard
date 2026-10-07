@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Fail an Azure SQL database over to another region and back, and watch a serverless database pause.
+learn:
+  - Write through a failover group listener and read from a geo-secondary
+  - Fail a failover group over by hand and check its replication lag
+  - Compare DTU and vCore tiers, and provisioned and serverless compute
+learning_min: 70

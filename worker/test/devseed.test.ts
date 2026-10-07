@@ -109,8 +109,29 @@ describe("the seed route's guard", () => {
 });
 
 describe("scenarios", () => {
-  it("lists exactly the nine the plans name (insights and labs: the running story plus their own data)", () => {
-    expect([...SCENARIOS].sort()).toEqual(["busy-month", "deploying", "destroyed", "empty", "failed", "insights", "labs", "running", "standby"].sort());
+  it("lists exactly the ten the plans name (insights, labs and labs-setup: the running story plus their own data)", () => {
+    expect([...SCENARIOS].sort()).toEqual(["busy-month", "deploying", "destroyed", "empty", "failed", "insights", "labs", "labs-setup", "running", "standby"].sort());
+  });
+
+  // Labs redesign spec §15: the setup banner's story.
+  it("labs-setup seeds the labs story with role, users and groups false, so 9 cards have setup blockers", async () => {
+    const { env } = devEnv();
+    await seed(env, "labs-setup");
+    const l = (await api(env, "GET", "/labs")).json as import("../../shared/api").LabsResponse;
+    expect(l.permissions).toMatchObject({ role: false, users: false, groups: false });
+    expect(l.permissions.checkedAt).not.toBeNull();
+    expect(l.permissions.message).toMatch(/\S/);
+    const setup = l.labs.filter((c) => c.blockers.some((b) => b.kind === "role" || b.kind === "graph"));
+    expect(setup.map((c) => c.number).sort((a, b) => a - b)).toEqual([1, 2, 3, 6, 20, 21, 22, 29, 37]);
+    // The rest of the labs story is there: lab 6 running, lab 5 deploying, lab 7's leftovers.
+    expect(l.labs.find((c) => c.id === "az104-06-blob-security")!.running?.state).toBe("running");
+    expect(l.labs.find((c) => c.id === "az104-05-storage")!.running?.state).toBe("deploying");
+    expect(l.orphans.map((o) => o.labId)).toEqual(["az104-07-files"]);
+    expect(l.labs.find((c) => c.id === "az104-07-files")!.blockers.map((b) => b.kind)).toEqual(["leftovers"]);
+    // The labs story itself has every permission in place.
+    await seed(env, "labs");
+    const ok = (await api(env, "GET", "/labs")).json as import("../../shared/api").LabsResponse;
+    expect(ok.labs.filter((c) => c.blockers.some((b) => b.kind === "role" || b.kind === "graph"))).toEqual([]);
   });
 
   it("every scenario wipes ui_prefs", async () => {
@@ -133,7 +154,7 @@ describe("scenarios", () => {
       const pol = await env.DB.prepare("SELECT live_version, draft_base, draft_default, apply_token FROM fw_policy WHERE id = 1").first();
       const names = (await env.DB.prepare("SELECT name FROM fw_draft_rules").all<{ name: string }>()).results.map((r) => r.name);
       expect(names, s).not.toContain("leftover");
-      if (s === "running" || s === "insights" || s === "labs") {
+      if (s === "running" || s === "insights" || s === "labs" || s === "labs-setup") {
         expect(pol, s).toEqual({ live_version: 1, draft_base: 1, draft_default: "deny", apply_token: null });
       } else {
         expect(pol, s).toEqual({ live_version: 1, draft_base: null, draft_default: null, apply_token: null });

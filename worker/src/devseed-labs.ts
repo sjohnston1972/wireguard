@@ -4,8 +4,11 @@
 // running gateway): lab 6 running and peered, lab 5 deploying at step 7 of
 // 16, eight ended sessions with notes and costs, one session that ended
 // dirty with its leftovers note, release tests for labs 4 to 7, Azure's
-// daily cost per lab group, and a permission check that passed. Every other
-// story wipes all of it (wipeLabs). Fixed values only, so a seed is
+// daily cost per lab group, and a permission check that passed. Scenario
+// "labs-setup" (labs redesign spec §15) tells the same story with the check
+// failed (role, users and groups false), so the 9 labs that need the
+// governance role or Graph show Setup required. Every other story wipes all
+// of it (wipeLabs). Fixed values only, so a seed is
 // repeatable; no real addresses beyond the lab pool, no real passwords.
 
 import type { Env } from "./env";
@@ -124,8 +127,21 @@ async function addRun(env: Env, r: { id: string; session: string; lab: string; a
     .run();
 }
 
-/** Seed the lab story as of `now`. The gateway's running story is already in place. */
-export async function seedLabs(env: Env, now: number): Promise<void> {
+/** The permission check of the labs-setup story: checked a day ago, nothing granted (as checkLabPermissions words it). */
+export const FAILED_PERMISSIONS = (now: number): LabPermissions => ({
+  checkedAt: iso(now - DAY),
+  role: false,
+  users: false,
+  groups: false,
+  message:
+    "Role: the labs governance role is not assigned to the service principal. Microsoft Graph refused to read users and groups: grant User.ReadWrite.All, User.DeleteRestore.All and Group.ReadWrite.All with admin consent.",
+});
+
+/**
+ * Seed the lab story as of `now`. The gateway's running story is already in place. `setup`: the
+ * labs-setup story, the same with the permission check failed.
+ */
+export async function seedLabs(env: Env, now: number, opts: { setup?: boolean } = {}): Promise<void> {
   let n = 0;
   const sid = (at: number, tail: string) => `ls-${stamp(at)}-${tail}`;
   const rid = (action: string, at: number, tail: string) => `lab-${action}-${stamp(at)}-${tail}`;
@@ -216,7 +232,7 @@ export async function seedLabs(env: Env, now: number): Promise<void> {
       .run();
   }
 
-  const permissions: LabPermissions = { checkedAt: iso(now - DAY), role: true, users: true, groups: true, message: null };
+  const permissions: LabPermissions = opts.setup ? FAILED_PERMISSIONS(now) : { checkedAt: iso(now - DAY), role: true, users: true, groups: true, message: null };
   await env.STATUS.put(LABS_KV.permissions, JSON.stringify(permissions));
 
   await seedTopologyDev(env);
