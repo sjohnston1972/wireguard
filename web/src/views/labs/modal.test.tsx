@@ -210,6 +210,14 @@ describe("the lab modal, not running", () => {
     expect(d.getAllByText("3 of 3 labs are running (Settings → Labs).").length).toBeGreaterThan(0);
   });
 
+  it("a leftovers blocker on the card (opened from the palette) disables Deploy with the reason", async () => {
+    const msg = "Blob security: SAS, access policies, private endpoint still has leftovers in Azure from an earlier session. Clean them up from the Labs tab first.";
+    open(detailIdle({ card: card({ runs: 2, unavailable: null, blockers: [{ kind: "leftovers", message: msg }] }), warnings: [] }));
+    const d = await dialog();
+    expect(d.getByRole("button", { name: "Deploy" })).toBeDisabled();
+    expect(d.getByText(msg)).toBeInTheDocument();
+  });
+
   it("the card's unavailable reason also disables Deploy", async () => {
     open(detailIdle({ card: card({ unavailable: "Needs the permissions check (Settings → Labs)." }) }));
     const d = await dialog();

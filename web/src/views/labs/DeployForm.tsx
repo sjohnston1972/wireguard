@@ -35,10 +35,14 @@ export function useDeployForm(d: LabDetail) {
   const deploy = useDeployLab();
   const latch = useRef(false);
   const [started, setStarted] = useState(false);
-  const orphans = useLabs().data?.orphans;
-  // "unavailable", or a budget warning with no override (the month is already over budget, so
-  // the budget guard would remove the lab at once): Deploy is off and the reason is shown.
-  const unavailable = d.warnings.find((w) => w.kind === "unavailable" || (w.kind === "budget" && !w.overridable))?.message ?? d.card.unavailable;
+  const listed = useLabs().data;
+  const orphans = listed?.orphans;
+  // The card's blockers, as the catalogue shows them (leftovers and a full budget too, which the
+  // card's `unavailable` leaves out); the catalogue's card when this one has none listed.
+  const blockers = Array.isArray(d.card.blockers) ? d.card.blockers : (listed?.labs.find((c) => c.id === d.card.id)?.blockers ?? []);
+  // "unavailable", a budget warning with no override (the month is already over budget, so the
+  // budget guard would remove the lab at once), or any card blocker: Deploy is off and the reason is shown.
+  const unavailable = d.warnings.find((w) => w.kind === "unavailable" || (w.kind === "budget" && !w.overridable))?.message ?? blockers[0]?.message ?? d.card.unavailable;
   const overrides = overridesFor(d.warnings);
   const anyway = Object.keys(overrides).length > 0;
   const busy = deploy.isPending || started;
