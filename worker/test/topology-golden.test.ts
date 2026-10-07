@@ -177,6 +177,35 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["afd-lab -> ci-uks : HTTP", "afd-lab -> ci-ukw : HTTP", "l27…-tm -> ci-uks : priority 1", "l27…-tm -> ci-ukw : priority 2"],
   },
+  // Lab 28 (AZ-305 batch 4, ruling 41): Front Door Standard + WAF to the web tier; the app tier and the database are private.
+  "az305-28-three-tier": {
+    nodes: [
+      "containerApp ca-app < rg-lab-az305-28-three-tier",
+      "containerApp ca-web < rg-lab-az305-28-three-tier",
+      "containerAppEnv cae-lab < snet-apps",
+      "frontDoor afd-lab < Global",
+      "lane Global",
+      "privateDnsZone privatelink.database.windows.net < rg-lab-az305-28-three-tier",
+      "privateEndpoint pe-l28…-sql < snet-pe",
+      "resourceGroup rg-lab-az305-28-three-tier",
+      "sqlDatabase appdb < rg-lab-az305-28-three-tier",
+      "sqlServer l28…-sql < rg-lab-az305-28-three-tier",
+      "subnet snet-apps < vnet-lab",
+      "subnet snet-pe < vnet-lab",
+      "vnet vnet-lab < rg-lab-az305-28-three-tier",
+      "wafPolicy waflab < Global",
+    ],
+    edges: [
+      "afd-lab -> ca-web : HTTPS",
+      "appdb ..> l28…-sql : server",
+      "ca-app ..> cae-lab : environment",
+      "ca-web ..> cae-lab : environment",
+      "pe-l28…-sql ..> privatelink.database.windows.net : DNS zone group",
+      "pe-l28…-sql -> l28…-sql : sqlServer",
+      "privatelink.database.windows.net ..> vnet-lab : link",
+      "waflab ..> afd-lab : WAF policy",
+    ],
+  },
   "az700-40-lb-advanced": {
     nodes: [
       "lane Global",

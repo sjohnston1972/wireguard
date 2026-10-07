@@ -1,0 +1,283 @@
+{
+ "schema": 1,
+ "labId": "az305-28-three-tier",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "lane/global",
+   "key": "lane/global",
+   "kind": "lane",
+   "label": "Global",
+   "props": {}
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_firewall_policy.lab",
+   "key": "microsoft.network/frontdoorwebapplicationfirewallpolicies/waflab",
+   "kind": "wafPolicy",
+   "label": "waflab",
+   "props": {
+    "mode": "Prevention",
+    "sku": "Standard_AzureFrontDoor"
+   },
+   "parent": "lane/global",
+   "armType": "Microsoft.Network/FrontDoorWebApplicationFirewallPolicies"
+  },
+  {
+   "id": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "key": "microsoft.cdn/profiles/afd-lab",
+   "kind": "frontDoor",
+   "label": "afd-lab",
+   "props": {
+    "sku": "Standard_AzureFrontDoor"
+   },
+   "parent": "lane/global",
+   "armType": "Microsoft.Cdn/profiles",
+   "folded": [
+    {
+     "id": "tf:azurerm_cdn_frontdoor_endpoint.lab",
+     "label": "l28…-afd",
+     "armType": "Microsoft.Cdn/profiles/afdEndpoints"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin.web",
+     "label": "origin-web",
+     "armType": "Microsoft.Cdn/profiles/originGroups/origins"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_origin_group.lab",
+     "label": "og-web",
+     "armType": "Microsoft.Cdn/profiles/originGroups"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_route.lab",
+     "label": "route-all",
+     "armType": "Microsoft.Cdn/profiles/afdEndpoints/routes"
+    },
+    {
+     "id": "tf:azurerm_cdn_frontdoor_security_policy.lab",
+     "label": "sp-afd",
+     "armType": "Microsoft.Cdn/profiles/securityPolicies"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_container_app.app",
+   "key": "microsoft.app/containerapps/ca-app",
+   "kind": "containerApp",
+   "label": "ca-app",
+   "props": {
+    "ingress": "internal",
+    "targetPort": 8080
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.App/containerApps",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_container_app.web",
+   "key": "microsoft.app/containerapps/ca-web",
+   "kind": "containerApp",
+   "label": "ca-web",
+   "props": {
+    "ingress": "external",
+    "targetPort": 8080
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.App/containerApps",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_container_app_environment.lab",
+   "key": "microsoft.app/managedenvironments/cae-lab",
+   "kind": "containerAppEnv",
+   "label": "cae-lab",
+   "props": {
+    "sku": "Consumption"
+   },
+   "parent": "tf:azurerm_subnet.apps",
+   "armType": "Microsoft.App/managedEnvironments",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_mssql_database.app",
+   "key": "microsoft.sql/servers/databases/{p}-sql/appdb",
+   "kind": "sqlDatabase",
+   "label": "appdb",
+   "props": {
+    "sku": "Basic"
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Sql/servers/databases",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_mssql_server.lab",
+   "key": "microsoft.sql/servers/{p}-sql",
+   "kind": "sqlServer",
+   "label": "l28…-sql",
+   "props": {
+    "publicAccess": false
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Sql/servers",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_private_dns_zone.sql",
+   "key": "microsoft.network/privatednszones/privatelink.database.windows.net",
+   "kind": "privateDnsZone",
+   "label": "privatelink.database.windows.net",
+   "props": {},
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/privateDnsZones",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:azurerm_private_dns_zone_virtual_network_link.lab",
+     "label": "link-vnet-lab",
+     "armType": "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    }
+   ]
+  },
+  {
+   "id": "tf:azurerm_private_endpoint.sql",
+   "key": "microsoft.network/privateendpoints/pe-{p}-sql",
+   "kind": "privateEndpoint",
+   "label": "pe-l28…-sql",
+   "props": {
+    "groupId": "sqlServer"
+   },
+   "parent": "tf:azurerm_subnet.endpoints",
+   "armType": "Microsoft.Network/privateEndpoints",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_resource_group.lab",
+   "key": "microsoft.resources/resourcegroups/rg-lab-az305-28-three-tier",
+   "kind": "resourceGroup",
+   "label": "rg-lab-az305-28-three-tier",
+   "props": {
+    "region": "uksouth",
+    "tags": [
+     "lab: az305-28-three-tier",
+     "project: wg-admin-labs",
+     "+1 tag"
+    ]
+   },
+   "armType": "Microsoft.Resources/resourceGroups",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.apps",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-apps",
+   "kind": "subnet",
+   "label": "snet-apps",
+   "props": {
+    "prefix": "10.71.192.0/24",
+    "chips": [
+     "delegation Microsoft.App/environments"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_subnet.endpoints",
+   "key": "microsoft.network/virtualnetworks/subnets/vnet-lab/snet-pe",
+   "kind": "subnet",
+   "label": "snet-pe",
+   "props": {
+    "prefix": "10.71.193.0/24",
+    "chips": [
+     "no default outbound"
+    ]
+   },
+   "parent": "tf:azurerm_virtual_network.lab",
+   "armType": "Microsoft.Network/virtualNetworks/subnets",
+   "scope": "lab"
+  },
+  {
+   "id": "tf:azurerm_virtual_network.lab",
+   "key": "microsoft.network/virtualnetworks/vnet-lab",
+   "kind": "vnet",
+   "label": "vnet-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ]
+   },
+   "parent": "tf:azurerm_resource_group.lab",
+   "armType": "Microsoft.Network/virtualNetworks",
+   "scope": "lab"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:azurerm_cdn_frontdoor_firewall_policy.lab>tf:azurerm_cdn_frontdoor_profile.lab:WAF policy",
+   "from": "tf:azurerm_cdn_frontdoor_firewall_policy.lab",
+   "to": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "kind": "dependency",
+   "label": "WAF policy",
+   "via": "tf:azurerm_cdn_frontdoor_security_policy.lab"
+  },
+  {
+   "id": "dependency:tf:azurerm_container_app.app>tf:azurerm_container_app_environment.lab:environment",
+   "from": "tf:azurerm_container_app.app",
+   "to": "tf:azurerm_container_app_environment.lab",
+   "kind": "dependency",
+   "label": "environment",
+   "via": "tf:azurerm_container_app.app"
+  },
+  {
+   "id": "dependency:tf:azurerm_container_app.web>tf:azurerm_container_app_environment.lab:environment",
+   "from": "tf:azurerm_container_app.web",
+   "to": "tf:azurerm_container_app_environment.lab",
+   "kind": "dependency",
+   "label": "environment",
+   "via": "tf:azurerm_container_app.web"
+  },
+  {
+   "id": "dependency:tf:azurerm_mssql_database.app>tf:azurerm_mssql_server.lab:server",
+   "from": "tf:azurerm_mssql_database.app",
+   "to": "tf:azurerm_mssql_server.lab",
+   "kind": "dependency",
+   "label": "server",
+   "via": "tf:azurerm_mssql_database.app"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_dns_zone.sql>tf:azurerm_virtual_network.lab:link",
+   "from": "tf:azurerm_private_dns_zone.sql",
+   "to": "tf:azurerm_virtual_network.lab",
+   "kind": "dependency",
+   "label": "link",
+   "via": "tf:azurerm_private_dns_zone_virtual_network_link.lab"
+  },
+  {
+   "id": "dependency:tf:azurerm_private_endpoint.sql>tf:azurerm_private_dns_zone.sql:DNS zone group",
+   "from": "tf:azurerm_private_endpoint.sql",
+   "to": "tf:azurerm_private_dns_zone.sql",
+   "kind": "dependency",
+   "label": "DNS zone group",
+   "via": "tf:azurerm_private_endpoint.sql"
+  },
+  {
+   "id": "traffic:tf:azurerm_cdn_frontdoor_profile.lab>tf:azurerm_container_app.web:HTTPS",
+   "from": "tf:azurerm_cdn_frontdoor_profile.lab",
+   "to": "tf:azurerm_container_app.web",
+   "kind": "traffic",
+   "label": "HTTPS",
+   "via": "tf:azurerm_cdn_frontdoor_origin.web"
+  },
+  {
+   "id": "traffic:tf:azurerm_private_endpoint.sql>tf:azurerm_mssql_server.lab:sqlServer",
+   "from": "tf:azurerm_private_endpoint.sql",
+   "to": "tf:azurerm_mssql_server.lab",
+   "kind": "traffic",
+   "label": "sqlServer",
+   "via": "tf:azurerm_private_endpoint.sql"
+  }
+ ]
+}
