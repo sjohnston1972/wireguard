@@ -274,6 +274,21 @@ describe("phone (390 px)", () => {
     await waitFor(() => expect(selectBtn(/^Storage accounts/)).toHaveFocus());
   });
 
+  it("phone: a hidden setup banner stays hidden after the detail view comes and goes", async () => {
+    const user = userEvent.setup();
+    setViewport("phone");
+    const data = labs({ labs: labs().labs.map((c) => (c.number === 1 ? { ...c, blockers: [{ kind: "role" as const, message: "Needs the role." }] } : c)) });
+    renderApp("/labs", { routes: routes({ "GET /api/v1/labs": data }) });
+    const banner = await screen.findByRole("region", { name: "Labs setup" });
+    await user.click(within(banner).getByRole("button", { name: "Hide" }));
+    expect(screen.queryByRole("region", { name: "Labs setup" })).toBeNull();
+    await user.click(selectBtn(/^Blob security/));
+    await screen.findByRole("region", { name: /^Blob security/ });
+    await user.click(screen.getByRole("button", { name: "Back to labs" }));
+    await waitFor(() => expect(grid()).toBeInTheDocument());
+    expect(screen.queryByRole("region", { name: "Labs setup" })).toBeNull();
+  });
+
   it("phone /labs/history is the Your labs page with the same header", async () => {
     setViewport("phone");
     renderApp("/labs/history", { routes: routes({ "GET /api/v1/labs/sessions": { sessions: [] } }) });

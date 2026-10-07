@@ -67,9 +67,15 @@ function Notice({ label, icon, text, fix }: { label: string; icon: React.ReactNo
   );
 }
 
-/** Leftovers, GitHub, budget and setup, in that order (spec §4 item 3). */
-export function LabsNotices({ data }: { data: LabsResponse }) {
-  const [hidden, setHidden] = useState(false);
+/**
+ * Leftovers, GitHub, budget and setup, in that order (spec §4 item 3). `setupHidden` / `onHideSetup`: the
+ * page keeps whether Hide was pressed, so it outlasts this block (the phone's detail view unmounts it);
+ * without them it keeps its own.
+ */
+export function LabsNotices({ data, setupHidden, onHideSetup }: { data: LabsResponse; setupHidden?: boolean; onHideSetup?: () => void }) {
+  const [own, setOwn] = useState(false);
+  const hidden = setupHidden ?? own;
+  const setHidden = () => (onHideSetup ? onHideSetup() : setOwn(true));
   const github = data.labs.some((c) => c.blockers?.some((b) => b.kind === "github"));
   const budget = data.labs.flatMap((c) => c.blockers ?? []).find((b) => b.kind === "budget");
   return (
@@ -88,7 +94,7 @@ export function LabsNotices({ data }: { data: LabsResponse }) {
         />
       )}
       {budget && <Notice label="Budget reached" icon={<CircleAlert size={18} aria-hidden className="labs-banner__icon labs-banner__icon--red" />} text={budget.message} fix={blockerFix("budget")} />}
-      {!hidden && <LabsSetupBanner data={data} onHide={() => setHidden(true)} />}
+      {!hidden && <LabsSetupBanner data={data} onHide={setHidden} />}
     </>
   );
 }

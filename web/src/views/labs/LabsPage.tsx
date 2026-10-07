@@ -11,7 +11,7 @@
 // lab's dialog (readme, diagram, cost and the Deploy confirmation), drawn
 // over this page. Nothing on this page deploys.
 
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { EmptyState, ErrorState, Skeleton, StaleBanner, cx, useToast } from "@/components";
 import { useLabs } from "@/api/queries";
@@ -61,6 +61,9 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
   const navigate = useNavigate();
   const replace = useReplaceSearch();
   const { toast } = useToast();
+  // The setup banner's Hide, kept here for the page visit: the phone's detail view unmounts the notices.
+  const [setupHidden, setSetupHidden] = useState(false);
+  const hideSetup = useCallback(() => setSetupHidden(true), []);
 
   const params = new URLSearchParams(location.search);
   const filters = readFilters(params);
@@ -167,7 +170,7 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
     <section className="labs labs-page">
       <LabsHeader />
       <LabsSummaryStrip data={data} exam={filters.exam} />
-      {data && <LabsNotices data={data} />}
+      {data && <LabsNotices data={data} setupHidden={setupHidden} onHideSetup={hideSetup} />}
       {children}
       {data && <RunningStrip sessions={data.running} />}
       {stale && <StaleBanner at={q.dataUpdatedAt || null} message={`Couldn't refresh the labs; showing them as of ${fmtClock(new Date(q.dataUpdatedAt).toISOString())}.`} onRetry={() => void q.refetch()} />}
