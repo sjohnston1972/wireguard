@@ -66,7 +66,14 @@ const byLabel = (g: TopologyGraph, label: string): TopoNode => {
 describe("live three-tier (lab 28): the Container Apps infrastructure group", () => {
   const planned = plannedOf(LAB);
 
-  // Whether or not Azure sets managedBy on the group, the name alone marks it.
+  it("the environment names its infrastructure group, planned and live (the chip that marks the group as Azure's)", () => {
+    const chip = `infra group ${INFRA}`;
+    expect(byLabel(planned, "cae-lab").props.chips).toEqual([chip]);
+    const live = liveGraph([...rowsFromPlanned(planned), ...infraRows(null)], liveCtxFor(LAB));
+    expect(byLabel(live, "cae-lab").props.chips).toEqual([chip]);
+  });
+
+  // Whether or not Azure sets managedBy on the group, the environment's infrastructureResourceGroup names it.
   for (const managedBy of [null, envId]) {
     it(`rg-lab-<id>-infra and its load balancer and public IPs are made by Azure, never added by hand (group managedBy ${managedBy ? "set" : "unset"})`, () => {
       const live = liveGraph([...rowsFromPlanned(planned), ...infraRows(managedBy)], liveCtxFor(LAB));

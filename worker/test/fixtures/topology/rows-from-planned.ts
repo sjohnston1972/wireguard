@@ -498,7 +498,9 @@ function compute(k: TemplateKit): void {
     const r = rowOf(n);
     if (!r) continue;
     const sid = subnetOf(n);
-    Object.assign(P(r), { workloadProfiles: [{ name: String(n.props.sku ?? "Consumption"), workloadProfileType: n.props.sku ?? "Consumption" }], ...(sid ? { vnetConfiguration: { infrastructureSubnetId: sid } } : {}) });
+    const chips = Array.isArray(n.props.chips) ? (n.props.chips as string[]) : [];
+    const infra = chips.find((c) => c.startsWith("infra group "))?.slice("infra group ".length);
+    Object.assign(P(r), { workloadProfiles: [{ name: String(n.props.sku ?? "Consumption"), workloadProfileType: n.props.sku ?? "Consumption" }], ...(sid ? { vnetConfiguration: { infrastructureSubnetId: sid } } : {}), ...(infra ? { infrastructureResourceGroup: infra } : {}) });
   }
   for (const n of g.nodes.filter((x) => x.kind === "containerApp" && x.scope !== "outside")) {
     const r = rowOf(n);

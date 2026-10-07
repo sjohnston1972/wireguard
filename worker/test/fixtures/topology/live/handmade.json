@@ -1,5 +1,5 @@
 {
- "_about": "T3.7 hand-made and Azure-made: per lab family, a resource a learner might add by hand of a type the diagram knows and one of a type it does not (an unknown type that names a subnet: Redis Enterprise's subnetId, an App Service's virtualNetworkSubnetId), grafted onto that family lab's own rows; and one row per AZURE_MADE pattern. Shapes from Learn's REST references (networkSecurityGroups, publicIPAddresses, localNetworkGateways, storageAccounts, disks, actionGroups, redisEnterprise, Web/sites, expressRouteCircuits, Search searchServices, availabilitySets, Automation automationAccounts). Fake subscription, TEST-NET addresses.",
+ "_about": "T3.7 hand-made and Azure-made: per lab family, a resource a learner might add by hand of a type the diagram knows and one of a type it does not (an unknown type that names a subnet: Redis Enterprise's subnetId, an App Service's virtualNetworkSubnetId), grafted onto that family lab's own rows; and one row per AZURE_MADE pattern. Shapes from Learn's REST references (networkSecurityGroups, publicIPAddresses, localNetworkGateways, storageAccounts, disks, actionGroups, redisEnterprise, Web/sites, expressRouteCircuits, Search searchServices, availabilitySets, Automation automationAccounts). Fake subscription, TEST-NET addresses. A group is Azure's only when a row in the same graph says so (a cluster's nodeResourceGroup, an environment's infrastructureResourceGroup, or the group's own managedBy): azureGroups holds the group rows that name the groups the azureMade rows sit in.",
  "families": {
   "network": {
    "lab": "az104-13-vnets",
@@ -338,12 +338,13 @@
    }
   },
   {
-   "pattern": "a group Azure made for a lab resource (rg-lab-<id>-infra and the like)",
+   "pattern": "a group Azure made for a lab resource (named by a cluster's nodeResourceGroup or an environment's infrastructureResourceGroup, or managedBy set)",
    "row": {
     "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link-infra",
     "name": "rg-lab-az700-43-private-link-infra",
     "type": "microsoft.resources/resourcegroups",
-    "resourceGroup": "rg-lab-az700-43-private-link-infra"
+    "resourceGroup": "rg-lab-az700-43-private-link-infra",
+    "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.App/managedEnvironments/cae-gone"
    }
   },
   {
@@ -435,6 +436,15 @@
      "provisioningState": "Succeeded"
     }
    }
+  }
+ ],
+ "azureGroups": [
+  {
+   "id": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link-nodes",
+   "name": "rg-lab-az700-43-private-link-nodes",
+   "type": "microsoft.resources/subscriptions/resourcegroups",
+   "resourceGroup": "rg-lab-az700-43-private-link-nodes",
+   "managedBy": "/subscriptions/00000000-0000-4000-8000-000000000000/resourceGroups/rg-lab-az700-43-private-link/providers/Microsoft.ContainerService/managedClusters/aks-gone"
   }
  ]
 }

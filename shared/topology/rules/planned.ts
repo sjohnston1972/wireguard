@@ -455,7 +455,11 @@ export const TF_RULES: Record<string, TfRule> = {
   },
   azurerm_container_app_environment: {
     arm: "Microsoft.App/managedEnvironments",
-    props: (i) => ({ sku: str(first(i.after.workload_profile).workload_profile_type) ?? "Consumption" }),
+    // The group Azure makes for an environment in a subnet, named by the lab (lab 28: rg-lab-<id>-infra), as a chip.
+    props: (i) => {
+      const infra = str(i.after.infrastructure_resource_group_name);
+      return { sku: str(first(i.after.workload_profile).workload_profile_type) ?? "Consumption", chips: infra ? [`infra group ${infra}`] : undefined };
+    },
     edges: (i, h) => h.refs(i, ["log_analytics_workspace_id"]).map((w) => ({ from: i, to: w, kind: "dependency" as const, label: "logs" })),
   },
   azurerm_container_app: {

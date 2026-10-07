@@ -94,7 +94,10 @@
    "kind": "containerAppEnv",
    "label": "cae-lab",
    "props": {
-    "sku": "Consumption"
+    "sku": "Consumption",
+    "chips": [
+     "infra group rg-lab-az305-28-three-tier-infra"
+    ]
    },
    "parent": "tf:azurerm_subnet.apps",
    "armType": "Microsoft.App/managedEnvironments",

@@ -106,7 +106,7 @@ test("public IPs become TEST-NET addresses, consistently; private, platform and 
 test("the capture runs the one query topologyQuery writes, for the subscription named", async () => {
   const body = await captureRequest("sub-x", "az104-14-peering-udr");
   assert.deepEqual(body.subscriptions, ["sub-x"]);
-  assert.equal(body.query, "resources | where resourceGroup =~ 'rg-lab-az104-14-peering-udr' or resourceGroup startswith 'rg-lab-az104-14-peering-udr-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ 'rg-lab-az104-14-peering-udr' or name startswith 'rg-lab-az104-14-peering-udr-') | project id, name, type, location, resourceGroup = name, tags) | order by id asc");
+  assert.equal(body.query, "resources | where resourceGroup =~ 'rg-lab-az104-14-peering-udr' or resourceGroup startswith 'rg-lab-az104-14-peering-udr-' | project id, name, type, kind, location, resourceGroup, sku, tags, zones, identity, managedBy, properties | union (resourcecontainers | where type =~ 'microsoft.resources/subscriptions/resourcegroups' and (name =~ 'rg-lab-az104-14-peering-udr' or name startswith 'rg-lab-az104-14-peering-udr-') | project id, name, type, location, resourceGroup = name, tags, managedBy) | order by id asc");
   await assert.rejects(() => captureRequest("sub-x", "rg-wg-ondemand"));
 });
 

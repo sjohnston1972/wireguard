@@ -89,7 +89,7 @@ describe("live network core (T3.1)", () => {
   it("AVNM's ANM_ peerings are made by Azure and say so on their edge", () => {
     const vnet = { id: "/subscriptions/s/resourceGroups/rg-lab-x/providers/Microsoft.Network/virtualNetworks/vnet-a", name: "vnet-a", type: "microsoft.network/virtualnetworks", resourceGroup: "rg-lab-x", properties: { virtualNetworkPeerings: [{ id: "/subscriptions/s/resourceGroups/rg-lab-x/providers/Microsoft.Network/virtualNetworks/vnet-a/virtualNetworkPeerings/ANM_A1B2C3_vnet-hub", name: "ANM_A1B2C3_vnet-hub", properties: { peeringState: "Connected", remoteVirtualNetwork: { id: "/subscriptions/s/resourceGroups/rg-lab-x/providers/Microsoft.Network/virtualNetworks/vnet-hub" } } }] } } as ArgRow;
     expect(peeringEdges(vnet, () => false)[0]?.label).toBe("peering (AVNM)");
-    expect(AZURE_MADE.some((m) => m.test({ ...vnet, id: `${vnet.id}/virtualNetworkPeerings/ANM_A1B2C3_vnet-hub`, name: "ANM_A1B2C3_vnet-hub", type: "microsoft.network/virtualnetworks/virtualnetworkpeerings" }))).toBe(true);
+    expect(AZURE_MADE.some((m) => m.test({ ...vnet, id: `${vnet.id}/virtualNetworkPeerings/ANM_A1B2C3_vnet-hub`, name: "ANM_A1B2C3_vnet-hub", type: "microsoft.network/virtualnetworks/virtualnetworkpeerings" }, new Set()))).toBe(true);
   });
 
   it("the deny check passes and no type here is drawn plainly", () => {

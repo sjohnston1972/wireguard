@@ -107,6 +107,18 @@ describe("live AKS (lab 29)", () => {
     expect(denyProblems(live)).toEqual([]);
   });
 
+  it("the node group is Azure's because the cluster's nodeResourceGroup names it, with or without managedBy on its row", () => {
+    const rows = nodeGroupRows.map((r) => (r.type === "microsoft.resources/subscriptions/resourcegroups" ? { ...r, managedBy: null } : r));
+    const g = liveGraph([...rowsFromPlanned(planned), ...rows], liveCtxFor(LAB));
+    const group = byLabel(g, NODES);
+    expect(group.madeBy).toBe("azure");
+    for (const n of g.nodes.filter((x) => x.parent === group.id)) expect(n.madeBy, n.label).toBe("azure");
+    // Without the cluster naming it (a cluster row with no nodeResourceGroup) and no managedBy, it is the learner's.
+    const unnamed = rowsFromPlanned(planned).map((r) => (r.type === "microsoft.containerservice/managedclusters" ? { ...r, properties: { ...r.properties, nodeResourceGroup: null } } : r));
+    const g2 = liveGraph([...unnamed, ...rows], liveCtxFor(LAB));
+    expect(byLabel(g2, NODES).madeBy).toBeUndefined();
+  });
+
   it("round trip: planned → rows → live has no added and no missing node", () => {
     const r = roundTrip(LAB);
     expect({ added: r.added, missing: r.missing, deny: r.deny }).toEqual({ added: [], missing: [], deny: [] });

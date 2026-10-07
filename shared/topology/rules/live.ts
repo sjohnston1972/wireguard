@@ -149,17 +149,39 @@ export function healthOf(row: ArgRow): TopoHealth {
   return PROVISIONING[ps.toLowerCase()] ?? { tone: "unknown", word: ps };
 }
 
+const isGroupType = (t: string) => t === "microsoft.resources/resourcegroups" || t === "microsoft.resources/subscriptions/resourcegroups";
+
+/**
+ * The groups Azure made for a lab resource (lower-case names), as rows in the same graph name them: an AKS cluster's
+ * nodeResourceGroup, a Container Apps environment's infrastructureResourceGroup, or a group whose own row has
+ * managedBy set. Never by name alone: a learner's hand-made rg-lab-<id>-managed is theirs.
+ */
+export function azureMadeGroups(rows: readonly ArgRow[]): Set<string> {
+  const out = new Set<string>();
+  for (const r of rows) {
+    const t = lower(r.type);
+    const named = t === "microsoft.containerservice/managedclusters" ? str(props(r).nodeResourceGroup) : t === "microsoft.app/managedenvironments" ? str(props(r).infrastructureResourceGroup) : undefined;
+    if (named) out.add(lower(named));
+    if (isGroupType(t) && str(r.managedBy)) out.add(lower(r.name));
+  }
+  return out;
+}
+
 /**
  * What Azure makes by itself (ruling 13): never "added by hand". Each entry
- * has a test (T3.7 adds one per pattern as families land).
+ * has a test (T3.7 adds one per pattern as families land). `made` is
+ * azureMadeGroups over the graph's rows.
  */
-export const AZURE_MADE: { test(row: ArgRow): boolean; why: string }[] = [
+export const AZURE_MADE: { test(row: ArgRow, made: ReadonlySet<string>): boolean; why: string }[] = [
   { why: "managed by another resource (managedBy set)", test: (r) => !!str(r.managedBy) },
   { why: "a VM's OS disk, named by Azure", test: (r) => lower(r.type) === "microsoft.compute/disks" && /_(osdisk|disk1)_/i.test(r.name) },
   { why: "a private endpoint's network interface", test: (r) => lower(r.type) === "microsoft.network/networkinterfaces" && (!!idOf(props(r).privateEndpoint) || /\.nic\.[0-9a-f-]{36}$/i.test(r.name)) },
-  { why: "a group Azure made for a lab resource (rg-lab-<id>-infra and the like)", test: (r) => lower(r.type) === "microsoft.resources/resourcegroups" && /-(infra|managed|nodes)$/i.test(r.name) },
+  {
+    why: "a group Azure made for a lab resource (named by a cluster's nodeResourceGroup or an environment's infrastructureResourceGroup, or managedBy set)",
+    test: (r, made) => isGroupType(lower(r.type)) && made.has(lower(r.name)),
+  },
   // An AKS node group (rg-lab-<id>-nodes) or a Container Apps infrastructure group holds only what Azure made there.
-  { why: "anything in a group Azure made for a lab resource (an AKS node group, a Container Apps infrastructure group)", test: (r) => lower(r.type) !== "microsoft.resources/resourcegroups" && /^rg-lab-.+-(infra|managed|nodes)$/i.test(r.resourceGroup ?? "") },
+  { why: "anything in a group Azure made for a lab resource (an AKS node group, a Container Apps infrastructure group)", test: (r, made) => !isGroupType(lower(r.type)) && made.has(lower(r.resourceGroup)) },
   { why: "traffic analytics' data collection rule or endpoint", test: (r) => /^microsoft\.insights\/datacollection(rules|endpoints)$/.test(lower(r.type)) && /^nwta/i.test(r.name) },
   { why: "a network watcher Azure made for the region", test: (r) => lower(r.type) === "microsoft.network/networkwatchers" && /^networkwatcher_/i.test(r.name) },
   { why: "a VNet peering Azure Virtual Network Manager made (ANM_…)", test: (r) => /\/virtualnetworkpeerings\/anm_[^/]*$/i.test(r.id) },
@@ -616,7 +638,11 @@ export const ARM_RULES: Record<string, ArmRule> = {
     place: (r) => idOf(arr(props(r).subnetIds)[0]) ?? null,
   },
   "microsoft.app/managedenvironments": {
-    props: (r) => ({ sku: str(arr(props(r).workloadProfiles)[0]?.workloadProfileType) ?? "Consumption" }),
+    // The group Azure makes for it (in a subnet) as a chip, as the planned card has it: azureMadeGroups reads the same.
+    props: (r) => {
+      const infra = str(props(r).infrastructureResourceGroup);
+      return { sku: str(arr(props(r).workloadProfiles)[0]?.workloadProfileType) ?? "Consumption", chips: infra ? [`infra group ${infra}`] : undefined };
+    },
     place: (r) => str(obj(props(r).vnetConfiguration).infrastructureSubnetId) ?? null,
     // Its logs go to the workspace whose customer id it names.
     edges: (r, h) => {

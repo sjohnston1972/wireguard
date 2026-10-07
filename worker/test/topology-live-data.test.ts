@@ -69,7 +69,7 @@ describe("live private access and data (T3.4)", () => {
   });
 
   it("the master database is made by Azure", () => {
-    expect(AZURE_MADE.some((m) => m.test(rows.find((r) => r.name === "master")!))).toBe(true);
+    expect(AZURE_MADE.some((m) => m.test(rows.find((r) => r.name === "master")!, new Set()))).toBe(true);
   });
 
   it("the deny check passes: no object ids, permissions or endpoints leak; nothing is drawn plainly", () => {

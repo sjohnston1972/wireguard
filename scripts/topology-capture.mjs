@@ -201,6 +201,8 @@ export const CAPTURE_KEEP = [
   "networkProfile.networkPlugin",
   "networkProfile.networkPluginMode",
   "nodeResourceGroup",
+  // A Container Apps environment's infrastructure group (lab 28): with the node group, what makes a group Azure's.
+  "infrastructureResourceGroup",
   // A job's trigger and the queues its KEDA rules name (never the rules' auth or the secrets); an environment's
   // workspace (by customer id) and the workspace's; a system topic's source (lab 30)
   "configuration.triggerType",
