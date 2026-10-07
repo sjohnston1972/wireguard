@@ -3,6 +3,8 @@ import type { LabDetail } from "@shared/api";
 import { Button, Drawer } from "@/components";
 import { useLab } from "@/api/queries";
 import { CostTable, DeployFields, DeployFooter, useDeployForm } from "./DeployForm";
+import { focusCard } from "./LabLaunchAction";
+import { useLabsLayout } from "./layout";
 import { LEVEL_WORD, TYPE_WORD, examsWord, stateWord } from "./model";
 import { LabReadmeTabs, RunningFooter, RunningLab } from "./RunningLab";
 import { Word } from "./RunningStrip";
@@ -11,10 +13,10 @@ import { Word } from "./RunningStrip";
 export const subtitle = (d: LabDetail) => `Lab ${d.card.number} · ${examsWord(d.card)} · ${LEVEL_WORD[d.card.level]} · ${TYPE_WORD[d.card.type]} · v${d.card.version}`;
 
 /** Not running: the readme on the left; cost, warnings and the Deploy form on the right. */
-function IdleLab({ d, onClose }: { d: LabDetail; onClose: () => void }) {
+function IdleLab({ d, onClose, onCloseAutoFocus }: { d: LabDetail; onClose: () => void; onCloseAutoFocus: (e: Event) => void }) {
   const f = useDeployForm(d);
   return (
-    <Drawer open onOpenChange={(o) => !o && onClose()} side="auto" size="lg" title={d.card.title} subtitle={subtitle(d)} className="labs-modal" footer={<DeployFooter f={f} />}>
+    <Drawer open onOpenChange={(o) => !o && onClose()} side="auto" size="lg" title={d.card.title} subtitle={subtitle(d)} className="labs-modal" footer={<DeployFooter f={f} />} onCloseAutoFocus={onCloseAutoFocus}>
       <div className="labs-modal__cols">
         <LabReadmeTabs d={d} />
         <div className="labs-modal__side">
@@ -63,6 +65,12 @@ export function LabModal({ id, closeTo = "/labs" }: { id: string; closeTo?: stri
   const navigate = useNavigate();
   const { search } = useLocation();
   const close = () => navigate({ pathname: closeTo, search });
+  const layout = useLabsLayout();
+  // Wide: focus goes back to what opened the dialog (the details' action). Tablet and phone: the
+  // drawer or view that opened it has gone, so focus the lab's card (labs redesign spec §10).
+  const focusBack = (e: Event) => {
+    if (layout !== "wide" && focusCard(id)) e.preventDefault();
+  };
   const d = q.data;
   // The modal opens once the lab has answered, so there is never an empty
   // dialog over the page; a lab that cannot be opened (an old link) is a
@@ -76,10 +84,21 @@ export function LabModal({ id, closeTo = "/labs" }: { id: string; closeTo?: stri
       );
     return <CouldNotOpen id={id} error={q.error} onRetry={() => void q.refetch()} onDismiss={close} />;
   }
-  if (!d.session) return <IdleLab key={d.card.id} d={d} onClose={close} />;
+  if (!d.session) return <IdleLab key={d.card.id} d={d} onClose={close} onCloseAutoFocus={focusBack} />;
   const st = stateWord(d.session);
   return (
-    <Drawer open onOpenChange={(o) => !o && close()} side="auto" size="lg" title={d.card.title} subtitle={subtitle(d)} leading={<Word {...st} className="labs-modal__state" />} className="labs-modal" footer={<RunningFooter d={d} />}>
+    <Drawer
+      open
+      onOpenChange={(o) => !o && close()}
+      side="auto"
+      size="lg"
+      title={d.card.title}
+      subtitle={subtitle(d)}
+      leading={<Word {...st} className="labs-modal__state" />}
+      className="labs-modal"
+      footer={<RunningFooter d={d} />}
+      onCloseAutoFocus={focusBack}
+    >
       <RunningLab d={d} />
     </Drawer>
   );

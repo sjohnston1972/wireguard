@@ -1,11 +1,14 @@
 // Plan L3.3: the lab modal while the lab is not running.
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLocation } from "react-router-dom";
 import type { LabDetail } from "@shared/api";
-import { renderApp } from "@/test/render";
+import { renderApp, renderWithProviders } from "@/test/render";
 import { expectCentredModal } from "@/test/dialogs";
-import { card, detailIdle, labs, session } from "./testData";
+import { setViewport } from "@/test/viewport";
+import { LabModal } from "./LabModal";
+import { card, detailIdle, detailRunning, labs, session } from "./testData";
 import { PLANNED_URL, layoutServer, nodeOn, plannedGraph } from "./topology/places.fixtures";
 
 // The diagram's lazy chunk, counted as it loads (lab topology plan T2.3).
@@ -328,5 +331,122 @@ describe("the Diagram tab, lab not running", () => {
     fail = false;
     await user.click(within(alert).getByRole("button", { name: "Try again" }));
     expect(await d.findByRole("region", { name: "Lab diagram" })).toBeInTheDocument();
+  });
+});
+
+// ── Labs redesign plan C4: the launch flow in the dialog (spec §13) ─────
+
+describe("the launch flow", () => {
+  const busy = (message: string, status = 409, code = "unavailable") => ({ status, json: { error: { code, message } } });
+
+  it("two synchronous Deploy clicks send one POST", async () => {
+    const { fetchMock } = open(detailIdle());
+    const d = await dialog();
+    const deploy = d.getByRole("button", { name: "Deploy" });
+    fireEvent.click(deploy);
+    fireEvent.click(deploy);
+    await waitFor(() => expect(fetchMock!.callsTo("POST", `${PATH}/deploy`)).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchMock!.callsTo("POST", `${PATH}/deploy`)).toHaveLength(1);
+  });
+
+  it("after success the button stays disabled with Starting the deploy… until the session appears", async () => {
+    let up = false;
+    const { fetchMock, client } = open(detailIdle(), { [`GET ${PATH}`]: () => (up ? detailRunning() : detailIdle()) });
+    const d = await dialog();
+    await userEvent.setup().click(d.getByRole("button", { name: "Deploy" }));
+    await waitFor(() => expect(fetchMock!.callsTo("POST", `${PATH}/deploy`)).toHaveLength(1));
+    expect(await d.findByText("Starting the deploy…")).toBeInTheDocument();
+    // The refetch after success still has no session: Deploy stays off.
+    await waitFor(() => expect(fetchMock!.calls.filter((c) => c.method === "GET" && c.url === PATH).length).toBeGreaterThan(1));
+    expect(d.getByRole("button", { name: "Deploy" })).toBeDisabled();
+    fireEvent.click(d.getByRole("button", { name: "Deploy" }));
+    expect(fetchMock!.callsTo("POST", `${PATH}/deploy`)).toHaveLength(1);
+    // The session appears: the dialog shows its progress.
+    up = true;
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["labs"] });
+    });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Deploy" })).toBeNull());
+    expect(screen.getByRole("dialog", { name: /Blob security/ })).toBeInTheDocument();
+  });
+
+  it("a 409 shows an inline alert with the server sentence and the fix link", async () => {
+    const message = "3 labs are already running (the limit in Settings → Labs).";
+    let refused = false;
+    const { fetchMock } = open(detailIdle(), {
+      [`GET ${PATH}`]: () => (refused ? detailIdle({ card: card({ runs: 2, blockers: [{ kind: "max_running", message }], unavailable: message }) }) : detailIdle()),
+      [`POST ${PATH}/deploy`]: () => {
+        refused = true;
+        return busy(message);
+      },
+    });
+    const d = await dialog();
+    await userEvent.setup().click(d.getByRole("button", { name: "Deploy" }));
+    await waitFor(() => expect(fetchMock!.callsTo("POST", `${PATH}/deploy`)).toHaveLength(1));
+    const alert = await d.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(await within(alert).findByRole("link", { name: "Change the limit" })).toHaveAttribute("href", "/settings/labs");
+    // The refreshed card says why: Deploy is off.
+    await waitFor(() => expect(d.getByRole("button", { name: "Deploy" })).toBeDisabled());
+  });
+
+  it("a 409 for a lock held by another run says so with no fix link, and Deploy can be tried again", async () => {
+    const message = "Another run of Blob security is in progress (lab-deploy-1). Wait for it to finish.";
+    const { fetchMock } = open(detailIdle(), { [`POST ${PATH}/deploy`]: busy(message, 409, "conflict") });
+    const d = await dialog();
+    const user = userEvent.setup();
+    await user.click(d.getByRole("button", { name: "Deploy" }));
+    const alert = await d.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(within(alert).queryByRole("link")).toBeNull();
+    await waitFor(() => expect(d.getByRole("button", { name: "Deploy" })).toBeEnabled());
+    await user.click(d.getByRole("button", { name: "Deploy" }));
+    await waitFor(() => expect(fetchMock!.callsTo("POST", `${PATH}/deploy`)).toHaveLength(2));
+  });
+
+  it("a 422 confirm_required shows the warnings with Deploy anyway", async () => {
+    const warning = { kind: "budget" as const, message: "This session would take the month to £31.20 of £30.00.", overridable: true };
+    let asked = false;
+    const { fetchMock } = open(detailIdle(), {
+      [`GET ${PATH}`]: () => (asked ? detailIdle({ warnings: [warning] }) : detailIdle()),
+      [`POST ${PATH}/deploy`]: ({ body }: { body: Record<string, unknown> }) => {
+        if (body.overBudgetOk) return { ok: true, message: "Deploying." };
+        asked = true;
+        return busy(`${warning.message} Choose "Deploy anyway" to go ahead.`, 422, "confirm_required");
+      },
+    });
+    const d = await dialog();
+    const user = userEvent.setup();
+    await user.click(d.getByRole("button", { name: "Deploy" }));
+    expect(await d.findByRole("alert")).toHaveTextContent('Choose "Deploy anyway" to go ahead.');
+    const anyway = await d.findByRole("button", { name: "Deploy anyway" });
+    expect(within(d.getByRole("list", { name: "Warnings" })).getByText(warning.message)).toBeInTheDocument();
+    await user.click(anyway);
+    await waitFor(() => expect(fetchMock!.callsTo("POST", `${PATH}/deploy`)[1]?.body).toMatchObject({ overBudgetOk: true }));
+  });
+
+  it.each(["tablet", "phone"] as const)("on the %s closing the dialog focuses the lab's card", async (size) => {
+    setViewport(size);
+    const user = userEvent.setup();
+    function AtLab() {
+      const { pathname } = useLocation();
+      return pathname.startsWith("/labs/") ? <LabModal id={ID} /> : null;
+    }
+    renderWithProviders(
+      <>
+        <article data-lab-card={ID}>
+          <h3>
+            <button type="button">Blob security</button>
+          </h3>
+        </article>
+        <AtLab />
+      </>,
+      { url: `/labs/${ID}`, routes: { "GET /api/v1/labs": labs(), [`GET ${PATH}`]: detailIdle() } },
+    );
+    await screen.findByRole("dialog", { name: /Blob security/ });
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: "Blob security" })).toHaveFocus();
   });
 });

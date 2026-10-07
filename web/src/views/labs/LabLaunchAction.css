@@ -1,0 +1,24 @@
+/* The details' launch area (labs redesign spec §8.5 item 2): one full-width
+   primary action, why the lab can't start (each with its fix), then Lab guide
+   and Diagram. Tokens only. */
+
+.lab-launch { display: flex; flex-direction: column; gap: 10px; }
+.lab-launch__primary { width: 100%; height: 40px; font-size: 14px; font-weight: 600; text-decoration: none; }
+a.lab-launch__primary:focus-visible,
+.lab-launch__more a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.lab-launch__detail { font-size: 12.5px; color: var(--text-secondary); }
+
+.lab-launch__reasons { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lab-launch__reason {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 9px 12px; border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--amber) 10%, var(--bg-panel));
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+}
+.lab-launch__reason p { font-size: 12.5px; line-height: 1.45; color: var(--text-primary); }
+.lab-launch__fix { font-size: 12.5px; font-weight: 600; color: var(--blue-bright); text-decoration: underline; text-underline-offset: 2px; }
+.lab-launch__fix:hover { text-decoration-thickness: 2px; }
+.lab-launch__fix:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 3px; }
+
+.lab-launch__more { display: flex; gap: 8px; }
+.lab-launch__more .btn { flex: 1 1 0; text-decoration: none; }

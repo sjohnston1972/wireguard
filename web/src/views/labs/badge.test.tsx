@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { render, renderHook, screen } from "@testing-library/react";
 import type { LabsResponse } from "@shared/api";
+import { renderWithProviders } from "@/test/render";
 import { LabStatusBadge } from "./LabStatusBadge";
 import { labView, labViews, useLabViews } from "./contract";
 import { LabDetailsDrawer, LabDetailsPanel, LabDetailsView } from "./LabDetailsPanel";
@@ -63,19 +64,19 @@ describe("labView and useLabViews", () => {
   });
 });
 
-describe("the details stub (C fills it in)", () => {
+describe("the details containers (C filled in E's stub; they need the router and the query client)", () => {
   const data = labs();
   const view = labView(data.labs[1], true);
 
   it("the panel, the drawer and the phone view each show the lab's title and badge", () => {
-    const { unmount } = render(<LabDetailsPanel view={view} data={data} layout="wide" onSelect={() => {}} />);
+    const { unmount } = renderWithProviders(<LabDetailsPanel view={view} data={data} layout="wide" onSelect={() => {}} />, { url: "/labs" });
     expect(screen.getByRole("heading", { level: 2, name: view.card.title })).toBeInTheDocument();
     expect(screen.getByRole("complementary")).toHaveTextContent(view.badge.label);
     unmount();
-    const d = render(<LabDetailsDrawer view={view} data={data} layout="tablet" onSelect={() => {}} open onOpenChange={() => {}} />);
+    const d = renderWithProviders(<LabDetailsDrawer view={view} data={data} layout="tablet" onSelect={() => {}} open onOpenChange={() => {}} />, { url: "/labs" });
     expect(screen.getByRole("dialog", { name: view.card.title })).toHaveTextContent(view.badge.label);
     d.unmount();
-    render(<LabDetailsView view={view} data={data} layout="phone" onSelect={() => {}} onBack={() => {}} />);
+    renderWithProviders(<LabDetailsView view={view} data={data} layout="phone" onSelect={() => {}} onBack={() => {}} />, { url: "/labs" });
     expect(screen.getByRole("heading", { level: 2, name: view.card.title })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Back to labs" })).toBeInTheDocument();
   });
