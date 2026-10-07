@@ -275,6 +275,22 @@
    "via": "tf:azurerm_cdn_frontdoor_origin.web"
   },
   {
+   "id": "traffic:tf:azurerm_container_app.app>tf:azurerm_mssql_server.lab:SQL 1433",
+   "from": "tf:azurerm_container_app.app",
+   "to": "tf:azurerm_mssql_server.lab",
+   "kind": "traffic",
+   "label": "SQL 1433",
+   "via": "tf:azurerm_container_app.app"
+  },
+  {
+   "id": "traffic:tf:azurerm_container_app.web>tf:azurerm_container_app.app:HTTP",
+   "from": "tf:azurerm_container_app.web",
+   "to": "tf:azurerm_container_app.app",
+   "kind": "traffic",
+   "label": "HTTP",
+   "via": "tf:azurerm_container_app.web"
+  },
+  {
    "id": "traffic:tf:azurerm_private_endpoint.sql>tf:azurerm_mssql_server.lab:sqlServer",
    "from": "tf:azurerm_private_endpoint.sql",
    "to": "tf:azurerm_mssql_server.lab",

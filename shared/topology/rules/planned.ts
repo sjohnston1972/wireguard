@@ -88,6 +88,47 @@ export interface TfRule {
   place?: (inst: TfInst, h: PlannedHelpers) => string | null;
 }
 
+/** An env value's scheme and host: "http://ca-app/x" → { scheme: "http", host: "ca-app" }; "tcp:srv,1433" → srv. */
+export function urlHost(v: string): { scheme?: string; host: string } | null {
+  const m = /^(?:([a-z][a-z0-9+.-]*):(?:\/\/)?)?([a-z0-9-]+(?:\.[a-z0-9-]+)*)\.?(?=$|[:,/?#])/i.exec(v.trim());
+  return m ? { scheme: m[1]?.toLowerCase(), host: m[2]!.toLowerCase() } : null;
+}
+const lower = (s: string | undefined) => (s ?? "").toLowerCase();
+
+/** The label of a call from one container app to another: the URL's scheme, HTTPS unless it says http. */
+export const appCallLabel = (scheme: string | undefined) => (scheme === "http" ? "HTTP" : "HTTPS");
+
+/**
+ * A container app's calls to the next tier (lab 28), from its containers' env values: a reference in its template to
+ * another container app (its ingress FQDN) or a SQL server (its FQDN), or a known value naming another app of the same
+ * environment ("http://ca-app"). Traffic edges, "HTTP"/"HTTPS" by the URL's scheme, "SQL 1433" to a server.
+ */
+function tierEdges(i: TfInst, h: PlannedHelpers): EdgeSpec[] {
+  const out = new Map<string, EdgeSpec>();
+  const add = (to: TfInst, label: string) => {
+    if (to !== i && !out.has(to.id)) out.set(to.id, { from: i, to, kind: "traffic", label });
+  };
+  const env = (x: TfInst) => h.refs(x, ["container_app_environment_id"])[0];
+  const apps = h.byType("azurerm_container_app").filter((a) => a !== i);
+  // Known values first: they say the scheme.
+  for (const c of list(first(i.after.template).container)) {
+    for (const e of list((c as Record<string, unknown> | null)?.env)) {
+      const v = str((e as Record<string, unknown> | null)?.value);
+      const u = v ? urlHost(v) : null;
+      if (!u) continue;
+      const app = apps.find((a) => (lower(str(a.after.name)) === u.host && env(a) === env(i)) || lower(str(first(a.after.ingress).fqdn)) === u.host);
+      if (app) add(app, appCallLabel(u.scheme));
+      const sql = h.byType("azurerm_mssql_server").find((s) => lower(str(s.after.fully_qualified_domain_name)) === u.host);
+      if (sql) add(sql, "SQL 1433");
+    }
+  }
+  for (const r of h.refs(i, ["template"])) {
+    if (r.type === "azurerm_container_app") add(r, "HTTPS");
+    else if (r.type === "azurerm_mssql_server") add(r, "SQL 1433");
+  }
+  return [...out.values()];
+}
+
 /** Types that are never Azure resources (spec §4.4): random_*, time_*, terraform_data, null_resource. */
 export const TF_IGNORED_PREFIXES = ["random_", "time_", "terraform_data", "null_resource"];
 
@@ -472,6 +513,7 @@ export const TF_RULES: Record<string, TfRule> = {
       ...h.refs(i, ["container_app_environment_id"]).map((e) => ({ from: i, to: e, kind: "dependency" as const, label: "environment" })),
       ...h.refs(i, ["registry"]).filter((r) => r.type === "azurerm_container_registry").map((r) => ({ from: i, to: r, kind: "dependency" as const, label: "pulls images" })),
       ...identityEdges(i, h),
+      ...tierEdges(i, h),
     ],
   },
   azurerm_container_registry: { arm: "Microsoft.ContainerRegistry/registries", props: (i) => ({ sku: str(i.after.sku) }) },

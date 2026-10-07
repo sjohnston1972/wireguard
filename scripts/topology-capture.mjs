@@ -187,6 +187,10 @@ export const CAPTURE_KEEP = [
   "workloadProfiles[].workloadProfileType",
   "vnetConfiguration.infrastructureSubnetId",
   "configuration.ingress",
+  // Lab 28's tiers: plain env values naming the next app or a SQL server (a secretRef has no value), the FQDNs they name.
+  "template.containers[].env[].value",
+  "latestRevisionFqdn",
+  "fullyQualifiedDomainName",
   "configuration.registries[].server",
   "managedEnvironmentId",
   "environmentId",

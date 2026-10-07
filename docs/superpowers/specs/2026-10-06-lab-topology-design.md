@@ -314,7 +314,10 @@ here.
 plan's admin password and SSH key, and records a note ("1 value withheld"). Never read: `admin_password`, `admin_ssh_key`,
 `custom_data`, `user_data`, `shared_key`, `*_key`, `*connection_string*`, `*secret*`, `*password*`, certificate data,
 `identity.principal_id` values (an edge uses the reference, not the GUID). Tests (§12) run the deny check over every planned
-file and every live fixture's output.
+file and every live fixture's output. The mock plan's `value` attributes are never read, with one exception
+(`scripts/lib/topology-stream.mjs`): a container's `env[].value` that is only a URL to a bare host name
+(`^https?://<name>(:port)?/?$`, no dots, credentials, path or query), as lab 28's web tier calls `http://ca-app`. It can
+hold no secret, and it is what draws the planned "next tier" edge.
 
 ### 4.6 Edges
 
@@ -343,6 +346,7 @@ file and every live fixture's output.
 | Zone link | dependency | private DNS zone → VNet | `link` (`auto-registration`) | zone links | zone link rows (V) |
 | Event subscription | traffic | Event Grid topic → destination (a queue or topic is drawn as its namespace) | the destination's name (`blob-events`) | the subscription's endpoint refs; also topic → dead-letter account (dependency, `dead-letter`) | not listed live (planned only) |
 | KEDA consumer | traffic | Container Apps job → Service Bus namespace | the queues its rules watch (`orders, blob-events`) | `event_trigger_config` queue refs | `configuration.eventTriggerConfig.scale.rules[].metadata` (`namespace`, `queueName`) |
+| Next tier | traffic | container app → container app; container app → SQL server (lab 28) | the URL's scheme (`HTTP`, `HTTPS`; a reference with no known value is `HTTPS`); `SQL 1433` | a reference in the app's `template` to the other app or the server, or a known env value that is a URL to another app of the same environment (`http://ca-app`) | `template.containers[].env[].value` naming another app (by name in the same environment, its ingress FQDN or latest revision FQDN) or a server's `fullyQualifiedDomainName` |
 | Others | dependency | data collection rule association, alert → target, App GW → Key Vault, SQL DB → server, failover group, container app or job → environment, Container Apps environment → workspace (`logs`), Event Grid topic → source (`source`), AVNM → member VNets, policy base → child, WAF policy → App GW/endpoint | as named | refs | properties |
 
 Edges are deduplicated (a peering pair is one edge) and sorted. An edge to a node outside the graph is dropped with a note,

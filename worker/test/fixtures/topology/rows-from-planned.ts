@@ -511,6 +511,19 @@ function compute(k: TemplateKit): void {
       managedEnvironmentId: env ? nodeArmId(byId.get(env.to)!) : null,
       configuration: { ingress: n.props.ingress ? { external: n.props.ingress === "external", targetPort: n.props.targetPort } : null, registries: reg ? [{ server: `${nodeArmId(byId.get(reg.to)!)?.split("/").at(-1)}.azurecr.io` }] : [] },
     });
+    // Lab 28's tiers: the env values that name the next tier (another app by name, a SQL server by its FQDN).
+    const vars: { name: string; value: string }[] = [];
+    for (const e of edgesFrom(n.id).filter((x) => x.kind === "traffic")) {
+      const t = byId.get(e.to);
+      const tr = t ? rowOf(t) : undefined;
+      if (!t || !tr) continue;
+      if (t.kind === "containerApp" && (e.label === "HTTP" || e.label === "HTTPS")) vars.push({ name: `URL_${vars.length}`, value: `${e.label.toLowerCase()}://${tr.name}` });
+      if (t.kind === "sqlServer" && e.label === "SQL 1433") {
+        P(tr).fullyQualifiedDomainName = `${tr.name}.database.windows.net`;
+        vars.push({ name: `SQL_${vars.length}`, value: `${tr.name}.database.windows.net` });
+      }
+    }
+    if (vars.length) P(r).template = { containers: [{ name: "app", env: vars }] };
   }
   // AKS (lab 29): the default pool in the cluster's subnet, its network words and node group from the card's chips.
   for (const n of g.nodes.filter((x) => x.kind === "aks" && x.scope !== "outside")) {

@@ -13,7 +13,7 @@
 // Types are lower case (Resource Graph's `type` column).
 
 import type { TopoHealth } from "../model";
-import { aksNetworkWord, cosmosApi } from "./planned";
+import { aksNetworkWord, appCallLabel, cosmosApi, urlHost } from "./planned";
 
 /** One Resource Graph row: the columns topologyQuery projects. */
 export interface ArgRow {
@@ -232,6 +232,30 @@ function byFqdn(fqdn: string, h: LiveHelpers): string | null {
   ];
   for (const [t, get] of types) for (const r of h.rowsOfType?.(t) ?? []) if (lower(str(get(r))) === f) return lower(r.id);
   return null;
+}
+
+/**
+ * A container app's calls to the next tier (lab 28), from its containers' plain env values (a secretRef has none): a
+ * value naming another app of the same environment, or its ingress FQDN, is "HTTP"/"HTTPS" by the URL's scheme; one
+ * naming a SQL server's FQDN is "SQL 1433". As the planned rule draws them (rules/planned.ts tierEdges).
+ */
+function tierEdges(r: ArgRow, h: LiveHelpers): LiveEdgeSpec[] {
+  const out = new Map<string, LiveEdgeSpec>();
+  const env = lower(str(props(r).managedEnvironmentId) ?? str(props(r).environmentId));
+  const apps = (h.rowsOfType?.("microsoft.app/containerapps") ?? []).filter((a) => lower(a.id) !== lower(r.id));
+  const servers = h.rowsOfType?.("microsoft.sql/servers") ?? [];
+  for (const c of arr(obj(props(r).template).containers)) {
+    for (const e of arr(c.env)) {
+      const v = str(e.value);
+      const u = v ? urlHost(v) : null;
+      if (!u) continue;
+      const app = apps.find((a) => (lower(a.name) === u.host && lower(str(props(a).managedEnvironmentId)) === env) || [obj(obj(props(a).configuration).ingress).fqdn, props(a).latestRevisionFqdn].some((f) => lower(str(f)) === u.host));
+      if (app && !out.has(lower(app.id))) out.set(lower(app.id), { from: lower(r.id), to: lower(app.id), kind: "traffic", label: appCallLabel(u.scheme) });
+      const sql = servers.find((s) => lower(str(props(s).fullyQualifiedDomainName)) === u.host);
+      if (sql && !out.has(lower(sql.id))) out.set(lower(sql.id), { from: lower(r.id), to: lower(sql.id), kind: "traffic", label: "SQL 1433" });
+    }
+  }
+  return [...out.values()];
 }
 
 /** Every ARM id inside a value, deep (as found, not lower-cased). */
@@ -701,6 +725,7 @@ export const ARM_RULES: Record<string, ArmRule> = {
         ...(env ? [{ from: lower(r.id), to: lower(env), kind: "dependency" as const, label: "environment" }] : []),
         ...regs.map((x) => ({ from: lower(r.id), to: lower(x.id), kind: "dependency" as const, label: "pulls images" })),
         ...identityEdges(r),
+        ...tierEdges(r, h),
       ];
     },
   },

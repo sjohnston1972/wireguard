@@ -11,7 +11,7 @@ import { diffGraphs } from "../../shared/topology/diff";
 import { denyProblems } from "../../shared/topology/props";
 import type { TopologyGraph, TopoNode } from "../../shared/topology/model";
 import { labIdFromName, ownsName } from "../../shared/labs";
-import { liveCtxFor, plannedOf, LAB_IDS } from "./fixtures/topology/round-trip";
+import { liveCtxFor, plannedOf, LAB_IDS, roundTrip } from "./fixtures/topology/round-trip";
 import { rowsFromPlanned, SUB } from "./fixtures/topology/rows-from-planned";
 
 const LAB = "az305-28-three-tier";
@@ -89,6 +89,49 @@ describe("live three-tier (lab 28): the Container Apps infrastructure group", ()
       expect(denyProblems(live)).toEqual([]);
     });
   }
+
+  // The three-tier path, from the apps' env values as Resource Graph returns them (template.containers[].env[]: a plain
+  // value, or a secretRef with no value): the web tier's APP_URL names the app tier, the app tier's SQL_SERVER and
+  // SQLCMDSERVER the server's FQDN. Drawn once each, labelled as the planned graph labels them.
+  it("draws ca-web -> ca-app (HTTP) and ca-app -> the SQL server (SQL 1433) from the env values, as planned", () => {
+    const rows = rowsFromPlanned(planned).map((r) => structuredClone(r));
+    const byName = (n: string) => rows.find((r) => r.name === n)!;
+    const server = rows.find((r) => r.type === "microsoft.sql/servers")!;
+    const fqdn = `${server.name}.database.windows.net`;
+    server.properties = { ...server.properties, fullyQualifiedDomainName: fqdn };
+    const web = byName("ca-web");
+    web.properties = { ...web.properties, template: { containers: [{ name: "web", env: [{ name: "FRONT_DOOR_ID", value: "0a1b2c3d-4e5f-4071-8293-a4b5c6d7e8f9" }, { name: "APP_URL", value: "http://ca-app" }, { name: "ELSEWHERE", value: "https://example.org" }] }] } };
+    const app = byName("ca-app");
+    app.properties = {
+      ...app.properties,
+      configuration: { ...((app.properties?.configuration as object) ?? {}), ingress: { external: false, targetPort: 8080, fqdn: "ca-app.internal.blue-sea-1234.uksouth.azurecontainerapps.io" } },
+      template: {
+        containers: [
+          { name: "api", env: [{ name: "SQL_SERVER", value: fqdn }] },
+          { name: "sqltools", env: [{ name: "SQLCMDSERVER", value: fqdn }, { name: "SQLCMDUSER", value: "labadmin" }, { name: "SQLCMDDBNAME", value: "appdb" }, { name: "SQLCMDPASSWORD", secretRef: "sql-password" }] },
+        ],
+      },
+    };
+    const live = liveGraph(rows, liveCtxFor(LAB));
+    const tiers = (g: TopologyGraph) => {
+      const label = (id: string) => g.nodes.find((n) => n.id === id)?.label ?? id;
+      return g.edges.filter((e) => e.kind === "traffic" && /^(HTTPS?|SQL 1433)$/.test(e.label ?? "") && label(e.from).startsWith("ca-")).map((e) => `${label(e.from)} -> ${label(e.to)} : ${e.label}`).sort();
+    };
+    expect(tiers(live)).toEqual([`ca-app -> ${server.name} : SQL 1433`, "ca-web -> ca-app : HTTP"]);
+    // The planned graph has the same two edges (labels shown with the mock prefix there).
+    expect(tiers(planned).map((s) => s.replace(/l28…-sql/, server.name))).toEqual(tiers(live));
+    // The app tier's internal FQDN in a URL names it too.
+    web.properties = { ...web.properties, template: { containers: [{ name: "web", env: [{ name: "APP_URL", value: "https://ca-app.internal.blue-sea-1234.uksouth.azurecontainerapps.io/api" }] }] } };
+    expect(tiers(liveGraph(rows, liveCtxFor(LAB)))).toContain("ca-web -> ca-app : HTTPS");
+  });
+
+  it("the round trip (planned → rows → live) keeps the three-tier edges", () => {
+    const r = roundTrip(LAB);
+    const key = (g: TopologyGraph, id: string) => g.nodes.find((n) => n.id === id)?.key ?? id;
+    const shape = (g: TopologyGraph) => g.edges.filter((e) => e.kind === "traffic" && key(g, e.from).startsWith("microsoft.app/containerapps/")).map((e) => `${key(g, e.from)} -> ${key(g, e.to)} : ${e.label}`).sort();
+    expect(shape(r.live)).toEqual(shape(r.planned));
+    expect(shape(r.live)).toEqual(["microsoft.app/containerapps/ca-app -> microsoft.sql/servers/{p}-sql : SQL 1433", "microsoft.app/containerapps/ca-web -> microsoft.app/containerapps/ca-app : HTTP"]);
+  });
 
   it("the orphan sweep and the safety net count the group as lab 28's, and no other lab's", () => {
     expect(ownsName(LAB, INFRA, LAB_IDS)).toBe(true);

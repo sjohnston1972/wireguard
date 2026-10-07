@@ -198,7 +198,9 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     edges: [
       "afd-lab -> ca-web : HTTPS",
       "appdb ..> l28…-sql : server",
+      "ca-app -> l28…-sql : SQL 1433",
       "ca-app ..> cae-lab : environment",
+      "ca-web -> ca-app : HTTP",
       "ca-web ..> cae-lab : environment",
       "pe-l28…-sql ..> privatelink.database.windows.net : DNS zone group",
       "pe-l28…-sql -> l28…-sql : sqlServer",
