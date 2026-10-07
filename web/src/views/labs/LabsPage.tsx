@@ -188,7 +188,8 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
             </div>
             {layout === "wide" && !nothingShown && (data ? <LabDetailsPanel {...details} /> : <PanelSkeleton />)}
           </div>
-          {layout === "tablet" && <LabDetailsDrawer {...details} open={!!shown} onOpenChange={(o) => !o && close()} />}
+          {/* Never under the lab's dialog (/labs/:id?lab=:id): one modal, one focus trap. */}
+          {layout === "tablet" && <LabDetailsDrawer {...details} open={!!shown && !dialogId} onOpenChange={(o) => !o && close()} />}
         </>
       )}
     </section>

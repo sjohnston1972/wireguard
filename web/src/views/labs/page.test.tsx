@@ -216,6 +216,15 @@ describe("tablet (1024 px)", () => {
     await waitFor(() => expect(selectBtn(/^Storage accounts/)).toHaveFocus());
   });
 
+  it("/labs/:id?lab=:id opens the lab's dialog alone, never the drawer under it (one focus trap)", async () => {
+    setViewport(1024);
+    renderApp("/labs/az104-06-blob-security?lab=az104-06-blob-security", { routes: routes() });
+    expect(await screen.findByRole("dialog", { name: /Blob security/ })).toHaveClass("labs-modal");
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(document.querySelector(".lab-details-drawer")).toBeNull();
+  });
+
   it("a ?lab link opens the drawer whatever the filters hide", async () => {
     setViewport(1024);
     renderApp("/labs?exam=AZ-305&lab=az104-06-blob-security", { routes: routes() });
