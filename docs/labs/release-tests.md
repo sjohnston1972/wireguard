@@ -82,3 +82,5 @@ lab's hourly estimate times those minutes.
 | 2026-10-07 07:59 | az305-30-messaging | 1 | pass | yes | none | 4m 1s | 29m 2s | £0.0061 | 37587213098 |
 | 2026-10-07 08:00 | az305-28-three-tier | 1 | pass | yes | none | 6m 34s | 28m 16s | £0.0586 | 37587215807 |
 | 2026-10-07 08:17 | az305-29-aks | 1 | pass | yes | none | 7m 26s | 9m 0s | £0.0209 | 37590798443 |
+| 2026-10-07 09:39 | az305-30-messaging | 1 | pass | yes | none | 4m 23s | 30m 17s | £0.0064 | 37597977667 |
+| 2026-10-07 10:16 | az305-28-three-tier | 1 | pass | yes | none | 7m 37s | 28m 55s | £0.0615 | 37602104057 |
