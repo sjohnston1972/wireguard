@@ -497,9 +497,9 @@ req. Session and max are hours. G = governance lab. Times and SKUs are planning 
 | 25 | az305-25-storage-design | Storage design: data lake, immutability, tiering | data | E | explore | £ | off | 3 | 2/6 | none |
 | 26 | az305-26-site-recovery | Cross-region VM restore and Site Recovery | continuity | E | explore | ££ | opt | 20 | 3/8 | none |
 | 27 | az305-27-multi-region | Multi-region app with Traffic Manager and Front Door | infra, continuity | E | explore | ££ | off | 15 | 2/4 | none |
-| 28 | az305-28-three-tier | Three-tier app: Container Apps, SQL, Front Door + WAF (ruling 41) | infra | E | explore | ££ | off | 15 | 2/3 | none |
+| 28 | az305-28-three-tier | Three-tier app: Container Apps, SQL, Front Door + WAF (ruling 41) | infra | E | explore | ££ | off | 7 | 2/3 | none |
 | 29 | az305-29-aks | AKS small cluster, networking, ingress | infra | E | explore | ££ | opt | 12 | 2/4 | MI, AcrPull (V) |
-| 30 | az305-30-messaging | Messaging and events: Service Bus, Event Grid, an event-driven consumer (ruling 62) | infra | E | explore | £ | off | 6 | 2/6 | none |
+| 30 | az305-30-messaging | Messaging and events: Service Bus, Event Grid, an event-driven consumer (ruling 62) | infra | E | explore | £ | off | 5 | 2/6 | none |
 | 31 | az700-31-ip-nat-outbound | Public IP prefixes, NAT Gateway and outbound rules | 700 core | A | explore | ££ | opt | 6 | 2/4 | none |
 | 32 | az700-32-dns-resolver | Hybrid DNS with DNS Private Resolver | 700 core | A | explore | ££ | opt | 10 | 2/4 | none |
 | 33 | az700-33-vnet-manager | Virtual Network Manager: hub-and-spoke and security admin rules | 700 core, security | A | explore | ££ | opt | 10 | 2/4 | none · S1 |

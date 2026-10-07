@@ -43,7 +43,7 @@ cost:
     - { name: "Log Analytics ingestion, a few KB (capped at 0.05 GB a day)", gbp_h: 0.0005 }
     - { name: "Container Apps environment and job (consumption, runs only on messages)", gbp_h: 0 }
   pricey: null
-timing: { deploy_min: 6, destroy_min: 6, session_h: 2, max_h: 6 }
+timing: { deploy_min: 5, destroy_min: 30, session_h: 2, max_h: 6 }
 capacity: { vm_sizes: [] }
 regions: { secondary: null }
 connectivity: { peering: "off", dns_link: false, subnets_used: 0 }

@@ -22,6 +22,7 @@ import { attr, lab, labContentSuite, resources, uncomment } from "./fixtures/lab
 import { COMPUTED, SCHEMA_FACTS } from "./fixtures/labs/plans/realistic.mjs";
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 import { checkPlan } from "../../infra/ci/lab-scope.mjs";
+import { timeoutMin } from "../lab-release-test.mjs";
 
 const L30 = "az305-30-messaging";
 
@@ -315,6 +316,16 @@ test(`${L30}: lab.yaml: AZ-305 infrastructure, expert, no peering or subnets, no
   assert.ok(yaml.cost.items.some((i) => /Event Grid/.test(i.name)));
   assert.ok(yaml.cost.items.some((i) => /Container Apps/.test(i.name) && i.gbp_h === 0));
   assert.equal(yaml.cost.pricey, null);
+});
+
+// The first release test (2026-10-07): deploy 4m 1s, destroy 29m 2s (the Container Apps environment's delete, about
+// 28 minutes, even with no VNet). Rounded up: 5 and 30.
+test(`${L30}: timing is the release test's, rounded up, and the readme and job timeout follow it`, () => {
+  const l = lab(L30);
+  assert.deepEqual(l.yaml.timing, { deploy_min: 5, destroy_min: 30, session_h: 2, max_h: 6 });
+  assert.equal(timeoutMin(l.yaml.timing), 90, "job timeout: 2 x (5 + 30) + 20");
+  assert.match(l.readme, /Deploying takes about 5 minutes/);
+  assert.match(l.readme, /Tear-down takes about 30/);
 });
 
 test(`${L30}: the readme teaches queues against topics, filters and $Default, dead-lettering, and says why there is no Functions app`, () => {

@@ -24,6 +24,8 @@ rg-lab-az305-29-aks-nodes (made by AKS)
 
 Run the Connect lines from Cloud Shell (it has `kubectl`) or your own machine (`az aks install-cli` installs it): `az aks get-credentials` writes a kubeconfig for the cluster's public API server. Deploy with **Peer to gateway** to reach the node and internal load balancers from a tunnel client.
 
+Deploying takes about 12 minutes, most of it the cluster and its node. Tear-down takes about 10.
+
 Cost: about 8p an hour, most of it the node and its disk; the registry is billed by the day. Each LoadBalancer service you add takes one more public IP, a fraction of a penny an hour.
 
 ## Things to try

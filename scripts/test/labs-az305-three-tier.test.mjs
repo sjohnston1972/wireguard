@@ -21,6 +21,7 @@ import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 import { realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
 import { checkPlan } from "../../infra/ci/lab-scope.mjs";
 import { BASH, world } from "./fixtures/labs/harness.mjs";
+import { timeoutMin } from "../lab-release-test.mjs";
 
 const TT = "az305-28-three-tier";
 const IN_LAB = "azurerm_resource_group.lab.name";
@@ -387,8 +388,18 @@ test(`${TT}: priced honestly: Front Door's base fee, the WAF policy and each cus
   item(/load balancer/);
   item(/app tier/);
   assert.deepEqual(y.capacity.vm_sizes, []);
-  assert.deepEqual(y.timing, { deploy_min: 15, destroy_min: 20, session_h: 2, max_h: 3 });
   assert.equal(y.regions.secondary, null);
+});
+
+// The first release test (2026-10-07): deploy 6m 34s, destroy 28m 16s (the Container Apps environment's delete is
+// most of it). Rounded up: 7 and 29. Every deploy builds a new environment, so the images are always a first pull: the
+// release test measured exactly that, and there is no warm cache to lose.
+test(`${TT}: timing is the release test's, rounded up, and the readme and job timeout follow it`, () => {
+  const l = lab(TT);
+  assert.deepEqual(l.yaml.timing, { deploy_min: 7, destroy_min: 29, session_h: 2, max_h: 3 });
+  assert.equal(timeoutMin(l.yaml.timing), 92, "job timeout: 2 x (7 + 29) + 20");
+  assert.match(l.readme, /Deploying takes about 7 minutes/);
+  assert.match(l.readme, /Tear-down takes about 29/);
 });
 
 test(`${TT}: the readme explains the tiers, the Front Door lock, the WAF tier limits, the infra group and why there is no App Service`, () => {

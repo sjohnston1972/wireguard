@@ -21,6 +21,7 @@ import { ALLOWED_ROLES, cidrOverlaps, GATEWAY_RANGES, LAB_POOL } from "../lib/la
 import { attr, lab, labContentSuite, resources, roleAssignments } from "./fixtures/labs/content.mjs";
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 import { realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
+import { timeoutMin } from "../lab-release-test.mjs";
 
 const AKS = "az305-29-aks";
 
@@ -175,4 +176,14 @@ test(`${AKS}: lab.yaml prices the node, its disk, the load balancer and outbound
   assert.ok(y.cost.items.some((i) => /Free tier/i.test(i.name) && i.gbp_h === 0), "the Free tier control plane, at £0");
   assert.deepEqual(y.capacity.vm_sizes, ["Standard_B2s"]);
   assert.equal(y.connectivity.peering, "optional");
+});
+
+// The first release test (2026-10-07): deploy 7m 26s, destroy 9m 0s, both inside the stated 12 and 10, which stay:
+// AKS's create time varies more than most (node image, extension install), and 12 leaves room for a slow day.
+test(`${AKS}: timing stays 12 and 10 (the release test ran inside both), and the readme and job timeout follow it`, () => {
+  const l = lab(AKS);
+  assert.deepEqual(l.yaml.timing, { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 4 });
+  assert.equal(timeoutMin(l.yaml.timing), 64, "job timeout: 2 x (12 + 10) + 20");
+  assert.match(l.readme, /Deploying takes about 12 minutes/);
+  assert.match(l.readme, /Tear-down takes about 10/);
 });

@@ -64,7 +64,7 @@ cost:
     - { name: "Container Apps app tier, 0.5 vCPU and 1 GiB at the idle rate", gbp_h: 0.0163 }
     - { name: "Container Apps web tier, scales to zero (a few active minutes)", gbp_h: 0.0001 }
   pricey: "Front Door Standard, base fee"
-timing: { deploy_min: 15, destroy_min: 20, session_h: 2, max_h: 3 }
+timing: { deploy_min: 7, destroy_min: 29, session_h: 2, max_h: 3 }
 capacity: { vm_sizes: [] }
 regions: { secondary: null }
 connectivity: { peering: "off", dns_link: false, subnets_used: 1 }

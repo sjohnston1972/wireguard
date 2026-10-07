@@ -8,7 +8,7 @@ Messaging and events, the way an AZ-305 design question frames them: **Service B
 - `cae-lab`, a consumption-only Container Apps environment (no subnet, so Azure makes no extra resource group), logging to `log-lab` (capped at 0.05 GB a day, deleted for good on tear-down)
 - `caj-consumer`, an **event-driven Container Apps job**: KEDA's `azure-servicebus` scaler checks both queues every 30 seconds and starts a run when one holds a message. Each run is a short Python script on Microsoft's Python image from MCR that peek-locks every waiting message, prints it and completes it. A message whose body contains the word `fail` is left uncompleted, so Service Bus delivers it again until it is dead-lettered
 
-The lab has no VNet and is never peered: everything is reached through the portal. The Connect lines name the namespace, the upload container and the job.
+The lab has no VNet and is never peered: everything is reached through the portal. The Connect lines name the namespace, the upload container and the job. Deploying takes about 5 minutes. Tear-down takes about 30: Azure takes nearly half an hour to delete a Container Apps environment, even one with no subnet.
 
 ```text
 rg-lab-<id>
