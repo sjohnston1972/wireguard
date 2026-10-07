@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Follow a request through Front Door, two Container Apps tiers and a private SQL database, then test each guard.
+learn:
+  - Trace a request from Front Door through web and app tiers to Azure SQL
+  - Trigger WAF custom rules for a blocked path and a rate limit
+  - Prove each tier is reachable only from the tier in front of it
+learning_min: 70

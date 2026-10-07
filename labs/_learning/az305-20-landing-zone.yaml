@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Explore a landing zone in miniature, with a management group tree, a policy initiative and least-privilege roles.
+learn:
+  - Trace a policy initiative and a deny from where they are assigned down the tree
+  - Add a policy exemption and compare it with an exclusion on the assignment
+  - Test a least-privilege custom role and see managed identities used as personas
+learning_min: 65

@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Measure what a partition key costs in request units on Cosmos DB, and weigh up its consistency levels.
+learn:
+  - Compare request charges for point reads and cross-partition queries
+  - Query a hierarchical partition key and design around a hot partition
+  - Weigh the five consistency levels and the limits of a serverless account
+learning_min: 65
