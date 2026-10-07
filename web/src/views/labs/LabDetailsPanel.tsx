@@ -31,15 +31,17 @@ import "./LabDetailsPanel.css";
 
 const PEERING_WORD = { off: "Off", optional: "Optional", required: "Required" } as const;
 
-/** "about 4 min", with the current version's measured deploy ("measured 4 min 23 s") when its release test timed one. */
-function deployWords(card: LabCard): string {
-  const base = `about ${card.timing.deployMin} min`;
+/** The current version's measured deploy ("measured 4 min 23 s") when its release test timed one, else null. */
+function measuredDeploy(card: LabCard): string | null {
   const t = card.lastReleaseTest;
-  if (!t || t.version !== card.version || t.deploySeconds === null || !(t.deploySeconds > 0)) return base;
+  if (!t || t.version !== card.version || t.deploySeconds === null || !(t.deploySeconds > 0)) return null;
   const m = Math.floor(t.deploySeconds / 60);
   const s = Math.round(t.deploySeconds % 60);
-  return `${base}, measured ${m > 0 ? `${m} min ` : ""}${s} s`;
+  return `measured ${m > 0 ? `${m} min ` : ""}${s} s`;
 }
+
+/** Keep a figure and its unit together ("2 h" never breaks before the h). */
+const keepUnits = (s: string) => s.replace(/ (h|min|s)\b/g, "\u00a0$1");
 
 /** Session length, or for a live session when it ends. */
 function sessionWords(card: LabCard): string {
@@ -127,6 +129,7 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
   const cleanupId = useId();
   const destination = c.running ? c.running.region : q.data ? q.data.defaults.region : q.isError ? null : <Skeleton width={80} />;
   const autoCleanup = data?.autoCleanup ?? false;
+  const measured = measuredDeploy(c);
   return (
     <>
       {c.learning ? (
@@ -163,11 +166,14 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
       <LabResourceSummary resources={c.resources} topics={view.topics} diagramHref={labHref(c.id, search, layout, "diagram")} />
 
       <dl className="lab-facts lab-facts--key" aria-label="Times and cost">
-        <Fact label="Learning time">{c.learning ? fmtMinutes(c.learning.learningMin) : null}</Fact>
-        <Fact label="Deploy time">{deployWords(c)}</Fact>
+        <Fact label="Learning time">{c.learning ? keepUnits(fmtMinutes(c.learning.learningMin)) : null}</Fact>
+        <Fact label="Deploy time">
+          <span className="lab-facts__main">{keepUnits(`about ${c.timing.deployMin} min`)}</span>
+          {measured && <span className="lab-facts__sub">{keepUnits(measured)}</span>}
+        </Fact>
         <Fact label="Estimated cost">
-          <span className="lab-facts__cost">{fmtHourlyPrecise(c.estGbpH)}</span>
-          {Number.isFinite(c.estGbpH) && c.estGbpH >= 0 && <span className="lab-facts__sub">{fmtSessionCost(c.estGbpH, c.timing.sessionH)}</span>}
+          <span className="lab-facts__main">{fmtHourlyPrecise(c.estGbpH)}</span>
+          {Number.isFinite(c.estGbpH) && c.estGbpH >= 0 && <span className="lab-facts__sub">{keepUnits(fmtSessionCost(c.estGbpH, c.timing.sessionH))}</span>}
         </Fact>
       </dl>
       <dl className="lab-facts" aria-label="Lab facts">

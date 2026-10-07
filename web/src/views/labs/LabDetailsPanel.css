@@ -38,13 +38,13 @@
 .lab-facts dd { margin: 0; font-size: 13px; color: var(--text-primary); overflow-wrap: anywhere; }
 .lab-facts__none { color: var(--text-muted); font-style: italic; }
 .lab-facts--key {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 12px;
+  display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.25fr); gap: 10px;
   padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
 }
 .lab-facts--key .lab-facts__row { display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 2px; }
 .lab-facts--key dd { font-size: 14.5px; font-weight: 600; line-height: 1.3; }
 .lab-facts--key dt { font-size: 12px; }
-.lab-facts__cost { display: block; }
+.lab-facts__main { display: block; }
 .lab-facts__sub { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--text-secondary); }
 
 .lab-details__lines { display: flex; flex-direction: column; gap: 10px; }

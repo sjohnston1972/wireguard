@@ -72,12 +72,14 @@ describe("details panel content (spec §8.5)", () => {
   it("deploy time adds the measured time from the current version's release test", () => {
     const test = { labId: ID, version: 2, at: at(-24 * HOUR), runId: "lab-test-1", result: "pass" as const, clean: true, deploySeconds: 263, destroySeconds: 120, estGbp: 0.01, leftovers: [] };
     const first = open({ version: 2, released: true, lastReleaseTest: test });
-    expect(fact("Deploy time")).toHaveTextContent("about 4 min, measured 4 min 23 s");
+    expect(fact("Deploy time")).toHaveTextContent("about 4 min");
+    expect(fact("Deploy time").querySelector(".lab-facts__sub")).toHaveTextContent("measured 4 min 23 s");
     expect(fact("Release test")).toHaveTextContent("Passed v2");
     first.unmount();
     // A test of an older version measures nothing about this one.
     open({ version: 3, released: false, lastReleaseTest: test });
     expect(fact("Deploy time")).toHaveTextContent(/^about 4 min$/);
+    expect(fact("Deploy time").querySelector(".lab-facts__sub")).toBeNull();
   });
 
   it("an untested version says Untested vN", () => {
