@@ -64,38 +64,63 @@ export const UNSET_BLOCKS_UNKNOWN = {
   // Read from azurerm 4.81.0's kubernetes_cluster_resource.go (lab 29, before its first release test): four top-level
   // blocks, network_profile itself, and two inside network_profile ("block.0.child": unknown when the parent is set
   // and the child is not).
-  azurerm_kubernetes_cluster: ["auto_scaler_profile", "bootstrap_profile", "kubelet_identity", "network_profile", "network_profile.0.load_balancer_profile", "network_profile.0.nat_gateway_profile", "windows_profile"],
+  // node_provisioning_profile: added from lab 29's first release test (2026-10-07).
+  azurerm_kubernetes_cluster: ["auto_scaler_profile", "bootstrap_profile", "kubelet_identity", "network_profile", "network_profile.0.load_balancer_profile", "network_profile.0.nat_gateway_profile", "node_provisioning_profile", "windows_profile"],
   azurerm_key_vault: ["contact", "network_acls"],
   azurerm_linux_virtual_machine: ["termination_notification"],
   azurerm_monitor_diagnostic_setting: ["enabled_metric", "metric"],
   azurerm_mssql_database: ["long_term_retention_policy", "short_term_retention_policy", "threat_detection_policy"],
   azurerm_private_dns_zone: ["soa_record"],
+  // Lab 30's first release test (2026-10-07).
+  azurerm_servicebus_namespace: ["network_rule_set"],
   azurerm_virtual_hub_connection: ["routing"],
   azurerm_virtual_network_gateway: ["bgp_settings"],
   azurerm_storage_account: ["blob_properties", "network_rules", "queue_properties", "routing", "share_properties", "static_website"],
 };
 
 /**
+ * Blocks a plan marks sensitive as a whole when the configuration sets them (the provider declares the block itself
+ * Sensitive, which the schema JSON cannot say): after_sensitive has "block": true, not one entry per element. As
+ * batch 4's release tests recorded them (labs 28 and 30, 2026-10-07). Left unset, the block is not marked.
+ */
+export const SENSITIVE_BLOCKS = {
+  azurerm_container_app: ["secret"],
+  azurerm_container_app_job: ["secret"],
+};
+
+/**
  * Computed attributes a provider already knows at plan when the configuration leaves them unset: the defaults it
  * fills in. Known (in the planned values, not in after_unknown) and not configured (no expression). As the real
  * plans recorded them: lab 21's workspace, lab 22's random passwords, lab 42's WAF policy (hashicorp/random 3.9.1's defaults).
+ * An entry may be a function of the configured values when the default depends on them: the WAF policy's cookie
+ * lifetimes are defaults only on Premium (lab 42); on Standard they are unknown at plan (lab 28, 2026-10-07).
  */
 export const PLAN_DEFAULTS = {
-  azurerm_cdn_frontdoor_firewall_policy: { captcha_cookie_expiration_in_minutes: 30, js_challenge_cookie_expiration_in_minutes: 30 },
+  azurerm_cdn_frontdoor_firewall_policy: (v) => (v.sku_name === "Premium_AzureFrontDoor" ? { captcha_cookie_expiration_in_minutes: 30, js_challenge_cookie_expiration_in_minutes: 30 } : {}),
   azurerm_log_analytics_workspace: { local_authentication_enabled: true },
   random_password: { lower: true, min_lower: 0, min_numeric: 0, min_special: 0, min_upper: 0, number: true, numeric: true, special: true, upper: true },
 };
 
 /** after_sensitive for one object (a resource or one nested block): every attribute the schema marks sensitive, set or not. */
-function sensitiveFor(values, tree) {
+function sensitiveFor(values, tree, wholly = []) {
   const out = {};
   for (const a of tree?.sensitive ?? []) out[a] = true;
   for (const [b, sub] of Object.entries(tree?.blocks ?? {})) {
     if (!Array.isArray(values[b])) continue;
+    if (wholly.includes(b)) {
+      out[b] = true;
+      continue;
+    }
     const inner = values[b].map((el) => sensitiveFor(el ?? {}, sub));
     if (inner.some((x) => Object.keys(x).length)) out[b] = inner;
   }
   return out;
+}
+
+/** A resource type's plan-time defaults (PLAN_DEFAULTS), given what the configuration sets. */
+function planDefaults(type, values) {
+  const d = PLAN_DEFAULTS[type];
+  return typeof d === "function" ? d(values) : (d ?? {});
 }
 
 /** An address's parts: data.TYPE.NAME or TYPE.NAME, with an optional [0] or ["key"] instance key. */
@@ -165,7 +190,7 @@ function resourceParts(def, mode) {
   for (const p of Object.keys(def.refs ?? {}).map(split)) if (p.length === 1 && !(p[0] in held)) held[p[0]] = "(from config)";
   for (const p of unknown) deletePath(values, p);
   // Defaults the provider fills in at plan: known, planned, never configured.
-  const defaults = mode === "data" ? {} : Object.fromEntries(Object.entries(PLAN_DEFAULTS[type] ?? {}).filter(([k]) => !(k in held)));
+  const defaults = mode === "data" ? {} : Object.fromEntries(Object.entries(planDefaults(type, held)).filter(([k]) => !(k in held)));
   const au = unknownFor({ ...held, ...defaults }, tree);
   for (const p of unknown) setPath(au, p, true);
   // An Optional and Computed block left unset: the provider plans the whole block as unknown.
@@ -185,8 +210,11 @@ function resourceParts(def, mode) {
   for (const [path, refs] of Object.entries(def.refs ?? {})) setPath(expressions, split(path), { references: refs });
   Object.assign(values, defaults);
   // Every attribute the schema marks sensitive, set or not, and any the description adds.
-  const sensitive = mode === "data" ? {} : sensitiveFor(values, tree);
-  for (const p of (def.sensitive ?? []).map(split)) setPath(sensitive, p, true);
+  const sensitive = mode === "data" ? {} : sensitiveFor(values, tree, SENSITIVE_BLOCKS[type]);
+  for (const p of (def.sensitive ?? []).map(split)) {
+    if (sensitive[p[0]] === true && p.length > 1) throw new Error(`${def.address}: ${p.join(".")} is inside ${p[0]}, which the plan marks sensitive as a whole (SENSITIVE_BLOCKS): leave it out of sensitive`);
+    setPath(sensitive, p, true);
+  }
   return { type, values, au, expressions, sensitive };
 }
 

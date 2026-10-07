@@ -5,7 +5,9 @@
 // (slot 1, prefix l30k3x9q), as `terraform show -json` prints it
 // (realistic.mjs adds what azurerm 4.81.0 computes and marks every attribute
 // its schema calls sensitive: the authorization rules' keys and connection
-// strings, the namespace's default ones, the job's secret values).
+// strings, the namespace's default ones; the job's secret block as a whole,
+// SENSITIVE_BLOCKS) and plans the namespace's unset network_rule_set as
+// unknown (UNSET_BLOCKS_UNKNOWN), as the first release test recorded.
 //
 // Known at plan: every name (the system topic's, which the event
 // subscription names, and the queues' and namespace's, which the job's KEDA

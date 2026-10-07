@@ -342,10 +342,11 @@ test(`${L30}: the realistic plan passes the scope check, and a Service Bus data 
   assert.deepEqual(checkPlan(d.plan, L30), []);
   const types = new Set(d.resources.map((r) => r.address.split(".")[0]));
   for (const t of LAB30_TYPES) assert.ok(types.has(t), `the fixture plans ${t}`);
-  // The job's secrets: their values known only after apply, and sensitive.
+  // The job's secrets: their values known only after apply, and the block sensitive as a whole (as the first
+  // release test's real plan printed it, 2026-10-07).
   const job = d.plan.resource_changes.find((c) => c.address === "azurerm_container_app_job.consumer").change;
   assert.deepEqual(job.after_unknown.secret, [{ value: true }, { value: true }]);
-  assert.deepEqual(job.after_sensitive.secret, [{ value: true }, { value: true }]);
+  assert.equal(job.after_sensitive.secret, true);
   assert.deepEqual(job.after.secret.map((s) => s.name), ["sb-listen", "sb-scaler"]);
   assert.ok(job.after.secret.every((s) => !("value" in s)), "no value in the plan's after");
 });

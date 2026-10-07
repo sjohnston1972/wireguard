@@ -9,8 +9,10 @@
 // environment's infrastructure group are known; every id, the server's FQDN,
 // the Front Door profile's resource_guid and the web tier's ingress FQDN are
 // not. Lists holding one unknown id are unknown as a whole, as lab 23's real
-// plan printed them. The app tier's secret value comes from the sensitive
-// admin_password, so the plan marks it sensitive.
+// plan printed them. The app tier's secret block (its value is the sensitive
+// admin_password) is sensitive as a whole, as the first release test's plan
+// printed it (realistic.mjs's SENSITIVE_BLOCKS); so are a Standard WAF
+// policy's unset cookie lifetimes unknown (PLAN_DEFAULTS: Premium only).
 
 import { readFileSync } from "node:fs";
 import { ctx, IN_RG, ref, REGION, rgResource } from "../common.mjs";
@@ -166,7 +168,6 @@ export default () => {
           "template.0.container.1.command": ["path.module"],
           "template.0.container.1.env.0.value": fqdn,
         },
-        sensitive: ["secret.0.value"],
       },
       // Web tier: public HTTPS ingress, scales to zero, accepts only this profile's X-Azure-FDID.
       {
