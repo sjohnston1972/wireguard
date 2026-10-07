@@ -28,6 +28,8 @@ const AZURE_BUILT_IN = {
   "Monitoring Contributor": "749f88d5-cbae-40b8-bcfc-e573ddc772fa",
   "Network Contributor": "4d97b98b-1d4f-4787-a291-c67834d212e7",
   "Backup Operator": "00c29273-979b-4161-815c-10b084fb9324",
+  // Identity change 3 (Steven, 2026-10-07): lab 29's kubelet identity pulls from the lab's registry.
+  AcrPull: "7f951dda-4ed3-4680-a7ca-43fe172d538d",
 };
 /** Roles that can hand out access: never on the list (spec §8.1). */
 const FORBIDDEN = {

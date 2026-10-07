@@ -303,8 +303,8 @@ anything under `Microsoft.Authorization` (role assignments, role definitions, po
    `roleDefinitions/write|delete`, `policyDefinitions/*`, `policySetDefinitions/*`, `policyAssignments/*`, `policyExemptions/*`,
    `locks/*`; `Microsoft.Management/managementGroups/read|write|delete`. The assignment carries an **ABAC condition** that allows
    role assignments only for an allow-list of role definitions (Reader, Contributor, Storage Blob Data Reader/Contributor, Virtual
-   Machine Contributor, Key Vault Secrets User/Officer, Monitoring Reader/Contributor, Network Contributor, Backup Operator, and
-   custom roles named `lab-*`) and only to principal types User, Group and ServicePrincipal. It can never assign Owner, User Access
+   Machine Contributor, Key Vault Secrets User/Officer, Monitoring Reader/Contributor, Network Contributor, Backup Operator,
+   AcrPull (identity change 3, Steven 2026-10-07: lab 29's kubelet identity at its own registry), and custom roles named `lab-*`) and only to principal types User, Group and ServicePrincipal. It can never assign Owner, User Access
    Administrator or Role Based Access Control Administrator. (V: conditions on a custom role that holds these actions.)
 2. **Microsoft Graph application permissions:** `User.ReadWrite.All`, `User.DeleteRestore.All` (V: least privilege for delete),
    and `Group.ReadWrite.All`, with admin consent. Graph offers nothing narrower than tenant-wide for creating users (V); the
