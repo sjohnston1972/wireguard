@@ -91,6 +91,21 @@ describe("data source tracking", () => {
     expect(currentSource()).toBe("demo");
   });
 
+  it("503 demo_unknown carries no header (the Worker will not guess): no flip, no clear, the message shown", async () => {
+    const changed = vi.fn();
+    const off = onSourceChange(changed);
+    for (const start of ["demo", "real"] as const) {
+      switchSource(start);
+      mockFetch({ "GET /api/v1/overview": { status: 503, json: { error: { code: "demo_unknown", message: "Could not check demo mode. Try again." } } } });
+      const err = (await apiGet("/overview").catch((e) => e)) as ApiError;
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 503, code: "demo_unknown", message: "Could not check demo mode. Try again." });
+      expect(currentSource()).toBe(start);
+    }
+    expect(changed).not.toHaveBeenCalled();
+    off();
+  });
+
   it("GET /demo states the mode after a switch elsewhere: its answer is kept, and the change announced", async () => {
     const changed = vi.fn();
     const off = onSourceChange(changed);

@@ -3,6 +3,7 @@ import { useEffect, type ReactNode } from "react";
 import type { FirewallDraft } from "@shared/api";
 import { Button, Modal, cx } from "@/components";
 import { useDraftApply } from "@/api/mutations";
+import { DEMO_ACTIONS_OFF, useDemoOn } from "@/api/demo";
 import "./ReviewModal.css";
 
 export interface ReviewModalProps {
@@ -42,6 +43,8 @@ function Mark({ kind }: { kind: "add" | "remove" | "change" | "move" }) {
 export function ReviewModal({ draft, open, onOpenChange, onApplied }: ReviewModalProps) {
   const apply = useDraftApply();
   const { reset } = apply;
+  // Demo mode (spec ruling 18): the review still shows; Apply is off, saying why on hover.
+  const demo = useDemoOn();
   useEffect(() => {
     if (open) reset();
   }, [open, reset]);
@@ -61,7 +64,7 @@ export function ReviewModal({ draft, open, onOpenChange, onApplied }: ReviewModa
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" loading={apply.isPending} disabled={apply.isPending || draft.stale} onClick={() => apply.mutate({ baseVersion: draft.baseVersion }, { onSuccess: () => onApplied() })}>
+          <Button variant="primary" loading={apply.isPending} disabled={demo || apply.isPending || draft.stale} title={demo ? DEMO_ACTIONS_OFF : undefined} onClick={() => apply.mutate({ baseVersion: draft.baseVersion }, { onSuccess: () => onApplied() })}>
             Apply {label}
           </Button>
         </>

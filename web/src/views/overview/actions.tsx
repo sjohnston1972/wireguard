@@ -5,6 +5,7 @@ import type { OverviewResponse } from "@shared/api";
 import { Button, Chips, ConfirmByTyping, Modal } from "@/components";
 import { useCancel, useCleanup, useDeploy, useDestroy, useExtend, useHibernate, useMove, useResume, useSpeedTest } from "@/api/mutations";
 import { useCapacity } from "@/api/queries";
+import { DEMO_ACTIONS_OFF, useDemoOn } from "@/api/demo";
 import { chipHours, defaultHoursChip, formatSpan, gbp, hourChoices, moveTargets, regionShort } from "./model";
 import "./actions.css";
 
@@ -53,12 +54,11 @@ export function blockedReason(o: OverviewResponse): string | null {
   return null;
 }
 
-function Blocked({ o }: { o: OverviewResponse }) {
-  const why = blockedReason(o);
+function Blocked({ o, why = blockedReason(o) }: { o: OverviewResponse; why?: string | null }) {
   if (!why) return null;
   return (
     <p className="ov-form__note" role="note">
-      {why} {!o.actions.canDispatch && <Link to="/settings/setup">Open setup</Link>}
+      {why} {why !== DEMO_ACTIONS_OFF && !o.actions.canDispatch && <Link to="/settings/setup">Open setup</Link>}
     </p>
   );
 }
@@ -100,7 +100,9 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
   const titleId = useId();
   const overId = useId();
   const over = o.budget.level === "over";
-  const blocked = blockedReason(o);
+  // Demo mode first (spec ruling 18): nothing can deploy, whatever else is true.
+  const demo = useDemoOn();
+  const blocked = demo ? DEMO_ACTIONS_OFF : blockedReason(o);
   // Can Azure give this target its VM? The overview carries the configured target's check; another target is asked for.
   const profile = choice.startsWith("p:") ? o.profiles.find((p) => p.id === Number(choice.slice(2))) : null;
   const target = profile ? { region: profile.region, size: profile.vm_size } : { region: choice.slice(2), size: o.config.vmSize };
@@ -158,12 +160,12 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
         </p>
       )}
       <div className="ov-deploy__go">
-        <Button type="submit" variant="primary" size={compact ? "md" : "lg"} disabled={!!blocked || (over && !overOk) || deploy.isPending} loading={deploy.isPending}>
+        <Button type="submit" variant="primary" size={compact ? "md" : "lg"} disabled={!!blocked || (over && !overOk) || deploy.isPending} loading={deploy.isPending} title={demo ? DEMO_ACTIONS_OFF : undefined}>
           {warn ? "Deploy anyway" : "Deploy"}
         </Button>
         <span className="ov-deploy__cost">About {gbp(o.config.hourlyRateGbp)} an hour while up</span>
       </div>
-      <Blocked o={o} />
+      <Blocked o={o} why={blocked} />
     </form>
   );
 }

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Button, ConfirmByTyping, Field, Modal, Select, Skeleton, Switch, cx, type SelectOption } from "@/components";
 import { useEdits } from "./edits";
+import { DEMO_ACTIONS_OFF, useDemoOn } from "@/api/demo";
 
 // Small pieces used by more than one Settings section.
 
@@ -94,6 +95,8 @@ export function SettingSwitch({ name, label, hint }: { name: string; label: stri
 /** Save / Discard for a section's unsaved settings; nothing at all while it is clean. */
 export function UnsavedBar({ section, label }: { section: string; label: string }) {
   const e = useEdits();
+  // Demo mode (spec ruling 18): edits can be made and discarded, never saved.
+  const demo = useDemoOn();
   if (!e.isDirty(section)) return null;
   return (
     <section className="set-unsaved" role="region" aria-label="Unsaved changes">
@@ -104,7 +107,7 @@ export function UnsavedBar({ section, label }: { section: string; label: string 
         <Button variant="ghost" onClick={() => e.discard(section)} disabled={e.saving}>
           Discard
         </Button>
-        <Button variant="primary" onClick={() => e.save(section)} loading={e.saving} disabled={e.saving}>
+        <Button variant="primary" onClick={() => e.save(section)} loading={e.saving} disabled={demo || e.saving} title={demo ? DEMO_ACTIONS_OFF : undefined}>
           Save
         </Button>
       </div>
