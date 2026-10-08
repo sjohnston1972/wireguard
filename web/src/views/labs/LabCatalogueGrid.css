@@ -1,12 +1,13 @@
-/* The card grid (labs redesign spec §8.4): columns by the grid's own width (3 × 280 px + 2 gaps = 872 px). */
-.lab-catalogue { container-type: inline-size; min-width: 0; --lab-card-min: 300px; }
-.lab-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+/* The card grid (labs redesign spec §8.4): compact cards, columns by the grid's own width (3 × 210 px + 2 gaps = 654 px),
+   so three columns fit beside the half-page details panel. */
+.lab-catalogue { container-type: inline-size; min-width: 0; --lab-card-min: 188px; }
+.lab-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 /* Each item stretches to its row's height and the card fills it, so footers align across a row. */
 .lab-grid > li { display: flex; min-width: 0; }
-@container (min-width: 576px) {
+@container (min-width: 432px) {
   .lab-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@container (min-width: 872px) {
+@container (min-width: 654px) {
   .lab-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 

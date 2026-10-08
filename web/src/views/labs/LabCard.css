@@ -1,24 +1,29 @@
 /* One lab card (labs redesign spec §8.4). Tokens only; equal heights per row come from the grid (LabCatalogueGrid.css). */
 .lab-card {
   position: relative; flex: 1; min-width: 0;
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; gap: 6px;
   min-height: var(--lab-card-min);
-  padding: 20px; border-radius: 12px;
+  padding: 14px 16px; border-radius: 12px;
   background: var(--bg-panel); border: 1px solid var(--border);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 6%, transparent);
-  transition: border-color 120ms ease;
+  transition: border-color 120ms ease, background-color 120ms ease;
 }
 .lab-card:hover, .lab-card:focus-within { border-color: var(--border-strong); }
-/* Selected: a blue edge drawn inside (no size change, so nothing moves). */
-.lab-card--selected { border-color: var(--blue-bright); box-shadow: inset 0 0 0 1px var(--blue-bright); }
+/* Selected: a blue hue over the whole card, and a blue edge drawn inside (no size change, so nothing moves). */
+.lab-card--selected {
+  border-color: var(--blue-bright); box-shadow: inset 0 0 0 1px var(--blue-bright);
+  background: color-mix(in srgb, var(--blue-bright) 14%, var(--bg-panel));
+}
 .lab-card--selected:hover, .lab-card--selected:focus-within { border-color: var(--blue-bright); }
 
 .lab-card__eyebrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; font-size: 12px; color: var(--text-secondary); }
 .lab-card__id { font-weight: 500; min-width: 0; }
 .lab-card__badge { flex: none; }
-.lab-card__icon { flex: none; color: var(--blue-bright); margin-top: 2px; }
+.lab-card__iconrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+.lab-card__icon { flex: none; color: var(--blue-bright); }
+.lab-card__picked { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--blue-bright); }
 
-.lab-card__title { margin: 0; font-size: 15.5px; font-weight: 650; line-height: 1.3; letter-spacing: -0.005em; }
+.lab-card__title { margin: 0; font-size: 14.5px; font-weight: 650; line-height: 1.3; letter-spacing: -0.005em; }
 .lab-card__select {
   padding: 0; border: 0; background: none; font: inherit; text-align: left; color: var(--text-primary); cursor: pointer;
 }
@@ -28,7 +33,11 @@
 .lab-card__select:focus-visible::after { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .lab-card:hover .lab-card__select { color: var(--blue-bright); }
 
-.lab-card__objective { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
+/* At most three lines: the full objective is in the details beside the grid. */
+.lab-card__objective {
+  margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--text-secondary);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden;
+}
 
 /* Chips wrap as words do; one never runs past the card (a very long word ends in an ellipsis, the full word in its title). */
 .lab-card__topics { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
@@ -44,7 +53,7 @@
 /* Above the stretched select button, so the precise cost's tooltip reaches the pointer (its words are also the button's description). */
 .lab-card__meta li { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
 
-.lab-card__footer { margin-top: auto; padding-top: 16px; }
+.lab-card__footer { margin-top: auto; padding-top: 10px; }
 .lab-card__action { width: 100%; text-decoration: none; }
 .lab-card__action--link { position: relative; z-index: 1; }
 .lab-card__action--link:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
