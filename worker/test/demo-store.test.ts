@@ -259,7 +259,7 @@ describe("budget and readiness (spec §9.8)", () => {
     const first = await store.refresh(NOW);
     expect(first.ok).toBe(true);
     if (!first.ok) return;
-    expect(first.counts.peers).toBe(8);
+    expect(first.counts.peers).toBe(12);
     expect(first.status.lastRows).toBeGreaterThan(1000);
     expect(first.status.rowsToday).toBe(first.status.lastRows);
     expect(first.status.nextRefreshAt).toBe(at(NOW, DEMO_MIN_INTERVAL_MS));

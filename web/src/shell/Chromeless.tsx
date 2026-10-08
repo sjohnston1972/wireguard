@@ -10,7 +10,6 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useConnection } from "@/api/connection";
 import { AppShell } from "./AppShell";
 import { DisconnectedBanner } from "./Connection";
-import { DemoBanner } from "./DemoBanner";
 import { SessionExpiredScreen } from "./SessionExpired";
 import { useSourceChangeReset } from "@/api/demo";
 import { usePushRenewalRetry } from "@/api/pushRenew";
@@ -27,7 +26,6 @@ export function ChromelessShell() {
   return (
     <div className="app-shell app-shell--chromeless">
       <DisconnectedBanner />
-      <DemoBanner />
       <main id="main" className="app-shell__page app-shell__page--chromeless" tabIndex={-1}>
         {sessionExpired ? <SessionExpiredScreen /> : <Outlet />}
       </main>

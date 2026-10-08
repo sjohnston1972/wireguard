@@ -36,7 +36,7 @@ cron, the watchman, the lab watch or the insights collector beyond proving they 
 | Writes | When on, every mutating route refuses with 409 "Demo mode is on: actions are off." Exceptions: turning demo mode off, refreshing demo data. |
 | Outside calls | None while serving demo: no Azure, GitHub, WireGuard/VM, Graph, DNS or push call; proven by tests with a fetch spy. |
 | Background | Cron, watchman, lab watch and insights never touch the demo store and never act on demo data. |
-| UI | Settings "Demo mode" section (switch, explanation, Refresh, last refreshed); app-wide amber banner "Demo data — nothing here is real. Actions are off." with Turn off; actions visibly disabled or caught by a global client guard; light and dark tokens. |
+| UI | Settings "Demo mode" section (switch, explanation, Refresh, last refreshed); ~~app-wide amber banner "Demo data — nothing here is real. Actions are off." with Turn off~~ **(2026-10-08, Steven: no banner; turn off in Settings → Demo mode.)**; actions visibly disabled or caught by a global client guard; light and dark tokens. |
 | Dev picker | Settings section on the dev server only, behind the same double lock as `/__dev/seed`; not rendered and the endpoint 404s on the live site. |
 
 ## 3. Rulings (decided while writing)
@@ -278,6 +278,8 @@ out of demo mode).
 
 ### 8.1 Banner (`DemoBanner`)
 
+**2026-10-08, Steven: no banner; turn off in Settings → Demo mode.** ("remove the demo banner when in demo mode".) The banner, its stylesheet and its tokens are gone; the way out is the Settings → Demo mode switch (and its Turn off demo mode button when `GET /demo` fails, §8.3). Actions stay off exactly as before: the client guard (§8.2), the disabled buttons with their tooltip (§8.5) and the Worker's 409s. `useDemoOn()` stays (the disabled buttons and the Settings section use it). The original text, for the record:
+
 Under the top bar on every page (beside `DisconnectedBanner`), whenever `useDemoOn()` (an answer's `X-WG-Data` says demo,
 or `GET /demo` says on; so it shows even when `GET /demo` itself fails): an amber strip with an icon,
 the words **"Demo data — nothing here is real. Actions are off."** and a **Turn off** button (`PUT /demo { on: false }`).
@@ -393,7 +395,7 @@ the Dev data section absent with `devSeed: null` and present with scenarios; See
 |---|---|
 | Durable Object CPU on the account's plan is lower than 30 s (V) | The live check refreshes once; if it fails with a CPU error, stop and report (Appendix B option). |
 | D1 vs Durable Object SQLite differences | Facade tests over `node:sqlite`; the live check reads every page in demo; `demo_unavailable` never falls back to real. |
-| The running story looks stale after hours | Re-seed on enable after 12 h; "Last refreshed" shown; Refresh button. |
+| The running story looks stale after hours | Re-seed on enable after 12 h; "Last refreshed" shown; Refresh button. **Superseded 2026-10-08 (§12.2): the demo clock; it never looks stale.** |
 | A new GET route makes an outside call | §9.2's meta-test forces it into the table; the fetch guard turns it into a 500 in demo, never a call. |
 | A new write route | Refused by default (ruling 4). |
 | Notification taps open demo views | Banner; "Not found" for real ids; ruling 17. |
@@ -416,6 +418,36 @@ the Dev data section absent with `devSeed: null` and present with scenarios; See
    `wrangler.toml`, so it cannot be missed silently, but the masking choice is a review item).
 4. **A phone alert renewal while demo mode is on** is refused like every write; sw.js keeps it and the app finishes it once
    the data is real (§8.3). Until then that phone gets no alerts. The Settings intro says so.
+
+### 12.2 Amendment (2026-10-08, Steven: "a vibrant busy dashboard")
+
+Steven saw the live demo greyed out: key metrics stale, 0 clients connected, sparse firewall graphs, pennies of cost. Causes
+and fixes:
+
+1. **Time decay (the main cause).** The heartbeat counts as late after 2 minutes and a client as offline after 3, but the
+   demo was seeded once (a refresh writes about 9,400 rows; the allowance is 30,000 a day), so minutes after seeding it
+   decayed. **Fix: the demo clock** (`worker/src/demo/clock.ts`). Each demo read runs inside `demoClock.run(offset)`, an
+   AsyncLocalStorage-scoped wrapper of the global `Date` (installed once, like the outbound guard): the app's code sees a
+   time within a minute of the seed, so every answer is worked out as it was then; `serve` then moves every ISO UTC time
+   in the answer forward by the same whole minutes (`shiftTimes`; and the one time sent as a number, a peer's
+   `latest_handshake` in seconds), so the browser, which compares times with its own
+   clock, sees data from the last minute. Plain days (`2026-10-07`) are not moved: they stay with the demo's own month.
+   Nothing is written. Outside a demo read the wrapper is exactly the real clock; a source test pins `demoClock.run` to
+   `demo/store.ts`, so cron, the watchman, the lab watch, insights and real requests never see it. Rejected: re-seeding to
+   stay fresh (the row allowance allows two a day, freshness needs one a minute); a pinned clock alone (the app computes
+   ages with `Date.now()` in the browser too); rewriting stored times (thousands of writes).
+2. **Reads re-seed too.** `serve` calls `ensureReady`: data over 12 hours old is re-seeded on read, budget permitting (else
+   the old data keeps being served, on the clock above). The store records `storyVersion` (`DEMO_STORY_VERSION`); a deploy
+   that changes the story re-seeds on the next read, budget permitting, so nothing needs doing by hand.
+3. **Old data does not queue.** When the data is old but intact and the budget says wait, `ensureReady` answers at once
+   instead of queueing every read behind a refresh that would refuse.
+4. **The story** (`everything`, so the dev picture is the same): twelve clients, six connected; the gateway up for 20 hours
+   with the regulars arriving through the day; longer working days before it and a month of them behind (sessions with
+   runs; history written as the roll-up's 5-minute summaries for anything over 47 hours old); a `Standard_D2s_v5` at
+   Azure's list price (£0.0896 an hour with disk and address); daily costs of £0.16 to £1.50 (capped so even a forecast
+   from one day stays under £50); lab spend at plausible rates; a budget of £60. The Cost page's insights gain two plain
+   facts below 80% of the budget (where the month is heading; this month's sessions).
+5. **No banner** (§2, §8.1).
 
 ## Appendix A: the brief (as relayed on 2026-10-08)
 

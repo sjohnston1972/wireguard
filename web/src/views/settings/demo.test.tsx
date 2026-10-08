@@ -34,7 +34,7 @@ describe("Settings → Demo mode", () => {
     expect(within(s).getByRole("button", { name: "Refresh demo data" })).toBeEnabled();
   });
 
-  it("switching on PUTs { on: true }, says Preparing demo data… meanwhile, then shows on and the banner", async () => {
+  it("switching on PUTs { on: true }, says Preparing demo data… meanwhile, then shows on (no banner since 2026-10-08)", async () => {
     const user = userEvent.setup();
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
@@ -57,7 +57,7 @@ describe("Settings → Demo mode", () => {
     expect(fetchMock!.callsTo("PUT", "/api/v1/demo")[0]!.body).toEqual({ on: true });
     release();
     await waitFor(() => expect(within(screen.getByRole("region", { name: "Demo mode" })).getByRole("switch", { name: "Show demo data" })).toBeChecked());
-    expect(await screen.findByRole("status", { name: "Demo mode" })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Demo mode" })).toBeNull();
   });
 
   it("switching off PUTs { on: false }", async () => {

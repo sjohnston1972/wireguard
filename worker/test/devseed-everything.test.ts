@@ -164,7 +164,7 @@ const WIDGET_DATA: Record<string, (s: Seen) => boolean> = {
   "activity.serviceHealth": (s) => some(s.serviceHealth.events),
 
   // Cost
-  "cost.kpis": (s) => s.costMonth.monthToDate > 0 && s.costMonth.session.estimateGbp !== null && s.costMonth.budget.level === "warn",
+  "cost.kpis": (s) => s.costMonth.monthToDate > 0 && s.costMonth.session.estimateGbp !== null && s.costMonth.budget.budget > 0,
   "cost.spend": (s) => s.cost30.daily.length >= 28 && !!s.costMonth.projection,
   "cost.breakdown": (s) => !!s.costMonth.breakdown && s.costMonth.breakdown.byType.length > 1,
   "cost.forecast": (s) => !!s.costMonth.projection && s.costMonth.budget.budget > 0,
@@ -213,7 +213,8 @@ describe.each([NOW, MID_MONTH])("the everything scenario (issue #96), seeded at 
     expect(seen.overview.labs.running.length).toBeGreaterThanOrEqual(3);
     expect(seen.overview.labs.gbpH).toBeGreaterThan(0);
     expect(seen.azureSummary.maintenance[0].type).toBe("Reboot");
-    expect(seen.overview.budget.level).toBe("warn");
+    // Demo mode's story (Steven, 2026-10-08): costs clearly visible, the month well under its £60 budget.
+    expect(seen.overview.budget.level).toBe("ok");
   });
 
   it("Clients: several peers with handshakes, a re-keyed client, and every client's detail tabs filled", () => {
@@ -239,10 +240,13 @@ describe.each([NOW, MID_MONTH])("the everything scenario (issue #96), seeded at 
     for (const k of ["failure", "drift", "cost_guard", "unreachable", "idle", "info"]) expect(noteKinds, k).toContain(k);
   });
 
-  it("Cost: a month of daily figures, the budget at its warning level, a forecast and lab spend", () => {
+  it("Cost: a month of daily figures, a budget of £60 the month stays under (under £50, never over), a forecast and lab spend", () => {
     expect(seen.cost30.daily.length).toBeGreaterThanOrEqual(28);
-    expect(seen.costMonth.budget.pct).toBeGreaterThanOrEqual(80);
-    expect(seen.costMonth.budget.pct).toBeLessThan(100);
+    expect(seen.costMonth.budget.budget).toBe(60);
+    expect(seen.costMonth.budget.total).toBeLessThan(50);
+    expect(seen.costMonth.budget.level).toBe("ok");
+    expect(seen.costMonth.projection.gbp).toBeLessThan(50);
+    expect(seen.costMonth.session.estimateGbp).toBeGreaterThan(1);
   });
 
   it("Labs: live sessions in every live state, history, coverage, leftovers and release tests", () => {

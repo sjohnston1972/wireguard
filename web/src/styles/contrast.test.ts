@@ -69,21 +69,7 @@ describe("token contrast", () => {
         expect(contrast(tok(t, "--disabled-fg"), tok(t, bg)), `${name} --disabled-fg on ${bg}`).toBeGreaterThanOrEqual(3);
       }
     });
-
-    it(`${name}: the demo banner's text is at least 4.5:1 on its amber strip, and its edge is visible`, () => {
-      expect(contrast(tok(t, "--demo-banner-fg"), tok(t, "--demo-banner-bg")), `${name} --demo-banner-fg on --demo-banner-bg`).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(tok(t, "--demo-banner-border"), tok(t, "--bg-app")), `${name} --demo-banner-border on --bg-app`).toBeGreaterThanOrEqual(1.5);
-    });
   }
-});
-
-describe("the demo banner", () => {
-  it("uses its tokens only (no hex), in its own stylesheet", () => {
-    const css = readFileSync(join(src, "shell/DemoBanner.css"), "utf8");
-    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-    expect(css).toMatch(/var\(--demo-banner-bg\)/);
-    expect(css).toMatch(/var\(--demo-banner-fg\)/);
-  });
 });
 
 function cssFiles(dir: string): string[] {

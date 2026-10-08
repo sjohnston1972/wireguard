@@ -27,10 +27,6 @@
   --disabled-bg: #112033;
   --disabled-fg: #73839a;
   --disabled-border: #22364d;
-  /* The demo mode banner: an amber strip whose text passes 4.5:1. */
-  --demo-banner-bg: #2b1f06;
-  --demo-banner-fg: #fde68a;
-  --demo-banner-border: #a16207;
 
   --radius-control: 8px;
   --radius-panel: 14px;
