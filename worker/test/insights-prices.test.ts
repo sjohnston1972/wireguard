@@ -7,7 +7,10 @@
 // existed), and falls back to the fixed rates, saying why, when there is no
 // fresh price.
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { normalisePrices, pricesQuery } from "../src/insights/feeds/prices";
+import { MAX_FILTER_COMPARISONS, MAX_PRICE_URL, labMeters, normalisePrices, priceRequests, priceUrls, pricesQuery } from "../src/insights/feeds/prices";
+import { TEST_VM_SIZE, labVmSizes } from "../src/insights/feeds/capacity";
+import { catalogue } from "../src/labs/catalogue";
+import { VM_SIZES } from "../src/settings";
 import { priceInfo, rateSource, readPrices } from "../src/insights/price";
 import { runInsights } from "../src/insights/runner";
 import { effectiveConfig, fixedConfig } from "../src/settings";
@@ -21,7 +24,26 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const SIZES = ["Standard_B1s", "Standard_B1ls", "Standard_B1ms", "Standard_B2s", "Standard_B2ats_v2"];
+/** A filter without its string literals ('' is a quote inside one), so a quote in a name is not read as syntax. */
+const bare = (filter: string) => filter.replace(/'(?:[^']|'')*'/g, "''");
+/** How many comparisons ("eq") a filter makes: Azure refuses more than 20. */
+const comparisons = (filter: string) => (bare(filter).match(/\beq\b/g) ?? []).length;
+/** The OR'd asks inside a filter's parentheses, each as written. */
+function orTerms(filter: string): string[] {
+  const inner = filter.slice(filter.indexOf("(") + 1, -1);
+  const out: string[] = [];
+  let cur = "";
+  for (const part of inner.split(" or ")) {
+    cur = cur ? `${cur} or ${part}` : part;
+    if (((cur.match(/'/g) ?? []).length) % 2 === 0) {
+      out.push(cur);
+      cur = "";
+    }
+  }
+  return out;
+}
+
+const SIZES = ["Standard_B1s","Standard_B1ls", "Standard_B1ms", "Standard_B2s", "Standard_B2ats_v2"];
 
 async function seedPrices(env: Env, region: string, at: string, vm: Record<string, number> = { Standard_B1s: 0.0093, Standard_B1ls: 0.0047 }) {
   const put = (item: string, gbp: number, unit: string, meter: string) => env.DB.prepare("INSERT INTO az_prices (region, item, gbp, unit, meter, fetched_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(region, item, gbp, unit, meter, at).run();
@@ -143,20 +165,23 @@ describe("prices", () => {
     expect(priceInfo([], cfg, "uksouth", "Standard_B1s", "fixed", NOW)).toMatchObject({ vmGbpPerHour: null, fetchedAt: null });
   });
 
-  it("the feed reads each region in use daily, one per run, in one call", async () => {
+  it("the feed reads each region in use daily, one per run, in one call per batch", async () => {
     const { env, az } = azureEnv();
     await env.DB.prepare("DELETE FROM profiles").run();
     await allNotDue(env);
     await setFeed(env, "prices", { status: "ok", next_due_at: ago(1) });
     await runInsights(env, NOW);
     const calls = callsTo(az, "prices.azure.com");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.headers.authorization).toBeUndefined(); // no token to the price API
-    expect(calls[0]!.url).not.toMatch(/\+/);
+    const batches = priceRequests();
+    expect(calls).toHaveLength(batches);
+    for (const c of calls) {
+      expect(c.headers.authorization).toBeUndefined(); // no token to the price API
+      expect(c.url).not.toMatch(/\+/);
+    }
     expect((await feedRows(env)).prices.status).toBe("ok");
     const rows = (await env.DB.prepare("SELECT item, gbp FROM az_prices WHERE region = 'uksouth' ORDER BY item").all<{ item: string; gbp: number }>()).results;
     expect(rows.find((r) => r.item === "ip:v4")!.gbp).toBe(0.0037);
-    // Next pages are followed (prices.azure.com only), up to three calls in all.
+    // Next pages are followed (prices.azure.com only), up to three calls a batch.
     az.handlers.push((c) => {
       if (c.u.hostname !== "prices.azure.com") return undefined;
       const page = fixture("prices-uksouth");
@@ -166,7 +191,7 @@ describe("prices", () => {
     await setFeed(env, "prices", { status: "ok", next_due_at: ago(1) });
     await env.DB.prepare("DELETE FROM az_prices").run();
     await runInsights(env, NOW);
-    expect(callsTo(az, "prices.azure.com")).toHaveLength(1 + 3);
+    expect(callsTo(az, "prices.azure.com")).toHaveLength(batches + 3 * batches);
   });
 
   it("the feed reads every region's freshness in one statement and still picks the first stale region", async () => {
@@ -184,10 +209,87 @@ describe("prices", () => {
     // The freshness read: MIN(fetched_at) per region, every region in one statement.
     expect(d1.sql.filter((s) => /^SELECT .*MIN\(fetched_at\).* FROM az_prices/.test(s))).toHaveLength(1);
     const calls = callsTo(az, "prices.azure.com");
-    expect(calls).toHaveLength(1);
-    expect(decodeURIComponent(calls[0]!.url)).toContain("armRegionName eq 'eastus'");
+    expect(calls).toHaveLength(priceRequests());
+    for (const c of calls) expect(decodeURIComponent(c.url)).toContain("armRegionName eq 'eastus'");
     // Another stale region (ukwest) remains, so the feed comes back in five minutes.
     expect((await feedRows(env)).prices.next_due_at).toBe(new Date(NOW.getTime() + 5 * MIN).toISOString());
+  });
+
+  it("every request for the full real catalogue stays inside Azure's limits (20 comparisons, 2,000 characters) and asks for everything once", () => {
+    const meters = labMeters();
+    // Every region in use: the configured one, a profile's, each lab's secondary, and a long region name.
+    const regions = [...new Set(["uksouth", "eastus", "australiasoutheast", ...catalogue().labs.map((l) => l.regions.secondary).filter((r): r is string => !!r)])];
+    // The sizes the feed asks for, plus profile sizes not in the list.
+    const sizes = [...new Set([...VM_SIZES, TEST_VM_SIZE, ...labVmSizes(), "Standard_D2s_v5", "Standard_D4as_v5"])];
+    for (const region of regions) {
+      const urls = priceUrls(region, sizes, meters);
+      const asked: string[] = [];
+      for (const url of urls) {
+        expect(url.length, url).toBeLessThanOrEqual(MAX_PRICE_URL);
+        expect(url.startsWith("https://prices.azure.com/api/retail/prices?")).toBe(true);
+        expect(url).not.toMatch(/[ +]/);
+        const q = new URL(url).searchParams;
+        expect(q.get("currencyCode")).toBe("'GBP'");
+        const filter = q.get("$filter")!;
+        expect(filter.startsWith(`armRegionName eq '${region}' and priceType eq 'Consumption' and (`)).toBe(true);
+        expect(filter.endsWith(")")).toBe(true);
+        expect(comparisons(filter), filter).toBeLessThanOrEqual(MAX_FILTER_COMPARISONS);
+        asked.push(...orTerms(filter));
+      }
+      // Every size, the three fixed meters and every lab meter, each in exactly one request.
+      const want = [...sizes.map((s) => `armSkuName eq '${s}'`), ...[...new Set(["E4 LRS Disk", "S4 LRS Disk", "Standard IPv4 Static Public IP", ...meters])].map((m) => `meterName eq '${m.replace(/'/g, "''")}'`)];
+      expect(asked.sort()).toEqual(want.sort());
+    }
+  });
+
+  it("regression: labs batch 4 put 23 comparisons in one filter and Azure refused it (400); now split into requests of at most 20", () => {
+    const sizes = [...new Set([...VM_SIZES, TEST_VM_SIZE, ...labVmSizes()])];
+    // What the feed sent until now: one filter for everything (Azure: "Invalid OData parameters supplied" past 20 comparisons).
+    const one = new URLSearchParams(pricesQuery("uksouth", sizes, labMeters())).get("$filter")!;
+    expect(comparisons(one)).toBeGreaterThan(MAX_FILTER_COMPARISONS);
+    const urls = priceUrls("uksouth", sizes, labMeters());
+    expect(urls.length).toBeGreaterThan(1);
+    for (const u of urls) expect(comparisons(new URL(u).searchParams.get("$filter")!)).toBeLessThanOrEqual(MAX_FILTER_COMPARISONS);
+    // Exactly 18 asks fit one request (2 + 18 = 20 comparisons); the 19th starts a second.
+    const many = Array.from({ length: 19 }, (_, i) => `Standard_X${i}`);
+    expect(priceUrls("uksouth", many.slice(0, 15)).map((u) => comparisons(new URL(u).searchParams.get("$filter")!))).toEqual([20]);
+    expect(priceUrls("uksouth", many).every((u) => comparisons(new URL(u).searchParams.get("$filter")!) <= 20)).toBe(true);
+    // Long meter names split on length too (Azure answers 404 past 2,048 characters), and a quote is doubled, not counted as a split.
+    const long = Array.from({ length: 15 }, (_, i) => `A Very Long Meter Name For Some Premium Secured Virtual Hub Deployment In A Secondary Region ${i} O'Brien`);
+    const longUrls = priceUrls("uksouth", [], long);
+    expect(longUrls.length).toBeGreaterThan(1);
+    for (const u of longUrls) {
+      expect(u.length).toBeLessThanOrEqual(MAX_PRICE_URL);
+      expect(new URL(u).searchParams.get("$filter")).toContain("O''Brien");
+    }
+    expect(longUrls.flatMap((u) => orTerms(new URL(u).searchParams.get("$filter")!)).filter((t) => t.includes("O''Brien"))).toHaveLength(15);
+  });
+
+  it("the feed sends one request per batch and stores what every batch answered", async () => {
+    const { env, az } = azureEnv();
+    await env.DB.prepare("DELETE FROM profiles").run();
+    await allNotDue(env);
+    await setFeed(env, "prices", { status: "ok", next_due_at: ago(1) });
+    // Each batch answers only what it asked for (as Azure does): the VM sizes in one, the lab meters in another.
+    az.handlers.push((c) => {
+      if (c.u.hostname !== "prices.azure.com") return undefined;
+      const f = c.u.searchParams.get("$filter") ?? "";
+      const all = fixture("prices-uksouth").Items as Record<string, unknown>[];
+      const lab = { currencyCode: "GBP", type: "Consumption", retailPrice: 0.5, unitOfMeasure: "1 Hour", meterName: "VpnGw1AZ", productName: "VPN Gateway", skuName: "VpnGw1AZ", isPrimaryMeterRegion: true };
+      const items = all.filter((i) => (typeof i.armSkuName === "string" && f.includes(`'${i.armSkuName}'`)) || f.includes(`'${i.meterName}'`));
+      if (f.includes("'VpnGw1AZ'")) items.push(lab);
+      return json({ Items: items, NextPageLink: null });
+    });
+    await runInsights(env, NOW);
+    const calls = callsTo(az, "prices.azure.com");
+    expect(calls.length).toBeGreaterThan(1);
+    for (const c of calls) {
+      expect(c.url.length).toBeLessThanOrEqual(MAX_PRICE_URL);
+      expect(comparisons(new URL(c.url).searchParams.get("$filter")!)).toBeLessThanOrEqual(MAX_FILTER_COMPARISONS);
+    }
+    expect((await feedRows(env)).prices).toMatchObject({ status: "ok", error: null });
+    const items = (await env.DB.prepare("SELECT item FROM az_prices WHERE region = 'uksouth'").all<{ item: string }>()).results.map((r) => r.item);
+    expect(items).toEqual(expect.arrayContaining(["Standard_B1s", "ip:v4", "disk:E4", "lab:VpnGw1AZ"]));
   });
 
   it("settings PUT accepts rate_source", async () => {
