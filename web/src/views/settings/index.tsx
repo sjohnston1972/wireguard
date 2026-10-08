@@ -6,7 +6,7 @@ import { Button, ErrorState, Modal, PageHeader, Sheet, Tabs, useIsPhone, type Ta
 import { useSettingsSections } from "@/shell/CommandPalette";
 import { EnvironmentField } from "@/shell/StateChip";
 import { useDemo } from "@/api/demo";
-import { ChevronRight, Clock, Cloud, Database, FlaskConical, Presentation, Settings as Cog, ShieldCheck, Smartphone, Wrench, type LucideIcon } from "lucide-react";
+import { ChevronRight, Clock, Cloud, Database, FlaskConical, Presentation, Settings as Cog, ShieldCheck, Smartphone, Sprout, Wrench, type LucideIcon } from "lucide-react";
 import { AutomationSection } from "./AutomationSection";
 import { BackupSection } from "./BackupSection";
 import { DemoSection } from "./DemoSection";
@@ -22,6 +22,8 @@ import "./settings.css";
 
 /** Settings → Labs loads only when opened (it is the one section most people never visit). */
 const LabsSection = lazyPart(() => import("./LabsSection").then((m) => m.LabsSection));
+/** Settings → Dev data exists only on the dev server: its code loads only when opened there. */
+const DevDataSection = lazyPart(() => import("./DevDataSection").then((m) => m.DevDataSection));
 
 const ICONS: Record<string, LucideIcon> = {
   overview: Cog,
@@ -33,6 +35,7 @@ const ICONS: Record<string, LucideIcon> = {
   labs: FlaskConical,
   maintenance: Wrench,
   demo: Presentation,
+  "dev-data": Sprout,
 };
 
 /** One line under each section's name on the phone's list. */
@@ -46,6 +49,7 @@ const BLURB: Record<string, string> = {
   labs: "Lab limits, permissions, release tests",
   maintenance: "Health check, lock, destroy",
   demo: "Show made-up data for demos",
+  "dev-data": "Load a seed story (dev server only)",
 };
 
 /** Sections that need nothing from /settings: they open even while it fails (demo mode spec §8.3). */
@@ -81,7 +85,9 @@ export function SettingsPage() {
         right={s && !phone ? <HeaderStats s={s} /> : undefined}
       />
       {/* Always outside the /settings tree, so it never remounts when /settings answers (or fails). */}
-      {standalone ? (
+      {deciding ? (
+        <SettingsSkeleton />
+      ) : standalone ? (
         <Bare sections={sections} section={section} phone={phone} />
       ) : settings.isError && !s ? (
         <ErrorState message={settings.error.message} onRetry={() => void settings.refetch()} />
@@ -99,6 +105,7 @@ export function SettingsPage() {
 /** The body of a section that needs nothing from /settings (null for any other). */
 function standaloneBody(slug: string): ReactNode {
   if (slug === "demo") return <DemoSection />;
+  if (slug === "dev-data") return <DevDataSection />;
   return null;
 }
 
