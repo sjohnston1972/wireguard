@@ -13,6 +13,7 @@ import { vi } from "vitest";
 import type { Env } from "../src/env";
 import { RunLock } from "../src/lock";
 import type { GhJob } from "../src/github";
+import type { SqlLike } from "../src/demo/sql";
 
 // ── D1 on node:sqlite ─────────────────────────────────────────────────────
 
@@ -56,6 +57,53 @@ function fakeD1(): D1Database {
   const dir = new URL("../migrations/", import.meta.url);
   for (const f of readdirSync(dir).filter((x) => x.endsWith(".sql")).sort()) db.exec(readFileSync(new URL(f, dir), "utf8"));
   return { prepare: (sql: string) => new Stmt(db, sql), batch: (stmts: Stmt[]) => batch(db, stmts) } as unknown as D1Database;
+}
+
+// ── A Durable Object's SQLite, on node:sqlite (demo mode's store) ──────────
+
+/**
+ * Shaped like a Durable Object's `ctx.storage.sql` plus `transactionSync`
+ * (demo/sql.ts SqlLike): ONE statement per exec (a second one is an error, so
+ * the store can never rely on more), blobs bound and read as ArrayBuffer, and
+ * `rowsWritten` from SQLite's own change count (a Durable Object also counts
+ * index rows, so the live figure is somewhat higher).
+ */
+export function sqliteLike(db: DatabaseSync = new DatabaseSync(":memory:")): SqlLike & { db: DatabaseSync } {
+  const total = () => Number((db.prepare("SELECT total_changes() AS t").get() as { t: number | bigint }).t);
+  const toNode = (v: unknown) => (v instanceof ArrayBuffer ? new Uint8Array(v) : v);
+  const fromNode = (row: Record<string, unknown>) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) out[k] = v instanceof Uint8Array ? v.slice().buffer : typeof v === "bigint" ? Number(v) : v;
+    return out;
+  };
+  let depth = 0;
+  return {
+    db,
+    exec(query: string, ...bindings: unknown[]) {
+      const st = db.prepare(query);
+      const rest = query.slice(st.sourceSQL.length).replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/[;\s]/g, "");
+      if (rest) throw new Error("sqliteLike: one statement per exec, as the demo store uses a Durable Object's SQL");
+      const before = total();
+      const rows = st.all(...bindings.map(toNode)).map(fromNode);
+      const rowsWritten = total() - before;
+      return { toArray: () => rows, rowsWritten };
+    },
+    transactionSync<T>(fn: () => T): T {
+      const sp = `sp${depth++}`;
+      db.exec(`SAVEPOINT ${sp}`);
+      try {
+        const r = fn();
+        db.exec(`RELEASE ${sp}`);
+        return r;
+      } catch (e) {
+        db.exec(`ROLLBACK TO ${sp}`);
+        db.exec(`RELEASE ${sp}`);
+        throw e;
+      } finally {
+        depth--;
+      }
+    },
+  };
 }
 
 // ── KV ────────────────────────────────────────────────────────────────────

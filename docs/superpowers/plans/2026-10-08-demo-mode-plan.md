@@ -47,6 +47,14 @@ A brief). **(V)** marks a fact to check during the build; each area's report rec
 - Worktrees have no `node_modules`; `npm ci` (or a junction to the main checkout's, read-only) is needed before tests.
 - **E1 baseline** (2026-10-08, `feat/demo-mode-engine` = a525546 + the docs): entry **312.7 kB**, all JS **435.6 kB**, CSS
   **39.8 kB** gzip. U's entry ceiling is therefore 314.2 kB.
+- **E2 route census, corrected:** `buildApi()` registers **31 GET** and **59 non-GET** (42 POST, 10 PUT, 7 DELETE). The 54
+  above counted `api/labs.ts`'s loop of six `POST /labs/:id/<action>` routes as one. `worker/test/demo-shared.test.ts` pins
+  the figures (demo control routes excluded) and classifies every route.
+- **E5 rows per `everything` refresh** (harness, facades over node:sqlite, 2026-10-08): **6,812 rows written** into an empty
+  store (schema creation adds ~0), 656 ms in Node. This is SQLite's change count; a Durable Object's `rowsWritten` also
+  counts index rows, so the live figure will be higher (record it in the live check). Against `DEMO_DAILY_ROWS = 30_000`
+  with the `rowsToday + 2 × lastRows` rule this allows about three refreshes a day at the harness figure, one or two if the
+  live figure is 10–15k.
 
 ## E names (to be confirmed as built, E8)
 
@@ -152,7 +160,7 @@ code cannot reach a real binding, one shared route classification, and a contrac
 - [x] **E4 lockFetch.** Move `RunLock.fetch`'s body into `lockFetch(storage, request, now)` (storage: `get`, `put`, `delete`,
   `list({ prefix })`); `RunLock.fetch` calls it. No behaviour change. **Done when** `npx vitest run worker/test/state.test.ts
   worker/test/races.test.ts worker/test/lifecycle.test.ts` passes unchanged.
-- [ ] **E5 Facades.** Tests first (`worker/test/demo-facades.test.ts`, over the harness's `sqliteLike()`): D1: `first`,
+- [x] **E5 Facades.** Tests first (`worker/test/demo-facades.test.ts`, over the harness's `sqliteLike()`): D1: `first`,
   `first(col)`, `all().results`, `run().meta.changes` (0 for a no-op UPDATE), `last_row_id`, `undefined → null`, `true → 1`,
   `batch` all-or-nothing, an error statement rejects; KV: `get` text/json/`{type:"json"}`, `put` with `expirationTtl` expires,
   `delete`, `list({ prefix })`; R2: `put` string/ArrayBuffer with `httpMetadata`, `get` → `text()`/`json()`/`body`, `head`,
