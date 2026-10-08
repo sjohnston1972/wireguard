@@ -15,8 +15,9 @@ import { readFileSync } from "node:fs";
 const scripts = fileURLToPath(new URL("../", import.meta.url));
 const ID = "0b9ee8a5-3c3b-4c1f-9a43-1f2e3d4c5b6a";
 
-test("deploy builds and checks the bundle before migrations and deploy", () => {
+test("deploy checks the demo schema, builds and checks the bundle before migrations and deploy", () => {
   assert.deepEqual(deploySteps(), [
+    ["npm", "run", "demo-schema", "--", "--check"],
     ["npm", "run", "build:web"],
     ["npm", "run", "bundle-size"],
     ["wrangler", "deployments", "status"],
@@ -30,6 +31,7 @@ test("the steps run in order, with the replaced version's note after the status 
   const status = runSteps(deploySteps(), (step) => (seen.push(step.join(" ")), 0), (line) => seen.push("log: " + line));
   assert.equal(status, 0);
   assert.deepEqual(seen.filter((s) => !s.startsWith("log: $")), [
+    "npm run demo-schema -- --check",
     "npm run build:web",
     "npm run bundle-size",
     "wrangler deployments status",
@@ -44,7 +46,7 @@ test("a failing step stops the deploy before anything after it", () => {
   const seen = [];
   const status = runSteps(deploySteps(), (step) => (seen.push(step.join(" ")), step[2] === "bundle-size" ? 1 : 0), () => {});
   assert.equal(status, 1);
-  assert.deepEqual(seen, ["npm run build:web", "npm run bundle-size"]);
+  assert.deepEqual(seen, ["npm run demo-schema -- --check", "npm run build:web", "npm run bundle-size"]);
 });
 
 test("rollback args carry the id, a message and --yes", () => {
@@ -156,7 +158,7 @@ test("rollback-worker refuses an id that is not a version id", () => {
   assert.match(r.stderr, /version id/);
 });
 
-test("deploy-worker --dry-run prints the five steps and writes nothing", () => {
+test("deploy-worker --dry-run prints the six steps and writes nothing", () => {
   const r = dryRun("deploy-worker.mjs", []);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const steps = r.stdout.split(/\r?\n/).filter((l) => l.startsWith("$ "));

@@ -64,6 +64,21 @@ test("pushsubscriptionchange re-subscribes through /api/v1/push", async () => {
   assert.equal(sw.calls.fetch[1].body.endpoint, "https://push.example/old");
 });
 
+test("pushsubscriptionchange refused by demo mode (409): keeps the renewal in a notification for the app, unsubscribes nothing", async () => {
+  const sw = load({ fetchReply: (url) => (url.endsWith("/push/subscribe") ? { ok: false, status: 409, json: async () => ({ error: { code: "demo_mode" } }) } : { ok: true, status: 200, json: async () => ({}) }) });
+  await sw.fire("pushsubscriptionchange", { oldSubscription: { endpoint: "https://push.example/old", options: { applicationServerKey: KEY } }, newSubscription: null });
+  assert.deepEqual(sw.calls.fetch.map((f) => `${f.method} ${f.url}`), ["POST /api/v1/push/subscribe"], "the old one is not dropped");
+  assert.equal(sw.calls.shown.length, 1);
+  const { opts } = sw.calls.shown[0];
+  assert.equal(opts.tag, "push-renew");
+  assert.match(opts.body, /demo mode/i);
+  assert.equal(opts.data.url, "/settings/demo");
+  assert.deepEqual(JSON.parse(JSON.stringify(opts.data.renew)), {
+    subscribe: { endpoint: "https://push.example/new", keys: { p256dh: "p", auth: "a" }, label: "Android phone (renewed)" },
+    old: "https://push.example/old",
+  });
+});
+
 test("pushsubscriptionchange without the old key asks /api/v1/push/status for it", async () => {
   const sw = load({ fetchReply: (url) => ({ ok: true, json: async () => (url.includes("status") ? { vapid: "AQID-vv8" } : {}) }) });
   await sw.fire("pushsubscriptionchange", { oldSubscription: null, newSubscription: null });

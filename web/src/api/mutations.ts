@@ -82,6 +82,11 @@ export function useApiMutation<V = void, R = ApiOk>(cfg: Config<V, R>): ApiMutat
         return;
       }
       if (err instanceof ApiError && err.field) return;
+      // Demo mode (the client guard, or the Worker's 409): not a failure, the actions are off by design.
+      if (err instanceof ApiError && err.code === "demo_mode") {
+        toast({ tone: "warning", title: err.message });
+        return;
+      }
       toast({ tone: "error", title: err.message });
     },
   });

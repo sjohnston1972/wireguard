@@ -29,7 +29,9 @@ import type {
   LabSession,
   LabSessionsResponse,
   LabsResponse,
+  DemoStatusResponse,
 } from "@shared/api";
+import { DEMO_STORY } from "@shared/demo";
 import { FEEDS, PIP_COLUMNS, VITALS_COLUMNS, VM_COLUMNS } from "@shared/azureMetrics";
 import { PAGE_IDS, PREFS_SCHEMA, normalisePagePrefs, validatePagePrefs, type PageId } from "@shared/widgets";
 import type { Snapshot } from "../../../worker/src/state";
@@ -706,4 +708,12 @@ export function prefsServer(initial: Partial<Record<PageId, PagePrefs>> = {}): P
     };
   }
   return server;
+}
+
+/**
+ * GET /api/v1/demo (demo mode spec §7): off, never refreshed, a refresh
+ * allowed now, and no dev seeder (the live site) unless overridden.
+ */
+export function demoStatusFixture(over: Partial<DemoStatusResponse> = {}): DemoStatusResponse {
+  return { on: false, refreshedAt: null, story: DEMO_STORY, rowsToday: 0, dailyRows: 30_000, nextRefreshAt: null, devSeed: null, ...over };
 }

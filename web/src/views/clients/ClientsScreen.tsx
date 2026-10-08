@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Plus, Settings2, Users } from "lucide-react";
 import { useClients, useOverview } from "@/api/queries";
 import { useEditClient } from "@/api/mutations";
+import { DEMO_ACTIONS_OFF, useDemoOn } from "@/api/demo";
 import { Button, EmptyState, ErrorState, IconButton, PageHeader, Panel, Skeleton, useIsPhone, type RowAction } from "@/components";
 import { EnvironmentField, regionLabel } from "@/shell/StateChip";
 import { LayoutMenu, Widget } from "@/widgets";
@@ -74,6 +75,8 @@ export function ClientsScreen() {
   const open = useCallback((c: Client) => navigate(`/clients/${c.id}`), [navigate]);
   const closePanel = useCallback(() => navigate("/clients"), [navigate]);
   const startAdd = useCallback(() => setDialog({ kind: "add" }), []);
+  // Demo mode (spec ruling 18): Add client is off, saying why on hover.
+  const demo = useDemoOn();
   const rekey = useCallback((c: Client) => setDialog({ kind: "rekey", client: c }), []);
   const remove = useCallback((c: Client) => setDialog({ kind: "delete", client: c }), []);
   const toggleEnabled = useCallback((c: Client) => edit.mutate({ id: c.id, enabled: !c.enabled }), [edit]);
@@ -108,7 +111,7 @@ export function ClientsScreen() {
             </IconButton>
           )}
           <LayoutMenu page="clients" />
-          <Button variant="primary" icon={<Plus size={16} aria-hidden />} onClick={startAdd} size={phone ? "md" : "lg"}>
+          <Button variant="primary" icon={<Plus size={16} aria-hidden />} onClick={startAdd} size={phone ? "md" : "lg"} disabled={demo} title={demo ? DEMO_ACTIONS_OFF : undefined}>
             Add client
           </Button>
         </>

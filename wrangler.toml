@@ -54,9 +54,21 @@ bucket_name = "wg-admin-tfstate"
 name = "RUN_LOCK"
 class_name = "RunLock"
 
+# Demo mode's made-up data (worker/src/demo/store.ts): its own SQLite database,
+# apart from DB, STATUS, STATE and RUN_LOCK. Only the Worker's demo gate and the
+# demo control routes reach it; cron never does. Nothing to create by hand:
+# wrangler deploy adds the class (migration v2).
+[[durable_objects.bindings]]
+name = "DEMO_STORE"
+class_name = "DemoStore"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RunLock"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["DemoStore"]
 
 # ── Non-secret settings ──────────────────────────────────────────────────────
 

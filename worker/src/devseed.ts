@@ -22,6 +22,7 @@
 
 import type { Context } from "hono";
 import type { Env } from "./env";
+import { config } from "./env";
 import { isLocalhost } from "./auth";
 import * as db from "./db";
 import { EMPTY, getSnapshot, saveSnapshot, nextTraffic, nextLatency, nextSession, nextTalkers, detectRoams, type AgentReport, type AgentPeer, type Snapshot, type Step, type Session, type Talker, type FirewallStatus } from "./state";
@@ -36,7 +37,7 @@ import { seedInsights } from "./devseed-insights";
 import { buildExport } from "./backup";
 import { isWgKey } from "./peers";
 import { DEVSEED_BACKUP_ROOT, DEVSEED_KV } from "./devmarks";
-import { seedLabs, seedLabsMore, wipeLabs } from "./devseed-labs";
+import { seedLabs, seedLabsMore, wipeLabs, seedActor, withSeedActor, DEFAULT_SEED_ACTOR } from "./devseed-labs";
 
 export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs", "labs-setup", "everything"] as const;
 export type Scenario = (typeof SCENARIOS)[number];
@@ -58,7 +59,6 @@ const SEC = 1000;
 const MIN = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
-const USER = "dev@localhost";
 const SEED = 20261002;
 
 // ── Deterministic randomness ──────────────────────────────────────────────
@@ -263,7 +263,7 @@ async function note(env: Env, at: number, kind: string, message: string, runIdv:
 
 async function auditAt(env: Env, at: number, action: string, target: string, before: unknown, after: unknown): Promise<void> {
   await env.DB.prepare("INSERT INTO audit (at, user, action, target, before_json, after_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
-    .bind(iso(at), USER, action, target, before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(after))
+    .bind(iso(at), seedActor(), action, target, before === null ? null : JSON.stringify(before), after === null ? null : JSON.stringify(after))
     .run();
 }
 
@@ -321,7 +321,7 @@ async function addFailedRun(env: Env, rng: Rng, atMs: number, error: string, act
   const steps = stepList(action === "apply" ? DEPLOY_STEPS : DESTROY_STEPS, started, { failAt });
   const finished = Date.parse(steps[failAt].completed_at!);
   const payload = action === "apply" ? JSON.stringify({ region: "uksouth", vm_size: "Standard_B1s", run_id: id }) : null;
-  await db.createRun(env, { id, action, status: "queued", requested_at: iso(atMs), requested_by: USER, callback_token_hash: null, agent_token_hash: null, payload_json: payload, auto_destroy_at: null, reason: null, ssh_password: null });
+  await db.createRun(env, { id, action, status: "queued", requested_at: iso(atMs), requested_by: seedActor(), callback_token_hash: null, agent_token_hash: null, payload_json: payload, auto_destroy_at: null, reason: null, ssh_password: null });
   await db.updateRun(env, id, { status: "failure", started_at: iso(started), finished_at: iso(finished), github_run_id: 7_000_000_000 + rng.int(1, 999_999), github_run_url: `https://ci.example.invalid/actions/runs/7000${rng.int(10000, 99999)}`, error, steps_json: JSON.stringify(steps) });
   await note(env, finished, "failure", `${action === "apply" ? "Deploy" : "Tear-down"} failed: ${error}`, id, false);
   return id;
@@ -330,7 +330,7 @@ async function addFailedRun(env: Env, rng: Rng, atMs: number, error: string, act
 /** A deploy cancelled by hand while the Azure resources were being made. */
 async function addCancelledRun(env: Env, rng: Rng, atMs: number): Promise<string> {
   const id = runId("apply", atMs, rng);
-  await db.createRun(env, { id, action: "apply", status: "queued", requested_at: iso(atMs), requested_by: USER, callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region: "uksouth", vm_size: "Standard_B1s" }), auto_destroy_at: null, reason: null, ssh_password: null });
+  await db.createRun(env, { id, action: "apply", status: "queued", requested_at: iso(atMs), requested_by: seedActor(), callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region: "uksouth", vm_size: "Standard_B1s" }), auto_destroy_at: null, reason: null, ssh_password: null });
   await db.updateRun(env, id, { status: "cancelled", started_at: iso(atMs + 9000), finished_at: iso(atMs + 80_000), steps_json: JSON.stringify(stepList(DEPLOY_STEPS, atMs + 9000, { failAt: 3 }).map((s) => (s.conclusion === "failure" ? { ...s, conclusion: "cancelled" } : s))) });
   return id;
 }
@@ -339,7 +339,7 @@ async function addCancelledRun(env: Env, rng: Rng, atMs: number): Promise<string
 const WATCHMAN_NOTES: [string, string][] = [
   ["idle", "No client activity for 30 minutes; tearing down in 10 minutes unless someone connects."],
   ["cost_guard", "Auto-destroy extended once; the cost guard stopped it at the 4 hour limit."],
-  ["drift", "DNS mismatch: wg.clydeford.net resolves to 192.0.2.1 but the VM is at 203.0.113.12."],
+  ["drift", "DNS mismatch: {dns} resolves to 192.0.2.1 but the VM is at 203.0.113.12."],
   ["unreachable", "No heartbeat from the VM for 2 minutes. It may be down, or the agent token may be wrong."],
   ["info", "Heartbeat from the VM is back."],
   ["info", 'Client "guest-ipad" expired and was switched off.'],
@@ -349,7 +349,8 @@ const WATCHMAN_NOTES: [string, string][] = [
 async function addWatchmanNotes(env: Env, rng: Rng, now: number, count: number, hours: number): Promise<void> {
   for (let i = 0; i < count; i++) {
     const [kind, msg] = WATCHMAN_NOTES[i % WATCHMAN_NOTES.length];
-    await note(env, now - rng.int(2, hours) * HOUR, kind, msg, null, i > 3);
+    // {dns}: this environment's DNS name (the demo's example one, never the real one there).
+    await note(env, now - rng.int(2, hours) * HOUR, kind, msg.replace("{dns}", config(env).dnsName), null, i > 3);
   }
 }
 
@@ -378,7 +379,7 @@ async function addChangeLog(env: Env, rng: Rng, now: number, count: number, hour
 // ── Sessions on the calendar ──────────────────────────────────────────────
 
 /** Past sessions on the given days ago (UTC), none ending later than `latestEnd`. */
-function pastSessions(rng: Rng, now: number, daysAgo: number[], latestEnd: number, by = USER): Session0[] {
+function pastSessions(rng: Rng, now: number, daysAgo: number[], latestEnd: number, by = seedActor()): Session0[] {
   const out: Session0[] = [];
   for (const d of daysAgo) {
     const start = midnight(now - d * DAY) + rng.int(8, 18) * HOUR + rng.int(0, 11) * 5 * MIN;
@@ -583,8 +584,16 @@ async function counts(env: Env): Promise<Record<string, number>> {
   return out;
 }
 
-/** Wipe the local data and build one scenario. `now` is injectable so a run can be repeated exactly. */
-export async function seedScenario(env: Env, scenario: Scenario, nowDate = new Date()): Promise<SeedResult> {
+/**
+ * Wipe the local data and build one scenario. `now` is injectable so a run can be repeated exactly. It writes only
+ * through env.DB, env.STATUS, env.STATE and env.RUN_LOCK, so the env decides the target: the dev server's local
+ * stores, or demo mode's own store (demo/store.ts hands it the demo environment and actor demo@example.com).
+ */
+export async function seedScenario(env: Env, scenario: Scenario, nowDate = new Date(), opts: { actor?: string } = {}): Promise<SeedResult> {
+  return withSeedActor(opts.actor ?? DEFAULT_SEED_ACTOR, () => seedStory(env, scenario, nowDate));
+}
+
+async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<SeedResult> {
   // insights tells the running story, then adds what the Azure collector and a version-7 agent would have stored;
   // labs tells it too, then adds the lab story (devseed-labs.ts); labs-setup is the lab story with the permission check failed;
   // everything is the running story with all of those layers and its own (ON_RUNNING).
@@ -638,7 +647,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
         const start = dayStart + (k === 0 ? rng.int(7, 12) : rng.int(15, 19)) * HOUR + rng.int(0, 11) * 5 * MIN;
         const end = Math.min(start + rng.int(18, 60) * 5 * MIN, now - 3 * HOUR);
         if (end - start < HOUR || start + 20 * MIN > now) continue;
-        const s: Session0 = { start, end, region: rng.chance(0.15) ? "eastus" : "uksouth", by: rng.chance(0.3) ? "watchman" : USER, reason: rng.chance(0.3) ? "schedule" : null };
+        const s: Session0 = { start, end, region: rng.chance(0.15) ? "eastus" : "uksouth", by: rng.chance(0.3) ? "watchman" : seedActor(), reason: rng.chance(0.3) ? "schedule" : null };
         await addSession(env, rng, s, now, { peersLoaded: peers.length, ack: now - end > 2 * DAY });
         spans.push({ start, end });
       }
@@ -662,7 +671,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
   const lastEnd = story === "standby" ? now - 20 * HOUR : now - 5 * HOUR;
   const earlier = pastSessions(rng, now, dayList, lastEnd);
   const standbySince = now - 3 * HOUR - 8 * MIN;
-  if (story === "standby") earlier.push({ start: standbySince - 2 * HOUR - 40 * MIN, end: standbySince, region: "uksouth", by: USER, reason: null });
+  if (story === "standby") earlier.push({ start: standbySince - 2 * HOUR - 40 * MIN, end: standbySince, region: "uksouth", by: seedActor(), reason: null });
   const spans: { start: number; end: number | null }[] = earlier.map((s) => ({ start: s.start, end: s.end }));
   let lastApply: { applyId: string; publicIp: string } | null = null;
   for (const s of earlier) {
@@ -736,7 +745,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
     const requested = now - 2 * MIN - 28 * SEC;
     const started = requested + 9 * SEC;
     const id = runId("apply", requested, rng);
-    await db.createRun(env, { id, action: "apply", status: "queued", requested_at: iso(requested), requested_by: USER, callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region, vm_size: "Standard_B1s", run_id: id, peers_json: JSON.stringify(peers.map((p) => ({ n: p.cast.name }))) }), auto_destroy_at: iso(now + 4 * HOUR), reason: null, ssh_password: null });
+    await db.createRun(env, { id, action: "apply", status: "queued", requested_at: iso(requested), requested_by: seedActor(), callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region, vm_size: "Standard_B1s", run_id: id, peers_json: JSON.stringify(peers.map((p) => ({ n: p.cast.name }))) }), auto_destroy_at: iso(now + 4 * HOUR), reason: null, ssh_password: null });
     // No github_run_id on purpose: the Worker would otherwise look the run up on GitHub and replace these steps.
     await db.updateRun(env, id, { status: "running", started_at: iso(started), github_run_url: "https://ci.example.invalid/actions/runs/7000012346" });
     // Six steps done, the seventh running, as in the mockup: shift the template so "now" falls inside step 7.
@@ -764,7 +773,7 @@ export async function seedScenario(env: Env, scenario: Scenario, nowDate = new D
 
   // running
   const startMs = now - 2 * HOUR - 12 * MIN;
-  const cur = await addSession(env, rng, { start: startMs, end: null, region, by: USER, reason: null }, now, { peersLoaded: peers.length, ack: false, password: "dev-seed-not-a-real-password" });
+  const cur = await addSession(env, rng, { start: startMs, end: null, region, by: seedActor(), reason: null }, now, { peersLoaded: peers.length, ack: false, password: "dev-seed-not-a-real-password" });
   spans.push({ start: startMs, end: null });
   const presence = new Map<number, Presence | null>();
   for (const p of peers) {
@@ -991,7 +1000,7 @@ async function insertSpeedTests(env: Env, rng: Rng, now: number, recent: boolean
   ];
   for (const [at, ifc, filter, bytes, error] of caps) {
     await env.DB.prepare("INSERT INTO captures (id, requested_at, requested_by, iface, filter, seconds, status, bytes, finished_at, error) VALUES (?1, ?2, ?3, ?4, ?5, 30, ?6, ?7, ?8, ?9)")
-      .bind(`cap-${hex(rng, 8)}`, iso(at), USER, ifc, filter, error ? "failed" : "done", error ? null : bytes, iso(at + 35 * SEC), error)
+      .bind(`cap-${hex(rng, 8)}`, iso(at), seedActor(), ifc, filter, error ? "failed" : "done", error ? null : bytes, iso(at + 35 * SEC), error)
       .run();
   }
 }
@@ -1005,6 +1014,11 @@ async function insertSpeedTests(env: Env, rng: Rng, now: number, recent: boolean
  */
 export async function devSeed(c: Context<{ Bindings: Env }>): Promise<Response> {
   if (c.req.method !== "POST" || !devSeedAllowed(c.env, c.req.url)) return c.text("404 Not Found", 404);
+  // A third lock (demo mode spec ruling 20): a browser request sent by another site (any Sec-Fetch-Site but
+  // same-origin) is refused, so a web page open on this PC cannot wipe the developer's database. The seed script
+  // sends no such header and still works; the app's own Dev data section sends same-origin.
+  const site = c.req.header("Sec-Fetch-Site");
+  if (site !== undefined && site !== "same-origin") return c.text("Refused: the seeder only takes requests from wg-admin's own pages or the seed script.", 403);
   const name = c.req.query("scenario") ?? "";
   if (!(SCENARIOS as readonly string[]).includes(name)) return c.json({ ok: false, error: `scenario must be one of: ${SCENARIOS.join(", ")}`, scenarios: [...SCENARIOS] }, 400);
   const nowParam = c.req.query("now");

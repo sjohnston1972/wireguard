@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { OverviewResponse } from "@shared/api";
 import { Button, ProgressBar, cx } from "@/components";
 import { useRePeerLabs } from "@/api/mutations";
+import { DEMO_ACTIONS_OFF, useDemoOn } from "@/api/demo";
 import { WidgetCorner, useCornerHost, useWidget } from "@/widgets";
 import { DeployForm, actionAllowed, type ActionName } from "./actions";
 import { STATE_TONE, STATE_WORD, currentStep, failedStep, formatElapsed, formatSpan, hhmm, inGithubRun, isBusy, moveTargets, regionShort, stepProgress, usually } from "./model";
@@ -86,45 +87,50 @@ function Timing({ o, receivedAt, autoDestroy }: { o: OverviewResponse; receivedA
 /** Labs waiting or disconnected, now that the gateway is up: one press peers them all. */
 function RePeer({ n }: { n: number }) {
   const repeer = useRePeerLabs();
+  const off = useDemoOn();
+  const word = `Re-peer ${n} ${n === 1 ? "lab" : "labs"}`;
   return (
-    <Button variant="secondary" className="ov-banner__icon-btn" title={`Re-peer ${n} ${n === 1 ? "lab" : "labs"}`} icon={<Link2 size={16} aria-hidden />} loading={repeer.isPending} disabled={repeer.isPending} onClick={() => repeer.mutate()}>
-      <span className="ov-banner__btn-word">{`Re-peer ${n} ${n === 1 ? "lab" : "labs"}`}</span>
+    <Button variant="secondary" className="ov-banner__icon-btn" title={off ? DEMO_ACTIONS_OFF : word} icon={<Link2 size={16} aria-hidden />} loading={repeer.isPending} disabled={off || repeer.isPending} onClick={() => repeer.mutate()}>
+      <span className="ov-banner__btn-word">{word}</span>
     </Button>
   );
 }
 
 function Actions({ o, onAction }: { o: OverviewResponse; onAction: (a: ActionName) => void }) {
   const s = o.snapshot.state;
+  // Demo mode (spec ruling 18): every action here is off, saying why on hover.
+  const off = useDemoOn();
+  const why = (title?: string) => (off ? DEMO_ACTIONS_OFF : title);
   if (inGithubRun(s))
     return (
-      <Button variant="danger" className="ov-banner__cancel" onClick={() => onAction("cancel")}>
+      <Button variant="danger" className="ov-banner__cancel" disabled={off} title={why()} onClick={() => onAction("cancel")}>
         {s === "destroying" ? "Cancel tear-down" : "Cancel deploy"}
       </Button>
     );
   if (s === "running")
     return (
       <div className="ov-banner__buttons">
-        <Button variant="primary" icon={<Timer size={16} aria-hidden />} onClick={() => onAction("extend")}>
+        <Button variant="primary" icon={<Timer size={16} aria-hidden />} disabled={off} title={why()} onClick={() => onAction("extend")}>
           Extend
         </Button>
-        <Button variant="secondary" className="ov-banner__icon-btn" title="Hibernate" icon={<PauseCircle size={16} aria-hidden />} onClick={() => onAction("hibernate")}>
+        <Button variant="secondary" className="ov-banner__icon-btn" title={why("Hibernate")} disabled={off} icon={<PauseCircle size={16} aria-hidden />} onClick={() => onAction("hibernate")}>
           <span className="ov-banner__btn-word">Hibernate</span>
         </Button>
         <Button
           variant="secondary"
           className="ov-banner__icon-btn"
           icon={<MoveRight size={16} aria-hidden />}
-          disabled={!moveTargets(o).length}
-          title={moveTargets(o).length ? "Move" : "No other profile to move to"}
+          disabled={off || !moveTargets(o).length}
+          title={why(moveTargets(o).length ? "Move" : "No other profile to move to")}
           onClick={() => onAction("move")}
         >
           <span className="ov-banner__btn-word">Move</span>
         </Button>
         {o.labs.rePeer > 0 && <RePeer n={o.labs.rePeer} />}
-        <Button variant="secondary" className="ov-banner__icon-btn" title={o.snapshot.speedtest_req ? "Speed test running…" : "Speed test"} icon={<Gauge size={16} aria-hidden />} disabled={!!o.snapshot.speedtest_req} onClick={() => onAction("speedtest")}>
+        <Button variant="secondary" className="ov-banner__icon-btn" title={why(o.snapshot.speedtest_req ? "Speed test running…" : "Speed test")} icon={<Gauge size={16} aria-hidden />} disabled={off || !!o.snapshot.speedtest_req} onClick={() => onAction("speedtest")}>
           <span className="ov-banner__btn-word">{o.snapshot.speedtest_req ? "Speed test running…" : "Speed test"}</span>
         </Button>
-        <Button variant="danger" className="ov-banner__icon-btn" title="Tear down" icon={<Trash2 size={16} aria-hidden />} onClick={() => onAction("destroy")}>
+        <Button variant="danger" className="ov-banner__icon-btn" title={why("Tear down")} disabled={off} icon={<Trash2 size={16} aria-hidden />} onClick={() => onAction("destroy")}>
           <span className="ov-banner__btn-word">Tear down</span>
         </Button>
       </div>
@@ -132,10 +138,10 @@ function Actions({ o, onAction }: { o: OverviewResponse; onAction: (a: ActionNam
   if (s === "standby")
     return (
       <div className="ov-banner__buttons">
-        <Button variant="primary" icon={<Play size={16} aria-hidden />} onClick={() => onAction("resume")}>
+        <Button variant="primary" icon={<Play size={16} aria-hidden />} disabled={off} title={why()} onClick={() => onAction("resume")}>
           Resume
         </Button>
-        <Button variant="danger" icon={<Trash2 size={16} aria-hidden />} onClick={() => onAction("destroy")}>
+        <Button variant="danger" icon={<Trash2 size={16} aria-hidden />} disabled={off} title={why()} onClick={() => onAction("destroy")}>
           Tear down
         </Button>
       </div>
@@ -143,10 +149,10 @@ function Actions({ o, onAction }: { o: OverviewResponse; onAction: (a: ActionNam
   if (s === "failed")
     return (
       <div className="ov-banner__buttons">
-        <Button variant="primary" disabled={!actionAllowed("cleanup", o)} onClick={() => onAction("cleanup")}>
+        <Button variant="primary" disabled={off || !actionAllowed("cleanup", o)} title={why()} onClick={() => onAction("cleanup")}>
           Clean up
         </Button>
-        <Button variant="secondary" onClick={() => onAction("deploy")}>
+        <Button variant="secondary" disabled={off} title={why()} onClick={() => onAction("deploy")}>
           Deploy again
         </Button>
       </div>

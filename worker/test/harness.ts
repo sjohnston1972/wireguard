@@ -10,9 +10,15 @@
 import { DatabaseSync } from "node:sqlite";
 import { readdirSync, readFileSync } from "node:fs";
 import { vi } from "vitest";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Env } from "../src/env";
 import { RunLock } from "../src/lock";
 import type { GhJob } from "../src/github";
+import type { SqlLike } from "../src/demo/sql";
+import { DemoStore } from "../src/demo/store";
+
+/** Test-only: a harness store's whole contents (fingerprint). */
+const DUMP = Symbol("harness dump");
 
 // ── D1 on node:sqlite ─────────────────────────────────────────────────────
 
@@ -58,11 +64,59 @@ function fakeD1(): D1Database {
   return { prepare: (sql: string) => new Stmt(db, sql), batch: (stmts: Stmt[]) => batch(db, stmts) } as unknown as D1Database;
 }
 
+// ── A Durable Object's SQLite, on node:sqlite (demo mode's store) ──────────
+
+/**
+ * Shaped like a Durable Object's `ctx.storage.sql` plus `transactionSync`
+ * (demo/sql.ts SqlLike): ONE statement per exec (a second one is an error, so
+ * the store can never rely on more), blobs bound and read as ArrayBuffer, and
+ * `rowsWritten` from SQLite's own change count (a Durable Object also counts
+ * index rows, so the live figure is somewhat higher).
+ */
+export function sqliteLike(db: DatabaseSync = new DatabaseSync(":memory:")): SqlLike & { db: DatabaseSync } {
+  const total = () => Number((db.prepare("SELECT total_changes() AS t").get() as { t: number | bigint }).t);
+  const toNode = (v: unknown) => (v instanceof ArrayBuffer ? new Uint8Array(v) : v);
+  const fromNode = (row: Record<string, unknown>) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) out[k] = v instanceof Uint8Array ? v.slice().buffer : typeof v === "bigint" ? Number(v) : v;
+    return out;
+  };
+  let depth = 0;
+  return {
+    db,
+    exec(query: string, ...bindings: unknown[]) {
+      const st = db.prepare(query);
+      const rest = query.slice(st.sourceSQL.length).replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/[;\s]/g, "");
+      if (rest) throw new Error("sqliteLike: one statement per exec, as the demo store uses a Durable Object's SQL");
+      const before = total();
+      const rows = st.all(...bindings.map(toNode)).map(fromNode);
+      const rowsWritten = total() - before;
+      return { toArray: () => rows, rowsWritten };
+    },
+    transactionSync<T>(fn: () => T): T {
+      const sp = `sp${depth++}`;
+      db.exec(`SAVEPOINT ${sp}`);
+      try {
+        const r = fn();
+        db.exec(`RELEASE ${sp}`);
+        return r;
+      } catch (e) {
+        db.exec(`ROLLBACK TO ${sp}`);
+        db.exec(`RELEASE ${sp}`);
+        throw e;
+      } finally {
+        depth--;
+      }
+    },
+  };
+}
+
 // ── KV ────────────────────────────────────────────────────────────────────
 
 function fakeKV(): KVNamespace {
   const m = new Map<string, string>();
   return {
+    [DUMP]: () => Object.fromEntries([...m].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))),
     async get(k: string, type?: string) {
       const v = m.get(k);
       if (v === undefined) return null;
@@ -80,7 +134,7 @@ function fakeKV(): KVNamespace {
 // ── Durable Object ────────────────────────────────────────────────────────
 
 /** One RunLock instance with its own in-memory storage, handling one request at a time. */
-function fakeInstance(env: Env): { fetch: (url: string, init?: RequestInit) => Promise<Response> } {
+function fakeInstance(env: Env): { fetch: (url: string, init?: RequestInit) => Promise<Response>; [DUMP]: () => Record<string, unknown> } {
   const data = new Map<string, unknown>();
   const storage = {
     async get(k: string) {
@@ -105,7 +159,7 @@ function fakeInstance(env: Env): { fetch: (url: string, init?: RequestInit) => P
     queue = next.catch(() => undefined);
     return next;
   };
-  return { fetch: serial };
+  return { fetch: serial, [DUMP]: () => Object.fromEntries([...data].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) };
 }
 
 /** The RunLock namespace: one instance per name, as Cloudflare keeps them ("singleton" for the gateway, "lab:<id>" per lab). */
@@ -117,7 +171,147 @@ function fakeDO(env: Env): DurableObjectNamespace {
       if (!instances.has(id)) instances.set(id, fakeInstance(env));
       return instances.get(id)!;
     },
+    [DUMP]: () => Object.fromEntries([...instances].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => [k, v[DUMP]()])),
   } as unknown as DurableObjectNamespace;
+}
+
+// ── Demo mode's store (demo/store.ts), in process ─────────────────────────
+
+/**
+ * A DemoStore's Durable Object state over its own node:sqlite database:
+ * storage.sql (one statement per exec), transactionSync, deleteAll (drops
+ * every table, as it empties a SQLite-backed object), and
+ * blockConcurrencyWhile, which holds every other call to this store until it
+ * is done, as a Durable Object's input gate does (the namespace's stub calls
+ * `gate` first; a call made from inside the block itself goes straight in).
+ * `writes` records every exec that wrote rows and whether it ran inside
+ * blockConcurrencyWhile.
+ */
+export interface FakeDemoState {
+  sql: SqlLike & { db: DatabaseSync };
+  ctx: DurableObjectState;
+  writes: { inside: boolean; query: string }[];
+  /** A promise to wait on while a blockConcurrencyWhile holds the store; null (go now) when none does or the caller is inside it. */
+  gate: () => Promise<void> | null;
+}
+
+export function fakeDemoState(): FakeDemoState {
+  const sql = sqliteLike();
+  const inBlock = new AsyncLocalStorage<boolean>();
+  let active = 0;
+  let held: Promise<void> = Promise.resolve();
+  const writes: FakeDemoState["writes"] = [];
+  const exec = (query: string, ...b: unknown[]) => {
+    const c = sql.exec(query, ...b);
+    if (c.rowsWritten > 0) writes.push({ inside: !!inBlock.getStore(), query });
+    return c;
+  };
+  const storage = {
+    sql: { exec },
+    transactionSync: <T>(fn: () => T) => sql.transactionSync(fn),
+    async deleteAll() {
+      const tables = sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'").toArray();
+      for (const t of tables) sql.exec(`DROP TABLE IF EXISTS "${String(t.name)}"`);
+      try {
+        sql.exec("DELETE FROM sqlite_sequence");
+      } catch {
+        /* no AUTOINCREMENT table yet */
+      }
+    },
+  };
+  const ctx = {
+    id: { name: "demo", toString: () => "demo" },
+    storage,
+    waitUntil() {},
+    async blockConcurrencyWhile<T>(fn: () => Promise<T>): Promise<T> {
+      active++;
+      let release!: () => void;
+      const prev = held;
+      held = new Promise<void>((r) => (release = r));
+      try {
+        await prev;
+        return await inBlock.run(true, fn);
+      } finally {
+        active--;
+        release();
+      }
+    },
+  } as unknown as DurableObjectState;
+  const gate = () => (active > 0 && !inBlock.getStore() ? held : null);
+  return { sql, ctx, writes, gate };
+}
+
+/** The DEMO_STORE namespace: one DemoStore per name; each RPC call waits for a blockConcurrencyWhile in progress. */
+function fakeDemoNamespace(env: Env): DurableObjectNamespace<DemoStore> {
+  const instances = new Map<string, { store: DemoStore; state: FakeDemoState; stub: unknown }>();
+  const make = (name: string) => {
+    const state = fakeDemoState();
+    const store = new DemoStore(state.ctx, env);
+    const stub = new Proxy(store, {
+      get(t, k) {
+        const v = (t as unknown as Record<string | symbol, unknown>)[k];
+        if (typeof v !== "function" || !["status", "ensureReady", "refresh", "serve"].includes(String(k))) return v;
+        return (...args: unknown[]) => {
+          const wait = state.gate();
+          const call = () => (v as (...a: unknown[]) => unknown).apply(t, args);
+          return wait ? wait.then(call) : Promise.resolve(call());
+        };
+      },
+    });
+    return { store, state, stub };
+  };
+  const instance = (name: string) => {
+    if (!instances.has(name)) instances.set(name, make(name));
+    return instances.get(name)!;
+  };
+  return {
+    idFromName: (name: string) => name,
+    get: (id: string) => instance(id).stub,
+    instance,
+  } as unknown as DurableObjectNamespace<DemoStore>;
+}
+
+/** The harness's DemoStore "demo" (the one the Worker uses), with its fake state. */
+export function demoInstance(env: Env): { store: DemoStore; state: FakeDemoState } {
+  return (env.DEMO_STORE as unknown as { instance: (n: string) => { store: DemoStore; state: FakeDemoState } }).instance("demo");
+}
+
+// ── Tripwires and fingerprints (demo mode's separation proofs) ────────────
+
+/** Every tripwire touched, in order ("DB.prepare", ...). Tests clear it before use. */
+export const tripped: string[] = [];
+
+/** Records and throws on any use: a real binding that demo code must never touch. */
+export function tripwire(name: string): never {
+  const fire = (what: string): never => {
+    tripped.push(`${name}.${what}`);
+    throw new Error(`TRIPWIRE: ${name}.${what} was touched`);
+  };
+  return new Proxy(function () {}, {
+    get: (_t, k) => fire(String(k)),
+    set: (_t, k) => fire(`set ${String(k)}`),
+    has: (_t, k) => fire(`has ${String(k)}`),
+    ownKeys: () => fire("ownKeys"),
+    getOwnPropertyDescriptor: (_t, k) => fire(`descriptor ${String(k)}`),
+    apply: () => fire("call"),
+    construct: () => fire("new"),
+    getPrototypeOf: () => fire("prototype"),
+  }) as never;
+}
+
+/**
+ * Everything the real stores hold, for "nothing real changed" proofs: every
+ * D1 table's rows (sorted), every KV key and value, every R2 key, and every
+ * RunLock instance's storage (snapshot, lock, one-time links).
+ */
+export async function fingerprint(env: Env): Promise<{ d1: Record<string, string[]>; kv: Record<string, string>; r2: string[]; locks: Record<string, unknown> }> {
+  const tables = (await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all<{ name: string }>()).results.map((r) => r.name);
+  const d1: Record<string, string[]> = {};
+  for (const t of tables) d1[t] = (await env.DB.prepare(`SELECT * FROM "${t}"`).all()).results.map((r) => JSON.stringify(r)).sort();
+  const kv = (env.STATUS as unknown as { [DUMP]: () => Record<string, string> })[DUMP]();
+  const r2 = (await env.STATE.list()).objects.map((o) => o.key).sort();
+  const locks = (env.RUN_LOCK as unknown as { [DUMP]: () => Record<string, unknown> })[DUMP]();
+  return { d1, kv, r2, locks };
 }
 
 // ── The outside world ─────────────────────────────────────────────────────
@@ -234,6 +428,7 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
   env.DB = fakeD1();
   env.STATUS = fakeKV();
   env.RUN_LOCK = fakeDO(env);
+  env.DEMO_STORE = fakeDemoNamespace(env);
   const objects = new Map<string, ArrayBuffer>();
   const uploaded = new Map<string, Date>();
   env.STATE = {

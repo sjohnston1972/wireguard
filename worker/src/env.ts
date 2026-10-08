@@ -6,12 +6,20 @@
 // secrets are required, so the dashboard can show a setup checklist instead
 // of failing mysteriously when one is missing.
 
+import { isDemoEnv } from "./demo/env";
+import type { DemoStore } from "./demo/store";
+
 export interface Env {
   // Bindings
   DB: D1Database;
   STATUS: KVNamespace;
   STATE: R2Bucket;
   RUN_LOCK: DurableObjectNamespace;
+  /**
+   * Demo mode's store (demo/store.ts): its own SQLite, never the bindings above. Reached only by the demo gate and the demo
+   * control routes (index.ts, api/demo.ts); a demo environment (demo/env.ts) never has it.
+   */
+  DEMO_STORE: DurableObjectNamespace<DemoStore>;
   /** The built app (web/dist), for the /assets/* guard (assetguard.ts). Absent in tests. */
   ASSETS?: Fetcher;
 
@@ -131,8 +139,14 @@ export const SECRET_GROUPS: Record<string, (keyof Env)[]> = {
   "Peer configs (server public key)": ["WG_SERVER_PUBLIC_KEY"],
 };
 
-/** Which secrets are missing, by group. Empty object means fully configured. */
+/**
+ * Which secrets are missing, by group. Empty object means fully configured.
+ * A demo environment answers {} (demo mode spec ruling 15): it has no secrets
+ * by design, and the app must not lay a setup checklist over the demo. Server
+ * logic still asks canDispatch/canAzure/canDns, which stay false there.
+ */
 export function missingSecrets(env: Env): Record<string, string[]> {
+  if (isDemoEnv(env)) return {};
   const out: Record<string, string[]> = {};
   for (const [group, keys] of Object.entries(SECRET_GROUPS)) {
     const missing = keys.filter((k) => !env[k] || /^REPLACE_ME/.test(String(env[k])));

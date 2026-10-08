@@ -10,13 +10,15 @@
 // dashboard's other reads.
 //
 // Cache: this isolate's memory, 30 s per lab and session (failures too), with requests in
-// flight shared; nothing is written to KV (a diagram open for an hour would
+// flight shared, keyed by the data source first ("real:" / "demo:", topologyCacheKey) so a
+// demo answer and a real one can never share an entry; nothing is written to KV (a diagram open for an hour would
 // spend 120 of KV's daily writes). The answer is always a status:
 //   ok            the live graph
 //   not_running   no live session (the app never asks then)
 //   no_azure      Azure is not configured (under `wrangler dev` with
-//                 AUTH_DEV_BYPASS, the seeded rows in KV labs:topology:dev
-//                 stand in, so the screens show a live diagram)
+//                 AUTH_DEV_BYPASS, or in demo mode's store, the seeded rows in
+//                 KV labs:topology:dev stand in, so the screens show a live
+//                 diagram; devmarks.ts standInsAllowed)
 //   failed        ARM refused or did not answer (a plain message, no body)
 //   throttled     429: the last graph this isolate had, if any
 // Anything but ok means the app shows the planned graph with a banner.
@@ -30,6 +32,8 @@ import { catalogue } from "./catalogue";
 import { arm, directNet } from "./net";
 import { liveSessionOf, type LabSessionRow } from "./store";
 import { LABS_KV } from "../devseed-labs";
+import { standInsAllowed } from "../devmarks";
+import { isDemoEnv } from "../demo/env";
 
 /** How long one lab's live graph is reused (per session, per isolate). */
 export const TOPOLOGY_CACHE_MS = 30_000;
@@ -42,6 +46,11 @@ const cache = new Map<string, { at: number; response: LabTopologyResponse }>();
 /** The last ok answer, for a 429's fallback (a cached failure must not lose it). */
 const lastGood = new Map<string, { at: number; response: LabTopologyResponse }>();
 const inflight = new Map<string, Promise<LabTopologyResponse>>();
+
+/** The cache key: the data source first (demo mode spec §9.10), then the lab and its session. */
+export function topologyCacheKey(env: Env, labId: string, sessionId: string): string {
+  return `${isDemoEnv(env) ? "demo" : "real"}:${labId}:${sessionId}`;
+}
 
 /** Tests: forget every cached graph. */
 export function resetTopologyCache(): void {
@@ -91,7 +100,7 @@ async function fetchLive(env: Env, s: LabSessionRow, now: number): Promise<LabTo
     return answer("failed", "Azure did not answer the diagram's read. Showing the planned diagram.");
   }
   if (r.status === 429) {
-    const last = lastGood.get(`${s.lab_id}:${s.id}`)?.response;
+    const last = lastGood.get(topologyCacheKey(env, s.lab_id, s.id))?.response;
     return answer("throttled", "Azure is busy (too many requests). Showing the last diagram it gave.", last?.live ? { live: last.live, fetchedAt: last.fetchedAt, truncated: last.truncated } : {});
   }
   if (!r.ok) {
@@ -130,13 +139,13 @@ export async function labTopology(env: Env, labId: string, now: number = Date.no
   const s = await liveSessionOf(env, labId);
   if (!s) return answer("not_running", "The lab is not running, so there is no live diagram.");
   if (!canAzure(env)) {
-    const rows = env.AUTH_DEV_BYPASS === "1" ? await devRows(env, labId) : null;
+    const rows = standInsAllowed(env) ? await devRows(env, labId) : null;
     if (!rows) return answer("no_azure", "Azure is not connected, so the diagram shows the plan.");
     const at = new Date(now).toISOString();
     const built = build(rows, ctxOf(s, at));
     return "failed" in built ? built.failed : answer("ok", null, { live: built.live, fetchedAt: at });
   }
-  const key = `${labId}:${s.id}`;
+  const key = topologyCacheKey(env, labId, s.id);
   const hit = cache.get(key);
   if (hit && now - hit.at < TOPOLOGY_CACHE_MS) return hit.response;
   const pending = inflight.get(key);

@@ -4,6 +4,7 @@ import type { LabDetail, LabOrphan } from "@shared/api";
 import { Button, Select, Switch } from "@/components";
 import { ApiError } from "@/api/client";
 import { useDeployLab } from "@/api/mutations";
+import { DEMO_ACTIONS_OFF, useDemoOn } from "@/api/demo";
 import { useLabs } from "@/api/queries";
 import { fmtGbp, fmtRate } from "./model";
 import { blockerFix } from "./status";
@@ -42,7 +43,11 @@ export function useDeployForm(d: LabDetail) {
   const blockers = Array.isArray(d.card.blockers) ? d.card.blockers : (listed?.labs.find((c) => c.id === d.card.id)?.blockers ?? []);
   // "unavailable", a budget warning with no override (the month is already over budget, so the
   // budget guard would remove the lab at once), or any card blocker: Deploy is off and the reason is shown.
-  const unavailable = d.warnings.find((w) => w.kind === "unavailable" || (w.kind === "budget" && !w.overridable))?.message ?? blockers[0]?.message ?? d.card.unavailable;
+  // Demo mode first (spec ruling 18): nothing can deploy, and the form says so.
+  const demo = useDemoOn();
+  const unavailable = demo
+    ? DEMO_ACTIONS_OFF
+    : (d.warnings.find((w) => w.kind === "unavailable" || (w.kind === "budget" && !w.overridable))?.message ?? blockers[0]?.message ?? d.card.unavailable);
   const overrides = overridesFor(d.warnings);
   const anyway = Object.keys(overrides).length > 0;
   const busy = deploy.isPending || started;
@@ -178,7 +183,7 @@ export function DeployFooter({ f }: { f: DeployFormState }) {
           About {fmtGbp(f.d.cost.gbpH * f.hours)} for {hoursLabel(f.hours)}
         </span>
       )}
-      <Button variant="primary" onClick={f.submit} loading={f.busy} disabled={!!f.unavailable || f.busy}>
+      <Button variant="primary" onClick={f.submit} loading={f.busy} disabled={!!f.unavailable || f.busy} title={f.unavailable === DEMO_ACTIONS_OFF ? DEMO_ACTIONS_OFF : undefined}>
         {f.anyway ? "Deploy anyway" : "Deploy"}
       </Button>
     </div>

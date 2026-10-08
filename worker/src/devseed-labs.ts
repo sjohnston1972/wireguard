@@ -12,6 +12,7 @@
 // repeatable; no real addresses beyond the lab pool, no real passwords.
 
 import type { Env } from "./env";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Step } from "./state";
 import { LAB_STEPS, slotCidr } from "../../shared/labs";
 import type { LabOrphan, LabPermissions } from "../../shared/api";
@@ -19,7 +20,20 @@ import type { LabOrphan, LabPermissions } from "../../shared/api";
 const MIN = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
-const USER = "dev@localhost";
+
+/** Who a seed's runs, captures and change-log rows name, unless the caller says (seedScenario's `actor`). */
+export const DEFAULT_SEED_ACTOR = "dev@localhost";
+const actorStore = new AsyncLocalStorage<string>();
+
+/** The person this seed writes as: dev@localhost, or the seed's own actor (demo mode: demo@example.com). */
+export function seedActor(): string {
+  return actorStore.getStore() ?? DEFAULT_SEED_ACTOR;
+}
+
+/** Run `fn` (a whole seed) writing as `actor`. Per call, so two seeds at once never mix their names. */
+export function withSeedActor<T>(actor: string, fn: () => T): T {
+  return actorStore.run(actor, fn);
+}
 const iso = (ms: number) => new Date(ms).toISOString();
 const stamp = (ms: number) => iso(ms).replace(/[-:TZ.]/g, "").slice(0, 14);
 const ghUrl = (n: number) => `https://ci.example.invalid/actions/runs/${7_100_000_000 + n}`;
@@ -123,7 +137,7 @@ async function addRun(env: Env, r: { id: string; session: string; lab: string; a
     `INSERT INTO lab_runs (id, session_id, lab_id, action, status, requested_at, requested_by, reason, started_at, finished_at, github_run_id, github_run_url, callback_token_hash, admin_password, payload_json, outputs_json, steps_json, error)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, CAST(?10 AS INTEGER), ?11, NULL, ?12, NULL, ?13, ?14, ?15)`,
   )
-    .bind(r.id, r.session, r.lab, r.action, r.status, iso(r.requested), USER, iso(r.requested + 20_000), r.finished === null ? null : iso(r.finished), 7_100_000_000 + r.n, ghUrl(r.n), r.password ?? null, r.outputs ? JSON.stringify(r.outputs) : null, JSON.stringify(r.steps), r.error ?? null)
+    .bind(r.id, r.session, r.lab, r.action, r.status, iso(r.requested), seedActor(), iso(r.requested + 20_000), r.finished === null ? null : iso(r.finished), 7_100_000_000 + r.n, ghUrl(r.n), r.password ?? null, r.outputs ? JSON.stringify(r.outputs) : null, JSON.stringify(r.steps), r.error ?? null)
     .run();
 }
 

@@ -170,7 +170,8 @@ describe("the pop-out window", () => {
   });
 
   it("an expired sign-in shows the app's signed-out screen, still without the app's chrome", async () => {
-    renderApp(POPOUT, { routes: routes(detailIdle(), { [`GET /api/v1/labs/${LAB}`]: { status: 401, json: { error: "unauthorised" } } }) });
+    // The demo switch (asked by every frame) is behind the same lapsed sign-in.
+    renderApp(POPOUT, { routes: routes(detailIdle(), { [`GET /api/v1/labs/${LAB}`]: { status: 401, json: { error: "unauthorised" } }, "GET /api/v1/demo": { status: 401, json: { error: "unauthorised" } } }) });
     expect(await screen.findByRole("heading", { name: "Session expired, sign in again" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
   });

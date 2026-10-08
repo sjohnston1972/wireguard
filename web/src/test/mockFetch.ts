@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { azureNotConfigured, labsEmpty, prefsFixture } from "./fixtures";
+import { azureNotConfigured, demoStatusFixture, labsEmpty, prefsFixture } from "./fixtures";
 
 /** What a mocked route answers with. */
 export type MockReply =
@@ -42,10 +42,12 @@ export function mockFetch(routes: Record<string, MockHandler>) {
     // Widget preferences load with the shell on every page: unless a test says otherwise, nothing is saved.
     // Azure insights: every /api/v1/azure route answers as the Worker does with nothing collected and no credentials.
     // Labs: every /api/v1/labs read answers as the Worker does with an empty catalogue (labsEmpty).
+    // Demo mode: the shell asks GET /demo on every page; off, on the live site, unless a test says otherwise.
     const handler =
       routes[`${method} ${url}`] ??
       routes[`${method} ${path}`] ??
       (method === "GET" && path === "/api/v1/prefs" ? prefsFixture() : undefined) ??
+      (method === "GET" && path === "/api/v1/demo" ? demoStatusFixture() : undefined) ??
       (path.startsWith("/api/v1/azure/") ? azureNotConfigured(method, url) : undefined) ??
       labsEmpty(method, url);
     if (handler === undefined) throw new Error(`mockFetch: no route for ${method} ${url}`);

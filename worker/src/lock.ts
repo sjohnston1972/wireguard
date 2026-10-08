@@ -24,79 +24,98 @@ interface LockRecord {
   expiresAt: number;
 }
 
+/**
+ * The storage RunLock's handling needs: a Durable Object's own, or (demo mode,
+ * demo/sql.ts doStorageOver) the demo store's stand-in for it.
+ */
+export interface LockStorage {
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  list<T = unknown>(options: { prefix: string }): Promise<Map<string, T>>;
+}
+
 export class RunLock extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    const now = Date.now();
+    return lockFetch(this.ctx.storage, request, Date.now());
+  }
+}
 
-    // ── Status snapshot ────────────────────────────────────────────────
-    if (url.pathname === "/snapshot") {
-      if (request.method === "GET") {
-        const snap = (await this.ctx.storage.get<Record<string, unknown>>("snapshot")) ?? null;
-        return Response.json({ snapshot: snap });
+/**
+ * RunLock's request handling, on any LockStorage (demo mode spec ruling 12):
+ * the real object passes its own storage; the demo store runs the very same
+ * code on its own, so the demo snapshot behaves exactly like the real one.
+ */
+export async function lockFetch(storage: LockStorage, request: Request, now: number): Promise<Response> {
+  const url = new URL(request.url);
+
+  // ── Status snapshot ────────────────────────────────────────────────
+  if (url.pathname === "/snapshot") {
+    if (request.method === "GET") {
+      const snap = (await storage.get<Record<string, unknown>>("snapshot")) ?? null;
+      return Response.json({ snapshot: snap });
+    }
+    if (request.method === "POST") {
+      // Atomic read-merge-write. Body: { patch: {...}, seed?: {...} }.
+      // "seed" is used once to migrate the old KV copy and never overwrites.
+      // "ifState": only save if the state is still this (compare-and-set),
+      // so of two callers racing on the same change only one goes ahead.
+      const body = (await request.json()) as { patch?: Record<string, unknown>; seed?: Record<string, unknown>; ifState?: string };
+      let cur = (await storage.get<Record<string, unknown>>("snapshot")) ?? null;
+      if (!cur && body.seed) cur = body.seed;
+      if (body.ifState !== undefined && (cur?.state ?? null) !== body.ifState) return Response.json({ snapshot: cur, ok: false });
+      const next = { ...(cur ?? {}), ...(body.patch ?? {}), updated_at: new Date(now).toISOString() };
+      await storage.put("snapshot", next);
+      return Response.json({ snapshot: next });
+    }
+    return new Response("method", { status: 405 });
+  }
+
+  // ── One-time action links ─────────────────────────────────────────
+  if (url.pathname === "/act/put" || url.pathname === "/act/take") {
+    const body = (await request.json()) as { key: string; action?: string; expiresAt?: number };
+    const key = `act:${body.key}`;
+    if (url.pathname === "/act/put") {
+      await storage.put(key, { action: body.action, expiresAt: body.expiresAt });
+      // Sweep expired links so the store does not grow.
+      const all = await storage.list<{ expiresAt: number }>({ prefix: "act:" });
+      for (const [k, v] of all) if (v.expiresAt < now) await storage.delete(k);
+      return Response.json({ ok: true });
+    }
+    const rec = await storage.get<{ action: string; expiresAt: number }>(key);
+    if (rec) await storage.delete(key);
+    return Response.json({ action: rec && rec.expiresAt > now ? rec.action : null });
+  }
+
+  // ── Run lock ───────────────────────────────────────────────────────
+  const current = (await storage.get<LockRecord>("lock")) ?? null;
+  const live = current && current.expiresAt > now ? current : null;
+
+  switch (url.pathname) {
+    case "/status":
+      return Response.json({ held: !!live, lock: live });
+
+    case "/acquire": {
+      const body = (await request.json()) as { runId: string; ttlMs?: number };
+      if (live && live.runId !== body.runId) {
+        return Response.json({ ok: false, holder: live }, { status: 409 });
       }
-      if (request.method === "POST") {
-        // Atomic read-merge-write. Body: { patch: {...}, seed?: {...} }.
-        // "seed" is used once to migrate the old KV copy and never overwrites.
-        // "ifState": only save if the state is still this (compare-and-set),
-        // so of two callers racing on the same change only one goes ahead.
-        const body = (await request.json()) as { patch?: Record<string, unknown>; seed?: Record<string, unknown>; ifState?: string };
-        let cur = (await this.ctx.storage.get<Record<string, unknown>>("snapshot")) ?? null;
-        if (!cur && body.seed) cur = body.seed;
-        if (body.ifState !== undefined && (cur?.state ?? null) !== body.ifState) return Response.json({ snapshot: cur, ok: false });
-        const next = { ...(cur ?? {}), ...(body.patch ?? {}), updated_at: new Date(now).toISOString() };
-        await this.ctx.storage.put("snapshot", next);
-        return Response.json({ snapshot: next });
-      }
-      return new Response("method", { status: 405 });
+      const rec: LockRecord = { runId: body.runId, since: new Date(now).toISOString(), expiresAt: now + (body.ttlMs ?? 45 * 60_000) };
+      await storage.put("lock", rec);
+      return Response.json({ ok: true, lock: rec });
     }
 
-    // ── One-time action links ─────────────────────────────────────────
-    if (url.pathname === "/act/put" || url.pathname === "/act/take") {
-      const body = (await request.json()) as { key: string; action?: string; expiresAt?: number };
-      const key = `act:${body.key}`;
-      if (url.pathname === "/act/put") {
-        await this.ctx.storage.put(key, { action: body.action, expiresAt: body.expiresAt });
-        // Sweep expired links so the store does not grow.
-        const all = await this.ctx.storage.list<{ expiresAt: number }>({ prefix: "act:" });
-        for (const [k, v] of all) if (v.expiresAt < now) await this.ctx.storage.delete(k);
-        return Response.json({ ok: true });
+    case "/release": {
+      const body = (await request.json()) as { runId?: string; force?: boolean };
+      if (live && !body.force && body.runId && live.runId !== body.runId) {
+        return Response.json({ ok: false, holder: live }, { status: 409 });
       }
-      const rec = await this.ctx.storage.get<{ action: string; expiresAt: number }>(key);
-      if (rec) await this.ctx.storage.delete(key);
-      return Response.json({ action: rec && rec.expiresAt > now ? rec.action : null });
+      await storage.delete("lock");
+      return Response.json({ ok: true });
     }
 
-    // ── Run lock ───────────────────────────────────────────────────────
-    const current = (await this.ctx.storage.get<LockRecord>("lock")) ?? null;
-    const live = current && current.expiresAt > now ? current : null;
-
-    switch (url.pathname) {
-      case "/status":
-        return Response.json({ held: !!live, lock: live });
-
-      case "/acquire": {
-        const body = (await request.json()) as { runId: string; ttlMs?: number };
-        if (live && live.runId !== body.runId) {
-          return Response.json({ ok: false, holder: live }, { status: 409 });
-        }
-        const rec: LockRecord = { runId: body.runId, since: new Date(now).toISOString(), expiresAt: now + (body.ttlMs ?? 45 * 60_000) };
-        await this.ctx.storage.put("lock", rec);
-        return Response.json({ ok: true, lock: rec });
-      }
-
-      case "/release": {
-        const body = (await request.json()) as { runId?: string; force?: boolean };
-        if (live && !body.force && body.runId && live.runId !== body.runId) {
-          return Response.json({ ok: false, holder: live }, { status: 409 });
-        }
-        await this.ctx.storage.delete("lock");
-        return Response.json({ ok: true });
-      }
-
-      default:
-        return new Response("not found", { status: 404 });
-    }
+    default:
+      return new Response("not found", { status: 404 });
   }
 }
 

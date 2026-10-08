@@ -9,7 +9,7 @@ import { makeEnv } from "./harness";
 import { api } from "./api-helpers";
 import worker from "../src/index";
 import type { Env } from "../src/env";
-import { SCENARIOS } from "../src/devseed";
+import { SCENARIOS, seedScenario } from "../src/devseed";
 import { freezeDevClock } from "../src/devclock";
 import { listRuns } from "../src/db";
 import { getSnapshot } from "../src/state";
@@ -27,10 +27,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function seedAt(env: Env, host: string, scenario: string | null, method = "POST") {
+async function seedAt(env: Env, host: string, scenario: string | null, method = "POST", headers: Record<string, string> = {}) {
   const qs = new URLSearchParams({ now: NOW });
   if (scenario !== null) qs.set("scenario", scenario);
-  const r = await worker.fetch(new Request(`http://${host}/__dev/seed?${qs}`, { method }), env, ctx);
+  const r = await worker.fetch(new Request(`http://${host}/__dev/seed?${qs}`, { method, headers }), env, ctx);
   const text = await r.text();
   let json: any = null;
   try {
@@ -85,6 +85,27 @@ describe("the seed route's guard", () => {
       expect(r.status, host).toBe(200);
       expect(r.json).toMatchObject({ ok: true, scenario: "empty" });
     }
+  });
+
+  it("refuses a browser request from another site with 403 (demo mode spec ruling 20), and seeds nothing", async () => {
+    const { env } = devEnv();
+    for (const site of ["cross-site", "same-site", "none"]) {
+      const r = await seedAt(env, "localhost:8787", "running", "POST", { "Sec-Fetch-Site": site });
+      expect(r.status, site).toBe(403);
+      expect(r.text.toLowerCase()).not.toContain("scenario");
+    }
+    expect((await getSnapshot(env)).state).not.toBe("running");
+  });
+
+  it("is still 404, not 403, off localhost or without the bypass, whatever the browser says", async () => {
+    expect((await seedAt(devEnv().env, "wg-admin.example", "empty", "POST", { "Sec-Fetch-Site": "cross-site" })).status).toBe(404);
+    expect((await seedAt(makeEnv({ PUBLIC_URL: "http://localhost:8787" }).env, "localhost:8787", "empty", "POST", { "Sec-Fetch-Site": "cross-site" })).status).toBe(404);
+  });
+
+  it("seeds for the app's own page (same-origin) and for the seed script (no Sec-Fetch-Site at all)", async () => {
+    const { env } = devEnv();
+    expect((await seedAt(env, "localhost:8787", "empty", "POST", { "Sec-Fetch-Site": "same-origin" })).status).toBe(200);
+    expect((await seedAt(env, "localhost:8787", "empty")).status).toBe(200);
   });
 
   it("answers only POST", async () => {
@@ -413,4 +434,37 @@ describe("the frozen clock for screenshots", () => {
     expect((await seedFreeze(dev.env, "wg-admin.example:443", true)).status).toBe(404);
     expect(Date.now()).not.toBe(Date.parse(NOW));
   });
+});
+
+// Demo mode seeds the everything story into its own store as demo@example.com
+// (spec ruling 13), so the demo's runs and change log do not say dev@localhost.
+describe("the seeder's actor", () => {
+  async function people(env: Env) {
+    const runs = (await env.DB.prepare("SELECT DISTINCT requested_by AS u FROM runs").all<{ u: string }>()).results.map((r) => r.u);
+    const labRuns = (await env.DB.prepare("SELECT DISTINCT requested_by AS u FROM lab_runs").all<{ u: string }>()).results.map((r) => r.u);
+    const audit = (await env.DB.prepare("SELECT DISTINCT user AS u FROM audit").all<{ u: string }>()).results.map((r) => r.u);
+    const captures = (await env.DB.prepare("SELECT DISTINCT requested_by AS u FROM captures").all<{ u: string }>()).results.map((r) => r.u);
+    return { runs, labRuns, audit, captures };
+  }
+
+  it("writes runs.requested_by, lab runs, captures and audit.user as the actor", async () => {
+    const { env } = makeEnv();
+    await seedScenario(env, "everything", new Date(NOW), { actor: "demo@example.com" });
+    const p = await people(env);
+    expect(p.audit).toEqual(["demo@example.com"]);
+    expect(p.runs.filter((u) => u !== "watchman")).toEqual(["demo@example.com"]);
+    expect(p.labRuns).toEqual(["demo@example.com"]);
+    expect(p.captures).toEqual(["demo@example.com"]);
+    const dump = JSON.stringify(await env.DB.prepare("SELECT * FROM runs").all()) + JSON.stringify(await env.DB.prepare("SELECT * FROM audit").all());
+    expect(dump).not.toContain("dev@localhost");
+  }, 60_000);
+
+  it("is still dev@localhost by default", async () => {
+    const { env } = makeEnv();
+    await seedScenario(env, "everything", new Date(NOW));
+    const p = await people(env);
+    expect(p.audit).toEqual(["dev@localhost"]);
+    expect(p.runs.filter((u) => u !== "watchman")).toEqual(["dev@localhost"]);
+    expect(p.labRuns).toEqual(["dev@localhost"]);
+  }, 60_000);
 });

@@ -67,6 +67,12 @@ self.addEventListener("push", function (e) {
 // alerts keep arriving without anyone having to open Settings. If this fails
 // (for example the sign-in has expired) Settings > Mobile will show the
 // alerts as "stale" next time it is opened.
+//
+// Demo mode refuses every write (409), this one too: the dashboard never
+// stores anything real while it is on. Then the renewal is kept in a
+// "push-renew" notification on the phone, which also says what to do; the
+// app hands it to the dashboard once demo mode is off (web/src/api/pushRenew.ts).
+var RENEW_TAG = "push-renew";
 function deviceLabel() {
   var ua = self.navigator.userAgent;
   return (/Android/i.test(ua) ? "Android phone" : /iPhone|iPad/i.test(ua) ? "iPhone" : /Windows/i.test(ua) ? "Windows PC" : /Mac/i.test(ua) ? "Mac" : "Device") + " (renewed)";
@@ -97,8 +103,19 @@ self.addEventListener("pushsubscriptionchange", function (e) {
     }))
       .then(function (sub) {
         var j = sub.toJSON();
-        return postJson("/api/v1/push/subscribe", { endpoint: j.endpoint, keys: j.keys, label: deviceLabel() }).then(function () {
-          if (old && old.endpoint && old.endpoint !== j.endpoint) return postJson("/api/v1/push/unsubscribe", { endpoint: old.endpoint });
+        var body = { endpoint: j.endpoint, keys: j.keys, label: deviceLabel() };
+        var drop = old && old.endpoint && old.endpoint !== j.endpoint ? old.endpoint : null;
+        return postJson("/api/v1/push/subscribe", body).then(function (r) {
+          if (r && r.status === 409) {
+            return self.registration.showNotification("wg-admin", {
+              body: "Phone alerts need renewing. Turn demo mode off in the dashboard, on this phone, to finish.",
+              icon: ICON,
+              badge: BADGE,
+              tag: RENEW_TAG,
+              data: { url: "/settings/demo", actions: [], renew: { subscribe: body, old: drop } },
+            });
+          }
+          if (drop) return postJson("/api/v1/push/unsubscribe", { endpoint: drop });
         });
       })
       .catch(function () { /* nothing more to do from here; Settings will show it */ })

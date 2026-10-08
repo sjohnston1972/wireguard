@@ -3,6 +3,7 @@ import type { OverviewResponse } from "@shared/api";
 import { Button, KeyValue, LogView, ProgressBar, Sheet, StepList, cx } from "@/components";
 import { useAzureSummary, useCost, useRunLog } from "@/api/queries";
 import { useRePeerLabs } from "@/api/mutations";
+import { DEMO_ACTIONS_OFF, useDemoOn } from "@/api/demo";
 import { useWidget } from "@/widgets";
 import type { ActionName } from "./actions";
 import { StateMark } from "./Banner";
@@ -90,16 +91,18 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
   else if (s.state === "failed") main = { label: "Clean up", action: "cleanup", variant: "primary" };
   else if (run) main = { label: s.state === "destroying" ? "Cancel tear-down" : "Cancel deploy", action: "cancel", variant: "danger" };
 
-  const small: { label: string; onClick: () => void; disabled?: boolean }[] = [];
+  // Demo mode (spec ruling 18): the actions are off, saying why on hover; the sheets still open.
+  const off = useDemoOn();
+  const small: { label: string; onClick: () => void; disabled?: boolean; action?: boolean }[] = [];
   if (s.state === "running") {
-    small.push({ label: "Hibernate", onClick: () => onAction("hibernate") });
-    small.push({ label: "Tear down", onClick: () => onAction("destroy") });
-    small.push({ label: "Speed", onClick: () => onAction("speedtest"), disabled: !!s.speedtest_req });
-    small.push({ label: "Move", onClick: () => onAction("move"), disabled: !moveTargets(o).length });
-    if (o.labs.rePeer > 0) small.push({ label: `Re-peer ${o.labs.rePeer}`, onClick: () => repeer.mutate(), disabled: repeer.isPending });
+    small.push({ label: "Hibernate", onClick: () => onAction("hibernate"), action: true });
+    small.push({ label: "Tear down", onClick: () => onAction("destroy"), action: true });
+    small.push({ label: "Speed", onClick: () => onAction("speedtest"), disabled: !!s.speedtest_req, action: true });
+    small.push({ label: "Move", onClick: () => onAction("move"), disabled: !moveTargets(o).length, action: true });
+    if (o.labs.rePeer > 0) small.push({ label: `Re-peer ${o.labs.rePeer}`, onClick: () => repeer.mutate(), disabled: repeer.isPending, action: true });
   }
-  if (s.state === "standby") small.push({ label: "Tear down", onClick: () => onAction("destroy") });
-  if (s.state === "failed") small.push({ label: "Deploy again", onClick: () => onAction("deploy") });
+  if (s.state === "standby") small.push({ label: "Tear down", onClick: () => onAction("destroy"), action: true });
+  if (s.state === "failed") small.push({ label: "Deploy again", onClick: () => onAction("deploy"), action: true });
   if ((run || s.state === "failed") && !runW.hidden) {
     small.push({ label: "Steps", onClick: () => setSheet("steps") });
     small.push({ label: "Log", onClick: () => setSheet("log") });
@@ -152,13 +155,13 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
       </ul>
 
       {main && (
-        <Button size="lg" variant={main.variant} className="ov-phone__main" onClick={() => onAction(main.action)}>
+        <Button size="lg" variant={main.variant} className="ov-phone__main" disabled={off} title={off ? DEMO_ACTIONS_OFF : undefined} onClick={() => onAction(main.action)}>
           {main.label}
         </Button>
       )}
       <div className="ov-phone__small">
         {small.map((b) => (
-          <Button key={b.label} size="md" variant="secondary" disabled={b.disabled} onClick={b.onClick}>
+          <Button key={b.label} size="md" variant="secondary" disabled={b.disabled || (off && b.action)} title={off && b.action ? DEMO_ACTIONS_OFF : undefined} onClick={b.onClick}>
             {b.label}
           </Button>
         ))}

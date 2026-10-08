@@ -9,6 +9,8 @@ declare module "node:sqlite" {
       get(...args: unknown[]): Record<string, unknown> | undefined;
       all(...args: unknown[]): Record<string, unknown>[];
       run(...args: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint };
+      /** The text of the one statement prepared (the start of what was passed). */
+      readonly sourceSQL: string;
     };
   }
 }

@@ -30,8 +30,11 @@ import { buildApi } from "./api";
 import { devSeed } from "./devseed";
 import { serveHashedAsset } from "./assetguard";
 import { receiveLiveLog, LIVE_LOG_MAX_BODY } from "./livelog";
+import { demoGate } from "./demo/gate";
 
 export { RunLock } from "./lock";
+// Demo mode's store (wrangler.toml DEMO_STORE, migration v2). Exported for the runtime; the gate below (demo/gate.ts) reaches it.
+export { DemoStore } from "./demo/store";
 
 type App = { Bindings: Env; Variables: AuthedVars };
 const app = new Hono<App>();
@@ -268,6 +271,12 @@ app.use("*", async (c, next) => {
   if (c.req.header("HX-Request") === "true") return c.body(null, 200, { "HX-Refresh": "true" });
   await next();
 });
+
+// Demo mode (demo/gate.ts, spec §5): one decision per request from the
+// caller's switch. Off: the routes below, as always. On: reads are answered
+// by the demo store, actions are refused 409, and the routes below are never
+// reached. The switch cannot be read: 503, never a guess.
+app.use("*", demoGate);
 
 // The data API for the new app (api/): JSON only, behind the same checks.
 app.route("/api/v1", buildApi());
