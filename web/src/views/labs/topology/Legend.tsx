@@ -2,12 +2,15 @@
 //
 // Plain English: what the diagram's pictures mean (lab topology spec §9.2):
 // only the kinds this diagram shows (icon and word), the two line styles in
-// use, and the badges in use.
+// use, each traffic source's line colour ("from lbi-web"), and the badges in
+// use.
 
 import type { TopologyGraph, TopoKind } from "@shared/topology/model";
 import { KINDS } from "@shared/topology/kinds";
 import { badgeOf, type NodeDiffStatus } from "@shared/topology/diff";
 import { TopoIcon } from "./nodes/TopoIcon";
+import { sourceColours } from "./edges/buildEdges";
+import { nodeIndex } from "./words";
 import "./Legend.css";
 
 export interface LegendProps {
@@ -22,6 +25,7 @@ export function Legend({ graph, status, deploying = false }: LegendProps) {
   const badges = [...new Set(Object.entries(status).filter(([k]) => keys.has(k)).map(([, s]) => badgeOf(s, { deploying })).filter((b): b is string => !!b))].sort();
   const traffic = graph.edges.some((e) => e.kind === "traffic");
   const dependency = graph.edges.some((e) => e.kind === "dependency");
+  const sources = sourceColours(graph, nodeIndex(graph));
   return (
     <div className="topo-legend">
       <ul className="topo-legend__list" aria-label="Kinds">
@@ -50,6 +54,18 @@ export function Legend({ graph, status, deploying = false }: LegendProps) {
               Dependency (dashed)
             </li>
           )}
+        </ul>
+      )}
+      {sources.length > 0 && (
+        <ul className="topo-legend__list" aria-label="Lines by source">
+          {sources.map((s) => (
+            <li key={s.source}>
+              <svg width="28" height="8" aria-hidden="true">
+                <line x1="0" y1="4" x2="28" y2="4" className={`topo-legend__traffic topo-legend__traffic--c${s.colour}`} />
+              </svg>
+              {`from ${s.label}`}
+            </li>
+          ))}
         </ul>
       )}
       {badges.length > 0 && (

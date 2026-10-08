@@ -472,6 +472,22 @@ Positions are relative to the parent (React Flow `parentId`, children `extent: "
 `layoutTopology(graph, saved)` → `{ nodes: { id, x, y, w, h, parent }[] }` is deterministic: the same graph in any input order
 gives the same answer.
 
+**As built, generous spacing and flow order (2026-10-08, `feat/diagram-spacing`; Steven: "be more generous with room
+between the components … it is in no way clear what lines lead from which element to the next").** The sizes above are
+replaced: cards 120 apart side by side and 96 one above the other (`CARD_GAP_X`/`CARD_GAP_Y`), 96 between sibling
+containers (a corridor for lines), container padding 32 with 20 under the header (`HEAD_GAP`), 120 between top-level boxes,
+shelves 960 (VNet) and 1280 (RG). When the generous picture would fit its space only below the readable fit zoom (a big lab
+in the dialog's tab), the layout uses the `COMPACT` spacing (96/80 cards, 96 corridors, padding 28) if that reads larger;
+deterministic for a given space. **Flow order** (`flowRanks`): a resource's rank is its longest path from a traffic source
+along traffic edges between cards (cycles, such as a rule and its outbound return, broken walking from sources, then
+Front Door/Traffic Manager, then gateways/balancers/firewalls/NAT, then the rest); a container's is the first and mean of
+the ranks inside it. Every container orders its children by flow first, then the rules above (subnets by prefix, VNets by
+address, kind order), so sources come before what they feed. A subnet holding several ranks lays them out in **flow
+columns** (sources first, each column centred on the tallest; flow rows when the space's shape prefers). Saved positions
+still win; they are pulled in only to the old padding (16), so a layout saved before this stays exactly as saved, and
+**Reset layout** gets the new spacing. The fit zooms in to use the space: up to 175% in the tab and the full screen
+(`FIT_MAX_ZOOM`; the mini stays at 100%), the readable floors (70% tab, 60% full screen and phone) unchanged.
+
 ### 8.2 Saved positions
 
 A saved entry is `{ x, y, p }` (relative position and the parent key it was saved under), applied only when the node's
@@ -547,6 +563,22 @@ be kept.
   Azure portal** (`https://portal.azure.com/#resource<resourceId>`, live only).
 - **Search** highlights matches by label, kind word and prop values (others dimmed), Enter fits the view to them.
 - **Legend:** the kinds present, edge styles, badges.
+- **As built, one lane per line and trace highlighting (2026-10-08, `feat/diagram-spacing`).** Lines are routed together by
+  `edges/router.ts` (pure, deterministic): each picks its sides by the cheapest way round the cards (facing sides on the
+  wider gap's axis preferred); a side used by several lines gives each its **own port** along it, in the order of where the
+  lines go; each line is routed orthogonally (A* over a sparse grid with several lanes per corridor) **never through a
+  card**, under a header strip or along a container border only at a cost, and **never along a stretch (or within 7px of
+  one) or round a corner another line uses** (crossing costs). Corners are rounded. Each **label** sits on its own line's
+  clearest stretch, never on a card, a header or another label (a label with no clear spot moves one in its way). While a
+  node is dragged, lines fall back to the per-edge nearest-sides routing (`route.ts`) and the router runs again on drop.
+  Lines are drawn over the containers' see-through bodies (React Flow's manual z-index: containers by depth, lines 20,
+  cards 50), so their colours stay true. **Colour by source:** traffic lines take one of six `--series-1…6` tokens (blue,
+  vermillion, bluish green, reddish purple, orange, violet; 3:1 or more on every surface in both themes) per source
+  resource, in graph order; the arrowhead and the label chip's border match; dependency lines stay neutral; the Legend lists
+  "from ‹source›" with each colour. **Trace highlighting** (`trace.ts`): hovering a resource card (or focusing any node by
+  keyboard, or selecting it) lights its lines and the resources at their other ends and dims the rest; hovering or
+  focusing a line lights it and its two ends; a node with no shown lines dims nothing; the fade animates only under
+  `prefers-reduced-motion: no-preference`; the mini never traces; the List view is unchanged.
 - **Theme:** React Flow `colorMode` follows the app theme; its `--xy-*` variables map to the app's CSS tokens; `base.css` only.
 
 ### 9.3 Accessibility

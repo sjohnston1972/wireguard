@@ -1,10 +1,13 @@
 // Lab topology plan T1.4: edges (spec §9.2).
 import { beforeAll, describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { getSmoothStepPath, Position, ReactFlow, ReactFlowProvider, type Node } from "@xyflow/react";
 import type { TopologyGraph, TopoNode } from "@shared/topology/model";
 import { floatingEnds } from "./edges/floating";
-import { buildEdges } from "./edges/buildEdges";
+import { buildEdges, sourceColours } from "./edges/buildEdges";
+import { Legend } from "./Legend";
+import { CARD_Z } from "./flowNodes";
+import flowSource from "./FlowCanvas.tsx?raw";
 import { EDGE_TYPES } from "./edges/TopoEdges";
 import { installFlowStandIns } from "./flowTestEnv";
 import { existsSync, readFileSync } from "node:fs";
@@ -98,6 +101,53 @@ describe("buildEdges", () => {
   });
 });
 
+describe("line colours by source", () => {
+  // Lab 16's shape: a load balancer and an application gateway, each feeding two VMs, and a dependency.
+  const nodes: TopoNode[] = [n("lb", "lbi-web"), n("agw", "agw-web"), n("vm1", "vm-web1"), n("vm2", "vm-web2"), n("id", "id-app")];
+  const g16: TopologyGraph = {
+    ...graph,
+    nodes,
+    edges: [
+      { id: "a1", from: "agw", to: "vm1", kind: "traffic", label: "HTTP 80→80" },
+      { id: "a2", from: "agw", to: "vm2", kind: "traffic", label: "HTTP 80→80" },
+      { id: "l1", from: "lb", to: "vm1", kind: "traffic", label: "TCP 80→80" },
+      { id: "l2", from: "lb", to: "vm2", kind: "traffic", label: "TCP 80→80" },
+      { id: "d1", from: "id", to: "vm1", kind: "dependency", label: "role: Reader" },
+    ],
+  };
+  const ids = new Map(nodes.map((x) => [x.id, x]));
+
+  it("edges from the same source share one colour; edges from different sources differ; dependencies stay neutral", () => {
+    const out = new Map(buildEdges(g16, ids, base).map((e) => [e.id, e]));
+    const c = (id: string) => out.get(id)!.data!.colour;
+    expect(c("a1")).toBeDefined();
+    expect(c("a1")).toBe(c("a2"));
+    expect(c("l1")).toBe(c("l2"));
+    expect(c("a1")).not.toBe(c("l1"));
+    expect(c("d1")).toBeUndefined();
+    // The arrowhead matches the line.
+    expect(out.get("a1")!.markerEnd).toMatchObject({ color: `var(--series-${c("a1")})` });
+    expect(out.get("l1")!.markerEnd).toMatchObject({ color: `var(--series-${c("l1")})` });
+  });
+
+  it("colours are given in graph order, so a lab always looks the same", () => {
+    const first = buildEdges(g16, ids, base).map((e) => [e.id, e.data!.colour]);
+    expect(buildEdges(g16, ids, { ...base, showDependencies: false }).map((e) => [e.id, e.data!.colour])).toEqual(first);
+    expect(Object.fromEntries(first)).toMatchObject({ a1: 1, l1: 2 });
+    expect(sourceColours(g16, ids)).toEqual([
+      { source: "agw", label: "agw-web", colour: 1 },
+      { source: "lb", label: "lbi-web", colour: 2 },
+    ]);
+  });
+
+  it("the legend names each source's colour (colour is never the only cue)", () => {
+    render(<Legend graph={g16} status={{}} />);
+    const lines = screen.getByRole("list", { name: "Lines by source" });
+    expect(within(lines).getByText("from lbi-web")).toBeInTheDocument();
+    expect(within(lines).getByText("from agw-web")).toBeInTheDocument();
+  });
+});
+
 describe("edges on the canvas", () => {
   const handles = (w: number, h: number) =>
     (["top", "right", "bottom", "left"] as const).map((p) => ({
@@ -148,8 +198,10 @@ describe("edges on the canvas", () => {
     expect(container.querySelector(".react-flow__edgelabel-renderer")).not.toBeNull();
   });
 
-  it("edges run under the containers (whose bodies are see-through) and so under their headers and the cards", () => {
-    for (const e of buildEdges(graph, byId, base)) expect(e.zIndex, e.id).toBeLessThan(0);
+  it("edges run over the containers' bodies (so their colours stay true) and under the cards", () => {
+    for (const e of buildEdges(graph, byId, base)) expect(e.zIndex, e.id).toBeLessThan(CARD_Z);
+    for (const e of buildEdges(graph, byId, base)) expect(e.zIndex, e.id).toBeGreaterThan(8);
+    expect(flowSource).toMatch(/zIndexMode=\{?"manual"/);
     const rule = (sel: string) => new RegExp(`(?:^|\n)${sel.replace(/[.[\]]/g, "\\$&")}\\s*\\{[^}]*`).exec(topologyCss)?.[0] ?? "";
     // Each container's header strip is opaque, so a line passing under it never crosses its name or chips.
     expect(rule(".topo-group__head")).toMatch(/background:\s*var\(--topo-head-bg\)/);

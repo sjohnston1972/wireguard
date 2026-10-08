@@ -29,6 +29,11 @@ export interface Viewport {
 export const MIN_FIT_ZOOM: Record<DiagramVariant, number> = { tab: 0.7, full: 0.6, mini: 0.05 };
 /** On the phone: the same as the full screen (both are what a phone shows). */
 export const PHONE_MIN_FIT_ZOOM = 0.6;
+/**
+ * The largest zoom a fit goes to: a small picture zooms in to use the space (Steven, 2026-10-08: "look at all the
+ * space we have") rather than sitting at 100% in the middle. The mini hover stays at 100% at most.
+ */
+export const FIT_MAX_ZOOM: Record<DiagramVariant, number> = { tab: 1.75, full: 1.75, mini: 1 };
 /** Padding around a fitted picture, as a share of the space (React Flow's fitView padding). */
 export const FIT_PADDING: Record<DiagramVariant, number> = { tab: 0.08, full: 0.08, mini: 0.04 };
 /** Where a picture too big to fit starts: clear of the canvas's top panels (Legend, Animate traffic). */

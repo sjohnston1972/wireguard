@@ -64,6 +64,13 @@ describe("token contrast", () => {
       }
     });
 
+    it(`${name}: the six series colours (a diagram's lines, by source) are at least 3:1 on every surface and differ from each other`, () => {
+      const series = [1, 2, 3, 4, 5, 6].map((i) => tok(t, `--series-${i}`));
+      for (const [i, c] of series.entries())
+        for (const bg of ["--bg-app", "--bg-panel", "--bg-tile", "--bg-elevated"]) expect(contrast(c, tok(t, bg)), `${name} --series-${i + 1} on ${bg}`).toBeGreaterThanOrEqual(3);
+      expect(new Set(series).size).toBe(6);
+    });
+
     it(`${name}: disabled controls are legible, at least 3:1 against their fill and the surfaces they sit on`, () => {
       for (const bg of ["--disabled-bg", "--bg-panel", "--bg-tile", "--bg-app", "--bg-bar"]) {
         expect(contrast(tok(t, "--disabled-fg"), tok(t, bg)), `${name} --disabled-fg on ${bg}`).toBeGreaterThanOrEqual(3);
