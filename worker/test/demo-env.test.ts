@@ -10,7 +10,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { makeEnv, sqliteLike } from "./harness";
-import { DEMO_MARK, DEMO_VARS, isDemoEnv, makeDemoEnv } from "../src/demo/env";
+import { DEMO_MARK, DEMO_MASKS, DEMO_VARS, isDemoEnv, makeDemoEnv } from "../src/demo/env";
 import { WriteMeter, ensureFacadeTables } from "../src/demo/sql";
 import { SECRET_GROUPS, missingSecrets, canAzure, canDispatch, canDns, type Env } from "../src/env";
 import { standInsAllowed, devSeeded, DEVSEED_KV } from "../src/devmarks";
@@ -52,6 +52,27 @@ function demoOf(src: Env): Env {
   return makeDemoEnv(src, sql, new WriteMeter());
 }
 
+describe("real names masked (spec §10: recordings)", () => {
+  it("PUBLIC_URL, WG_DNS_NAME, HOME_LAN_CIDR and a set SSH_ALLOWED_CIDR become example values; other [vars] are copied", () => {
+    const { env } = makeEnv({ PUBLIC_URL: "https://wg-admin.real-host.test", WG_DNS_NAME: "wg.real-host.test", HOME_LAN_CIDR: "10.77.3.0/24", SSH_ALLOWED_CIDR: "81.2.69.160/32" });
+    const d = demoOf(env);
+    expect(d.PUBLIC_URL).toBe("https://wg-admin.example.com");
+    expect(d.WG_DNS_NAME).toBe("vpn.example.com");
+    expect(d.HOME_LAN_CIDR).toBe("192.168.1.0/24");
+    expect(d.SSH_ALLOWED_CIDR).toBe("203.0.113.0/24");
+    expect(d.AZURE_REGION).toBe(env.AZURE_REGION);
+    expect(d.WG_SUBNET).toBe(env.WG_SUBNET);
+  });
+
+  it("an unset home LAN or SSH range stays unset", () => {
+    const { env } = makeEnv({ SSH_ALLOWED_CIDR: "" });
+    delete (env as unknown as Record<string, unknown>).HOME_LAN_CIDR;
+    const d = demoOf(env);
+    expect(d.HOME_LAN_CIDR).toBeUndefined();
+    expect(d.SSH_ALLOWED_CIDR).toBe("");
+  });
+});
+
 describe("DEMO_VARS", () => {
   it("equals the keys of wrangler.toml [vars]", () => {
     expect([...DEMO_VARS].sort()).toEqual(tomlVars().sort());
@@ -65,7 +86,11 @@ describe("makeDemoEnv", () => {
     const demo = demoOf(real);
     const keys = Object.keys(demo).sort();
     expect(keys).toEqual([...DEMO_VARS.filter((k) => typeof (real as unknown as Record<string, unknown>)[k] === "string"), "DB", "STATUS", "STATE", "RUN_LOCK"].sort());
-    for (const k of DEMO_VARS) if (k in demo) expect((demo as unknown as Record<string, unknown>)[k]).toBe((real as unknown as Record<string, unknown>)[k]);
+    for (const k of DEMO_VARS) {
+      if (!(k in demo)) continue;
+      const masked = (DEMO_MASKS as Partial<Record<string, string>>)[k];
+      expect((demo as unknown as Record<string, unknown>)[k]).toBe(masked ?? (real as unknown as Record<string, unknown>)[k]);
+    }
     expect(demo.DB).not.toBe(real.DB);
     expect(demo.STATUS).not.toBe(real.STATUS);
     expect(demo.STATE).not.toBe(real.STATE);

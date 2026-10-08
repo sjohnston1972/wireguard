@@ -9,6 +9,9 @@
 // ASSETS, no DEMO_STORE and never AUTH_DEV_BYPASS: code running for a demo
 // person cannot reach anything real, and canAzure/canDispatch/canDns are false.
 //
+// Four of those settings name the real setup (its addresses and networks),
+// so the demo shows example values instead (DEMO_MASKS), safe for recordings.
+//
 // It carries DEMO_MARK, a Symbol only this module makes. It survives
 // `{ ...env }`, and no setting or secret can forge it (configuration only
 // makes string keys). isDemoEnv reads it.
@@ -47,6 +50,22 @@ export const DEMO_VARS = [
   "STANDBY_MAX_DAYS",
 ] as const satisfies readonly (keyof Env)[];
 
+/**
+ * What the demo shows instead of the real setup's own names: documentation
+ * names and ranges (RFC 2606, RFC 5737). The home LAN is the demo story's own
+ * (its home-site client routes it and its traffic goes there), so the story
+ * stays consistent. PUBLIC_URL and WG_DNS_NAME are always set (the app falls
+ * back to the real names when they are missing); the home LAN and the SSH
+ * range only when the real one is set (empty means "none").
+ */
+export const DEMO_MASKS = {
+  PUBLIC_URL: "https://wg-admin.example.com",
+  WG_DNS_NAME: "vpn.example.com",
+  HOME_LAN_CIDR: "192.168.1.0/24",
+  SSH_ALLOWED_CIDR: "203.0.113.0/24",
+} as const satisfies Partial<Record<(typeof DEMO_VARS)[number], string>>;
+const ALWAYS_MASKED: readonly string[] = ["PUBLIC_URL", "WG_DNS_NAME"];
+
 /** True only for an environment made by makeDemoEnv (or a copy of one). */
 export function isDemoEnv(env: unknown): boolean {
   return typeof env === "object" && env !== null && (env as { [DEMO_MARK]?: unknown })[DEMO_MARK] === true;
@@ -54,14 +73,16 @@ export function isDemoEnv(env: unknown): boolean {
 
 /**
  * A demo environment: the DEMO_VARS read by name from `vars` (strings only;
- * nothing else of `vars` is read), and DB, STATUS, STATE and RUN_LOCK over the
+ * nothing else of `vars` is read; DEMO_MASKS in place of the real names), and DB, STATUS, STATE and RUN_LOCK over the
  * demo store's SQLite, every write counted on `meter`.
  */
 export function makeDemoEnv(vars: Partial<Record<(typeof DEMO_VARS)[number], unknown>>, sql: SqlLike, meter: WriteMeter): Env {
   const out: Record<string | symbol, unknown> = {};
   for (const k of DEMO_VARS) {
     const v = vars[k];
-    if (typeof v === "string") out[k] = v;
+    const mask = (DEMO_MASKS as Partial<Record<string, string>>)[k];
+    if (mask !== undefined && (ALWAYS_MASKED.includes(k) || (typeof v === "string" && v !== ""))) out[k] = mask;
+    else if (typeof v === "string") out[k] = v;
   }
   out.DB = d1Over(sql, meter);
   out.STATUS = kvOver(sql, meter);

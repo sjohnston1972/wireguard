@@ -22,6 +22,7 @@
 
 import type { Context } from "hono";
 import type { Env } from "./env";
+import { config } from "./env";
 import { isLocalhost } from "./auth";
 import * as db from "./db";
 import { EMPTY, getSnapshot, saveSnapshot, nextTraffic, nextLatency, nextSession, nextTalkers, detectRoams, type AgentReport, type AgentPeer, type Snapshot, type Step, type Session, type Talker, type FirewallStatus } from "./state";
@@ -338,7 +339,7 @@ async function addCancelledRun(env: Env, rng: Rng, atMs: number): Promise<string
 const WATCHMAN_NOTES: [string, string][] = [
   ["idle", "No client activity for 30 minutes; tearing down in 10 minutes unless someone connects."],
   ["cost_guard", "Auto-destroy extended once; the cost guard stopped it at the 4 hour limit."],
-  ["drift", "DNS mismatch: wg.clydeford.net resolves to 192.0.2.1 but the VM is at 203.0.113.12."],
+  ["drift", "DNS mismatch: {dns} resolves to 192.0.2.1 but the VM is at 203.0.113.12."],
   ["unreachable", "No heartbeat from the VM for 2 minutes. It may be down, or the agent token may be wrong."],
   ["info", "Heartbeat from the VM is back."],
   ["info", 'Client "guest-ipad" expired and was switched off.'],
@@ -348,7 +349,8 @@ const WATCHMAN_NOTES: [string, string][] = [
 async function addWatchmanNotes(env: Env, rng: Rng, now: number, count: number, hours: number): Promise<void> {
   for (let i = 0; i < count; i++) {
     const [kind, msg] = WATCHMAN_NOTES[i % WATCHMAN_NOTES.length];
-    await note(env, now - rng.int(2, hours) * HOUR, kind, msg, null, i > 3);
+    // {dns}: this environment's DNS name (the demo's example one, never the real one there).
+    await note(env, now - rng.int(2, hours) * HOUR, kind, msg.replace("{dns}", config(env).dnsName), null, i > 3);
   }
 }
 

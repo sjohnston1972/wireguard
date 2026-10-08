@@ -397,7 +397,25 @@ the Dev data section absent with `devSeed: null` and present with scenarios; See
 | A new GET route makes an outside call | §9.2's meta-test forces it into the table; the fetch guard turns it into a 500 in demo, never a call. |
 | A new write route | Refused by default (ruling 4). |
 | Notification taps open demo views | Banner; "Not found" for real ids; ruling 17. |
-| Public config (DNS name, region, server public key) appears in demo | Accepted: configuration, not data; the server key is public by design. |
+| Public config (DNS name, region, server public key) appears in demo | Masked since the review: the demo env carries `DEMO_MASKS` (`demo/env.ts`) instead of the real `PUBLIC_URL` (`https://wg-admin.example.com`), `WG_DNS_NAME` (`vpn.example.com`), `HOME_LAN_CIDR` (the story's own `192.168.1.0/24`, kept so its home-site client and traffic stay consistent) and a set `SSH_ALLOWED_CIDR` (`203.0.113.0/24`); the seeded drift note uses the env's DNS name. Still shown, accepted: region, VM size, resource group name, WireGuard subnets, the server and VAPID public keys (public by design), and the signed-in person's own email (`/session`). |
+
+### 12.1 Residual risks (review, 2026-10-08)
+
+1. **D1 is now on the path of every authenticated request** (ruling 6). The gate reads the caller's `demo_mode` row before
+   any `/api/v1` handler or `/health` runs, for everyone, in demo mode or not. If D1 cannot answer, every such request is
+   503 `demo_unknown`, including pages that never needed D1 before. Accepted: guessing either way is worse (ruling 6), and
+   most pages read D1 anyway. Watch: `demo_unknown` in the Worker log.
+2. **Rollback across Durable Object migration `v2`.** The rollback id recorded before the deploy points at a version without
+   the `DemoStore` class; Cloudflare refuses (or would break) a rollback that drops a class a migration created, so that id
+   is not usable once `v2` is applied. The way back is a fix-forward deploy of `revert/demo-mode`, which **must keep** the
+   `DemoStore` export (an inert class is enough), the `DEMO_STORE` binding and the `v2` migration lines in `wrangler.toml`.
+   Deleting the class needs a later `deleted_classes` migration, never a plain rollback. The `demo_mode` table is harmless
+   to old code.
+3. **Real names on screen during recordings.** Handled by `DEMO_MASKS` (§12 table); what is still shown is listed there.
+   A new `[vars]` setting that names the real setup must be added to `DEMO_MASKS` (the DEMO_VARS test pins the list to
+   `wrangler.toml`, so it cannot be missed silently, but the masking choice is a review item).
+4. **A phone alert renewal while demo mode is on** is refused like every write; sw.js keeps it and the app finishes it once
+   the data is real (§8.3). Until then that phone gets no alerts. The Settings intro says so.
 
 ## Appendix A: the brief (as relayed on 2026-10-08)
 

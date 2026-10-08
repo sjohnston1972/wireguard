@@ -145,6 +145,26 @@ describe("the tripwire (spec §9.1): a DemoStore whose real bindings throw on an
   }, 120_000);
 });
 
+describe("real names never shown (recordings)", () => {
+  it("no demo answer names the real host, DNS name, home LAN or SSH range", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+    const { env } = makeEnv({ PUBLIC_URL: "https://wg-admin.real-host.test", WG_DNS_NAME: "wg.real-host.test", HOME_LAN_CIDR: "10.77.3.0/24", SSH_ALLOWED_CIDR: "81.2.69.160/32" });
+    const { store } = storeWith(env);
+    expect((await store.refresh(NOW)).ok).toBe(true);
+    const paths = await everyGet((p) => serveGet(store, p));
+    const answers: string[] = [];
+    for (const p of paths) answers.push(`${p} ${(await serveGet(store, p)).text}`);
+    answers.push(await (await store.serve(new Request(`${base}/health`), "dev@localhost")).text());
+    const all = answers.join("\n");
+    expect(all).not.toContain("real-host");
+    expect(all).not.toContain("10.77.3.");
+    expect(all).not.toContain("81.2.69.160");
+    expect(all).not.toContain("clydeford");
+    expect(all).toContain("vpn.example.com");
+  }, 120_000);
+});
+
 describe("serve", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
