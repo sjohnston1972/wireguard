@@ -38,6 +38,15 @@ export function registerCost(api: Hono<ApiEnv>): void {
     if (budget.level === "warn" || budget.level === "over") {
       insights.push(`${money(budget.total)} of the ${money(budget.budget)} monthly budget is used (${Math.round(budget.pct)}%)${budget.level === "over" ? ", so Deploy asks for confirmation until the month ends" : ""}.`);
     }
+    // Under 80%: where the month is heading against the budget (the projection's own figure).
+    const proj = projection(all, now);
+    if (budget.level === "ok" && proj) insights.push(`At this pace the month ends at about ${money(proj.gbp)}, ${Math.round((proj.gbp / budget.budget) * 100)}% of the ${money(budget.budget)} monthly budget.`);
+    // This month's sessions (each estimated at the hourly rate, as the Sessions table shows them).
+    const mine = sessions.filter((s) => s.started.startsWith(monthStart.slice(0, 7)));
+    if (mine.length) {
+      const avg = mine.reduce((a, s) => a + s.estimatedGbp, 0) / mine.length;
+      insights.push(`${mine.length} ${mine.length === 1 ? "session" : "sessions"} this month, about ${money(avg)} each.`);
+    }
 
     const running = snap.state === "running" && !!snap.running_since;
     const out: CostResponse = {
@@ -47,7 +56,7 @@ export function registerCost(api: Hono<ApiEnv>): void {
       session: { running, since: running ? snap.running_since : null, estimateGbp: running ? Math.max(0, ((now.getTime() - Date.parse(snap.running_since!)) / 3_600_000) * cfg.hourlyRateGbp) : null },
       standby,
       monthToDate: budget.actual,
-      projection: projection(all, now),
+      projection: proj,
       budget,
       daily: all.filter((d) => d.day >= win.from && d.day <= win.to),
       previous: all.filter((d) => d.day >= win.prevFrom && d.day <= win.prevTo),

@@ -100,6 +100,20 @@ describe("GET /cost", () => {
     expect(r.json.insights.some((s: string) => /budget/.test(s))).toBe(true);
   });
 
+  it("under 80% of the budget: where the month is heading against the budget, and this month's sessions, as plain facts", async () => {
+    const { env } = apiEnv();
+    await env.DB.prepare("INSERT INTO cost_days (day, gbp, fetched_at) VALUES (?1, 0.1, 'x')").bind(`${month}01`).run();
+    await db.setSetting(env, "monthly_budget_gbp", "60");
+    const at = `${month}01T09:00:00Z`;
+    await db.createRun(env, { id: "run-b", action: "apply", status: "success", requested_at: at, requested_by: "dev@localhost", callback_token_hash: null, agent_token_hash: null, payload_json: null, auto_destroy_at: null, reason: null, ssh_password: null });
+    await db.updateRun(env, "run-b", { finished_at: at });
+    const r = await api(env, "GET", "/cost");
+    expect(r.json.budget.level).toBe("ok");
+    const days = Number(r.json.projection.basis.match(/all (\d+) days/)[1]);
+    expect(r.json.insights).toContain(`At this pace the month ends at about £${(0.1 * days).toFixed(2)}, ${Math.round(((0.1 * days) / 60) * 100)}% of the £60.00 monthly budget.`);
+    expect(r.json.insights.some((s: string) => /^1 session this month, about £\d+\.\d\d each\.$/.test(s)), r.json.insights.join(" | ")).toBe(true);
+  });
+
   it("lists sessions with nothing secret in the serialised answer", async () => {
     const { env } = apiEnv();
     await db.createRun(env, { id: "run-a", action: "apply", status: "success", requested_at: "2026-10-01T10:00:00Z", requested_by: "dev@localhost", callback_token_hash: "cbhash-secret", agent_token_hash: "aghash-secret", payload_json: JSON.stringify({ region: "uksouth", ssh_allowed_cidr: "9.9.9.9/32" }), auto_destroy_at: null, reason: null, ssh_password: "hunter2-secret" });

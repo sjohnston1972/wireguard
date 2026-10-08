@@ -20,13 +20,14 @@
 // production. Everything is generated from a fixed seed: the same scenario at
 // the same time gives the same rows.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Context } from "hono";
 import type { Env } from "./env";
 import { config } from "./env";
 import { isLocalhost } from "./auth";
 import * as db from "./db";
 import { EMPTY, getSnapshot, saveSnapshot, nextTraffic, nextLatency, nextSession, nextTalkers, detectRoams, type AgentReport, type AgentPeer, type Snapshot, type Step, type Session, type Talker, type FirewallStatus } from "./state";
-import { recordHeartbeat, rollUp, bucket, fwDeltas } from "./history";
+import { recordHeartbeat, rollUp, bucket, fwDeltas, SUMMARY_RES } from "./history";
 import { freshDrops, nextFirewall } from "./runs";
 import { effectiveConfig } from "./settings";
 import { compileFirewall } from "./firewall";
@@ -38,6 +39,22 @@ import { buildExport } from "./backup";
 import { isWgKey } from "./peers";
 import { DEVSEED_BACKUP_ROOT, DEVSEED_KV } from "./devmarks";
 import { seedLabs, seedLabsMore, wipeLabs, seedActor, withSeedActor, DEFAULT_SEED_ACTOR } from "./devseed-labs";
+
+/**
+ * The VM a story runs, and what an hour of it costs (VM, disk and address, Azure's list prices). Every story runs
+ * the small B1s, except everything: demo mode's story, which Steven wanted busy, with costs clearly visible but the
+ * month under £50 (2026-10-08). It runs a D2s v5, and its prices are seeded to match (seedEverything).
+ */
+interface SeedVm {
+  size: string;
+  /** £ an hour: the VM, its disk and its address (as priceInfo adds them up). */
+  rate: number;
+}
+const SMALL_VM: SeedVm = { size: "Standard_B1s", rate: 0.0157 };
+const BUSY_VM: SeedVm = { size: "Standard_D2s_v5", rate: 0.0896 };
+const vmStore = new AsyncLocalStorage<SeedVm>();
+/** The VM of the seed running now (per call, like seedActor, so two seeds at once never mix). */
+const vm = (): SeedVm => vmStore.getStore() ?? SMALL_VM;
 
 export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs", "labs-setup", "everything"] as const;
 export type Scenario = (typeof SCENARIOS)[number];
@@ -149,6 +166,17 @@ const CAST: Cast[] = [
   { name: "guest-ipad", ip: "10.13.13.14", full: true, vnet: false, dns: true, routes: "", note: "Guest, expires soon", presence: 0.1, lat: [34, 7], rate: 18_000, online: false, lastSeenDays: 12, expiresInDays: 4, remotes: [...REMOTES.web] },
 ];
 
+/**
+ * everything's extra clients (demo mode, Steven 2026-10-08: "connected clients ... 6 or so"): two more always on,
+ * so six are connected of twelve, and two that come and go.
+ */
+const EXTRA_CAST: Cast[] = [
+  { name: "media-server", ip: "10.13.13.8", full: false, vnet: true, dns: true, routes: "", note: "Media server", presence: 0.95, lat: [21, 4], rate: 150_000, online: true, lastSeenDays: 0, remotes: [...REMOTES.web] },
+  { name: "dev-vm", ip: "10.13.13.12", full: false, vnet: true, dns: false, routes: "", note: "Build agent", presence: 0.9, lat: [27, 3], rate: 85_000, online: true, lastSeenDays: 0, remotes: [...REMOTES.dev] },
+  { name: "kids-chromebook", ip: "10.13.13.15", full: true, vnet: false, dns: true, routes: "", note: null, presence: 0.3, lat: [35, 7], rate: 26_000, online: false, lastSeenDays: 2, remotes: [...REMOTES.web] },
+  { name: "travel-router", ip: "10.13.13.16", full: true, vnet: false, dns: true, routes: "", note: "Holiday router", presence: 0.15, lat: [44, 9], rate: 30_000, online: false, lastSeenDays: 6, remotes: [...REMOTES.web] },
+];
+
 const FOUR = ["home-site", "phone", "gaming-pc", "laptop"];
 
 interface SeedPeer {
@@ -159,9 +187,9 @@ interface SeedPeer {
   endpoint: string;
 }
 
-async function insertPeers(env: Env, rng: Rng, now: number, names: string[]): Promise<SeedPeer[]> {
+async function insertPeers(env: Env, rng: Rng, now: number, names: string[], cast: Cast[] = CAST): Promise<SeedPeer[]> {
   const out: SeedPeer[] = [];
-  for (const c of CAST.filter((x) => names.includes(x.name))) {
+  for (const c of cast.filter((x) => names.includes(x.name))) {
     const p = await db.addPeer(env, {
       name: c.name,
       public_key: wgKey(rng),
@@ -283,7 +311,7 @@ async function addSession(env: Env, rng: Rng, s: Session0, now: number, o: { pee
     requested_by: s.by,
     callback_token_hash: null,
     agent_token_hash: null,
-    payload_json: JSON.stringify({ region: s.region, vm_size: "Standard_B1s", run_id: applyId, peers_json: JSON.stringify(Array.from({ length: o.peersLoaded }, (_, i) => ({ n: i }))), ssh_allowed_cidr: "203.0.113.9/32" }),
+    payload_json: JSON.stringify({ region: s.region, vm_size: vm().size, run_id: applyId, peers_json: JSON.stringify(Array.from({ length: o.peersLoaded }, (_, i) => ({ n: i }))), ssh_allowed_cidr: "203.0.113.9/32" }),
     auto_destroy_at: s.end ? iso(s.end) : iso(now + 3 * HOUR + 12 * MIN),
     reason: s.reason,
     ssh_password: o.password ?? null,
@@ -308,7 +336,7 @@ async function addSession(env: Env, rng: Rng, s: Session0, now: number, o: { pee
     await db.updateRun(env, destroyId, { status: "success", started_at: iso(startD), finished_at: iso(finD), github_run_id: 7_000_000_000 + rng.int(1, 999_999), github_run_url: `https://ci.example.invalid/actions/runs/${7_000_000_000 + rng.int(1, 999_999)}`, steps_json: JSON.stringify(stepList(DESTROY_STEPS, startD)) });
     const hours = (s.end - s.start) / HOUR;
     await note(env, finD, "destroy", "Torn down: everything in Azure is gone.", destroyId, o.ack);
-    await note(env, finD + 1000, "session", `Session ${Math.floor(hours)}h ${Math.round((hours % 1) * 60)}m, about £${(hours * 0.0157).toFixed(2)}.`, destroyId, o.ack);
+    await note(env, finD + 1000, "session", `Session ${Math.floor(hours)}h ${Math.round((hours % 1) * 60)}m, about £${(hours * vm().rate).toFixed(2)}.`, destroyId, o.ack);
   }
   return { applyId, destroyId, publicIp };
 }
@@ -320,7 +348,7 @@ async function addFailedRun(env: Env, rng: Rng, atMs: number, error: string, act
   const failAt = action === "apply" ? 6 : 2;
   const steps = stepList(action === "apply" ? DEPLOY_STEPS : DESTROY_STEPS, started, { failAt });
   const finished = Date.parse(steps[failAt].completed_at!);
-  const payload = action === "apply" ? JSON.stringify({ region: "uksouth", vm_size: "Standard_B1s", run_id: id }) : null;
+  const payload = action === "apply" ? JSON.stringify({ region: "uksouth", vm_size: vm().size, run_id: id }) : null;
   await db.createRun(env, { id, action, status: "queued", requested_at: iso(atMs), requested_by: seedActor(), callback_token_hash: null, agent_token_hash: null, payload_json: payload, auto_destroy_at: null, reason: null, ssh_password: null });
   await db.updateRun(env, id, { status: "failure", started_at: iso(started), finished_at: iso(finished), github_run_id: 7_000_000_000 + rng.int(1, 999_999), github_run_url: `https://ci.example.invalid/actions/runs/7000${rng.int(10000, 99999)}`, error, steps_json: JSON.stringify(steps) });
   await note(env, finished, "failure", `${action === "apply" ? "Deploy" : "Tear-down"} failed: ${error}`, id, false);
@@ -330,7 +358,7 @@ async function addFailedRun(env: Env, rng: Rng, atMs: number, error: string, act
 /** A deploy cancelled by hand while the Azure resources were being made. */
 async function addCancelledRun(env: Env, rng: Rng, atMs: number): Promise<string> {
   const id = runId("apply", atMs, rng);
-  await db.createRun(env, { id, action: "apply", status: "queued", requested_at: iso(atMs), requested_by: seedActor(), callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region: "uksouth", vm_size: "Standard_B1s" }), auto_destroy_at: null, reason: null, ssh_password: null });
+  await db.createRun(env, { id, action: "apply", status: "queued", requested_at: iso(atMs), requested_by: seedActor(), callback_token_hash: null, agent_token_hash: null, payload_json: JSON.stringify({ region: "uksouth", vm_size: vm().size }), auto_destroy_at: null, reason: null, ssh_password: null });
   await db.updateRun(env, id, { status: "cancelled", started_at: iso(atMs + 9000), finished_at: iso(atMs + 80_000), steps_json: JSON.stringify(stepList(DEPLOY_STEPS, atMs + 9000, { failAt: 3 }).map((s) => (s.conclusion === "failure" ? { ...s, conclusion: "cancelled" } : s))) });
   return id;
 }
@@ -378,12 +406,12 @@ async function addChangeLog(env: Env, rng: Rng, now: number, count: number, hour
 
 // ── Sessions on the calendar ──────────────────────────────────────────────
 
-/** Past sessions on the given days ago (UTC), none ending later than `latestEnd`. */
-function pastSessions(rng: Rng, now: number, daysAgo: number[], latestEnd: number, by = seedActor()): Session0[] {
+/** Past sessions on the given days ago (UTC), none ending later than `latestEnd`. `long`: working days of 7 to 12 hours (everything). */
+function pastSessions(rng: Rng, now: number, daysAgo: number[], latestEnd: number, by = seedActor(), long = false): Session0[] {
   const out: Session0[] = [];
   for (const d of daysAgo) {
-    const start = midnight(now - d * DAY) + rng.int(8, 18) * HOUR + rng.int(0, 11) * 5 * MIN;
-    const end = Math.min(start + rng.int(24, 60) * 5 * MIN, latestEnd);
+    const start = midnight(now - d * DAY) + (long ? rng.int(7, 11) : rng.int(8, 18)) * HOUR + rng.int(0, 11) * 5 * MIN;
+    const end = Math.min(start + (long ? rng.int(84, 144) : rng.int(24, 60)) * 5 * MIN, latestEnd);
     if (end - start < HOUR) continue;
     out.push({ start, end, region: "uksouth", by: rng.chance(0.25) ? "watchman" : by, reason: rng.chance(0.25) ? "schedule" : null });
   }
@@ -419,11 +447,12 @@ const DROP_FLOWS = [
 /**
  * Play one VM session as a series of heartbeats, each saved through the real
  * history writer. Ticks are counted back from `endMs` so the newest sits just
- * before it. The last state is returned for the snapshot.
+ * before it. The last state is returned for the snapshot. `coarse`: before
+ * `untilMs`, heartbeats `stepMs` apart instead (a long session in fewer rows).
  */
-async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number; stepMs: number; peers: SeedPeer[]; presence: Map<number, Presence | null>; ruleIds: number[]; fwHash: string; port: number; serverKey: string }): Promise<SimOut> {
+async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number; stepMs: number; coarse?: { untilMs: number; stepMs: number }; peers: SeedPeer[]; presence: Map<number, Presence | null>; ruleIds: number[]; fwHash: string; port: number; serverKey: string }): Promise<SimOut> {
   const ticks: number[] = [];
-  for (let t = o.endMs; t > o.startMs + o.stepMs; t -= o.stepMs) ticks.unshift(t);
+  for (let t = o.endMs; t > o.startMs + o.stepMs; t -= o.coarse && t <= o.coarse.untilMs ? o.coarse.stepMs : o.stepMs) ticks.unshift(t);
   const cum = new Map<number, { rx: number; tx: number }>(o.peers.map((p) => [p.id, { rx: 0, tx: 0 }]));
   const pairs = new Map<string, { c: string; r: string; name: string; up: number; down: number }>();
   const counters: Record<string, [number, number]> = { default: [0, 0], ...Object.fromEntries(o.ruleIds.map((id) => [`r${id}`, [0, 0] as [number, number]])) };
@@ -439,10 +468,10 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
   let report!: AgentReport;
   const dropWeight = DROP_FLOWS.reduce((n, d) => n + d.w, 0);
 
-  for (const t of ticks) {
+  for (const [i, t] of ticks.entries()) {
     const peers: AgentPeer[] = [];
     const rtt: Record<string, number> = {};
-    const stepSecs = o.stepMs / 1000;
+    const stepSecs = (i > 0 ? t - ticks[i - 1] : o.stepMs) / 1000;
     for (const p of o.peers) {
       const pres = o.presence.get(p.id) ?? null;
       const c = cum.get(p.id)!;
@@ -549,7 +578,7 @@ const AZURE = (now: number, region: string, ip: string): NonNullable<Snapshot["a
     { kind: "Virtual network", name: "vnet-wg", detail: "10.50.0.0/16" },
     { kind: "Public IP", name: "pip-wg", detail: `${ip}, static` },
     { kind: "Network security group", name: "nsg-wg", detail: "allow udp 51820 from *; allow tcp 22 from 203.0.113.9/32" },
-    { kind: "Virtual machine", name: "vm-wg", detail: "Standard_B1s, running" },
+    { kind: "Virtual machine", name: "vm-wg", detail: `${vm().size}, running` },
   ],
 });
 
@@ -590,7 +619,7 @@ async function counts(env: Env): Promise<Record<string, number>> {
  * stores, or demo mode's own store (demo/store.ts hands it the demo environment and actor demo@example.com).
  */
 export async function seedScenario(env: Env, scenario: Scenario, nowDate = new Date(), opts: { actor?: string } = {}): Promise<SeedResult> {
-  return withSeedActor(opts.actor ?? DEFAULT_SEED_ACTOR, () => seedStory(env, scenario, nowDate));
+  return withSeedActor(opts.actor ?? DEFAULT_SEED_ACTOR, () => vmStore.run(scenario === "everything" ? BUSY_VM : SMALL_VM, () => seedStory(env, scenario, nowDate)));
 }
 
 async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<SeedResult> {
@@ -600,6 +629,11 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
   const story = (ON_RUNNING.includes(scenario) ? "running" : scenario) as Exclude<Scenario, "insights" | "labs" | "labs-setup" | "everything">;
   const now = nowDate.getTime();
   const rng = makeRng(SEED);
+  // everything is demo mode's story: busier than the running one (Steven, 2026-10-08, "a vibrant busy dashboard").
+  // Twelve clients (six connected), a session up since yesterday, longer working days before it, a month of history.
+  const busy = scenario === "everything";
+  const cast = busy ? [...CAST, ...EXTRA_CAST] : CAST;
+  const sessionStart = now - (busy ? 20 : 2) * HOUR - 12 * MIN;
   await wipe(env, now);
   await insertRules(env, story !== "empty");
   await env.STATUS.delete("cost:fetched_day").catch(() => {});
@@ -620,7 +654,8 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
           presence.set(p.id, { from, to: from + Math.floor((0.35 + 0.65 * rng.next()) * (s.end! - from)) });
         } else presence.set(p.id, null);
       }
-      await simulate(env, rng, { startMs: s.start, endMs: s.end!, stepMs: 5 * MIN, peers, presence, ruleIds: ruleIdsIn, fwHash, port: cfg.port, serverKey });
+      // everything's longer days at a heartbeat every 15 minutes: the 7-day charts' half-hour points stay filled, in fewer rows.
+      await simulate(env, rng, { startMs: s.start, endMs: s.end!, stepMs: (busy ? 15 : 5) * MIN, peers, presence, ruleIds: ruleIdsIn, fwHash, port: cfg.port, serverKey });
     }
     // The tests the watchman would have caught: a few minutes with no heartbeat in the middle of one session.
     const gapFrom = sessions.at(-2) ?? sessions[0];
@@ -664,12 +699,12 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
 
   // The rest share a cast. "destroyed" and "failed" and "deploying" have a
   // week of earlier sessions behind them; "standby" and "running" too.
-  const names = story === "running" || story === "standby" ? CAST.map((c) => c.name) : FOUR;
-  const peers = await insertPeers(env, rng, now, names);
+  const names = story === "running" || story === "standby" ? cast.map((c) => c.name) : FOUR;
+  const peers = await insertPeers(env, rng, now, names, cast);
   const dayList = story === "running" ? [6, 5, 4, 2, 1] : [6, 5, 4, 3, 2, 1];
   // The last earlier session must end well before anything happening now.
-  const lastEnd = story === "standby" ? now - 20 * HOUR : now - 5 * HOUR;
-  const earlier = pastSessions(rng, now, dayList, lastEnd);
+  const lastEnd = story === "standby" ? now - 20 * HOUR : busy ? sessionStart - 40 * MIN : now - 5 * HOUR;
+  const earlier = pastSessions(rng, now, dayList, lastEnd, seedActor(), busy);
   const standbySince = now - 3 * HOUR - 8 * MIN;
   if (story === "standby") earlier.push({ start: standbySince - 2 * HOUR - 40 * MIN, end: standbySince, region: "uksouth", by: seedActor(), reason: null });
   const spans: { start: number; end: number | null }[] = earlier.map((s) => ({ start: s.start, end: s.end }));
@@ -686,7 +721,10 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
   if (story === "running" || story === "standby") await addForward(env);
   const ids = (await db.listFwRules(env)).map((r) => r.id);
   const hash = await fwHashNow();
-  await simSessions(peers, earlier.filter((s) => !(story === "standby" && s.end === standbySince)), ids, hash);
+  // everything: the sessions the roll-up would already have folded (over 47 hours old) are written as its summaries.
+  const folded = (s: Session0) => busy && s.end !== null && s.end < now - 47 * HOUR;
+  await simSessions(peers, earlier.filter((s) => !(story === "standby" && s.end === standbySince) && !folded(s)), ids, hash);
+  if (busy) await summaryHistory(env, rng, { spans: earlier.filter(folded).map((s) => ({ start: s.start, end: s.end! })), stepMs: 30 * MIN, peers, ruleIds: ids });
   if (story === "standby") {
     const s = earlier.at(-1)!;
     const presence = new Map<number, Presence | null>(peers.map((p) => [p.id, p.cast.presence >= 1 ? { from: s.start, to: s.end! } : p.cast.online ? { from: s.start + 10 * MIN, to: s.end! - 20 * MIN } : null]));
@@ -772,19 +810,25 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
   }
 
   // running
-  const startMs = now - 2 * HOUR - 12 * MIN;
+  const startMs = sessionStart;
   const cur = await addSession(env, rng, { start: startMs, end: null, region, by: seedActor(), reason: null }, now, { peersLoaded: peers.length, ack: false, password: "dev-seed-not-a-real-password" });
   spans.push({ start: startMs, end: null });
   const presence = new Map<number, Presence | null>();
   for (const p of peers) {
     if (p.cast.presence >= 1) presence.set(p.id, { from: startMs, to: now + HOUR });
-    else if (p.cast.online) presence.set(p.id, { from: startMs + rng.int(2, 40) * MIN, to: now + HOUR });
+    // everything's long session: the regulars arrive through the day, so the connected count climbs to six.
+    else if (p.cast.online) presence.set(p.id, { from: startMs + rng.int(2, busy ? 700 : 40) * MIN, to: now + HOUR });
     else presence.set(p.id, null);
   }
   // One client was on earlier in this session and left a while ago.
   const left = peers.find((p) => p.cast.name === "laptop");
   if (left) presence.set(left.id, { from: startMs + 5 * MIN, to: now - 47 * MIN });
-  const out = await simulate(env, rng, { startMs, endMs: now - 9 * SEC, stepMs: 2 * MIN, peers, presence, ruleIds: ids, fwHash: hash, port: cfg.port, serverKey });
+  // And in everything, a chromebook for a few hours this morning.
+  const visit = busy ? peers.find((p) => p.cast.name === "kids-chromebook") : undefined;
+  if (visit) presence.set(visit.id, { from: startMs + 3 * HOUR, to: startMs + 5 * HOUR + 40 * MIN });
+  // everything: a heartbeat every 2 minutes for the last 80 minutes (the 1-hour charts), every 8 before that (fewer rows).
+  const coarse = busy ? { untilMs: now - 80 * MIN, stepMs: 8 * MIN } : undefined;
+  const out = await simulate(env, rng, { startMs, endMs: now - 9 * SEC, stepMs: 2 * MIN, coarse, peers, presence, ruleIds: ids, fwHash: hash, port: cfg.port, serverKey });
   const snapshot: Partial<Snapshot> = {
     ...EMPTY,
     state: "running",
@@ -807,7 +851,7 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
     roams: out.roams,
     session: out.session,
     region,
-    vm_size: "Standard_B1s",
+    vm_size: vm().size,
     profile: "UK",
     firewall: out.firewall,
     fw_base: Object.fromEntries(ids.map((id, i) => [`r${id}`, [[9200, 2800, 1500, 900, 300, 120, 60][i] ?? 50, [8_200_000, 2_600_000, 1_100_000, 800_000, 250_000, 90_000, 40_000][i] ?? 40_000]])) as Snapshot["fw_base"],
@@ -831,7 +875,7 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
     await env.STATUS.put(DEVSEED_KV.insights, "1");
   }
   if (scenario === "labs" || scenario === "labs-setup" || scenario === "everything") await seedLabs(env, now, { setup: scenario === "labs-setup" });
-  if (scenario === "everything") await seedEverything(env, rng, { now, nowDate, earlier, applyId: cur.applyId });
+  if (scenario === "everything") await seedEverything(env, rng, { now, nowDate, earlier, applyId: cur.applyId, peers, ruleIds: ids, spans, region });
   return { ok: true, scenario, now: iso(now), counts: await counts(env) };
 }
 
@@ -842,6 +886,7 @@ const EVERYTHING_SETTINGS: [string, string][] = [
   ["idle_destroy_minutes", "30"],
   ["ssh_allowed_cidr", "203.0.113.9/32"],
   ["labs_default_peering", "1"],
+  ["vm_size", "Standard_D2s_v5"],
 ];
 /** The seeded phone's push address: a made-up host, so nothing is ever delivered. */
 const SEED_PUSH_HOST = "https://push.example.invalid/";
@@ -855,10 +900,17 @@ const SEED_OLD_SERVER_KEY = "SeedOnlyOldServerKeyNotRealAAAAAAAAAAAAAAAA=";
  * cancelled one, a failed tear-down, watchman notes of each kind, changes of
  * each kind, a re-key), a live log on every run, Azure's split of the
  * spend, a stale client and one whose config is out of date, the lab story's
- * failed lab and yesterday's lab spend, a phone, backups, settings of its
- * own, and the budget at its warning level (86 %).
+ * failed lab and yesterday's lab spend, a phone, backups and settings of its
+ * own. And since it became demo mode's story, busy (Steven, 2026-10-08, "a
+ * vibrant busy dashboard"): a month of working days behind the week, a
+ * D2s v5 whose costs are clearly visible, lab spend to match, and a budget of
+ * £60 the month stays well under (never over £50).
  */
-async function seedEverything(env: Env, rng: Rng, o: { now: number; nowDate: Date; earlier: Session0[]; applyId: string }): Promise<void> {
+async function seedEverything(
+  env: Env,
+  rng: Rng,
+  o: { now: number; nowDate: Date; earlier: Session0[]; applyId: string; peers: SeedPeer[]; ruleIds: number[]; spans: { start: number; end: number | null }[]; region: string },
+): Promise<void> {
   const { now } = o;
   // Runs of every kind and outcome. Three days ago had no session, so its two runs stand alone.
   const quiet = midnight(now - 3 * DAY);
@@ -896,18 +948,25 @@ async function seedEverything(env: Env, rng: Rng, o: { now: number; nowDate: Dat
     await note(env, rotated, "key_rotation", "Server key changed: configs now trust a new key. Clients need a new config: press Get config on each on the Clients page.", null, true);
   }
 
+  // A month behind the week: its working days, with their runs, notes and history.
+  const month = await backfillMonth(env, rng, { now, peers: o.peers, ruleIds: o.ruleIds, region: o.region });
+  // What the D2s v5 costs: Azure's prices for it, and its daily figures (in place of the small VM's pennies).
+  await busyPrices(env, now, o.region);
+  await busyCostDays(env, rng, now, [...o.spans, ...month]);
+
   // Azure's split of each day's spend: mostly the VM, then disk, address and bandwidth (bandwidth has no region in Azure's export).
   const days = (await env.DB.prepare("SELECT day, gbp FROM cost_days ORDER BY day").all<{ day: string; gbp: number }>()).results;
   const parts: [string, string, number][] = [
-    ["Virtual Machines", "uksouth", 0.62],
-    ["Storage", "uksouth", 0.2],
-    ["Virtual Network", "uksouth", 0.12],
-    ["Bandwidth", "", 0.06],
+    ["Virtual Machines", "uksouth", 0.8],
+    ["Storage", "uksouth", 0.07],
+    ["Virtual Network", "uksouth", 0.1],
+    ["Bandwidth", "", 0.03],
   ];
   await db.upsertCostBreakdown(env, days.flatMap((d) => parts.map(([category, location, share]) => ({ day: d.day, category, location, gbp: Math.round(d.gbp * share * 10000) / 10000 }))));
 
   // The lab story's extra sessions (a failed lab, yesterday's spend), and settings of everything's own.
   await seedLabsMore(env, now);
+  await busyLabCosts(env, now);
   // Every run's log (the gateway's and the labs'), as the workflow's live log would have kept it.
   await addRunLogs(env);
   for (const [k, v] of EVERYTHING_SETTINGS) await db.setSetting(env, k, v);
@@ -916,12 +975,155 @@ async function seedEverything(env: Env, rng: Rng, o: { now: number; nowDate: Dat
     .run();
   await addBackups(env, now);
 
-  // The budget at 86 %, counting the labs; the 80 % alert already sent this month, as the watchman would have.
-  const cfg = await effectiveConfig(env);
-  const spent = (await budgetStatus(env, cfg, await getSnapshot(env), o.nowDate)).total;
-  await db.setSetting(env, "monthly_budget_gbp", String(Math.max(0.01, Math.round((spent / 0.86) * 100) / 100)));
-  await env.STATUS.put(`budget:alerted:${iso(now).slice(0, 7)}`, "80");
-  await note(env, now - 70 * MIN, "budget", "80% of the monthly budget is used.", null, false);
+  // A budget of £60: the month (at most about £45, see busyCostDays) never reaches it, nor its 80 % warning.
+  await db.setSetting(env, "monthly_budget_gbp", String(BUSY_BUDGET_GBP));
+}
+
+/** everything's monthly budget. */
+const BUSY_BUDGET_GBP = 60;
+
+/**
+ * everything's month behind the week: on most days 8 to 29 days ago, a working
+ * day of 9 to 15 hours, with its deploy and tear-down (and their notes), and
+ * its history one summary every 2 hours (the 30-day charts' step; see
+ * summaryHistory). Returns the sessions, for the daily costs.
+ */
+async function backfillMonth(env: Env, rng: Rng, o: { now: number; peers: SeedPeer[]; ruleIds: number[]; region: string }): Promise<{ start: number; end: number }[]> {
+  const spans: { start: number; end: number }[] = [];
+  for (let d = 29; d >= 8; d--) {
+    if (!rng.chance(0.85)) continue;
+    const start = midnight(o.now - d * DAY) + rng.int(7, 10) * HOUR + rng.int(0, 11) * 5 * MIN;
+    const end = start + rng.int(108, 180) * 5 * MIN;
+    await addSession(env, rng, { start, end, region: o.region, by: rng.chance(0.3) ? "watchman" : seedActor(), reason: rng.chance(0.3) ? "schedule" : null }, o.now, { peersLoaded: o.peers.length, ack: true });
+    spans.push({ start, end });
+  }
+  await summaryHistory(env, rng, { spans, stepMs: 2 * HOUR, peers: o.peers, ruleIds: o.ruleIds });
+  return spans;
+}
+
+/**
+ * History for sessions older than the 48 hours raw samples are kept, written
+ * straight as the 5-minute summaries the roll-up would have left (history.ts
+ * rollUp), one every `stepMs` (the step of the charts that show them): the
+ * VM's readings, the regular clients', the firewall's hits and drops. The
+ * same shape as the roll-up's rows, in a fraction of the writes a simulated
+ * heartbeat every few minutes, then folded, would take (demo mode's refresh
+ * has a daily allowance of rows).
+ */
+async function summaryHistory(env: Env, rng: Rng, o: { spans: { start: number; end: number }[]; stepMs: number; peers: SeedPeer[]; ruleIds: number[] }): Promise<void> {
+  const stmts: D1PreparedStatement[] = [];
+  const regulars = o.peers.filter((p) => p.cast.presence >= 0.5);
+  const rules = o.ruleIds.map((id, i) => ({ key: `r${id}`, w: [30, 20, 6, 3, 1, 4, 8][i] ?? 1 }));
+  const wsum = rules.reduce((n, r) => n + r.w, 0);
+  const dropWeight = DROP_FLOWS.reduce((n, d) => n + d.w, 0);
+  const secs = o.stepMs / 1000;
+  for (const { start, end } of o.spans) {
+    for (let t = Math.ceil(start / o.stepMs) * o.stepMs; t < end; t += o.stepMs) {
+      const slot = bucket(t, SUMMARY_RES);
+      const on = regulars.filter((p) => p.cast.presence >= 1 || rng.chance(0.8));
+      let down = 0;
+      for (const p of on) {
+        const busyF = 0.35 + 0.9 * (0.5 + 0.5 * Math.sin(t / (11 * MIN) + p.id)) + 0.5 * rng.next();
+        const tx = Math.round(p.cast.rate * secs * busyF * 0.6);
+        const rx = Math.round(tx * (0.15 + 0.25 * rng.next()));
+        down += tx;
+        const lat = round1(Math.max(6, p.cast.lat[0] + (rng.next() - 0.5) * 2 * p.cast.lat[1]));
+        stmts.push(
+          env.DB.prepare("INSERT OR IGNORE INTO hist_client (res, t, peer_id, online, handshake_age, latency_avg, latency_max, rx, tx) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8)").bind(SUMMARY_RES, slot, p.id, rng.int(5, 110), lat, round1(lat + rng.int(2, 14)), rx, tx),
+        );
+      }
+      const txRate = Math.round(down / secs);
+      const rxRate = Math.round(txRate * (0.2 + 0.15 * rng.next()));
+      stmts.push(
+        env.DB.prepare("INSERT OR IGNORE INTO hist_vm (res, t, expected, received, load1, rx_rate, tx_rate, rx_rate_max, tx_rate_max, peers_online, dns_up) VALUES (?1, ?2, 5, 5, ?3, ?4, ?5, ?6, ?7, ?8, 1)").bind(
+          SUMMARY_RES,
+          slot,
+          round1(0.1 + rng.next() * 0.3),
+          rxRate,
+          txRate,
+          Math.round(rxRate * (1.4 + rng.next())),
+          Math.round(txRate * (1.4 + rng.next())),
+          on.length,
+        ),
+      );
+      const pk = Math.round(down / 900);
+      for (const r of rules) stmts.push(env.DB.prepare("INSERT OR IGNORE INTO hist_fw (res, t, rule, packets, bytes) VALUES (?1, ?2, ?3, ?4, ?5)").bind(SUMMARY_RES, slot, r.key, Math.max(1, Math.round((pk * r.w) / wsum)), Math.round((down * r.w) / wsum)));
+      // Drops: the same few flows as the live sessions, about ten an hour.
+      const n = Math.max(1, Math.round((rng.int(6, 26) * o.stepMs) / (2 * HOUR)));
+      const flows = new Map<(typeof DROP_FLOWS)[number], number>();
+      for (let k = 0; k < n; k++) {
+        let x = rng.next() * dropWeight;
+        const f = DROP_FLOWS.find((dd) => (x -= dd.w) < 0) ?? DROP_FLOWS[0];
+        flows.set(f, (flows.get(f) ?? 0) + 1);
+      }
+      for (const [f, c] of flows) stmts.push(env.DB.prepare("INSERT OR IGNORE INTO hist_drops (t, src, dst, proto, dport, in_if, out_if, n) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)").bind(slot, f.src, f.dst, f.proto, f.dport, f.in, f.out, c));
+      stmts.push(env.DB.prepare("INSERT OR IGNORE INTO hist_fw (res, t, rule, packets, bytes) VALUES (?1, ?2, 'default', ?3, ?4)").bind(SUMMARY_RES, slot, n, n * 60));
+    }
+  }
+  for (let i = 0; i < stmts.length; i += 100) await env.DB.batch(stmts.slice(i, i + 100));
+}
+
+/** Azure's list price for everything's D2s v5 (beside the insights story's B1s), and the size offered in the region's capacity. */
+async function busyPrices(env: Env, now: number, region: string): Promise<void> {
+  await env.DB.prepare("INSERT OR REPLACE INTO az_prices (region, item, gbp, unit, meter, fetched_at) VALUES (?1, ?2, ?3, '1 Hour', 'D2s v5', ?4)").bind(region, BUSY_VM.size, 0.0832, iso(now - 5 * HOUR)).run();
+  const row = await env.DB.prepare("SELECT json FROM az_capacity WHERE region = ?1").bind(region).first<{ json: string }>();
+  if (!row) return;
+  const cap = JSON.parse(row.json) as { sizes: unknown[]; usages: unknown[]; cores: { used: number; limit: number } };
+  cap.sizes.push({ name: BUSY_VM.size, available: true, reason: null, vcpus: 2, family: "standardDSv5Family" });
+  cap.usages.push({ family: "standardDSv5Family", used: 2, limit: 10 });
+  cap.cores.used += 2;
+  await env.DB.prepare("UPDATE az_capacity SET json = ?2 WHERE region = ?1").bind(region, JSON.stringify(cap)).run();
+}
+
+/** The most one of everything's days costs in Azure: × 31 days is still under £50. */
+const BUSY_DAY_MAX_GBP = 1.5;
+
+/**
+ * everything's daily Azure figures, yesterday back 40 days: the D2s v5's hours
+ * that day (the sessions' overlap; before the backfilled month, working days
+ * of its own) at its list price and a little bandwidth, plus the disk and the
+ * address, which cost the same every day. No day passes £1.50, so even the
+ * forecast on the 2nd of a month (one day, carried to 31) stays under £50.
+ */
+async function busyCostDays(env: Env, rng: Rng, now: number, spans: { start: number; end: number | null }[]): Promise<void> {
+  for (let d = 40; d >= 1; d--) {
+    const from = midnight(now - d * DAY);
+    const to = from + DAY;
+    let hours = spans.reduce((n, s) => n + Math.max(0, Math.min(s.end ?? now, to) - Math.max(s.start, from)), 0) / HOUR;
+    if (d >= 30 && hours === 0 && rng.chance(0.85)) hours = rng.int(9, 15);
+    const gbp = Math.min(BUSY_DAY_MAX_GBP, 0.155 + rng.next() * 0.01 + hours * 0.087);
+    await db.upsertCostDay(env, day(from), Math.round(gbp * 10000) / 10000);
+  }
+  await env.STATUS.put("cost:fetched_day", day(now - DAY));
+}
+
+/** £ an hour for each lab in everything: what its resources would cost (a storage account, a VM, a file share...). */
+const BUSY_LAB_RATES: Record<string, number> = {
+  "az104-01-identity": 0.02,
+  "az104-02-policy": 0.03,
+  "az104-03-mgmt-groups": 0.02,
+  "az104-04-cost": 0.02,
+  "az104-05-storage": 0.06,
+  "az104-06-blob-security": 0.14,
+  "az104-07-files": 0.11,
+};
+
+/** everything's lab spend: each lab at its rate above, and Azure's daily lab figures a little over the ended sessions' estimates. */
+async function busyLabCosts(env: Env, now: number): Promise<void> {
+  for (const [lab, rate] of Object.entries(BUSY_LAB_RATES)) {
+    await env.DB.prepare("UPDATE lab_sessions SET est_gbp_h = ?2, est_gbp = CASE WHEN est_gbp IS NULL THEN NULL ELSE ROUND(?2 * (julianday(ended_at) - julianday(requested_at)) * 24, 4) END WHERE lab_id = ?1")
+      .bind(lab, rate)
+      .run();
+  }
+  await env.DB.prepare("DELETE FROM lab_cost_days").run();
+  await env.DB.prepare(
+    `INSERT INTO lab_cost_days (day, rg, lab_id, gbp, fetched_at)
+     SELECT substr(requested_at, 1, 10), 'rg-lab-' || lab_id, lab_id, ROUND(SUM(est_gbp) * 1.08 + 0.02, 4), ?1
+       FROM lab_sessions WHERE est_gbp IS NOT NULL AND ended_at IS NOT NULL AND test = 0
+      GROUP BY substr(requested_at, 1, 10), lab_id`,
+  )
+    .bind(iso(now - 6 * HOUR))
+    .run();
 }
 
 /** A live log for every run, the gateway's and the labs', built from its steps: GitHub's line format, a group per step, the error where it stopped. */
