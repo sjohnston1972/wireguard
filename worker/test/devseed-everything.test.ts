@@ -7,7 +7,7 @@
 // A widget added to the registry without a check here fails the test, so a
 // new widget cannot ship without the everything story giving it data.
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { makeEnv } from "./harness";
+import { makeEnv, demoInstance } from "./harness";
 import { api } from "./api-helpers";
 import worker from "../src/index";
 import type { Env } from "../src/env";
@@ -58,6 +58,10 @@ async function get(env: Env, path: string): Promise<Json> {
   return r.json;
 }
 
+/** How look() reads one /api/v1 path: through the Worker (api), or through demo mode's store (DemoStore.serve). */
+type Reader = (path: string) => Promise<{ status: number; json: Json; text: string }>;
+const viaWorker = (env: Env): Reader => (path) => api(env, "GET", path);
+
 async function seedEverything(env: Env, now = NOW): Promise<Json> {
   const r = await worker.fetch(new Request(`http://localhost:8787/__dev/seed?scenario=everything&now=${now}`, { method: "POST" }), env, ctx);
   const text = await r.text();
@@ -65,38 +69,43 @@ async function seedEverything(env: Env, now = NOW): Promise<Json> {
   return JSON.parse(text);
 }
 
-async function look(env: Env): Promise<Seen> {
-  const overview = await get(env, "/overview");
-  const clients = await get(env, "/clients");
-  const activity = await get(env, "/activity?range=7d");
+async function look(read: Reader): Promise<Seen> {
+  const get = async (path: string) => {
+    const r = await read(path);
+    expect(r.status, `${path}: ${r.text.slice(0, 300)}`).toBe(200);
+    return r.json;
+  };
+  const overview = await get("/overview");
+  const clients = await get("/clients");
+  const activity = await get("/activity?range=7d");
   const runId = overview.snapshot.run_id as string;
   const site = clients.clients.find((c: Json) => c.isSite) ?? clients.clients[0];
-  const log = await api(env, "GET", `/runs/${encodeURIComponent(runId)}/log`);
+  const log = await read(`/runs/${encodeURIComponent(runId)}/log`);
   return {
     overview,
-    session: await get(env, "/session"),
-    vmHist: await get(env, "/history?scope=vm&range=24h"),
+    session: await get("/session"),
+    vmHist: await get("/history?scope=vm&range=24h"),
     clients,
-    clientDetails: await Promise.all(clients.clients.map((c: Json) => get(env, `/clients/${c.id}`))),
-    clientHist: await get(env, `/history?scope=client&range=24h&id=${site.id}`),
-    firewall: await get(env, "/firewall"),
+    clientDetails: await Promise.all(clients.clients.map((c: Json) => get(`/clients/${c.id}`))),
+    clientHist: await get(`/history?scope=client&range=24h&id=${site.id}`),
+    firewall: await get("/firewall"),
     activity,
-    activity30: await get(env, "/activity?range=30d"),
-    runDetail: await get(env, `/runs/${encodeURIComponent(runId)}`),
+    activity30: await get("/activity?range=30d"),
+    runDetail: await get(`/runs/${encodeURIComponent(runId)}`),
     runLog: { status: log.status, json: log.json },
-    costMonth: await get(env, "/cost?range=month"),
-    cost30: await get(env, "/cost?range=30d"),
-    settings: await get(env, "/settings"),
-    azureSummary: await get(env, "/azure/summary"),
-    vmMetrics: await get(env, "/azure/metrics?resource=vm&range=24h"),
-    pipMetrics: await get(env, "/azure/metrics?resource=pip&range=24h"),
-    vitalsMetrics: await get(env, "/azure/metrics?resource=vitals&range=24h"),
-    azureChanges: await get(env, "/azure/changes?range=7d&who=all"),
-    serviceHealth: await get(env, "/azure/service-health?range=30d"),
-    bootLog: await get(env, "/azure/bootlog"),
-    labs: await get(env, "/labs"),
-    coverage: await get(env, "/labs/coverage"),
-    labSessions: await get(env, "/labs/sessions?limit=200"),
+    costMonth: await get("/cost?range=month"),
+    cost30: await get("/cost?range=30d"),
+    settings: await get("/settings"),
+    azureSummary: await get("/azure/summary"),
+    vmMetrics: await get("/azure/metrics?resource=vm&range=24h"),
+    pipMetrics: await get("/azure/metrics?resource=pip&range=24h"),
+    vitalsMetrics: await get("/azure/metrics?resource=vitals&range=24h"),
+    azureChanges: await get("/azure/changes?range=7d&who=all"),
+    serviceHealth: await get("/azure/service-health?range=30d"),
+    bootLog: await get("/azure/bootlog"),
+    labs: await get("/labs"),
+    coverage: await get("/labs/coverage"),
+    labSessions: await get("/labs/sessions?limit=200"),
   };
 }
 
@@ -179,7 +188,7 @@ describe.each([NOW, MID_MONTH])("the everything scenario (issue #96), seeded at 
     env = made.env;
     await seedEverything(env, now);
     callsWhileSeeding = [...made.world.calls];
-    seen = await look(env);
+    seen = await look(viaWorker(env));
   }, 60_000);
   afterAll(() => {
     vi.useRealTimers();
@@ -276,6 +285,59 @@ describe.each([NOW, MID_MONTH])("the everything scenario (issue #96), seeded at 
     // Clients dial in from TEST-NET-2; the VM's address is TEST-NET-3.
     for (const c of seen.clients.clients as Json[]) if (c.live?.endpoint) expect(c.live.endpoint, c.name).toMatch(/^198\.51\.100\.\d+:\d+$/);
     expect(seen.overview.snapshot.public_ip).toMatch(/^203\.0\.113\.\d+$/);
+  });
+});
+
+// Demo mode (spec §9.9): the same walk, with every read answered by demo
+// mode's store (DemoStore.serve) after its own refresh, against its demo
+// environment (no secrets, no real binding). The demo shows every widget filled.
+describe("the everything story served by demo mode's store", () => {
+  let seen: Seen;
+  let real: Env;
+  let outbound: unknown[];
+
+  beforeAll(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+    // The live Worker: no login bypass; Azure, GitHub and ntfy secrets set (the demo must not use them).
+    const made = makeEnv({ PUBLIC_URL: "https://wg-admin.example" });
+    real = made.env;
+    const { store } = demoInstance(real);
+    const r = await store.refresh(NOW);
+    expect(r.ok).toBe(true);
+    const read: Reader = async (path) => {
+      const res = await store.serve(new Request(`https://wg-admin.example/api/v1${path}`), "someone@example.com");
+      expect(res.headers.get("X-WG-Data")).toBe("demo");
+      const text = await res.text();
+      let json: Json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = null;
+      }
+      return { status: res.status, json, text };
+    };
+    seen = await look(read);
+    outbound = [...made.world.calls];
+  }, 60_000);
+  afterAll(() => {
+    vi.useRealTimers();
+  });
+
+  it.each(WIDGETS.map((w) => [w.id, w.title] as const))("%s (%s) gets data in demo mode", (id) => {
+    expect(WIDGET_DATA[id](seen), `${id} would show its empty state in demo mode`).toBe(true);
+  });
+
+  it("names the demo person, not dev@localhost, and calls nothing outside", () => {
+    const dump = JSON.stringify(seen);
+    expect(dump).not.toContain("dev@localhost");
+    expect(dump).toContain("demo@example.com");
+    expect(outbound).toEqual([]);
+  });
+
+  it("leaves the real stores empty", async () => {
+    expect((await real.DB.prepare("SELECT COUNT(*) AS n FROM peers").first<{ n: number }>())!.n).toBe(0);
+    expect((await real.STATE.list()).objects).toEqual([]);
   });
 });
 

@@ -177,7 +177,7 @@ code cannot reach a real binding, one shared route classification, and a contrac
   (`standInsAllowed`; `devSeeded` uses it), the three stand-in sites, `env.ts missingSecrets`, `devseed.ts` actor option.
   **Done when** the new test, `worker/test/devseed.test.ts`, `devseed-everything.test.ts`, `api-azure.test.ts`,
   `api-backup.test.ts` and `labs-topology-route.test.ts` pass.
-- [ ] **E7 DemoStore and guard.** Tests first (`worker/test/demo-store.test.ts`): spec §9.1 tripwire; §9.8 budget and
+- [x] **E7 DemoStore and guard.** Tests first (`worker/test/demo-store.test.ts`): spec §9.1 tripwire; §9.8 budget and
   readiness (inject `now`); `serve answers GET /api/v1/overview with the running story`; `serve with an empty store seeds
   first`; `a stale DEMO_SCHEMA_HASH re-seeds, or answers 503 demo_outdated when over budget`; `refresh runs inside
   blockConcurrencyWhile`; `status never seeds`; guard: `fetch inside demoScope throws DemoOutboundError; outside it passes

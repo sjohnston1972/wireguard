@@ -32,6 +32,8 @@ import { serveHashedAsset } from "./assetguard";
 import { receiveLiveLog, LIVE_LOG_MAX_BODY } from "./livelog";
 
 export { RunLock } from "./lock";
+// Demo mode's store (wrangler.toml DEMO_STORE, migration v2). Exported for the runtime only; the gate that reaches it is demo/gate.ts.
+export { DemoStore } from "./demo/store";
 
 type App = { Bindings: Env; Variables: AuthedVars };
 const app = new Hono<App>();
