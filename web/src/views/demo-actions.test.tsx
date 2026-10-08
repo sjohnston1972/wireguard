@@ -24,47 +24,56 @@ function expectOff(button: HTMLElement) {
 }
 
 const status = () => screen.findByRole("region", { name: "Status" });
-/** Waits for the banner, so GET /demo has answered before buttons are judged. */
-const demoShown = () => screen.findByRole("status", { name: "Demo mode" });
+let lastFetch: ReturnType<typeof renderApp>["fetchMock"] = null;
+const renderDemo = (...args: Parameters<typeof renderApp>) => {
+  const r = renderApp(...args);
+  lastFetch = r.fetchMock;
+  return r;
+};
+/** Waits until GET /demo has answered, so buttons are judged with demo mode known (no banner to wait for since 2026-10-08). */
+const demoShown = async () => {
+  await waitFor(() => expect(lastFetch!.callsTo("GET", "/api/v1/demo").length).toBeGreaterThan(0));
+  await new Promise((r) => setTimeout(r, 20));
+};
 
 describe("Overview action bar", () => {
   it("running: Extend, Hibernate, Move, Speed test and Tear down are off in demo", async () => {
-    renderApp("/", { routes: { ...routes(overview("running")), ...DEMO } });
+    renderDemo("/", { routes: { ...routes(overview("running")), ...DEMO } });
     await demoShown();
     const b = await status();
     for (const name of ["Extend", "Hibernate", "Move", "Speed test", "Tear down"]) await waitFor(() => expectOff(within(b).getByRole("button", { name })));
   });
 
   it("running with demo off: Extend works as before", async () => {
-    renderApp("/", { routes: routes(overview("running")) });
+    renderDemo("/", { routes: routes(overview("running")) });
     const b = await status();
     expect(within(b).getByRole("button", { name: "Extend" })).toBeEnabled();
     expect(within(b).getByRole("button", { name: "Extend" })).not.toHaveAttribute("title", DEMO_ACTIONS_OFF);
   });
 
   it("standby: Resume and Tear down are off", async () => {
-    renderApp("/", { routes: { ...routes(overview("standby")), ...DEMO } });
+    renderDemo("/", { routes: { ...routes(overview("standby")), ...DEMO } });
     await demoShown();
     const b = await status();
     for (const name of ["Resume", "Tear down"]) await waitFor(() => expectOff(within(b).getByRole("button", { name })));
   });
 
   it("failed: Clean up and Deploy again are off", async () => {
-    renderApp("/", { routes: { ...routes(overview("failed")), ...DEMO } });
+    renderDemo("/", { routes: { ...routes(overview("failed")), ...DEMO } });
     await demoShown();
     const b = await status();
     for (const name of ["Clean up", "Deploy again"]) await waitFor(() => expectOff(within(b).getByRole("button", { name })));
   });
 
   it("deploying: Cancel deploy is off", async () => {
-    renderApp("/", { routes: { ...routes(overview("deploying")), ...DEMO } });
+    renderDemo("/", { routes: { ...routes(overview("deploying")), ...DEMO } });
     await demoShown();
     const b = await status();
     await waitFor(() => expectOff(within(b).getByRole("button", { name: "Cancel deploy" })));
   });
 
   it("destroyed: the deploy form's Deploy is off and says why", async () => {
-    renderApp("/", { routes: { ...routes(overview("destroyed")), ...DEMO } });
+    renderDemo("/", { routes: { ...routes(overview("destroyed")), ...DEMO } });
     await demoShown();
     const form = within(await status()).getByRole("form", { name: "Deploy" });
     await waitFor(() => expectOff(within(form).getByRole("button", { name: "Deploy" })));
@@ -73,7 +82,7 @@ describe("Overview action bar", () => {
 
   it("on the phone: the main action and the small action buttons are off; the sheets still open", async () => {
     setViewport("phone");
-    renderApp("/", { routes: { ...routes(overview("running")), ...DEMO } });
+    renderDemo("/", { routes: { ...routes(overview("running")), ...DEMO } });
     await demoShown();
     const page = await screen.findByRole("region", { name: "Environment status" });
     for (const name of ["Extend", "Hibernate", "Tear down", "Speed", "Move"]) await waitFor(() => expectOff(within(page).getByRole("button", { name })));
@@ -85,7 +94,7 @@ describe("the lab dialog's Deploy", () => {
   it("is off in demo, with the reason shown", async () => {
     const ID = "az104-06-blob-security";
     await import("@/views/labs");
-    renderApp(`/labs/${ID}`, { routes: { "GET /api/v1/labs": labs(), [`GET /api/v1/labs/${ID}`]: detailIdle(), ...DEMO } });
+    renderDemo(`/labs/${ID}`, { routes: { "GET /api/v1/labs": labs(), [`GET /api/v1/labs/${ID}`]: detailIdle(), ...DEMO } });
     await demoShown();
     const d = within(await screen.findByRole("dialog", { name: /Blob security/ }));
     await waitFor(() => expectOff(d.getByRole("button", { name: "Deploy" })));
@@ -95,20 +104,20 @@ describe("the lab dialog's Deploy", () => {
 
 describe("Clients' Add client", () => {
   it("is off in demo", async () => {
-    renderApp("/clients", { routes: { ...clientRoutes(), ...DEMO } });
+    renderDemo("/clients", { routes: { ...clientRoutes(), ...DEMO } });
     await demoShown();
     await waitFor(() => expectOff(screen.getAllByRole("button", { name: "Add client" })[0]!));
   });
 
   it("works with demo off", async () => {
-    renderApp("/clients", { routes: clientRoutes() });
+    renderDemo("/clients", { routes: clientRoutes() });
     expect((await screen.findAllByRole("button", { name: "Add client" }))[0]).toBeEnabled();
   });
 });
 
 describe("Firewall's Apply draft", () => {
   it("is off in demo", async () => {
-    renderApp("/firewall", { routes: { "GET /api/v1/firewall": firewallData({ draft: draftData() }), ...DEMO } });
+    renderDemo("/firewall", { routes: { "GET /api/v1/firewall": firewallData({ draft: draftData() }), ...DEMO } });
     await demoShown();
     const bar = await screen.findByRole("region", { name: "Unpublished changes" });
     fireEvent.click(within(bar).getByRole("button", { name: "Review & apply" }));
@@ -120,7 +129,7 @@ describe("Firewall's Apply draft", () => {
 describe("a Settings section's Save", () => {
   it("is off in demo", async () => {
     const user = userEvent.setup();
-    renderApp("/settings/automation", { routes: { ...routesFor(), ...DEMO } });
+    renderDemo("/settings/automation", { routes: { ...routesFor(), ...DEMO } });
     await demoShown();
     const idle = await screen.findByLabelText(/Idle limit/);
     await user.clear(idle);

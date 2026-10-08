@@ -36,7 +36,7 @@ cron, the watchman, the lab watch or the insights collector beyond proving they 
 | Writes | When on, every mutating route refuses with 409 "Demo mode is on: actions are off." Exceptions: turning demo mode off, refreshing demo data. |
 | Outside calls | None while serving demo: no Azure, GitHub, WireGuard/VM, Graph, DNS or push call; proven by tests with a fetch spy. |
 | Background | Cron, watchman, lab watch and insights never touch the demo store and never act on demo data. |
-| UI | Settings "Demo mode" section (switch, explanation, Refresh, last refreshed); app-wide amber banner "Demo data — nothing here is real. Actions are off." with Turn off; actions visibly disabled or caught by a global client guard; light and dark tokens. |
+| UI | Settings "Demo mode" section (switch, explanation, Refresh, last refreshed); ~~app-wide amber banner "Demo data — nothing here is real. Actions are off." with Turn off~~ **(2026-10-08, Steven: no banner; turn off in Settings → Demo mode.)**; actions visibly disabled or caught by a global client guard; light and dark tokens. |
 | Dev picker | Settings section on the dev server only, behind the same double lock as `/__dev/seed`; not rendered and the endpoint 404s on the live site. |
 
 ## 3. Rulings (decided while writing)
@@ -277,6 +277,8 @@ out of demo mode).
 ## 8. The app
 
 ### 8.1 Banner (`DemoBanner`)
+
+**2026-10-08, Steven: no banner; turn off in Settings → Demo mode.** ("remove the demo banner when in demo mode".) The banner, its stylesheet and its tokens are gone; the way out is the Settings → Demo mode switch (and its Turn off demo mode button when `GET /demo` fails, §8.3). Actions stay off exactly as before: the client guard (§8.2), the disabled buttons with their tooltip (§8.5) and the Worker's 409s. `useDemoOn()` stays (the disabled buttons and the Settings section use it). The original text, for the record:
 
 Under the top bar on every page (beside `DisconnectedBanner`), whenever `useDemoOn()` (an answer's `X-WG-Data` says demo,
 or `GET /demo` says on; so it shows even when `GET /demo` itself fails): an amber strip with an icon,

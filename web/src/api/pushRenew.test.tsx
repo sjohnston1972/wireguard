@@ -33,7 +33,7 @@ describe("a push renewal refused in demo mode", () => {
   it("is handed over (subscribe the new, drop the old) once demo mode is turned off, and its notification closed", async () => {
     const user = userEvent.setup();
     let isOn = true;
-    const { fetchMock } = renderApp("/", {
+    const { fetchMock } = renderApp("/settings/demo", {
       routes: {
         "GET /api/v1/demo": () => demoStatusFixture({ on: isOn }),
         "PUT /api/v1/demo": () => {
@@ -44,11 +44,14 @@ describe("a push renewal refused in demo mode", () => {
         "POST /api/v1/push/unsubscribe": { ok: true },
       },
     });
-    const banner = await screen.findByRole("status", { name: "Demo mode" });
+    // No banner since 2026-10-08: demo mode is turned off in Settings → Demo mode.
+    const section = await screen.findByRole("region", { name: "Demo mode" });
+    const sw = await within(section).findByRole("switch", { name: "Show demo data" });
+    await waitFor(() => expect(sw).toBeChecked());
     expect(fetchMock!.callsTo("POST", "/api/v1/push/")).toEqual([]);
     expect(note.close).not.toHaveBeenCalled();
 
-    await user.click(within(banner).getByRole("button", { name: "Turn off" }));
+    await user.click(sw);
     await waitFor(() => expect(note.close).toHaveBeenCalled());
     expect(fetchMock!.callsTo("POST", "/api/v1/push/subscribe").map((c) => c.body)).toEqual([RENEW.subscribe]);
     expect(fetchMock!.callsTo("POST", "/api/v1/push/unsubscribe").map((c) => c.body)).toEqual([{ endpoint: RENEW.old }]);
