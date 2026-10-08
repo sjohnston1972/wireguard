@@ -34,6 +34,9 @@ export interface FlowNodeOptions {
   deploying?: boolean;
 }
 
+/** Cards sit above the lines (edges/buildEdges EDGE_Z), which sit above the containers' bodies. */
+export const CARD_Z = 50;
+
 const SIDES = [Position.Top, Position.Right, Position.Bottom, Position.Left] as const;
 
 /** Handle bounds for each side (React Flow measures real ones in the browser; these stand in until then). */
@@ -90,6 +93,7 @@ export function toFlowNodes(laid: TopologyLayoutResult, byId: ReadonlyMap<string
       data: { node, badge, ghost, compact: mini, dim, match },
       ariaLabel: nodeName(node, parent, badge),
       selected: opts.selected === node.id,
+      ...(group ? {} : { zIndex: CARD_Z }),
       draggable: !mini && node.kind !== "gateway",
       selectable: !mini,
       focusable: !mini,

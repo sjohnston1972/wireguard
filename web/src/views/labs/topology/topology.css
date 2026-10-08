@@ -314,7 +314,7 @@
 /* ── Edges ── */
 .topo-canvas .react-flow__edge-path.topo-edge--traffic {
   stroke: var(--topo-edge);
-  stroke-width: 1.6;
+  stroke-width: 2;
 }
 .topo-canvas .react-flow__edge-path.topo-edge--dependency {
   stroke: var(--topo-edge-dep);
@@ -331,10 +331,51 @@
 .topo-canvas .react-flow__edge-path.topo-edge--dim {
   opacity: 0.2;
 }
+/* Traffic lines take their source's series colour (the arrowhead and the label chip match); dependencies stay neutral. */
+.topo-canvas .react-flow__edge-path.topo-edge--c1 { stroke: var(--series-1); }
+.topo-canvas .react-flow__edge-path.topo-edge--c2 { stroke: var(--series-2); }
+.topo-canvas .react-flow__edge-path.topo-edge--c3 { stroke: var(--series-3); }
+.topo-canvas .react-flow__edge-path.topo-edge--c4 { stroke: var(--series-4); }
+.topo-canvas .react-flow__edge-path.topo-edge--c5 { stroke: var(--series-5); }
+.topo-canvas .react-flow__edge-path.topo-edge--c6 { stroke: var(--series-6); }
+/* A selected or focused line keeps its colour and gets heavier. */
 .topo-canvas .react-flow__edge.selected .react-flow__edge-path.topo-edge--traffic,
 .topo-canvas .react-flow__edge:focus-visible .react-flow__edge-path.topo-edge--traffic {
+  stroke-width: 3;
+}
+.topo-canvas .react-flow__edge:focus-visible .react-flow__edge-path.topo-edge--traffic:not([class*="topo-edge--c"]) {
   stroke: var(--blue-bright);
-  stroke-width: 2.4;
+}
+
+/* Trace highlighting (trace.ts): the traced node's lines and neighbours stay, the rest dims. */
+.topo-canvas .react-flow__edge-path.topo-edge--trace {
+  stroke-width: 2.8;
+}
+.topo-canvas .react-flow__edge-path.topo-edge--faded {
+  opacity: 0.14;
+}
+.topo-canvas .react-flow__node.topo-trace-off > .topo-card {
+  opacity: 0.3;
+}
+.topo-canvas .react-flow__node.topo-trace-on > .topo-card {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue-bright) 55%, transparent);
+}
+.topo-edge-label--faded {
+  opacity: 0.2;
+}
+.topo-edge-label--trace {
+  border-width: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .topo-canvas .react-flow__node.topo-trace-on > .topo-card,
+  .topo-canvas .react-flow__node.topo-trace-off > .topo-card,
+  .topo-canvas .react-flow__node > .topo-card,
+  .topo-canvas .react-flow__edge-path.topo-edge,
+  .topo-edge-label {
+    transition:
+      opacity 140ms ease,
+      stroke-width 140ms ease;
+  }
 }
 /* React Flow draws its edge-label layer before the nodes, so the containers' fills hid every label: lift it over them. */
 .topo-canvas .react-flow__edgelabel-renderer {
@@ -343,7 +384,7 @@
 .topo-edge-label {
   position: absolute;
   padding: 1px 7px;
-  border: 1px solid var(--border-strong);
+  border: 1.5px solid var(--border-strong);
   border-radius: 9px;
   background: var(--bg-elevated);
   color: var(--text-primary);
@@ -355,13 +396,19 @@
   line-height: 14px;
   pointer-events: none;
 }
+.topo-edge-label--c1 { border-color: var(--series-1); }
+.topo-edge-label--c2 { border-color: var(--series-2); }
+.topo-edge-label--c3 { border-color: var(--series-3); }
+.topo-edge-label--c4 { border-color: var(--series-4); }
+.topo-edge-label--c5 { border-color: var(--series-5); }
+.topo-edge-label--c6 { border-color: var(--series-6); }
 .topo-edge-label--dependency {
   border-style: dashed;
   background: var(--bg-panel);
   color: var(--text-secondary);
   font-weight: 500;
 }
-.topo-edge-label--ok {
+.topo-edge-label--ok:not([class*="topo-edge-label--c"]) {
   border-color: var(--green);
 }
 .topo-edge-label--warn {

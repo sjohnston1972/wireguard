@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { TopologyGraph } from "@shared/topology/model";
 import { Canvas } from "./Canvas";
 import { PHONE_MIN_FIT_ZOOM, quantiseLength } from "./FlowCanvas";
-import { PANEL_RESERVE, START_INSET } from "./viewport";
+import { FIT_MAX_ZOOM, MIN_FIT_ZOOM, PANEL_RESERVE, START_INSET } from "./viewport";
 import type { CanvasProps } from "./contract";
 import { toFlowNodes, movesOf } from "./flowNodes";
 import { layoutTopology } from "./layout";
@@ -220,7 +220,7 @@ describe("Canvas", () => {
     const undo = sized(550, 445);
     try {
       const { container } = draw(props());
-      const want = layoutTopology(graph, null, { space: { w: quantiseLength(550), h: quantiseLength(445) - PANEL_RESERVE.tab } }).nodes.find((n) => n.id === "lb")!;
+      const want = layoutTopology(graph, null, { space: { w: quantiseLength(550), h: quantiseLength(445) - PANEL_RESERVE.tab }, maxZoom: FIT_MAX_ZOOM.tab, minZoom: MIN_FIT_ZOOM.tab }).nodes.find((n) => n.id === "lb")!;
       const lb = nodeEl(container, "lb");
       expect(lb.style.transform.replace(/\s/g, "")).toBe(`translate(${want.x}px,${want.y}px)`);
       expect(quantiseLength(550)).toBe(quantiseLength(556));

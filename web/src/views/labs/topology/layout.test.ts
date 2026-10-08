@@ -2,8 +2,9 @@
 import { describe, expect, it } from "vitest";
 import type { TopologyGraph, TopoNode, TopoKind, TopoPropValue } from "@shared/topology/model";
 import type { TopologyLayout } from "@shared/topology/layout";
-import { CARD_H, CARD_W, GAP, HEADER, HEADER_MAX_W, PAD, ROOT_GAP, SUBNET_HEADER, headerWidth, layoutTopology, type LaidNode } from "./layout";
+import { absoluteBoxes, COMPACT, fitZoomOf, CARD_GAP_X, CARD_GAP_Y, CARD_H, CARD_W, flowRanks, GAP, HEAD_GAP, HEADER, HEADER_MAX_W, PAD, RG_SHELF, ROOT_GAP, SAVED_PAD, SUBNET_HEADER, VNET_SHELF, headerWidth, layoutTopology, type LaidNode } from "./layout";
 import { stackGraph } from "./stacks";
+import { boundsOf, FIT_MAX_ZOOM, FIT_PADDING, MIN_FIT_ZOOM, startViewport } from "./viewport";
 
 const LAB = "az104-06-blob-security";
 const RG_KEY = `microsoft.resources/resourcegroups/rg-lab-${LAB}`;
@@ -45,16 +46,16 @@ function headerOf(kind: TopoKind) {
   return kind === "subnet" ? SUBNET_HEADER : HEADER;
 }
 
-/** Every child inside its parent, with padding on every side and below the header. */
-function expectContained(graph: TopologyGraph, laid: { nodes: LaidNode[] }) {
+/** Every child inside its parent, with padding on every side and room below the header (less for saved positions). */
+function expectContained(graph: TopologyGraph, laid: { nodes: LaidNode[] }, saved = false) {
   const at = byId(laid);
   for (const node of graph.nodes) {
     const c = at[node.id]!;
     if (!c.parent) continue;
     const p = at[c.parent]!;
     const kind = graph.nodes.find((x) => x.id === c.parent)!.kind;
-    expect(c.x, `${node.id} left`).toBeGreaterThanOrEqual(PAD);
-    expect(c.y, `${node.id} top`).toBeGreaterThanOrEqual(headerOf(kind));
+    expect(c.x, `${node.id} left`).toBeGreaterThanOrEqual(saved ? SAVED_PAD : PAD);
+    expect(c.y, `${node.id} top`).toBeGreaterThanOrEqual(headerOf(kind) + (saved ? 0 : HEAD_GAP));
     expect(c.x + c.w, `${node.id} right`).toBeLessThanOrEqual(p.w - PAD);
     expect(c.y + c.h, `${node.id} bottom`).toBeLessThanOrEqual(p.h - PAD);
   }
@@ -84,7 +85,14 @@ describe("layoutTopology", () => {
   it("asset cards are 200 × 84", () => {
     const r = byId(layoutTopology(g(sample()), null));
     expect([r.vm1!.w, r.vm1!.h]).toEqual([CARD_W, CARD_H]);
-    expect([CARD_W, CARD_H, GAP, PAD, HEADER, SUBNET_HEADER, ROOT_GAP]).toEqual([200, 84, 16, 16, 36, 28, 48]);
+    expect([CARD_W, CARD_H, HEADER, SUBNET_HEADER]).toEqual([200, 84, 36, 28]);
+    // Generous room: cards well apart, roomy containers with space under their headers, corridors between containers.
+    expect(CARD_GAP_X).toBeGreaterThanOrEqual(96);
+    expect(CARD_GAP_Y).toBeGreaterThanOrEqual(80);
+    expect(GAP).toBeGreaterThanOrEqual(64);
+    expect(PAD).toBeGreaterThanOrEqual(28);
+    expect(HEAD_GAP).toBeGreaterThanOrEqual(16);
+    expect(ROOT_GAP).toBeGreaterThanOrEqual(96);
   });
 
   it("children always sit inside their parent with padding", () => {
@@ -105,10 +113,10 @@ describe("layoutTopology", () => {
       return new Set(r.nodes.filter((x) => x.parent === "s").map((x) => x.x)).size;
     };
     expect([1, 2, 3, 4, 5, 8].map(cols)).toEqual([1, 2, 2, 2, 3, 3]);
-    // Width follows the columns: 2 cards = 16 + 200 + 16 + 200 + 16.
+    // Width follows the columns: 2 cards = pad + 200 + card gap + 200 + pad.
     const r = byId(layoutTopology(g([n("rg", "resourceGroup", undefined, "rg", {}, RG_KEY), n("vnet", "vnet", "rg"), n("s", "subnet", "vnet"), n("a", "vm", "s"), n("b", "vm", "s")]), null));
-    expect(r.s!.w).toBe(PAD + CARD_W + GAP + CARD_W + PAD);
-    expect(r.s!.h).toBe(SUBNET_HEADER + CARD_H + PAD);
+    expect(r.s!.w).toBe(PAD + CARD_W + CARD_GAP_X + CARD_W + PAD);
+    expect(r.s!.h).toBe(SUBNET_HEADER + HEAD_GAP + CARD_H + PAD);
   });
 
   it("orders assets in a container by kind order, then label, then id", () => {
@@ -133,17 +141,19 @@ describe("layoutTopology", () => {
     expect(order).toEqual(["s9", "s100", "s10", "dns"]);
   });
 
-  it("VNets shelf-pack to 760 and resource groups to 1000", () => {
+  it("VNets and resource groups shelf-pack to their shelf widths", () => {
     const nodes = [n("rg", "resourceGroup", undefined, "rg", {}, RG_KEY), n("vnet", "vnet", "rg")];
     for (let i = 0; i < 6; i++) nodes.push(n(`s${i}`, "subnet", "vnet", `s${i}`, { prefix: `10.0.${i}.0/24` }));
     for (let i = 0; i < 6; i++) nodes.push(n(`a${i}`, "storage", "rg", `a${i}`));
     const r = layoutTopology(g(nodes), null);
     const subnetRows = new Set(r.nodes.filter((x) => x.parent === "vnet").map((x) => x.y)).size;
-    // 232-wide empty subnets: three fit in 760 (232*3 + 32 = 728), four do not.
+    // 232-wide empty subnets: three fit on the VNet's shelf (232*3 + 2 gaps), four do not.
+    expect(3 * 232 + 2 * GAP).toBeLessThanOrEqual(VNET_SHELF);
+    expect(4 * 232 + 3 * GAP).toBeGreaterThan(VNET_SHELF);
     expect(subnetRows).toBe(2);
     const at = byId(r);
-    for (const x of r.nodes.filter((y) => y.parent === "vnet")) expect(x.x + x.w).toBeLessThanOrEqual(PAD + 760);
-    for (const x of r.nodes.filter((y) => y.parent === "rg")) expect(x.x + x.w).toBeLessThanOrEqual(PAD + Math.max(1000, at.vnet!.w));
+    for (const x of r.nodes.filter((y) => y.parent === "vnet")) expect(x.x + x.w).toBeLessThanOrEqual(PAD + VNET_SHELF);
+    for (const x of r.nodes.filter((y) => y.parent === "rg")) expect(x.x + x.w).toBeLessThanOrEqual(PAD + Math.max(RG_SHELF, at.vnet!.w));
   });
 
   it("orders VNets in a group by address space", () => {
@@ -168,7 +178,7 @@ describe("layoutTopology", () => {
     const r = layoutTopology(g(nodes), null);
     const roots = r.nodes.filter((x) => x.parent === null);
     expect([...roots].sort((a, b) => a.x - b.x).map((x) => x.id)).toEqual(["wg/gateway", "lane/global", "rg", "rg2", "rgz", "lane/tenant"]);
-    // Tops aligned, 48 apart.
+    // Tops aligned, ROOT_GAP apart.
     expect(new Set(roots.map((x) => x.y))).toEqual(new Set([0]));
     const sorted = [...roots].sort((a, b) => a.x - b.x);
     for (let i = 1; i < sorted.length; i++) expect(sorted[i]!.x - (sorted[i - 1]!.x + sorted[i - 1]!.w)).toBe(ROOT_GAP);
@@ -217,8 +227,9 @@ describe("saved positions", () => {
     // Unsaved siblings (the VNet) go below the saved one's box, and the group grows round them all.
     expect(r.vnet!.y).toBe(900 + CARD_H + GAP);
     expect(r.rg!.h).toBe(r.vnet!.y + r.vnet!.h + PAD);
-    expect([r.vm1!.x, r.vm1!.y]).toEqual([PAD, SUBNET_HEADER]);
-    expectContained(graph, laid);
+    // Pulled in only as far as the old spacing's padding, so a layout saved with it stays exactly as saved.
+    expect([r.vm1!.x, r.vm1!.y]).toEqual([SAVED_PAD, SUBNET_HEADER]);
+    expectContained(graph, laid, true);
   });
 
   it("saved root positions apply with p null", () => {
@@ -306,8 +317,20 @@ describe("packing for the space's shape", () => {
     expect(headerWidth(n("x", "resourceGroup", undefined, "rg", { region: "uksouth", tags: ["lab: az700-40-lb-advanced", "project: wg-admin-labs", "+1 tag"] }))).toBeLessThan(260);
   });
 
-  it("real labs: az104-06 and az700-40 read at 70% or more in the tab's shape where it can; every lab fills the full screen readably", () => {
-    expect(fitZoom(layoutTopology(planned("az104-06-blob-security"), null, { aspect: TAB[0] / TAB[1] }), ...TAB)).toBeGreaterThanOrEqual(0.7);
+  it("real labs: az104-06 reads at 70% or more in the lab dialog's tab; every lab fills the full screen readably (60% or more at 1600 × 900, 75% at 2000 × 1030)", () => {
+    // The generous spacing costs zoom in a small space: the compact spacing steps in below the readable floor.
+    const opts = (space: { w: number; h: number }, minZoom: number) => ({ space, maxZoom: 1.75, minZoom });
+    expect(fitZoom(layoutTopology(planned("az104-06-blob-security"), null, opts(TAB_1600, 0.7)), TAB_1600.w, TAB_1600.h)).toBeGreaterThanOrEqual(0.7);
+    for (const k of Object.keys(PLANNED)) {
+      const id = k.split("/").at(-1)!.replace(".json", "");
+      const graph = planned(id);
+      const [w, h] = FULL_1600;
+      expect(fitZoom(layoutTopology(graph, null, opts({ w, h }, 0.6)), w, h), `${id} at 1600 × 900`).toBeGreaterThanOrEqual(0.6);
+      expect(fitZoom(layoutTopology(graph, null, opts(FULL_2000, 0.6)), FULL_2000.w, FULL_2000.h), `${id} at 2000 × 1030`).toBeGreaterThanOrEqual(0.75);
+    }
+  });
+
+  it("real labs, packed for the space: never worse than the fixed packing, and far better for a wide lab in a small tab", () => {
     // az700-40 has three VNets, eight cards and two lanes: packed, it is still too big for the tab at 70% (the view
     // starts there at the top-left: viewport.ts), but far bigger than the one long row.
     const lb = planned("az700-40-lb-advanced");
@@ -315,10 +338,135 @@ describe("packing for the space's shape", () => {
     for (const k of Object.keys(PLANNED)) {
       const id = k.split("/").at(-1)!.replace(".json", "");
       const graph = planned(id);
-      expect(fitZoom(layoutTopology(graph, null, { aspect: FULL_1600[0] / FULL_1600[1] }), ...FULL_1600), `${id} at 1600 × 900`).toBeGreaterThanOrEqual(0.85);
-      expect(fitZoom(layoutTopology(graph, null, { aspect: FULL_1100[0] / FULL_1100[1] }), ...FULL_1100), `${id} at 1100 × 600`).toBeGreaterThanOrEqual(0.6);
       // Never worse than the fixed packing.
       for (const [w, h] of [TAB, FULL_1600, FULL_1100]) expect(fitZoom(layoutTopology(graph, null, { aspect: w / h }), w, h) + 1e-9, `${id} ${w}`).toBeGreaterThanOrEqual(fitZoom(layoutTopology(graph, null), w, h));
     }
+  });
+});
+
+// ── Generous room, flow order and filling the canvas (Steven's feedback on lab 16, 2026-10-08) ──
+
+/** The full screen's canvas at 2000 × 1030 (less the panel row) and the lab dialog's Diagram tab at 1600 × 900. */
+const FULL_2000 = { w: 1934, h: 746 };
+const TAB_1600 = { w: 905, h: 500 };
+
+describe("generous spacing", () => {
+  it("the compact spacing (a big lab in a small space) is still roomy", () => {
+    expect(COMPACT.cardX).toBeGreaterThanOrEqual(96);
+    expect(COMPACT.cardY).toBeGreaterThanOrEqual(80);
+    expect(COMPACT.gap).toBeGreaterThanOrEqual(64);
+    expect(COMPACT.pad).toBeGreaterThanOrEqual(24);
+  });
+
+  it("lab 16 in the full screen at 2000 × 1030 gets the generous spacing; az700-40 in the tab falls back to the compact one", () => {
+    const gapsOf = (id: string, space: { w: number; h: number }, minZoom: number) => {
+      const graph = planned(id);
+      const abs = absoluteBoxes(layoutTopology(graph, null, { space, maxZoom: 1.75, minZoom }));
+      const vms = graph.nodes.filter((x) => x.kind === "vm").map((x) => abs.get(x.id)!);
+      const lbs = graph.nodes.filter((x) => x.kind === "loadBalancer").map((x) => abs.get(x.id)!);
+      return Math.min(...lbs.flatMap((l) => vms.map((v) => Math.max(v.x - (l.x + l.w), l.x - (v.x + v.w), v.y - (l.y + l.h), l.y - (v.y + v.h)))));
+    };
+    expect(gapsOf("az104-16-lb-appgw", FULL_2000, 0.6)).toBeGreaterThanOrEqual(CARD_GAP_X);
+    const lab40 = planned("az700-40-lb-advanced");
+    const roomy = layoutTopology(lab40, null, { space: TAB_1600, maxZoom: 1.75 });
+    const fallback = layoutTopology(lab40, null, { space: TAB_1600, maxZoom: 1.75, minZoom: 0.7 });
+    expect(fitZoomOf(fallback, TAB_1600, 1.75)).toBeGreaterThan(fitZoomOf(roomy, TAB_1600, 1.75));
+  });
+
+  it("every planned lab: no two cards come closer than the compact card gaps, at the full screen's and the tab's shapes", () => {
+    for (const k of Object.keys(PLANNED)) {
+      const id = k.split("/").at(-1)!.replace(".json", "");
+      const graph = planned(id);
+      for (const [space, minZoom] of [
+        [FULL_2000, 0.6],
+        [TAB_1600, 0.7],
+      ] as const) {
+        const laid = layoutTopology(graph, null, { space, maxZoom: 1.75, minZoom });
+        const abs = absoluteBoxes(laid);
+        const cards = graph.nodes.filter((x) => !["resourceGroup", "vnet", "subnet", "virtualHub", "lane"].includes(x.kind)).map((x) => ({ id: x.id, ...abs.get(x.id)! }));
+        for (const a of cards)
+          for (const b of cards) {
+            if (a.id >= b.id) continue;
+            const dx = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
+            const dy = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
+            // Side by side (overlapping rows): at least the horizontal gap; one above the other: at least the vertical gap.
+            if (dy < 0) expect(dx, `${id} ${space.w}: ${a.id} / ${b.id} across`).toBeGreaterThanOrEqual(COMPACT.cardX);
+            else if (dx < 0) expect(dy, `${id} ${space.w}: ${a.id} / ${b.id} down`).toBeGreaterThanOrEqual(COMPACT.cardY);
+            else expect(Math.max(dx, dy), `${id} ${space.w}: ${a.id} / ${b.id} diagonal`).toBeGreaterThanOrEqual(COMPACT.cardY);
+          }
+      }
+    }
+  });
+
+  it("sibling containers keep a corridor between them for lines", () => {
+    const graph = planned("az104-16-lb-appgw");
+    const laid = layoutTopology(graph, null, { space: FULL_2000, maxZoom: 1.75 });
+    const subnets = laid.nodes.filter((x) => graph.nodes.find((y) => y.id === x.id)!.kind === "subnet");
+    expect(subnets).toHaveLength(2);
+    const [a, b] = [...subnets].sort((p, q) => p.x - q.x || p.y - q.y);
+    const gap = Math.max(b!.x - (a!.x + a!.w), b!.y - (a!.y + a!.h));
+    expect(gap).toBeGreaterThanOrEqual(GAP);
+  });
+
+  it("absoluteBoxes adds up the parents' positions", () => {
+    const laid = layoutTopology(g(sample()), null);
+    const abs = absoluteBoxes(laid);
+    const r = byId(laid);
+    expect(abs.get("vm1")).toEqual({ x: r.rg!.x + r.vnet!.x + r["snet-a"]!.x + r.vm1!.x, y: r.rg!.y + r.vnet!.y + r["snet-a"]!.y + r.vm1!.y, w: CARD_W, h: CARD_H });
+  });
+});
+
+describe("flow-aware order", () => {
+  it("flowRanks: sources before their targets, deterministic, cycles broken (a rule and its outbound return)", () => {
+    const graph = planned("az700-40-lb-advanced");
+    const rank = flowRanks(graph);
+    const id = (label: string) => graph.nodes.find((x) => x.label === label)!.id;
+    expect(rank.get(id("lb-global"))).toBe(0);
+    expect(rank.get(id("lb-uks"))!).toBeLessThan(rank.get(id("vm-web1"))!);
+    expect(rank.get(id("lb-uks"))!).toBeLessThan(rank.get(id("lb-gw"))!);
+    expect(rank.get(id("lb-gw"))!).toBeLessThan(rank.get(id("vm-nva"))!);
+    expect(flowRanks({ ...graph, nodes: [...graph.nodes].reverse(), edges: [...graph.edges].reverse() })).toEqual(rank);
+  });
+
+  it("lab 16: the load balancer and the application gateway sit before (left of or above) the VMs they feed, so every line runs one way", () => {
+    for (const space of [FULL_2000, TAB_1600]) {
+      const graph = planned("az104-16-lb-appgw");
+      const abs = absoluteBoxes(layoutTopology(graph, null, { space, maxZoom: 1.75 }));
+      for (const e of graph.edges.filter((x) => x.kind === "traffic")) {
+        const s = abs.get(e.from)!;
+        const t = abs.get(e.to)!;
+        const forward = s.x + s.w <= t.x || s.y + s.h <= t.y;
+        expect(forward, `${space.w}: ${e.id} runs left to right or top to bottom`).toBe(true);
+      }
+    }
+  });
+
+  it("a subnet with sources and targets lays them out in flow columns, sources first", () => {
+    const nodes = [
+      n("rg", "resourceGroup", undefined, "rg", {}, RG_KEY),
+      n("vnet", "vnet", "rg"),
+      n("s", "subnet", "vnet"),
+      n("vm1", "vm", "s", "vm-a"),
+      n("vm2", "vm", "s", "vm-b"),
+      n("lb", "loadBalancer", "s", "lb"),
+    ];
+    const graph: TopologyGraph = { ...g(nodes), edges: [{ id: "e1", from: "lb", to: "vm1", kind: "traffic" }, { id: "e2", from: "lb", to: "vm2", kind: "traffic" }] };
+    const r = byId(layoutTopology(graph, null));
+    expect(r.lb!.x).toBeLessThan(r.vm1!.x);
+    expect(r.vm1!.x).toBe(r.vm2!.x);
+    // The source sits level with the middle of its targets.
+    expect(r.lb!.y + CARD_H / 2).toBe((r.vm1!.y + r.vm2!.y + CARD_H) / 2);
+  });
+});
+
+describe("filling the canvas", () => {
+  it("lab 16 full screen at 2000 × 1030: the fitted picture zooms in past 100% and fills most of the canvas", () => {
+    const laid = layoutTopology(planned("az104-16-lb-appgw"), null, { space: FULL_2000, maxZoom: FIT_MAX_ZOOM.full });
+    const b = boundsOf(laid.nodes.filter((x) => !x.parent))!;
+    const v = startViewport(b, FULL_2000.w, FULL_2000.h + 44, { padding: FIT_PADDING.full, minZoom: MIN_FIT_ZOOM.full, maxZoom: FIT_MAX_ZOOM.full, reserveTop: 44 });
+    expect(v.zoom).toBeGreaterThan(1.2);
+    const fillW = (b.w * v.zoom) / FULL_2000.w;
+    const fillH = (b.h * v.zoom) / FULL_2000.h;
+    expect(Math.max(fillW, fillH)).toBeGreaterThanOrEqual(0.8);
   });
 });

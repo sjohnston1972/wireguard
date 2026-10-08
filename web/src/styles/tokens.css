@@ -19,6 +19,14 @@
   --amber: #f59e0b;
   --red: #ef4444;
   --purple: #9263f8;
+  /* Six categorical series colours (a diagram's lines by source), after Okabe-Ito: blue, vermillion, bluish green,
+     reddish purple, orange, violet. Each 3:1 or more on every surface; never the only cue. */
+  --series-1: #5aa9f0;
+  --series-2: #f08a4b;
+  --series-3: #34c79a;
+  --series-4: #e07fbf;
+  --series-5: #e6b54a;
+  --series-6: #a78bfa;
   /* Filled controls with white text (primary button, active pill/chip): the
      same hue as --blue, darker so white text passes 4.5:1. */
   --blue-fill: #1e64fb;

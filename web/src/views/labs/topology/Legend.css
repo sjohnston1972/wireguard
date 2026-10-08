@@ -39,3 +39,9 @@
   stroke-width: 1.5;
   stroke-dasharray: 4 3;
 }
+.topo-legend__traffic--c1 { stroke: var(--series-1); }
+.topo-legend__traffic--c2 { stroke: var(--series-2); }
+.topo-legend__traffic--c3 { stroke: var(--series-3); }
+.topo-legend__traffic--c4 { stroke: var(--series-4); }
+.topo-legend__traffic--c5 { stroke: var(--series-5); }
+.topo-legend__traffic--c6 { stroke: var(--series-6); }

@@ -1,7 +1,7 @@
 // Where the diagram's first view starts (viewport.ts): fitted and centred when the picture fits readably, otherwise at
 // the readable zoom from the top-left (the phone's first view used to sit in the middle of a wide picture).
 import { describe, expect, it } from "vitest";
-import { boundsOf, MIN_FIT_ZOOM, PHONE_MIN_FIT_ZOOM, START_INSET, startViewport } from "./viewport";
+import { boundsOf, FIT_MAX_ZOOM, MIN_FIT_ZOOM, PHONE_MIN_FIT_ZOOM, START_INSET, startViewport } from "./viewport";
 
 describe("startViewport", () => {
   it("a picture that fits is centred at up to 100%", () => {
@@ -45,6 +45,15 @@ describe("startViewport", () => {
     expect(MIN_FIT_ZOOM.tab).toBe(0.7);
     expect(MIN_FIT_ZOOM.full).toBe(0.6);
     expect(PHONE_MIN_FIT_ZOOM).toBe(0.6);
+  });
+
+  it("fit zooms in to use the space: the tab and the full screen up to 175-200%, the mini at 100%", () => {
+    expect(FIT_MAX_ZOOM.full).toBeGreaterThanOrEqual(1.75);
+    expect(FIT_MAX_ZOOM.full).toBeLessThanOrEqual(2);
+    expect(FIT_MAX_ZOOM.tab).toBeGreaterThanOrEqual(1.5);
+    expect(FIT_MAX_ZOOM.mini).toBe(1);
+    const v = startViewport({ x: 0, y: 0, w: 400, h: 200 }, 1000, 600, { padding: 0.08, minZoom: 0.6, maxZoom: FIT_MAX_ZOOM.full });
+    expect(v.zoom).toBe(FIT_MAX_ZOOM.full);
   });
 
   it("boundsOf is the box round the top-level boxes", () => {
