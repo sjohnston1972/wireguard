@@ -11,7 +11,8 @@ import { testQueryClient } from "@/test/render";
 import { ToastProvider } from "@/components/feedback/Toast";
 import { mockFetch } from "@/test/mockFetch";
 import { demoStatusFixture } from "@/test/fixtures";
-import { DEV_SEED_404, useDemo, useDemoOn, useDevSeed, useRefreshDemo, useSetDemo, useSourceChangeReset } from "./demo";
+import { useDemo, useDemoOn, useRefreshDemo, useSetDemo, useSourceChangeReset } from "./demo";
+import { DEV_SEED_404, useDevSeed } from "./devSeed";
 
 const from = (source: "real" | "demo", json: unknown, status = 200) =>
   new Response(JSON.stringify(json), { status, headers: { "Content-Type": "application/json", "X-WG-Data": source } });

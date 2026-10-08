@@ -9,7 +9,6 @@ import { useDemo } from "@/api/demo";
 import { ChevronRight, Clock, Cloud, Database, FlaskConical, Presentation, Settings as Cog, ShieldCheck, Smartphone, Sprout, Wrench, type LucideIcon } from "lucide-react";
 import { AutomationSection } from "./AutomationSection";
 import { BackupSection } from "./BackupSection";
-import { DemoSection } from "./DemoSection";
 import { DeploymentSection } from "./DeploymentSection";
 import { EditsProvider, useEdits } from "./edits";
 import { lazyPart } from "@/widgets";
@@ -22,6 +21,8 @@ import "./settings.css";
 
 /** Settings → Labs loads only when opened (it is the one section most people never visit). */
 const LabsSection = lazyPart(() => import("./LabsSection").then((m) => m.LabsSection));
+/** Settings → Demo mode loads when opened (the banner's Turn off needs none of it). */
+const DemoSection = lazyPart(() => import("./DemoSection").then((m) => m.DemoSection));
 /** Settings → Dev data exists only on the dev server: its code loads only when opened there. */
 const DevDataSection = lazyPart(() => import("./DevDataSection").then((m) => m.DevDataSection));
 

@@ -9,7 +9,8 @@
 
 import { useState } from "react";
 import { Button, Modal, Panel } from "@/components";
-import { useDemo, useDevSeed } from "@/api/demo";
+import { useDemo } from "@/api/demo";
+import { useDevSeed } from "@/api/devSeed";
 import "./DevDataSection.css";
 
 /** One line per story, as the seeder tells it (worker/src/devseed.ts). */
