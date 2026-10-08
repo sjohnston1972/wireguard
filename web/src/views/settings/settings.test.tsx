@@ -63,7 +63,7 @@ describe("Settings sections", () => {
     expect(await tab("Deployment")).toHaveAttribute("aria-selected", "true");
     // The seven sections, in the palette's order.
     const names = screen.getAllByRole("tab").map((t) => t.textContent);
-    expect(names).toEqual(["Overview", "Deployment", "Automation", "Security", "Backup & Recovery", "Mobile", "Labs", "Maintenance"]);
+    expect(names).toEqual(["Overview", "Deployment", "Automation", "Security", "Backup & Recovery", "Mobile", "Labs", "Maintenance", "Demo mode"]);
   });
 
   it("an unknown section falls back to overview", async () => {

@@ -3,9 +3,10 @@ import { Navigate, useBlocker, useNavigate, useParams } from "react-router-dom";
 import type { OverviewResponse, SettingsResponse } from "@shared/api";
 import { useOverview, useSettings } from "@/api/queries";
 import { Button, ErrorState, Modal, PageHeader, Sheet, Tabs, useIsPhone, type TabItem } from "@/components";
-import { SETTINGS_SECTIONS } from "@/shell/CommandPalette";
+import { useSettingsSections } from "@/shell/CommandPalette";
 import { EnvironmentField } from "@/shell/StateChip";
-import { ChevronRight, Clock, Cloud, Database, FlaskConical, Settings as Cog, ShieldCheck, Smartphone, Wrench, type LucideIcon } from "lucide-react";
+import { useDemo } from "@/api/demo";
+import { ChevronRight, Clock, Cloud, Database, Eye, FlaskConical, Monitor, Settings as Cog, ShieldCheck, Smartphone, Wrench, type LucideIcon } from "lucide-react";
 import { AutomationSection } from "./AutomationSection";
 import { BackupSection } from "./BackupSection";
 import { DeploymentSection } from "./DeploymentSection";
@@ -20,6 +21,10 @@ import "./settings.css";
 
 /** Settings → Labs loads only when opened (it is the one section most people never visit). */
 const LabsSection = lazyPart(() => import("./LabsSection").then((m) => m.LabsSection));
+/** Settings → Demo mode loads when opened (the banner's Turn off needs none of it). */
+const DemoSection = lazyPart(() => import("./DemoSection").then((m) => m.DemoSection));
+/** Settings → Dev data exists only on the dev server: its code loads only when opened there. */
+const DevDataSection = lazyPart(() => import("./DevDataSection").then((m) => m.DevDataSection));
 
 const ICONS: Record<string, LucideIcon> = {
   overview: Cog,
@@ -30,6 +35,8 @@ const ICONS: Record<string, LucideIcon> = {
   mobile: Smartphone,
   labs: FlaskConical,
   maintenance: Wrench,
+  demo: Eye,
+  "dev-data": Monitor,
 };
 
 /** One line under each section's name on the phone's list. */
@@ -42,21 +49,34 @@ const BLURB: Record<string, string> = {
   mobile: "Install and phone alerts",
   labs: "Lab limits, permissions, release tests",
   maintenance: "Health check, lock, destroy",
+  demo: "Show made-up data for demos",
+  "dev-data": "Load a seed story (dev server only)",
 };
 
-const SLUGS = SETTINGS_SECTIONS.map((s) => s.slug);
+/** Sections that need nothing from /settings: they open even while it fails (demo mode spec §8.3). */
+const STANDALONE = new Set(["demo", "dev-data"]);
 
-/** Settings (spec 8.6): eight sections at /settings/:section, one at a time (Labs from the labs plan). */
+type Section = { slug: string; label: string };
+
+/**
+ * Settings (spec 8.6): nine sections at /settings/:section, one at a time (Labs from the labs plan,
+ * Demo mode from the demo mode plan), plus Dev data on the dev server.
+ */
 export function SettingsPage() {
   const { section } = useParams();
   const phone = useIsPhone();
   const settings = useSettings();
   const overview = useOverview();
+  const demo = useDemo();
+  const sections = useSettingsSections();
 
+  // Dev data is listed only once GET /demo says the dev seeder is here: wait for that answer before judging the address.
+  const deciding = section === "dev-data" && !demo.data && !demo.isError;
   // A section that does not exist falls back to the overview (on the phone, to the list).
-  if (section !== undefined && !SLUGS.includes(section)) return <Navigate to={phone ? "/settings" : "/settings/overview"} replace />;
+  if (section !== undefined && !deciding && !sections.some((x) => x.slug === section)) return <Navigate to={phone ? "/settings" : "/settings/overview"} replace />;
 
   const s = settings.data;
+  const standalone = section !== undefined && STANDALONE.has(section);
   return (
     <div className="settings">
       <PageHeader
@@ -65,17 +85,101 @@ export function SettingsPage() {
         env={<EnvironmentField />}
         right={s && !phone ? <HeaderStats s={s} /> : undefined}
       />
-      {settings.isError && !s ? (
+      {/* Always outside the /settings tree, so it never remounts when /settings answers (or fails). */}
+      {deciding ? (
+        <SettingsSkeleton />
+      ) : standalone ? (
+        <Bare sections={sections} section={section} phone={phone} />
+      ) : settings.isError && !s ? (
         <ErrorState message={settings.error.message} onRetry={() => void settings.refetch()} />
       ) : !s ? (
         <SettingsSkeleton />
       ) : (
         <EditsProvider values={s.values}>
-          <Loaded s={s} ov={overview.data} updated={{ settings: settings.dataUpdatedAt, overview: overview.dataUpdatedAt }} section={section} phone={phone} />
+          <Loaded s={s} ov={overview.data} updated={{ settings: settings.dataUpdatedAt, overview: overview.dataUpdatedAt }} section={section} phone={phone} sections={sections} />
         </EditsProvider>
       )}
     </div>
   );
+}
+
+/** The body of a section that needs nothing from /settings (null for any other). */
+function standaloneBody(slug: string): ReactNode {
+  if (slug === "demo") return <DemoSection />;
+  if (slug === "dev-data") return <DevDataSection />;
+  return null;
+}
+
+/** The section list on the phone: name, icon and one line each. */
+function PhoneList({ sections, onOpen }: { sections: Section[]; onOpen: (slug: string) => void }) {
+  return (
+    <ul className="set-phone-list" aria-label="Settings sections">
+      {sections.map(({ slug, label }) => {
+        const Icon = ICONS[slug] ?? Cog;
+        return (
+          <li key={slug}>
+            <button type="button" className="set-phone-list__item" onClick={() => onOpen(slug)}>
+              <Icon size={20} aria-hidden />
+              <span className="set-phone-list__text">
+                <span className="set-phone-list__name">{label}</span>
+                <span className="set-phone-list__blurb">{BLURB[slug]}</span>
+              </span>
+              <ChevronRight size={18} aria-hidden />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * A standalone section (Demo mode, Dev data): the section tabs (or the phone's list and a sheet)
+ * around a body that needs nothing from /settings. Nothing here can be unsaved, so it needs no
+ * leave guard (a dirty section asks before its own page is left).
+ */
+function Bare({ sections, section, phone }: { sections: Section[]; section: string; phone: boolean }) {
+  const nav = useNavigate();
+  const open = sections.find((x) => x.slug === section);
+  if (phone)
+    return (
+      <>
+        <PhoneList sections={sections} onOpen={(slug) => nav(`/settings/${slug}`)} />
+        {open && (
+          <Sheet open onOpenChange={(o) => !o && nav("/settings")} title={open.label}>
+            {standaloneBody(open.slug)}
+          </Sheet>
+        )}
+      </>
+    );
+  return (
+    <>
+      <SectionTabs sections={sections} current={section} />
+      <div className="settings__body">{standaloneBody(section)}</div>
+    </>
+  );
+}
+
+/** The desktop's section tabs; a section with unsaved changes carries an amber dot (and says so to a screen reader). */
+function SectionTabs({ sections, current, dirty = () => false }: { sections: Section[]; current: string; dirty?: (slug: string) => boolean }) {
+  const nav = useNavigate();
+  const items: TabItem[] = sections.map(({ slug, label }) => {
+    const Icon = ICONS[slug] ?? Cog;
+    const d = dirty(slug);
+    return {
+      value: slug,
+      label,
+      dot: d ? "amber" : undefined,
+      icon: (
+        <>
+          <Icon size={16} aria-hidden />
+          {d && <span className="visually-hidden">Unsaved changes in</span>}
+          {d && " "}
+        </>
+      ),
+    };
+  });
+  return <Tabs variant="pill" aria-label="Settings sections" className="set-tabs" items={items} value={current} onValueChange={(v) => v !== current && nav(`/settings/${v}`)} />;
 }
 
 function HeaderStats({ s }: { s: SettingsResponse }) {
@@ -93,7 +197,21 @@ function HeaderStats({ s }: { s: SettingsResponse }) {
   );
 }
 
-function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: OverviewResponse | undefined; updated: { settings: number; overview: number }; section: string | undefined; phone: boolean }) {
+function Loaded({
+  s,
+  ov,
+  updated,
+  section,
+  phone,
+  sections,
+}: {
+  s: SettingsResponse;
+  ov: OverviewResponse | undefined;
+  updated: { settings: number; overview: number };
+  section: string | undefined;
+  phone: boolean;
+  sections: Section[];
+}) {
   const nav = useNavigate();
   const edits = useEdits();
   const current = section ?? "overview";
@@ -103,7 +221,7 @@ function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: O
   const dirty = edits.isDirty(current);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname);
   const leaving = blocker.state === "blocked";
-  const anyDirty = SLUGS.some((k) => edits.isDirty(k));
+  const anyDirty = sections.some((k) => edits.isDirty(k.slug));
   useEffect(() => {
     if (!anyDirty) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -132,28 +250,12 @@ function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: O
     }
   };
 
-  const items: TabItem[] = SETTINGS_SECTIONS.map(({ slug, label }) => {
-    const Icon = ICONS[slug]!;
-    const dirty = edits.isDirty(slug);
-    return {
-      value: slug,
-      label,
-      dot: dirty ? "amber" : undefined,
-      icon: (
-        <>
-          <Icon size={16} aria-hidden />
-          {dirty && <span className="visually-hidden">Unsaved changes in</span>}{dirty && " "}
-        </>
-      ),
-    };
-  });
-
   const guard = (
     <Modal
       open={leaving}
       onOpenChange={(o) => !o && blocker.reset?.()}
       title="Leave without saving?"
-      description={`You have unsaved changes in ${SETTINGS_SECTIONS.find((x) => x.slug === current)?.label}. Leaving throws them away.`}
+      description={`You have unsaved changes in ${sections.find((x) => x.slug === current)?.label}. Leaving throws them away.`}
       footer={
         <>
           <Button variant="ghost" onClick={() => blocker.reset?.()}>
@@ -174,26 +276,10 @@ function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: O
   );
 
   if (phone) {
-    const open = section ? SETTINGS_SECTIONS.find((x) => x.slug === section) : undefined;
+    const open = section ? sections.find((x) => x.slug === section) : undefined;
     return (
       <>
-        <ul className="set-phone-list" aria-label="Settings sections">
-          {SETTINGS_SECTIONS.map(({ slug, label }) => {
-            const Icon = ICONS[slug]!;
-            return (
-              <li key={slug}>
-                <button type="button" className="set-phone-list__item" onClick={() => nav(`/settings/${slug}`)}>
-                  <Icon size={20} aria-hidden />
-                  <span className="set-phone-list__text">
-                    <span className="set-phone-list__name">{label}</span>
-                    <span className="set-phone-list__blurb">{BLURB[slug]}</span>
-                  </span>
-                  <ChevronRight size={18} aria-hidden />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <PhoneList sections={sections} onOpen={(slug) => nav(`/settings/${slug}`)} />
         {open && (
           <Sheet open onOpenChange={(o) => !o && nav("/settings")} title={open.label}>
             {body(open.slug)}
@@ -206,7 +292,7 @@ function Loaded({ s, ov, updated, section, phone }: { s: SettingsResponse; ov: O
 
   return (
     <>
-      <Tabs variant="pill" aria-label="Settings sections" className="set-tabs" items={items} value={current} onValueChange={(v) => v !== current && nav(`/settings/${v}`)} />
+      <SectionTabs sections={sections} current={current} dirty={edits.isDirty} />
       <div className="settings__body">{body(current)}</div>
       {guard}
     </>

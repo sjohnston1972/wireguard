@@ -65,8 +65,9 @@ describe("the lab diagram on the phone", () => {
   it("the full screen has a definite height (a min-height alone left React Flow's box 0 px tall)", () => {
     const phone = labsCss.slice(labsCss.indexOf("@media (max-width: 640px)"));
     const block = phone.slice(0, phone.indexOf("\n}\n"));
-    expect(block).toMatch(/\.labs--full \{ height: calc\(100dvh - \d+px\); \}/);
-    expect(labsCss).toMatch(/^\.labs--full \{[^}]*\bheight: calc\(100dvh - \d+px\);/m);
+    // Less the demo mode banner while it shows (--shell-banners; 0 px otherwise).
+    expect(block).toMatch(/\.labs--full \{ height: calc\(100dvh - \d+px - var\(--shell-banners, 0px\)\); \}/);
+    expect(labsCss).toMatch(/^\.labs--full \{[^}]*\bheight: calc\(100dvh - \d+px - var\(--shell-banners, 0px\)\);/m);
   });
 
   it("details open as a Sheet", async () => {

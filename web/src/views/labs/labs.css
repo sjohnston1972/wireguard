@@ -98,7 +98,7 @@
 
 /* /labs/:id/diagram: the diagram is the page. */
 /* A definite height (not a min-height), so the canvas's 100% heights resolve: React Flow needs a sized box. */
-.labs--full { gap: 0; height: calc(100dvh - 100px); min-height: 320px; }
+.labs--full { gap: 0; height: calc(100dvh - 100px - var(--shell-banners, 0px)); min-height: 320px; }
 .labs--full > .topo-full { flex: 1 1 auto; min-height: 0; }
 /* The pop-out window (issue #93): no top bar, so the diagram fills the window at every width. */
 .labs.labs--popout { height: 100%; min-height: 320px; }
@@ -199,7 +199,7 @@
   .labs-foot > .labs-actions .btn { flex: 1; }
   /* The lab sheet's diagram: at most 60% of the screen, so the sheet's header and tabs stay in view. */
   .labs-tabs--diagram .tabs__panel { height: min(60vh, 480px); }
-  .labs--full { height: calc(100dvh - 128px); }
+  .labs--full { height: calc(100dvh - 128px - var(--shell-banners, 0px)); }
 }
 @media (max-width: 860px) {
   .labs-modal__cols { grid-template-columns: 1fr; }

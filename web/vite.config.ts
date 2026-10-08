@@ -48,7 +48,8 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy: { "/api": api, "/captures": api },
+    // /__dev: Settings → Dev data's seed stories (demo mode spec §8.4); the dev Worker alone answers it.
+    proxy: { "/api": api, "/captures": api, "/__dev": api },
   },
   build: {
     outDir: "dist",
