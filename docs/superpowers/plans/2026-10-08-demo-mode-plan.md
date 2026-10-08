@@ -45,6 +45,8 @@ A brief). **(V)** marks a fact to check during the build; each area's report rec
 - Deploy: `scripts/lib/deploy.mjs deploySteps()` = build:web, bundle-size, deployments status, d1 migrations apply wg-admin
   --remote, deploy; pinned by `scripts/test/deploy.test.mjs`. `wrangler.toml` has DO migration `v1` (RunLock, SQLite).
 - Worktrees have no `node_modules`; `npm ci` (or a junction to the main checkout's, read-only) is needed before tests.
+- **E1 baseline** (2026-10-08, `feat/demo-mode-engine` = a525546 + the docs): entry **312.7 kB**, all JS **435.6 kB**, CSS
+  **39.8 kB** gzip. U's entry ceiling is therefore 314.2 kB.
 
 ## E names (to be confirmed as built, E8)
 
@@ -95,6 +97,13 @@ KV keys and values, R2 keys, the RunLock snapshot) for W's journey test.
   the live refresh fails with a CPU or storage-limit error (spec risk 1): stop, switch demo mode off (banner Turn off; Access allows one
   identity, so that is everyone), leave the code deployed (demo mode stays usable only after a fix), report. Pre-approved, no stop: every area merge, the draft PR,
   CI, dev-server checks, the revert branch.
+- **Decisions recorded 2026-10-08 (Steven, relayed by the launching session):**
+  - The Cloudflare account is on **Workers Paid**. The SQLite Durable Object `DemoStore` (binding `DEMO_STORE`) stands as
+    designed. **S2's CPU concern is resolved:** the Paid plan's default CPU limit per request is far above the ~300 ms seed,
+    so no `limits.cpu_ms` is set (the plan never asks for one). S2 still applies to a storage-limit error.
+  - The **Refresh demo data** button runs **in the Worker** (`POST /api/v1/demo/refresh` → `DemoStore.refresh`).
+  - **S1 approved in writing:** merge and deploy when clean; no stop before the production deploy.
+  - The revert-branch preparation for the Durable Object migration (integration step 7) is kept.
 
 ## Review Focus
 
@@ -127,7 +136,7 @@ KV keys and values, R2 keys, the RunLock snapshot) for W's journey test.
 **Branch:** `feat/demo-mode-engine`. **Owns:** every frozen file; the names section. **Why it exists:** one demo store whose
 code cannot reach a real binding, one shared route classification, and a contract so W and U can build in parallel.
 
-- [ ] **E1 Baseline.** Worktree, `cp .env.example .env`, `npm ci`, `npm run build:web`, `npm run bundle-size`. Record entry,
+- [x] **E1 Baseline.** Worktree, `cp .env.example .env`, `npm ci`, `npm run build:web`, `npm run bundle-size`. Record entry,
   all JS and CSS here. **Done when** the figures are recorded in this plan's facts and pushed.
 - [ ] **E2 Shared contract, switch table, binding.** Tests first (`worker/test/demo-shared.test.ts`): `demoRouteKind` row by
   row: `GET /overview → read`, `HEAD /clients → read`, `POST /firewall/simulate → read`, `GET /demo`, `PUT /demo`, `POST
