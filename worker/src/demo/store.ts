@@ -6,9 +6,11 @@
 //
 //   refresh    wipe the store, build the app's tables (schema.gen.ts), and
 //              run the dev seeder's everything story into it, as
-//              demo@example.com. Inside blockConcurrencyWhile, so no read
-//              ever sees a half-built store; within a budget (10 minutes
-//              apart, and a daily allowance of rows written).
+//              demo@example.com. Inside blockConcurrencyWhile (no new read
+//              starts meanwhile), and only once every read already in
+//              flight has finished, so no read ever sees a half-built
+//              store; within a budget (10 minutes apart, and a daily
+//              allowance of rows written).
 //   ensureReady  refresh when the store is empty, built from an older
 //              schema, or more than 12 hours old, budget permitting.
 //   status     what the store holds and when it may be refreshed (no seeding).
@@ -46,6 +48,10 @@ export const DEMO_DAILY_ROWS = 30_000;
 export const DEMO_MIN_INTERVAL_MS = 600_000;
 /** Data older than this (12 hours) is re-seeded when someone switches demo mode on. */
 export const DEMO_STALE_MS = 43_200_000;
+/** How long a refresh waits for reads already in flight before giving up (they never take this long). */
+export const DEMO_DRAIN_MS = 10_000;
+/** The refusal when reads in flight never finished. */
+export const DEMO_READING_MESSAGE = "Demo data is being read. Try again in a moment.";
 /** Who the demo's runs and change log name. */
 export const DEMO_ACTOR = "demo@example.com";
 /** The one instance's name: env.DEMO_STORE.idFromName(DEMO_INSTANCE). */
@@ -94,6 +100,9 @@ type Meta = { refreshedAt: string | null; attemptAt: string | null; schemaHash: 
 export class DemoStore extends DurableObject<Env> {
   private readonly sql: SqlLike;
   private app: Hono<{ Bindings: Env; Variables: AuthedVars }> | null = null;
+  /** Reads running the demo app now, and who waits for them all to finish (a refresh). */
+  private reading = 0;
+  private drained: (() => void)[] = [];
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -170,6 +179,10 @@ export class DemoStore extends DurableObject<Env> {
     installDemoFetchGuard();
     const now = Date.parse(nowIso);
     return this.ctx.blockConcurrencyWhile(async () => {
+      // No new read starts while the block holds; one already running must finish before the wipe.
+      if (!(await this.drain())) {
+        return { ok: false as const, code: "demo_busy" as const, message: DEMO_READING_MESSAGE, nextAt: iso(now + 60_000), status: this.statusAt(now) };
+      }
       try {
         const counts = await this.seed(now);
         return { ok: true as const, status: this.statusAt(now), counts };
@@ -207,7 +220,16 @@ export class DemoStore extends DurableObject<Env> {
     Object.defineProperty(env, USER, { value: user });
     const ctx = this.ctx;
     const exec = { waitUntil: (p: Promise<unknown>) => ctx.waitUntil(p), passThroughOnException() {}, props: {} } as unknown as ExecutionContext;
-    const res = await demoScope.run(true, () => this.demoApp().fetch(request, env, exec));
+    // Counted from here (after any seeding above), so a refresh waits for this read before it wipes.
+    this.reading++;
+    let res: Response;
+    try {
+      res = await demoScope.run(true, () => this.demoApp().fetch(request, env, exec));
+      // The whole answer is read here, inside the count: nothing reads the store after it drops.
+      if (res.body) res = new Response(await res.arrayBuffer(), res);
+    } finally {
+      if (--this.reading === 0) for (const done of this.drained.splice(0)) done();
+    }
     const out = new Response(res.body, res);
     out.headers.set(DEMO_DATA_HEADER, "demo");
     out.headers.set("Cache-Control", "no-store");
@@ -238,6 +260,19 @@ export class DemoStore extends DurableObject<Env> {
     });
     this.app = app;
     return app;
+  }
+
+  /** Wait until no read is running (true), or DEMO_DRAIN_MS passes (false). */
+  private async drain(): Promise<boolean> {
+    if (this.reading === 0) return true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const done = new Promise<boolean>((r) => this.drained.push(() => r(true)));
+    const late = new Promise<boolean>((r) => (timer = setTimeout(() => r(false), DEMO_DRAIN_MS)));
+    try {
+      return await Promise.race([done, late]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   /** Wipe, schema, everything story, meta. Throws DemoBudget when the budget says no. */

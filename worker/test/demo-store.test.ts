@@ -13,7 +13,7 @@
 //   - the outbound guard refuses any fetch inside demoScope and survives cron's meter.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeEnv, fakeDemoState, tripwire, tripped, demoInstance } from "./harness";
-import { DemoStore, DEMO_DAILY_ROWS, DEMO_MIN_INTERVAL_MS, DEMO_STALE_MS, DEMO_ACTOR, type DemoResult } from "../src/demo/store";
+import { DemoStore, DEMO_DAILY_ROWS, DEMO_MIN_INTERVAL_MS, DEMO_STALE_MS, DEMO_ACTOR, DEMO_DRAIN_MS, DEMO_READING_MESSAGE, type DemoResult } from "../src/demo/store";
 import { demoScope, installDemoFetchGuard, DemoOutboundError, demoFetchGuarded, demoOutboundLog } from "../src/demo/guard";
 import { DEMO_SCHEMA_HASH } from "../src/demo/schema.gen";
 import { DEMO_VARS } from "../src/demo/env";
@@ -343,6 +343,61 @@ describe("refresh and blockConcurrencyWhile", () => {
     expect(((await r.json()) as Json).clients.length).toBeGreaterThanOrEqual(6);
     expect(state.writes.length).toBeGreaterThan(100);
     expect(state.writes.filter((w) => !w.inside).filter((w) => !/^CREATE TABLE IF NOT EXISTS _demo_/.test(w.query))).toEqual([]);
+  }, 60_000);
+
+  it("a read already in flight when a refresh starts finishes before the wipe (never a half-wiped store)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+    const { env } = makeEnv();
+    const { store, state } = demoInstance(env);
+    const stub = env.DEMO_STORE.get(env.DEMO_STORE.idFromName("demo")) as unknown as DemoStore;
+    expect((await stub.refresh(NOW)).ok).toBe(true);
+    const order: string[] = [];
+    const wipe = state.ctx.storage.deleteAll.bind(state.ctx.storage);
+    vi.spyOn(state.ctx.storage, "deleteAll").mockImplementation(async () => {
+      order.push("wipe");
+      return wipe();
+    });
+    // The demo app answers only when released, then reads the store (a read that awaits real I/O part-way).
+    let release!: () => void;
+    const paused = new Promise<void>((r) => (release = r));
+    vi.spyOn(store as unknown as { demoApp: () => unknown }, "demoApp").mockReturnValue({
+      fetch: async () => {
+        await paused;
+        const n = state.sql.exec("SELECT COUNT(*) AS n FROM peers").toArray()[0]!.n;
+        order.push("read done");
+        return Response.json({ n });
+      },
+    });
+    const reading = stub.serve(new Request(`${base}/api/v1/clients`), "dev@localhost");
+    await new Promise((r) => setTimeout(r, 20));
+    const refreshing = stub.refresh(at(NOW, DEMO_MIN_INTERVAL_MS));
+    await new Promise((r) => setTimeout(r, 50));
+    release();
+    const r = await reading;
+    expect(r.status).toBe(200);
+    expect(((await r.json()) as Json).n).toBeGreaterThan(0);
+    expect((await refreshing).ok).toBe(true);
+    expect(order).toEqual(["read done", "wipe"]);
+  }, 60_000);
+
+  it("a read that never finishes: the refresh gives up after DEMO_DRAIN_MS with demo_busy and wipes nothing", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(new Date(NOW));
+    const { env } = makeEnv();
+    const { store, state } = demoInstance(env);
+    const stub = env.DEMO_STORE.get(env.DEMO_STORE.idFromName("demo")) as unknown as DemoStore;
+    expect((await stub.refresh(NOW)).ok).toBe(true);
+    const wipe = vi.spyOn(state.ctx.storage, "deleteAll");
+    vi.spyOn(store as unknown as { demoApp: () => unknown }, "demoApp").mockReturnValue({ fetch: () => new Promise<Response>(() => {}) });
+    void stub.serve(new Request(`${base}/api/v1/clients`), "dev@localhost");
+    await vi.advanceTimersByTimeAsync(0);
+    const refreshing = stub.refresh(at(NOW, DEMO_MIN_INTERVAL_MS));
+    await vi.advanceTimersByTimeAsync(DEMO_DRAIN_MS);
+    const r = await refreshing;
+    expect(r).toMatchObject({ ok: false, code: "demo_busy", message: DEMO_READING_MESSAGE });
+    expect(wipe).not.toHaveBeenCalled();
+    expect((await stub.status(NOW)).refreshedAt).toBe(NOW);
   }, 60_000);
 });
 

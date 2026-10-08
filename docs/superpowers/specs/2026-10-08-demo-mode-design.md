@@ -230,8 +230,11 @@ already tolerates)**.
 - `ensureReady(nowIso)` → seeds when empty, schema stale or older than 12 h (ruling 9), budget permitting; returns status.
   When it must seed but cannot, it answers `{ ok: false, code: "demo_busy", message, nextAt }` (as built, E8: a refusal is
   a value, because an error's class does not survive Workers RPC; `DemoBudget` stays inside the object). `refresh` the same.
-- `refresh(nowIso)` → refused with `DemoBudget` (rule 8) or runs: inside `blockConcurrencyWhile` (no demo read sees a
-  half-built store) and `demoScope.run`: `deleteAll()`, schema, `seedScenario(demoEnv, "everything", now, { actor:
+- `refresh(nowIso)` → refused with `DemoBudget` (rule 8) or runs: inside `blockConcurrencyWhile` (no new demo read starts
+  meanwhile) and, before the wipe, waits for every read already in flight to finish (review fix: an in-flight read could
+  otherwise meet a half-wiped store; reads are counted in `serve`, answers buffered inside the count; if they have not
+  finished within `DEMO_DRAIN_MS` = 10 s, the refresh is refused as `demo_busy` "Demo data is being read. Try again in a
+  moment." and nothing is wiped), then `demoScope.run`: `deleteAll()`, schema, `seedScenario(demoEnv, "everything", now, { actor:
   "demo@example.com" })`, meta (carrying `rowsToday` across the wipe). Returns status and the seed's counts.
 - `serve(request, user)` → inside `demoScope.run`: if the store is empty or its schema is stale, `ensureReady` first (else 503
   `demo_outdated`, ruling 10); then a Hono app that sets `user` and mounts `buildApi()` at `/api/v1` plus the `/health`
