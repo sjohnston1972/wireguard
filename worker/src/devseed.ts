@@ -406,12 +406,12 @@ async function addChangeLog(env: Env, rng: Rng, now: number, count: number, hour
 
 // ── Sessions on the calendar ──────────────────────────────────────────────
 
-/** Past sessions on the given days ago (UTC), none ending later than `latestEnd`. `long`: working days of 7 to 12 hours (everything). */
+/** Past sessions on the given days ago (UTC), none ending later than `latestEnd`. `long`: working days of 9 to 14 hours (everything). */
 function pastSessions(rng: Rng, now: number, daysAgo: number[], latestEnd: number, by = seedActor(), long = false): Session0[] {
   const out: Session0[] = [];
   for (const d of daysAgo) {
     const start = midnight(now - d * DAY) + (long ? rng.int(7, 11) : rng.int(8, 18)) * HOUR + rng.int(0, 11) * 5 * MIN;
-    const end = Math.min(start + (long ? rng.int(84, 144) : rng.int(24, 60)) * 5 * MIN, latestEnd);
+    const end = Math.min(start + (long ? rng.int(108, 168) : rng.int(24, 60)) * 5 * MIN, latestEnd);
     if (end - start < HOUR) continue;
     out.push({ start, end, region: "uksouth", by: rng.chance(0.25) ? "watchman" : by, reason: rng.chance(0.25) ? "schedule" : null });
   }
@@ -450,7 +450,7 @@ const DROP_FLOWS = [
  * before it. The last state is returned for the snapshot. `coarse`: before
  * `untilMs`, heartbeats `stepMs` apart instead (a long session in fewer rows).
  */
-async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number; stepMs: number; coarse?: { untilMs: number; stepMs: number }; peers: SeedPeer[]; presence: Map<number, Presence | null>; ruleIds: number[]; fwHash: string; port: number; serverKey: string }): Promise<SimOut> {
+async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number; stepMs: number; coarse?: { untilMs: number; stepMs: number }; dropsByTime?: boolean; peers: SeedPeer[]; presence: Map<number, Presence | null>; ruleIds: number[]; fwHash: string; port: number; serverKey: string }): Promise<SimOut> {
   const ticks: number[] = [];
   for (let t = o.endMs; t > o.startMs + o.stepMs; t -= o.coarse && t <= o.coarse.untilMs ? o.coarse.stepMs : o.stepMs) ticks.unshift(t);
   const cum = new Map<number, { rx: number; tx: number }>(o.peers.map((p) => [p.id, { rx: 0, tx: 0 }]));
@@ -516,7 +516,9 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
       peers,
     };
     // A burst of denied traffic now and then, most of it from the same few flows.
-    const dropN = rng.chance(0.6) ? rng.int(1, 5) : 0;
+    // dropsByTime (everything): as many a minute whatever the step, so the hours compare (about 13 an hour).
+    const drawn = rng.chance(0.6) ? rng.int(1, 5) : 0;
+    const dropN = o.dropsByTime ? Math.round((drawn * stepSecs) / 480) : drawn;
     const drops = Array.from({ length: dropN }, () => {
       let x = rng.next() * dropWeight;
       const f = DROP_FLOWS.find((d) => (x -= d.w) < 0) ?? DROP_FLOWS[0];
@@ -654,8 +656,8 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
           presence.set(p.id, { from, to: from + Math.floor((0.35 + 0.65 * rng.next()) * (s.end! - from)) });
         } else presence.set(p.id, null);
       }
-      // everything's longer days at a heartbeat every 15 minutes: the 7-day charts' half-hour points stay filled, in fewer rows.
-      await simulate(env, rng, { startMs: s.start, endMs: s.end!, stepMs: (busy ? 15 : 5) * MIN, peers, presence, ruleIds: ruleIdsIn, fwHash, port: cfg.port, serverKey });
+      // everything's longer days at a heartbeat every 9 minutes, in fewer rows (under 10, or nextTraffic sees a gap and no rate).
+      await simulate(env, rng, { startMs: s.start, endMs: s.end!, stepMs: (busy ? 9 : 5) * MIN, dropsByTime: busy, peers, presence, ruleIds: ruleIdsIn, fwHash, port: cfg.port, serverKey });
     }
     // The tests the watchman would have caught: a few minutes with no heartbeat in the middle of one session.
     const gapFrom = sessions.at(-2) ?? sessions[0];
@@ -724,7 +726,7 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
   // everything: the sessions the roll-up would already have folded (over 47 hours old) are written as its summaries.
   const folded = (s: Session0) => busy && s.end !== null && s.end < now - 47 * HOUR;
   await simSessions(peers, earlier.filter((s) => !(story === "standby" && s.end === standbySince) && !folded(s)), ids, hash);
-  if (busy) await summaryHistory(env, rng, { spans: earlier.filter(folded).map((s) => ({ start: s.start, end: s.end! })), stepMs: 30 * MIN, peers, ruleIds: ids });
+  if (busy) await summaryHistory(env, rng, { spans: earlier.filter(folded).map((s) => ({ start: s.start, end: s.end! })), stepMs: 90 * MIN, peers, ruleIds: ids });
   if (story === "standby") {
     const s = earlier.at(-1)!;
     const presence = new Map<number, Presence | null>(peers.map((p) => [p.id, p.cast.presence >= 1 ? { from: s.start, to: s.end! } : p.cast.online ? { from: s.start + 10 * MIN, to: s.end! - 20 * MIN } : null]));
@@ -826,9 +828,10 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
   // And in everything, a chromebook for a few hours this morning.
   const visit = busy ? peers.find((p) => p.cast.name === "kids-chromebook") : undefined;
   if (visit) presence.set(visit.id, { from: startMs + 3 * HOUR, to: startMs + 5 * HOUR + 40 * MIN });
-  // everything: a heartbeat every 2 minutes for the last 80 minutes (the 1-hour charts), every 8 before that (fewer rows).
-  const coarse = busy ? { untilMs: now - 80 * MIN, stepMs: 8 * MIN } : undefined;
-  const out = await simulate(env, rng, { startMs, endMs: now - 9 * SEC, stepMs: 2 * MIN, coarse, peers, presence, ruleIds: ids, fwHash: hash, port: cfg.port, serverKey });
+  // everything: a heartbeat every 2 minutes for the last 80 minutes (the 1-hour charts), every 9 before that (fewer rows; under
+  // 10, or nextTraffic sees a gap and no rate).
+  const coarse = busy ? { untilMs: now - 80 * MIN, stepMs: 9 * MIN } : undefined;
+  const out = await simulate(env, rng, { startMs, endMs: now - 9 * SEC, stepMs: 2 * MIN, coarse, dropsByTime: busy, peers, presence, ruleIds: ids, fwHash: hash, port: cfg.port, serverKey });
   const snapshot: Partial<Snapshot> = {
     ...EMPTY,
     state: "running",
@@ -983,21 +986,21 @@ async function seedEverything(
 const BUSY_BUDGET_GBP = 60;
 
 /**
- * everything's month behind the week: on most days 8 to 29 days ago, a working
- * day of 9 to 15 hours, with its deploy and tear-down (and their notes), and
- * its history one summary every 2 hours (the 30-day charts' step; see
+ * everything's month behind the week: on most days 7 to 29 days ago, a working
+ * day of 10 to 15 hours, with its deploy and tear-down (and their notes), and
+ * its history one summary every 3 hours (the 30-day charts show 2-hour steps; see
  * summaryHistory). Returns the sessions, for the daily costs.
  */
 async function backfillMonth(env: Env, rng: Rng, o: { now: number; peers: SeedPeer[]; ruleIds: number[]; region: string }): Promise<{ start: number; end: number }[]> {
   const spans: { start: number; end: number }[] = [];
-  for (let d = 29; d >= 8; d--) {
-    if (!rng.chance(0.85)) continue;
+  for (let d = 29; d >= 7; d--) {
+    if (!rng.chance(0.9)) continue;
     const start = midnight(o.now - d * DAY) + rng.int(7, 10) * HOUR + rng.int(0, 11) * 5 * MIN;
-    const end = start + rng.int(108, 180) * 5 * MIN;
+    const end = start + rng.int(120, 180) * 5 * MIN;
     await addSession(env, rng, { start, end, region: o.region, by: rng.chance(0.3) ? "watchman" : seedActor(), reason: rng.chance(0.3) ? "schedule" : null }, o.now, { peersLoaded: o.peers.length, ack: true });
     spans.push({ start, end });
   }
-  await summaryHistory(env, rng, { spans, stepMs: 2 * HOUR, peers: o.peers, ruleIds: o.ruleIds });
+  await summaryHistory(env, rng, { spans, stepMs: 3 * HOUR, peers: o.peers, ruleIds: o.ruleIds });
   return spans;
 }
 
@@ -1012,7 +1015,7 @@ async function backfillMonth(env: Env, rng: Rng, o: { now: number; peers: SeedPe
  */
 async function summaryHistory(env: Env, rng: Rng, o: { spans: { start: number; end: number }[]; stepMs: number; peers: SeedPeer[]; ruleIds: number[] }): Promise<void> {
   const stmts: D1PreparedStatement[] = [];
-  const regulars = o.peers.filter((p) => p.cast.presence >= 0.5);
+  const regulars = o.peers.filter((p) => p.cast.presence >= 0.7);
   const rules = o.ruleIds.map((id, i) => ({ key: `r${id}`, w: [30, 20, 6, 3, 1, 4, 8][i] ?? 1 }));
   const wsum = rules.reduce((n, r) => n + r.w, 0);
   const dropWeight = DROP_FLOWS.reduce((n, d) => n + d.w, 0);
@@ -1048,12 +1051,14 @@ async function summaryHistory(env: Env, rng: Rng, o: { spans: { start: number; e
       );
       const pk = Math.round(down / 900);
       for (const r of rules) stmts.push(env.DB.prepare("INSERT OR IGNORE INTO hist_fw (res, t, rule, packets, bytes) VALUES (?1, ?2, ?3, ?4, ?5)").bind(SUMMARY_RES, slot, r.key, Math.max(1, Math.round((pk * r.w) / wsum)), Math.round((down * r.w) / wsum)));
-      // Drops: the same few flows as the live sessions, about ten an hour.
-      const n = Math.max(1, Math.round((rng.int(6, 26) * o.stepMs) / (2 * HOUR)));
+      // Drops: the same few flows as the live sessions, about thirteen an hour (as simulate with dropsByTime).
+      const n = Math.max(1, Math.round((rng.int(6, 20) * o.stepMs) / HOUR));
       const flows = new Map<(typeof DROP_FLOWS)[number], number>();
+      // Two flows a slot at most (fewer rows).
       for (let k = 0; k < n; k++) {
         let x = rng.next() * dropWeight;
-        const f = DROP_FLOWS.find((dd) => (x -= dd.w) < 0) ?? DROP_FLOWS[0];
+        const pick = DROP_FLOWS.find((dd) => (x -= dd.w) < 0) ?? DROP_FLOWS[0];
+        const f = flows.size < 2 || flows.has(pick) ? pick : [...flows.keys()][k % flows.size];
         flows.set(f, (flows.get(f) ?? 0) + 1);
       }
       for (const [f, c] of flows) stmts.push(env.DB.prepare("INSERT OR IGNORE INTO hist_drops (t, src, dst, proto, dport, in_if, out_if, n) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)").bind(slot, f.src, f.dst, f.proto, f.dport, f.in, f.out, c));

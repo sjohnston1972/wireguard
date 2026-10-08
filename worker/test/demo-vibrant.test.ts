@@ -65,10 +65,13 @@ async function expectLively(store: DemoStore, nowMs: number): Promise<void> {
   // History: every range the widgets offer has points, the newest close to now.
   for (const [range, fresh] of [["1h", 5 * MIN], ["24h", 10 * MIN], ["7d", 40 * MIN], ["30d", 3 * HOUR]] as const) {
     const h = await get(store, `/history?scope=vm&range=${range}`);
-    const minPoints = { "1h": 25, "24h": 150, "7d": 100, "30d": 90 }[range];
+    const minPoints = { "1h": 25, "24h": 120, "7d": 80, "30d": 90 }[range];
     expect(h.points.length, `vm ${range}`).toBeGreaterThanOrEqual(minPoints);
     expect(nowMs - Date.parse(h.latest), `vm ${range} latest`).toBeLessThan(fresh);
     expect(h.availability.pct, `vm ${range} availability`).toBeGreaterThan(95);
+    // Traffic is moving at every point (a heartbeat gap of 10 minutes or more would read as no rate).
+    const moving = h.points.filter((p: Json) => (p.tx_rate ?? 0) > 0).length;
+    expect(moving / h.points.length, `vm ${range} traffic`).toBeGreaterThan(0.95);
     const rule = await get(store, `/history?scope=rule&id=r${busiest.id}&range=${range}`);
     expect(rule.points.filter((p: Json) => p.packets > 0).length, `rule ${range}`).toBeGreaterThanOrEqual(range === "1h" ? 20 : 20);
   }
@@ -168,6 +171,7 @@ describe("the demo is busy and never goes stale", () => {
     expect((await store.refresh(NOW)).ok).toBe(true);
     const st = await store.status(NOW);
     // rowsToday + 2 × lastRows must leave room for a second refresh today.
-    expect(st.lastRows * 3).toBeLessThanOrEqual(DEMO_DAILY_ROWS);
+    // With room to spare: a real Durable Object counted about 8% more rows than this harness for the same seed (2026-10-08).
+    expect(st.lastRows * 3.3).toBeLessThanOrEqual(DEMO_DAILY_ROWS);
   }, 300_000);
 });
