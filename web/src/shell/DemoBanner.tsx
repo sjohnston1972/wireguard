@@ -8,16 +8,17 @@
 import { Eye } from "lucide-react";
 import { Button } from "@/components/forms/Button";
 import { useToast } from "@/components/feedback/Toast";
-import { useDemo, useSetDemo } from "@/api/demo";
+import { useDemoOn, useSetDemo } from "@/api/demo";
 import "./DemoBanner.css";
 
 export const DEMO_BANNER_WORDS = "Demo data — nothing here is real. Actions are off.";
 
 export function DemoBanner() {
-  const demo = useDemo();
+  // On whenever the answers or GET /demo say so: shown even when GET /demo itself fails.
+  const on = useDemoOn();
   const set = useSetDemo();
   const { toast } = useToast();
-  if (!demo.data?.on) return null;
+  if (!on) return null;
   return (
     <div className="demo-banner" role="status" aria-label="Demo mode">
       <Eye className="demo-banner__icon" size={16} aria-hidden="true" />

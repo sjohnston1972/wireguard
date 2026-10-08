@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
-import { demoStatusFixture } from "@/test/fixtures";
+import { demoStatusFixture, overviewFixture } from "@/test/fixtures";
 import { currentSource } from "@/api/client";
 
 const WORDS = "Demo data — nothing here is real. Actions are off.";
@@ -63,6 +63,47 @@ describe("DemoBanner", () => {
     const banner = await screen.findByRole("status", { name: "Demo mode" });
     await user.click(within(banner).getByRole("button", { name: "Turn off" }));
     await waitFor(() => expect(fetchMock!.callsTo("PUT", "/api/v1/demo")).toHaveLength(1));
+  });
+
+  it("the demo store down: GET /demo says on with a note; the banner shows, Turn off works, real data comes back", async () => {
+    const user = userEvent.setup();
+    let isOn = true;
+    const STORE = "Demo data could not be read. Turn demo mode off or refresh it in Settings.";
+    const { fetchMock } = renderApp("/", {
+      routes: {
+        "GET /api/v1/demo": () => demoStatusFixture({ on: isOn, ...(isOn ? { storeError: STORE } : {}) }),
+        "GET /api/v1/overview": () => (isOn ? { status: 503, json: { error: { code: "demo_unavailable", message: STORE } } } : overviewFixture("running")),
+        "PUT /api/v1/demo": () => {
+          isOn = false;
+          return { ...demoStatusFixture({ on: false }), message: "Demo mode is off. Showing your real data." };
+        },
+      },
+    });
+    const banner = await screen.findByRole("status", { name: "Demo mode" });
+    await user.click(within(banner).getByRole("button", { name: "Turn off" }));
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Demo mode" })).toBeNull());
+    expect(currentSource()).toBe("real");
+    await waitFor(() => expect(fetchMock!.callsTo("GET", "/api/v1/overview").length).toBeGreaterThan(1));
+  });
+
+  it("shows, with Turn off, whenever answers say demo, even when GET /demo itself fails", async () => {
+    const user = userEvent.setup();
+    let isOn = true;
+    const demoMarked = (status: number, json: unknown) => new Response(JSON.stringify(json), { status, headers: { "Content-Type": "application/json", "X-WG-Data": "demo" } });
+    const { fetchMock } = renderApp("/", {
+      routes: {
+        "GET /api/v1/demo": () => (isOn ? { status: 503, json: { error: { code: "demo_unknown", message: "Could not check demo mode. Try again." } } } : demoStatusFixture({ on: false })),
+        "GET /api/v1/overview": () => (isOn ? demoMarked(503, { error: { code: "demo_unavailable", message: "Demo data could not be read." } }) : overviewFixture("running")),
+        "PUT /api/v1/demo": () => {
+          isOn = false;
+          return { ...demoStatusFixture({ on: false }), message: "Demo mode is off. Showing your real data." };
+        },
+      },
+    });
+    const banner = await screen.findByRole("status", { name: "Demo mode" });
+    await user.click(within(banner).getByRole("button", { name: "Turn off" }));
+    await waitFor(() => expect(fetchMock!.callsTo("PUT", "/api/v1/demo")).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Demo mode" })).toBeNull());
   });
 
   it("a failed Turn off says why", async () => {

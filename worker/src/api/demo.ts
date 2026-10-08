@@ -15,7 +15,9 @@
 // Every answer carries X-WG-Data: the data the caller sees after the call.
 // Errors: 400 bad_input, 409 demo_busy (the message names when to try again),
 // 503 demo_unknown (the switch could not be read or written) and 503
-// demo_unavailable (the demo store failed).
+// demo_unavailable (the demo store failed; PUT on and refresh only). GET /demo
+// answers the switch even when the demo store cannot report: its figures are
+// then empty and storeError says why, so Turn off is always offered.
 
 import type { Context, Hono } from "hono";
 import { body, fail, type ApiEnv } from "./app";
@@ -32,7 +34,9 @@ type C = Context<ApiEnv>;
 const source = (on: boolean): DemoDataSource => (on ? "demo" : "real");
 
 /** What a status looks like when the demo store could not be asked (turning off must still answer). */
-const UNKNOWN_STORE: Omit<DemoStoreStatus, "lastRows" | "schemaOk"> = { refreshedAt: null, story: DEMO_STORY, rowsToday: 0, dailyRows: DEMO_DAILY_ROWS, nextRefreshAt: null };
+// A function, not a constant: demo/store.ts imports the API (and so this file), so DEMO_DAILY_ROWS
+// may not be set yet while this module loads.
+const unknownStore = (): Omit<DemoStoreStatus, "lastRows" | "schemaOk"> => ({ refreshedAt: null, story: DEMO_STORY, rowsToday: 0, dailyRows: DEMO_DAILY_ROWS, nextRefreshAt: null });
 
 function statusBody(c: C, on: boolean, st: Omit<DemoStoreStatus, "lastRows" | "schemaOk">): DemoStatusResponse {
   return {
@@ -76,14 +80,15 @@ export function registerDemo(api: Hono<ApiEnv>): void {
   api.get("/demo", async (c) => {
     const on = await readSwitch(c);
     if (on === null) return refuse(c, null, 503, "demo_unknown", DEMO_UNKNOWN_MESSAGE);
-    let st: DemoStoreStatus;
+    // The switch row is the truth: a demo store that cannot report still answers the switch (empty
+    // figures and a note), so the app always shows the banner and its Turn off (spec §8.1).
     try {
-      st = await demoStub(c.env).status(new Date().toISOString());
+      const st = await demoStub(c.env).status(new Date().toISOString());
+      return answer(c, on, statusBody(c, on, st));
     } catch (e) {
       console.error("demo mode: the demo store could not report:", (e as Error).message);
-      return refuse(c, on, 503, "demo_unavailable", DEMO_UNAVAILABLE_MESSAGE);
+      return answer(c, on, { ...statusBody(c, on, unknownStore()), storeError: DEMO_UNAVAILABLE_MESSAGE } satisfies DemoStatusResponse);
     }
-    return answer(c, on, statusBody(c, on, st));
   });
 
   api.put("/demo", async (c) => {
@@ -99,7 +104,7 @@ export function registerDemo(api: Hono<ApiEnv>): void {
         return refuse(c, null, 503, "demo_unknown", "Could not change demo mode. Try again.");
       }
       // Off never depends on the demo store: if it cannot report, answer without its figures.
-      let st: Omit<DemoStoreStatus, "lastRows" | "schemaOk"> = UNKNOWN_STORE;
+      let st: Omit<DemoStoreStatus, "lastRows" | "schemaOk"> = unknownStore();
       try {
         st = await demoStub(c.env).status(new Date().toISOString());
       } catch (e) {

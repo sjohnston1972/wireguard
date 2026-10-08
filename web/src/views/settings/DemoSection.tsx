@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import { Button, ErrorState, Panel, Switch } from "@/components";
 import { formatAge } from "@/components/data/DataAge";
-import { useDemo, useRefreshDemo, useSetDemo } from "@/api/demo";
+import { useDemo, useDemoOn, useRefreshDemo, useSetDemo } from "@/api/demo";
 import "./DemoSection.css";
 
 export const DEMO_INTRO =
@@ -32,6 +32,7 @@ function useNow(ms: number): number {
 
 export function DemoSection() {
   const demo = useDemo();
+  const demoOn = useDemoOn();
   const set = useSetDemo();
   const refresh = useRefreshDemo();
   const clock = useNow(15_000);
@@ -44,6 +45,22 @@ export function DemoSection() {
           <div className="set-demo">
             <p className="set-demo__intro">{DEMO_INTRO}</p>
             {demo.isError ? <ErrorState title="Could not check demo mode" message={demo.error.message} onRetry={() => void demo.refetch()} /> : <p className="set-note">Checking demo mode…</p>}
+            {/* The answers say demo: Turn off is always offered (it needs nothing but the switch). */}
+            {demoOn && (
+              <div className="set-switch set-demo__row">
+                <div>
+                  <span className="field__label">You are seeing demo data.</span>
+                  {set.error && (
+                    <p className="field__error" role="alert">
+                      {set.error.message}
+                    </p>
+                  )}
+                </div>
+                <Button variant="secondary" loading={set.isPending} onClick={() => set.mutate(false)}>
+                  Turn off demo mode
+                </Button>
+              </div>
+            )}
           </div>
         </Panel>
       </div>
@@ -73,6 +90,11 @@ export function DemoSection() {
               {set.error && (
                 <p className="field__error" role="alert">
                   {set.error.message}
+                </p>
+              )}
+              {d.storeError && !set.error && (
+                <p className="field__error" role="alert">
+                  {d.storeError}
                 </p>
               )}
             </div>

@@ -1116,6 +1116,8 @@ export interface DemoStatusResponse {
   nextRefreshAt: string | null;
   /** Only on the dev server (AUTH_DEV_BYPASS on localhost): the seed stories it can load. */
   devSeed: { scenarios: string[] } | null;
+  /** Set when the demo store could not report: the figures above are then empty, but `on` is still the switch. */
+  storeError?: string;
 }
 
 /** PUT /api/v1/demo. */

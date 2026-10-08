@@ -134,6 +134,43 @@ describe("Settings → Demo mode", () => {
     expect(await within(s).findByText("Last refreshed: 0 s ago")).toBeInTheDocument();
   });
 
+  it("the demo store down: says why, and the switch still turns demo mode off", async () => {
+    const user = userEvent.setup();
+    const STORE = "Demo data could not be read. Turn demo mode off or refresh it in Settings.";
+    const { fetchMock } = renderApp("/settings/demo", {
+      routes: {
+        ...routesFor(),
+        "GET /api/v1/demo": demoStatusFixture({ on: true, storeError: STORE }),
+        "PUT /api/v1/demo": { ...demoStatusFixture({ on: false }), message: "Demo mode is off. Showing your real data." },
+      },
+    });
+    const s = await section();
+    expect(within(s).getByRole("alert")).toHaveTextContent(STORE);
+    const sw = within(s).getByRole("switch", { name: "Show demo data" });
+    await waitFor(() => expect(sw).toBeChecked());
+    await user.click(sw);
+    await waitFor(() => expect(fetchMock!.callsTo("PUT", "/api/v1/demo")).toHaveLength(1));
+    expect(fetchMock!.callsTo("PUT", "/api/v1/demo")[0]!.body).toEqual({ on: false });
+  });
+
+  it("GET /demo failing while answers say demo: the error and a Turn off button", async () => {
+    const user = userEvent.setup();
+    const demoMarked = (status: number, json: unknown) => () => new Response(JSON.stringify(json), { status, headers: { "Content-Type": "application/json", "X-WG-Data": "demo" } });
+    const { fetchMock } = renderApp("/settings/demo", {
+      routes: {
+        ...routesFor(),
+        "GET /api/v1/settings": demoMarked(503, { error: { code: "demo_unavailable", message: "Demo data could not be read." } }),
+        "GET /api/v1/demo": { status: 503, json: { error: { code: "demo_unknown", message: "Could not check demo mode. Try again." } } },
+        "PUT /api/v1/demo": { ...demoStatusFixture({ on: false }), message: "Demo mode is off. Showing your real data." },
+      },
+    });
+    const s = await screen.findByRole("region", { name: "Demo mode" });
+    expect(await within(s).findByText("Could not check demo mode. Try again.")).toBeInTheDocument();
+    await user.click(await within(s).findByRole("button", { name: "Turn off demo mode" }));
+    await waitFor(() => expect(fetchMock!.callsTo("PUT", "/api/v1/demo")).toHaveLength(1));
+    expect(fetchMock!.callsTo("PUT", "/api/v1/demo")[0]!.body).toEqual({ on: false });
+  });
+
   it("renders at /settings/demo while /settings fails", async () => {
     renderApp("/settings/demo", {
       routes: { ...routesFor(), "GET /api/v1/settings": { status: 503, json: { error: { code: "demo_unavailable", message: "Demo data could not be read." } } } },

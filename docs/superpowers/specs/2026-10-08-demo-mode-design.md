@@ -260,18 +260,23 @@ export interface DemoStatusResponse {
   dailyRows: number;           // DEMO_DAILY_ROWS
   nextRefreshAt: string | null;// null = a refresh is allowed now
   devSeed: { scenarios: string[] } | null; // only on the dev server (ruling 20)
+  storeError?: string;         // set when the DemoStore could not report (the figures above are then empty)
 }
 export interface DemoSetBody { on: boolean }
 ```
 
 Errors: 400 `bad_input` (body not `{ on: boolean }`), 409 `demo_busy` (budget or interval, message names the time), 503
 `demo_unknown` / `demo_unavailable`. Control routes are Access-authenticated and same-origin like every `/api/v1` route.
+`GET /demo` never answers `demo_unavailable`: the switch row is the truth, so when `DemoStore.status()` throws it answers
+200 with the switch, empty store figures and `storeError` (review fix: a broken store must never leave a person with no way
+out of demo mode).
 
 ## 8. The app
 
 ### 8.1 Banner (`DemoBanner`)
 
-Under the top bar on every page (beside `DisconnectedBanner`), whenever `useDemo().data?.on`: an amber strip with an icon,
+Under the top bar on every page (beside `DisconnectedBanner`), whenever `useDemoOn()` (an answer's `X-WG-Data` says demo,
+or `GET /demo` says on; so it shows even when `GET /demo` itself fails): an amber strip with an icon,
 the words **"Demo data — nothing here is real. Actions are off."** and a **Turn off** button (`PUT /demo { on: false }`).
 `role="status"`; tokens only (`--amber` family and the existing warning surface/text tokens, both themes; the contrast test
 gains the pair); wraps on phones without sideways scroll; does not shift the page height on poll.
@@ -295,7 +300,8 @@ Only you see it; it changes nothing for anyone else. While it is on, actions are
 anything. Your real setup keeps running as normal, and its phone alerts still arrive." A Switch "Show demo data" (the real
 state from `GET /demo`; pending while the PUT runs, which may take a few seconds on first use: "Preparing demo data…"). A
 **Refresh demo data** button (disabled with the reason while `nextRefreshAt` is in the future) and "Last refreshed 2 h ago"
-(or "Never"). Errors show the server's message inline. The section does not depend on `/settings` data loading, so it and the
+(or "Never"). Errors show the server's message inline, `storeError` included; while the answers say demo, a **Turn off demo mode**
+button is shown even when `GET /demo` fails. The section does not depend on `/settings` data loading, so it and the
 banner still work if demo reads fail. Phone list blurb: "Show made-up data for demos".
 
 ### 8.4 Settings → Dev data (`DevDataSection`, slug `dev-data`, dev server only)

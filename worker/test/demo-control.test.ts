@@ -79,13 +79,48 @@ describe("GET /api/v1/demo", () => {
     expect(r.json.error.code).toBe("demo_unknown");
   });
 
-  it("answers 503 demo_unavailable when the demo store fails", async () => {
+  it("answers on, with empty store figures and a note, when the demo store fails (the switch row is the truth)", async () => {
+    const { env } = apiEnv();
+    await setDemo(env, "dev@localhost", true);
+    vi.spyOn(demoInstance(env).store, "status").mockRejectedValue(new Error("store down"));
+    const r = await api(env, "GET", "/demo");
+    expect(r.status).toBe(200);
+    const body = r.json as DemoStatusResponse;
+    expect(body).toMatchObject({ on: true, refreshedAt: null, rowsToday: 0, dailyRows: DEMO_DAILY_ROWS, nextRefreshAt: null });
+    expect(body.storeError).toBe("Demo data could not be read. Turn demo mode off or refresh it in Settings.");
+    expect(r.headers.get("X-WG-Data")).toBe("demo");
+  });
+
+  it("answers off with the note when the demo store fails and the caller is not in demo mode", async () => {
     const { env } = apiEnv();
     vi.spyOn(demoInstance(env).store, "status").mockRejectedValue(new Error("store down"));
     const r = await api(env, "GET", "/demo");
-    expect(r.status).toBe(503);
-    expect(r.json.error.code).toBe("demo_unavailable");
+    expect(r.status).toBe(200);
+    expect(r.json.on).toBe(false);
+    expect(r.json.storeError).toMatch(/could not be read/);
     expect(r.headers.get("X-WG-Data")).toBe("real");
+  });
+
+  it("with the store down: GET says on, PUT off works, and real data comes straight back", async () => {
+    const { env } = apiEnv();
+    await setDemo(env, "dev@localhost", true);
+    const { store } = demoInstance(env);
+    vi.spyOn(store, "status").mockRejectedValue(new Error("store down"));
+    vi.spyOn(store, "serve").mockRejectedValue(new Error("store down"));
+    expect((await api(env, "GET", "/demo")).json.on).toBe(true);
+    expect((await api(env, "GET", "/clients")).status).toBe(503);
+    const off = await api(env, "PUT", "/demo", { on: false });
+    expect(off.status).toBe(200);
+    expect(off.json.on).toBe(false);
+    const back = await api(env, "GET", "/clients");
+    expect(back.status).toBe(200);
+    expect(back.headers.get("X-WG-Data")).toBe("real");
+    expect(await rows(env)).toEqual([]);
+  });
+
+  it("a healthy store has no note", async () => {
+    const { env } = apiEnv();
+    expect((await api(env, "GET", "/demo")).json.storeError).toBeUndefined();
   });
 });
 
@@ -142,6 +177,7 @@ describe("PUT /api/v1/demo", () => {
     expect(r.status).toBe(200);
     expect(r.json.on).toBe(false);
     expect(r.json.message).toBe("Demo mode is off. Showing your real data.");
+    expect(r.json.dailyRows).toBe(DEMO_DAILY_ROWS);
     expect(r.headers.get("X-WG-Data")).toBe("real");
     expect((await rows(env)).map((x) => x.user)).toEqual(["someone@example.com"]);
   });
