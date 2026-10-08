@@ -429,7 +429,8 @@ and fixes:
    decayed. **Fix: the demo clock** (`worker/src/demo/clock.ts`). Each demo read runs inside `demoClock.run(offset)`, an
    AsyncLocalStorage-scoped wrapper of the global `Date` (installed once, like the outbound guard): the app's code sees a
    time within a minute of the seed, so every answer is worked out as it was then; `serve` then moves every ISO UTC time
-   in the answer forward by the same whole minutes (`shiftTimes`), so the browser, which compares times with its own
+   in the answer forward by the same whole minutes (`shiftTimes`; and the one time sent as a number, a peer's
+   `latest_handshake` in seconds), so the browser, which compares times with its own
    clock, sees data from the last minute. Plain days (`2026-10-07`) are not moved: they stay with the demo's own month.
    Nothing is written. Outside a demo read the wrapper is exactly the real clock; a source test pins `demoClock.run` to
    `demo/store.ts`, so cron, the watchman, the lab watch, insights and real requests never see it. Rejected: re-seeding to
@@ -438,13 +439,15 @@ and fixes:
 2. **Reads re-seed too.** `serve` calls `ensureReady`: data over 12 hours old is re-seeded on read, budget permitting (else
    the old data keeps being served, on the clock above). The store records `storyVersion` (`DEMO_STORY_VERSION`); a deploy
    that changes the story re-seeds on the next read, budget permitting, so nothing needs doing by hand.
-3. **The story** (`everything`, so the dev picture is the same): twelve clients, six connected; the gateway up for 20 hours
+3. **Old data does not queue.** When the data is old but intact and the budget says wait, `ensureReady` answers at once
+   instead of queueing every read behind a refresh that would refuse.
+4. **The story** (`everything`, so the dev picture is the same): twelve clients, six connected; the gateway up for 20 hours
    with the regulars arriving through the day; longer working days before it and a month of them behind (sessions with
    runs; history written as the roll-up's 5-minute summaries for anything over 47 hours old); a `Standard_D2s_v5` at
    Azure's list price (£0.0896 an hour with disk and address); daily costs of £0.16 to £1.50 (capped so even a forecast
    from one day stays under £50); lab spend at plausible rates; a budget of £60. The Cost page's insights gain two plain
    facts below 80% of the budget (where the month is heading; this month's sessions).
-4. **No banner** (§2, §8.1).
+5. **No banner** (§2, §8.1).
 
 ## Appendix A: the brief (as relayed on 2026-10-08)
 
