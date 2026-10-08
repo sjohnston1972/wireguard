@@ -71,7 +71,6 @@ export function LabCatalogueGrid({ views, selectedId, onSelect, search, layout, 
                 <Skeleton variant="line" width="80%" height={16} />
                 <Skeleton variant="line" />
                 <Skeleton variant="line" width="70%" />
-                <Skeleton variant="block" height={36} className="lab-card__footer-skeleton" />
               </div>
             </li>
           ))}

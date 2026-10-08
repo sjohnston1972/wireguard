@@ -27,6 +27,7 @@ vi.mock("./LabStatusBadge", () => ({
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(join(HERE, "LabCard.css"), "utf8") + readFileSync(join(HERE, "LabCatalogueGrid.css"), "utf8");
+const pageCss = readFileSync(join(HERE, "LabsPage.css"), "utf8");
 
 function Harness({ data, layout = "wide", initial = null, search = "" }: { data: LabsResponse | null; layout?: LabsLayout; initial?: string | null; search?: string }) {
   const { views } = useLabViews({ data: data ?? undefined });
@@ -139,16 +140,15 @@ describe("each state's card action and label", () => {
     setup(one(over), { layout: "tablet" });
     const c = cardOf(/^Blob security/);
     expect(c.getByText(badge)).toBeInTheDocument();
-    const footer = article().querySelector(".lab-card__footer")!;
-    expect(footer).toHaveTextContent(action);
+    const footer = article().querySelector(".lab-card__footer");
     if (kind === "link") {
       // A session card's action is a real link to the lab's dialog (a second tab stop).
+      expect(footer).toHaveTextContent(action);
       expect(within(footer as HTMLElement).getByRole("link", { name: action })).toHaveAttribute("href", "/labs/az104-06-blob-security");
     } else {
-      // The visual twin of the select button: hidden from assistive tech, never a tab stop.
-      expect(within(footer as HTMLElement).queryByRole("button")).toBeNull();
-      expect(within(footer as HTMLElement).queryByRole("link")).toBeNull();
-      expect(footer.firstElementChild).toHaveAttribute("aria-hidden", "true");
+      // No footer button: it only repeated the card's own click (Steven, 2026-10-08). The card itself selects.
+      expect(footer).toBeNull();
+      expect(within(article()).queryByText(action, { selector: ".btn" })).toBeNull();
     }
     // The select button carries the action's words.
     expect(c.getByRole("button", { name: `Blob security: SAS, access policies, private endpoint, ${kind === "twin" ? action : "View lab"}` })).toBeInTheDocument();
@@ -167,20 +167,23 @@ describe("selecting", () => {
     const five = screen.getByRole("button", { name: /^Storage accounts/ });
     expect(five).toHaveAttribute("aria-current", "true");
     expect(five.closest("article")).toHaveClass("lab-card--selected");
-    expect(within(five.closest("article")!).getByText("Selected")).toHaveClass("visually-hidden");
+    // Not colour alone: a visible check and the word "Selected" (read out with the card, too).
+    const mark = within(five.closest("article")!).getByText("Selected");
+    expect(mark).not.toHaveClass("visually-hidden");
+    expect(mark.closest(".lab-card__picked")!.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     await user.click(screen.getByRole("button", { name: /^Blob security/ }));
     expect(screen.getByRole("button", { name: /^Blob security/ })).toHaveAttribute("aria-current", "true");
     expect(five).not.toHaveAttribute("aria-current");
     expect(screen.getByText("Showing Lab 6, Blob security: SAS, access policies, private endpoint")).toHaveAttribute("aria-live", "polite");
   });
 
-  it("clicking a card, View lab or Review setup never posts deploy", async () => {
+  it("clicking a card (anywhere, or a setup card) never posts deploy", async () => {
     const user = userEvent.setup();
     const data = labs({ labs: [...labs().labs.filter((c) => c.number !== 1), card({ id: "az104-01-identity", number: 1, title: "Users, groups and a custom role", prerequisites: [], blockers: [{ kind: "role", message: "Needs the role." }] })] });
     const { fetchMock } = setup(data);
     const six = screen.getByRole("button", { name: /^Blob security/ });
     await user.click(six);
-    await user.click(six.closest("article")!.querySelector(".lab-card__footer > *")!);
+    await user.click(six.closest("article")!.querySelector(".lab-card__meta")!);
     await user.click(six.closest("article")!.querySelector(".lab-card__objective")!);
     await user.click(screen.getByRole("button", { name: /^Users, groups and a custom role, Review setup/ }));
     expect(fetchMock!.calls.filter((c) => c.method === "POST")).toHaveLength(0);
@@ -246,10 +249,23 @@ describe("the grid", () => {
     expect(css).toMatch(/\.lab-card\s*\{[^}]*min-height:\s*var\(--lab-card-min\)/);
   });
 
-  it("selected state uses an inset shadow, not a thicker border", () => {
+  it("wide: the cards scroll on their own, with room for a focused card's whole ring (2 px outline + 2 px offset)", () => {
+    const main = pageCss.match(/\.labs-workspace:not\(\.labs-workspace--single\) > \.labs-workspace__main\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(main).toMatch(/overflow-y:\s*auto/);
+    const pad = Number(main.match(/padding:\s*(\d+)px/)?.[1]);
+    expect(pad).toBeGreaterThanOrEqual(4);
+    expect(main).toMatch(new RegExp(`margin:\\s*-${pad}px`));
+  });
+
+  it("the selected mark sits on the icon's row, so the card does not grow when selected", () => {
+    expect(css).toMatch(/\.lab-card__iconrow\s*\{[^}]*display:\s*flex/);
+  });
+
+  it("selected state: a blue hue and an inset shadow, not a thicker border", () => {
     const sel = css.match(/\.lab-card--selected\s*\{([^}]*)\}/)?.[1] ?? "";
     expect(sel).toMatch(/border-color:\s*var\(--blue-bright\)/);
     expect(sel).toMatch(/box-shadow:\s*inset 0 0 0 1px var\(--blue-bright\)/);
+    expect(sel).toMatch(/background:\s*color-mix\(in srgb, var\(--blue-bright\) \d+%, var\(--bg-panel\)\)/);
     expect(sel).not.toMatch(/border(-width)?:\s*\d/);
   });
 
@@ -257,7 +273,7 @@ describe("the grid", () => {
     expect(css).toMatch(/\.lab-grid\s*\{[^}]*display:\s*grid/);
     expect(css).toMatch(/\.lab-grid > li\s*\{[^}]*display:\s*flex/);
     expect(css).toMatch(/\.lab-card\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column/);
-    expect(css).toMatch(/\.lab-card__footer\s*\{[^}]*margin-top:\s*auto;[^}]*padding-top:\s*16px/);
+    expect(css).toMatch(/\.lab-card__footer\s*\{[^}]*margin-top:\s*auto;[^}]*padding-top:\s*10px/);
   });
 
   it("topic chips wrap like words and never run past the card: a very long one ends in an ellipsis, its full word in a tooltip", () => {
@@ -272,10 +288,10 @@ describe("the grid", () => {
     expect(chips.slice(0, 3).map((c) => c.getAttribute("title"))).toEqual(["Managed identities", "Key Vault", "Virtual machines"]);
   });
 
-  it("columns follow the grid's own width: 3 at 872 px, 2 at 576 px, else 1", () => {
+  it("columns follow the grid's own width: 3 at 654 px, 2 at 432 px, else 1 (compact cards beside the half-page details)", () => {
     expect(css).toMatch(/container-type:\s*inline-size/);
-    expect(css).toMatch(/@container[^{]*\(min-width:\s*576px\)\s*\{\s*\.lab-grid\s*\{\s*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
-    expect(css).toMatch(/@container[^{]*\(min-width:\s*872px\)\s*\{\s*\.lab-grid\s*\{\s*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+    expect(css).toMatch(/@container[^{]*\(min-width:\s*432px\)\s*\{\s*\.lab-grid\s*\{\s*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+    expect(css).toMatch(/@container[^{]*\(min-width:\s*654px\)\s*\{\s*\.lab-grid\s*\{\s*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
   });
 
   it("reduced motion: no card hover transition", () => {
