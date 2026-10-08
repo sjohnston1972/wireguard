@@ -144,7 +144,7 @@ code cannot reach a real binding, one shared route classification, and a contrac
   /demo → refuse`, `PATCH /anything → refuse`, query strings ignored, trailing slash not special. Add `shared/demo.ts`,
   `shared/api.ts` types, `0022_demo_mode.sql`, `wrangler.toml` binding + `v2` migration, `env.ts DEMO_STORE`. **Done when**
   the test passes and `npm run typecheck` passes.
-- [ ] **E3 Schema bundle.** Tests first (`scripts/test/demo-schema.test.mjs`): `writes every migration in name order with its
+- [x] **E3 Schema bundle.** Tests first (`scripts/test/demo-schema.test.mjs`): `writes every migration in name order with its
   SHA-256`, `--check exits 1 after a migration is added and 0 after regenerating`; Worker test `schema.gen.ts matches
   worker/migrations`. Add `scripts/demo-schema.mjs`, npm script `demo-schema`, generated file; `deploySteps()` gains `["npm",
   "run", "demo-schema", "--", "--check"]` first (update `scripts/test/deploy.test.mjs`). **Done when** `node --test

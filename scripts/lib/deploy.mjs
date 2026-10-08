@@ -10,12 +10,14 @@ import { spawnSync } from "node:child_process";
 export const REPLACED_NOTE = "The version above is the one this deploy replaces: keep its id for a rollback.";
 
 /**
- * Build the app, check its size, show the live version (the rollback target),
- * apply database migrations, publish. Spec section 3's order: build,
- * migrations, deploy.
+ * Check demo mode's bundled schema is current (demo-schema.mjs), build the
+ * app, check its size, show the live version (the rollback target), apply
+ * database migrations, publish. Spec section 3's order: build, migrations,
+ * deploy.
  */
 export function deploySteps() {
   return [
+    ["npm", "run", "demo-schema", "--", "--check"],
     ["npm", "run", "build:web"],
     ["npm", "run", "bundle-size"],
     ["wrangler", "deployments", "status"],
