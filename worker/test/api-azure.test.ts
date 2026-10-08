@@ -9,6 +9,7 @@ import { api, base } from "./api-helpers";
 import { runInsights } from "../src/insights/runner";
 import { saveSnapshot } from "../src/state";
 import { AZ_RUN_BUDGET, FEED_IDS } from "../src/insights/types";
+import { priceRequests } from "../src/insights/feeds/prices";
 import { FEEDS, PIP_COLUMNS, VITALS_COLUMNS, VM_COLUMNS } from "../../shared/azureMetrics";
 import { azureEnv, running, agentReport, allNotDue, setFeed, feedRows, callsTo, countD1, json, NOW, ago, iso, MIN, CLIENT, SECRET, SUB, FAKE_TOKEN } from "./insights-helpers";
 import type { Env } from "../src/env";
@@ -303,8 +304,8 @@ describe("whole runs with the real feeds", () => {
     await env.DB.prepare("INSERT INTO profiles (name, region, vm_size) VALUES ('US', 'eastus', 'Standard_B2s')").run();
     await runInsights(env, NOW);
     expect(az.calls.length).toBeLessThanOrEqual(AZ_RUN_BUDGET);
-    // sign-in, health, vm, pip, defs, activity (a first run backfills: its 2 pages and the empty third), service health, capacity, prices, boot log
-    expect(az.calls.length).toBe(1 + 2 + 1 + 1 + 2 + 3 + 1 + 2 + 1 + 3);
+    // sign-in, health, vm, pip, defs, activity (a first run backfills: its 2 pages and the empty third), service health, capacity, prices (one call a batch), boot log
+    expect(az.calls.length).toBe(1 + 2 + 1 + 1 + 2 + 3 + 1 + 2 + priceRequests() + 3);
     const rows = await feedRows(env);
     for (const id of FEED_IDS) expect(rows[id]?.status, id).toBe("ok");
     expect(rows.housekeeping.status).toBe("ok");
