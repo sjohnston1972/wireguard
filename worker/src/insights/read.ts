@@ -29,7 +29,8 @@ export const VITALS_AGENT_VERSION = 7;
  * everything), so the Azure widgets can be seen filled on a dev server run
  * from .env.example: that needs the login bypass AND the marker only the
  * locked seed route writes (devmarks.ts), so the bypass set on the live Worker
- * by mistake, with stale ok rows, still reads as not connected. Nothing is
+ * by mistake, with stale ok rows, still reads as not connected. Demo mode's
+ * store counts too (standInsAllowed): its data is all seeded, marker included. Nothing is
  * ever fetched on the strength of this: every fetch asks insightsConfigured.
  */
 export async function insightsShown(env: Env, feeds: Map<string, FeedRow>): Promise<boolean> {

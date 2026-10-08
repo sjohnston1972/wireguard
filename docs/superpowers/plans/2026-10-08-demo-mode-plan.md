@@ -168,7 +168,7 @@ code cannot reach a real binding, one shared route classification, and a contrac
   every write adds to the `WriteMeter`. Implement `worker/src/demo/sql.ts`. Then run `seedScenario` over the facades (a scratch
   measurement test, not committed) and record **rows written per everything refresh** in the facts. **Done when** the test
   passes and the figure is recorded.
-- [ ] **E6 Demo env, stand-ins, seeder actor.** Tests first (`worker/test/demo-env.test.ts`): `DEMO_VARS equals the keys of
+- [x] **E6 Demo env, stand-ins, seeder actor.** Tests first (`worker/test/demo-env.test.ts`): `DEMO_VARS equals the keys of
   wrangler.toml [vars]` (parse the file), `makeDemoEnv has no key of SECRET_GROUPS, no CF_ACCESS_*, NOTIFY_*, VAPID_PRIVATE_KEY,
   AUTH_DEV_BYPASS, ASSETS or DEMO_STORE`, `isDemoEnv survives { ...env }`, `isDemoEnv is false for a real env and for one with a
   string "DEMO_MARK" key`, `canAzure/canDispatch/canDns are false in a demo env`, `missingSecrets is {} in a demo env and

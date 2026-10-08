@@ -6,6 +6,8 @@
 // secrets are required, so the dashboard can show a setup checklist instead
 // of failing mysteriously when one is missing.
 
+import { isDemoEnv } from "./demo/env";
+
 export interface Env {
   // Bindings
   DB: D1Database;
@@ -136,8 +138,14 @@ export const SECRET_GROUPS: Record<string, (keyof Env)[]> = {
   "Peer configs (server public key)": ["WG_SERVER_PUBLIC_KEY"],
 };
 
-/** Which secrets are missing, by group. Empty object means fully configured. */
+/**
+ * Which secrets are missing, by group. Empty object means fully configured.
+ * A demo environment answers {} (demo mode spec ruling 15): it has no secrets
+ * by design, and the app must not lay a setup checklist over the demo. Server
+ * logic still asks canDispatch/canAzure/canDns, which stay false there.
+ */
 export function missingSecrets(env: Env): Record<string, string[]> {
+  if (isDemoEnv(env)) return {};
   const out: Record<string, string[]> = {};
   for (const [group, keys] of Object.entries(SECRET_GROUPS)) {
     const missing = keys.filter((k) => !env[k] || /^REPLACE_ME/.test(String(env[k])));
