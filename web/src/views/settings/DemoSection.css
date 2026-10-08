@@ -1,0 +1,22 @@
+/* Settings → Demo mode: the explanation, then the switch and the refresh, each a row. */
+.set-demo {
+  display: flex;
+  flex-direction: column;
+}
+.set-demo__intro {
+  margin: 0 0 12px;
+  max-width: 70ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.set-demo__row {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.set-demo__row:last-child {
+  padding-bottom: 0;
+}
+.set-demo__row .set-note {
+  margin: 6px 0 0;
+}

@@ -26,3 +26,21 @@
   flex: none;
   margin-left: auto;
 }
+/* Wide enough for one line: a fixed height, which the pages sized to the window
+   (Settings, a lab's full diagram) take off their own through --shell-banners. */
+@media (min-width: 600px) {
+  .demo-banner {
+    box-sizing: border-box;
+    height: 36px;
+    flex-wrap: nowrap;
+    padding-block: 0;
+  }
+  .demo-banner__text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app-shell:has(> .demo-banner) {
+    --shell-banners: 36px;
+  }
+}

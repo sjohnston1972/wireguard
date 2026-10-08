@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { Button, ErrorState, Panel, Switch } from "@/components";
 import { formatAge } from "@/components/data/DataAge";
 import { useDemo, useRefreshDemo, useSetDemo } from "@/api/demo";
+import "./DemoSection.css";
 
 export const DEMO_INTRO =
   "Demo mode shows a made-up environment instead of yours: clients, runs, costs, labs and Azure data are all invented. Only you see it; it changes nothing for anyone else. While it is on, actions are off: nothing can deploy, change or delete anything. Your real setup keeps running as normal, and its phone alerts still arrive.";
@@ -38,10 +39,14 @@ export function DemoSection() {
 
   if (!d) {
     return (
-      <Panel title="Demo mode">
-        <p className="set-lead">{DEMO_INTRO}</p>
-        {demo.isError ? <ErrorState title="Could not check demo mode" message={demo.error.message} onRetry={() => void demo.refetch()} /> : <p className="set-note">Checking demo mode…</p>}
-      </Panel>
+      <div className="set-stack">
+        <Panel title="Demo mode">
+          <div className="set-demo">
+            <p className="set-demo__intro">{DEMO_INTRO}</p>
+            {demo.isError ? <ErrorState title="Could not check demo mode" message={demo.error.message} onRetry={() => void demo.refetch()} /> : <p className="set-note">Checking demo mode…</p>}
+          </div>
+        </Panel>
+      </div>
     );
   }
 
@@ -55,37 +60,41 @@ export function DemoSection() {
   const last = d.refreshedAt ? formatAge(now - Date.parse(d.refreshedAt)) : "Never";
 
   return (
-    <Panel title="Demo mode">
-      <p className="set-lead">{DEMO_INTRO}</p>
-      <div className="set-switch">
-        <div>
-          <span className="field__label">Show demo data</span>
-          <p className="field__hint" aria-live="polite">
-            {words}
-          </p>
-          {set.error && (
-            <p className="field__error" role="alert">
-              {set.error.message}
-            </p>
-          )}
+    <div className="set-stack">
+      <Panel title="Demo mode">
+        <div className="set-demo">
+          <p className="set-demo__intro">{DEMO_INTRO}</p>
+          <div className="set-switch set-demo__row">
+            <div>
+              <span className="field__label">Show demo data</span>
+              <p className="field__hint" aria-live="polite">
+                {words}
+              </p>
+              {set.error && (
+                <p className="field__error" role="alert">
+                  {set.error.message}
+                </p>
+              )}
+            </div>
+            <Switch label="Show demo data" checked={checked} disabled={set.isPending} onCheckedChange={(on) => set.mutate(on)} />
+          </div>
+          <div className="set-switch set-demo__row">
+            <div>
+              <span className="field__label">Demo data</span>
+              <p className="field__hint">Last refreshed: {last}</p>
+              {wait && <p className="set-note">{wait}</p>}
+              {refresh.error && (
+                <p className="field__error" role="alert">
+                  {refresh.error.message}
+                </p>
+              )}
+            </div>
+            <Button variant="secondary" loading={refresh.isPending} disabled={!!wait || refresh.isPending} title={wait ?? undefined} onClick={() => refresh.mutate()}>
+              Refresh demo data
+            </Button>
+          </div>
         </div>
-        <Switch label="Show demo data" checked={checked} disabled={set.isPending} onCheckedChange={(on) => set.mutate(on)} />
-      </div>
-      <div className="set-switch">
-        <div>
-          <span className="field__label">Demo data</span>
-          <p className="field__hint">Last refreshed: {last}</p>
-          {wait && <p className="set-note">{wait}</p>}
-          {refresh.error && (
-            <p className="field__error" role="alert">
-              {refresh.error.message}
-            </p>
-          )}
-        </div>
-        <Button variant="secondary" loading={refresh.isPending} disabled={!!wait || refresh.isPending} title={wait ?? undefined} onClick={() => refresh.mutate()}>
-          Refresh demo data
-        </Button>
-      </div>
-    </Panel>
+      </Panel>
+    </div>
   );
 }

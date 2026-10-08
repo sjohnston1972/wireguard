@@ -34,45 +34,47 @@ export function DevDataSection() {
   const [asking, setAsking] = useState<string | null>(null);
 
   return (
-    <Panel title="Dev data">
-      <p className="set-lead">Wipes this PC's local database and loads a story. Dev server only.</p>
-      <ul className="set-seed" aria-label="Seed stories">
-        {scenarios.map((s) => (
-          <li key={s} className="set-seed__row">
-            <span className="set-seed__text">
-              <span className="set-seed__name">{s}</span>
-              <span className="set-seed__desc">{STORY[s] ?? "A seed story."}</span>
-            </span>
-            <Button size="sm" aria-label={`Seed ${s}`} loading={seed.isPending && seed.variables === s} disabled={seed.isPending} onClick={() => setAsking(s)}>
-              Seed
-            </Button>
-          </li>
-        ))}
-      </ul>
-      <Modal
-        open={asking !== null}
-        onOpenChange={(o) => !o && setAsking(null)}
-        title={`Replace the local data with ${asking ?? ""}?`}
-        description="Everything in this PC's local database is wiped first. Your demo mode switch is kept."
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setAsking(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              aria-label={`Seed ${asking ?? ""}`}
-              loading={seed.isPending}
-              onClick={() => {
-                if (!asking) return;
-                seed.mutate(asking, { onSettled: () => setAsking(null) });
-              }}
-            >
-              Seed
-            </Button>
-          </>
-        }
-      />
-    </Panel>
+    <div className="set-stack">
+      <Panel title="Dev data">
+        <p className="set-lead">Wipes this PC's local database and loads a story. Dev server only.</p>
+        <ul className="set-seed" aria-label="Seed stories">
+          {scenarios.map((s) => (
+            <li key={s} className="set-seed__row">
+              <span className="set-seed__text">
+                <span className="set-seed__name">{s}</span>
+                <span className="set-seed__desc">{STORY[s] ?? "A seed story."}</span>
+              </span>
+              <Button size="sm" aria-label={`Seed ${s}`} loading={seed.isPending && seed.variables === s} disabled={seed.isPending} onClick={() => setAsking(s)}>
+                Seed
+              </Button>
+            </li>
+          ))}
+        </ul>
+        <Modal
+          open={asking !== null}
+          onOpenChange={(o) => !o && setAsking(null)}
+          title={`Replace the local data with ${asking ?? ""}?`}
+          description="Everything in this PC's local database is wiped first. Your demo mode switch is kept."
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setAsking(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                aria-label={`Seed ${asking ?? ""}`}
+                loading={seed.isPending}
+                onClick={() => {
+                  if (!asking) return;
+                  seed.mutate(asking, { onSettled: () => setAsking(null) });
+                }}
+              >
+                Seed
+              </Button>
+            </>
+          }
+        />
+      </Panel>
+    </div>
   );
 }
