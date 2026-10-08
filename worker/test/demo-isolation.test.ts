@@ -10,9 +10,7 @@
 //     never touch the demo_mode switch;
 //   - the lab topology cache keeps demo and real answers apart.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync, readdirSync } from "node:fs";
 import { makeEnv, tripwire, tripped, sqliteLike } from "./harness";
 import { apiEnv, api } from "./api-helpers";
 import worker from "../src/index";
@@ -27,15 +25,11 @@ import { INSIGHTS_CRON } from "../src/insights/types";
 import type { Env } from "../src/env";
 
 const NOW = "2026-10-08T10:00:00.000Z";
-const SRC = fileURLToPath(new URL("../src/", import.meta.url));
-
-function walk(dir: string): string[] {
-  return readdirSync(dir).flatMap((f) => {
-    const p = join(dir, f);
-    return statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(f) ? [p] : [];
-  });
+/** Every .ts file under worker/src, as a path relative to it ("demo/gate.ts"). Directories there have no dot in their name. */
+function walk(dir = ""): string[] {
+  return readdirSync(new URL(`../src/${dir}`, import.meta.url)).flatMap((f) => (/\.tsx?$/.test(f) ? [`${dir}${f}`] : f.includes(".") ? [] : walk(`${dir}${f}/`)));
 }
-const rel = (p: string) => relative(SRC, p).split(sep).join("/");
+const source = (p: string) => readFileSync(new URL(`../src/${p}`, import.meta.url), "utf8");
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -78,17 +72,17 @@ describe("§9.7: the background never touches the demo store", () => {
 
   it("DEMO_STORE is named only in worker/src/demo/**, index.ts, env.ts and api/demo.ts", () => {
     const allowed = (p: string) => p.startsWith("demo/") || p === "index.ts" || p === "env.ts" || p === "api/demo.ts";
-    const named = walk(SRC).filter((f) => readFileSync(f, "utf8").includes("DEMO_STORE")).map(rel);
+    const named = walk().filter((p) => source(p).includes("DEMO_STORE"));
     expect(named.filter((p) => !allowed(p))).toEqual([]);
     // And it is really used where the gate is (so this scan is looking at the right files).
     expect(named).toContain("demo/gate.ts");
   });
 
   it("no background module reaches the demo store's code or the gate", () => {
-    const background = walk(SRC).map(rel).filter((p) => ["cron.ts", "monitor.ts", "backup.ts", "labs/watch.ts", "actions.ts", "notify.ts", "webpush.ts"].includes(p) || p.startsWith("insights/"));
+    const background = walk().filter((p) => ["cron.ts", "monitor.ts", "backup.ts", "labs/watch.ts", "actions.ts", "notify.ts", "webpush.ts"].includes(p) || p.startsWith("insights/"));
     expect(background.length).toBeGreaterThan(5);
     for (const p of background) {
-      const src = readFileSync(join(SRC, p), "utf8");
+      const src = source(p);
       expect(src, p).not.toMatch(/demo\/(store|gate|switch)/);
       expect(src, p).not.toContain("demo_mode");
     }
