@@ -149,7 +149,7 @@ code cannot reach a real binding, one shared route classification, and a contrac
   worker/migrations`. Add `scripts/demo-schema.mjs`, npm script `demo-schema`, generated file; `deploySteps()` gains `["npm",
   "run", "demo-schema", "--", "--check"]` first (update `scripts/test/deploy.test.mjs`). **Done when** `node --test
   scripts/test/demo-schema.test.mjs scripts/test/deploy.test.mjs` passes.
-- [ ] **E4 lockFetch.** Move `RunLock.fetch`'s body into `lockFetch(storage, request, now)` (storage: `get`, `put`, `delete`,
+- [x] **E4 lockFetch.** Move `RunLock.fetch`'s body into `lockFetch(storage, request, now)` (storage: `get`, `put`, `delete`,
   `list({ prefix })`); `RunLock.fetch` calls it. No behaviour change. **Done when** `npx vitest run worker/test/state.test.ts
   worker/test/races.test.ts worker/test/lifecycle.test.ts` passes unchanged.
 - [ ] **E5 Facades.** Tests first (`worker/test/demo-facades.test.ts`, over the harness's `sqliteLike()`): D1: `first`,
