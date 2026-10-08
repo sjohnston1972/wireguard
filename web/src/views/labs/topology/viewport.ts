@@ -61,3 +61,25 @@ export function startViewport(bounds: Rect, width: number, height: number, opts:
   if (!fits) return { x: START_INSET.left - bounds.x * zoom, y: START_INSET.top - bounds.y * zoom, zoom };
   return { x: (width - bounds.w * zoom) / 2 - bounds.x * zoom, y: top + (room - bounds.h * zoom) / 2 - bounds.y * zoom, zoom };
 }
+
+/** Where the picked node's details float over the diagram instead of stacking under it (SidePanel stacks up to 1099 px). */
+export const DETAILS_FLOAT = "(min-width: 1100px)";
+/** How much of the canvas's right-hand side the floating details cover (350 px panel, 10 px inset, a margin). */
+export const DETAILS_COVER = 384;
+/** The gap kept between a slid node and the canvas's left edge. */
+export const DETAILS_MARGIN = 16;
+
+/**
+ * The view slid left just enough that a node (flow coordinates) clears the floating details, or null when it
+ * already does. It never slides right, and never pushes the node's left edge past DETAILS_MARGIN: a node too
+ * wide for the room stops at the left margin instead.
+ */
+export function slideClearOfDetails(node: { x: number; w: number }, vp: Viewport, canvasW: number, cover = DETAILS_COVER): Viewport | null {
+  const left = node.x * vp.zoom + vp.x;
+  const right = (node.x + node.w) * vp.zoom + vp.x;
+  const over = right - (canvasW - cover);
+  if (over <= 0) return null;
+  const by = Math.min(over, left - DETAILS_MARGIN);
+  if (by <= 0) return null;
+  return { ...vp, x: vp.x - by };
+}

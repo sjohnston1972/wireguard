@@ -2,16 +2,23 @@
 .labs-page { gap: 14px; padding-bottom: 12px; }
 .labs-page > .page-header { margin-bottom: 0; }
 
-/* Wide (1200 px and up): the cards and a 400 px details panel that stays in view while the cards scroll. */
+/* Wide (1200 px and up): the cards and the selected lab's details side by side, half the page each. Each column
+   scrolls on its own (scrolling the cards never moves the details, and the reverse); both stay under the app bar. */
 .labs-workspace { display: block; min-width: 0; }
 .labs-workspace__main { min-width: 0; }
 @media (min-width: 1200px) {
-  .labs-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 20px; align-items: start; }
+  .labs-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
   .labs-workspace--single { grid-template-columns: minmax(0, 1fr); }
+  .labs-workspace:not(.labs-workspace--single) > .labs-workspace__main {
+    position: sticky; top: 0;
+    max-height: calc(100dvh - var(--bar-height) - 28px); overflow-y: auto; overscroll-behavior: contain;
+    /* room inside the scroller for a focused card's whole ring (2 px outline, 2 px offset) */
+    padding: 4px; margin: -4px;
+  }
   .labs-workspace > .labs-details,
   .labs-workspace > .labs-details-skeleton {
     position: sticky; top: 0;
-    max-height: calc(100dvh - var(--bar-height) - 28px); overflow-y: auto;
+    max-height: calc(100dvh - var(--bar-height) - 28px); overflow-y: auto; overscroll-behavior: contain;
   }
 }
 

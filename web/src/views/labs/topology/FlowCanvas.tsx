@@ -33,7 +33,7 @@ import { NODE_TYPES } from "./nodes/FlowNodes";
 import { useSprite } from "./icons/sprite";
 import { useFitRequests } from "./fitBus";
 import { nodeIndex } from "./words";
-import { boundsOf, FIT_PADDING, MIN_FIT_ZOOM, PANEL_RESERVE, PHONE_MIN_FIT_ZOOM, startViewport } from "./viewport";
+import { boundsOf, DETAILS_FLOAT, FIT_PADDING, MIN_FIT_ZOOM, PANEL_RESERVE, PHONE_MIN_FIT_ZOOM, slideClearOfDetails, startViewport } from "./viewport";
 import "./topology.css";
 
 export const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
@@ -147,6 +147,18 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
   const onNodeDragStop: OnNodeDrag<TopoFlowNode> = useCallback(() => {
     dragging.current = new Set();
   }, []);
+
+  // The details float over the canvas's right-hand side (places.css), so the canvas never resizes and the
+  // diagram never re-lays out. If the picked node would sit under them, glide the view left just enough.
+  // Below 1100 px the details stack under the canvas (tablet) or open as a sheet (phone), so nothing covers a node.
+  const floats = useMedia(DETAILS_FLOAT);
+  useEffect(() => {
+    if (!selected || mini || !floats || !measured) return;
+    const n = rf.getInternalNode(selected);
+    if (!n) return;
+    const to = slideClearOfDetails({ x: n.internals.positionAbsolute.x, w: n.measured.width ?? n.width ?? 0 }, rf.getViewport(), size.w);
+    if (to) void rf.setViewport(to, { duration: reduced ? 0 : 250 });
+  }, [selected, mini, floats, measured, rf, size.w, reduced]);
 
   const fitToSearch = useCallback(() => {
     const ids = sets ? [...sets.match] : [];

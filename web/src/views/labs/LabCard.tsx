@@ -2,15 +2,16 @@
 //
 // Plain English: one lab in the catalogue grid (labs redesign spec §8.4): its
 // number and exam, status badge, topic icon, title, objective, up to three
-// topic chips, learning time and short cost, and one footer action. The title
-// is the select button, stretched over the whole card, so the card is one tab
-// stop and a click anywhere selects it; selecting never deploys. A ready,
-// setup or unavailable card's footer is that button's visual twin; a card with
-// a live session has a real link to its dialog instead (a second tab stop).
+// topic chips, learning time and short cost. The title is the select button,
+// stretched over the whole card, so the card is one tab stop and a click
+// anywhere selects it; selecting never deploys. Only a card with a live
+// session has a footer action: a real link to its dialog (a second tab stop);
+// "Checking…" shows while readiness is unknown. Ready, setup and unavailable
+// cards have no footer button (it only repeated the card's own click).
 // Memoised: a selection change re-renders only the two cards it touches.
 
 import { memo, useId, type MouseEvent } from "react";
-import { ArrowRight, Clock, Coins } from "lucide-react";
+import { ArrowRight, Check, Clock, Coins } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cx } from "@/components";
 import type { LabView } from "./contract";
@@ -61,9 +62,17 @@ export const LabCard = memo(function LabCard({ view, selected, onSelect, search,
           {also.length > 0 && ` · also ${also.join(", ")}`}
         </span>
         <LabStatusBadge badge={view.badge} className="lab-card__badge" />
-        {selected && <span className="visually-hidden">Selected</span>}
       </div>
-      <Icon size={28} aria-hidden="true" className="lab-card__icon" />
+      <div className="lab-card__iconrow">
+        <Icon size={22} aria-hidden="true" className="lab-card__icon" />
+        {/* Not colour alone: a check and the word, on the icon's row so the card keeps its height. */}
+        {selected && (
+          <span className="lab-card__picked">
+            <Check size={13} aria-hidden="true" />
+            Selected
+          </span>
+        )}
+      </div>
       <h3 className="lab-card__title">
         <button type="button" className="lab-card__select" aria-current={selected ? "true" : undefined} aria-describedby={costId} onClick={() => onSelect(c.id)}>
           {c.title}
@@ -101,19 +110,21 @@ export const LabCard = memo(function LabCard({ view, selected, onSelect, search,
           </span>
         </li>
       </ul>
-      <div className="lab-card__footer">
-        {action.kind === "open" ? (
+      {action.kind === "open" && (
+        <div className="lab-card__footer">
           <Link className={cx("btn", `btn--${action.variant}`, "lab-card__action", "lab-card__action--link")} to={labHref(c.id, search, layout)}>
             {action.label}
             <ArrowRight size={14} aria-hidden="true" />
           </Link>
-        ) : (
-          <span className={cx("btn", `btn--${action.variant}`, "lab-card__action", action.kind === "disabled" && "lab-card__action--disabled")} aria-hidden="true">
+        </div>
+      )}
+      {action.kind === "disabled" && (
+        <div className="lab-card__footer">
+          <span className={cx("btn", `btn--${action.variant}`, "lab-card__action", "lab-card__action--disabled")} aria-hidden="true">
             {action.label}
-            {action.kind === "select" && <ArrowRight size={14} aria-hidden="true" />}
           </span>
-        )}
-      </div>
+        </div>
+      )}
     </article>
   );
 });

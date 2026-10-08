@@ -16,8 +16,26 @@
 .topo-place__error > span { flex: 1; min-width: 0; }
 .topo-place__loading { margin: 0; padding: 24px 0; font-size: 12.5px; color: var(--text-secondary); text-align: center; }
 
-/* The canvas and, beside it, the details panel (a sheet on the phone). */
+/* The canvas and the picked node's details: under it on a tablet (SidePanel's own full-width stack, up to
+   1099 px), a sheet on the phone. Wide, the details float over the canvas's right-hand side instead, so they
+   never take width from it: if they did, picking a node would resize the canvas, which lays the diagram out
+   afresh and re-fits the view (Steven, 2026-10-08: "shunts and re-arranges"). The canvas slides a covered
+   node clear (FlowCanvas, DETAILS_FLOAT), and the legend and minimap step left of the panel. */
 .topo-place__stage { flex: 1 1 auto; min-height: 0; }
+.topo-place__stage > .split-view__main { min-height: 0; }
+@media (min-width: 1100px) {
+  .topo-place__stage.split-view { position: relative; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); gap: 0; }
+  .topo-place__stage > .side-panel.topo-details {
+    position: absolute; z-index: 5; top: 10px; right: 10px; bottom: 10px;
+    width: min(350px, calc(100% - 20px)); max-height: none;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+  }
+  :root[data-theme="light"] .topo-place__stage > .side-panel.topo-details { box-shadow: 0 14px 36px rgba(15, 27, 45, 0.18), 0 2px 6px rgba(15, 27, 45, 0.08); }
+  .topo-place__stage:has(> .topo-details) .react-flow__panel.right { right: 360px; }
+}
+@media (min-width: 1100px) and (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .topo-place__stage > .side-panel.topo-details { box-shadow: 0 14px 36px rgba(15, 27, 45, 0.18), 0 2px 6px rgba(15, 27, 45, 0.08); }
+}
 .topo-place__canvas {
   height: 100%; min-height: 0; overflow: auto; border-radius: 10px;
   background: var(--bg-tile); border: 1px solid var(--border); padding: 8px;
