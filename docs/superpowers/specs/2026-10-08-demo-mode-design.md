@@ -300,7 +300,12 @@ gains the pair); wraps on phones without sideways scroll; does not shift the pag
 
 Text: "Demo mode shows a made-up environment instead of yours: clients, runs, costs, labs and Azure data are all invented.
 Only you see it; it changes nothing for anyone else. While it is on, actions are off: nothing can deploy, change or delete
-anything. Your real setup keeps running as normal, and its phone alerts still arrive." A Switch "Show demo data" (the real
+anything. Your real setup keeps running as normal, and its phone alerts keep arriving. One exception: if a phone renews its
+alert subscription while demo mode is on, the dashboard cannot record it, so that phone's alerts stop until you turn demo
+mode off and open the dashboard on it (or turn alerts back on in Settings → Mobile)." (Review fix: the service worker's
+`pushsubscriptionchange` POST `/push/subscribe` is refused with 409 in demo mode, as every write is. sw.js then keeps the
+renewal in a `push-renew` notification that tells the phone's owner, and `web/src/api/pushRenew.ts` hands it over
+(subscribe the new, unsubscribe the old, close the notification) whenever the app's data source is `real`.) A Switch "Show demo data" (the real
 state from `GET /demo`; pending while the PUT runs, which may take a few seconds on first use: "Preparing demo data…"). A
 **Refresh demo data** button (disabled with the reason while `nextRefreshAt` is in the future) and "Last refreshed 2 h ago"
 (or "Never"). Errors show the server's message inline, `storeError` included; while the answers say demo, a **Turn off demo mode**

@@ -13,7 +13,7 @@ import { useDemo, useDemoOn, useRefreshDemo, useSetDemo } from "@/api/demo";
 import "./DemoSection.css";
 
 export const DEMO_INTRO =
-  "Demo mode shows a made-up environment instead of yours: clients, runs, costs, labs and Azure data are all invented. Only you see it; it changes nothing for anyone else. While it is on, actions are off: nothing can deploy, change or delete anything. Your real setup keeps running as normal, and its phone alerts still arrive.";
+  "Demo mode shows a made-up environment instead of yours: clients, runs, costs, labs and Azure data are all invented. Only you see it; it changes nothing for anyone else. While it is on, actions are off: nothing can deploy, change or delete anything. Your real setup keeps running as normal, and its phone alerts keep arriving. One exception: if a phone renews its alert subscription while demo mode is on, the dashboard cannot record it, so that phone's alerts stop until you turn demo mode off and open the dashboard on it (or turn alerts back on in Settings → Mobile).";
 
 /** 14:32, London time (the Worker's busy messages use the same clock). */
 function londonClock(ms: number): string {
