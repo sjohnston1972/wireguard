@@ -1,0 +1,28 @@
+/* The demo mode banner (demo mode spec §8.1): an amber strip under the top bar.
+   Tokens only (--demo-banner-*, both themes, contrast-tested). It wraps on a
+   phone rather than scrolling sideways. */
+.demo-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  flex: none;
+  padding: 6px 16px;
+  background: var(--demo-banner-bg);
+  border-bottom: 1px solid var(--demo-banner-border);
+  color: var(--demo-banner-fg);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.demo-banner__icon {
+  flex: none;
+}
+.demo-banner__text {
+  flex: 1 1 14em;
+  min-width: 0;
+}
+.demo-banner__off {
+  flex: none;
+  margin-left: auto;
+}

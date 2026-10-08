@@ -4,6 +4,7 @@ import { TABS } from "@/routes";
 import { useConnection } from "@/api/connection";
 import { AccountSlot, ConnectionSlot, NotesSlot, SearchSlot, StateSlot, ThemeToggleSlot } from "./slots";
 import { DisconnectedBanner } from "./Connection";
+import { DemoBanner } from "./DemoBanner";
 import { SessionExpiredScreen } from "./SessionExpired";
 import { CommandPalette } from "./CommandPalette";
 import { ServiceHealthIndicator } from "./ServiceHealthIndicator";
@@ -61,6 +62,7 @@ export function AppShell() {
         <AccountSlot />
       </header>
       <DisconnectedBanner />
+      <DemoBanner />
       <main id="main" className="app-shell__page" tabIndex={-1}>
         {sessionExpired ? <SessionExpiredScreen /> : <Outlet />}
       </main>

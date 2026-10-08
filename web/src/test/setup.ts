@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 import { cleanup, configure } from "@testing-library/react";
 import { dropPrefsStores } from "@/widgets/store";
+import { resetSource } from "@/api/client";
 // The one place jsdom gets the browser APIs Radix, cmdk and the charts touch
 // (pointer capture, scrollIntoView, ResizeObserver, matchMedia).
 import "./polyfills";
@@ -20,4 +21,6 @@ afterEach(() => {
   cleanup();
   // A widget change still waiting to be saved must not reach the next test's mocked server.
   dropPrefsStores();
+  // Demo mode's data source lives in the client module: each test starts with no answer yet.
+  resetSource();
 });

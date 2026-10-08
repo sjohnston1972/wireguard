@@ -1,8 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
-import { ApiError, SessionExpiredError } from "./client";
+import { ApiError, SessionExpiredError, SourceChangedError } from "./client";
 
-/** Try again with backoff for a flaky link or a 5xx; never for a 4xx (the answer will not change) or an expired session. */
+/**
+ * Try again with backoff for a flaky link, a 5xx or an answer dropped for coming from the other
+ * data source (demo mode); never for a 4xx (the answer will not change) or an expired session.
+ */
 export function shouldRetry(failureCount: number, error: unknown): boolean {
+  if (error instanceof SourceChangedError) return failureCount < 3;
   if (error instanceof SessionExpiredError) return false;
   if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
   return failureCount < 3;
