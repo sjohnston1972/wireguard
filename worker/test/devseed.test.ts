@@ -27,10 +27,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function seedAt(env: Env, host: string, scenario: string | null, method = "POST") {
+async function seedAt(env: Env, host: string, scenario: string | null, method = "POST", headers: Record<string, string> = {}) {
   const qs = new URLSearchParams({ now: NOW });
   if (scenario !== null) qs.set("scenario", scenario);
-  const r = await worker.fetch(new Request(`http://${host}/__dev/seed?${qs}`, { method }), env, ctx);
+  const r = await worker.fetch(new Request(`http://${host}/__dev/seed?${qs}`, { method, headers }), env, ctx);
   const text = await r.text();
   let json: any = null;
   try {
@@ -85,6 +85,27 @@ describe("the seed route's guard", () => {
       expect(r.status, host).toBe(200);
       expect(r.json).toMatchObject({ ok: true, scenario: "empty" });
     }
+  });
+
+  it("refuses a browser request from another site with 403 (demo mode spec ruling 20), and seeds nothing", async () => {
+    const { env } = devEnv();
+    for (const site of ["cross-site", "same-site", "none"]) {
+      const r = await seedAt(env, "localhost:8787", "running", "POST", { "Sec-Fetch-Site": site });
+      expect(r.status, site).toBe(403);
+      expect(r.text.toLowerCase()).not.toContain("scenario");
+    }
+    expect((await getSnapshot(env)).state).not.toBe("running");
+  });
+
+  it("is still 404, not 403, off localhost or without the bypass, whatever the browser says", async () => {
+    expect((await seedAt(devEnv().env, "wg-admin.example", "empty", "POST", { "Sec-Fetch-Site": "cross-site" })).status).toBe(404);
+    expect((await seedAt(makeEnv({ PUBLIC_URL: "http://localhost:8787" }).env, "localhost:8787", "empty", "POST", { "Sec-Fetch-Site": "cross-site" })).status).toBe(404);
+  });
+
+  it("seeds for the app's own page (same-origin) and for the seed script (no Sec-Fetch-Site at all)", async () => {
+    const { env } = devEnv();
+    expect((await seedAt(env, "localhost:8787", "empty", "POST", { "Sec-Fetch-Site": "same-origin" })).status).toBe(200);
+    expect((await seedAt(env, "localhost:8787", "empty")).status).toBe(200);
   });
 
   it("answers only POST", async () => {

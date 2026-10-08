@@ -11,6 +11,7 @@ import * as db from "../db";
 import { getSnapshot, peerOnline, selfTestFailures } from "../state";
 import { effectiveConfig } from "../settings";
 import { canDispatch } from "../env";
+import { isDemoEnv } from "../demo/env";
 import { lockStatus } from "../lock";
 import { backupStatus } from "../backup";
 import { budgetStatus } from "../budget";
@@ -75,7 +76,8 @@ export function registerOverview(api: Hono<ApiEnv>): void {
         expiryAction: cfg.expiryAction,
         standbyMaxDays: cfg.standbyMaxDays,
       },
-      actions: { canDispatch: canDispatch(c.env), lockHolder: lock.held && !["deploying", "destroying"].includes(snap.state) ? lock.lock?.runId ?? null : null },
+      // In demo mode the app is not told "GitHub not connected" (spec ruling 15); actions are refused by the gate anyway.
+      actions: { canDispatch: canDispatch(c.env) || isDemoEnv(c.env), lockHolder: lock.held && !["deploying", "destroying"].includes(snap.state) ? lock.lock?.runId ?? null : null },
       near: whereFrom(c.req.raw),
       profiles,
       speedtests,
