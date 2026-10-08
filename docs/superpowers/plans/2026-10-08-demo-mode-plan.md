@@ -138,7 +138,7 @@ code cannot reach a real binding, one shared route classification, and a contrac
 
 - [x] **E1 Baseline.** Worktree, `cp .env.example .env`, `npm ci`, `npm run build:web`, `npm run bundle-size`. Record entry,
   all JS and CSS here. **Done when** the figures are recorded in this plan's facts and pushed.
-- [ ] **E2 Shared contract, switch table, binding.** Tests first (`worker/test/demo-shared.test.ts`): `demoRouteKind` row by
+- [x] **E2 Shared contract, switch table, binding.** Tests first (`worker/test/demo-shared.test.ts`): `demoRouteKind` row by
   row: `GET /overview → read`, `HEAD /clients → read`, `POST /firewall/simulate → read`, `GET /demo`, `PUT /demo`, `POST
   /demo/refresh → control`, `POST /deploy → refuse`, `PUT /prefs/overview → refuse`, `DELETE /clients/3 → refuse`, `POST
   /demo → refuse`, `PATCH /anything → refuse`, query strings ignored, trailing slash not special. Add `shared/demo.ts`,

@@ -12,6 +12,11 @@ export interface Env {
   STATUS: KVNamespace;
   STATE: R2Bucket;
   RUN_LOCK: DurableObjectNamespace;
+  /**
+   * Demo mode's store (demo/store.ts): its own SQLite, never the bindings above. Reached only by the demo gate and the demo
+   * control routes (index.ts, api/demo.ts); a demo environment (demo/env.ts) never has it.
+   */
+  DEMO_STORE: DurableObjectNamespace;
   /** The built app (web/dist), for the /assets/* guard (assetguard.ts). Absent in tests. */
   ASSETS?: Fetcher;
 

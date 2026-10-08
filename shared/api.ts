@@ -1098,3 +1098,32 @@ export interface SettingsValues {
   /** The Deploy form's "Peer to gateway" tick for optional labs; default on. */
   labsDefaultPeering: boolean;
 }
+
+// ── Demo mode (spec 2026-10-08-demo-mode-design.md §7) ────────────────────
+
+/** GET /api/v1/demo: the caller's switch and the demo store's state. */
+export interface DemoStatusResponse {
+  /** The caller's switch. */
+  on: boolean;
+  /** When the demo store was last seeded (ISO); null = never. */
+  refreshedAt: string | null;
+  story: "everything";
+  /** Demo rows written today (UTC). */
+  rowsToday: number;
+  /** The daily allowance (DEMO_DAILY_ROWS). */
+  dailyRows: number;
+  /** null = a refresh is allowed now; otherwise the earliest time one is. */
+  nextRefreshAt: string | null;
+  /** Only on the dev server (AUTH_DEV_BYPASS on localhost): the seed stories it can load. */
+  devSeed: { scenarios: string[] } | null;
+}
+
+/** PUT /api/v1/demo. */
+export interface DemoSetBody {
+  on: boolean;
+}
+
+/** PUT /api/v1/demo and POST /api/v1/demo/refresh answer the status with a sentence for the toast. */
+export interface DemoActionResponse extends DemoStatusResponse {
+  message: string;
+}
