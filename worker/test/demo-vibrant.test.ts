@@ -49,6 +49,10 @@ async function expectLively(store: DemoStore, nowMs: number): Promise<void> {
 
   const clients = await get(store, "/clients");
   expect(clients.clients.length).toBeGreaterThanOrEqual(10);
+  // The app shows "Last handshake" from the live seconds-since-1970 figure: recent for every connected client.
+  const online = clients.clients.filter((c: Json) => c.status === "online");
+  expect(online.length).toBeGreaterThanOrEqual(6);
+  for (const c of online) expect(nowMs - c.live.latest_handshake * 1000, c.name).toBeLessThan(3 * MIN);
 
   // Firewall: hits and drops across the whole last 24 hours.
   const fw = await get(store, "/firewall");

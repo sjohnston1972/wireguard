@@ -213,6 +213,9 @@ export class DemoStore extends DurableObject<Env> {
     const stale = st.refreshedAt !== null && now - Date.parse(st.refreshedAt) > DEMO_STALE_MS;
     const oldStory = this.meta().storyVersion !== DEMO_STORY_VERSION;
     if (st.refreshedAt && st.schemaOk && !stale && !oldStory) return { ok: true, status: st, counts: {} };
+    // Old but intact, and the budget says wait: serve it as it is, without queueing behind a refresh that would refuse
+    // (every demo read comes through here; the demo clock keeps old data looking live).
+    if (st.refreshedAt && st.schemaOk && st.nextRefreshAt) return { ok: true, status: st, counts: {} };
     const r = await this.refresh(nowIso);
     // Only old (not empty, not out of date): the data is still good to show while the budget says wait.
     if (!r.ok && st.refreshedAt && st.schemaOk) return { ok: true, status: this.statusAt(now), counts: {} };

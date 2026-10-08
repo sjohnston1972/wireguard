@@ -106,6 +106,10 @@ describe("shiftTimes", () => {
     const text = JSON.stringify({ day: "2026-10-07", id: "apply-20261008-100000-abc123", key: "backups/20261008T100000Z-apply.tfstate", n: 1759917600 });
     expect(shiftTimes(text, 5 * HOUR)).toBe(text);
   });
+  it("moves a peer's latest_handshake (seconds since 1970) with them, but never a 0 (never shook hands)", () => {
+    const text = JSON.stringify({ live: { latest_handshake: 1759917600, rx: 5 }, other: { latest_handshake: 0 } });
+    expect(JSON.parse(shiftTimes(text, 2 * HOUR))).toEqual({ live: { latest_handshake: 1759917600 + 7200, rx: 5 }, other: { latest_handshake: 0 } });
+  });
   it("does nothing with no shift", () => {
     expect(shiftTimes('"2026-10-08T10:00:00Z"', 0)).toBe('"2026-10-08T10:00:00Z"');
   });

@@ -82,15 +82,21 @@ export function installDemoClock(): void {
 
 /** An ISO time in UTC as the app writes them: 2026-10-08T14:00:00Z or 2026-10-08T14:00:00.000Z. */
 const ISO_UTC = /\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d{1,3})?Z\b/g;
+/** A WireGuard peer's latest handshake in a JSON answer (state.ts AgentPeer: seconds since 1970). */
+const LATEST_HANDSHAKE = /"latest_handshake":(\d+)/g;
 
 /**
  * Every ISO time in `text` (a JSON answer, a log) moved forward by `shiftMs`,
- * keeping its form (with or without milliseconds). Plain dates (2026-10-08,
+ * keeping its form (with or without milliseconds), and every peer's
+ * latest_handshake (seconds) with it. Plain dates (2026-10-08,
  * the Cost page's days) are left alone: they stay with the demo's own month.
  */
 export function shiftTimes(text: string, shiftMs: number): string {
   if (!shiftMs) return text;
-  return text.replace(ISO_UTC, (whole, main: string, frac: string | undefined) => {
+  // The one time the app sends as a number: a WireGuard peer's latest handshake, in seconds since 1970 (0 = never).
+  const secs = Math.round(shiftMs / 1000);
+  const moved = text.replace(LATEST_HANDSHAKE, (whole, n: string) => (Number(n) > 0 ? `"latest_handshake":${Number(n) + secs}` : whole));
+  return moved.replace(ISO_UTC, (whole, main: string, frac: string | undefined) => {
     const ms = Date.parse(`${main}${frac ?? ""}Z`);
     if (!Number.isFinite(ms)) return whole;
     const out = new Date(ms + shiftMs).toISOString();
