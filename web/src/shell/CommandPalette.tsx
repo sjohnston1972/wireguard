@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Activity, Cog, FlaskConical, Play, Plus, Search, Shield, Users, Zap, type LucideIcon } from "lucide-react";
 import { TABS } from "@/routes";
 import { useActivity, useClients, useFirewall, useLabs } from "@/api/queries";
+import { useDemo } from "@/api/demo";
 import "./palette.css";
 
 /**
@@ -21,7 +22,17 @@ export const SETTINGS_SECTIONS: { slug: string; label: string }[] = [
   { slug: "mobile", label: "Mobile" },
   { slug: "labs", label: "Labs" },
   { slug: "maintenance", label: "Maintenance" },
+  { slug: "demo", label: "Demo mode" },
 ];
+
+/** The dev server's seed stories (demo mode spec §8.4): a section only while GET /demo offers them. */
+export const DEV_DATA_SECTION = { slug: "dev-data", label: "Dev data" };
+
+/** Settings' sections as shown: the fixed nine, plus Dev data on the dev server. */
+export function useSettingsSections(): { slug: string; label: string }[] {
+  const devSeed = useDemo().data?.devSeed;
+  return devSeed ? [...SETTINGS_SECTIONS, DEV_DATA_SECTION] : SETTINGS_SECTIONS;
+}
 
 export const ACTIONS: { label: string; to: string; icon: LucideIcon; keywords?: string }[] = [
   { label: "Deploy", to: "/?action=deploy", icon: Play, keywords: "start vm up" },
@@ -65,6 +76,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       </Item>
     ));
   const latestRun = activity.data?.runs[0];
+  const sections = useSettingsSections();
 
   return (
     <Command.Dialog open={open} onOpenChange={close} label="Command palette" className="palette" overlayClassName="palette__overlay" contentClassName="palette__content">
@@ -92,7 +104,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
               Go to {t.label}
             </Item>
           ))}
-          {SETTINGS_SECTIONS.map((s) => (
+          {sections.map((s) => (
             <Item key={s.slug} value={`Settings: ${s.label}`} icon={Cog} onSelect={() => go(`/settings/${s.slug}`)}>
               Settings: {s.label}
             </Item>

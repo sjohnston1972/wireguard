@@ -8,13 +8,13 @@ import { expectBottomSheet } from "@/test/dialogs";
 import { routesFor } from "./testkit";
 
 describe("Settings on the phone", () => {
-  it("phone lists eight sections that open sheets", async () => {
+  it("phone lists nine sections that open sheets", async () => {
     setViewport("phone");
     const user = userEvent.setup();
     renderApp("/settings", { routes: routesFor() });
     const list = await screen.findByRole("list", { name: "Settings sections" });
     const names = within(list).getAllByRole("button").map((b) => b.querySelector(".set-phone-list__name")?.textContent);
-    expect(names).toEqual(["Overview", "Deployment", "Automation", "Security", "Backup & Recovery", "Mobile", "Labs", "Maintenance"]);
+    expect(names).toEqual(["Overview", "Deployment", "Automation", "Security", "Backup & Recovery", "Mobile", "Labs", "Maintenance", "Demo mode"]);
     // The section tab bar is a desktop thing.
     expect(screen.queryByRole("tab")).toBeNull();
 

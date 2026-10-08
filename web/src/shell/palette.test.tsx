@@ -41,7 +41,7 @@ describe("command palette", () => {
     renderApp("/");
     const dialog = await openPalette(user);
     for (const t of ["Overview", "Clients", "Firewall", "Activity", "Cost", "Settings"]) expect(within(dialog).getByRole("option", { name: `Go to ${t}` })).toBeInTheDocument();
-    for (const s of ["Overview", "Deployment", "Automation", "Security", "Backup & Recovery", "Mobile", "Maintenance"]) expect(within(dialog).getByRole("option", { name: `Settings: ${s}` })).toBeInTheDocument();
+    for (const s of ["Overview", "Deployment", "Automation", "Security", "Backup & Recovery", "Mobile", "Maintenance", "Demo mode"]) expect(within(dialog).getByRole("option", { name: `Settings: ${s}` })).toBeInTheDocument();
   });
 
   it("finds a client by name and goes to it with the keyboard", async () => {
