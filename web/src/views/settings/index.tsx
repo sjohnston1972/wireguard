@@ -6,7 +6,7 @@ import { Button, ErrorState, Modal, PageHeader, Sheet, Tabs, useIsPhone, type Ta
 import { useSettingsSections } from "@/shell/CommandPalette";
 import { EnvironmentField } from "@/shell/StateChip";
 import { useDemo } from "@/api/demo";
-import { ChevronRight, Clock, Cloud, Database, FlaskConical, Presentation, Settings as Cog, ShieldCheck, Smartphone, Sprout, Wrench, type LucideIcon } from "lucide-react";
+import { ChevronRight, Clock, Cloud, Database, Eye, FlaskConical, Monitor, Settings as Cog, ShieldCheck, Smartphone, Wrench, type LucideIcon } from "lucide-react";
 import { AutomationSection } from "./AutomationSection";
 import { BackupSection } from "./BackupSection";
 import { DeploymentSection } from "./DeploymentSection";
@@ -35,8 +35,8 @@ const ICONS: Record<string, LucideIcon> = {
   mobile: Smartphone,
   labs: FlaskConical,
   maintenance: Wrench,
-  demo: Presentation,
-  "dev-data": Sprout,
+  demo: Eye,
+  "dev-data": Monitor,
 };
 
 /** One line under each section's name on the phone's list. */
@@ -152,16 +152,34 @@ function Bare({ sections, section, phone }: { sections: Section[]; section: stri
         )}
       </>
     );
-  const items: TabItem[] = sections.map(({ slug, label }) => {
-    const Icon = ICONS[slug] ?? Cog;
-    return { value: slug, label, icon: <Icon size={16} aria-hidden /> };
-  });
   return (
     <>
-      <Tabs variant="pill" aria-label="Settings sections" className="set-tabs" items={items} value={section} onValueChange={(v) => v !== section && nav(`/settings/${v}`)} />
+      <SectionTabs sections={sections} current={section} />
       <div className="settings__body">{standaloneBody(section)}</div>
     </>
   );
+}
+
+/** The desktop's section tabs; a section with unsaved changes carries an amber dot (and says so to a screen reader). */
+function SectionTabs({ sections, current, dirty = () => false }: { sections: Section[]; current: string; dirty?: (slug: string) => boolean }) {
+  const nav = useNavigate();
+  const items: TabItem[] = sections.map(({ slug, label }) => {
+    const Icon = ICONS[slug] ?? Cog;
+    const d = dirty(slug);
+    return {
+      value: slug,
+      label,
+      dot: d ? "amber" : undefined,
+      icon: (
+        <>
+          <Icon size={16} aria-hidden />
+          {d && <span className="visually-hidden">Unsaved changes in</span>}
+          {d && " "}
+        </>
+      ),
+    };
+  });
+  return <Tabs variant="pill" aria-label="Settings sections" className="set-tabs" items={items} value={current} onValueChange={(v) => v !== current && nav(`/settings/${v}`)} />;
 }
 
 function HeaderStats({ s }: { s: SettingsResponse }) {
@@ -232,22 +250,6 @@ function Loaded({
     }
   };
 
-  const items: TabItem[] = sections.map(({ slug, label }) => {
-    const Icon = ICONS[slug] ?? Cog;
-    const dirty = edits.isDirty(slug);
-    return {
-      value: slug,
-      label,
-      dot: dirty ? "amber" : undefined,
-      icon: (
-        <>
-          <Icon size={16} aria-hidden />
-          {dirty && <span className="visually-hidden">Unsaved changes in</span>}{dirty && " "}
-        </>
-      ),
-    };
-  });
-
   const guard = (
     <Modal
       open={leaving}
@@ -290,7 +292,7 @@ function Loaded({
 
   return (
     <>
-      <Tabs variant="pill" aria-label="Settings sections" className="set-tabs" items={items} value={current} onValueChange={(v) => v !== current && nav(`/settings/${v}`)} />
+      <SectionTabs sections={sections} current={current} dirty={edits.isDirty} />
       <div className="settings__body">{body(current)}</div>
       {guard}
     </>

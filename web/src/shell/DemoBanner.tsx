@@ -5,7 +5,7 @@
 // button that always works (it needs nothing but the switch itself), even when
 // every other answer fails (demo mode spec §8.1).
 
-import { Presentation } from "lucide-react";
+import { Eye } from "lucide-react";
 import { Button } from "@/components/forms/Button";
 import { useToast } from "@/components/feedback/Toast";
 import { useDemo, useSetDemo } from "@/api/demo";
@@ -20,7 +20,7 @@ export function DemoBanner() {
   if (!demo.data?.on) return null;
   return (
     <div className="demo-banner" role="status" aria-label="Demo mode">
-      <Presentation className="demo-banner__icon" size={16} aria-hidden="true" />
+      <Eye className="demo-banner__icon" size={16} aria-hidden="true" />
       <span className="demo-banner__text">{DEMO_BANNER_WORDS}</span>
       <Button
         size="sm"
