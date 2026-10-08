@@ -1012,6 +1012,11 @@ async function insertSpeedTests(env: Env, rng: Rng, now: number, recent: boolean
  */
 export async function devSeed(c: Context<{ Bindings: Env }>): Promise<Response> {
   if (c.req.method !== "POST" || !devSeedAllowed(c.env, c.req.url)) return c.text("404 Not Found", 404);
+  // A third lock (demo mode spec ruling 20): a browser request sent by another site (any Sec-Fetch-Site but
+  // same-origin) is refused, so a web page open on this PC cannot wipe the developer's database. The seed script
+  // sends no such header and still works; the app's own Dev data section sends same-origin.
+  const site = c.req.header("Sec-Fetch-Site");
+  if (site !== undefined && site !== "same-origin") return c.text("Refused: the seeder only takes requests from wg-admin's own pages or the seed script.", 403);
   const name = c.req.query("scenario") ?? "";
   if (!(SCENARIOS as readonly string[]).includes(name)) return c.json({ ok: false, error: `scenario must be one of: ${SCENARIOS.join(", ")}`, scenarios: [...SCENARIOS] }, 400);
   const nowParam = c.req.query("now");
