@@ -22,6 +22,7 @@ import { registerHealthCheck } from "./healthcheck";
 import { registerPrefs } from "./prefs";
 import { registerAzure } from "./azure";
 import { registerLabs } from "./labs";
+import { registerDemo } from "./demo";
 
 export function buildApi(): Hono<ApiEnv> {
   const api = createApi();
@@ -43,6 +44,8 @@ export function buildApi(): Hono<ApiEnv> {
   registerPrefs(api);
   registerAzure(api);
   registerLabs(api);
+  // Demo mode's own switch (api/demo.ts). The gate (demo/gate.ts) lets these through in both modes.
+  registerDemo(api);
   api.all("*", (c) => fail(c, 404, "not_found", "No such API route."));
   return api;
 }
