@@ -230,7 +230,7 @@ describe("step 5: on", () => {
 
   it("GET /captures/<16 hex> is 404 'Not available in demo mode.', even when the real capture exists", async () => {
     const { env } = apiEnv();
-    await env.STATE.put("captures/0123456789abcdef.pcap.gz", new TextEncoder().encode("real pcap").buffer);
+    await env.STATE.put("captures/0123456789abcdef.pcap.gz", new TextEncoder().encode("real pcap").buffer as ArrayBuffer);
     await setDemo(env, "dev@localhost", true);
     const r = await front(env, "GET", "/captures/0123456789abcdef");
     expect(r.status).toBe(404);

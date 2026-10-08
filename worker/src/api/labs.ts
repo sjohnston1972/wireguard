@@ -23,7 +23,8 @@
 import type { Context, Hono } from "hono";
 import { body, fail, type ApiEnv } from "./app";
 import * as db from "../db";
-import { canDispatch } from "../env";
+import { canDispatch, type Env } from "../env";
+import { isDemoEnv } from "../demo/env";
 import { fixedConfig } from "../settings";
 import { getSnapshot } from "../state";
 import { REGIONS } from "../region";
@@ -33,7 +34,7 @@ import { directNet } from "../labs/net";
 import { cancelLab, cleanupLab, deployLab, destroyLab, extendLab, hhmm, peerLab, rePeerLabs, unpeerLab, type DeployInput } from "../labs/engine";
 import { activeRuns, liveSessionOf, runsOf, type LabSessionRow } from "../labs/store";
 import { labRunRow } from "../labs/view";
-import { cardContext, labCard, RAN_SQL, sessionView } from "../labs/cards";
+import { cardContext as realCardContext, labCard, RAN_SQL, sessionView } from "../labs/cards";
 import { labResources } from "../labs/resources";
 import { sessionCosts } from "../labs/cost";
 import { gbpHFrom, pricedItems } from "../labs/prices";
@@ -117,6 +118,15 @@ async function kvJson<T>(c: C, key: string, fallback: T): Promise<T> {
   }
 }
 
+/**
+ * The cards' context. In demo mode the cards never say "GitHub is not connected" (spec ruling 15): the demo has no
+ * secrets, so the server's own canDispatch stays false, and every action is refused by the gate before it gets here.
+ */
+async function cardContext(env: Env): ReturnType<typeof realCardContext> {
+  const ctx = await realCardContext(env);
+  return isDemoEnv(env) ? { ...ctx, avail: { ...ctx.avail, github: true } } : ctx;
+}
+
 export function registerLabs(api: Hono<ApiEnv>): void {
   api.get("/labs", async (c) => {
     const [ctx, stored, used] = await Promise.all([
@@ -133,7 +143,8 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       permissions: await kvJson(c, "labs:permissions", NO_PERMISSIONS),
       orphans: await kvJson<LabOrphan[]>(c, "labs:orphans", []),
       // The watchman's tear-down at the timer or hard stop dispatches the lab workflow (spec ruling 7).
-      autoCleanup: canDispatch(c.env),
+      // In demo mode it reads as set up (spec ruling 15); the server's own canDispatch stays false there.
+      autoCleanup: canDispatch(c.env) || isDemoEnv(c.env),
     };
     return c.json(out);
   });
