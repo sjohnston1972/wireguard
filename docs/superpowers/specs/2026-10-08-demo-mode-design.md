@@ -228,7 +228,8 @@ already tolerates)**.
 
 - `status()` → `{ refreshedAt, story, rowsToday, lastRows, dailyRows, nextRefreshAt, schemaOk }` (no seeding).
 - `ensureReady(nowIso)` → seeds when empty, schema stale or older than 12 h (ruling 9), budget permitting; returns status.
-  Throws `DemoBudget` when it must seed but cannot.
+  When it must seed but cannot, it answers `{ ok: false, code: "demo_busy", message, nextAt }` (as built, E8: a refusal is
+  a value, because an error's class does not survive Workers RPC; `DemoBudget` stays inside the object). `refresh` the same.
 - `refresh(nowIso)` → refused with `DemoBudget` (rule 8) or runs: inside `blockConcurrencyWhile` (no demo read sees a
   half-built store) and `demoScope.run`: `deleteAll()`, schema, `seedScenario(demoEnv, "everything", now, { actor:
   "demo@example.com" })`, meta (carrying `rowsToday` across the wipe). Returns status and the seed's counts.

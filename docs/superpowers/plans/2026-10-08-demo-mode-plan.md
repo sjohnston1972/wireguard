@@ -56,25 +56,77 @@ A brief). **(V)** marks a fact to check during the build; each area's report rec
   with the `rowsToday + 2 × lastRows` rule this allows about three refreshes a day at the harness figure, one or two if the
   live figure is 10–15k.
 
-## E names (to be confirmed as built, E8)
+## E names (as built, E8, 2026-10-08)
 
 Branches from E's head use these names exactly; a change goes through the integrator, who updates this section and the spec.
+Differences from the planned names are marked **(changed)** with the reason.
 
-**Shared:** `shared/demo.ts`: `DEMO_CONTROL: { method, path }[]`, `DEMO_READ_POSTS = ["/firewall/simulate"]`,
-`demoRouteKind(method, subPath) → "control" | "read" | "refuse"` (subPath is the path after `/api/v1`, query stripped),
-`DEMO_REFUSED_MESSAGE = "Demo mode is on: actions are off."`, `DEMO_DATA_HEADER = "X-WG-Data"`, `DEMO_STORY = "everything"`.
-`shared/api.ts`: `DemoStatusResponse`, `DemoSetBody` (spec §7).
-**Worker:** `worker/migrations/0022_demo_mode.sql`; `worker/src/demo/schema.gen.ts` (`DEMO_SCHEMA: { name, sql }[]`,
-`DEMO_SCHEMA_HASH`); `worker/src/demo/sql.ts` (`SqlLike`, `WriteMeter`, `d1Over`, `kvOver`, `r2Over`, `doStorageOver`);
-`worker/src/demo/env.ts` (`DEMO_MARK`, `isDemoEnv`, `DEMO_VARS`, `makeDemoEnv`); `worker/src/demo/guard.ts` (`demoScope`,
-`installDemoFetchGuard`, `DemoOutboundError`); `worker/src/demo/store.ts` (`DemoStore` RPC `status`, `ensureReady`, `refresh`,
-`serve`; `DEMO_DAILY_ROWS = 30_000`, `DEMO_MIN_INTERVAL_MS = 600_000`, `DEMO_STALE_MS = 43_200_000`, `DEMO_ACTOR =
-"demo@example.com"`; error class `DemoBudget { nextAt }`); `lock.ts lockFetch(storage, request, now)`; `devmarks.ts
-standInsAllowed(env)`; `devseed.ts seedScenario(env, scenario, now, { actor })`; `env.ts DEMO_STORE`.
-**Test harness:** `worker/test/harness.ts` gains `sqliteLike()` (node:sqlite `SqlLike`), `makeEnv` gains `DEMO_STORE` (an
-in-process `DemoStore`), `tripwire(name)` (a Proxy that throws on any access) and `fingerprint(env)` (every D1 table's rows,
-KV keys and values, R2 keys, the RunLock snapshot) for W's journey test.
-**Web fixtures:** `web/src/test/fixtures.ts` `demoStatusFixture(overrides)`.
+**Shared:** `shared/demo.ts`: `DEMO_CONTROL: readonly { method, path }[]` (`GET /demo`, `PUT /demo`, `POST /demo/refresh`),
+`DEMO_READ_POSTS = ["/firewall/simulate"]`, `demoRouteKind(method, subPath) → "control" | "read" | "refuse"` (subPath is
+the path after `/api/v1`; query and fragment ignored; method in any case; paths matched **exactly**: no trailing-slash,
+case or percent-decoding normalisation, so a near miss is refused, never promoted), `DEMO_REFUSED_MESSAGE = "Demo mode is
+on: actions are off."`, `DEMO_DATA_HEADER = "X-WG-Data"`, `DEMO_STORY = "everything"`, types `DemoDataSource = "real" |
+"demo"`, `DemoRouteKind`. `shared/api.ts`: `DemoStatusResponse`, `DemoSetBody` (spec §7), and **`DemoActionResponse`**
+(`DemoStatusResponse & { message }`, the PUT and refresh answer) **(added)**.
+**Route census (pinned by `worker/test/demo-shared.test.ts`):** 31 GET, **59** non-GET (42 POST, 10 PUT, 7 DELETE), demo
+control routes excluded; every GET is `read`, simulate is `read`, every other non-GET is `refuse`.
+**Worker:**
+- `worker/migrations/0022_demo_mode.sql`: `demo_mode (user TEXT PRIMARY KEY, since TEXT NOT NULL) WITHOUT ROWID`.
+- `scripts/demo-schema.mjs` (exports `readMigrations`, `schemaHash`, `schemaModule`; `--check`, `--migrations`, `--out`),
+  `npm run demo-schema`; first step of `deploySteps()`. Line endings are made LF before hashing (Windows CRLF = CI LF).
+- `worker/src/demo/schema.gen.ts`: `DEMO_SCHEMA: { name, sql }[]`, `DEMO_SCHEMA_HASH`.
+- `worker/src/demo/sql.ts`: `SqlLike` (`exec(query, ...bindings)` → `SqlCursorLike { toArray(), rowsWritten }`, ONE
+  statement per exec; **plus `transactionSync(fn)` (changed: the facade's `batch` needs it)**), `WriteMeter { rows,
+  add(n) }`, `splitSql(text)` (migrations run statement by statement; the store never relies on multi-statement exec),
+  `ensureFacadeTables(sql)` (`_demo_kv`, `_demo_r2`, `_demo_do`, `_demo_meta`), `d1Over(sql, meter)`, `kvOver(sql, meter)`,
+  `r2Over(sql, meter)` (`DEMO_R2_MAX_BYTES` = 1 MiB), `doStorageOver(sql, instance, meter)` **(changed: takes the instance
+  name)**, **`doNamespaceOver(sql, meter)` (added: the RUN_LOCK facade, running `lockFetch` per instance name, serialised)**.
+- `worker/src/demo/env.ts`: `DEMO_MARK` (a `unique symbol`), `isDemoEnv(env)`, `DEMO_VARS` (= wrangler `[vars]`, 24 keys,
+  pinned by test), `makeDemoEnv(vars, sql, meter)` (reads only the `DEMO_VARS` names from `vars`).
+- `worker/src/demo/guard.ts`: `demoScope` (`AsyncLocalStorage<true>`), `installDemoFetchGuard()` (idempotent; the guard
+  answers a rejected promise), `DemoOutboundError` (`target`), **`demoOutboundLog: string[]` and `demoFetchGuarded()`
+  (added, for W3's "no attempt at all" check)**.
+- `worker/src/demo/store.ts`: `class DemoStore extends DurableObject<Env>`, instance name **`DEMO_INSTANCE = "demo"`
+  (added)**. RPC: `status(nowIso?) → DemoStoreStatus` (`{ refreshedAt, story, rowsToday, lastRows, dailyRows,
+  nextRefreshAt, schemaOk }`, never seeds); `ensureReady(nowIso?) → DemoResult`; `refresh(nowIso?) → DemoResult`;
+  `serve(request, user) → Response` (`/api/v1/*` via `buildApi()` and `/health`, on the demo env, user = `user`; sets
+  `X-WG-Data: demo` and `Cache-Control: no-store`; 503 `demo_outdated` with `DEMO_OUTDATED_MESSAGE` when the store is
+  empty or out of date and cannot be seeded). **(changed) Refusals are values, not throws:** `DemoResult = { ok: true,
+  status, counts } | { ok: false, code: "demo_busy", message, nextAt, status }`, because an error's class does not survive
+  Workers RPC; `DemoBudget { nextAt }` exists but stays inside the object. Constants `DEMO_DAILY_ROWS = 30_000`,
+  `DEMO_MIN_INTERVAL_MS = 600_000`, `DEMO_STALE_MS = 43_200_000`, `DEMO_ACTOR = "demo@example.com"`. Budget as built: the
+  10-minute interval counts from the last **attempt** (a failed seed counts); the daily rule is `rowsToday + 2 × lastRows >
+  DEMO_DAILY_ROWS`, **except that the first refresh of a UTC day is always allowed** (otherwise a story over 15k rows
+  could never refresh again). Busy messages name London time: "Demo data was refreshed less than 10 minutes ago. Try again
+  at HH:MM." / "Demo data has used today's refresh allowance. Try again at HH:MM tomorrow." `ensureReady` on data that is
+  only old (schema fine) answers `ok: true` with the old data when the budget says wait. The wipe is
+  `ctx.storage.deleteAll()` then a drop of any table still listed (belt and braces).
+- `worker/src/lock.ts`: `lockFetch(storage, request, now)`, **`LockStorage` (added: the storage shape)**.
+- `worker/src/devmarks.ts`: `standInsAllowed(env)` (bypass exactly "1" or `isDemoEnv`); `devSeeded` uses it, so
+  `insights/read.ts insightsShown` and `backup.ts backupRoot` follow; `labs/topology.ts` uses it directly.
+- `worker/src/devseed.ts`: `seedScenario(env, scenario, now, { actor })`; the actor rides an `AsyncLocalStorage`
+  (`devseed-labs.ts`: `seedActor()`, `withSeedActor(actor, fn)`, `DEFAULT_SEED_ACTOR = "dev@localhost"`).
+- `worker/src/env.ts`: `DEMO_STORE: DurableObjectNamespace<DemoStore>` (typed RPC); `missingSecrets` answers `{}` in a
+  demo env.
+- **`worker/src/labs/topology.ts`: `topologyCacheKey(env, labId, sessionId)` = `real:` / `demo:` + `labId:sessionId`, used
+  for `cache`, `lastGood` and `inflight` (built in E at the launching session's request; W4 keeps only its test).**
+- `worker/src/index.ts`: `export { DemoStore } from "./demo/store"` only (W mounts the gate).
+- `wrangler.toml`: `[[durable_objects.bindings]] DEMO_STORE / DemoStore`; `[[migrations]] tag = "v2" new_sqlite_classes =
+  ["DemoStore"]`; no `limits.cpu_ms` (Workers Paid).
+
+**How W calls the store:** `const stub = env.DEMO_STORE.get(env.DEMO_STORE.idFromName(DEMO_INSTANCE))`; reads:
+`await stub.serve(c.req.raw, user)` (already marked demo; wrap any exception as 503 `demo_unavailable`); enable:
+`const r = await stub.ensureReady(new Date().toISOString())`, `r.ok` or 409 `demo_busy` with `r.message` / `r.nextAt`;
+refresh: `stub.refresh(...)` likewise; `GET /demo`: `stub.status()`. `GET /health` for a demo person: forward the request
+to `serve` unchanged (path `/health`).
+**Test harness:** `worker/test/harness.ts`: `sqliteLike(db?)` (node:sqlite `SqlLike`, one statement per exec, ArrayBuffer
+blobs, `rowsWritten` from SQLite's change count); `makeEnv` gains `DEMO_STORE` (in-process `DemoStore` per name, with an
+input gate: a call waits while another call's `blockConcurrencyWhile` holds the store); `demoInstance(env) → { store,
+state }`; `fakeDemoState()` (`{ sql, ctx, writes, gate }`); `tripwire(name)` (a Proxy that records into the exported
+`tripped[]` and throws on any access); `fingerprint(env) → { d1, kv, r2, locks }` (every D1 table's rows sorted, every KV
+key and value, every R2 key, every RunLock instance's whole storage).
+**Web fixtures:** `web/src/test/fixtures.ts` `demoStatusFixture(overrides)` (off, `refreshedAt: null`, `rowsToday: 0`,
+`dailyRows: 30_000`, `nextRefreshAt: null`, `devSeed: null`).
 
 ## Global Constraints
 
@@ -186,7 +238,7 @@ code cannot reach a real binding, one shared route classification, and a contrac
   pluggable `get`). Implement `demo/guard.ts`, `demo/store.ts` (`installDemoFetchGuard()` at module load), harness
   `DEMO_STORE`, `tripwire`, `fingerprint`; export `DemoStore` from `index.ts` (export only; W mounts the gate).
   **Done when** the test file and `worker/test/devseed-everything.test.ts` pass.
-- [ ] **E8 Contract and gate.** `web/src/test/fixtures.ts demoStatusFixture`; update the names section as built. Run the area
+- [x] **E8 Contract and gate.** `web/src/test/fixtures.ts demoStatusFixture`; update the names section as built. Run the area
   gate. **Done when** the gate passes and the head is pushed (W and U branch from it).
 
 ## W: Worker routing, refusals, proofs (after E8)
