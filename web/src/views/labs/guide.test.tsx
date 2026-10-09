@@ -19,7 +19,7 @@ const ID = "az104-06-blob-security";
 const DETAIL = `GET /api/v1/labs/${ID}`;
 const PDF = `GET /api/v1/labs/${ID}/guide.pdf`;
 const pdfReply = () =>
-  new Response(new Blob(["%PDF-1.7 fake"], { type: "application/pdf" }), {
+  new Response("%PDF-1.7 fake", {
     status: 200,
     headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${ID} guide.pdf"` },
   });
