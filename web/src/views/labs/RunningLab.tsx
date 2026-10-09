@@ -9,6 +9,7 @@ import { useRunData } from "@/views/activity/useRunData";
 import { LIVE_LOG_WAITING } from "@/lib/parseLog";
 import { fmtClock, fmtSpan, peeringWord, useLabClock } from "./model";
 import { ReadmeView } from "./ReadmeView";
+import { LabGuideButton } from "./LabGuideButton";
 import { CostSoFar, SessionActions, TimeLeft, Word } from "./RunningStrip";
 
 const NOTE_MAX = 2000; // shared/labs.ts LAB_NOTE_MAX
@@ -265,7 +266,16 @@ export function LabReadmeTabs({ d }: { d: LabDetail }) {
       value={view}
       onValueChange={onChange}
       items={[
-        { value: "readme", label: "Readme", content: <ReadmeView blocks={d.readme} /> },
+        {
+          value: "readme",
+          label: "Readme",
+          content: (
+            <>
+              <LabGuideButton labId={d.card.id} className="lab-guide--readme" />
+              <ReadmeView blocks={d.readme} />
+            </>
+          ),
+        },
         {
           value: "diagram",
           label: "Diagram",

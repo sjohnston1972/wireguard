@@ -56,6 +56,7 @@ export const TABLE: Record<string, (ids: Ids) => string[]> = {
   "/labs/:id": (i) => [`/labs/${i.lab}`, `/labs/${i.idleLab}`],
   "/labs/:id/topology": (i) => [`/labs/${i.lab}/topology`, `/labs/${i.idleLab}/topology`],
   "/labs/:id/secret": (i) => [`/labs/${i.lab}/secret`, `/labs/${i.idleLab}/secret`],
+  "/labs/:id/guide.pdf": (i) => [`/labs/${i.lab}/guide.pdf`, `/labs/${i.idleLab}/guide.pdf`],
 };
 
 /** Every GET pattern registered on buildApi(), demo's own switch aside. */

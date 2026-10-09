@@ -2,7 +2,7 @@ import type { ApiError as ApiErrorBody } from "@shared/api";
 import { ApiError, NetworkError, SessionExpiredError } from "./client";
 import { connection } from "./connection";
 
-// File downloads (the backup export and the nightly config backups). These are
+// File downloads (the backup export, the nightly config backups and the lab guide PDFs). These are
 // real files saved by the browser, so they do not go through apiGet (which
 // parses JSON): the answer is fetched as a blob and handed to a temporary
 // <a download>. An expired sign-in is still caught: Access answers with a
@@ -87,6 +87,9 @@ export function downloadText(name: string, text: string): void {
 
 /** Everything the dashboard keeps, as one JSON file (GET /backup/export). */
 export const downloadExport = () => downloadFile("/backup/export", "wg-admin-export.json");
+
+/** A lab's printable guide, "<lab id> guide.pdf" (GET /labs/:id/guide.pdf; the first one of a version is made on the spot). */
+export const downloadLabGuide = (id: string) => downloadFile(`/labs/${encodeURIComponent(id)}/guide.pdf`, `${id} guide.pdf`);
 
 /** One nightly config backup by day, "YYYY-MM-DD" (GET /backup/config/:day). */
 export const downloadConfigBackup = (day: string) => downloadFile(`/backup/config/${encodeURIComponent(day)}`, `wg-admin-config-${day}.json`);

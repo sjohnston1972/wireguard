@@ -5,7 +5,7 @@
 // "control" call (the demo switch itself), a "read" (served from the demo
 // store) or "refuse" (an action: 409 while demo mode is on). Reads are by
 // method; everything not named is refused, so a new write route is refused by
-// default. The route census below pins today's API: 31 GETs and 54 others,
+// default. The route census below pins today's API: 32 GETs and 54 others,
 // each classified as the spec says.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -87,14 +87,14 @@ function apiRoutes(): { method: string; path: string }[] {
 const concrete = (pattern: string) => pattern.replace(/:[A-Za-z_]+(\{[^}]*\})?/g, "1");
 
 describe("the route census (spec ruling 4)", () => {
-  it("has 31 GET routes and 59 others (42 POST, 10 PUT, 7 DELETE; the plan's 54 counted api/labs.ts's loop of six as one), not counting demo mode's own control routes", () => {
+  it("has 32 GET routes and 59 others (42 POST, 10 PUT, 7 DELETE; the plan's 54 counted api/labs.ts's loop of six as one), not counting demo mode's own control routes", () => {
     const routes = apiRoutes().filter((r) => r.path !== "/demo" && !r.path.startsWith("/demo/"));
     const by = (m: string) => routes.filter((r) => r.method === m).length;
-    expect(by("GET")).toBe(31);
+    expect(by("GET")).toBe(32);
     expect(by("POST")).toBe(42);
     expect(by("PUT")).toBe(10);
     expect(by("DELETE")).toBe(7);
-    expect(routes.length).toBe(90);
+    expect(routes.length).toBe(91);
   });
 
   it("every GET is a read except GET /demo (control, once registered); every other method is refused except simulate", () => {

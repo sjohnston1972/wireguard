@@ -431,10 +431,11 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
   env.DEMO_STORE = fakeDemoNamespace(env);
   const objects = new Map<string, ArrayBuffer>();
   const uploaded = new Map<string, Date>();
+  const metas = new Map<string, Record<string, string>>();
   env.STATE = {
-    async put(k: string, v: ArrayBuffer) { objects.set(k, v); uploaded.set(k, new Date()); },
-    async get(k: string) { const v = objects.get(k); return v ? { body: v, arrayBuffer: async () => v, text: async () => (typeof v === "string" ? v : new TextDecoder().decode(v)) } : null; },
-    async delete(k: string | string[]) { for (const x of ([] as string[]).concat(k)) { objects.delete(x); uploaded.delete(x); } },
+    async put(k: string, v: ArrayBuffer, o?: { customMetadata?: Record<string, string> }) { objects.set(k, v); uploaded.set(k, new Date()); metas.set(k, o?.customMetadata ?? {}); },
+    async get(k: string) { const v = objects.get(k); return v ? { body: v, uploaded: uploaded.get(k), customMetadata: metas.get(k) ?? {}, arrayBuffer: async () => v, text: async () => (typeof v === "string" ? v : new TextDecoder().decode(v)) } : null; },
+    async delete(k: string | string[]) { for (const x of ([] as string[]).concat(k)) { objects.delete(x); uploaded.delete(x); metas.delete(x); } },
     async list({ prefix = "" }: { prefix?: string } = {}) {
       return { objects: [...objects.keys()].filter((k) => k.startsWith(prefix)).sort().map((key) => ({ key, uploaded: uploaded.get(key)! })), truncated: false };
     },

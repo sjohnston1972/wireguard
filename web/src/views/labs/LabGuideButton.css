@@ -1,0 +1,10 @@
+/* "Download PDF" (LabGuideButton.tsx): the button, a status line for screen readers while the PDF is made,
+   and an actionable error under it. Tokens only. */
+
+.lab-guide { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.lab-guide__status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.lab-guide__error { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--red); overflow-wrap: anywhere; }
+
+/* In the dialog's Readme tab: above the readme, at its right edge. */
+.lab-guide--readme { align-items: flex-end; margin: 0 0 8px; }
+.lab-guide--readme .lab-guide__error { text-align: right; }

@@ -22,6 +22,11 @@ export interface Env {
   DEMO_STORE: DurableObjectNamespace<DemoStore>;
   /** The built app (web/dist), for the /assets/* guard (assetguard.ts). Absent in tests. */
   ASSETS?: Fetcher;
+  /**
+   * Cloudflare Browser Rendering (wrangler.toml [browser]), for the lab guide PDFs (labs/guidepdf.ts). Absent in tests and
+   * in a demo environment; the guide route then answers 503 (or, in demo mode, 409) rather than trying anything else.
+   */
+  BROWSER?: Fetcher;
 
   // Plain settings ([vars])
   PUBLIC_URL: string;

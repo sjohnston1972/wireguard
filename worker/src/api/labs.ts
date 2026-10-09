@@ -40,6 +40,7 @@ import { sessionCosts } from "../labs/cost";
 import { gbpHFrom, pricedItems } from "../labs/prices";
 import { labWarnings } from "../labs/warnings";
 import { labTopology } from "../labs/topology";
+import { GuideError, guideFileName, labGuidePdf } from "../labs/guidepdf";
 import {
   LAB_EXAMS,
   LAB_HOURS_MAX,
@@ -104,6 +105,9 @@ const CLEANUP: Record<string, Field> = { lab_id: { check: (v) => typeof v === "s
 const NOTHING: Record<string, Field> = {};
 
 const isLabId = (v: string) => v.length <= LAB_ID_MAX && LAB_ID_RE.test(v);
+
+/** GET /labs/:id/guide.pdf in demo mode (409 not_in_demo). */
+export const GUIDE_DEMO_MESSAGE = "Lab guide PDFs are not available in demo mode. Turn demo mode off to download one.";
 
 // ── Shapes ───────────────────────────────────────────────────────────────
 
@@ -260,6 +264,43 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     const def = labDef(c.req.param("id"));
     if (!def) return notFound(c);
     return c.json(await labTopology(c.env, def.id));
+  });
+
+  // The lab's guide as a PDF (labs/guidepdf.ts): catalogue words only, made once per version and content, then from R2.
+  // Demo mode: refused (409). The demo environment has no BROWSER and only the demo store's look-alike R2, and the real
+  // bucket is never reached from it (demo mode spec ruling 3); the app greys the button out there.
+  api.get("/labs/:id/guide.pdf", async (c) => {
+    const def = labDef(c.req.param("id"));
+    if (!def) return notFound(c);
+    if (isDemoEnv(c.env)) return fail(c, 409, "not_in_demo", GUIDE_DEMO_MESSAGE);
+    let waitUntil: ((p: Promise<unknown>) => void) | undefined;
+    try {
+      const ctx = c.executionCtx;
+      waitUntil = (p) => ctx.waitUntil(p);
+    } catch {
+      waitUntil = undefined;
+    }
+    try {
+      const pdf = await labGuidePdf(c.env, def, { waitUntil });
+      const name = guideFileName(def.id);
+      return new Response(pdf.bytes, {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+          "Content-Length": String(pdf.bytes.byteLength),
+          // The signed-in person's browser only; never a shared cache.
+          "Cache-Control": "private, max-age=300",
+          "X-Content-Type-Options": "nosniff",
+          "X-WG-Guide": pdf.cached ? "cached" : "made",
+        },
+      });
+    } catch (e) {
+      if (!(e instanceof GuideError)) throw e;
+      const res = fail(c, e.status, e.code, e.message);
+      res.headers.set("Cache-Control", "no-store");
+      if (e.retryAfter !== null) res.headers.set("Retry-After", String(e.retryAfter));
+      return res;
+    }
   });
 
   // The admin password and lab user names: only while the session is running, fetched on Show, never cached.

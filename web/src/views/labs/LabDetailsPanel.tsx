@@ -7,8 +7,8 @@
 // primary action, the objective and what you will learn, the resources it
 // deploys, learning time, deploy time, cost and session length (each labelled
 // as such), the destination region and deploy warnings (GET /labs/:id),
-// prerequisites (recommended, never blocking), history, and what happens when
-// the session ends. The lab's dialog (/labs/:id) stays the full details: the
+// prerequisites (recommended, never blocking), history, the lab guide as a
+// PDF ("Download PDF"), and what happens when the session ends. The lab's dialog (/labs/:id) stays the full details: the
 // readme, the diagram, the Deploy confirmation and the running controls.
 // Selecting a lab never deploys anything.
 
@@ -20,6 +20,7 @@ import { Button, Drawer, Skeleton } from "@/components";
 import { useLab } from "@/api/queries";
 import { regionLabel } from "@/shell/StateChip";
 import type { DetailsProps, LabView } from "./contract";
+import { LabGuideButton } from "./LabGuideButton";
 import { LabLaunchAction, focusCard } from "./LabLaunchAction";
 import { LabPrerequisites } from "./LabPrerequisites";
 import { LabResourceSummary } from "./LabResourceSummary";
@@ -138,6 +139,7 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
   const q = useLab(c.id);
   const learnId = useId();
   const cleanupId = useId();
+  const guideId = useId();
   const region = c.running ? c.running.region : q.data ? q.data.defaults.region : null;
   const destination = region ? regionWords(region) : q.isError ? null : <Skeleton width={80} />;
   const autoCleanup = data?.autoCleanup ?? false;
@@ -197,6 +199,14 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
         <Fact label="Release test">{c.released ? `Passed v${c.version}` : `Untested v${c.version}`}</Fact>
         <Fact label="History">{historyWords(c)}</Fact>
       </dl>
+
+      <section className="lab-details__section" aria-labelledby={guideId}>
+        <h3 className="lab-details__h" id={guideId}>
+          Lab guide
+        </h3>
+        <p className="lab-details__text lab-details__small">The readme, diagrams and Learn links as a PDF, to keep open while you work.</p>
+        <LabGuideButton labId={c.id} />
+      </section>
 
       <Checks q={q} card={c} />
 
