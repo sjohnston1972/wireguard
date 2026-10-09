@@ -1,11 +1,11 @@
 // views/labs/topology/viewport.ts
 //
 // Plain English: where the diagram's view starts (lab topology spec §9.2).
-// The layout is packed for the shape of the space it is shown in (the tab,
-// the full screen, the hover), so the first view usually fits all of it.
-// When it cannot without shrinking the cards below a readable size (the tab:
-// 70%; the full screen and the phone: 60%), the view stops at that zoom and
-// starts at the top-left of the picture (the gateway, the Global lane and the
+// Every placement (the tab, the full screen, the pop-out, the hover) draws the
+// same layout (layout.ts LAYOUT_ASPECT); only this view differs: fitted to its
+// own space, zoomed in to fill up to FIT_MAX_ZOOM. When it cannot fit
+// without shrinking the cards below a readable size (the tab: 70%; the full
+// screen and the phone: 60%), the view stops at that zoom and starts at the top-left of the picture (the gateway, the Global lane and the
 // first resource group), clear of the panels, rather than in the middle of a
 // wide picture; the rest is a pan away, and the full screen's fit button
 // shows everything. Pure: bounds and size in, a React Flow viewport out.

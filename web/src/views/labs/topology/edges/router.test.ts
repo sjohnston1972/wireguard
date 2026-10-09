@@ -14,15 +14,13 @@ import { edgeLabelText, routeAll, type RouterBox, type RoutedEdge } from "./rout
 const PLANNED = import.meta.glob<TopologyGraph>("../../../../../../shared/topology/planned/*.json", { eager: true, import: "default" });
 const planned = (id: string) => stackGraph(Object.entries(PLANNED).find(([k]) => k.endsWith(`/${id}.json`))![1]).graph;
 
-/** The canvas spaces: full screen at 2000 × 1030 and the lab dialog's Diagram tab at 1600 × 900 (less the panel row). */
-const FULL = { w: 1934, h: 746 };
-const TAB = { w: 905, h: 500 };
 const LABS = ["az104-16-lb-appgw", "az700-40-lb-advanced", "az700-36-s2s-vpn", "az700-39-vwan-secured-hub", "az305-28-three-tier", "az104-14-peering-udr"];
 
-function routed(id: string, space: { w: number; h: number }) {
+/** Every placement (tab, full screen, pop-out, mini) draws the same layout, so each lab is routed once. */
+function routed(id: string) {
   const graph = planned(id);
   const byId = nodeIndex(graph);
-  const laid = layoutTopology(graph, null, { space, maxZoom: 1.75 });
+  const laid = layoutTopology(graph, null);
   const abs = absoluteBoxes(laid);
   const boxes: RouterBox[] = laid.nodes.map((l) => {
     const n = byId.get(l.id)!;
@@ -63,12 +61,9 @@ const overlap = (p: Box, q: Box) => p.x < q.x + q.w && q.x < p.x + p.w && p.y < 
 
 describe("routeAll on real labs", () => {
   for (const id of LABS)
-    for (const [name, space] of [
-      ["full screen", FULL],
-      ["tab", TAB],
-    ] as const) {
+    for (const name of ["every view"] as const) {
       it(`${id} (${name}): every edge is routed, orthogonal, and no two edges share a stretch of line`, () => {
-        const { edges, routes } = routed(id, space);
+        const { edges, routes } = routed(id);
         for (const e of edges) {
           const r = routes.get(e.id);
           expect(r, e.id).toBeDefined();
@@ -82,13 +77,13 @@ describe("routeAll on real labs", () => {
       });
 
       it(`${id} (${name}): no edge passes through a card (its own cards included: it starts and ends on their borders)`, () => {
-        const { boxes, edges, routes } = routed(id, space);
+        const { boxes, edges, routes } = routed(id);
         const cards = boxes.filter((b) => !b.group);
         for (const e of edges) for (const s of segs(routes.get(e.id)!)) for (const c of cards) expect(through(s, c), `${e.id} through ${c.id}`).toBe(false);
       });
 
       it(`${id} (${name}): each label sits on its own line, clear of every card, header and other label`, () => {
-        const { boxes, edges, routes } = routed(id, space);
+        const { boxes, edges, routes } = routed(id);
         const cards = boxes.filter((b) => !b.group);
         const heads = boxes.filter((b) => b.group).map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.head }));
         const labels: { id: string; box: Box }[] = [];
@@ -112,7 +107,7 @@ describe("routeAll on real labs", () => {
     }
 
   it("lab 16: each card side gives every edge its own port (the two lines from lbi-web leave at different points)", () => {
-    const { graph, routes } = routed("az104-16-lb-appgw", FULL);
+    const { graph, routes } = routed("az104-16-lb-appgw");
     const from = (label: string) => graph.edges.filter((e) => graph.nodes.find((n) => n.id === e.from)!.label === label).map((e) => routes.get(e.id)!.points[0]!);
     for (const who of ["lbi-web", "agw-web"]) {
       const starts = from(who);
@@ -122,13 +117,13 @@ describe("routeAll on real labs", () => {
   });
 
   it("is deterministic: the same boxes and edges, in any order, route the same", () => {
-    const { boxes, edges, routes } = routed("az700-40-lb-advanced", FULL);
+    const { boxes, edges, routes } = routed("az700-40-lb-advanced");
     const again = routeAll({ boxes: [...boxes].reverse(), edges: [...edges].reverse() });
     for (const e of edges) expect(again.get(e.id)).toEqual(routes.get(e.id));
   });
 
   it("edges between containers (peerings) are routed too, from the containers' borders", () => {
-    const { graph, boxes, routes } = routed("az104-14-peering-udr", FULL);
+    const { graph, boxes, routes } = routed("az104-14-peering-udr");
     const peering = graph.edges.find((e) => /peering/i.test(e.label ?? ""))!;
     const r = routes.get(peering.id)!;
     const src = boxes.find((b) => b.id === peering.from)!;

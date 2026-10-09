@@ -74,16 +74,15 @@ describe("the 300 limit", () => {
     while (nodes.length < LIST_VIEW_AT) nodes.push(n(`x${nodes.length}`, "storage", "rg"));
     expect(nodes).toHaveLength(LIST_VIEW_AT);
     const graph = g(nodes);
-    layoutTopology(graph, null); // warm up the JIT
+    layoutTopology(graph, null, { aspect: null }); // warm up the JIT
     const t0 = performance.now();
-    const r = layoutTopology(graph, null);
+    const r = layoutTopology(graph, null, { aspect: null });
     expect(performance.now() - t0).toBeLessThan(50);
     expect(r.nodes).toHaveLength(LIST_VIEW_AT);
-    // Packed for a screen's shape (several packings tried): still quick.
-    const space = { w: 1535, h: 616 };
-    layoutTopology(graph, null, { space });
+    // The canonical packing every view draws (several packings tried): still quick.
+    layoutTopology(graph, null);
     const t1 = performance.now();
-    expect(layoutTopology(graph, null, { space }).nodes).toHaveLength(LIST_VIEW_AT);
+    expect(layoutTopology(graph, null).nodes).toHaveLength(LIST_VIEW_AT);
     expect(performance.now() - t1).toBeLessThan(250);
   });
 });
