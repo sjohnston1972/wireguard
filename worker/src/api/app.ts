@@ -16,7 +16,7 @@ import { RunError } from "../runs";
 import type { ApiError } from "../../../shared/api";
 
 export type ApiEnv = { Bindings: Env; Variables: AuthedVars };
-type Status = 400 | 401 | 403 | 404 | 409 | 422 | 500 | 501 | 502 | 503;
+type Status = 400 | 401 | 403 | 404 | 409 | 422 | 500 | 501 | 502 | 503 | 504;
 
 /** The status for a RunError's code. */
 export function statusFor(code: string): 400 | 404 | 409 | 422 | 502 {
@@ -59,7 +59,8 @@ export function createApi(): Hono<ApiEnv> {
   const api = new Hono<ApiEnv>();
   api.use("*", async (c, next) => {
     await next();
-    c.res.headers.set("Cache-Control", "no-store");
+    // Never cached, except a file a route marks private (a lab guide PDF: the same bytes for a version, the browser's own cache only).
+    if (!/^private\b/.test(c.res.headers.get("Cache-Control") ?? "")) c.res.headers.set("Cache-Control", "no-store");
   });
   api.onError((err, c) => {
     if (err instanceof RunError) return fail(c, statusFor(err.code), err.code, err.message);

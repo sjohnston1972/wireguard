@@ -42,7 +42,7 @@ afterEach(() => {
 describe("the route table", () => {
   it("names every registered GET route (a new GET must be added here, and pass the no-outbound check)", () => {
     const gets = registeredGets();
-    expect(gets).toHaveLength(31);
+    expect(gets).toHaveLength(32);
     expect(gets.filter((p) => !(p in TABLE))).toEqual([]);
     expect(Object.keys(TABLE).filter((p) => !gets.includes(p))).toEqual([]);
   });

@@ -48,6 +48,7 @@ web/node_modules/
 # Labs: the catalogue npm run labs-build writes (the Worker bundles it), and
 # the setup files npm run labs-setup fills with the subscription id.
 shared/labs.generated.json
+shared/guides.generated.json
 labs/setup/*.local.*
 
 # Bicep labs: lab.yml and labs-tf build x.json from x.bicep with the pinned

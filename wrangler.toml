@@ -70,6 +70,11 @@ new_sqlite_classes = ["RunLock"]
 tag = "v2"
 new_sqlite_classes = ["DemoStore"]
 
+# Cloudflare Browser Rendering (Workers Paid): prints each lab's "Download PDF"
+# guide (worker/src/labs/guidepdf.ts), kept in STATE under lab-guides/.
+[browser]
+binding = "BROWSER"
+
 # ── Non-secret settings ──────────────────────────────────────────────────────
 
 [vars]
