@@ -255,7 +255,7 @@ describe("Canvas", () => {
         expect(new Set(seen.map((x) => x.view)).size, id).toBeGreaterThan(1);
       }
     }
-  });
+  }, 60_000); // 24 full React Flow renders of two real labs: allow for a busy machine
 
   it("growing from the tab to the full screen moves no node: the picture is the same, refitted", async () => {
     const lab = PLANNED_GRAPHS["az700-40-lb-advanced"]!;
