@@ -1,9 +1,12 @@
 import { ExternalLink } from "lucide-react";
 import type { ReadmeBlock, ReadmeInline } from "@shared/labs";
+import { ReadmeDiagram } from "./ReadmeDiagram";
 
 // A lab's readme, from the blocks labs-build parsed (plan ruling 2). Every
 // piece is a React element with text children: no HTML string is ever
-// injected, so "<img ...>" in a readme is shown as those characters.
+// injected, so "<img ...>" in a readme is shown as those characters. A
+// hand-drawn ```text sketch arrives as its diagrams (block "diagram":
+// ReadmeDiagram, an <img> of a committed SVG from shared/guides).
 
 const safeHref = (href: string): string | null => {
   try {
@@ -71,6 +74,8 @@ function Block({ b }: { b: ReadmeBlock }) {
           <code>{b.text}</code>
         </pre>
       );
+    case "diagram":
+      return <ReadmeDiagram b={b} />;
     case "details":
       // Collapsed until the reader opens it (break-fix "What was broken"); never opened by a refresh.
       return (

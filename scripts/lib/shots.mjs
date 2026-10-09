@@ -138,6 +138,7 @@ export function parseArgs(argv) {
     now: null,
     widgetChrome: "on",
     prefs: [],
+    scrollTo: null,
   };
   const need = (i, flag) => {
     if (i + 1 >= argv.length) throw new Error(`${flag} needs a value`);
@@ -204,6 +205,9 @@ export function parseArgs(argv) {
       case "--prefs":
         o.prefs = split(need(i++, a));
         break;
+      case "--scroll-to":
+        o.scrollTo = need(i++, a);
+        break;
       default:
         throw new Error(`Unknown option ${a}`);
     }
@@ -264,6 +268,22 @@ export function freezeTimeScript(iso) {
 
 /** The style --widget-chrome off adds: every cog, move handle and widget menu is gone, as if never built. */
 export const WIDGET_CHROME_OFF_CSS = "[data-widget-chrome] { display: none !important; }";
+
+/**
+ * An expression (for Runtime.evaluate, awaited) that scrolls the first element matching `selector` to the top of
+ * its scrolling box and waits for the pictures on the page to load (lazy ones load once scrolled to). True when
+ * the element was found.
+ */
+export function scrollToScript(selector) {
+  return `(async () => {
+  const el = document.querySelector(${JSON.stringify(selector)});
+  if (!el) return false;
+  el.scrollIntoView({ block: "start" });
+  await new Promise((r) => setTimeout(r, 300));
+  await Promise.all([...document.images].filter((i) => !i.complete).map((i) => new Promise((r) => { i.addEventListener("load", r, { once: true }); i.addEventListener("error", r, { once: true }); setTimeout(r, 3000); })));
+  return true;
+})()`;
+}
 
 /** A script for every new page that adds WIDGET_CHROME_OFF_CSS as early as the page allows. */
 export function widgetChromeOffScript() {

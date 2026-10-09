@@ -350,3 +350,14 @@ test("the seed script offers the Worker's scenarios, insights and labs included"
   assert.ok(SCENARIOS.includes("insights"));
   assert.ok(SCENARIOS.includes("labs"));
 });
+
+test("--scroll-to: the selector is kept, and the script scrolls to it and waits for its pictures", async () => {
+  const { scrollToScript } = await import("../lib/shots.mjs");
+  assert.equal(parseArgs([]).scrollTo, null);
+  assert.equal(parseArgs(["--scroll-to", ".labs-diagram"]).scrollTo, ".labs-diagram");
+  assert.throws(() => parseArgs(["--scroll-to"]), /--scroll-to needs a value/);
+  const js = scrollToScript('a[title="x"]');
+  assert.match(js, /document\.querySelector\("a\[title=\\"x\\"\]"\)/);
+  assert.match(js, /scrollIntoView/);
+  assert.match(js, /document\.images/);
+});

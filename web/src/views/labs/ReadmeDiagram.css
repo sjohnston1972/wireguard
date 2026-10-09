@@ -1,0 +1,159 @@
+/* A readme diagram (ReadmeDiagram.tsx): the drawing is made for paper, so it sits on a white card in both themes. */
+.labs-diagram {
+  margin: 4px 0 14px;
+  min-width: 0;
+}
+.labs-diagram__open {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: #ffffff;
+  cursor: zoom-in;
+  font: inherit;
+}
+.labs-diagram__open:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.labs-diagram__img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+/* A small concept diagram keeps its own size; it is never blown up past it. */
+.labs-diagram--concept .labs-diagram__img {
+  max-height: 520px;
+  width: auto;
+}
+.labs-diagram__hint {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid #c3cddb;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #44546a;
+  font-size: 11.5px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.labs-diagram__open:hover .labs-diagram__hint,
+.labs-diagram__open:focus-visible .labs-diagram__hint {
+  opacity: 1;
+}
+@media (hover: none) {
+  .labs-diagram__hint { opacity: 1; }
+}
+.labs-diagram__caption {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+/* The viewer: over the lab's dialog (z 70/71), nearly the whole window. */
+.labs-lightbox__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(2, 8, 16, 0.72);
+}
+.labs-lightbox {
+  position: fixed;
+  z-index: 81;
+  inset: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--bg-panel);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+.labs-lightbox__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 18px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.labs-lightbox__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.labs-lightbox__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.labs-lightbox__close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.labs-lightbox__button:focus-visible,
+.labs-lightbox__close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.labs-lightbox__close:hover { background: var(--bg-tile); color: var(--text-primary); }
+.labs-lightbox__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: #ffffff;
+}
+/* Fitted: as large as the window allows, larger or smaller than its own size. */
+.labs-lightbox__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: zoom-in;
+}
+/* Actual size: the drawing at its own pixels, scrolling both ways from its top-left. */
+.labs-lightbox__body--full {
+  display: block;
+}
+.labs-lightbox__body--full .labs-lightbox__img {
+  width: auto;
+  height: auto;
+  max-width: none;
+  object-fit: none;
+  margin: 0 auto;
+  cursor: zoom-out;
+}

@@ -74,7 +74,8 @@ export interface SkillArea {
 // ── Readmes, parsed at build time (plan ruling 2) ────────────────────────
 // The app draws these as React elements: no HTML is ever injected. Only
 // headings, paragraphs, bullets, fenced code, links (https only), bold, inline
-// code and <details> exist; anything else is refused by labs-build.
+// code and <details> exist; anything else is refused by labs-build. A ```text
+// sketch becomes its diagrams (block "diagram", from shared/guides/index.json).
 
 export type ReadmeInline = { t: "text"; text: string } | { t: "b"; text: string } | { t: "code"; text: string } | { t: "a"; text: string; href: string };
 
@@ -84,7 +85,37 @@ export type ReadmeBlock =
   | { t: "ul"; items: ReadmeInline[][] }
   | { t: "code"; lang: string | null; text: string }
   /** Collapsed unless the reader opens it (break-fix "What was broken" is always authored closed). */
-  | { t: "details"; summary: string; blocks: ReadmeBlock[] };
+  | { t: "details"; summary: string; blocks: ReadmeBlock[] }
+  /** A diagram in place of a hand-drawn ```text sketch (shared/guides/index.json): a GuideEntry without its position. */
+  | { t: "diagram"; kind: GuideKind; file: string; title: string; alt: string; width: number; height: number };
+
+// ── Readme diagrams (shared/guides, npm run labs-diagrams) ──────────────
+// Committed SVGs: shared/guides/<id>/architecture.svg, drawn from the lab's
+// planned topology with the interactive diagram's layout and routing, and
+// shared/guides/<id>/<n>.svg, Mermaid concept diagrams (sources in
+// labs/_diagrams/<id>/<n>.mmd). shared/guides/index.json maps each lab id to
+// its diagrams in readme order; each replaces the ```text sketch numbered
+// `sketch` (0 = the readme's first), several in list order.
+
+export type GuideKind = "architecture" | "concept";
+
+export interface GuideEntry {
+  /** Relative to shared/guides: "<id>/architecture.svg", "<id>/1.svg". */
+  file: string;
+  /** A short caption. */
+  title: string;
+  kind: GuideKind;
+  /** A sentence or two for a screen reader (also the SVG's <desc>). */
+  alt: string;
+  /** Which ```text sketch of the readme it replaces (0-based, document order, <details> included). */
+  sketch: number;
+  /** The SVG's own size in px. */
+  width: number;
+  height: number;
+}
+
+/** shared/guides/index.json: lab id → its diagrams, in readme order. */
+export type GuideIndex = Record<string, GuideEntry[]>;
 
 /**
  * shared/labs.generated.json, written by `npm run labs-build` (gitignored).

@@ -167,6 +167,12 @@ jobs:
           BICEP: ${{ runner.temp }}/bin/bicep
           HCL2JSON: ${{ runner.temp }}/bin/hcl2json
         run: npm run labs-topology -- --check
+      # The readme diagrams (shared/guides): each architecture SVG drawn again
+      # from its planned diagram and compared byte for byte, each Mermaid
+      # concept SVG's stamp compared with its source (no browser needed), every
+      # readme sketch covered, the size cap and the privacy rules.
+      - name: labs-diagrams (readme diagrams are fresh)
+        run: npm run labs-diagrams -- --check
 
   scripts:
     name: typecheck + tests
