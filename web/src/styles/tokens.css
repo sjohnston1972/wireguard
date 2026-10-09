@@ -8,6 +8,8 @@
   --bg-elevated: #13243a;
   --border: #162639;
   --border-strong: #22364d;
+  /* Outlines that must read at 3:1 against the canvas (a lab diagram's resource groups and Global / Tenant lanes). */
+  --group-outline: #64788f;
 
   --text-primary: #f2f6fb;
   --text-secondary: #a9b8cc;

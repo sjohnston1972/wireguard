@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { TopologyGraph, TopoNode, TopoKind, TopoPropValue } from "@shared/topology/model";
 import type { TopologyLayout } from "@shared/topology/layout";
-import { absoluteBoxes, COMPACT, fitZoomOf, CARD_GAP_X, CARD_GAP_Y, CARD_H, CARD_W, flowRanks, GAP, HEAD_GAP, HEADER, HEADER_MAX_W, PAD, RG_SHELF, ROOT_GAP, SAVED_PAD, SUBNET_HEADER, VNET_SHELF, headerWidth, layoutTopology, type LaidNode } from "./layout";
+import { absoluteBoxes, CARD_GAP_X, CARD_GAP_Y, CARD_H, CARD_W, flowRanks, GAP, HEAD_GAP, HEADER, HEADER_MAX_W, PAD, RG_SHELF, ROOT_GAP, SAVED_PAD, SUBNET_HEADER, VNET_SHELF, headerWidth, LAYOUT_ASPECT, layoutTopology, type LaidNode } from "./layout";
 import { stackGraph } from "./stacks";
 import { boundsOf, FIT_MAX_ZOOM, FIT_PADDING, MIN_FIT_ZOOM, startViewport } from "./viewport";
 
@@ -27,6 +27,9 @@ function sample(): TopoNode[] {
     n("st", "storage", "rg", "st"),
   ];
 }
+
+/** The fixed shelves and one row at the top level: the unit tests of the shelf rules. */
+const FIXED = { aspect: null } as const;
 
 const byId = (r: { nodes: LaidNode[] }) => Object.fromEntries(r.nodes.map((x) => [x.id, x]));
 
@@ -145,7 +148,7 @@ describe("layoutTopology", () => {
     const nodes = [n("rg", "resourceGroup", undefined, "rg", {}, RG_KEY), n("vnet", "vnet", "rg")];
     for (let i = 0; i < 6; i++) nodes.push(n(`s${i}`, "subnet", "vnet", `s${i}`, { prefix: `10.0.${i}.0/24` }));
     for (let i = 0; i < 6; i++) nodes.push(n(`a${i}`, "storage", "rg", `a${i}`));
-    const r = layoutTopology(g(nodes), null);
+    const r = layoutTopology(g(nodes), null, FIXED);
     const subnetRows = new Set(r.nodes.filter((x) => x.parent === "vnet").map((x) => x.y)).size;
     // 232-wide empty subnets: three fit on the VNet's shelf (232*3 + 2 gaps), four do not.
     expect(3 * 232 + 2 * GAP).toBeLessThanOrEqual(VNET_SHELF);
@@ -175,7 +178,7 @@ describe("layoutTopology", () => {
       n("lane/global", "lane", undefined, "Global", {}, "lane/global"),
       n("wg/gateway", "gateway", undefined, "WireGuard gateway VNet", {}, "wg/gateway"),
     ];
-    const r = layoutTopology(g(nodes), null);
+    const r = layoutTopology(g(nodes), null, FIXED);
     const roots = r.nodes.filter((x) => x.parent === null);
     expect([...roots].sort((a, b) => a.x - b.x).map((x) => x.id)).toEqual(["wg/gateway", "lane/global", "rg", "rg2", "rgz", "lane/tenant"]);
     // Tops aligned, ROOT_GAP apart.
@@ -238,14 +241,14 @@ describe("saved positions", () => {
   });
 });
 
-// ── Packing for the space the diagram is shown in ──────────────────────
+// ── One packing for every view ──────────────────────
 
-/** The zoom at which the laid-out picture fits a W × H space (React Flow's fit with 8% padding, at most 100%). */
-function fitZoom(laid: { nodes: LaidNode[] }, w: number, h: number): number {
+/** The zoom at which the laid-out picture fits a W × H space (React Flow's fit with 8% padding, at most `max`). */
+function fitZoom(laid: { nodes: LaidNode[] }, w: number, h: number, max = 1): number {
   const roots = laid.nodes.filter((x) => !x.parent);
   const bw = Math.max(...roots.map((r) => r.x + r.w)) - Math.min(...roots.map((r) => r.x));
   const bh = Math.max(...roots.map((r) => r.y + r.h)) - Math.min(...roots.map((r) => r.y));
-  return Math.min(1, w / (bw * 1.16), h / (bh * 1.16));
+  return Math.min(max, w / (bw * 1.16), h / (bh * 1.16));
 }
 
 /** The Global lane, three groups (each a VNet with two subnets of two VMs, and a load balancer) and the Tenant lane. */
@@ -266,43 +269,57 @@ function wide(): TopoNode[] {
 
 const PLANNED = import.meta.glob<TopologyGraph>("../../../../../shared/topology/planned/*.json", { eager: true, import: "default" });
 const planned = (id: string) => stackGraph(Object.entries(PLANNED).find(([k]) => k.endsWith(`/${id}.json`))![1]).graph;
-/** The spaces the diagram is shown in (canvas pixels): the lab panel's tab and the full screen at 1600 × 900 and 1100 × 600. */
-const TAB = [550, 445] as const;
-const FULL_1600 = [1535, 660] as const;
-const FULL_1100 = [1035, 380] as const;
+const plannedIds = () => Object.keys(PLANNED).map((k) => k.split("/").at(-1)!.replace(".json", ""));
 
-describe("packing for the space's shape", () => {
-  it("in a tab-shaped space the top level and the groups wrap into rows, so the picture fits at a much larger zoom", () => {
+/** The canvases the diagram is shown in (less the panel row): the full screen at 2000 × 1030 and 1600 × 900, the lab dialog's Diagram tab at 1600 × 900. */
+const FULL_2000 = { w: 1934, h: 746 };
+const FULL_1600 = { w: 1535, h: 660 };
+const TAB_1600 = { w: 905, h: 500 };
+
+describe("one packing for every view (Steven, 2026-10-09: full screen changed the layout)", () => {
+  it("the layout takes nothing about the space it is shown in: the default is the one canonical 9:5 packing", () => {
+    expect(LAYOUT_ASPECT).toBe(1.8);
+    for (const id of plannedIds()) {
+      const graph = planned(id);
+      expect(layoutTopology(graph, null), id).toEqual(layoutTopology(graph, null, { aspect: LAYOUT_ASPECT }));
+    }
+    // The old per-space options (the tab's tighter spacing among them) are gone: passing them changes nothing.
+    const graph = planned("az700-40-lb-advanced");
+    const loose = layoutTopology as unknown as (g: TopologyGraph, s: null, o: object) => unknown;
+    for (const space of [TAB_1600, FULL_2000, { w: 380, h: 188 }, { w: 358, h: 510 }])
+      expect(loose(graph, null, { space, maxZoom: 1.75, minZoom: 0.7 })).toEqual(layoutTopology(graph, null));
+  });
+
+  it("the canonical packing wraps a wide lab into rows, so it fits far larger than one long row", () => {
     const graph = g(wide());
-    const flat = layoutTopology(graph, null);
-    const packed = layoutTopology(graph, null, { aspect: TAB[0] / TAB[1] });
+    const flat = layoutTopology(graph, null, FIXED);
+    const packed = layoutTopology(graph, null);
     expect(new Set(flat.nodes.filter((x) => !x.parent).map((x) => x.y))).toEqual(new Set([0]));
     expect(new Set(packed.nodes.filter((x) => !x.parent).map((x) => x.y)).size).toBeGreaterThan(1);
-    expect(fitZoom(packed, ...TAB)).toBeGreaterThan(fitZoom(flat, ...TAB) * 1.5);
+    expect(fitZoom(packed, TAB_1600.w, TAB_1600.h)).toBeGreaterThan(fitZoom(flat, TAB_1600.w, TAB_1600.h) * 1.5);
     expectContained(graph, packed);
     // The root order still reads gateway, Global, groups, Tenant: row by row, left to right.
     const roots = packed.nodes.filter((x) => !x.parent).sort((a, b) => a.y - b.y || a.x - b.x).map((x) => x.id);
     expect(roots).toEqual(["lane/global", "rg0", "rg1", "rg2", "lane/tenant"]);
   });
 
-  it("is deterministic for the same input and shape, in any order", () => {
-    const a = layoutTopology(g(wide()), null, { aspect: 1.3 });
-    for (const seed of [3, 11, 58]) expect(layoutTopology(g(shuffle(wide(), seed)), null, { aspect: 1.3 })).toEqual(a);
-    expect(layoutTopology(g(wide()), null, { aspect: 2.3 })).not.toEqual(a);
+  it("is deterministic for the same input, in any order", () => {
+    const a = layoutTopology(g(wide()), null);
+    for (const seed of [3, 11, 58]) expect(layoutTopology(g(shuffle(wide(), seed)), null)).toEqual(a);
   });
 
-  it("nothing overlaps, at any shape", () => {
-    for (const aspect of [0.6, 1, 1.25, 1.8, 2.3, 3]) {
-      const laid = layoutTopology(g(wide()), null, { aspect });
+  it("nothing overlaps", () => {
+    for (const graph of [g(wide()), ...plannedIds().map(planned)]) {
+      const laid = layoutTopology(graph, null);
       const byParent = new Map<string | null, LaidNode[]>();
       for (const x of laid.nodes) byParent.set(x.parent, [...(byParent.get(x.parent) ?? []), x]);
-      for (const kids of byParent.values()) for (const p of kids) for (const q of kids) if (p !== q) expect(overlaps(p, q), `${aspect}: ${p.id} / ${q.id}`).toBe(false);
+      for (const kids of byParent.values()) for (const p of kids) for (const q of kids) if (p !== q) expect(overlaps(p, q), `${graph.labId}: ${p.id} / ${q.id}`).toBe(false);
     }
   });
 
-  it("saved positions still win", () => {
+  it("saved positions still win, keyed as before (node key and parent key)", () => {
     const saved: TopologyLayout = { v: 1, nodes: { "k/v1s0a0": { x: 300, y: 200, p: "k/v1s0" }, "microsoft.resources/resourcegroups/rg-lab-az104-06-blob-security-third": { x: 0, y: 2000, p: null } } };
-    const r = byId(layoutTopology(g(wide()), saved, { aspect: 1.25 }));
+    const r = byId(layoutTopology(g(wide()), saved));
     expect([r.v1s0a0!.x, r.v1s0a0!.y]).toEqual([300, 200]);
     expect([r.rg2!.x, r.rg2!.y]).toEqual([0, 2000]);
   });
@@ -317,90 +334,46 @@ describe("packing for the space's shape", () => {
     expect(headerWidth(n("x", "resourceGroup", undefined, "rg", { region: "uksouth", tags: ["lab: az700-40-lb-advanced", "project: wg-admin-labs", "+1 tag"] }))).toBeLessThan(260);
   });
 
-  it("real labs: az104-06 reads at 70% or more in the lab dialog's tab; every lab fills the full screen readably (60% or more at 1600 × 900, 75% at 2000 × 1030)", () => {
-    // The generous spacing costs zoom in a small space: the compact spacing steps in below the readable floor.
-    const opts = (space: { w: number; h: number }, minZoom: number) => ({ space, maxZoom: 1.75, minZoom });
-    expect(fitZoom(layoutTopology(planned("az104-06-blob-security"), null, opts(TAB_1600, 0.7)), TAB_1600.w, TAB_1600.h)).toBeGreaterThanOrEqual(0.7);
-    for (const k of Object.keys(PLANNED)) {
-      const id = k.split("/").at(-1)!.replace(".json", "");
-      const graph = planned(id);
-      const [w, h] = FULL_1600;
-      expect(fitZoom(layoutTopology(graph, null, opts({ w, h }, 0.6)), w, h), `${id} at 1600 × 900`).toBeGreaterThanOrEqual(0.6);
-      expect(fitZoom(layoutTopology(graph, null, opts(FULL_2000, 0.6)), FULL_2000.w, FULL_2000.h), `${id} at 2000 × 1030`).toBeGreaterThanOrEqual(0.75);
-    }
+  it("real labs: az104-06 and lab 16 read at about 70% in the dialog's tab; every lab fits the 2000 × 1030 full screen at 60% or more", () => {
+    expect(fitZoom(layoutTopology(planned("az104-06-blob-security"), null), TAB_1600.w, TAB_1600.h, 1.75)).toBeGreaterThanOrEqual(0.7);
+    expect(fitZoom(layoutTopology(planned("az104-16-lb-appgw"), null), TAB_1600.w, TAB_1600.h, 1.75)).toBeGreaterThanOrEqual(0.69);
+    for (const id of plannedIds()) expect(fitZoom(layoutTopology(planned(id), null), FULL_2000.w, FULL_2000.h, 1.75), `${id} at 2000 × 1030`).toBeGreaterThanOrEqual(0.6);
   });
 
-  it("real labs, packed for the space: never worse than the fixed packing, and far better for a wide lab in a small tab", () => {
-    // az700-40 has three VNets, eight cards and two lanes: packed, it is still too big for the tab at 70% (the view
-    // starts there at the top-left: viewport.ts), but far bigger than the one long row.
-    const lb = planned("az700-40-lb-advanced");
-    expect(fitZoom(layoutTopology(lb, null, { aspect: TAB[0] / TAB[1] }), ...TAB)).toBeGreaterThan(fitZoom(layoutTopology(lb, null), ...TAB) * 1.6);
-    for (const k of Object.keys(PLANNED)) {
-      const id = k.split("/").at(-1)!.replace(".json", "");
+  it("real labs: the canonical packing is never worse than the fixed shelves in the tab (its shape), and the full screen zooms in at least as far as the tab", () => {
+    for (const id of plannedIds()) {
       const graph = planned(id);
-      // Never worse than the fixed packing.
-      for (const [w, h] of [TAB, FULL_1600, FULL_1100]) expect(fitZoom(layoutTopology(graph, null, { aspect: w / h }), w, h) + 1e-9, `${id} ${w}`).toBeGreaterThanOrEqual(fitZoom(layoutTopology(graph, null), w, h));
+      const laid = layoutTopology(graph, null);
+      expect(fitZoom(laid, TAB_1600.w, TAB_1600.h) + 1e-9, id).toBeGreaterThanOrEqual(fitZoom(layoutTopology(graph, null, FIXED), TAB_1600.w, TAB_1600.h));
+      for (const { w, h } of [FULL_1600, FULL_2000]) expect(fitZoom(laid, w, h, 1.75), `${id} ${w}`).toBeGreaterThanOrEqual(fitZoom(laid, TAB_1600.w, TAB_1600.h, 1.75));
     }
   });
 });
 
 // ── Generous room, flow order and filling the canvas (Steven's feedback on lab 16, 2026-10-08) ──
 
-/** The full screen's canvas at 2000 × 1030 (less the panel row) and the lab dialog's Diagram tab at 1600 × 900. */
-const FULL_2000 = { w: 1934, h: 746 };
-const TAB_1600 = { w: 905, h: 500 };
-
 describe("generous spacing", () => {
-  it("the compact spacing (a big lab in a small space) is still roomy", () => {
-    expect(COMPACT.cardX).toBeGreaterThanOrEqual(96);
-    expect(COMPACT.cardY).toBeGreaterThanOrEqual(80);
-    expect(COMPACT.gap).toBeGreaterThanOrEqual(64);
-    expect(COMPACT.pad).toBeGreaterThanOrEqual(24);
-  });
-
-  it("lab 16 in the full screen at 2000 × 1030 gets the generous spacing; az700-40 in the tab falls back to the compact one", () => {
-    const gapsOf = (id: string, space: { w: number; h: number }, minZoom: number) => {
+  it("every planned lab: no two cards come closer than the generous card gaps (no tighter variant anywhere)", () => {
+    for (const id of plannedIds()) {
       const graph = planned(id);
-      const abs = absoluteBoxes(layoutTopology(graph, null, { space, maxZoom: 1.75, minZoom }));
-      const vms = graph.nodes.filter((x) => x.kind === "vm").map((x) => abs.get(x.id)!);
-      const lbs = graph.nodes.filter((x) => x.kind === "loadBalancer").map((x) => abs.get(x.id)!);
-      return Math.min(...lbs.flatMap((l) => vms.map((v) => Math.max(v.x - (l.x + l.w), l.x - (v.x + v.w), v.y - (l.y + l.h), l.y - (v.y + v.h)))));
-    };
-    expect(gapsOf("az104-16-lb-appgw", FULL_2000, 0.6)).toBeGreaterThanOrEqual(CARD_GAP_X);
-    const lab40 = planned("az700-40-lb-advanced");
-    const roomy = layoutTopology(lab40, null, { space: TAB_1600, maxZoom: 1.75 });
-    const fallback = layoutTopology(lab40, null, { space: TAB_1600, maxZoom: 1.75, minZoom: 0.7 });
-    expect(fitZoomOf(fallback, TAB_1600, 1.75)).toBeGreaterThan(fitZoomOf(roomy, TAB_1600, 1.75));
-  });
-
-  it("every planned lab: no two cards come closer than the compact card gaps, at the full screen's and the tab's shapes", () => {
-    for (const k of Object.keys(PLANNED)) {
-      const id = k.split("/").at(-1)!.replace(".json", "");
-      const graph = planned(id);
-      for (const [space, minZoom] of [
-        [FULL_2000, 0.6],
-        [TAB_1600, 0.7],
-      ] as const) {
-        const laid = layoutTopology(graph, null, { space, maxZoom: 1.75, minZoom });
-        const abs = absoluteBoxes(laid);
-        const cards = graph.nodes.filter((x) => !["resourceGroup", "vnet", "subnet", "virtualHub", "lane"].includes(x.kind)).map((x) => ({ id: x.id, ...abs.get(x.id)! }));
-        for (const a of cards)
-          for (const b of cards) {
-            if (a.id >= b.id) continue;
-            const dx = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
-            const dy = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
-            // Side by side (overlapping rows): at least the horizontal gap; one above the other: at least the vertical gap.
-            if (dy < 0) expect(dx, `${id} ${space.w}: ${a.id} / ${b.id} across`).toBeGreaterThanOrEqual(COMPACT.cardX);
-            else if (dx < 0) expect(dy, `${id} ${space.w}: ${a.id} / ${b.id} down`).toBeGreaterThanOrEqual(COMPACT.cardY);
-            else expect(Math.max(dx, dy), `${id} ${space.w}: ${a.id} / ${b.id} diagonal`).toBeGreaterThanOrEqual(COMPACT.cardY);
-          }
-      }
+      const abs = absoluteBoxes(layoutTopology(graph, null));
+      const cards = graph.nodes.filter((x) => !["resourceGroup", "vnet", "subnet", "virtualHub", "lane"].includes(x.kind)).map((x) => ({ id: x.id, ...abs.get(x.id)! }));
+      for (const a of cards)
+        for (const b of cards) {
+          if (a.id >= b.id) continue;
+          const dx = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
+          const dy = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
+          // Side by side (overlapping rows): at least the horizontal gap; one above the other: at least the vertical gap.
+          if (dy < 0) expect(dx, `${id}: ${a.id} / ${b.id} across`).toBeGreaterThanOrEqual(CARD_GAP_X);
+          else if (dx < 0) expect(dy, `${id}: ${a.id} / ${b.id} down`).toBeGreaterThanOrEqual(CARD_GAP_Y);
+          else expect(Math.max(dx, dy), `${id}: ${a.id} / ${b.id} diagonal`).toBeGreaterThanOrEqual(CARD_GAP_Y);
+        }
     }
   });
 
   it("sibling containers keep a corridor between them for lines", () => {
     const graph = planned("az104-16-lb-appgw");
-    const laid = layoutTopology(graph, null, { space: FULL_2000, maxZoom: 1.75 });
+    const laid = layoutTopology(graph, null);
     const subnets = laid.nodes.filter((x) => graph.nodes.find((y) => y.id === x.id)!.kind === "subnet");
     expect(subnets).toHaveLength(2);
     const [a, b] = [...subnets].sort((p, q) => p.x - q.x || p.y - q.y);
@@ -429,15 +402,13 @@ describe("flow-aware order", () => {
   });
 
   it("lab 16: the load balancer and the application gateway sit before (left of or above) the VMs they feed, so every line runs one way", () => {
-    for (const space of [FULL_2000, TAB_1600]) {
-      const graph = planned("az104-16-lb-appgw");
-      const abs = absoluteBoxes(layoutTopology(graph, null, { space, maxZoom: 1.75 }));
-      for (const e of graph.edges.filter((x) => x.kind === "traffic")) {
-        const s = abs.get(e.from)!;
-        const t = abs.get(e.to)!;
-        const forward = s.x + s.w <= t.x || s.y + s.h <= t.y;
-        expect(forward, `${space.w}: ${e.id} runs left to right or top to bottom`).toBe(true);
-      }
+    const graph = planned("az104-16-lb-appgw");
+    const abs = absoluteBoxes(layoutTopology(graph, null));
+    for (const e of graph.edges.filter((x) => x.kind === "traffic")) {
+      const s = abs.get(e.from)!;
+      const t = abs.get(e.to)!;
+      const forward = s.x + s.w <= t.x || s.y + s.h <= t.y;
+      expect(forward, `${e.id} runs left to right or top to bottom`).toBe(true);
     }
   });
 
@@ -460,8 +431,8 @@ describe("flow-aware order", () => {
 });
 
 describe("filling the canvas", () => {
-  it("lab 16 full screen at 2000 × 1030: the fitted picture zooms in past 100% and fills most of the canvas", () => {
-    const laid = layoutTopology(planned("az104-16-lb-appgw"), null, { space: FULL_2000, maxZoom: FIT_MAX_ZOOM.full });
+  it("lab 16 full screen at 2000 × 1030: the fitted picture (the same arrangement as the tab's) zooms in past 100% and fills most of the canvas", () => {
+    const laid = layoutTopology(planned("az104-16-lb-appgw"), null);
     const b = boundsOf(laid.nodes.filter((x) => !x.parent))!;
     const v = startViewport(b, FULL_2000.w, FULL_2000.h + 44, { padding: FIT_PADDING.full, minZoom: MIN_FIT_ZOOM.full, maxZoom: FIT_MAX_ZOOM.full, reserveTop: 44 });
     expect(v.zoom).toBeGreaterThan(1.2);

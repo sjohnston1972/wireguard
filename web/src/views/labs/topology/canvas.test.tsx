@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { TopologyGraph } from "@shared/topology/model";
 import { Canvas } from "./Canvas";
 import { PHONE_MIN_FIT_ZOOM, quantiseLength } from "./FlowCanvas";
-import { FIT_MAX_ZOOM, MIN_FIT_ZOOM, PANEL_RESERVE, START_INSET } from "./viewport";
+import { START_INSET } from "./viewport";
 import type { CanvasProps } from "./contract";
 import { toFlowNodes, movesOf } from "./flowNodes";
 import { layoutTopology } from "./layout";
@@ -14,6 +14,9 @@ import { installFlowStandIns, measureFromStyle } from "./flowTestEnv";
 import flowSource from "./FlowCanvas.tsx?raw";
 
 beforeAll(installFlowStandIns);
+
+const PLANNED = import.meta.glob<TopologyGraph>("../../../../../shared/topology/planned/*.json", { eager: true, import: "default" });
+const PLANNED_GRAPHS: Record<string, TopologyGraph> = Object.fromEntries(Object.entries(PLANNED).map(([k, v]) => [k.split("/").at(-1)!.replace(".json", ""), v]));
 
 const LAB = "az104-06-blob-security";
 const RG = `microsoft.resources/resourcegroups/rg-lab-${LAB}`;
@@ -216,17 +219,85 @@ describe("Canvas", () => {
     };
   }
 
-  it("measured, the layout packs for the canvas's shape (the tab's, the full screen's)", () => {
-    const undo = sized(550, 445);
-    try {
-      const { container } = draw(props());
-      const want = layoutTopology(graph, null, { space: { w: quantiseLength(550), h: quantiseLength(445) - PANEL_RESERVE.tab }, maxZoom: FIT_MAX_ZOOM.tab, minZoom: MIN_FIT_ZOOM.tab }).nodes.find((n) => n.id === "lb")!;
-      const lb = nodeEl(container, "lb");
-      expect(lb.style.transform.replace(/\s/g, "")).toBe(`translate(${want.x}px,${want.y}px)`);
-      expect(quantiseLength(550)).toBe(quantiseLength(556));
-    } finally {
-      undo();
+  /** Every drawn node's place on the canvas (React Flow's transform), by id. */
+  const placesOf = (c: HTMLElement) => Object.fromEntries([...c.querySelectorAll<HTMLElement>(".react-flow__node")].map((el) => [el.dataset.id!, el.style.transform.replace(/\s/g, "")]));
+  /** The placements' canvases at 1600 × 900 and 2000 × 1030, the pop-out window, the Overview mini and the phone. */
+  const PLACES = [
+    { variant: "tab", w: 905, h: 544, phone: false },
+    { variant: "full", w: 1934, h: 790, phone: false },
+    { variant: "full", w: 1535, h: 704, phone: false },
+    { variant: "full", w: 1180, h: 760, phone: false },
+    { variant: "mini", w: 380, h: 188, phone: false },
+    { variant: "full", w: 358, h: 510, phone: true },
+  ] as const;
+  const phoneMedia = (phone: boolean) => (q: string) => ({ matches: phone && q.includes("max-width"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false });
+
+  it("the same arrangement in every placement (tab, full screen, pop-out, mini, phone) at any size: only the view's zoom and pan differ", () => {
+    const saved = { v: 1 as const, nodes: { "lb-key": { x: 640, y: 300, p: RG } } };
+    for (const id of ["az104-16-lb-appgw", "az700-40-lb-advanced"]) {
+      const lab = PLANNED_GRAPHS[id]!;
+      for (const s of [null, saved]) {
+        const seen: { place: string; nodes: Record<string, string>; view: string }[] = [];
+        for (const p of PLACES) {
+          vi.stubGlobal("matchMedia", phoneMedia(p.phone));
+          const undo = sized(p.w, p.h);
+          try {
+            const { container, unmount } = draw(props({ graph: lab, saved: s, variant: p.variant, onMove: p.variant === "mini" ? undefined : () => {} }));
+            seen.push({ place: `${p.variant} ${p.w}×${p.h}`, nodes: placesOf(container), view: viewport(container) });
+            unmount();
+          } finally {
+            undo();
+          }
+        }
+        expect(Object.keys(seen[0]!.nodes).length, id).toBeGreaterThanOrEqual(8);
+        for (const x of seen.slice(1)) expect(x.nodes, `${id} ${s ? "saved" : "fresh"}: ${x.place} vs ${seen[0]!.place}`).toEqual(seen[0]!.nodes);
+        // The view does differ: each placement fits the same picture to its own space.
+        expect(new Set(seen.map((x) => x.view)).size, id).toBeGreaterThan(1);
+      }
     }
+  }, 60_000); // 24 full React Flow renders of two real labs: allow for a busy machine
+
+  it("growing from the tab to the full screen moves no node: the picture is the same, refitted", async () => {
+    const lab = PLANNED_GRAPHS["az700-40-lb-advanced"]!;
+    let dims = { w: 905, h: 544 };
+    const proto = HTMLElement.prototype;
+    Object.defineProperty(proto, "clientWidth", { configurable: true, get(this: HTMLElement) { return this.classList.contains("topo-canvas") ? dims.w : 0; } });
+    Object.defineProperty(proto, "clientHeight", { configurable: true, get(this: HTMLElement) { return this.classList.contains("topo-canvas") ? dims.h : 0; } });
+    const observers: ResizeObserverCallback[] = [];
+    const hadRO = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+        constructor(private cb: ResizeObserverCallback) {
+          observers.push(cb);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      } as unknown as typeof ResizeObserver;
+    try {
+      const view = (p: CanvasProps) => (
+        <div style={{ width: dims.w, height: dims.h }}>
+          <Canvas {...p} />
+        </div>
+      );
+      const { container, rerender } = render(view(props({ graph: lab })));
+      const tab = placesOf(container);
+      const tabView = viewport(container);
+      dims = { w: 1934, h: 790 };
+      rerender(view(props({ graph: lab, variant: "full" })));
+      await act(async () => {
+        for (const cb of observers) cb([], {} as ResizeObserver);
+      });
+      await waitFor(() => expect(viewport(container)).not.toBe(tabView));
+      expect(placesOf(container)).toEqual(tab);
+    } finally {
+      Reflect.deleteProperty(proto, "clientWidth");
+      Reflect.deleteProperty(proto, "clientHeight");
+      globalThis.ResizeObserver = hadRO;
+    }
+  });
+
+  it("a small resize does not restart the view (sizes in steps of 10%)", () => {
+    expect(quantiseLength(550)).toBe(quantiseLength(556));
   });
 
   it("on the phone a picture too big to read whole starts at its top-left at the readable zoom, not in the middle", () => {

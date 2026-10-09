@@ -22,6 +22,11 @@
 // the saved ones, so a new resource never lands on a moved one, and every
 // container grows to hold its children plus padding.
 //
+// One arrangement everywhere (2026-10-09): the packing aims for one fixed
+// shape (LAYOUT_ASPECT, 9:5), never the shape or size of the space it is
+// shown in, so the dialog's tab, the full screen, the pop-out and the mini
+// draw the same picture; only the fitted zoom and pan differ.
+//
 // Pure and deterministic: no clock, no randomness, children sorted by fixed
 // rules, so the same graph in any order lays out identically.
 
@@ -68,15 +73,18 @@ export interface Spacing {
   headGap: number;
   rootGap: number;
 }
-/** The generous spacing above: used wherever the picture still fits its space readably with it. */
-export const GENEROUS: Spacing = { cardX: CARD_GAP_X, cardY: CARD_GAP_Y, gap: GAP, pad: PAD, headGap: HEAD_GAP, rootGap: ROOT_GAP };
+/** The one spacing every layout uses: generous, so several lines and their labels fit between two cards. */
+export const SPACING: Spacing = { cardX: CARD_GAP_X, cardY: CARD_GAP_Y, gap: GAP, pad: PAD, headGap: HEAD_GAP, rootGap: ROOT_GAP };
+const S = SPACING;
+
 /**
- * Still roomy (several lines fit between two cards), for a picture too big for its space with the generous gaps: a
- * big lab in the lab dialog's tab or a small window. Never tighter than this.
+ * The one shape (width / height) every diagram is packed for, wherever it is shown (Steven, 2026-10-09: "toggling to
+ * full screen seems to change the layout"). The dialog's Diagram tab, the full screen, the pop-out window and the
+ * Overview mini all draw the same arrangement for the same graph and saved positions; only the fit's zoom and pan
+ * differ. 9:5 is the lab dialog's Diagram tab's shape, the smallest common view, and measured over every planned lab
+ * it reads best there while the wider full screen (about 2.4) and the 2:1 mini still zoom in to fill (fitView).
  */
-export const COMPACT: Spacing = { cardX: 96, cardY: 80, gap: 96, pad: 28, headGap: 12, rootGap: 96 };
-/** The spacing of the layout pass under way (layoutTopology sets it; synchronous, so never shared between passes). */
-let S: Spacing = GENEROUS;
+export const LAYOUT_ASPECT = 1.8;
 
 export interface LaidNode {
   id: string;
@@ -219,7 +227,7 @@ interface Box {
   kids: { box: Box; x: number; y: number }[];
 }
 
-/** The container shapes tried, as multiples of the screen's (the first wins a tie). */
+/** The container shapes tried, as multiples of the target shape (the first wins a tie). */
 const INNER_SHAPES = [1, 0.5, 0.75, 1.5, 2, 3];
 
 /** A header's text never widens its box past this (the rest truncates, with the full text on hover). */
@@ -239,66 +247,23 @@ export function headerWidth(n: TopoNode): number {
 
 export interface LayoutOptions {
   /**
-   * The shape of the space the diagram is shown in (width / height): the tab,
-   * the full screen or the hover. Containers and the top level wrap their
-   * children into rows so the whole picture comes close to it, which lets the
-   * fit zoom stay readable. Left out: the fixed shelves (960 / 1280) and one
-   * row at the top level.
+   * The shape the containers and the top level pack for (width / height). The app always leaves it out: every view
+   * gets LAYOUT_ASPECT, so the arrangement never depends on the space it is shown in. null: the fixed shelves
+   * (960 / 1280) and one row at the top level (the unit tests of the shelf rules).
    */
-  aspect?: number;
-  /**
-   * The space itself (canvas pixels), when known: its shape is the aspect,
-   * and among packings that all fit at the largest fit zoom the one closest to its shape wins.
-   */
-  space?: { w: number; h: number };
-  /** The largest zoom the fitted view goes to (viewport.ts FIT_MAX_ZOOM); 1 when left out. */
-  maxZoom?: number;
-  /**
-   * The smallest readable fit zoom (viewport.ts MIN_FIT_ZOOM). With the space known, a picture that fits it only
-   * below this with the generous spacing is laid out with the compact spacing instead, when that reads larger.
-   */
-  minZoom?: number;
-}
-
-/** The share of the space React Flow's fit leaves round the picture (fitView padding 0.08 each side). */
-const FIT_SLACK = 1.16;
-
-/** The zoom at which laid-out top-level boxes fit a space (React Flow's fit with 8% padding), at most `max`. */
-export function fitZoomOf(laid: TopologyLayoutResult, space: { w: number; h: number }, max = 1): number {
-  const roots = laid.nodes.filter((n) => !n.parent);
-  if (!roots.length) return max;
-  const w = Math.max(...roots.map((r) => r.x + r.w)) - Math.min(...roots.map((r) => r.x));
-  const h = Math.max(...roots.map((r) => r.y + r.h)) - Math.min(...roots.map((r) => r.y));
-  return Math.min(max, space.w / (w * FIT_SLACK), space.h / (h * FIT_SLACK));
+  aspect?: number | null;
 }
 
 /**
- * Lays out `graph`, using `saved` positions where they still apply. Same graph, saved and space: same layout. The
- * generous spacing wherever it still reads at `minZoom` in the space; otherwise the compact one, if that reads larger.
+ * Lays out `graph`, using `saved` positions where they still apply. Same graph and saved positions: same layout, in
+ * every view (the tab, the full screen, the pop-out, the mini). Nothing about the space it is shown in is an input.
  */
 export function layoutTopology(graph: TopologyGraph, saved: TopologyLayout | null, opts: LayoutOptions = {}): TopologyLayoutResult {
-  try {
-    S = GENEROUS;
-    const roomy = layoutPass(graph, saved, opts);
-    const space = opts.space && opts.space.w > 0 && opts.space.h > 0 ? opts.space : null;
-    if (!space || opts.minZoom === undefined) return roomy;
-    const max = Math.max(1, opts.maxZoom ?? 1);
-    const z = fitZoomOf(roomy, space, max);
-    if (z >= opts.minZoom) return roomy;
-    S = COMPACT;
-    const tight = layoutPass(graph, saved, opts);
-    return fitZoomOf(tight, space, max) > z + 1e-9 ? tight : roomy;
-  } finally {
-    S = GENEROUS;
-  }
+  return layoutPass(graph, saved, opts.aspect === undefined ? LAYOUT_ASPECT : opts.aspect);
 }
 
-function layoutPass(graph: TopologyGraph, saved: TopologyLayout | null, opts: LayoutOptions): TopologyLayoutResult {
-  const space = opts.space && opts.space.w > 0 && opts.space.h > 0 ? opts.space : null;
-  const asked = space ? space.w / space.h : opts.aspect;
-  const aspect = asked !== undefined && Number.isFinite(asked) && asked > 0 ? asked : null;
-  // A packing no taller (in screen terms) than this fits at the largest fit zoom: more room would not make it bigger.
-  const floor = space ? space.h / (FIT_SLACK * Math.max(1, opts.maxZoom ?? 1)) : 0;
+function layoutPass(graph: TopologyGraph, saved: TopologyLayout | null, asked: number | null): TopologyLayoutResult {
+  const aspect = asked !== null && Number.isFinite(asked) && asked > 0 ? asked : null;
   const ids = new Map(graph.nodes.map((n) => [n.id, n]));
   const children = new Map<string | null, TopoNode[]>();
   for (const n of graph.nodes) {
@@ -415,7 +380,7 @@ function layoutPass(graph: TopologyGraph, saved: TopologyLayout | null, opts: La
         const cols = Math.min(3, Math.ceil(Math.sqrt(Math.max(1, boxes.length))));
         placed = grid(free, cols, S.pad, startY);
         if (inner && free.length > 1) {
-          // Any number of columns up to 4: the one whose box comes closest to the screen's shape.
+          // Any number of columns up to 4: the one whose box comes closest to the target shape.
           const tries = Array.from({ length: Math.min(4, free.length) }, (_, i) => grid(free, i + 1, S.pad, startY));
           placed = closest(tries, (t) => size([...fixed, ...t]), inner);
         }
@@ -441,7 +406,7 @@ function layoutPass(graph: TopologyGraph, saved: TopologyLayout | null, opts: La
       ? { w: Math.max(...all.map((k) => k.x + k.box.w)) - Math.min(0, ...all.map((k) => k.x)), h: Math.max(...all.map((k) => k.y + k.box.h)) - Math.min(0, ...all.map((k) => k.y)) }
       : { w: 0, h: 0 };
 
-  /** The whole picture with every container aiming for `shape`; the top level aims for the screen's. */
+  /** The whole picture with every container aiming for `shape`; the top level aims for the target shape. */
   function attempt(shape: number | null) {
     inner = shape;
     const rootBoxes = roots.map(build);
@@ -458,18 +423,18 @@ function layoutPass(graph: TopologyGraph, saved: TopologyLayout | null, opts: La
       return at;
     });
     if (aspect && free.length > 1) {
-      // Wrap the top level into rows (gateway, Global, groups, Tenant, in order) to come closest to the screen's shape.
+      // Wrap the top level into rows (gateway, Global, groups, Tenant, in order) to come closest to the target shape.
       const widest = Math.max(...free.map((b) => b.w));
-      placed = closest(rowWidths(free, S.rootGap).map((wd) => shelfPack(free, Math.max(wd, widest), 0, rootTop, S.rootGap)), (t) => bounds([...fixed, ...t]), aspect, floor);
+      placed = closest(rowWidths(free, S.rootGap).map((wd) => shelfPack(free, Math.max(wd, widest), 0, rootTop, S.rootGap)), (t) => bounds([...fixed, ...t]), aspect);
     }
     const order = new Map(rootBoxes.map((b, i) => [b, i]));
     return [...fixed, ...placed].sort((a, b) => order.get(a.box)! - order.get(b.box)!);
   }
 
-  // With a screen shape, containers try a few shapes of their own around it (a tall group can sit beside a wide one);
-  // the fixed shelves are tried last. The picture that fits the screen at the largest zoom wins, the screen's own shape
+  // With a target shape, containers try a few shapes of their own around it (a tall group can sit beside a wide one);
+  // the fixed shelves are tried last. The picture that fits that shape at the largest zoom wins, the shape itself
   // first on a tie.
-  const top = aspect ? closest([...INNER_SHAPES.map((f) => attempt(aspect * f)), attempt(null)], bounds, aspect, floor) : attempt(null);
+  const top = aspect ? closest([...INNER_SHAPES.map((f) => attempt(aspect * f)), attempt(null)], bounds, aspect) : attempt(null);
 
   const out: LaidNode[] = [];
   const walk = (k: { box: Box; x: number; y: number }, parent: string | null) => {
@@ -545,18 +510,16 @@ function rowWidths(boxes: Box[], fixedGap?: number): number[] {
 
 /**
  * The packing whose bounds fit a screen of shape `aspect` at the largest zoom:
- * the smallest max(w / aspect, h). The first wins a tie, so the result is
- * deterministic.
+ * the smallest max(w / aspect, h); among near ties, the one whose shape is
+ * closest to `aspect`. The first wins a tie, so the result is deterministic.
  */
-function closest<T>(tries: T[], bounds: (t: T) => { w: number; h: number }, aspect: number, floor = 0): T {
+function closest<T>(tries: T[], bounds: (t: T) => { w: number; h: number }, aspect: number): T {
   let best = tries[0] as T;
   let score = Infinity;
   let off = Infinity;
   for (const t of tries) {
     const b = bounds(t);
-    // Every packing that fits at the largest zoom (at or under `floor`) is as readable as the next: then the one whose
-    // shape is closest to the screen's wins.
-    const s = Math.max(b.w / aspect, b.h, floor);
+    const s = Math.max(b.w / aspect, b.h);
     const o = Math.abs(Math.log(b.w / Math.max(1, b.h) / aspect));
     if (s < score - 0.5 || (s <= score + 0.5 && o < off - 0.01)) {
       best = t;

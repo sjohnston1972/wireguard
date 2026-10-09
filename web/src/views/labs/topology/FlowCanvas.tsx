@@ -2,8 +2,7 @@
 //
 // Plain English: the lab diagram on React Flow (lab topology spec §9.2). The
 // graph is stacked (big runs of one kind become one card), laid out by the
-// packing layout for the canvas's measured shape (the saved arrangement wins)
-// and drawn as nested boxes: resource groups holding VNets holding subnets
+// packing layout (the saved arrangement wins) and drawn as nested boxes: resource groups holding VNets holding subnets
 // holding resource cards, with traffic and dependency edges between them.
 //
 // Dragging a node (or moving the selected one with the arrow keys) tidies the
@@ -13,6 +12,10 @@
 // readable zoom (viewport.ts); it fits the search's matches on request
 // (instantly under prefers-reduced-motion). The mini variant is a still
 // picture: no pan, zoom, drag, selection or edge labels.
+//
+// One arrangement everywhere (2026-10-09): the layout never depends on the
+// canvas's size or shape, so the tab, the full screen, the pop-out and the
+// mini draw the same picture; the measured size only sets the fitted view.
 //
 // Lines (2026-10-08): every shown line is routed together by the router
 // (edges/router.ts: a lane and a port of its own each, round the cards, the
@@ -49,7 +52,7 @@ import "./topology.css";
 export const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 export { PHONE_MIN_FIT_ZOOM };
 
-/** A canvas size in steps of 10%, so a small resize does not re-pack the picture. */
+/** A canvas size in steps of 10%, so a small resize does not restart the view. */
 export const quantiseLength = (n: number): number => Math.round(1.1 ** Math.round(Math.log(n) / Math.log(1.1)));
 
 interface Size {
@@ -72,8 +75,8 @@ const sameRouterBoxes = (a: RouterBox[], b: RouterBox[]) => a.length === b.lengt
 
 export function FlowCanvas(props: CanvasProps) {
   const ref = useRef<HTMLDivElement>(null);
-  // The space the diagram is shown in: the layout packs for its shape and the first view fits it. 0 × 0 where
-  // nothing is laid out (tests): the fixed packing and React Flow's own fit.
+  // The space the diagram is shown in: the first view fits it (the layout does not depend on it). 0 × 0 where
+  // nothing is laid out (tests): React Flow's own fit.
   const [size, setSize] = useState<Size | null>(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -113,13 +116,10 @@ function Flow({ graph, status, saved, onMove, showDependencies, search, variant,
   const qw = measured ? quantiseLength(size.w) : 0;
   const qh = measured ? quantiseLength(size.h) : 0;
   const aspect = measured ? `${qw}x${qh}` : undefined;
-  const reserve = PANEL_RESERVE[variant];
   const minZoom = mini ? MIN_FIT_ZOOM.mini : phone ? PHONE_MIN_FIT_ZOOM : MIN_FIT_ZOOM[variant];
   const maxFit = FIT_MAX_ZOOM[variant];
-  const laid = useMemo(
-    () => layoutTopology(stacked, saved, measured ? { space: { w: qw, h: Math.max(1, qh - reserve) }, maxZoom: maxFit, minZoom } : {}),
-    [stacked, saved, measured, qw, qh, reserve, maxFit, minZoom],
-  );
+  // The same arrangement in every placement: only the graph and the saved positions go in, never the space.
+  const laid = useMemo(() => layoutTopology(stacked, saved), [stacked, saved]);
   // Where each edge label went in the fallback routing (labels keep off each other); a new picture places them afresh.
   const placedLabels = useMemo(() => new Map<string, Box>(), [laid]);
   const fitOpts = useMemo(() => ({ padding: FIT_PADDING[variant], minZoom, maxZoom: maxFit, reserveTop: PANEL_RESERVE[variant] }), [variant, minZoom, maxFit]);
