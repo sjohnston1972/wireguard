@@ -24,6 +24,20 @@ const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
 const GUIDES = fileURLToPath(new URL("../../shared/guides/", import.meta.url));
 const SOURCES = join(LABS, "_diagrams");
 const index = JSON.parse(readFileSync(join(GUIDES, "index.json"), "utf8"));
+const placement = JSON.parse(readFileSync(join(GUIDES, "placement.json"), "utf8"));
+const { buildGuideDiagrams } = await import("../lib/guides.mjs");
+
+test("index.json keeps the lab guides' contract, and labs-build takes every diagram", () => {
+  const got = buildGuideDiagrams(GUIDES, labFolders(LABS));
+  assert.deepEqual(got.problems, []);
+  assert.deepEqual(got.warnings, []);
+  for (const [id, list] of Object.entries(index)) {
+    for (const e of list) assert.deepEqual(Object.keys(e), ["file", "title", "kind"], `${id} ${e.file}`);
+    // placement.json lists the same files in the same order.
+    assert.deepEqual((placement[id] ?? []).map((p) => p.file), list.map((e) => e.file), id);
+  }
+  assert.deepEqual(Object.keys(placement).sort(), Object.keys(index).sort());
+});
 const { catalogue, problems: buildProblems } = buildCatalogue(LABS);
 const lf = (s) => s.replace(/\r\n?/g, "\n");
 
@@ -35,7 +49,7 @@ for (const id of labFolders(LABS)) {
   test(`${id}: every readme sketch is a diagram now, each file present, small, clean and fresh`, () => {
     const md = lf(readFileSync(join(LABS, id, "readme.md"), "utf8"));
     const sketches = readmeSketches(md);
-    const entries = index[id] ?? [];
+    const entries = (index[id] ?? []).map((e, i) => ({ ...e, ...placement[id][i], file: `${id}/${e.file}` }));
     for (const s of sketches) assert.ok(entries.some((e) => e.sketch === s.index), `sketch ${s.index + 1} under "${s.heading}" has no diagram`);
     for (const e of entries) {
       assert.ok(e.sketch < sketches.length, `${e.file} is for a sketch the readme does not have`);
@@ -157,10 +171,15 @@ test("the generator: writes, then --check passes; a changed source or plan, a mi
     assert.deepEqual(t.drawn, ["lab-a-1"]);
     const idx = JSON.parse(readFileSync(join(t.paths.guides, "index.json"), "utf8"));
     assert.deepEqual(idx["lab-a"], [
-      { file: "lab-a/architecture.svg", title: "Title lab-a: architecture", kind: "architecture", alt: "Architecture diagram. About lab-a.", sketch: 0, width: 10, height: 5 },
-      { file: "lab-a/1.svg", title: "Flow", kind: "concept", alt: "A flows to B.", sketch: 0, width: 72, height: 52 },
+      { file: "architecture.svg", title: "Title lab-a: architecture", kind: "architecture" },
+      { file: "1.svg", title: "Flow", kind: "concept" },
     ]);
     assert.equal(idx["lab-b"].length, 1);
+    const placed = JSON.parse(readFileSync(join(t.paths.guides, "placement.json"), "utf8"));
+    assert.deepEqual(placed["lab-a"], [
+      { file: "architecture.svg", sketch: 0, alt: "Architecture diagram. About lab-a.", width: 10, height: 5 },
+      { file: "1.svg", sketch: 0, alt: "A flows to B.", width: 72, height: 52 },
+    ]);
     r = await runLabsDiagrams({ paths: t.paths, renderer: t.renderer, check: true });
     assert.deepEqual(r.problems, []);
 

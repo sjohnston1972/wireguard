@@ -16,12 +16,15 @@
 //       adding one never needs a lab version bump. A source starts with
 //       `%% title: ...` and `%% alt: ...` lines (both required) and may say
 //       `%% sketch: <n>` (which sketch it replaces; 0, the first, if not).
-//   shared/guides/index.json  lab id -> its diagrams in readme order:
-//       { file, title, kind, alt, sketch, width, height } (GuideEntry in
-//       shared/labs.ts). labs-build puts them in the catalogue in place of
-//       the ```text block numbered `sketch` (scripts/lib/labs.mjs
-//       applyDiagrams); the readmes themselves never change. A block meant
-//       to stay as text (command output) uses another fence (```console).
+//   shared/guides/index.json  lab id -> its diagrams in readme order,
+//       exactly { file, title, kind } (the lab guides' contract,
+//       shared/guides.ts, which the "Download PDF" guide reads).
+//   shared/guides/placement.json  the same list as { file, sketch, alt,
+//       width, height } (GuidePlacement in shared/labs.ts): labs-build puts
+//       each diagram in the catalogue in place of the ```text block numbered
+//       `sketch` (scripts/lib/labs.mjs applyDiagrams); the readmes themselves
+//       never change. A block meant to stay as text (command output) uses
+//       another fence (```console).
 //
 // Rules, checked every run: every ```text sketch of every readme has at
 // least one diagram; every SVG is at most 150 kB; no SVG or source holds
@@ -41,6 +44,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { labFolders, parseLabYaml, readmeSketches } from "./lib/labs.mjs";
 import { finishSvg, sourceMeta, sourceStamp, stampOf } from "./lib/mermaid.mjs";
+import { svgProblem as guideSvgProblem } from "./lib/guides.mjs";
 
 const at = (rel) => fileURLToPath(new URL(rel, import.meta.url));
 export const PATHS = {
@@ -193,10 +197,28 @@ export function svgProblems(rel, svg) {
   if (bytes > MAX_SVG_BYTES) out.push(`${rel} is ${(bytes / 1000).toFixed(1)} kB (at most ${MAX_SVG_BYTES / 1000} kB)`);
   for (const p of privacyProblems(visibleText(svg))) out.push(`${rel}: ${p}`);
   if (/<script\b|\bon[a-z]+="|<foreignObject\b|(?:href|src)="(?:https?:|data:|\/\/)/i.test(svg)) out.push(`${rel}: an SVG must be shapes and text only (no scripts, event handlers, foreignObject or outside links)`);
+  // And whatever labs-build would refuse for the lab guides (scripts/lib/guides.mjs).
+  const guide = guideSvgProblem(svg);
+  if (guide) out.push(`${rel} ${guide} (labs-build refuses it)`);
   return out;
 }
 
-export const indexText = (index) => JSON.stringify(Object.fromEntries(Object.keys(index).sort().map((k) => [k, index[k]])), null, 1) + "\n";
+const sortedText = (o) => JSON.stringify(Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]])), null, 1) + "\n";
+const base = (rel) => rel.slice(rel.indexOf("/") + 1);
+
+/**
+ * The two generated lists, from the plan's entries ({ file: "<id>/<name>", title, kind, alt, sketch, width, height }):
+ * index.json, the lab guides' contract (shared/guides.ts: exactly { file, title, kind }, file a name in the lab's
+ * folder), and placement.json, where each one goes in the readme ({ file, sketch, alt, width, height }, same order).
+ */
+export function guideTexts(index) {
+  const map = (f) => Object.fromEntries(Object.entries(index).map(([id, list]) => [id, list.map(f)]));
+  return {
+    "index.json": sortedText(map((e) => ({ file: base(e.file), title: e.title, kind: e.kind }))),
+    "placement.json": sortedText(map((e) => ({ file: base(e.file), sketch: e.sketch, alt: e.alt, width: e.width, height: e.height }))),
+  };
+}
+const LISTS = ["index.json", "placement.json"];
 
 /** Every file under shared/guides, relative ("az104-16-lb-appgw/architecture.svg"). */
 function listGuides(dir) {
@@ -241,7 +263,7 @@ export async function runLabsDiagrams({ paths = PATHS, check = false, renderAll 
   const want = new Map(plan.files);
   for (const c of plan.concepts) if (c.committed !== null) want.set(c.rel, c.committed);
   for (const [rel, svg] of want) for (const p of svgProblems(rel, svg)) fail(rel.split("/")[0], p);
-  const text = indexText(plan.index);
+  const texts = guideTexts(plan.index);
   const have = listGuides(paths.guides);
 
   if (check) {
@@ -250,10 +272,12 @@ export async function runLabsDiagrams({ paths = PATHS, check = false, renderAll 
       if (now === null) fail(rel.split("/")[0], `shared/guides/${rel} is missing (run npm run labs-diagrams and commit shared/guides)`);
       else if (now !== svg) fail(rel.split("/")[0], `shared/guides/${rel} is stale: the planned diagram or the drawing changed (run npm run labs-diagrams and commit shared/guides)`);
     }
-    const idx = read(join(paths.guides, "index.json"));
-    if (idx === null) fail(null, "shared/guides/index.json is missing (run npm run labs-diagrams)");
-    else if (idx !== text) fail(null, "shared/guides/index.json is stale (run npm run labs-diagrams and commit shared/guides)");
-    for (const rel of have) if (rel !== "index.json" && !want.has(rel)) fail(rel.split("/")[0], `shared/guides/${rel} is not any lab's diagram: delete it (npm run labs-diagrams removes it)`);
+    for (const name of LISTS) {
+      const now = read(join(paths.guides, name));
+      if (now === null) fail(null, `shared/guides/${name} is missing (run npm run labs-diagrams)`);
+      else if (now !== texts[name]) fail(null, `shared/guides/${name} is stale (run npm run labs-diagrams and commit shared/guides)`);
+    }
+    for (const rel of have) if (!LISTS.includes(rel) && !want.has(rel)) fail(rel.split("/")[0], `shared/guides/${rel} is not any lab's diagram: delete it (npm run labs-diagrams removes it)`);
     return { problems, written, drawn };
   }
 
@@ -265,13 +289,14 @@ export async function runLabsDiagrams({ paths = PATHS, check = false, renderAll 
     writeFileSync(p, svg);
     written.push(rel);
   }
-  if (read(join(paths.guides, "index.json")) !== text) {
+  for (const name of LISTS) {
+    if (read(join(paths.guides, name)) === texts[name]) continue;
     mkdirSync(paths.guides, { recursive: true });
-    writeFileSync(join(paths.guides, "index.json"), text);
-    written.push("index.json");
+    writeFileSync(join(paths.guides, name), texts[name]);
+    written.push(name);
   }
   for (const rel of have) {
-    if (rel === "index.json" || want.has(rel)) continue;
+    if (LISTS.includes(rel) || want.has(rel)) continue;
     rmSync(join(paths.guides, rel), { force: true });
     log(`labs-diagrams: removed shared/guides/${rel}`);
   }

@@ -8,7 +8,7 @@ The hand-drawn ` ```text ` sketches in `labs/<id>/readme.md` are shown in the ap
   `labs/_diagrams/<id>/<n>.mmd`, drawn to `shared/guides/<id>/<n>.svg`.
 
 The readmes are never edited for this: `npm run labs-build` swaps each sketch for its diagrams by position
-(`shared/guides/index.json`). These sources live outside the lab folders, so changing one never needs a lab
+(`shared/guides/placement.json`; `index.json` beside it is the PDF guide's list, `shared/guides.ts`). These sources live outside the lab folders, so changing one never needs a lab
 version bump. A fenced block that should stay as text (command output) uses another fence, such as ` ```console `.
 
 ## A source

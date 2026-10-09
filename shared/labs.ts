@@ -11,6 +11,7 @@
 // Nothing here talks to anything: plain values and pure functions.
 
 import allowedRoles from "../labs/setup/allowed-roles.json";
+import type { GuideDiagramEntry, GuideDiagramKind } from "./guides";
 
 // ── Lab definitions (lab.yaml, spec §3.2) ────────────────────────────────
 
@@ -86,36 +87,39 @@ export type ReadmeBlock =
   | { t: "code"; lang: string | null; text: string }
   /** Collapsed unless the reader opens it (break-fix "What was broken" is always authored closed). */
   | { t: "details"; summary: string; blocks: ReadmeBlock[] }
-  /** A diagram in place of a hand-drawn ```text sketch (shared/guides/index.json): a GuideEntry without its position. */
-  | { t: "diagram"; kind: GuideKind; file: string; title: string; alt: string; width: number; height: number };
+  /** A diagram in place of a hand-drawn ```text sketch: a GuideEntry without its position (`file` relative to shared/guides). */
+  | { t: "diagram"; kind: GuideDiagramKind; file: string; title: string; alt: string; width: number; height: number };
 
 // ── Readme diagrams (shared/guides, npm run labs-diagrams) ──────────────
 // Committed SVGs: shared/guides/<id>/architecture.svg, drawn from the lab's
 // planned topology with the interactive diagram's layout and routing, and
 // shared/guides/<id>/<n>.svg, Mermaid concept diagrams (sources in
-// labs/_diagrams/<id>/<n>.mmd). shared/guides/index.json maps each lab id to
-// its diagrams in readme order; each replaces the ```text sketch numbered
+// labs/_diagrams/<id>/<n>.mmd). shared/guides/index.json lists each lab's
+// diagrams in readme order as { file, title, kind } (the lab guides'
+// contract, shared/guides.ts); shared/guides/placement.json lists the same
+// files with where each goes: it replaces the ```text sketch numbered
 // `sketch` (0 = the readme's first), several in list order.
 
-export type GuideKind = "architecture" | "concept";
-
-export interface GuideEntry {
-  /** Relative to shared/guides: "<id>/architecture.svg", "<id>/1.svg". */
+/** One entry of shared/guides/placement.json. */
+export interface GuidePlacement {
+  /** A file in shared/guides/<lab id>/, as in index.json: "architecture.svg", "1.svg". */
   file: string;
-  /** A short caption. */
-  title: string;
-  kind: GuideKind;
-  /** A sentence or two for a screen reader (also the SVG's <desc>). */
-  alt: string;
   /** Which ```text sketch of the readme it replaces (0-based, document order, <details> included). */
   sketch: number;
+  /** A sentence or two for a screen reader (also the SVG's <desc>). */
+  alt: string;
   /** The SVG's own size in px. */
   width: number;
   height: number;
 }
 
-/** shared/guides/index.json: lab id → its diagrams, in readme order. */
-export type GuideIndex = Record<string, GuideEntry[]>;
+/** A diagram as applyDiagrams (scripts/lib/labs.mjs) takes it: index.json's entry and its placement, `file` relative to shared/guides. */
+export interface GuideEntry extends Omit<GuideDiagramEntry, "file">, Omit<GuidePlacement, "file"> {
+  file: string;
+}
+
+/** shared/guides/placement.json: lab id → its diagrams' placements, in index.json's order. */
+export type GuidePlacements = Record<string, GuidePlacement[]>;
 
 /**
  * shared/labs.generated.json, written by `npm run labs-build` (gitignored).

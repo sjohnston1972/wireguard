@@ -541,10 +541,11 @@ export function labFolders(root) {
  * each one's learning content (labs/_learning; a missing file is a problem
  * only with requireLearning, as labs-check asks) and its planned resources
  * (plannedDir, default <root>/../shared/topology/planned; none without a file).
- * Each readme's ```text sketches are replaced with their diagrams (guidesIndex,
- * default <root>/../shared/guides/index.json; left as they are without one).
+ * Each readme's ```text sketches are replaced with their diagrams (guidesDir,
+ * default <root>/../shared/guides: index.json and placement.json; left as
+ * they are without them).
  */
-export function buildCatalogue(root, { requireLearning = false, plannedDir = join(root, "..", "shared", "topology", "planned"), guidesIndex = join(root, "..", "shared", "guides", "index.json") } = {}) {
+export function buildCatalogue(root, { requireLearning = false, plannedDir = join(root, "..", "shared", "topology", "planned"), guidesDir = join(root, "..", "shared", "guides") } = {}) {
   const problems = [];
   let skillAreas = [];
   try {
@@ -620,13 +621,21 @@ export function buildCatalogue(root, { requireLearning = false, plannedDir = joi
       problems.push({ lab: d.id, file: `planned/${d.id}.json`, field: null, message: `the planned diagram is not valid JSON: ${e.message.split("\n")[0]}` });
     }
   }
-  // The readmes' sketches become their diagrams (shared/guides/index.json, written by npm run labs-diagrams).
-  if (existsSync(guidesIndex)) {
+  // The readmes' sketches become their diagrams: index.json's titles and kinds, placement.json's spots, alt text
+  // and sizes (both written by npm run labs-diagrams).
+  const placementPath = join(guidesDir, "placement.json");
+  const indexPath = join(guidesDir, "index.json");
+  if (existsSync(placementPath) && existsSync(indexPath)) {
     try {
-      const index = JSON.parse(readFileSync(guidesIndex, "utf8"));
-      for (const id of Object.keys(readmes)) readmes[id] = applyDiagrams(readmes[id], index[id]);
+      const index = JSON.parse(readFileSync(indexPath, "utf8"));
+      const placement = JSON.parse(readFileSync(placementPath, "utf8"));
+      for (const id of Object.keys(readmes)) {
+        const named = new Map((Array.isArray(index[id]) ? index[id] : []).map((e) => [e.file, e]));
+        const entries = (Array.isArray(placement[id]) ? placement[id] : []).filter((p) => named.has(p.file)).map((p) => ({ ...p, file: `${id}/${p.file}`, title: named.get(p.file).title, kind: named.get(p.file).kind }));
+        readmes[id] = applyDiagrams(readmes[id], entries);
+      }
     } catch (e) {
-      problems.push({ lab: null, file: "shared/guides/index.json", field: null, message: `the readme diagrams' index is not valid JSON: ${e.message.split("\n")[0]}` });
+      problems.push({ lab: null, file: "shared/guides/placement.json", field: null, message: `the readme diagrams' lists are not valid JSON: ${e.message.split("\n")[0]}` });
     }
   }
   return { catalogue: { schema: 2, skillAreas, labs, readmes, learning, resources }, problems };

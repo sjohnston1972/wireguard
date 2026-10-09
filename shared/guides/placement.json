@@ -1,0 +1,697 @@
+{
+ "az104-01-identity": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A network security group, a role definition and three Entra principals, in one resource group.",
+   "width": 1093,
+   "height": 438
+  }
+ ],
+ "az104-02-policy": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A storage account, a network security group and three policies, in one resource group.",
+   "width": 1016,
+   "height": 438
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "A new resource in rg-lab-az104-02-policy is refused, with a custom message, unless it has a costcentre tag and is in the session's region. nsg-untagged, made before the deny existed, is not removed but shows as non-compliant. Deleting the …tags storage account is refused by the CanNotDelete lock.",
+   "width": 816,
+   "height": 709
+  }
+ ],
+ "az104-03-mgmt-groups": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Three management groups and two policies, in one resource group.",
+   "width": 952,
+   "height": 630
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "The lab's root group, lab-az104-03-mgmt-groups-root, sits under the tenant root group with prod and dev groups below it. The audit-environment-tag assignment is made at the lab's root group and prod and dev inherit it; your subscription stays under the tenant root group, outside the lab's tree, so the policy never reaches it.",
+   "width": 645,
+   "height": 405
+  }
+ ],
+ "az104-04-cost": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A monitor resource, in one resource group.",
+   "width": 528,
+   "height": 258
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "The budget lab-az104-04-cost-monthly, 5 a month on rg-lab-az104-04-cost from the 1st, has three thresholds: 50% and 80% of actual spend and 100% of forecast spend. Each one alerts the action group lab-az104-04-cost-budget-alerts, which has no receivers yet, so nothing is sent until you add one.",
+   "width": 737,
+   "height": 663
+  }
+ ],
+ "az104-05-storage": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two storage accounts, in one resource group.",
+   "width": 632,
+   "height": 220
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "In the hot account (LRS, Hot tier) the lifecycle rule moves a block blob such as samples/hello.txt to Cool 30 days after its last change and deletes it after 365 days. The cool account (GRS, Cool tier) is copied from the session's region to its paired region, for example UK South to UK West.",
+   "width": 553,
+   "height": 418
+  }
+ ],
+ "az104-06-blob-security": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A private endpoint sending traffic to a storage account, in one resource group with one virtual network and one subnet.",
+   "width": 1140,
+   "height": 606
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "While the lab is peered, a tunnel client that uses the tunnel's DNS resolves the …blob account through the private DNS zone privatelink.blob.core.windows.net, linked to vnet-lab and the gateway VNet, to the private endpoint's address and reaches the account over the peering. Unpeered, or from outside the tunnel, the name resolves to a public address, which works only while public network access is on.",
+   "width": 579,
+   "height": 628
+  }
+ ],
+ "az104-07-files": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VM and a storage account, in one resource group with one virtual network and one subnet.",
+   "width": 896,
+   "height": 426
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "vm-files mounts labshare at /mnt/labshare over SMB 3.1.1 on port 445; its subnet snet-vms reaches the account through a Microsoft.Storage service endpoint, and the …files firewall denies everything except snet-vms. Browsing the share from the portal at home is refused until you add your client IP to the firewall.",
+   "width": 523,
+   "height": 638
+  }
+ ],
+ "az104-08-vms": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two VMs, in one resource group with one virtual network and one subnet.",
+   "width": 760,
+   "height": 388
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "vm-zone1 runs in availability zone 1 with disk-zone1-data, a blank 4 GiB E1 disk, attached at LUN 0; vm-zone2 runs in zone 2. The serve-web extension makes each VM serve its name on port 80. The zonal disk cannot be attached to vm-zone2 because it is in another zone.",
+   "width": 571,
+   "height": 522
+  }
+ ],
+ "az104-09-vmss": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VM scale set, in one resource group with one virtual network and one subnet.",
+   "width": 528,
+   "height": 388
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "autoscale-vmss-web watches the scale set's average Percentage CPU over 5 minutes. Above 70% it adds one instance, below 25% it removes one, keeping between 1 and 3 instances (default 2) with at most one change every 5 minutes; each instance serves its own name on port 80.",
+   "width": 441,
+   "height": 557
+  }
+ ],
+ "az104-11-containers": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A container group, a container app, a Container Apps environment and a container registry, in one resource group with one virtual network and one subnet.",
+   "width": 992,
+   "height": 606
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "You reach aci-hello at its private address in snet-aci only over the peering, while ca-hello in cae-lab has public HTTPS ingress, scales to zero when idle and starts a replica on the first request. Both images come from Microsoft's public registry, MCR; the lab's …acr registry stays empty.",
+   "width": 460,
+   "height": 521
+  }
+ ],
+ "az104-12-bicep": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A storage account, in one resource group with one virtual network and two subnets.",
+   "width": 766,
+   "height": 464
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "The pipeline builds main.bicep and its module vnet.bicep into main.json with a pinned Bicep, and Terraform deploys it as bicep-main in Incremental mode with parameters from the pipeline. The template makes the …bicep storage account and nsg-bicep; its nested deployment vnet makes vnet-bicep with snet-web and snet-app, both using nsg-bicep.",
+   "width": 683,
+   "height": 759
+  }
+ ],
+ "az104-13-vnets": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two VMs, in one resource group with one virtual network and two subnets.",
+   "width": 836,
+   "height": 388
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "A tunnel client reaches vm-web on ssh 22 and http 80, which nsg-web allows from VirtualNetwork. Only TCP 8080 from asg-web to asg-app gets through nsg-app to vm-app; ssh from vm-web and anything from the tunnel client hit deny-other-vnet at priority 4000, which comes before Azure's AllowVnetInBound at 65000.",
+   "width": 576,
+   "height": 803
+  }
+ ],
+ "az104-14-peering-udr": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Three VMs, in one resource group with three virtual networks and three subnets.",
+   "width": 994,
+   "height": 774
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "vm-spoke1's request for spoke 2 follows rt-spoke1 (spoke 2's /20, next hop vm-router) over the hub peering to vm-router, which forwards it over the other peering to vm-spoke2. The reply follows rt-spoke2 back through the router. The spokes are not peered with each other, so without the routes there is no way through.",
+   "width": 516,
+   "height": 892
+  }
+ ],
+ "az104-15-dns": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VM, a DNS zone and a private DNS zone, in one resource group with one virtual network and one subnet.",
+   "width": 844,
+   "height": 606
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "The public zone answers only when you ask its own Azure name servers; an ordinary lookup fails because nothing delegates the zone. Private names are answered by Azure DNS inside VNets linked to lab15.internal: vm-web registers itself there, and a tunnel client reaches the zone through the gateway's tunnel DNS while the lab is peered.",
+   "width": 530,
+   "height": 1155
+  }
+ ],
+ "az104-16-lb-appgw": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An application gateway and a load balancer sending traffic to two VMs, in one resource group with one virtual network and two subnets.",
+   "width": 1163,
+   "height": 606
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "A tunnel client can curl agw-web's private frontend, through nsg-appgw, or lbi-web's frontend fe-web; both spread requests over pool-web, vm-web1 and vm-web2 on port 80. The gateway's public IP has no listener, and nsg-appgw must also let GatewayManager in on TCP 65200-65535.",
+   "width": 652,
+   "height": 613
+  }
+ ],
+ "az104-17-netwatcher-fix": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two VMs, in one resource group with one virtual network and two subnets.",
+   "width": 864,
+   "height": 388
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "vm-app's curl to vm-db on port 8080 times out, although vm-db answers on its own localhost. On the way it meets the route table on snet-app and nsg-db on snet-db. The region's Network Watcher, through the agent on both VMs, can test the path from either end.",
+   "width": 305,
+   "height": 807
+  }
+ ],
+ "az104-18-monitor": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VM, a Log Analytics workspace and four monitor resources, in one resource group with one virtual network and one subnet.",
+   "width": 1076,
+   "height": 648
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "vm-monitor's platform CPU metric feeds alert-vm-cpu-high (average over 80% for 5 minutes); the Azure Monitor agent sends counters and syslog through dcr-vm-linux into log-lab, capped at 0.05 GB a day; a restart written to the activity log fires alert-vm-restart. Both alerts go to ag-lab, which has no receivers, so nobody is notified.",
+   "width": 752,
+   "height": 651
+  }
+ ],
+ "az104-19-backup": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VM, a storage account and a Recovery Services vault, in one resource group with one virtual network and one subnet.",
+   "width": 756,
+   "height": 606
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "Each backup of vm-backup, daily at 23:00 UTC or on Backup now, first takes a snapshot, kept a day in rg-lab-az104-19-backup-irp1 and ready within minutes, then copies it into rsv-lab, which keeps 7 daily recovery points. A restore to a new VM stages through the stage account and must land in rg-lab-az104-19-backup.",
+   "width": 333,
+   "height": 969
+  }
+ ],
+ "az305-20-landing-zone": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two managed identities, six management groups, four policies and two role definitions, in one resource group.",
+   "width": 1600,
+   "height": 798
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "Under the tenant root group, lab-az305-20-landing-zone-root holds -platform, -landingzones and -sandbox, with -corp and -online under -landingzones. The lz-baseline initiative is assigned at -landingzones, so -corp and -online inherit it; sandbox-no-pip denies public IP addresses in -sandbox. Your subscription stays outside the tree, so nothing is evaluated.",
+   "width": 896,
+   "height": 613
+  }
+ ],
+ "az305-21-monitoring-scale": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A key vault, a Log Analytics workspace and three policies, in one resource group.",
+   "width": 1144,
+   "height": 438
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "When the Key Vault is created, the kv-diagnostics assignment finds no diagnostic setting sending allLogs to log-central. After a short delay its managed identity, holding Monitoring Contributor at the resource group, deploys setbypolicy-alllogs, and the vault's logs start reaching log-central. The built-in kv-logs-audit then reports the vault compliant, about 15 minutes after deploy, with no remediation task.",
+   "width": 913,
+   "height": 689
+  }
+ ],
+ "az305-22-keyvault-mi": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VM, a key vault and a managed identity, in one resource group with one virtual network and one subnet.",
+   "width": 756,
+   "height": 606
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "vm-app asks the instance metadata service for a token as either of its two identities. Its system-assigned identity holds Key Vault Secrets User at the vault, so it reads every secret; the user-assigned id-…-app holds the role on reports-api-key only, so app-db-password is refused with 403.",
+   "width": 490,
+   "height": 676
+  }
+ ],
+ "az305-23-sql-failover": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two private endpoints sending traffic to two SQL servers, across two resource groups with one virtual network and one subnet.",
+   "width": 1384,
+   "height": 786
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "Clients connect to the failover group's listeners rather than to a server: the read-write listener …-fog names whichever server is primary, and the read-only listener names the readable geo-secondary. appdb on …-sqlp in UK South is replicated to …-sqls in UK West; a manual failover swaps the roles and both listeners follow.",
+   "width": 466,
+   "height": 779
+  }
+ ],
+ "az305-24-cosmos": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Cosmos DB account, in one resource group.",
+   "width": 528,
+   "height": 220
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "The serverless NoSQL account …-cosmos holds the database shop with three containers. orders is partitioned by /customerId, many values that spread reads and writes evenly; events by the hierarchical key /tenantId then /userId, so a large tenant can pass one logical partition's 20 GB; bykey-status by /status, only a handful of values, so one hot partition takes the writes.",
+   "width": 709,
+   "height": 383
+  }
+ ],
+ "az305-25-storage-design": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two storage accounts, in one resource group.",
+   "width": 632,
+   "height": 220
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "In the lake account, block blobs under raw/ move from Hot to Cool 30 days after their last change, to Cold at 90 and Archive at 180; blobs under curated/ are deleted at 365 days. The records account is RA-GRS, so a read-only copy sits in the paired region behind a secondary endpoint, and its evidence container keeps every blob unchangeable for a day under an unlocked retention policy.",
+   "width": 899,
+   "height": 615
+  }
+ ],
+ "az305-26-site-recovery": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VM, a storage account and a Recovery Services vault, across two resource groups with three virtual networks and three subnets.",
+   "width": 1116,
+   "height": 770
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "Site Recovery's Mobility agent on vm-app in uksouth stages the disk's writes in the cache storage account, and they are replicated to a Standard HDD replica disk in ukwest, managed by rsv-lab with policy-6h. A failover creates the VM in vnet-target, as the network mapping says, where it answers \"vm-app in ukwest\"; a test failover uses the isolated vnet-test instead.",
+   "width": 502,
+   "height": 828
+  }
+ ],
+ "az305-27-multi-region": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Front Door and a Traffic Manager profile sending traffic to two container groups, across two resource groups.",
+   "width": 1121,
+   "height": 550
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "Traffic Manager only answers a DNS lookup, with ci-uks's name while its health check passes, and your browser then connects straight to the container. Front Door takes your request at its edge and forwards it over HTTP to ci-uks itself. Both send you to ci-ukw instead when ci-uks fails its checks.",
+   "width": 912,
+   "height": 699
+  }
+ ],
+ "az305-28-three-tier": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A private endpoint and a Front Door sending traffic to a SQL server, in one resource group with one virtual network and two subnets.",
+   "width": 1333,
+   "height": 898
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "Your request reaches Front Door, which redirects HTTP to HTTPS and applies waflab's custom rules, blocking /admin and more than 100 requests a minute from one address. Front Door sends it over HTTPS with the X-Azure-FDID header to ca-web, which refuses anything without that header with 403. ca-web calls the internal ca-app, which reaches the SQL server's private endpoint on TCP 1433; the server's public access is off.",
+   "width": 615,
+   "height": 984
+  }
+ ],
+ "az305-29-aks": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Kubernetes cluster, a container registry and a managed identity, in one resource group with one virtual network and one subnet.",
+   "width": 756,
+   "height": 606
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "The node takes its address from snet-aks in vnet-lab; pods take theirs from the overlay range 10.244.0.0/16 and services from 10.0.0.0/16, with cluster DNS at 10.0.0.10, so neither touches the lab's address pool or the gateway's networks, and neither is reachable from outside except through a service. The node goes out through the Standard load balancer kubernetes and its one outbound public IP.",
+   "width": 566,
+   "height": 665
+  }
+ ],
+ "az305-30-messaging": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Container Apps job and an Event Grid topic sending traffic to a Service Bus namespace, in one resource group.",
+   "width": 952,
+   "height": 438
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "Uploading or deleting a blob in uploads raises an event that egst-storage delivers to the blob-events queue, or dead-letters to eventgrid-deadletter after 5 retries in 60 minutes. caj-consumer, started by KEDA, peek-locks messages from both queues and completes them, except a message containing fail, which is delivered again until the fifth delivery moves it to the queue's dead-letter subqueue.",
+   "width": 535,
+   "height": 1309
+  },
+  {
+   "file": "2.svg",
+   "sketch": 0,
+   "alt": "A message sent to the topic notifications is copied to every subscription. all takes every message; high-priority has the rule priority = 'high' plus Azure's $Default true filter, and rules are ORed, so it takes every message until $Default is deleted, then only the high ones.",
+   "width": 493,
+   "height": 597
+  }
+ ],
+ "az700-31-ip-nat-outbound": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VM sending traffic to a load balancer, in one resource group with one virtual network and two subnets.",
+   "width": 1201,
+   "height": 606
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "vm-nat leaves through the NAT gateway ng-hub and shows one of pfx-nat's two addresses; vm-lb leaves through lb-out's outbound rule ob-all and shows one of pfx-lb's two addresses. lb-out has no load-balancing or inbound NAT rule, so nothing comes in through it.",
+   "width": 552,
+   "height": 616
+  }
+ ],
+ "az700-32-dns-resolver": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A DNS forwarding ruleset sending traffic to a VM, in one resource group with two virtual networks and four subnets.",
+   "width": 1284,
+   "height": 954
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "vm-app asks Azure DNS for an onprem.lab32.internal name; the ruleset frs-onprem matches the domain, so the outbound endpoint out-hub asks vm-dns on port 53. In the other direction vm-dns's dnsmasq forwards azure.lab32.internal names to the inbound endpoint in-hub, which answers from the private zone where vm-app registered itself.",
+   "width": 720,
+   "height": 864
+  }
+ ],
+ "az700-33-vnet-manager": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two VMs and a virtual network manager, in one resource group with three virtual networks and three subnets.",
+   "width": 920,
+   "height": 774
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "avnm-… holds the network group ng-spokes, with the two spokes as static members, and two configurations on it, cc-hub-spoke and sac-lab. Nothing applies until the Connectivity and SecurityAdmin deployments commit them; then each spoke gets an ANM_ peering to vnet-hub, and the spokes reach each other as a connected group with no peering between them.",
+   "width": 530,
+   "height": 1014
+  },
+  {
+   "file": "2.svg",
+   "sketch": 0,
+   "alt": "Inbound traffic to a spoke VM meets sac-lab's rules first. SSH from the hub's /20 matches the AlwaysAllow rule at priority 90 and is let in, so the NSG's deny of the same traffic is never read; SSH from the Internet service tag matches the Deny rule at priority 100 and is refused whatever the NSG says. Only traffic neither rule matches goes on to the spoke's NSG.",
+   "width": 701,
+   "height": 831
+  }
+ ],
+ "az700-34-route-server": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Route Server sending traffic to a VM, in one resource group with two virtual networks and three subnets.",
+   "width": 884,
+   "height": 686
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "vm-nva runs FRR as ASN 65010 and announces a /24 held by its dummy interface lab0 to both rs-hub instances (ASN 65515) over eBGP multihop, learning the hub's and spoke's /20s back. Because the spoke uses the hub's remote gateway, Route Server puts the /24 in vm-app's effective routes with vm-nva as next hop, so vm-app's traffic for it goes to vm-nva.",
+   "width": 618,
+   "height": 761
+  }
+ ],
+ "az700-35-forced-tunnel-fix": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two VMs, in one resource group with two virtual networks and two subnets.",
+   "width": 1089,
+   "height": 426
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "snet-app has default outbound access off, so vm-app's internet traffic follows rt-spoke's route default-via-nva, 0.0.0.0/0 to vm-nva, over the peering to the hub, where vm-nva has default outbound access to the internet. The symptom: from vm-app, curl and apt-get update time out, while ping and ssh to vm-nva work and names still resolve.",
+   "width": 513,
+   "height": 731
+  }
+ ],
+ "az700-36-s2s-vpn": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two VPN gateways sending traffic to two local network gateways, in one resource group with two virtual networks and four subnets.",
+   "width": 906,
+   "height": 866
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "vm-azure reaches vm-onprem only through the tunnel, as the VNets are not peered. Its effective route sends the on-prem /20, learned over BGP, to the virtual network gateway; vpngw-azure (AS 65010) and vpngw-onprem (AS 65020) carry it over IPsec with BGP, both connections using one pre-shared key and the same IPsec/IKE policy.",
+   "width": 687,
+   "height": 781
+  }
+ ],
+ "az700-37-p2s-vpn": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VPN gateway, a VM and an Entra principal, in one resource group with one virtual network and two subnets.",
+   "width": 844,
+   "height": 648
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "With both clients connected, your PC's WireGuard route covers 10.64.0.0/13, every lab slot, while the Azure VPN Client adds a route for vnet-hub's /20, which is more specific. So traffic to vm-app goes over point-to-site to vpngw-hub, signed in with Entra ID and given an address from the client pool, and goes back over WireGuard when you disconnect.",
+   "width": 660,
+   "height": 683
+  }
+ ],
+ "az700-38-hub-firewall": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A firewall, two VMs, two firewall policies and a Log Analytics workspace, in one resource group with three virtual networks and four subnets.",
+   "width": 1352,
+   "height": 954
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "rt-spoke1 sends vm-spoke1's internet traffic and its traffic for spoke 2 to afw-hub. The firewall's policy fwp-hub inherits fwp-base's network rules, which allow TCP 22 and ping between the spokes, and adds application rules allowing *.ubuntu.com and www.microsoft.com on HTTP and HTTPS. Anything no rule allows, such as example.com or port 80 between the spokes, is denied.",
+   "width": 610,
+   "height": 644
+  }
+ ],
+ "az700-39-vwan-secured-hub": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A firewall, two VMs, a firewall policy and a Virtual WAN, in one resource group with three virtual networks and two subnets.",
+   "width": 1248,
+   "height": 694
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "The routing intent ri-vhub makes afw-vhub the next hop for private traffic (the RFC 1918 ranges) and internet traffic (0.0.0.0/0), and conn-spoke1's internet security setting gives the spoke the hub's 0.0.0.0/0. The firewall's policy fwp-vhub then allows TCP 22 and ping between the spokes and *.ubuntu.com on HTTP and HTTPS; anything else, such as port 80 between the spokes or www.microsoft.com, is denied.",
+   "width": 667,
+   "height": 674
+  }
+ ],
+ "az700-40-lb-advanced": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A load balancer sending traffic to a VM, across two resource groups with two virtual networks and three subnets.",
+   "width": 1680,
+   "height": 1066
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "On port 80, lb-global sends you to a regional frontend, fe-uks on lb-uks or fe-ukw on lb-ukw, which forward to vm-web1 or vm-web2; fe-uks is not chained, because Gateway Load Balancer does not work with the global tier. On ports 8081 to 8090, lb-uks's second frontend fe-uks-chained uses its inbound NAT rule to reach port 8080 on vm-web1, and being chained to lb-gw, its traffic first passes through vm-nva over two VXLAN tunnels.",
+   "width": 764,
+   "height": 689
+  }
+ ],
+ "az700-41-appgw-waf": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An application gateway sending traffic to two VMs, in one resource group with one virtual network and two subnets.",
+   "width": 1434,
+   "height": 606
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "A tunnel client resolves app.lab41.internal to agw-hub's private frontend. Plain HTTP on listener-http gets a permanent redirect to HTTPS; listener-https terminates TLS with cert-app from the key vault, then the WAF policy waf-hub, in Prevention mode, returns 403 to anything the Default Rule Set 2.1 or the custom rule BlockAttackQuery (attack=1 in the query string) matches. Other requests go to both VMs on port 80, and every response gets X-Lab: 41 and loses its Server header.",
+   "width": 641,
+   "height": 1008
+  }
+ ],
+ "az700-42-frontdoor-private": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Front Door sending traffic to a VM, in one resource group with one virtual network and two subnets.",
+   "width": 1244,
+   "height": 718
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "Your request reaches afd-premium's endpoint, where the wafpremium policy checks it and the /* route and rule set ruleslab42 redirect, cache and add headers. Front Door then forwards over HTTP through its own managed private endpoint on pls-web, pending until you approve it, to the internal load balancer lb-int and vm-web, which sees every request come from pls-web's NAT address in snet-pls.",
+   "width": 708,
+   "height": 847
+  }
+ ],
+ "az700-43-private-link": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two private endpoints sending traffic to a VM and a storage account, in one resource group with two virtual networks and four subnets.",
+   "width": 1682,
+   "height": 954
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "From vm-client, pe-svc reaches vm-svc in the unpeered provider VNet through Private Link, and vm-svc sees pls-svc's NAT address, not the client's. The name …st.blob.core.windows.net resolves through the privatelink zone to pe-blob, so that account is reached through the private endpoint. …other has no private endpoint, resolves to a public address and goes through the subnet's Microsoft.Storage service endpoint, where sep-storage, which allows …st only, refuses it with 403.",
+   "width": 769,
+   "height": 727
+  }
+ ],
+ "az700-44-flow-logs-bastion": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A bastion, two VMs, a storage account, a Log Analytics workspace and more, across two resource groups with one virtual network and three subnets.",
+   "width": 1315,
+   "height": 866
+  },
+  {
+   "file": "1.svg",
+   "sketch": 0,
+   "alt": "You reach the VMs over SSH only through bas-hub, from the portal on port 443, because nsg-web and nsg-app allow SSH only from the Bastion subnet; a tunnel client reaches port 80 on vm-web but never SSH. Port 80 from vm-web to vm-app is allowed by nsg-app, while port 80 from vm-app to vm-web is denied by nsg-web.",
+   "width": 493,
+   "height": 618
+  }
+ ]
+}

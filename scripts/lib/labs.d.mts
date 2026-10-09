@@ -47,5 +47,5 @@ export function countPlanned(graph: { nodes?: { kind: string }[] }): Record<stri
 export const SKETCH_LANG: "text";
 export function readmeSketches(md: string): { index: number; heading: string | null }[];
 export function applyDiagrams(blocks: ReadmeBlock[], entries: GuideEntry[] | undefined): ReadmeBlock[];
-export function buildCatalogue(root: string, opts?: { requireLearning?: boolean; plannedDir?: string; guidesIndex?: string }): { catalogue: LabCatalogue; problems: LabProblem[] };
+export function buildCatalogue(root: string, opts?: { requireLearning?: boolean; plannedDir?: string; guidesDir?: string }): { catalogue: LabCatalogue; problems: LabProblem[] };
 export function versionProblems(labsDir: string, base: string): LabProblem[];
