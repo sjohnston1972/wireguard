@@ -10,6 +10,7 @@
   --bg-elevated: #ffffff;
   --border: #dde4ee;
   --border-strong: #c3cddb;
+  --group-outline: #768498;
 
   --text-primary: #0f1b2d;
   --text-secondary: #44546a;
@@ -47,6 +48,7 @@
     --bg-elevated: #ffffff;
     --border: #dde4ee;
     --border-strong: #c3cddb;
+    --group-outline: #768498;
 
     --text-primary: #0f1b2d;
     --text-secondary: #44546a;

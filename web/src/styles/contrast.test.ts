@@ -71,6 +71,15 @@ describe("token contrast", () => {
       expect(new Set(series).size).toBe(6);
     });
 
+    it(`${name}: a lab diagram's resource-group and Global / Tenant lane outlines (--group-outline) are at least 3:1 on every canvas surface`, () => {
+      // Non-text contrast (WCAG 1.4.11): the canvas sits on the app, a panel, a tile (the mini) or an elevated surface.
+      for (const bg of ["--bg-app", "--bg-panel", "--bg-tile", "--bg-elevated"]) {
+        expect(contrast(tok(t, "--group-outline"), tok(t, bg)), `${name} --group-outline on ${bg}`).toBeGreaterThanOrEqual(3);
+      }
+      // Quieter than the VNet's Azure blue, so the hierarchy (group, then VNet, then subnet) still reads.
+      expect(tok(t, "--group-outline")).not.toBe(tok(t, "--blue"));
+    });
+
     it(`${name}: disabled controls are legible, at least 3:1 against their fill and the surfaces they sit on`, () => {
       for (const bg of ["--disabled-bg", "--bg-panel", "--bg-tile", "--bg-app", "--bg-bar"]) {
         expect(contrast(tok(t, "--disabled-fg"), tok(t, bg)), `${name} --disabled-fg on ${bg}`).toBeGreaterThanOrEqual(3);
@@ -92,6 +101,24 @@ describe("component CSS uses the checked pairs", () => {
     const nodata = rules.filter((r) => /nodata|__empty\b|__value--none\b/.test(r.sel) && /(^|;|\s)color\s*:/.test(r.body));
     expect(nodata.length).toBeGreaterThan(4);
     for (const r of nodata) expect(r.body, `${r.file} ${r.sel}`).not.toMatch(/color\s*:\s*var\(--text-muted\)/);
+  });
+
+  it("lab diagram outlines: resource groups dashed and lanes solid, both at least 1.5px in --group-outline; VNets stay Azure blue, subnets lighter", () => {
+    const rule = (sel: string) => {
+      const r = rules.find((x) => x.sel === sel && /topology\.css$/.test(x.file));
+      if (!r) throw new Error(`no ${sel} rule in topology.css`);
+      return r.body;
+    };
+    const width = (body: string, prop = "border") => Number(body.match(new RegExp(`(?:^|[;\\s])${prop}\\s*:\\s*([\\d.]+)px`))?.[1] ?? 0);
+    const rg = rule(".topo-group--resourceGroup");
+    expect(rg).toMatch(/border\s*:\s*[\d.]+px dashed var\(--group-outline\)/);
+    expect(width(rg)).toBeGreaterThanOrEqual(1.5);
+    const lane = rule(".topo-group--lane");
+    expect(lane).toMatch(/border\s*:\s*[\d.]+px solid var\(--group-outline\)/);
+    expect(width(lane)).toBeGreaterThanOrEqual(1.5);
+    expect(lane).toMatch(/border-top\s*:\s*3px solid var\(--group-outline\)/);
+    expect(rule(".topo-group--vnet")).toMatch(/border\s*:\s*[\d.]+px solid var\(--topo-azure\)/);
+    expect(rule(".topo-group--subnet")).toMatch(/border\s*:\s*1px solid var\(--topo-subnet-border\)/);
   });
 
   it("white text never sits on plain --blue (it uses --blue-fill)", () => {

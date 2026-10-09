@@ -264,7 +264,8 @@
 }
 .topo-group--resourceGroup {
   --topo-head-bg: var(--topo-rg-head);
-  border: 1.5px dashed var(--border-strong);
+  /* 3:1 or more on the canvas in both themes (--group-outline); dashed, grey: quieter than a VNet's solid blue. */
+  border: 2px dashed var(--group-outline);
   background: var(--topo-rg-fill);
 }
 .topo-group--vnet {
@@ -295,8 +296,9 @@
 }
 .topo-group--lane {
   --topo-head-bg: var(--topo-rg-head);
-  border: 1px solid var(--border);
-  border-top: 3px solid var(--border-strong);
+  /* The Global and Tenant lanes: a solid outline, 3:1 or more on the canvas in both themes, heavier along the top. */
+  border: 1.5px solid var(--group-outline);
+  border-top: 3px solid var(--group-outline);
   border-radius: 6px;
   background: color-mix(in srgb, var(--bg-tile) 70%, transparent);
 }
