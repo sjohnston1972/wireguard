@@ -157,5 +157,12 @@ export async function openBrowser({ browser } = {}) {
     const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
     return Buffer.from(shot.data, "base64");
   };
-  return { evaluate, screenshot, close, exe, pid: child.pid };
+  /** A PNG of the page as it is now, in a `width` × `height` window. */
+  const capture = async (width = 1600, height = 900) => {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+    await sleep(300);
+    const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
+    return Buffer.from(shot.data, "base64");
+  };
+  return { evaluate, screenshot, capture, close, exe, pid: child.pid };
 }

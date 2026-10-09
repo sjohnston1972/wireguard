@@ -7,8 +7,9 @@
 // URL. Eager, as URLs: one small map in the labs chunk (never the entry); lazy
 // globs would make one JS chunk per diagram.
 
-const files = import.meta.glob<string>("../../../../shared/guides/*/*.svg", { query: "?url", import: "default", eager: true });
-const PREFIX = "../../../../shared/guides/";
+// Keys relative to shared/guides ("./az104-16-lb-appgw/architecture.svg"): short, as the map ships in the chunk.
+const files = import.meta.glob<string>("./*/*.svg", { base: "../../../../shared/guides/", query: "?url", import: "default", eager: true });
+const PREFIX = "./";
 
 /** Catalogue file name → the hashed URL of the SVG. */
 export const GUIDE_URLS: Readonly<Record<string, string>> = Object.fromEntries(Object.entries(files).map(([k, v]) => [k.slice(PREFIX.length), v]));

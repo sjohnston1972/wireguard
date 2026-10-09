@@ -29,28 +29,25 @@
   max-height: 520px;
   width: auto;
 }
+/* Always shown (a large diagram is drawn small here): the picture opens full size. */
 .labs-diagram__hint {
   position: absolute;
-  top: 8px;
   right: 8px;
+  bottom: 8px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
   border: 1px solid #c3cddb;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   color: #44546a;
   font-size: 11.5px;
-  opacity: 0;
-  transition: opacity 120ms ease;
 }
 .labs-diagram__open:hover .labs-diagram__hint,
 .labs-diagram__open:focus-visible .labs-diagram__hint {
-  opacity: 1;
-}
-@media (hover: none) {
-  .labs-diagram__hint { opacity: 1; }
+  border-color: #1d56d8;
+  color: #1d56d8;
 }
 .labs-diagram__caption {
   margin-top: 6px;
