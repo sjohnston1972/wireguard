@@ -1,0 +1,20 @@
+%% title: Budget thresholds and where their alerts go
+%% alt: The budget lab-az104-04-cost-monthly, 5 a month on rg-lab-az104-04-cost from the 1st, has three thresholds: 50% and 80% of actual spend and 100% of forecast spend. Each one alerts the action group lab-az104-04-cost-budget-alerts, which has no receivers yet, so nothing is sent until you add one.
+flowchart TB
+  rg("rg-lab-az104-04-cost<br/>spend")
+  b{{"budget lab-az104-04-cost-monthly<br/>5 a month, from the 1st"}}
+  t1{{"50% of actual"}}
+  t2{{"80% of actual"}}
+  t3{{"100% of forecast"}}
+  ag("action group<br/>lab-az104-04-cost-budget-alerts<br/>short name labbudget")
+  nr(["no receivers yet:<br/>nothing is emailed or called"])
+  rg -. "measured by" .-> b
+  b --> t1 & t2 & t3
+  t1 & t2 & t3 --> ag
+  ag -.-> nr
+  class rg,ag azure
+  class b,t1,t2,t3 rule
+  class nr client
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d

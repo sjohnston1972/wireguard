@@ -1,0 +1,21 @@
+%% title: Two tunnels on your PC: the more specific route wins
+%% alt: With both clients connected, your PC's WireGuard route covers 10.64.0.0/13, every lab slot, while the Azure VPN Client adds a route for vnet-hub's /20, which is more specific. So traffic to vm-app goes over point-to-site to vpngw-hub, signed in with Entra ID and given an address from the client pool, and goes back over WireGuard when you disconnect.
+flowchart TB
+  pc(["your PC<br/>WireGuard and Azure VPN Client"])
+  rt{{"your PC's routes<br/>10.64.0.0/13 → WireGuard<br/>vnet-hub's /20 → Azure VPN Client<br/>(more specific, so it wins)"}}
+  gw("vpngw-hub, pip-vpngw-hub<br/>OpenVPN, Microsoft Entra ID<br/>client pool: the slot's last /24")
+  id("Entra ID sign-in<br/>you, or lab-az700-37-p2s-vpn-vpnuser")
+  wg("gateway VNet<br/>WireGuard tunnel")
+  app("vm-app :80<br/>vnet-hub, snet-app")
+  pc --> rt
+  rt == "VPN client connected:<br/>point-to-site over the internet" ==> gw
+  rt -. "after you disconnect" .-> wg
+  id -.- gw
+  gw ==> app
+  wg -. "optional peering" .-> app
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class pc client
+  class rt rule
+  class gw,id,wg,app azure

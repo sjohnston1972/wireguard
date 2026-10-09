@@ -1,0 +1,17 @@
+%% title: The request that times out, and what it passes
+%% alt: vm-app's curl to vm-db on port 8080 times out, although vm-db answers on its own localhost. On the way it meets the route table on snet-app and nsg-db on snet-db. The region's Network Watcher, through the agent on both VMs, can test the path from either end.
+flowchart TB
+  nw("NetworkWatcher_{region}<br/>NetworkWatcherRG<br/>outside the lab")
+  app("vm-app :80<br/>snet-app, Network Watcher agent")
+  rt{{"route table<br/>on snet-app"}}
+  nsg{{"nsg-db on snet-db<br/>meant to let vm-app in<br/>on 8080, the VNet on ssh"}}
+  db("vm-db :8080<br/>snet-db, Network Watcher agent<br/>curl localhost:8080 answers")
+  app == "curl http://vm-db:8080<br/>times out" ==> rt
+  rt --> nsg --> db
+  nw -. "connection troubleshoot,<br/>from either VM" .-> app
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  class app,db azure
+  class rt,nsg rule
+  class nw client

@@ -1,0 +1,18 @@
+%% title: Topic subscriptions and their filter rules
+%% alt: A message sent to the topic notifications is copied to every subscription. all takes every message; high-priority has the rule priority = 'high' plus Azure's $Default true filter, and rules are ORed, so it takes every message until $Default is deleted, then only the high ones.
+flowchart TB
+  you(["you, Service Bus Explorer<br/>send priority high, low, none"])
+  t("sb-…<br/>topic notifications")
+  sa("subscription all")
+  r{{"high-priority rules, ORed<br/>priority = 'high'<br/>$Default: true filter"}}
+  sh("subscription high-priority")
+  you --> t
+  t -- "a copy of every message" --> sa
+  t -- "a copy of every message" --> r
+  r -- "all three; only high<br/>once $Default is deleted" --> sh
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class you client
+  class t,sa,sh azure
+  class r rule

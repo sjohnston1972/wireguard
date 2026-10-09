@@ -1,0 +1,16 @@
+%% title: How deployIfNotExists fixes a new vault by itself
+%% alt: When the Key Vault is created, the kv-diagnostics assignment finds no diagnostic setting sending allLogs to log-central. After a short delay its managed identity, holding Monitoring Contributor at the resource group, deploys setbypolicy-alllogs, and the vault's logs start reaching log-central. The built-in kv-logs-audit then reports the vault compliant, about 15 minutes after deploy, with no remediation task.
+sequenceDiagram
+  participant P as kv-diagnostics<br/>deployIfNotExists
+  participant MI as its identity<br/>Monitoring<br/>Contributor
+  participant KV as …kv
+  participant LA as log-central
+  Note over P,MI: assigned before<br/>the vault exists
+  Note over KV: vault created
+  P->>KV: allLogs to log-central?
+  KV-->>P: no such setting
+  Note over P: evaluation delay
+  P->>MI: run the deployment
+  MI->>KV: create setbypolicy-alllogs
+  KV->>LA: allLogs
+  Note over KV,LA: kv-logs-audit: compliant,<br/>about 15 min after deploy

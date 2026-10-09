@@ -1,0 +1,18 @@
+%% title: Who gets through the storage firewall to labshare
+%% alt: vm-files mounts labshare at /mnt/labshare over SMB 3.1.1 on port 445; its subnet snet-vms reaches the account through a Microsoft.Storage service endpoint, and the …files firewall denies everything except snet-vms. Browsing the share from the portal at home is refused until you add your client IP to the firewall.
+flowchart TB
+  vm("vm-files in snet-vms<br/>mounted at /mnt/labshare")
+  you(["you in the portal<br/>from your client IP"])
+  se{{"service endpoint<br/>Microsoft.Storage on snet-vms"}}
+  fw{{"…files firewall<br/>deny everything, allow snet-vms"}}
+  sh[("share labshare, 5 GiB<br/>in …files")]
+  vm -- "SMB 3.1.1, port 445" --> se
+  se --> fw
+  fw --> sh
+  you -- "browse: refused until<br/>you add your IP" --x fw
+  class vm,sh azure
+  class you client
+  class se,fw rule
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d

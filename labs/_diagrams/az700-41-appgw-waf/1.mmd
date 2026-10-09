@@ -1,0 +1,26 @@
+%% title: A request through the application gateway
+%% alt: A tunnel client resolves app.lab41.internal to agw-hub's private frontend. Plain HTTP on listener-http gets a permanent redirect to HTTPS; listener-https terminates TLS with cert-app from the key vault, then the WAF policy waf-hub, in Prevention mode, returns 403 to anything the Default Rule Set 2.1 or the custom rule BlockAttackQuery (attack=1 in the query string) matches. Other requests go to both VMs on port 80, and every response gets X-Lab: 41 and loses its Server header.
+flowchart TB
+  you(["tunnel client<br/>app.lab41.internal<br/>→ the private frontend"])
+  l80("listener-http :80")
+  l443("listener-https :443<br/>TLS with cert-app from …kv")
+  waf{"waf-hub, Prevention<br/>DRS 2.1 or BlockAttackQuery<br/>matches?"}
+  blk("403")
+  pool("pool-web, probe /<br/>vm-web1 :80, vm-web2 :80")
+  rw{{"rw-headers on every response<br/>add X-Lab: 41, remove Server"}}
+  you -- "http://" --> l80
+  l80 -. "301 to https,<br/>path and query kept" .-> you
+  you -- "https://" --> l443
+  l443 --> waf
+  waf -- "yes, e.g. ?attack=1<br/>or SQL injection" --> blk
+  waf -- "no" --> pool
+  pool -- "response" --> rw
+  rw -.-> you
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d
+  class you client
+  class l80,l443,pool azure
+  class waf,rw rule
+  class blk bad

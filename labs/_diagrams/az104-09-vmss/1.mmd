@@ -1,0 +1,16 @@
+%% title: How autoscale-vmss-web sizes the scale set
+%% alt: autoscale-vmss-web watches the scale set's average Percentage CPU over 5 minutes. Above 70% it adds one instance, below 25% it removes one, keeping between 1 and 3 instances (default 2) with at most one change every 5 minutes; each instance serves its own name on port 80.
+flowchart TB
+  you(["you, tunnel client<br/>(while peered)"])
+  vmss("vmss-web<br/>Uniform, B1s<br/>upgrade mode Manual<br/>each instance serves<br/>its name on :80")
+  as{{"autoscale-vmss-web<br/>min 1, default 2, max 3<br/>average CPU over 5 min<br/>one change per 5 min at most"}}
+  you -- "curl :80" --> vmss
+  vmss -. "Percentage CPU" .-> as
+  as -- "above 70%: add 1" --> vmss
+  as -- "below 25%: remove 1" --> vmss
+  class you client
+  class as rule
+  class vmss azure
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d

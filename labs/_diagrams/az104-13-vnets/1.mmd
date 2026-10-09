@@ -1,0 +1,18 @@
+%% title: Which NSG rule lets each connection through
+%% alt: A tunnel client reaches vm-web on ssh 22 and http 80, which nsg-web allows from VirtualNetwork. Only TCP 8080 from asg-web to asg-app gets through nsg-app to vm-app; ssh from vm-web and anything from the tunnel client hit deny-other-vnet at priority 4000, which comes before Azure's AllowVnetInBound at 65000.
+flowchart TB
+  you(["you, tunnel client<br/>(while peered)"])
+  nw{{"nsg-web on snet-web<br/>100: allow 22 from VirtualNetwork<br/>110: allow 80 from VirtualNetwork<br/>4000: deny-other-vnet<br/>65000: AllowVnetInBound"}}
+  vw("vm-web in asg-web<br/>serves :80")
+  na{{"nsg-app on snet-app<br/>100: allow 8080 from asg-web<br/>4000: deny-other-vnet<br/>65000: AllowVnetInBound"}}
+  va("vm-app in asg-app<br/>serves :8080")
+  you -- "ssh 22, http 80" --> nw --> vw
+  vw -- "TCP 8080" --> na --> va
+  vw -- "ssh 22: denied at 4000" --x na
+  you -- "anything: denied at 4000" --x na
+  class you client
+  class nw,na rule
+  class vw,va azure
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d

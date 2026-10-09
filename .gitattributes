@@ -8,3 +8,5 @@ Dockerfile text eol=lf
 *.nft text eol=lf
 # Generated planned diagrams (npm run labs-topology): byte-stable on every OS.
 shared/topology/planned/*.json text eol=lf
+# Generated readme diagrams (npm run labs-diagrams): byte-stable on every OS.
+shared/guides/** text eol=lf

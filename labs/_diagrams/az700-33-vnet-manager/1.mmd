@@ -1,0 +1,24 @@
+%% title: From network manager configuration to peerings
+%% alt: avnm-… holds the network group ng-spokes, with the two spokes as static members, and two configurations on it, cc-hub-spoke and sac-lab. Nothing applies until the Connectivity and SecurityAdmin deployments commit them; then each spoke gets an ANM_ peering to vnet-hub, and the spokes reach each other as a connected group with no peering between them.
+flowchart TB
+  avnm("avnm-…<br/>scope: this subscription")
+  ng{{"ng-spokes<br/>static members: the two spokes"}}
+  cc("cc-hub-spoke<br/>hub vnet-hub, spokes directly connected")
+  sac("sac-lab, rule collection rc-spokes<br/>security admin rules")
+  dep{{"deployments: Connectivity, SecurityAdmin<br/>nothing applies until deployed"}}
+  hub("vnet-hub")
+  s1("vnet-spoke1<br/>vm-spoke1 :80")
+  s2("vnet-spoke2<br/>vm-spoke2 :80")
+  avnm -.-> ng
+  ng -.-> cc
+  ng -.-> sac
+  cc -.-> dep
+  sac -.-> dep
+  dep -. "commits" .-> hub
+  hub <-- "ANM_ peering" --> s1
+  hub <-- "ANM_ peering" --> s2
+  s1 <-- "connected group, not a peering" --> s2
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class avnm,cc,sac,hub,s1,s2 azure
+  class ng,dep rule

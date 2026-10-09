@@ -1,0 +1,20 @@
+%% title: The failover group's two listeners
+%% alt: Clients connect to the failover group's listeners rather than to a server: the read-write listener …-fog names whichever server is primary, and the read-only listener names the readable geo-secondary. appdb on …-sqlp in UK South is replicated to …-sqls in UK West; a manual failover swaps the roles and both listeners follow.
+flowchart TB
+  c(["sqlcmd, while peered<br/>(names resolve to the<br/>private endpoints)"])
+  rw("…-fog.database.windows.net<br/>read-write listener")
+  ro("…-fog.secondary<br/>.database.windows.net<br/>read-only listener")
+  subgraph fog ["failover group …-fog, Manual: a failover swaps the roles"]
+    direction LR
+    p("…-sqlp, UK South<br/>appdb, Basic<br/>primary")
+    s("…-sqls, UK West<br/>appdb, Basic<br/>geo-secondary,<br/>readable, no writes")
+    p == "active<br/>geo-replication" ==> s
+  end
+  c --> rw
+  c -- "ApplicationIntent=ReadOnly" --> ro
+  rw -- "names the primary" --> p
+  ro -- "names the secondary" --> s
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  class c client
+  class rw,ro,p,s azure

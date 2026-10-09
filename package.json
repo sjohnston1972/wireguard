@@ -31,6 +31,7 @@
     "labs-check": "node scripts/labs-check.mjs",
     "labs-tf": "node scripts/labs-tf.mjs",
     "labs-topology": "node scripts/labs-topology.mjs",
+    "labs-diagrams": "node scripts/labs-diagrams.mjs",
     "labs-verify": "node scripts/labs-verify.mjs",
     "labs-setup": "node scripts/labs-setup.mjs",
     "labs-pr0-check": "node scripts/labs-pr0-check.mjs"

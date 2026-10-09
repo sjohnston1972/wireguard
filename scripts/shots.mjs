@@ -25,6 +25,8 @@
 //            --widget-chrome off    hide every cog, move handle and widget menu ([data-widget-chrome])
 //            --prefs a.json,b.json  save these widget preferences for dev@localhost before shooting
 //                                   (each file: {"<page>": <PagePrefs>}; see scripts/shots-prefs/)
+//   scroll:  --scroll-to SELECTOR   after measuring, scroll the first match to the top of its box and wait
+//                                   for its pictures (a lab's readme diagram: --scroll-to .labs-diagram)
 //   Compare two runs pixel by pixel: npm run shots:diff -- <dir A> <dir B>
 //
 // The browser is stopped by its own process id when the run ends; no other
@@ -35,7 +37,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { parseArgs, buildPlan, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, prefsPuts, freezeTimeScript, widgetChromeOffScript, frozenClockProblem } from "./lib/shots.mjs";
+import { parseArgs, buildPlan, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, prefsPuts, freezeTimeScript, widgetChromeOffScript, frozenClockProblem, scrollToScript } from "./lib/shots.mjs";
 import { seed } from "./seed-scenarios.mjs";
 
 const BROWSERS = [
@@ -301,6 +303,10 @@ async function main() {
         rec.mainOverflowY = measured.mainY;
         rec.mainOverflowX = measured.mainX;
         rec.innerScroller = measured.innerScroller;
+        if (opts.scrollTo) {
+          const found = await cdp.send("Runtime.evaluate", { expression: scrollToScript(opts.scrollTo), awaitPromise: true, returnByValue: true });
+          if (!found.result.value) console.log(`  (no ${opts.scrollTo} on ${s.path}: shot as it loaded)`);
+        }
         const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
         writeFileSync(join(out, s.file), Buffer.from(shot.data, "base64"));
         const verdict = judgeOverflow(measured, s);

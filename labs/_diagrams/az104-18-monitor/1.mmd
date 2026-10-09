@@ -1,0 +1,21 @@
+%% title: Three signals from one VM, and where each goes
+%% alt: vm-monitor's platform CPU metric feeds alert-vm-cpu-high (average over 80% for 5 minutes); the Azure Monitor agent sends counters and syslog through dcr-vm-linux into log-lab, capped at 0.05 GB a day; a restart written to the activity log fires alert-vm-restart. Both alerts go to ag-lab, which has no receivers, so nobody is notified.
+flowchart TB
+  vm("vm-monitor<br/>system-assigned identity")
+  met("platform metrics<br/>Percentage CPU")
+  ama("Azure Monitor agent<br/>signs in as the VM's identity")
+  act("activity log<br/>restart, in this group")
+  a1{{"alert-vm-cpu-high<br/>average over 80%<br/>for 5 minutes"}}
+  dcr{{"dcr-vm-linux<br/>CPU, memory every 60 s<br/>syslog Warning and above"}}
+  a2{{"alert-vm-restart<br/>any VM restart"}}
+  log[("log-lab, cap 0.05 GB/day<br/>Perf, Syslog, Heartbeat")]
+  ag("ag-lab<br/>no receivers: alerts show<br/>in the portal only")
+  vm --> met --> a1
+  vm --> ama --> dcr --> log
+  vm -. "restart" .-> act --> a2
+  a1 --> ag
+  a2 --> ag
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class vm,met,ama,act,log,ag azure
+  class a1,dcr,a2 rule

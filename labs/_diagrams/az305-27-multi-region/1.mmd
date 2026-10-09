@@ -1,0 +1,17 @@
+%% title: DNS steering against an edge proxy
+%% alt: Traffic Manager only answers a DNS lookup, with ci-uks's name while its health check passes, and your browser then connects straight to the container. Front Door takes your request at its edge and forwards it over HTTP to ci-uks itself. Both send you to ci-ukw instead when ci-uks fails its checks.
+sequenceDiagram
+  participant Y as you
+  participant TM as Traffic Manager<br/>…-tm, Priority
+  participant FD as Front Door<br/>afd-lab
+  participant C as ci-uks, priority 1<br/>(ci-ukw, priority 2)
+  Note over TM: HTTP check every 30 s
+  Y->>TM: DNS lookup …-tm
+  TM-->>Y: ci-uks's name, TTL 30 s
+  Y->>C: HTTP :80, straight to the container
+  C-->>Y: Hello from uksouth
+  Note over FD: probe every 100 s
+  Y->>FD: HTTP or HTTPS to the endpoint
+  FD->>C: forwards over HTTP
+  C-->>FD: Hello from uksouth
+  FD-->>Y: the page, from the edge

@@ -1,0 +1,17 @@
+%% title: Replication, then failover or test failover
+%% alt: Site Recovery's Mobility agent on vm-app in uksouth stages the disk's writes in the cache storage account, and they are replicated to a Standard HDD replica disk in ukwest, managed by rsv-lab with policy-6h. A failover creates the VM in vnet-target, as the network mapping says, where it answers "vm-app in ukwest"; a test failover uses the isolated vnet-test instead.
+flowchart TB
+  vm("vm-app, uksouth<br/>vnet-source, AlmaLinux 9.7<br/>Mobility agent")
+  cache("…cache, uksouth<br/>staging storage account")
+  rep[("replica disk, Standard HDD, ukwest<br/>rsv-lab, policy-6h: crash-consistent<br/>recovery points kept 6 hours")]
+  nm{{"network mapping<br/>vnet-source → vnet-target"}}
+  tgt("vm-app in vnet-target, ukwest<br/>answers: vm-app in ukwest")
+  tst("test copy in vnet-test<br/>isolated network")
+  vm -- "disk writes" --> cache
+  cache -- "replication across regions" --> rep
+  rep == "failover" ==> nm ==> tgt
+  rep -. "test failover" .-> tst
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class vm,cache,rep,tgt,tst azure
+  class nm rule

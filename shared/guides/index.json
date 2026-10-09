@@ -1,0 +1,523 @@
+{
+ "az104-01-identity": [
+  {
+   "file": "architecture.svg",
+   "title": "Users, groups, roles and custom roles: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "az104-02-policy": [
+  {
+   "file": "architecture.svg",
+   "title": "Azure Policy, tags and resource locks: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "What the policies and the lock decide",
+   "kind": "concept"
+  }
+ ],
+ "az104-03-mgmt-groups": [
+  {
+   "file": "architecture.svg",
+   "title": "Management groups and subscription governance: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Management group tree and policy inheritance",
+   "kind": "concept"
+  }
+ ],
+ "az104-04-cost": [
+  {
+   "file": "architecture.svg",
+   "title": "Cost management: budgets and alerts: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Budget thresholds and where their alerts go",
+   "kind": "concept"
+  }
+ ],
+ "az104-05-storage": [
+  {
+   "file": "architecture.svg",
+   "title": "Storage accounts: redundancy, access tiers, lifecycle: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Lifecycle tiers on the hot account, GRS copy of the cool one",
+   "kind": "concept"
+  }
+ ],
+ "az104-06-blob-security": [
+  {
+   "file": "architecture.svg",
+   "title": "Blob security: SAS, access policies, private endpoint: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Which address the account name resolves to",
+   "kind": "concept"
+  }
+ ],
+ "az104-07-files": [
+  {
+   "file": "architecture.svg",
+   "title": "Azure Files shares mounted from a VM: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Who gets through the storage firewall to labshare",
+   "kind": "concept"
+  }
+ ],
+ "az104-08-vms": [
+  {
+   "file": "architecture.svg",
+   "title": "VMs: availability zones, disks, extensions: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Two zones, one zonal data disk",
+   "kind": "concept"
+  }
+ ],
+ "az104-09-vmss": [
+  {
+   "file": "architecture.svg",
+   "title": "VM Scale Sets and autoscale: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "How autoscale-vmss-web sizes the scale set",
+   "kind": "concept"
+  }
+ ],
+ "az104-11-containers": [
+  {
+   "file": "architecture.svg",
+   "title": "Containers: ACI and Container Apps: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Two ways in: private ACI, public Container App",
+   "kind": "concept"
+  }
+ ],
+ "az104-12-bicep": [
+  {
+   "file": "architecture.svg",
+   "title": "ARM and Bicep templates (Bicep): architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "From main.bicep to resources",
+   "kind": "concept"
+  }
+ ],
+ "az104-13-vnets": [
+  {
+   "file": "architecture.svg",
+   "title": "VNets, subnets, NSGs and ASGs: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Which NSG rule lets each connection through",
+   "kind": "concept"
+  }
+ ],
+ "az104-14-peering-udr": [
+  {
+   "file": "architecture.svg",
+   "title": "VNet peering and user-defined routes: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Spoke to spoke goes through vm-router",
+   "kind": "concept"
+  }
+ ],
+ "az104-15-dns": [
+  {
+   "file": "architecture.svg",
+   "title": "Azure DNS: public and private zones: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Who answers for each zone",
+   "kind": "concept"
+  }
+ ],
+ "az104-16-lb-appgw": [
+  {
+   "file": "architecture.svg",
+   "title": "Load Balancer and Application Gateway: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Two private frontends, one pair of web servers",
+   "kind": "concept"
+  }
+ ],
+ "az104-17-netwatcher-fix": [
+  {
+   "file": "architecture.svg",
+   "title": "Break-fix: connectivity troubleshooting with Network Watcher: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "The request that times out, and what it passes",
+   "kind": "concept"
+  }
+ ],
+ "az104-18-monitor": [
+  {
+   "file": "architecture.svg",
+   "title": "Azure Monitor: metrics, logs and alerts: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Three signals from one VM, and where each goes",
+   "kind": "concept"
+  }
+ ],
+ "az104-19-backup": [
+  {
+   "file": "architecture.svg",
+   "title": "Azure Backup: protect and restore a VM: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "One backup, two tiers, then a restore",
+   "kind": "concept"
+  }
+ ],
+ "az305-20-landing-zone": [
+  {
+   "file": "architecture.svg",
+   "title": "Landing zone lite: management groups, policy initiatives, role design: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "The management group tree and where policy lands",
+   "kind": "concept"
+  }
+ ],
+ "az305-21-monitoring-scale": [
+  {
+   "file": "architecture.svg",
+   "title": "Monitoring at scale: workspace design, diagnostics via policy: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "How deployIfNotExists fixes a new vault by itself",
+   "kind": "concept"
+  }
+ ],
+ "az305-22-keyvault-mi": [
+  {
+   "file": "architecture.svg",
+   "title": "Key Vault and managed identities: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Which identity can read which secret",
+   "kind": "concept"
+  }
+ ],
+ "az305-23-sql-failover": [
+  {
+   "file": "architecture.svg",
+   "title": "Azure SQL Database: serverless, geo-replication, failover groups: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "The failover group's two listeners",
+   "kind": "concept"
+  }
+ ],
+ "az305-24-cosmos": [
+  {
+   "file": "architecture.svg",
+   "title": "Cosmos DB: partitioning and consistency: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Three partition keys, good and bad",
+   "kind": "concept"
+  }
+ ],
+ "az305-25-storage-design": [
+  {
+   "file": "architecture.svg",
+   "title": "Storage design: data lake, immutability, tiering: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Lifecycle tiers, a geo copy and a retention lock",
+   "kind": "concept"
+  }
+ ],
+ "az305-26-site-recovery": [
+  {
+   "file": "architecture.svg",
+   "title": "Cross-region VM recovery with Site Recovery: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Replication, then failover or test failover",
+   "kind": "concept"
+  }
+ ],
+ "az305-27-multi-region": [
+  {
+   "file": "architecture.svg",
+   "title": "Multi-region app with Traffic Manager and Front Door: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "DNS steering against an edge proxy",
+   "kind": "concept"
+  }
+ ],
+ "az305-28-three-tier": [
+  {
+   "file": "architecture.svg",
+   "title": "Three-tier app: Container Apps, SQL, Front Door + WAF: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "One request through the three tiers",
+   "kind": "concept"
+  }
+ ],
+ "az305-29-aks": [
+  {
+   "file": "architecture.svg",
+   "title": "AKS small cluster, networking, ingress: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Where Azure CNI Overlay takes its addresses",
+   "kind": "concept"
+  }
+ ],
+ "az305-30-messaging": [
+  {
+   "file": "architecture.svg",
+   "title": "Messaging and events: Service Bus, Event Grid, an event-driven consumer: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "From a blob or a message to the consumer job",
+   "kind": "concept"
+  },
+  {
+   "file": "2.svg",
+   "title": "Topic subscriptions and their filter rules",
+   "kind": "concept"
+  }
+ ],
+ "az700-31-ip-nat-outbound": [
+  {
+   "file": "architecture.svg",
+   "title": "Public IP prefixes, NAT Gateway and outbound rules: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Two explicit ways out, each with its own prefix",
+   "kind": "concept"
+  }
+ ],
+ "az700-32-dns-resolver": [
+  {
+   "file": "architecture.svg",
+   "title": "Hybrid DNS with DNS Private Resolver: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Resolving across the two sites",
+   "kind": "concept"
+  }
+ ],
+ "az700-33-vnet-manager": [
+  {
+   "file": "architecture.svg",
+   "title": "Virtual Network Manager: hub-and-spoke and security admin rules: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "From network manager configuration to peerings",
+   "kind": "concept"
+  },
+  {
+   "file": "2.svg",
+   "title": "Security admin rules come before the NSG",
+   "kind": "concept"
+  }
+ ],
+ "az700-34-route-server": [
+  {
+   "file": "architecture.svg",
+   "title": "Route Server with a BGP router VM: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "How the NVA's route reaches the spoke",
+   "kind": "concept"
+  }
+ ],
+ "az700-35-forced-tunnel-fix": [
+  {
+   "file": "architecture.svg",
+   "title": "Break-fix: hub-spoke routing fault (forced tunnelling): architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "The spoke's only way out, and the symptom",
+   "kind": "concept"
+  }
+ ],
+ "az700-36-s2s-vpn": [
+  {
+   "file": "architecture.svg",
+   "title": "Site-to-site VPN between two VNets, one as on-prem: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Across the site-to-site tunnel",
+   "kind": "concept"
+  }
+ ],
+ "az700-37-p2s-vpn": [
+  {
+   "file": "architecture.svg",
+   "title": "Point-to-site VPN with Entra ID sign-in: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Two tunnels on your PC: the more specific route wins",
+   "kind": "concept"
+  }
+ ],
+ "az700-38-hub-firewall": [
+  {
+   "file": "architecture.svg",
+   "title": "Hub-spoke with Azure Firewall and Firewall Manager policy: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "What the hub firewall lets through",
+   "kind": "concept"
+  }
+ ],
+ "az700-39-vwan-secured-hub": [
+  {
+   "file": "architecture.svg",
+   "title": "Virtual WAN with a secured hub: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Routing intent sends everything through the hub firewall",
+   "kind": "concept"
+  }
+ ],
+ "az700-40-lb-advanced": [
+  {
+   "file": "architecture.svg",
+   "title": "Load Balancer: cross-region, Gateway LB, inbound NAT, outbound rules: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Two ways in: the global tier and the chained frontend",
+   "kind": "concept"
+  }
+ ],
+ "az700-41-appgw-waf": [
+  {
+   "file": "architecture.svg",
+   "title": "Application Gateway WAF_v2: TLS, rewrites, WAF policy: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "A request through the application gateway",
+   "kind": "concept"
+  }
+ ],
+ "az700-42-frontdoor-private": [
+  {
+   "file": "architecture.svg",
+   "title": "Front Door Premium: rules, caching, WAF, Private Link origin: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "From the Front Door edge to a VM with no public address",
+   "kind": "concept"
+  }
+ ],
+ "az700-43-private-link": [
+  {
+   "file": "architecture.svg",
+   "title": "Private Link service, private endpoints, service endpoint policies: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Three ways out of vm-client",
+   "kind": "concept"
+  }
+ ],
+ "az700-44-flow-logs-bastion": [
+  {
+   "file": "architecture.svg",
+   "title": "VNet flow logs, IP flow verify and Bastion: architecture",
+   "kind": "architecture"
+  },
+  {
+   "file": "1.svg",
+   "title": "Which flows the NSGs allow",
+   "kind": "concept"
+  }
+ ]
+}

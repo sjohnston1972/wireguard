@@ -1,0 +1,18 @@
+%% title: How the NVA's route reaches the spoke
+%% alt: vm-nva runs FRR as ASN 65010 and announces a /24 held by its dummy interface lab0 to both rs-hub instances (ASN 65515) over eBGP multihop, learning the hub's and spoke's /20s back. Because the spoke uses the hub's remote gateway, Route Server puts the /24 in vm-app's effective routes with vm-nva as next hop, so vm-app's traffic for it goes to vm-nva.
+flowchart TB
+  nva("vm-nva, snet-nva<br/>FRR, ASN 65010, IP forwarding")
+  lab0{{"lab0: the first /24 of slot /20 #3<br/>in no VNet"}}
+  rs("rs-hub, RouteServerSubnet<br/>ASN 65515, two instances")
+  rt{{"vm-app's effective route<br/>the /24 → vm-nva's address<br/>next hop type<br/>VirtualNetworkGateway"}}
+  app("vm-app, vnet-spoke")
+  lab0 -. "announced by" .-> nva
+  nva -- "eBGP multihop to both<br/>instances: the /24" --> rs
+  rs -- "the hub's and the spoke's /20s" --> nva
+  rs -. "peering: the spoke uses<br/>the remote gateway" .-> rt
+  app --> rt
+  rt == "ping the /24" ==> nva
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class nva,rs,app azure
+  class lab0,rt rule

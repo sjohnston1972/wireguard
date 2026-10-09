@@ -1,0 +1,18 @@
+%% title: Which flows the NSGs allow
+%% alt: You reach the VMs over SSH only through bas-hub, from the portal on port 443, because nsg-web and nsg-app allow SSH only from the Bastion subnet; a tunnel client reaches port 80 on vm-web but never SSH. Port 80 from vm-web to vm-app is allowed by nsg-app, while port 80 from vm-app to vm-web is denied by nsg-web.
+flowchart TB
+  you(["you, portal"])
+  tun(["tunnel client"])
+  bas("bas-hub, Bastion Basic<br/>AzureBastionSubnet, nsg-bastion")
+  web("vm-web :80, snet-web<br/>nsg-web: 22 from Bastion only,<br/>deny from snet-app")
+  app("vm-app :80, snet-app<br/>nsg-app: 22 from Bastion only,<br/>80 from snet-web, deny other VNet")
+  you -- "443, pip-bastion" --> bas
+  bas -- "SSH 22" --> web
+  bas -- "SSH 22" --> app
+  tun -- "80 only, never SSH" --> web
+  web == "80 allowed" ==> app
+  app -- "80 denied" --x web
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  class you,tun client
+  class bas,web,app azure

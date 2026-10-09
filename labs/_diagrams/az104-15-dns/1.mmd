@@ -1,0 +1,29 @@
+%% title: Who answers for each zone
+%% alt: The public zone answers only when you ask its own Azure name servers; an ordinary lookup fails because nothing delegates the zone. Private names are answered by Azure DNS inside VNets linked to lab15.internal: vm-web registers itself there, and a tunnel client reaches the zone through the gateway's tunnel DNS while the lab is peered.
+flowchart LR
+  subgraph pubside ["Public zone: answers only when asked directly"]
+    direction TB
+    you(["you, anywhere"])
+    res(["your usual resolver"])
+    ns("ns1-xx.azure-dns.com ...<br/>the zone's name servers")
+    pub[("…example.com<br/>www A 203.0.113.10<br/>app CNAME www")]
+    you -- "nslookup, at ns1-xx" --> ns --> pub
+    you -- "nslookup" --> res
+    res --x|"not delegated"| pub
+  end
+  subgraph privside ["Private zone: answers inside linked VNets"]
+    direction TB
+    tc(["tunnel client<br/>while peered"])
+    tdns("gateway tunnel DNS<br/>forwards internal names")
+    vm("vm-web<br/>snet-vms, :80")
+    adns("Azure DNS")
+    priv[("lab15.internal<br/>vm-web A, by Azure<br/>www A → vm-web, by hand")]
+    tc --> tdns --> adns
+    vm -- "resolvectl query" --> adns
+    adns --> priv
+    vm -. "auto-registration" .-> priv
+  end
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  class you,res,tc client
+  class ns,tdns,adns,vm,pub,priv azure

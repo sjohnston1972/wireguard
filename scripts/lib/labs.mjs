@@ -362,6 +362,60 @@ export function parseReadme(md, type, id) {
   return { blocks, problems };
 }
 
+// ── Readme diagrams (shared/guides, scripts/labs-diagrams.mjs) ──────────
+//
+// A readme's hand-drawn sketches are its ```text blocks. Each is replaced in
+// the catalogue, by its position, with the diagrams shared/guides/index.json
+// lists for it (a generated architecture diagram, Mermaid concept diagrams),
+// so the readme itself never changes (and the lab's version need not rise).
+// A block meant to stay as text (command output) uses another fence, such as
+// ```console or ```output.
+
+/** The language of a readme's sketches. */
+export const SKETCH_LANG = "text";
+
+/**
+ * The ```text blocks of a readme, in document order (inside <details> too): [{ index, heading }], `heading` being
+ * the nearest ## or ### heading above it (null at the top).
+ */
+export function readmeSketches(md) {
+  const out = [];
+  let heading = null;
+  let fence = null;
+  for (const line of md.replace(/\r\n?/g, "\n").split("\n")) {
+    if (fence !== null) {
+      if (/^```\s*$/.test(line)) fence = null;
+      continue;
+    }
+    const f = /^```(.*)$/.exec(line);
+    if (f) {
+      fence = f[1].trim();
+      if (fence === SKETCH_LANG) out.push({ index: out.length, heading });
+      continue;
+    }
+    const h = /^#{2,3}\s+(.+?)\s*#*\s*$/.exec(line);
+    if (h) heading = h[1];
+  }
+  return out;
+}
+
+/**
+ * `blocks` with each ```text block replaced by the diagrams `entries` list for its position ({ sketch, file, title,
+ * kind, alt, width, height }, in order). A sketch with no entry stays as it is.
+ */
+export function applyDiagrams(blocks, entries) {
+  let n = 0;
+  const walk = (list) =>
+    list.flatMap((b) => {
+      if (b.t === "details") return [{ ...b, blocks: walk(b.blocks) }];
+      if (b.t !== "code" || b.lang !== SKETCH_LANG) return [b];
+      const at = n++;
+      const mine = (entries ?? []).filter((e) => e.sketch === at);
+      return mine.length ? mine.map((e) => ({ t: "diagram", kind: e.kind, file: e.file, title: e.title, alt: e.alt, width: e.width, height: e.height })) : [b];
+    });
+  return walk(blocks);
+}
+
 // ── Terraform text (spec §3.4, §8.4 early warning) ───────────────────────
 
 // The text checks live in infra/ci/lab-lint.mjs (no packages: lab.yml runs them
@@ -487,8 +541,11 @@ export function labFolders(root) {
  * each one's learning content (labs/_learning; a missing file is a problem
  * only with requireLearning, as labs-check asks) and its planned resources
  * (plannedDir, default <root>/../shared/topology/planned; none without a file).
+ * Each readme's ```text sketches are replaced with their diagrams (guidesDir,
+ * default <root>/../shared/guides: index.json and placement.json; left as
+ * they are without them).
  */
-export function buildCatalogue(root, { requireLearning = false, plannedDir = join(root, "..", "shared", "topology", "planned") } = {}) {
+export function buildCatalogue(root, { requireLearning = false, plannedDir = join(root, "..", "shared", "topology", "planned"), guidesDir = join(root, "..", "shared", "guides") } = {}) {
   const problems = [];
   let skillAreas = [];
   try {
@@ -562,6 +619,23 @@ export function buildCatalogue(root, { requireLearning = false, plannedDir = joi
       resources[d.id] = countPlanned(JSON.parse(readFileSync(file, "utf8")));
     } catch (e) {
       problems.push({ lab: d.id, file: `planned/${d.id}.json`, field: null, message: `the planned diagram is not valid JSON: ${e.message.split("\n")[0]}` });
+    }
+  }
+  // The readmes' sketches become their diagrams: index.json's titles and kinds, placement.json's spots, alt text
+  // and sizes (both written by npm run labs-diagrams).
+  const placementPath = join(guidesDir, "placement.json");
+  const indexPath = join(guidesDir, "index.json");
+  if (existsSync(placementPath) && existsSync(indexPath)) {
+    try {
+      const index = JSON.parse(readFileSync(indexPath, "utf8"));
+      const placement = JSON.parse(readFileSync(placementPath, "utf8"));
+      for (const id of Object.keys(readmes)) {
+        const named = new Map((Array.isArray(index[id]) ? index[id] : []).map((e) => [e.file, e]));
+        const entries = (Array.isArray(placement[id]) ? placement[id] : []).filter((p) => named.has(p.file)).map((p) => ({ ...p, file: `${id}/${p.file}`, title: named.get(p.file).title, kind: named.get(p.file).kind }));
+        readmes[id] = applyDiagrams(readmes[id], entries);
+      }
+    } catch (e) {
+      problems.push({ lab: null, file: "shared/guides/placement.json", field: null, message: `the readme diagrams' lists are not valid JSON: ${e.message.split("\n")[0]}` });
     }
   }
   return { catalogue: { schema: 2, skillAreas, labs, readmes, learning, resources }, problems };

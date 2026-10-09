@@ -1,0 +1,19 @@
+%% title: Two explicit ways out, each with its own prefix
+%% alt: vm-nat leaves through the NAT gateway ng-hub and shows one of pfx-nat's two addresses; vm-lb leaves through lb-out's outbound rule ob-all and shows one of pfx-lb's two addresses. lb-out has no load-balancing or inbound NAT rule, so nothing comes in through it.
+flowchart TB
+  vmn("vm-nat<br/>snet-nat, default outbound off")
+  ng("ng-hub<br/>NAT gateway on snet-nat")
+  pn{{"pfx-nat /31<br/>2 public addresses"}}
+  vml("vm-lb<br/>snet-lb, default outbound off")
+  lb("lb-out, pool be-out<br/>no load-balancing rule,<br/>no inbound NAT: nothing in")
+  ob{{"outbound rule ob-all<br/>all protocols<br/>32,000 SNAT ports per VM"}}
+  pl{{"fe-out = pfx-lb /31<br/>2 public addresses"}}
+  inet(["internet"])
+  vmn --> ng --> pn --> inet
+  vml --> lb --> ob --> pl --> inet
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class vmn,ng,vml,lb azure
+  class pn,ob,pl rule
+  class inet client

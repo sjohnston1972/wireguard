@@ -1,0 +1,25 @@
+%% title: Two ways in: the global tier and the chained frontend
+%% alt: On port 80, lb-global sends you to a regional frontend, fe-uks on lb-uks or fe-ukw on lb-ukw, which forward to vm-web1 or vm-web2; fe-uks is not chained, because Gateway Load Balancer does not work with the global tier. On ports 8081 to 8090, lb-uks's second frontend fe-uks-chained uses its inbound NAT rule to reach port 8080 on vm-web1, and being chained to lb-gw, its traffic first passes through vm-nva over two VXLAN tunnels.
+flowchart TB
+  you(["you<br/>curl, browser"])
+  g("lb-global, Global tier<br/>rule TCP 80, no probe")
+  feuks("lb-uks: fe-uks, pip-lb-uks<br/>rule TCP 80, probe /<br/>not chained: a global member")
+  feukw("lb-ukw: fe-ukw<br/>rule TCP 80, probe /")
+  fech("lb-uks: fe-uks-chained<br/>pip-lb-uks-chained<br/>NAT 8081-8090 → 8080")
+  gw("lb-gw, Gateway<br/>HA ports, snet-nva .10")
+  nva("vm-nva<br/>bridge vxlan800 ⇄ vxlan801")
+  w1("vm-web1, uksouth<br/>:80 and :8080")
+  w2("vm-web2, ukwest<br/>:80")
+  you -- "TCP 80" --> g
+  g --> feuks
+  g --> feukw
+  feuks --> w1
+  feukw --> w2
+  you -- "TCP 8081" --> fech
+  fech -- "8081 → 8080" --> w1
+  fech -. "chain" .-> gw
+  gw <-- "VXLAN: VNI 800 UDP 10800,<br/>VNI 801 UDP 10801" --> nva
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  class you client
+  class g,feuks,feukw,fech,gw,nva,w1,w2 azure

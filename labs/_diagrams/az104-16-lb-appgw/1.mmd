@@ -1,0 +1,24 @@
+%% title: Two private frontends, one pair of web servers
+%% alt: A tunnel client can curl agw-web's private frontend, through nsg-appgw, or lbi-web's frontend fe-web; both spread requests over pool-web, vm-web1 and vm-web2 on port 80. The gateway's public IP has no listener, and nsg-appgw must also let GatewayManager in on TCP 65200-65535.
+flowchart TB
+  you(["tunnel client, while peered"])
+  gm(["GatewayManager<br/>Azure's management"])
+  nsg{{"nsg-appgw on snet-appgw<br/>GatewayManager: 65200-65535<br/>VirtualNetwork: port 80"}}
+  pip("pip-appgw<br/>public IP, no listener")
+  agw("agw-web, Standard_v2<br/>fe-private .10:80<br/>the only listener")
+  lb("lbi-web, Standard internal<br/>fe-web .10:80<br/>probe: TCP 80")
+  pool("pool-web<br/>vm-web1 :80, vm-web2 :80")
+  you -- "HTTP 80" --> nsg --> agw
+  gm -. "TCP 65200-65535" .-> nsg
+  you --x|"nothing answers"| pip
+  you -- "TCP 80" --> lb
+  agw -- "HTTP 80 → 80" --> pool
+  lb -- "TCP 80 → 80" --> pool
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d
+  class you,gm client
+  class nsg rule
+  class pip bad
+  class agw,lb,pool azure

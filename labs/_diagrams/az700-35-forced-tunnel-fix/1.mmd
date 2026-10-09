@@ -1,0 +1,20 @@
+%% title: The spoke's only way out, and the symptom
+%% alt: snet-app has default outbound access off, so vm-app's internet traffic follows rt-spoke's route default-via-nva, 0.0.0.0/0 to vm-nva, over the peering to the hub, where vm-nva has default outbound access to the internet. The symptom: from vm-app, curl and apt-get update time out, while ping and ssh to vm-nva work and names still resolve.
+flowchart TB
+  app("vm-app<br/>snet-app, default outbound off")
+  rt{{"rt-spoke: default-via-nva<br/>0.0.0.0/0 → vm-nva<br/>next hop type Virtual appliance"}}
+  nva("vm-nva, snet-nva<br/>the hub's appliance")
+  inet(["internet"])
+  sym("symptom<br/>curl and apt-get update time out<br/>ping and ssh to vm-nva work<br/>names still resolve")
+  app -- "to the internet" --> rt
+  rt -- "peering,<br/>forwarded traffic allowed" --> nva
+  nva -- "default outbound" --> inet
+  app -.- sym
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d
+  class app,nva azure
+  class rt rule
+  class inet client
+  class sym bad

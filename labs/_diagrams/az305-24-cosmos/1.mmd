@@ -1,0 +1,18 @@
+%% title: Three partition keys, good and bad
+%% alt: The serverless NoSQL account …-cosmos holds the database shop with three containers. orders is partitioned by /customerId, many values that spread reads and writes evenly; events by the hierarchical key /tenantId then /userId, so a large tenant can pass one logical partition's 20 GB; bykey-status by /status, only a handful of values, so one hot partition takes the writes.
+flowchart TB
+  acc("…-cosmos<br/>NoSQL API, serverless, one region<br/>Session consistency")
+  db[("shop")]
+  o("orders<br/>key /customerId<br/>many values: spread evenly")
+  e("events<br/>key /tenantId → /userId<br/>hierarchical: one tenant can<br/>grow past 20 GB")
+  b("bykey-status<br/>key /status<br/>a handful of values:<br/>a hot partition, 20 GB cap")
+  acc --> db
+  db --> o
+  db --> e
+  db --> b
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef ok fill:#e7f5ee,stroke:#12804f,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d
+  class acc,db azure
+  class o,e ok
+  class b bad
