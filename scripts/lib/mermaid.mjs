@@ -31,6 +31,9 @@ export const MERMAID_CONFIG = {
   startOnLoad: false,
   securityLevel: "strict",
   deterministicIds: true,
+  // Some shapes are drawn with rough.js, whose control points are random unless seeded: a fixed seed keeps a
+  // redraw byte for byte the same.
+  handDrawnSeed: 1,
   theme: "base",
   fontFamily: FONT,
   themeVariables: {

@@ -1,0 +1,19 @@
+%% title: One backup, two tiers, then a restore
+%% alt: Each backup of vm-backup, daily at 23:00 UTC or on Backup now, first takes a snapshot, kept a day in rg-lab-az104-19-backup-irp1 and ready within minutes, then copies it into rsv-lab, which keeps 7 daily recovery points. A restore to a new VM stages through the stage account and must land in rg-lab-az104-19-backup.
+flowchart TB
+  pol{{"policy-daily-7d, Enhanced<br/>daily at 23:00 UTC<br/>or Backup now"}}
+  vm("vm-backup<br/>snet-vms, no public IP")
+  snap("instant-restore snapshot<br/>rg-lab-az104-19-backup-irp1<br/>kept 1 day, ready in minutes")
+  vault[("rsv-lab, Standard, LRS<br/>7 daily recovery points<br/>soft delete on<br/>immutability Disabled")]
+  stage("…stage<br/>storage account, restore staging")
+  new("restored VM<br/>only in rg-lab-az104-19-backup")
+  pol --> vm
+  vm -- "1. Take Snapshot" --> snap
+  snap -- "2. Transfer data to vault<br/>an hour or more" --> vault
+  snap -. "restore" .-> stage
+  vault -. "restore" .-> stage
+  stage --> new
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class vm,snap,vault,stage,new azure
+  class pol rule

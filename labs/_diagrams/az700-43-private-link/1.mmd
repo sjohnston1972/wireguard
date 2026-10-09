@@ -1,0 +1,26 @@
+%% title: Three ways out of vm-client
+%% alt: From vm-client, pe-svc reaches vm-svc in the unpeered provider VNet through Private Link, and vm-svc sees pls-svc's NAT address, not the client's. The name …st.blob.core.windows.net resolves through the privatelink zone to pe-blob, so that account is reached through the private endpoint. …other has no private endpoint, resolves to a public address and goes through the subnet's Microsoft.Storage service endpoint, where sep-storage, which allows …st only, refuses it with 403.
+flowchart TB
+  c("vm-client<br/>snet-client")
+  pesvc("pe-svc<br/>private endpoint, snet-pe")
+  pls("pls-svc<br/>NAT address in snet-pls")
+  svc("lb-svc .10:80 → vm-svc<br/>vnet-provider, not peered")
+  dns{{"privatelink.blob.<br/>core.windows.net<br/>…st → pe-blob"}}
+  peblob("pe-blob")
+  st[("…st, container data")]
+  sep{{"service endpoint<br/>Microsoft.Storage<br/>sep-storage: …st only"}}
+  other[("…other, container data")]
+  c -- "HTTP 80" --> pesvc
+  pesvc -- "Private Link" --> pls
+  pls -- "source: the NAT address" --> svc
+  c -- "…st.blob.<br/>core.windows.net" --> dns
+  dns --> peblob
+  peblob --> st
+  c -- "…other:<br/>a public address" --> sep
+  sep -- "403" --x other
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d
+  class c,pesvc,pls,svc,peblob,st azure
+  class dns,sep rule
+  class other bad

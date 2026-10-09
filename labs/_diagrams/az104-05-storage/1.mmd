@@ -1,0 +1,19 @@
+%% title: Lifecycle tiers on the hot account, GRS copy of the cool one
+%% alt: In the hot account (LRS, Hot tier) the lifecycle rule moves a block blob such as samples/hello.txt to Cool 30 days after its last change and deletes it after 365 days. The cool account (GRS, Cool tier) is copied from the session's region to its paired region, for example UK South to UK West.
+flowchart TB
+  subgraph coolacc ["…cool: StorageV2, GRS, Cool tier"]
+    p("primary copy<br/>session region, e.g. UK South")
+    s("secondary copy<br/>paired region, e.g. UK West")
+    p -- "geo-replicated" --> s
+  end
+  subgraph hotacc ["…hot: StorageV2, LRS, Hot tier"]
+    h("block blob in Hot<br/>e.g. samples/hello.txt")
+    c("same blob in Cool")
+    d("blob deleted")
+    h -- "30 days after last change" --> c
+    c -- "365 days after last change" --> d
+  end
+  class h,c,p,s azure
+  class d bad
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d

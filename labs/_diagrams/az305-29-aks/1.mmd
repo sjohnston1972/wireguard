@@ -1,0 +1,21 @@
+%% title: Where Azure CNI Overlay takes its addresses
+%% alt: The node takes its address from snet-aks in vnet-lab; pods take theirs from the overlay range 10.244.0.0/16 and services from 10.0.0.0/16, with cluster DNS at 10.0.0.10, so neither touches the lab's address pool or the gateway's networks, and neither is reachable from outside except through a service. The node goes out through the Standard load balancer kubernetes and its one outbound public IP.
+flowchart TB
+  you(["tunnel client, while peered"])
+  subgraph snet ["snet-aks, a /24 of vnet-lab"]
+    node("aks-lab node, Standard_B2s<br/>its address from the subnet")
+  end
+  pods("pods<br/>10.244.0.0/16, overlay<br/>not from the subnet")
+  svc{{"services 10.0.0.0/16<br/>cluster DNS 10.0.0.10"}}
+  lb("load balancer kubernetes<br/>one outbound public IP<br/>rg-lab-az305-29-aks-nodes")
+  inet(["internet"])
+  you -- "reaches the node" --> node
+  node -- "runs" --> pods
+  svc -- "only a service lets<br/>outside traffic in" --> pods
+  node -- "outbound" --> lb --> inet
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class you,inet client
+  class node,pods,lb azure
+  class svc rule

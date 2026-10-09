@@ -1,0 +1,27 @@
+%% title: From the Front Door edge to a VM with no public address
+%% alt: Your request reaches afd-premium's endpoint, where the wafpremium policy checks it and the /* route and rule set ruleslab42 redirect, cache and add headers. Front Door then forwards over HTTP through its own managed private endpoint on pls-web, pending until you approve it, to the internal load balancer lb-int and vm-web, which sees every request come from pls-web's NAT address in snet-pls.
+flowchart TB
+  you(["you<br/>browser, curl"])
+  subgraph edge ["afd-premium endpoint …-afd-….z01.azurefd.net"]
+    direction LR
+    waf{{"wafpremium, Prevention<br/>DRS 2.1, Bot Manager 1.1<br/>over 100 requests a minute<br/>from one client: blocked"}}
+    route{{"route /*<br/>HTTP → HTTPS, cache, compress<br/>ruleslab42: /old → / (301)<br/>X-Lab: 42, /static/* 1 h"}}
+    waf --> route
+  end
+  pe("Front Door's managed<br/>private endpoint<br/>pending until you approve it")
+  subgraph vnet ["vnet-app"]
+    direction LR
+    pls("pls-web<br/>NAT address<br/>in snet-pls")
+    lb("lb-int, internal<br/>.10:80, probe /")
+    vm("vm-web :80<br/>no public IP")
+    pls --> lb --> vm
+  end
+  you -- "HTTPS" --> edge
+  edge -- "origin og-web, HTTP 80" --> pe
+  pe -- "Private Link" --> vnet
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class you client
+  class waf,route rule
+  class pe,pls,lb,vm azure

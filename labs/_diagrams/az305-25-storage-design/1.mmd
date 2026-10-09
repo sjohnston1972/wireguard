@@ -1,0 +1,20 @@
+%% title: Lifecycle tiers, a geo copy and a retention lock
+%% alt: In the lake account, block blobs under raw/ move from Hot to Cool 30 days after their last change, to Cold at 90 and Archive at 180; blobs under curated/ are deleted at 365 days. The records account is RA-GRS, so a read-only copy sits in the paired region behind a secondary endpoint, and its evidence container keeps every blob unchangeable for a day under an unlocked retention policy.
+flowchart TB
+  subgraph lake ["…lake: LRS, lifecycle policy, days since last change"]
+    direction LR
+    cur("curated/<br/>Hot") -- "365" --> del("deleted")
+    raw("raw/<br/>Hot") -- "30" --> cool("Cool") -- "90" --> cold("Cold") -- "180" --> arch("Archive")
+  end
+  subgraph rec ["…rec: RA-GRS"]
+    direction LR
+    pri("primary region<br/>read and write") -- "geo-replication" --> sec("paired region<br/>read-only secondary endpoint")
+    ev{{"evidence container<br/>time-based retention<br/>1 day, unlocked: no change<br/>or delete for a day,<br/>append blobs can still grow"}}
+  end
+  lake ~~~ rec
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d
+  class raw,cool,cold,arch,cur,pri,sec azure
+  class del bad
+  class ev rule

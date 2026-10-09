@@ -1,0 +1,19 @@
+%% title: Spoke to spoke goes through vm-router
+%% alt: vm-spoke1's request for spoke 2 follows rt-spoke1 (spoke 2's /20, next hop vm-router) over the hub peering to vm-router, which forwards it over the other peering to vm-spoke2. The reply follows rt-spoke2 back through the router. The spokes are not peered with each other, so without the routes there is no way through.
+flowchart TB
+  s1("vm-spoke1<br/>vnet-spoke1")
+  rt1{{"rt-spoke1<br/>spoke 2's /20 → vm-router"}}
+  r("vm-router in vnet-hub<br/>IP forwarding on")
+  rt2{{"rt-spoke2<br/>spoke 1's /20 → vm-router"}}
+  s2("vm-spoke2 :80<br/>vnet-spoke2")
+  s1 -- "request" --> rt1
+  rt1 == "peering, forwarded traffic" ==> r
+  r == "peering, forwarded traffic" ==> s2
+  s2 -. "reply" .-> rt2
+  rt2 -. "peering" .-> r
+  no["No peering between the spokes:<br/>without the routes, no way through"]
+  s1 ~~~ no
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef note fill:#f4f7fb,stroke:#768498,color:#44546a,stroke-dasharray:4 3
+  class rt1,rt2 rule
+  class no note

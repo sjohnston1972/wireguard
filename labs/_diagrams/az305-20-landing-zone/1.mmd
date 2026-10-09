@@ -1,0 +1,28 @@
+%% title: The management group tree and where policy lands
+%% alt: Under the tenant root group, lab-az305-20-landing-zone-root holds -platform, -landingzones and -sandbox, with -corp and -online under -landingzones. The lz-baseline initiative is assigned at -landingzones, so -corp and -online inherit it; sandbox-no-pip denies public IP addresses in -sandbox. Your subscription stays outside the tree, so nothing is evaluated.
+flowchart TB
+  tr("Tenant root group")
+  sub(["your subscription<br/>stays where it is"])
+  root("lab-az305-20-landing-zone-root<br/>initiative and audit<br/>stored here")
+  plat("-platform")
+  lz("-landingzones")
+  sand("-sandbox")
+  corp("-corp<br/>inherits lz-baseline")
+  onl("-online<br/>inherits lz-baseline")
+  lzb{{"lz-baseline (initiative)<br/>Location: this region only<br/>Tagging: costcentre tag<br/>required on resource groups,<br/>audited on resources"}}
+  nopip{{"sandbox-no-pip<br/>deny public IP<br/>addresses"}}
+  tr --> sub
+  tr --> root
+  root --> plat
+  root --> lz
+  root --> sand
+  lz --> corp
+  lz --> onl
+  lz -. "assigned" .-> lzb
+  sand -. "assigned" .-> nopip
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class tr,root,plat,lz,sand,corp,onl azure
+  class sub client
+  class lzb,nopip rule

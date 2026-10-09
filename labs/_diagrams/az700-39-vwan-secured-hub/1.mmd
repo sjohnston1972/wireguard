@@ -1,0 +1,22 @@
+%% title: Routing intent sends everything through the hub firewall
+%% alt: The routing intent ri-vhub makes afw-vhub the next hop for private traffic (the RFC 1918 ranges) and internet traffic (0.0.0.0/0), and conn-spoke1's internet security setting gives the spoke the hub's 0.0.0.0/0. The firewall's policy fwp-vhub then allows TCP 22 and ping between the spokes and *.ubuntu.com on HTTP and HTTPS; anything else, such as port 80 between the spokes or www.microsoft.com, is denied.
+flowchart TB
+  s1("vm-spoke1, snet-workload<br/>no default outbound access")
+  ri{{"ri-vhub routing intent<br/>private traffic, RFC 1918<br/>→ afw-vhub<br/>internet traffic, 0.0.0.0/0<br/>→ afw-vhub"}}
+  afw("afw-vhub in vhub-lab<br/>Basic, policy fwp-vhub")
+  s2("vm-spoke2")
+  inet(["internet<br/>through the firewall's public IP"])
+  deny("denied")
+  s1 -- "conn-spoke1<br/>internet security on" --> ri
+  ri --> afw
+  afw -- "network rules<br/>TCP 22, ping" --> s2
+  afw -- "application rule<br/>*.ubuntu.com, HTTP, HTTPS" --> inet
+  afw -- "anything else, e.g.<br/>port 80 to vm-spoke2<br/>or www.microsoft.com" --> deny
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d
+  class s1,afw,s2 azure
+  class ri rule
+  class inet client
+  class deny bad

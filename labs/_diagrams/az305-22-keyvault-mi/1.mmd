@@ -1,0 +1,19 @@
+%% title: Which identity can read which secret
+%% alt: vm-app asks the instance metadata service for a token as either of its two identities. Its system-assigned identity holds Key Vault Secrets User at the vault, so it reads every secret; the user-assigned id-…-app holds the role on reports-api-key only, so app-db-password is refused with 403.
+flowchart TB
+  vm("vm-app<br/>no public IP")
+  imds("instance metadata<br/>169.254.169.254<br/>token for vault.azure.net")
+  uai("id-…-app<br/>user-assigned")
+  sys("system-assigned<br/>identity")
+  subgraph kv ["…kv: Azure RBAC, public endpoint"]
+    s2[("reports-api-key")]
+    s1[("app-db-password")]
+  end
+  vm --> imds
+  imds -- "with client_id" --> uai
+  imds -- "default" --> sys
+  uai -- "Secrets User<br/>on this secret only" --> s2
+  uai --x|"403"| s1
+  sys -- "Secrets User at the vault:<br/>every secret" --> kv
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  class vm,imds,sys,uai,s1,s2 azure

@@ -1,0 +1,33 @@
+%% title: From a blob or a message to the consumer job
+%% alt: Uploading or deleting a blob in uploads raises an event that egst-storage delivers to the blob-events queue, or dead-letters to eventgrid-deadletter after 5 retries in 60 minutes. caj-consumer, started by KEDA, peek-locks messages from both queues and completes them, except a message containing fail, which is delivered again until the fifth delivery moves it to the queue's dead-letter subqueue.
+flowchart TB
+  you(["you"])
+  up("…evt<br/>container uploads")
+  eg("egst-storage<br/>Event Grid system topic")
+  egdl[("…evt<br/>eventgrid-deadletter")]
+  qo("sb-…<br/>queue orders")
+  qb("sb-…<br/>queue blob-events")
+  job("caj-consumer<br/>KEDA checks both queues<br/>every 30 s")
+  fail{"body contains<br/>fail?"}
+  done("completed<br/>printed to log-lab")
+  dlq[("the queue's dead-letter subqueue<br/>MaxDeliveryCountExceeded")]
+  you -- "upload or delete a blob" --> up
+  you -- "send, Service Bus Explorer" --> qo
+  up -- "BlobCreated, BlobDeleted" --> eg
+  eg -- "blob-to-queue" --> qb
+  eg -. "undeliverable after<br/>5 retries in 60 min" .-> egdl
+  qo --> job
+  qb --> job
+  job -- "peek-lock" --> fail
+  fail -- "no" --> done
+  fail -- "yes: lock runs out, delivered<br/>again; after the 5th delivery" --> dlq
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef ok fill:#e7f5ee,stroke:#12804f,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d
+  class you client
+  class up,eg,qo,qb,job azure
+  class fail rule
+  class done ok
+  class dlq,egdl bad

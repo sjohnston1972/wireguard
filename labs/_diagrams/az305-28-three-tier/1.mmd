@@ -1,0 +1,22 @@
+%% title: One request through the three tiers
+%% alt: Your request reaches Front Door, which redirects HTTP to HTTPS and applies waflab's custom rules, blocking /admin and more than 100 requests a minute from one address. Front Door sends it over HTTPS with the X-Azure-FDID header to ca-web, which refuses anything without that header with 403. ca-web calls the internal ca-app, which reaches the SQL server's private endpoint on TCP 1433; the server's public access is off.
+flowchart TB
+  you(["you, browser or curl"])
+  afd("afd-lab, Front Door Standard<br/>route /*, HTTP redirected to HTTPS")
+  waf{{"waflab, Prevention<br/>BlockAdminPath: /admin<br/>RateLimitPerClient: over 100<br/>a minute from one address"}}
+  web("ca-web, external ingress<br/>403 without the header")
+  app("ca-app, internal ingress<br/>api + sqltools sidecar<br/>secret sql-password")
+  pe("pe-…-sql in snet-pe<br/>the name resolves here")
+  sql[("…-sql / appdb, Basic<br/>public network access off")]
+  you -- "HTTPS" --> afd
+  afd -. "WAF policy" .-> waf
+  afd -- "HTTPS, X-Azure-FDID: profile id" --> web
+  you --x|"direct, no header: 403"| web
+  web -- "http://ca-app" --> app
+  app -- "TCP 1433" --> pe --> sql
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class you client
+  class afd,web,app,pe,sql azure
+  class waf rule

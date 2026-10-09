@@ -1,0 +1,17 @@
+%% title: Two ways in: private ACI, public Container App
+%% alt: You reach aci-hello at its private address in snet-aci only over the peering, while ca-hello in cae-lab has public HTTPS ingress, scales to zero when idle and starts a replica on the first request. Both images come from Microsoft's public registry, MCR; the lab's …acr registry stays empty.
+flowchart TB
+  you(["you"])
+  aci("aci-hello in snet-aci<br/>0.5 vCPU, 0.5 GB<br/>private IP, no public IP")
+  ca("ca-hello in cae-lab<br/>0 to 1 replicas: first request<br/>starts one, idle scales to zero")
+  mcr(["mcr.microsoft.com"])
+  acr("…acr, Basic, admin user off<br/>empty: not used by either")
+  you -- "curl over the peering" --> aci
+  you -- "public HTTPS ingress" --> ca
+  aci -. "image aci-helloworld" .-> mcr
+  ca -. "image k8se/quickstart" .-> mcr
+  mcr ~~~ acr
+  class you,mcr client
+  class aci,ca,acr azure
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d

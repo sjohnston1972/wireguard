@@ -1,0 +1,20 @@
+%% title: Which address the account name resolves to
+%% alt: While the lab is peered, a tunnel client that uses the tunnel's DNS resolves the …blob account through the private DNS zone privatelink.blob.core.windows.net, linked to vnet-lab and the gateway VNet, to the private endpoint's address and reaches the account over the peering. Unpeered, or from outside the tunnel, the name resolves to a public address, which works only while public network access is on.
+flowchart TB
+  c(["tunnel client, lab peered<br/>uses the tunnel's DNS"])
+  o(["outside the tunnel,<br/>or the lab unpeered"])
+  z{{"privatelink.blob.core.windows.net<br/>A …blob: endpoint address<br/>linked to vnet-lab + gateway VNet"}}
+  pe("private endpoint (blob)<br/>snet-endpoints, vnet-lab")
+  pub("public address<br/>works while public<br/>network access is on")
+  sa("…blob<br/>container: private")
+  c -- "resolve …blob" --> z
+  z -- "private address,<br/>over the peering" --> pe
+  pe --> sa
+  o -- "resolves to" --> pub
+  pub --> sa
+  class c,o client
+  class z rule
+  class pe,pub,sa azure
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d

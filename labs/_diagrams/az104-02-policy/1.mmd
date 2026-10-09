@@ -1,0 +1,29 @@
+%% title: What the policies and the lock decide
+%% alt: A new resource in rg-lab-az104-02-policy is refused, with a custom message, unless it has a costcentre tag and is in the session's region. nsg-untagged, made before the deny existed, is not removed but shows as non-compliant. Deleting the …tags storage account is refused by the CanNotDelete lock.
+flowchart TB
+  new(["you create a resource<br/>in rg-lab-az104-02-policy"])
+  tag{{"…-require-tag, Deny<br/>has a costcentre tag?"}}
+  loc{{"…-allowed-locations<br/>in the session's region?"}}
+  ok("created")
+  no("refused,<br/>with the custom message")
+  old("nsg-untagged<br/>made before the deny")
+  nc("stays, shown as<br/>non-compliant")
+  del(["you delete …tags<br/>(costcentre = cc-1234)"])
+  lock{{"lock …-no-delete<br/>CanNotDelete"}}
+  new --> tag
+  tag -- "yes" --> loc
+  loc -- "yes" --> ok
+  tag -- "no" --> no
+  loc -- "no" --> no
+  old -. "compliance scan" .-> nc
+  del -- "refused" --x lock
+  class new,del client
+  class tag,loc,lock rule
+  class ok ok
+  class no,nc bad
+  class old azure
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef ok fill:#e7f5ee,stroke:#12804f,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d

@@ -1,0 +1,22 @@
+%% title: From main.bicep to resources
+%% alt: The pipeline builds main.bicep and its module vnet.bicep into main.json with a pinned Bicep, and Terraform deploys it as bicep-main in Incremental mode with parameters from the pipeline. The template makes the …bicep storage account and nsg-bicep; its nested deployment vnet makes vnet-bicep with snet-web and snet-app, both using nsg-bicep.
+flowchart TB
+  src("main.bicep + module vnet.bicep<br/>labs/az104-12-bicep/terraform/")
+  json("main.json<br/>ARM template")
+  par{{"parameters<br/>vnetCidr, namePrefix, tags: pipeline<br/>location, accessTier: defaults"}}
+  dep("deployment bicep-main<br/>Incremental mode")
+  sa("…bicep<br/>StorageV2, LRS")
+  nsg("nsg-bicep<br/>allows HTTPS within the VNet")
+  nest("nested deployment vnet<br/>(the module)")
+  vnet("vnet-bicep: vnetCidr (slot /20)<br/>snet-web, snet-app: /24 each<br/>both use nsg-bicep")
+  src -- "pinned Bicep build" --> json
+  json -- "Terraform" --> dep
+  par -.-> dep
+  dep --> sa
+  dep --> nsg
+  dep --> nest
+  nest --> vnet
+  class src,json,dep,sa,nsg,nest,vnet azure
+  class par rule
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d

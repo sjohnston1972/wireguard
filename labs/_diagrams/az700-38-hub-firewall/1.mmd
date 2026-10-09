@@ -1,0 +1,22 @@
+%% title: What the hub firewall lets through
+%% alt: rt-spoke1 sends vm-spoke1's internet traffic and its traffic for spoke 2 to afw-hub. The firewall's policy fwp-hub inherits fwp-base's network rules, which allow TCP 22 and ping between the spokes, and adds application rules allowing *.ubuntu.com and www.microsoft.com on HTTP and HTTPS. Anything no rule allows, such as example.com or port 80 between the spokes, is denied.
+flowchart TB
+  s1("vm-spoke1, snet-workload<br/>no default outbound access")
+  rt{{"rt-spoke1<br/>0.0.0.0/0 and spoke 2's /20<br/>→ the firewall's private IP"}}
+  afw("afw-hub, Basic<br/>policy fwp-hub, inherits fwp-base")
+  s2("vm-spoke2")
+  inet(["internet<br/>through pip-afw-hub"])
+  deny("denied")
+  s1 --> rt
+  rt -- "over the peering" --> afw
+  afw -- "fwp-base network rules<br/>TCP 22, ping" --> s2
+  afw -- "fwp-hub application rules<br/>*.ubuntu.com<br/>www.microsoft.com<br/>HTTP, HTTPS" --> inet
+  afw -- "anything else, e.g.<br/>example.com or<br/>port 80 to vm-spoke2" --> deny
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d
+  class s1,afw,s2 azure
+  class rt rule
+  class inet client
+  class deny bad

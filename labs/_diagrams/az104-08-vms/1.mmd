@@ -1,0 +1,22 @@
+%% title: Two zones, one zonal data disk
+%% alt: vm-zone1 runs in availability zone 1 with disk-zone1-data, a blank 4 GiB E1 disk, attached at LUN 0; vm-zone2 runs in zone 2. The serve-web extension makes each VM serve its name on port 80. The zonal disk cannot be attached to vm-zone2 because it is in another zone.
+flowchart TB
+  you(["you, tunnel client<br/>(while peered)"])
+  subgraph z1 ["availability zone 1"]
+    v1("vm-zone1, B1s<br/>serve-web: its name on :80")
+    d1[("disk-zone1-data<br/>4 GiB E1, blank")]
+  end
+  subgraph z2 ["availability zone 2"]
+    v2("vm-zone2, B1s<br/>serve-web: its name on :80")
+    no("cannot attach<br/>disk-zone1-data:<br/>it is in zone 1")
+  end
+  you -- "curl :80" --> v1
+  you -- "curl :80" --> v2
+  v1 -- "LUN 0" --- d1
+  v2 -.- no
+  class you client
+  class v1,v2,d1 azure
+  class no bad
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d

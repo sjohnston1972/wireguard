@@ -1,0 +1,16 @@
+%% title: Management group tree and policy inheritance
+%% alt: The lab's root group, lab-az104-03-mgmt-groups-root, sits under the tenant root group with prod and dev groups below it. The audit-environment-tag assignment is made at the lab's root group and prod and dev inherit it; your subscription stays under the tenant root group, outside the lab's tree, so the policy never reaches it.
+flowchart TB
+  tr("Tenant root group")
+  sub("your subscription<br/>stays where it is")
+  root{{"lab-az104-03-mgmt-groups-root<br/>assignment audit-environment-tag<br/>audit only: no environment tag"}}
+  prod("lab-az104-03-mgmt-groups-prod")
+  dev("lab-az104-03-mgmt-groups-dev")
+  tr --> sub
+  tr --> root
+  root -- "inherits the policy" --> prod
+  root -- "inherits the policy" --> dev
+  class tr,sub,prod,dev azure
+  class root rule
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d

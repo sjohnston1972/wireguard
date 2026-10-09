@@ -1,0 +1,24 @@
+%% title: Security admin rules come before the NSG
+%% alt: Inbound traffic to a spoke VM meets sac-lab's rules first. SSH from the hub's /20 matches the AlwaysAllow rule at priority 90 and is let in, so the NSG's deny of the same traffic is never read; SSH from the Internet service tag matches the Deny rule at priority 100 and is refused whatever the NSG says. Only traffic neither rule matches goes on to the spoke's NSG.
+flowchart TB
+  pkt(["inbound to<br/>vm-spoke1 or vm-spoke2"])
+  r90{{"rc-spokes 90: always-allow-hub-ssh<br/>AlwaysAllow TCP 22<br/>from the hub's /20"}}
+  r100{{"rc-spokes 100: deny-ssh-internet<br/>Deny TCP 22 from Internet"}}
+  nsg{{"nsg-spoke1, nsg-spoke2<br/>deny TCP 22 from the hub's /20"}}
+  vm("the spoke VM")
+  drop("refused,<br/>whatever the NSG says")
+  pkt --> r90
+  r90 == "match: in, the NSG never sees it" ==> vm
+  r90 -- "no match" --> r100
+  r100 -- "match" --> drop
+  r100 -- "no match" --> nsg
+  nsg -- "if its rules allow" --> vm
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef client fill:#f4f7fb,stroke:#768498,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  classDef ok fill:#e7f5ee,stroke:#12804f,color:#0f1b2d
+  classDef bad fill:#fdecec,stroke:#c62828,color:#0f1b2d
+  class pkt client
+  class r90,r100,nsg rule
+  class vm ok
+  class drop bad

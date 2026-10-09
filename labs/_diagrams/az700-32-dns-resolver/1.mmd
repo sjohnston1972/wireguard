@@ -1,0 +1,23 @@
+%% title: Resolving across the two sites
+%% alt: vm-app asks Azure DNS for an onprem.lab32.internal name; the ruleset frs-onprem matches the domain, so the outbound endpoint out-hub asks vm-dns on port 53. In the other direction vm-dns's dnsmasq forwards azure.lab32.internal names to the inbound endpoint in-hub, which answers from the private zone where vm-app registered itself.
+flowchart TB
+  subgraph hub ["vnet-hub, 'Azure'"]
+    app("vm-app<br/>snet-app")
+    adns{{"Azure DNS + frs-onprem<br/>onprem.lab32.internal.<br/>→ vm-dns:53"}}
+    out("out-hub<br/>outbound endpoint, snet-out")
+    in("in-hub<br/>inbound endpoint, snet-in")
+    zone[("azure.lab32.internal<br/>private zone, auto-registration")]
+  end
+  subgraph op ["vnet-onprem, 'on-prem' (peered, in place of a VPN)"]
+    dns("vm-dns, dnsmasq<br/>answers onprem.lab32.internal")
+  end
+  app -- "fileserver.onprem.<br/>lab32.internal?" --> adns
+  adns -- "rule matches" --> out
+  out -- "DNS 53" --> dns
+  dns -- "forwards<br/>azure.lab32.internal" --> in
+  in -- "answers from the zone" --> zone
+  app -. "registers its name" .-> zone
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class app,out,in,dns,zone azure
+  class adns rule

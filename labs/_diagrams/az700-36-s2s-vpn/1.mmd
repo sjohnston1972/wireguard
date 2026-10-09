@@ -1,0 +1,19 @@
+%% title: Across the site-to-site tunnel
+%% alt: vm-azure reaches vm-onprem only through the tunnel, as the VNets are not peered. Its effective route sends the on-prem /20, learned over BGP, to the virtual network gateway; vpngw-azure (AS 65010) and vpngw-onprem (AS 65020) carry it over IPsec with BGP, both connections using one pre-shared key and the same IPsec/IKE policy.
+flowchart TB
+  va("vm-azure :80<br/>vnet-azure")
+  rt{{"effective route, nic-vm-azure<br/>on-prem /20, learned over BGP<br/>→ Virtual network gateway"}}
+  gwa("vpngw-azure<br/>VpnGw1AZ, AS 65010")
+  gwo("vpngw-onprem<br/>VpnGw1AZ, AS 65020")
+  pol{{"both connections<br/>one pre-shared key<br/>IKEv2: AES256, SHA256, DH 14<br/>IPsec: GCMAES256, PFS 14<br/>SA lifetime 27,000 s"}}
+  vo("vm-onprem :80<br/>vnet-onprem")
+  va -- "curl, ssh" --> rt
+  rt --> gwa
+  gwa <== "IPsec + BGP<br/>cn-azure-to-onprem<br/>cn-onprem-to-azure<br/>no peering: the only way across" ==> gwo
+  gwo --> vo
+  pol -.- gwa
+  pol -.- gwo
+  classDef azure fill:#eaf0fa,stroke:#2563eb,color:#0f1b2d
+  classDef rule fill:#fff7e6,stroke:#b45309,color:#0f1b2d
+  class va,gwa,gwo,vo azure
+  class rt,pol rule
