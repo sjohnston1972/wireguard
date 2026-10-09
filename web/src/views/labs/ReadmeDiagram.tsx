@@ -10,7 +10,7 @@
 // one more click or the "Actual size" button. Escape or Close shuts it.
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { Maximize2, Minimize2, X, ZoomIn } from "lucide-react";
+import { Maximize2, X } from "lucide-react";
 import { useState } from "react";
 import type { ReadmeBlock } from "@shared/labs";
 import { ESCAPE_HANDOFF, escapeHandedToDialog } from "@/components/escapeHandoff";
@@ -33,7 +33,7 @@ export function ReadmeDiagram({ b, urls }: { b: DiagramBlock; urls?: Readonly<Re
       <button type="button" className="labs-diagram__open" onClick={() => show(true)} aria-label={`Enlarge: ${b.title}`} aria-haspopup="dialog">
         <img src={url} alt={b.alt} width={b.width} height={b.height} loading="lazy" decoding="async" className="labs-diagram__img" />
         <span className="labs-diagram__hint" aria-hidden="true">
-          <ZoomIn size={14} />
+          <Maximize2 size={13} />
           Enlarge
         </span>
       </button>
@@ -56,7 +56,7 @@ export function ReadmeDiagram({ b, urls }: { b: DiagramBlock; urls?: Readonly<Re
             <header className="labs-lightbox__head">
               <Dialog.Title className="labs-lightbox__title">{b.title}</Dialog.Title>
               <button type="button" className="labs-lightbox__button" aria-pressed={full} onClick={() => setFull((f) => !f)}>
-                {full ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
+                {!full && <Maximize2 size={16} aria-hidden />}
                 {full ? "Fit to window" : "Actual size"}
               </button>
               <Dialog.Close className="labs-lightbox__close" aria-label="Close">
