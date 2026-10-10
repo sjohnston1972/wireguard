@@ -10,8 +10,8 @@ import { judgeBundle, entryFiles, FORBIDDEN_IN_ENTRY, LIMITS } from "../lib/bund
 const script = fileURLToPath(new URL("../bundle-size.mjs", import.meta.url));
 const f = (name, gzip, extra = {}) => ({ name, bytes: gzip * 3, gzip, ...extra });
 
-test("the budget: the page's entry JS 320 kB gzip (ruling 8), the JS limit is 450 kB, CSS 50 kB, each planned diagram 16 kB, the icon sprite 60 kB", () => {
-  assert.deepEqual(LIMITS, { entryJsGzip: 320_000, jsGzip: 450_000, cssGzip: 50_000, topologyDataGzip: 16_000, spriteGzip: 60_000 });
+test("the budget: the page's entry JS 320 kB gzip (ruling 8), the JS limit is 500 kB, CSS 50 kB, each planned diagram 16 kB, the icon sprite 60 kB", () => {
+  assert.deepEqual(LIMITS, { entryJsGzip: 320_000, jsGzip: 500_000, cssGzip: 50_000, topologyDataGzip: 16_000, spriteGzip: 60_000 });
   assert.deepEqual(FORBIDDEN_IN_ENTRY, ["react-flow__", "@xyflow"]);
 });
 
@@ -86,7 +86,7 @@ test("lazy chunks count toward the JS total but not the entry", () => {
   const r = judgeBundle([f("assets/index-a.js", 300_000, { entry: true }), f("assets/Insights-b.js", 60_000), f("sw.js", 3_000)], LIMITS);
   assert.equal(r.ok, true, r.lines.join("\n"));
   assert.ok(r.lines.some((l) => /^Entry JS/.test(l) && /300\.0 kB/.test(l) && /320\.0 kB/.test(l)), r.lines.join("\n"));
-  assert.ok(r.lines.some((l) => /^JS total/.test(l) && /363\.0 kB/.test(l) && /450\.0 kB/.test(l)), r.lines.join("\n"));
+  assert.ok(r.lines.some((l) => /^JS total/.test(l) && /363\.0 kB/.test(l) && /500\.0 kB/.test(l)), r.lines.join("\n"));
   assert.ok(r.lines.some((l) => l.includes("assets/Insights-b.js") && /lazy/.test(l)), "the table marks lazy chunks");
 });
 
@@ -123,13 +123,20 @@ test("under budget passes", () => {
 });
 
 test("over the JS total fails and names the files", () => {
-  const r = judgeBundle([f("assets/index-a.js", 200_000, { entry: true }), f("assets/vendor-b.js", 260_000), f("assets/index-c.css", 30_000)], LIMITS);
+  const r = judgeBundle([f("assets/index-a.js", 200_000, { entry: true }), f("assets/vendor-b.js", 300_001), f("assets/index-c.css", 30_000)], LIMITS);
   assert.equal(r.ok, false);
   const fail = r.lines.filter((l) => /^FAIL/.test(l)).join("\n");
   assert.match(fail, /JS/);
   assert.match(fail, /assets\/index-a\.js/);
   assert.match(fail, /assets\/vendor-b\.js/);
   assert.doesNotMatch(fail, /index-c\.css/);
+});
+
+test("the JS total has headroom to 500 kB: 460 kB (over the old 450) passes, exactly 500 kB passes", () => {
+  for (const vendor of [260_000, 300_000]) {
+    const r = judgeBundle([f("assets/index-a.js", 200_000, { entry: true }), f("assets/vendor-b.js", vendor)], LIMITS);
+    assert.equal(r.ok, true, r.lines.join("\n"));
+  }
 });
 
 test("over the CSS budget fails", () => {

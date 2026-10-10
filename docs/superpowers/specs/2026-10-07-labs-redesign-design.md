@@ -506,7 +506,7 @@ pixels.
 ## 16. Bundle and performance
 
 All new UI is in the lazy labs chunk; the entry gains only the Drawer `right` variant and one mutation option. Budgets
-unchanged: entry ≤ 320 kB, all JS ≤ 450 kB, CSS ≤ 50 kB gzip. 43 labs: derived views (`readiness`, `status`, `topics`,
+unchanged: entry ≤ 320 kB, all JS ≤ 450 kB (500 kB since 2026-10-10, approved by Steven), CSS ≤ 50 kB gzip. 43 labs: derived views (`readiness`, `status`, `topics`,
 search text) computed once per data change (`useMemo`), filtering is a linear pass, cards memoised so a selection change
 re-renders two cards. The panel's deploy checks are one `GET /labs/:id` per selected lab (cached by TanStack Query).
 

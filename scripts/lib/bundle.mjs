@@ -8,10 +8,11 @@
 // - Entry JS, 320 kB: what every page load fetches before anything shows,
 //   that is index.html's module script plus the chunks it preloads
 //   (<link rel="modulepreload">). This is ruling 8's budget.
-// - All JS, 450 kB: the entry plus the chunks loaded only when needed (the
+// - All JS, 500 kB: the entry plus the chunks loaded only when needed (the
 //   Azure insights widgets, the labs page, and the lab diagram's own lazy
 //   chunk with @xyflow/react, lab topology spec §11) and sw.js. It stops
-//   lazy chunks quietly growing without bound. (400 kB before the diagram.)
+//   lazy chunks quietly growing without bound. (400 kB before the diagram,
+//   450 kB until the lab readme diagrams brought the total to ~450 kB.)
 // - CSS, 50 kB in all.
 // - Each planned lab diagram (shared/topology/planned/<id>.json, emitted as
 //   a hashed assets/*.json file, never JS), 16 kB.
@@ -19,7 +20,7 @@
 // And the diagram never in the entry: an entry file that mentions
 // "react-flow__" or "@xyflow" fails (FORBIDDEN_IN_ENTRY).
 
-export const LIMITS = { entryJsGzip: 320_000, jsGzip: 450_000, cssGzip: 50_000, topologyDataGzip: 16_000, spriteGzip: 60_000 };
+export const LIMITS = { entryJsGzip: 320_000, jsGzip: 500_000, cssGzip: 50_000, topologyDataGzip: 16_000, spriteGzip: 60_000 };
 
 /** Strings no entry JS file may contain: the diagram library belongs in its lazy chunk only. */
 export const FORBIDDEN_IN_ENTRY = ["react-flow__", "@xyflow"];

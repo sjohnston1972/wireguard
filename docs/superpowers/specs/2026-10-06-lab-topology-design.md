@@ -611,6 +611,8 @@ connections, and is the default when the graph has over 300 nodes. Status words 
   (`web/dist` of 8243fab). `@xyflow/react` 12.12.0 (MIT, 2026-09-24; dependencies `@xyflow/system` 0.0.83, `zustand`,
   `classcat`; about 60 kB gzip with its d3 parts, an estimate) plus about 25 kB of topology code: about 430 kB of 450.
   The real figure is measured by `bundle-size` at T0 and integration; over 450 means cutting, not raising.
+  *Update 2026-10-10:* with the lab readme diagrams the total reached about 449.9 kB; Steven approved raising `jsGzip` to
+  **500 000** (entry stays 320 kB, CSS 50 kB).
 - `layoutTopology` for a 300-node graph runs under 50 ms in Node; the live derivation for 1000 rows under 50 ms of Worker CPU.
 
 ## 12. Testing
