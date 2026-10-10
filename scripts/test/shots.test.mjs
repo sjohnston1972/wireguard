@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { parseArgs, buildPlan, SIZES, ROUTES, SCROLLING_ROUTES, shotName, isOneScreenSize, measureOverflow, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, freezeTimeScript, WIDGET_CHROME_OFF_CSS, widgetChromeOffScript, prefsPuts, FROZEN_NOW, frozenClockProblem } from "../lib/shots.mjs";
+import { parseArgs, buildPlan, SIZES, ROUTES, shotName, isOneScreenSize, LABS_CATALOGUE_ROUTES, measureOverflow, OVERFLOW_PROBE, judgeOverflow, loadPrefsFiles, freezeTimeScript, WIDGET_CHROME_OFF_CSS, widgetChromeOffScript, prefsPuts, FROZEN_NOW, frozenClockProblem } from "../lib/shots.mjs";
 
 const script = fileURLToPath(new URL("../shots.mjs", import.meta.url));
 
@@ -35,50 +35,54 @@ test("the one-screen rule applies to desktop sizes of 1100x600 and up, not the p
   assert.ok(plan.filter((s) => s.path === "/" && s.width === 1100).every((s) => s.checkOverflow));
 });
 
-// Labs redesign spec ruling 8: the catalogue page scrolls down, never sideways.
-test("/labs and /labs?… are judged for sideways scroll only, at every size including the phone", () => {
-  assert.ok(SCROLLING_ROUTES.some((re) => re.test("/labs")));
+// Labs redesign spec ruling 8, as updated 2026-10-10 (Steven: "a single page with no scrolling, scrolling only within the
+// lab tiles area"): on a desktop or tablet the catalogue is one screen and only the tile grid scrolls. The phone keeps
+// ordinary page scrolling, so it is judged for sideways scroll only.
+const LABS_SIZES = "1600x900,1366x768,1280x800,1100x600,1024x768,390x844";
+test("/labs and /labs?… keep the one-screen rule at desktop and tablet sizes; the phone may scroll down, never sideways", () => {
+  assert.ok(LABS_CATALOGUE_ROUTES.some((re) => re.test("/labs")));
   const routes = ["/labs", "/labs?lab=az104-02-policy", "/labs?exam=AZ-305&ready=1"];
-  const plan = buildPlan(parseArgs(["--routes", routes.join(","), "--sizes", "1600x900,1100x600,1024x768,390x844", "--themes", "dark"]), {});
-  assert.equal(plan.length, 12);
-  for (const s of plan) assert.equal(s.checkOverflow, "x", `${s.path} at ${s.width}x${s.height}`);
+  const plan = buildPlan(parseArgs(["--routes", routes.join(","), "--sizes", LABS_SIZES, "--themes", "dark"]), {});
+  assert.equal(plan.length, 18);
+  for (const s of plan) assert.equal(s.checkOverflow, s.width === 390 ? "x" : "all", `${s.path} at ${s.width}x${s.height}`);
   assert.equal(plan.find((s) => s.width === 390).mobile, true);
-  // Tall is fine, sideways is not, inside #main too.
+  // A tall catalogue now fails on a desktop or tablet, in the document or in #main.
+  assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 2400, mainX: 0, innerScroller: null }, { checkOverflow: "all" }).ok, false);
+  assert.equal(judgeOverflow({ y: 40, x: 0, mainY: 0, mainX: 0, innerScroller: null }, { checkOverflow: "all" }).ok, false);
+  // The phone: tall is fine, sideways is not, inside #main too.
   assert.deepEqual(judgeOverflow({ y: 0, x: 0, mainY: 2400, mainX: 0, innerScroller: null }, { checkOverflow: "x" }), { ok: true, reason: null });
   assert.equal(judgeOverflow({ y: 0, x: 18, mainY: 2400, mainX: 0, innerScroller: null }, { checkOverflow: "x" }).ok, false);
   const side = judgeOverflow({ y: 0, x: 0, mainY: 0, mainX: 6, innerScroller: null }, { checkOverflow: "x" });
   assert.equal(side.ok, false);
   assert.match(side.reason, /sideways 6px/);
-  assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 0, mainX: 0, innerScroller: { what: "div.x", by: 9 } }, { checkOverflow: "x" }).ok, true, "a page-wide scroller is allowed on a scrolling page");
-  // The full rule ("all", or true from older callers) still fails a tall page.
+  // The full rule ("all", or true from older callers) fails a tall page.
   assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 10, mainX: 0 }, { checkOverflow: "all" }).ok, false);
   assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 10, mainX: 0 }, { checkOverflow: true }).ok, false);
 });
 
-// The lab dialog (/labs/<id>) sits over the catalogue, which is meant to scroll down behind it
-// (coordinator, 2026-10-10): judged like /labs, for sideways scroll only.
-test("/labs/<id> (the lab dialog over the catalogue) is judged for sideways scroll only, at every size", () => {
+test("/labs/<id> (the lab dialog over the catalogue) keeps the one-screen rule at desktop and tablet sizes", () => {
   const routes = ["/labs/az104-02-policy", "/labs/az104-06-blob-security?view=diagram"];
-  for (const r of routes) assert.ok(SCROLLING_ROUTES.some((re) => re.test(r)), r);
-  const plan = buildPlan(parseArgs(["--routes", routes.join(","), "--sizes", "1600x900,2000x1030,390x844", "--themes", "dark"]), {});
-  assert.equal(plan.length, 6);
-  for (const s of plan) assert.equal(s.checkOverflow, "x", `${s.path} at ${s.width}x${s.height}`);
-  // Tall behind the dialog is fine; sideways still fails.
-  assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 414, mainX: 0, innerScroller: null }, { checkOverflow: "x" }).ok, true);
-  assert.equal(judgeOverflow({ y: 0, x: 12, mainY: 414, mainX: 0, innerScroller: null }, { checkOverflow: "x" }).ok, false);
+  for (const r of routes) assert.ok(LABS_CATALOGUE_ROUTES.some((re) => re.test(r)), r);
+  const plan = buildPlan(parseArgs(["--routes", routes.join(","), "--sizes", "1600x900,2000x1030,1024x768,390x844", "--themes", "dark"]), {});
+  assert.equal(plan.length, 8);
+  for (const s of plan) assert.equal(s.checkOverflow, s.width === 390 ? "x" : "all", `${s.path} at ${s.width}x${s.height}`);
+  // The catalogue behind the dialog must not scroll either.
+  assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 414, mainX: 0, innerScroller: null }, { checkOverflow: "all" }).ok, false);
 });
 
-test("/labs/history and the full-screen diagram (/labs/<id>/diagram) keep the one-screen rule", () => {
-  assert.ok(!SCROLLING_ROUTES.some((re) => re.test("/labs/history")));
-  assert.ok(!SCROLLING_ROUTES.some((re) => re.test("/labs/history?exam=AZ-104")));
-  assert.ok(!SCROLLING_ROUTES.some((re) => re.test("/labs/az104-02-policy/diagram")));
-  const plan = buildPlan(parseArgs(["--routes", "/labs/history,/cost", "--sizes", "1600x900,390x844", "--themes", "dark"]), {});
+test("/labs/history and the full-screen diagram (/labs/<id>/diagram) keep the ordinary one-screen rule", () => {
+  assert.ok(!LABS_CATALOGUE_ROUTES.some((re) => re.test("/labs/history")));
+  assert.ok(!LABS_CATALOGUE_ROUTES.some((re) => re.test("/labs/history?exam=AZ-104")));
+  assert.ok(!LABS_CATALOGUE_ROUTES.some((re) => re.test("/labs/az104-02-policy/diagram")));
+  const plan = buildPlan(parseArgs(["--routes", "/labs/history,/cost", "--sizes", "1600x900,1024x768,390x844", "--themes", "dark"]), {});
   assert.deepEqual(
     plan.map((s) => [s.path, s.width, s.checkOverflow]),
     [
       ["/labs/history", 1600, "all"],
+      ["/labs/history", 1024, false],
       ["/labs/history", 390, false],
       ["/cost", 1600, "all"],
+      ["/cost", 1024, false],
       ["/cost", 390, false],
     ],
   );

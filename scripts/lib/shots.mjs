@@ -30,12 +30,14 @@ export const SIZES = [
 export const THEMES = ["dark", "light"];
 
 /**
- * Pages that may scroll down (labs redesign spec ruling 8: the Labs catalogue, with any query) but
- * never sideways, at any size including the phone. Matched against the shot's path. The lab
- * dialog (/labs/<id>, with any query) sits over that catalogue, which scrolls behind it, so it is
- * judged the same way; /labs/history and the full-screen diagram (/labs/<id>/diagram) are not.
+ * The Labs catalogue (/labs, with any query) and the lab dialog drawn over it (/labs/<id>, with any
+ * query). Labs redesign spec ruling 8, updated 2026-10-10: on a desktop or tablet (any size that is
+ * not the phone) the catalogue is one screen and only its tile grid scrolls, so these get the full
+ * one-screen rule at every non-phone size, not only at 1100 x 600 and up. The phone keeps ordinary
+ * page scrolling, so it is judged for sideways scroll only. /labs/history and the full-screen
+ * diagram (/labs/<id>/diagram) are not matched: they follow the ordinary rule.
  */
-export const SCROLLING_ROUTES = [/^\/labs(?:\?.*)?$/, /^\/labs\/(?!history(?:\?|$))[^/?]+(?:\?.*)?$/];
+export const LABS_CATALOGUE_ROUTES = [/^\/labs(?:\?.*)?$/, /^\/labs\/(?!history(?:\?|$))[^/?]+(?:\?.*)?$/];
 
 /** The one-screen rule: desktop windows of 1100 x 600 and larger must not scroll the page. */
 export function isOneScreenSize(s) {
@@ -346,9 +348,9 @@ export function prefsPuts(current, pages) {
   return Object.entries(pages).map(([page, prefs]) => ({ page, body: { schema: 2, baseVersion: current.pages[page]?.version ?? 0, prefs } }));
 }
 
-/** A shot's overflow check: "x" on a scrolling page at every size, "all" for the one-screen rule, else false. */
+/** A shot's overflow check: "all" for the one-screen rule, "x" (sideways only) for the Labs catalogue on the phone, else false. */
 function overflowCheck(path, size, r) {
-  if (SCROLLING_ROUTES.some((re) => re.test(path))) return "x";
+  if (LABS_CATALOGUE_ROUTES.some((re) => re.test(path))) return size.mobile ? "x" : "all";
   return isOneScreenSize(size) && !r.exemptFromOneScreen ? "all" : false;
 }
 
