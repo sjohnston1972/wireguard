@@ -31,9 +31,11 @@ export const THEMES = ["dark", "light"];
 
 /**
  * Pages that may scroll down (labs redesign spec ruling 8: the Labs catalogue, with any query) but
- * never sideways, at any size including the phone. Matched against the shot's path.
+ * never sideways, at any size including the phone. Matched against the shot's path. The lab
+ * dialog (/labs/<id>, with any query) sits over that catalogue, which scrolls behind it, so it is
+ * judged the same way; /labs/history and the full-screen diagram (/labs/<id>/diagram) are not.
  */
-export const SCROLLING_ROUTES = [/^\/labs(?:\?.*)?$/];
+export const SCROLLING_ROUTES = [/^\/labs(?:\?.*)?$/, /^\/labs\/(?!history(?:\?|$))[^/?]+(?:\?.*)?$/];
 
 /** The one-screen rule: desktop windows of 1100 x 600 and larger must not scroll the page. */
 export function isOneScreenSize(s) {
