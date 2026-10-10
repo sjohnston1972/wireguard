@@ -249,8 +249,8 @@ describe("the grid", () => {
     expect(css).toMatch(/\.lab-card\s*\{[^}]*min-height:\s*var\(--lab-card-min\)/);
   });
 
-  it("wide: the cards scroll on their own, with room for a focused card's whole ring (2 px outline + 2 px offset)", () => {
-    const main = pageCss.match(/\.labs-workspace:not\(\.labs-workspace--single\) > \.labs-workspace__main\s*\{([^}]*)\}/)?.[1] ?? "";
+  it("tablet and wide: the cards scroll on their own, with room for a focused card's whole ring (2 px outline + 2 px offset)", () => {
+    const main = pageCss.match(/\.labs-workspace > \.labs-workspace__main\s*\{([^}]*)\}/)?.[1] ?? "";
     expect(main).toMatch(/overflow-y:\s*auto/);
     const pad = Number(main.match(/padding:\s*(\d+)px/)?.[1]);
     expect(pad).toBeGreaterThanOrEqual(4);
