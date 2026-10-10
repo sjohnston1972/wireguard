@@ -55,9 +55,23 @@ test("/labs and /labs?… are judged for sideways scroll only, at every size inc
   assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 10, mainX: 0 }, { checkOverflow: true }).ok, false);
 });
 
-test("/labs/history keeps the one-screen rule", () => {
+// The lab dialog (/labs/<id>) sits over the catalogue, which is meant to scroll down behind it
+// (coordinator, 2026-10-10): judged like /labs, for sideways scroll only.
+test("/labs/<id> (the lab dialog over the catalogue) is judged for sideways scroll only, at every size", () => {
+  const routes = ["/labs/az104-02-policy", "/labs/az104-06-blob-security?view=diagram"];
+  for (const r of routes) assert.ok(SCROLLING_ROUTES.some((re) => re.test(r)), r);
+  const plan = buildPlan(parseArgs(["--routes", routes.join(","), "--sizes", "1600x900,2000x1030,390x844", "--themes", "dark"]), {});
+  assert.equal(plan.length, 6);
+  for (const s of plan) assert.equal(s.checkOverflow, "x", `${s.path} at ${s.width}x${s.height}`);
+  // Tall behind the dialog is fine; sideways still fails.
+  assert.equal(judgeOverflow({ y: 0, x: 0, mainY: 414, mainX: 0, innerScroller: null }, { checkOverflow: "x" }).ok, true);
+  assert.equal(judgeOverflow({ y: 0, x: 12, mainY: 414, mainX: 0, innerScroller: null }, { checkOverflow: "x" }).ok, false);
+});
+
+test("/labs/history and the full-screen diagram (/labs/<id>/diagram) keep the one-screen rule", () => {
   assert.ok(!SCROLLING_ROUTES.some((re) => re.test("/labs/history")));
-  assert.ok(!SCROLLING_ROUTES.some((re) => re.test("/labs/az104-02-policy")));
+  assert.ok(!SCROLLING_ROUTES.some((re) => re.test("/labs/history?exam=AZ-104")));
+  assert.ok(!SCROLLING_ROUTES.some((re) => re.test("/labs/az104-02-policy/diagram")));
   const plan = buildPlan(parseArgs(["--routes", "/labs/history,/cost", "--sizes", "1600x900,390x844", "--themes", "dark"]), {});
   assert.deepEqual(
     plan.map((s) => [s.path, s.width, s.checkOverflow]),

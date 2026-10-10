@@ -60,7 +60,9 @@ no new Azure permission or call; no change to any lab folder, lab version, `lab.
    stop by dispatching the lab workflow, which needs GitHub. Otherwise the item is omitted (never "off" guessed from the client).
 8. **The catalogue page scrolls** (the brief: no fixed page heights, no giant enclosing panel, a sticky detail panel). `/labs`
    (with any query) is exempt from the six-view one-screen rule for vertical scroll only; sideways scroll is still a failure
-   at every size including the phone. `/labs/history` keeps the one-screen rule.
+   at every size including the phone. `/labs/history` keeps the one-screen rule. *Update 2026-10-10:* the lab dialog
+   route `/labs/<id>` (with any query) is exempt the same way, since the catalogue behind it scrolls; the full-screen diagram
+   `/labs/<id>/diagram` keeps the rule.
 9. **Layouts by viewport width** (§9): wide ≥ 1200 px inline sticky panel; tablet 641–1199 px a right slide-over drawer;
    phone ≤ 640 px one column, a filter sheet and a full-width detail view. One hook decides (`useLabsLayout`).
 10. **Tablet drawer = a new `Drawer side="right"`** (modal, focus-trapped, ~440 px). The six-view spec §7 always described the
