@@ -1,24 +1,54 @@
-/* The catalogue page (labs redesign spec §4, §9): it scrolls with #main; no fixed heights, no enclosing panel. */
+/* The catalogue page (labs redesign spec §4, §9; ruling 8 as updated 2026-10-10). No enclosing panel. The phone
+   (640 px and below) scrolls with #main as any page does; tablet and wide are one screen (below). */
 .labs-page { gap: 14px; padding-bottom: 12px; }
 .labs-page > .page-header { margin-bottom: 0; }
-
-/* Wide (1200 px and up): the cards and the selected lab's details side by side, half the page each. Each column
-   scrolls on its own (scrolling the cards never moves the details, and the reverse); both stay under the app bar. */
+/* The notices and running labs: on the phone no box at all, so each is one of the page's own rows. */
+.labs-page__alerts { display: contents; }
+.labs-page__alerts:empty { display: none; }
 .labs-workspace { display: block; min-width: 0; }
 .labs-workspace__main { min-width: 0; }
-@media (min-width: 1200px) {
-  .labs-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
-  .labs-workspace--single { grid-template-columns: minmax(0, 1fr); }
-  .labs-workspace:not(.labs-workspace--single) > .labs-workspace__main {
-    position: sticky; top: 0;
-    max-height: calc(100dvh - var(--bar-height) - 28px); overflow-y: auto; overscroll-behavior: contain;
+
+/* Tablet and wide (641 px and up): a single screen, only the tiles scroll. The page fills #main, which the shell
+   already sizes to the window less the app bar and any shell banners (AppShell.css: a 100dvh flex column), so no
+   height is written here. The header, summary, notices, running labs and toolbar keep their natural height; the
+   workspace takes what is left, and inside it the tile grid is the one scroll container.
+   Each scroller is position: relative, so the visually hidden text inside it (the cards' live region, the skip link)
+   is placed and clipped with it rather than against #main, where it would make the page area scroll. */
+@media (min-width: 641px) {
+  .labs-page { height: 100%; min-height: 0; gap: 12px; padding-bottom: 0; }
+  .labs-page > * { flex: none; }
+  .labs-page > .labs-workspace {
+    flex: 1 1 0; min-height: 0;
+    display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
+  }
+  .labs-workspace > .labs-workspace__main {
+    position: relative; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
     /* room inside the scroller for a focused card's whole ring (2 px outline, 2 px offset) */
     padding: 4px; margin: -4px;
   }
+  /* Notices and running labs (at most five) never push the grid off the screen: past a quarter of the page they
+     scroll inside one block of their own, with room for a focused control's ring. */
+  .labs-page > .labs-page__alerts {
+    position: relative; display: flex; flex-direction: column; gap: 10px;
+    max-height: 25%; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: 4px; margin: -4px;
+  }
+}
+
+/* A short window (under 800 px tall): the page header drops its subtitle, so the tiles keep their room. */
+@media (min-width: 641px) and (max-height: 799px) {
+  .labs-page .page-header__subtitle { display: none; }
+}
+
+/* Wide (1200 px and up): the cards and the selected lab's details side by side, half the page each. Each column
+   scrolls on its own (scrolling the cards never moves the details, and the reverse). The details panel is as tall
+   as its content, up to the workspace's height. */
+@media (min-width: 1200px) {
+  .labs-page > .labs-workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  .labs-page > .labs-workspace--single { grid-template-columns: minmax(0, 1fr); }
   .labs-workspace > .labs-details,
   .labs-workspace > .labs-details-skeleton {
-    position: sticky; top: 0;
-    max-height: calc(100dvh - var(--bar-height) - 28px); overflow-y: auto; overscroll-behavior: contain;
+    position: relative; align-self: start; max-height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   }
 }
 

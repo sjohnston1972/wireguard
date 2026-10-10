@@ -82,3 +82,20 @@ describe("the Service Health pill", () => {
     expect(await topbar().findByRole("button", { name: "Azure issue in UK South" })).toBeInTheDocument();
   });
 });
+
+// The top bar at a 1024 px tablet holds seven tabs, the search icon, the connection, the pill, notes, theme and account:
+// with the pill's words it ran 32 px past the window (the account cut off, the page scrolling sideways). From 1100 px
+// down the pill is its icon alone, as on the phone, still named in full for screen readers.
+describe("the pill's width on a tablet", () => {
+  it("from 1100 px down the pill shows its icon only", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ServiceHealthIndicator.css"), "utf8").replace(/\r\n/g, "\n");
+    const at = css.indexOf("@media (max-width: 1100px) {");
+    expect(at).toBeGreaterThan(-1);
+    const block = css.slice(at, css.indexOf("\n}", at));
+    expect(block).toMatch(/\.sh-pill\s*\{[^}]*width:\s*32px/);
+    expect(block).toMatch(/\.sh-pill__text\s*\{[^}]*display:\s*none/);
+  });
+});

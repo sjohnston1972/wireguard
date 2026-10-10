@@ -1,6 +1,8 @@
-/* Labs tab (spec §10; labs redesign spec §4). The catalogue (.labs-page) scrolls
-   with #main; its parts have their own stylesheets (LabsHeader, LabsSummaryStrip,
-   LabsNotices, LabsFilterToolbar, LabCatalogueGrid, LabCard, LabsPage). On a
+/* Labs tab (spec §10; labs redesign spec §4). The catalogue (.labs-page) is one
+   screen on a tablet or desktop, only its tile grid scrolling (LabsPage.css), and
+   scrolls with #main on the phone; its parts have their own stylesheets (LabsHeader,
+   LabsSummaryStrip, LabsNotices, LabsFilterToolbar, LabCatalogueGrid, LabCard,
+   LabsPage). On a
    desktop, /labs/history and the full-screen diagram fill the window and never
    scroll: the history table and the coverage map scroll inside their panels. */
 
@@ -206,7 +208,7 @@
 }
 
 /* Desktop: /labs/history and the full-screen diagram never scroll; long lists scroll inside their panels.
-   The catalogue (.labs-page) scrolls with the page (labs redesign ruling 8). */
+   The catalogue (.labs-page) lays itself out in LabsPage.css (labs redesign ruling 8). */
 @media (min-width: 1100px) {
   /* #main is the positioned page area; filling it is what keeps this page from scrolling it. */
   .labs:not(.labs-page) { position: absolute; inset: 0; padding: 16px 32px 20px; min-height: 0; }

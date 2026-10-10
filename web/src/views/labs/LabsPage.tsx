@@ -170,10 +170,14 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
     <section className="labs labs-page">
       <LabsHeader />
       <LabsSummaryStrip data={data} exam={filters.exam} />
-      {data && <LabsNotices data={data} setupHidden={setupHidden} onHideSetup={hideSetup} />}
-      {children}
-      {data && <RunningStrip sessions={data.running} />}
-      {stale && <StaleBanner at={q.dataUpdatedAt || null} message={`Couldn't refresh the labs; showing them as of ${fmtClock(new Date(q.dataUpdatedAt).toISOString())}.`} onRetry={() => void q.refetch()} />}
+      {/* The notices and running labs: on a tablet or desktop one block that scrolls inside itself when tall, so the
+          grid always keeps the rest of the screen (LabsPage.css); on the phone it is no box at all. */}
+      <div className="labs-page__alerts">
+        {data && <LabsNotices data={data} setupHidden={setupHidden} onHideSetup={hideSetup} />}
+        {children}
+        {data && <RunningStrip sessions={data.running} />}
+        {stale && <StaleBanner at={q.dataUpdatedAt || null} message={`Couldn't refresh the labs; showing them as of ${fmtClock(new Date(q.dataUpdatedAt).toISOString())}.`} onRetry={() => void q.refetch()} />}
+      </div>
       {failed ? (
         <ErrorState title="Couldn't load the labs" message={q.error instanceof Error ? q.error.message : "The catalogue could not be loaded."} onRetry={() => void q.refetch()} />
       ) : (

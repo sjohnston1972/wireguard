@@ -22,9 +22,9 @@
 @media (max-width: 1280px) {
   .sh-pill__region { display: none; }
 }
-/* The phone's top bar has no room for the words (they pushed the account button off the edge): the warning icon alone,
-   still named in full for screen readers, and the popover says the rest. */
-@media (max-width: 640px) {
+/* A tablet's or the phone's top bar has no room for the words (at 1024 px they pushed the account button 32 px off the
+   edge): the warning icon alone, still named in full for screen readers, and the popover says the rest. */
+@media (max-width: 1100px) {
   .sh-pill { width: 32px; padding: 0; justify-content: center; }
   .sh-pill__text { display: none; }
 }

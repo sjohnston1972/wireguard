@@ -4,10 +4,9 @@
 
 .lab-details { display: flex; flex-direction: column; gap: 18px; min-width: 0; color: var(--text-primary); }
 
-/* Wide: beside the grid, sticky under the app bar, scrolling inside itself. */
+/* Wide: beside the grid, scrolling inside itself; LabsPage.css caps it at the workspace's height. */
 .labs-details.lab-details {
-  position: sticky; top: 0;
-  max-height: calc(100dvh - var(--bar-height) - 28px); overflow-y: auto; overscroll-behavior: contain;
+  overflow-y: auto; overscroll-behavior: contain;
   padding: 20px;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-panel);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 6%, transparent);
