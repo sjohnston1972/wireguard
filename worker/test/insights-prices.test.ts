@@ -89,6 +89,9 @@ describe("prices", () => {
   });
 
   it("total is VM plus E4 over 730 plus IPv4; standby is disk plus IP; test VM is B1ls plus S4", async () => {
+    // effectiveConfig reads the clock: held at NOW, or the seeded prices go stale once the real date is a week past it.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     const { env } = azureEnv();
     await seedPrices(env, "uksouth", ago(60));
     const cfg = await fixedConfig(env);

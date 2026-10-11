@@ -118,7 +118,9 @@
 .act__pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 8px 16px; border-top: 1px solid var(--border); flex: none; font-size: 12px; color: var(--text-secondary); }
 
 .act__kpis .tile__row { flex-wrap: wrap; gap: 2px 8px; }
-.act__kpis .tile__delta { white-space: nowrap; }
+.act__kpis .tile__delta { white-space: nowrap; overflow: hidden; }
+/* A change too long for a narrow tile ("↑ 20 pts vs previous period" at 641 px) is cut here, not pushed past the page. */
+.act__kpis .tile__delta > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .act__stream .panel__title { white-space: nowrap; }
 .act__log .dt__td, .act__log .dt__th { padding-left: 8px; padding-right: 8px; }
 .act__log .act__note { max-width: 12ch; }

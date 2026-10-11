@@ -6,14 +6,14 @@ import { parseArgs, buildPlan, SIZES, ROUTES, shotName, isOneScreenSize, LABS_CA
 
 const script = fileURLToPath(new URL("../shots.mjs", import.meta.url));
 
-test("the plan covers every route at four sizes (including the 1100x600 boundary) in two themes", () => {
+test("the plan covers every route at six sizes (the 1100x600 boundary and two tablet widths included) in two themes", () => {
   const plan = buildPlan(parseArgs([]), {});
-  assert.equal(SIZES.length, 4);
+  assert.equal(SIZES.length, 6);
   assert.deepEqual(
     SIZES.map((s) => `${s.width}x${s.height}`),
-    ["1600x900", "1100x700", "1100x600", "390x844"],
+    ["1600x900", "1100x700", "1100x600", "800x1100", "700x1000", "390x844"],
   );
-  assert.equal(plan.length, ROUTES.length * 4 * 2);
+  assert.equal(plan.length, ROUTES.length * 6 * 2);
   assert.ok(plan.some((s) => s.path === "/__gallery"));
   assert.ok(plan.every((s) => s.file.endsWith(".png")));
   assert.equal(new Set(plan.map((s) => s.file)).size, plan.length, "file names are unique");
@@ -22,7 +22,47 @@ test("the plan covers every route at four sizes (including the 1100x600 boundary
 test("the phone size is emulated as mobile; desktop sizes are not", () => {
   const plan = buildPlan(parseArgs([]), {});
   assert.ok(plan.filter((s) => s.width === 390).every((s) => s.mobile === true));
-  assert.ok(plan.filter((s) => s.width >= 1100).every((s) => s.mobile === false));
+  assert.ok(plan.filter((s) => s.width >= 700).every((s) => s.mobile === false));
+});
+
+// Between the phone layout (640 px and below) and the one-screen desktop sizes, a page may scroll down but never
+// sideways: at 700 and 800 px the top bar's seven tabs once pushed the bell, theme toggle and account off the edge.
+test("every main page, Labs included, is checked for sideways scroll at 700 and 800 px wide", () => {
+  for (const r of ["/", "/clients", "/firewall", "/activity", "/cost", "/labs", "/settings"]) assert.ok(ROUTES.some((x) => x.route === r), r);
+  const plan = buildPlan(parseArgs(["--themes", "dark"]), {});
+  for (const w of [700, 800]) {
+    const at = plan.filter((s) => s.width === w && s.route !== "/__gallery");
+    assert.equal(at.length, ROUTES.length - 1);
+    for (const s of at) assert.ok(s.checkOverflow === "x" || s.checkOverflow === "all", `${s.route} at ${w} px: ${s.checkOverflow}`);
+  }
+  const sideways = buildPlan(parseArgs(["--routes", "/clients", "--sizes", "1024x768,800x1100,700x1000,641x900,640x900,390x844", "--themes", "dark"]), {});
+  assert.deepEqual(
+    sideways.map((s) => [s.width, s.checkOverflow]),
+    [
+      [1024, "x"],
+      [800, "x"],
+      [700, "x"],
+      [641, "x"],
+      [640, false],
+      [390, false],
+    ],
+  );
+  assert.equal(judgeOverflow({ y: 0, x: 96, mainY: 900, mainX: 0, innerScroller: null }, { checkOverflow: "x" }).ok, false);
+});
+
+test("measureOverflow reports how far the top bar's contents run past its right edge", () => {
+  const topbar = { scrollWidth: 796, clientWidth: 700 };
+  const document = {
+    documentElement: { scrollHeight: 1000, scrollWidth: 796 },
+    getElementById: () => null,
+    querySelector: (sel) => (sel === ".topbar" ? topbar : null),
+  };
+  const m = measureOverflow(document, { innerHeight: 1000, innerWidth: 700 });
+  assert.equal(m.x, 96);
+  assert.equal(m.barX, 96);
+  const v = judgeOverflow({ y: 0, x: 0, mainY: 0, mainX: 0, barX: 96, innerScroller: null }, { checkOverflow: "x" });
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /top bar/);
 });
 
 test("the one-screen rule applies to desktop sizes of 1100x600 and up, not the phone or the gallery", () => {
@@ -79,10 +119,10 @@ test("/labs/history and the full-screen diagram (/labs/<id>/diagram) keep the or
     plan.map((s) => [s.path, s.width, s.checkOverflow]),
     [
       ["/labs/history", 1600, "all"],
-      ["/labs/history", 1024, false],
+      ["/labs/history", 1024, "x"],
       ["/labs/history", 390, false],
       ["/cost", 1600, "all"],
-      ["/cost", 1024, false],
+      ["/cost", 1024, "x"],
       ["/cost", 390, false],
     ],
   );
@@ -139,14 +179,14 @@ test("--dry-run lists the shots and exits 0 without starting a browser or touchi
   assert.match(r.stdout, /dry run/i);
   assert.match(r.stdout, /overview__1600x900__dark\.png/);
   assert.match(r.stdout, /gallery__390x844__light\.png/);
-  assert.match(r.stdout, /80 shots/);
+  assert.match(r.stdout, /132 shots/);
 });
 
 test("--dry-run --json prints the plan as JSON", () => {
   const r = spawnSync(process.execPath, [script, "--dry-run", "--json", "--routes", "/cost"], { encoding: "utf8", timeout: 20_000 });
   assert.equal(r.status, 0, r.stderr);
   const plan = JSON.parse(r.stdout);
-  assert.equal(plan.length, 8);
+  assert.equal(plan.length, 12);
   assert.ok(plan.every((s) => s.route === "/cost"));
 });
 

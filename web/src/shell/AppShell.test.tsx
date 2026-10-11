@@ -99,3 +99,76 @@ describe("AppShell", () => {
     expect(screen.getByRole("main")).toHaveAttribute("id", "main");
   });
 });
+
+// Between the phone (640 px and below) and the desktop the top bar once held seven tabs beside the search, state chip,
+// pill, bell, theme toggle and account: at 700 px it ran 132 px past the window, at 800 px 32 px, at 900 px 86 px (the
+// account and theme toggle cut off, every page scrolling sideways). Now, from 1100 px down, the search and the state
+// chip are icon buttons, and from 960 px down the seven tabs move to the tab bar along the bottom, as on the phone.
+describe("the top bar between the phone and the desktop", () => {
+  async function css(file: string) {
+    const { readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    return readFileSync(join(dirname(fileURLToPath(import.meta.url)), file), "utf8").replace(/\r\n/g, "\n");
+  }
+  /** The body of the first `@media (max-width: <px>px)` block in `text`. */
+  function media(text: string, px: number) {
+    const at = text.indexOf(`@media (max-width: ${px}px) {`);
+    expect(at, `@media (max-width: ${px}px)`).toBeGreaterThan(-1);
+    return text.slice(at, text.indexOf("\n}", at));
+  }
+
+  it("from 960 px down the tabs move from the top bar to the bottom tab bar", async () => {
+    const shell = await css("AppShell.css");
+    const block = media(shell, 960);
+    expect(block).toMatch(/\.topbar__tabs\s*\{[^}]*display:\s*none/);
+    expect(block).toMatch(/\.tabbar\s*\{[^}]*display:\s*flex/);
+    // The phone keeps its own block for the narrower gutters, and no longer has to switch the tabs itself.
+    expect(media(shell, 640)).not.toMatch(/\.topbar__tabs/);
+  });
+
+  it("toasts sit above the bottom tab bar wherever it shows", async () => {
+    const toast = await css("../components/feedback/Toast.css");
+    expect(media(toast, 960)).toMatch(/\.toast__viewport\s*\{[^}]*bottom:\s*calc\(var\(--tabbar-height\)/);
+  });
+
+  it("from 1100 px down the search and the state chip are icon buttons; the chip is no longer hidden on a tablet", async () => {
+    const shell = await css("AppShell.css");
+    const block = media(shell, 1100);
+    expect(block).toMatch(/\.topbar__search-text[\s\S]*?\{[^}]*display:\s*none/);
+    expect(block).toMatch(/\.topbar__search\s*\{[^}]*width:\s*32px/);
+    expect(block).toMatch(/\.topbar__chip-text\s*\{[^}]*display:\s*none/);
+    expect(block).toMatch(/\.topbar__chip\s*\{[^}]*width:\s*32px/);
+    expect(shell).not.toContain("@media (max-width: 880px)");
+    // The phone's top bar is unchanged: no chip there.
+    expect(media(shell, 640)).toMatch(/\.topbar__chip\s*\{[^}]*display:\s*none/);
+  });
+
+  it("the icon-only search still says what it is and opens the command palette; Ctrl K still does", async () => {
+    const user = userEvent.setup();
+    renderApp("/");
+    const search = screen.getByRole("button", { name: "Search" });
+    expect(search).toHaveAttribute("aria-keyshortcuts", "Control+K Meta+K");
+    await user.click(search);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.keyboard("{Control>}k{/Control}");
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("the icon-only state chip keeps its full accessible name", async () => {
+    renderApp("/");
+    const chip = document.querySelector(".topbar__chip");
+    expect(chip).not.toBeNull();
+    expect(chip!.querySelector(".topbar__chip-text")).toHaveAttribute("aria-hidden", "true");
+    await vi.waitFor(() => expect(chip!.textContent).toMatch(/State: .+\. Connection: .+\./));
+  });
+
+  it("the bottom tab bar carries all seven tabs and marks the current one", () => {
+    renderApp("/labs");
+    const bar = screen.getByRole("navigation", { name: "Phone" });
+    expect(within(bar).getAllByRole("link").map((l) => l.textContent)).toEqual(TABS);
+    expect(within(bar).getByRole("link", { current: "page" })).toHaveTextContent("Labs");
+  });
+});

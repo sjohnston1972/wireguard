@@ -242,6 +242,9 @@
   }
 }
 
+/* A tablet or a narrow window: the search and the state chip become icon buttons (the search still opens
+   the command palette, as Ctrl K does; the chip keeps its whole sentence for screen readers and its details
+   on click), so the seven tabs fit beside them down to 961 px, the Azure issue pill included. */
 @media (max-width: 1100px) {
   .topbar__search-text,
   .topbar__kbd,
@@ -255,23 +258,27 @@
     justify-content: center;
     padding: 0;
   }
-}
-
-@media (max-width: 880px) {
   .topbar__chip {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+    border-color: var(--border);
+    background: var(--bg-tile);
+  }
+  .topbar__chip-text {
     display: none;
   }
+  .topbar__tab {
+    padding: 0 8px;
+  }
 }
 
-@media (max-width: 640px) {
-  .topbar {
-    padding: 0 16px;
-  }
+/* From 960 px down the seven tabs no longer fit in the top bar (at 700 px they ran 132 px past the window):
+   they move to the tab bar along the bottom, as on the phone, each one tap away with the current one marked.
+   Toasts lift above it at the same width (components/feedback/Toast.css). */
+@media (max-width: 960px) {
   .topbar__tabs {
     display: none;
-  }
-  .app-shell__page {
-    padding: 12px 16px;
   }
   .tabbar {
     display: flex;
@@ -301,5 +308,18 @@
   }
   .tabbar__tab[aria-current="page"] {
     color: var(--blue-bright);
+  }
+}
+
+/* The phone: tighter gutters, and no room for the state chip (its state shows on the Overview page). */
+@media (max-width: 640px) {
+  .topbar {
+    padding: 0 16px;
+  }
+  .topbar__chip {
+    display: none;
+  }
+  .app-shell__page {
+    padding: 12px 16px;
   }
 }
