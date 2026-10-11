@@ -15,7 +15,8 @@ import "./AppShell.css";
  * chip, connection light, Azure Service Health pill (only during an issue),
  * notes, theme toggle, account), the disconnected
  * banner, the page area (or the session-expired screen), the command palette,
- * and a bottom tab bar on phones. The slots live in ./slots.tsx.
+ * and a bottom tab bar on phones and tablets (960 px wide and below, where the
+ * seven tabs leave the top bar). The slots live in ./slots.tsx.
  */
 export function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);

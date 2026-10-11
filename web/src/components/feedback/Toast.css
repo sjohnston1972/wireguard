@@ -12,7 +12,8 @@
   list-style: none;
   outline: none;
 }
-@media (max-width: 640px) {
+/* Above the bottom tab bar, which shows from 960 px down (shell/AppShell.css). */
+@media (max-width: 960px) {
   .toast__viewport { bottom: calc(var(--tabbar-height) + 12px); }
 }
 .toast {

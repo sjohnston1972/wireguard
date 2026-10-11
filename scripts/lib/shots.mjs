@@ -14,6 +14,7 @@ export const ROUTES = [
   { route: "/activity", name: "activity" },
   { route: "/activity/runs/:id", name: "run", needs: "run" },
   { route: "/cost", name: "cost" },
+  { route: "/labs", name: "labs" },
   { route: "/settings", name: "settings" },
   // The dev-only component gallery: it shows every component, so it scrolls by design.
   { route: "/__gallery", name: "gallery", exemptFromOneScreen: true },
@@ -24,6 +25,9 @@ export const SIZES = [
   { width: 1100, height: 700, mobile: false },
   // The boundary of the one-screen rule.
   { width: 1100, height: 600, mobile: false },
+  // Tablet widths between the phone layout (640 px and below) and the desktop: no sideways scroll.
+  { width: 800, height: 1100, mobile: false },
+  { width: 700, height: 1000, mobile: false },
   { width: 390, height: 844, mobile: true },
 ];
 
@@ -38,6 +42,9 @@ export const THEMES = ["dark", "light"];
  * diagram (/labs/<id>/diagram) are not matched: they follow the ordinary rule.
  */
 export const LABS_CATALOGUE_ROUTES = [/^\/labs(?:\?.*)?$/, /^\/labs\/(?!history(?:\?|$))[^/?]+(?:\?.*)?$/];
+
+/** Widths above this use the desktop top bar (web/src/shell/AppShell.css); at and below it, the phone layout. */
+export const PHONE_MAX_WIDTH = 640;
 
 /** The one-screen rule: desktop windows of 1100 x 600 and larger must not scroll the page. */
 export function isOneScreenSize(s) {
@@ -60,6 +67,7 @@ export function isOneScreenSize(s) {
 export function measureOverflow(document, window) {
   const d = document.documentElement;
   const main = document.getElementById("main");
+  const bar = typeof document.querySelector === "function" ? document.querySelector(".topbar") : null;
   let innerScroller = null;
   if (main && typeof main.querySelectorAll === "function" && typeof window.getComputedStyle === "function") {
     for (const e of main.querySelectorAll("*")) {
@@ -78,6 +86,8 @@ export function measureOverflow(document, window) {
     x: d.scrollWidth - window.innerWidth,
     mainY: main ? main.scrollHeight - main.clientHeight : null,
     mainX: main ? main.scrollWidth - main.clientWidth : null,
+    // How far the top bar's contents run past its right edge (its last buttons pushed out of the window).
+    barX: bar ? bar.scrollWidth - bar.clientWidth : null,
     innerScroller,
   };
 }
@@ -98,6 +108,7 @@ export function judgeOverflow(m, shot) {
   if (!sidewaysOnly && m.mainY !== null && m.mainY > 0) problems.push(`#main scrolls ${m.mainY}px`);
   if (m.x > 0) problems.push(`the page scrolls sideways ${m.x}px`);
   if (m.mainX !== null && m.mainX > 0) problems.push(`#main scrolls sideways ${m.mainX}px`);
+  if (m.barX != null && m.barX > 0) problems.push(`the top bar overflows sideways ${m.barX}px`);
   if (!sidewaysOnly && m.innerScroller) problems.push(`${m.innerScroller.what} scrolls ${m.innerScroller.by}px (a page-wide scroller holding several panels)`);
   return problems.length ? { ok: false, reason: problems.join(", ") } : { ok: true, reason: null };
 }
@@ -348,10 +359,16 @@ export function prefsPuts(current, pages) {
   return Object.entries(pages).map(([page, prefs]) => ({ page, body: { schema: 2, baseVersion: current.pages[page]?.version ?? 0, prefs } }));
 }
 
-/** A shot's overflow check: "all" for the one-screen rule, "x" (sideways only) for the Labs catalogue on the phone, else false. */
+/**
+ * A shot's overflow check: "all" for the one-screen rule, "x" (sideways only) for the Labs catalogue on the phone
+ * and for every page between the phone layout and the one-screen sizes (a tablet may scroll down, never sideways),
+ * else false.
+ */
 function overflowCheck(path, size, r) {
   if (LABS_CATALOGUE_ROUTES.some((re) => re.test(path))) return size.mobile ? "x" : "all";
-  return isOneScreenSize(size) && !r.exemptFromOneScreen ? "all" : false;
+  if (r.exemptFromOneScreen) return false;
+  if (isOneScreenSize(size)) return "all";
+  return !size.mobile && size.width > PHONE_MAX_WIDTH ? "x" : false;
 }
 
 /**

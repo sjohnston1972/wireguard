@@ -3,12 +3,13 @@
 // Plain English: takes pictures of the new dashboard so they can be compared
 // with the mockups. It starts a hidden Edge (or Chrome) of its own, steers it
 // through the Chrome DevTools Protocol (the same remote control Chrome's
-// developer tools use), visits every page at three window sizes in the dark and
+// developer tools use), visits every page at six window sizes in the dark and
 // light themes, saves a PNG of each, and measures whether the page needs
 // scrolling: the document and the shell's page area (#main), which scrolls
 // inside the window-high shell. The one-screen rule says a desktop window of
 // 1100 x 600 or larger must not: any page that does makes this script exit
-// with an error.
+// with an error. Between the phone layout and those sizes (641 px wide and up,
+// such as 700 and 800) a page may scroll down but never sideways.
 //
 // Needs the app running: npm run dev:web (port 5173) and npm run dev:api
 // (port 8787). With --scenario NAME it first loads that canned story into the
@@ -302,6 +303,7 @@ async function main() {
         rec.overflowX = measured.x;
         rec.mainOverflowY = measured.mainY;
         rec.mainOverflowX = measured.mainX;
+        rec.barOverflowX = measured.barX;
         rec.innerScroller = measured.innerScroller;
         if (opts.scrollTo) {
           const found = await cdp.send("Runtime.evaluate", { expression: scrollToScript(opts.scrollTo), awaitPromise: true, returnByValue: true });
