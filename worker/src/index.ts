@@ -28,6 +28,7 @@ import { INSIGHTS_CRON } from "./insights/types";
 import { receiveCapture, MAX_CAPTURE_BYTES } from "./capture";
 import { buildApi } from "./api";
 import { devSeed } from "./devseed";
+import { serveShowcase } from "./showcase";
 import { serveHashedAsset } from "./assetguard";
 import { receiveLiveLog, LIVE_LOG_MAX_BODY } from "./livelog";
 import { demoGate } from "./demo/gate";
@@ -63,7 +64,9 @@ const CSP = [
 
 app.use("*", async (c, next) => {
   await next();
-  c.res.headers.set("Content-Security-Policy", CSP);
+  // The public showcase brings its own, looser rules (fonts, films from blob:); every other answer gets these.
+  const path = new URL(c.req.url).pathname;
+  if (path !== "/showcase" && !path.startsWith("/showcase/")) c.res.headers.set("Content-Security-Policy", CSP);
   c.res.headers.set("X-Frame-Options", "DENY");
   c.res.headers.set("X-Content-Type-Options", "nosniff");
   c.res.headers.set("Referrer-Policy", "same-origin");
@@ -254,6 +257,11 @@ app.all("/__dev/seed", devSeed);
 // (assetguard.ts). Before the login check like every other static file, which
 // the assets layer serves without the Worker (Access guards them at the edge).
 app.get("/assets/*", (c) => serveHashedAsset(c.req.raw, c.env.ASSETS));
+
+// The public showcase (showcase.ts): product films anyone may watch, read-only,
+// from their own R2 bucket. Access has a bypass app for /showcase; a POST
+// there falls through to the login like any other change.
+app.on(["GET", "HEAD"], ["/showcase", "/showcase/*"], (c) => serveShowcase(c.req.raw, c.env.SHOWCASE));
 
 // ── Everything below requires Cloudflare Access ───────────────────────────
 
