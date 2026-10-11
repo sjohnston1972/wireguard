@@ -27,6 +27,8 @@ export interface Env {
    * in a demo environment; the guide route then answers 503 (or, in demo mode, 409) rather than trying anything else.
    */
   BROWSER?: Fetcher;
+  /** The public showcase's page and films (showcase.ts), its own bucket. Absent in tests unless a test adds one. */
+  SHOWCASE?: R2Bucket;
 
   // Plain settings ([vars])
   PUBLIC_URL: string;

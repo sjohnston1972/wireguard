@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A private WireGuard VPN and 43 hands-on Azure labs, run from one dashboard on Cloudflare Workers. Films recorded from the real app with demo data.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="wg-admin Showcase">
+<meta property="og:description" content="A private WireGuard VPN and 43 hands-on Azure labs, run from one dashboard on Cloudflare Workers. Films recorded from the real app with demo data.">
+<meta property="og:url" content="https://wg-admin.clydeford.net/showcase/">
+<meta property="og:image" content="https://wg-admin.clydeford.net/showcase/films/00-hero/poster.jpg">
+<meta property="og:image:width" content="1920">
+<meta property="og:image:height" content="1080">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/icons/icon-192.png" type="image/png">
+<title>wg-admin Showcase</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one cinema stage on top, the film reel as a grid of cards below; the app's own night-navy world, single dark theme by choice. */
+:root {
+  color-scheme: dark;
+  --ink: #08111c;          /* app background */
+  --panel: #0c1b29;        /* app panel */
+  --tile: #112033;
+  --line: #1c3047;
+  --text: #f2f6fb;
+  --muted: #a9b8cc;
+  --faint: #6b7c93;
+  --blue: #3776fb;
+  --signal: #f59e0b;       /* the brand dot */
+  --live: #34cf89;
+  --display: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 14px;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--ink); color: var(--text); }
+body { margin: 0; }
+body {
+  font-family: var(--display);
+  font-size: 16px;
+  line-height: 1.55;
+  padding-inline: clamp(16px, 4vw, 48px);
+  padding-block: 0 56px;
+  background:
+    radial-gradient(1200px 520px at 50% -180px, rgba(55,118,251,.16), transparent 70%),
+    var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1240px; margin-inline: auto; display: grid; gap: 40px; }
+
+header.top {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding-block: 22px; border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -.01em; }
+.brand i { width: 9px; height: 9px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 12px rgba(245,158,11,.6); display: inline-block; }
+.brand span { color: var(--faint); font-weight: 500; }
+.stack { font-family: var(--mono); font-size: 12px; color: var(--faint); letter-spacing: .02em; }
+
+.intro { display: grid; gap: 10px; max-width: 760px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: var(--live); }
+h1 { margin: 0; font-size: clamp(30px, 4.4vw, 50px); line-height: 1.08; font-weight: 800; letter-spacing: -.025em; text-wrap: balance; }
+.intro p { margin: 0; color: var(--muted); font-size: 17px; max-width: 64ch; }
+
+.stage { display: grid; gap: 16px; }
+.screen {
+  position: relative; aspect-ratio: 16 / 9; max-width: 100%; width: 100%;
+  border-radius: var(--radius); overflow: hidden; background: #050b13;
+  border: 1px solid var(--line);
+  box-shadow: 0 30px 80px -30px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.02) inset;
+}
+.screen video, .screen img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #050b13; }
+.play {
+  position: absolute; inset: 0; display: grid; place-items: center; border: 0; padding: 0; cursor: pointer;
+  background: linear-gradient(180deg, rgba(8,17,28,0) 40%, rgba(8,17,28,.55));
+  color: var(--text); font: inherit;
+}
+.play .btn {
+  display: inline-flex; align-items: center; gap: 12px; padding: 14px 22px 14px 18px; border-radius: 999px;
+  background: rgba(12,27,41,.78); border: 1px solid rgba(255,255,255,.14);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  font-weight: 700; font-size: 15px; transition: transform .2s ease, background .2s ease;
+}
+.play .btn svg { width: 26px; height: 26px; }
+.play:hover .btn, .play:focus-visible .btn { background: rgba(55,118,251,.85); transform: scale(1.03); }
+.play:focus-visible { outline: none; }
+.play:focus-visible .btn { box-shadow: 0 0 0 3px rgba(79,140,255,.6); }
+.loading { position: absolute; left: 16px; bottom: 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+.caption { display: flex; justify-content: space-between; align-items: baseline; gap: 12px 24px; flex-wrap: wrap; }
+.caption h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.caption p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+.caption > div { min-width: 0; }
+.metaCol { display: grid; justify-items: end; gap: 8px; }
+.back { font: 600 13px var(--display); color: var(--text); background: rgba(55,118,251,.16); border: 1px solid rgba(79,140,255,.45); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.back:hover, .back:focus-visible { background: rgba(55,118,251,.32); outline: none; }
+.meta { font-family: var(--mono); font-size: 12px; color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.reel h3 { margin: 0 0 14px; font-size: 13px; font-family: var(--mono); font-weight: 500; text-transform: uppercase; letter-spacing: .14em; color: var(--faint); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 18px; }
+.card {
+  display: grid; gap: 10px; align-content: start; text-align: left; cursor: pointer;
+  background: none; border: 0; padding: 0; color: inherit; font: inherit; min-width: 0;
+}
+.thumb {
+  position: relative; aspect-ratio: 16 / 9; max-width: 100%; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--line); background: var(--panel);
+  transition: border-color .2s ease, transform .25s ease;
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb .len {
+  position: absolute; right: 8px; bottom: 8px; font-family: var(--mono); font-size: 11px;
+  padding: 2px 7px; border-radius: 6px; background: rgba(8,17,28,.82); color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.thumb .new {
+  position: absolute; left: 8px; top: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 6px; background: rgba(52,207,137,.18); color: var(--live); border: 1px solid rgba(52,207,137,.35);
+}
+.card:hover .thumb, .card:focus-visible .thumb { border-color: rgba(79,140,255,.7); transform: translateY(-2px); }
+.card:focus-visible { outline: none; }
+.card[aria-current="true"] .thumb { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+.card[aria-current="true"] .now { display: inline; }
+.now { display: none; color: var(--live); font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-left: 8px; }
+.card strong { font-size: 16px; font-weight: 700; letter-spacing: -.005em; }
+.card span.d { color: var(--muted); font-size: 14px; line-height: 1.45; }
+
+footer { border-top: 1px solid var(--line); padding-top: 18px; display: flex; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; color: var(--faint); font-size: 13px; }
+footer .mono { font-family: var(--mono); font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .thumb, .play .btn { transition: none; }
+  .card:hover .thumb { transform: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><i aria-hidden="true"></i>wg-admin <span>Showcase</span></div>
+    <div class="stack">Cloudflare Workers · D1 · React · Azure · WireGuard</div>
+  </header>
+
+  <section class="intro">
+    <div class="eyebrow">Recorded from the real dashboard</div>
+    <h1>A private VPN and Azure labs, live: deploy, use, destroy</h1>
+    <p>wg-admin deploys a WireGuard server on Azure in about four minutes, runs it from one dashboard, and tears it down when you are done. It also runs 43 hands-on Azure labs for AZ-104, AZ-305 and AZ-700, with the cost shown before you deploy. Every frame below is the real dashboard in motion, driven click by click with demo data: pipelines stepping, logs streaming, counters climbing.</p>
+  </section>
+
+  <section class="stage" aria-label="Now playing">
+    <div class="screen" id="screen">
+      <img id="poster" alt="">
+      <button class="play" id="play" type="button"><span class="btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.52.85l10.4-6.5a1 1 0 0 0 0-1.7L9.52 4.65A1 1 0 0 0 8 5.5z"/></svg><span id="playLabel">Play the film</span></span></button>
+    </div>
+    <div class="caption">
+      <div>
+        <h2 id="nowTitle">wg-admin, live</h2>
+        <p id="nowText"></p>
+      </div>
+      <div class="metaCol"><div class="meta" id="nowMeta"></div><button class="back" id="back" type="button" hidden>&larr; Main film</button></div>
+    </div>
+  </section>
+
+  <section class="reel">
+    <h3>Highlights</h3>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <footer>
+    <span>Silent by design: every film reads without sound, as LinkedIn plays it, with captions sized for a phone.</span>
+    <span class="mono">1080p · H.264 · recorded from the app · demo data only</span>
+  </footer>
+</div>
+
+<script src="showcase.js" defer></script>
+</body>
+</html>

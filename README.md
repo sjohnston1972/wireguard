@@ -181,7 +181,10 @@ installs as an app with its own icon, and the login lasts 24 hours.
 Settings > **Install the app** walks you through it: an Install button on
 Android (Chrome), the three Safari taps on an iPhone, and on a computer a QR
 code to open the dashboard on the phone. The app manifest and icons are
-public (their own Access bypass); everything else stays behind the login.
+public (their own Access bypass), and so is the product showcase at
+**https://wg-admin.clydeford.net/showcase/**: short films of the dashboard with demo
+data, served read-only from its own R2 bucket (`npm run showcase-upload` refreshes
+it from the showcase pipeline). Everything else stays behind the login.
 
 The dashboard is a single-page app (React, built from `web/`) that talks to
 the Worker's JSON API. Every view has its own address, so you can bookmark or

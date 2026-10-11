@@ -26,7 +26,7 @@ routes = [
 directory = "web/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*", "/assets/*", "/captures/*", "/manifest.webmanifest", "/health", "/__dev/*", "/partials/*", "/actions/*", "/alerts/*"]
+run_worker_first = ["/api/*", "/assets/*", "/captures/*", "/manifest.webmanifest", "/health", "/__dev/*", "/partials/*", "/actions/*", "/alerts/*", "/showcase", "/showcase/*"]
 
 # Every 5 minutes: drift check, auto-destroy, cost guard, heartbeat watchdog (the watchman).
 # And two minutes after each: the Azure insights collector, in its own invocation and
@@ -49,6 +49,12 @@ id = "efa95d8c05e34444b6a95c39055844d5"
 [[r2_buckets]]
 binding = "STATE"
 bucket_name = "wg-admin-tfstate"
+
+# The public showcase's page and films (worker/src/showcase.ts), filled by
+# "npm run showcase-upload". Its own bucket: nothing private is ever in it.
+[[r2_buckets]]
+binding = "SHOWCASE"
+bucket_name = "wg-showcase"
 
 [[durable_objects.bindings]]
 name = "RUN_LOCK"

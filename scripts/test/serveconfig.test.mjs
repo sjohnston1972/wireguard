@@ -41,7 +41,7 @@ test("run_worker_first covers /api/* and the other Worker paths", () => {
   // /partials/*, /actions/*, /alerts/*: see the next test.
   assert.deepEqual(
     [...cfg.run_worker_first].sort(),
-    ["/__dev/*", "/actions/*", "/alerts/*", "/api/*", "/assets/*", "/captures/*", "/health", "/manifest.webmanifest", "/partials/*"],
+    ["/__dev/*", "/actions/*", "/alerts/*", "/api/*", "/assets/*", "/captures/*", "/health", "/manifest.webmanifest", "/partials/*", "/showcase", "/showcase/*"],
   );
 });
 
