@@ -39,10 +39,23 @@ export interface TimeSeriesChartProps {
   className?: string;
 }
 
+const DAY_FMT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+const MIN_FMT = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+const SEC_FMT = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+/**
+ * One time-axis label: a day for 7d and 30d, else the time of day. `incr` is the gap between ticks in seconds
+ * (uPlot's foundIncr): under a minute the label carries seconds, so a session a few minutes old never prints the
+ * same minute under every tick.
+ */
+export function xLabel(range: ChartRange, sec: number, incr = Infinity): string {
+  const d = new Date(sec * 1000);
+  if (range === "7d" || range === "30d") return DAY_FMT.format(d);
+  return (incr < 60 ? SEC_FMT : MIN_FMT).format(d);
+}
+
 function xFormatter(range: ChartRange) {
-  const long = range === "7d" || range === "30d";
-  const f = new Intl.DateTimeFormat("en-GB", long ? { day: "numeric", month: "short" } : { hour: "2-digit", minute: "2-digit", hour12: false });
-  return (sec: number) => f.format(new Date(sec * 1000));
+  return (sec: number, incr?: number) => xLabel(range, sec, incr);
 }
 
 /** uPlot line/area chart: in/out series, hover readout, accessible text summary. */
@@ -91,7 +104,8 @@ export function TimeSeriesChart({ title, x, series, range, unit = "", format, he
     const opts: uPlot.Options = {
       width: Math.max(200, Math.floor(el.getBoundingClientRect().width) || 600),
       height,
-      padding: [8, 8, 0, 0],
+      // Right: room for half of the last time label ("20:45:30"), which uPlot centres on the plot's right edge.
+      padding: [8, 26, 0, 0],
       legend: { show: false },
       cursor: { drag: { x: false, y: false }, points: { size: 6 } },
       scales: { x: { time: true }, y: { range: (_u, _min, max) => [0, max > 0 ? max * 1.15 : 1] } },
@@ -103,7 +117,7 @@ export function TimeSeriesChart({ title, x, series, range, unit = "", format, he
           // uPlot's default 50 px under the plot leaves a short chart almost no plot.
           size: 26,
           font: '11px "Inter Variable", system-ui, sans-serif',
-          values: (_u, vals) => vals.map((v) => fmtXRef.current(v)),
+          values: (_u, vals, _axis, _space, incr) => vals.map((v) => fmtXRef.current(v, incr)),
         },
         {
           stroke: axis,

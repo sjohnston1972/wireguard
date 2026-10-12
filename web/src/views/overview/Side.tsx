@@ -86,6 +86,23 @@ interface Sample {
 }
 
 /**
+ * The unit that shows the traffic there is, from the busiest value in bytes per second: an idle tunnel's keepalives
+ * (a few bytes a second) read "5 B/s", never a flat "0 KB/s". `per` turns bytes per second into the unit; `round`
+ * is 10 for one decimal, 100 for two.
+ */
+export function trafficScale(maxBytesPerSec: number, bits: boolean): { unit: string; per: number; round: number } {
+  if (bits) {
+    const b = maxBytesPerSec * 8;
+    if (b >= 1e6) return { unit: " Mbit/s", per: 8 / 1e6, round: 100 };
+    if (b >= 1e3) return { unit: " kbit/s", per: 8 / 1e3, round: 10 };
+    return { unit: " bit/s", per: 8, round: 1 };
+  }
+  if (maxBytesPerSec >= 1024 * 1024) return { unit: " MB/s", per: 1 / (1024 * 1024), round: 10 };
+  if (maxBytesPerSec >= 1024) return { unit: " KB/s", per: 1 / 1024, round: 10 };
+  return { unit: " B/s", per: 1, round: 1 };
+}
+
+/**
  * Throughput (in = clients to Azure, out = Azure to clients). Session windows
  * read this session's samples (one per heartbeat); 24h and 7d read the VM's
  * history (rx_rate, tx_rate, and their peaks for the Peak line).
@@ -100,8 +117,11 @@ export function Traffic({ o, now, className }: { o: OverviewResponse; now: numbe
     ? (histQ.data?.points ?? []).map((p) => ({ t: Date.parse(p.t), rx: p.rx_rate, tx: p.tx_rate, rxMax: p.rx_rate_max, txMax: p.tx_rate_max }))
     : o.snapshot.traffic_hist.filter((p) => now - Date.parse(p.t) <= WINDOW_MS[win as keyof typeof WINDOW_MS]).map((p) => ({ t: Date.parse(p.t), rx: p.rx, tx: p.tx }));
   const x = samples.map((p) => Math.floor(p.t / 1000));
-  const mbps = st.units === "mbps";
-  const conv = (v: number | null | undefined) => (v === null || v === undefined ? null : mbps ? Math.round(((v * 8) / 1e6) * 100) / 100 : Math.round((v / 1024) * 10) / 10);
+  const scale = trafficScale(
+    Math.max(0, ...samples.flatMap((p) => [p.rx, p.tx, p.rxMax, p.txMax]).filter((v): v is number => typeof v === "number")),
+    st.units === "mbps",
+  );
+  const conv = (v: number | null | undefined) => (v === null || v === undefined ? null : Math.round(v * scale.per * scale.round) / scale.round);
   const series = st.series as string[];
   const lines = [
     ...(series.includes("in") ? [{ label: "In", color: "blue" as const, data: samples.map((p) => conv(p.rx)) }] : []),
@@ -135,8 +155,9 @@ export function Traffic({ o, now, className }: { o: OverviewResponse; now: numbe
             title={fromHistory ? `Network traffic, ${HISTORY_WORD[win as "24h" | "7d"]}` : "Network traffic this session"}
             x={x}
             range={fromHistory ? (win as "24h" | "7d") : win === "5m" || win === "15m" ? "live" : "1h"}
-            unit={mbps ? " Mbit/s" : " KB/s"}
-            height={Math.max(60, height - 8)}
+            unit={scale.unit}
+            // The chart draws its legend row (18 px and a 4 px gap) above the plot: the two together fit the box.
+            height={Math.max(60, height - 26)}
             series={lines}
           />
         )}
