@@ -377,3 +377,15 @@ describe("StackedBars", () => {
     expect(onBrush).not.toHaveBeenCalled();
   });
 });
+
+describe("time axis labels", () => {
+  it("show seconds when the ticks are less than a minute apart, so a short session never repeats one minute", async () => {
+    const { xLabel } = await import("./TimeSeriesChart");
+    const t = Date.UTC(2026, 9, 12, 19, 44, 20) / 1000;
+    expect(xLabel("1h", t, 20)).toMatch(/^\d\d:\d\d:\d\d$/);
+    expect(xLabel("live", t, 10)).toMatch(/^\d\d:\d\d:\d\d$/);
+    expect(xLabel("1h", t, 300)).toMatch(/^\d\d:\d\d$/);
+    expect(xLabel("24h", t, 3600)).toMatch(/^\d\d:\d\d$/);
+    expect(xLabel("7d", t, 86400)).toMatch(/^\d{1,2} [A-Z][a-z]{2,3}$/);
+  });
+});
