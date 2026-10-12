@@ -211,7 +211,10 @@ describe("lab prices per region (batch 3, C0.6)", () => {
     const { env } = await labEnv();
     await env.DB.prepare("INSERT INTO az_prices (region, item, gbp, unit, meter, fetched_at) VALUES ('uksouth', ?1, 1.2775, '1/Month', 'S4 LRS Disk', ?2), ('ukwest', ?1, 1.46, '1/Month', 'S4 LRS Disk', ?2)").bind(labItem("S4 LRS Disk"), at).run();
     expect(await labGbpH(env, def, "uksouth", now)).toBeCloseTo((1.2775 + 1.46) / 730, 6);
-    // The cards, the modal and the warnings read the catalogue's secondary regions' rows too.
+    // The cards, the modal and the warnings read the catalogue's secondary regions' rows too. GET /labs reads the
+    // clock: held at `now`, or the rows fetched at `at` count as stale once the real date is a week past it.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
     expect((await readLabPrices(env, "uksouth")).map((r) => r.region)).toEqual(["uksouth"]);
     setCatalogueForTest({ ...TEST_CATALOGUE, labs: [...TEST_LABS, def] });
     expect((await readLabPrices(env, "uksouth")).map((r) => r.region).sort()).toEqual(["uksouth", "ukwest"]);

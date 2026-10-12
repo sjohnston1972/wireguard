@@ -3,6 +3,9 @@
    and dark both follow the theme. */
 
 .lab-details { display: flex; flex-direction: column; gap: 18px; min-width: 0; color: var(--text-primary); }
+/* The body under the launch action: what the lab teaches, then the practical facts, then the PDF guide. One column,
+   in that order, in the drawer, on the phone and in a narrow panel; two in a wide one (the end of this file). */
+.lab-details__body, .lab-details__col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 
 /* Wide: beside the grid, scrolling inside itself; LabsPage.css caps it at the workspace's height. */
 .labs-details.lab-details {
@@ -57,3 +60,31 @@
 /* Phone: the full-width view in place of the grid. */
 .lab-details--view { padding-bottom: 24px; }
 .lab-details__back { align-self: flex-start; margin-left: -8px; }
+
+/* A wide panel (about 700 px and up, so a 1600 px or wider window): denser and side by side, so a lab's details fit
+   without scrolling the panel. The panel is a size container (lab-details): this follows the panel's width, not the
+   window's. Kept last so it wins over the one-column rules above. The title shares its line with the badge; Start lab,
+   Lab guide and Diagram share one row; what the lab teaches sits beside the practical facts; the PDF guide is one line
+   under both. */
+.labs-details.lab-details { container: lab-details / inline-size; }
+@container lab-details (min-width: 700px) {
+  .lab-details { gap: 16px; }
+  .lab-details__head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 16px; }
+  .lab-details__head > .lab-details__eyebrow { grid-column: 1 / -1; }
+  .lab-details__head > .lab-details__badge { justify-self: end; }
+  .lab-launch { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 10px; }
+  .lab-launch > * { grid-column: 1 / -1; }
+  .lab-launch > .lab-launch__primary { grid-column: 1; grid-row: 1; }
+  .lab-launch > .lab-launch__more { grid-column: 2; grid-row: 1; }
+  .lab-launch__more .btn { height: 40px; }
+  .lab-details__body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 28px; align-items: start; }
+  .lab-details__col { gap: 14px; }
+  .lab-details__section { gap: 6px; }
+  .lab-details__learn { gap: 6px; }
+  .lab-details__col--facts .lab-facts--key { padding: 10px 0; gap: 10px; }
+  /* The session facts in two columns, label above value: seven facts in four short rows. */
+  .lab-details__col--facts .lab-facts:not(.lab-facts--key) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 16px; }
+  .lab-details__col--facts .lab-facts:not(.lab-facts--key) .lab-facts__row { display: flex; flex-direction: column; gap: 1px; }
+  .lab-details__guide { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .lab-details__guide > .lab-details__small { flex: 1; min-width: 0; }
+}

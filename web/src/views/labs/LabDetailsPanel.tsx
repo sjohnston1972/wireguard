@@ -144,90 +144,95 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
   const destination = region ? regionWords(region) : q.isError ? null : <Skeleton width={80} />;
   const autoCleanup = data?.autoCleanup ?? false;
   const measured = measuredDeploy(c);
+  // Two columns in a wide panel (LabDetailsPanel.css): what the lab teaches, then the practical facts, with the PDF
+  // guide on one line under both. One column, in this same order, everywhere else.
   return (
-    <>
-      {c.learning ? (
-        <>
-          <section className="lab-details__section" aria-labelledby={`${learnId}-o`}>
-            <h3 className="lab-details__h" id={`${learnId}-o`}>
-              Objective
+    <div className="lab-details__body">
+      <div className="lab-details__col lab-details__col--about">
+          {c.learning ? (
+            <>
+              <section className="lab-details__section" aria-labelledby={`${learnId}-o`}>
+                <h3 className="lab-details__h" id={`${learnId}-o`}>
+                  Objective
+                </h3>
+                <p className="lab-details__text">{c.learning.objective}</p>
+              </section>
+              <section className="lab-details__section" aria-labelledby={`${learnId}-l`}>
+                <h3 className="lab-details__h" id={`${learnId}-l`}>
+                  What you will learn
+                </h3>
+                <ul className="lab-details__learn" aria-label="What you will learn">
+                  {c.learning.learn.map((l) => (
+                    <li key={l}>
+                      <Check size={16} aria-hidden className="lab-details__tick" />
+                      <span>{l}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </>
+          ) : (
+            <section className="lab-details__section" aria-labelledby={`${learnId}-s`}>
+              <h3 className="lab-details__h" id={`${learnId}-s`}>
+                About this lab
+              </h3>
+              <p className="lab-details__text">{c.summary}</p>
+            </section>
+          )}
+
+          <LabResourceSummary resources={c.resources} topics={view.topics} diagramHref={labHref(c.id, search, layout, "diagram")} />
+
+      </div>
+      <div className="lab-details__col lab-details__col--facts">
+          <dl className="lab-facts lab-facts--key" aria-label="Times and cost">
+            <Fact label="Learning time">{c.learning ? keepUnits(fmtMinutes(c.learning.learningMin)) : null}</Fact>
+            <Fact label="Deploy time">
+              <span className="lab-facts__main">{keepUnits(`about ${c.timing.deployMin} min`)}</span>
+              {measured && <span className="lab-facts__sub">{keepUnits(measured)}</span>}
+            </Fact>
+            <Fact label="Estimated cost">
+              <span className="lab-facts__main">{fmtHourlyPrecise(c.estGbpH)}</span>
+              {Number.isFinite(c.estGbpH) && c.estGbpH > 0 && <span className="lab-facts__sub">{keepUnits(fmtSessionCost(c.estGbpH, c.timing.sessionH))}</span>}
+            </Fact>
+          </dl>
+          <dl className="lab-facts" aria-label="Lab facts">
+            <Fact label="Session">{sessionWords(c)}</Fact>
+            <Fact label="Destination">{destination}</Fact>
+            <Fact label="Level">{LEVEL_WORD[c.level]}</Fact>
+            <Fact label="Type">{TYPE_WORD[c.type]}</Fact>
+            <Fact label="Peering">{PEERING_WORD[c.peering]}</Fact>
+            <Fact label="Release test">{c.released ? `Passed v${c.version}` : `Untested v${c.version}`}</Fact>
+            <Fact label="History">{historyWords(c)}</Fact>
+          </dl>
+
+          <Checks q={q} card={c} />
+
+          <LabPrerequisites ids={c.prerequisites} labs={data?.labs} onSelect={onSelect} />
+
+          <section className="lab-details__section" aria-labelledby={cleanupId}>
+            <h3 className="lab-details__h" id={cleanupId}>
+              Session and cleanup
             </h3>
-            <p className="lab-details__text">{c.learning.objective}</p>
+            {autoCleanup ? (
+              <p className="lab-details__text lab-details__small">
+                Ends by itself after {c.timing.sessionH} h unless you extend it (never past {c.timing.maxH} h). Then everything in <code>rg-lab-{c.id}</code> is torn down and a clean check looks for
+                leftovers; anything found is flagged on this page. Azure can take a day to bill the last hour.
+              </p>
+            ) : (
+              <p className="lab-details__text lab-details__small">
+                Automatic tear-down needs GitHub connected: tear the lab down yourself. Azure can take a day to bill the last hour.
+              </p>
+            )}
           </section>
-          <section className="lab-details__section" aria-labelledby={`${learnId}-l`}>
-            <h3 className="lab-details__h" id={`${learnId}-l`}>
-              What you will learn
-            </h3>
-            <ul className="lab-details__learn" aria-label="What you will learn">
-              {c.learning.learn.map((l) => (
-                <li key={l}>
-                  <Check size={16} aria-hidden className="lab-details__tick" />
-                  <span>{l}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </>
-      ) : (
-        <section className="lab-details__section" aria-labelledby={`${learnId}-s`}>
-          <h3 className="lab-details__h" id={`${learnId}-s`}>
-            About this lab
-          </h3>
-          <p className="lab-details__text">{c.summary}</p>
-        </section>
-      )}
-
-      <LabResourceSummary resources={c.resources} topics={view.topics} diagramHref={labHref(c.id, search, layout, "diagram")} />
-
-      <dl className="lab-facts lab-facts--key" aria-label="Times and cost">
-        <Fact label="Learning time">{c.learning ? keepUnits(fmtMinutes(c.learning.learningMin)) : null}</Fact>
-        <Fact label="Deploy time">
-          <span className="lab-facts__main">{keepUnits(`about ${c.timing.deployMin} min`)}</span>
-          {measured && <span className="lab-facts__sub">{keepUnits(measured)}</span>}
-        </Fact>
-        <Fact label="Estimated cost">
-          <span className="lab-facts__main">{fmtHourlyPrecise(c.estGbpH)}</span>
-          {Number.isFinite(c.estGbpH) && c.estGbpH > 0 && <span className="lab-facts__sub">{keepUnits(fmtSessionCost(c.estGbpH, c.timing.sessionH))}</span>}
-        </Fact>
-      </dl>
-      <dl className="lab-facts" aria-label="Lab facts">
-        <Fact label="Session">{sessionWords(c)}</Fact>
-        <Fact label="Destination">{destination}</Fact>
-        <Fact label="Level">{LEVEL_WORD[c.level]}</Fact>
-        <Fact label="Type">{TYPE_WORD[c.type]}</Fact>
-        <Fact label="Peering">{PEERING_WORD[c.peering]}</Fact>
-        <Fact label="Release test">{c.released ? `Passed v${c.version}` : `Untested v${c.version}`}</Fact>
-        <Fact label="History">{historyWords(c)}</Fact>
-      </dl>
-
-      <section className="lab-details__section" aria-labelledby={guideId}>
+      </div>
+      <section className="lab-details__section lab-details__guide" aria-labelledby={guideId}>
         <h3 className="lab-details__h" id={guideId}>
           Lab guide
         </h3>
         <p className="lab-details__text lab-details__small">The readme, diagrams and Learn links as a PDF, to keep open while you work.</p>
         <LabGuideButton labId={c.id} />
       </section>
-
-      <Checks q={q} card={c} />
-
-      <LabPrerequisites ids={c.prerequisites} labs={data?.labs} onSelect={onSelect} />
-
-      <section className="lab-details__section" aria-labelledby={cleanupId}>
-        <h3 className="lab-details__h" id={cleanupId}>
-          Session and cleanup
-        </h3>
-        {autoCleanup ? (
-          <p className="lab-details__text lab-details__small">
-            Ends by itself after {c.timing.sessionH} h unless you extend it (never past {c.timing.maxH} h). Then everything in <code>rg-lab-{c.id}</code> is torn down and a clean check looks for
-            leftovers; anything found is flagged on this page. Azure can take a day to bill the last hour.
-          </p>
-        ) : (
-          <p className="lab-details__text lab-details__small">
-            Automatic tear-down needs GitHub connected: tear the lab down yourself. Azure can take a day to bill the last hour.
-          </p>
-        )}
-      </section>
-    </>
+    </div>
   );
 }
 

@@ -113,6 +113,20 @@ describe("the catalogue's stylesheet: one screen from 641 px, only the tiles scr
     expect(panel).not.toMatch(/100dvh|position:\s*sticky/);
   });
 
+  it("a wide panel (700 px and up, by the panel's own width) lays the details out in two columns, the PDF guide under both", () => {
+    // Steven, 2026-10-12: "make the lab descriptor no-scroll, make better use of the space in that tile".
+    expect(panelCss).toMatch(/\.labs-details\.lab-details \{ container: lab-details \/ inline-size; \}/);
+    const at = panelCss.indexOf("@container lab-details (min-width: 700px) {");
+    expect(at).toBeGreaterThan(0);
+    const end = panelCss.indexOf("\n}", at);
+    const two = panelCss.slice(at, end);
+    // Last in the file, so its rules win over the one-column ones above.
+    expect(panelCss.slice(end + 2).trim()).toBe("");
+    expect(rule(two, ".lab-details__body")).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\)/);
+    expect(rule(two, ".lab-details__guide")).toMatch(/grid-column:\s*1 \/ -1/);
+    expect(rule(two, ".lab-launch > .lab-launch__more")).toMatch(/grid-row:\s*1/);
+  });
+
   it("the phone (640 px and below) is untouched: the one-screen rules start at 641 px", () => {
     expect(pageCss).not.toMatch(/@media \(max-width: 640px\)/);
     const base = pageCss.slice(0, pageCss.indexOf("@media"));
@@ -140,6 +154,19 @@ describe("the DOM the stylesheet relies on", () => {
     expect(alerts.querySelector(".labs-notices__orphans")).not.toBeNull();
     // Keyboard: the scroller holds the focusable cards, so tabbing into it and arrowing scrolls it.
     expect(scroller!.querySelectorAll("button.lab-card__select").length).toBeGreaterThan(0);
+  });
+
+  it("the details body: what the lab teaches, then the practical facts, then the PDF guide (the one-column order too)", async () => {
+    renderApp("/labs", { routes: routes() });
+    const panel = await screen.findByRole("complementary", { name: "Users, groups and a custom role" });
+    const body = panel.querySelector(".lab-details__body")!;
+    const kids = [...body.children].map((e) => e.className);
+    expect(kids).toEqual(["lab-details__col lab-details__col--about", "lab-details__col lab-details__col--facts", "lab-details__section lab-details__guide"]);
+    const about = body.children[0] as HTMLElement;
+    const facts = body.children[1] as HTMLElement;
+    expect(about).toHaveTextContent(/Objective.*What you will learn.*Resources deployed/s);
+    expect(facts).toHaveTextContent(/Learning time.*Session.*Deploy checks.*Prerequisites.*Session and cleanup/s);
+    expect(body.children[2]).toHaveTextContent(/Lab guide.*Download PDF/s);
   });
 
   it("selecting a lab and then scrolling the grid keeps the selection (and writes nothing)", async () => {
