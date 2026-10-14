@@ -1,0 +1,124 @@
+{
+  "Events": [
+    {
+      "EventId": "ev-other-0001",
+      "EventName": "TerminateInstances",
+      "ReadOnly": "false",
+      "Username": "other-dev",
+      "EventTime": 1791107880,
+      "EventSource": "ec2.amazonaws.com",
+      "Resources": [
+        {
+          "ResourceType": "AWS::EC2::Instance",
+          "ResourceName": "i-0other"
+        }
+      ],
+      "CloudTrailEvent": "{\"eventVersion\":\"1.09\",\"userIdentity\":{\"type\":\"AssumedRole\",\"principalId\":\"AROAEXAMPLEOTHER:other-dev\",\"arn\":\"arn:aws:sts::123456789012:assumed-role/other-project-deploy/other-dev\",\"accountId\":\"123456789012\",\"sessionContext\":{\"sessionIssuer\":{\"type\":\"Role\",\"arn\":\"arn:aws:iam::123456789012:role/other-project-deploy\",\"userName\":\"other-project-deploy\"}}},\"eventTime\":\"2026-10-04T09:58:00Z\",\"eventSource\":\"ec2.amazonaws.com\",\"eventName\":\"TerminateInstances\",\"awsRegion\":\"eu-west-2\",\"sourceIPAddress\":\"203.0.113.10\",\"userAgent\":\"aws-sdk\",\"requestParameters\":null,\"responseElements\":null,\"eventID\":\"ev-other-0001\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"recipientAccountId\":\"123456789012\"}"
+    },
+    {
+      "EventId": "ev-person-0001",
+      "EventName": "AuthorizeSecurityGroupIngress",
+      "ReadOnly": "false",
+      "Username": "someone",
+      "EventTime": 1791107700,
+      "EventSource": "ec2.amazonaws.com",
+      "Resources": [
+        {
+          "ResourceType": "AWS::EC2::SecurityGroup",
+          "ResourceName": "sg-wg"
+        }
+      ],
+      "CloudTrailEvent": "{\"eventVersion\":\"1.09\",\"userIdentity\":{\"type\":\"IAMUser\",\"principalId\":\"AIDAEXAMPLEPERSON\",\"arn\":\"arn:aws:iam::123456789012:user/someone\",\"accountId\":\"123456789012\",\"accessKeyId\":\"AKIAEXAMPLEPERSON\",\"userName\":\"someone\"},\"eventTime\":\"2026-10-04T09:55:00Z\",\"eventSource\":\"ec2.amazonaws.com\",\"eventName\":\"AuthorizeSecurityGroupIngress\",\"awsRegion\":\"eu-west-2\",\"sourceIPAddress\":\"203.0.113.10\",\"userAgent\":\"aws-sdk\",\"requestParameters\":null,\"responseElements\":null,\"eventID\":\"ev-person-0001\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"recipientAccountId\":\"123456789012\"}"
+    },
+    {
+      "EventId": "ev-failed-0001",
+      "EventName": "StopInstances",
+      "ReadOnly": "false",
+      "Username": "someone",
+      "EventTime": 1791107400,
+      "EventSource": "ec2.amazonaws.com",
+      "Resources": [
+        {
+          "ResourceType": "AWS::EC2::Instance",
+          "ResourceName": "i-0abc"
+        }
+      ],
+      "CloudTrailEvent": "{\"eventVersion\":\"1.09\",\"userIdentity\":{\"type\":\"IAMUser\",\"principalId\":\"AIDAEXAMPLEPERSON\",\"arn\":\"arn:aws:iam::123456789012:user/someone\",\"accountId\":\"123456789012\",\"accessKeyId\":\"AKIAEXAMPLEPERSON\",\"userName\":\"someone\"},\"eventTime\":\"2026-10-04T09:50:00Z\",\"eventSource\":\"ec2.amazonaws.com\",\"eventName\":\"StopInstances\",\"awsRegion\":\"eu-west-2\",\"sourceIPAddress\":\"203.0.113.10\",\"userAgent\":\"aws-sdk\",\"errorCode\":\"Client.UnauthorizedOperation\",\"errorMessage\":\"You are not authorized to perform this operation.\",\"requestParameters\":null,\"responseElements\":null,\"eventID\":\"ev-failed-0001\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"recipientAccountId\":\"123456789012\"}"
+    },
+    {
+      "EventId": "ev-aws-0001",
+      "EventName": "ModifyNetworkInterfaceAttribute",
+      "ReadOnly": "false",
+      "EventTime": 1791107100,
+      "EventSource": "ec2.amazonaws.com",
+      "Resources": [
+        {
+          "ResourceType": "AWS::EC2::NetworkInterface",
+          "ResourceName": "eni-0wg"
+        }
+      ],
+      "CloudTrailEvent": "{\"eventVersion\":\"1.09\",\"userIdentity\":{\"type\":\"AWSService\",\"invokedBy\":\"ec2.amazonaws.com\"},\"eventTime\":\"2026-10-04T09:45:00Z\",\"eventSource\":\"ec2.amazonaws.com\",\"eventName\":\"ModifyNetworkInterfaceAttribute\",\"awsRegion\":\"eu-west-2\",\"sourceIPAddress\":\"ec2.amazonaws.com\",\"userAgent\":\"aws-sdk\",\"requestParameters\":null,\"responseElements\":null,\"eventID\":\"ev-aws-0001\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"recipientAccountId\":\"123456789012\"}"
+    },
+    {
+      "EventId": "ev-worker-0001",
+      "EventName": "AuthorizeSecurityGroupIngress",
+      "ReadOnly": "false",
+      "Username": "wg-admin-worker",
+      "EventTime": 1791106800,
+      "EventSource": "ec2.amazonaws.com",
+      "Resources": [
+        {
+          "ResourceType": "AWS::EC2::SecurityGroup",
+          "ResourceName": "sg-wg"
+        }
+      ],
+      "CloudTrailEvent": "{\"eventVersion\":\"1.09\",\"userIdentity\":{\"type\":\"IAMUser\",\"principalId\":\"AIDAEXAMPLEWORKER\",\"arn\":\"arn:aws:iam::123456789012:user/wg-admin-worker\",\"accountId\":\"123456789012\",\"accessKeyId\":\"AKIAEXAMPLEWORKER\",\"userName\":\"wg-admin-worker\"},\"eventTime\":\"2026-10-04T09:40:00Z\",\"eventSource\":\"ec2.amazonaws.com\",\"eventName\":\"AuthorizeSecurityGroupIngress\",\"awsRegion\":\"eu-west-2\",\"sourceIPAddress\":\"203.0.113.10\",\"userAgent\":\"aws-sdk\",\"requestParameters\":null,\"responseElements\":null,\"eventID\":\"ev-worker-0001\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"recipientAccountId\":\"123456789012\"}"
+    },
+    {
+      "EventId": "ev-other-0002",
+      "EventName": "RunInstances",
+      "ReadOnly": "false",
+      "Username": "another-person",
+      "EventTime": 1791106200,
+      "EventSource": "ec2.amazonaws.com",
+      "Resources": [
+        {
+          "ResourceType": "AWS::EC2::Instance",
+          "ResourceName": "i-0other"
+        },
+        {
+          "ResourceType": "AWS::EC2::SecurityGroup",
+          "ResourceName": "sg-other"
+        }
+      ],
+      "CloudTrailEvent": "{\"eventVersion\":\"1.09\",\"userIdentity\":{\"type\":\"IAMUser\",\"principalId\":\"AIDAEXAMPLEPERSON\",\"arn\":\"arn:aws:iam::123456789012:user/another-person\",\"accountId\":\"123456789012\",\"accessKeyId\":\"AKIAEXAMPLEPERSON\",\"userName\":\"another-person\"},\"eventTime\":\"2026-10-04T09:30:00Z\",\"eventSource\":\"ec2.amazonaws.com\",\"eventName\":\"RunInstances\",\"awsRegion\":\"eu-west-2\",\"sourceIPAddress\":\"203.0.113.10\",\"userAgent\":\"aws-sdk\",\"requestParameters\":null,\"responseElements\":null,\"eventID\":\"ev-other-0002\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"recipientAccountId\":\"123456789012\"}"
+    },
+    {
+      "EventId": "ev-deploy-0001",
+      "EventName": "RunInstances",
+      "ReadOnly": "false",
+      "Username": "GitHubActions",
+      "EventTime": 1791105600,
+      "EventSource": "ec2.amazonaws.com",
+      "Resources": [
+        {
+          "ResourceType": "AWS::EC2::Subnet",
+          "ResourceName": "subnet-0wg"
+        },
+        {
+          "ResourceType": "AWS::EC2::Ami",
+          "ResourceName": "ami-0example"
+        },
+        {
+          "ResourceType": "AWS::EC2::Instance",
+          "ResourceName": "i-0abc"
+        },
+        {
+          "ResourceType": "AWS::EC2::SecurityGroup",
+          "ResourceName": "sg-wg"
+        }
+      ],
+      "CloudTrailEvent": "{\"eventVersion\":\"1.09\",\"userIdentity\":{\"type\":\"AssumedRole\",\"principalId\":\"AROAEXAMPLEDEPLOY:GitHubActions\",\"arn\":\"arn:aws:sts::123456789012:assumed-role/wg-admin-deploy/GitHubActions\",\"accountId\":\"123456789012\",\"accessKeyId\":\"ASIAEXAMPLEDEPLOY\",\"sessionContext\":{\"sessionIssuer\":{\"type\":\"Role\",\"principalId\":\"AROAEXAMPLEDEPLOY\",\"arn\":\"arn:aws:iam::123456789012:role/wg-admin-deploy\",\"accountId\":\"123456789012\",\"userName\":\"wg-admin-deploy\"}}},\"eventTime\":\"2026-10-04T09:20:00Z\",\"eventSource\":\"ec2.amazonaws.com\",\"eventName\":\"RunInstances\",\"awsRegion\":\"eu-west-2\",\"sourceIPAddress\":\"203.0.113.10\",\"userAgent\":\"aws-sdk\",\"requestParameters\":null,\"responseElements\":null,\"eventID\":\"ev-deploy-0001\",\"readOnly\":false,\"eventType\":\"AwsApiCall\",\"recipientAccountId\":\"123456789012\"}"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title><![CDATA[Amazon Elastic Compute Cloud (London) Service Status]]></title>
+    <link>https://status.aws.amazon.com/</link>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 04 Oct 2026 02:45:29 PDT</lastBuildDate>
+    <generator>AWS Service Health Dashboard RSS Generator</generator>
+    <description><![CDATA[Receive the most recent update for events affecting the overall availability of Amazon Elastic Compute Cloud in London.]]></description>
+    <ttl>5</ttl>
+    <item>
+      <title><![CDATA[Increased API Error Rates]]></title>
+      <link>https://status.aws.amazon.com/</link>
+      <pubDate>Sun, 04 Oct 2026 02:30:00 PDT</pubDate>
+      <guid isPermaLink="false">https://status.aws.amazon.com/#ec2-eu-west-2_1791106200</guid>
+      <description><![CDATA[<p>We are investigating increased API error rates &amp; latencies for the <b>RunInstances</b> API in the EU-WEST-2 Region.</p>  Existing instances are not affected.]]></description>
+    </item>
+    <item>
+      <title><![CDATA[Informational message: Scheduled network maintenance]]></title>
+      <link>https://status.aws.amazon.com/</link>
+      <pubDate>Sat, 03 Oct 2026 01:00:00 PDT</pubDate>
+      <guid isPermaLink="false">https://status.aws.amazon.com/#ec2-eu-west-2_1791014400</guid>
+      <description><![CDATA[We will perform maintenance on networking devices in a single Availability Zone.]]></description>
+    </item>
+    <item>
+      <title><![CDATA[Service is operating normally: [RESOLVED] Instance connectivity]]></title>
+      <link>https://status.aws.amazon.com/</link>
+      <pubDate>Fri, 02 Oct 2026 10:15:00 PDT</pubDate>
+      <guid isPermaLink="false">https://status.aws.amazon.com/#ec2-eu-west-2_1790961300</guid>
+      <description>Between 9:05 AM and 10:10 AM PDT some instances lost connectivity. The issue has been resolved &amp; the service is operating normally.</description>
+    </item>
+  </channel>
+</rss>
