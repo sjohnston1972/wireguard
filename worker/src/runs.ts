@@ -16,7 +16,7 @@ import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
 import { randomToken, sha256Hex, safeEqual } from "./auth";
 import { dispatchWorkflow, findRunByTitle, getGhRun, getJobs, getJobLogTail, cancelGhRun, stepsFromJobs } from "./github";
-import { getSnapshot, saveSnapshot, saveSnapshotIf, parseWgDump, nextTraffic, nextLatency, detectRoams, nextSession, selfTestFailures, nextTalkers, type AgentReport, type Snapshot, type SelfTest } from "./state";
+import { getSnapshot, saveSnapshot, saveSnapshotIf, parseWgDump, nextTraffic, nextLatency, detectRoams, nextSession, selfTestFailures, nextTalkers, cloudOf, type AgentReport, type Snapshot, type SelfTest } from "./state";
 import { checkDns } from "./dns";
 import { agentPeerList, terraformPeerList, protectedNets } from "./peers";
 import { notify } from "./notify";
@@ -24,7 +24,7 @@ import { dashboardButton } from "./actions";
 import { bytesText } from "./format";
 import { compileFirewall, publishedNsgRules } from "./firewall";
 import type { FirewallStatus, Step } from "./state";
-import { headendOps } from "./cloud";
+import { headendOps, opsFor } from "./cloud";
 import { noteHandshakes } from "./keyrotation";
 import { recordHeartbeat, fwDeltas } from "./history";
 import { parseVitals, parseAgentVersion, freshScheduledEvents, scheduledEventNote } from "./vitals";
@@ -48,9 +48,9 @@ export class RunError extends Error {
 
 /** Re-read what exists in Azure and store it in the snapshot. Never throws. */
 export async function refreshInventory(env: Env): Promise<void> {
-  const c = await headendOps(env);
-  if (!c.configured(env)) return;
   try {
+    const c = await headendOps(env);
+    if (!c.configured(env)) return;
     const azure = await c.inventory(env); // the headend's inventory, whichever cloud
     const snap = await saveSnapshot(env, { azure });
     // Self-heal: if we are Running but lost the public IP (the old KV race),
@@ -503,7 +503,7 @@ async function settleWithoutCallback(env: Env, run: db.Run): Promise<void> {
     await completeDestroy(env, run, { via: "github-status" });
   } else {
     let ip: string | null = null;
-    const c = await headendOps(env);
+    const c = opsFor(cloudOf(snap));
     if (c.configured(env)) ip = (await c.view(env)).public_ip;
     if (!ip && snap.public_ip) ip = snap.public_ip;
     await completeApply(env, run, ip, {}, { via: "github-status" });
