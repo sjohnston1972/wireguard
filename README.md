@@ -256,6 +256,46 @@ Settings chooses whether the auto-destroy timer and the idle limit tear down
 or hibernate. A Standby is torn down after 7 days (Settings) so a forgotten
 one cannot cost money for ever.
 
+### Azure or AWS
+
+The Deploy form has a **Cloud** choice: Azure (UK South, a B1s) or AWS (London
+`eu-west-2`, a `t4g.micro`). Only one runs at a time, because wg-admin keeps a
+single headend. To switch, tear the current one down first; a hibernated or
+failed one counts as still there. Everything else is the same either way:
+`wg.clydeford.net`, the server key, every client, the firewall, alerts, timers
+and the budget. The AWS network reuses the Azure address plan (10.50.0.0/16),
+so no client ever needs a new config. Think of two racks in two buildings
+wired to look identical, with the same DNS name moved to whichever is powered.
+
+How AWS is wired:
+
+- `infra/aws/` builds the server. GitHub's `wg-aws.yml` workflow runs it,
+  signing in to AWS with its own short-lived identity (OIDC). No AWS keys are
+  stored in GitHub.
+- The Worker uses a small AWS user that can only look, start and stop the
+  wg-admin server, edit its firewall rules and read cost. Its keys are Worker
+  secrets.
+- Everything wg-admin builds carries the tag `wg-admin=vpn`. A tear-down ends
+  with a safety net that removes anything still carrying it and fails loudly
+  if something survives.
+- AWS's own budget alarm emails at about £15 a month, whatever wg-admin
+  thinks.
+
+One-off setup (already done; run again only to change it):
+
+```
+node scripts/aws-bootstrap.mjs
+```
+
+It uses the AWS admin keys in `.env` (they never leave this machine) to create
+the GitHub role, the Worker's user and the budget alarm, then hands the role
+name to GitHub and the Worker's keys to the Worker. `AWS_ENABLED = "1"` in
+`wrangler.toml` shows AWS in the Deploy form.
+
+On AWS the Azure-only panels (VM performance, Azure health, change log,
+service health, public IP) say "AWS insights are coming soon", and labs run
+unconnected (they peer with the Azure headend only).
+
 ### Phone alerts
 
 Alerts come from the wg-admin app itself. Install it (Settings > Install the
@@ -496,6 +536,8 @@ sudo journalctl -t wg-agent
 | Destroyed | £0.00. Nothing exists. |
 | Standby (hibernated) | About £4.65 a month: the 30 GB disk (£1.95) and the static IPv4 address (£2.70). The VM itself is not billed. |
 | Running | About £8.75 a month for the B1s VM and 30 GB disk, plus about £2.70 for the static IPv4 address, billed per hour. The IPv6 address is free. Roughly 1.6p an hour. |
+
+On AWS (London, t4g.micro): about 1.2p an hour running (£0.0116: the instance, the public IPv4 address and an 8 GB disk) and about 0.45p an hour hibernated (the address and the disk). Prices from the AWS price list, October 2026.
 
 Cloudflare (Worker, D1, KV, R2, Access) and GitHub Actions stay within their
 free tiers.
