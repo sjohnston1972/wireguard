@@ -162,7 +162,7 @@ describe("activity feed cadence and backfill (live test)", () => {
   const later = iso(NOW.getTime() + 55 * MIN);
 
   it("starting a deploy or a tear-down, and a run finishing, make the feed due at the next run", async () => {
-    const { makeEnv, lastGhRun } = await import("./harness");
+    const { makeEnv, lastGhRun, wgRef } = await import("./harness");
     const { startDeploy, startDestroy, issueRunSecrets, handleCallback } = await import("../src/runs");
     const { env, world } = makeEnv(); // GitHub and Azure as the lifecycle tests have them
     await setFeed(env, "activity", { status: "ok", last_ok_at: ago(5), last_try_at: ago(5), next_due_at: later });
@@ -170,7 +170,7 @@ describe("activity feed cadence and backfill (live test)", () => {
     expect(await due(env)).toBeNull();
 
     await setFeed(env, "activity", { status: "ok", next_due_at: later });
-    const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     world.azure.rg = true;
     await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
     expect(await due(env)).toBeNull();

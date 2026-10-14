@@ -1,6 +1,6 @@
 // Whole journeys through the Worker, on the harness (see harness.ts).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, lastGhRun, type World } from "./harness";
+import { makeEnv, lastGhRun, type World, wgRef } from "./harness";
 import type { Env } from "../src/env";
 import * as db from "../src/db";
 import { startDeploy, startDestroy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
@@ -28,7 +28,7 @@ const selftest = (over: Record<string, unknown> = {}) => ({ at: new Date().toISO
 async function deployToRunning(hours: number | null = 4) {
   await db.addPeer(env, { name: "Phone", public_key: "P".repeat(43) + "=", ip: "10.13.13.2", full_tunnel: false });
   const run = await startDeploy(env, { hours, requesterIp: "203.0.113.25", requestedBy: "steven" });
-  const secrets = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const secrets = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   const cb = await handleCallback(env, secrets.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
   expect(cb.status).toBe(200);
@@ -42,18 +42,18 @@ describe("deploy never puts secrets in the public dispatch", () => {
     for (const word of ["token", "password", "203.0.113.25"]) expect(sent).not.toContain(word);
     expect(world.dispatches[0].payload.secrets_url).toBe("https://wg-admin.example/api/callback/secrets");
 
-    const first = await issueRunSecrets(env, run.id, lastGhRun(world));
+    const first = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({ ssh_allowed_cidr: "203.0.113.25/32" });
     expect(String(first.body.agent_token)).toMatch(/^[0-9a-f]{64}$/);
     expect(first.body.ssh_password).toBe((await db.getRun(env, run.id))!.ssh_password);
 
-    expect((await issueRunSecrets(env, run.id, lastGhRun(world))).status).toBe(409);
+    expect((await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env))).status).toBe(409);
   });
 
   it("hands the secrets out once even when two requests arrive together", async () => {
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-    const both = await Promise.all([issueRunSecrets(env, run.id, lastGhRun(world)), issueRunSecrets(env, run.id, lastGhRun(world))]);
+    const both = await Promise.all([issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env)), issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env))]);
     expect(both.map((r) => r.status).sort()).toEqual([200, 409]);
     const winner = both.find((r) => r.status === 200)!;
     const row = (await db.getRun(env, run.id))!;
@@ -63,12 +63,12 @@ describe("deploy never puts secrets in the public dispatch", () => {
   it("refuses a GitHub run that is not this dispatch", async () => {
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
     world.ghRuns.set(42, { id: 42, display_title: "wg apply someone-else", status: "in_progress", conclusion: null, html_url: "", created_at: "" });
-    expect((await issueRunSecrets(env, run.id, 42)).status).toBe(403);
+    expect((await issueRunSecrets(env, run.id, 42, wgRef(env))).status).toBe(403);
   });
 
   it("only stores token hashes", async () => {
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-    const s = await issueRunSecrets(env, run.id, lastGhRun(world));
+    const s = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     const row = (await db.getRun(env, run.id))!;
     expect(row.agent_token_hash).not.toBe(s.body.agent_token);
     expect(row.payload_json).not.toContain(String(s.body.agent_token));
@@ -210,7 +210,7 @@ describe("tear down", () => {
     const { agentToken } = await deployToRunning();
     await handleAgent(env, agentToken, { dump: DUMP(), selftest: selftest() });
     const run = await startDestroy(env, "steven", "test");
-    const s = await issueRunSecrets(env, run.id, lastGhRun(world));
+    const s = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     expect(Object.keys(s.body)).toEqual(["callback_token"]); // a destroy gets nothing else
     world.azure.rg = false;
     await handleCallback(env, s.body.callback_token as string, { run_id: run.id, action: "destroy", status: "success" });

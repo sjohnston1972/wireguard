@@ -13,12 +13,12 @@ vi.mock("jose", () => ({
   jwtVerify: async (token: string) => ({ payload: JSON.parse(atob(token)) }),
 }));
 
-import { makeEnv, lastGhRun, type World } from "./harness";
+import { makeEnv, lastGhRun, wgRef, type World } from "./harness";
 import { api, apiEnv } from "./api-helpers";
 import type { Env } from "../src/env";
 import worker from "../src/index";
 import * as db from "../src/db";
-import { startDeploy, startDestroy, issueRunSecrets, handleCallback, runCloud } from "../src/runs";
+import { startDeploy, startDestroy, issueRunSecrets, handleCallback, refreshActiveRun, runCloud } from "../src/runs";
 import { startResume } from "../src/standby";
 import { startMove } from "../src/profiles";
 import { getSnapshot, saveSnapshot } from "../src/state";
@@ -29,9 +29,8 @@ beforeEach(() => ({ env, world } = makeEnv()));
 afterEach(() => vi.unstubAllGlobals());
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
-const ref = (e: Env, wf: string) => `${e.GITHUB_REPO}/.github/workflows/${wf}@refs/heads/main`;
 const token = (e: Env, wf: string, ghRunId: number) =>
-  btoa(JSON.stringify({ repository: e.GITHUB_REPO, ref: "refs/heads/main", workflow_ref: ref(e, wf), event_name: "workflow_dispatch", run_id: String(ghRunId) }));
+  btoa(JSON.stringify({ repository: e.GITHUB_REPO, ref: "refs/heads/main", workflow_ref: wgRef(e, wf), event_name: "workflow_dispatch", run_id: String(ghRunId) }));
 const collect = (e: Env, bearer: string, runId: string) =>
   worker.fetch(new Request("http://localhost:8787/api/callback/secrets", { method: "POST", headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.9" }, body: JSON.stringify({ run_id: runId }) }), e, ctx);
 
@@ -51,9 +50,31 @@ describe("deploy to AWS", () => {
     await saveSnapshot(env, { state: "failed", cloud: "azure" });
     await expect(startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven", cloud: "aws" })).rejects.toThrow(/Tear down the Azure headend first/);
   });
+  it("is refused while Azure is torn down but drift says it still has resources", async () => {
+    await saveSnapshot(env, { state: "destroyed", cloud: "azure", drift: "Azure still has resource group rg-wg but the dashboard says Destroyed." });
+    await expect(startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven", cloud: "aws" })).rejects.toThrow(/Clean up the Azure leftovers first/);
+    expect(world.dispatches).toHaveLength(0);
+  });
+  it("GitHub's run is found under wg-aws.yml, so the run gets its GitHub id", async () => {
+    const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven", cloud: "aws" });
+    await refreshActiveRun(env);
+    expect((await db.getRun(env, run.id))!.github_run_id).toBe(lastGhRun(world));
+    expect(world.calls.some((c) => c.path.includes("/actions/workflows/wg-aws.yml/runs"))).toBe(true);
+  });
+  it("an AWS tear-down's secrets are refused to a wg.yml token", async () => {
+    const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven", cloud: "aws" });
+    const s = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env, "wg-aws.yml"));
+    world.aws.exists = true;
+    await handleCallback(env, s.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.aws.ip } });
+    const d = await startDestroy(env, "steven");
+    expect(runCloud(d)).toBe("aws");
+    expect((await issueRunSecrets(env, d.id, lastGhRun(world), wgRef(env, "wg.yml"))).status).toBe(403);
+    expect((await issueRunSecrets(env, d.id, lastGhRun(world), wgRef(env, "wg-aws.yml"))).status).toBe(200);
+  });
   it("the AWS run's secrets go only to a wg-aws.yml run, and tear-down uses wg-aws.yml", async () => {
     const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven", cloud: "aws" });
-    const s = await issueRunSecrets(env, run.id, lastGhRun(world));
+    expect((await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env, "wg.yml"))).status).toBe(403);
+    const s = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env, "wg-aws.yml"));
     expect(s.status).toBe(200);
     world.aws.exists = true;
     await handleCallback(env, s.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.aws.ip } });
@@ -70,6 +91,16 @@ describe("an Azure deploy is as it was", () => {
     expect(world.dispatches[0].payload).not.toHaveProperty("cloud");
     expect((await getSnapshot(env)).cloud).toBe("azure");
     expect(runCloud(run)).toBe("azure");
+  });
+  it("an Azure tear-down dispatches wg.yml with no cloud key", async () => {
+    const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven" });
+    const s = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
+    world.azure.rg = true;
+    await handleCallback(env, s.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
+    const d = await startDestroy(env, "steven");
+    expect(world.dispatches[1]).toMatchObject({ workflow: "wg.yml", action: "destroy" });
+    expect(world.dispatches[1].payload).not.toHaveProperty("cloud");
+    expect(runCloud(d)).toBe("azure");
   });
   it("an Azure deploy is refused while AWS is failed", async () => {
     await saveSnapshot(env, { state: "failed", cloud: "aws" });
@@ -92,7 +123,7 @@ describe("each run's secrets go only to its own workflow (OIDC)", () => {
     const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven" });
     const gh = lastGhRun(world);
     expect((await collect(env, token(env, "wg-aws.yml", gh), run.id)).status).toBe(403);
-    expect((await issueRunSecrets(env, run.id, gh, ref(env, "wg-aws.yml"))).status).toBe(403);
+    expect((await issueRunSecrets(env, run.id, gh, wgRef(env, "wg-aws.yml"))).status).toBe(403);
     expect((await collect(env, token(env, "wg.yml", gh), run.id)).status).toBe(200);
   });
   it("a token from neither workflow is not trusted at all", async () => {

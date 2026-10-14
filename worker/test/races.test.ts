@@ -2,7 +2,7 @@
 // Each test is one of the "two things happened at once" or "this arrived
 // late" cases that used to leave the dashboard wrong.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, lastGhRun, type World } from "./harness";
+import { makeEnv, lastGhRun, type World, wgRef } from "./harness";
 import type { Env } from "../src/env";
 import * as db from "../src/db";
 import { startDeploy, startDestroy, issueRunSecrets, handleCallback, refreshActiveRun, reconcile, handleAgent, clearFirewallCounters, detectDrift } from "../src/runs";
@@ -23,7 +23,7 @@ const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 /** Deploy, collect secrets, call back: Running. Returns the agent token. */
 async function toRunning() {
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
   return { run, agentToken: sec.body.agent_token as string };
@@ -42,7 +42,7 @@ describe("SSH passwords are forgotten once the VM is gone (#15)", () => {
     const { run } = await toRunning();
     expect((await db.getRun(env, run.id))!.ssh_password).toBeTruthy();
     const d = await startDestroy(env, "steven", "done");
-    const sec = await issueRunSecrets(env, d.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, d.id, lastGhRun(world), wgRef(env));
     world.azure.rg = false;
     await handleCallback(env, sec.body.callback_token as string, { run_id: d.id, action: "destroy", status: "success" });
     expect((await db.listRuns(env)).filter((r) => r.ssh_password)).toEqual([]);
@@ -59,7 +59,7 @@ describe("a packet capture pending at tear-down (#29)", () => {
     await toRunning();
     await capture();
     const d = await startDestroy(env, "steven", "done");
-    const sec = await issueRunSecrets(env, d.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, d.id, lastGhRun(world), wgRef(env));
     world.azure.rg = false;
     await handleCallback(env, sec.body.callback_token as string, { run_id: d.id, action: "destroy", status: "success" });
     expect(await db.getCapture(env, "cap-1")).toMatchObject({ status: "failed", error: "VM torn down" });
@@ -137,7 +137,7 @@ describe("heartbeats (#26)", () => {
   it("a late heartbeat after a tear-down changes nothing", async () => {
     const { agentToken } = await toRunning();
     const d = await startDestroy(env, "steven", "done");
-    const sec = await issueRunSecrets(env, d.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, d.id, lastGhRun(world), wgRef(env));
     world.azure.rg = false;
     await handleCallback(env, sec.body.callback_token as string, { run_id: d.id, action: "destroy", status: "success" });
     const r = await handleAgent(env, agentToken, { dump: DUMP, selftest: selftest() });
@@ -191,7 +191,7 @@ describe("drift: a failed run that left Azure resources (#20)", () => {
 describe("settling without the callback (#24)", () => {
   it("waits 2 minutes after GitHub finishes, so the callback's outputs are not lost", async () => {
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-    const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     world.azure.rg = true;
     ghFinished(10_000);
     await refreshActiveRun(env);
@@ -204,7 +204,7 @@ describe("settling without the callback (#24)", () => {
 
   it("settles from GitHub's status once the callback is overdue", async () => {
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-    await issueRunSecrets(env, run.id, lastGhRun(world));
+    await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     world.azure.rg = true;
     ghFinished(3 * 60_000);
     await refreshActiveRun(env);
@@ -227,7 +227,7 @@ describe("settling without the callback (#24)", () => {
 
   it("a callback after a poll already settled the run says so and changes nothing", async () => {
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-    const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     world.azure.rg = true;
     ghFinished(3 * 60_000);
     await Promise.all([

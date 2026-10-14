@@ -118,6 +118,11 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   if (cloud !== was && snap.state !== "destroyed") {
     throw new RunError(`Tear down the ${opsFor(was).label} headend first. wg-admin runs one cloud at a time.`);
   }
+  // Torn down, but the old cloud still has resources: once the snapshot
+  // follows the new cloud, nothing would watch them, so clean up first.
+  if (cloud !== was && snap.drift) {
+    throw new RunError(`Clean up the ${opsFor(was).label} leftovers first (see the drift warning). wg-admin runs one cloud at a time.`);
+  }
   if (cloud === "aws" && !opsFor("aws").configured(env)) throw new RunError("AWS is not set up yet: the Worker has no AWS keys.", "bad_input");
 
   const cfg = await effectiveConfig(env);
@@ -682,16 +687,16 @@ export async function handleCallback(env: Env, token: string, body: CallbackBody
  * the same workflow cannot collect this run's secrets. Both clouds' workflows
  * title their runs alike, so the token's own (signed) `workflow_ref` must
  * also name this run's workflow: an AWS run's secrets go only to wg-aws.yml,
- * an Azure run's only to wg.yml. The route always passes it; tests that stand
- * in for the route may leave it out. Tokens are minted here and only their
- * hashes are kept.
+ * an Azure run's only to wg.yml. `tokenWorkflowRef` is that claim ("" when
+ * the token had none, which matches nothing). Tokens are minted here and only
+ * their hashes are kept.
  */
-export async function issueRunSecrets(env: Env, runId: string, ghRunId: number, tokenWorkflowRef?: string): Promise<{ status: number; body: Record<string, unknown> }> {
+export async function issueRunSecrets(env: Env, runId: string, ghRunId: number, tokenWorkflowRef: string): Promise<{ status: number; body: Record<string, unknown> }> {
   const run = await db.getRun(env, runId);
   if (!run) return { status: 404, body: { error: "unknown run" } };
   if (run.finished_at || !["queued", "running"].includes(run.status)) return { status: 409, body: { error: "run is not active" } };
   if (run.callback_token_hash) return { status: 409, body: { error: "secrets already collected" } };
-  if (tokenWorkflowRef !== undefined && tokenWorkflowRef !== workflowRef(env, workflowFor(config(env), runCloud(run)))) return { status: 403, body: { error: "that workflow does not build this run's cloud" } };
+  if (tokenWorkflowRef !== workflowRef(env, workflowFor(config(env), runCloud(run)))) return { status: 403, body: { error: "that workflow does not build this run's cloud" } };
   const gh = await getGhRun(env, ghRunId);
   if (!gh || !(gh.display_title ?? "").includes(run.id)) return { status: 403, body: { error: "that GitHub run is not this run" } };
 

@@ -660,3 +660,8 @@ function labArm(az: LabAzure, method: string, u: URL, init?: RequestInit): Respo
 export function lastGhRun(world: World): number {
   return Math.max(...world.ghRuns.keys());
 }
+
+/** The signed `workflow_ref` claim a GitHub OIDC token from `workflow` carries (wg.yml, the Azure gateway's, unless told). */
+export function wgRef(env: Env, workflow = "wg.yml"): string {
+  return `${env.GITHUB_REPO}/.github/workflows/${workflow}@refs/heads/main`;
+}

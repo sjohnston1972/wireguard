@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, lastGhRun, type World } from "./harness";
+import { makeEnv, lastGhRun, type World, wgRef } from "./harness";
 import type { Env } from "../src/env";
 import worker from "../src/index";
 import * as db from "../src/db";
@@ -160,7 +160,7 @@ describe("capture upload (issues #8 and #17)", () => {
 
   async function running(): Promise<{ runId: string; token: string }> {
     const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "s" });
-    const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     world.azure.rg = true;
     await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
     return { runId: run.id, token: sec.body.agent_token as string };

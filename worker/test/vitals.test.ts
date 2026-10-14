@@ -5,7 +5,7 @@
 // an older agent's heartbeat (no vitals) keeps working and stores null; a
 // new Azure scheduled event writes one note and one push, once per id.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, lastGhRun, type World } from "./harness";
+import { makeEnv, lastGhRun, type World, wgRef } from "./harness";
 import * as db from "../src/db";
 import type { Env } from "../src/env";
 import { parseVitals, parseAgentVersion, vitalsSample, freshScheduledEvents } from "../src/vitals";
@@ -201,7 +201,7 @@ const DUMP = "PRIV\tS=\t51820\toff\n" + `${PHONE}\t(none)\t203.0.113.25:4000\t10
 async function toRunning() {
   await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
   return sec.body.agent_token as string;

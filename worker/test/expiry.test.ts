@@ -1,6 +1,6 @@
 // Time-limited guest clients and the "no handshake in 30 days" marker (issue #47).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, lastGhRun } from "./harness";
+import { makeEnv, lastGhRun, wgRef } from "./harness";
 import type { Env } from "../src/env";
 import worker from "../src/index";
 import * as db from "../src/db";
@@ -111,7 +111,7 @@ describe("expiry in the database, the API and the watchman", () => {
   it("heartbeats remember the last handshake, but only rewrite it when it moves by over an hour", async () => {
     const phone = await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-    const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     world.azure.rg = true;
     await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
     const token = sec.body.agent_token as string;

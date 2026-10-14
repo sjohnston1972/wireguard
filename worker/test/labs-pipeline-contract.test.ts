@@ -31,7 +31,7 @@ import { saveSnapshot } from "../src/state";
 import { startDestroy, issueRunSecrets } from "../src/runs";
 import { handleLabCallback, handleLabPeer, handleLabPeeringsRemoved } from "../src/labs/callbacks";
 import { readLiveLog, receiveLiveLog } from "../src/livelog";
-import { lastGhRun } from "./harness";
+import { lastGhRun, wgRef } from "./harness";
 import { apiEnv, base } from "./api-helpers";
 import { api, freeze, labDispatches, secrets, session, labRun, NOW } from "./labs-helpers";
 import type { Env } from "../src/env";
@@ -248,7 +248,7 @@ describe("Worker and lab pipeline agree (integration)", () => {
     freeze();
     const { env, world } = await realEnv();
     const gw = await startDestroy(env, "t");
-    const sec = await issueRunSecrets(env, gw.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, gw.id, lastGhRun(world), wgRef(env));
     // feat/labs-gateway wg.yml: jq '{run_id:$r, peerings_removed:$p, dns_links_removed:$l, complete:$c}' to ${CALLBACK_URL%/}/lab-peerings-removed,
     // where wg.yml's CALLBACK_URL is the gateway's …/api/callback.
     const url = `${String(base)}/api/callback`.replace(/\/$/, "") + "/lab-peerings-removed";

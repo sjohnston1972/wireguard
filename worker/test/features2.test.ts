@@ -1,6 +1,6 @@
 // Profiles, moves, schedules, speed test and site-to-site, on the harness.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, lastGhRun, type World } from "./harness";
+import { makeEnv, lastGhRun, type World, wgRef } from "./harness";
 import type { Env } from "../src/env";
 import * as db from "../src/db";
 import { startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
@@ -25,7 +25,7 @@ const DUMP = (lines: string[]) => ["PRIV\tS=\t51820\toff", ...lines].join("\n");
 
 async function toRunning(opts: Partial<Parameters<typeof startDeploy>[1]> = {}) {
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven", ...opts });
-  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
   return sec.body.agent_token as string;
@@ -33,7 +33,7 @@ async function toRunning(opts: Partial<Parameters<typeof startDeploy>[1]> = {}) 
 
 async function finishDestroy() {
   const snap = await getSnapshot(env);
-  const sec = await issueRunSecrets(env, snap.run_id!, lastGhRun(world));
+  const sec = await issueRunSecrets(env, snap.run_id!, lastGhRun(world), wgRef(env));
   world.azure.rg = false;
   await handleCallback(env, sec.body.callback_token as string, { run_id: snap.run_id!, action: "destroy", status: "success" });
 }

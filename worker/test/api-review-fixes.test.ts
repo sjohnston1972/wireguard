@@ -6,7 +6,7 @@
 // Azure's reason; the old deploy route refuses an empty region as before.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { api, apiEnv, base } from "./api-helpers";
-import { lastGhRun } from "./harness";
+import { lastGhRun, wgRef } from "./harness";
 import * as db from "../src/db";
 import worker from "../src/index";
 import { startDeploy, issueRunSecrets, handleCallback } from "../src/runs";
@@ -28,7 +28,7 @@ async function raw(env: Env, method: string, path: string, bodyText: string, con
 
 async function running(env: Env, world: ReturnType<typeof apiEnv>["world"]) {
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
-  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
 }
