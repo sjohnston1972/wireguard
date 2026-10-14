@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DescribeInstanceTypeOfferingsResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+    <requestId>11111111-2222-3333-4444-555555555555</requestId>
+    <instanceTypeOfferingSet>
+        <item>
+            <instanceType>t4g.nano</instanceType>
+            <locationType>region</locationType>
+            <location>eu-west-2</location>
+        </item>
+        <item>
+            <instanceType>t4g.micro</instanceType>
+            <locationType>region</locationType>
+            <location>eu-west-2</location>
+        </item>
+    </instanceTypeOfferingSet>
+</DescribeInstanceTypeOfferingsResponse>

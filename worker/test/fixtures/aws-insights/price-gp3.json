@@ -1,0 +1,6 @@
+{
+  "FormatVersion": "aws_v1",
+  "PriceList": [
+    "{\"product\":{\"productFamily\":\"Storage\",\"attributes\":{\"maxThroughputvolume\":\"1000 MiB/s\",\"volumeType\":\"General Purpose\",\"maxIopsvolume\":\"16000\",\"usagetype\":\"EUW2-EBS:VolumeUsage.gp3\",\"locationType\":\"AWS Region\",\"maxVolumeSize\":\"16 TiB\",\"storageMedia\":\"SSD-backed\",\"regionCode\":\"eu-west-2\",\"servicecode\":\"AmazonEC2\",\"volumeApiName\":\"gp3\",\"location\":\"EU (London)\",\"servicename\":\"Amazon Elastic Compute Cloud\",\"operation\":\"\"},\"sku\":\"BBBBBBBBBBBBBBBB\"},\"serviceCode\":\"AmazonEC2\",\"terms\":{\"OnDemand\":{\"BBBBBBBBBBBBBBBB.JRTCKXETXF\":{\"priceDimensions\":{\"BBBBBBBBBBBBBBBB.JRTCKXETXF.6YS6EN2CT7\":{\"unit\":\"GB-Mo\",\"endRange\":\"Inf\",\"description\":\"$0.0928 per GB-month of General Purpose (gp3) provisioned storage - EU (London)\",\"appliesTo\":[],\"rateCode\":\"BBBBBBBBBBBBBBBB.JRTCKXETXF.6YS6EN2CT7\",\"beginRange\":\"0\",\"pricePerUnit\":{\"USD\":\"0.0928000000\"}}},\"sku\":\"BBBBBBBBBBBBBBBB\",\"effectiveDate\":\"2026-10-01T00:00:00Z\",\"offerTermCode\":\"JRTCKXETXF\",\"termAttributes\":{}}}},\"version\":\"20261001000000\",\"publicationDate\":\"2026-10-01T00:00:00Z\"}"
+  ]
+}
