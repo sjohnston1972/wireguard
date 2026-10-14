@@ -27,6 +27,7 @@ function client(env: Env, service: string, region: string): AwsClient {
     secretAccessKey: env.AWS_WORKER_SECRET_ACCESS_KEY ?? "",
     service,
     region,
+    retries: 1, // one quick retry, then the error surfaces; the watchman tries again on its next tick
   });
 }
 

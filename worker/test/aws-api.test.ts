@@ -70,3 +70,21 @@ describe("awsJson", () => {
     await expect(p).rejects.toMatchObject({ code: "ThrottlingException", message: "Rate exceeded" });
   });
 });
+
+describe("retries", () => {
+  it("retries a 503 once, then succeeds", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async () => (++calls === 1 ? new Response("<Response/>", { status: 503 }) : new Response("<OkResponse/>", { status: 200 })));
+    await expect(ec2(env, "DescribeVpcs")).resolves.toContain("OkResponse");
+    expect(calls).toBe(2);
+  });
+  it("gives up after one retry and surfaces the error", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async () => {
+      calls++;
+      return new Response("<Response><Errors><Error><Code>ServiceUnavailable</Code><Message>busy</Message></Error></Errors></Response>", { status: 503 });
+    });
+    await expect(ec2(env, "DescribeVpcs")).rejects.toMatchObject({ name: "Error", code: "ServiceUnavailable", status: 503 });
+    expect(calls).toBe(2);
+  });
+});
