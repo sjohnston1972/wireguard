@@ -91,7 +91,53 @@ export function xmlAll(xml: string, tag: string): string[] {
   return [...xml.matchAll(new RegExp(`<${tag}>([^<]*)</${tag}>`, "g"))].map((m) => decode(m[1]));
 }
 
-/** One chunk per record, cut where each record's first field starts. Read fields with xmlFirst on a chunk. */
-export function xmlRecords(xml: string, firstTag: string): string[] {
-  return xml.split(`<${firstTag}>`).slice(1).map((s) => `<${firstTag}>${s}`);
+/**
+ * Where each top-level <item>…</item> (or <item/>) in `body` starts and ends, counting depth so an item's own
+ * nested items (tags, network interfaces) stay inside it. Stops at `stopAt` (a closing tag) found at depth 0.
+ */
+function itemSpans(body: string, stopAt?: string): [number, number][] {
+  const spans: [number, number][] = [];
+  const tokens = new RegExp(`<(/?)item(/?)>${stopAt ? `|${stopAt}` : ""}`, "g");
+  let depth = 0;
+  let start = 0;
+  for (const m of body.matchAll(tokens)) {
+    const at = m.index ?? 0;
+    if (m[0] === stopAt) {
+      if (depth === 0) break; // the set's own closing tag
+    } else if (m[2]) {
+      if (depth === 0) spans.push([at, at + m[0].length]);
+    } else if (!m[1]) {
+      if (depth++ === 0) start = at;
+    } else if (depth > 0 && --depth === 0) {
+      spans.push([start, at + m[0].length]);
+    }
+  }
+  return spans;
+}
+
+/**
+ * The top-level <item> elements directly inside the first <setTag>…</setTag>, as strings (nested <item>s, such as
+ * tags, stay inside their parent). EC2 orders an item's fields as it likes (DescribeSecurityGroupRules is
+ * alphabetical), so records are always cut at whole items, never at a field. Read fields with xmlFirst(xmlOwn(item)).
+ */
+export function xmlItems(xml: string, setTag: string): string[] {
+  const open = xml.match(new RegExp(`<${setTag}(\\s[^>]*)?(/?)>`));
+  if (!open || open[2]) return []; // absent, or <setTag/>
+  const body = xml.slice((open.index ?? 0) + open[0].length);
+  return itemSpans(body, `</${setTag}>`).map(([a, b]) => body.slice(a, b));
+}
+
+/**
+ * An item with its nested <item>s cut out, so a field read with xmlFirst is the item's own and never a child
+ * record's (a tag, a network interface's privateIpAddress, a group). Nested non-list elements (instanceState) stay.
+ */
+export function xmlOwn(item: string): string {
+  const inner = item.replace(/^<item>/, "").replace(/<\/item>$/, "");
+  let out = "";
+  let from = 0;
+  for (const [a, b] of itemSpans(inner)) {
+    out += inner.slice(from, a);
+    from = b;
+  }
+  return out + inner.slice(from);
 }

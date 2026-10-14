@@ -1,5 +1,6 @@
 // The AWS adapter, against the harness's fake AWS.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { makeEnv, type World } from "./harness";
 import type { Env } from "../src/env";
 import { opsFor } from "../src/cloud";
@@ -19,7 +20,9 @@ describe("view", () => {
   });
   it("stopped server reads as deallocated, like Azure", async () => {
     world.aws.state = "stopped";
-    expect((await aws().view(env)).power).toBe("deallocated");
+    const v = await aws().view(env);
+    expect(v.power).toBe("deallocated");
+    expect(v.public_ip).toBeNull(); // the network interface's own addresses are not the server's
   });
   it("nothing built: nothing exists", async () => {
     world.aws.exists = false;
@@ -91,6 +94,52 @@ describe("published ports", () => {
     await aws().setPublishedPorts(env, [{ name: "published-tcp-80", protocol: "Tcp", port: "80", source: "*" }]);
     const writes = world.calls.slice(before).length;
     expect(writes).toBe(2); // DescribeSecurityGroups + DescribeSecurityGroupRules only
+  });
+});
+
+// A real DescribeSecurityGroupRules answer (masked). EC2 lists each rule's fields alphabetically, so the rule id
+// comes near the end of its <item>; reading by "chunk from each id" paired one rule's id with the next rule's fields.
+describe("against a recorded DescribeSecurityGroupRules answer", () => {
+  const fixture = readFileSync(new URL("./fixtures/aws/describe-sg-rules.xml", import.meta.url), "utf8");
+  const WIREGUARD = ["sgr-01ff26f508f46d552", "sgr-016f6bfb58af353c4"];
+  let writes: { action: string; params: URLSearchParams }[];
+  beforeEach(() => {
+    writes = [];
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", async (i: Request, init?: RequestInit) => {
+      const body = typeof i === "object" && "clone" in i ? await i.clone().text() : String(init?.body ?? "");
+      const params = new URLSearchParams(body);
+      const action = params.get("Action") ?? "";
+      if (action === "DescribeSecurityGroupRules") return new Response(fixture, { status: 200 });
+      if (action === "AuthorizeSecurityGroupIngress" || action === "RevokeSecurityGroupIngress") writes.push({ action, params });
+      return real(i, init);
+    });
+  });
+
+  it("setSshAllowedCidr to the address already allowed makes no Authorize or Revoke call", async () => {
+    await aws().setSshAllowedCidr(env, "203.0.113.7/32");
+    expect(writes).toEqual([]);
+  });
+  it("setSshAllowedCidr to a new address adds it, then revokes only the old ssh-from-home rule", async () => {
+    await aws().setSshAllowedCidr(env, "198.51.100.7/32");
+    expect(writes.map((w) => w.action)).toEqual(["AuthorizeSecurityGroupIngress", "RevokeSecurityGroupIngress"]);
+    expect(writes[0].params.get("IpPermissions.1.IpRanges.1.CidrIp")).toBe("198.51.100.7/32");
+    const revoked = [...writes[1].params.entries()].filter(([k]) => k.startsWith("SecurityGroupRuleId.")).map(([, v]) => v);
+    expect(revoked).toEqual(["sgr-06731c55055802f63"]);
+  });
+  it("setPublishedPorts with the rules already there makes no calls", async () => {
+    await aws().setPublishedPorts(env, [
+      { name: "published-tcp-2230", protocol: "Tcp", port: "2230", source: "*" },
+      { name: "published-tcp-8080", protocol: "Tcp", port: "8080", source: "203.0.113.7/32" },
+    ]);
+    expect(writes).toEqual([]);
+  });
+  it("removing 8080 revokes exactly that rule, never WireGuard", async () => {
+    await aws().setPublishedPorts(env, [{ name: "published-tcp-2230", protocol: "Tcp", port: "2230", source: "*" }]);
+    expect(writes.map((w) => w.action)).toEqual(["RevokeSecurityGroupIngress"]);
+    const revoked = [...writes[0].params.entries()].filter(([k]) => k.startsWith("SecurityGroupRuleId.")).map(([, v]) => v);
+    expect(revoked).toEqual(["sgr-0148109b78d97895e"]);
+    expect(revoked.some((id) => WIREGUARD.includes(id))).toBe(false);
   });
 });
 

@@ -13,7 +13,7 @@ import { canAws, config } from "../env";
 import type { AzureInventory } from "../state";
 import type { PublishedNsgRule } from "../firewall";
 import type { CloudOps, HeadendView } from "./index";
-import { AwsError, awsJson, ec2, filters, xmlFirst, xmlRecords } from "./awsApi";
+import { AwsError, awsJson, ec2, filters, xmlFirst, xmlItems, xmlOwn } from "./awsApi";
 
 const TAG: [string, string[]] = ["tag:wg-admin", ["vpn"]];
 const HEADEND: [string, string[]] = ["tag:wg-admin-role", ["headend"]];
@@ -30,10 +30,16 @@ interface Headend {
 
 async function findHeadend(env: Env): Promise<Headend | null> {
   const xml = await ec2(env, "DescribeInstances", filters([TAG, HEADEND, ["instance-state-name", LIVE]]));
-  const id = xmlFirst(xml, "instanceId");
+  // reservationSet -> item -> instancesSet -> item. The instance's own fields only: its network interfaces,
+  // groups and tags are nested items with fields of their own (privateIpAddress, association/publicIp, ...).
+  const reservation = xmlItems(xml, "reservationSet")[0];
+  const instance = reservation ? xmlItems(reservation, "instancesSet")[0] : undefined;
+  if (!instance) return null;
+  const own = xmlOwn(instance);
+  const id = xmlFirst(own, "instanceId");
   if (!id) return null;
-  const state = xml.match(/<instanceState>\s*<code>\d+<\/code>\s*<name>([a-z-]+)<\/name>/)?.[1] ?? "unknown";
-  return { id, state, publicIp: xmlFirst(xml, "ipAddress"), type: xmlFirst(xml, "instanceType") };
+  const state = own.match(/<instanceState>\s*<code>\d+<\/code>\s*<name>([a-z-]+)<\/name>/)?.[1] ?? "unknown";
+  return { id, state, publicIp: xmlFirst(own, "ipAddress"), type: xmlFirst(own, "instanceType") };
 }
 
 async function view(env: Env): Promise<HeadendView> {
@@ -132,7 +138,9 @@ async function headendGroup(env: Env): Promise<string> {
 
 async function ingressRules(env: Env, group: string): Promise<SgRule[]> {
   const xml = await ec2(env, "DescribeSecurityGroupRules", filters([["group-id", [group]]]));
-  return xmlRecords(xml, "securityGroupRuleId")
+  // Whole items, never "cut at the id": EC2 lists each rule's fields alphabetically, so the id comes near the end.
+  return xmlItems(xml, "securityGroupRuleSet")
+    .map(xmlOwn)
     .filter((r) => xmlFirst(r, "isEgress") !== "true")
     .map((r) => ({
       id: xmlFirst(r, "securityGroupRuleId") ?? "",
