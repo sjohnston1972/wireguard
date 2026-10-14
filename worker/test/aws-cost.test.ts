@@ -42,6 +42,18 @@ describe("daily AWS actuals", () => {
     expect((await db.awsCostDays(env, "2026-10-01")).length).toBe(1);
     expect((await budgetStatus(env, undefined, undefined, new Date(NOW))).actual).toBeCloseTo(1.5, 6);
   });
+  it("the last-pulled mark expires after 36 hours, so a stale date cannot stick (#129)", async () => {
+    vi.setSystemTime(new Date(NOW));
+    world.awsCost = [{ day: "2026-10-13", usd: 2 }];
+    const opts: Record<string, unknown> = {};
+    const put = env.STATUS.put.bind(env.STATUS);
+    env.STATUS.put = (async (k: string, v: string, o?: unknown) => {
+      opts[k] = o;
+      return (put as (...a: unknown[]) => Promise<void>)(k, v, o);
+    }) as typeof env.STATUS.put;
+    await runScheduled(env);
+    expect(opts["cost:aws_fetched_day"]).toEqual({ expirationTtl: 36 * 3600 });
+  });
   it("a failing pull is tried once a day, not on every tick, and leaves a note", async () => {
     vi.setSystemTime(new Date(NOW));
     world.awsCostFail = true;
