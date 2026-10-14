@@ -562,14 +562,27 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
       switch (action) {
         case "DescribeVpcs":
           return xml(a.exists ? "<vpcSet><item><vpcId>vpc-1</vpcId></item></vpcSet>" : "<vpcSet/>");
-        case "DescribeInstances":
-          return xml(a.exists ? `<reservationSet><item><instancesSet><item><instanceId>i-0abc</instanceId><instanceType>t4g.micro</instanceType><instanceState><code>16</code><name>${a.state}</name></instanceState><privateIpAddress>10.50.1.4</privateIpAddress>${a.state === "running" ? `<ipAddress>${a.ip}</ipAddress>` : ""}</item></instancesSet></item></reservationSet>` : "<reservationSet/>");
+        case "DescribeInstances": {
+          // Real EC2 nesting: reservation -> instancesSet -> instance, and the instance's own groupSet, tagSet and
+          // networkInterfaceSet items carry fields (privateIpAddress, association/publicIp, groupId) of their own.
+          const code = { pending: 0, running: 16, stopping: 64, stopped: 80 }[a.state];
+          const groups = "<groupSet><item><groupId>sg-wg</groupId><groupName>wg-admin-headend</groupName></item></groupSet>";
+          const nic = `<networkInterfaceSet><item><networkInterfaceId>eni-1</networkInterfaceId><subnetId>subnet-1</subnetId><vpcId>vpc-1</vpcId><description/><ownerId>123456789012</ownerId><status>in-use</status><macAddress>06:00:00:00:00:01</macAddress><privateIpAddress>10.50.1.99</privateIpAddress><sourceDestCheck>false</sourceDestCheck>${groups}<attachment><attachmentId>eni-attach-1</attachmentId><deviceIndex>0</deviceIndex><status>attached</status></attachment><association><publicIp>203.0.113.250</publicIp><ipOwnerId>amazon</ipOwnerId></association><privateIpAddressesSet><item><privateIpAddress>10.50.1.99</privateIpAddress><primary>true</primary><association><publicIp>203.0.113.250</publicIp><ipOwnerId>amazon</ipOwnerId></association></item></privateIpAddressesSet></item></networkInterfaceSet>`;
+          const instance = `<item><instanceId>i-0abc</instanceId><imageId>ami-1</imageId><instanceState><code>${code}</code><name>${a.state}</name></instanceState><privateDnsName>ip-10-50-1-4.eu-west-2.compute.internal</privateDnsName><dnsName/><reason/><keyName>wg-admin</keyName><amiLaunchIndex>0</amiLaunchIndex><productCodes/><instanceType>t4g.micro</instanceType><launchTime>2026-10-14T09:00:00.000Z</launchTime><placement><availabilityZone>eu-west-2a</availabilityZone><groupName/><tenancy>default</tenancy></placement><monitoring><state>disabled</state></monitoring><subnetId>subnet-1</subnetId><vpcId>vpc-1</vpcId><privateIpAddress>10.50.1.4</privateIpAddress>${a.state === "running" ? `<ipAddress>${a.ip}</ipAddress>` : ""}${groups}<architecture>arm64</architecture><rootDeviceType>ebs</rootDeviceType><tagSet><item><key>wg-admin</key><value>vpn</value></item><item><key>wg-admin-role</key><value>headend</value></item></tagSet>${nic}</item>`;
+          return xml(a.exists ? `<reservationSet><item><reservationId>r-1</reservationId><ownerId>123456789012</ownerId><groupSet/><instancesSet>${instance}</instancesSet></item></reservationSet>` : "<reservationSet/>");
+        }
         case "DescribeAddresses":
           return xml(a.exists || world.awsEipLeft ? `<addressesSet><item><publicIp>${a.ip}</publicIp><allocationId>eipalloc-1</allocationId></item></addressesSet>` : "<addressesSet/>");
         case "DescribeSecurityGroups":
           return xml(a.exists && headendAsked ? "<securityGroupInfo><item><groupId>sg-wg</groupId></item></securityGroupInfo>" : "<securityGroupInfo/>");
-        case "DescribeSecurityGroupRules":
-          return xml(`<securityGroupRuleSet>${a.sg.map((r) => `<item><securityGroupRuleId>${r.id}</securityGroupRuleId><groupId>sg-wg</groupId><isEgress>false</isEgress><ipProtocol>${r.protocol}</ipProtocol><fromPort>${r.port}</fromPort><toPort>${r.port}</toPort><cidrIpv4>${r.cidr}</cidrIpv4><description>${r.description}</description></item>`).join("")}</securityGroupRuleSet>`);
+        case "DescribeSecurityGroupRules": {
+          // Real EC2 lists each rule's fields alphabetically (the rule id comes near the end), leaves out an empty
+          // description, and always has the default allow-all egress rule.
+          const rule = (r: { id: string; cidr: string; description: string; protocol: string; from: number; to: number; egress: boolean }) =>
+            `<item><cidrIpv4>${r.cidr}</cidrIpv4>${r.description ? `<description>${r.description}</description>` : ""}<fromPort>${r.from}</fromPort><groupId>sg-wg</groupId><groupOwnerId>123456789012</groupOwnerId><ipProtocol>${r.protocol}</ipProtocol><isEgress>${r.egress}</isEgress><securityGroupRuleArn>arn:aws:ec2:eu-west-2:123456789012:security-group-rule/${r.id}</securityGroupRuleArn><securityGroupRuleId>${r.id}</securityGroupRuleId><tagSet/><toPort>${r.to}</toPort></item>`;
+          const egress = rule({ id: "sgr-egress", cidr: "0.0.0.0/0", description: "", protocol: "-1", from: -1, to: -1, egress: true });
+          return xml(`<requestId>req-1</requestId><securityGroupRuleSet>${egress}${a.sg.map((r) => rule({ ...r, from: r.port, to: r.port, egress: false })).join("")}</securityGroupRuleSet>`);
+        }
         case "AuthorizeSecurityGroupIngress": {
           const rule = { id: `sgr-${a.nextRule++}`, protocol: p.get("IpPermissions.1.IpProtocol")!, port: Number(p.get("IpPermissions.1.FromPort")), cidr: p.get("IpPermissions.1.IpRanges.1.CidrIp")!, description: p.get("IpPermissions.1.IpRanges.1.Description") ?? "" };
           if (a.sg.some((r) => r.protocol === rule.protocol && r.port === rule.port && r.cidr === rule.cidr)) return new Response("<Response><Errors><Error><Code>InvalidPermission.Duplicate</Code><Message>dup</Message></Error></Errors></Response>", { status: 400 });

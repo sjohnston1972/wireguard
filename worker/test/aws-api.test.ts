@@ -1,6 +1,7 @@
 // Signed AWS calls: the request shape and the error mapping.
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { ec2, awsJson, filters, xmlFirst, xmlAll, xmlRecords, AwsError } from "../src/cloud/awsApi";
+import { readFileSync } from "node:fs";
+import { ec2, awsJson, filters, xmlFirst, xmlAll, xmlItems, xmlOwn, AwsError } from "../src/cloud/awsApi";
 import { canAws, config, type Env } from "../src/env";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -30,9 +31,70 @@ describe("Query API helpers", () => {
     expect(xmlAll(x, "name")).toEqual(["one & two", "three"]);
     expect(xmlFirst(x, "missing")).toBeNull();
   });
-  it("cuts a list into records at each first field", () => {
-    const x = "<set><item><id>a</id><v>1</v></item><item><id>b</id><v>2</v></item></set>";
-    expect(xmlRecords(x, "id").map((r) => xmlFirst(r, "v"))).toEqual(["1", "2"]);
+});
+
+describe("xmlItems", () => {
+  const fixture = readFileSync(new URL("./fixtures/aws/describe-sg-rules.xml", import.meta.url), "utf8");
+  const rule = (item: string) => {
+    const r = xmlOwn(item);
+    return { id: xmlFirst(r, "securityGroupRuleId"), description: xmlFirst(r, "description"), protocol: xmlFirst(r, "ipProtocol"), from: xmlFirst(r, "fromPort"), to: xmlFirst(r, "toPort"), cidr: xmlFirst(r, "cidrIpv4"), egress: xmlFirst(r, "isEgress") };
+  };
+
+  it("reads every rule of a real DescribeSecurityGroupRules answer with its own fields (EC2 lists them alphabetically)", () => {
+    const rules = xmlItems(fixture, "securityGroupRuleSet").map(rule);
+    expect(rules).toHaveLength(8);
+    expect(rules.filter((r) => r.egress === "true")).toHaveLength(2);
+    expect(rules.find((r) => r.description === "ssh-from-home")).toEqual({ id: "sgr-06731c55055802f63", description: "ssh-from-home", protocol: "tcp", from: "22", to: "22", cidr: "203.0.113.7/32", egress: "false" });
+    expect(rules.find((r) => r.description === "published-tcp-2230")).toEqual({ id: "sgr-0ae2a0369b8bc1ce5", description: "published-tcp-2230", protocol: "tcp", from: "2230", to: "2230", cidr: "0.0.0.0/0", egress: "false" });
+    expect(rules.find((r) => r.description === "published-tcp-8080")).toEqual({ id: "sgr-0148109b78d97895e", description: "published-tcp-8080", protocol: "tcp", from: "8080", to: "8080", cidr: "203.0.113.7/32", egress: "false" });
+    // WireGuard has two rules: IPv6 (no cidrIpv4) and IPv4.
+    expect(rules.filter((r) => r.description === "wireguard")).toEqual([
+      { id: "sgr-01ff26f508f46d552", description: "wireguard", protocol: "udp", from: "51820", to: "51820", cidr: null, egress: "false" },
+      { id: "sgr-016f6bfb58af353c4", description: "wireguard", protocol: "udp", from: "51820", to: "51820", cidr: "0.0.0.0/0", egress: "false" },
+    ]);
+    // A rule without a description does not borrow the next rule's.
+    expect(rules.find((r) => r.id === "sgr-0f8f26832a5673ef5")).toMatchObject({ description: null, egress: "true" });
+  });
+
+  it("keeps nested items (tags) inside their parent, and xmlOwn hides their fields", () => {
+    const x =
+      "<R><ruleSet>" +
+      "<item><cidrIpv4>10.0.0.0/8</cidrIpv4><fromPort>22</fromPort><securityGroupRuleId>sgr-a</securityGroupRuleId><tagSet><item><key>Name</key><value>x</value><description>from-a-tag</description></item></tagSet><toPort>22</toPort></item>" +
+      "<item/>" +
+      "<item><cidrIpv4>0.0.0.0/0</cidrIpv4><description>b</description><securityGroupRuleId>sgr-b</securityGroupRuleId><tagSet/></item>" +
+      "</ruleSet><ruleSet><item><securityGroupRuleId>sgr-other-set</securityGroupRuleId></item></ruleSet></R>";
+    const items = xmlItems(x, "ruleSet");
+    expect(items).toHaveLength(3);
+    expect(items[0]).toContain("<key>Name</key>");
+    expect(xmlFirst(xmlOwn(items[0]), "securityGroupRuleId")).toBe("sgr-a");
+    expect(xmlFirst(xmlOwn(items[0]), "toPort")).toBe("22");
+    expect(xmlFirst(xmlOwn(items[0]), "description")).toBeNull();
+    expect(xmlFirst(xmlOwn(items[0]), "key")).toBeNull();
+    expect(xmlOwn(items[1])).toBe("");
+    expect(xmlFirst(xmlOwn(items[2]), "description")).toBe("b");
+  });
+
+  it("an empty or missing set has no items", () => {
+    expect(xmlItems("<R><ruleSet/></R>", "ruleSet")).toEqual([]);
+    expect(xmlItems("<R><ruleSet></ruleSet></R>", "ruleSet")).toEqual([]);
+    expect(xmlItems("<R/>", "ruleSet")).toEqual([]);
+  });
+
+  it("walks reservation -> instance, and the instance's network interface never supplies its address", () => {
+    const x =
+      "<DescribeInstancesResponse><reservationSet><item><reservationId>r-1</reservationId><groupSet/><instancesSet><item>" +
+      "<instanceId>i-1</instanceId><instanceState><code>80</code><name>stopped</name></instanceState>" +
+      "<networkInterfaceSet><item><ipAddress>198.51.100.9</ipAddress><instanceType>wrong</instanceType><privateIpAddress>10.50.1.99</privateIpAddress><association><publicIp>198.51.100.9</publicIp></association></item></networkInterfaceSet>" +
+      "<groupSet><item><groupId>sg-1</groupId></item></groupSet>" +
+      "<instanceType>t4g.micro</instanceType><privateIpAddress>10.50.1.4</privateIpAddress>" +
+      "</item></instancesSet></item></reservationSet></DescribeInstancesResponse>";
+    const instance = xmlItems(xmlItems(x, "reservationSet")[0], "instancesSet")[0];
+    const own = xmlOwn(instance);
+    expect(xmlFirst(own, "instanceId")).toBe("i-1");
+    expect(xmlFirst(own, "instanceType")).toBe("t4g.micro");
+    expect(xmlFirst(own, "privateIpAddress")).toBe("10.50.1.4");
+    expect(xmlFirst(own, "ipAddress")).toBeNull();
+    expect(xmlFirst(own, "groupId")).toBeNull();
   });
 });
 
