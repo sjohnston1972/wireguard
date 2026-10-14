@@ -7,7 +7,7 @@ import { useWidget } from "@/widgets";
 import { useAzureSummary } from "@/api/queries";
 import { AzureDrawer, SshDrawer } from "./drawers";
 import { PEERING_WORD } from "./labs";
-import { cloudFull, cloudOf } from "./cloud";
+import { cloudFull, cloudOf, regionOf } from "./cloud";
 import { regionFull, topology, type NodeStatus, type NodeView } from "./model";
 import "./Topology.css";
 
@@ -87,7 +87,7 @@ export function Topology({ o, now, compact }: { o: OverviewResponse; now: number
   const t = topology(o, useAzureSummary().data?.health);
   const s = o.snapshot;
   const running = s.state === "running";
-  const region = s.region ?? o.config.region;
+  const region = regionOf(o);
   return (
     <Panel title="Live topology" status={<StatusPill status={PILL[t.overall.status]} label={t.overall.word} variant="outline" />} className={cx("ov-topo", compact && "ov-topo--compact")} bodyClassName="ov-topo__body">
       <div className="ov-topo__map">

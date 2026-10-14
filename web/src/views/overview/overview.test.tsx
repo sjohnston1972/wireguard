@@ -4,6 +4,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "@/test/render";
 import { overview, routes } from "./testData";
+import { regionOf, sizeOf } from "./cloud";
 
 const ok = { ok: true, message: "Done." };
 
@@ -149,5 +150,35 @@ describe("Overview status banner", () => {
     await user.click(within(form).getByRole("button", { name: "Deploy" }));
     await waitFor(() => expect(r.fetchMock!.callsTo("POST", "/api/v1/deploy")).toHaveLength(1));
     expect(r.fetchMock!.callsTo("POST", "/api/v1/deploy")[0].body).toEqual({ hours: 4, profileId: 1, overBudgetOk: false });
+  });
+
+  it("a destroyed AWS headend: the banner names the AWS size, not the Azure one", async () => {
+    const o = overview("destroyed");
+    o.snapshot.cloud = "aws";
+    o.config.aws.enabled = true;
+    renderApp("/", { routes: routes(o) });
+    const b = await banner();
+    expect(b).toHaveTextContent("Deploy builds a t4g.micro");
+    expect(b).not.toHaveTextContent("Standard_B1s");
+  });
+
+  it("a destroyed AWS headend: the header Region and VM size are the AWS ones", async () => {
+    const o = overview("destroyed");
+    o.snapshot.cloud = "aws";
+    renderApp("/", { routes: routes(o) });
+    await banner();
+    expect(await screen.findByText("t4g.micro", { selector: ".ov-read__value" })).toBeInTheDocument();
+    expect(screen.queryByText("Standard_B1s", { selector: ".ov-read__value" })).toBeNull();
+  });
+
+  it("regionOf and sizeOf: the snapshot first, else the headend's own cloud", () => {
+    const az = overview("destroyed");
+    expect([regionOf(az), sizeOf(az)]).toEqual(["uksouth", "Standard_B1s"]);
+    const aws = overview("destroyed");
+    aws.snapshot.cloud = "aws";
+    expect([regionOf(aws), sizeOf(aws)]).toEqual(["eu-west-2", "t4g.micro"]);
+    aws.snapshot.region = "eu-west-1";
+    aws.snapshot.vm_size = "t4g.nano";
+    expect([regionOf(aws), sizeOf(aws)]).toEqual(["eu-west-1", "t4g.nano"]);
   });
 });

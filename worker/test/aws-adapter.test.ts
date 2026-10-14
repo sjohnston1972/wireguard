@@ -154,4 +154,21 @@ describe("inventory", () => {
     world.aws.exists = false;
     expect((await aws().inventory(env)).exists).toBe(false);
   });
+  it("after a clean tear-down the tagging API's ghosts are not leftovers", async () => {
+    world.aws.exists = false;
+    world.awsGhosts = true;
+    const inv = await aws().inventory(env);
+    expect(inv.exists).toBe(false);
+    expect(inv.resources).toEqual([]);
+  });
+  it("with a live server the ghosts are dropped and the live instance and disk stay", async () => {
+    world.awsGhosts = true;
+    const inv = await aws().inventory(env);
+    expect(inv.exists).toBe(true);
+    const names = inv.resources.map((r) => r.name);
+    expect(names).not.toContain("i-dead");
+    expect(names).not.toContain("vol-dead");
+    expect(names).toContain("i-0abc");
+    expect(names).toContain("vol-1");
+  });
 });

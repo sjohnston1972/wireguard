@@ -18,6 +18,7 @@ import { CostImpact, HealthSummary, WatchmanNotes } from "./Lower";
 import { AzureHealth, Vitals, VmPerformance } from "./lazyInsights";
 import { RunningLabs } from "./lazyLabs";
 import { PhoneOverview } from "./Phone";
+import { regionOf, sizeOf } from "./cloud";
 import { STATE_WORD, inGithubRun, regionCountry, regionFull } from "./model";
 import "./Overview.css";
 
@@ -37,8 +38,8 @@ function ReadField({ caption, children }: { caption: string; children: React.Rea
 
 function Header({ o }: { o: OverviewResponse | null }) {
   const navigate = useNavigate();
-  const region = o ? o.snapshot.region ?? o.config.region : null;
-  const size = o ? o.snapshot.vm_size ?? o.config.vmSize : null;
+  const region = o ? regionOf(o) : null;
+  const size = o ? sizeOf(o) : null;
   const country = regionCountry(region);
   return (
     <PageHeader

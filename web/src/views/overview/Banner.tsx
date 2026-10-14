@@ -6,7 +6,7 @@ import { useRePeerLabs } from "@/api/mutations";
 import { DEMO_ACTIONS_OFF, useDemoOn } from "@/api/demo";
 import { WidgetCorner, useCornerHost, useWidget } from "@/widgets";
 import { DeployForm, actionAllowed, type ActionName } from "./actions";
-import { cloudLabel, cloudOf } from "./cloud";
+import { cloudLabel, cloudOf, regionOf, sizeOf } from "./cloud";
 import { STATE_TONE, STATE_WORD, currentStep, failedStep, formatElapsed, formatSpan, hhmm, inGithubRun, isBusy, moveTargets, regionShort, stepProgress, usually } from "./model";
 import { useServerNow } from "./hooks";
 import { labsBannerText } from "./labs";
@@ -41,7 +41,7 @@ function gatewaySubline(o: OverviewResponse, now: number, autoDestroy = true, la
     case "running": {
       const at = s.auto_destroy_at ? Date.parse(s.auto_destroy_at) - now : null;
       const timer = at === null ? "no timer set" : at > 0 ? `${o.config.expiryAction === "hibernate" ? "hibernates" : "tears down"} in ${formatSpan(at)}` : "timer due";
-      const up = `Up at ${o.config.dnsName || "its address"} in ${regionShort(s.region ?? o.config.region) || L}`;
+      const up = `Up at ${o.config.dnsName || "its address"} in ${regionShort(regionOf(o)) || L}`;
       return autoDestroy ? `${up} · ${timer}` : up;
     }
     case "standby":
@@ -49,7 +49,7 @@ function gatewaySubline(o: OverviewResponse, now: number, autoDestroy = true, la
     case "failed":
       return s.error ?? "The last run failed";
     case "destroyed":
-      return `${labs ? "No gateway VM, £0 for it." : "Nothing in the cloud, £0."} Deploy builds a ${o.config.vmSize || "VM"} and points ${o.config.dnsName || "the name"} at it`;
+      return `${labs ? "No gateway VM, £0 for it." : "Nothing in the cloud, £0."} Deploy builds a ${sizeOf(o) || "VM"} and points ${o.config.dnsName || "the name"} at it`;
   }
 }
 
