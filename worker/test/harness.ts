@@ -593,7 +593,17 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
       return json({ ResourceTagMappingList: arns.map((ResourceARN) => ({ ResourceARN, Tags: [{ Key: "wg-admin", Value: "vpn" }] })), PaginationToken: "" });
     }
     if (u.hostname === "ce.us-east-1.amazonaws.com") {
-      return json({ ResultsByTime: (world.awsCost ?? []).map((r) => ({ TimePeriod: { Start: r.day }, Total: { UnblendedCost: { Amount: String(r.usd), Unit: "USD" } } })) });
+      // Like the real thing: one row for every day from Start up to (not including) End, "0" where nothing was seeded.
+      const tp = (JSON.parse((await bodyText()) || "{}") as { TimePeriod?: { Start?: string; End?: string } }).TimePeriod;
+      const rows: { TimePeriod: { Start: string }; Total: { UnblendedCost: { Amount: string; Unit: string } } }[] = [];
+      if (tp?.Start && tp.End) {
+        for (let t = Date.parse(tp.Start); t < Date.parse(tp.End); t += 86_400_000) {
+          const d = new Date(t).toISOString().slice(0, 10);
+          const usd = (world.awsCost ?? []).filter((r) => r.day === d).reduce((a, r) => a + r.usd, 0);
+          rows.push({ TimePeriod: { Start: d }, Total: { UnblendedCost: { Amount: String(usd), Unit: "USD" } } });
+        }
+      }
+      return json({ ResultsByTime: rows });
     }
     throw new Error(`unexpected fetch ${method} ${url}`);
   });

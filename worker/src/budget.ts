@@ -159,7 +159,7 @@ export async function budgetLabs(env: Env, month: string): Promise<{ labs: Budge
 /** Where the budget stands right now. */
 export async function budgetStatus(env: Env, cfg?: Config, snap?: Snapshot, now = new Date()): Promise<BudgetStatus> {
   const month = now.toISOString().slice(0, 7);
-  const [c, s, days, awsDays, sent, lab] = await Promise.all([cfg ?? effectiveConfig(env), snap ?? getSnapshot(env), db.costDays(env, `${month}-01`), db.awsCostDays(env, `${month}-01`), env.STATUS.get(alertKey(month)), budgetLabs(env, month)]);
+  const [c, s, days, awsDays, sent, lab] = await Promise.all([cfg ?? effectiveConfig(env), snap ?? getSnapshot(env), db.costDays(env, `${month}-01`), db.awsCostDays(env, `${month}-01`).catch((e) => { console.error("budget aws days:", e); return []; }), env.STATUS.get(alertKey(month)), budgetLabs(env, month)]);
   const f = budgetFigures({ budget: c.monthlyBudgetGbp, days, awsDays, cloud: cloudOf(s), snap: s, hourlyRate: ratesFor(c, cloudOf(s)).hourlyRateGbp, now, labs: lab.labs, labDays: lab.labDays });
   return { ...f, alerted: sent === "100" ? 100 : sent === "80" ? 80 : 0 };
 }
