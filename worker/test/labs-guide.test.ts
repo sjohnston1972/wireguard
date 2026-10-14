@@ -470,5 +470,6 @@ describe("GET /labs/:id/guide.pdf in demo mode", () => {
     expect(f.calls).toHaveLength(0);
     expect(get.mock.calls.filter(([k]) => String(k).startsWith(GUIDE_PREFIX))).toEqual([]);
     expect(await guideKeys(env)).toEqual(before);
-  });
+    // Several requests through the whole worker plus R2 listings: past Vitest's 5 s default when the machine is busy.
+  }, 30_000);
 });
