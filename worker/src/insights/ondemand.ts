@@ -7,16 +7,29 @@
 //   - "Fetch now" on the boot log (insights/feeds/bootLog.ts, at most once a
 //     minute).
 // Pages otherwise read D1 only.
+//
+// With the server in AWS (AWS insights spec section 6) the same two go to AWS
+// instead: "Fetch now" through the AWS boot log feed's fetchAwsBootLogNow,
+// and a capacity cache miss for AWS's own region through one run of the AWS
+// capacity feed (4 calls), under the same once-per-10-minutes rule.
 
 import type { Env, Config } from "../env";
+import { config } from "../env";
 import type { CapacityCheck } from "../../../shared/api";
 import { REGIONS } from "../region";
 import { getSnapshot } from "../state";
 import { insightsConfigured, type BootLogDoc, type HealthDoc } from "./types";
-import { claimTry, getLatest, MIN, plainError, vmExists } from "./common";
+import { claimTry, getLatest, iso, MIN, plainError, vmExists } from "./common";
 import { oneOffCtx, recordFeedResult } from "./runner";
 import { NEXT_DEPLOY, NO_VM, fetchAndStoreBootLog } from "./feeds/bootLog";
 import { CAPACITY_FRESH_MS, capacityCheck, emptyCheck, fetchCapacity, readCapacity, sizesOfInterest, storeCapacity } from "./feeds/capacity";
+import { awsConfigured } from "./aws/types";
+import { awsPlainError } from "./aws/common";
+import { oneOffAwsCtx } from "./aws/ctx";
+import { recordAwsFeedResult } from "./aws/runner";
+import { asBootLogResponse, readAwsCapacity } from "./aws/read";
+import { fetchAwsBootLogNow } from "./aws/feeds/bootLog";
+import awsCapacityFeed, { awsCapacityCheck } from "./aws/feeds/capacity";
 
 /** One try per region per this long on a cache miss. */
 export const CAPACITY_RETRY_MS = 10 * MIN;
@@ -86,4 +99,65 @@ export async function storedBootLog(env: Env, notConnected: string, notFetched: 
 export async function deployTargetCapacity(env: Env, cfg: Config, now: Date): Promise<CapacityCheck | null> {
   const have = await readCapacity(env.DB, cfg.region);
   return have ? capacityCheck(have.doc, cfg.region, cfg.vmSize, cfg.testVm, have.fetchedAt, now) : null;
+}
+
+// ── AWS ──────────────────────────────────────────────────────────────────
+
+/** The same once-per-window claim as claimTry, kept in aws_latest beside the AWS feeds' other markers. */
+async function claimAwsTry(db: D1Database, key: string, now: Date, windowMs: number): Promise<boolean> {
+  const r = await db
+    .prepare("INSERT INTO aws_latest (key, json, updated_at) VALUES (?1, '{}', ?2) ON CONFLICT (key) DO UPDATE SET updated_at = excluded.updated_at WHERE aws_latest.updated_at <= ?3")
+    .bind(key, now.toISOString(), iso(now.getTime() - windowMs))
+    .run();
+  return Number(r.meta?.changes ?? 0) > 0;
+}
+
+/**
+ * The AWS capacity check for a region and instance type (GET
+ * /api/v1/azure/capacity with an AWS region). From the stored reading when
+ * it is under a day old and has the type; otherwise, for AWS's own region
+ * with AWS connected, one run of the AWS capacity feed now (once per region
+ * per 10 minutes). When that is not possible, an older reading if there is
+ * one, else "not known" (awsCapacityCheck with no doc).
+ */
+export async function awsCapacityFor(env: Env, cfg: Config, region: string, size: string, now: Date): Promise<CapacityCheck> {
+  let have = await readAwsCapacity(env.DB, region);
+  const fromHave = () => awsCapacityCheck(have?.doc ?? null, region, size, cfg.testVm, have?.fetchedAt ?? null);
+  const fresh = have && now.getTime() - Date.parse(have.fetchedAt) < CAPACITY_FRESH_MS;
+  if (fresh && have!.doc.sizes.some((s) => s.name === size)) return fromHave();
+  // The feed reads AWS's configured region (and its instance types) only.
+  if (!awsConfigured(env) || region !== config(env).aws.region) return fromHave();
+  if (!(await claimAwsTry(env.DB, `capacity-try:${region}`, now, CAPACITY_RETRY_MS))) return fromHave();
+  try {
+    const ctx = await oneOffAwsCtx(env, now, awsCapacityFeed.calls);
+    const r = await awsCapacityFeed.run(ctx);
+    await recordAwsFeedResult(env, awsCapacityFeed.id, now, r, awsCapacityFeed.cadenceMin);
+    have = (await readAwsCapacity(env.DB, region)) ?? have;
+  } catch (e) {
+    console.error("AWS capacity check failed:", awsPlainError(e));
+  }
+  return fromHave();
+}
+
+/** The deploy form's AWS target (AWS's region and instance type), from the stored reading only (never a fetch); null until one exists. */
+export async function awsDeployTargetCapacity(env: Env, cfg: Config): Promise<CapacityCheck | null> {
+  const have = await readAwsCapacity(env.DB, cfg.aws.region);
+  return have ? awsCapacityCheck(have.doc, cfg.aws.region, cfg.aws.instanceType, cfg.testVm, have.fetchedAt) : null;
+}
+
+/**
+ * "Fetch now" with the server in AWS: AWS's boot log feed fetches, redacts
+ * and stores the console output (one a minute, its own rule). Answered in
+ * BootLogNow's shape so the route treats both clouds alike; errors in plain
+ * words, never a URL.
+ */
+export async function awsBootLogNow(env: Env, now: Date): Promise<BootLogNow> {
+  try {
+    const r = await fetchAwsBootLogNow(env, now);
+    if (r.ok) return { ok: true, doc: asBootLogResponse(r.doc) };
+    if (r.why === "slow_down") return { ok: false, why: "slow_down" };
+    return { ok: false, why: "upstream", message: r.message };
+  } catch (e) {
+    return { ok: false, why: "upstream", message: awsPlainError(e) };
+  }
 }

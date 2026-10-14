@@ -1,19 +1,27 @@
 // insights/read.ts
 //
 // Plain English: what the /api/v1/azure routes answer, read from D1 and the
-// snapshot only (never Azure). "No data" is null, never 0.
+// snapshot only (never Azure or AWS). "No data" is null, never 0.
+//
+// The cloud switch (AWS insights spec section 6): the snapshot's cloud
+// (cloudOf; a destroyed server keeps the cloud it was last built in) picks
+// Azure's az_* tables or AWS's aws_* tables (insights/aws/read.ts). Either
+// way the answers have the same shapes, tagged `cloud`, and every feed
+// carries its `source` for the widget footers ("Azure", "AWS CloudWatch", ...).
 
 import type { Env, Config } from "../env";
-import type { Snapshot } from "../state";
-import type { AgentVitals, AzureChangeRow, AzureChangesRange, AzureChangesWho, AzureHealth, AzureMetricsResource, AzureSummaryResponse, FeedId, FeedState, FeedStatus, ScheduledEvent } from "../../../shared/api";
-import { AZURE_METRICS, FEEDS, PIP_COLUMNS, VITALS_COLUMNS, VM_COLUMNS } from "../../../shared/azureMetrics";
+import { cloudOf, type Snapshot } from "../state";
+import type { AgentVitals, AzureChangeRow, AzureChangesRange, AzureChangesWho, AzureDiagnosticsResponse, AzureHealth, AzureMetricsResource, AzureSummaryResponse, Cloud, FeedId, FeedState, FeedStatus, ScheduledEvent, ServiceEvent } from "../../../shared/api";
+import { AZURE_METRICS, FEEDS, PIP_COLUMNS, VITALS_COLUMNS, VM_COLUMNS, awsRegionName } from "../../../shared/azureMetrics";
 import { RANGE_MS, RANGE_STEP, RAW_RES, SUMMARY_RES, type HistoryRange } from "../history";
 import { azureRegionName } from "../region";
 import { insightsConfigured, type HealthDoc, type MetricDefsDoc } from "./types";
 import { MIN, getLatest, readFeedRows, slotOf, type FeedRow } from "./common";
 import { activityCadence, healthAnnotations, lastRunEnd } from "./feeds/activity";
-import { activeRegionalIssues } from "./feeds/serviceHealth";
+import { activeRegionalIssues, regionalEvents } from "./feeds/serviceHealth";
 import { DEVSEED_KV, devSeeded } from "../devmarks";
+import { readAwsFeedRows } from "./aws/common";
+import { activeAwsRegionalIssues, awsFeedStatuses, awsHealth, awsInsightsShown, awsMetricNames, awsNewestSlot, awsRegionalEvents, readAwsChanges, readAwsMetrics } from "./aws/read";
 
 const STATES: readonly FeedState[] = ["ok", "error", "not_configured", "skipped", "idle"];
 /** How old the newest metric slot may be to count as "latest". */
@@ -38,8 +46,16 @@ export async function insightsShown(env: Env, feeds: Map<string, FeedRow>): Prom
   return [...feeds.values()].some((r) => r.status === "ok") && (await devSeeded(env, DEVSEED_KV.insights));
 }
 
-/** Every feed's status, in priority order, with the activity feed's current cadence. */
+/** The footer's source for Azure's feeds. */
+const AZURE_SOURCE = "Azure";
+
+/**
+ * Every feed's status, in priority order, with the activity feed's current
+ * cadence. With the server in AWS, the AWS feed standing in for each id
+ * (`rows`, Azure's feed rows, are then not used).
+ */
 export async function feedStatuses(env: Env, snap: Snapshot, now: Date, rows?: Map<string, FeedRow>): Promise<(FeedStatus & { lastTryAt: string | null; nextDueAt: string | null })[]> {
+  if (cloudOf(snap) === "aws") return awsFeedStatuses(env);
   const have = rows ?? (await readFeedRows(env.DB));
   const configured = await insightsShown(env, have);
   const activity = activityCadence(snap, await lastRunEnd(env.DB), now.getTime());
@@ -53,6 +69,7 @@ export async function feedStatuses(env: Env, snap: Snapshot, now: Date, rows?: M
       lastOkAt: r?.last_ok_at ?? null,
       error: configured ? r?.error ?? null : null,
       cadenceMin: f.id === "activity" ? activity : f.cadenceMin,
+      source: AZURE_SOURCE,
       lastTryAt: r?.last_try_at ?? null,
       nextDueAt: r?.next_due_at ?? null,
     };
@@ -113,10 +130,10 @@ const TREND_CREDITS = 1;
  * minutes older. A B1s earns about 6 credits an hour at idle, so a move of
  * more than 1 credit is a direction; less is flat. Null with too few readings.
  */
-async function creditsTrend(db: D1Database, t: string, newest: number): Promise<"falling" | "flat" | "rising" | null> {
+async function creditsTrend(db: D1Database, t: string, newest: number, table: "hist_az_vm" | "hist_aws_vm" = "hist_az_vm"): Promise<"falling" | "flat" | "rising" | null> {
   const at = Date.parse(t);
   const first = await db
-    .prepare("SELECT t, credits_min FROM hist_az_vm WHERE res = 300 AND t >= ?1 AND t <= ?2 AND credits_min IS NOT NULL ORDER BY t LIMIT 1")
+    .prepare(`SELECT t, credits_min FROM ${table} WHERE res = 300 AND t >= ?1 AND t <= ?2 AND credits_min IS NOT NULL ORDER BY t LIMIT 1`)
     .bind(slotOf(at - TREND_MS), slotOf(at - TREND_SPAN_MS))
     .first<{ t: string; credits_min: number }>();
   if (!first) return null;
@@ -146,10 +163,45 @@ async function health(env: Env, snap: Snapshot): Promise<AzureHealth | null> {
   return { ...doc.doc, annotations: await healthAnnotations(env.DB, ANNOTATIONS) };
 }
 
+/** The newest AWS slot's headline figures: AWS has no memory, availability or DDoS figure (spec 6). */
+async function awsLatest(db: D1Database, now: Date): Promise<AzureSummaryResponse["latest"]> {
+  const vm = await awsNewestSlot(db, slotOf(now.getTime() - LATEST_MS));
+  return {
+    cpuPct: vm?.cpu_avg ?? null,
+    creditsLeft: vm?.credits_min ?? null,
+    creditsTrend: vm && vm.credits_min !== null ? await creditsTrend(db, vm.t, vm.credits_min, "hist_aws_vm") : null,
+    memFreeBytes: null,
+    vipAvailPct: null,
+    underDdos: null,
+    at: vm?.t ?? null,
+  };
+}
+
+/** The summary with the server in AWS: AWS's region, feeds, status checks, scheduled events and status feed; the heartbeat's vitals as on Azure. */
+async function readAwsSummary(env: Env, cfg: Config, snap: Snapshot, now: Date): Promise<AzureSummaryResponse> {
+  const name = awsRegionName(cfg.aws.region);
+  const rows = await readAwsFeedRows(env.DB);
+  const { health: h, maintenance: m } = await awsHealth(env.DB, snap);
+  return {
+    cloud: "aws",
+    configured: await awsInsightsShown(env, rows),
+    region: { id: cfg.aws.region, name },
+    feeds: (await awsFeedStatuses(env, rows)).map(({ lastTryAt: _t, nextDueAt: _n, ...f }) => f),
+    health: h,
+    maintenance: m,
+    serviceIssues: await activeAwsRegionalIssues(env.DB, name),
+    vitals: agentVitals(snap),
+    agent: agentState(snap),
+    latest: await awsLatest(env.DB, now),
+  };
+}
+
 export async function readSummary(env: Env, cfg: Config, snap: Snapshot, now: Date): Promise<AzureSummaryResponse> {
+  if (cloudOf(snap) === "aws") return readAwsSummary(env, cfg, snap, now);
   const name = azureRegionName(cfg.region);
   const rows = await readFeedRows(env.DB);
   return {
+    cloud: "azure",
     configured: await insightsShown(env, rows),
     region: { id: cfg.region, name },
     feeds: (await feedStatuses(env, snap, now, rows)).map(({ lastTryAt: _t, nextDueAt: _n, ...f }) => f),
@@ -173,7 +225,9 @@ function aggregateOf(column: string): string {
 const VITALS_AGG: Record<string, string> = { steal_pct: "MAX", net_loss_pct: "MAX" };
 const POINT = `strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', t) AS INTEGER) / CAST(?3 AS INTEGER)) * CAST(?3 AS INTEGER), 'unixepoch')`;
 
-export async function readMetrics(db: D1Database, resource: AzureMetricsResource, range: HistoryRange, now: Date): Promise<{ step: number; columns: string[]; points: Record<string, number | string | null>[] }> {
+/** A resource's points. vm and pip come from the cloud's own table (hist_az_* or hist_aws_vm); the vitals from the heartbeat whatever the cloud. */
+export async function readMetrics(db: D1Database, resource: AzureMetricsResource, range: HistoryRange, now: Date, cloud: Cloud = "azure"): Promise<{ step: number; columns: string[]; points: Record<string, number | string | null>[] }> {
+  if (cloud === "aws" && resource !== "vitals") return readAwsMetrics(db, resource, range, now);
   const cols: readonly string[] = resource === "vm" ? VM_COLUMNS : resource === "pip" ? PIP_COLUMNS : VITALS_COLUMNS;
   const step = resource === "vitals" ? RANGE_STEP[range] : Math.max(300, RANGE_STEP[range]);
   const from = slotOf(now.getTime() - RANGE_MS[range], step);
@@ -194,7 +248,8 @@ export async function readMetrics(db: D1Database, resource: AzureMetricsResource
 
 const RANGE_DAYS: Record<AzureChangesRange, number> = { "24h": 1, "7d": 7, "30d": 30, "90d": 90 };
 
-export async function readChanges(db: D1Database, range: AzureChangesRange, who: AzureChangesWho, now: Date): Promise<AzureChangeRow[]> {
+export async function readChanges(db: D1Database, range: AzureChangesRange, who: AzureChangesWho, now: Date, cloud: Cloud = "azure"): Promise<AzureChangeRow[]> {
+  if (cloud === "aws") return readAwsChanges(db, range, who, now);
   const from = new Date(now.getTime() - RANGE_DAYS[range] * 86_400_000).toISOString();
   const whoSql = who === "others" ? "AND caller_kind <> 'wgadmin'" : who === "wgadmin" ? "AND caller_kind = 'wgadmin'" : "";
   const rows = (
@@ -218,4 +273,21 @@ export async function readChanges(db: D1Database, range: AzureChangesRange, who:
 export async function metricNames(db: D1Database): Promise<MetricDefsDoc> {
   const d = await getLatest<MetricDefsDoc>(db, "metricDefs");
   return { vm: Array.isArray(d?.doc?.vm) ? d!.doc.vm : null, pip: Array.isArray(d?.doc?.pip) ? d!.doc.pip : null };
+}
+
+// ── Service health and diagnostics ───────────────────────────────────────
+
+/** The region's service events since `fromIso` (plus every active one), for the server's cloud: Azure Service Health, or AWS's status feed. */
+export async function serviceEvents(db: D1Database, cfg: Config, cloud: Cloud, fromIso: string): Promise<ServiceEvent[]> {
+  return cloud === "aws" ? awsRegionalEvents(db, awsRegionName(cfg.aws.region), fromIso) : regionalEvents(db, azureRegionName(cfg.region), fromIso);
+}
+
+/** Each feed with its timing, and the metric names, for the server's cloud. configured as the screens show it, so the diagnostics agree with the widgets. */
+export async function readDiagnostics(env: Env, snap: Snapshot, now: Date): Promise<AzureDiagnosticsResponse> {
+  if (cloudOf(snap) === "aws") {
+    const rows = await readAwsFeedRows(env.DB);
+    return { cloud: "aws", configured: await awsInsightsShown(env, rows), feeds: await awsFeedStatuses(env, rows), metricNames: awsMetricNames() };
+  }
+  const rows = await readFeedRows(env.DB);
+  return { cloud: "azure", configured: await insightsShown(env, rows), feeds: await feedStatuses(env, snap, now, rows), metricNames: await metricNames(env.DB) };
 }
