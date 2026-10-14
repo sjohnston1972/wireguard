@@ -11,12 +11,12 @@ output "public_ip" {
 
 output "public_ip6" {
   description = "The server's IPv6 WAN address, or empty."
-  value       = local.ipv6 ? aws_instance.wg.ipv6_addresses[0] : ""
+  value       = local.ipv6 ? tolist(aws_network_interface.wg.ipv6_addresses)[0] : ""
 }
 
 output "vm_private_ip" {
   description = "The server's address inside the VPC."
-  value       = aws_instance.wg.private_ip
+  value       = aws_network_interface.wg.private_ip
 }
 
 output "resource_group" {

@@ -238,10 +238,10 @@ describe("AWS user data", () => {
     names.add("ssh_password").add("wg_server_ip6");
     for (const n of names) expect(call, n).toMatch(new RegExp(`\\n    ${n}\\s+=`));
   });
-  it("the worst case, gzipped as Terraform sends it, stays under 12 KB", async () => {
+  it("the worst case, gzipped at the default level (as the instance sends it), stays under 12 KB", async () => {
     const v = { ...(await worstVars()), agent_script_gz: b64gzip(""), vitals_script_gz: b64gzip(""), firewall_nft_gz: b64gzip(""), selftest_script: "", blocklist_script: "", speedtest_script: "", capture_script: "", firewall_load_script: "", admin_user: "ubuntu", wan_if: "ens5", azure_only: "", cloud: "aws", boot_bundle_sha256: "a".repeat(64) };
     const rendered = renderTemplate(read("infra/cloud-init.yaml.tftpl"), v);
-    const bytes = gzipSync(Buffer.from(rendered, "utf8"), { level: 9 }).length;
+    const bytes = gzipSync(Buffer.from(rendered, "utf8")).length; // default level, as Go gzip.NewWriter does
     console.log(`AWS user data worst case: ${bytes} bytes gzipped (ceiling ${AWS_CEILING}, limit ${AWS_LIMIT})`);
     expect(bytes).toBeLessThanOrEqual(AWS_CEILING);
     expect(bytes).toBeLessThan(AWS_LIMIT);

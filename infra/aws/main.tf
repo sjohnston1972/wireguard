@@ -4,9 +4,12 @@
 #   VPC 10.50.0.0/16 (the same plan as Azure's VNet, so client configs never change)
 #     snet-wg 10.50.1.0/24        the WireGuard server, Elastic IP, IPv6
 #     snet-workloads 10.50.2.0/24 servers behind it; default route = the server
-#   Security group sg-wg: WireGuard UDP, SSH from home, published ports, the VPC.
-# The server routes between tunnel, VPC and internet, so its source/destination
-# check is off (AWS drops forwarded packets otherwise).
+#   Security group wg-admin-headend (Name tag sg-wg; AWS forbids group names
+#   starting "sg-"): WireGuard UDP, SSH from home, published ports, the VPC.
+# The server's network card (nic-wg) and Elastic IP are made before the
+# instance, so it boots with a public address. The card routes between tunnel,
+# VPC and internet, so its source/destination check is off (AWS drops
+# forwarded packets otherwise).
 # Everything carries wg-admin=vpn (provider default_tags) so the workflow's
 # safety net and the Worker can find it all.
 
@@ -204,16 +207,37 @@ resource "aws_security_group" "wg" {
   }
 }
 
+# The server's network card, made first so the Elastic IP is on it before the
+# instance boots (cloud-init's apt step needs IPv4 internet straight away).
+resource "aws_network_interface" "wg" {
+  subnet_id          = aws_subnet.wg.id
+  security_groups    = [aws_security_group.wg.id]
+  source_dest_check  = false
+  ipv6_address_count = local.ipv6 ? 1 : 0
+  tags               = { Name = "nic-wg" }
+}
+
+resource "aws_eip" "wg" {
+  domain            = "vpc"
+  network_interface = aws_network_interface.wg.id
+  tags              = { Name = "pip-wg" }
+  depends_on        = [aws_internet_gateway.wg]
+}
+
 resource "aws_instance" "wg" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.vm_size
-  subnet_id                   = aws_subnet.wg.id
-  vpc_security_group_ids      = [aws_security_group.wg.id]
   key_name                    = aws_key_pair.wg.key_name
-  source_dest_check           = false
-  ipv6_address_count          = local.ipv6 ? 1 : 0
   user_data_base64            = base64gzip(local.cloud_init)
   user_data_replace_on_change = true
+
+  network_interface {
+    network_interface_id = aws_network_interface.wg.id
+    device_index         = 0
+  }
+
+  # The public IP and the default route must exist before the first boot.
+  depends_on = [aws_eip.wg, aws_route_table_association.wg]
 
   metadata_options {
     http_endpoint               = "enabled"
@@ -226,21 +250,17 @@ resource "aws_instance" "wg" {
     volume_size           = 8
     encrypted             = true
     delete_on_termination = true
-    # default_tags do not reach the root volume; tag it so the safety net and cost see it.
-    tags = { "wg-admin" = "vpn", project = "wg-admin", run_id = var.run_id, Name = "osdisk-wg" }
   }
+
+  # default_tags do not reach the root volume. volume_tags go in with the launch
+  # itself (RunInstances), which the deploy role allows; a later CreateTags is denied.
+  volume_tags = { "wg-admin" = "vpn", project = "wg-admin", run_id = var.run_id, Name = "osdisk-wg" }
 
   tags = { Name = "vm-wg", "wg-admin-role" = "headend" }
 
   lifecycle {
     ignore_changes = [ami]
   }
-}
-
-resource "aws_eip" "wg" {
-  domain   = "vpc"
-  instance = aws_instance.wg.id
-  tags     = { Name = "pip-wg" }
 }
 
 # ── Workloads: servers behind the WireGuard firewall ─────────────────────────
@@ -255,7 +275,7 @@ resource "aws_route_table" "workloads" {
   vpc_id = aws_vpc.wg.id
   route {
     cidr_block           = "0.0.0.0/0"
-    network_interface_id = aws_instance.wg.primary_network_interface_id
+    network_interface_id = aws_network_interface.wg.id
   }
   tags = { Name = "rt-workloads" }
 }
@@ -306,8 +326,10 @@ resource "aws_instance" "test" {
     volume_size           = 8
     encrypted             = true
     delete_on_termination = true
-    tags                  = { "wg-admin" = "vpn", project = "wg-admin", run_id = var.run_id, Name = "osdisk-test" }
   }
+
+  # Same reason as the headend: tagged at launch, not by a later CreateTags.
+  volume_tags = { "wg-admin" = "vpn", project = "wg-admin", run_id = var.run_id, Name = "osdisk-test" }
 
   tags       = { Name = "vm-test" }
   depends_on = [aws_route_table_association.workloads]
