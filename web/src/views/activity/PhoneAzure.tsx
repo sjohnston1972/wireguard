@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { EmptyState, Panel } from "@/components";
 import { useWidget } from "@/widgets";
+import { useOverview } from "@/api/queries";
+import { awsLive } from "../overview/cloud";
 import { AzureChangeDrawer, useAzureChangeRows } from "./AzureChanges";
 import { EventPill, NotConnected, callerLabel, changeLabel, notConnected } from "./azure";
 import { fmtWhen } from "./model";
@@ -10,11 +12,14 @@ const SHOWN = 5;
 
 function ChangesCard() {
   const { data, rows } = useAzureChangeRows();
+  const aws = awsLive(useOverview().data);
   const [open, setOpen] = useState<string | null>(null);
   const selected = rows.find((c) => c.id === open) ?? null;
   return (
     <Panel title="Azure change log" className="act__phone-card">
-      {!data ? (
+      {aws ? (
+        <EmptyState title="AWS insights are coming soon" description="These panels show Azure's figures when the server runs in Azure." />
+      ) : !data ? (
         <p className="act__muted" aria-busy="true">Loading Azure changes...</p>
       ) : notConnected(data.feed) ? (
         <NotConnected />
@@ -42,11 +47,14 @@ function ChangesCard() {
 
 function HealthCard() {
   const { data, events, region } = useServiceEvents();
+  const aws = awsLive(useOverview().data);
   const [open, setOpen] = useState<string | null>(null);
   const selected = events.find((e) => e.trackingId === open) ?? null;
   return (
     <Panel title="Azure service health" className="act__phone-card act__health-card">
-      {!data ? (
+      {aws ? (
+        <EmptyState title="AWS insights are coming soon" description="These panels show Azure's figures when the server runs in Azure." />
+      ) : !data ? (
         <p className="act__muted" aria-busy="true">Loading Azure service health...</p>
       ) : notConnected(data.feed) ? (
         <NotConnected />

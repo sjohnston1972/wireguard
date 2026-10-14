@@ -26,7 +26,7 @@ import * as db from "../db";
 import { canDispatch, type Env } from "../env";
 import { isDemoEnv } from "../demo/env";
 import { fixedConfig } from "../settings";
-import { getSnapshot } from "../state";
+import { cloudOf, getSnapshot } from "../state";
 import { REGIONS } from "../region";
 import { catalogue, labDef, labReadme } from "../labs/catalogue";
 import { checkLabPermissions } from "../labs/permissions";
@@ -340,8 +340,12 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     if (!def) return notFound(c);
     const b = r.b as unknown as DeployInput;
     if (b.hours > def.timing.max_h) return bad(c, `${def.title} runs for at most ${def.timing.max_h} hours.`, "hours");
-    const { session, run } = await deployLab(c.env, def.id, b, c.get("user"));
-    return c.json({ ok: true, message: `Deploying ${def.title}.`, sessionId: session.id, runId: run.id });
+    // Labs always build in Azure and connect to the headend by VNet peering, which an AWS headend cannot do: run unconnected.
+    const snap = await getSnapshot(c.env);
+    const awsHeadend = cloudOf(snap) === "aws" && snap.state !== "destroyed";
+    const { session, run } = await deployLab(c.env, def.id, { ...b, peer: b.peer && !awsHeadend }, c.get("user"));
+    const unconnected = awsHeadend && b.peer ? " Connect needs an Azure headend; this lab runs unconnected." : "";
+    return c.json({ ok: true, message: `Deploying ${def.title}.${unconnected}`, sessionId: session.id, runId: run.id });
   });
   action("extend", EXTEND, (b, c) => {
     if (b.hours !== undefined && b.toMax !== undefined) return bad(c, "Extend by hours or to the maximum, not both.", "toMax");

@@ -82,7 +82,7 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
           label="Month to date (actual)"
           value={known ? gbp(cost.monthToDate) : null}
           delta={deltas && known && change !== null ? { text: `${Math.abs(Math.round(change))}%`, direction: change < 0 ? "down" : "up", good: change <= 0 } : undefined}
-          sub={cost.meta.asOfDay ? `Azure actual, as of ${dayLabel(cost.meta.asOfDay)} (UTC)` : "Azure has not listed a day yet"}
+          sub={cost.byCloud.aws > 0 ? `Azure ${gbp(cost.byCloud.azure)} · AWS ${gbp(cost.byCloud.aws)}` : cost.meta.asOfDay ? `Azure actual, as of ${dayLabel(cost.meta.asOfDay)} (UTC)` : "Azure has not listed a day yet"}
         />
       </Named>
     ),

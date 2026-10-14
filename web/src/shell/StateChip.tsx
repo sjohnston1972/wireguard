@@ -50,7 +50,7 @@ export function chipFor(o: OverviewResponse): ChipView {
   const state = o.snapshot.state;
   if (state === "destroyed") return { text: "Destroyed · £0", tone: "idle" };
   const parts = [WORDS[state] ?? state];
-  const region = regionLabel(o.snapshot.region ?? o.config?.region);
+  const region = regionLabel(o.snapshot.region ?? (cloudOf(o) === "aws" ? o.config?.aws?.region : o.config?.region));
   if (region) parts.push(region);
   if (state === "running" && o.snapshot.auto_destroy_at) {
     const left = Date.parse(o.snapshot.auto_destroy_at) - Date.parse(o.now);

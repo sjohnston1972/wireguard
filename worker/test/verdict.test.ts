@@ -242,3 +242,13 @@ describe("verdict thresholds", () => {
     expect(verdictThresholds({})).toEqual(off);
   });
 });
+
+describe("verdict names the headend's cloud in maintenance lines", () => {
+  it("says AWS when the headend is AWS, Azure otherwise", () => {
+    const soon = azure({ maintenance: [event({ notBefore: iso(NOW + 15 * MIN) })] });
+    expect(verdict(input({ azure: soon, cloud: "AWS" })).title).toBe("AWS will reboot the VM at 13:15");
+    const later = azure({ maintenance: [event({ notBefore: iso(NOW + 16 * MIN) })] });
+    expect(verdict(input({ azure: later, cloud: "AWS" })).title).toBe("AWS maintenance planned for 4 Oct, 13:16");
+    expect(verdict(input({ azure: later })).title).toBe("Azure maintenance planned for 4 Oct, 13:16");
+  });
+});

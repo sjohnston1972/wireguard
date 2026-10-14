@@ -634,11 +634,11 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
   });
   // A packet capture still waiting on the VM will never arrive now.
   if (before.capture_req) await db.failPendingCapture(env, before.capture_req.id, "VM torn down");
-  await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
+  await db.addAlert(env, "destroy", `Torn down (${meta.via}). ${opsFor(cloudOf(before)).label} cost is now £0.`, run.id);
   if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);
   const next = before.pending_deploy;
   if (!next) {
-    await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; Azure cost is £0.`, { tags: ["wastebasket"] });
+    await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; ${opsFor(cloudOf(before)).label} cost is £0.`, { tags: ["wastebasket"] });
     await clearBootBundles(env);
     return true;
   }
@@ -884,9 +884,9 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
   try {
     const ev = freshScheduledEvents(report.vitals, snap.sched_events_seen);
     for (const e of ev.fresh) {
-      const note = scheduledEventNote(e);
+      const note = scheduledEventNote(e, opsFor(cloudOf(snap)).label);
       await db.addAlert(env, "info", note);
-      await notify(env, "wg-admin: Azure maintenance scheduled", note, { tags: ["calendar"], buttons: [dashboardButton(env)] });
+      await notify(env, `wg-admin: ${opsFor(cloudOf(snap)).label} maintenance scheduled`, note, { tags: ["calendar"], buttons: [dashboardButton(env)] });
     }
     if (ev.fresh.length) patch.sched_events_seen = ev.seen;
   } catch (e) {
@@ -904,7 +904,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
       const t = { id: res.id, at: report.at, target_name: req.target_name, down_mbps: mbps(res.down_bps), up_mbps: mbps(res.up_bps), rtt_ms: typeof res.rtt_ms === "number" ? res.rtt_ms : null, jitter_ms: typeof res.jitter_ms === "number" ? res.jitter_ms : null, error: res.error || null };
       await db.saveSpeedTest(env, t);
       patch.speedtest_req = null;
-      await db.addAlert(env, t.error ? "failure" : "info", t.error ? `Speed test failed: ${t.error}` : `Speed test to ${t.target_name}: Azure to home ${t.down_mbps ?? "?"} Mbit/s, home to Azure ${t.up_mbps ?? "?"} Mbit/s, ${t.rtt_ms ?? "?"} ms.`);
+      await db.addAlert(env, t.error ? "failure" : "info", t.error ? `Speed test failed: ${t.error}` : `Speed test to ${t.target_name}: ${opsFor(cloudOf(snap)).label} to home ${t.down_mbps ?? "?"} Mbit/s, home to ${opsFor(cloudOf(snap)).label} ${t.up_mbps ?? "?"} Mbit/s, ${t.rtt_ms ?? "?"} ms.`);
     }
   } else if (req) {
     if (Date.now() - Date.parse(req.at) > 5 * 60_000) {
@@ -998,7 +998,7 @@ export async function cancelActive(env: Env): Promise<string> {
   if (!run) return "Nothing to cancel.";
   if (run.github_run_id) await cancelGhRun(env, run.github_run_id);
   await failRun(env, run, "Cancelled from the dashboard.");
-  return "Cancelled. Use Clean up to make sure Azure is empty.";
+  return `Cancelled. Use Clean up to make sure ${(await headendOps(env)).label} is empty.`;
 }
 
 /** Compare our snapshot with Azure. Returns a drift description or null. */
@@ -1036,20 +1036,20 @@ export async function reconcile(env: Env, requestedBy: string): Promise<string> 
   if (az.rg_exists && (snap.state === "destroyed" || snap.state === "failed")) {
     // A clean-up tear-down must not be followed by an old queued Move.
     await saveSnapshot(env, { pending_deploy: null });
-    await startDestroy(env, requestedBy, "reconcile: Azure had resources");
-    return "Azure still had resources. A tear-down has been started.";
+    await startDestroy(env, requestedBy, `reconcile: ${c.label} had resources`);
+    return `${c.label} still had resources. A tear-down has been started.`;
   }
   if (!az.rg_exists && snap.state !== "destroyed") {
     const run = await db.activeRun(env);
-    if (run) await db.settleRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: "reconciled: Azure empty" });
+    if (run) await db.settleRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: `reconciled: ${c.label} empty` });
     await releaseLock(env, undefined, true);
-    await db.clearSshPasswords(env); // nothing left in Azure to log in to
+    await db.clearSshPasswords(env); // nothing left in the cloud to log in to
     if (snap.capture_req) await db.failPendingCapture(env, snap.capture_req.id, "VM torn down");
     await saveSnapshot(env, { state: "destroyed", since: new Date().toISOString(), public_ip: null, dns_ip: null, dns_live: false, auto_destroy_at: null, agent: null, last_agent_at: null, drift: null, error: null, steps: [], log_tail: null, running_since: null, pending_deploy: null, pending_summary: null, capture_req: null });
-    return "Azure is empty. State set to Destroyed.";
+    return `${c.label} is empty. State set to Destroyed.`;
   }
   await saveSnapshot(env, { drift: null });
-  return "Azure and the dashboard agree. Nothing to do.";
+  return `${c.label} and the dashboard agree. Nothing to do.`;
 }
 
 /** Move the auto-destroy deadline. hours = null clears it. */

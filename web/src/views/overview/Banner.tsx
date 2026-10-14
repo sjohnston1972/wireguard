@@ -6,6 +6,7 @@ import { useRePeerLabs } from "@/api/mutations";
 import { DEMO_ACTIONS_OFF, useDemoOn } from "@/api/demo";
 import { WidgetCorner, useCornerHost, useWidget } from "@/widgets";
 import { DeployForm, actionAllowed, type ActionName } from "./actions";
+import { cloudLabel, cloudOf } from "./cloud";
 import { STATE_TONE, STATE_WORD, currentStep, failedStep, formatElapsed, formatSpan, hhmm, inGithubRun, isBusy, moveTargets, regionShort, stepProgress, usually } from "./model";
 import { useServerNow } from "./hooks";
 import { labsBannerText } from "./labs";
@@ -27,9 +28,10 @@ export function StateMark({ state, size = 40 }: { state: OverviewResponse["snaps
 function gatewaySubline(o: OverviewResponse, now: number, autoDestroy = true, labs = false): string {
   const s = o.snapshot;
   const step = currentStep(s.steps);
+  const L = cloudLabel(cloudOf(o));
   switch (s.state) {
     case "deploying":
-      return step ? `Setting up WireGuard on Azure: ${step.name}` : "Setting up WireGuard on Azure: waiting for GitHub to start";
+      return step ? `Setting up WireGuard on ${L}: ${step.name}` : `Setting up WireGuard on ${L}: waiting for GitHub to start`;
     case "destroying":
       return step ? `Removing the VM, its address and DNS record: ${step.name}` : "Removing the VM, its address and DNS record";
     case "hibernating":
@@ -39,7 +41,7 @@ function gatewaySubline(o: OverviewResponse, now: number, autoDestroy = true, la
     case "running": {
       const at = s.auto_destroy_at ? Date.parse(s.auto_destroy_at) - now : null;
       const timer = at === null ? "no timer set" : at > 0 ? `${o.config.expiryAction === "hibernate" ? "hibernates" : "tears down"} in ${formatSpan(at)}` : "timer due";
-      const up = `Up at ${o.config.dnsName || "its address"} in ${regionShort(s.region ?? o.config.region) || "Azure"}`;
+      const up = `Up at ${o.config.dnsName || "its address"} in ${regionShort(s.region ?? o.config.region) || L}`;
       return autoDestroy ? `${up} · ${timer}` : up;
     }
     case "standby":
@@ -47,7 +49,7 @@ function gatewaySubline(o: OverviewResponse, now: number, autoDestroy = true, la
     case "failed":
       return s.error ?? "The last run failed";
     case "destroyed":
-      return `${labs ? "No gateway VM, £0 for it." : "Nothing in Azure, £0."} Deploy builds a ${o.config.vmSize || "VM"} and points ${o.config.dnsName || "the name"} at it`;
+      return `${labs ? "No gateway VM, £0 for it." : "Nothing in the cloud, £0."} Deploy builds a ${o.config.vmSize || "VM"} and points ${o.config.dnsName || "the name"} at it`;
   }
 }
 

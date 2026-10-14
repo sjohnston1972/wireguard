@@ -68,7 +68,7 @@ export function ForwardModal({ fw, open, onOpenChange, editing }: { fw: Firewall
       open={open}
       onOpenChange={onOpenChange}
       title={editing ? `Edit ${editing.name}` : "Add published port"}
-      description="Expose a server on your network to the internet through the VM. This changes Azure and the VM at once; it is not part of the draft."
+      description="Expose a server on your network to the internet through the VM. This changes the cloud's firewall and the VM at once; it is not part of the draft."
       width={520}
       footer={
         <>
@@ -95,7 +95,7 @@ export function ForwardModal({ fw, open, onOpenChange, editing }: { fw: Firewall
           </Field>
         </div>
         <div className="fw-form__row">
-          <Field label="Target address" hint={`An address in the Azure VNet${vnet ? ` (${vnet})` : ""}${home ? ` or the home LAN (${home})` : ""}.`} error={m.fieldError("target_ip")}>
+          <Field label="Target address" hint={`An address in the cloud network${vnet ? ` (${vnet})` : ""}${home ? ` or the home LAN (${home})` : ""}.`} error={m.fieldError("target_ip")}>
             {(p) => <input {...p} className="input input--mono" value={f.target_ip} onChange={(e) => set("target_ip", e.target.value)} placeholder="10.50.2.4" />}
           </Field>
           <Field label="Target port" hint="Blank: the same as the public port." error={m.fieldError("target_port")}>
@@ -165,7 +165,7 @@ export function PortsList({ fw, onAdd, onEdit, all = false }: { fw: FirewallResp
           </li>
         ))}
       </ul>
-      <Modal open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)} title={`Stop publishing ${deleting?.name ?? ""}?`} description="The port closes on Azure and the VM at once. This is not part of the draft.">
+      <Modal open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)} title={`Stop publishing ${deleting?.name ?? ""}?`} description="The port closes in the cloud and on the VM at once. This is not part of the draft.">
         {deleting && <ConfirmByTyping phrase={deleting.name} actionLabel="Delete published port" pending={del.isPending} onConfirm={() => del.mutate(deleting.id, { onSuccess: () => setDeleting(null) })} />}
       </Modal>
     </>

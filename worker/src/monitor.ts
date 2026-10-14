@@ -209,8 +209,8 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         const c = opsFor(cloudOf(snap));
         const az = c.configured(env) ? await c.view(env) : null;
         if (az && !az.error && az.rg_exists) {
-          await startDestroy(env, "watchman", `failed ${FAILED_GRACE_MINUTES} min ago with resources still in Azure`);
-          const msg = `The last run failed ${Math.round(failedFor / 60_000)} minutes ago and left resource group ${cfg.resourceGroup} in Azure, which is costing money. Tearing it down.`;
+          await startDestroy(env, "watchman", `failed ${FAILED_GRACE_MINUTES} min ago with resources still in ${c.label}`);
+          const msg = `The last run failed ${Math.round(failedFor / 60_000)} minutes ago and left resource group ${cfg.resourceGroup} in ${c.label}, which is costing money. Tearing it down.`;
           await db.addAlert(env, "cost_guard", msg);
           await notify(env, "wg-admin: cleaning up after a failed run", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open dashboard", "/activity")] });
           notes.push(msg);

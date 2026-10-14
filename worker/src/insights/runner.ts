@@ -33,7 +33,7 @@
 import type { Env } from "../env";
 import { arm as armCall, armToken } from "../azure";
 import { effectiveConfig } from "../settings";
-import { getSnapshot, type Snapshot } from "../state";
+import { cloudOf, getSnapshot, type Snapshot } from "../state";
 import { AZ_RUN_BUDGET, BudgetExceeded, FEED_IDS, insightsConfigured, makeBudget, type Budget, type Feed, type FeedCtx, type FeedResult, type FeedWhen, type InsightsFeedId } from "./types";
 import { MIN, iso, markDueStmt, plainError, readFeedRows, rgExists, vmExists, vmMetricsApply, type FeedRow } from "./common";
 import health from "./feeds/health";
@@ -69,6 +69,7 @@ export const RUN_SOFT_DEADLINE_MS = 18_000;
 
 const OUT_OF_CALLS = `This run's ${AZ_RUN_BUDGET} Azure calls were used up; it runs next time.`;
 const OUT_OF_TIME = "This run ran out of time; it runs next time.";
+const AWS_SKIP = "The server runs in AWS; AWS insights are coming soon.";
 
 /** Thrown before an outside call once the run is past RUN_SOFT_DEADLINE_MS. Ends the feed as skipped. */
 class RunOutOfTime extends Error {
@@ -288,6 +289,12 @@ export async function runInsights(env: Env, now: Date = new Date(), feeds: reado
   const late = () => clock() - started >= RUN_SOFT_DEADLINE_MS;
   const lines: string[] = [];
   const [snap, cfg, rows] = await Promise.all([getSnapshot(env), effectiveConfig(env), readFeedRows(env.DB)]);
+  // An AWS headend has no Azure figures to collect (AWS insights are project 2): every feed reads skipped, no call is made.
+  if (cloudOf(snap) === "aws" && snap.state !== "destroyed") {
+    const stmts = feeds.map((f) => ({ id: f.id, stmt: recordStmt(env, f.id, now, { status: "skipped", error: AWS_SKIP }, rows.get(f.id) ?? null, f.cadenceMin) }));
+    await flush(env, stmts, lines);
+    return lines;
+  }
   const budget = makeBudget(AZ_RUN_BUDGET, opts.parent);
   const signIn = signInOnce(env, budget);
   const pending: { id: string; stmt: D1PreparedStatement }[] = [];

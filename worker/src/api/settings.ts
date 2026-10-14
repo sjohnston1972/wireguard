@@ -10,7 +10,7 @@ import type { Hono, Context } from "hono";
 import { body, fail, type ApiEnv } from "./app";
 import { idParam } from "./clients";
 import * as db from "../db";
-import { config, missingSecrets } from "../env";
+import { canAws, config, missingSecrets } from "../env";
 import { getSnapshot } from "../state";
 import { fixedConfig, saveOverrides, OVERRIDABLE, VM_SIZES } from "../settings";
 import { REGIONS } from "../region";
@@ -48,6 +48,7 @@ export function registerSettings(api: Hono<ApiEnv>): void {
     const [cfg, stored, snap, profiles, schedules, pushSubs, lock, backups, rotation, serverPub, notifyError] = await Promise.all([
       fixedConfig(env), db.allSettings(env), getSnapshot(env), db.listProfiles(env), db.listSchedules(env), db.listPushSubs(env), lockStatus(env), backupStatus(env, true), rotationStatus(env), serverPublicKey(env), lastNotifyError(env),
     ]);
+    const aws = config(env).aws;
     const out: SettingsResponse = {
       values: {
         region: cfg.region, vmSize: cfg.vmSize, testVm: cfg.testVm, autoDestroyDefaultHours: cfg.autoDestroyDefaultHours, expiryAction: cfg.expiryAction, standbyMaxDays: cfg.standbyMaxDays,
@@ -59,6 +60,7 @@ export function registerSettings(api: Hono<ApiEnv>): void {
       overridable: Object.keys(OVERRIDABLE),
       regions: REGIONS,
       vmSizes: VM_SIZES,
+      aws: { enabled: aws.enabled, configured: canAws(env), region: aws.region, instanceType: aws.instanceType, hourlyRateGbp: aws.hourlyRateGbp, standbyRateGbp: aws.standbyRateGbp },
       profiles: profiles.map((p) => ({ ...p, deployed: snap.state !== "destroyed" && snap.profile === p.name })),
       schedules: schedules.map((s) => ({ ...s, daysText: daysText(s.days), profileName: profiles.find((p) => p.id === s.profile_id)?.name ?? null })),
       nextScheduledStart: nextStart(schedules, new Date()),

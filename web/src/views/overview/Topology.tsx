@@ -7,6 +7,7 @@ import { useWidget } from "@/widgets";
 import { useAzureSummary } from "@/api/queries";
 import { AzureDrawer, SshDrawer } from "./drawers";
 import { PEERING_WORD } from "./labs";
+import { cloudFull, cloudOf } from "./cloud";
 import { regionFull, topology, type NodeStatus, type NodeView } from "./model";
 import "./Topology.css";
 
@@ -107,7 +108,7 @@ export function Topology({ o, now, compact }: { o: OverviewResponse; now: number
           lines={lines([<span className="mono">{o.config.dnsName || "no name set"}</span>, <span className="mono">{o.config.subnet || "no subnet"}</span>])}
         />
         <Edge status={t.edges[1]} label={st.edgeLabels && o.config.port ? `UDP ${o.config.port}` : undefined} />
-        <Node title="Microsoft Azure" icon={<Cloud size={26} />} view={t.azure} onClick={() => setDrawer("azure")} lines={lines([regionFull(region) || "no region", s.azure ? `${s.azure.resources.length} resources` : "not checked yet"])} />
+        <Node title={cloudFull(cloudOf(o))} icon={<Cloud size={26} />} view={t.azure} onClick={() => setDrawer("azure")} lines={lines([regionFull(region) || "no region", s.azure ? `${s.azure.resources.length} resources` : "not checked yet"])} />
         {o.labs.running.length > 0 && <LabBoxes labs={o.labs.running} />}
       </div>
       <SshDrawer o={o} open={drawer === "ssh"} onClose={() => setDrawer(null)} />

@@ -313,3 +313,15 @@ describe("firewall (L2.6)", () => {
     expect(home.verdict).toBe("deny");
   });
 });
+
+describe("labs on an AWS headend", () => {
+  it("a deploy that asks to connect is accepted, runs unconnected, and says so", async () => {
+    freeze();
+    const { env } = await labEnv();
+    await saveSnapshot(env, { state: "running", running_since: NOW, cloud: "aws" });
+    const r = await deployLab(env, "az104-06-blob-security", { hours: 2, peer: true });
+    expect(r.status).toBe(200);
+    expect(r.json.message).toMatch(/Connect needs an Azure headend; this lab runs unconnected\./);
+    expect((await session(env, r.json.sessionId))!.peering).toBe("off");
+  });
+});

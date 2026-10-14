@@ -347,6 +347,8 @@ export interface SettingsResponse {
   overridable: string[];
   regions: Record<string, string>;
   vmSizes: string[];
+  /** The second cloud: set up (keys and role in place), switched on for Deploy, and what it costs. */
+  aws: { enabled: boolean; configured: boolean; region: string; instanceType: string; hourlyRateGbp: number; standbyRateGbp: number };
   /** `deployed`: the running (or Standby) VM was built from this profile. */
   profiles: (Profile & { deployed: boolean })[];
   schedules: (Schedule & { daysText: string; profileName: string | null })[];

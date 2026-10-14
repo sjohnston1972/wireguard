@@ -6,6 +6,7 @@ import type { Step as UiStep, StepState } from "@/components";
 import type { ParsedLog } from "@/lib/parseLog";
 import type { Snapshot, Step } from "../../../../worker/src/state";
 import { REGIONS } from "../../../../worker/src/region";
+import { cloudOf } from "./cloud";
 
 export type State = Snapshot["state"];
 
@@ -251,7 +252,7 @@ export function topology(o: OverviewResponse, health?: AzureHealth | null): Topo
   else if (!az.exists) {
     if (s.state === "deploying") azure = { status: "unknown", word: "Creating", why: "deploy under way; nothing in the resource group yet" };
     else if (s.state === "destroying") azure = { status: "unknown", word: "Removed", why: "tear-down under way; the resource group is gone" };
-    else if (vmUp) azure = { status: "down", word: "Missing", why: "the resource group is not in Azure" };
+    else if (vmUp) azure = { status: "down", word: "Missing", why: cloudOf(o) === "aws" ? "nothing tagged wg-admin=vpn is in AWS" : "the resource group is not in Azure" };
     else azure = { status: "unknown", word: "Empty", why: "nothing in the resource group" };
   } else if (s.state === "running") azure = { status: "healthy", word: "Online", why: `${az.resources.length} resources` };
   else if (s.state === "failed" || s.state === "destroyed") azure = { status: "degraded", word: "Leftovers", why: `${az.resources.length} resources still there` };

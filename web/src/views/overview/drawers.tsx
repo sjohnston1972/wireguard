@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { OverviewResponse } from "@shared/api";
 import { Button, CopyButton, Drawer, KeyValue } from "@/components";
 import { fetchSshPassword, useAllowSsh, useReconcile } from "@/api/mutations";
+import { cloudLabel, cloudOf } from "./cloud";
 import { ageOf } from "./model";
 import "./drawers.css";
 
@@ -52,6 +53,7 @@ export function SshDrawer({ o, open, onClose }: { o: OverviewResponse; open: boo
   const running = s.state === "running";
   const dep = o.deployment;
   const loopback = o.config.loopbackIp;
+  const sshUser = cloudOf(o) === "aws" ? "ubuntu" : "azureuser";
   return (
     <Drawer open={open} onOpenChange={(v) => !v && onClose()} title="SSH to the VM" subtitle="User, password and allow-list for this deployment">
       {!running ? (
@@ -60,7 +62,7 @@ export function SshDrawer({ o, open, onClose }: { o: OverviewResponse; open: boo
         <div className="ov-drawer__stack">
           <KeyValue
             items={[
-              { label: "User", value: "azureuser", mono: true },
+              { label: "User", value: sshUser, mono: true },
               { label: "Over the tunnel", value: loopback || null, mono: true, copy: true },
               { label: "Over the internet", value: s.public_ip, mono: true, copy: true },
               { label: "Allowed from", value: dep?.sshAllowedFrom ?? "nobody (no SSH rule)", mono: true },
@@ -79,7 +81,7 @@ export function SshDrawer({ o, open, onClose }: { o: OverviewResponse; open: boo
           </div>
           <div>
             <p className="ov-drawer__caption">Commands</p>
-            <code className="ov-drawer__code">ssh azureuser@{loopback || s.public_ip}</code>
+            <code className="ov-drawer__code">ssh {sshUser}@{loopback || s.public_ip}</code>
             <p className="ov-drawer__note">Over the tunnel from any connected client; port 22 is never exposed that way.</p>
           </div>
         </div>
@@ -91,18 +93,19 @@ export function SshDrawer({ o, open, onClose }: { o: OverviewResponse; open: boo
 export function AzureDrawer({ o, now, open, onClose }: { o: OverviewResponse; now: number; open: boolean; onClose: () => void }) {
   const reconcile = useReconcile();
   const az = o.snapshot.azure;
+  const L = cloudLabel(cloudOf(o));
   const rows = az?.resources ?? [];
   const sub = az ? `${rows.length} resource${rows.length === 1 ? "" : "s"} in ${az.resource_group}, checked ${ageOf(az.checked_at, now) ?? "at an unknown time"}` : "Not checked yet";
   return (
     <Drawer
       open={open}
       onOpenChange={(v) => !v && onClose()}
-      title="In Azure right now"
+      title={`In ${L} right now`}
       subtitle={sub}
       size="lg"
       footer={
         <Button variant="secondary" loading={reconcile.isPending} disabled={reconcile.isPending} onClick={() => reconcile.mutate()}>
-          Check Azure now
+          Check {L} now
         </Button>
       }
     >
@@ -122,9 +125,9 @@ export function AzureDrawer({ o, now, open, onClose }: { o: OverviewResponse; no
           ))}
         </ul>
       ) : az && !az.exists ? (
-        <p className="ov-drawer__note">Azure reports nothing in {az.resource_group}.</p>
+        <p className="ov-drawer__note">{L} reports nothing in {az.resource_group}.</p>
       ) : (
-        <p className="ov-drawer__note">Waiting for the first Azure check (every 5 minutes), or press Check Azure now.</p>
+        <p className="ov-drawer__note">Waiting for the first {L} check (every 5 minutes), or press Check {L} now.</p>
       )}
     </Drawer>
   );

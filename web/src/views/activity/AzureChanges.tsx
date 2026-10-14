@@ -1,7 +1,8 @@
 import { History } from "lucide-react";
 import { useState } from "react";
 import type { AzureChangeRow, AzureChangesRange, AzureChangesWho } from "@shared/api";
-import { useAzureChanges, useAzureSummary } from "@/api/queries";
+import { useAzureChanges, useAzureSummary, useOverview } from "@/api/queries";
+import { awsLive } from "../overview/cloud";
 import { Column, DataTable, Drawer, EmptyState, ErrorState, KeyValue, Panel, Skeleton } from "@/components";
 import { useWidget } from "@/widgets";
 import { ChangeStatus, FeedLine, NotConnected, callerLabel, changeLabel, isFailed, kindOf, notConnected, useHeld } from "./azure";
@@ -43,6 +44,7 @@ export function AzureChangeDrawer({ change, onClose }: { change: AzureChangeRow;
 /** Activity's "Azure change log" widget: who changed what in Azure, the portal included. */
 export function AzureChangesPanel() {
   const { q, data, rows, settings } = useAzureChangeRows();
+  const aws = awsLive(useOverview().data);
   const [open, setOpen] = useState<string | null>(null);
   const cols: Column<AzureChangeRow>[] = [
     { key: "when", header: "When", cell: (c) => fmtWhen(c.at), className: "act__col-azwhen" },
@@ -56,7 +58,9 @@ export function AzureChangesPanel() {
   const selected = rows.find((c) => c.id === open) ?? null;
   return (
     <Panel title="Azure change log" className="act__log act__azlog" flush bodyClassName="act__list-body">
-      {!data && q.isError ? (
+      {aws ? (
+        <EmptyState title="AWS insights are coming soon" description="These panels show Azure's figures when the server runs in Azure." />
+      ) : !data && q.isError ? (
         <ErrorState message={q.error.message} onRetry={() => void q.refetch()} />
       ) : !data ? (
         <div aria-busy="true" className="act__skel">

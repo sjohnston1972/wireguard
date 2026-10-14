@@ -241,7 +241,7 @@ describe.each(["azure", "aws"] as const)("%s", (cloud) => {
       expect(snap.session).toBeNull();
       expect(await env.STATE.get(`boot/${applyRun.id}.tgz`)).toBeNull(); // no boot bundle outlives its server
       const n = world.notes.find((x) => x.title === "wg-admin: torn down");
-      expect(n?.message).toMatch(/^Torn down after .*about £0\.\d\d\..*Azure cost is £0\.$/);
+      expect(n?.message).toMatch(cloud === "aws" ? /^Torn down after .*about £0\.\d\d\..*AWS cost is £0\.$/ : /^Torn down after .*about £0\.\d\d\..*Azure cost is £0\.$/);
       expect((await db.listAlerts(env)).some((a) => a.kind === "session")).toBe(true);
     });
   });

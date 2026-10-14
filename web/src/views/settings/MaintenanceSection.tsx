@@ -58,7 +58,7 @@ export function MaintenanceSection({ s, ov }: { s: SettingsResponse; ov?: Overvi
       </div>
       <Panel title="Destroy infrastructure">
         <p className="set-note">
-          Tears down the VM and everything Azure built for it. Clients cannot connect until you deploy again, and the next server may get a new public address. Your clients, rules and settings here are kept.
+          Tears down the VM and everything the cloud built for it. Clients cannot connect until you deploy again, and the next server may get a new public address. Your clients, rules and settings here are kept.
         </p>
         <Button variant="danger" disabled={!canDestroy} onClick={() => setAsk("destroy")}>
           Destroy infrastructure
@@ -79,7 +79,7 @@ export function MaintenanceSection({ s, ov }: { s: SettingsResponse; ov?: Overvi
         open={ask === "destroy"}
         onClose={() => setAsk(null)}
         title="Destroy infrastructure"
-        consequence="The VM and its Azure resources are deleted. All clients lose their connection until the next deploy."
+        consequence="The VM and its cloud resources are deleted. All clients lose their connection until the next deploy."
         phrase="destroy"
         actionLabel="Destroy infrastructure"
         pending={destroy.isPending}

@@ -15,6 +15,7 @@ import { setViewport } from "@/test/viewport";
 import { FEEDS } from "@shared/azureMetrics";
 import { NOW_MS, merge, overview, prefsRoutes, routes, saved, type State } from "./testData";
 import { preloadLazy } from "@/test/lazy";
+import { AWS_SOON_TEXT } from "./Insights";
 
 beforeAll(preloadLazy);
 
@@ -285,5 +286,16 @@ describe("phone", () => {
     const small = phone.querySelector(".ov-phone__small")!;
     expect(small.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole("region", { name: "VM performance" })).toBeNull();
+  });
+});
+
+describe("AWS headend", () => {
+  it("the Azure health panel shows the coming-soon note and no Azure figures", async () => {
+    const o = overview("running");
+    (o.snapshot as { cloud?: string }).cloud = "aws";
+    show(o);
+    const p = await region("Azure health");
+    expect(await within(p).findByText(AWS_SOON_TEXT)).toBeInTheDocument();
+    expect(within(p).queryByText(/Healthy|Having problems/)).toBeNull();
   });
 });

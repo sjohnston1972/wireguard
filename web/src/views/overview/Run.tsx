@@ -5,6 +5,7 @@ import { Check, Maximize2, Minus, X } from "lucide-react";
 import type { OverviewResponse } from "@shared/api";
 import { EmptyState, IconButton, LogView, Modal, Panel, Select, StepList, Tabs, cx, type LogLine } from "@/components";
 import { useRunLog } from "@/api/queries";
+import { cloudLabel, cloudOf } from "./cloud";
 import { inGithubRun, runActive, stepLine, stepMatches, stepState, uiSteps, type StepFilter } from "./model";
 import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
 import { streamState, useNowWhile } from "@/lib/liveStream";
@@ -121,7 +122,7 @@ export function RunPanels({ o }: { o: OverviewResponse }) {
       </div>
       <div className="ov-run__panels">
         <Panel title={s.state === "destroying" ? "Tear-down pipeline" : "Deployment pipeline"} className="ov-run__pipeline" bodyClassName="ov-scroll">
-          <p className="ov-run__intro">{s.state === "destroying" ? "Removing Azure resources and the DNS record." : "Provisioning Azure resources and configuring WireGuard."} Click a step to find it in the log.</p>
+          <p className="ov-run__intro">{s.state === "destroying" ? `Removing ${cloudLabel(cloudOf(o))} resources and the DNS record.` : `Provisioning ${cloudLabel(cloudOf(o))} resources and configuring WireGuard.`} Click a step to find it in the log.</p>
           <Pipeline steps={s.steps} filter={filter} onPick={pick} />
         </Panel>
         <Panel

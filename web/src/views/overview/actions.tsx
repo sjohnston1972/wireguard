@@ -348,7 +348,7 @@ function SpeedDialog({ o, onClose }: DialogProps) {
       open
       onOpenChange={(v) => !v && onClose()}
       title="Speed test"
-      description={`Azure to ${o.site?.name ?? "the home site"} and back over the tunnel: iperf3 for 5 seconds each way, then ten pings.`}
+      description={`${cloudLabel(cloudOf(o))} to ${o.site?.name ?? "the home site"} and back over the tunnel: iperf3 for 5 seconds each way, then ten pings.`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -401,7 +401,7 @@ function CleanupDialog({ o, onClose }: DialogProps) {
       open
       onOpenChange={(v) => !v && onClose()}
       title="Clean up"
-      description="Runs a tear-down to make sure nothing was left in Azure after the failure."
+      description={`Runs a tear-down to make sure nothing was left in ${cloudLabel(cloudOf(o))} after the failure.`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>

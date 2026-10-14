@@ -21,7 +21,7 @@ import { PhoneOverview } from "./Phone";
 import { STATE_WORD, inGithubRun, regionCountry, regionFull } from "./model";
 import "./Overview.css";
 
-const SUBTITLE = "Deploy and monitor your WireGuard environment on Azure.";
+const SUBTITLE = "Deploy and monitor your WireGuard environment in the cloud.";
 
 /** A read-only header field: caption over a boxed value (Region, VM size). */
 function ReadField({ caption, children }: { caption: string; children: React.ReactNode }) {

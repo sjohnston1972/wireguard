@@ -179,3 +179,22 @@ describe("Settings sections", () => {
     expect(screen.getByLabelText("location")).toHaveTextContent("/?action=deploy&profile=");
   });
 });
+
+describe("Settings: AWS panel (Deployment)", () => {
+  const aws = { enabled: true, configured: true, region: "eu-west-2", instanceType: "t4g.micro", hourlyRateGbp: 0.0112, standbyRateGbp: 0.0034 };
+
+  it("shows London, the instance type and the two rates when AWS is set up", async () => {
+    renderApp("/settings/deployment", { routes: routesFor(settingsFixture({ aws })) });
+    const panel = within(await screen.findByRole("region", { name: "AWS" }));
+    expect(panel.getByText("London (eu-west-2)")).toBeInTheDocument();
+    expect(panel.getByText("t4g.micro")).toBeInTheDocument();
+    expect(panel.getByText(/Running about £0\.0112\/h · hibernated about £0\.0034\/h/)).toBeInTheDocument();
+    expect(panel.getByText("Shown in Deploy")).toBeInTheDocument();
+  });
+
+  it("says how to set AWS up when it is not", async () => {
+    renderApp("/settings/deployment", { routes: routesFor(settingsFixture({ aws: { ...aws, enabled: false, configured: false } })) });
+    const panel = within(await screen.findByRole("region", { name: "AWS" }));
+    expect(panel.getByText("Not set up: run scripts/aws-bootstrap.mjs")).toBeInTheDocument();
+  });
+});
