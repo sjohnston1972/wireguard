@@ -24,8 +24,7 @@ import { dashboardButton } from "./actions";
 import { bytesText } from "./format";
 import { compileFirewall, publishedNsgRules } from "./firewall";
 import type { FirewallStatus, Step } from "./state";
-import { azureView, azureInventory } from "./azure";
-import { canAzure } from "./env";
+import { headendOps } from "./cloud";
 import { noteHandshakes } from "./keyrotation";
 import { recordHeartbeat, fwDeltas } from "./history";
 import { parseVitals, parseAgentVersion, freshScheduledEvents, scheduledEventNote } from "./vitals";
@@ -49,9 +48,10 @@ export class RunError extends Error {
 
 /** Re-read what exists in Azure and store it in the snapshot. Never throws. */
 export async function refreshInventory(env: Env): Promise<void> {
-  if (!canAzure(env)) return;
+  const c = await headendOps(env);
+  if (!c.configured(env)) return;
   try {
-    const azure = await azureInventory(env);
+    const azure = await c.inventory(env); // the headend's inventory, whichever cloud
     const snap = await saveSnapshot(env, { azure });
     // Self-heal: if we are Running but lost the public IP (the old KV race),
     // take it from Azure and re-check DNS against it.
@@ -503,7 +503,8 @@ async function settleWithoutCallback(env: Env, run: db.Run): Promise<void> {
     await completeDestroy(env, run, { via: "github-status" });
   } else {
     let ip: string | null = null;
-    if (canAzure(env)) ip = (await azureView(env)).public_ip;
+    const c = await headendOps(env);
+    if (c.configured(env)) ip = (await c.view(env)).public_ip;
     if (!ip && snap.public_ip) ip = snap.public_ip;
     await completeApply(env, run, ip, {}, { via: "github-status" });
   }
@@ -928,20 +929,21 @@ export async function cancelActive(env: Env): Promise<string> {
 
 /** Compare our snapshot with Azure. Returns a drift description or null. */
 export async function detectDrift(env: Env): Promise<string | null> {
-  if (!canAzure(env)) return null;
+  const c = await headendOps(env);
+  if (!c.configured(env)) return null;
   const snap = await getSnapshot(env);
   if (isBusyState(snap.state)) return null;
-  const az = await azureView(env);
+  const az = await c.view(env);
   if (az.error) return null; // unknown, not drift
   let drift: string | null = null;
-  if (snap.state === "destroyed" && az.rg_exists) drift = `Azure still has resource group ${config(env).resourceGroup} but the dashboard says Destroyed. That VM is costing money.`;
+  if (snap.state === "destroyed" && az.rg_exists) drift = `${c.label} still has resource group ${config(env).resourceGroup} but the dashboard says Destroyed. That VM is costing money.`;
   // A failed run can leave a half-built (or fully built) VM behind; nothing
   // else watches a Failed VM, so say so until it is cleaned up.
-  if (snap.state === "failed" && az.rg_exists) drift = `The last run failed but Azure still has resource group ${config(env).resourceGroup}. It may be costing money; use Clean up to tear it down.`;
-  if (snap.state === "running" && !az.rg_exists) drift = "The dashboard says Running but Azure has no resource group. Something deleted it outside this app.";
+  if (snap.state === "failed" && az.rg_exists) drift = `The last run failed but ${c.label} still has resource group ${config(env).resourceGroup}. It may be costing money; use Clean up to tear it down.`;
+  if (snap.state === "running" && !az.rg_exists) drift = `The dashboard says Running but ${c.label} has no resource group. Something deleted it outside this app.`;
   if (snap.state === "running" && az.rg_exists && az.power && az.power !== "running") drift = `The VM exists but its power state is "${az.power}".`;
-  if (snap.state === "running" && az.public_ip && snap.public_ip && az.public_ip !== snap.public_ip) drift = `Azure's public IP ${az.public_ip} differs from the recorded ${snap.public_ip}.`;
-  if (snap.state === "standby" && !az.rg_exists) drift = "The dashboard says Standby but Azure has no resource group. Something deleted it outside this app.";
+  if (snap.state === "running" && az.public_ip && snap.public_ip && az.public_ip !== snap.public_ip) drift = `${c.label}'s public IP ${az.public_ip} differs from the recorded ${snap.public_ip}.`;
+  if (snap.state === "standby" && !az.rg_exists) drift = `The dashboard says Standby but ${c.label} has no resource group. Something deleted it outside this app.`;
   if (snap.state === "standby" && az.rg_exists && az.power && az.power !== "deallocated") drift = `The dashboard says Standby but the VM's power state is "${az.power}". If it is running it is costing the full rate.`;
   if (drift !== snap.drift) await saveSnapshot(env, { drift });
   return drift;
@@ -954,8 +956,9 @@ export async function reconcile(env: Env, requestedBy: string): Promise<string> 
   await refreshInventory(env);
   const snap = await getSnapshot(env);
   if (isBusyState(snap.state)) throw new RunError("A run is in progress. Wait for it to finish (or Cancel it) before Clean up.");
-  const az = canAzure(env) ? await azureView(env) : null;
-  if (!az || az.error) return "Cannot reach Azure to reconcile.";
+  const c = await headendOps(env);
+  const az = c.configured(env) ? await c.view(env) : null;
+  if (!az || az.error) return `Cannot reach ${c.label} to reconcile.`;
   if (az.rg_exists && (snap.state === "destroyed" || snap.state === "failed")) {
     // A clean-up tear-down must not be followed by an old queued Move.
     await saveSnapshot(env, { pending_deploy: null });

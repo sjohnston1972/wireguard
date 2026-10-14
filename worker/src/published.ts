@@ -8,15 +8,15 @@ import type { Env } from "./env";
 import * as db from "./db";
 import { getSnapshot } from "./state";
 import { effectiveConfig } from "./settings";
-import { setPublishedPorts } from "./azure";
 import { publishedNsgRules } from "./firewall";
+import { headendOps } from "./cloud";
 
 /** Keep Azure's edge in step with the published ports, while there is a VM. Null when fine (or nothing to do), else Azure's reason. */
 export async function syncPublished(env: Env): Promise<string | null> {
   const snap = await getSnapshot(env);
   if (snap.state !== "running" && snap.state !== "standby") return null;
   try {
-    await setPublishedPorts(env, publishedNsgRules(await db.listForwards(env), await effectiveConfig(env)));
+    await (await headendOps(env)).setPublishedPorts(env, publishedNsgRules(await db.listForwards(env), await effectiveConfig(env)));
     return null;
   } catch (e) {
     return (e as Error).message;

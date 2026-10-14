@@ -15,7 +15,7 @@ import { startDeploy, startDestroy, cancelActive, reconcile, extendAutoDestroy, 
 import { startHibernate, startResume } from "../standby";
 import { startMove, resolveDeployTarget } from "../profiles";
 import { startSpeedTest } from "../speedtest";
-import { setSshAllowedCidr } from "../azure";
+import { headendOps } from "../cloud";
 import { requireBudgetOk } from "../budget";
 import { regionName } from "../region";
 import { markActed } from "../seen";
@@ -114,10 +114,11 @@ export function registerLifecycle(api: Hono<ApiEnv>): void {
     return act(c, async () => {
       if (!addr || addr.includes(":")) throw new RunError("Could not read an IPv4 address for this browser.");
       if ((await getSnapshot(c.env)).state !== "running") throw new RunError("Nothing is running.");
+      const ops = await headendOps(c.env);
       try {
-        await setSshAllowedCidr(c.env, `${addr}/32`);
+        await ops.setSshAllowedCidr(c.env, `${addr}/32`);
       } catch (e) {
-        throw new RunError(`Azure did not accept the change: ${(e as Error).message}`, "upstream");
+        throw new RunError(`${ops.label} did not accept the change: ${(e as Error).message}`, "upstream");
       }
       await db.addAlert(c.env, "info", `SSH allowed from ${addr} by ${user} (live NSG change).`);
       await refreshInventory(c.env);

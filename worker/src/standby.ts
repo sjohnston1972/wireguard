@@ -18,12 +18,11 @@
 //   standby -> resuming   -> running         (start; the first heartbeat ends it)
 
 import type { Env } from "./env";
-import { canAzure } from "./env";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
 import { getSnapshot, saveSnapshot, saveSnapshotIf } from "./state";
-import { azureView, vmPower } from "./azure";
+import { headendOps } from "./cloud";
 import { notify } from "./notify";
 import { actionButton, dashboardButton } from "./actions";
 import { RunError, sessionSummary, refreshInventory } from "./runs";
@@ -32,7 +31,8 @@ const lockId = (op: string) => `${op}-${new Date().toISOString().replace(/[-:]/g
 
 /** Running -> Standby. */
 export async function startHibernate(env: Env, by: string, reason: string): Promise<string> {
-  if (!canAzure(env)) throw new RunError("Azure credentials are not set on the Worker, so it cannot power the VM down.");
+  const c = await headendOps(env);
+  if (!c.configured(env)) throw new RunError(`${c.label} credentials are not set on the Worker, so it cannot power the VM down.`);
   const snap = await getSnapshot(env);
   if (snap.state !== "running") throw new RunError("Only a running VM can be hibernated.");
   // Worked out before taking the lock, so an error here cannot leave it held.
@@ -41,7 +41,7 @@ export async function startHibernate(env: Env, by: string, reason: string): Prom
   const lock = await acquireLock(env, id);
   if (!lock.ok) throw new RunError(`Another run holds the lock (${lock.holder?.runId}).`);
   try {
-    await vmPower(env, "deallocate");
+    await c.power(env, "hibernate");
   } catch (e) {
     await releaseLock(env, id);
     throw new RunError((e as Error).message);
@@ -54,14 +54,15 @@ export async function startHibernate(env: Env, by: string, reason: string): Prom
 
 /** Standby -> Running. `hours` sets a fresh auto-destroy timer (null = none). */
 export async function startResume(env: Env, by: string, hours: number | null): Promise<string> {
-  if (!canAzure(env)) throw new RunError("Azure credentials are not set on the Worker, so it cannot power the VM up.");
+  const c = await headendOps(env);
+  if (!c.configured(env)) throw new RunError(`${c.label} credentials are not set on the Worker, so it cannot power the VM up.`);
   const snap = await getSnapshot(env);
   if (snap.state !== "standby") throw new RunError("Only a VM in Standby can be resumed.");
   const id = lockId("resume");
   const lock = await acquireLock(env, id);
   if (!lock.ok) throw new RunError(`Another run holds the lock (${lock.holder?.runId}).`);
   try {
-    await vmPower(env, "start");
+    await c.power(env, "resume");
   } catch (e) {
     await releaseLock(env, id);
     throw new RunError((e as Error).message);
@@ -84,7 +85,7 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
   const snap = await getSnapshot(env);
   if (snap.state !== "hibernating" && snap.state !== "resuming") return;
   const started = Date.parse(snap.power_op_at ?? snap.since ?? new Date(now).toISOString());
-  const az = await azureView(env);
+  const az = await (await headendOps(env)).view(env);
   if (az.error) return;
 
   if (snap.state === "hibernating") {
