@@ -634,14 +634,12 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
   });
   // A packet capture still waiting on the VM will never arrive now.
   if (before.capture_req) await db.failPendingCapture(env, before.capture_req.id, "VM torn down");
-  // AWS boot bundles hold firewall rules; none outlives its server.
-  const boots = await env.STATE.list({ prefix: "boot/" });
-  await Promise.all(boots.objects.map((o) => env.STATE.delete(o.key)));
   await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
   if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);
   const next = before.pending_deploy;
   if (!next) {
     await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; Azure cost is £0.`, { tags: ["wastebasket"] });
+    await clearBootBundles(env);
     return true;
   }
   // A move ("Move to US exit"): the old one is gone, build the new one now.
@@ -653,7 +651,22 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     await db.addAlert(env, "failure", `Move: torn down, but the new deploy could not start: ${(e as Error).message}`, run.id);
     await notify(env, "wg-admin: move stopped", `Torn down, but the new deploy could not start: ${(e as Error).message}`, { priority: 4 });
   }
+  await clearBootBundles(env);
   return true;
+}
+
+/** AWS boot bundles hold firewall rules; none outlives its server. Housekeeping: it never gates a teardown. */
+async function clearBootBundles(env: Env): Promise<void> {
+  try {
+    let cursor: string | undefined;
+    do {
+      const page = await env.STATE.list({ prefix: "boot/", cursor });
+      await Promise.all(page.objects.map((o) => env.STATE.delete(o.key)));
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+  } catch (e) {
+    console.error("boot bundle cleanup failed", (e as Error).message);
+  }
 }
 
 /** GitHub Actions result callback. Returns an HTTP status and message. */

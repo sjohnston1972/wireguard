@@ -213,6 +213,20 @@ describe.each(["azure", "aws"] as const)("%s", (cloud) => {
   });
 
   describe("tear down", () => {
+    it("still completes when the boot bundle cleanup fails", async () => {
+      const { agentToken } = await deployToRunning();
+      await handleAgent(env, agentToken, { dump: DUMP(), selftest: selftest() });
+      const run = await startDestroy(env, "steven", "test");
+      const s = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env, workflow));
+      down();
+      env.STATE.list = (async () => { throw new Error("r2 down"); }) as unknown as R2Bucket["list"];
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      await handleCallback(env, s.body.callback_token as string, { run_id: run.id, action: "destroy", status: "success" });
+      expect((await getSnapshot(env)).state).toBe("destroyed");
+      expect(world.notes.some((x) => x.title === "wg-admin: torn down")).toBe(true);
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
+    });
     it("sends a session summary and clears the snapshot", async () => {
       const { run: applyRun, agentToken } = await deployToRunning();
       await env.STATE.put(`boot/${applyRun.id}.tgz`, new Uint8Array([0x1f, 0x8b, 8, 0]));
