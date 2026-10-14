@@ -62,6 +62,15 @@ describe("the watchman's alerts", () => {
   const now = new Date("2026-09-20T12:00:00Z");
   const budgetNotes = () => world.notes.filter((n) => /budget/.test(n.title));
 
+  it("names AWS in the alert only when AWS has spend this month", async () => {
+    const cfg = await effectiveConfig(env);
+    await db.upsertCostDay(env, "2026-09-01", 5);
+    await db.upsertAwsCostDay(env, "2026-09-02", 3.5, 4.7);
+    expect(await checkBudget(env, cfg, now)).toMatch(/80%/);
+    const msg = (await db.listAlerts(env)).find((a) => a.kind === "budget")!.message;
+    expect(msg).toMatch(/£8.50 spent in Azure and AWS so far/);
+  });
+
   it("sends 80% once, then 100% once, however many times it runs", async () => {
     const cfg = await effectiveConfig(env); // budget £10 in the harness
     await db.upsertCostDay(env, "2026-09-01", 5);

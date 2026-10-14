@@ -184,8 +184,10 @@ export async function checkBudget(env: Env, cfg: Config, now = new Date()): Prom
   const labActual = lab.labDays.filter((d) => d.day.startsWith(b.month)).reduce((a, d) => a + d.gbp, 0);
   const labSession = labsEstimate(lab.labs, lab.labDays, now, monthStart, new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).getTime());
   const vmSession = b.session - labSession;
+  // b.actual includes AWS: name AWS only when it has spend this month, so the Azure-only wording stays exact.
+  const awsActual = (await db.awsCostDays(env, `${b.month}-01`).catch(() => [])).filter((d) => d.day.startsWith(b.month)).reduce((a, d) => a + d.gbp, 0);
   const sums =
-    `${money(b.actual)} spent in Azure so far${labActual > 0 ? ` (${money(labActual)} of it on labs)` : ""}` +
+    `${money(b.actual)} spent in ${awsActual > 0 ? "Azure and AWS" : "Azure"} so far${labActual > 0 ? ` (${money(labActual)} of it on labs)` : ""}` +
     `${vmSession > 1e-9 ? ` plus about ${money(vmSession)} for the VM running now, to its timer` : ""}` +
     `${labSession > 0 ? ` plus about ${money(labSession)} for ${lab.labs.length} lab${lab.labs.length === 1 ? "" : "s"} running now, to ${lab.labs.length === 1 ? "its timer" : "their timers"}` : ""}` +
     `: ${Math.round(b.pct)}% of the ${money(b.budget)} monthly budget.`;
