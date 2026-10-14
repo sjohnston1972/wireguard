@@ -71,6 +71,7 @@ const BASE_SNAPSHOT: Snapshot = {
   standby_since: null,
   power_op_at: null,
   pending_summary: null,
+  cloud: null,
   region: null,
   vm_size: null,
   profile: null,

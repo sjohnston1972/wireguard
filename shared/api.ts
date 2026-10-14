@@ -7,6 +7,7 @@
 import type { Alert, AuditEntry, Capture, CostDay, Peer, Profile, Schedule, SpeedTest } from "../worker/src/db";
 import type { Forward, FwRule, Zone } from "../worker/src/firewall";
 import type { PolicyState } from "../worker/src/fwview";
+export type { Cloud } from "../worker/src/env";
 import type { Snapshot, Step, Talker } from "../worker/src/state";
 import type { ClientKpis, ClientView } from "../worker/src/clients";
 import type { SessionRow } from "../worker/src/costview";

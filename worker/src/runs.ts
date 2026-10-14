@@ -173,6 +173,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
 
   await saveSnapshot(env, {
     state: "deploying",
+    cloud: "azure",
     run_id: id,
     action: "apply",
     since: now,
