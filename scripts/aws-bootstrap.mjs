@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { loadEnv } from "./lib/env.mjs";
 
 const env = loadEnv();
-for (const k of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCESS_ALLOWED_EMAIL"]) {
+for (const k of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCESS_ALLOWED_EMAIL", "GITHUB_REPO"]) {
   if (!env[k]) throw new Error(`.env is missing ${k}`);
 }
 const dir = "infra/aws-bootstrap";
@@ -57,7 +57,7 @@ try {
   run("terraform", [`-chdir=${dir}`, "apply", "-auto-approve", "-input=false", "-no-color"]);
   const o = JSON.parse(out("terraform", [`-chdir=${dir}`, "output", "-json"]));
 
-  run("gh", ["secret", "set", "AWS_DEPLOY_ROLE_ARN"], { input: o.deploy_role_arn.value, env: process.env });
+  run("gh", ["secret", "set", "AWS_DEPLOY_ROLE_ARN", "--repo", env.GITHUB_REPO], { input: o.deploy_role_arn.value, env: process.env });
   console.log("GitHub secret set: AWS_DEPLOY_ROLE_ARN");
   const wranglerShell = process.platform === "win32";
   for (const [name, value] of [["AWS_WORKER_ACCESS_KEY_ID", o.worker_access_key_id.value], ["AWS_WORKER_SECRET_ACCESS_KEY", o.worker_secret_access_key.value]]) {

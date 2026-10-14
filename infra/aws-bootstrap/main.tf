@@ -75,12 +75,34 @@ resource "aws_iam_role_policy" "deploy" {
         Action   = ["tag:GetResources", "sts:GetCallerIdentity"]
         Resource = "*"
       },
+      # The deny below keys on the wg-admin=vpn tag, so the role must not be able
+      # to put that tag on something else (or strip it) and then act on it.
+      # Tagging at creation time (RunInstances, CreateVpc...) is still allowed.
+      {
+        Sid      = "NoRetaggingWgAdmin"
+        Effect   = "Deny"
+        Action   = ["ec2:CreateTags"]
+        Resource = "*"
+        Condition = {
+          "ForAnyValue:StringEquals" = { "aws:TagKeys" = ["wg-admin"] }
+          "Null"                     = { "ec2:CreateAction" = "true" }
+        }
+      },
+      {
+        Sid       = "NoUntaggingWgAdmin"
+        Effect    = "Deny"
+        Action    = ["ec2:DeleteTags"]
+        Resource  = "*"
+        Condition = { "ForAnyValue:StringEquals" = { "aws:TagKeys" = ["wg-admin"] } }
+      },
       {
         Sid    = "OnlyWgAdminThings"
         Effect = "Deny"
         Action = [
           "ec2:TerminateInstances", "ec2:StopInstances", "ec2:StartInstances", "ec2:ModifyInstanceAttribute",
           "ec2:DeleteVolume", "ec2:DeleteVpc", "ec2:DeleteSecurityGroup", "ec2:ReleaseAddress",
+          "ec2:DeleteSubnet", "ec2:DeleteRouteTable", "ec2:DeleteInternetGateway", "ec2:DetachInternetGateway", "ec2:DeleteKeyPair",
+          "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress", "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress",
         ]
         Resource  = "*"
         Condition = { StringNotEquals = { "aws:ResourceTag/wg-admin" = "vpn" } }
