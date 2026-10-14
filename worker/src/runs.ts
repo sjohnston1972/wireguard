@@ -1002,7 +1002,7 @@ export async function cancelActive(env: Env): Promise<string> {
   return `Cancelled. Use Clean up to make sure ${(await headendOps(env)).label} is empty.`;
 }
 
-/** Compare our snapshot with Azure. Returns a drift description or null. */
+/** Compare our snapshot with the headend's cloud. Returns a drift description or null. */
 export async function detectDrift(env: Env): Promise<string | null> {
   const c = await headendOps(env);
   if (!c.configured(env)) return null;
@@ -1010,16 +1010,19 @@ export async function detectDrift(env: Env): Promise<string | null> {
   if (isBusyState(snap.state)) return null;
   const az = await c.view(env);
   if (az.error) return null; // unknown, not drift
-  const where = cloudOf(snap) === "aws" ? "the tagged wg-admin resources" : `resource group ${config(env).resourceGroup}`;
+  const aws = cloudOf(snap) === "aws";
+  const where = aws ? "the tagged wg-admin resources" : `resource group ${config(env).resourceGroup}`;
+  // AWS has no resource group: what it has is "everything tagged wg-admin=vpn" (the Overview words it the same).
+  const gone = aws ? "nothing tagged wg-admin=vpn is in AWS" : `${c.label} has no resource group`;
   let drift: string | null = null;
   if (snap.state === "destroyed" && az.rg_exists) drift = `${c.label} still has ${where} but the dashboard says Destroyed. That VM is costing money.`;
   // A failed run can leave a half-built (or fully built) VM behind; nothing
   // else watches a Failed VM, so say so until it is cleaned up.
   if (snap.state === "failed" && az.rg_exists) drift = `The last run failed but ${c.label} still has ${where}. It may be costing money; use Clean up to tear it down.`;
-  if (snap.state === "running" && !az.rg_exists) drift = `The dashboard says Running but ${c.label} has no resource group. Something deleted it outside this app.`;
+  if (snap.state === "running" && !az.rg_exists) drift = `The dashboard says Running but ${gone}. Something deleted it outside this app.`;
   if (snap.state === "running" && az.rg_exists && az.power && az.power !== "running") drift = `The VM exists but its power state is "${az.power}".`;
   if (snap.state === "running" && az.public_ip && snap.public_ip && az.public_ip !== snap.public_ip) drift = `${c.label}'s public IP ${az.public_ip} differs from the recorded ${snap.public_ip}.`;
-  if (snap.state === "standby" && !az.rg_exists) drift = `The dashboard says Standby but ${c.label} has no resource group. Something deleted it outside this app.`;
+  if (snap.state === "standby" && !az.rg_exists) drift = `The dashboard says Standby but ${gone}. Something deleted it outside this app.`;
   if (snap.state === "standby" && az.rg_exists && az.power && az.power !== "deallocated") drift = `The dashboard says Standby but the VM's power state is "${az.power}". If it is running it is costing the full rate.`;
   if (drift !== snap.drift) await saveSnapshot(env, { drift });
   return drift;

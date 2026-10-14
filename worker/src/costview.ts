@@ -43,11 +43,12 @@ export function costWindow(range: CostRange, now: Date): { from: string; to: str
 
 /**
  * Where this month is heading: the month so far, divided by the days up to
- * the last one Azure has reported (its figures lag a day, so not today) and multiplied by the days in the month. Null
- * when Azure has not listed a day of this month yet: no data is not a £0
- * forecast.
+ * the last one the clouds have reported (their figures lag a day, so not today) and multiplied by the days in the month. Null
+ * when no cloud has listed a day of this month yet: no data is not a £0
+ * forecast. `clouds` names who reported, for the basis text ("Azure", "AWS" or both).
  */
-export function projection(days: CostDay[], now: Date): { gbp: number; basis: string } | null {
+export function projection(days: CostDay[], now: Date, clouds: string[] = ["Azure"]): { gbp: number; basis: string } | null {
+  const who = clouds.length ? `${clouds.join(" and ")} ${clouds.length > 1 ? "have" : "has"}` : "Azure has";
   const month = now.toISOString().slice(0, 7);
   const mine = days.filter((d) => d.day.startsWith(month));
   if (!mine.length) return null;
@@ -56,7 +57,7 @@ export function projection(days: CostDay[], now: Date): { gbp: number; basis: st
   const inMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
   return {
     gbp: (actual / elapsed) * inMonth,
-    basis: `£${actual.toFixed(2)} over the ${elapsed} ${elapsed === 1 ? "day" : "days"} Azure has reported so far this month, carried on at the same pace to all ${inMonth} days.`,
+    basis: `£${actual.toFixed(2)} over the ${elapsed} ${elapsed === 1 ? "day" : "days"} ${who} reported so far this month, carried on at the same pace to all ${inMonth} days.`,
   };
 }
 
