@@ -232,11 +232,10 @@ resource "aws_instance" "wg" {
   user_data_replace_on_change = true
   # Forwarding (source/destination check off) is set on the ENI it launches on
   # (aws_network_interface.wg); the provider refuses source_dest_check here
-  # alongside a network_interface block.
+  # alongside a primary_network_interface block.
 
-  network_interface {
+  primary_network_interface {
     network_interface_id = aws_network_interface.wg.id
-    device_index         = 0
   }
 
   # The public IP and the default route must exist before the first boot.
