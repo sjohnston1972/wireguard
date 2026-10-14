@@ -55,7 +55,7 @@ export const WORKER_KEYS = [
 ];
 
 /** Keys that must NEVER leave this machine. */
-export const LOCAL_ONLY = ["CLOUDFLARE_API_TOKEN"];
+export const LOCAL_ONLY = ["CLOUDFLARE_API_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION"];
 
 const PLACEHOLDER = /^REPLACE_ME/;
 
