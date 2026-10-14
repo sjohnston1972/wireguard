@@ -9,12 +9,13 @@
 
 import type { Env } from "./env";
 import * as db from "./db";
-import { getSnapshot, saveSnapshot } from "./state";
+import { getSnapshot, saveSnapshot, cloudOf } from "./state";
 import { startDestroy, RunError } from "./runs";
 import { regionName, REGIONS } from "./region";
 
 /** Tear down what exists and queue a deploy of the chosen profile. */
 export async function startMove(env: Env, o: { profileId: number; hours: number | null; by: string; requesterIp: string | null }): Promise<string> {
+  if (cloudOf(await getSnapshot(env)) === "aws") throw new RunError("Move works between Azure regions. Tear down the AWS server, then deploy in Azure.");
   const p = await db.getProfile(env, o.profileId);
   if (!p) throw new RunError("No such profile.");
   const snap = await getSnapshot(env);

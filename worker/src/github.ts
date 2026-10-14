@@ -6,7 +6,7 @@
 // GitHub does not hand back a run id when you press the button, so the
 // workflow puts our run id in its title and we look it up by that.
 
-import type { Env } from "./env";
+import type { Env, Cloud, Config } from "./env";
 import { config } from "./env";
 import type { Step } from "./state";
 
@@ -45,10 +45,14 @@ export interface DispatchPayload {
   callback_token: string;
 }
 
-/** Press "Run workflow". Throws with a readable message on failure. */
-export async function dispatchWorkflow(env: Env, action: "apply" | "destroy", payload: Partial<DispatchPayload> & { run_id: string }): Promise<void> {
-  const cfg = config(env);
-  const r = await gh(env, `/repos/${env.GITHUB_REPO}/actions/workflows/${cfg.workflow}/dispatches`, {
+/** Which workflow builds and tears down a headend in this cloud. */
+export function workflowFor(cfg: Config, cloud: Cloud): string {
+  return cloud === "aws" ? cfg.aws.workflow : cfg.workflow;
+}
+
+/** Press "Run workflow" on `workflow` (the gateway's wg.yml unless told). Throws with a readable message on failure. */
+export async function dispatchWorkflow(env: Env, action: "apply" | "destroy", payload: Partial<DispatchPayload> & { run_id: string }, workflow: string = config(env).workflow): Promise<void> {
+  const r = await gh(env, `/repos/${env.GITHUB_REPO}/actions/workflows/${workflow}/dispatches`, {
     method: "POST",
     body: JSON.stringify({ ref: "main", inputs: { action, payload: JSON.stringify(payload) } }),
   });
@@ -68,10 +72,9 @@ export interface GhRun {
   updated_at?: string; // last change, e.g. when it completed
 }
 
-/** Find the workflow run whose title carries our run id. */
-export async function findRunByTitle(env: Env, runId: string): Promise<GhRun | null> {
-  const cfg = config(env);
-  const r = await gh(env, `/repos/${env.GITHUB_REPO}/actions/workflows/${cfg.workflow}/runs?event=workflow_dispatch&per_page=15`);
+/** Find the run of `workflow` (the gateway's wg.yml unless told) whose title carries our run id. */
+export async function findRunByTitle(env: Env, runId: string, workflow: string = config(env).workflow): Promise<GhRun | null> {
+  const r = await gh(env, `/repos/${env.GITHUB_REPO}/actions/workflows/${workflow}/runs?event=workflow_dispatch&per_page=15`);
   if (!r.ok) return null;
   const data = (await r.json()) as { workflow_runs: GhRun[] };
   return data.workflow_runs.find((x) => (x.display_title ?? "").includes(runId)) ?? null;

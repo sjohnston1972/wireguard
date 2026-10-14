@@ -9,13 +9,13 @@
 // Nothing here trusts a previous guess. refreshActiveRun() re-reads GitHub
 // each time, and the cron re-checks Azure, so a missed callback heals.
 
-import type { Env } from "./env";
+import type { Env, Cloud } from "./env";
 import { config, canDispatch } from "./env";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
 import { randomToken, sha256Hex, safeEqual } from "./auth";
-import { dispatchWorkflow, findRunByTitle, getGhRun, getJobs, getJobLogTail, cancelGhRun, stepsFromJobs } from "./github";
+import { dispatchWorkflow, findRunByTitle, workflowFor, getGhRun, getJobs, getJobLogTail, cancelGhRun, stepsFromJobs } from "./github";
 import { getSnapshot, saveSnapshot, saveSnapshotIf, parseWgDump, nextTraffic, nextLatency, detectRoams, nextSession, selfTestFailures, nextTalkers, cloudOf, type AgentReport, type Snapshot, type SelfTest } from "./state";
 import { checkDns } from "./dns";
 import { agentPeerList, terraformPeerList, protectedNets } from "./peers";
@@ -25,6 +25,7 @@ import { bytesText } from "./format";
 import { compileFirewall, publishedNsgRules } from "./firewall";
 import type { FirewallStatus, Step } from "./state";
 import { headendOps, opsFor } from "./cloud";
+import { workflowRef } from "./oidc";
 import { noteHandshakes } from "./keyrotation";
 import { recordHeartbeat, fwDeltas } from "./history";
 import { parseVitals, parseAgentVersion, freshScheduledEvents, scheduledEventNote } from "./vitals";
@@ -90,6 +91,17 @@ export interface DeployOptions {
   region?: string;
   vmSize?: string;
   profile?: string | null;
+  /** Which cloud to build in; Azure when left out. */
+  cloud?: Cloud;
+}
+
+/** The cloud a run was for: AWS runs say so in their payload; everything else is Azure. */
+export function runCloud(run: { payload_json: string | null }): Cloud {
+  try {
+    return (JSON.parse(run.payload_json || "{}") as { cloud?: string }).cloud === "aws" ? "aws" : "azure";
+  } catch {
+    return "azure";
+  }
 }
 
 /** Start a deploy. Throws RunError with a message fit for the screen. */
@@ -99,6 +111,14 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   if (snap.state === "running") throw new RunError("Already running. Tear it down first if you want a rebuild.");
   if (snap.state === "standby") throw new RunError("The VM is in Standby. Resume it instead (about a minute), or tear it down first.");
   if (isBusyState(snap.state)) throw new RunError("A run is already in progress.");
+  // One cloud at a time: a failed headend may have left things behind, so
+  // only a torn-down one frees the other cloud.
+  const cloud: Cloud = opts.cloud ?? "azure";
+  const was = cloudOf(snap);
+  if (cloud !== was && snap.state !== "destroyed") {
+    throw new RunError(`Tear down the ${opsFor(was).label} headend first. wg-admin runs one cloud at a time.`);
+  }
+  if (cloud === "aws" && !opsFor("aws").configured(env)) throw new RunError("AWS is not set up yet: the Worker has no AWS keys.", "bad_input");
 
   const cfg = await effectiveConfig(env);
   // Read what the payload needs before taking the lock, so a database hiccup
@@ -116,8 +136,10 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   const sshPassword = readablePassword();
   const sshCidr = cfg.sshAllowedCidr || (opts.requesterIp && !opts.requesterIp.includes(":") ? `${opts.requesterIp}/32` : "");
   const auto_destroy_at = opts.hours ? new Date(Date.now() + opts.hours * 3_600_000).toISOString() : null;
-  const region = opts.region ?? cfg.region;
-  const vmSize = opts.vmSize ?? cfg.vmSize;
+  // AWS builds in London on its own instance type; Move and profiles are Azure's.
+  const region = cloud === "aws" ? cfg.aws.region : opts.region ?? cfg.region;
+  const vmSize = cloud === "aws" ? cfg.aws.instanceType : opts.vmSize ?? cfg.vmSize;
+  const profile = cloud === "aws" ? null : opts.profile ?? null;
 
   const payload = {
     run_id: id,
@@ -137,6 +159,8 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     agent_url: `${cfg.publicUrl}/api/agent`,
     callback_url: `${cfg.publicUrl}/api/callback`,
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
+    // An Azure payload has no cloud key, as before.
+    ...(cloud === "aws" ? { cloud: "aws" } : {}),
   };
 
   const now = new Date().toISOString();
@@ -161,7 +185,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   }
 
   try {
-    await dispatchWorkflow(env, "apply", payload);
+    await dispatchWorkflow(env, "apply", payload, workflowFor(cfg, cloud));
   } catch (e) {
     try {
       await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
@@ -173,7 +197,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
 
   await saveSnapshot(env, {
     state: "deploying",
-    cloud: "azure",
+    cloud,
     run_id: id,
     action: "apply",
     since: now,
@@ -197,7 +221,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     power_op_at: null,
     region,
     vm_size: vmSize,
-    profile: opts.profile ?? null,
+    profile,
     pending_deploy: null,
     speedtest_req: null,
     selftest_req: null,
@@ -326,6 +350,7 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
   const cfg = config(env);
   // Remember what this session did before the snapshot is cleared. Worked
   // out before taking the lock, so an error here cannot leave it held.
+  const cloud = cloudOf(snap);
   const pending_summary = snap.state === "running" ? await sessionSummary(env, snap, "Torn down") : snap.state === "standby" ? "Torn down from Standby." : null;
   const id = newRunId("destroy");
   const lock = await acquireLock(env, id);
@@ -336,6 +361,7 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
     wg_dns_name: cfg.dnsName,
     callback_url: `${cfg.publicUrl}/api/callback`,
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
+    ...(cloud === "aws" ? { cloud: "aws" } : {}),
   };
   const now = new Date().toISOString();
   try {
@@ -358,7 +384,7 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
   }
 
   try {
-    await dispatchWorkflow(env, "destroy", payload);
+    await dispatchWorkflow(env, "destroy", payload, workflowFor(cfg, cloud));
   } catch (e) {
     try {
       await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
@@ -391,7 +417,7 @@ export async function refreshActiveRun(env: Env): Promise<void> {
   const before = await getSnapshot(env);
   let ghId = run.github_run_id;
   if (!ghId) {
-    const found = await findRunByTitle(env, run.id);
+    const found = await findRunByTitle(env, run.id, workflowFor(config(env), runCloud(run)));
     if (!found) {
       // Not visible yet. Give GitHub 3 minutes, then give up.
       if (Date.now() - Date.parse(run.requested_at) > 3 * 60_000) {
@@ -653,14 +679,19 @@ export async function handleCallback(env: Env, token: string, body: CallbackBody
  * Hand a GitHub run its per-run secrets, once. The caller has already
  * verified the OIDC token; `ghRunId` is GitHub's run number from it. The run
  * must carry our run id in its title, so a token from some other dispatch of
- * the same workflow cannot collect this run's secrets. Tokens are minted here
- * and only their hashes are kept.
+ * the same workflow cannot collect this run's secrets. Both clouds' workflows
+ * title their runs alike, so the token's own (signed) `workflow_ref` must
+ * also name this run's workflow: an AWS run's secrets go only to wg-aws.yml,
+ * an Azure run's only to wg.yml. The route always passes it; tests that stand
+ * in for the route may leave it out. Tokens are minted here and only their
+ * hashes are kept.
  */
-export async function issueRunSecrets(env: Env, runId: string, ghRunId: number): Promise<{ status: number; body: Record<string, unknown> }> {
+export async function issueRunSecrets(env: Env, runId: string, ghRunId: number, tokenWorkflowRef?: string): Promise<{ status: number; body: Record<string, unknown> }> {
   const run = await db.getRun(env, runId);
   if (!run) return { status: 404, body: { error: "unknown run" } };
   if (run.finished_at || !["queued", "running"].includes(run.status)) return { status: 409, body: { error: "run is not active" } };
   if (run.callback_token_hash) return { status: 409, body: { error: "secrets already collected" } };
+  if (tokenWorkflowRef !== undefined && tokenWorkflowRef !== workflowRef(env, workflowFor(config(env), runCloud(run)))) return { status: 403, body: { error: "that workflow does not build this run's cloud" } };
   const gh = await getGhRun(env, ghRunId);
   if (!gh || !(gh.display_title ?? "").includes(run.id)) return { status: 403, body: { error: "that GitHub run is not this run" } };
 

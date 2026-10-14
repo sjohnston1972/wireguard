@@ -132,14 +132,16 @@ app.post("/api/callback/secrets", async (c) => {
   if (tooManyFailures(key)) return c.json({ error: "slow down" }, 429);
   let claims;
   try {
-    claims = await verifyGithubOidc(c.env, bearer(c));
+    // Either cloud's workflow; issueRunSecrets then holds each run to its own.
+    const cfg = config(c.env);
+    claims = await verifyGithubOidc(c.env, bearer(c), [cfg.workflow, cfg.aws.workflow]);
   } catch (e) {
     noteFailure(key);
     return c.json({ error: `not a trusted workflow: ${(e as Error).message}` }, 401);
   }
   const body = (await c.req.json().catch(() => null)) as { run_id?: string } | null;
   if (!body?.run_id) return c.json({ error: "missing run_id" }, 400);
-  const r = await issueRunSecrets(c.env, String(body.run_id), Number(claims.run_id));
+  const r = await issueRunSecrets(c.env, String(body.run_id), Number(claims.run_id), claims.workflow_ref ?? "");
   if (r.status === 403 || r.status === 404) noteFailure(key);
   return c.json(r.body, r.status as 200);
 });
