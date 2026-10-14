@@ -50,6 +50,9 @@ test("ci.yml renders the AWS cloud-init too, with the placeholder-leak check", (
   assert.match(step.run, /render-aws\/aws/);
   assert.match(step.run, /local\.cloud_init/);
   assert.match(step.run, /unrendered Terraform placeholder/);
+  // The shell in cloud-init is full of single "$"; only an unescaped "$$" means a leak (as in the Azure step).
+  assert.match(step.run, /assert "\$\$" not in text/);
+  assert.doesNotMatch(step.run, /assert "\$" not in text/);
   assert.ok(all.some((s) => s.name === "render cloud-init"), "the Azure step is still there");
 });
 

@@ -261,7 +261,10 @@ resource "aws_instance" "wg" {
   tags = { Name = "vm-wg", "wg-admin-role" = "headend" }
 
   lifecycle {
-    ignore_changes = [ami]
+    # source_dest_check: the ENI owns it (off, so the VPN forwards). The provider
+    # only reads it from the old network_interface block, so an in-place update of
+    # this instance would otherwise switch it back on and stop forwarding.
+    ignore_changes = [ami, source_dest_check]
   }
 }
 

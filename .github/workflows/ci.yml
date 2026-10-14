@@ -134,7 +134,7 @@ jobs:
           text = open("rendered.yaml").read()
           for marker in ("${indent(", "${wg_", "${agent_", "${peers_"):
               assert marker not in text, "unrendered Terraform placeholder in cloud-init: " + marker
-          assert "$" not in text, "double-dollar leaked into cloud-init"
+          assert "$$" not in text, "double-dollar leaked into cloud-init"
           assert "PRIVKEY" in text and "LAPTOPKEYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" in text and "tok" in text, "values did not render"
           print("AWS cloud-init OK:", len(paths), "files")
           '
