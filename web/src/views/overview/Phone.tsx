@@ -11,7 +11,7 @@ import { healthChecks } from "./Lower";
 import { AzureHealth, Vitals, VmPerformance } from "./lazyInsights";
 import { RunningLabs } from "./lazyLabs";
 import { labsBannerText } from "./labs";
-import { cloudLabel, cloudOf } from "./cloud";
+import { cloudLabel, cloudOf, regionOf, sizeOf } from "./cloud";
 import { STATE_TONE, STATE_WORD, ageOf, currentStep, gbp, inGithubRun, moveTargets, regionFull, runActive, stepProgress, topology, uiSteps, type NodeStatus } from "./model";
 import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
 import "./Phone.css";
@@ -122,7 +122,7 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
         <StateMark state={s.state} size={34} />
         <div>
           <p className={cx("ov-phone__word", `ov-phone__word--${STATE_TONE[s.state]}`)}>{STATE_WORD[s.state]}</p>
-          <p className="ov-phone__sub">{s.state === "failed" ? s.error ?? "The last run failed" : `${o.config.dnsName} · ${regionFull(s.region ?? o.config.region)}`}{labsText && ` · ${labsText}`}</p>
+          <p className="ov-phone__sub">{s.state === "failed" ? s.error ?? "The last run failed" : `${o.config.dnsName} · ${regionFull(regionOf(o))}`}{labsText && ` · ${labsText}`}</p>
         </div>
       </div>
 
@@ -180,8 +180,8 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
           items={[
             { label: "Endpoint", value: o.config.dnsName || null, mono: true, copy: true },
             { label: "Public IP", value: s.public_ip, mono: true, copy: true },
-            { label: "Region", value: regionFull(s.region ?? o.config.region) || null },
-            { label: "VM size", value: s.vm_size ?? (o.config.vmSize || null) },
+            { label: "Region", value: regionFull(regionOf(o)) || null },
+            { label: "VM size", value: sizeOf(o) || null },
             { label: "Heartbeat", value: s.state === "running" ? ageOf(s.last_agent_at, now) : null },
             { label: "Session cost", value: s.state === "running" || s.state === "standby" ? (cost.data?.session.estimateGbp == null ? null : gbp(cost.data.session.estimateGbp)) : null },
           ].filter((x) => !DETAIL_TILE[x.label] || (!metrics.hidden && (metrics.settings.tiles as string[]).includes(DETAIL_TILE[x.label])))}

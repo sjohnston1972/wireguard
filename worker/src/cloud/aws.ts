@@ -90,7 +90,33 @@ async function inventory(env: Env): Promise<AzureInventory> {
   const region = config(env).aws.region;
   const out: AzureInventory = { checked_at: new Date().toISOString(), resource_group: `wg-admin=vpn (${region})`, exists: false, resources: [] };
   try {
-    const [arns, h, addrs] = await Promise.all([taggedArns(env), findHeadend(env), ec2(env, "DescribeAddresses", filters([TAG]))]);
+    const [allArns, h, addrs, insts] = await Promise.all([
+      taggedArns(env),
+      findHeadend(env),
+      ec2(env, "DescribeAddresses", filters([TAG])),
+      ec2(env, "DescribeInstances", filters([TAG, ["instance-state-name", ["pending", "running", "stopping", "stopped"]]])),
+    ]);
+    // The tagging API keeps listing terminated instances and deleted volumes for about an hour, so those two are
+    // confirmed against EC2. The Worker may not call DescribeVolumes, so a disk counts only while it is attached to
+    // a live tagged instance (its blockDeviceMapping names the volume).
+    const liveIds = new Set<string>();
+    const liveVolumes = new Set<string>();
+    for (const reservation of xmlItems(insts, "reservationSet")) {
+      for (const instance of xmlItems(reservation, "instancesSet")) {
+        const iid = xmlFirst(xmlOwn(instance), "instanceId");
+        if (iid) liveIds.add(iid);
+        for (const dev of xmlItems(instance, "blockDeviceMapping")) {
+          const vid = xmlFirst(dev, "volumeId");
+          if (vid) liveVolumes.add(vid);
+        }
+      }
+    }
+    const arns = allArns.filter((arn) => {
+      const [type, id = ""] = (arn.split(":")[5] ?? "").split("/");
+      if (type === "instance") return liveIds.has(id);
+      if (type === "volume") return liveVolumes.has(id);
+      return true;
+    });
     const eip = xmlFirst(addrs, "publicIp");
     for (const arn of arns) {
       const [type, id = ""] = (arn.split(":")[5] ?? "").split("/");
