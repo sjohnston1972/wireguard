@@ -106,6 +106,14 @@ AZURE_VNET_CIDR = "10.50.0.0/16"
 # Servers behind the WireGuard firewall live here (same VNet, own subnet whose
 # route table points 0.0.0.0/0 at the WireGuard VM).
 WORKLOAD_SUBNET = "10.50.2.0/24"
+# AWS (optional second cloud). AWS_ENABLED="1" shows it in the Deploy picker.
+AWS_ENABLED = "0"
+AWS_REGION = "eu-west-2"
+AWS_INSTANCE_TYPE = "t4g.micro"
+AWS_HOURLY_RATE_GBP = "0.011"
+AWS_STANDBY_RATE_GBP = "0.005"
+AWS_USD_GBP = "0.75"
+GITHUB_WORKFLOW_AWS = "wg-aws.yml"
 # Build the small test VM (B1ls, about £0.006/h with its disk) behind the firewall.
 TEST_VM = "1"
 TEST_VM_RATE_GBP = "0.006"
