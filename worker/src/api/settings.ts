@@ -22,6 +22,10 @@ import { rotationStatus, shortKey } from "../keyrotation";
 import { serverPublicKey } from "../peers";
 import { lastNotifyError } from "../notify";
 import { priceInfo, rateSource, readPrices } from "../insights/price";
+import { readAwsPrices } from "../insights/aws/read";
+import { awsPriceInfo } from "../insights/aws/feeds/prices";
+import type { Config } from "../env";
+import type { PriceInfo } from "../../../shared/api";
 import { labsSettingsFrom } from "../../../shared/labs";
 import type { ApiOk, SettingsResponse } from "../../../shared/api";
 
@@ -37,6 +41,20 @@ const noId = (c: Context<ApiEnv>, what: string) => bad(c, `id must be ${what}'s 
 /** Fields in a body that are not on the allowed list, or null when all are known. */
 function unknownField(b: Record<string, unknown>, allowed: string[]): string | null {
   return Object.keys(b).find((k) => !allowed.includes(k)) ?? null;
+}
+
+/**
+ * AWS's list price for its region and instance type (AWS insights spec 4.6),
+ * shown beside the fixed AWS rates; null until the AWS price feed has stored
+ * any, or when it cannot be worked out (Settings still loads).
+ */
+async function awsListPrice(db: D1Database, cfg: Config, now: Date): Promise<PriceInfo | null> {
+  try {
+    const rows = await readAwsPrices(db, cfg.aws.region);
+    return rows.length ? awsPriceInfo(rows, cfg, cfg.aws.region, cfg.aws.instanceType, now) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** "08:00" style time. */
@@ -77,6 +95,7 @@ export function registerSettings(api: Hono<ApiEnv>): void {
       // The form edits the fixed rates (values above); estimates use this price when rateSource is azure and it is fresh.
       rateSource: rateSource(stored),
       price: priceInfo(await readPrices(env.DB, cfg.region), cfg, cfg.region, cfg.vmSize, rateSource(stored), new Date()),
+      awsPrice: await awsListPrice(env.DB, cfg, new Date()),
     };
     return c.json(out);
   });

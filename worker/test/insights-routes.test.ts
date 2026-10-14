@@ -24,7 +24,7 @@ const NO_AZURE: Partial<Env> = { AZURE_TENANT_ID: undefined, AZURE_CLIENT_ID: un
 
 /** A feed's cadence now (X1): the activity feed reads hourly while nothing is deployed and no run ended in the last 2 hours. */
 const nowCadence = (f: { id: string; cadenceMin: number | null }) => (f.id === "activity" ? 60 : f.cadenceMin);
-const feedShape = (status: string) => ({ id: expect.any(String), title: expect.any(String), status, lastOkAt: null, error: null, cadenceMin: expect.any(Number) });
+const feedShape = (status: string) => ({ id: expect.any(String), title: expect.any(String), status, lastOkAt: null, error: null, cadenceMin: expect.any(Number), source: "Azure" });
 
 /** The routes with the query each needs, and the shape it answers before any data exists. */
 function routes(status: string, configured: boolean): [string, unknown][] {
@@ -33,6 +33,7 @@ function routes(status: string, configured: boolean): [string, unknown][] {
     [
       "/azure/summary",
       {
+        cloud: "azure",
         configured,
         region: { id: "uksouth", name: "UK South" },
         feeds: FEEDS.map((f) => ({ ...feed, id: f.id, title: f.title, cadenceMin: nowCadence(f) })),
@@ -44,12 +45,12 @@ function routes(status: string, configured: boolean): [string, unknown][] {
         latest: { cpuPct: null, creditsLeft: null, creditsTrend: null, memFreeBytes: null, vipAvailPct: null, underDdos: null, at: null },
       },
     ],
-    ["/azure/metrics?resource=vm&range=24h", { resource: "vm", range: "24h", step: 300, columns: expect.arrayContaining(["t", "cpu_avg", "credits_min"]), points: [] }],
-    ["/azure/metrics?resource=pip&range=1h", { resource: "pip", range: "1h", step: 300, columns: expect.arrayContaining(["t", "ddos_max", "vip_avail"]), points: [] }],
-    ["/azure/metrics?resource=vitals&range=7d", { resource: "vitals", range: "7d", step: expect.any(Number), columns: expect.arrayContaining(["t", "mem_used_pct", "net_loss_pct"]), points: [] }],
-    ["/azure/changes?range=7d&who=all", { range: "7d", feed: { ...feed, id: "activity", title: FEED_TITLES.activity }, rows: [] }],
-    ["/azure/changes", { range: "7d", feed: { ...feed, id: "activity", title: FEED_TITLES.activity }, rows: [] }],
-    ["/azure/service-health?range=30d", { events: [], feed: { ...feed, id: "serviceHealth", title: FEED_TITLES.serviceHealth } }],
+    ["/azure/metrics?resource=vm&range=24h", { cloud: "azure", resource: "vm", range: "24h", step: 300, columns: expect.arrayContaining(["t", "cpu_avg", "credits_min"]), points: [] }],
+    ["/azure/metrics?resource=pip&range=1h", { cloud: "azure", resource: "pip", range: "1h", step: 300, columns: expect.arrayContaining(["t", "ddos_max", "vip_avail"]), points: [] }],
+    ["/azure/metrics?resource=vitals&range=7d", { cloud: "azure", resource: "vitals", range: "7d", step: expect.any(Number), columns: expect.arrayContaining(["t", "mem_used_pct", "net_loss_pct"]), points: [] }],
+    ["/azure/changes?range=7d&who=all", { cloud: "azure", range: "7d", feed: { ...feed, id: "activity", title: FEED_TITLES.activity }, rows: [] }],
+    ["/azure/changes", { cloud: "azure", range: "7d", feed: { ...feed, id: "activity", title: FEED_TITLES.activity }, rows: [] }],
+    ["/azure/service-health?range=30d", { cloud: "azure", events: [], feed: { ...feed, id: "serviceHealth", title: FEED_TITLES.serviceHealth } }],
     [
       "/azure/capacity?region=uksouth&size=Standard_B1s",
       { region: "uksouth", size: "Standard_B1s", available: null, reason: null, vcpusNeeded: null, family: null, total: null, ok: null, message: null, fetchedAt: null },
@@ -58,7 +59,7 @@ function routes(status: string, configured: boolean): [string, unknown][] {
       "/azure/price?region=uksouth&size=Standard_B1s",
       { region: "uksouth", size: "Standard_B1s", vmGbpPerHour: null, diskGbpPerHour: null, ipGbpPerHour: null, totalGbpPerHour: 0.0157, standbyGbpPerHour: 0.0064, fetchedAt: null, stale: false, source: "fixed", reason: expect.any(String) },
     ],
-    ["/azure/diagnostics", { configured, feeds: FEEDS.map((f) => ({ ...feed, id: f.id, title: f.title, cadenceMin: nowCadence(f), lastTryAt: null, nextDueAt: null })), metricNames: { vm: null, pip: null } }],
+    ["/azure/diagnostics", { cloud: "azure", configured, feeds: FEEDS.map((f) => ({ ...feed, id: f.id, title: f.title, cadenceMin: nowCadence(f), lastTryAt: null, nextDueAt: null })), metricNames: { vm: null, pip: null } }],
     ["/azure/bootlog", { fetchedAt: null, bytes: 0, truncated: false, redactions: 0, text: null, reason: expect.any(String) }],
   ];
 }
