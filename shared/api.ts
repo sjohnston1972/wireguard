@@ -8,6 +8,7 @@ import type { Alert, AuditEntry, Capture, CostDay, Peer, Profile, Schedule, Spee
 import type { Forward, FwRule, Zone } from "../worker/src/firewall";
 import type { PolicyState } from "../worker/src/fwview";
 export type { Cloud } from "../worker/src/env";
+import type { Cloud } from "../worker/src/env";
 import type { Snapshot, Step, Talker } from "../worker/src/state";
 import type { ClientKpis, ClientView } from "../worker/src/clients";
 import type { SessionRow } from "../worker/src/costview";
@@ -94,6 +95,8 @@ export interface OverviewResponse {
   typicalSeconds: { deploy: number | null; destroy: number | null };
   /** Can the deploy form's current target (region and size) be deployed? null until the collectors have looked (area X1). */
   capacity: CapacityCheck | null;
+  /** The same check for AWS's region and instance type (AWS insights spec §4.5); the deploy form warns when AWS is picked and ok is false. */
+  awsCapacity?: CapacityCheck | null;
 }
 
 /** GET /api/v1/ssh-password */
@@ -369,6 +372,8 @@ export interface SettingsResponse {
   rateSource: "azure" | "fixed";
   /** The price for the configured region and size, with where it came from. */
   price: PriceInfo;
+  /** AWS's list price for its region and instance type, shown beside the fixed AWS rates (AWS insights spec §4.6); null until read. */
+  awsPrice?: PriceInfo | null;
 }
 
 /** POST /api/v1/backup/restore/preview */
@@ -557,6 +562,8 @@ export interface FeedStatus {
   error: string | null;
   /** Minutes between runs now; null = on demand (boot log). */
   cadenceMin: number | null;
+  /** Where the figures come from, for the footer: "Azure", "AWS CloudWatch", "AWS public status feed", ... */
+  source?: string;
 }
 
 /** What Azure says about the VM: Resource Health plus the instance view. */
@@ -627,6 +634,8 @@ export interface ServiceEvent {
 
 /** GET /api/v1/azure/summary: polled every 30 s by Overview and the shell. */
 export interface AzureSummaryResponse {
+  /** Which cloud's figures these are (AWS insights spec §6); absent means Azure. */
+  cloud?: Cloud;
   /** All four service principal values are set. */
   configured: boolean;
   /** The configured region; `name` as Azure names it ("UK South"), for "Azure issue in UK South". */
@@ -663,6 +672,8 @@ export type AzureMetricsResource = "vm" | "pip" | "vitals";
 
 /** GET /api/v1/azure/metrics?resource=vm|pip|vitals&range=1h|24h|7d|30d. Columns: "t" then VM_COLUMNS, PIP_COLUMNS or VITALS_COLUMNS (shared/azureMetrics.ts). */
 export interface AzureMetricsResponse {
+  /** Which cloud's figures these are (AWS insights spec §6); absent means Azure. */
+  cloud?: Cloud;
   resource: AzureMetricsResource;
   range: HistoryRange;
   /** Seconds per point: vm and pip at least 300 (Azure's 5-minute slots), vitals as hist_vm. */
@@ -692,6 +703,8 @@ export interface AzureChangeRow {
 
 /** GET /api/v1/azure/changes?range=24h|7d|30d|90d&who=all|others|wgadmin (defaults 7d, all). Newest first. */
 export interface AzureChangesResponse {
+  /** Which cloud's figures these are (AWS insights spec §6); absent means Azure. */
+  cloud?: Cloud;
   range: AzureChangesRange;
   feed: FeedStatus;
   rows: AzureChangeRow[];
@@ -701,6 +714,8 @@ export type AzureServiceHealthRange = "7d" | "30d" | "90d";
 
 /** GET /api/v1/azure/service-health?range=7d|30d|90d (default 30d): this region's events, active first. */
 export interface AzureServiceHealthResponse {
+  /** Which cloud's figures these are (AWS insights spec §6); absent means Azure. */
+  cloud?: Cloud;
   events: ServiceEvent[];
   feed: FeedStatus;
 }
@@ -739,8 +754,8 @@ export interface PriceInfo {
   fetchedAt: string | null;
   /** An Azure price exists but is more than 7 days old. */
   stale: boolean;
-  /** Where the totals come from. */
-  source: "azure" | "fixed";
+  /** Where the totals come from: Azure's list price, the fixed rates, or AWS's list price (SettingsResponse.awsPrice). */
+  source: "azure" | "fixed" | "aws";
   /** Why the fixed rates apply, when they do; null otherwise. */
   reason: string | null;
 }
@@ -759,6 +774,8 @@ export interface BootLogResponse {
 
 /** GET /api/v1/azure/diagnostics: each feed with its timing, and the metric names Azure emits (null until read). No secrets. */
 export interface AzureDiagnosticsResponse {
+  /** Which cloud's figures these are (AWS insights spec §6); absent means Azure. */
+  cloud?: Cloud;
   configured: boolean;
   feeds: (FeedStatus & { lastTryAt: string | null; nextDueAt: string | null })[];
   metricNames: { vm: string[] | null; pip: string[] | null };

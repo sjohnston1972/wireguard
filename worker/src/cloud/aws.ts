@@ -21,11 +21,13 @@ const LIVE = ["pending", "running", "stopping", "stopped", "shutting-down"];
 const POWER: Record<string, string> = { running: "running", stopped: "deallocated", stopping: "deallocating", pending: "starting", "shutting-down": "deleting" };
 const SSH_RULE = "ssh-from-home";
 
-interface Instance {
+export interface Instance {
   id: string;
   state: string;
   publicIp: string | null;
   type: string | null;
+  /** When it last started (EC2's launchTime, ISO), or null. */
+  launchTime: string | null;
   /** Its wg-admin-role tag ("headend"), or null. */
   role: string | null;
   /** The volumes its block device mapping names (the disks attached to it). */
@@ -50,6 +52,7 @@ async function instances(env: Env, list: [string, string[]][]): Promise<Instance
           state: own.match(/<instanceState>\s*<code>\d+<\/code>\s*<name>([a-z-]+)<\/name>/)?.[1] ?? "unknown",
           publicIp: xmlFirst(own, "ipAddress"),
           type: xmlFirst(own, "instanceType"),
+          launchTime: xmlFirst(own, "launchTime"),
           role: role ? xmlFirst(role, "value") : null,
           volumes: xmlOwnItems(instance, "blockDeviceMapping").flatMap((d) => xmlFirst(d, "volumeId") ?? []),
         });
@@ -59,7 +62,8 @@ async function instances(env: Env, list: [string, string[]][]): Promise<Instance
   return out;
 }
 
-async function findHeadend(env: Env): Promise<Instance | null> {
+/** The live headend (tagged wg-admin=vpn and wg-admin-role=headend), or null. Also read by the AWS insights feeds. */
+export async function findHeadend(env: Env): Promise<Instance | null> {
   return (await instances(env, [TAG, HEADEND, ["instance-state-name", LIVE]]))[0] ?? null;
 }
 
@@ -88,7 +92,8 @@ const KIND: Record<string, string> = {
 };
 const ORDER = ["Virtual network", "Subnet", "Internet gateway", "Route table", "Security group", "Public IP", "Network interface", "Virtual machine", "OS disk", "Key pair"];
 
-async function taggedArns(env: Env): Promise<string[]> {
+/** The ARN of every resource tagged wg-admin=vpn in the region (the tagging API, every page). Also read by the AWS insights feeds. */
+export async function taggedArns(env: Env): Promise<string[]> {
   const region = config(env).aws.region;
   const arns: string[] = [];
   let token = "";

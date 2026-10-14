@@ -5,7 +5,9 @@
 #   - GitHub Actions gets a role it can assume with its own signed identity
 #     (OIDC). No AWS keys are stored in GitHub at all.
 #   - The Worker gets a small IAM user that can only look, start/stop the
-#     wg-admin server, edit its firewall rules and read cost.
+#     wg-admin server, edit its firewall rules and read cost, plus read the
+#     insights figures (metrics, status checks, CloudTrail, quotas, prices
+#     and the server's own console output).
 #   - A budget alarm emails if the whole account passes ~15 GBP in a month,
 #     whatever wg-admin itself believes.
 
@@ -151,6 +153,28 @@ resource "aws_iam_user_policy" "worker" {
         Effect   = "Allow"
         Action   = ["tag:GetResources", "ce:GetCostAndUsage"]
         Resource = "*"
+      },
+      # AWS insights (docs/superpowers/specs/2026-10-15-aws-insights-design.md section 8): read only.
+      {
+        Sid       = "Insights"
+        Effect    = "Allow"
+        Action    = ["cloudwatch:GetMetricData", "ec2:DescribeInstanceStatus", "ec2:DescribeInstanceTypeOfferings", "ec2:DescribeInstanceTypes", "cloudtrail:LookupEvents", "servicequotas:GetServiceQuota"]
+        Resource  = "*"
+        Condition = { StringEquals = { "aws:RequestedRegion" = var.region } }
+      },
+      # The Price List API lives in us-east-1 only, so no region condition.
+      {
+        Sid      = "InsightsPriceList"
+        Effect   = "Allow"
+        Action   = ["pricing:GetProducts"]
+        Resource = "*"
+      },
+      {
+        Sid       = "ConsoleOfOurServer"
+        Effect    = "Allow"
+        Action    = ["ec2:GetConsoleOutput"]
+        Resource  = "arn:aws:ec2:${var.region}:${local.account}:instance/*"
+        Condition = { StringEquals = { "aws:ResourceTag/wg-admin" = "vpn" } }
       },
     ]
   })

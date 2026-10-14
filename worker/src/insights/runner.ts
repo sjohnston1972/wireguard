@@ -29,13 +29,23 @@
 // error; the price feed, which needs no sign-in, still runs. Without the
 // service principal secrets nothing is fetched and every feed reads
 // not_configured.
+//
+// AWS (spec 2026-10-15-aws-insights-design.md, sections 2.4 and 3): the AWS
+// feeds (insights/aws/) run in the same run, under the same budget of 25,
+// when the Worker's AWS keys are set. While the server is in AWS, Azure's
+// server feeds (every `when` but "always") are recorded skipped, "The server
+// runs in AWS.", and the AWS feeds go first; Azure's cloud-wide feeds still
+// run when Azure is configured. Otherwise Azure's feeds go first.
 
 import type { Env } from "../env";
 import { arm as armCall, armToken } from "../azure";
 import { effectiveConfig } from "../settings";
 import { cloudOf, getSnapshot, type Snapshot } from "../state";
 import { AZ_RUN_BUDGET, BudgetExceeded, FEED_IDS, insightsConfigured, makeBudget, type Budget, type Feed, type FeedCtx, type FeedResult, type FeedWhen, type InsightsFeedId } from "./types";
-import { MIN, iso, markDueStmt, plainError, readFeedRows, rgExists, vmExists, vmMetricsApply, type FeedRow } from "./common";
+import { FETCH_TIMEOUT_MS, OUT_OF_TIME, dueByRow, feedResultStmt, flushResults, markDueStmt, plainError, readFeedRows, rgExists, vmExists, vmMetricsApply, withTimeout, type FeedRow } from "./common";
+import { runAwsInsights } from "./aws/runner";
+import { AWS_FEED_MODULES } from "./aws/feeds/index";
+import type { AwsFeed } from "./aws/types";
 import health from "./feeds/health";
 import vmMetrics from "./feeds/vmMetrics";
 import pipMetrics from "./feeds/pipMetrics";
@@ -58,8 +68,8 @@ export interface FeedModule extends Feed {
 /** Every feed, in the runner's priority order (spec section 4), then the daily prune. */
 export const FEED_MODULES: readonly FeedModule[] = [health, vmMetrics, pipMetrics, metricDefs, activity, serviceHealth, capacity, prices, bootLog, housekeeping];
 
-/** Every outside call is given up after this long. */
-export const FETCH_TIMEOUT_MS = 8_000;
+/** Every outside call is given up after this long (common.ts, shared with the AWS runner). */
+export { FETCH_TIMEOUT_MS };
 /**
  * After this long (wall time) a run sends no more outside calls and starts no
  * more feeds. One call in flight can take 8 s more, which still leaves the
@@ -68,8 +78,8 @@ export const FETCH_TIMEOUT_MS = 8_000;
 export const RUN_SOFT_DEADLINE_MS = 18_000;
 
 const OUT_OF_CALLS = `This run's ${AZ_RUN_BUDGET} Azure calls were used up; it runs next time.`;
-const OUT_OF_TIME = "This run ran out of time; it runs next time.";
-const AWS_SKIP = "The server runs in AWS; AWS insights are coming soon.";
+/** What an Azure server feed records while the server is in AWS (its AWS twin runs instead). */
+export const AWS_SKIP = "The server runs in AWS.";
 
 /** Thrown before an outside call once the run is past RUN_SOFT_DEADLINE_MS. Ends the feed as skipped. */
 class RunOutOfTime extends Error {
@@ -78,9 +88,6 @@ class RunOutOfTime extends Error {
     this.name = "RunOutOfTime";
   }
 }
-
-/** A feed is due a little early, so a cron that fires a few seconds early does not push it back a whole cadence. */
-const DUE_SLACK_MS = 30_000;
 
 /** Does a feed's `when` hold for this snapshot at `now` (ms)? */
 export function whenHolds(when: FeedWhen, snap: Snapshot, now: number): boolean {
@@ -105,20 +112,8 @@ class SignInFailed extends Error {
 }
 
 /** Run `make` with an abort signal that fires after 8 s; the race also ends a call that ignores its signal. */
-async function timed<T>(make: (signal: AbortSignal) => Promise<T>): Promise<T> {
-  const ac = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      ac.abort();
-      reject(new FetchTimeout());
-    }, FETCH_TIMEOUT_MS);
-  });
-  try {
-    return await Promise.race([make(ac.signal), timeout]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
+function timed<T>(make: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  return withTimeout(make, () => new FetchTimeout());
 }
 
 const ARM_ORIGIN = "https://management.azure.com";
@@ -190,21 +185,12 @@ function makeCtx(env: Env, now: Date, snap: Snapshot, cfg: FeedCtx["cfg"], budge
 /** Is the feed due by its row (or its own rule)? */
 async function isDue(f: FeedModule, row: FeedRow | null, ctx: FeedCtx): Promise<boolean> {
   if (f.due) return f.due(ctx, row);
-  return !row || !row.next_due_at || Date.parse(row.next_due_at) <= ctx.now.getTime() + DUE_SLACK_MS;
+  return dueByRow(row, ctx.now);
 }
 
 /** The az_feed write for one feed's result. */
 function recordStmt(env: Env, id: InsightsFeedId, now: Date, r: FeedResult, row: FeedRow | null, cadenceMin: number | null): D1PreparedStatement {
-  const at = now.toISOString();
-  let next: string | null;
-  if (r.status === "skipped") next = row?.next_due_at ?? null; // stays due
-  else if (r.nextDueAt) next = r.nextDueAt;
-  else next = cadenceMin === null ? null : iso(now.getTime() + cadenceMin * MIN);
-  return env.DB.prepare(
-    `INSERT INTO az_feed (feed, last_try_at, last_ok_at, status, error, next_due_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-     ON CONFLICT (feed) DO UPDATE SET last_try_at = excluded.last_try_at, last_ok_at = COALESCE(excluded.last_ok_at, az_feed.last_ok_at),
-       status = excluded.status, error = excluded.error, next_due_at = excluded.next_due_at`,
-  ).bind(id, at, r.status === "ok" ? at : null, r.status, r.error === null ? null : plainError(r.error), next);
+  return feedResultStmt(env.DB, "az_feed", id, now, r, row, cadenceMin);
 }
 
 /** Record an on-demand run of a feed (POST boot log) like a cron run. */
@@ -214,25 +200,9 @@ export async function recordFeedResult(env: Env, id: InsightsFeedId, now: Date, 
   await recordStmt(env, id, now, r, row, cadence).run();
 }
 
-/**
- * Write the run's results in one batch. If the batch fails (all or nothing),
- * each statement is tried on its own, so one bad write never loses the rest.
- */
-async function flush(env: Env, stmts: { id: string; stmt: D1PreparedStatement }[], lines: string[]): Promise<void> {
-  if (!stmts.length) return;
-  try {
-    await env.DB.batch(stmts.map((s) => s.stmt));
-    return;
-  } catch {
-    // fall through: one at a time
-  }
-  for (const { id, stmt } of stmts) {
-    try {
-      await stmt.run();
-    } catch (e) {
-      lines.push(`${id}: could not record (${plainError(e)})`);
-    }
-  }
+/** Write the run's results in one batch (each on its own if the batch fails). */
+function flush(env: Env, stmts: { id: string; stmt: D1PreparedStatement }[], lines: string[]): Promise<void> {
+  return flushResults(env.DB, stmts, lines);
 }
 
 /** Without credentials: every feed reads not_configured. Only rows that say otherwise are written. */
@@ -276,26 +246,55 @@ export interface RunOptions {
   clock?: () => number;
   /** The cron's shared allowance (cron.ts): the run takes at most AZ_RUN_BUDGET of what the watchman and the lab watch left. */
   parent?: Budget;
+  /**
+   * The AWS feeds to run beside `feeds`. Default: AWS_FEED_MODULES when
+   * `feeds` is the default list, none when a test passes its own Azure feeds
+   * (so a test of Azure stand-ins never runs the real AWS feeds).
+   */
+  awsFeeds?: readonly AwsFeed[];
 }
 
 /** Run the due feeds. Answers one line per thing worth logging (errors and skips). */
 export async function runInsights(env: Env, now: Date = new Date(), feeds: readonly FeedModule[] = FEED_MODULES, opts: RunOptions = {}): Promise<string[]> {
-  if (!insightsConfigured(env)) {
+  const awsFeeds = opts.awsFeeds ?? (feeds === FEED_MODULES ? AWS_FEED_MODULES : []);
+  const azure = insightsConfigured(env);
+  if (!azure) {
     await markNotConfigured(env, feeds);
-    return [];
+    if (!awsFeeds.length) return [];
   }
   const clock = opts.clock ?? Date.now;
   const started = clock();
   const late = () => clock() - started >= RUN_SOFT_DEADLINE_MS;
   const lines: string[] = [];
-  const [snap, cfg, rows] = await Promise.all([getSnapshot(env), effectiveConfig(env), readFeedRows(env.DB)]);
-  // An AWS headend has no Azure figures to collect (AWS insights are project 2): every feed reads skipped, no call is made.
-  if (cloudOf(snap) === "aws" && snap.state !== "destroyed") {
-    const stmts = feeds.map((f) => ({ id: f.id, stmt: recordStmt(env, f.id, now, { status: "skipped", error: AWS_SKIP }, rows.get(f.id) ?? null, f.cadenceMin) }));
-    await flush(env, stmts, lines);
-    return lines;
-  }
+  const [snap, cfg] = await Promise.all([getSnapshot(env), effectiveConfig(env)]);
+  // One budget for both clouds: the run never passes AZ_RUN_BUDGET (nor what the cron left).
   const budget = makeBudget(AZ_RUN_BUDGET, opts.parent);
+  const runAzure = async () => {
+    if (azure) await runAzureFeeds(env, now, feeds, { budget, late, snap, cfg, lines });
+  };
+  const runAws = async () => {
+    if (awsFeeds.length) lines.push(...(await runAwsInsights(env, now, awsFeeds, { budget, late, snap, cfg })));
+  };
+  // The server's own cloud first, so its server feeds get the calls; each half is recorded even if the other fails.
+  const order = cloudOf(snap) === "aws" && snap.state !== "destroyed" ? [runAws, runAzure] : [runAzure, runAws];
+  let failure: unknown = null;
+  for (const half of order) {
+    try {
+      await half();
+    } catch (e) {
+      failure ??= e;
+    }
+  }
+  if (failure !== null) throw failure;
+  return lines;
+}
+
+/** The Azure half of a run (Azure configured): the due feeds, in order, then their results in one batch. */
+async function runAzureFeeds(env: Env, now: Date, feeds: readonly FeedModule[], run: { budget: Budget; late: () => boolean; snap: Snapshot; cfg: FeedCtx["cfg"]; lines: string[] }): Promise<void> {
+  const { budget, late, snap, cfg, lines } = run;
+  const rows = await readFeedRows(env.DB);
+  // The server is in AWS: Azure's server feeds have nothing to collect (their AWS twins run instead); its cloud-wide feeds still run.
+  const serverInAws = cloudOf(snap) === "aws" && snap.state !== "destroyed";
   const signIn = signInOnce(env, budget);
   const pending: { id: string; stmt: D1PreparedStatement }[] = [];
   const recorded = new Set<string>();
@@ -309,6 +308,11 @@ export async function runInsights(env: Env, now: Date = new Date(), feeds: reado
 
   try {
     for (const f of feeds) {
+      if (serverInAws && f.when !== "always") {
+        pending.push({ id: f.id, stmt: recordStmt(env, f.id, now, { status: "skipped", error: AWS_SKIP }, rows.get(f.id) ?? null, f.cadenceMin) });
+        recorded.add(f.id);
+        continue;
+      }
       if (!whenHolds(f.when, snap, now.getTime())) continue;
       const row = rows.get(f.id) ?? null;
       const ctx = makeCtx(env, now, snap, cfg, budget, signIn, { row, markDue, late });
@@ -338,7 +342,6 @@ export async function runInsights(env: Env, now: Date = new Date(), feeds: reado
     for (const id of madeDue) if (!recorded.has(id)) pending.push({ id, stmt: markDueStmt(env.DB, id) });
     await flush(env, pending, lines);
   }
-  return lines;
 }
 
 /** The ids the runner knows, for checks. */

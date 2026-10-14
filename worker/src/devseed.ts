@@ -34,6 +34,7 @@ import { compileFirewall } from "./firewall";
 import { budgetStatus } from "./budget";
 import { freezeDevClock } from "./devclock";
 import { AZ_TABLES } from "./insights/types";
+import { AWS_TABLES } from "./insights/aws/types";
 import { seedInsights } from "./devseed-insights";
 import { buildExport } from "./backup";
 import { isWgKey } from "./peers";
@@ -542,8 +543,8 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
 /** Wipe everything the seeder owns. */
 async function wipe(env: Env, now: number): Promise<void> {
   // ui_prefs too: every story starts with the widgets as they ship (shots --prefs saves its own after seeding).
-  // And the Azure insights tables: only the insights story fills them. The cost split and the runs' live logs: only everything.
-  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "cost_breakdown", "run_live_log", "run_live_log_pruned", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules", "ui_prefs", ...AZ_TABLES];
+  // And the insights tables, Azure's and AWS's: only the insights stories fill them. The cost split and the runs' live logs: only everything.
+  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "cost_breakdown", "run_live_log", "run_live_log_pruned", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules", "ui_prefs", ...AZ_TABLES, ...AWS_TABLES];
   await env.DB.batch([
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
     // No draft, and the live rule set back at version 1.
