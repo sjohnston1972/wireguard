@@ -92,12 +92,13 @@ export function xmlAll(xml: string, tag: string): string[] {
 }
 
 /**
- * Where each top-level <item>…</item> (or <item/>) in `body` starts and ends, counting depth so an item's own
- * nested items (tags, network interfaces) stay inside it. Stops at `stopAt` (a closing tag) found at depth 0.
+ * Where each top-level <item>…</item> (or <item/>; attributes allowed on either) in `body` starts and ends, counting
+ * depth so an item's own nested items (tags, network interfaces) stay inside it. Stops at `stopAt` (a closing tag)
+ * found at depth 0.
  */
 function itemSpans(body: string, stopAt?: string): [number, number][] {
   const spans: [number, number][] = [];
-  const tokens = new RegExp(`<(/?)item(/?)>${stopAt ? `|${stopAt}` : ""}`, "g");
+  const tokens = new RegExp(`<(/?)item(?:\\s[^>]*?)?(/?)>${stopAt ? `|${stopAt}` : ""}`, "g");
   let depth = 0;
   let start = 0;
   for (const m of body.matchAll(tokens)) {
@@ -121,8 +122,9 @@ function itemSpans(body: string, stopAt?: string): [number, number][] {
  * alphabetical), so records are always cut at whole items, never at a field. Read fields with xmlFirst(xmlOwn(item)).
  */
 export function xmlItems(xml: string, setTag: string): string[] {
-  const open = xml.match(new RegExp(`<${setTag}(\\s[^>]*)?(/?)>`));
-  if (!open || open[2]) return []; // absent, or <setTag/>
+  // Lazy attributes, so the "/" of <setTag a="1"/> or <setTag /> is read as self-closing, not as an attribute.
+  const open = xml.match(new RegExp(`<${setTag}(?:\\s[^>]*?)?(/?)>`));
+  if (!open || open[1]) return []; // absent, or empty (<setTag/>)
   const body = xml.slice((open.index ?? 0) + open[0].length);
   return itemSpans(body, `</${setTag}>`).map(([a, b]) => body.slice(a, b));
 }
@@ -132,7 +134,7 @@ export function xmlItems(xml: string, setTag: string): string[] {
  * record's (a tag, a network interface's privateIpAddress, a group). Nested non-list elements (instanceState) stay.
  */
 export function xmlOwn(item: string): string {
-  const inner = item.replace(/^<item>/, "").replace(/<\/item>$/, "");
+  const inner = item.replace(/^<item(?:\s[^>]*)?>/, "").replace(/<\/item>$/, "");
   let out = "";
   let from = 0;
   for (const [a, b] of itemSpans(inner)) {

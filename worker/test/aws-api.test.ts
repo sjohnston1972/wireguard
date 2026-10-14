@@ -80,6 +80,22 @@ describe("xmlItems", () => {
     expect(xmlItems("<R/>", "ruleSet")).toEqual([]);
   });
 
+  it("a self-closing set with attributes or a space is empty, and does not borrow the next set's items", () => {
+    expect(xmlItems('<R><ruleSet a="1"/><other><item><id>x</id></item></other></R>', "ruleSet")).toEqual([]);
+    expect(xmlItems("<R><ruleSet /><other><item><id>x</id></item></other></R>", "ruleSet")).toEqual([]);
+    // A set that opens with attributes still has its items.
+    expect(xmlItems('<R><ruleSet a="1"><item><id>a</id></item></ruleSet></R>', "ruleSet").map((i) => xmlFirst(xmlOwn(i), "id"))).toEqual(["a"]);
+  });
+
+  it("items with attributes are whole items, nested ones included", () => {
+    const x = '<R><ruleSet><item x="1"><id>a</id><tagSet><item k="v"><id>tag</id></item></tagSet></item><item y="2"/><item><id>b</id></item></ruleSet></R>';
+    const items = xmlItems(x, "ruleSet");
+    expect(items).toHaveLength(3);
+    expect(xmlFirst(xmlOwn(items[0]), "id")).toBe("a");
+    expect(xmlOwn(items[1])).toBe("");
+    expect(xmlFirst(xmlOwn(items[2]), "id")).toBe("b");
+  });
+
   it("walks reservation -> instance, and the instance's network interface never supplies its address", () => {
     const x =
       "<DescribeInstancesResponse><reservationSet><item><reservationId>r-1</reservationId><groupSet/><instancesSet><item>" +
