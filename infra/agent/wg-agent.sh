@@ -41,7 +41,7 @@ host="$(hostname)"
 # The loopback test address on lo1, if this build has one (empty otherwise).
 loopback="$(ip -4 -o addr show dev lo1 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1 || true)"
 # The public IPv6 path, if Azure gave the VM one (empty otherwise).
-wan6="$(ip -6 -o addr show dev eth0 scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1 || true)"
+wan6="$(ip -6 -o addr show dev "${WAN_IF:-eth0}" scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1 || true)"
 # The boot self-test result, once it has run.
 selftest="null"
 [[ -s "$ROOT"/run/wg-admin/selftest.json ]] && selftest="$(cat "$ROOT"/run/wg-admin/selftest.json)"
@@ -175,7 +175,13 @@ fw_new="$(jq -r '.firewall.nft_b64 // empty' <<<"$resp" 2>/dev/null || true)"
 if [[ -n "$fw_new" ]]; then
   mkdir -p /run/wg-admin
   tmp="$(mktemp)"
-  if base64 -d <<<"$fw_new" > "$tmp" 2>/dev/null && nft -c -f "$tmp" 2>/run/wg-admin/firewall.error && nft -f "$tmp" 2>/run/wg-admin/firewall.error; then
+  # The Worker writes rules for "eth0" (Azure's name). On AWS the WAN is ens5:
+  # check and load a copy with the name swapped (as wg-firewall-load.sh does at
+  # boot). The saved file stays as the Worker wrote it. Azure is untouched.
+  tmp_load="$tmp"
+  if base64 -d <<<"$fw_new" > "$tmp" 2>/dev/null \
+     && { [[ "${WAN_IF:-eth0}" == eth0 ]] || { sed "s/\"eth0\"/\"${WAN_IF}\"/g" "$tmp" > "$tmp.wan" && tmp_load="$tmp.wan"; }; } \
+     && nft -c -f "$tmp_load" 2>/run/wg-admin/firewall.error && nft -f "$tmp_load" 2>/run/wg-admin/firewall.error; then
     install -m 0600 -o root -g root "$tmp" "$FW_FILE"
     rm -f /run/wg-admin/firewall.error /run/wg-admin/firewall.fallback
     logger -t wg-agent "firewall rule set applied: $(sed -n 's/^# ruleset \([0-9a-f]*\).*/\1/p' "$FW_FILE" | head -n1)"
@@ -187,7 +193,7 @@ if [[ -n "$fw_new" ]]; then
   else
     logger -t wg-agent "firewall rule set refused: $(head -c 200 /run/wg-admin/firewall.error)"
   fi
-  rm -f "$tmp"
+  rm -f "$tmp" "$tmp.wan"
 fi
 
 # ── Packet capture: start one when asked (once per id) ──────────────────────
@@ -279,7 +285,7 @@ rm -f "$hosts"
 # Never a route that would cut the VM off: nothing wider than /8 (0.0.0.0/0
 # would take the default route, and the VM could never reach the dashboard
 # again to be fixed), and nothing overlapping what the VM needs for itself:
-# the tunnel, its loopback, its own LAN and VNet, Azure's platform
+# the tunnel, its loopback, its own LAN and VNet, the clouds' platform
 # addresses, and the dashboard's own address.
 # (10# so a part written "08" is read as eight, not as a broken octal number.)
 ip2int() { local IFS=.; set -- $1; echo $(( (10#$1 << 24) + (10#$2 << 16) + (10#$3 << 8) + 10#$4 )); }
@@ -292,12 +298,12 @@ overlaps() {
   local mask=$(( n == 0 ? 0 : (0xffffffff << (32 - n)) & 0xffffffff ))
   (( ($(ip2int "$a") & mask) == ($(ip2int "$b") & mask) ))
 }
-keep_out=(168.63.129.16/32 169.254.169.254/32)
+keep_out=(168.63.129.16/32 169.254.169.254/32 169.254.169.253/32)
 [[ -n "${VNET_CIDR:-}" ]] && keep_out+=("$VNET_CIDR")
 [[ -n "$loopback" ]] && keep_out+=("$loopback/32")
 while read -r net; do [[ -n "$net" ]] && keep_out+=("$net") || true; done < <(
   ip -4 -o addr show dev wg0 2>/dev/null | awk '{print $4}'
-  ip -4 -o addr show dev eth0 2>/dev/null | awk '{print $4}'
+  ip -4 -o addr show dev "${WAN_IF:-eth0}" 2>/dev/null | awk '{print $4}'
   getent ahostsv4 "$(sed -E 's#^[a-z]+://([^/:]+).*#\1#' <<<"$AGENT_URL")" 2>/dev/null | awk '{print $1 "/32"}' | sort -u
 )
 route_ok() {

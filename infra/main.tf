@@ -81,6 +81,11 @@ locals {
     capture_script        = file("${path.module}/agent/wg-capture.sh")
     firewall_load_script  = file("${path.module}/agent/wg-firewall-load.sh")
     vnet_cidr             = var.vnet_cidr
+    admin_user            = "azureuser"
+    wan_if                = "eth0"
+    azure_only            = "1"
+    cloud                 = "azure"
+    boot_bundle_sha256    = ""
     firewall_nft_gz       = base64gzip(var.firewall_nft_b64 != "" ? base64decode(var.firewall_nft_b64) : file("${path.module}/agent/firewall-open.nft"))
     # Gzipped, like the agent and the rule set: Azure refuses custom data over
     # 64 KB (worker/test/cloud-init-size.test.ts renders the worst case).
@@ -447,7 +452,7 @@ resource "azurerm_linux_virtual_machine" "test" {
     version   = "latest"
   }
 
-  custom_data = base64encode(templatefile("${path.module}/test-vm.yaml.tftpl", { ssh_password = var.ssh_password }))
+  custom_data = base64encode(templatefile("${path.module}/test-vm.yaml.tftpl", { ssh_password = var.ssh_password, admin_user = "azureuser" }))
 
   # The route table must be in place before first boot, so the VM's first
   # package fetch already goes through the firewall.

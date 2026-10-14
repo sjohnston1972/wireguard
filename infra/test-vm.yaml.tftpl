@@ -14,7 +14,7 @@ ssh_pwauth: true
 chpasswd:
   expire: false
   users:
-    - name: azureuser
+    - name: ${admin_user}
       password: ${ssh_password}
       type: text
 %{ endif ~}

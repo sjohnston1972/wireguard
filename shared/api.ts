@@ -581,7 +581,7 @@ export type ScheduledEventType = "Reboot" | "Redeploy" | "Freeze" | "Preempt" | 
 /** A maintenance event Azure has scheduled for this VM (from the VM's metadata service, via the heartbeat). Read only: wg-admin never approves one. */
 export interface ScheduledEvent {
   id: string;
-  type: ScheduledEventType;
+  type: ScheduledEventType | (string & {}); // Azure's names, or the cloud's own (AWS: instance-reboot, ...), shown as they come
   /** "Scheduled" or "Started". */
   status: string;
   notBefore: string | null;

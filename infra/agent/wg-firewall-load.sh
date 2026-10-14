@@ -22,7 +22,17 @@ FW_FILE=/etc/wg-admin/firewall.nft
 RUN=/run/wg-admin
 mkdir -p "$RUN"
 
-if nft -f "$FW_FILE" 2>"$RUN/firewall.boot.err"; then
+# The Worker writes rules for "eth0" (Azure's name). On AWS the WAN is ens5:
+# load the same rules with the name swapped. Azure is untouched (eth0 = eth0).
+WAN_IF="$(ip -4 route show default 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit }}')"
+WAN_IF="${WAN_IF:-eth0}"
+rules="$FW_FILE"
+if [[ "$WAN_IF" != eth0 ]]; then
+  sed "s/\"eth0\"/\"$WAN_IF\"/g" "$FW_FILE" > /run/wg-firewall.nft
+  rules=/run/wg-firewall.nft
+fi
+
+if nft -f "$rules" 2>"$RUN/firewall.boot.err"; then
   rm -f "$RUN/firewall.error" "$RUN/firewall.fallback" "$RUN/firewall.boot.err"
   exit 0
 fi

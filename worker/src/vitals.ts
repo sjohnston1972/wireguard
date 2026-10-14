@@ -83,13 +83,13 @@ function updates(v: unknown): VmVitals["updates"] {
   return { pending, security: Math.min(security, pending), at };
 }
 
-const EVENT_TYPES = new Set<VmScheduledEvent["type"]>(["Reboot", "Redeploy", "Freeze", "Preempt", "Terminate"]);
-
 function event(v: unknown): VmScheduledEvent | null {
   if (!isObj(v)) return null;
   const id = text(v.id, 64);
-  const type = v.type as VmScheduledEvent["type"];
-  if (!id || !EVENT_TYPES.has(type)) return null;
+  // Any event type shows as itself: Azure's (Reboot, Redeploy, ...) and the
+  // cloud's others (AWS reports instance-reboot, system-maintenance, ...).
+  const type = text(v.type, 40);
+  if (!id || !type) return null;
   const duration = int(v.duration_s, 1, 7 * 86_400);
   return {
     id,

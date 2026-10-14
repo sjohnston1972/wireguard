@@ -152,7 +152,7 @@ variable "ssh_allowed_cidr" {
 }
 
 variable "ssh_password" {
-  description = "Per-deploy password for azureuser. Empty disables password login (key only). Set by the Worker, shown in the dashboard's secret panel."
+  description = "Per-deploy password for the VM's admin user. Empty disables password login (key only). Set by the Worker, shown in the dashboard's secret panel."
   type        = string
   default     = ""
   sensitive   = true

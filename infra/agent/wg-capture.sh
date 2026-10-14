@@ -17,6 +17,8 @@ FILTER="${4:-}"
 MAX_BYTES=$((25 * 1024 * 1024))
 
 source /etc/wireguard/wg-agent.env
+# The WAN interface: eth0 on Azure, ens5 on AWS (written by cloud-init).
+WAN_IF="${WAN_IF:-eth0}"
 DIR=/run/wg-admin
 F="$DIR/capture-$ID.pcap"
 mkdir -p "$DIR"
@@ -29,7 +31,8 @@ upload_error() {
   exit 1
 }
 
-case "$IFACE" in wg0|eth0|any) ;; *) upload_error "unknown interface $IFACE" ;; esac
+case "$IFACE" in wg0|eth0|"${WAN_IF:-eth0}"|any) ;; *) upload_error "unknown interface $IFACE" ;; esac
+[[ "$IFACE" == eth0 ]] && IFACE="$WAN_IF"   # "eth0" from the Worker means the WAN side; on AWS that is ens5 (WAN_IF)
 [[ "$SECS" =~ ^[0-9]+$ && "$SECS" -ge 5 && "$SECS" -le 300 ]] || upload_error "bad duration $SECS"
 command -v tcpdump >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tcpdump >/dev/null 2>&1 || upload_error "could not install tcpdump"
 
