@@ -62,6 +62,13 @@ test("the safety net frees the ENI before the security groups and subnets", () =
   assert.match(sh, /describe-network-interfaces/);
 });
 
+test("the callback reports success-with-fallback only for a good job whose destroy step failed", () => {
+  const run = step("Report result to the Worker").run;
+  const line = run.split(String.fromCharCode(10)).find((l) => l.includes("success-with-fallback")) ?? assert.fail("no fallback status line");
+  assert.match(line, /job.status/);
+  assert.match(line, /steps.destroy.outcome/);
+});
+
 // Run the real safety net against a stub `aws` that finds nothing, optionally failing one final-check look.
 const hasBash = spawnSync("bash", ["-c", "true"]).status === 0;
 function runNet(failVolumesFinal) {

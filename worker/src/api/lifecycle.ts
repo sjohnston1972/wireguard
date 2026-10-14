@@ -129,7 +129,7 @@ export function registerLifecycle(api: Hono<ApiEnv>): void {
       } catch (e) {
         throw new RunError(`${ops.label} did not accept the change: ${(e as Error).message}`, "upstream");
       }
-      await db.addAlert(c.env, "info", `SSH allowed from ${addr} by ${user} (live NSG change).`);
+      await db.addAlert(c.env, "info", `SSH allowed from ${addr} by ${user} (live firewall-rule change).`);
       await refreshInventory(c.env);
       return `SSH now allowed from ${addr}. Takes effect within a few seconds.`;
     });

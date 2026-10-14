@@ -230,6 +230,8 @@ resource "aws_instance" "wg" {
   key_name                    = aws_key_pair.wg.key_name
   user_data_base64            = base64gzip(local.cloud_init)
   user_data_replace_on_change = true
+  # The ENI already has this off; say it here too so the provider never switches forwarding back on.
+  source_dest_check = false
 
   network_interface {
     network_interface_id = aws_network_interface.wg.id

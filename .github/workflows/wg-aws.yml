@@ -258,6 +258,9 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
           AWS_REGION: auto
+          # Newer AWS CLI checksum defaults break R2 uploads.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Build boot bundle"
@@ -404,6 +407,9 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
           AWS_REGION: auto
+          # Newer AWS CLI checksum defaults break R2 uploads.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
           source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Back up state"
@@ -437,7 +443,8 @@ jobs:
           set -euo pipefail
           status="success"
           [ "${{ job.status }}" != "success" ] && status="failure"
-          [ "${{ inputs.action }}" = "destroy" ] && [ "${{ steps.destroy.outcome }}" = "failure" ] && status="success-with-fallback"
+          # Only a good job whose destroy step failed (the safety net then cleaned up) is a fallback.
+          [ "${{ inputs.action }}" = "destroy" ] && [ "${{ job.status }}" = "success" ] && [ "${{ steps.destroy.outcome }}" = "failure" ] && status="success-with-fallback"
           outputs="{}"
           [ -f "$RUNNER_TEMP/outputs.json" ] && outputs="$(jq 'with_entries(.value = .value.value)' "$RUNNER_TEMP/outputs.json")"
           body="$(jq -n \

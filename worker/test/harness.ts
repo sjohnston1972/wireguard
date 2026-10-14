@@ -374,6 +374,10 @@ export interface World {
   aws: { exists: boolean; state: "running" | "stopped" | "stopping" | "pending"; ip: string; sg: FakeSgRule[]; nextRule: number };
   /** Test-only: Cost Explorer's daily rows (USD). Unset: it answers empty. */
   awsCost?: { day: string; usd: number }[];
+  /** Test-only: when true, Cost Explorer answers HTTP 400. */
+  awsCostFail?: boolean;
+  /** Test-only: a tagged Elastic IP left behind with no VPC or server. */
+  awsEipLeft?: boolean;
   /** Test-only: when set, every EC2 call answers this error code (HTTP 400). */
   awsFail?: string;
   /** VM power calls made: "deallocate" | "start". */
@@ -561,7 +565,7 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
         case "DescribeInstances":
           return xml(a.exists ? `<reservationSet><item><instancesSet><item><instanceId>i-0abc</instanceId><instanceType>t4g.micro</instanceType><instanceState><code>16</code><name>${a.state}</name></instanceState><privateIpAddress>10.50.1.4</privateIpAddress>${a.state === "running" ? `<ipAddress>${a.ip}</ipAddress>` : ""}</item></instancesSet></item></reservationSet>` : "<reservationSet/>");
         case "DescribeAddresses":
-          return xml(a.exists ? `<addressesSet><item><publicIp>${a.ip}</publicIp><allocationId>eipalloc-1</allocationId></item></addressesSet>` : "<addressesSet/>");
+          return xml(a.exists || world.awsEipLeft ? `<addressesSet><item><publicIp>${a.ip}</publicIp><allocationId>eipalloc-1</allocationId></item></addressesSet>` : "<addressesSet/>");
         case "DescribeSecurityGroups":
           return xml(a.exists && headendAsked ? "<securityGroupInfo><item><groupId>sg-wg</groupId></item></securityGroupInfo>" : "<securityGroupInfo/>");
         case "DescribeSecurityGroupRules":
@@ -593,6 +597,7 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
       return json({ ResourceTagMappingList: arns.map((ResourceARN) => ({ ResourceARN, Tags: [{ Key: "wg-admin", Value: "vpn" }] })), PaginationToken: "" });
     }
     if (u.hostname === "ce.us-east-1.amazonaws.com") {
+      if (world.awsCostFail) return new Response("{\"message\":\"fake cost failure\"}", { status: 400 });
       // Like the real thing: one row for every day from Start up to (not including) End, "0" where nothing was seeded.
       const tp = (JSON.parse((await bodyText()) || "{}") as { TimePeriod?: { Start?: string; End?: string } }).TimePeriod;
       const rows: { TimePeriod: { Start: string }; Total: { UnblendedCost: { Amount: string; Unit: string } } }[] = [];

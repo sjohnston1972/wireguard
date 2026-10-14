@@ -255,7 +255,7 @@ export const firewallFixture = (): FirewallResponse => ({
   testVm: { ip: null, enabled: false },
   forwards: [],
   captures: [],
-  capture: { busy: false, ifaces: { wg0: "Inside the tunnel (decrypted client traffic)", eth0: "Azure side (the VNet and the internet)", any: "Both" } },
+  capture: { busy: false, ifaces: { wg0: "Inside the tunnel (decrypted client traffic)", eth0: "Cloud side (the network and the internet)", any: "Both" } },
   publicIp: "203.0.113.10",
   dnsName: "wg.example.net",
   kpis: { rules: 2, enabled: 2, defaultAction: "deny", drops24h: 342, published: 0, captureBusy: false },

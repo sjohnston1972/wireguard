@@ -42,6 +42,14 @@ describe("daily AWS actuals", () => {
     expect((await db.awsCostDays(env, "2026-10-01")).length).toBe(1);
     expect((await budgetStatus(env, undefined, undefined, new Date(NOW))).actual).toBeCloseTo(1.5, 6);
   });
+  it("a failing pull is tried once a day, not on every tick, and leaves a note", async () => {
+    vi.setSystemTime(new Date(NOW));
+    world.awsCostFail = true;
+    const first = await runScheduled(env);
+    await runScheduled(env);
+    expect(world.calls.filter((c) => c.host === "ce.us-east-1.amazonaws.com")).toHaveLength(1);
+    expect(JSON.stringify(first)).toMatch(/AWS cost pull failed/);
+  });
   it("skips Cost Explorer when the Worker has no AWS keys", async () => {
     ({ env, world } = makeEnv({ AWS_WORKER_ACCESS_KEY_ID: undefined, AWS_WORKER_SECRET_ACCESS_KEY: undefined }));
     await runScheduled(env);

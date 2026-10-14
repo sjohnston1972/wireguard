@@ -25,6 +25,11 @@ describe("view", () => {
     world.aws.exists = false;
     expect(await aws().view(env)).toMatchObject({ rg_exists: false, vm_exists: false, power: null, public_ip: null });
   });
+  it("a leftover tagged Elastic IP alone still counts as something there", async () => {
+    world.aws.exists = false;
+    world.awsEipLeft = true;
+    expect(await aws().view(env)).toMatchObject({ rg_exists: true, vm_exists: false });
+  });
   it("view reports an AWS error without throwing", async () => {
     world.awsFail = "RequestLimitExceeded";
     const v = await aws().view(env);

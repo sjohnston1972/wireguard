@@ -577,8 +577,9 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
   await db.addAlert(env, "deploy", `Deployed at ${publicIp ?? "unknown IP"} (${meta.via}); ${cfg.dnsName} ${dns.live ? "is live" : "not live yet"}`, run.id);
   // Labs waiting to peer (or disconnected by the last tear-down) can peer now: one push (labs/repeer.ts).
   // A lab problem must never cost the gateway its deploy.
+  // Labs only ever peer with Azure, so an AWS apply has nothing to re-peer.
   try {
-    await rePeerPush(env, run.id);
+    if (cloudOf(await getSnapshot(env)) !== "aws") await rePeerPush(env, run.id);
   } catch (e) {
     console.error("lab re-peer push:", e);
   }
@@ -1009,11 +1010,12 @@ export async function detectDrift(env: Env): Promise<string | null> {
   if (isBusyState(snap.state)) return null;
   const az = await c.view(env);
   if (az.error) return null; // unknown, not drift
+  const where = cloudOf(snap) === "aws" ? "the tagged wg-admin resources" : `resource group ${config(env).resourceGroup}`;
   let drift: string | null = null;
-  if (snap.state === "destroyed" && az.rg_exists) drift = `${c.label} still has resource group ${config(env).resourceGroup} but the dashboard says Destroyed. That VM is costing money.`;
+  if (snap.state === "destroyed" && az.rg_exists) drift = `${c.label} still has ${where} but the dashboard says Destroyed. That VM is costing money.`;
   // A failed run can leave a half-built (or fully built) VM behind; nothing
   // else watches a Failed VM, so say so until it is cleaned up.
-  if (snap.state === "failed" && az.rg_exists) drift = `The last run failed but ${c.label} still has resource group ${config(env).resourceGroup}. It may be costing money; use Clean up to tear it down.`;
+  if (snap.state === "failed" && az.rg_exists) drift = `The last run failed but ${c.label} still has ${where}. It may be costing money; use Clean up to tear it down.`;
   if (snap.state === "running" && !az.rg_exists) drift = `The dashboard says Running but ${c.label} has no resource group. Something deleted it outside this app.`;
   if (snap.state === "running" && az.rg_exists && az.power && az.power !== "running") drift = `The VM exists but its power state is "${az.power}".`;
   if (snap.state === "running" && az.public_ip && snap.public_ip && az.public_ip !== snap.public_ip) drift = `${c.label}'s public IP ${az.public_ip} differs from the recorded ${snap.public_ip}.`;

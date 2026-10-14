@@ -74,7 +74,7 @@ export function firewallData(over: Partial<FirewallResponse> = {}): FirewallResp
     captures: [
       { id: "cap1", requested_at: "2026-10-02T11:00:00.000Z", requested_by: "dev@localhost", iface: "wg0", filter: "", seconds: 30, status: "done", bytes: 20480, finished_at: "2026-10-02T11:00:40.000Z", error: null },
     ],
-    capture: { busy: false, ifaces: { wg0: "Inside the tunnel (decrypted client traffic)", eth0: "Azure side (the VNet and the internet)", any: "Both" } },
+    capture: { busy: false, ifaces: { wg0: "Inside the tunnel (decrypted client traffic)", eth0: "Cloud side (the network and the internet)", any: "Both" } },
     publicIp: "203.0.113.10",
     dnsName: "wg.example.net",
     kpis: { rules: 5, enabled: 4, defaultAction: "deny", drops24h: 342, published: 1, captureBusy: false },

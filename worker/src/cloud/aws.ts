@@ -39,8 +39,9 @@ async function findHeadend(env: Env): Promise<Headend | null> {
 async function view(env: Env): Promise<HeadendView> {
   const checked_at = new Date().toISOString();
   try {
-    const [vpcs, h] = await Promise.all([ec2(env, "DescribeVpcs", filters([TAG])), findHeadend(env)]);
-    return { rg_exists: !!xmlFirst(vpcs, "vpcId") || !!h, vm_exists: !!h, power: h ? (POWER[h.state] ?? h.state) : null, public_ip: h?.publicIp ?? null, checked_at };
+    const [vpcs, h, addrs] = await Promise.all([ec2(env, "DescribeVpcs", filters([TAG])), findHeadend(env), ec2(env, "DescribeAddresses", filters([TAG]))]);
+    // A leftover Elastic IP bills by itself, so it counts as something still there.
+    return { rg_exists: !!xmlFirst(vpcs, "vpcId") || !!h || !!xmlFirst(addrs, "allocationId"), vm_exists: !!h, power: h ? (POWER[h.state] ?? h.state) : null, public_ip: h?.publicIp ?? null, checked_at };
   } catch (e) {
     return { rg_exists: false, vm_exists: false, power: null, public_ip: null, checked_at, error: (e as Error).message };
   }

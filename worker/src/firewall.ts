@@ -65,7 +65,7 @@ export interface Forward {
 /** Where a packet capture can listen on the VM. */
 export const CAPTURE_IFACES: Record<string, string> = {
   wg0: "Inside the tunnel (decrypted client traffic)",
-  eth0: "Azure side (the VNet and the internet)",
+  eth0: "Cloud side (the network and the internet)",
   any: "Both",
 };
 
