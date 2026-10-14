@@ -108,6 +108,37 @@ jobs:
             echo "nft is not on this runner: firewall.nft had the structural check only"
           fi
 
+      # The same check for the AWS root. Its agent scripts and firewall rules
+      # arrive in the boot bundle, not in the cloud-init, so there is nothing
+      # gzipped to unpack here: it must parse as YAML, carry the WireGuard
+      # config, and leak no Terraform placeholder.
+      - name: render cloud-init (AWS)
+        run: |
+          set -euo pipefail
+          cp -r infra "$RUNNER_TEMP/render-aws"
+          cd "$RUNNER_TEMP/render-aws/aws"
+          rm -f backend.tf
+          terraform init -input=false -no-color >/dev/null
+          echo 'nonsensitive(local.cloud_init)' | terraform console -no-color \
+            -var cloudflare_zone_id=zone \
+            -var 'ssh_public_key=ssh-ed25519 AAAA ci' \
+            -var wg_server_private_key=PRIVKEY \
+            -var 'peers_json=[{"name":"laptop","public_key":"LAPTOPKEYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","ip":"10.13.13.2"}]' \
+            -var agent_token=tok \
+            | python3 -c 'import sys,json; s=sys.stdin.read().strip(); s = s[len("<<EOT"):].strip()[:-len("EOT")] if s.startswith("<<EOT") else json.loads(s); open("rendered.yaml","w").write(s)'
+          python3 -c '
+          import yaml
+          d = yaml.safe_load(open("rendered.yaml"))
+          paths = [f["path"] for f in d["write_files"]]
+          assert "/etc/wireguard/wg0.interface.conf" in paths, paths
+          text = open("rendered.yaml").read()
+          for marker in ("${indent(", "${wg_", "${agent_", "${peers_"):
+              assert marker not in text, "unrendered Terraform placeholder in cloud-init: " + marker
+          assert "$$" not in text, "double-dollar leaked into cloud-init"
+          assert "PRIVKEY" in text and "LAPTOPKEYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" in text and "tok" in text, "values did not render"
+          print("AWS cloud-init OK:", len(paths), "files")
+          '
+
   # Labs (labs spec §11.1): every lab.yaml, readme and the address pool, a
   # version bump for every lab changed against main, then per lab (and the
   # template) terraform fmt, init -backend=false, validate and the HCL scope

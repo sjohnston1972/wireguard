@@ -8,8 +8,10 @@ import { labCoverageFixture } from "@/test/fixtures";
 import { detailIdle, labs, session } from "./testData";
 
 vi.setConfig({ testTimeout: 30_000 });
+// Slow first use: the diagram page loads the topology chunk (Flow) on demand. Warm it here so no test pays for it inside a 1 s findBy.
 beforeAll(async () => {
   await import("@/views/labs");
+  await import("@/views/labs/topology");
 });
 
 const routes = (over: Record<string, unknown> = {}) => ({
@@ -149,7 +151,7 @@ describe("wide (1600 px)", () => {
 
   it("/labs/:id/diagram unchanged: the diagram is the page", async () => {
     renderApp("/labs/az104-06-blob-security/diagram", { routes: routes() });
-    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: /Blob security/ })).toBeInTheDocument();
+    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: /Blob security/ }, { timeout: 15_000 })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Labs" })).toBeNull();
   });
 });

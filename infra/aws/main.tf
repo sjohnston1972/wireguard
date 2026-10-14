@@ -232,11 +232,10 @@ resource "aws_instance" "wg" {
   user_data_replace_on_change = true
   # Forwarding (source/destination check off) is set on the ENI it launches on
   # (aws_network_interface.wg); the provider refuses source_dest_check here
-  # alongside a network_interface block.
+  # alongside a primary_network_interface block.
 
-  network_interface {
+  primary_network_interface {
     network_interface_id = aws_network_interface.wg.id
-    device_index         = 0
   }
 
   # The public IP and the default route must exist before the first boot.
@@ -262,7 +261,10 @@ resource "aws_instance" "wg" {
   tags = { Name = "vm-wg", "wg-admin-role" = "headend" }
 
   lifecycle {
-    ignore_changes = [ami]
+    # source_dest_check: the ENI owns it (off, so the VPN forwards). The provider
+    # only reads it from the old network_interface block, so an in-place update of
+    # this instance would otherwise switch it back on and stop forwarding.
+    ignore_changes = [ami, source_dest_check]
   }
 }
 

@@ -249,7 +249,8 @@ describe("the Diagram tab, lab not running", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(chunkLoads.n).toBe(0);
     await user.click(d.getByRole("tab", { name: "Diagram" }));
-    expect(await d.findByRole("region", { name: "Lab diagram" })).toBeInTheDocument();
+    // The first real load of the lazy chunk (Flow and the layout code): slow when the machine is busy, so give it room.
+    expect(await d.findByRole("region", { name: "Lab diagram" }, { timeout: 15_000 })).toBeInTheDocument();
     expect(chunkLoads.n).toBe(1);
   });
 

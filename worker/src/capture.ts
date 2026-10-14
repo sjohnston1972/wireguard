@@ -9,8 +9,9 @@
 
 import type { Env } from "./env";
 import * as db from "./db";
-import { getSnapshot, saveSnapshot } from "./state";
+import { cloudOf, getSnapshot, saveSnapshot } from "./state";
 import { RunError } from "./runs";
+import { opsFor } from "./cloud";
 import { randomToken, sha256Hex } from "./auth";
 import { CAPTURE_IFACES } from "./firewall";
 
@@ -54,7 +55,7 @@ export async function startCapture(env: Env, o: { iface: string; filter: string;
   const id = randomToken().slice(0, 16);
   await db.addCapture(env, { id, requested_by: o.by, iface: o.iface, filter: o.filter, seconds });
   await saveSnapshot(env, { capture_req: { id, iface: o.iface, filter: o.filter, seconds, at: new Date().toISOString() } });
-  return `Capture started: ${seconds} s ${o.iface === "any" ? "on both sides" : o.iface === "wg0" ? "inside the tunnel" : "on the Azure side"}${o.filter ? ` (${o.filter})` : ""}. It appears below when done.`;
+  return `Capture started: ${seconds} s ${o.iface === "any" ? "on both sides" : o.iface === "wg0" ? "inside the tunnel" : `on the ${opsFor(cloudOf(snap)).label} side`}${o.filter ? ` (${o.filter})` : ""}. It appears below when done.`;
 }
 
 /**

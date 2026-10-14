@@ -3,8 +3,8 @@
 // Plain English: the Firewall screen's data and its published-port and
 // packet-capture actions. The rule table is read-only here (rule edits go
 // to a draft first: api/fwdraft.ts, shown here as `draft`); what you can change are the
-// published ports (saved first, then Azure's edge is told, and if Azure
-// refuses you hear it as a warning rather than losing the change), captures
+// published ports (saved first, then the cloud's edge is told, and if Azure
+// or AWS refuses you hear it as a warning rather than losing the change), captures
 // on the VM, and the hit counters.
 
 import type { Hono } from "hono";
@@ -117,8 +117,8 @@ export function registerFirewall(api: Hono<ApiEnv>): void {
     const user = c.get("user");
     await db.addAlert(c.env, "info", `Published ${f.proto.toUpperCase()} ${f.public_port} to ${f.target_ip}:${f.target_port} (${f.name}) by ${user}.`);
     await db.audit(c.env, user, "firewall.forward.add", forwardLabel(f), null, f);
-    const err = await syncPublished(c.env);
-    const out: ApiOk = { ok: true, message: `Published ${f.proto.toUpperCase()} ${f.public_port} → ${f.target_ip}:${f.target_port}. It works within 30 seconds.`, ...(err ? { warning: `Saved, but Azure did not open the port: ${err}` } : {}) };
+    const refused = await syncPublished(c.env);
+    const out: ApiOk = { ok: true, message: `Published ${f.proto.toUpperCase()} ${f.public_port} → ${f.target_ip}:${f.target_port}. It works within 30 seconds.`, ...(refused ? { warning: `Saved, but ${refused.cloud} did not open the port: ${refused.reason}` } : {}) };
     return c.json(out);
   });
 
@@ -145,8 +145,8 @@ export function registerFirewall(api: Hono<ApiEnv>): void {
     const onlyEnabled = (["name", "proto", "public_port", "target_ip", "target_port", "allow_from"] as const).every((k) => next[k] === was[k]) && next.enabled !== was.enabled;
     const action = onlyEnabled ? (next.enabled ? "firewall.forward.enable" : "firewall.forward.disable") : "firewall.forward.edit";
     await db.audit(c.env, c.get("user"), action, forwardLabel(was), was, { id, ...next });
-    const err = await syncPublished(c.env);
-    const out: ApiOk = { ok: true, message: `Saved ${forwardLabel(next)}.`, ...(err ? { warning: `Saved, but Azure did not update: ${err}` } : {}) };
+    const refused = await syncPublished(c.env);
+    const out: ApiOk = { ok: true, message: `Saved ${forwardLabel(next)}.`, ...(refused ? { warning: `Saved, but ${refused.cloud} did not update: ${refused.reason}` } : {}) };
     return c.json(out);
   });
 
@@ -157,8 +157,8 @@ export function registerFirewall(api: Hono<ApiEnv>): void {
     if (!f) return fail(c, 404, "not_found", "No such published port.");
     await db.deleteForward(c.env, id);
     await db.audit(c.env, c.get("user"), "firewall.forward.delete", forwardLabel(f), f, null);
-    const err = await syncPublished(c.env);
-    const out: ApiOk = { ok: true, message: `Stopped publishing ${forwardLabel(f)}.`, ...(err ? { warning: `Saved, but Azure did not update: ${err}` } : {}) };
+    const refused = await syncPublished(c.env);
+    const out: ApiOk = { ok: true, message: `Stopped publishing ${forwardLabel(f)}.`, ...(refused ? { warning: `Saved, but ${refused.cloud} did not update: ${refused.reason}` } : {}) };
     return c.json(out);
   });
 

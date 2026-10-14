@@ -71,6 +71,32 @@ describe("the watchman's alerts", () => {
     expect(msg).toMatch(/£8.50 spent in Azure and AWS so far/);
   });
 
+  it("reads AWS's days once per check", async () => {
+    const cfg = await effectiveConfig(env);
+    await db.upsertCostDay(env, "2026-09-01", 5);
+    await db.upsertAwsCostDay(env, "2026-09-02", 3.5, 4.7);
+    const prepare = env.DB.prepare.bind(env.DB);
+    const sql: string[] = [];
+    env.DB.prepare = ((q: string) => (sql.push(q), prepare(q))) as typeof env.DB.prepare;
+    expect(await checkBudget(env, cfg, now)).toMatch(/80%/);
+    expect(sql.filter((q) => /aws_cost_days/.test(q))).toHaveLength(1);
+  });
+
+  it("when AWS's days cannot be read: logged, counted as none, and the alert names Azure alone", async () => {
+    const cfg = await effectiveConfig(env);
+    await db.upsertCostDay(env, "2026-09-01", 8.5);
+    const prepare = env.DB.prepare.bind(env.DB);
+    env.DB.prepare = ((q: string) => {
+      if (/aws_cost_days/.test(q)) throw new Error("no such table: aws_cost_days");
+      return prepare(q);
+    }) as typeof env.DB.prepare;
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await checkBudget(env, cfg, now)).toMatch(/80%/);
+    expect(logged.mock.calls.some((c) => /budget aws days/.test(String(c[0])))).toBe(true);
+    expect((await db.listAlerts(env)).find((a) => a.kind === "budget")!.message).toMatch(/£8.50 spent in Azure so far/);
+    logged.mockRestore();
+  });
+
   it("sends 80% once, then 100% once, however many times it runs", async () => {
     const cfg = await effectiveConfig(env); // budget £10 in the harness
     await db.upsertCostDay(env, "2026-09-01", 5);

@@ -69,9 +69,9 @@ export function registerBackup(api: Hono<ApiEnv>): void {
     await c.env.STATUS.delete(`restore:${token}`);
     await db.audit(c.env, c.get("user"), "config.restore", "backup", null, { exported_at: plan.exported_at, counts: plan.counts });
     await db.addAlert(c.env, "info", `Dashboard data restored from an export of ${plan.exported_at} by ${c.get("user")}: ${plan.counts.peers} client(s), ${plan.counts.fw_rules} firewall rule(s).`);
-    // The restored published ports must reach Azure too; if Azure refuses, say so.
-    const err = await syncPublished(c.env);
-    const out: ApiOk = { ok: true, message: `Restored from an export of ${plan.exported_at}.`, ...(err ? { warning: `Restored, but Azure refused the published ports: ${err}` } : {}) };
+    // The restored published ports must reach the headend's cloud too; if it refuses, say so.
+    const refused = await syncPublished(c.env);
+    const out: ApiOk = { ok: true, message: `Restored from an export of ${plan.exported_at}.`, ...(refused ? { warning: `Restored, but ${refused.cloud} refused the published ports: ${refused.reason}` } : {}) };
     return c.json(out);
   });
 }
