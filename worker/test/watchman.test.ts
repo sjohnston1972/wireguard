@@ -159,7 +159,7 @@ describe("standby is announced once (#30)", () => {
     await startHibernate(env, "steven", "test");
     world.azure.power = "deallocated";
     await Promise.all([refreshPower(env), refreshPower(env), refreshPower(env)]);
-    expect(world.notes.filter((n) => n.title === "wg-admin: in standby")).toHaveLength(1);
+    expect(world.notes.filter((n) => n.title === "cloudlabs: in standby")).toHaveLength(1);
     expect((await db.listAlerts(env)).filter((a) => a.kind === "session")).toHaveLength(1);
     expect((await getSnapshot(env)).state).toBe("standby");
   });

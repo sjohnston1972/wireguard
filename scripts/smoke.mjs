@@ -1,4 +1,4 @@
-// scripts/smoke.mjs   (node scripts/smoke.mjs --local http://localhost:8787 | --live https://wg-admin.clydeford.net)
+// scripts/smoke.mjs   (node scripts/smoke.mjs --local http://localhost:8787 | --live https://cloudlabs.clydeford.net)
 //
 // Plain English: after a deploy (or against "npm run dev:api"), asks the site
 // a handful of questions a browser, the VM and a phone would ask, and checks

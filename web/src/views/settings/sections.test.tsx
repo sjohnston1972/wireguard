@@ -85,7 +85,7 @@ describe("Settings sections", () => {
     const user = userEvent.setup();
     const { fetchMock } = renderApp("/settings/backup", { routes: routesFor() });
     await user.upload(await screen.findByLabelText("Export file"), new File(["not json"], "x.json", { type: "application/json" }));
-    expect(await screen.findByText(/not a wg-admin export/)).toBeInTheDocument();
+    expect(await screen.findByText(/not a cloudlabs export/)).toBeInTheDocument();
     expect(fetchMock!.callsTo("POST", "/api/v1/backup/restore/preview")).toHaveLength(0);
   });
 

@@ -61,10 +61,10 @@ export async function requireAccess(c: Context<{ Bindings: Env; Variables: Authe
   const aud = env.CF_ACCESS_AUD;
   const allowed = env.CF_ACCESS_ALLOWED_EMAIL;
   if (!team || !aud || !allowed) {
-    return refuse(c, 503, "not_configured", "wg-admin is not configured for login yet (CF_ACCESS_* secrets missing). Refusing to serve.");
+    return refuse(c, 503, "not_configured", "cloudlabs is not configured for login yet (CF_ACCESS_* secrets missing). Refusing to serve.");
   }
   const token = c.req.header("Cf-Access-Jwt-Assertion") ?? "";
-  if (!token) return refuse(c, 401, "unauthenticated", "No Cloudflare Access token. Open this page through wg-admin.clydeford.net.");
+  if (!token) return refuse(c, 401, "unauthenticated", "No Cloudflare Access token. Open this page through cloudlabs.clydeford.net.");
   try {
     const { payload } = await jwtVerify(token, jwks(team), { issuer: `https://${team}`, audience: aud });
     const email = String(payload.email ?? "").toLowerCase();
@@ -74,7 +74,7 @@ export async function requireAccess(c: Context<{ Bindings: Env; Variables: Authe
   } catch (e) {
     // The exact reason goes to the Worker's log, not to whoever sent the token.
     console.error("Access token rejected:", (e as Error).message);
-    return refuse(c, 401, "unauthenticated", "Access token rejected. Sign in again through wg-admin.clydeford.net.");
+    return refuse(c, 401, "unauthenticated", "Access token rejected. Sign in again through cloudlabs.clydeford.net.");
   }
 }
 
@@ -99,7 +99,7 @@ export async function sameOriginOnly(c: Context<{ Bindings: Env; Variables: Auth
   const m = c.req.method;
   if (m === "GET" || m === "HEAD" || m === "OPTIONS") return next();
   if (!cameFromOurPages(c.req.header("Sec-Fetch-Site"), c.req.header("Origin"), c.req.url, c.env.PUBLIC_URL)) {
-    return refuse(c, 403, "cross_site", "Refused: that request did not come from the wg-admin pages.");
+    return refuse(c, 403, "cross_site", "Refused: that request did not come from the cloudlabs pages.");
   }
   return next();
 }

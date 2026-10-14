@@ -116,12 +116,12 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   const cloud: Cloud = opts.cloud ?? "azure";
   const was = cloudOf(snap);
   if (cloud !== was && snap.state !== "destroyed") {
-    throw new RunError(`Tear down the ${opsFor(was).label} headend first. wg-admin runs one cloud at a time.`);
+    throw new RunError(`Tear down the ${opsFor(was).label} headend first. cloudlabs runs one cloud at a time.`);
   }
   // Torn down, but the old cloud still has resources: once the snapshot
   // follows the new cloud, nothing would watch them, so clean up first.
   if (cloud !== was && snap.drift) {
-    throw new RunError(`Clean up the ${opsFor(was).label} leftovers first (see the drift warning). wg-admin runs one cloud at a time.`);
+    throw new RunError(`Clean up the ${opsFor(was).label} leftovers first (see the drift warning). cloudlabs runs one cloud at a time.`);
   }
   if (cloud === "aws" && !opsFor("aws").configured(env)) throw new RunError("AWS is not set up yet: the Worker has no AWS keys.", "bad_input");
 
@@ -548,7 +548,7 @@ async function failRun(env: Env, run: db.Run, message: string): Promise<void> {
   await markActivityDue(env);
   await saveSnapshot(env, { state: "failed", error: message, since: new Date().toISOString(), pending_deploy: null });
   await db.addAlert(env, "failure", `${run.action} failed: ${message}`, run.id);
-  await notify(env, `wg-admin: ${run.action} failed`, message, { buttons: [dashboardButton(env, "Open the run", "/activity/runs/" + run.id)] });
+  await notify(env, `cloudlabs: ${run.action} failed`, message, { buttons: [dashboardButton(env, "Open the run", "/activity/runs/" + run.id)] });
   await saveFinalSteps(env, run.id);
 }
 
@@ -639,7 +639,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
   if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);
   const next = before.pending_deploy;
   if (!next) {
-    await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; ${opsFor(cloudOf(before)).label} cost is £0.`, { tags: ["wastebasket"] });
+    await notify(env, "cloudlabs: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; ${opsFor(cloudOf(before)).label} cost is £0.`, { tags: ["wastebasket"] });
     await clearBootBundles(env);
     return true;
   }
@@ -650,7 +650,7 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
   } catch (e) {
     await saveSnapshot(env, { pending_deploy: null });
     await db.addAlert(env, "failure", `Move: torn down, but the new deploy could not start: ${(e as Error).message}`, run.id);
-    await notify(env, "wg-admin: move stopped", `Torn down, but the new deploy could not start: ${(e as Error).message}`, { priority: 4 });
+    await notify(env, "cloudlabs: move stopped", `Torn down, but the new deploy could not start: ${(e as Error).message}`, { priority: 4 });
   }
   await clearBootBundles(env);
   return true;
@@ -866,15 +866,15 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     const onDemand = typeof st.id === "string" && st.id !== "";
     if (failed.length) {
       await db.addAlert(env, "failure", `Self-test failed: ${failed.join(", ")}. The VM is up but clients may not work fully.`);
-      await notify(env, onDemand ? "wg-admin: Health check failed" : "wg-admin: up, but the self-test failed", `Failed: ${failed.join(", ")}. ${cfg.dnsName} → ${snap.public_ip ?? "?"}`, { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
+      await notify(env, onDemand ? "cloudlabs: Health check failed" : "cloudlabs: up, but the self-test failed", `Failed: ${failed.join(", ")}. ${cfg.dnsName} → ${snap.public_ip ?? "?"}`, { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
     } else {
       const v6 = st.internet6 === true ? ", IPv6" : "";
       await db.addAlert(env, "info", `Self-test passed in ${(st.ms / 1000).toFixed(1)} s: handshake, tunnel, loopback${st.dns ? ", DNS" : ""}, internet${v6}.`);
       if (onDemand) {
-        await notify(env, "wg-admin: Health check passed", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}) in ${(st.ms / 1000).toFixed(1)} s. ${cfg.dnsName} → ${snap.public_ip ?? "?"}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
+        await notify(env, "cloudlabs: Health check passed", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}) in ${(st.ms / 1000).toFixed(1)} s. ${cfg.dnsName} → ${snap.public_ip ?? "?"}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
       } else {
         const until = deadline ? `. Tears down at ${new Date(deadline).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}` : "";
-        await notify(env, "wg-admin: ready", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}). ${cfg.dnsName} → ${snap.public_ip ?? "?"}${until}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
+        await notify(env, "cloudlabs: ready", `Tunnel proven end to end (handshake${st.dns ? ", DNS" : ""}, internet${v6}). ${cfg.dnsName} → ${snap.public_ip ?? "?"}${until}.`, { tags: ["white_check_mark"], buttons: [dashboardButton(env)] });
       }
     }
   }
@@ -887,7 +887,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
     for (const e of ev.fresh) {
       const note = scheduledEventNote(e, opsFor(cloudOf(snap)).label);
       await db.addAlert(env, "info", note);
-      await notify(env, `wg-admin: ${opsFor(cloudOf(snap)).label} maintenance scheduled`, note, { tags: ["calendar"], buttons: [dashboardButton(env)] });
+      await notify(env, `cloudlabs: ${opsFor(cloudOf(snap)).label} maintenance scheduled`, note, { tags: ["calendar"], buttons: [dashboardButton(env)] });
     }
     if (ev.fresh.length) patch.sched_events_seen = ev.seen;
   } catch (e) {

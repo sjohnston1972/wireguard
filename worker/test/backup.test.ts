@@ -49,8 +49,8 @@ describe("dashboard data backup and restore (issue #46)", () => {
       return JSON.stringify(e);
     };
     expect(await checkRestoreFile(env, "not json")).toMatch(/not JSON/);
-    expect(await checkRestoreFile(env, bad((e) => (e.kind = "other")))).toMatch(/not a wg-admin config export/);
-    expect(await checkRestoreFile(env, bad((e) => (e.version = 99)))).toMatch(/newer wg-admin/);
+    expect(await checkRestoreFile(env, bad((e) => (e.kind = "other")))).toMatch(/not a cloudlabs config export/);
+    expect(await checkRestoreFile(env, bad((e) => (e.version = 99)))).toMatch(/newer cloudlabs/);
     expect(await checkRestoreFile(env, bad((e) => delete e.tables.schedules))).toMatch(/missing the Schedules/);
     expect(await checkRestoreFile(env, bad((e) => (e.tables.peers[0].evil = "x")))).toMatch(/does not know/);
     expect(await checkRestoreFile(env, bad((e) => (e.tables.peers[0].public_key = "nope")))).toMatch(/WireGuard public key/);

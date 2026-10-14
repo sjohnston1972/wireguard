@@ -19,7 +19,7 @@ describe("AppShell", () => {
 
   it("shows the wordmark and a banner landmark", () => {
     renderApp("/");
-    expect(screen.getByRole("banner")).toHaveTextContent("wg-admin");
+    expect(screen.getByRole("banner")).toHaveTextContent("cloudlabs");
   });
 
   it.each([

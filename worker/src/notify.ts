@@ -2,7 +2,7 @@
 //
 // Plain English: the pager. When something worth knowing happens (ready,
 // torn down, failed, drift, cost guard, "tearing down in 15 minutes"):
-//   - it is pushed to every phone that turned alerts on in the wg-admin app
+//   - it is pushed to every phone that turned alerts on in the cloudlabs app
 //     (Web Push, see webpush.ts), with up to two tap buttons, and
 //   - it is posted to a webhook if NOTIFY_WEBHOOK_URL is set (Discord, Slack,
 //     ntfy or plain JSON).
@@ -81,7 +81,7 @@ export async function notify(env: Env, title: string, body: string, o: NotifyOpt
       if (env.NOTIFY_TOKEN) headers.Authorization = `Bearer ${env.NOTIFY_TOKEN}`;
       init = { method: "POST", headers, body: JSON.stringify(ntfyMessage(ntfy.topic, title, body, o)) };
     } else {
-      init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source: "wg-admin", title, body, at: new Date().toISOString() }) };
+      init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source: "cloudlabs", title, body, at: new Date().toISOString() }) };
     }
     const r = await fetch(target, init);
     if (r.ok) await env.STATUS.delete("notify:last_error");
@@ -104,7 +104,7 @@ async function pushToPhones(env: Env, title: string, body: string, o: NotifyOpti
   if (!subs.length) return;
   const buttons = o.buttons ?? [];
   const msg = {
-    title: title.replace(/^wg-admin:\s*/, ""),
+    title: title.replace(/^(cloudlabs|wg-admin):\s*/, ""),
     body,
     url: buttons.find((b) => b.kind === "view")?.url ?? config(env).publicUrl,
     actions: buttons.filter((b) => b.kind === "http").slice(0, 2).map((b) => ({ title: b.label, url: b.url })),

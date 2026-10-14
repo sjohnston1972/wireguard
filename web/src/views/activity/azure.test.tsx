@@ -86,12 +86,12 @@ describe("activity: Azure change log widget", () => {
     expect(screen.queryByText("Succeeded")).toBeNull();
   });
 
-  it("wg-admin rows are labelled wg-admin and portal changes show the person", async () => {
+  it("wg-admin rows are labelled cloudlabs and portal changes show the person", async () => {
     renderActivity(turnedOn(...AZ_LOG));
     await screen.findByRole("table", { name: "Azure changes" });
     const rows = bodyRows(changes());
     expect(rows[0]).toHaveTextContent("someone@example.net");
-    expect(rows[1]).toHaveTextContent("wg-admin");
+    expect(rows[1]).toHaveTextContent("cloudlabs");
     expect(rows[3]).toHaveTextContent("Azure");
     // words with colour: the status is a word in a pill
     expect(within(rows[0]).getByText("Succeeded")).toBeInTheDocument();

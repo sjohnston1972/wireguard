@@ -122,7 +122,7 @@ export function verdict(input: VerdictInput): Verdict {
   const soon = events.find((e) => e.status === "Started" || at(e) <= now + 15 * 60_000);
   if (soon) {
     const t = at(soon);
-    return out(6, { tone: "red", title: `${who} will ${Object.hasOwn(VERB, soon.type) ? VERB[soon.type] : soon.type} the VM ${soon.status === "Started" || !Number.isFinite(t) ? "now" : `at ${ukTime(t, false)}`}`, sub: soon.description ?? `Scheduled by ${who}. wg-admin never brings it forward.` });
+    return out(6, { tone: "red", title: `${who} will ${Object.hasOwn(VERB, soon.type) ? VERB[soon.type] : soon.type} the VM ${soon.status === "Started" || !Number.isFinite(t) ? "now" : `at ${ukTime(t, false)}`}`, sub: soon.description ?? `Scheduled by ${who}. cloudlabs never brings it forward.` });
   }
   // 7. Azure says the VM is degraded.
   if (health?.state === "Degraded") return out(7, { tone: "amber", title: "Azure reports the VM as degraded", sub: health.summary ?? "" });

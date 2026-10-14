@@ -398,7 +398,7 @@ const CATALOGUE: readonly Omit<WidgetDef, "description">[] = [
     "Azure change log",
     [
       pick("data", "range", "Range", o("24h", "7d", "30d", "90d"), "7d"),
-      pick("data", "who", "Who", o(["all", "Everyone"], ["others", "Everyone but wg-admin"], ["wgadmin", "wg-admin only"]), "all"),
+      pick("data", "who", "Who", o(["all", "Everyone"], ["others", "Everyone but cloudlabs"], ["wgadmin", "cloudlabs only"]), "all"),
       multi("data", "types", "Types", AZ_KINDS, 1),
       bool("display", "status", "Status column", true),
       bool("display", "caller", "Caller column", true),

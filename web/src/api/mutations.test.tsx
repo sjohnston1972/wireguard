@@ -145,7 +145,7 @@ describe("mutations", () => {
       </W>,
     );
     act(() => screen.getByText("go").click());
-    const t = await screen.findByText("Not sent — couldn't reach wg-admin. Try again.");
+    const t = await screen.findByText("Not sent — couldn't reach cloudlabs. Try again.");
     expect(t.closest("[data-tone]")).toHaveAttribute("data-tone", "error");
     await new Promise((r) => setTimeout(r, 1200));
     expect(m.callsTo("POST", "/api/v1/deploy")).toHaveLength(1);

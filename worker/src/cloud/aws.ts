@@ -139,7 +139,7 @@ async function power(env: Env, op: "hibernate" | "resume"): Promise<void> {
   const verb = op === "hibernate" ? "stop" : "start";
   try {
     const h = await findHeadend(env);
-    if (!h) throw new Error(`there is no wg-admin server to ${verb}`);
+    if (!h) throw new Error(`there is no cloudlabs server to ${verb}`);
     await ec2(env, op === "hibernate" ? "StopInstances" : "StartInstances", { "InstanceId.1": h.id });
   } catch (e) {
     const code = e instanceof AwsError ? ` (${e.code})` : "";

@@ -73,7 +73,7 @@ async function guardNote(env: Env, net: Net, cost: number, s: LabSessionRow, msg
   if (await env.STATUS.get(key)) return;
   await env.STATUS.put(key, "1", { expirationTtl: 2 * 86_400 });
   await db.addAlert(env, "cost_guard", msg);
-  await pushIfCalls(env, net, cost, "wg-admin: lab cost guard", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open Labs", "/labs")] });
+  await pushIfCalls(env, net, cost, "cloudlabs: lab cost guard", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open Labs", "/labs")] });
 }
 
 /** When the session's last run finished (or it was requested, with none). */
@@ -150,7 +150,7 @@ async function warn(env: Env, s: LabSessionRow, net: Net, cost: number, now: num
   const body = atMax
     ? `${title} reaches its maximum lifetime at ${hhmm(deadline)} and is torn down then. Tear it down now if you are done.`
     : `${title}'s timer ends at ${hhmm(deadline)}.${extendable ? " Extend it by an hour, or let it tear down." : " It cannot be extended past its maximum lifetime."}`;
-  await notify(env, `wg-admin: lab ${title} ends in ${mins} min`, body, { priority: 4, tags: ["hourglass"], buttons });
+  await notify(env, `cloudlabs: lab ${title} ends in ${mins} min`, body, { priority: 4, tags: ["hourglass"], buttons });
   return `${title}: 15-minute warning sent`;
 }
 
@@ -232,6 +232,6 @@ async function budgetTeardown(env: Env, net: Net, cost: number, now: Date): Prom
   if (!gone.length && !failed.length) return null;
   const msg = `Monthly budget reached (${Math.round(b.pct)}% of £${b.budget.toFixed(2)}): ${gone.length ? `tearing down ${gone.length} lab${gone.length === 1 ? "" : "s"} (${gone.join(", ")})` : "no lab could be torn down yet"}${failed.length ? `; could not start: ${failed.join(", ")}, tried again in 5 minutes` : ""}. The gateway is not touched.`;
   await db.addAlert(env, "cost_guard", msg);
-  await pushIfCalls(env, net, cost, "wg-admin: budget reached, labs torn down", msg, { priority: 4, tags: ["moneybag"], buttons: [dashboardButton(env, "Open Labs", "/labs")] });
+  await pushIfCalls(env, net, cost, "cloudlabs: budget reached, labs torn down", msg, { priority: 4, tags: ["moneybag"], buttons: [dashboardButton(env, "Open Labs", "/labs")] });
   return `budget: ${msg}`;
 }

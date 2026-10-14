@@ -8,7 +8,7 @@ import worker from "../src/index";
 // the login.
 
 const ctx = { waitUntil() {}, passThroughOnCancel() {} } as unknown as ExecutionContext;
-const BASE = "https://wg-admin.clydeford.net";
+const BASE = "https://cloudlabs.clydeford.net";
 
 function call(env: Env, path: string, init: RequestInit = {}): Promise<Response> {
   return worker.fetch(new Request(BASE + path, init), env, ctx) as Promise<Response>;

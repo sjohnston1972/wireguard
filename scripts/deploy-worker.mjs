@@ -22,4 +22,4 @@ if (!dry) {
 
 const status = runSteps(deploySteps(), dry ? dryRunner : spawnRunner(loadEnv()));
 if (status !== 0) process.exit(status);
-console.log(dry ? "\nDry run: nothing was changed." : "\nDeployed. Open https://wg-admin.clydeford.net");
+console.log(dry ? "\nDry run: nothing was changed." : "\nDeployed. Open https://cloudlabs.clydeford.net");

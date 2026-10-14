@@ -35,7 +35,7 @@ import { useToast } from "@/components/feedback/Toast";
 export type Body = Record<string, unknown>;
 
 /** The toast for a write that could not reach the server (writes are never retried). */
-export const NOT_SENT = "Not sent — couldn't reach wg-admin. Try again.";
+export const NOT_SENT = "Not sent — couldn't reach cloudlabs. Try again.";
 
 /** The server's complaint about one input, for a form to show beside it. */
 export function fieldErrorOf(error: unknown, field: string): string | undefined {

@@ -29,6 +29,7 @@ import { receiveCapture, MAX_CAPTURE_BYTES } from "./capture";
 import { buildApi } from "./api";
 import { devSeed } from "./devseed";
 import { serveShowcase } from "./showcase";
+import { movedTo } from "./moved";
 import { serveHashedAsset } from "./assetguard";
 import { receiveLiveLog, LIVE_LOG_MAX_BODY } from "./livelog";
 import { demoGate } from "./demo/gate";
@@ -70,6 +71,12 @@ app.use("*", async (c, next) => {
   c.res.headers.set("X-Frame-Options", "DENY");
   c.res.headers.set("X-Content-Type-Options", "nosniff");
   c.res.headers.set("Referrer-Policy", "same-origin");
+});
+
+// The old address's showcase links go on to the new address (moved.ts).
+app.use("*", async (c, next) => {
+  const to = movedTo(c.req.url, c.req.method);
+  return to ? c.redirect(to, 301) : next();
 });
 
 // ── Token-authenticated API (no Cloudflare Access) ─────────────────────────
@@ -229,20 +236,20 @@ app.post("/api/act/:token", async (c) => {
   } catch (e) {
     msg = `Could not do that: ${(e as Error).message}`;
   }
-  await notify(c.env, "wg-admin", msg, { tags: ["ok_hand"], skipPush: true });
+  await notify(c.env, "cloudlabs", msg, { tags: ["ok_hand"], skipPush: true });
   return c.text(msg);
 });
 
-// The app description a phone reads to install wg-admin to its home screen.
+// The app description a phone reads to install cloudlabs to its home screen.
 // It and /icons/ have their own Access bypass (they hold nothing private),
 // because browsers fetch them without the login cookie.
 app.get("/manifest.webmanifest", (c) =>
   c.json(
     {
       id: "/",
-      name: "wg-admin",
-      short_name: "wg-admin",
-      description: "On-demand WireGuard headend: deploy, watch and tear down.",
+      name: "cloudlabs",
+      short_name: "cloudlabs",
+      description: "On-demand VPN headends and cloud labs on Azure and AWS: deploy, watch and tear down.",
       start_url: "/",
       scope: "/",
       display: "standalone",

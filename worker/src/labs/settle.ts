@@ -113,7 +113,7 @@ export async function endSession(env: Env, s: LabSessionRow, clean: boolean, lef
   const names = leftovers.length ? leftovers.join(", ") : `something in rg-lab-${s.lab_id}`;
   const msg = `Lab leftovers: ${names}. ${titleOf(s.lab_id)} did not tear down cleanly; Clean up from the Labs tab.`;
   await db.addAlert(env, "cost_guard", msg);
-  if (canNotify()) await notify(env, "wg-admin: lab leftovers", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open Labs", "/labs")] });
+  if (canNotify()) await notify(env, "cloudlabs: lab leftovers", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open Labs", "/labs")] });
 }
 
 /** Record a release test (spec §11.2). Pass needs a successful run and a clean check. */
@@ -158,7 +158,7 @@ export async function finishRun(env: Env, run: LabRunDb, result: { ok: boolean; 
         const until = Math.min(now.getTime() + hours * HOUR, Date.parse(s.max_until));
         const outputs = { private_ips: out.private_ips, connect: out.connect, users: out.users, peer_vnet_id: out.peer_vnet_id };
         await updateSession(env, s.id, { state: "running", ready_at: at, auto_destroy_at: new Date(until).toISOString(), outputs_json: JSON.stringify(outputs) }, "state = 'deploying'");
-        if (canNotify()) await notify(env, `wg-admin: lab ready`, `${title} is ready. It tears down at ${hhmm(new Date(until).toISOString())}.`, { tags: ["test_tube"], buttons: [dashboardButton(env, "Open the lab", `/labs/${s.lab_id}`)] });
+        if (canNotify()) await notify(env, `cloudlabs: lab ready`, `${title} is ready. It tears down at ${hhmm(new Date(until).toISOString())}.`, { tags: ["test_tube"], buttons: [dashboardButton(env, "Open the lab", `/labs/${s.lab_id}`)] });
       } else {
         await updateSession(env, s.id, { state: "failed" }, "state = 'deploying'");
         await db.addAlert(env, "info", `Lab ${title} failed to deploy${result.error ? `: ${result.error}` : ""}. It is torn down in 15 minutes unless you tear it down first.`, null);

@@ -14,6 +14,9 @@ workers_dev = false
 
 # The dashboard's address. wrangler creates the DNS record for it.
 routes = [
+  { pattern = "cloudlabs.clydeford.net", custom_domain = true },
+  # The old address: kept so running VMs, GitHub runs and old alert links still work;
+  # pages there send the browser on to cloudlabs.clydeford.net (worker/src/moved.ts).
   { pattern = "wg-admin.clydeford.net", custom_domain = true }
 ]
 
@@ -84,7 +87,7 @@ binding = "BROWSER"
 # ── Non-secret settings ──────────────────────────────────────────────────────
 
 [vars]
-PUBLIC_URL = "https://wg-admin.clydeford.net"
+PUBLIC_URL = "https://cloudlabs.clydeford.net"
 WG_DNS_NAME = "wg.clydeford.net"
 WG_PORT = "51820"
 WG_SUBNET = "10.13.13.0/24"

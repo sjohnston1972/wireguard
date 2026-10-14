@@ -88,7 +88,7 @@ describe("alert links", () => {
 
   it("the push payload url is the view button's url", async () => {
     await db.savePushSub(env, { endpoint: "https://fcm.googleapis.com/fcm/send/abc", p256dh: "x", auth: "y", label: "Pixel" });
-    await notify(env, "wg-admin: test", "b", { buttons: [dashboardButton(env, "Open", "/settings/mobile")] });
+    await notify(env, "cloudlabs: test", "b", { buttons: [dashboardButton(env, "Open", "/settings/mobile")] });
     expect(pushed).toHaveLength(1);
     expect(pushed[0].url).toBe(`${BASE}/settings/mobile`);
   });

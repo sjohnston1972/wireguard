@@ -16,7 +16,7 @@ import { backupRoot, buildExport, exportFileName, checkRestoreFile, applyRestore
 import { syncPublished } from "../published";
 import type { ApiOk, RestorePreviewResponse } from "../../../shared/api";
 
-const TOO_BIG = "That file is too big to be a wg-admin export.";
+const TOO_BIG = "That file is too big to be a cloudlabs export.";
 
 export function registerBackup(api: Hono<ApiEnv>): void {
   api.get("/backup/export", async (c) => {

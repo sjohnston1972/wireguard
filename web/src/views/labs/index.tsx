@@ -67,14 +67,14 @@ function LabFullScreen({ id }: { id: string }) {
 /**
  * /labs/:id/diagram?popout=1 (issue #93): the lab's diagram in its own
  * window, drawn without the app's navigation (shell/Chromeless.tsx), titled
- * "<lab id> diagram · wg-admin". A lab that cannot be opened says so, alone.
+ * "<lab id> diagram · cloudlabs". A lab that cannot be opened says so, alone.
  */
 function LabPopOut({ id }: { id: string }) {
   const q = useLab(id);
   const navigate = useNavigate();
   useEffect(() => {
     const before = document.title;
-    document.title = `${id} diagram · wg-admin`;
+    document.title = `${id} diagram · cloudlabs`;
     return () => {
       document.title = before;
     };
