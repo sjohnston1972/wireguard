@@ -10,3 +10,5 @@ Dockerfile text eol=lf
 shared/topology/planned/*.json text eol=lf
 # Generated readme diagrams (npm run labs-diagrams): byte-stable on every OS.
 shared/guides/** text eol=lf
+# Test fixtures (captured API responses): byte-stable on every OS.
+worker/test/fixtures/** -text

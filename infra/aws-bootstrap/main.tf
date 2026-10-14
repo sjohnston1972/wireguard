@@ -101,7 +101,7 @@ resource "aws_iam_role_policy" "deploy" {
         Action = [
           "ec2:TerminateInstances", "ec2:StopInstances", "ec2:StartInstances", "ec2:ModifyInstanceAttribute",
           "ec2:DeleteVolume", "ec2:DeleteVpc", "ec2:DeleteSecurityGroup", "ec2:ReleaseAddress",
-          "ec2:DeleteSubnet", "ec2:DeleteRouteTable", "ec2:DeleteInternetGateway", "ec2:DetachInternetGateway", "ec2:DeleteKeyPair",
+          "ec2:DeleteSubnet", "ec2:DeleteRouteTable", "ec2:DeleteNetworkInterface", "ec2:DisassociateAddress", "ec2:DeleteInternetGateway", "ec2:DetachInternetGateway", "ec2:DeleteKeyPair",
           "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress", "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress",
         ]
         Resource  = "*"
@@ -128,7 +128,7 @@ resource "aws_iam_user_policy" "worker" {
       {
         Sid       = "Look"
         Effect    = "Allow"
-        Action    = ["ec2:DescribeInstances", "ec2:DescribeVpcs", "ec2:DescribeSecurityGroups", "ec2:DescribeSecurityGroupRules", "ec2:DescribeAddresses"]
+        Action    = ["ec2:DescribeInstances", "ec2:DescribeVpcs", "ec2:DescribeSecurityGroups", "ec2:DescribeSecurityGroupRules", "ec2:DescribeAddresses", "ec2:DescribeVolumes"]
         Resource  = "*"
         Condition = { StringEquals = { "aws:RequestedRegion" = var.region } }
       },
