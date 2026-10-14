@@ -39,7 +39,7 @@
 .tabs--pill .tabs__tab[data-state="active"] {
   background: var(--blue-fill);
   border-color: var(--blue-fill);
-  color: #fff;
+  color: var(--on-fill);
 }
 
 .tabs__panel { padding-top: 12px; }

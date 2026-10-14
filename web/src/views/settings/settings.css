@@ -190,7 +190,7 @@
 /* weekday strip */
 .set-days { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
 .set-days__pill { padding: 3px 8px; border-radius: 999px; font-size: 11px; background: var(--bg-tile); border: 1px solid var(--border-strong); color: var(--text-secondary); }
-.set-days__pill--on { background: var(--blue-fill); border-color: var(--blue-fill); color: #fff; }
+.set-days__pill--on { background: var(--blue-fill); border-color: var(--blue-fill); color: var(--on-fill); }
 
 /* unsaved changes: the last block of the section (below 1100 px, pinned to the bottom of the page) */
 .set-unsaved {
