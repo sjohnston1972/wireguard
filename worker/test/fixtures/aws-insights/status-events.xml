@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DescribeInstanceStatusResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+    <requestId>8c6d4f51-0e7a-4b1d-2f3c-4d5e6f708192</requestId>
+    <instanceStatusSet>
+        <item>
+            <attachedEbsStatus>
+                <details>
+                    <item>
+                        <name>reachability</name>
+                        <status>passed</status>
+                    </item>
+                </details>
+                <status>ok</status>
+            </attachedEbsStatus>
+            <availabilityZone>eu-west-2a</availabilityZone>
+            <eventsSet>
+                <item>
+                    <code>system-reboot</code>
+                    <description>scheduled reboot</description>
+                    <instanceEventId>instance-event-0d59937288b749b32</instanceEventId>
+                    <notAfter>2026-10-20T05:00:00.000Z</notAfter>
+                    <notBefore>2026-10-20T03:00:00.000Z</notBefore>
+                    <notBeforeDeadline>2026-10-27T03:00:00.000Z</notBeforeDeadline>
+                </item>
+                <item>
+                    <code>instance-retirement</code>
+                    <description>The instance is running on degraded hardware</description>
+                    <instanceEventId>instance-event-0a1b2c3d4e5f60718</instanceEventId>
+                    <notBefore>2026-10-18T09:00:00.000Z</notBefore>
+                </item>
+                <item>
+                    <code>system-maintenance</code>
+                    <description>[Completed] Network maintenance on the host</description>
+                    <instanceEventId>instance-event-0f0e0d0c0b0a09080</instanceEventId>
+                    <notAfter>2026-10-10T05:00:00.000Z</notAfter>
+                    <notBefore>2026-10-10T03:00:00.000Z</notBefore>
+                </item>
+                <item>
+                    <code>instance-reboot</code>
+                    <description>[Canceled] scheduled reboot</description>
+                    <instanceEventId>instance-event-01234567890abcdef</instanceEventId>
+                    <notAfter>2026-10-22T05:00:00.000Z</notAfter>
+                    <notBefore>2026-10-22T03:00:00.000Z</notBefore>
+                </item>
+            </eventsSet>
+            <instanceId>i-0abc</instanceId>
+            <instanceState>
+                <code>16</code>
+                <name>running</name>
+            </instanceState>
+            <instanceStatus>
+                <details>
+                    <item>
+                        <name>reachability</name>
+                        <status>passed</status>
+                    </item>
+                </details>
+                <status>ok</status>
+            </instanceStatus>
+            <systemStatus>
+                <details>
+                    <item>
+                        <name>reachability</name>
+                        <status>passed</status>
+                    </item>
+                </details>
+                <status>ok</status>
+            </systemStatus>
+        </item>
+    </instanceStatusSet>
+</DescribeInstanceStatusResponse>
