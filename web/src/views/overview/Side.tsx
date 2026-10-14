@@ -114,9 +114,11 @@ export function Traffic({ o, now, className }: { o: OverviewResponse; now: numbe
   const { ref, height } = useElementHeight<HTMLDivElement>(140);
   const fromHistory = win === "24h" || win === "7d";
   const histQ = useHistory({ scope: "vm", range: win === "7d" ? "7d" : "24h" }, { enabled: fromHistory });
+  // The snapshot keeps the last session's samples after a tear-down: only a headend in service has a session to draw.
+  const inService = ["running", "hibernating", "resuming"].includes(o.snapshot.state);
   const samples: Sample[] = fromHistory
     ? (histQ.data?.points ?? []).map((p) => ({ t: Date.parse(p.t), rx: p.rx_rate, tx: p.tx_rate, rxMax: p.rx_rate_max, txMax: p.tx_rate_max }))
-    : o.snapshot.traffic_hist.filter((p) => now - Date.parse(p.t) <= WINDOW_MS[win as keyof typeof WINDOW_MS]).map((p) => ({ t: Date.parse(p.t), rx: p.rx, tx: p.tx }));
+    : (inService ? o.snapshot.traffic_hist : []).filter((p) => now - Date.parse(p.t) <= WINDOW_MS[win as keyof typeof WINDOW_MS]).map((p) => ({ t: Date.parse(p.t), rx: p.rx, tx: p.tx }));
   const x = samples.map((p) => Math.floor(p.t / 1000));
   const scale = trafficScale(
     Math.max(0, ...samples.flatMap((p) => [p.rx, p.tx, p.rxMax, p.txMax]).filter((v): v is number => typeof v === "number")),
