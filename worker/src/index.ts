@@ -15,7 +15,7 @@ import type { Env } from "./env";
 import { config } from "./env";
 import { requireAccess, sameOriginOnly, bearer, type AuthedVars } from "./auth";
 import { getSnapshot } from "./state";
-import { startDestroy, extendAutoDestroy, handleCallback, handleAgent, issueRunSecrets, RunError } from "./runs";
+import { startDestroy, extendAutoDestroy, handleCallback, handleAgent, bootBundle, issueRunSecrets, RunError } from "./runs";
 import { verifyGithubOidc } from "./oidc";
 import { startHibernate } from "./standby";
 import { consumeAction, isLabAction } from "./actions";
@@ -177,6 +177,16 @@ app.post("/api/agent/capture/:id", async (c) => {
   const r = await receiveCapture(c.env, bearer(c), c.req.param("id"), c.req.raw.body, c.req.header("X-Capture-Error") ?? null);
   if (r.status === 401) noteFailure(key);
   return c.text(r.text, r.status as 200);
+});
+
+// An AWS VM's first-boot files (runs.ts bootBundle). Same token and brake as the heartbeat.
+app.get("/api/agent/bundle", async (c) => {
+  const key = failKey(c, "bundle");
+  if (tooManyFailures(key)) return c.text("slow down", 429);
+  const r = await bootBundle(c.env, bearer(c));
+  if (r.status === 401) noteFailure(key);
+  if (r.status !== 200) return c.text(r.body as string, r.status as 401);
+  return new Response(r.body as ReadableStream, { headers: { "Content-Type": "application/gzip", "Cache-Control": "no-store" } });
 });
 
 app.post("/api/agent", async (c) => {

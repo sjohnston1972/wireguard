@@ -634,6 +634,9 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
   });
   // A packet capture still waiting on the VM will never arrive now.
   if (before.capture_req) await db.failPendingCapture(env, before.capture_req.id, "VM torn down");
+  // AWS boot bundles hold firewall rules; none outlives its server.
+  const boots = await env.STATE.list({ prefix: "boot/" });
+  await Promise.all(boots.objects.map((o) => env.STATE.delete(o.key)));
   await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
   if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);
   const next = before.pending_deploy;
@@ -745,15 +748,37 @@ export interface AgentBody {
   dump?: string;
 }
 
-/** VM heartbeat. Verifies the per-deploy token, stores the report, returns the desired peer list. */
-export async function handleAgent(env: Env, token: string, body: AgentBody): Promise<{ status: number; body: unknown }> {
-  if (!token) return { status: 401, body: { error: "no token" } };
+/** The apply run an agent token belongs to, or why not: 401 unknown, 410 an older deployment's. */
+async function runForAgentToken(env: Env, token: string): Promise<{ run: db.Run } | { status: 401 | 410; error: string }> {
+  if (!token) return { status: 401, error: "no token" };
   const hash = await sha256Hex(token);
   // The token belongs to the most recent apply (running or still deploying).
   const run = await env.DB.prepare("SELECT * FROM runs WHERE action = 'apply' AND agent_token_hash = ?1 ORDER BY requested_at DESC LIMIT 1").bind(hash).first<db.Run>();
-  if (!run) return { status: 401, body: { error: "unknown token" } };
+  if (!run) return { status: 401, error: "unknown token" };
   const latestApply = await env.DB.prepare("SELECT id FROM runs WHERE action = 'apply' ORDER BY requested_at DESC LIMIT 1").first<{ id: string }>();
-  if (latestApply && latestApply.id !== run.id) return { status: 410, body: { error: "token from an older deployment" } };
+  if (latestApply && latestApply.id !== run.id) return { status: 410, error: "token from an older deployment" };
+  return { run };
+}
+
+/**
+ * An AWS VM's first-boot bundle: the agent scripts and firewall rules that do
+ * not fit in AWS's 16 KB of user data. wg-aws.yml stores it in R2 as
+ * boot/<run id>.tgz; the VM fetches it once, with the same per-deploy token
+ * it uses for heartbeats, and checks its SHA-256 before unpacking.
+ */
+export async function bootBundle(env: Env, token: string): Promise<{ status: number; body: ReadableStream | string }> {
+  const who = await runForAgentToken(env, token);
+  if (!("run" in who)) return { status: who.status, body: who.error };
+  const obj = await env.STATE.get(`boot/${who.run.id}.tgz`);
+  if (!obj) return { status: 404, body: "no bundle for this deploy" };
+  return { status: 200, body: obj.body };
+}
+
+/** VM heartbeat. Verifies the per-deploy token, stores the report, returns the desired peer list. */
+export async function handleAgent(env: Env, token: string, body: AgentBody): Promise<{ status: number; body: unknown }> {
+  const who = await runForAgentToken(env, token);
+  if (!("run" in who)) return { status: who.status, body: { error: who.error } };
+  const run = who.run;
 
   const cfg = config(env);
   const parsed = parseWgDump(body.dump ?? "");

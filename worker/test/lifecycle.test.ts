@@ -214,7 +214,8 @@ describe.each(["azure", "aws"] as const)("%s", (cloud) => {
 
   describe("tear down", () => {
     it("sends a session summary and clears the snapshot", async () => {
-      const { agentToken } = await deployToRunning();
+      const { run: applyRun, agentToken } = await deployToRunning();
+      await env.STATE.put(`boot/${applyRun.id}.tgz`, new Uint8Array([0x1f, 0x8b, 8, 0]));
       await handleAgent(env, agentToken, { dump: DUMP(), selftest: selftest() });
       const run = await startDestroy(env, "steven", "test");
       const s = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env, workflow));
@@ -224,6 +225,7 @@ describe.each(["azure", "aws"] as const)("%s", (cloud) => {
       const snap = await getSnapshot(env);
       expect(snap.state).toBe("destroyed");
       expect(snap.session).toBeNull();
+      expect(await env.STATE.get(`boot/${applyRun.id}.tgz`)).toBeNull(); // no boot bundle outlives its server
       const n = world.notes.find((x) => x.title === "wg-admin: torn down");
       expect(n?.message).toMatch(/^Torn down after .*about £0\.\d\d\..*Azure cost is £0\.$/);
       expect((await db.listAlerts(env)).some((a) => a.kind === "session")).toBe(true);
