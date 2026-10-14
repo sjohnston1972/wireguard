@@ -13,7 +13,7 @@ import { canAws, config } from "../env";
 import type { AzureInventory } from "../state";
 import type { PublishedNsgRule } from "../firewall";
 import type { CloudOps, HeadendView } from "./index";
-import { AwsError, awsJson, ec2, filters, xmlFirst, xmlItems, xmlOwn } from "./awsApi";
+import { AwsError, awsJson, ec2, ec2Pages, filters, xmlFirst, xmlItems, xmlOwn, xmlOwnItems } from "./awsApi";
 
 const TAG: [string, string[]] = ["tag:wg-admin", ["vpn"]];
 const HEADEND: [string, string[]] = ["tag:wg-admin-role", ["headend"]];
@@ -21,25 +21,46 @@ const LIVE = ["pending", "running", "stopping", "stopped", "shutting-down"];
 const POWER: Record<string, string> = { running: "running", stopped: "deallocated", stopping: "deallocating", pending: "starting", "shutting-down": "deleting" };
 const SSH_RULE = "ssh-from-home";
 
-interface Headend {
+interface Instance {
   id: string;
   state: string;
   publicIp: string | null;
   type: string | null;
+  /** Its wg-admin-role tag ("headend"), or null. */
+  role: string | null;
+  /** The volumes its block device mapping names (the disks attached to it). */
+  volumes: string[];
 }
 
-async function findHeadend(env: Env): Promise<Headend | null> {
-  const xml = await ec2(env, "DescribeInstances", filters([TAG, HEADEND, ["instance-state-name", LIVE]]));
-  // reservationSet -> item -> instancesSet -> item. The instance's own fields only: its network interfaces,
-  // groups and tags are nested items with fields of their own (privateIpAddress, association/publicIp, ...).
-  const reservation = xmlItems(xml, "reservationSet")[0];
-  const instance = reservation ? xmlItems(reservation, "instancesSet")[0] : undefined;
-  if (!instance) return null;
-  const own = xmlOwn(instance);
-  const id = xmlFirst(own, "instanceId");
-  if (!id) return null;
-  const state = own.match(/<instanceState>\s*<code>\d+<\/code>\s*<name>([a-z-]+)<\/name>/)?.[1] ?? "unknown";
-  return { id, state, publicIp: xmlFirst(own, "ipAddress"), type: xmlFirst(own, "instanceType") };
+/** Every instance DescribeInstances lists for these filters, on every page. */
+async function instances(env: Env, list: [string, string[]][]): Promise<Instance[]> {
+  const out: Instance[] = [];
+  for (const page of await ec2Pages(env, "DescribeInstances", filters(list))) {
+    // reservationSet -> item -> instancesSet -> item. The instance's own fields only: its network interfaces,
+    // groups and tags are nested items with fields of their own (privateIpAddress, association/publicIp, ...).
+    for (const reservation of xmlItems(page, "reservationSet")) {
+      for (const instance of xmlItems(reservation, "instancesSet")) {
+        const own = xmlOwn(instance);
+        const id = xmlFirst(own, "instanceId");
+        if (!id) continue;
+        const tag = (key: string) => xmlOwnItems(instance, "tagSet").map(xmlOwn).find((t) => xmlFirst(t, "key") === key);
+        const role = tag("wg-admin-role");
+        out.push({
+          id,
+          state: own.match(/<instanceState>\s*<code>\d+<\/code>\s*<name>([a-z-]+)<\/name>/)?.[1] ?? "unknown",
+          publicIp: xmlFirst(own, "ipAddress"),
+          type: xmlFirst(own, "instanceType"),
+          role: role ? xmlFirst(role, "value") : null,
+          volumes: xmlOwnItems(instance, "blockDeviceMapping").flatMap((d) => xmlFirst(d, "volumeId") ?? []),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+async function findHeadend(env: Env): Promise<Instance | null> {
+  return (await instances(env, [TAG, HEADEND, ["instance-state-name", LIVE]]))[0] ?? null;
 }
 
 async function view(env: Env): Promise<HeadendView> {
@@ -86,43 +107,67 @@ async function taggedArns(env: Env): Promise<string[]> {
   return arns;
 }
 
+let volumesRefusedLogged = false;
+
+/** Test-only: forget that the DescribeVolumes refusal was logged. */
+export function resetAwsLogForTest(): void {
+  volumesRefusedLogged = false;
+}
+
+/**
+ * Tagged volumes attached to nothing (status "available"): a disk left behind still bills. Null when AWS will not
+ * say, because the Worker's IAM user may not call DescribeVolumes yet: logged once, and the caller treats those
+ * disks as unknown, never as gone.
+ */
+async function detachedVolumes(env: Env): Promise<Map<string, string | null> | null> {
+  try {
+    const pages = await ec2Pages(env, "DescribeVolumes", filters([TAG, ["status", ["available"]]]));
+    const out = new Map<string, string | null>();
+    for (const v of pages.flatMap((p) => xmlItems(p, "volumeSet")).map(xmlOwn)) {
+      const id = xmlFirst(v, "volumeId");
+      if (id) out.set(id, xmlFirst(v, "size"));
+    }
+    return out;
+  } catch (e) {
+    if (!(e instanceof AwsError) || e.code !== "UnauthorizedOperation") throw e;
+    if (!volumesRefusedLogged) console.warn(`AWS inventory: DescribeVolumes refused (${e.message}); a disk not attached to a server is reported as unconfirmed.`);
+    volumesRefusedLogged = true;
+    return null;
+  }
+}
+
 async function inventory(env: Env): Promise<AzureInventory> {
   const region = config(env).aws.region;
   const out: AzureInventory = { checked_at: new Date().toISOString(), resource_group: `wg-admin=vpn (${region})`, exists: false, resources: [] };
   try {
-    const [allArns, h, addrs, insts] = await Promise.all([
-      taggedArns(env),
-      findHeadend(env),
-      ec2(env, "DescribeAddresses", filters([TAG])),
-      ec2(env, "DescribeInstances", filters([TAG, ["instance-state-name", ["pending", "running", "stopping", "stopped"]]])),
-    ]);
+    // One DescribeInstances (every page) answers both "which is the headend" and "which instances are alive".
+    const [allArns, insts, addrs, loose] = await Promise.all([taggedArns(env), instances(env, [TAG, ["instance-state-name", LIVE]]), ec2(env, "DescribeAddresses", filters([TAG])), detachedVolumes(env)]);
+    const h = insts.find((i) => i.role === "headend") ?? null;
     // The tagging API keeps listing terminated instances and deleted volumes for about an hour, so those two are
-    // confirmed against EC2. The Worker may not call DescribeVolumes, so a disk counts only while it is attached to
-    // a live tagged instance (its blockDeviceMapping names the volume).
-    const liveIds = new Set<string>();
-    const liveVolumes = new Set<string>();
-    for (const reservation of xmlItems(insts, "reservationSet")) {
-      for (const instance of xmlItems(reservation, "instancesSet")) {
-        const iid = xmlFirst(xmlOwn(instance), "instanceId");
-        if (iid) liveIds.add(iid);
-        for (const dev of xmlItems(instance, "blockDeviceMapping")) {
-          const vid = xmlFirst(dev, "volumeId");
-          if (vid) liveVolumes.add(vid);
-        }
-      }
-    }
+    // confirmed against EC2: an instance while it is not on its way out, a disk while it is attached to one of those
+    // instances or DescribeVolumes lists it as attached to nothing.
+    const live = insts.filter((i) => i.state !== "shutting-down");
+    const liveIds = new Set(live.map((i) => i.id));
+    const liveVolumes = new Set(live.flatMap((i) => i.volumes));
     const arns = allArns.filter((arn) => {
       const [type, id = ""] = (arn.split(":")[5] ?? "").split("/");
       if (type === "instance") return liveIds.has(id);
-      if (type === "volume") return liveVolumes.has(id);
+      // Refused (loose is null): a disk attached to nothing may be a leftover or a ghost. Unknown is never "clean".
+      if (type === "volume") return liveVolumes.has(id) || !loose || loose.has(id);
       return true;
     });
+    // A detached disk the tagging API has not listed yet still bills.
+    for (const id of loose?.keys() ?? []) if (!arns.some((a) => a.endsWith(`:volume/${id}`))) arns.push(`arn:aws:ec2:${region}::volume/${id}`);
     const eip = xmlFirst(addrs, "publicIp");
     for (const arn of arns) {
       const [type, id = ""] = (arn.split(":")[5] ?? "").split("/");
       const kind = KIND[type] ?? type;
       let detail = id;
-      if (type === "instance" && h?.id === id) detail = `${h.type ?? "?"}, ${POWER[h.state] ?? h.state}, Ubuntu 24.04, SSH key only`;
+      const inst = type === "instance" ? live.find((i) => i.id === id) : undefined;
+      if (inst) detail = `${inst.type ?? "?"}, ${POWER[inst.state] ?? inst.state}${inst.id === h?.id ? ", Ubuntu 24.04, SSH key only" : ""}`;
+      if (type === "volume" && !liveVolumes.has(id)) {
+        detail = loose ? `${loose.get(id) ?? "?"} GB, not attached to a server (still billed)` : "not attached to a server; AWS would not say whether it still exists (the Worker may not call DescribeVolumes yet)";
+      }
       if (type === "elastic-ip") detail = `${eip ?? "not yet allocated"}, Elastic IP`;
       out.resources.push({ kind, name: id, detail });
     }

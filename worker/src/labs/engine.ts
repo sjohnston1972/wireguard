@@ -18,7 +18,7 @@
 import type { Env } from "../env";
 import { canDispatch } from "../env";
 import { effectiveConfig } from "../settings";
-import { getSnapshot } from "../state";
+import { cloudOf, getSnapshot } from "../state";
 import { acquireLock, releaseLock, labLock, GATEWAY_LOCK } from "../lock";
 import { randomToken } from "../auth";
 import { RunError } from "../runs";
@@ -172,10 +172,26 @@ export interface DeployInput {
   capacityOk?: boolean;
 }
 
+/**
+ * Labs build in Azure and connect to the headend by VNet peering, which only an Azure headend has (AWS spec
+ * ruling 8). True while the headend is built in AWS: nothing may peer then.
+ */
+export async function awsHeadend(env: Env): Promise<boolean> {
+  const snap = await getSnapshot(env);
+  return cloudOf(snap) === "aws" && snap.state !== "destroyed";
+}
+
+/** Why `what` cannot happen on an AWS headend, in plain words. */
+const onAws = (what: string) => `${what}: labs connect only to an Azure headend, and the headend is in AWS.`;
+
 /** Deploy a lab (or, with `test`, run its release test). Returns the new session and run. */
 export async function deployLab(env: Env, labId: string, input: DeployInput, by: string, test = false): Promise<{ session: LabSessionRow; run: LabRunDb }> {
   const def = labDef(labId);
   if (!def) throw new RunError("No such lab.", "not_found");
+  // A test always peers a lab that can; a required lab always peers. Neither can run unconnected.
+  if ((test ? def.connectivity.peering !== "off" : def.connectivity.peering === "required") && (await awsHeadend(env))) {
+    throw new RunError(onAws(test ? `The release test of ${def.title} peers it to the headend, so it cannot run now` : `${def.title} needs its peering to the headend, so it cannot deploy now`) + " It can once the AWS headend is torn down.");
+  }
   const a = await availability(env);
   if (!a.github) throw new RunError(unavailableReason(def, a)!, "unavailable");
   const live = await liveSessionOf(env, labId);
@@ -409,6 +425,7 @@ export async function peerLab(env: Env, labId: string, by: string): Promise<LabR
   if (!def || def.connectivity.peering === "off") throw new RunError(`${def?.title ?? labId} never peers to the gateway.`);
   if (!s || s.state !== "running") throw new RunError(`${def.title} is not running.`);
   if (s.peering === "on") throw new RunError(`${def.title} is already peered to the gateway.`);
+  if (await awsHeadend(env)) throw new RunError(onAws(`${def.title} cannot peer`) + " It keeps running unconnected.");
   const run = await startLabRun(env, s.id, "peer", by, "peer to the gateway");
   await updateSession(env, s.id, { peering: "waiting" }, "state = 'running'");
   return run;
@@ -431,6 +448,7 @@ export async function rePeerLabs(env: Env, by: string): Promise<{ started: strin
   const waiting = (await env.DB.prepare("SELECT * FROM lab_sessions WHERE state = 'running' AND peering IN ('waiting', 'disconnected') ORDER BY requested_at").all<LabSessionRow>()).results;
   if (!waiting.length) return { started: [], failed: [] };
   if (snap.state !== "running" && snap.state !== "standby") throw new RunError("The gateway is not running, so there is nothing to peer to yet. Re-peer once it is.");
+  if (await awsHeadend(env)) throw new RunError(onAws("Nothing can re-peer") + " Re-peer once an Azure headend is running.");
   const started: string[] = [];
   const failed: string[] = [];
   for (const s of waiting) {

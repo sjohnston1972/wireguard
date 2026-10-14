@@ -45,6 +45,23 @@ export async function ec2(env: Env, action: string, params: Record<string, strin
   return text;
 }
 
+/**
+ * Every page of a paged EC2 Describe call: each answer's nextToken is sent back for the next page, at most `maxPages`
+ * pages (10). Returns each page's XML. EC2 may answer a filtered call with an empty page and a token, so the token,
+ * not the page, says whether there is more.
+ */
+export async function ec2Pages(env: Env, action: string, params: Record<string, string> = {}, maxPages = 10): Promise<string[]> {
+  const pages: string[] = [];
+  let token = "";
+  for (let page = 0; page < maxPages; page++) {
+    const xml = await ec2(env, action, token ? { ...params, NextToken: token } : params);
+    pages.push(xml);
+    token = xmlFirst(xml, "nextToken") ?? "";
+    if (!token) break;
+  }
+  return pages;
+}
+
 /** One JSON-protocol call (tagging, Cost Explorer). */
 export async function awsJson<T>(env: Env, o: { service: string; region: string; host: string; target: string; body: unknown }): Promise<T> {
   const r = await client(env, o.service, o.region).fetch(`https://${o.host}/`, {
@@ -92,12 +109,13 @@ export function xmlAll(xml: string, tag: string): string[] {
 }
 
 /**
- * Where each top-level <item>…</item> (or <item/>) in `body` starts and ends, counting depth so an item's own
- * nested items (tags, network interfaces) stay inside it. Stops at `stopAt` (a closing tag) found at depth 0.
+ * Where each top-level <item>…</item> (or <item/>; attributes allowed on either) in `body` starts and ends, counting
+ * depth so an item's own nested items (tags, network interfaces) stay inside it. Stops at `stopAt` (a closing tag)
+ * found at depth 0.
  */
 function itemSpans(body: string, stopAt?: string): [number, number][] {
   const spans: [number, number][] = [];
-  const tokens = new RegExp(`<(/?)item(/?)>${stopAt ? `|${stopAt}` : ""}`, "g");
+  const tokens = new RegExp(`<(/?)item(?:\\s[^>]*?)?(/?)>${stopAt ? `|${stopAt}` : ""}`, "g");
   let depth = 0;
   let start = 0;
   for (const m of body.matchAll(tokens)) {
@@ -121,8 +139,9 @@ function itemSpans(body: string, stopAt?: string): [number, number][] {
  * alphabetical), so records are always cut at whole items, never at a field. Read fields with xmlFirst(xmlOwn(item)).
  */
 export function xmlItems(xml: string, setTag: string): string[] {
-  const open = xml.match(new RegExp(`<${setTag}(\\s[^>]*)?(/?)>`));
-  if (!open || open[2]) return []; // absent, or <setTag/>
+  // Lazy attributes, so the "/" of <setTag a="1"/> or <setTag /> is read as self-closing, not as an attribute.
+  const open = xml.match(new RegExp(`<${setTag}(?:\\s[^>]*?)?(/?)>`));
+  if (!open || open[1]) return []; // absent, or empty (<setTag/>)
   const body = xml.slice((open.index ?? 0) + open[0].length);
   return itemSpans(body, `</${setTag}>`).map(([a, b]) => body.slice(a, b));
 }
@@ -132,7 +151,7 @@ export function xmlItems(xml: string, setTag: string): string[] {
  * record's (a tag, a network interface's privateIpAddress, a group). Nested non-list elements (instanceState) stay.
  */
 export function xmlOwn(item: string): string {
-  const inner = item.replace(/^<item>/, "").replace(/<\/item>$/, "");
+  const inner = itemInner(item);
   let out = "";
   let from = 0;
   for (const [a, b] of itemSpans(inner)) {
@@ -141,3 +160,19 @@ export function xmlOwn(item: string): string {
   }
   return out + inner.slice(from);
 }
+
+/**
+ * The items of the item's OWN <setTag> (an instance's tagSet or blockDeviceMapping), never a nested record's set of
+ * the same name (a network interface has a groupSet and could carry a tagSet of its own).
+ */
+export function xmlOwnItems(item: string, setTag: string): string[] {
+  const inner = itemInner(item);
+  const nested = itemSpans(inner);
+  for (const m of inner.matchAll(new RegExp(`<${setTag}(?:\\s[^>]*?)?/?>`, "g"))) {
+    const at = m.index ?? 0;
+    if (!nested.some(([a, b]) => at >= a && at < b)) return xmlItems(inner.slice(at), setTag);
+  }
+  return [];
+}
+
+const itemInner = (item: string) => item.replace(/^<item(?:\s[^>]*)?>/, "").replace(/<\/item>$/, "");

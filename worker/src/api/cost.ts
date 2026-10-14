@@ -1,6 +1,6 @@
 // api/cost.ts
 //
-// Plain English: the Cost page's data. Azure's daily figures for the chosen
+// Plain English: the Cost page's data. Azure's and AWS's daily figures for the chosen
 // range (and the stretch before it, to compare), the month against the
 // budget, where the month is heading, what the VM running now has cost so
 // far, and one row per past session. The insights are plain facts the data
@@ -27,7 +27,9 @@ export function registerCost(api: Hono<ApiEnv>): void {
     const now = new Date();
     const win = costWindow(range, now);
     const monthStart = `${now.toISOString().slice(0, 7)}-01`;
-    const [snap, cfg, runs, fetchedDay] = await Promise.all([getSnapshot(c.env), effectiveConfig(c.env), db.listRuns(c.env, 200), c.env.STATUS.get("cost:fetched_day")]);
+    const [snap, cfg, runs, azureFetched, awsFetched] = await Promise.all([getSnapshot(c.env), effectiveConfig(c.env), db.listRuns(c.env, 200), c.env.STATUS.get("cost:fetched_day"), c.env.STATUS.get("cost:aws_fetched_day")]);
+    // As of the older of the clouds' last pulls: the figures are only complete that far. One cloud alone: its own.
+    const asOfDay = [azureFetched, awsFetched].filter((d): d is string => !!d).sort()[0] ?? null;
     // One read covers the range, the stretch before it, and this month.
     const since = win.prevFrom < monthStart ? win.prevFrom : monthStart;
     const azureDays = await db.costDays(c.env, since);
@@ -52,7 +54,9 @@ export function registerCost(api: Hono<ApiEnv>): void {
       insights.push(`${money(budget.total)} of the ${money(budget.budget)} monthly budget is used (${Math.round(budget.pct)}%)${budget.level === "over" ? ", so Deploy asks for confirmation until the month ends" : ""}.`);
     }
     // Under 80%: where the month is heading against the budget (the projection's own figure).
-    const proj = projection(all, now);
+    // Its basis names the clouds that reported a day this month.
+    const reported = [...(azureDays.some((d) => d.day >= monthStart) ? ["Azure"] : []), ...(awsDays.some((d) => d.day >= monthStart) ? ["AWS"] : [])];
+    const proj = projection(all, now, reported);
     if (budget.level === "ok" && proj) insights.push(`At this pace the month ends at about ${money(proj.gbp)}, ${Math.round((proj.gbp / budget.budget) * 100)}% of the ${money(budget.budget)} monthly budget.`);
     // This month's sessions (each estimated at the hourly rate, as the Sessions table shows them).
     const mine = sessions.filter((s) => s.started.startsWith(monthStart.slice(0, 7)));
@@ -65,7 +69,8 @@ export function registerCost(api: Hono<ApiEnv>): void {
     const out: CostResponse = {
       now: now.toISOString(),
       range,
-      meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: rates.hourlyRateGbp, standbyRateGbp: rates.standbyRateGbp, asOfDay: fetchedDay },
+      // azureLagHours keeps its name (the app reads it); AWS's Cost Explorer lags about the same day.
+      meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: rates.hourlyRateGbp, standbyRateGbp: rates.standbyRateGbp, asOfDay },
       session: { running, since: running ? snap.running_since : null, estimateGbp: running ? Math.max(0, ((now.getTime() - Date.parse(snap.running_since!)) / 3_600_000) * rates.hourlyRateGbp) : null },
       standby,
       // The budget's actual already holds Azure (labs included) and AWS.

@@ -1,7 +1,7 @@
 // Signed AWS calls: the request shape and the error mapping.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { ec2, awsJson, filters, xmlFirst, xmlAll, xmlItems, xmlOwn, AwsError } from "../src/cloud/awsApi";
+import { ec2, ec2Pages, awsJson, filters, xmlFirst, xmlAll, xmlItems, xmlOwn, xmlOwnItems, AwsError } from "../src/cloud/awsApi";
 import { canAws, config, type Env } from "../src/env";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -80,6 +80,22 @@ describe("xmlItems", () => {
     expect(xmlItems("<R/>", "ruleSet")).toEqual([]);
   });
 
+  it("a self-closing set with attributes or a space is empty, and does not borrow the next set's items", () => {
+    expect(xmlItems('<R><ruleSet a="1"/><other><item><id>x</id></item></other></R>', "ruleSet")).toEqual([]);
+    expect(xmlItems("<R><ruleSet /><other><item><id>x</id></item></other></R>", "ruleSet")).toEqual([]);
+    // A set that opens with attributes still has its items.
+    expect(xmlItems('<R><ruleSet a="1"><item><id>a</id></item></ruleSet></R>', "ruleSet").map((i) => xmlFirst(xmlOwn(i), "id"))).toEqual(["a"]);
+  });
+
+  it("items with attributes are whole items, nested ones included", () => {
+    const x = '<R><ruleSet><item x="1"><id>a</id><tagSet><item k="v"><id>tag</id></item></tagSet></item><item y="2"/><item><id>b</id></item></ruleSet></R>';
+    const items = xmlItems(x, "ruleSet");
+    expect(items).toHaveLength(3);
+    expect(xmlFirst(xmlOwn(items[0]), "id")).toBe("a");
+    expect(xmlOwn(items[1])).toBe("");
+    expect(xmlFirst(xmlOwn(items[2]), "id")).toBe("b");
+  });
+
   it("walks reservation -> instance, and the instance's network interface never supplies its address", () => {
     const x =
       "<DescribeInstancesResponse><reservationSet><item><reservationId>r-1</reservationId><groupSet/><instancesSet><item>" +
@@ -118,6 +134,51 @@ describe("ec2", () => {
   it("turns an EC2 error document into AwsError", async () => {
     vi.stubGlobal("fetch", async () => new Response("<Response><Errors><Error><Code>UnauthorizedOperation</Code><Message>You are not authorized</Message></Error></Errors></Response>", { status: 403 }));
     await expect(ec2(env, "StopInstances", { "InstanceId.1": "i-1" })).rejects.toMatchObject({ code: "UnauthorizedOperation", status: 403 });
+  });
+});
+
+describe("ec2Pages", () => {
+  const page = (ids: string[], next?: string) =>
+    `<DescribeInstancesResponse><reservationSet>${ids.map((id) => `<item><instancesSet><item><instanceId>${id}</instanceId></item></instancesSet></item>`).join("")}</reservationSet>${next ? `<nextToken>${next}</nextToken>` : ""}</DescribeInstancesResponse>`;
+
+  it("follows nextToken to the last page, keeping the filters on every call", async () => {
+    const seen: URLSearchParams[] = [];
+    vi.stubGlobal("fetch", async (input: Request) => {
+      const p = new URLSearchParams(await input.text());
+      seen.push(p);
+      return new Response(p.get("NextToken") === "tok-2" ? page(["i-2"]) : page(["i-1"], "tok-2"), { status: 200 });
+    });
+    const pages = await ec2Pages(env, "DescribeInstances", filters([["tag:wg-admin", ["vpn"]]]));
+    expect(pages).toHaveLength(2);
+    expect(pages.flatMap((x) => xmlItems(x, "reservationSet")).map((r) => xmlFirst(r, "instanceId"))).toEqual(["i-1", "i-2"]);
+    expect(seen.map((p) => p.get("NextToken"))).toEqual([null, "tok-2"]);
+    expect(seen.every((p) => p.get("Filter.1.Name") === "tag:wg-admin")).toBe(true);
+  });
+  it("stops after 10 pages even if AWS keeps saying there is more", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async () => new Response(page([`i-${++calls}`], `tok-${calls}`), { status: 200 }));
+    expect(await ec2Pages(env, "DescribeInstances")).toHaveLength(10);
+    expect(calls).toBe(10);
+  });
+  it("one page when there is no nextToken (or an empty one)", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async () => {
+      calls++;
+      return new Response("<DescribeInstancesResponse><reservationSet/><nextToken/></DescribeInstancesResponse>", { status: 200 });
+    });
+    expect(await ec2Pages(env, "DescribeInstances")).toHaveLength(1);
+    expect(calls).toBe(1);
+  });
+});
+
+describe("xmlOwnItems", () => {
+  it("reads the item's own set, never a nested item's set of the same name", () => {
+    const instance =
+      "<item><networkInterfaceSet><item><tagSet><item><key>nic</key><value>x</value></item></tagSet></item></networkInterfaceSet>" +
+      "<instanceId>i-1</instanceId><tagSet><item><key>wg-admin-role</key><value>headend</value></item></tagSet></item>";
+    expect(xmlOwnItems(instance, "tagSet").map((t) => xmlFirst(t, "key"))).toEqual(["wg-admin-role"]);
+    expect(xmlOwnItems("<item><networkInterfaceSet><item><tagSet><item><key>nic</key></item></tagSet></item></networkInterfaceSet></item>", "tagSet")).toEqual([]);
+    expect(xmlOwnItems("<item><tagSet/></item>", "tagSet")).toEqual([]);
   });
 });
 

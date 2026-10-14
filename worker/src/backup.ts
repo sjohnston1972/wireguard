@@ -168,8 +168,9 @@ export async function backupStatus(env: Env, fresh = false): Promise<BackupStatu
   let status: BackupStatus;
   try {
     const root = await backupRoot(env);
-    const [state, config] = await Promise.all([listKeys(env, `${root}backups/`), listKeys(env, `${root}config-backups/`)]);
-    const tf = state.filter((o) => o.key.endsWith(".tfstate"));
+    // Terraform state copies: wg.yml (Azure) writes backups/, wg-aws.yml writes backups-aws/.
+    const [state, awsState, config] = await Promise.all([listKeys(env, `${root}backups/`), listKeys(env, `${root}backups-aws/`), listKeys(env, `${root}config-backups/`)]);
+    const tf = [...state, ...awsState].filter((o) => o.key.endsWith(".tfstate"));
     const days = config.map((o) => o.key.slice(root.length).match(/^config-backups\/(\d{4}-\d{2}-\d{2})\.json$/)?.[1]).filter((d): d is string => !!d).sort().reverse();
     status = { state: summarise(tf), config: { ...summarise(config), days }, checked_at: new Date().toISOString() };
   } catch (e) {

@@ -158,10 +158,18 @@ export async function budgetLabs(env: Env, month: string): Promise<{ labs: Budge
 
 /** Where the budget stands right now. */
 export async function budgetStatus(env: Env, cfg?: Config, snap?: Snapshot, now = new Date()): Promise<BudgetStatus> {
+  return (await readBudget(env, cfg, snap, now)).status;
+}
+
+/**
+ * The budget and what it was summed from (AWS's days, the labs), so the watchman's alert words the same figures
+ * without reading them again. AWS's days that cannot be read are logged and count as none.
+ */
+async function readBudget(env: Env, cfg: Config | undefined, snap: Snapshot | undefined, now: Date): Promise<{ status: BudgetStatus; awsDays: { day: string; gbp: number }[]; lab: Awaited<ReturnType<typeof budgetLabs>> }> {
   const month = now.toISOString().slice(0, 7);
   const [c, s, days, awsDays, sent, lab] = await Promise.all([cfg ?? effectiveConfig(env), snap ?? getSnapshot(env), db.costDays(env, `${month}-01`), db.awsCostDays(env, `${month}-01`).catch((e) => { console.error("budget aws days:", e); return []; }), env.STATUS.get(alertKey(month)), budgetLabs(env, month)]);
   const f = budgetFigures({ budget: c.monthlyBudgetGbp, days, awsDays, cloud: cloudOf(s), snap: s, hourlyRate: ratesFor(c, cloudOf(s)).hourlyRateGbp, now, labs: lab.labs, labDays: lab.labDays });
-  return { ...f, alerted: sent === "100" ? 100 : sent === "80" ? 80 : 0 };
+  return { status: { ...f, alerted: sent === "100" ? 100 : sent === "80" ? 80 : 0 }, awsDays, lab };
 }
 
 const money = (n: number) => `£${n.toFixed(2)}`;
@@ -172,20 +180,20 @@ const money = (n: number) => `£${n.toFixed(2)}`;
  * one. Returns a note for the watchman's log, or null.
  */
 export async function checkBudget(env: Env, cfg: Config, now = new Date()): Promise<string | null> {
-  const b = await budgetStatus(env, cfg, undefined, now);
+  const { status: b, awsDays, lab } = await readBudget(env, cfg, undefined, now);
   if (b.level === "none") return null;
   const due: 0 | 80 | 100 = b.level === "over" ? 100 : b.level === "warn" ? 80 : 0;
   if (!due || due <= b.alerted) return null;
   // Remember first, so a slow or failing notification cannot cause a repeat.
   await env.STATUS.put(alertKey(b.month), String(due), { expirationTtl: 40 * 86400 });
   // The labs' share, named (labs spec §9.3): Azure's lab spend so far and the live labs to their timers.
-  const lab = await budgetLabs(env, b.month);
   const monthStart = Date.parse(`${b.month}-01T00:00:00Z`);
   const labActual = lab.labDays.filter((d) => d.day.startsWith(b.month)).reduce((a, d) => a + d.gbp, 0);
   const labSession = labsEstimate(lab.labs, lab.labDays, now, monthStart, new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).getTime());
   const vmSession = b.session - labSession;
   // b.actual includes AWS: name AWS only when it has spend this month, so the Azure-only wording stays exact.
-  const awsActual = (await db.awsCostDays(env, `${b.month}-01`).catch(() => [])).filter((d) => d.day.startsWith(b.month)).reduce((a, d) => a + d.gbp, 0);
+  // The same days b.actual was summed from (a failed read was logged there and counts as none, in both).
+  const awsActual = awsDays.filter((d) => d.day.startsWith(b.month)).reduce((a, d) => a + d.gbp, 0);
   const sums =
     `${money(b.actual)} spent in ${awsActual > 0 ? "Azure and AWS" : "Azure"} so far${labActual > 0 ? ` (${money(labActual)} of it on labs)` : ""}` +
     `${vmSession > 1e-9 ? ` plus about ${money(vmSession)} for the VM running now, to its timer` : ""}` +

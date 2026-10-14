@@ -96,4 +96,13 @@ describe("backups in R2 (issue #46)", () => {
     expect(s.state.count).toBe(2);
     expect(s.state.newest).not.toBeNull();
   });
+
+  it("counts the AWS headend's state backups (backups-aws/) too", async () => {
+    await env.STATE.put("backups/20260925T100000Z-apply.tfstate", "{}");
+    await env.STATE.put("backups-aws/20261014T100000Z-apply.tfstate", "{}");
+    await env.STATE.put("backups-aws/20261014T110000Z-destroy.tfstate", "{}");
+    await env.STATE.put("backups-aws/notes.txt", "x");
+    const s = await backupStatus(env, true);
+    expect(s.state.count).toBe(3);
+  });
 });

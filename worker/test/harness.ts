@@ -382,6 +382,12 @@ export interface World {
   awsGhosts?: boolean;
   /** Test-only: when set, every EC2 call answers this error code (HTTP 400). */
   awsFail?: string;
+  /** Test-only: more tagged instances (not the headend unless `headend`), in DescribeInstances (its state filter honoured) and the tagging API. */
+  awsInstances?: { id: string; state: "pending" | "running" | "stopping" | "stopped"; type?: string; headend?: boolean }[];
+  /** Test-only: tagged volumes attached to nothing (status available), in DescribeVolumes and the tagging API. */
+  awsDetachedVolumes?: { id: string; size: number }[];
+  /** Test-only: DescribeVolumes is refused (UnauthorizedOperation), as before the Worker's IAM user may call it. */
+  awsVolumesRefused?: boolean;
   /** VM power calls made: "deallocate" | "start". */
   powerCalls: string[];
   /** Every notification published to ntfy. */
@@ -572,7 +578,22 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
           const groups = "<groupSet><item><groupId>sg-wg</groupId><groupName>wg-admin-headend</groupName></item></groupSet>";
           const nic = `<networkInterfaceSet><item><networkInterfaceId>eni-1</networkInterfaceId><subnetId>subnet-1</subnetId><vpcId>vpc-1</vpcId><description/><ownerId>123456789012</ownerId><status>in-use</status><macAddress>06:00:00:00:00:01</macAddress><privateIpAddress>10.50.1.99</privateIpAddress><sourceDestCheck>false</sourceDestCheck>${groups}<attachment><attachmentId>eni-attach-1</attachmentId><deviceIndex>0</deviceIndex><status>attached</status></attachment><association><publicIp>203.0.113.250</publicIp><ipOwnerId>amazon</ipOwnerId></association><privateIpAddressesSet><item><privateIpAddress>10.50.1.99</privateIpAddress><primary>true</primary><association><publicIp>203.0.113.250</publicIp><ipOwnerId>amazon</ipOwnerId></association></item></privateIpAddressesSet></item></networkInterfaceSet>`;
           const instance = `<item><instanceId>i-0abc</instanceId><imageId>ami-1</imageId><instanceState><code>${code}</code><name>${a.state}</name></instanceState><privateDnsName>ip-10-50-1-4.eu-west-2.compute.internal</privateDnsName><dnsName/><reason/><keyName>wg-admin</keyName><amiLaunchIndex>0</amiLaunchIndex><productCodes/><instanceType>t4g.micro</instanceType><launchTime>2026-10-14T09:00:00.000Z</launchTime><placement><availabilityZone>eu-west-2a</availabilityZone><groupName/><tenancy>default</tenancy></placement><monitoring><state>disabled</state></monitoring><subnetId>subnet-1</subnetId><vpcId>vpc-1</vpcId><privateIpAddress>10.50.1.4</privateIpAddress>${a.state === "running" ? `<ipAddress>${a.ip}</ipAddress>` : ""}${groups}<architecture>arm64</architecture><rootDeviceType>ebs</rootDeviceType>${disk}<tagSet><item><key>wg-admin</key><value>vpn</value></item><item><key>wg-admin-role</key><value>headend</value></item></tagSet>${nic}</item>`;
-          return xml(a.exists ? `<reservationSet><item><reservationId>r-1</reservationId><ownerId>123456789012</ownerId><groupSet/><instancesSet>${instance}</instancesSet></item></reservationSet>` : "<reservationSet/>");
+          // The extra instances honour the state and role filters, as EC2 does.
+          const filter = (name: string) => {
+            const n = [...p.entries()].find(([k, v]) => /^Filter\.\d+\.Name$/.test(k) && v === name)?.[0].split(".")[1];
+            return n ? [...p.entries()].filter(([k]) => k.startsWith(`Filter.${n}.Value.`)).map(([, v]) => v) : null;
+          };
+          const states = filter("instance-state-name");
+          const extra = (world.awsInstances ?? [])
+            .filter((x) => (!states || states.includes(x.state)) && (!headendAsked || x.headend))
+            .map((x) => `<item><instanceId>${x.id}</instanceId><instanceState><code>${{ pending: 0, running: 16, stopping: 64, stopped: 80 }[x.state]}</code><name>${x.state}</name></instanceState><instanceType>${x.type ?? "t4g.micro"}</instanceType><tagSet><item><key>wg-admin</key><value>vpn</value></item>${x.headend ? "<item><key>wg-admin-role</key><value>headend</value></item>" : ""}</tagSet></item>`);
+          const reservations = [...(a.exists ? [`<item><reservationId>r-1</reservationId><ownerId>123456789012</ownerId><groupSet/><instancesSet>${instance}</instancesSet></item>`] : []), ...extra.map((x, i) => `<item><reservationId>r-x${i}</reservationId><groupSet/><instancesSet>${x}</instancesSet></item>`)];
+          return xml(reservations.length ? `<reservationSet>${reservations.join("")}</reservationSet>` : "<reservationSet/>");
+        }
+        case "DescribeVolumes": {
+          if (world.awsVolumesRefused) return new Response("<Response><Errors><Error><Code>UnauthorizedOperation</Code><Message>You are not authorized to perform this operation.</Message></Error></Errors></Response>", { status: 403 });
+          const vols = (world.awsDetachedVolumes ?? []).map((v) => `<item><volumeId>${v.id}</volumeId><size>${v.size}</size><availabilityZone>eu-west-2a</availabilityZone><status>available</status><attachmentSet/><volumeType>gp3</volumeType><tagSet><item><key>wg-admin</key><value>vpn</value></item></tagSet></item>`);
+          return xml(vols.length ? `<volumeSet>${vols.join("")}</volumeSet>` : "<volumeSet/>");
         }
         case "DescribeAddresses":
           return xml(a.exists || world.awsEipLeft ? `<addressesSet><item><publicIp>${a.ip}</publicIp><allocationId>eipalloc-1</allocationId></item></addressesSet>` : "<addressesSet/>");
@@ -609,7 +630,8 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
     if (/^tagging\.[a-z0-9-]+\.amazonaws\.com$/.test(u.hostname)) {
       // Ghosts: the real tagging API keeps listing a terminated instance and a deleted volume for about an hour.
       const ghosts = world.awsGhosts ? ["instance/i-dead", "volume/vol-dead"] : [];
-      const arns = [...(world.aws.exists ? ["vpc/vpc-1", "subnet/subnet-1", "security-group/sg-wg", "instance/i-0abc", "elastic-ip/eipalloc-1", "volume/vol-1"] : []), ...ghosts].map((r) => `arn:aws:ec2:eu-west-2:123456789012:${r}`);
+      const extra = [...(world.awsInstances ?? []).map((x) => `instance/${x.id}`), ...(world.awsDetachedVolumes ?? []).map((v) => `volume/${v.id}`)];
+      const arns = [...(world.aws.exists ? ["vpc/vpc-1", "subnet/subnet-1", "security-group/sg-wg", "instance/i-0abc", "elastic-ip/eipalloc-1", "volume/vol-1"] : []), ...extra, ...ghosts].map((r) => `arn:aws:ec2:eu-west-2:123456789012:${r}`);
       return json({ ResourceTagMappingList: arns.map((ResourceARN) => ({ ResourceARN, Tags: [{ Key: "wg-admin", Value: "vpn" }] })), PaginationToken: "" });
     }
     if (u.hostname === "ce.us-east-1.amazonaws.com") {
