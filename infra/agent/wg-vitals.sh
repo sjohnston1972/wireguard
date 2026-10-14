@@ -31,10 +31,10 @@ ROOT="${WG_ROOT:-}"
 RUN="$ROOT/run/wg-admin"
 SELF="$ROOT/usr/local/sbin/wg-vitals.sh"
 
-# Seconds between runs of each background job.
 # Which cloud this VM is in (written by cloud-init; Azure when absent).
 CLOUD="$(sed -n 's/^CLOUD=//p' "$ROOT"/etc/wireguard/wg-agent.env 2>/dev/null)"
 
+# Seconds between runs of each background job.
 declare -A EVERY=([updates]=21600 [events]=60 [net]=300)
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }

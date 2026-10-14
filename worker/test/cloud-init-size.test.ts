@@ -43,8 +43,9 @@ export function renderTemplate(tpl: string, vars: Record<string, string | number
   };
   const cond = (name: string) => val(name) !== "";
   let out = tpl
-    // %{ if x != "" ~} ... %{ endif ~}: the directive lines vanish (the ~ eats the newline after each).
-    .replace(/%\{ if (\w+) != "" ~\}\s*([\s\S]*?)%\{ endif ~\}\s*/g, (_m, name: string, body: string) => (cond(name) ? body : ""))
+    // %{ if x != "" ~} ... %{ endif ~}: like Terraform, ~} strips only the rest of its own line, newline
+    // included. A directive's own leading spaces stay, and so does the next line's indentation.
+    .replace(/%\{ if (\w+) != "" ~\}[ \t]*\n?([\s\S]*?)%\{ endif ~\}[ \t]*\n?/g, (_m, name: string, body: string) => (cond(name) ? body : ""))
     // %{ if x != "" } ... %{ endif } inside a line.
     .replace(/%\{ if (\w+) != "" \}([\s\S]*?)%\{ endif \}/g, (_m, name: string, body: string) => (cond(name) ? body : ""));
   if (/%\{/.test(out.replace(/%%\{/g, ""))) throw new Error("a template directive this renderer does not know");
@@ -173,6 +174,14 @@ describe("the VM's cloud-init stays inside Azure's custom data limit", () => {
     expect(renderTemplate(t, { p: "pw1", q: "", s: "l1\nl2" })).toBe("#a\npw: pw1\nx: A\n  c: |\n    l1\n    l2\nlit: ${1:-}\n");
     expect(renderTemplate(t, { p: "", q: "v6", s: "l1" })).toBe("#a\nx: A, v6\n  c: |\n    l1\nlit: ${1:-}\n");
     expect(() => renderTemplate("${upper(x)}", { x: "a" })).toThrow(/does not know/);
+  });
+
+  it("~} strips only its own line's newline: an unindented directive vanishes, an indented one leaves its spaces", () => {
+    const t = (d: string) => ["a:", `${d}%{ if x != "" ~}`, "  b: 1", `${d}%{ endif ~}`, "  c: 2", ""].join("\n");
+    expect(renderTemplate(t(""), { x: "1" })).toBe(["a:", "  b: 1", "  c: 2", ""].join("\n"));
+    expect(renderTemplate(t(""), { x: "" })).toBe(["a:", "  c: 2", ""].join("\n"));
+    // Indented directives leave their own spaces behind, as Terraform does (why the template keeps them at column 0).
+    expect(renderTemplate(t("  "), { x: "1" })).toBe(["a:", "    b: 1", "    c: 2", ""].join("\n"));
   });
 
   it("main.tf passes every variable the template names (and wg-agent.sh gzipped)", () => {

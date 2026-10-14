@@ -120,7 +120,7 @@ write_files:
       # even though forwarding is on (the kernel would otherwise ignore them).
       net.ipv6.conf.${wan_if}.accept_ra = 2
 
-  %{ if azure_only != "" ~}
+%{ if azure_only != "" ~}
   # ── IPv6 on the WAN side: ask Azure for the address by DHCPv6 ─────────────
   - path: /etc/netplan/60-wg-ipv6.yaml
     permissions: "0600"
@@ -132,7 +132,7 @@ write_files:
           eth0:
             dhcp6: true
 
-  %{ endif ~}
+%{ endif ~}
   # ── Firewall: the dashboard's rule table, compiled to nftables ────────────
   # Loaded before the tunnel comes up, so routed traffic is never open, not
   # even for a moment at boot. Default deny between zones; every rule has a
@@ -197,7 +197,7 @@ write_files:
       server=1.1.1.1
       server=1.0.0.1
       server=2606:4700:4700::1111
-      %{ if azure_only != "" ~}
+%{ if azure_only != "" ~}
       # Azure service names go to Azure's own resolver: the same public
       # answers, plus a lab's private endpoints once its zone is linked to
       # vnet-wg.
@@ -208,7 +208,7 @@ write_files:
       server=/documents.azure.com/168.63.129.16
       server=/servicebus.windows.net/168.63.129.16
       server=/internal/168.63.129.16
-      %{ endif ~}
+%{ endif ~}
       cache-size=10000
       domain-needed
       bogus-priv
@@ -320,12 +320,12 @@ write_files:
       APT::Periodic::Unattended-Upgrade "1";
 
 runcmd:
-  %{ if boot_bundle_sha256 != "" ~}
+%{ if boot_bundle_sha256 != "" ~}
   # AWS: the agent files and firewall do not fit in 16 KB of user data, so
   # they come from the Worker (this deploy's token), checked against the
   # SHA-256 Terraform was given, before anything below starts using them.
-  - [sh, -c, '. /etc/wireguard/wg-agent.env; for i in 1 2 3 4 5 6 7 8 9 10; do curl -fsS --max-time 20 -H "Authorization: Bearer $AGENT_TOKEN" "$AGENT_URL/bundle" -o /run/wg-boot.tgz && break; sleep 6; done; echo "${boot_bundle_sha256}  /run/wg-boot.tgz" | sha256sum -c - && tar -xzf /run/wg-boot.tgz -C / && rm -f /run/wg-boot.tgz']
-  %{ endif ~}
+  - [sh, -c, '. /etc/wireguard/wg-agent.env; for i in 1 2 3 4 5 6 7 8 9 10; do curl -fsS --max-time 20 -H "Authorization: Bearer $AGENT_TOKEN" "$AGENT_URL/bundle" -o /run/wg-boot.tgz && break; sleep 6; done; echo "${boot_bundle_sha256}  /run/wg-boot.tgz" | sha256sum -c - && tar -xzf /run/wg-boot.tgz -C / && rm -f /run/wg-boot.tgz || logger -t wg-boot "boot bundle failed"']
+%{ endif ~}
   - sysctl --system
   - netplan apply || true
   - networkctl reload

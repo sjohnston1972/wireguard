@@ -180,7 +180,7 @@ if [[ -n "$fw_new" ]]; then
   # boot). The saved file stays as the Worker wrote it. Azure is untouched.
   tmp_load="$tmp"
   if base64 -d <<<"$fw_new" > "$tmp" 2>/dev/null \
-     && { [[ "${WAN_IF:-eth0}" == eth0 ]] || { sed "s/\"eth0\"/\"${WAN_IF}\"/g" "$tmp" > "$tmp.wan" && tmp_load="$tmp.wan"; }; } \
+     && { [[ ! "${WAN_IF:-eth0}" =~ ^[A-Za-z0-9._-]+$ || "${WAN_IF:-eth0}" == eth0 ]] || { sed "s/\"eth0\"/\"${WAN_IF}\"/g" "$tmp" > "$tmp.wan" && tmp_load="$tmp.wan"; }; } \
      && nft -c -f "$tmp_load" 2>/run/wg-admin/firewall.error && nft -f "$tmp_load" 2>/run/wg-admin/firewall.error; then
     install -m 0600 -o root -g root "$tmp" "$FW_FILE"
     rm -f /run/wg-admin/firewall.error /run/wg-admin/firewall.fallback
