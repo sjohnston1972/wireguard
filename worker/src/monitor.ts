@@ -302,18 +302,19 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
   }
   if (canAws(env)) {
     const today = now.toISOString().slice(0, 10);
-    // Each Cost Explorer call is billed: one try a day, win or lose.
-    if ((await env.STATUS.get("cost:aws_fetched_day")) !== today && (await env.STATUS.get("cost:aws_tried_day")) !== today) {
-      await env.STATUS.put("cost:aws_tried_day", today);
-      try {
+    // Each Cost Explorer call is billed: one try a day, win or lose. The day's mark is written before the call,
+    // inside the try: if KV fails, that is a note and no call (without the mark it could repeat every 5 minutes).
+    try {
+      if ((await env.STATUS.get("cost:aws_fetched_day")) !== today && (await env.STATUS.get("cost:aws_tried_day")) !== today) {
+        await env.STATUS.put("cost:aws_tried_day", today);
         const rate = config(env).aws.usdToGbp;
         const rows = await awsCostMonthToDate(env, now);
         for (const d of rows) await db.upsertAwsCostDay(env, d.day, Math.round(d.usd * rate * 10000) / 10000, d.usd);
         await env.STATUS.put("cost:aws_fetched_day", today);
         notes.push(`AWS cost: ${rows.length} day(s) updated`);
-      } catch (e) {
-        notes.push(`AWS cost pull failed: ${(e as Error).message}`);
       }
+    } catch (e) {
+      notes.push(`AWS cost pull failed: ${(e as Error).message}`);
     }
   }
   try {

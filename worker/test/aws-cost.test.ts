@@ -50,6 +50,20 @@ describe("daily AWS actuals", () => {
     expect(world.calls.filter((c) => c.host === "ce.us-east-1.amazonaws.com")).toHaveLength(1);
     expect(JSON.stringify(first)).toMatch(/AWS cost pull failed/);
   });
+  it("a KV failure on the once-a-day mark leaves a note, asks Cost Explorer nothing, and the watchman carries on", async () => {
+    vi.setSystemTime(new Date(NOW));
+    const put = env.STATUS.put.bind(env.STATUS);
+    env.STATUS.put = (async (k: string, ...rest: unknown[]) => {
+      if (k === "cost:aws_tried_day") throw new Error("KV put failed");
+      return (put as (...a: unknown[]) => Promise<void>)(k, ...rest);
+    }) as typeof env.STATUS.put;
+    const notes = await runScheduled(env);
+    expect(JSON.stringify(notes)).toMatch(/AWS cost pull failed: KV put failed/);
+    // Without the mark, a call could repeat every 5 minutes, and each one is billed: so none is made.
+    expect(world.calls.some((c) => c.host === "ce.us-east-1.amazonaws.com")).toBe(false);
+    // The steps after it still ran (the nightly backup is the last).
+    expect(await env.STATE.get(`config-backups/${NOW.slice(0, 10)}.json`)).not.toBeNull();
+  });
   it("skips Cost Explorer when the Worker has no AWS keys", async () => {
     ({ env, world } = makeEnv({ AWS_WORKER_ACCESS_KEY_ID: undefined, AWS_WORKER_SECRET_ACCESS_KEY: undefined }));
     await runScheduled(env);
