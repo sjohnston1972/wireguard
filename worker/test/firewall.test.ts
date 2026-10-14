@@ -1,6 +1,6 @@
 // The firewall: rule compilation, and the round trip with the VM's agent.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, lastGhRun, type World } from "./harness";
+import { makeEnv, lastGhRun, type World, wgRef } from "./harness";
 import type { Env } from "../src/env";
 import { config } from "../src/env";
 import * as db from "../src/db";
@@ -107,7 +107,7 @@ describe("with the VM", () => {
     const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "s" });
     expect(world.dispatches[0].payload).toMatchObject({ test_vm: true, workload_subnet_cidr: "10.50.2.0/24" });
     expect(JSON.stringify(world.dispatches[0].payload)).not.toContain("wgfw");
-    const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     const built = atob(sec.body.firewall_nft_b64 as string);
     expect(built).toContain("Clients to the Azure VNet");
     world.azure.rg = true;
@@ -133,7 +133,7 @@ describe("with the VM", () => {
   it("hit totals survive a rule change, a tear-down and a rebuild; Clear counters zeroes them", async () => {
     const up = async () => {
       const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "s" });
-      const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+      const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
       world.azure.rg = true;
       await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
       return sec.body.agent_token as string;
@@ -145,7 +145,7 @@ describe("with the VM", () => {
     expect(totalHits(await getSnapshot(env), "r1")).toEqual([42, 4200]);
     // Tear down, build again: the new VM starts from zero, the totals do not.
     const d = await startDestroy(env, "s", "test");
-    const ds = await issueRunSecrets(env, d.id, lastGhRun(world));
+    const ds = await issueRunSecrets(env, d.id, lastGhRun(world), wgRef(env));
     world.azure.rg = false;
     await handleCallback(env, ds.body.callback_token as string, { run_id: d.id, action: "destroy", status: "success" });
     expect(totalHits(await getSnapshot(env), "r1")).toEqual([42, 4200]);

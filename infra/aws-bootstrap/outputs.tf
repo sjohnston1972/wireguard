@@ -1,0 +1,19 @@
+# outputs.tf (aws-bootstrap). The script pipes these straight into gh and wrangler; they are never printed.
+
+output "account_id" {
+  value = local.account
+}
+
+output "deploy_role_arn" {
+  value = aws_iam_role.deploy.arn
+}
+
+output "worker_access_key_id" {
+  value     = aws_iam_access_key.worker.id
+  sensitive = true
+}
+
+output "worker_secret_access_key" {
+  value     = aws_iam_access_key.worker.secret
+  sensitive = true
+}

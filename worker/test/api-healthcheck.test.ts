@@ -8,7 +8,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { api, apiEnv } from "./api-helpers";
-import { lastGhRun } from "./harness";
+import { lastGhRun, wgRef } from "./harness";
 import * as db from "../src/db";
 import { startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
 import { getSnapshot, saveSnapshot } from "../src/state";
@@ -22,7 +22,7 @@ const selftest = (over: Record<string, unknown> = {}) => ({ at: new Date().toISO
 async function running() {
   const { env, world } = apiEnv();
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
-  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
   return { env, world, token: sec.body.agent_token as string };

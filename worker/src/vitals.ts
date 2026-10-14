@@ -83,13 +83,13 @@ function updates(v: unknown): VmVitals["updates"] {
   return { pending, security: Math.min(security, pending), at };
 }
 
-const EVENT_TYPES = new Set<VmScheduledEvent["type"]>(["Reboot", "Redeploy", "Freeze", "Preempt", "Terminate"]);
-
 function event(v: unknown): VmScheduledEvent | null {
   if (!isObj(v)) return null;
   const id = text(v.id, 64);
-  const type = v.type as VmScheduledEvent["type"];
-  if (!id || !EVENT_TYPES.has(type)) return null;
+  // Any event type shows as itself: Azure's (Reboot, Redeploy, ...) and the
+  // cloud's others (AWS reports instance-reboot, system-maintenance, ...).
+  const type = text(v.type, 40);
+  if (!id || !type) return null;
   const duration = int(v.duration_s, 1, 7 * 86_400);
   return {
     id,
@@ -196,11 +196,11 @@ export function freshScheduledEvents(v: VmVitals | null | undefined, seen: strin
 }
 
 /** The watchman note for a new scheduled event. wg-admin never approves one: approving brings it forward. */
-export function scheduledEventNote(e: VmScheduledEvent): string {
+export function scheduledEventNote(e: VmScheduledEvent, cloud = "Azure"): string {
   const when = e.not_before
     ? `not before ${new Date(e.not_before).toLocaleString("en-GB", { timeZone: "Europe/London", weekday: "short", hour: "2-digit", minute: "2-digit" })}`
     : "time not given yet";
   const length = e.duration_s ? `, about ${e.duration_s < 120 ? `${e.duration_s} s` : `${Math.round(e.duration_s / 60)} min`}` : "";
   const whose = e.self ? "this VM" : "another VM in its group";
-  return `Azure scheduled a ${e.type} for ${whose}: ${when}${length}.${e.description ? ` ${e.description}` : ""}`;
+  return `${cloud} scheduled a ${e.type} for ${whose}: ${when}${length}.${e.description ? ` ${e.description}` : ""}`;
 }

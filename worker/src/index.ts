@@ -15,7 +15,7 @@ import type { Env } from "./env";
 import { config } from "./env";
 import { requireAccess, sameOriginOnly, bearer, type AuthedVars } from "./auth";
 import { getSnapshot } from "./state";
-import { startDestroy, extendAutoDestroy, handleCallback, handleAgent, issueRunSecrets, RunError } from "./runs";
+import { startDestroy, extendAutoDestroy, handleCallback, handleAgent, bootBundle, issueRunSecrets, RunError } from "./runs";
 import { verifyGithubOidc } from "./oidc";
 import { startHibernate } from "./standby";
 import { consumeAction, isLabAction } from "./actions";
@@ -132,14 +132,16 @@ app.post("/api/callback/secrets", async (c) => {
   if (tooManyFailures(key)) return c.json({ error: "slow down" }, 429);
   let claims;
   try {
-    claims = await verifyGithubOidc(c.env, bearer(c));
+    // Either cloud's workflow; issueRunSecrets then holds each run to its own.
+    const cfg = config(c.env);
+    claims = await verifyGithubOidc(c.env, bearer(c), [cfg.workflow, cfg.aws.workflow]);
   } catch (e) {
     noteFailure(key);
     return c.json({ error: `not a trusted workflow: ${(e as Error).message}` }, 401);
   }
   const body = (await c.req.json().catch(() => null)) as { run_id?: string } | null;
   if (!body?.run_id) return c.json({ error: "missing run_id" }, 400);
-  const r = await issueRunSecrets(c.env, String(body.run_id), Number(claims.run_id));
+  const r = await issueRunSecrets(c.env, String(body.run_id), Number(claims.run_id), claims.workflow_ref ?? "");
   if (r.status === 403 || r.status === 404) noteFailure(key);
   return c.json(r.body, r.status as 200);
 });
@@ -175,6 +177,16 @@ app.post("/api/agent/capture/:id", async (c) => {
   const r = await receiveCapture(c.env, bearer(c), c.req.param("id"), c.req.raw.body, c.req.header("X-Capture-Error") ?? null);
   if (r.status === 401) noteFailure(key);
   return c.text(r.text, r.status as 200);
+});
+
+// An AWS VM's first-boot files (runs.ts bootBundle). Same token and brake as the heartbeat.
+app.get("/api/agent/bundle", async (c) => {
+  const key = failKey(c, "bundle");
+  if (tooManyFailures(key)) return c.text("slow down", 429);
+  const r = await bootBundle(c.env, bearer(c));
+  if (r.status === 401) noteFailure(key);
+  if (r.status !== 200) return c.text(r.body as string, r.status as 401);
+  return new Response(r.body as ReadableStream, { headers: { "Content-Type": "application/gzip", "Cache-Control": "no-store" } });
 });
 
 app.post("/api/agent", async (c) => {

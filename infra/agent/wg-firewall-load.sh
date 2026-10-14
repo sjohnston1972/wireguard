@@ -22,7 +22,25 @@ FW_FILE=/etc/wg-admin/firewall.nft
 RUN=/run/wg-admin
 mkdir -p "$RUN"
 
-if nft -f "$FW_FILE" 2>"$RUN/firewall.boot.err"; then
+# The Worker writes rules for "eth0" (Azure's name). On AWS the WAN is ens5:
+# load the same rules with the name swapped. Azure is untouched (eth0 = eth0).
+# This runs before the network is up, so the default route may not exist yet:
+# cloud-init wrote the interface name into wg-agent.env, and that comes first.
+WAN_IF="$(sed -n 's/^WAN_IF=//p' /etc/wireguard/wg-agent.env 2>/dev/null)"
+[[ -n "$WAN_IF" ]] || WAN_IF="$(ip -4 route show default 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit }}')"
+[[ "$WAN_IF" =~ ^[A-Za-z0-9._-]+$ ]] || WAN_IF=eth0
+rules="$FW_FILE"
+# Swap only when the rules file is readable and sed succeeds. Any failure
+# leaves the real file in place, so the block-all fallback below still applies.
+if [[ "$WAN_IF" != eth0 && -r "$FW_FILE" ]]; then
+  if sed "s/\"eth0\"/\"$WAN_IF\"/g" "$FW_FILE" > /run/wg-firewall.nft; then
+    rules=/run/wg-firewall.nft
+  else
+    rm -f /run/wg-firewall.nft
+  fi
+fi
+
+if nft -f "$rules" 2>"$RUN/firewall.boot.err"; then
   rm -f "$RUN/firewall.error" "$RUN/firewall.fallback" "$RUN/firewall.boot.err"
   exit 0
 fi

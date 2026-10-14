@@ -46,6 +46,13 @@ export interface Env {
   AZURE_VM_SIZE: string;
   AZURE_RESOURCE_GROUP: string;
   AZURE_VNET_CIDR?: string;
+  AWS_ENABLED?: string; // "1" shows AWS in the Deploy picker
+  AWS_REGION?: string; // default eu-west-2 (London)
+  AWS_INSTANCE_TYPE?: string; // default t4g.micro
+  AWS_HOURLY_RATE_GBP?: string; // running headend, for the cost estimate
+  AWS_STANDBY_RATE_GBP?: string; // stopped headend (volume + address)
+  AWS_USD_GBP?: string; // Cost Explorer reports dollars; this converts to pounds
+  GITHUB_WORKFLOW_AWS?: string; // the AWS build workflow file
   WORKLOAD_SUBNET?: string; // servers behind the WireGuard firewall, in the same VNet
   TEST_VM?: string; // "1" builds the test VM in the workloads subnet
   TEST_VM_RATE_GBP?: string;
@@ -65,6 +72,9 @@ export interface Env {
   AZURE_CLIENT_SECRET?: string;
   AZURE_TENANT_ID?: string;
   AZURE_SUBSCRIPTION_ID?: string;
+  // AWS: the Worker's own narrow IAM user (infra/aws-bootstrap). Never the admin keys.
+  AWS_WORKER_ACCESS_KEY_ID?: string;
+  AWS_WORKER_SECRET_ACCESS_KEY?: string;
   CLOUDFLARE_DNS_TOKEN?: string;
   CLOUDFLARE_ZONE_ID?: string;
   CF_ACCESS_TEAM_DOMAIN?: string;
@@ -81,6 +91,7 @@ export interface Env {
 
 /** Parsed, defaulted view of the plain settings. */
 export interface Config {
+  aws: { enabled: boolean; region: string; instanceType: string; hourlyRateGbp: number; standbyRateGbp: number; usdToGbp: number; workflow: string };
   publicUrl: string;
   dnsName: string;
   port: number;
@@ -137,6 +148,15 @@ export function config(env: Env): Config {
     expiryAction: env.EXPIRY_ACTION === "hibernate" ? "hibernate" : "destroy",
     standbyMaxDays: num(env.STANDBY_MAX_DAYS, 7),
     workflow: env.GITHUB_WORKFLOW || "wg.yml",
+    aws: {
+      enabled: env.AWS_ENABLED === "1",
+      region: env.AWS_REGION || "eu-west-2",
+      instanceType: env.AWS_INSTANCE_TYPE || "t4g.micro",
+      hourlyRateGbp: num(env.AWS_HOURLY_RATE_GBP, 0.011),
+      standbyRateGbp: num(env.AWS_STANDBY_RATE_GBP, 0.005),
+      usdToGbp: num(env.AWS_USD_GBP, 0.75),
+      workflow: env.GITHUB_WORKFLOW_AWS || "wg-aws.yml",
+    },
   };
 }
 
@@ -171,6 +191,17 @@ export function canDispatch(env: Env): boolean {
 
 export function canAzure(env: Env): boolean {
   return !!(env.AZURE_TENANT_ID && env.AZURE_CLIENT_ID && env.AZURE_CLIENT_SECRET && env.AZURE_SUBSCRIPTION_ID);
+}
+
+/** Are the Worker's AWS keys set? (Optional: without them AWS simply is not offered.) */
+export function canAws(env: Env): boolean {
+  const ok = (v?: string) => !!v && !/^REPLACE_ME/.test(v);
+  return ok(env.AWS_WORKER_ACCESS_KEY_ID) && ok(env.AWS_WORKER_SECRET_ACCESS_KEY);
+}
+
+/** The running and standby rates for a headend in this cloud. */
+export function ratesFor(cfg: Config, cloud: Cloud): { hourlyRateGbp: number; standbyRateGbp: number } {
+  return cloud === "aws" ? { hourlyRateGbp: cfg.aws.hourlyRateGbp, standbyRateGbp: cfg.aws.standbyRateGbp } : { hourlyRateGbp: cfg.hourlyRateGbp, standbyRateGbp: cfg.standbyRateGbp };
 }
 
 export function canDns(env: Env): boolean {

@@ -1,12 +1,13 @@
 import { useId, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
-import type { OverviewResponse } from "@shared/api";
+import type { Cloud, OverviewResponse } from "@shared/api";
 import { Button, Chips, ConfirmByTyping, Modal } from "@/components";
 import { useCancel, useCleanup, useDeploy, useDestroy, useExtend, useHibernate, useMove, useResume, useSpeedTest } from "@/api/mutations";
 import { useCapacity } from "@/api/queries";
 import { DEMO_ACTIONS_OFF, useDemoOn } from "@/api/demo";
 import { chipHours, defaultHoursChip, formatSpan, gbp, hourChoices, moveTargets, regionShort } from "./model";
+import { cloudLabel, cloudOf } from "./cloud";
 import "./actions.css";
 
 /** Every reviewed form the Overview can open (the palette's ?action= names plus the banner's own). */
@@ -97,11 +98,16 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
   const [hours, setHours] = useState(() => defaultHoursChip(o));
   const [choice, setChoice] = useState(where.initial);
   const [overOk, setOverOk] = useState(false);
+  // The cloud choice shows only with AWS switched on, and never in demo mode.
+  const demo = useDemoOn();
+  const awsOn = o.config.aws.enabled && !demo;
+  const [cloud, setCloud] = useState<Cloud>(() => (awsOn ? cloudOf(o) : "azure"));
+  const current = cloudOf(o);
+  const switching = awsOn && cloud !== current && o.snapshot.state !== "destroyed";
   const titleId = useId();
   const overId = useId();
   const over = o.budget.level === "over";
   // Demo mode first (spec ruling 18): nothing can deploy, whatever else is true.
-  const demo = useDemoOn();
   const blocked = demo ? DEMO_ACTIONS_OFF : blockedReason(o);
   // Can Azure give this target its VM? The overview carries the configured target's check; another target is asked for.
   const profile = choice.startsWith("p:") ? o.profiles.find((p) => p.id === Number(choice.slice(2))) : null;
@@ -109,13 +115,14 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
   const given = o.capacity && o.capacity.region === target.region && o.capacity.size === target.size ? o.capacity : null;
   const asked = useCapacity(target.region, target.size, { enabled: !given && !!o.capacity }).data;
   const capacity = given ?? (o.capacity ? asked : null);
-  const warn = capacity?.ok === false ? capacity.message : null;
+  const warn = cloud === "azure" && capacity?.ok === false ? capacity.message : null;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (blocked || (over && !overOk)) return;
+    if (blocked || switching || (over && !overOk)) return;
     const target = choice.startsWith("p:") ? { profileId: Number(choice.slice(2)) } : { region: choice.slice(2) };
-    deploy.mutate({ hours: chipHours(hours), ...target, overBudgetOk: overOk }, { onSuccess: () => onDone?.() });
+    if (cloud === "aws") deploy.mutate({ hours: chipHours(hours), cloud: "aws", overBudgetOk: overOk }, { onSuccess: () => onDone?.() });
+    else deploy.mutate({ hours: chipHours(hours), ...target, overBudgetOk: overOk }, { onSuccess: () => onDone?.() });
   };
 
   return (
@@ -131,13 +138,37 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
           <Chips aria-label="For how long?" mode="single" shape="rect" items={hourChoices()} value={[hours]} onChange={(v) => setHours(v[0] ?? hours)} />
           <FieldError text={deploy.fieldError("hours")} />
         </div>
-        <div className="ov-deploy__field">
-          <span className="ov-deploy__caption" aria-hidden>
-            Where?
-          </span>
-          <Chips aria-label="Where?" mode="single" shape="rect" items={where.items} value={[choice]} onChange={(v) => setChoice(v[0] ?? choice)} />
-          <FieldError text={deploy.fieldError("profileId") ?? deploy.fieldError("region")} />
-        </div>
+        {awsOn && (
+          <div className="ov-deploy__field">
+            <span className="ov-deploy__caption" aria-hidden>
+              Cloud
+            </span>
+            <Chips
+              aria-label="Cloud"
+              mode="single"
+              shape="rect"
+              items={[
+                { value: "azure", label: "Azure" },
+                { value: "aws", label: "AWS" },
+              ]}
+              value={[cloud]}
+              onChange={(v) => v[0] && setCloud(v[0] as Cloud)}
+            />
+          </div>
+        )}
+        {cloud === "azure" ? (
+          <div className="ov-deploy__field">
+            <span className="ov-deploy__caption" aria-hidden>
+              Where?
+            </span>
+            <Chips aria-label="Where?" mode="single" shape="rect" items={where.items} value={[choice]} onChange={(v) => setChoice(v[0] ?? choice)} />
+            <FieldError text={deploy.fieldError("profileId") ?? deploy.fieldError("region")} />
+          </div>
+        ) : (
+          <p className="ov-deploy__cost">
+            AWS London · {o.config.aws.instanceType} · about {gbp(o.config.aws.hourlyRateGbp)}/h running
+          </p>
+        )}
       </div>
       {over && (
         <div className="ov-deploy__over">
@@ -150,6 +181,7 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
           </label>
         </div>
       )}
+      {switching && <p role="note">Tear down the {cloudLabel(current)} headend first. wg-admin runs one cloud at a time.</p>}
       {warn && (
         // Never blocks: the check can be up to a day old, and Azure may still find the VM.
         <p className="ov-deploy__cap" role="note">
@@ -160,10 +192,10 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
         </p>
       )}
       <div className="ov-deploy__go">
-        <Button type="submit" variant="primary" size={compact ? "md" : "lg"} disabled={!!blocked || (over && !overOk) || deploy.isPending} loading={deploy.isPending} title={demo ? DEMO_ACTIONS_OFF : undefined}>
+        <Button type="submit" variant="primary" size={compact ? "md" : "lg"} disabled={!!blocked || switching || (over && !overOk) || deploy.isPending} loading={deploy.isPending} title={demo ? DEMO_ACTIONS_OFF : undefined}>
           {warn ? "Deploy anyway" : "Deploy"}
         </Button>
-        <span className="ov-deploy__cost">About {gbp(o.config.hourlyRateGbp)} an hour while up</span>
+        <span className="ov-deploy__cost">About {gbp(cloud === "aws" ? o.config.aws.hourlyRateGbp : o.config.hourlyRateGbp)} an hour while up</span>
       </div>
       <Blocked o={o} why={blocked} />
     </form>
@@ -179,7 +211,7 @@ interface DialogProps {
 
 function DeployDialog({ o, onClose, profileId }: DialogProps & { profileId?: number | null }) {
   return (
-    <Modal open onOpenChange={(v) => !v && onClose()} title="Deploy" description={`Builds a ${o.config.vmSize} in Azure and points ${o.config.dnsName} at it.`} width={560}>
+    <Modal open onOpenChange={(v) => !v && onClose()} title="Deploy" description={`Builds the WireGuard server and points ${o.config.dnsName} at it.`} width={560}>
       <DeployForm o={o} onDone={onClose} compact profileId={profileId} />
     </Modal>
   );
@@ -316,7 +348,7 @@ function SpeedDialog({ o, onClose }: DialogProps) {
       open
       onOpenChange={(v) => !v && onClose()}
       title="Speed test"
-      description={`Azure to ${o.site?.name ?? "the home site"} and back over the tunnel: iperf3 for 5 seconds each way, then ten pings.`}
+      description={`${cloudLabel(cloudOf(o))} to ${o.site?.name ?? "the home site"} and back over the tunnel: iperf3 for 5 seconds each way, then ten pings.`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -369,7 +401,7 @@ function CleanupDialog({ o, onClose }: DialogProps) {
       open
       onOpenChange={(v) => !v && onClose()}
       title="Clean up"
-      description="Runs a tear-down to make sure nothing was left in Azure after the failure."
+      description={`Runs a tear-down to make sure nothing was left in ${cloudLabel(cloudOf(o))} after the failure.`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>

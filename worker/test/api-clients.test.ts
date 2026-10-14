@@ -6,7 +6,7 @@
 // detail with its top destinations and change history.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { api, apiEnv } from "./api-helpers";
-import { lastGhRun } from "./harness";
+import { lastGhRun, wgRef } from "./harness";
 import * as db from "../src/db";
 import { startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
 import { clientAllowedIps } from "../src/peers";
@@ -24,7 +24,7 @@ const line = (key: string, ip: string, hs: number) => `${key}\t(none)\t203.0.113
 
 async function deployWith(env: Env, world: ReturnType<typeof apiEnv>["world"]) {
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
-  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
   return sec.body.agent_token as string;

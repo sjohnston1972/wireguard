@@ -38,6 +38,12 @@ jobs:
           terraform init -backend=false -input=false -no-color
           terraform validate -no-color
 
+      - name: validate (AWS)
+        working-directory: infra/aws
+        run: |
+          terraform init -backend=false -input=false -no-color
+          terraform validate -no-color
+
       # Render the cloud-init with fake values and prove it parses as YAML,
       # and that no Terraform placeholder leaked through unrendered. The
       # gzipped files (encoding gz+b64) are invisible to those text checks,

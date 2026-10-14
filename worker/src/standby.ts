@@ -18,10 +18,11 @@
 //   standby -> resuming   -> running         (start; the first heartbeat ends it)
 
 import type { Env } from "./env";
+import { ratesFor } from "./env";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
-import { getSnapshot, saveSnapshot, saveSnapshotIf } from "./state";
+import { getSnapshot, saveSnapshot, saveSnapshotIf, cloudOf } from "./state";
 import { headendOps } from "./cloud";
 import { notify } from "./notify";
 import { actionButton, dashboardButton } from "./actions";
@@ -49,7 +50,7 @@ export async function startHibernate(env: Env, by: string, reason: string): Prom
   const now = new Date().toISOString();
   await saveSnapshot(env, { state: "hibernating", since: now, power_op_at: now, auto_destroy_at: null, pending_summary: summary, error: null });
   await db.addAlert(env, "info", `Hibernate requested by ${by} (${reason}).`);
-  return "Hibernating. Azure takes a minute or two to power the VM down; the address and DNS stay.";
+  return `Hibernating. ${c.label} takes a minute or two to power the VM down; the address and DNS stay.`;
 }
 
 /** Standby -> Running. `hours` sets a fresh auto-destroy timer (null = none). */
@@ -85,7 +86,8 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
   const snap = await getSnapshot(env);
   if (snap.state !== "hibernating" && snap.state !== "resuming") return;
   const started = Date.parse(snap.power_op_at ?? snap.since ?? new Date(now).toISOString());
-  const az = await (await headendOps(env)).view(env);
+  const c = await headendOps(env);
+  const az = await c.view(env);
   if (az.error) return;
 
   if (snap.state === "hibernating") {
@@ -100,7 +102,7 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
       await refreshInventory(env);
       const cfg = await effectiveConfig(env);
       await db.addAlert(env, "session", summary);
-      await notify(env, "wg-admin: in standby", `${summary} Standby costs about £${(cfg.standbyRateGbp * 24 * 30).toFixed(2)} a month; resume takes about a minute. Torn down automatically after ${cfg.standbyMaxDays} days.`, {
+      await notify(env, "wg-admin: in standby", `${summary} Standby costs about £${(ratesFor(cfg, cloudOf(snap)).standbyRateGbp * 24 * 30).toFixed(2)} a month; resume takes about a minute. Torn down automatically after ${cfg.standbyMaxDays} days.`, {
         tags: ["zzz"],
         buttons: [dashboardButton(env, "Resume from dashboard"), await actionButton(env, "destroy", 3 * 24 * 3600)],
       });
@@ -110,7 +112,7 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
       // the deployment had (kept on its run record). If it has passed, the
       // next check tears down (the cost guard, since hibernating just failed).
       const dep = await db.currentDeployment(env);
-      const won = await saveSnapshotIf(env, "hibernating", { state: "running", auto_destroy_at: dep ? dep.auto_destroy_at : new Date(now).toISOString(), error: `Hibernate did not finish: Azure still reports "${az.power ?? "unknown"}".`, power_op_at: null });
+      const won = await saveSnapshotIf(env, "hibernating", { state: "running", auto_destroy_at: dep ? dep.auto_destroy_at : new Date(now).toISOString(), error: `Hibernate did not finish: ${c.label} still reports "${az.power ?? "unknown"}".`, power_op_at: null });
       if (!won) return;
       await releaseLock(env, undefined, true);
       await db.addAlert(env, "failure", `Hibernate did not finish within 15 minutes (power state "${az.power ?? "unknown"}"). Still treated as Running.`);
@@ -129,7 +131,7 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
     await db.addAlert(env, "unreachable", "The VM powered on after Resume but has not sent a heartbeat in 6 minutes.");
     await notify(env, "wg-admin: resumed, but silent", "The VM is powered on but has not reported in. Check the dashboard.", { priority: 4, buttons: [dashboardButton(env)] });
   } else if (now - started > 15 * 60_000) {
-    const won = await saveSnapshotIf(env, "resuming", { state: "standby", error: `Resume did not finish: Azure reports "${az.power ?? "unknown"}".`, power_op_at: null });
+    const won = await saveSnapshotIf(env, "resuming", { state: "standby", error: `Resume did not finish: ${c.label} reports "${az.power ?? "unknown"}".`, power_op_at: null });
     if (!won) return;
     await releaseLock(env, undefined, true);
     await db.addAlert(env, "failure", `Resume did not finish within 15 minutes (power state "${az.power ?? "unknown"}").`);

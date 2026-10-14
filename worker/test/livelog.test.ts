@@ -8,7 +8,7 @@
 // run's log is capped and expires, that the Worker hides the run's secrets
 // too, and which log the dashboard is given when.
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { lastGhRun, type World } from "./harness";
+import { lastGhRun, type World, wgRef } from "./harness";
 import { api, apiEnv } from "./api-helpers";
 import type { Env } from "../src/env";
 import worker from "../src/index";
@@ -49,7 +49,7 @@ async function activeDeploy(): Promise<{ env: Env; world: World; runId: string; 
   const { env, world } = apiEnv();
   const run = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "s" });
   const ghId = lastGhRun(world);
-  const sec = await issueRunSecrets(env, run.id, ghId);
+  const sec = await issueRunSecrets(env, run.id, ghId, wgRef(env));
   return { env, world, runId: run.id, token: sec.body.callback_token as string, ghId, password: sec.body.ssh_password as string };
 }
 

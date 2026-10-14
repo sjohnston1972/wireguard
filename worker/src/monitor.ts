@@ -27,7 +27,8 @@
 // what happened overnight, and pushed to the webhook if one is set.
 
 import type { Env } from "./env";
-import { canAzure } from "./env";
+import { canAzure, canAws, config } from "./env";
+import { awsCostMonthToDate } from "./cloud/awsCost";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { getSnapshot, saveSnapshot, anyHandshakeWithin, cloudOf } from "./state";
@@ -208,8 +209,8 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         const c = opsFor(cloudOf(snap));
         const az = c.configured(env) ? await c.view(env) : null;
         if (az && !az.error && az.rg_exists) {
-          await startDestroy(env, "watchman", `failed ${FAILED_GRACE_MINUTES} min ago with resources still in Azure`);
-          const msg = `The last run failed ${Math.round(failedFor / 60_000)} minutes ago and left resource group ${cfg.resourceGroup} in Azure, which is costing money. Tearing it down.`;
+          await startDestroy(env, "watchman", `failed ${FAILED_GRACE_MINUTES} min ago with resources still in ${c.label}`);
+          const msg = `The last run failed ${Math.round(failedFor / 60_000)} minutes ago and left ${cloudOf(snap) === "aws" ? "the tagged wg-admin resources" : `resource group ${cfg.resourceGroup}`} in ${c.label}, which is costing money. Tearing it down.`;
           await db.addAlert(env, "cost_guard", msg);
           await notify(env, "wg-admin: cleaning up after a failed run", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open dashboard", "/activity")] });
           notes.push(msg);
@@ -296,6 +297,22 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         notes.push(`cost breakdown: ${rows.length} row(s) updated`);
       } catch (e) {
         notes.push(`cost breakdown: ${(e as Error).message}`);
+      }
+    }
+  }
+  if (canAws(env)) {
+    const today = now.toISOString().slice(0, 10);
+    // Each Cost Explorer call is billed: one try a day, win or lose.
+    if ((await env.STATUS.get("cost:aws_fetched_day")) !== today && (await env.STATUS.get("cost:aws_tried_day")) !== today) {
+      await env.STATUS.put("cost:aws_tried_day", today);
+      try {
+        const rate = config(env).aws.usdToGbp;
+        const rows = await awsCostMonthToDate(env, now);
+        for (const d of rows) await db.upsertAwsCostDay(env, d.day, Math.round(d.usd * rate * 10000) / 10000, d.usd);
+        await env.STATUS.put("cost:aws_fetched_day", today);
+        notes.push(`AWS cost: ${rows.length} day(s) updated`);
+      } catch (e) {
+        notes.push(`AWS cost pull failed: ${(e as Error).message}`);
       }
     }
   }

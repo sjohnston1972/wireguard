@@ -59,6 +59,11 @@ export const SECRET_ENV = [
   "AWS_ACCESS_KEY_ID",
   "AWS_SECRET_ACCESS_KEY",
   "R2_BUCKET",
+  // wg-aws.yml: R2 keys handed to the backend by file, and the AWS deploy role
+  "R2_ACCESS_KEY_ID",
+  "R2_SECRET_ACCESS_KEY",
+  "R2_ENDPOINT",
+  "AWS_ROLE_ARN",
   // Static Terraform inputs from repository secrets
   "TF_VAR_ssh_public_key",
   "TF_VAR_wg_server_private_key",
@@ -103,8 +108,13 @@ export function secretsFromEnv(env, names = SECRET_ENV) {
   if (env.TF_VAR_ssh_allowed_cidr) add(String(env.TF_VAR_ssh_allowed_cidr).split("/")[0]);
   // The Cloudflare account id (a repository secret) only reaches the steps
   // inside the R2 endpoint address: https://<account id>.r2.cloudflarestorage.com
-  const host = /^https?:\/\/([^./]+)\./.exec(String(env.AWS_ENDPOINT_URL_S3 ?? ""));
-  if (host) add(host[1]);
+  for (const k of ["AWS_ENDPOINT_URL_S3", "R2_ENDPOINT"]) {
+    const host = /^https?:\/\/([^./]+)\./.exec(String(env[k] ?? ""));
+    if (host) add(host[1]);
+  }
+  // The AWS account id is the 5th field of the deploy role's ARN: arn:aws:iam::<account id>:role/...
+  const acct = String(env.AWS_ROLE_ARN ?? "").split(":")[4];
+  if (acct) add(acct);
   return [...out];
 }
 

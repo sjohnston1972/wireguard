@@ -4,7 +4,7 @@
 // heartbeats, the watchman filling in missed minutes, folding old samples
 // into 5-minute summaries, and the run step list kept with each run.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, lastGhRun, type World } from "./harness";
+import { makeEnv, lastGhRun, type World, wgRef } from "./harness";
 import * as db from "../src/db";
 import type { Env } from "../src/env";
 import { bucket, vmSample, clientSamples, recordHeartbeat, recordMissedHeartbeats, rollUp } from "../src/history";
@@ -190,7 +190,7 @@ const peerLine = (key: string, hsSecs: number, rx: number, tx: number) => `${key
 async function toRunning() {
   await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
   return sec.body.agent_token as string;
@@ -395,12 +395,12 @@ describe("run steps", () => {
 
   async function destroyRun() {
     const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-    const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
     world.azure.rg = true;
     await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
     const { startDestroy } = await import("../src/runs");
     const d = await startDestroy(env, "steven");
-    const dsec = await issueRunSecrets(env, d.id, lastGhRun(world));
+    const dsec = await issueRunSecrets(env, d.id, lastGhRun(world), wgRef(env));
     return { id: d.id, gh: lastGhRun(world), token: dsec.body.callback_token as string };
   }
 

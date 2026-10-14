@@ -1,7 +1,7 @@
 // Where a tap on an alert lands: the button's url is the page that explains
 // the alert (spec section 9), and the push payload's url is the same one.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, lastGhRun, type World } from "./harness";
+import { makeEnv, lastGhRun, type World, wgRef } from "./harness";
 import type { Env } from "../src/env";
 import * as db from "../src/db";
 import { dashboardButton } from "../src/actions";
@@ -37,7 +37,7 @@ const viewUrls = (re: RegExp) => world.notes.filter((n) => re.test(n.title)).fla
 async function toRunning() {
   await db.addPeer(env, { name: "Phone", public_key: "P".repeat(43) + "=", ip: "10.13.13.2", full_tunnel: false });
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   return { run, sec };
 }

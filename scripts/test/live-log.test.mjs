@@ -161,6 +161,21 @@ test("every secret wg.yml hands a step, and every run secret from the Worker, is
   assert.deepEqual(secretCoverage(yml), []);
 });
 
+test("every secret wg-aws.yml hands a step, and every run secret from the Worker, is hidden by the live log", () => {
+  const yml = readFileSync(fileURLToPath(new URL("../../.github/workflows/wg-aws.yml", import.meta.url)), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(envEntries(yml).filter(([, v]) => (v.match(SECRET_EXPR) ?? []).length > 0).length >= 15, "the env entries were found");
+  assert.deepEqual(secretCoverage(yml), []);
+  // The account id inside the R2 endpoint is hidden whichever name carries it.
+  assert.ok(secretsFromEnv({ R2_ENDPOINT: "https://acct0123456789abcdef.r2.cloudflarestorage.com" }).includes("acct0123456789abcdef"));
+});
+
+test("the AWS account id inside the deploy role ARN is hidden on its own", () => {
+  const arn = "arn:aws:iam::123456789012:role/wg-admin-deploy";
+  const got = secretsFromEnv({ AWS_ROLE_ARN: arn });
+  assert.ok(got.includes(arn) && got.includes("123456789012"));
+  assert.equal(makeRedactor(got)("owner_id = 123456789012 in eu-west-2"), "owner_id = *** in eu-west-2");
+});
+
 test("the wg.yml secret check is not circular: a new secret added to wg.yml alone fails it", () => {
   const yml = readWorkflow();
   const anchor = "          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}\n";

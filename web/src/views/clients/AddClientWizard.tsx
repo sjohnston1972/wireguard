@@ -128,8 +128,8 @@ export function AddClientWizard({ config, onClose }: { config: ClientsConfig; on
           {config.homeLanCidr && (
             <Choice type="checkbox" indent checked={!full && routing.home_lan} disabled={full} onChange={set("home_lan")} title="+ Home LAN" hint={<>Reach <span className="mono">{config.homeLanCidr}</span> through the home site, from away.</>} />
           )}
-          <Choice type="checkbox" indent checked={!full && routing.azure_vnet} disabled={full} onChange={set("azure_vnet")} title="+ Azure VNet" hint={<>Reach <span className="mono">{config.vnetCidr}</span> in Azure.</>} />
-          <Choice name="mode" type="radio" checked={full} onChange={() => setRouting((r) => ({ ...r, full_tunnel: true }))} title="Full tunnel" hint="All traffic, IPv4 and IPv6, through Azure (an exit node). Includes the tunnel DNS." />
+          <Choice type="checkbox" indent checked={!full && routing.azure_vnet} disabled={full} onChange={set("azure_vnet")} title="+ Cloud network" hint={<>Reach <span className="mono">{config.vnetCidr}</span> in the cloud network.</>} />
+          <Choice name="mode" type="radio" checked={full} onChange={() => setRouting((r) => ({ ...r, full_tunnel: true }))} title="Full tunnel" hint="All traffic, IPv4 and IPv6, through the cloud server (an exit node). Includes the tunnel DNS." />
           <Choice type="checkbox" checked={full || routing.tunnel_dns} disabled={full} onChange={set("tunnel_dns")} title="Tunnel DNS" hint="Ad-blocking and .wg names. Leave off if the device stays connected while the VM is down." />
         </fieldset>
         <div className="wiz__ips">

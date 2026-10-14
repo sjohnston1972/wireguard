@@ -9,13 +9,13 @@
 // Nothing here trusts a previous guess. refreshActiveRun() re-reads GitHub
 // each time, and the cron re-checks Azure, so a missed callback heals.
 
-import type { Env } from "./env";
-import { config, canDispatch } from "./env";
+import type { Env, Cloud } from "./env";
+import { config, canDispatch, ratesFor } from "./env";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
 import { randomToken, sha256Hex, safeEqual } from "./auth";
-import { dispatchWorkflow, findRunByTitle, getGhRun, getJobs, getJobLogTail, cancelGhRun, stepsFromJobs } from "./github";
+import { dispatchWorkflow, findRunByTitle, workflowFor, getGhRun, getJobs, getJobLogTail, cancelGhRun, stepsFromJobs } from "./github";
 import { getSnapshot, saveSnapshot, saveSnapshotIf, parseWgDump, nextTraffic, nextLatency, detectRoams, nextSession, selfTestFailures, nextTalkers, cloudOf, type AgentReport, type Snapshot, type SelfTest } from "./state";
 import { checkDns } from "./dns";
 import { agentPeerList, terraformPeerList, protectedNets } from "./peers";
@@ -25,6 +25,7 @@ import { bytesText } from "./format";
 import { compileFirewall, publishedNsgRules } from "./firewall";
 import type { FirewallStatus, Step } from "./state";
 import { headendOps, opsFor } from "./cloud";
+import { workflowRef } from "./oidc";
 import { noteHandshakes } from "./keyrotation";
 import { recordHeartbeat, fwDeltas } from "./history";
 import { parseVitals, parseAgentVersion, freshScheduledEvents, scheduledEventNote } from "./vitals";
@@ -90,6 +91,17 @@ export interface DeployOptions {
   region?: string;
   vmSize?: string;
   profile?: string | null;
+  /** Which cloud to build in; Azure when left out. */
+  cloud?: Cloud;
+}
+
+/** The cloud a run was for: AWS runs say so in their payload; everything else is Azure. */
+export function runCloud(run: { payload_json: string | null }): Cloud {
+  try {
+    return (JSON.parse(run.payload_json || "{}") as { cloud?: string }).cloud === "aws" ? "aws" : "azure";
+  } catch {
+    return "azure";
+  }
 }
 
 /** Start a deploy. Throws RunError with a message fit for the screen. */
@@ -99,6 +111,19 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   if (snap.state === "running") throw new RunError("Already running. Tear it down first if you want a rebuild.");
   if (snap.state === "standby") throw new RunError("The VM is in Standby. Resume it instead (about a minute), or tear it down first.");
   if (isBusyState(snap.state)) throw new RunError("A run is already in progress.");
+  // One cloud at a time: a failed headend may have left things behind, so
+  // only a torn-down one frees the other cloud.
+  const cloud: Cloud = opts.cloud ?? "azure";
+  const was = cloudOf(snap);
+  if (cloud !== was && snap.state !== "destroyed") {
+    throw new RunError(`Tear down the ${opsFor(was).label} headend first. wg-admin runs one cloud at a time.`);
+  }
+  // Torn down, but the old cloud still has resources: once the snapshot
+  // follows the new cloud, nothing would watch them, so clean up first.
+  if (cloud !== was && snap.drift) {
+    throw new RunError(`Clean up the ${opsFor(was).label} leftovers first (see the drift warning). wg-admin runs one cloud at a time.`);
+  }
+  if (cloud === "aws" && !opsFor("aws").configured(env)) throw new RunError("AWS is not set up yet: the Worker has no AWS keys.", "bad_input");
 
   const cfg = await effectiveConfig(env);
   // Read what the payload needs before taking the lock, so a database hiccup
@@ -116,8 +141,10 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   const sshPassword = readablePassword();
   const sshCidr = cfg.sshAllowedCidr || (opts.requesterIp && !opts.requesterIp.includes(":") ? `${opts.requesterIp}/32` : "");
   const auto_destroy_at = opts.hours ? new Date(Date.now() + opts.hours * 3_600_000).toISOString() : null;
-  const region = opts.region ?? cfg.region;
-  const vmSize = opts.vmSize ?? cfg.vmSize;
+  // AWS builds in London on its own instance type; Move and profiles are Azure's.
+  const region = cloud === "aws" ? cfg.aws.region : opts.region ?? cfg.region;
+  const vmSize = cloud === "aws" ? cfg.aws.instanceType : opts.vmSize ?? cfg.vmSize;
+  const profile = cloud === "aws" ? null : opts.profile ?? null;
 
   const payload = {
     run_id: id,
@@ -137,6 +164,8 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     agent_url: `${cfg.publicUrl}/api/agent`,
     callback_url: `${cfg.publicUrl}/api/callback`,
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
+    // An Azure payload has no cloud key, as before.
+    ...(cloud === "aws" ? { cloud: "aws" } : {}),
   };
 
   const now = new Date().toISOString();
@@ -161,7 +190,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
   }
 
   try {
-    await dispatchWorkflow(env, "apply", payload);
+    await dispatchWorkflow(env, "apply", payload, workflowFor(cfg, cloud));
   } catch (e) {
     try {
       await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
@@ -173,7 +202,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
 
   await saveSnapshot(env, {
     state: "deploying",
-    cloud: "azure",
+    cloud,
     run_id: id,
     action: "apply",
     since: now,
@@ -197,7 +226,7 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
     power_op_at: null,
     region,
     vm_size: vmSize,
-    profile: opts.profile ?? null,
+    profile,
     pending_deploy: null,
     speedtest_req: null,
     selftest_req: null,
@@ -308,7 +337,7 @@ export async function sessionSummary(env: Env, snap: Snapshot, ending: string, n
   if (!snap.running_since) return `${ending}.`;
   const ms = Math.max(0, now - Date.parse(snap.running_since));
   const h = Math.floor(ms / 3_600_000), m = Math.round((ms % 3_600_000) / 60_000);
-  const cost = (ms / 3_600_000) * cfg.hourlyRateGbp;
+  const cost = (ms / 3_600_000) * ratesFor(cfg, cloudOf(snap)).hourlyRateGbp;
   const peers = await db.listPeers(env);
   // The home site (a peer with routes) is always connected; it is not a user.
   const names = (snap.session?.seen ?? []).filter((k) => !peers.find((p) => p.public_key === k)?.routes).map((k) => peers.find((p) => p.public_key === k)?.name ?? "an old key");
@@ -326,6 +355,7 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
   const cfg = config(env);
   // Remember what this session did before the snapshot is cleared. Worked
   // out before taking the lock, so an error here cannot leave it held.
+  const cloud = cloudOf(snap);
   const pending_summary = snap.state === "running" ? await sessionSummary(env, snap, "Torn down") : snap.state === "standby" ? "Torn down from Standby." : null;
   const id = newRunId("destroy");
   const lock = await acquireLock(env, id);
@@ -336,6 +366,7 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
     wg_dns_name: cfg.dnsName,
     callback_url: `${cfg.publicUrl}/api/callback`,
     secrets_url: `${cfg.publicUrl}/api/callback/secrets`,
+    ...(cloud === "aws" ? { cloud: "aws" } : {}),
   };
   const now = new Date().toISOString();
   try {
@@ -358,7 +389,7 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
   }
 
   try {
-    await dispatchWorkflow(env, "destroy", payload);
+    await dispatchWorkflow(env, "destroy", payload, workflowFor(cfg, cloud));
   } catch (e) {
     try {
       await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
@@ -391,7 +422,7 @@ export async function refreshActiveRun(env: Env): Promise<void> {
   const before = await getSnapshot(env);
   let ghId = run.github_run_id;
   if (!ghId) {
-    const found = await findRunByTitle(env, run.id);
+    const found = await findRunByTitle(env, run.id, workflowFor(config(env), runCloud(run)));
     if (!found) {
       // Not visible yet. Give GitHub 3 minutes, then give up.
       if (Date.now() - Date.parse(run.requested_at) > 3 * 60_000) {
@@ -546,8 +577,9 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
   await db.addAlert(env, "deploy", `Deployed at ${publicIp ?? "unknown IP"} (${meta.via}); ${cfg.dnsName} ${dns.live ? "is live" : "not live yet"}`, run.id);
   // Labs waiting to peer (or disconnected by the last tear-down) can peer now: one push (labs/repeer.ts).
   // A lab problem must never cost the gateway its deploy.
+  // Labs only ever peer with Azure, so an AWS apply has nothing to re-peer.
   try {
-    await rePeerPush(env, run.id);
+    if (cloudOf(await getSnapshot(env)) !== "aws") await rePeerPush(env, run.id);
   } catch (e) {
     console.error("lab re-peer push:", e);
   }
@@ -603,11 +635,12 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
   });
   // A packet capture still waiting on the VM will never arrive now.
   if (before.capture_req) await db.failPendingCapture(env, before.capture_req.id, "VM torn down");
-  await db.addAlert(env, "destroy", `Torn down (${meta.via}). Azure cost is now £0.`, run.id);
+  await db.addAlert(env, "destroy", `Torn down (${meta.via}). ${opsFor(cloudOf(before)).label} cost is now £0.`, run.id);
   if (before.pending_summary) await db.addAlert(env, "session", before.pending_summary, run.id);
   const next = before.pending_deploy;
   if (!next) {
-    await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; Azure cost is £0.`, { tags: ["wastebasket"] });
+    await notify(env, "wg-admin: torn down", `${before.pending_summary ? `${before.pending_summary} ` : ""}Everything removed; ${opsFor(cloudOf(before)).label} cost is £0.`, { tags: ["wastebasket"] });
+    await clearBootBundles(env);
     return true;
   }
   // A move ("Move to US exit"): the old one is gone, build the new one now.
@@ -619,7 +652,22 @@ async function completeDestroy(env: Env, run: db.Run, meta: { via: string }): Pr
     await db.addAlert(env, "failure", `Move: torn down, but the new deploy could not start: ${(e as Error).message}`, run.id);
     await notify(env, "wg-admin: move stopped", `Torn down, but the new deploy could not start: ${(e as Error).message}`, { priority: 4 });
   }
+  await clearBootBundles(env);
   return true;
+}
+
+/** AWS boot bundles hold firewall rules; none outlives its server. Housekeeping: it never gates a teardown. */
+async function clearBootBundles(env: Env): Promise<void> {
+  try {
+    let cursor: string | undefined;
+    do {
+      const page = await env.STATE.list({ prefix: "boot/", cursor });
+      await Promise.all(page.objects.map((o) => env.STATE.delete(o.key)));
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+  } catch (e) {
+    console.error("boot bundle cleanup failed", (e as Error).message);
+  }
 }
 
 /** GitHub Actions result callback. Returns an HTTP status and message. */
@@ -653,14 +701,19 @@ export async function handleCallback(env: Env, token: string, body: CallbackBody
  * Hand a GitHub run its per-run secrets, once. The caller has already
  * verified the OIDC token; `ghRunId` is GitHub's run number from it. The run
  * must carry our run id in its title, so a token from some other dispatch of
- * the same workflow cannot collect this run's secrets. Tokens are minted here
- * and only their hashes are kept.
+ * the same workflow cannot collect this run's secrets. Both clouds' workflows
+ * title their runs alike, so the token's own (signed) `workflow_ref` must
+ * also name this run's workflow: an AWS run's secrets go only to wg-aws.yml,
+ * an Azure run's only to wg.yml. `tokenWorkflowRef` is that claim ("" when
+ * the token had none, which matches nothing). Tokens are minted here and only
+ * their hashes are kept.
  */
-export async function issueRunSecrets(env: Env, runId: string, ghRunId: number): Promise<{ status: number; body: Record<string, unknown> }> {
+export async function issueRunSecrets(env: Env, runId: string, ghRunId: number, tokenWorkflowRef: string): Promise<{ status: number; body: Record<string, unknown> }> {
   const run = await db.getRun(env, runId);
   if (!run) return { status: 404, body: { error: "unknown run" } };
   if (run.finished_at || !["queued", "running"].includes(run.status)) return { status: 409, body: { error: "run is not active" } };
   if (run.callback_token_hash) return { status: 409, body: { error: "secrets already collected" } };
+  if (tokenWorkflowRef !== workflowRef(env, workflowFor(config(env), runCloud(run)))) return { status: 403, body: { error: "that workflow does not build this run's cloud" } };
   const gh = await getGhRun(env, ghRunId);
   if (!gh || !(gh.display_title ?? "").includes(run.id)) return { status: 403, body: { error: "that GitHub run is not this run" } };
 
@@ -709,15 +762,37 @@ export interface AgentBody {
   dump?: string;
 }
 
-/** VM heartbeat. Verifies the per-deploy token, stores the report, returns the desired peer list. */
-export async function handleAgent(env: Env, token: string, body: AgentBody): Promise<{ status: number; body: unknown }> {
-  if (!token) return { status: 401, body: { error: "no token" } };
+/** The apply run an agent token belongs to, or why not: 401 unknown, 410 an older deployment's. */
+async function runForAgentToken(env: Env, token: string): Promise<{ run: db.Run } | { status: 401 | 410; error: string }> {
+  if (!token) return { status: 401, error: "no token" };
   const hash = await sha256Hex(token);
   // The token belongs to the most recent apply (running or still deploying).
   const run = await env.DB.prepare("SELECT * FROM runs WHERE action = 'apply' AND agent_token_hash = ?1 ORDER BY requested_at DESC LIMIT 1").bind(hash).first<db.Run>();
-  if (!run) return { status: 401, body: { error: "unknown token" } };
+  if (!run) return { status: 401, error: "unknown token" };
   const latestApply = await env.DB.prepare("SELECT id FROM runs WHERE action = 'apply' ORDER BY requested_at DESC LIMIT 1").first<{ id: string }>();
-  if (latestApply && latestApply.id !== run.id) return { status: 410, body: { error: "token from an older deployment" } };
+  if (latestApply && latestApply.id !== run.id) return { status: 410, error: "token from an older deployment" };
+  return { run };
+}
+
+/**
+ * An AWS VM's first-boot bundle: the agent scripts and firewall rules that do
+ * not fit in AWS's 16 KB of user data. wg-aws.yml stores it in R2 as
+ * boot/<run id>.tgz; the VM fetches it once, with the same per-deploy token
+ * it uses for heartbeats, and checks its SHA-256 before unpacking.
+ */
+export async function bootBundle(env: Env, token: string): Promise<{ status: number; body: ReadableStream | string }> {
+  const who = await runForAgentToken(env, token);
+  if (!("run" in who)) return { status: who.status, body: who.error };
+  const obj = await env.STATE.get(`boot/${who.run.id}.tgz`);
+  if (!obj) return { status: 404, body: "no bundle for this deploy" };
+  return { status: 200, body: obj.body };
+}
+
+/** VM heartbeat. Verifies the per-deploy token, stores the report, returns the desired peer list. */
+export async function handleAgent(env: Env, token: string, body: AgentBody): Promise<{ status: number; body: unknown }> {
+  const who = await runForAgentToken(env, token);
+  if (!("run" in who)) return { status: who.status, body: { error: who.error } };
+  const run = who.run;
 
   const cfg = config(env);
   const parsed = parseWgDump(body.dump ?? "");
@@ -810,9 +885,9 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
   try {
     const ev = freshScheduledEvents(report.vitals, snap.sched_events_seen);
     for (const e of ev.fresh) {
-      const note = scheduledEventNote(e);
+      const note = scheduledEventNote(e, opsFor(cloudOf(snap)).label);
       await db.addAlert(env, "info", note);
-      await notify(env, "wg-admin: Azure maintenance scheduled", note, { tags: ["calendar"], buttons: [dashboardButton(env)] });
+      await notify(env, `wg-admin: ${opsFor(cloudOf(snap)).label} maintenance scheduled`, note, { tags: ["calendar"], buttons: [dashboardButton(env)] });
     }
     if (ev.fresh.length) patch.sched_events_seen = ev.seen;
   } catch (e) {
@@ -830,7 +905,7 @@ export async function handleAgent(env: Env, token: string, body: AgentBody): Pro
       const t = { id: res.id, at: report.at, target_name: req.target_name, down_mbps: mbps(res.down_bps), up_mbps: mbps(res.up_bps), rtt_ms: typeof res.rtt_ms === "number" ? res.rtt_ms : null, jitter_ms: typeof res.jitter_ms === "number" ? res.jitter_ms : null, error: res.error || null };
       await db.saveSpeedTest(env, t);
       patch.speedtest_req = null;
-      await db.addAlert(env, t.error ? "failure" : "info", t.error ? `Speed test failed: ${t.error}` : `Speed test to ${t.target_name}: Azure to home ${t.down_mbps ?? "?"} Mbit/s, home to Azure ${t.up_mbps ?? "?"} Mbit/s, ${t.rtt_ms ?? "?"} ms.`);
+      await db.addAlert(env, t.error ? "failure" : "info", t.error ? `Speed test failed: ${t.error}` : `Speed test to ${t.target_name}: ${opsFor(cloudOf(snap)).label} to home ${t.down_mbps ?? "?"} Mbit/s, home to ${opsFor(cloudOf(snap)).label} ${t.up_mbps ?? "?"} Mbit/s, ${t.rtt_ms ?? "?"} ms.`);
     }
   } else if (req) {
     if (Date.now() - Date.parse(req.at) > 5 * 60_000) {
@@ -924,7 +999,7 @@ export async function cancelActive(env: Env): Promise<string> {
   if (!run) return "Nothing to cancel.";
   if (run.github_run_id) await cancelGhRun(env, run.github_run_id);
   await failRun(env, run, "Cancelled from the dashboard.");
-  return "Cancelled. Use Clean up to make sure Azure is empty.";
+  return `Cancelled. Use Clean up to make sure ${(await headendOps(env)).label} is empty.`;
 }
 
 /** Compare our snapshot with Azure. Returns a drift description or null. */
@@ -935,11 +1010,12 @@ export async function detectDrift(env: Env): Promise<string | null> {
   if (isBusyState(snap.state)) return null;
   const az = await c.view(env);
   if (az.error) return null; // unknown, not drift
+  const where = cloudOf(snap) === "aws" ? "the tagged wg-admin resources" : `resource group ${config(env).resourceGroup}`;
   let drift: string | null = null;
-  if (snap.state === "destroyed" && az.rg_exists) drift = `${c.label} still has resource group ${config(env).resourceGroup} but the dashboard says Destroyed. That VM is costing money.`;
+  if (snap.state === "destroyed" && az.rg_exists) drift = `${c.label} still has ${where} but the dashboard says Destroyed. That VM is costing money.`;
   // A failed run can leave a half-built (or fully built) VM behind; nothing
   // else watches a Failed VM, so say so until it is cleaned up.
-  if (snap.state === "failed" && az.rg_exists) drift = `The last run failed but ${c.label} still has resource group ${config(env).resourceGroup}. It may be costing money; use Clean up to tear it down.`;
+  if (snap.state === "failed" && az.rg_exists) drift = `The last run failed but ${c.label} still has ${where}. It may be costing money; use Clean up to tear it down.`;
   if (snap.state === "running" && !az.rg_exists) drift = `The dashboard says Running but ${c.label} has no resource group. Something deleted it outside this app.`;
   if (snap.state === "running" && az.rg_exists && az.power && az.power !== "running") drift = `The VM exists but its power state is "${az.power}".`;
   if (snap.state === "running" && az.public_ip && snap.public_ip && az.public_ip !== snap.public_ip) drift = `${c.label}'s public IP ${az.public_ip} differs from the recorded ${snap.public_ip}.`;
@@ -962,20 +1038,20 @@ export async function reconcile(env: Env, requestedBy: string): Promise<string> 
   if (az.rg_exists && (snap.state === "destroyed" || snap.state === "failed")) {
     // A clean-up tear-down must not be followed by an old queued Move.
     await saveSnapshot(env, { pending_deploy: null });
-    await startDestroy(env, requestedBy, "reconcile: Azure had resources");
-    return "Azure still had resources. A tear-down has been started.";
+    await startDestroy(env, requestedBy, `reconcile: ${c.label} had resources`);
+    return `${c.label} still had resources. A tear-down has been started.`;
   }
   if (!az.rg_exists && snap.state !== "destroyed") {
     const run = await db.activeRun(env);
-    if (run) await db.settleRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: "reconciled: Azure empty" });
+    if (run) await db.settleRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: `reconciled: ${c.label} empty` });
     await releaseLock(env, undefined, true);
-    await db.clearSshPasswords(env); // nothing left in Azure to log in to
+    await db.clearSshPasswords(env); // nothing left in the cloud to log in to
     if (snap.capture_req) await db.failPendingCapture(env, snap.capture_req.id, "VM torn down");
     await saveSnapshot(env, { state: "destroyed", since: new Date().toISOString(), public_ip: null, dns_ip: null, dns_live: false, auto_destroy_at: null, agent: null, last_agent_at: null, drift: null, error: null, steps: [], log_tail: null, running_since: null, pending_deploy: null, pending_summary: null, capture_req: null });
-    return "Azure is empty. State set to Destroyed.";
+    return `${c.label} is empty. State set to Destroyed.`;
   }
   await saveSnapshot(env, { drift: null });
-  return "Azure and the dashboard agree. Nothing to do.";
+  return `${c.label} and the dashboard agree. Nothing to do.`;
 }
 
 /** Move the auto-destroy deadline. hours = null clears it. */

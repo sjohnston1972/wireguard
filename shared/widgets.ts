@@ -179,7 +179,7 @@ type DefExtra = Partial<Pick<WidgetDef, "pinned" | "version" | "migrate" | "defa
 const def = (id: string, title: string, settings: SettingSpec[], extra: DefExtra = {}): Omit<WidgetDef, "description"> => ({ id, page: id.split(".")[0] as PageId, title, version: 1, settings, ...extra });
 
 const DENSITY = o(["comfortable", "Comfortable"], ["compact", "Compact"]);
-const ZONES = o(["clients", "Clients"], ["home", "Home"], ["azure", "Azure"], ["workloads", "Workloads"], ["labs", "Labs"], ["internet", "Internet"]);
+const ZONES = o(["clients", "Clients"], ["home", "Home"], ["azure", "Cloud"], ["workloads", "Workloads"], ["labs", "Labs"], ["internet", "Internet"]);
 
 /** The change log's Azure resource kinds (shared/azureMetrics.ts AZURE_RESOURCE_KINDS). */
 const AZ_KINDS: Option[] = AZURE_RESOURCE_KINDS.map((k) => ({ value: k.value, label: k.label }));

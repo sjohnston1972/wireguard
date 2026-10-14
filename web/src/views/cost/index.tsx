@@ -129,7 +129,7 @@ export function CostPage() {
   const header = (
     <PageHeader
       title="Cost"
-      subtitle="Monitor, analyse and control what the WireGuard VM costs on Azure."
+      subtitle={cost?.byCloud.aws ? "Monitor, analyse and control what the WireGuard server costs on Azure and AWS." : "Monitor, analyse and control what the WireGuard VM costs on Azure."}
       env={<EnvironmentField />}
       right={
         <>

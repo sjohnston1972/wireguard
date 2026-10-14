@@ -21,7 +21,7 @@ import { clientAllowedIps } from "../src/peers";
 import { compileFirewall, STARTER_RULES, type FwRule } from "../src/firewall";
 import { simulate } from "../src/simulate";
 import { config } from "../src/env";
-import { lastGhRun } from "./harness";
+import { lastGhRun, wgRef } from "./harness";
 import { api, deployLab, freeze, labDispatches, labEnv, peer, report, rows, runningLab, secrets, session, NOW } from "./labs-helpers";
 import type { Env } from "../src/env";
 
@@ -134,7 +134,7 @@ describe("peering (L2.6)", () => {
     const b = await runningLab(env, world, "az104-05-storage");
     // The gateway's destroy, with its own run's callback token.
     const gw = await startDestroy(env, "t");
-    const sec = await issueRunSecrets(env, gw.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, gw.id, lastGhRun(world), wgRef(env));
     const token = sec.body.callback_token as string;
     const body = { run_id: gw.id, peerings_removed: 1, dns_links_removed: 1, complete: true };
     expect((await handleLabPeeringsRemoved(env, null, body)).status).toBe(401);
@@ -210,7 +210,7 @@ describe("peering (L2.6)", () => {
     const b = await runningLab(env, world, "az104-07-files", { hours: 2, peer: true });
     await env.DB.prepare("UPDATE lab_sessions SET peering = 'disconnected' WHERE id = ?1").bind(b.sid).run();
     const gw = await startDeploy(env, { hours: 2, requesterIp: null, requestedBy: "t" });
-    const sec = await issueRunSecrets(env, gw.id, lastGhRun(world));
+    const sec = await issueRunSecrets(env, gw.id, lastGhRun(world), wgRef(env));
     world.azure.rg = true;
     await handleCallback(env, sec.body.callback_token as string, { run_id: gw.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
     await handleCallback(env, sec.body.callback_token as string, { run_id: gw.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
@@ -311,5 +311,17 @@ describe("firewall (L2.6)", () => {
     const home = simulate({ from: { kind: "zone", value: "home" }, to: { kind: "zone", value: "labs" }, proto: "tcp", port: 443 }, ctx(starters()));
     expect(home.limited ?? "").not.toMatch(/does not pass through the VM/);
     expect(home.verdict).toBe("deny");
+  });
+});
+
+describe("labs on an AWS headend", () => {
+  it("a deploy that asks to connect is accepted, runs unconnected, and says so", async () => {
+    freeze();
+    const { env } = await labEnv();
+    await saveSnapshot(env, { state: "running", running_since: NOW, cloud: "aws" });
+    const r = await deployLab(env, "az104-06-blob-security", { hours: 2, peer: true });
+    expect(r.status).toBe(200);
+    expect(r.json.message).toMatch(/Connect needs an Azure headend; this lab runs unconnected\./);
+    expect((await session(env, r.json.sessionId))!.peering).toBe("off");
   });
 });

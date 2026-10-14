@@ -11,6 +11,7 @@ id_*
 
 # Terraform
 infra/.terraform/
+infra/*/.terraform/
 infra/.terraform.lock.hcl.bak
 *.tfstate
 *.tfstate.*

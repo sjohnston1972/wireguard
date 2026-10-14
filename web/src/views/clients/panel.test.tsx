@@ -43,7 +43,7 @@ describe("Client panel", { timeout: 20_000 }, () => {
     await user.click(within(p).getByRole("tab", { name: "Configuration" }));
 
     const home = within(p).getByRole("switch", { name: /Home LAN/ });
-    const vnet = within(p).getByRole("switch", { name: /Azure VNet/ });
+    const vnet = within(p).getByRole("switch", { name: /Cloud network/ });
     const dns = within(p).getByRole("switch", { name: /Tunnel DNS/ });
     expect(home).toHaveAttribute("aria-checked", "true");
     expect(vnet).toHaveAttribute("aria-checked", "true");
@@ -68,7 +68,7 @@ describe("Client panel", { timeout: 20_000 }, () => {
     expect(within(p).queryByRole("button", { name: /Delete/ })).not.toBeInTheDocument();
 
     await user.click(within(p).getByRole("tab", { name: "Configuration" }));
-    expect(within(p).queryByRole("switch", { name: /Home LAN|Azure VNet|Tunnel DNS/ })).not.toBeInTheDocument();
+    expect(within(p).queryByRole("switch", { name: /Home LAN|Cloud network|Tunnel DNS/ })).not.toBeInTheDocument();
     expect(within(p).queryByRole("combobox", { name: /Expiry/ })).not.toBeInTheDocument();
     expect(within(p).getByText(/npm run home/)).toBeInTheDocument();
 

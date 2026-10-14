@@ -1,0 +1,462 @@
+# .github/workflows/wg-aws.yml
+#
+# Plain English: the AWS twin of wg.yml. Same inputs, same run title, same
+# callbacks to the Worker; the difference is where it builds. AWS is reached by
+# role (GitHub OIDC: a short-lived signed identity traded for the
+# wg-admin-deploy role, so there are no AWS keys in GitHub), and the Terraform
+# state lives in R2, handed to the backend by file so the R2 keys never sit in
+# AWS_* variables. It must be named wg-aws.yml: the Worker only hands out run
+# secrets to a token that comes from the workflow it dispatched.
+#
+# Because AWS limits user data to 16 KB, the agent scripts and firewall go to
+# the server as a boot bundle in R2 (infra/ci/boot-bundle.sh); the Worker serves
+# it to the server. Destroy ends with a tag-based safety net that deletes
+# anything tagged wg-admin=vpn (infra/ci/aws-safety-net.sh), so the bill
+# returns to zero. The DNS record is parked, never deleted, as in wg.yml.
+#
+# The same care for a PUBLIC repo applies as in wg.yml: the payload carries
+# nothing secret, per-run secrets come from the Worker and are masked, and the
+# live log hides every secret before it leaves the runner.
+
+name: wg-aws
+# Put the Worker's run id in the run title so the Worker can find this run.
+run-name: "wg ${{ inputs.action }} ${{ fromJSON(inputs.payload).run_id || 'manual' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "apply builds the concentrator, destroy removes it"
+        type: choice
+        required: true
+        default: apply
+        options: [apply, destroy]
+      payload:
+        description: >-
+          JSON object of per-run values, none of them secret. Any of: region,
+          vm_size, peers_json, home_lan_cidr, ssh_allowed_cidr, wg_dns_name,
+          wg_port, wg_subnet, wg_subnet6, loopback_ip, vnet_cidr, workload_subnet_cidr,
+          test_vm, agent_url,
+          run_id, callback_url, secrets_url. Leave as {} for a plain manual run.
+        type: string
+        required: false
+        default: "{}"
+
+# GitHub keeps only ONE waiting run per group: a newer one replaces (cancels)
+# an older one that has not started yet. With a single group, a deploy pressed
+# while a destroy was waiting would silently drop the destroy and the VM would
+# keep billing. So apply and destroy get a group each: a waiting destroy can
+# only be replaced by a newer destroy, which does exactly the same job.
+# The two groups could then run side by side, so "Wait for any earlier wg run"
+# below makes every run queue behind the ones started before it.
+# This group name is shared with wg.yml (Azure) on purpose; the Worker's run
+# lock and its one-headend-at-a-time rule are what stop an Azure and an AWS run
+# overlapping, and the wait step also looks at both workflows.
+concurrency:
+  group: wg-admin-${{ inputs.action }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Lets "Wait for any earlier wg run" see which runs are still going.
+  actions: read
+  # Lets the run ask GitHub for a signed identity token (OIDC) to show the Worker.
+  id-token: write
+
+# Only settings that are not secret live here. Each repository secret is handed
+# ONLY to the steps that need it. There is no workflow-level AWS_REGION: R2 wants
+# "auto" and AWS wants eu-west-2, so each step says which it means.
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+  # Keep downloaded providers between runs (see "Cache Terraform providers").
+  TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugins
+
+jobs:
+  terraform:
+    name: terraform ${{ inputs.action }}
+    runs-on: ubuntu-24.04
+    # 30 minutes of real work plus up to 10 waiting for an earlier run; still
+    # under the Worker's 45-minute run lock.
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: infra/aws
+        shell: bash
+
+    steps:
+      # Ready-made actions are pinned to an exact commit (the version is in the
+      # comment), so nobody can swap in different code under the same tag.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Turn the JSON payload into TF_VAR_* variables. Nothing in it is secret,
+      # but some of it maps the network (client names, keys and tunnel
+      # addresses, the home LAN, published ports), and this log is public. So
+      # only the NAMES of the values are printed, and the network-map values
+      # are masked so no later step can print them either.
+      - name: Parse payload
+        run: |
+          set -euo pipefail
+          # Read the payload from the event file rather than an "env:" line:
+          # GitHub prints a step's env lines at the top of its log.
+          PAYLOAD="$(jq -r '.inputs.payload // "{}"' "$GITHUB_EVENT_PATH")"
+          # Save one value for later steps. A line break inside a value could
+          # smuggle in extra variables, so it is refused, and the end marker
+          # is random each time so no value can guess it.
+          put_env() {
+            case "$2" in *$'\n'*|*$'\r'*) echo "::error::payload value $1 contains a line break; refusing it"; exit 1 ;; esac
+            local end="EOV_$(openssl rand -hex 16)"
+            { echo "$1<<$end"; printf '%s\n' "$2"; echo "$end"; } >> "$GITHUB_ENV"
+          }
+          jq -e 'type == "object"' <<<"$PAYLOAD" >/dev/null || { echo "payload must be a JSON object"; exit 1; }
+          for k in region vm_size peers_json home_lan_cidr ssh_allowed_cidr wg_dns_name wg_port wg_subnet wg_subnet6 loopback_ip vnet_cidr workload_subnet_cidr test_vm published_ports agent_url run_id; do
+            v="$(jq -r --arg k "$k" 'if has($k) and .[$k] != null then (.[$k] | if type == "string" then . else tojson end) else empty end' <<<"$PAYLOAD")"
+            [ -z "$v" ] && continue
+            case "$k" in
+              peers_json|home_lan_cidr|ssh_allowed_cidr|published_ports|wg_subnet|wg_subnet6|loopback_ip|vnet_cidr|workload_subnet_cidr)
+                echo "::add-mask::$v"
+                if [ "$k" = "ssh_allowed_cidr" ]; then echo "::add-mask::${v%/*}"; fi
+                # Each client's name, key and address on its own, too.
+                if [ "$k" = "peers_json" ]; then
+                  jq -r '.. | strings | select(length >= 4)' <<<"$v" 2>/dev/null | while IFS= read -r part; do echo "::add-mask::$part"; done || true
+                fi
+                ;;
+            esac
+            put_env "TF_VAR_$k" "$v"
+            echo "set TF_VAR_$k"
+          done
+          put_env CALLBACK_URL "$(jq -r '.callback_url // empty' <<<"$PAYLOAD")"
+          put_env SECRETS_URL "$(jq -r '.secrets_url // empty' <<<"$PAYLOAD")"
+          put_env WORKER_RUN_ID "$(jq -r '.run_id // "manual"' <<<"$PAYLOAD")"
+
+      # Ask GitHub for a signed "this is wg-aws.yml on main, run N" token (its
+      # workflow_ref is wg-aws.yml, which is what the Worker checks) and trade
+      # it with the Worker for this run's secrets. Each value is masked before
+      # it is stored, so no later step can print it. The Worker hands them out
+      # once per run; a failure here stops the run before anything is built.
+      - name: Collect run secrets from the Worker
+        if: env.SECRETS_URL != ''
+        run: |
+          set -euo pipefail
+          # Same careful save as "Parse payload": no line breaks, random end marker.
+          put_env() {
+            case "$2" in *$'\n'*|*$'\r'*) echo "::error::run secret $1 contains a line break; refusing it"; exit 1 ;; esac
+            local end="EOV_$(openssl rand -hex 16)"
+            { echo "$1<<$end"; printf '%s\n' "$2"; echo "$end"; } >> "$GITHUB_ENV"
+          }
+          oidc="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=wg-admin" | jq -r .value)"
+          echo "::add-mask::$oidc"
+          if ! resp="$(curl -sS --fail-with-body --max-time 20 -X POST                 -H "Authorization: Bearer $oidc" -H 'Content-Type: application/json'                 -d "$(jq -n --arg r "$WORKER_RUN_ID" '{run_id:$r}')" "$SECRETS_URL")"; then
+            echo "::error::The Worker refused to hand over this run's secrets: $resp"
+            exit 1
+          fi
+          # firewall_nft_b64 is the compiled rule table: not a secret, but it
+          # maps the network, so it stays out of the public log too.
+          for k in callback_token agent_token ssh_password ssh_allowed_cidr firewall_nft_b64; do
+            v="$(jq -r --arg k "$k" '.[$k] // empty' <<<"$resp")"
+            [ -z "$v" ] && continue
+            echo "::add-mask::$v"
+            [ "$k" = "ssh_allowed_cidr" ] && echo "::add-mask::${v%/*}"
+            if [ "$k" = "callback_token" ]; then
+              put_env CALLBACK_TOKEN "$v"
+            else
+              put_env "TF_VAR_$k" "$v"
+            fi
+          done
+          echo "run secrets collected and masked"
+
+      # Send this run's output to the Worker while it runs, every 3 seconds
+      # (see "Live log" at the top). Runs in the background until "Finish live
+      # log". Best effort: if it cannot start, the run goes on without it.
+      - name: Start live log
+        if: env.CALLBACK_URL != '' && env.CALLBACK_TOKEN != ''
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          if ! command -v node >/dev/null 2>&1; then echo "::warning::Node is missing on this runner; no live log for this run"; exit 0; fi
+          f="$RUNNER_TEMP/live-log.txt"
+          : > "$f"
+          LIVE_LOG_FILE="$f" LIVE_LOG_URL="${CALLBACK_URL%/}/log" \
+            nohup node "$GITHUB_WORKSPACE/infra/ci/live-log.mjs" ship > "$RUNNER_TEMP/live-log-shipper.txt" 2>&1 < /dev/null &
+          echo "LIVE_LOG_PID=$!" >> "$GITHUB_ENV"
+          echo "LIVE_LOG_FILE=$f" >> "$GITHUB_ENV"
+          echo "live log started: the dashboard shows this run's output as it happens, secrets hidden"
+
+      # Apply and destroy queue separately (see "concurrency" at the top), so
+      # hold back until every wg run started before this one has finished.
+      # Runs only ever wait for OLDER runs, so two can never wait for each
+      # other. With the Worker's own lock this almost never has to wait.
+      # Giving up after 10 minutes fails the run loudly (the Worker is told);
+      # it is never silently dropped.
+      - name: Wait for any earlier wg run to finish
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Wait for any earlier wg run to finish"
+          set -euo pipefail
+          while :; do
+            earlier=0
+            for wf in wg.yml wg-aws.yml; do
+              n="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf/runs?per_page=50" \
+                --jq "[.workflow_runs[] | select(.status != \"completed\" and .id < $GITHUB_RUN_ID)] | length")"
+              earlier=$((earlier + n))
+            done
+            [ "$earlier" = "0" ] && break
+            echo "waiting for $earlier earlier wg run(s) to finish"
+            sleep 20
+          done
+          echo "no earlier wg run is active; going ahead"
+
+      # The AWS account id is in the role ARN. It is not a password, but it has no
+      # place in a public log (destroy output and access-denied messages quote it),
+      # so hide it before any step talks to AWS. Masks last for the whole job.
+      - name: Mask the AWS account id
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          echo "::add-mask::$(cut -d: -f5 <<<"$AWS_ROLE_ARN")"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      # Providers are ~100 MB; restoring them saves most of "terraform init".
+      - name: Cache Terraform providers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.terraform-plugins
+          key: tf-plugins-aws-${{ hashFiles('infra/aws/.terraform.lock.hcl') }}
+
+      - name: terraform init (state in R2)
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "terraform init (state in R2)"
+          set -euo pipefail
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          # The R2 keys go to the backend in a file, so they never sit in
+          # AWS_* variables the AWS provider would also read.
+          umask 077
+          printf 'bucket = "%s"\naccess_key = "%s"\nsecret_key = "%s"\nendpoints = { s3 = "%s" }\n' \
+            "$R2_BUCKET" "$R2_ACCESS_KEY_ID" "$R2_SECRET_ACCESS_KEY" "$R2_ENDPOINT" > "$RUNNER_TEMP/r2.hcl"
+          terraform init -no-color -backend-config="$RUNNER_TEMP/r2.hcl"
+
+      # The agent scripts and this deploy's firewall, packed and put in R2; the
+      # server fetches them from the Worker (AWS user data is limited to 16 KB).
+      - name: Build boot bundle
+        if: inputs.action == 'apply'
+        env:
+          # R2, spoken to as S3, for this one upload.
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_REGION: auto
+          # Newer AWS CLI checksum defaults break R2 uploads.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Build boot bundle"
+          set -euo pipefail
+          out="$RUNNER_TEMP/boot.tgz"
+          bash "$GITHUB_WORKSPACE/infra/ci/boot-bundle.sh" "$out"
+          aws s3 cp --only-show-errors "$out" "s3://$R2_BUCKET/boot/$WORKER_RUN_ID.tgz"
+          echo "TF_VAR_boot_bundle_sha256=$(sha256sum "$out" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "boot bundle: $(stat -c %s "$out") bytes"
+
+      # ── APPLY ────────────────────────────────────────────────────────────
+      - name: terraform apply
+        if: inputs.action == 'apply'
+        id: apply
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          AWS_ROLE_SESSION_NAME: wg-admin-${{ github.run_id }}
+          AWS_REGION: eu-west-2
+          # Cloudflare: the NARROW DNS-only token. Never the account token.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DNS_TOKEN }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          TF_VAR_wg_server_private_key: ${{ secrets.WG_SERVER_PRIVATE_KEY }}
+          NAME: ${{ env.TF_VAR_wg_dns_name || 'wg.clydeford.net' }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "terraform apply"
+          set -euo pipefail
+          source "$GITHUB_WORKSPACE/infra/ci/aws-token.sh"
+          [ -n "${TF_VAR_boot_bundle_sha256:-}" ] || { echo "::error::no boot bundle"; exit 1; }
+          # While destroyed, the name is parked on 192.0.2.1 (see the destroy
+          # path). Hand that record to Terraform so it changes the address in
+          # place: the name never stops existing, so no resolver can cache a
+          # "no such host" mid-deploy (a deleted name is remembered for 30
+          # minutes, and the home site and clients stay pointed at nothing).
+          # If adopting fails, fall back to deleting it (a short gap, as before).
+          api="https://api.cloudflare.com/client/v4/zones/$TF_VAR_cloudflare_zone_id/dns_records"
+          parked="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?type=A&name=$NAME&content=192.0.2.1" | jq -r '.result[].id')"
+          managed="$(terraform state list 2>/dev/null || true)"
+          if [ -n "$parked" ] && ! grep -qx cloudflare_dns_record.wg <<<"$managed"; then
+            adopt="$(head -n1 <<<"$parked")"
+            if terraform import -no-color -input=false cloudflare_dns_record.wg "$TF_VAR_cloudflare_zone_id/$adopt"; then
+              echo "adopted parked record $adopt; terraform will repoint it"
+              parked="$(tail -n +2 <<<"$parked")"
+            else
+              echo "::warning::could not adopt the parked DNS record; deleting it instead (the name is briefly missing)"
+            fi
+          fi
+          for id in $parked; do
+            echo "removing parked record $id"
+            curl -fsS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$id" >/dev/null
+          done
+
+          terraform apply -no-color -auto-approve
+          terraform output -no-color -json > "$RUNNER_TEMP/outputs.json"
+          echo "public_ip=$(jq -r .public_ip.value "$RUNNER_TEMP/outputs.json")" >> "$GITHUB_OUTPUT"
+          echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Public IP: $(jq -r .public_ip.value "$RUNNER_TEMP/outputs.json")" >> "$GITHUB_STEP_SUMMARY"
+          echo "- DNS: $(jq -r .dns_name.value "$RUNNER_TEMP/outputs.json")" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── DESTROY ──────────────────────────────────────────────────────────
+      # There are no lab peerings to remove: labs never peer with AWS.
+      - name: terraform destroy
+        if: inputs.action == 'destroy'
+        id: destroy
+        continue-on-error: true
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          AWS_ROLE_SESSION_NAME: wg-admin-${{ github.run_id }}
+          AWS_REGION: eu-west-2
+          # Cloudflare: the NARROW DNS-only token. Never the account token.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DNS_TOKEN }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          TF_VAR_wg_server_private_key: ${{ secrets.WG_SERVER_PRIVATE_KEY }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "terraform destroy"
+          set -euo pipefail
+          source "$GITHUB_WORKSPACE/infra/ci/aws-token.sh"
+          # Leave the DNS record out of the destroy: "Park DNS record" below
+          # repoints it at 192.0.2.1, so the name never stops existing.
+          managed="$(terraform state list 2>/dev/null || true)"
+          if grep -qx cloudflare_dns_record.wg <<<"$managed"; then
+            terraform state rm -no-color cloudflare_dns_record.wg \
+              || echo "::warning::could not release the DNS record from state; terraform will delete it and it will be recreated parked"
+          fi
+          terraform destroy -no-color -auto-approve
+
+      # Belt and braces: whatever Terraform thought, make sure AWS and DNS are
+      # actually clean. Everything we build is tagged wg-admin=vpn; anything
+      # still carrying the tag is deleted, in dependency order, then re-checked.
+      - name: Verify AWS is clean (fallback delete)
+        if: inputs.action == 'destroy'
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          AWS_ROLE_SESSION_NAME: wg-admin-${{ github.run_id }}
+          AWS_REGION: eu-west-2
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Verify AWS is clean (fallback delete)"
+          set -euo pipefail
+          source "$GITHUB_WORKSPACE/infra/ci/aws-token.sh"
+          bash "$GITHUB_WORKSPACE/infra/ci/aws-safety-net.sh"
+
+      # Park the name on a reserved, non-routable address (TEST-NET-1) with the
+      # same 60 s TTL. Clients can always resolve it, handshakes go nowhere while
+      # destroyed, and the next deploy's real address is picked up within a minute.
+      # An NXDOMAIN would be cached for 30 minutes by resolvers; this is not.
+      # The existing record is repointed rather than deleted and recreated, so
+      # there is no moment without one; any extra A records are deleted.
+      - name: Park DNS record
+        if: inputs.action == 'destroy'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DNS_TOKEN }}
+          ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          NAME: ${{ env.TF_VAR_wg_dns_name || 'wg.clydeford.net' }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Park DNS record"
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records"
+          ids="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api?type=A&name=$NAME" | jq -r '.result[].id')"
+          keep="$(head -n1 <<<"$ids")"
+          for id in $(tail -n +2 <<<"$ids"); do
+            echo "::warning::extra A record for $NAME; deleting $id"
+            curl -fsS -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$id" >/dev/null
+          done
+          body="$(jq -n --arg name "$NAME" '{type:"A", name:$name, content:"192.0.2.1", ttl:60, proxied:false, comment:"Parked by wg-admin while destroyed. Do not edit by hand."}')"
+          if [ -n "$keep" ]; then
+            curl -fsS -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" "$api/$keep" -d "$body" >/dev/null
+          else
+            curl -fsS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" "$api" -d "$body" >/dev/null
+          fi
+          echo "DNS parked: $NAME -> 192.0.2.1"
+
+      - name: Note destroy fallback
+        if: inputs.action == 'destroy' && steps.destroy.outcome == 'failure'
+        run: echo "::warning::terraform destroy reported an error but the fallback checks passed; the next apply will start from a clean state"
+
+      # ── STATE BACKUP ─────────────────────────────────────────────────────
+      # R2 has no versioning, so keep our own last 20 copies.
+      - name: Back up state
+        if: always()
+        continue-on-error: true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_REGION: auto
+          # Newer AWS CLI checksum defaults break R2 uploads.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Back up state"
+          set -euo pipefail
+          ts="$(date -u +%Y%m%dT%H%M%SZ)"
+          terraform state pull > "$RUNNER_TEMP/state.json"
+          aws s3 cp "$RUNNER_TEMP/state.json" "s3://$R2_BUCKET/backups-aws/${ts}-${{ inputs.action }}.tfstate" --only-show-errors
+          aws s3 ls "s3://$R2_BUCKET/backups-aws/" | awk '{print $4}' | sort | head -n -20 | while read -r old; do
+            [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/backups-aws/$old" --only-show-errors
+          done
+          echo "state backed up as backups-aws/${ts}-${{ inputs.action }}.tfstate"
+
+      # ── LIVE LOG: last lines ─────────────────────────────────────────────
+      # Tell the shipper to send what is left and wait for it (15 s at most),
+      # BEFORE the result: once the run is reported the Worker takes no more.
+      - name: Finish live log
+        if: always() && env.LIVE_LOG_PID != ''
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          touch "$LIVE_LOG_FILE.stop"
+          for _ in $(seq 1 60); do kill -0 "$LIVE_LOG_PID" 2>/dev/null || break; sleep 0.25; done
+          kill "$LIVE_LOG_PID" 2>/dev/null || true
+          # The shipper's own notes: status codes only, never the text it sent.
+          tail -n 5 "$RUNNER_TEMP/live-log-shipper.txt" 2>/dev/null || true
+
+      # ── CALLBACK ─────────────────────────────────────────────────────────
+      - name: Report result to the Worker
+        if: always() && env.CALLBACK_URL != '' && env.CALLBACK_TOKEN != ''
+        run: |
+          set -euo pipefail
+          status="success"
+          [ "${{ job.status }}" != "success" ] && status="failure"
+          # Only a good job whose destroy step failed (the safety net then cleaned up) is a fallback.
+          [ "${{ inputs.action }}" = "destroy" ] && [ "${{ job.status }}" = "success" ] && [ "${{ steps.destroy.outcome }}" = "failure" ] && status="success-with-fallback"
+          outputs="{}"
+          [ -f "$RUNNER_TEMP/outputs.json" ] && outputs="$(jq 'with_entries(.value = .value.value)' "$RUNNER_TEMP/outputs.json")"
+          body="$(jq -n \
+            --arg run_id "$WORKER_RUN_ID" \
+            --arg action "${{ inputs.action }}" \
+            --arg status "$status" \
+            --arg gh_run_id "${{ github.run_id }}" \
+            --arg gh_run_url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --argjson outputs "$outputs" \
+            '{run_id:$run_id, action:$action, status:$status, github_run_id:$gh_run_id, github_run_url:$gh_run_url, outputs:$outputs}')"
+          curl -fsS --max-time 20 -X POST \
+            -H "Authorization: Bearer $CALLBACK_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$body" "$CALLBACK_URL" || echo "::warning::callback to Worker failed"
+

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildGithubSecrets, buildWorkerSecrets, GITHUB_MAP, LOCAL_ONLY } from "../lib/secrets-map.mjs";
+import { buildGithubSecrets, buildWorkerSecrets, GITHUB_MAP, OPTIONAL_GITHUB_MAP, WORKER_KEYS, LOCAL_ONLY } from "../lib/secrets-map.mjs";
 
 const full = {
   AZURE_CLIENT_ID: "cid",
@@ -72,4 +72,11 @@ test("Worker secrets: placeholder DNS token falls back to the broad token with a
   const { secrets, warnings } = buildWorkerSecrets({ ...full, CLOUDFLARE_DNS_TOKEN: "REPLACE_ME_dns" });
   assert.equal(secrets.CLOUDFLARE_DNS_TOKEN, "BROAD");
   assert.ok(warnings.some((w) => w.includes("BROAD")));
+});
+
+test("the AWS admin keys never leave this machine", () => {
+  for (const k of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION"]) {
+    assert.ok(LOCAL_ONLY.includes(k), `${k} must be LOCAL_ONLY`);
+    assert.ok(!(k in GITHUB_MAP) && !(k in OPTIONAL_GITHUB_MAP) && !WORKER_KEYS.includes(k), `${k} must not be pushed`);
+  }
 });

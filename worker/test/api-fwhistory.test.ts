@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { api, apiEnv } from "./api-helpers";
 import { fwDeltas, recordHeartbeat, rollUp, readRuleHistory } from "../src/history";
 import { fwHitsLast24h } from "../src/fwview";
-import { lastGhRun } from "./harness";
+import { lastGhRun, wgRef } from "./harness";
 import * as db from "../src/db";
 import { startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
 import type { AgentReport, FirewallStatus, Traffic } from "../src/state";
@@ -147,7 +147,7 @@ const DUMP = (lines: string[]) => ["PRIV\tS=\t51820\toff", ...lines].join("\n");
 
 async function running(e: Env, world: ReturnType<typeof apiEnv>["world"]) {
   const run = await startDeploy(e, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
-  const sec = await issueRunSecrets(e, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(e, run.id, lastGhRun(world), wgRef(e));
   world.azure.rg = true;
   await handleCallback(e, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
   return sec.body.agent_token as string;

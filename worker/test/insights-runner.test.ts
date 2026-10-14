@@ -301,3 +301,17 @@ describe("the runner", () => {
     expect(whenHolds("running", destroyed, now)).toBe(false);
   });
 });
+
+describe("an AWS headend", () => {
+  it("makes no Azure call and records every feed as skipped", async () => {
+    const { env, az } = azureEnv();
+    await running(env, { cloud: "aws" });
+    const log: string[] = [];
+    await runInsights(env, NOW, [fake("health", log, { arm: true }), fake("vmMetrics", log, { arm: true })]);
+    expect(log).toEqual([]);
+    expect(callsTo(az, "management.azure.com")).toHaveLength(0);
+    const rows = await feedRows(env);
+    expect(rows.health.status).toBe("skipped");
+    expect(rows.vmMetrics.status).toBe("skipped");
+  });
+});

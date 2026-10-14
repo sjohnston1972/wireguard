@@ -11,7 +11,9 @@ import { Panel, cx } from "@/components";
 import { useAzureMetrics, useAzureSummary, type HistoryRange } from "@/api/queries";
 import { useWidget } from "@/widgets";
 import { levelOf } from "../overview/widgetSettings";
-import { AzNote, AzureFoot, Figure, NOTHING_TEXT, NOT_CONNECTED_TEXT, NO_DATA, WAITING_TEXT, azNames, bytes, column, feedOf, lastOf } from "../overview/Insights";
+import { awsLive } from "../overview/cloud";
+import { useOverview } from "@/api/queries";
+import { AzNote, AWS_SOON_TEXT, AzureFoot, Figure, NOTHING_TEXT, NOT_CONNECTED_TEXT, NO_DATA, WAITING_TEXT, azNames, bytes, column, feedOf, lastOf } from "../overview/Insights";
 import "./PublicIp.css";
 
 /** Azure's slots are 5 minutes: a per-second figure times 300. */
@@ -23,6 +25,7 @@ const count = (v: number | null) => (v === null ? NO_DATA : `${Math.round(v).toL
 export function PublicIp({ fw, bare }: { fw: FirewallResponse; bare?: boolean }) {
   const { settings: st } = useWidget("firewall.publicIp");
   const s = useAzureSummary().data;
+  const ov = useOverview().data;
   const q = useAzureMetrics("pip", st.range as HistoryRange);
   const feed = feedOf(s, "pipMetrics");
   const pts = q.data?.points;
@@ -31,7 +34,8 @@ export function PublicIp({ fw, bare }: { fw: FirewallResponse; bare?: boolean })
   const now = Date.parse(fw.now);
 
   let body: ReactNode;
-  if (!s || (!q.data && q.isLoading)) body = <AzNote>Loading…</AzNote>;
+  if (awsLive(ov)) body = <AzNote>{AWS_SOON_TEXT}</AzNote>;
+  else if (!s || (!q.data && q.isLoading)) body = <AzNote>Loading…</AzNote>;
   else if (!s.configured) body = <AzNote>{NOT_CONNECTED_TEXT}</AzNote>;
   else if (!has && !fw.running) body = <AzNote>{NOTHING_TEXT}</AzNote>;
   else if (!has && !feed?.lastOkAt) body = <AzNote>{WAITING_TEXT}</AzNote>;

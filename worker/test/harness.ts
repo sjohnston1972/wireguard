@@ -355,6 +355,8 @@ export interface FakeGraph {
   fail?: number;
 }
 
+export interface FakeSgRule { id: string; protocol: string; port: number; cidr: string; description: string }
+
 export interface World {
   /** Every workflow dispatch: the workflow file ("wg.yml", "lab.yml"), action and parsed payload. */
   dispatches: { workflow: string; action: string; payload: Record<string, unknown> }[];
@@ -368,6 +370,16 @@ export interface World {
   calls: { method: string; host: string; path: string }[];
   /** Azure: does the resource group exist, and the VM's power state. */
   azure: { rg: boolean; power: string; ip: string };
+  /** AWS: the tagged VPC and server exist, its state, Elastic IP, and the server's security-group ingress rules. */
+  aws: { exists: boolean; state: "running" | "stopped" | "stopping" | "pending"; ip: string; sg: FakeSgRule[]; nextRule: number };
+  /** Test-only: Cost Explorer's daily rows (USD). Unset: it answers empty. */
+  awsCost?: { day: string; usd: number }[];
+  /** Test-only: when true, Cost Explorer answers HTTP 400. */
+  awsCostFail?: boolean;
+  /** Test-only: a tagged Elastic IP left behind with no VPC or server. */
+  awsEipLeft?: boolean;
+  /** Test-only: when set, every EC2 call answers this error code (HTTP 400). */
+  awsFail?: string;
   /** VM power calls made: "deallocate" | "start". */
   powerCalls: string[];
   /** Every notification published to ntfy. */
@@ -396,6 +408,7 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
     graph: { users: [], groups: [] },
     calls: [],
     azure: { rg: false, power: "running", ip: "20.0.0.10" },
+    aws: { exists: false, state: "running", ip: "18.130.0.10", sg: [], nextRule: 1 },
     powerCalls: [],
     notes: [],
     jobs: new Map(),
@@ -422,6 +435,8 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
     AZURE_CLIENT_ID: "c",
     AZURE_CLIENT_SECRET: "s",
     AZURE_SUBSCRIPTION_ID: "sub",
+    AWS_WORKER_ACCESS_KEY_ID: "k",
+    AWS_WORKER_SECRET_ACCESS_KEY: "s",
     NOTIFY_WEBHOOK_URL: "https://ntfy.sh/wg-admin-test",
     ...overrides,
   } as unknown as Env;
@@ -445,8 +460,10 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
   const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
 
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const req = typeof input === "object" && "url" in input && !(input instanceof URL) ? (input as Request) : null;
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    const method = (init?.method ?? "GET").toUpperCase();
+    const method = (init?.method ?? req?.method ?? "GET").toUpperCase();
+    const bodyText = async () => (init?.body != null ? String(init.body) : req ? await req.clone().text() : "");
     const u = new URL(url);
     world.calls.push({ method, host: u.hostname, path: u.pathname + u.search });
 
@@ -465,9 +482,9 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
       }
       const listed = u.pathname.match(/\/actions\/workflows\/([^/]+)\/runs$/);
       if (listed) {
-        // A workflow lists only its own runs; a run without `workflow` is the gateway's.
-        const lab = decodeURIComponent(listed[1]) === "lab.yml";
-        return json({ workflow_runs: [...world.ghRuns.values()].filter((r) => (r.workflow === "lab.yml") === lab).reverse() });
+        // A workflow lists only its own runs; a run without `workflow` is wg.yml's.
+        const wf = decodeURIComponent(listed[1]);
+        return json({ workflow_runs: [...world.ghRuns.values()].filter((r) => (r.workflow ?? "wg.yml") === wf).reverse() });
       }
       const run = u.pathname.match(/\/actions\/runs\/(\d+)$/);
       if (run) return world.ghRuns.has(Number(run[1])) ? json(world.ghRuns.get(Number(run[1]))) : json({}, 404);
@@ -526,13 +543,72 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
     }
 
     // DNS over HTTPS and the Cloudflare API
-    if (u.hostname === "cloudflare-dns.com") return json({ Answer: world.azure.rg ? [{ type: 1, data: world.azure.ip }] : [{ type: 1, data: "192.0.2.1" }] });
+    if (u.hostname === "cloudflare-dns.com") return json({ Answer: world.aws.exists ? [{ type: 1, data: world.aws.ip }] : world.azure.rg ? [{ type: 1, data: world.azure.ip }] : [{ type: 1, data: "192.0.2.1" }] });
     if (u.hostname === "api.cloudflare.com") return json({ result: [] });
 
     // ntfy
     if (u.hostname === "ntfy.sh") {
       world.notes.push(JSON.parse(String(init?.body)));
       return json({});
+    }
+    // AWS: EC2 (Query API, XML), tagging and Cost Explorer (JSON).
+    if (/^ec2\.[a-z0-9-]+\.amazonaws\.com$/.test(u.hostname)) {
+      const p = new URLSearchParams(await bodyText());
+      const action = p.get("Action") ?? "";
+      if (world.awsFail) return new Response(`<Response><Errors><Error><Code>${world.awsFail}</Code><Message>fake failure</Message></Error></Errors></Response>`, { status: 400 });
+      const xml = (b: string) => new Response(`<${action}Response>${b}</${action}Response>`, { status: 200 });
+      const a = world.aws;
+      const headendAsked = [...p.entries()].some(([k, v]) => k.endsWith(".Name") && v === "tag:wg-admin-role");
+      switch (action) {
+        case "DescribeVpcs":
+          return xml(a.exists ? "<vpcSet><item><vpcId>vpc-1</vpcId></item></vpcSet>" : "<vpcSet/>");
+        case "DescribeInstances":
+          return xml(a.exists ? `<reservationSet><item><instancesSet><item><instanceId>i-0abc</instanceId><instanceType>t4g.micro</instanceType><instanceState><code>16</code><name>${a.state}</name></instanceState><privateIpAddress>10.50.1.4</privateIpAddress>${a.state === "running" ? `<ipAddress>${a.ip}</ipAddress>` : ""}</item></instancesSet></item></reservationSet>` : "<reservationSet/>");
+        case "DescribeAddresses":
+          return xml(a.exists || world.awsEipLeft ? `<addressesSet><item><publicIp>${a.ip}</publicIp><allocationId>eipalloc-1</allocationId></item></addressesSet>` : "<addressesSet/>");
+        case "DescribeSecurityGroups":
+          return xml(a.exists && headendAsked ? "<securityGroupInfo><item><groupId>sg-wg</groupId></item></securityGroupInfo>" : "<securityGroupInfo/>");
+        case "DescribeSecurityGroupRules":
+          return xml(`<securityGroupRuleSet>${a.sg.map((r) => `<item><securityGroupRuleId>${r.id}</securityGroupRuleId><groupId>sg-wg</groupId><isEgress>false</isEgress><ipProtocol>${r.protocol}</ipProtocol><fromPort>${r.port}</fromPort><toPort>${r.port}</toPort><cidrIpv4>${r.cidr}</cidrIpv4><description>${r.description}</description></item>`).join("")}</securityGroupRuleSet>`);
+        case "AuthorizeSecurityGroupIngress": {
+          const rule = { id: `sgr-${a.nextRule++}`, protocol: p.get("IpPermissions.1.IpProtocol")!, port: Number(p.get("IpPermissions.1.FromPort")), cidr: p.get("IpPermissions.1.IpRanges.1.CidrIp")!, description: p.get("IpPermissions.1.IpRanges.1.Description") ?? "" };
+          if (a.sg.some((r) => r.protocol === rule.protocol && r.port === rule.port && r.cidr === rule.cidr)) return new Response("<Response><Errors><Error><Code>InvalidPermission.Duplicate</Code><Message>dup</Message></Error></Errors></Response>", { status: 400 });
+          a.sg.push(rule);
+          return xml("<return>true</return>");
+        }
+        case "RevokeSecurityGroupIngress": {
+          const gone = [...p.entries()].filter(([k]) => k.startsWith("SecurityGroupRuleId.")).map(([, v]) => v);
+          a.sg = a.sg.filter((r) => !gone.includes(r.id));
+          return xml("<return>true</return>");
+        }
+        case "StopInstances":
+          world.powerCalls.push("deallocate");
+          return xml("<instancesSet/>");
+        case "StartInstances":
+          world.powerCalls.push("start");
+          return xml("<instancesSet/>");
+      }
+      return new Response(`<Response><Errors><Error><Code>InvalidAction</Code><Message>${action}</Message></Error></Errors></Response>`, { status: 400 });
+    }
+    if (/^tagging\.[a-z0-9-]+\.amazonaws\.com$/.test(u.hostname)) {
+      const arns = world.aws.exists
+        ? ["vpc/vpc-1", "subnet/subnet-1", "security-group/sg-wg", "instance/i-0abc", "elastic-ip/eipalloc-1", "volume/vol-1"].map((r) => `arn:aws:ec2:eu-west-2:123456789012:${r}`)
+        : [];
+      return json({ ResourceTagMappingList: arns.map((ResourceARN) => ({ ResourceARN, Tags: [{ Key: "wg-admin", Value: "vpn" }] })), PaginationToken: "" });
+    }
+    if (u.hostname === "ce.us-east-1.amazonaws.com") {
+      if (world.awsCostFail) return new Response("{\"message\":\"fake cost failure\"}", { status: 400 });
+      // Like the real thing: one row for every day from Start up to (not including) End, "0" where nothing was seeded.
+      const tp = (JSON.parse((await bodyText()) || "{}") as { TimePeriod?: { Start?: string; End?: string } }).TimePeriod;
+      const rows: { TimePeriod: { Start: string }; Total: { UnblendedCost: { Amount: string; Unit: string } } }[] = [];
+      if (tp?.Start && tp.End) {
+        for (let t = Date.parse(tp.Start); t < Date.parse(tp.End); t += 86_400_000) {
+          const d = new Date(t).toISOString().slice(0, 10);
+          const usd = (world.awsCost ?? []).filter((r) => r.day === d).reduce((a, r) => a + r.usd, 0);
+          rows.push({ TimePeriod: { Start: d }, Total: { UnblendedCost: { Amount: String(usd), Unit: "USD" } } });
+        }
+      }
+      return json({ ResultsByTime: rows });
     }
     throw new Error(`unexpected fetch ${method} ${url}`);
   });
@@ -598,4 +674,9 @@ function labArm(az: LabAzure, method: string, u: URL, init?: RequestInit): Respo
 /** The GitHub run id for the Worker's latest dispatch. */
 export function lastGhRun(world: World): number {
   return Math.max(...world.ghRuns.keys());
+}
+
+/** The signed `workflow_ref` claim a GitHub OIDC token from `workflow` carries (wg.yml, the Azure gateway's, unless told). */
+export function wgRef(env: Env, workflow = "wg.yml"): string {
+  return `${env.GITHUB_REPO}/.github/workflows/${workflow}@refs/heads/main`;
 }

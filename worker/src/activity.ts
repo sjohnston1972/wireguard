@@ -7,6 +7,8 @@
 
 import type { Run, Alert, AuditEntry } from "./db";
 import type { Config } from "./env";
+import { ratesFor } from "./env";
+import { runCloud } from "./runs";
 import type { LabAction } from "../../shared/api";
 
 export function sessionCost(run: Run, runs: Run[], cfg: Config, now = Date.now()): number | null {
@@ -17,25 +19,13 @@ export function sessionCost(run: Run, runs: Run[], cfg: Config, now = Date.now()
     .map((r) => Date.parse(r.finished_at!))
     .sort((a, b) => a - b)[0];
   const ms = (end ?? now) - Date.parse(run.finished_at);
-  return (ms / 3_600_000) * cfg.hourlyRateGbp;
+  return (ms / 3_600_000) * ratesFor(cfg, runCloud(run)).hourlyRateGbp;
 }
 
 /** Change-log rows per page. */
 export const AUDIT_PAGE = 50;
 
-/** The change log's "Show" filter: the first word of each change's action. */
-export const AUDIT_KINDS: { value: string; label: string }[] = [
-  { value: "", label: "All changes" },
-  { value: "client", label: "Clients" },
-  { value: "firewall", label: "Firewall and published ports" },
-  { value: "settings", label: "Settings" },
-  { value: "profile", label: "Profiles" },
-  { value: "schedule", label: "Schedules" },
-  { value: "push", label: "Phone alerts" },
-  { value: "capture", label: "Packet captures" },
-  { value: "lock", label: "Run lock" },
-  { value: "config", label: "Backup and restore" },
-];
+export { AUDIT_KINDS } from "./auditKinds";
 
 /** One value, short enough for a table cell. */
 export function shortValue(v: unknown): string {

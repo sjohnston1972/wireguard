@@ -71,6 +71,8 @@ export interface OverviewResponse {
     autoDestroyDefaultHours: number;
     expiryAction: "destroy" | "hibernate";
     standbyMaxDays: number;
+    /** AWS as a second cloud: `enabled` only when AWS_ENABLED=1 and the Worker's keys are set. */
+    aws: { enabled: boolean; region: string; instanceType: string; hourlyRateGbp: number; standbyRateGbp: number };
   };
   actions: { canDispatch: boolean; lockHolder: string | null };
   near: { country: string | null; region: string | null };
@@ -304,8 +306,10 @@ export interface CostResponse {
   /** The VM running now: what it has cost so far, estimated (Azure's figures lag). */
   session: { running: boolean; since: string | null; estimateGbp: number | null };
   standby: { since: string; perDayGbp: number } | null;
-  /** This month's actual spend from Azure. */
+  /** This month's actual spend, Azure and AWS together. */
   monthToDate: number;
+  /** The same month-to-date spend split by cloud. */
+  byCloud: { azure: number; aws: number };
   /** Null until Azure has listed a day of this month. */
   projection: { gbp: number; basis: string } | null;
   budget: BudgetStatus;
@@ -343,6 +347,8 @@ export interface SettingsResponse {
   overridable: string[];
   regions: Record<string, string>;
   vmSizes: string[];
+  /** The second cloud: set up (keys and role in place), switched on for Deploy, and what it costs. */
+  aws: { enabled: boolean; configured: boolean; region: string; instanceType: string; hourlyRateGbp: number; standbyRateGbp: number };
   /** `deployed`: the running (or Standby) VM was built from this profile. */
   profiles: (Profile & { deployed: boolean })[];
   schedules: (Schedule & { daysText: string; profileName: string | null })[];
@@ -579,7 +585,7 @@ export type ScheduledEventType = "Reboot" | "Redeploy" | "Freeze" | "Preempt" | 
 /** A maintenance event Azure has scheduled for this VM (from the VM's metadata service, via the heartbeat). Read only: wg-admin never approves one. */
 export interface ScheduledEvent {
   id: string;
-  type: ScheduledEventType;
+  type: ScheduledEventType | (string & {}); // Azure's names, or the cloud's own (AWS: instance-reboot, ...), shown as they come
   /** "Scheduled" or "Started". */
   status: string;
   notBefore: string | null;

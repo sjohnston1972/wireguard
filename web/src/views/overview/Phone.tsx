@@ -11,6 +11,7 @@ import { healthChecks } from "./Lower";
 import { AzureHealth, Vitals, VmPerformance } from "./lazyInsights";
 import { RunningLabs } from "./lazyLabs";
 import { labsBannerText } from "./labs";
+import { cloudLabel, cloudOf } from "./cloud";
 import { STATE_TONE, STATE_WORD, ageOf, currentStep, gbp, inGithubRun, moveTargets, regionFull, runActive, stepProgress, topology, uiSteps, type NodeStatus } from "./model";
 import { LIVE_LOG_WAITING, parseLog } from "@/lib/parseLog";
 import "./Phone.css";
@@ -112,7 +113,7 @@ export function PhoneOverview({ o, now, onAction }: { o: OverviewResponse; now: 
   const nodes: [string, NodeStatus, string][] = [
     ["Clients", t.clients.status, t.clients.word],
     ["VM", t.endpoint.status, t.endpoint.word],
-    ["Azure", t.azure.status, t.azure.word],
+    [cloudLabel(cloudOf(o)), t.azure.status, t.azure.word],
   ];
 
   return (

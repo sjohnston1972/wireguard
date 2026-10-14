@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { History } from "lucide-react";
 import type { ActivityResponse } from "@shared/api";
-import { AUDIT_KINDS } from "../../../../worker/src/activity";
+import { AUDIT_KINDS } from "../../../../worker/src/auditKinds";
 import { Column, DataTable, EmptyState, Panel, SearchInput, Select, StatusPill, Tabs } from "@/components";
 import { EVENT_TYPES, fmtDuration, fmtGbp, fmtWhen, inWindow, noteKind, resultPill, runWord, TABS, type Change, type EventRow, type Note, type RunRow, type Tab, type Window } from "./model";
 import { Chevron, Fill, Pager, TypeTag } from "./parts";

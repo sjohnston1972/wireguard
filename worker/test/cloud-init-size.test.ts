@@ -43,8 +43,9 @@ export function renderTemplate(tpl: string, vars: Record<string, string | number
   };
   const cond = (name: string) => val(name) !== "";
   let out = tpl
-    // %{ if x != "" ~} ... %{ endif ~}: the directive lines vanish (the ~ eats the newline after each).
-    .replace(/%\{ if (\w+) != "" ~\}\s*([\s\S]*?)%\{ endif ~\}\s*/g, (_m, name: string, body: string) => (cond(name) ? body : ""))
+    // %{ if x != "" ~} ... %{ endif ~}: like Terraform, ~} strips only the rest of its own line, newline
+    // included. A directive's own leading spaces stay, and so does the next line's indentation.
+    .replace(/%\{ if (\w+) != "" ~\}[ \t]*\n?([\s\S]*?)%\{ endif ~\}[ \t]*\n?/g, (_m, name: string, body: string) => (cond(name) ? body : ""))
     // %{ if x != "" } ... %{ endif } inside a line.
     .replace(/%\{ if (\w+) != "" \}([\s\S]*?)%\{ endif \}/g, (_m, name: string, body: string) => (cond(name) ? body : ""));
   if (/%\{/.test(out.replace(/%%\{/g, ""))) throw new Error("a template directive this renderer does not know");
@@ -140,6 +141,11 @@ async function worstVars(): Promise<Record<string, string | number>> {
     wg_port: 51820,
     loopback_ip: cfg.loopbackIp,
     ssh_password: "correct-horse-battery-staple-42",
+    admin_user: "azureuser",
+    wan_if: "eth0",
+    azure_only: "1",
+    cloud: "azure",
+    boot_bundle_sha256: "",
     peers_conf: peersConf(peers),
     agent_url: `${cfg.publicUrl}/api/agent`,
     agent_token: "t".repeat(64),
@@ -168,6 +174,14 @@ describe("the VM's cloud-init stays inside Azure's custom data limit", () => {
     expect(renderTemplate(t, { p: "pw1", q: "", s: "l1\nl2" })).toBe("#a\npw: pw1\nx: A\n  c: |\n    l1\n    l2\nlit: ${1:-}\n");
     expect(renderTemplate(t, { p: "", q: "v6", s: "l1" })).toBe("#a\nx: A, v6\n  c: |\n    l1\nlit: ${1:-}\n");
     expect(() => renderTemplate("${upper(x)}", { x: "a" })).toThrow(/does not know/);
+  });
+
+  it("~} strips only its own line's newline: an unindented directive vanishes, an indented one leaves its spaces", () => {
+    const t = (d: string) => ["a:", `${d}%{ if x != "" ~}`, "  b: 1", `${d}%{ endif ~}`, "  c: 2", ""].join("\n");
+    expect(renderTemplate(t(""), { x: "1" })).toBe(["a:", "  b: 1", "  c: 2", ""].join("\n"));
+    expect(renderTemplate(t(""), { x: "" })).toBe(["a:", "  c: 2", ""].join("\n"));
+    // Indented directives leave their own spaces behind, as Terraform does (why the template keeps them at column 0).
+    expect(renderTemplate(t("  "), { x: "1" })).toBe(["a:", "    b: 1", "    c: 2", ""].join("\n"));
   });
 
   it("main.tf passes every variable the template names (and wg-agent.sh gzipped)", () => {
@@ -209,5 +223,29 @@ describe("the VM's cloud-init stays inside Azure's custom data limit", () => {
     expect(out).not.toMatch(/\$\{(indent|wg_|agent_|peers_)/);
     expect(bytes).toBeLessThanOrEqual(CEILING);
     expect(bytes).toBeLessThan(AZURE_LIMIT);
+  });
+});
+
+describe("AWS user data", () => {
+  const AWS_LIMIT = 16 * 1024;
+  const AWS_CEILING = 12 * 1024;
+  it("every template variable is passed by infra/aws/main.tf too", () => {
+    const tf = read("infra/aws/main.tf");
+    const start = tf.indexOf('cloud_init = templatefile("${path.module}/../cloud-init.yaml.tftpl", {');
+    expect(start).toBeGreaterThan(0);
+    const call = tf.slice(start, tf.indexOf("\n  })\n", start));
+    const names = new Set([...read("infra/cloud-init.yaml.tftpl").matchAll(/(?<!\$)\$\{(?:indent\(\d+,\s*)?(\w+)\)?\}/g)].map((m) => m[1]!));
+    names.add("ssh_password").add("wg_server_ip6");
+    for (const n of names) expect(call, n).toMatch(new RegExp(`\\n    ${n}\\s+=`));
+  });
+  it("the worst case, gzipped at the default level (as the instance sends it), stays under 12 KB", async () => {
+    const v = { ...(await worstVars()), agent_script_gz: b64gzip(""), vitals_script_gz: b64gzip(""), firewall_nft_gz: b64gzip(""), selftest_script: "", blocklist_script: "", speedtest_script: "", capture_script: "", firewall_load_script: "", admin_user: "ubuntu", wan_if: "ens5", azure_only: "", cloud: "aws", boot_bundle_sha256: "a".repeat(64) };
+    const rendered = renderTemplate(read("infra/cloud-init.yaml.tftpl"), v);
+    const bytes = gzipSync(Buffer.from(rendered, "utf8")).length; // default level, as Go gzip.NewWriter does
+    console.log(`AWS user data worst case: ${bytes} bytes gzipped (ceiling ${AWS_CEILING}, limit ${AWS_LIMIT})`);
+    expect(bytes).toBeLessThanOrEqual(AWS_CEILING);
+    expect(bytes).toBeLessThan(AWS_LIMIT);
+    expect(rendered).toContain("/bundle");
+    expect(rendered).not.toContain("168.63.129.16");
   });
 });

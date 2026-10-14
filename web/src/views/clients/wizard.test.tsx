@@ -90,14 +90,14 @@ describe("Add-client wizard", { timeout: 30_000 }, () => {
 
     await user.click(within(d).getByRole("checkbox", { name: /Home LAN/ }));
     expect(ips()).toBe("10.13.13.0/24, 10.13.13.1/32, fd13:13::/64, 192.168.1.0/24");
-    await user.click(within(d).getByRole("checkbox", { name: /Azure VNet/ }));
+    await user.click(within(d).getByRole("checkbox", { name: /Cloud network/ }));
     expect(ips()).toBe("10.13.13.0/24, 10.13.13.1/32, fd13:13::/64, 10.50.0.0/16, 192.168.1.0/24");
     await user.click(within(d).getByRole("checkbox", { name: /Home LAN/ }));
     expect(ips()).toBe("10.13.13.0/24, 10.13.13.1/32, fd13:13::/64, 10.50.0.0/16");
 
     await user.click(within(d).getByRole("radio", { name: /Full tunnel/ }));
     expect(ips()).toBe("0.0.0.0/0, ::/0");
-    expect(within(d).getByRole("checkbox", { name: /Azure VNet/ })).toBeDisabled();
+    expect(within(d).getByRole("checkbox", { name: /Cloud network/ })).toBeDisabled();
     expect(within(d).getByRole("checkbox", { name: /Home LAN/ })).toBeDisabled();
   });
 
@@ -165,7 +165,7 @@ describe("Add-client wizard", { timeout: 30_000 }, () => {
     await user.click(screen.getByRole("button", { name: "Add client" }));
     const d = await dialog();
     await fillName(user, d);
-    await user.click(within(d).getByRole("checkbox", { name: /Azure VNet/ }));
+    await user.click(within(d).getByRole("checkbox", { name: /Cloud network/ }));
     await user.click(within(d).getByRole("button", { name: "Next" }));
     await user.click(within(d).getByRole("radio", { name: /7 days/ }));
     await user.click(within(d).getByRole("button", { name: "Create client" }));
@@ -176,7 +176,7 @@ describe("Add-client wizard", { timeout: 30_000 }, () => {
 
     // The input is kept: back to the routing and the name, all as entered.
     await user.click(within(d).getByRole("button", { name: "Back" }));
-    expect(within(d).getByRole("checkbox", { name: /Azure VNet/ })).toBeChecked();
+    expect(within(d).getByRole("checkbox", { name: /Cloud network/ })).toBeChecked();
     await user.click(within(d).getByRole("button", { name: "Back" }));
     expect(within(d).getByLabelText("Name")).toHaveValue("tablet");
     await user.click(within(d).getByRole("button", { name: "Next" }));

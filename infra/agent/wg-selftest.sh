@@ -24,6 +24,8 @@ DIR=/run/wg-admin
 OUT="$DIR/selftest.json"
 FLAG="$DIR/selftest.running"
 NS=wgcanary
+# The WAN interface: eth0 on Azure, ens5 on AWS (written by cloud-init).
+WAN_IF="$(sed -n 's/^WAN_IF=//p' /etc/wireguard/wg-agent.env 2>/dev/null)"; WAN_IF="${WAN_IF:-eth0}"
 mkdir -p "$DIR"
 
 # One self-test at a time: the boot run and an on-demand health check share
@@ -48,7 +50,7 @@ spub="$(wg show wg0 public-key 2>/dev/null)"
 cip="${srv4%.*}.254"
 cip6=""
 [ -n "$srv6" ] && cip6="${srv6%::*}::fe"
-wan6="$(ip -6 -o addr show dev eth0 scope global 2>/dev/null | awk '{print $4}' | head -n1 | cut -d/ -f1)"
+wan6="$(ip -6 -o addr show dev "$WAN_IF" scope global 2>/dev/null | awk '{print $4}' | head -n1 | cut -d/ -f1)"
 
 key="$(mktemp -p "$DIR")"
 chmod 600 "$key"

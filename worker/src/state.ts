@@ -83,7 +83,7 @@ export interface AgentReport {
 /** A maintenance event from the VM's metadata service (scheduledevents), as the agent reports it. Read only. */
 export interface VmScheduledEvent {
   id: string;
-  type: "Reboot" | "Redeploy" | "Freeze" | "Preempt" | "Terminate";
+  type: string; // Azure: Reboot | Redeploy | Freeze | Preempt | Terminate; AWS: instance-reboot, ...
   status: string; // Scheduled | Started
   not_before: string | null;
   source: string | null;

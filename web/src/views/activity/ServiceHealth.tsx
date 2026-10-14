@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { AzureServiceHealthRange, ServiceEvent } from "@shared/api";
-import { useAzureServiceHealth, useAzureSummary } from "@/api/queries";
+import { useAzureServiceHealth, useAzureSummary, useOverview } from "@/api/queries";
+import { awsLive } from "../overview/cloud";
 import { Drawer, EmptyState, ErrorState, KeyValue, Panel, Skeleton } from "@/components";
 import { useWidget } from "@/widgets";
 import { EventPill, FeedLine, NotConnected, activeFirst, notConnected, useHeld } from "./azure";
@@ -40,11 +41,14 @@ export function ServiceEventDrawer({ event, region, onClose }: { event: ServiceE
 /** Activity's "Azure service health" widget: this region's issues and planned maintenance, active first. */
 export function ServiceHealthPanel() {
   const { q, data, events, settings, region } = useServiceEvents();
+  const aws = awsLive(useOverview().data);
   const [open, setOpen] = useState<string | null>(null);
   const selected = events.find((e) => e.trackingId === open) ?? null;
   return (
     <Panel title="Azure service health" className="act__health">
-      {!data && q.isError ? (
+      {aws ? (
+        <EmptyState title="AWS insights are coming soon" description="These panels show Azure's figures when the server runs in Azure." />
+      ) : !data && q.isError ? (
         <ErrorState message={q.error.message} onRetry={() => void q.refetch()} />
       ) : !data ? (
         <div aria-busy="true" className="act__skel">
@@ -73,7 +77,7 @@ export function ServiceHealthPanel() {
           ))}
         </ul>
       )}
-      {data && <FeedLine feed={data.feed} />}
+      {data && !aws && <FeedLine feed={data.feed} />}
       {selected && <ServiceEventDrawer event={selected} region={region} onClose={() => setOpen(null)} />}
     </Panel>
   );

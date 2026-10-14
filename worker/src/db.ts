@@ -378,6 +378,23 @@ export async function upsertCostDay(env: Env, day: string, gbp: number): Promise
     .run();
 }
 
+export interface AwsCostDay {
+  day: string;
+  gbp: number;
+  usd: number;
+  fetched_at: string;
+}
+
+export async function upsertAwsCostDay(env: Env, day: string, gbp: number, usd: number): Promise<void> {
+  await env.DB.prepare("INSERT INTO aws_cost_days (day, gbp, usd, fetched_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(day) DO UPDATE SET gbp = excluded.gbp, usd = excluded.usd, fetched_at = excluded.fetched_at")
+    .bind(day, gbp, usd, new Date().toISOString())
+    .run();
+}
+
+export async function awsCostDays(env: Env, sinceDay: string): Promise<AwsCostDay[]> {
+  return (await env.DB.prepare("SELECT * FROM aws_cost_days WHERE day >= ?1 ORDER BY day").bind(sinceDay).all<AwsCostDay>()).results;
+}
+
 export async function costDays(env: Env, sinceDay: string): Promise<CostDay[]> {
   return (await env.DB.prepare("SELECT * FROM cost_days WHERE day >= ?1 ORDER BY day").bind(sinceDay).all<CostDay>()).results;
 }

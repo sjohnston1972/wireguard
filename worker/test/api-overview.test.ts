@@ -5,7 +5,7 @@
 // route only.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { api, apiEnv } from "./api-helpers";
-import { lastGhRun } from "./harness";
+import { lastGhRun, wgRef } from "./harness";
 import * as db from "../src/db";
 import { startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
 import { typicalSeconds, isVerifying, heartbeatStale } from "../src/overview";
@@ -20,7 +20,7 @@ const DUMP = (lines: string[]) => ["PRIV\tS=\t51820\toff", ...lines].join("\n");
 async function toRunning(env: Env, world: ReturnType<typeof apiEnv>["world"]) {
   await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "dev@localhost" });
-  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
   await handleAgent(env, sec.body.agent_token as string, { dump: DUMP([`${PHONE}\t(none)\t203.0.113.25:4000\t10.13.13.2/32\t${Math.floor(Date.now() / 1000) - 5}\t10\t20\t0`]) });

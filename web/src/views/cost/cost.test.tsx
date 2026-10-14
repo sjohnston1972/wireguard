@@ -63,3 +63,19 @@ describe("Cost page header and tiles", () => {
     expect(t.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 });
+
+describe("Cost page: two clouds", () => {
+  it("month to date names both clouds when AWS has spend, and is unchanged when it has none", async () => {
+    const both = renderApp("/cost", { routes: { "GET /api/v1/cost": costFixture({ byCloud: { azure: 1.2, aws: 0.4 } }) } });
+    const t = await tile("Month to date (actual)");
+    expect(t.getByText("Azure £1.20 · AWS £0.40")).toBeInTheDocument();
+    both.unmount?.();
+  });
+
+  it("month to date keeps today's text with no AWS spend", async () => {
+    renderApp("/cost", { routes: { "GET /api/v1/cost": costFixture({ byCloud: { azure: 0.3, aws: 0 } }) } });
+    const t = await tile("Month to date (actual)");
+    expect(t.getByText(/Azure actual, as of/)).toBeInTheDocument();
+    expect(t.queryByText(/AWS £/)).toBeNull();
+  });
+});

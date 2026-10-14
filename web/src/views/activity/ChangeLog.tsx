@@ -2,7 +2,7 @@ import { FileText } from "lucide-react";
 import { useState } from "react";
 import type { AzureChangeRow } from "@shared/api";
 import type { ActivityResponse } from "@shared/api";
-import { AUDIT_KINDS } from "../../../../worker/src/activity";
+import { AUDIT_KINDS } from "../../../../worker/src/auditKinds";
 import { useAzureChanges } from "@/api/queries";
 import { Column, DataTable, EmptyState, Panel, SearchInput, Select } from "@/components";
 import { useWidget } from "@/widgets";

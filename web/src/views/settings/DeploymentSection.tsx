@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import type { SettingsResponse } from "@shared/api";
 import { useAddProfile, useDeleteProfile, useEditProfile, useSaveSettings } from "@/api/mutations";
 import { useCapacity } from "@/api/queries";
-import { Button, EmptyState, Field, Modal, Panel, SegmentedControl, StatusPill, cx, formatAge } from "@/components";
+import { Button, EmptyState, Field, KeyValue, Modal, Panel, SegmentedControl, StatusPill, cx, formatAge } from "@/components";
 import { AlertTriangle, Pencil, Plus, Trash2 } from "lucide-react";
+import { AWS_REGIONS } from "@/views/overview/model";
 import { useEdits } from "./edits";
 import { ConfirmDialog, Lead, SelectField, SettingSwitch, UnsavedBar, plural } from "./ui";
 
@@ -28,8 +29,29 @@ export function DeploymentSection({ s }: { s: SettingsResponse }) {
         </div>
       </Panel>
       <UnsavedBar section="deployment" label="Deployment" />
+      <AwsPanel s={s} />
       <ProfilesPanel s={s} />
     </div>
+  );
+}
+
+/** AWS, read-only: its region, size and rates, and whether Deploy offers it. Set up by scripts/aws-bootstrap.mjs, not here. */
+function AwsPanel({ s }: { s: SettingsResponse }) {
+  const a = s.aws;
+  if (!a) return null;
+  const status = !a.configured ? "Not set up: run scripts/aws-bootstrap.mjs" : a.enabled ? "Shown in Deploy" : "Set up; hidden from Deploy (AWS_ENABLED=0)";
+  const rate = (n: number) => `£${n.toFixed(4)}/h`;
+  return (
+    <Panel title="AWS">
+      <KeyValue
+        items={[
+          { label: "Region", value: `${AWS_REGIONS[a.region] ?? a.region} (${a.region})` },
+          { label: "Instance type", value: a.instanceType },
+          { label: "Cost", value: `Running about ${rate(a.hourlyRateGbp)} · hibernated about ${rate(a.standbyRateGbp)}` },
+          { label: "Status", value: status },
+        ]}
+      />
+    </Panel>
   );
 }
 

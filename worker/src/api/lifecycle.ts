@@ -42,13 +42,22 @@ export async function act(c: Context<ApiEnv>, fn: () => Promise<string>) {
 
 export function registerLifecycle(api: Hono<ApiEnv>): void {
   api.post("/deploy", async (c) => {
-    const b = (await body<{ hours?: unknown; profileId?: unknown; region?: unknown; overBudgetOk?: unknown }>(c)) ?? {};
+    const b = (await body<{ hours?: unknown; profileId?: unknown; region?: unknown; overBudgetOk?: unknown; cloud?: unknown }>(c)) ?? {};
     const hours = parseHours(b.hours);
     if (hours === "invalid") return fail(c, 400, "bad_input", HOURS_PROBLEM, "hours");
+    if (b.cloud !== undefined && b.cloud !== "azure" && b.cloud !== "aws") return fail(c, 400, "bad_input", "Unknown cloud.", "cloud");
+    const set = (v: unknown) => v !== undefined && v !== null;
+    if (b.cloud === "aws" && (set(b.profileId) || set(b.region))) return fail(c, 400, "bad_input", "AWS deploys to London; leave region and profile empty.", "cloud");
     if (b.profileId !== undefined && b.profileId !== null && !Number.isInteger(b.profileId)) return fail(c, 400, "bad_input", "profileId must be a whole number.", "profileId");
     if (b.region !== undefined && b.region !== null && typeof b.region !== "string") return fail(c, 400, "bad_input", "region must be a region name.", "region");
     const user = c.get("user");
     return act(c, async () => {
+      if (b.cloud === "aws") {
+        // AWS has one place to build (London, settings' instance type): no profile or region to resolve.
+        await requireBudgetOk(c.env, b.overBudgetOk === true);
+        const run = await startDeploy(c.env, { hours, requesterIp: c.req.header("CF-Connecting-IP") ?? null, requestedBy: user, cloud: "aws" });
+        return `Deploy started in AWS London (${run.id}). About 4 minutes.`;
+      }
       const t = await resolveDeployTarget(c.env, { profileId: (b.profileId as number | null | undefined) ?? null, region: typeof b.region === "string" ? b.region : null });
       await requireBudgetOk(c.env, b.overBudgetOk === true);
       const run = await startDeploy(c.env, { hours, requesterIp: c.req.header("CF-Connecting-IP") ?? null, requestedBy: user, region: t.region, vmSize: t.vmSize, profile: t.profile });
@@ -120,7 +129,7 @@ export function registerLifecycle(api: Hono<ApiEnv>): void {
       } catch (e) {
         throw new RunError(`${ops.label} did not accept the change: ${(e as Error).message}`, "upstream");
       }
-      await db.addAlert(c.env, "info", `SSH allowed from ${addr} by ${user} (live NSG change).`);
+      await db.addAlert(c.env, "info", `SSH allowed from ${addr} by ${user} (live firewall-rule change).`);
       await refreshInventory(c.env);
       return `SSH now allowed from ${addr}. Takes effect within a few seconds.`;
     });

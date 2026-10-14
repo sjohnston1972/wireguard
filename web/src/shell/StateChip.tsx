@@ -2,6 +2,8 @@ import * as Popover from "@radix-ui/react-popover";
 import type { OverviewResponse } from "@shared/api";
 import { useConnectionLevel, type ConnectionLevel } from "./Connection";
 import { REGIONS } from "../../../worker/src/region";
+import { AWS_REGIONS } from "@/views/overview/model";
+import { cloudLabel, cloudOf } from "@/views/overview/cloud";
 import { useOverview } from "@/api/queries";
 import { isBusyState } from "@/api/queries";
 import "./status.css";
@@ -9,7 +11,7 @@ import "./status.css";
 /** "UK South" from the Azure region code; the code itself when it is not one we know. */
 export function regionLabel(code: string | null | undefined): string | null {
   if (!code) return null;
-  const full = REGIONS[code];
+  const full = REGIONS[code] ?? AWS_REGIONS[code];
   return full ? full.replace(/\s*\(.*\)\s*$/, "") : code;
 }
 
@@ -48,7 +50,7 @@ export function chipFor(o: OverviewResponse): ChipView {
   const state = o.snapshot.state;
   if (state === "destroyed") return { text: "Destroyed · £0", tone: "idle" };
   const parts = [WORDS[state] ?? state];
-  const region = regionLabel(o.snapshot.region ?? o.config?.region);
+  const region = regionLabel(o.snapshot.region ?? (cloudOf(o) === "aws" ? o.config?.aws?.region : o.config?.region));
   if (region) parts.push(region);
   if (state === "running" && o.snapshot.auto_destroy_at) {
     const left = Date.parse(o.snapshot.auto_destroy_at) - Date.parse(o.now);
@@ -58,10 +60,13 @@ export function chipFor(o: OverviewResponse): ChipView {
   return { text: parts.join(" · "), tone };
 }
 
-/** The chip's short on-screen label: "Azure • UK South" (the mockups' wording). */
+/** The chip's short on-screen label: "Azure • UK South" or "AWS • London" (the mockups' wording). */
 export function chipLabel(o: OverviewResponse | undefined): string {
-  const region = o ? regionLabel(o.snapshot.region ?? o.config?.region) : null;
-  return region ? `Azure • ${region}` : "Azure";
+  if (!o) return "Azure";
+  const aws = cloudOf(o) === "aws";
+  const cloud = cloudLabel(cloudOf(o));
+  const region = regionLabel(o.snapshot.region ?? (aws ? o.config?.aws?.region : o.config?.region));
+  return region ? `${cloud} • ${region}` : cloud;
 }
 
 export type DotTone = ChipTone | "stale" | "unknown";

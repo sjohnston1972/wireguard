@@ -302,7 +302,7 @@ function dnsmasqConf() {
   assert.ok(at >= 0, "no dnsmasq config in cloud-init");
   const block = TPL.slice(at, TPL.indexOf("\n  - path:", at + 1));
   const body = block.slice(block.indexOf("    content: |\n") + "    content: |\n".length);
-  return body.split("\n").map((l) => l.replace(/^ {6}/, ""));
+  return body.split("\n").filter((l) => !l.startsWith("%{")).map((l) => l.replace(/^ {6}/, ""));
 }
 const AZURE_DOMAINS = ["core.windows.net", "database.windows.net", "azurewebsites.net", "vaultcore.azure.net", "documents.azure.com", "servicebus.windows.net", "internal"];
 

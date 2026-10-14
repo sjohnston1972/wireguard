@@ -225,7 +225,7 @@ function ConfigTab({ c, data, h }: { c: Client; data: ClientsResponse; h: Client
           />
         )}
         <SwitchRow
-          label="Azure VNet"
+          label="Cloud network"
           hint={full ? "Full tunnel already sends everything." : `Also route ${data.config.vnetCidr} through the tunnel.`}
           checked={full ? true : val("azure_vnet")}
           disabled={full || busy("azure_vnet")}

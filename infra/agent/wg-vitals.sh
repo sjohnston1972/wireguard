@@ -31,6 +31,9 @@ ROOT="${WG_ROOT:-}"
 RUN="$ROOT/run/wg-admin"
 SELF="$ROOT/usr/local/sbin/wg-vitals.sh"
 
+# Which cloud this VM is in (written by cloud-init; Azure when absent).
+CLOUD="$(sed -n 's/^CLOUD=//p' "$ROOT"/etc/wireguard/wg-agent.env 2>/dev/null)"
+
 # Seconds between runs of each background job.
 declare -A EVERY=([updates]=21600 [events]=60 [net]=300)
 
@@ -91,7 +94,7 @@ job_updates() {
 # after boot switches the service on and may time out; the next one answers.
 # If it does not answer, the last result stays (its "at" shows its age).
 IMDS="http://169.254.169.254/metadata"
-job_events() {
+job_events_azure() {
   local name="" body
   read -r name < "$RUN/vm-name" 2>/dev/null || true
   if [[ -z "$name" ]]; then
@@ -116,6 +119,31 @@ job_events() {
        self: ($name == "" or ((.Resources // []) | index($name) != null))
      }][0:10]}' <<<"$body" 2>/dev/null)"
 }
+
+# ── Job: AWS scheduled events ───────────────────────────────────────────────
+# EC2's metadata service (IMDSv2: a short-lived token first) lists planned
+# maintenance for this instance: reboots, retirements, stops. Same shape as
+# the Azure list, so the Worker reads one format.
+job_events_aws() {
+  local tok body
+  tok="$(curl -s -f --noproxy '*' -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' --max-time 2 http://169.254.169.254/latest/api/token 2>/dev/null)" || return 0
+  body="$(curl -s -f --noproxy '*' -H "X-aws-ec2-metadata-token: $tok" --max-time 2 http://169.254.169.254/latest/meta-data/events/maintenance/scheduled 2>/dev/null)" || return 0
+  save events "$(jq -c --arg at "$(now_iso)" '
+    def str: if type == "string" and . != "" then . else null end;
+    {incarnation: null,
+     at: $at,
+     items: [(if type == "array" then . else [] end)[] | select(type == "object") | {
+       id: (.EventId | tostring),
+       type: .Code,
+       status: .State,
+       not_before: (.NotBefore | str),
+       source: "Platform",
+       duration_s: null,
+       description: (.Description | str | if . then .[0:200] else null end),
+       self: true
+     }][0:10]}' <<<"$body" 2>/dev/null)"
+}
+job_events() { if [[ "${CLOUD:-azure}" == aws ]]; then job_events_aws; else job_events_azure; fi; }
 
 # ── Job: internet check ─────────────────────────────────────────────────────
 TARGETS=(1.1.1.1 8.8.8.8)

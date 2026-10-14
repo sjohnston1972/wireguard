@@ -5,10 +5,10 @@
 // an older agent's heartbeat (no vitals) keeps working and stores null; a
 // new Azure scheduled event writes one note and one push, once per id.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeEnv, lastGhRun, type World } from "./harness";
+import { makeEnv, lastGhRun, type World, wgRef } from "./harness";
 import * as db from "../src/db";
 import type { Env } from "../src/env";
-import { parseVitals, parseAgentVersion, vitalsSample, freshScheduledEvents } from "../src/vitals";
+import { parseVitals, parseAgentVersion, vitalsSample, freshScheduledEvents, scheduledEventNote } from "../src/vitals";
 import { startDeploy, issueRunSecrets, handleCallback, handleAgent } from "../src/runs";
 import { getSnapshot } from "../src/state";
 
@@ -73,7 +73,8 @@ describe("parseVitals", () => {
           at: AT,
           items: [
             { id: "a".repeat(500), type: "Reboot", status: "S".repeat(100), not_before: "not a date", source: null, duration_s: -1, description: "d".repeat(1000), self: "yes" },
-            { id: "x", type: "Explode", status: "Scheduled" }, // not a type Azure sends: left out
+            { id: "x", type: "Explode", status: "Scheduled" }, // a type we do not know: kept, as itself
+            { id: "y", status: "Scheduled" }, // no type at all: left out
             "junk",
           ],
         },
@@ -86,7 +87,7 @@ describe("parseVitals", () => {
     expect(v.conntrack).toEqual({ count: 100, max: 100 });
     expect(v.updates).toBeNull();
     expect(v.events?.incarnation).toBeNull();
-    expect(v.events?.items).toHaveLength(1);
+    expect(v.events?.items.map((i) => i.type)).toEqual(["Reboot", "Explode"]);
     const e = v.events!.items[0];
     expect(e.id.length).toBeLessThanOrEqual(64);
     expect(e.status.length).toBeLessThanOrEqual(32);
@@ -175,6 +176,14 @@ describe("vitalsSample", () => {
   });
 });
 
+describe("scheduled event types", () => {
+  it("shows a type it does not know as itself, such as AWS's instance-reboot", () => {
+    const v = parseVitals(rawVitals({ events: { incarnation: null, at: AT, items: [{ id: "evt-1", type: "instance-reboot", status: "active", not_before: null, source: "Platform", duration_s: null, description: null, self: true }] } }));
+    expect(v?.events?.items.map((e) => e.type)).toEqual(["instance-reboot"]);
+    expect(scheduledEventNote(v!.events!.items[0])).toContain("instance-reboot");
+  });
+});
+
 describe("freshScheduledEvents", () => {
   const v = (ids: string[]) => parseVitals(rawVitals({ events: { incarnation: 1, at: AT, items: ids.map((id) => ({ id, type: "Reboot", status: "Scheduled", not_before: null, source: "Platform", duration_s: null, description: null, self: true })) } }));
 
@@ -201,7 +210,7 @@ const DUMP = "PRIV\tS=\t51820\toff\n" + `${PHONE}\t(none)\t203.0.113.25:4000\t10
 async function toRunning() {
   await db.addPeer(env, { name: "Phone", public_key: PHONE, ip: "10.13.13.2", full_tunnel: false });
   const run = await startDeploy(env, { hours: 4, requesterIp: null, requestedBy: "steven" });
-  const sec = await issueRunSecrets(env, run.id, lastGhRun(world));
+  const sec = await issueRunSecrets(env, run.id, lastGhRun(world), wgRef(env));
   world.azure.rg = true;
   await handleCallback(env, sec.body.callback_token as string, { run_id: run.id, action: "apply", status: "success", outputs: { public_ip: world.azure.ip } });
   return sec.body.agent_token as string;

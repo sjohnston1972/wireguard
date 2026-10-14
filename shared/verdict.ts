@@ -40,6 +40,8 @@ export interface VerdictInput {
   /** The checks the Health summary shows (its Checks setting). */
   checks: VerdictCheck[];
   azure?: AzureSummaryResponse | null;
+  /** The headend's cloud, named in the maintenance lines ("Azure" when left out). */
+  cloud?: string;
   /** The next deploy's capacity check (OverviewResponse.capacity). */
   capacity?: CapacityCheck | null;
   /** Default: every threshold at its default (verdictThresholds({})). */
@@ -75,7 +77,7 @@ export function verdictThresholds(prefs: PagePrefs): VerdictThresholds {
   return { perf: pick(prefs, "overview.vmPerformance"), vitals: pick(prefs, "overview.vitals") };
 }
 
-const VERB: Record<ScheduledEvent["type"], string> = { Reboot: "reboot", Redeploy: "redeploy", Freeze: "pause", Preempt: "evict", Terminate: "delete" };
+const VERB: Record<string, string> = { Reboot: "reboot", Redeploy: "redeploy", Freeze: "pause", Preempt: "evict", Terminate: "delete" };
 const ukTime = (ms: number, withDate: boolean) =>
   new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23", ...(withDate ? { day: "numeric", month: "short" } : {}) }).format(new Date(ms)).replace(" at ", ", ");
 const n = (v: number) => String(Math.round(v * 10) / 10);
@@ -94,6 +96,7 @@ interface Reading {
 export function verdict(input: VerdictInput): Verdict {
   const { state, checks, azure, capacity, now } = input;
   const th = input.thresholds ?? verdictThresholds({});
+  const who = input.cloud ?? "Azure";
   const today = todayHead(state, checks);
   const running = state === "running";
   const out = (rule: number, h: Partial<Head> & { tone: VerdictTone }, bootLog = false): Verdict => ({ title: today.title, sub: today.sub, ...h, rule, bootLog });
@@ -119,7 +122,7 @@ export function verdict(input: VerdictInput): Verdict {
   const soon = events.find((e) => e.status === "Started" || at(e) <= now + 15 * 60_000);
   if (soon) {
     const t = at(soon);
-    return out(6, { tone: "red", title: `Azure will ${VERB[soon.type]} the VM ${soon.status === "Started" || !Number.isFinite(t) ? "now" : `at ${ukTime(t, false)}`}`, sub: soon.description ?? "Scheduled by Azure. wg-admin never brings it forward." });
+    return out(6, { tone: "red", title: `${who} will ${Object.hasOwn(VERB, soon.type) ? VERB[soon.type] : soon.type} the VM ${soon.status === "Started" || !Number.isFinite(t) ? "now" : `at ${ukTime(t, false)}`}`, sub: soon.description ?? `Scheduled by ${who}. wg-admin never brings it forward.` });
   }
   // 7. Azure says the VM is degraded.
   if (health?.state === "Degraded") return out(7, { tone: "amber", title: "Azure reports the VM as degraded", sub: health.summary ?? "" });
@@ -162,7 +165,7 @@ export function verdict(input: VerdictInput): Verdict {
   const later = events[0];
   if (later) {
     const t = at(later);
-    return out(10, { tone: "amber", title: Number.isFinite(t) ? `Azure maintenance planned for ${ukTime(t, true)}` : "Azure maintenance planned", sub: later.description ?? `A ${VERB[later.type]} scheduled by Azure.` });
+    return out(10, { tone: "amber", title: Number.isFinite(t) ? `${who} maintenance planned for ${ukTime(t, true)}` : `${who} maintenance planned`, sub: later.description ?? `A ${Object.hasOwn(VERB, later.type) ? VERB[later.type] : later.type} scheduled by ${who}.` });
   }
   // 11. Any threshold past warn: the most severe, in order.
   const worst = readings.find((r) => r.level === "bad") ?? readings.find((r) => r.level === "warn");

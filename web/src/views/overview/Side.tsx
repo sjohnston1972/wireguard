@@ -5,6 +5,7 @@ import { Button, EmptyState, ErrorState, Panel, SegmentedControl, Skeleton, Time
 import { useActivity, useHistory } from "@/api/queries";
 import { useStarting, useWidget } from "@/widgets";
 import { useElementHeight } from "./hooks";
+import { cloudLabel, cloudOf } from "./cloud";
 import { ageOf, hhmm } from "./model";
 import type { ActionName } from "./actions";
 import "./Side.css";
@@ -185,7 +186,7 @@ export function SpeedTests({ o, now, onAction }: { o: OverviewResponse; now: num
       }
     >
       {tests.length === 0 ? (
-        <EmptyState title="No speed tests yet" description={running ? "Run one to measure Azure to the home site." : "Speed tests need a running VM."} />
+        <EmptyState title="No speed tests yet" description={running ? `Run one to measure ${cloudLabel(cloudOf(o))} to the home site.` : "Speed tests need a running VM."} />
       ) : (
         <ul className="ov-speed__list">
           {tests.map((t) => (

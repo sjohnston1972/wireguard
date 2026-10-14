@@ -18,12 +18,14 @@ import { Panel, ProgressBar, Sparkline, cx, formatAge } from "@/components";
 import { useAzureMetrics, useAzureSummary, type HistoryRange } from "@/api/queries";
 import { useWidget } from "@/widgets";
 import { BootLogModal } from "./BootLog";
+import { awsLive, cloudLabel, cloudOf } from "./cloud";
 import { LEVEL_TONE, levelOf, levelWord, type Level } from "./widgetSettings";
 import "./Insights.css";
 
 // ── Shared parts (also used by the Firewall's Public IP widget) ──
 
 export const NOT_CONNECTED_TEXT = "Azure isn't connected. Add the service principal secrets to the Worker.";
+export const AWS_SOON_TEXT = "AWS insights are coming soon. These panels show Azure's figures when the server runs in Azure.";
 export const WAITING_TEXT = "Waiting for the first reading from Azure.";
 export const NOTHING_TEXT = "Nothing running.";
 
@@ -188,7 +190,8 @@ export function VmPerformance({ o, now }: { o: OverviewResponse; now: number }) 
   const th = (k: string) => st[k] as SettingValue;
 
   let body: ReactNode;
-  if (!sum0 || (!q.data && q.isLoading)) body = <AzNote>Loading…</AzNote>;
+  if (awsLive(o)) body = <AzNote>{AWS_SOON_TEXT}</AzNote>;
+  else if (!sum0 || (!q.data && q.isLoading)) body = <AzNote>Loading…</AzNote>;
   else if (!sum0.configured) body = <AzNote>{NOT_CONNECTED_TEXT}</AzNote>;
   else if (!has && o.snapshot.state !== "running") body = <AzNote>{NOTHING_TEXT}</AzNote>;
   else if (!has && !feed?.lastOkAt) body = <AzNote>{WAITING_TEXT}</AzNote>;
@@ -260,7 +263,8 @@ export function AzureHealth({ o, now }: { o: OverviewResponse; now: number }) {
   const events = st.maintenance ? (s?.maintenance ?? []) : [];
 
   let body: ReactNode;
-  if (!s) body = <AzNote>Loading…</AzNote>;
+  if (awsLive(o)) body = <AzNote>{AWS_SOON_TEXT}</AzNote>;
+  else if (!s) body = <AzNote>Loading…</AzNote>;
   else if (!s.configured) body = <AzNote>{NOT_CONNECTED_TEXT}</AzNote>;
   else
     body = (
@@ -290,7 +294,7 @@ export function AzureHealth({ o, now }: { o: OverviewResponse; now: number }) {
           </>
         )}
         {events.map((e) => (
-          <p key={e.id} className="ov-az__item ov-az__item--amber">{`${e.type} by Azure · ${e.status === "Started" ? "started" : `not before ${when(e.notBefore)}`}`}</p>
+          <p key={e.id} className="ov-az__item ov-az__item--amber">{`${e.type} by ${cloudLabel(cloudOf(o))} · ${e.status === "Started" ? "started" : `not before ${when(e.notBefore)}`}`}</p>
         ))}
         {issues.map((i) => (
           <p key={i.trackingId} className="ov-az__item ov-az__item--amber">
@@ -330,7 +334,8 @@ export function Vitals({ o, now }: { o: OverviewResponse; now: number }) {
   const bar = (value: number | null, label: string, level: Level) => (bars ? <ProgressBar value={value} label={label} tone={level && level !== "ok" ? LEVEL_TONE[level] : "blue"} /> : null);
 
   let body: ReactNode;
-  if (!s) body = <AzNote>Loading…</AzNote>;
+  if (awsLive(o)) body = <AzNote>{AWS_SOON_TEXT}</AzNote>;
+  else if (!s) body = <AzNote>Loading…</AzNote>;
   else if (o.snapshot.state !== "running") body = <AzNote>{NOTHING_TEXT}</AzNote>;
   else if (s.agent === "needsDeploy") body = <AzNote>Needs the next deploy: this VM's agent is older than these figures.</AzNote>;
   else if (!v) body = <AzNote>Waiting for the first heartbeat with vitals.</AzNote>;
