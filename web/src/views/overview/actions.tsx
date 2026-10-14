@@ -100,8 +100,11 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
   const [overOk, setOverOk] = useState(false);
   // The cloud choice shows only with AWS switched on, and never in demo mode.
   const demo = useDemoOn();
-  const awsOn = o.config.aws.enabled && !demo;
-  const [cloud, setCloud] = useState<Cloud>(() => (awsOn ? cloudOf(o) : "azure"));
+  // An older or partial config may carry no aws block at all; that counts as off.
+  const awsOn = !!o.config.aws?.enabled && !demo;
+  const [picked, setCloud] = useState<Cloud>(() => (awsOn ? cloudOf(o) : "azure"));
+  // If AWS is switched off while the form is open, a leftover "aws" pick must not deploy AWS.
+  const cloud: Cloud = awsOn ? picked : "azure";
   const current = cloudOf(o);
   const switching = awsOn && cloud !== current && o.snapshot.state !== "destroyed";
   const titleId = useId();
