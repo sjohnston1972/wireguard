@@ -325,3 +325,22 @@ test("dnsmasq accepts the tunnel DNS config", { skip: spawnSync("dnsmasq", ["--v
   const r = spawnSync("dnsmasq", ["--test", `--conf-file=${join(dir, "wg-admin.conf")}`], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
 });
+
+// #117: the result the Worker hears, from the job's and the destroy step's outcomes, by running the status lines
+// of "Report result to the Worker" in bash. A fallback is only a good job whose destroy step failed.
+test("the callback reports success-with-fallback only when the fallback delete cleaned up", { skip: spawnSync("bash", ["-c", "true"]).status === 0 ? false : "no bash here" }, async () => {
+  const { default: YAML } = await import("yaml");
+  const step = YAML.parse(text).jobs.terraform.steps.find((s) => s.name === "Report result to the Worker") ?? assert.fail("no callback step");
+  const lines = step.run.split("\n");
+  const statusLines = lines.slice(lines.findIndex((l) => l.startsWith('status="success"')), lines.findIndex((l) => l.startsWith("outputs=")));
+  const result = (action, job, destroy) => {
+    const script = [...statusLines, 'echo "$status"'].join("\n").replaceAll("${{ inputs.action }}", action).replaceAll("${{ job.status }}", job).replaceAll("${{ steps.destroy.outcome }}", destroy);
+    return spawnSync("bash", ["--noprofile", "--norc", "-c", script], { encoding: "utf8" }).stdout.trim();
+  };
+  assert.equal(result("destroy", "success", "success"), "success");
+  assert.equal(result("destroy", "success", "failure"), "success-with-fallback");
+  assert.equal(result("destroy", "failure", "failure"), "failure", "destroy and the fallback delete both failed");
+  assert.equal(result("destroy", "failure", "success"), "failure");
+  assert.equal(result("deploy", "success", ""), "success");
+  assert.equal(result("deploy", "failure", ""), "failure");
+});
