@@ -12,6 +12,7 @@ import { cloudOf, getSnapshot } from "../state";
 import type { PublishedNsgRule } from "../firewall";
 import type { AzureView } from "../azure";
 import { azureOps } from "./azure";
+import { awsOps } from "./aws";
 
 /** What exists right now. Azure's field names: rg_exists means "the headend's container exists" (resource group, or AWS's tagged VPC). */
 export type HeadendView = AzureView & { error?: string };
@@ -34,12 +35,10 @@ export interface CloudOps {
   setPublishedPorts(env: Env, rules: PublishedNsgRule[]): Promise<void>;
 }
 
-const OPS: Partial<Record<Cloud, CloudOps>> = { azure: azureOps };
+const OPS: Record<Cloud, CloudOps> = { azure: azureOps, aws: awsOps };
 
 export function opsFor(cloud: Cloud): CloudOps {
-  const ops = OPS[cloud];
-  if (!ops) throw new Error(`No adapter for ${cloud}`);
-  return ops;
+  return OPS[cloud];
 }
 
 /** The adapter for wherever the headend is (or was last built). */
