@@ -310,7 +310,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         const rate = config(env).aws.usdToGbp;
         const rows = await awsCostMonthToDate(env, now);
         for (const d of rows) await db.upsertAwsCostDay(env, d.day, Math.round(d.usd * rate * 10000) / 10000, d.usd);
-        await env.STATUS.put("cost:aws_fetched_day", today);
+        await env.STATUS.put("cost:aws_fetched_day", today, { expirationTtl: 36 * 3600 });
         notes.push(`AWS cost: ${rows.length} day(s) updated`);
       }
     } catch (e) {

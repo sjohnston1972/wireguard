@@ -72,6 +72,20 @@ describe("Cost page: two clouds", () => {
     both.unmount?.();
   });
 
+  it("month to date names AWS when only AWS has figures", async () => {
+    renderApp("/cost", { routes: { "GET /api/v1/cost": costFixture({ byCloud: { azure: 0, aws: 0.4 } }) } });
+    const t = await tile("Month to date (actual)");
+    expect(t.getByText(/AWS £0\.40 · actual, as of/)).toBeInTheDocument();
+    expect(t.queryByText(/Azure actual/)).toBeNull();
+  });
+
+  it("month to date is cloud-neutral when a day was pulled but neither cloud has spend", async () => {
+    renderApp("/cost", { routes: { "GET /api/v1/cost": costFixture({ byCloud: { azure: 0, aws: 0 } }) } });
+    const t = await tile("Month to date (actual)");
+    expect(t.getByText(/^Actual, as of/)).toBeInTheDocument();
+    expect(t.queryByText(/Azure actual/)).toBeNull();
+  });
+
   it("month to date keeps today's text with no AWS spend", async () => {
     renderApp("/cost", { routes: { "GET /api/v1/cost": costFixture({ byCloud: { azure: 0.3, aws: 0 } }) } });
     const t = await tile("Month to date (actual)");
