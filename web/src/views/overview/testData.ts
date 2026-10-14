@@ -203,6 +203,7 @@ export function cost(over: Partial<CostResponse> = {}): CostResponse {
     session: { running: false, since: null, estimateGbp: null },
     standby: null,
     monthToDate: 0,
+    byCloud: { azure: 0, aws: 0 },
     projection: null,
     budget: { budget: 10, actual: 1, session: 0, total: 1, pct: 10, level: "ok", month: "2026-10", alerted: 0 },
     daily: [],

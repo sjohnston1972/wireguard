@@ -12,6 +12,8 @@ import * as db from "../db";
 import { getSnapshot } from "../state";
 import { effectiveConfig } from "../settings";
 import { budgetStatus } from "../budget";
+import { ratesFor } from "../env";
+import { cloudOf } from "../state";
 import { COST_RANGES, breakdownOf, costWindow, estimateBreakdown, projection, sessionsOf, type CostRange } from "../costview";
 import { labCostRows } from "../labs/summary";
 import type { CostResponse } from "../../../shared/api";
@@ -27,13 +29,24 @@ export function registerCost(api: Hono<ApiEnv>): void {
     const monthStart = `${now.toISOString().slice(0, 7)}-01`;
     const [snap, cfg, runs, fetchedDay] = await Promise.all([getSnapshot(c.env), effectiveConfig(c.env), db.listRuns(c.env, 200), c.env.STATUS.get("cost:fetched_day")]);
     // One read covers the range, the stretch before it, and this month.
-    const all = await db.costDays(c.env, win.prevFrom < monthStart ? win.prevFrom : monthStart);
+    const since = win.prevFrom < monthStart ? win.prevFrom : monthStart;
+    const azureDays = await db.costDays(c.env, since);
+    const awsDays = await db.awsCostDays(c.env, since);
+    // One figure per day: Azure's plus AWS's (both in pounds).
+    const byDay = new Map<string, db.CostDay>();
+    for (const d of [...azureDays, ...awsDays]) {
+      const have = byDay.get(d.day);
+      byDay.set(d.day, have ? { day: d.day, gbp: have.gbp + d.gbp, fetched_at: have.fetched_at > d.fetched_at ? have.fetched_at : d.fetched_at } : { day: d.day, gbp: d.gbp, fetched_at: d.fetched_at });
+    }
+    const all = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
+    const monthOf = (rows: { day: string; gbp: number }[]) => rows.filter((d) => d.day >= monthStart).reduce((a, d) => a + d.gbp, 0);
+    const rates = ratesFor(cfg, cloudOf(snap));
     const budget = await budgetStatus(c.env, cfg, snap, now);
     const split = await db.costBreakdownRange(c.env, win.from, win.to);
     const sessions = sessionsOf(runs, cfg, now);
 
     const insights: string[] = [];
-    const standby = snap.state === "standby" && snap.standby_since ? { since: snap.standby_since, perDayGbp: cfg.standbyRateGbp * 24 } : null;
+    const standby = snap.state === "standby" && snap.standby_since ? { since: snap.standby_since, perDayGbp: rates.standbyRateGbp * 24 } : null;
     if (standby) insights.push(`Standby costs about ${money(standby.perDayGbp)} a day for the disk and address.`);
     if (budget.level === "warn" || budget.level === "over") {
       insights.push(`${money(budget.total)} of the ${money(budget.budget)} monthly budget is used (${Math.round(budget.pct)}%)${budget.level === "over" ? ", so Deploy asks for confirmation until the month ends" : ""}.`);
@@ -52,10 +65,12 @@ export function registerCost(api: Hono<ApiEnv>): void {
     const out: CostResponse = {
       now: now.toISOString(),
       range,
-      meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: cfg.hourlyRateGbp, standbyRateGbp: cfg.standbyRateGbp, asOfDay: fetchedDay },
-      session: { running, since: running ? snap.running_since : null, estimateGbp: running ? Math.max(0, ((now.getTime() - Date.parse(snap.running_since!)) / 3_600_000) * cfg.hourlyRateGbp) : null },
+      meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: rates.hourlyRateGbp, standbyRateGbp: rates.standbyRateGbp, asOfDay: fetchedDay },
+      session: { running, since: running ? snap.running_since : null, estimateGbp: running ? Math.max(0, ((now.getTime() - Date.parse(snap.running_since!)) / 3_600_000) * rates.hourlyRateGbp) : null },
       standby,
+      // The budget's actual already holds Azure (labs included) and AWS.
       monthToDate: budget.actual,
+      byCloud: { azure: budget.actual - monthOf(awsDays), aws: monthOf(awsDays) },
       projection: proj,
       budget,
       daily: all.filter((d) => d.day >= win.from && d.day <= win.to),

@@ -22,6 +22,6 @@ describe("schema.gen.ts", () => {
   });
 
   it("includes the demo switch table's migration (it is harmless in the demo store: nothing reads it there)", () => {
-    expect(DEMO_SCHEMA.at(-1)?.name).toBe("0022_demo_mode.sql");
+    expect(DEMO_SCHEMA.map((m) => m.name)).toContain("0022_demo_mode.sql");
   });
 });

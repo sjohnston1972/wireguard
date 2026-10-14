@@ -304,8 +304,10 @@ export interface CostResponse {
   /** The VM running now: what it has cost so far, estimated (Azure's figures lag). */
   session: { running: boolean; since: string | null; estimateGbp: number | null };
   standby: { since: string; perDayGbp: number } | null;
-  /** This month's actual spend from Azure. */
+  /** This month's actual spend, Azure and AWS together. */
   monthToDate: number;
+  /** The same month-to-date spend split by cloud. */
+  byCloud: { azure: number; aws: number };
   /** Null until Azure has listed a day of this month. */
   projection: { gbp: number; basis: string } | null;
   budget: BudgetStatus;

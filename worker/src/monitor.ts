@@ -27,7 +27,8 @@
 // what happened overnight, and pushed to the webhook if one is set.
 
 import type { Env } from "./env";
-import { canAzure } from "./env";
+import { canAzure, canAws, config } from "./env";
+import { awsCostMonthToDate } from "./cloud/awsCost";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { getSnapshot, saveSnapshot, anyHandshakeWithin, cloudOf } from "./state";
@@ -296,6 +297,20 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         notes.push(`cost breakdown: ${rows.length} row(s) updated`);
       } catch (e) {
         notes.push(`cost breakdown: ${(e as Error).message}`);
+      }
+    }
+  }
+  if (canAws(env)) {
+    const today = now.toISOString().slice(0, 10);
+    if ((await env.STATUS.get("cost:aws_fetched_day")) !== today) {
+      try {
+        const rate = config(env).aws.usdToGbp;
+        const rows = await awsCostMonthToDate(env, now);
+        for (const d of rows) await db.upsertAwsCostDay(env, d.day, Math.round(d.usd * rate * 10000) / 10000, d.usd);
+        await env.STATUS.put("cost:aws_fetched_day", today);
+        notes.push(`AWS cost: ${rows.length} day(s) updated`);
+      } catch (e) {
+        notes.push(`AWS cost pull failed: ${(e as Error).message}`);
       }
     }
   }

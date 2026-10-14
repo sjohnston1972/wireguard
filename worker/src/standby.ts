@@ -18,10 +18,11 @@
 //   standby -> resuming   -> running         (start; the first heartbeat ends it)
 
 import type { Env } from "./env";
+import { ratesFor } from "./env";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
-import { getSnapshot, saveSnapshot, saveSnapshotIf } from "./state";
+import { getSnapshot, saveSnapshot, saveSnapshotIf, cloudOf } from "./state";
 import { headendOps } from "./cloud";
 import { notify } from "./notify";
 import { actionButton, dashboardButton } from "./actions";
@@ -100,7 +101,7 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
       await refreshInventory(env);
       const cfg = await effectiveConfig(env);
       await db.addAlert(env, "session", summary);
-      await notify(env, "wg-admin: in standby", `${summary} Standby costs about £${(cfg.standbyRateGbp * 24 * 30).toFixed(2)} a month; resume takes about a minute. Torn down automatically after ${cfg.standbyMaxDays} days.`, {
+      await notify(env, "wg-admin: in standby", `${summary} Standby costs about £${(ratesFor(cfg, cloudOf(snap)).standbyRateGbp * 24 * 30).toFixed(2)} a month; resume takes about a minute. Torn down automatically after ${cfg.standbyMaxDays} days.`, {
         tags: ["zzz"],
         buttons: [dashboardButton(env, "Resume from dashboard"), await actionButton(env, "destroy", 3 * 24 * 3600)],
       });

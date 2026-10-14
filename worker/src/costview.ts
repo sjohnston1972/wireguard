@@ -8,6 +8,8 @@
 
 import type { CostDay, Run } from "./db";
 import type { Config } from "./env";
+import { ratesFor } from "./env";
+import { runCloud } from "./runs";
 import { sessionCost } from "./activity";
 import { regionName } from "./region";
 import type { CostBreakdown } from "../../shared/api";
@@ -103,7 +105,7 @@ export function sessionsOf(runs: Run[], cfg: Config, now: Date): SessionRow[] {
       region,
       vmSize,
       estimatedGbp: sessionCost(r, runs, cfg, now.getTime()) ?? 0,
-      perHourGbp: cfg.hourlyRateGbp,
+      perHourGbp: ratesFor(cfg, runCloud(r)).hourlyRateGbp,
       stillRunning: end === null,
     });
   }

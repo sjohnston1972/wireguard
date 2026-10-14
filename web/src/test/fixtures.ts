@@ -323,6 +323,7 @@ export const costFixture = (over: Partial<CostResponse> = {}): CostResponse => (
   session: { running: true, since: ago(2 * HOUR), estimateGbp: 0.03 },
   standby: null,
   monthToDate: 0.3,
+  byCloud: { azure: 0.3, aws: 0 },
   projection: { gbp: 9.3, basis: "£0.30 over the 1 day Azure has reported so far this month, carried on at the same pace to all 31 days." },
   budget: { budget: 10, actual: 0.3, session: 0.03, total: 0.33, pct: 3.3, level: "ok", month: "2026-10", alerted: 0 },
   daily: [{ day: "2026-10-01", gbp: 0.3, fetched_at: "2026-10-02T03:00:00.000Z" }],

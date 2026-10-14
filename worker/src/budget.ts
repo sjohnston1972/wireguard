@@ -14,9 +14,10 @@
 // month-to-date figures.
 
 import type { Env, Config } from "./env";
+import { ratesFor } from "./env";
 import * as db from "./db";
 import type { Snapshot } from "./state";
-import { getSnapshot } from "./state";
+import { getSnapshot, cloudOf } from "./state";
 import { effectiveConfig } from "./settings";
 import { RunError } from "./runs";
 import { notify } from "./notify";
@@ -27,7 +28,7 @@ export type BudgetLevel = "none" | "ok" | "warn" | "over";
 export interface BudgetStatus {
   /** The budget in £; 0 means none is set. */
   budget: number;
-  /** Actual spend this month, from Azure (the Cost page's daily figures). */
+  /** Actual spend this month, from Azure and AWS (the Cost page's daily figures). */
   actual: number;
   /** Estimate for the VM running now, up to its timer, not yet in Azure's figures. */
   session: number;
@@ -71,7 +72,7 @@ export interface BudgetLab {
  * chosen at deploy, never past max_until; to max_until only when those
  * hours are not known.
  */
-export function budgetFigures(o: { budget: number; days: { day: string; gbp: number }[]; snap: Pick<Snapshot, "state" | "running_since" | "auto_destroy_at">; hourlyRate: number; now: Date; labs?: BudgetLab[]; labDays?: { day: string; gbp: number }[] }): Omit<BudgetStatus, "alerted"> {
+export function budgetFigures(o: { budget: number; days: { day: string; gbp: number }[]; snap: Pick<Snapshot, "state" | "running_since" | "auto_destroy_at">; hourlyRate: number; now: Date; awsDays?: { day: string; gbp: number }[]; cloud?: "azure" | "aws"; labs?: BudgetLab[]; labDays?: { day: string; gbp: number }[] }): Omit<BudgetStatus, "alerted"> {
   const month = o.now.toISOString().slice(0, 7);
   const monthStart = Date.parse(`${month}-01T00:00:00Z`);
   const next = new Date(monthStart);
@@ -79,11 +80,13 @@ export function budgetFigures(o: { budget: number; days: { day: string; gbp: num
   const monthEnd = next.getTime();
   const days = o.days.filter((d) => d.day.startsWith(month));
   const labDays = (o.labDays ?? []).filter((d) => d.day.startsWith(month));
-  const actual = days.reduce((a, d) => a + d.gbp, 0) + labDays.reduce((a, d) => a + d.gbp, 0);
+  const awsDays = (o.awsDays ?? []).filter((d) => d.day.startsWith(month));
+  const actual = days.reduce((a, d) => a + d.gbp, 0) + awsDays.reduce((a, d) => a + d.gbp, 0) + labDays.reduce((a, d) => a + d.gbp, 0);
 
   let session = 0;
   if (o.snap.state === "running" && o.snap.running_since) {
-    const lastDay = days.map((d) => d.day).sort().at(-1);
+    // The headend's own cloud decides which billed days its estimate starts after.
+    const lastDay = (o.cloud === "aws" ? awsDays : days).map((d) => d.day).sort().at(-1);
     const azureUpTo = lastDay ? Date.parse(`${lastDay}T00:00:00Z`) + 86_400_000 : monthStart;
     const from = Math.max(Date.parse(o.snap.running_since), azureUpTo, monthStart);
     const deadline = o.snap.auto_destroy_at ? Date.parse(o.snap.auto_destroy_at) : NaN;
@@ -156,8 +159,8 @@ export async function budgetLabs(env: Env, month: string): Promise<{ labs: Budge
 /** Where the budget stands right now. */
 export async function budgetStatus(env: Env, cfg?: Config, snap?: Snapshot, now = new Date()): Promise<BudgetStatus> {
   const month = now.toISOString().slice(0, 7);
-  const [c, s, days, sent, lab] = await Promise.all([cfg ?? effectiveConfig(env), snap ?? getSnapshot(env), db.costDays(env, `${month}-01`), env.STATUS.get(alertKey(month)), budgetLabs(env, month)]);
-  const f = budgetFigures({ budget: c.monthlyBudgetGbp, days, snap: s, hourlyRate: c.hourlyRateGbp, now, labs: lab.labs, labDays: lab.labDays });
+  const [c, s, days, awsDays, sent, lab] = await Promise.all([cfg ?? effectiveConfig(env), snap ?? getSnapshot(env), db.costDays(env, `${month}-01`), db.awsCostDays(env, `${month}-01`), env.STATUS.get(alertKey(month)), budgetLabs(env, month)]);
+  const f = budgetFigures({ budget: c.monthlyBudgetGbp, days, awsDays, cloud: cloudOf(s), snap: s, hourlyRate: ratesFor(c, cloudOf(s)).hourlyRateGbp, now, labs: lab.labs, labDays: lab.labDays });
   return { ...f, alerted: sent === "100" ? 100 : sent === "80" ? 80 : 0 };
 }
 

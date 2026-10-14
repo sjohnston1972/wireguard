@@ -199,6 +199,11 @@ export function canAws(env: Env): boolean {
   return ok(env.AWS_WORKER_ACCESS_KEY_ID) && ok(env.AWS_WORKER_SECRET_ACCESS_KEY);
 }
 
+/** The running and standby rates for a headend in this cloud. */
+export function ratesFor(cfg: Config, cloud: Cloud): { hourlyRateGbp: number; standbyRateGbp: number } {
+  return cloud === "aws" ? { hourlyRateGbp: cfg.aws.hourlyRateGbp, standbyRateGbp: cfg.aws.standbyRateGbp } : { hourlyRateGbp: cfg.hourlyRateGbp, standbyRateGbp: cfg.standbyRateGbp };
+}
+
 export function canDns(env: Env): boolean {
   return !!(env.CLOUDFLARE_DNS_TOKEN && env.CLOUDFLARE_ZONE_ID && !/^REPLACE_ME/.test(env.CLOUDFLARE_DNS_TOKEN));
 }

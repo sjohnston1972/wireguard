@@ -8,9 +8,9 @@
 import type { Hono } from "hono";
 import { fail, type ApiEnv } from "./app";
 import * as db from "../db";
-import { getSnapshot, peerOnline, selfTestFailures } from "../state";
+import { getSnapshot, peerOnline, selfTestFailures, cloudOf } from "../state";
 import { effectiveConfig } from "../settings";
-import { canDispatch } from "../env";
+import { canDispatch, ratesFor } from "../env";
 import { isDemoEnv } from "../demo/env";
 import { lockStatus } from "../lock";
 import { backupStatus } from "../backup";
@@ -70,8 +70,8 @@ export function registerOverview(api: Hono<ApiEnv>): void {
         vmSize: cfg.vmSize,
         vnetCidr: cfg.vnetCidr,
         homeLanCidr: cfg.homeLanCidr,
-        hourlyRateGbp: cfg.hourlyRateGbp,
-        standbyRateGbp: cfg.standbyRateGbp,
+        hourlyRateGbp: ratesFor(cfg, cloudOf(snap)).hourlyRateGbp,
+        standbyRateGbp: ratesFor(cfg, cloudOf(snap)).standbyRateGbp,
         autoDestroyDefaultHours: cfg.autoDestroyDefaultHours,
         expiryAction: cfg.expiryAction,
         standbyMaxDays: cfg.standbyMaxDays,

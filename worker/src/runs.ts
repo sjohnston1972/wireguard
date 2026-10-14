@@ -10,7 +10,7 @@
 // each time, and the cron re-checks Azure, so a missed callback heals.
 
 import type { Env, Cloud } from "./env";
-import { config, canDispatch } from "./env";
+import { config, canDispatch, ratesFor } from "./env";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
 import { acquireLock, releaseLock } from "./lock";
@@ -337,7 +337,7 @@ export async function sessionSummary(env: Env, snap: Snapshot, ending: string, n
   if (!snap.running_since) return `${ending}.`;
   const ms = Math.max(0, now - Date.parse(snap.running_since));
   const h = Math.floor(ms / 3_600_000), m = Math.round((ms % 3_600_000) / 60_000);
-  const cost = (ms / 3_600_000) * cfg.hourlyRateGbp;
+  const cost = (ms / 3_600_000) * ratesFor(cfg, cloudOf(snap)).hourlyRateGbp;
   const peers = await db.listPeers(env);
   // The home site (a peer with routes) is always connected; it is not a user.
   const names = (snap.session?.seen ?? []).filter((k) => !peers.find((p) => p.public_key === k)?.routes).map((k) => peers.find((p) => p.public_key === k)?.name ?? "an old key");
