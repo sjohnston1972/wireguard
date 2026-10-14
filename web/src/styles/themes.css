@@ -77,3 +77,26 @@
     color-scheme: light;
   }
 }
+
+/* AWS mode in the light theme (chosen, or by the OS). These are more specific than the light blocks above, so they win. */
+:root[data-theme="light"][data-cloud="aws"] {
+  --blue: #c45500;
+  --blue-bright: #a84700;
+  --blue-fill: #ff9900;
+  --blue-fill-hover: #ec7211;
+  --amber: #a16207;
+  --on-fill: #16191f;
+  --focus-ring: #a84700;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-cloud="aws"]:not([data-theme="dark"]) {
+    --blue: #c45500;
+    --blue-bright: #a84700;
+    --blue-fill: #ff9900;
+    --blue-fill-hover: #ec7211;
+    --amber: #a16207;
+    --on-fill: #16191f;
+    --focus-ring: #a84700;
+  }
+}

@@ -8,7 +8,21 @@ import { SessionExpiredScreen } from "./SessionExpired";
 import { CommandPalette } from "./CommandPalette";
 import { ServiceHealthIndicator } from "./ServiceHealthIndicator";
 import { usePrefs } from "@/widgets";
+import { useOverview } from "@/api/queries";
+import { cloudOf } from "@/views/overview/cloud";
 import "./AppShell.css";
+
+/** Marks <html> with the headend's cloud so the AWS orange accent can switch on (see tokens.css). */
+function useCloudAttribute() {
+  const { data } = useOverview();
+  const cloud = data && cloudOf(data) === "aws" ? "aws" : "azure";
+  useEffect(() => {
+    document.documentElement.setAttribute("data-cloud", cloud);
+    return () => {
+      document.documentElement.removeAttribute("data-cloud");
+    };
+  }, [cloud]);
+}
 
 /**
  * The frame around every view: top bar (wordmark, seven tabs, search, state
@@ -23,6 +37,7 @@ export function AppShell() {
   const { sessionExpired } = useConnection();
   // Widget preferences load with the shell, so every page's widgets have them from the start.
   usePrefs();
+  useCloudAttribute();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

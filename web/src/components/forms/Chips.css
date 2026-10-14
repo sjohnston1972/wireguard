@@ -15,5 +15,5 @@
 .chip--on {
   background: var(--blue-fill);
   border-color: var(--blue-fill);
-  color: #fff;
+  color: var(--on-fill);
 }

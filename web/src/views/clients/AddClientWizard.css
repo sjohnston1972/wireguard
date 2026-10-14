@@ -6,7 +6,7 @@
 .wiz__step { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; font-size: 12.5px; color: var(--text-secondary); background: var(--bg-tile); }
 .wiz__num { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 600; background: var(--bg-elevated); border: 1px solid var(--border-strong); }
 .wiz__step--on { color: var(--text-primary); background: color-mix(in srgb, var(--blue) 16%, transparent); }
-.wiz__step--on .wiz__num { background: var(--blue-fill); border-color: var(--blue-fill); color: #fff; }
+.wiz__step--on .wiz__num { background: var(--blue-fill); border-color: var(--blue-fill); color: var(--on-fill); }
 .wiz__step--done .wiz__num { border-color: var(--green); color: var(--green); }
 
 .wiz__choices { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
