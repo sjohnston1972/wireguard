@@ -26,12 +26,12 @@ import * as db from "../db";
 import { canDispatch, type Env } from "../env";
 import { isDemoEnv } from "../demo/env";
 import { fixedConfig } from "../settings";
-import { cloudOf, getSnapshot } from "../state";
+import { getSnapshot } from "../state";
 import { REGIONS } from "../region";
 import { catalogue, labDef, labReadme } from "../labs/catalogue";
 import { checkLabPermissions } from "../labs/permissions";
 import { directNet } from "../labs/net";
-import { cancelLab, cleanupLab, deployLab, destroyLab, extendLab, hhmm, peerLab, rePeerLabs, unpeerLab, type DeployInput } from "../labs/engine";
+import { awsHeadend, cancelLab, cleanupLab, deployLab, destroyLab, extendLab, hhmm, peerLab, rePeerLabs, unpeerLab, type DeployInput } from "../labs/engine";
 import { activeRuns, liveSessionOf, runsOf, type LabSessionRow } from "../labs/store";
 import { labRunRow } from "../labs/view";
 import { cardContext as realCardContext, labCard, RAN_SQL, sessionView } from "../labs/cards";
@@ -340,11 +340,11 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     if (!def) return notFound(c);
     const b = r.b as unknown as DeployInput;
     if (b.hours > def.timing.max_h) return bad(c, `${def.title} runs for at most ${def.timing.max_h} hours.`, "hours");
-    // Labs always build in Azure and connect to the headend by VNet peering, which an AWS headend cannot do: run unconnected.
-    const snap = await getSnapshot(c.env);
-    const awsHeadend = cloudOf(snap) === "aws" && snap.state !== "destroyed";
-    const { session, run } = await deployLab(c.env, def.id, { ...b, peer: b.peer && !awsHeadend }, c.get("user"));
-    const unconnected = awsHeadend && b.peer ? " Connect needs an Azure headend; this lab runs unconnected." : "";
+    // Labs always build in Azure and connect to the headend by VNet peering, which an AWS headend cannot do: run
+    // unconnected. A lab whose peering is required cannot, so deployLab refuses it on an AWS headend.
+    const aws = await awsHeadend(c.env);
+    const { session, run } = await deployLab(c.env, def.id, { ...b, peer: b.peer && !aws }, c.get("user"));
+    const unconnected = aws && b.peer ? " Connect needs an Azure headend; this lab runs unconnected." : "";
     return c.json({ ok: true, message: `Deploying ${def.title}.${unconnected}`, sessionId: session.id, runId: run.id });
   });
   action("extend", EXTEND, (b, c) => {
