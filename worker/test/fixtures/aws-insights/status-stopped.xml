@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DescribeInstanceStatusResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+    <requestId>7b5c3e40-9d6f-4a0c-1e2b-3c4d5e6f7081</requestId>
+    <instanceStatusSet>
+        <item>
+            <attachedEbsStatus>
+                <status>not-applicable</status>
+            </attachedEbsStatus>
+            <availabilityZone>eu-west-2a</availabilityZone>
+            <instanceId>i-0abc</instanceId>
+            <instanceState>
+                <code>80</code>
+                <name>stopped</name>
+            </instanceState>
+            <instanceStatus>
+                <status>not-applicable</status>
+            </instanceStatus>
+            <systemStatus>
+                <status>not-applicable</status>
+            </systemStatus>
+        </item>
+    </instanceStatusSet>
+</DescribeInstanceStatusResponse>
