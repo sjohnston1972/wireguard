@@ -45,6 +45,23 @@ export async function ec2(env: Env, action: string, params: Record<string, strin
   return text;
 }
 
+/**
+ * Every page of a paged EC2 Describe call: each answer's nextToken is sent back for the next page, at most `maxPages`
+ * pages (10). Returns each page's XML. EC2 may answer a filtered call with an empty page and a token, so the token,
+ * not the page, says whether there is more.
+ */
+export async function ec2Pages(env: Env, action: string, params: Record<string, string> = {}, maxPages = 10): Promise<string[]> {
+  const pages: string[] = [];
+  let token = "";
+  for (let page = 0; page < maxPages; page++) {
+    const xml = await ec2(env, action, token ? { ...params, NextToken: token } : params);
+    pages.push(xml);
+    token = xmlFirst(xml, "nextToken") ?? "";
+    if (!token) break;
+  }
+  return pages;
+}
+
 /** One JSON-protocol call (tagging, Cost Explorer). */
 export async function awsJson<T>(env: Env, o: { service: string; region: string; host: string; target: string; body: unknown }): Promise<T> {
   const r = await client(env, o.service, o.region).fetch(`https://${o.host}/`, {
@@ -134,7 +151,7 @@ export function xmlItems(xml: string, setTag: string): string[] {
  * record's (a tag, a network interface's privateIpAddress, a group). Nested non-list elements (instanceState) stay.
  */
 export function xmlOwn(item: string): string {
-  const inner = item.replace(/^<item(?:\s[^>]*)?>/, "").replace(/<\/item>$/, "");
+  const inner = itemInner(item);
   let out = "";
   let from = 0;
   for (const [a, b] of itemSpans(inner)) {
@@ -143,3 +160,19 @@ export function xmlOwn(item: string): string {
   }
   return out + inner.slice(from);
 }
+
+/**
+ * The items of the item's OWN <setTag> (an instance's tagSet or blockDeviceMapping), never a nested record's set of
+ * the same name (a network interface has a groupSet and could carry a tagSet of its own).
+ */
+export function xmlOwnItems(item: string, setTag: string): string[] {
+  const inner = itemInner(item);
+  const nested = itemSpans(inner);
+  for (const m of inner.matchAll(new RegExp(`<${setTag}(?:\\s[^>]*?)?/?>`, "g"))) {
+    const at = m.index ?? 0;
+    if (!nested.some(([a, b]) => at >= a && at < b)) return xmlItems(inner.slice(at), setTag);
+  }
+  return [];
+}
+
+const itemInner = (item: string) => item.replace(/^<item(?:\s[^>]*)?>/, "").replace(/<\/item>$/, "");

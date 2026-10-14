@@ -4,12 +4,14 @@ import { readFileSync } from "node:fs";
 import { makeEnv, type World } from "./harness";
 import type { Env } from "../src/env";
 import { opsFor } from "../src/cloud";
+import { resetAwsLogForTest } from "../src/cloud/aws";
 
 let env: Env;
 let world: World;
 beforeEach(() => {
   ({ env, world } = makeEnv());
   world.aws.exists = true;
+  resetAwsLogForTest();
 });
 afterEach(() => vi.unstubAllGlobals());
 const aws = () => opsFor("aws");
@@ -266,5 +268,80 @@ describe("inventory", () => {
     expect(names).not.toContain("vol-dead");
     expect(names).toContain("i-0abc");
     expect(names).toContain("vol-1");
+  });
+  it("a stopped leftover instance is reported alongside the ghosts, which are not", async () => {
+    world.aws.exists = false;
+    world.awsGhosts = true;
+    world.awsInstances = [{ id: "i-left", state: "stopped", type: "t4g.small" }];
+    const inv = await aws().inventory(env);
+    expect(inv.exists).toBe(true);
+    expect(inv.resources).toEqual([{ kind: "Virtual machine", name: "i-left", detail: "t4g.small, deallocated" }]);
+  });
+  it("asks DescribeInstances once, and still describes the headend", async () => {
+    const before = world.calls.length;
+    const asked: string[] = [];
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", async (i: Request, init?: RequestInit) => {
+      const body = typeof i === "object" && "clone" in i ? await i.clone().text() : String(init?.body ?? "");
+      asked.push(new URLSearchParams(body).get("Action") ?? "");
+      return real(i, init);
+    });
+    const inv = await aws().inventory(env);
+    expect(asked.filter((a) => a === "DescribeInstances")).toHaveLength(1);
+    expect(world.calls.length).toBeGreaterThan(before);
+    expect(inv.resources.find((r) => r.kind === "Virtual machine")).toMatchObject({ name: "i-0abc", detail: "t4g.micro, running, Ubuntu 24.04, SSH key only" });
+  });
+  it("follows DescribeInstances' nextToken: a headend on the second page is found", async () => {
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", async (i: Request, init?: RequestInit) => {
+      const body = typeof i === "object" && "clone" in i ? await i.clone().text() : String(init?.body ?? "");
+      const p = new URLSearchParams(body);
+      // EC2 can answer a filtered call with an empty first page and a token for the next.
+      if (p.get("Action") === "DescribeInstances" && !p.get("NextToken")) return new Response("<DescribeInstancesResponse><reservationSet/><nextToken>page-2</nextToken></DescribeInstancesResponse>", { status: 200 });
+      return real(i, init);
+    });
+    expect(await aws().view(env)).toMatchObject({ vm_exists: true, power: "running", public_ip: "18.130.0.10" });
+    const inv = await aws().inventory(env);
+    expect(inv.resources.map((r) => r.name)).toEqual(expect.arrayContaining(["i-0abc", "vol-1"]));
+  });
+});
+
+describe("inventory: detached volumes (still billed)", () => {
+  it("a tagged volume attached to nothing is a leftover, with its size", async () => {
+    world.aws.exists = false;
+    world.awsDetachedVolumes = [{ id: "vol-loose", size: 8 }];
+    const inv = await aws().inventory(env);
+    expect(inv.exists).toBe(true);
+    expect(inv.error).toBeUndefined();
+    expect(inv.resources).toEqual([{ kind: "OS disk", name: "vol-loose", detail: "8 GB, not attached to a server (still billed)" }]);
+  });
+  it("none: a deleted volume the tagging API still lists is not a leftover", async () => {
+    world.aws.exists = false;
+    world.awsGhosts = true;
+    const inv = await aws().inventory(env);
+    expect(inv.exists).toBe(false);
+    expect(inv.resources).toEqual([]);
+  });
+  it("refused: an unattached tagged volume is reported as unconfirmed, never as clean, and the check does not fail", async () => {
+    world.aws.exists = false;
+    world.awsGhosts = true;
+    world.awsVolumesRefused = true;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const inv = await aws().inventory(env);
+    expect(inv.error).toBeUndefined();
+    expect(inv.exists).toBe(true);
+    expect(inv.resources).toEqual([{ kind: "OS disk", name: "vol-dead", detail: expect.stringMatching(/not attached to a server; AWS would not say whether it still exists/) }]);
+    // The terminated instance is still known to be gone: only the disk is unknown.
+    expect(inv.resources.map((r) => r.name)).not.toContain("i-dead");
+    await aws().inventory(env);
+    expect(warn.mock.calls.filter((c) => /DescribeVolumes/.test(String(c[0])))).toHaveLength(1); // logged once
+    warn.mockRestore();
+  });
+  it("refused, with a live server: its attached disk is still known, nothing else is listed", async () => {
+    world.awsVolumesRefused = true;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const inv = await aws().inventory(env);
+    expect(inv.exists).toBe(true);
+    expect(inv.resources.filter((r) => r.kind === "OS disk")).toEqual([{ kind: "OS disk", name: "vol-1", detail: "vol-1" }]);
   });
 });
