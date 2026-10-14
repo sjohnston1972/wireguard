@@ -112,6 +112,9 @@ export function secretsFromEnv(env, names = SECRET_ENV) {
     const host = /^https?:\/\/([^./]+)\./.exec(String(env[k] ?? ""));
     if (host) add(host[1]);
   }
+  // The AWS account id is the 5th field of the deploy role's ARN: arn:aws:iam::<account id>:role/...
+  const acct = String(env.AWS_ROLE_ARN ?? "").split(":")[4];
+  if (acct) add(acct);
   return [...out];
 }
 

@@ -49,6 +49,9 @@ on:
 # only be replaced by a newer destroy, which does exactly the same job.
 # The two groups could then run side by side, so "Wait for any earlier wg run"
 # below makes every run queue behind the ones started before it.
+# This group name is shared with wg.yml (Azure) on purpose; the Worker's run
+# lock and its one-headend-at-a-time rule are what stop an Azure and an AWS run
+# overlapping, and the wait step also looks at both workflows.
 concurrency:
   group: wg-admin-${{ inputs.action }}
   cancel-in-progress: false
@@ -127,7 +130,8 @@ jobs:
           put_env SECRETS_URL "$(jq -r '.secrets_url // empty' <<<"$PAYLOAD")"
           put_env WORKER_RUN_ID "$(jq -r '.run_id // "manual"' <<<"$PAYLOAD")"
 
-      # Ask GitHub for a signed "this is wg.yml on main, run N" token and trade
+      # Ask GitHub for a signed "this is wg-aws.yml on main, run N" token (its
+      # workflow_ref is wg-aws.yml, which is what the Worker checks) and trade
       # it with the Worker for this run's secrets. Each value is masked before
       # it is stored, so no later step can print it. The Worker hands them out
       # once per run; a failure here stops the run before anything is built.
@@ -204,6 +208,15 @@ jobs:
             sleep 20
           done
           echo "no earlier wg run is active; going ahead"
+
+      # The AWS account id is in the role ARN. It is not a password, but it has no
+      # place in a public log (destroy output and access-denied messages quote it),
+      # so hide it before any step talks to AWS. Masks last for the whole job.
+      - name: Mask the AWS account id
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          echo "::add-mask::$(cut -d: -f5 <<<"$AWS_ROLE_ARN")"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
@@ -397,11 +410,11 @@ jobs:
           set -euo pipefail
           ts="$(date -u +%Y%m%dT%H%M%SZ)"
           terraform state pull > "$RUNNER_TEMP/state.json"
-          aws s3 cp "$RUNNER_TEMP/state.json" "s3://$R2_BUCKET/backups/aws-${ts}-${{ inputs.action }}.tfstate" --only-show-errors
-          aws s3 ls "s3://$R2_BUCKET/backups/aws-" | awk '{print $4}' | sort | head -n -20 | while read -r old; do
-            [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/backups/$old" --only-show-errors
+          aws s3 cp "$RUNNER_TEMP/state.json" "s3://$R2_BUCKET/backups-aws/${ts}-${{ inputs.action }}.tfstate" --only-show-errors
+          aws s3 ls "s3://$R2_BUCKET/backups-aws/" | awk '{print $4}' | sort | head -n -20 | while read -r old; do
+            [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/backups-aws/$old" --only-show-errors
           done
-          echo "state backed up as backups/aws-${ts}-${{ inputs.action }}.tfstate"
+          echo "state backed up as backups-aws/${ts}-${{ inputs.action }}.tfstate"
 
       # ── LIVE LOG: last lines ─────────────────────────────────────────────
       # Tell the shipper to send what is left and wait for it (15 s at most),

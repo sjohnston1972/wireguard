@@ -3,7 +3,10 @@
 // Plain English: wg-aws.yml: AWS in by role (no keys), R2 by file, the same shape as wg.yml.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync, chmodSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import YAML from "yaml";
 
 const aws = YAML.parse(readFileSync(".github/workflows/wg-aws.yml", "utf8"));
@@ -57,4 +60,31 @@ test("the safety net frees the ENI before the security groups and subnets", () =
   assert.ok(at(/delete-network-interface/) < at(/delete-security-group/));
   assert.ok(at(/delete-network-interface/) < at(/delete-subnet/));
   assert.match(sh, /describe-network-interfaces/);
+});
+
+// Run the real safety net against a stub `aws` that finds nothing, optionally failing one final-check look.
+const hasBash = spawnSync("bash", ["-c", "true"]).status === 0;
+function runNet(failVolumesFinal) {
+  const dir = mkdtempSync(join(tmpdir(), "net-")).replaceAll("\\", "/");
+  const stub = `#!/usr/bin/env bash
+case "$*" in
+  *describe-volumes*)
+    n=$(cat "${dir}/vol" 2>/dev/null || echo 0); echo $((n + 1)) > "${dir}/vol"
+    if [ "${failVolumesFinal ? 1 : 0}" = 1 ] && [ "$n" -ge 1 ]; then echo "stub: describe-volumes failed" >&2; exit 255; fi ;;
+esac
+exit 0
+`;
+  writeFileSync(`${dir}/aws`, stub);
+  chmodSync(`${dir}/aws`, 0o755);
+  const script = join(process.cwd(), "infra/ci/aws-safety-net.sh").replaceAll("\\", "/");
+  return spawnSync("bash", [script], { encoding: "utf8", env: { ...process.env, PATH: `${dir}:${process.env.PATH}` } });
+}
+
+test("safety net: a failed look in the final check is a failure, never 'AWS clean'", { skip: !hasBash && "no bash here" }, () => {
+  const bad = runNet(true);
+  assert.notEqual(bad.status, 0);
+  assert.ok(!bad.stdout.includes("AWS clean"));
+  const good = runNet(false);
+  assert.equal(good.status, 0, good.stderr);
+  assert.match(good.stdout, /AWS clean/);
 });
