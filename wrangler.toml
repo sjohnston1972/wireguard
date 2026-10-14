@@ -107,7 +107,7 @@ AZURE_VNET_CIDR = "10.50.0.0/16"
 # route table points 0.0.0.0/0 at the WireGuard VM).
 WORKLOAD_SUBNET = "10.50.2.0/24"
 # AWS (optional second cloud). AWS_ENABLED="1" shows it in the Deploy picker.
-AWS_ENABLED = "0"
+AWS_ENABLED = "1"
 AWS_REGION = "eu-west-2"
 AWS_INSTANCE_TYPE = "t4g.micro"
 AWS_HOURLY_RATE_GBP = "0.0116"
