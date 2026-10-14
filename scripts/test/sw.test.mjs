@@ -38,7 +38,7 @@ function load({ fetchReply = () => ({ ok: true, json: async () => ({}), text: as
     calls.fetch.push({ url: String(url), method: init.method ?? "GET", body: init.body ? JSON.parse(init.body) : undefined });
     return fetchReply(String(url));
   };
-  vm.runInNewContext(source, { self, fetch, btoa, atob, Response, Uint8Array, Promise, JSON, String, Number }, { filename: "sw.js" });
+  vm.runInNewContext(source, { self, fetch, btoa, atob, URL, Response, Uint8Array, Promise, JSON, String, Number }, { filename: "sw.js" });
   async function fire(type, event) {
     const waits = [];
     event.waitUntil = (p) => waits.push(p);
@@ -144,7 +144,7 @@ test("a notification tap with no window open opens its url", async () => {
 test("an alert button still posts its single-use link without opening anything", async () => {
   const sw = load({ fetchReply: () => ({ ok: true, text: async () => "Extended by 1 hour." }) });
   await sw.fire("notificationclick", { action: "a0", notification: { data: { url: "/", actions: [{ title: "Extend 1h", url: "https://wg-admin.example/api/act/tok" }] }, close() {} } });
-  assert.deepEqual(sw.calls.fetch.map((f) => `${f.method} ${f.url}`), ["POST https://wg-admin.example/api/act/tok"]);
+  assert.deepEqual(sw.calls.fetch.map((f) => `${f.method} ${f.url}`), ["POST /api/act/tok"]);
   assert.deepEqual(sw.calls.opened, []);
   assert.equal(sw.calls.shown[0].opts.body, "Extended by 1 hour.");
 });
