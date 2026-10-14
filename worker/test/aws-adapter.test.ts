@@ -143,6 +143,102 @@ describe("against a recorded DescribeSecurityGroupRules answer", () => {
   });
 });
 
+// A DescribeInstances answer in the real shape (masked), but with the network interface set BEFORE the instance's own
+// fields. Its nested items carry decoys (an instanceId, an instanceState, ipAddress, instanceType) that EC2 does not
+// put there today: a parse that read the first field in the item, rather than the instance's own, would take them.
+const NIC_FIRST = `<?xml version="1.0" encoding="UTF-8"?>
+<DescribeInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+    <requestId>8f7724cf-496f-496e-8fe3-example</requestId>
+    <reservationSet>
+        <item>
+            <reservationId>r-0a1b2c3d4e5f60718</reservationId>
+            <ownerId>123456789012</ownerId>
+            <groupSet/>
+            <instancesSet>
+                <item>
+                    <networkInterfaceSet>
+                        <item>
+                            <networkInterfaceId>eni-0aa11bb22cc33dd44</networkInterfaceId>
+                            <subnetId>subnet-0aa11bb22cc33dd44</subnetId>
+                            <vpcId>vpc-0aa11bb22cc33dd44</vpcId>
+                            <description/>
+                            <ownerId>123456789012</ownerId>
+                            <status>in-use</status>
+                            <macAddress>06:aa:bb:cc:dd:ee</macAddress>
+                            <privateIpAddress>10.50.1.99</privateIpAddress>
+                            <sourceDestCheck>false</sourceDestCheck>
+                            <groupSet><item><groupId>sg-0aa11bb22cc33dd44</groupId><groupName>wg-admin-headend</groupName></item></groupSet>
+                            <attachment>
+                                <attachmentId>eni-attach-0aa11bb22cc33dd44</attachmentId>
+                                <instanceId>i-0decoydecoydecoy0</instanceId>
+                                <instanceState><code>80</code><name>stopped</name></instanceState>
+                                <deviceIndex>0</deviceIndex>
+                                <status>attached</status>
+                            </attachment>
+                            <association><publicIp>203.0.113.250</publicIp><ipOwnerId>amazon</ipOwnerId></association>
+                            <ipAddress>203.0.113.250</ipAddress>
+                            <instanceType>t3.decoy</instanceType>
+                            <privateIpAddressesSet>
+                                <item><privateIpAddress>10.50.1.99</privateIpAddress><primary>true</primary><association><publicIp>203.0.113.250</publicIp><ipOwnerId>amazon</ipOwnerId></association></item>
+                            </privateIpAddressesSet>
+                        </item>
+                    </networkInterfaceSet>
+                    <tagSet>
+                        <item><key>wg-admin</key><value>vpn</value></item>
+                        <item><key>wg-admin-role</key><value>headend</value></item>
+                    </tagSet>
+                    <instanceId>i-0abc</instanceId>
+                    <imageId>ami-0123456789abcdef0</imageId>
+                    <instanceState>
+                        <code>16</code>
+                        <name>running</name>
+                    </instanceState>
+                    <privateDnsName>ip-10-50-1-4.eu-west-2.compute.internal</privateDnsName>
+                    <dnsName/>
+                    <instanceType>t4g.micro</instanceType>
+                    <privateIpAddress>10.50.1.4</privateIpAddress>
+                    <ipAddress>18.130.0.10</ipAddress>
+                    <groupSet><item><groupId>sg-0aa11bb22cc33dd44</groupId><groupName>wg-admin-headend</groupName></item></groupSet>
+                    <blockDeviceMapping><item><deviceName>/dev/sda1</deviceName><ebs><volumeId>vol-1</volumeId><status>attached</status></ebs></item></blockDeviceMapping>
+                </item>
+            </instancesSet>
+        </item>
+    </reservationSet>
+</DescribeInstancesResponse>`;
+
+describe("against a DescribeInstances answer with the network interface first", () => {
+  beforeEach(() => {
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", async (i: Request, init?: RequestInit) => {
+      const body = typeof i === "object" && "clone" in i ? await i.clone().text() : String(init?.body ?? "");
+      if (new URLSearchParams(body).get("Action") === "DescribeInstances") return new Response(NIC_FIRST, { status: 200 });
+      return real(i, init);
+    });
+  });
+
+  it("view reads the instance's own state and address, never the interface's", async () => {
+    expect(await aws().view(env)).toMatchObject({ vm_exists: true, power: "running", public_ip: "18.130.0.10" });
+  });
+  it("power stops the instance by its own id", async () => {
+    const ids: string[] = [];
+    const inner = globalThis.fetch;
+    vi.stubGlobal("fetch", async (i: Request, init?: RequestInit) => {
+      const p = new URLSearchParams(typeof i === "object" && "clone" in i ? await i.clone().text() : String(init?.body ?? ""));
+      if (p.get("Action") === "StopInstances") ids.push(p.get("InstanceId.1") ?? "");
+      return inner(i, init);
+    });
+    await aws().power(env, "hibernate");
+    expect(ids).toEqual(["i-0abc"]);
+  });
+  it("inventory describes the instance by its own type and state", async () => {
+    world.aws.exists = true;
+    const inv = await aws().inventory(env);
+    expect(inv.resources.find((r) => r.kind === "Virtual machine")).toMatchObject({ name: "i-0abc", detail: expect.stringMatching(/^t4g\.micro, running,/) });
+    expect(inv.resources.find((r) => r.kind === "OS disk")?.name).toBe("vol-1");
+    expect(JSON.stringify(inv.resources)).not.toMatch(/decoy/);
+  });
+});
+
 describe("inventory", () => {
   it("lists tagged resources; the Public IP line starts with the address", async () => {
     const inv = await aws().inventory(env);
