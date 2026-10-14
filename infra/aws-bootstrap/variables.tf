@@ -5,10 +5,10 @@ variable "region" {
   default = "eu-west-2"
 }
 
-variable "github_repo" {
-  description = "owner/name. Only this repo's main branch may assume the deploy role."
+variable "github_sub_prefix" {
+  description = "The repo's OIDC subject prefix. This repo uses GitHub's immutable subject format (owner@ownerId/repo@repoId), which survives renames; see GET /repos/{owner}/{repo}/actions/oidc/customization/sub. Only this repo's main branch may assume the deploy role."
   type        = string
-  default     = "sjohnston1972/wireguard"
+  default     = "repo:sjohnston1972@87701935/wireguard@1381942334"
 }
 
 variable "alert_email" {
