@@ -30,14 +30,15 @@ import type { Env } from "./env";
 import { canAzure } from "./env";
 import { effectiveConfig } from "./settings";
 import * as db from "./db";
-import { getSnapshot, saveSnapshot, anyHandshakeWithin } from "./state";
+import { getSnapshot, saveSnapshot, anyHandshakeWithin, cloudOf } from "./state";
 import { refreshActiveRun, startDestroy, detectDrift, refreshInventory } from "./runs";
 import { startHibernate, refreshPower } from "./standby";
 import { runSchedules } from "./schedule";
 import { notify } from "./notify";
 import { heartbeatProblem } from "./overview";
 import { actionButton, dashboardButton } from "./actions";
-import { costMonthToDate, costBreakdownMonthToDate, azureView } from "./azure";
+import { costMonthToDate, costBreakdownMonthToDate } from "./cloud/azure";
+import { opsFor } from "./cloud";
 import { checkDns } from "./dns";
 import { checkBudget } from "./budget";
 import { nightlyConfigBackup } from "./backup";
@@ -200,12 +201,13 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
   // 3c. A run that failed part-way (or was cancelled after Terraform built
   //     things) can leave a VM running in Azure with nothing watching it: no
   //     timer, no idle check. Give it a grace period, then tear it down.
-  if (snap.state === "failed" && canAzure(env)) {
+  if (snap.state === "failed") {
     const failedFor = now.getTime() - Date.parse(snap.since ?? now.toISOString());
     if (failedFor >= FAILED_GRACE_MINUTES * 60_000) {
       try {
-        const az = await azureView(env);
-        if (!az.error && az.rg_exists) {
+        const c = opsFor(cloudOf(snap));
+        const az = c.configured(env) ? await c.view(env) : null;
+        if (az && !az.error && az.rg_exists) {
           await startDestroy(env, "watchman", `failed ${FAILED_GRACE_MINUTES} min ago with resources still in Azure`);
           const msg = `The last run failed ${Math.round(failedFor / 60_000)} minutes ago and left resource group ${cfg.resourceGroup} in Azure, which is costing money. Tearing it down.`;
           await db.addAlert(env, "cost_guard", msg);

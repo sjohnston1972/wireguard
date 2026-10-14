@@ -9,6 +9,9 @@
 import { isDemoEnv } from "./demo/env";
 import type { DemoStore } from "./demo/store";
 
+/** Which cloud a headend lives in. A record without one is Azure (everything before AWS existed). */
+export type Cloud = "azure" | "aws";
+
 export interface Env {
   // Bindings
   DB: D1Database;

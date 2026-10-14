@@ -11,7 +11,7 @@
 // The snapshot is a cache of the truth, never the truth: the cron re-derives
 // it from GitHub, Azure and the VM, so a stale entry heals within 5 minutes.
 
-import type { Env } from "./env";
+import type { Cloud, Env } from "./env";
 
 export type State = "destroyed" | "deploying" | "running" | "destroying" | "failed" | "hibernating" | "standby" | "resuming";
 
@@ -241,6 +241,8 @@ export interface Snapshot {
   standby_since: string | null; // when the VM was deallocated into Standby
   power_op_at: string | null; // when a hibernate or resume was asked for
   pending_summary: string | null; // the session summary, held while a tear-down runs
+  /** Which cloud this headend was built in. Kept after tear-down, so drift checks still look in the right place. Null on a fresh install: read it with cloudOf. */
+  cloud: Cloud | null;
   region: string | null; // the Azure region this deployment was built in
   vm_size: string | null; // and the VM size
   profile: string | null; // the profile it was deployed from, if any
@@ -298,6 +300,7 @@ export const EMPTY: Snapshot = {
   standby_since: null,
   power_op_at: null,
   pending_summary: null,
+  cloud: null,
   region: null,
   vm_size: null,
   profile: null,
@@ -313,6 +316,11 @@ export const EMPTY: Snapshot = {
   test_vm_ip: null,
   updated_at: new Date(0).toISOString(),
 };
+
+/** The headend's cloud. Anything stored before AWS existed has no cloud and is Azure. */
+export function cloudOf(snap: { cloud?: Cloud | null }): Cloud {
+  return snap.cloud ?? "azure";
+}
 
 /**
  * The snapshot is stored in the Durable Object (strongly consistent, atomic
