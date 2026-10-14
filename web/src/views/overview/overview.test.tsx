@@ -120,4 +120,34 @@ describe("Overview status banner", () => {
     expect(within(form).getByRole("button", { name: "Deploy" })).toBeDisabled();
     expect(form).toHaveTextContent("GitHub is not connected");
   });
+
+  it("AWS off: the deploy form has no cloud choice", async () => {
+    renderApp("/", { routes: routes(overview("destroyed")) });
+    const form = within(await banner()).getByRole("form", { name: "Deploy" });
+    expect(within(form).queryByRole("group", { name: "Cloud" })).toBeNull();
+  });
+
+  it("deploys to AWS: London, no region or profile, cloud=aws", async () => {
+    const user = userEvent.setup();
+    const o = overview("destroyed");
+    o.config.aws.enabled = true;
+    const r = renderApp("/", { routes: routes(o, { "POST /api/v1/deploy": ok }) });
+    const form = within(await banner()).getByRole("form", { name: "Deploy" });
+    await user.click(within(form).getByRole("button", { name: "AWS" }));
+    expect(within(form).getByText(/AWS London/)).toBeInTheDocument();
+    await user.click(within(form).getByRole("button", { name: "Deploy" }));
+    await waitFor(() => expect(r.fetchMock!.callsTo("POST", "/api/v1/deploy")).toHaveLength(1));
+    expect(r.fetchMock!.callsTo("POST", "/api/v1/deploy")[0].body).toEqual({ hours: 4, cloud: "aws", overBudgetOk: false });
+  });
+
+  it("an Azure deploy body is unchanged with AWS on", async () => {
+    const user = userEvent.setup();
+    const o = overview("destroyed");
+    o.config.aws.enabled = true;
+    const r = renderApp("/", { routes: routes(o, { "POST /api/v1/deploy": ok }) });
+    const form = within(await banner()).getByRole("form", { name: "Deploy" });
+    await user.click(within(form).getByRole("button", { name: "Deploy" }));
+    await waitFor(() => expect(r.fetchMock!.callsTo("POST", "/api/v1/deploy")).toHaveLength(1));
+    expect(r.fetchMock!.callsTo("POST", "/api/v1/deploy")[0].body).toEqual({ hours: 4, profileId: 1, overBudgetOk: false });
+  });
 });

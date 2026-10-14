@@ -150,6 +150,7 @@ export function overview(state: State, over: OverviewOver = {}): OverviewRespons
       autoDestroyDefaultHours: 4,
       expiryAction: "destroy",
       standbyMaxDays: 7,
+      aws: { enabled: false, region: "eu-west-2", instanceType: "t4g.micro", hourlyRateGbp: 0.011, standbyRateGbp: 0.005 },
     },
     actions: { canDispatch: true, lockHolder: null, ...over.actions },
     near: over.near ?? { country: "GB", region: "uksouth" },

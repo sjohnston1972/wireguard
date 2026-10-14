@@ -120,8 +120,11 @@ export function gbp(v: number | null | undefined, digits = 2): string {
   return `£${v.toFixed(digits)}`;
 }
 
-/** "UK South (London)" from the code; the code when unknown. */
-export const regionFull = (code: string | null | undefined): string => (code ? REGIONS[code] ?? code : "");
+/** AWS regions wg-admin uses. Only London today. */
+export const AWS_REGIONS: Record<string, string> = { "eu-west-2": "London" };
+
+/** "UK South (London)" from the code; "London (AWS)" for an AWS code; the code when unknown. */
+export const regionFull = (code: string | null | undefined): string => (code ? REGIONS[code] ?? (AWS_REGIONS[code] ? `${AWS_REGIONS[code]} (AWS)` : code) : "");
 /** "UK South" */
 export const regionShort = (code: string | null | undefined): string => regionFull(code).replace(/\s*\(.*\)\s*$/, "");
 

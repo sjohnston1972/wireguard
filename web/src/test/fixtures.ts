@@ -138,6 +138,7 @@ export function overviewFixture(state = "running", over: { auto_destroy_at?: str
       autoDestroyDefaultHours: 4,
       expiryAction: "destroy",
       standbyMaxDays: 7,
+      aws: { enabled: false, region: "eu-west-2", instanceType: "t4g.micro", hourlyRateGbp: 0.011, standbyRateGbp: 0.005 },
     },
     actions: { canDispatch: true, lockHolder: null },
     near: { country: "GB", region: "uksouth" },

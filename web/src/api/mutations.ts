@@ -101,6 +101,8 @@ export interface DeployVars {
   hours?: number | null;
   profileId?: number | null;
   region?: string | null;
+  /** Only for AWS; an Azure deploy sends no cloud (the server's default). */
+  cloud?: "aws";
   overBudgetOk?: boolean;
 }
 export const useDeploy = () => useApiMutation<DeployVars>(run<DeployVars>("/deploy", (v) => v));

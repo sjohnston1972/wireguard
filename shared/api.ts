@@ -71,6 +71,8 @@ export interface OverviewResponse {
     autoDestroyDefaultHours: number;
     expiryAction: "destroy" | "hibernate";
     standbyMaxDays: number;
+    /** AWS as a second cloud: `enabled` only when AWS_ENABLED=1 and the Worker's keys are set. */
+    aws: { enabled: boolean; region: string; instanceType: string; hourlyRateGbp: number; standbyRateGbp: number };
   };
   actions: { canDispatch: boolean; lockHolder: string | null };
   near: { country: string | null; region: string | null };

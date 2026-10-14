@@ -10,7 +10,7 @@ import { fail, type ApiEnv } from "./app";
 import * as db from "../db";
 import { getSnapshot, peerOnline, selfTestFailures, cloudOf } from "../state";
 import { effectiveConfig } from "../settings";
-import { canDispatch, ratesFor } from "../env";
+import { canAws, canDispatch, ratesFor } from "../env";
 import { isDemoEnv } from "../demo/env";
 import { lockStatus } from "../lock";
 import { backupStatus } from "../backup";
@@ -75,6 +75,7 @@ export function registerOverview(api: Hono<ApiEnv>): void {
         autoDestroyDefaultHours: cfg.autoDestroyDefaultHours,
         expiryAction: cfg.expiryAction,
         standbyMaxDays: cfg.standbyMaxDays,
+        aws: { enabled: cfg.aws.enabled && canAws(c.env), region: cfg.aws.region, instanceType: cfg.aws.instanceType, hourlyRateGbp: cfg.aws.hourlyRateGbp, standbyRateGbp: cfg.aws.standbyRateGbp },
       },
       // In demo mode the app is not told "GitHub not connected" (spec ruling 15); actions are refused by the gate anyway.
       actions: { canDispatch: canDispatch(c.env) || isDemoEnv(c.env), lockHolder: lock.held && !["deploying", "destroying"].includes(snap.state) ? lock.lock?.runId ?? null : null },
