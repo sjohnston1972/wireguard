@@ -56,9 +56,9 @@ export function AppShell() {
         Skip to content
       </a>
       <header className="topbar">
-        <Link to="/" className="topbar__brand" aria-label="wg-admin home">
+        <Link to="/" className="topbar__brand" aria-label="cloudlabs home">
           <span className="topbar__dot" aria-hidden="true" />
-          <span className="topbar__name">wg-admin</span>
+          <span className="topbar__name">cloudlabs</span>
         </Link>
         <nav className="topbar__tabs" aria-label="Main">
           {TABS.map((t) => (

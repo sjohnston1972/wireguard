@@ -67,7 +67,7 @@ async function main() {
   }
   const status = runSteps(uploadSteps(list), run);
   if (status !== 0) process.exit(status);
-  console.log(dry ? "\nDry run: nothing was changed." : "\nUploaded. Open https://wg-admin.clydeford.net/showcase/");
+  console.log(dry ? "\nDry run: nothing was changed." : "\nUploaded. Open https://cloudlabs.clydeford.net/showcase/");
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

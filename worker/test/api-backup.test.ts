@@ -148,7 +148,7 @@ describe("restore: preview then confirm", () => {
     if (lied) expect(lied.status).toBe(400);
     const notExport = await api(env, "POST", "/backup/restore/preview", { kind: "other" });
     expect(notExport.status).toBe(400);
-    expect(notExport.json.error.message).toBe("That is not a wg-admin config export.");
+    expect(notExport.json.error.message).toBe("That is not a cloudlabs config export.");
     expect((await raw(env, "/backup/restore/preview", "not json")).status).toBe(400);
     expect((await raw(env, "/backup/restore/preview", "{}", { "Content-Type": "text/plain" })).status).toBe(400);
     expect((await api(env, "POST", "/backup/restore/preview")).status).toBe(400);

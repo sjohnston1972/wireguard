@@ -1,6 +1,6 @@
 // showcase.js: the public showcase page (showcase/index.html) — the film list, the stage and the MSE player.
 const FILMS = [
-  { id: "00-hero", title: "wg-admin, live", text: "One click deploys a WireGuard VPN on Azure while its pipeline and log stream by. Then live traffic, a new client and its QR code, a firewall rule reviewed and applied, a packet capture, SSH into the live kit, an Azure lab building itself, and a typed tear-down back to £0." },
+  { id: "00-hero", title: "cloudlabs, live", text: "One click deploys a WireGuard VPN on Azure while its pipeline and log stream by. Then live traffic, a new client and its QR code, a firewall rule reviewed and applied, a packet capture, SSH into the live kit, an Azure lab building itself, and a typed tear-down back to £0." },
   { id: "01-deploy-and-destroy", title: "Deploy and destroy", text: "Pick how long it runs, deploy, and watch every pipeline step and log line arrive. Tear down by typing destroy, and nothing is left running." },
   { id: "02-live-traffic-and-log", title: "Live traffic and log", text: "The traffic chart scrolling in real time, heartbeat and latency ticking, the deploy log streaming, every client's handshake." },
   { id: "03-add-a-client", title: "Add a client", text: "Name it, choose what goes through the tunnel and see the exact AllowedIPs, scan the QR code, and watch it come online." },

@@ -1,4 +1,4 @@
-# wg-admin: an on-demand WireGuard concentrator in Azure
+# cloudlabs: an on-demand VPN headend and cloud labs on Azure and AWS
 
 A VPN headend that only exists while you want it. One click builds a small
 Azure VM running WireGuard, points **wg.clydeford.net** at it, proves the tunnel
@@ -10,7 +10,13 @@ never change: they always dial the same name and trust the same server key.
 Everything that manages it runs on Cloudflare and GitHub, both on free tiers.
 Nothing runs in the homelab except the WireGuard clients themselves.
 
-> **Status:** the dashboard is live at **https://wg-admin.clydeford.net**
+> **New name, new address:** this was called wg-admin until October 2026. The
+> old address, wg-admin.clydeford.net, still works and sends you on to the new
+> one, and the machines (a running VM, GitHub runs, old alert links) still use
+> it. Behind the scenes many names stay wg-admin on purpose: the Worker, its
+> database and buckets, the AWS tag `wg-admin=vpn` and the Azure roles.
+
+> **Status:** the dashboard is live at **https://cloudlabs.clydeford.net**
 > (Cloudflare Access login). Deploy, hibernate, resume, tear down, add clients
 > by QR, watch the live log, see cost, get phone alerts with buttons. The full
 > design is in [wg-admin-spec.md](wg-admin-spec.md).
@@ -20,14 +26,14 @@ Nothing runs in the homelab except the WireGuard clients themselves.
 ```mermaid
 flowchart LR
   U[You] --> CA[Cloudflare Access<br/>login gate]
-  CA --> W[Worker<br/>wg-admin.clydeford.net<br/>Phase 2]
+  CA --> W[Worker<br/>cloudlabs.clydeford.net<br/>Phase 2]
   W -->|"run it"| GH[GitHub Actions<br/>runs Terraform]
   GH --> AZ[Azure UK South<br/>one small VM]
   GH --> R2[(R2 bucket<br/>Terraform state)]
   GH --> DNS[Cloudflare DNS<br/>wg.clydeford.net]
   AZ -->|heartbeat every 30s| W
   C[WireGuard clients<br/>phone, laptop, home] -->|UDP 51820| AZ
-  W -->|"alerts with buttons<br/>(Web Push)"| N[wg-admin app<br/>on the phone]
+  W -->|"alerts with buttons<br/>(Web Push)"| N[cloudlabs app<br/>on the phone]
   GH -->|"OIDC: prove who I am,<br/>collect run secrets"| W
 ```
 
@@ -44,8 +50,8 @@ flowchart LR
 | **R2 bucket** `wg-admin-tfstate` | Where Terraform keeps its inventory of what it built. Locked during a run so two runs cannot collide. | The startup-config; lose it and the box still runs but you no longer know what you have |
 | **wg.clydeford.net** | An A record, TTL 60, DNS-only (grey cloud). Points at the VM while it exists; parked on the reserved address 192.0.2.1 while destroyed, so it always resolves and nobody caches a "no such host". Deploy and destroy repoint the one record in place; it is never deleted. | A DDNS name: the name is stable, the address behind it is disposable |
 | **Cloudflare Access** | Login gate for the dashboard. Only stevie.johnston@gmail.com gets in. Three narrow paths skip it and prove themselves another way: the VM heartbeat and the GitHub callback (per-run tokens), and the phone buttons (single-use links). | MFA on the management plane |
-| **Phone alerts** (Web Push) | The installed wg-admin app gets notifications like any app. The Worker encrypts each alert to the phone's own key and signs it with the dashboard's VAPID key; Google's push service delivers it without being able to read it. | A pager whose messages only your handset can decrypt |
-| **The Worker** (Phase 2) | The dashboard and API at wg-admin.clydeford.net. | The management plane |
+| **Phone alerts** (Web Push) | The installed cloudlabs app gets notifications like any app. The Worker encrypts each alert to the phone's own key and signs it with the dashboard's VAPID key; Google's push service delivers it without being able to read it. | A pager whose messages only your handset can decrypt |
+| **The Worker** (Phase 2) | The dashboard and API at cloudlabs.clydeford.net (and the old wg-admin.clydeford.net). | The management plane |
 
 ## Setup, once
 
@@ -175,14 +181,14 @@ destroy run for that lab before it stops.
 
 ## Using the dashboard
 
-Open **https://wg-admin.clydeford.net** and sign in with Google, or with the
+Open **https://cloudlabs.clydeford.net** and sign in with Google, or with the
 one-time PIN sent to your email (Cloudflare Access; only your address is allowed). On a phone, use "Add to Home Screen": it
 installs as an app with its own icon, and the login lasts 24 hours.
 Settings > **Install the app** walks you through it: an Install button on
 Android (Chrome), the three Safari taps on an iPhone, and on a computer a QR
 code to open the dashboard on the phone. The app manifest and icons are
 public (their own Access bypass), and so is the product showcase at
-**https://wg-admin.clydeford.net/showcase/**: short films of the dashboard with demo
+**https://cloudlabs.clydeford.net/showcase/**: short films of the dashboard with demo
 data, served read-only from its own R2 bucket (`npm run showcase-upload` refreshes
 it from the showcase pipeline). Everything else stays behind the login.
 
@@ -259,7 +265,7 @@ one cannot cost money for ever.
 ### Azure or AWS
 
 The Deploy form has a **Cloud** choice: Azure (UK South, a B1s) or AWS (London
-`eu-west-2`, a `t4g.micro`). Only one runs at a time, because wg-admin keeps a
+`eu-west-2`, a `t4g.micro`). Only one runs at a time, because cloudlabs keeps a
 single headend. To switch, tear the current one down first; a hibernated or
 failed one counts as still there. Everything else is the same either way:
 `wg.clydeford.net`, the server key, every client, the firewall, alerts, timers
@@ -275,10 +281,10 @@ How AWS is wired:
 - The Worker uses a small AWS user that can only look, start and stop the
   wg-admin server, edit its firewall rules and read cost. Its keys are Worker
   secrets.
-- Everything wg-admin builds carries the tag `wg-admin=vpn`. A tear-down ends
+- Everything cloudlabs builds carries the tag `wg-admin=vpn`. A tear-down ends
   with a safety net that removes anything still carrying it and fails loudly
   if something survives.
-- AWS's own budget alarm emails at about £15 a month, whatever wg-admin
+- AWS's own budget alarm emails at about £15 a month, whatever cloudlabs
   thinks.
 
 One-off setup (already done; run again only to change it):
@@ -298,7 +304,7 @@ unconnected (they peer with the Azure headend only).
 
 ### Phone alerts
 
-Alerts come from the wg-admin app itself. Install it (Settings > Install the
+Alerts come from the cloudlabs app itself. Install it (Settings > Install the
 app), then Settings > Phone alerts > **Turn on alerts on this phone** and allow
 notifications; a test alert follows. You get:
 
@@ -453,7 +459,7 @@ Or deploy the previous commit: check it out, then `npm run deploy-worker`.
 Without a computer: Cloudflare dashboard > Workers & Pages > wg-admin >
 Deployments > the version before the deploy > Rollback (the same cron
 caveat applies). Then check with
-`node scripts/smoke.mjs --live https://wg-admin.clydeford.net` (run it after
+`node scripts/smoke.mjs --live https://cloudlabs.clydeford.net` (run it after
 every deploy too): pages go to the Access login, the manifest and icons
 answer, and the VM heartbeat and alert-button paths still reach the Worker.
 

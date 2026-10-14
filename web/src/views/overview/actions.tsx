@@ -181,7 +181,7 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
           </label>
         </div>
       )}
-      {switching && <p role="note">Tear down the {cloudLabel(current)} headend first. wg-admin runs one cloud at a time.</p>}
+      {switching && <p role="note">Tear down the {cloudLabel(current)} headend first. cloudlabs runs one cloud at a time.</p>}
       {warn && (
         // Never blocks: the check can be up to a day old, and Azure may still find the VM.
         <p className="ov-deploy__cap" role="note">

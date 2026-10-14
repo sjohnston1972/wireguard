@@ -128,7 +128,7 @@ variable "peers_json" {
 variable "agent_url" {
   description = "Where the VM's status agent POSTs every 30 seconds."
   type        = string
-  default     = "https://wg-admin.clydeford.net/api/agent"
+  default     = "https://cloudlabs.clydeford.net/api/agent"
 }
 
 variable "agent_token" {

@@ -21,7 +21,7 @@ export const GUIDE_DEMO_OFF = "Lab guide PDFs are not available in demo mode";
 /** What went wrong, in words the reader can act on. */
 export function guideErrorWords(e: unknown): string {
   if (e instanceof SessionExpiredError) return "Your sign-in has expired. Reload the page to sign in again, then download the PDF.";
-  if (e instanceof NetworkError) return "Couldn't reach wg-admin. Check your connection and try again.";
+  if (e instanceof NetworkError) return "Couldn't reach cloudlabs. Check your connection and try again.";
   if (e instanceof ApiError) {
     if (e.status === 404) return "This lab is no longer in the catalogue. Reload the page.";
     return e.message;

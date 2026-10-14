@@ -133,7 +133,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
       const ttl = Math.round(left / 1000) + 30 * 60; // the buttons stop working 30 minutes after the deadline
       const mins = Math.max(1, Math.round(left / 60_000));
       const buttons = [await actionButton(env, "extend", ttl), hibernating ? await actionButton(env, "destroy", ttl) : await actionButton(env, "hibernate", ttl), dashboardButton(env)];
-      await notify(env, `wg-admin: ${hibernating ? "hibernating" : "tearing down"} in ${mins} min`, `The auto-destroy timer ends at ${new Date(snap.auto_destroy_at).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}. Extend it, or let it ${hibernating ? "hibernate" : "tear down"}.`, { priority: 4, tags: ["hourglass"], buttons });
+      await notify(env, `cloudlabs: ${hibernating ? "hibernating" : "tearing down"} in ${mins} min`, `The auto-destroy timer ends at ${new Date(snap.auto_destroy_at).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" })}. Extend it, or let it ${hibernating ? "hibernate" : "tear down"}.`, { priority: 4, tags: ["hourglass"], buttons });
       notes.push("deadline warning sent");
     }
   }
@@ -153,7 +153,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
         }
         const msg = guard ? "Cost guard fired: the VM was still running 15 minutes past its deadline. Tearing down." : hibernating ? "Timer reached. Hibernating into Standby." : "Auto-destroy timer reached. Tearing down.";
         await db.addAlert(env, guard ? "cost_guard" : "info", msg);
-        if (guard) await notify(env, "wg-admin: cost guard", msg, { priority: 4, tags: ["rotating_light"] });
+        if (guard) await notify(env, "cloudlabs: cost guard", msg, { priority: 4, tags: ["rotating_light"] });
         notes.push(msg);
         return notes;
       } catch (e) {
@@ -212,7 +212,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
           await startDestroy(env, "watchman", `failed ${FAILED_GRACE_MINUTES} min ago with resources still in ${c.label}`);
           const msg = `The last run failed ${Math.round(failedFor / 60_000)} minutes ago and left ${cloudOf(snap) === "aws" ? "the tagged wg-admin resources" : `resource group ${cfg.resourceGroup}`} in ${c.label}, which is costing money. Tearing it down.`;
           await db.addAlert(env, "cost_guard", msg);
-          await notify(env, "wg-admin: cleaning up after a failed run", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open dashboard", "/activity")] });
+          await notify(env, "cloudlabs: cleaning up after a failed run", msg, { priority: 4, tags: ["rotating_light"], buttons: [dashboardButton(env, "Open dashboard", "/activity")] });
           notes.push(msg);
           return notes;
         }
@@ -229,7 +229,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     const drift = await detectDrift(env);
     if (drift && drift !== before) {
       await db.addAlert(env, "drift", drift);
-      await notify(env, "wg-admin: drift", drift, { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
+      await notify(env, "cloudlabs: drift", drift, { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
       notes.push(drift);
     }
   } catch (e) {
@@ -246,7 +246,7 @@ export async function runScheduled(env: Env, now = new Date()): Promise<string[]
     if (stale && !wasFlagged) {
       await env.STATUS.put(`flag:${flag}`, "1");
       await db.addAlert(env, "unreachable", (problem === "boot" ? "The VM hasn't reported in since it started 5 minutes ago." : "No heartbeat from the VM for 2 minutes.") + " It may be down, or the agent token may be wrong.");
-      await notify(env, "wg-admin: VM unreachable", problem === "boot" ? "The VM hasn't reported in since it started 5 minutes ago." : "No heartbeat for 2 minutes.", { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
+      await notify(env, "cloudlabs: VM unreachable", problem === "boot" ? "The VM hasn't reported in since it started 5 minutes ago." : "No heartbeat for 2 minutes.", { priority: 4, tags: ["warning"], buttons: [dashboardButton(env)] });
       notes.push("unreachable");
     } else if (!stale && wasFlagged) {
       await env.STATUS.delete(`flag:${flag}`);

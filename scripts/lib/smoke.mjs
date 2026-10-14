@@ -4,7 +4,7 @@
 // data, and the pure judge that marks a response pass or fail. scripts/smoke.mjs
 // makes the requests. Two sets:
 //   local: against "npm run dev:api" (login bypassed): pages, files, the API.
-//   live:  against wg-admin.clydeford.net with no session: Access must guard
+//   live:  against cloudlabs.clydeford.net with no session: Access must guard
 //          the pages, and the paths with Access bypass apps (manifest, icons,
 //          VM heartbeat, alert buttons) must still reach Cloudflare and the Worker.
 
@@ -107,7 +107,7 @@ export function judge(check, response) {
 /** `--local <base>` or `--live <base>` (an http(s) URL; a trailing slash is dropped). */
 export function parseSmokeArgs(argv) {
   const i = argv.findIndex((a) => a === "--local" || a === "--live");
-  if (i === -1) throw new Error("Usage: node scripts/smoke.mjs --local http://localhost:8787 | --live https://wg-admin.clydeford.net");
+  if (i === -1) throw new Error("Usage: node scripts/smoke.mjs --local http://localhost:8787 | --live https://cloudlabs.clydeford.net");
   const base = argv[i + 1];
   if (!base || !/^https?:\/\/[^/]+/.test(base)) throw new Error(`${argv[i]} needs a base URL such as http://localhost:8787`);
   return { mode: argv[i].slice(2), base: base.replace(/\/+$/, "") };

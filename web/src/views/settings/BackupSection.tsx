@@ -105,7 +105,7 @@ export function RestorePanel() {
       parsed = JSON.parse(await readText(file));
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("not an object");
     } catch {
-      setProblem("That file is not a wg-admin export (it is not valid JSON).");
+      setProblem("That file is not a cloudlabs export (it is not valid JSON).");
       return;
     }
     preview.mutate(parsed, { onSuccess: setPlan, onError: (e) => setProblem(e.message) });

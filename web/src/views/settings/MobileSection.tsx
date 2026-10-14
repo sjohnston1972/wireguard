@@ -8,7 +8,7 @@ import { usePushDevice, type DeviceState } from "./push";
 const WORDS: Record<DeviceState["kind"], string> = {
   checking: "Checking this device...",
   unsupported: "This browser cannot receive alerts. On Android use Chrome; on iPhone install the app first (Share, Add to Home Screen).",
-  denied: "Notifications are blocked for this site. Allow them in the phone's settings for wg-admin, then come back.",
+  denied: "Notifications are blocked for this site. Allow them in the phone's settings for cloudlabs, then come back.",
   off: "Alerts are off on this device.",
   on: "Alerts are on for this device.",
   stale: "This device was signed up once, but the dashboard no longer sends to it (it was removed, or the phone's push service replaced it). Turn alerts on again.",
@@ -24,7 +24,7 @@ export function MobileSection({ s }: { s: SettingsResponse }) {
   const canToggle = dev.state.kind === "on" || dev.state.kind === "off" || dev.state.kind === "stale" || dev.state.kind === "error";
   return (
     <div className="set-stack">
-      <Lead>Put wg-admin on a phone like an app, and get an alert when a deploy finishes, a run fails or the budget is close.</Lead>
+      <Lead>Put cloudlabs on a phone like an app, and get an alert when a deploy finishes, a run fails or the budget is close.</Lead>
       <div className="set-two">
         <Panel title="Install on a phone">
           <div className="set-install">

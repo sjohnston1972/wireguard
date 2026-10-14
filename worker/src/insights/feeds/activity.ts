@@ -221,7 +221,7 @@ export async function storeActivity(env: Env, rows: ActivityRow[]): Promise<numb
   if (stmts.length) await db.batch(stmts);
   let noted = 0;
   for (const r of fresh.filter(outsideChange)) {
-    await addAlert(env, "drift", `Changed in Azure outside wg-admin: ${r.caller ?? "someone"}, ${r.operation} on ${r.resource_type} ${r.resource_name ?? ""} (${r.status}).`.replace(/\s+\(/, " ("));
+    await addAlert(env, "drift", `Changed in Azure outside cloudlabs: ${r.caller ?? "someone"}, ${r.operation} on ${r.resource_type} ${r.resource_name ?? ""} (${r.status}).`.replace(/\s+\(/, " ("));
     noted++;
   }
   return noted;

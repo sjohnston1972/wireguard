@@ -288,7 +288,7 @@ ${learn}
 ${body}
 </main>
 ${answersHtml(answers)}
-<p class="colophon">${esc(d.id)} · lab version ${d.version} · guide generated ${esc(date)} by wg-admin. Costs are estimates at Azure list prices; check the dashboard before you deploy.</p>
+<p class="colophon">${esc(d.id)} · lab version ${d.version} · guide generated ${esc(date)} by cloudlabs. Costs are estimates at Azure list prices; check the dashboard before you deploy.</p>
 </body>
 </html>`;
 }

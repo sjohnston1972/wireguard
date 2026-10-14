@@ -125,21 +125,21 @@ describe("the heartbeat side", () => {
     const id1 = (await getSnapshot(env)).selftest_req!.id;
     await handleAgent(env, token, { dump: DUMP, selftest: selftest({ id: id1 }) });
     const passed = world.notes.slice(before);
-    expect(passed.map((n) => n.title)).toEqual(["wg-admin: Health check passed"]);
+    expect(passed.map((n) => n.title)).toEqual(["cloudlabs: Health check passed"]);
     expect(passed[0].message).not.toMatch(/Tears down at/);
 
     await requestHealthCheck(env);
     const id2 = (await getSnapshot(env)).selftest_req!.id;
     await handleAgent(env, token, { dump: DUMP, selftest: selftest({ id: id2, at: new Date(Date.now() + 1000).toISOString(), internet: false }) });
     const failed = world.notes.slice(before + 1);
-    expect(failed.map((n) => n.title)).toEqual(["wg-admin: Health check failed"]);
+    expect(failed.map((n) => n.title)).toEqual(["cloudlabs: Health check failed"]);
     expect(failed[0].message).toMatch(/internet \(IPv4\)/);
   });
 
   it("the boot self-test still pushes 'wg-admin: ready' with the tear-down time", async () => {
     const { env, world, token } = await running();
     await handleAgent(env, token, { dump: DUMP, selftest: selftest() });
-    const ready = world.notes.find((n) => n.title === "wg-admin: ready");
+    const ready = world.notes.find((n) => n.title === "cloudlabs: ready");
     expect(ready?.message).toMatch(/Tears down at/);
     expect(world.notes.some((n) => /Health check/.test(n.title ?? ""))).toBe(false);
   });

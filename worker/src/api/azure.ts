@@ -80,7 +80,7 @@ function readQuery(c: Context<ApiEnv>, rules: Record<string, Rule>): Record<stri
 }
 
 const oneOf = (values: readonly string[], d?: string, required = false): Rule => ({ values, default: d, required, what: `one of ${values.join(", ")}` });
-const REGION: Rule = { test: (v) => Object.hasOwn(REGIONS, v), required: true, what: "an Azure region wg-admin offers (for example uksouth)" };
+const REGION: Rule = { test: (v) => Object.hasOwn(REGIONS, v), required: true, what: "an Azure region cloudlabs offers (for example uksouth)" };
 const SIZE: Rule = { test: (v) => SIZE_RE.test(v), required: true, what: "a VM size such as Standard_B1s" };
 
 /** The fixed rates as a price, and why they apply (insights/price.ts). `cfg` must carry the fixed rates (fixedConfig). */

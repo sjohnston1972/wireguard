@@ -16,7 +16,7 @@ afterEach(() => vi.unstubAllGlobals());
 const IDS = [CLIENT, OID];
 const events = () => [...fixture("activity").value, ...fixture("activity-page2").value];
 const stored = async (env: Env) => (await env.DB.prepare("SELECT * FROM az_activity ORDER BY at").all<any>()).results;
-const notes = async (env: Env) => (await env.DB.prepare("SELECT kind, message FROM alerts WHERE message LIKE 'Changed in Azure outside wg-admin%' ORDER BY id").all<{ kind: string; message: string }>()).results;
+const notes = async (env: Env) => (await env.DB.prepare("SELECT kind, message FROM alerts WHERE message LIKE 'Changed in Azure outside cloudlabs%' ORDER BY id").all<{ kind: string; message: string }>()).results;
 
 async function only(env: Env) {
   await allNotDue(env);

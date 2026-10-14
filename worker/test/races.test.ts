@@ -221,7 +221,7 @@ describe("settling without the callback (#24)", () => {
     const before = world.dispatches.length;
     await Promise.all([refreshActiveRun(env), refreshActiveRun(env)]);
     expect(world.dispatches.slice(before).map((d) => d.action)).toEqual(["apply"]);
-    expect(world.notes.find((n) => n.title === "wg-admin: move stopped")).toBeUndefined();
+    expect(world.notes.find((n) => n.title === "cloudlabs: move stopped")).toBeUndefined();
     expect((await db.listAlerts(env)).filter((a) => a.kind === "destroy")).toHaveLength(1);
   });
 

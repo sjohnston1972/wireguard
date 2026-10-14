@@ -1,6 +1,6 @@
 /* sw.js: the dashboard's service worker.
  *
- * Plain English: what lets a phone install wg-admin as an app. It caches
+ * Plain English: what lets a phone install cloudlabs as an app. It caches
  * nothing and changes nothing while the network works: every page still
  * comes live from Cloudflare, behind the login. Its one job is a clear
  * offline page instead of the browser's own error when the phone has no
@@ -18,7 +18,7 @@
 var OFFLINE = [
   "<!doctype html><html lang=en><head><meta charset=utf-8>",
   "<meta name=viewport content='width=device-width, initial-scale=1'>",
-  "<title>wg-admin: offline</title>",
+  "<title>cloudlabs: offline</title>",
   "<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1620;color:#e6edf5;",
   "font:16px/1.5 system-ui,sans-serif;padding:24px;box-sizing:border-box}",
   "div{max-width:30ch}b{display:block;font-size:1.6rem;margin-bottom:6px}button{font:inherit;font-weight:600;",
@@ -47,9 +47,9 @@ var BADGE = "/icons/badge-96.png";
 
 self.addEventListener("push", function (e) {
   var d = {};
-  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { title: "wg-admin", body: e.data ? e.data.text() : "" }; }
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { title: "cloudlabs", body: e.data ? e.data.text() : "" }; }
   var buttons = (d.actions || []).slice(0, 2);
-  e.waitUntil(self.registration.showNotification(d.title || "wg-admin", {
+  e.waitUntil(self.registration.showNotification(d.title || "cloudlabs", {
     body: d.body || "",
     icon: ICON,
     badge: BADGE,
@@ -107,7 +107,7 @@ self.addEventListener("pushsubscriptionchange", function (e) {
         var drop = old && old.endpoint && old.endpoint !== j.endpoint ? old.endpoint : null;
         return postJson("/api/v1/push/subscribe", body).then(function (r) {
           if (r && r.status === 409) {
-            return self.registration.showNotification("wg-admin", {
+            return self.registration.showNotification("cloudlabs", {
               body: "Phone alerts need renewing. Turn demo mode off in the dashboard, on this phone, to finish.",
               icon: ICON,
               badge: BADGE,
@@ -130,11 +130,13 @@ self.addEventListener("notificationclick", function (e) {
     var b = (data.actions || [])[Number(e.action.slice(1))];
     if (!b) return;
     e.waitUntil(
-      fetch(b.url, { method: "POST" })
+      // Same address as this app (the link's path only): the dashboard answers /api/act on its old and new
+      // addresses, and a phone that installed the app on the old one cannot read an answer from the new one.
+      fetch(new URL(b.url).pathname, { method: "POST" })
         .then(function (r) { return r.text(); })
         .catch(function () { return "Could not reach the dashboard. Open it to check."; })
         .then(function (text) {
-          return self.registration.showNotification("wg-admin", { body: text, icon: ICON, badge: BADGE, tag: "act-result" });
+          return self.registration.showNotification("cloudlabs", { body: text, icon: ICON, badge: BADGE, tag: "act-result" });
         })
     );
     return;

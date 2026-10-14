@@ -102,7 +102,7 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
       await refreshInventory(env);
       const cfg = await effectiveConfig(env);
       await db.addAlert(env, "session", summary);
-      await notify(env, "wg-admin: in standby", `${summary} Standby costs about £${(ratesFor(cfg, cloudOf(snap)).standbyRateGbp * 24 * 30).toFixed(2)} a month; resume takes about a minute. Torn down automatically after ${cfg.standbyMaxDays} days.`, {
+      await notify(env, "cloudlabs: in standby", `${summary} Standby costs about £${(ratesFor(cfg, cloudOf(snap)).standbyRateGbp * 24 * 30).toFixed(2)} a month; resume takes about a minute. Torn down automatically after ${cfg.standbyMaxDays} days.`, {
         tags: ["zzz"],
         buttons: [dashboardButton(env, "Resume from dashboard"), await actionButton(env, "destroy", 3 * 24 * 3600)],
       });
@@ -129,7 +129,7 @@ export async function refreshPower(env: Env, now = Date.now()): Promise<void> {
     if (!won) return; // the heartbeat, or another poller, got there first
     await releaseLock(env, undefined, true);
     await db.addAlert(env, "unreachable", "The VM powered on after Resume but has not sent a heartbeat in 6 minutes.");
-    await notify(env, "wg-admin: resumed, but silent", "The VM is powered on but has not reported in. Check the dashboard.", { priority: 4, buttons: [dashboardButton(env)] });
+    await notify(env, "cloudlabs: resumed, but silent", "The VM is powered on but has not reported in. Check the dashboard.", { priority: 4, buttons: [dashboardButton(env)] });
   } else if (now - started > 15 * 60_000) {
     const won = await saveSnapshotIf(env, "resuming", { state: "standby", error: `Resume did not finish: ${c.label} reports "${az.power ?? "unknown"}".`, power_op_at: null });
     if (!won) return;

@@ -124,7 +124,7 @@ export function config(env: Env): Config {
     return Number.isFinite(n) && v !== undefined && v !== "" ? n : d;
   };
   return {
-    publicUrl: (env.PUBLIC_URL || "https://wg-admin.clydeford.net").replace(/\/$/, ""),
+    publicUrl: (env.PUBLIC_URL || "https://cloudlabs.clydeford.net").replace(/\/$/, ""),
     dnsName: env.WG_DNS_NAME || "wg.clydeford.net",
     port: num(env.WG_PORT, 51820),
     subnet: env.WG_SUBNET || "10.13.13.0/24",

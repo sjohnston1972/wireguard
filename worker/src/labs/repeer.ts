@@ -22,6 +22,6 @@ export async function rePeerPush(env: Env, gatewayRunId: string): Promise<number
   await env.STATUS.put(key, "1", { expirationTtl: 7 * 86_400 });
   const msg = `The gateway is running again: ${n} lab${n === 1 ? " is" : "s are"} waiting to peer to it. Re-peer ${n} lab${n === 1 ? "" : "s"} from the Labs tab or the Overview.`;
   await db.addAlert(env, "info", msg, gatewayRunId);
-  await notify(env, `wg-admin: re-peer ${n} lab${n === 1 ? "" : "s"}`, msg, { tags: ["link"], buttons: [dashboardButton(env, `Re-peer ${n} lab${n === 1 ? "" : "s"}`, "/labs")] });
+  await notify(env, `cloudlabs: re-peer ${n} lab${n === 1 ? "" : "s"}`, msg, { tags: ["link"], buttons: [dashboardButton(env, `Re-peer ${n} lab${n === 1 ? "" : "s"}`, "/labs")] });
   return n;
 }

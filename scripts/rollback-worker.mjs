@@ -38,4 +38,4 @@ const status = runSteps(steps, dry ? dryRunner : spawnRunner(loadEnv()));
 if (status !== 0) process.exit(status);
 if (dry) console.log("\nDry run: nothing was changed.");
 else if (!id) console.log('\nTo go back to one of these: npm run rollback-worker -- <version id>');
-else console.log("\nRolled back. Open https://wg-admin.clydeford.net to check.");
+else console.log("\nRolled back. Open https://cloudlabs.clydeford.net to check.");

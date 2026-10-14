@@ -206,22 +206,22 @@ export async function checkRestoreFile(env: Env, text: string): Promise<RestoreP
     return "That file is not JSON. Pick a wg-admin-config-….json file from Download export or R2.";
   }
   const d = data as Partial<ConfigExport> | null;
-  if (!d || typeof d !== "object" || d.kind !== EXPORT_KIND) return "That is not a wg-admin config export.";
+  if (!d || typeof d !== "object" || d.kind !== EXPORT_KIND) return "That is not a cloudlabs config export.";
   if (!Number.isInteger(d.version) || d.version! < 1) return "The file has no format version.";
-  if (d.version! > EXPORT_VERSION) return `That export was made by a newer wg-admin (format ${d.version}); this one reads format ${EXPORT_VERSION}.`;
+  if (d.version! > EXPORT_VERSION) return `That export was made by a newer cloudlabs (format ${d.version}); this one reads format ${EXPORT_VERSION}.`;
   if (!d.tables || typeof d.tables !== "object") return "The file has no tables in it.";
   const tables = {} as Record<ExportTable, Row[]>;
   const counts = {} as Record<ExportTable, number>;
   for (const [name, table] of Object.entries(EXPORT_TABLES) as [ExportTable, string][]) {
     const rows = (d.tables as Record<string, unknown>)[name];
     if (!Array.isArray(rows)) return `The file is missing the ${TABLE_LABEL[name]} list.`;
-    if (rows.length > 5000) return `${TABLE_LABEL[name]}: ${rows.length} is far more than a wg-admin ever holds.`;
+    if (rows.length > 5000) return `${TABLE_LABEL[name]}: ${rows.length} is far more than cloudlabs ever holds.`;
     const cols = await tableColumns(env, table);
     for (const [i, row] of rows.entries()) {
       const where = `${TABLE_LABEL[name]}, entry ${i + 1}`;
       if (!row || typeof row !== "object" || Array.isArray(row)) return `${where} is not a record.`;
       for (const [k, v] of Object.entries(row)) {
-        if (!cols.all.has(k)) return `${where} has a field "${k}" this wg-admin does not know.`;
+        if (!cols.all.has(k)) return `${where} has a field "${k}" this cloudlabs does not know.`;
         if (SECRET_COLUMN.test(k)) return `${where} has a secret field "${k}"; exports never carry those.`;
         if (v !== null && typeof v !== "string" && typeof v !== "number") return `${where}: "${k}" is not plain text or a number.`;
       }

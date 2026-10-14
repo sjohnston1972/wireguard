@@ -96,7 +96,7 @@ describe("the watchman's alerts", () => {
     await db.upsertCostDay(env, "2026-09-01", 12);
     await checkBudget(env, cfg, now);
     await checkBudget(env, cfg, now);
-    expect(budgetNotes().map((n) => n.title)).toEqual(["wg-admin: over budget"]);
+    expect(budgetNotes().map((n) => n.title)).toEqual(["cloudlabs: over budget"]);
   });
 
   it("starts afresh in a new month", async () => {

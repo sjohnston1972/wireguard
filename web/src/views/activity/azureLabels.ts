@@ -21,5 +21,5 @@ export function changeLabel(c: AzureChangeRow): string {
   return `${verb} ${c.resourceType.replace(/^./, (ch) => ch.toLowerCase())}`;
 }
 
-/** wg-admin's own changes say so; a portal change shows the person; the platform says Azure. */
-export const callerLabel = (c: AzureChangeRow): string => (c.callerKind === "wgadmin" ? "wg-admin" : c.callerKind === "azure" ? "Azure" : (c.caller ?? "Unknown"));
+/** cloudlabs's own changes say so; a portal change shows the person; the platform says Azure. */
+export const callerLabel = (c: AzureChangeRow): string => (c.callerKind === "wgadmin" ? "cloudlabs" : c.callerKind === "azure" ? "Azure" : (c.caller ?? "Unknown"));

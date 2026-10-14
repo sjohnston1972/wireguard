@@ -86,7 +86,7 @@ describe.each(["azure", "aws"] as const)("%s", (cloud) => {
     it("says Ready only when the self-test passes, and records latency and the peer list with IPv6", async () => {
       const { agentToken } = await deployToRunning();
       expect((await getSnapshot(env)).state).toBe("running");
-      expect(world.notes.find((n) => n.title === "wg-admin: ready")).toBeUndefined();
+      expect(world.notes.find((n) => n.title === "cloudlabs: ready")).toBeUndefined();
 
       const key = "P".repeat(43) + "=";
       const now = Math.floor(Date.now() / 1000);
@@ -101,7 +101,7 @@ describe.each(["azure", "aws"] as const)("%s", (cloud) => {
       expect(snap.agent!.peers.map((p) => p.public_key)).toEqual([key]); // the canary is left out
       expect(snap.latency[key]).toEqual([23.4]);
       expect(snap.session!.seen).toEqual([key]);
-      const ready = world.notes.find((n) => n.title === "wg-admin: ready");
+      const ready = world.notes.find((n) => n.title === "cloudlabs: ready");
       expect(ready?.message).toContain("IPv6");
       expect(ready?.actions?.[0]).toMatchObject({ action: "view" });
     });
@@ -175,7 +175,7 @@ describe.each(["azure", "aws"] as const)("%s", (cloud) => {
       expect(snap.state).toBe("standby");
       expect(snap.standby_since).toBeTruthy();
       expect((await lockStatus(env)).held).toBe(false);
-      const standbyNote = world.notes.find((n) => n.title === "wg-admin: in standby");
+      const standbyNote = world.notes.find((n) => n.title === "cloudlabs: in standby");
       expect(standbyNote?.message).toMatch(/Used by Phone/);
       expect(standbyNote?.actions.map((a: any) => a.label)).toEqual(["Resume from dashboard", "Tear down"]);
       await expect(startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "x", cloud })).rejects.toThrow(/Standby/);
@@ -192,7 +192,7 @@ describe.each(["azure", "aws"] as const)("%s", (cloud) => {
       expect(snap.state).toBe("running");
       expect(snap.standby_since).toBeNull();
       expect((await lockStatus(env)).held).toBe(false);
-      expect(world.notes.filter((n) => n.title === "wg-admin: ready")).toHaveLength(2); // one per boot
+      expect(world.notes.filter((n) => n.title === "cloudlabs: ready")).toHaveLength(2); // one per boot
     });
 
     it("tears a forgotten standby down after the limit", async () => {
@@ -223,7 +223,7 @@ describe.each(["azure", "aws"] as const)("%s", (cloud) => {
       const spy = vi.spyOn(console, "error").mockImplementation(() => {});
       await handleCallback(env, s.body.callback_token as string, { run_id: run.id, action: "destroy", status: "success" });
       expect((await getSnapshot(env)).state).toBe("destroyed");
-      expect(world.notes.some((x) => x.title === "wg-admin: torn down")).toBe(true);
+      expect(world.notes.some((x) => x.title === "cloudlabs: torn down")).toBe(true);
       expect(spy).toHaveBeenCalled();
       spy.mockRestore();
     });
@@ -240,7 +240,7 @@ describe.each(["azure", "aws"] as const)("%s", (cloud) => {
       expect(snap.state).toBe("destroyed");
       expect(snap.session).toBeNull();
       expect(await env.STATE.get(`boot/${applyRun.id}.tgz`)).toBeNull(); // no boot bundle outlives its server
-      const n = world.notes.find((x) => x.title === "wg-admin: torn down");
+      const n = world.notes.find((x) => x.title === "cloudlabs: torn down");
       expect(n?.message).toMatch(cloud === "aws" ? /^Torn down after .*about £0\.\d\d\..*AWS cost is £0\.$/ : /^Torn down after .*about £0\.\d\d\..*Azure cost is £0\.$/);
       expect((await db.listAlerts(env)).some((a) => a.kind === "session")).toBe(true);
     });

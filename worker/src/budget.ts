@@ -193,7 +193,7 @@ export async function checkBudget(env: Env, cfg: Config, now = new Date()): Prom
     `: ${Math.round(b.pct)}% of the ${money(b.budget)} monthly budget.`;
   const msg = due === 100 ? `Monthly budget reached. ${sums} Deploy will ask you to confirm until the month ends.` : `80% of the monthly budget used. ${sums}`;
   await db.addAlert(env, "budget", msg);
-  await notify(env, due === 100 ? "wg-admin: over budget" : "wg-admin: 80% of budget", msg, { priority: due === 100 ? 4 : 3, tags: ["moneybag"], buttons: [dashboardButton(env, "Open dashboard", "/cost")] });
+  await notify(env, due === 100 ? "cloudlabs: over budget" : "cloudlabs: 80% of budget", msg, { priority: due === 100 ? 4 : 3, tags: ["moneybag"], buttons: [dashboardButton(env, "Open dashboard", "/cost")] });
   return `budget: ${due}% alert sent`;
 }
 

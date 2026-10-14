@@ -60,7 +60,7 @@ export async function runSchedules(env: Env, now = new Date()): Promise<string[]
     }
     await env.STATUS.put(key, "1", { expirationTtl: 2 * 86400 });
     await db.addAlert(env, "info", did);
-    if (!/already running\.$/.test(did)) await notify(env, "wg-admin: scheduled start", did, { tags: ["alarm_clock"], buttons: [dashboardButton(env)] });
+    if (!/already running\.$/.test(did)) await notify(env, "cloudlabs: scheduled start", did, { tags: ["alarm_clock"], buttons: [dashboardButton(env)] });
     notes.push(did);
   }
   return notes;

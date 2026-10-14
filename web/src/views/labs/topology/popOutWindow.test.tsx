@@ -120,7 +120,7 @@ describe("the pop-out window", () => {
     expect(await screen.findByRole("heading", { level: 1, name: /Blob security/ })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Phone" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "wg-admin home" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "cloudlabs home" })).toBeNull();
     const main = within(screen.getByRole("main"));
     await main.findByRole("region", { name: "Lab diagram" });
     expect(main.getByRole("searchbox", { name: "Search the diagram" })).toBeInTheDocument();
@@ -132,7 +132,7 @@ describe("the pop-out window", () => {
     expect(main.queryByRole("link", { name: "Full screen" })).toBeNull();
     expect(main.queryByRole("button", { name: "Close" })).toBeNull();
     expect(main.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", `/labs/${LAB}`);
-    await waitFor(() => expect(document.title).toBe(`${LAB} diagram · wg-admin`));
+    await waitFor(() => expect(document.title).toBe(`${LAB} diagram · cloudlabs`));
   });
 
   it("focus lands on the canvas", async () => {

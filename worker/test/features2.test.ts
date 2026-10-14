@@ -61,7 +61,7 @@ describe("profiles", () => {
     expect(last.payload.region).toBe("eastus");
     const snap = await getSnapshot(env);
     expect(snap).toMatchObject({ state: "deploying", profile: "US exit", pending_deploy: null });
-    expect(world.notes.find((n) => n.title === "wg-admin: torn down")).toBeUndefined(); // a move is not "back to £0"
+    expect(world.notes.find((n) => n.title === "cloudlabs: torn down")).toBeUndefined(); // a move is not "back to £0"
   });
 
   it("refuses a move to where it already is", async () => {
