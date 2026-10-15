@@ -834,3 +834,14 @@ copied here and win.
 - **A27. Lab 09's public zone is a non-delegated `<name_prefix>.labs.clydeford.net`.** A real-looking name Steven owns,
   queried by asking the zone's own name servers, with no change to Cloudflare.
 - **A28. Lab 08 and lab 28 faults** are as §12.2: three and two faults, each visible with the tool the lab teaches.
+- **A29. IAM policy size.** AWS caps a managed policy at 6,144 characters (whitespace excluded) and a role at 10 attached
+  managed policies, so the role's policy is several managed policies and the ABAC create and change lists are compressed:
+  `scripts/aws-labs-abac.mjs` folds actions into wildcards (`ec2:CreateVpc*`) only where every action the wildcard matches
+  is in the same list, and splits the lists over as many policies as needed. A test asserts each rendered policy stays
+  under 6,000 characters and the role under 10 policies. If they still do not fit, the change list falls back to
+  per-service `Delete*`/`Modify*`/`Update*`/`Terminate*` wildcards (all accept `aws:ResourceTag` on the services that
+  matter), the plan-time tag rule (§7.3) covering the rest.
+- **A30. AWS server tear-down with peered labs.** Before the Worker dispatches an AWS server destroy (or a cloud switch away
+  from AWS), it unpeers every AWS lab that is peered, using the existing Unpeer run, and marks them "disconnected". The
+  server's workflow `wg-aws.yml` is not changed. B1's release test confirms whether AWS would also refuse to delete a VPC
+  with an active peering; either way this order makes it moot.
