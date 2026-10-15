@@ -235,8 +235,9 @@ discover() {
 
 # ── Real state ───────────────────────────────────────────────────────────
 # describe <i>: the item's own describe, as one JSON object in DJ (empty when
-# AWS lists no such item). Returns 0 answered, 1 not found, 2 AWS could not be
-# asked, 3 no describe for this type (no handler).
+# AWS answered with an empty list: an empty answer counts as one). Returns 0
+# answered, 1 not found, 2 AWS could not be asked or its answer could not be
+# read (never "gone"), 3 no describe for this type (no handler).
 describe() {
   local i="$1" id="${C_I[$1]}" x="${C_A[$1]}" q json
   local -a bus=()
@@ -299,7 +300,16 @@ describe() {
     gone_err && return 1
     return 2
   fi
-  DJ="$(jq -c --arg x "$x" --arg id "$id" "[ $q ][0] // empty" <<<"$json" 2>/dev/null)"
+  # head-bucket answering at all means the bucket is there (older CLI v2 prints no body).
+  if [ "${C_T[$i]}" = s3:bucket ]; then
+    DJ='{}'
+    return 0
+  fi
+  if ! DJ="$(jq -c --arg x "$x" --arg id "$id" "[ $q ][0] // empty" <<<"$json" 2>/dev/null)"; then
+    DJ=""
+    : >"$ERRF" # no AWS error code to show: the answer itself was unreadable
+    return 2
+  fi
   return 0
 }
 
@@ -384,6 +394,7 @@ wr() {
   gone_err && return 0
   WCODE="$(code)"
   [ "${QUIET_DEPENDENCY:-}" = 1 ] && [ "$WCODE" = DependencyViolation ] && return 1
+  [ -n "${QUIET_CODE:-}" ] && [ "$WCODE" = "$QUIET_CODE" ] && return 1
   warn "could not $what ($WCODE)"
   return 1
 }
@@ -422,6 +433,10 @@ vpc_ok() {
     warn "not deleted: $(label "$i") (could not read it: $(code))"
     return 1
   fi
+  # An empty answer (exit 0, nothing listed) passes: a describe by id of an item AWS no longer has
+  # answers NotFound (rc 1, above), never an empty list, so an empty answer only comes from a fake AWS
+  # (the tests' no-state fixtures describe nothing), and the delete then answers NotFound harmlessly.
+  # It is still never inside the VPN server's VPC: the checks below find no VpcId to match.
   while IFS= read -r v; do
     if [ -n "$v" ] && [ -n "${WG_VPCS["$r|$v"]:-}" ]; then
       warn "never touched: $(label "$i") is inside the VPN server's VPC"
@@ -475,8 +490,14 @@ del_rule() {
   wr "$i" "delete $(label "$i")" events delete-rule --name "${id##*/}" "${bus[@]}"
 }
 del_config_rule() {
-  local i="$1" name
-  describe "$i" || return 1
+  local i="$1" name rc
+  describe "$i"
+  rc=$?
+  [ "$rc" -eq 1 ] && return 1
+  if [ "$rc" -ne 0 ]; then
+    warn "could not read $(label "$i") to find its name ($(code))"
+    return 1
+  fi
   name="$(jq -r '.ConfigRuleName // empty' <<<"$DJ")"
   [ -n "$name" ] || return 1
   wr "$i" "delete the remediation of $(label "$i")" configservice delete-remediation-configuration --config-rule-name "$name"
@@ -508,10 +529,40 @@ rds_dbs() {
   for i in $(of_type rds:db); do
     rep=no
     describe "$i" && [ -n "$(jq -r '.ReadReplicaSourceDBInstanceIdentifier // empty' <<<"$DJ" 2>/dev/null)" ] && rep=yes
-    [ "$rep" = "$want" ] && del_db "$i" && got+=("$i")
+    [ "$rep" = "$want" ] || continue
+    # Refused with InvalidDBInstanceState: it is already being deleted, or still busy (Unblock's
+    # modify-db-instance leaves it "modifying" for a while). Wait for it all the same, so the subnet and
+    # parameter group deletes after it do not fail; rds_wait asks again once it is free.
+    if QUIET_CODE=InvalidDBInstanceState del_db "$i"; then
+      got+=("$i")
+    elif [ "$WCODE" = InvalidDBInstanceState ]; then
+      echo "safety net: $(label "$i") is busy (being deleted or modified); waiting for it"
+      got+=("$i")
+    fi
   done
-  [ "${#got[@]}" -gt 0 ] && wait_gone "${got[@]}"
+  [ "${#got[@]}" -gt 0 ] && rds_wait "${got[@]}"
   return 0
+}
+# rds_wait <i...>: as wait_gone, but an instance that is still there and not "deleting" (it was busy when
+# the delete was asked) is asked again.
+rds_wait() {
+  local left=("$@") next i s
+  while :; do
+    next=()
+    for i in "${left[@]}"; do
+      judge "$i"
+      [ "$J" = gone ] && continue
+      next+=("$i")
+      s="$(jq -r '.DBInstanceStatus // ""' <<<"$DJ" 2>/dev/null)"
+      [ "$J" = there ] && [ -n "$s" ] && [ "$s" != deleting ] && QUIET_CODE=InvalidDBInstanceState del_db "$i"
+    done
+    left=("${next[@]}")
+    [ "${#left[@]}" -eq 0 ] && return 0
+    past_until && break
+    echo "safety net: waiting for ${#left[@]} database(s) to go"
+    sleep "$POLL_S"
+  done
+  for i in "${left[@]}"; do warn "left behind: $(label "$i")"; done
 }
 
 # Phase 4, VPC fabric: synchronous (ruling C15). FAB_DONE marks an item settled (deleted, gone, skipped

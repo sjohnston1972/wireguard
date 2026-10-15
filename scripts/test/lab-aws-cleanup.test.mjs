@@ -231,6 +231,71 @@ test("Verify clean judges each candidate by its real state: deleted, delete-comp
   w.cleanup();
 });
 
+// Review round 1: an answer Verify cannot read is never clean.
+test("Verify clean: head-bucket answering with no body means the bucket is there; an unparseable describe is never clean", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:s3:::cloudlabs-a03k3x9q-logs", A("instance/i-0odd"), A("natgateway/nat-0gone")) },
+    { cmd: "aws", match: "^s3api head-bucket --bucket cloudlabs-a03k3x9q-logs", out: "" },
+    { cmd: "aws", match: "^ec2 describe-instances --instance-ids i-0odd", out: "<html>Service Unavailable" },
+    { cmd: "aws", match: "^ec2 describe-nat-gateways --nat-gateway-ids nat-0gone", out: '{"NatGateways":[]}' },
+    ...EMPTY_IAM,
+  ]);
+  const out = join(w.dir, "gh-output");
+  writeFileSync(out, "");
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", ID], { ...ENV, GITHUB_OUTPUT: fwd(out) });
+  assert.equal(r.status, 1, r.out);
+  const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
+  assert.deepEqual(left.sort(), ["ec2:instance i-0odd (could not read its state)", "s3:bucket cloudlabs-a03k3x9q-logs"], "a parsed empty list (nat-0gone) is still gone");
+  w.cleanup();
+});
+
+test("safety net waits for an RDS instance already being deleted before deleting its subnet and parameter groups", { skip }, () => {
+  const deleting = '{"DBInstances":[{"DBInstanceIdentifier":"db-a05k3x9q","DBInstanceStatus":"deleting"}]}';
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:rds:eu-west-2:123456789012:db:db-a05k3x9q", "arn:aws:rds:eu-west-2:123456789012:subgrp:lab-subnets", "arn:aws:rds:eu-west-2:123456789012:pg:lab-params") },
+    { cmd: "aws", match: "^rds describe-db-instances --db-instance-identifier db-a05k3x9q", out: [deleting, deleting, deleting, ""], code: [0, 0, 0, 254], err: ["", "", "", "An error occurred (DBInstanceNotFound) when calling the DescribeDBInstances operation: DBInstance db-a05k3x9q not found."] },
+    { cmd: "aws", match: "^rds delete-db-instance", out: "", code: 254, err: "An error occurred (InvalidDBInstanceState) when calling the DeleteDBInstance operation: Instance db-a05k3x9q is already being deleted." },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", [ID], ENV);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  const describes = calls.map((c, k) => (/^aws rds describe-db-instances/.test(c) ? k : -1)).filter((k) => k >= 0);
+  assert.equal(describes.length, 4, "polled until DBInstanceNotFound");
+  const sub = calls.findIndex((c) => /^aws rds delete-db-subnet-group --db-subnet-group-name lab-subnets/.test(c));
+  const pg = calls.findIndex((c) => /^aws rds delete-db-parameter-group --db-parameter-group-name lab-params/.test(c));
+  assert.ok(sub > describes.at(-1) && pg > sub, calls.join("\n"));
+  assert.doesNotMatch(r.out, /::warning::.*InvalidDBInstanceState/, "already deleting is not a refusal");
+  w.cleanup();
+  // Still "modifying" after Unblock: the delete is refused, then asked again once the instance is free.
+  const modifying = '{"DBInstances":[{"DBInstanceIdentifier":"db-a05k3x9q","DBInstanceStatus":"modifying"}]}';
+  const busy = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:rds:eu-west-2:123456789012:db:db-a05k3x9q") },
+    { cmd: "aws", match: "^rds describe-db-instances --db-instance-identifier db-a05k3x9q", out: [modifying, modifying, modifying, deleting, ""], code: [0, 0, 0, 0, 254], err: ["", "", "", "", "An error occurred (DBInstanceNotFound) when calling the DescribeDBInstances operation: not found"] },
+    { cmd: "aws", match: "^rds delete-db-instance", out: ["", ""], code: [254, 0], err: ["An error occurred (InvalidDBInstanceState) when calling the DeleteDBInstance operation: modifying", ""] },
+    ...EMPTY_IAM,
+  ]);
+  const b = busy.run("infra/ci/lab-aws-safety-net.sh", [ID], ENV);
+  assert.equal(b.status, 0, b.out);
+  assert.equal(busy.calls().filter((c) => /^aws rds delete-db-instance --db-instance-identifier db-a05k3x9q/.test(c)).length, 2, busy.calls().join("\n"));
+  assert.doesNotMatch(b.out, /left behind/);
+  busy.cleanup();
+});
+
+test("safety net warns when it cannot read the Config rules to find a rule's name", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:config:eu-west-2:123456789012:config-rule/config-rule-abc123") },
+    { cmd: "aws", match: "^configservice describe-config-rules", out: "", code: 254, err: "An error occurred (AccessDeniedException) when calling the DescribeConfigRules operation: 123456789012" },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", [ID], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /::warning::.*could not read config:config-rule config-rule-abc123 .*\(AccessDeniedException\)/);
+  assert.ok(!w.calls().some((c) => /delete-config-rule/.test(c)));
+  assert.doesNotMatch(r.out, /123456789012/);
+  w.cleanup();
+});
+
 test("a delete still running at the deadline is left behind (a warning), the sweep goes on and exits 0", { skip }, () => {
   const w = world([
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(A("instance/i-0slow"), A("vpc/vpc-0a")) },
