@@ -8,16 +8,19 @@
 // become the same health shape as Azure's:
 //   - Available: both checks ok;
 //   - Unavailable: either is impaired;
-//   - Degraded: either is still initializing or has insufficient data;
-//   - Unknown: anything else, a stopped server included (AWS checks only a
-//     running one).
+//   - Degraded: either has insufficient data;
+//   - Unknown: either is still initializing (for a few minutes after every
+//     start, which is normal, so not amber), or anything else, a stopped
+//     server included (AWS checks only a running one).
 // AWS's scheduled events for the server (a reboot, a retirement, ...) are
 // kept in the same document, soonest first; completed and canceled ones are
 // dropped. Each new event writes one watchman note and sends one push, as
 // Azure's scheduled events do (runs.ts); the ids already noted are kept in
 // aws_latest so an event is never noted twice. cloudlabs never acts on one.
-// Stored as aws_latest['health'] (AwsHealthDoc). No headend (a deploy still
-// building it) stores nothing and is not an error.
+// Stored as aws_latest['health'] (AwsHealthDoc); a new headend's document
+// replaces the old one's. No headend (a deploy still building it) is not an
+// error and removes the stored document, so an old instance's checks and
+// scheduled events never show for a new or absent server.
 // Spec 2026-10-15-aws-insights-design.md, sections 4.2 and 2.8.
 
 import type { Env } from "../../../env";
@@ -79,9 +82,13 @@ function verdict(system: string | null, instance: string | null, power: string |
   if (system === "impaired" || instance === "impaired") {
     return { state: "Unavailable", title: "An AWS status check failed.", summary: said(["impaired"], (n, f, s) => `${n} failed (${f} ${s}).`) };
   }
-  const waiting = ["initializing", "insufficient-data"];
-  if ((system !== null && waiting.includes(system)) || (instance !== null && waiting.includes(instance))) {
-    return { state: "Degraded", title: "AWS status checks are still running.", summary: said(waiting, (n, f, s) => `${n} has no result yet (${f} ${s}).`) };
+  const noResult = (n: string, f: string, s: string) => `${n} has no result yet (${f} ${s}).`;
+  if (system === "insufficient-data" || instance === "insufficient-data") {
+    return { state: "Degraded", title: "AWS status checks are still running.", summary: said(["initializing", "insufficient-data"], noResult) };
+  }
+  // AWS's checks start over after every start: a few minutes of this is normal, not a fault.
+  if (system === "initializing" || instance === "initializing") {
+    return { state: "Unknown", title: "AWS status checks are starting.", summary: said(["initializing"], noResult) };
   }
   if (power === "stopped") return { state: "Unknown", title: "The server is stopped; AWS checks only a running server.", summary: null };
   return { state: "Unknown", title: "AWS gave no status check result.", summary: null };
@@ -170,7 +177,11 @@ const health: AwsFeed = {
   calls: 1,
   async run(ctx) {
     const h = await ctx.headend();
-    if (!h) return { status: "ok", error: null }; // no headend (yet): nothing to say
+    if (!h) {
+      // No headend (yet): nothing to say, and an old instance's checks and events must not show.
+      await ctx.db.prepare("DELETE FROM aws_latest WHERE key = 'health'").run();
+      return { status: "ok", error: null };
+    }
     const doc = normaliseAwsHealth(await fetchAwsHealth(ctx, h.id), h.id, ctx.now, h.state);
     await storeAwsHealth(ctx.db, doc, ctx.now);
     await noteNewAwsEvents(ctx.env, doc.maintenance, ctx.now);

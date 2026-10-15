@@ -164,11 +164,14 @@ describe("aws.health: DescribeInstanceStatus as the health shape", () => {
     expect(normaliseAwsHealth(inst, "i-0abc", NOW).health).toMatchObject({ state: "Unavailable", summary: "The server's own check failed (instance status impaired)." });
   });
 
-  it("a check still starting or without data: Degraded", () => {
+  it("a check still starting (after every start): Unknown, not amber; a check without data: Degraded", () => {
     const init = fx("status-ok.xml").replace(/(<instanceStatus>[\s\S]*?<\/details>\s*<status>)ok/, "$1initializing");
-    expect(normaliseAwsHealth(init, "i-0abc", NOW).health).toMatchObject({ state: "Degraded", title: "AWS status checks are still running." });
+    expect(normaliseAwsHealth(init, "i-0abc", NOW).health).toMatchObject({ state: "Unknown", title: "AWS status checks are starting.", summary: "The server's own check has no result yet (instance status initializing)." });
     const none = fx("status-ok.xml").replace(/(<systemStatus>[\s\S]*?<\/details>\s*<status>)ok/, "$1insufficient-data");
-    expect(normaliseAwsHealth(none, "i-0abc", NOW).health.state).toBe("Degraded");
+    expect(normaliseAwsHealth(none, "i-0abc", NOW).health).toMatchObject({ state: "Degraded", title: "AWS status checks are still running." });
+    // One check without data and the other starting: Degraded.
+    const both = none.replace(/(<instanceStatus>[\s\S]*?<\/details>\s*<status>)ok/, "$1initializing");
+    expect(normaliseAwsHealth(both, "i-0abc", NOW).health.state).toBe("Degraded");
   });
 
   it("a stopped server: Unknown (AWS checks only a running server), power Server stopped", () => {
@@ -222,6 +225,30 @@ describe("aws.health: DescribeInstanceStatus as the health shape", () => {
     expect(actions(aws)).toEqual(["DescribeInstances"]);
     expect(await awsFeedRow(env, "aws.health")).toMatchObject({ status: "ok" });
     expect(await getAwsLatest(env.DB, "health")).toBeNull();
+  });
+
+  it("no headend: an old instance's stored health and scheduled events are removed", async () => {
+    const { env, aws } = await awsEnv({ status: fx("status-events.xml") });
+    await runFeeds(env, [health]);
+    expect((await getAwsLatest<AwsHealthDoc>(env.DB, "health"))?.doc.maintenance).toHaveLength(2);
+    // The old server is gone and a new deploy has not built its headend yet.
+    aws.headend = null;
+    await runFeeds(env, [health], new Date(NOW.getTime() + 6 * MIN));
+    expect(await awsFeedRow(env, "aws.health")).toMatchObject({ status: "ok" });
+    expect(await getAwsLatest(env.DB, "health")).toBeNull();
+  });
+
+  it("a new headend's health replaces the old instance's, scheduled events and all", async () => {
+    const { env, aws } = await awsEnv({ status: fx("status-events.xml") });
+    await runFeeds(env, [health]);
+    expect((await getAwsLatest<AwsHealthDoc>(env.DB, "health"))?.doc.instanceId).toBe("i-0abc");
+    aws.headend = { id: "i-0new", state: "running", launchTime: LAUNCH };
+    aws.status = fx("status-ok.xml").split("i-0abc").join("i-0new");
+    await runFeeds(env, [health], new Date(NOW.getTime() + 6 * MIN));
+    const doc = (await getAwsLatest<AwsHealthDoc>(env.DB, "health"))?.doc;
+    expect(doc?.instanceId).toBe("i-0new");
+    expect(doc?.maintenance).toEqual([]);
+    expect(doc?.health.state).toBe("Available");
   });
 
   it("a refusal names the permission and quotes nothing of AWS's", async () => {

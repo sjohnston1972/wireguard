@@ -112,7 +112,8 @@ from the same rows; every DDoS column, `syn` and `vip_avail` are null. `shared/a
 
 `DescribeInstanceStatus` for the headend → `AzureHealth`:
 - `state`: `Available` when system and instance checks are both `ok`; `Unavailable` when either is `impaired`; `Degraded` when
-  either is `initializing` or `insufficient-data`; `Unknown` otherwise (including stopped, where checks are `not-applicable`).
+  either is `insufficient-data`; `Unknown` when either is `initializing` (title "AWS status checks are starting.", normal for a
+  few minutes after every start) and otherwise (including stopped, where checks are `not-applicable`).
 - `title`/`summary`: plain words, e.g. "Both AWS status checks passed." / "AWS's hardware check failed (system status impaired)."
 - `power`: "Server running", "Server stopped", "Server starting", "Server stopping" from `instanceState.name`.
 - `reason`, `since`, `provisioning`, `vmAgent`: null. `bootDiagnostics`: true (AWS keeps console output for every instance).
