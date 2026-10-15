@@ -202,5 +202,6 @@ export function scheduledEventNote(e: VmScheduledEvent, cloud = "Azure"): string
     : "time not given yet";
   const length = e.duration_s ? `, about ${e.duration_s < 120 ? `${e.duration_s} s` : `${Math.round(e.duration_s / 60)} min`}` : "";
   const whose = e.self ? "this VM" : "another VM in its group";
-  return `${cloud} scheduled a ${e.type} for ${whose}: ${when}${length}.${e.description ? ` ${e.description}` : ""}`;
+  const article = /^[aeiou]/i.test(e.type) ? "an" : "a";
+  return `${cloud} scheduled ${article} ${e.type} for ${whose}: ${when}${length}.${e.description ? ` ${e.description}` : ""}`;
 }
