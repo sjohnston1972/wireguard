@@ -21,7 +21,10 @@
 //   node scripts/lab-release-test.mjs --check     permissions only, nothing is built (needs az signed in
 //                                                 as the pipeline service principal)
 //
-// lab.yml must already be on main (GitHub dispatches only workflows that
+// An AWS lab (soa/saa/ans ids) is tested the same way through lab-aws.yml, in
+// London (eu-west-2) whatever --region says (--region is for Azure labs only),
+// with an a<NN>xxxxx name prefix and the VPN range as its gateway_cidr.
+// lab.yml (lab-aws.yml for AWS) must already be on main (GitHub dispatches only workflows that
 // exist on the default branch); --ref picks the branch whose lab.yml and lab
 // code run. Slot 31 (10.71.192.0/18) is the default: the dashboard hands out
 // low slots first, so a release test rarely meets a running lab there.
@@ -32,7 +35,7 @@ import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
-import { buildCatalogue, LAB_SLOTS, slotCidr } from "./lib/labs.mjs";
+import { AWS_LAB_REGIONS, buildCatalogue, cloudOfId, LAB_SLOTS, slotCidr } from "./lib/labs.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 export const RESULTS_FILE = join(ROOT, "docs", "labs", "release-tests.md");
@@ -69,21 +72,29 @@ export function estimateGbp(def, deploySeconds, destroySeconds) {
 const stamp = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
 const rand = (n, alphabet = "abcdefghijklmnopqrstuvwxyz0123456789") => [...randomBytes(n)].map((b) => alphabet[b % alphabet.length]).join("");
 
-/** lab.yml's payload for a release test of `def` (spec §5): no callback, no peering. */
+/** The workflow that builds a lab: lab-aws.yml for an AWS lab, lab.yml for an Azure one. */
+export const labWorkflow = (def) => (cloudOfId(def.id) === "aws" ? "lab-aws.yml" : "lab.yml");
+
+/** The VPN server range an AWS lab lets in (the AWS VPN server's 10.50.0.0/16, one of GATEWAY_RANGES). */
+const AWS_GATEWAY_CIDR = "10.50.0.0/16";
+
+/** The workflow's payload for a release test of `def` (AWS: in London, with an a<NN> prefix and a gateway_cidr; spec §5): no callback, no peering. */
 export function buildPayload(def, { slot, region, runId, namePrefix }) {
+  const aws = cloudOfId(def.id) === "aws";
   return {
     lab_id: def.id,
     version: def.version,
     run_id: runId,
     session_id: `ls-release-${runId}`,
-    region,
+    region: aws ? AWS_LAB_REGIONS[0] : region,
     secondary_region: def.regions?.secondary ?? null,
     slot_cidr: slotCidr(slot),
-    name_prefix: namePrefix ?? `l${def.id.split("-")[1]}${rand(5)}`,
+    name_prefix: namePrefix ?? `${aws ? "a" : "l"}${def.id.split("-")[1]}${rand(5)}`,
     peering: false,
     timeout_min: timeoutMin(def.timing),
     callback_url: "",
     secrets_url: "",
+    ...(aws ? { gateway_cidr: AWS_GATEWAY_CIDR } : {}),
   };
 }
 
@@ -172,12 +183,12 @@ const json = (s) => {
 };
 
 /** Dispatch lab.yml and find the run by its title; returns the GitHub run id or null. */
-async function dispatch(gh, ref, action, payload, sleep) {
-  const r = await gh(["workflow", "run", "lab.yml", "--ref", ref, "-f", `action=${action}`, "-f", `payload=${JSON.stringify(payload)}`]);
+async function dispatch(gh, ref, action, payload, sleep, workflow = "lab.yml") {
+  const r = await gh(["workflow", "run", workflow, "--ref", ref, "-f", `action=${action}`, "-f", `payload=${JSON.stringify(payload)}`]);
   if (r.status !== 0) throw new Error(`gh workflow run failed: ${(r.stderr || "").trim()}`);
   const title = `lab ${action} ${payload.lab_id} ${payload.run_id}`;
   for (let i = 0; i < 36; i++) {
-    const list = await gh(["run", "list", "--workflow", "lab.yml", "--event", "workflow_dispatch", "--json", "databaseId,displayTitle,status", "--limit", "50"]);
+    const list = await gh(["run", "list", "--workflow", workflow, "--event", "workflow_dispatch", "--json", "databaseId,displayTitle,status", "--limit", "50"]);
     const run = (json(list.stdout) ?? []).find((x) => x.displayTitle === title);
     if (run) return run.databaseId;
     await sleep(5000);
@@ -223,13 +234,13 @@ export async function runRelease({ ids, ref, slot, region }, deps) {
     const payload = { ...a.payload, run_id: `lab-destroy-${stamp(now())}-${rand(4)}` };
     try {
       log(`tearing down ${a.def.id}: dispatching a destroy run`);
-      const id = await dispatch(gh, ref, "destroy", payload, sleep);
+      const id = await dispatch(gh, ref, "destroy", payload, sleep, labWorkflow(a.def));
       const r = await finish(gh, id);
       a.tornDown = r?.clean === true ? "clean" : r?.clean === false ? `dirty: ${(r.leftovers ?? []).join(", ")}` : "unknown";
     } catch (e) {
       a.tornDown = `failed: ${e.message}`;
     }
-    log(`teardown of ${a.def.id}: ${a.tornDown}${a.tornDown === "clean" ? "" : " — check Azure by hand (rg-lab-" + a.def.id + "*)"}`);
+    log(`teardown of ${a.def.id}: ${a.tornDown}${a.tornDown === "clean" ? "" : (labWorkflow(a.def) === "lab-aws.yml" ? " — check AWS by hand (resources tagged cloudlabs-lab = " + a.def.id + ")" : " — check Azure by hand (rg-lab-" + a.def.id + "*)")}`);
     return a.tornDown;
   };
 
@@ -255,7 +266,7 @@ export async function runRelease({ ids, ref, slot, region }, deps) {
       log(`release test: ${id} v${def.version} on ${ref}, slot ${slot} (${payload.slot_cidr}), timeout ${payload.timeout_min} min`);
       let result = null;
       try {
-        active.ghId = await dispatch(gh, ref, "test", payload, sleep);
+        active.ghId = await dispatch(gh, ref, "test", payload, sleep, labWorkflow(def));
         log(`watching run ${active.ghId}`);
         result = await finish(gh, active.ghId, (runLog) => saveShape(id, runLog));
       } catch (e) {

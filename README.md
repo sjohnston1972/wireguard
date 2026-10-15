@@ -179,6 +179,26 @@ node scripts/lab-release-test.mjs az104-04-cost az104-05-storage az104-07-files 
 Without `--confirm-cost` it only prints the estimate. A failed, dirty or interrupted (Ctrl-C) test always dispatches a
 destroy run for that lab before it stops.
 
+## AWS labs: one-time setup
+
+AWS labs build in the same AWS account as the AWS VPN server, under their own role.
+Run these once, on this PC (they use the admin keys in `.env`, which never leave it):
+
+1. `node scripts/aws-bootstrap.mjs --labs` creates or updates the `wg-admin-labs` role (assumed only by GitHub
+   workflows on `main`), its policies and the `wg-admin-lab-boundary` permission boundary; adds the Worker's
+   read-only lab permissions; stores the role's ARN as the GitHub secret `AWS_LABS_ROLE_ARN`; proves the guards
+   with `iam simulate-principal-policy` (it stops loudly if any answer is wrong); asks for the quota increases
+   (VPCs 20 and Elastic IPs 10 in London and Ireland, vCPUs and Instance Connect Endpoints only if low); and
+   activates the `cloudlabs-lab` cost allocation tag once AWS has seen it.
+2. In the dashboard, Settings → Labs → **Check permissions**: "AWS labs role" and "Lab boundary" must tick.
+   "Cost tag active" ticks about a day after the first AWS lab runs; run step 1 again then.
+3. To regenerate the tag-guard lists after AWS adds actions: `node scripts/aws-labs-abac.mjs`, then
+   `node scripts/aws-labs-abac.mjs --render`, review the diff, update the pin in `scripts/test/aws-labs-iam.test.mjs`,
+   and run step 1.
+
+Check AWS's list prices for every AWS lab: `npm run labs-verify -- --aws-prices`.
+Release-test an AWS lab from `main` (pennies; it always tears down): `node scripts/lab-release-test.mjs soa-01-cloudwatch --confirm-cost --ref main`.
+
 ## Using the dashboard
 
 Open **https://cloudlabs.clydeford.net** and sign in with Google, or with the
