@@ -19,7 +19,7 @@ export const RESOURCE_TILES = 6;
 
 export function LabResourceSummary({ resources, topics, diagramHref, cloud }: { resources: Record<string, number> | null; topics: readonly string[]; diagramHref: string; cloud?: "azure" | "aws" }) {
   const h = useId();
-  const lines = resourceSummary(resources);
+  const lines = resourceSummary(resources, cloud);
   useEffect(() => {
     if (lines.length > 0) void ensureSprite(cloud === "aws" ? ["aws"] : ["azure"]);
   }, [lines.length, cloud]);

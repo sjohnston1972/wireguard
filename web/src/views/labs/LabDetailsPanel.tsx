@@ -140,6 +140,8 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
   const learnId = useId();
   const cleanupId = useId();
   const guideId = useId();
+  const isAws = c.cloud === "aws";
+  const cloudWord = isAws ? "AWS" : "Azure";
   const region = c.running ? c.running.region : q.data ? q.data.defaults.region : null;
   const destination = region ? regionWords(region) : q.isError ? null : <Skeleton width={80} />;
   const autoCleanup = data?.autoCleanup ?? false;
@@ -215,12 +217,22 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
             </h3>
             {autoCleanup ? (
               <p className="lab-details__text lab-details__small">
-                Ends by itself after {c.timing.sessionH} h unless you extend it (never past {c.timing.maxH} h). Then everything in <code>rg-lab-{c.id}</code> is torn down and a clean check looks for
-                leftovers; anything found is flagged on this page. Azure can take a day to bill the last hour.
+                Ends by itself after {c.timing.sessionH} h unless you extend it (never past {c.timing.maxH} h). Then everything{" "}
+                {isAws ? (
+                  <>
+                    tagged for this lab (<code>cloudlabs-lab = {c.id}</code>)
+                  </>
+                ) : (
+                  <>
+                    in <code>rg-lab-{c.id}</code>
+                  </>
+                )}{" "}
+                is torn down and a clean check looks for
+                leftovers; anything found is flagged on this page. {cloudWord} can take a day to bill the last hour.
               </p>
             ) : (
               <p className="lab-details__text lab-details__small">
-                Automatic tear-down needs GitHub connected: tear the lab down yourself. Azure can take a day to bill the last hour.
+                Automatic tear-down needs GitHub connected: tear the lab down yourself. {cloudWord} can take a day to bill the last hour.
               </p>
             )}
           </section>
@@ -229,7 +241,7 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
         <h3 className="lab-details__h" id={guideId}>
           Lab guide
         </h3>
-        <p className="lab-details__text lab-details__small">The readme, diagrams and Learn links as a PDF, to keep open while you work.</p>
+        <p className="lab-details__text lab-details__small">The readme, diagrams and {c.cloud === "aws" ? "documentation" : "Learn"} links as a PDF, to keep open while you work.</p>
         <LabGuideButton labId={c.id} />
       </section>
     </div>

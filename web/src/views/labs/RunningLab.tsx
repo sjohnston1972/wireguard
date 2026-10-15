@@ -156,7 +156,7 @@ function Addresses({ s, aws, connectPossible }: { s: LabSession; aws: boolean; c
 }
 
 /** The admin password and the lab's Entra users, fetched only on Show and dropped on Hide or close. */
-function Secret({ labId, running }: { labId: string; running: boolean }) {
+function Secret({ labId, running, aws = false }: { labId: string; running: boolean; aws?: boolean }) {
   const fetchSecret = useLabSecret();
   // Held only in this component: Hide forgets it, and closing the modal unmounts it and the secret
   // goes with it. reset() also drops the mutation's copy from the query client (gcTime 0).
@@ -199,7 +199,7 @@ function Secret({ labId, running }: { labId: string; running: boolean }) {
       {shown ? (
         <KeyValue items={[{ label: "Admin password", value: shown.adminPassword, mono: true, copy: true }, ...users.map(([name, upn]) => ({ label: name, value: upn, mono: true, copy: true }))]} />
       ) : (
-        <p className="labs-muted">The admin password and the lab's Entra user names, shown only when you ask.</p>
+        <p className="labs-muted">The admin password and the lab's {aws ? "" : "Entra "}user names, shown only when you ask.</p>
       )}
     </section>
   );
@@ -316,7 +316,7 @@ export function RunningLab({ d }: { d: LabDetail }) {
         {s.state === "failed" && <p className="labs-deploy__blocked">The deploy failed. It is torn down by itself 15 minutes after it failed, or now with Tear down.</p>}
         <Resources d={d} />
         <Addresses s={s} aws={d.cloud === "aws"} connectPossible={d.connect?.possible !== false} />
-        <Secret labId={d.card.id} running={s.state === "running"} />
+        <Secret labId={d.card.id} aws={d.cloud === "aws"} running={s.state === "running"} />
         <Note key={s.id} s={s} />
       </div>
       <LabReadmeTabs d={d} />
