@@ -13,11 +13,11 @@
 import { memo, useId, type MouseEvent } from "react";
 import { ArrowRight, Check, Clock, Coins } from "lucide-react";
 import { Link } from "react-router-dom";
-import { cx } from "@/components";
+import { StatusPill, cx } from "@/components";
 import type { LabView } from "./contract";
 import type { LabsLayout } from "./layout";
 import { LabStatusBadge } from "./LabStatusBadge";
-import { labHref } from "./model";
+import { labHref, labNumberWord } from "./model";
 import { fmtHourlyPrecise, fmtHourlyShort, fmtMinutes, hourlyAria } from "./money";
 import { cardAction } from "./status";
 import { FAMILY_ICON, topicChips } from "./topics";
@@ -58,9 +58,10 @@ export const LabCard = memo(function LabCard({ view, selected, onSelect, search,
     <article className={cx("lab-card", selected && "lab-card--selected")} data-lab-card={c.id} onClick={selectFromInfo}>
       <div className="lab-card__eyebrow">
         <span className="lab-card__id">
-          Lab {c.number} · {c.exam}
+          {labNumberWord(c)} · {c.exam}
           {also.length > 0 && ` · also ${also.join(", ")}`}
         </span>
+        {c.cloud === "aws" && <StatusPill status="custom" label="AWS" tone="amber" dot={false} />}
         <LabStatusBadge badge={view.badge} className="lab-card__badge" />
       </div>
       <div className="lab-card__iconrow">

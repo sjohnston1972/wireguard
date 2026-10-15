@@ -10,15 +10,23 @@ function Result({ ok }: { ok: boolean | null }) {
   return ok === null ? <Light tone="grey">not checked yet</Light> : ok ? <Light tone="green">OK</Light> : <Light tone="red">Failed</Light>;
 }
 
-const CHECKS: { key: "role" | "users" | "groups"; name: string; hint: string }[] = [
+/** The cost tag being off only means AWS figures lag: a warning, not an error. */
+function TagResult({ ok }: { ok: boolean | null }) {
+  return ok === null ? <Light tone="grey">not checked yet</Light> : ok ? <Light tone="green">OK</Light> : <Light tone="amber">Not active</Light>;
+}
+
+const CHECKS: { key: "role" | "users" | "groups" | "awsRole" | "awsBoundary" | "awsCostTag"; name: string; hint: string; warn?: boolean }[] = [
   { key: "role", name: "Governance role", hint: "The custom role that lets labs create and remove their own role assignments" },
   { key: "users", name: "Read and write users", hint: "Microsoft Graph, for the lab sign-in accounts" },
   { key: "groups", name: "Read and write groups", hint: "Microsoft Graph, for the lab groups" },
+  { key: "awsRole", name: "AWS labs role", hint: "The role the AWS labs sign in with (wg-admin-labs)" },
+  { key: "awsBoundary", name: "Lab boundary", hint: "The permissions boundary that keeps AWS labs inside their own resources" },
+  { key: "awsCostTag", name: "Cost tag active", hint: "The cloudlabs-lab cost allocation tag, so AWS lab spend shows by lab (a warning only)", warn: true },
 ];
 
 function PermissionsPanel({ p }: { p: LabPermissions | undefined }) {
   const check = useCheckLabPermissions();
-  const perms = p ?? { checkedAt: null, role: null, users: null, groups: null, message: null };
+  const perms = p ?? { checkedAt: null, role: null, users: null, groups: null, awsRole: null, awsBoundary: null, awsCostTag: null, message: null };
   return (
     <Panel
       title="Permissions"
@@ -35,7 +43,7 @@ function PermissionsPanel({ p }: { p: LabPermissions | undefined }) {
               <span className="set-list__name">{c.name}</span>
               <span className="set-list__sub">{c.hint}</span>
             </span>
-            <Result ok={perms[c.key]} />
+            {c.warn ? <TagResult ok={perms[c.key]} /> : <Result ok={perms[c.key]} />}
           </li>
         ))}
       </ul>
@@ -126,7 +134,7 @@ export function LabsSection() {
   const data = q.data;
   return (
     <div className="set-stack">
-      <Lead>On-demand Azure labs: how many may run at once, whether they join the gateway's network, and whether the pipeline may build them.</Lead>
+      <Lead>On-demand Azure and AWS labs: how many may run at once, whether they join the gateway's network, and whether the pipeline may build them.</Lead>
       <div className="set-two">
         <Panel title="Limits">
           <div className="set-form">

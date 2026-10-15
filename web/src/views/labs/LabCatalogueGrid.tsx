@@ -13,6 +13,7 @@ import { Skeleton } from "@/components";
 import type { LabView } from "./contract";
 import type { LabsLayout } from "./layout";
 import { LabCard } from "./LabCard";
+import { labNumberWord } from "./model";
 import "./LabCatalogueGrid.css";
 
 export interface LabCatalogueGridProps {
@@ -43,7 +44,7 @@ export function LabCatalogueGrid({ views, selectedId, onSelect, search, layout, 
   // Stable, so a selection re-renders only the two cards whose `selected` changed.
   const select = useCallback((id: string) => {
     const v = latest.current.views?.find((x) => x.card.id === id);
-    if (v) setSaid(`Showing Lab ${v.card.number}, ${v.card.title}`);
+    if (v) setSaid(`Showing ${labNumberWord(v.card)}, ${v.card.title}`);
     latest.current.onSelect(id);
   }, []);
   return (

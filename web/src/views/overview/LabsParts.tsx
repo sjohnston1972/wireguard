@@ -8,7 +8,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Trash2 } from "lucide-react";
 import type { LabSession } from "@shared/api";
-import { Button, Modal, Panel, cx } from "@/components";
+import { cloudOfId } from "@shared/labs";
+import { Button, Modal, Panel, StatusPill, cx } from "@/components";
 import { useDestroyLab } from "@/api/mutations";
 import { useWidget } from "@/widgets";
 import { gbp } from "./model";
@@ -23,7 +24,7 @@ function TearDownLab({ session, onClose }: { session: LabSession; onClose: () =>
       open
       onOpenChange={(v) => !v && onClose()}
       title="Tear down this lab?"
-      description={`${session.title}: stops the session and deletes everything it built in Azure.`}
+      description={`${session.title}: stops the session and deletes everything it built in ${cloudOfId(session.labId) === "aws" ? "AWS" : "Azure"}.`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -66,6 +67,7 @@ export function RunningLabs({ labs, now }: { labs: LabSession[]; now: number }) 
                   <Link className="ov-rlab__title" to={`/labs/${s.labId}`}>
                     {s.title}
                   </Link>
+                  {cloudOfId(s.labId) === "aws" && <StatusPill status="custom" label="AWS" tone="amber" dot={false} />}
                   <span className="ov-rlab__line">
                     <span className={cx("ov-rlab__state", `ov-rlab__state--${s.state}`)}>{LAB_STATE_WORD[s.state]}</span>
                     {left && <span>{left}</span>}

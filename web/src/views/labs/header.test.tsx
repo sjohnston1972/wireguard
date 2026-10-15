@@ -13,11 +13,11 @@ beforeAll(async () => {
 const routes = () => ({ "GET /api/v1/labs": labs(), "GET /api/v1/labs/coverage": labCoverageFixture(), "GET /api/v1/labs/sessions": { sessions: [] } });
 
 describe("the labs header", () => {
-  it("the page is titled Azure Labs with the description", async () => {
+  it("the page is titled Labs with the description", async () => {
     renderApp("/labs", { routes: routes() });
     const main = within(screen.getByRole("main"));
-    expect(await main.findByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
-    expect(main.getByText("Hands-on AZ-104, AZ-305 and AZ-700 environments: pick a lab, deploy it, learn by doing.")).toBeInTheDocument();
+    expect(await main.findByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
+    expect(main.getByText("Hands-on Azure (AZ-104, AZ-305, AZ-700) and AWS (SOA-C03, SAA-C03, ANS-C01) environments: pick a lab, deploy it, learn by doing.")).toBeInTheDocument();
     // The old header's capacity text moved to the summary strip.
     expect(main.queryByText(/slots$/)).toBeNull();
   });
@@ -36,7 +36,7 @@ describe("the labs header", () => {
   it("/labs/history uses the same header", async () => {
     renderApp("/labs/history", { routes: routes() });
     const main = within(screen.getByRole("main"));
-    expect(await main.findByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
+    expect(await main.findByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
     const nav = within(main.getByRole("navigation", { name: "Labs pages" }));
     expect(nav.getByRole("link", { name: "Your labs" })).toHaveAttribute("aria-current", "page");
     expect(nav.getByRole("link", { name: "Catalogue" })).not.toHaveAttribute("aria-current");

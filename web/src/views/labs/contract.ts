@@ -31,7 +31,7 @@ export interface LabView {
 export function labView(card: LabCard, loaded: boolean): LabView {
   const readiness = labReadiness(card, loaded);
   const status = labSessionStatus(card.running);
-  return { card, readiness, status, badge: statusBadge(readiness, status, card), topics: labTopics(card.resources), family: labFamily(card.resources), search: searchText(card) };
+  return { card, readiness, status, badge: statusBadge(readiness, status, card), topics: labTopics(card.resources, card.cloud), family: labFamily(card.resources), search: searchText(card) };
 }
 
 /** Every card's view, by lab number (then id). */

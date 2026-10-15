@@ -39,7 +39,7 @@ describe("wide (1600 px)", () => {
     expect(grid()).toBeInTheDocument();
     expect(selectBtn(/^Users, groups/)).toHaveAttribute("aria-current", "true");
     // The page's parts, top to bottom.
-    expect(screen.getByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Labs summary" })).toBeInTheDocument();
     expect(screen.getByRole("search", { name: "Filter labs" })).toBeInTheDocument();
     // The old sidebar and the enclosing panel are gone.
@@ -145,7 +145,7 @@ describe("wide (1600 px)", () => {
     expect(await screen.findByRole("complementary", { name: /^Storage accounts/ })).toBeInTheDocument();
     await act(() => new Promise((r) => setTimeout(r, 50)));
     expect(navs).toEqual(["REPLACE /labs?type=explore&lab=az104-05-storage"]);
-    expect(within(screen.getByRole("search", { name: "Filter labs" })).getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+    expect(within(screen.getByRole("radiogroup", { name: "Exam" })).getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
     expect(await screen.findByText("Filters cleared to show Lab 5.")).toBeInTheDocument();
   });
 
@@ -252,7 +252,7 @@ describe("phone (390 px)", () => {
     expect(screen.queryByRole("search", { name: "Filter labs" })).toBeNull();
     // A full-width view right under the header: the strip and notices wait on the catalogue.
     expect(screen.queryByRole("region", { name: "Labs summary" })).toBeNull();
-    expect(screen.getByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Back to labs" }));
     await waitFor(() => expect(grid()).toBeInTheDocument());
     expect(loc()).toBe("/labs");
@@ -294,7 +294,7 @@ describe("phone (390 px)", () => {
   it("phone /labs/history is the Your labs page with the same header", async () => {
     setViewport("phone");
     renderApp("/labs/history", { routes: routes({ "GET /api/v1/labs/sessions": { sessions: [] } }) });
-    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
+    expect(await within(screen.getByRole("main")).findByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
     expect(await screen.findByText("No lab sessions yet")).toBeInTheDocument();
   });
 
@@ -347,7 +347,7 @@ describe("states", () => {
     const alert = within(await screen.findByRole("alert"));
     expect(alert.getByText("Couldn't load the labs")).toBeInTheDocument();
     expect(alert.getByText(/The Worker could not read D1\./)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Azure Labs" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Labs" })).toBeInTheDocument();
     await user.click(alert.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("button", { name: /^Blob security/ })).toBeInTheDocument();
   });

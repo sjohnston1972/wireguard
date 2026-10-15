@@ -3,13 +3,19 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import type { LabOrphan, LabSession } from "@shared/api";
-import { Button, Modal } from "@/components";
+import { cloudOfId } from "@shared/labs";
+import { Button, Modal, StatusPill } from "@/components";
 import { useCancelLab, useCleanupLabOrphans, useDestroyLab, useExtendLab } from "@/api/mutations";
 import { endsAt, extendChoices, fmtGbp, fmtSpan, peeringWord, stateWord, timeLeft, useLabClock } from "./model";
 
 /** A coloured word: the colour never stands alone. */
 export function Word({ label, tone, className }: { label: string; tone: string; className?: string }) {
   return <span className={`labs-word labs-word--${tone}${className ? ` ${className}` : ""}`}>{label}</span>;
+}
+
+/** The AWS badge on a running lab's chip (AWS labs spec §10): a word, never colour alone; nothing for an Azure lab. */
+export function CloudBadge({ labId }: { labId: string }) {
+  return cloudOfId(labId) === "aws" ? <StatusPill status="custom" label="AWS" tone="amber" dot={false} /> : null;
 }
 
 /** "1 h 15 min left" to the timer; before the timer is set (deploying), the time to the hard stop. */
@@ -106,6 +112,7 @@ function Chip({ s, now }: { s: LabSession; now: number }) {
     <li className={`labs-chip labs-chip--${st.tone}`}>
       <div className="labs-chip__head">
         <Word {...st} />
+        <CloudBadge labId={s.labId} />
         <Link className="labs-chip__title" to={{ pathname: `/labs/${encodeURIComponent(s.labId)}`, search }}>
           {s.title}
         </Link>

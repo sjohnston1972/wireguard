@@ -10,17 +10,50 @@
 
 import { Activity, ArchiveRestore, Container, Database, FlaskConical, HardDrive, MessagesSquare, Network, ScrollText, Server, ShieldCheck, UserRound, type LucideIcon } from "lucide-react";
 import { KINDS } from "@shared/topology/kinds";
+import type { LabCloud } from "@shared/labs";
 import type { TopoKind } from "@shared/topology/model";
 
 export type TopicFamily = "identity" | "governance" | "security" | "networking" | "monitoring" | "continuity" | "storage" | "data" | "messaging" | "containers" | "compute";
 
 export interface Topic {
   topic: string;
+  /** The topic's word on an AWS lab (AWS labs spec §10); the Azure word when absent (the AWS-only kinds). */
+  aws?: string;
   family: TopicFamily;
   kinds: TopoKind[];
 }
 
-const t = (topic: string, family: TopicFamily, ...kinds: TopoKind[]): Topic => ({ topic, family, kinds });
+/** Azure topic -> its AWS word. */
+const AWS_WORD: Record<string, string> = {
+  "Managed identities": "IAM roles",
+  "Key Vault": "KMS",
+  "Azure Firewall": "Network Firewall",
+  WAF: "AWS WAF",
+  Bastion: "Instance Connect",
+  VPN: "Site-to-site VPN",
+  "NAT gateway": "NAT gateways",
+  "Load Balancer": "Elastic Load Balancing",
+  "Front Door": "CloudFront",
+  "Traffic Manager": "Global Accelerator",
+  "Private Link": "VPC endpoints",
+  DNS: "Route 53",
+  Routing: "Route tables",
+  "Public IPs": "Elastic IPs",
+  NSGs: "Security groups",
+  "Azure Monitor": "CloudWatch",
+  "Log Analytics": "CloudWatch Logs",
+  "Backup and recovery": "AWS Backup",
+  Storage: "S3",
+  "Azure SQL": "Amazon RDS",
+  AKS: "EKS",
+  "Container Apps": "ECS",
+  "Container Registry": "ECR",
+  "Scale sets": "Auto Scaling",
+  "Virtual machines": "EC2",
+  "Virtual networks": "VPCs",
+};
+
+const t = (topic: string, family: TopicFamily, ...kinds: TopoKind[]): Topic => ({ topic, family, kinds, ...(AWS_WORD[topic] ? { aws: AWS_WORD[topic] } : {}) });
 
 /** Kind -> topic, in priority order (spec §7). resourceGroup, subnet, lane, gateway and generic have no topic. */
 export const TOPICS: readonly Topic[] = [
@@ -57,14 +90,14 @@ export const TOPICS: readonly Topic[] = [
   t("Service Bus", "messaging", "serviceBus"),
   t("Event Grid", "messaging", "eventGrid"),
   // AWS-only kinds (AWS labs spec §10).
-  t("Transit gateway", "networking", "transitGateway"),
-  t("Internet gateway", "networking", "internetGateway"),
+  t("Transit Gateway", "networking", "transitGateway"),
+  t("Internet gateways", "networking", "internetGateway"),
   t("Client VPN", "networking", "clientVpn"),
   t("VPC Lattice", "networking", "lattice"),
   t("DynamoDB", "data", "dynamodb"),
   t("ElastiCache", "data", "cache"),
   t("Messaging", "messaging", "messaging"),
-  t("Streams", "messaging", "stream"),
+  t("Kinesis", "messaging", "stream"),
   t("Lambda", "compute", "lambda"),
   t("AKS", "containers", "aks"),
   t("Container Apps", "containers", "containerApp", "containerAppEnv", "containerAppJob"),
@@ -95,9 +128,9 @@ export const FAMILY_ICON: Record<TopicFamily | "none", LucideIcon> = {
 type Resources = Record<string, number> | null | undefined;
 const has = (r: Resources, k: string) => !!r && (r[k] ?? 0) > 0;
 
-/** The distinct topics of a lab's kinds, in TOPICS order; [] without resources. */
-export function labTopics(resources: Resources): string[] {
-  return TOPICS.filter((x) => x.kinds.some((k) => has(resources, k))).map((x) => x.topic);
+/** The distinct topics of a lab's kinds, in TOPICS order (AWS words for an AWS lab); [] without resources. */
+export function labTopics(resources: Resources, cloud?: LabCloud): string[] {
+  return TOPICS.filter((x) => x.kinds.some((k) => has(resources, k))).map((x) => (cloud === "aws" ? (x.aws ?? x.topic) : x.topic));
 }
 
 /** The first topic's family (the card's icon), or null when the lab has no topic. */
