@@ -6,7 +6,7 @@
 // Azure and an AWS heading, and an AWS lab's modal deploys to London with
 // console links and the same-cloud connect note.
 
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp, renderWithProviders } from "@/test/render";
@@ -18,14 +18,9 @@ import { LabsFilterToolbar } from "./LabsFilterToolbar";
 import { labView } from "./contract";
 import { labTopics } from "./topics";
 import { awsCard, card, labs, session } from "./testData";
-import { awsLabDetailFixture, labCoverageFixture, labDetailFixture } from "@/test/fixtures";
+import { awsLabDetailFixture, labCoverageFixture } from "@/test/fixtures";
 import { DeployFormView } from "./DeployForm";
 import { RunningLabView } from "./RunningLab";
-
-vi.setConfig({ testTimeout: 20_000 });
-beforeAll(async () => {
-  await import("@/views/labs");
-});
 
 const aws = awsCard;
 
@@ -98,6 +93,7 @@ describe("the AWS lab modal", () => {
   it("a running AWS lab links to its console group per region and explains the connect lines", () => {
     const d = awsLabDetailFixture({
       card: aws({ running: session({ labId: "soa-03-auto-scaling", state: "running" }) }),
+      connect: { possible: true, note: null },
       session: session({ labId: "soa-03-auto-scaling", state: "running", outputs: { privateIps: { "vm-web": "10.64.64.10" }, connect: ["aws ec2-instance-connect ssh --instance-id i-0abc --os-user labadmin --connection-type eice", "ssh labadmin@10.64.64.10"], users: {} } }),
     });
     renderWithProviders(<RunningLabView d={d} />);
@@ -106,8 +102,15 @@ describe("the AWS lab modal", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.queryByRole("link", { name: /portal/i })).toBeNull();
     expect(screen.getByText(/the aws ec2-instance-connect line works anywhere/)).toBeInTheDocument();
-    // This lab runs unconnected, so the "once peered" hint would mislead.
+  });
+
+  it("an AWS lab that runs unconnected shows neither the peered hint nor the peered-lines note", () => {
+    // peering "off" so only the connect.possible gate can hide the hint.
+    const s = session({ labId: "soa-03-auto-scaling", state: "running", peering: "off", outputs: { privateIps: { "vm-web": "10.64.64.10" }, connect: ["aws ec2-instance-connect ssh --instance-id i-0abc --os-user labadmin --connection-type eice"], users: {} } });
+    renderWithProviders(<RunningLabView d={awsLabDetailFixture({ session: s })} />);
+    expect(screen.getByText("aws ec2-instance-connect ssh --instance-id i-0abc --os-user labadmin --connection-type eice")).toBeInTheDocument();
     expect(screen.queryByText(/once the lab is peered/)).toBeNull();
+    expect(screen.queryByText(/work while the lab is peered/)).toBeNull();
   });
 });
 

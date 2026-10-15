@@ -149,7 +149,7 @@ function Addresses({ s, aws, connectPossible }: { s: LabSession; aws: boolean; c
           ))}
         </ul>
       )}
-      {aws && o.connect.length > 0 && <p className="labs-muted">The ssh and curl lines work while the lab is peered; the aws ec2-instance-connect line works anywhere the AWS CLI is signed in.</p>}
+      {aws && connectPossible && o.connect.length > 0 && <p className="labs-muted">The ssh and curl lines work while the lab is peered; the aws ec2-instance-connect line works anywhere the AWS CLI is signed in.</p>}
       {s.peering !== "on" && !(aws && !connectPossible) && <p className="labs-muted">Reachable from tunnel clients once the lab is peered to the gateway.</p>}
     </section>
   );
