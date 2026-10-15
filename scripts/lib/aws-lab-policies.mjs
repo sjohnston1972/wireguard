@@ -23,7 +23,9 @@
 // Terraform cannot tag it (NAME_OWNED_TYPES, lab-scope-aws.mjs UNTAGGABLE) is
 // in neither list, or a lab could neither make nor remove it. Nor is a read
 // (the reference gives a few reads the request tag), nor using a KMS key
-// (KEY_USE: AWS's own untagged keys encrypt the labs' disks).
+// (KEY_USE: AWS's own untagged keys encrypt the labs' disks). A delete or
+// update verb is never a create (ruling P1), whatever keys the reference
+// lists for it.
 //
 // Size (ruling A29). AWS caps a managed policy at 6,144 characters without
 // whitespace and a role at 10 of them, so the statements are packed, first
@@ -55,7 +57,7 @@ const svc = (x) => `${x}.amazonaws.com`;
 /** iam:PassedToService: the services a lab role may be handed to. */
 export const PASS_SERVICES = ["ec2", "lambda", "ecs-tasks", "eks", "states", "config", "backup", "ssm", "firehose", "glue", "vpc-flow-logs", "apigateway", "events", "scheduler", "s3", "cloudformation"].map(svc);
 /** iam:AWSServiceName: the service-linked roles a lab may cause (ruling A18). */
-export const SERVICE_LINKED = ["elasticloadbalancing", "autoscaling", "rds", "elasticache", "ecs", "eks", "eks-nodegroup", "network-firewall", "globalaccelerator", "backup", "config", "remediation.config", "transitgateway", "vpc-lattice", "ssm", "ec2-instance-connect"].map(svc);
+export const SERVICE_LINKED = ["elasticloadbalancing", "autoscaling", "rds", "elasticache", "ecs", "eks", "eks-nodegroup", "network-firewall", "globalaccelerator", "backup", "config", "remediation.config", "transitgateway", "vpc-lattice", "ssm", "ec2-instance-connect", "access-analyzer"].map(svc);
 /** Resource types AWS (or another account) owns: a change list action naming one would refuse e.g. launching from Amazon's AMI. */
 export const AWS_OWNED_TYPES = ["ec2:image", "ec2:snapshot", "ec2:prefix-list", "ssm:document", "ssm:parameter"];
 /** Types a lab owns by name (lab-<id>-*) because Terraform cannot tag them (lab-scope-aws.mjs UNTAGGABLE). */
@@ -118,6 +120,15 @@ const props = (a) => a.Annotations?.Properties ?? {};
 const isUntag = (name) => /^(Untag|Remove\w*Tags?|Delete\w*Tags?)/.test(name);
 
 /**
+ * Ruling P1 (A59): verbs that never make anything. The reference gives a few of them the request tag
+ * (access-analyzer:DeleteAnalyzer, cloudformation:UpdateStack, cognito-idp:UpdateUserPool, states:UpdateStateMachine,
+ * logs:UpdateDeliveryConfiguration), which put them in the create list, where a call without a request tag (every
+ * delete) is always refused: lab 07 could make an analyzer and never remove it. They are judged as changes instead.
+ * apigateway's HTTP-verb actions (DELETE, PATCH) are left to batch 3's API Gateway lab.
+ */
+export const NON_CREATE_VERB = /^(Delete|Update|Remove|Disassociate|Detach|Deregister|Cancel|Stop|Terminate|Revoke|Reset|Disable|Reject|Untag)/;
+
+/**
  * The create and change lists (P16) from each service's reference document, folded (A29), plus createOn: for each
  * create entry refused only on the types it makes, those types' ARN patterns; and untag: the tag-removing actions.
  */
@@ -150,8 +161,9 @@ export function abacLists(sar) {
       if (isAccountSetting(service, a)) accountSettings.push(name);
       // A read makes nothing (the reference gives some reads the request tag): never in either list.
       if (!(p.IsWrite || p.IsPermissionManagement) || p.IsList) continue;
-      const onAction = (a.ActionConditionKeys ?? []).includes(RT);
-      const onTypes = res.filter((r) => (r.ConditionKeys ?? []).includes(RT)).map((r) => r.Name);
+      const maker = !NON_CREATE_VERB.test(a.Name);
+      const onAction = maker && (a.ActionConditionKeys ?? []).includes(RT);
+      const onTypes = maker ? res.filter((r) => (r.ConditionKeys ?? []).includes(RT)).map((r) => r.Name) : [];
       const key = (t) => `${service}:${t}`;
       if (name === "ec2:RunInstances") {
         createOn[name] = RUN_INSTANCES_TYPES.flatMap((t) => arnsOf(service, top, t));
@@ -301,7 +313,7 @@ function fixedStatements(abac) {
     allow("LabRolesBounded", ["iam:CreateRole", "iam:PutRolePermissionsBoundary", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PutRolePolicy", "iam:DeleteRolePolicy"], LAB_ROLE, BOUNDED),
     allow("LabRolesOther", ["iam:DeleteRole", "iam:TagRole", "iam:UntagRole", "iam:UpdateRole", "iam:UpdateAssumeRolePolicy", "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile", "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile", "iam:TagInstanceProfile", "iam:CreatePolicy", "iam:DeletePolicy", "iam:CreatePolicyVersion", "iam:DeletePolicyVersion", "iam:TagPolicy"], [LAB_ROLE, LAB_PROFILE, LAB_POLICY]),
     allow("Lab07UsersBounded", ["iam:CreateUser", "iam:PutUserPermissionsBoundary", "iam:AttachUserPolicy", "iam:DetachUserPolicy", "iam:PutUserPolicy", "iam:DeleteUserPolicy"], LAB07_USER, BOUNDED),
-    allow("Lab07UsersOther", ["iam:DeleteUser", "iam:TagUser", "iam:CreateLoginProfile", "iam:DeleteLoginProfile"], LAB07_USER),
+    allow("Lab07UsersOther", ["iam:DeleteUser", "iam:TagUser", "iam:UntagUser", "iam:CreateLoginProfile", "iam:DeleteLoginProfile", "iam:DeleteAccessKey", "iam:UpdateAccessKey", "iam:DeleteSSHPublicKey", "iam:DeleteSigningCertificate", "iam:DeleteServiceSpecificCredential", "iam:DeactivateMFADevice"], LAB07_USER),
     allow("PassLabRoles", "iam:PassRole", LAB_ROLE, { StringEquals: { "iam:PassedToService": PASS_SERVICES } }),
     allow("ServiceLinkedRoles", "iam:CreateServiceLinkedRole", "*", { StringEquals: { "iam:AWSServiceName": SERVICE_LINKED } }),
     deny("DenyVpnServer", "*", "*", { StringEquals: { "aws:ResourceTag/wg-admin": "vpn" } }),
