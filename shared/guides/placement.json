@@ -698,7 +698,7 @@
   {
    "file": "architecture.svg",
    "sketch": 0,
-   "alt": "Architecture diagram. A bastion, a VM, three private endpoints, a Log Analytics workspace and more, in one resource group with one virtual network and two subnets.",
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an EC2 instance, three VPC endpoints, a CloudWatch log group and more, in one VPC with two subnets.",
    "width": 1707,
    "height": 1146
   }

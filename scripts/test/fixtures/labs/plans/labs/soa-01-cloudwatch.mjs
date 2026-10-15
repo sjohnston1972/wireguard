@@ -68,7 +68,7 @@ export default () => {
         address: "aws_sns_topic_policy.alerts",
         values: {},
         unknown: ["arn", "policy"],
-        refs: { arn: ref(topic, "arn"), policy: ref(topic, "arn") },
+        refs: { arn: ref(topic, "arn"), policy: [...ref(topic, "arn"), "data.aws_partition.current.partition", "data.aws_partition.current", "data.aws_caller_identity.current.account_id", "data.aws_caller_identity.current"] },
       },
       alarm("cpu_high", "cpu-high", { alarm_description: "vm-app's CPU above 70% for two minutes", namespace: "AWS/EC2", metric_name: "CPUUtilization", statistic: "Average", evaluation_periods: 2, threshold: 70, comparison_operator: "GreaterThanThreshold" }, { dimensions: true, ok: true }),
       alarm("app_errors", "app-errors", { alarm_description: "Five or more ERROR lines in a minute", namespace: ns, metric_name: "AppErrors", statistic: "Sum", evaluation_periods: 1, threshold: 5, comparison_operator: "GreaterThanOrEqualToThreshold", treat_missing_data: "notBreaching" }),

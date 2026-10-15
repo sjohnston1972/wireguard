@@ -76,27 +76,76 @@ const PROPER = ["Route Server", "Container Apps", "App Service", "Cosmos", "Priv
 /** A kind's word inside a sentence: "application gateway", but "VM", "Front Door". */
 const inSentence = (w: string) => (PROPER.some((p) => w.startsWith(p)) ? w : w.charAt(0).toLowerCase() + w.slice(1));
 const NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
-const article = (w: string) => (/^[aeiou]/i.test(w) || /^[AEFHILMNORX][A-Z]/.test(w) ? "an" : "a");
+const article = (w: string, aws = false) => (/^[aeiou]/i.test(w) || (aws ? /^[AEFHILMNORSX][A-Z]/ : /^[AEFHILMNORX][A-Z]/).test(w) ? "an" : "a");
 
-/** "an application gateway", "two VMs". */
-function counted(kind: TopoNode["kind"], count: number): string {
+/**
+ * What an AWS lab's alt text calls each kind (the kinds' own words are Azure's: "Log Analytics workspace", "Network
+ * security group"). Written as they read mid-sentence, with their plural; a kind not listed keeps the registry's word.
+ */
+const AWS_WORDS: Partial<Record<TopoNode["kind"], [string, string]>> = {
+  vm: ["EC2 instance", "EC2 instances"],
+  vmss: ["Auto Scaling group", "Auto Scaling groups"],
+  loadBalancer: ["load balancer", "load balancers"],
+  nsg: ["security group", "security groups"],
+  routeTable: ["route table", "route tables"],
+  internetGateway: ["internet gateway", "internet gateways"],
+  natGateway: ["NAT gateway", "NAT gateways"],
+  publicIp: ["Elastic IP", "Elastic IPs"],
+  privateEndpoint: ["VPC endpoint", "VPC endpoints"],
+  privateLinkService: ["VPC endpoint service", "VPC endpoint services"],
+  bastion: ["EC2 Instance Connect Endpoint", "EC2 Instance Connect Endpoints"],
+  localNetworkGateway: ["customer gateway", "customer gateways"],
+  vpnGateway: ["VPN gateway", "VPN gateways"],
+  firewall: ["Network Firewall", "Network Firewalls"],
+  firewallPolicy: ["firewall policy", "firewall policies"],
+  wafPolicy: ["web ACL", "web ACLs"],
+  dnsZone: ["hosted zone", "hosted zones"],
+  dnsResolver: ["Resolver endpoint", "Resolver endpoints"],
+  dnsRuleset: ["Resolver rule", "Resolver rules"],
+  frontDoor: ["CloudFront distribution", "CloudFront distributions"],
+  trafficManager: ["Global Accelerator", "Global Accelerators"],
+  aks: ["EKS cluster", "EKS clusters"],
+  containerApp: ["ECS service", "ECS services"],
+  storage: ["S3 bucket", "S3 buckets"],
+  sqlServer: ["RDS database", "RDS databases"],
+  keyVault: ["KMS key", "KMS keys"],
+  registry: ["ECR repository", "ECR repositories"],
+  recoveryVault: ["backup vault", "backup vaults"],
+  managedIdentity: ["IAM role", "IAM roles"],
+  monitor: ["CloudWatch alarm", "CloudWatch alarms"],
+  logAnalytics: ["CloudWatch log group", "CloudWatch log groups"],
+  messaging: ["messaging resource", "messaging resources"],
+  transitGateway: ["transit gateway", "transit gateways"],
+  lambda: ["Lambda function", "Lambda functions"],
+  dynamodb: ["DynamoDB table", "DynamoDB tables"],
+  cache: ["ElastiCache cluster", "ElastiCache clusters"],
+  stream: ["Kinesis stream", "Kinesis streams"],
+  lattice: ["VPC Lattice service", "VPC Lattice services"],
+  clientVpn: ["Client VPN endpoint", "Client VPN endpoints"],
+  vnet: ["VPC", "VPCs"],
+};
+
+/** "an application gateway", "two VMs"; `aws`: the AWS words ("an EC2 instance", "two security groups"). */
+function counted(kind: TopoNode["kind"], count: number, aws = false): string {
   const k = KINDS[kind];
+  const [one, many] = (aws ? AWS_WORDS[kind] : undefined) ?? [k.word, k.plural];
+  const sentence = (w: string) => (aws && AWS_WORDS[kind] ? w : inSentence(w));
   if (count === 1) {
-    const w = inSentence(k.word);
-    return `${article(w)} ${w}`;
+    const w = sentence(one);
+    return `${article(w, aws)} ${w}`;
   }
-  return `${NUMBERS[count] ?? String(count)} ${inSentence(k.plural)}`;
+  return `${NUMBERS[count] ?? String(count)} ${sentence(many)}`;
 }
 
 /** "a, b and c". */
 const listed = (parts: string[]) => (parts.length <= 1 ? (parts[0] ?? "") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`);
 
 /** Kinds of `nodes` counted, in the registry's order. */
-function kindsOf(nodes: TopoNode[], max = 4): string[] {
+function kindsOf(nodes: TopoNode[], max = 4, aws = false): string[] {
   const counts = new Map<TopoNode["kind"], number>();
   for (const x of nodes) counts.set(x.kind, (counts.get(x.kind) ?? 0) + 1);
   const kinds = [...counts.keys()].sort((a, b) => KINDS[a].order - KINDS[b].order || (KINDS[a].word < KINDS[b].word ? -1 : 1));
-  const shown = kinds.slice(0, max).map((k) => counted(k, counts.get(k)!));
+  const shown = kinds.slice(0, max).map((k) => counted(k, counts.get(k)!, aws));
   if (kinds.length > max) shown.push("more");
   return shown;
 }
@@ -109,6 +158,7 @@ const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  * network and two subnets."
  */
 export function describeGraph(graph: TopologyGraph): string {
+  const aws = graph.nodes.some((x) => x.cloud === "aws");
   const byId = nodeIndex(graph);
   const assets = graph.nodes.filter((x) => !isGroupKind(x.kind) && x.kind !== "gateway");
   const isAsset = (id: string) => byId.has(id) && !isGroupKind(byId.get(id)!.kind) && byId.get(id)!.kind !== "gateway";
@@ -122,18 +172,19 @@ export function describeGraph(graph: TopologyGraph): string {
   const sources = assets.filter((x) => outs.has(x.id) && !ins.has(x.id));
   const sinks = assets.filter((x) => ins.has(x.id) && !outs.has(x.id));
   let what: string;
-  if (sources.length && sinks.length) what = `${listed(kindsOf(sources, 3))} sending traffic to ${listed(kindsOf(sinks, 3))}`;
-  else if (assets.length) what = listed(kindsOf(assets));
+  if (sources.length && sinks.length) what = `${listed(kindsOf(sources, 3, aws))} sending traffic to ${listed(kindsOf(sinks, 3, aws))}`;
+  else if (assets.length) what = listed(kindsOf(assets, 4, aws));
   else what = "no resources";
   const count = (k: TopoNode["kind"]) => graph.nodes.filter((x) => x.kind === k).length;
   const rgs = count("resourceGroup");
   const nets = count("vnet") + count("virtualHub");
   const subnets = count("subnet");
   const holders = [
-    nets ? counted(count("vnet") ? "vnet" : "virtualHub", nets).replace(/^an? /, "one ") : null,
-    subnets ? counted("subnet", subnets).replace(/^an? /, "one ") : null,
+    nets ? counted(count("vnet") ? "vnet" : "virtualHub", nets, aws).replace(/^an? /, "one ") : null,
+    subnets ? counted("subnet", subnets, aws).replace(/^an? /, "one ") : null,
   ].filter((x): x is string => !!x);
-  const where = rgs ? `${rgs === 1 ? "in one resource group" : `across ${NUMBERS[rgs] ?? rgs} resource groups`}${holders.length ? ` with ${listed(holders)}` : ""}` : "";
+  // An AWS lab's group is its Resource Groups group, not a container the resources sit in: the VPC is the place.
+  const where = aws ? (holders.length ? `in ${nets ? `${holders[0]}${subnets ? ` with ${holders[1]}` : ""}` : holders[0]}` : "") : rgs ? `${rgs === 1 ? "in one resource group" : `across ${NUMBERS[rgs] ?? rgs} resource groups`}${holders.length ? ` with ${listed(holders)}` : ""}` : "";
   return `${capital(what)}${where ? `, ${where}` : ""}.`;
 }
 

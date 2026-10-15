@@ -33,13 +33,23 @@ resource "aws_sns_topic_policy" "alerts" {
   arn = aws_sns_topic.alerts.arn
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid       = "EventsAndAlarms"
-      Effect    = "Allow"
-      Principal = { Service = ["events.amazonaws.com", "cloudwatch.amazonaws.com"] }
-      Action    = "sns:Publish"
-      Resource  = aws_sns_topic.alerts.arn
-    }]
+    Statement = [
+      {
+        Sid       = "OwnerManages"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Action    = ["sns:GetTopicAttributes", "sns:SetTopicAttributes", "sns:Subscribe", "sns:ListSubscriptionsByTopic", "sns:Publish", "sns:DeleteTopic"]
+        Resource  = aws_sns_topic.alerts.arn
+      },
+      {
+        Sid       = "EventsAndAlarmsOfThisAccount"
+        Effect    = "Allow"
+        Principal = { Service = ["events.amazonaws.com", "cloudwatch.amazonaws.com"] }
+        Action    = "sns:Publish"
+        Resource  = aws_sns_topic.alerts.arn
+        Condition = { StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id } }
+      },
+    ]
   })
 }
 
