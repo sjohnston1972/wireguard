@@ -15,7 +15,7 @@ test("soa-05 keeps the AWS lab contract", () => assert.deepEqual(commonAwsProble
 test("soa-05's lab.yaml: §12.2 row 05", () => {
   const { yaml } = awsLab(ID);
   assert.deepEqual([yaml.exam, yaml.level, yaml.skill_areas, yaml.prerequisites], ["SOA-C03", "associate", ["soa.reliability", "soa.monitoring", "saa.performance"], []]);
-  assert.deepEqual(yaml.timing, { deploy_min: 20, destroy_min: 15, session_h: 2, max_h: 4 });
+  assert.deepEqual(yaml.timing, { deploy_min: 30, destroy_min: 20, session_h: 2, max_h: 4 });
   assert.deepEqual(yaml.capacity, { instance_types: ["t4g.nano"] });
   assert.deepEqual(yaml.identity.creates, []);
   const total = yaml.cost.items.reduce((n, i) => n + i.gbp_h * (i.qty ?? 1), 0);

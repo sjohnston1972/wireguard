@@ -41,7 +41,7 @@ cost:
       aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
     - { name: "Automated backups and snapshots (inside the free backup storage)", gbp_h: 0 }
   pricey: null
-timing: { deploy_min: 20, destroy_min: 15, session_h: 2, max_h: 4 }
+timing: { deploy_min: 30, destroy_min: 20, session_h: 2, max_h: 4 }
 capacity: { instance_types: [t4g.nano] }
 regions: { secondary: null }
 connectivity: { peering: optional, dns_link: false, subnets_used: 1 }

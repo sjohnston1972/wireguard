@@ -57,6 +57,29 @@ describe("AWS on the planned diagram", () => {
     expect(node("ec2:security-group/sg-vms").kind).toBe("nsg");
   });
 
+  it("a read replica with no subnet group of its own sits in its source database's VPC", () => {
+    const plan = {
+      ...PLANNED,
+      changes: [
+        ...PLANNED.changes,
+        ch("aws_db_subnet_group.db", { name: `lab-${ID}-db`, tags: { Name: "lab-db" } }),
+        ch("aws_db_instance.primary", { identifier: "db-a05k3x9q", instance_class: "db.t4g.micro", tags: { Name: "db-primary" } }),
+        ch("aws_db_instance.replica", { identifier: "db-a05k3x9q-replica", instance_class: "db.t4g.micro", tags: { Name: "db-replica" } }),
+      ],
+      refs: {
+        ...PLANNED.refs,
+        "aws_db_subnet_group.db": { subnet_ids: ["aws_subnet.private"] },
+        "aws_db_instance.primary": { db_subnet_group_name: ["aws_db_subnet_group.db"] },
+        "aws_db_instance.replica": { replicate_source_db: ["aws_db_instance.primary"] },
+      },
+    };
+    const g = plannedGraph(plan as never);
+    const vpc = g.nodes.find((n) => n.key === "ec2:vpc/vpc-lab")!;
+    const dbs = g.nodes.filter((n) => n.kind === "sqlServer");
+    expect(dbs.map((n) => n.label).sort()).toEqual(["db-primary", "db-replica"]);
+    for (const d of dbs) expect(d.parent).toBe(vpc.id);
+  });
+
   it("every AWS kind has an AWS icon, and tagging types map to kinds", () => {
     for (const k of ["vnet", "subnet", "vm", "vmss", "loadBalancer", "nsg", "routeTable", "internetGateway", "privateEndpoint", "bastion", "sqlServer", "storage", "recoveryVault", "managedIdentity", "monitor", "logAnalytics", "messaging", "resourceGroup"] as const) expect(KINDS[k].awsIcon, k).toBeTruthy();
     expect(kindOfAws("ec2:vpc")).toBe("vnet");
