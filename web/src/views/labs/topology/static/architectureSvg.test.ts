@@ -15,6 +15,7 @@ import { architectureSvg, describeGraph, fitText, spriteSymbols, textWidth } fro
 const repo = [process.cwd(), join(process.cwd(), "..")].find((p) => existsSync(join(p, "shared/topology/planned")))!;
 const planned = (id: string): TopologyGraph => JSON.parse(readFileSync(join(repo, "shared/topology/planned", `${id}.json`), "utf8"));
 const sprite = readFileSync(join(repo, "web/src/views/labs/topology/icons/azure.svg"), "utf8");
+const awsSprite = readFileSync(join(repo, "web/src/views/labs/topology/icons/aws.svg"), "utf8");
 const LB = "az104-16-lb-appgw";
 
 describe("architectureSvg", () => {
@@ -99,6 +100,16 @@ describe("text fitting", () => {
     expect(cut.endsWith("…")).toBe(true);
     expect(textWidth(cut, 12, { bold: true })).toBeLessThanOrEqual(138);
     expect(textWidth("mmmm", 10)).toBeGreaterThan(textWidth("iiii", 10));
+  });
+  it("an AWS graph draws AWS icons from the second sprite, self-contained; an Azure one never needs it", () => {
+    const node = (id: string, kind: "resourceGroup" | "vnet" | "vm", parent?: string) => ({ id, key: `k/${id}`, kind, label: id, props: {}, cloud: "aws" as const, ...(parent ? { parent } : {}) });
+    const g: TopologyGraph = { schema: 1, labId: "soa-01-x", version: 1, source: "planned", at: null, nodes: [node("g", "resourceGroup"), node("v", "vnet", "g"), node("i", "vm", "v")], edges: [] };
+    const { svg } = architectureSvg(g, { sprite: sprite + awsSprite, title: "t" });
+    const used = [...new Set([...svg.matchAll(/ href="#([^"]+)"/g)].map((m) => m[1]!))].sort();
+    expect(used).toEqual(["aws-ec2-instance", "aws-resource-groups", "aws-vpc"]);
+    for (const id of used) expect(svg).toContain(`<symbol id="${id}"`);
+    expect(svg).not.toMatch(/<symbol id="az-/);
+    expect(architectureSvg(planned(LB), { sprite: sprite + awsSprite, title: "t" }).svg).not.toMatch(/<symbol id="aws-/);
   });
   it("finds the sprite's symbols by icon name", () => {
     const s = spriteSymbols(sprite);

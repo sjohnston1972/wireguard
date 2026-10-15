@@ -35,7 +35,7 @@ export function AssetCard({ node, badge, ghost = false, compact = false, dim = f
           {badge}
         </span>
       )}
-      <TopoIcon kind={node.kind} size={compact ? 24 : 32} />
+      <TopoIcon kind={node.kind} size={compact ? 24 : 32} cloud={node.cloud} />
       <div className="topo-card__text">
         <span className="topo-card__name" title={node.label}>
           {node.label}

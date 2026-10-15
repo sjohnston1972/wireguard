@@ -99,7 +99,7 @@ export function Details({ graph, status, nodeId, onClose, deploying = false }: D
       onClose={close}
       title={node.label}
       subtitle={kind.word}
-      leading={<TopoIcon kind={node.kind} size={28} />}
+      leading={<TopoIcon kind={node.kind} size={28} cloud={node.cloud} />}
       className="topo-details"
       footer={
         portal ? (

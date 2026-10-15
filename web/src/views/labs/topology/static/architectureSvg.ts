@@ -139,10 +139,13 @@ export function describeGraph(graph: TopologyGraph): string {
 
 // ── Icons ─────────────────────────────────────────────────────────────
 
-/** The `<symbol>`s of the sprite by icon name ("virtual-machine"), as text. */
+/**
+ * The `<symbol>`s of the sprite(s) by icon key, as text: an Azure icon by its name ("virtual-machine"), an AWS one with
+ * its prefix ("aws-ec2-instance"). `sprite` may be both sprites' text joined.
+ */
 export function spriteSymbols(sprite: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const m of sprite.matchAll(/<symbol\b[^>]*\bid="az-([^"]+)"[^>]*>[\s\S]*?<\/symbol>/g)) out.set(m[1]!, m[0]);
+  for (const m of sprite.matchAll(/<symbol\b[^>]*\bid="(az-|aws-)([^"]+)"[^>]*>[\s\S]*?<\/symbol>/g)) out.set(m[1] === "aws-" ? `aws-${m[2]}` : m[2]!, m[0]);
   return out;
 }
 
@@ -169,7 +172,11 @@ const headOf = (k: TopoNode["kind"]) => (k === "subnet" ? SUBNET_HEADER : HEADER
 const topRounded = (x: number, y: number, w: number, h: number, r: number) =>
   `M${n(x)} ${n(y + h)}V${n(y + r)}Q${n(x)} ${n(y)} ${n(x + r)} ${n(y)}H${n(x + w - r)}Q${n(x + w)} ${n(y)} ${n(x + w)} ${n(y + r)}V${n(y + h)}Z`;
 
-const icon = (name: string, x: number, y: number, size: number) => `<use href="#az-${name}" xlink:href="#az-${name}" x="${n(x)}" y="${n(y)}" width="${size}" height="${size}"/>`;
+/** The symbol key of a node's icon: its AWS one for an AWS node, else the Azure one. */
+const iconKey = (node: TopoNode): string => (node.cloud === "aws" && KINDS[node.kind].awsIcon ? `aws-${KINDS[node.kind].awsIcon}` : KINDS[node.kind].icon);
+const symbolId = (key: string) => (key.startsWith("aws-") ? key : `az-${key}`);
+
+const icon = (name: string, x: number, y: number, size: number) => `<use href="#${symbolId(name)}" xlink:href="#${symbolId(name)}" x="${n(x)}" y="${n(y)}" width="${size}" height="${size}"/>`;
 
 function chip(x: number, cy: number, text: string, opts: { size?: number; mono?: boolean } = {}): { svg: string; w: number } {
   const size = opts.size ?? 10.5;
@@ -204,7 +211,7 @@ function groupSvg(node: TopoNode, b: Abs, icons: Set<string>): string {
   let x = b.x + pad;
   const right = b.x + b.w - pad;
   if (k !== "lane") {
-    const name = KINDS[k].icon;
+    const name = iconKey(node);
     icons.add(name);
     out.push(icon(name, x, cy - 8, 16));
     x += 22;
@@ -242,8 +249,8 @@ function cardSvg(node: TopoNode, b: Abs, icons: Set<string>): string {
   if (stack) for (const d of [6, 3]) out.push(`<rect x="${n(b.x + d)}" y="${n(b.y + d)}" width="${b.w}" height="${b.h}" rx="10" fill="${PALETTE.page}" stroke="${PALETTE.border}"/>`);
   out.push(`<rect x="${n(b.x)}" y="${n(b.y + 1.5)}" width="${b.w}" height="${b.h}" rx="10" fill="#0f1b2d" fill-opacity="0.07"/>`);
   out.push(`<rect x="${n(b.x + 0.5)}" y="${n(b.y + 0.5)}" width="${b.w - 1}" height="${b.h - 1}" rx="10" fill="${gateway ? PALETTE.tile : PALETTE.page}" stroke="${PALETTE.border}"${gateway ? ` stroke-dasharray="5 4"` : ""}/>`);
-  icons.add(k.icon);
-  out.push(icon(k.icon, b.x + 10, b.y + 10, 32));
+  icons.add(iconKey(node));
+  out.push(icon(iconKey(node), b.x + 10, b.y + 10, 32));
   const tx = b.x + 52;
   const room = b.w - 52 - 10;
   out.push(`<text x="${n(tx)}" y="${n(b.y + 23)}" font-size="12" font-weight="600" fill="${gateway ? PALETTE.text2 : PALETTE.text}">${esc(fitText(node.label, room, 12, { bold: true }))}</text>`);
@@ -281,7 +288,7 @@ function labelChip(at: { x: number; y: number }, text: string, colour: string | 
 }
 
 /**
- * The planned graph `graph` as a standalone SVG: `sprite` is the Azure icon sprite's text (icons/azure.svg), `title`
+ * The planned graph `graph` as a standalone SVG: `sprite` is the icon sprites' text (icons/azure.svg, and icons/aws.svg for AWS labs), `title`
  * the SVG's <title>.
  */
 export function architectureSvg(graph: TopologyGraph, opts: { sprite: string; title: string }): ArchitectureSvg {
@@ -389,7 +396,7 @@ export function architectureSvg(graph: TopologyGraph, opts: { sprite: string; ti
   const defs: string[] = [];
   for (const name of [...icons].sort()) {
     const s = symbols.get(name);
-    if (!s) throw new Error(`The icon sprite has no symbol az-${name}.`);
+    if (!s) throw new Error(`The icon sprite has no symbol ${symbolId(name)}.`);
     defs.push(s);
   }
   for (const m of [...markers].sort()) {

@@ -100,7 +100,8 @@ export function FlowCanvas(props: CanvasProps) {
 }
 
 function Flow({ graph, status, saved, onMove, showDependencies, search, variant, selected, onSelect, deploying = false, size }: CanvasProps & { size: Size }) {
-  useSprite();
+  const hasAws = useMemo(() => graph.nodes.some((n) => n.cloud === "aws"), [graph]);
+  useSprite(hasAws ? ["azure", "aws"] : ["azure"]);
   const theme = useTheme();
   const reduced = useMedia(REDUCED_MOTION);
   const rf = useReactFlow();

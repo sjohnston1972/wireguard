@@ -21,6 +21,7 @@ export interface LegendProps {
 
 export function Legend({ graph, status, deploying = false }: LegendProps) {
   const kinds = [...new Set(graph.nodes.map((n) => n.kind))].filter((k) => k !== "lane").sort((a: TopoKind, b: TopoKind) => KINDS[a].order - KINDS[b].order || (KINDS[a].word < KINDS[b].word ? -1 : 1));
+  const cloudOf = new Map(graph.nodes.map((n) => [n.kind, n.cloud] as const));
   const keys = new Set(graph.nodes.map((n) => n.key));
   const badges = [...new Set(Object.entries(status).filter(([k]) => keys.has(k)).map(([, s]) => badgeOf(s, { deploying })).filter((b): b is string => !!b))].sort();
   const traffic = graph.edges.some((e) => e.kind === "traffic");
@@ -31,7 +32,7 @@ export function Legend({ graph, status, deploying = false }: LegendProps) {
       <ul className="topo-legend__list" aria-label="Kinds">
         {kinds.map((k) => (
           <li key={k}>
-            <TopoIcon kind={k} size={18} />
+            <TopoIcon kind={k} size={18} cloud={cloudOf.get(k)} />
             {KINDS[k].word}
           </li>
         ))}

@@ -180,7 +180,7 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
             </section>
           )}
 
-          <LabResourceSummary resources={c.resources} topics={view.topics} diagramHref={labHref(c.id, search, layout, "diagram")} />
+          <LabResourceSummary resources={c.resources} topics={view.topics} diagramHref={labHref(c.id, search, layout, "diagram")} cloud={c.cloud} />
 
       </div>
       <div className="lab-details__col lab-details__col--facts">
