@@ -7,7 +7,7 @@
 // listener) and asg.tf (the launch template, the Auto Scaling group and its
 // policy, schedule and lifecycle hook). Names built from var.lab_id and
 // var.name_prefix are known at plan; ids and ARNs are unknown. The group has
-// no tags_all (its tag blocks carry the lab tag); the launch template's
+// no tags_all (its tag blocks carry the lab, session and project tags); the launch template's
 // tag_specifications hold the session's tags, and its user_data is unknown
 // because it holds the password.
 
@@ -108,7 +108,7 @@ export default () => {
           name: `asg-${c.prefix}`, min_size: 2, max_size: 4, desired_capacity: 2, health_check_type: "ELB", health_check_grace_period: 120, force_delete: true, wait_for_capacity_timeout: "10m",
           launch_template: [{}],
           instance_refresh: [{ strategy: "Rolling", preferences: [{ min_healthy_percentage: 50 }] }],
-          tag: [{ key: "cloudlabs-lab", value: id, propagate_at_launch: true }, { key: "Name", value: "vm-web", propagate_at_launch: true }],
+          tag: [{ key: "cloudlabs-lab", value: id, propagate_at_launch: true }, { key: "cloudlabs-session", value: c.tags["cloudlabs-session"], propagate_at_launch: true }, { key: "project", value: "cloudlabs", propagate_at_launch: true }, { key: "Name", value: "vm-web", propagate_at_launch: true }],
         },
         unknown: ["vpc_zone_identifier", "target_group_arns", "launch_template.0.id", "launch_template.0.version"],
         refs: {
@@ -118,6 +118,8 @@ export default () => {
           "launch_template.0.id": ref("aws_launch_template.web", "id"),
           "launch_template.0.version": ref("aws_launch_template.web", "latest_version"),
           "tag.0.value": ["var.lab_id"],
+          "tag.1.value": ["var.tags"],
+          "tag.2.value": ["var.tags"],
         },
       },
       {

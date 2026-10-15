@@ -92,11 +92,21 @@ resource "aws_autoscaling_group" "web" {
     propagate_at_launch = true
   }
   tag {
+    key                 = "cloudlabs-session"
+    value               = var.tags["cloudlabs-session"]
+    propagate_at_launch = true
+  }
+  tag {
+    key                 = "project"
+    value               = var.tags["project"]
+    propagate_at_launch = true
+  }
+  tag {
     key                 = "Name"
     value               = "vm-web"
     propagate_at_launch = true
   }
-  depends_on = [aws_vpc_endpoint.s3]
+  depends_on = [aws_vpc_endpoint.s3, aws_lb_listener.http]
 }
 
 resource "aws_autoscaling_policy" "cpu" {

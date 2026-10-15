@@ -6,7 +6,7 @@ From the SOA-C03 outline: implement scaling and load balancing with Amazon EC2 A
 - A VPC, `vpc-lab` (the first /20 of the session's address slot), with two private subnets for the instances and two public subnets for the load balancer, an internet gateway, and an S3 gateway endpoint for packages
 - The launch template `lt-a03…`: Amazon Linux 2023 on t4g.micro, IMDSv2, no public IP, and a small service that serves a page with the instance's id and Availability Zone on port 80
 - The Auto Scaling group `asg-a03…`: at least 2 and at most 4 instances named `vm-web` across both private subnets, with ELB health checks (a failed check replaces the instance), a target tracking policy at 50% average CPU, the scheduled action `evening-back-to-two` (22:00 London time), the lifecycle hook `launch-wait` (60 seconds) and rolling instance refresh
-- The internet-facing Application Load Balancer `alb-a03…` (HTTP on port 80 from anywhere), its target group `tg-a03…` and listener; the instances admit port 80 only from the load balancer
+- The internet-facing Application Load Balancer `alb-a03…` (Name tag `alb-web`; HTTP on port 80 from anywhere), its target group `tg-a03…` and listener; the instances admit port 80 only from the load balancer
 - An EC2 Instance Connect Endpoint, `eice-lab`, for SSH to an instance from the console
 
 Sign in as `labadmin`; the password is behind **Show**. Open the first Connect line's address in a browser and refresh: the instance and zone change as the load balancer spreads requests.

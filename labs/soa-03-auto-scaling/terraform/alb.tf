@@ -44,6 +44,10 @@ resource "aws_lb" "web" {
   subnets                    = aws_subnet.public[*].id
   enable_deletion_protection = false
   tags                       = { Name = "alb-web" }
+
+  # The load balancer needs the internet gateway attached and the public route in place before it is created,
+  # and must be gone before the gateway detaches.
+  depends_on = [aws_internet_gateway.lab, aws_route_table_association.public]
 }
 
 resource "aws_lb_target_group" "web" {
