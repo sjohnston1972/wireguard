@@ -859,7 +859,46 @@ copied here and win.
   server's workflow `wg-aws.yml` is not changed. B1's release test confirms whether AWS would also refuse to delete a VPC
   with an active peering; either way this order makes it moot.
 
-(A31–A47 are added from the batch 1 plan in Task 17.)
+### Rulings from the batch 1 plan (A31 on)
+
+- **A31. `gateway_cidr` travels in the AWS dispatch payload.** The Worker sends its `config.vnetCidr` (default
+  `10.50.0.0/16`); Parse payload validates and defaults it; the Azure payload never carries it. A10 needs the value from
+  the Worker, which "same payload keys" (§5) could not give.
+- **A32. Peer and Unpeer ask STS for 3,600-second sessions.** `wg-admin-deploy` has a one-hour maximum, so A14's three
+  hours applies to `wg-admin-labs` steps only.
+- **A33. Lab 03 makes no IAM,** so its `identity.creates` is `[]`; §3.2's `[role]` was illustrative.
+- **A34. Lab 05 runs MySQL 8.4 with Performance Insights off and no log exports.** 8.0 left standard support on
+  2026-07-31 and bills Extended Support; Performance Insights is not offered for MySQL on db.t4g.micro (checked
+  2026-10-15); log exports would make untagged log groups. The readme points to CloudWatch Database Insights instead.
+- **A35. On diagrams an EC2 Instance Connect Endpoint draws as `bastion`,** and the lab's `aws_resourcegroups_group`
+  (one per region) is the container where Azure draws the resource group (§10's region lane).
+- **A36. A tagged resource of a type with no handler is never counted clean.** The ready check knows every §5.1 type;
+  the scope allow-list, the safety net and Verify clean cover batch 1's types, and Verify clean names any other as
+  "no handler for <type>", so a later batch adds the handler test-first.
+- **A37. The AWS orphan sweep is its own hourly step** (`sweepAwsOrphans`, KV `labs:sweep-aws`), because one watch run's
+  20 calls cannot hold both sweeps; each sweep rewrites only its own cloud's entries in `labs:orphans` and releases only
+  its own cloud's `ended_dirty` slots.
+- **A38. A peer run without Terraform outputs finds the lab VPC by tag** (`cloudlabs-lab = <id>` and `cloudlabs-peer =
+  hub`, else the lab's only VPC), and Peer refuses a VPC that does not carry the lab's tag before any write.
+- **A39. API additions:** `LabCard.cloud`; `LabDetail.cloud`, `.secondaryRegion`, `.consoleUrls`, `.connect`;
+  `LabPermissions.awsRole/awsBoundary/awsCostTag`; blocker kind `aws_setup`; cost source `aws`; topology status `no_aws`.
+- **A40. The scope rule `size` caps RDS storage at 30 GiB with no storage autoscaling.**
+- **A41. A30's unpeer runs carry the reason `server tear-down`;** when one settles, the session's peering becomes
+  `disconnected`, so Re-peer is offered, not `off`.
+- **A42. Labs write IAM documents with `jsonencode()`,** never `data "aws_iam_policy_document"`, so the scope check reads
+  literal documents in the plan.
+- **A43. The `wg-admin-labs` trust uses `aud` and `sub` only,** as `wg-admin-deploy` does; a `job_workflow_ref`
+  condition is not used because STS's support for it is unconfirmed.
+- **A44. An AWS lab's capacity warning adds the vCPUs of AWS lab sessions requested after the capacity reading**, plus the
+  AWS headend's type when no AWS headend instance exists; earlier sessions are already in "used".
+- **A45. Lab instance security groups always admit `var.gateway_cidr`,** so Peer can come after deploy without a new
+  apply; it is unreachable until the lab is peered.
+- **A46. The ABAC lists:** an action is a create when its condition keys include `aws:RequestTag/${TagKey}` (scoped to the
+  resource types it makes, per service: EC2, ElastiCache and Kinesis list request tags per resource type; `RunInstances`
+  is checked on instance and volume only, because Terraform never tags the primary network interface); it is a change
+  when every resource type it names accepts `aws:ResourceTag/${TagKey}`, none is AWS-owned, and it is not a create.
+- **A47. A price item's `instanceType` must be one of `capacity.instance_types` only for `service: AmazonEC2` items,**
+  so RDS and other services' instance classes can be priced.
 
 - **A48. Tagging only at create; VPC fabric changes need the lab tag, in the role and the boundary.** The role could
   otherwise put `cloudlabs-lab` on an untagged item that is not a lab's (the VPN server's VPC's default network ACL) and then
