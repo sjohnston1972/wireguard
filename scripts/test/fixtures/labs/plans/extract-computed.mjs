@@ -1,7 +1,7 @@
 // scripts/test/fixtures/labs/plans/extract-computed.mjs
 //
-// Plain English: makes computed.json, the part of the azurerm and azuread
-// provider schemas the realistic plan fixtures need: for every resource type
+// Plain English: makes computed.json, the part of the azurerm, azuread and
+// aws provider schemas the realistic plan fixtures need: for every resource type
 // the labs (and the scope fixtures) use, which attributes the provider
 // computes. Terraform cannot plan a lab offline (it needs Azure), so the
 // fixtures are written by hand, and this keeps their "known after apply"
@@ -15,14 +15,18 @@
 // Regenerate after a provider upgrade (no cloud calls; terraform init only
 // downloads the providers). Pin the versions the labs' lock files hold
 // (batch 3: azurerm 4.81.0, azuread 3.10.0, and what "~> 0.13" and "~> 3.7"
-// resolve to for time and random, 0.14.2 and 3.9.1 on 2026-10-05), in a
-// scratch folder:
+// resolve to for time and random, 0.14.2 and 3.9.1 on 2026-10-05; AWS labs
+// batch 1: what "~> 6.0", "~> 4.0" and "~> 2.0" resolved to for aws, tls and
+// archive on 2026-10-15, 6.69.0, 4.4.1 and 2.8.1), in a scratch folder:
 //
 //   mkdir /tmp/s && cd /tmp/s && printf '%s\n' 'terraform {' ' required_providers {' \
 //     '  azurerm = { source = "hashicorp/azurerm", version = "4.81.0" }' \
 //     '  azuread = { source = "hashicorp/azuread", version = "3.10.0" }' \
-//     '  time    = { source = "hashicorp/time", version = "~> 0.13" }' \
-//     '  random  = { source = "hashicorp/random", version = "~> 3.7" }' ' }' '}' > versions.tf
+//     '  time    = { source = "hashicorp/time", version = "0.14.2" }' \
+//     '  random  = { source = "hashicorp/random", version = "3.9.1" }' \
+//     '  aws     = { source = "hashicorp/aws", version = "6.69.0" }' \
+//     '  tls     = { source = "hashicorp/tls", version = "4.4.1" }' \
+//     '  archive = { source = "hashicorp/archive", version = "2.8.1" }' ' }' '}' > versions.tf
 //   terraform init -backend=false && terraform providers schema -json > schema.json
 //   node scripts/test/fixtures/labs/plans/extract-computed.mjs /tmp/s/schema.json
 //
@@ -102,6 +106,25 @@ export const TYPES = [
   "azurerm_servicebus_namespace", "azurerm_servicebus_namespace_authorization_rule", "azurerm_servicebus_queue", "azurerm_servicebus_topic",
   "azurerm_servicebus_subscription", "azurerm_servicebus_subscription_rule", "azurerm_eventgrid_system_topic",
   "azurerm_eventgrid_system_topic_event_subscription", "azurerm_container_app_job",
+  // AWS labs batch 1 (AWS labs spec §7.3): every type on lab-scope-aws.mjs's AWS_TYPES
+  "aws_resourcegroups_group", "aws_vpc", "aws_subnet", "aws_route_table", "aws_route_table_association", "aws_route", "aws_internet_gateway",
+  "aws_security_group", "aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule", "aws_vpc_endpoint",
+  "aws_ec2_instance_connect_endpoint", "aws_instance", "aws_launch_template", "aws_ebs_volume", "aws_volume_attachment", "aws_ebs_snapshot",
+  "aws_autoscaling_group", "aws_autoscaling_policy", "aws_autoscaling_schedule", "aws_autoscaling_lifecycle_hook", "aws_lb", "aws_lb_target_group",
+  "aws_lb_listener", "aws_iam_role", "aws_iam_instance_profile", "aws_iam_policy", "aws_iam_role_policy_attachment", "aws_cloudwatch_log_group",
+  "aws_cloudwatch_log_metric_filter", "aws_cloudwatch_metric_alarm", "aws_cloudwatch_dashboard", "aws_cloudwatch_query_definition",
+  "aws_cloudwatch_event_rule", "aws_cloudwatch_event_target", "aws_sns_topic", "aws_sns_topic_policy", "aws_ssm_patch_baseline", "aws_ssm_patch_group",
+  "aws_ssm_association", "aws_config_configuration_recorder", "aws_config_delivery_channel", "aws_config_configuration_recorder_status",
+  "aws_config_config_rule", "aws_config_remediation_configuration", "aws_s3_bucket", "aws_s3_bucket_versioning", "aws_s3_bucket_lifecycle_configuration",
+  "aws_s3_bucket_replication_configuration", "aws_s3_bucket_public_access_block", "aws_s3_bucket_policy", "aws_s3_object", "aws_backup_vault",
+  "aws_backup_plan", "aws_backup_selection", "aws_db_instance", "aws_db_subnet_group", "aws_db_parameter_group",
+  // AWS labs batch 1: the engine's other types (peering, public addresses, NAT, IAM users)
+  "aws_vpc_peering_connection", "aws_eip", "aws_nat_gateway", "aws_iam_user",
+  // AWS labs batch 1: what the AWS scope tests plan in order to refuse
+  "aws_lambda_function", "aws_dx_gateway", "aws_iam_access_key", "aws_vpc_peering_connection_accepter",
+  // AWS labs batch 1: the data sources on AWS_DATA (realisticPlan needs every aws_ one), and the one the scope tests refuse
+  "data.aws_ssm_parameter", "data.aws_ami", "data.aws_availability_zones", "data.aws_caller_identity", "data.aws_region", "data.aws_partition",
+  "data.aws_iam_policy_document", "data.aws_ec2_managed_prefix_list", "data.archive_file", "data.aws_vpc",
   // data sources
   "data.azurerm_subscription", "data.azurerm_client_config", "data.azurerm_resource_group",
   // AZ-700: what the S1 and S2 scope tests read to show a VNet outside the lab is refused

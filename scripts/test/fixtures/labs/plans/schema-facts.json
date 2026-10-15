@@ -1,4 +1,268 @@
 {
+ "aws_autoscaling_group": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_autoscaling_lifecycle_hook": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_autoscaling_policy": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_autoscaling_schedule": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_backup_plan": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_backup_selection": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_backup_vault": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_cloudwatch_dashboard": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_cloudwatch_event_rule": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_cloudwatch_event_target": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_cloudwatch_log_group": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_cloudwatch_log_metric_filter": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_cloudwatch_metric_alarm": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_cloudwatch_query_definition": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_config_config_rule": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_config_configuration_recorder": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_config_configuration_recorder_status": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_config_delivery_channel": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_config_remediation_configuration": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_db_instance": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_db_parameter_group": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_db_subnet_group": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_dx_gateway": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_ebs_snapshot": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_ebs_volume": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_ec2_instance_connect_endpoint": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_eip": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_iam_access_key": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_iam_instance_profile": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_iam_policy": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_iam_role": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_iam_role_policy_attachment": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_iam_user": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_instance": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_internet_gateway": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_lambda_function": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_launch_template": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_lb": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_lb_listener": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_lb_target_group": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_nat_gateway": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_resourcegroups_group": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_route": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_route_table": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_route_table_association": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_s3_bucket": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_s3_bucket_lifecycle_configuration": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_s3_bucket_policy": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_s3_bucket_public_access_block": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_s3_bucket_replication_configuration": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_s3_bucket_versioning": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_s3_object": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_security_group": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_sns_topic": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_sns_topic_policy": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_ssm_association": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_ssm_patch_baseline": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_ssm_patch_group": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_subnet": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_volume_attachment": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_vpc": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_vpc_endpoint": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_vpc_peering_connection": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_vpc_peering_connection_accepter": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_vpc_security_group_egress_rule": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_vpc_security_group_ingress_rule": {
+  "rg": false,
+  "tags": true
+ },
  "azuread_group": {
   "rg": false,
   "tags": false

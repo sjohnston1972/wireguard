@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { addressProblems, CHILD_TYPES, contentChecks, costMarker, estimateGbpH, lab, labContentSuite, resources, roleAssignments } from "./fixtures/labs/content.mjs";
 import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
+import { cloudOfId } from "../lib/labs.mjs";
 
 labContentSuite("az104-07-files", { marker: "£" });
 
@@ -178,7 +179,8 @@ test("the address test refuses two VNets that overlap and a client pool outside 
 });
 
 test("every lab's plan fixture passes the address check (labs 1 to 27)", () => {
-  for (const [id, d] of Object.entries(LAB_PLANS)) assert.deepEqual(addressProblems(d), [], id);
+  // Azure labs only: an AWS lab's addresses are checked by lab-scope-aws.mjs's address rule.
+  for (const [id, d] of Object.entries(LAB_PLANS).filter(([x]) => cloudOfId(x) === "azure")) assert.deepEqual(addressProblems(d), [], id);
 });
 
 // AZ-700 plan Z0.5, scope exception S2 (approved by Steven 2026-10-05): lab 44's flow log lives under the region's

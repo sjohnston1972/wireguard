@@ -358,8 +358,9 @@ export function planResources(plan) {
   const providers = Object.entries(plan?.configuration?.provider_config ?? {}).map(([key, p]) => ({ key, name: p.name ?? key.split(".")[0], keys: Object.keys(p.expressions ?? {}) }));
   // Terraform 1.5+: a change that adopts an existing object says so in change.importing.
   const imports = (plan?.resource_changes ?? []).filter((c) => c?.change?.importing).map((c) => c.address);
-  // The pipeline's variables as the plan holds them (region: S2's NetworkWatcher_<region>). Sensitive ones are not read.
-  const variables = Object.fromEntries(Object.entries(plan?.variables ?? {}).filter(([k]) => k === "region").map(([k, v]) => [k, v?.value]));
+  // The pipeline's variables as the plan holds them (region: S2's NetworkWatcher_<region>; secondary_region,
+  // address_space and gateway_cidr: lab-scope-aws.mjs's provider and address rules). Sensitive ones are not read.
+  const variables = Object.fromEntries(Object.entries(plan?.variables ?? {}).filter(([k]) => ["region", "secondary_region", "address_space", "gateway_cidr"].includes(k)).map(([k, v]) => [k, v?.value]));
   return { resources: [...seen.values()], providers, imports, variables };
 }
 
