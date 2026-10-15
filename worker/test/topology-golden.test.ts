@@ -793,6 +793,24 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["src ..> dst : replicates"],
   },
+  "soa-05-rds": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "nsg sg-db < vpc-lab",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-soa-05-rds · London",
+      "routeTable rt-private < vpc-lab",
+      "sqlServer db-primary < vpc-lab",
+      "sqlServer db-replica < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vm vm-client < snet-private-1",
+      "vnet vpc-lab < lab-soa-05-rds · London",
+    ],
+    edges: ["db-primary ..> db-replica : replicates"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

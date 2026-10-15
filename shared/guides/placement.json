@@ -729,5 +729,14 @@
    "width": 1387,
    "height": 966
   }
+ ],
+ "soa-05-rds": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an EC2 instance, two RDS databases, a VPC endpoint and more, in one VPC with two subnets.",
+   "width": 1387,
+   "height": 786
+  }
  ]
 }

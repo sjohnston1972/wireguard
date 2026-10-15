@@ -133,7 +133,13 @@ export function awsPlannedGraph(input: PlannedInput): TopologyGraph {
       if (v) return v.id;
     }
     const s = subnetsOf(i)[0];
-    return s ? (nodes.get(s)?.parent ?? null) : null;
+    if (s) return nodes.get(s)?.parent ?? null;
+    // A read replica names no subnet group of its own: it sits where its source database does.
+    for (const src of refs(i, ["replicate_source_db"])) {
+      const v = src !== i ? vpcOf(src) : null;
+      if (v) return v;
+    }
+    return null;
   };
   for (const i of cards) {
     const n = nodes.get(i.id)!;

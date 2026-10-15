@@ -547,5 +547,12 @@
    "title": "Backup, snapshots, S3 versioning and replication: architecture",
    "kind": "architecture"
   }
+ ],
+ "soa-05-rds": [
+  {
+   "file": "architecture.svg",
+   "title": "RDS MySQL: Multi-AZ failover, read replica, insights: architecture",
+   "kind": "architecture"
+  }
  ]
 }
