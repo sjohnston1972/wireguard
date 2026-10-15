@@ -52,6 +52,8 @@ export const TRANSIENT = [
   ["TooManyRequestsException", /\bTooManyRequestsException\b/],
   ["StatusCode: 429", /\bStatusCode: 429\b/i],
   ["5xx", /\bStatusCode: 5\d\d\b/],
+  // S3 PutBucketReplication sent with an empty body when its first try (the new role not yet propagated) was retried.
+  ["MissingRequestBodyError", /\bMissingRequestBodyError\b/],
   ["send request failed", /\bsend request failed\b/],
 ];
 
@@ -69,7 +71,7 @@ export const REFUSED = [
 /** AWS's generic 4xx (other than 408 and 429): a refusal, unless a throttle code in the same diagnostic says otherwise. */
 export const AWS_4XX = /\bStatusCode: 4(?!08|29)\d\d\b/;
 /** The AWS throttle codes, which come back as a 400 and override only AWS_4XX. */
-export const AWS_THROTTLE = /\b(?:Throttling|ThrottlingException|RequestLimitExceeded|TooManyRequestsException|SlowDown)\b/;
+export const AWS_THROTTLE = /\b(?:Throttling|ThrottlingException|RequestLimitExceeded|TooManyRequestsException|SlowDown|MissingRequestBodyError)\b/;
 
 /** The message of each "Error:" diagnostic in Terraform's -no-color output (box drawing and CR taken off). */
 export function diagnostics(text) {

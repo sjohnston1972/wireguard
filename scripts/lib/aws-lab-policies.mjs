@@ -65,6 +65,13 @@ export const NAME_OWNED_TYPES = ["cloudwatch:dashboard", "config:ConfigurationRe
  * RDS use them as the caller for every encrypted disk, bucket and database. Managing a key (deleting, disabling, its
  * policy) still needs the lab's tag.
  */
+/**
+ * Actions the reference says take a request tag but that are exempt from the create-needs-lab-tag rule (ruling A54).
+ * EC2 Instance Connect Endpoints create their network interface with the caller's credentials and no tags, so
+ * ec2:CreateNetworkInterface is in neither the create nor the change list. The VPN-server and default-VPC denies still
+ * keep interfaces out of those networks, and Verify clean names any untagged interface left in a lab VPC (A26).
+ */
+export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface"];
 export const KEY_USE = /^kms:(Encrypt|Decrypt|ReEncrypt\w*|GenerateDataKey\w*|GenerateMac|VerifyMac|Sign|Verify|DeriveSharedSecret|CreateGrant|RetireGrant)$/;
 /** Services with an untaggable named type: A29's fall-back gives them no wildcards. */
 const NAME_OWNED_SERVICES = ["cloudwatch", "config", "logs", "kms"];
@@ -126,6 +133,7 @@ export function abacLists(sar) {
         continue;
       }
       if (res.some((r) => NAME_OWNED_TYPES.includes(`${service}:${r.Name}`))) continue;
+      if (CREATE_TAG_EXEMPT.includes(name)) continue;
       if (isAccountSetting(service, a)) accountSettings.push(name);
       // A read makes nothing (the reference gives some reads the request tag): never in either list.
       if (!(p.IsWrite || p.IsPermissionManagement) || p.IsList) continue;
@@ -389,6 +397,8 @@ export const changeFallback = () => ABAC_SERVICES.filter((s) => !NAME_OWNED_SERV
 
 function roleItems(abac, change) {
   const createOn = abac.createOn ?? {};
+  // Ruling A54: the exempt actions are in neither list, whatever lab-abac.json says.
+  abac = { ...abac, create: abac.create.filter((a) => !CREATE_TAG_EXEMPT.includes(a)) };
   const noRequestTag = { Null: { [`aws:RequestTag/${LAB_TAG}`]: "true" } };
   const creates = counter("CreateNeedsLabTag");
   const changes = counter("ChangeNeedsLabTag");

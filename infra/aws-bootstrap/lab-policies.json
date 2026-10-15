@@ -1080,7 +1080,6 @@
             "ec2:CreateLocalGatewayRouteTable",
             "ec2:CreateLocalGatewayVirtualInterfaceGroup",
             "ec2:CreateNatGateway",
-            "ec2:CreateNetworkInterface",
             "ec2:CreatePublicIpv4Pool",
             "ec2:CreateRouteServerEndpoint",
             "ec2:CreateSecondarySubnet",
@@ -1260,7 +1259,8 @@
             "cloudwatch:UpdateAccessProfile",
             "cloudwatch:UpdateAlert",
             "cloudwatch:UpdateDomain*",
-            "cloudwatch:UpdateIngestionEndpoint"
+            "cloudwatch:UpdateIngestionEndpoint",
+            "cloudwatch:UpdateIntegration"
           ],
           "Resource": "*",
           "Condition": {
@@ -1278,7 +1278,6 @@
           "Sid": "ChangeNeedsLabTag3",
           "Effect": "Deny",
           "Action": [
-            "cloudwatch:UpdateIntegration",
             "cloudwatch:UpdateOmniDashboard",
             "cloudwatch:UpdateServiceLevelObjective",
             "cloudwatch:UpdateSpace",
@@ -1462,7 +1461,9 @@
             "ec2:DeleteTransitGatewayPolicy*",
             "ec2:DeleteTransitGatewayRoute*",
             "ec2:DeleteTransitGatewayVpcAttachment",
-            "ec2:DeleteVerified*"
+            "ec2:DeleteVerified*",
+            "ec2:DeleteVolume",
+            "ec2:DeleteVpc*"
           ],
           "Resource": "*",
           "Condition": {
@@ -1481,8 +1482,6 @@
           "Sid": "ChangeNeedsLabTag4",
           "Effect": "Deny",
           "Action": [
-            "ec2:DeleteVolume",
-            "ec2:DeleteVpc*",
             "ec2:DeleteVpn*",
             "ec2:DeprovisionIpam*",
             "ec2:DeprovisionPublicIpv4PoolCidr",
@@ -1674,7 +1673,8 @@
             "elasticfilesystem:Backup",
             "elasticfilesystem:ClientRootAccess",
             "elasticfilesystem:ClientWrite",
-            "elasticfilesystem:CreateMountTarget"
+            "elasticfilesystem:CreateMountTarget",
+            "elasticfilesystem:CreateReplicationConfiguration"
           ],
           "Resource": "*",
           "Condition": {
@@ -1693,7 +1693,6 @@
           "Sid": "ChangeNeedsLabTag5",
           "Effect": "Deny",
           "Action": [
-            "elasticfilesystem:CreateReplicationConfiguration",
             "elasticfilesystem:DeleteAccessPoint",
             "elasticfilesystem:DeleteFile*",
             "elasticfilesystem:DeleteMountTarget",
@@ -1892,7 +1891,9 @@
             "logs:PutDeliveryDestinationPolicy",
             "logs:PutDestinationPolicy",
             "logs:PutLog*",
-            "logs:PutMetricFilter"
+            "logs:PutMetricFilter",
+            "logs:PutRetentionPolicy",
+            "logs:PutSubscriptionFilter"
           ],
           "Resource": "*",
           "Condition": {
@@ -1910,8 +1911,6 @@
           "Sid": "ChangeNeedsLabTag6",
           "Effect": "Deny",
           "Action": [
-            "logs:PutRetentionPolicy",
-            "logs:PutSubscriptionFilter",
             "logs:PutSyslogConfiguration",
             "logs:PutTransformer",
             "logs:UpdateAnomaly",

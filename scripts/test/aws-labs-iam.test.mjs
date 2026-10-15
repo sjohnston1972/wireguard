@@ -300,7 +300,7 @@ test("the Worker user may read lab things in both lab regions, and change nothin
 test("the simulator cases are the eight of A19 and fix round 1's, and a wrong answer is a problem", () => {
   const cases = simulatorCases("123456789012", FILL.vpcArns);
   assert.deepEqual(cases.map((c) => [c.name, c.want]), [["tagged VPC", "allowed"], ["bounded lab role", "allowed"], ["untagged VPC", "denied"], ["the VPN server", "denied"], ["role without the boundary", "denied"], ["role outside the path", "denied"], ["access key", "denied"], ["a third region", "denied"],
-    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a subnet in the default VPC", "denied"]]);
+    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a subnet in the default VPC", "denied"]]);
   // With no default VPC in the account there is nothing to ask about it.
   assert.ok(!simulatorCases("123456789012", []).some((c) => c.name === "a subnet in the default VPC"));
   assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: SSM default host management", "denied"], ["boundary: reset an SSM setting", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"]]);
@@ -365,7 +365,7 @@ test("--labs: every simulator case is asked of the role, quotas below target are
   const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
   assert.equal(r.ok, true);
   const sims = calls.filter((c) => c[2] === "simulate-principal-policy");
-  assert.equal(sims.length, 23);
+  assert.equal(sims.length, 24);
   for (const c of sims) assert.equal(c[c.indexOf("--policy-source-arn") + 1], O.roleArn);
   // The boundary, simulated as a policy of its own (simulate-custom-policy), with the document the bootstrap filled.
   const custom = calls.filter((c) => c[2] === "simulate-custom-policy");
@@ -483,6 +483,9 @@ test("what Terraform does for a lab is allowed: tagged creates on the new item o
   allowed("ec2:RunInstances", `arn:aws:ec2:eu-west-2:${A}:volume/*`, NEW);
   for (const r of [`arn:aws:ec2:eu-west-2::image/ami-0abc`, `arn:aws:ec2:eu-west-2:${A}:subnet/subnet-0lab`, `arn:aws:ec2:eu-west-2:${A}:network-interface/*`, `arn:aws:ec2:eu-west-2:${A}:security-group/sg-0lab`]) allowed("ec2:RunInstances", r, { "aws:RequestedRegion": "eu-west-2" });
   denied("ec2:RunInstances", `arn:aws:ec2:eu-west-2:${A}:instance/*`, { "aws:RequestedRegion": "eu-west-2" });
+  denied("ec2:RunInstances", `arn:aws:ec2:eu-west-2:${A}:volume/*`, { "aws:RequestedRegion": "eu-west-2" });
+  // Ruling A54: an Instance Connect Endpoint's interface is made with no request tag.
+  allowed("ec2:CreateNetworkInterface", `arn:aws:ec2:eu-west-2:${A}:network-interface/*`, { "aws:RequestedRegion": "eu-west-2" });
   // The untaggable types a lab names lab-<id>-* (lab-scope-aws.mjs UNTAGGABLE): made and removed without a tag.
   for (const a of ["cloudwatch:PutDashboard", "cloudwatch:DeleteDashboards", "config:PutConfigurationRecorder", "config:StartConfigurationRecorder", "config:StopConfigurationRecorder", "config:DeleteConfigurationRecorder", "config:PutDeliveryChannel", "config:DeleteDeliveryChannel", "logs:PutQueryDefinition", "logs:DeleteQueryDefinition", "kms:CreateAlias", "kms:DeleteAlias", "ssm:RegisterPatchBaselineForPatchGroup"]) {
     allowed(a, namedArn(a, "lab-soa-01-x-thing"), { "aws:RequestedRegion": "eu-west-2", "aws:ResourceTag/cloudlabs-lab": a.startsWith("ssm:") ? "soa-01-x" : undefined });

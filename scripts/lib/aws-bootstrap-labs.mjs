@@ -52,6 +52,8 @@ export function simulatorCases(account, defaultVpcArns = []) {
     { name: "EBS encryption by default", action: "ec2:EnableEbsEncryptionByDefault", resource: "*", context: [region], want: "denied" },
     // Final review, Important 1: a launch must tag its volumes (volume_tags), or the volume ARN is refused.
     { name: "a launch whose volume has no lab tag", action: "ec2:RunInstances", resource: `arn:aws:ec2:eu-west-2:${account}:volume/*`, context: [region], want: "denied" },
+    // Ruling A54: an Instance Connect Endpoint makes its interface with the caller's credentials and no tags.
+    { name: "EICE's network interface", action: "ec2:CreateNetworkInterface", resource: `arn:aws:ec2:eu-west-2:${account}:network-interface/*`, context: [region], want: "allowed" },
     ...ssmSettingCases(account),
     ...defaultVpcCase(account, defaultVpcArns),
   ];
