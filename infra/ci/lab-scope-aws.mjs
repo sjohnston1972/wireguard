@@ -184,9 +184,21 @@ const IAM_PATH = "/cloudlabs-lab/";
 /** The VPN server's own names (infra/aws): a lab never names or reaches them. */
 const GATEWAY_NAMES = /\b(vpc-wg|snet-wg|rt-wg|sg-wg|igw-wg|rt-workloads|snet-workloads)\b/i;
 /** An id of an existing EC2 resource: a lab names its own only by reference, so a known one is someone else's. */
-const KNOWN_ID_RE = /^(vpc|subnet|rtb|sg|igw|nat|pcx|tgw|tgw-attach|eni|i|eipalloc|vpce|lt|eigw|pl)-[0-9a-f]{8,17}$/;
-/** The keys that hold ids (preflight ruling C4): never a name, name_prefix, identifier or tag value. */
-const ID_KEY = (k) => /(^|_)ids?$/.test(k) || ["vpc_zone_identifier", "subnets", "security_groups", "route_table_ids"].includes(k);
+const EC2_ID = "(?:vpc|subnet|rtb|sg|igw|nat|pcx|tgw|tgw-attach|eni|i|eipalloc|vpce|lt|eigw|pl|vol|snap)-[0-9a-f]{8,17}";
+const KNOWN_ID_RE = new RegExp(`^${EC2_ID}$`);
+/** An EC2 ARN that embeds a known id (arn:aws:ec2:<region>:<account>:instance/i-…), anywhere in a string (JSON documents too). */
+const EC2_ARN_RE = new RegExp(String.raw`arn:aws[a-z-]*:ec2:[^:"\s]*:[^:"\s]*:[a-z-]+/(${EC2_ID})(?![0-9a-z-])`);
+/**
+ * The keys that hold ids (preflight ruling C4, as amended by the controller in review round 1): snake case (vpc_id,
+ * subnet_ids) and camel case (InstanceId, InstanceIds, as CloudWatch dimensions spell them), never a name, name_prefix,
+ * identifier or tag value.
+ */
+const ID_KEY = (k) => /(^|_)ids?$/i.test(k) || /[a-z]Ids?$/.test(k) || ["vpc_zone_identifier", "subnets", "security_groups", "route_table_ids"].includes(k);
+/**
+ * A { key, values } target (an SSM association's targets, an EventBridge target's run_command_targets) whose values are
+ * ids: any key but a tag or resource-group selector (InstanceIds, WindowTargetIds, ...).
+ */
+const ID_TARGET_KEY = (k) => typeof k === "string" && !/^(tag:|tag-key$|resource-groups:)/i.test(k);
 /** count.index and each.key: an instance's own key (Terraform lists them among the references). */
 const INDEX_REF = /^(count\.index|each\.key)(\.|\[|$)/;
 /** The private ranges: SSH from anything wider is from the internet. */
@@ -444,11 +456,20 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         for (const attr of ["peer_owner_id", "peer_region"]) if (r.configured?.has(attr)) refuse("gateway", `a lab's peering stays in this account and region: no ${attr}`);
       }
       if (plan && isManaged) {
-        walk(v, [], (kind, path, s) => {
-          if (kind !== "string" || !KNOWN_ID_RE.test(s) || dataStrings.has(s)) return;
-          const key = [...path].reverse().find((k) => typeof k === "string");
-          if (key && ID_KEY(key)) refuse("gateway", `${path.join(".")} names an existing AWS resource the lab did not make${r.sensitive?.has(path[0]) ? "" : ` (${s})`}`);
-        });
+        // A known id under an id-holding key (a list inherits its key), a target's values when its key selects ids, or an
+        // EC2 ARN with a known id in it anywhere. The lab's own resources are unknown at plan, so never match.
+        const named = (path, s) => refuse("gateway", `${path.join(".")} names an existing AWS resource the lab did not make${r.sensitive?.has(path[0]) ? "" : ` (${s})`}`);
+        const scan = (x, path, ids) => {
+          if (typeof x === "string") {
+            if (ids && KNOWN_ID_RE.test(x) && !dataStrings.has(x)) named(path, x);
+            else {
+              const m = EC2_ARN_RE.exec(x);
+              if (m && !dataStrings.has(m[1])) named(path, m[1]);
+            }
+          } else if (Array.isArray(x)) x.forEach((y, i) => scan(y, [...path, i], ids));
+          else if (isObj(x)) for (const [k, y] of Object.entries(x)) scan(y, [...path, k], ID_KEY(k) || (k === "values" && ID_TARGET_KEY(x.key)));
+        };
+        for (const [k, y] of Object.entries(v)) scan(y, [k], ID_KEY(k));
       }
     }
 
@@ -486,6 +507,14 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         const w = val[who];
         const own = typeof w === "string" ? w.startsWith(prefix) : w instanceof Unknown && ownRefs(refsOf(w, res, who), [whoType]);
         if (!own) refuse("iam", `${who} must be one of the lab's own (${whoType}.<name>.name, named ${prefix}*)`);
+      }
+      // aws_iam_role.managed_policy_arns (deprecated, still in aws 6.69) attaches policies too: each entry as policy_arn.
+      // Left unset it is computed (unknown with no references) and attaches nothing the lab chose.
+      const arns = val.managed_policy_arns;
+      if (type === "aws_iam_role" && (res.configured?.has("managed_policy_arns") || (Array.isArray(arns) && arns.length > 0))) {
+        const entryOk = (a) => (typeof a === "string" ? MANAGED_POLICIES.includes(a) : a instanceof Unknown && ownRefs(refsOf(a, res, "managed_policy_arns"), ["aws_iam_policy"]));
+        const bad = arns instanceof Unknown ? (entryOk(arns) ? undefined : arns) : list(arns).find((a) => !entryOk(a));
+        if (bad !== undefined) refuse("iam", `managed_policy_arns: ${typeof bad === "string" ? bad : "(not known)"} is neither on MANAGED_POLICIES nor one of the lab's own aws_iam_policy`);
       }
       // Identity policy documents.
       const docs = [];

@@ -62,11 +62,17 @@ const EVIL = [
   ["iam", "a policy with an iam: action", () => plan([policy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: ["iam:PassRole"], Resource: "*" }] })])],
   ["iam", "a policy with Action *", () => plan([policy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: "*", Resource: "*" }] })])],
   ["iam", "AdministratorAccess attached", () => plan([role(), { address: "aws_iam_role_policy_attachment.admin", values: { policy_arn: "arn:aws:iam::aws:policy/AdministratorAccess" }, unknown: ["role"], refs: { role: ref("aws_iam_role.vm", "name") } }])],
+  ["iam", "AdministratorAccess in a role's managed_policy_arns (review round 1)", () => plan([role({ managed_policy_arns: ["arn:aws:iam::aws:policy/AdministratorAccess"] })])],
+  ["iam", "a role's managed_policy_arns built from something not known at plan", () => { const r = role(); return plan([{ ...r, unknown: ["managed_policy_arns"], refs: { managed_policy_arns: ["data.aws_iam_policy_document.x.json", "data.aws_iam_policy_document.x"] } }]); }],
   ["iam", "a user outside soa-07", () => plan([{ address: "aws_iam_user.u", values: tagged(c, { name: `lab-${ID}-u`, path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY }), refs: {} }])],
   ["gateway", "a route table named rt-wg", () => plan([{ address: "aws_route_table.gw", values: tagged(c, { tags: { Name: "rt-wg" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } }])],
   ["gateway", "a subnet in an existing VPC by id", () => plan([{ address: "aws_subnet.other", values: tagged(c, { vpc_id: "vpc-0a1b2c3d4e5f60718", cidr_block: "10.64.65.0/24" }), refs: {} }])],
   ["gateway", "a peering accepter", () => plan([{ address: "aws_vpc_peering_connection_accepter.x", values: tagged(c, { auto_accept: true }), unknown: ["vpc_peering_connection_id"], refs: {} }])],
   ["gateway", "a tag key wg-admin", () => plan([{ address: "aws_sns_topic.x", values: { name: "x", tags: { "wg-admin": "vpn" }, tags_all: { ...c.tags, "wg-admin": "vpn" } }, refs: {} }])],
+  ["gateway", "an alarm on an existing instance (dimensions InstanceId, review round 1)", () => plan([{ address: "aws_cloudwatch_metric_alarm.cpu", values: tagged(c, { alarm_name: "cpu", comparison_operator: "GreaterThanThreshold", evaluation_periods: 1, metric_name: "CPUUtilization", namespace: "AWS/EC2", period: 300, statistic: "Average", threshold: 80, dimensions: { InstanceId: "i-0123456789abcdef0" } }), refs: {} }])],
+  ["gateway", "an SSM association targeting existing instances by id", () => plan([{ address: "aws_ssm_association.patch", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }] }), refs: {} }])],
+  ["gateway", "an EventBridge target running a command on existing instances", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }] }, unknown: ["rule", "role_arn"], refs: {} }])],
+  ["gateway", "a backup selection naming an existing instance by ARN", () => plan([{ address: "aws_backup_selection.vms", values: { name: "vms", resources: ["arn:aws:ec2:eu-west-2:123456789012:instance/i-0123456789abcdef0"] }, unknown: ["plan_id", "iam_role_arn"], refs: {} }])],
   ["address", "a VPC outside the slot", () => { const base = templateResources(c); base[1] = { ...base[1], values: { ...base[1].values, cidr_block: "10.65.0.0/20" } }; return plan([], { base }); }],
   ["address", "a route to another lab's slot", () => plan([{ address: "aws_route.other", values: { destination_cidr_block: "10.66.0.0/18" }, unknown: ["route_table_id", "vpc_peering_connection_id"], refs: { route_table_id: ref("aws_route_table.private", "id") } }])],
   ["public", "an instance with a public IP", () => { const i = al2023Instance(c, { key: "app", name: "vm-app" }); i.values.associate_public_ip_address = true; return plan([i]); }],
@@ -106,6 +112,25 @@ test("a launch template named lt-<name prefix> passes: the known-id check reads 
   assert.deepEqual(rules(plan([lt])), []);
   // The same string under an id-holding key names a resource the lab did not make.
   assert.deepEqual(rules(plan([{ ...lt, values: { ...lt.values, vpc_security_group_ids: ["sg-0123456789abcdef0"] }, unknown: [] }])), ["gateway: aws_launch_template.web"]);
+});
+
+test("labs 01, 02 and 04's shapes pass: their alarms, associations, run-command targets and backup selections name their own instances by reference (review round 1)", () => {
+  const vm = al2023Instance(c, { key: "web", name: "vm-web" });
+  const own = ref("aws_instance.web", "id");
+  const extra = [
+    vm,
+    { address: "aws_cloudwatch_metric_alarm.cpu", values: tagged(c, { alarm_name: `lab-${ID}-cpu`, comparison_operator: "GreaterThanThreshold", evaluation_periods: 1, metric_name: "CPUUtilization", namespace: "AWS/EC2", period: 300, statistic: "Average", threshold: 80, dimensions: {} }), unknown: ["dimensions.InstanceId"], refs: { dimensions: own } },
+    { address: "aws_ssm_association.by_id", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "InstanceIds" }] }), unknown: ["targets.0.values"], refs: { "targets.0.values": own } },
+    { address: "aws_ssm_association.by_tag", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "tag:cloudlabs-lab", values: [ID] }] }), refs: { "targets.0.values": ["var.lab_id"] } },
+    { address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds" }] }, unknown: ["rule", "role_arn", "run_command_targets.0.values"], refs: { "run_command_targets.0.values": own } },
+    { address: "aws_backup_selection.vms", values: { name: "vms", resources: [] }, unknown: ["plan_id", "iam_role_arn", "resources.0"], refs: { resources: ref("aws_instance.web", "arn") } },
+    { address: "aws_backup_selection.tagged", values: { name: "tagged", selection_tag: [{ type: "STRINGEQUALS", key: "cloudlabs-lab", value: ID }] }, unknown: ["plan_id", "iam_role_arn"], refs: { "selection_tag.0.value": ["var.lab_id"] } },
+  ];
+  assert.deepEqual(rules(plan(extra)), []);
+  // A role's managed_policy_arns may list MANAGED_POLICIES and the lab's own policies.
+  const extraPolicy = policy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: ["logs:PutLogEvents"], Resource: "*" }] });
+  const r = role({ managed_policy_arns: ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"] });
+  assert.deepEqual(rules(plan([extraPolicy, { ...r, unknown: ["managed_policy_arns.1"], refs: { managed_policy_arns: ref("aws_iam_policy.extra", "arn") } }])), []);
 });
 
 test("the secondary provider passes only when the plan's secondary_region is set and differs from region", () => {
