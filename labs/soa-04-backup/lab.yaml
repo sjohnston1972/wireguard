@@ -4,7 +4,7 @@
 # SAA-C03 Design Resilient Architectures. London list prices × 0.75.
 # Authored: snapshot and backup storage ($0.053/GB-month), S3 for a few KB.
 id: soa-04-backup
-version: 3
+version: 4
 cloud: aws
 title: "Backup, snapshots, S3 versioning and replication"
 summary: >-

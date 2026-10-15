@@ -9,8 +9,7 @@
 # (the provider's default_tags, nothing of its own) and neither resource
 # undoes the other. The snapshot waits three minutes after the attachment,
 # so cloud-init has formatted, mounted and written /data/first-write.txt first
-# (the time provider is hashicorp/time, resolved without a required_providers
-# entry because the AWS template's versions.tf is copied unchanged).
+# (hashicorp/time, pinned in the template's versions.tf; ruling P2).
 
 resource "aws_instance" "data" {
   ami                    = data.aws_ssm_parameter.al2023_arm64.insecure_value

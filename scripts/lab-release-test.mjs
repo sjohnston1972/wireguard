@@ -17,7 +17,7 @@
 // the lab torn down: a failed or dirty test, an unreadable result, or Ctrl-C
 // mid-test cancels the test run and dispatches a destroy run for that lab.
 //
-//   node scripts/lab-release-test.mjs <lab id...> --confirm-cost [--ref feat/labs] [--slot 31] [--region uksouth]
+//   node scripts/lab-release-test.mjs <lab id...> --confirm-cost [--ref main] [--slot 31] [--region uksouth]
 //   node scripts/lab-release-test.mjs --check     permissions only, nothing is built (needs az signed in
 //                                                 as the pipeline service principal)
 //
@@ -26,7 +26,8 @@
 // with an a<NN>xxxxx name prefix and the VPN range as its gateway_cidr.
 // lab.yml (lab-aws.yml for AWS) must already be on main (GitHub dispatches only workflows that
 // exist on the default branch); --ref picks the branch whose lab.yml and lab
-// code run. Slot 31 (10.71.192.0/18) is the default: the dashboard hands out
+// code run. --ref defaults to main: lab-aws.yml's role trusts only main, and
+// Azure labs are tested from main since labs batch 4 (ruling P18). Slot 31 (10.71.192.0/18) is the default: the dashboard hands out
 // low slots first, so a release test rarely meets a running lab there.
 
 import { spawn } from "node:child_process";
@@ -153,7 +154,7 @@ function appendRow(file, row) {
 
 /** Read the command line. Throws with a usage message on anything wrong. */
 export function parseArgs(argv, defs = labDefs()) {
-  const out = { ids: [], ref: "feat/labs", slot: LAB_SLOTS - 1, region: "uksouth", check: false, confirm: false };
+  const out = { ids: [], ref: "main", slot: LAB_SLOTS - 1, region: "uksouth", check: false, confirm: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--check") out.check = true;

@@ -92,6 +92,8 @@ test("refuses an unknown lab id, and refuses to spend without --confirm-cost", a
   assert.throws(() => parseArgs(["az104-99-nothing", "--confirm-cost"], DEFS), /unknown lab id az104-99-nothing/);
   assert.throws(() => parseArgs(["../x", "--confirm-cost"], DEFS), /unknown lab id/);
   assert.throws(() => parseArgs(["az104-07-files"], DEFS), /--confirm-cost/);
+  // Ruling P18: lab-aws.yml's role trusts only main, so main is the default.
+  assert.equal(parseArgs(["az104-07-files", "--confirm-cost"], DEFS).ref, "main");
   assert.throws(() => parseArgs(["az104-07-files", "--slot", "32", "--confirm-cost"], DEFS), /slot/);
   assert.throws(() => parseArgs([], DEFS), /lab id/);
   const a = parseArgs(["az104-07-files", "az104-05-storage", "--ref", "feat/labs", "--slot", "30", "--confirm-cost"], DEFS);

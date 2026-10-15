@@ -8,6 +8,8 @@
 # SSH from the endpoint, and anything from the VPN server's VPC, which only
 # reaches the lab once it is peered (the pipeline adds the peering and the
 # route back). Also the AMI and the cloud-init every instance starts from.
+# The VPC carries cloudlabs-peer = hub: a peer run without Terraform outputs
+# finds a two-VPC lab's hub by it (ruling A38).
 
 data "aws_availability_zones" "available" {
   state = "available"
@@ -38,7 +40,7 @@ resource "aws_vpc" "lab" {
   cidr_block           = local.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
-  tags                 = { Name = "vpc-lab" }
+  tags                 = { Name = "vpc-lab", "cloudlabs-peer" = "hub" }
 }
 
 resource "aws_subnet" "private" {

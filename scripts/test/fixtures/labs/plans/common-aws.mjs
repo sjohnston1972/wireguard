@@ -62,7 +62,7 @@ export function templateResources(c) {
   const VPC = "aws_vpc.lab";
   return [
     { address: "aws_resourcegroups_group.lab", values: tagged(c, { name: `lab-${c.id}`, resource_query: [{ type: "TAG_FILTERS_1_0", query: JSON.stringify({ ResourceTypeFilters: ["AWS::AllSupported"], TagFilters: [{ Key: "cloudlabs-lab", Values: [c.id] }] }) }] }), refs: { name: ["var.lab_id"], "resource_query.0.query": ["var.lab_id"] } },
-    { address: VPC, values: tagged(c, { cidr_block: c.vpcCidr, enable_dns_support: true, enable_dns_hostnames: true, tags: { Name: "vpc-lab" } }), refs: { cidr_block: ["local.vpc_cidr"] } },
+    { address: VPC, values: tagged(c, { cidr_block: c.vpcCidr, enable_dns_support: true, enable_dns_hostnames: true, tags: { Name: "vpc-lab", "cloudlabs-peer": "hub" } }), refs: { cidr_block: ["local.vpc_cidr"] } },
     ...[0, 1].map((i) => ({ address: `aws_subnet.private[${i}]`, count: 2, values: tagged(c, { cidr_block: sub(c.vpcCidr, 4, i), availability_zone: `eu-west-2${"ab"[i]}`, map_public_ip_on_launch: false, tags: { Name: `snet-private-${i + 1}` } }), unknown: ["vpc_id"], refs: { vpc_id: ref(VPC, "id"), cidr_block: ["local.vpc_cidr", "count.index"], availability_zone: ["local.azs", "count.index"], tags: ["count.index"] } })),
     { address: "aws_route_table.private", values: tagged(c, { tags: { Name: "rt-private" } }), unknown: ["vpc_id"], refs: { vpc_id: ref(VPC, "id") } },
     ...[0, 1].map((i) => ({ address: `aws_route_table_association.private[${i}]`, count: 2, values: {}, unknown: ["subnet_id", "route_table_id"], refs: { subnet_id: ["aws_subnet.private", "count.index"], route_table_id: ref("aws_route_table.private", "id") } })),
@@ -76,6 +76,11 @@ export function templateResources(c) {
     { address: "aws_vpc_security_group_egress_rule.vms_all", values: tagged(c, { cidr_ipv4: "0.0.0.0/0", ip_protocol: "-1" }), unknown: ["security_group_id"], refs: { security_group_id: ref("aws_security_group.vms", "id") } },
   ];
 }
+
+/** labs/_template-aws/main.tf's resources only (the lab's resource group): a lab with no network.tf (ruling P3). */
+export const templateMainResources = (c) => templateResources(c).filter((r) => r.address === "aws_resourcegroups_group.lab");
+/** labs/_template-aws/main.tf's data sources only: a lab with no network.tf reads no zones and no AMI (ruling P3). */
+export const templateMainData = () => awsData().filter((d) => d.address === "data.aws_caller_identity.current" || d.address === "data.aws_partition.current");
 
 /**
  * An Amazon Linux 2023 instance as the labs build one: IMDSv2, an 8 GiB gp3 root disk, the lab's tags on its volumes,

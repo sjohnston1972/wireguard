@@ -44,7 +44,11 @@ export function commonAwsProblems(id, labsDir = LABS) {
   const tplFiles = {};
   for (const f of ["main.tf", "network.tf", "versions.tf", "variables.tf"]) tplFiles[f] = lf(readFileSync(join(labsDir, "_template-aws", f), "utf8"));
 
-  for (const f of ["main.tf", "network.tf", "versions.tf"]) if (l.files[f] !== tplFiles[f]) out.push(`${f} differs from labs/_template-aws/${f}`);
+  for (const f of ["main.tf", "versions.tf"]) if (l.files[f] !== tplFiles[f]) out.push(`${f} differs from labs/_template-aws/${f}`);
+  // Ruling P3: a lab that can peer starts from the template's network; one that cannot (and so has no instances) may
+  // leave it out, but never change it.
+  const canPeer = l.yaml.connectivity?.peering !== "off";
+  if (l.files["network.tf"] !== undefined ? l.files["network.tf"] !== tplFiles["network.tf"] : canPeer) out.push(l.files["network.tf"] === undefined ? "network.tf is missing: a lab that can peer starts from labs/_template-aws/network.tf" : "network.tf differs from labs/_template-aws/network.tf");
 
   const mine = variableBlocks(l.files["variables.tf"] ?? "");
   const theirs = variableBlocks(tplFiles["variables.tf"]);
