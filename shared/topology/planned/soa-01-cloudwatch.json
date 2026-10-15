@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "labId": "soa-01-cloudwatch",
- "version": 1,
+ "version": 2,
  "source": "planned",
  "at": null,
  "nodes": [

@@ -30,7 +30,7 @@ export default () => {
     resources: [
       ...templateResources(c),
       // database.tf
-      { address: "aws_security_group.db", values: tagged(c, { name: "lab-db", description: "MySQL from the lab's instances and, when peered, the gateway", tags: { Name: "sg-db" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } },
+      { address: "aws_security_group.db", values: tagged(c, { name: "lab-db", description: "MySQL from the lab instances and, when peered, the gateway", tags: { Name: "sg-db" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } },
       {
         address: "aws_vpc_security_group_ingress_rule.db_from_vms",
         values: tagged(c, { ip_protocol: "tcp", from_port: 3306, to_port: 3306 }),

@@ -8,7 +8,7 @@ From the SOA-C03 outline: implement high availability with Amazon RDS Multi-AZ, 
 - `db-a05…-replica` (shown as `db-replica`), a single-AZ read replica of it
 - The parameter group `lab-soa-05-rds-mysql84`: the slow query log on, for statements over one second
 - `vm-client`, a t4g.nano Amazon Linux 2023 instance with no public IP and the MySQL client; its `~/.my.cnf` points `mysql` at the primary and `mysql --defaults-group-suffix=-replica` at the replica
-- The security group `lab-db` (MySQL on 3306 from the lab's instances and, when peered, the VPN server's VPC) and an EC2 Instance Connect Endpoint, `eice-lab`
+- The security group `lab-db` (MySQL on 3306 from the lab instances and, when peered, the VPN server's VPC) and an EC2 Instance Connect Endpoint, `eice-lab`
 
 The database user is `labadmin` with the session password (behind **Show**). Performance Insights is not offered for MySQL on db.t4g.micro, so use CloudWatch Database Insights in its free standard mode and the RDS metrics instead. Deploying takes about 30 minutes and tear-down about 20: the Multi-AZ database and then the replica are created (and deleted) one after the other. The `mysql` client connects over TLS.
 

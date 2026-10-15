@@ -12,7 +12,7 @@
 
 resource "aws_security_group" "db" {
   name        = "lab-db"
-  description = "MySQL from the lab's instances and, when peered, the gateway"
+  description = "MySQL from the lab instances and, when peered, the gateway"
   vpc_id      = aws_vpc.lab.id
   tags        = { Name = "sg-db" }
 }

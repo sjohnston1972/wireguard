@@ -71,7 +71,7 @@ resource "aws_vpc_endpoint" "s3" {
 
 resource "aws_security_group" "eice" {
   name        = "lab-eice"
-  description = "EC2 Instance Connect Endpoint: SSH out to the lab's instances"
+  description = "EC2 Instance Connect Endpoint: SSH out to the lab instances"
   vpc_id      = aws_vpc.lab.id
   tags        = { Name = "sg-eice" }
 }

@@ -90,7 +90,9 @@ export const AWS_MEDIUM_LABS = ["saa-19-eks"];
 
 // ── This check's own lists ───────────────────────────────────────────────
 
-export const AWS_RULES = ["provider", "provisioner", "import", "type", "never", "tag", "untaggable", "iam", "gateway", "address", "public", "lingering", "size"];
+/** One character AWS allows in a security group or rule description. */
+export const SG_DESCRIPTION_CHAR = /^[a-zA-Z0-9. _:/()#,@\[\]+=&;{}!$*-]$/;
+export const AWS_RULES = ["provider", "provisioner", "import", "type", "never", "tag", "untaggable", "iam", "gateway", "address", "public", "lingering", "size", "description"];
 export const AWS_PROVIDER_SOURCES = ["registry.terraform.io/hashicorp/aws", "registry.terraform.io/hashicorp/random", "registry.terraform.io/hashicorp/time", "registry.terraform.io/hashicorp/tls", "registry.terraform.io/hashicorp/archive"];
 const AWS_SOURCE = AWS_PROVIDER_SOURCES[0];
 /** The only settings an aws provider block may carry (AWS labs spec §4). */
@@ -526,6 +528,9 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
     // 13. size
     if (isManaged) sizeProblems(r, v, refuse);
 
+    // 14. description (AWS rejects a security group or rule description outside its character set at apply)
+    if (isManaged) descriptionProblems(r, v, refuse);
+
     if (found.length) out.push(found.sort((a, b) => AWS_RULES.indexOf(a.rule) - AWS_RULES.indexOf(b.rule))[0]);
 
     // ── the rules' details, closing over this resource's context ──
@@ -619,6 +624,21 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         }
       }
       if ((res.configured?.has("ipv6_ipam_pool_id") || nonEmpty(val.ipv6_ipam_pool_id)) && labId !== IPAM_LAB) no("address", `an IPv6 IPAM pool only in ${IPAM_LAB}`);
+    }
+
+    function descriptionProblems(res, val, no) {
+      const type = res.type;
+      const check = (where, d) => {
+        if (typeof d !== "string") return;
+        const bad = [...new Set([...d].filter((ch) => !SG_DESCRIPTION_CHAR.test(ch)))];
+        if (bad.length) no("description", `${where} ${JSON.stringify(d)} has ${bad.map((x) => JSON.stringify(x)).join(", ")}: AWS accepts only a-zA-Z0-9 and . _-:/()#,@[]+=&;{}!$* (no apostrophe), or the apply fails`);
+        if (d.length >= 256) no("description", `${where} is ${d.length} characters: AWS accepts fewer than 256`);
+      };
+      if (type === "aws_security_group") {
+        check("description", val.description);
+        for (const dir of ["ingress", "egress"]) for (const b of list(val[dir])) if (isObj(b)) check(`${dir} description`, b.description);
+      }
+      if (["aws_security_group_rule", "aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule"].includes(type)) check("description", val.description);
     }
 
     function publicProblems(res, val, no) {
