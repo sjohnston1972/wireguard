@@ -1,7 +1,8 @@
 // scripts/labs-tf.mjs   (npm run labs-tf; CI's labs job runs it with LABS_TF_REQUIRE_HCL2JSON=1)
 //
 // Plain English: the Terraform half of the labs' static checks (labs spec
-// §11.1, plan L1.4), no cloud calls. For labs/_template and every lab:
+// §11.1, plan L1.4), no cloud calls. For labs/_template, labs/_template-aws
+// (checked as soa-00-template) and every lab:
 //
 //   terraform fmt -check          in place (read only)
 //   terraform init -backend=false and terraform validate
@@ -17,6 +18,12 @@
 //                                 no credentials, no Azure
 //   hcl2json | lab-scope --hcl    the plan-time scope rules on the source, as
 //                                 an early warning (lab.yml checks the real plan)
+//
+// An AWS lab (its id's exam is an AWS one) differs only in its mock (aws, tls
+// and archive can be mocked; the data sources the labs read get real-looking
+// answers), its HCL rules (lab-scope-aws.mjs's checkHclAws) and its mock plan:
+// terraform test runs with -verbose -json, and the plan it printed goes through
+// scopeProblemsAws in "mock" mode, so the plan-time rules also run offline.
 //
 //   bicep build                   a Bicep lab's .bicep files, into the copy
 //                                 (before init: Terraform reads the JSON with
@@ -38,19 +45,26 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkHcl, templateProblems } from "../infra/ci/lab-scope.mjs";
+import { checkHcl, planResources, templateProblems } from "../infra/ci/lab-scope.mjs";
+import { checkHclAws, scopeProblemsAws } from "../infra/ci/lab-scope-aws.mjs";
 import { BICEP_VERSION, bicepAsset, bicepMatchesPin, pinnedBicep } from "./lib/bicep.mjs";
-import { LAB_SLOTS, labFolders, slotCidr } from "./lib/labs.mjs";
+import { LAB_SLOTS, cloudOfId, labFolders, slotCidr } from "./lib/labs.mjs";
+import { diagnostics, messages } from "./lib/topology-stream.mjs";
 
 const LABS = fileURLToPath(new URL("../labs/", import.meta.url));
 /** The id the template is checked as: any valid, non-governance lab id. */
 export const TEMPLATE_ID = "az104-00-template";
+/** The id the AWS template is checked as. */
+export const TEMPLATE_AWS_ID = "soa-00-template";
 
 const tfFiles = (dir) => (existsSync(dir) && statSync(dir).isDirectory() ? readdirSync(dir).filter((f) => f.endsWith(".tf")).sort() : []);
 
-/** What labs-tf checks: [{ folder, dir, labId, problem }], the template first. */
+/** What labs-tf checks: [{ folder, dir, labId, problem }], the Azure template first and the AWS template second. */
 export function labsTfTargets(labsDir = LABS) {
-  const out = [{ folder: "_template", dir: join(labsDir, "_template"), labId: TEMPLATE_ID, problem: null }];
+  const out = [
+    { folder: "_template", dir: join(labsDir, "_template"), labId: TEMPLATE_ID, problem: null },
+    { folder: "_template-aws", dir: join(labsDir, "_template-aws"), labId: TEMPLATE_AWS_ID, problem: null },
+  ];
   for (const folder of labFolders(labsDir)) {
     const dir = join(labsDir, folder, "terraform");
     out.push({ folder, dir, labId: folder, problem: tfFiles(dir).length ? null : "no terraform/ folder with .tf files: the lab cannot be deployed, so it cannot be released" });
@@ -59,7 +73,7 @@ export function labsTfTargets(labsDir = LABS) {
 }
 
 /** The providers a lab may use; terraform test can mock only those the lab installs ("unknown provider" otherwise). */
-const MOCKABLE = ["azurerm", "azuread", "random", "time"];
+const MOCKABLE = ["azurerm", "azuread", "random", "time", "aws", "tls", "archive"];
 
 /**
  * The providers to mock in a lab's copy: those its lock file lists after init,
@@ -85,12 +99,59 @@ const MOCK_TENANT = "11111111-1111-4111-8111-111111111111";
  */
 const MOCK_SSH_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH03BQA5/AQUCJHTD+mOsPkEaHYZJ/1Dhlg2VWSBcxxC labs-tf-mock";
 
+/** The aws mock: the data sources the labs and the template read, answered with fake but well-formed values. */
+const AWS_MOCK = [
+  'mock_provider "aws" {',
+  '  mock_data "aws_caller_identity" {',
+  '    defaults = { account_id = "123456789012", arn = "arn:aws:iam::123456789012:user/labs-tf-mock", user_id = "AIDALABSTFMOCK" }',
+  "  }",
+  '  mock_data "aws_partition" {',
+  '    defaults = { partition = "aws", dns_suffix = "amazonaws.com" }',
+  "  }",
+  '  mock_data "aws_region" {',
+  '    defaults = { name = "eu-west-2", region = "eu-west-2" }',
+  "  }",
+  '  mock_data "aws_availability_zones" {',
+  '    defaults = { names = ["eu-west-2a", "eu-west-2b", "eu-west-2c"], zone_ids = ["euw2-az2", "euw2-az3", "euw2-az1"] }',
+  "  }",
+  '  mock_data "aws_ssm_parameter" {',
+  '    defaults = { value = "ami-0123456789abcdef0", insecure_value = "ami-0123456789abcdef0", type = "String" }',
+  "  }",
+  "}",
+].join("\n");
+
 /**
  * tests/labs-mock.tftest.hcl for lab `labId`: the given providers mocked and
- * one plan with the contract variables a session in slot 31 would get.
+ * one plan with the contract variables a session in slot 31 would get (the AWS
+ * contract's for an AWS lab).
  */
 export function mockPlanFile(labId, providers) {
   const n = /^[a-z0-9]+-(\d{2})-/.exec(labId)?.[1] ?? "00";
+  if (cloudOfId(labId) === "aws") {
+    return [
+      "# Written by scripts/labs-tf.mjs into a throw-away copy of the lab: a plan with",
+      "# mocked providers (no credentials, no AWS) and the contract variables.",
+      ...providers.map((p) => (p === "aws" ? AWS_MOCK : `mock_provider "${p}" {}`)),
+      "",
+      "variables {",
+      `  lab_id           = "${labId}"`,
+      `  name_prefix      = "a${n}k3x9q"`,
+      '  region           = "eu-west-2"',
+      '  secondary_region = "eu-west-1"',
+      `  address_space    = "${slotCidr(LAB_SLOTS - 1)}"`,
+      '  gateway_cidr     = "10.50.0.0/16"',
+      "  peered           = false",
+      '  admin_password   = "Mock-Passw0rd-labs-tf-not-real"',
+      `  ssh_public_key   = "${MOCK_SSH_KEY}"`,
+      `  tags             = { "cloudlabs-lab" = "${labId}", "cloudlabs-session" = "ls-labs-tf-mock", project = "cloudlabs" }`,
+      "}",
+      "",
+      'run "plan" {',
+      "  command = plan",
+      "}",
+      "",
+    ].join("\n");
+  }
   const azurerm = [
     'mock_provider "azurerm" {',
     '  mock_data "azurerm_subscription" {',
@@ -176,6 +237,47 @@ export async function withTfRunner({ maxBuffer } = {}, work) {
   }
 }
 
+/** The contract variables the AWS mock sets, as a plan holds them (the test_plan message carries none). */
+const AWS_MOCK_VARIABLES = () => ({
+  region: { value: "eu-west-2" },
+  secondary_region: { value: "eu-west-1" },
+  address_space: { value: slotCidr(LAB_SLOTS - 1) },
+  gateway_cidr: { value: "10.50.0.0/16" },
+});
+
+/**
+ * The scope problems of an AWS lab's mocked plan: the test_plan message of a
+ * `terraform test -verbose -json` stream, with planned_values rebuilt from its
+ * resource_changes and the variables the mock sets added (terraform test's
+ * test_plan carries only resource_changes, output_changes and the provider
+ * schemas: no planned_values, configuration or variables), through
+ * scopeProblemsAws in "mock" mode. The stream holds the mock password: it is
+ * read here and never printed. Returns [{ rule, address, message }].
+ */
+export function mockPlanScopeProblems(stream, labId) {
+  let plan = null;
+  for (const m of messages(stream)) {
+    if (m?.type === "test_plan" && m.test_plan) {
+      plan = m.test_plan;
+      break;
+    }
+  }
+  if (!plan) return [{ rule: "mock plan", address: "-", message: "the terraform test stream has no test_plan message" }];
+  const changes = plan.resource_changes ?? [];
+  const mockPlan = {
+    ...plan,
+    variables: plan.variables ?? AWS_MOCK_VARIABLES(),
+    planned_values: {
+      root_module: {
+        resources: changes.map((c) => ({ address: c.address, mode: c.mode, type: c.type, name: c.name, index: c.index, provider_name: c.provider_name, values: c.change?.after ?? {} })),
+      },
+    },
+    resource_changes: changes,
+    configuration: plan.configuration ?? { root_module: { resources: [] } },
+  };
+  return scopeProblemsAws({ ...planResources(mockPlan), configKeys: {}, providerConfigs: {} }, labId, { mode: "mock" });
+}
+
 /**
  * Run the checks. `run(cmd, args, { cwd })` -> spawnSync-like result. Returns { failures: [{ folder, message }] }.
  * `bicep`: the Bicep command (labs-tf's CLI passes the pinned, checksum-verified binary).
@@ -253,8 +355,18 @@ function checkTargets({ labsDir, run, log, only, requireHcl2json, hcl2json, requ
         else {
           mkdirSync(join(copy, "tests"), { recursive: true });
           writeFileSync(join(copy, "tests", "labs-mock.tftest.hcl"), mockPlanFile(t.labId, mockedProviders(copy)));
-          const plan = run("terraform", ["test", "-no-color"], { cwd: copy });
-          if (!ran(plan)) fail(t.folder, `mock plan (terraform test): ${why(plan)}`);
+          if (cloudOfId(t.labId) === "aws") {
+            const plan = run("terraform", ["test", "-no-color", "-verbose", "-json"], { cwd: copy });
+            // The -json stream holds the mock password: only its diagnostics (redacted) are ever shown.
+            if (!ran(plan)) fail(t.folder, `mock plan (terraform test): ${diagnostics(plan.stdout ?? "") || why({ ...plan, stdout: "" })}`);
+            else {
+              const problems = mockPlanScopeProblems(plan.stdout ?? "", t.labId);
+              if (problems.length) fail(t.folder, `mock plan scope: ${problems.map((p) => `${p.rule}: ${p.address} (${p.message})`).join("; ")}`);
+            }
+          } else {
+            const plan = run("terraform", ["test", "-no-color"], { cwd: copy });
+            if (!ran(plan)) fail(t.folder, `mock plan (terraform test): ${why(plan)}`);
+          }
         }
       }
     }
@@ -278,7 +390,7 @@ function checkTargets({ labsDir, run, log, only, requireHcl2json, hcl2json, requ
         fail(t.folder, "hcl2json printed something that is not JSON");
       }
       if (json) {
-        const problems = checkHcl(json, t.labId);
+        const problems = cloudOfId(t.labId) === "aws" ? checkHclAws(json, t.labId) : checkHcl(json, t.labId);
         if (problems.length) fail(t.folder, `scope: ${problems.map((p) => `${p.rule}: ${p.address} (${p.message})`).join("; ")}`);
       }
     }
@@ -309,7 +421,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const only = process.argv.slice(2).filter((a) => !a.startsWith("-"));
   const bicep = needsBicep(only.length ? only : null) ? await resolveBicep() : "bicep-pinned-not-available";
   // terraform, hcl2json and bicep are real executables: no shell, so arguments stay exact.
-  const { failures } = await withTfRunner({}, async (run) =>
+  const { failures } = await withTfRunner({ maxBuffer: 256 * 1024 * 1024 }, async (run) =>
     runLabsTf({
       run,
       only: only.length ? only : null,

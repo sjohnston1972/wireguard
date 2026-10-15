@@ -26,13 +26,23 @@
 //   literal-cidr    an address not from cidrsubnet(var.address_space, ...)
 //   gateway         the gateway's names (rg-wg-*, vnet-wg)
 //
+// --cloud aws (AWS labs, spec §7.3) swaps in the AWS rules: providers aws,
+// random, time, tls and archive; literal CIDRs may also be IPv6 and only
+// 0.0.0.0/0 and ::/0 pass; the gateway rule names the VPN server's VPC parts
+// (vpc-wg, snet-wg, rt-wg, sg-wg, igw-wg, rt-workloads, snet-workloads) and
+// anything called wg-admin-* except the lab permission boundary; aws-provider
+// (a provider "aws" block holds only region, alias and default_tags with
+// var.tags: no credentials, profile, assume_role, endpoints or account
+// settings); and data (no data "tls_certificate"; an archive_file reads only
+// inside path.module). Bicep files are not read for AWS.
+//
 // A lab's .bicep files (built to ARM JSON after this check, lab.yml step 5)
 // get literal-cidr and gateway too, plus module (a registry or template spec
 // module, br: or ts:) and provider (extension, import or provider
 // statements: Microsoft Graph and the like). lab-scope.mjs's templateProblems
 // then reads the built template, at labs-tf and in the plan.
 //
-//   node infra/ci/lab-lint.mjs labs/<id>/terraform
+//   node infra/ci/lab-lint.mjs [--cloud aws] labs/<id>/terraform
 //
 // Exit 0: clean. Exit 1: one "rule: file:line (message)" line per problem.
 // Exit 2: bad arguments. Plain Node with no packages (npm ci is not run on the
@@ -44,6 +54,8 @@ import { fileURLToPath } from "node:url";
 
 /** The providers a lab may use, as full source addresses. lab-scope.mjs checks the plan against the same list. */
 export const ALLOWED_PROVIDER_SOURCES = ["registry.terraform.io/hashicorp/azurerm", "registry.terraform.io/hashicorp/azuread", "registry.terraform.io/hashicorp/random", "registry.terraform.io/hashicorp/time"];
+/** The providers an AWS lab may use, as full source addresses (lab-scope-aws.mjs checks the plan against the same list). */
+export const ALLOWED_PROVIDER_SOURCES_AWS = ["registry.terraform.io/hashicorp/aws", "registry.terraform.io/hashicorp/random", "registry.terraform.io/hashicorp/time", "registry.terraform.io/hashicorp/tls", "registry.terraform.io/hashicorp/archive"];
 /** The only settings a lab's backend "s3" block may carry (labs/_template/versions.tf); lab.yml supplies bucket and key. */
 export const BACKEND_KEYS = ["region", "use_lockfile", "skip_credentials_validation", "skip_region_validation", "skip_requesting_account_id", "skip_metadata_api_check", "skip_s3_checksum", "use_path_style"];
 
@@ -136,6 +148,16 @@ const TEXT_RULES = [
   { rule: "gateway", re: /\brg-wg\b|\bvnet-wg\b/g, message: (m) => `${m}: lab Terraform never names the gateway's resources (only var.gateway_vnet_id)` },
 ];
 
+// AWS: the same rules, with IPv6 literals, the VPN server's VPC names and the aws-provider / data checks below.
+const AWS_BOUNDARY_NAME = "wg-admin-lab-boundary";
+const AWS_TEXT_RULES = [
+  { rule: "literal-cidr", re: /\b\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}\b/g, ok: (m) => m === "0.0.0.0/0", message: (m) => `literal CIDR ${m}: every address comes from cidrsubnet(var.address_space, ...)` },
+  { rule: "literal-cidr", re: /(?<![\w:])(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\/\d{1,3}\b/g, ok: (m) => m === "::/0", message: (m) => `literal CIDR ${m}: every address comes from cidrsubnet(var.address_space, ...)` },
+  ...TEXT_RULES.filter((r) => ["provisioner", "module", "import", "backend"].includes(r.rule)),
+  { rule: "gateway", re: /\b(vpc-wg|snet-wg|rt-wg|sg-wg|igw-wg|rt-workloads|snet-workloads)\b/g, message: (m) => `${m}: lab Terraform never names the VPN server's VPC parts (only var.gateway_cidr)` },
+  { rule: "gateway", re: /\bwg-admin[\w-]*/g, ok: (m) => m === AWS_BOUNDARY_NAME, message: (m) => `${m}: lab Terraform never names wg-admin resources (only the ${AWS_BOUNDARY_NAME} permission boundary)` },
+];
+
 const lineOf = (code, index) => code.slice(0, index).split("\n").length;
 
 /** Declared providers across all files: Map(local name -> { source, file, line }). */
@@ -165,16 +187,92 @@ function requiredProviders(codes) {
   return out;
 }
 
+/** The top-level entries of a block body: [{ key, kind: "attr" | "block", index, value }] (value: the rest of the line, or the block's body). */
+function topLevel(body) {
+  const entries = [];
+  let depth = 0;
+  let inStr = false;
+  for (let i = 0; i < body.length; i++) {
+    if (depth === 0 && !inStr && (i === 0 || body[i - 1] === "\n")) {
+      const m = /^[ \t]*([A-Za-z_][\w-]*)[ \t]*(=|\{)/.exec(body.slice(i, body.indexOf("\n", i) < 0 ? undefined : body.indexOf("\n", i)));
+      if (m) {
+        if (m[2] === "{") {
+          const open = i + m[0].length - 1;
+          const close = closeOf(body, open);
+          entries.push({ key: m[1], kind: "block", index: i, value: close < 0 ? body.slice(open + 1) : body.slice(open + 1, close) });
+        } else {
+          const end = body.indexOf("\n", i);
+          entries.push({ key: m[1], kind: "attr", index: i, value: body.slice(i + m[0].length, end < 0 ? body.length : end).trim() });
+        }
+      }
+    }
+    const ch = body[i];
+    if (inStr) {
+      if (ch === "\\") i++;
+      else if (ch === '"' || ch === "\n") inStr = false;
+    } else if (ch === '"') inStr = true;
+    else if (ch === "{" || ch === "[" || ch === "(") depth++;
+    else if (ch === "}" || ch === "]" || ch === ")") depth--;
+  }
+  return entries;
+}
+
+const AWS_REGIONS_OK = ["var.region", "var.secondary_region", '"us-east-1"', '"us-west-2"'];
+
+/** AWS: a provider "aws" block is region, alias and default_tags { tags = var.tags }, nothing else. */
+function awsProviderProblems(file, code) {
+  const out = [];
+  for (const m of code.matchAll(/\bprovider\s+"aws"\s*\{/g)) {
+    const open = m.index + m[0].length - 1;
+    const close = closeOf(code, open);
+    const body = close < 0 ? "" : code.slice(open + 1, close);
+    const at = (e) => lineOf(code, open + 1 + e.index);
+    const entries = topLevel(body);
+    const bad = (line, message) => out.push({ file, line, rule: "aws-provider", message });
+    for (const e of entries) {
+      if (!["region", "alias", "default_tags"].includes(e.key)) bad(at(e), `provider "aws" may not set ${e.key}: only region, alias and default_tags (credentials come from the run's environment)`);
+      else if (e.key === "region" && !AWS_REGIONS_OK.includes(e.value)) bad(at(e), `provider "aws" region must be var.region or var.secondary_region (or a global lab's us-east-1 / us-west-2), not ${e.value}`);
+      else if (e.key === "default_tags" && (e.kind !== "block" || e.value.replace(/\s+/g, " ").trim() !== "tags = var.tags")) bad(at(e), 'provider "aws" default_tags must be exactly { tags = var.tags }');
+    }
+    const line = lineOf(code, m.index);
+    if (!entries.some((e) => e.key === "region")) bad(line, 'provider "aws" needs region = var.region');
+    if (!entries.some((e) => e.key === "default_tags")) bad(line, 'provider "aws" needs default_tags { tags = var.tags }');
+  }
+  return out;
+}
+
+/** AWS: data "tls_certificate" fetches a remote certificate; an archive_file reads only inside path.module. */
+function awsDataProblems(file, code) {
+  const out = [];
+  for (const m of code.matchAll(new RegExp(String.raw`\bdata\s+${LABEL}\s+${LABEL}\s*\{`, "g"))) {
+    const type = label(m, 1);
+    const line = lineOf(code, m.index);
+    if (type === "tls_certificate") out.push({ file, line, rule: "data", message: 'data "tls_certificate" is not allowed: it fetches a certificate from a URL at plan time' });
+    if (type !== "archive_file") continue;
+    const open = m.index + m[0].length - 1;
+    const close = closeOf(code, open);
+    for (const e of topLevel(close < 0 ? "" : code.slice(open + 1, close))) {
+      if (["source_file", "source_dir", "source"].includes(e.key) && e.kind === "attr" && !(/^"\$\{path\.module\}/.test(e.value) && !e.value.includes(".."))) {
+        out.push({ file, line: lineOf(code, open + 1 + e.index), rule: "data", message: `archive_file ${e.key} must start with "\${path.module}" (no other path is read at plan time)` });
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Lint a lab's Terraform files ({ "main.tf": text, ... }), all of them
  * together (providers are declared in one file and used in another).
- * Returns [{ file, line, rule, message }].
+ * `cloud` "aws" applies the AWS rules. Returns [{ file, line, rule, message }].
  */
-export function lintTfText(files) {
+export function lintTfText(files, { cloud = "azure" } = {}) {
+  const aws = cloud === "aws";
+  const allowedSources = aws ? ALLOWED_PROVIDER_SOURCES_AWS : ALLOWED_PROVIDER_SOURCES;
   const out = [];
   const codes = Object.entries(files).map(([file, src]) => [file, stripComments(src)]);
   for (const [file, code] of codes) {
-    for (const r of TEXT_RULES) {
+    if (aws) out.push(...awsProviderProblems(file, code), ...awsDataProblems(file, code));
+    for (const r of aws ? AWS_TEXT_RULES : TEXT_RULES) {
       for (const m of code.matchAll(r.re)) {
         if (r.ok?.(m[0])) continue;
         out.push({ file, line: lineOf(code, m.index + (m[0].length - m[0].trimStart().length)), rule: r.rule, message: r.message(m[0].trim()) });
@@ -184,10 +282,10 @@ export function lintTfText(files) {
 
   // provider: every declared provider, and every provider a block uses, by full source address.
   const declared = requiredProviders(codes);
-  const allowed = (local) => ALLOWED_PROVIDER_SOURCES.includes(declared.get(local)?.source ?? normalizeSource(local)) && local !== "terraform";
+  const allowed = (local) => allowedSources.includes(declared.get(local)?.source ?? normalizeSource(local)) && local !== "terraform";
   const refuse = (file, line, local, what) => {
     const src = local === "terraform" ? "terraform.io/builtin/terraform" : (declared.get(local)?.source ?? normalizeSource(local));
-    out.push({ file, line, rule: "provider", message: `${what}: provider ${src} is not allowed in a lab (only ${ALLOWED_PROVIDER_SOURCES.join(", ")})` });
+    out.push({ file, line, rule: "provider", message: `${what}: provider ${src} is not allowed in a lab (only ${allowedSources.join(", ")})` });
   };
   for (const [local, d] of declared) if (!allowed(local)) refuse(d.file, d.line, local, `required_providers ${local}`);
   for (const [file, code] of codes) {
@@ -307,21 +405,28 @@ export function fileProblems(names) {
 }
 
 /** Everything about one lab's terraform/ folder: file names, the text of its .tf files and of its .bicep files. */
-export function lintDir(dir) {
+export function lintDir(dir, { cloud = "azure" } = {}) {
   const names = readdirSync(dir).filter((f) => statSync(join(dir, f)).isFile());
   const read = (re) => Object.fromEntries(names.filter((f) => re.test(f)).map((f) => [f, readFileSync(join(dir, f), "utf8")]));
-  return [...fileProblems(names), ...lintTfText(read(/\.tf$/)), ...lintBicepText(read(/\.bicep$/i))];
+  // AWS labs have no Bicep (CloudFormation templates are read in batch 2, with the first one).
+  return [...fileProblems(names), ...lintTfText(read(/\.tf$/), { cloud }), ...(cloud === "aws" ? [] : lintBicepText(read(/\.bicep$/i)))];
 }
 
 function main(argv) {
-  const dir = argv[0];
-  if (!dir || argv.length !== 1) {
-    console.error("Usage: node infra/ci/lab-lint.mjs <a lab's terraform folder>");
+  let cloud = "azure";
+  const args = [...argv];
+  if (args[0] === "--cloud") {
+    cloud = args[1];
+    args.splice(0, 2);
+  }
+  const dir = args[0];
+  if (!dir || args.length !== 1 || !["azure", "aws"].includes(cloud)) {
+    console.error("Usage: node infra/ci/lab-lint.mjs [--cloud aws] <a lab's terraform folder>");
     return 2;
   }
   let problems;
   try {
-    problems = lintDir(dir);
+    problems = lintDir(dir, { cloud });
   } catch (e) {
     console.error(`lab-lint: cannot read ${dir}: ${e.message}`);
     return 2;
@@ -331,7 +436,7 @@ function main(argv) {
     console.error(`lab-lint: ${problems.length} problem(s) in ${dir}; Terraform was not started`);
     return 1;
   }
-  console.error(`lab-lint: ${dir} uses only ${ALLOWED_PROVIDER_SOURCES.map((s) => s.split("/").pop()).join(", ")} and nothing that runs at init or plan`);
+  console.error(`lab-lint: ${dir} uses only ${(cloud === "aws" ? ALLOWED_PROVIDER_SOURCES_AWS : ALLOWED_PROVIDER_SOURCES).map((s) => s.split("/").pop()).join(", ")} and nothing that runs at init or plan`);
   return 0;
 }
 

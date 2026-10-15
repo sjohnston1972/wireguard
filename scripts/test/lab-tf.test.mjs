@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { labFolders } from "../lib/labs.mjs";
 import { BICEP_SHA256, BICEP_VERSION, bicepAsset, bicepMatchesPin, pinnedBicep } from "../lib/bicep.mjs";
-import { labsTfTargets, runLabsTf } from "../labs-tf.mjs";
+import { labsTfTargets, mockPlanFile, runLabsTf } from "../labs-tf.mjs";
 
 const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
 const CI = parse(readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8"));
@@ -29,6 +29,7 @@ function labsDir() {
   const dir = mkdtempSync(join(tmpdir(), "labs-tf-"));
   made.push(dir);
   cpSync(join(LABS, "_template"), join(dir, "_template"), { recursive: true });
+  cpSync(join(LABS, "_template-aws"), join(dir, "_template-aws"), { recursive: true });
   mkdirSync(join(dir, "setup"));
   for (const id of ["az104-05-storage", "az104-06-blob-security"]) {
     cpSync(join(LABS, id), join(dir, id), { recursive: true });
@@ -41,13 +42,17 @@ function labsDir() {
 }
 
 /** A fake command runner: records [cmd, args, cwd]; hcl2json answers with `hcl` (or is missing); bicep build writes `template` to its --outfile. */
-function fakeRun({ hcl = { resource: { azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}" }] } } }, missing = [], fail = {}, template = BICEP_BUILT } = {}) {
+const AZURE_HCL = { resource: { azurerm_resource_group: { lab: [{ name: "${var.resource_group_name}", location: "${var.region}" }] } } };
+/** What terraform test -verbose -json prints for a plan with these resource changes (an empty one by default). */
+const testStream = (changes = []) => `${JSON.stringify({ type: "test_plan", test_plan: { resource_changes: changes } })}\n`;
+function fakeRun({ hcl = (args) => (args[0].includes("_template-aws") ? {} : AZURE_HCL), missing = [], fail = {}, template = BICEP_BUILT, stream = testStream() } = {}) {
   const calls = [];
   const run = (cmd, args, opts = {}) => {
     calls.push([cmd, args.join(" "), opts.cwd ?? ""]);
     if (missing.includes(cmd)) return { status: null, error: Object.assign(new Error("not found"), { code: "ENOENT" }), stdout: "", stderr: "" };
     const key = `${cmd} ${args[0]}`;
     if (fail[key]) return { status: 1, stdout: "", stderr: fail[key] };
+    if (cmd === "terraform" && args[0] === "test" && args.includes("-json")) return { status: 0, stdout: stream, stderr: "" };
     if (cmd === "hcl2json") return { status: 0, stdout: JSON.stringify(typeof hcl === "function" ? hcl(args) : hcl), stderr: "" };
     if (cmd === "bicep" && args[0] === "build") writeFileSync(join(opts.cwd, args[3]), JSON.stringify(template));
     return { status: 0, stdout: "", stderr: "" };
@@ -73,13 +78,14 @@ test("labs-tf deletes its scratch copies when it finishes, even when a check fai
   assert.deepEqual([...copies()].filter((n) => !before.has(n)), []);
 });
 
-test("labs-tf lists each lab and the template", () => {
+test("labs-tf lists each lab and both templates", () => {
   const targets = labsTfTargets(LABS);
   assert.equal(targets[0].folder, "_template");
   assert.equal(targets[0].problem, null);
   assert.match(targets[0].labId, /^az104-\d{2}-template$/);
-  assert.deepEqual(targets.slice(1).map((t) => t.folder), labFolders(LABS));
-  for (const t of targets.slice(1)) {
+  assert.equal(targets[1].problem, null);
+  assert.deepEqual(targets.slice(2).map((t) => t.folder), labFolders(LABS));
+  for (const t of targets.slice(2)) {
     assert.equal(t.labId, t.folder);
     assert.ok(t.dir.replace(/\\/g, "/").endsWith(`${t.folder}/terraform`));
   }
@@ -308,4 +314,29 @@ test("a downloaded Bicep is used only when its sha256 matches the pin", async ()
   assert.equal(await pinnedBicep({ cacheDir: other, asset, sha256: { [asset]: good }, fetch: async () => { throw new Error("offline"); }, log: quiet }), null);
   assert.equal(await pinnedBicep({ cacheDir: other, asset: null, fetch, log: quiet }), null);
   assert.equal(bicepMatchesPin(join(other, "missing"), asset, { [asset]: good }), false);
+});
+
+test("labs-tf checks the AWS template second, as soa-00-template", () => {
+  const t = labsTfTargets(LABS);
+  assert.deepEqual(t.slice(0, 2).map((x) => [x.folder, x.labId]), [["_template", "az104-00-template"], ["_template-aws", "soa-00-template"]]);
+});
+
+test("the AWS mock plan mocks aws with the data the labs read and fills the AWS variables", () => {
+  const f = mockPlanFile("soa-03-auto-scaling", ["aws", "random"]);
+  for (const s of ['mock_provider "aws" {', 'mock_data "aws_ssm_parameter"', 'insecure_value = "ami-0123456789abcdef0"', 'mock_data "aws_availability_zones"', 'mock_provider "random" {}', 'name_prefix      = "a03k3x9q"', 'region           = "eu-west-2"', 'gateway_cidr     = "10.50.0.0/16"', '"cloudlabs-lab" = "soa-03-auto-scaling"']) assert.ok(f.includes(s), s);
+  assert.ok(!f.includes("resource_group_name"));
+  assert.ok(mockPlanFile("az104-08-vms", ["azurerm"]).includes('resource_group_name = "rg-lab-az104-08-vms"'), "the Azure mock is unchanged");
+});
+
+test("an AWS target's mock plan runs terraform test -verbose -json and fails on a scope problem in the plan it printed", () => {
+  const dir = labsDir();
+  const clean = fakeRun();
+  assert.deepEqual(runLabsTf({ labsDir: dir, run: clean.run, log: quiet, only: ["_template-aws"] }).failures, []);
+  assert.ok(clean.calls.some((c) => c[0] === "terraform" && c[1] === "test -no-color -verbose -json"));
+  const vpc = (cidr) => ({ address: "aws_vpc.lab", mode: "managed", type: "aws_vpc", name: "lab", provider_name: "registry.terraform.io/hashicorp/aws", change: { actions: ["create"], after: { cidr_block: cidr, tags: { Name: "vpc-lab" } }, after_unknown: {} } });
+  const evil = runLabsTf({ labsDir: dir, run: fakeRun({ stream: testStream([vpc("192.168.0.0/20")]) }).run, log: quiet, only: ["_template-aws"] });
+  assert.equal(evil.failures.length, 1);
+  assert.match(evil.failures[0].message, /^mock plan scope: address: aws_vpc\.lab/);
+  const none = runLabsTf({ labsDir: dir, run: fakeRun({ stream: "not json\n" }).run, log: quiet, only: ["_template-aws"] });
+  assert.match(none.failures[0].message, /no test_plan message/);
 });

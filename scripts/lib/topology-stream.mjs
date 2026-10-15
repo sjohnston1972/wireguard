@@ -24,7 +24,7 @@ const DENY_NAME = /password|secret|^custom_data$|^user_data$|admin_ssh_key|ssh_k
 
 const secretString = (s) => typeof s === "string" && (s.includes(MOCK_PASSWORD) || s.includes(MOCK_KEY) || /-----BEGIN/.test(s));
 
-function* messages(text) {
+export function* messages(text) {
   for (const line of String(text).split("\n")) {
     if (!line.trim()) continue;
     try {
