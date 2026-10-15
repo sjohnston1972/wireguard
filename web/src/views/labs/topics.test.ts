@@ -92,9 +92,9 @@ describe("resourceSummary", () => {
 });
 
 describe("the real planned diagrams", () => {
-  it("every one of the 43 planned graphs gives at least one topic and one resource", () => {
+  it("every one of the 47 planned graphs gives at least one topic and one resource", () => {
     const graphs = Object.values(PLANNED);
-    expect(graphs.length).toBe(43);
+    expect(graphs.length).toBe(47);
     for (const g of graphs) {
       const c = counts(g);
       expect(labTopics(c).length, g.labId).toBeGreaterThan(0);

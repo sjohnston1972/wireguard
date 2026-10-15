@@ -102,6 +102,11 @@ describe("describeGraph for AWS labs", () => {
   it("says the AWS nouns: the VPC, not a resource group and a virtual network", () => {
     expect(describeGraph(planned("soa-01-cloudwatch"))).toBe("An EC2 Instance Connect Endpoint, an EC2 instance, three VPC endpoints, a CloudWatch log group and more, in one VPC with two subnets.");
   });
+  it("writes 'an S3 bucket': a letter-and-digit acronym starting with S takes 'an'", () => {
+    const vpc = { id: "tf:vpc", key: "vpc", kind: "vnet" as const, label: "vpc", props: {}, cloud: "aws" as const };
+    const bucket = { id: "tf:b", key: "b", kind: "storage" as const, label: "b", props: {}, cloud: "aws" as const };
+    expect(describeGraph({ nodes: [vpc, bucket], edges: [] } as unknown as TopologyGraph)).toMatch(/^An S3 bucket/);
+  });
   it("uses no Azure word for any AWS lab's description, nor for any kind an AWS rule draws", () => {
     const aws = readdirSync(join(repo, "shared/topology/planned")).filter((f) => f.endsWith(".json")).map((f) => planned(f.slice(0, -5))).filter((g) => g.nodes.some((x) => x.cloud === "aws"));
     expect(aws.length).toBeGreaterThan(0);

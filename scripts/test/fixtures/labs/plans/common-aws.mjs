@@ -80,17 +80,17 @@ export function templateResources(c) {
  * the session's cloud-init (unknown at plan here). It sets only what the labs' HCL sets (preflight ruling C2): no
  * public IP is the provider's default (unknown at plan, as are disable_api_termination and disable_api_stop).
  * opts: { key, name, subnet ("aws_subnet.private[0]"), type ("t4g.micro"), profile (an aws_iam_instance_profile
- * address or null), sgs (security group addresses, default ["aws_security_group.vms"]), monitoring (only when given) }.
+ * address or null), sgs (security group addresses, default ["aws_security_group.vms"]), monitoring (only when given), rootTags (the lab tags go on root_block_device instead of volume_tags, C18) }.
  */
-export function al2023Instance(c, { key, name, subnet = "aws_subnet.private[0]", type = "t4g.micro", profile = null, sgs = ["aws_security_group.vms"], monitoring }) {
+export function al2023Instance(c, { key, name, subnet = "aws_subnet.private[0]", type = "t4g.micro", profile = null, sgs = ["aws_security_group.vms"], monitoring, rootTags = false }) {
   return {
     address: `aws_instance.${key}`,
     values: tagged(c, {
       ami: AMI, instance_type: type,
       ...(monitoring !== undefined ? { monitoring } : {}),
       metadata_options: [{ http_tokens: "required", http_endpoint: "enabled" }],
-      root_block_device: [{ volume_size: 8, volume_type: "gp3", delete_on_termination: true }],
-      volume_tags: { ...c.tags, Name: name },
+      root_block_device: [{ volume_size: 8, volume_type: "gp3", delete_on_termination: true, ...(rootTags ? { tags: { ...c.tags, Name: name } } : {}) }],
+      ...(rootTags ? {} : { volume_tags: { ...c.tags, Name: name } }),
       tags: { Name: name },
     }),
     unknown: ["subnet_id", "vpc_security_group_ids", "user_data", ...(profile ? ["iam_instance_profile"] : [])],
@@ -99,7 +99,7 @@ export function al2023Instance(c, { key, name, subnet = "aws_subnet.private[0]",
       subnet_id: [`${subnet}.id`, subnet, subnet.replace(/\[\d+\]$/, "")],
       vpc_security_group_ids: sgs.flatMap((s) => ref(s, "id")),
       user_data: ["local.cloud_init"],
-      volume_tags: ["var.tags"],
+      ...(rootTags ? { "root_block_device.0.tags": ["var.tags"] } : { volume_tags: ["var.tags"] }),
       ...(profile ? { iam_instance_profile: ref(profile, "name") } : {}),
     },
   };

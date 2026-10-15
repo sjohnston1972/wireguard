@@ -707,7 +707,7 @@
   {
    "file": "architecture.svg",
    "sketch": 0,
-   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, two EC2 instances, a S3 bucket, four VPC endpoints and more, in one VPC with two subnets.",
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, two EC2 instances, an S3 bucket, four VPC endpoints and more, in one VPC with two subnets.",
    "width": 2056,
    "height": 1108
   }
@@ -718,6 +718,15 @@
    "sketch": 0,
    "alt": "Architecture diagram. A load balancer sending traffic to an Auto Scaling group, in one VPC with four subnets.",
    "width": 1419,
+   "height": 966
+  }
+ ],
+ "soa-04-backup": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an EC2 instance, two S3 buckets, a VPC endpoint and more, in one VPC with two subnets.",
+   "width": 1387,
    "height": 966
   }
  ]

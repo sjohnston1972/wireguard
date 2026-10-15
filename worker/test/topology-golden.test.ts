@@ -773,6 +773,26 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["alb-web -> asg-a03… : HTTP 80", "rt-public ..> igw-lab : 0.0.0.0/0"],
   },
+  "soa-04-backup": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "managedIdentity lab-soa-04-backup-backup < lab-soa-04-backup · London",
+      "managedIdentity lab-soa-04-backup-replication < lab-soa-04-backup · London",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "recoveryVault lab-vault < lab-soa-04-backup · London",
+      "resourceGroup lab-soa-04-backup · London",
+      "routeTable rt-private < vpc-lab",
+      "storage dst < lab-soa-04-backup · London",
+      "storage src < lab-soa-04-backup · London",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vm vm-data < snet-private-1",
+      "vnet vpc-lab < lab-soa-04-backup · London",
+    ],
+    edges: ["src ..> dst : replicates"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);
@@ -785,7 +805,7 @@ const planFixtures = LAB_PLANS as Record<string, { resources: { address: string 
 
 /** The configuration addresses (type.name) and instance addresses a graph represents: nodes, folded entries, edge vias. */
 function represented(g: TopologyGraph): { configs: Set<string>; instances: Set<string>; opaque: Map<string, number> } {
-  const all = [...representedIds(g)].filter((x) => x.startsWith("tf:")).map((x) => x.slice(3).split("/")[0]!);
+  const all = [...representedIds(g)].filter((x) => x.startsWith("tf:")).map((x) => /^(?:[^/[]|\[[^\]]*\])*/.exec(x.slice(3))![0]); // up to the first "/" outside an instance key (a key can be an ARN)
   // Opaque, counted folded ids (a Key Vault secret: "azurerm_key_vault_secret#1") stand for that many instances of the type.
   const opaque = new Map<string, number>();
   for (const a of all) {

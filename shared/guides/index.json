@@ -540,5 +540,12 @@
    "title": "Auto Scaling behind an Application Load Balancer: architecture",
    "kind": "architecture"
   }
+ ],
+ "soa-04-backup": [
+  {
+   "file": "architecture.svg",
+   "title": "Backup, snapshots, S3 versioning and replication: architecture",
+   "kind": "architecture"
+  }
  ]
 }

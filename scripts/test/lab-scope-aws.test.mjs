@@ -234,3 +234,10 @@ test("the command line: exit 0 for the template, 1 with one line per refusal, 2 
   assert.equal(run("--plan", good).status, 2);
   assert.equal(run("--plan", good, "--lab", "az104-08-vms").status, 2, "an Azure id is refused: this is the AWS check");
 });
+
+test("an instance tags its volumes through root_block_device tags instead of volume_tags (C18)", () => {
+  assert.deepEqual(rules(plan([al2023Instance(c, { key: "data", name: "vm-data", rootTags: true })])), []);
+  const bad = al2023Instance(c, { key: "data", name: "vm-data", rootTags: true });
+  bad.values.root_block_device[0].tags = { Name: "vm-data" };
+  assert.deepEqual(rules(plan([bad])), ["tag: aws_instance.data"]);
+});

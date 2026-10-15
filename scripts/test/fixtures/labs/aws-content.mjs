@@ -58,7 +58,9 @@ export function commonAwsProblems(id, labsDir = LABS) {
     const at = `aws_instance.${r.labels[1]}`;
     if (!hasAttr(r.body, "ami", String.raw`data\.aws_ssm_parameter\.al2023_arm64\.insecure_value`)) out.push(`${at}: ami is not data.aws_ssm_parameter.al2023_arm64.insecure_value`);
     if (!hasAttr(r.body, "http_tokens", '"required"')) out.push(`${at}: http_tokens is not "required"`);
-    if (!hasAttr(r.body, "volume_tags", String.raw`merge\(var\.tags,`)) out.push(`${at}: volume_tags does not merge(var.tags, ...)`);
+    // volume_tags, or (with a separately attached disk, where volume_tags would cycle the tags, C18) root_block_device tags.
+    const rootTags = /root_block_device\s*\{[^}]*?\n\s*tags\s+=\s+merge\(var\.tags,/.test(r.body);
+    if (!hasAttr(r.body, "volume_tags", String.raw`merge\(var\.tags,`) && !rootTags) out.push(`${at}: volume_tags (or root_block_device tags) does not merge(var.tags, ...)`);
     if (hasAttr(r.body, "associate_public_ip_address", "true")) out.push(`${at}: associate_public_ip_address = true`);
   }
   for (const r of res("aws_launch_template")) {

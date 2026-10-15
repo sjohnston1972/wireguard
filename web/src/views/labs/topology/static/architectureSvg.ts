@@ -76,7 +76,7 @@ const PROPER = ["Route Server", "Container Apps", "App Service", "Cosmos", "Priv
 /** A kind's word inside a sentence: "application gateway", but "VM", "Front Door". */
 const inSentence = (w: string) => (PROPER.some((p) => w.startsWith(p)) ? w : w.charAt(0).toLowerCase() + w.slice(1));
 const NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
-const article = (w: string, aws = false) => (/^[aeiou]/i.test(w) || (aws ? /^[AEFHILMNORSX][A-Z]/ : /^[AEFHILMNORX][A-Z]/).test(w) ? "an" : "a");
+const article = (w: string, aws = false) => (/^[aeiou]/i.test(w) || (aws ? /^[AEFHILMNORSX][A-Z0-9]/ : /^[AEFHILMNORX][A-Z]/).test(w) ? "an" : "a");
 
 /**
  * What an AWS lab's alt text calls each kind (the kinds' own words are Azure's: "Log Analytics workspace", "Network
