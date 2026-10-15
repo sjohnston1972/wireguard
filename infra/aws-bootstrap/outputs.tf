@@ -8,6 +8,15 @@ output "deploy_role_arn" {
   value = aws_iam_role.deploy.arn
 }
 
+output "labs_role_arn" {
+  value = aws_iam_role.labs.arn
+}
+
+# The default VPCs (London's, then Ireland's) that DenyDefaultVpc names: the --labs simulator asks about one.
+output "default_vpc_arns" {
+  value = local.default_vpc_arns
+}
+
 output "worker_access_key_id" {
   value     = aws_iam_access_key.worker.id
   sensitive = true

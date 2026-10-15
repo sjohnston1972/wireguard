@@ -1,0 +1,51 @@
+# Lab soa-05 (AWS labs batch 1). SOA-C03 ((V) against the current exam
+# guide): Reliability and Business Continuity (Multi-AZ failover, read
+# replicas, snapshots); Monitoring and Performance (RDS metrics, slow query
+# log); SAA-C03 Design High-Performing Architectures (read scaling).
+# MySQL 8.4 (8.0 left standard support on 2026-07-31 and bills Extended
+# Support) with Performance Insights off: not offered for MySQL on
+# db.t4g.micro (V); the readme uses CloudWatch Database Insights standard
+# mode, which is free (ruling A34). London list prices × 0.75 (V each
+# filter: labs-verify --aws-prices soa-05-rds). RDS bills by the second.
+id: soa-05-rds
+version: 1
+cloud: aws
+title: "RDS MySQL: Multi-AZ failover, read replica, insights"
+summary: >-
+  A Multi-AZ RDS for MySQL database with a read replica, its own parameter group and a client instance, so you can
+  force a failover, read from the replica, take a snapshot and find slow queries.
+exam: SOA-C03
+skill_areas: [soa.reliability, soa.monitoring, saa.performance]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - name: "RDS for MySQL db.t4g.micro, Multi-AZ (primary and standby)"
+      gbp_h: 0.0270
+      aws_price: { service: AmazonRDS, unit: Hrs, filters: { instanceType: db.t4g.micro, databaseEngine: MySQL, deploymentOption: Multi-AZ } }
+    - name: "RDS for MySQL db.t4g.micro, read replica"
+      gbp_h: 0.0135
+      aws_price: { service: AmazonRDS, unit: Hrs, filters: { instanceType: db.t4g.micro, databaseEngine: MySQL, deploymentOption: Single-AZ } }
+    - name: "RDS General Purpose (gp2) storage, 20 GiB, Multi-AZ"
+      gbp_h: 0.0055
+      aws_price: { service: AmazonRDS, unit: GB-Mo, gb: 20, filters: { productFamily: Database Storage, volumeType: General Purpose, databaseEngine: MySQL, deploymentOption: Multi-AZ } }
+    - name: "RDS General Purpose (gp2) storage, 20 GiB, replica"
+      gbp_h: 0.0027
+      aws_price: { service: AmazonRDS, unit: GB-Mo, gb: 20, filters: { productFamily: Database Storage, volumeType: General Purpose, databaseEngine: MySQL, deploymentOption: Single-AZ } }
+    - name: "EC2 t4g.nano, Linux (the client)"
+      gbp_h: 0.0035
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "Automated backups and snapshots (inside the free backup storage)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 30, destroy_min: 20, session_h: 2, max_h: 4 }
+capacity: { instance_types: [t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

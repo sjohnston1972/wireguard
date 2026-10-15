@@ -21,16 +21,30 @@
 //
 // It only ever reads. Nothing here deletes anything; Clean up is a lab.yml
 // destroy run, whose safety net only touches rg-lab-<id>* and lab-<id>-*.
+//
+// An AWS sweep beside the Azure one (AWS labs spec §6, §8.4, rulings A16 and
+// P7): its own hourly step (KV labs:sweep-aws), because the watch's calls
+// cannot hold both sweeps in one run. In AWS_SWEEP_CALLS calls it lists what
+// is tagged cloudlabs-lab in the four regions labs touch, the IAM roles,
+// instance profiles, customer policies and users under /cloudlabs-lab/, and
+// the Config recorders and lab-* dashboards of both lab regions. A tagged
+// item's lab is its tag's value; a name's, labIdOf. The tagging API keeps
+// listing deleted items for about an hour, so an AWS item counts only once
+// no live session of its lab has seen it for 90 minutes. Each sweep rewrites
+// only its own cloud's entries in labs:orphans and gives back only its own
+// cloud's ended_dirty slots; Clean up for an AWS lab is a lab-aws.yml destroy.
 
 import type { Env } from "../env";
-import { canAzure } from "../env";
+import { canAws, canAzure } from "../env";
 import * as db from "../db";
 import { labDef } from "./catalogue";
-import { ALLOWED_ROLES, FLOW_LOG_LABS, labNeeds } from "../../../shared/labs";
+import { ALLOWED_ROLES, AWS_GLOBAL_REGIONS, AWS_LAB_REGIONS, FLOW_LOG_LABS, LAB_ID_MAX, LAB_ID_RE, LAB_TAG, cloudOfId, labNeeds, type LabCloud } from "../../../shared/labs";
 import type { LabOrphan } from "../../../shared/api";
 import { arm, graph, BudgetExceeded, type Net } from "./net";
 import { labIdOf } from "./cost";
 import { freeSlot, LIVE_SQL } from "./store";
+import { AwsError } from "../cloud/awsApi";
+import { configRecorderNames, dashboardNames, iamLabNames, labTagged, taggedName } from "./awsReads";
 
 const MIN = 60_000;
 export const SWEEP_EVERY_MS = 60 * MIN;
@@ -45,6 +59,11 @@ export const ORPHAN_GRACE_MS = 30 * MIN;
 export const SWEEP_CALLS = 8 + ALLOWED_ROLES.custom.length;
 const KV_SWEEP = "labs:sweep";
 const KV_ORPHANS = "labs:orphans";
+/** The AWS sweep's calls: tagging in four regions, four IAM listings, recorders and dashboards in both lab regions. */
+export const AWS_SWEEP_CALLS = 12;
+/** How long an AWS item must go unseen by a live session of its lab before it counts (A16). */
+export const AWS_ORPHAN_GRACE_MS = 90 * MIN;
+const KV_SWEEP_AWS = "labs:sweep-aws";
 
 interface SweepState {
   at: string;
@@ -163,9 +182,9 @@ export function assignmentFound(a: { name?: string; properties?: { displayName?:
   return lab && a.name ? { name: `${a.name} (${holder})`, created: null, lab } : null;
 }
 
-async function readState(env: Env): Promise<SweepState | null> {
+async function readState(env: Env, key = KV_SWEEP): Promise<SweepState | null> {
   try {
-    const v = await env.STATUS.get(KV_SWEEP);
+    const v = await env.STATUS.get(key);
     return v ? (JSON.parse(v) as SweepState) : null;
   } catch {
     return null;
@@ -199,6 +218,44 @@ async function releaseDirtySlots(env: Env, labId: string): Promise<number> {
   return dirty.length;
 }
 
+/** Which cloud a leftovers entry belongs to: its lab id's (an entry with no id is Azure's, as before AWS). */
+const cloudOfEntry = (o: LabOrphan): LabCloud => (o.labId ? cloudOfId(o.labId) : "azure");
+
+/**
+ * Write one sweep's leftovers into KV labs:orphans: the other cloud's entries as they are, plus this cloud's fresh
+ * list. When a listing failed (`partial`), this cloud's earlier entries it could not see again are kept as they
+ * were (unless a live session owns the lab now), rather than forgotten. Returns this cloud's entries.
+ */
+async function saveOrphans(env: Env, cloud: LabCloud, byLab: Map<string, { names: string[]; since: number }>, live: Set<string>, partial: boolean): Promise<LabOrphan[]> {
+  const before = await readOrphans(env);
+  const mine: LabOrphan[] = [...byLab].map(([labId, e]) => ({ labId, names: [...new Set(e.names)].sort(), since: new Date(e.since).toISOString() }));
+  if (partial) for (const o of before) if (o.labId && cloudOfEntry(o) === cloud && !byLab.has(o.labId) && !live.has(o.labId)) mine.push(o);
+  const others = before.filter((o) => cloudOfEntry(o) !== cloud);
+  const byId = (a: LabOrphan, b: LabOrphan) => (a.labId ?? "").localeCompare(b.labId ?? "");
+  mine.sort(byId);
+  await env.STATUS.put(KV_ORPHANS, JSON.stringify([...others, ...mine].sort(byId)));
+  return mine;
+}
+
+/** One watchman note per lab, when its names change. Returns the sweep's `noted` (this cloud's labs only). */
+async function noteOrphans(env: Env, orphans: LabOrphan[], prev: SweepState | null): Promise<Record<string, string>> {
+  const noted: Record<string, string> = { ...(prev?.noted ?? {}) };
+  for (const o of orphans) {
+    const key = o.names.join(",");
+    if (!o.labId || noted[o.labId] === key) continue;
+    noted[o.labId] = key;
+    await db.addAlert(env, "cost_guard", `Lab leftovers: ${o.names.join(", ")}. Nothing is watching them; Clean up from the Labs tab.`);
+  }
+  for (const k of Object.keys(noted)) if (!orphans.some((o) => o.labId === k)) delete noted[k];
+  return noted;
+}
+
+/** The labs of one cloud with ended_dirty sessions still holding a slot. */
+async function dirtyLabs(env: Env, cloud: LabCloud): Promise<string[]> {
+  const dirty = (await env.DB.prepare("SELECT DISTINCT lab_id FROM lab_sessions WHERE state = 'ended_dirty' AND slot IS NOT NULL").all<{ lab_id: string }>()).results;
+  return dirty.map((d) => d.lab_id).filter((id) => cloudOfId(id) === cloud);
+}
+
 /** One sweep, if an hour has passed since the last. Returns a log line, or null when not due. */
 export async function sweepOrphans(env: Env, net: Net, now: Date): Promise<string | null> {
   if (!canAzure(env)) return null;
@@ -227,27 +284,13 @@ export async function sweepOrphans(env: Env, net: Net, now: Date): Promise<strin
     byLab.set(lab, e);
   }
 
-  // Keep what a failed listing could not see as it was, rather than forgetting it.
-  const before = await readOrphans(env);
-  const orphans: LabOrphan[] = [...byLab].map(([labId, e]) => ({ labId, names: [...new Set(e.names)].sort(), since: new Date(e.since).toISOString() }));
-  if (found.errors.length) for (const o of before) if (o.labId && !byLab.has(o.labId) && !live.has(o.labId)) orphans.push(o);
-  orphans.sort((a, b) => (a.labId ?? "").localeCompare(b.labId ?? ""));
-  await env.STATUS.put(KV_ORPHANS, JSON.stringify(orphans));
+  const orphans = await saveOrphans(env, "azure", byLab, live, found.errors.length > 0);
+  const noted = await noteOrphans(env, orphans, prev);
 
-  // One note per lab, when its names change.
-  const noted: Record<string, string> = { ...(prev?.noted ?? {}) };
-  for (const o of orphans) {
-    const key = o.names.join(",");
-    if (!o.labId || noted[o.labId] === key) continue;
-    noted[o.labId] = key;
-    await db.addAlert(env, "cost_guard", `Lab leftovers: ${o.names.join(", ")}. Nothing is watching them; Clean up from the Labs tab.`);
-  }
-  for (const k of Object.keys(noted)) if (!orphans.some((o) => o.labId === k)) delete noted[k];
-
-  // A clean sweep gives back the slots of ended_dirty sessions whose lab has nothing left.
+  // A clean sweep gives back the slots of ended_dirty sessions whose lab has nothing left (Azure labs only: the
+  // AWS sweep gives back its own).
   let released = 0;
-  const dirty = (await env.DB.prepare("SELECT DISTINCT lab_id FROM lab_sessions WHERE state = 'ended_dirty' AND slot IS NOT NULL").all<{ lab_id: string }>()).results;
-  for (const { lab_id } of dirty) {
+  for (const lab_id of await dirtyLabs(env, "azure")) {
     const def = labDef(lab_id);
     const needs = def ? labNeeds(def) : { role: true, graph: true };
     const sawAll = found.rg !== null && (found.graph !== null || !needs.graph) && (found.gov !== null || !needs.role) && (found.flow !== null || !FLOW_LOG_LABS.includes(lab_id));
@@ -259,5 +302,95 @@ export async function sweepOrphans(env: Env, net: Net, now: Date): Promise<strin
   const parts = [`orphans: ${orphans.length} lab(s) with leftovers`];
   if (released) parts.push(`${released} slot(s) released`);
   if (found.errors.length) parts.push(`could not list: ${found.errors.join("; ")}`);
+  return parts.join(", ");
+}
+
+// ── AWS (AWS labs spec §6, §8.4) ─────────────────────────────────────────
+
+/** An AWS lab id, or null: a lab's tag value or a name's lab must be a valid id of an AWS exam. */
+const awsLabId = (id: string | null | undefined): string | null => (id && id.length <= LAB_ID_MAX && LAB_ID_RE.test(id) && cloudOfId(id) === "aws" ? id : null);
+
+/** The 12 AWS listings, in order; a listing that failed is left out and named in `errors`. */
+async function listAws(env: Env, net: Net): Promise<{ found: Found[]; errors: string[] }> {
+  const found: Found[] = [];
+  const errors: string[] = [];
+  const attempt = async (what: string, fn: () => Promise<Found[]>) => {
+    try {
+      found.push(...(await fn()));
+    } catch (e) {
+      // Out of calls is not "AWS could not answer": the whole sweep waits for the next run.
+      if (e instanceof BudgetExceeded) throw e;
+      errors.push(`${what} (${e instanceof AwsError ? e.code : (e as Error).message})`);
+    }
+  };
+  const named = (names: string[], word: string): Found[] => names.map((n) => ({ name: `${word} ${n}`, created: null, lab: awsLabId(labIdOf(n)) }));
+  for (const region of [...AWS_LAB_REGIONS, ...AWS_GLOBAL_REGIONS]) {
+    await attempt(`tagged resources in ${region}`, async () => {
+      const page = await labTagged(env, net, region);
+      // One page only: what it holds counts, but a listing with more is partial (no slot is released on it and
+      // earlier entries it may not have seen are kept), never "complete".
+      if (page.truncated) errors.push(`tagged resources in ${region} (more than ${page.length})`);
+      return page.map((t) => ({ name: taggedName(t.arn), created: null, lab: awsLabId(t.tags[LAB_TAG]) }));
+    });
+  }
+  await attempt("IAM roles", async () => named(await iamLabNames(env, net, "roles"), "iam role"));
+  await attempt("IAM instance profiles", async () => named(await iamLabNames(env, net, "instance-profiles"), "iam instance profile"));
+  await attempt("IAM policies", async () => named(await iamLabNames(env, net, "policies"), "iam policy"));
+  await attempt("IAM users", async () => named(await iamLabNames(env, net, "users"), "iam user"));
+  for (const region of AWS_LAB_REGIONS) {
+    await attempt(`Config recorders in ${region}`, async () => named(await configRecorderNames(env, net, region), "config recorder"));
+    await attempt(`dashboards in ${region}`, async () => named(await dashboardNames(env, net, region), "dashboard"));
+  }
+  return { found, errors };
+}
+
+/**
+ * One AWS sweep, if an hour has passed since the last (KV labs:sweep-aws) and the Worker has AWS keys. Returns a log
+ * line, or null when not due. Needs AWS_SWEEP_CALLS calls left or makes none (BudgetExceeded): a half sweep is never
+ * recorded, so it stays due for the next run.
+ */
+export async function sweepAwsOrphans(env: Env, net: Net, now: Date): Promise<string | null> {
+  if (!canAws(env)) return null;
+  const prev = await readState(env, KV_SWEEP_AWS);
+  if (prev && now.getTime() - Date.parse(prev.at) < SWEEP_EVERY_MS) return null;
+  if (net.remaining() < AWS_SWEEP_CALLS) throw new BudgetExceeded(AWS_SWEEP_CALLS, net.remaining(), AWS_SWEEP_CALLS);
+  const t = now.getTime();
+  const { found, errors } = await listAws(env, net);
+
+  const live = new Set((await env.DB.prepare(`SELECT DISTINCT lab_id FROM lab_sessions WHERE state IN (${LIVE_SQL})`).all<{ lab_id: string }>()).results.map((r) => r.lab_id));
+  const seen: Record<string, string> = {};
+  const byLab = new Map<string, { names: string[]; since: number }>();
+  const present = new Set<string>();
+  for (const f of found) {
+    const lab = f.lab;
+    if (!lab) continue; // not a lab's (or not an AWS lab's)
+    present.add(lab);
+    // The 90 minutes run from the last sweep a live session of the lab saw it: the tagging API lists a deleted item
+    // for about an hour, so what a clean tear-down removed is never named.
+    if (live.has(lab)) {
+      seen[f.name] = now.toISOString();
+      continue;
+    }
+    const first = Math.min(...[prev?.seen[f.name], now.toISOString()].map((x) => Date.parse(x ?? "")).filter(Number.isFinite));
+    seen[f.name] = new Date(first).toISOString();
+    if (t - first < AWS_ORPHAN_GRACE_MS) continue;
+    const e = byLab.get(lab) ?? { names: [], since: first };
+    e.names.push(f.name);
+    e.since = Math.min(e.since, first);
+    byLab.set(lab, e);
+  }
+
+  const orphans = await saveOrphans(env, "aws", byLab, live, errors.length > 0);
+  const noted = await noteOrphans(env, orphans, prev);
+
+  // A sweep that saw every listing gives back the slots of ended_dirty AWS sessions whose lab has nothing left.
+  let released = 0;
+  if (!errors.length) for (const lab_id of await dirtyLabs(env, "aws")) if (!present.has(lab_id)) released += await releaseDirtySlots(env, lab_id);
+
+  const state: SweepState = { at: now.toISOString(), seen, noted };
+  await env.STATUS.put(KV_SWEEP_AWS, JSON.stringify(state), { expirationTtl: 14 * 86_400 });
+  const parts = [`aws orphans: ${orphans.length} lab(s) with leftovers`];
+  if (released) parts.push(`${released} slot(s) released`);
+  if (errors.length) parts.push(`could not list: ${errors.join("; ")}`);
   return parts.join(", ");
 }

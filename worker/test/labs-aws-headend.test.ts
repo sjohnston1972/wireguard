@@ -1,11 +1,13 @@
 // labs-aws-headend.test.ts
 //
-// Plain English: labs build in Azure and connect to the headend by VNet
-// peering, which only an Azure headend has (AWS spec ruling 8). While the
-// headend is in AWS: a deploy that asks to connect runs unconnected (see
-// labs-peering.test.ts), and everything that would peer refuses with a plain
-// reason and dispatches nothing: Peer, Re-peer, a release test of a lab that
-// peers, and a lab whose peering is required.
+// Plain English: a lab peers only to a VPN server in its own cloud (AWS labs
+// spec §2, decision 5): an Azure lab by VNet peering to an Azure server, an
+// AWS lab by VPC peering to an AWS server. While the server is in AWS, an
+// Azure lab: a deploy that asks to connect runs unconnected (see
+// labs-peering.test.ts), and everything that would peer refuses with the
+// same-cloud sentence and dispatches nothing: Peer, Re-peer, a release test
+// of a lab that peers, and a lab whose peering is required. Every mix of AWS
+// lab and server is in labs-aws-engine.test.ts.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCatalogueForTest } from "../src/labs/catalogue";
@@ -21,7 +23,7 @@ afterEach(() => {
 
 const awsUp = (env: Env) => saveSnapshot(env, { state: "running", running_since: NOW, cloud: "aws" });
 const azureUp = (env: Env) => saveSnapshot(env, { state: "running", running_since: NOW, cloud: "azure" });
-const NAMES_AWS = /Azure headend.*the headend is in AWS/;
+const NAMES_AWS = /Azure labs connect only to an Azure server \(the server is in AWS\)/;
 
 describe("labs on an AWS headend refuse what would peer", () => {
   it("Peer refuses and dispatches nothing", async () => {

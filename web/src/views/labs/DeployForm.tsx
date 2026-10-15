@@ -13,6 +13,10 @@ import "./DeployForm.css";
 
 const LAB_HOURS_MAX = 12; // shared/labs.ts LAB_HOURS_MAX: deploy and extend take whole hours, 1 to 12
 
+/** The AWS regions the labs use, as the form names them. */
+const AWS_REGION_WORD: Record<string, string> = { "eu-west-2": "London", "eu-west-1": "Ireland" };
+const awsRegionWord = (r: string) => (AWS_REGION_WORD[r] ? `${AWS_REGION_WORD[r]} (${r})` : r);
+
 const hoursLabel = (h: number) => (h === 1 ? "1 hour" : `${h} hours`);
 
 /** "3 h old", "20 min old", "2 d old". */
@@ -31,7 +35,9 @@ function ageWords(seconds: number): string {
  */
 export function useDeployForm(d: LabDetail) {
   const [hours, setHours] = useState(() => Math.min(d.defaults.hours, d.card.timing.maxH));
-  const [peer, setPeer] = useState(d.connectivity.peering === "required" ? true : d.connectivity.peering === "off" ? false : d.defaults.peer);
+  const aws = d.cloud === "aws";
+  const canPeer = d.connect?.possible !== false;
+  const [peer, setPeer] = useState(!canPeer ? false : d.connectivity.peering === "required" ? true : d.connectivity.peering === "off" ? false : d.defaults.peer);
   const [region, setRegion] = useState(d.defaults.region);
   const deploy = useDeployLab();
   const latch = useRef(false);
@@ -54,9 +60,10 @@ export function useDeployForm(d: LabDetail) {
   const submit = () => {
     if (unavailable || busy || latch.current) return;
     latch.current = true;
-    const r = region.trim();
+    // AWS labs run in London (or the lab's own second region): no region is sent.
+    const r = aws ? "" : region.trim();
     deploy.mutate(
-      { id: d.card.id, hours, peer: d.connectivity.peering === "required" ? true : d.connectivity.peering === "off" ? false : peer, ...(r ? { region: r } : {}), ...overrides },
+      { id: d.card.id, hours, peer: !canPeer ? false : d.connectivity.peering === "required" ? true : d.connectivity.peering === "off" ? false : peer, ...(r ? { region: r } : {}), ...overrides },
       {
         onSuccess: () => setStarted(true),
         onSettled: () => {
@@ -102,7 +109,7 @@ export function CostTable({ d, hours }: { d: LabDetail; hours: number }) {
                 {(it.qty ?? 1) > 1 && <span className="labs-muted"> × {it.qty}</span>}
               </td>
               <td className="labs-num">{fmtRate(it.gbpH)}</td>
-              <td className="labs-muted">{it.source === "azure" && it.priceAge !== null ? `Azure price, ${ageWords(it.priceAge)}` : "Estimate"}</td>
+              <td className="labs-muted">{it.source === "azure" && it.priceAge !== null ? `Azure price, ${ageWords(it.priceAge)}` : it.source === "aws" ? "AWS list price" : "Estimate"}</td>
             </tr>
           ))}
         </tbody>
@@ -114,7 +121,7 @@ export function CostTable({ d, hours }: { d: LabDetail; hours: number }) {
           {fmtGbp(d.cost.gbpH * hours)} for {hours} h
         </strong>
       </p>
-      <p className="labs-muted">GBP list prices before discounts and VAT. An estimate is used where Azure has no price under 7 days old.</p>
+      <p className="labs-muted">GBP list prices before discounts and VAT.{d.cloud === "aws" ? "" : " An estimate is used where Azure has no price under 7 days old."}</p>
     </div>
   );
 }
@@ -125,6 +132,8 @@ export function DeployFields({ f }: { f: DeployFormState }) {
   const max = Math.min(d.card.timing.maxH, LAB_HOURS_MAX);
   const options = Array.from({ length: max }, (_, i) => ({ value: String(i + 1), label: hoursLabel(i + 1) }));
   const mode = d.connectivity.peering;
+  const aws = d.cloud === "aws";
+  const canPeer = d.connect?.possible !== false;
   return (
     <form
       className="labs-deploy"
@@ -151,7 +160,13 @@ export function DeployFields({ f }: { f: DeployFormState }) {
         <Select label="Session length" options={options} value={String(f.hours)} onValueChange={(v) => f.setHours(Number(v))} />
         <span className="labs-muted">Up to {hoursLabel(d.card.timing.maxH)}; then it is torn down whatever happens.</span>
       </div>
-      {mode !== "off" && (
+      {mode !== "off" && !canPeer && d.connect?.note && (
+        <div className="labs-deploy__row">
+          <span className="labs-deploy__label">Peer to gateway</span>
+          <span className="labs-muted">{d.connect.note}</span>
+        </div>
+      )}
+      {mode !== "off" && canPeer && (
         <div className="labs-deploy__row">
           <span className="labs-deploy__label">Peer to gateway</span>
           <Switch label="Peer to gateway" checked={mode === "required" ? true : f.peer} disabled={mode === "required"} onCheckedChange={f.setPeer} />
@@ -159,6 +174,11 @@ export function DeployFields({ f }: { f: DeployFormState }) {
           {!d.gatewayUp && <span className="labs-muted">The gateway is not running: it will peer when the gateway is next running.</span>}
         </div>
       )}
+      {aws ? (
+        <div className="labs-deploy__row">
+          <span>Region: {awsRegionWord(d.defaults.region)}{d.secondaryRegion ? `, and ${awsRegionWord(d.secondaryRegion)} for the second region` : ""}</span>
+        </div>
+      ) : (
       <div className="labs-deploy__row">
         <label className="labs-deploy__label" htmlFor="labs-region">
           Region
@@ -166,8 +186,14 @@ export function DeployFields({ f }: { f: DeployFormState }) {
         <input id="labs-region" className="labs-input" value={f.region} onChange={(e) => f.setRegion(e.target.value)} spellCheck={false} autoComplete="off" />
         <span className="labs-muted">From Settings unless you change it here.</span>
       </div>
+      )}
     </form>
   );
+}
+
+/** The Deploy form on its own, for the idle modal's test (the form state is the hook's). */
+export function DeployFormView({ d }: { d: LabDetail }) {
+  return <DeployFields f={useDeployForm(d)} />;
 }
 
 /** The footer: Deploy (or Deploy anyway when a budget or capacity warning stands), with the session's cost beside it. */

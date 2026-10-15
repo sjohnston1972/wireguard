@@ -14,7 +14,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCatalogue, checkPool, labFolders, variablesProblems, versionProblems } from "./lib/labs.mjs";
+import { parse } from "yaml";
+import { buildCatalogue, checkPool, cloudOfId, labFolders, variablesProblems, versionProblems } from "./lib/labs.mjs";
 import { lintDir } from "../infra/ci/lab-lint.mjs";
 
 const root = fileURLToPath(new URL("../labs/", import.meta.url));
@@ -32,15 +33,29 @@ const { catalogue, problems } = buildCatalogue(root, { requireLearning: true });
 for (const p of problems) lines.push(`${p.lab ?? "labs"}/${p.file}${p.field ? ` (${p.field})` : ""}: ${p.message}`);
 for (const p of checkPool()) lines.push(`pool: ${p}`);
 
-for (const folder of ["_template", ...labFolders(root)]) {
-  const tf = join(root, folder, folder === "_template" ? "" : "terraform");
+/** A lab's cloud: its lab.yaml's `cloud`, else the exam its id names. */
+function cloudOfLab(folder) {
+  try {
+    const c = parse(readFileSync(join(root, folder, "lab.yaml"), "utf8"))?.cloud;
+    if (c === "azure" || c === "aws") return c;
+  } catch {
+    // buildCatalogue reports an unreadable lab.yaml
+  }
+  return cloudOfId(folder) ?? "azure";
+}
+
+// [folder, the folder holding its .tf files, cloud]: both templates, then every lab by its own cloud.
+const targets = [["_template", "_template", "azure"], ["_template-aws", "_template-aws", "aws"], ...labFolders(root).map((f) => [f, join(f, "terraform"), cloudOfLab(f)])];
+for (const [folder, sub, cloud] of targets) {
+  const tf = join(root, sub);
+  const shown = folder.startsWith("_template") ? `${folder}/` : `${folder}/terraform/`;
   if (!existsSync(tf)) {
     notes.push(`${folder}: no terraform/ folder yet (the lab cannot deploy until it has one)`);
     continue;
   }
   const files = Object.fromEntries(readdirSync(tf).filter((f) => f.endsWith(".tf")).map((f) => [f, readFileSync(join(tf, f), "utf8")]));
-  for (const p of lintDir(tf)) lines.push(`${folder}/${folder === "_template" ? "" : "terraform/"}${p.file}:${p.line} (${p.rule}): ${p.message}`);
-  if (files["variables.tf"]) for (const p of variablesProblems(files["variables.tf"])) lines.push(`${folder}/variables.tf: ${p}`);
+  for (const p of lintDir(tf, { cloud })) lines.push(`${shown}${p.file}:${p.line} (${p.rule}): ${p.message}`);
+  if (files["variables.tf"]) for (const p of variablesProblems(files["variables.tf"], cloud)) lines.push(`${folder}/variables.tf: ${p}`);
 }
 
 if (base) {
@@ -57,4 +72,4 @@ if (lines.length) {
   for (const l of lines) console.error(`  ${l}`);
   process.exit(1);
 }
-console.log(`labs-check: ${catalogue.labs.length} labs, the pool and the template are fine${base ? `; versions checked against ${base}` : ""}.`);
+console.log(`labs-check: ${catalogue.labs.length} labs, the pool and both templates are fine${base ? `; versions checked against ${base}` : ""}.`);

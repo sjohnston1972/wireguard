@@ -53,10 +53,10 @@ describe("Settings: Labs", () => {
   it("Check permissions ticks role, users and groups", async () => {
     const user = userEvent.setup();
     let checked = false;
-    const ok = { checkedAt: "2026-10-02T11:00:00.000Z", role: true, users: true, groups: false, message: "Graph cannot read groups: grant Group.ReadWrite.All." };
+    const ok = { checkedAt: "2026-10-02T11:00:00.000Z", role: true, users: true, groups: false, awsRole: null, awsBoundary: null, awsCostTag: null, message: "Graph cannot read groups: grant Group.ReadWrite.All." };
     const { fetchMock } = renderApp("/settings/labs", {
       routes: routes({
-        "GET /api/v1/labs": () => labs({ permissions: checked ? ok : { checkedAt: null, role: null, users: null, groups: null, message: null } }),
+        "GET /api/v1/labs": () => labs({ permissions: checked ? ok : { checkedAt: null, role: null, users: null, groups: null, awsRole: null, awsBoundary: null, awsCostTag: null, message: null } }),
         "POST /api/v1/labs/permissions/check": () => {
           checked = true;
           return { ok: true, message: "Checked.", permissions: ok };
@@ -64,7 +64,7 @@ describe("Settings: Labs", () => {
       }),
     });
     const panel = await screen.findByRole("region", { name: "Permissions" });
-    expect(within(panel).getAllByText("not checked yet")).toHaveLength(3);
+    expect(within(panel).getAllByText("not checked yet")).toHaveLength(6);
     await user.click(within(panel).getByRole("button", { name: "Check permissions" }));
     await waitFor(() => expect(fetchMock!.callsTo("POST", "/api/v1/labs/permissions/check")).toHaveLength(1));
     const role = await within(panel).findByRole("listitem", { name: "Governance role" });
@@ -72,6 +72,19 @@ describe("Settings: Labs", () => {
     expect(within(panel).getByRole("listitem", { name: "Read and write users" })).toHaveTextContent("OK");
     expect(within(panel).getByRole("listitem", { name: "Read and write groups" })).toHaveTextContent("Failed");
     expect(panel).toHaveTextContent("Graph cannot read groups");
+  });
+
+  it("shows the three AWS ticks, the cost tag as a warning", async () => {
+    const perms = { checkedAt: "2026-10-02T11:00:00.000Z", role: true, users: true, groups: true, awsRole: true, awsBoundary: false, awsCostTag: false, message: null };
+    renderApp("/settings/labs", { routes: routes({}, labs({ permissions: perms })) });
+    const panel = await screen.findByRole("region", { name: "Permissions" });
+    const role = await within(panel).findByRole("listitem", { name: "AWS labs role" });
+    expect(role).toHaveTextContent("OK");
+    expect(within(panel).getByRole("listitem", { name: "Lab boundary" })).toHaveTextContent("Failed");
+    const tag = within(panel).getByRole("listitem", { name: "Cost tag active" });
+    expect(tag).toHaveTextContent("Not active");
+    expect(tag.querySelector(".set-light--amber")).not.toBeNull();
+    expect(tag).not.toHaveTextContent("Failed");
   });
 
   it("slots in use", async () => {

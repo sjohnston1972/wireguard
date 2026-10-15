@@ -4,6 +4,8 @@
 // its own (so a lab.yaml change in labs/ never moves these tests), a signed-in
 // API with the permission check passed, and the steps a lab run goes through
 // from the outside: collect its secrets, report its result, ask to peer.
+// Each lab takes its exam and cloud from its id; withAwsLabs() adds three
+// AWS labs (AWS labs spec §6) beside the Azure ones.
 
 import { vi } from "vitest";
 import { apiEnv, api } from "./api-helpers";
@@ -11,23 +13,29 @@ import type { World } from "./harness";
 import type { Env } from "../src/env";
 import { setCatalogueForTest } from "../src/labs/catalogue";
 import { issueLabSecrets, handleLabCallback, handleLabPeer } from "../src/labs/callbacks";
-import type { LabCatalogue, LabDef } from "../../shared/labs";
+import { startLabRun } from "../src/labs/engine";
+import type { LabRunDb } from "../src/labs/store";
+import { cloudOfId, examOfId, type LabCatalogue, type LabDef, type LabExam } from "../../shared/labs";
+
+/** The skill area a test lab names by default: one of its own exam. */
+const AREA: Partial<Record<LabExam, string>> = { "AZ-104": "az104.storage", "AZ-305": "az305.infra", "SOA-C03": "soa.reliability", "SAA-C03": "saa.resilient" };
 
 const base = (id: string, number: number, over: Partial<LabDef> = {}): LabDef => ({
   id,
   number,
+  cloud: cloudOfId(id),
   version: 1,
   title: `Lab ${number}`,
   summary: `Lab ${number} summary.`,
-  exam: id.startsWith("az305") ? "AZ-305" : "AZ-104",
-  exams: [id.startsWith("az305") ? "AZ-305" : "AZ-104"],
-  skill_areas: [id.startsWith("az305") ? "az305.infra" : "az104.storage"],
+  exam: examOfId(id),
+  exams: [examOfId(id)],
+  skill_areas: [AREA[examOfId(id)] ?? "az104.storage"],
   level: "associate",
   type: "explore",
   prerequisites: [],
   cost: { items: [{ name: "Storage account", gbp_h: 0.01 }], pricey: null },
   timing: { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 6 },
-  capacity: { vm_sizes: [] },
+  capacity: { vm_sizes: [], instance_types: [] },
   regions: { secondary: null },
   connectivity: { peering: "off", dns_link: false, subnets_used: 0 },
   identity: { creates: [], roles: [], governance: false },
@@ -48,7 +56,7 @@ export const TEST_LABS: LabDef[] = [
   base("az104-07-files", 7, {
     title: "Azure Files",
     cost: { items: [{ name: "Linux VM, Standard_B1s", gbp_h: 0.0083, retail: { sku: "Standard_B1s" } }, { name: "OS disk", gbp_h: 0.0034 }], pricey: null },
-    capacity: { vm_sizes: ["Standard_B1s"] },
+    capacity: { vm_sizes: ["Standard_B1s"], instance_types: [] },
     connectivity: { peering: "optional", dns_link: false, subnets_used: 1 },
   }),
   base("az305-28-hub-spoke-fw", 28, {
@@ -81,6 +89,33 @@ export const TEST_CATALOGUE: LabCatalogue = {
   },
 };
 
+/** AWS labs 3, 5 and 16 (AWS labs spec §12.2), shaped like the real ones: lab 3 bills its load balancer per started hour (A20), lab 16 uses Ireland too. */
+export const AWS_TEST_LABS: LabDef[] = [
+  base("soa-03-auto-scaling", 3, {
+    title: "Auto Scaling behind a load balancer",
+    cost: {
+      items: [
+        { name: "ALB, hourly", gbp_h: 0.0199, whole_hours: true, aws_price: { service: "AWSELB", unit: "Hrs", filters: { productFamily: "Load Balancer-Application", usagetype: "{usage}-LoadBalancerUsage" } } },
+        { name: "EC2 t4g.micro", gbp_h: 0.0071, qty: 2, aws_price: { service: "AmazonEC2", unit: "Hrs", filters: { instanceType: "t4g.micro", operatingSystem: "Linux", tenancy: "Shared", preInstalledSw: "NA", capacitystatus: "Used" } } },
+      ],
+      pricey: null,
+    },
+    capacity: { vm_sizes: [], instance_types: ["t4g.micro", "t4g.micro"] },
+    connectivity: { peering: "optional", dns_link: false, subnets_used: 1 },
+  }),
+  base("soa-05-rds", 5, { title: "RDS Multi-AZ and a read replica", connectivity: { peering: "optional", dns_link: false, subnets_used: 1 } }),
+  base("saa-16-dr-pilot-light", 16, { title: "Pilot-light disaster recovery", regions: { secondary: "eu-west-1" }, connectivity: { peering: "optional", dns_link: false, subnets_used: 1 } }),
+];
+
+/** The test catalogue with the AWS labs added (and the SOA and SAA skill areas they name). */
+export function withAwsLabs(): void {
+  setCatalogueForTest({
+    ...TEST_CATALOGUE,
+    labs: [...TEST_LABS, ...AWS_TEST_LABS],
+    skillAreas: [...TEST_CATALOGUE.skillAreas, { key: "soa.reliability", exam: "SOA-C03", name: "Reliability and Business Continuity" }, { key: "saa.resilient", exam: "SAA-C03", name: "Design Resilient Architectures" }],
+  });
+}
+
 export const NOW = "2026-10-04T12:00:00.000Z";
 
 /** Freeze the clock (Date only) at `at`. */
@@ -99,11 +134,11 @@ export function advance(ms: number): Date {
 export const MIN = 60_000;
 export const HOUR = 3_600_000;
 
-/** A signed-in API on the test catalogue, with the permission check passed. */
+/** A signed-in API on the test catalogue, with the permission check passed (the AWS ticks too). */
 export async function labEnv(overrides: Partial<Env> = {}): Promise<{ env: Env; world: World }> {
   setCatalogueForTest(TEST_CATALOGUE);
   const r = apiEnv(overrides);
-  await r.env.STATUS.put("labs:permissions", JSON.stringify({ checkedAt: NOW, role: true, users: true, groups: true, message: null }));
+  await r.env.STATUS.put("labs:permissions", JSON.stringify({ checkedAt: NOW, role: true, users: true, groups: true, awsRole: true, awsBoundary: true, awsCostTag: true, message: null }));
   return r;
 }
 
@@ -114,8 +149,8 @@ export function ghIdFor(world: World, runId: string): number {
   return r.id;
 }
 
-/** The lab.yml dispatches, newest last. */
-export const labDispatches = (world: World) => world.dispatches.filter((d) => d.workflow === "lab.yml");
+/** The lab workflows' dispatches (lab.yml and lab-aws.yml), newest last. */
+export const labDispatches = (world: World) => world.dispatches.filter((d) => d.workflow === "lab.yml" || d.workflow === "lab-aws.yml");
 
 /** Collect a lab run's secrets as its workflow would (after the OIDC check). */
 export async function secrets(env: Env, world: World, runId: string): Promise<{ callback_token: string; admin_password: string }> {
@@ -148,6 +183,13 @@ export async function runningLab(env: Env, world: World, id: string, body: Recor
   const done = await report(env, runId, s.callback_token, "success", outputs);
   if (done.status !== 200) throw new Error(`callback: ${done.status} ${JSON.stringify(done.body)}`);
   return { sid, runId, token: s.callback_token, password: s.admin_password };
+}
+
+/** Start a peer run for a session and collect its secrets, as its workflow would: the run and its callback token. */
+export async function peerRunFor(env: Env, world: World, sid: string): Promise<{ run: LabRunDb; token: string }> {
+  const run = await startLabRun(env, sid, "peer", "steven", "peer to the gateway");
+  const s = await secrets(env, world, run.id);
+  return { run, token: s.callback_token };
 }
 
 export const session = (env: Env, sid: string) => env.DB.prepare("SELECT * FROM lab_sessions WHERE id = ?1").bind(sid).first<Record<string, any>>();

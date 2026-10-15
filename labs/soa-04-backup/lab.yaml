@@ -1,0 +1,39 @@
+# Lab soa-04 (AWS labs batch 1). SOA-C03 ((V) against the current exam
+# guide): Reliability and Business Continuity (AWS Backup plans and vaults,
+# EBS snapshots and restores, S3 versioning, lifecycle and replication);
+# SAA-C03 Design Resilient Architectures. London list prices × 0.75.
+# Authored: snapshot and backup storage ($0.053/GB-month), S3 for a few KB.
+id: soa-04-backup
+version: 1
+cloud: aws
+title: "Backup, snapshots, S3 versioning and replication"
+summary: >-
+  An AWS Backup plan and vault that back up an EBS data volume, a snapshot to restore from, and an S3 bucket with
+  versioning and a lifecycle rule that replicates every version to a second bucket.
+exam: SOA-C03
+skill_areas: [soa.reliability, saa.resilient]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - name: "EC2 t4g.nano, Linux"
+      gbp_h: 0.0035
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - name: "EBS gp3 data volume, 1 GiB"
+      gbp_h: 0.0001
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 1, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "EBS snapshot and backups of the data volume", gbp_h: 0.0001 }
+    - { name: "S3 Standard, two buckets with a few objects", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 5, destroy_min: 5, session_h: 2, max_h: 6 }
+capacity: { instance_types: [t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

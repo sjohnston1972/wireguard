@@ -19,7 +19,7 @@
 // provider fills in (PLAN_DEFAULTS). It also leaves a dynamic block out of
 // the configuration's expressions while its values are planned.
 //
-//   realisticPlan({ resources, data, providers, variables })
+//   realisticPlan({ resources, data, providers, variables, providerConfig })
 //     resources: [{ address, values, refs?, unknown?, sensitive?, dynamic?, importing?, actions?, count?, forEach? }]
 //       address    may carry an instance key, azurerm_subnet.s[0] or azurerm_subnet.s["web"]
 //                  (count or for_each): each instance is its own planned resource
@@ -41,6 +41,12 @@
 //     data: [{ address, values, refs?, args? }] data sources read at plan (prior_state); values are
 //                  what was read, and only refs and the constant arguments named in args are in the
 //                  configuration's expressions (data "azurerm_subscription" "current" {} has none)
+//
+//     providerConfig: { key: { name, full_name, alias?, expressions } } merged over the default
+//                  provider_config (an AWS fixture: common-aws.mjs's AWS_PROVIDER_CONFIG)
+//
+//   An aws resource's tags_all is planned (known: default_tags merged with its tags) but never
+//   configured: the provider computes it (NEVER_CONFIGURED).
 //
 //   withAfterUnknown(plan)   adds resource_changes with real after_unknown to an
 //                            older fixture plan that only has planned_values
@@ -100,6 +106,9 @@ export const PLAN_DEFAULTS = {
   azurerm_log_analytics_workspace: { local_authentication_enabled: true },
   random_password: { lower: true, min_lower: 0, min_numeric: 0, min_special: 0, min_upper: 0, number: true, numeric: true, special: true, upper: true },
 };
+
+/** Computed-only attributes a description may give a value (the plan knows it) that the configuration never sets. */
+const NEVER_CONFIGURED = new Set(["tags_all"]);
 
 /** after_sensitive for one object (a resource or one nested block): every attribute the schema marks sensitive, set or not. */
 function sensitiveFor(values, tree, wholly = []) {
@@ -179,7 +188,7 @@ function expressionFor(v) {
 function resourceParts(def, mode) {
   const type = typeOf(def.address);
   const tree = COMPUTED.types[mode === "data" ? `data.${type}` : type];
-  if (!tree && (type.startsWith("azurerm_") || type.startsWith("azuread_"))) throw new Error(`computed.json has no ${type}: add it to extract-computed.mjs`);
+  if (!tree && (type.startsWith("azurerm_") || type.startsWith("azuread_") || type.startsWith("aws_"))) throw new Error(`computed.json has no ${type}: add it to extract-computed.mjs`);
   const values = structuredClone(def.values ?? {});
   const unknown = (def.unknown ?? []).map(split);
   const dynamic = new Set(def.dynamic ?? []);
@@ -204,7 +213,7 @@ function resourceParts(def, mode) {
   }
   // A data source's values are what it read, not what the configuration set: `data "azurerm_subscription" "current" {}`
   // has no expressions at all. Only its refs, and any constant arguments it lists in `args`, are configured.
-  const configuredValues = mode === "data" ? Object.entries(values).filter(([k]) => (def.args ?? []).includes(k)) : Object.entries(values);
+  const configuredValues = mode === "data" ? Object.entries(values).filter(([k]) => (def.args ?? []).includes(k)) : Object.entries(values).filter(([k]) => !NEVER_CONFIGURED.has(k));
   const expressions = Object.fromEntries(configuredValues.filter(([k]) => !dynamic.has(k)).map(([k, v]) => [k, expressionFor(v)]));
   for (const p of unknown) if (!(p[0] in expressions) && !dynamic.has(p[0])) expressions[p[0]] = typeof p[1] === "number" ? [] : {};
   for (const [path, refs] of Object.entries(def.refs ?? {})) setPath(expressions, split(path), { references: refs });
@@ -218,7 +227,7 @@ function resourceParts(def, mode) {
   return { type, values, au, expressions, sensitive };
 }
 
-export function realisticPlan({ resources = [], data = [], providers = ["azurerm"], variables = {} }) {
+export function realisticPlan({ resources = [], data = [], providers = ["azurerm"], variables = {}, providerConfig = {} }) {
   const planned = [];
   const changes = [];
   const config = [];
@@ -246,6 +255,8 @@ export function realisticPlan({ resources = [], data = [], providers = ["azurerm
     read.push({ address: def.address, mode: "data", type, name: nameOf(def.address), ...indexOf(def.address), provider_name: providerOf(type), schema_version: 0, values, sensitive_values: {} });
     configure(def, { mode: "data", type, name: nameOf(def.address), provider_config_key: type.split("_")[0], expressions, schema_version: 0 });
   }
+  const provider_config = Object.fromEntries(providers.map((p) => [p, { name: p, full_name: `registry.terraform.io/hashicorp/${p}`, ...(p === "azurerm" ? { expressions: { features: [{}] } } : {}) }]));
+  Object.assign(provider_config, providerConfig);
   return {
     format_version: "1.2",
     terraform_version: "1.14.6",
@@ -254,7 +265,7 @@ export function realisticPlan({ resources = [], data = [], providers = ["azurerm
     resource_changes: changes,
     prior_state: { format_version: "1.0", terraform_version: "1.14.6", values: { root_module: { resources: read } } },
     configuration: {
-      provider_config: Object.fromEntries(providers.map((p) => [p, { name: p, full_name: `registry.terraform.io/hashicorp/${p}`, ...(p === "azurerm" ? { expressions: { features: [{}] } } : {}) }])),
+      provider_config,
       root_module: { resources: config },
     },
     timestamp: "2026-10-05T09:00:00Z",

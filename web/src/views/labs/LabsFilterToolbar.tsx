@@ -15,12 +15,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { ChevronDown } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { LabExam, LabLevel, LabType } from "@shared/labs";
+import type { LabCloud, LabExam, LabLevel, LabType } from "@shared/labs";
 import { Button, Chips, EmptyState, SearchInput, SegmentedControl, Select, Sheet, Switch } from "@/components";
 import { useLabCoverage } from "@/api/queries";
 import type { LabView } from "./contract";
 import { useLabsLayout } from "./layout";
-import { EXAMS, LEVEL_WORD, NO_FILTERS, TYPE_WORD, anyFilter, applyFilters, readFilters, writeFilters, type Filters } from "./model";
+import { LEVEL_WORD, examsFor, NO_FILTERS, TYPE_WORD, anyFilter, applyFilters, readFilters, writeFilters, type Filters } from "./model";
 import "./LabsFilterToolbar.css";
 
 /**
@@ -60,12 +60,18 @@ function useAreaNames(): Map<string, string> {
   return names;
 }
 
-const EXAM_ITEMS = [{ value: "all", label: "All" }, ...EXAMS.map((e) => ({ value: e, label: e }))];
+const CLOUD_ITEMS = [
+  { value: "all", label: "All" },
+  { value: "azure", label: "Azure" },
+  { value: "aws", label: "AWS" },
+];
+/** All, then the chosen cloud's exams (all six with no cloud). */
+const examItems = (cloud: LabCloud | null) => [{ value: "all", label: "All" }, ...examsFor(cloud).map((e) => ({ value: e, label: e }))];
 const LEVEL_OPTIONS = [{ value: "all", label: "All difficulties" }, ...Object.entries(LEVEL_WORD).map(([value, label]) => ({ value, label }))];
 const TYPE_ITEMS = Object.entries(TYPE_WORD).map(([value, label]) => ({ value, label }));
 
 /** How many filters (not the search) are on: the phone's "Filters (n)". */
-const activeCount = (f: Filters) => [f.exam, f.area, f.level, f.type.length > 0, f.notRun, f.ready].filter(Boolean).length;
+const activeCount = (f: Filters) => [f.cloud, f.exam, f.area, f.level, f.type.length > 0, f.notRun, f.ready].filter(Boolean).length;
 
 /** The search box: its own text, written to ?q 250 ms after typing stops. */
 function SearchField() {
@@ -105,16 +111,27 @@ interface ControlsProps {
   views: readonly LabView[];
 }
 
-/** Exam, skill area, difficulty and "Ready to run only". */
+/** Cloud, exam, skill area, difficulty and "Ready to run only". */
 function MainControls({ f, set, views }: ControlsProps) {
   const names = useAreaNames();
   // The areas of the labs the exam filter keeps (a lab tagged for that exam too, ruling 39).
-  const areas = [...new Set(applyFilters(views, { ...NO_FILTERS, exam: f.exam }).flatMap((v) => v.card.skillAreas))].sort();
+  const areas = [...new Set(applyFilters(views, { ...NO_FILTERS, cloud: f.cloud, exam: f.exam }).flatMap((v) => v.card.skillAreas))].sort();
   const areaOptions = [{ value: "all", label: "All skill areas" }, ...areas.map((a) => ({ value: a, label: names.get(a) ?? a }))];
   if (f.area && !areas.includes(f.area)) areaOptions.push({ value: f.area, label: names.get(f.area) ?? f.area });
   return (
     <>
-      <SegmentedControl aria-label="Exam" items={EXAM_ITEMS} value={f.exam ?? "all"} onChange={(v) => set({ ...f, exam: v === "all" ? null : (v as LabExam) })} className="labs-toolbar__exam" />
+      <SegmentedControl
+        aria-label="Cloud"
+        items={CLOUD_ITEMS}
+        value={f.cloud ?? "all"}
+        onChange={(v) => {
+          const cloud = v === "all" ? null : (v as LabCloud);
+          // An exam of the other cloud no longer fits: it goes.
+          set({ ...f, cloud, exam: f.exam && examsFor(cloud).includes(f.exam) ? f.exam : null });
+        }}
+        className="labs-toolbar__exam"
+      />
+      <Select label="Exam" options={examItems(f.cloud)} value={f.exam ?? "all"} onValueChange={(v) => set({ ...f, exam: v === "all" ? null : (v as LabExam) })} className="labs-toolbar__select" />
       <Select label="Skill area" options={areaOptions} value={f.area ?? "all"} onValueChange={(v) => set({ ...f, area: v === "all" ? null : v })} className="labs-toolbar__select" />
       <Select label="Difficulty" options={LEVEL_OPTIONS} value={f.level ?? "all"} onValueChange={(v) => set({ ...f, level: v === "all" ? null : (v as LabLevel) })} className="labs-toolbar__select" />
       <label className="labs-toolbar__switch">

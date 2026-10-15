@@ -1,6 +1,10 @@
 import type { LabCoverage } from "@shared/api";
+import { EXAM_CLOUD, type LabCloud } from "@shared/labs";
 import { EmptyState, ErrorState, Panel, Skeleton } from "@/components";
 import { useLabCoverage } from "@/api/queries";
+import { labNumberWord } from "./model";
+
+const CLOUD_HEADING: Record<LabCloud, string> = { azure: "Azure", aws: "AWS" };
 
 /** One exam: a row per skill area with labs run of labs available, and a box per lab (filled once run for 15 minutes or more). */
 export function ExamCoverage({ e }: { e: LabCoverage }) {
@@ -18,7 +22,7 @@ export function ExamCoverage({ e }: { e: LabCoverage }) {
             </span>
             <span className="labs-cov__boxes">
               {a.labs.map((l) => {
-                const label = `Lab ${l.number}, ${l.title}: ${l.run ? "run" : "not run yet"}`;
+                const label = `${labNumberWord({ number: l.number, cloud: EXAM_CLOUD[e.exam] })}, ${l.title}: ${l.run ? "run" : "not run yet"}`;
                 return <span key={l.id} role="img" aria-label={label} title={label} className={l.run ? "labs-box labs-box--run" : "labs-box"} />;
               })}
             </span>
@@ -41,7 +45,21 @@ export function CoverageMap({ bare = false }: { bare?: boolean }) {
       ) : q.data.exams.length === 0 ? (
         <EmptyState title="No skill areas yet" description="Coverage fills in as the catalogue grows." />
       ) : (
-        q.data.exams.map((e) => <ExamCoverage key={e.exam} e={e} />)
+        (["azure", "aws"] as const).map((cloud) => {
+          const exams = q.data.exams.filter((e) => EXAM_CLOUD[e.exam] === cloud);
+          return (
+            exams.length > 0 && (
+              <section key={cloud} className="labs-cov-cloud" aria-labelledby={`labs-cov-cloud-${cloud}`}>
+                <h3 className="labs-cov-cloud__title" id={`labs-cov-cloud-${cloud}`}>
+                  {CLOUD_HEADING[cloud]}
+                </h3>
+                {exams.map((e) => (
+                  <ExamCoverage key={e.exam} e={e} />
+                ))}
+              </section>
+            )
+          );
+        })
       )}
       <p className="labs-muted labs-cov__key">
         <span className="labs-box labs-box--run" aria-hidden /> run for 15 minutes or more <span className="labs-box" aria-hidden /> not yet

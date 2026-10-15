@@ -1,9 +1,10 @@
 # labs/skill-areas.yaml
 #
-# The official skill areas of the three exams (spec §12.1), from Microsoft's
+# The official skill areas of the six exams (spec §12.1), from Microsoft's
 # study guides (V: checked against the current outlines before batches 1 and
 # 3; AZ-700's from its outline "Skills measured as of July 27, 2026", read
 # 2026-10-05, ruling 38).
+# The AWS exam guides (SOA-C03, SAA-C03, ANS-C01) were read 2026-10-15 (AWS labs spec §12.1).
 # lab.yaml skill_areas lists keys from here; the coverage map is one row each.
 
 - { key: az104.identity, exam: AZ-104, name: "Manage Azure identities and governance" }
@@ -20,3 +21,16 @@
 - { key: az700.delivery, exam: AZ-700, name: "Design and implement application delivery services" }
 - { key: az700.private, exam: AZ-700, name: "Design and implement private access to Azure services" }
 - { key: az700.security, exam: AZ-700, name: "Design and implement Azure network security services" }
+- { key: soa.monitoring, exam: SOA-C03, name: "Monitoring, Logging, Analysis, Remediation, and Performance Optimization" }
+- { key: soa.reliability, exam: SOA-C03, name: "Reliability and Business Continuity" }
+- { key: soa.deployment, exam: SOA-C03, name: "Deployment, Provisioning, and Automation" }
+- { key: soa.security, exam: SOA-C03, name: "Security and Compliance" }
+- { key: soa.networking, exam: SOA-C03, name: "Networking and Content Delivery" }
+- { key: saa.secure, exam: SAA-C03, name: "Design Secure Architectures" }
+- { key: saa.resilient, exam: SAA-C03, name: "Design Resilient Architectures" }
+- { key: saa.performance, exam: SAA-C03, name: "Design High-Performing Architectures" }
+- { key: saa.cost, exam: SAA-C03, name: "Design Cost-Optimized Architectures" }
+- { key: ans.design, exam: ANS-C01, name: "Network Design" }
+- { key: ans.implementation, exam: ANS-C01, name: "Network Implementation" }
+- { key: ans.operations, exam: ANS-C01, name: "Network Management and Operation" }
+- { key: ans.security, exam: ANS-C01, name: "Network Security, Compliance, and Governance" }

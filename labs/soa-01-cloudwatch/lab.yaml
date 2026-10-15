@@ -1,0 +1,51 @@
+# Lab soa-01 (AWS labs batch 1). SOA-C03 skills this lab touches ((V) the
+# wording against the current exam guide): Monitoring, Logging, Analysis,
+# Remediation, and Performance Optimization: metrics, alarms and filters in
+# CloudWatch, the CloudWatch agent, CloudWatch Logs Insights, EventBridge.
+# Costs: London list prices in USD × 0.75 (config.aws.usdToGbp), from the
+# Price List API (npm run labs-verify -- --aws-prices soa-01-cloudwatch):
+#   t4g.micro           $0.0094/h  -> £0.0071
+#   gp3                 $0.0928/GB-month × 8 / 730 -> £0.0008
+#   interface endpoint  $0.011/h per AZ (V), billed per started hour -> £0.0083
+# Authored (no hourly or GB-month price): detailed monitoring (7 metrics ×
+# $0.30/month), 2 agent metrics, 3 alarms ($0.10/month each), the dashboard
+# ($3/month), log ingestion of a few MB.
+id: soa-01-cloudwatch
+version: 1
+cloud: aws
+title: "CloudWatch: agent, custom metrics, alarms, Logs Insights"
+summary: >-
+  An Amazon Linux instance whose CloudWatch agent sends memory, disk and an app log, a metric filter, three alarms to an
+  SNS topic, a dashboard and an EventBridge rule: watch a workload and get told when it misbehaves.
+exam: SOA-C03
+skill_areas: [soa.monitoring]
+level: foundation
+type: explore
+prerequisites: []
+cost:
+  items:
+    - name: "EC2 t4g.micro, Linux"
+      gbp_h: 0.0071
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.micro, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - name: "Interface VPC endpoints (logs, monitoring), one AZ"
+      gbp_h: 0.0083
+      qty: 2
+      whole_hours: true
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { productFamily: VpcEndpoint, usagetype: "{usage}-VpcEndpoint-Hours" } }
+    - { name: "EC2 detailed monitoring (7 metrics)", gbp_h: 0.0022 }
+    - { name: "CloudWatch agent metrics (2)", gbp_h: 0.0006 }
+    - { name: "CloudWatch alarms (3)", gbp_h: 0.0003 }
+    - { name: "CloudWatch dashboard", gbp_h: 0.0031 }
+    - { name: "CloudWatch Logs ingestion, a few MB", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 4, destroy_min: 3, session_h: 2, max_h: 6 }
+capacity: { instance_types: [t4g.micro] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

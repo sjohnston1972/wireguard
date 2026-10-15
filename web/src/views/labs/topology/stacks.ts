@@ -72,6 +72,7 @@ export function stackGraph(graph: TopologyGraph): StackedGraph {
       props,
       ...(parent ? { parent } : {}),
       ...(health ? { health } : {}),
+      ...(first.cloud ? { cloud: first.cloud } : {}),
     });
   }
   nodes.sort((a, b) => cmp(a.id, b.id));

@@ -1,7 +1,9 @@
 // labs/callbacks.ts
 //
-// Plain English: what lab.yml (and, for one route, wg.yml) tells the Worker,
-// outside the login, each call proving itself with a token (labs spec §7.2):
+// Plain English: what lab.yml or lab-aws.yml (and, for one route, wg.yml)
+// tells the Worker, outside the login, each call proving itself with a token
+// (labs spec §7.2). A lab run's secrets go only to its own cloud's workflow,
+// and a lab peers only to a server in its own cloud (AWS labs spec §6):
 //
 //   POST /api/callback/lab                    the run's result (§5 step 16)
 //   POST /api/callback/lab-secrets            OIDC: the run's callback token and admin password
@@ -17,10 +19,12 @@
 
 import type { Env } from "../env";
 import { randomToken, safeEqual, sha256Hex } from "../auth";
-import { verifyGithubOidc } from "../oidc";
-import { directNet, getGhRun, LAB_WORKFLOW } from "./net";
+import { verifyGithubOidc, workflowRef as workflowRefOf } from "../oidc";
+import { directNet, getGhRun, LAB_WORKFLOWS, labWorkflowOf } from "./net";
 import * as db from "../db";
-import { getSnapshot } from "../state";
+import { cloudOf, getSnapshot } from "../state";
+import { cloudOfId } from "../../../shared/labs";
+import { crossCloudMessage } from "./engine";
 import { acquireLock, releaseLock, GATEWAY_LOCK } from "../lock";
 import { getLabRun, getSession, LIVE_SQL, updateRun, updateSession } from "./store";
 import { labDef } from "./catalogue";
@@ -75,14 +79,16 @@ export async function handleLabCallback(env: Env, token: string | null, body: un
 
 /**
  * Hand a lab run its per-run secrets, once. The caller has already checked
- * the OIDC token came from lab.yml on main; `ghRunId` is GitHub's run number
- * from it. The run must carry our run id in its title, so a token from some
- * other dispatch of lab.yml cannot collect this run's secrets. The callback
- * token is minted here and only its hash is kept.
+ * the OIDC token came from lab.yml or lab-aws.yml on main; `ghRunId` is
+ * GitHub's run number from it and `workflowRef` its workflow_ref claim, which
+ * must be the workflow of the run's lab's cloud. The run must carry our run id
+ * in its title, so a token from some other lab dispatch cannot collect this
+ * run's secrets. The callback token is minted here and only its hash is kept.
  */
-export async function issueLabSecrets(env: Env, runId: string, ghRunId: number): Promise<CallbackReply> {
+export async function issueLabSecrets(env: Env, runId: string, ghRunId: number, workflowRef?: string): Promise<CallbackReply> {
   const run = runId.startsWith("lab-") ? await getLabRun(env, runId) : null;
   if (!run) return { status: 404, body: { error: "unknown run" } };
+  if (workflowRef !== undefined && workflowRef !== workflowRefOf(env, labWorkflowOf(run.lab_id))) return { status: 403, body: { error: "that workflow does not build this lab's cloud" } };
   if (run.finished_at || !["queued", "running"].includes(run.status)) return { status: 409, body: { error: "run is not active" } };
   if (run.callback_token_hash) return { status: 409, body: { error: "secrets already collected" } };
   const gh = await getGhRun(env, directNet(), ghRunId);
@@ -99,26 +105,27 @@ export async function issueLabSecrets(env: Env, runId: string, ghRunId: number):
   return { status: 200, body: { callback_token: callbackToken, admin_password: run.admin_password ?? "" } };
 }
 
-/** POST /api/callback/lab-secrets: `oidcToken` is GitHub's OIDC token; only lab.yml on main may collect (claimsProblem's allowed workflow). */
+/** POST /api/callback/lab-secrets: `oidcToken` is GitHub's OIDC token; only lab.yml or lab-aws.yml on main may collect, each only its own cloud's runs. */
 export async function handleLabSecrets(env: Env, oidcToken: string | null, body: unknown): Promise<CallbackReply> {
   if (!oidcToken) return noToken;
   let claims;
   try {
-    claims = await verifyGithubOidc(env, oidcToken, LAB_WORKFLOW);
+    claims = await verifyGithubOidc(env, oidcToken, [LAB_WORKFLOWS.azure, LAB_WORKFLOWS.aws]);
   } catch (e) {
     return { status: 401, body: { error: `not a trusted workflow: ${(e as Error).message}` } };
   }
   if (!isObj(body) || typeof body.run_id !== "string") return badBody("missing run_id");
   const extra = unknownKey(body, ["run_id"]);
   if (extra) return badBody(`${extra} is not something this takes`, extra);
-  return issueLabSecrets(env, body.run_id, Number(claims.run_id));
+  return issueLabSecrets(env, body.run_id, Number(claims.run_id), claims.workflow_ref);
 }
 
 /**
  * POST /api/callback/lab-peer (spec §7.6), from step 9 of a deploy, peer or
  * test run, with the run's callback token.
- *   begin: "go" only while the gateway is running or in Standby and the
- *          gateway's own lock can be taken as peer:<run id> for 10 minutes,
+ *   begin: "go" only while the gateway is running or in Standby, in the
+ *          lab's own cloud (otherwise "no", with the reason: the lab runs
+ *          unconnected), and the gateway's own lock can be taken as peer:<run id> for 10 minutes,
  *          so a peering change never races a gateway apply or destroy on
  *          vnet-wg. Otherwise "wait": the session's peering is waiting, and
  *          Re-peer offers it once the gateway is running.
@@ -150,6 +157,11 @@ export async function handleLabPeer(env: Env, token: string | null, body: unknow
     await updateSession(env, run.session_id, { peering: "waiting" }, live);
     return { status: 200, body: { go: false, reason: "the gateway is not running; Re-peer once it is" } };
   }
+  const labCloud = cloudOfId(run.lab_id);
+  if (labCloud !== cloudOf(snap)) {
+    await updateSession(env, run.session_id, { peering: "waiting" }, live);
+    return { status: 200, body: { go: false, reason: crossCloudMessage(labCloud, cloudOf(snap)) } };
+  }
   const lock = await acquireLock(env, holder, { name: GATEWAY_LOCK, ttlMs: PEER_LOCK_MS });
   if (!lock.ok) {
     await updateSession(env, run.session_id, { peering: "waiting" }, live);
@@ -164,12 +176,13 @@ export async function handleLabPeer(env: Env, token: string | null, body: unknow
  * dns_link). Azure refuses to link two zones with the same name (two labs'
  * privatelink.blob.core.windows.net) to one VNet, so while another peered
  * lab has linked its zones this one peers without linking, and says why.
- * The lab run reads `dns_link` from this answer (step 9).
+ * The lab run reads `dns_link` from this answer (step 9). Never for an AWS lab
+ * (AWS ruling A8: the headend's resolver does not forward to lab zones).
  */
 async function dnsLinkFor(env: Env, sid: string): Promise<{ dns_link: boolean; note?: string }> {
   const s = await getSession(env, sid);
   const def = s ? labDef(s.lab_id) : null;
-  if (!s || !def?.connectivity.dns_link) return { dns_link: false };
+  if (!s || !def?.connectivity.dns_link || cloudOfId(s.lab_id) === "aws") return { dns_link: false };
   const others = (await env.DB.prepare(`SELECT lab_id FROM lab_sessions WHERE id <> ?1 AND peering = 'on' AND state IN (${LIVE_SQL})`).bind(sid).all<{ lab_id: string }>()).results;
   const clash = others.find((o) => labDef(o.lab_id)?.connectivity.dns_link);
   if (!clash) return { dns_link: true };

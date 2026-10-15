@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Manage EC2 instances with Systems Manager and let AWS Config fix open SSH by itself.
+learn:
+  - Run commands and open shell sessions with no SSH or public IP
+  - Scan instances against a patch baseline and read their compliance
+  - Remediate a noncompliant security group automatically with Config
+learning_min: 60

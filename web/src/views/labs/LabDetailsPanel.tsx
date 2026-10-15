@@ -27,7 +27,7 @@ import { LabResourceSummary } from "./LabResourceSummary";
 import { LabStatusBadge } from "./LabStatusBadge";
 import type { LabsLayout } from "./layout";
 import { fmtHourlyPrecise, fmtMinutes, fmtSessionCost } from "./money";
-import { LEVEL_WORD, TYPE_WORD, endsAt, examsWord, fmtClock, fmtWhen, labHref } from "./model";
+import { LEVEL_WORD, TYPE_WORD, endsAt, examsWord, fmtClock, fmtWhen, labHref, labNumberWord } from "./model";
 import { Warnings } from "./Warnings";
 import "./LabDetailsPanel.css";
 
@@ -82,7 +82,7 @@ function DetailsHead({ view, headingId, titleRef, showTitle = true }: { view: La
     <header className="lab-details__head">
       <p className="lab-details__eyebrow">
         <span>
-          Lab {c.number} · {examsWord(c)}
+          {labNumberWord(c)} · {examsWord(c)}
         </span>
         <code className="lab-details__id">{c.id}</code>
       </p>
@@ -180,7 +180,7 @@ function DetailsBody({ view, data, layout, onSelect }: { view: LabView; data: La
             </section>
           )}
 
-          <LabResourceSummary resources={c.resources} topics={view.topics} diagramHref={labHref(c.id, search, layout, "diagram")} />
+          <LabResourceSummary resources={c.resources} topics={view.topics} diagramHref={labHref(c.id, search, layout, "diagram")} cloud={c.cloud} />
 
       </div>
       <div className="lab-details__col lab-details__col--facts">
@@ -290,7 +290,7 @@ export function LabDetailsDrawer({ view, data, layout, onSelect, open, onOpenCha
       open={open && !!shown}
       onOpenChange={onOpenChange}
       title={shown?.card.title ?? "Lab"}
-      subtitle={shown ? `Lab ${shown.card.number} · ${examsWord(shown.card)}` : undefined}
+      subtitle={shown ? `${labNumberWord(shown.card)} · ${examsWord(shown.card)}` : undefined}
       className="lab-details-drawer"
       footer={shown ? <LabLaunchAction view={shown} data={data} layout={layout} onSelect={onSelect} onLeave={leave} /> : undefined}
       onCloseAutoFocus={(e) => {

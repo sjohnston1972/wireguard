@@ -1,7 +1,7 @@
 // Types for scripts/lib/labs.mjs, so TypeScript tests (worker/test) can import it.
 // The shapes it builds are the ones in shared/labs.ts.
 
-import type { GuideEntry, LabCatalogue, LabDef, LabExam, LabLearningDef, ReadmeBlock, SkillArea } from "../../shared/labs";
+import type { GuideEntry, LabCatalogue, LabCloud, LabDef, LabExam, LabLearningDef, ReadmeBlock, SkillArea } from "../../shared/labs";
 
 export interface LabProblem {
   lab: string | null;
@@ -18,8 +18,11 @@ export interface TfProblem {
 
 export const LAB_ID_RE: RegExp;
 export const LAB_ID_MAX: number;
+export const AWS_LAB_ID_MAX: number;
 export const LAB_EXAMS: readonly LabExam[];
+export const EXAM_CLOUD: Readonly<Record<LabExam, LabCloud>>;
 export function examOfId(id: string): LabExam;
+export function cloudOfId(id: string): LabCloud;
 export function computeExams(def: Pick<LabDef, "exam" | "skill_areas">, skillAreas: SkillArea[]): LabExam[];
 export const LAB_POOL: string;
 export const LAB_SLOTS: number;
@@ -28,6 +31,20 @@ export const GOVERNANCE_LABS: readonly string[];
 export const AVNM_LABS: readonly string[];
 export const FLOW_LOG_LABS: readonly string[];
 export const LAB_TF_VARS: readonly string[];
+export const LAB_TF_VARS_AWS: readonly string[];
+export const AWS_LAB_REGIONS: readonly ["eu-west-2", "eu-west-1"];
+export const AWS_GLOBAL_REGIONS: readonly ["us-east-1", "us-west-2"];
+export const LAB_TAG: "cloudlabs-lab";
+export const AWS_IAM_PATH: "/cloudlabs-lab/";
+export const AWS_LABS_ROLE: "wg-admin-labs";
+export const AWS_BOUNDARY: "wg-admin-lab-boundary";
+export const AWS_IAM_USER_LABS: readonly string[];
+export const AWS_CONFIG_LABS: readonly string[];
+export const AWS_GLOBAL_LABS: readonly string[];
+export const AWS_INSTANCE_TYPES: readonly string[];
+export const AWS_MEDIUM_LABS: readonly string[];
+export const AWS_USAGE_PREFIX: Readonly<Record<string, string>>;
+export function awsUsagePrefix(region: string): string;
 export const ALLOWED_ROLES: { builtIn: { name: string; id: string }[]; custom: { lab: string; name: string; id: string }[]; principalTypes: string[] };
 
 export function readmeFooter(id: string): string;
@@ -38,7 +55,7 @@ export function parseLabYaml(text: string): { raw: Record<string, unknown> | nul
 export function validateLab(raw: unknown, ctx: { folder?: string; skillAreas: SkillArea[] }): { def: LabDef | null; problems: { field: string | null; message: string }[] };
 export function parseReadme(md: string, type: LabDef["type"], id: string | null): { blocks: ReadmeBlock[]; problems: string[] };
 export function lintTfText(files: Record<string, string>): TfProblem[];
-export function variablesProblems(tf: string): string[];
+export function variablesProblems(tf: string, cloud?: LabCloud): string[];
 export function labFolders(root: string): string[];
 export const LEARNING_DIR: "_learning";
 export function validateLearning(raw: unknown, def?: Pick<LabDef, "timing">): { field: string | null; message: string }[];

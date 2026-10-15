@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { parse } from "yaml";
+import { LAB_ID_RE } from "../../shared/labs";
 import type { TopologyGraph } from "../../shared/topology/model";
 import { representedIds } from "../../shared/topology/planned";
 import { denyProblems } from "../../shared/topology/props";
@@ -15,7 +16,7 @@ import { KINDS } from "../../shared/topology/kinds";
 import { tfIgnored } from "../../shared/topology/rules/planned";
 // @ts-expect-error: a plain .mjs test fixture with no type declarations (scripts/ is frozen)
 import { LAB_PLANS } from "../../scripts/test/fixtures/labs/plans/labs.mjs";
-import { LAB_IDS, plannedOf } from "./fixtures/topology/round-trip";
+import { AWS_LAB_IDS, LAB_IDS, plannedOf } from "./fixtures/topology/round-trip";
 
 /** A graph in the table's form. */
 function shape(g: TopologyGraph): { nodes: string[]; edges: string[] } {
@@ -696,19 +697,133 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
       "lab-az700-44-flow-logs-bastion-vnet ..> vnet-hub : watches",
     ],
   },
+  // ── AWS labs batch 1 ──
+  "soa-01-cloudwatch": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "logAnalytics /cloudlabs/soa-01-cloudwatch/app < lab-soa-01-cloudwatch · London",
+      "managedIdentity lab-soa-01-cloudwatch-vm < lab-soa-01-cloudwatch · London",
+      "messaging lab-soa-01-cloudwatch-alerts < lab-soa-01-cloudwatch · London",
+      "messaging lab-soa-01-cloudwatch-ec2-state < lab-soa-01-cloudwatch · London",
+      "monitor lab-soa-01-cloudwatch-app-errors < lab-soa-01-cloudwatch · London",
+      "monitor lab-soa-01-cloudwatch-cpu-high < lab-soa-01-cloudwatch · London",
+      "monitor lab-soa-01-cloudwatch-memory-high < lab-soa-01-cloudwatch · London",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-endpoints < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-logs < snet-private-1",
+      "privateEndpoint vpce-monitoring < snet-private-1",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-soa-01-cloudwatch · London",
+      "routeTable rt-private < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vm vm-app < snet-private-1",
+      "vnet vpc-lab < lab-soa-01-cloudwatch · London",
+    ],
+    edges: ["lab-soa-01-cloudwatch-ec2-state ..> lab-soa-01-cloudwatch-alerts"],
+  },
+  "soa-02-systems-manager": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "generic lab-soa-02-systems-manager-al2023 < lab-soa-02-systems-manager · London",
+      "generic AWS-GatherSoftwareInventory < lab-soa-02-systems-manager · London",
+      "generic AWS-RunPatchBaseline < lab-soa-02-systems-manager · London",
+      "generic lab-soa-02-systems-manager-restricted-ssh < lab-soa-02-systems-manager · London",
+      "managedIdentity lab-soa-02-systems-manager-config < lab-soa-02-systems-manager · London",
+      "managedIdentity lab-soa-02-systems-manager-remediation < lab-soa-02-systems-manager · London",
+      "managedIdentity lab-soa-02-systems-manager-ssm < lab-soa-02-systems-manager · London",
+      "nsg sg-demo < vpc-lab",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-endpoints < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-ec2messages < snet-private-1",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "privateEndpoint vpce-ssm < snet-private-1",
+      "privateEndpoint vpce-ssmmessages < snet-private-1",
+      "resourceGroup lab-soa-02-systems-manager · London",
+      "routeTable rt-private < vpc-lab",
+      "storage config-snapshots < lab-soa-02-systems-manager · London",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vm vm-web1 < snet-private-1",
+      "vm vm-web2 < snet-private-2",
+      "vnet vpc-lab < lab-soa-02-systems-manager · London",
+    ],
+    edges: [],
+  },
+  "soa-03-auto-scaling": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "internetGateway igw-lab < vpc-lab",
+      "loadBalancer alb-web < vpc-lab",
+      "nsg sg-alb < vpc-lab",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-soa-03-auto-scaling · London",
+      "routeTable rt-private < vpc-lab",
+      "routeTable rt-public < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "subnet snet-public-1 < vpc-lab",
+      "subnet snet-public-2 < vpc-lab",
+      "vmss asg-a03… < snet-private-1",
+      "vnet vpc-lab < lab-soa-03-auto-scaling · London",
+    ],
+    edges: ["alb-web -> asg-a03… : HTTP 80", "rt-public ..> igw-lab : 0.0.0.0/0"],
+  },
+  "soa-04-backup": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "managedIdentity lab-soa-04-backup-backup < lab-soa-04-backup · London",
+      "managedIdentity lab-soa-04-backup-replication < lab-soa-04-backup · London",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "recoveryVault lab-vault < lab-soa-04-backup · London",
+      "resourceGroup lab-soa-04-backup · London",
+      "routeTable rt-private < vpc-lab",
+      "storage dst < lab-soa-04-backup · London",
+      "storage src < lab-soa-04-backup · London",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vm vm-data < snet-private-1",
+      "vnet vpc-lab < lab-soa-04-backup · London",
+    ],
+    edges: ["src ..> dst : replicates"],
+  },
+  "soa-05-rds": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "nsg sg-db < vpc-lab",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-soa-05-rds · London",
+      "routeTable rt-private < vpc-lab",
+      "sqlServer db-primary < vpc-lab",
+      "sqlServer db-replica < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vm vm-client < snet-private-1",
+      "vnet vpc-lab < lab-soa-05-rds · London",
+    ],
+    edges: ["db-primary ..> db-replica : replicates"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);
 const SHAPES_DIR = new URL("../../scripts/test/fixtures/labs/plans/shapes/", import.meta.url);
 const labFolders = readdirSync(LABS_DIR)
-  .filter((d) => /^az\d{3}-\d{2}-[a-z0-9-]+$/.test(d))
+  .filter((d) => LAB_ID_RE.test(d))
   .sort();
 const shapeFiles = readdirSync(SHAPES_DIR);
 const planFixtures = LAB_PLANS as Record<string, { resources: { address: string }[] }>;
 
 /** The configuration addresses (type.name) and instance addresses a graph represents: nodes, folded entries, edge vias. */
 function represented(g: TopologyGraph): { configs: Set<string>; instances: Set<string>; opaque: Map<string, number> } {
-  const all = [...representedIds(g)].filter((x) => x.startsWith("tf:")).map((x) => x.slice(3).split("/")[0]!);
+  const all = [...representedIds(g)].filter((x) => x.startsWith("tf:")).map((x) => /^(?:[^/[]|\[[^\]]*\])*/.exec(x.slice(3))![0]); // up to the first "/" outside an instance key (a key can be an ARN)
   // Opaque, counted folded ids (a Key Vault secret: "azurerm_key_vault_secret#1") stand for that many instances of the type.
   const opaque = new Map<string, number>();
   for (const a of all) {
@@ -739,7 +854,7 @@ function tfAddresses(lab: string): string[] {
 describe("golden: every lab folder", () => {
   it("the table, the round trip's list and the planned files cover exactly the lab folders", () => {
     expect(Object.keys(GOLDEN).sort()).toEqual(labFolders);
-    expect([...LAB_IDS].sort()).toEqual(labFolders);
+    expect([...LAB_IDS, ...AWS_LAB_IDS].sort()).toEqual(labFolders);
     const files = readdirSync(new URL("../../shared/topology/planned/", import.meta.url)).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort();
     expect(files).toEqual(labFolders);
   });

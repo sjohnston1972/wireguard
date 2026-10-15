@@ -54,7 +54,8 @@ describe("the filter toolbar", () => {
     const navs: string[] = [];
     router.subscribe((s) => navs.push(s.historyAction));
 
-    await user.click(t.getByRole("radio", { name: "AZ-104" }));
+    await user.click(t.getByRole("combobox", { name: "Exam" }));
+    await user.click(await screen.findByRole("option", { name: "AZ-104" }));
     expect(params().get("exam")).toBe("AZ-104");
     await user.click(t.getByRole("combobox", { name: "Skill area" }));
     await user.click(await screen.findByRole("option", { name: "Implement and manage storage" }));
@@ -191,17 +192,18 @@ describe("on the phone", () => {
     const t = toolbar();
     expect(t.getByRole("searchbox", { name: "Find a lab" })).toBeInTheDocument();
     // The other controls live in the sheet.
-    expect(t.queryByRole("radiogroup", { name: "Exam" })).toBeNull();
+    expect(t.queryByRole("combobox", { name: "Exam" })).toBeNull();
     await user.click(t.getByRole("button", { name: "Filters (1)" }));
     const sheet = await screen.findByRole("dialog", { name: "Filters" });
     expectBottomSheet(sheet);
     const s = within(sheet);
-    expect(s.getByRole("radiogroup", { name: "Exam" })).toBeInTheDocument();
+    expect(s.getByRole("combobox", { name: "Exam" })).toBeInTheDocument();
     expect(s.getByRole("combobox", { name: "Skill area" })).toBeInTheDocument();
     expect(s.getByRole("combobox", { name: "Difficulty" })).toBeInTheDocument();
     expect(s.getByRole("group", { name: "Type" })).toBeInTheDocument();
     expect(s.getByRole("switch", { name: "Not run yet" })).toBeInTheDocument();
-    await user.click(s.getByRole("radio", { name: "AZ-104" }));
+    await user.click(s.getByRole("combobox", { name: "Exam" }));
+    await user.click(await screen.findByRole("option", { name: "AZ-104" }));
     expect(params().get("exam")).toBe("AZ-104");
     expect(s.getByRole("button", { name: "Show 3 labs" })).toBeInTheDocument();
     await user.click(s.getByRole("switch", { name: "Ready to run only" }));

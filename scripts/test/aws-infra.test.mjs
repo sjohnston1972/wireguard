@@ -52,7 +52,7 @@ test("the Worker's IAM user may read the AWS insights figures, in its region, an
   const actions = insights.match(/Action\s+= \[([^\]]*)\]/)?.[1] ?? "";
   assert.equal(actions.split(",").length, 6, "exactly the six actions");
   assert.match(insights, /Effect\s+= "Allow"/);
-  assert.match(insights, /Condition = \{ StringEquals = \{ "aws:RequestedRegion" = var\.region \} \}/);
+  assert.match(insights, /Condition = \{ StringEquals = \{ "aws:RequestedRegion" = \[var\.region, "eu-west-1"\] \} \}/);
   assert.doesNotMatch(insights, /:(Delete|Create|Modify|Put|Update|Start|Stop|Terminate|Run)/);
   // The Price List API is us-east-1 only: its own statement, without the region condition.
   const prices = statement("InsightsPriceList");
@@ -83,4 +83,29 @@ test("ci.yml renders the AWS cloud-init too, with the placeholder-leak check", (
 
 test(".gitattributes keeps worker test fixtures byte-stable", () => {
   assert.match(read(".gitattributes"), /^worker\/test\/fixtures\/\*\* -text$/m);
+});
+
+// The Worker's policy must be a customer managed policy: IAM caps a user's inline policies at 2,048 characters
+// in total, and the labs read statements pushed it past that (apply failed with LimitExceeded).
+test("the Worker's IAM policy is a managed policy attached to the user, under the 6,144-character cap", () => {
+  assert.match(bootstrap, /resource "aws_iam_policy" "worker" \{\s+name\s+= "wg-admin-worker"/);
+  assert.match(bootstrap, /resource "aws_iam_user_policy_attachment" "worker" \{\s+user\s+= aws_iam_user\.worker\.name\s+policy_arn = aws_iam_policy\.worker\.arn/);
+  assert.doesNotMatch(bootstrap, /resource "aws_iam_user_policy" /, "no inline user policy remains");
+
+  // Render the document: cut the jsonencode( ... ) body of the managed policy, turn the HCL into JSON, substitute.
+  const start = bootstrap.indexOf("jsonencode(", bootstrap.indexOf('resource "aws_iam_policy" "worker"'));
+  const open = bootstrap.indexOf("(", start) + 1;
+  let depth = 1, i = open;
+  for (; depth > 0; i++) depth += bootstrap[i] === "(" ? 1 : bootstrap[i] === ")" ? -1 : 0;
+  const json = bootstrap.slice(open, i - 1)
+    .split("\n").filter((l) => !/^\s*#/.test(l)).join("\n")
+    .replace(/\$\{var\.region\}/g, "eu-west-2").replace(/\$\{local\.account\}/g, "123456789012")
+    .replace(/\bvar\.region\b/g, '"eu-west-2"')
+    .replace(/([{,]\s*|^\s*)([A-Za-z_]\w*)\s*=/gm, '$1"$2":').replace(/("[^"\n]+")\s*=\s*/g, "$1:")
+    .replace(/([^,{[(\s])[ \t]*\n(\s*"[^"\n]+":)/g, "$1,\n$2") // HCL separates object attributes by newline
+    .replace(/,(\s*[}\]])/g, "$1");
+  const doc = JSON.parse(json);
+  assert.ok(doc.Statement.length > 5, "parsed the whole document");
+  const size = JSON.stringify(doc).length;
+  assert.ok(size < 6000, `compact policy is ${size} characters; the managed-policy cap is 6,144`);
 });

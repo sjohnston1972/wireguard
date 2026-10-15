@@ -5,12 +5,12 @@ import { useLab } from "@/api/queries";
 import { CostTable, DeployFields, DeployFooter, useDeployForm } from "./DeployForm";
 import { focusCard } from "./LabLaunchAction";
 import { useLabsLayout } from "./layout";
-import { LEVEL_WORD, TYPE_WORD, examsWord, stateWord } from "./model";
+import { LEVEL_WORD, TYPE_WORD, examsWord, labNumberWord, stateWord } from "./model";
 import { LabReadmeTabs, RunningFooter, RunningLab } from "./RunningLab";
 import { Word } from "./RunningStrip";
 
 /** "Lab 14 · AZ-104, AZ-700 · Associate · Explore · v3": every exam the lab belongs to, the primary first. */
-export const subtitle = (d: LabDetail) => `Lab ${d.card.number} · ${examsWord(d.card)} · ${LEVEL_WORD[d.card.level]} · ${TYPE_WORD[d.card.type]} · v${d.card.version}`;
+export const subtitle = (d: LabDetail) => `${labNumberWord(d.card)} · ${examsWord(d.card)} · ${LEVEL_WORD[d.card.level]} · ${TYPE_WORD[d.card.type]} · v${d.card.version}`;
 
 /** The Diagram tab is shown (?view=diagram): the dialog widens to give the canvas room (issue #93). */
 function useDiagramShown(): boolean {

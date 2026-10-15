@@ -14,6 +14,7 @@
 
 import type { TopoKind } from "../model";
 import { tagProps } from "../props";
+import { AWS_TF_RULES } from "./awsPlanned";
 
 /** A planned resource instance as the rules see it. */
 export interface TfInst {
@@ -70,6 +71,8 @@ export interface TfRule {
   fold?: string[];
   /** Fold into the first instance (by address) of these types that references this one. */
   foldToReferrer?: { types?: string[]; attrs?: string[] };
+  /** AWS: fold into the instance this returns, when no attribute reference names an owner (a dashboard into the lab's log group). */
+  foldInto?: (inst: TfInst, h: PlannedHelpers) => TfInst | null;
   /** Pull what these attributes reference into this instance's home too (an association's NSG, ASG, route table). */
   pull?: string[];
   /** Chips added to a node: `on` is "home" (this instance's home) or an attribute whose referenced instances' homes get it. */
@@ -424,7 +427,7 @@ const avnmManagerOf = (i: TfInst, h: PlannedHelpers): TfInst | undefined => {
 };
 const avnmMembers = (group: TfInst, h: PlannedHelpers): TfInst[] => h.referrers(group, ["azurerm_network_manager_static_member"], ["network_group_id"]).flatMap((m) => h.refs(m, ["target_virtual_network_id"]));
 
-export const TF_RULES: Record<string, TfRule> = {
+const AZURE_TF_RULES: Record<string, TfRule> = {
   // ── Groups ──
   azurerm_resource_group: {
     arm: "Microsoft.Resources/resourceGroups",
@@ -1197,6 +1200,9 @@ export const TF_RULES: Record<string, TfRule> = {
   },
   azurerm_bastion_host: { arm: "Microsoft.Network/bastionHosts", props: (i) => ({ sku: str(i.after.sku) }) },
 };
+
+/** Azure rules, then AWS's (rules/awsPlanned.ts): the type names never overlap. */
+export const TF_RULES: Record<string, TfRule> = { ...AZURE_TF_RULES, ...AWS_TF_RULES };
 
 /** The rule for a type ({} when none). */
 export const tfRule = (type: string): TfRule => TF_RULES[type] ?? {};

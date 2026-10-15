@@ -15,7 +15,7 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { slotCidr } from "../lib/labs.mjs";
-import { buildPayload, checkPermissions, estimateGbp, labDefs, parseArgs, parseLabPlanShape, parseLabResult, releaseRow, runRelease, timeoutMin } from "../lab-release-test.mjs";
+import { buildPayload, checkPermissions, estimateGbp, labDefs, labWorkflow, parseArgs, parseLabPlanShape, parseLabResult, releaseRow, runRelease, timeoutMin } from "../lab-release-test.mjs";
 import { gzipSync } from "node:zlib";
 
 const DEFS = labDefs();
@@ -228,4 +228,26 @@ test("--check reports each permission from fake az output", async () => {
 
   const user = await checkPermissions({ az: async (args) => (args[0] === "account" && args[1] === "show" ? { status: 0, stdout: JSON.stringify({ type: "user", name: "steven@contoso.onmicrosoft.com", sub: "s" }) } : { status: 0, stdout: "[]" }), log: () => {} });
   assert.equal(user[0].ok, false);
+});
+
+const AWS_DEF = { id: "soa-03-auto-scaling", cloud: "aws", version: 1, regions: { secondary: null }, connectivity: { peering: "optional" }, timing: { deploy_min: 6, destroy_min: 6 }, cost: { items: [{ name: "x", gbp_h: 0.01 }] } };
+
+test("an AWS lab's release test dispatches lab-aws.yml in London with an a<NN> prefix and the gateway range", () => {
+  assert.equal(labWorkflow(AWS_DEF), "lab-aws.yml");
+  assert.equal(labWorkflow({ ...AWS_DEF, id: "az104-08-vms", cloud: "azure" }), "lab.yml");
+  const p = buildPayload(AWS_DEF, { slot: 31, region: "uksouth", runId: "lab-test-1" });
+  assert.equal(p.region, "eu-west-2");
+  assert.match(p.name_prefix, /^a03[a-z0-9]{5}$/);
+  assert.equal(p.gateway_cidr, "10.50.0.0/16");
+  assert.equal(p.peering, false);
+  assert.equal("gateway_cidr" in buildPayload(lab7, { slot: 31, region: "uksouth", runId: "r" }), false, "an Azure payload is unchanged");
+});
+
+test("dispatch and run listing use the lab's own workflow", async () => {
+  const { gh, calls } = fakeGh({ results: { "test soa-03-auto-scaling": pass("soa-03-auto-scaling") } });
+  const defs = new Map([[AWS_DEF.id, AWS_DEF]]);
+  await runRelease({ ids: [AWS_DEF.id], ref: "main", slot: 31, region: "uksouth" }, { ...deps(gh, tmpFile()), defs, shapesDir: mkdtempSync(join(tmpdir(), "shapes-")) });
+  assert.ok(calls.some((c) => c.startsWith("workflow run lab-aws.yml --ref main -f action=test")));
+  assert.ok(calls.some((c) => c.startsWith("run list --workflow lab-aws.yml")));
+  assert.ok(!calls.some((c) => c.includes("lab.yml") && !c.includes("lab-aws.yml")));
 });

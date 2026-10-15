@@ -3,15 +3,14 @@
 // Plain English: lab rows as the screens see them (shared/api.ts): a session
 // (LabSession), a run (LabRunRow, and RunRow for the Activity list), with
 // none of their secrets: no admin password, token hash or payload ever
-// leaves through here.
+// leaves through here. Either cloud's labs: an AWS lab's estimate counts the
+// items AWS bills per started hour whole (AWS ruling A20).
 
 import type { RunRow } from "../activity";
 import type { LabAction, LabEndReason, LabPeering, LabRunRow, LabSession, LabSessionState } from "../../../shared/api";
-import { LAB_STEPS } from "../../../shared/labs";
+import { LAB_STEPS, sessionEstimateGbp, wholeHoursGbpH } from "../../../shared/labs";
 import { labDef } from "./catalogue";
 import type { LabRunDb, LabSessionRow } from "./store";
-
-const HOUR = 3_600_000;
 
 export const labTitle = (labId: string) => labDef(labId)?.title ?? labId;
 
@@ -53,12 +52,18 @@ export function labRunRow(r: LabRunDb): LabRunRow {
   };
 }
 
-/** The live estimate so far: est_gbp_h × hours since it was requested (to its end, once ended). */
-export function estimateSoFar(s: Pick<LabSessionRow, "est_gbp_h" | "requested_at" | "ended_at" | "est_gbp">, now: number): number {
+/**
+ * The live estimate so far: est_gbp_h × hours since it was requested (to its end, once ended), plus the rest of
+ * the last started hour of the items billed per whole hour (`wholeGbpH`, their £/h; A20).
+ */
+export function estimateSoFar(s: Pick<LabSessionRow, "est_gbp_h" | "requested_at" | "ended_at" | "est_gbp">, now: number, wholeGbpH = 0): number {
   if (s.ended_at && s.est_gbp !== null) return s.est_gbp;
   const to = s.ended_at ? Date.parse(s.ended_at) : now;
-  return Math.round(((s.est_gbp_h * Math.max(0, to - Date.parse(s.requested_at))) / HOUR) * 1e6) / 1e6;
+  return sessionEstimateGbp(s.est_gbp_h, wholeGbpH, Math.max(0, to - Date.parse(s.requested_at)));
 }
+
+/** The £/h of a lab's items billed per whole started hour (0 for a lab with none, or gone from the catalogue). */
+export const wholeGbpHOf = (labId: string): number => wholeHoursGbpH(labDef(labId)?.cost.items ?? []);
 
 /** A session for the screens. `cost` overrides the estimate (the actual, once Azure has it). */
 export function labSession(s: LabSessionRow, activeRun: LabRunDb | null, now: number, cost?: { gbp: number | null; basis: "estimate" | "actual" }): LabSession {
@@ -82,7 +87,7 @@ export function labSession(s: LabSessionRow, activeRun: LabRunDb | null, now: nu
     autoDestroyAt: s.auto_destroy_at,
     maxUntil: s.max_until,
     estGbpH: s.est_gbp_h,
-    costGbp: cost ? cost.gbp : estimateSoFar(s, now),
+    costGbp: cost ? cost.gbp : estimateSoFar(s, now, wholeGbpHOf(s.lab_id)),
     costBasis: cost ? cost.basis : "estimate",
     endReason: s.end_reason as LabEndReason | null,
     note: s.note,

@@ -133,7 +133,7 @@ export async function runLabsTopology({ labsDir = LABS, outDir = OUT, only = nul
       } catch {
         version = 0;
       }
-      const number = /^az\d{3}-(\d{2})-/.exec(folder)?.[1] ?? "00";
+      const number = /^[a-z0-9]+-(\d{2})-/.exec(folder)?.[1] ?? "00";
       let graph;
       try {
         graph = build({ labId: folder, version, number, ...input });

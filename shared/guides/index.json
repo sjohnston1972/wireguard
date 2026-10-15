@@ -519,5 +519,40 @@
    "title": "Which flows the NSGs allow",
    "kind": "concept"
   }
+ ],
+ "soa-01-cloudwatch": [
+  {
+   "file": "architecture.svg",
+   "title": "CloudWatch: agent, custom metrics, alarms, Logs Insights: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "soa-02-systems-manager": [
+  {
+   "file": "architecture.svg",
+   "title": "Systems Manager and Config auto-remediation: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "soa-03-auto-scaling": [
+  {
+   "file": "architecture.svg",
+   "title": "Auto Scaling behind an Application Load Balancer: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "soa-04-backup": [
+  {
+   "file": "architecture.svg",
+   "title": "Backup, snapshots, S3 versioning and replication: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "soa-05-rds": [
+  {
+   "file": "architecture.svg",
+   "title": "RDS MySQL: Multi-AZ failover, read replica, insights: architecture",
+   "kind": "architecture"
+  }
  ]
 }

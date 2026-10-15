@@ -53,6 +53,7 @@ export const PATHS = {
   planned: at("../shared/topology/planned/"),
   guides: at("../shared/guides/"),
   sprite: at("../web/src/views/labs/topology/icons/azure.svg"),
+  spriteAws: at("../web/src/views/labs/topology/icons/aws.svg"),
   renderer: at("../web/src/views/labs/topology/static/architectureSvg.ts"),
   shared: at("../shared/"),
 };
@@ -141,7 +142,8 @@ export async function planDiagrams({ paths = PATHS, renderer = null } = {}) {
   const problems = [];
   const fail = (lab, message) => problems.push({ lab, message });
   const r = renderer ?? (await loadRenderer(paths));
-  const sprite = readFileSync(paths.sprite, "utf8");
+  // Both sprites' symbols (az-… and aws-…): an AWS lab draws from the second.
+  const sprite = readFileSync(paths.sprite, "utf8") + (paths.spriteAws && existsSync(paths.spriteAws) ? readFileSync(paths.spriteAws, "utf8") : "");
   const labs = labFolders(paths.labs);
   const files = new Map();
   const concepts = [];

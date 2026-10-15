@@ -1,0 +1,421 @@
+{
+ "schema": 1,
+ "labId": "soa-02-systems-manager",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_config_config_rule.restricted_ssh",
+   "key": "config:config-rule/lab-soa-02-systems-manager-restricted-ssh",
+   "kind": "generic",
+   "label": "lab-soa-02-systems-manager-restricted-ssh",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "config:config-rule",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_config_configuration_recorder.lab",
+     "label": "lab-soa-02-systems-manager-recorder",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_config_configuration_recorder_status.lab",
+     "label": "lab-soa-02-systems-manager-recorder",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_config_delivery_channel.lab",
+     "label": "lab-soa-02-systems-manager-channel",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_config_remediation_configuration.restricted_ssh",
+     "label": "restricted_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.lab",
+   "key": "ec2:instance-connect-endpoint/eice-lab",
+   "kind": "bastion",
+   "label": "eice-lab",
+   "props": {},
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.config",
+   "key": "iam:role/lab-soa-02-systems-manager-config",
+   "kind": "managedIdentity",
+   "label": "lab-soa-02-systems-manager-config",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.config_delivery",
+     "label": "lab-soa-02-systems-manager-config-delivery",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.config_delivery",
+     "label": "config_delivery",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.config_managed",
+     "label": "config_managed",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.remediation",
+   "key": "iam:role/lab-soa-02-systems-manager-remediation",
+   "kind": "managedIdentity",
+   "label": "lab-soa-02-systems-manager-remediation",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.remediation",
+     "label": "lab-soa-02-systems-manager-remediation",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.remediation",
+     "label": "remediation",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.remediation_managed",
+     "label": "remediation_managed",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.ssm",
+   "key": "iam:role/lab-soa-02-systems-manager-ssm",
+   "kind": "managedIdentity",
+   "label": "lab-soa-02-systems-manager-ssm",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_instance_profile.ssm",
+     "label": "lab-soa-02-systems-manager-ssm",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.ssm_core",
+     "label": "ssm_core",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.web[0]",
+   "key": "ec2:instance/vm-web1",
+   "kind": "vm",
+   "label": "vm-web1",
+   "props": {
+    "size": "t4g.micro"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.web[1]",
+   "key": "ec2:instance/vm-web2",
+   "kind": "vm",
+   "label": "vm-web2",
+   "props": {
+    "size": "t4g.micro"
+   },
+   "parent": "tf:aws_subnet.private[1]",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-soa-02-systems-manager",
+   "kind": "resourceGroup",
+   "label": "lab-soa-02-systems-manager · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.private",
+   "key": "ec2:route-table/rt-private",
+   "kind": "routeTable",
+   "label": "rt-private",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route_table_association.private[0]",
+     "label": "private[0]",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[1]",
+     "label": "private[1]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_s3_bucket.config",
+   "key": "s3:bucket/config-snapshots",
+   "kind": "storage",
+   "label": "config-snapshots",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "s3:bucket",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_s3_bucket_public_access_block.config",
+     "label": "config",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.demo",
+   "key": "ec2:security-group/sg-demo",
+   "kind": "nsg",
+   "label": "sg-demo",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.eice",
+   "key": "ec2:security-group/sg-eice",
+   "kind": "nsg",
+   "label": "sg-eice",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.eice_ssh",
+     "label": "eice_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.endpoints",
+   "key": "ec2:security-group/sg-endpoints",
+   "kind": "nsg",
+   "label": "sg-endpoints",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.endpoints_https",
+     "label": "endpoints_https",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.vms",
+   "key": "ec2:security-group/sg-vms",
+   "kind": "nsg",
+   "label": "sg-vms",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.vms_all",
+     "label": "vms_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_from_gateway",
+     "label": "vms_from_gateway",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_ssh_eice",
+     "label": "vms_ssh_eice",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ssm_association.inventory",
+   "key": "ssm:association/aws-gathersoftwareinventory",
+   "kind": "generic",
+   "label": "AWS-GatherSoftwareInventory",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ssm:association",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ssm_association.patch_scan",
+   "key": "ssm:association/aws-runpatchbaseline",
+   "kind": "generic",
+   "label": "AWS-RunPatchBaseline",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ssm:association",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ssm_patch_baseline.al2023",
+   "key": "ssm:patchbaseline/lab-soa-02-systems-manager-al2023",
+   "kind": "generic",
+   "label": "lab-soa-02-systems-manager-al2023",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ssm:patchbaseline",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_ssm_patch_group.web",
+     "label": "web",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[0]",
+   "key": "ec2:subnet/snet-private-1",
+   "kind": "subnet",
+   "label": "snet-private-1",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[1]",
+   "key": "ec2:subnet/snet-private-2",
+   "kind": "subnet",
+   "label": "snet-private-2",
+   "props": {
+    "prefix": "10.71.193.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.lab",
+   "key": "ec2:vpc/vpc-lab",
+   "kind": "vnet",
+   "label": "vpc-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.interface[\"ec2messages\"]",
+   "key": "ec2:vpc-endpoint/vpce-ec2messages",
+   "kind": "privateEndpoint",
+   "label": "vpce-ec2messages",
+   "props": {
+    "groupId": "ec2messages"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.interface[\"ssm\"]",
+   "key": "ec2:vpc-endpoint/vpce-ssm",
+   "kind": "privateEndpoint",
+   "label": "vpce-ssm",
+   "props": {
+    "groupId": "ssm"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.interface[\"ssmmessages\"]",
+   "key": "ec2:vpc-endpoint/vpce-ssmmessages",
+   "kind": "privateEndpoint",
+   "label": "vpce-ssmmessages",
+   "props": {
+    "groupId": "ssmmessages"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.s3",
+   "key": "ec2:vpc-endpoint/vpce-s3",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "4 resources of a type the diagram draws plainly"
+ ]
+}

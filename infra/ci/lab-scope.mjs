@@ -103,7 +103,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ALLOWED_PROVIDER_SOURCES, normalizeSource, providerOfType } from "./lab-lint.mjs";
 
-export const LAB_ID_RE = /^az(104|305|700)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
+export const LAB_ID_RE = /^(az(104|305|700)|soa|saa|ans)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
 /** The governance labs, named in code (spec §8.3). A test keeps this equal to shared/labs.ts. */
 export const GOVERNANCE_LABS = ["az104-01-identity", "az104-02-policy", "az104-03-mgmt-groups", "az305-20-landing-zone", "az305-21-monitoring-scale"];
 /**
@@ -358,8 +358,9 @@ export function planResources(plan) {
   const providers = Object.entries(plan?.configuration?.provider_config ?? {}).map(([key, p]) => ({ key, name: p.name ?? key.split(".")[0], keys: Object.keys(p.expressions ?? {}) }));
   // Terraform 1.5+: a change that adopts an existing object says so in change.importing.
   const imports = (plan?.resource_changes ?? []).filter((c) => c?.change?.importing).map((c) => c.address);
-  // The pipeline's variables as the plan holds them (region: S2's NetworkWatcher_<region>). Sensitive ones are not read.
-  const variables = Object.fromEntries(Object.entries(plan?.variables ?? {}).filter(([k]) => k === "region").map(([k, v]) => [k, v?.value]));
+  // The pipeline's variables as the plan holds them (region: S2's NetworkWatcher_<region>; secondary_region,
+  // address_space and gateway_cidr: lab-scope-aws.mjs's provider and address rules). Sensitive ones are not read.
+  const variables = Object.fromEntries(Object.entries(plan?.variables ?? {}).filter(([k]) => ["region", "secondary_region", "address_space", "gateway_cidr"].includes(k)).map(([k, v]) => [k, v?.value]));
   return { resources: [...seen.values()], providers, imports, variables };
 }
 

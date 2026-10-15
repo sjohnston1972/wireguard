@@ -110,6 +110,79 @@ export const NEAREST = {
   generic: "a resource of a kind the diagram does not know: All Resources",
 };
 
+// ── The AWS pack (AWS labs spec §10): a second, pinned pack → icons/aws.svg, symbols "aws-<icon>" ──
+
+export const AWS_PACK_VERSION = "07312026";
+export const AWS_PACK_URL = "https://d1.awsstatic.com/onedam/marketing-channels/website/public/shared/architecture-icon-release/Icon-package_07312026.5846e92413caa21490223536cc97f1269e44fa92.zip";
+/** SHA-256 of the 2026-07-31 release zip (13,988,918 bytes) as downloaded on 2026-10-15. */
+export const AWS_PACK_SHA256 = "d2d166c453526471749d520e0db022c459abef759d2946cf2dd1d1c992dc6526";
+export const AWS_PACK_PAGE = "https://aws.amazon.com/architecture/icons/";
+const AWS_DOWNLOADED = "2026-10-15";
+/** Inside the zip (its folders sit at the top level). */
+const AWS_PACK_ROOT = "";
+const SVC = "Architecture-Service-Icons_07312026";
+const RES = "Resource-Icons_07312026";
+const GRP = "Architecture-Group-Icons_07312026";
+
+/**
+ * AWS icon id (KINDS[k].awsIcon) → file in the pack. Service icons are the 64 size, resource icons the 48 size (the only
+ * one the pack has), group icons the 32 size (the only one it has). AWS_NEAREST says where the closest icon stands in.
+ */
+export const AWS_ICON_FILES = {
+  "resource-groups": `${GRP}/Region_32.svg`,
+  vpc: `${RES}/Res_Networking-Content-Delivery/Res_Amazon-VPC_Virtual-private-cloud-VPC_48.svg`,
+  subnet: `${GRP}/Private-subnet_32.svg`,
+  "ec2-instance": `${RES}/Res_Compute/Res_Amazon-EC2_Instance_48.svg`,
+  "auto-scaling": `${RES}/Res_Compute/Res_Amazon-EC2_Auto-Scaling_48.svg`,
+  "load-balancer": `${SVC}/Arch_Networking-Content-Delivery/64/Arch_Elastic-Load-Balancing_64.svg`,
+  "security-group": `${RES}/Res_Networking-Content-Delivery/Res_Amazon-VPC_Network-Access-Control-List_48.svg`,
+  "route-table": `${RES}/Res_Networking-Content-Delivery/Res_Amazon-Route-53_Route-Table_48.svg`,
+  "internet-gateway": `${RES}/Res_Networking-Content-Delivery/Res_Amazon-VPC_Internet-Gateway_48.svg`,
+  "nat-gateway": `${RES}/Res_Networking-Content-Delivery/Res_Amazon-VPC_NAT-Gateway_48.svg`,
+  "elastic-ip": `${RES}/Res_Compute/Res_Amazon-EC2_Elastic-IP-Address_48.svg`,
+  "vpc-endpoint": `${RES}/Res_Networking-Content-Delivery/Res_Amazon-VPC_Endpoints_48.svg`,
+  privatelink: `${SVC}/Arch_Networking-Content-Delivery/64/Arch_AWS-PrivateLink_64.svg`,
+  "instance-connect-endpoint": `${RES}/Res_Management-Governance/Res_AWS-Systems-Manager_Session-Manager_48.svg`,
+  "customer-gateway": `${RES}/Res_Networking-Content-Delivery/Res_Amazon-VPC_Customer-Gateway_48.svg`,
+  "vpn-gateway": `${RES}/Res_Networking-Content-Delivery/Res_Amazon-VPC_VPN-Gateway_48.svg`,
+  "network-firewall": `${SVC}/Arch_Security-Identity/64/Arch_AWS-Network-Firewall_64.svg`,
+  waf: `${SVC}/Arch_Security-Identity/64/Arch_AWS-WAF_64.svg`,
+  "route-53": `${SVC}/Arch_Networking-Content-Delivery/64/Arch_Amazon-Route-53_64.svg`,
+  cloudfront: `${SVC}/Arch_Networking-Content-Delivery/64/Arch_Amazon-CloudFront_64.svg`,
+  "global-accelerator": `${SVC}/Arch_Networking-Content-Delivery/64/Arch_AWS-Global-Accelerator_64.svg`,
+  eks: `${SVC}/Arch_Containers/64/Arch_Amazon-Elastic-Kubernetes-Service_64.svg`,
+  ecs: `${SVC}/Arch_Containers/64/Arch_Amazon-Elastic-Container-Service_64.svg`,
+  "s3-bucket": `${RES}/Res_Storage/Res_Amazon-Simple-Storage-Service_Bucket_48.svg`,
+  rds: `${SVC}/Arch_Databases/64/Arch_Amazon-RDS_64.svg`,
+  kms: `${SVC}/Arch_Security-Identity/64/Arch_AWS-Key-Management-Service_64.svg`,
+  ecr: `${SVC}/Arch_Containers/64/Arch_Amazon-Elastic-Container-Registry_64.svg`,
+  backup: `${RES}/Res_Storage/Res_AWS-Backup_Backup-Vault_48.svg`,
+  "iam-role": `${RES}/Res_Security-Identity/Res_AWS-Identity-Access-Management_Role_48.svg`,
+  cloudwatch: `${SVC}/Arch_Management-Tools/64/Arch_Amazon-CloudWatch_64.svg`,
+  "cloudwatch-logs": `${RES}/Res_Management-Governance/Res_Amazon-CloudWatch_Logs_48.svg`,
+  messaging: `${SVC}/Arch_Application-Integration/64/Arch_Amazon-Simple-Queue-Service_64.svg`,
+  "transit-gateway": `${SVC}/Arch_Networking-Content-Delivery/64/Arch_AWS-Transit-Gateway_64.svg`,
+  lambda: `${SVC}/Arch_Compute/64/Arch_AWS-Lambda_64.svg`,
+  dynamodb: `${SVC}/Arch_Databases/64/Arch_Amazon-DynamoDB_64.svg`,
+  elasticache: `${SVC}/Arch_Databases/64/Arch_Amazon-ElastiCache_64.svg`,
+  kinesis: `${SVC}/Arch_Analytics/64/Arch_Amazon-Kinesis_64.svg`,
+  "vpc-lattice": `${SVC}/Arch_Networking-Content-Delivery/64/Arch_Amazon-VPC-Lattice_64.svg`,
+  "client-vpn": `${SVC}/Arch_Networking-Content-Delivery/64/Arch_AWS-Client-VPN_64.svg`,
+  "general-resource": `${GRP}/AWS-Cloud_32.svg`,
+};
+
+/** The AWS icons that are the nearest official icon rather than one of that exact name. */
+export const AWS_NEAREST = {
+  "resource-groups": "the lab's Resource Groups group stands for its region: the Region group icon",
+  "security-group": "the pack has no security group icon; Network Access Control List is its closest network filter",
+  "route-table": "the pack's route table icon is filed under Route 53 (Route Table)",
+  "instance-connect-endpoint": "no EC2 Instance Connect Endpoint icon; Systems Manager Session Manager (browser-less console access)",
+  messaging: "one icon for SNS, SQS, EventBridge and Step Functions: Simple Queue Service",
+  "general-resource": "a resource of a kind the diagram does not know: the AWS Cloud group icon",
+  subnet: "the Private subnet group icon (a subnet is drawn as a container, as AWS does)",
+  backup: "a Backup vault: the Backup Vault resource icon",
+};
+
 /**
  * One pack SVG as a symbol's parts: { viewBox, body }, with every id renamed
  * "<icon>-<n>" and every reference to it rewritten. Shapes are untouched.
@@ -147,10 +220,10 @@ export function optimiseIcon(svg, icon) {
 }
 
 /** The sprite: one hidden <svg> with a <symbol> per icon, sorted by icon id. */
-export function buildSprite(icons) {
+export function buildSprite(icons, prefix = "az") {
   const parts = Object.keys(icons)
     .sort()
-    .map((icon) => `<symbol id="az-${icon}" viewBox="${icons[icon].viewBox}">${icons[icon].body}</symbol>`);
+    .map((icon) => `<symbol id="${prefix}-${icon}" viewBox="${icons[icon].viewBox}">${icons[icon].body}</symbol>`);
   return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="display:none">${parts.join("")}</svg>\n`;
 }
 
@@ -197,7 +270,47 @@ export function buildReadme() {
     "|---|---|---|",
     ...rows,
     "",
+    ...awsReadmeLines(),
   ].join("\n");
+}
+
+export const AWS_README_TERMS = ["We allow customers and partners to use these toolkits and assets to create architecture diagrams."];
+
+function awsReadmeLines() {
+  const rows = Object.keys(AWS_ICON_FILES)
+    .sort()
+    .map((icon) => `| \`${icon}\` | \`${AWS_ICON_FILES[icon]}\` | ${AWS_NEAREST[icon] ?? ""} |`);
+  return [
+    "# AWS icons for the lab diagram",
+    "",
+    "`aws.svg` is generated by the same script (`node scripts/topology-icons.mjs`; never edit it). It holds one",
+    "`<symbol id=\"aws-<icon>\">` per icon the kinds registry names as `awsIcon`, and nothing else. It loads only when an AWS",
+    "lab's diagram is on screen.",
+    "",
+    `- **Source:** AWS Architecture Icons, release **${AWS_PACK_VERSION}** (Icon-package_${AWS_PACK_VERSION}.zip), from the official page ${AWS_PACK_PAGE}`,
+    `- **Download:** ${AWS_PACK_URL}, SHA-256 \`${AWS_PACK_SHA256}\`, downloaded ${AWS_DOWNLOADED}.`,
+    "- **Changes:** as for the Azure pack: comments, titles, editor attributes and whitespace are removed and ids renamed;",
+    "  no shape, path, viewBox, transform or colour is changed.",
+    "",
+    "## Terms",
+    "",
+    `From ${AWS_PACK_PAGE}:`,
+    "",
+    ...AWS_README_TERMS.map((t) => `> ${t}`),
+    "",
+    "The lab diagram is an architecture diagram of the AWS resources a lab makes. Each icon stands for the AWS service or",
+    "resource it names, shown next to the resource's name.",
+    "",
+    "## Files",
+    "",
+    "Paths are inside the zip. Service icons are the 64 px size, resource icons 48 px and group icons 32 px (the only sizes the",
+    "pack has for those). A note marks the nearest official icon where the pack has none of that exact name.",
+    "",
+    "| Icon | Pack file | Note |",
+    "|---|---|---|",
+    ...rows,
+    "",
+  ];
 }
 
 const sha256 = (b) => createHash("sha256").update(b).digest("hex");
@@ -209,39 +322,49 @@ function extract(zip, dir) {
   if (r.status !== 0) throw new Error(`could not extract the pack: ${(r.stderr || r.error?.message || "").trim()}`);
 }
 
-async function main() {
-  const scratch = process.argv[2] ?? mkdtempSync(join(tmpdir(), "topology-icons-"));
-  mkdirSync(scratch, { recursive: true });
-  const zip = join(scratch, `Azure_Public_Service_Icons_${PACK_VERSION}.zip`);
+/** Fetch (or reuse, when its hash matches) a pinned pack zip in the scratch folder, extract it, and write its sprite. */
+async function buildPack({ scratch, zipName, url, sha, root, files, prefix, outFile }) {
+  const zip = join(scratch, zipName);
   let bytes = existsSync(zip) ? readFileSync(zip) : null;
-  if (!bytes || sha256(bytes) !== PACK_SHA256) {
-    const r = await fetch(PACK_URL);
+  if (!bytes || sha256(bytes) !== sha) {
+    const r = await fetch(url);
     if (!r.ok) throw new Error(`the icon pack download answered ${r.status}`);
     bytes = Buffer.from(await r.arrayBuffer());
     const got = sha256(bytes);
-    if (got !== PACK_SHA256) {
-      console.error(`the icon pack's SHA-256 is ${got}, not the pinned ${PACK_SHA256 || "(none pinned)"}: not used`);
+    if (got !== sha) {
+      console.error(`the icon pack's SHA-256 is ${got}, not the pinned ${sha || "(none pinned)"}: not used`);
       process.exitCode = 1;
       return;
     }
     writeFileSync(zip, bytes);
   }
-  const out = join(scratch, "extracted");
+  const out = join(scratch, `extracted-${prefix}`);
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   try {
     extract(zip, out);
     const icons = {};
-    for (const [icon, file] of Object.entries(ICON_FILES)) icons[icon] = optimiseIcon(readFileSync(join(out, PACK_ROOT, file), "utf8"), icon);
+    for (const [icon, file] of Object.entries(files)) icons[icon] = optimiseIcon(readFileSync(join(out, root, file), "utf8"), prefix === "az" ? icon : `${prefix}-${icon}`);
     const dir = fileURLToPath(new URL("../web/src/views/labs/topology/icons/", import.meta.url));
     mkdirSync(dir, { recursive: true });
-    const sprite = buildSprite(icons);
-    writeFileSync(join(dir, "azure.svg"), sprite);
-    writeFileSync(join(dir, "README.md"), buildReadme());
-    console.log(`wrote ${Object.keys(icons).length} icons, ${(sprite.length / 1000).toFixed(1)} kB raw`);
+    const sprite = buildSprite(icons, prefix);
+    writeFileSync(join(dir, outFile), sprite);
+    console.log(`wrote ${outFile}: ${Object.keys(icons).length} icons, ${(sprite.length / 1000).toFixed(1)} kB raw`);
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
+}
+
+/** node scripts/topology-icons.mjs [scratch dir] [azure|aws]: both packs unless one is named. The README always covers both. */
+async function main() {
+  const scratch = process.argv[2] ?? mkdtempSync(join(tmpdir(), "topology-icons-"));
+  const only = process.argv[3];
+  mkdirSync(scratch, { recursive: true });
+  const dir = fileURLToPath(new URL("../web/src/views/labs/topology/icons/", import.meta.url));
+  mkdirSync(dir, { recursive: true });
+  if (!only || only === "azure") await buildPack({ scratch, zipName: `Azure_Public_Service_Icons_${PACK_VERSION}.zip`, url: PACK_URL, sha: PACK_SHA256, root: PACK_ROOT, files: ICON_FILES, prefix: "az", outFile: "azure.svg" });
+  if (!only || only === "aws") await buildPack({ scratch, zipName: `Icon-package_${AWS_PACK_VERSION}.zip`, url: AWS_PACK_URL, sha: AWS_PACK_SHA256, root: AWS_PACK_ROOT, files: AWS_ICON_FILES, prefix: "aws", outFile: "aws.svg" });
+  if (!process.exitCode) writeFileSync(join(dir, "README.md"), buildReadme());
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

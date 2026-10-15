@@ -68,6 +68,28 @@ test("Azure transport errors are transient: the two seen in release tests and th
   }
 });
 
+test("AWS: throttling and 5xx are retried; AccessDenied and a plain 400 are not", () => {
+  const diag = (msg) => `Error: ${msg}\n\n  with aws_vpc.lab,\n`;
+  assert.equal(transientFailure(diag("creating EC2 VPC: operation error EC2: CreateVpc, https response error StatusCode: 400, RequestID: x, api error RequestLimitExceeded: Request limit exceeded.")).transient, true);
+  assert.equal(transientFailure(diag("operation error EC2: RunInstances, https response error StatusCode: 503, RequestID: x, api error Unavailable")).transient, true);
+  assert.equal(transientFailure(diag("operation error EC2: CreateVpc, https response error StatusCode: 403, RequestID: x, api error UnauthorizedOperation: You are not authorized")).transient, false);
+  assert.equal(transientFailure(diag("operation error EC2: CreateVpc, https response error StatusCode: 400, RequestID: x, api error InvalidParameterValue: bad")).transient, false);
+  // The rest of the AWS list. A throttle code overrides only the generic 4xx, never a refusal code.
+  assert.equal(transientFailure(diag("operation error ELBV2: CreateLoadBalancer, https response error StatusCode: 400, RequestID: x, api error Throttling: Rate exceeded")).transient, true);
+  assert.equal(transientFailure(diag("operation error S3: PutObject, https response error StatusCode: 503, RequestID: x, api error SlowDown: Please reduce your request rate.")).transient, true);
+  assert.equal(transientFailure(diag('operation error EC2: DescribeVpcs, https response error StatusCode: 0, RequestID: , request send failed, Post "https://ec2.eu-west-2.amazonaws.com/": send request failed')).transient, true);
+  assert.equal(transientFailure(diag("operation error STS: GetCallerIdentity, https response error StatusCode: 403, RequestID: x, api error ExpiredToken: The security token included in the request is expired")).transient, false);
+  assert.equal(transientFailure(diag("operation error EC2: CreateVpc, https response error StatusCode: 400, RequestID: x, api error Throttling: then AccessDenied")).transient, false);
+});
+
+test("AWS: TooManyRequestsException and a 429 in any case are retried", () => {
+  const diag = (msg) => `Error: ${msg}\n\n  with aws_lambda_function.lab,\n`;
+  assert.equal(transientFailure(diag("operation error Lambda: CreateFunction, https response error StatusCode: 429, RequestID: x, TooManyRequestsException: Rate exceeded")).transient, true);
+  assert.equal(transientFailure(diag("operation error Lambda: CreateFunction, https response error StatusCode: 400, RequestID: x, api error TooManyRequestsException: Rate exceeded")).transient, true);
+  assert.equal(transientFailure(diag("operation error X: Y, https response error statuscode: 429, RequestID: x")).transient, true);
+  assert.equal(transientFailure(diag("operation error X: Y, https response error StatusCode: 429, RequestID: x, api error AccessDeniedException: no")).transient, false);
+});
+
 test("anything else is not transient: 4xx refusals, a resource's own timeout, a mix, or no error at all", () => {
   for (const text of [
     QUOTA,
@@ -127,7 +149,7 @@ test("a transient failure, then success: re-planned, scope-checked again, applie
   const i = (re) => r.tf.findIndex((c) => re.test(c));
   assert.ok(i(/^terraform apply/) < i(/^terraform plan .*-out=/) && i(/^terraform plan/) < i(/^terraform show -no-color -json/), r.tf.join("\n"));
   assert.match(r.tf.at(-1), /^terraform apply -no-color -input=false .*plan\.out$/);
-  assert.match(r.out, /Azure dropped the connection; retrying apply \(1 of 2\)/);
+  assert.match(r.out, /the cloud dropped the connection; retrying apply \(1 of 2\)/);
   assert.match(r.out, /HTTP response was nil/);
   assert.match(r.out, /scope check passed/);
   assert.deepEqual(r.sleeps, ["sleep 30"]);
@@ -203,7 +225,7 @@ test("destroy: one retry on a transient failure, none on anything else", { skip 
   assert.equal(ok.status, 0, ok.out);
   assert.equal(ok.tf.length, 2, ok.calls.join("\n"));
   for (const c of ok.tf) assert.match(c, /^terraform destroy -no-color -input=false -auto-approve -lock-timeout=5m$/);
-  assert.match(ok.out, /Azure dropped the connection; retrying destroy \(1 of 1\)/);
+  assert.match(ok.out, /the cloud dropped the connection; retrying destroy \(1 of 1\)/);
   const twice = destroy([1, 1, 0], [NIC_RESET, NIC_RESET, ""]);
   assert.notEqual(twice.status, 0, twice.out);
   assert.equal(twice.tf.length, 2);

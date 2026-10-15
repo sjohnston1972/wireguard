@@ -176,6 +176,20 @@ test("the AWS account id inside the deploy role ARN is hidden on its own", () =>
   assert.equal(makeRedactor(got)("owner_id = 123456789012 in eu-west-2"), "owner_id = *** in eu-west-2");
 });
 
+// Pre-flight ruling C21: lab-aws.yml hands its steps the account id inside the two lab role ARNs.
+test("the AWS account id inside the lab role ARNs is hidden on its own too", () => {
+  for (const name of ["AWS_LABS_ROLE_ARN", "AWS_DEPLOY_ROLE_ARN"]) {
+    assert.ok(SECRET_ENV.includes(name), name);
+    const arn = `arn:aws:iam::210987654321:role/${name === "AWS_LABS_ROLE_ARN" ? "wg-admin-labs" : "wg-admin-deploy"}`;
+    const got = secretsFromEnv({ [name]: arn });
+    assert.ok(got.includes(arn) && got.includes("210987654321"), name);
+    assert.equal(makeRedactor(got)("arn:aws:ec2:eu-west-2:210987654321:vpc/vpc-0abc"), "arn:aws:ec2:eu-west-2:***:vpc/vpc-0abc");
+  }
+  // The session the step trades for is hidden as well.
+  assert.ok(SECRET_ENV.includes("AWS_SESSION_TOKEN"));
+  assert.ok(secretsFromEnv({ AWS_SESSION_TOKEN: "IQoJb3JpZ2luX2VjEFAKE" }).includes("IQoJb3JpZ2luX2VjEFAKE"));
+});
+
 test("the wg.yml secret check is not circular: a new secret added to wg.yml alone fails it", () => {
   const yml = readWorkflow();
   const anchor = "          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}\n";

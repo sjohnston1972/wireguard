@@ -21,12 +21,14 @@
 // same file byte for byte. Every resource is represented: a card, a folded
 // entry, or the `via` of an edge.
 
-import { isGroupKind, TOPOLOGY_SCHEMA, sortGraph, type TopoEdge, type TopoKind, type TopologyGraph, type TopoNode } from "./model";
+import { isGroupKind, TOPOLOGY_SCHEMA, sortGraph, type TopoKind, type TopologyGraph, type TopoNode } from "./model";
 import { KINDS, kindOfArm, kindOfTf } from "./kinds";
 import { disambiguate, mockNameCtx, nodeKey, planLabel, SYNTHETIC_KEYS } from "./keys";
-import { scrubProps, withheldNote } from "./props";
-import { tfIgnored, tfRule, type EdgeSpec, type PlannedHelpers, type TfInst, type TfRule } from "./rules/planned";
+import { withheldNote } from "./props";
+import { tfIgnored, tfRule, type PlannedHelpers, type TfInst, type TfRule } from "./rules/planned";
 import { expandDeployment } from "./armTemplate";
+import { awsPlannedGraph, isAwsInput } from "./awsPlannedGraph";
+import { addFoldedLists, cmp, collectEdges, configOf, homeOf, makeRefTools, scrubNodes } from "./plannedShared";
 
 /** One entry of a plan's resource_changes, reduced and scrubbed (scripts/lib/topology-stream.mjs). */
 export interface ResourceChange {
@@ -59,8 +61,6 @@ const GROUP_TYPES: Record<string, TopoKind> = {
 };
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v !== "" ? v : undefined);
-const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-const configOf = (address: string) => address.replace(/\[[^\]]*\]/g, "");
 
 /** Every id a graph represents: its nodes, their folded entries and its edges' vias. */
 export function representedIds(g: TopologyGraph): Set<string> {
@@ -74,6 +74,8 @@ export function representedIds(g: TopologyGraph): Set<string> {
 }
 
 export function plannedGraph(input: PlannedInput): TopologyGraph {
+  // An AWS lab (aws_ resources in the plan) is drawn by its own builder; Azure's path below is untouched.
+  if (isAwsInput(input)) return awsPlannedGraph(input);
   const nameCtx = mockNameCtx(input.number);
   const primaryRg = `rg-lab-${input.labId}`;
   const notes: string[] = [];
@@ -94,32 +96,13 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
     }
   }
   const byId = new Map(insts.map((i) => [i.id, i]));
-  const byConfig = new Map<string, TfInst[]>();
-  for (const i of insts) if (i.config) byConfig.set(i.config, [...(byConfig.get(i.config) ?? []), i]);
-
-  const resolve = (from: TfInst, config: string): TfInst[] => {
-    const targets = byConfig.get(config) ?? [];
-    if (targets.length <= 1) return targets;
-    const same = targets.filter((t) => t.index !== null && t.index === from.index);
-    return same.length ? same : targets;
-  };
-  const refCache = new Map<string, TfInst[]>();
-  const refs = (inst: TfInst, attrs?: string[]): TfInst[] => {
-    const k = `${inst.id}|${attrs?.join(",") ?? "*"}`;
-    const hit = refCache.get(k);
-    if (hit) return hit;
-    const table = inst.config ? (input.refs[inst.config] ?? {}) : {};
-    const names = attrs ?? Object.keys(table).sort();
-    const out: TfInst[] = [];
-    for (const a of names) for (const cfg of table[a] ?? []) for (const t of resolve(inst, cfg)) if (t !== inst && !out.includes(t)) out.push(t);
+  const { byConfig, refs, referrers } = makeRefTools(insts, input.refs, {
     // Expanded template resources reference by ARM id (expandDeployment's dependsOn and property ids).
-    const arm = (inst.after.__arm ?? null) as { refs?: string[] } | null;
-    if (arm && !attrs) for (const r of arm.refs ?? []) for (const t of insts) if (t.armType && `${t.armType}/${t.name}`.toLowerCase() === r.toLowerCase() && !out.includes(t)) out.push(t);
-    refCache.set(k, out);
-    return out;
-  };
-  const referrers = (inst: TfInst, types?: string[], attrs?: string[]): TfInst[] =>
-    insts.filter((r) => r !== inst && (!types || types.includes(r.type)) && refs(r, attrs).includes(inst));
+    extra: (inst, out, attrs) => {
+      const arm = (inst.after.__arm ?? null) as { refs?: string[] } | null;
+      if (arm && !attrs) for (const r of arm.refs ?? []) for (const t of insts) if (t.armType && `${t.armType}/${t.name}`.toLowerCase() === r.toLowerCase() && !out.includes(t)) out.push(t);
+    },
+  });
 
   const ruleOf = (i: TfInst): TfRule => (i.armType ? {} : tfRule(i.type));
   const groupKindOf = (i: TfInst): TopoKind | null => {
@@ -248,16 +231,7 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
       if (!owner.has(t.id) && !directOwner.has(t.id)) directOwner.set(t.id, subnet);
     }
   }
-  const home = (i: TfInst, seen = new Set<string>()): string | null => {
-    if (isGroup(i)) return groupOf.get(i.id) ?? i.id;
-    const d = directOwner.get(i.id);
-    if (d) return d;
-    const o = owner.get(i.id);
-    if (!o) return i.id;
-    if (seen.has(i.id)) return null;
-    seen.add(i.id);
-    return home(o, seen);
-  };
+  const home = (i: TfInst): string | null => homeOf(i, owner, (x) => (isGroup(x) ? (groupOf.get(x.id) ?? x.id) : null), directOwner);
 
   // ── 4. Cards ──
   const kindOf = (i: TfInst): TopoKind => {
@@ -271,13 +245,7 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
   for (const i of cards) addNode({ id: i.id, key: "", kind: kindOf(i), label: labelOf(i), props: {}, armType: i.armType ?? ruleOf(i).arm ?? null });
 
   // Folded lists: every folded instance is listed on its home's card.
-  for (const i of insts) {
-    if (!owner.has(i.id) && !directOwner.has(i.id)) continue;
-    const h = home(i);
-    const n = h ? nodes.get(h) : undefined;
-    if (!n) continue;
-    (n.folded ??= []).push({ id: i.id, label: ruleOf(i).foldedLabel ?? labelOf(i), armType: i.armType ?? ruleOf(i).arm ?? null });
-  }
+  addFoldedLists(insts, (i) => owner.has(i.id) || directOwner.has(i.id), home, nodes, ruleOf, labelOf, (i) => i.armType ?? ruleOf(i).arm ?? null);
   // A secret's, key's or certificate's folded id is opaque and counted per type, in address order: its address names it.
   const opaque = new Map<string, string>();
   const opaqueCount = new Map<string, number>();
@@ -399,7 +367,7 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
   }
 
   // Scrub, scope.
-  let withheld = 0;
+  const withheld = scrubNodes(nodes, raw);
   const outsideIds = new Set([...nodes.values()].filter((n) => n.kind === "resourceGroup" && n.scope === "outside").map((n) => n.id));
   const rgOfNode = (n: TopoNode): TopoNode | undefined => {
     let cur: TopoNode | undefined = n;
@@ -410,11 +378,6 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
     return undefined;
   };
   for (const n of nodes.values()) {
-    const r = { ...(raw.get(n.id) ?? {}) };
-    if (Array.isArray(r.chips)) r.chips = (r.chips as string[]).length ? [...(r.chips as string[])] : undefined;
-    const s = scrubProps(r);
-    withheld += s.withheld;
-    n.props = s.props;
     if (n.kind !== "lane") {
       const rg = rgOfNode(n);
       if (rg && outsideIds.has(rg.id)) n.scope = "outside";
@@ -423,22 +386,7 @@ export function plannedGraph(input: PlannedInput): TopologyGraph {
   }
 
   // Edges.
-  const edges = new Map<string, TopoEdge>();
-  const endOf = (x: TfInst | string): string | null => (typeof x === "string" ? (x.startsWith("node:") ? x.slice(5) : x) : home(x));
-  for (const i of insts) {
-    const rule = ruleOf(i);
-    if (!rule.edges) continue;
-    for (const spec of rule.edges(i, helpers) as EdgeSpec[]) {
-      let from = endOf(spec.from);
-      let to = endOf(spec.to);
-      if (!from || !to || from === to || !nodes.has(from) || !nodes.has(to)) continue;
-      if (spec.undirected && to < from) [from, to] = [to, from];
-      const via = (spec.via ?? i).id;
-      const id = `${spec.kind}:${from}>${to}:${spec.label ?? ""}`;
-      if (edges.has(id)) continue;
-      edges.set(id, { id, from, to, kind: spec.kind, ...(spec.label ? { label: spec.label } : {}), via });
-    }
-  }
+  const edges = collectEdges(insts, ruleOf, helpers, home, nodes);
 
   // ── Keys and labels ──
   const keyed: { id: string; key: string; group: string | null }[] = [];

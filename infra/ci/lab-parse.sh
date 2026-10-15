@@ -1,18 +1,27 @@
 #!/usr/bin/env bash
-# infra/ci/lab-parse.sh   (lab.yml step 1, "Check out, Parse payload")
+# infra/ci/lab-parse.sh   (lab.yml and lab-aws.yml step 1, "Check out, Parse payload")
 #
 # Plain English: reads the run's action ($LAB_ACTION_INPUT) and JSON payload
 # (from $GITHUB_EVENT_PATH, never an env line, which GitHub would print),
 # checks every value, and saves what later steps need in $GITHUB_ENV (labs
-# spec §5). It refuses the run, before anything touches Azure, when:
+# spec §5; AWS labs spec §5). It refuses the run, before anything touches
+# the cloud, when:
 #
-#   - the lab id fails the pattern (^az(104|305|700)-NN-word(-word)*$, 40 at most)
+#   - the lab id fails the pattern (^(az(104|305|700)|soa|saa|ans)-NN-word(-word)*$, 40 at most)
+#   - the id belongs to the other workflow's cloud ($LAB_WORKFLOW_CLOUD: azure
+#     in lab.yml, aws in lab-aws.yml), whatever the action: each workflow
+#     holds only its own cloud's keys. soa-, saa- and ans- ids are AWS labs
+#     (30 characters at most), and their lab.yaml must say cloud: aws
 #   - labs/<id>/lab.yaml does not exist, or names another id
 #   - the payload's version differs from lab.yaml's (a stale dashboard), or
 #     a deploy or test finds no terraform/ folder
 #   - any value is the wrong type or shape: a slot outside 10.64.0.0/13 or not
 #     on a /18 boundary, a name_prefix not l<lab number><5 lowercase>, a
 #     callback that is not https, a line break or quote anywhere
+#   - for an AWS lab: a region other than eu-west-2, a secondary_region other
+#     than eu-west-1, a name_prefix not a<lab number><5 lowercase>, or a
+#     gateway_cidr (the VPN server's VPC, default 10.50.0.0/16) that is not
+#     an IPv4 range outside the lab pool
 #
 # A destroy is never refused for being stale or for a lab that has left the
 # catalogue: it goes ahead (with a warning), because a teardown must always
@@ -50,6 +59,8 @@ values="$("$PY" - "$ACTION" "$GITHUB_EVENT_PATH" "$ROOT" <<'PY'
 import ipaddress, json, os, re, sys, time
 
 action, event_path, root = sys.argv[1], sys.argv[2], sys.argv[3]
+# Which workflow this is: lab.yml says azure, lab-aws.yml aws.
+CLOUD = os.environ.get("LAB_WORKFLOW_CLOUD") or "azure"
 sys.stdout.reconfigure(newline="\n")  # plain line ends, even from Python on Windows
 problems, warnings, out = [], [], {}
 
@@ -57,11 +68,15 @@ def fail(msg):
     problems.append(msg)
 
 ACTIONS = ("deploy", "destroy", "peer", "unpeer", "test")
-LAB_ID_RE = re.compile(r"^az(104|305|700)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$")
+LAB_ID_RE = re.compile(r"^(az(104|305|700)|soa|saa|ans)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$")
 SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 REGION = re.compile(r"^[a-z][a-z0-9]{1,30}$")
 URL = re.compile(r"^https://[A-Za-z0-9.-]+(:\d+)?(/[A-Za-z0-9._~/-]*)?$")
 POOL = ipaddress.ip_network("10.64.0.0/13")
+AWS_PREFIXES = ("soa-", "saa-", "ans-")
+# Labs with parts in us-east-1 (CloudFront) or us-west-2 (Global Accelerator): kept equal to scripts/lib/labs.mjs by a test.
+AWS_GLOBAL_LABS = ("soa-09-route53-cloudfront", "ans-26-edge")
+AWS_ID_MAX = 30
 
 if action not in ACTIONS:
     fail(f"action must be one of {', '.join(ACTIONS)}")
@@ -76,12 +91,23 @@ if not isinstance(payload, dict):
     sys.exit(1)
 
 KNOWN = {"lab_id", "version", "run_id", "session_id", "region", "secondary_region", "slot_cidr", "name_prefix", "peering", "timeout_min", "callback_url", "secrets_url"}
+if CLOUD == "aws":
+    KNOWN = KNOWN | {"gateway_cidr"}
 for k in sorted(set(payload) - KNOWN):
-    warnings.append(f"payload key {k} is not one lab.yml uses; ignored")
+    warnings.append(f"payload key {k} is not one {'lab-aws.yml' if CLOUD == 'aws' else 'lab.yml'} uses; ignored")
 
 lab_id = payload.get("lab_id")
 if not isinstance(lab_id, str) or not LAB_ID_RE.fullmatch(lab_id) or len(lab_id) > 40:
     print(f"::error::Parse payload: refusing lab id {json.dumps(lab_id)[:60]}", file=sys.stderr)
+    sys.exit(1)
+# Before anything else, a destroy too: the other workflow holds the other cloud's keys.
+id_cloud = "aws" if lab_id.startswith(AWS_PREFIXES) else "azure"
+if id_cloud != CLOUD:
+    print(f"::error::Parse payload: {lab_id} is an {'AWS' if id_cloud == 'aws' else 'Azure'} lab: it runs on {'lab-aws.yml' if id_cloud == 'aws' else 'lab.yml'}", file=sys.stderr)
+    sys.exit(1)
+aws = id_cloud == "aws"
+if aws and len(lab_id) > AWS_ID_MAX:
+    print(f"::error::Parse payload: refusing lab id {lab_id}: an AWS lab id is at most {AWS_ID_MAX} characters", file=sys.stderr)
     sys.exit(1)
 number = lab_id.split("-")[1]
 teardown = action in ("destroy", "unpeer")
@@ -99,6 +125,8 @@ if os.path.isfile(yaml_path):
         fail(f"labs/{lab_id}/lab.yaml does not parse: {e}")
     if isinstance(lab, dict) and lab.get("id") != lab_id:
         fail(f"labs/{lab_id}/lab.yaml names id {lab.get('id')!r}")
+    if isinstance(lab, dict) and (lab.get("cloud") or "azure") != id_cloud:
+        fail(f"labs/{lab_id}/lab.yaml says cloud {lab.get('cloud') or 'azure'}, but {lab_id} is an {'AWS' if aws else 'Azure'} lab's id")
     if not isinstance(lab, dict):
         lab = None
 elif action == "destroy":
@@ -135,8 +163,23 @@ def text(key, pattern, default="", required=False, label=None):
 
 run_id = text("run_id", SAFE, "manual", label="a plain run id")
 session_id = text("session_id", SAFE, run_id, label="a plain session id")
-region = text("region", REGION, "uksouth", required=needs_tf, label="an Azure region name")
-secondary = text("secondary_region", REGION, "", label="an Azure region name")
+if aws:
+    # Sessions run in London only; Ireland only as the secondary region (AWS labs spec §3).
+    region = payload.get("region")
+    if region in (None, ""):
+        region = "eu-west-2"
+    elif region != "eu-west-2":
+        fail("region must be eu-west-2 (London) for an AWS lab")
+        region = "eu-west-2"
+    secondary = payload.get("secondary_region")
+    if secondary in (None, ""):
+        secondary = ""
+    elif secondary != "eu-west-1":
+        fail("secondary_region must be eu-west-1 or empty")
+        secondary = ""
+else:
+    region = text("region", REGION, "uksouth", required=needs_tf, label="an Azure region name")
+    secondary = text("secondary_region", REGION, "", label="an Azure region name")
 
 slot = payload.get("slot_cidr")
 if slot in (None, ""):
@@ -151,7 +194,21 @@ else:
     if net is None or net.prefixlen != 18 or not net.subnet_of(POOL) or str(net) != slot:
         fail("slot_cidr must be one of the 32 /18 slots in 10.64.0.0/13")
 
-prefix = text("name_prefix", re.compile(rf"^l{number}[a-z0-9]{{5}}$"), f"l{number}00000", required=needs_tf, label=f"l{number} and 5 lowercase letters or digits")
+letter = "a" if aws else "l"
+prefix = text("name_prefix", re.compile(rf"^{letter}{number}[a-z0-9]{{5}}$"), f"{letter}{number}00000", required=needs_tf, label=f"{letter}{number} and 5 lowercase letters or digits")
+
+# The VPN server's VPC (ruling A31): lab security groups admit it, and Peer routes it.
+gateway = "10.50.0.0/16"
+if aws and payload.get("gateway_cidr") not in (None, ""):
+    g = payload.get("gateway_cidr")
+    try:
+        gnet = ipaddress.ip_network(g) if isinstance(g, str) else None
+    except ValueError:
+        gnet = None
+    if gnet is None or gnet.version != 4 or gnet.overlaps(POOL) or str(gnet) != g:
+        fail("gateway_cidr must be an IPv4 range outside 10.64.0.0/13")
+    else:
+        gateway = g
 
 peering = payload.get("peering", False)
 if not isinstance(peering, bool):
@@ -214,7 +271,22 @@ out.update({
     "TF_VAR_address_space": slot,
     "TF_VAR_peered": "true" if peering else "false",
     "TF_VAR_tags": json.dumps({"project": "wg-admin-labs", "lab": lab_id, "session": session_id}, separators=(",", ":")),
+    "LAB_CLOUD": id_cloud,
 })
+if aws:
+    # No resource group, no Entra, no private DNS links (AWS labs spec §3); the
+    # tags every resource carries through default_tags, and the regions the
+    # ready check, the safety net and Verify clean look in.
+    del out["TF_VAR_resource_group_name"]
+    out.update({
+        "LAB_ENTRA": "false",
+        "LAB_DNS_LINK": "false",
+        "LAB_REGIONS": " ".join(["eu-west-2", "eu-west-1"] + (["us-east-1", "us-west-2"] if lab_id in AWS_GLOBAL_LABS else [])),
+        "LAB_DELETE_POLL_SECONDS": "30",
+        "LAB_UNBLOCK_VAULT_WAIT_SECONDS": "300",
+        "TF_VAR_gateway_cidr": gateway,
+        "TF_VAR_tags": json.dumps({"cloudlabs-lab": lab_id, "cloudlabs-session": session_id, "project": "cloudlabs"}, separators=(",", ":")),
+    })
 
 for w in warnings:
     print(f"::warning::Parse payload: {w}", file=sys.stderr)

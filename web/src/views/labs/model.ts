@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react";
 import type { LabCard, LabPeering, LabSession, LabSessionState } from "@shared/api";
-import { LAB_EXAMS, type LabExam, type LabLevel, type LabType } from "@shared/labs";
+import { EXAM_CLOUD, LAB_EXAMS, type LabCloud, type LabExam, type LabLevel, type LabType } from "@shared/labs";
 import { useLabs } from "@/api/queries";
 import type { LabsLayout } from "./layout";
 import type { LabReadiness, LabSessionStatus } from "./status";
@@ -99,6 +99,12 @@ export const LEVEL_WORD: Record<LabLevel, string> = { foundation: "Foundation", 
 export const TYPE_WORD: Record<LabType, string> = { explore: "Explore", "break-fix": "Break-fix" };
 export const EXAMS: readonly LabExam[] = LAB_EXAMS;
 
+/** The exams to offer: all six, or the chosen cloud's three (LAB_EXAMS order). */
+export const examsFor = (cloud: LabCloud | null): readonly LabExam[] => (cloud ? LAB_EXAMS.filter((e) => EXAM_CLOUD[e] === cloud) : LAB_EXAMS);
+
+/** "Lab 7" for Azure, "AWS 3" for AWS (AWS labs spec A22): how a lab is numbered wherever its number is shown. */
+export const labNumberWord = (c: Pick<LabCard, "number" | "cloud">): string => (c.cloud === "aws" ? `AWS ${c.number}` : `Lab ${c.number}`);
+
 export type Tone = "green" | "amber" | "red" | "blue" | "grey";
 
 /** A session's state as a word and a colour: "Deploying 3/16", "Running", "Tearing down", "Failed". */
@@ -131,11 +137,12 @@ export function peeringWord(p: LabPeering): { label: string; tone: Tone } {
 }
 
 // ── Catalogue filters (labs redesign spec §8.3; kept in the address:
-//    ?q=&exam=&area=&level=&type=&notrun=1&ready=1, every write a replace) ──
+//    ?q=&cloud=&exam=&area=&level=&type=&notrun=1&ready=1, every write a replace) ──
 
 export interface Filters {
   /** Search text as typed (applyFilters trims it). */
   q: string;
+  cloud: LabCloud | null;
   exam: LabExam | null;
   area: string | null;
   /** Single (ruling 12); an old ?level=a,b keeps its first valid value. */
@@ -151,10 +158,15 @@ const TYPES: LabType[] = ["explore", "break-fix"];
 const list = <T extends string>(raw: string | null, allowed: T[]): T[] => (raw ?? "").split(",").filter((v): v is T => (allowed as string[]).includes(v));
 
 export function readFilters(p: URLSearchParams): Filters {
-  const exam = p.get("exam");
+  const c = p.get("cloud");
+  const cloud: LabCloud | null = c === "azure" || c === "aws" ? c : null;
+  const e = p.get("exam");
+  // An exam of the other cloud cannot be combined with the chosen cloud: it is dropped.
+  const exam = (EXAMS as readonly string[]).includes(e ?? "") && (!cloud || EXAM_CLOUD[e as LabExam] === cloud) ? (e as LabExam) : null;
   return {
     q: p.get("q") ?? "",
-    exam: (EXAMS as readonly string[]).includes(exam ?? "") ? (exam as LabExam) : null,
+    cloud,
+    exam,
     area: p.get("area") || null,
     level: list(p.get("level"), LEVELS)[0] ?? null,
     type: list(p.get("type"), TYPES),
@@ -168,6 +180,7 @@ export function writeFilters(p: URLSearchParams, f: Filters): URLSearchParams {
   const next = new URLSearchParams(p);
   const set = (k: string, v: string | null) => (v ? next.set(k, v) : next.delete(k));
   set("q", f.q.trim() || null);
+  set("cloud", f.cloud);
   set("exam", f.exam);
   set("area", f.area);
   set("level", f.level);
@@ -177,12 +190,12 @@ export function writeFilters(p: URLSearchParams, f: Filters): URLSearchParams {
   return next;
 }
 
-export const NO_FILTERS: Filters = { q: "", exam: null, area: null, level: null, type: [], notRun: false, ready: false };
-export const anyFilter = (f: Filters): boolean => !!(f.q.trim() || f.exam || f.area || f.level || f.type.length || f.notRun || f.ready);
+export const NO_FILTERS: Filters = { q: "", cloud: null, exam: null, area: null, level: null, type: [], notRun: false, ready: false };
+export const anyFilter = (f: Filters): boolean => !!(f.q.trim() || f.cloud || f.exam || f.area || f.level || f.type.length || f.notRun || f.ready);
 
-/** What a card is found by (spec §8.3): title, id, "lab N", summary, objective and topic words, lower case. */
+/** What a card is found by (spec §8.3): title, id, "lab N" / "AWS N", summary, objective and topic words, lower case. */
 export function searchText(card: LabCard): string {
-  return [card.title, card.id, `lab ${card.number}`, card.summary, card.learning?.objective ?? "", ...labTopics(card.resources)].join("\n").toLowerCase();
+  return [card.title, card.id, labNumberWord(card), card.summary, card.learning?.objective ?? "", ...labTopics(card.resources, card.cloud)].join("\n").toLowerCase();
 }
 
 /** The parts of a LabView (contract.ts) the filters read. */
@@ -194,10 +207,10 @@ export interface FilterableView {
   search: string;
 }
 
-/** Does the search text match? "lab 6" (or "lab6") is that lab only, never lab 60; anything else is a substring. */
+/** Does the search text match? "lab 6" (or "lab6") is that Azure lab only, "aws 6" that AWS lab only, never lab 60; anything else is a substring. */
 function matches(v: FilterableView, q: string): boolean {
-  const n = /^lab\s*(\d{1,2})$/.exec(q);
-  if (n) return v.card.number === Number(n[1]);
+  const n = /^(lab|aws)\s*(\d{1,2})$/.exec(q);
+  if (n) return v.card.number === Number(n[2]) && (v.card.cloud === "aws") === (n[1] === "aws");
   return v.search.includes(q);
 }
 
@@ -207,6 +220,7 @@ export function applyFilters<V extends FilterableView>(views: readonly V[], f: F
   return views.filter(
     (v) =>
       // A lab belongs to every exam in its exams (ruling 39), not only its primary one.
+      (!f.cloud || v.card.cloud === f.cloud) &&
       (!f.exam || examsOf(v.card).includes(f.exam)) &&
       (!f.area || v.card.skillAreas.includes(f.area)) &&
       (!f.level || v.card.level === f.level) &&
@@ -225,6 +239,7 @@ export function revealFilters<V extends FilterableView>(f: Filters, view: V): { 
   const out: Filters = { ...f, type: [...f.type] };
   const hides = (one: Partial<Filters>) => applyFilters([view], { ...NO_FILTERS, ...one }).length === 0;
   if (f.q.trim() && hides({ q: f.q })) out.q = "";
+  if (f.cloud && hides({ cloud: f.cloud })) out.cloud = null;
   if (f.exam && hides({ exam: f.exam })) out.exam = null;
   if (f.area && hides({ area: f.area })) out.area = null;
   if (f.level && hides({ level: f.level })) out.level = null;

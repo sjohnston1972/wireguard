@@ -9,6 +9,18 @@ import { describe, expect, it } from "vitest";
 import {
   ALLOWED_ROLES,
   AVNM_LABS,
+  AWS_BOUNDARY,
+  AWS_CONFIG_LABS,
+  AWS_GLOBAL_LABS,
+  AWS_IAM_PATH,
+  AWS_IAM_USER_LABS,
+  AWS_INSTANCE_TYPES,
+  AWS_LAB_ID_MAX,
+  AWS_LAB_REGIONS,
+  AWS_LABS_ROLE,
+  AWS_MEDIUM_LABS,
+  AWS_USAGE_PREFIX,
+  EXAM_CLOUD,
   FLOW_LOG_LABS,
   GATEWAY_RANGES,
   GOVERNANCE_LABS,
@@ -18,8 +30,14 @@ import {
   LAB_POOL,
   LAB_SLOTS,
   LAB_STEPS,
+  LAB_TAG,
   LAB_TF_VARS,
+  LAB_TF_VARS_AWS,
+  awsConsoleUrl,
+  awsPriceKey,
+  awsUsagePrefix,
   cidrOverlaps,
+  cloudOfId,
   costMarker,
   estimateGbpH,
   examOfId,
@@ -30,15 +48,19 @@ import {
   labRg,
   labsSettingsFrom,
   ownsName,
+  sessionEstimateGbp,
   sessionTimeoutMin,
   slotCidr,
+  wholeHoursGbpH,
   type LabDef,
 } from "../../shared/labs";
+import { sha256Hex } from "../../shared/sha256";
 import * as scripts from "../../scripts/lib/labs.mjs";
 
 const def = (over: Partial<LabDef> = {}): LabDef => ({
   id: "az104-06-blob-security",
   number: 6,
+  cloud: "azure",
   version: 1,
   title: "Blob security",
   summary: "A storage account.",
@@ -50,7 +72,7 @@ const def = (over: Partial<LabDef> = {}): LabDef => ({
   prerequisites: [],
   cost: { items: [{ name: "Private endpoint", gbp_h: 0.0076 }], pricey: null },
   timing: { deploy_min: 4, destroy_min: 3, session_h: 2, max_h: 6 },
-  capacity: { vm_sizes: [] },
+  capacity: { vm_sizes: [], instance_types: [] },
   regions: { secondary: null },
   connectivity: { peering: "optional", dns_link: true, subnets_used: 1 },
   identity: { creates: [], roles: [], governance: false },
@@ -127,13 +149,13 @@ describe("lab names", () => {
   });
 
   it("LAB_ID_RE takes the spec's ids and refuses the rest", () => {
-    for (const ok of ["az104-06-blob-security", "az305-34-forced-tunnel-fix", "az104-01-identity", "az700-31-ip-nat-outbound"]) expect(LAB_ID_RE.test(ok), ok).toBe(true);
-    for (const bad of ["az900-01-x", "az701-31-x", "az104-6-x", "az104-06-", "AZ104-06-x", "az104-06-x_y", "az104-06-x y", " az104-06-x"]) expect(LAB_ID_RE.test(bad), bad).toBe(false);
+    for (const ok of ["az104-06-blob-security", "az305-34-forced-tunnel-fix", "az104-01-identity", "az700-31-ip-nat-outbound", "soa-03-auto-scaling", "saa-11-three-tier", "ans-31-client-vpn"]) expect(LAB_ID_RE.test(ok), ok).toBe(true);
+    for (const bad of ["soc-01-x", "az900-01-x", "az701-31-x", "az104-6-x", "az104-06-", "AZ104-06-x", "az104-06-x_y", "az104-06-x y", " az104-06-x"]) expect(LAB_ID_RE.test(bad), bad).toBe(false);
     expect(LAB_ID_MAX).toBe(40);
   });
 
   it("AZ-700 is the third exam, and a lab's primary exam is its id's prefix (ruling 38)", () => {
-    expect([...LAB_EXAMS]).toEqual(["AZ-104", "AZ-305", "AZ-700"]);
+    expect([...LAB_EXAMS]).toEqual(["AZ-104", "AZ-305", "AZ-700", "SOA-C03", "SAA-C03", "ANS-C01"]);
     expect(examOfId("az700-31-ip-nat-outbound")).toBe("AZ-700");
     expect(examOfId("az305-20-landing-zone")).toBe("AZ-305");
     expect(examOfId("az104-06-blob-security")).toBe("AZ-104");
@@ -212,6 +234,26 @@ describe("contract lists", () => {
     expect(LAB_STEPS.map((s) => s.n)).toEqual(Array.from({ length: 16 }, (_, i) => i + 1));
   });
 
+  it("sessionEstimateGbp counts whole-hours items per started hour (A20)", () => {
+    expect(sessionEstimateGbp(0.05, 0.02, 30 * 60_000)).toBe(0.035); // 0.05 × 0.5 + 0.02 × 0.5
+    expect(sessionEstimateGbp(0.05, 0.02, 2 * 3_600_000)).toBe(0.1);
+    expect(sessionEstimateGbp(0.05, 0, 0)).toBe(0);
+    expect(wholeHoursGbpH([{ name: "ALB", gbp_h: 0.0199, whole_hours: true }, { name: "EC2", gbp_h: 0.0071, qty: 2 }, { name: "IP", gbp_h: 0.0038, qty: 2, whole_hours: true }])).toBe(0.0275);
+  });
+  it("sha256Hex matches node's, and awsPriceKey is stable and order-free", async () => {
+    const { createHash } = await import("node:crypto");
+    for (const s of ["", "abc", "cloudlabs £ ✓", "x".repeat(1000)]) expect(sha256Hex(s)).toBe(createHash("sha256").update(s, "utf8").digest("hex"));
+    const a = awsPriceKey({ service: "AmazonEC2", unit: "Hrs", filters: { instanceType: "t4g.micro", operatingSystem: "Linux" } });
+    expect(a).toMatch(/^lab:[0-9a-f]{16}$/);
+    expect(awsPriceKey({ service: "AmazonEC2", unit: "Hrs", filters: { operatingSystem: "Linux", instanceType: "t4g.micro" } })).toBe(a);
+  });
+  it("AWS helpers: usage prefixes, the console link and labNeeds", () => {
+    expect(awsUsagePrefix("eu-west-2")).toBe("EUW2");
+    expect(awsUsagePrefix("eu-west-1")).toBe("EU");
+    expect(() => awsUsagePrefix("ap-south-1")).toThrow(RangeError);
+    expect(awsConsoleUrl("soa-01-cloudwatch", "eu-west-2")).toBe("https://eu-west-2.console.aws.amazon.com/resource-groups/group/lab-soa-01-cloudwatch?region=eu-west-2");
+    expect(labNeeds({ id: "soa-02-systems-manager", cloud: "aws", identity: { creates: ["role"], roles: [], governance: false } })).toEqual({ role: false, graph: false });
+  });
   it("LAB_TF_VARS are the §3.4 variables", () => {
     expect([...LAB_TF_VARS]).toEqual(["lab_id", "name_prefix", "resource_group_name", "region", "secondary_region", "address_space", "peered", "gateway_vnet_id", "admin_password", "ssh_public_key", "upn_domain", "tags"]);
   });
@@ -228,6 +270,26 @@ describe("contract lists", () => {
     expect(scripts.LAB_ID_RE.flags).toBe(LAB_ID_RE.flags);
     expect(scripts.LAB_ID_MAX).toBe(LAB_ID_MAX);
     expect([...scripts.LAB_EXAMS]).toEqual([...LAB_EXAMS]);
+    expect(scripts.EXAM_CLOUD).toEqual(EXAM_CLOUD);
+    expect(scripts.AWS_LAB_ID_MAX).toBe(AWS_LAB_ID_MAX);
+    expect([...scripts.LAB_TF_VARS_AWS]).toEqual([...LAB_TF_VARS_AWS]);
+    expect([...scripts.AWS_LAB_REGIONS]).toEqual([...AWS_LAB_REGIONS]);
+    expect(scripts.LAB_TAG).toBe(LAB_TAG);
+    expect(scripts.AWS_IAM_PATH).toBe(AWS_IAM_PATH);
+    expect(scripts.AWS_LABS_ROLE).toBe(AWS_LABS_ROLE);
+    expect(scripts.AWS_BOUNDARY).toBe(AWS_BOUNDARY);
+    expect([...scripts.AWS_IAM_USER_LABS]).toEqual([...AWS_IAM_USER_LABS]);
+    expect([...scripts.AWS_CONFIG_LABS]).toEqual([...AWS_CONFIG_LABS]);
+    expect([...scripts.AWS_GLOBAL_LABS]).toEqual([...AWS_GLOBAL_LABS]);
+    expect([...scripts.AWS_INSTANCE_TYPES]).toEqual([...AWS_INSTANCE_TYPES]);
+    expect([...scripts.AWS_MEDIUM_LABS]).toEqual([...AWS_MEDIUM_LABS]);
+    expect(scripts.AWS_USAGE_PREFIX).toEqual(AWS_USAGE_PREFIX);
+    for (const r of Object.keys(AWS_USAGE_PREFIX)) expect(scripts.awsUsagePrefix(r)).toBe(awsUsagePrefix(r));
+    expect(() => scripts.awsUsagePrefix("ap-south-1")).toThrow(RangeError);
+    for (const id of ["soa-01-x", "saa-11-x", "ans-20-x", "az305-20-x"]) {
+      expect(scripts.examOfId(id)).toBe(examOfId(id));
+      expect(scripts.cloudOfId(id)).toBe(cloudOfId(id));
+    }
     for (const id of ["az104-01-identity", "az305-20-landing-zone", "az700-44-flow-logs-bastion"]) expect(scripts.examOfId(id)).toBe(examOfId(id));
     expect(scripts.LAB_POOL).toBe(LAB_POOL);
     expect(scripts.LAB_SLOTS).toBe(LAB_SLOTS);

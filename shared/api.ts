@@ -19,7 +19,7 @@ import type { RotationStatus } from "../worker/src/keyrotation";
 import type { TopologyGraph } from "./topology/model";
 import type { BackupStatus, ExportTable } from "../worker/src/backup";
 import type { PageId } from "./widgets";
-import type { LabCostItem, LabDef, LabExam, LabLevel, LabType, PeeringMode, ReadmeBlock, LAB_ACTIONS, LAB_END_REASONS, LAB_PEERINGS, LAB_SESSION_STATES, LAB_WARNING_KINDS } from "./labs";
+import type { LabCloud, LabCostItem, LabDef, LabExam, LabLevel, LabType, PeeringMode, ReadmeBlock, LAB_ACTIONS, LAB_END_REASONS, LAB_PEERINGS, LAB_SESSION_STATES, LAB_WARNING_KINDS } from "./labs";
 
 /** Every refusal or failure. `field` names the input at fault, for a form. */
 export interface ApiError {
@@ -881,6 +881,8 @@ export interface LabReleaseTest {
 export interface LabCard {
   id: string;
   number: number;
+  /** Which cloud the lab runs in (LabDef.cloud). */
+  cloud: LabCloud;
   version: number;
   title: string;
   summary: string;
@@ -923,7 +925,7 @@ export interface LabCard {
 }
 
 /** Why a lab cannot be deployed now (labs redesign spec §6.1). An app that meets a kind it does not know treats it as unavailable. */
-export type LabBlockerKind = "github" | "role" | "graph" | "slots" | "max_running" | "leftovers" | "budget";
+export type LabBlockerKind = "github" | "role" | "graph" | "slots" | "max_running" | "leftovers" | "budget" | "aws_setup";
 export interface LabBlocker {
   kind: LabBlockerKind;
   /** The sentence deployLab refuses with. */
@@ -947,6 +949,12 @@ export interface LabPermissions {
   users: boolean | null;
   /** Graph can read groups (/groups?$top=1). */
   groups: boolean | null;
+  /** AWS: iam:GetRole wg-admin-labs answered. */
+  awsRole: boolean | null;
+  /** AWS: iam:GetPolicy wg-admin-lab-boundary answered. */
+  awsBoundary: boolean | null;
+  /** AWS: cloudlabs-lab is an Active cost allocation tag (a warning only). */
+  awsCostTag: boolean | null;
   /** What failed, in plain words; null when all passed or never checked. */
   message: string | null;
 }
@@ -981,7 +989,7 @@ export interface LabsResponse {
 export interface LabCostLine extends LabCostItem {
   /** £/h for one, as used: the fresh retail price, else the authored gbp_h. */
   gbpH: number;
-  source: "azure" | "authored";
+  source: "azure" | "aws" | "authored";
   /** Seconds since the retail price was fetched; null for an authored price (none, or over 7 days old). */
   priceAge: number | null;
 }
@@ -989,6 +997,9 @@ export interface LabCostLine extends LabCostItem {
 /** GET /api/v1/labs/:id (404 not_found for an id not in the catalogue). */
 export interface LabDetail {
   card: LabCard;
+  cloud: LabCloud;
+  /** The lab's secondary region (LabDef.regions.secondary); null for none. */
+  secondaryRegion: string | null;
   readme: ReadmeBlock[];
   /** Each item priced, and the £/h total (= card.estGbpH). */
   cost: { items: LabCostLine[]; gbpH: number };
@@ -1007,6 +1018,10 @@ export interface LabDetail {
   resources: { name: string; type: string; group: string; state: string | null }[] | null;
   /** The portal page of rg-lab-<id> while a session is live, else null. */
   portalUrl: string | null;
+  /** AWS: the lab's Resource Groups console page per lab region while a session is live; null for Azure (portalUrl) or no session. */
+  consoleUrls: { region: string; label: string; url: string }[] | null;
+  /** Whether "Peer to gateway" can work now (same cloud as a live server, or no server yet) and, when not, the sentence. */
+  connect: { possible: boolean; note: string | null };
 }
 
 /** POST /api/v1/labs/:id/deploy. 422 confirm_required for an unconfirmed budget or capacity warning; 409 while the lab's lock is held. */
@@ -1072,7 +1087,7 @@ export interface LabSecretResponse {
  * graph with `message` as a banner. 404 not_found for an id outside the catalogue.
  */
 export interface LabTopologyResponse {
-  status: "ok" | "not_running" | "no_azure" | "failed" | "throttled";
+  status: "ok" | "not_running" | "no_azure" | "no_aws" | "failed" | "throttled";
   /** Plain words for the banner (null when ok). */
   message: string | null;
   live: TopologyGraph | null;

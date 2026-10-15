@@ -17,7 +17,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkPlan } from "../../infra/ci/lab-scope.mjs";
-import { labFolders } from "../lib/labs.mjs";
+import { checkPlanAws } from "../../infra/ci/lab-scope-aws.mjs";
+import { cloudOfId, labFolders } from "../lib/labs.mjs";
 import { LAB_PLANS, loadLabPlans } from "./fixtures/labs/plans/labs.mjs";
 import { COMPUTED, PLAN_DEFAULTS, realisticPlan, SCHEMA_FACTS, SENSITIVE_BLOCKS, UNSET_BLOCKS_UNKNOWN } from "./fixtures/labs/plans/realistic.mjs";
 import { ctx, linuxVm, rgResource, rgSecondaryResource, SECONDARY } from "./fixtures/labs/plans/common.mjs";
@@ -156,9 +157,14 @@ export function tfIterators(dir) {
   return out;
 }
 
-/** The attribute names a fixture description configures (a data source: only its arguments). */
+/**
+ * The attribute names a fixture description configures (a data source: only its references and constant arguments,
+ * args). An AWS resource's tags_all is planned but never configured (the provider computes it; preflight ruling C2).
+ */
 const configured = (def, data = false) =>
-  data ? new Set(Object.keys(def.refs ?? {})) : new Set([...Object.keys(def.values ?? {}), ...(def.unknown ?? []).map((p) => p.split(".")[0]), ...Object.keys(def.refs ?? {}).map((p) => p.split(".")[0])]);
+  data
+    ? new Set([...Object.keys(def.refs ?? {}), ...(def.args ?? [])])
+    : new Set([...Object.keys(def.values ?? {}).filter((k) => k !== "tags_all"), ...(def.unknown ?? []).map((p) => p.split(".")[0]), ...Object.keys(def.refs ?? {}).map((p) => p.split(".")[0])]);
 
 const labs = labFolders(LABS);
 
@@ -437,7 +443,8 @@ for (const id of labs) {
   });
 
   test(`${id}: lab-scope passes its realistic first-deploy plan`, () => {
-    const problems = checkPlan(LAB_PLANS[id].plan, id);
+    // AWS labs: lab-scope-aws.mjs, as lab-aws.yml runs it.
+    const problems = cloudOfId(id) === "aws" ? checkPlanAws(LAB_PLANS[id].plan, id) : checkPlan(LAB_PLANS[id].plan, id);
     assert.deepEqual(problems.map((p) => `${p.rule}: ${p.address} (${p.message})`), []);
   });
 

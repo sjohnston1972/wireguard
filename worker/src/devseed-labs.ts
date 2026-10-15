@@ -147,6 +147,9 @@ export const FAILED_PERMISSIONS = (now: number): LabPermissions => ({
   role: false,
   users: false,
   groups: false,
+  awsRole: null,
+  awsBoundary: null,
+  awsCostTag: null,
   message:
     "Role: the labs governance role is not assigned to the service principal. Microsoft Graph refused to read users and groups: grant User.ReadWrite.All, User.DeleteRestore.All and Group.ReadWrite.All with admin consent.",
 });
@@ -246,7 +249,7 @@ export async function seedLabs(env: Env, now: number, opts: { setup?: boolean } 
       .run();
   }
 
-  const permissions: LabPermissions = opts.setup ? FAILED_PERMISSIONS(now) : { checkedAt: iso(now - DAY), role: true, users: true, groups: true, message: null };
+  const permissions: LabPermissions = opts.setup ? FAILED_PERMISSIONS(now) : { checkedAt: iso(now - DAY), role: true, users: true, groups: true, awsRole: null, awsBoundary: null, awsCostTag: null, message: null };
   await env.STATUS.put(LABS_KV.permissions, JSON.stringify(permissions));
 
   await seedTopologyDev(env);

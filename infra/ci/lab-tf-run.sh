@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # infra/ci/lab-tf-run.sh
 #
-# Plain English: lab.yml's Apply and Destroy, which try again when Azure only
-# dropped the connection (release tests saw "HTTP response was nil; connection
-# may have been reset" now and then, with nothing wrong in the lab):
+# Plain English: lab.yml's and lab-aws.yml's Apply and Destroy, which try
+# again when the cloud only dropped the connection (Azure release tests saw
+# "HTTP response was nil; connection may have been reset" now and then, with
+# nothing wrong in the lab; AWS throttles and answers 5xx now and then):
 #
 #   bash infra/ci/lab-tf-run.sh apply     apply $RUNNER_TEMP/plan.out, at most 2 retries
 #   bash infra/ci/lab-tf-run.sh destroy   terraform destroy, at most 1 retry
@@ -54,7 +55,7 @@ while :; do
 
   if [ "$attempt" -ge "$retries" ]; then
     word=retries; [ "$retries" -eq 1 ] && word=retry
-    echo "::error::terraform $action still failing after $retries $word; Azure kept dropping the connection"
+    echo "::error::terraform $action still failing after $retries $word; the cloud kept dropping the connection"
     exit "$rc"
   fi
   if ! why="$(node "$here/lab-transient.mjs" "$log")"; then
@@ -67,11 +68,11 @@ while :; do
     need=$((wait_s + RESERVE_S + 60 * destroy_min))
     [ "$action" = apply ] && need=$((need + 60 * deploy_min))
     if [ $(($(date +%s) + need)) -gt "$LAB_JOB_DEADLINE" ]; then
-      echo "::warning::Azure dropped the connection ($why), but the job's deadline leaves no room to retry $action"
+      echo "::warning::the cloud dropped the connection ($why), but the job's deadline leaves no room to retry $action"
       exit "$rc"
     fi
   fi
-  echo "::warning::Azure dropped the connection; retrying $action ($attempt of $retries) in $wait_s s ($why)"
+  echo "::warning::the cloud dropped the connection; retrying $action ($attempt of $retries) in $wait_s s ($why)"
   sleep "$wait_s"
   if [ "$action" = apply ]; then
     # The saved plan may be half applied: plan again, and check the new plan's scope before applying it.

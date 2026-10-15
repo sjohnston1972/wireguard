@@ -68,14 +68,14 @@ export async function fetchAwsPrices(ctx: AwsFeedCtx, region: string, size: stri
   return { instance: await ask("instance"), gp3: await ask("gp3"), ip: await ask("ip") };
 }
 
-interface Product {
+export interface Product {
   attributes: Record<string, unknown>;
   /** The OnDemand USD prices in the wanted unit. */
   usd: number[];
 }
 
 /** Each PriceList entry parsed (it is a JSON string), with its OnDemand USD prices in `unit`; entries that aren't JSON are skipped. */
-function products(reply: unknown, unit: string): Product[] {
+export function products(reply: unknown, unit: string): Product[] {
   const list = (reply as { PriceList?: unknown })?.PriceList;
   if (!Array.isArray(list)) return [];
   const out: Product[] = [];

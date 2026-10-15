@@ -17,12 +17,12 @@ import "./LabResourceSummary.css";
 /** Tiles shown before "+N more: see the diagram" (spec §7). */
 export const RESOURCE_TILES = 6;
 
-export function LabResourceSummary({ resources, topics, diagramHref }: { resources: Record<string, number> | null; topics: readonly string[]; diagramHref: string }) {
+export function LabResourceSummary({ resources, topics, diagramHref, cloud }: { resources: Record<string, number> | null; topics: readonly string[]; diagramHref: string; cloud?: "azure" | "aws" }) {
   const h = useId();
   const lines = resourceSummary(resources);
   useEffect(() => {
-    if (lines.length > 0) void ensureSprite();
-  }, [lines.length]);
+    if (lines.length > 0) void ensureSprite(cloud === "aws" ? ["aws"] : ["azure"]);
+  }, [lines.length, cloud]);
   const shown = lines.slice(0, RESOURCE_TILES);
   const more = lines.length - shown.length;
   return (
@@ -36,7 +36,7 @@ export function LabResourceSummary({ resources, topics, diagramHref }: { resourc
         <ul className="lab-resources__grid">
           {shown.map((l) => (
             <li key={l.kind} className="lab-resources__tile">
-              <TopoIcon kind={l.kind as TopoKind} size={24} className="lab-resources__icon" />
+              <TopoIcon kind={l.kind as TopoKind} size={24} className="lab-resources__icon" cloud={cloud} />
               <span className="lab-resources__label">{l.label}</span>
               {l.count > 1 && <span className="lab-resources__count">×{l.count}</span>}
             </li>

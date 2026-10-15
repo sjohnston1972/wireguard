@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Back up and restore an EBS volume and S3 objects with AWS Backup, snapshots and versioning.
+learn:
+  - Run an on-demand backup and restore it to a new volume
+  - Recover an overwritten or deleted object with S3 versioning
+  - See every version and delete marker replicate to a second bucket
+learning_min: 50

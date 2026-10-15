@@ -3,18 +3,21 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { TopologyGraph } from "@shared/topology/model";
+import type { TopoKind, TopologyGraph } from "@shared/topology/model";
 import { absoluteBoxes, layoutTopology } from "../layout";
 import { stackGraph } from "../stacks";
 import { routeAll } from "../edges/router";
 import { edgeSpecs } from "../edges/specs";
 import { nodeIndex } from "../words";
+import { KINDS } from "@shared/topology/kinds";
+import { readdirSync } from "node:fs";
 import { architectureSvg, describeGraph, fitText, spriteSymbols, textWidth } from "./architectureSvg";
 
 // jsdom gives import.meta.url an http: scheme, so find the repo from the working directory (repo root or web/).
 const repo = [process.cwd(), join(process.cwd(), "..")].find((p) => existsSync(join(p, "shared/topology/planned")))!;
 const planned = (id: string): TopologyGraph => JSON.parse(readFileSync(join(repo, "shared/topology/planned", `${id}.json`), "utf8"));
 const sprite = readFileSync(join(repo, "web/src/views/labs/topology/icons/azure.svg"), "utf8");
+const awsSprite = readFileSync(join(repo, "web/src/views/labs/topology/icons/aws.svg"), "utf8");
 const LB = "az104-16-lb-appgw";
 
 describe("architectureSvg", () => {
@@ -92,6 +95,38 @@ describe("describeGraph", () => {
   });
 });
 
+/** Words that belong to Azure: an AWS lab's alt text and <desc> must never use them. */
+const AZURE_WORDS = /Log Analytics|resource group|virtual network|VNet|\bNSG\b|network security group|private endpoint|bastion|\bVMs?\b/i;
+
+describe("describeGraph for AWS labs", () => {
+  it("says the AWS nouns: the VPC, not a resource group and a virtual network", () => {
+    expect(describeGraph(planned("soa-01-cloudwatch"))).toBe("An EC2 Instance Connect Endpoint, an EC2 instance, three VPC endpoints, a CloudWatch log group and more, in one VPC with two subnets.");
+  });
+  it("writes 'an S3 bucket': a letter-and-digit acronym starting with S takes 'an'", () => {
+    const vpc = { id: "tf:vpc", key: "vpc", kind: "vnet" as const, label: "vpc", props: {}, cloud: "aws" as const };
+    const bucket = { id: "tf:b", key: "b", kind: "storage" as const, label: "b", props: {}, cloud: "aws" as const };
+    expect(describeGraph({ nodes: [vpc, bucket], edges: [] } as unknown as TopologyGraph)).toMatch(/^An S3 bucket/);
+  });
+  it("uses no Azure word for any AWS lab's description, nor for any kind an AWS rule draws", () => {
+    const aws = readdirSync(join(repo, "shared/topology/planned")).filter((f) => f.endsWith(".json")).map((f) => planned(f.slice(0, -5))).filter((g) => g.nodes.some((x) => x.cloud === "aws"));
+    expect(aws.length).toBeGreaterThan(0);
+    for (const g of aws) {
+      expect(describeGraph(g)).not.toMatch(AZURE_WORDS);
+      expect(architectureSvg(g, { sprite: sprite + awsSprite, title: "t" }).svg.match(/<desc[^>]*>(.*?)<\/desc>/s)![1]).not.toMatch(AZURE_WORDS);
+    }
+    // Every kind that has an AWS type, alone and in twos, as an asset of one VPC.
+    const kinds = (Object.keys(KINDS) as TopoKind[]).filter((k) => KINDS[k].awsTypes.length && !["resourceGroup", "vnet", "subnet"].includes(k));
+    for (const kind of kinds) {
+      const node = (n: number) => ({ id: `tf:${kind}${n}`, key: `${kind}${n}`, kind, label: `${kind}${n}`, props: {}, cloud: "aws" as const });
+      const vpc = { id: "tf:vpc", key: "vpc", kind: "vnet" as const, label: "vpc", props: {}, cloud: "aws" as const };
+      for (const nodes of [[node(1)], [node(1), node(2)]]) {
+        const text = describeGraph({ nodes: [vpc, ...nodes], edges: [] } as unknown as TopologyGraph);
+        expect(text, kind).not.toMatch(AZURE_WORDS);
+      }
+    }
+  });
+});
+
 describe("text fitting", () => {
   it("cuts a long name short with an ellipsis, and errs wide", () => {
     expect(fitText("vm-web1", 138, 12, { bold: true })).toBe("vm-web1");
@@ -99,6 +134,16 @@ describe("text fitting", () => {
     expect(cut.endsWith("…")).toBe(true);
     expect(textWidth(cut, 12, { bold: true })).toBeLessThanOrEqual(138);
     expect(textWidth("mmmm", 10)).toBeGreaterThan(textWidth("iiii", 10));
+  });
+  it("an AWS graph draws AWS icons from the second sprite, self-contained; an Azure one never needs it", () => {
+    const node = (id: string, kind: "resourceGroup" | "vnet" | "vm", parent?: string) => ({ id, key: `k/${id}`, kind, label: id, props: {}, cloud: "aws" as const, ...(parent ? { parent } : {}) });
+    const g: TopologyGraph = { schema: 1, labId: "soa-01-x", version: 1, source: "planned", at: null, nodes: [node("g", "resourceGroup"), node("v", "vnet", "g"), node("i", "vm", "v")], edges: [] };
+    const { svg } = architectureSvg(g, { sprite: sprite + awsSprite, title: "t" });
+    const used = [...new Set([...svg.matchAll(/ href="#([^"]+)"/g)].map((m) => m[1]!))].sort();
+    expect(used).toEqual(["aws-ec2-instance", "aws-resource-groups", "aws-vpc"]);
+    for (const id of used) expect(svg).toContain(`<symbol id="${id}"`);
+    expect(svg).not.toMatch(/<symbol id="az-/);
+    expect(architectureSvg(planned(LB), { sprite: sprite + awsSprite, title: "t" }).svg).not.toMatch(/<symbol id="aws-/);
   });
   it("finds the sprite's symbols by icon name", () => {
     const s = spriteSymbols(sprite);

@@ -118,20 +118,21 @@ async function opts(env: Env, budget = makeBudget(25)) {
 }
 
 const SERVER_FEEDS: AwsFeedId[] = ["aws.health", "aws.metrics", "aws.bootLog"];
-const ALWAYS_FEEDS: AwsFeedId[] = ["aws.activity", "aws.serviceHealth", "aws.capacity", "aws.prices", "aws.housekeeping"];
+const ALWAYS_FEEDS: AwsFeedId[] = ["aws.activity", "aws.serviceHealth", "aws.capacity", "aws.prices", "aws.labPrices", "aws.housekeeping"];
 
 describe("the AWS feed contract", () => {
   it("lists the feeds in priority order with the spec's cadence, when and calls", () => {
     expect(AWS_FEED_MODULES.map((f) => f.id)).toEqual([...AWS_FEED_IDS]);
-    expect(AWS_FEED_IDS).toEqual(["aws.health", "aws.metrics", "aws.activity", "aws.serviceHealth", "aws.capacity", "aws.prices", "aws.bootLog", "aws.housekeeping"]);
+    expect(AWS_FEED_IDS).toEqual(["aws.health", "aws.metrics", "aws.activity", "aws.serviceHealth", "aws.capacity", "aws.prices", "aws.labPrices", "aws.bootLog", "aws.housekeeping"]);
     const meta = Object.fromEntries(AWS_FEED_MODULES.map((f) => [f.id, [f.when, f.cadenceMin, f.calls]]));
     expect(meta).toEqual({
       "aws.health": ["server", 5, 2],
       "aws.metrics": ["running", 15, 2],
       "aws.activity": ["always", 5, 4],
       "aws.serviceHealth": ["always", 15, 2],
-      "aws.capacity": ["always", 1440, 4],
+      "aws.capacity": ["always", 1440, 8],
       "aws.prices": ["always", 1440, 3],
+      "aws.labPrices": ["always", 60, 5],
       "aws.bootLog": ["server", null, 2],
       "aws.housekeeping": ["always", 1440, 0],
     });

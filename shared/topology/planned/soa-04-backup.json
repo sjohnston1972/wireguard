@@ -1,0 +1,323 @@
+{
+ "schema": 1,
+ "labId": "soa-04-backup",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_backup_vault.lab",
+   "key": "backup:backup-vault/lab-vault",
+   "kind": "recoveryVault",
+   "label": "lab-vault",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "backup:backup-vault",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_backup_plan.daily",
+     "label": "lab-daily",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_backup_selection.data",
+     "label": "lab-soa-04-backup-data",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.lab",
+   "key": "ec2:instance-connect-endpoint/eice-lab",
+   "kind": "bastion",
+   "label": "eice-lab",
+   "props": {},
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.backup",
+   "key": "iam:role/lab-soa-04-backup-backup",
+   "kind": "managedIdentity",
+   "label": "lab-soa-04-backup-backup",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_role_policy_attachment.backup_backup",
+     "label": "backup_backup",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.backup_restores",
+     "label": "backup_restores",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.replication",
+   "key": "iam:role/lab-soa-04-backup-replication",
+   "kind": "managedIdentity",
+   "label": "lab-soa-04-backup-replication",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.replication",
+     "label": "lab-soa-04-backup-replication",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.replication",
+     "label": "replication",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.data",
+   "key": "ec2:instance/vm-data",
+   "kind": "vm",
+   "label": "vm-data",
+   "props": {
+    "size": "t4g.nano"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_ebs_snapshot.data",
+     "label": "snap-data",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ebs_volume.data",
+     "label": "data",
+     "armType": "ec2:volume"
+    },
+    {
+     "id": "tf:aws_volume_attachment.data",
+     "label": "data",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-soa-04-backup",
+   "kind": "resourceGroup",
+   "label": "lab-soa-04-backup · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.private",
+   "key": "ec2:route-table/rt-private",
+   "kind": "routeTable",
+   "label": "rt-private",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route_table_association.private[0]",
+     "label": "private[0]",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[1]",
+     "label": "private[1]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_s3_bucket.dst",
+   "key": "s3:bucket/dst",
+   "kind": "storage",
+   "label": "dst",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "s3:bucket",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_s3_bucket_public_access_block.dst",
+     "label": "dst",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_s3_bucket_versioning.dst",
+     "label": "dst",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_s3_bucket.src",
+   "key": "s3:bucket/src",
+   "kind": "storage",
+   "label": "src",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "s3:bucket",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_s3_bucket_lifecycle_configuration.src",
+     "label": "src",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_s3_bucket_public_access_block.src",
+     "label": "src",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_s3_bucket_replication_configuration.src",
+     "label": "src",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_s3_bucket_versioning.src",
+     "label": "src",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_s3_object.hello",
+     "label": "hello",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.eice",
+   "key": "ec2:security-group/sg-eice",
+   "kind": "nsg",
+   "label": "sg-eice",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.eice_ssh",
+     "label": "eice_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.vms",
+   "key": "ec2:security-group/sg-vms",
+   "kind": "nsg",
+   "label": "sg-vms",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.vms_all",
+     "label": "vms_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_from_gateway",
+     "label": "vms_from_gateway",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_ssh_eice",
+     "label": "vms_ssh_eice",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[0]",
+   "key": "ec2:subnet/snet-private-1",
+   "kind": "subnet",
+   "label": "snet-private-1",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[1]",
+   "key": "ec2:subnet/snet-private-2",
+   "kind": "subnet",
+   "label": "snet-private-2",
+   "props": {
+    "prefix": "10.71.193.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.lab",
+   "key": "ec2:vpc/vpc-lab",
+   "kind": "vnet",
+   "label": "vpc-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.s3",
+   "key": "ec2:vpc-endpoint/vpce-s3",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:aws_s3_bucket.src>tf:aws_s3_bucket.dst:replicates",
+   "from": "tf:aws_s3_bucket.src",
+   "to": "tf:aws_s3_bucket.dst",
+   "kind": "dependency",
+   "label": "replicates",
+   "via": "tf:aws_s3_bucket_replication_configuration.src"
+  }
+ ]
+}

@@ -29,7 +29,7 @@ export function GroupCard({ node, badge, ghost = false, compact = false, dim = f
   return (
     <div className={cls} data-testid="topo-group">
       <div className="topo-group__head">
-        {node.kind !== "lane" && <TopoIcon kind={node.kind} size={16} className="topo-group__icon" />}
+        {node.kind !== "lane" && <TopoIcon kind={node.kind} size={16} className="topo-group__icon" cloud={node.cloud} />}
         <span className="topo-group__name" title={node.label}>
           {node.label}
         </span>

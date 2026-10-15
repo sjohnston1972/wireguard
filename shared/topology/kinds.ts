@@ -29,6 +29,10 @@ export interface KindDef {
   tfTypes: string[];
   /** PROP_NAMES the card shows, most important first. */
   cardProps: string[];
+  /** AWS: the Resource Groups Tagging API types ("ec2:vpc") this kind covers; AWS Terraform types are in tfTypes. */
+  awsTypes: string[];
+  /** AWS: symbol id in the AWS sprite (icons/aws.svg), without its "aws-" prefix; null for a kind AWS labs never draw. */
+  awsIcon: string | null;
   /** Packing order inside a container: lower first. */
   order: number;
 }
@@ -43,6 +47,8 @@ const def = (word: string, plural: string, icon: string, placement: KindPlacemen
   tfTypes,
   cardProps,
   order,
+  awsTypes: [],
+  awsIcon: null,
 });
 
 // Order bands: edge devices 10-19, compute 20-29, data 30-39, everything else 40-79, generic 99. Groups 0-5.
@@ -129,9 +135,76 @@ export const KINDS: Record<TopoKind, KindDef> = {
   ),
   role: def("Role definition", "Role definitions", "role", "tenant", 63, ["Microsoft.Authorization/roleDefinitions"], ["azurerm_role_definition"], [], false),
   entraPrincipal: def("Entra principal", "Entra principals", "users", "tenant", 64, [], ["azuread_user", "azuread_group"], [], false),
+  // ── AWS-only kinds (AWS labs spec §10); the Azure icon is the sprite fallback ──
+  transitGateway: def("Transit gateway", "Transit gateways", "virtual-wans", "rg", 17, [], [], ["status"]),
+  internetGateway: def("Internet gateway", "Internet gateways", "public-ip-addresses", "vnet", 18, [], [], []),
+  clientVpn: def("Client VPN", "Client VPNs", "virtual-network-gateways", "subnet", 19, [], [], ["status"]),
+  lambda: def("Lambda function", "Lambda functions", "generic", "rg", 28, [], [], ["size"]),
+  dynamodb: def("DynamoDB table", "DynamoDB tables", "azure-cosmos-db", "rg", 36, [], [], ["status"]),
+  cache: def("Cache", "Caches", "generic", "rg", 37, [], [], ["size"]),
+  messaging: def("Messaging", "Messaging", "service-bus", "rg", 68, [], [], ["counts"]),
+  stream: def("Stream", "Streams", "generic", "rg", 69, [], [], ["status"]),
+  lattice: def("VPC Lattice", "VPC Lattice", "private-link-services", "rg", 71, [], [], []),
   gateway: def("WireGuard gateway", "WireGuard gateways", "virtual-networks", "root", 70, [], [], []),
   generic: def("Resource", "Resources", "generic", "rg", 99, [], [], []),
 };
+
+/**
+ * AWS (AWS labs spec §10): per kind, the sprite symbol, the tagging-API types and the Terraform types. AWS types map onto
+ * the Azure kinds where the meaning matches; the nine AWS-only kinds are above. Applied onto KINDS so the registry stays
+ * one table per kind.
+ */
+const AWS: Partial<Record<TopoKind, { icon: string; types: string[]; tf: string[] }>> = {
+  resourceGroup: { icon: "resource-groups", types: ["resource-groups:group"], tf: ["aws_resourcegroups_group"] },
+  vnet: { icon: "vpc", types: ["ec2:vpc"], tf: ["aws_vpc"] },
+  subnet: { icon: "subnet", types: ["ec2:subnet"], tf: ["aws_subnet"] },
+  vm: { icon: "ec2-instance", types: ["ec2:instance"], tf: ["aws_instance"] },
+  vmss: { icon: "auto-scaling", types: ["autoscaling:autoScalingGroup"], tf: ["aws_autoscaling_group"] },
+  loadBalancer: { icon: "load-balancer", types: ["elasticloadbalancing:loadbalancer"], tf: ["aws_lb", "aws_alb"] },
+  nsg: { icon: "security-group", types: ["ec2:security-group"], tf: ["aws_security_group"] },
+  routeTable: { icon: "route-table", types: ["ec2:route-table"], tf: ["aws_route_table"] },
+  internetGateway: { icon: "internet-gateway", types: ["ec2:internet-gateway"], tf: ["aws_internet_gateway"] },
+  natGateway: { icon: "nat-gateway", types: ["ec2:natgateway"], tf: ["aws_nat_gateway"] },
+  publicIp: { icon: "elastic-ip", types: ["ec2:elastic-ip"], tf: ["aws_eip"] },
+  privateEndpoint: { icon: "vpc-endpoint", types: ["ec2:vpc-endpoint"], tf: ["aws_vpc_endpoint"] },
+  privateLinkService: { icon: "privatelink", types: ["ec2:vpc-endpoint-service"], tf: ["aws_vpc_endpoint_service"] },
+  bastion: { icon: "instance-connect-endpoint", types: ["ec2:instance-connect-endpoint"], tf: ["aws_ec2_instance_connect_endpoint"] },
+  localNetworkGateway: { icon: "customer-gateway", types: ["ec2:customer-gateway"], tf: ["aws_customer_gateway"] },
+  vpnGateway: { icon: "vpn-gateway", types: ["ec2:vpn-gateway", "ec2:vpn-connection"], tf: ["aws_vpn_gateway", "aws_vpn_connection"] },
+  firewall: { icon: "network-firewall", types: ["network-firewall:firewall"], tf: ["aws_networkfirewall_firewall"] },
+  firewallPolicy: { icon: "network-firewall", types: ["network-firewall:firewall-policy"], tf: ["aws_networkfirewall_firewall_policy"] },
+  wafPolicy: { icon: "waf", types: ["wafv2:regional/webacl", "wafv2:global/webacl"], tf: ["aws_wafv2_web_acl"] },
+  dnsZone: { icon: "route-53", types: ["route53:hostedzone"], tf: ["aws_route53_zone"] },
+  dnsResolver: { icon: "route-53", types: ["route53resolver:resolver-endpoint"], tf: ["aws_route53_resolver_endpoint"] },
+  dnsRuleset: { icon: "route-53", types: ["route53resolver:resolver-rule"], tf: ["aws_route53_resolver_rule"] },
+  frontDoor: { icon: "cloudfront", types: ["cloudfront:distribution"], tf: ["aws_cloudfront_distribution"] },
+  trafficManager: { icon: "global-accelerator", types: ["globalaccelerator:accelerator"], tf: ["aws_globalaccelerator_accelerator"] },
+  aks: { icon: "eks", types: ["eks:cluster"], tf: ["aws_eks_cluster"] },
+  containerApp: { icon: "ecs", types: ["ecs:service"], tf: ["aws_ecs_service"] },
+  storage: { icon: "s3-bucket", types: ["s3:bucket"], tf: ["aws_s3_bucket"] },
+  sqlServer: { icon: "rds", types: ["rds:db"], tf: ["aws_db_instance"] },
+  keyVault: { icon: "kms", types: ["kms:key"], tf: ["aws_kms_key"] },
+  registry: { icon: "ecr", types: ["ecr:repository"], tf: ["aws_ecr_repository"] },
+  recoveryVault: { icon: "backup", types: ["backup:backup-vault"], tf: ["aws_backup_vault"] },
+  managedIdentity: { icon: "iam-role", types: ["iam:role"], tf: ["aws_iam_role"] },
+  monitor: { icon: "cloudwatch", types: ["cloudwatch:alarm"], tf: ["aws_cloudwatch_metric_alarm", "aws_cloudwatch_dashboard"] },
+  logAnalytics: { icon: "cloudwatch-logs", types: ["logs:log-group"], tf: ["aws_cloudwatch_log_group"] },
+  messaging: { icon: "messaging", types: ["sns:topic", "events:rule", "sqs:queue", "states:stateMachine"], tf: ["aws_sns_topic", "aws_cloudwatch_event_rule", "aws_sqs_queue", "aws_sfn_state_machine"] },
+  transitGateway: { icon: "transit-gateway", types: ["ec2:transit-gateway"], tf: ["aws_ec2_transit_gateway"] },
+  lambda: { icon: "lambda", types: ["lambda:function"], tf: ["aws_lambda_function"] },
+  dynamodb: { icon: "dynamodb", types: ["dynamodb:table"], tf: ["aws_dynamodb_table"] },
+  cache: { icon: "elasticache", types: ["elasticache:cluster", "elasticache:replicationgroup"], tf: ["aws_elasticache_*"] },
+  stream: { icon: "kinesis", types: ["kinesis:stream", "firehose:deliverystream"], tf: ["aws_kinesis_*", "aws_kinesisanalyticsv2_*"] },
+  lattice: { icon: "vpc-lattice", types: ["vpc-lattice:service", "vpc-lattice:servicenetwork"], tf: ["aws_vpclattice_*"] },
+  clientVpn: { icon: "client-vpn", types: ["ec2:client-vpn-endpoint"], tf: ["aws_ec2_client_vpn_endpoint"] },
+  generic: { icon: "general-resource", types: [], tf: [] },
+};
+for (const [kind, a] of Object.entries(AWS) as [TopoKind, { icon: string; types: string[]; tf: string[] }][]) {
+  const d = KINDS[kind];
+  d.awsIcon = a.icon;
+  d.awsTypes = a.types;
+  d.tfTypes.push(...a.tf);
+}
 
 export const GROUP_KINDS: readonly TopoGroupKind[] = TOPO_GROUP_KINDS;
 
@@ -166,6 +239,14 @@ export function kindOfTf(type: string): TopoKind {
   if (exact) return exact;
   for (const [p, k, how] of TF_PATTERNS) if (how === "prefix" ? type.startsWith(p) : type.endsWith(p)) return k;
   return "generic";
+}
+
+const AWS_INDEX = new Map<string, TopoKind>();
+for (const [k, d] of Object.entries(KINDS) as [TopoKind, KindDef][]) for (const t of d.awsTypes) AWS_INDEX.set(t.toLowerCase(), k);
+
+/** The kind of a tagging-API type ("ec2:vpc"), case-insensitive. Unknown: generic. */
+export function kindOfAws(awsType: string): TopoKind {
+  return AWS_INDEX.get(awsType.toLowerCase()) ?? "generic";
 }
 
 /** An asset kind (not a group). */

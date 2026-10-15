@@ -6,11 +6,13 @@
 // from the dashboard uses `direct`, which only counts; the watch uses
 // `budgeted`, which refuses the call (BudgetExceeded) before it is made once
 // the run's allowance is spent. GitHub's API, Azure's sign-in, ARM and Graph
-// are all reached through here.
+// are all reached through here. A lab's cloud (from its id) picks its
+// workflow: lab.yml for Azure labs, lab-aws.yml for AWS labs (AWS labs spec §6).
 
 import type { Env } from "../env";
 import { config } from "../env";
 import { makeBudget, BudgetExceeded, type Budget } from "../insights/types";
+import { cloudOfId, type LabCloud } from "../../../shared/labs";
 
 export { BudgetExceeded };
 
@@ -57,8 +59,10 @@ export function budgetedNet(limit: number, parent?: Budget): Net & { budget: Bud
 // ── GitHub ───────────────────────────────────────────────────────────────
 
 const GH = "https://api.github.com";
-/** The lab workflow (spec §5). Only this file name is ever dispatched by the lab engine: never the gateway's wg.yml. */
-export const LAB_WORKFLOW = "lab.yml";
+/** The lab workflow of each cloud (spec §5, AWS labs spec §6). Only these are ever dispatched by the lab engine: never the gateway's wg.yml or wg-aws.yml. */
+export const LAB_WORKFLOWS: Readonly<Record<LabCloud, string>> = { azure: "lab.yml", aws: "lab-aws.yml" };
+/** The workflow that builds a lab, by the cloud its id names. */
+export const labWorkflowOf = (labId: string): string => LAB_WORKFLOWS[cloudOfId(labId)];
 
 function ghHeaders(env: Env): Record<string, string> {
   return { Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "wg-admin-worker" };
@@ -74,9 +78,9 @@ export interface GhLabRun {
   updated_at?: string;
 }
 
-/** Press "Run workflow" on lab.yml, from main. Throws a readable message when GitHub refuses. */
-export async function dispatchLab(env: Env, net: Net, action: string, payload: Record<string, unknown>): Promise<void> {
-  const r = await net.fetch(`${GH}/repos/${env.GITHUB_REPO}/actions/workflows/${LAB_WORKFLOW}/dispatches`, {
+/** Press "Run workflow" on the lab's workflow (lab.yml or lab-aws.yml), from main. Throws a readable message when GitHub refuses. */
+export async function dispatchLab(env: Env, net: Net, action: string, payload: Record<string, unknown> & { lab_id: string }): Promise<void> {
+  const r = await net.fetch(`${GH}/repos/${env.GITHUB_REPO}/actions/workflows/${labWorkflowOf(payload.lab_id)}/dispatches`, {
     method: "POST",
     headers: { ...ghHeaders(env), "Content-Type": "application/json" },
     body: JSON.stringify({ ref: "main", inputs: { action, payload: JSON.stringify(payload) } }),
@@ -84,9 +88,9 @@ export async function dispatchLab(env: Env, net: Net, action: string, payload: R
   if (r.status !== 204) throw new Error(`GitHub refused the lab dispatch (${r.status}).`);
 }
 
-/** The lab.yml run whose title ends with our run id (run-name "lab <action> <lab id> <run id>"). */
-export async function findLabRun(env: Env, net: Net, runId: string): Promise<GhLabRun | null> {
-  const r = await net.fetch(`${GH}/repos/${env.GITHUB_REPO}/actions/workflows/${LAB_WORKFLOW}/runs?event=workflow_dispatch&per_page=30`, { headers: ghHeaders(env) });
+/** The run of the lab's workflow whose title ends with our run id (run-name "lab <action> <lab id> <run id>"). */
+export async function findLabRun(env: Env, net: Net, runId: string, labId: string): Promise<GhLabRun | null> {
+  const r = await net.fetch(`${GH}/repos/${env.GITHUB_REPO}/actions/workflows/${labWorkflowOf(labId)}/runs?event=workflow_dispatch&per_page=30`, { headers: ghHeaders(env) });
   if (!r.ok) return null;
   const data = (await r.json()) as { workflow_runs?: GhLabRun[] };
   return (data.workflow_runs ?? []).find((x) => (x.display_title ?? "").split(" ").at(-1) === runId) ?? null;

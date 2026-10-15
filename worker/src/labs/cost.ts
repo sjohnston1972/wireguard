@@ -7,17 +7,20 @@
 // gateway's does). A session shows its estimate (est_gbp_h × its length)
 // until the day after it ended, once Azure has listed that day for the lab;
 // then its actual: each day's figure for the lab, split over that day's
-// sessions by how long each ran that day.
+// sessions by how long each ran that day. And Cost Explorer by tag for AWS
+// labs: once a day, AWS's spend grouped by the cloudlabs-lab tag becomes
+// lab_cost_days rows "aws:<id>" (AWS labs spec §6, ruling A17).
 
 import type { Env } from "../env";
-import { canAzure } from "../env";
+import { canAws, canAzure, config } from "../env";
 import { costTimeframe } from "../azure";
-import { LAB_ID_MAX, LAB_ID_RE, labIdFromName } from "../../../shared/labs";
+import { LAB_ID_MAX, LAB_ID_RE, cloudOfId, labIdFromName } from "../../../shared/labs";
 import type { LabCostRow } from "../../../shared/api";
 import { labIds } from "./catalogue";
-import { arm, type Net } from "./net";
+import { arm, BudgetExceeded, type Net } from "./net";
+import { costByLabTag } from "./awsReads";
 import { LIVE_SQL, type LabSessionRow } from "./store";
-import { estimateSoFar, labTitle } from "./view";
+import { estimateSoFar, labTitle, wholeGbpHOf } from "./view";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -77,6 +80,44 @@ export async function fetchLabCostDays(env: Env, net: Net, now: Date): Promise<s
   return `lab costs: ${stmts.length} row(s)`;
 }
 
+/**
+ * The daily AWS question (AWS labs spec §6 Cost, ruling A17), with the Worker's AWS keys only: one Cost Explorer
+ * call, daily and unfiltered, grouped by the cloudlabs-lab tag, over the Azure pull's time frame (up to yesterday:
+ * today's partial day is never stored). Each tagged group with a charge becomes a lab_cost_days row with rg
+ * "aws:<id>", in pounds at config.aws.usdToGbp; untagged spend ("cloudlabs-lab$") is left out. Its own KV marker,
+ * labs:cost_day_aws, and one try a day win or lose (labs:cost_tried_day_aws, written before the call: Cost Explorer
+ * bills each call, so a failure never repeats every watch run). Returns a log line, or null when not due.
+ */
+export async function fetchAwsLabCostDays(env: Env, net: Net, now: Date): Promise<string | null> {
+  if (!canAws(env)) return null;
+  const today = now.toISOString().slice(0, 10);
+  if ((await env.STATUS.get("labs:cost_day_aws")) === today || (await env.STATUS.get("labs:cost_tried_day_aws")) === today) return null;
+  // Each Cost Explorer call is billed: one try a day, win or lose (as monitor.ts's AWS cost pull). Out of calls is
+  // not a try (nothing is asked), so the run's allowance is checked first; then the day's mark, then the call.
+  if (net.remaining() < 1) throw new BudgetExceeded(1, net.remaining(), 1);
+  await env.STATUS.put("labs:cost_tried_day_aws", today, { expirationTtl: 2 * 86_400 });
+  const tf = costTimeframe(now);
+  const start = tf.timeframe === "MonthToDate" ? `${now.toISOString().slice(0, 7)}-01` : tf.timePeriod.from.slice(0, 10);
+  const usdToGbp = config(env).aws.usdToGbp;
+  const at = now.toISOString();
+  const keep = new Map<string, { day: string; rg: string; lab: string; gbp: number }>();
+  for (const r of (await costByLabTag(env, net, start, today)).slice(0, 5000)) {
+    const lab = r.lab && r.lab.length <= LAB_ID_MAX && LAB_ID_RE.test(r.lab) && cloudOfId(r.lab) === "aws" ? r.lab : null;
+    if (!lab || !(r.usd > 0)) continue;
+    const rg = `aws:${lab}`;
+    const key = `${r.day}|${rg}`;
+    const have = keep.get(key);
+    if (have) have.gbp += r.usd * usdToGbp;
+    else keep.set(key, { day: r.day, rg, lab, gbp: r.usd * usdToGbp });
+  }
+  const stmts = [...keep.values()].map((k) =>
+    env.DB.prepare("INSERT INTO lab_cost_days (day, rg, lab_id, gbp, fetched_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (day, rg) DO UPDATE SET lab_id = excluded.lab_id, gbp = excluded.gbp, fetched_at = excluded.fetched_at").bind(k.day, k.rg, k.lab, k.gbp, at),
+  );
+  if (stmts.length) await env.DB.batch(stmts);
+  await env.STATUS.put("labs:cost_day_aws", today, { expirationTtl: 2 * 86_400 });
+  return `aws lab costs: ${stmts.length} row(s)`;
+}
+
 /** How long a session ran inside [from, to), in ms. */
 function overlap(s: Pick<LabSessionRow, "requested_at" | "ended_at">, from: number, to: number, now: number): number {
   const a = Math.max(Date.parse(s.requested_at), from);
@@ -91,7 +132,7 @@ function overlap(s: Pick<LabSessionRow, "requested_at" | "ended_at">, from: numb
  */
 export async function sessionCosts(env: Env, sessions: LabSessionRow[], now: number): Promise<Map<string, { gbp: number | null; basis: "estimate" | "actual" }>> {
   const out = new Map<string, { gbp: number | null; basis: "estimate" | "actual" }>();
-  for (const s of sessions) out.set(s.id, { gbp: estimateSoFar(s, now), basis: "estimate" });
+  for (const s of sessions) out.set(s.id, { gbp: estimateSoFar(s, now, wholeGbpHOf(s.lab_id)), basis: "estimate" });
   const ended = sessions.filter((s) => s.ended_at && now >= dayStart(s.ended_at.slice(0, 10)) + DAY);
   if (!ended.length) return out;
   const labs = [...new Set(ended.map((s) => s.lab_id))];

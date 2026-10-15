@@ -139,7 +139,7 @@ describe("/api/v1/labs with an empty catalogue", () => {
     expect(list.status).toBe(200);
     const l = list.json as LabsResponse;
     expect(l).toMatchObject({ labs: [], running: [], slots: { used: 0, total: 32 }, maxRunning: 3, orphans: [] });
-    expect(l.permissions).toEqual({ checkedAt: null, role: null, users: null, groups: null, message: null });
+    expect(l.permissions).toEqual({ checkedAt: null, role: null, users: null, groups: null, awsRole: null, awsBoundary: null, awsCostTag: null, message: null });
     expect(typeof l.now).toBe("string");
     expect(((await api(env, "GET", "/labs/sessions")).json as LabSessionsResponse).sessions).toEqual([]);
     expect(((await api(env, "GET", "/labs/sessions?lab=az104-05-storage&limit=10")).json as LabSessionsResponse).sessions).toEqual([]);
@@ -257,8 +257,8 @@ describe("/api/v1/labs input checks", () => {
     const cards = (await api(env, "GET", "/labs")).json as LabsResponse;
     expect(cards.labs.map((c) => c.id)).toEqual(catalogue().labs.map((l) => l.id));
     const cov = (await api(env, "GET", "/labs/coverage")).json as LabCoverageResponse;
-    // Every exam with skill areas, AZ-700 the third (ruling 38).
-    expect(cov.exams.map((e) => e.exam)).toEqual(["AZ-104", "AZ-305", "AZ-700"]);
+    // Every exam with skill areas, AZ-700 the third (ruling 38), the three AWS exams after.
+    expect(cov.exams.map((e) => e.exam)).toEqual(["AZ-104", "AZ-305", "AZ-700", "SOA-C03", "SAA-C03", "ANS-C01"]);
     const storage = cov.exams[0].areas.find((a) => a.key === "az104.storage")!;
     expect(storage).toMatchObject({ run: 0, available: 3 });
   });

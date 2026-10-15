@@ -79,21 +79,28 @@ const shortType = (t: string) => t.split("/").pop() ?? t;
 
 /** Resources in rg-lab-<id>* from ARM, with the portal link. */
 function Resources({ d }: { d: LabDetail }) {
-  const rg = `rg-lab-${d.card.id}`;
+  const aws = d.cloud === "aws";
+  const rg = aws ? `lab-${d.card.id}` : `rg-lab-${d.card.id}`;
+  const cloudWord = aws ? "AWS" : "Azure";
   return (
     <section className="labs-section" aria-labelledby="labs-res-h">
       <div className="labs-section__head">
         <h3 className="labs-section__title" id="labs-res-h">
           Resources
         </h3>
-        {d.portalUrl && (
+        {aws && d.consoleUrls?.map((c) => (
+          <a key={c.region} className="labs-link" href={c.url} target="_blank" rel="noopener noreferrer">
+            Open in AWS console ({c.label}) <ExternalLink size={12} aria-hidden />
+          </a>
+        ))}
+        {!aws && d.portalUrl && (
           <a className="labs-link" href={d.portalUrl} target="_blank" rel="noopener noreferrer">
             Open {rg} in the Azure portal <ExternalLink size={12} aria-hidden />
           </a>
         )}
       </div>
       {d.resources === null ? (
-        <p className="labs-muted">Azure did not list the resources just now.</p>
+        <p className="labs-muted">{cloudWord} did not list the resources just now.</p>
       ) : d.resources.length === 0 ? (
         <p className="labs-muted">Nothing in {rg} yet.</p>
       ) : (
@@ -123,7 +130,7 @@ function Resources({ d }: { d: LabDetail }) {
 }
 
 /** Private IPs and the lab's connect lines (Terraform outputs), each with a copy button. */
-function Addresses({ s }: { s: LabSession }) {
+function Addresses({ s, aws, connectPossible }: { s: LabSession; aws: boolean; connectPossible: boolean }) {
   const o = s.outputs;
   if (!o || (Object.keys(o.privateIps).length === 0 && o.connect.length === 0)) return null;
   return (
@@ -142,7 +149,8 @@ function Addresses({ s }: { s: LabSession }) {
           ))}
         </ul>
       )}
-      {s.peering !== "on" && <p className="labs-muted">Reachable from tunnel clients once the lab is peered to the gateway.</p>}
+      {aws && connectPossible && o.connect.length > 0 && <p className="labs-muted">The ssh and curl lines work while the lab is peered; the aws ec2-instance-connect line works anywhere the AWS CLI is signed in.</p>}
+      {s.peering !== "on" && !(aws && !connectPossible) && <p className="labs-muted">Reachable from tunnel clients once the lab is peered to the gateway.</p>}
     </section>
   );
 }
@@ -307,7 +315,7 @@ export function RunningLab({ d }: { d: LabDetail }) {
         {r ? <Pipeline r={r} /> : <LastRun r={d.runs[0]} />}
         {s.state === "failed" && <p className="labs-deploy__blocked">The deploy failed. It is torn down by itself 15 minutes after it failed, or now with Tear down.</p>}
         <Resources d={d} />
-        <Addresses s={s} />
+        <Addresses s={s} aws={d.cloud === "aws"} connectPossible={d.connect?.possible !== false} />
         <Secret labId={d.card.id} running={s.state === "running"} />
         <Note key={s.id} s={s} />
       </div>
@@ -315,6 +323,9 @@ export function RunningLab({ d }: { d: LabDetail }) {
     </div>
   );
 }
+
+/** RunningLab under the name the tests use (it takes the lab detail and nothing else). */
+export const RunningLabView = RunningLab;
 
 /** Time left, cost so far, Extend and Tear down. */
 export function RunningFooter({ d }: { d: LabDetail }) {

@@ -1,0 +1,339 @@
+{
+ "schema": 1,
+ "labId": "soa-01-cloudwatch",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_cloudwatch_event_rule.state",
+   "key": "events:rule/lab-soa-01-cloudwatch-ec2-state",
+   "kind": "messaging",
+   "label": "lab-soa-01-cloudwatch-ec2-state",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "events:rule",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_cloudwatch_event_target.state_sns",
+     "label": "state_sns",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_log_group.app",
+   "key": "logs:log-group//cloudlabs/soa-01-cloudwatch/app",
+   "kind": "logAnalytics",
+   "label": "/cloudlabs/soa-01-cloudwatch/app",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "logs:log-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_cloudwatch_dashboard.overview",
+     "label": "lab-soa-01-cloudwatch-overview",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_cloudwatch_log_metric_filter.errors",
+     "label": "lab-errors",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_cloudwatch_query_definition.errors",
+     "label": "lab-soa-01-cloudwatch-errors",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_metric_alarm.app_errors",
+   "key": "cloudwatch:alarm/lab-soa-01-cloudwatch-app-errors",
+   "kind": "monitor",
+   "label": "lab-soa-01-cloudwatch-app-errors",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "cloudwatch:alarm",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_metric_alarm.cpu_high",
+   "key": "cloudwatch:alarm/lab-soa-01-cloudwatch-cpu-high",
+   "kind": "monitor",
+   "label": "lab-soa-01-cloudwatch-cpu-high",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "cloudwatch:alarm",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_metric_alarm.memory_high",
+   "key": "cloudwatch:alarm/lab-soa-01-cloudwatch-memory-high",
+   "kind": "monitor",
+   "label": "lab-soa-01-cloudwatch-memory-high",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "cloudwatch:alarm",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.lab",
+   "key": "ec2:instance-connect-endpoint/eice-lab",
+   "kind": "bastion",
+   "label": "eice-lab",
+   "props": {},
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.vm",
+   "key": "iam:role/lab-soa-01-cloudwatch-vm",
+   "kind": "managedIdentity",
+   "label": "lab-soa-01-cloudwatch-vm",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_instance_profile.vm",
+     "label": "lab-soa-01-cloudwatch-vm",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.vm_cloudwatch",
+     "label": "vm_cloudwatch",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.app",
+   "key": "ec2:instance/vm-app",
+   "kind": "vm",
+   "label": "vm-app",
+   "props": {
+    "size": "t4g.micro"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-soa-01-cloudwatch",
+   "kind": "resourceGroup",
+   "label": "lab-soa-01-cloudwatch · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.private",
+   "key": "ec2:route-table/rt-private",
+   "kind": "routeTable",
+   "label": "rt-private",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route_table_association.private[0]",
+     "label": "private[0]",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[1]",
+     "label": "private[1]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.eice",
+   "key": "ec2:security-group/sg-eice",
+   "kind": "nsg",
+   "label": "sg-eice",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.eice_ssh",
+     "label": "eice_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.endpoints",
+   "key": "ec2:security-group/sg-endpoints",
+   "kind": "nsg",
+   "label": "sg-endpoints",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.endpoints_https",
+     "label": "endpoints_https",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.vms",
+   "key": "ec2:security-group/sg-vms",
+   "kind": "nsg",
+   "label": "sg-vms",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.vms_all",
+     "label": "vms_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_from_gateway",
+     "label": "vms_from_gateway",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_ssh_eice",
+     "label": "vms_ssh_eice",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_sns_topic.alerts",
+   "key": "sns:topic/lab-soa-01-cloudwatch-alerts",
+   "kind": "messaging",
+   "label": "lab-soa-01-cloudwatch-alerts",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "sns:topic",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_sns_topic_policy.alerts",
+     "label": "alerts",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[0]",
+   "key": "ec2:subnet/snet-private-1",
+   "kind": "subnet",
+   "label": "snet-private-1",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[1]",
+   "key": "ec2:subnet/snet-private-2",
+   "kind": "subnet",
+   "label": "snet-private-2",
+   "props": {
+    "prefix": "10.71.193.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.lab",
+   "key": "ec2:vpc/vpc-lab",
+   "kind": "vnet",
+   "label": "vpc-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.interface[\"logs\"]",
+   "key": "ec2:vpc-endpoint/vpce-logs",
+   "kind": "privateEndpoint",
+   "label": "vpce-logs",
+   "props": {
+    "groupId": "logs"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.interface[\"monitoring\"]",
+   "key": "ec2:vpc-endpoint/vpce-monitoring",
+   "kind": "privateEndpoint",
+   "label": "vpce-monitoring",
+   "props": {
+    "groupId": "monitoring"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.s3",
+   "key": "ec2:vpc-endpoint/vpce-s3",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:aws_cloudwatch_event_rule.state>tf:aws_sns_topic.alerts:",
+   "from": "tf:aws_cloudwatch_event_rule.state",
+   "to": "tf:aws_sns_topic.alerts",
+   "kind": "dependency",
+   "via": "tf:aws_cloudwatch_event_target.state_sns"
+  }
+ ]
+}

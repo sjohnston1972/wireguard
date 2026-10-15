@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { LAB_UNITS, meterProblems, readmeLinks, skuProblems, verifyLabs } from "../labs-verify.mjs";
+import { LAB_UNITS, awsPriceProblems, meterProblems, readmeLinks, skuProblems, verifyAwsPrices, verifyLabs } from "../labs-verify.mjs";
 
 const PKG = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
 /** A Retail Prices API row, uksouth, GBP, pay as you go. */
@@ -139,4 +139,40 @@ test("labs-verify is an npm script and never runs in npm test", () => {
   assert.equal(PKG.scripts["labs-verify"], "node scripts/labs-verify.mjs");
   assert.doesNotMatch(PKG.scripts.test, /labs-verify/);
   for (const [name, script] of Object.entries(PKG.scripts)) if (name !== "labs-verify") assert.doesNotMatch(script, /labs-verify/, name);
+});
+
+test("awsPriceProblems wants exactly one product with an OnDemand price in the unit", () => {
+  const p = (usd, unit = "Hrs", usagetype = "EUW2-LoadBalancerUsage") => ({ product: { attributes: { usagetype } }, terms: { OnDemand: { a: { priceDimensions: { b: { unit, pricePerUnit: { USD: usd } } } } } } });
+  const ref = { service: "AWSELB", unit: "Hrs", filters: { usagetype: "{usage}-LoadBalancerUsage" } };
+  assert.deepEqual(awsPriceProblems([p("0.0265")], ref, "eu-west-2"), []);
+  assert.match(awsPriceProblems([], ref, "eu-west-2")[0], /no product matches in eu-west-2/);
+  assert.match(awsPriceProblems([p("0.0265"), p("0.03", "Hrs", "EUW2-Other")], ref, "eu-west-2")[0], /2 products match in eu-west-2 \(EUW2-LoadBalancerUsage, EUW2-Other\)/);
+  assert.match(awsPriceProblems([p("0.0265", "LCU-Hrs")], ref, "eu-west-2")[0], /no product matches/);
+});
+
+test("verifyAwsPrices fills {usage}, asks us-east-1 with the region code, and flags a 25% drift", async () => {
+  const calls = [];
+  const answer = (usd) => ({ status: 0, stdout: JSON.stringify({ PriceList: [JSON.stringify({ product: { attributes: { usagetype: "EUW2-LoadBalancerUsage" } }, terms: { OnDemand: { a: { priceDimensions: { b: { unit: "Hrs", pricePerUnit: { USD: usd } } } } } } })] }), stderr: "" });
+  const lab = { id: "soa-03-auto-scaling", secondary: null, items: [{ name: "ALB", gbp_h: 0.0199, aws_price: { service: "AWSELB", unit: "Hrs", filters: { usagetype: "{usage}-LoadBalancerUsage" } } }, { name: "LCU", gbp_h: 0.006 }] };
+  const ok = await verifyAwsPrices([lab], { run: (args) => (calls.push(args), answer("0.0265")) });
+  assert.deepEqual(ok.problems, []);
+  assert.equal(calls.length, 1, "authored-only items are not asked");
+  assert.ok(calls[0].includes("--region") && calls[0][calls[0].indexOf("--region") + 1] === "us-east-1");
+  assert.ok(calls[0].includes("Type=TERM_MATCH,Field=usagetype,Value=EUW2-LoadBalancerUsage"));
+  assert.ok(calls[0].includes("Type=TERM_MATCH,Field=regionCode,Value=eu-west-2"));
+  assert.match(ok.lines[0], /^soa-03-auto-scaling: ALB \(eu-west-2\): \$0\.0265\/Hrs = £0\.0199\/h \(authored £0\.0199\/h\)$/);
+  const drift = await verifyAwsPrices([lab], { run: () => answer("0.05") });
+  assert.match(drift.problems[0], /more than 25% from AWS's/);
+});
+
+test("verifyAwsPrices prices GB-Mo per hour, uses the secondary region (EU prefix), and reports a failed call", async () => {
+  const calls = [];
+  const gbMo = (usd) => ({ status: 0, stdout: JSON.stringify({ PriceList: [JSON.stringify({ product: { attributes: { usagetype: "EU-TimedStorage" } }, terms: { OnDemand: { a: { priceDimensions: { b: { unit: "GB-Mo", pricePerUnit: { USD: usd } } } } } } })] }), stderr: "" });
+  const lab = { id: "saa-05-s3", secondary: "eu-west-1", items: [{ name: "Replica", gbp_h: 0.0001, region: "secondary", aws_price: { service: "AmazonS3", unit: "GB-Mo", gb: 100, filters: { usagetype: "{usage}-TimedStorage" } } }] };
+  const r = await verifyAwsPrices([lab], { run: (a) => (calls.push(a), gbMo("0.073")) });
+  assert.ok(calls[0].includes("Type=TERM_MATCH,Field=usagetype,Value=EU-TimedStorage"));
+  assert.ok(calls[0].includes("Type=TERM_MATCH,Field=regionCode,Value=eu-west-1"));
+  assert.match(r.lines[0], /\(eu-west-1\): \$0\.073\/GB-Mo = £0\.0075\/h/);
+  const bad = await verifyAwsPrices([lab], { run: () => ({ status: 255, stdout: "", stderr: "AccessDenied" }) });
+  assert.match(bad.problems[0], /^saa-05-s3: Replica: aws pricing get-products failed/);
 });

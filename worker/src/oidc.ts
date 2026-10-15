@@ -34,9 +34,11 @@ export function workflowRef(env: Env, workflow: string): string {
  * The checks on the claims, separate from the signature so they can be tested.
  * `workflow` is the workflow file (or files) this route accepts: the
  * gateway's two (wg.yml for Azure, wg-aws.yml for AWS) for
- * /api/callback/secrets, "lab.yml" only for /api/callback/lab-secrets (labs
- * spec §7.2), so neither can collect the other's secrets. Which of the
- * gateway's two may collect a given run's secrets is issueRunSecrets' check.
+ * /api/callback/secrets, the labs' two (lab.yml or lab-aws.yml) for
+ * /api/callback/lab-secrets (labs spec §7.2, AWS labs spec §6), so the
+ * gateway and the labs cannot collect each other's secrets. Which of each
+ * pair may collect a given run's secrets is issueRunSecrets' and
+ * issueLabSecrets' check (the run's cloud).
  */
 export function claimsProblem(env: Env, c: GithubClaims, workflow?: string | string[]): string | null {
   const repo = env.GITHUB_REPO ?? "";

@@ -9,7 +9,7 @@
 import { useId } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { LabCard } from "@shared/api";
-import { withSelection } from "./model";
+import { labNumberWord, withSelection } from "./model";
 import "./LabPrerequisites.css";
 
 export function LabPrerequisites({ ids, labs, onSelect }: { ids: readonly string[]; labs: readonly LabCard[] | undefined; onSelect: (id: string) => void }) {
@@ -48,7 +48,7 @@ export function LabPrerequisites({ ids, labs, onSelect }: { ids: readonly string
                       onSelect(id);
                     }}
                   >
-                    Lab {c.number}: {c.title}
+                    {labNumberWord(c)}: {c.title}
                   </Link>
                 </li>
               );

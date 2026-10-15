@@ -2,13 +2,16 @@
 # infra/ci/lab-plan.sh
 #
 # Plain English: plan the lab and show the plan to the scope check (lab.yml's
-# "Plan and scope check", and again before a retried apply, lab-tf-run.sh):
+# and lab-aws.yml's "Plan and scope check", and again before a retried apply,
+# lab-tf-run.sh):
 #
 #   bash infra/ci/lab-plan.sh            the first plan: also prints its LAB_PLAN_SHAPE line
 #   bash infra/ci/lab-plan.sh --retry    a fresh plan after a dropped connection: no shape line
 #
 # Writes $RUNNER_TEMP/plan.out (what apply applies) and plan.json, then runs
-# infra/ci/lab-scope.mjs on it: anything outside rg-lab-<id> fails this
+# the cloud's scope check on it (LAB_CLOUD, from Parse payload): for Azure
+# infra/ci/lab-scope.mjs, where anything outside rg-lab-<id> fails; for AWS
+# infra/ci/lab-scope-aws.mjs (AWS labs spec §7.3). A refusal fails this
 # script, so nothing unchecked is ever applied. The shape is the release
 # test's record of the lab's real plan (ruling 35); a retry's plan holds only
 # what is left to build, so it is never recorded.
@@ -18,9 +21,11 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 retry=false
 [ "${1:-}" = --retry ] && retry=true
 
+cloud="${LAB_CLOUD:-azure}"
+
 cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
-# Only a private DNS zone link may name the gateway VNet, and only through this.
-if [ "$LAB_PEERING" = true ]; then
+# Azure only: a private DNS zone link may name the gateway VNet, and only through this.
+if [ "$cloud" = azure ] && [ "$LAB_PEERING" = true ]; then
   export TF_VAR_gateway_vnet_id="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/${RG:-rg-wg-ondemand}/providers/Microsoft.Network/virtualNetworks/vnet-wg"
 fi
 terraform plan -no-color -input=false -out="$RUNNER_TEMP/plan.out"
@@ -31,5 +36,9 @@ terraform show -no-color -json "$RUNNER_TEMP/plan.out" > "$RUNNER_TEMP/plan.json
 if [ "$retry" = false ]; then
   node "$here/lab-plan-shape.mjs" "$RUNNER_TEMP/plan.json" || echo "::warning::could not record the plan's shape"
 fi
-node "$here/lab-scope.mjs" --plan "$RUNNER_TEMP/plan.json" --lab "$LAB_ID"
+if [ "$cloud" = aws ]; then
+  node "$here/lab-scope-aws.mjs" --plan "$RUNNER_TEMP/plan.json" --lab "$LAB_ID"
+else
+  node "$here/lab-scope.mjs" --plan "$RUNNER_TEMP/plan.json" --lab "$LAB_ID"
+fi
 echo "scope check passed: every resource in the plan stays inside the lab"

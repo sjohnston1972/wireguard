@@ -517,6 +517,7 @@ export const labSessionFixture = (over: Partial<LabSession> = {}): LabSession =>
 const labCard = (over: Partial<LabCard> = {}): LabCard => ({
   id: "az104-06-blob-security",
   number: 6,
+  cloud: "azure",
   version: 1,
   title: "Blob security: SAS, access policies, private endpoint",
   summary: "A storage account with a private container, a stored access policy and a private endpoint in a small VNet.",
@@ -554,7 +555,7 @@ export const labsFixture = (over: Partial<LabsResponse> = {}): LabsResponse => (
   running: [],
   slots: { used: 0, total: 32 },
   maxRunning: 3,
-  permissions: { checkedAt: null, role: null, users: null, groups: null, message: null },
+  permissions: { checkedAt: null, role: null, users: null, groups: null, awsRole: null, awsBoundary: null, awsCostTag: null, message: null },
   orphans: [],
   autoCleanup: true,
   ...over,
@@ -565,6 +566,10 @@ export const labDetailFixture = (over: Partial<LabDetail> = {}): LabDetail => {
   const session = labSessionFixture();
   return {
     card: labCard({ running: session, runs: 2 }),
+    cloud: "azure",
+    secondaryRegion: null,
+    consoleUrls: null,
+    connect: { possible: true, note: null },
     readme: [
       { t: "h", level: 2, text: "What it deploys" },
       { t: "ul", items: [[{ t: "text", text: "A storage account with a private container" }]] },
@@ -609,6 +614,22 @@ export const labDetailFixture = (over: Partial<LabDetail> = {}): LabDetail => {
     ...over,
   };
 };
+
+/** GET /labs/:id for an AWS lab (soa-03) in the idle state: London, console links, and a server in Azure so the lab runs unconnected. */
+export const awsLabDetailFixture = (over: Partial<LabDetail> = {}): LabDetail =>
+  labDetailFixture({
+    card: labCard({ id: "soa-03-auto-scaling", number: 3, cloud: "aws", title: "Auto Scaling behind an Application Load Balancer", exam: "SOA-C03", exams: ["SOA-C03", "SAA-C03"], skillAreas: [], prerequisites: [], resources: { vm: 2, vnet: 1 } }),
+    cloud: "aws",
+    secondaryRegion: null,
+    session: null,
+    runs: [],
+    resources: null,
+    portalUrl: null,
+    consoleUrls: [{ region: "eu-west-2", label: "London", url: "https://eu-west-2.console.aws.amazon.com/resource-groups/group/lab-soa-03-auto-scaling?region=eu-west-2" }],
+    connect: { possible: false, note: "AWS labs connect only to an AWS server (the server is in Azure). This lab runs unconnected." },
+    defaults: { region: "eu-west-2", peer: true, hours: 2 },
+    ...over,
+  });
 
 /** GET /labs/coverage: storage covered by lab 6 (run) and lab 5 (not yet). */
 export const labCoverageFixture = (): LabCoverageResponse => ({

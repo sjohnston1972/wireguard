@@ -15,6 +15,7 @@
 // spend 120 of KV's daily writes). The answer is always a status:
 //   ok            the live graph
 //   not_running   no live session (the app never asks then)
+//   no_aws        an AWS lab, and the Worker has no AWS keys (nothing is asked of AWS)
 //   no_azure      Azure is not configured (under `wrangler dev` with
 //                 AUTH_DEV_BYPASS, or in demo mode's store, the seeded rows in
 //                 KV labs:topology:dev stand in, so the screens show a live
@@ -24,8 +25,12 @@
 // Anything but ok means the app shows the planned graph with a banner.
 
 import type { Env } from "../env";
-import { canAzure } from "../env";
+import { canAws, canAzure } from "../env";
 import type { LabTopologyResponse } from "../../../shared/api";
+import { cloudOfId } from "../../../shared/labs";
+import { awsLiveGraph } from "../../../shared/topology/awsLive";
+import { AwsError } from "../cloud/awsApi";
+import { AWS_TOPOLOGY_CALLS_MAX, readAwsTopology } from "./awsTopology";
 import { ARG_API, ARG_TOP, topologyRequest } from "../../../shared/topology/query";
 import { liveGraph, type ArgRow, type LiveCtx } from "../../../shared/topology/live";
 import { catalogue } from "./catalogue";
@@ -34,6 +39,8 @@ import { liveSessionOf, type LabSessionRow } from "./store";
 import { LABS_KV } from "../devseed-labs";
 import { standInsAllowed } from "../devmarks";
 import { isDemoEnv } from "../demo/env";
+
+export { AWS_TOPOLOGY_CALLS_MAX };
 
 /** How long one lab's live graph is reused (per session, per isolate). */
 export const TOPOLOGY_CACHE_MS = 30_000;
@@ -120,6 +127,37 @@ async function fetchLive(env: Env, s: LabSessionRow, now: number): Promise<LabTo
   return answer("ok", truncated ? TRUNCATED : null, { live: built.live, fetchedAt: at, truncated });
 }
 
+const isThrottle = (e: unknown) => e instanceof AwsError && (/^Throttl/i.test(e.code) || e.code === "RequestLimitExceeded" || e.code === "TooManyRequestsException" || e.status === 429);
+
+/**
+ * An AWS lab's live diagram: at most AWS_TOPOLOGY_CALLS_MAX tag-filtered reads (awsTopology.ts), then awsLiveGraph. A
+ * refusal is `failed` in plain words (the code, never AWS's body); throttling is `throttled` with the last graph.
+ */
+async function fetchAwsLive(env: Env, s: LabSessionRow, now: number): Promise<LabTopologyResponse> {
+  const at = new Date(now).toISOString();
+  const net = directNet();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("timeout")), TOPOLOGY_TIMEOUT_MS);
+    });
+    const read = await Promise.race([readAwsTopology(env, net, s.lab_id, s.region, s.secondary_region ?? null), timeout]);
+    const live = awsLiveGraph(read.rows, { labId: s.lab_id, version: Number(s.lab_version), gatewayVpcIds: read.gatewayVpcIds, at, namePrefix: s.name_prefix, region: s.region, secondaryRegion: s.secondary_region ?? null });
+    return answer("ok", read.truncated ? "Showing the first 100 tagged resources: the lab has more." : null, { live, fetchedAt: at, truncated: read.truncated });
+  } catch (e) {
+    if (isThrottle(e)) {
+      const last = lastGood.get(topologyCacheKey(env, s.lab_id, s.id))?.response;
+      return answer("throttled", "AWS is busy (too many requests). Showing the last diagram it gave.", last?.live ? { live: last.live, fetchedAt: last.fetchedAt, truncated: last.truncated } : {});
+    }
+    if (e instanceof AwsError) return answer("failed", `AWS refused the diagram's read (${e.code}). Showing the planned diagram.`);
+    if (e instanceof Error && e.message === "timeout") return answer("failed", `AWS did not answer the diagram's read within ${TOPOLOGY_TIMEOUT_MS / 1000} s. Showing the planned diagram.`);
+    console.error("labs topology: the AWS live read failed:", e instanceof Error ? e.message.slice(0, 160) : "unknown error");
+    return answer("failed", "The live diagram could not be drawn from AWS's answer. Showing the planned diagram.");
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /** liveGraph, with a builder error answered as failed (its reason kept), never a 500. */
 function build(rows: ArgRow[], ctx: LiveCtx): { live: ReturnType<typeof liveGraph> } | { failed: LabTopologyResponse } {
   try {
@@ -138,7 +176,9 @@ function build(rows: ArgRow[], ctx: LiveCtx): { live: ReturnType<typeof liveGrap
 export async function labTopology(env: Env, labId: string, now: number = Date.now()): Promise<LabTopologyResponse> {
   const s = await liveSessionOf(env, labId);
   if (!s) return answer("not_running", "The lab is not running, so there is no live diagram.");
-  if (!canAzure(env)) {
+  const aws = cloudOfId(labId) === "aws";
+  if (aws && !canAws(env)) return answer("no_aws", "AWS is not connected, so the diagram shows the plan.");
+  if (!aws && !canAzure(env)) {
     const rows = standInsAllowed(env) ? await devRows(env, labId) : null;
     if (!rows) return answer("no_azure", "Azure is not connected, so the diagram shows the plan.");
     const at = new Date(now).toISOString();
@@ -150,7 +190,7 @@ export async function labTopology(env: Env, labId: string, now: number = Date.no
   if (hit && now - hit.at < TOPOLOGY_CACHE_MS) return hit.response;
   const pending = inflight.get(key);
   if (pending) return pending;
-  const p = fetchLive(env, s, now)
+  const p = (aws ? fetchAwsLive(env, s, now) : fetchLive(env, s, now))
     .then((response) => {
       // A failure is cached too, so an open diagram does not hammer a failing Azure (it asks again after 30 s).
       if (response.status === "ok" || response.status === "failed") {

@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Run MySQL on RDS with a Multi-AZ standby and a read replica, then fail it over on purpose.
+learn:
+  - Force a Multi-AZ failover and measure how long writes stop
+  - Read from a replica and check its replication lag
+  - Find slow queries with a parameter group and the slow query log
+learning_min: 60

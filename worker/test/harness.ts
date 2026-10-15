@@ -355,6 +355,30 @@ export interface FakeGraph {
   fail?: number;
 }
 
+/** Labs in AWS (AWS labs spec §6): what the lab reads see. */
+export interface LabAws {
+  /** Resources tagged cloudlabs-lab, by region. */
+  tagged: Record<string, { arn: string; tags: Record<string, string> }[]>;
+  /** IAM names at path /cloudlabs-lab/ (the fake lists every name given, whatever the path asked). */
+  iam: { roles: string[]; instanceProfiles: string[]; policies: string[]; users: string[] };
+  /** Config recorders by region. */
+  recorders: Record<string, string[]>;
+  /** CloudWatch dashboards by region (the fake filters by DashboardNamePrefix). */
+  dashboards: Record<string, string[]>;
+  /** Cost Explorer's daily cost by the cloudlabs-lab tag ("" = untagged spend), USD. */
+  costByTag: { day: string; lab: string; usd: number }[];
+  /** Test-only: when true, Cost Explorer's grouped (GroupBy) GetCostAndUsage answers HTTP 400. */
+  costByTagFail?: boolean;
+  /** ListCostAllocationTags' answer. */
+  costTags: { key: string; status: "Active" | "Inactive" }[];
+  /** Does iam:GetRole wg-admin-labs find it? */
+  role: boolean;
+  /** Does iam:GetPolicy wg-admin-lab-boundary find it? */
+  boundary: boolean;
+  /** The Price List's products for a GetProducts body (each becomes one PriceList JSON string). */
+  products: (body: { ServiceCode: string; Filters: { Field: string; Value: string }[] }) => unknown[];
+}
+
 export interface FakeSgRule { id: string; protocol: string; port: number; cidr: string; description: string }
 
 export interface World {
@@ -366,8 +390,10 @@ export interface World {
   labAzure: LabAzure;
   /** Labs: Entra users and groups. */
   graph: FakeGraph;
-  /** Every outbound call the Worker made, in order (for subrequest budgets: a lab watch makes at most 20). */
-  calls: { method: string; host: string; path: string }[];
+  /** Labs in AWS: tagged resources, IAM names, recorders, dashboards, cost by tag, the setup checks and the price list. */
+  labAws: LabAws;
+  /** Every outbound call the Worker made, in order (for subrequest budgets: a lab watch makes at most 20). AWS calls also carry their X-Amz-Target, form Action and JSON body. */
+  calls: { method: string; host: string; path: string; target?: string; action?: string; body?: unknown }[];
   /** Azure: does the resource group exist, and the VM's power state. */
   azure: { rg: boolean; power: string; ip: string };
   /** AWS: the tagged VPC and server exist, its state, Elastic IP, and the server's security-group ingress rules. */
@@ -414,6 +440,7 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
     ghRuns: new Map(),
     labAzure: { groups: [], managementGroups: [], roleDefinitions: [], policyDefinitions: [], policyAssignments: [], resources: [], roleAssignments: [], costRows: [] },
     graph: { users: [], groups: [] },
+    labAws: { tagged: {}, iam: { roles: [], instanceProfiles: [], policies: [], users: [] }, recorders: {}, dashboards: {}, costByTag: [], costTags: [], role: false, boundary: false, products: () => [] },
     calls: [],
     azure: { rg: false, power: "running", ip: "20.0.0.10" },
     aws: { exists: false, state: "running", ip: "18.130.0.10", sg: [], nextRule: 1 },
@@ -473,7 +500,20 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
     const method = (init?.method ?? req?.method ?? "GET").toUpperCase();
     const bodyText = async () => (init?.body != null ? String(init.body) : req ? await req.clone().text() : "");
     const u = new URL(url);
-    world.calls.push({ method, host: u.hostname, path: u.pathname + u.search });
+    const call: World["calls"][number] = { method, host: u.hostname, path: u.pathname + u.search };
+    world.calls.push(call);
+    if (u.hostname.endsWith(".amazonaws.com")) {
+      const target = (init?.headers ? new Headers(init.headers) : req?.headers)?.get("x-amz-target");
+      const text = await bodyText();
+      if (target) call.target = target;
+      const formAction = target ? null : new URLSearchParams(text).get("Action");
+      if (formAction) call.action = formAction;
+      try {
+        if (target && text) call.body = JSON.parse(text);
+      } catch {
+        /* not JSON */
+      }
+    }
 
     // GitHub
     if (u.hostname === "api.github.com") {
@@ -483,8 +523,8 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
         const workflow = decodeURIComponent(u.pathname.match(/\/actions\/workflows\/([^/]+)\/dispatches$/)?.[1] ?? "");
         world.dispatches.push({ workflow, action: body.inputs.action, payload });
         const id = nextGh++;
-        // Each workflow's run-name: wg.yml "wg <action> <run id>", lab.yml "lab <action> <lab id> <run id>".
-        const title = workflow === "lab.yml" ? `lab ${body.inputs.action} ${payload.lab_id} ${payload.run_id}` : `wg ${body.inputs.action} ${payload.run_id}`;
+        // Each workflow's run-name: wg.yml "wg <action> <run id>", lab.yml and lab-aws.yml "lab <action> <lab id> <run id>".
+        const title = workflow === "lab.yml" || workflow === "lab-aws.yml" ? `lab ${body.inputs.action} ${payload.lab_id} ${payload.run_id}` : `wg ${body.inputs.action} ${payload.run_id}`;
         world.ghRuns.set(id, { id, display_title: title, status: "in_progress", conclusion: null, html_url: `https://github.com/run/${id}`, created_at: new Date().toISOString(), workflow });
         return new Response(null, { status: 204 });
       }
@@ -558,6 +598,11 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
     if (u.hostname === "ntfy.sh") {
       world.notes.push(JSON.parse(String(init?.body)));
       return json({});
+    }
+    // Labs in AWS: tagging by cloudlabs-lab, IAM, STS, Config, CloudWatch dashboards, cost by tag and the price list.
+    if (u.hostname.endsWith(".amazonaws.com")) {
+      const answer = labAwsAnswer(world.labAws, u, call, await bodyText());
+      if (answer) return answer;
     }
     // AWS: EC2 (Query API, XML), tagging and Cost Explorer (JSON).
     if (/^ec2\.[a-z0-9-]+\.amazonaws\.com$/.test(u.hostname)) {
@@ -652,6 +697,75 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
   });
 
   return { env, world };
+}
+
+/**
+ * AWS answers for the lab reads (AWS labs spec §6), from world.labAws; null when the call is not one of them (the
+ * server's AWS answers then apply: a tagging call by the wg-admin key, Cost Explorer without GroupBy).
+ */
+function labAwsAnswer(la: LabAws, u: URL, call: World["calls"][number], text: string): Response | null {
+  const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/x-amz-json-1.1" } });
+  const xml = (action: string, b: string) => new Response(`<${action}Response><${action}Result>${b}</${action}Result></${action}Response>`, { status: 200 });
+  const noSuch = (what: string) => new Response(`<ErrorResponse><Error><Type>Sender</Type><Code>NoSuchEntity</Code><Message>The ${what} cannot be found.</Message></Error></ErrorResponse>`, { status: 404 });
+  const body = (call.body ?? {}) as Record<string, any>;
+  const form = new URLSearchParams(call.target ? "" : text);
+  const tagging = u.hostname.match(/^tagging\.([a-z0-9-]+)\.amazonaws\.com$/);
+  if (tagging) {
+    const f = (body.TagFilters ?? [])[0] as { Key?: string; Values?: string[] } | undefined;
+    if (f?.Key !== "cloudlabs-lab") return null;
+    const list = (la.tagged[tagging[1]!] ?? []).filter((t) => !f.Values?.length || f.Values.includes(t.tags["cloudlabs-lab"] ?? ""));
+    // Pages as the real API does: at most ResourcesPerPage (default 100), with a token when there is more.
+    const per = Number(body.ResourcesPerPage) || 100;
+    const from = Number(body.PaginationToken || 0);
+    const page = list.slice(from, from + per);
+    const more = from + per < list.length ? String(from + per) : "";
+    return json({ ResourceTagMappingList: page.map((t) => ({ ResourceARN: t.arn, Tags: Object.entries(t.tags).map(([Key, Value]) => ({ Key, Value })) })), PaginationToken: more });
+  }
+  if (u.hostname === "iam.amazonaws.com") {
+    const a = form.get("Action") ?? "";
+    const members = (tag: string, field: string, names: string[]) => `<${tag}>${names.map((n) => `<member><Path>/cloudlabs-lab/</Path><${field}>${n}</${field}></member>`).join("")}</${tag}><IsTruncated>false</IsTruncated>`;
+    if (a === "ListRoles") return xml(a, members("Roles", "RoleName", la.iam.roles));
+    if (a === "ListInstanceProfiles") return xml(a, members("InstanceProfiles", "InstanceProfileName", la.iam.instanceProfiles));
+    if (a === "ListPolicies") return xml(a, members("Policies", "PolicyName", la.iam.policies));
+    if (a === "ListUsers") return xml(a, members("Users", "UserName", la.iam.users));
+    if (a === "GetRole") return la.role ? xml(a, `<Role><RoleName>${form.get("RoleName")}</RoleName></Role>`) : noSuch(`role with name ${form.get("RoleName")}`);
+    if (a === "GetPolicy") return la.boundary ? xml(a, `<Policy><Arn>${form.get("PolicyArn")}</Arn></Policy>`) : noSuch(`policy ${form.get("PolicyArn")}`);
+    return new Response(`<ErrorResponse><Error><Code>InvalidAction</Code><Message>${a}</Message></Error></ErrorResponse>`, { status: 400 });
+  }
+  if (u.hostname === "sts.amazonaws.com" && form.get("Action") === "GetCallerIdentity") {
+    return xml("GetCallerIdentity", "<Arn>arn:aws:iam::123456789012:user/wg-admin-worker</Arn><UserId>AIDAEXAMPLE</UserId><Account>123456789012</Account>");
+  }
+  const config = u.hostname.match(/^config\.([a-z0-9-]+)\.amazonaws\.com$/);
+  if (config && call.target === "StarlingDoveService.DescribeConfigurationRecorders") {
+    return json({ ConfigurationRecorders: (la.recorders[config[1]!] ?? []).map((name) => ({ name, roleARN: "arn:aws:iam::123456789012:role/x" })) });
+  }
+  const monitoring = u.hostname.match(/^monitoring\.([a-z0-9-]+)\.amazonaws\.com$/);
+  if (monitoring && form.get("Action") === "ListDashboards") {
+    const prefix = form.get("DashboardNamePrefix") ?? "";
+    const names = (la.dashboards[monitoring[1]!] ?? []).filter((n) => n.startsWith(prefix));
+    return xml("ListDashboards", `<DashboardEntries>${names.map((n) => `<member><DashboardName>${n}</DashboardName><Size>100</Size></member>`).join("")}</DashboardEntries>`);
+  }
+  if (u.hostname === "ce.us-east-1.amazonaws.com" && call.target?.endsWith(".ListCostAllocationTags")) {
+    const keys = body.TagKeys as string[] | undefined;
+    return json({ CostAllocationTags: la.costTags.filter((t) => !keys || keys.includes(t.key)).map((t) => ({ TagKey: t.key, Type: "UserDefined", Status: t.status })) });
+  }
+  if (u.hostname === "ce.us-east-1.amazonaws.com" && call.target?.endsWith(".GetCostAndUsage") && Array.isArray(body.GroupBy)) {
+    if (la.costByTagFail) return json({ __type: "DataUnavailableException", message: "fake grouped cost failure" }, 400);
+    // One result per seeded day, with that day's groups (whatever the time period asked).
+    const days = [...new Set(la.costByTag.map((r) => r.day))].sort();
+    return json({
+      ResultsByTime: days.map((d) => ({
+        TimePeriod: { Start: d, End: d },
+        Total: {},
+        Groups: la.costByTag.filter((r) => r.day === d).map((r) => ({ Keys: [`cloudlabs-lab$${r.lab}`], Metrics: { UnblendedCost: { Amount: String(r.usd), Unit: "USD" } } })),
+        Estimated: false,
+      })),
+    });
+  }
+  if (u.hostname === "api.pricing.us-east-1.amazonaws.com") {
+    return json({ FormatVersion: "aws_v1", PriceList: la.products(body as { ServiceCode: string; Filters: { Field: string; Value: string }[] }).map((x) => JSON.stringify(x)) });
+  }
+  return null;
 }
 
 /**

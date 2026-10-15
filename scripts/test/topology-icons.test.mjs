@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { runnerImport } from "vite";
-import { optimiseIcon, ICON_FILES, PACK_VERSION, PACK_URL } from "../topology-icons.mjs";
+import { optimiseIcon, ICON_FILES, PACK_VERSION, PACK_URL, AWS_ICON_FILES, AWS_NEAREST, AWS_PACK_URL, AWS_PACK_SHA256, AWS_PACK_VERSION } from "../topology-icons.mjs";
 
 const SPRITE = fileURLToPath(new URL("../../web/src/views/labs/topology/icons/azure.svg", import.meta.url));
 const README = fileURLToPath(new URL("../../web/src/views/labs/topology/icons/README.md", import.meta.url));
@@ -114,4 +114,48 @@ test("the README quotes the terms with the link and names the pack version", () 
   assert.match(r, /Don't distort or change icon shape in any way\./);
   assert.match(r, /Don't use Microsoft product icons to represent your product or service\./);
   for (const [icon, path] of Object.entries(ICON_FILES)) assert.ok(r.includes(`\`${icon}\``) && r.includes(path), `README lists ${icon}`);
+});
+
+// ── The AWS pack (AWS labs spec §10): a second, pinned sprite beside the Azure one ──
+
+const AWS_SPRITE = fileURLToPath(new URL("../../web/src/views/labs/topology/icons/aws.svg", import.meta.url));
+const awsSymbols = () => [...readFileSync(AWS_SPRITE, "utf8").matchAll(/<symbol id="aws-([a-z0-9-]+)"[^>]*>([\s\S]*?)<\/symbol>/g)].map((m) => ({ icon: m[1], body: m[2] }));
+
+test("the AWS pack is pinned by release, URL and SHA-256", () => {
+  assert.match(AWS_PACK_VERSION, /^\d{8}$/);
+  assert.ok(AWS_PACK_URL.startsWith("https://d1.awsstatic.com/") && AWS_PACK_URL.includes(`Icon-package_${AWS_PACK_VERSION}.`));
+  assert.match(AWS_PACK_SHA256, /^[0-9a-f]{64}$/);
+});
+
+test("every KINDS awsIcon has a pack file and a symbol in aws.svg, and aws.svg holds nothing else", async () => {
+  const { module } = await runnerImport(fileURLToPath(new URL("../../shared/topology/kinds.ts", import.meta.url)), { configFile: false, logLevel: "error" });
+  const icons = new Set(Object.values(module.KINDS).map((k) => k.awsIcon).filter(Boolean));
+  const have = new Set(awsSymbols().map((s) => s.icon));
+  for (const i of icons) {
+    assert.ok(have.has(i), `aws.svg has aws-${i}`);
+    assert.ok(Object.hasOwn(AWS_ICON_FILES, i), `AWS_ICON_FILES names a pack file for ${i}`);
+  }
+  for (const i of have) assert.ok(icons.has(i), `aws-${i} is used by a kind`);
+  for (const n of Object.keys(AWS_NEAREST)) assert.ok(Object.hasOwn(AWS_ICON_FILES, n), `a NEAREST note for a real icon: ${n}`);
+});
+
+test("aws.svg: ids never collide with the Azure sprite's or inside it, no scripts, a sane size", () => {
+  const raw = readFileSync(AWS_SPRITE, "utf8");
+  assert.doesNotMatch(raw, /<script|<foreignObject|<image|onload=|onclick=|javascript:/i);
+  const ids = idsIn(raw).filter((id) => !id.startsWith("aws-"));
+  const all = idsIn(raw);
+  assert.equal(new Set(all).size, all.length, "ids are unique");
+  for (const id of ids) assert.ok(id.startsWith("aws-"), `${id} is namespaced`);
+  const azure = new Set(idsIn(readFileSync(SPRITE, "utf8")));
+  for (const id of all) assert.ok(!azure.has(id), `${id} is not also in azure.svg`);
+  assert.ok(gzipSync(raw).length < 60_000, "gzipped size under 60 kB");
+  for (const s of awsSymbols()) assert.ok(/viewBox="[\d. ]+"/.test(raw.slice(raw.indexOf(`id="aws-${s.icon}"`), raw.indexOf(`id="aws-${s.icon}"`) + 80)), `aws-${s.icon} has a viewBox`);
+});
+
+test("the README quotes AWS's terms with the link, the pinned download and a row per AWS icon", () => {
+  const text = readFileSync(README, "utf8");
+  assert.ok(text.includes("https://aws.amazon.com/architecture/icons/"));
+  assert.ok(text.includes("We allow customers and partners to use these toolkits and assets to create architecture diagrams."));
+  assert.ok(text.includes(AWS_PACK_SHA256) && text.includes(AWS_PACK_URL));
+  for (const i of Object.keys(AWS_ICON_FILES)) assert.ok(text.includes(`| \`${i}\` |`), `row for ${i}`);
 });

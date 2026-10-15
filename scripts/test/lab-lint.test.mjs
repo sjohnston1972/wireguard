@@ -13,8 +13,10 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { lintTfText } from "../lib/labs.mjs";
-import { fileProblems, lintBicepText, lintDir } from "../../infra/ci/lab-lint.mjs";
+import { cloudOfId, lintTfText } from "../lib/labs.mjs";
+import fs from "node:fs";
+import { AWS_GATEWAY_NAMES, fileProblems, lintBicepText, lintDir } from "../../infra/ci/lab-lint.mjs";
+import { GATEWAY_NAME_LIST } from "../../infra/ci/lab-scope-aws.mjs";
 import { labFolders } from "../lib/labs.mjs";
 
 const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
@@ -23,9 +25,61 @@ const VERSIONS = (providers) => `terraform {\n  required_providers {\n${provider
 const AZURERM = '    azurerm = {\n      source  = "hashicorp/azurerm"\n      version = "~> 4.0"\n    }';
 const rules = (files) => [...new Set(lintTfText(files).map((p) => p.rule))].sort();
 
-test("every lab and the template pass, folder and all", () => {
-  for (const folder of labFolders(LABS)) assert.deepEqual(lintDir(join(LABS, folder, "terraform")), [], folder);
+const aws = (files) => lintTfText(files, { cloud: "aws" }).map((p) => `${p.rule}: ${p.message}`);
+const AWS_OK = 'terraform {\n  required_providers {\n    aws = { source = "hashicorp/aws", version = "~> 6.0" }\n  }\n}\nprovider "aws" {\n  region = var.region\n  default_tags {\n    tags = var.tags\n  }\n}\n';
+
+test("every lab and both templates pass, each by its own cloud", () => {
+  for (const folder of labFolders(LABS)) {
+    const cloud = cloudOfId(folder);
+    assert.deepEqual(lintDir(join(LABS, folder, "terraform"), { cloud }), [], folder);
+  }
   assert.deepEqual(lintDir(join(LABS, "_template")), [], "_template");
+  assert.deepEqual(lintDir(join(LABS, "_template-aws"), { cloud: "aws" }), []);
+});
+
+test("AWS: aws, random, time, tls and archive by full source address; azurerm is refused", () => {
+  assert.deepEqual(aws({ "main.tf": AWS_OK }), []);
+  assert.ok(aws({ "main.tf": 'terraform {\n  required_providers {\n    azurerm = { source = "hashicorp/azurerm" }\n  }\n}\n' }).some((p) => p.startsWith("provider:")));
+  assert.ok(aws({ "main.tf": 'terraform {\n  required_providers {\n    aws = { source = "evil/aws" }\n  }\n}\n' }).some((p) => p.startsWith("provider:")));
+});
+
+test("AWS: a provider block may hold only region, alias and default_tags with var.tags", () => {
+  for (const extra of ['profile = "admin"', 'access_key = "x"', 'assume_role {\n    role_arn = "x"\n  }', 'endpoints {\n    s3 = "https://x"\n  }', "skip_credentials_validation = true"]) {
+    const tf = AWS_OK.replace("region = var.region", `region = var.region\n  ${extra}`);
+    assert.ok(aws({ "main.tf": tf }).some((p) => p.startsWith("aws-provider:")), extra);
+  }
+  assert.ok(aws({ "main.tf": AWS_OK.replace("tags = var.tags", 'tags = { x = "y" }') }).some((p) => p.startsWith("aws-provider:")));
+  assert.ok(aws({ "main.tf": AWS_OK.replace("region = var.region", 'region = "us-east-2"') }).some((p) => p.startsWith("aws-provider:")));
+  assert.deepEqual(aws({ "main.tf": `${AWS_OK}provider "aws" {\n  alias  = "secondary"\n  region = var.secondary_region\n  default_tags {\n    tags = var.tags\n  }\n}\n` }), []);
+});
+
+test("AWS: literal CIDRs only 0.0.0.0/0 and ::/0", () => {
+  assert.deepEqual(aws({ "main.tf": 'locals {\n  a = "0.0.0.0/0"\n  b = "::/0"\n}\n' }), []);
+  assert.ok(aws({ "main.tf": 'locals {\n  a = "10.50.0.0/16"\n}\n' }).some((p) => p.startsWith("literal-cidr:")));
+  assert.ok(aws({ "main.tf": 'locals {\n  a = "2001:db8::/32"\n}\n' }).some((p) => p.startsWith("literal-cidr:")));
+});
+
+test("AWS: the VPN server's names and the wg-admin key are refused; the boundary's name is not", () => {
+  // Every Name in infra/aws (final review, Important 3), the same list as the plan check's.
+  assert.deepEqual(AWS_GATEWAY_NAMES, GATEWAY_NAME_LIST);
+  for (const n of GATEWAY_NAME_LIST) assert.ok(aws({ "main.tf": `locals {\n  x = "${n}"\n}\n` }).some((p) => p.startsWith("gateway:")), n);
+  const names = [...fs.readFileSync(new URL("../../infra/aws/main.tf", import.meta.url), "utf8").matchAll(/\bName\s*=\s*"([a-z0-9-]+)"/g)].map((m) => m[1]);
+  assert.ok(names.length >= 10, `${names.length} names read from infra/aws/main.tf`);
+  for (const n of names) assert.ok(GATEWAY_NAME_LIST.includes(n), `infra/aws/main.tf's ${n} is not on the list`);
+  assert.ok(aws({ "main.tf": 'locals {\n  t = { "wg-admin" = "vpn" }\n}\n' }).some((p) => p.startsWith("gateway:")));
+  assert.ok(aws({ "main.tf": 'locals {\n  r = "wg-admin-deploy"\n}\n' }).some((p) => p.startsWith("gateway:")));
+  assert.deepEqual(aws({ "main.tf": 'locals {\n  b = "arn:aws:iam::1:policy/wg-admin-lab-boundary"\n}\n' }), []);
+});
+
+test("AWS: no data tls_certificate, and archive_file only inside path.module", () => {
+  assert.ok(aws({ "main.tf": 'data "tls_certificate" "x" {\n  url = "https://example.com"\n}\n' }).some((p) => p.startsWith("provider:") || p.startsWith("data:")));
+  assert.ok(aws({ "main.tf": 'data "archive_file" "x" {\n  type        = "zip"\n  source_file = "/etc/passwd"\n  output_path = "x.zip"\n}\n' }).some((p) => p.startsWith("data:")));
+  assert.deepEqual(aws({ "main.tf": 'data "archive_file" "x" {\n  type        = "zip"\n  source_dir  = "${path.module}/src"\n  output_path = "${path.module}/x.zip"\n}\n' }).filter((p) => p.startsWith("data:")), []);
+});
+
+test("the command line takes --cloud aws", () => {
+  const r = spawnSync(process.execPath, ["infra/ci/lab-lint.mjs", "--cloud", "aws", "labs/_template-aws"], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
 });
 
 test("azurerm, azuread, random and time are allowed, by full source address", () => {

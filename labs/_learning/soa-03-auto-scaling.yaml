@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Keep a web service running with an Auto Scaling group behind an Application Load Balancer.
+learn:
+  - Watch Auto Scaling replace unhealthy instances across two zones
+  - Scale out and in with a target tracking policy on CPU
+  - Roll out a new launch template with an instance refresh
+learning_min: 60

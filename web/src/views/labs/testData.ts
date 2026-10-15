@@ -6,7 +6,7 @@
 // the tab's clock follows the server's, so "time left" is the same on any day.
 
 import type { LabCard, LabDetail, LabRunRow, LabSession, LabsResponse } from "@shared/api";
-import { labDetailFixture, labSessionFixture, labsFixture } from "@/test/fixtures";
+import { awsLabDetailFixture, labDetailFixture, labSessionFixture, labsFixture } from "@/test/fixtures";
 
 export const NOW = "2026-10-02T12:00:00.000Z";
 export const NOW_MS = Date.parse(NOW);
@@ -16,6 +16,9 @@ export const at = (msFromNow: number) => new Date(NOW_MS + msFromNow).toISOStrin
 
 /** A catalogue card: lab 6 by default, not running, never run. */
 export const card = (over: Partial<LabCard> = {}): LabCard => ({ ...labDetailFixture().card, exams: [over.exam ?? labDetailFixture().card.exam], running: null, lastSession: null, runs: 0, ...over });
+
+/** An AWS catalogue card: AWS lab 3 (SOA-C03, also SAA-C03). */
+export const awsCard = (over: Partial<LabCard> = {}): LabCard => card({ ...awsLabDetailFixture().card, exams: ["SOA-C03", "SAA-C03"], ...over });
 
 export const session = (over: Partial<LabSession> = {}): LabSession => labSessionFixture(over);
 

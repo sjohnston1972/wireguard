@@ -3,7 +3,9 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import type { LabOrphan, LabSession } from "@shared/api";
+import { cloudOfId } from "@shared/labs";
 import { Button, Modal } from "@/components";
+import { CloudBadge } from "./CloudBadge";
 import { useCancelLab, useCleanupLabOrphans, useDestroyLab, useExtendLab } from "@/api/mutations";
 import { endsAt, extendChoices, fmtGbp, fmtSpan, peeringWord, stateWord, timeLeft, useLabClock } from "./model";
 
@@ -106,6 +108,7 @@ function Chip({ s, now }: { s: LabSession; now: number }) {
     <li className={`labs-chip labs-chip--${st.tone}`}>
       <div className="labs-chip__head">
         <Word {...st} />
+        <CloudBadge cloud={cloudOfId(s.labId)} />
         <Link className="labs-chip__title" to={{ pathname: `/labs/${encodeURIComponent(s.labId)}`, search }}>
           {s.title}
         </Link>

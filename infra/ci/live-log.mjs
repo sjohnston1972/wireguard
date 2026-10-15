@@ -64,6 +64,11 @@ export const SECRET_ENV = [
   "R2_SECRET_ACCESS_KEY",
   "R2_ENDPOINT",
   "AWS_ROLE_ARN",
+  // lab-aws.yml: each step's STS session (its key id and secret are the two
+  // AWS_* names above) and the two roles it trades a GitHub token for
+  "AWS_SESSION_TOKEN",
+  "AWS_LABS_ROLE_ARN",
+  "AWS_DEPLOY_ROLE_ARN",
   // Static Terraform inputs from repository secrets
   "TF_VAR_ssh_public_key",
   "TF_VAR_wg_server_private_key",
@@ -112,9 +117,11 @@ export function secretsFromEnv(env, names = SECRET_ENV) {
     const host = /^https?:\/\/([^./]+)\./.exec(String(env[k] ?? ""));
     if (host) add(host[1]);
   }
-  // The AWS account id is the 5th field of the deploy role's ARN: arn:aws:iam::<account id>:role/...
-  const acct = String(env.AWS_ROLE_ARN ?? "").split(":")[4];
-  if (acct) add(acct);
+  // The AWS account id is the 5th field of each role's ARN: arn:aws:iam::<account id>:role/...
+  for (const k of ["AWS_ROLE_ARN", "AWS_LABS_ROLE_ARN", "AWS_DEPLOY_ROLE_ARN"]) {
+    const acct = String(env[k] ?? "").split(":")[4];
+    if (acct) add(acct);
+  }
   return [...out];
 }
 

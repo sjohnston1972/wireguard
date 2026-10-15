@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Watch an EC2 workload with the CloudWatch agent, metric filters, alarms and EventBridge.
+learn:
+  - Install and configure the CloudWatch agent for memory, disk and logs
+  - Turn log lines into a metric and alarm on it through SNS
+  - Query an application log with CloudWatch Logs Insights
+learning_min: 45

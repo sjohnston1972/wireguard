@@ -1,10 +1,11 @@
 // shared/labs.ts
 //
-// Plain English: the lab contract (spec docs/superpowers/specs/2026-10-04-labs-design.md).
+// Plain English: the lab contract (spec docs/superpowers/specs/2026-10-04-labs-design.md,
+// and for AWS docs/superpowers/specs/2026-10-15-aws-labs-design.md).
 // What a lab definition looks like (lab.yaml, §3.2), what its readme becomes
 // (§3.3, plan ruling 2), the address pool and its 32 slots (§4), the names a
 // lab owns (§3.1), the governance labs (§8.3), the roles a lab may assign
-// (§8.1, labs/setup/allowed-roles.json) and the few sums both the Worker and
+// (§8.1, labs/setup/allowed-roles.json), the clouds, exams and AWS names (AWS spec §3, §6) and the few sums both the Worker and
 // the app need (cost per hour, workflow timeout). The scripts keep a copy of
 // the constants in scripts/lib/labs.mjs; a test keeps the two equal.
 //
@@ -12,18 +13,32 @@
 
 import allowedRoles from "../labs/setup/allowed-roles.json";
 import type { GuideDiagramEntry, GuideDiagramKind } from "./guides";
+import { sha256Hex } from "./sha256";
 
 // ── Lab definitions (lab.yaml, spec §3.2) ────────────────────────────────
 
-export type LabExam = "AZ-104" | "AZ-305" | "AZ-700";
+export type LabCloud = "azure" | "aws";
+export type LabExam = "AZ-104" | "AZ-305" | "AZ-700" | "SOA-C03" | "SAA-C03" | "ANS-C01";
 /** The exams, in the order the catalogue, coverage and a lab's `exams` list them (ruling 38). */
-export const LAB_EXAMS: readonly LabExam[] = ["AZ-104", "AZ-305", "AZ-700"];
+export const LAB_EXAMS: readonly LabExam[] = ["AZ-104", "AZ-305", "AZ-700", "SOA-C03", "SAA-C03", "ANS-C01"];
+/** Which cloud each exam's labs run in. */
+export const EXAM_CLOUD: Readonly<Record<LabExam, LabCloud>> = { "AZ-104": "azure", "AZ-305": "azure", "AZ-700": "azure", "SOA-C03": "aws", "SAA-C03": "aws", "ANS-C01": "aws" };
 export type LabLevel = "foundation" | "associate" | "expert";
 export type LabType = "explore" | "break-fix";
 /** lab.yaml connectivity.peering: off (never), optional (a tick on Deploy), required (always on). */
 export type PeeringMode = "off" | "optional" | "required";
 /** Where a lab assigns a role. Never the subscription (§8.3). */
 export type LabRoleScope = "resource_group" | "resource" | "management_group";
+
+/** AWS's list price for a cost item (Price List API): the service code, the unit and the attribute filters that pick one product. */
+export interface AwsPriceRef {
+  service: string;
+  unit: "Hrs" | "GB-Mo";
+  /** The size, with unit GB-Mo only. */
+  gb?: number;
+  /** Attribute -> value; "{usage}" inside a usagetype value stands for the region's usage-type prefix. */
+  filters: Record<string, string>;
+}
 
 /** One line of a lab's cost (£ per hour each). A monthly fee is authored as fee / 730 (HOURS_PER_MONTH). */
 export interface LabCostItem {
@@ -35,12 +50,18 @@ export interface LabCostItem {
   region?: "secondary";
   /** Azure's list price for it, when Azure has one: a meter name (with its unit) or a VM size. The price feed refreshes gbp_h from it (§9.1). */
   retail?: { meter?: string; unit?: string; sku?: string };
+  /** AWS's list price for it (an AWS lab's counterpart of `retail`). */
+  aws_price?: AwsPriceRef;
+  /** AWS bills this item per whole started hour: the estimate adds the rest of the last hour (ruling A20). */
+  whole_hours?: boolean;
 }
 
 /** A lab, exactly as its lab.yaml says (snake_case kept), plus `number` (the NN in the id) and `exams`. */
 export interface LabDef {
   id: string;
   number: number;
+  /** azure unless lab.yaml says aws (an AWS id must). */
+  cloud: LabCloud;
   version: number;
   title: string;
   summary: string;
@@ -59,10 +80,10 @@ export interface LabDef {
   prerequisites: string[];
   cost: { items: LabCostItem[]; pricey: string | null };
   timing: { deploy_min: number; destroy_min: number; session_h: number; max_h: number };
-  capacity: { vm_sizes: string[] };
+  capacity: { vm_sizes: string[]; instance_types: string[] };
   regions: { secondary: string | null };
   connectivity: { peering: PeeringMode; dns_link: boolean; subnets_used: number };
-  identity: { creates: ("user" | "group")[]; roles: { role: string; scope: LabRoleScope }[]; governance: boolean };
+  identity: { creates: ("user" | "group" | "role")[]; roles: { role: string; scope: LabRoleScope }[]; governance: boolean };
 }
 
 /** An official exam skill area (labs/skill-areas.yaml, §12.1). */
@@ -124,7 +145,7 @@ export type GuidePlacements = Record<string, GuidePlacement[]>;
 /**
  * shared/labs.generated.json, written by `npm run labs-build` (gitignored).
  * Only the Worker imports it (worker/src/labs/catalogue.ts); the app reads GET /labs.
- * Labs are sorted by exam (AZ-104, AZ-305, AZ-700), then by number.
+ * Labs are sorted by exam in LAB_EXAMS order, then by number.
  */
 export interface LabCatalogue {
   /** Bumped when this shape changes (2: learning and resources, labs redesign spec §6.2). */
@@ -154,11 +175,15 @@ export interface LabLearningDef {
 
 // ── Ids, names and the address pool (spec §3.1, §4) ──────────────────────
 
-/** A lab id: az104-NN-slug, az305-NN-slug or az700-NN-slug, at most LAB_ID_MAX characters. */
-export const LAB_ID_RE = /^az(104|305|700)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
+/** A lab id: az104-, az305-, az700-, soa-, saa- or ans-NN-slug, at most LAB_ID_MAX characters (AWS ones AWS_LAB_ID_MAX, ruling A2). */
+export const LAB_ID_RE = /^(az(104|305|700)|soa|saa|ans)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
 export const LAB_ID_MAX = 40;
-/** A lab's primary exam, from its id's prefix (az700-31-x is AZ-700). */
-export const examOfId = (id: string): LabExam => (id.startsWith("az104-") ? "AZ-104" : id.startsWith("az305-") ? "AZ-305" : "AZ-700");
+export const AWS_LAB_ID_MAX = 30;
+const PREFIX_EXAM: Readonly<Record<string, LabExam>> = { az104: "AZ-104", az305: "AZ-305", az700: "AZ-700", soa: "SOA-C03", saa: "SAA-C03", ans: "ANS-C01" };
+/** A lab's primary exam, from its id's prefix (az700-31-x is AZ-700, soa-03-x is SOA-C03); anything else AZ-700. */
+export const examOfId = (id: string): LabExam => PREFIX_EXAM[id.split("-")[0] ?? ""] ?? "AZ-700";
+/** The cloud a lab id belongs to. */
+export const cloudOfId = (id: string): LabCloud => EXAM_CLOUD[examOfId(id)];
 /** 10.64.0.0 - 10.71.255.255: 32 slots of /18 (§4). IPv4 only. */
 export const LAB_POOL = "10.64.0.0/13";
 export const LAB_SLOTS = 32;
@@ -174,6 +199,62 @@ export const GOVERNANCE_LABS: readonly string[] = ["az104-01-identity", "az104-0
 
 /** The Terraform variables the pipeline fills (§3.4). A lab's variables.tf declares only ones from this list. */
 export const LAB_TF_VARS: readonly string[] = ["lab_id", "name_prefix", "resource_group_name", "region", "secondary_region", "address_space", "peered", "gateway_vnet_id", "admin_password", "ssh_public_key", "upn_domain", "tags"];
+
+/** The Terraform variables the pipeline fills for an AWS lab (AWS spec §4). */
+export const LAB_TF_VARS_AWS: readonly string[] = ["lab_id", "name_prefix", "region", "secondary_region", "address_space", "gateway_cidr", "peered", "admin_password", "ssh_public_key", "tags"];
+export const labTfVars = (cloud: LabCloud): readonly string[] => (cloud === "aws" ? LAB_TF_VARS_AWS : LAB_TF_VARS);
+
+// ── AWS names and limits (AWS spec §3, §6) ───────────────────────────────
+
+/** The session's region first, then the only secondary region a lab may use. */
+export const AWS_LAB_REGIONS = ["eu-west-2", "eu-west-1"] as const;
+/** Regions a few labs touch because the service lives there (CloudFront, WAF scope CLOUDFRONT). */
+export const AWS_GLOBAL_REGIONS = ["us-east-1", "us-west-2"] as const;
+/** The tag every AWS lab resource carries (value: the lab id). */
+export const LAB_TAG = "cloudlabs-lab";
+export const LAB_SESSION_TAG = "cloudlabs-session";
+/** The IAM path of everything a lab creates, the lab role's name and its permissions boundary. */
+export const AWS_IAM_PATH = "/cloudlabs-lab/";
+export const AWS_LABS_ROLE = "wg-admin-labs";
+export const AWS_BOUNDARY = "wg-admin-lab-boundary";
+/** The headend VPC's range (infra/aws). */
+export const AWS_GATEWAY_CIDR = "10.50.0.0/16";
+/** The only lab that may create an IAM user. */
+export const AWS_IAM_USER_LABS: readonly string[] = ["soa-07-iam-kms"];
+/** Labs that may run AWS Config recorders (account-wide singletons). */
+export const AWS_CONFIG_LABS: readonly string[] = ["soa-02-systems-manager"];
+/** Labs that touch global-service regions. */
+export const AWS_GLOBAL_LABS: readonly string[] = ["soa-09-route53-cloudfront", "ans-26-edge"];
+/** The instance types a lab may list in capacity.instance_types. */
+export const AWS_INSTANCE_TYPES: readonly string[] = ["t4g.nano", "t4g.micro", "t4g.small", "t3.micro", "t3.small", "t4g.medium"];
+/** The only lab that may list t4g.medium. */
+export const AWS_MEDIUM_LABS: readonly string[] = ["saa-19-eks"];
+/** The Price List usage-type prefix of each region (the {usage} in an aws_price usagetype filter). */
+export const AWS_USAGE_PREFIX: Readonly<Record<string, string>> = { "eu-west-2": "EUW2", "eu-west-1": "EU", "us-east-1": "USE1", "us-west-2": "USW2" };
+export function awsUsagePrefix(region: string): string {
+  const p = AWS_USAGE_PREFIX[region];
+  if (!p) throw new RangeError(`no AWS usage-type prefix known for ${region}`);
+  return p;
+}
+/** A price reference written out the same way whatever order its filters were authored in: the aws_prices key's input. */
+export function canonicalAwsPrice(ref: AwsPriceRef): string {
+  const filters = Object.keys(ref.filters)
+    .sort()
+    .map((k) => [k, ref.filters[k]]);
+  return JSON.stringify({ service: ref.service, unit: ref.unit, gb: ref.gb ?? null, filters });
+}
+/** The aws_prices item a lab price reference is stored under: "lab:" + the first 16 hex characters of its SHA-256 (AWS labs spec §6 Prices). */
+export function awsPriceKey(ref: AwsPriceRef): string {
+  return `lab:${sha256Hex(canonicalAwsPrice(ref)).slice(0, 16)}`;
+}
+/** The first letter of a lab's name_prefix per cloud (AWS: a + two-digit lab number + 5 random characters, ruling A5). */
+export const NAME_PREFIX_LETTER: Readonly<Record<LabCloud, string>> = { azure: "l", aws: "a" };
+/** The AWS Resource Groups group holding a lab's resources. */
+export const labResourceGroupName = (id: string): string => `lab-${id}`;
+/** The console page of the lab's Resource Groups group in a region. */
+export function awsConsoleUrl(id: string, region: string): string {
+  return `https://${region}.console.aws.amazon.com/resource-groups/group/${labResourceGroupName(id)}?region=${region}`;
+}
 
 const ipToInt = (ip: string): number => ip.split(".").reduce((n, x) => n * 256 + Number(x), 0);
 const intToIp = (n: number): string => [24, 16, 8, 0].map((s) => Math.floor(n / 2 ** s) % 256).join(".");
@@ -245,8 +326,9 @@ export const AVNM_LABS: readonly string[] = ["az700-33-vnet-manager"];
  */
 export const FLOW_LOG_LABS: readonly string[] = ["az700-44-flow-logs-bastion"];
 
-/** What a lab needs beyond Contributor (§8.1): the governance role (any role assignment, or a governance lab) and Graph (Entra users or groups). */
-export function labNeeds(def: Pick<LabDef, "id" | "identity">): { role: boolean; graph: boolean } {
+/** What a lab needs beyond Contributor (§8.1): the governance role (any role assignment, or a governance lab) and Graph (Entra users or groups). An AWS lab needs neither. */
+export function labNeeds(def: Pick<LabDef, "id" | "identity"> & { cloud?: LabCloud }): { role: boolean; graph: boolean } {
+  if ((def.cloud ?? cloudOfId(def.id)) === "aws") return { role: false, graph: false };
   return { role: def.identity.governance || isGovernanceLab(def.id) || def.identity.roles.length > 0, graph: def.identity.creates.length > 0 };
 }
 
@@ -282,6 +364,19 @@ export function estimateGbpH(items: readonly LabCostItem[], priceOf?: (item: Lab
 export function costMarker(gbpH: number, deployMin: number): "£" | "££" | "£££" {
   if (gbpH >= 0.5 || deployMin >= 30) return "£££";
   return gbpH >= 0.05 ? "££" : "£";
+}
+
+/** £ per hour of the items AWS bills per whole started hour (whole_hours): Σ price × qty, 6 places. */
+export function wholeHoursGbpH(items: readonly LabCostItem[], priceOf?: (item: LabCostItem) => number | null): number {
+  const sum = items.filter((i) => i.whole_hours).reduce((n, i) => n + (priceOf?.(i) ?? i.gbp_h) * (i.qty ?? 1), 0);
+  return Math.round(sum * 1e6) / 1e6;
+}
+
+/** A session's cost so far: gbpH for the time run, plus the unused rest of the last started hour of the whole-hours items (A20). 0 for no time. */
+export function sessionEstimateGbp(gbpH: number, wholeGbpH: number, ms: number): number {
+  if (!(ms > 0)) return 0;
+  const h = ms / 3_600_000;
+  return Math.round((gbpH * h + wholeGbpH * (Math.ceil(h) - h)) * 1e6) / 1e6;
 }
 
 /** lab.yml's timeout-minutes (§5): 2 × (deploy + destroy) + 20, at most 150. */

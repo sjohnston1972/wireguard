@@ -96,6 +96,8 @@ test("planFromTestStream takes resource_changes and output_changes from the test
   // Outputs: only the ones the builder reads, unknown as null.
   assert.deepEqual(Object.keys(outputs).sort(), [...PLAN_OUTPUTS].sort());
   assert.equal(outputs.peer_vnet_id, null);
+  assert.equal(outputs.peer_vpc_id, null, "AWS labs' peer output is read too, null when unknown");
+  assert.ok(PLAN_OUTPUTS.includes("peer_vpc_id"));
 });
 
 test("planFromTestStream fails without a test_plan message", () => {
@@ -149,6 +151,25 @@ test("refsFromHcl gives each resource's references by top-level attribute, and t
     "azurerm_network_interface.app": { ip_configuration: ["azurerm_subnet.app"], resource_group_name: ["azurerm_resource_group.lab"] },
     "output.peer_vnet_id": { value: ["azurerm_virtual_network.hub"] },
   });
+});
+
+// AWS labs: references to aws_, tls_ and archive_ resources join like Azure's, and a resource's `provider` meta-argument is
+// recorded (refs[addr].provider) so the builder puts a card in the secondary region's container.
+test("refsFromHcl joins aws_ references, and records a provider meta-argument", () => {
+  const hcl = {
+    resource: {
+      aws_subnet: { private: [{ vpc_id: "${aws_vpc.lab.id}", cidr_block: "${local.cidr}" }] },
+      aws_vpc: { dr: [{ provider: "${aws.secondary}", cidr_block: "10.0.0.0/20" }], lab: [{ cidr_block: "10.0.0.0/20" }] },
+      aws_instance: { app: [{ subnet_id: "${aws_subnet.private[0].id}", user_data: "${tls_private_key.k.public_key_openssh} ${archive_file.z.output_path}" }] },
+    },
+    output: { peer_vpc_id: [{ value: "${aws_vpc.lab.id}" }] },
+  };
+  const refs = refsFromHcl(hcl, "soa-01-cloudwatch", hclResources);
+  assert.deepEqual(refs["aws_subnet.private"], { vpc_id: ["aws_vpc.lab"] });
+  assert.deepEqual(refs["aws_vpc.dr"], { provider: ["aws.secondary"] });
+  assert.deepEqual(refs["aws_vpc.lab"], {});
+  assert.deepEqual(refs["aws_instance.app"], { subnet_id: ["aws_subnet.private"], user_data: ["archive_file.z", "tls_private_key.k"] });
+  assert.deepEqual(refs["output.peer_vpc_id"], { value: ["aws_vpc.lab"] });
 });
 
 test("diagnostics prints only the stream's diagnostic messages, with the mock secrets redacted", () => {

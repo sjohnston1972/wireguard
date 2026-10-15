@@ -23,7 +23,7 @@ import { LabsHeader } from "./LabsHeader";
 import { LabsNotices } from "./LabsNotices";
 import { LabsSummaryStrip } from "./LabsSummaryStrip";
 import { useLabsLayout } from "./layout";
-import { applyFilters, fmtClock, readFilters, readSelection, revealFilters, selectedLab, withSelection, writeFilters } from "./model";
+import { applyFilters, fmtClock, labNumberWord, readFilters, readSelection, revealFilters, selectedLab, withSelection, writeFilters } from "./model";
 import { RunningStrip } from "./RunningStrip";
 import "./LabsPage.css";
 
@@ -106,7 +106,7 @@ export function LabsPage({ dialogId = null, children }: { dialogId?: string | nu
       const shown = v ? revealFilters(readFilters(p), v) : null;
       if (v && shown?.cleared) {
         p = writeFilters(p, shown.filters);
-        toast({ title: `Filters cleared to show Lab ${v.card.number}.`, tone: "info" });
+        toast({ title: `Filters cleared to show ${labNumberWord(v.card)}.`, tone: "info" });
       }
       const next = withSelection(p, id).toString();
       const to = { pathname: l.pathname, search: next ? `?${next}` : "" };
