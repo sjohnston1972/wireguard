@@ -101,6 +101,13 @@ resource "aws_iam_role_policy_attachment" "replication" {
   policy_arn = aws_iam_policy.replication.arn
 }
 
+# A new role takes a moment to reach S3; a replication configuration put too soon
+# fails (once with an empty request body). Wait for it.
+resource "time_sleep" "replication_role" {
+  create_duration = "20s"
+  depends_on      = [aws_iam_role_policy_attachment.replication]
+}
+
 resource "aws_s3_bucket_replication_configuration" "src" {
   bucket = aws_s3_bucket.src.id
   role   = aws_iam_role.replication.arn
@@ -116,7 +123,7 @@ resource "aws_s3_bucket_replication_configuration" "src" {
       storage_class = "STANDARD"
     }
   }
-  depends_on = [aws_s3_bucket_versioning.src, aws_s3_bucket_versioning.dst, aws_iam_role_policy_attachment.replication]
+  depends_on = [aws_s3_bucket_versioning.src, aws_s3_bucket_versioning.dst, time_sleep.replication_role]
 }
 
 resource "aws_s3_object" "hello" {

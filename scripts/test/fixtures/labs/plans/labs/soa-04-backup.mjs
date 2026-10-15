@@ -126,6 +126,7 @@ export default () => {
         unknown: ["policy_arn"],
         refs: { role: ref("aws_iam_role.replication", "name"), policy_arn: ref("aws_iam_policy.replication", "arn") },
       },
+      { address: "time_sleep.replication_role", values: { create_duration: "20s" }, refs: {} },
       onBucket("aws_s3_bucket_replication_configuration", "src", {
         rule: [{ id: "all", status: "Enabled", filter: [{}], delete_marker_replication: [{ status: "Enabled" }], destination: [{ storage_class: "STANDARD" }] }],
       }, { unknown: ["role"], refs: { role: ref("aws_iam_role.replication", "arn"), "rule.0.destination.0.bucket": ref("aws_s3_bucket.dst", "arn") } }),

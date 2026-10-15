@@ -942,3 +942,4 @@ copied here and win.
 - **A53. Verify clean and the safety net handle security group rules, listeners and listener rules:** each is read by its
   own describe (not found is clean); they go with their group or load balancer, and one still there is deleted by its id or
   ARN (rules before listeners before target groups; security group rules after the fabric, never in the headend's VPC).
+- **A54. `ec2:CreateNetworkInterface` is exempt from the lab-tag-on-create rule.** EC2 Instance Connect Endpoints (and later services that place interfaces in a lab subnet) create their network interface with the caller's credentials and no tags. The VPN-server and default-VPC denies still keep interfaces out of those networks, and Verify clean names any untagged interface left inside a lab VPC (A26).

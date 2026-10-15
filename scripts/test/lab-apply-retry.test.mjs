@@ -271,3 +271,10 @@ test("lab-plan.sh records the plan's shape on the first plan only", { skip }, ()
   w.cleanup();
   rmSync(ws, { recursive: true, force: true });
 });
+
+test("AWS: MissingRequestBodyError (S3 PutBucketReplication before the role propagated) is retried", () => {
+  const d = "Error: putting S3 Bucket Replication Configuration: operation error S3: PutBucketReplication, https response error StatusCode: 400, RequestID: x, api error MissingRequestBodyError: Request Body is empty\n\n  with aws_s3_bucket_replication_configuration.src,\n";
+  const r = transientFailure(d);
+  assert.equal(r.transient, true);
+  assert.deepEqual(r.reasons, ["MissingRequestBodyError"]);
+});
