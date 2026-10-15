@@ -35,12 +35,22 @@ export function DeploymentSection({ s }: { s: SettingsResponse }) {
   );
 }
 
-/** AWS, read-only: its region, size and rates, and whether Deploy offers it. Set up by scripts/aws-bootstrap.mjs, not here. */
+/**
+ * AWS, read-only: its region, size and rates, and whether Deploy offers it.
+ * Set up by scripts/aws-bootstrap.mjs, not here. Beside the fixed rates,
+ * AWS's own list price once the Worker has read it, with its age (AWS
+ * insights spec 4.6); estimates keep the fixed rates.
+ */
 function AwsPanel({ s }: { s: SettingsResponse }) {
   const a = s.aws;
   if (!a) return null;
   const status = !a.configured ? "Not set up: run scripts/aws-bootstrap.mjs" : a.enabled ? "Shown in Deploy" : "Set up; hidden from Deploy (AWS_ENABLED=0)";
   const rate = (n: number) => `£${n.toFixed(4)}/h`;
+  const p = s.awsPrice;
+  const listed = p && p.source === "aws" && p.totalGbpPerHour !== null && p.standbyGbpPerHour !== null ? p : null;
+  const list = listed
+    ? [`AWS list price ${rate(listed.totalGbpPerHour!)} running, ${rate(listed.standbyGbpPerHour!)} stopped`, listed.fetchedAt && `checked ${formatAge(Date.now() - Date.parse(listed.fetchedAt))}`, listed.stale && "out of date"].filter(Boolean).join(" · ")
+    : null;
   return (
     <Panel title="AWS">
       <KeyValue
@@ -48,6 +58,7 @@ function AwsPanel({ s }: { s: SettingsResponse }) {
           { label: "Region", value: `${AWS_REGIONS[a.region] ?? a.region} (${a.region})` },
           { label: "Instance type", value: a.instanceType },
           { label: "Cost", value: `Running about ${rate(a.hourlyRateGbp)} · hibernated about ${rate(a.standbyRateGbp)}` },
+          ...(list ? [{ label: "List price", value: list }] : []),
           { label: "Status", value: status },
         ]}
       />

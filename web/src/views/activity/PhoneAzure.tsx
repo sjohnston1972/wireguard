@@ -1,8 +1,13 @@
+// PhoneAzure.tsx
+//
+// Plain English: on the phone the enabled cloud widgets (Cloud changes and
+// Cloud service health) append as cards under the usual ones, in the words
+// of the cloud whose data they carry (AWS insights spec 2026-10-15 section 7).
+
 import { useState } from "react";
 import { EmptyState, Panel } from "@/components";
 import { useWidget } from "@/widgets";
-import { useOverview } from "@/api/queries";
-import { awsLive } from "../overview/cloud";
+import { cloudLabel } from "../overview/cloud";
 import { AzureChangeDrawer, useAzureChangeRows } from "./AzureChanges";
 import { EventPill, NotConnected, callerLabel, changeLabel, notConnected } from "./azure";
 import { fmtWhen } from "./model";
@@ -11,20 +16,18 @@ import { ServiceEventDrawer, useServiceEvents } from "./ServiceHealth";
 const SHOWN = 5;
 
 function ChangesCard() {
-  const { data, rows } = useAzureChangeRows();
-  const aws = awsLive(useOverview().data);
+  const { data, rows, cloud } = useAzureChangeRows();
+  const label = cloudLabel(cloud);
   const [open, setOpen] = useState<string | null>(null);
   const selected = rows.find((c) => c.id === open) ?? null;
   return (
-    <Panel title="Azure change log" className="act__phone-card">
-      {aws ? (
-        <EmptyState title="AWS insights are coming soon" description="These panels show Azure's figures when the server runs in Azure." />
-      ) : !data ? (
-        <p className="act__muted" aria-busy="true">Loading Azure changes...</p>
+    <Panel title="Cloud changes" className="act__phone-card">
+      {!data ? (
+        <p className="act__muted" aria-busy="true">Loading {label} changes...</p>
       ) : notConnected(data.feed) ? (
-        <NotConnected />
+        <NotConnected cloud={cloud} />
       ) : rows.length === 0 ? (
-        <EmptyState title="No Azure changes" />
+        <EmptyState title={`No ${label} changes`} />
       ) : (
         <ul className="act__phone-list">
           {rows.slice(0, SHOWN).map((c) => (
@@ -33,33 +36,31 @@ function ChangesCard() {
                 <span className="act__phone-row-main">
                   <strong>{changeLabel(c)}</strong>
                   <span>{c.resourceName ?? ""}</span>
-                  <span className="act__muted">{callerLabel(c)}, {fmtWhen(c.at)}</span>
+                  <span className="act__muted">{callerLabel(c, cloud)}, {fmtWhen(c.at)}</span>
                 </span>
               </button>
             </li>
           ))}
         </ul>
       )}
-      {selected && <AzureChangeDrawer change={selected} onClose={() => setOpen(null)} />}
+      {selected && <AzureChangeDrawer change={selected} cloud={cloud} onClose={() => setOpen(null)} />}
     </Panel>
   );
 }
 
 function HealthCard() {
-  const { data, events, region } = useServiceEvents();
-  const aws = awsLive(useOverview().data);
+  const { data, events, region, cloud } = useServiceEvents();
+  const label = cloudLabel(cloud);
   const [open, setOpen] = useState<string | null>(null);
   const selected = events.find((e) => e.trackingId === open) ?? null;
   return (
-    <Panel title="Azure service health" className="act__phone-card act__health-card">
-      {aws ? (
-        <EmptyState title="AWS insights are coming soon" description="These panels show Azure's figures when the server runs in Azure." />
-      ) : !data ? (
-        <p className="act__muted" aria-busy="true">Loading Azure service health...</p>
+    <Panel title="Cloud service health" className="act__phone-card act__health-card">
+      {!data ? (
+        <p className="act__muted" aria-busy="true">Loading {label} service health...</p>
       ) : notConnected(data.feed) ? (
-        <NotConnected />
+        <NotConnected cloud={cloud} />
       ) : events.length === 0 ? (
-        <EmptyState title={`No Azure issues or maintenance in ${region}`} />
+        <EmptyState title={`No ${label} issues or maintenance in ${region}`} />
       ) : (
         <ul className="act__phone-list">
           {events.slice(0, SHOWN).map((e) => (
@@ -80,7 +81,7 @@ function HealthCard() {
   );
 }
 
-/** Spec: on the phone the enabled Azure widgets append as cards under the usual ones. */
+/** Spec: on the phone the enabled cloud widgets append as cards under the usual ones. */
 export function PhoneAzure() {
   const changes = useWidget("activity.azureChanges");
   const health = useWidget("activity.serviceHealth");

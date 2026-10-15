@@ -4,6 +4,10 @@
 // path's availability, and the packets, bytes, SYN packets and packets
 // dropped by mitigation per 5 minutes. A panel in the right-hand column, or
 // a tab's content (`bare`) when the column is tabbed.
+// With the server in AWS (AWS insights spec 2026-10-15 sections 2.1 and 7)
+// it shows the instance's own packet and byte counters from CloudWatch, and
+// says in one line that AWS has no per-address or DDoS figures: no attack
+// state, availability, SYN or dropped rows.
 
 import type { ReactNode } from "react";
 import type { FirewallResponse, SettingValue } from "@shared/api";
@@ -11,9 +15,8 @@ import { Panel, cx } from "@/components";
 import { useAzureMetrics, useAzureSummary, type HistoryRange } from "@/api/queries";
 import { useWidget } from "@/widgets";
 import { levelOf } from "../overview/widgetSettings";
-import { awsLive } from "../overview/cloud";
-import { useOverview } from "@/api/queries";
-import { AzNote, AWS_SOON_TEXT, AzureFoot, Figure, NOTHING_TEXT, NOT_CONNECTED_TEXT, NO_DATA, WAITING_TEXT, azNames, bytes, column, feedOf, lastOf } from "../overview/Insights";
+import { insightsCloud } from "../overview/cloud";
+import { AzNote, AzureFoot, Figure, NOTHING_TEXT, NO_DATA, azNames, awsNames, bytes, column, feedOf, lastOf, noFiguresText, notConnectedText, waitingText } from "../overview/Insights";
 import "./PublicIp.css";
 
 /** Azure's slots are 5 minutes: a per-second figure times 300. */
@@ -22,25 +25,47 @@ const SLOT_S = 300;
 const DDOS_COLUMNS = ["ddos_max", "pkts_in_ddos", "pkts_drop_ddos", "bytes_in_ddos", "bytes_drop_ddos"] as const;
 const count = (v: number | null) => (v === null ? NO_DATA : `${Math.round(v).toLocaleString("en-GB")} per 5 min`);
 
+/** AWS's one line for what it does not measure (spec 2.1). */
+export const AWS_DDOS_NOTE = "AWS has no per-address or DDoS figures without Shield Advanced.";
+/** The footer's source on AWS (spec section 1). */
+const AWS_SOURCE = "Server's network counters";
+/** The series AWS has, and the CloudWatch metrics each is read from (packets in + out, bytes in + out). */
+const AWS_SERIES: Record<string, string[]> = { packets: ["pkts_in", "pkts_out"], bytes: ["net_in", "net_out"] };
+
 export function PublicIp({ fw, bare }: { fw: FirewallResponse; bare?: boolean }) {
   const { settings: st } = useWidget("firewall.publicIp");
   const s = useAzureSummary().data;
-  const ov = useOverview().data;
   const q = useAzureMetrics("pip", st.range as HistoryRange);
   const feed = feedOf(s, "pipMetrics");
   const pts = q.data?.points;
   const has = !!pts && pts.length > 0;
+  // Whose figures these are: the summary says (no field: Azure).
+  const cloud = insightsCloud(s);
   const az = (...cols: string[]) => (st.azureNames ? azNames(...cols) : null);
   const now = Date.parse(fw.now);
 
   let body: ReactNode;
-  if (awsLive(ov)) body = <AzNote>{AWS_SOON_TEXT}</AzNote>;
-  else if (!s || (!q.data && q.isLoading)) body = <AzNote>Loading…</AzNote>;
-  else if (!s.configured) body = <AzNote>{NOT_CONNECTED_TEXT}</AzNote>;
+  if (!s || (!q.data && q.isLoading)) body = <AzNote>Loading…</AzNote>;
+  else if (!s.configured) body = <AzNote>{notConnectedText(cloud)}</AzNote>;
   else if (!has && !fw.running) body = <AzNote>{NOTHING_TEXT}</AzNote>;
-  else if (!has && !feed?.lastOkAt) body = <AzNote>{WAITING_TEXT}</AzNote>;
-  else if (!has) body = <AzNote>No figures from Azure in this range.</AzNote>;
-  else {
+  else if (!has && !feed?.lastOkAt) body = <AzNote>{waitingText(cloud)}</AzNote>;
+  else if (!has) body = <AzNote>{noFiguresText(cloud)}</AzNote>;
+  else if (cloud === "aws") {
+    const c = (col: string) => column(pts, col);
+    const chosen = (st.series as string[]).filter((k) => k in AWS_SERIES);
+    const shown = chosen.length ? chosen : Object.keys(AWS_SERIES);
+    const name = (k: string) => (st.azureNames ? awsNames(...AWS_SERIES[k]!) : null);
+    const rows: Record<string, ReactNode> = {
+      packets: <Figure key="packets" name="Packets" az={name("packets")} value={count(lastOf(c("packets")))} />,
+      bytes: <Figure key="bytes" name="Bytes" az={name("bytes")} value={`${bytes(lastOf(c("bytes")))} per 5 min`} />,
+    };
+    body = (
+      <>
+        <AzNote>{AWS_DDOS_NOTE}</AzNote>
+        <ul className="ov-az__list">{shown.map((k) => rows[k])}</ul>
+      </>
+    );
+  } else {
     const c = (col: string) => column(pts, col);
     // Under Azure's free DDoS infrastructure protection the DDoS metrics (and
     // often VipAvailability) come back with no values: say so once, show the
@@ -74,7 +99,7 @@ export function PublicIp({ fw, bare }: { fw: FirewallResponse; bare?: boolean })
   const content = (
     <>
       {body}
-      {s?.configured && <AzureFoot feed={feed} now={now} />}
+      {s?.configured && <AzureFoot feed={feed} now={now} cloud={cloud} label={cloud === "aws" ? AWS_SOURCE : undefined} />}
     </>
   );
   if (bare) return <div className="ov-az__body fw-pip">{content}</div>;

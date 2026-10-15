@@ -62,3 +62,34 @@ describe("deploy form capacity warning", () => {
     expect(r.fetchMock!.calls.some((c) => c.url.includes("/api/v1/azure/capacity?region=eastus&size=Standard_B1s"))).toBe(true);
   });
 });
+
+describe("deploy form capacity warning for AWS (AWS insights spec sections 4.5 and 7)", () => {
+  const awsCap = (over: Partial<CapacityCheck> = {}) => cap({ region: "eu-west-2", size: "t4g.micro", available: true, reason: null, family: { name: "Standard (T family)", used: 5, limit: 5 }, total: null, message: "Needs 2 vCPUs; 5 of 5 Standard (T family) vCPUs used in London.", ...over });
+  const withAws = (awsCapacity: CapacityCheck | null, azure: CapacityCheck | null = null) => {
+    const o = { ...overview("destroyed"), capacity: azure, awsCapacity };
+    o.config.aws.enabled = true;
+    return o;
+  };
+
+  it("AWS picked and awsCapacity.ok is false: the warning shows and the button reads Deploy anyway", async () => {
+    const user = userEvent.setup();
+    renderApp("/", { routes: routes(withAws(awsCap())) });
+    const f = await form();
+    expect(within(f).queryByText(awsCap().message!)).toBeNull();
+    await user.click(within(f).getByRole("button", { name: "AWS" }));
+    expect(await within(f).findByText(awsCap().message!)).toBeInTheDocument();
+    expect(within(f).getByRole("button", { name: "Deploy anyway" })).toBeInTheDocument();
+  });
+
+  it("AWS picked: no warning when the AWS check is fine or not known, whatever Azure's says", async () => {
+    const user = userEvent.setup();
+    for (const c of [null, awsCap({ ok: true, message: null }), awsCap({ ok: null, message: null })]) {
+      const r = renderApp("/", { routes: routes(withAws(c, cap())) });
+      const f = await form();
+      await user.click(within(f).getByRole("button", { name: "AWS" }));
+      expect(within(f).getByRole("button", { name: "Deploy" })).toBeInTheDocument();
+      expect(within(f).queryByText(/isn't offered|Needs 2 vCPUs/)).toBeNull();
+      r.unmount();
+    }
+  });
+});

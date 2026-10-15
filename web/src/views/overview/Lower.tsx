@@ -58,7 +58,7 @@ export function HealthSummary({ o, now }: { o: OverviewResponse; now: number }) 
   const { prefs } = usePagePrefs("overview");
   const thresholds = useMemo(() => verdictThresholds(prefs), [prefs]);
   const azure = useAzureSummary({ enabled: on }).data;
-  const head = on ? verdict({ state: o.snapshot.state, checks, azure, cloud: cloudLabel(cloudOf(o)), capacity: o.capacity, thresholds, now }) : { ...todayHead(o.snapshot.state, checks), bootLog: false };
+  const head = on ? verdict({ state: o.snapshot.state, checks, azure, cloud: cloudLabel(cloudOf(o)), capacity: cloudOf(o) === "aws" ? (o.awsCapacity ?? null) : o.capacity, thresholds, now }) : { ...todayHead(o.snapshot.state, checks), bootLog: false };
   return (
     <Panel title="Health summary" className="ov-health" bodyClassName="ov-health__body">
       <div className="ov-health__head">

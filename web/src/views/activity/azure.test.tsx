@@ -1,9 +1,11 @@
 // azure.test.tsx
 //
-// Plain English: the Activity page's Azure parts (insights spec 10.1): the
-// Azure change log widget, the Change log's "Include Azure changes" opt-in,
-// and the Azure service health widget. All are off until turned on; with
-// nothing saved the page is today's page.
+// Plain English: the Activity page's cloud parts (insights spec 10.1): the
+// Cloud changes widget (titled "Azure change log" before AWS insights), the
+// Change log's "Include Azure changes" opt-in, and the Cloud service health
+// widget. All are off until turned on; with nothing saved the page is
+// today's page. On an AWS server the same widgets show AWS's CloudTrail
+// changes and public status feed (AWS insights spec 2026-10-15 section 7).
 import { beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -11,6 +13,7 @@ import type { PagePrefs } from "@shared/api";
 import { widgetDef } from "@shared/widgets";
 import { renderApp } from "@/test/render";
 import { azureSummaryFixture, prefsServer } from "@/test/fixtures";
+import { awsChangesResponse, awsFeedFixture, awsHealthResponse, awsSummaryFixture } from "@/test/awsFixtures";
 import { setViewport } from "@/test/viewport";
 import { activityRoutes } from "./testkit";
 import { azChangesResponse, azRoutes, healthEvents, healthResponse, issue, turnedOn } from "./azureKit";
@@ -36,8 +39,8 @@ describe("activity: Azure widgets are off by default", () => {
     const { fetchMock } = renderActivity(null);
     await screen.findByRole("table", { name: "Runs" });
     expect(screen.getByRole("table", { name: "Changes" })).toBeInTheDocument();
-    expect(screen.queryByText("Azure change log")).toBeNull();
-    expect(screen.queryByText("Azure service health")).toBeNull();
+    expect(screen.queryByText("Cloud changes")).toBeNull();
+    expect(screen.queryByText("Cloud service health")).toBeNull();
     expect(fetchMock!.calls.some((c) => /azure\/(changes|service-health)/.test(c.url))).toBe(false);
     const changesTable = within(screen.getByRole("table", { name: "Changes" }));
     expect(changesTable.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["When", "Change", "What changed", "By", "Open"]);
@@ -217,9 +220,9 @@ describe("activity: Azure widgets on the phone", () => {
     setViewport("phone");
     const prefs: PagePrefs = { layout: { shown: ["activity.azureChanges", "activity.serviceHealth"], hidden: ["activity.changeLog", "activity.liveOutput"] } };
     renderActivity(prefs);
-    const log = await screen.findByRole("region", { name: "Azure change log" });
+    const log = await screen.findByRole("region", { name: "Cloud changes" });
     expect(await within(log).findByText("wg-nsg")).toBeInTheDocument();
-    const health = await screen.findByRole("region", { name: "Azure service health" });
+    const health = await screen.findByRole("region", { name: "Cloud service health" });
     expect(await within(health).findByText("Virtual Machines: connectivity problems")).toBeInTheDocument();
     await userEvent.click(within(health).getByRole("button", { name: /Virtual Machines: connectivity problems/ }));
     expect(await screen.findByRole("dialog", { name: "Virtual Machines: connectivity problems" })).toBeInTheDocument();
@@ -229,7 +232,7 @@ describe("activity: Azure widgets on the phone", () => {
     setViewport("phone");
     const { fetchMock } = renderActivity(null);
     await screen.findByRole("region", { name: "Last run" });
-    expect(screen.queryByRole("region", { name: "Azure change log" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Cloud changes" })).toBeNull();
     expect(fetchMock!.calls.some((c) => /azure\/(changes|service-health)/.test(c.url))).toBe(false);
   });
 });
@@ -242,7 +245,7 @@ describe("activity: the Service Health pill's link (/activity?widget=serviceHeal
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     onTestFinished(() => scrolled.mockRestore());
     renderActivity(turnedOn(...AZ_HEALTH), withIssue, PILL_LINK);
-    const panel = await screen.findByRole("region", { name: "Azure service health" });
+    const panel = await screen.findByRole("region", { name: "Cloud service health" });
     await waitFor(() => expect(panel).toHaveFocus());
     expect(scrolled).toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -255,7 +258,7 @@ describe("activity: the Service Health pill's link (/activity?widget=serviceHeal
     const dialog = await screen.findByRole("dialog", { name: "Virtual Machines: connectivity problems" });
     expect(dialog).toHaveTextContent("Some VMs in UK South may fail to start.");
     expect(dialog).toHaveTextContent("UK South");
-    expect(screen.queryByRole("region", { name: "Azure service health" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Cloud service health" })).toBeNull();
     await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent(/^\/activity$/));
   });
 
@@ -264,5 +267,74 @@ describe("activity: the Service Health pill's link (/activity?widget=serviceHeal
     await screen.findByRole("table", { name: "Runs" });
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("activity: the cloud widgets on an AWS server", () => {
+  const aws = (over: Record<string, unknown> = {}) => ({ "GET /api/v1/azure/summary": awsSummaryFixture(), "GET /api/v1/azure/changes": awsChangesResponse(), "GET /api/v1/azure/service-health": awsHealthResponse(), ...over });
+  const awsChanges = () => within(screen.getByRole("table", { name: "AWS changes" }));
+
+  it("Cloud changes: CloudTrail's changes in plain words, the callers, the delay note and the source", async () => {
+    renderActivity(turnedOn(...AZ_LOG), aws());
+    const panel = await screen.findByRole("region", { name: "Cloud changes" });
+    await screen.findByRole("table", { name: "AWS changes" });
+    const rows = bodyRows(awsChanges());
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent("Changed security group");
+    expect(rows[0]).toHaveTextContent("sg-0a1b2c3d");
+    expect(rows[0]).toHaveTextContent("cloudlabs");
+    expect(rows[1]).toHaveTextContent("Changed EC2 instance");
+    expect(rows[1]).toHaveTextContent("steven");
+    expect(rows[2]).toHaveTextContent("Attached EBS volume");
+    expect(within(rows[2]).getByText("AWS")).toBeInTheDocument();
+    expect(within(panel).getByText("AWS shows changes 5–15 minutes after they happen.")).toBeInTheDocument();
+    expect(within(panel).getByText(/AWS CloudTrail ·/)).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent(/coming soon/i);
+    expect(panel).not.toHaveTextContent(/Azure/);
+  });
+
+  it("Cloud changes: the Types setting matches AWS's resource kinds", async () => {
+    renderActivity(turnedOn(...AZ_LOG, { types: ["nsg", "disk"] }), aws());
+    await screen.findByRole("table", { name: "AWS changes" });
+    const rows = bodyRows(awsChanges());
+    expect(rows.map((r) => (/sg-0a1b2c3d|i-0123456789abcdef0|vol-0f00ba11/.exec(r.textContent ?? "") ?? [""])[0])).toEqual(["sg-0a1b2c3d", "vol-0f00ba11"]);
+  });
+
+  it("Cloud changes: not connected and empty say AWS", async () => {
+    const nc = awsChangesResponse({ rows: [], feed: awsFeedFixture("activity", { status: "not_configured", lastOkAt: null }) });
+    const a = renderActivity(turnedOn(...AZ_LOG), aws({ "GET /api/v1/azure/changes": nc }));
+    expect(await screen.findByText("AWS isn't connected")).toBeInTheDocument();
+    expect(screen.getByText("Add the Worker's AWS keys.")).toBeInTheDocument();
+    a.unmount();
+    renderActivity(turnedOn(...AZ_LOG), aws({ "GET /api/v1/azure/changes": awsChangesResponse({ rows: [] }) }));
+    expect(await screen.findByText("No AWS changes")).toBeInTheDocument();
+  });
+
+  it("Cloud service health: AWS's public status feed for London, with its source", async () => {
+    renderActivity(turnedOn(...AZ_HEALTH), aws());
+    const panel = await screen.findByRole("region", { name: "Cloud service health" });
+    const list = await screen.findByRole("list", { name: "AWS service events" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    expect(list).toHaveTextContent("Active issue");
+    expect(list).toHaveTextContent("Increased API error rates");
+    expect(list).toHaveTextContent("EC2");
+    expect(within(panel).getByText(/AWS public status feed ·/)).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent(/coming soon/i);
+  });
+
+  it("Cloud service health: nothing to show names AWS and London", async () => {
+    renderActivity(turnedOn(...AZ_HEALTH), aws({ "GET /api/v1/azure/service-health": awsHealthResponse([]) }));
+    expect(await screen.findByText(/No AWS issues or maintenance in London/)).toBeInTheDocument();
+  });
+
+  it("phone: the AWS cards show AWS's data", async () => {
+    setViewport("phone");
+    const prefs: PagePrefs = { layout: { shown: ["activity.azureChanges", "activity.serviceHealth"], hidden: ["activity.changeLog", "activity.liveOutput"] } };
+    renderActivity(prefs, aws());
+    const log = await screen.findByRole("region", { name: "Cloud changes" });
+    expect(await within(log).findByText("sg-0a1b2c3d")).toBeInTheDocument();
+    const health = await screen.findByRole("region", { name: "Cloud service health" });
+    expect(await within(health).findByText("Increased API error rates")).toBeInTheDocument();
+    expect(screen.queryByText(/coming soon/i)).toBeNull();
   });
 });

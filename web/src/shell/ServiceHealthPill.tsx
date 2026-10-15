@@ -7,12 +7,15 @@
 // planned maintenance. Amber for an issue, red (and "Serious") when Azure
 // rates it Error. Clicking opens each issue's title, services, start, last
 // update and summary, with a link to the Activity page's service health widget.
+// On an AWS server the same pill reads "AWS issue in London", from AWS's
+// public status feed (AWS insights spec 2026-10-15 section 7).
 
 import * as Popover from "@radix-ui/react-popover";
 import { AlertTriangle, OctagonAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { ServiceEvent } from "@shared/api";
 import { useAzureSummary } from "@/api/queries";
+import { cloudLabel, insightsCloud } from "@/views/overview/cloud";
 import "./ServiceHealthIndicator.css";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -35,7 +38,8 @@ export function ServiceHealthPill() {
   if (!data || issues.length === 0) return null;
   const severe = issues.some(isError);
   const region = data.region.name;
-  const word = severe ? "Serious Azure issue" : "Azure issue";
+  const label = cloudLabel(insightsCloud(data));
+  const word = severe ? `Serious ${label} issue` : `${label} issue`;
   const Icon = severe ? OctagonAlert : AlertTriangle;
   return (
     <Popover.Root>
@@ -49,7 +53,7 @@ export function ServiceHealthPill() {
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content className="sh-pop" align="end" sideOffset={8} collisionPadding={12} aria-label="Azure service health">
+        <Popover.Content className="sh-pop" align="end" sideOffset={8} collisionPadding={12} aria-label={`${label} service health`}>
           <ul className="sh-pop__list">
             {issues.map((e) => (
               <li key={e.trackingId}>
@@ -67,7 +71,7 @@ export function ServiceHealthPill() {
             ))}
           </ul>
           <Link to="/activity?widget=serviceHealth" className="sh-pop__link">
-            Azure service health on Activity
+            {label} service health on Activity
           </Link>
         </Popover.Content>
       </Popover.Portal>

@@ -567,7 +567,7 @@ describe("widget library schema (insights spec 9.1)", () => {
     },
     "overview.azureHealth": {
       replaces: "overview.notes",
-      title: "Azure health",
+      title: "Cloud health",
       description: "What Azure says about the VM: health, power, agent, maintenance",
       settings: {
         annotations: S("data", "number", 3),
@@ -608,7 +608,7 @@ describe("widget library schema (insights spec 9.1)", () => {
     },
     "activity.azureChanges": {
       replaces: "activity.changeLog",
-      title: "Azure change log",
+      title: "Cloud changes",
       description: "Who changed what in Azure, including the portal",
       settings: {
         range: S("data", "enum", "7d"),
@@ -621,7 +621,7 @@ describe("widget library schema (insights spec 9.1)", () => {
     },
     "activity.serviceHealth": {
       replaces: "activity.liveOutput",
-      title: "Azure service health",
+      title: "Cloud service health",
       description: "Azure issues and planned maintenance in your region",
       settings: {
         range: S("data", "enum", "30d"),

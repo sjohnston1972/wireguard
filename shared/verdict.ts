@@ -6,7 +6,10 @@
 // 13:15"). The rules run in order and the first match wins; when none of the
 // new rules applies (always, with no Azure or vitals data) the head is
 // exactly today's. Spec: docs/superpowers/specs/2026-10-04-azure-insights-design.md
-// section 10.3. Thresholds colour this dashboard only.
+// section 10.3. Thresholds colour this dashboard only. On an AWS server the
+// cloud's own lines name AWS ("AWS has an active issue in London"), taken
+// from the summary's `cloud` (AWS insights spec 2026-10-15 section 7), and
+// AWS's scheduled event codes ("instance-reboot") read as plain verbs.
 //
 // Pure: no React, no Worker code.
 
@@ -40,7 +43,7 @@ export interface VerdictInput {
   /** The checks the Health summary shows (its Checks setting). */
   checks: VerdictCheck[];
   azure?: AzureSummaryResponse | null;
-  /** The headend's cloud, named in the maintenance lines ("Azure" when left out). */
+  /** The headend's cloud, named in the cloud's lines ("Azure" when left out); the summary's own `cloud`, when it has one, wins. */
   cloud?: string;
   /** The next deploy's capacity check (OverviewResponse.capacity). */
   capacity?: CapacityCheck | null;
@@ -77,7 +80,23 @@ export function verdictThresholds(prefs: PagePrefs): VerdictThresholds {
   return { perf: pick(prefs, "overview.vmPerformance"), vitals: pick(prefs, "overview.vitals") };
 }
 
-const VERB: Record<string, string> = { Reboot: "reboot", Redeploy: "redeploy", Freeze: "pause", Preempt: "evict", Terminate: "delete" };
+const VERB: Record<string, string> = {
+  Reboot: "reboot",
+  Redeploy: "redeploy",
+  Freeze: "pause",
+  Preempt: "evict",
+  Terminate: "delete",
+  // AWS's scheduled event codes (DescribeInstanceStatus eventsSet, AWS insights spec 4.2).
+  "instance-reboot": "reboot",
+  "system-reboot": "reboot",
+  "system-maintenance": "do maintenance on",
+  "instance-retirement": "retire",
+  "instance-stop": "stop",
+};
+/** Rule 10 names the event ("A reboot scheduled by ..."): the verb, unless the verb is not a noun. */
+const NOUN: Record<string, string> = { "system-maintenance": "maintenance window", "instance-retirement": "retirement" };
+const eventVerb = (type: string) => (Object.hasOwn(VERB, type) ? VERB[type]! : type);
+const eventNoun = (type: string) => (Object.hasOwn(NOUN, type) ? NOUN[type]! : eventVerb(type));
 const ukTime = (ms: number, withDate: boolean) =>
   new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23", ...(withDate ? { day: "numeric", month: "short" } : {}) }).format(new Date(ms)).replace(" at ", ", ");
 const n = (v: number) => String(Math.round(v * 10) / 10);
@@ -96,7 +115,8 @@ interface Reading {
 export function verdict(input: VerdictInput): Verdict {
   const { state, checks, azure, capacity, now } = input;
   const th = input.thresholds ?? verdictThresholds({});
-  const who = input.cloud ?? "Azure";
+  // Whose figures these are: the summary says (AWS insights), else the headend's cloud, else Azure.
+  const who = azure?.cloud ? (azure.cloud === "aws" ? "AWS" : "Azure") : (input.cloud ?? "Azure");
   const today = todayHead(state, checks);
   const running = state === "running";
   const out = (rule: number, h: Partial<Head> & { tone: VerdictTone }, bootLog = false): Verdict => ({ title: today.title, sub: today.sub, ...h, rule, bootLog });
@@ -104,10 +124,10 @@ export function verdict(input: VerdictInput): Verdict {
   const v = azure?.vitals ?? null;
   const latest = azure?.latest;
 
-  // 1. The VM does not answer: today's words, plus what Azure says and the boot log.
-  if (running && checks.some((c) => c.key === "vm" && c.ok === false)) return out(1, { tone: "red", sub: today.sub + (health?.title ? ` · Azure says: ${health.title}` : "") }, true);
-  // 2. Azure says the VM is down.
-  if (health?.state === "Unavailable") return out(2, { tone: "red", title: "Azure reports the VM as unavailable", sub: health.summary ?? "" });
+  // 1. The VM does not answer: today's words, plus what the cloud says and the boot log.
+  if (running && checks.some((c) => c.key === "vm" && c.ok === false)) return out(1, { tone: "red", sub: today.sub + (health?.title ? ` · ${who} says: ${health.title}` : "") }, true);
+  // 2. The cloud says the VM is down.
+  if (health?.state === "Unavailable") return out(2, { tone: "red", title: `${who} reports the VM as unavailable`, sub: health.summary ?? "" });
   // 3. Any other failing check: today's head.
   if (today.tone === "red") return out(3, { tone: "red" });
   // 4. DDoS.
@@ -122,10 +142,10 @@ export function verdict(input: VerdictInput): Verdict {
   const soon = events.find((e) => e.status === "Started" || at(e) <= now + 15 * 60_000);
   if (soon) {
     const t = at(soon);
-    return out(6, { tone: "red", title: `${who} will ${Object.hasOwn(VERB, soon.type) ? VERB[soon.type] : soon.type} the VM ${soon.status === "Started" || !Number.isFinite(t) ? "now" : `at ${ukTime(t, false)}`}`, sub: soon.description ?? `Scheduled by ${who}. cloudlabs never brings it forward.` });
+    return out(6, { tone: "red", title: `${who} will ${eventVerb(soon.type)} the VM ${soon.status === "Started" || !Number.isFinite(t) ? "now" : `at ${ukTime(t, false)}`}`, sub: soon.description ?? `Scheduled by ${who}. cloudlabs never brings it forward.` });
   }
-  // 7. Azure says the VM is degraded.
-  if (health?.state === "Degraded") return out(7, { tone: "amber", title: "Azure reports the VM as degraded", sub: health.summary ?? "" });
+  // 7. The cloud says the VM is degraded.
+  if (health?.state === "Degraded") return out(7, { tone: "amber", title: `${who} reports the VM as degraded`, sub: health.summary ?? "" });
 
   // The figures, in rule 11's order (credits, CPU, memory, disk, steal, conntrack, latency, loss, security updates).
   const ct = v?.conntrack && v.conntrack.max > 0 ? (v.conntrack.count / v.conntrack.max) * 100 : null;
@@ -158,14 +178,14 @@ export function verdict(input: VerdictInput): Verdict {
   // 8. Credits, memory, disk or conntrack at bad.
   const critical = readings.find((r) => r.badTitle && r.level === "bad");
   if (critical) return out(8, { tone: "amber", title: critical.badTitle, sub: critical.sub });
-  // 9. An active Service Health issue in the region.
+  // 9. An active service health issue in the region.
   const issue = azure?.serviceIssues?.[0];
-  if (issue) return out(9, { tone: "amber", title: `Azure has an active issue in ${azure!.region.name}`, sub: issue.title });
+  if (issue) return out(9, { tone: "amber", title: `${who} has an active issue in ${azure!.region.name}`, sub: issue.title });
   // 10. A later scheduled event.
   const later = events[0];
   if (later) {
     const t = at(later);
-    return out(10, { tone: "amber", title: Number.isFinite(t) ? `${who} maintenance planned for ${ukTime(t, true)}` : `${who} maintenance planned`, sub: later.description ?? `A ${Object.hasOwn(VERB, later.type) ? VERB[later.type] : later.type} scheduled by ${who}.` });
+    return out(10, { tone: "amber", title: Number.isFinite(t) ? `${who} maintenance planned for ${ukTime(t, true)}` : `${who} maintenance planned`, sub: later.description ?? `A ${eventNoun(later.type)} scheduled by ${who}.` });
   }
   // 11. Any threshold past warn: the most severe, in order.
   const worst = readings.find((r) => r.level === "bad") ?? readings.find((r) => r.level === "warn");
