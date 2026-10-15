@@ -68,7 +68,11 @@ export default () => {
         address: "aws_sns_topic_policy.alerts",
         values: {},
         unknown: ["arn", "policy"],
-        refs: { arn: ref(topic, "arn"), policy: [...ref(topic, "arn"), "data.aws_partition.current.partition", "data.aws_partition.current", "data.aws_caller_identity.current.account_id", "data.aws_caller_identity.current"] },
+        // In expression order, once per use, as Terraform lists them (the real plan, 2026-10-15).
+        refs: {
+          arn: ref(topic, "arn"),
+          policy: [...ref("data.aws_partition.current", "partition"), ...ref("data.aws_caller_identity.current", "account_id"), ...ref(topic, "arn"), ...ref(topic, "arn"), ...ref("data.aws_caller_identity.current", "account_id")],
+        },
       },
       alarm("cpu_high", "cpu-high", { alarm_description: "vm-app's CPU above 70% for two minutes", namespace: "AWS/EC2", metric_name: "CPUUtilization", statistic: "Average", evaluation_periods: 2, threshold: 70, comparison_operator: "GreaterThanThreshold" }, { dimensions: true, ok: true }),
       alarm("app_errors", "app-errors", { alarm_description: "Five or more ERROR lines in a minute", namespace: ns, metric_name: "AppErrors", statistic: "Sum", evaluation_periods: 1, threshold: 5, comparison_operator: "GreaterThanOrEqualToThreshold", treat_missing_data: "notBreaching" }),
@@ -77,7 +81,11 @@ export default () => {
         address: "aws_cloudwatch_dashboard.overview",
         values: { dashboard_name: `lab-${id}-overview` },
         unknown: ["dashboard_body"],
-        refs: { dashboard_name: ["var.lab_id"], dashboard_body: ["var.region", ...ref(app, "id"), "var.lab_id", ...ref(logGroup, "name")] },
+        // jsonencode's references in expression order, once per use (var.region four times), as the real plan listed them.
+        refs: {
+          dashboard_name: ["var.lab_id"],
+          dashboard_body: ["var.region", ...ref(app, "id"), "var.region", "var.lab_id", ...ref(app, "id"), "var.region", "var.lab_id", "var.region", ...ref(logGroup, "name")],
+        },
       },
       {
         address: "aws_cloudwatch_query_definition.errors",

@@ -88,7 +88,7 @@ export default () => {
       association("patch_scan", "AWS-RunPatchBaseline", "rate(1 day)", "tag:Patch Group", `lab-${id}-web`, { parameters: { Operation: "Scan" } }),
       association("inventory", "AWS-GatherSoftwareInventory", "rate(30 minutes)", "tag:cloudlabs-lab", id),
       // config.tf
-      { address: "aws_s3_bucket.config", values: tagged(c, { bucket, force_destroy: true, tags: { Name: "config-snapshots" } }), refs: { bucket: ["local.config_bucket", "var.name_prefix"] } },
+      { address: "aws_s3_bucket.config", values: tagged(c, { bucket, force_destroy: true, tags: { Name: "config-snapshots" } }), refs: { bucket: ["local.config_bucket"] } },
       {
         address: "aws_s3_bucket_public_access_block.config",
         values: { block_public_acls: true, block_public_policy: true, ignore_public_acls: true, restrict_public_buckets: true },
@@ -109,7 +109,8 @@ export default () => {
             ],
           }),
         }),
-        refs: { name: ["var.lab_id"], policy: ["local.config_bucket_arn", "var.name_prefix"] },
+        // A local is listed by its own name (not what it is built from), once per use.
+        refs: { name: ["var.lab_id"], policy: ["local.config_bucket_arn", "local.config_bucket_arn"] },
       },
       { ...attach("config_delivery", "config", null), refs: { role: ref("aws_iam_role.config", "name"), policy_arn: ref("aws_iam_policy.config_delivery", "arn") } },
       {

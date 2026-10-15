@@ -19,6 +19,15 @@
 // provider fills in (PLAN_DEFAULTS). It also leaves a dynamic block out of
 // the configuration's expressions while its values are planned.
 //
+// AWS labs batch 1's release tests (2026-10-15) taught it the aws provider's
+// ways: every aws resource's own region (aws provider 6) is known at plan, the
+// provider's region, as nothing sets it (providerDefaults); the provider's
+// Optional and Computed blocks left unset are wholly unknown, as on azurerm
+// (UNSET_BLOCKS_UNKNOWN, "block.0.child" entries too, even where the schema
+// tree has no computed attribute in the block); a data source marks what its
+// schema calls sensitive (data.aws_ssm_parameter's value) as a resource does;
+// and PLAN_DEFAULTS reach inside nested blocks (an S3 lifecycle rule's filter).
+//
 //   realisticPlan({ resources, data, providers, variables, providerConfig })
 //     resources: [{ address, values, refs?, unknown?, sensitive?, dynamic?, importing?, actions?, count?, forEach? }]
 //       address    may carry an instance key, azurerm_subnet.s[0] or azurerm_subnet.s["web"]
@@ -82,7 +91,24 @@ export const UNSET_BLOCKS_UNKNOWN = {
   azurerm_virtual_hub_connection: ["routing"],
   azurerm_virtual_network_gateway: ["bgp_settings"],
   azurerm_storage_account: ["blob_properties", "network_rules", "queue_properties", "routing", "share_properties", "static_website"],
+  // AWS labs batch 1's release tests (soa-01 to soa-05, aws 6.69.0, 2026-10-15).
+  aws_autoscaling_group: ["availability_zone_distribution", "capacity_reservation_specification", "instance_lifecycle_policy", "mixed_instances_policy", "traffic_source"],
+  aws_config_config_rule: ["evaluation_mode"],
+  aws_config_configuration_recorder: ["recording_group.0.exclusion_by_resource_types", "recording_group.0.recording_strategy", "recording_mode"],
+  aws_iam_role: ["inline_policy"],
+  aws_instance: [
+    "capacity_reservation_specification", "cpu_options", "ebs_block_device", "enclave_options", "ephemeral_block_device", "instance_market_options",
+    "maintenance_options", "network_interface", "primary_network_interface", "private_dns_name_options", "secondary_network_interface",
+  ],
+  aws_lb: ["subnet_mapping"],
+  aws_lb_listener: ["mutual_authentication"],
+  aws_lb_target_group: ["stickiness", "target_failover", "target_group_health", "target_health_state"],
+  aws_s3_bucket: ["cors_rule", "grant", "lifecycle_rule", "logging", "object_lock_configuration", "replication_configuration", "server_side_encryption_configuration", "versioning", "website"],
+  aws_vpc_endpoint: ["dns_options", "subnet_configuration"],
 };
+
+/** The aws provider's region when a plan's variables have none (common-aws.mjs's AWS_REGION, London). */
+const DEFAULT_AWS_REGION = "eu-west-2";
 
 /**
  * Blocks a plan marks sensitive as a whole when the configuration sets them (the provider declares the block itself
@@ -105,7 +131,45 @@ export const PLAN_DEFAULTS = {
   azurerm_cdn_frontdoor_firewall_policy: (v) => (v.sku_name === "Premium_AzureFrontDoor" ? { captcha_cookie_expiration_in_minutes: 30, js_challenge_cookie_expiration_in_minutes: 30 } : {}),
   azurerm_log_analytics_workspace: { local_authentication_enabled: true },
   random_password: { lower: true, min_lower: 0, min_numeric: 0, min_special: 0, min_upper: 0, number: true, numeric: true, special: true, upper: true },
+  // soa-04's real plan (2026-10-15): the bucket-wide minimum size and, in each rule and its filter, the prefix and
+  // size bounds are known at plan though left unset (the framework provider's defaults). Nested blocks as arrays,
+  // element by element, as in `values`. The shape records only that they are known; these values are the defaults.
+  aws_s3_bucket_lifecycle_configuration: (v) => ({
+    transition_default_minimum_object_size: "all_storage_classes_128K",
+    ...(Array.isArray(v.rule)
+      ? { rule: v.rule.map((r) => ({ prefix: "", ...(Array.isArray(r?.filter) ? { filter: r.filter.map(() => ({ object_size_greater_than: 0, object_size_less_than: 0, prefix: "" })) } : {}) })) }
+      : {}),
+  }),
 };
+
+/**
+ * aws provider 6 gives every resource its own Optional and Computed region. Left unset, as the labs leave it, the
+ * plan already knows it, the provider's region (var.region): planned, never unknown and not configured (AWS labs
+ * batch 1's release tests, 2026-10-15). Any managed resource type whose schema has it (a data source's values are
+ * what it read, which the description gives).
+ */
+function providerDefaults(type, tree, awsRegion) {
+  return type.startsWith("aws_") && tree?.attrs?.includes("region") ? { region: awsRegion } : {};
+}
+
+/** The part of `defaults` that `held` leaves unset: a missing key, or inside a block `held` has, element by element. */
+function unsetDefaults(defaults, held) {
+  const out = {};
+  for (const [k, v] of Object.entries(defaults)) {
+    if (!(k in held)) out[k] = v;
+    else if (Array.isArray(v) && Array.isArray(held[k])) out[k] = v.map((el, i) => (el && typeof el === "object" && held[k][i] && typeof held[k][i] === "object" ? unsetDefaults(el, held[k][i]) : {}));
+  }
+  return out;
+}
+
+/** Fills `target` with unsetDefaults' result: missing keys are set, blocks are filled element by element. */
+function fillDefaults(target, defaults) {
+  for (const [k, v] of Object.entries(defaults)) {
+    if (Array.isArray(v) && Array.isArray(target[k])) v.forEach((el, i) => target[k][i] && typeof target[k][i] === "object" && fillDefaults(target[k][i], el));
+    else if (!(k in target)) target[k] = structuredClone(v);
+  }
+  return target;
+}
 
 /** Computed-only attributes a description may give a value (the plan knows it) that the configuration never sets. */
 const NEVER_CONFIGURED = new Set(["tags_all"]);
@@ -185,7 +249,7 @@ function expressionFor(v) {
   return { constant_value: v };
 }
 
-function resourceParts(def, mode) {
+function resourceParts(def, mode, awsRegion = DEFAULT_AWS_REGION) {
   const type = typeOf(def.address);
   const tree = COMPUTED.types[mode === "data" ? `data.${type}` : type];
   if (!tree && (type.startsWith("azurerm_") || type.startsWith("azuread_") || type.startsWith("aws_"))) throw new Error(`computed.json has no ${type}: add it to extract-computed.mjs`);
@@ -198,17 +262,18 @@ function resourceParts(def, mode) {
   for (const p of unknown) setPath(held, p, "(unknown)");
   for (const p of Object.keys(def.refs ?? {}).map(split)) if (p.length === 1 && !(p[0] in held)) held[p[0]] = "(from config)";
   for (const p of unknown) deletePath(values, p);
-  // Defaults the provider fills in at plan: known, planned, never configured.
-  const defaults = mode === "data" ? {} : Object.fromEntries(Object.entries(planDefaults(type, held)).filter(([k]) => !(k in held)));
-  const au = unknownFor({ ...held, ...defaults }, tree);
+  // Defaults the provider fills in at plan (nested ones too): known, planned, never configured.
+  const defaults = mode === "data" ? {} : unsetDefaults({ ...providerDefaults(type, tree, awsRegion), ...planDefaults(type, held) }, held);
+  const au = unknownFor(fillDefaults(structuredClone(held), defaults), tree);
   for (const p of unknown) setPath(au, p, true);
-  // An Optional and Computed block left unset: the provider plans the whole block as unknown.
+  // An Optional and Computed block left unset: the provider plans the whole block as unknown. Inside a block the
+  // configuration sets ("block.0.child"), even one with no computed attribute in the schema tree (so no entry in au yet).
   if (mode !== "data") {
     for (const b of UNSET_BLOCKS_UNKNOWN[type] ?? []) {
       const path = split(b);
       const parent = path.slice(0, -1).reduce((o, k) => (o == null ? o : o[k]), held);
-      const auParent = path.slice(0, -1).reduce((o, k) => (o == null ? o : o[k]), au);
-      if (parent && typeof parent === "object" && !(path.at(-1) in parent) && auParent && typeof auParent === "object") auParent[path.at(-1)] = true;
+      const wholly = path.slice(0, -1).some((_, i) => path.slice(0, i + 1).reduce((o, k) => (o == null ? o : o[k]), au) === true);
+      if (parent && typeof parent === "object" && !(path.at(-1) in parent) && !wholly) setPath(au, path, true);
     }
   }
   // A data source's values are what it read, not what the configuration set: `data "azurerm_subscription" "current" {}`
@@ -217,9 +282,10 @@ function resourceParts(def, mode) {
   const expressions = Object.fromEntries(configuredValues.filter(([k]) => !dynamic.has(k)).map(([k, v]) => [k, expressionFor(v)]));
   for (const p of unknown) if (!(p[0] in expressions) && !dynamic.has(p[0])) expressions[p[0]] = typeof p[1] === "number" ? [] : {};
   for (const [path, refs] of Object.entries(def.refs ?? {})) setPath(expressions, split(path), { references: refs });
-  Object.assign(values, defaults);
-  // Every attribute the schema marks sensitive, set or not, and any the description adds.
-  const sensitive = mode === "data" ? {} : sensitiveFor(values, tree, SENSITIVE_BLOCKS[type]);
+  fillDefaults(values, defaults);
+  // Every attribute the schema marks sensitive, set or not, and any the description adds. A data source too: its
+  // sensitive_values (data.aws_ssm_parameter's value, AWS labs batch 1's real plans).
+  const sensitive = sensitiveFor(values, tree, mode === "data" ? [] : SENSITIVE_BLOCKS[type]);
   for (const p of (def.sensitive ?? []).map(split)) {
     if (sensitive[p[0]] === true && p.length > 1) throw new Error(`${def.address}: ${p.join(".")} is inside ${p[0]}, which the plan marks sensitive as a whole (SENSITIVE_BLOCKS): leave it out of sensitive`);
     setPath(sensitive, p, true);
@@ -231,6 +297,8 @@ export function realisticPlan({ resources = [], data = [], providers = ["azurerm
   const planned = [];
   const changes = [];
   const config = [];
+  // The aws provider's region (common-aws.mjs's AWS_PROVIDER_CONFIG: region = var.region): every aws resource's own.
+  const awsRegion = typeof variables.region === "string" && variables.region ? variables.region : DEFAULT_AWS_REGION;
   // One configuration entry per resource block, however many instances it has.
   const blocks = new Set();
   const configure = (def, entry) => {
@@ -240,7 +308,7 @@ export function realisticPlan({ resources = [], data = [], providers = ["azurerm
     config.push({ address: block, ...entry });
   };
   for (const def of resources) {
-    const { type, values, au, expressions, sensitive } = resourceParts(def, "managed");
+    const { type, values, au, expressions, sensitive } = resourceParts(def, "managed", awsRegion);
     const common = { address: def.address, mode: "managed", type, name: nameOf(def.address), ...indexOf(def.address), provider_name: providerOf(type) };
     planned.push({ ...common, schema_version: 0, values, sensitive_values: sensitive });
     const change = { actions: def.actions ?? ["create"], before: def.importing ? {} : null, after: values, after_unknown: au, before_sensitive: false, after_sensitive: sensitive };
@@ -251,8 +319,8 @@ export function realisticPlan({ resources = [], data = [], providers = ["azurerm
   }
   const read = [];
   for (const def of data) {
-    const { type, values, expressions } = resourceParts(def, "data");
-    read.push({ address: def.address, mode: "data", type, name: nameOf(def.address), ...indexOf(def.address), provider_name: providerOf(type), schema_version: 0, values, sensitive_values: {} });
+    const { type, values, expressions, sensitive } = resourceParts(def, "data", awsRegion);
+    read.push({ address: def.address, mode: "data", type, name: nameOf(def.address), ...indexOf(def.address), provider_name: providerOf(type), schema_version: 0, values, sensitive_values: sensitive });
     configure(def, { mode: "data", type, name: nameOf(def.address), provider_config_key: type.split("_")[0], expressions, schema_version: 0 });
   }
   const provider_config = Object.fromEntries(providers.map((p) => [p, { name: p, full_name: `registry.terraform.io/hashicorp/${p}`, ...(p === "azurerm" ? { expressions: { features: [{}] } } : {}) }]));

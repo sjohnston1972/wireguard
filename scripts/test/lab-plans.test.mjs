@@ -332,6 +332,59 @@ test("the realistic plans print batch 4's secret blocks, Service Bus network rul
   assert.equal(standard.after_unknown.js_challenge_cookie_expiration_in_minutes, true);
 });
 
+// AWS labs batch 1's release tests (soa-01 to soa-05, aws 6.69.0, 2026-10-15) recorded five ways the aws provider's
+// plans differ from what the fixtures printed: every resource's own region is known (the provider's); unset Optional
+// and Computed blocks are wholly unknown (nested ones too); a data source marks its schema's sensitive attributes and
+// a cloud-init holding the password is sensitive; values set literally elsewhere are known (and a list keeps its
+// length, a set does not); and references are listed in expression order, once per use.
+test("the realistic plans print batch 1 AWS labs' regions, unset blocks, sensitive values, known names and references as the real plans did", () => {
+  const plan = (lab) => LAB_PLANS[lab].plan;
+  const change = (lab, address) => plan(lab).resource_changes.find((c) => c.address === address).change;
+  const config = (lab, address) => plan(lab).configuration.root_module.resources.find((r) => r.address === address);
+  // 1. region: known (var.region), planned, and not configured.
+  const vpc = change("soa-01-cloudwatch", "aws_vpc.lab");
+  assert.equal(vpc.after.region, "eu-west-2");
+  assert.equal(vpc.after_unknown.region, undefined);
+  assert.equal(config("soa-01-cloudwatch", "aws_vpc.lab").expressions.region, undefined);
+  // 2. Unset Optional and Computed blocks, at the top and inside a block the lab sets (recording_group has no computed
+  // attribute in the schema tree, so after_unknown has no entry for it until the block is marked).
+  assert.equal(change("soa-01-cloudwatch", "aws_instance.app").after_unknown.cpu_options, true);
+  assert.equal(change("soa-01-cloudwatch", "aws_vpc_endpoint.s3").after_unknown.dns_options, true);
+  assert.equal(change("soa-02-systems-manager", "aws_iam_role.ssm").after_unknown.inline_policy, true);
+  const recorder = change("soa-02-systems-manager", "aws_config_configuration_recorder.lab").after_unknown;
+  assert.equal(recorder.recording_mode, true);
+  assert.equal(recorder.recording_group[0].recording_strategy, true);
+  // 3. Sensitive: a data source's schema-sensitive value; an instance's and a launch template's cloud-init (it holds
+  // var.admin_password), known or not.
+  const ssm = plan("soa-01-cloudwatch").prior_state.values.root_module.resources.find((r) => r.address === "data.aws_ssm_parameter.al2023_arm64");
+  assert.equal(ssm.sensitive_values.value, true);
+  assert.equal(change("soa-01-cloudwatch", "aws_instance.app").after_sensitive.user_data, true);
+  assert.equal(change("soa-03-auto-scaling", "aws_launch_template.web").after_sensitive.user_data, true);
+  assert.equal(change("soa-05-rds", "aws_instance.client").after_sensitive.user_data, true);
+  // 4. Known at plan: built from known values or set literally in the block referenced.
+  const app = change("soa-01-cloudwatch", "aws_instance.app");
+  assert.equal(app.after_unknown.user_data, undefined);
+  assert.equal(app.after.iam_instance_profile, "lab-soa-01-cloudwatch-vm");
+  assert.equal(change("soa-05-rds", "aws_instance.client").after_unknown.user_data, true, "its cloud-init holds the databases' addresses");
+  assert.equal(change("soa-03-auto-scaling", "aws_autoscaling_policy.cpu").after.autoscaling_group_name, "asg-a03k3x9q");
+  assert.equal(change("soa-05-rds", "aws_db_instance.primary").after_unknown.parameter_group_name, undefined);
+  const lifecycle = change("soa-04-backup", "aws_s3_bucket_lifecycle_configuration.src");
+  assert.equal(lifecycle.after_unknown.transition_default_minimum_object_size, undefined);
+  assert.equal(lifecycle.after_unknown.rule[0].filter[0].prefix, undefined, "a nested plan-time default");
+  assert.equal(lifecycle.after.rule[0].filter[0].object_size_greater_than, PLAN_DEFAULTS.aws_s3_bucket_lifecycle_configuration(lifecycle.after).rule[0].filter[0].object_size_greater_than);
+  assert.equal(lifecycle.after.rule[0].id, "tidy", "the lab's own values are kept");
+  // A list of one unknown id keeps its length; a set holding one is wholly unknown.
+  assert.deepEqual(change("soa-01-cloudwatch", "aws_ec2_instance_connect_endpoint.lab").after_unknown.security_group_ids, [true]);
+  assert.equal(change("soa-04-backup", "aws_backup_selection.data").after_unknown.resources, true);
+  // 5. References in expression order, once per use: the dashboard's jsonencode names var.region four times.
+  const body = planShape(plan("soa-01-cloudwatch")).resources["aws_cloudwatch_dashboard.overview"].refs.dashboard_body;
+  assert.equal(body.filter((r) => r === "var.region").length, 4);
+  assert.deepEqual(planShape(plan("soa-03-auto-scaling")).resources["aws_autoscaling_group.web"].refs.vpc_zone_identifier, ["aws_subnet.private"], "a splat lists the resource alone");
+  // A plan with no region variable still knows each aws resource's region (London, the fixtures' default).
+  const bare = realisticPlan({ resources: [{ address: "aws_vpc.x", values: { cidr_block: "10.0.0.0/16" } }], providers: ["aws"] });
+  assert.equal(bare.resource_changes[0].change.after.region, "eu-west-2");
+});
+
 test("ctx gives a secondary group and region", () => {
   const c = ctx("az305-23-sql-failover", "23");
   assert.equal(SECONDARY, "ukwest");

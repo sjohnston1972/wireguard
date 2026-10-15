@@ -31,7 +31,7 @@ export default () => {
   const bucket = (key, name, label) => ({
     address: `aws_s3_bucket.${key}`,
     values: tagged(c, { bucket: name, force_destroy: true, tags: { Name: label } }),
-    refs: { bucket: [`local.${key}_bucket`, "var.name_prefix"] },
+    refs: { bucket: [`local.${key}_bucket`] },
   });
   const onBucket = (type, key, values, extra = {}) => ({
     address: `${type}.${key}`,
@@ -53,7 +53,7 @@ export default () => {
       ...templateResources(c),
       // compute.tf
       instance,
-      { address: "aws_ebs_volume.data", values: tagged(c, { availability_zone: "eu-west-2a", size: 1, type: "gp3" }), refs: { availability_zone: ["local.azs"] } },
+      { address: "aws_ebs_volume.data", values: tagged(c, { availability_zone: "eu-west-2a", size: 1, type: "gp3" }), refs: { availability_zone: ["local.azs[0]", "local.azs"] } },
       {
         address: "aws_volume_attachment.data",
         values: { device_name: "/dev/sdf", stop_instance_before_detaching: true },
@@ -88,10 +88,10 @@ export default () => {
         address: "aws_backup_selection.data",
         values: {
           name: `lab-${id}-data`,
-          resources: [],
           condition: [{ string_equals: [{ key: "aws:ResourceTag/cloudlabs-lab", value: id }] }],
         },
-        unknown: ["plan_id", "iam_role_arn", "resources.0"],
+        // resources is a set: holding an unknown ARN, the whole set is unknown (the real plan, 2026-10-15).
+        unknown: ["plan_id", "iam_role_arn", "resources"],
         refs: { name: ["var.lab_id"], plan_id: ref("aws_backup_plan.daily", "id"), iam_role_arn: ref("aws_iam_role.backup", "arn"), resources: ref("aws_ebs_volume.data", "arn"), "condition.0.string_equals.0.value": ["var.lab_id"] },
       },
       // s3.tf
@@ -118,7 +118,8 @@ export default () => {
             ],
           }),
         }),
-        refs: { name: ["var.lab_id"], policy: ["local.src_arn", "local.dst_arn", "var.name_prefix"] },
+        // Locals by their own names, once per use, in expression order.
+        refs: { name: ["var.lab_id"], policy: ["local.src_arn", "local.src_arn", "local.dst_arn"] },
       },
       {
         address: "aws_iam_role_policy_attachment.replication",
@@ -129,7 +130,7 @@ export default () => {
       { address: "time_sleep.replication_role", values: { create_duration: "20s" }, refs: {} },
       onBucket("aws_s3_bucket_replication_configuration", "src", {
         rule: [{ id: "all", status: "Enabled", filter: [{}], delete_marker_replication: [{ status: "Enabled" }], destination: [{ storage_class: "STANDARD" }] }],
-      }, { unknown: ["role"], refs: { role: ref("aws_iam_role.replication", "arn"), "rule.0.destination.0.bucket": ref("aws_s3_bucket.dst", "arn") } }),
+      }, { unknown: ["role", "rule.0.destination.0.bucket"], refs: { role: ref("aws_iam_role.replication", "arn"), "rule.0.destination.0.bucket": ref("aws_s3_bucket.dst", "arn") } }),
       onBucket("aws_s3_object", "hello", tagged(c, { key: "hello.txt", content: "first version\n", content_type: "text/plain" })),
     ],
   };
