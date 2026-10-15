@@ -91,3 +91,7 @@ lab's hourly estimate times those minutes.
 | 2026-10-15 18:11 | soa-03-auto-scaling | 2 | fail | yes | none | — | 3m 54s | £0.0032 | 38781875647 |
 | 2026-10-15 18:23 | soa-02-systems-manager | 2 | fail | yes | none | — | 5m 39s | £0.0041 | 38783513154 |
 | 2026-10-15 19:03 | soa-05-rds | 2 | fail | no | rds:snapshot rds:db-a05tcci3-2026-10-15-18-40 (db-primary), rds:snapshot rds:db-a05tcci3-2026-10-15-18-37 (db-primary) | 26m 20s | — | £0.0233 | 38785247607 |
+| 2026-10-15 20:02 | soa-01-cloudwatch | 2 | pass | yes | none | 3m 59s | 6m 1s | £0.0051 | 38797196994 |
+| 2026-10-15 20:13 | soa-03-auto-scaling | 2 | pass | yes | none | 5m 52s | 4m 1s | £0.0081 | 38798688113 |
+| 2026-10-15 20:25 | soa-02-systems-manager | 3 | pass | yes | none | 3m 51s | 7m 37s | £0.0083 | 38800159538 |
+| 2026-10-15 21:04 | soa-05-rds | 2 | pass | yes | none | 30m 22s | 7m 44s | £0.0337 | 38801816428 |
