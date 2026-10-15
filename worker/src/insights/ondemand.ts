@@ -29,7 +29,7 @@ import { oneOffAwsCtx } from "./aws/ctx";
 import { recordAwsFeedResult } from "./aws/runner";
 import { asBootLogResponse, readAwsCapacity } from "./aws/read";
 import { fetchAwsBootLogNow } from "./aws/feeds/bootLog";
-import awsCapacityFeed, { awsCapacityCheck } from "./aws/feeds/capacity";
+import awsCapacityFeed, { awsCapacityCheck, awsCapacitySizes } from "./aws/feeds/capacity";
 
 /** One try per region per this long on a cache miss. */
 export const CAPACITY_RETRY_MS = 10 * MIN;
@@ -116,8 +116,8 @@ async function claimAwsTry(db: D1Database, key: string, now: Date, windowMs: num
  * The AWS capacity check for a region and instance type (GET
  * /api/v1/azure/capacity with an AWS region). From the stored reading when
  * it is under a day old and has the type; otherwise, for AWS's own region
- * with AWS connected, one run of the AWS capacity feed now (once per region
- * per 10 minutes). When that is not possible, an older reading if there is
+ * with AWS connected and a type the feed reads (awsCapacitySizes), one run
+ * of the AWS capacity feed now (once per region per 10 minutes). When that is not possible, an older reading if there is
  * one, else "not known" (awsCapacityCheck with no doc).
  */
 export async function awsCapacityFor(env: Env, cfg: Config, region: string, size: string, now: Date): Promise<CapacityCheck> {
@@ -125,8 +125,8 @@ export async function awsCapacityFor(env: Env, cfg: Config, region: string, size
   const fromHave = () => awsCapacityCheck(have?.doc ?? null, region, size, cfg.testVm, have?.fetchedAt ?? null);
   const fresh = have && now.getTime() - Date.parse(have.fetchedAt) < CAPACITY_FRESH_MS;
   if (fresh && have!.doc.sizes.some((s) => s.name === size)) return fromHave();
-  // The feed reads AWS's configured region (and its instance types) only.
-  if (!awsConfigured(env) || region !== config(env).aws.region) return fromHave();
+  // The feed reads AWS's configured region and its two instance types only: for anything else a fetch could not help.
+  if (!awsConfigured(env) || region !== config(env).aws.region || !awsCapacitySizes(cfg).includes(size)) return fromHave();
   if (!(await claimAwsTry(env.DB, `capacity-try:${region}`, now, CAPACITY_RETRY_MS))) return fromHave();
   try {
     const ctx = await oneOffAwsCtx(env, now, awsCapacityFeed.calls);

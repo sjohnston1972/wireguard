@@ -166,7 +166,7 @@ const bootLog: AwsFeed = {
   title: "Boot log",
   cadenceMin: null,
   when: "server",
-  calls: 1,
+  calls: BOOTLOG_CALLS,
   due: awsBootLogDue,
   async run(ctx) {
     await fetchAndStoreAwsBootLog(ctx);

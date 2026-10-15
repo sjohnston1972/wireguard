@@ -126,13 +126,13 @@ describe("the AWS feed contract", () => {
     expect(AWS_FEED_IDS).toEqual(["aws.health", "aws.metrics", "aws.activity", "aws.serviceHealth", "aws.capacity", "aws.prices", "aws.bootLog", "aws.housekeeping"]);
     const meta = Object.fromEntries(AWS_FEED_MODULES.map((f) => [f.id, [f.when, f.cadenceMin, f.calls]]));
     expect(meta).toEqual({
-      "aws.health": ["server", 5, 1],
-      "aws.metrics": ["running", 15, 1],
+      "aws.health": ["server", 5, 2],
+      "aws.metrics": ["running", 15, 2],
       "aws.activity": ["always", 5, 4],
       "aws.serviceHealth": ["always", 15, 2],
       "aws.capacity": ["always", 1440, 4],
       "aws.prices": ["always", 1440, 3],
-      "aws.bootLog": ["server", null, 1],
+      "aws.bootLog": ["server", null, 2],
       "aws.housekeeping": ["always", 1440, 0],
     });
     expect(AWS_STANDS_IN["aws.metrics"]).toEqual(["vmMetrics", "pipMetrics"]);

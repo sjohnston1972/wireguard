@@ -103,7 +103,7 @@ export interface AwsFeed {
   /** Minutes between runs while it applies; null = on demand (boot log). */
   cadenceMin: number | null;
   when: AwsFeedWhen;
-  /** The most outside calls one run of it makes, not counting the shared headend lookup (the runner skips it when fewer remain). */
+  /** The most outside calls one run of it makes, the headend and tagged-resource lookups included (the runner skips it when fewer remain). */
   calls: number;
   run(ctx: AwsFeedCtx): Promise<FeedResult>;
   /**

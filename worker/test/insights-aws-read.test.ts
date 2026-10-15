@@ -280,6 +280,14 @@ describe("/api/v1/azure on AWS", () => {
     expect(vi.mocked(awsCapacityCheck)).toHaveBeenLastCalledWith(null, "eu-west-1", "t4g.micro", expect.any(Boolean), null);
   });
 
+  it("a capacity miss for a size the AWS capacity feed never reads calls nothing (its answer could not hold that size)", async () => {
+    const { env } = routeEnv();
+    await awsRunning(env);
+    const r = await api(env, "GET", "/azure/capacity?region=eu-west-2&size=t4g.large");
+    expect(r.json).toMatchObject({ region: "eu-west-2", size: "t4g.large", available: null, fetchedAt: null });
+    expect(vi.mocked(capacityFeed.run)).not.toHaveBeenCalled();
+  });
+
   it("diagnostics list the AWS feeds with their timing and AWS's metric names", async () => {
     const { env } = routeEnv();
     await awsRunning(env);

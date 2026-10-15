@@ -7,7 +7,9 @@
 // throttle becomes AwsThrottled (the feed is skipped and stays due), a
 // refusal names the permission the Worker's AWS user needs, and nothing
 // quotes a URL, a key or a signature. The headend and the tagged resources
-// are looked up once per run and shared by every feed of that run.
+// are looked up once per run and shared by every feed of that run, each
+// as one request (one page: the headend filter matches one instance, and
+// cloudlabs tags far fewer than a page of resources), so one budget unit.
 
 import type { Env, Config } from "../../env";
 import { config } from "../../env";
@@ -102,13 +104,13 @@ export function makeAwsCtx(env: Env, now: Date, snap: Snapshot, cfg: Config, bud
     },
     headend() {
       return (shared.headend ??= once(
-        call(() => findHeadend(env), "DescribeInstances", iamPermission("ec2", "DescribeInstances")).then((h) => (h ? { id: h.id, state: h.state, launchTime: h.launchTime, instanceType: h.type } : null)),
+        call(() => findHeadend(env, 1), "DescribeInstances", iamPermission("ec2", "DescribeInstances")).then((h) => (h ? { id: h.id, state: h.state, launchTime: h.launchTime, instanceType: h.type } : null)),
         () => (shared.headend = undefined),
       ));
     },
     taggedIds() {
       return (shared.taggedIds ??= once(
-        call(() => taggedArns(env), "GetResources", iamPermission("tagging", "GetResources")).then((arns) => new Set(arns.map((a) => a.split(/[:/]/).pop() ?? "").filter(Boolean))),
+        call(() => taggedArns(env, 1), "GetResources", iamPermission("tagging", "GetResources")).then((arns) => new Set(arns.map((a) => a.split(/[:/]/).pop() ?? "").filter(Boolean))),
         () => (shared.taggedIds = undefined),
       ));
     },

@@ -35,9 +35,9 @@ export interface Instance {
 }
 
 /** Every instance DescribeInstances lists for these filters, on every page. */
-async function instances(env: Env, list: [string, string[]][]): Promise<Instance[]> {
+async function instances(env: Env, list: [string, string[]][], maxPages?: number): Promise<Instance[]> {
   const out: Instance[] = [];
-  for (const page of await ec2Pages(env, "DescribeInstances", filters(list))) {
+  for (const page of await ec2Pages(env, "DescribeInstances", filters(list), maxPages)) {
     // reservationSet -> item -> instancesSet -> item. The instance's own fields only: its network interfaces,
     // groups and tags are nested items with fields of their own (privateIpAddress, association/publicIp, ...).
     for (const reservation of xmlItems(page, "reservationSet")) {
@@ -63,8 +63,8 @@ async function instances(env: Env, list: [string, string[]][]): Promise<Instance
 }
 
 /** The live headend (tagged wg-admin=vpn and wg-admin-role=headend), or null. Also read by the AWS insights feeds. */
-export async function findHeadend(env: Env): Promise<Instance | null> {
-  return (await instances(env, [TAG, HEADEND, ["instance-state-name", LIVE]]))[0] ?? null;
+export async function findHeadend(env: Env, maxPages?: number): Promise<Instance | null> {
+  return (await instances(env, [TAG, HEADEND, ["instance-state-name", LIVE]], maxPages))[0] ?? null;
 }
 
 async function view(env: Env): Promise<HeadendView> {
@@ -93,11 +93,11 @@ const KIND: Record<string, string> = {
 const ORDER = ["Virtual network", "Subnet", "Internet gateway", "Route table", "Security group", "Public IP", "Network interface", "Virtual machine", "OS disk", "Key pair"];
 
 /** The ARN of every resource tagged wg-admin=vpn in the region (the tagging API, every page). Also read by the AWS insights feeds. */
-export async function taggedArns(env: Env): Promise<string[]> {
+export async function taggedArns(env: Env, maxPages = 10): Promise<string[]> {
   const region = config(env).aws.region;
   const arns: string[] = [];
   let token = "";
-  for (let page = 0; page < 10; page++) {
+  for (let page = 0; page < maxPages; page++) {
     const r = await awsJson<{ ResourceTagMappingList?: { ResourceARN: string }[]; PaginationToken?: string }>(env, {
       service: "tagging",
       region,

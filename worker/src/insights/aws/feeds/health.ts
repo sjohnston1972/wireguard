@@ -174,7 +174,7 @@ const health: AwsFeed = {
   title: "Instance health",
   cadenceMin: 5,
   when: "server",
-  calls: 1,
+  calls: 2, // the headend lookup and DescribeInstanceStatus
   async run(ctx) {
     const h = await ctx.headend();
     if (!h) {

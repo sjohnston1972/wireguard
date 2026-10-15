@@ -131,7 +131,7 @@ const metrics: AwsFeed = {
   title: "CloudWatch metrics",
   cadenceMin: 15,
   when: "running",
-  calls: 1,
+  calls: 2, // the headend lookup and GetMetricData
   async run(ctx) {
     const h = await ctx.headend();
     if (!h) return { status: "ok", error: null }; // no headend: nothing to measure
