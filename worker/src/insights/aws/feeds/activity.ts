@@ -7,12 +7,25 @@
 //
 //   - Each run reaches back from the newest stored event (or the last
 //     success, if later) less 20 minutes, as CloudTrail shows events 5 to 15
-//     minutes late; the first run reaches back 7 days. At most 3 pages of 50.
+//     minutes late; the first run reaches back 7 days. At most 3 pages of 50
+//     per run, about 600 ms apart (AWS allows LookupEvents 2 a second).
+//   - Nothing is lost when the account is busier than that: whatever a run
+//     leaves unread (from its StartTime to the oldest event it read) is kept
+//     as a backlog in aws_latest['activity-backlog'], and later runs spend
+//     the pages their own window leaves over on it, newest first, until it
+//     is empty. AWS throttling a page after the first ends the run's paging
+//     the same way (what was read is kept; the feed is ok); only a throttled
+//     first page skips the feed. Backlog older than 7 days is dropped with a
+//     line in the run's log, and a run that leaves a backlog says so there.
 //   - The account may hold other projects, so an event is kept only when
 //     cloudlabs made it (the Worker's IAM user wg-admin-worker, or a session
 //     of the GitHub deploy role wg-admin-deploy) or it touches a resource
 //     tagged wg-admin=vpn. The tagged list costs one call, so it is only
-//     asked for when a new event is not obviously cloudlabs' own.
+//     asked for when a new event is not obviously cloudlabs' own, or when
+//     cloudlabs' own events arrive and the remembered ids are over an hour
+//     old. Every tagged id seen is remembered (the latest 500, in
+//     aws_latest['known-ids']), so a person deleting a cloudlabs resource,
+//     no longer tagged once it is gone, still shows.
 //   - The caller is "wgadmin" (as above), "aws" (an AWS service) or
 //     "person"; the resource becomes a plain name (EC2 instance, Security
 //     group, ...) from AWS_RESOURCE_KINDS.
@@ -26,12 +39,31 @@
 import type { Env } from "../../../env";
 import { addAlert } from "../../../db";
 import { AWS_RESOURCE_KINDS } from "../../../../../shared/azureMetrics";
-import { DAY, MIN, str } from "../../common";
-import type { AwsFeed, AwsFeedCtx } from "../types";
+import { DAY, HOUR, MIN, iso, str } from "../../common";
+import { BudgetExceeded } from "../../types";
+import { getAwsLatest, putAwsLatestStmt } from "../common";
+import { AwsOutOfTime } from "../ctx";
+import { AwsThrottled, type AwsFeed, type AwsFeedCtx } from "../types";
 
 export const LOOKUP_TARGET = "com.amazonaws.cloudtrail.v20131101.CloudTrail_20131101.LookupEvents";
 const MAX_PAGES = 3;
 const PAGE_SIZE = 50;
+/** The pause between pages: AWS allows LookupEvents 2 a second per account and region. */
+const PAGE_PAUSE_MS = 600;
+/** aws_latest key: the windows (ISO from/to) a run left unread, newest first. */
+export const ACTIVITY_BACKLOG_KEY = "activity-backlog";
+/** aws_latest key: every tagged resource id seen (the latest KNOWN_IDS_KEEP, newest last). */
+export const KNOWN_IDS_KEY = "known-ids";
+const KNOWN_IDS_KEEP = 500;
+/** How old the remembered ids may be before cloudlabs' own new events refresh them. */
+const KNOWN_IDS_REFRESH_MS = HOUR;
+/** At most this many backlog windows; beyond it the oldest are merged (re-reading costs pages, never events). */
+const BACKLOG_WINDOWS = 20;
+
+/** The pause between pages; tests replace it. */
+export const activityTiming = {
+  pause: (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms)),
+};
 /** How far before the newest stored event each query reaches, for events CloudTrail shows late. */
 const OVERLAP_MS = 20 * MIN;
 /** The first run's reach. */
@@ -179,32 +211,121 @@ export function lookupStart(nowMs: number, newestStored: string | null, lastOk: 
   return Math.min(nowMs - OVERLAP_MS, Math.max(floor, Math.max(...known) - OVERLAP_MS));
 }
 
-/** Up to 3 pages of write events since lookupStart; 1 call each. */
-export async function fetchAwsActivity(ctx: AwsFeedCtx, lastOk: string | null): Promise<unknown[]> {
+/** A stretch of CloudTrail not yet read (ISO times; `to` is the oldest event read so far, or the window's end). */
+export interface AwsActivityWindow {
+  from: string;
+  to: string;
+}
+
+/**
+ * The stored backlog, less any window wholly older than 7 days (the first
+ * run reaches no further back either). `dropped`: those windows.
+ */
+export function trimBacklog(raw: unknown, nowMs: number): { windows: AwsActivityWindow[]; dropped: AwsActivityWindow[] } {
+  const floor = nowMs - BACKFILL_MS;
+  const windows: AwsActivityWindow[] = [];
+  const dropped: AwsActivityWindow[] = [];
+  for (const w of Array.isArray(raw) ? raw.slice(0, BACKLOG_WINDOWS * 2) : []) {
+    const from = Date.parse(obj(w)?.from as string);
+    const to = Date.parse(obj(w)?.to as string);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) continue;
+    if (to < floor) dropped.push({ from: iso(from), to: iso(to) });
+    else windows.push({ from: iso(from), to: iso(to) });
+  }
+  return { windows, dropped };
+}
+
+/** Newest first, overlaps merged, at most BACKLOG_WINDOWS (the oldest merged into one). */
+function tidyBacklog(windows: { from: number; to: number }[]): AwsActivityWindow[] {
+  const sorted = [...windows].sort((a, b) => b.to - a.to);
+  const out: { from: number; to: number }[] = [];
+  for (const w of sorted) {
+    const last = out[out.length - 1];
+    if (last && w.to >= last.from) last.from = Math.min(last.from, w.from);
+    else out.push({ ...w });
+  }
+  if (out.length > BACKLOG_WINDOWS) {
+    const rest = out.splice(BACKLOG_WINDOWS - 1);
+    out.push({ from: Math.min(...rest.map((w) => w.from)), to: Math.max(...rest.map((w) => w.to)) });
+  }
+  return out.map((w) => ({ from: iso(w.from), to: iso(w.to) }));
+}
+
+/** One window's query within a run. */
+interface Query {
+  from: number;
+  to: number;
+  token: string | null;
+  /** The oldest EventTime read from it (ms), or null. */
+  oldest: number | null;
+  done: boolean;
+}
+
+/**
+ * Up to 3 pages of write events (1 call each, about 600 ms apart): the new
+ * window since lookupStart first, then the backlog, newest first. Answers
+ * the events read and the backlog left (empty when everything was read). A
+ * throttle, the run's deadline or its budget on a page after the first ends
+ * the paging and keeps what was read; on the first page it is thrown.
+ */
+export async function fetchAwsActivity(ctx: AwsFeedCtx, lastOk: string | null, backlog: AwsActivityWindow[] = []): Promise<{ events: unknown[]; backlog: AwsActivityWindow[] }> {
   const newest = await ctx.db.prepare("SELECT MAX(at) AS at FROM aws_activity").first<{ at: string | null }>();
   const now = ctx.now.getTime();
-  const from = lookupStart(now, newest?.at ?? null, lastOk);
+  const start = lookupStart(now, newest?.at ?? null, lastOk);
+  // The new window covers everything since `start` (read now, or left as backlog): the old backlog ends there.
+  const queries: Query[] = [
+    { from: start, to: now, token: null, oldest: null, done: false },
+    ...backlog.map((w) => ({ from: Date.parse(w.from), to: Math.min(Date.parse(w.to), start), token: null, oldest: null, done: false })).filter((q) => q.to > q.from),
+  ];
   const out: unknown[] = [];
-  let token: string | null = null;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const r: { Events?: unknown; NextToken?: unknown } = await ctx.json({
-      service: "cloudtrail",
-      region: ctx.region,
-      host: `cloudtrail.${ctx.region}.amazonaws.com`,
-      target: LOOKUP_TARGET,
-      body: {
-        LookupAttributes: [{ AttributeKey: "ReadOnly", AttributeValue: "false" }],
-        StartTime: Math.floor(from / 1000),
-        EndTime: Math.floor(now / 1000),
-        MaxResults: PAGE_SIZE,
-        ...(token ? { NextToken: token } : {}),
-      },
-    });
-    if (Array.isArray(r?.Events)) out.push(...r.Events.slice(0, PAGE_SIZE * 2));
-    token = typeof r?.NextToken === "string" && r.NextToken ? r.NextToken : null;
-    if (!token) break;
+  let pages = 0;
+  paging: for (const q of queries) {
+    while (!q.done) {
+      if (pages >= MAX_PAGES) break paging;
+      if (pages > 0) await activityTiming.pause(PAGE_PAUSE_MS);
+      let r: { Events?: unknown; NextToken?: unknown };
+      try {
+        r = await ctx.json({
+          service: "cloudtrail",
+          region: ctx.region,
+          host: `cloudtrail.${ctx.region}.amazonaws.com`,
+          target: LOOKUP_TARGET,
+          body: {
+            LookupAttributes: [{ AttributeKey: "ReadOnly", AttributeValue: "false" }],
+            StartTime: Math.floor(q.from / 1000),
+            EndTime: Math.floor(q.to / 1000),
+            MaxResults: PAGE_SIZE,
+            ...(q.token ? { NextToken: q.token } : {}),
+          },
+        });
+      } catch (e) {
+        // A page after the first: keep what was read, and the rest stays unread for later runs.
+        if (pages > 0 && (e instanceof AwsThrottled || e instanceof AwsOutOfTime || e instanceof BudgetExceeded)) break paging;
+        throw e;
+      }
+      pages++;
+      const events = Array.isArray(r?.Events) ? r.Events.slice(0, PAGE_SIZE * 2) : [];
+      out.push(...events);
+      for (const e of events) {
+        const t = Date.parse(eventTime(obj(e)?.EventTime) ?? "");
+        if (Number.isFinite(t)) q.oldest = Math.min(q.oldest ?? t, t);
+      }
+      q.token = typeof r?.NextToken === "string" && r.NextToken ? r.NextToken : null;
+      if (!q.token) q.done = true;
+    }
   }
-  return out;
+  // What is left: each unfinished window, from its start to the oldest event read from it.
+  const left = queries.filter((q) => !q.done).map((q) => ({ from: q.from, to: Math.min(q.to, q.oldest ?? q.to) }));
+  return { events: out, backlog: tidyBacklog(left.filter((w) => w.to > w.from)) };
+}
+
+/**
+ * The remembered tagged ids with a fresh lookup added: no repeats, the
+ * newest lookup last, at most the latest 500.
+ */
+export function mergeKnownIds(known: unknown, tagged: Set<string>): string[] {
+  const old = Array.isArray(known) ? known.filter((x): x is string => typeof x === "string" && !tagged.has(x)) : [];
+  return [...new Set([...old, ...tagged])].slice(-KNOWN_IDS_KEEP);
 }
 
 /** Which of these event ids aws_activity already holds. */
@@ -257,13 +378,39 @@ const activity: AwsFeed = {
   async run(ctx) {
     // The runner hands over the row it read for the whole run; a one-off reads it.
     const row = ctx.row !== undefined ? ctx.row : await ctx.db.prepare("SELECT last_try_at, last_ok_at, next_due_at FROM aws_feed WHERE feed = 'aws.activity'").first<{ last_try_at: string | null; last_ok_at: string | null; next_due_at: string | null }>();
-    const events = normaliseAwsActivity(await fetchAwsActivity(ctx, row?.last_ok_at ?? null));
-    const known = await storedAwsActivityIds(ctx.db, events.map((e) => e.id));
-    const fresh = events.filter((e) => !known.has(e.id));
-    // The tagged list only when a new event might be ours without being by cloudlabs.
-    const tagged = fresh.some((e) => e.caller_kind !== "wgadmin" && e.resources.length) ? await ctx.taggedIds() : null;
-    await storeAwsActivity(ctx.env, keepAwsActivity(fresh, tagged), known);
-    return { status: "ok", error: null };
+    const now = ctx.now.getTime();
+    const at = ctx.now.toISOString();
+    const [had, remembered] = await Promise.all([getAwsLatest<unknown>(ctx.db, ACTIVITY_BACKLOG_KEY), getAwsLatest<unknown>(ctx.db, KNOWN_IDS_KEY)]);
+    const trimmed = trimBacklog(had?.doc, now);
+    const read = await fetchAwsActivity(ctx, row?.last_ok_at ?? null, trimmed.windows);
+    const events = normaliseAwsActivity(read.events);
+    const stored = await storedAwsActivityIds(ctx.db, events.map((e) => e.id));
+    const fresh = events.filter((e) => !stored.has(e.id));
+    const writes: D1PreparedStatement[] = [];
+    // The tagged list when a new event might be ours without being by cloudlabs, or when cloudlabs
+    // has been changing things (new resources) and the remembered ids are over an hour old.
+    const mightBeOurs = fresh.some((e) => e.caller_kind !== "wgadmin" && e.resources.length);
+    const rememberedAge = now - Date.parse(remembered?.updatedAt ?? "");
+    const refresh = fresh.some((e) => e.caller_kind === "wgadmin") && !(rememberedAge < KNOWN_IDS_REFRESH_MS);
+    let ours: Set<string> | null = null;
+    if (mightBeOurs || refresh) {
+      // A deleted resource is no longer tagged: the ids seen before still count as ours.
+      const ids = mergeKnownIds(remembered?.doc, await ctx.taggedIds());
+      writes.push(putAwsLatestStmt(ctx.db, KNOWN_IDS_KEY, ids, at));
+      ours = new Set(ids);
+    }
+    await storeAwsActivity(ctx.env, keepAwsActivity(fresh, ours), stored);
+    if (read.backlog.length) writes.push(putAwsLatestStmt(ctx.db, ACTIVITY_BACKLOG_KEY, read.backlog, at));
+    else if (had) writes.push(ctx.db.prepare("DELETE FROM aws_latest WHERE key = ?1").bind(ACTIVITY_BACKLOG_KEY));
+    if (writes.length) await ctx.db.batch(writes);
+    const notes: string[] = [];
+    if (trimmed.dropped.length) notes.push(`CloudTrail events from ${trimmed.dropped.map((w) => w.from).sort()[0]} to ${trimmed.dropped.map((w) => w.to).sort().pop()} were never read and are over 7 days old; they are dropped.`);
+    if (read.backlog.length) {
+      const from = read.backlog.map((w) => w.from).sort()[0];
+      const to = read.backlog.map((w) => w.to).sort().pop();
+      notes.push(`CloudTrail had more write events than one run reads; catching up on ${from} to ${to}.`);
+    }
+    return { status: "ok", error: null, ...(notes.length ? { note: notes.join(" ") } : {}) };
   },
 };
 

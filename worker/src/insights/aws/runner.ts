@@ -94,6 +94,7 @@ export async function runAwsInsights(env: Env, now: Date, feeds: readonly AwsFee
         else result = { status: "error", error: awsPlainError(e) };
       }
       if (result.status !== "ok") lines.push(`${f.id} ${result.status}${result.error ? `: ${plainError(result.error)}` : ""}`);
+      if (result.note) lines.push(`${f.id}: ${plainError(result.note)}`);
       pending.push({ id: f.id, stmt: feedResultStmt(env.DB, "aws_feed", f.id, now, result, row, f.cadenceMin) });
     }
   } finally {
