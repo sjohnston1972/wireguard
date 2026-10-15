@@ -144,7 +144,7 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       running: ctx.live.map((s) => sessionView(s, ctx)),
       slots: { used: Number(used?.n ?? 0), total: LAB_SLOTS },
       maxRunning: labsSettingsFrom(stored).labsMaxRunning,
-      permissions: await kvJson(c, "labs:permissions", NO_PERMISSIONS),
+      permissions: { ...NO_PERMISSIONS, ...(await kvJson(c, "labs:permissions", NO_PERMISSIONS)) },
       orphans: await kvJson<LabOrphan[]>(c, "labs:orphans", []),
       // The watchman's tear-down at the timer or hard stop dispatches the lab workflow (spec ruling 7).
       // In demo mode it reads as set up (spec ruling 15); the server's own canDispatch stays false there.

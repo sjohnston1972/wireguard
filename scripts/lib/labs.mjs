@@ -268,6 +268,7 @@ export function validateLab(raw, ctx) {
   }
   const sec = raw?.regions?.secondary;
   if (aws && str(sec) && sec !== "eu-west-1") bad("regions.secondary", "an AWS lab's regions.secondary is null or eu-west-1");
+  if (!aws && str(sec) && AWS_REGION.test(sec)) bad("regions.secondary", "an Azure lab's regions.secondary is an Azure region name (ukwest), not an AWS region");
   if (aws && raw?.connectivity?.dns_link === true) bad("connectivity.dns_link", "dns_link is always false for an AWS lab (ruling A8)");
   const creates = Array.isArray(raw?.identity?.creates) ? raw.identity.creates : [];
   if (aws) {

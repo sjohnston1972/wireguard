@@ -91,6 +91,7 @@ const REFUSED = [
   ["an instance type off the list", awsLab({ capacity: { instance_types: ["m5.large"] } }), "capacity.instance_types", /m5\.large is not an allowed instance type/],
   ["t4g.medium outside saa-19-eks", awsLab({ capacity: { instance_types: ["t4g.medium"] } }), "capacity.instance_types", /t4g\.medium is only for saa-19-eks/],
   ["a secondary region other than Ireland", awsLab({ regions: { secondary: "us-east-1" } }), "regions.secondary", /null or eu-west-1/],
+  ["an AWS region on an Azure lab", azureLab({ regions: { secondary: "eu-west-1" } }), "regions.secondary", /an Azure region name \(ukwest\), not an AWS region/],
   ["dns_link on an AWS lab (A8)", awsLab({ connectivity: { peering: "optional", dns_link: true, subnets_used: 1 } }), "connectivity.dns_link", /dns_link is always false for an AWS lab/],
   ["a user outside soa-07", awsLab({ identity: { creates: ["user"], roles: [], governance: false } }), "identity.creates", /only soa-07-iam-kms may create an IAM user/],
   ["group on an AWS lab", awsLab({ identity: { creates: ["group"], roles: [], governance: false } }), "identity.creates", /an AWS lab creates role or user/],
