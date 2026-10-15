@@ -752,6 +752,27 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: [],
   },
+  "soa-03-auto-scaling": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "internetGateway igw-lab < vpc-lab",
+      "loadBalancer alb-web < vpc-lab",
+      "nsg sg-alb < vpc-lab",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-soa-03-auto-scaling · London",
+      "routeTable rt-private < vpc-lab",
+      "routeTable rt-public < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "subnet snet-public-1 < vpc-lab",
+      "subnet snet-public-2 < vpc-lab",
+      "vmss asg-a03… < snet-private-1",
+      "vnet vpc-lab < lab-soa-03-auto-scaling · London",
+    ],
+    edges: ["alb-web -> asg-a03… : HTTP 80", "rt-public ..> igw-lab : 0.0.0.0/0"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

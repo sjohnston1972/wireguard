@@ -533,5 +533,12 @@
    "title": "Systems Manager and Config auto-remediation: architecture",
    "kind": "architecture"
   }
+ ],
+ "soa-03-auto-scaling": [
+  {
+   "file": "architecture.svg",
+   "title": "Auto Scaling behind an Application Load Balancer: architecture",
+   "kind": "architecture"
+  }
  ]
 }

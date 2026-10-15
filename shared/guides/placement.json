@@ -711,5 +711,14 @@
    "width": 2056,
    "height": 1108
   }
+ ],
+ "soa-03-auto-scaling": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A load balancer sending traffic to an Auto Scaling group, in one VPC with four subnets.",
+   "width": 1419,
+   "height": 966
+  }
  ]
 }

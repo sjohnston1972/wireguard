@@ -1,0 +1,49 @@
+# Lab soa-03 (AWS labs batch 1), the AWS labs spec's own example (§3.2).
+# SOA-C03 ((V) against the current exam guide): Reliability and Business
+# Continuity (scaling, load balancing, replacing unhealthy instances);
+# Deployment, Provisioning, and Automation (launch templates, instance
+# refresh); and SAA-C03's Design Resilient Architectures.
+# London list prices × 0.75 (labs-verify --aws-prices). The ALB bills each
+# started hour whole (V), so a session costs at least an hour of it (A20).
+# It makes no IAM (ruling A33): identity.creates is [].
+id: soa-03-auto-scaling
+version: 1
+cloud: aws
+title: "Auto Scaling behind an Application Load Balancer"
+summary: >-
+  A launch template and an Auto Scaling group across two Availability Zones behind an internet-facing ALB, with
+  target tracking, a scheduled action and a lifecycle hook, so you can watch AWS replace and scale instances.
+exam: SOA-C03
+skill_areas: [soa.reliability, soa.deployment, saa.resilient]
+level: associate
+type: explore
+prerequisites: [soa-01-cloudwatch]
+cost:
+  items:
+    - name: "EC2 t4g.micro, Linux (2 running)"
+      gbp_h: 0.0071
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.micro, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - name: "Application Load Balancer, hourly"
+      gbp_h: 0.0199
+      whole_hours: true
+      aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Application", usagetype: "{usage}-LoadBalancerUsage" } }
+    - { name: "ALB capacity units, light test traffic", gbp_h: 0.0060 }
+    - name: "Public IPv4 addresses on the ALB (2 AZs)"
+      gbp_h: 0.0038
+      qty: 2
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 6, session_h: 2, max_h: 6 }
+capacity: { instance_types: [t4g.micro, t4g.micro, t4g.micro, t4g.micro] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false
