@@ -304,3 +304,20 @@ describe("GET /labs/:id/topology for an AWS lab", () => {
     expect(busy.json.status).toBe("throttled");
   });
 });
+
+// ── Every kind an AWS lab can draw has an AWS icon ──
+
+describe("AWS icons cover every kind an AWS lab produces", () => {
+  it("each kind named by an AWS rule, an AWS Terraform type or a tagging type has an awsIcon, so no AWS card falls back to an Azure icon", async () => {
+    const { AWS_TF_RULES } = await import("../../shared/topology/rules/awsPlanned");
+    const { kindOfTf } = await import("../../shared/topology/kinds");
+    const kinds = new Set<string>(["gateway", "generic"]);
+    for (const [type, rule] of Object.entries(AWS_TF_RULES)) {
+      if (rule.ignore || rule.fold || rule.foldToReferrer || rule.foldInto) continue;
+      kinds.add(rule.kind ?? kindOfTf(type));
+    }
+    for (const [k, d] of Object.entries(KINDS)) if (d.awsTypes.length || d.tfTypes.some((t) => t.startsWith("aws_"))) kinds.add(k);
+    // `gateway` is the one synthetic kind an AWS graph may carry; it is drawn with the Azure gateway icon, which loads with the page.
+    for (const k of kinds) if (k !== "gateway") expect(KINDS[k as keyof typeof KINDS].awsIcon, k).toBeTruthy();
+  });
+});

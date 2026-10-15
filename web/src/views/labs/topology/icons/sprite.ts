@@ -61,7 +61,8 @@ function ensureOne(cloud: SpriteCloud): Promise<void> {
 
 /** Fetches and inlines the sprites asked for (Azure's by default) once; later calls share the first. A failure is retried on the next call. */
 export async function ensureSprite(clouds: readonly SpriteCloud[] = ["azure"]): Promise<void> {
-  await Promise.all([...new Set(clouds)].map(ensureOne));
+  // One sprite failing must not reject (or hold up) the other.
+  await Promise.allSettled([...new Set(clouds)].map(ensureOne));
 }
 
 /** Inlines the sprites while a diagram is on screen. */
