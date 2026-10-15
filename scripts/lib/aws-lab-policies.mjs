@@ -26,8 +26,8 @@
 // (KEY_USE: AWS's own untagged keys encrypt the labs' disks).
 //
 // Size (ruling A29). AWS caps a managed policy at 6,144 characters without
-// whitespace and a role at 10 of them, so the statements are packed, in
-// order, into as few policies as fit under POLICY_MAX, a long list split over
+// whitespace and a role at 10 of them, so the statements are packed, first
+// fit in order, into as few policies as fit under POLICY_MAX, a long list split over
 // numbered statements (CreateNeedsLabTag1, 2, ...). foldWildcards writes
 // "ec2:CreateVpc*" only where every action the wildcard matches (IAM matches
 // without case) is in the same list. If even then the role would need more
@@ -163,7 +163,7 @@ export function abacLists(sar) {
   }
   for (const g of groups) {
     const arns = [...g.arns].sort();
-    const byService = Map.groupBy(g.members, (m) => m.name.split(":")[0]);
+    const byService = g.members.reduce((m, e) => m.set(e.name.split(":")[0], [...(m.get(e.name.split(":")[0]) ?? []), e]), new Map());
     for (const [service, members] of byService) {
       for (const f of foldWildcards(members.map((m) => m.name), allOf[service])) {
         createOn[f] = arns;
@@ -224,6 +224,22 @@ const GLOBAL_ACTIONS = ["cloudfront:*", "route53:*", "wafv2:*", "globalaccelerat
 /** IAM writes, as §7.1 and §7.2 list them. */
 const IAM_WRITES = ["Create*", "Delete*", "Put*", "Attach*", "Detach*", "Update*", "Tag*", "Untag*", "Add*", "Remove*", "Set*", "PassRole"].map((x) => `iam:${x}`);
 
+/**
+ * Ruling A48, in the role and the boundary alike. Tags only at create (ec2:CreateAction) or on what already carries the
+ * lab tag, so the tag cannot be put on someone else's item to make it the lab's; no DeleteTags without keys (it would
+ * strip every tag, the lab's too, past KeepLabTag); and a VPC's network fabric (its ACLs, route tables, security groups
+ * and the VPC itself) changes only when it carries the lab tag: AWS makes every VPC's default security group, network
+ * ACL and main route table untagged, the VPN server's VPC's too.
+ */
+const VPC_FABRIC_ACTIONS = ["CreateRoute", "ReplaceRoute", "DeleteRoute", "CreateNetworkAclEntry", "ReplaceNetworkAclEntry", "DeleteNetworkAclEntry", "ReplaceNetworkAclAssociation", "DeleteNetworkAcl", "AssociateRouteTable", "DisassociateRouteTable", "ReplaceRouteTableAssociation", "DeleteRouteTable", "AuthorizeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupIngress", "RevokeSecurityGroupEgress", "ModifySecurityGroupRules", "UpdateSecurityGroupRuleDescriptionsIngress", "UpdateSecurityGroupRuleDescriptionsEgress", "DeleteSecurityGroup", "ModifyVpcAttribute", "DeleteVpc", "AttachInternetGateway", "DetachInternetGateway", "CreateSubnet", "AssociateVpcCidrBlock", "CreateVpcPeeringConnection", "AcceptVpcPeeringConnection"].map((a) => `ec2:${a}`);
+const VPC_FABRIC_GUARDS = [
+  deny("TagOnlyAtCreate", "ec2:CreateTags", "*", { Null: { "ec2:CreateAction": "true", [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
+  deny("NoDeleteAllTags", "ec2:DeleteTags", "*", { Null: { "aws:TagKeys": "true" } }),
+  deny("VpcFabricNeedsLabTag", VPC_FABRIC_ACTIONS, ["network-acl", "route-table", "security-group", "vpc"].map((t) => `arn:aws:ec2:*:*:${t}/*`), { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
+];
+/** Every write to a Config recorder (V 2026-10-15: the reference's actions on ConfigurationRecorder). */
+const RECORDER_WRITES = ["PutConfigurationRecorder", "StartConfigurationRecorder", "StopConfigurationRecorder", "DeleteConfigurationRecorder", "AssociateResourceTypes", "DisassociateResourceTypes", "DeleteServiceLinkedConfigurationRecorder"].map((a) => `config:${a}`);
+
 /** §7.1's statements before the ABAC lists, in the table's order. */
 function fixedStatements() {
   return [
@@ -243,6 +259,10 @@ function fixedStatements() {
     deny("DenyVpnTagKeys", "*", "*", { "ForAnyValue:StringEquals": { "aws:TagKeys": ["wg-admin"] } }),
     deny("DenyDefaultVpc", "ec2:*", "__DEFAULT_VPC_ARNS__"),
     deny("DenyDefaultVpcChildren", "ec2:*", "*", { ArnEquals: { "ec2:Vpc": "__DEFAULT_VPC_ARNS__" } }),
+    ...VPC_FABRIC_GUARDS,
+    // The untaggable named types (NAME_OWNED_TYPES): the lab's own names only, never the account's default recorder.
+    { Sid: "LabDashboardsOnly", Effect: "Deny", Action: ["cloudwatch:PutDashboard", "cloudwatch:DeleteDashboards"], NotResource: `arn:aws:cloudwatch::${ACCT}:dashboard/lab-*` },
+    { Sid: "LabRecordersOnly", Effect: "Deny", Action: RECORDER_WRITES, NotResource: `arn:aws:config:*:${ACCT}:configuration-recorder/lab-*` },
     deny("DenyAccountAndBilling", ["organizations:*", "account:*", "billing:*", "aws-portal:*", "payments:*", "budgets:*", "cur:*", "ce:Create*", "ce:Update*", "ce:Delete*", "iam:*AccountPasswordPolicy", "iam:*AccountAlias", "iam:CreateAccessKey", "iam:*OpenIDConnectProvider*", "iam:*SAMLProvider*", "iam:*VirtualMFADevice"]),
     { Sid: "DenyIamOutsideLab", Effect: "Deny", Action: IAM_WRITES, NotResource: [LAB_ROLE, LAB_PROFILE, LAB_POLICY, LAB07_USER, `arn:aws:iam::${ACCT}:role/aws-service-role/*`] },
     deny("DenyBoundaryRemoval", ["iam:DeleteRolePermissionsBoundary", "iam:DeleteUserPermissionsBoundary"]),
@@ -265,6 +285,10 @@ function boundary() {
       allow("WhoAmI", "sts:GetCallerIdentity"),
       deny("NoIamWrites", [...IAM_WRITES, "iam:CreateAccessKey"]),
       deny("NoOtherRoles", "sts:AssumeRole*"),
+      // Ruling A48: a lab's own roles (Lambda, EC2, SSM, Config remediation) are held as wg-admin-labs is.
+      ...VPC_FABRIC_GUARDS,
+      { Sid: "NoDefaultVpc", Effect: "Deny", NotAction: "ec2:Describe*", Resource: "__DEFAULT_VPC_ARNS__" },
+      { Sid: "NoDefaultVpcChildren", Effect: "Deny", NotAction: "ec2:Describe*", Resource: "*", Condition: { ArnEquals: { "ec2:Vpc": "__DEFAULT_VPC_ARNS__" } } },
       deny("NoAccountOrBilling", ["organizations:*", "account:*", "billing:*", "aws-portal:*", "budgets:*", "ce:Create*", "ce:Update*", "ce:Delete*"]),
       deny("NoVpnServer", "*", "*", { StringEquals: { "aws:ResourceTag/wg-admin": "vpn" } }),
       deny("NoVpnTagRequest", "*", "*", { Null: { "aws:RequestTag/wg-admin": "false" } }),
@@ -278,41 +302,49 @@ function boundary() {
 
 /** Characters AWS counts for a policy (whitespace excluded), with the placeholders filled as labs.tf fills them. */
 export function policySize(doc, fill) {
-  let s = JSON.stringify(doc);
-  if (fill) s = s.split(ACCT).join(fill.account).split('"__DEFAULT_VPC_ARNS__"').join(JSON.stringify(fill.vpcArns));
-  return s.replace(/\s/g, "").length;
+  return (fill ? fillPolicy(doc, fill) : JSON.stringify(doc)).replace(/\s/g, "").length;
+}
+/** The document as labs.tf writes it: the account filled, and "__DEFAULT_VPC_ARNS__" an array of ARNs (ruling C11). */
+export function fillPolicy(doc, fill) {
+  return JSON.stringify(doc).split(ACCT).join(fill.account).split('"__DEFAULT_VPC_ARNS__"').join(JSON.stringify(fill.vpcArns));
 }
 const docOf = (Statement) => ({ Version: "2012-10-17", Statement });
 const fits = (statements) => policySize(docOf(statements), PACK_FILL) < POLICY_MAX;
 
 /**
- * The statements packed in order into policies (next fit). A list statement (`list` set) is cut into numbered slices
- * where a policy fills up: `sid(n)` names slice n.
+ * The statements packed into policies (first fit: each goes into the first policy with room, a new one when none has).
+ * A list statement (`list` set) is cut into numbered slices, each as long as the policy it goes into can hold:
+ * `sid(n)` names slice n.
  */
 function pack(items) {
-  const docs = [[]];
-  const cur = () => docs[docs.length - 1];
+  const docs = [];
   for (const it of items) {
     if (!it.list) {
-      if (!fits([...cur(), it.statement])) docs.push([]);
-      cur().push(it.statement);
+      const d = docs.find((x) => fits([...x, it.statement]));
+      if (d) d.push(it.statement);
+      else docs.push([it.statement]);
       continue;
     }
     let left = [...it.list];
     while (left.length) {
-      // As many as fit in what is left of this policy; a new policy if not even one does.
-      let n = 0;
-      while (n < left.length && fits([...cur(), it.make(left.slice(0, n + 1), it.next())])) n++;
-      if (n === 0) {
-        if (cur().length === 0) throw new Error(`${it.list[0]}: one action does not fit a policy`);
-        docs.push([]);
-        continue;
+      // The first policy that holds at least one more action, and as many as it holds; else a new policy.
+      const room = (d) => {
+        let n = 0;
+        while (n < left.length && fits([...d, it.make(left.slice(0, n + 1), it.next())])) n++;
+        return n;
+      };
+      let d = docs.find((x) => room(x) > 0);
+      if (!d) {
+        d = [];
+        docs.push(d);
+        if (room(d) === 0) throw new Error(`${left[0]}: one action does not fit a policy`);
       }
-      cur().push(it.make(left.slice(0, n), it.take()));
+      const n = room(d);
+      d.push(it.make(left.slice(0, n), it.take()));
       left = left.slice(n);
     }
   }
-  return docs.filter((d) => d.length).map(docOf);
+  return docs.map(docOf);
 }
 
 /** A numbered list statement: CreateNeedsLabTag1, 2, ... */

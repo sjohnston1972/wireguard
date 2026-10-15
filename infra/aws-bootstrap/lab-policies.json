@@ -289,6 +289,117 @@
           }
         },
         {
+          "Sid": "TagOnlyAtCreate",
+          "Effect": "Deny",
+          "Action": "ec2:CreateTags",
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "ec2:CreateAction": "true",
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        },
+        {
+          "Sid": "NoDeleteAllTags",
+          "Effect": "Deny",
+          "Action": "ec2:DeleteTags",
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:TagKeys": "true"
+            }
+          }
+        },
+        {
+          "Sid": "LabDashboardsOnly",
+          "Effect": "Deny",
+          "Action": [
+            "cloudwatch:PutDashboard",
+            "cloudwatch:DeleteDashboards"
+          ],
+          "NotResource": "arn:aws:cloudwatch::__ACCOUNT__:dashboard/lab-*"
+        },
+        {
+          "Sid": "LabRecordersOnly",
+          "Effect": "Deny",
+          "Action": [
+            "config:PutConfigurationRecorder",
+            "config:StartConfigurationRecorder",
+            "config:StopConfigurationRecorder",
+            "config:DeleteConfigurationRecorder",
+            "config:AssociateResourceTypes",
+            "config:DisassociateResourceTypes",
+            "config:DeleteServiceLinkedConfigurationRecorder"
+          ],
+          "NotResource": "arn:aws:config:*:__ACCOUNT__:configuration-recorder/lab-*"
+        },
+        {
+          "Sid": "DenyBoundaryRemoval",
+          "Effect": "Deny",
+          "Action": [
+            "iam:DeleteRolePermissionsBoundary",
+            "iam:DeleteUserPermissionsBoundary"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Sid": "DenyOtherRoles",
+          "Effect": "Deny",
+          "Action": "sts:AssumeRole*",
+          "Resource": "*"
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "VpcFabricNeedsLabTag",
+          "Effect": "Deny",
+          "Action": [
+            "ec2:CreateRoute",
+            "ec2:ReplaceRoute",
+            "ec2:DeleteRoute",
+            "ec2:CreateNetworkAclEntry",
+            "ec2:ReplaceNetworkAclEntry",
+            "ec2:DeleteNetworkAclEntry",
+            "ec2:ReplaceNetworkAclAssociation",
+            "ec2:DeleteNetworkAcl",
+            "ec2:AssociateRouteTable",
+            "ec2:DisassociateRouteTable",
+            "ec2:ReplaceRouteTableAssociation",
+            "ec2:DeleteRouteTable",
+            "ec2:AuthorizeSecurityGroupIngress",
+            "ec2:AuthorizeSecurityGroupEgress",
+            "ec2:RevokeSecurityGroupIngress",
+            "ec2:RevokeSecurityGroupEgress",
+            "ec2:ModifySecurityGroupRules",
+            "ec2:UpdateSecurityGroupRuleDescriptionsIngress",
+            "ec2:UpdateSecurityGroupRuleDescriptionsEgress",
+            "ec2:DeleteSecurityGroup",
+            "ec2:ModifyVpcAttribute",
+            "ec2:DeleteVpc",
+            "ec2:AttachInternetGateway",
+            "ec2:DetachInternetGateway",
+            "ec2:CreateSubnet",
+            "ec2:AssociateVpcCidrBlock",
+            "ec2:CreateVpcPeeringConnection",
+            "ec2:AcceptVpcPeeringConnection"
+          ],
+          "Resource": [
+            "arn:aws:ec2:*:*:network-acl/*",
+            "arn:aws:ec2:*:*:route-table/*",
+            "arn:aws:ec2:*:*:security-group/*",
+            "arn:aws:ec2:*:*:vpc/*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        },
+        {
           "Sid": "DenyAccountAndBilling",
           "Effect": "Deny",
           "Action": [
@@ -337,20 +448,6 @@
           ]
         },
         {
-          "Sid": "DenyBoundaryRemoval",
-          "Effect": "Deny",
-          "Action": [
-            "iam:DeleteRolePermissionsBoundary",
-            "iam:DeleteUserPermissionsBoundary"
-          ],
-          "Resource": "*"
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
           "Sid": "AttachListedPoliciesOnly",
           "Effect": "Deny",
           "Action": [
@@ -379,12 +476,6 @@
               ]
             }
           }
-        },
-        {
-          "Sid": "DenyOtherRoles",
-          "Effect": "Deny",
-          "Action": "sts:AssumeRole*",
-          "Resource": "*"
         },
         {
           "Sid": "DenyOtherRegions",
@@ -530,7 +621,24 @@
             "ecs:StartTask",
             "eks:AssociateIdentityProviderConfig",
             "eks:CreateAccessEntry",
-            "eks:CreateAddon",
+            "eks:CreateAddon"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:RequestTag/cloudlabs-lab": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "CreateNeedsLabTag2",
+          "Effect": "Deny",
+          "Action": [
             "eks:CreateCapability",
             "eks:CreateCluster",
             "eks:CreateEksAnywhereSubscription",
@@ -594,24 +702,7 @@
             "network-firewall:AssociateFirewallPolicy",
             "network-firewall:CreateContainerAssociation",
             "network-firewall:CreateFirewall*",
-            "network-firewall:CreateProxy"
-          ],
-          "Resource": "*",
-          "Condition": {
-            "Null": {
-              "aws:RequestTag/cloudlabs-lab": "true"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "CreateNeedsLabTag2",
-          "Effect": "Deny",
-          "Action": [
+            "network-firewall:CreateProxy",
             "network-firewall:CreateProxyConfiguration",
             "network-firewall:CreateProxyRuleGroup",
             "network-firewall:CreateRuleGroup",
@@ -671,6 +762,105 @@
           }
         },
         {
+          "Sid": "CreateNeedsLabTag4",
+          "Effect": "Deny",
+          "Action": [
+            "ec2:CreateCapacityReservationCancellationQuote",
+            "ec2:CreateFleet",
+            "ec2:CreateImageUsageReport",
+            "ec2:CreateIpam",
+            "ec2:CreateIpamPool",
+            "ec2:CreateIpamPrefixListResolverTarget",
+            "ec2:CreateIpamResourceDiscovery",
+            "ec2:CreateLocalGatewayRouteTable",
+            "ec2:CreateLocalGatewayVirtualInterfaceGroup",
+            "ec2:CreateNatGateway",
+            "ec2:CreateNetworkInterface",
+            "ec2:CreatePublicIpv4Pool",
+            "ec2:CreateRouteServerEndpoint",
+            "ec2:CreateSecondarySubnet",
+            "ec2:CreateTrafficMirrorFilterRule",
+            "ec2:CreateTransitGateway",
+            "ec2:CreateTransitGatewayConnect",
+            "ec2:CreateVerifiedAccessGroup",
+            "ec2:CreateVolume",
+            "ec2:CreateVpcEndpoint",
+            "ec2:ExportImage",
+            "ec2:RequestSpotFleet",
+            "ec2:StartNetworkInsightsAccessScopeAnalysis",
+            "elasticache:CreateReplicationGroup"
+          ],
+          "Resource": [
+            "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
+            "arn:aws:ec2:*:*:export-image-task/*",
+            "arn:aws:ec2:*:*:fleet/*",
+            "arn:aws:ec2:*:*:image-usage-report/*",
+            "arn:aws:ec2:*:*:instance/*",
+            "arn:aws:ec2:*:*:ipv4pool-ec2/*",
+            "arn:aws:ec2:*:*:local-gateway-route-table/*",
+            "arn:aws:ec2:*:*:local-gateway-virtual-interface-group/*",
+            "arn:aws:ec2:*:*:natgateway/*",
+            "arn:aws:ec2:*:*:network-insights-access-scope-analysis/*",
+            "arn:aws:ec2:*:*:network-interface/*",
+            "arn:aws:ec2:*:*:route-server-endpoint/*",
+            "arn:aws:ec2:*:*:secondary-subnet/*",
+            "arn:aws:ec2:*:*:spot-fleet-request/*",
+            "arn:aws:ec2:*:*:traffic-mirror-filter-rule/*",
+            "arn:aws:ec2:*:*:transit-gateway-attachment/*",
+            "arn:aws:ec2:*:*:transit-gateway/*",
+            "arn:aws:ec2:*:*:verified-access-group/*",
+            "arn:aws:ec2:*:*:volume/*",
+            "arn:aws:ec2:*:*:vpc-endpoint/*",
+            "arn:aws:ec2::*:ipam-pool/*",
+            "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
+            "arn:aws:ec2::*:ipam-resource-discovery/*",
+            "arn:aws:ec2::*:ipam/*",
+            "arn:aws:elasticache:*:*:replicationgroup:*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:RequestTag/cloudlabs-lab": "true"
+            }
+          }
+        },
+        {
+          "Sid": "CreateNeedsLabTag5",
+          "Effect": "Deny",
+          "Action": [
+            "ec2:CreateTransitGatewayVpcAttachment",
+            "ec2:ImportImage",
+            "ec2:RegisterImage"
+          ],
+          "Resource": [
+            "arn:aws:ec2:*:*:import-image-task/*",
+            "arn:aws:ec2:*:*:transit-gateway-attachment/*",
+            "arn:aws:ec2:*::image/*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:RequestTag/cloudlabs-lab": "true"
+            }
+          }
+        },
+        {
+          "Sid": "CreateNeedsLabTag7",
+          "Effect": "Deny",
+          "Action": [
+            "ec2:RequestSpotInstances"
+          ],
+          "Resource": "arn:aws:ec2:*:*:spot-instances-request/*",
+          "Condition": {
+            "Null": {
+              "aws:RequestTag/cloudlabs-lab": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
           "Sid": "CreateNeedsLabTag3",
           "Effect": "Deny",
           "Action": [
@@ -719,89 +909,7 @@
             "ec2:CreateSecondaryNetwork",
             "ec2:CreateTrafficMirrorFilter",
             "ec2:CreateTrafficMirrorTarget",
-            "ec2:CreateTransitGatewayConnectPeer"
-          ],
-          "Resource": [
-            "arn:aws:ec2:*:*:application-status-check/*",
-            "arn:aws:ec2:*:*:capacity-manager-data-export/*",
-            "arn:aws:ec2:*:*:capacity-reservation-fleet/*",
-            "arn:aws:ec2:*:*:capacity-reservation/*",
-            "arn:aws:ec2:*:*:carrier-gateway/*",
-            "arn:aws:ec2:*:*:client-vpn-endpoint/*",
-            "arn:aws:ec2:*:*:coip-pool/*",
-            "arn:aws:ec2:*:*:customer-gateway/*",
-            "arn:aws:ec2:*:*:dedicated-host/*",
-            "arn:aws:ec2:*:*:dhcp-options/*",
-            "arn:aws:ec2:*:*:egress-only-internet-gateway/*",
-            "arn:aws:ec2:*:*:elastic-ip/*",
-            "arn:aws:ec2:*:*:export-instance-task/*",
-            "arn:aws:ec2:*:*:fpga-image/*",
-            "arn:aws:ec2:*:*:import-snapshot-task/*",
-            "arn:aws:ec2:*:*:instance-connect-endpoint/*",
-            "arn:aws:ec2:*:*:instance-event-window/*",
-            "arn:aws:ec2:*:*:internet-gateway/*",
-            "arn:aws:ec2:*:*:ipam-pool-allocation/*",
-            "arn:aws:ec2:*:*:key-pair/*",
-            "arn:aws:ec2:*:*:launch-template/*",
-            "arn:aws:ec2:*:*:local-gateway-route-table-virtual-interface-group-association/*",
-            "arn:aws:ec2:*:*:local-gateway-route-table-vpc-association/*",
-            "arn:aws:ec2:*:*:local-gateway-virtual-interface/*",
-            "arn:aws:ec2:*:*:mac-modification-task/*",
-            "arn:aws:ec2:*:*:network-acl/*",
-            "arn:aws:ec2:*:*:network-insights-access-scope/*",
-            "arn:aws:ec2:*:*:network-insights-analysis/*",
-            "arn:aws:ec2:*:*:placement-group/*",
-            "arn:aws:ec2:*:*:prefix-list/*",
-            "arn:aws:ec2:*:*:route-server-peer/*",
-            "arn:aws:ec2:*:*:route-server/*",
-            "arn:aws:ec2:*:*:route-table/*",
-            "arn:aws:ec2:*:*:secondary-network/*",
-            "arn:aws:ec2:*:*:security-group-rule/*",
-            "arn:aws:ec2:*:*:traffic-mirror-filter/*",
-            "arn:aws:ec2:*:*:traffic-mirror-target/*",
-            "arn:aws:ec2:*:*:transit-gateway-connect-peer/*",
-            "arn:aws:ec2:*:*:transit-gateway-metering-policy/*",
-            "arn:aws:ec2:*:*:transit-gateway-multicast-domain/*",
-            "arn:aws:ec2:*:*:transit-gateway-policy-table/*",
-            "arn:aws:ec2:*:*:transit-gateway-route-table/*",
-            "arn:aws:ec2:*:*:verified-access-endpoint/*",
-            "arn:aws:ec2:*:*:verified-access-instance/*",
-            "arn:aws:ec2:*:*:verified-access-trust-provider/*",
-            "arn:aws:ec2:*:*:volume/*",
-            "arn:aws:ec2:*:*:vpc-block-public-access-exclusion/*",
-            "arn:aws:ec2:*:*:vpc-encryption-control/*",
-            "arn:aws:ec2:*:*:vpc-endpoint-service/*",
-            "arn:aws:ec2:*:*:vpc-flow-log/*",
-            "arn:aws:ec2:*:*:vpc-peering-connection/*",
-            "arn:aws:ec2:*:*:vpn-concentrator/*",
-            "arn:aws:ec2:*:*:vpn-gateway/*",
-            "arn:aws:ec2:*::image/*",
-            "arn:aws:ec2:*::snapshot/*",
-            "arn:aws:ec2::*:ipam-external-resource-verification-token/*",
-            "arn:aws:ec2::*:ipam-internet-registry-association/*",
-            "arn:aws:ec2::*:ipam-policy/*",
-            "arn:aws:ec2::*:ipam-prefix-list-resolver/*",
-            "arn:aws:ec2::*:ipam-resource-discovery-association/*",
-            "arn:aws:elasticache:*:*:cluster:*",
-            "arn:aws:elasticache:*:*:usergroup:*",
-            "arn:aws:elasticache::*:globalreplicationgroup:*",
-            "arn:aws:kinesis:*:*:stream/*"
-          ],
-          "Condition": {
-            "Null": {
-              "aws:RequestTag/cloudlabs-lab": "true"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "CreateNeedsLabTag4",
-          "Effect": "Deny",
-          "Action": [
+            "ec2:CreateTransitGatewayConnectPeer",
             "ec2:CreateTransitGatewayMeteringPolicy",
             "ec2:CreateTransitGatewayMulticastDomain",
             "ec2:CreateTransitGatewayPolicyTable",
@@ -898,93 +1006,7 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag5",
-          "Effect": "Deny",
-          "Action": [
-            "ec2:CreateCapacityReservationCancellationQuote",
-            "ec2:CreateFleet",
-            "ec2:CreateImageUsageReport",
-            "ec2:CreateIpam",
-            "ec2:CreateIpamPool",
-            "ec2:CreateIpamPrefixListResolverTarget",
-            "ec2:CreateIpamResourceDiscovery",
-            "ec2:CreateLocalGatewayRouteTable",
-            "ec2:CreateLocalGatewayVirtualInterfaceGroup",
-            "ec2:CreateNatGateway",
-            "ec2:CreateNetworkInterface",
-            "ec2:CreatePublicIpv4Pool",
-            "ec2:CreateRouteServerEndpoint",
-            "ec2:CreateSecondarySubnet",
-            "ec2:CreateTrafficMirrorFilterRule",
-            "ec2:CreateTransitGateway",
-            "ec2:CreateTransitGatewayConnect",
-            "ec2:CreateVerifiedAccessGroup",
-            "ec2:CreateVolume",
-            "ec2:CreateVpcEndpoint",
-            "ec2:ExportImage",
-            "ec2:RequestSpotFleet",
-            "ec2:StartNetworkInsightsAccessScopeAnalysis",
-            "elasticache:CreateReplicationGroup"
-          ],
-          "Resource": [
-            "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
-            "arn:aws:ec2:*:*:export-image-task/*",
-            "arn:aws:ec2:*:*:fleet/*",
-            "arn:aws:ec2:*:*:image-usage-report/*",
-            "arn:aws:ec2:*:*:instance/*",
-            "arn:aws:ec2:*:*:ipv4pool-ec2/*",
-            "arn:aws:ec2:*:*:local-gateway-route-table/*",
-            "arn:aws:ec2:*:*:local-gateway-virtual-interface-group/*",
-            "arn:aws:ec2:*:*:natgateway/*",
-            "arn:aws:ec2:*:*:network-insights-access-scope-analysis/*",
-            "arn:aws:ec2:*:*:network-interface/*",
-            "arn:aws:ec2:*:*:route-server-endpoint/*",
-            "arn:aws:ec2:*:*:secondary-subnet/*",
-            "arn:aws:ec2:*:*:spot-fleet-request/*",
-            "arn:aws:ec2:*:*:traffic-mirror-filter-rule/*",
-            "arn:aws:ec2:*:*:transit-gateway-attachment/*",
-            "arn:aws:ec2:*:*:transit-gateway/*",
-            "arn:aws:ec2:*:*:verified-access-group/*",
-            "arn:aws:ec2:*:*:volume/*",
-            "arn:aws:ec2:*:*:vpc-endpoint/*",
-            "arn:aws:ec2::*:ipam-pool/*",
-            "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
-            "arn:aws:ec2::*:ipam-resource-discovery/*",
-            "arn:aws:ec2::*:ipam/*",
-            "arn:aws:elasticache:*:*:replicationgroup:*"
-          ],
-          "Condition": {
-            "Null": {
-              "aws:RequestTag/cloudlabs-lab": "true"
-            }
-          }
-        },
-        {
           "Sid": "CreateNeedsLabTag6",
-          "Effect": "Deny",
-          "Action": [
-            "ec2:CreateTransitGatewayVpcAttachment",
-            "ec2:ImportImage",
-            "ec2:RegisterImage"
-          ],
-          "Resource": [
-            "arn:aws:ec2:*:*:import-image-task/*",
-            "arn:aws:ec2:*:*:transit-gateway-attachment/*",
-            "arn:aws:ec2:*::image/*"
-          ],
-          "Condition": {
-            "Null": {
-              "aws:RequestTag/cloudlabs-lab": "true"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "CreateNeedsLabTag7",
           "Effect": "Deny",
           "Action": [
             "ec2:CreateIpamScope",
@@ -1014,20 +1036,26 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag8",
+          "Sid": "CreateNeedsLabTagRunInstances",
           "Effect": "Deny",
-          "Action": [
-            "ec2:RequestSpotInstances"
+          "Action": "ec2:RunInstances",
+          "Resource": [
+            "arn:aws:ec2:*:*:instance/*",
+            "arn:aws:ec2:*:*:volume/*"
           ],
-          "Resource": "arn:aws:ec2:*:*:spot-instances-request/*",
           "Condition": {
             "Null": {
               "aws:RequestTag/cloudlabs-lab": "true"
             }
           }
-        },
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
         {
-          "Sid": "CreateNeedsLabTag9",
+          "Sid": "CreateNeedsLabTag8",
           "Effect": "Deny",
           "Action": [
             "ec2:CreateSnapshot*",
@@ -1040,20 +1068,6 @@
             "arn:aws:ec2:*:*:vpc/*",
             "arn:aws:ec2:*:*:vpn-connection/*",
             "arn:aws:ec2:*::snapshot/*"
-          ],
-          "Condition": {
-            "Null": {
-              "aws:RequestTag/cloudlabs-lab": "true"
-            }
-          }
-        },
-        {
-          "Sid": "CreateNeedsLabTagRunInstances",
-          "Effect": "Deny",
-          "Action": "ec2:RunInstances",
-          "Resource": [
-            "arn:aws:ec2:*:*:instance/*",
-            "arn:aws:ec2:*:*:volume/*"
           ],
           "Condition": {
             "Null": {
@@ -1204,24 +1218,7 @@
             "cognito-idp:AdminAddUserToGroup",
             "cognito-idp:AdminConfirmSignUp",
             "cognito-idp:AdminCreateUser",
-            "cognito-idp:AdminDelete*"
-          ],
-          "Resource": "*",
-          "Condition": {
-            "Null": {
-              "aws:ResourceTag/cloudlabs-lab": "true"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "ChangeNeedsLabTag2",
-          "Effect": "Deny",
-          "Action": [
+            "cognito-idp:AdminDelete*",
             "cognito-idp:AdminDisable*",
             "cognito-idp:AdminEnableUser",
             "cognito-idp:AdminForgetDevice",
@@ -1254,7 +1251,24 @@
             "cognito-idp:SetUICustomization",
             "cognito-idp:SetUserPoolMfaConfig",
             "cognito-idp:StartUserImportJob",
-            "cognito-idp:StopUserImportJob",
+            "cognito-idp:StopUserImportJob"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "ChangeNeedsLabTag2",
+          "Effect": "Deny",
+          "Action": [
             "cognito-idp:UpdateAuthEventFeedback",
             "cognito-idp:UpdateGroup",
             "cognito-idp:UpdateIdentityProvider",
@@ -1407,25 +1421,7 @@
             "ec2:DetachClassicLinkVpc",
             "ec2:DetachInternetGateway",
             "ec2:DetachNetworkInterface",
-            "ec2:DetachResourcesFromPlacementGroup"
-          ],
-          "Resource": "*",
-          "Condition": {
-            "Null": {
-              "aws:ResourceTag/cloudlabs-lab": "true",
-              "ec2:CreateAction": "true"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "ChangeNeedsLabTag3",
-          "Effect": "Deny",
-          "Action": [
+            "ec2:DetachResourcesFromPlacementGroup",
             "ec2:DetachVerifiedAccessTrustProvider",
             "ec2:DetachVolume",
             "ec2:DetachVpnGateway",
@@ -1456,7 +1452,25 @@
             "ec2:EnableInstanceSqlHaStandbyDetections",
             "ec2:EnableIpamInternetRegistryAssociation",
             "ec2:EnableIpamPolicy",
-            "ec2:EnableRouteServerPropagation",
+            "ec2:EnableRouteServerPropagation"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true",
+              "ec2:CreateAction": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "ChangeNeedsLabTag3",
+          "Effect": "Deny",
+          "Action": [
             "ec2:EnableTransitGatewayRouteTablePropagation",
             "ec2:EnableVgwRoutePropagation",
             "ec2:EnableVolumeIO",
@@ -1615,25 +1629,7 @@
             "elasticfilesystem:DeleteMountTarget",
             "elasticfilesystem:DeleteReplicationConfiguration",
             "elasticfilesystem:ModifyMountTargetSecurityGroups",
-            "elasticfilesystem:PutBackupPolicy"
-          ],
-          "Resource": "*",
-          "Condition": {
-            "Null": {
-              "aws:ResourceTag/cloudlabs-lab": "true",
-              "ec2:CreateAction": "true"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "ChangeNeedsLabTag4",
-          "Effect": "Deny",
-          "Action": [
+            "elasticfilesystem:PutBackupPolicy",
             "elasticfilesystem:PutFileSystemPolicy",
             "elasticfilesystem:PutLifecycleConfiguration",
             "elasticfilesystem:ReplicationWrite",
@@ -1657,7 +1653,25 @@
             "elasticloadbalancing:Modify*",
             "elasticloadbalancing:Register*",
             "elasticloadbalancing:RemoveListenerCertificates",
-            "elasticloadbalancing:RemoveTrustStoreRevocations",
+            "elasticloadbalancing:RemoveTrustStoreRevocations"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true",
+              "ec2:CreateAction": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "ChangeNeedsLabTag4",
+          "Effect": "Deny",
+          "Action": [
             "elasticloadbalancing:SetIpAddressType",
             "elasticloadbalancing:SetLoad*",
             "elasticloadbalancing:SetRulePriorities",
@@ -1835,24 +1849,7 @@
             "logs:UpdateLogAnomalyDetector",
             "logs:UpdateLookupTable",
             "logs:UpdateScheduledQuery",
-            "network-firewall:AcceptNetworkFirewallTransitGatewayAttachment"
-          ],
-          "Resource": "*",
-          "Condition": {
-            "Null": {
-              "aws:ResourceTag/cloudlabs-lab": "true"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "ChangeNeedsLabTag5",
-          "Effect": "Deny",
-          "Action": [
+            "network-firewall:AcceptNetworkFirewallTransitGatewayAttachment",
             "network-firewall:AssociateAvailabilityZones",
             "network-firewall:AssociateSubnets",
             "network-firewall:AttachRuleGroupsToProxyConfiguration",
@@ -1887,7 +1884,24 @@
             "rds:ModifyDBSnapshot*",
             "rds:ModifyDBSubnetGroup",
             "rds:ModifyEventSubscription",
-            "rds:ModifyGlobalCluster",
+            "rds:ModifyGlobalCluster"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "ChangeNeedsLabTag5",
+          "Effect": "Deny",
+          "Action": [
             "rds:ModifyIntegration",
             "rds:ModifyOptionGroup",
             "rds:ModifyTenantDatabase",
@@ -2140,6 +2154,91 @@
         "Effect": "Deny",
         "Action": "sts:AssumeRole*",
         "Resource": "*"
+      },
+      {
+        "Sid": "TagOnlyAtCreate",
+        "Effect": "Deny",
+        "Action": "ec2:CreateTags",
+        "Resource": "*",
+        "Condition": {
+          "Null": {
+            "ec2:CreateAction": "true",
+            "aws:ResourceTag/cloudlabs-lab": "true"
+          }
+        }
+      },
+      {
+        "Sid": "NoDeleteAllTags",
+        "Effect": "Deny",
+        "Action": "ec2:DeleteTags",
+        "Resource": "*",
+        "Condition": {
+          "Null": {
+            "aws:TagKeys": "true"
+          }
+        }
+      },
+      {
+        "Sid": "VpcFabricNeedsLabTag",
+        "Effect": "Deny",
+        "Action": [
+          "ec2:CreateRoute",
+          "ec2:ReplaceRoute",
+          "ec2:DeleteRoute",
+          "ec2:CreateNetworkAclEntry",
+          "ec2:ReplaceNetworkAclEntry",
+          "ec2:DeleteNetworkAclEntry",
+          "ec2:ReplaceNetworkAclAssociation",
+          "ec2:DeleteNetworkAcl",
+          "ec2:AssociateRouteTable",
+          "ec2:DisassociateRouteTable",
+          "ec2:ReplaceRouteTableAssociation",
+          "ec2:DeleteRouteTable",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress",
+          "ec2:RevokeSecurityGroupEgress",
+          "ec2:ModifySecurityGroupRules",
+          "ec2:UpdateSecurityGroupRuleDescriptionsIngress",
+          "ec2:UpdateSecurityGroupRuleDescriptionsEgress",
+          "ec2:DeleteSecurityGroup",
+          "ec2:ModifyVpcAttribute",
+          "ec2:DeleteVpc",
+          "ec2:AttachInternetGateway",
+          "ec2:DetachInternetGateway",
+          "ec2:CreateSubnet",
+          "ec2:AssociateVpcCidrBlock",
+          "ec2:CreateVpcPeeringConnection",
+          "ec2:AcceptVpcPeeringConnection"
+        ],
+        "Resource": [
+          "arn:aws:ec2:*:*:network-acl/*",
+          "arn:aws:ec2:*:*:route-table/*",
+          "arn:aws:ec2:*:*:security-group/*",
+          "arn:aws:ec2:*:*:vpc/*"
+        ],
+        "Condition": {
+          "Null": {
+            "aws:ResourceTag/cloudlabs-lab": "true"
+          }
+        }
+      },
+      {
+        "Sid": "NoDefaultVpc",
+        "Effect": "Deny",
+        "NotAction": "ec2:Describe*",
+        "Resource": "__DEFAULT_VPC_ARNS__"
+      },
+      {
+        "Sid": "NoDefaultVpcChildren",
+        "Effect": "Deny",
+        "NotAction": "ec2:Describe*",
+        "Resource": "*",
+        "Condition": {
+          "ArnEquals": {
+            "ec2:Vpc": "__DEFAULT_VPC_ARNS__"
+          }
+        }
       },
       {
         "Sid": "NoAccountOrBilling",

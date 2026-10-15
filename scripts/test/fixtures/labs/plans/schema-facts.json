@@ -87,6 +87,18 @@
   "rg": false,
   "tags": true
  },
+ "aws_default_network_acl": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_default_route_table": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_default_security_group": {
+  "rg": false,
+  "tags": true
+ },
  "aws_dx_gateway": {
   "rg": false,
   "tags": true
@@ -102,6 +114,10 @@
  "aws_ec2_instance_connect_endpoint": {
   "rg": false,
   "tags": true
+ },
+ "aws_ec2_tag": {
+  "rg": false,
+  "tags": false
  },
  "aws_eip": {
   "rg": false,

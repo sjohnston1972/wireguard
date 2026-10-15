@@ -10,17 +10,18 @@
 // --labs (AWS labs spec §7.1, §13): Terraform also makes the AWS labs' role
 // wg-admin-labs and its boundary on every run (infra/aws-bootstrap/labs.tf);
 // with --labs it then sets the GitHub secret AWS_LABS_ROLE_ARN, asks IAM's
-// policy simulator the eight questions of ruling A19 about the role (any
-// other answer fails the run, exit 1), raises the lab quotas that are below
+// policy simulator ruling A19's and A48's questions about the role and the
+// boundary (any other answer fails the run, exit 1), raises the lab quotas that are below
 // target in London and Ireland, and reports (or switches on) the cost
 // allocation tag cloudlabs-lab. See scripts/lib/aws-bootstrap-labs.mjs.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadEnv } from "./lib/env.mjs";
 import { runLabsBootstrap } from "./lib/aws-bootstrap-labs.mjs";
+import { fillPolicy } from "./lib/aws-lab-policies.mjs";
 
 const LABS = process.argv.includes("--labs");
 const env = loadEnv();
@@ -88,7 +89,12 @@ try {
       const r = spawnSync(cmd, args, { env: tfEnv, encoding: "utf8" });
       return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
     };
-    const { ok } = await runLabsBootstrap(aws, { account: acct, roleArn: o.labs_role_arn.value, log: (s) => console.log(s) });
+    // The boundary as Terraform applied it (labs.tf fills the same placeholders), for simulate-custom-policy.
+    const defaultVpcArns = o.default_vpc_arns.value;
+    const lab = JSON.parse(readFileSync(join(dir, "lab-policies.json"), "utf8"));
+    const vpcArns = defaultVpcArns.length ? defaultVpcArns : [`arn:aws:ec2:eu-west-2:${acct}:vpc/vpc-00000000000000000`];
+    const boundaryDoc = fillPolicy(lab.boundary, { account: acct, vpcArns });
+    const { ok } = await runLabsBootstrap(aws, { account: acct, roleArn: o.labs_role_arn.value, defaultVpcArns, boundaryDoc, log: (s) => console.log(s) });
     if (!ok) {
       console.error("AWS labs: the simulator's answers are wrong (above); do not run AWS labs until they are fixed.");
       process.exitCode = 1;

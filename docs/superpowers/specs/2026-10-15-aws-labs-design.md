@@ -408,6 +408,13 @@ Every lab role and lab 07 user carries it, so nothing a lab creates can exceed i
   `Tag*`, `Untag*`, `PassRole`, `CreateAccessKey`), `sts:AssumeRole*`, organizations, account, billing, budgets and cost
   writes, anything on a resource tagged `wg-admin=vpn` or any request setting or removing the `wg-admin` key, and any region
   outside LAB_REGIONS.
+- **Deny, as the role does (ruling A48):** `ec2:CreateTags` outside a create (`ec2:CreateAction` null) on anything not
+  already tagged `cloudlabs-lab`; `ec2:DeleteTags` with no tag keys (it would strip every tag); the VPC fabric actions
+  (routes, route table associations, network ACL entries and associations, security group rules, security group, VPC and
+  subnet changes, internet gateway attachment, CIDR association, peering) on network ACLs, route tables, security groups and
+  VPCs not tagged `cloudlabs-lab`, so a lab's own Lambda, EC2, SSM or Config remediation role cannot touch the VPN server's
+  VPC's untagged default security group, network ACL or main route table; and `ec2:*` but `ec2:Describe*` on the two default
+  VPCs and anything inside them.
 
 ### 7.3 Enforcement
 
@@ -487,9 +494,15 @@ freely.** A bad change merged to `main` could run up cost until the budget guard
 Budgets alarm emails). It **cannot** touch the VPN server or anything tagged `wg-admin=vpn`, the default VPC, IAM outside
 `/cloudlabs-lab/lab-*`, access keys, other roles, other regions, Organizations or billing. Two gaps are code, not IAM: S3 and
 Route 53 have no reliable tag conditions for Terraform's calls, so buckets are owned by name (`cloudlabs-*`) and Route 53 is
-allowed account-wide (the account holds no other hosted zones, V); and AWS creates a VPC's default security group, network
-ACL and main route table untagged, so the headend VPC's defaults are protected by the scope check's `gateway` rule and by the
-change list's tag condition, not by a deny of their own. Mitigations: main-only trust, the boundary on every lab identity, the
+allowed account-wide (the account holds no other hosted zones, V). AWS creates a VPC's default security group, network
+ACL and main route table untagged; ruling A48 protects the headend VPC's: the role and the boundary add tags only at
+create or to what already carries `cloudlabs-lab`, and change VPC fabric only where it carries it, and the scope check
+refuses `aws_default_security_group`, `aws_default_network_acl`, `aws_default_route_table` and `aws_ec2_tag` with a plain
+message. Two gaps stay with the plan-time scope check. A VPC id passed as a parameter is not an IAM resource (Route 53
+`AssociateVPCWithHostedZone`, Route 53 Resolver associations, VPC Lattice VPC associations), so a lab naming the server's
+VPC there is refused by the scope check's known-id rule, and the boundary allows no `route53`, `route53resolver` or
+`vpc-lattice` writes, so nothing a lab creates can make one. And a lab role's trust policy is checked at plan time only
+(the `iam` rule). Mitigations: main-only trust, the boundary on every lab identity, the
 scope check before any apply, the simulator cases at bootstrap, the orphan sweep.
 
 ## 8. Clean-up
@@ -845,3 +858,14 @@ copied here and win.
   from AWS), it unpeers every AWS lab that is peered, using the existing Unpeer run, and marks them "disconnected". The
   server's workflow `wg-aws.yml` is not changed. B1's release test confirms whether AWS would also refuse to delete a VPC
   with an active peering; either way this order makes it moot.
+
+(A31–A47 are added from the batch 1 plan in Task 17.)
+
+- **A48. Tagging only at create; VPC fabric changes need the lab tag, in the role and the boundary.** The role could
+  otherwise put `cloudlabs-lab` on an untagged item that is not a lab's (the VPN server's VPC's default network ACL) and then
+  change it, or add rules to that VPC's untagged default security group, and a bounded lab role could do the same directly.
+  Both `wg-admin-labs` and `wg-admin-lab-boundary` deny `ec2:CreateTags` outside a create on anything not already tagged
+  `cloudlabs-lab`, `ec2:DeleteTags` with no keys, and the VPC fabric actions (§7.2) on network ACLs, route tables, security
+  groups and VPCs without the lab tag; the boundary also denies `ec2:*` but describes on the default VPCs, as the role does.
+  The VPN server is not changed. Labs never adopt a VPC's defaults: the scope check refuses `aws_default_*` and
+  `aws_ec2_tag`. The bootstrap's simulator asks both the role and the boundary (§7.1, ruling A19).

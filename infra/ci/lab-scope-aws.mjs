@@ -29,7 +29,8 @@
 //   type         a resource type not on AWS_TYPES, a data source not on AWS_DATA or
 //                breaking its condition (no lookups of VPCs, subnets, route tables,
 //                security groups or instances), a Config recorder or delivery channel
-//                outside AWS_CONFIG_LABS (one per region per account)
+//                outside AWS_CONFIG_LABS (one per region per account), a VPC's untagged
+//                defaults or aws_ec2_tag (UNTAGGED_DEFAULT_TYPES, ruling A48)
 //   never        what a lab only explains in its readme (NEVER_TYPES; dedicated or host tenancy)
 //   tag          (plan) tags_all without cloudlabs-lab = <id>, or not known at plan;
 //                an instance's volumes, a launch template's tag specifications, an Auto
@@ -139,6 +140,16 @@ export const NEVER_TYPES = [
 /** The one lab that may make an IPAM pool CIDR and an IPv6 pool of its own. */
 const IPAM_LAB = "ans-20-vpc-design";
 /** Types the type rule leaves to a later rule, which says more (preflight ruling C1). */
+/**
+ * Ruling A48: what AWS makes untagged with every VPC (its default security group, network ACL and main route table), and
+ * tags put on an item that is already there. wg-admin-labs may not change them, so a lab is told so at plan time.
+ */
+export const UNTAGGED_DEFAULT_TYPES = new Map([
+  ["aws_default_security_group", "a VPC's default security group"],
+  ["aws_default_network_acl", "a VPC's default network ACL"],
+  ["aws_default_route_table", "a VPC's main route table"],
+  ["aws_ec2_tag", "a tag on an item that is already there"],
+]);
 const DEFERRED = { aws_iam_user: "iam", aws_iam_user_login_profile: "iam", aws_iam_user_policy_attachment: "iam", aws_vpc_peering_connection_accepter: "gateway" };
 const CONFIG_TYPES = new Set(["aws_config_configuration_recorder", "aws_config_delivery_channel", "aws_config_configuration_recorder_status"]);
 
@@ -416,6 +427,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
     const never = isManaged && NEVER_TYPES.some((re) => re.test(type)) && !(type === "aws_vpc_ipam_pool_cidr" && labId === IPAM_LAB);
     if (isManaged) {
       if (never) refuse("never", `${type} is only explained in a readme (Not built here)`);
+      else if (UNTAGGED_DEFAULT_TYPES.has(type)) refuse("type", `${type}: ${UNTAGGED_DEFAULT_TYPES.get(type)} carries no lab tag, and wg-admin-labs may change VPC network items and add tags only on what carries cloudlabs-lab (ruling A48); make the lab's own security group, network ACL or route table instead`);
       else if (!DEFERRED[type] && !AWS_TYPES.has(type)) refuse("type", `${type} is not on AWS_TYPES: add it with its reason (ruling 21)`);
       else if (CONFIG_TYPES.has(type) && !AWS_CONFIG_LABS.includes(labId)) refuse("type", `${type} only in ${AWS_CONFIG_LABS.join(", ")} (one Config recorder per region per account)`);
       const tenancies = [v.tenancy, v.instance_tenancy, ...list(v.placement).map((p) => (isObj(p) ? p.tenancy : undefined))];

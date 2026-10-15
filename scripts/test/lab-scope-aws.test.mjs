@@ -51,6 +51,11 @@ const EVIL = [
   ["type", "a type not on the allow-list", () => plan([{ address: "aws_lambda_function.x", values: tagged(c, { function_name: "x" }), refs: {} }])],
   ["type", "a data source that looks up a VPC", () => realisticPlan({ resources: templateResources(c), data: [...awsData(), { address: "data.aws_vpc.wg", values: { tags: { Name: "vpc-x" } }, refs: {} }], providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c.variables })],
   ["type", "a Config recorder outside lab 02", () => plan([{ address: "aws_config_configuration_recorder.r", values: { name: `lab-${ID}-recorder` }, unknown: ["role_arn"], refs: {} }])],
+  // Ruling A48: what AWS made untagged with a VPC, or tags on an item that is already there: wg-admin-labs may not.
+  ["type", "a VPC's default security group (aws_default_security_group)", () => plan([{ address: "aws_default_security_group.d", values: tagged(c, {}), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } }])],
+  ["type", "a VPC's default network ACL (aws_default_network_acl)", () => plan([{ address: "aws_default_network_acl.d", values: tagged(c, {}), unknown: ["default_network_acl_id"], refs: {} }])],
+  ["type", "a VPC's main route table (aws_default_route_table)", () => plan([{ address: "aws_default_route_table.d", values: tagged(c, {}), unknown: ["default_route_table_id"], refs: {} }])],
+  ["type", "a tag on an existing item (aws_ec2_tag)", () => plan([{ address: "aws_ec2_tag.t", values: { resource_id: "acl-0123456789abcdef0", key: "cloudlabs-lab", value: ID }, refs: {} }])],
   ["never", "a Direct Connect gateway", () => plan([{ address: "aws_dx_gateway.x", values: { name: "x", amazon_side_asn: "64512" }, refs: {} }])],
   ["never", "an access key", () => plan([{ address: "aws_iam_access_key.x", values: { user: "x" }, refs: {} }])],
   ["tag", "a resource without the lab tag", () => plan([{ address: "aws_sns_topic.x", values: { name: "x", tags_all: { project: "cloudlabs" } }, refs: {} }])],
@@ -92,6 +97,15 @@ for (const [rule, what, make] of EVIL) {
     assert.ok(got.some((p) => p.rule === rule), `${rule} expected, got ${JSON.stringify(got.map((p) => `${p.rule}: ${p.address} (${p.message})`))}`);
   });
 }
+
+test("a VPC's untagged defaults and aws_ec2_tag are refused in words, not left to an AccessDenied at apply (ruling A48)", () => {
+  for (const t of ["aws_default_security_group", "aws_default_network_acl", "aws_default_route_table", "aws_ec2_tag"]) {
+    const got = scope.checkPlanAws(plan([{ address: `${t}.x`, values: {}, refs: {} }]), ID).filter((p) => p.address === `${t}.x`);
+    assert.deepEqual(got.map((p) => p.rule), ["type"], t);
+    assert.match(got[0].message, /ruling A48/, t);
+    assert.doesNotMatch(got[0].message, /AWS_TYPES: add it/, t);
+  }
+});
 
 test("every rule has at least one evil plan", () => {
   assert.deepEqual([...new Set(EVIL.map(([r]) => r))].sort(), [...scope.AWS_RULES].sort());

@@ -185,6 +185,14 @@ resource "aws_iam_user_policy" "worker" {
         Action   = ["iam:ListRoles", "iam:ListInstanceProfiles", "iam:ListPolicies", "iam:ListUsers", "iam:GetRole", "iam:GetPolicy", "ce:ListCostAllocationTags"]
         Resource = "*"
       },
+      # Never anyone's user data or launch template contents (the VPN server's hold its WireGuard key and agent
+      # token): the Worker reads neither, and ec2:Describe* above would otherwise include them.
+      {
+        Sid      = "NeverUserData"
+        Effect   = "Deny"
+        Action   = ["ec2:DescribeInstanceAttribute", "ec2:DescribeLaunchTemplateVersions"]
+        Resource = "*"
+      },
       {
         Sid       = "ConsoleOfOurServer"
         Effect    = "Allow"

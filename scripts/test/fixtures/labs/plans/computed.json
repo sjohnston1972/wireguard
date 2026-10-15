@@ -4581,6 +4581,52 @@
     "id"
    ],
    "blocks": {}
+  },
+  "aws_default_security_group": {
+   "attrs": [
+    "arn",
+    "description",
+    "egress",
+    "id",
+    "ingress",
+    "name",
+    "name_prefix",
+    "owner_id",
+    "region",
+    "tags_all",
+    "vpc_id"
+   ],
+   "blocks": {}
+  },
+  "aws_default_network_acl": {
+   "attrs": [
+    "arn",
+    "id",
+    "owner_id",
+    "region",
+    "tags_all",
+    "vpc_id"
+   ],
+   "blocks": {}
+  },
+  "aws_default_route_table": {
+   "attrs": [
+    "arn",
+    "id",
+    "owner_id",
+    "region",
+    "route",
+    "tags_all",
+    "vpc_id"
+   ],
+   "blocks": {}
+  },
+  "aws_ec2_tag": {
+   "attrs": [
+    "id",
+    "region"
+   ],
+   "blocks": {}
   }
  }
 }

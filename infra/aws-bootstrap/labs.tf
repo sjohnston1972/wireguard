@@ -39,7 +39,7 @@ locals {
   # A Resource list may not be empty: with no default VPC, an ARN that matches nothing. A JSON array (ruling C11).
   vpc_arns_json = jsonencode(length(local.default_vpc_arns) > 0 ? local.default_vpc_arns : ["arn:aws:ec2:${var.region}:${local.account}:vpc/vpc-00000000000000000"])
   role_docs     = [for d in local.lab_policies.role : replace(replace(jsonencode(d), "__ACCOUNT__", local.account), "\"__DEFAULT_VPC_ARNS__\"", local.vpc_arns_json)]
-  boundary_doc  = replace(jsonencode(local.lab_policies.boundary), "__ACCOUNT__", local.account)
+  boundary_doc  = replace(replace(jsonencode(local.lab_policies.boundary), "__ACCOUNT__", local.account), "\"__DEFAULT_VPC_ARNS__\"", local.vpc_arns_json)
 }
 
 resource "aws_iam_policy" "lab_boundary" {

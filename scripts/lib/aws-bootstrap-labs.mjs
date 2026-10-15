@@ -3,10 +3,14 @@
 // Plain English: the AWS labs' part of the one-off AWS setup (node
 // scripts/aws-bootstrap.mjs --labs; AWS labs spec §7.1, §13, rulings A19 and
 // A23), run after Terraform has made wg-admin-labs and its boundary:
-//   1. asks IAM's policy simulator eight questions about wg-admin-labs (may it
-//      make a tagged VPC and a bounded lab role; is it refused an untagged
-//      VPC, the VPN server, a role without the boundary or off the path, an
-//      access key and a third region) and fails loudly on any other answer
+//   1. asks IAM's policy simulator about wg-admin-labs (ruling A19's eight:
+//      may it make a tagged VPC and a bounded lab role; is it refused an
+//      untagged VPC, the VPN server, a role without the boundary or off the
+//      path, an access key and a third region; and ruling A48's: tags and VPC
+//      network changes only on lab-tagged items, never the VPN server's user
+//      data, the deploy role, AdministratorAccess, the boundary itself or the
+//      default VPC), then about wg-admin-lab-boundary as a policy of its own
+//      (simulate-custom-policy), and fails loudly on any other answer
 //   2. reads the four lab quotas in London and Ireland and asks for more where
 //      they are below target (never twice: a pending request is left alone)
 //   3. reports the cost allocation tag cloudlabs-lab, switching it on when
@@ -18,8 +22,11 @@ import { AWS_LAB_REGIONS, LAB_TAG, AWS_BOUNDARY } from "./labs.mjs";
 
 const ctx = (key, values, type = "string") => ({ key, type, values });
 
-/** Ruling A19's cases, asked of the role with `aws iam simulate-principal-policy`. */
-export function simulatorCases(account) {
+/**
+ * Ruling A19's cases and fix round 1's (ruling A48), asked of the role with `aws iam simulate-principal-policy`.
+ * defaultVpcArns: the account's default VPCs (Terraform's default_vpc_arns); with none, that case is not asked.
+ */
+export function simulatorCases(account, defaultVpcArns = []) {
   const region = ctx("aws:RequestedRegion", ["eu-west-2"]);
   const labTag = [ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-01-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")];
   const vpc = (r) => `arn:aws:ec2:${r}:${account}:vpc/*`;
@@ -34,6 +41,41 @@ export function simulatorCases(account) {
     { name: "role outside the path", action: "iam:CreateRole", resource: `arn:aws:iam::${account}:role/lab-soa-01-x-vm`, context: bounded, want: "denied" },
     { name: "access key", action: "iam:CreateAccessKey", resource: `arn:aws:iam::${account}:user/cloudlabs-lab/lab-soa-07-iam-kms-ann`, context: [], want: "denied" },
     { name: "a third region", action: "ec2:CreateVpc", resource: vpc("us-east-2"), context: [ctx("aws:RequestedRegion", ["us-east-2"]), ...labTag], want: "denied" },
+    ...fabricCases(account),
+    { name: "the VPN server's user data", action: "ec2:DescribeInstanceAttribute", resource: `arn:aws:ec2:eu-west-2:${account}:instance/i-0123456789abcdef0`, context: [region, ctx("aws:ResourceTag/wg-admin", ["vpn"])], want: "denied" },
+    { name: "pass the deploy role", action: "iam:PassRole", resource: `arn:aws:iam::${account}:role/wg-admin-deploy`, context: [ctx("iam:PassedToService", ["ec2.amazonaws.com"])], want: "denied" },
+    { name: "AdministratorAccess on a lab role", action: "iam:AttachRolePolicy", resource: role, context: [...bounded, ctx("iam:PolicyARN", ["arn:aws:iam::aws:policy/AdministratorAccess"])], want: "denied" },
+    { name: "change the boundary", action: "iam:CreatePolicyVersion", resource: `arn:aws:iam::${account}:policy/${AWS_BOUNDARY}`, context: [], want: "denied" },
+    { name: "remove a boundary", action: "iam:DeleteRolePermissionsBoundary", resource: role, context: [], want: "denied" },
+    ...defaultVpcCase(account, defaultVpcArns),
+  ];
+}
+
+/** Ruling A48's VPC network cases, the same for the role and the boundary: a lab-tagged ACL may change, untagged ones not. */
+function fabricCases(account, prefix = "") {
+  const region = ctx("aws:RequestedRegion", ["eu-west-2"]);
+  const acl = `arn:aws:ec2:eu-west-2:${account}:network-acl/acl-0123456789abcdef0`;
+  return [
+    { name: `${prefix}an entry in a lab network ACL`, action: "ec2:CreateNetworkAclEntry", resource: acl, context: [region, ctx(`aws:ResourceTag/${LAB_TAG}`, ["soa-01-x"])], want: "allowed" },
+    { name: `${prefix}tag an untagged network ACL`, action: "ec2:CreateTags", resource: acl, context: [region, ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-01-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")], want: "denied" },
+    { name: `${prefix}an entry in an untagged network ACL`, action: "ec2:CreateNetworkAclEntry", resource: acl, context: [region], want: "denied" },
+    { name: `${prefix}a rule in an untagged security group`, action: "ec2:AuthorizeSecurityGroupIngress", resource: `arn:aws:ec2:eu-west-2:${account}:security-group/sg-0123456789abcdef0`, context: [region], want: "denied" },
+  ];
+}
+/** A subnet in the account's own default VPC (London's, else Ireland's). */
+function defaultVpcCase(account, defaultVpcArns, prefix = "") {
+  const arn = defaultVpcArns[0];
+  if (!arn) return [];
+  return [{ name: `${prefix}a subnet in the default VPC`, action: "ec2:CreateSubnet", resource: arn, context: [ctx("aws:RequestedRegion", [arn.split(":")[3]]), ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-01-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")], want: "denied" }];
+}
+
+/** The boundary's own cases (ruling A48), asked with `aws iam simulate-custom-policy` on the filled boundary document. */
+export function boundaryCases(account, defaultVpcArns = []) {
+  const p = "boundary: ";
+  return [
+    ...fabricCases(account, p),
+    { name: `${p}delete every tag`, action: "ec2:DeleteTags", resource: `arn:aws:ec2:eu-west-2:${account}:vpc/vpc-0aaaaaaaaaaaaaaa1`, context: [ctx("aws:RequestedRegion", ["eu-west-2"]), ctx(`aws:ResourceTag/${LAB_TAG}`, ["soa-01-x"])], want: "denied" },
+    ...defaultVpcCase(account, defaultVpcArns, p),
   ];
 }
 
@@ -79,11 +121,10 @@ const parse = (r) => {
   }
 };
 
-async function simulate(run, o) {
-  const cases = simulatorCases(o.account);
+async function simulate(run, o, cases, source) {
   const results = [];
   for (const c of cases) {
-    const args = ["iam", "simulate-principal-policy", "--policy-source-arn", o.roleArn, "--action-names", c.action, "--resource-arns", c.resource];
+    const args = ["iam", ...source, "--action-names", c.action, "--resource-arns", c.resource];
     if (c.context.length) args.push("--context-entries", JSON.stringify(c.context.map((e) => ({ ContextKeyName: e.key, ContextKeyValues: e.values, ContextKeyType: e.type }))));
     const r = run("aws", [...args, "--output", "json"]);
     const decision = r.status === 0 ? parse(r)?.EvaluationResults?.[0]?.EvalDecision : undefined;
@@ -149,13 +190,23 @@ function costTag(run, o) {
   o.log(`Cost tag ${LAB_TAG}: not seen in billing yet: it appears about a day after the first tagged resource; run --labs again then`);
 }
 
-/** The three steps; ok is false when the simulator's answers are not A19's. */
+/**
+ * The three steps; ok is false when a simulator answer is not A19's or A48's. o: { account, roleArn, defaultVpcArns
+ * (Terraform's output), boundaryDoc (wg-admin-lab-boundary as applied: lab-policies.json's, filled), log }.
+ */
 export async function runLabsBootstrap(run, o) {
-  const problems = await simulate(run, o);
+  const vpcs = o.defaultVpcArns ?? [];
+  if (!vpcs.length) o.log("Simulator: the account has no default VPC, so that case is not asked");
+  const role = simulatorCases(o.account, vpcs);
+  const bound = boundaryCases(o.account, vpcs);
+  const problems = [
+    ...(await simulate(run, o, role, ["simulate-principal-policy", "--policy-source-arn", o.roleArn])),
+    ...(await simulate(run, o, bound, ["simulate-custom-policy", "--policy-input-list", o.boundaryDoc])),
+  ];
   if (problems.length) {
-    o.log(`SIMULATOR: wg-admin-labs does not behave as AWS labs spec §7.1 says (${problems.length}):`);
+    o.log(`SIMULATOR: wg-admin-labs or its boundary does not behave as AWS labs spec §7.1, §7.2 and ruling A48 say (${problems.length}):`);
     for (const p of problems) o.log(`  ${p}`);
-  } else o.log("Simulator: all 8 answers as expected");
+  } else o.log(`Simulator: all ${role.length + bound.length} answers as expected`);
   await quotas(run, o);
   costTag(run, o);
   return { ok: problems.length === 0 };

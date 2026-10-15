@@ -13,8 +13,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { abacLists, foldWildcards, renderLabPolicies, policySize, POLICY_MAX, ROLE_POLICIES_MAX, LAB_SERVICES, ABAC_SERVICES } from "../lib/aws-lab-policies.mjs";
-import { simulatorCases, simulatorProblems, quotaPlan, LAB_QUOTAS, runLabsBootstrap } from "../lib/aws-bootstrap-labs.mjs";
+import { abacLists, foldWildcards, renderLabPolicies, policySize, fillPolicy, POLICY_MAX, ROLE_POLICIES_MAX, LAB_SERVICES, ABAC_SERVICES } from "../lib/aws-lab-policies.mjs";
+import { simulatorCases, boundaryCases, simulatorProblems, quotaPlan, LAB_QUOTAS, runLabsBootstrap } from "../lib/aws-bootstrap-labs.mjs";
 
 const url = (p) => new URL(`../../${p}`, import.meta.url);
 const read = (p) => readFileSync(url(p), "utf8").replace(/\r\n/g, "\n");
@@ -157,6 +157,8 @@ test("every role policy and the boundary fit (A29), and the role holds at most 1
   assert.ok(POLICIES.role.length <= ROLE_POLICIES_MAX, `${POLICIES.role.length} role policies`);
   for (const [i, d] of POLICIES.role.entries()) assert.ok(policySize(d, FILL) < POLICY_MAX, `role policy ${i + 1}: ${policySize(d, FILL)}`);
   assert.ok(policySize(POLICIES.boundary, FILL) < POLICY_MAX);
+  // Packed tightly enough to keep one policy spare for a regenerated reference (fix round 1).
+  assert.ok(POLICIES.role.length < ROLE_POLICIES_MAX, `${POLICIES.role.length} role policies: no room left`);
 });
 
 test("each §7.1 statement says what it must", { skip }, () => {
@@ -179,6 +181,28 @@ test("each §7.1 statement says what it must", { skip }, () => {
   assert.match(JSON.stringify(sid("AttachListedPoliciesOnly")), /AmazonSSMManagedInstanceCore.*policy\/cloudlabs-lab\/lab-\*/);
 });
 
+const FABRIC = ["CreateRoute", "ReplaceRoute", "DeleteRoute", "CreateNetworkAclEntry", "ReplaceNetworkAclEntry", "DeleteNetworkAclEntry", "ReplaceNetworkAclAssociation", "DeleteNetworkAcl", "AssociateRouteTable", "DisassociateRouteTable", "ReplaceRouteTableAssociation", "DeleteRouteTable", "AuthorizeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupIngress", "RevokeSecurityGroupEgress", "ModifySecurityGroupRules", "UpdateSecurityGroupRuleDescriptionsIngress", "UpdateSecurityGroupRuleDescriptionsEgress", "DeleteSecurityGroup", "ModifyVpcAttribute", "DeleteVpc", "AttachInternetGateway", "DetachInternetGateway", "CreateSubnet", "AssociateVpcCidrBlock", "CreateVpcPeeringConnection", "AcceptVpcPeeringConnection"].map((a) => `ec2:${a}`);
+
+test("ruling A48: the role and the boundary both tag only at create, never strip every tag, and change VPC fabric only with the lab tag", { skip }, () => {
+  const { POLICIES, sid } = files();
+  const bsid = (s) => POLICIES.boundary.Statement.find((x) => x.Sid === s);
+  for (const get of [sid, bsid]) {
+    assert.deepEqual(get("TagOnlyAtCreate"), { Sid: "TagOnlyAtCreate", Effect: "Deny", Action: "ec2:CreateTags", Resource: "*", Condition: { Null: { "ec2:CreateAction": "true", "aws:ResourceTag/cloudlabs-lab": "true" } } });
+    assert.deepEqual(get("NoDeleteAllTags"), { Sid: "NoDeleteAllTags", Effect: "Deny", Action: "ec2:DeleteTags", Resource: "*", Condition: { Null: { "aws:TagKeys": "true" } } });
+    const f = get("VpcFabricNeedsLabTag");
+    assert.deepEqual(f.Action, FABRIC);
+    assert.deepEqual(f.Resource, ["network-acl", "route-table", "security-group", "vpc"].map((t) => `arn:aws:ec2:*:*:${t}/*`));
+    assert.deepEqual(f.Condition, { Null: { "aws:ResourceTag/cloudlabs-lab": "true" } });
+  }
+  // The boundary refuses the default VPCs as the role does (describes still answer).
+  assert.deepEqual(bsid("NoDefaultVpc"), { Sid: "NoDefaultVpc", Effect: "Deny", NotAction: "ec2:Describe*", Resource: "__DEFAULT_VPC_ARNS__" });
+  assert.deepEqual(bsid("NoDefaultVpcChildren"), { Sid: "NoDefaultVpcChildren", Effect: "Deny", NotAction: "ec2:Describe*", Resource: "*", Condition: { ArnEquals: { "ec2:Vpc": "__DEFAULT_VPC_ARNS__" } } });
+  // Dashboards and Config recorders: the lab's own names only.
+  assert.deepEqual(sid("LabDashboardsOnly").NotResource, "arn:aws:cloudwatch::__ACCOUNT__:dashboard/lab-*");
+  assert.deepEqual(sid("LabRecordersOnly").NotResource, "arn:aws:config:*:__ACCOUNT__:configuration-recorder/lab-*");
+  assert.ok(sid("LabRecordersOnly").Action.includes("config:StopConfigurationRecorder"));
+});
+
 test("labs.tf: wg-admin-labs trusts main only, for 3 hours, with every rendered policy attached", () => {
   const tf = read("infra/aws-bootstrap/labs.tf");
   assert.match(tf, /name\s+= "wg-admin-labs"\n\s+max_session_duration = 10800/);
@@ -190,6 +214,9 @@ test("labs.tf: wg-admin-labs trusts main only, for 3 hours, with every rendered 
   // C11: the default VPC placeholder becomes a JSON array.
   assert.match(tf, /vpc_arns_json\s+= jsonencode\(length\(local\.default_vpc_arns\) > 0 \? local\.default_vpc_arns : \[/);
   assert.match(read("infra/aws-bootstrap/outputs.tf"), /output "labs_role_arn" \{\n\s+value = aws_iam_role\.labs\.arn/);
+  // The boundary names the default VPCs too, so both placeholders are filled there; the bootstrap's simulator needs them.
+  assert.ok(tf.includes(`boundary_doc  = replace(replace(jsonencode(local.lab_policies.boundary), "__ACCOUNT__", local.account), "\\"__DEFAULT_VPC_ARNS__\\"", local.vpc_arns_json)`));
+  assert.match(read("infra/aws-bootstrap/outputs.tf"), /output "default_vpc_arns" \{\n\s+value = local\.default_vpc_arns/);
 });
 
 test("the Worker user may read lab things in both lab regions, and change nothing", () => {
@@ -208,11 +235,21 @@ test("the Worker user may read lab things in both lab regions, and change nothin
   for (const a of ["iam:ListRoles", "iam:ListInstanceProfiles", "iam:ListPolicies", "iam:ListUsers", "iam:GetRole", "iam:GetPolicy", "ce:ListCostAllocationTags"]) assert.ok(block("LabsGlobalLook").includes(`"${a}"`), a);
   for (const a of ["config:DescribeConfigurationRecorders", "cloudwatch:ListDashboards", "ec2:Describe*", "elasticloadbalancing:Describe*"]) assert.ok(block("LabsLook").includes(`"${a}"`), a);
   assert.match(block("Look"), /"aws:RequestedRegion" = \[var\.region, "eu-west-1"\]/);
+  // Never anyone's user data (the VPN server's holds its WireGuard key and agent token): fix round 1, item 3.
+  const never = block("NeverUserData");
+  assert.match(never, /Effect\s+= "Deny"/);
+  assert.match(never, /Action\s+= \["ec2:DescribeInstanceAttribute", "ec2:DescribeLaunchTemplateVersions"\]/);
+  assert.match(never, /Resource\s+= "\*"/);
+  assert.doesNotMatch(never, /Condition/);
 });
 
-test("the simulator cases are the eight of A19, and a wrong answer is a problem", () => {
-  const cases = simulatorCases("123456789012");
-  assert.deepEqual(cases.map((c) => [c.name, c.want]), [["tagged VPC", "allowed"], ["bounded lab role", "allowed"], ["untagged VPC", "denied"], ["the VPN server", "denied"], ["role without the boundary", "denied"], ["role outside the path", "denied"], ["access key", "denied"], ["a third region", "denied"]]);
+test("the simulator cases are the eight of A19 and fix round 1's, and a wrong answer is a problem", () => {
+  const cases = simulatorCases("123456789012", FILL.vpcArns);
+  assert.deepEqual(cases.map((c) => [c.name, c.want]), [["tagged VPC", "allowed"], ["bounded lab role", "allowed"], ["untagged VPC", "denied"], ["the VPN server", "denied"], ["role without the boundary", "denied"], ["role outside the path", "denied"], ["access key", "denied"], ["a third region", "denied"],
+    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["a subnet in the default VPC", "denied"]]);
+  // With no default VPC in the account there is nothing to ask about it.
+  assert.ok(!simulatorCases("123456789012", []).some((c) => c.name === "a subnet in the default VPC"));
+  assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: delete every tag", "denied"], ["boundary: a subnet in the default VPC", "denied"]]);
   const ok = cases.map((c) => ({ name: c.name, decision: c.want === "allowed" ? "allowed" : "explicitDeny" }));
   assert.deepEqual(simulatorProblems(ok, cases), []);
   assert.deepEqual(simulatorProblems([{ ...ok[0], decision: "implicitDeny" }, ...ok.slice(1)], cases), ["tagged VPC: wanted allowed, AWS said implicitDeny"]);
@@ -239,7 +276,7 @@ test("quotas: VPCs and EIPs always raised to 20 and 10, vCPUs only if below 32, 
 
 /** The simulator answering as A19 wants: the case with this action, resource and context. */
 const asWanted = (opt) => {
-  const c = simulatorCases("123456789012").find((x) => x.action === opt("--action-names") && x.resource === opt("--resource-arns") && JSON.stringify(x.context.map((e) => ({ ContextKeyName: e.key, ContextKeyValues: e.values, ContextKeyType: e.type }))) === (x.context.length ? opt("--context-entries") : JSON.stringify([])));
+  const c = [...simulatorCases("123456789012", FILL.vpcArns), ...boundaryCases("123456789012", FILL.vpcArns)].find((x) => x.action === opt("--action-names") && x.resource === opt("--resource-arns") && JSON.stringify(x.context.map((e) => ({ ContextKeyName: e.key, ContextKeyValues: e.values, ContextKeyType: e.type }))) === (x.context.length ? opt("--context-entries") : JSON.stringify([])));
   return c?.want === "allowed" ? "allowed" : "explicitDeny";
 };
 /** A fake command runner: answers by the aws command, records every call. */
@@ -250,7 +287,7 @@ function fakeAws({ decide = asWanted, quotas = {}, pending = [], costTag = "Inac
     const a = args.join(" ");
     const opt = (k) => args[args.indexOf(k) + 1];
     const ok = (o) => ({ status: 0, stdout: JSON.stringify(o), stderr: "" });
-    if (a.startsWith("iam simulate-principal-policy")) return ok({ EvaluationResults: [{ EvalActionName: opt("--action-names"), EvalDecision: decide(opt) }] });
+    if (a.startsWith("iam simulate-principal-policy") || a.startsWith("iam simulate-custom-policy")) return ok({ EvaluationResults: [{ EvalActionName: opt("--action-names"), EvalDecision: decide(opt) }] });
     if (a.startsWith("service-quotas list-service-quotas")) return ok({ Quotas: eiceCode ? [{ QuotaCode: eiceCode, QuotaName: "Instance Connect Endpoints per Region" }] : [] });
     if (a.startsWith("service-quotas get-service-quota") || a.startsWith("service-quotas get-aws-default-service-quota")) {
       if (failQuotaReads) return { status: 255, stdout: "", stderr: "An error occurred (AccessDenied)" };
@@ -265,7 +302,8 @@ function fakeAws({ decide = asWanted, quotas = {}, pending = [], costTag = "Inac
   };
   return { run, calls };
 }
-const O = { account: "123456789012", roleArn: "arn:aws:iam::123456789012:role/wg-admin-labs" };
+const BOUNDARY_DOC = JSON.stringify({ Version: "2012-10-17", Statement: [{ Sid: "Workload", Effect: "Allow", Action: "ec2:*", Resource: "*" }] });
+const O = { account: "123456789012", roleArn: "arn:aws:iam::123456789012:role/wg-admin-labs", defaultVpcArns: FILL.vpcArns, boundaryDoc: BOUNDARY_DOC };
 
 test("--labs: every simulator case is asked of the role, quotas below target are raised, an inactive cost tag is activated", async () => {
   const log = [];
@@ -273,8 +311,12 @@ test("--labs: every simulator case is asked of the role, quotas below target are
   const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
   assert.equal(r.ok, true);
   const sims = calls.filter((c) => c[2] === "simulate-principal-policy");
-  assert.equal(sims.length, 8);
+  assert.equal(sims.length, 18);
   for (const c of sims) assert.equal(c[c.indexOf("--policy-source-arn") + 1], O.roleArn);
+  // The boundary, simulated as a policy of its own (simulate-custom-policy), with the document the bootstrap filled.
+  const custom = calls.filter((c) => c[2] === "simulate-custom-policy");
+  assert.equal(custom.length, 6);
+  for (const c of custom) assert.equal(c[c.indexOf("--policy-input-list") + 1], BOUNDARY_DOC);
   const tagged = sims[0];
   assert.deepEqual(JSON.parse(tagged[tagged.indexOf("--context-entries") + 1]), [
     { ContextKeyName: "aws:RequestedRegion", ContextKeyValues: ["eu-west-2"], ContextKeyType: "string" },
@@ -297,6 +339,7 @@ test("--labs: a simulator answer that differs fails loudly; an active or unseen 
   const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
   assert.equal(r.ok, false);
   assert.ok(log.some((s) => /untagged VPC: wanted denied, AWS said allowed/.test(s)));
+  assert.ok(log.some((s) => /boundary: tag an untagged network ACL: wanted denied, AWS said allowed/.test(s)));
   assert.ok(log.includes("Cost tag cloudlabs-lab: active"));
   assert.ok(!calls.some((c) => c[2] === "update-cost-allocation-tags-status"));
   const none = fakeAws({ costTag: null, eiceCode: null, failQuotaReads: true });
@@ -317,7 +360,7 @@ const glob = (pattern, value, caseless) => {
 };
 const list = (v) => [].concat(v);
 function fill(doc) {
-  return JSON.parse(JSON.stringify(doc).split("__ACCOUNT__").join(FILL.account).split('"__DEFAULT_VPC_ARNS__"').join(JSON.stringify(FILL.vpcArns)));
+  return JSON.parse(fillPolicy(doc, FILL));
 }
 function condHolds(cond = {}, ctx) {
   for (const [op, keys] of Object.entries(cond)) {
@@ -355,13 +398,20 @@ const ctxOf = (c) => Object.fromEntries(c.context.map((e) => [e.key, e.type === 
 
 test("the evaluator, on the rendered policies, answers each simulator case as AWS must", { skip }, () => {
   const { POLICIES } = files();
-  for (const c of simulatorCases(FILL.account)) {
+  for (const c of simulatorCases(FILL.account, FILL.vpcArns)) {
     const d = decide(POLICIES.role, { action: c.action, resource: c.resource, ctx: ctxOf(c) });
+    assert.equal(d === "allowed" ? "allowed" : "denied", c.want, `${c.name}: ${d}`);
+  }
+  // The boundary as its own policy, as simulate-custom-policy asks it.
+  for (const c of boundaryCases(FILL.account, FILL.vpcArns)) {
+    const d = decide([POLICIES.boundary], { action: c.action, resource: c.resource, ctx: ctxOf(c) });
     assert.equal(d === "allowed" ? "allowed" : "denied", c.want, `${c.name}: ${d}`);
   }
 });
 
 const A = FILL.account;
+/** The ARN of a named item: a dashboard (global) or a Config recorder (name/id); anything else a stand-in. */
+const namedArn = (action, name) => /^cloudwatch:.*Dashboard/.test(action) ? `arn:aws:cloudwatch::${A}:dashboard/${name}` : /^config:.*ConfigurationRecorder/.test(action) ? `arn:aws:config:eu-west-2:${A}:configuration-recorder/${name}/0abc` : `arn:aws:${action.split(":")[0]}:eu-west-2:${A}:${name}`;
 const LAB = { "aws:RequestedRegion": "eu-west-2", "aws:ResourceTag/cloudlabs-lab": "soa-01-x" };
 const NEW = { "aws:RequestedRegion": "eu-west-2", "aws:RequestTag/cloudlabs-lab": "soa-01-x", "aws:TagKeys": ["cloudlabs-lab", "Name"] };
 const BOUNDED = { "iam:PermissionsBoundary": `arn:aws:iam::${A}:policy/wg-admin-lab-boundary` };
@@ -381,7 +431,22 @@ test("what Terraform does for a lab is allowed: tagged creates on the new item o
   denied("ec2:RunInstances", `arn:aws:ec2:eu-west-2:${A}:instance/*`, { "aws:RequestedRegion": "eu-west-2" });
   // The untaggable types a lab names lab-<id>-* (lab-scope-aws.mjs UNTAGGABLE): made and removed without a tag.
   for (const a of ["cloudwatch:PutDashboard", "cloudwatch:DeleteDashboards", "config:PutConfigurationRecorder", "config:StartConfigurationRecorder", "config:StopConfigurationRecorder", "config:DeleteConfigurationRecorder", "config:PutDeliveryChannel", "config:DeleteDeliveryChannel", "logs:PutQueryDefinition", "logs:DeleteQueryDefinition", "kms:CreateAlias", "kms:DeleteAlias", "ssm:RegisterPatchBaselineForPatchGroup"]) {
-    allowed(a, `arn:aws:${a.split(":")[0]}:eu-west-2:${A}:lab-soa-01-x-thing`, { "aws:RequestedRegion": "eu-west-2", "aws:ResourceTag/cloudlabs-lab": a.startsWith("ssm:") ? "soa-01-x" : undefined });
+    allowed(a, namedArn(a, "lab-soa-01-x-thing"), { "aws:RequestedRegion": "eu-west-2", "aws:ResourceTag/cloudlabs-lab": a.startsWith("ssm:") ? "soa-01-x" : undefined });
+  }
+  // ... but only the lab's own names: never the account's default recorder or another dashboard (fix round 1, item 6).
+  for (const a of ["cloudwatch:PutDashboard", "cloudwatch:DeleteDashboards", "config:PutConfigurationRecorder", "config:StopConfigurationRecorder", "config:DeleteConfigurationRecorder"]) denied(a, namedArn(a, "default"), { "aws:RequestedRegion": "eu-west-2" });
+  // Tagging only at create, or on what already carries the lab tag (fix round 1, ruling A48).
+  const acl = `arn:aws:ec2:eu-west-2:${A}:network-acl/acl-0123456789abcdef0`;
+  denied("ec2:CreateTags", acl, { ...NEW });
+  allowed("ec2:CreateTags", acl, { ...NEW, "ec2:CreateAction": "CreateNetworkAcl" });
+  allowed("ec2:CreateTags", acl, { ...LAB, "aws:RequestTag/Name": "acl-x", "aws:TagKeys": ["Name"] });
+  denied("ec2:DeleteTags", acl, LAB);
+  allowed("ec2:DeleteTags", acl, { ...LAB, "aws:TagKeys": ["Name"] });
+  // VPC fabric needs the lab tag: never the VPN VPC's (or any) untagged default ACL, security group or main route table.
+  const fabric = { "network-acl/acl-0123456789abcdef0": ["ec2:CreateNetworkAclEntry", "ec2:ReplaceNetworkAclEntry", "ec2:DeleteNetworkAclEntry", "ec2:ReplaceNetworkAclAssociation"], "security-group/sg-0123456789abcdef0": ["ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress", "ec2:RevokeSecurityGroupIngress", "ec2:ModifySecurityGroupRules"], "route-table/rtb-0123456789abcdef0": ["ec2:CreateRoute", "ec2:ReplaceRoute", "ec2:DeleteRoute", "ec2:ReplaceRouteTableAssociation"], "vpc/vpc-0aaaaaaaaaaaaaaa1": ["ec2:CreateSubnet", "ec2:AttachInternetGateway", "ec2:CreateVpcPeeringConnection", "ec2:AssociateVpcCidrBlock"] };
+  for (const [r, actions] of Object.entries(fabric)) for (const a of actions) {
+    denied(a, `arn:aws:ec2:eu-west-2:${A}:${r}`, { ...NEW });
+    allowed(a, `arn:aws:ec2:eu-west-2:${A}:${r}`, { ...LAB, "aws:RequestTag/cloudlabs-lab": "soa-01-x", "aws:TagKeys": ["cloudlabs-lab"] });
   }
   // Changes to anything without the lab tag are refused; so is changing the default VPC, even tagged.
   denied("ec2:DeleteSubnet", `arn:aws:ec2:eu-west-2:${A}:subnet/subnet-0other`, { "aws:RequestedRegion": "eu-west-2" });
@@ -447,6 +512,7 @@ function requestsOf({ cli, region }) {
   const actions = CLI_ACTION[cli] ?? [`${CLI_SERVICE[svc] ?? svc}:${camel(cmd)}`];
   const read = /^(describe|list|get|head)-/.test(cmd);
   const named = /dashboard|configuration-recorder|delivery-channel|query-definition|alias/.test(cmd);
+  const action0 = actions[0];
   if (svc === "iam") {
     const what = /instance-profile/.test(cmd) ? "instance-profile" : /policy-version|^(get|delete)-policy$/.test(cmd) ? "policy" : /user|login-profile/.test(cmd) ? "user" : /role/.test(cmd) ? "role" : null;
     const name = what === "user" ? "lab-soa-07-iam-kms-ann" : "lab-soa-01-x-vm";
@@ -454,7 +520,7 @@ function requestsOf({ cli, region }) {
     return actions.map((action) => ({ action, resource, ctx: { "aws:RequestedRegion": "us-east-1", ...(what === "role" || what === "user" ? BOUNDED : {}) } }));
   }
   const r = region ?? "eu-west-2";
-  const resource = svc === "s3api" ? "arn:aws:s3:::cloudlabs-a01abcde-logs" : `arn:aws:${CLI_SERVICE[svc] ?? svc}:${r}:${A}:lab-item/x`;
+  const resource = svc === "s3api" ? "arn:aws:s3:::cloudlabs-a01abcde-logs" : /dashboard|configuration-recorder/.test(cmd) ? namedArn(action0, "lab-soa-01-x-main") : `arn:aws:${CLI_SERVICE[svc] ?? svc}:${r}:${A}:lab-item/x`;
   // A read must not need the lab's tag; a write is on a tagged item, or a named one that cannot carry tags.
   const ctx = { "aws:RequestedRegion": r, ...(read || named ? {} : { "aws:ResourceTag/cloudlabs-lab": "soa-01-x" }) };
   return actions.map((action) => ({ action, resource, ctx }));
