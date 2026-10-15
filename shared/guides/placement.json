@@ -702,5 +702,14 @@
    "width": 1707,
    "height": 1146
   }
+ ],
+ "soa-02-systems-manager": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, two EC2 instances, a S3 bucket, four VPC endpoints and more, in one VPC with two subnets.",
+   "width": 2056,
+   "height": 1108
+  }
  ]
 }

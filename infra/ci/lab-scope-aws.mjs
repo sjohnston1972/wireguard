@@ -513,7 +513,9 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       if (["aws_iam_user", "aws_iam_user_login_profile", "aws_iam_user_policy_attachment"].includes(type) && !AWS_IAM_USER_LABS.includes(labId)) refuse("iam", `${type} only in ${AWS_IAM_USER_LABS.join(", ")}`);
       if (type === "aws_iam_role_policy_attachment" || type === "aws_iam_user_policy_attachment") {
         const arn = val.policy_arn;
-        const ok = typeof arn === "string" ? MANAGED_POLICIES.includes(arn) : arn instanceof Unknown && ownRefs(refsOf(arn, res, "policy_arn"), ["aws_iam_policy"]);
+        // A mocked plan has no configuration, so an unknown policy_arn has no references to read: the plan and HCL modes check it.
+        const mockUnread = mode === "mock" && arn instanceof Unknown && !(refsOf(arn, res, "policy_arn").length > 0);
+        const ok = typeof arn === "string" ? MANAGED_POLICIES.includes(arn) : mockUnread || (arn instanceof Unknown && ownRefs(refsOf(arn, res, "policy_arn"), ["aws_iam_policy"]));
         if (!ok) refuse("iam", `policy_arn ${typeof arn === "string" ? arn : "(not known)"} is neither on MANAGED_POLICIES nor one of the lab's own aws_iam_policy`);
         const [who, whoType] = type === "aws_iam_role_policy_attachment" ? ["role", "aws_iam_role"] : ["user", "aws_iam_user"];
         const w = val[who];

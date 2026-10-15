@@ -185,6 +185,17 @@ test("mock mode: no tags_all and no provider configuration in the stream, still 
   assert.deepEqual(scope.scopeProblemsAws({ ...planResources(bad), configKeys: {}, providerConfigs: {} }, ID, { mode: "mock" }).map((x) => x.rule), ["public"]);
 });
 
+test("mock mode: a lab's own policy attachment (unknown policy_arn, no configuration to read) passes; plan mode still reads its references", () => {
+  const extra = policy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: ["logs:PutLogEvents"], Resource: "*" }] });
+  const attach = { address: "aws_iam_role_policy_attachment.x", values: { role: `lab-${ID}-vm` }, unknown: ["policy_arn"], refs: { role: ref("aws_iam_role.vm", "name"), policy_arn: ref("aws_iam_policy.extra", "arn") } };
+  const p = plan([role(), extra, attach]);
+  const noRefs = { ...planResources(p), configKeys: {}, providerConfigs: {} };
+  for (const r of noRefs.resources) if (r.address === "aws_iam_role_policy_attachment.x") { r.refs = {}; for (const v of Object.values(r.values)) if (v?.refs) v.refs = []; }
+  assert.deepEqual(scope.scopeProblemsAws(noRefs, ID, { mode: "mock" }).filter((x) => x.address === "aws_iam_role_policy_attachment.x"), []);
+  const foreign = { ...attach, refs: { role: attach.refs.role, policy_arn: ref("aws_s3_bucket.b", "arn") } };
+  assert.deepEqual(rules(plan([role(), extra, foreign])), ["iam: aws_iam_role_policy_attachment.x"]);
+});
+
 test("HCL: the provider blocks as §4 pass; credentials, another region and other default tags are refused", () => {
   const hcl = (provider, resource = {}) => ({
     terraform: [{ required_providers: [{ aws: { source: "hashicorp/aws", version: "~> 6.0" } }] }],

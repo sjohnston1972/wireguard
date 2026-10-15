@@ -526,5 +526,12 @@
    "title": "CloudWatch: agent, custom metrics, alarms, Logs Insights: architecture",
    "kind": "architecture"
   }
+ ],
+ "soa-02-systems-manager": [
+  {
+   "file": "architecture.svg",
+   "title": "Systems Manager and Config auto-remediation: architecture",
+   "kind": "architecture"
+  }
  ]
 }
