@@ -187,7 +187,8 @@ test("ruling A48: the role and the boundary both tag only at create, never strip
   const { POLICIES, sid } = files();
   const bsid = (s) => POLICIES.boundary.Statement.find((x) => x.Sid === s);
   for (const get of [sid, bsid]) {
-    assert.deepEqual(get("TagOnlyAtCreate"), { Sid: "TagOnlyAtCreate", Effect: "Deny", Action: "ec2:CreateTags", Resource: "*", Condition: { Null: { "ec2:CreateAction": "true", "aws:ResourceTag/cloudlabs-lab": "true" } } });
+    // Fix round 2: only VPC fabric and network/compute items, so AWS Backup may still tag the snapshots it makes.
+    assert.deepEqual(get("TagOnlyAtCreate"), { Sid: "TagOnlyAtCreate", Effect: "Deny", Action: "ec2:CreateTags", Resource: ["network-acl", "route-table", "security-group", "vpc", "subnet", "internet-gateway", "network-interface", "instance"].map((t) => `arn:aws:ec2:*:*:${t}/*`), Condition: { Null: { "ec2:CreateAction": "true", "aws:ResourceTag/cloudlabs-lab": "true" } } });
     assert.deepEqual(get("NoDeleteAllTags"), { Sid: "NoDeleteAllTags", Effect: "Deny", Action: "ec2:DeleteTags", Resource: "*", Condition: { Null: { "aws:TagKeys": "true" } } });
     const f = get("VpcFabricNeedsLabTag");
     assert.deepEqual(f.Action, FABRIC);
@@ -201,6 +202,30 @@ test("ruling A48: the role and the boundary both tag only at create, never strip
   assert.deepEqual(sid("LabDashboardsOnly").NotResource, "arn:aws:cloudwatch::__ACCOUNT__:dashboard/lab-*");
   assert.deepEqual(sid("LabRecordersOnly").NotResource, "arn:aws:config:*:__ACCOUNT__:configuration-recorder/lab-*");
   assert.ok(sid("LabRecordersOnly").Action.includes("config:StopConfigurationRecorder"));
+});
+
+test("fix round 2: account-wide EC2 settings are refused to the role and the boundary, from the reference's own list", { skip }, () => {
+  const { ABAC, sid, POLICIES } = files();
+  const bsid = (s) => POLICIES.boundary.Statement.find((x) => x.Sid === s);
+  const pinned = ["ec2:ModifyVpcBlockPublicAccessOptions", "ec2:CreateVpcBlockPublicAccessExclusion", "ec2:ModifyVpcBlockPublicAccessExclusion", "ec2:DeleteVpcBlockPublicAccessExclusion", "ec2:EnableEbsEncryptionByDefault", "ec2:DisableEbsEncryptionByDefault", "ec2:ModifyEbsDefaultKmsKeyId", "ec2:ResetEbsDefaultKmsKeyId"];
+  for (const a of pinned) assert.ok(ABAC.accountSettings.includes(a), a);
+  assert.ok(ABAC.accountSettings.length >= 25, `${ABAC.accountSettings.length} settings`);
+  assert.ok(!ABAC.accountSettings.includes("ec2:EnableImageDeprecation"), "names one image: not an account setting");
+  for (const a of ABAC.accountSettings) {
+    assert.ok(sid("DenyAccountAndBilling").Action.includes(a), `role: ${a}`);
+    assert.ok(bsid("NoAccountOrBilling").Action.includes(a), `boundary: ${a}`);
+  }
+});
+
+test("account settings come from the reference: setting writes with no resource type, and the named VPC Block Public Access ones", () => {
+  const sar = { ec2: { Name: "ec2", Resources: [{ Name: "image", ConditionKeys: ["aws:ResourceTag/${TagKey}"] }], Actions: [
+    W({ Name: "EnableEbsEncryptionByDefault", Resources: [] }),
+    W({ Name: "ModifyDefaultCreditSpecification", Resources: [] }),
+    W({ Name: "EnableImageDeprecation", Resources: [{ Name: "image" }] }),
+    W({ Name: "ModifyVpcBlockPublicAccessExclusion", Resources: [{ Name: "vpc-block-public-access-exclusion" }] }),
+    { Name: "DescribeEbsDefaultKmsKeyId", Resources: [], Annotations: { Properties: { IsList: false } } },
+  ] } };
+  assert.deepEqual(abacLists(sar).accountSettings, ["ec2:EnableEbsEncryptionByDefault", "ec2:ModifyDefaultCreditSpecification", "ec2:ModifyVpcBlockPublicAccessExclusion"]);
 });
 
 test("labs.tf: wg-admin-labs trusts main only, for 3 hours, with every rendered policy attached", () => {
@@ -246,10 +271,10 @@ test("the Worker user may read lab things in both lab regions, and change nothin
 test("the simulator cases are the eight of A19 and fix round 1's, and a wrong answer is a problem", () => {
   const cases = simulatorCases("123456789012", FILL.vpcArns);
   assert.deepEqual(cases.map((c) => [c.name, c.want]), [["tagged VPC", "allowed"], ["bounded lab role", "allowed"], ["untagged VPC", "denied"], ["the VPN server", "denied"], ["role without the boundary", "denied"], ["role outside the path", "denied"], ["access key", "denied"], ["a third region", "denied"],
-    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["a subnet in the default VPC", "denied"]]);
+    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a subnet in the default VPC", "denied"]]);
   // With no default VPC in the account there is nothing to ask about it.
   assert.ok(!simulatorCases("123456789012", []).some((c) => c.name === "a subnet in the default VPC"));
-  assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: delete every tag", "denied"], ["boundary: a subnet in the default VPC", "denied"]]);
+  assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"]]);
   const ok = cases.map((c) => ({ name: c.name, decision: c.want === "allowed" ? "allowed" : "explicitDeny" }));
   assert.deepEqual(simulatorProblems(ok, cases), []);
   assert.deepEqual(simulatorProblems([{ ...ok[0], decision: "implicitDeny" }, ...ok.slice(1)], cases), ["tagged VPC: wanted allowed, AWS said implicitDeny"]);
@@ -311,11 +336,11 @@ test("--labs: every simulator case is asked of the role, quotas below target are
   const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
   assert.equal(r.ok, true);
   const sims = calls.filter((c) => c[2] === "simulate-principal-policy");
-  assert.equal(sims.length, 18);
+  assert.equal(sims.length, 20);
   for (const c of sims) assert.equal(c[c.indexOf("--policy-source-arn") + 1], O.roleArn);
   // The boundary, simulated as a policy of its own (simulate-custom-policy), with the document the bootstrap filled.
   const custom = calls.filter((c) => c[2] === "simulate-custom-policy");
-  assert.equal(custom.length, 6);
+  assert.equal(custom.length, 8);
   for (const c of custom) assert.equal(c[c.indexOf("--policy-input-list") + 1], BOUNDARY_DOC);
   const tagged = sims[0];
   assert.deepEqual(JSON.parse(tagged[tagged.indexOf("--context-entries") + 1]), [
@@ -441,6 +466,10 @@ test("what Terraform does for a lab is allowed: tagged creates on the new item o
   allowed("ec2:CreateTags", acl, { ...NEW, "ec2:CreateAction": "CreateNetworkAcl" });
   allowed("ec2:CreateTags", acl, { ...LAB, "aws:RequestTag/Name": "acl-x", "aws:TagKeys": ["Name"] });
   denied("ec2:DeleteTags", acl, LAB);
+  // A snapshot AWS Backup (or the lab) has just made: tagging it is not refused (fix round 2).
+  allowed("ec2:CreateTags", `arn:aws:ec2:eu-west-2::snapshot/snap-0123456789abcdef0`, NEW);
+  // Account-wide EC2 settings: never (fix round 2).
+  for (const a of ["ec2:ModifyVpcBlockPublicAccessOptions", "ec2:EnableEbsEncryptionByDefault", "ec2:ModifyEbsDefaultKmsKeyId", "ec2:ModifyInstanceMetadataDefaults", "ec2:EnableSerialConsoleAccess"]) denied(a, "*", { "aws:RequestedRegion": "eu-west-2" });
   allowed("ec2:DeleteTags", acl, { ...LAB, "aws:TagKeys": ["Name"] });
   // VPC fabric needs the lab tag: never the VPN VPC's (or any) untagged default ACL, security group or main route table.
   const fabric = { "network-acl/acl-0123456789abcdef0": ["ec2:CreateNetworkAclEntry", "ec2:ReplaceNetworkAclEntry", "ec2:DeleteNetworkAclEntry", "ec2:ReplaceNetworkAclAssociation"], "security-group/sg-0123456789abcdef0": ["ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress", "ec2:RevokeSecurityGroupIngress", "ec2:ModifySecurityGroupRules"], "route-table/rtb-0123456789abcdef0": ["ec2:CreateRoute", "ec2:ReplaceRoute", "ec2:DeleteRoute", "ec2:ReplaceRouteTableAssociation"], "vpc/vpc-0aaaaaaaaaaaaaaa1": ["ec2:CreateSubnet", "ec2:AttachInternetGateway", "ec2:CreateVpcPeeringConnection", "ec2:AssociateVpcCidrBlock"] };

@@ -47,6 +47,8 @@ export function simulatorCases(account, defaultVpcArns = []) {
     { name: "AdministratorAccess on a lab role", action: "iam:AttachRolePolicy", resource: role, context: [...bounded, ctx("iam:PolicyARN", ["arn:aws:iam::aws:policy/AdministratorAccess"])], want: "denied" },
     { name: "change the boundary", action: "iam:CreatePolicyVersion", resource: `arn:aws:iam::${account}:policy/${AWS_BOUNDARY}`, context: [], want: "denied" },
     { name: "remove a boundary", action: "iam:DeleteRolePermissionsBoundary", resource: role, context: [], want: "denied" },
+    blockPublicAccess(),
+    { name: "EBS encryption by default", action: "ec2:EnableEbsEncryptionByDefault", resource: "*", context: [region], want: "denied" },
     ...defaultVpcCase(account, defaultVpcArns),
   ];
 }
@@ -62,6 +64,10 @@ function fabricCases(account, prefix = "") {
     { name: `${prefix}a rule in an untagged security group`, action: "ec2:AuthorizeSecurityGroupIngress", resource: `arn:aws:ec2:eu-west-2:${account}:security-group/sg-0123456789abcdef0`, context: [region], want: "denied" },
   ];
 }
+/** An account-wide EC2 setting (fix round 2): VPC Block Public Access would cut the VPN server off the internet. */
+function blockPublicAccess(prefix = "") {
+  return { name: `${prefix}block public access for the account`, action: "ec2:ModifyVpcBlockPublicAccessOptions", resource: "*", context: [ctx("aws:RequestedRegion", ["eu-west-2"])], want: "denied" };
+}
 /** A subnet in the account's own default VPC (London's, else Ireland's). */
 function defaultVpcCase(account, defaultVpcArns, prefix = "") {
   const arn = defaultVpcArns[0];
@@ -75,6 +81,9 @@ export function boundaryCases(account, defaultVpcArns = []) {
   return [
     ...fabricCases(account, p),
     { name: `${p}delete every tag`, action: "ec2:DeleteTags", resource: `arn:aws:ec2:eu-west-2:${account}:vpc/vpc-0aaaaaaaaaaaaaaa1`, context: [ctx("aws:RequestedRegion", ["eu-west-2"]), ctx(`aws:ResourceTag/${LAB_TAG}`, ["soa-01-x"])], want: "denied" },
+    blockPublicAccess(p),
+    // AWS Backup's role tags the snapshot it has just made (no lab tag yet, no create action): not refused (fix round 2).
+    { name: `${p}tag a new snapshot`, action: "ec2:CreateTags", resource: `arn:aws:ec2:eu-west-2::snapshot/snap-0123456789abcdef0`, context: [ctx("aws:RequestedRegion", ["eu-west-2"]), ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-04-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")], want: "allowed" },
     ...defaultVpcCase(account, defaultVpcArns, p),
   ];
 }

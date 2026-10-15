@@ -105,6 +105,7 @@ export function abacLists(sar) {
   const create = [];
   const change = [];
   const untag = [];
+  const accountSettings = [];
   const createOn = {};
   const allOf = {};
   const scoped = []; // { name, made: type keys, touches: type keys, arns }
@@ -125,6 +126,7 @@ export function abacLists(sar) {
         continue;
       }
       if (res.some((r) => NAME_OWNED_TYPES.includes(`${service}:${r.Name}`))) continue;
+      if (isAccountSetting(service, a)) accountSettings.push(name);
       // A read makes nothing (the reference gives some reads the request tag): never in either list.
       if (!(p.IsWrite || p.IsPermissionManagement) || p.IsList) continue;
       const onAction = (a.ActionConditionKeys ?? []).includes(RT);
@@ -172,7 +174,23 @@ export function abacLists(sar) {
     }
   }
   const sorted = (l) => [...new Set(l)].sort();
-  return { create: sorted(create), change: sorted(change), createOn: Object.fromEntries(Object.keys(createOn).sort().map((k) => [k, createOn[k]])), untag: sorted(untag) };
+  return { create: sorted(create), change: sorted(change), createOn: Object.fromEntries(Object.keys(createOn).sort().map((k) => [k, createOn[k]])), untag: sorted(untag), accountSettings: sorted(accountSettings) };
+}
+
+/**
+ * Account-wide EC2 settings (fix round 2): the VPN server lives under them too. VPC Block Public Access (its
+ * bidirectional internet block would cut the server off), EBS encryption by default and its key (a redeployed server's
+ * disk could take a lab key that is later deleted), instance metadata defaults, the serial console, image and snapshot
+ * public-access blocks, allowed images and the like. From the reference (V 2026-10-15): every ec2 write with no
+ * resource type named Enable*, Disable*, Modify*Default* or Reset*Default*, plus the named ones below.
+ */
+const ACCOUNT_SETTING_RE = /^(Enable|Disable|Modify\w*Default|Reset\w*Default)/;
+export const NAMED_ACCOUNT_SETTINGS = ["ModifyVpcBlockPublicAccessOptions", "CreateVpcBlockPublicAccessExclusion", "ModifyVpcBlockPublicAccessExclusion", "DeleteVpcBlockPublicAccessExclusion", "ModifyAvailabilityZoneGroup", "ReplaceImageCriteriaInAllowedImagesSettings"];
+function isAccountSetting(service, a) {
+  if (service !== "ec2") return false;
+  if (NAMED_ACCOUNT_SETTINGS.includes(a.Name)) return true;
+  const p = props(a);
+  return (a.Resources ?? []).length === 0 && Boolean(p.IsWrite || p.IsPermissionManagement) && ACCOUNT_SETTING_RE.test(a.Name);
 }
 
 /** Where a word starts in an action name (CreateVpcEndpoint: 6, 9; DescribeDBInstances: 8, 10). */
@@ -233,7 +251,8 @@ const IAM_WRITES = ["Create*", "Delete*", "Put*", "Attach*", "Detach*", "Update*
  */
 const VPC_FABRIC_ACTIONS = ["CreateRoute", "ReplaceRoute", "DeleteRoute", "CreateNetworkAclEntry", "ReplaceNetworkAclEntry", "DeleteNetworkAclEntry", "ReplaceNetworkAclAssociation", "DeleteNetworkAcl", "AssociateRouteTable", "DisassociateRouteTable", "ReplaceRouteTableAssociation", "DeleteRouteTable", "AuthorizeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupIngress", "RevokeSecurityGroupEgress", "ModifySecurityGroupRules", "UpdateSecurityGroupRuleDescriptionsIngress", "UpdateSecurityGroupRuleDescriptionsEgress", "DeleteSecurityGroup", "ModifyVpcAttribute", "DeleteVpc", "AttachInternetGateway", "DetachInternetGateway", "CreateSubnet", "AssociateVpcCidrBlock", "CreateVpcPeeringConnection", "AcceptVpcPeeringConnection"].map((a) => `ec2:${a}`);
 const VPC_FABRIC_GUARDS = [
-  deny("TagOnlyAtCreate", "ec2:CreateTags", "*", { Null: { "ec2:CreateAction": "true", [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
+  // Network and compute items only (fix round 2): AWS Backup's service role tags the snapshots it makes after making them.
+  deny("TagOnlyAtCreate", "ec2:CreateTags", ["network-acl", "route-table", "security-group", "vpc", "subnet", "internet-gateway", "network-interface", "instance"].map((t) => `arn:aws:ec2:*:*:${t}/*`), { Null: { "ec2:CreateAction": "true", [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
   deny("NoDeleteAllTags", "ec2:DeleteTags", "*", { Null: { "aws:TagKeys": "true" } }),
   deny("VpcFabricNeedsLabTag", VPC_FABRIC_ACTIONS, ["network-acl", "route-table", "security-group", "vpc"].map((t) => `arn:aws:ec2:*:*:${t}/*`), { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
 ];
@@ -241,7 +260,7 @@ const VPC_FABRIC_GUARDS = [
 const RECORDER_WRITES = ["PutConfigurationRecorder", "StartConfigurationRecorder", "StopConfigurationRecorder", "DeleteConfigurationRecorder", "AssociateResourceTypes", "DisassociateResourceTypes", "DeleteServiceLinkedConfigurationRecorder"].map((a) => `config:${a}`);
 
 /** §7.1's statements before the ABAC lists, in the table's order. */
-function fixedStatements() {
+function fixedStatements(abac) {
   return [
     allow("LabServices", LAB_SERVICE_ACTIONS, "*", inRegions(AWS_LAB_REGIONS)),
     allow("LabBuckets", "s3:*", ["arn:aws:s3:::cloudlabs-*", "arn:aws:s3:::cloudlabs-*/*"]),
@@ -262,8 +281,10 @@ function fixedStatements() {
     ...VPC_FABRIC_GUARDS,
     // The untaggable named types (NAME_OWNED_TYPES): the lab's own names only, never the account's default recorder.
     { Sid: "LabDashboardsOnly", Effect: "Deny", Action: ["cloudwatch:PutDashboard", "cloudwatch:DeleteDashboards"], NotResource: `arn:aws:cloudwatch::${ACCT}:dashboard/lab-*` },
+    // soa-02's release test must confirm AWS evaluates PutConfigurationRecorder, at create, against the recorder's named
+    // ARN (configuration-recorder/lab-<id>-*/...): if it asks on "*", this refuses the lab's own recorder.
     { Sid: "LabRecordersOnly", Effect: "Deny", Action: RECORDER_WRITES, NotResource: `arn:aws:config:*:${ACCT}:configuration-recorder/lab-*` },
-    deny("DenyAccountAndBilling", ["organizations:*", "account:*", "billing:*", "aws-portal:*", "payments:*", "budgets:*", "cur:*", "ce:Create*", "ce:Update*", "ce:Delete*", "iam:*AccountPasswordPolicy", "iam:*AccountAlias", "iam:CreateAccessKey", "iam:*OpenIDConnectProvider*", "iam:*SAMLProvider*", "iam:*VirtualMFADevice"]),
+    deny("DenyAccountAndBilling", ["organizations:*", "account:*", "billing:*", "aws-portal:*", "payments:*", "budgets:*", "cur:*", "ce:Create*", "ce:Update*", "ce:Delete*", "iam:*AccountPasswordPolicy", "iam:*AccountAlias", "iam:CreateAccessKey", "iam:*OpenIDConnectProvider*", "iam:*SAMLProvider*", "iam:*VirtualMFADevice", ...(abac.accountSettings ?? [])]),
     { Sid: "DenyIamOutsideLab", Effect: "Deny", Action: IAM_WRITES, NotResource: [LAB_ROLE, LAB_PROFILE, LAB_POLICY, LAB07_USER, `arn:aws:iam::${ACCT}:role/aws-service-role/*`] },
     deny("DenyBoundaryRemoval", ["iam:DeleteRolePermissionsBoundary", "iam:DeleteUserPermissionsBoundary"]),
     // §7.1's attachable list (lab-scope-aws.mjs MANAGED_POLICIES checks it at plan; this holds it at apply too).
@@ -277,7 +298,7 @@ function fixedStatements() {
 
 /** §7.2: the most any lab role or lab 07 user can do, whatever a lab attaches to it. */
 export const WORKLOAD_SERVICES = ["ec2", "ssm", "ssmmessages", "ec2messages", "cloudwatch", "logs", "events", "sns", "sqs", "states", "lambda", "dynamodb", "kms", "secretsmanager", "s3", "ecr", "ecs", "eks", "elasticloadbalancing", "autoscaling", "kinesis", "firehose", "glue", "athena", "config", "backup", "rds", "elasticfilesystem", "vpc-lattice-svcs"];
-function boundary() {
+function boundary(abac) {
   return {
     Version: "2012-10-17",
     Statement: [
@@ -289,7 +310,7 @@ function boundary() {
       ...VPC_FABRIC_GUARDS,
       { Sid: "NoDefaultVpc", Effect: "Deny", NotAction: "ec2:Describe*", Resource: "__DEFAULT_VPC_ARNS__" },
       { Sid: "NoDefaultVpcChildren", Effect: "Deny", NotAction: "ec2:Describe*", Resource: "*", Condition: { ArnEquals: { "ec2:Vpc": "__DEFAULT_VPC_ARNS__" } } },
-      deny("NoAccountOrBilling", ["organizations:*", "account:*", "billing:*", "aws-portal:*", "budgets:*", "ce:Create*", "ce:Update*", "ce:Delete*"]),
+      deny("NoAccountOrBilling", ["organizations:*", "account:*", "billing:*", "aws-portal:*", "budgets:*", "ce:Create*", "ce:Update*", "ce:Delete*", ...(abac.accountSettings ?? [])]),
       deny("NoVpnServer", "*", "*", { StringEquals: { "aws:ResourceTag/wg-admin": "vpn" } }),
       deny("NoVpnTagRequest", "*", "*", { Null: { "aws:RequestTag/wg-admin": "false" } }),
       deny("NoVpnTagKeys", "*", "*", { "ForAnyValue:StringEquals": { "aws:TagKeys": ["wg-admin"] } }),
@@ -361,7 +382,7 @@ function roleItems(abac, change) {
   const noRequestTag = { Null: { [`aws:RequestTag/${LAB_TAG}`]: "true" } };
   const creates = counter("CreateNeedsLabTag");
   const changes = counter("ChangeNeedsLabTag");
-  const items = fixedStatements().map((statement) => ({ statement }));
+  const items = fixedStatements(abac).map((statement) => ({ statement }));
   // Requested on the action: refused on any resource.
   const anywhere = abac.create.filter((a) => !createOn[a]);
   items.push({ list: anywhere, ...creates, make: (Action, Sid) => deny(Sid, Action, "*", noRequestTag) });
@@ -399,7 +420,7 @@ export function renderLabPolicies(abac) {
     fallback = true;
     if (role.length > ROLE_POLICIES_MAX) throw new Error(`the role needs ${role.length} policies even with A29's fall-back`);
   }
-  const out = { role, boundary: boundary() };
+  const out = { role, boundary: boundary(abac) };
   Object.defineProperty(out, "changeFallback", { value: fallback, enumerable: false });
   return out;
 }
