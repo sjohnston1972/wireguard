@@ -70,6 +70,9 @@ export function SessionActions({ s, now, size = "sm" }: { s: LabSession; now: nu
  * deploy is still going, it cancels that run first (POST /cancel), which then
  * destroys; otherwise POST /destroy.
  */
+const scopeWords = (labId: string) =>
+  cloudOfId(labId) === "aws" ? `everything tagged cloudlabs-lab = ${labId}` : `everything in rg-lab-${labId} and the lab's Entra objects`;
+
 export function TearDownDialog({ s, onClose }: { s: LabSession; onClose: () => void }) {
   const destroy = useDestroyLab();
   const cancel = useCancelLab();
@@ -82,8 +85,8 @@ export function TearDownDialog({ s, onClose }: { s: LabSession; onClose: () => v
       title={`Tear down ${s.title}?`}
       description={
         deploying
-          ? `Cancels the deploy in progress, then removes everything in rg-lab-${s.labId} and the lab's Entra objects, back to £0.`
-          : `Removes everything in rg-lab-${s.labId} and the lab's Entra objects, back to £0. Your note is kept.`
+          ? `Cancels the deploy in progress, then removes ${scopeWords(s.labId)}, back to £0.`
+          : `Removes ${scopeWords(s.labId)}, back to £0. Your note is kept.`
       }
       footer={
         <>
@@ -150,7 +153,7 @@ export function Orphans({ orphans }: { orphans: LabOrphan[] }) {
           open
           onOpenChange={(o) => !o && !cleanup.isPending && setAsking(null)}
           title={`Clean up ${asking}?`}
-          description={`Runs a tear-down for ${asking}: everything in rg-lab-${asking} and its lab-${asking}- Entra and governance objects is removed.`}
+          description={`Runs a tear-down for ${asking}: ${cloudOfId(asking) === "aws" ? `everything tagged cloudlabs-lab = ${asking}` : `everything in rg-lab-${asking} and its lab-${asking}- Entra and governance objects`} is removed.`}
           footer={
             <>
               <Button variant="secondary" onClick={() => setAsking(null)} disabled={cleanup.isPending}>

@@ -10,6 +10,7 @@
 
 import { Activity, ArchiveRestore, Container, Database, FlaskConical, HardDrive, MessagesSquare, Network, ScrollText, Server, ShieldCheck, UserRound, type LucideIcon } from "lucide-react";
 import { KINDS } from "@shared/topology/kinds";
+import { awsLabel } from "./topology/awsWords";
 import type { LabCloud } from "@shared/labs";
 import type { TopoKind } from "@shared/topology/model";
 
@@ -160,7 +161,7 @@ const GROUP_ORDER = ["vnet", "subnet", "virtualHub", "resourceGroup"];
  * virtualHub, resourceGroup), then generic (with any kind this app does not know) as
  * "Other resources". [] without resources (the panel then says "Resource list unavailable").
  */
-export function resourceSummary(resources: Resources): ResourceLine[] {
+export function resourceSummary(resources: Resources, cloud: "azure" | "aws" = "azure"): ResourceLine[] {
   if (!resources) return [];
   const known = (k: string): k is TopoKind => Object.hasOwn(KINDS, k) && k !== "lane" && k !== "gateway" && k !== "generic";
   let other = 0;
@@ -172,7 +173,7 @@ export function resourceSummary(resources: Resources): ResourceLine[] {
       if (k !== "lane" && k !== "gateway") other += count;
       continue;
     }
-    const line = { kind: k, label: count === 1 ? KINDS[k].word : KINDS[k].plural, count, icon: KINDS[k].icon };
+    const line = { kind: k, label: (cloud === "aws" ? awsLabel(k, count) : undefined) ?? (count === 1 ? KINDS[k].word : KINDS[k].plural), count, icon: KINDS[k].icon };
     (GROUP_ORDER.includes(k) ? groups : assets).push(line);
   }
   assets.sort((a, b) => KINDS[a.kind as TopoKind].order - KINDS[b.kind as TopoKind].order || (a.kind < b.kind ? -1 : 1));

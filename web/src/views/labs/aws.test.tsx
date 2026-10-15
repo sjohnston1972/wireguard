@@ -21,6 +21,7 @@ import { awsCard, card, labs, session } from "./testData";
 import { awsLabDetailFixture, labCoverageFixture } from "@/test/fixtures";
 import { DeployFormView } from "./DeployForm";
 import { RunningLabView } from "./RunningLab";
+import { LabDetailsPanel } from "./LabDetailsPanel";
 
 const aws = awsCard;
 
@@ -150,5 +151,30 @@ describe("Cloud control, coverage headings and running chips", () => {
     expect(awsChip.getByText("AWS")).toBeInTheDocument();
     const azChip = within(strip.getByRole("link", { name: /Blob security/ }).closest("li")!);
     expect(azChip.queryByText("AWS")).toBeNull();
+  });
+});
+
+describe("the details panel speaks AWS for an AWS lab", () => {
+  const resources = { bastion: 1, vm: 1, privateEndpoint: 3, logAnalytics: 1, monitor: 3, managedIdentity: 1 };
+  const view = (cloud: "aws" | "azure") => labView(cloud === "aws" ? aws({ id: "soa-01-cloudwatch", resources }) : card({ resources }), true);
+  const open = (cloud: "aws" | "azure") =>
+    renderWithProviders(<LabDetailsPanel view={view(cloud)} data={{ ...labs(), autoCleanup: true }} layout="wide" onSelect={() => {}} />, { url: "/labs" });
+
+  it("shows AWS nouns, the tag-based cleanup sentence and documentation links", () => {
+    open("aws");
+    const text = screen.getByRole("complementary").textContent ?? "";
+    for (const w of ["EC2 Instance Connect Endpoint", "EC2 instance", "VPC endpoints", "CloudWatch log group", "CloudWatch alarms", "IAM role"]) expect(text).toContain(w);
+    expect(text).toContain("everything tagged for this lab (cloudlabs-lab = soa-01-cloudwatch) is torn down and a clean check looks for leftovers; anything found is flagged on this page. AWS can take a day to bill the last hour.");
+    expect(text).toContain("diagrams and documentation links as a PDF");
+    for (const bad of ["Bastion", "Log Analytics", "Managed identity", "rg-lab-", "Azure can take", "Learn links"]) expect(text).not.toContain(bad);
+  });
+
+  it("an Azure lab keeps its Azure words", () => {
+    open("azure");
+    const text = screen.getByRole("complementary").textContent ?? "";
+    expect(text).toContain("Bastion");
+    expect(text).toContain("rg-lab-");
+    expect(text).toContain("Azure can take a day to bill the last hour.");
+    expect(text).toContain("Learn links");
   });
 });
