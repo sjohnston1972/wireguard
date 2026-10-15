@@ -22,6 +22,16 @@ export const MOCK_NAME = {
   secondaryRegion: "ukwest",
 } as const;
 
+/** AWS labs' mock plan: name_prefix is a<number>k3x9q, London and Ireland. */
+export const AWS_MOCK_NAME = {
+  prefix: (n: string): string => `a${n}k3x9q`,
+  region: "eu-west-2",
+  secondaryRegion: "eu-west-1",
+} as const;
+
+/** The mock context for an AWS lab number `n` (two digits). */
+export const awsMockNameCtx = (n: string): NameCtx => ({ prefix: AWS_MOCK_NAME.prefix(n), region: AWS_MOCK_NAME.region, secondaryRegion: AWS_MOCK_NAME.secondaryRegion });
+
 /** The mock context for lab number `n` (two digits). */
 export const mockNameCtx = (n: string): NameCtx => ({ prefix: MOCK_NAME.prefix(n), region: MOCK_NAME.region, secondaryRegion: MOCK_NAME.secondaryRegion });
 
@@ -51,6 +61,11 @@ export const SYNTHETIC_KEYS = { globalLane: "lane/global", tenantLane: "lane/ten
 /** A planned label: the mock prefix shown as "l06…" ("l06k3x9qst" → "l06…st"). */
 export function planLabel(name: string, n: string): string {
   return replaceAll(name, MOCK_NAME.prefix(n), `l${n}…`);
+}
+
+/** An AWS planned label: the mock prefix shown as "a03…" ("alb-a03k3x9q" → "alb-a03…"). */
+export function planLabelAws(name: string, n: string): string {
+  return replaceAll(name, AWS_MOCK_NAME.prefix(n), `a${n}…`);
 }
 
 /**

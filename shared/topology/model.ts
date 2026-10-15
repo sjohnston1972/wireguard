@@ -71,6 +71,15 @@ export const TOPO_ASSET_KINDS = [
   "role",
   "entraPrincipal",
   "gateway",
+  "transitGateway",
+  "internetGateway",
+  "lambda",
+  "dynamodb",
+  "messaging",
+  "cache",
+  "stream",
+  "lattice",
+  "clientVpn",
   "generic",
 ] as const;
 export type TopoAssetKind = (typeof TOPO_ASSET_KINDS)[number];
@@ -109,6 +118,8 @@ export interface TopoNode {
   scope?: "lab" | "outside";
   /** Live only. */
   health?: TopoHealth;
+  /** AWS labs: drawn with the AWS icon sprite (absent: Azure). */
+  cloud?: "aws";
   /** The sub-resources drawn inside this card (a VM's NICs and disks, an LB's rules ...). */
   folded?: TopoFolded[];
   /** Live only: Azure made it (a private endpoint's NIC, an infra group), so it is never "added by hand". */

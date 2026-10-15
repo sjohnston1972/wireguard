@@ -27,6 +27,7 @@ import { disambiguate, mockNameCtx, nodeKey, planLabel, SYNTHETIC_KEYS } from ".
 import { scrubProps, withheldNote } from "./props";
 import { tfIgnored, tfRule, type EdgeSpec, type PlannedHelpers, type TfInst, type TfRule } from "./rules/planned";
 import { expandDeployment } from "./armTemplate";
+import { awsPlannedGraph, isAwsInput } from "./awsPlannedGraph";
 
 /** One entry of a plan's resource_changes, reduced and scrubbed (scripts/lib/topology-stream.mjs). */
 export interface ResourceChange {
@@ -74,6 +75,8 @@ export function representedIds(g: TopologyGraph): Set<string> {
 }
 
 export function plannedGraph(input: PlannedInput): TopologyGraph {
+  // An AWS lab (aws_ resources in the plan) is drawn by its own builder; Azure's path below is untouched.
+  if (isAwsInput(input)) return awsPlannedGraph(input);
   const nameCtx = mockNameCtx(input.number);
   const primaryRg = `rg-lab-${input.labId}`;
   const notes: string[] = [];

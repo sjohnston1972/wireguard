@@ -16,7 +16,7 @@ import { KINDS } from "../../shared/topology/kinds";
 import { tfIgnored } from "../../shared/topology/rules/planned";
 // @ts-expect-error: a plain .mjs test fixture with no type declarations (scripts/ is frozen)
 import { LAB_PLANS } from "../../scripts/test/fixtures/labs/plans/labs.mjs";
-import { LAB_IDS, plannedOf } from "./fixtures/topology/round-trip";
+import { AWS_LAB_IDS, LAB_IDS, plannedOf } from "./fixtures/topology/round-trip";
 
 /** A graph in the table's form. */
 function shape(g: TopologyGraph): { nodes: string[]; edges: string[] } {
@@ -740,7 +740,7 @@ function tfAddresses(lab: string): string[] {
 describe("golden: every lab folder", () => {
   it("the table, the round trip's list and the planned files cover exactly the lab folders", () => {
     expect(Object.keys(GOLDEN).sort()).toEqual(labFolders);
-    expect([...LAB_IDS].sort()).toEqual(labFolders);
+    expect([...LAB_IDS, ...AWS_LAB_IDS].sort()).toEqual(labFolders);
     const files = readdirSync(new URL("../../shared/topology/planned/", import.meta.url)).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)).sort();
     expect(files).toEqual(labFolders);
   });

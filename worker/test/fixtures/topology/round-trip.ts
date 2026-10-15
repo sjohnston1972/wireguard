@@ -20,6 +20,9 @@ export const LAB_IDS = [
   "az700-43-private-link", "az700-44-flow-logs-bastion",
 ] as const;
 
+/** AWS labs have no Azure round trip (rows-from-planned makes ARM rows); each AWS lab task adds its id here. */
+export const AWS_LAB_IDS: readonly string[] = [];
+
 export const plannedOf = (labId: string): TopologyGraph => JSON.parse(readFileSync(new URL(`../../../../shared/topology/planned/${labId}.json`, import.meta.url), "utf8")) as TopologyGraph;
 
 export const liveCtxFor = (labId: string, over: Partial<LiveCtx> = {}): LiveCtx => ({

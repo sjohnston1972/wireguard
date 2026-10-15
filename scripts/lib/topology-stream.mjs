@@ -14,7 +14,7 @@
 // diagnostics(text) only: the stream's own error messages, redacted.
 
 /** Outputs the planned builder reads (unknown ones arrive as null). */
-export const PLAN_OUTPUTS = ["peer_vnet_id"];
+export const PLAN_OUTPUTS = ["peer_vnet_id", "peer_vpc_id"];
 
 const MOCK_PASSWORD = "Mock-Passw0rd-labs-tf-not-real";
 const MOCK_KEY = "AAAAC3NzaC1lZDI1NTE5AAAAIH03BQA5/AQUCJHTD+mOsPkEaHYZJ/1Dhlg2VWSBcxxC";
@@ -104,13 +104,13 @@ export function planFromTestStream(text) {
 }
 
 /** A reference to a resource (not a variable, local, data source or a dynamic block's own iterator). */
-const RESOURCE_REF = /^((?:azurerm|azuread|random|time)_[a-z0-9_]+\.[A-Za-z0-9_-]+)/;
+const RESOURCE_REF = /^((?:azurerm|azuread|aws|tls|archive|random|time)_[a-z0-9_]+\.[A-Za-z0-9_-]+)/;
 
 /**
  * The references the builder joins on (ruling 1): for each managed resource
  * block (configuration address "type.name"), each top-level attribute's
  * resource references as "type.name" (sorted, unique), from
- * lab-scope's hclResources over hcl2json's output; and for each output
+ * lab-scope's hclResources over hcl2json's output (and a `provider` meta-argument as refs[addr].provider = ["aws.secondary"]); and for each output
  * "output.<name>" → { value: [...] }. `hclResources` is passed in (it lives in
  * infra/ci/lab-scope.mjs).
  */
@@ -124,6 +124,11 @@ export function refsFromHcl(hcl, labId, hclResources) {
       const list = keep(v);
       if (list.length) attrs[k] = list;
     }
+    // A resource's `provider` meta-argument ("aws.secondary") says which region its card belongs to (AWS labs).
+    const name = r.address.slice(r.type.length + 1);
+    const prov = [hcl?.resource?.[r.type]?.[name]].flat()[0]?.provider;
+    const provider = typeof prov === "string" ? prov.replace(/^\$\{|\}$/g, "") : "";
+    if (provider) attrs.provider = [provider];
     refs[r.address] = attrs;
   }
   for (const [name, blocks] of Object.entries(hcl?.output ?? {})) {
