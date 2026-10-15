@@ -8,6 +8,8 @@
 //
 // Nothing here trusts a previous guess. refreshActiveRun() re-reads GitHub
 // each time, and the cron re-checks Azure, so a missed callback heals.
+// An AWS server's apply or destroy also moves the AWS labs peered to it:
+// disconnected on apply (A15), unpeered first on destroy (A30).
 
 import type { Env, Cloud } from "./env";
 import { config, canDispatch, ratesFor } from "./env";
@@ -31,6 +33,7 @@ import { recordHeartbeat, fwDeltas } from "./history";
 import { parseVitals, parseAgentVersion, freshScheduledEvents, scheduledEventNote } from "./vitals";
 import { markDueStmt } from "./insights/common";
 import { rePeerPush } from "./labs/repeer";
+import { disconnectAwsPeerings, unpeerAwsLabsForServerTeardown } from "./labs/engine";
 
 /**
  * A refusal fit for the screen. The code says what kind, so the data API
@@ -198,6 +201,15 @@ export async function startDeploy(env: Env, opts: DeployOptions): Promise<db.Run
       await releaseLock(env, id);
     }
     throw new RunError((e as Error).message);
+  }
+  // The AWS apply rewrites rt-wg, whose routes are inline: AWS labs peered to it lose their route (A15).
+  // A lab problem must never cost the gateway its deploy.
+  if (cloud === "aws") {
+    try {
+      await disconnectAwsPeerings(env);
+    } catch (e) {
+      console.error("AWS labs disconnected:", e);
+    }
   }
 
   await saveSnapshot(env, {
@@ -388,6 +400,9 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
     throw e;
   }
 
+  // Unpeer the AWS labs peered to an AWS server before it goes (A30). Never throws.
+  if (cloud === "aws") await unpeerAwsLabsForServerTeardown(env, requestedBy);
+
   try {
     await dispatchWorkflow(env, "destroy", payload, workflowFor(cfg, cloud));
   } catch (e) {
@@ -577,7 +592,8 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
   await db.addAlert(env, "deploy", `Deployed at ${publicIp ?? "unknown IP"} (${meta.via}); ${cfg.dnsName} ${dns.live ? "is live" : "not live yet"}`, run.id);
   // Labs waiting to peer (or disconnected by the last tear-down) can peer now: one push (labs/repeer.ts).
   // A lab problem must never cost the gateway its deploy.
-  // Labs only ever peer with Azure, so an AWS apply has nothing to re-peer.
+  // The push counts labs of every cloud, so only an Azure apply sends it; after an AWS apply the Overview's
+  // and Labs tab's Re-peer still offer the AWS labs it disconnected (labs/summary.ts counts the server's cloud).
   try {
     if (cloudOf(await getSnapshot(env)) !== "aws") await rePeerPush(env, run.id);
   } catch (e) {

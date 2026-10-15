@@ -16,8 +16,10 @@
 //            it is ended_dirty.
 //   test     both halves at once: a lab_release_tests row (pass only when
 //            clean), then ended or ended_dirty with reason test.
-//   peer     peering on (or still waiting); unpeer: off.
-// Every end clears the session's admin passwords and records est_gbp.
+//   peer     peering on (or still waiting); unpeer: off, or disconnected
+//            when it ran because the AWS server is being torn down (A41).
+// Every end clears the session's admin passwords and records est_gbp. An
+// AWS lab's result carries peer_vpc_id where an Azure lab's has peer_vnet_id.
 
 import type { Env } from "../env";
 import * as db from "../db";
@@ -27,6 +29,8 @@ import { releaseLock, labLock } from "../lock";
 import { labDef } from "./catalogue";
 import type { LabEndReason } from "../../../shared/api";
 import { labIsClean } from "./orphans";
+import { UNPEER_FOR_SERVER } from "./engine";
+import { cloudOfId, sessionEstimateGbp, wholeHoursGbpH } from "../../../shared/labs";
 import { clearPasswords, freeSlot, getSession, payloadOf, settleRun, updateSession, type LabRunDb, type LabSessionRow } from "./store";
 
 const HOUR = 3_600_000;
@@ -37,6 +41,8 @@ export interface LabOutputs {
   connect: string[];
   users: Record<string, string>;
   peer_vnet_id: string | null;
+  /** An AWS lab's peering target, its VPC (lab-aws.yml step 16). */
+  peer_vpc_id: string | null;
   clean: boolean | null;
   leftovers: string[];
   deploy_seconds: number | null;
@@ -44,7 +50,7 @@ export interface LabOutputs {
 }
 
 /** The output keys a result may carry (§5 step 16, §3.4 outputs). Anything else is refused. */
-export const OUTPUT_KEYS = ["private_ips", "connect", "users", "peer_vnet_id", "clean", "leftovers", "deploy_seconds", "destroy_seconds"] as const;
+export const OUTPUT_KEYS = ["private_ips", "connect", "users", "peer_vnet_id", "peer_vpc_id", "clean", "leftovers", "deploy_seconds", "destroy_seconds"] as const;
 
 const str = (v: unknown, max = 300): string | null => (typeof v === "string" && v.length <= max ? v : null);
 
@@ -72,6 +78,7 @@ export function readOutputs(v: unknown): { ok: true; outputs: LabOutputs } | { o
       connect: strList(o.connect, 20),
       users: strMap(o.users),
       peer_vnet_id: str(o.peer_vnet_id, 500),
+      peer_vpc_id: str(o.peer_vpc_id, 100),
       clean: typeof o.clean === "boolean" ? o.clean : null,
       leftovers: strList(o.leftovers),
       deploy_seconds: secs(o.deploy_seconds),
@@ -80,10 +87,13 @@ export function readOutputs(v: unknown): { ok: true; outputs: LabOutputs } | { o
   };
 }
 
-const EMPTY: LabOutputs = { private_ips: {}, connect: [], users: {}, peer_vnet_id: null, clean: null, leftovers: [], deploy_seconds: null, destroy_seconds: null };
+const EMPTY: LabOutputs = { private_ips: {}, connect: [], users: {}, peer_vnet_id: null, peer_vpc_id: null, clean: null, leftovers: [], deploy_seconds: null, destroy_seconds: null };
 
 const titleOf = (labId: string) => labDef(labId)?.title ?? labId;
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
+
+/** The whole session's estimate at `now`: its £/h for the time run, the whole-hours items per started hour (A20). */
+const sessionEstimate = (s: LabSessionRow, now: Date) => sessionEstimateGbp(s.est_gbp_h, wholeHoursGbpH(labDef(s.lab_id)?.cost.items ?? []), Math.max(0, now.getTime() - Date.parse(s.requested_at)));
 
 /** How many destroys a session may fail without a clean check before it is left ended_dirty for the orphan sweep. */
 export const DESTROY_TRIES = 3;
@@ -95,7 +105,7 @@ export const DESTROY_TRIES = 3;
  */
 export async function endSession(env: Env, s: LabSessionRow, clean: boolean, leftovers: string[], reason: LabEndReason, now = new Date(), canNotify: () => boolean = () => true): Promise<void> {
   const ended = now.toISOString();
-  const est = Math.round(s.est_gbp_h * Math.max(0, now.getTime() - Date.parse(s.requested_at)) / HOUR * 1e6) / 1e6;
+  const est = sessionEstimate(s, now);
   const changed = await updateSession(
     env,
     s.id,
@@ -120,7 +130,7 @@ export async function endSession(env: Env, s: LabSessionRow, clean: boolean, lef
 async function recordReleaseTest(env: Env, run: LabRunDb, s: LabSessionRow, ok: boolean, out: LabOutputs, now: Date): Promise<boolean> {
   const pass = ok && out.clean === true;
   const version = Number(payloadOf(run).version ?? s.lab_version);
-  const est = Math.round(s.est_gbp_h * Math.max(0, now.getTime() - Date.parse(s.requested_at)) / HOUR * 1e6) / 1e6;
+  const est = sessionEstimate(s, now);
   await env.DB.prepare(
     "INSERT OR REPLACE INTO lab_release_tests (lab_id, version, at, run_id, result, deploy_seconds, destroy_seconds, est_gbp, leftovers_json) VALUES (?1, CAST(?2 AS INTEGER), ?3, ?4, ?5, CAST(?6 AS INTEGER), CAST(?7 AS INTEGER), ?8, ?9)",
   )
@@ -156,7 +166,7 @@ export async function finishRun(env: Env, run: LabRunDb, result: { ok: boolean; 
       if (result.ok) {
         const hours = Number(payloadOf(run).hours) || 1;
         const until = Math.min(now.getTime() + hours * HOUR, Date.parse(s.max_until));
-        const outputs = { private_ips: out.private_ips, connect: out.connect, users: out.users, peer_vnet_id: out.peer_vnet_id };
+        const outputs = { private_ips: out.private_ips, connect: out.connect, users: out.users, peer_vnet_id: out.peer_vnet_id, ...(cloudOfId(s.lab_id) === "aws" ? { peer_vpc_id: out.peer_vpc_id } : {}) };
         await updateSession(env, s.id, { state: "running", ready_at: at, auto_destroy_at: new Date(until).toISOString(), outputs_json: JSON.stringify(outputs) }, "state = 'deploying'");
         if (canNotify()) await notify(env, `cloudlabs: lab ready`, `${title} is ready. It tears down at ${hhmm(new Date(until).toISOString())}.`, { tags: ["test_tube"], buttons: [dashboardButton(env, "Open the lab", `/labs/${s.lab_id}`)] });
       } else {
@@ -197,7 +207,8 @@ export async function finishRun(env: Env, run: LabRunDb, result: { ok: boolean; 
       await updateSession(env, s.id, { peering: result.ok ? "on" : s.peering === "on" ? "on" : "waiting" }, "state NOT IN ('ended', 'ended_dirty')");
       return true;
     case "unpeer":
-      if (result.ok) await updateSession(env, s.id, { peering: "off" }, "state NOT IN ('ended', 'ended_dirty')");
+      // An unpeer for the AWS server's tear-down leaves the lab disconnected, so Re-peer offers it (A41).
+      if (result.ok) await updateSession(env, s.id, { peering: run.reason === UNPEER_FOR_SERVER ? "disconnected" : "off" }, "state NOT IN ('ended', 'ended_dirty')");
       return true;
     default:
       return true;

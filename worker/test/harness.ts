@@ -483,8 +483,8 @@ export function makeEnv(overrides: Partial<Env> = {}): { env: Env; world: World 
         const workflow = decodeURIComponent(u.pathname.match(/\/actions\/workflows\/([^/]+)\/dispatches$/)?.[1] ?? "");
         world.dispatches.push({ workflow, action: body.inputs.action, payload });
         const id = nextGh++;
-        // Each workflow's run-name: wg.yml "wg <action> <run id>", lab.yml "lab <action> <lab id> <run id>".
-        const title = workflow === "lab.yml" ? `lab ${body.inputs.action} ${payload.lab_id} ${payload.run_id}` : `wg ${body.inputs.action} ${payload.run_id}`;
+        // Each workflow's run-name: wg.yml "wg <action> <run id>", lab.yml and lab-aws.yml "lab <action> <lab id> <run id>".
+        const title = workflow === "lab.yml" || workflow === "lab-aws.yml" ? `lab ${body.inputs.action} ${payload.lab_id} ${payload.run_id}` : `wg ${body.inputs.action} ${payload.run_id}`;
         world.ghRuns.set(id, { id, display_title: title, status: "in_progress", conclusion: null, html_url: `https://github.com/run/${id}`, created_at: new Date().toISOString(), workflow });
         return new Response(null, { status: 204 });
       }

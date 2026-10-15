@@ -19,6 +19,8 @@
 // unavailable), 422 (confirm_required) or 502 (GitHub or Azure refused).
 // Pages read D1 and KV only; the two exceptions call Azure: POST
 // /labs/permissions/check, and GET /labs/:id's resources while a lab runs.
+// An AWS lab runs in London only, links to the AWS console per region, and
+// connects only while the VPN server is in AWS (AWS labs spec §6).
 
 import type { Context, Hono } from "hono";
 import { body, fail, type ApiEnv } from "./app";
@@ -28,10 +30,11 @@ import { isDemoEnv } from "../demo/env";
 import { fixedConfig } from "../settings";
 import { getSnapshot } from "../state";
 import { REGIONS } from "../region";
+import { awsRegionName } from "../../../shared/azureMetrics";
 import { catalogue, labDef, labReadme } from "../labs/catalogue";
 import { checkLabPermissions } from "../labs/permissions";
 import { directNet } from "../labs/net";
-import { awsHeadend, cancelLab, cleanupLab, deployLab, destroyLab, extendLab, hhmm, peerLab, rePeerLabs, unpeerLab, type DeployInput } from "../labs/engine";
+import { cancelLab, crossCloudMessage, headendCloud, cleanupLab, deployLab, destroyLab, extendLab, hhmm, peerLab, rePeerLabs, unpeerLab, type DeployInput } from "../labs/engine";
 import { activeRuns, liveSessionOf, runsOf, type LabSessionRow } from "../labs/store";
 import { labRunRow } from "../labs/view";
 import { cardContext as realCardContext, labCard, RAN_SQL, sessionView } from "../labs/cards";
@@ -48,6 +51,8 @@ import {
   LAB_ID_RE,
   LAB_NOTE_MAX,
   LAB_SLOTS,
+  AWS_LAB_REGIONS,
+  awsConsoleUrl,
   labRg,
   labsSettingsFrom,
   type LabDef,
@@ -61,6 +66,7 @@ const notFound = (c: C, what = "No such lab.") => fail(c, 404, "not_found", what
 // ── Input checks (kept by the engine) ────────────────────────────────────
 
 type Check = (v: unknown) => boolean;
+const REGION_OFFER = "That is not a region on offer.";
 interface Field {
   check: Check;
   message: string;
@@ -91,7 +97,8 @@ async function readBody(c: C, fields: Record<string, Field>): Promise<{ ok: true
 const DEPLOY: Record<string, Field> = {
   hours: { check: wholeHours, message: `Session length is whole hours, 1 to ${LAB_HOURS_MAX}.`, required: true },
   peer: { check: isBool, message: "peer is true or false.", required: true },
-  region: { check: (v) => typeof v === "string" && Object.hasOwn(REGIONS, v), message: "That is not a region on offer." },
+  // An Azure region, or an AWS lab region: the deploy route keeps each to its own cloud's labs.
+  region: { check: (v) => typeof v === "string" && (Object.hasOwn(REGIONS, v) || (AWS_LAB_REGIONS as readonly string[]).includes(v)), message: REGION_OFFER },
   overBudgetOk: { check: isBool, message: "overBudgetOk is true or false." },
   capacityOk: { check: isBool, message: "capacityOk is true or false." },
 };
@@ -198,7 +205,9 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     const { started, failed } = await rePeerLabs(c.env, c.get("user"));
     if (!started.length && !failed.length) return c.json({ ok: true, message: "No labs are waiting to peer." } satisfies ApiOk);
     if (!started.length) return fail(c, 409, "refused", `Could not re-peer: ${failed.join("; ")}`);
-    const out: ApiOk = { ok: true, message: `Re-peering ${started.length} lab${started.length === 1 ? "" : "s"}: ${started.join(", ")}.`, ...(failed.length ? { warning: `Not now: ${failed.join("; ")}` } : {}) };
+    // The ones left out (another cloud's labs, or a lab busy with another run) are named in the message itself.
+    const notNow = failed.length ? ` Not now: ${failed.join("; ")}` : "";
+    const out: ApiOk = { ok: true, message: `Re-peering ${started.length} lab${started.length === 1 ? "" : "s"}: ${started.join(", ")}.${notNow}`, ...(failed.length ? { warning: `${failed.length} lab${failed.length === 1 ? " was" : "s were"} not re-peered.` } : {}) };
     return c.json(out);
   });
 
@@ -233,7 +242,9 @@ export function registerLabs(api: Hono<ApiEnv>): void {
   api.get("/labs/:id", async (c) => {
     const def = labDef(c.req.param("id"));
     if (!def) return notFound(c);
-    const [cfg, stored, snap] = await Promise.all([fixedConfig(c.env), db.allSettings(c.env), getSnapshot(c.env)]);
+    const [cfg, stored, snap, hc] = await Promise.all([fixedConfig(c.env), db.allSettings(c.env), getSnapshot(c.env), headendCloud(c.env)]);
+    const aws = def.cloud === "aws";
+    const region = aws ? cfg.aws.region : cfg.region;
     const peer = def.connectivity.peering === "required" ? true : def.connectivity.peering === "off" ? false : labsSettingsFrom(stored).labsDefaultPeering;
     const ctx = await cardContext(c.env);
     const items = pricedItems(def, ctx.prices, ctx.region, new Date(ctx.now));
@@ -246,18 +257,20 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       connectivity: def.connectivity,
       identity: def.identity,
       // Warnings for a deploy now; none while a session is live (spec §9.2).
-      warnings: live ? [] : await labWarnings(c.env, def, { hours: def.timing.session_h, region: cfg.region }),
-      defaults: { region: cfg.region, peer, hours: def.timing.session_h },
-      gatewayUp: snap.state === "running" || snap.state === "standby",
+      warnings: live ? [] : await labWarnings(c.env, def, { hours: def.timing.session_h, region }),
+      defaults: { region, peer, hours: def.timing.session_h },
+      // Up for this lab: running or in Standby, in the lab's own cloud.
+      gatewayUp: (snap.state === "running" || snap.state === "standby") && hc === def.cloud,
       session: live ? sessionView(live, ctx) : null,
       runs: liveRuns.map(labRunRow),
       // While it runs: what is in its group, from ARM (the one Azure read a page makes here), and the portal link.
       resources: live?.state === "running" ? await labResources(c.env, def.id) : null,
       cloud: def.cloud,
       secondaryRegion: def.regions.secondary,
-      consoleUrls: null,
-      connect: { possible: true, note: null },
-      portalUrl: live ? `https://portal.azure.com/#resource/subscriptions/${c.env.AZURE_SUBSCRIPTION_ID ?? ""}/resourceGroups/${labRg(def.id)}` : null,
+      // AWS: the lab's Resource Groups page in each of its regions, while a session is live (in place of portalUrl).
+      consoleUrls: aws && live ? [region, ...(def.regions.secondary ? [def.regions.secondary] : [])].map((r) => ({ region: r, label: awsRegionName(r), url: awsConsoleUrl(def.id, r) })) : null,
+      connect: hc !== null && hc !== def.cloud ? { possible: false, note: `${crossCloudMessage(def.cloud, hc)} This lab runs unconnected.` } : { possible: def.connectivity.peering !== "off", note: null },
+      portalUrl: live && !aws ? `https://portal.azure.com/#resource/subscriptions/${c.env.AZURE_SUBSCRIPTION_ID ?? ""}/resourceGroups/${labRg(def.id)}` : null,
     };
     return c.json(out);
   });
@@ -344,11 +357,14 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     if (!def) return notFound(c);
     const b = r.b as unknown as DeployInput;
     if (b.hours > def.timing.max_h) return bad(c, `${def.title} runs for at most ${def.timing.max_h} hours.`, "hours");
-    // Labs always build in Azure and connect to the headend by VNet peering, which an AWS headend cannot do: run
-    // unconnected. A lab whose peering is required cannot, so deployLab refuses it on an AWS headend.
-    const aws = await awsHeadend(c.env);
-    const { session, run } = await deployLab(c.env, def.id, { ...b, peer: b.peer && !aws }, c.get("user"));
-    const unconnected = aws && b.peer ? " Connect needs an Azure headend; this lab runs unconnected." : "";
+    // An Azure lab takes an Azure region only; an AWS lab's region is the engine's check (London only).
+    if (def.cloud === "azure" && b.region !== undefined && !Object.hasOwn(REGIONS, b.region)) return bad(c, REGION_OFFER, "region");
+    // A lab peers only to a server in its own cloud (AWS labs spec §2): with the server in the other cloud it runs
+    // unconnected. A lab whose peering is required cannot, so deployLab refuses it then.
+    const hc = await headendCloud(c.env);
+    const sameCloud = hc === null || hc === def.cloud;
+    const { session, run } = await deployLab(c.env, def.id, { ...b, peer: b.peer && sameCloud }, c.get("user"));
+    const unconnected = !sameCloud && b.peer ? ` ${crossCloudMessage(def.cloud, hc)} This lab runs unconnected.` : "";
     return c.json({ ok: true, message: `Deploying ${def.title}.${unconnected}`, sessionId: session.id, runId: run.id });
   });
   action("extend", EXTEND, (b, c) => {

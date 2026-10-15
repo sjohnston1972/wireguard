@@ -7,7 +7,8 @@
 // after 2 minutes' grace (a destroy settled that way has no clean check, so
 // its session goes back to failed and the watch tears it down again: the
 // safe answer when Azure's state is unknown. It counts as one of the
-// session's DESTROY_TRIES, so this cannot loop forever).
+// session's DESTROY_TRIES, so this cannot loop forever). A run is looked
+// for among the runs of its lab's own workflow (lab.yml or lab-aws.yml).
 
 import type { Env } from "../env";
 import { directNet, findLabRun, getGhRun, getSteps, type Net } from "./net";
@@ -33,7 +34,7 @@ export async function refreshLabSteps(env: Env, runId: string): Promise<void> {
 export async function refreshLabRun(env: Env, run: LabRunDb, net: Net, now: Date, canNotify: () => boolean = () => true): Promise<string | null> {
   let ghId = run.github_run_id;
   if (!ghId) {
-    const found = await findLabRun(env, net, run.id);
+    const found = await findLabRun(env, net, run.id, run.lab_id);
     if (!found) {
       if (now.getTime() - Date.parse(run.requested_at) <= NEVER_STARTED_MS) return null;
       await finishRun(env, run, { ok: false, error: "GitHub never started the lab workflow. Check the Actions tab and the GITHUB_TOKEN permissions.", via: "watch", canNotify }, now);

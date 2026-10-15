@@ -321,7 +321,7 @@ describe("labs on an AWS headend", () => {
     await saveSnapshot(env, { state: "running", running_since: NOW, cloud: "aws" });
     const r = await deployLab(env, "az104-06-blob-security", { hours: 2, peer: true });
     expect(r.status).toBe(200);
-    expect(r.json.message).toMatch(/Connect needs an Azure headend; this lab runs unconnected\./);
+    expect(r.json.message).toMatch(/Azure labs connect only to an Azure server \(the server is in AWS\)\. This lab runs unconnected\./);
     expect((await session(env, r.json.sessionId))!.peering).toBe("off");
   });
 });

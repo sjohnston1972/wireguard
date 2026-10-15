@@ -17,7 +17,7 @@ import type { LabCostRow } from "../../../shared/api";
 import { labIds } from "./catalogue";
 import { arm, type Net } from "./net";
 import { LIVE_SQL, type LabSessionRow } from "./store";
-import { estimateSoFar, labTitle } from "./view";
+import { estimateSoFar, labTitle, wholeGbpHOf } from "./view";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -91,7 +91,7 @@ function overlap(s: Pick<LabSessionRow, "requested_at" | "ended_at">, from: numb
  */
 export async function sessionCosts(env: Env, sessions: LabSessionRow[], now: number): Promise<Map<string, { gbp: number | null; basis: "estimate" | "actual" }>> {
   const out = new Map<string, { gbp: number | null; basis: "estimate" | "actual" }>();
-  for (const s of sessions) out.set(s.id, { gbp: estimateSoFar(s, now), basis: "estimate" });
+  for (const s of sessions) out.set(s.id, { gbp: estimateSoFar(s, now, wholeGbpHOf(s.lab_id)), basis: "estimate" });
   const ended = sessions.filter((s) => s.ended_at && now >= dayStart(s.ended_at.slice(0, 10)) + DAY);
   if (!ended.length) return out;
   const labs = [...new Set(ended.map((s) => s.lab_id))];

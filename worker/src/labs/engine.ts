@@ -14,9 +14,14 @@
 // permissions), a free slot and fewer than labs_max_running labs live. The
 // slot is taken in one statement that also enforces the limit, after the
 // lab's lock, so two clicks or two labs at once can never share a slot.
+//
+// Each lab builds in its own cloud (AWS labs spec §2, §6): an AWS lab runs
+// lab-aws.yml in London, and peers only while the VPN server is in AWS; an
+// Azure lab only while it is in Azure. Across clouds a lab runs unconnected.
 
 import type { Env } from "../env";
-import { canDispatch } from "../env";
+import { canDispatch, config } from "../env";
+import * as db from "../db";
 import { effectiveConfig } from "../settings";
 import { cloudOf, getSnapshot } from "../state";
 import { acquireLock, releaseLock, labLock, GATEWAY_LOCK } from "../lock";
@@ -24,7 +29,8 @@ import { randomToken } from "../auth";
 import { RunError } from "../runs";
 import { labDef, labIds } from "./catalogue";
 import { readOrphans } from "./orphans";
-import { LAB_SLOTS, sessionTimeoutMin, type LabDef } from "../../../shared/labs";
+import { cloudOfId, LAB_SLOTS, NAME_PREFIX_LETTER, sessionTimeoutMin, type LabCloud, type LabDef } from "../../../shared/labs";
+import { awsRegionName } from "../../../shared/azureMetrics";
 import type { LabAction, LabEndReason } from "../../../shared/api";
 import { BudgetExceeded, cancelGh, directNet, dispatchLab, findLabRun, publicUrl, type Net } from "./net";
 import { activeRunOf, freeSlot, getLabRun, insertRun, insertSession, liveSessionOf, reserveSlot, settleRun, slotsInUse, updateSession, getSession, type LabRunDb, type LabSessionRow } from "./store";
@@ -43,12 +49,15 @@ const rand = () => randomToken().slice(0, 6);
 export const newSessionId = (now: Date) => `ls-${stamp(now)}-${rand()}`;
 export const newRunId = (action: LabAction, now: Date) => `lab-${action}-${stamp(now)}-${rand()}`;
 
-/** §3.4 name_prefix: "l" + the lab's number (two digits) + 5 random lowercase letters and digits, e.g. l06k3x9q. */
-export function namePrefix(labNumber: number): string {
+/**
+ * §3.4 name_prefix: "l" (an AWS lab: "a", AWS ruling A5) + the lab's number (two digits) + 5 random lowercase
+ * letters and digits, e.g. l06k3x9q or a03k3x9q.
+ */
+export function namePrefix(def: Pick<LabDef, "number" | "cloud">): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
   const b = new Uint8Array(5);
   crypto.getRandomValues(b);
-  return `l${String(labNumber).padStart(2, "0")}${[...b].map((x) => alphabet[x % alphabet.length]).join("")}`;
+  return `${NAME_PREFIX_LETTER[def.cloud]}${String(def.number).padStart(2, "0")}${[...b].map((x) => alphabet[x % alphabet.length]).join("")}`;
 }
 
 /**
@@ -76,8 +85,11 @@ export function timeoutOf(def: LabDef | null): number {
 }
 export const lockTtlMs = (def: LabDef | null) => (timeoutOf(def) + 15) * MIN;
 
-/** The run's payload, exactly the §5 keys (nothing secret: the repository and its logs are public). */
-function payloadFor(env: Env, s: LabSessionRow, def: LabDef | null, action: LabAction, runId: string): Record<string, unknown> {
+/**
+ * The run's payload, exactly the §5 keys (nothing secret: the repository and its logs are public). An AWS lab's
+ * also carries gateway_cidr, the VPN server's VPC (AWS ruling A31); an Azure lab's never does.
+ */
+function payloadFor(env: Env, s: LabSessionRow, def: LabDef | null, action: LabAction, runId: string): Record<string, unknown> & { lab_id: string } {
   const url = publicUrl(env);
   const peering = action === "peer" || action === "unpeer" ? true : action === "test" ? !!def && def.connectivity.peering !== "off" : s.peering !== "off";
   return {
@@ -95,6 +107,7 @@ function payloadFor(env: Env, s: LabSessionRow, def: LabDef | null, action: LabA
     timeout_min: timeoutOf(def),
     callback_url: `${url}/api/callback/lab`,
     secrets_url: `${url}/api/callback/lab-secrets`,
+    ...(cloudOfId(s.lab_id) === "aws" ? { gateway_cidr: config(env).vnetCidr } : {}),
   };
 }
 
@@ -173,24 +186,39 @@ export interface DeployInput {
 }
 
 /**
- * Labs build in Azure and connect to the headend by VNet peering, which only an Azure headend has (AWS spec
- * ruling 8). True while the headend is built in AWS: nothing may peer then.
+ * The cloud of the VPN server while one exists (anything but torn down), else null. A lab peers only to a
+ * server in its own cloud (AWS labs spec §2, decision 5).
  */
-export async function awsHeadend(env: Env): Promise<boolean> {
+export async function headendCloud(env: Env): Promise<LabCloud | null> {
   const snap = await getSnapshot(env);
-  return cloudOf(snap) === "aws" && snap.state !== "destroyed";
+  return snap.state !== "destroyed" ? cloudOf(snap) : null;
 }
 
-/** Why `what` cannot happen on an AWS headend, in plain words. */
-const onAws = (what: string) => `${what}: labs connect only to an Azure headend, and the headend is in AWS.`;
+const CLOUD_NAME: Readonly<Record<LabCloud, string>> = { azure: "Azure", aws: "AWS" };
+
+/** Why a lab in one cloud cannot connect to the server in the other, in plain words. */
+export function crossCloudMessage(lab: LabCloud, server: LabCloud): string {
+  return `${CLOUD_NAME[lab]} labs connect only to an ${CLOUD_NAME[lab]} server (the server is in ${CLOUD_NAME[server]}).`;
+}
+
+/** The region an AWS lab runs in, refused when the input names another (AWS labs spec §6: London only). */
+function awsLabRegion(env: Env, asked: string | undefined): string {
+  const region = config(env).aws.region;
+  if (asked !== undefined && asked !== region) throw new RunError(`AWS labs run in ${awsRegionName(region)} (${region}).`, "bad_input");
+  return region;
+}
 
 /** Deploy a lab (or, with `test`, run its release test). Returns the new session and run. */
 export async function deployLab(env: Env, labId: string, input: DeployInput, by: string, test = false): Promise<{ session: LabSessionRow; run: LabRunDb }> {
   const def = labDef(labId);
   if (!def) throw new RunError("No such lab.", "not_found");
-  // A test always peers a lab that can; a required lab always peers. Neither can run unconnected.
-  if ((test ? def.connectivity.peering !== "off" : def.connectivity.peering === "required") && (await awsHeadend(env))) {
-    throw new RunError(onAws(test ? `The release test of ${def.title} peers it to the headend, so it cannot run now` : `${def.title} needs its peering to the headend, so it cannot deploy now`) + " It can once the AWS headend is torn down.");
+  const awsRegion = def.cloud === "aws" ? awsLabRegion(env, input.region) : null;
+  // A test always peers a lab that can; a required lab always peers. Neither can run unconnected, so neither
+  // runs while the server is in the other cloud. Any other lab runs unconnected then.
+  const hc = await headendCloud(env);
+  const crossCloud = hc !== null && hc !== def.cloud;
+  if ((test ? def.connectivity.peering !== "off" : def.connectivity.peering === "required") && crossCloud) {
+    throw new RunError(`${crossCloudMessage(def.cloud, hc)} ${test ? `The release test of ${def.title} peers it, so it cannot run now` : `${def.title} needs its peering, so it cannot deploy now`}.`);
   }
   const a = await availability(env);
   if (!a.github) throw new RunError(unavailableReason(def, a)!, "unavailable");
@@ -203,7 +231,7 @@ export async function deployLab(env: Env, labId: string, input: DeployInput, by:
   if (dirty || (await readOrphans(env)).some((o) => o.labId === labId)) throw new RunError(leftoversMessage(def), "unavailable");
 
   const cfg = await effectiveConfig(env);
-  const region = input.region ?? cfg.region;
+  const region = awsRegion ?? input.region ?? cfg.region;
   if (!test) {
     const warnings = await labWarnings(env, def, { hours: input.hours, region });
     const blocked = warnings.find((w) => w.kind === "budget" && !w.overridable);
@@ -228,7 +256,8 @@ export async function deployLab(env: Env, labId: string, input: DeployInput, by:
       const used = await slotsInUse(env);
       throw new RunError(used >= LAB_SLOTS ? `All ${LAB_SLOTS} address slots are in use. A slot is freed when a lab is clean in Azure again.` : `${a.maxRunning} labs are already running (the limit in Settings → Labs).`, "unavailable");
     }
-    const peering = def.connectivity.peering === "off" ? "off" : def.connectivity.peering === "required" || input.peer || test ? "waiting" : "off";
+    // With the server in the other cloud, a deploy that asked to peer runs unconnected (required and test were refused above).
+    const peering = def.connectivity.peering === "off" ? "off" : def.connectivity.peering === "required" || test ? "waiting" : input.peer && !crossCloud ? "waiting" : "off";
     session = {
       id: sid,
       lab_id: labId,
@@ -239,7 +268,7 @@ export async function deployLab(env: Env, labId: string, input: DeployInput, by:
       secondary_region: def.regions.secondary,
       slot: slot.slot,
       cidr: slot.cidr,
-      name_prefix: namePrefix(def.number),
+      name_prefix: namePrefix(def),
       peering,
       requested_at: at,
       ready_at: null,
@@ -286,7 +315,7 @@ const PEERING_ACTIONS = new Set(["deploy", "peer", "test"]);
  */
 export async function cancelRun(env: Env, run: LabRunDb, net: Net, why: string): Promise<void> {
   let gh = run.github_run_id;
-  if (!gh) gh = (await findLabRun(env, net, run.id).catch(() => null))?.id ?? null;
+  if (!gh) gh = (await findLabRun(env, net, run.id, run.lab_id).catch(() => null))?.id ?? null;
   if (gh) await cancelGh(env, net, gh).catch(() => false);
   await settleRun(env, run.id, { status: "cancelled", finished_at: new Date().toISOString(), error: why, ...(gh ? { github_run_id: gh } : {}) });
   await releaseLock(env, run.id, false, labLock(run.lab_id));
@@ -387,11 +416,11 @@ export async function cleanupLab(env: Env, labId: string, by: string): Promise<L
     lab_version: def?.version ?? 1,
     state: "tearing_down",
     test: 0,
-    region: cfg.region,
+    region: cloudOfId(labId) === "aws" ? config(env).aws.region : cfg.region,
     secondary_region: def?.regions.secondary ?? null,
     slot: null,
     cidr: null,
-    name_prefix: namePrefix(Number(labId.split("-")[1]) || 0),
+    name_prefix: namePrefix({ number: Number(labId.split("-")[1]) || 0, cloud: cloudOfId(labId) }),
     // Leftover peerings on vnet-wg go too, unless the lab never peers.
     peering: def?.connectivity.peering === "off" ? "off" : "disconnected",
     requested_at: at,
@@ -425,7 +454,8 @@ export async function peerLab(env: Env, labId: string, by: string): Promise<LabR
   if (!def || def.connectivity.peering === "off") throw new RunError(`${def?.title ?? labId} never peers to the gateway.`);
   if (!s || s.state !== "running") throw new RunError(`${def.title} is not running.`);
   if (s.peering === "on") throw new RunError(`${def.title} is already peered to the gateway.`);
-  if (await awsHeadend(env)) throw new RunError(onAws(`${def.title} cannot peer`) + " It keeps running unconnected.");
+  const hc = await headendCloud(env);
+  if (hc !== null && hc !== def.cloud) throw new RunError(`${crossCloudMessage(def.cloud, hc)} It keeps running unconnected.`);
   const run = await startLabRun(env, s.id, "peer", by, "peer to the gateway");
   await updateSession(env, s.id, { peering: "waiting" }, "state = 'running'");
   return run;
@@ -442,17 +472,25 @@ export async function unpeerLab(env: Env, labId: string, by: string): Promise<La
   return startLabRun(env, s.id, "unpeer", by, "unpeer from the gateway");
 }
 
-/** Re-peer: one peer run per running session whose peering is waiting or disconnected, once the gateway is up. */
+/**
+ * Re-peer: one peer run per running session whose peering is waiting or disconnected, once the gateway is up.
+ * Only labs in the server's cloud peer; each other-cloud lab is named in `failed` with the reason.
+ */
 export async function rePeerLabs(env: Env, by: string): Promise<{ started: string[]; failed: string[] }> {
   const snap = await getSnapshot(env);
   const waiting = (await env.DB.prepare("SELECT * FROM lab_sessions WHERE state = 'running' AND peering IN ('waiting', 'disconnected') ORDER BY requested_at").all<LabSessionRow>()).results;
   if (!waiting.length) return { started: [], failed: [] };
   if (snap.state !== "running" && snap.state !== "standby") throw new RunError("The gateway is not running, so there is nothing to peer to yet. Re-peer once it is.");
-  if (await awsHeadend(env)) throw new RunError(onAws("Nothing can re-peer") + " Re-peer once an Azure headend is running.");
+  const server = cloudOf(snap);
   const started: string[] = [];
   const failed: string[] = [];
   for (const s of waiting) {
     const title = labDef(s.lab_id)?.title ?? s.lab_id;
+    const lab = cloudOfId(s.lab_id);
+    if (lab !== server) {
+      failed.push(`${title}: ${crossCloudMessage(lab, server)}`);
+      continue;
+    }
     try {
       await startLabRun(env, s.id, "peer", by, "re-peer after the gateway came back");
       await updateSession(env, s.id, { peering: "waiting" }, "state = 'running'");
@@ -470,4 +508,66 @@ export async function cancelLab(env: Env, labId: string, by: string): Promise<La
   const active = s ? await activeRunOf(env, s.id) : null;
   if (!s || !active || active.action === "destroy") throw new RunError("Nothing to cancel: no deploy, peer or test is running for this lab.");
   return destroySession(env, s, "manual", by, "cancelled from the dashboard");
+}
+
+// ── The AWS server's apply and tear-down (AWS rulings A15, A30) ──────────
+
+/** The reason of an unpeer run started because the AWS server is being torn down; it leaves the lab disconnected (A41). */
+export const UNPEER_FOR_SERVER = "server tear-down";
+
+/** Live AWS lab sessions peered to the server (`running` only, when `runningOnly`). */
+async function peeredAwsSessions(env: Env, runningOnly: boolean): Promise<LabSessionRow[]> {
+  const rows = (await env.DB.prepare(`SELECT * FROM lab_sessions WHERE peering = 'on' AND ${runningOnly ? "state = 'running'" : "state NOT IN ('ended', 'ended_dirty')"} ORDER BY requested_at`).all<LabSessionRow>()).results;
+  return rows.filter((s) => cloudOfId(s.lab_id) === "aws");
+}
+
+/**
+ * Before an AWS server destroy is dispatched (ruling A30): one unpeer run per running AWS lab peered to it, each
+ * then marked disconnected, so Re-peer is offered once a server runs again. A lab whose own lock is held (another
+ * of its runs is in progress) cannot start one: it is named in `failed` and noted, and marked disconnected all the
+ * same, since the server's tear-down removes its side of the peering (A15). Never throws: the server's tear-down
+ * goes ahead whatever happens here.
+ */
+export async function unpeerAwsLabsForServerTeardown(env: Env, by: string): Promise<{ started: string[]; failed: string[] }> {
+  const started: string[] = [];
+  const failed: string[] = [];
+  let sessions: LabSessionRow[] = [];
+  try {
+    sessions = await peeredAwsSessions(env, true);
+  } catch (e) {
+    console.error("unpeer AWS labs before the server's tear-down:", e);
+    return { started, failed };
+  }
+  for (const s of sessions) {
+    const title = labDef(s.lab_id)?.title ?? s.lab_id;
+    try {
+      await startLabRun(env, s.id, "unpeer", by, UNPEER_FOR_SERVER);
+      started.push(title);
+    } catch (e) {
+      failed.push(title);
+      try {
+        await db.addAlert(env, "info", `${title} could not be unpeered before the AWS server's tear-down: ${(e as Error).message}`);
+      } catch (err) {
+        console.error("unpeer AWS labs: note:", err);
+      }
+    }
+    try {
+      await updateSession(env, s.id, { peering: "disconnected" }, "peering = 'on' AND state NOT IN ('ended', 'ended_dirty')");
+    } catch (e) {
+      console.error("unpeer AWS labs: disconnected:", e);
+    }
+  }
+  return { started, failed };
+}
+
+/**
+ * When an AWS server apply is dispatched (ruling A15): its Terraform rewrites rt-wg, whose routes are inline, so
+ * every live AWS lab peered to it loses its route. They become disconnected, ready for Re-peer. Returns how many.
+ */
+export async function disconnectAwsPeerings(env: Env): Promise<number> {
+  let n = 0;
+  for (const s of await peeredAwsSessions(env, false)) {
+    if (await updateSession(env, s.id, { peering: "disconnected" }, "peering = 'on' AND state NOT IN ('ended', 'ended_dirty')")) n++;
+  }
+  return n;
 }
