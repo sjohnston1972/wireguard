@@ -110,6 +110,9 @@ jobs:
       # ── 1 ────────────────────────────────────────────────────────────────
       - name: Check out, Parse payload
         id: parse
+        # Refuses an AWS lab: those run on lab-aws.yml, which holds the AWS keys.
+        env:
+          LAB_WORKFLOW_CLOUD: azure
         run: bash "$GITHUB_WORKSPACE/infra/ci/lab-parse.sh"
 
       # ── 2 ────────────────────────────────────────────────────────────────

@@ -1,0 +1,461 @@
+# .github/workflows/lab-aws.yml
+#
+# Plain English: the AWS lab runner (AWS labs spec §5), lab.yml's sister.
+# Same inputs, payload, run name, concurrency and the same 16 step names
+# (the dashboard's "step 7/16" and live log work unchanged); what differs is
+# the cloud:
+#   - Credentials per step, never in the workflow's env: R2 by file
+#     (Terraform init writes $RUNNER_TEMP/r2.hcl), AWS by OIDC: each AWS step
+#     trades a fresh GitHub token for a 3-hour session of wg-admin-labs
+#     (infra/ci/aws-lab-creds.sh; steps 6-8 and 11-14), or a 1-hour session
+#     of wg-admin-deploy for Peer and Unpeer only (it owns the VPN server's
+#     VPC; ruling A25). Never the Azure keys, the Cloudflare DNS token or the
+#     WireGuard key.
+#   - lab-lint --cloud aws before init; lab-scope-aws.mjs on the plan; the
+#     AWS ready check, peering, unblock, safety net and clean check.
+# Every teardown step runs even when an earlier one failed, and Safety net
+# and Verify clean need no Terraform state, so cleaning up leftovers is a
+# destroy run. The payload is public (the repo is): nothing secret in it.
+#
+# Steps 2, 3, 4, 15 and 16 are lab.yml's own, copied (lab.yml may not change
+# for AWS): a test (scripts/test/lab-aws-workflow.test.mjs) keeps each equal
+# to lab.yml's apart from the named substitutions.
+
+name: lab-aws
+# The Worker finds this run by its title: "lab <action> <lab id> <run id>".
+run-name: "lab ${{ inputs.action }} ${{ fromJSON(inputs.payload).lab_id || 'none' }} ${{ fromJSON(inputs.payload).run_id || 'manual' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy, destroy, peer, unpeer, or test (deploy then destroy)"
+        type: choice
+        required: true
+        default: deploy
+        options: [deploy, destroy, peer, unpeer, test]
+      payload:
+        description: >-
+          JSON object, nothing secret: lab_id, version, run_id, session_id,
+          region, secondary_region, slot_cidr, name_prefix, peering,
+          timeout_min, callback_url, secrets_url, gateway_cidr.
+        type: string
+        required: true
+        default: "{}"
+
+# As lab.yml: one line per lab and action, never cancelled.
+concurrency:
+  group: lab-${{ fromJSON(inputs.payload).lab_id || 'none' }}-${{ inputs.action }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Lets "Wait for earlier run of this lab" see which runs are still going.
+  actions: read
+  # Lets the run ask GitHub for signed identity tokens (OIDC): for the Worker and for AWS STS.
+  id-token: write
+
+env:
+  # R2 for the state backup steps; each AWS step sets its own region (aws-lab-creds.sh).
+  AWS_REGION: auto
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+  TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugins
+  LAB_ACTION_INPUT: ${{ inputs.action }}
+
+jobs:
+  lab:
+    name: lab ${{ inputs.action }}
+    runs-on: ubuntu-24.04
+    # The Worker sets 2 x (deploy_min + destroy_min) + 20, at most 150.
+    timeout-minutes: ${{ fromJSON(inputs.payload).timeout_min || 60 }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # Ready-made actions are pinned to an exact commit (the version is in the comment).
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ── 1 ────────────────────────────────────────────────────────────────
+      # Refuses an Azure lab (those run on lab.yml), and for an AWS lab a
+      # region other than London, a secondary other than Ireland, an Azure
+      # name prefix and a gateway_cidr inside the lab pool.
+      - name: Check out, Parse payload
+        id: parse
+        env:
+          LAB_WORKFLOW_CLOUD: aws
+        run: bash "$GITHUB_WORKSPACE/infra/ci/lab-parse.sh"
+
+      # ── 2 ──────────────────────────────────── (exactly lab.yml's step 2)
+      # Trade a signed "this is lab-aws.yml on main, run N" token for this
+      # run's callback token and the lab's admin password, each masked before
+      # it is stored. Without a Worker, make a password here (masked) and
+      # skip peering.
+      - name: Collect run secrets
+        id: secrets
+        run: |
+          set -euo pipefail
+          put_env() {
+            case "$2" in *$'\n'*|*$'\r'*) echo "::error::run secret $1 contains a line break; refusing it"; exit 1 ;; esac
+            local end="EOV_$(openssl rand -hex 16)"
+            { echo "$1<<$end"; printf '%s\n' "$2"; echo "$end"; } >> "$GITHUB_ENV"
+          }
+          if [ -z "${SECRETS_URL:-}" ]; then
+            raw="$(openssl rand -base64 48)"
+            pw="${raw//[^A-Za-z0-9]/}"
+            pw="${pw:0:24}#Aa1"
+            echo "::add-mask::$pw"
+            put_env TF_VAR_admin_password "$pw"
+            put_env LAB_PEERING false
+            echo "no Worker for this run: made this run's admin password (masked); peering is skipped"
+            exit 0
+          fi
+          oidc="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=wg-admin" | jq -r .value)"
+          echo "::add-mask::$oidc"
+          if ! resp="$(curl -sS --fail-with-body --max-time 20 -X POST -H "Authorization: Bearer $oidc" -H 'Content-Type: application/json' \
+                -d "$(jq -n --arg r "$WORKER_RUN_ID" '{run_id:$r}')" "$SECRETS_URL")"; then
+            echo "::error::The Worker refused to hand over this run's secrets: $resp"
+            exit 1
+          fi
+          for k in callback_token admin_password; do
+            v="$(jq -r --arg k "$k" '.[$k] // empty' <<<"$resp")"
+            [ -z "$v" ] && { echo "::error::the Worker sent no $k"; exit 1; }
+            echo "::add-mask::$v"
+            if [ "$k" = callback_token ]; then put_env CALLBACK_TOKEN "$v"; else put_env TF_VAR_admin_password "$v"; fi
+          done
+          echo "run secrets collected and masked"
+
+      # ── 3 ──────────────────────────────────── (exactly lab.yml's step 3)
+      - name: Start live log
+        if: env.LIVE_LOG_URL != '' && env.CALLBACK_TOKEN != ''
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          if ! command -v node >/dev/null 2>&1; then echo "::warning::Node is missing on this runner; no live log for this run"; exit 0; fi
+          f="$RUNNER_TEMP/live-log.txt"
+          : > "$f"
+          LIVE_LOG_FILE="$f" nohup node "$GITHUB_WORKSPACE/infra/ci/live-log.mjs" ship > "$RUNNER_TEMP/live-log-shipper.txt" 2>&1 < /dev/null &
+          echo "LIVE_LOG_PID=$!" >> "$GITHUB_ENV"
+          echo "LIVE_LOG_FILE=$f" >> "$GITHUB_ENV"
+          echo "live log started: the dashboard shows this run's output as it happens, secrets hidden"
+
+      # ── 4 ──────────────── (lab.yml's step 4 with lab-aws.yml's own runs)
+      # Hold back until every lab-aws.yml run of THIS lab started before this
+      # one has finished, for 10 minutes; then a destroy goes ahead anyway
+      # and anything else fails loudly.
+      - name: Wait for earlier run of this lab
+        id: wait
+        # A backstop only: the step gives up by itself (a timeout would fail it).
+        timeout-minutes: 15
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Wait for earlier run of this lab"
+          set -uo pipefail
+          deadline=$(( $(date +%s) + ${LAB_WAIT_SECONDS:-600} ))
+          while :; do
+            if earlier="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/lab-aws.yml/runs?per_page=100" \
+              --jq "[.workflow_runs[] | select(.status != \"completed\" and .id < $GITHUB_RUN_ID and (((.display_title // \"\") | split(\" \"))[2] == \"$LAB_ID\"))] | length")"; then
+              if [ "$earlier" = "0" ]; then
+                echo "no earlier run of $LAB_ID is active; going ahead"
+                exit 0
+              fi
+              echo "waiting for $earlier earlier run(s) of $LAB_ID to finish"
+            else
+              echo "::warning::could not ask GitHub for earlier runs of $LAB_ID"
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              if [ "$LAB_ACTION_INPUT" = destroy ]; then
+                echo "::warning::an earlier run of $LAB_ID is still going (or GitHub cannot say) after the wait; tearing down anyway"
+                exit 0
+              fi
+              echo "::error::an earlier run of $LAB_ID is still going (or GitHub cannot say) after the wait; giving up"
+              exit 1
+            fi
+            sleep 20
+          done
+
+      # The account id is in the role ARNs: not a password, but no place in a public log.
+      - name: Mask the AWS account id
+        env:
+          AWS_LABS_ROLE_ARN: ${{ secrets.AWS_LABS_ROLE_ARN }}
+          AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          for a in "$AWS_LABS_ROLE_ARN" "$AWS_DEPLOY_ROLE_ARN"; do [ -n "$a" ] && echo "::add-mask::$(cut -d: -f5 <<<"$a")"; done
+          true
+
+      - name: Set up Terraform
+        if: always() && steps.wait.outcome == 'success' && env.LAB_HAS_TF == 'true'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.14.6"
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        if: always() && steps.wait.outcome == 'success' && env.LAB_HAS_TF == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.terraform-plugins
+          key: tf-plugins-labs-aws-${{ hashFiles('labs/_template-aws/versions.tf') }}
+
+      # ── 5 ────────────────────────────────────────────────────────────────
+      # Lint the lab's text first (lab-lint --cloud aws: only the providers an
+      # AWS lab may name, no provisioners, modules, imports, other backends or
+      # provider credentials), then init with the R2 keys in a file (umask
+      # 077), never in AWS_* variables.
+      - name: Terraform init
+        id: init
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && env.LAB_HAS_TF == 'true' && (inputs.action == 'deploy' || inputs.action == 'destroy' || inputs.action == 'test')
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Terraform init"
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/infra/ci/lab-lint.mjs" --cloud aws "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
+          ( umask 077; printf 'bucket = "%s"\naccess_key = "%s"\nsecret_key = "%s"\nendpoints = { s3 = "%s" }\n' \
+              "$R2_BUCKET" "$R2_ACCESS_KEY_ID" "$R2_SECRET_ACCESS_KEY" "$R2_ENDPOINT" > "$RUNNER_TEMP/r2.hcl" )
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
+          terraform init -no-color -input=false -backend-config="$RUNNER_TEMP/r2.hcl" -backend-config="key=labs/$LAB_ID/terraform.tfstate"
+
+      # ── 6 ────────────────────────────────────────────────────────────────
+      # Plan, the plan's LAB_PLAN_SHAPE line, then infra/ci/lab-scope-aws.mjs
+      # on it (lab-plan.sh picks it by LAB_CLOUD). Apply runs the same script
+      # again (--retry) before it applies a fresh plan after a transient error.
+      - name: Plan and scope check
+        id: plan
+        if: success() && steps.init.outcome == 'success' && (inputs.action == 'deploy' || inputs.action == 'test')
+        env:
+          AWS_LABS_ROLE_ARN: ${{ secrets.AWS_LABS_ROLE_ARN }}
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/aws-lab-creds.sh" "$AWS_LABS_ROLE_ARN"
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Plan and scope check"
+          set -euo pipefail
+          echo "LAB_T0=$(date +%s)" >> "$GITHUB_ENV"
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-plan.sh"
+
+      # ── 7 ────────────────────────────────────────────────────────────────
+      # Retried only on AWS transient errors (throttling, RequestLimitExceeded,
+      # 5xx, a dropped connection; never AccessDenied or another 4xx), after a
+      # fresh plan that passes the scope check. Outputs are masked; the VPC to
+      # peer and its route tables are kept for Peer.
+      - name: Apply
+        id: apply
+        if: success() && steps.plan.outcome == 'success' && (inputs.action == 'deploy' || inputs.action == 'test')
+        env:
+          AWS_LABS_ROLE_ARN: ${{ secrets.AWS_LABS_ROLE_ARN }}
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/aws-lab-creds.sh" "$AWS_LABS_ROLE_ARN"
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Apply"
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-tf-run.sh" apply
+          cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
+          terraform output -no-color -json > "$RUNNER_TEMP/outputs.json"
+          jq -r '.. | strings' "$RUNNER_TEMP/outputs.json" | while IFS= read -r s; do
+            [ "${#s}" -ge 4 ] && echo "::add-mask::$s"
+          done
+          peer_vpc="$(jq -r '.peer_vpc_id.value // empty' "$RUNNER_TEMP/outputs.json")"
+          [ -n "$peer_vpc" ] && echo "PEER_VPC_ID=$peer_vpc" >> "$GITHUB_ENV"
+          echo "PEER_ROUTE_TABLE_IDS=$(jq -c '.peer_route_table_ids.value // []' "$RUNNER_TEMP/outputs.json")" >> "$GITHUB_ENV"
+          echo "applied; outputs kept for the Worker"
+
+      # ── 8 ────────────────────────────────────────────────────────────────
+      # Every tagged item's real state (AWS labs spec §5.1), for up to deploy_min.
+      - name: Ready check
+        id: ready
+        if: success() && steps.apply.outcome == 'success' && (inputs.action == 'deploy' || inputs.action == 'test')
+        env:
+          AWS_LABS_ROLE_ARN: ${{ secrets.AWS_LABS_ROLE_ARN }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/aws-lab-creds.sh" "$AWS_LABS_ROLE_ARN"
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Ready check"
+          set -uo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-ready-aws.sh" "$LAB_ID" "$LAB_DEPLOY_MIN"
+          rc=$?
+          echo "LAB_DEPLOY_SECONDS=$(( $(date +%s) - LAB_T0 ))" >> "$GITHUB_ENV"
+          exit "$rc"
+
+      # ── 9 ────────────────────────────────────────────────────────────────
+      # wg-admin-deploy, 1-hour session (its maximum; ruling A32). Never fails
+      # the run: without a session it simply does not peer.
+      - name: Peer
+        id: peer
+        if: success() && env.LAB_PEERING == 'true' && (inputs.action == 'deploy' || inputs.action == 'peer' || inputs.action == 'test')
+        env:
+          AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/aws-lab-creds.sh" "$AWS_DEPLOY_ROLE_ARN" 3600 || exit 0
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Peer"
+          set -uo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-peer-aws.sh" peer "$LAB_ID"
+
+      # ── 10 ── teardown: from here every step runs even after a failure ───
+      - name: Unpeer
+        id: unpeer
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && (inputs.action == 'destroy' || inputs.action == 'unpeer' || inputs.action == 'test')
+        continue-on-error: true
+        env:
+          AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          echo "LAB_T1=$(date +%s)" >> "$GITHUB_ENV"
+          source "$GITHUB_WORKSPACE/infra/ci/aws-lab-creds.sh" "$AWS_DEPLOY_ROLE_ARN" 3600 || exit 0
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Unpeer"
+          set -uo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-peer-aws.sh" unpeer "$LAB_ID"
+
+      # ── 11 ───────────────────────────────────────────────────────────────
+      # Turns off what stops a delete (AWS labs spec §8.1); never fails the run.
+      - name: Unblock
+        id: unblock
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && (inputs.action == 'destroy' || inputs.action == 'test')
+        continue-on-error: true
+        # A backstop only: the script caps its own waits at LAB_JOB_DEADLINE less the destroy's and safety net's reserve.
+        timeout-minutes: 60
+        env:
+          AWS_LABS_ROLE_ARN: ${{ secrets.AWS_LABS_ROLE_ARN }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/aws-lab-creds.sh" "$AWS_LABS_ROLE_ARN"
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Unblock"
+          set -uo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-unblock-aws.sh" "$LAB_ID"
+
+      # ── 12 ───────────────────────────────────────────────────────────────
+      # Allowed to fail: the safety net below finishes the job.
+      - name: Destroy
+        id: destroy
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && steps.init.outcome == 'success' && (inputs.action == 'destroy' || inputs.action == 'test')
+        continue-on-error: true
+        env:
+          AWS_LABS_ROLE_ARN: ${{ secrets.AWS_LABS_ROLE_ARN }}
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/aws-lab-creds.sh" "$AWS_LABS_ROLE_ARN"
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Destroy"
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-tf-run.sh" destroy
+
+      # ── 13 ───────────────────────────────────────────────────────────────
+      # Deletes everything still tagged for the lab, in dependency order, plus
+      # IAM by path and prefix and the named untaggable items (§8.2).
+      - name: Safety net
+        id: safety
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && (inputs.action == 'destroy' || inputs.action == 'test')
+        continue-on-error: true
+        env:
+          AWS_LABS_ROLE_ARN: ${{ secrets.AWS_LABS_ROLE_ARN }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/aws-lab-creds.sh" "$AWS_LABS_ROLE_ARN"
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Safety net"
+          set -uo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-aws-safety-net.sh" "$LAB_ID"
+
+      # ── 14 ───────────────────────────────────────────────────────────────
+      # The verdict: fails the run when anything of the lab is left, or when
+      # AWS could not be asked.
+      - name: Verify clean
+        id: verify
+        if: always() && steps.wait.outcome == 'success' && env.LAB_ID != '' && (inputs.action == 'destroy' || inputs.action == 'test')
+        env:
+          AWS_LABS_ROLE_ARN: ${{ secrets.AWS_LABS_ROLE_ARN }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/aws-lab-creds.sh" "$AWS_LABS_ROLE_ARN" || { echo "clean=false" >> "$GITHUB_OUTPUT"; echo 'leftovers=["could not sign in to AWS"]' >> "$GITHUB_OUTPUT"; exit 1; }
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Verify clean"
+          set -uo pipefail
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-aws-safety-net.sh" --verify "$LAB_ID"
+          rc=$?
+          echo "LAB_DESTROY_SECONDS=$(( $(date +%s) - ${LAB_T1:-$(date +%s)} ))" >> "$GITHUB_ENV"
+          exit "$rc"
+
+      # ── 15 ─────────────────────────────────── (exactly lab.yml's step 15)
+      # R2 has no versioning: keep this lab's newest 5 copies. R2 in this
+      # step's env, and no AWS credentials.
+      - name: Back up state
+        if: always() && env.LAB_ID != ''
+        continue-on-error: true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          # Set only by destroy and test runs (step 14).
+          VERIFY_CLEAN: ${{ steps.verify.outputs.clean }}
+        run: |
+          source "$GITHUB_WORKSPACE/infra/ci/live-log.sh" "Back up state"
+          set -uo pipefail
+          dir="$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
+          rc=0
+          if [ ! -d "$dir/.terraform" ]; then
+            echo "no Terraform state was opened by this run; nothing to back up"
+          else
+            (
+              set -euo pipefail
+              cd "$dir"
+              ts="$(date -u +%Y%m%dT%H%M%SZ)"
+              terraform state pull > "$RUNNER_TEMP/state.json"
+              aws s3 cp "$RUNNER_TEMP/state.json" "s3://$R2_BUCKET/labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate" --only-show-errors
+              aws s3 ls "s3://$R2_BUCKET/labs/$LAB_ID/backups/" | awk '{print $4}' | sort | head -n -5 | while read -r old; do
+                [ -n "$old" ] && aws s3 rm "s3://$R2_BUCKET/labs/$LAB_ID/backups/$old" --only-show-errors
+              done
+              echo "state backed up as labs/$LAB_ID/backups/${ts}-${LAB_ACTION}.tfstate"
+            ) || { echo "::warning::the state backup failed"; rc=1; }
+          fi
+          # A lab verified clean has nothing its state could describe: remove the state and any
+          # lock a dead run left, so the next deploy starts afresh (infra/ci/lab-state-reset.sh).
+          bash "$GITHUB_WORKSPACE/infra/ci/lab-state-reset.sh" "$LAB_ID"
+          exit "$rc"
+
+      # ── 16 ──────── (lab.yml's step 16 with peer_vpc_id, and no "files")
+      # First the live log's last lines, then the result: LAB_RESULT in this
+      # log (no addresses) and the full result to the Worker. A lab's "files"
+      # output (batch 4) never leaves the runner this way.
+      - name: Finish live log, Report result
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          VERIFY_CLEAN: ${{ steps.verify.outputs.clean }}
+          VERIFY_LEFTOVERS: ${{ steps.verify.outputs.leftovers }}
+          DESTROY_OUTCOME: ${{ steps.destroy.outcome }}
+          GH_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          if [ -n "${LIVE_LOG_PID:-}" ]; then
+            touch "$LIVE_LOG_FILE.stop"
+            for _ in $(seq 1 60); do kill -0 "$LIVE_LOG_PID" 2>/dev/null || break; sleep 0.25; done
+            kill "$LIVE_LOG_PID" 2>/dev/null || true
+            tail -n 5 "$RUNNER_TEMP/live-log-shipper.txt" 2>/dev/null || true
+          fi
+          action="${LAB_ACTION:-$LAB_ACTION_INPUT}"
+          status=success
+          [ "${JOB_STATUS:-}" != success ] && status=failure
+          if [ "$status" = success ] && [ "${DESTROY_OUTCOME:-}" = failure ]; then status=success-with-fallback; fi
+          clean=null
+          case "${VERIFY_CLEAN:-}" in true) clean=true ;; false) clean=false; status=failure ;; esac
+          leftovers="${VERIFY_LEFTOVERS:-null}"
+          jq -e 'type == "array"' <<<"$leftovers" >/dev/null 2>&1 || leftovers=null
+          num() { [[ "${1:-}" =~ ^[0-9]+$ ]] && echo "$1" || echo null; }
+          outputs="{}"
+          [ -f "$RUNNER_TEMP/outputs.json" ] && outputs="$(jq 'del(.files) | with_entries(.value = .value.value)' "$RUNNER_TEMP/outputs.json")"
+          result="$(jq -cn \
+            --arg lab_id "${LAB_ID:-}" --argjson version "$(num "${LAB_VERSION:-}")" --arg action "$action" \
+            --arg run_id "${WORKER_RUN_ID:-manual}" --arg status "$status" --argjson clean "$clean" --argjson leftovers "$leftovers" \
+            --argjson deploy "$(num "${LAB_DEPLOY_SECONDS:-}")" --argjson destroy "$(num "${LAB_DESTROY_SECONDS:-}")" \
+            '{lab_id:$lab_id, version:$version, action:$action, run_id:$run_id, status:$status, clean:$clean, leftovers:$leftovers, deploy_seconds:$deploy, destroy_seconds:$destroy}')"
+          # Names, a verdict and timings only: never an address (lab-release-test.mjs reads this line).
+          echo "LAB_RESULT $result"
+          if [ -n "${CALLBACK_URL:-}" ] && [ -n "${CALLBACK_TOKEN:-}" ]; then
+            body="$(jq -cn --argjson r "$result" --argjson o "$outputs" --arg gh_run_id "${GITHUB_RUN_ID:-}" --arg gh_run_url "${GH_RUN_URL:-}" \
+              '{run_id:$r.run_id, action:$r.action, status:$r.status, github_run_id:$gh_run_id, github_run_url:$gh_run_url,
+                outputs:{private_ips:($o.private_ips // {}), connect:($o.connect // []), users:($o.users // {}), peer_vpc_id:($o.peer_vpc_id // null),
+                         clean:$r.clean, leftovers:$r.leftovers, deploy_seconds:$r.deploy_seconds, destroy_seconds:$r.destroy_seconds}}')"
+            curl -fsS --max-time 20 -X POST -H "Authorization: Bearer $CALLBACK_TOKEN" -H "Content-Type: application/json" \
+              -d "$body" "$CALLBACK_URL" || echo "::warning::callback to the Worker failed"
+          fi
+          [ "$status" = failure ] && exit 1
+          exit 0

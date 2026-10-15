@@ -7,11 +7,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
-import { AWS_LAB_ID_MAX, buildCatalogue, cloudOfId, EXAM_CLOUD, examOfId, LAB_EXAMS, LAB_ID_RE, LAB_TF_VARS_AWS, readmeFooter, validateLab, variablesProblems } from "../lib/labs.mjs";
+import { AWS_GLOBAL_LABS, AWS_LAB_ID_MAX, buildCatalogue, cloudOfId, EXAM_CLOUD, examOfId, LAB_EXAMS, LAB_ID_RE, LAB_TF_VARS_AWS, readmeFooter, validateLab, variablesProblems } from "../lib/labs.mjs";
 
 const AREAS = [
   { key: "soa.reliability", exam: "SOA-C03", name: "Reliability and Business Continuity" },
@@ -141,4 +141,11 @@ test("numbers are unique per cloud (A3); prerequisites stay in their cloud; AWS 
   assert.ok(twice.problems.some((p) => p.field === "id" && /lab number 8 is also used by/.test(p.message)));
   const cross = buildCatalogue(root([awsLab({ id: "soa-03-x", prerequisites: ["az104-08-vms"] }), azureLab()]));
   assert.ok(cross.problems.some((p) => p.field === "prerequisites" && /az104-08-vms is an Azure lab: prerequisites are labs of the same cloud/.test(p.message)));
+});
+
+test("lab-parse.sh's AWS_GLOBAL_LABS equals the contract's", () => {
+  const sh = readFileSync(new URL("../../infra/ci/lab-parse.sh", import.meta.url), "utf8");
+  const m = /^AWS_GLOBAL_LABS = \(([^)]*)\)$/m.exec(sh);
+  assert.ok(m, "lab-parse.sh has an AWS_GLOBAL_LABS tuple");
+  assert.deepEqual([...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]), AWS_GLOBAL_LABS);
 });

@@ -1,11 +1,16 @@
 // infra/ci/lab-transient.mjs
 //
-// Plain English: did a terraform apply or destroy fail only because Azure
-// dropped the connection? Release tests saw it now and then, with nothing
-// wrong in the lab:
+// Plain English: did a terraform apply or destroy fail only because the
+// cloud dropped the connection (or, on AWS, throttled)? Azure release tests
+// saw it now and then, with nothing wrong in the lab:
 //
 //   performing CreateOrUpdate: Put "https://management.azure.com/...":
 //   HTTP response was nil; connection may have been reset
+//
+// and AWS throttles a busy account (AWS labs spec §5, step 7):
+//
+//   operation error EC2: CreateVpc, https response error StatusCode: 400,
+//   RequestID: ..., api error RequestLimitExceeded: Request limit exceeded.
 //
 // infra/ci/lab-tf-run.sh asks this before trying again:
 //
@@ -20,6 +25,9 @@
 // other than 408 and 429, or a refusal code (quota, validation, authorization,
 // policy, conflict). A resource's own timeout ("waiting for creation of ...:
 // context deadline exceeded") is not transient: only the HTTP client's.
+// AWS answers a throttle with a 400 ("StatusCode: 400 ... RequestLimitExceeded"),
+// so a throttle code in the same diagnostic overrides that generic AWS 4xx
+// refusal, and only that one (never AccessDenied, a validation error, ...).
 // One diagnostic that is not transient means no retry.
 
 import { readFileSync } from "node:fs";
@@ -37,6 +45,12 @@ export const TRANSIENT = [
   ["RetryableError", /\bRetryableError\b/],
   // Only the HTTP client's own timeout; a resource's create timeout is not a transport error.
   ["client timeout", /context deadline exceeded \(Client\.Timeout exceeded|Client\.Timeout exceeded while awaiting headers/],
+  // AWS (the SDK's "api error <Code>" and "StatusCode: <n>")
+  ["Throttling", /\bThrottling(?:Exception)?\b/],
+  ["RequestLimitExceeded", /\bRequestLimitExceeded\b/],
+  ["SlowDown", /\bSlowDown\b/],
+  ["5xx", /\bStatusCode: 5\d\d\b/],
+  ["send request failed", /\bsend request failed\b/],
 ];
 
 /** A refusal: never retried, whatever else the message says. */
@@ -46,7 +60,14 @@ export const REFUSED = [
   /\(4(?!08|29)\d\d [A-Z][A-Za-z ]+\)/,
   /\b(?:QuotaExceeded|OperationNotAllowed|AuthorizationFailed|LinkedAuthorizationFailed|AuthenticationFailed|Forbidden|Unauthorized|InvalidParameter\w*|InvalidRequest\w*|InvalidTemplate\w*|BadRequest|ValidationError|SkuNotAvailable|RequestDisallowedByPolicy|Conflict|AlreadyExists|ResourceNotFound|NotFound)\b/,
   /\bquota\b/i,
+  // AWS: a refusal code, whatever the status.
+  /\b(AccessDenied\w*|UnauthorizedOperation|InvalidParameter\w*|ValidationException|InvalidClientTokenId|ExpiredToken)\b/,
 ];
+
+/** AWS's generic 4xx (other than 408 and 429): a refusal, unless a throttle code in the same diagnostic says otherwise. */
+export const AWS_4XX = /\bStatusCode: 4(?!08|29)\d\d\b/;
+/** The AWS throttle codes, which come back as a 400 and override only AWS_4XX. */
+export const AWS_THROTTLE = /\b(?:Throttling|ThrottlingException|RequestLimitExceeded|TooManyRequestsException|SlowDown)\b/;
 
 /** The message of each "Error:" diagnostic in Terraform's -no-color output (box drawing and CR taken off). */
 export function diagnostics(text) {
@@ -78,7 +99,8 @@ export function transientFailure(text) {
   if (diags.length === 0) return { transient: false, reasons };
   for (const d of diags) {
     const hits = TRANSIENT.filter(([, re]) => re.test(d)).map(([what]) => what);
-    if (hits.length === 0 || REFUSED.some((re) => re.test(d))) return { transient: false, reasons: [] };
+    const refused = REFUSED.some((re) => re.test(d)) || (AWS_4XX.test(d) && !AWS_THROTTLE.test(d));
+    if (hits.length === 0 || refused) return { transient: false, reasons: [] };
     for (const h of hits) if (!reasons.includes(h)) reasons.push(h);
   }
   return { transient: true, reasons };

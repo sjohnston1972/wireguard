@@ -222,9 +222,9 @@ test("parseLabYaml refuses YAML that does not parse, and validateLab works on on
 // ── AZ-700, the third exam (AZ-700 plan Z0.1, ruling 38) ─────────────────
 
 /** The nine copies of the lab id pattern: the two contracts, the scope check and every pipeline script. */
-const ID_RE_COPIES = ["shared/labs.ts", "scripts/lib/labs.mjs", "infra/ci/lab-scope.mjs", "infra/ci/lab-parse.sh", "infra/ci/lab-peer.sh", "infra/ci/lab-ready.sh", "infra/ci/lab-safety-net.sh", "infra/ci/lab-state-reset.sh", "infra/ci/lab-unblock.sh"];
+const ID_RE_COPIES = ["shared/labs.ts", "scripts/lib/labs.mjs", "infra/ci/lab-scope.mjs", "infra/ci/lab-parse.sh", "infra/ci/lab-peer.sh", "infra/ci/lab-ready.sh", "infra/ci/lab-safety-net.sh", "infra/ci/lab-state-reset.sh", "infra/ci/lab-unblock.sh", "infra/ci/lab-ready-aws.sh", "infra/ci/lab-peer-aws.sh"];
 
-test("the lab id pattern is the same in all nine copies, accepts az700-31-ip-nat-outbound and refuses az701-31-x", () => {
+test("the lab id pattern is the same in all eleven copies, accepts az700-31-ip-nat-outbound and refuses az701-31-x", () => {
   const found = {};
   for (const f of ID_RE_COPIES) {
     const text = readFileSync(join(repo, f), "utf8");
