@@ -80,6 +80,12 @@ export const RUN_SOFT_DEADLINE_MS = 18_000;
 const OUT_OF_CALLS = `This run's ${AZ_RUN_BUDGET} Azure calls were used up; it runs next time.`;
 /** What an Azure server feed records while the server is in AWS (its AWS twin runs instead). */
 export const AWS_SKIP = "The server runs in AWS.";
+/**
+ * Azure feeds that run "always" but read the server's resource group: while
+ * the server is in AWS that group does not exist (aws.activity runs
+ * instead), so they are skipped like the server feeds.
+ */
+const SKIP_IN_AWS: ReadonlySet<string> = new Set(["activity"]);
 
 /** Thrown before an outside call once the run is past RUN_SOFT_DEADLINE_MS. Ends the feed as skipped. */
 class RunOutOfTime extends Error {
@@ -293,7 +299,7 @@ export async function runInsights(env: Env, now: Date = new Date(), feeds: reado
 async function runAzureFeeds(env: Env, now: Date, feeds: readonly FeedModule[], run: { budget: Budget; late: () => boolean; snap: Snapshot; cfg: FeedCtx["cfg"]; lines: string[] }): Promise<void> {
   const { budget, late, snap, cfg, lines } = run;
   const rows = await readFeedRows(env.DB);
-  // The server is in AWS: Azure's server feeds have nothing to collect (their AWS twins run instead); its cloud-wide feeds still run.
+  // The server is in AWS: Azure's server feeds and change log have nothing to collect (their AWS twins run instead); its cloud-wide feeds still run.
   const serverInAws = cloudOf(snap) === "aws" && snap.state !== "destroyed";
   const signIn = signInOnce(env, budget);
   const pending: { id: string; stmt: D1PreparedStatement }[] = [];
@@ -308,7 +314,7 @@ async function runAzureFeeds(env: Env, now: Date, feeds: readonly FeedModule[], 
 
   try {
     for (const f of feeds) {
-      if (serverInAws && f.when !== "always") {
+      if (serverInAws && (f.when !== "always" || SKIP_IN_AWS.has(f.id))) {
         pending.push({ id: f.id, stmt: recordStmt(env, f.id, now, { status: "skipped", error: AWS_SKIP }, rows.get(f.id) ?? null, f.cadenceMin) });
         recorded.add(f.id);
         continue;

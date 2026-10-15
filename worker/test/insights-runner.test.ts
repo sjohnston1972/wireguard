@@ -315,4 +315,26 @@ describe("an AWS headend", () => {
     expect(rows.vmMetrics).toMatchObject({ status: "skipped", error: "The server runs in AWS." });
     expect(rows.serviceHealth.status).toBe("ok");
   });
+
+  it("skips Azure's change log too: there is no Azure resource group to read (no Azure call)", async () => {
+    const { env, az } = azureEnv();
+    await running(env, { cloud: "aws" });
+    const log: string[] = [];
+    await runInsights(env, NOW, [fake("activity", log, { when: "always" }), fake("serviceHealth", log, { when: "always" })]);
+    expect(log).toEqual(["serviceHealth"]);
+    expect(callsTo(az, "management.azure.com")).toHaveLength(0);
+    expect((await feedRows(env)).activity).toMatchObject({ status: "skipped", error: "The server runs in AWS." });
+  });
+
+  it("a destroyed AWS server, or a server in Azure: Azure's change log runs as before", async () => {
+    const { env } = azureEnv();
+    await running(env, { cloud: "aws", state: "destroyed" });
+    const log: string[] = [];
+    await runInsights(env, NOW, [fake("activity", log, { when: "always" })]);
+    expect(log).toEqual(["activity"]);
+    expect((await feedRows(env)).activity.status).toBe("ok");
+    await running(env, { cloud: "azure" });
+    await runInsights(env, new Date(NOW.getTime() + 60 * MIN), [fake("activity", log, { when: "always" })]);
+    expect(log).toEqual(["activity", "activity"]);
+  });
 });

@@ -166,22 +166,21 @@ describe("the runner with AWS feeds", () => {
     expect(JSON.stringify(await awsFeedRows(env))).toBe(before);
   });
 
-  it("(b) server in AWS: Azure server feeds skipped, Azure cloud-wide feeds and every AWS feed run", async () => {
+  it("(b) server in AWS: Azure server feeds (and its change log) skipped, Azure service health and every AWS feed run", async () => {
     const { env, az } = azureEnv(AWS_ON);
     withAws();
     await running(env, { cloud: "aws" });
     const log: string[] = [];
     await runInsights(env, NOW, azFeeds(log), { awsFeeds: standIns(log) });
-    // The AWS server feeds go first; Azure's cloud-wide feeds still run.
+    // The AWS server feeds go first; Azure's service health still runs. Its change log has no resource group to read.
     expect(log.filter((x) => x.startsWith("aws."))).toEqual([...AWS_FEED_IDS]);
-    expect(log.filter((x) => !x.startsWith("aws."))).toEqual(["activity", "serviceHealth"]);
-    expect(log.indexOf("aws.health")).toBeLessThan(log.indexOf("activity"));
+    expect(log.filter((x) => !x.startsWith("aws."))).toEqual(["serviceHealth"]);
+    expect(log.indexOf("aws.health")).toBeLessThan(log.indexOf("serviceHealth"));
     const az_ = await feedRows(env);
-    for (const id of ["health", "vmMetrics", "pipMetrics"]) {
+    for (const id of ["health", "vmMetrics", "pipMetrics", "activity"]) {
       expect(az_[id]?.status, id).toBe("skipped");
       expect(az_[id]?.error, id).toBe("The server runs in AWS.");
     }
-    expect(az_.activity.status).toBe("ok");
     expect(az_.serviceHealth.status).toBe("ok");
     const rows = await awsFeedRows(env);
     for (const id of AWS_FEED_IDS) expect(rows[id]?.status, id).toBe("ok");
