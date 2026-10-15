@@ -233,16 +233,17 @@ describe("AWS capacity: the feed", () => {
 });
 
 describe("AWS prices: reading the price list", () => {
-  it("asks for exactly the spec's three products, TERM_MATCH, in the AmazonEC2 list", () => {
+  it("asks for exactly the spec's three products, TERM_MATCH (instance and disk in AmazonEC2, the IPv4 address in AmazonVPC)", () => {
     const b = awsPriceBodies("eu-west-2", "t4g.micro");
     const fields = (x: { Filters: { Type: string; Field: string; Value: string }[] }) => {
       expect(x.Filters.every((f) => f.Type === "TERM_MATCH")).toBe(true);
       return Object.fromEntries(x.Filters.map((f) => [f.Field, f.Value]));
     };
-    for (const x of Object.values(b)) expect(x).toMatchObject({ ServiceCode: "AmazonEC2", FormatVersion: "aws_v1" });
+    for (const x of [b.instance, b.gp3]) expect(x).toMatchObject({ ServiceCode: "AmazonEC2", FormatVersion: "aws_v1" });
+    expect(b.ip).toMatchObject({ ServiceCode: "AmazonVPC", FormatVersion: "aws_v1" });
     expect(fields(b.instance)).toEqual({ instanceType: "t4g.micro", regionCode: "eu-west-2", operatingSystem: "Linux", tenancy: "Shared", preInstalledSw: "NA", capacitystatus: "Used" });
     expect(fields(b.gp3)).toEqual({ productFamily: "Storage", volumeApiName: "gp3", regionCode: "eu-west-2" });
-    expect(fields(b.ip)).toEqual({ productFamily: "IP Address", regionCode: "eu-west-2", group: "VPCPublicIPv4Address" });
+    expect(fields(b.ip)).toEqual({ regionCode: "eu-west-2", group: "VPCPublicIPv4Address" });
   });
 
   it("parses the PriceList strings twice, takes the OnDemand USD price and converts it to GBP", () => {
