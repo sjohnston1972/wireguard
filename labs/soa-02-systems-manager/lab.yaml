@@ -7,7 +7,7 @@
 # per region per account. London list prices × 0.75 (labs-verify --aws-prices).
 # Authored: Config items ($0.003 each) and rule evaluations ($0.001 each).
 id: soa-02-systems-manager
-version: 1
+version: 2
 cloud: aws
 title: "Systems Manager and Config auto-remediation"
 summary: >-

@@ -106,6 +106,10 @@ const EVIL = [
   ["size", "an m5.large instance", () => plan([al2023Instance(c, { key: "big", name: "vm-big", type: "m5.large" })])],
   ["size", "a 100 GiB volume", () => plan([{ address: "aws_ebs_volume.big", values: tagged(c, { availability_zone: "eu-west-2a", size: 100, type: "gp3" }), refs: {} }])],
   ["size", "an Auto Scaling group of 10", () => plan([{ address: "aws_autoscaling_group.g", values: { min_size: 2, max_size: 10, desired_capacity: 2, tag: [{ key: "cloudlabs-lab", value: ID, propagate_at_launch: true }] }, unknown: ["vpc_zone_identifier"], refs: {} }])],
+  ["description", "a security group description with an apostrophe", () => plan([{ address: "aws_security_group.apos", values: tagged(c, { name: "lab-apos", description: "SSH out to the lab's instances" }), unknown: ["vpc_id"], refs: {} }])],
+  ["description", "a security group description of 256 characters", () => plan([{ address: "aws_security_group.long", values: tagged(c, { name: "lab-long", description: "a".repeat(256) }), unknown: ["vpc_id"], refs: {} }])],
+  ["description", "an ingress block description with a quote", () => plan([{ address: "aws_security_group.blk", values: tagged(c, { name: "lab-blk", description: "ok", ingress: [{ description: 'say "hi"', protocol: "tcp", from_port: 80, to_port: 80, cidr_blocks: ["10.0.0.0/8"] }] }), unknown: ["vpc_id"], refs: {} }])],
+  ["description", "a VPC security group rule description with a backtick", () => plan([{ address: "aws_vpc_security_group_egress_rule.r", values: tagged(c, { description: "all `out`", ip_protocol: "-1", cidr_ipv4: "10.0.0.0/8" }), unknown: ["security_group_id"], refs: {} }])],
 ];
 for (const [rule, what, make] of EVIL) {
   test(`${rule}: refuses ${what}`, () => {
