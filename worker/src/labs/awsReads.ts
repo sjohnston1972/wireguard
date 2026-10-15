@@ -43,19 +43,26 @@ const STS = { region: "us-east-1", host: "sts.amazonaws.com" } as const;
 const IAM_VERSION = "2010-05-08";
 const CE = { service: "ce", region: "us-east-1", host: "ce.us-east-1.amazonaws.com" } as const;
 
-/** Everything tagged cloudlabs-lab in `region` (only `labId`'s when given): one page of at most 100. */
-export async function labTagged(env: Env, net: Net, region: string, labId?: string): Promise<TaggedArn[]> {
+/** One page of tagged resources; `truncated` when AWS said there is more (a PaginationToken) than the page holds. */
+export type TaggedPage = TaggedArn[] & { truncated: boolean };
+
+/**
+ * Everything tagged cloudlabs-lab in `region` (only `labId`'s when given): one page of at most 100. The list says
+ * `truncated` when AWS has more than that page, so a caller never takes it for the whole picture.
+ */
+export async function labTagged(env: Env, net: Net, region: string, labId?: string): Promise<TaggedPage> {
   net.take(1);
-  const r = await awsJson<{ ResourceTagMappingList?: { ResourceARN?: string; Tags?: { Key?: string; Value?: string }[] }[] }>(env, {
+  const r = await awsJson<{ ResourceTagMappingList?: { ResourceARN?: string; Tags?: { Key?: string; Value?: string }[] }[]; PaginationToken?: string }>(env, {
     service: "tagging",
     region,
     host: `tagging.${region}.amazonaws.com`,
     target: "ResourceGroupsTaggingAPI_20170126.GetResources",
     body: { TagFilters: [{ Key: LAB_TAG, ...(labId ? { Values: [labId] } : {}) }], ResourcesPerPage: 100 },
   });
-  return (r.ResourceTagMappingList ?? [])
+  const list = (r.ResourceTagMappingList ?? [])
     .filter((m) => typeof m.ResourceARN === "string")
     .map((m) => ({ arn: m.ResourceARN!, tags: Object.fromEntries((m.Tags ?? []).filter((t) => typeof t.Key === "string").map((t) => [t.Key!, String(t.Value ?? "")])) }));
+  return Object.assign(list, { truncated: !!r.PaginationToken });
 }
 
 const IAM_LISTS = {

@@ -131,9 +131,12 @@ export function awsLabCapacitySizes(cfg: Config): string[] {
   return [...new Set([...awsCapacitySizes(cfg), ...catalogue().labs.filter((l) => l.cloud === "aws").flatMap((l) => l.capacity.instance_types ?? [])])];
 }
 
-/** The regions the feed reads: AWS's configured one (the server's and the lab sessions'), then the labs' secondary region. */
+/**
+ * The regions the feed reads: AWS's configured one (the server's and the lab sessions'), then Ireland (the labs'
+ * only secondary region): at most two, so at most `calls` (8) whatever AWS_REGION says.
+ */
 export function awsCapacityRegions(region: string): string[] {
-  return [...new Set([region, ...AWS_LAB_REGIONS])];
+  return [...new Set([region, AWS_LAB_REGIONS[1]])];
 }
 
 export async function storeAwsCapacity(db: D1Database, region: string, doc: CapacityDoc, at: string): Promise<void> {

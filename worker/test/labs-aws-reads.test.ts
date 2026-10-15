@@ -21,7 +21,7 @@ import { makeBudget } from "../src/insights/types";
 import { config } from "../src/env";
 import { getSnapshot } from "../src/state";
 import { awsPriceKey } from "../../shared/labs";
-import { advance, api, freeze, labEnv, rows, runningLab, withAwsLabs, AWS_TEST_LABS, HOUR, MIN, NOW } from "./labs-helpers";
+import { advance, api, freeze, labEnv, rows, runningLab, session, withAwsLabs, AWS_TEST_LABS, HOUR, MIN, NOW } from "./labs-helpers";
 
 afterEach(() => {
   setCatalogueForTest(null);
@@ -73,6 +73,27 @@ describe("the AWS orphan sweep", () => {
     expect(JSON.parse((await env.STATUS.get("labs:sweep-aws"))!).at).toBe(t.toISOString());
   });
 
+  it("a tagged listing with more than one page is partial: no dirty slot released, earlier entries kept", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    const { sid } = await runningLab(env, world, "soa-05-rds");
+    await env.DB.prepare("UPDATE lab_sessions SET state = 'ended_dirty', ended_at = ?1 WHERE id = ?2").bind(NOW, sid).run();
+    await env.STATUS.put("labs:orphans", JSON.stringify([{ labId: "saa-16-dr-pilot-light", names: ["ec2:vpc vpc-0y"], since: NOW }]));
+    // 101 items of lab 3 in London: the one page holds 100 and AWS says there is more.
+    world.labAws.tagged["eu-west-2"] = Array.from({ length: 101 }, (_, i) => tagged("soa-03-auto-scaling", `subnet/subnet-${i}`));
+    const line = await sweepAwsOrphans(env, budgetedNet(20), new Date(NOW));
+    expect(line).toMatch(/could not list: tagged resources in eu-west-2 \(more than 100\)/);
+    expect((await readOrphans(env)).map((o) => o.labId)).toEqual(["saa-16-dr-pilot-light"]);
+    expect((await session(env, sid))!.slot).not.toBeNull();
+    // With one page that holds everything the same sweep is complete: the slot goes back and the old entry is gone.
+    world.labAws.tagged["eu-west-2"] = world.labAws.tagged["eu-west-2"].slice(0, 100);
+    const later = new Date(Date.parse(NOW) + 61 * MIN);
+    expect(await sweepAwsOrphans(env, budgetedNet(20), later)).toMatch(/1 slot\(s\) released/);
+    expect((await session(env, sid))!.slot).toBeNull();
+    expect(await readOrphans(env)).toEqual([]);
+  });
+
   it("a failed AWS listing keeps that lab's earlier entry", async () => {
     freeze();
     const { env, world } = await labEnv();
@@ -107,6 +128,30 @@ describe("AWS lab costs by tag (A17)", () => {
     expect(rows).toEqual([{ day: "2026-10-14", rg: "aws:soa-03-auto-scaling", lab_id: "soa-03-auto-scaling", gbp: 1.5 }]);
     expect(await fetchAwsLabCostDays(env, budgetedNet(20), new Date(NOW))).toBeNull();
   });
+
+  it("one try a day, win or lose: after a failed pull a second same-day run asks Cost Explorer nothing", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    world.labAws.costByTagFail = true;
+    const ce = () => world.calls.filter((c) => c.host === "ce.us-east-1.amazonaws.com").length;
+    await expect(fetchAwsLabCostDays(env, budgetedNet(20), new Date(NOW))).rejects.toThrow();
+    expect(ce()).toBe(1);
+    expect(await fetchAwsLabCostDays(env, budgetedNet(20), new Date(NOW))).toBeNull();
+    expect(ce()).toBe(1);
+    // The next day it tries again.
+    world.labAws.costByTagFail = false;
+    expect(await fetchAwsLabCostDays(env, budgetedNet(20), new Date(Date.parse(NOW) + 86_400_000))).toMatch(/^aws lab costs: /);
+    expect(ce()).toBe(2);
+  });
+
+  it("out of calls is not a try: nothing asked, nothing marked, the day stays due", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    await expect(fetchAwsLabCostDays(env, budgetedNet(0), new Date(NOW))).rejects.toBeInstanceOf(BudgetExceeded);
+    expect(await env.STATUS.get("labs:cost_tried_day_aws")).toBeNull();
+    expect(await fetchAwsLabCostDays(env, budgetedNet(20), new Date(NOW))).toBe("aws lab costs: 0 row(s)");
+    expect(world.calls.filter((c) => c.host === "ce.us-east-1.amazonaws.com")).toHaveLength(1);
+  });
 });
 
 describe("the lab price feed and AWS list prices", () => {
@@ -132,6 +177,20 @@ describe("the lab price feed and AWS list prices", () => {
     expect(row?.unit).toBe("Hrs");
     expect(row?.gbp).toBeCloseTo(0.0265 * 0.75, 9);
     expect(labPriceAsks(AWS_TEST_LABS, "eu-west-2").length).toBeGreaterThan(0);
+  });
+
+  it("prices are asked for London (where the estimate reads them) whatever AWS_REGION says", async () => {
+    freeze();
+    const { env, world } = await labEnv({ AWS_REGION: "us-east-1" });
+    withAwsLabs();
+    const asked: string[] = [];
+    world.labAws.products = (body) => {
+      asked.push(body.Filters.find((f) => f.Field === "regionCode")!.Value);
+      return [];
+    };
+    await labPrices.run(makeAwsCtx(env, new Date(), await getSnapshot(env), config(env), makeBudget(20)));
+    expect(asked.length).toBeGreaterThan(0);
+    expect([...new Set(asked)]).toEqual(["eu-west-2"]);
   });
 
   it("a reference matching two products, or none, stores nothing: the authored figure stays", async () => {

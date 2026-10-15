@@ -17,7 +17,7 @@ import { costTimeframe } from "../azure";
 import { LAB_ID_MAX, LAB_ID_RE, cloudOfId, labIdFromName } from "../../../shared/labs";
 import type { LabCostRow } from "../../../shared/api";
 import { labIds } from "./catalogue";
-import { arm, type Net } from "./net";
+import { arm, BudgetExceeded, type Net } from "./net";
 import { costByLabTag } from "./awsReads";
 import { LIVE_SQL, type LabSessionRow } from "./store";
 import { estimateSoFar, labTitle, wholeGbpHOf } from "./view";
@@ -85,12 +85,17 @@ export async function fetchLabCostDays(env: Env, net: Net, now: Date): Promise<s
  * call, daily and unfiltered, grouped by the cloudlabs-lab tag, over the Azure pull's time frame (up to yesterday:
  * today's partial day is never stored). Each tagged group with a charge becomes a lab_cost_days row with rg
  * "aws:<id>", in pounds at config.aws.usdToGbp; untagged spend ("cloudlabs-lab$") is left out. Its own KV marker,
- * labs:cost_day_aws. Returns a log line, or null when not due.
+ * labs:cost_day_aws, and one try a day win or lose (labs:cost_tried_day_aws, written before the call: Cost Explorer
+ * bills each call, so a failure never repeats every watch run). Returns a log line, or null when not due.
  */
 export async function fetchAwsLabCostDays(env: Env, net: Net, now: Date): Promise<string | null> {
   if (!canAws(env)) return null;
   const today = now.toISOString().slice(0, 10);
-  if ((await env.STATUS.get("labs:cost_day_aws")) === today) return null;
+  if ((await env.STATUS.get("labs:cost_day_aws")) === today || (await env.STATUS.get("labs:cost_tried_day_aws")) === today) return null;
+  // Each Cost Explorer call is billed: one try a day, win or lose (as monitor.ts's AWS cost pull). Out of calls is
+  // not a try (nothing is asked), so the run's allowance is checked first; then the day's mark, then the call.
+  if (net.remaining() < 1) throw new BudgetExceeded(1, net.remaining(), 1);
+  await env.STATUS.put("labs:cost_tried_day_aws", today, { expirationTtl: 2 * 86_400 });
   const tf = costTimeframe(now);
   const start = tf.timeframe === "MonthToDate" ? `${now.toISOString().slice(0, 7)}-01` : tf.timePeriod.from.slice(0, 10);
   const usdToGbp = config(env).aws.usdToGbp;

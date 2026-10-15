@@ -5,7 +5,8 @@
 // (lab.yaml aws_price: a Price List service code, a unit and the attribute
 // filters that pick exactly one product). Each distinct reference is asked
 // for in each region it is used: the session's region, or the lab's
-// secondary region for a `region: secondary` item. The answer is kept in
+// secondary region for a `region: secondary` item. The session region here
+// is London (AWS_LAB_REGIONS[0]), where the estimate reads it. The answer is kept in
 // aws_prices under awsPriceKey(ref) ("lab:" + 16 hex), in GBP at
 // config.aws.usdToGbp, and the Labs tab's estimate uses it while it is under
 // 7 days old (labs/prices.ts).
@@ -18,7 +19,7 @@
 // feed reads error, naming each one. USD list prices before any free tier,
 // credits or VAT.
 
-import { awsPriceKey, awsUsagePrefix, type AwsPriceRef, type LabDef } from "../../../../../shared/labs";
+import { AWS_LAB_REGIONS, awsPriceKey, awsUsagePrefix, type AwsPriceRef, type LabDef } from "../../../../../shared/labs";
 import { catalogue } from "../../../labs/catalogue";
 import { str } from "../../common";
 import type { PriceItem } from "../../feeds/prices";
@@ -68,7 +69,9 @@ const labPrices: AwsFeed = {
   when: "always",
   calls: MAX_ASKS,
   async run(ctx) {
-    const asks = labPriceAsks(catalogue().labs, ctx.region);
+    // London, the region labs/prices.ts prices AWS labs at (AWS_LAB_REGIONS[0]), so the rows stored are the rows
+    // read, whatever AWS_REGION says (and a region with no known usage-type prefix is never asked for).
+    const asks = labPriceAsks(catalogue().labs, AWS_LAB_REGIONS[0]);
     const fetched = new Map((await readAwsPrices(ctx.db)).filter((r) => r.item.startsWith("lab:")).map((r) => [`${r.item}|${r.region}`, r.fetched_at]));
     const now = ctx.now.getTime();
     // Missing first (age Infinity), then the oldest; only those due.
@@ -83,7 +86,14 @@ const labPrices: AwsFeed = {
     const problems: string[] = [];
     const at = ctx.now.toISOString();
     for (const { a } of due) {
-      const reply = await ctx.json<unknown>({ ...PRICING, body: labPriceBody(a.ref, a.region) });
+      let body: ReturnType<typeof labPriceBody>;
+      try {
+        body = labPriceBody(a.ref, a.region);
+      } catch {
+        problems.push(`${a.item} in ${a.region}: no usage-type prefix known for the region`);
+        continue;
+      }
+      const reply = await ctx.json<unknown>({ ...PRICING, body });
       const priced = products(reply, a.ref.unit).filter((p) => p.usd.length);
       if (priced.length !== 1) {
         problems.push(`${a.item} in ${a.region}: ${priced.length} products`);

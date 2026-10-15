@@ -211,6 +211,18 @@ describe("AWS capacity: the feed", () => {
     expect(awsCapacityCheck(stored!.doc, "eu-west-2", "t4g.micro", true, stored!.fetchedAt).ok).toBe(true);
   });
 
+  it("with AWS_REGION set elsewhere it reads that region and Ireland only: never more than its 8 calls", async () => {
+    const { env } = azureEnv({ ...AWS_ON, AWS_REGION: "us-east-1" });
+    const aws = withAws();
+    await running(env, { cloud: "aws" });
+    await runAwsInsights(env, NOW, [capacity], await opts(env));
+    expect(await feedRow(env, "aws.capacity")).toMatchObject({ status: "ok" });
+    expect(aws.length).toBeLessThanOrEqual(capacity.calls);
+    expect(capacity.calls).toBe(8);
+    expect([...new Set(aws.map((c) => c.host.split(".")[1]))]).toEqual(["us-east-1", "eu-west-1"]);
+    expect(await readAwsCapacity(env.DB, "eu-west-2")).toBeNull();
+  });
+
   it("nothing offered: DescribeInstanceTypes is not asked (it refuses unknown types)", async () => {
     const { env } = azureEnv(AWS_ON);
     const aws = withAws((c) => (c.action === "DescribeInstanceTypeOfferings" ? new Response("<DescribeInstanceTypeOfferingsResponse><instanceTypeOfferingSet/></DescribeInstanceTypeOfferingsResponse>", { status: 200 }) : undefined));

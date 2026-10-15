@@ -325,7 +325,13 @@ async function listAws(env: Env, net: Net): Promise<{ found: Found[]; errors: st
   };
   const named = (names: string[], word: string): Found[] => names.map((n) => ({ name: `${word} ${n}`, created: null, lab: awsLabId(labIdOf(n)) }));
   for (const region of [...AWS_LAB_REGIONS, ...AWS_GLOBAL_REGIONS]) {
-    await attempt(`tagged resources in ${region}`, async () => (await labTagged(env, net, region)).map((t) => ({ name: taggedName(t.arn), created: null, lab: awsLabId(t.tags[LAB_TAG]) })));
+    await attempt(`tagged resources in ${region}`, async () => {
+      const page = await labTagged(env, net, region);
+      // One page only: what it holds counts, but a listing with more is partial (no slot is released on it and
+      // earlier entries it may not have seen are kept), never "complete".
+      if (page.truncated) errors.push(`tagged resources in ${region} (more than ${page.length})`);
+      return page.map((t) => ({ name: taggedName(t.arn), created: null, lab: awsLabId(t.tags[LAB_TAG]) }));
+    });
   }
   await attempt("IAM roles", async () => named(await iamLabNames(env, net, "roles"), "iam role"));
   await attempt("IAM instance profiles", async () => named(await iamLabNames(env, net, "instance-profiles"), "iam instance profile"));

@@ -367,6 +367,8 @@ export interface LabAws {
   dashboards: Record<string, string[]>;
   /** Cost Explorer's daily cost by the cloudlabs-lab tag ("" = untagged spend), USD. */
   costByTag: { day: string; lab: string; usd: number }[];
+  /** Test-only: when true, Cost Explorer's grouped (GroupBy) GetCostAndUsage answers HTTP 400. */
+  costByTagFail?: boolean;
   /** ListCostAllocationTags' answer. */
   costTags: { key: string; status: "Active" | "Inactive" }[];
   /** Does iam:GetRole wg-admin-labs find it? */
@@ -712,7 +714,12 @@ function labAwsAnswer(la: LabAws, u: URL, call: World["calls"][number], text: st
     const f = (body.TagFilters ?? [])[0] as { Key?: string; Values?: string[] } | undefined;
     if (f?.Key !== "cloudlabs-lab") return null;
     const list = (la.tagged[tagging[1]!] ?? []).filter((t) => !f.Values?.length || f.Values.includes(t.tags["cloudlabs-lab"] ?? ""));
-    return json({ ResourceTagMappingList: list.map((t) => ({ ResourceARN: t.arn, Tags: Object.entries(t.tags).map(([Key, Value]) => ({ Key, Value })) })), PaginationToken: "" });
+    // Pages as the real API does: at most ResourcesPerPage (default 100), with a token when there is more.
+    const per = Number(body.ResourcesPerPage) || 100;
+    const from = Number(body.PaginationToken || 0);
+    const page = list.slice(from, from + per);
+    const more = from + per < list.length ? String(from + per) : "";
+    return json({ ResourceTagMappingList: page.map((t) => ({ ResourceARN: t.arn, Tags: Object.entries(t.tags).map(([Key, Value]) => ({ Key, Value })) })), PaginationToken: more });
   }
   if (u.hostname === "iam.amazonaws.com") {
     const a = form.get("Action") ?? "";
@@ -743,6 +750,7 @@ function labAwsAnswer(la: LabAws, u: URL, call: World["calls"][number], text: st
     return json({ CostAllocationTags: la.costTags.filter((t) => !keys || keys.includes(t.key)).map((t) => ({ TagKey: t.key, Type: "UserDefined", Status: t.status })) });
   }
   if (u.hostname === "ce.us-east-1.amazonaws.com" && call.target?.endsWith(".GetCostAndUsage") && Array.isArray(body.GroupBy)) {
+    if (la.costByTagFail) return json({ __type: "DataUnavailableException", message: "fake grouped cost failure" }, 400);
     // One result per seeded day, with that day's groups (whatever the time period asked).
     const days = [...new Set(la.costByTag.map((r) => r.day))].sort();
     return json({
