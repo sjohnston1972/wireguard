@@ -41,6 +41,7 @@ describe("readFilters and writeFilters", () => {
     expect(NO_FILTERS).toEqual({ q: "", cloud: null, exam: null, area: null, level: null, type: [], notRun: false, ready: false });
     expect(readFilters(P("q=blob&exam=AZ-305&area=az305.data&level=expert&type=break-fix,explore&notrun=1&ready=1"))).toEqual({
       q: "blob",
+      cloud: null,
       exam: "AZ-305",
       area: "az305.data",
       level: "expert",
