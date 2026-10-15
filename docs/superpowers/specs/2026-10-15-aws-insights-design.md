@@ -172,7 +172,7 @@ Service Quotas `GetServiceQuota` (ServiceCode `ec2`, QuotaCode `L-1216C47A`, "Ru
 1. the instance: `instanceType`, `regionCode`, `operatingSystem=Linux`, `tenancy=Shared`, `preInstalledSw=NA`,
    `capacitystatus=Used` → OnDemand USD per hour;
 2. gp3 storage: `productFamily=Storage`, `volumeApiName=gp3`, `regionCode` → USD per GB-month (× 8 GB ÷ 730 = per hour);
-3. the public IPv4: `productFamily=IP Address`, `regionCode`, `group=VPCPublicIPv4Address` (in-use) → USD per hour.
+3. the public IPv4 (listed under `ServiceCode=AmazonVPC`, no productFamily): `regionCode`, `group=VPCPublicIPv4Address` (in-use) → USD per hour.
 Converted with `config.aws.usdToGbp` and stored in `aws_prices` (`item` = the instance type, `disk:gp3`, `ip:v4`).
 Served as `PriceInfo` with `source: "aws"` (the union gains `"aws"`) in `SettingsResponse.awsPrice`; Settings shows
 "AWS list price £x/h running, £y/h stopped" beside the fixed AWS rates, and says how old it is.

@@ -38,14 +38,14 @@ const STORED: Record<AwsPriceAsk, { awsUnit: string; unit: string; words: string
 };
 
 interface GetProductsBody {
-  ServiceCode: "AmazonEC2";
+  ServiceCode: "AmazonEC2" | "AmazonVPC";
   FormatVersion: "aws_v1";
   MaxResults: number;
   Filters: { Type: "TERM_MATCH"; Field: string; Value: string }[];
 }
 
-const body = (fields: Record<string, string>): GetProductsBody => ({
-  ServiceCode: "AmazonEC2",
+const body = (fields: Record<string, string>, ServiceCode: GetProductsBody["ServiceCode"] = "AmazonEC2"): GetProductsBody => ({
+  ServiceCode,
   FormatVersion: "aws_v1",
   MaxResults: 20,
   Filters: Object.entries(fields).map(([Field, Value]) => ({ Type: "TERM_MATCH", Field, Value })),
@@ -56,7 +56,8 @@ export function awsPriceBodies(region: string, size: string): Record<AwsPriceAsk
   return {
     instance: body({ instanceType: size, regionCode: region, operatingSystem: "Linux", tenancy: "Shared", preInstalledSw: "NA", capacitystatus: "Used" }),
     gp3: body({ productFamily: "Storage", volumeApiName: "gp3", regionCode: region }),
-    ip: body({ productFamily: "IP Address", regionCode: region, group: "VPCPublicIPv4Address" }),
+    // The public IPv4 charge is listed under AmazonVPC, with no productFamily (checked live 2026-10-15).
+    ip: body({ regionCode: region, group: "VPCPublicIPv4Address" }, "AmazonVPC"),
   };
 }
 
