@@ -6,13 +6,23 @@
 //   GitHub secret AWS_DEPLOY_ROLE_ARN       (a role name, not a key)
 //   Worker secrets AWS_WORKER_ACCESS_KEY_ID / AWS_WORKER_SECRET_ACCESS_KEY
 // Values go in through stdin; only names are printed. Safe to run again.
+//
+// --labs (AWS labs spec §7.1, §13): Terraform also makes the AWS labs' role
+// wg-admin-labs and its boundary on every run (infra/aws-bootstrap/labs.tf);
+// with --labs it then sets the GitHub secret AWS_LABS_ROLE_ARN, asks IAM's
+// policy simulator the eight questions of ruling A19 about the role (any
+// other answer fails the run, exit 1), raises the lab quotas that are below
+// target in London and Ireland, and reports (or switches on) the cost
+// allocation tag cloudlabs-lab. See scripts/lib/aws-bootstrap-labs.mjs.
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadEnv } from "./lib/env.mjs";
+import { runLabsBootstrap } from "./lib/aws-bootstrap-labs.mjs";
 
+const LABS = process.argv.includes("--labs");
 const env = loadEnv();
 for (const k of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "CLOUDFLARE_ACCOUNT_ID", "CF_ACCESS_ALLOWED_EMAIL", "GITHUB_REPO"]) {
   if (!env[k]) throw new Error(`.env is missing ${k}`);
@@ -70,6 +80,20 @@ try {
   const first = `${today.slice(0, 8)}01`;
   const ce = spawnSync("aws", ["ce", "get-cost-and-usage", "--region", "us-east-1", "--time-period", `Start=${first === today ? "2026-01-01" : first},End=${today}`, "--granularity", "MONTHLY", "--metrics", "UnblendedCost", "--output", "text"], { env: tfEnv, encoding: "utf8" });
   console.log(ce.status === 0 ? "Cost Explorer: answering" : `Cost Explorer: NOT answering (${(ce.stderr || "").trim().slice(0, 200)}). Enable it in the AWS console (Billing > Cost Explorer).`);
+
+  if (LABS) {
+    run("gh", ["secret", "set", "AWS_LABS_ROLE_ARN", "--repo", env.GITHUB_REPO], { input: o.labs_role_arn.value, env: process.env });
+    console.log("GitHub secret set: AWS_LABS_ROLE_ARN");
+    const aws = (cmd, args) => {
+      const r = spawnSync(cmd, args, { env: tfEnv, encoding: "utf8" });
+      return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+    };
+    const { ok } = await runLabsBootstrap(aws, { account: acct, roleArn: o.labs_role_arn.value, log: (s) => console.log(s) });
+    if (!ok) {
+      console.error("AWS labs: the simulator's answers are wrong (above); do not run AWS labs until they are fixed.");
+      process.exitCode = 1;
+    }
+  }
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

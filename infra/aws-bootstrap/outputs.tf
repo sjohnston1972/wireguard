@@ -8,6 +8,10 @@ output "deploy_role_arn" {
   value = aws_iam_role.deploy.arn
 }
 
+output "labs_role_arn" {
+  value = aws_iam_role.labs.arn
+}
+
 output "worker_access_key_id" {
   value     = aws_iam_access_key.worker.id
   sensitive = true

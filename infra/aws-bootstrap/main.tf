@@ -8,6 +8,8 @@
 #     wg-admin server, edit its firewall rules and read cost, plus read the
 #     insights figures (metrics, status checks, CloudTrail, quotas, prices
 #     and the server's own console output).
+#   - The AWS labs get their own role (labs.tf), and the Worker may read the
+#     labs' items in London and Ireland (orphans, capacity, the cost tag).
 #   - A budget alarm emails if the whole account passes ~15 GBP in a month,
 #     whatever wg-admin itself believes.
 
@@ -132,7 +134,7 @@ resource "aws_iam_user_policy" "worker" {
         Effect    = "Allow"
         Action    = ["ec2:DescribeInstances", "ec2:DescribeVpcs", "ec2:DescribeSecurityGroups", "ec2:DescribeSecurityGroupRules", "ec2:DescribeAddresses", "ec2:DescribeVolumes"]
         Resource  = "*"
-        Condition = { StringEquals = { "aws:RequestedRegion" = var.region } }
+        Condition = { StringEquals = { "aws:RequestedRegion" = [var.region, "eu-west-1"] } }
       },
       {
         Sid       = "PowerOurServer"
@@ -160,13 +162,27 @@ resource "aws_iam_user_policy" "worker" {
         Effect    = "Allow"
         Action    = ["cloudwatch:GetMetricData", "ec2:DescribeInstanceStatus", "ec2:DescribeInstanceTypeOfferings", "ec2:DescribeInstanceTypes", "cloudtrail:LookupEvents", "servicequotas:GetServiceQuota"]
         Resource  = "*"
-        Condition = { StringEquals = { "aws:RequestedRegion" = var.region } }
+        Condition = { StringEquals = { "aws:RequestedRegion" = [var.region, "eu-west-1"] } }
       },
       # The Price List API lives in us-east-1 only, so no region condition.
       {
         Sid      = "InsightsPriceList"
         Effect   = "Allow"
         Action   = ["pricing:GetProducts"]
+        Resource = "*"
+      },
+      # AWS labs (docs/superpowers/specs/2026-10-15-aws-labs-design.md section 6): read only.
+      {
+        Sid       = "LabsLook"
+        Effect    = "Allow"
+        Action    = ["ec2:Describe*", "elasticloadbalancing:Describe*", "config:DescribeConfigurationRecorders", "cloudwatch:ListDashboards"]
+        Resource  = "*"
+        Condition = { StringEquals = { "aws:RequestedRegion" = [var.region, "eu-west-1"] } }
+      },
+      {
+        Sid      = "LabsGlobalLook"
+        Effect   = "Allow"
+        Action   = ["iam:ListRoles", "iam:ListInstanceProfiles", "iam:ListPolicies", "iam:ListUsers", "iam:GetRole", "iam:GetPolicy", "ce:ListCostAllocationTags"]
         Resource = "*"
       },
       {

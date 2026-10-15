@@ -52,7 +52,7 @@ test("the Worker's IAM user may read the AWS insights figures, in its region, an
   const actions = insights.match(/Action\s+= \[([^\]]*)\]/)?.[1] ?? "";
   assert.equal(actions.split(",").length, 6, "exactly the six actions");
   assert.match(insights, /Effect\s+= "Allow"/);
-  assert.match(insights, /Condition = \{ StringEquals = \{ "aws:RequestedRegion" = var\.region \} \}/);
+  assert.match(insights, /Condition = \{ StringEquals = \{ "aws:RequestedRegion" = \[var\.region, "eu-west-1"\] \} \}/);
   assert.doesNotMatch(insights, /:(Delete|Create|Modify|Put|Update|Start|Stop|Terminate|Run)/);
   // The Price List API is us-east-1 only: its own statement, without the region condition.
   const prices = statement("InsightsPriceList");
