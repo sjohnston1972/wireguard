@@ -117,4 +117,12 @@ describe("the Cost page's projection names the clouds that reported", () => {
     await env.STATUS.put("cost:fetched_day", "2026-10-12");
     expect((await api(env, "GET", "/cost?range=month")).json.meta.asOfDay).toBe("2026-10-12");
   });
+  it("GET /cost: meta names each cloud's own last pull, so a label never carries the other cloud's day", async () => {
+    vi.setSystemTime(new Date(NOW));
+    const { env } = apiEnv();
+    expect((await api(env, "GET", "/cost?range=month")).json.meta).toMatchObject({ azureAsOfDay: null, awsAsOfDay: null });
+    await env.STATUS.put("cost:aws_fetched_day", "2026-10-11");
+    await env.STATUS.put("cost:fetched_day", "2026-10-14");
+    expect((await api(env, "GET", "/cost?range=month")).json.meta).toMatchObject({ asOfDay: "2026-10-11", azureAsOfDay: "2026-10-14", awsAsOfDay: "2026-10-11" });
+  });
 });

@@ -20,7 +20,7 @@ import { refreshActiveRun } from "../runs";
 import { refreshPower } from "../standby";
 import { whereFrom } from "../region";
 import { isVerifying, heartbeatStale, publicIp6, sshAllowedFrom, typicalSeconds } from "../overview";
-import { deployTargetCapacity } from "../insights/ondemand";
+import { awsDeployTargetCapacity, deployTargetCapacity } from "../insights/ondemand";
 import { labsSummary } from "../labs/summary";
 import type { OverviewResponse, SshPasswordResponse } from "../../../shared/api";
 
@@ -92,6 +92,8 @@ export function registerOverview(api: Hono<ApiEnv>): void {
       typicalSeconds: { deploy: typicalSeconds(runs, "apply"), destroy: typicalSeconds(runs, "destroy") },
       // The deploy target's capacity check, from the last stored reading (never a fetch); null until one exists.
       capacity: await deployTargetCapacity(c.env, cfg, new Date(now)).catch(() => null),
+      // The same for AWS's region and instance type (AWS insights spec 4.5), from the AWS capacity feed's last reading.
+      awsCapacity: await awsDeployTargetCapacity(c.env, cfg).catch(() => null),
       // Labs running now (labs/summary.ts); empty with none, so the Overview looks as before.
       labs: await labsSummary(c.env, new Date(now)),
     };

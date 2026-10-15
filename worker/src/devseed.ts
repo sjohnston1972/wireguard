@@ -34,7 +34,9 @@ import { compileFirewall } from "./firewall";
 import { budgetStatus } from "./budget";
 import { freezeDevClock } from "./devclock";
 import { AZ_TABLES } from "./insights/types";
+import { AWS_TABLES } from "./insights/aws/types";
 import { seedInsights } from "./devseed-insights";
+import { seedAwsInsights } from "./devseed-insights-aws";
 import { buildExport } from "./backup";
 import { isWgKey } from "./peers";
 import { DEVSEED_BACKUP_ROOT, DEVSEED_KV } from "./devmarks";
@@ -56,7 +58,7 @@ const vmStore = new AsyncLocalStorage<SeedVm>();
 /** The VM of the seed running now (per call, like seedActor, so two seeds at once never mix). */
 const vm = (): SeedVm => vmStore.getStore() ?? SMALL_VM;
 
-export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "labs", "labs-setup", "everything"] as const;
+export const SCENARIOS = ["empty", "destroyed", "deploying", "running", "failed", "standby", "busy-month", "insights", "insights-aws", "labs", "labs-setup", "everything"] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
 /**
@@ -65,7 +67,7 @@ export type Scenario = (typeof SCENARIOS)[number];
  * busy-month kinds of history and the few things no other story shows, so
  * every widget on every page has data (seedEverything, below).
  */
-const ON_RUNNING: readonly Scenario[] = ["insights", "labs", "labs-setup", "everything"];
+const ON_RUNNING: readonly Scenario[] = ["insights", "insights-aws", "labs", "labs-setup", "everything"];
 
 /** True only on a developer's PC: the login bypass is on and the request is for localhost. */
 export function devSeedAllowed(env: Env, url: string): boolean {
@@ -542,8 +544,8 @@ async function simulate(env: Env, rng: Rng, o: { startMs: number; endMs: number;
 /** Wipe everything the seeder owns. */
 async function wipe(env: Env, now: number): Promise<void> {
   // ui_prefs too: every story starts with the widgets as they ship (shots --prefs saves its own after seeding).
-  // And the Azure insights tables: only the insights story fills them. The cost split and the runs' live logs: only everything.
-  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "cost_breakdown", "run_live_log", "run_live_log_pruned", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules", "ui_prefs", ...AZ_TABLES];
+  // And the insights tables, Azure's and AWS's: only the insights stories fill them. The cost split and the runs' live logs: only everything.
+  const tables = ["peers", "runs", "alerts", "audit", "cost_days", "cost_breakdown", "run_live_log", "run_live_log_pruned", "speedtests", "captures", "hist_vm", "hist_client", "hist_drops", "hist_fw", "fw_forwards", "fw_rules", "fw_draft_rules", "schedules", "ui_prefs", ...AZ_TABLES, ...AWS_TABLES];
   await env.DB.batch([
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
     // No draft, and the live rule set back at version 1.
@@ -628,7 +630,8 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
   // insights tells the running story, then adds what the Azure collector and a version-7 agent would have stored;
   // labs tells it too, then adds the lab story (devseed-labs.ts); labs-setup is the lab story with the permission check failed;
   // everything is the running story with all of those layers and its own (ON_RUNNING).
-  const story = (ON_RUNNING.includes(scenario) ? "running" : scenario) as Exclude<Scenario, "insights" | "labs" | "labs-setup" | "everything">;
+  // insights-aws is the insights story in AWS: the running story moved to AWS, with AWS's tables filled instead of Azure's.
+  const story = (ON_RUNNING.includes(scenario) ? "running" : scenario) as Exclude<Scenario, "insights" | "insights-aws" | "labs" | "labs-setup" | "everything">;
   const now = nowDate.getTime();
   const rng = makeRng(SEED);
   // everything is demo mode's story: busier than the running one (Steven, 2026-10-08, "a vibrant busy dashboard").
@@ -875,6 +878,11 @@ async function seedStory(env: Env, scenario: Scenario, nowDate: Date): Promise<S
   if (scenario === "insights" || scenario === "everything") {
     await seedInsights(env, now, startMs, region);
     // The dev server shows these rows as connected without Azure credentials (insights/read.ts insightsShown).
+    await env.STATUS.put(DEVSEED_KV.insights, "1");
+  }
+  if (scenario === "insights-aws") {
+    await seedAwsInsights(env, now, startMs, { region: cfg.aws.region, instanceType: cfg.aws.instanceType });
+    // The same marker: the dev server shows AWS's rows as connected without AWS keys (insights/aws/read.ts awsInsightsShown).
     await env.STATUS.put(DEVSEED_KV.insights, "1");
   }
   if (scenario === "labs" || scenario === "labs-setup" || scenario === "everything") await seedLabs(env, now, { setup: scenario === "labs-setup" });

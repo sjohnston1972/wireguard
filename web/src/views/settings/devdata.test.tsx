@@ -99,4 +99,11 @@ describe("Settings → Dev data, dev server", () => {
     const row = await within(list).findByRole("button", { name: /Dev data/ });
     expect(row).toHaveTextContent("Load a seed story (dev server only)");
   });
+
+  it("the AWS insights story has its own line (AWS insights spec section 7)", async () => {
+    renderApp("/settings/dev-data", { routes: { ...routesFor(), "GET /api/v1/demo": demoStatusFixture({ devSeed: { scenarios: ["insights", "insights-aws"] } }) } });
+    const s = await screen.findByRole("region", { name: "Dev data" });
+    const rows = await within(s).findAllByRole("listitem");
+    expect(rows[1]!.querySelector(".set-seed__desc")?.textContent).toBe("Running in AWS with every AWS insight panel filled.");
+  });
 });

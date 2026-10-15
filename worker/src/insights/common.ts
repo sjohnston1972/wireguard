@@ -8,7 +8,7 @@
 
 import type { Env, Config } from "../env";
 import type { Snapshot } from "../state";
-import type { FeedCtx } from "./types";
+import type { FeedCtx, FeedResult } from "./types";
 
 export const MIN = 60_000;
 export const HOUR = 60 * MIN;
@@ -155,6 +155,73 @@ export function markDueStmt(db: D1Database, feed: string): D1PreparedStatement {
 export async function markDue(ctx: Pick<FeedCtx, "db" | "markDue">, feed: string): Promise<void> {
   if (ctx.markDue) ctx.markDue(feed);
   else await markDueStmt(ctx.db, feed).run();
+}
+
+// ── Shared by the Azure runner (runner.ts) and the AWS one (aws/runner.ts) ─
+
+/** Every outside call is given up after this long. */
+export const FETCH_TIMEOUT_MS = 8_000;
+/** A feed is due a little early, so a cron that fires a few seconds early does not push it back a whole cadence. */
+export const DUE_SLACK_MS = 30_000;
+export const OUT_OF_TIME = "This run ran out of time; it runs next time.";
+
+/** Due by its row: never run, no next time set, or that time has (nearly) come. */
+export function dueByRow(row: Pick<FeedRow, "next_due_at"> | null, now: Date): boolean {
+  return !row || !row.next_due_at || Date.parse(row.next_due_at) <= now.getTime() + DUE_SLACK_MS;
+}
+
+/** Run `make` with an abort signal that fires after 8 s; the race also ends a call that ignores its signal. */
+export async function withTimeout<T>(make: (signal: AbortSignal) => Promise<T>, onTimeout: () => Error): Promise<T> {
+  const ac = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      ac.abort();
+      reject(onTimeout());
+    }, FETCH_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([make(ac.signal), timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/** The write of one feed's result to its table (az_feed or aws_feed). A skipped feed keeps its next time: it stays due. */
+export function feedResultStmt(db: D1Database, table: "az_feed" | "aws_feed", id: string, now: Date, r: FeedResult, row: FeedRow | null, cadenceMin: number | null): D1PreparedStatement {
+  const at = now.toISOString();
+  let next: string | null;
+  if (r.status === "skipped") next = row?.next_due_at ?? null; // stays due
+  else if (r.nextDueAt) next = r.nextDueAt;
+  else next = cadenceMin === null ? null : iso(now.getTime() + cadenceMin * MIN);
+  return db
+    .prepare(
+      `INSERT INTO ${table} (feed, last_try_at, last_ok_at, status, error, next_due_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+     ON CONFLICT (feed) DO UPDATE SET last_try_at = excluded.last_try_at, last_ok_at = COALESCE(excluded.last_ok_at, ${table}.last_ok_at),
+       status = excluded.status, error = excluded.error, next_due_at = excluded.next_due_at`,
+    )
+    .bind(id, at, r.status === "ok" ? at : null, r.status, r.error === null ? null : plainError(r.error), next);
+}
+
+/**
+ * Write a run's results in one batch. If the batch fails (all or nothing),
+ * each statement is tried on its own, so one bad write never loses the rest.
+ */
+export async function flushResults(db: D1Database, stmts: { id: string; stmt: D1PreparedStatement }[], lines: string[]): Promise<void> {
+  if (!stmts.length) return;
+  try {
+    await db.batch(stmts.map((s) => s.stmt));
+    return;
+  } catch {
+    // fall through: one at a time
+  }
+  for (const { id, stmt } of stmts) {
+    try {
+      await stmt.run();
+    } catch (e) {
+      lines.push(`${id}: could not record (${plainError(e)})`);
+    }
+  }
 }
 
 // ── Small parsing helpers (everything parsed is trimmed and capped) ───────

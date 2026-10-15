@@ -118,7 +118,9 @@ export function DeployForm({ o, onDone, compact, profileId }: { o: OverviewRespo
   const given = o.capacity && o.capacity.region === target.region && o.capacity.size === target.size ? o.capacity : null;
   const asked = useCapacity(target.region, target.size, { enabled: !given && !!o.capacity }).data;
   const capacity = given ?? (o.capacity ? asked : null);
-  const warn = cloud === "azure" && capacity?.ok === false ? capacity.message : null;
+  // AWS deploys its one configured region and type: the overview carries that check (AWS insights spec 4.5).
+  const awsCapacity = o.awsCapacity ?? null;
+  const warn = cloud === "azure" ? (capacity?.ok === false ? capacity.message : null) : awsCapacity?.ok === false ? awsCapacity.message : null;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();

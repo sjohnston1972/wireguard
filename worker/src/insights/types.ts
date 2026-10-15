@@ -129,6 +129,8 @@ export interface FeedResult {
   error: string | null;
   /** When it is next due; null = its cadence from now. */
   nextDueAt?: string | null;
+  /** A line for the run's log even when ok (the AWS runner only): plain words, never stored on the feed. */
+  note?: string | null;
 }
 
 /**

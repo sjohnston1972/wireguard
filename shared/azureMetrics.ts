@@ -6,6 +6,8 @@
 // in small print). Also the feeds' plain titles and cadences, the change
 // log's resource kinds and the Service Health services watched. Spec:
 // docs/superpowers/specs/2026-10-04-azure-insights-design.md, sections 3, 4 and 6.
+// At the end, the AWS equivalents (CloudWatch metrics, CloudTrail resource
+// kinds, region names): docs/superpowers/specs/2026-10-15-aws-insights-design.md.
 //
 // Pure data and pure functions: no React, no Worker code.
 
@@ -145,3 +147,69 @@ export const AZURE_RESOURCE_KINDS: readonly AzureResourceKind[] = [
 
 /** The Service Health services that count as "VMs or networking" (spec section 4; (V) the names). */
 export const SERVICE_HEALTH_SERVICES: readonly string[] = ["Virtual Machines", "Virtual Network", "Network Infrastructure", "Load Balancer", "Azure DNS"];
+
+// ── AWS (AWS insights spec 2026-10-15-aws-insights-design.md, sections 4.1 and 4.3.1) ──
+
+/** hist_aws_vm's value columns, in table order (migration 0024). Shared names with VM_COLUMNS mean the same figure. */
+export const AWS_VM_COLUMNS = ["cpu_avg", "cpu_max", "net_in", "net_out", "disk_read", "disk_write", "disk_rops", "disk_wops", "credits_min", "credits_used", "status_failed", "pkts_in", "pkts_out"] as const;
+export type AwsVmColumn = (typeof AWS_VM_COLUMNS)[number];
+
+export type AwsMetricStat = "Average" | "Maximum" | "Minimum" | "Sum";
+
+export interface AwsMetric {
+  /** CloudWatch's metric name in the AWS/EC2 namespace, exactly as GetMetricData takes it ("CPUUtilization"). */
+  name: string;
+  stat: AwsMetricStat;
+  /** Where it is stored in hist_aws_vm. */
+  column: AwsVmColumn;
+  /** What a widget calls it, large (the same words as the Azure figure it stands in for). */
+  title: string;
+  /** The stored value's unit. Sums of bytes and operations are stored per second over the 5-minute slot (Sum / 300). */
+  unit: string;
+}
+
+const aws = (name: string, stat: AwsMetricStat, column: AwsVmColumn, title: string, unit: string): AwsMetric => ({ name, stat, column, title, unit });
+
+/** Every CloudWatch metric the AWS metrics feed asks for, one entry per stored column (spec 4.1). */
+export const AWS_METRICS: readonly AwsMetric[] = [
+  aws("CPUUtilization", "Average", "cpu_avg", "CPU used", "%"),
+  aws("CPUUtilization", "Maximum", "cpu_max", "CPU used (peak)", "%"),
+  aws("NetworkIn", "Sum", "net_in", "Data in", "bytes/s"),
+  aws("NetworkOut", "Sum", "net_out", "Data out", "bytes/s"),
+  aws("EBSReadBytes", "Sum", "disk_read", "Disk read", "bytes/s"),
+  aws("EBSWriteBytes", "Sum", "disk_write", "Disk written", "bytes/s"),
+  aws("EBSReadOps", "Sum", "disk_rops", "Disk reads per second", "ops/s"),
+  aws("EBSWriteOps", "Sum", "disk_wops", "Disk writes per second", "ops/s"),
+  aws("CPUCreditBalance", "Minimum", "credits_min", "Credits left", "credits"),
+  aws("CPUCreditUsage", "Sum", "credits_used", "Credits used", "credits"),
+  aws("StatusCheckFailed", "Maximum", "status_failed", "Status check failed", "0 or 1"),
+  aws("NetworkPacketsIn", "Sum", "pkts_in", "Packets in", "packets"),
+  aws("NetworkPacketsOut", "Sum", "pkts_out", "Packets out", "packets"),
+];
+
+/** A change-log resource kind on AWS: the same `value` keys as AZURE_RESOURCE_KINDS, so the widget's Types setting works on both clouds. */
+export interface AwsResourceKind {
+  value: AzureResourceKind["value"];
+  /** The plain name stored in aws_activity.resource_type and sent as AzureChangeRow.resourceType. */
+  label: string;
+  /** The CloudTrail resource types it comes from (ResourceType, e.g. "AWS::EC2::Instance"); empty for kinds AWS has no match for and Other. */
+  awsTypes: string[];
+}
+
+export const AWS_RESOURCE_KINDS: readonly AwsResourceKind[] = [
+  { value: "vm", label: "EC2 instance", awsTypes: ["AWS::EC2::Instance"] },
+  { value: "nsg", label: "Security group", awsTypes: ["AWS::EC2::SecurityGroup"] },
+  { value: "pip", label: "Elastic IP", awsTypes: ["AWS::EC2::EIP"] },
+  { value: "nic", label: "Network interface", awsTypes: ["AWS::EC2::NetworkInterface"] },
+  { value: "disk", label: "EBS volume", awsTypes: ["AWS::EC2::Volume"] },
+  { value: "vnet", label: "VPC", awsTypes: ["AWS::EC2::VPC", "AWS::EC2::Subnet", "AWS::EC2::RouteTable", "AWS::EC2::InternetGateway"] },
+  { value: "rg", label: "Resource group", awsTypes: [] }, // AWS has none: no AWS row carries this label
+  { value: "other", label: "Other", awsTypes: [] },
+];
+
+const AWS_REGION_NAMES: Record<string, string> = { "eu-west-2": "London", "eu-west-1": "Ireland", "us-east-1": "N. Virginia" };
+
+/** A plain name for an AWS region ("eu-west-2" -> "London"), or the id itself when it is not one we name. */
+export function awsRegionName(id: string): string {
+  return AWS_REGION_NAMES[id] ?? id;
+}

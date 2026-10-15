@@ -14,6 +14,7 @@ import { azureSummaryFixture, feedFixture, prefsServer } from "@/test/fixtures";
 import { FEEDS } from "@shared/azureMetrics";
 import { setViewport } from "@/test/viewport";
 import { firewallData } from "./testData";
+import { awsFeedFixture, awsPipMetrics, awsSummaryFixture } from "@/test/awsFixtures";
 import { preloadLazy } from "@/test/lazy";
 
 beforeAll(preloadLazy);
@@ -201,5 +202,31 @@ describe("Firewall: Public IP and DDoS", () => {
     const p = await panel();
     const more = document.querySelector(".fw-ph__more")!;
     expect(more.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("Firewall: Public IP on an AWS server (AWS insights spec sections 2.1 and 7)", () => {
+  it("shows the instance's packets and bytes, the one-line DDoS note and the source, with no DDoS or availability rows", async () => {
+    setViewport(1600);
+    renderFw(withSettings({ series: ["packets", "bytes", "syn", "dropped"] }), { summary: awsSummaryFixture(), metrics: awsPipMetrics() });
+    const p = await panel();
+    expect(await within(p).findByText("AWS has no per-address or DDoS figures without Shield Advanced.")).toBeInTheDocument();
+    expect(names(p)).toEqual(["Packets", "Bytes"]);
+    expect(within(row(p, "Packets")).getByText("4,005 per 5 min")).toBeInTheDocument();
+    expect(within(row(p, "Bytes")).getByText("2.5 MB per 5 min")).toBeInTheDocument();
+    expect(within(p).getByText("NetworkPacketsIn, NetworkPacketsOut")).toBeInTheDocument();
+    expect(within(p).getByText("NetworkIn, NetworkOut")).toBeInTheDocument();
+    expect(p).not.toHaveTextContent(/DDoS attack/);
+    expect(p).not.toHaveTextContent(/coming soon/i);
+    expect(within(p).getByText(/Server's network counters · 2 m ago/)).toBeInTheDocument();
+  });
+
+  it("not connected and waiting say AWS", async () => {
+    setViewport(1600);
+    renderFw(ON, { summary: awsSummaryFixture({ configured: false }), metrics: { ...awsPipMetrics(), points: [] } });
+    expect(await within(await panel()).findByText("AWS isn't connected. Add the Worker's AWS keys.")).toBeInTheDocument();
+    cleanup();
+    renderFw(ON, { summary: awsSummaryFixture({ feeds: FEEDS.map((f) => awsFeedFixture(f.id, { status: "idle", lastOkAt: null })) }), metrics: { ...awsPipMetrics(), points: [] } });
+    expect(await within(await panel()).findByText("Waiting for the first reading from AWS.")).toBeInTheDocument();
   });
 });

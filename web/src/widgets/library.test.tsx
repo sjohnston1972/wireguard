@@ -140,7 +140,7 @@ describe("the library", () => {
       "Health summary",
       "Cost impact",
       "Watchman notes",
-      "Azure health",
+      "Cloud health",
       "System vitals",
       "Running labs",
     ]);

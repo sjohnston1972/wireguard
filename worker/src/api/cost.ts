@@ -70,7 +70,7 @@ export function registerCost(api: Hono<ApiEnv>): void {
       now: now.toISOString(),
       range,
       // azureLagHours keeps its name (the app reads it); AWS's Cost Explorer lags about the same day.
-      meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: rates.hourlyRateGbp, standbyRateGbp: rates.standbyRateGbp, asOfDay },
+      meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: rates.hourlyRateGbp, standbyRateGbp: rates.standbyRateGbp, asOfDay, azureAsOfDay: azureFetched || null, awsAsOfDay: awsFetched || null },
       session: { running, since: running ? snap.running_since : null, estimateGbp: running ? Math.max(0, ((now.getTime() - Date.parse(snap.running_since!)) / 3_600_000) * rates.hourlyRateGbp) : null },
       standby,
       // The budget's actual already holds Azure (labs included) and AWS.

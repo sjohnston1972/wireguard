@@ -1,7 +1,7 @@
 // bootlog.test.tsx
 //
 // Plain English: the boot log modal (spec 2026-10-04 section 11). It opens
-// from the verdict's Boot log link and from Azure health, shows the
+// from the verdict's Boot log link and from Cloud health, shows the
 // Worker's redacted serial log, fetches a fresh one on request (one a
 // minute), says why there is none, and never shows a URL.
 import "./testSetup";
@@ -11,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import type { BootLogResponse } from "@shared/api";
 import { renderApp } from "@/test/render";
 import { azureSummaryFixture } from "@/test/fixtures";
+import { awsSummaryFixture } from "@/test/awsFixtures";
 import { overview, prefsRoutes, routes } from "./testData";
 import { preloadLazy } from "@/test/lazy";
 
@@ -33,10 +34,10 @@ describe("Boot log modal", () => {
     expect(await within(dialog).findByText(/Linux version 6\.8\.0-azure/)).toBeInTheDocument();
   });
 
-  it("opens from Azure health", async () => {
+  it("opens from Cloud health", async () => {
     const user = userEvent.setup();
     renderApp("/", { routes: prefsRoutes(overview("running"), { layout: { hidden: ["overview.notes"], shown: ["overview.azureHealth"] } }, { "GET /api/v1/azure/summary": azureSummaryFixture(), "GET /api/v1/azure/bootlog": log() }) });
-    const panel = await screen.findByRole("region", { name: "Azure health" });
+    const panel = await screen.findByRole("region", { name: "Cloud health" });
     await user.click(await within(panel).findByRole("button", { name: "Boot log" }));
     const dialog = await screen.findByRole("dialog", { name: "Boot log" });
     expect(await within(dialog).findByText(/Linux version/)).toBeInTheDocument();
@@ -55,6 +56,26 @@ describe("Boot log modal", () => {
     const { user, dialog } = await openFromVerdict();
     await user.click(within(dialog).getByRole("button", { name: "Fetch now" }));
     expect(await within(dialog).findByText(/Try again in a minute/)).toBeInTheDocument();
+  });
+
+  it("on an AWS server: opens from Cloud health, shows AWS's console output, and the one-a-minute note does not name Azure", async () => {
+    const user = userEvent.setup();
+    const o = overview("running");
+    o.snapshot.cloud = "aws";
+    renderApp("/", {
+      routes: prefsRoutes(o, { layout: { hidden: ["overview.notes"], shown: ["overview.azureHealth"] } }, {
+        "GET /api/v1/azure/summary": awsSummaryFixture(),
+        "GET /api/v1/azure/bootlog": log({ text: "[    0.000000] Linux version 6.8.0-aws" }),
+        "POST /api/v1/azure/bootlog": { status: 429, json: { error: { code: "slow_down", message: "Slow down." } } },
+      }),
+    });
+    const panel = await screen.findByRole("region", { name: "Cloud health" });
+    await user.click(await within(panel).findByRole("button", { name: "Boot log" }));
+    const dialog = await screen.findByRole("dialog", { name: "Boot log" });
+    expect(await within(dialog).findByText(/Linux version 6\.8\.0-aws/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Fetch now" }));
+    expect(await within(dialog).findByText(/Try again in a minute/)).toBeInTheDocument();
+    expect(dialog).not.toHaveTextContent(/Azure/);
   });
 
   it("boot log modal never renders a URL", async () => {

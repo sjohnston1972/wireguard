@@ -21,11 +21,13 @@ const LIVE = ["pending", "running", "stopping", "stopped", "shutting-down"];
 const POWER: Record<string, string> = { running: "running", stopped: "deallocated", stopping: "deallocating", pending: "starting", "shutting-down": "deleting" };
 const SSH_RULE = "ssh-from-home";
 
-interface Instance {
+export interface Instance {
   id: string;
   state: string;
   publicIp: string | null;
   type: string | null;
+  /** When it last started (EC2's launchTime, ISO), or null. */
+  launchTime: string | null;
   /** Its wg-admin-role tag ("headend"), or null. */
   role: string | null;
   /** The volumes its block device mapping names (the disks attached to it). */
@@ -33,9 +35,9 @@ interface Instance {
 }
 
 /** Every instance DescribeInstances lists for these filters, on every page. */
-async function instances(env: Env, list: [string, string[]][]): Promise<Instance[]> {
+async function instances(env: Env, list: [string, string[]][], maxPages?: number): Promise<Instance[]> {
   const out: Instance[] = [];
-  for (const page of await ec2Pages(env, "DescribeInstances", filters(list))) {
+  for (const page of await ec2Pages(env, "DescribeInstances", filters(list), maxPages)) {
     // reservationSet -> item -> instancesSet -> item. The instance's own fields only: its network interfaces,
     // groups and tags are nested items with fields of their own (privateIpAddress, association/publicIp, ...).
     for (const reservation of xmlItems(page, "reservationSet")) {
@@ -50,6 +52,7 @@ async function instances(env: Env, list: [string, string[]][]): Promise<Instance
           state: own.match(/<instanceState>\s*<code>\d+<\/code>\s*<name>([a-z-]+)<\/name>/)?.[1] ?? "unknown",
           publicIp: xmlFirst(own, "ipAddress"),
           type: xmlFirst(own, "instanceType"),
+          launchTime: xmlFirst(own, "launchTime"),
           role: role ? xmlFirst(role, "value") : null,
           volumes: xmlOwnItems(instance, "blockDeviceMapping").flatMap((d) => xmlFirst(d, "volumeId") ?? []),
         });
@@ -59,8 +62,9 @@ async function instances(env: Env, list: [string, string[]][]): Promise<Instance
   return out;
 }
 
-async function findHeadend(env: Env): Promise<Instance | null> {
-  return (await instances(env, [TAG, HEADEND, ["instance-state-name", LIVE]]))[0] ?? null;
+/** The live headend (tagged wg-admin=vpn and wg-admin-role=headend), or null. Also read by the AWS insights feeds. */
+export async function findHeadend(env: Env, maxPages?: number): Promise<Instance | null> {
+  return (await instances(env, [TAG, HEADEND, ["instance-state-name", LIVE]], maxPages))[0] ?? null;
 }
 
 async function view(env: Env): Promise<HeadendView> {
@@ -88,11 +92,12 @@ const KIND: Record<string, string> = {
 };
 const ORDER = ["Virtual network", "Subnet", "Internet gateway", "Route table", "Security group", "Public IP", "Network interface", "Virtual machine", "OS disk", "Key pair"];
 
-async function taggedArns(env: Env): Promise<string[]> {
+/** The ARN of every resource tagged wg-admin=vpn in the region (the tagging API, every page). Also read by the AWS insights feeds. */
+export async function taggedArns(env: Env, maxPages = 10): Promise<string[]> {
   const region = config(env).aws.region;
   const arns: string[] = [];
   let token = "";
-  for (let page = 0; page < 10; page++) {
+  for (let page = 0; page < maxPages; page++) {
     const r = await awsJson<{ ResourceTagMappingList?: { ResourceARN: string }[]; PaginationToken?: string }>(env, {
       service: "tagging",
       region,

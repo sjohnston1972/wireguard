@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title><![CDATA[Amazon Elastic Compute Cloud (London) Service Status]]></title>
+    <link>https://status.aws.amazon.com/</link>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 04 Oct 2026 02:45:29 PDT</lastBuildDate>
+    <generator>AWS Service Health Dashboard RSS Generator</generator>
+    <description><![CDATA[Receive the most recent update for events affecting the overall availability of Amazon Elastic Compute Cloud in London. To receive personalized events about your specific AWS accounts and resources, try the aws.health source in EventBridge or the Health API.]]></description>
+    <ttl>5</ttl>
+
+
+  </channel>
+</rss>

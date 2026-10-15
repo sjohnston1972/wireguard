@@ -97,6 +97,23 @@ describe("the watchman's alerts", () => {
     logged.mockRestore();
   });
 
+  it("when AWS's days cannot be read the watchman's log says so and the estimate is used (#129)", async () => {
+    const cfg = await effectiveConfig(env);
+    await db.upsertCostDay(env, "2026-09-01", 1);
+    const prepare = env.DB.prepare.bind(env.DB);
+    env.DB.prepare = ((q: string) => {
+      if (/aws_cost_days/.test(q)) throw new Error("no such table: aws_cost_days");
+      return prepare(q);
+    }) as typeof env.DB.prepare;
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const line = "AWS actual cost unreadable (no such table: aws_cost_days); using the estimate.";
+    // Under budget, nothing to send: the line still reaches the log.
+    expect(await checkBudget(env, cfg, now)).toBe(line);
+    await db.upsertCostDay(env, "2026-09-02", 7.5);
+    expect(await checkBudget(env, cfg, now)).toBe(line + " budget: 80% alert sent");
+    logged.mockRestore();
+  });
+
   it("sends 80% once, then 100% once, however many times it runs", async () => {
     const cfg = await effectiveConfig(env); // budget £10 in the harness
     await db.upsertCostDay(env, "2026-09-01", 5);

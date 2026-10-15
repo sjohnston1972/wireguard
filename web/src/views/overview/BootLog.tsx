@@ -1,12 +1,14 @@
 // Plain English: the VM's boot log (its serial console), in the desktop
-// modal or the phone's sheet. The Worker fetches it from Azure, redacts it
-// and keeps at most the last 64 KB; this only shows what the Worker stored,
-// or asks it to fetch again (one a minute). A URL is never shown: anything
-// that looks like one is replaced before it reaches the screen.
+// modal or the phone's sheet. The Worker fetches it from the cloud (Azure's
+// boot diagnostics, or AWS's console output), redacts it and keeps at most
+// the last 64 KB; this only shows what the Worker stored, or asks it to
+// fetch again (one a minute). A URL is never shown: anything that looks like
+// one is replaced before it reaches the screen.
 
 import { useMemo, useState } from "react";
 import { Button, Drawer, LogView, formatAge } from "@/components";
-import { useBootLog } from "@/api/queries";
+import { useAzureSummary, useBootLog } from "@/api/queries";
+import { insightsCloud } from "./cloud";
 import { useFetchBootLog } from "@/api/mutations";
 import { ApiError } from "@/api/client";
 import { parseLog } from "@/lib/parseLog";
@@ -19,6 +21,8 @@ const size = (b: number) => (b >= 1024 ? `${Math.round(b / 1024)} KB` : `${b} by
 
 export function BootLogModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const q = useBootLog({ enabled: open });
+  // Whose boot log this is (the summary says; no field: Azure), for the one-a-minute note.
+  const aws = insightsCloud(useAzureSummary({ enabled: open }).data) === "aws";
   const fetchNow = useFetchBootLog();
   const [slow, setSlow] = useState(false);
   const d = q.data;
@@ -47,7 +51,7 @@ export function BootLogModal({ open, onOpenChange }: { open: boolean; onOpenChan
     >
       {slow && (
         <p className="ov-bootlog__note" role="status">
-          Azure allows one fetch a minute. Try again in a minute.
+          {aws ? "cloudlabs fetches AWS's console output once a minute at most." : "Azure allows one fetch a minute."} Try again in a minute.
         </p>
       )}
       {lines.length ? (

@@ -303,15 +303,38 @@ describe("the runner", () => {
 });
 
 describe("an AWS headend", () => {
-  it("makes no Azure call and records every feed as skipped", async () => {
+  it("skips Azure's server feeds with no Azure call, and still runs its cloud-wide feeds (AWS insights spec 2.4)", async () => {
     const { env, az } = azureEnv();
     await running(env, { cloud: "aws" });
     const log: string[] = [];
-    await runInsights(env, NOW, [fake("health", log, { arm: true }), fake("vmMetrics", log, { arm: true })]);
-    expect(log).toEqual([]);
+    await runInsights(env, NOW, [fake("health", log, { arm: true, when: "rg" }), fake("vmMetrics", log, { arm: true, when: "running" }), fake("serviceHealth", log, { when: "always" })]);
+    expect(log).toEqual(["serviceHealth"]);
     expect(callsTo(az, "management.azure.com")).toHaveLength(0);
     const rows = await feedRows(env);
-    expect(rows.health.status).toBe("skipped");
-    expect(rows.vmMetrics.status).toBe("skipped");
+    expect(rows.health).toMatchObject({ status: "skipped", error: "The server runs in AWS." });
+    expect(rows.vmMetrics).toMatchObject({ status: "skipped", error: "The server runs in AWS." });
+    expect(rows.serviceHealth.status).toBe("ok");
+  });
+
+  it("skips Azure's change log too: there is no Azure resource group to read (no Azure call)", async () => {
+    const { env, az } = azureEnv();
+    await running(env, { cloud: "aws" });
+    const log: string[] = [];
+    await runInsights(env, NOW, [fake("activity", log, { when: "always" }), fake("serviceHealth", log, { when: "always" })]);
+    expect(log).toEqual(["serviceHealth"]);
+    expect(callsTo(az, "management.azure.com")).toHaveLength(0);
+    expect((await feedRows(env)).activity).toMatchObject({ status: "skipped", error: "The server runs in AWS." });
+  });
+
+  it("a destroyed AWS server, or a server in Azure: Azure's change log runs as before", async () => {
+    const { env } = azureEnv();
+    await running(env, { cloud: "aws", state: "destroyed" });
+    const log: string[] = [];
+    await runInsights(env, NOW, [fake("activity", log, { when: "always" })]);
+    expect(log).toEqual(["activity"]);
+    expect((await feedRows(env)).activity.status).toBe("ok");
+    await running(env, { cloud: "azure" });
+    await runInsights(env, new Date(NOW.getTime() + 60 * MIN), [fake("activity", log, { when: "always" })]);
+    expect(log).toEqual(["activity", "activity"]);
   });
 });

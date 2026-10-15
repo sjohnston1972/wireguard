@@ -165,11 +165,12 @@ export async function budgetStatus(env: Env, cfg?: Config, snap?: Snapshot, now 
  * The budget and what it was summed from (AWS's days, the labs), so the watchman's alert words the same figures
  * without reading them again. AWS's days that cannot be read are logged and count as none.
  */
-async function readBudget(env: Env, cfg: Config | undefined, snap: Snapshot | undefined, now: Date): Promise<{ status: BudgetStatus; awsDays: { day: string; gbp: number }[]; lab: Awaited<ReturnType<typeof budgetLabs>> }> {
+async function readBudget(env: Env, cfg: Config | undefined, snap: Snapshot | undefined, now: Date): Promise<{ status: BudgetStatus; awsDays: { day: string; gbp: number }[]; awsUnreadable: string | null; lab: Awaited<ReturnType<typeof budgetLabs>> }> {
   const month = now.toISOString().slice(0, 7);
-  const [c, s, days, awsDays, sent, lab] = await Promise.all([cfg ?? effectiveConfig(env), snap ?? getSnapshot(env), db.costDays(env, `${month}-01`), db.awsCostDays(env, `${month}-01`).catch((e) => { console.error("budget aws days:", e); return []; }), env.STATUS.get(alertKey(month)), budgetLabs(env, month)]);
+  let awsUnreadable: string | null = null;
+  const [c, s, days, awsDays, sent, lab] = await Promise.all([cfg ?? effectiveConfig(env), snap ?? getSnapshot(env), db.costDays(env, `${month}-01`), db.awsCostDays(env, `${month}-01`).catch((e) => { console.error("budget aws days:", e); awsUnreadable = (e as Error)?.message ?? String(e); return []; }), env.STATUS.get(alertKey(month)), budgetLabs(env, month)]);
   const f = budgetFigures({ budget: c.monthlyBudgetGbp, days, awsDays, cloud: cloudOf(s), snap: s, hourlyRate: ratesFor(c, cloudOf(s)).hourlyRateGbp, now, labs: lab.labs, labDays: lab.labDays });
-  return { status: { ...f, alerted: sent === "100" ? 100 : sent === "80" ? 80 : 0 }, awsDays, lab };
+  return { status: { ...f, alerted: sent === "100" ? 100 : sent === "80" ? 80 : 0 }, awsDays, awsUnreadable, lab };
 }
 
 const money = (n: number) => `£${n.toFixed(2)}`;
@@ -180,10 +181,13 @@ const money = (n: number) => `£${n.toFixed(2)}`;
  * one. Returns a note for the watchman's log, or null.
  */
 export async function checkBudget(env: Env, cfg: Config, now = new Date()): Promise<string | null> {
-  const { status: b, awsDays, lab } = await readBudget(env, cfg, undefined, now);
-  if (b.level === "none") return null;
+  const { status: b, awsDays, awsUnreadable, lab } = await readBudget(env, cfg, undefined, now);
+  // AWS's actual days could not be read: they count as none, the running server's estimate (budgetFigures) stands in, and the watchman's log says so.
+  const unreadNote = awsUnreadable !== null ? `AWS actual cost unreadable (${awsUnreadable}); using the estimate.` : null;
+  const join = (n: string | null) => [unreadNote, n].filter(Boolean).join(" ") || null;
+  if (b.level === "none") return join(null);
   const due: 0 | 80 | 100 = b.level === "over" ? 100 : b.level === "warn" ? 80 : 0;
-  if (!due || due <= b.alerted) return null;
+  if (!due || due <= b.alerted) return join(null);
   // Remember first, so a slow or failing notification cannot cause a repeat.
   await env.STATUS.put(alertKey(b.month), String(due), { expirationTtl: 40 * 86400 });
   // The labs' share, named (labs spec §9.3): Azure's lab spend so far and the live labs to their timers.
@@ -202,7 +206,7 @@ export async function checkBudget(env: Env, cfg: Config, now = new Date()): Prom
   const msg = due === 100 ? `Monthly budget reached. ${sums} Deploy will ask you to confirm until the month ends.` : `80% of the monthly budget used. ${sums}`;
   await db.addAlert(env, "budget", msg);
   await notify(env, due === 100 ? "cloudlabs: over budget" : "cloudlabs: 80% of budget", msg, { priority: due === 100 ? 4 : 3, tags: ["moneybag"], buttons: [dashboardButton(env, "Open dashboard", "/cost")] });
-  return `budget: ${due}% alert sent`;
+  return join(`budget: ${due}% alert sent`);
 }
 
 /**

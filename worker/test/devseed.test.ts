@@ -130,8 +130,8 @@ describe("the seed route's guard", () => {
 });
 
 describe("scenarios", () => {
-  it("lists exactly the eleven the plans name (insights, labs, labs-setup and everything: the running story plus their own data)", () => {
-    expect([...SCENARIOS].sort()).toEqual(["busy-month", "deploying", "destroyed", "empty", "everything", "failed", "insights", "labs", "labs-setup", "running", "standby"].sort());
+  it("lists exactly the twelve the plans name (insights, insights-aws, labs, labs-setup and everything: the running story plus their own data)", () => {
+    expect([...SCENARIOS].sort()).toEqual(["busy-month", "deploying", "destroyed", "empty", "everything", "failed", "insights", "insights-aws", "labs", "labs-setup", "running", "standby"].sort());
   });
 
   // Labs redesign spec §15: the setup banner's story.
@@ -175,7 +175,7 @@ describe("scenarios", () => {
       const pol = await env.DB.prepare("SELECT live_version, draft_base, draft_default, apply_token FROM fw_policy WHERE id = 1").first();
       const names = (await env.DB.prepare("SELECT name FROM fw_draft_rules").all<{ name: string }>()).results.map((r) => r.name);
       expect(names, s).not.toContain("leftover");
-      if (s === "running" || s === "insights" || s === "labs" || s === "labs-setup" || s === "everything") {
+      if (s === "running" || s === "insights" || s === "insights-aws" || s === "labs" || s === "labs-setup" || s === "everything") {
         expect(pol, s).toEqual({ live_version: 1, draft_base: 1, draft_default: "deny", apply_token: null });
       } else {
         expect(pol, s).toEqual({ live_version: 1, draft_base: null, draft_default: null, apply_token: null });

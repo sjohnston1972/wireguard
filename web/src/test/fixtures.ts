@@ -320,7 +320,7 @@ export const historyFixture = (range: VmHistoryResponse["range"] = "1h"): VmHist
 export const costFixture = (over: Partial<CostResponse> = {}): CostResponse => ({
   now: NOW,
   range: "month",
-  meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: 0.0144, standbyRateGbp: 0.002, asOfDay: "2026-10-01" },
+  meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: 0.0144, standbyRateGbp: 0.002, asOfDay: "2026-10-01", azureAsOfDay: "2026-10-01", awsAsOfDay: null },
   session: { running: true, since: ago(2 * HOUR), estimateGbp: 0.03 },
   standby: null,
   monthToDate: 0.3,

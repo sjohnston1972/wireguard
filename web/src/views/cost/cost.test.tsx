@@ -72,6 +72,32 @@ describe("Cost page: two clouds", () => {
     both.unmount?.();
   });
 
+  it("month to date names AWS when only AWS has figures", async () => {
+    renderApp("/cost", { routes: { "GET /api/v1/cost": costFixture({ meta: { ...costFixture().meta, azureAsOfDay: null, awsAsOfDay: "2026-10-01" }, byCloud: { azure: 0, aws: 0.4 } }) } });
+    const t = await tile("Month to date (actual)");
+    expect(t.getByText(/AWS £0\.40 · actual, as of/)).toBeInTheDocument();
+    expect(t.queryByText(/Azure actual/)).toBeNull();
+  });
+
+  it("month to date is cloud-neutral when a day was pulled but neither cloud has spend", async () => {
+    renderApp("/cost", { routes: { "GET /api/v1/cost": costFixture({ byCloud: { azure: 0, aws: 0 } }) } });
+    const t = await tile("Month to date (actual)");
+    expect(t.getByText(/^Actual, as of/)).toBeInTheDocument();
+    expect(t.queryByText(/Azure actual/)).toBeNull();
+  });
+
+  it("each cloud's line carries its own day: AWS's older pull never shows under an Azure label, nor Azure's under AWS (spec 10.3)", async () => {
+    const meta = { ...costFixture().meta, asOfDay: "2026-10-01", azureAsOfDay: "2026-10-03", awsAsOfDay: "2026-10-01" };
+    const azure = renderApp("/cost", { routes: { "GET /api/v1/cost": costFixture({ meta, byCloud: { azure: 0.3, aws: 0 } }) } });
+    let t = await tile("Month to date (actual)");
+    expect(t.getByText("Azure actual, as of 3 Oct (UTC)")).toBeInTheDocument();
+    azure.unmount?.();
+    const meta2 = { ...meta, asOfDay: "2026-10-01", azureAsOfDay: "2026-10-01", awsAsOfDay: "2026-10-04" };
+    renderApp("/cost", { routes: { "GET /api/v1/cost": costFixture({ meta: meta2, byCloud: { azure: 0, aws: 0.4 } }) } });
+    t = await tile("Month to date (actual)");
+    expect(t.getByText("AWS £0.40 · actual, as of 4 Oct (UTC)")).toBeInTheDocument();
+  });
+
   it("month to date keeps today's text with no AWS spend", async () => {
     renderApp("/cost", { routes: { "GET /api/v1/cost": costFixture({ byCloud: { azure: 0.3, aws: 0 } }) } });
     const t = await tile("Month to date (actual)");

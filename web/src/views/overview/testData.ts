@@ -200,7 +200,7 @@ export function cost(over: Partial<CostResponse> = {}): CostResponse {
   return {
     now: NOW,
     range: "month",
-    meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: 0.01, standbyRateGbp: 0.002, asOfDay: null },
+    meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: 0.01, standbyRateGbp: 0.002, asOfDay: null, azureAsOfDay: null, awsAsOfDay: null },
     session: { running: false, since: null, estimateGbp: null },
     standby: null,
     monthToDate: 0,

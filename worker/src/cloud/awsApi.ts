@@ -62,6 +62,23 @@ export async function ec2Pages(env: Env, action: string, params: Record<string, 
   return pages;
 }
 
+/**
+ * One Query API call to another AWS service in the Worker's region (CloudWatch: service "monitoring", Version
+ * 2010-08-01), the same way as ec2() but with the service and API version given. Returns the XML.
+ */
+export async function awsQuery(env: Env, service: string, action: string, params: Record<string, string>, version: string): Promise<string> {
+  const region = config(env).aws.region;
+  const body = new URLSearchParams({ Action: action, Version: version, ...params });
+  const r = await client(env, service, region).fetch(`https://${service}.${region}.amazonaws.com/`, {
+    method: "POST",
+    body: body.toString(),
+    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=utf-8" },
+  });
+  const text = await r.text();
+  if (!r.ok) throw new AwsError(xmlFirst(text, "Code") ?? `HTTP${r.status}`, xmlFirst(text, "Message") ?? `${service} ${action} failed (${r.status})`, r.status);
+  return text;
+}
+
 /** One JSON-protocol call (tagging, Cost Explorer). */
 export async function awsJson<T>(env: Env, o: { service: string; region: string; host: string; target: string; body: unknown }): Promise<T> {
   const r = await client(env, o.service, o.region).fetch(`https://${o.host}/`, {

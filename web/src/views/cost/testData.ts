@@ -14,7 +14,7 @@ export function costFixture(over: Partial<CostResponse> = {}): CostResponse {
   return {
     now: "2026-10-02T12:00:00.000Z",
     range: "month",
-    meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: 0.0144, standbyRateGbp: 0.002, asOfDay: "2026-10-01" },
+    meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: 0.0144, standbyRateGbp: 0.002, asOfDay: "2026-10-01", azureAsOfDay: "2026-10-01", awsAsOfDay: null },
     session: { running: true, since: "2026-10-02T09:41:00.000Z", estimateGbp: 0.2 },
     standby: null,
     monthToDate: 0.3,
@@ -48,7 +48,7 @@ export function costFixture(over: Partial<CostResponse> = {}): CostResponse {
 /** Nothing from Azure, nothing run: every figure is unknown, not zero. */
 export function emptyCostFixture(over: Partial<CostResponse> = {}): CostResponse {
   return costFixture({
-    meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: 0.0144, standbyRateGbp: 0.002, asOfDay: null },
+    meta: { currency: "GBP", timezone: "UTC", azureLagHours: 24, hourlyRateGbp: 0.0144, standbyRateGbp: 0.002, asOfDay: null, azureAsOfDay: null, awsAsOfDay: null },
     session: { running: false, since: null, estimateGbp: null },
     monthToDate: 0,
     byCloud: { azure: 0, aws: 0 },

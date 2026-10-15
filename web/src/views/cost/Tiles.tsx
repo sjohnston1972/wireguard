@@ -7,6 +7,22 @@ import { MetricTile, cx, type Tone } from "@/components";
 import { useCornerHost, useWidget, WidgetCorner } from "@/widgets";
 import { changeVsPrevious, dayLabel, gbp, hasActuals, type Level } from "./model";
 
+/**
+ * The month-to-date sub-line: names the cloud(s) behind the figure; neutral when neither has spend but a day was
+ * pulled. A line naming one cloud carries that cloud's own day, never the other's (spec 10.3).
+ */
+function monthSub(cost: CostResponse): string {
+  const { azure, aws } = cost.byCloud;
+  const label = (d: string | null | undefined) => (d ? dayLabel(d) : null);
+  const day = label(cost.meta.asOfDay);
+  const azureDay = label(cost.meta.azureAsOfDay);
+  const awsDay = label(cost.meta.awsAsOfDay);
+  if (aws > 0 && azure > 0) return `Azure ${gbp(azure)} · AWS ${gbp(aws)}`;
+  if (aws > 0) return `AWS ${gbp(aws)}${awsDay ? ` · actual, as of ${awsDay} (UTC)` : ""}`;
+  if (azure <= 0 && day) return `Actual, as of ${day} (UTC)`;
+  return azureDay ? `Azure actual, as of ${azureDay} (UTC)` : "Azure has not listed a day yet";
+}
+
 /** A small "i" button whose text shows on hover or focus and closes on Escape. */
 export function InfoTip({ label, children }: { label: string; children: ReactNode }) {
   const id = useId();
@@ -82,7 +98,7 @@ export function KpiRow({ cost }: { cost: CostResponse }) {
           label="Month to date (actual)"
           value={known ? gbp(cost.monthToDate) : null}
           delta={deltas && known && change !== null ? { text: `${Math.abs(Math.round(change))}%`, direction: change < 0 ? "down" : "up", good: change <= 0 } : undefined}
-          sub={cost.byCloud.aws > 0 ? `Azure ${gbp(cost.byCloud.azure)} · AWS ${gbp(cost.byCloud.aws)}` : cost.meta.asOfDay ? `Azure actual, as of ${dayLabel(cost.meta.asOfDay)} (UTC)` : "Azure has not listed a day yet"}
+          sub={monthSub(cost)}
         />
       </Named>
     ),

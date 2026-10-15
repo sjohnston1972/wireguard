@@ -4,7 +4,8 @@
 // nothing else would notice slipping: the server's network card is attached the
 // current way, the deploy role may not delete another project's network cards
 // or detach its public addresses, the Worker may list volumes, CI renders the
-// AWS cloud-init as well as Azure's, and test fixtures stay byte-stable.
+// AWS cloud-init as well as Azure's, and test fixtures stay byte-stable. Also the
+// Worker's read-only AWS insights permissions (AWS insights spec section 8).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -41,6 +42,30 @@ test("the Worker's IAM user may look at volumes (read only)", () => {
   const look = statement("Look");
   assert.match(look, /"ec2:DescribeVolumes"/);
   assert.doesNotMatch(look, /ec2:(Delete|Create|Modify)/);
+});
+
+test("the Worker's IAM user may read the AWS insights figures, in its region, and change nothing", () => {
+  const insights = statement("Insights");
+  for (const a of ["cloudwatch:GetMetricData", "ec2:DescribeInstanceStatus", "ec2:DescribeInstanceTypeOfferings", "ec2:DescribeInstanceTypes", "cloudtrail:LookupEvents", "servicequotas:GetServiceQuota"]) {
+    assert.ok(insights.includes(`"${a}"`), `Insights allows ${a}`);
+  }
+  const actions = insights.match(/Action\s+= \[([^\]]*)\]/)?.[1] ?? "";
+  assert.equal(actions.split(",").length, 6, "exactly the six actions");
+  assert.match(insights, /Effect\s+= "Allow"/);
+  assert.match(insights, /Condition = \{ StringEquals = \{ "aws:RequestedRegion" = var\.region \} \}/);
+  assert.doesNotMatch(insights, /:(Delete|Create|Modify|Put|Update|Start|Stop|Terminate|Run)/);
+  // The Price List API is us-east-1 only: its own statement, without the region condition.
+  const prices = statement("InsightsPriceList");
+  assert.match(prices, /Action\s+= \["pricing:GetProducts"\]/);
+  assert.doesNotMatch(prices, /RequestedRegion/);
+});
+
+test("the Worker may read only its own server's console output", () => {
+  const console_ = statement("ConsoleOfOurServer");
+  assert.match(console_, /Effect\s+= "Allow"/);
+  assert.match(console_, /Action\s+= \["ec2:GetConsoleOutput"\]/);
+  assert.match(console_, /Resource\s+= "arn:aws:ec2:\$\{var\.region\}:\$\{local\.account\}:instance\/\*"/);
+  assert.match(console_, /Condition = \{ StringEquals = \{ "aws:ResourceTag\/wg-admin" = "vpn" \} \}/);
 });
 
 test("ci.yml renders the AWS cloud-init too, with the placeholder-leak check", () => {

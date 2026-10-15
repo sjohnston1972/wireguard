@@ -180,7 +180,7 @@ describe("scheduled event types", () => {
   it("shows a type it does not know as itself, such as AWS's instance-reboot", () => {
     const v = parseVitals(rawVitals({ events: { incarnation: null, at: AT, items: [{ id: "evt-1", type: "instance-reboot", status: "active", not_before: null, source: "Platform", duration_s: null, description: null, self: true }] } }));
     expect(v?.events?.items.map((e) => e.type)).toEqual(["instance-reboot"]);
-    expect(scheduledEventNote(v!.events!.items[0])).toContain("instance-reboot");
+    expect(scheduledEventNote(v!.events!.items[0], "AWS")).toContain("AWS scheduled an instance-reboot for this VM");
   });
 });
 

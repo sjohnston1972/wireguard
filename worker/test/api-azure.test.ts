@@ -155,7 +155,7 @@ describe("GET /api/v1/azure/summary", () => {
     expect(s.serviceIssues.map((e: any) => e.trackingId)).toEqual(["I1"]);
     const feed = (id: string) => s.feeds.find((f: any) => f.id === id);
     expect(s.feeds.map((f: any) => f.id)).toEqual(FEEDS.map((f) => f.id));
-    expect(feed("health")).toEqual({ id: "health", title: "Azure health", status: "ok", lastOkAt: ago(2), error: null, cadenceMin: 5 });
+    expect(feed("health")).toEqual({ id: "health", title: "Azure health", status: "ok", lastOkAt: ago(2), error: null, cadenceMin: 5, source: "Azure" });
     expect(feed("vmMetrics")).toMatchObject({ status: "error", error: "Azure refused the VM metrics (500).", lastOkAt: ago(30) });
     expect(feed("prices").status).toBe("idle");
     expect(feed("activity").cadenceMin).toBe(5); // running: every 5 minutes
@@ -245,7 +245,7 @@ describe("other routes", () => {
     const r = await api(env, "GET", "/azure/diagnostics");
     expect(r.json.configured).toBe(true);
     expect(r.json.metricNames).toEqual({ vm: ["Percentage CPU"], pip: null });
-    expect(r.json.feeds.find((f: any) => f.id === "vmMetrics")).toEqual({ id: "vmMetrics", title: "VM metrics", status: "error", lastOkAt: ago(60), error: expect.stringMatching(/metric name/), cadenceMin: 5, lastTryAt: ago(2), nextDueAt: ago(-3) });
+    expect(r.json.feeds.find((f: any) => f.id === "vmMetrics")).toEqual({ id: "vmMetrics", title: "VM metrics", status: "error", lastOkAt: ago(60), error: expect.stringMatching(/metric name/), cadenceMin: 5, source: "Azure", lastTryAt: ago(2), nextDueAt: ago(-3) });
     expect(r.json.feeds.find((f: any) => f.id === "health")).toMatchObject({ status: "idle", lastTryAt: null, nextDueAt: null });
     expect(r.text).not.toContain(SECRET);
     expect(r.text).not.toContain(SUB);

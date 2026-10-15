@@ -8,6 +8,7 @@ import { Column, DataTable, EmptyState, Panel, SearchInput, Select } from "@/com
 import { useWidget } from "@/widgets";
 import { AzureChangeDrawer } from "./lazyAzure";
 import { azureRangeFor, callerLabel, changeLabel } from "./azureLabels";
+import { cloudLabel, insightsCloud } from "../overview/cloud";
 import { fmtWhen, inWindow, type Change, type Window } from "./model";
 import { Chevron, Fill, Pager } from "./parts";
 import type { ActivityParams } from "./useActivityParams";
@@ -33,17 +34,19 @@ export function ChangeLog({ changes, params, set, window: win, selected, onOpen 
   const azure = settings.azure === true;
   const az = useAzureChanges(azureRangeFor(params.range), "all", { enabled: azure });
   const [azOpen, setAzOpen] = useState<AzureChangeRow | null>(null);
+  // On an AWS server the rows are AWS's (AWS insights spec section 7): tagged and worded AWS.
+  const cloud = insightsCloud(az.data);
   const needle = params.q.trim().toLowerCase();
   const azRows: Row[] =
     azure && !params.kind && params.page <= 1
       ? (az.data?.rows ?? [])
-          .map((a): Row => ({ id: 0, at: a.at, user: callerLabel(a), action: changeLabel(a), target: a.resourceName ?? "", before_json: null, after_json: null, lines: [a.resourceName ?? ""], az: a }))
+          .map((a): Row => ({ id: 0, at: a.at, user: callerLabel(a, cloud), action: changeLabel(a), target: a.resourceName ?? "", before_json: null, after_json: null, lines: [a.resourceName ?? ""], az: a }))
           .filter((c) => !needle || `${c.user} ${c.action} ${c.target}`.toLowerCase().includes(needle))
       : [];
   const rows: Row[] = [...changes.rows, ...azRows].filter((c) => inWindow(c.at, win)).sort((a, b) => (azRows.length ? Date.parse(b.at) - Date.parse(a.at) : 0));
   const cols: Column<Row>[] = [
     { key: "when", header: "When", cell: (c) => fmtWhen(c.at) },
-    { key: "change", header: "Change", cell: (c) => (c.az ? <span className="act__code">{c.action} <span className="act__tag">Azure</span></span> : <code className="act__code">{c.action}</code>) },
+    { key: "change", header: "Change", cell: (c) => (c.az ? <span className="act__code">{c.action} <span className="act__tag">{cloudLabel(cloud)}</span></span> : <code className="act__code">{c.action}</code>) },
     ...(settings.whatChanged ? [{ key: "what", header: "What changed", cell: (c: Row) => <span className="act__note">{c.lines.join(", ") || c.target || "—"}</span>, className: "act__col-what" }] : []),
     ...(settings.by ? [{ key: "by", header: "By", cell: (c: Row) => c.user, className: "act__col-actor" }] : []),
     { key: "go", header: <span className="visually-hidden">Open</span>, cell: () => <Chevron />, align: "right", width: 28 },
@@ -74,7 +77,7 @@ export function ChangeLog({ changes, params, set, window: win, selected, onOpen 
         />
       </Fill>
       {(changes.more || params.page > 1) && <Pager label="Change log pages" page={changes.page} more={changes.more} onPage={(p) => set({ page: p })} />}
-      {azOpen && <AzureChangeDrawer change={azOpen} onClose={() => setAzOpen(null)} />}
+      {azOpen && <AzureChangeDrawer change={azOpen} cloud={cloud} onClose={() => setAzOpen(null)} />}
     </Panel>
   );
 }

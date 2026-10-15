@@ -23,6 +23,7 @@ const STORY: Record<string, string> = {
   standby: "The VM hibernated: disk and address kept.",
   "busy-month": "30 days of runs, notes, changes and cost days.",
   insights: "Running, plus Azure metrics, boot log and service health.",
+  "insights-aws": "Running in AWS with every AWS insight panel filled.",
   labs: "Running, plus lab sessions live, finished and failed.",
   "labs-setup": "Labs before setup: permissions and limits still to do.",
   everything: "Every story at once: every widget on every page has data.",

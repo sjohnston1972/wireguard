@@ -212,6 +212,8 @@ describe("the insights scenario", () => {
       await seed(env, "insights");
       await seed(env, s);
       for (const t of AZ_TABLES) expect(await rows(env, t), `${s} ${t}`).toBe(0);
+      // insights-aws is the insights story in AWS, vitals included (insights-aws-read.test.ts).
+      if (s === "insights-aws") continue;
       // No other story has vitals: the pixel baseline holds.
       expect(await rows(env, "hist_vm WHERE mem_used_pct IS NOT NULL"), s).toBe(0);
       const snap = await getSnapshot(env);
