@@ -359,7 +359,7 @@ The policy is stated by statement (Sid, effect, what, where). `ACCT` is the acco
 | `DenyVpnServer` | Deny | `*` | `*` | `aws:ResourceTag/wg-admin = vpn` |
 | `DenyVpnTag` (two statements, as conditions in one would both have to hold) | Deny | `*` | `*` | first: `aws:RequestTag/wg-admin` not null; second: `ForAnyValue:StringEquals aws:TagKeys` = `wg-admin` |
 | `DenyDefaultVpc` | Deny | `ec2:*` | the two default VPC ARNs (looked up by the bootstrap), and `*` with `ArnEquals ec2:Vpc` = either of them | none beyond the resource match (Describe calls carry no VPC, so they still answer) |
-| `DenyAccountAndBilling` | Deny | `organizations:*`, `account:*`, `billing:*`, `aws-portal:*`, `payments:*`, `budgets:*`, `cur:*`, `ce:Create*`, `ce:Update*`, `ce:Delete*`, `iam:*AccountPasswordPolicy`, `iam:*AccountAlias`, `iam:CreateAccessKey`, `iam:*OpenIDConnectProvider*`, `iam:*SAMLProvider*`, `iam:*VirtualMFADevice` | `*` | none |
+| `DenyAccountAndBilling` | Deny | `organizations:*`, `account:*`, `billing:*`, `aws-portal:*`, `payments:*`, `budgets:*`, `cur:*`, `ce:Create*`, `ce:Update*`, `ce:Delete*`, `iam:*AccountPasswordPolicy`, `iam:*AccountAlias`, `iam:CreateAccessKey`, `iam:*OpenIDConnectProvider*`, `iam:*SAMLProvider*`, `iam:*VirtualMFADevice`, and the account settings (ruling A51: EC2's account-wide settings, SSM's service settings and default patch baseline) | `*` | none |
 | `DenyIamOutsideLab` | Deny | `iam:Create*`, `Delete*`, `Put*`, `Attach*`, `Detach*`, `Update*`, `Tag*`, `Untag*`, `Add*`, `Remove*`, `Set*`, `PassRole` | NotResource: the four lab ARN patterns above and `role/aws-service-role/*` (so `CreateServiceLinkedRole` still works) | none |
 | `DenyBoundaryRemoval` | Deny | `iam:DeleteRolePermissionsBoundary`, `iam:DeleteUserPermissionsBoundary` | `*` | none |
 | `DenyOtherRoles` | Deny | `sts:AssumeRole*` | `*` | none |
@@ -406,7 +406,7 @@ Every lab role and lab 07 user carries it, so nothing a lab creates can exceed i
   plus `sts:GetCallerIdentity`.
 - **Deny:** all IAM writes (`iam:Create*`, `Delete*`, `Put*`, `Attach*`, `Detach*`, `Update*`, `Add*`, `Remove*`, `Set*`,
   `Tag*`, `Untag*`, `PassRole`, `CreateAccessKey`), `sts:AssumeRole*`, organizations, account, billing, budgets and cost
-  writes, anything on a resource tagged `wg-admin=vpn` or any request setting or removing the `wg-admin` key, and any region
+  writes, the account settings the role is denied (ruling A51), anything on a resource tagged `wg-admin=vpn` or any request setting or removing the `wg-admin` key, and any region
   outside LAB_REGIONS.
 - **Deny, as the role does (ruling A48):** `ec2:CreateTags` outside a create (`ec2:CreateAction` null) on anything not
   already tagged `cloudlabs-lab`; `ec2:DeleteTags` with no tag keys (it would strip every tag); the VPC fabric actions
@@ -424,7 +424,8 @@ Two layers, as the main spec §8.4: the text before `terraform init`, the plan b
 `registry.terraform.io/hashicorp/{aws,random,time,tls,archive}`; no provisioners, modules, import blocks, other backends, cloud
 blocks, `*.tf.json`, `*.tfvars` or CLI configuration; no `data "tls_certificate"` (it fetches a URL) and no `archive_file`
 reading outside `path.module`; literal CIDRs only `0.0.0.0/0` and `::/0`; none of the headend's names (`vpc-wg`, `snet-wg`,
-`rt-wg`, `sg-wg`, `igw-wg`, `rt-workloads`, `snet-workloads`, the tag key `wg-admin`); provider blocks only as §4. CloudFormation
+`rt-wg`, `sg-wg`, `igw-wg`, `nic-wg`, `pip-wg`, `vm-wg`, `osdisk-wg`, `rt-workloads`, `snet-workloads`, `sg-workloads`,
+`vm-test`, `osdisk-test`: every `Name` in `infra/aws/main.tf`, ruling A50; the tag key `wg-admin`); provider blocks only as §4. CloudFormation
 templates (lab 06, `terraform/cfn/*.yaml`) are read too: no `Transform`, macros, nested stacks, custom resources or IAM types,
 no literal CIDRs.
 
@@ -445,7 +446,7 @@ one per refused resource, the first that applies:
    blocks, `aws_guardduty_*`, `aws_securityhub_*`, `aws_macie2_*`, `aws_iam_service_linked_role`, `aws_iam_access_key`,
    `aws_iam_account_*`, `aws_budgets_*`, `aws_ce_*`; dedicated tenancy; BYOIP pools.
 6. `tag`: every resource whose plan has `tags_all` must carry `cloudlabs-lab = <id>` there; `aws_instance` also in
-   `volume_tags`; launch templates in `tag_specifications` for instance, volume and network-interface; Auto Scaling groups
+   `volume_tags` (`root_block_device.tags` never stands in: ruling A49); launch templates in `tag_specifications` for instance, volume and network-interface; Auto Scaling groups
    as §4; ECS services `propagate_tags = "SERVICE"`; RDS `copy_tags_to_snapshot = true`; Backup plans' rules
    `recovery_point_tags`; CloudFormation stacks' tags (V that CloudFormation copies stack tags to what it makes).
 7. `untaggable`: types that cannot carry tags must be named `lab-<id>-*` (dashboards, CloudFront functions, origin access
@@ -453,9 +454,13 @@ one per refused resource, the first that applies:
 8. `iam`: roles, instance profiles and customer policies at path `/cloudlabs-lab/` named `lab-<id>-*`; roles and users with
    `permissions_boundary = BOUNDARY`; users and login profiles only in `AWS_IAM_USER_LABS`; attachments only of the managed
    list above or the lab's own policies; no inline or customer policy with an `iam:` action, `"*"` action or `NotAction`;
-   trust policies naming only AWS service principals or the lab's own roles (no accounts, no federated principals).
+   trust policies naming only AWS service principals or the lab's own roles in the lab's own account (the plan's caller
+   identity, else the role's boundary's; no other account, no wildcard, no federated principals: ruling A52).
 9. `gateway`: any reference to the headend: its names, the `wg-admin` key or value, a VPC, route table or peering not made by
-   this lab (peering and transit gateway resources only between the lab's own VPCs, by reference), `aws_vpc_peering_connection_accepter`.
+   this lab (peering and transit gateway resources only between the lab's own VPCs, by reference), `aws_vpc_peering_connection_accepter`;
+   and any instance target that selects every instance, the headend's too (ruling A50): a wildcard id (`InstanceIds = ["*"]`,
+   `instance_id = "*"`), a `tag-key` target, or a wildcard tag value, in SSM associations, EventBridge run-command targets,
+   maintenance window targets and the like.
 10. `address`: a VPC, subnet or secondary CIDR outside `var.address_space` or overlapping another of the lab's; a route
     destination other than the slot's addresses, `var.gateway_cidr`, `0.0.0.0/0`, `::/0` or the lab's own prefix lists; a
     customer IPv6 pool other than lab 20's own IPAM pool.
@@ -502,7 +507,11 @@ message. Two gaps stay with the plan-time scope check. A VPC id passed as a para
 `AssociateVPCWithHostedZone`, Route 53 Resolver associations, VPC Lattice VPC associations), so a lab naming the server's
 VPC there is refused by the scope check's known-id rule, and the boundary allows no `route53`, `route53resolver` or
 `vpc-lattice` writes, so nothing a lab creates can make one. And a lab role's trust policy is checked at plan time only
-(the `iam` rule). Mitigations: main-only trust, the boundary on every lab identity, the
+(the `iam` rule), which pins a role principal to the lab's own account (ruling A52). Account-wide settings that reach the
+headend are denied to the role and the boundary alike: EC2's (Block Public Access, EBS encryption defaults and the like)
+and SSM's (service settings, among them Default Host Management, which would make the headend SSM-managed, and the
+default patch baseline; ruling A51); and the scope check refuses an instance target that selects every instance, or names
+the headend (ruling A50). Mitigations: main-only trust, the boundary on every lab identity, the
 scope check before any apply, the simulator cases at bootstrap, the orphan sweep.
 
 ## 8. Clean-up
@@ -534,13 +543,15 @@ dependency order, each delete issued then polled:
    Resolver rule associations, rules, endpoints, query log configs, DNS Firewall associations, rule groups and domain lists;
    VPC Lattice associations, services and networks.
 3. Network services: Client VPN associations and endpoints; Network Firewall (then policies and rule groups); load balancers,
-   then target groups; VPC endpoint services and endpoints; RDS replicas, then instances, subnet and parameter groups, tagged
+   then listener rules and listeners still there (most go with their load balancer), then target groups; VPC endpoint
+   services and endpoints; RDS replicas, then instances, subnet and parameter groups, tagged
    snapshots; ElastiCache; EFS mount targets, then file systems; instances (terminate, wait); launch templates; NAT gateways
    (wait); Elastic IPs; VPN connections, virtual private gateways (detach), customer gateways; transit gateway peering and
    VPC attachments, route tables, transit gateways; VPC peering connections; traffic mirror sessions, targets, filters; flow
    logs; Reachability and Network Access Analyzer paths and scopes; IPAM pools, scopes and IPAMs; Instance Connect Endpoints.
 4. VPC fabric: detached network interfaces, security groups (cross-references revoked first), subnets, route tables, network
-   ACLs, internet and egress-only gateways, prefix lists, VPCs.
+   ACLs, internet and egress-only gateways, prefix lists, VPCs; then security group rules still there (most go with their
+   group), revoked by id, never in the headend's VPC.
 5. Data and the rest: S3 buckets (every version emptied); DynamoDB tables (replicas first); SQS, SNS; KMS keys (deletion
    scheduled, 7 days); secrets (forced); log groups; alarms and dashboards; SSM documents, associations and maintenance
    windows; Backup plans and vaults; ECR repositories (forced); Cognito user pools (domain first); ACM certificates; tagged
@@ -555,7 +566,8 @@ there is a warning, "left behind".
 
 The Resource Groups Tagging API keeps showing terminated and deleted items for about an hour (V), so it only **finds**
 candidates; each one's **real state** is read by its own describe (an instance `terminated`, a NAT gateway `deleted`, a VPC or
-bucket not found, a KMS key `PendingDeletion` counts as clean). Plus: IAM listed by path and prefix; the Config recorder by
+bucket not found, a KMS key `PendingDeletion` counts as clean; a security group rule, listener or listener rule is read by its
+own id or ARN, and not found is clean). Plus: IAM listed by path and prefix; the Config recorder by
 name; and, while any lab VPC still exists, every network interface and instance inside it, tagged or not, so a hand-made
 untagged instance is reported by name ("untagged inside lab VPC: i-…") instead of silently blocking the VPC. Service-linked
 roles and AWS-managed resources are never leftovers. Outputs `clean` and `leftovers` exactly as `lab-safety-net.sh --verify`.
@@ -908,3 +920,25 @@ copied here and win.
   groups and VPCs without the lab tag; the boundary also denies `ec2:*` but describes on the default VPCs, as the role does.
   The VPN server is not changed. Labs never adopt a VPC's defaults: the scope check refuses `aws_default_*` and
   `aws_ec2_tag`. The bootstrap's simulator asks both the role and the boundary (§7.1, ruling A19).
+
+### Rulings from the final review of batch 1 (A49 on)
+
+- **A49. Instances tag their volumes with `volume_tags`, never `root_block_device.tags`** (reverses preflight C18 for lab 04).
+  The provider applies `root_block_device.tags` after launch, so `RunInstances` would carry no volume request tag and
+  `CreateNeedsLabTagRunInstances` would refuse it. Where a separately attached volume must not cycle tags, the instance
+  uses `volume_tags = var.tags` and that volume carries only the provider's `default_tags`, so both set the same tags;
+  lab 04's backup selection then names its data volume by ARN. The scope rule and `commonAwsProblems` accept
+  `volume_tags` only, and the bootstrap's simulator asks about a launch with an untagged volume.
+- **A50. The headend's every name, and no instance target that selects every instance.** The scope check's and the lint's
+  name lists are every `Name` in `infra/aws/main.tf` (`vm-wg` among them: an SSM association could otherwise target
+  `tag:Name = vm-wg`); a wildcard id, a `tag-key` target or a wildcard tag value in any `{ key, values }` target is refused.
+- **A51. SSM's account settings are denied** to the role and the boundary with EC2's: every write on the reference's
+  `servicesetting` type (`UpdateServiceSetting`, `ResetServiceSetting`; Default Host Management is one) and
+  `RegisterDefaultPatchBaseline`. The reference has no SSM setting write without a resource type. Steven confirms once
+  that Default Host Management is off in eu-west-2 (`aws ssm get-service-setting --setting-id
+  /ssm/managed-instance/default-ec2-instance-management-role`).
+- **A52. A lab role's trust names roles in the lab's own account only:** the plan's caller identity (else the role's
+  boundary's) account; any other account or a wildcard is refused, and the message never prints an account id.
+- **A53. Verify clean and the safety net handle security group rules, listeners and listener rules:** each is read by its
+  own describe (not found is clean); they go with their group or load balancer, and one still there is deleted by its id or
+  ARN (rules before listeners before target groups; security group rules after the fabric, never in the headend's VPC).

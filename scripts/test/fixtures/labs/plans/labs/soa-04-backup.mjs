@@ -8,7 +8,9 @@
 // the first object). Names built from var.lab_id and var.name_prefix are
 // known at plan; ids and ARNs are unknown. The IAM documents are literal JSON
 // (ruling P12): the replication policy names the buckets by ARNs built from
-// names. The instance tags its root volume through root_block_device (C18).
+// names. The instance tags its volumes with volume_tags = var.tags (no Name), and the
+// data volume carries only the default tags, so the two agree (final review, Important 1);
+// the backup selection names the data volume by ARN (unknown at plan).
 
 import { AWS_PROVIDER_CONFIG, BOUNDARY, al2023Instance, awsData, ctxAws, ref, tagged, templateResources } from "../common-aws.mjs";
 
@@ -39,7 +41,7 @@ export default () => {
   });
   const block = { block_public_acls: true, block_public_policy: true, ignore_public_acls: true, restrict_public_buckets: true };
   const versioning = (key) => onBucket("aws_s3_bucket_versioning", key, { versioning_configuration: [{ status: "Enabled" }] });
-  const instance = al2023Instance(c, { key: "data", name: "vm-data", type: "t4g.nano", rootTags: true });
+  const instance = al2023Instance(c, { key: "data", name: "vm-data", type: "t4g.nano", volumeName: null });
   instance.refs.user_data = ["local.cloud_init_base"];
   return {
     lab: id,
@@ -51,7 +53,7 @@ export default () => {
       ...templateResources(c),
       // compute.tf
       instance,
-      { address: "aws_ebs_volume.data", values: tagged(c, { availability_zone: "eu-west-2a", size: 1, type: "gp3", tags: { Name: "vol-data", "cloudlabs-backup": "daily" } }), refs: { availability_zone: ["local.azs"] } },
+      { address: "aws_ebs_volume.data", values: tagged(c, { availability_zone: "eu-west-2a", size: 1, type: "gp3" }), refs: { availability_zone: ["local.azs"] } },
       {
         address: "aws_volume_attachment.data",
         values: { device_name: "/dev/sdf", stop_instance_before_detaching: true },
@@ -83,14 +85,14 @@ export default () => {
         refs: { name: ["var.lab_id"], "rule.0.target_vault_name": ref("aws_backup_vault.lab", "name"), "rule.0.recovery_point_tags": ["var.tags"] },
       },
       {
-        address: "aws_backup_selection.tagged",
+        address: "aws_backup_selection.data",
         values: {
-          name: `lab-${id}-tagged`,
-          resources: ["*"],
-          condition: [{ string_equals: [{ key: "aws:ResourceTag/cloudlabs-backup", value: "daily" }, { key: "aws:ResourceTag/cloudlabs-lab", value: id }] }],
+          name: `lab-${id}-data`,
+          resources: [],
+          condition: [{ string_equals: [{ key: "aws:ResourceTag/cloudlabs-lab", value: id }] }],
         },
-        unknown: ["plan_id", "iam_role_arn"],
-        refs: { name: ["var.lab_id"], plan_id: ref("aws_backup_plan.daily", "id"), iam_role_arn: ref("aws_iam_role.backup", "arn"), "condition.0.string_equals.1.value": ["var.lab_id"] },
+        unknown: ["plan_id", "iam_role_arn", "resources.0"],
+        refs: { name: ["var.lab_id"], plan_id: ref("aws_backup_plan.daily", "id"), iam_role_arn: ref("aws_iam_role.backup", "arn"), resources: ref("aws_ebs_volume.data", "arn"), "condition.0.string_equals.0.value": ["var.lab_id"] },
       },
       // s3.tf
       bucket("src", src, "src"),

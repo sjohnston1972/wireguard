@@ -228,6 +228,35 @@ test("account settings come from the reference: setting writes with no resource 
   assert.deepEqual(abacLists(sar).accountSettings, ["ec2:EnableEbsEncryptionByDefault", "ec2:ModifyDefaultCreditSpecification", "ec2:ModifyVpcBlockPublicAccessExclusion"]);
 });
 
+test("final review, Important 3: SSM's account-level settings (the servicesetting type, the default patch baseline) are account settings", () => {
+  const sar = { ssm: { Name: "ssm", Resources: [{ Name: "servicesetting" }, { Name: "patchbaseline", ConditionKeys: ["aws:ResourceTag/${TagKey}"] }, { Name: "document" }], Actions: [
+    W({ Name: "UpdateServiceSetting", Resources: [{ Name: "servicesetting" }] }),
+    W({ Name: "ResetServiceSetting", Resources: [{ Name: "servicesetting" }] }),
+    W({ Name: "RegisterDefaultPatchBaseline", Resources: [{ Name: "patchbaseline" }] }),
+    W({ Name: "UpdatePatchBaseline", Resources: [{ Name: "patchbaseline" }] }),
+    W({ Name: "CancelCommand", Resources: [] }),
+    { Name: "GetServiceSetting", Resources: [{ Name: "servicesetting" }], Annotations: { Properties: { IsList: false } } },
+  ] } };
+  assert.deepEqual(abacLists(sar).accountSettings, ["ssm:RegisterDefaultPatchBaseline", "ssm:ResetServiceSetting", "ssm:UpdateServiceSetting"]);
+});
+
+test("final review, Important 3: the role and the boundary refuse SSM's account settings (Default Host Management would make the VPN server SSM-managed)", { skip }, () => {
+  const { ABAC, sid, POLICIES } = files();
+  const bsid = (s) => POLICIES.boundary.Statement.find((x) => x.Sid === s);
+  for (const a of ["ssm:UpdateServiceSetting", "ssm:ResetServiceSetting", "ssm:RegisterDefaultPatchBaseline"]) {
+    assert.ok(ABAC.accountSettings.includes(a), a);
+    assert.ok(sid("DenyAccountAndBilling").Action.includes(a), `role: ${a}`);
+    assert.ok(bsid("NoAccountOrBilling").Action.includes(a), `boundary: ${a}`);
+  }
+  const dhmc = `arn:aws:ssm:eu-west-2:${FILL.account}:servicesetting/ssm/managed-instance/default-ec2-instance-management-role`;
+  for (const a of ["ssm:UpdateServiceSetting", "ssm:ResetServiceSetting"]) {
+    assert.equal(decide(POLICIES.role, { action: a, resource: dhmc, ctx: { "aws:RequestedRegion": "eu-west-2" } }), "explicitDeny", `role: ${a}`);
+    assert.equal(decide([POLICIES.boundary], { action: a, resource: dhmc, ctx: { "aws:RequestedRegion": "eu-west-2" } }), "explicitDeny", `boundary: ${a}`);
+  }
+  // Reading the setting stays allowed (the lab's own SSM pages show it).
+  assert.equal(decide(POLICIES.role, { action: "ssm:GetServiceSetting", resource: dhmc, ctx: { "aws:RequestedRegion": "eu-west-2" } }), "allowed");
+});
+
 test("labs.tf: wg-admin-labs trusts main only, for 3 hours, with every rendered policy attached", () => {
   const tf = read("infra/aws-bootstrap/labs.tf");
   assert.match(tf, /name\s+= "wg-admin-labs"\n\s+max_session_duration = 10800/);
@@ -271,10 +300,10 @@ test("the Worker user may read lab things in both lab regions, and change nothin
 test("the simulator cases are the eight of A19 and fix round 1's, and a wrong answer is a problem", () => {
   const cases = simulatorCases("123456789012", FILL.vpcArns);
   assert.deepEqual(cases.map((c) => [c.name, c.want]), [["tagged VPC", "allowed"], ["bounded lab role", "allowed"], ["untagged VPC", "denied"], ["the VPN server", "denied"], ["role without the boundary", "denied"], ["role outside the path", "denied"], ["access key", "denied"], ["a third region", "denied"],
-    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a subnet in the default VPC", "denied"]]);
+    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a subnet in the default VPC", "denied"]]);
   // With no default VPC in the account there is nothing to ask about it.
   assert.ok(!simulatorCases("123456789012", []).some((c) => c.name === "a subnet in the default VPC"));
-  assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"]]);
+  assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: SSM default host management", "denied"], ["boundary: reset an SSM setting", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"]]);
   const ok = cases.map((c) => ({ name: c.name, decision: c.want === "allowed" ? "allowed" : "explicitDeny" }));
   assert.deepEqual(simulatorProblems(ok, cases), []);
   assert.deepEqual(simulatorProblems([{ ...ok[0], decision: "implicitDeny" }, ...ok.slice(1)], cases), ["tagged VPC: wanted allowed, AWS said implicitDeny"]);
@@ -336,11 +365,11 @@ test("--labs: every simulator case is asked of the role, quotas below target are
   const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
   assert.equal(r.ok, true);
   const sims = calls.filter((c) => c[2] === "simulate-principal-policy");
-  assert.equal(sims.length, 20);
+  assert.equal(sims.length, 23);
   for (const c of sims) assert.equal(c[c.indexOf("--policy-source-arn") + 1], O.roleArn);
   // The boundary, simulated as a policy of its own (simulate-custom-policy), with the document the bootstrap filled.
   const custom = calls.filter((c) => c[2] === "simulate-custom-policy");
-  assert.equal(custom.length, 8);
+  assert.equal(custom.length, 10);
   for (const c of custom) assert.equal(c[c.indexOf("--policy-input-list") + 1], BOUNDARY_DOC);
   const tagged = sims[0];
   assert.deepEqual(JSON.parse(tagged[tagged.indexOf("--context-entries") + 1]), [
@@ -561,7 +590,9 @@ test("every AWS CLI call in Unblock, the safety net, Verify clean and the ready 
   const calls = scripts.flatMap((p) => cliCalls(p).map((c) => ({ ...c, p })));
   // The extraction found the calls (a script that stops naming them would make this test vacuous).
   assert.ok(calls.length > 90, `${calls.length} calls`);
-  for (const must of ["iam delete-role", "configservice stop-configuration-recorder", "cloudwatch delete-dashboards", "ec2 revoke-security-group-egress", "resourcegroupstaggingapi get-resources", "cloudfront get-distribution", "s3api delete-objects"]) assert.ok(calls.some((c) => c.cli === must), must);
+  for (const must of ["iam delete-role", "configservice stop-configuration-recorder", "cloudwatch delete-dashboards", "ec2 revoke-security-group-egress", "resourcegroupstaggingapi get-resources", "cloudfront get-distribution", "s3api delete-objects",
+    // Final review, Important 2: security group rules, listeners and listener rules, read and (when still there) deleted.
+    "ec2 describe-security-group-rules", "ec2 revoke-security-group-ingress", "elbv2 describe-listeners", "elbv2 describe-rules", "elbv2 delete-listener", "elbv2 delete-rule"]) assert.ok(calls.some((c) => c.cli === must), must);
   const refused = [];
   for (const c of calls) for (const req of requestsOf(c)) {
     const d = decide(POLICIES.role, req);

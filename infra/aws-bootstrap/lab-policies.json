@@ -440,7 +440,10 @@
             "ec2:ModifyVpcBlockPublicAccessExclusion",
             "ec2:ModifyVpcBlockPublicAccessOptions",
             "ec2:ReplaceImageCriteriaInAllowedImagesSettings",
-            "ec2:ResetEbsDefaultKmsKeyId"
+            "ec2:ResetEbsDefaultKmsKeyId",
+            "ssm:RegisterDefaultPatchBaseline",
+            "ssm:ResetServiceSetting",
+            "ssm:UpdateServiceSetting"
           ],
           "Resource": "*"
         },
@@ -612,10 +615,7 @@
             "apigateway:PUT",
             "apigateway:UpdatePortal*",
             "application-autoscaling:RegisterScalableTarget",
-            "athena:CreateCapacityReservation",
-            "athena:CreateDataCatalog",
-            "athena:CreateWorkGroup",
-            "athena:StartSession"
+            "athena:CreateCapacityReservation"
           ],
           "Resource": "*",
           "Condition": {
@@ -633,6 +633,9 @@
           "Sid": "CreateNeedsLabTag2",
           "Effect": "Deny",
           "Action": [
+            "athena:CreateDataCatalog",
+            "athena:CreateWorkGroup",
+            "athena:StartSession",
             "autoscaling:CreateAutoScalingGroup",
             "backup:CopyIntoBackupVault",
             "backup:CreateBackupAccessPoint",
@@ -2336,7 +2339,10 @@
           "ec2:ModifyVpcBlockPublicAccessExclusion",
           "ec2:ModifyVpcBlockPublicAccessOptions",
           "ec2:ReplaceImageCriteriaInAllowedImagesSettings",
-          "ec2:ResetEbsDefaultKmsKeyId"
+          "ec2:ResetEbsDefaultKmsKeyId",
+          "ssm:RegisterDefaultPatchBaseline",
+          "ssm:ResetServiceSetting",
+          "ssm:UpdateServiceSetting"
         ],
         "Resource": "*"
       },

@@ -33,7 +33,7 @@
 //                defaults or aws_ec2_tag (UNTAGGED_DEFAULT_TYPES, ruling A48)
 //   never        what a lab only explains in its readme (NEVER_TYPES; dedicated or host tenancy)
 //   tag          (plan) tags_all without cloudlabs-lab = <id>, or not known at plan;
-//                an instance's volumes, a launch template's tag specifications, an Auto
+//                an instance's volume_tags (ruling A49), a launch template's tag specifications, an Auto
 //                Scaling group's propagated tag, ECS and RDS tag copying and Backup
 //                recovery point tags without it
 //   untaggable   a type that cannot carry tags not named lab-<id>-* (UNTAGGABLE)
@@ -42,10 +42,13 @@
 //                IAM users outside AWS_IAM_USER_LABS; attachments of policies other than
 //                MANAGED_POLICIES and the lab's own; policy documents with "*", iam: or
 //                NotAction; trust policies naming anyone but AWS services and the lab's
-//                own roles; a document not known at plan (ruling A42)
-//   gateway      the VPN server's names (vpc-wg, rt-wg, ...), the wg-admin key or value,
-//                a peering accepter, a peering not between the lab's own VPCs, and (plan)
-//                an id of an existing AWS resource under an id-holding key
+//                own roles in the lab's own account (no wildcard; ruling A52); a
+//                document not known at plan (ruling A42)
+//   gateway      the VPN server's names (vpc-wg, vm-wg, ...: GATEWAY_NAME_LIST), the wg-admin
+//                key or value, a peering accepter, a peering not between the lab's own VPCs,
+//                and (plan) an id of an existing AWS resource under an id-holding key, or an
+//                instance target selecting every instance (a wildcard id, tag-key, a wildcard
+//                tag value; ruling A50)
 //   address      (plan) a VPC, secondary CIDR or subnet outside the slot (var.address_space)
 //                or overlapping another; a route other than the slot, var.gateway_cidr or
 //                0.0.0.0/0 (::/0 for IPv6); an IPv6 IPAM pool outside ans-20-vpc-design
@@ -194,8 +197,13 @@ export const PUBLIC_INSTANCE_LABS = ["ans-22-s2s-vpn"];
 
 const LAB_TAG = "cloudlabs-lab";
 const IAM_PATH = "/cloudlabs-lab/";
-/** The VPN server's own names (infra/aws): a lab never names or reaches them. */
-const GATEWAY_NAMES = /\b(vpc-wg|snet-wg|rt-wg|sg-wg|igw-wg|rt-workloads|snet-workloads)\b/i;
+/**
+ * The VPN server's own names (infra/aws/main.tf's Name tags: its VPC, subnets, route tables, gateway, security groups,
+ * interface, address, instances and their disks): a lab never names or reaches them (final review, Important 3: an SSM
+ * association could otherwise target tag:Name = vm-wg).
+ */
+export const GATEWAY_NAME_LIST = ["vpc-wg", "snet-wg", "rt-wg", "sg-wg", "igw-wg", "nic-wg", "pip-wg", "vm-wg", "osdisk-wg", "rt-workloads", "snet-workloads", "sg-workloads", "vm-test", "osdisk-test"];
+const GATEWAY_NAMES = new RegExp(String.raw`\b(${GATEWAY_NAME_LIST.join("|")})\b`, "i");
 /** An id of an existing EC2 resource: a lab names its own only by reference, so a known one is someone else's. */
 const EC2_ID = "(?:vpc|subnet|rtb|sg|igw|nat|pcx|tgw|tgw-attach|eni|i|eipalloc|vpce|lt|eigw|pl|vol|snap)-[0-9a-f]{8,17}";
 const KNOWN_ID_RE = new RegExp(`^${EC2_ID}$`);
@@ -212,6 +220,9 @@ const ID_KEY = (k) => /(^|_)ids?$/i.test(k) || /[a-z]Ids?$/.test(k) || ["vpc_zon
  * ids: any key but a tag or resource-group selector (InstanceIds, WindowTargetIds, ...).
  */
 const ID_TARGET_KEY = (k) => typeof k === "string" && !/^(tag:|tag-key$|resource-groups:)/i.test(k);
+/** A target by tag key alone (every instance carrying the key: Name, say), and one by a tag's value. */
+const TARGET_TAG_KEY = (k) => typeof k === "string" && /^tag-key$/i.test(k);
+const TARGET_TAG = (k) => typeof k === "string" && /^tag:/i.test(k);
 /** count.index and each.key: an instance's own key (Terraform lists them among the references). */
 const INDEX_REF = /^(count\.index|each\.key)(\.|\[|$)/;
 /** The private ranges: SSH from anything wider is from the internet. */
@@ -282,9 +293,13 @@ function permissionProblem(doc) {
   return null;
 }
 
-/** Why a role's trust policy is refused, or null: only AWS services and the lab's own roles may assume it. */
-function trustProblem(doc, labId) {
-  const ownRole = new RegExp(`^arn:aws:iam::\\d{12}:role/cloudlabs-lab/lab-${escapeRe(labId)}-[A-Za-z0-9+=,.@_-]+$`);
+/**
+ * Why a role's trust policy is refused, or null: only AWS services and the lab's own roles, in the lab's own account
+ * (final review, Important 4: account is the plan's caller identity, else the role's boundary's; null when neither is
+ * known, and then no role principal passes), may assume it. No wildcard: not in the account, not in the name.
+ */
+function trustProblem(doc, labId, account) {
+  const ownRole = account ? new RegExp(`^arn:aws:iam::${account}:role/cloudlabs-lab/lab-${escapeRe(labId)}-[A-Za-z0-9+=,.@_-]+$`) : null;
   for (const s of list(doc.Statement)) {
     if (!isObj(s)) return "it has a statement this check cannot read";
     if ("NotPrincipal" in s) return "it uses NotPrincipal";
@@ -293,8 +308,10 @@ function trustProblem(doc, labId) {
     if (!isObj(p)) return `it trusts ${JSON.stringify(p)}`;
     for (const [k, v] of Object.entries(p)) {
       if (k === "Service" && list(v).every((x) => typeof x === "string" && /^[a-z0-9-]+(\.[a-z0-9-]+)*\.amazonaws\.com(\.cn)?$/.test(x))) continue;
-      if (k === "AWS" && list(v).every((x) => typeof x === "string" && ownRole.test(x))) continue;
-      return `it trusts ${k} ${JSON.stringify(v)}: only AWS services and the lab's own roles (arn:aws:iam::<account>:role/cloudlabs-lab/lab-${labId}-*)`;
+      if (k === "AWS" && ownRole && list(v).every((x) => typeof x === "string" && ownRole.test(x))) continue;
+      // Never an account id in the output: the lab's own is masked in CI, another's is no business of the log.
+      const shown = JSON.stringify(v).replace(/\d{12}/g, "<account>");
+      return `it trusts ${k} ${shown}: only AWS services and the lab's own roles in the lab's own account (arn:aws:iam::<this account>:role/cloudlabs-lab/lab-${labId}-<name>)${ownRole ? "" : "; this plan does not show the lab's own account (data.aws_caller_identity or the role's boundary)"}`;
     }
   }
   return null;
@@ -353,6 +370,8 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
   const managed = new Map();
   for (const r of resources) if (r.mode === "managed" && !managed.has(stripIndex(r.address))) managed.set(stripIndex(r.address), r);
   const data = resources.filter((r) => r.mode === "data");
+  /** The lab's own account: the caller identity the plan read (main.tf's data.aws_caller_identity.current), if known. */
+  const callerAccount = data.filter((d) => d.type === "aws_caller_identity").map((d) => d.values?.account_id).find((a) => typeof a === "string" && /^\d{12}$/.test(a)) ?? null;
   /** The managed resource a reference names, if it is in this configuration. */
   const target = (ref) => (ref.startsWith("data.") ? null : managed.get(ref.replace(/\[[^\]]*\]/g, "").split(".").slice(0, 2).join(".")) ?? null);
   /** References (instance keys aside) that all name resources of `types` in this configuration, and at least one. */
@@ -473,15 +492,23 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         // A known id under an id-holding key (a list inherits its key), a target's values when its key selects ids, or an
         // EC2 ARN with a known id in it anywhere. The lab's own resources are unknown at plan, so never match.
         const named = (path, s) => refuse("gateway", `${path.join(".")} names an existing AWS resource the lab did not make${r.sensitive?.has(path[0]) ? "" : ` (${s})`}`);
+        // A wildcard id, or a target selecting by tag key alone or a wildcard tag value, selects every instance, the VPN
+        // server's too (final review, Important 3): a lab targets its own by reference or by its own tag values.
+        const every = (path, why) => refuse("gateway", `${path.join(".")} ${why}: it would select every instance, the VPN server's too; target the lab's own by reference or by tag (tag:cloudlabs-lab = the lab id)`);
         const scan = (x, path, ids) => {
           if (typeof x === "string") {
-            if (ids && KNOWN_ID_RE.test(x) && !dataStrings.has(x)) named(path, x);
+            if (ids && x.includes("*")) every(path, `is a wildcard (${x})`);
+            else if (ids && KNOWN_ID_RE.test(x) && !dataStrings.has(x)) named(path, x);
             else {
               const m = EC2_ARN_RE.exec(x);
               if (m && !dataStrings.has(m[1])) named(path, m[1]);
             }
           } else if (Array.isArray(x)) x.forEach((y, i) => scan(y, [...path, i], ids));
-          else if (isObj(x)) for (const [k, y] of Object.entries(x)) scan(y, [...path, k], ID_KEY(k) || (k === "values" && ID_TARGET_KEY(x.key)));
+          else if (isObj(x)) {
+            if (TARGET_TAG_KEY(x.key) && "values" in x) every([...path, "key"], `is ${x.key}`);
+            else if (TARGET_TAG(x.key) && list(x.values).some((y) => typeof y === "string" && y.includes("*"))) every([...path, "values"], "is a wildcard tag value");
+            for (const [k, y] of Object.entries(x)) scan(y, [...path, k], ID_KEY(k) || (k === "values" && ID_TARGET_KEY(x.key)));
+          }
         };
         for (const [k, y] of Object.entries(v)) scan(y, [k], ID_KEY(k));
       }
@@ -552,7 +579,8 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           if (plan) refuse("iam", "assume_role_policy: the policy must be known at plan: write it with jsonencode, ruling A42");
         } else if (j.bad) refuse("iam", "assume_role_policy is not a policy document this check can read");
         else {
-          const why = trustProblem(j.doc, labId);
+          const pb = typeof val.permissions_boundary === "string" ? /^arn:aws:iam::(\d{12}):/.exec(val.permissions_boundary)?.[1] : null;
+          const why = trustProblem(j.doc, labId, callerAccount ?? pb ?? null);
           if (why) refuse("iam", `assume_role_policy: ${why}`);
         }
       }
@@ -869,8 +897,9 @@ function tagProblems(r, v, labId, refuse) {
   }
   switch (r.type) {
     case "aws_instance":
-      // Default tags do not reach volumes; a separately attached disk takes the root's tags in root_block_device (C18).
-      if (!has(v.volume_tags) && !has(list(v.root_block_device).find(isObj)?.tags)) refuse("tag", `volume_tags (or root_block_device tags) must carry ${LAB_TAG} = ${labId}: merge(var.tags, …)`);
+      // volume_tags go in with the launch (RunInstances), which wg-admin-labs refuses without the volume's lab tag;
+      // root_block_device.tags are applied after launch, so they never stand in (final review, Important 1).
+      if (!has(v.volume_tags)) refuse("tag", `volume_tags must carry ${LAB_TAG} = ${labId}: var.tags or merge(var.tags, …), so the launch tags the volumes`);
       break;
     case "aws_launch_template":
       for (const rt of ["instance", "volume", "network-interface"]) {

@@ -31,7 +31,9 @@
 #   1 workloads      Auto Scaling groups (force), EventBridge rules (targets
 #                    first), Config rules (remediation first), the lab's
 #                    Config recorder stopped, its delivery channel and recorder
-#   3 network        load balancers, then target groups; RDS replicas, then
+#   3 network        load balancers, then listener rules and listeners still
+#                    there (most go with their load balancer), then target
+#                    groups; RDS replicas, then
 #                    instances, subnet groups, parameter groups, snapshots;
 #                    instances terminated; launch templates; NAT gateways;
 #                    Elastic IPs; VPC peering; VPC endpoints; Instance Connect
@@ -40,7 +42,9 @@
 #                    name another lab group revoked first; never "default"),
 #                    subnets, route tables (non-main associations first),
 #                    network ACLs (not the default), internet gateways
-#                    (detached first), egress-only gateways, prefix lists, VPCs
+#                    (detached first), egress-only gateways, prefix lists, VPCs;
+#                    then security group rules still there (most go with their
+#                    group), revoked by id, never in the VPN server's VPC
 #   5 data           buckets (every version and delete marker), SNS topics, log
 #                    groups, alarms, dashboards, query definitions, SSM
 #                    associations, patch baselines (their patch groups first),
@@ -64,7 +68,8 @@
 # describe (an instance terminated, a NAT gateway or VPC endpoint deleted, an
 # Instance Connect Endpoint or prefix list delete-complete, a volume deleted,
 # an AMI deregistered, a dead peering connection, anything AWS answers "not
-# found" for, and a KMS key pending deletion, are clean). A type with no
+# found" for (a security group rule, listener or listener rule gone with its
+# group or load balancer too), and a KMS key pending deletion, are clean). A type with no
 # handler is never clean ("no handler for <type>: <name>"). While a lab VPC
 # still exists, every instance (not terminated) and every network interface
 # (not requester-managed, not attached to an instance, which is judged
@@ -249,6 +254,7 @@ describe() {
     ec2:instance-connect-endpoint) set -- ec2 describe-instance-connect-endpoints --instance-connect-endpoint-ids "$id"; q='.InstanceConnectEndpoints[]?' ;;
     ec2:network-interface) set -- ec2 describe-network-interfaces --network-interface-ids "$id"; q='.NetworkInterfaces[]?' ;;
     ec2:security-group) set -- ec2 describe-security-groups --group-ids "$id"; q='.SecurityGroups[]?' ;;
+    ec2:security-group-rule) set -- ec2 describe-security-group-rules --security-group-rule-ids "$id"; q='.SecurityGroupRules[]?' ;;
     ec2:subnet) set -- ec2 describe-subnets --subnet-ids "$id"; q='.Subnets[]?' ;;
     ec2:route-table) set -- ec2 describe-route-tables --route-table-ids "$id"; q='.RouteTables[]?' ;;
     ec2:network-acl) set -- ec2 describe-network-acls --network-acl-ids "$id"; q='.NetworkAcls[]?' ;;
@@ -264,6 +270,8 @@ describe() {
     ec2:image) set -- ec2 describe-images --image-ids "$id"; q='.Images[]?' ;;
     elasticloadbalancing:loadbalancer) set -- elbv2 describe-load-balancers --load-balancer-arns "$x"; q='.LoadBalancers[]?' ;;
     elasticloadbalancing:targetgroup) set -- elbv2 describe-target-groups --target-group-arns "$x"; q='.TargetGroups[]?' ;;
+    elasticloadbalancing:listener) set -- elbv2 describe-listeners --listener-arns "$x"; q='.Listeners[]?' ;;
+    elasticloadbalancing:listener-rule) set -- elbv2 describe-rules --rule-arns "$x"; q='.Rules[]?' ;;
     rds:db) set -- rds describe-db-instances --db-instance-identifier "$id"; q='.DBInstances[]?' ;;
     rds:subgrp) set -- rds describe-db-subnet-groups --db-subnet-group-name "$id"; q='.DBSubnetGroups[]?' ;;
     rds:pg) set -- rds describe-db-parameter-groups --db-parameter-group-name "$id"; q='.DBParameterGroups[]?' ;;
@@ -510,6 +518,27 @@ del_recorder() { wr "$1" "delete $(label "$1")" configservice delete-configurati
 # Phase 3, network services.
 del_lb() { wr "$1" "delete $(label "$1")" elbv2 delete-load-balancer --load-balancer-arn "${C_A[$1]}"; }
 del_tg() { wr "$1" "delete $(label "$1")" elbv2 delete-target-group --target-group-arn "${C_A[$1]}"; }
+# Listeners and their rules go with their load balancer (deleted above), so most answer "not found" here and
+# nothing more is asked. One still there (its load balancer is not among the lab's items, or stayed) is deleted
+# by its ARN: rules, then listeners, before the target groups they forward to. A listener's default rule goes
+# with the listener.
+del_lb_child() {
+  local i="$1" rc
+  describe "$i"
+  rc=$?
+  [ "$rc" -eq 1 ] && return 1
+  if [ "$rc" -ne 0 ]; then
+    warn "not deleted: $(label "$i") (could not read it: $(code))"
+    return 1
+  fi
+  [ -n "$DJ" ] || return 1
+  if [ "${C_T[$i]}" = elasticloadbalancing:listener ]; then
+    wr "$i" "delete $(label "$i")" elbv2 delete-listener --listener-arn "${C_A[$i]}"
+  else
+    [ "$(jq -r '.IsDefault // false' <<<"$DJ")" = true ] && return 1
+    wr "$i" "delete $(label "$i")" elbv2 delete-rule --rule-arn "${C_A[$i]}"
+  fi
+}
 del_db() { wr "$1" "delete $(label "$1")" rds delete-db-instance --db-instance-identifier "${C_I[$1]}" --skip-final-snapshot --delete-automated-backups; }
 del_subgrp() { wr "$1" "delete $(label "$1")" rds delete-db-subnet-group --db-subnet-group-name "${C_I[$1]}"; }
 del_pg() { wr "$1" "delete $(label "$1")" rds delete-db-parameter-group --db-parameter-group-name "${C_I[$1]}"; }
@@ -637,6 +666,38 @@ fab_pl() { fab "$1" "delete $(label "$1")" ec2 delete-managed-prefix-list --pref
 fab_vpc() {
   vpc_ok "$1" || { FAB_DONE[$1]=1; return; }
   fab "$1" "delete $(label "$1")" ec2 delete-vpc --vpc-id "${C_I[$1]}"
+}
+# A security group rule goes with its group (deleted above), so it normally answers "not found" here and
+# nothing more is asked. One still there (its group is not among the lab's items, or stayed) is revoked by its
+# id, never when its group is inside the VPN server's VPC or that VPC is not known.
+del_sgr() {
+  local i="$1" r="${C_R[$1]}" rc g dir json v
+  if [ -n "${WG_BLIND[$r]:-}" ]; then
+    warn "not deleted: $(label "$i") (the VPN server's VPC in $r is not known)"
+    return 1
+  fi
+  describe "$i"
+  rc=$?
+  [ "$rc" -eq 1 ] && return 1
+  if [ "$rc" -ne 0 ]; then
+    warn "not deleted: $(label "$i") (could not read it: $(code))"
+    return 1
+  fi
+  [ -n "$DJ" ] || return 1
+  g="$(jq -r '.GroupId // empty' <<<"$DJ")"
+  [ "$(jq -r '.IsEgress // false' <<<"$DJ")" = true ] && dir=egress || dir=ingress
+  [ -n "$g" ] || return 1
+  if ! json="$(awsq "$r" ec2 describe-security-groups --group-ids "$g")"; then
+    gone_err && return 1
+    warn "not deleted: $(label "$i") (could not read its group: $(code))"
+    return 1
+  fi
+  v="$(jq -r '.SecurityGroups[0]?.VpcId // empty' <<<"$json" 2>/dev/null)"
+  if [ -z "$v" ] || [ -n "${WG_VPCS["$r|$v"]:-}" ] || jq -e '.SecurityGroups[0]? | any((.Tags // [])[]; .Key == "wg-admin")' <<<"$json" >/dev/null 2>&1; then
+    warn "never touched: $(label "$i") is in a group inside the VPN server's VPC (or one it cannot place)"
+    return 1
+  fi
+  wr "$i" "revoke $(label "$i")" ec2 "revoke-security-group-$dir" --group-id "$g" --security-group-rule-ids "${C_I[$i]}"
 }
 FABRIC=(ec2:network-interface:fab_eni ec2:security-group:fab_sg ec2:subnet:fab_subnet ec2:route-table:fab_rt ec2:network-acl:fab_acl ec2:internet-gateway:fab_igw ec2:egress-only-internet-gateway:fab_eigw ec2:prefix-list:fab_pl ec2:vpc:fab_vpc)
 fabric() {
@@ -784,9 +845,9 @@ del_policy() {
 
 # Every type key a handler covers (ruling A36); the rest are left for Verify clean to report.
 HANDLED=" autoscaling:autoScalingGroup events:rule config:config-rule config:configuration-recorder config:delivery-channel
-  elasticloadbalancing:loadbalancer elasticloadbalancing:targetgroup rds:db rds:subgrp rds:pg rds:snapshot ec2:instance
+  elasticloadbalancing:loadbalancer elasticloadbalancing:listener elasticloadbalancing:listener-rule elasticloadbalancing:targetgroup rds:db rds:subgrp rds:pg rds:snapshot ec2:instance
   ec2:launch-template ec2:natgateway ec2:elastic-ip ec2:vpc-peering-connection ec2:vpc-endpoint ec2:instance-connect-endpoint
-  ec2:volume ec2:network-interface ec2:security-group ec2:subnet ec2:route-table ec2:network-acl ec2:internet-gateway
+  ec2:volume ec2:network-interface ec2:security-group ec2:security-group-rule ec2:subnet ec2:route-table ec2:network-acl ec2:internet-gateway
   ec2:egress-only-internet-gateway ec2:prefix-list ec2:vpc s3:bucket sns:topic logs:log-group cloudwatch:alarm
   cloudwatch:dashboard logs:query-definition ssm:association ssm:patchbaseline backup:backup-plan backup:backup-vault
   ec2:image ec2:snapshot resource-groups:group iam:instance-profile iam:role iam:user iam:policy "
@@ -814,6 +875,8 @@ run config:delivery-channel - del_channel
 run config:configuration-recorder - del_recorder
 # 3 network services
 run elasticloadbalancing:loadbalancer poll del_lb
+run elasticloadbalancing:listener-rule - del_lb_child
+run elasticloadbalancing:listener - del_lb_child
 run elasticloadbalancing:targetgroup - del_tg
 rds_dbs yes
 rds_dbs no
@@ -828,8 +891,9 @@ run ec2:vpc-peering-connection - del_pcx
 run ec2:vpc-endpoint poll del_vpce
 run ec2:instance-connect-endpoint poll del_eice
 run ec2:volume - del_volume
-# 4 VPC fabric
+# 4 VPC fabric (then any security group rule its group did not take along)
 fabric
+run ec2:security-group-rule - del_sgr
 # 5 data and the rest (AMIs before snapshots: a snapshot behind an AMI cannot go first)
 run s3:bucket - del_bucket
 run sns:topic - del_topic

@@ -45,7 +45,8 @@ test("soa-03's launched instances carry the session's tags (default_tags do not 
     assert.match(tf, new RegExp(`tag_specifications \\{\\n\\s+resource_type = "${type}"\\n\\s+tags\\s+= merge\\(var\\.tags, \\{ Name = "vm-web" \\}\\)`), `${type} tags come from var.tags`);
   }
   for (const key of ["cloudlabs-session", "project"]) assert.match(tf, new RegExp(`key\\s+= "${key}"\\n\\s+value\\s+= var\\.tags\\["${key}"\\]\\n\\s+propagate_at_launch = true`), `the group carries ${key}`);
-  assert.match(tf, /depends_on = \[aws_internet_gateway\.lab, aws_route_table_association\.public\]/);
+  // The comment says the public route is in place before the load balancer: so does depends_on (final review, Minor 5).
+  assert.match(tf, /depends_on = \[aws_internet_gateway\.lab, aws_route_table_association\.public, aws_route\.public_internet\]/);
   assert.match(tf, /depends_on = \[aws_vpc_endpoint\.s3, aws_lb_listener\.http\]/);
   assert.match(tf, /http_tokens\s+= "required"/);
   assert.doesNotMatch(tf, /associate_public_ip_address\s+= true/);

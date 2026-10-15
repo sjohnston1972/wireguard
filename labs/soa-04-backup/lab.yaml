@@ -8,7 +8,7 @@ version: 1
 cloud: aws
 title: "Backup, snapshots, S3 versioning and replication"
 summary: >-
-  An AWS Backup plan and vault that back up a tagged EBS volume, a snapshot to restore from, and an S3 bucket with
+  An AWS Backup plan and vault that back up an EBS data volume, a snapshot to restore from, and an S3 bucket with
   versioning and a lifecycle rule that replicates every version to a second bucket.
 exam: SOA-C03
 skill_areas: [soa.reliability, saa.resilient]

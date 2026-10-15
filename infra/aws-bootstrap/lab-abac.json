@@ -6531,6 +6531,9 @@
     "ec2:ModifyVpcBlockPublicAccessExclusion",
     "ec2:ModifyVpcBlockPublicAccessOptions",
     "ec2:ReplaceImageCriteriaInAllowedImagesSettings",
-    "ec2:ResetEbsDefaultKmsKeyId"
+    "ec2:ResetEbsDefaultKmsKeyId",
+    "ssm:RegisterDefaultPatchBaseline",
+    "ssm:ResetServiceSetting",
+    "ssm:UpdateServiceSetting"
   ]
 }

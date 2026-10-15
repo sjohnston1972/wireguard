@@ -29,7 +29,8 @@
 // --cloud aws (AWS labs, spec §7.3) swaps in the AWS rules: providers aws,
 // random, time, tls and archive; literal CIDRs may also be IPv6 and only
 // 0.0.0.0/0 and ::/0 pass; the gateway rule names the VPN server's VPC parts
-// (vpc-wg, snet-wg, rt-wg, sg-wg, igw-wg, rt-workloads, snet-workloads) and
+// (vpc-wg, snet-wg, rt-wg, sg-wg, igw-wg, rt-workloads, snet-workloads, and
+// its instances, interface, address, disks and workloads group: AWS_GATEWAY_NAMES) and
 // anything called wg-admin-* except the lab permission boundary; aws-provider
 // (a provider "aws" block holds only region, alias and default_tags with
 // var.tags: no credentials, profile, assume_role, endpoints or account
@@ -150,11 +151,13 @@ const TEXT_RULES = [
 
 // AWS: the same rules, with IPv6 literals, the VPN server's VPC names and the aws-provider / data checks below.
 const AWS_BOUNDARY_NAME = "wg-admin-lab-boundary";
+/** Every Name tag in infra/aws/main.tf (lab-scope-aws.mjs GATEWAY_NAME_LIST is the same list; a test keeps them equal). */
+export const AWS_GATEWAY_NAMES = ["vpc-wg", "snet-wg", "rt-wg", "sg-wg", "igw-wg", "nic-wg", "pip-wg", "vm-wg", "osdisk-wg", "rt-workloads", "snet-workloads", "sg-workloads", "vm-test", "osdisk-test"];
 const AWS_TEXT_RULES = [
   { rule: "literal-cidr", re: /\b\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}\b/g, ok: (m) => m === "0.0.0.0/0", message: (m) => `literal CIDR ${m}: every address comes from cidrsubnet(var.address_space, ...)` },
   { rule: "literal-cidr", re: /(?<![\w:])(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\/\d{1,3}\b/g, ok: (m) => m === "::/0", message: (m) => `literal CIDR ${m}: every address comes from cidrsubnet(var.address_space, ...)` },
   ...TEXT_RULES.filter((r) => ["provisioner", "module", "import", "backend"].includes(r.rule)),
-  { rule: "gateway", re: /\b(vpc-wg|snet-wg|rt-wg|sg-wg|igw-wg|rt-workloads|snet-workloads)\b/g, message: (m) => `${m}: lab Terraform never names the VPN server's VPC parts (only var.gateway_cidr)` },
+  { rule: "gateway", re: new RegExp(String.raw`\b(${AWS_GATEWAY_NAMES.join("|")})\b`, "g"), message: (m) => `${m}: lab Terraform never names the VPN server's parts (only var.gateway_cidr)` },
   { rule: "gateway", re: /\bwg-admin[\w-]*/g, ok: (m) => m === AWS_BOUNDARY_NAME, message: (m) => `${m}: lab Terraform never names wg-admin resources (only the ${AWS_BOUNDARY_NAME} permission boundary)` },
 ];
 

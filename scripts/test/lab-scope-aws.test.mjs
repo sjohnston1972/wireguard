@@ -15,7 +15,7 @@ import { AWS_CONFIG_LABS, AWS_GLOBAL_LABS, AWS_IAM_USER_LABS, AWS_INSTANCE_TYPES
 import * as scope from "../../infra/ci/lab-scope-aws.mjs";
 import { planResources } from "../../infra/ci/lab-scope.mjs";
 import { realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
-import { al2023Instance, AMI, AWS_PROVIDER_CONFIG, awsData, BOUNDARY, ctxAws, ref, tagged, templateResources } from "./fixtures/labs/plans/common-aws.mjs";
+import { ACCOUNT, al2023Instance, AMI, AWS_PROVIDER_CONFIG, awsData, BOUNDARY, ctxAws, ref, tagged, templateResources } from "./fixtures/labs/plans/common-aws.mjs";
 
 const ID = "soa-01-cloudwatch";
 const c = ctxAws(ID, "01");
@@ -38,6 +38,7 @@ const role = (over = {}) => ({
   values: tagged(c, { name: `lab-${ID}-vm`, path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "ec2.amazonaws.com" }, Action: "sts:AssumeRole" }] }), ...over }),
   refs: {},
 });
+const trustAws = (principal) => JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { AWS: principal }, Action: "sts:AssumeRole" }] });
 const policy = (doc) => ({ address: "aws_iam_policy.extra", values: tagged(c, { name: `lab-${ID}-extra`, path: "/cloudlabs-lab/", policy: JSON.stringify(doc) }), refs: {} });
 
 // [rule, what, a change to the clean plan]
@@ -64,6 +65,13 @@ const EVIL = [
   ["iam", "a role outside /cloudlabs-lab/", () => plan([role({ path: "/" })])],
   ["iam", "a role without the boundary", () => plan([role({ permissions_boundary: null })])],
   ["iam", "a role trusting an account", () => plan([role({ assume_role_policy: JSON.stringify({ Statement: [{ Effect: "Allow", Principal: { AWS: "arn:aws:iam::999999999999:root" }, Action: "sts:AssumeRole" }] }) })])],
+  // Final review, Important 4: a lab role's name in another account is not the lab's own role.
+  ["iam", "a role trusting a lab-named role in another account", () => plan([role({ assume_role_policy: trustAws(`arn:aws:iam::999999999999:role/cloudlabs-lab/lab-${ID}-vm`) })])],
+  ["iam", "a role trusting a lab-named role in any account (wildcard account)", () => plan([role({ assume_role_policy: trustAws(`arn:aws:iam::*:role/cloudlabs-lab/lab-${ID}-vm`) })])],
+  ["iam", "a role trusting every lab role (wildcard name)", () => plan([role({ assume_role_policy: trustAws(`arn:aws:iam::${ACCOUNT}:role/cloudlabs-lab/lab-${ID}-*`) })])],
+  ["iam", "a role trusting AWS = *", () => plan([role({ assume_role_policy: trustAws("*") })])],
+  ["iam", "a role trusting Principal *", () => plan([role({ assume_role_policy: JSON.stringify({ Statement: [{ Effect: "Allow", Principal: "*", Action: "sts:AssumeRole" }] }) })])],
+  ["iam", "a role trusting its own lab's role while its boundary names another account", () => plan([role({ permissions_boundary: "arn:aws:iam::999999999999:policy/wg-admin-lab-boundary", assume_role_policy: trustAws(`arn:aws:iam::999999999999:role/cloudlabs-lab/lab-${ID}-vm`) })])],
   ["iam", "a policy with an iam: action", () => plan([policy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: ["iam:PassRole"], Resource: "*" }] })])],
   ["iam", "a policy with Action *", () => plan([policy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: "*", Resource: "*" }] })])],
   ["iam", "AdministratorAccess attached", () => plan([role(), { address: "aws_iam_role_policy_attachment.admin", values: { policy_arn: "arn:aws:iam::aws:policy/AdministratorAccess" }, unknown: ["role"], refs: { role: ref("aws_iam_role.vm", "name") } }])],
@@ -77,6 +85,14 @@ const EVIL = [
   ["gateway", "an alarm on an existing instance (dimensions InstanceId, review round 1)", () => plan([{ address: "aws_cloudwatch_metric_alarm.cpu", values: tagged(c, { alarm_name: "cpu", comparison_operator: "GreaterThanThreshold", evaluation_periods: 1, metric_name: "CPUUtilization", namespace: "AWS/EC2", period: 300, statistic: "Average", threshold: 80, dimensions: { InstanceId: "i-0123456789abcdef0" } }), refs: {} }])],
   ["gateway", "an SSM association targeting existing instances by id", () => plan([{ address: "aws_ssm_association.patch", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }] }), refs: {} }])],
   ["gateway", "an EventBridge target running a command on existing instances", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }] }, unknown: ["rule", "role_arn"], refs: {} }])],
+  // Final review, Important 3: the VPN server's other names, and instance targets that select every instance.
+  ...["vm-wg", "nic-wg", "pip-wg", "osdisk-wg", "sg-workloads", "vm-test", "osdisk-test"].map((n) => ["gateway", `an SSM association targeting tag:Name = ${n}`, () => plan([{ address: "aws_ssm_association.x", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "tag:Name", values: [n] }] }), refs: {} }])]),
+  ["gateway", "an SSM association targeting InstanceIds = *", () => plan([{ address: "aws_ssm_association.all", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "InstanceIds", values: ["*"] }] }), refs: {} }])],
+  ["gateway", "an SSM association on instance_id = *", () => plan([{ address: "aws_ssm_association.all", values: tagged(c, { name: "AWS-RunShellScript", instance_id: "*" }), refs: {} }])],
+  ["gateway", "an SSM association targeting every instance with a Name tag (tag-key)", () => plan([{ address: "aws_ssm_association.all", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "tag-key", values: ["Name"] }] }), refs: {} }])],
+  ["gateway", "an SSM association targeting a wildcard tag value", () => plan([{ address: "aws_ssm_association.all", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "tag:Name", values: ["vm-*"] }] }), refs: {} }])],
+  ["gateway", "an EventBridge target running a command on InstanceIds *", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds", values: ["*"] }] }, unknown: ["rule", "role_arn"], refs: {} }])],
+  ["gateway", "an EventBridge target running a command on vm-wg by name", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "tag:Name", values: ["vm-wg"] }] }, unknown: ["rule", "role_arn"], refs: {} }])],
   ["gateway", "a backup selection naming an existing instance by ARN", () => plan([{ address: "aws_backup_selection.vms", values: { name: "vms", resources: ["arn:aws:ec2:eu-west-2:123456789012:instance/i-0123456789abcdef0"] }, unknown: ["plan_id", "iam_role_arn"], refs: {} }])],
   ["address", "a VPC outside the slot", () => { const base = templateResources(c); base[1] = { ...base[1], values: { ...base[1].values, cidr_block: "10.65.0.0/20" } }; return plan([], { base }); }],
   ["address", "a route to another lab's slot", () => plan([{ address: "aws_route.other", values: { destination_cidr_block: "10.66.0.0/18" }, unknown: ["route_table_id", "vpc_peering_connection_id"], refs: { route_table_id: ref("aws_route_table.private", "id") } }])],
@@ -105,6 +121,18 @@ test("a VPC's untagged defaults and aws_ec2_tag are refused in words, not left t
     assert.match(got[0].message, /ruling A48/, t);
     assert.doesNotMatch(got[0].message, /AWS_TYPES: add it/, t);
   }
+});
+
+test("a role may trust the lab's own roles in the lab's own account (the boundary's account), and SSM may target the lab by tag (final review, Important 3 and 4)", () => {
+  assert.deepEqual(rules(plan([role({ assume_role_policy: trustAws([`arn:aws:iam::${ACCOUNT}:role/cloudlabs-lab/lab-${ID}-vm`]) })])), []);
+  const own = (targets) => plan([{ address: "aws_ssm_association.inv", values: tagged(c, { name: "AWS-GatherSoftwareInventory", targets }), refs: {} }]);
+  assert.deepEqual(rules(own([{ key: "tag:cloudlabs-lab", values: [ID] }])), []);
+  assert.deepEqual(rules(own([{ key: "tag:Patch Group", values: [`lab-${ID}-web`] }])), []);
+  const msg = scope.checkPlanAws(own([{ key: "InstanceIds", values: ["*"] }]), ID)[0].message;
+  assert.match(msg, /every instance/);
+  const trust = scope.checkPlanAws(plan([role({ assume_role_policy: trustAws(`arn:aws:iam::999999999999:role/cloudlabs-lab/lab-${ID}-vm`) })]), ID)[0].message;
+  assert.match(trust, /the lab's own account/);
+  assert.doesNotMatch(trust, /999999999999|123456789012/, "no account id is printed");
 });
 
 test("every rule has at least one evil plan", () => {
@@ -235,9 +263,14 @@ test("the command line: exit 0 for the template, 1 with one line per refusal, 2 
   assert.equal(run("--plan", good, "--lab", "az104-08-vms").status, 2, "an Azure id is refused: this is the AWS check");
 });
 
-test("an instance tags its volumes through root_block_device tags instead of volume_tags (C18)", () => {
-  assert.deepEqual(rules(plan([al2023Instance(c, { key: "data", name: "vm-data", rootTags: true })])), []);
-  const bad = al2023Instance(c, { key: "data", name: "vm-data", rootTags: true });
-  bad.values.root_block_device[0].tags = { Name: "vm-data" };
-  assert.deepEqual(rules(plan([bad])), ["tag: aws_instance.data"]);
+test("an instance tags its volumes with volume_tags (var.tags alone is enough); root_block_device tags never stand in (final review, Important 1)", () => {
+  // volume_tags = var.tags with no Name (lab 04: a separately attached disk then carries the very same tags).
+  assert.deepEqual(rules(plan([al2023Instance(c, { key: "data", name: "vm-data", volumeName: null })])), []);
+  // The provider applies root_block_device.tags after launch, so RunInstances would carry no volume tag and
+  // wg-admin-labs's CreateNeedsLabTagRunInstances would refuse it: the plan is refused first.
+  const rootOnly = al2023Instance(c, { key: "data", name: "vm-data" });
+  delete rootOnly.values.volume_tags;
+  rootOnly.values.root_block_device[0].tags = { ...c.tags, Name: "vm-data" };
+  assert.deepEqual(rules(plan([rootOnly])), ["tag: aws_instance.data"]);
+  assert.match(scope.checkPlanAws(plan([rootOnly]), ID)[0].message, /volume_tags must carry cloudlabs-lab/);
 });

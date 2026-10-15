@@ -357,3 +357,133 @@ test("safety net clears the lab's named Config recorder and channel, dashboards 
   assert.doesNotMatch(r.out, /123456789012/);
   w.cleanup();
 });
+
+// ── Final review, Important 2: security group rules and load balancer listeners (and listener rules) ──
+const ELB = (r) => `arn:aws:elasticloadbalancing:eu-west-2:123456789012:${r}`;
+const LB = ELB("loadbalancer/app/alb-a03k3x9q/50dc6c495c0c9188");
+const LISTENER = ELB("listener/app/alb-a03k3x9q/50dc6c495c0c9188/f2f7dc8efc522ab2");
+const LRULE = ELB("listener-rule/app/alb-a03k3x9q/50dc6c495c0c9188/f2f7dc8efc522ab2/9683b2d02a6cabee");
+const TG = ELB("targetgroup/tg-a03k3x9q/73e2d6bc24d8a067");
+
+test("Verify clean: tagging-API ghosts of a security group rule, a listener and a listener rule count clean (NotFound or an empty answer)", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(A("security-group-rule/sgr-0aaaaaaaaaaaaaaa1"), A("security-group-rule/sgr-0aaaaaaaaaaaaaaa2"), LISTENER, LRULE) },
+    { cmd: "aws", match: "^ec2 describe-security-group-rules --security-group-rule-ids sgr-0aaaaaaaaaaaaaaa1", code: 254, err: "An error occurred (InvalidSecurityGroupRuleId.NotFound) when calling the DescribeSecurityGroupRules operation: 123456789012" },
+    { cmd: "aws", match: "^ec2 describe-security-group-rules --security-group-rule-ids sgr-0aaaaaaaaaaaaaaa2", out: '{"SecurityGroupRules":[]}' },
+    { cmd: "aws", match: "^elbv2 describe-listeners --listener-arns", code: 254, err: "An error occurred (ListenerNotFound) when calling the DescribeListeners operation: One or more listeners not found" },
+    { cmd: "aws", match: "^elbv2 describe-rules --rule-arns", code: 254, err: "An error occurred (RuleNotFound) when calling the DescribeRules operation: One or more rules not found" },
+    ...EMPTY_IAM,
+  ]);
+  const out = join(w.dir, "gh-output");
+  writeFileSync(out, "");
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", ID], { ...ENV, GITHUB_OUTPUT: fwd(out) });
+  assert.equal(r.status, 0, r.out + readFileSync(out, "utf8"));
+  assert.match(readFileSync(out, "utf8"), /^clean=true\nleftovers=\[\]$/m);
+  // Each asked by its own id or ARN, never by the tagging API alone.
+  const calls = w.calls();
+  assert.ok(calls.some((c) => c === `aws elbv2 describe-listeners --listener-arns ${LISTENER} --region eu-west-2 --output json`), calls.join("\n"));
+  assert.ok(calls.some((c) => c === `aws elbv2 describe-rules --rule-arns ${LRULE} --region eu-west-2 --output json`), calls.join("\n"));
+  assert.equal(calls.filter((c) => /^aws \S+ (delete|revoke)/.test(c)).length, 0, "verify never deletes");
+  w.cleanup();
+});
+
+test("Verify clean: a security group rule or a listener still there is a named leftover, not 'no handler'", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(A("security-group-rule/sgr-0aaaaaaaaaaaaaaa1"), LISTENER) },
+    { cmd: "aws", match: "^ec2 describe-security-group-rules --security-group-rule-ids sgr-0aaaaaaaaaaaaaaa1", out: '{"SecurityGroupRules":[{"SecurityGroupRuleId":"sgr-0aaaaaaaaaaaaaaa1","GroupId":"sg-0c","IsEgress":false}]}' },
+    { cmd: "aws", match: "^elbv2 describe-listeners --listener-arns", out: `{"Listeners":[{"ListenerArn":"${LISTENER}","Port":80}]}` },
+    ...EMPTY_IAM,
+  ]);
+  const out = join(w.dir, "gh-output");
+  writeFileSync(out, "");
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", ID], { ...ENV, GITHUB_OUTPUT: fwd(out) });
+  assert.equal(r.status, 1, r.out);
+  const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
+  assert.deepEqual(left.sort(), ["ec2:security-group-rule sgr-0aaaaaaaaaaaaaaa1", "elasticloadbalancing:listener app/alb-a03k3x9q/50dc6c495c0c9188/f2f7dc8efc522ab2"].sort());
+  assert.doesNotMatch(r.out + readFileSync(out, "utf8"), /123456789012/);
+  w.cleanup();
+});
+
+test("safety net: listeners and their rules go with the load balancer (no extra delete); ones still there are deleted, rules then listeners, before target groups", { skip }, () => {
+  // With the load balancer: deleting it took the listener and rule along, so they answer NotFound and are not deleted again.
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(LB, LISTENER, LRULE, TG) },
+    { cmd: "aws", match: "^elbv2 describe-load-balancers", code: 254, err: "An error occurred (LoadBalancerNotFound)" },
+    { cmd: "aws", match: "^elbv2 describe-listeners --listener-arns", code: 254, err: "An error occurred (ListenerNotFound)" },
+    { cmd: "aws", match: "^elbv2 describe-rules --rule-arns", code: 254, err: "An error occurred (RuleNotFound)" },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", [ID], ENV);
+  assert.equal(r.status, 0, r.out);
+  const calls = w.calls();
+  assert.ok(calls.some((c) => c.startsWith(`aws elbv2 delete-load-balancer --load-balancer-arn ${LB}`)));
+  assert.ok(!calls.some((c) => /^aws elbv2 delete-(listener|rule)/.test(c)), calls.join("\n"));
+  assert.doesNotMatch(r.out, /no handler for elasticloadbalancing/);
+  w.cleanup();
+  // Without its load balancer among the lab's items (or still there): the rule, then the listener, by ARN, before the target group.
+  const v = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(LISTENER, LRULE, TG, ELB("listener-rule/app/alb-a03k3x9q/50dc6c495c0c9188/f2f7dc8efc522ab2/0default")) },
+    { cmd: "aws", match: "^elbv2 describe-listeners --listener-arns", out: `{"Listeners":[{"ListenerArn":"${LISTENER}"}]}` },
+    { cmd: "aws", match: "^elbv2 describe-rules --rule-arns \\S+/0default", out: '{"Rules":[{"IsDefault":true}]}' },
+    { cmd: "aws", match: "^elbv2 describe-rules --rule-arns", out: `{"Rules":[{"RuleArn":"${LRULE}","IsDefault":false}]}` },
+    ...EMPTY_IAM,
+  ]);
+  const s = v.run("infra/ci/lab-aws-safety-net.sh", [ID], ENV);
+  assert.equal(s.status, 0, s.out);
+  const c2 = v.calls();
+  const at = (re) => c2.findIndex((c) => re.test(c));
+  assert.ok(at(new RegExp(`^aws elbv2 delete-rule --rule-arn ${LRULE.replace(/[/.]/g, "\\$&")} `)) >= 0, c2.join("\n"));
+  assert.ok(!c2.some((c) => /delete-rule --rule-arn \S+\/0default/.test(c)), "a listener's default rule goes with the listener");
+  assert.ok(at(/^aws elbv2 delete-rule/) < at(/^aws elbv2 delete-listener --listener-arn /));
+  assert.ok(at(/^aws elbv2 delete-listener/) < at(/^aws elbv2 delete-target-group/));
+  v.cleanup();
+});
+
+test("safety net: a security group rule goes with its group; one still there is revoked by id after the groups, never in the VPN server's VPC", { skip }, () => {
+  // Its group was the lab's and is deleted: the rule answers NotFound afterwards, so nothing more is asked.
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(A("security-group/sg-0c"), A("security-group-rule/sgr-0aaaaaaaaaaaaaaa1")) },
+    { cmd: "aws", match: "^ec2 describe-security-groups --group-ids sg-0c", out: '{"SecurityGroups":[{"GroupId":"sg-0c","GroupName":"lab-vms","VpcId":"vpc-0a","IpPermissions":[],"IpPermissionsEgress":[]}]}' },
+    { cmd: "aws", match: "^ec2 describe-security-group-rules", code: 254, err: "An error occurred (InvalidSecurityGroupRuleId.NotFound)" },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", [ID], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.ok(w.calls().some((c) => /^aws ec2 delete-security-group --group-id sg-0c/.test(c)));
+  assert.ok(!w.calls().some((c) => /^aws ec2 revoke-security-group-(ingress|egress) --group-id \S+ --security-group-rule-ids/.test(c)));
+  assert.doesNotMatch(r.out, /no handler for ec2:security-group-rule/);
+  w.cleanup();
+  // Still there (its group is not among the lab's items): revoked by its id, egress as egress, after the fabric.
+  const v = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(A("subnet/subnet-0b"), A("security-group-rule/sgr-0aaaaaaaaaaaaaaa1"), A("security-group-rule/sgr-0aaaaaaaaaaaaaaa2"), A("security-group-rule/sgr-0aaaaaaaaaaaaaaa3")) },
+    { cmd: "aws", match: "^ec2 describe-vpcs --filters Name=tag:wg-admin,Values=vpn", out: '{"Vpcs":[{"VpcId":"vpc-0wg"}]}' },
+    { cmd: "aws", match: "^ec2 describe-security-group-rules --security-group-rule-ids sgr-0aaaaaaaaaaaaaaa1", out: '{"SecurityGroupRules":[{"SecurityGroupRuleId":"sgr-0aaaaaaaaaaaaaaa1","GroupId":"sg-0other","IsEgress":false}]}' },
+    { cmd: "aws", match: "^ec2 describe-security-group-rules --security-group-rule-ids sgr-0aaaaaaaaaaaaaaa2", out: '{"SecurityGroupRules":[{"SecurityGroupRuleId":"sgr-0aaaaaaaaaaaaaaa2","GroupId":"sg-0other","IsEgress":true}]}' },
+    { cmd: "aws", match: "^ec2 describe-security-group-rules --security-group-rule-ids sgr-0aaaaaaaaaaaaaaa3", out: '{"SecurityGroupRules":[{"SecurityGroupRuleId":"sgr-0aaaaaaaaaaaaaaa3","GroupId":"sg-0wg","IsEgress":false}]}' },
+    { cmd: "aws", match: "^ec2 describe-security-groups --group-ids sg-0other", out: '{"SecurityGroups":[{"GroupId":"sg-0other","VpcId":"vpc-0a"}]}' },
+    { cmd: "aws", match: "^ec2 describe-security-groups --group-ids sg-0wg", out: '{"SecurityGroups":[{"GroupId":"sg-0wg","VpcId":"vpc-0wg"}]}' },
+    { cmd: "aws", match: "^ec2 describe-subnets --subnet-ids subnet-0b", out: '{"Subnets":[{"SubnetId":"subnet-0b","VpcId":"vpc-0a"}]}' },
+    ...EMPTY_IAM,
+  ]);
+  const s = v.run("infra/ci/lab-aws-safety-net.sh", [ID], ENV);
+  assert.equal(s.status, 0, s.out);
+  const c2 = v.calls();
+  const at = (re) => c2.findIndex((c) => re.test(c));
+  assert.ok(at(/^aws ec2 revoke-security-group-ingress --group-id sg-0other --security-group-rule-ids sgr-0aaaaaaaaaaaaaaa1/) >= 0, c2.join("\n"));
+  assert.ok(at(/^aws ec2 revoke-security-group-egress --group-id sg-0other --security-group-rule-ids sgr-0aaaaaaaaaaaaaaa2/) >= 0, c2.join("\n"));
+  assert.ok(at(/^aws ec2 delete-subnet --subnet-id subnet-0b/) < at(/^aws ec2 revoke-security-group-ingress --group-id sg-0other/), "after the fabric");
+  assert.ok(!c2.some((c) => /^aws ec2 revoke\S* .*(sg-0wg|sgr-0aaaaaaaaaaaaaaa3)/.test(c)), "never in the VPN server's VPC");
+  assert.match(s.out, /::warning::.*sgr-0aaaaaaaaaaaaaaa3.*VPN server/);
+  // The VPN server's VPC could not be found: nothing is revoked.
+  const blind = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(A("security-group-rule/sgr-0aaaaaaaaaaaaaaa1")) },
+    { cmd: "aws", match: "^ec2 describe-vpcs --filters Name=tag:wg-admin,Values=vpn", code: 254, err: "An error occurred (RequestLimitExceeded)" },
+    { cmd: "aws", match: "^ec2 describe-security-group-rules", out: '{"SecurityGroupRules":[{"SecurityGroupRuleId":"sgr-0aaaaaaaaaaaaaaa1","GroupId":"sg-0other","IsEgress":false}]}' },
+    ...EMPTY_IAM,
+  ]);
+  const b = blind.run("infra/ci/lab-aws-safety-net.sh", [ID], ENV);
+  assert.equal(b.status, 0, b.out);
+  assert.ok(!blind.calls().some((c) => /^aws ec2 revoke/.test(c)));
+  v.cleanup();
+  blind.cleanup();
+});

@@ -14,7 +14,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cloudOfId, lintTfText } from "../lib/labs.mjs";
-import { fileProblems, lintBicepText, lintDir } from "../../infra/ci/lab-lint.mjs";
+import fs from "node:fs";
+import { AWS_GATEWAY_NAMES, fileProblems, lintBicepText, lintDir } from "../../infra/ci/lab-lint.mjs";
+import { GATEWAY_NAME_LIST } from "../../infra/ci/lab-scope-aws.mjs";
 import { labFolders } from "../lib/labs.mjs";
 
 const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
@@ -58,7 +60,12 @@ test("AWS: literal CIDRs only 0.0.0.0/0 and ::/0", () => {
 });
 
 test("AWS: the VPN server's names and the wg-admin key are refused; the boundary's name is not", () => {
-  for (const n of ["vpc-wg", "snet-wg", "rt-wg", "sg-wg", "igw-wg", "rt-workloads", "snet-workloads"]) assert.ok(aws({ "main.tf": `locals {\n  x = "${n}"\n}\n` }).some((p) => p.startsWith("gateway:")), n);
+  // Every Name in infra/aws (final review, Important 3), the same list as the plan check's.
+  assert.deepEqual(AWS_GATEWAY_NAMES, GATEWAY_NAME_LIST);
+  for (const n of GATEWAY_NAME_LIST) assert.ok(aws({ "main.tf": `locals {\n  x = "${n}"\n}\n` }).some((p) => p.startsWith("gateway:")), n);
+  const names = [...fs.readFileSync(new URL("../../infra/aws/main.tf", import.meta.url), "utf8").matchAll(/\bName\s*=\s*"([a-z0-9-]+)"/g)].map((m) => m[1]);
+  assert.ok(names.length >= 10, `${names.length} names read from infra/aws/main.tf`);
+  for (const n of names) assert.ok(GATEWAY_NAME_LIST.includes(n), `infra/aws/main.tf's ${n} is not on the list`);
   assert.ok(aws({ "main.tf": 'locals {\n  t = { "wg-admin" = "vpn" }\n}\n' }).some((p) => p.startsWith("gateway:")));
   assert.ok(aws({ "main.tf": 'locals {\n  r = "wg-admin-deploy"\n}\n' }).some((p) => p.startsWith("gateway:")));
   assert.deepEqual(aws({ "main.tf": 'locals {\n  b = "arn:aws:iam::1:policy/wg-admin-lab-boundary"\n}\n' }), []);

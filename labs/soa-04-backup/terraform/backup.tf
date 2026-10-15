@@ -3,8 +3,9 @@
 # Plain English: AWS Backup in lab 04. A vault of the lab's own (removable
 # with its recovery points: Unblock deletes them first), a daily plan whose
 # recovery points carry the lab's tags and expire after a day, and a
-# selection of resources tagged cloudlabs-backup = daily that also belong to
-# this lab, backed up by a role of the lab's own.
+# selection of the data volume, by its ARN and only while it carries this
+# lab's tag, backed up by a role of the lab's own. (The data volume's tags
+# are the root volume's: see compute.tf, so a tag cannot tell them apart.)
 
 resource "aws_backup_vault" "lab" {
   name          = "lab-${var.lab_id}-vault"
@@ -48,16 +49,12 @@ resource "aws_backup_plan" "daily" {
   tags = { Name = "lab-daily" }
 }
 
-resource "aws_backup_selection" "tagged" {
-  name         = "lab-${var.lab_id}-tagged"
+resource "aws_backup_selection" "data" {
+  name         = "lab-${var.lab_id}-data"
   plan_id      = aws_backup_plan.daily.id
   iam_role_arn = aws_iam_role.backup.arn
-  resources    = ["*"]
+  resources    = [aws_ebs_volume.data.arn]
   condition {
-    string_equals {
-      key   = "aws:ResourceTag/cloudlabs-backup"
-      value = "daily"
-    }
     string_equals {
       key   = "aws:ResourceTag/cloudlabs-lab"
       value = var.lab_id

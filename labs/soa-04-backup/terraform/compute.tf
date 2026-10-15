@@ -1,11 +1,13 @@
 # compute.tf
 #
 # Plain English: lab 04's instance, vm-data (t4g.nano), with a 1 GiB gp3
-# data volume tagged for the backup plan (cloudlabs-backup = daily) and
-# mounted at /data, and a snapshot of that volume taken at deploy, to
-# restore from. The instance's own root volume takes the lab's tags through
-# root_block_device (instance-level volume tags would fight the separately attached data
-# volume over its tags). The snapshot waits three minutes after the attachment,
+# data volume (the backup plan's selection) mounted at /data, and a snapshot
+# of that volume taken at deploy, to restore from. The instance tags its
+# volumes at launch with volume_tags = var.tags (wg-admin-labs refuses a
+# launch whose volume carries no lab tag). The provider applies volume_tags
+# to every attached volume, so the data volume carries exactly the same tags
+# (the provider's default_tags, nothing of its own) and neither resource
+# undoes the other. The snapshot waits three minutes after the attachment,
 # so cloud-init has formatted, mounted and written /data/first-write.txt first
 # (the time provider is hashicorp/time, resolved without a required_providers
 # entry because the AWS template's versions.tf is copied unchanged).
@@ -33,17 +35,16 @@ resource "aws_instance" "data" {
   root_block_device {
     volume_size = 8
     volume_type = "gp3"
-    tags        = merge(var.tags, { Name = "vm-data" })
   }
-  tags       = { Name = "vm-data" }
-  depends_on = [aws_vpc_endpoint.s3]
+  volume_tags = var.tags
+  tags        = { Name = "vm-data" }
+  depends_on  = [aws_vpc_endpoint.s3]
 }
 
 resource "aws_ebs_volume" "data" {
   availability_zone = local.azs[0]
   size              = 1
   type              = "gp3"
-  tags              = { Name = "vol-data", "cloudlabs-backup" = "daily" }
 }
 
 resource "aws_volume_attachment" "data" {

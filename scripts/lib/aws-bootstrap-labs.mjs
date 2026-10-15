@@ -9,7 +9,8 @@
 //      path, an access key and a third region; and ruling A48's: tags and VPC
 //      network changes only on lab-tagged items, never the VPN server's user
 //      data, the deploy role, AdministratorAccess, the boundary itself or the
-//      default VPC), then about wg-admin-lab-boundary as a policy of its own
+//      default VPC; and the final review's: no launch with an untagged volume,
+//      no SSM account setting), then about wg-admin-lab-boundary as a policy of its own
 //      (simulate-custom-policy), and fails loudly on any other answer
 //   2. reads the four lab quotas in London and Ireland and asks for more where
 //      they are below target (never twice: a pending request is left alone)
@@ -49,6 +50,9 @@ export function simulatorCases(account, defaultVpcArns = []) {
     { name: "remove a boundary", action: "iam:DeleteRolePermissionsBoundary", resource: role, context: [], want: "denied" },
     blockPublicAccess(),
     { name: "EBS encryption by default", action: "ec2:EnableEbsEncryptionByDefault", resource: "*", context: [region], want: "denied" },
+    // Final review, Important 1: a launch must tag its volumes (volume_tags), or the volume ARN is refused.
+    { name: "a launch whose volume has no lab tag", action: "ec2:RunInstances", resource: `arn:aws:ec2:eu-west-2:${account}:volume/*`, context: [region], want: "denied" },
+    ...ssmSettingCases(account),
     ...defaultVpcCase(account, defaultVpcArns),
   ];
 }
@@ -68,6 +72,15 @@ function fabricCases(account, prefix = "") {
 function blockPublicAccess(prefix = "") {
   return { name: `${prefix}block public access for the account`, action: "ec2:ModifyVpcBlockPublicAccessOptions", resource: "*", context: [ctx("aws:RequestedRegion", ["eu-west-2"])], want: "denied" };
 }
+/** Account-wide SSM settings (final review, Important 3): Default Host Management would put the VPN server under SSM. */
+function ssmSettingCases(account, prefix = "") {
+  const dhmc = `arn:aws:ssm:eu-west-2:${account}:servicesetting/ssm/managed-instance/default-ec2-instance-management-role`;
+  const region = ctx("aws:RequestedRegion", ["eu-west-2"]);
+  return [
+    { name: `${prefix}SSM default host management`, action: "ssm:UpdateServiceSetting", resource: dhmc, context: [region], want: "denied" },
+    { name: `${prefix}reset an SSM setting`, action: "ssm:ResetServiceSetting", resource: dhmc, context: [region], want: "denied" },
+  ];
+}
 /** A subnet in the account's own default VPC (London's, else Ireland's). */
 function defaultVpcCase(account, defaultVpcArns, prefix = "") {
   const arn = defaultVpcArns[0];
@@ -82,6 +95,7 @@ export function boundaryCases(account, defaultVpcArns = []) {
     ...fabricCases(account, p),
     { name: `${p}delete every tag`, action: "ec2:DeleteTags", resource: `arn:aws:ec2:eu-west-2:${account}:vpc/vpc-0aaaaaaaaaaaaaaa1`, context: [ctx("aws:RequestedRegion", ["eu-west-2"]), ctx(`aws:ResourceTag/${LAB_TAG}`, ["soa-01-x"])], want: "denied" },
     blockPublicAccess(p),
+    ...ssmSettingCases(account, p),
     // AWS Backup's role tags the snapshot it has just made (no lab tag yet, no create action): not refused (fix round 2).
     { name: `${p}tag a new snapshot`, action: "ec2:CreateTags", resource: `arn:aws:ec2:eu-west-2::snapshot/snap-0123456789abcdef0`, context: [ctx("aws:RequestedRegion", ["eu-west-2"]), ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-04-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")], want: "allowed" },
     ...defaultVpcCase(account, defaultVpcArns, p),

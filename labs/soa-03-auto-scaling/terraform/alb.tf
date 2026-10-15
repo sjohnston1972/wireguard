@@ -47,7 +47,7 @@ resource "aws_lb" "web" {
 
   # The load balancer needs the internet gateway attached and the public route in place before it is created,
   # and must be gone before the gateway detaches.
-  depends_on = [aws_internet_gateway.lab, aws_route_table_association.public]
+  depends_on = [aws_internet_gateway.lab, aws_route_table_association.public, aws_route.public_internet]
 }
 
 resource "aws_lb_target_group" "web" {

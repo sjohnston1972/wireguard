@@ -21,8 +21,8 @@
      "armType": null
     },
     {
-     "id": "tf:aws_backup_selection.tagged",
-     "label": "lab-soa-04-backup-tagged",
+     "id": "tf:aws_backup_selection.data",
+     "label": "lab-soa-04-backup-data",
      "armType": null
     }
    ],
@@ -104,7 +104,7 @@
     },
     {
      "id": "tf:aws_ebs_volume.data",
-     "label": "vol-data",
+     "label": "data",
      "armType": "ec2:volume"
     },
     {

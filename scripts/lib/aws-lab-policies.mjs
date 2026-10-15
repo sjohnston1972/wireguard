@@ -186,10 +186,20 @@ export function abacLists(sar) {
  */
 const ACCOUNT_SETTING_RE = /^(Enable|Disable|Modify\w*Default|Reset\w*Default)/;
 export const NAMED_ACCOUNT_SETTINGS = ["ModifyVpcBlockPublicAccessOptions", "CreateVpcBlockPublicAccessExclusion", "ModifyVpcBlockPublicAccessExclusion", "DeleteVpcBlockPublicAccessExclusion", "ModifyAvailabilityZoneGroup", "ReplaceImageCriteriaInAllowedImagesSettings"];
+/**
+ * Account-wide SSM settings (final review, Important 3): every write on the reference's servicesetting type
+ * (UpdateServiceSetting, ResetServiceSetting: V 2026-10-15, the type takes no tag), one of which is Default Host
+ * Management, which would make every instance with the SSM agent, the VPN server's too, SSM-managed; and the region's
+ * default patch baseline, which patches every managed instance outside a patch group. The reference has no SSM
+ * setting write without a resource type (its resource-less writes make or cancel lab items).
+ */
+export const SSM_ACCOUNT_SETTING_TYPES = ["servicesetting"];
+export const SSM_NAMED_ACCOUNT_SETTINGS = ["RegisterDefaultPatchBaseline"];
 function isAccountSetting(service, a) {
+  const p = props(a);
+  if (service === "ssm") return Boolean(p.IsWrite || p.IsPermissionManagement) && (SSM_NAMED_ACCOUNT_SETTINGS.includes(a.Name) || (a.Resources ?? []).some((r) => SSM_ACCOUNT_SETTING_TYPES.includes(r.Name)));
   if (service !== "ec2") return false;
   if (NAMED_ACCOUNT_SETTINGS.includes(a.Name)) return true;
-  const p = props(a);
   return (a.Resources ?? []).length === 0 && Boolean(p.IsWrite || p.IsPermissionManagement) && ACCOUNT_SETTING_RE.test(a.Name);
 }
 
