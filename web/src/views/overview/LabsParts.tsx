@@ -9,7 +9,8 @@ import { Link } from "react-router-dom";
 import { ArrowRight, Trash2 } from "lucide-react";
 import type { LabSession } from "@shared/api";
 import { cloudOfId } from "@shared/labs";
-import { Button, Modal, Panel, StatusPill, cx } from "@/components";
+import { Button, Modal, Panel, cx } from "@/components";
+import { CloudBadge } from "@/views/labs/CloudBadge";
 import { useDestroyLab } from "@/api/mutations";
 import { useWidget } from "@/widgets";
 import { gbp } from "./model";
@@ -67,7 +68,7 @@ export function RunningLabs({ labs, now }: { labs: LabSession[]; now: number }) 
                   <Link className="ov-rlab__title" to={`/labs/${s.labId}`}>
                     {s.title}
                   </Link>
-                  {cloudOfId(s.labId) === "aws" && <StatusPill status="custom" label="AWS" tone="amber" dot={false} />}
+                  <CloudBadge cloud={cloudOfId(s.labId)} />
                   <span className="ov-rlab__line">
                     <span className={cx("ov-rlab__state", `ov-rlab__state--${s.state}`)}>{LAB_STATE_WORD[s.state]}</span>
                     {left && <span>{left}</span>}

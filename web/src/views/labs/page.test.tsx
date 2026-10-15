@@ -65,7 +65,8 @@ describe("wide (1600 px)", () => {
     const { router } = renderApp("/labs?lab=az104-06-blob-security", { routes: routes() });
     await screen.findByRole("complementary", { name: /^Blob security/ });
     const navs = track(router);
-    await user.click(within(screen.getByRole("search", { name: "Filter labs" })).getByRole("radio", { name: "AZ-305" }));
+    await user.click(within(screen.getByRole("search", { name: "Filter labs" })).getByRole("combobox", { name: "Exam" }));
+    await user.click(await screen.findByRole("option", { name: "AZ-305" }));
     // The filter's write, then one replace that removes ?lab; the first remaining lab is shown.
     await screen.findByRole("complementary", { name: /^Landing zone/ });
     await act(() => new Promise((r) => setTimeout(r, 50)));
@@ -99,7 +100,7 @@ describe("wide (1600 px)", () => {
     await act(() => router.navigate(-1));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(loc()).toBe("/labs?exam=AZ-104&lab=az104-05-storage");
-    expect(within(screen.getByRole("search", { name: "Filter labs" })).getByRole("radio", { name: "AZ-104" })).toHaveAttribute("aria-checked", "true");
+    expect(within(screen.getByRole("search", { name: "Filter labs" })).getByRole("combobox", { name: "Exam" })).toHaveTextContent("AZ-104");
     expect(selectBtn(/^Storage accounts/)).toHaveAttribute("aria-current", "true");
     expect(screen.getByRole("complementary", { name: /^Storage accounts/ })).toBeInTheDocument();
   });
@@ -145,7 +146,7 @@ describe("wide (1600 px)", () => {
     expect(await screen.findByRole("complementary", { name: /^Storage accounts/ })).toBeInTheDocument();
     await act(() => new Promise((r) => setTimeout(r, 50)));
     expect(navs).toEqual(["REPLACE /labs?type=explore&lab=az104-05-storage"]);
-    expect(within(screen.getByRole("radiogroup", { name: "Exam" })).getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("combobox", { name: "Exam" })).toHaveTextContent("All");
     expect(await screen.findByText("Filters cleared to show Lab 5.")).toBeInTheDocument();
   });
 

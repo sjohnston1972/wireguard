@@ -131,7 +131,7 @@ function MainControls({ f, set, views }: ControlsProps) {
         }}
         className="labs-toolbar__exam"
       />
-      <SegmentedControl aria-label="Exam" items={examItems(f.cloud)} value={f.exam ?? "all"} onChange={(v) => set({ ...f, exam: v === "all" ? null : (v as LabExam) })} className="labs-toolbar__exam" />
+      <Select label="Exam" options={examItems(f.cloud)} value={f.exam ?? "all"} onValueChange={(v) => set({ ...f, exam: v === "all" ? null : (v as LabExam) })} className="labs-toolbar__select" />
       <Select label="Skill area" options={areaOptions} value={f.area ?? "all"} onValueChange={(v) => set({ ...f, area: v === "all" ? null : v })} className="labs-toolbar__select" />
       <Select label="Difficulty" options={LEVEL_OPTIONS} value={f.level ?? "all"} onValueChange={(v) => set({ ...f, level: v === "all" ? null : (v as LabLevel) })} className="labs-toolbar__select" />
       <label className="labs-toolbar__switch">

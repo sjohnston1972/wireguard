@@ -13,7 +13,8 @@
 import { memo, useId, type MouseEvent } from "react";
 import { ArrowRight, Check, Clock, Coins } from "lucide-react";
 import { Link } from "react-router-dom";
-import { StatusPill, cx } from "@/components";
+import { cx } from "@/components";
+import { CloudBadge } from "./CloudBadge";
 import type { LabView } from "./contract";
 import type { LabsLayout } from "./layout";
 import { LabStatusBadge } from "./LabStatusBadge";
@@ -61,7 +62,7 @@ export const LabCard = memo(function LabCard({ view, selected, onSelect, search,
           {labNumberWord(c)} · {c.exam}
           {also.length > 0 && ` · also ${also.join(", ")}`}
         </span>
-        {c.cloud === "aws" && <StatusPill status="custom" label="AWS" tone="amber" dot={false} />}
+        <CloudBadge cloud={c.cloud} />
         <LabStatusBadge badge={view.badge} className="lab-card__badge" />
       </div>
       <div className="lab-card__iconrow">

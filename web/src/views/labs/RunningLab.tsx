@@ -130,7 +130,7 @@ function Resources({ d }: { d: LabDetail }) {
 }
 
 /** Private IPs and the lab's connect lines (Terraform outputs), each with a copy button. */
-function Addresses({ s, aws }: { s: LabSession; aws: boolean }) {
+function Addresses({ s, aws, connectPossible }: { s: LabSession; aws: boolean; connectPossible: boolean }) {
   const o = s.outputs;
   if (!o || (Object.keys(o.privateIps).length === 0 && o.connect.length === 0)) return null;
   return (
@@ -150,7 +150,7 @@ function Addresses({ s, aws }: { s: LabSession; aws: boolean }) {
         </ul>
       )}
       {aws && o.connect.length > 0 && <p className="labs-muted">The ssh and curl lines work while the lab is peered; the aws ec2-instance-connect line works anywhere the AWS CLI is signed in.</p>}
-      {s.peering !== "on" && <p className="labs-muted">Reachable from tunnel clients once the lab is peered to the gateway.</p>}
+      {s.peering !== "on" && !(aws && !connectPossible) && <p className="labs-muted">Reachable from tunnel clients once the lab is peered to the gateway.</p>}
     </section>
   );
 }
@@ -315,7 +315,7 @@ export function RunningLab({ d }: { d: LabDetail }) {
         {r ? <Pipeline r={r} /> : <LastRun r={d.runs[0]} />}
         {s.state === "failed" && <p className="labs-deploy__blocked">The deploy failed. It is torn down by itself 15 minutes after it failed, or now with Tear down.</p>}
         <Resources d={d} />
-        <Addresses s={s} aws={d.cloud === "aws"} />
+        <Addresses s={s} aws={d.cloud === "aws"} connectPossible={d.connect?.possible !== false} />
         <Secret labId={d.card.id} running={s.state === "running"} />
         <Note key={s.id} s={s} />
       </div>
