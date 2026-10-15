@@ -133,7 +133,7 @@ export default () => {
         values: tagged(c, {
           name: `lab-${id}-restricted-ssh`,
           source: [{ owner: "AWS", source_identifier: "INCOMING_SSH_DISABLED" }],
-          scope: [{ compliance_resource_types: ["AWS::EC2::SecurityGroup"], tag_key: "cloudlabs-lab", tag_value: id }],
+          scope: [{ tag_key: "cloudlabs-lab", tag_value: id }],
         }),
         refs: { name: ["var.lab_id"], "scope.0.tag_value": ["var.lab_id"] },
       },

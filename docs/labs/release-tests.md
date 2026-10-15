@@ -84,3 +84,10 @@ lab's hourly estimate times those minutes.
 | 2026-10-07 08:17 | az305-29-aks | 1 | pass | yes | none | 7m 26s | 9m 0s | £0.0209 | 37590798443 |
 | 2026-10-07 09:39 | az305-30-messaging | 1 | pass | yes | none | 4m 23s | 30m 17s | £0.0064 | 37597977667 |
 | 2026-10-07 10:16 | az305-28-three-tier | 1 | pass | yes | none | 7m 37s | 28m 55s | £0.0615 | 37602104057 |
+| 2026-10-15 16:39 | soa-04-backup | 1 | fail | yes | none | — | 2m 45s | £0.0002 | 38769273888 |
+| 2026-10-15 17:12 | soa-04-backup | 2 | fail | yes | none | — | 2m 26s | £0.0002 | 38773860024 |
+| 2026-10-15 17:47 | soa-04-backup | 3 | pass | yes | none | 5m 8s | 3m 13s | £0.0006 | 38778966396 |
+| 2026-10-15 17:59 | soa-01-cloudwatch | 2 | fail | yes | none | — | 5m 0s | £0.0026 | 38780244745 |
+| 2026-10-15 18:11 | soa-03-auto-scaling | 2 | fail | yes | none | — | 3m 54s | £0.0032 | 38781875647 |
+| 2026-10-15 18:23 | soa-02-systems-manager | 2 | fail | yes | none | — | 5m 39s | £0.0041 | 38783513154 |
+| 2026-10-15 19:03 | soa-05-rds | 2 | fail | no | rds:snapshot rds:db-a05tcci3-2026-10-15-18-40 (db-primary), rds:snapshot rds:db-a05tcci3-2026-10-15-18-37 (db-primary) | 26m 20s | — | £0.0233 | 38785247607 |

@@ -764,7 +764,6 @@
             "sns:CreateTopic",
             "sqs:CreateQueue",
             "ssm:CreateActivation",
-            "ssm:CreateAssociation*",
             "ssm:CreateCloudConnector",
             "ssm:CreateDocument",
             "ssm:CreateMaintenanceWindow",
@@ -1867,56 +1866,6 @@
             "lambda:SuspendMicrovm",
             "lambda:TerminateMicrovm",
             "lambda:Update*",
-            "logs:AssociateKmsKey",
-            "logs:CreateExportTask",
-            "logs:CreateLogStream",
-            "logs:DeleteDataProtectionPolicy",
-            "logs:DeleteDelivery*",
-            "logs:DeleteDestination",
-            "logs:DeleteLogAnomalyDetector",
-            "logs:DeleteLogGroup",
-            "logs:DeleteLogStream",
-            "logs:DeleteLookupTable",
-            "logs:DeleteMetricFilter",
-            "logs:DeleteRetentionPolicy",
-            "logs:DeleteScheduledQuery",
-            "logs:DeleteSubscriptionFilter",
-            "logs:DeleteSyslogConfiguration",
-            "logs:DeleteTransformer",
-            "logs:DisassociateKmsKey",
-            "logs:Integrate*",
-            "logs:ProcessWithPipeline",
-            "logs:PutBearerTokenAuthentication",
-            "logs:PutDataProtectionPolicy",
-            "logs:PutDeliveryDestinationPolicy",
-            "logs:PutDestinationPolicy",
-            "logs:PutLog*",
-            "logs:PutMetricFilter",
-            "logs:PutRetentionPolicy",
-            "logs:PutSubscriptionFilter"
-          ],
-          "Resource": "*",
-          "Condition": {
-            "Null": {
-              "aws:ResourceTag/cloudlabs-lab": "true"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "ChangeNeedsLabTag6",
-          "Effect": "Deny",
-          "Action": [
-            "logs:PutSyslogConfiguration",
-            "logs:PutTransformer",
-            "logs:UpdateAnomaly",
-            "logs:UpdateLogAnomalyDetector",
-            "logs:UpdateLookupTable",
-            "logs:UpdateScheduledQuery",
             "network-firewall:AcceptNetworkFirewallTransitGatewayAttachment",
             "network-firewall:AssociateAvailabilityZones",
             "network-firewall:AssociateSubnets",
@@ -1934,7 +1883,24 @@
             "rds:ApplyPendingMaintenanceAction",
             "rds:AuthorizeDBSecurityGroupIngress",
             "rds:BacktrackDBCluster",
-            "rds:CopyCustomDBEngineVersion",
+            "rds:CopyCustomDBEngineVersion"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "ChangeNeedsLabTag6",
+          "Effect": "Deny",
+          "Action": [
             "rds:CrossRegionCommunication",
             "rds:Delete*",
             "rds:DeregisterDBProxyTargets",
@@ -2064,6 +2030,53 @@
             "wafv2:UpdateRuleGroup"
           ],
           "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        },
+        {
+          "Sid": "ChangeNeedsLabTag7",
+          "Effect": "Deny",
+          "Action": [
+            "logs:AssociateKmsKey",
+            "logs:CreateExportTask",
+            "logs:CreateLogStream",
+            "logs:DeleteDataProtectionPolicy",
+            "logs:DeleteDelivery*",
+            "logs:DeleteDestination",
+            "logs:DeleteLogAnomalyDetector",
+            "logs:DeleteLogGroup",
+            "logs:DeleteLogStream",
+            "logs:DeleteLookupTable",
+            "logs:DeleteMetricFilter",
+            "logs:DeleteRetentionPolicy",
+            "logs:DeleteScheduledQuery",
+            "logs:DeleteSubscriptionFilter",
+            "logs:DeleteSyslogConfiguration",
+            "logs:DeleteTransformer",
+            "logs:DisassociateKmsKey",
+            "logs:Integrate*",
+            "logs:ProcessWithPipeline",
+            "logs:PutBearerTokenAuthentication",
+            "logs:PutDataProtectionPolicy",
+            "logs:PutDeliveryDestinationPolicy",
+            "logs:PutDestinationPolicy",
+            "logs:PutLog*",
+            "logs:PutMetricFilter",
+            "logs:PutRetentionPolicy",
+            "logs:PutSubscriptionFilter",
+            "logs:PutSyslogConfiguration",
+            "logs:PutTransformer",
+            "logs:UpdateAnomaly",
+            "logs:UpdateLogAnomalyDetector",
+            "logs:UpdateLookupTable",
+            "logs:UpdateScheduledQuery"
+          ],
+          "NotResource": [
+            "arn:aws:logs:*:*:log-group:/cloudlabs/*"
+          ],
           "Condition": {
             "Null": {
               "aws:ResourceTag/cloudlabs-lab": "true"

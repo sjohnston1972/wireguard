@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { abacLists, foldWildcards, renderLabPolicies, policySize, fillPolicy, POLICY_MAX, ROLE_POLICIES_MAX, LAB_SERVICES, ABAC_SERVICES } from "../lib/aws-lab-policies.mjs";
+import { abacLists, foldWildcards, renderLabPolicies, policySize, fillPolicy, POLICY_MAX, ROLE_POLICIES_MAX, LAB_SERVICES, ABAC_SERVICES, SERVICE_LINKED } from "../lib/aws-lab-policies.mjs";
 import { simulatorCases, boundaryCases, simulatorProblems, quotaPlan, LAB_QUOTAS, runLabsBootstrap } from "../lib/aws-bootstrap-labs.mjs";
 
 const url = (p) => new URL(`../../${p}`, import.meta.url);
@@ -300,7 +300,7 @@ test("the Worker user may read lab things in both lab regions, and change nothin
 test("the simulator cases are the eight of A19 and fix round 1's, and a wrong answer is a problem", () => {
   const cases = simulatorCases("123456789012", FILL.vpcArns);
   assert.deepEqual(cases.map((c) => [c.name, c.want]), [["tagged VPC", "allowed"], ["bounded lab role", "allowed"], ["untagged VPC", "denied"], ["the VPN server", "denied"], ["role without the boundary", "denied"], ["role outside the path", "denied"], ["access key", "denied"], ["a third region", "denied"],
-    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a subnet in the default VPC", "denied"]]);
+    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["an SSM association", "allowed"], ["retention on a new lab log group", "allowed"], ["retention on another log group", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a subnet in the default VPC", "denied"]]);
   // With no default VPC in the account there is nothing to ask about it.
   assert.ok(!simulatorCases("123456789012", []).some((c) => c.name === "a subnet in the default VPC"));
   assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: SSM default host management", "denied"], ["boundary: reset an SSM setting", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"]]);
@@ -334,7 +334,7 @@ const asWanted = (opt) => {
   return c?.want === "allowed" ? "allowed" : "explicitDeny";
 };
 /** A fake command runner: answers by the aws command, records every call. */
-function fakeAws({ decide = asWanted, quotas = {}, pending = [], costTag = "Inactive", eiceCode = "L-ABCD1234", failQuotaReads = false } = {}) {
+function fakeAws({ decide = asWanted, quotas = {}, pending = [], costTag = "Inactive", eiceCode = "L-ABCD1234", failQuotaReads = false, slrThere = [], slrRefused = [] } = {}) {
   const calls = [];
   const run = (cmd, args) => {
     calls.push([cmd, ...args]);
@@ -352,6 +352,12 @@ function fakeAws({ decide = asWanted, quotas = {}, pending = [], costTag = "Inac
     if (a.startsWith("service-quotas request-service-quota-increase")) return ok({ RequestedQuota: { Status: "PENDING" } });
     if (a.startsWith("ce list-cost-allocation-tags")) return ok({ CostAllocationTags: costTag ? [{ TagKey: "cloudlabs-lab", Status: costTag }] : [] });
     if (a.startsWith("ce update-cost-allocation-tags-status")) return ok({ Errors: [] });
+    if (a.startsWith("iam create-service-linked-role")) {
+      const name = opt("--aws-service-name");
+      if (slrThere.includes(name)) return { status: 254, stdout: "", stderr: "An error occurred (InvalidInput) when calling the CreateServiceLinkedRole operation: Service role name AWSServiceRoleForX has been taken in this account, please try a different suffix." };
+      if (slrRefused.includes(name)) return { status: 254, stdout: "", stderr: "An error occurred (AccessDenied) when calling the CreateServiceLinkedRole operation: no" };
+      return ok({ Role: { RoleName: "AWSServiceRoleForX" } });
+    }
     return { status: 1, stdout: "", stderr: `unexpected ${a}` };
   };
   return { run, calls };
@@ -365,7 +371,7 @@ test("--labs: every simulator case is asked of the role, quotas below target are
   const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
   assert.equal(r.ok, true);
   const sims = calls.filter((c) => c[2] === "simulate-principal-policy");
-  assert.equal(sims.length, 24);
+  assert.equal(sims.length, 27);
   for (const c of sims) assert.equal(c[c.indexOf("--policy-source-arn") + 1], O.roleArn);
   // The boundary, simulated as a policy of its own (simulate-custom-policy), with the document the bootstrap filled.
   const custom = calls.filter((c) => c[2] === "simulate-custom-policy");
@@ -384,6 +390,22 @@ test("--labs: every simulator case is asked of the role, quotas below target are
   assert.ok(log.some((s) => /Instance Connect Endpoints per Region.*L-ABCD1234/.test(s)));
   // Names only: no ARN, no account id.
   assert.ok(!log.some((s) => s.includes("123456789012")), log.join("\n"));
+});
+
+test("--labs: ruling A57, the service-linked roles labs use are made ahead; ones there are left, ones AWS refuses are only reported", async () => {
+  const log = [];
+  const { run, calls } = fakeAws({ slrThere: ["elasticloadbalancing.amazonaws.com", "autoscaling.amazonaws.com"], slrRefused: ["transitgateway.amazonaws.com"] });
+  const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
+  assert.equal(r.ok, true, "a role AWS will not make ahead never fails the bootstrap");
+  const asked = calls.filter((c) => c[2] === "create-service-linked-role").map((c) => c[c.indexOf("--aws-service-name") + 1]);
+  assert.deepEqual(asked, [...SERVICE_LINKED]);
+  const made = log.find((s) => s.startsWith("Service-linked roles made ahead: "));
+  assert.ok(made && made.includes("rds.amazonaws.com") && !made.includes("autoscaling.amazonaws.com") && !made.includes("transitgateway"), made);
+  assert.ok(log.some((s) => /would not make ahead.*transitgateway\.amazonaws\.com \(AccessDenied\)/.test(s)), log.join("\n"));
+  const all = fakeAws({ slrThere: [...SERVICE_LINKED] });
+  const log2 = [];
+  await runLabsBootstrap(all.run, { ...O, log: (s) => log2.push(s) });
+  assert.ok(log2.includes("Service-linked roles: all there"));
 });
 
 test("--labs: a simulator answer that differs fails loudly; an active or unseen cost tag is only reported", async () => {
@@ -486,6 +508,20 @@ test("what Terraform does for a lab is allowed: tagged creates on the new item o
   denied("ec2:RunInstances", `arn:aws:ec2:eu-west-2:${A}:volume/*`, { "aws:RequestedRegion": "eu-west-2" });
   // Ruling A54: an Instance Connect Endpoint's interface is made with no request tag.
   allowed("ec2:CreateNetworkInterface", `arn:aws:ec2:eu-west-2:${A}:network-interface/*`, { "aws:RequestedRegion": "eu-west-2" });
+  // Ruling A55: SSM asks about AWS's document without the request's tags (soa-02's release test).
+  for (const a of ["ssm:CreateAssociation", "ssm:CreateAssociationBatch"]) allowed(a, "arn:aws:ssm:eu-west-2::document/AWS-RunPatchBaseline", { "aws:RequestedRegion": "eu-west-2" });
+  allowed("ssm:DeleteAssociation", `arn:aws:ssm:eu-west-2:${A}:association/0abc`, LAB);
+  denied("ssm:DeleteAssociation", `arn:aws:ssm:eu-west-2:${A}:association/0abc`, { "aws:RequestedRegion": "eu-west-2" });
+  // Ruling A56: a lab log group, by its name, before its tag can be read (soa-01's release test); any other needs the tag.
+  const lg = (n) => `arn:aws:logs:eu-west-2:${A}:log-group:${n}`;
+  for (const a of ["logs:PutRetentionPolicy", "logs:DeleteLogGroup", "logs:PutMetricFilter", "logs:CreateLogStream"]) {
+    allowed(a, lg("/cloudlabs/soa-01-x/app"), { "aws:RequestedRegion": "eu-west-2" });
+    allowed(a, `${lg("/cloudlabs/soa-01-x/app")}:log-stream:i-0abc`, { "aws:RequestedRegion": "eu-west-2" });
+    denied(a, lg("/aws/other"), { "aws:RequestedRegion": "eu-west-2" });
+    allowed(a, lg("/aws/other"), LAB);
+  }
+  denied("logs:CreateLogGroup", lg("/cloudlabs/soa-01-x/app"), { "aws:RequestedRegion": "eu-west-2" });
+  denied("logs:PutRetentionPolicy", lg("/cloudlabs/vpn"), { "aws:RequestedRegion": "eu-west-2", "aws:ResourceTag/wg-admin": "vpn" });
   // The untaggable types a lab names lab-<id>-* (lab-scope-aws.mjs UNTAGGABLE): made and removed without a tag.
   for (const a of ["cloudwatch:PutDashboard", "cloudwatch:DeleteDashboards", "config:PutConfigurationRecorder", "config:StartConfigurationRecorder", "config:StopConfigurationRecorder", "config:DeleteConfigurationRecorder", "config:PutDeliveryChannel", "config:DeleteDeliveryChannel", "logs:PutQueryDefinition", "logs:DeleteQueryDefinition", "kms:CreateAlias", "kms:DeleteAlias", "ssm:RegisterPatchBaselineForPatchGroup"]) {
     allowed(a, namedArn(a, "lab-soa-01-x-thing"), { "aws:RequestedRegion": "eu-west-2", "aws:ResourceTag/cloudlabs-lab": a.startsWith("ssm:") ? "soa-01-x" : undefined });

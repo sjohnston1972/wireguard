@@ -34,7 +34,8 @@
 #   3 network        load balancers, then listener rules and listeners still
 #                    there (most go with their load balancer), then target
 #                    groups; RDS replicas, then
-#                    instances, subnet groups, parameter groups, snapshots;
+#                    instances, subnet groups, parameter groups, snapshots
+#                    (never an automated one: it goes with its database);
 #                    instances terminated; launch templates; NAT gateways;
 #                    Elastic IPs; VPC peering; VPC endpoints; Instance Connect
 #                    Endpoints; volumes
@@ -67,6 +68,8 @@
 # about an hour, so it only finds candidates: each one is judged by its own
 # describe (an instance terminated, a NAT gateway or VPC endpoint deleted, an
 # Instance Connect Endpoint or prefix list delete-complete, a volume deleted,
+# an RDS snapshot being deleted (automated ones are waited for first, up to
+# 15 minutes),
 # an AMI deregistered, a dead peering connection, anything AWS answers "not
 # found" for (a security group rule, listener or listener rule gone with its
 # group or load balancer too), and a KMS key pending deletion, are clean). A type with no
@@ -340,6 +343,7 @@ judge() {
     ec2:image) g='.State == "deregistered"' ;;
     ec2:vpc-peering-connection) g='(.Status.Code // "") | IN("deleted", "rejected", "failed", "expired")' ;;
     kms:key | kms:alias) g='.KeyState == "PendingDeletion"' ;;
+    rds:snapshot) g='.Status == "deleting"' ;;
     *) g='false' ;;
   esac
   IFS=$'\x1f' read -r s n < <(jq -r "[ (if ($g) then \"gone\" else \"there\" end), ((.Tags // .TagSet // []) | if type == \"array\" then (map(select(.Key == \"Name\"))[0].Value // \"\") else \"\" end) ] | join(\"\u001f\")" <<<"$DJ" 2>/dev/null)
@@ -353,6 +357,22 @@ judge() {
 if [ "$MODE" = verify ]; then
   discover
   left=("${LIST_FAILED[@]}")
+  # A58: automated RDS snapshots go with their database minutes after it; wait for them (by UNTIL, at most 15 minutes).
+  auto=()
+  for i in "${!C_T[@]}"; do [ "${C_T[$i]}" = rds:snapshot ] && [[ "${C_I[$i]}" == rds:* ]] && auto+=("$i"); done
+  auto_until=$(($(date +%s) + 900))
+  while [ "${#auto[@]}" -gt 0 ]; do
+    next=()
+    for i in "${auto[@]}"; do
+      judge "$i"
+      [ "$J" = there ] && next+=("$i")
+    done
+    auto=("${next[@]}")
+    [ "${#auto[@]}" -eq 0 ] && break
+    { past_until || [ "$(date +%s)" -ge "$auto_until" ]; } && break
+    echo "verify clean: waiting for ${#auto[@]} automated database snapshot(s) to go with their database"
+    sleep "$POLL_S"
+  done
   for i in "${!C_T[@]}"; do
     judge "$i"
     case "$J" in
@@ -542,14 +562,27 @@ del_lb_child() {
 del_db() { wr "$1" "delete $(label "$1")" rds delete-db-instance --db-instance-identifier "${C_I[$1]}" --skip-final-snapshot --delete-automated-backups; }
 del_subgrp() { wr "$1" "delete $(label "$1")" rds delete-db-subnet-group --db-subnet-group-name "${C_I[$1]}"; }
 del_pg() { wr "$1" "delete $(label "$1")" rds delete-db-parameter-group --db-parameter-group-name "${C_I[$1]}"; }
-del_dbsnap() { wr "$1" "delete $(label "$1")" rds delete-db-snapshot --db-snapshot-identifier "${C_I[$1]}"; }
+# An automated snapshot (rds:<db>-<time>) goes with its database (deleted with --delete-automated-backups), minutes
+# later: AWS refuses to delete one by itself (ruling A58). Verify clean waits for it.
+del_dbsnap() {
+  [[ "${C_I[$1]}" == rds:* ]] && return 1
+  wr "$1" "delete $(label "$1")" rds delete-db-snapshot --db-snapshot-identifier "${C_I[$1]}"
+}
 del_instance() { vpc_ok "$1" && wr "$1" "terminate $(label "$1")" ec2 terminate-instances --instance-ids "${C_I[$1]}"; }
 del_lt() { wr "$1" "delete $(label "$1")" ec2 delete-launch-template --launch-template-id "${C_I[$1]}"; }
 del_nat() { vpc_ok "$1" && wr "$1" "delete $(label "$1")" ec2 delete-nat-gateway --nat-gateway-id "${C_I[$1]}"; }
 del_eip() { wr "$1" "release $(label "$1")" ec2 release-address --allocation-id "${C_I[$1]}"; }
 del_pcx() { wr "$1" "delete $(label "$1")" ec2 delete-vpc-peering-connection --vpc-peering-connection-id "${C_I[$1]}"; }
 del_vpce() { vpc_ok "$1" && wr "$1" "delete $(label "$1")" ec2 delete-vpc-endpoints --vpc-endpoint-ids "${C_I[$1]}"; }
-del_eice() { vpc_ok "$1" && wr "$1" "delete $(label "$1")" ec2 delete-instance-connect-endpoint --instance-connect-endpoint-id "${C_I[$1]}"; }
+# One Terraform already deleted (the tagging API still lists it) is not asked again: AWS refuses that.
+del_eice() {
+  vpc_ok "$1" || return 1
+  case "$(jq -r '.State // empty' <<<"$DJ" 2>/dev/null)" in
+    delete-complete) return 1 ;;
+    delete-in-progress) return 0 ;;
+  esac
+  wr "$1" "delete $(label "$1")" ec2 delete-instance-connect-endpoint --instance-connect-endpoint-id "${C_I[$1]}"
+}
 del_volume() { wr "$1" "delete $(label "$1")" ec2 delete-volume --volume-id "${C_I[$1]}"; }
 # RDS: read replicas first (ReadReplicaSourceDBInstanceIdentifier set), then the rest.
 rds_dbs() {

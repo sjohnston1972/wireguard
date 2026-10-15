@@ -469,6 +469,8 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       const want = type === "aws_kms_alias" ? `alias/${prefix}` : prefix;
       if (!startsKnown(v[attr], want)) refuse("untaggable", `${type} cannot carry the lab tag, so its ${attr} must start ${want}`);
     }
+    // Ruling A56: IAM knows a new log group by its name (its tag cannot be read for its first seconds).
+    if (isManaged && type === "aws_cloudwatch_log_group" && !startsKnown(v.name, `/cloudlabs/${labId}/`)) refuse("untaggable", `a log group's name must start /cloudlabs/${labId}/ (IAM cannot read a new group's tag for its first seconds, so it knows the lab's groups by name)`);
 
     // 8. iam
     if (isManaged) iamProblems(r, v);
@@ -724,7 +726,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           const name = val.function_name;
           const lc = list(val.logging_config).find(isObj);
           const ok = (lc && ownGroup(lc.log_group, "logging_config")) || (nonEmpty(name) && groupNames.has(`/aws/lambda/${name}`));
-          if (!ok && !(!plan && name instanceof Unknown)) no("lingering", "a Lambda function must write to a log group declared here (/aws/lambda/<name>, or logging_config.log_group)");
+          if (!ok && !(!plan && name instanceof Unknown)) no("lingering", "a Lambda function must write to a log group declared here (logging_config.log_group, named /cloudlabs/<lab id>/...)");
           break;
         }
         case "aws_ecs_task_definition": {

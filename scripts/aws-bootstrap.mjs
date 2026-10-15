@@ -12,8 +12,9 @@
 // with --labs it then sets the GitHub secret AWS_LABS_ROLE_ARN, asks IAM's
 // policy simulator ruling A19's and A48's questions about the role and the
 // boundary (any other answer fails the run, exit 1), raises the lab quotas that are below
-// target in London and Ireland, and reports (or switches on) the cost
-// allocation tag cloudlabs-lab. See scripts/lib/aws-bootstrap-labs.mjs.
+// target in London and Ireland, makes ahead the service-linked roles the labs
+// use (ruling A57), and reports (or switches on) the cost allocation tag
+// cloudlabs-lab. See scripts/lib/aws-bootstrap-labs.mjs.
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";

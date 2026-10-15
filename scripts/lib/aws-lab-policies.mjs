@@ -70,8 +70,21 @@ export const NAME_OWNED_TYPES = ["cloudwatch:dashboard", "config:ConfigurationRe
  * EC2 Instance Connect Endpoints create their network interface with the caller's credentials and no tags, so
  * ec2:CreateNetworkInterface is in neither the create nor the change list. The VPN-server and default-VPC denies still
  * keep interfaces out of those networks, and Verify clean names any untagged interface left in a lab VPC (A26).
+ * Ruling A55: SSM judges CreateAssociation on the document it runs (AWS's own, untagged) without the request's tags
+ * (soa-02's release test and a probe, 2026-10-15: refused with the tag sent), so State Manager associations are exempt
+ * too. An association changes nothing by itself; deleting one still needs the lab's tag (DeleteAssociation, change list).
  */
-export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface"];
+export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface", "ssm:CreateAssociation", "ssm:CreateAssociationBatch"];
+/** A create-list entry (an action, or a folded "svc:Prefix*") that names or covers an exempt action. */
+const isExempt = (a) => CREATE_TAG_EXEMPT.some((x) => a === x || (a.endsWith("*") && x.toLowerCase().startsWith(a.slice(0, -1).toLowerCase())));
+/**
+ * Ruling A56: services whose tag read lags a create. CloudWatch Logs answers aws:ResourceTag from a store that trails
+ * CreateLogGroup by seconds (soa-01's release test, and a probe, 2026-10-15: PutRetentionPolicy refused then allowed on
+ * the same new, tagged group), so Terraform's retention call right after the create fails at random. Their change-list
+ * actions are refused only outside these names (lab-scope-aws.mjs holds every lab log group to /cloudlabs/<id>/...),
+ * and inside them without the tag; the VPN server has no log groups.
+ */
+export const TAG_LAG_NAMED = { logs: ["arn:aws:logs:*:*:log-group:/cloudlabs/*"] };
 export const KEY_USE = /^kms:(Encrypt|Decrypt|ReEncrypt\w*|GenerateDataKey\w*|GenerateMac|VerifyMac|Sign|Verify|DeriveSharedSecret|CreateGrant|RetireGrant)$/;
 /** Services with an untaggable named type: A29's fall-back gives them no wildcards. */
 const NAME_OWNED_SERVICES = ["cloudwatch", "config", "logs", "kms"];
@@ -397,8 +410,9 @@ export const changeFallback = () => ABAC_SERVICES.filter((s) => !NAME_OWNED_SERV
 
 function roleItems(abac, change) {
   const createOn = abac.createOn ?? {};
-  // Ruling A54: the exempt actions are in neither list, whatever lab-abac.json says.
-  abac = { ...abac, create: abac.create.filter((a) => !CREATE_TAG_EXEMPT.includes(a)) };
+  // Rulings A54, A55: the exempt actions are in neither list, whatever lab-abac.json says (its ssm:CreateAssociation*
+  // covers only the two exempt association creates).
+  abac = { ...abac, create: abac.create.filter((a) => !isExempt(a)) };
   const noRequestTag = { Null: { [`aws:RequestTag/${LAB_TAG}`]: "true" } };
   const creates = counter("CreateNeedsLabTag");
   const changes = counter("ChangeNeedsLabTag");
@@ -421,7 +435,13 @@ function roleItems(abac, change) {
     items.push({ statement: deny("CreateNeedsLabTagRunInstances", "ec2:RunInstances", on, noRequestTag) });
   }
   const changeCond = (Action) => ({ Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true", ...(Action.some((a) => a.startsWith("ec2:")) ? { "ec2:CreateAction": "true" } : {}) } });
-  items.push({ list: change, ...changes, make: (Action, Sid) => deny(Sid, Action, "*", changeCond(Action)) });
+  const lagged = (a) => Object.hasOwn(TAG_LAG_NAMED, a.split(":")[0]);
+  items.push({ list: change.filter((a) => !lagged(a)), ...changes, make: (Action, Sid) => deny(Sid, Action, "*", changeCond(Action)) });
+  // Ruling A56: the lab's own names need no tag (the tag read lags the create); anything else still does.
+  for (const [service, names] of Object.entries(TAG_LAG_NAMED)) {
+    const list = change.filter((a) => a.split(":")[0] === service);
+    if (list.length) items.push({ list, ...changes, make: (Action, Sid) => ({ Sid, Effect: "Deny", Action, NotResource: names, Condition: changeCond(Action) }) });
+  }
   const untag = abac.untag ?? ABAC_SERVICES.map((s) => `${s}:Untag*`).concat("ec2:DeleteTags");
   items.push({ statement: deny("KeepLabTag", [...new Set(["tag:UntagResources", ...untag])].sort(), "*", { "ForAnyValue:StringEquals": { "aws:TagKeys": [LAB_TAG] } }) });
   return items;
