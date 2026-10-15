@@ -401,13 +401,15 @@ export async function startDestroy(env: Env, requestedBy: string, reason?: strin
   }
 
   // Unpeer the AWS labs peered to an AWS server before it goes (A30). Never throws.
-  if (cloud === "aws") await unpeerAwsLabsForServerTeardown(env, requestedBy);
+  const unpeered = cloud === "aws" ? (await unpeerAwsLabsForServerTeardown(env, requestedBy)).started : [];
 
   try {
     await dispatchWorkflow(env, "destroy", payload, workflowFor(cfg, cloud));
   } catch (e) {
     try {
       await db.updateRun(env, id, { status: "failure", finished_at: new Date().toISOString(), error: (e as Error).message });
+      // The labs unpeered for it are disconnected though the server stays up: say which, so they can be re-peered.
+      if (unpeered.length) await db.addAlert(env, "failure", `The AWS server's tear-down could not start (${(e as Error).message}), but ${unpeered.join(", ")} ${unpeered.length === 1 ? "was" : "were"} already unpeered for it. Re-peer ${unpeered.length === 1 ? "it" : "them"} from the Labs tab while the server runs.`, id);
     } finally {
       await releaseLock(env, id);
     }
@@ -592,10 +594,9 @@ async function completeApply(env: Env, run: db.Run, publicIp: string | null, out
   await db.addAlert(env, "deploy", `Deployed at ${publicIp ?? "unknown IP"} (${meta.via}); ${cfg.dnsName} ${dns.live ? "is live" : "not live yet"}`, run.id);
   // Labs waiting to peer (or disconnected by the last tear-down) can peer now: one push (labs/repeer.ts).
   // A lab problem must never cost the gateway its deploy.
-  // The push counts labs of every cloud, so only an Azure apply sends it; after an AWS apply the Overview's
-  // and Labs tab's Re-peer still offer the AWS labs it disconnected (labs/summary.ts counts the server's cloud).
+  // Only labs in the server's cloud count: an AWS apply offers the AWS labs it disconnected (A15), an Azure one Azure labs.
   try {
-    if (cloudOf(await getSnapshot(env)) !== "aws") await rePeerPush(env, run.id);
+    await rePeerPush(env, run.id, runCloud(run));
   } catch (e) {
     console.error("lab re-peer push:", e);
   }

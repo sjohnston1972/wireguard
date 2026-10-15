@@ -14,10 +14,11 @@ import { issueLabSecrets, handleLabPeer } from "../src/labs/callbacks";
 import { estimateSoFar } from "../src/labs/view";
 import { finishRun } from "../src/labs/settle";
 import { getLabRun } from "../src/labs/store";
-import { startDestroy, startDeploy } from "../src/runs";
+import { handleCallback, issueRunSecrets, startDestroy, startDeploy } from "../src/runs";
 import { UNPEER_FOR_SERVER } from "../src/labs/engine";
 import { runLabWatch } from "../src/labs/watch";
-import { api, deployLab, freeze, ghIdFor, labDispatches, labEnv, peerRunFor, runningLab, withAwsLabs, NOW } from "./labs-helpers";
+import { advance, api, deployLab, freeze, ghIdFor, labDispatches, labEnv, peerRunFor, report, runningLab, secrets, withAwsLabs, MIN, NOW } from "./labs-helpers";
+import { lastGhRun, wgRef, type World } from "./harness";
 import type { Env } from "../src/env";
 
 afterEach(() => {
@@ -234,6 +235,26 @@ describe("the AWS server's tear-down (A30) and apply (A15)", () => {
     expect((await env.DB.prepare("SELECT peering FROM lab_sessions WHERE id = ?1").bind(a.sid).first<{ peering: string }>())?.peering).toBe("disconnected");
   });
 
+  it("when the AWS server's destroy cannot be dispatched, the failure note names the labs already unpeered for it", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    const a = await runningLab(env, world, "soa-03-auto-scaling");
+    await env.DB.prepare("UPDATE lab_sessions SET peering = 'on' WHERE id = ?1").bind(a.sid).run();
+    await server(env, "aws");
+    const harness = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("/actions/workflows/wg-aws.yml/dispatches")) return new Response("{}", { status: 500 });
+      return harness(input, init);
+    });
+    await expect(startDestroy(env, "steven", "dashboard")).rejects.toThrow();
+    expect(labDispatches(world).map((d) => d.action)).toEqual(["deploy", "unpeer"]);
+    const note = await env.DB.prepare("SELECT kind, message FROM alerts WHERE message LIKE '%tear-down could not start%'").first<{ kind: string; message: string }>();
+    expect(note?.kind).toBe("failure");
+    expect(note?.message).toMatch(/Auto Scaling behind a load balancer was already unpeered for it. Re-peer it from the Labs tab/);
+  });
+
   it("an Azure server destroy starts no lab run", async () => {
     freeze();
     const { env, world } = await labEnv();
@@ -273,10 +294,58 @@ describe("the AWS server's tear-down (A30) and apply (A15)", () => {
   });
 });
 
+describe("Re-peer push after a server apply counts the server's cloud only", () => {
+  // One disconnected AWS lab and one disconnected Azure lab, then a server in `cloud` is built and reports ready.
+  async function applyWithBoth(cloud: "azure" | "aws"): Promise<{ world: World; pushes: Record<string, any>[] }> {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    const a = await runningLab(env, world, "soa-03-auto-scaling");
+    const z = await runningLab(env, world, "az104-07-files");
+    await env.DB.prepare("UPDATE lab_sessions SET peering = 'disconnected' WHERE id IN (?1, ?2)").bind(a.sid, z.sid).run();
+    await server(env, cloud, "destroyed");
+    const gw = await startDeploy(env, { hours: 1, requesterIp: null, requestedBy: "steven", cloud });
+    const sec = await issueRunSecrets(env, gw.id, lastGhRun(world), wgRef(env, cloud === "aws" ? "wg-aws.yml" : "wg.yml"));
+    if (cloud === "aws") world.aws.exists = true;
+    else world.azure.rg = true;
+    await handleCallback(env, sec.body.callback_token as string, { run_id: gw.id, action: "apply", status: "success", outputs: { public_ip: cloud === "aws" ? world.aws.ip : world.azure.ip } });
+    return { world, pushes: world.notes.filter((n) => /re-peer/i.test(`${n.title} ${n.message}`)) };
+  }
+
+  it("an AWS apply pushes Re-peer 1 lab: the AWS lab, not the Azure one", async () => {
+    const { pushes } = await applyWithBoth("aws");
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].message).toMatch(/1 lab is waiting to peer/);
+  });
+
+  it("an Azure apply pushes Re-peer 1 lab: the Azure lab, not the AWS one", async () => {
+    const { pushes } = await applyWithBoth("azure");
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].message).toMatch(/1 lab is waiting to peer/);
+  });
+});
+
 describe("what the screens get", () => {
   it("a session's estimate counts the ALB's started hour whole (A20)", () => {
     const s = { est_gbp_h: 0.0341, requested_at: "2026-10-15T09:00:00.000Z", ended_at: "2026-10-15T09:30:00.000Z", est_gbp: null };
     expect(estimateSoFar(s, 0, 0.0199)).toBeCloseTo(0.0341 * 0.5 + 0.0199 * 0.5, 6);
+  });
+
+  it("an ended AWS session's estimate counts the ALB's started hour whole (A20)", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    const { sid } = await runningLab(env, world, "soa-03-auto-scaling");
+    advance(30 * MIN);
+    const d = await api(env, "POST", "/labs/soa-03-auto-scaling/destroy", { confirm: true });
+    expect(d.status).toBe(200);
+    const s = await secrets(env, world, d.json.runId);
+    expect((await report(env, d.json.runId, s.callback_token, "success", { clean: true, leftovers: [] })).status).toBe(200);
+    const row = await env.DB.prepare("SELECT state, est_gbp_h, est_gbp FROM lab_sessions WHERE id = ?1").bind(sid).first<{ state: string; est_gbp_h: number; est_gbp: number }>();
+    expect(row?.state).toBe("ended");
+    expect(row?.est_gbp_h).toBeCloseTo(0.0341, 6);
+    // Half an hour of £0.0341/h, plus the other half of the ALB's (£0.0199/h) started hour.
+    expect(row?.est_gbp).toBeCloseTo(0.0341 * 0.5 + 0.0199 * 0.5, 6);
   });
 
   it("GET /labs/:id for an AWS lab: cloud, London, console links per region while live, and the connect note", async () => {
