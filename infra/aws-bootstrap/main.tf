@@ -123,9 +123,10 @@ resource "aws_iam_access_key" "worker" {
   user = aws_iam_user.worker.name
 }
 
-resource "aws_iam_user_policy" "worker" {
+# A customer managed policy, not an inline one: IAM caps a user's inline policies at 2,048 characters in total
+# (managed policies: 6,144), and the Worker's read-only statements outgrew that.
+resource "aws_iam_policy" "worker" {
   name = "wg-admin-worker"
-  user = aws_iam_user.worker.name
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -202,6 +203,11 @@ resource "aws_iam_user_policy" "worker" {
       },
     ]
   })
+}
+
+resource "aws_iam_user_policy_attachment" "worker" {
+  user       = aws_iam_user.worker.name
+  policy_arn = aws_iam_policy.worker.arn
 }
 
 resource "aws_budgets_budget" "guard" {
