@@ -123,6 +123,7 @@ test("aws-lab-creds.sh trades a GitHub token for a 3-hour session, masks it and 
   const call = w.calls().find((c) => c.startsWith("aws sts"));
   assert.match(call, /--role-arn arn:aws:iam::123456789012:role\/wg-admin-labs/);
   assert.match(call, /--duration-seconds 10800/);
+  assert.match(call, /--query Credentials/);
   assert.match(call, /--role-session-name lab-soa-03-auto-scaling-42/);
   assert.doesNotMatch(call, /gh-oidc-token/, "the token goes by file, never on the command line");
   w.cleanup();
@@ -201,6 +202,36 @@ test("at the deadline a still-initializing instance passes with a warning, and a
   slow.cleanup();
 });
 
+// Review round 1: a quick redeploy must not wait on the last session's dead items, which the tagging API still lists.
+test("the ready check counts deleted and not-found items as gone, and asks only about this session's items", { skip }, () => {
+  const arns = JSON.stringify({ ResourceTagMappingList: [
+    { ResourceARN: "arn:aws:ec2:eu-west-2:123456789012:natgateway/nat-0old" },
+    { ResourceARN: "arn:aws:elasticloadbalancing:eu-west-2:123456789012:loadbalancer/app/alb-a03old00/50dc6c495c0c9188" },
+    { ResourceARN: "arn:aws:eks:eu-west-2:123456789012:cluster/eks-a03old00" },
+    { ResourceARN: "arn:aws:ec2:eu-west-2:123456789012:vpc/vpc-0ccc" },
+  ] });
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: arns },
+    { cmd: "aws", match: "^ec2 describe-nat-gateways", out: '{"NatGateways":[{"State":"deleted"}]}' },
+    { cmd: "aws", match: "^elbv2 describe-load-balancers", code: 254, err: "An error occurred (LoadBalancerNotFound) when calling the DescribeLoadBalancers operation: One or more load balancers not found" },
+    { cmd: "aws", match: "^eks describe-cluster", out: '{"cluster":{"status":"DELETING"}}' },
+  ]);
+  const r = w.run("infra/ci/lab-ready-aws.sh", [ID, "6"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0", SESSION_ID: "ls-20261015120000-cd34ef" });
+  assert.equal(r.status, 0, r.out);
+  assert.match(w.calls().find((c) => c.startsWith("aws resourcegroupstaggingapi")), /--tag-filters Key=cloudlabs-lab,Values=soa-03-auto-scaling Key=cloudlabs-session,Values=ls-20261015120000-cd34ef --region eu-west-2/);
+  assert.equal(w.calls().filter((c) => c.startsWith("aws resourcegroupstaggingapi")).length, 1, "ready at the first poll");
+  // Any other failure to ask is still pending, never ready.
+  const down = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: arns },
+    { cmd: "aws", match: "^ec2 describe-nat-gateways", code: 254, err: "An error occurred (UnauthorizedOperation) when calling the DescribeNatGateways operation: no" },
+  ]);
+  const d = down.run("infra/ci/lab-ready-aws.sh", [ID, "0"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
+  assert.equal(d.status, 1, d.out);
+  assert.match(d.out, /not ready: ec2:natgateway nat-0old \(could not ask AWS\)/);
+  w.cleanup();
+  down.cleanup();
+});
+
 test("the ready check and peering refuse a bad lab id with exit 2", { skip: BASH ? false : "no bash found" }, () => {
   const w = world([]);
   for (const id of ["../x", "soa-03-Auto", "soa-03-auto-scaling-and-more-words", ""]) {
@@ -220,6 +251,8 @@ test("peer asks the Worker, peers the lab VPC to vpc-wg, tags the connection and
     { cmd: "curl", match: '"phase":"end"', out: '{"message":"peered"}' },
     { cmd: "aws", match: "^ec2 describe-vpcs.*tag:Name,Values=vpc-wg", out: WG.vpc },
     { cmd: "aws", match: "^ec2 describe-route-tables.*tag:Name,Values=rt-wg", out: WG.rt },
+    { cmd: "aws", match: "^ec2 describe-vpcs --vpc-ids vpc-0lab", out: '{"Vpcs":[{"VpcId":"vpc-0lab"}]}' },
+    { cmd: "aws", match: "^ec2 describe-route-tables --route-table-ids rtb-0lab", out: '{"RouteTables":[{"RouteTableId":"rtb-0lab"}]}' },
     // The first matching rule answers: the wait for pcx-0lab before the search for the lab's existing connections.
     { cmd: "aws", match: "^ec2 describe-vpc-peering-connections.*pcx-0lab", out: '{"VpcPeeringConnections":[{"Status":{"Code":"active"}}]}' },
     { cmd: "aws", match: "^ec2 describe-vpc-peering-connections", out: '{"VpcPeeringConnections":[]}' },
@@ -242,6 +275,8 @@ test("peer replaces a route that already exists, and reuses the lab's active con
     { cmd: "curl", match: '"phase":"begin"', out: '{"go":true}' },
     { cmd: "aws", match: "^ec2 describe-vpcs.*tag:Name,Values=vpc-wg", out: WG.vpc },
     { cmd: "aws", match: "^ec2 describe-route-tables.*tag:Name,Values=rt-wg", out: WG.rt },
+    { cmd: "aws", match: "^ec2 describe-vpcs --vpc-ids vpc-0lab", out: '{"Vpcs":[{"VpcId":"vpc-0lab"}]}' },
+    { cmd: "aws", match: "^ec2 describe-route-tables --route-table-ids rtb-0lab", out: '{"RouteTables":[{"RouteTableId":"rtb-0lab"}]}' },
     { cmd: "aws", match: "^ec2 describe-vpc-peering-connections", out: '{"VpcPeeringConnections":[{"VpcPeeringConnectionId":"pcx-0old","Status":{"Code":"active"}}]}' },
     { cmd: "aws", match: "^ec2 create-route --route-table-id rtb-0wg", code: 254, err: "An error occurred (RouteAlreadyExists) when calling the CreateRoute operation: The route identified by 10.64.64.0/18 already exists." },
   ]);
@@ -260,6 +295,7 @@ test("a peer run without outputs finds the lab's hub VPC and its route tables by
     { cmd: "curl", match: '"phase":"begin"', out: '{"go":true}' },
     { cmd: "aws", match: "^ec2 describe-vpcs.*tag:Name,Values=vpc-wg", out: WG.vpc },
     { cmd: "aws", match: "^ec2 describe-vpcs.*tag:cloudlabs-peer,Values=hub", out: '{"Vpcs":[{"VpcId":"vpc-0hub"}]}' },
+    { cmd: "aws", match: "^ec2 describe-vpcs --vpc-ids vpc-0hub .*tag:cloudlabs-lab,Values=soa-03-auto-scaling", out: '{"Vpcs":[{"VpcId":"vpc-0hub"}]}' },
     { cmd: "aws", match: "^ec2 describe-route-tables.*tag:Name,Values=rt-wg", out: WG.rt },
     { cmd: "aws", match: "^ec2 describe-route-tables.*vpc-id,Values=vpc-0hub", out: '{"RouteTables":[{"RouteTableId":"rtb-0hub"},{"RouteTableId":"rtb-0hub2"}]}' },
     { cmd: "aws", match: "^ec2 describe-vpc-peering-connections.*pcx-0hub", out: '{"VpcPeeringConnections":[{"Status":{"Code":"active"}}]}' },
@@ -271,6 +307,43 @@ test("a peer run without outputs finds the lab's hub VPC and its route tables by
   const writes = w.calls().filter((c) => /^aws ec2 (create|accept|replace)/.test(c));
   assert.match(writes[0], /^aws ec2 create-vpc-peering-connection --vpc-id vpc-0hub --peer-vpc-id vpc-0wg /);
   for (const rt of ["rtb-0hub", "rtb-0hub2"]) assert.ok(writes.some((c) => c.startsWith(`aws ec2 create-route --route-table-id ${rt} --destination-cidr-block 10.50.0.0/16 --vpc-peering-connection-id pcx-0hub`)), rt);
+  w.cleanup();
+});
+
+// Controller ruling (review round 1): defence in depth for the VPN server.
+test("peer refuses a VPC without the lab's tag, and writes nothing", { skip }, () => {
+  const w = world([
+    { cmd: "curl", match: '"phase":"begin"', out: '{"go":true}' },
+    { cmd: "aws", match: "^ec2 describe-vpcs.*tag:Name,Values=vpc-wg", out: WG.vpc },
+    { cmd: "aws", match: "^ec2 describe-route-tables.*tag:Name,Values=rt-wg", out: WG.rt },
+    { cmd: "aws", match: "^ec2 describe-vpcs --vpc-ids vpc-0other", out: '{"Vpcs":[]}' },
+  ]);
+  const r = w.run("infra/ci/lab-peer-aws.sh", ["peer", ID], { LAB_PEER_URL: "https://wg.example.net/api/callback/lab-peer", CALLBACK_TOKEN: "cb", WORKER_RUN_ID: "lab-peer-1", TF_VAR_address_space: "10.64.64.0/18", PEER_VPC_ID: "vpc-0other", PEER_ROUTE_TABLE_IDS: '["rtb-0lab"]', LAB_REGION: "eu-west-2" });
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /vpc-0other is not tagged cloudlabs-lab = soa-03-auto-scaling/);
+  assert.match(w.calls().find((c) => c.startsWith("aws ec2 describe-vpcs --vpc-ids")), /--filters Name=tag:cloudlabs-lab,Values=soa-03-auto-scaling/);
+  assert.deepEqual(w.calls().filter((c) => /^aws ec2 (create|accept|replace|delete)/.test(c)), []);
+  assert.match(w.calls().filter((c) => c.startsWith("curl")).at(-1), /"phase":"end","ok":false/);
+  w.cleanup();
+});
+
+test("peer routes only the route tables inside the lab VPC, reports the rest, and does not accept a provisioning connection", { skip }, () => {
+  const w = world([
+    { cmd: "curl", match: '"phase":"begin"', out: '{"go":true}' },
+    { cmd: "aws", match: "^ec2 describe-vpcs.*tag:Name,Values=vpc-wg", out: WG.vpc },
+    { cmd: "aws", match: "^ec2 describe-route-tables.*tag:Name,Values=rt-wg", out: WG.rt },
+    { cmd: "aws", match: "^ec2 describe-vpcs --vpc-ids vpc-0lab", out: '{"Vpcs":[{"VpcId":"vpc-0lab"}]}' },
+    { cmd: "aws", match: "^ec2 describe-route-tables --route-table-ids rtb-0lab rtb-0wg --filters Name=vpc-id,Values=vpc-0lab", out: '{"RouteTables":[{"RouteTableId":"rtb-0lab"}]}' },
+    { cmd: "aws", match: "^ec2 describe-vpc-peering-connections --vpc-peering-connection-ids", out: '{"VpcPeeringConnections":[{"VpcPeeringConnectionId":"pcx-0lab","Status":{"Code":"active"}}]}' },
+    { cmd: "aws", match: "^ec2 describe-vpc-peering-connections", out: '{"VpcPeeringConnections":[{"VpcPeeringConnectionId":"pcx-0lab","Status":{"Code":"provisioning"}}]}' },
+  ]);
+  const r = w.run("infra/ci/lab-peer-aws.sh", ["peer", ID], { LAB_PEER_URL: "https://wg.example.net/api/callback/lab-peer", CALLBACK_TOKEN: "cb", WORKER_RUN_ID: "lab-peer-1", TF_VAR_address_space: "10.64.64.0/18", TF_VAR_gateway_cidr: "10.50.0.0/16", PEER_VPC_ID: "vpc-0lab", PEER_ROUTE_TABLE_IDS: '["rtb-0lab","rtb-0wg"]', LAB_REGION: "eu-west-2" });
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /rtb-0wg is not a route table of vpc-0lab/);
+  const writes = w.calls().filter((c) => /^aws ec2 (create|accept|replace|delete)/.test(c));
+  assert.ok(!writes.some((c) => c.startsWith("aws ec2 accept-vpc-peering-connection")), "a provisioning connection is already accepted");
+  assert.deepEqual(writes.filter((c) => c.includes("10.50.0.0/16")), ["aws ec2 create-route --route-table-id rtb-0lab --destination-cidr-block 10.50.0.0/16 --vpc-peering-connection-id pcx-0lab --region eu-west-2"]);
+  assert.match(w.calls().filter((c) => c.startsWith("curl")).at(-1), /"phase":"end","ok":false/);
   w.cleanup();
 });
 

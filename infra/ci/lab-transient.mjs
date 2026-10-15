@@ -49,6 +49,8 @@ export const TRANSIENT = [
   ["Throttling", /\bThrottling(?:Exception)?\b/],
   ["RequestLimitExceeded", /\bRequestLimitExceeded\b/],
   ["SlowDown", /\bSlowDown\b/],
+  ["TooManyRequestsException", /\bTooManyRequestsException\b/],
+  ["StatusCode: 429", /\bStatusCode: 429\b/i],
   ["5xx", /\bStatusCode: 5\d\d\b/],
   ["send request failed", /\bsend request failed\b/],
 ];

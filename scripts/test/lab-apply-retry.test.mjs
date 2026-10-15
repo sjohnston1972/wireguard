@@ -82,6 +82,14 @@ test("AWS: throttling and 5xx are retried; AccessDenied and a plain 400 are not"
   assert.equal(transientFailure(diag("operation error EC2: CreateVpc, https response error StatusCode: 400, RequestID: x, api error Throttling: then AccessDenied")).transient, false);
 });
 
+test("AWS: TooManyRequestsException and a 429 in any case are retried", () => {
+  const diag = (msg) => `Error: ${msg}\n\n  with aws_lambda_function.lab,\n`;
+  assert.equal(transientFailure(diag("operation error Lambda: CreateFunction, https response error StatusCode: 429, RequestID: x, TooManyRequestsException: Rate exceeded")).transient, true);
+  assert.equal(transientFailure(diag("operation error Lambda: CreateFunction, https response error StatusCode: 400, RequestID: x, api error TooManyRequestsException: Rate exceeded")).transient, true);
+  assert.equal(transientFailure(diag("operation error X: Y, https response error statuscode: 429, RequestID: x")).transient, true);
+  assert.equal(transientFailure(diag("operation error X: Y, https response error StatusCode: 429, RequestID: x, api error AccessDeniedException: no")).transient, false);
+});
+
 test("anything else is not transient: 4xx refusals, a resource's own timeout, a mix, or no error at all", () => {
   for (const text of [
     QUOTA,

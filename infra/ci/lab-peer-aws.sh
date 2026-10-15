@@ -22,8 +22,9 @@
 #     - the lab VPC: $PEER_VPC_ID (Terraform's peer_vpc_id), else (a peer run,
 #       which has no outputs; ruling A38) the VPC tagged cloudlabs-lab = <id>
 #       and cloudlabs-peer = hub, else the lab's only VPC
+#     - which must carry the tag cloudlabs-lab = <id>, or nothing is written
 #     - its route tables: $PEER_ROUTE_TABLE_IDS (a JSON list), else that VPC's
-#       route tables tagged for the lab
+#       route tables tagged for the lab; only those inside the lab VPC are used
 #     - reuses an active or pending connection tagged for the lab between the
 #       two VPCs, or creates one (tags cloudlabs-lab = <id>, Name =
 #       lab-<id>-headend), accepts it and waits up to 60 s for it to be active
@@ -176,10 +177,28 @@ if ! [[ "$lab_vpc" =~ $ID_OK ]] || [[ "$lab_vpc" != vpc-* ]]; then
   warn "the lab has no VPC to peer"
   exit 0
 fi
+# Defence in depth for the VPN server: only a VPC that carries this lab's tag is
+# ever peered to it, whichever way it was found. Nothing is written otherwise.
+tagged="$(ids '.Vpcs[]?.VpcId' <<<"$(awsq ec2 describe-vpcs --vpc-ids "$lab_vpc" --filters "Name=tag:cloudlabs-lab,Values=$LAB_ID")")"
+if [ "$tagged" != "$lab_vpc" ]; then
+  warn "$lab_vpc is not tagged cloudlabs-lab = $LAB_ID (or AWS could not say); refusing to peer it to the VPN server"
+  exit 0
+fi
 
+# The lab's route tables, and only those inside the lab VPC.
+rt_problem=0
 lab_rts=()
 if [ -n "${PEER_ROUTE_TABLE_IDS:-}" ]; then mapfile -t lab_rts < <(ids '.[]?' <<<"$PEER_ROUTE_TABLE_IDS"); fi
-if [ "${#lab_rts[@]}" -eq 0 ]; then
+if [ "${#lab_rts[@]}" -gt 0 ]; then
+  for t in "${lab_rts[@]}"; do
+    [[ "$t" =~ $ID_OK && "$t" == rtb-* ]] || { warn "'$t' is not a route table id; not peering"; exit 0; }
+  done
+  mapfile -t inside < <(ids '.RouteTables[]?.RouteTableId' <<<"$(awsq ec2 describe-route-tables --route-table-ids "${lab_rts[@]}" --filters "Name=vpc-id,Values=$lab_vpc")")
+  for t in "${lab_rts[@]}"; do
+    printf '%s\n' "${inside[@]}" | grep -qx "$t" || { warn "$t is not a route table of $lab_vpc; skipped"; rt_problem=1; }
+  done
+  lab_rts=("${inside[@]}")
+else
   mapfile -t lab_rts < <(ids '.RouteTables[]?.RouteTableId' <<<"$(awsq ec2 describe-route-tables --filters "Name=vpc-id,Values=$lab_vpc" "Name=tag:cloudlabs-lab,Values=$LAB_ID")")
 fi
 
@@ -211,7 +230,8 @@ if ! [[ "$pcx" =~ $ID_OK ]] || [[ "$pcx" != pcx-* ]]; then
   exit 0
 fi
 
-if [ "$status" != active ]; then
+# A reused connection that is active or already provisioning (accepted) needs no accepting.
+if [ "$status" != active ] && [ "$status" != provisioning ]; then
   accepted=false
   for _ in 1 2 3 4 5; do
     if awsw ec2 accept-vpc-peering-connection --vpc-peering-connection-id "$pcx"; then accepted=true; break; fi
@@ -240,7 +260,7 @@ route() {
   warn "could not route $2 through $pcx in $1 ($(errcode))"
   return 1
 }
-failed=0
+failed="$rt_problem"
 route "$wg_rt" "$slot" || failed=1
 if [ "${#lab_rts[@]}" -eq 0 ]; then
   warn "the lab has no route table to route $gateway back"
