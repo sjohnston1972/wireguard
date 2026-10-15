@@ -123,7 +123,9 @@ const isUntag = (name) => /^(Untag|Remove\w*Tags?|Delete\w*Tags?)/.test(name);
  * Ruling P1 (A59): verbs that never make anything. The reference gives a few of them the request tag
  * (access-analyzer:DeleteAnalyzer, cloudformation:UpdateStack, cognito-idp:UpdateUserPool, states:UpdateStateMachine,
  * logs:UpdateDeliveryConfiguration), which put them in the create list, where a call without a request tag (every
- * delete) is always refused: lab 07 could make an analyzer and never remove it. They are judged as changes instead.
+ * delete) is always refused: lab 07 could make an analyzer and never remove it. They are judged as changes instead
+ * (the reference also moved DeleteServiceLinkedAnalyzer, apigateway:UpdatePortal* and cloudformation:UpdateStackSet,
+ * which no lab may call: DenyStackSets).
  * apigateway's HTTP-verb actions (DELETE, PATCH) are left to batch 3's API Gateway lab.
  */
 export const NON_CREATE_VERB = /^(Delete|Update|Remove|Disassociate|Detach|Deregister|Cancel|Stop|Terminate|Revoke|Reset|Disable|Reject|Untag)/;
@@ -328,6 +330,8 @@ function fixedStatements(abac) {
     // ARN (configuration-recorder/lab-<id>-*/...): if it asks on "*", this refuses the lab's own recorder.
     { Sid: "LabRecordersOnly", Effect: "Deny", Action: RECORDER_WRITES, NotResource: `arn:aws:config:*:${ACCT}:configuration-recorder/lab-*` },
     deny("DenyAccountAndBilling", ["organizations:*", "account:*", "billing:*", "aws-portal:*", "payments:*", "budgets:*", "cur:*", "ce:Create*", "ce:Update*", "ce:Delete*", "iam:*AccountPasswordPolicy", "iam:*AccountAlias", "iam:CreateAccessKey", "iam:*OpenIDConnectProvider*", "iam:*SAMLProvider*", "iam:*VirtualMFADevice", ...(abac.accountSettings ?? [])]),
+    // Ruling P4: stack sets are readme-only; an existing stack set's execution role is not a lab role (Task 2 review I1).
+    deny("DenyStackSets", ["cloudformation:*StackSet", "cloudformation:*StackInstances", "cloudformation:ImportStacksToStackSet"]),
     { Sid: "DenyIamOutsideLab", Effect: "Deny", Action: IAM_WRITES, NotResource: [LAB_ROLE, LAB_PROFILE, LAB_POLICY, LAB07_USER, `arn:aws:iam::${ACCT}:role/aws-service-role/*`] },
     deny("DenyBoundaryRemoval", ["iam:DeleteRolePermissionsBoundary", "iam:DeleteUserPermissionsBoundary"]),
     // §7.1's attachable list (lab-scope-aws.mjs MANAGED_POLICIES checks it at plan; this holds it at apply too).

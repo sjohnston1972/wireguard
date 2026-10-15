@@ -162,7 +162,7 @@ test("every role policy and the boundary fit (A29), and the role holds at most 1
 
 test("each §7.1 statement says what it must", { skip }, () => {
   const { POLICIES, statements, sid } = files();
-  for (const s of ["LabServices", "LabBuckets", "BucketList", "GlobalServices", "Identity", "LabRolesBounded", "LabRolesOther", "Lab07UsersBounded", "Lab07UsersOther", "PassLabRoles", "ServiceLinkedRoles", "DenyVpnServer", "DenyVpnTagRequest", "DenyVpnTagKeys", "DenyDefaultVpc", "DenyDefaultVpcChildren", "DenyAccountAndBilling", "DenyIamOutsideLab", "DenyBoundaryRemoval", "DenyOtherRoles", "DenyOtherRegions", "DenyGlobalRegionsForLabServices", "CreateNeedsLabTagRunInstances", "KeepLabTag"]) assert.ok(sid(s), s);
+  for (const s of ["LabServices", "LabBuckets", "BucketList", "GlobalServices", "Identity", "LabRolesBounded", "LabRolesOther", "Lab07UsersBounded", "Lab07UsersOther", "PassLabRoles", "ServiceLinkedRoles", "DenyVpnServer", "DenyVpnTagRequest", "DenyVpnTagKeys", "DenyDefaultVpc", "DenyDefaultVpcChildren", "DenyAccountAndBilling", "DenyStackSets", "DenyIamOutsideLab", "DenyBoundaryRemoval", "DenyOtherRoles", "DenyOtherRegions", "DenyGlobalRegionsForLabServices", "CreateNeedsLabTagRunInstances", "KeepLabTag"]) assert.ok(sid(s), s);
   assert.ok(statements.some((s) => /^CreateNeedsLabTag\d+$/.test(s.Sid)) && statements.some((s) => /^ChangeNeedsLabTag\d+$/.test(s.Sid)));
   assert.deepEqual(sid("DenyVpnServer").Condition, { StringEquals: { "aws:ResourceTag/wg-admin": "vpn" } });
   assert.deepEqual(sid("LabRolesBounded").Condition, { StringEquals: { "iam:PermissionsBoundary": "arn:aws:iam::__ACCOUNT__:policy/wg-admin-lab-boundary" } });
@@ -708,13 +708,16 @@ test("what labs 06–10 do is allowed: tagged creates, deletes of tagged items, 
   denied("cloudformation:CreateStack", arn("cloudformation", "stack/lab-soa-06-x-stack/*"), R);
   for (const a of ["cloudformation:UpdateStack", "cloudformation:DeleteStack"]) allowed(a, arn("cloudformation", "stack/lab-soa-06-x-stack/0abc"), LAB);
   allowed("iam:PassRole", `arn:aws:iam::${A}:role/cloudlabs-lab/lab-soa-06-x-cfn`, { "iam:PassedToService": "cloudformation.amazonaws.com" });
+  // Review I1 (P4): stack sets are never a lab's, even with the lab's request tag (an existing one's execution role is not a lab role).
+  for (const a of ["cloudformation:UpdateStackSet", "cloudformation:CreateStackSet", "cloudformation:CreateStackInstances", "cloudformation:UpdateStackInstances", "cloudformation:ImportStacksToStackSet"]) assert.equal(decide(POLICIES.role, { action: a, resource: arn("cloudformation", "stackset/other:0abc"), ctx: { ...R, "aws:RequestTag/cloudlabs-lab": "soa-06-x" } }), "explicitDeny", a);
   // Lab 07: the user, its login profile and policy; hand-made credentials removed; never an access key made.
   const ann = `arn:aws:iam::${A}:user/cloudlabs-lab/lab-soa-07-iam-kms-ann`;
   allowed("iam:CreateUser", ann, BOUNDED);
-  for (const a of ["iam:TagUser", "iam:CreateLoginProfile", "iam:DeleteLoginProfile", "iam:DeleteAccessKey", "iam:DeactivateMFADevice", "iam:DeleteSSHPublicKey", "iam:DeleteSigningCertificate", "iam:DeleteServiceSpecificCredential", "iam:DeleteUser"]) allowed(a, ann, {});
+  for (const a of ["iam:TagUser", "iam:CreateLoginProfile", "iam:DeleteLoginProfile", "iam:DeleteAccessKey", "iam:DeactivateMFADevice", "iam:DeleteSSHPublicKey", "iam:DeleteSigningCertificate", "iam:DeleteServiceSpecificCredential", "iam:UpdateAccessKey", "iam:UntagUser", "iam:DeleteUser"]) allowed(a, ann, {});
   allowed("iam:AttachUserPolicy", ann, { ...BOUNDED, "iam:PolicyARN": `arn:aws:iam::${A}:policy/cloudlabs-lab/lab-soa-07-iam-kms-ann` });
   denied("iam:CreateAccessKey", ann, {});
   denied("iam:DeleteAccessKey", `arn:aws:iam::${A}:user/someone`, {});
+  for (const a of ["iam:DeactivateMFADevice", "iam:DeleteSSHPublicKey"]) denied(a, `arn:aws:iam::${A}:user/someone`, {});
   allowed("access-analyzer:CreateAnalyzer", arn("access-analyzer", "analyzer/lab-soa-07-iam-kms-account"), NEW);
   allowed("access-analyzer:DeleteAnalyzer", arn("access-analyzer", "analyzer/lab-soa-07-iam-kms-account"), LAB);
   denied("access-analyzer:DeleteAnalyzer", arn("access-analyzer", "analyzer/other"), R);
