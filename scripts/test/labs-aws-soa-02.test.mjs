@@ -41,7 +41,10 @@ test("soa-02's Config rule is scoped to this lab's security groups, so remediati
   assert.ok(rule, "the restricted_ssh rule exists");
   assert.match(rule.body, /tag_key\s+=\s+"cloudlabs-lab"/);
   assert.match(rule.body, /tag_value\s+=\s+var\.lab_id/);
-  assert.match(rule.body, /compliance_resource_types\s+=\s+\["AWS::EC2::SecurityGroup"\]/);
+  // AWS Config refuses a scope with both resource types and a tag (release test 2026-10-15, InvalidParameterValueException):
+  // the tag alone, and the managed rule judges security groups only.
+  assert.doesNotMatch(rule.body, /compliance_resource_types/);
+  assert.match(rule.body, /source_identifier\s+=\s+"INCOMING_SSH_DISABLED"/);
 });
 
 test("soa-02's learning content is valid", () => {

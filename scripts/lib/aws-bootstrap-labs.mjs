@@ -20,6 +20,7 @@
 // numbers and AWS's error codes are printed: never an ARN or the account id.
 
 import { AWS_LAB_REGIONS, LAB_TAG, AWS_BOUNDARY } from "./labs.mjs";
+import { SERVICE_LINKED } from "./aws-lab-policies.mjs";
 
 const ctx = (key, values, type = "string") => ({ key, type, values });
 
@@ -54,6 +55,11 @@ export function simulatorCases(account, defaultVpcArns = []) {
     { name: "a launch whose volume has no lab tag", action: "ec2:RunInstances", resource: `arn:aws:ec2:eu-west-2:${account}:volume/*`, context: [region], want: "denied" },
     // Ruling A54: an Instance Connect Endpoint makes its interface with the caller's credentials and no tags.
     { name: "EICE's network interface", action: "ec2:CreateNetworkInterface", resource: `arn:aws:ec2:eu-west-2:${account}:network-interface/*`, context: [region], want: "allowed" },
+    // Ruling A55: SSM asks about AWS's document with no request tag.
+    { name: "an SSM association", action: "ssm:CreateAssociation", resource: "arn:aws:ssm:eu-west-2::document/AWS-RunPatchBaseline", context: [region], want: "allowed" },
+    // Ruling A56: a lab log group by its name (the tag read lags the create); any other still needs the tag.
+    { name: "retention on a new lab log group", action: "logs:PutRetentionPolicy", resource: `arn:aws:logs:eu-west-2:${account}:log-group:/cloudlabs/soa-01-x/app`, context: [region], want: "allowed" },
+    { name: "retention on another log group", action: "logs:PutRetentionPolicy", resource: `arn:aws:logs:eu-west-2:${account}:log-group:/aws/other`, context: [region], want: "denied" },
     ...ssmSettingCases(account),
     ...defaultVpcCase(account, defaultVpcArns),
   ];
@@ -135,6 +141,23 @@ export function quotaPlan(current, quotas = LAB_QUOTAS) {
     if (c.value === null ? q.raise === "always" : c.value < q.want) out.push({ service: c.service, code: c.code, region: c.region, to: q.want });
   }
   return out;
+}
+
+/**
+ * Ruling A57: every service-linked role a lab may cause (SERVICE_LINKED), made ahead. AWS makes one at a service's first
+ * use, and the service cannot use it for a minute or so: soa-03's first Auto Scaling group failed on it (release test,
+ * 2026-10-15). One already there ("has been taken") is left alone; one AWS will not make ahead is only reported.
+ */
+export function serviceLinkedRoles(run, o) {
+  const made = [];
+  const notMade = [];
+  for (const service of SERVICE_LINKED) {
+    const r = run("aws", ["iam", "create-service-linked-role", "--aws-service-name", service, "--output", "json"]);
+    if (r.status === 0) made.push(service);
+    else if (!/has been taken|already exists/i.test(r.stderr ?? "")) notMade.push(`${service} (${errCode(r)})`);
+  }
+  o.log(made.length ? `Service-linked roles made ahead: ${made.join(", ")}` : "Service-linked roles: all there");
+  if (notMade.length) o.log(`Service-linked roles AWS would not make ahead (it makes them at first use): ${notMade.join(", ")}`);
 }
 
 const errCode = (r) => /An error occurred \(([\w.]+)\)/.exec(r.stderr ?? "")?.[1] ?? `exit ${r.status}`;
@@ -232,6 +255,7 @@ export async function runLabsBootstrap(run, o) {
     o.log(`SIMULATOR: wg-admin-labs or its boundary does not behave as AWS labs spec §7.1, §7.2 and ruling A48 say (${problems.length}):`);
     for (const p of problems) o.log(`  ${p}`);
   } else o.log(`Simulator: all ${role.length + bound.length} answers as expected`);
+  serviceLinkedRoles(run, o);
   await quotas(run, o);
   costTag(run, o);
   return { ok: problems.length === 0 };

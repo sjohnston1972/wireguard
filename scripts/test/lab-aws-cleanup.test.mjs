@@ -487,3 +487,65 @@ test("safety net: a security group rule goes with its group; one still there is 
   v.cleanup();
   blind.cleanup();
 });
+
+// Release test 2026-10-15 (soa-05 run 38785247607, ruling A58): RDS deletes a database's automated snapshots
+// (rds:<db>-<time>) itself, minutes after the database. The sweep never asks to delete one (AWS refuses:
+// InvalidDBSnapshotState); Verify clean waits for them, and one being deleted counts clean.
+const SNAP = (id) => `arn:aws:rds:eu-west-2:123456789012:snapshot:${id}`;
+test("safety net leaves an automated RDS snapshot to go with its database, and deletes a manual one", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(SNAP("rds:db-a05k3x9q-2026-10-15-18-40"), SNAP("lab-manual")) },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", [ID], ENV);
+  assert.equal(r.status, 0, r.out);
+  const deletes = w.calls().filter((c) => /^aws rds delete-db-snapshot/.test(c));
+  assert.deepEqual(deletes.map((c) => /--db-snapshot-identifier (\S+)/.exec(c)[1]), ["lab-manual"]);
+  assert.doesNotMatch(r.out, /::warning::/);
+  w.cleanup();
+});
+
+test("Verify clean waits for automated RDS snapshots to go with their database; one being deleted is clean; one still there at the deadline is named", { skip }, () => {
+  const avail = '{"DBSnapshots":[{"DBSnapshotIdentifier":"rds:db-a05k3x9q-2026-10-15-18-40","SnapshotType":"automated","Status":"available"}]}';
+  const deleting = '{"DBSnapshots":[{"DBSnapshotIdentifier":"rds:db-a05k3x9q-2026-10-15-18-37","SnapshotType":"automated","Status":"deleting"}]}';
+  const gone = "An error occurred (DBSnapshotNotFound) when calling the DescribeDBSnapshots operation: not found";
+  const rules = [
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(SNAP("rds:db-a05k3x9q-2026-10-15-18-40"), SNAP("rds:db-a05k3x9q-2026-10-15-18-37")) },
+    { cmd: "aws", match: "^rds describe-db-snapshots --db-snapshot-identifier rds:db-a05k3x9q-2026-10-15-18-37", out: deleting },
+    ...EMPTY_IAM,
+  ];
+  const w = world([{ cmd: "aws", match: "^rds describe-db-snapshots --db-snapshot-identifier rds:db-a05k3x9q-2026-10-15-18-40", out: [avail, avail, ""], code: [0, 0, 254], err: ["", "", gone] }, ...rules]);
+  const out = join(w.dir, "gh-output");
+  writeFileSync(out, "");
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", ID], { ...ENV, GITHUB_OUTPUT: fwd(out) });
+  assert.equal(r.status, 0, r.out);
+  assert.match(readFileSync(out, "utf8"), /^clean=true$/m);
+  assert.ok(w.calls().filter((c) => /describe-db-snapshots --db-snapshot-identifier rds:db-a05k3x9q-2026-10-15-18-40/.test(c)).length >= 3, "polled until gone");
+  w.cleanup();
+  // At the deadline (LAB_JOB_DEADLINE less 420 s already passed) it is not waited for: named.
+  const late = world([{ cmd: "aws", match: "^rds describe-db-snapshots --db-snapshot-identifier rds:db-a05k3x9q-2026-10-15-18-40", out: avail }, ...rules]);
+  const out2 = join(late.dir, "gh-output");
+  writeFileSync(out2, "");
+  const l = late.run("infra/ci/lab-aws-safety-net.sh", ["--verify", ID], { ...ENV, LAB_JOB_DEADLINE: String(Math.floor(Date.now() / 1000) + 60), GITHUB_OUTPUT: fwd(out2) });
+  assert.equal(l.status, 1, l.out);
+  assert.deepEqual(JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out2, "utf8"))[1]), ["rds:snapshot rds:db-a05k3x9q-2026-10-15-18-40"]);
+  late.cleanup();
+});
+
+// Release test 2026-10-15 (soa-05): Terraform had already deleted the Instance Connect Endpoint; the tagging API still
+// listed it and the sweep's second delete was refused (a warning). One delete-complete is left alone.
+test("safety net does not delete an Instance Connect Endpoint that is already delete-complete", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(A("instance-connect-endpoint/eice-0a"), A("instance-connect-endpoint/eice-0b")) },
+    { cmd: "aws", match: "^ec2 describe-vpcs --filters", out: '{"Vpcs":[]}' },
+    { cmd: "aws", match: "^ec2 describe-instance-connect-endpoints --instance-connect-endpoint-ids eice-0a", out: '{"InstanceConnectEndpoints":[{"VpcId":"vpc-0l","State":"delete-complete"}]}' },
+    { cmd: "aws", match: "^ec2 describe-instance-connect-endpoints --instance-connect-endpoint-ids eice-0b", out: ['{"InstanceConnectEndpoints":[{"VpcId":"vpc-0l","State":"create-complete"}]}', '{"InstanceConnectEndpoints":[{"VpcId":"vpc-0l","State":"delete-complete"}]}'] },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", [ID], ENV);
+  assert.equal(r.status, 0, r.out);
+  const deletes = w.calls().filter((c) => /^aws ec2 delete-instance-connect-endpoint/.test(c));
+  assert.deepEqual(deletes.map((c) => /--instance-connect-endpoint-id (\S+)/.exec(c)[1]), ["eice-0b"]);
+  assert.doesNotMatch(r.out, /::warning::/);
+  w.cleanup();
+});

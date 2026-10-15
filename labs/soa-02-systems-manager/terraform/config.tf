@@ -5,8 +5,10 @@
 # delivers snapshots to the lab's own bucket, and runs the managed rule
 # restricted-ssh (INCOMING_SSH_DISABLED) with automatic remediation by the
 # SSM Automation document AWS-DisablePublicAccessForSecurityGroup, under a
-# role of the lab's own. The rule is scoped to security groups carrying this
-# lab's tag, so the remediation can never touch another group in the region.
+# role of the lab's own. The rule is scoped to this lab's tag, so the
+# remediation can never touch another group in the region (Config refuses a
+# scope with both resource types and a tag; the managed rule judges security
+# groups only).
 # sg-demo is an empty group to try it on. The recorder and delivery channel
 # cannot carry tags, so they are named lab-<id>-* (ruling A4).
 
@@ -90,9 +92,8 @@ resource "aws_config_config_rule" "restricted_ssh" {
     source_identifier = "INCOMING_SSH_DISABLED"
   }
   scope {
-    compliance_resource_types = ["AWS::EC2::SecurityGroup"]
-    tag_key                   = "cloudlabs-lab"
-    tag_value                 = var.lab_id
+    tag_key   = "cloudlabs-lab"
+    tag_value = var.lab_id
   }
   depends_on = [aws_config_configuration_recorder_status.lab]
 }

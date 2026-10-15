@@ -943,3 +943,15 @@ copied here and win.
   own describe (not found is clean); they go with their group or load balancer, and one still there is deleted by its id or
   ARN (rules before listeners before target groups; security group rules after the fabric, never in the headend's VPC).
 - **A54. `ec2:CreateNetworkInterface` is exempt from the lab-tag-on-create rule.** EC2 Instance Connect Endpoints (and later services that place interfaces in a lab subnet) create their network interface with the caller's credentials and no tags. The VPN-server and default-VPC denies still keep interfaces out of those networks, and Verify clean names any untagged interface left inside a lab VPC (A26).
+- **A55. State Manager associations are exempt from the lab-tag-on-create rule.** SSM judges `ssm:CreateAssociation`
+  (and `CreateAssociationBatch`) on the document it runs, AWS's own and untagged, without the request's tags: soa-02's
+  release test and a probe (2026-10-15) were refused with the tag sent. Deleting an association still needs the lab tag.
+- **A56. Log groups are the lab's by name as well as by tag.** CloudWatch Logs reads a new group's tag from a store that
+  trails `CreateLogGroup` by seconds (a probe: `PutRetentionPolicy` refused, then allowed, on the same tagged group), so
+  the change list's `logs:` actions are refused only outside `log-group:/cloudlabs/*`, and there without the tag. The
+  scope check holds every lab log group to `/cloudlabs/<lab id>/...` (Lambda writes there through `logging_config`).
+- **A57. The bootstrap makes the labs' service-linked roles ahead.** AWS makes one at a service's first use and the
+  service cannot use it for a minute or so (soa-03's first Auto Scaling group failed on it). `--labs` asks for each one
+  in `SERVICE_LINKED`; one already there is left, one AWS will not make ahead is only reported.
+- **A58. Automated RDS snapshots go with their database.** The safety net never deletes one (`rds:<db>-<time>`; AWS
+  refuses), and Verify clean waits for them (up to 15 minutes, by the job's deadline); a snapshot being deleted is clean.
