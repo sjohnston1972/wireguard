@@ -7,14 +7,20 @@ import { MetricTile, cx, type Tone } from "@/components";
 import { useCornerHost, useWidget, WidgetCorner } from "@/widgets";
 import { changeVsPrevious, dayLabel, gbp, hasActuals, type Level } from "./model";
 
-/** The month-to-date sub-line: names the cloud(s) behind the figure; neutral when neither has spend but a day was pulled. */
+/**
+ * The month-to-date sub-line: names the cloud(s) behind the figure; neutral when neither has spend but a day was
+ * pulled. A line naming one cloud carries that cloud's own day, never the other's (spec 10.3).
+ */
 function monthSub(cost: CostResponse): string {
   const { azure, aws } = cost.byCloud;
-  const day = cost.meta.asOfDay ? dayLabel(cost.meta.asOfDay) : null;
+  const label = (d: string | null | undefined) => (d ? dayLabel(d) : null);
+  const day = label(cost.meta.asOfDay);
+  const azureDay = label(cost.meta.azureAsOfDay);
+  const awsDay = label(cost.meta.awsAsOfDay);
   if (aws > 0 && azure > 0) return `Azure ${gbp(azure)} · AWS ${gbp(aws)}`;
-  if (aws > 0) return `AWS ${gbp(aws)}${day ? ` · actual, as of ${day} (UTC)` : ""}`;
+  if (aws > 0) return `AWS ${gbp(aws)}${awsDay ? ` · actual, as of ${awsDay} (UTC)` : ""}`;
   if (azure <= 0 && day) return `Actual, as of ${day} (UTC)`;
-  return day ? `Azure actual, as of ${day} (UTC)` : "Azure has not listed a day yet";
+  return azureDay ? `Azure actual, as of ${azureDay} (UTC)` : "Azure has not listed a day yet";
 }
 
 /** A small "i" button whose text shows on hover or focus and closes on Escape. */

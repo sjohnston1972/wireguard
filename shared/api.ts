@@ -305,7 +305,11 @@ export interface RunLogResponse {
 export interface CostResponse {
   now: string;
   range: "month" | "7d" | "30d";
-  meta: { currency: "GBP"; timezone: "UTC"; azureLagHours: 24; hourlyRateGbp: number; standbyRateGbp: number; asOfDay: string | null };
+  /**
+   * asOfDay: the older of the clouds' last pulls (the figures are complete that far); azureAsOfDay / awsAsOfDay: each
+   * cloud's own, for a line that names one cloud (its label never carries the other cloud's day).
+   */
+  meta: { currency: "GBP"; timezone: "UTC"; azureLagHours: 24; hourlyRateGbp: number; standbyRateGbp: number; asOfDay: string | null; azureAsOfDay: string | null; awsAsOfDay: string | null };
   /** The VM running now: what it has cost so far, estimated (Azure's figures lag). */
   session: { running: boolean; since: string | null; estimateGbp: number | null };
   standby: { since: string; perDayGbp: number } | null;
