@@ -53,10 +53,10 @@ describe("Settings: Labs", () => {
   it("Check permissions ticks role, users and groups", async () => {
     const user = userEvent.setup();
     let checked = false;
-    const ok = { checkedAt: "2026-10-02T11:00:00.000Z", role: true, users: true, groups: false, message: "Graph cannot read groups: grant Group.ReadWrite.All." };
+    const ok = { checkedAt: "2026-10-02T11:00:00.000Z", role: true, users: true, groups: false, awsRole: null, awsBoundary: null, awsCostTag: null, message: "Graph cannot read groups: grant Group.ReadWrite.All." };
     const { fetchMock } = renderApp("/settings/labs", {
       routes: routes({
-        "GET /api/v1/labs": () => labs({ permissions: checked ? ok : { checkedAt: null, role: null, users: null, groups: null, message: null } }),
+        "GET /api/v1/labs": () => labs({ permissions: checked ? ok : { checkedAt: null, role: null, users: null, groups: null, awsRole: null, awsBoundary: null, awsCostTag: null, message: null } }),
         "POST /api/v1/labs/permissions/check": () => {
           checked = true;
           return { ok: true, message: "Checked.", permissions: ok };

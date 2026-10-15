@@ -25,8 +25,8 @@ afterEach(() => {
 });
 
 const def = (id: string) => TEST_LABS.find((l) => l.id === id)!;
-const PASSED = { checkedAt: NOW, role: true, users: true, groups: true, message: null };
-const NEVER = { checkedAt: null, role: null, users: null, groups: null, message: null };
+const PASSED = { checkedAt: NOW, role: true, users: true, groups: true, awsRole: null, awsBoundary: null, awsCostTag: null, message: null };
+const NEVER = { checkedAt: null, role: null, users: null, groups: null, awsRole: null, awsBoundary: null, awsCostTag: null, message: null };
 const avail = (over: Partial<Availability> = {}): Availability => ({ permissions: PASSED, live: 0, maxRunning: 3, slotsUsed: 0, github: true, ...over });
 
 const SENTENCES = {

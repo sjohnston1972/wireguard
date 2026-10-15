@@ -16,6 +16,7 @@ import type { LabCatalogue, LabDef } from "../../shared/labs";
 const base = (id: string, number: number, over: Partial<LabDef> = {}): LabDef => ({
   id,
   number,
+  cloud: "azure",
   version: 1,
   title: `Lab ${number}`,
   summary: `Lab ${number} summary.`,
@@ -27,7 +28,7 @@ const base = (id: string, number: number, over: Partial<LabDef> = {}): LabDef =>
   prerequisites: [],
   cost: { items: [{ name: "Storage account", gbp_h: 0.01 }], pricey: null },
   timing: { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 6 },
-  capacity: { vm_sizes: [] },
+  capacity: { vm_sizes: [], instance_types: [] },
   regions: { secondary: null },
   connectivity: { peering: "off", dns_link: false, subnets_used: 0 },
   identity: { creates: [], roles: [], governance: false },
@@ -48,7 +49,7 @@ export const TEST_LABS: LabDef[] = [
   base("az104-07-files", 7, {
     title: "Azure Files",
     cost: { items: [{ name: "Linux VM, Standard_B1s", gbp_h: 0.0083, retail: { sku: "Standard_B1s" } }, { name: "OS disk", gbp_h: 0.0034 }], pricey: null },
-    capacity: { vm_sizes: ["Standard_B1s"] },
+    capacity: { vm_sizes: ["Standard_B1s"], instance_types: [] },
     connectivity: { peering: "optional", dns_link: false, subnets_used: 1 },
   }),
   base("az305-28-hub-spoke-fw", 28, {

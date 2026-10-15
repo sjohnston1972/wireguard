@@ -517,6 +517,7 @@ export const labSessionFixture = (over: Partial<LabSession> = {}): LabSession =>
 const labCard = (over: Partial<LabCard> = {}): LabCard => ({
   id: "az104-06-blob-security",
   number: 6,
+  cloud: "azure",
   version: 1,
   title: "Blob security: SAS, access policies, private endpoint",
   summary: "A storage account with a private container, a stored access policy and a private endpoint in a small VNet.",
@@ -554,7 +555,7 @@ export const labsFixture = (over: Partial<LabsResponse> = {}): LabsResponse => (
   running: [],
   slots: { used: 0, total: 32 },
   maxRunning: 3,
-  permissions: { checkedAt: null, role: null, users: null, groups: null, message: null },
+  permissions: { checkedAt: null, role: null, users: null, groups: null, awsRole: null, awsBoundary: null, awsCostTag: null, message: null },
   orphans: [],
   autoCleanup: true,
   ...over,
@@ -565,6 +566,10 @@ export const labDetailFixture = (over: Partial<LabDetail> = {}): LabDetail => {
   const session = labSessionFixture();
   return {
     card: labCard({ running: session, runs: 2 }),
+    cloud: "azure",
+    secondaryRegion: null,
+    consoleUrls: null,
+    connect: { possible: true, note: null },
     readme: [
       { t: "h", level: 2, text: "What it deploys" },
       { t: "ul", items: [[{ t: "text", text: "A storage account with a private container" }]] },

@@ -111,7 +111,7 @@ export const GUIDE_DEMO_MESSAGE = "Lab guide PDFs are not available in demo mode
 
 // ── Shapes ───────────────────────────────────────────────────────────────
 
-const NO_PERMISSIONS: LabPermissions = { checkedAt: null, role: null, users: null, groups: null, message: null };
+const NO_PERMISSIONS: LabPermissions = { checkedAt: null, role: null, users: null, groups: null, awsRole: null, awsBoundary: null, awsCostTag: null, message: null };
 
 async function kvJson<T>(c: C, key: string, fallback: T): Promise<T> {
   try {
@@ -253,6 +253,10 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       runs: liveRuns.map(labRunRow),
       // While it runs: what is in its group, from ARM (the one Azure read a page makes here), and the portal link.
       resources: live?.state === "running" ? await labResources(c.env, def.id) : null,
+      cloud: def.cloud,
+      secondaryRegion: def.regions.secondary,
+      consoleUrls: null,
+      connect: { possible: true, note: null },
       portalUrl: live ? `https://portal.azure.com/#resource/subscriptions/${c.env.AZURE_SUBSCRIPTION_ID ?? ""}/resourceGroups/${labRg(def.id)}` : null,
     };
     return c.json(out);

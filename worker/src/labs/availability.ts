@@ -14,7 +14,7 @@ import { LAB_SLOTS, labNeeds, labsSettingsFrom, type LabDef } from "../../../sha
 import type { LabBlocker, LabPermissions } from "../../../shared/api";
 import { runningCount, slotsInUse } from "./store";
 
-const NO_PERMISSIONS: LabPermissions = { checkedAt: null, role: null, users: null, groups: null, message: null };
+const NO_PERMISSIONS: LabPermissions = { checkedAt: null, role: null, users: null, groups: null, awsRole: null, awsBoundary: null, awsCostTag: null, message: null };
 
 /** The permission check's last result (KV labs:permissions). */
 export async function permissions(env: Env): Promise<LabPermissions> {

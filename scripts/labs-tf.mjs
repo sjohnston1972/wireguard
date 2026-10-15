@@ -90,7 +90,7 @@ const MOCK_SSH_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH03BQA5/AQUCJHTD+mOsP
  * one plan with the contract variables a session in slot 31 would get.
  */
 export function mockPlanFile(labId, providers) {
-  const n = /^az\d{3}-(\d{2})-/.exec(labId)?.[1] ?? "00";
+  const n = /^[a-z0-9]+-(\d{2})-/.exec(labId)?.[1] ?? "00";
   const azurerm = [
     'mock_provider "azurerm" {',
     '  mock_data "azurerm_subscription" {',

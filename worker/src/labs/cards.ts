@@ -173,6 +173,7 @@ export function labCard(def: LabDef, ctx: CardContext): LabCard {
   return {
     id: def.id,
     number: def.number,
+    cloud: def.cloud,
     version: def.version,
     title: def.title,
     summary: def.summary,

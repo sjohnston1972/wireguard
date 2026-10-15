@@ -34,6 +34,7 @@ const TRUNCATED = `The lab has more than ${ARG_TOP} resources: showing the first
 const REASON: Record<Exclude<LabTopologyResponse["status"], "ok">, string> = {
   not_running: "The lab is not running.",
   no_azure: "Azure is not configured, so there is no live view.",
+  no_aws: "AWS is not configured, so there is no live view.",
   failed: "The live view could not be read from Azure.",
   throttled: "Azure is busy just now.",
 };

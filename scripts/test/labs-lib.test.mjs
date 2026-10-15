@@ -234,14 +234,14 @@ test("the lab id pattern is the same in all nine copies, accepts az700-31-ip-nat
     // bash's ERE spells \d as [0-9].
     found[f] = (m[1] ?? m[2] ?? m[3]).replace(/\[0-9\]/g, "\\d");
   }
-  for (const [f, re] of Object.entries(found)) assert.equal(re, "^az(104|305|700)-\\d{2}-[a-z0-9]+(-[a-z0-9]+)*$", f);
+  for (const [f, re] of Object.entries(found)) assert.equal(re, "^(az(104|305|700)|soa|saa|ans)-\\d{2}-[a-z0-9]+(-[a-z0-9]+)*$", f);
   const re = new RegExp(found["scripts/lib/labs.mjs"]);
-  for (const ok of ["az700-31-ip-nat-outbound", "az700-44-flow-logs-bastion", "az104-06-blob-security", "az305-20-landing-zone"]) assert.ok(re.test(ok), ok);
-  for (const bad of ["az701-31-x", "az70-31-x", "az7000-31-x", "az900-01-x", "az700-3-x"]) assert.ok(!re.test(bad), bad);
+  for (const ok of ["az700-31-ip-nat-outbound", "az700-44-flow-logs-bastion", "az104-06-blob-security", "az305-20-landing-zone", "soa-03-auto-scaling"]) assert.ok(re.test(ok), ok);
+  for (const bad of ["az701-31-x", "az70-31-x", "az7000-31-x", "az900-01-x", "az700-3-x", "soc-01-x"]) assert.ok(!re.test(bad), bad);
   // The bash copies match the same way (ERE, as the scripts test it).
   if (BASH) {
-    const r = spawnSync(BASH, ["-c", `re='^az(104|305|700)-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$'; for x in az700-31-ip-nat-outbound az701-31-x; do [[ "$x" =~ $re ]] && echo "$x yes" || echo "$x no"; done`], { encoding: "utf8" });
-    assert.equal(r.stdout.trim().replace(/\r/g, ""), "az700-31-ip-nat-outbound yes\naz701-31-x no");
+    const r = spawnSync(BASH, ["-c", `re='^(az(104|305|700)|soa|saa|ans)-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$'; for x in az700-31-ip-nat-outbound soa-03-auto-scaling az701-31-x; do [[ "$x" =~ $re ]] && echo "$x yes" || echo "$x no"; done`], { encoding: "utf8" });
+    assert.equal(r.stdout.trim().replace(/\r/g, ""), "az700-31-ip-nat-outbound yes\nsoa-03-auto-scaling yes\naz701-31-x no");
   }
 });
 
@@ -278,7 +278,7 @@ test("exam must match the id prefix, AZ-700 for az700-", () => {
   assert.equal(examOfId("az700-31-ip-nat-outbound"), "AZ-700");
   assert.equal(examOfId("az305-20-landing-zone"), "AZ-305");
   assert.equal(examOfId("az104-06-blob-security"), "AZ-104");
-  assert.deepEqual([...LAB_EXAMS], ["AZ-104", "AZ-305", "AZ-700"]);
+  assert.deepEqual([...LAB_EXAMS], ["AZ-104", "AZ-305", "AZ-700", "SOA-C03", "SAA-C03", "ANS-C01"]);
 });
 
 // ── Labs in more than one exam (AZ-700 plan Z0.2, ruling 39) ─────────────

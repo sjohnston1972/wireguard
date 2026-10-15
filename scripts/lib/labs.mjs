@@ -18,12 +18,16 @@ import { lintTfText, stripComments } from "../../infra/ci/lab-lint.mjs";
 
 // ── Constants (copies of shared/labs.ts) ─────────────────────────────────
 
-export const LAB_ID_RE = /^az(104|305|700)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
+export const LAB_ID_RE = /^(az(104|305|700)|soa|saa|ans)-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$/;
 export const LAB_ID_MAX = 40;
+export const AWS_LAB_ID_MAX = 30;
 /** The exams, in order (ruling 38). */
-export const LAB_EXAMS = ["AZ-104", "AZ-305", "AZ-700"];
-/** A lab's primary exam, from its id's prefix. */
-export const examOfId = (id) => (id.startsWith("az104-") ? "AZ-104" : id.startsWith("az305-") ? "AZ-305" : "AZ-700");
+export const LAB_EXAMS = ["AZ-104", "AZ-305", "AZ-700", "SOA-C03", "SAA-C03", "ANS-C01"];
+export const EXAM_CLOUD = { "AZ-104": "azure", "AZ-305": "azure", "AZ-700": "azure", "SOA-C03": "aws", "SAA-C03": "aws", "ANS-C01": "aws" };
+const PREFIX_EXAM = { az104: "AZ-104", az305: "AZ-305", az700: "AZ-700", soa: "SOA-C03", saa: "SAA-C03", ans: "ANS-C01" };
+/** A lab's primary exam, from its id's prefix (anything unknown is AZ-700, as in shared/labs.ts). */
+export const examOfId = (id) => PREFIX_EXAM[id.split("-")[0]] ?? "AZ-700";
+export const cloudOfId = (id) => EXAM_CLOUD[examOfId(id)];
 export const LAB_POOL = "10.64.0.0/13";
 export const LAB_SLOTS = 32;
 export const GATEWAY_RANGES = ["10.13.13.0/24", "10.13.255.1/32", "10.50.0.0/16", "192.168.1.0/24", "172.17.0.0/16", "168.63.129.16/32"];
@@ -32,6 +36,24 @@ export const GOVERNANCE_LABS = ["az104-01-identity", "az104-02-policy", "az104-0
 export const AVNM_LABS = ["az700-33-vnet-manager"];
 /** Scope exception S2 (ruling 48): the lab that may make a lab-<id>-* flow log in NetworkWatcherRG. */
 export const FLOW_LOG_LABS = ["az700-44-flow-logs-bastion"];
+export const LAB_TF_VARS_AWS = ["lab_id", "name_prefix", "region", "secondary_region", "address_space", "gateway_cidr", "peered", "admin_password", "ssh_public_key", "tags"];
+export const AWS_LAB_REGIONS = ["eu-west-2", "eu-west-1"];
+export const AWS_GLOBAL_REGIONS = ["us-east-1", "us-west-2"];
+export const LAB_TAG = "cloudlabs-lab";
+export const AWS_IAM_PATH = "/cloudlabs-lab/";
+export const AWS_LABS_ROLE = "wg-admin-labs";
+export const AWS_BOUNDARY = "wg-admin-lab-boundary";
+export const AWS_IAM_USER_LABS = ["soa-07-iam-kms"];
+export const AWS_CONFIG_LABS = ["soa-02-systems-manager"];
+export const AWS_GLOBAL_LABS = ["soa-09-route53-cloudfront", "ans-26-edge"];
+export const AWS_INSTANCE_TYPES = ["t4g.nano", "t4g.micro", "t4g.small", "t3.micro", "t3.small", "t4g.medium"];
+export const AWS_MEDIUM_LABS = ["saa-19-eks"];
+export const AWS_USAGE_PREFIX = { "eu-west-2": "EUW2", "eu-west-1": "EU", "us-east-1": "USE1", "us-west-2": "USW2" };
+export function awsUsagePrefix(region) {
+  const p = AWS_USAGE_PREFIX[region];
+  if (!p) throw new RangeError(`no AWS usage-type prefix known for ${region}`);
+  return p;
+}
 export const LAB_TF_VARS = ["lab_id", "name_prefix", "resource_group_name", "region", "secondary_region", "address_space", "peered", "gateway_vnet_id", "admin_password", "ssh_public_key", "upn_domain", "tags"];
 
 /** The roles a lab may assign (plan ruling 3). */
@@ -39,6 +61,7 @@ export const ALLOWED_ROLES = JSON.parse(readFileSync(new URL("../../labs/setup/a
 
 /** The standard readme footer (§3.3), with the lab's id filled in. */
 export function readmeFooter(id) {
+  if (cloudOfId(id) === "aws") return `Everything this lab builds carries the tag \`cloudlabs-lab = ${id}\` and is removed at tear-down. Anything you create by hand is removed only if you give it that tag; untagged things you leave inside the lab's VPCs are named as leftovers so you can delete them.`;
   return `Anything you build by hand inside \`rg-lab-${id}\` is removed at tear-down. Entra users or groups you create by hand are removed only if their name starts \`lab-${id}-\`.`;
 }
 
@@ -97,25 +120,30 @@ const oneOf = (...xs) => (v) => xs.includes(v);
 const nullOr = (f) => (v) => v === null || f(v);
 const VM_SIZE = /^Standard_[A-Za-z0-9_]{1,40}$/;
 const REGION = /^[a-z][a-z0-9]{1,30}$/;
+const AWS_REGION = /^[a-z]{2}-[a-z]+-\d$/;
 
 // Each key: [check, what it must be, optional?]. Objects nest; arrays check each element.
-const ITEM = { name: [text, "a name"], gbp_h: [num(0), "a price of 0 or more (£ per hour)"], qty: [int(1), "a whole number of 1 or more", true], region: [oneOf("secondary"), "secondary (priced in the lab's secondary region)", true], retail: [{ meter: [text, "a meter name", true], unit: [text, "a unit", true], sku: [(v) => str(v) && VM_SIZE.test(v), "a VM size (Standard_...)", true] }, "", true] };
+const ITEM = { name: [text, "a name"], gbp_h: [num(0), "a price of 0 or more (£ per hour)"], qty: [int(1), "a whole number of 1 or more", true], region: [oneOf("secondary"), "secondary (priced in the lab's secondary region)", true], retail: [{ meter: [text, "a meter name", true], unit: [text, "a unit", true], sku: [(v) => str(v) && VM_SIZE.test(v), "a VM size (Standard_...)", true] }, "", true],
+  aws_price: [{ service: [(v) => str(v) && /^(Amazon|AWS)[A-Za-z0-9]+$/.test(v), "a Price List service code (AmazonEC2, AWSELB, ...)"], unit: [oneOf("Hrs", "GB-Mo"), "Hrs or GB-Mo"], gb: [num(0), "a size in GB", true], filters: [isObj, "a mapping of attribute -> value"] }, "", true],
+  whole_hours: [bool, "true or false", true],
+};
 const SCHEMA = {
   id: [str, "text"],
+  cloud: [oneOf("azure", "aws"), "azure or aws", true],
   version: [int(1), "a whole number of 1 or more"],
   title: [text, "a title"],
   summary: [text, "a summary"],
-  exam: [oneOf(...LAB_EXAMS), "AZ-104, AZ-305 or AZ-700"],
+  exam: [oneOf(...LAB_EXAMS), "one of the six exams (AZ-104, AZ-305, AZ-700, SOA-C03, SAA-C03, ANS-C01)"],
   skill_areas: [[str], "a list of skill area keys"],
   level: [oneOf("foundation", "associate", "expert"), "foundation, associate or expert"],
   type: [oneOf("explore", "break-fix"), "explore or break-fix"],
   prerequisites: [[str], "a list of lab ids"],
   cost: [{ items: [[ITEM], "a list of cost items"], pricey: [nullOr(str), "null or the name of a cost item"] }, ""],
   timing: [{ deploy_min: [int(1), "whole minutes, 1 or more"], destroy_min: [int(1), "whole minutes, 1 or more"], session_h: [int(1), "whole hours, 1 or more"], max_h: [int(1, 12), "whole hours, 1 to 12"] }, ""],
-  capacity: [{ vm_sizes: [[(v) => str(v) && VM_SIZE.test(v)], "a list of VM sizes (Standard_...)"] }, ""],
-  regions: [{ secondary: [nullOr((v) => str(v) && REGION.test(v)), "null or an Azure region name (ukwest)"] }, ""],
+  capacity: [{ vm_sizes: [[(v) => str(v) && VM_SIZE.test(v)], "a list of VM sizes (Standard_...)", true], instance_types: [[str], "a list of EC2 instance types", true] }, ""],
+  regions: [{ secondary: [nullOr((v) => str(v) && (REGION.test(v) || AWS_REGION.test(v))), "null or a region name (ukwest, eu-west-1)"] }, ""],
   connectivity: [{ peering: [oneOf("off", "optional", "required"), "off, optional or required"], dns_link: [bool, "true or false"], subnets_used: [int(0, 4), "a whole number from 0 to 4"] }, ""],
-  identity: [{ creates: [[oneOf("user", "group")], "a list of user and group"], roles: [[{ role: [text, "a role name"], scope: [oneOf("resource_group", "resource", "management_group"), "resource_group, resource or management_group"] }], "a list of role assignments"], governance: [bool, "true or false"] }, ""],
+  identity: [{ creates: [[oneOf("user", "group", "role")], "a list of user, group and role"], roles: [[{ role: [text, "a role name"], scope: [oneOf("resource_group", "resource", "management_group"), "resource_group, resource or management_group"] }], "a list of role assignments"], governance: [bool, "true or false"] }, ""],
 };
 
 /** Check `v` against a schema entry; push problems with dotted field paths. Array elements report against the array's path. */
@@ -154,12 +182,18 @@ export function validateLab(raw, ctx) {
   checkShape(raw, [SCHEMA, ""], "", problems);
   const bad = (field, message) => problems.push({ field, message });
   const id = raw?.id;
+  const idCloud = str(id) && LAB_ID_RE.test(id) ? cloudOfId(id) : null;
+  const cloud = idCloud ?? (raw?.cloud === "aws" ? "aws" : "azure");
+  const aws = cloud === "aws";
   if (str(id)) {
-    if (!LAB_ID_RE.test(id)) bad("id", `id "${id}" must look like az104-NN-slug, az305-NN-slug or az700-NN-slug (lowercase letters, digits and single hyphens)`);
+    if (!LAB_ID_RE.test(id)) bad("id", `id "${id}" must look like az104-NN-slug, az305-NN-slug, az700-NN-slug, soa-NN-slug, saa-NN-slug or ans-NN-slug (lowercase letters, digits and single hyphens)`);
     if (id.length > LAB_ID_MAX) bad("id", `id "${id}" is longer than ${LAB_ID_MAX} characters`);
+    if (idCloud === "aws" && id.length > AWS_LAB_ID_MAX) bad("id", `id "${id}" is longer than ${AWS_LAB_ID_MAX} characters (an AWS lab's IAM names need the room, ruling A2)`);
+    if (idCloud === "aws" && raw.cloud !== "aws") bad("cloud", `${id} is an AWS lab: set cloud: aws`);
+    if (idCloud === "azure" && raw.cloud !== undefined && raw.cloud !== "azure") bad("cloud", `cloud ${raw.cloud} does not match the id ${id} (an azure lab)`);
     if (ctx.folder !== undefined && id !== ctx.folder) bad("id", `id "${id}" must equal its folder name "${ctx.folder}"`);
     if (raw.exam && LAB_ID_RE.test(id) && raw.exam !== examOfId(id)) bad("exam", `exam ${raw.exam} does not match the id ${id}`);
-    if (typeof raw.identity?.governance === "boolean" && raw.identity.governance !== GOVERNANCE_LABS.includes(id)) {
+    if (!aws && typeof raw.identity?.governance === "boolean" && raw.identity.governance !== GOVERNANCE_LABS.includes(id)) {
       bad("identity.governance", GOVERNANCE_LABS.includes(id) ? `${id} is a governance lab: set identity.governance: true` : `only labs 1, 2, 3, 20 and 21 may set identity.governance: true`);
     }
     for (const r of Array.isArray(raw.identity?.roles) ? raw.identity.roles : []) {
@@ -171,7 +205,11 @@ export function validateLab(raw, ctx) {
   }
   if (Array.isArray(raw?.skill_areas)) {
     if (!raw.skill_areas.length) bad("skill_areas", "skill_areas needs at least one key from labs/skill-areas.yaml");
-    for (const k of raw.skill_areas) if (!ctx.skillAreas.some((a) => a.key === k)) bad("skill_areas", `skill area "${k}" is not in labs/skill-areas.yaml`);
+    for (const k of raw.skill_areas) {
+      const area = ctx.skillAreas.find((a) => a.key === k);
+      if (!area) bad("skill_areas", `skill area "${k}" is not in labs/skill-areas.yaml`);
+      else if (idCloud && EXAM_CLOUD[area.exam] !== cloud) bad("skill_areas", `skill area ${k} is an ${area.exam} area: an ${aws ? "AWS" : "Azure"} lab names only ${aws ? "AWS" : "Azure"} exams' areas`);
+    }
     // A lab may name any exam's areas (ruling 39), as long as one is its own exam's: that is the exam it is filed under.
     const own = raw.skill_areas.some((k) => ctx.skillAreas.find((a) => a.key === k)?.exam === raw.exam);
     if (raw.skill_areas.length && LAB_EXAMS.includes(raw.exam) && !own) bad("skill_areas", `skill_areas needs at least one ${raw.exam} area (the lab's own exam)`);
@@ -183,10 +221,29 @@ export function validateLab(raw, ctx) {
     if (!c.items.length) bad("cost.items", "cost.items needs at least one item (a free lab lists one at gbp_h: 0)");
     if (str(c.pricey) && !c.items.some((i) => i?.name === c.pricey)) bad("cost.pricey", `pricey "${c.pricey}" names no cost item`);
     const sizes = Array.isArray(raw?.capacity?.vm_sizes) ? raw.capacity.vm_sizes : [];
+    const types = Array.isArray(raw?.capacity?.instance_types) ? raw.capacity.instance_types : [];
     for (const i of c.items) {
+      if (!isObj(i)) continue;
+      const at = `cost item "${i.name}": `;
+      if (aws && i.retail !== undefined) bad("cost.items", `${at}retail is Azure's list price: an AWS lab uses aws_price`);
+      if (!aws && i.aws_price !== undefined) bad("cost.items", `${at}aws_price is AWS's list price: an Azure lab uses retail`);
+      if (!aws && i.whole_hours !== undefined) bad("cost.items", `${at}whole_hours is for AWS items (AWS bills those hours whole)`);
+      if (isObj(i.aws_price)) {
+        const p = i.aws_price;
+        if (p.unit === "GB-Mo" && p.gb === undefined) bad("cost.items", `${at}aws_price unit GB-Mo needs gb (the size)`);
+        if (p.unit === "Hrs" && p.gb !== undefined) bad("cost.items", `${at}aws_price gb goes with unit GB-Mo`);
+        if (isObj(p.filters)) {
+          const entries = Object.entries(p.filters);
+          if (!entries.length || entries.some(([, v]) => !text(v))) bad("cost.items", `${at}aws_price filters needs at least one attribute, each a text value`);
+          if (entries.some(([k, v]) => k !== "usagetype" && str(v) && v.includes("{usage}"))) bad("cost.items", `${at}{usage} only in a usagetype filter`);
+          // Only EC2 prices an instance type named in capacity; RDS and ElastiCache classes are governed by scope rule 13 (ruling C5/A47).
+          const t = p.filters.instanceType;
+          if (p.service === "AmazonEC2" && str(t) && !types.includes(t)) bad("capacity.instance_types", `${at.replace(/: $/, "")} is a ${t}: list it in capacity.instance_types too`);
+        }
+      }
       // Priced in the session's secondary region (batch 3 ruling 26): only a lab that has one.
       if (i?.region === "secondary" && !(str(raw?.regions?.secondary) && raw.regions.secondary)) bad("cost.items", `cost item "${i.name}": region: secondary needs regions.secondary`);
-      if (!isObj(i?.retail)) continue;
+      if (!isObj(i?.retail) || aws) continue;
       if (!i.retail.meter && !i.retail.sku) bad("cost.items", `cost item "${i.name}": retail needs a meter or a sku`);
       if (i.retail.unit && !i.retail.meter) bad("cost.items", `cost item "${i.name}": retail.unit goes with a meter`);
       if (i.retail.sku && !sizes.includes(i.retail.sku)) bad("capacity.vm_sizes", `cost item "${i.name}" is a ${i.retail.sku}: list it in capacity.vm_sizes too`);
@@ -194,8 +251,34 @@ export function validateLab(raw, ctx) {
   }
   const k = raw?.connectivity;
   if (isObj(k) && k.subnets_used === 0 && k.peering && k.peering !== "off") bad("connectivity.subnets_used", "a lab with no subnets (subnets_used: 0) cannot peer: set peering: off");
+  const cap = raw?.capacity;
+  if (isObj(cap)) {
+    if (aws) {
+      if (cap.vm_sizes !== undefined) bad("capacity.vm_sizes", "an AWS lab lists capacity.instance_types, not vm_sizes");
+      if (cap.instance_types === undefined) bad("capacity.instance_types", "an AWS lab lists capacity.instance_types (one entry per instance)");
+      for (const t of Array.isArray(cap.instance_types) ? cap.instance_types : []) {
+        if (!str(t)) continue;
+        if (!AWS_INSTANCE_TYPES.includes(t)) bad("capacity.instance_types", `${t} is not an allowed instance type (${AWS_INSTANCE_TYPES.join(", ")})`);
+        else if (t === "t4g.medium" && !AWS_MEDIUM_LABS.includes(id)) bad("capacity.instance_types", "t4g.medium is only for saa-19-eks");
+      }
+    } else {
+      if (cap.instance_types !== undefined) bad("capacity.instance_types", "an Azure lab lists capacity.vm_sizes, not instance_types");
+      if (cap.vm_sizes === undefined) bad("capacity.vm_sizes", "capacity.vm_sizes is missing");
+    }
+  }
+  const sec = raw?.regions?.secondary;
+  if (aws && str(sec) && sec !== "eu-west-1") bad("regions.secondary", "an AWS lab's regions.secondary is null or eu-west-1");
+  if (aws && raw?.connectivity?.dns_link === true) bad("connectivity.dns_link", "dns_link is always false for an AWS lab (ruling A8)");
+  const creates = Array.isArray(raw?.identity?.creates) ? raw.identity.creates : [];
+  if (aws) {
+    if (creates.some((x) => x !== "role" && x !== "user")) bad("identity.creates", "an AWS lab creates role or user");
+    if (creates.includes("user") && !AWS_IAM_USER_LABS.includes(id)) bad("identity.creates", "only soa-07-iam-kms may create an IAM user");
+    if (Array.isArray(raw?.identity?.roles) && raw.identity.roles.length > 0) bad("identity.roles", "identity.roles is always [] for an AWS lab");
+    if (raw?.identity?.governance === true) bad("identity.governance", "identity.governance is always false for an AWS lab");
+  } else if (creates.includes("role")) bad("identity.creates", "an Azure lab creates user or group");
   if (problems.length) return { def: null, problems };
-  return { def: { ...raw, number: Number(id.split("-")[1]), exams: computeExams(raw, ctx.skillAreas) }, problems };
+  const capacity = { vm_sizes: raw.capacity.vm_sizes ?? [], instance_types: raw.capacity.instance_types ?? [] };
+  return { def: { ...raw, cloud, capacity, number: Number(id.split("-")[1]), exams: computeExams(raw, ctx.skillAreas) }, problems };
 }
 
 /**
@@ -422,10 +505,11 @@ export function applyDiagrams(blocks, entries) {
 // on the runner before terraform init); labs-check uses the same ones.
 export { lintTfText };
 
-/** A variables.tf may declare only §3.4 variables (LAB_TF_VARS). Returns problem sentences. */
-export function variablesProblems(tf) {
+/** A variables.tf may declare only §3.4 variables (LAB_TF_VARS; an AWS lab's, LAB_TF_VARS_AWS: AWS spec §4). Returns problem sentences. */
+export function variablesProblems(tf, cloud = "azure") {
   const out = [];
-  for (const m of stripComments(tf).matchAll(/\bvariable\s+"([^"]+)"/g)) if (!LAB_TF_VARS.includes(m[1])) out.push(`variable "${m[1]}" is not one the pipeline fills (§3.4: ${LAB_TF_VARS.join(", ")})`);
+  const allowed = cloud === "aws" ? LAB_TF_VARS_AWS : LAB_TF_VARS;
+  for (const m of stripComments(tf).matchAll(/\bvariable\s+"([^"]+)"/g)) if (!allowed.includes(m[1])) out.push(`variable "${m[1]}" is not one the pipeline fills (${cloud === "aws" ? "AWS spec §4" : "§3.4"}: ${allowed.join(", ")})`);
   return out;
 }
 
@@ -537,7 +621,7 @@ export function labFolders(root) {
  * Read every lab under `root` (the repo's labs/ folder) and build the
  * catalogue (LabCatalogue in shared/labs.ts). Returns { catalogue, problems };
  * problems are { lab, file, field, message }. The catalogue holds only the
- * labs that passed, sorted by exam (AZ-104, AZ-305, AZ-700) then number, with
+ * labs that passed, sorted by exam (LAB_EXAMS order) then number, with
  * each one's learning content (labs/_learning; a missing file is a problem
  * only with requireLearning, as labs-check asks) and its planned resources
  * (plannedDir, default <root>/../shared/topology/planned; none without a file).
@@ -585,10 +669,11 @@ export function buildCatalogue(root, { requireLearning = false, plannedDir = joi
   for (const d of defs) {
     const at = (field, message) => problems.push({ lab: d.id, file: "lab.yaml", field, message });
     for (const o of ids) if (o !== d.id && d.id.startsWith(o)) at("id", `id ${d.id} starts with another lab's id (${o}): a lab's names would be ambiguous`);
-    for (const o of defs) if (o !== d && o.number === d.number && o.id < d.id) at("id", `lab number ${d.number} is also used by ${o.id}`);
+    for (const o of defs) if (o !== d && o.cloud === d.cloud && o.number === d.number && o.id < d.id) at("id", `lab number ${d.number} is also used by ${o.id}`);
     for (const p of d.prerequisites) {
       if (p === d.id) at("prerequisites", `${d.id} cannot be its own prerequisite`);
       else if (!ids.includes(p)) at("prerequisites", `prerequisite ${p} is not a lab in the catalogue`);
+      else if (defs.find((o) => o.id === p).cloud !== d.cloud) at("prerequisites", `prerequisite ${p} is an ${d.cloud === "aws" ? "Azure" : "AWS"} lab: prerequisites are labs of the same cloud`);
     }
   }
   const byId = new Map(defs.map((d) => [d.id, d]));

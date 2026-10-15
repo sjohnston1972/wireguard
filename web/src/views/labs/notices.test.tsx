@@ -63,7 +63,7 @@ describe("the setup banner", () => {
 
   it("last checked time or never checked", async () => {
     const checkedAt = "2026-10-01T09:30:00.000Z";
-    const { unmount } = renderApp("/labs", { routes: routes({ permissions: { checkedAt, role: false, users: true, groups: true, message: null } }) });
+    const { unmount } = renderApp("/labs", { routes: routes({ permissions: { checkedAt, role: false, users: true, groups: true, awsRole: null, awsBoundary: null, awsCostTag: null, message: null } }) });
     expect((await banner()).getByText(`Last checked ${fmtWhen(checkedAt)}`)).toBeInTheDocument();
     unmount();
     renderApp("/labs", { routes: routes() });
@@ -72,7 +72,7 @@ describe("the setup banner", () => {
 
   it("the permissions message is shown", async () => {
     const message = "The app registration lacks Group.ReadWrite.All on contoso.onmicrosoft.com.";
-    renderApp("/labs", { routes: routes({ permissions: { checkedAt: "2026-10-01T09:30:00.000Z", role: true, users: false, groups: false, message } }) });
+    renderApp("/labs", { routes: routes({ permissions: { checkedAt: "2026-10-01T09:30:00.000Z", role: true, users: false, groups: false, awsRole: null, awsBoundary: null, awsCostTag: null, message } }) });
     expect((await banner()).getByText(message)).toBeInTheDocument();
   });
 

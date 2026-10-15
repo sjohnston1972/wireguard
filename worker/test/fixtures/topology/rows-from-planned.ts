@@ -28,7 +28,7 @@ export interface RowsCtx {
 }
 
 export const rowsCtx = (labId: string): RowsCtx => {
-  const number = /^az\d{3}-(\d{2})-/.exec(labId)?.[1] ?? "00";
+  const number = /^[a-z0-9]+-(\d{2})-/.exec(labId)?.[1] ?? "00";
   return { labId, number, prefix: `l${number}rt7xy`, region: "uksouth", secondaryRegion: "ukwest" };
 };
 

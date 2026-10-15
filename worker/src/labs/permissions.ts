@@ -56,7 +56,7 @@ async function graphReads(env: Env, net: Net, what: "users" | "groups"): Promise
 /** Run the check, keep it in KV, and return it. */
 export async function checkLabPermissions(env: Env, net: Net, now = new Date()): Promise<LabPermissions> {
   if (!canAzure(env)) {
-    const out: LabPermissions = { checkedAt: now.toISOString(), role: false, users: false, groups: false, message: "Azure is not connected yet: add the service principal in Settings > Setup." };
+    const out: LabPermissions = { checkedAt: now.toISOString(), role: false, users: false, groups: false, awsRole: null, awsBoundary: null, awsCostTag: null, message: "Azure is not connected yet: add the service principal in Settings > Setup." };
     await env.STATUS.put("labs:permissions", JSON.stringify(out));
     return out;
   }
@@ -72,7 +72,7 @@ export async function checkLabPermissions(env: Env, net: Net, now = new Date()):
     ...(role.ok ? [] : [`Role: ${role.why}.`]),
     ...(users && groups ? [] : [`Microsoft Graph refused to read ${[!users ? "users" : "", !groups ? "groups" : ""].filter(Boolean).join(" and ")}: grant User.ReadWrite.All, User.DeleteRestore.All and Group.ReadWrite.All with admin consent.`]),
   ];
-  const out: LabPermissions = { checkedAt: now.toISOString(), role: role.ok, users, groups, message: problems.length ? problems.join(" ") : null };
+  const out: LabPermissions = { checkedAt: now.toISOString(), role: role.ok, users, groups, awsRole: null, awsBoundary: null, awsCostTag: null, message: problems.length ? problems.join(" ") : null };
   await env.STATUS.put("labs:permissions", JSON.stringify(out));
   return out;
 }

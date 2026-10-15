@@ -6,6 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import type { TopologyGraph } from "@shared/topology/model";
 import type { LabTopologyResponse } from "@shared/api";
+import { LAB_ID_RE } from "@shared/labs";
 import { makeQueryClient } from "./queryClient";
 import { resetConnection } from "./connection";
 import { mockFetch } from "@/test/mockFetch";
@@ -55,7 +56,7 @@ describe("usePlannedTopology", () => {
   it("plannedTopologyUrl maps a lab id to its asset, null for none", () => {
     expect(plannedTopologyUrl("az104-99-nothing")).toBeNull();
     for (const [id, url] of Object.entries(PLANNED_URLS)) {
-      expect(id).toMatch(/^az\d{3}-\d{2}-/);
+      expect(LAB_ID_RE.test(id)).toBe(true);
       expect(plannedTopologyUrl(id)).toBe(url);
     }
   });

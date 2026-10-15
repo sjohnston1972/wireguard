@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { parse } from "yaml";
+import { LAB_ID_RE } from "../../shared/labs";
 import type { TopologyGraph } from "../../shared/topology/model";
 import { representedIds } from "../../shared/topology/planned";
 import { denyProblems } from "../../shared/topology/props";
@@ -701,7 +702,7 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
 const LABS_DIR = new URL("../../labs/", import.meta.url);
 const SHAPES_DIR = new URL("../../scripts/test/fixtures/labs/plans/shapes/", import.meta.url);
 const labFolders = readdirSync(LABS_DIR)
-  .filter((d) => /^az\d{3}-\d{2}-[a-z0-9-]+$/.test(d))
+  .filter((d) => LAB_ID_RE.test(d))
   .sort();
 const shapeFiles = readdirSync(SHAPES_DIR);
 const planFixtures = LAB_PLANS as Record<string, { resources: { address: string }[] }>;
