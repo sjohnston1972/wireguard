@@ -239,7 +239,7 @@ describe("aws.health: DescribeInstanceStatus as the health shape", () => {
     expect(await notes()).toHaveLength(2);
     expect((await notes()).join("\n")).toContain("AWS scheduled a system-reboot for this VM: not before");
     expect((await notes()).join("\n")).toContain("about 120 min. scheduled reboot");
-    expect((await notes()).join("\n")).toContain("AWS scheduled a instance-retirement for this VM");
+    expect((await notes()).join("\n")).toContain("AWS scheduled an instance-retirement for this VM");
     expect(aws.pushes.filter((p) => p.includes("AWS maintenance scheduled"))).toHaveLength(2);
     // Five minutes later, the same events: no new note, no new push.
     await runFeeds(env, [health], new Date(NOW.getTime() + 6 * MIN));
