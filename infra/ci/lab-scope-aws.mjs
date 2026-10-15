@@ -61,7 +61,8 @@
 // out (values are not known); the others read literal values where the HCL has them.
 // A third mode, "mock" (labs-tf on terraform test's mocked plan, where the provider
 // never computes tags_all and the stream has no provider configuration), is plan mode
-// without the tag rule and without the provider configuration checks.
+// without the tag rule and without the provider configuration checks, and with an unknown policy_arn on an
+// IAM policy attachment accepted when it has no references to read (no configuration in the stream).
 //
 // It is plain Node with no packages (the runner has Node; npm ci is not run),
 // and it never prints a value Terraform marks sensitive.

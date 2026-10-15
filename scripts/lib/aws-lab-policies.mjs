@@ -55,7 +55,7 @@ const svc = (x) => `${x}.amazonaws.com`;
 /** iam:PassedToService: the services a lab role may be handed to. */
 export const PASS_SERVICES = ["ec2", "lambda", "ecs-tasks", "eks", "states", "config", "backup", "ssm", "firehose", "glue", "vpc-flow-logs", "apigateway", "events", "scheduler", "s3", "cloudformation"].map(svc);
 /** iam:AWSServiceName: the service-linked roles a lab may cause (ruling A18). */
-export const SERVICE_LINKED = ["elasticloadbalancing", "autoscaling", "rds", "elasticache", "ecs", "eks", "eks-nodegroup", "network-firewall", "globalaccelerator", "backup", "config", "transitgateway", "vpc-lattice", "ssm", "ec2-instance-connect"].map(svc);
+export const SERVICE_LINKED = ["elasticloadbalancing", "autoscaling", "rds", "elasticache", "ecs", "eks", "eks-nodegroup", "network-firewall", "globalaccelerator", "backup", "config", "remediation.config", "transitgateway", "vpc-lattice", "ssm", "ec2-instance-connect"].map(svc);
 /** Resource types AWS (or another account) owns: a change list action naming one would refuse e.g. launching from Amazon's AMI. */
 export const AWS_OWNED_TYPES = ["ec2:image", "ec2:snapshot", "ec2:prefix-list", "ssm:document", "ssm:parameter"];
 /** Types a lab owns by name (lab-<id>-*) because Terraform cannot tag them (lab-scope-aws.mjs UNTAGGABLE). */

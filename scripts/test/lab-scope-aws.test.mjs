@@ -194,6 +194,10 @@ test("mock mode: a lab's own policy attachment (unknown policy_arn, no configura
   assert.deepEqual(scope.scopeProblemsAws(noRefs, ID, { mode: "mock" }).filter((x) => x.address === "aws_iam_role_policy_attachment.x"), []);
   const foreign = { ...attach, refs: { role: attach.refs.role, policy_arn: ref("aws_s3_bucket.b", "arn") } };
   assert.deepEqual(rules(plan([role(), extra, foreign])), ["iam: aws_iam_role_policy_attachment.x"]);
+  // Mock mode still refuses a literal ARN off the managed list and an unknown ARN whose references are a foreign resource.
+  const mockRules = (resources) => scope.scopeProblemsAws({ ...planResources(plan(resources)), configKeys: {}, providerConfigs: {} }, ID, { mode: "mock" }).filter((x) => x.address === "aws_iam_role_policy_attachment.x").map((x) => x.rule);
+  assert.deepEqual(mockRules([role(), extra, { ...attach, values: { role: `lab-${ID}-vm`, policy_arn: "arn:aws:iam::aws:policy/AdministratorAccess" }, unknown: [], refs: { role: attach.refs.role } }]), ["iam"]);
+  assert.deepEqual(mockRules([role(), extra, foreign]), ["iam"]);
 });
 
 test("HCL: the provider blocks as §4 pass; credentials, another region and other default tags are refused", () => {

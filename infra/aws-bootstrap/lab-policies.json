@@ -228,6 +228,7 @@
                 "globalaccelerator.amazonaws.com",
                 "backup.amazonaws.com",
                 "config.amazonaws.com",
+                "remediation.config.amazonaws.com",
                 "transitgateway.amazonaws.com",
                 "vpc-lattice.amazonaws.com",
                 "ssm.amazonaws.com",
