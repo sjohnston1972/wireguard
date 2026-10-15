@@ -78,9 +78,9 @@ resource "aws_config_delivery_channel" "lab" {
 }
 
 resource "aws_config_configuration_recorder_status" "lab" {
-  name       = aws_config_configuration_recorder.lab.name
+  name       = "lab-${var.lab_id}-recorder"
   is_enabled = true
-  depends_on = [aws_config_delivery_channel.lab]
+  depends_on = [aws_config_configuration_recorder.lab, aws_config_delivery_channel.lab]
 }
 
 resource "aws_config_config_rule" "restricted_ssh" {

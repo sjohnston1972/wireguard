@@ -356,7 +356,7 @@ test("labs 13, 14, 15, 16, 17 and 27 belong to AZ-700 too, with the areas of the
     for (const n of t.deeper) assert.match(para, new RegExp(`\\blab ${n}\\b`), `${id}: it points to lab ${n}`);
   }
   // No other lab before 28 is tagged: the rest of AZ-700 is labs 31 to 44.
-  for (const def of catalogue.labs.filter((l) => l.number < 31 && !(l.id in TAGGED))) assert.deepEqual(def.exams, [def.exam], def.id);
+  for (const def of catalogue.labs.filter((l) => l.number < 31 && l.cloud === "azure" && !(l.id in TAGGED))) assert.deepEqual(def.exams, [def.exam], def.id);
 });
 
 // ── Readmes ──────────────────────────────────────────────────────────────

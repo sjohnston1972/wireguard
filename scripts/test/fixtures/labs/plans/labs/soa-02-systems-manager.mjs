@@ -126,7 +126,7 @@ export default () => {
       {
         address: "aws_config_configuration_recorder_status.lab",
         values: { name: `lab-${id}-recorder`, is_enabled: true },
-        refs: { name: ref("aws_config_configuration_recorder.lab", "name") },
+        refs: { name: ["var.lab_id"] },
       },
       {
         address: "aws_config_config_rule.restricted_ssh",

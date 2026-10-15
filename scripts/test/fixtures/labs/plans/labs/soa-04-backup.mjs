@@ -68,11 +68,10 @@ export default () => {
       // backup.tf
       { address: "aws_backup_vault.lab", values: tagged(c, { name: `lab-${id}-vault`, force_destroy: true, tags: { Name: "lab-vault" } }), refs: { name: ["var.lab_id"] } },
       role("backup", "backup", "backup.amazonaws.com"),
-      ...BACKUP_POLICIES.map((arn) => ({
-        address: `aws_iam_role_policy_attachment.backup["${arn}"]`,
-        forEach: { references: [], constant_value: BACKUP_POLICIES },
+      ...[["backup_backup", BACKUP_POLICIES[0]], ["backup_restores", BACKUP_POLICIES[1]]].map(([key, arn]) => ({
+        address: `aws_iam_role_policy_attachment.${key}`,
         values: { role: `lab-${id}-backup`, policy_arn: arn },
-        refs: { role: ref("aws_iam_role.backup", "name"), policy_arn: ["each.key"] },
+        refs: { role: ref("aws_iam_role.backup", "name") },
       })),
       {
         address: "aws_backup_plan.daily",

@@ -50,13 +50,13 @@
    "scope": "lab",
    "folded": [
     {
-     "id": "tf:aws_iam_role_policy_attachment.backup[\"arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup\"]",
-     "label": "backup[arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup]",
+     "id": "tf:aws_iam_role_policy_attachment.backup_backup",
+     "label": "backup_backup",
      "armType": null
     },
     {
-     "id": "tf:aws_iam_role_policy_attachment.backup[\"arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores\"]",
-     "label": "backup[arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores]",
+     "id": "tf:aws_iam_role_policy_attachment.backup_restores",
+     "label": "backup_restores",
      "armType": null
     }
    ],

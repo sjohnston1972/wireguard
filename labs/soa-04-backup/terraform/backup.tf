@@ -22,10 +22,14 @@ resource "aws_iam_role" "backup" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "backup" {
-  for_each   = toset(["arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup", "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores"])
+resource "aws_iam_role_policy_attachment" "backup_backup" {
   role       = aws_iam_role.backup.name
-  policy_arn = each.key
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
+}
+
+resource "aws_iam_role_policy_attachment" "backup_restores" {
+  role       = aws_iam_role.backup.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores"
 }
 
 resource "aws_backup_plan" "daily" {
