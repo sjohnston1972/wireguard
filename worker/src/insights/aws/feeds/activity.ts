@@ -12,8 +12,11 @@
 //   - Nothing is lost when the account is busier than that: whatever a run
 //     leaves unread (from its StartTime to the oldest event it read) is kept
 //     as a backlog in aws_latest['activity-backlog'], and later runs spend
-//     the pages their own window leaves over on it, newest first, until it
-//     is empty. AWS throttling a page after the first ends the run's paging
+//     the pages their own window leaves over on it (at least one: while a
+//     backlog waits the new window gets at most 2), newest first, until it
+//     is empty. The stretch already read without a gap is kept in
+//     aws_latest['activity-read'], so the new window's 20-minute overlap,
+//     already read, never refills the backlog. AWS throttling a page after the first ends the run's paging
 //     the same way (what was read is kept; the feed is ok); only a throttled
 //     first page skips the feed. Backlog older than 7 days is dropped with a
 //     line in the run's log, and a run that leaves a backlog says so there.
@@ -21,9 +24,9 @@
 //     cloudlabs made it (the Worker's IAM user wg-admin-worker, or a session
 //     of the GitHub deploy role wg-admin-deploy) or it touches a resource
 //     tagged wg-admin=vpn. The tagged list costs one call, so it is only
-//     asked for when a new event is not obviously cloudlabs' own, or when
-//     cloudlabs' own events arrive and the remembered ids are over an hour
-//     old. Every tagged id seen is remembered (the latest 500, in
+//     asked for when a new event is not obviously cloudlabs' own, when
+//     cloudlabs creates something (Run*, Create*, Allocate*), or when its
+//     other events arrive and the remembered ids are over an hour old. Every tagged id seen is remembered (the latest 500, in
 //     aws_latest['known-ids']), so a person deleting a cloudlabs resource,
 //     no longer tagged once it is gone, still shows.
 //   - The caller is "wgadmin" (as above), "aws" (an AWS service) or
@@ -52,6 +55,10 @@ const PAGE_SIZE = 50;
 const PAGE_PAUSE_MS = 600;
 /** aws_latest key: the windows (ISO from/to) a run left unread, newest first. */
 export const ACTIVITY_BACKLOG_KEY = "activity-backlog";
+/** aws_latest key: the stretch read without a gap (ISO from/to), so time already read is never backlog again. */
+export const ACTIVITY_READ_KEY = "activity-read";
+/** cloudlabs' calls that make a new resource (whose id the tagged list should learn at once). */
+const CREATES = /^(Run|Create|Allocate)/;
 /** aws_latest key: every tagged resource id seen (the latest KNOWN_IDS_KEEP, newest last). */
 export const KNOWN_IDS_KEY = "known-ids";
 const KNOWN_IDS_KEEP = 500;
@@ -261,14 +268,29 @@ interface Query {
   done: boolean;
 }
 
+/** A stretch already read without a gap (ms): aws_latest['activity-read']. */
+export interface AwsActivityCoverage {
+  from: number;
+  to: number;
+}
+
 /**
  * Up to 3 pages of write events (1 call each, about 600 ms apart): the new
- * window since lookupStart first, then the backlog, newest first. Answers
- * the events read and the backlog left (empty when everything was read). A
- * throttle, the run's deadline or its budget on a page after the first ends
- * the paging and keeps what was read; on the first page it is thrown.
+ * window since lookupStart first (at most 2 pages while there is a backlog,
+ * so the backlog always gets one), then the backlog, newest first. Answers
+ * the events read, the backlog left (empty when everything was read) and the
+ * stretch now read without a gap (`cov`, given the previous one): the new
+ * window's unread part never reaches into time already read, so a busy
+ * account's backlog drains instead of refilling with the 20-minute overlap.
+ * A throttle, the run's deadline or its budget on a page after the first
+ * ends the paging and keeps what was read; on the first page it is thrown.
  */
-export async function fetchAwsActivity(ctx: AwsFeedCtx, lastOk: string | null, backlog: AwsActivityWindow[] = []): Promise<{ events: unknown[]; backlog: AwsActivityWindow[] }> {
+export async function fetchAwsActivity(
+  ctx: AwsFeedCtx,
+  lastOk: string | null,
+  backlog: AwsActivityWindow[] = [],
+  cov: AwsActivityCoverage | null = null,
+): Promise<{ events: unknown[]; backlog: AwsActivityWindow[]; cov: AwsActivityCoverage }> {
   const newest = await ctx.db.prepare("SELECT MAX(at) AS at FROM aws_activity").first<{ at: string | null }>();
   const now = ctx.now.getTime();
   const start = lookupStart(now, newest?.at ?? null, lastOk);
@@ -282,6 +304,8 @@ export async function fetchAwsActivity(ctx: AwsFeedCtx, lastOk: string | null, b
   paging: for (const q of queries) {
     while (!q.done) {
       if (pages >= MAX_PAGES) break paging;
+      // With a backlog waiting, the new window leaves it one page.
+      if (q === queries[0] && queries.length > 1 && pages >= MAX_PAGES - 1) break;
       if (pages > 0) await activityTiming.pause(PAGE_PAUSE_MS);
       let r: { Events?: unknown; NextToken?: unknown };
       try {
@@ -314,9 +338,18 @@ export async function fetchAwsActivity(ctx: AwsFeedCtx, lastOk: string | null, b
       if (!q.token) q.done = true;
     }
   }
-  // What is left: each unfinished window, from its start to the oldest event read from it.
-  const left = queries.filter((q) => !q.done).map((q) => ({ from: q.from, to: Math.min(q.to, q.oldest ?? q.to) }));
-  return { events: out, backlog: tidyBacklog(left.filter((w) => w.to > w.from)) };
+  // The new window was read from its end back to `readFrom`. Joined to the stretch read before (no gap), that
+  // stretch grows; otherwise it starts over here.
+  const main = queries[0]!;
+  const readFrom = main.done ? main.from : (main.oldest ?? main.to);
+  const joins = !!cov && readFrom <= cov.to;
+  const covered: AwsActivityCoverage = joins ? { from: Math.min(readFrom, cov!.from), to: main.to } : { from: readFrom, to: main.to };
+  // What is left: the new window's unread part, short of anything already read; each unfinished backlog window,
+  // from its start to the oldest event read from it.
+  const left: { from: number; to: number }[] = [];
+  if (!main.done) left.push({ from: main.from, to: joins ? Math.min(readFrom, cov!.from) : readFrom });
+  for (const q of queries.slice(1)) if (!q.done) left.push({ from: q.from, to: Math.min(q.to, q.oldest ?? q.to) });
+  return { events: out, backlog: tidyBacklog(left.filter((w) => w.to > w.from)), cov: covered };
 }
 
 /**
@@ -380,9 +413,16 @@ const activity: AwsFeed = {
     const row = ctx.row !== undefined ? ctx.row : await ctx.db.prepare("SELECT last_try_at, last_ok_at, next_due_at FROM aws_feed WHERE feed = 'aws.activity'").first<{ last_try_at: string | null; last_ok_at: string | null; next_due_at: string | null }>();
     const now = ctx.now.getTime();
     const at = ctx.now.toISOString();
-    const [had, remembered] = await Promise.all([getAwsLatest<unknown>(ctx.db, ACTIVITY_BACKLOG_KEY), getAwsLatest<unknown>(ctx.db, KNOWN_IDS_KEY)]);
+    const [had, remembered, readBefore] = await Promise.all([
+      getAwsLatest<unknown>(ctx.db, ACTIVITY_BACKLOG_KEY),
+      getAwsLatest<unknown>(ctx.db, KNOWN_IDS_KEY),
+      getAwsLatest<{ from?: unknown; to?: unknown }>(ctx.db, ACTIVITY_READ_KEY),
+    ]);
     const trimmed = trimBacklog(had?.doc, now);
-    const read = await fetchAwsActivity(ctx, row?.last_ok_at ?? null, trimmed.windows);
+    const covFrom = Date.parse(String(readBefore?.doc?.from ?? ""));
+    const covTo = Date.parse(String(readBefore?.doc?.to ?? ""));
+    const cov = Number.isFinite(covFrom) && Number.isFinite(covTo) && covFrom <= covTo ? { from: covFrom, to: covTo } : null;
+    const read = await fetchAwsActivity(ctx, row?.last_ok_at ?? null, trimmed.windows, cov);
     const events = normaliseAwsActivity(read.events);
     const stored = await storedAwsActivityIds(ctx.db, events.map((e) => e.id));
     const fresh = events.filter((e) => !stored.has(e.id));
@@ -391,7 +431,9 @@ const activity: AwsFeed = {
     // has been changing things (new resources) and the remembered ids are over an hour old.
     const mightBeOurs = fresh.some((e) => e.caller_kind !== "wgadmin" && e.resources.length);
     const rememberedAge = now - Date.parse(remembered?.updatedAt ?? "");
-    const refresh = fresh.some((e) => e.caller_kind === "wgadmin") && !(rememberedAge < KNOWN_IDS_REFRESH_MS);
+    const ownNew = fresh.filter((e) => e.caller_kind === "wgadmin");
+    // A create by cloudlabs (a new instance, security group, address, ...) at once; any other change hourly.
+    const refresh = ownNew.some((e) => CREATES.test(e.operation)) || (ownNew.length > 0 && !(rememberedAge < KNOWN_IDS_REFRESH_MS));
     let ours: Set<string> | null = null;
     if (mightBeOurs || refresh) {
       // A deleted resource is no longer tagged: the ids seen before still count as ours.
@@ -400,6 +442,7 @@ const activity: AwsFeed = {
       ours = new Set(ids);
     }
     await storeAwsActivity(ctx.env, keepAwsActivity(fresh, ours), stored);
+    writes.push(putAwsLatestStmt(ctx.db, ACTIVITY_READ_KEY, { from: iso(read.cov.from), to: iso(read.cov.to) }, at));
     if (read.backlog.length) writes.push(putAwsLatestStmt(ctx.db, ACTIVITY_BACKLOG_KEY, read.backlog, at));
     else if (had) writes.push(ctx.db.prepare("DELETE FROM aws_latest WHERE key = ?1").bind(ACTIVITY_BACKLOG_KEY));
     if (writes.length) await ctx.db.batch(writes);

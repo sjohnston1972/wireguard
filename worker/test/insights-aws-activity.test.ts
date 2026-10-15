@@ -13,7 +13,7 @@
 // Saved answers in fixtures/aws-insights/ (fake account 123456789012).
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import activity, { ACTIVITY_BACKLOG_KEY, KNOWN_IDS_KEY, LOOKUP_TARGET, activityTiming, awsCallerOf, keepAwsActivity, lookupStart, mergeKnownIds, normaliseAwsActivity, storeAwsActivity } from "../src/insights/aws/feeds/activity";
+import activity, { ACTIVITY_BACKLOG_KEY, ACTIVITY_READ_KEY, KNOWN_IDS_KEY, LOOKUP_TARGET, activityTiming, awsCallerOf, keepAwsActivity, lookupStart, mergeKnownIds, normaliseAwsActivity, storeAwsActivity } from "../src/insights/aws/feeds/activity";
 import serviceHealth, { awsStatusFeeds, normaliseAwsRss, parseAwsRss } from "../src/insights/aws/feeds/serviceHealth";
 import { runAwsInsights } from "../src/insights/aws/runner";
 import { getAwsLatest, putAwsLatest } from "../src/insights/aws/common";
@@ -187,15 +187,27 @@ describe("aws.activity: a run", () => {
     expect(await notes(env)).toHaveLength(1);
   });
 
-  it("does not look up the tagged resources when every new event is cloudlabs' own (and the remembered ids are recent)", async () => {
+  it("does not look up the tagged resources when every new event is cloudlabs' own, none creates anything, and the remembered ids are recent", async () => {
     const env = await setup();
     await putAwsLatest(env.DB, KNOWN_IDS_KEY, ["i-0abc", "sg-wg"], ago(10));
-    const ours = lookup().Events.filter((e) => e.EventId === "ev-worker-0001" || e.EventId === "ev-deploy-0001");
+    const ours = lookup().Events.filter((e) => e.EventId === "ev-worker-0001");
     const calls = world({ trail: [new Response(JSON.stringify({ Events: ours }), { status: 200 })] });
     await runAwsInsights(env, NOW, [activity], await opts(env));
     expect(taggingCalls(calls)).toHaveLength(0);
-    expect((await stored(env)).map((r) => r.id)).toEqual(["ev-deploy-0001", "ev-worker-0001"]);
+    expect((await stored(env)).map((r) => r.id)).toEqual(["ev-worker-0001"]);
     expect(await notes(env)).toEqual([]);
+  });
+
+  it("cloudlabs creating something (RunInstances, Create*, Allocate*) refreshes the remembered ids at once, however recent", async () => {
+    for (const name of ["RunInstances", "CreateSecurityGroup", "AllocateAddress", "CreateNetworkInterface", "CreateVolume"]) {
+      const env = await setup();
+      await putAwsLatest(env.DB, KNOWN_IDS_KEY, ["i-0abc"], ago(10));
+      const ev = { ...lookup().Events.find((e) => e.EventId === "ev-worker-0001"), EventId: `ev-${name}`, EventName: name };
+      const calls = world({ trail: [new Response(JSON.stringify({ Events: [ev] }), { status: 200 })] });
+      await runAwsInsights(env, NOW, [activity], await opts(env));
+      expect(taggingCalls(calls), name).toHaveLength(1);
+      expect([...((await getAwsLatest<string[]>(env.DB, KNOWN_IDS_KEY))?.doc ?? [])].sort(), name).toEqual(["eni-0wg", "i-0abc", "sg-wg"]);
+    }
   });
 
   it("follows NextToken for at most 3 pages", async () => {
@@ -301,16 +313,40 @@ describe("aws.activity: a busy account (more events than one run reads)", () => 
     expect(await ids(env)).toEqual(["b1", "b2"]);
   });
 
-  it("the new window overflowing again keeps both gaps, newest first", async () => {
+  it("with a backlog waiting the new window gets 2 pages and the backlog 1; an overflowing new window keeps both gaps, newest first", async () => {
     const env = await setup();
     await lastOk(env, 5);
     await putAwsLatest(env.DB, ACTIVITY_BACKLOG_KEY, [{ from: iso(T - 2 * DAY), to: iso(T - DAY) }]);
-    world({ trail: [reply([ours("n1", T - MIN)], "t1"), reply([ours("n2", T - 2 * MIN)], "t2"), reply([ours("n3", T - 3 * MIN)], "t3")] });
+    const calls = world({ trail: [reply([ours("n1", T - MIN)], "t1"), reply([ours("n2", T - 2 * MIN)], "t2"), reply([ours("b1", T - DAY - MIN)], "t3")] });
     await runAwsInsights(env, NOW, [activity], await opts(env));
-    expect(await backlog(env)).toEqual([
-      { from: iso(T - 25 * MIN), to: iso(T - 3 * MIN) },
-      { from: iso(T - 2 * DAY), to: iso(T - DAY) },
+    expect(trailCalls(calls).map((c) => [c.body.StartTime, c.body.NextToken ?? null])).toEqual([
+      [sec(T - 25 * MIN), null],
+      [sec(T - 25 * MIN), "t1"],
+      [sec(T - 2 * DAY), null],
     ]);
+    expect(await backlog(env)).toEqual([
+      { from: iso(T - 25 * MIN), to: iso(T - 2 * MIN) },
+      { from: iso(T - 2 * DAY), to: iso(T - DAY - MIN) },
+    ]);
+  });
+
+  it("time already read is never backlog again: the new window's unread part stops where the earlier read began", async () => {
+    const env = await setup();
+    await lastOk(env, 5);
+    // Read without a gap from 26 minutes ago until 3 minutes ago.
+    await putAwsLatest(env.DB, ACTIVITY_READ_KEY, { from: iso(T - 26 * MIN), to: iso(T - 3 * MIN) });
+    world({ trail: [reply([ours("n1", T - MIN)], "t1"), reply([ours("n2", T - 2 * MIN)], "t2"), reply([ours("n3", T - 3 * MIN)], "t3")] });
+    expect(await runAwsInsights(env, NOW, [activity], await opts(env))).toEqual([]);
+    expect(await backlog(env)).toBeNull();
+    expect((await getAwsLatest(env.DB, ACTIVITY_READ_KEY))?.doc).toEqual({ from: iso(T - 26 * MIN), to: iso(T) });
+    // A gap since the earlier read (it ended before the oldest event read now): the gap is backlog, and the read stretch starts over.
+    await putAwsLatest(env.DB, ACTIVITY_READ_KEY, { from: iso(T - 60 * MIN), to: iso(T - 40 * MIN) });
+    await env.DB.prepare("UPDATE aws_feed SET next_due_at = ?1").bind(ago(0)).run();
+    await env.DB.prepare("DELETE FROM aws_activity").run();
+    world({ trail: [reply([ours("m1", T - MIN)], "t1"), reply([ours("m2", T - 2 * MIN)], "t2"), reply([ours("m3", T - 3 * MIN)], "t3")] });
+    await runAwsInsights(env, NOW, [activity], await opts(env));
+    expect((await getAwsLatest(env.DB, ACTIVITY_READ_KEY))?.doc).toEqual({ from: iso(T - 3 * MIN), to: iso(T) });
+    expect(await backlog(env)).toEqual([{ from: iso(T - 20 * MIN), to: iso(T - 3 * MIN) }]);
   });
 
   it("a backlog older than 7 days is dropped, with a line in the run's log; one only partly older is still read", async () => {
@@ -337,6 +373,42 @@ describe("aws.activity: a busy account (more events than one run reads)", () => 
     expect(await ids(env)).toEqual(["p1"]);
     expect(await backlog(env)).toEqual([{ from: iso(T - 7 * DAY), to: iso(T - MIN) }]);
     expect(lines).toEqual([expect.stringContaining("catching up")]);
+  });
+
+  it("a steadily busy account (10 a minute) with a 600-event burst: after enough runs nothing is unread and the note stops", async () => {
+    const env = await setup();
+    // Another project's events (no resources: never ours, never stored), 10 a minute from 30 minutes before the
+    // first run, and 600 more in one minute, 30 minutes in. CloudTrail pages them newest first, 50 at a time.
+    const times: number[] = [];
+    for (let t = T - 30 * MIN; t < T + 4 * 60 * MIN; t += MIN / 10) times.push(t);
+    for (let i = 0; i < 600; i++) times.push(T + 30 * MIN + i * 100);
+    const at = (t: number) => ({ EventId: `x-${t}`, EventName: "PutObject", EventTime: t / 1000, Username: "other-dev", Resources: [] });
+    const served = new Set<number>();
+    let now = T;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = input instanceof Request ? input : null;
+      const url = req ? req.url : String(input);
+      if (!new URL(url).hostname.startsWith("cloudtrail.")) throw new Error(`unexpected fetch ${url}`);
+      const body = JSON.parse(req ? await req.clone().text() : String(init?.body ?? ""));
+      const from = body.StartTime * 1000;
+      const to = body.EndTime * 1000 + 999;
+      const win = times.filter((t) => t >= from && t <= to && t <= now).sort((a, b) => b - a);
+      const off = body.NextToken ? Number(body.NextToken) : 0;
+      const page = win.slice(off, off + 50);
+      for (const t of page) served.add(t);
+      return new Response(JSON.stringify({ Events: page.map(at), ...(off + 50 < win.length ? { NextToken: String(off + 50) } : {}) }), { status: 200 });
+    });
+    const notes: string[][] = [];
+    for (let run = 0; run < 36; run++) {
+      now = T + run * 5 * MIN;
+      notes.push(await runAwsInsights(env, new Date(now), [activity], await opts(env)));
+    }
+    // Everything up to 20 minutes before the last run has been read: the burst and the first run's backfill too.
+    const unread = times.filter((t) => t <= now - 20 * MIN && !served.has(t));
+    expect(unread).toEqual([]);
+    expect(notes.flat().some((l) => l.includes("catching up"))).toBe(true);
+    expect(notes.at(-1)).toEqual([]);
+    expect(await backlog(env)).toBeNull();
   });
 
   it("throttled on page 1: skipped (still due), nothing stored, no backlog", async () => {
