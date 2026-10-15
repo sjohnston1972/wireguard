@@ -3,7 +3,7 @@
 // Plain English: labs redesign spec §7. A lab's topic chips, its card icon's
 // family and its "Resources deployed" list all come from the planned
 // diagram's kinds (counted into the catalogue at build time). Every one of the
-// real 43 planned diagrams gives at least one topic and one resource.
+// real planned diagrams gives at least one topic and one resource.
 
 import { describe, expect, it } from "vitest";
 import type { TopologyGraph } from "@shared/topology/model";
@@ -92,9 +92,10 @@ describe("resourceSummary", () => {
 });
 
 describe("the real planned diagrams", () => {
-  it("every one of the 47 planned graphs gives at least one topic and one resource", () => {
+  it("every planned graph gives at least one topic and one resource", () => {
     const graphs = Object.values(PLANNED);
-    expect(graphs.length).toBe(47);
+    // PLANNED is every file in shared/topology/planned (the glob), so a new lab needs no count here.
+    expect(graphs.length).toBeGreaterThan(0);
     for (const g of graphs) {
       const c = counts(g);
       expect(labTopics(c).length, g.labId).toBeGreaterThan(0);

@@ -5,7 +5,10 @@
 # mounted at /data, and a snapshot of that volume taken at deploy, to
 # restore from. The instance's own root volume takes the lab's tags through
 # root_block_device (instance-level volume tags would fight the separately attached data
-# volume over its tags).
+# volume over its tags). The snapshot waits three minutes after the attachment,
+# so cloud-init has formatted, mounted and written /data/first-write.txt first
+# (the time provider is hashicorp/time, resolved without a required_providers
+# entry because the AWS template's versions.tf is copied unchanged).
 
 resource "aws_instance" "data" {
   ami                    = data.aws_ssm_parameter.al2023_arm64.insecure_value
@@ -50,9 +53,14 @@ resource "aws_volume_attachment" "data" {
   stop_instance_before_detaching = true
 }
 
+resource "time_sleep" "first_write" {
+  create_duration = "180s"
+  depends_on      = [aws_instance.data, aws_volume_attachment.data]
+}
+
 resource "aws_ebs_snapshot" "data" {
   volume_id   = aws_ebs_volume.data.id
   description = "Lab soa-04: the data volume as it was at deploy"
   tags        = { Name = "snap-data" }
-  depends_on  = [aws_volume_attachment.data]
+  depends_on  = [time_sleep.first_write]
 }

@@ -58,6 +58,7 @@ export default () => {
         unknown: ["volume_id", "instance_id"],
         refs: { volume_id: ref("aws_ebs_volume.data", "id"), instance_id: ref("aws_instance.data", "id") },
       },
+      { address: "time_sleep.first_write", values: { create_duration: "180s" }, refs: {} },
       {
         address: "aws_ebs_snapshot.data",
         values: tagged(c, { description: "Lab soa-04: the data volume as it was at deploy", tags: { Name: "snap-data" } }),
@@ -87,11 +88,10 @@ export default () => {
         values: {
           name: `lab-${id}-tagged`,
           resources: ["*"],
-          selection_tag: [{ type: "STRINGEQUALS", key: "cloudlabs-backup", value: "daily" }],
-          condition: [{ string_equals: [{ key: "aws:ResourceTag/cloudlabs-lab", value: id }] }],
+          condition: [{ string_equals: [{ key: "aws:ResourceTag/cloudlabs-backup", value: "daily" }, { key: "aws:ResourceTag/cloudlabs-lab", value: id }] }],
         },
         unknown: ["plan_id", "iam_role_arn"],
-        refs: { name: ["var.lab_id"], plan_id: ref("aws_backup_plan.daily", "id"), iam_role_arn: ref("aws_iam_role.backup", "arn"), "condition.0.string_equals.0.value": ["var.lab_id"] },
+        refs: { name: ["var.lab_id"], plan_id: ref("aws_backup_plan.daily", "id"), iam_role_arn: ref("aws_iam_role.backup", "arn"), "condition.0.string_equals.1.value": ["var.lab_id"] },
       },
       // s3.tf
       bucket("src", src, "src"),

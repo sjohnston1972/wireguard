@@ -41,6 +41,14 @@ test("soa-04 tags the root volume through root_block_device, not volume_tags (C1
   assert.doesNotMatch(tf, /volume_tags/);
 });
 
+test("soa-04 snapshots only after cloud-init has written the data file, and selects by two tag conditions", () => {
+  const { tf } = awsLab(ID);
+  assert.match(tf, /resource "time_sleep" "first_write" \{\n\s+create_duration = "180s"\n\s+depends_on\s+= \[aws_instance\.data, aws_volume_attachment\.data\]/);
+  assert.match(tf, /resource "aws_ebs_snapshot" "data" \{[\s\S]*?depends_on\s+= \[time_sleep\.first_write\]/);
+  assert.match(tf, /key\s+= "aws:ResourceTag\/cloudlabs-backup"\n\s+value = "daily"/);
+  assert.doesNotMatch(tf, /selection_tag/);
+});
+
 test("soa-04's learning content is valid", () => {
   const { learning, yaml } = awsLab(ID);
   assert.deepEqual(validateLearning(learning, yaml), []);

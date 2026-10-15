@@ -49,12 +49,11 @@ resource "aws_backup_selection" "tagged" {
   plan_id      = aws_backup_plan.daily.id
   iam_role_arn = aws_iam_role.backup.arn
   resources    = ["*"]
-  selection_tag {
-    type  = "STRINGEQUALS"
-    key   = "cloudlabs-backup"
-    value = "daily"
-  }
   condition {
+    string_equals {
+      key   = "aws:ResourceTag/cloudlabs-backup"
+      value = "daily"
+    }
     string_equals {
       key   = "aws:ResourceTag/cloudlabs-lab"
       value = var.lab_id

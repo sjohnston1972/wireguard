@@ -100,6 +100,7 @@ const AWS_ID_PREFIX = /^(soa|saa|ans)-/;
  * with its reason (labs spec §17, ruling 21); the other rules still check it.
  */
 export const AWS_TYPES = new Map([
+  ["time_sleep", "a wait for something to settle (hashicorp/time), e.g. cloud-init before a snapshot"],
   ["aws_resourcegroups_group", "the lab's own console group, a tag query on its own id"],
   ...["aws_vpc", "aws_subnet", "aws_route_table", "aws_route_table_association", "aws_route", "aws_internet_gateway"].map((t) => [t, "the lab's own network inside its slot"]),
   ...["aws_security_group", "aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule"].map((t) => [t, "the lab's own firewall rules"]),

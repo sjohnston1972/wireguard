@@ -24,7 +24,7 @@ lab-soa-04-backup (London)
 
 ## Things to try
 
-- In AWS Backup start an on-demand backup of `vol-data` into `lab-soa-04-backup-vault` and wait for it to complete. Then restore it to a new volume (add the tag `cloudlabs-lab = soa-04-backup`), attach it to `vm-data` as `/dev/sdg`, mount it read-only and compare `first-write.txt`. Restores are charged by the GB; this one is 1 GiB.
+- In AWS Backup start an on-demand backup of `vol-data` into `lab-soa-04-backup-vault` and wait for it to complete; choose the IAM role `lab-soa-04-backup-backup`, not the console's default role. Then restore it to a new volume, again with that role (add the tag `cloudlabs-lab = soa-04-backup`), attach it to `vm-data` as `/dev/sdg`, mount it read-only and compare `first-write.txt`. Restores are charged by the GB; this one is 1 GiB.
 - Create a volume from `snap-data` in the same zone (tagged for the lab), attach and mount it, and see what was on the disk at deploy compared with what you have written since.
 - Upload a new `hello.txt` to the source bucket twice, then list its versions (the third Connect line) and restore an old version by copying it over the current one. Check that each version also appears in the destination bucket, with its replication status.
 - Delete `hello.txt` in the source bucket: a delete marker is added, and it replicates too. Remove the delete marker and the object is back. Then read the lifecycle rule and work out when a current object would move to Standard-IA.
