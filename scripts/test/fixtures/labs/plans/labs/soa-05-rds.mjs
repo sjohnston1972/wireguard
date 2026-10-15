@@ -15,7 +15,8 @@ export default () => {
   const id = c.id;
   const primaryId = `db-${c.prefix}`;
   const param = (name, value) => ({ name, value });
-  const instance = al2023Instance(c, { key: "client", name: "vm-client", type: "t4g.nano" });
+  // Its cloud-init writes ~/.my.cnf with the databases' addresses, known only after apply: user_data is unknown.
+  const instance = al2023Instance(c, { key: "client", name: "vm-client", type: "t4g.nano", userDataUnknown: true });
   instance.refs.user_data = ["local.cloud_init_base", "local.my_cnf"];
   const shared = {
     instance_class: "db.t4g.micro", storage_type: "gp2", publicly_accessible: false, skip_final_snapshot: true, deletion_protection: false,
@@ -59,8 +60,10 @@ export default () => {
         values: tagged(c, {
           ...shared, identifier: primaryId, engine: "mysql", engine_version: "8.4", allocated_storage: 20, storage_encrypted: true, multi_az: true,
           db_name: "labdb", username: "labadmin", password: "(the session's admin password)", backup_retention_period: 1, tags: { Name: "db-primary" },
+          // Both groups' names are set literally in their own blocks: known at plan (the real plan, 2026-10-15).
+          db_subnet_group_name: `lab-${id}-db`, parameter_group_name: `lab-${id}-mysql84`,
         }),
-        unknown: ["db_subnet_group_name", "vpc_security_group_ids", "parameter_group_name"],
+        unknown: ["vpc_security_group_ids"],
         refs: {
           identifier: ["var.name_prefix"], password: ["var.admin_password"], db_subnet_group_name: ref("aws_db_subnet_group.db", "name"),
           vpc_security_group_ids: ref("aws_security_group.db", "id"), parameter_group_name: ref("aws_db_parameter_group.mysql", "name"),
@@ -68,8 +71,8 @@ export default () => {
       },
       {
         address: "aws_db_instance.replica",
-        values: tagged(c, { ...shared, identifier: `${primaryId}-replica`, replicate_source_db: primaryId, multi_az: false, backup_retention_period: 0, tags: { Name: "db-replica" } }),
-        unknown: ["vpc_security_group_ids", "parameter_group_name"],
+        values: tagged(c, { ...shared, identifier: `${primaryId}-replica`, replicate_source_db: primaryId, multi_az: false, backup_retention_period: 0, parameter_group_name: `lab-${id}-mysql84`, tags: { Name: "db-replica" } }),
+        unknown: ["vpc_security_group_ids"],
         refs: {
           identifier: ["var.name_prefix"], replicate_source_db: ref("aws_db_instance.primary", "identifier"),
           vpc_security_group_ids: ref("aws_security_group.db", "id"), parameter_group_name: ref("aws_db_parameter_group.mysql", "name"),
