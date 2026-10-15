@@ -9,6 +9,7 @@ import { renderApp } from "@/test/render";
 import { azureSummaryFixture } from "@/test/fixtures";
 import { setViewport } from "@/test/viewport";
 import { issue } from "@/views/activity/azureKit";
+import { awsIssue, awsSummaryFixture } from "@/test/awsFixtures";
 import { preloadLazy } from "@/test/lazy";
 
 beforeAll(preloadLazy);
@@ -80,6 +81,16 @@ describe("the Service Health pill", () => {
     setViewport("phone");
     renderApp("/settings", { routes: summary() });
     expect(await topbar().findByRole("button", { name: "Azure issue in UK South" })).toBeInTheDocument();
+  });
+
+  it("on an AWS server the pill reads AWS issue in London (AWS insights spec section 7)", async () => {
+    renderApp("/settings", { routes: { "GET /api/v1/azure/summary": awsSummaryFixture({ serviceIssues: [awsIssue()] }) } });
+    const pill = await topbar().findByRole("button", { name: "AWS issue in London" });
+    expect(pill).toHaveTextContent("AWS issue in London");
+    await userEvent.click(pill);
+    const pop = await screen.findByRole("dialog", { name: "AWS service health" });
+    expect(pop).toHaveTextContent("Increased API error rates");
+    expect(pop).not.toHaveTextContent(/Azure/);
   });
 });
 

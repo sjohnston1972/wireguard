@@ -651,7 +651,7 @@ describe("default-off widgets", () => {
     const names = within(sheet).getAllByRole("button", { name: /settings$/ }).map((b) => b.textContent);
     expect(names).toContain("System vitals");
     expect(names).not.toContain("VM performance");
-    expect(names).not.toContain("Azure health");
+    expect(names).not.toContain("Cloud health");
     // Hidden widgets that ship on are still listed, as before.
     expect(names).toContain("Cost impact");
   });

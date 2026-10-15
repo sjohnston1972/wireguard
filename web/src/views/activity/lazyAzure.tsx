@@ -1,6 +1,6 @@
 // views/activity/lazyAzure.tsx
 //
-// Plain English: the Activity page's Azure parts (the Azure change log and
+// Plain English: the Activity page's cloud parts (the Cloud changes and
 // service health widgets, their phone cards, and the change and event
 // modals), loaded only when drawn: they are off by default (see
 // web/src/widgets/lazy.tsx). Import them from here, never from

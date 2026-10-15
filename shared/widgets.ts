@@ -245,7 +245,7 @@ const CATALOGUE: readonly Omit<WidgetDef, "description">[] = [
   ),
   def(
     "overview.azureHealth",
-    "Azure health",
+    "Cloud health",
     [
       num("data", "annotations", "Annotations shown", 0, 5, 1, 3),
       bool("data", "maintenance", "Maintenance", true),
@@ -395,7 +395,7 @@ const CATALOGUE: readonly Omit<WidgetDef, "description">[] = [
   def("activity.liveOutput", "Live output", [num("data", "lines", "Lines", 20, 200, 20, 60), bool("display", "wrap", "Wrap long lines", false), bool("display", "timestamps", "Timestamps", true), bool("display", "levelTags", "Level tags", true)]),
   def(
     "activity.azureChanges",
-    "Azure change log",
+    "Cloud changes",
     [
       pick("data", "range", "Range", o("24h", "7d", "30d", "90d"), "7d"),
       pick("data", "who", "Who", o(["all", "Everyone"], ["others", "Everyone but cloudlabs"], ["wgadmin", "cloudlabs only"]), "all"),
@@ -408,7 +408,7 @@ const CATALOGUE: readonly Omit<WidgetDef, "description">[] = [
   ),
   def(
     "activity.serviceHealth",
-    "Azure service health",
+    "Cloud service health",
     [
       pick("data", "range", "Range", o("7d", "30d", "90d"), "30d"),
       multi("data", "types", "Types", o(["issue", "Service issues"], ["maintenance", "Planned maintenance"]), 1),

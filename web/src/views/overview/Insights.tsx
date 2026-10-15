@@ -1,33 +1,43 @@
-// Plain English: the Overview's Azure insights widgets (spec 2026-10-04
-// section 10.1), all off until turned on from the widget library:
-//   - VM performance: Azure's own measurements of the VM, one row per chart;
-//     on a tall panel (1600x900) each chart grows to fill its share of it
-//   - Azure health: what Azure says about the VM, its maintenance and issues
+// Plain English: the Overview's insights widgets (spec 2026-10-04 section
+// 10.1), all off until turned on from the widget library:
+//   - VM performance: the cloud's own measurements of the VM, one row per
+//     chart; on a tall panel (1600x900) each chart grows to fill its share
+//   - Cloud health: what the cloud says about the VM, its maintenance and
+//     issues (titled "Azure health" before AWS insights)
 //   - System vitals: the VM's own figures, from the heartbeat
 // Plus the small parts they share with the Firewall's Public IP widget: the
-// feed footer ("Azure health · 2 m ago", amber and "stale" after 3
-// cadences), the state notes, and a figure row (plain name large, Azure's
-// name in small print, the value, a threshold word, a sparkline or bar).
-// Thresholds colour this dashboard only, always with a word. Pages never
-// call Azure: these read the Worker's stored copies.
+// feed footer ("Azure health · 2 m ago", or on AWS the feed's source, "AWS
+// CloudWatch · 4 m ago"; amber and "stale" after 3 cadences), the state
+// notes, and a figure row (plain name large, the cloud's own metric name in
+// small print, the value, a threshold word, a sparkline or bar). Thresholds
+// colour this dashboard only, always with a word. Pages never call the
+// cloud: these read the Worker's stored copies. With the server in AWS the
+// same widgets show AWS's figures and leave out the ones AWS has no match
+// for (AWS insights spec 2026-10-15 section 7); an answer with no `cloud`
+// field is Azure's.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { AzureSummaryResponse, FeedId, FeedStatus, OverviewResponse, SettingValue } from "@shared/api";
-import { feedIsStale, metricByColumn } from "@shared/azureMetrics";
+import type { AzureHealth as AzureHealthDoc, AzureSummaryResponse, Cloud, FeedId, FeedStatus, OverviewResponse, SettingValue } from "@shared/api";
+import { AWS_METRICS, feedIsStale, metricByColumn } from "@shared/azureMetrics";
 import { Panel, ProgressBar, Sparkline, cx, formatAge } from "@/components";
 import { useAzureMetrics, useAzureSummary, type HistoryRange } from "@/api/queries";
 import { useWidget } from "@/widgets";
 import { BootLogModal } from "./BootLog";
-import { awsLive, cloudLabel, cloudOf } from "./cloud";
+import { cloudLabel, insightsCloud } from "./cloud";
 import { LEVEL_TONE, levelOf, levelWord, type Level } from "./widgetSettings";
 import "./Insights.css";
 
 // ── Shared parts (also used by the Firewall's Public IP widget) ──
 
 export const NOT_CONNECTED_TEXT = "Azure isn't connected. Add the service principal secrets to the Worker.";
-export const AWS_SOON_TEXT = "AWS insights are coming soon. These panels show Azure's figures when the server runs in Azure.";
+export const AWS_NOT_CONNECTED_TEXT = "AWS isn't connected. Add the Worker's AWS keys.";
 export const WAITING_TEXT = "Waiting for the first reading from Azure.";
+export const AWS_WAITING_TEXT = "Waiting for the first reading from AWS.";
 export const NOTHING_TEXT = "Nothing running.";
+/** The not-connected and waiting lines in the words of the cloud whose figures these are. */
+export const notConnectedText = (c: Cloud) => (c === "aws" ? AWS_NOT_CONNECTED_TEXT : NOT_CONNECTED_TEXT);
+export const waitingText = (c: Cloud) => (c === "aws" ? AWS_WAITING_TEXT : WAITING_TEXT);
+export const noFiguresText = (c: Cloud) => `No figures from ${cloudLabel(c)} in this range.`;
 
 export const feedOf = (s: AzureSummaryResponse | undefined, id: FeedId): FeedStatus | undefined => s?.feeds.find((f) => f.id === id);
 
@@ -42,15 +52,20 @@ export function FeedFoot({ title, at, now, stale, error }: { title: string; at: 
   return <p className={cx("ov-az__foot", stale && "ov-az__foot--amber")}>{`${title} · ${formatAge(ms)}${stale ? " · stale" : ""}`}</p>;
 }
 
-/** A feed's footer, from the summary's feed status: stale after 3 cadences. */
-export function AzureFoot({ feed, now }: { feed: FeedStatus | undefined; now: number }) {
+/**
+ * A feed's footer, from the summary's feed status: stale after 3 cadences.
+ * On Azure it names the feed ("Azure health"), as before; on AWS the feed's
+ * source ("AWS CloudWatch"). `label`, when given, names it instead.
+ */
+export function AzureFoot({ feed, now, cloud = "azure", label }: { feed: FeedStatus | undefined; now: number; cloud?: Cloud; label?: string }) {
   if (!feed || feed.status === "not_configured") return null;
-  return <FeedFoot title={feed.title} at={feed.lastOkAt} now={now} stale={feedIsStale(feed, now)} error={feed.status === "error" ? feed.error : null} />;
+  const title = label ?? (cloud === "aws" ? (feed.source ?? feed.title) : feed.title);
+  return <FeedFoot title={title} at={feed.lastOkAt} now={now} stale={feedIsStale(feed, now)} error={feed.status === "error" ? feed.error : null} />;
 }
 
 export interface FigureProps {
   name: string;
-  /** Azure's own metric names, in small print (null: not shown). */
+  /** The cloud's own metric names (Azure's or CloudWatch's), in small print (null: not shown). */
   az?: string | null;
   value: string;
   level?: Level;
@@ -101,6 +116,10 @@ const minOf = (v: (number | null)[]) => (nums(v).length ? Math.min(...nums(v)) :
 const sum = (a: (number | null)[], b: (number | null)[]) => a.map((x, i) => (x === null || b[i] === null ? null : x + (b[i] as number)));
 /** Azure's names for these stored columns, each once. */
 export const azNames = (...cols: string[]) => [...new Set(cols.map((c) => metricByColumn(c)?.name ?? c))].join(", ");
+/** CloudWatch's names for these stored columns (hist_aws_vm's, AWS_METRICS), each once. */
+export const awsNames = (...cols: string[]) => [...new Set(cols.map((c) => AWS_METRICS.find((m) => m.column === c)?.name ?? c))].join(", ");
+/** The small-print names in the words of the cloud whose figures these are. */
+export const metricNames = (cloud: Cloud, ...cols: string[]) => (cloud === "aws" ? awsNames(...cols) : azNames(...cols));
 
 const spark = (data: (number | null)[], label: string, unit = "") => <Sparkline data={data} label={label} unit={unit} tone="blue" width={84} height={22} />;
 
@@ -130,6 +149,8 @@ const CHARTS: Record<string, Chart> = {
   disk: { name: "Disk read / written", cols: ["disk_read", "disk_write"], words: ["read", "write"], f: rate },
   diskQuota: { name: "Disk IOPS used", cols: ["os_iops_max"], f: pct, th: "diskIops" },
 };
+/** Charts of figures only Azure measures (memory free, disk IOPS used): left out on AWS, where those columns are always null. */
+const AZURE_ONLY_CHARTS = new Set(["memory", "diskQuota"]);
 
 /** A row this tall or taller (px) draws its chart full width under the name, as tall as the row allows. */
 export const FILL_ROW_MIN = 64;
@@ -185,24 +206,27 @@ export function VmPerformance({ o, now }: { o: OverviewResponse; now: number }) 
   const feed = feedOf(sum0, "vmMetrics");
   const pts = q.data?.points;
   const has = !!pts && pts.length > 0;
-  const az = (...cols: string[]) => (st.azureNames ? azNames(...cols) : null);
+  // Whose figures these are: the summary says (no field: Azure).
+  const cloud = insightsCloud(sum0);
+  const az = (...cols: string[]) => (st.azureNames ? metricNames(cloud, ...cols) : null);
   const peaks = st.peaks as boolean;
   const th = (k: string) => st[k] as SettingValue;
+  const charts = (st.charts as string[]).filter((k) => cloud !== "aws" || !AZURE_ONLY_CHARTS.has(k));
 
   let body: ReactNode;
-  if (awsLive(o)) body = <AzNote>{AWS_SOON_TEXT}</AzNote>;
-  else if (!sum0 || (!q.data && q.isLoading)) body = <AzNote>Loading…</AzNote>;
-  else if (!sum0.configured) body = <AzNote>{NOT_CONNECTED_TEXT}</AzNote>;
+  if (!sum0 || (!q.data && q.isLoading)) body = <AzNote>Loading…</AzNote>;
+  else if (!sum0.configured) body = <AzNote>{notConnectedText(cloud)}</AzNote>;
   else if (!has && o.snapshot.state !== "running") body = <AzNote>{NOTHING_TEXT}</AzNote>;
-  else if (!has && !feed?.lastOkAt) body = <AzNote>{WAITING_TEXT}</AzNote>;
-  else if (!has) body = <AzNote>No figures from Azure in this range.</AzNote>;
+  else if (!has && !feed?.lastOkAt) body = <AzNote>{waitingText(cloud)}</AzNote>;
+  else if (!has) body = <AzNote>{noFiguresText(cloud)}</AzNote>;
+  else if (!charts.length) body = <AzNote>AWS doesn't measure the charts chosen. Pick CPU, credits, network or disk in the widget's settings.</AzNote>;
   else {
-    const n = (st.charts as string[]).length;
+    const n = charts.length;
     const fill = n > 0 && (boxHeight - FILL_GAP * (n - 1)) / n >= FILL_ROW_MIN;
     body = (
       <div ref={boxRef} className="ov-az__box">
         <ul className={cx("ov-az__list", fill && "ov-az__list--fill")}>
-          {(st.charts as string[]).map((k) => {
+          {charts.map((k) => {
             const ch = CHARTS[k]!;
             const cols = ch.cols.map((col) => column(pts, col));
             const line = cols.length > 1 ? sum(cols[0]!, cols[1]!) : cols[0]!;
@@ -224,29 +248,37 @@ export function VmPerformance({ o, now }: { o: OverviewResponse; now: number }) 
   return (
     <Panel title="VM performance" className="ov-az" bodyClassName="ov-scroll ov-az__body">
       {body}
-      {sum0?.configured && <AzureFoot feed={feed} now={now} />}
+      {sum0?.configured && <AzureFoot feed={feed} now={now} cloud={cloud} />}
     </Panel>
   );
 }
 
-// ── Azure health ──
+// ── Cloud health ──
 
 const HEALTH_TONE: Record<string, string> = { Available: "green", Degraded: "amber", Unavailable: "red", Unknown: "grey" };
 const PLAIN: Record<string, string> = { Available: "Healthy", Degraded: "Having problems", Unavailable: "Down", Unknown: "Not known" };
 const plainPower = (p: string | null) => (p ? p.replace(/^VM /i, "").replace(/^./, (ch) => ch.toUpperCase()) : NO_DATA);
 const when = (iso: string | null) =>
   iso ? new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso)).replace(" at ", ", ") : "no time given";
+/**
+ * AWS's two status checks (system and instance), as the Worker folded them
+ * into the state (AWS insights spec 4.2): both ok, either impaired, either
+ * still initialising or short of data, or not checked (a stopped server).
+ */
+const AWS_CHECKS: Record<AzureHealthDoc["state"], string> = { Available: "Both passed", Unavailable: "Failing", Degraded: "Still checking", Unknown: "Not checked" };
 
 export function AzureHealth({ o, now }: { o: OverviewResponse; now: number }) {
   const { settings: st } = useWidget("overview.azureHealth");
   const s = useAzureSummary().data;
   const [boot, setBoot] = useState(false);
   const h = s?.health ?? null;
+  const cloud = insightsCloud(s);
   const terms = st.azureTerms as boolean;
   const facts: [string, ReactNode][] = h
     ? [
         ["Power", terms ? (h.power ?? NO_DATA) : plainPower(h.power)],
-        ["VM agent", h.vmAgent ? [h.vmAgent.status, h.vmAgent.version].filter(Boolean).join(" · ") || NO_DATA : NO_DATA],
+        // AWS has no VM agent to report; its two status checks stand in.
+        cloud === "aws" ? ["Status checks", AWS_CHECKS[h.state]] : ["VM agent", h.vmAgent ? [h.vmAgent.status, h.vmAgent.version].filter(Boolean).join(" · ") || NO_DATA : NO_DATA],
         [
           "Boot log",
           h.bootDiagnostics === false ? (
@@ -263,14 +295,13 @@ export function AzureHealth({ o, now }: { o: OverviewResponse; now: number }) {
   const events = st.maintenance ? (s?.maintenance ?? []) : [];
 
   let body: ReactNode;
-  if (awsLive(o)) body = <AzNote>{AWS_SOON_TEXT}</AzNote>;
-  else if (!s) body = <AzNote>Loading…</AzNote>;
-  else if (!s.configured) body = <AzNote>{NOT_CONNECTED_TEXT}</AzNote>;
+  if (!s) body = <AzNote>Loading…</AzNote>;
+  else if (!s.configured) body = <AzNote>{notConnectedText(cloud)}</AzNote>;
   else
     body = (
       <>
         {!h ? (
-          <AzNote>{o.snapshot.state === "running" ? WAITING_TEXT : NOTHING_TEXT}</AzNote>
+          <AzNote>{o.snapshot.state === "running" ? waitingText(cloud) : NOTHING_TEXT}</AzNote>
         ) : (
           <>
             <p className={cx("ov-az__state", `ov-az__state--${HEALTH_TONE[h.state]}`)}>
@@ -294,19 +325,19 @@ export function AzureHealth({ o, now }: { o: OverviewResponse; now: number }) {
           </>
         )}
         {events.map((e) => (
-          <p key={e.id} className="ov-az__item ov-az__item--amber">{`${e.type} by ${cloudLabel(cloudOf(o))} · ${e.status === "Started" ? "started" : `not before ${when(e.notBefore)}`}`}</p>
+          <p key={e.id} className="ov-az__item ov-az__item--amber">{`${e.type} by ${cloudLabel(cloud)} · ${e.status === "Started" ? "started" : `not before ${when(e.notBefore)}`}`}</p>
         ))}
         {issues.map((i) => (
           <p key={i.trackingId} className="ov-az__item ov-az__item--amber">
-            <span className="ov-az__key">Azure issue</span> <span>{i.title}</span>
+            <span className="ov-az__key">{cloudLabel(cloud)} issue</span> <span>{i.title}</span>
           </p>
         ))}
       </>
     );
   return (
-    <Panel title="Azure health" className="ov-az" bodyClassName="ov-scroll ov-az__body">
+    <Panel title="Cloud health" className="ov-az" bodyClassName="ov-scroll ov-az__body">
       {body}
-      {s?.configured && (st.feedAges as boolean) && <AzureFoot feed={feedOf(s, "health")} now={now} />}
+      {s?.configured && (st.feedAges as boolean) && <AzureFoot feed={feedOf(s, "health")} now={now} cloud={cloud} />}
       <BootLogModal open={boot} onOpenChange={setBoot} />
     </Panel>
   );
@@ -334,8 +365,8 @@ export function Vitals({ o, now }: { o: OverviewResponse; now: number }) {
   const bar = (value: number | null, label: string, level: Level) => (bars ? <ProgressBar value={value} label={label} tone={level && level !== "ok" ? LEVEL_TONE[level] : "blue"} /> : null);
 
   let body: ReactNode;
-  if (awsLive(o)) body = <AzNote>{AWS_SOON_TEXT}</AzNote>;
-  else if (!s) body = <AzNote>Loading…</AzNote>;
+  // From the heartbeat, so the same on either cloud.
+  if (!s) body = <AzNote>Loading…</AzNote>;
   else if (o.snapshot.state !== "running") body = <AzNote>{NOTHING_TEXT}</AzNote>;
   else if (s.agent === "needsDeploy") body = <AzNote>Needs the next deploy: this VM's agent is older than these figures.</AzNote>;
   else if (!v) body = <AzNote>Waiting for the first heartbeat with vitals.</AzNote>;

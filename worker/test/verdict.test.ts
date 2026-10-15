@@ -252,3 +252,30 @@ describe("verdict names the headend's cloud in maintenance lines", () => {
     expect(verdict(input({ azure: later })).title).toBe("Azure maintenance planned for 4 Oct, 13:16");
   });
 });
+
+describe("verdict on AWS figures (AWS insights spec section 7)", () => {
+  /** The AWS summary: cloud "aws", London, both status checks passed, no Azure-only figures. */
+  const aws = (over: Partial<AzureSummaryResponse> = {}): AzureSummaryResponse =>
+    azure({ cloud: "aws", region: { id: "eu-west-2", name: "London" }, health: health({ title: "Both AWS status checks passed.", summary: "Both AWS status checks passed.", power: "Server running", vmAgent: null, provisioning: null, since: null }), ...over }, { memFreeBytes: null, vipAvailPct: null, underDdos: null });
+  const awsEvent = (type: string, at: number) => event({ id: `${type}-1`, type, notBefore: iso(at), source: "AWS", description: null, durationS: null });
+
+  it("names AWS from the summary's cloud, and London as the region", () => {
+    expect(verdict(input({ azure: aws({ health: health({ state: "Unavailable", summary: "AWS's hardware check failed (system status impaired)." }) }) }))).toMatchObject({ rule: 2, title: "AWS reports the VM as unavailable", sub: "AWS's hardware check failed (system status impaired)." });
+    expect(verdict(input({ azure: aws({ health: health({ state: "Degraded", summary: "AWS is still checking the server." }) }) }))).toMatchObject({ rule: 7, title: "AWS reports the VM as degraded" });
+    expect(verdict(input({ azure: aws({ serviceIssues: [issue({ title: "Increased API error rates", services: ["EC2"] })] }) }))).toMatchObject({ rule: 9, title: "AWS has an active issue in London", sub: "Increased API error rates" });
+    const down = verdict(input({ checks: failing("vm"), azure: aws({ health: health({ state: "Unavailable", title: "AWS's hardware check failed (system status impaired)." }) }) }));
+    expect(down.sub).toBe("VM reachable · AWS says: AWS's hardware check failed (system status impaired).");
+  });
+
+  it("AWS's scheduled event codes read as plain verbs", () => {
+    expect(verdict(input({ azure: aws({ maintenance: [awsEvent("instance-reboot", NOW + 10 * MIN)] }) })).title).toBe("AWS will reboot the VM at 13:10");
+    expect(verdict(input({ azure: aws({ maintenance: [awsEvent("instance-retirement", NOW + 10 * MIN)] }) })).title).toBe("AWS will retire the VM at 13:10");
+    expect(verdict(input({ azure: aws({ maintenance: [awsEvent("instance-stop", NOW + 10 * MIN)] }) })).title).toBe("AWS will stop the VM at 13:10");
+    expect(verdict(input({ azure: aws({ maintenance: [awsEvent("system-maintenance", NOW + 3 * 60 * MIN)] }) }))).toMatchObject({ rule: 10, title: "AWS maintenance planned for 4 Oct, 16:00", sub: "A maintenance window scheduled by AWS." });
+  });
+
+  it("the summary's cloud wins over the snapshot's label, and Azure's words are unchanged", () => {
+    expect(verdict(input({ azure: aws({ serviceIssues: [issue()] }), cloud: "Azure" })).title).toBe("AWS has an active issue in London");
+    expect(verdict(input({ azure: azure({ cloud: "azure", serviceIssues: [issue()] }) })).title).toBe("Azure has an active issue in UK South");
+  });
+});

@@ -1,13 +1,21 @@
+// ServiceHealth.tsx
+//
+// Plain English: Activity's "Cloud service health" widget (titled "Azure
+// service health" before AWS insights; the widget id is unchanged): this
+// region's issues and planned maintenance, active first. On an AWS server
+// they come from AWS's public status feed for EC2 and VPC (AWS insights spec
+// 2026-10-15 sections 4.4 and 7), and the words name AWS.
+
 import { useState } from "react";
 import type { AzureServiceHealthRange, ServiceEvent } from "@shared/api";
-import { useAzureServiceHealth, useAzureSummary, useOverview } from "@/api/queries";
-import { awsLive } from "../overview/cloud";
+import { useAzureServiceHealth, useAzureSummary } from "@/api/queries";
+import { cloudLabel, insightsCloud } from "../overview/cloud";
 import { Drawer, EmptyState, ErrorState, KeyValue, Panel, Skeleton } from "@/components";
 import { useWidget } from "@/widgets";
 import { EventPill, FeedLine, NotConnected, activeFirst, notConnected, useHeld } from "./azure";
 import { fmtWhen } from "./model";
 
-/** The widget's events: the types it was set to, active ones first, and the region's name in plain words. */
+/** The widget's events: the types it was set to, active ones first, the region's name in plain words, and whose events they are. */
 export function useServiceEvents() {
   const { settings } = useWidget("activity.serviceHealth");
   const q = useAzureServiceHealth(settings.range as AzureServiceHealthRange);
@@ -15,7 +23,7 @@ export function useServiceEvents() {
   const summary = useAzureSummary();
   const types = settings.types as string[];
   const events = activeFirst((data?.events ?? []).filter((e) => types.includes(e.type === "ServiceIssue" ? "issue" : "maintenance")));
-  return { q, data, events, settings, region: summary.data?.region.name ?? "your region" };
+  return { q, data, events, settings, region: summary.data?.region.name ?? "your region", cloud: insightsCloud(data ?? summary.data) };
 }
 
 /** One event's facts, in a modal (a sheet on the phone). */
@@ -38,28 +46,26 @@ export function ServiceEventDrawer({ event, region, onClose }: { event: ServiceE
   );
 }
 
-/** Activity's "Azure service health" widget: this region's issues and planned maintenance, active first. */
+/** Activity's "Cloud service health" widget: this region's issues and planned maintenance, active first. */
 export function ServiceHealthPanel() {
-  const { q, data, events, settings, region } = useServiceEvents();
-  const aws = awsLive(useOverview().data);
+  const { q, data, events, settings, region, cloud } = useServiceEvents();
+  const label = cloudLabel(cloud);
   const [open, setOpen] = useState<string | null>(null);
   const selected = events.find((e) => e.trackingId === open) ?? null;
   return (
-    <Panel title="Azure service health" className="act__health">
-      {aws ? (
-        <EmptyState title="AWS insights are coming soon" description="These panels show Azure's figures when the server runs in Azure." />
-      ) : !data && q.isError ? (
+    <Panel title="Cloud service health" className="act__health">
+      {!data && q.isError ? (
         <ErrorState message={q.error.message} onRetry={() => void q.refetch()} />
       ) : !data ? (
         <div aria-busy="true" className="act__skel">
           <Skeleton variant="line" />
         </div>
       ) : notConnected(data.feed) ? (
-        <NotConnected />
+        <NotConnected cloud={cloud} />
       ) : events.length === 0 ? (
-        <EmptyState title={`No Azure issues or maintenance in ${region}`} description={`Nothing affecting VMs or networking in the last ${settings.range === "7d" ? "7 days" : settings.range === "90d" ? "90 days" : "30 days"}.`} />
+        <EmptyState title={`No ${label} issues or maintenance in ${region}`} description={`Nothing affecting VMs or networking in the last ${settings.range === "7d" ? "7 days" : settings.range === "90d" ? "90 days" : "30 days"}.`} />
       ) : (
-        <ul className="act__events act__health-list" aria-label="Azure service events">
+        <ul className="act__events act__health-list" aria-label={`${label} service events`}>
           {events.map((e) => (
             <li key={e.trackingId} className="act__health-item">
               <button type="button" className="act__health-open" aria-label={`${e.title}, ${e.type === "ServiceIssue" ? "issue" : "maintenance"}`} onClick={() => setOpen(e.trackingId)}>
@@ -77,7 +83,7 @@ export function ServiceHealthPanel() {
           ))}
         </ul>
       )}
-      {data && !aws && <FeedLine feed={data.feed} />}
+      {data && <FeedLine feed={data.feed} cloud={cloud} />}
       {selected && <ServiceEventDrawer event={selected} region={region} onClose={() => setOpen(null)} />}
     </Panel>
   );

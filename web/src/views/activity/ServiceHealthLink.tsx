@@ -18,7 +18,7 @@ const VALUE = "serviceHealth";
 /** The widget's panel on the desktop page and its card on the phone. */
 const TARGET = ".act__health, .act__health-card";
 
-/** `drawn`: the Azure service health widget is on and on screen (desktop bottom row or phone card). Render once the page's data is in. */
+/** `drawn`: the Cloud service health widget is on and on screen (desktop bottom row or phone card). Render once the page's data is in. */
 export function ServiceHealthLink({ drawn }: { drawn: boolean }) {
   const [params, setParams] = useSearchParams();
   const asked = params.get(KEY) === VALUE;

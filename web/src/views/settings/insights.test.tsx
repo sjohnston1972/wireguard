@@ -97,6 +97,19 @@ describe("Settings → Deployment: capacity and price", () => {
     expect(screen.getByText(/Fixed rates: £0.0157\/h while running, £0.0064\/h in standby/)).toBeInTheDocument();
   });
 
+  it("the AWS panel shows AWS's list price beside the fixed AWS rates, with its age (AWS insights spec 4.6)", async () => {
+    const aws = { enabled: true, configured: true, region: "eu-west-2", instanceType: "t4g.micro", hourlyRateGbp: 0.0112, standbyRateGbp: 0.0034 };
+    const awsPrice = price({ region: "eu-west-2", size: "t4g.micro", vmGbpPerHour: 0.0068, diskGbpPerHour: 0.0006, ipGbpPerHour: 0.004, totalGbpPerHour: 0.0114, standbyGbpPerHour: 0.0046, fetchedAt: new Date(Date.now() - 3 * HOUR).toISOString(), source: "aws" });
+    const r = open(settingsFixture({ aws, awsPrice, price: price(), rateSource: "azure" }));
+    expect(await screen.findByText("AWS list price £0.0114/h running, £0.0046/h stopped · checked 3 h ago")).toBeInTheDocument();
+    expect(screen.getByText(/Running about £0\.0112\/h · hibernated about £0\.0034\/h/)).toBeInTheDocument();
+    r.unmount();
+    // Not read yet: no line, and the panel is as before.
+    open(settingsFixture({ aws, awsPrice: null, price: price(), rateSource: "azure" }));
+    await screen.findByText(/Running about £0\.0112\/h/);
+    expect(screen.queryByText(/AWS list price/)).toBeNull();
+  });
+
   it("Fixed by default (an hourly override) with Azure figures in hand offers the choice", async () => {
     open(settingsFixture({ rateSource: "fixed", overrides: { hourly_rate_gbp: "0.02" }, price: price({ source: "fixed", totalGbpPerHour: 0.02, standbyGbpPerHour: 0.0064, reason: "Settings use the fixed rates." }) }));
     expect(await screen.findByRole("radiogroup", { name: "Cost estimates use" })).toBeInTheDocument();

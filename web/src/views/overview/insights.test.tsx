@@ -1,10 +1,11 @@
 // insights.test.tsx
 //
-// Plain English: the Overview's three Azure insights widgets (spec
-// 2026-10-04 section 10.1): VM performance, Azure health and System
-// vitals. All are off until turned on; each setting changes what shows;
-// thresholds colour with a word; every state says what is going on, and
-// "no data" is never drawn as 0.
+// Plain English: the Overview's three insights widgets (spec 2026-10-04
+// section 10.1): VM performance, Cloud health (titled "Azure health" before
+// AWS insights) and System vitals. All are off until turned on; each setting
+// changes what shows; thresholds colour with a word; every state says what
+// is going on, and "no data" is never drawn as 0. On an AWS server the same
+// panels show AWS's figures (AWS insights spec 2026-10-15 section 7).
 import "./testSetup";
 import { beforeAll, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -15,7 +16,7 @@ import { setViewport } from "@/test/viewport";
 import { FEEDS } from "@shared/azureMetrics";
 import { NOW_MS, merge, overview, prefsRoutes, routes, saved, type State } from "./testData";
 import { preloadLazy } from "@/test/lazy";
-import { AWS_SOON_TEXT } from "./Insights";
+import { awsFeedFixture, awsIssue, awsSummaryFixture, awsVmMetrics } from "@/test/awsFixtures";
 
 beforeAll(preloadLazy);
 
@@ -47,7 +48,7 @@ describe("with no prefs", () => {
   it("with no prefs overview renders exactly as before", async () => {
     show(overview("running"), {});
     await region("Health summary");
-    for (const name of ["VM performance", "Azure health", "System vitals"]) expect(screen.queryByRole("region", { name })).toBeNull();
+    for (const name of ["VM performance", "Cloud health", "System vitals"]) expect(screen.queryByRole("region", { name })).toBeNull();
     for (const name of ["Network traffic", "Cost impact", "Watchman notes"]) expect(screen.getByRole("region", { name })).toBeInTheDocument();
   });
 });
@@ -111,7 +112,7 @@ describe("VM performance", () => {
   });
 });
 
-describe("Azure health", () => {
+describe("Cloud health", () => {
   const annotated = () =>
     azureSummaryFixture({
       health: { ...azureSummaryFixture().health!, annotations: [1, 2, 3, 4].map((i) => ({ at: iso(NOW_MS - i * 3_600_000), title: `Host repair ${i}` })) },
@@ -121,7 +122,7 @@ describe("Azure health", () => {
 
   it("health, power, agent, annotations shown", async () => {
     show(overview("running"), ON, annotated());
-    const p = await region("Azure health");
+    const p = await region("Cloud health");
     expect(await within(p).findByText("Available")).toBeInTheDocument();
     expect(within(p).getByText("VM running")).toBeInTheDocument();
     expect(within(p).getByText("Ready · 2.11.1.12")).toBeInTheDocument();
@@ -130,19 +131,19 @@ describe("Azure health", () => {
 
   it("annotations shown follows the setting", async () => {
     show(overview("running"), withOn(set("azureHealth", { annotations: 1 })), annotated());
-    const p = await region("Azure health");
+    const p = await region("Cloud health");
     await within(p).findByText("Available");
     expect(within(p).getAllByText(/^Host repair/)).toHaveLength(1);
   });
 
   it("maintenance and service issues toggles", async () => {
     const r = show(overview("running"), ON, annotated());
-    let p = await region("Azure health");
+    let p = await region("Cloud health");
     expect(await within(p).findByText(/Reboot/)).toBeInTheDocument();
     expect(within(p).getByText("Virtual Machines - UK South - connectivity")).toBeInTheDocument();
     r.unmount();
     show(overview("running"), withOn(set("azureHealth", { maintenance: false, serviceIssues: false })), annotated());
-    p = await region("Azure health");
+    p = await region("Cloud health");
     await within(p).findByText("Available");
     expect(within(p).queryByText(/Reboot/)).toBeNull();
     expect(within(p).queryByText("Virtual Machines - UK South - connectivity")).toBeNull();
@@ -150,18 +151,18 @@ describe("Azure health", () => {
 
   it("feed ages", async () => {
     const r = show();
-    let p = await region("Azure health");
+    let p = await region("Cloud health");
     expect(await within(p).findByText(/Azure health · 2 m ago/)).toBeInTheDocument();
     r.unmount();
     show(overview("running"), withOn(set("azureHealth", { feedAges: false })));
-    p = await region("Azure health");
+    p = await region("Cloud health");
     await within(p).findByText("Available");
     expect(within(p).queryByText(/Azure health · /)).toBeNull();
   });
 
   it("Azure terms off gives plain words", async () => {
     show(overview("running"), withOn(set("azureHealth", { azureTerms: false })));
-    const p = await region("Azure health");
+    const p = await region("Cloud health");
     expect(await within(p).findByText("Healthy")).toBeInTheDocument();
     expect(within(p).queryByText("Available")).toBeNull();
     expect(within(p).getByText("Running")).toBeInTheDocument();
@@ -228,20 +229,20 @@ describe("states", () => {
 
   it("not configured: the Azure widgets say so; vitals still come from the heartbeat", async () => {
     show(overview("running"), ON, { ...notConnected, vitals: vitalsFixture(), agent: "current" });
-    for (const name of ["VM performance", "Azure health"]) expect(await within(await region(name)).findByText("Azure isn't connected. Add the service principal secrets to the Worker.")).toBeInTheDocument();
+    for (const name of ["VM performance", "Cloud health"]) expect(await within(await region(name)).findByText("Azure isn't connected. Add the service principal secrets to the Worker.")).toBeInTheDocument();
     expect(await within(await region("System vitals")).findByText("Memory")).toBeInTheDocument();
   });
 
   it("waiting: no first reading yet", async () => {
     show(overview("running"), ON, azureSummaryFixture({ feeds: FEEDS.map((f) => feedFixture(f.id, { status: "idle", lastOkAt: null })), health: null, vitals: null }), { "GET /api/v1/azure/metrics": { ...vmMetrics(), points: [] } });
     expect(await within(await region("VM performance")).findByText("Waiting for the first reading from Azure.")).toBeInTheDocument();
-    expect(await within(await region("Azure health")).findByText("Waiting for the first reading from Azure.")).toBeInTheDocument();
+    expect(await within(await region("Cloud health")).findByText("Waiting for the first reading from Azure.")).toBeInTheDocument();
     expect(await within(await region("System vitals")).findByText("Waiting for the first heartbeat with vitals.")).toBeInTheDocument();
   });
 
   it("stale: the last values with the age in amber and a word", async () => {
     show(overview("running"), ON, azureSummaryFixture({ feeds: feeds("health", { lastOkAt: iso(NOW_MS - 3 * 3_600_000) }) }));
-    const p = await region("Azure health");
+    const p = await region("Cloud health");
     expect(await within(p).findByText("Available")).toBeInTheDocument();
     const foot = within(p).getByText(/Azure health · 3 h ago/);
     expect(foot.textContent).toMatch(/stale/);
@@ -251,12 +252,12 @@ describe("states", () => {
   it("needs the next deploy: an old agent, and boot diagnostics off", async () => {
     show(overview("running"), ON, azureSummaryFixture({ agent: "needsDeploy", vitals: null, health: { ...azureSummaryFixture().health!, bootDiagnostics: false } }));
     expect(await within(await region("System vitals")).findByText("Needs the next deploy: this VM's agent is older than these figures.")).toBeInTheDocument();
-    expect(await within(await region("Azure health")).findByText("Turns on with the next deploy")).toBeInTheDocument();
+    expect(await within(await region("Cloud health")).findByText("Turns on with the next deploy")).toBeInTheDocument();
   });
 
   it("the boot log row says Boot log once: its button reads View", async () => {
     show();
-    const panel = await region("Azure health");
+    const panel = await region("Cloud health");
     const button = await within(panel).findByRole("button", { name: "Boot log" });
     expect(button).toHaveTextContent(/^View$/);
     expect(within(panel).getAllByText("Boot log")).toHaveLength(1);
@@ -264,7 +265,7 @@ describe("states", () => {
 
   it("nothing running", async () => {
     show(overview("destroyed" as State), ON, azureSummaryFixture({ health: null, vitals: null, agent: "none" }), { "GET /api/v1/azure/metrics": { ...vmMetrics(), points: [] } });
-    for (const name of ["VM performance", "Azure health", "System vitals"]) expect(await within(await region(name)).findByText("Nothing running.")).toBeInTheDocument();
+    for (const name of ["VM performance", "Cloud health", "System vitals"]) expect(await within(await region(name)).findByText("Nothing running.")).toBeInTheDocument();
   });
 
   it("error: the last error in plain words next to the last good values", async () => {
@@ -279,7 +280,7 @@ describe("phone", () => {
   it("phone: an enabled Azure widget appears as a card after the existing blocks", async () => {
     setViewport("phone");
     show(overview("running"), { layout: { hidden: ["overview.notes"], shown: ["overview.azureHealth"] } });
-    const card = await region("Azure health");
+    const card = await region("Cloud health");
     const phone = screen.getByRole("region", { name: "Environment status" });
     expect(phone.contains(card)).toBe(true);
     // After the buttons, the last block of the composition.
@@ -289,13 +290,91 @@ describe("phone", () => {
   });
 });
 
-describe("AWS headend", () => {
-  it("the Azure health panel shows the coming-soon note and no Azure figures", async () => {
-    const o = overview("running");
-    (o.snapshot as { cloud?: string }).cloud = "aws";
-    show(o);
-    const p = await region("Azure health");
-    expect(await within(p).findByText(AWS_SOON_TEXT)).toBeInTheDocument();
-    expect(within(p).queryByText(/Healthy|Having problems/)).toBeNull();
+describe("AWS headend (AWS insights spec section 7)", () => {
+  const awsOverview = (state = "running") => {
+    const o = overview(state as State);
+    o.snapshot.cloud = "aws";
+    return o;
+  };
+  const showAws = (prefs: PagePrefs = ON, summary: AzureSummaryResponse = awsSummaryFixture(), extra: Record<string, unknown> = {}) => show(awsOverview(), prefs, summary, { "GET /api/v1/azure/metrics": ({ url }: { url: string }) => awsVmMetrics((new URL(url, "http://x").searchParams.get("range") ?? "24h") as "24h"), ...extra });
+
+  it("no panel says AWS insights are coming soon", async () => {
+    showAws();
+    for (const name of ["VM performance", "Cloud health", "System vitals"]) await region(name);
+    await within(await region("VM performance")).findByText("CPU used");
+    expect(screen.queryByText(/coming soon/i)).toBeNull();
+  });
+
+  it("VM performance: AWS's figures, CloudWatch's metric names in small print, its source in the footer", async () => {
+    showAws();
+    const p = await region("VM performance");
+    expect(await within(p).findByText("CPU used")).toBeInTheDocument();
+    expect(within(row(p, "CPU used")).getByText("14%")).toBeInTheDocument();
+    expect(within(p).getByText("CPUUtilization")).toBeInTheDocument();
+    expect(within(p).getByText("CPUCreditBalance")).toBeInTheDocument();
+    expect(within(p).getByText("NetworkIn, NetworkOut")).toBeInTheDocument();
+    expect(within(p).queryByText("Percentage CPU")).toBeNull();
+    expect(within(p).getByText(/AWS CloudWatch · 2 m ago/)).toBeInTheDocument();
+  });
+
+  it("VM performance: the Azure-only charts (memory free, disk IOPS used) are hidden on AWS", async () => {
+    showAws(withOn(set("vmPerformance", { charts: ["cpu", "memory", "disk", "diskQuota"] })));
+    const p = await region("VM performance");
+    await within(p).findByText("CPU used");
+    expect(within(p).getAllByText(/./, { selector: ".ov-az__name" }).map((e) => e.textContent)).toEqual(["CPU used", "Disk read / written"]);
+    expect(within(p).getByText("EBSReadBytes, EBSWriteBytes")).toBeInTheDocument();
+  });
+
+  it("Cloud health: the two AWS status checks, the power state, the boot log and the source", async () => {
+    showAws();
+    const p = await region("Cloud health");
+    expect(await within(p).findByText("Available")).toBeInTheDocument();
+    expect(within(p).getByText("Both AWS status checks passed.")).toBeInTheDocument();
+    expect(within(p).getByText("Status checks")).toBeInTheDocument();
+    expect(within(p).getByText("Both passed")).toBeInTheDocument();
+    expect(within(p).getByText("Server running")).toBeInTheDocument();
+    expect(within(p).queryByText("VM agent")).toBeNull();
+    expect(within(p).getByRole("button", { name: "Boot log" })).toBeInTheDocument();
+    expect(within(p).getByText(/AWS EC2 · 2 m ago/)).toBeInTheDocument();
+  });
+
+  it("Cloud health: a failing check, AWS's scheduled event and an AWS issue name AWS", async () => {
+    const s = awsSummaryFixture({
+      health: { ...awsSummaryFixture().health!, state: "Unavailable", title: "AWS's hardware check failed (system status impaired).", summary: "AWS's hardware check failed (system status impaired)." },
+      maintenance: [{ id: "instance-reboot-1", type: "instance-reboot", status: "Scheduled", notBefore: iso(NOW_MS + 3 * 3_600_000), source: "AWS", description: "scheduled reboot", durationS: null }],
+      serviceIssues: [awsIssue()],
+    });
+    showAws(ON, s);
+    const p = await region("Cloud health");
+    expect(await within(p).findByText("Unavailable")).toBeInTheDocument();
+    expect(within(p).getByText("Failing")).toBeInTheDocument();
+    expect(within(p).getByText(/instance-reboot by AWS/)).toBeInTheDocument();
+    expect(within(p).getByText("AWS issue")).toBeInTheDocument();
+    expect(within(p).getByText("Increased API error rates")).toBeInTheDocument();
+    expect(within(p).queryByText(/Azure/)).toBeNull();
+  });
+
+  it("not connected and waiting say AWS", async () => {
+    const r = showAws(ON, awsSummaryFixture({ configured: false }), { "GET /api/v1/azure/metrics": { ...awsVmMetrics(), points: [] } });
+    for (const name of ["VM performance", "Cloud health"]) expect(await within(await region(name)).findByText("AWS isn't connected. Add the Worker's AWS keys.")).toBeInTheDocument();
+    r.unmount();
+    showAws(ON, awsSummaryFixture({ feeds: FEEDS.map((f) => awsFeedFixture(f.id, { status: "idle", lastOkAt: null })), health: null }), { "GET /api/v1/azure/metrics": { ...awsVmMetrics(), points: [] } });
+    expect(await within(await region("VM performance")).findByText("Waiting for the first reading from AWS.")).toBeInTheDocument();
+    expect(await within(await region("Cloud health")).findByText("Waiting for the first reading from AWS.")).toBeInTheDocument();
+  });
+
+  it("System vitals come from the heartbeat on AWS too", async () => {
+    showAws(ON, awsSummaryFixture({ vitals: vitalsFixture(), agent: "current" }));
+    const p = await region("System vitals");
+    expect(await within(p).findByText("Memory")).toBeInTheDocument();
+  });
+
+  it("an Azure summary with no cloud field reads as Azure", async () => {
+    const s = azureSummaryFixture();
+    expect(s.cloud).toBeUndefined();
+    show(overview("running"), ON, s);
+    const p = await region("Cloud health");
+    expect(await within(p).findByText("VM agent")).toBeInTheDocument();
+    expect(within(p).getByText(/Azure health · 2 m ago/)).toBeInTheDocument();
   });
 });
