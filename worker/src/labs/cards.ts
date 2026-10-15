@@ -21,7 +21,7 @@ import { availability, blockersOf, leftoversMessage, unavailableReason, type Ava
 import { catalogue } from "./catalogue";
 import { readOrphans } from "./orphans";
 import { budgetFull, budgetFullMessage } from "./warnings";
-import { gbpHFrom, readLabPrices, retailPrice } from "./prices";
+import { gbpHFrom, listPrice, readLabPrices } from "./prices";
 import { sessionCosts } from "./cost";
 import { activeRuns, liveSessions, type LabRunDb, type LabSessionRow } from "./store";
 import { labSession } from "./view";
@@ -186,7 +186,7 @@ export function labCard(def: LabDef, ctx: CardContext): LabCard {
     peering: def.connectivity.peering,
     estGbpH,
     marker: costMarker(estGbpH, def.timing.deploy_min),
-    pricey: pricey ? { item: pricey.name, gbpH: estimateGbpH([pricey], (i) => retailPrice(i, ctx.prices, ctx.region, now, def.regions.secondary)?.gbpH ?? null) } : null,
+    pricey: pricey ? { item: pricey.name, gbpH: estimateGbpH([pricey], (i) => listPrice(def, i, ctx.prices, ctx.region, now)?.gbpH ?? null) } : null,
     timing: { deployMin: def.timing.deploy_min, destroyMin: def.timing.destroy_min, sessionH: def.timing.session_h, maxH: def.timing.max_h },
     running: live ? sessionView(live, ctx) : null,
     lastSession: last ? sessionView(last, ctx) : null,

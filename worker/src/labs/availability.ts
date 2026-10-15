@@ -3,7 +3,7 @@
 // Plain English: whether a lab can be deployed at all right now (labs spec
 // §9.2 "Not available", no override): GitHub connected, the permissions the
 // lab needs checked (Settings → Labs → Check permissions, KV
-// labs:permissions), a free slot of the 32, and fewer live labs than
+// labs:permissions; an AWS lab, the AWS role and boundary), a free slot of the 32, and fewer live labs than
 // labs_max_running. blockersOf lists every one of those that applies, in
 // that order (labs redesign spec §6.1): the catalogue cards' readiness.
 
@@ -41,12 +41,17 @@ export async function availability(env: Env): Promise<Availability> {
 
 /**
  * Every reason this lab cannot be deployed now from the availability alone (labs redesign spec
- * §6.1), in deployLab's order: GitHub, the governance role, Graph, a free slot, labs_max_running.
+ * §6.1), in deployLab's order: GitHub, the governance role, Graph (an AWS lab: the AWS setup, AWS labs spec §6),
+ * a free slot, labs_max_running.
  * A permission never checked or failed (anything but true) is a blocker: fail-closed.
  */
 export function blockersOf(def: LabDef, a: Availability): LabBlocker[] {
   const out: LabBlocker[] = [];
   if (!a.github) out.push({ kind: "github", message: "GitHub is not connected yet. Add GITHUB_TOKEN and GITHUB_REPO in Settings > Setup." });
+  // An AWS lab needs the wg-admin-labs role and its boundary (AWS labs spec §6), never the governance role or Graph.
+  if (def.cloud === "aws" && !(a.permissions.awsRole === true && a.permissions.awsBoundary === true)) {
+    out.push({ kind: "aws_setup", message: "AWS labs are not set up yet: run the AWS bootstrap, then Check permissions." });
+  }
   const needs = labNeeds(def);
   if (needs.role && a.permissions.role !== true) out.push({ kind: "role", message: "Needs the labs governance role: do the one-time setup, then Settings → Labs → Check permissions." });
   if (needs.graph && (a.permissions.users !== true || a.permissions.groups !== true)) out.push({ kind: "graph", message: "Needs the Microsoft Graph permissions for lab users and groups: do the one-time setup, then Settings → Labs → Check permissions." });

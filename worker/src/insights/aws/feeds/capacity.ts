@@ -8,9 +8,10 @@
 // warning (OverviewResponse.awsCapacity).
 // Spec 2026-10-15-aws-insights-design.md, section 4.5.
 //
-// Read daily for the AWS region (one region: the Worker's AWS calls go to
-// config.aws.region) and the sizes cloudlabs deploys there: the configured
-// instance type and the test VM's t4g.nano. "Used" counts the vCPUs (cores ×
+// Read daily for the AWS region and, for AWS labs, Ireland (eu-west-1, the
+// labs' only secondary region), 4 calls each (AWS labs spec §6 Capacity), and
+// the sizes cloudlabs deploys there: the configured instance type, the test
+// VM's t4g.nano and every AWS lab's instance_types from the catalogue. "Used" counts the vCPUs (cores ×
 // threads) of every pending or running On-Demand instance in the Standard
 // families (A, C, D, H, I, M, R, T, Z), which is what quota L-1216C47A
 // limits; spot instances and other families (GPU, Inferentia, ...) have
@@ -26,6 +27,8 @@ import { num } from "../../common";
 import { emptyCheck } from "../../feeds/capacity";
 import type { CapacityDoc } from "../../types";
 import type { AwsFeed, AwsFeedCtx } from "../types";
+import { catalogue } from "../../../labs/catalogue";
+import { AWS_LAB_REGIONS } from "../../../../../shared/labs";
 
 /** The test VM's instance type on AWS (spec 4.5). */
 export const AWS_TEST_VM_SIZE = "t4g.nano";
@@ -107,20 +110,30 @@ export function normaliseAwsCapacity(r: AwsCapacityReplies, sizes: string[]): Ca
   return { sizes: found, usages: [{ family: AWS_STANDARD_FAMILY, used, limit }], cores: { used, limit } };
 }
 
-/** Read the region (ctx.region): 4 calls, 3 when none of the sizes is offered (DescribeInstanceTypes refuses unknown types). */
-export async function fetchAwsCapacity(ctx: AwsFeedCtx, sizes: string[]): Promise<AwsCapacityReplies> {
-  const offerings = await ctx.ec2("DescribeInstanceTypeOfferings", { LocationType: "region", ...filters([["instance-type", sizes]]) });
+/** Read one region (ctx.region unless given): 4 calls, 3 when none of the sizes is offered (DescribeInstanceTypes refuses unknown types). */
+export async function fetchAwsCapacity(ctx: AwsFeedCtx, sizes: string[], region: string = ctx.region): Promise<AwsCapacityReplies> {
+  const offerings = await ctx.ec2("DescribeInstanceTypeOfferings", { LocationType: "region", ...filters([["instance-type", sizes]]) }, region);
   const offered = sizes.filter((s) => offeredTypes(offerings).includes(s));
-  const types = offered.length ? await ctx.ec2("DescribeInstanceTypes", Object.fromEntries(offered.map((s, i) => [`InstanceType.${i + 1}`, s]))) : null;
+  const types = offered.length ? await ctx.ec2("DescribeInstanceTypes", Object.fromEntries(offered.map((s, i) => [`InstanceType.${i + 1}`, s])), region) : null;
   const quota = await ctx.json<unknown>({
     service: "servicequotas",
-    region: ctx.region,
-    host: `servicequotas.${ctx.region}.amazonaws.com`,
+    region,
+    host: `servicequotas.${region}.amazonaws.com`,
     target: "ServiceQuotasV20190624.GetServiceQuota",
     body: { ServiceCode: "ec2", QuotaCode: AWS_STANDARD_QUOTA },
   });
-  const instances = await ctx.ec2("DescribeInstances", filters([["instance-state-name", ["pending", "running"]]]));
+  const instances = await ctx.ec2("DescribeInstances", filters([["instance-state-name", ["pending", "running"]]]), region);
   return { offerings, types, quota, instances };
+}
+
+/** The instance types the feed records: the server's (awsCapacitySizes), then every AWS lab's in the catalogue, each once. */
+export function awsLabCapacitySizes(cfg: Config): string[] {
+  return [...new Set([...awsCapacitySizes(cfg), ...catalogue().labs.filter((l) => l.cloud === "aws").flatMap((l) => l.capacity.instance_types ?? [])])];
+}
+
+/** The regions the feed reads: AWS's configured one (the server's and the lab sessions'), then the labs' secondary region. */
+export function awsCapacityRegions(region: string): string[] {
+  return [...new Set([region, ...AWS_LAB_REGIONS])];
 }
 
 export async function storeAwsCapacity(db: D1Database, region: string, doc: CapacityDoc, at: string): Promise<void> {
@@ -183,11 +196,14 @@ const capacity: AwsFeed = {
   title: "Capacity and quota",
   cadenceMin: 1440,
   when: "always",
-  calls: 4,
+  calls: 8,
   async run(ctx) {
-    const sizes = awsCapacitySizes(ctx.cfg);
-    const doc = normaliseAwsCapacity(await fetchAwsCapacity(ctx, sizes), sizes);
-    await storeAwsCapacity(ctx.db, ctx.region, doc, ctx.now.toISOString());
+    const sizes = awsLabCapacitySizes(ctx.cfg);
+    // One reading per region, each stored as soon as it is read: a refusal in the second keeps the first.
+    for (const region of awsCapacityRegions(ctx.region)) {
+      const doc = normaliseAwsCapacity(await fetchAwsCapacity(ctx, sizes, region), sizes);
+      await storeAwsCapacity(ctx.db, region, doc, ctx.now.toISOString());
+    }
     return { status: "ok", error: null };
   },
 };

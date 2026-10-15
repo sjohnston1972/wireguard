@@ -34,6 +34,7 @@ import {
   LAB_TF_VARS,
   LAB_TF_VARS_AWS,
   awsConsoleUrl,
+  awsPriceKey,
   awsUsagePrefix,
   cidrOverlaps,
   cloudOfId,
@@ -53,6 +54,7 @@ import {
   wholeHoursGbpH,
   type LabDef,
 } from "../../shared/labs";
+import { sha256Hex } from "../../shared/sha256";
 import * as scripts from "../../scripts/lib/labs.mjs";
 
 const def = (over: Partial<LabDef> = {}): LabDef => ({
@@ -237,6 +239,13 @@ describe("contract lists", () => {
     expect(sessionEstimateGbp(0.05, 0.02, 2 * 3_600_000)).toBe(0.1);
     expect(sessionEstimateGbp(0.05, 0, 0)).toBe(0);
     expect(wholeHoursGbpH([{ name: "ALB", gbp_h: 0.0199, whole_hours: true }, { name: "EC2", gbp_h: 0.0071, qty: 2 }, { name: "IP", gbp_h: 0.0038, qty: 2, whole_hours: true }])).toBe(0.0275);
+  });
+  it("sha256Hex matches node's, and awsPriceKey is stable and order-free", async () => {
+    const { createHash } = await import("node:crypto");
+    for (const s of ["", "abc", "cloudlabs £ ✓", "x".repeat(1000)]) expect(sha256Hex(s)).toBe(createHash("sha256").update(s, "utf8").digest("hex"));
+    const a = awsPriceKey({ service: "AmazonEC2", unit: "Hrs", filters: { instanceType: "t4g.micro", operatingSystem: "Linux" } });
+    expect(a).toMatch(/^lab:[0-9a-f]{16}$/);
+    expect(awsPriceKey({ service: "AmazonEC2", unit: "Hrs", filters: { operatingSystem: "Linux", instanceType: "t4g.micro" } })).toBe(a);
   });
   it("AWS helpers: usage prefixes, the console link and labNeeds", () => {
     expect(awsUsagePrefix("eu-west-2")).toBe("EUW2");

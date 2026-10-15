@@ -31,9 +31,11 @@ function client(env: Env, service: string, region: string): AwsClient {
   });
 }
 
-/** One EC2 Query API call. `params` use the Query API's flat names (Filter.1.Name, InstanceId.1, ...). Returns the XML. */
-export async function ec2(env: Env, action: string, params: Record<string, string> = {}): Promise<string> {
-  const region = config(env).aws.region;
+/**
+ * One EC2 Query API call, in the Worker's region unless `region` names another. `params` use the Query API's flat
+ * names (Filter.1.Name, InstanceId.1, ...). Returns the XML.
+ */
+export async function ec2(env: Env, action: string, params: Record<string, string> = {}, region: string = config(env).aws.region): Promise<string> {
   const body = new URLSearchParams({ Action: action, Version: "2016-11-15", ...params });
   const r = await client(env, "ec2", region).fetch(`https://ec2.${region}.amazonaws.com/`, {
     method: "POST",
@@ -50,11 +52,11 @@ export async function ec2(env: Env, action: string, params: Record<string, strin
  * pages (10). Returns each page's XML. EC2 may answer a filtered call with an empty page and a token, so the token,
  * not the page, says whether there is more.
  */
-export async function ec2Pages(env: Env, action: string, params: Record<string, string> = {}, maxPages = 10): Promise<string[]> {
+export async function ec2Pages(env: Env, action: string, params: Record<string, string> = {}, maxPages = 10, region?: string): Promise<string[]> {
   const pages: string[] = [];
   let token = "";
   for (let page = 0; page < maxPages; page++) {
-    const xml = await ec2(env, action, token ? { ...params, NextToken: token } : params);
+    const xml = await ec2(env, action, token ? { ...params, NextToken: token } : params, region);
     pages.push(xml);
     token = xmlFirst(xml, "nextToken") ?? "";
     if (!token) break;
@@ -63,13 +65,16 @@ export async function ec2Pages(env: Env, action: string, params: Record<string, 
 }
 
 /**
- * One Query API call to another AWS service in the Worker's region (CloudWatch: service "monitoring", Version
- * 2010-08-01), the same way as ec2() but with the service and API version given. Returns the XML.
+ * One Query API call to another AWS service (CloudWatch: service "monitoring", Version 2010-08-01), the same way as
+ * ec2() but with the service and API version given. In the Worker's region at <service>.<region>.amazonaws.com
+ * unless `at` names another region or host (IAM and STS are global: host iam.amazonaws.com, signed for us-east-1).
+ * Returns the XML.
  */
-export async function awsQuery(env: Env, service: string, action: string, params: Record<string, string>, version: string): Promise<string> {
-  const region = config(env).aws.region;
+export async function awsQuery(env: Env, service: string, action: string, params: Record<string, string>, version: string, at: { region?: string; host?: string } = {}): Promise<string> {
+  const region = at.region ?? config(env).aws.region;
+  const host = at.host ?? `${service}.${region}.amazonaws.com`;
   const body = new URLSearchParams({ Action: action, Version: version, ...params });
-  const r = await client(env, service, region).fetch(`https://${service}.${region}.amazonaws.com/`, {
+  const r = await client(env, service, region).fetch(`https://${host}/`, {
     method: "POST",
     body: body.toString(),
     headers: { "Content-Type": "application/x-www-form-urlencoded; charset=utf-8" },

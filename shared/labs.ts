@@ -13,6 +13,7 @@
 
 import allowedRoles from "../labs/setup/allowed-roles.json";
 import type { GuideDiagramEntry, GuideDiagramKind } from "./guides";
+import { sha256Hex } from "./sha256";
 
 // ── Lab definitions (lab.yaml, spec §3.2) ────────────────────────────────
 
@@ -234,6 +235,17 @@ export function awsUsagePrefix(region: string): string {
   const p = AWS_USAGE_PREFIX[region];
   if (!p) throw new RangeError(`no AWS usage-type prefix known for ${region}`);
   return p;
+}
+/** A price reference written out the same way whatever order its filters were authored in: the aws_prices key's input. */
+export function canonicalAwsPrice(ref: AwsPriceRef): string {
+  const filters = Object.keys(ref.filters)
+    .sort()
+    .map((k) => [k, ref.filters[k]]);
+  return JSON.stringify({ service: ref.service, unit: ref.unit, gb: ref.gb ?? null, filters });
+}
+/** The aws_prices item a lab price reference is stored under: "lab:" + the first 16 hex characters of its SHA-256 (AWS labs spec §6 Prices). */
+export function awsPriceKey(ref: AwsPriceRef): string {
+  return `lab:${sha256Hex(canonicalAwsPrice(ref)).slice(0, 16)}`;
 }
 /** The first letter of a lab's name_prefix per cloud (AWS: a + two-digit lab number + 5 random characters, ruling A5). */
 export const NAME_PREFIX_LETTER: Readonly<Record<LabCloud, string>> = { azure: "l", aws: "a" };

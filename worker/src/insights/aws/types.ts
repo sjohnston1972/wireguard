@@ -17,12 +17,12 @@ import type { AzureHealth, BootLogResponse, FeedId, ScheduledEvent } from "../..
 import type { Budget, FeedResult } from "../types";
 import type { FeedRow } from "../common";
 
-export type AwsFeedId = "aws.health" | "aws.metrics" | "aws.activity" | "aws.serviceHealth" | "aws.capacity" | "aws.prices" | "aws.bootLog" | "aws.housekeeping";
+export type AwsFeedId = "aws.health" | "aws.metrics" | "aws.activity" | "aws.serviceHealth" | "aws.capacity" | "aws.prices" | "aws.labPrices" | "aws.bootLog" | "aws.housekeeping";
 
 /** Every AWS feed id, in the runner's priority order (spec section 4), the daily prune last. */
-export const AWS_FEED_IDS: readonly AwsFeedId[] = ["aws.health", "aws.metrics", "aws.activity", "aws.serviceHealth", "aws.capacity", "aws.prices", "aws.bootLog", "aws.housekeeping"];
+export const AWS_FEED_IDS: readonly AwsFeedId[] = ["aws.health", "aws.metrics", "aws.activity", "aws.serviceHealth", "aws.capacity", "aws.prices", "aws.labPrices", "aws.bootLog", "aws.housekeeping"];
 
-/** Which Azure FeedIds each AWS feed stands in for on screen (metrics → vmMetrics and pipMetrics). */
+/** Which Azure FeedIds each AWS feed stands in for on screen (metrics → vmMetrics and pipMetrics; the lab prices feed for none: the Labs tab reads its rows). */
 export const AWS_STANDS_IN: Record<Exclude<AwsFeedId, "aws.housekeeping">, FeedId[]> = {
   "aws.health": ["health"],
   "aws.metrics": ["vmMetrics", "pipMetrics"],
@@ -30,6 +30,7 @@ export const AWS_STANDS_IN: Record<Exclude<AwsFeedId, "aws.housekeeping">, FeedI
   "aws.serviceHealth": ["serviceHealth"],
   "aws.capacity": ["capacity"],
   "aws.prices": ["prices"],
+  "aws.labPrices": [],
   "aws.bootLog": ["bootLog"],
 };
 
@@ -41,6 +42,7 @@ export const AWS_SOURCES: Record<Exclude<AwsFeedId, "aws.housekeeping">, string>
   "aws.serviceHealth": "AWS public status feed",
   "aws.capacity": "AWS Service Quotas",
   "aws.prices": "AWS Price List",
+  "aws.labPrices": "AWS Price List",
   "aws.bootLog": "AWS console output",
 };
 
@@ -76,8 +78,8 @@ export interface AwsFeedCtx {
   budget: Budget;
   /** config(env).aws.region */
   region: string;
-  /** One EC2 Query API call in the region (`params` in the Query API's flat names); the XML. 1 call. */
-  ec2(action: string, params?: Record<string, string>): Promise<string>;
+  /** One EC2 Query API call in the region, or in `region` when given (`params` in the Query API's flat names); the XML. 1 call. */
+  ec2(action: string, params?: Record<string, string>, region?: string): Promise<string>;
   /** One Query API call to another service in the region (CloudWatch: "monitoring", Version 2010-08-01); the XML. 1 call. */
   query(service: "monitoring", action: string, params: Record<string, string>, version: string): Promise<string>;
   /** One JSON 1.1 call (CloudTrail, Service Quotas, the Price List, tagging); the parsed answer. 1 call. */
@@ -139,6 +141,7 @@ export type AwsBootLogDoc = BootLogResponse & { launchTime: string | null };
 // aws_capacity.json is the existing CapacityDoc (insights/types.ts): sizes [{ name, available, reason, vcpus, family: "standard" }],
 // usages [{ family: "standard", used, limit }], cores { used, limit }.
 // aws_prices rows: item = the instance type | "disk:gp3" | "ip:v4"; unit "1 Hour" | "GB-Mo"; gbp per unit; meter = AWS's usagetype.
+// The lab price feed's rows: item = awsPriceKey(ref) ("lab:" + 16 hex), unit = the reference's ("Hrs" | "GB-Mo").
 
 /**
  * Thrown when AWS throttles a call (Throttling*, RequestLimitExceeded). The

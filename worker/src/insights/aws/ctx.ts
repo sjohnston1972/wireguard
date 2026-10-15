@@ -88,8 +88,8 @@ export function makeAwsCtx(env: Env, now: Date, snap: Snapshot, cfg: Config, bud
     budget,
     region: config(env).aws.region,
     ...("row" in run ? { row: run.row ?? null } : {}),
-    ec2(action, params = {}) {
-      return call(() => ec2Call(env, action, params), action, iamPermission("ec2", action));
+    ec2(action, params = {}, region) {
+      return call(() => ec2Call(env, action, params, region), action, iamPermission("ec2", action));
     },
     query(service, action, params, version) {
       return call(() => awsQuery(env, service, action, params, version), action, iamPermission(service, action));

@@ -263,8 +263,9 @@ export function registerLabs(api: Hono<ApiEnv>): void {
       gatewayUp: (snap.state === "running" || snap.state === "standby") && hc === def.cloud,
       session: live ? sessionView(live, ctx) : null,
       runs: liveRuns.map(labRunRow),
-      // While it runs: what is in its group, from ARM (the one Azure read a page makes here), and the portal link.
-      resources: live?.state === "running" ? await labResources(c.env, def.id) : null,
+      // While it runs: what is in its group, from ARM (the one Azure read a page makes here), and the portal link;
+      // an AWS lab's from the tagging API (cloudlabs-lab = its id, per lab region).
+      resources: live?.state === "running" ? await labResources(c.env, def) : null,
       cloud: def.cloud,
       secondaryRegion: def.regions.secondary,
       // AWS: the lab's Resource Groups page in each of its regions, while a session is live (in place of portalUrl).

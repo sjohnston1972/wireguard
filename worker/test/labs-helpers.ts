@@ -134,11 +134,11 @@ export function advance(ms: number): Date {
 export const MIN = 60_000;
 export const HOUR = 3_600_000;
 
-/** A signed-in API on the test catalogue, with the permission check passed. */
+/** A signed-in API on the test catalogue, with the permission check passed (the AWS ticks too). */
 export async function labEnv(overrides: Partial<Env> = {}): Promise<{ env: Env; world: World }> {
   setCatalogueForTest(TEST_CATALOGUE);
   const r = apiEnv(overrides);
-  await r.env.STATUS.put("labs:permissions", JSON.stringify({ checkedAt: NOW, role: true, users: true, groups: true, message: null }));
+  await r.env.STATUS.put("labs:permissions", JSON.stringify({ checkedAt: NOW, role: true, users: true, groups: true, awsRole: true, awsBoundary: true, awsCostTag: true, message: null }));
   return r;
 }
 

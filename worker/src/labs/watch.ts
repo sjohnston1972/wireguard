@@ -38,8 +38,8 @@ import { destroySession, hhmm, timeoutOf } from "./engine";
 import { activeRunOf, activeRuns, getSession, liveSessions, runsOf, updateSession, type LabSessionRow } from "./store";
 import { refreshLabRun } from "./refresh";
 import { budgetStatus } from "../budget";
-import { fetchLabCostDays } from "./cost";
-import { sweepOrphans } from "./orphans";
+import { fetchAwsLabCostDays, fetchLabCostDays } from "./cost";
+import { sweepAwsOrphans, sweepOrphans } from "./orphans";
 import { proposeLabsRule } from "./fwproposal";
 import { labTitle } from "./view";
 
@@ -202,6 +202,10 @@ export async function runLabWatch(env: Env, now: Date = new Date(), opts: LabWat
   // 5: hourly, the orphan sweep (7 listings); 6: daily, Azure's spend per lab group.
   await step("orphans", () => sweepOrphans(env, net, now));
   await step("lab costs", () => fetchLabCostDays(env, net, now));
+  // Then AWS's: its sweep (12 listings) is its own hourly step, so in a run where the Azure sweep took its calls it
+  // waits for the next run (AWS labs spec ruling P7); and, daily, AWS's spend by the cloudlabs-lab tag.
+  await step("aws orphans", () => sweepAwsOrphans(env, net, now));
+  await step("aws lab costs", () => fetchAwsLabCostDays(env, net, now));
   // 7: once per install, the Labs firewall rule as a draft proposal (D1 only).
   await step("firewall", () => proposeLabsRule(env));
   return lines;

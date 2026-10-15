@@ -185,13 +185,16 @@ describe("AWS capacity: the deploy form's check", () => {
 });
 
 describe("AWS capacity: the feed", () => {
-  it("makes its four calls in the region, stores a CapacityDoc and reads ok", async () => {
+  it("makes its four calls in each lab region (London, then Ireland), stores a CapacityDoc and reads ok", async () => {
     const { env } = azureEnv(AWS_ON);
     const aws = withAws();
     await running(env, { cloud: "aws" });
     await runAwsInsights(env, NOW, [capacity], await opts(env));
     expect(await feedRow(env, "aws.capacity")).toMatchObject({ status: "ok", error: null, next_due_at: iso(NOW.getTime() + DAY) });
-    expect(aws.map((c) => c.action ?? c.target)).toEqual(["DescribeInstanceTypeOfferings", "DescribeInstanceTypes", "ServiceQuotasV20190624.GetServiceQuota", "DescribeInstances"]);
+    const four = ["DescribeInstanceTypeOfferings", "DescribeInstanceTypes", "ServiceQuotasV20190624.GetServiceQuota", "DescribeInstances"];
+    expect(aws.map((c) => c.action ?? c.target)).toEqual([...four, ...four]);
+    expect(aws.slice(4).map((c) => c.host)).toEqual(["ec2.eu-west-1.amazonaws.com", "ec2.eu-west-1.amazonaws.com", "servicequotas.eu-west-1.amazonaws.com", "ec2.eu-west-1.amazonaws.com"]);
+    expect((await readAwsCapacity(env.DB, "eu-west-1"))?.fetchedAt).toBe(NOW.toISOString());
     const [off, types, quota, inst] = aws;
     expect(off!.host).toBe("ec2.eu-west-2.amazonaws.com");
     expect(off!.params.get("LocationType")).toBe("region");

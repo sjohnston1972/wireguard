@@ -7,14 +7,26 @@
 //           role assignments: 2 ARM reads);
 //   users   Graph answers /users?$top=1;
 //   groups  Graph answers /groups?$top=1.
-// The result is kept in KV labs:permissions; until every tick a lab needs is
-// there, Deploy is unavailable for it, with the reason. Nothing is written
-// to Azure or Entra, and no token or id is ever shown.
+// With AWS labs in the catalogue, three AWS ticks (AWS labs spec §6), 4 reads:
+//   awsRole      iam:GetRole wg-admin-labs answers;
+//   awsBoundary  iam:GetPolicy wg-admin-lab-boundary (in the Worker's own
+//                account, from STS) answers;
+//   awsCostTag   the cloudlabs-lab cost allocation tag is Active (a warning
+//                only: until then AWS lab actuals show as estimates).
+// The Azure part runs only with Azure connected, the AWS part only with the
+// Worker's AWS keys. The result is kept in KV labs:permissions; until every
+// tick a lab needs is there, Deploy is unavailable for it, with the reason
+// (an AWS lab needs awsRole and awsBoundary). Nothing is written
+// to Azure, Entra or AWS, and no token or id is ever shown.
 
 import type { Env } from "../env";
-import { canAzure } from "../env";
+import { canAws, canAzure } from "../env";
 import type { LabPermissions } from "../../../shared/api";
 import { arm, graph, token, type Net } from "./net";
+import { catalogue } from "./catalogue";
+import { awsAccountId, costTagStatus, iamPolicyExists, iamRoleExists } from "./awsReads";
+import { awsPlainError } from "../insights/aws/common";
+import { AWS_BOUNDARY, AWS_LABS_ROLE, LAB_TAG } from "../../../shared/labs";
 
 /** The custom role the one-time setup creates (labs spec §8.1). */
 export const GOVERNANCE_ROLE = "wg-admin labs governance";
@@ -53,13 +65,12 @@ async function graphReads(env: Env, net: Net, what: "users" | "groups"): Promise
   }
 }
 
-/** Run the check, keep it in KV, and return it. */
-export async function checkLabPermissions(env: Env, net: Net, now = new Date()): Promise<LabPermissions> {
-  if (!canAzure(env)) {
-    const out: LabPermissions = { checkedAt: now.toISOString(), role: false, users: false, groups: false, awsRole: null, awsBoundary: null, awsCostTag: null, message: "Azure is not connected yet: add the service principal in Settings > Setup." };
-    await env.STATUS.put("labs:permissions", JSON.stringify(out));
-    return out;
-  }
+type AzureTicks = Pick<LabPermissions, "role" | "users" | "groups">;
+type AwsTicks = Pick<LabPermissions, "awsRole" | "awsBoundary" | "awsCostTag">;
+
+/** The three Azure ticks and what failed. */
+async function azureTicks(env: Env, net: Net): Promise<{ ticks: AzureTicks; problems: string[] }> {
+  if (!canAzure(env)) return { ticks: { role: false, users: false, groups: false }, problems: ["Azure is not connected yet: add the service principal in Settings > Setup."] };
   let role: { ok: boolean; why: string | null };
   try {
     role = await roleHeld(env, net);
@@ -72,7 +83,46 @@ export async function checkLabPermissions(env: Env, net: Net, now = new Date()):
     ...(role.ok ? [] : [`Role: ${role.why}.`]),
     ...(users && groups ? [] : [`Microsoft Graph refused to read ${[!users ? "users" : "", !groups ? "groups" : ""].filter(Boolean).join(" and ")}: grant User.ReadWrite.All, User.DeleteRestore.All and Group.ReadWrite.All with admin consent.`]),
   ];
-  const out: LabPermissions = { checkedAt: now.toISOString(), role: role.ok, users, groups, awsRole: null, awsBoundary: null, awsCostTag: null, message: problems.length ? problems.join(" ") : null };
+  return { ticks: { role: role.ok, users, groups }, problems };
+}
+
+const BOOTSTRAP = "run node scripts/aws-bootstrap.mjs --labs.";
+
+/**
+ * The three AWS ticks (AWS labs spec §6 Permissions check), 4 reads: the account id, then iam:GetRole wg-admin-labs,
+ * iam:GetPolicy wg-admin-lab-boundary and whether the cloudlabs-lab cost tag is Active (a warning only: until then
+ * AWS lab actuals show as estimates). Asked only while the catalogue has AWS labs; with none, the three stay
+ * unchecked (null) and nothing is said.
+ */
+async function awsTicks(env: Env, net: Net): Promise<{ ticks: AwsTicks; problems: string[] }> {
+  if (!catalogue().labs.some((l) => l.cloud === "aws")) return { ticks: { awsRole: null, awsBoundary: null, awsCostTag: null }, problems: [] };
+  if (!canAws(env)) return { ticks: { awsRole: false, awsBoundary: false, awsCostTag: null }, problems: ["AWS is not connected: the Worker has no AWS keys."] };
+  const problems: string[] = [];
+  /** One read; undefined (and the reason said) when AWS would not answer. */
+  const asked = async <T>(what: string, fn: () => Promise<T>): Promise<T | undefined> => {
+    try {
+      return await fn();
+    } catch (e) {
+      problems.push(`AWS could not say ${what}: ${awsPlainError(e)}`);
+      return undefined;
+    }
+  };
+  const account = await asked("which account the Worker is in", () => awsAccountId(env, net));
+  const role = await asked(`whether the ${AWS_LABS_ROLE} role exists`, () => iamRoleExists(env, net, AWS_LABS_ROLE));
+  const boundary = account ? await asked(`whether the ${AWS_BOUNDARY} policy exists`, () => iamPolicyExists(env, net, `arn:aws:iam::${account}:policy/${AWS_BOUNDARY}`)) : undefined;
+  const tag = await asked(`whether the ${LAB_TAG} cost tag is active`, () => costTagStatus(env, net, LAB_TAG));
+  if (role === false) problems.push(`AWS: the ${AWS_LABS_ROLE} role does not exist yet: ${BOOTSTRAP}`);
+  if (boundary === false) problems.push(`AWS: the ${AWS_BOUNDARY} policy does not exist yet: ${BOOTSTRAP}`);
+  if (tag === "Inactive" || tag === null) problems.push(`AWS: the ${LAB_TAG} cost tag is not active yet, so AWS lab actuals show as estimates.`);
+  return { ticks: { awsRole: role === true, awsBoundary: boundary === true, awsCostTag: tag === "Active" }, problems };
+}
+
+/** Run the check, keep it in KV, and return it. */
+export async function checkLabPermissions(env: Env, net: Net, now = new Date()): Promise<LabPermissions> {
+  const az = await azureTicks(env, net);
+  const aws = await awsTicks(env, net);
+  const problems = [...az.problems, ...aws.problems];
+  const out: LabPermissions = { checkedAt: now.toISOString(), ...az.ticks, ...aws.ticks, message: problems.length ? problems.join(" ") : null };
   await env.STATUS.put("labs:permissions", JSON.stringify(out));
   return out;
 }
