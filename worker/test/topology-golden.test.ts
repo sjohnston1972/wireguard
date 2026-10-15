@@ -697,6 +697,32 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
       "lab-az700-44-flow-logs-bastion-vnet ..> vnet-hub : watches",
     ],
   },
+  // ── AWS labs batch 1 ──
+  "soa-01-cloudwatch": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "logAnalytics /cloudlabs/soa-01-cloudwatch/app < lab-soa-01-cloudwatch · London",
+      "managedIdentity lab-soa-01-cloudwatch-vm < lab-soa-01-cloudwatch · London",
+      "messaging lab-soa-01-cloudwatch-alerts < lab-soa-01-cloudwatch · London",
+      "messaging lab-soa-01-cloudwatch-ec2-state < lab-soa-01-cloudwatch · London",
+      "monitor lab-soa-01-cloudwatch-app-errors < lab-soa-01-cloudwatch · London",
+      "monitor lab-soa-01-cloudwatch-cpu-high < lab-soa-01-cloudwatch · London",
+      "monitor lab-soa-01-cloudwatch-memory-high < lab-soa-01-cloudwatch · London",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-endpoints < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-logs < snet-private-1",
+      "privateEndpoint vpce-monitoring < snet-private-1",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-soa-01-cloudwatch · London",
+      "routeTable rt-private < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vm vm-app < snet-private-1",
+      "vnet vpc-lab < lab-soa-01-cloudwatch · London",
+    ],
+    edges: ["lab-soa-01-cloudwatch-ec2-state ..> lab-soa-01-cloudwatch-alerts"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

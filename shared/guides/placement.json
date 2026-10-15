@@ -693,5 +693,14 @@
    "width": 493,
    "height": 618
   }
+ ],
+ "soa-01-cloudwatch": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A bastion, a VM, three private endpoints, a Log Analytics workspace and more, in one resource group with one virtual network and two subnets.",
+   "width": 1707,
+   "height": 1146
+  }
  ]
 }

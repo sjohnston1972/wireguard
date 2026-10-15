@@ -519,5 +519,12 @@
    "title": "Which flows the NSGs allow",
    "kind": "concept"
   }
+ ],
+ "soa-01-cloudwatch": [
+  {
+   "file": "architecture.svg",
+   "title": "CloudWatch: agent, custom metrics, alarms, Logs Insights: architecture",
+   "kind": "architecture"
+  }
  ]
 }
