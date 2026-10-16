@@ -21,8 +21,8 @@ lab-saa-17-data-pipeline (London)
 
 - Run the first Connect line in CloudShell and open the stream's Monitoring tab: about 20 incoming records a minute. Read a few with `aws kinesis get-shard-iterator` and `get-records`.
 - After two or three minutes list what Firehose wrote with the second line: one file a minute under a date path. Download one and look: one JSON event a line.
-- Run the crawler with the third line (about 5p a run; about a minute), then find the `events` table in the Glue console with the columns it worked out.
-- Run the fourth line, then `aws athena get-query-results --query-execution-id <id>`, or use the Athena console with the workgroup `lab-saa-17-data-pipeline-wg` selected. Each query bills by the data it scans (pennies here); try one that would scan more than 10 MB and watch the workgroup cancel it.
+- Run the crawler with the third line (about 5p a run; about a minute; wait for it to finish, state Ready, before you tear down), then find the `events` table in the Glue console with the columns it worked out.
+- Run the fourth line, then `aws athena get-query-results --query-execution-id <id>`, or use the Athena console with the workgroup `lab-saa-17-data-pipeline-wg` selected. Each query bills by the data it scans (a fraction of a penny here: Athena bills at least 10 MB a query); see "Data scanned" on your query. The whole table is well under 1 MB, so nothing here reaches the 10 MB cut-off: open the workgroup's Data usage controls to read the per-query limit that would cancel a larger scan.
 - Raise the stream to two shards (`aws kinesis update-shard-count --stream-name lab-saa-17-data-pipeline-events --target-shard-count 2 --scaling-type UNIFORM_SCALING`) and see the shard hours, and the bill, double. Set it back before you leave.
 
 ## Learn more
