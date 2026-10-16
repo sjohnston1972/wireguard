@@ -56,17 +56,21 @@
 #                    again on each pass, waited for until Deployed, deleted with
 #                    their newest ETag), then the lab's origin access controls
 #                    and functions; Global Accelerator in us-west-2 (disabled,
-#                    waited for until DEPLOYED, endpoint groups, listeners, then
-#                    the accelerator); WAF web ACLs (after the distributions that
-#                    use them, with the newest lock token); Route 53 zones
-#                    (every record but the zone's own NS and SOA first), then
-#                    health checks; Resolver rules and query log configs (their
-#                    VPC associations first, waited for), firewall rule group
-#                    associations, groups (their rules first), domain lists,
-#                    then endpoints; Lattice service and VPC associations (each
-#                    waited for until not found), services (their listeners go
-#                    with them), target groups
-#                    (targets deregistered first), then service networks
+#                    asked again while it reads DEPLOYED and enabled, waited for
+#                    until DEPLOYED and disabled, endpoint groups, listeners,
+#                    then the accelerator); WAF web ACLs (after the
+#                    distributions that use them, with the newest lock token);
+#                    Route 53 zones (every record but the zone's own NS and SOA
+#                    first), then health checks; Resolver rules (their VPC
+#                    associations first, waited for; each rule waited for until
+#                    not found) and query log configs (the same), firewall rule
+#                    group associations, groups (their rules first), domain
+#                    lists, then endpoints; Lattice service and VPC associations
+#                    (each waited for until not found), services (their
+#                    listeners go with them), target groups (targets
+#                    deregistered and drained first), then service networks.
+#                    Never an association with, or an endpoint in, the VPN
+#                    server's VPC
 #   3 network        load balancers, then listener rules and listeners still
 #                    there (most go with their load balancer), then target
 #                    groups; RDS replicas, then
@@ -108,9 +112,9 @@
 # clusters, CloudFront distributions, Auto Scaling groups, Firehose and Kinesis
 # streams, load balancers, RDS instances, ElastiCache groups and clusters, EFS
 # file systems, instances, NAT gateways, VPC endpoints, Instance Connect
-# Endpoints, DynamoDB tables, accelerators, Resolver endpoints and firewall
-# rule group associations, and Lattice associations, services and target
-# groups are polled after the delete (one already being deleted too),
+# Endpoints, DynamoDB tables, accelerators, Resolver rules, endpoints and
+# firewall rule group associations, and Lattice associations, services and
+# target groups are polled after the delete (one already being deleted too),
 # every LAB_DELETE_POLL_SECONDS (30), until gone or LAB_JOB_DEADLINE less 420 s
 # (what is left then is a warning, "left behind: <name>"). VPC fabric deletes
 # are synchronous (pre-flight ruling C15): one AWS refuses with
@@ -654,7 +658,7 @@ vpc_ok() {
       warn "never touched: $(label "$i") is inside the VPN server's VPC"
       return 1
     fi
-  done < <(jq -r '.VpcId // empty, (.Attachments // [] | .[].VpcId // empty)' <<<"$DJ" 2>/dev/null)
+  done < <(jq -r '.VpcId // empty, .HostVPCId // empty, .vpcId // empty, (.Attachments // [] | .[].VpcId // empty)' <<<"$DJ" 2>/dev/null)
   return 0
 }
 
@@ -960,25 +964,26 @@ del_zone() {
 del_healthcheck() { wr "$1" "delete $(label "$1")" route53 delete-health-check --health-check-id "${C_I[$1]}"; }
 
 # Phase 2, edge and DNS (batch 4).
-# wait_until_none <i> <what> <aws args…> -- <jq count>: poll the listing (in the item's region) until the count is 0,
-# or UNTIL (then a warning and false). A listing AWS refuses is a warning and false (never taken for none), unless the
-# item itself is gone; an empty answer counts as none.
+# wait_until_none <i> <what> <aws args…> -- <list key> [<jq filter>]: poll the listing (in the item's region) until its
+# list <list key> holds nothing (after the filter, when given), or UNTIL (then a warning and false). A listing AWS
+# refuses is a warning and false (never taken for none), unless the item itself is gone; so is an answer that is not
+# JSON or holds no such list (review: never "0 left" from an answer that could not be read).
 wait_until_none() {
-  local i="$1" what="$2" json n q
+  local i="$1" what="$2" json n k f
   local -a args=()
   shift 2
   while [ "$1" != -- ]; do args+=("$1"); shift; done
-  q="$2"
+  k="$2"
+  f="${3:-.}"
   while :; do
     if ! json="$(awsq "${C_R[$i]}" "${args[@]}")"; then
       gone_err && return 0
       warn "could not list the $what of $(label "$i") ($(code))"
       return 1
     fi
-    n="$(jq -r "$q" <<<"$json" 2>/dev/null)"
-    n="${n:-0}"
+    n="$(jq -r --arg k "$k" "if type == \"object\" and (.[\$k] | type) == \"array\" then [.[\$k][] | $f] | length else error(\"no list\") end" <<<"$json" 2>/dev/null)"
     if ! [[ "$n" =~ ^[0-9]+$ ]]; then
-      warn "could not read the $what of $(label "$i")"
+      warn "could not read the $what of $(label "$i") (the answer holds no $k list)"
       return 1
     fi
     [ "$n" -eq 0 ] && return 0
@@ -992,9 +997,22 @@ wait_until_none() {
 }
 # being_deleted <i> <jq test>: after a delete AWS refused, true when the item reads as already being deleted (review I1:
 # a destroy that ran out of time left it so, and AWS refuses a second delete), so run's poll waits for it all the same.
+# mid_delete (above) is the same check made before the delete, for the types whose describe says "deleting".
 being_deleted() {
   describe "$1"
   [ $? -eq 0 ] && [ -n "$DJ" ] && jq -e "$2" <<<"$DJ" >/dev/null 2>&1
+}
+# wg_vpc <i> <vpc>: true, with a warning, when an association of the item is with the VPN server's VPC, or that VPC in
+# the item's region is not known (then nothing tied to a VPC there is touched, as vpc_ok): it is never removed.
+wg_vpc() {
+  local i="$1" v="$2" r="${C_R[$1]}"
+  if [ -n "${WG_BLIND[$r]:-}" ]; then
+    warn "not touched: $(label "$i") with $v (the VPN server's VPC in $r is not known)"
+    return 0
+  fi
+  [ -n "${WG_VPCS["$r|$v"]:-}" ] || return 1
+  warn "never touched: $(label "$i") with $v, the VPN server's VPC"
+  return 0
 }
 # Ruling P10: a function in use by a distribution cannot go, so functions follow the distributions.
 del_function() {
@@ -1004,18 +1022,19 @@ del_function() {
   wr "$i" "delete $(label "$i")" cloudfront delete-function --name "${C_I[$i]}" --if-match "$etag"
 }
 # Ruling P10: Global Accelerator, in us-west-2: disable, wait until DEPLOYED and disabled, endpoint groups, listeners,
-# then the accelerator (AWS refuses each step out of this order).
+# then the accelerator (AWS refuses each step out of this order). A disable is asked whenever it reads DEPLOYED and
+# still enabled, so one AWS refused (throttled, or a change still deploying) is asked again on the next pass.
 del_accelerator() {
-  local i="$1" a="${C_A[$1]}" r="${C_R[$1]}" json l g
-  readable "$i" || return 1
-  [ -n "$DJ" ] || return 1
-  [ "$(jq -r '.Enabled' <<<"$DJ" 2>/dev/null)" = true ] && wr "$i" "disable $(label "$i")" globalaccelerator update-accelerator --accelerator-arn "$a" --no-enabled
+  local i="$1" a="${C_A[$1]}" r="${C_R[$1]}" json l g s e
   while :; do
     readable "$i" || return 1
     [ -n "$DJ" ] || return 1
-    [ "$(jq -r '.Status' <<<"$DJ")" = DEPLOYED ] && [ "$(jq -r '.Enabled' <<<"$DJ")" = false ] && break
+    s="$(jq -r '.Status // ""' <<<"$DJ" 2>/dev/null)"
+    e="$(jq -r '.Enabled' <<<"$DJ" 2>/dev/null)"
+    [ "$s" = DEPLOYED ] && [ "$e" = false ] && break
+    [ "$s" = DEPLOYED ] && [ "$e" = true ] && wr "$i" "disable $(label "$i")" globalaccelerator update-accelerator --accelerator-arn "$a" --no-enabled
     if past_until; then
-      warn "left behind: $(label "$i") (still disabling)"
+      warn "left behind: $(label "$i") (still enabled or disabling)"
       return 1
     fi
     echo "safety net: waiting for $(label "$i") to finish disabling"
@@ -1039,41 +1058,80 @@ del_webacl() {
   tok="$(jq -r '.LockToken // empty' <<<"$DJ" 2>/dev/null)"
   wr "$i" "delete $(label "$i")" wafv2 delete-web-acl --scope CLOUDFRONT --name "${C_I[$i]%%/*}" --id "${C_I[$i]#*/}" --lock-token "$tok"
 }
-# Ruling P23: Resolver. A rule's VPC associations, then the rule; a query log config's associations, then it; a
-# firewall rule group's VPC associations (tagged, own handler) and rules, then the group; domain lists; endpoints last,
-# each waited for until gone (a VPC cannot be deleted while an endpoint's interfaces are in it).
+# Ruling P23: Resolver. A rule's VPC associations, then the rule, waited for until not found (an outbound endpoint
+# cannot go while a rule names it); a query log config's associations, then it; a firewall rule group's VPC
+# associations (tagged, own handler) and rules, then the group; domain lists; endpoints last, each waited for until
+# gone (a VPC cannot be deleted while an endpoint's interfaces are in it). An association with the VPN server's VPC is
+# never removed, and what it holds is then left (AWS would refuse it).
 del_resolver_rule() {
-  local i="$1" r="${C_R[$1]}" v
-  while IFS= read -r v; do [ -n "$v" ] && wr "$i" "disassociate $(label "$i") from $v" route53resolver disassociate-resolver-rule --resolver-rule-id "${C_I[$i]}" --vpc-id "$v"; done < <(awsq "$r" route53resolver list-resolver-rule-associations --filters "Name=ResolverRuleId,Values=${C_I[$i]}" | jq -r '.ResolverRuleAssociations[]? | select(.Status != "DELETING") | .VPCId // empty')
-  wait_until_none "$i" "rule associations" route53resolver list-resolver-rule-associations --filters "Name=ResolverRuleId,Values=${C_I[$i]}" -- '.ResolverRuleAssociations // [] | length' || return 1
-  wr "$i" "delete $(label "$i")" route53resolver delete-resolver-rule --resolver-rule-id "${C_I[$i]}"
+  local i="$1" r="${C_R[$1]}" v wg=0
+  local -a vpcs=()
+  mapfile -t vpcs < <(awsq "$r" route53resolver list-resolver-rule-associations --filters "Name=ResolverRuleId,Values=${C_I[$i]}" | jq -r '.ResolverRuleAssociations[]? | select(.Status != "DELETING") | .VPCId // empty' 2>/dev/null)
+  for v in "${vpcs[@]}"; do
+    [ -n "$v" ] || continue
+    if wg_vpc "$i" "$v"; then wg=1; continue; fi
+    wr "$i" "disassociate $(label "$i") from $v" route53resolver disassociate-resolver-rule --resolver-rule-id "${C_I[$i]}" --vpc-id "$v"
+  done
+  [ "$wg" = 1 ] && return 1
+  wait_until_none "$i" "rule associations" route53resolver list-resolver-rule-associations --filters "Name=ResolverRuleId,Values=${C_I[$i]}" -- ResolverRuleAssociations || return 1
+  wr "$i" "delete $(label "$i")" route53resolver delete-resolver-rule --resolver-rule-id "${C_I[$i]}" || being_deleted "$i" '.Status == "DELETING"'
 }
 del_querylog() {
-  local i="$1" r="${C_R[$1]}" v
-  while IFS= read -r v; do [ -n "$v" ] && wr "$i" "disassociate $(label "$i") from $v" route53resolver disassociate-resolver-query-log-config --resolver-query-log-config-id "${C_I[$i]}" --resource-id "$v"; done < <(awsq "$r" route53resolver list-resolver-query-log-config-associations --filters "Name=ResolverQueryLogConfigId,Values=${C_I[$i]}" | jq -r '.ResolverQueryLogConfigAssociations[]? | select(.Status != "DELETING") | .ResourceId // empty')
-  wait_until_none "$i" "query log associations" route53resolver list-resolver-query-log-config-associations --filters "Name=ResolverQueryLogConfigId,Values=${C_I[$i]}" -- '[.ResolverQueryLogConfigAssociations[]? | select(.Status != "FAILED")] | length' || return 1
+  local i="$1" r="${C_R[$1]}" v wg=0
+  local -a vpcs=()
+  mapfile -t vpcs < <(awsq "$r" route53resolver list-resolver-query-log-config-associations --filters "Name=ResolverQueryLogConfigId,Values=${C_I[$i]}" | jq -r '.ResolverQueryLogConfigAssociations[]? | select(.Status != "DELETING") | .ResourceId // empty' 2>/dev/null)
+  for v in "${vpcs[@]}"; do
+    [ -n "$v" ] || continue
+    if wg_vpc "$i" "$v"; then wg=1; continue; fi
+    wr "$i" "disassociate $(label "$i") from $v" route53resolver disassociate-resolver-query-log-config --resolver-query-log-config-id "${C_I[$i]}" --resource-id "$v"
+  done
+  [ "$wg" = 1 ] && return 1
+  wait_until_none "$i" "query log associations" route53resolver list-resolver-query-log-config-associations --filters "Name=ResolverQueryLogConfigId,Values=${C_I[$i]}" -- ResolverQueryLogConfigAssociations 'select(.Status != "FAILED")' || return 1
   wr "$i" "delete $(label "$i")" route53resolver delete-resolver-query-log-config --resolver-query-log-config-id "${C_I[$i]}"
 }
-del_fw_assoc() { wr "$1" "disassociate $(label "$1")" route53resolver disassociate-firewall-rule-group --firewall-rule-group-association-id "${C_I[$1]}"; }
+del_fw_assoc() { vpc_ok "$1" && wr "$1" "disassociate $(label "$1")" route53resolver disassociate-firewall-rule-group --firewall-rule-group-association-id "${C_I[$1]}"; }
 del_fw_group() {
-  local i="$1" r="${C_R[$1]}" d
-  wait_until_none "$i" "VPC associations" route53resolver list-firewall-rule-group-associations --firewall-rule-group-id "${C_I[$i]}" -- '.FirewallRuleGroupAssociations // [] | length' || return 1
+  local i="$1" r="${C_R[$1]}" d v
+  # One associated with the VPN server's VPC (never removed, above) would hold the wait to the deadline: left at once.
+  while IFS= read -r v; do [ -n "$v" ] && wg_vpc "$i" "$v" && return 1; done < <(awsq "$r" route53resolver list-firewall-rule-group-associations --firewall-rule-group-id "${C_I[$i]}" | jq -r '.FirewallRuleGroupAssociations[]?.VpcId // empty' 2>/dev/null)
+  wait_until_none "$i" "VPC associations" route53resolver list-firewall-rule-group-associations --firewall-rule-group-id "${C_I[$i]}" -- FirewallRuleGroupAssociations || return 1
   while IFS= read -r d; do [ -n "$d" ] && wr "$i" "delete the rule for $d in $(label "$i")" route53resolver delete-firewall-rule --firewall-rule-group-id "${C_I[$i]}" --firewall-domain-list-id "$d"; done < <(awsq "$r" route53resolver list-firewall-rules --firewall-rule-group-id "${C_I[$i]}" | jq -r '.FirewallRules[]?.FirewallDomainListId // empty')
   wr "$i" "delete $(label "$i")" route53resolver delete-firewall-rule-group --firewall-rule-group-id "${C_I[$i]}"
 }
 del_fw_list() { wr "$1" "delete $(label "$1")" route53resolver delete-firewall-domain-list --firewall-domain-list-id "${C_I[$1]}"; }
-del_resolver_endpoint() { wr "$1" "delete $(label "$1")" route53resolver delete-resolver-endpoint --resolver-endpoint-id "${C_I[$1]}" || being_deleted "$1" '.Status == "DELETING"'; }
-# Ruling P23: Lattice. Service associations, then VPC associations, each waited for until AWS answers not found (AWS
-# refuses a service or network that is still associated), services (their listeners and rules go with them), target
-# groups (targets deregistered first), then service networks.
+del_resolver_endpoint() {
+  vpc_ok "$1" || return 1
+  wr "$1" "delete $(label "$1")" route53resolver delete-resolver-endpoint --resolver-endpoint-id "${C_I[$1]}" || being_deleted "$1" '.Status == "DELETING"'
+}
+# Ruling P23: Lattice. Service associations, then VPC associations (never one with the VPN server's VPC), each waited
+# for until AWS answers not found (AWS refuses a service or network that is still associated), services (their
+# listeners and rules go with them), target groups (targets deregistered and drained first), then service networks.
 del_sn_svc_assoc() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network-service-association --service-network-service-association-identifier "${C_I[$1]}" || being_deleted "$1" '.status == "DELETE_IN_PROGRESS"'; }
-del_sn_vpc_assoc() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network-vpc-association --service-network-vpc-association-identifier "${C_I[$1]}" || being_deleted "$1" '.status == "DELETE_IN_PROGRESS"'; }
+del_sn_vpc_assoc() {
+  vpc_ok "$1" || return 1
+  wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network-vpc-association --service-network-vpc-association-identifier "${C_I[$1]}" || being_deleted "$1" '.status == "DELETE_IN_PROGRESS"'
+}
 del_lattice_service() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service --service-identifier "${C_I[$1]}" || being_deleted "$1" '.status == "DELETE_IN_PROGRESS"'; }
+# Targets drain for up to the group's deregistration delay after they are deregistered, and AWS refuses the group's
+# delete (ConflictException) until they are gone: waited for, and the delete asked again, by UNTIL.
 del_lattice_tg() {
   local i="$1" r="${C_R[$1]}" t
-  t="$(awsq "$r" vpc-lattice list-targets --target-group-identifier "${C_I[$i]}" | jq -c '[.items[]? | {id: .id, port: .port} | with_entries(select(.value != null))]')"
+  t="$(awsq "$r" vpc-lattice list-targets --target-group-identifier "${C_I[$i]}" | jq -c '[.items[]? | select(.status != "DRAINING") | {id: .id, port: .port} | with_entries(select(.value != null))]' 2>/dev/null)"
   [ -n "$t" ] && [ "$t" != "[]" ] && wr "$i" "deregister the targets of $(label "$i")" vpc-lattice deregister-targets --target-group-identifier "${C_I[$i]}" --targets "$t"
-  wr "$i" "delete $(label "$i")" vpc-lattice delete-target-group --target-group-identifier "${C_I[$i]}" || being_deleted "$i" '.status == "DELETE_IN_PROGRESS"'
+  wait_until_none "$i" "targets" vpc-lattice list-targets --target-group-identifier "${C_I[$i]}" -- items || return 1
+  while :; do
+    QUIET_CODE=ConflictException wr "$i" "delete $(label "$i")" vpc-lattice delete-target-group --target-group-identifier "${C_I[$i]}" && return 0
+    if [ "$WCODE" != ConflictException ]; then
+      being_deleted "$i" '.status == "DELETE_IN_PROGRESS"'
+      return
+    fi
+    if past_until; then
+      warn "left behind: $(label "$i") (AWS still refuses its delete: ConflictException)"
+      return 1
+    fi
+    echo "safety net: waiting for $(label "$i") to be free to delete"
+    sleep "$POLL_S"
+  done
 }
 del_service_network() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network --service-network-identifier "${C_I[$1]}"; }
 
@@ -1585,7 +1643,8 @@ for i in "${!C_T[@]}"; do
     continue
   fi
   [[ "$HANDLED" == *" ${C_T[$i]} "* ]] || warn "no handler for ${C_T[$i]} yet: ${C_I[$i]}${C_N[$i]:+ (${C_N[$i]})} (left for Verify clean to report)"
-  [[ "${C_T[$i]}" == ec2:* ]] && ec2_regions[${C_R[$i]}]=1
+  # Ruling P23 guard: Resolver items and Lattice VPC associations are tied to VPCs too (never the VPN server's).
+  [[ "${C_T[$i]}" == ec2:* || "${C_T[$i]}" == route53resolver:* || "${C_T[$i]}" == vpc-lattice:servicenetworkvpcassociation ]] && ec2_regions[${C_R[$i]}]=1
 done
 for r in "${!ec2_regions[@]}"; do find_wg_vpcs "$r"; done
 
@@ -1620,7 +1679,7 @@ run globalaccelerator:accelerator poll del_accelerator
 run wafv2:global/webacl - del_webacl
 run route53:hostedzone - del_zone
 run route53:healthcheck - del_healthcheck
-run route53resolver:resolver-rule - del_resolver_rule
+run route53resolver:resolver-rule poll del_resolver_rule
 run route53resolver:resolver-query-log-config - del_querylog
 run route53resolver:firewall-rule-group-association poll del_fw_assoc
 run route53resolver:firewall-rule-group - del_fw_group

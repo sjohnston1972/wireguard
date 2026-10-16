@@ -1155,6 +1155,7 @@ test("Review Focus 4: Global Accelerator is disabled, waited for, emptied and de
   const at = (re) => idx(ws, re);
   assert.ok(at(/^aws globalaccelerator update-accelerator .*--no-enabled --region us-west-2$/) >= 0, ws.join("\n"));
   assert.ok(at(/delete-endpoint-group .*g1 --region us-west-2$/) < at(/delete-listener .*l1 --region us-west-2$/));
+  assert.ok(at(/delete-endpoint-group .*g2 --region us-west-2$/) >= 0 && at(/delete-endpoint-group .*g2 --region us-west-2$/) < at(/delete-listener .*l1 --region us-west-2$/), ws.join("\n"));
   assert.ok(at(/delete-listener/) < at(/^aws globalaccelerator delete-accelerator .*--region us-west-2$/));
   assert.ok(at(/^aws cloudfront delete-distribution/) < at(/^aws wafv2 delete-web-acl --scope CLOUDFRONT --name lab-ans-26-edge-waf --id 0a1b --lock-token tok-1 --region us-east-1$/));
   assert.ok(at(/^aws cloudfront delete-distribution/) < at(/^aws cloudfront delete-function --name lab-ans-26-edge-headers --if-match EF1/));
@@ -1208,7 +1209,8 @@ test("ruling P23: Lattice associations, then services, target groups (targets fi
     { cmd: "aws", match: "^vpc-lattice get-service-network-service-association", out: ['{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 254], err: ["", notFound("GetServiceNetworkServiceAssociation")] },
     { cmd: "aws", match: "^vpc-lattice get-service --", out: ['{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 254], err: ["", notFound("GetService")] },
     { cmd: "aws", match: "^vpc-lattice get-target-group", out: ['{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 254], err: ["", notFound("GetTargetGroup")] },
-    { cmd: "aws", match: "^vpc-lattice list-targets", out: '{"items":[{"id":"i-0abc","port":80}]}' },
+    // The second listing (after the deregister) is empty: the targets have drained.
+    { cmd: "aws", match: "^vpc-lattice list-targets", out: ['{"items":[{"id":"i-0abc","port":80}]}', '{"items":[]}'] },
     ...EMPTY_IAM,
   ]);
   assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["ans-30-vpc-lattice"], ENV).status, 0);
@@ -1253,6 +1255,94 @@ test("ruling P23: a Lattice association still DELETE_IN_PROGRESS is waited for u
   assert.ok(gets[2] < idx(cs, /^aws vpc-lattice delete-service --/), cs.join("\n"));
   assert.ok(gets[2] < idx(cs, /^aws vpc-lattice delete-service-network --/), cs.join("\n"));
   assert.doesNotMatch(r.out, /left behind/);
+  w.cleanup();
+});
+
+test("fix round 1: a refused Global Accelerator disable is asked again while it reads DEPLOYED and enabled; then groups, listener and accelerator go", { skip }, () => {
+  const ga = "arn:aws:globalaccelerator::123456789012:accelerator/0abc-1def";
+  const acc = (enabled, status) => JSON.stringify({ Accelerator: { Enabled: enabled, Status: status } });
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region us-west-2", out: tagged(ga) },
+    { cmd: "aws", match: "^globalaccelerator describe-accelerator", out: [acc(true, "DEPLOYED"), acc(true, "DEPLOYED"), acc(false, "IN_PROGRESS"), acc(false, "DEPLOYED"), "{}"] },
+    { cmd: "aws", match: "^globalaccelerator update-accelerator", out: ["", "{}"], code: [254, 0], err: ["An error occurred (ThrottlingException) when calling the UpdateAccelerator operation: x", ""] },
+    { cmd: "aws", match: "^globalaccelerator list-listeners", out: `{"Listeners":[{"ListenerArn":"${ga}/listener/l1"}]}` },
+    { cmd: "aws", match: "^globalaccelerator list-endpoint-groups", out: `{"EndpointGroups":[{"EndpointGroupArn":"${ga}/listener/l1/endpoint-group/g1"}]}` },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-26-edge"], { ...ENV, LAB_REGIONS: "eu-west-2 us-west-2" });
+  assert.equal(r.status, 0, r.out);
+  const ws = calls3(w, /^aws globalaccelerator (update|delete)/).map((c) => c.split(" ")[2]);
+  assert.deepEqual(ws, ["update-accelerator", "update-accelerator", "delete-endpoint-group", "delete-listener", "delete-accelerator"]);
+  assert.doesNotMatch(r.out, /left behind/);
+  w.cleanup();
+});
+
+test("fix round 1 (P23 guard): an association with, or an endpoint in, the VPN server's VPC is never touched; a lab VPC's goes", { skip }, () => {
+  const R = (rest) => ARN3("route53resolver", rest);
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(R("resolver-rule/rslvr-rr-1"), R("resolver-query-log-config/rslvr-qlc-1"), R("firewall-rule-group-association/rslvr-frgassoc-wg"), R("resolver-endpoint/rslvr-in-wg"), R("resolver-endpoint/rslvr-in-lab"), ARN3("vpc-lattice", "servicenetworkvpcassociation/snva-wg")) },
+    { cmd: "aws", match: "^ec2 describe-vpcs --filters Name=tag:wg-admin,Values=vpn", out: '{"Vpcs":[{"VpcId":"vpc-0wg"}]}' },
+    { cmd: "aws", match: "^route53resolver list-resolver-rule-associations", out: '{"ResolverRuleAssociations":[{"VPCId":"vpc-0wg","Status":"COMPLETE"},{"VPCId":"vpc-0lab","Status":"COMPLETE"}]}' },
+    { cmd: "aws", match: "^route53resolver list-resolver-query-log-config-associations", out: '{"ResolverQueryLogConfigAssociations":[{"ResourceId":"vpc-0wg","Status":"ACTIVE"}]}' },
+    { cmd: "aws", match: "^route53resolver get-firewall-rule-group-association", out: '{"FirewallRuleGroupAssociation":{"VpcId":"vpc-0wg","Status":"COMPLETE"}}' },
+    { cmd: "aws", match: "^route53resolver get-resolver-endpoint --resolver-endpoint-id rslvr-in-wg ", out: '{"ResolverEndpoint":{"HostVPCId":"vpc-0wg","Status":"OPERATIONAL"}}' },
+    { cmd: "aws", match: "^route53resolver get-resolver-endpoint --resolver-endpoint-id rslvr-in-lab ", out: ['{"ResolverEndpoint":{"HostVPCId":"vpc-0lab","Status":"OPERATIONAL"}}', ""], code: [0, 254], err: ["", notFound("GetResolverEndpoint")] },
+    { cmd: "aws", match: "^vpc-lattice get-service-network-vpc-association", out: '{"vpcId":"vpc-0wg","status":"ACTIVE"}' },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-23-hybrid-dns"], ENV);
+  assert.equal(r.status, 0, r.out);
+  const ws = calls3(w, /^aws (route53resolver|vpc-lattice) (disassociate|delete)/).map((c) => c.split(" --region")[0]);
+  assert.deepEqual(ws, ["aws route53resolver disassociate-resolver-rule --resolver-rule-id rslvr-rr-1 --vpc-id vpc-0lab", "aws route53resolver delete-resolver-endpoint --resolver-endpoint-id rslvr-in-lab"]);
+  for (const what of ["route53resolver:resolver-rule rslvr-rr-1 with vpc-0wg", "route53resolver:resolver-query-log-config rslvr-qlc-1 with vpc-0wg", "route53resolver:firewall-rule-group-association rslvr-frgassoc-wg is inside", "route53resolver:resolver-endpoint rslvr-in-wg is inside", "vpc-lattice:servicenetworkvpcassociation snva-wg is inside"]) assert.ok(r.out.includes(`never touched: ${what}`), `${what}\n${r.out}`);
+  w.cleanup();
+});
+
+test("fix round 1: a Lattice target group's targets drain before its delete, which is asked again while AWS answers ConflictException", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("vpc-lattice", "targetgroup/tg-1")) },
+    { cmd: "aws", match: "^vpc-lattice list-targets", out: ['{"items":[{"id":"i-0abc","port":80,"status":"HEALTHY"}]}', '{"items":[{"id":"i-0abc","port":80,"status":"DRAINING"}]}', '{"items":[]}'] },
+    { cmd: "aws", match: "^vpc-lattice delete-target-group", out: ["", "{}"], code: [254, 0], err: ["An error occurred (ConflictException) when calling the DeleteTargetGroup operation: x", ""] },
+    { cmd: "aws", match: "^vpc-lattice get-target-group", out: "", code: 254, err: notFound("GetTargetGroup") },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-30-vpc-lattice"], ENV);
+  assert.equal(r.status, 0, r.out);
+  const cs = calls3(w, /^aws vpc-lattice (list-targets|deregister-targets|delete-target-group)/).map((c) => c.split(" ")[2]);
+  assert.deepEqual(cs, ["list-targets", "deregister-targets", "list-targets", "list-targets", "delete-target-group", "delete-target-group"]);
+  assert.doesNotMatch(r.out, /could not delete|left behind/);
+  w.cleanup();
+});
+
+test("fix round 1: a Resolver rule is waited for until not found before the outbound endpoint it names is deleted", { skip }, () => {
+  const R = (rest) => ARN3("route53resolver", rest);
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(R("resolver-rule/rslvr-rr-1"), R("resolver-endpoint/rslvr-out-1")) },
+    { cmd: "aws", match: "^route53resolver list-resolver-rule-associations", out: '{"ResolverRuleAssociations":[]}' },
+    { cmd: "aws", match: "^route53resolver get-resolver-rule", out: ['{"ResolverRule":{"Status":"DELETING"}}', '{"ResolverRule":{"Status":"DELETING"}}', ""], code: [0, 0, 254], err: ["", "", notFound("GetResolverRule")] },
+    { cmd: "aws", match: "^route53resolver get-resolver-endpoint", out: ['{"ResolverEndpoint":{"HostVPCId":"vpc-0lab"}}', ""], code: [0, 254], err: ["", notFound("GetResolverEndpoint")] },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-23-hybrid-dns"], ENV);
+  assert.equal(r.status, 0, r.out);
+  const cs = calls3(w, /^aws route53resolver (get-resolver-rule|delete-resolver-rule|delete-resolver-endpoint)/).map((c) => c.split(" ")[2]);
+  assert.deepEqual(cs, ["delete-resolver-rule", "get-resolver-rule", "get-resolver-rule", "get-resolver-rule", "delete-resolver-endpoint"]);
+  w.cleanup();
+});
+
+test("fix round 1: an association listing that is not JSON, or holds no list, is a warning and never '0 left'", { skip }, () => {
+  const R = (rest) => ARN3("route53resolver", rest);
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(R("resolver-rule/rslvr-rr-1"), R("firewall-rule-group/rslvr-frg-1")) },
+    { cmd: "aws", match: "^route53resolver list-resolver-rule-associations", out: "<html>oops</html>" },
+    { cmd: "aws", match: "^route53resolver list-firewall-rule-group-associations", out: "{}" },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-23-hybrid-dns"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls3(w, /^aws route53resolver (delete-resolver-rule|delete-firewall-rule-group|delete-firewall-rule) /).length, 0);
+  assert.match(r.out, /could not read the rule associations of route53resolver:resolver-rule rslvr-rr-1/);
+  assert.match(r.out, /could not read the VPC associations of route53resolver:firewall-rule-group rslvr-frg-1/);
   w.cleanup();
 });
 
