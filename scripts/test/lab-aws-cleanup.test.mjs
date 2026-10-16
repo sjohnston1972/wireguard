@@ -1392,33 +1392,34 @@ test("Review Focus 4: endpoint services and their endpoints go before load balan
 test("Review Focus 4: VPN connections, gateways, attachments, route tables, then transit gateways", { skip }, () => {
   const w = world([
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("ec2", "vpn-connection/vpn-0a"), ARN3("ec2", "vpn-gateway/vgw-0a"), ARN3("ec2", "customer-gateway/cgw-0a"), ARN3("ec2", "transit-gateway/tgw-0a"), ARN3("ec2", "transit-gateway-attachment/tgw-attach-0v"), ARN3("ec2", "transit-gateway-attachment/tgw-attach-0p"), ARN3("ec2", "transit-gateway-route-table/tgw-rtb-0s"), ARN3("ec2", "transit-gateway-route-table/tgw-rtb-0d")) },
-    { cmd: "aws", match: "^ec2 describe-vpn-connections", out: ['{"VpnConnections":[{"State":"deleting"}]}', '{"VpnConnections":[{"State":"deleted"}]}'] },
-    { cmd: "aws", match: "^ec2 describe-vpn-gateways", out: ['{"VpnGateways":[{"State":"available","VpcAttachments":[{"VpcId":"vpc-0lab","State":"attached"}]}]}', '{"VpnGateways":[{"VpcAttachments":[{"VpcId":"vpc-0lab","State":"detached"}]}]}', '{"VpnGateways":[{"State":"deleted"}]}'] },
+    { cmd: "aws", match: "^ec2 describe-vpn-connections", out: ['{"VpnConnections":[{"State":"available"}]}', '{"VpnConnections":[{"State":"deleting"}]}', '{"VpnConnections":[{"State":"deleted"}]}'] },
+    { cmd: "aws", match: "^ec2 describe-vpn-gateways", out: ['{"VpnGateways":[{"State":"available","VpcAttachments":[{"VpcId":"vpc-0lab","State":"attached"}]}]}', '{"VpnGateways":[{"State":"available","VpcAttachments":[{"VpcId":"vpc-0lab","State":"attached"}]}]}', '{"VpnGateways":[{"VpcAttachments":[{"VpcId":"vpc-0lab","State":"detached"}]}]}', '{"VpnGateways":[{"State":"deleted"}]}'] },
     { cmd: "aws", match: "^ec2 describe-transit-gateway-attachments --transit-gateway-attachment-ids tgw-attach-0v", out: ['{"TransitGatewayAttachments":[{"State":"available","ResourceType":"vpc"}]}', '{"TransitGatewayAttachments":[{"State":"deleted"}]}'] },
     { cmd: "aws", match: "^ec2 describe-transit-gateway-attachments --transit-gateway-attachment-ids tgw-attach-0p", out: ['{"TransitGatewayAttachments":[{"State":"available","ResourceType":"peering"}]}', '{"TransitGatewayAttachments":[{"State":"deleted"}]}'] },
     { cmd: "aws", match: "^ec2 describe-transit-gateway-route-tables --transit-gateway-route-table-ids tgw-rtb-0s", out: ['{"TransitGatewayRouteTables":[{"State":"available","DefaultAssociationRouteTable":false}]}', '{"TransitGatewayRouteTables":[{"State":"deleted"}]}'] },
     { cmd: "aws", match: "^ec2 describe-transit-gateway-route-tables --transit-gateway-route-table-ids tgw-rtb-0d", out: '{"TransitGatewayRouteTables":[{"State":"available","DefaultAssociationRouteTable":true}]}' },
-    { cmd: "aws", match: "^ec2 describe-transit-gateways", out: ['{"TransitGateways":[{"State":"deleting"}]}', '{"TransitGateways":[{"State":"deleted"}]}'] },
+    { cmd: "aws", match: "^ec2 describe-transit-gateways", out: ['{"TransitGateways":[{"State":"available"}]}', '{"TransitGateways":[{"State":"deleting"}]}', '{"TransitGateways":[{"State":"deleted"}]}'] },
     ...EMPTY_IAM,
   ]);
   assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["ans-21-transit-gateway"], ENV).status, 0);
   const ws = calls3(w, /^aws ec2 (delete|detach)-(vpn|customer|transit)/).map((c) => c.split(" --region")[0].split(" ").slice(0, 3).join(" "));
   assert.deepEqual(ws, ["aws ec2 delete-vpn-connection", "aws ec2 detach-vpn-gateway", "aws ec2 delete-vpn-gateway", "aws ec2 delete-customer-gateway", "aws ec2 delete-transit-gateway-vpc-attachment", "aws ec2 delete-transit-gateway-peering-attachment", "aws ec2 delete-transit-gateway-route-table", "aws ec2 delete-transit-gateway"]);
   // Ruling P23 in the sweep: "deleting" is waited on until AWS has it deleted (only Verify clean counts it clean).
-  assert.equal(calls3(w, /^aws ec2 describe-vpn-connections/).length, 2);
-  assert.equal(calls3(w, /^aws ec2 describe-transit-gateways/).length, 2);
+  assert.equal(calls3(w, /^aws ec2 describe-vpn-connections/).length, 3);
+  assert.equal(calls3(w, /^aws ec2 describe-transit-gateways/).length, 3);
   w.cleanup();
 });
 
 test("Review Focus 4: Network Firewall is waited for until gone; IPAM is cascaded after the fabric; Client VPN networks go first", { skip }, () => {
   const fw = ARN3("network-firewall", "firewall/lab-ans-27-network-firewall");
   const w = world([
-    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(fw, ARN3("network-firewall", "firewall-policy/lab-x-policy"), ARN3("ec2", "vpc/vpc-0insp"), "arn:aws:ec2::123456789012:ipam/ipam-0abc", ARN3("ec2", "client-vpn-endpoint/cvpn-endpoint-0a")) },
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(fw, ARN3("network-firewall", "firewall-policy/lab-x-policy"), ARN3("network-firewall", "stateful-rulegroup/lab-x-rules"), ARN3("ec2", "vpc/vpc-0insp"), "arn:aws:ec2::123456789012:ipam/ipam-0abc", ARN3("ec2", "client-vpn-endpoint/cvpn-endpoint-0a")) },
     { cmd: "aws", match: "^network-firewall describe-firewall ", out: ['{"Firewall":{}}', '{"Firewall":{}}', ""], code: [0, 0, 254], err: ["", "", "An error occurred (ResourceNotFoundException) when calling the DescribeFirewall operation: x"] },
     { cmd: "aws", match: "^ec2 describe-client-vpn-target-networks", out: ['{"ClientVpnTargetNetworks":[{"AssociationId":"cvpn-assoc-1","Status":{"Code":"associated"}}]}', '{"ClientVpnTargetNetworks":[]}'] },
     // The sweep waits past "deleting" (ruling P23: only Verify clean counts it clean), so each ends deleted.
-    { cmd: "aws", match: "^ec2 describe-client-vpn-endpoints", out: ['{"ClientVpnEndpoints":[{"Status":{"Code":"deleting"}}]}', '{"ClientVpnEndpoints":[{"Status":{"Code":"deleted"}}]}'] },
-    { cmd: "aws", match: "^ec2 describe-ipams", out: ['{"Ipams":[{"State":"delete-in-progress"}]}', '{"Ipams":[{"State":"delete-complete"}]}'] },
+    { cmd: "aws", match: "^ec2 describe-client-vpn-endpoints", out: ['{"ClientVpnEndpoints":[{"Status":{"Code":"available"}}]}', '{"ClientVpnEndpoints":[{"Status":{"Code":"deleting"}}]}', '{"ClientVpnEndpoints":[{"Status":{"Code":"deleted"}}]}'] },
+    { cmd: "aws", match: "^ec2 describe-ipams", out: ['{"Ipams":[{"State":"create-complete"}]}', '{"Ipams":[{"State":"delete-in-progress"}]}', '{"Ipams":[{"State":"delete-complete"}]}'] },
+    { cmd: "aws", match: "^network-firewall describe-firewall-policy", out: ['{"FirewallPolicyResponse":{"FirewallPolicyStatus":"DELETING"}}', ""], code: [0, 254], err: ["", "An error occurred (ResourceNotFoundException) when calling the DescribeFirewallPolicy operation: x"] },
     ...EMPTY_IAM,
   ]);
   assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["ans-27-network-firewall"], ENV).status, 0);
@@ -1428,8 +1429,12 @@ test("Review Focus 4: Network Firewall is waited for until gone; IPAM is cascade
   assert.ok(at(/^aws network-firewall delete-firewall /) < at(/^aws network-firewall delete-firewall-policy/));
   assert.ok(all.filter((c) => c.startsWith("aws network-firewall describe-firewall ")).length >= 3, "waited until gone");
   assert.ok(at(/^aws ec2 delete-vpc --vpc-id vpc-0insp/) < at(/^aws ec2 delete-ipam --ipam-id ipam-0abc --cascade/));
-  assert.equal(all.filter((c) => c.startsWith("aws ec2 describe-client-vpn-endpoints")).length, 2);
-  assert.equal(all.filter((c) => c.startsWith("aws ec2 describe-ipams")).length, 2);
+  assert.equal(all.filter((c) => c.startsWith("aws ec2 describe-client-vpn-endpoints")).length, 3);
+  assert.equal(all.filter((c) => c.startsWith("aws ec2 describe-ipams")).length, 3);
+  // Fix round 1: the policy's delete is asynchronous, and AWS refuses a rule group a policy still names.
+  const polls = all.map((c, k) => (c.startsWith("aws network-firewall describe-firewall-policy") ? k : -1)).filter((k) => k >= 0);
+  assert.equal(polls.length, 2, "the policy is polled until not found");
+  assert.ok(at(/^aws network-firewall delete-firewall-policy/) < polls[0] && polls[1] < at(/^aws network-firewall delete-rule-group --rule-group-arn \S+lab-x-rules/), all.join("\n"));
   w.cleanup();
 });
 
@@ -1455,11 +1460,11 @@ test("review lessons (batch 4 II): a refused detach or disassociate is asked aga
   const refused = (op) => `An error occurred (IncorrectState) when calling the ${op} operation: x`;
   const w = world([
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("ec2", "vpn-gateway/vgw-0a"), ARN3("ec2", "client-vpn-endpoint/cvpn-endpoint-0a"), ARN3("ec2", "transit-gateway-attachment/tgw-attach-0p"), ARN3("acm", "certificate/c1")) },
-    { cmd: "aws", match: "^ec2 describe-vpn-gateways", out: ['{"VpnGateways":[{"VpcAttachments":[{"VpcId":"vpc-0lab","State":"attached"}]}]}', '{"VpnGateways":[{"VpcAttachments":[{"VpcId":"vpc-0lab","State":"attached"}]}]}', '{"VpnGateways":[{"VpcAttachments":[{"VpcId":"vpc-0lab","State":"detached"}]}]}', '{"VpnGateways":[{"State":"deleted"}]}'] },
+    { cmd: "aws", match: "^ec2 describe-vpn-gateways", out: ['{"VpnGateways":[{"State":"available"}]}', '{"VpnGateways":[{"VpcAttachments":[{"VpcId":"vpc-0lab","State":"attached"}]}]}', '{"VpnGateways":[{"VpcAttachments":[{"VpcId":"vpc-0lab","State":"attached"}]}]}', '{"VpnGateways":[{"VpcAttachments":[{"VpcId":"vpc-0lab","State":"detached"}]}]}', '{"VpnGateways":[{"State":"deleted"}]}'] },
     { cmd: "aws", match: "^ec2 detach-vpn-gateway", out: "", code: [254, 0], err: [refused("DetachVpnGateway"), ""] },
     { cmd: "aws", match: "^ec2 describe-client-vpn-target-networks", out: ['{"ClientVpnTargetNetworks":[{"AssociationId":"cvpn-assoc-1","VpcId":"vpc-0lab","Status":{"Code":"associated"}}]}', '{"ClientVpnTargetNetworks":[{"AssociationId":"cvpn-assoc-1","VpcId":"vpc-0lab","Status":{"Code":"associated"}}]}', '{"ClientVpnTargetNetworks":[{"AssociationId":"cvpn-assoc-1","VpcId":"vpc-0lab","Status":{"Code":"disassociating"}}]}', '{"ClientVpnTargetNetworks":[]}'] },
     { cmd: "aws", match: "^ec2 disassociate-client-vpn-target-network", out: "", code: [254, 0], err: [refused("DisassociateClientVpnTargetNetwork"), ""] },
-    { cmd: "aws", match: "^ec2 describe-client-vpn-endpoints", out: '{"ClientVpnEndpoints":[{"Status":{"Code":"deleted"}}]}' },
+    { cmd: "aws", match: "^ec2 describe-client-vpn-endpoints", out: ['{"ClientVpnEndpoints":[{"Status":{"Code":"available"}}]}', '{"ClientVpnEndpoints":[{"Status":{"Code":"deleted"}}]}'] },
     { cmd: "aws", match: "^ec2 describe-transit-gateway-attachments", out: ['{"TransitGatewayAttachments":[{"State":"deleting","ResourceType":"peering"}]}', '{"TransitGatewayAttachments":[{"State":"deleting","ResourceType":"peering"}]}', '{"TransitGatewayAttachments":[{"State":"deleted","ResourceType":"peering"}]}'] },
     { cmd: "aws", match: "^acm delete-certificate", out: "", code: [254, 0], err: ["An error occurred (ResourceInUseException) when calling the DeleteCertificate operation: x", ""] },
     ...EMPTY_IAM,
@@ -1493,5 +1498,88 @@ test("review lessons (batch 4 II): nothing tied to the VPN server's VPC is touch
   assert.equal(r.status, 0, r.out);
   assert.deepEqual(calls3(w, /^aws (ec2|network-firewall) (detach|disassociate|delete|reject)/), []);
   for (const what of ["ec2:vpn-gateway vgw-0wg with vpc-0wg", "ec2:client-vpn-endpoint cvpn-endpoint-0wg with vpc-0wg", "ec2:transit-gateway-attachment tgw-attach-0wg with vpc-0wg", "network-firewall:firewall lab-fw is inside", "ec2:vpc-endpoint vpce-0inwg is inside"]) assert.ok(r.out.includes(`never touched: ${what}`), `${what}\n${r.out}`);
+  w.cleanup();
+});
+
+test("fix round 1 (Task 6): an item Terraform already deleted (the tagging API still lists it) gets no delete and no warning", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("ec2", "vpn-connection/vpn-0a"), ARN3("ec2", "vpn-gateway/vgw-0a"), ARN3("ec2", "customer-gateway/cgw-0a"), ARN3("ec2", "transit-gateway/tgw-0a"), "arn:aws:ec2::123456789012:ipam/ipam-0a", ARN3("ec2", "client-vpn-endpoint/cvpn-endpoint-0a")) },
+    { cmd: "aws", match: "^ec2 describe-vpn-connections", out: '{"VpnConnections":[{"State":"deleted"}]}' },
+    { cmd: "aws", match: "^ec2 describe-vpn-gateways", out: '{"VpnGateways":[{"State":"deleted","VpcAttachments":[{"VpcId":"vpc-0lab","State":"detached"}]}]}' },
+    { cmd: "aws", match: "^ec2 describe-customer-gateways", out: '{"CustomerGateways":[{"State":"deleted"}]}' },
+    { cmd: "aws", match: "^ec2 describe-transit-gateways", out: '{"TransitGateways":[{"State":"deleted"}]}' },
+    { cmd: "aws", match: "^ec2 describe-ipams", out: '{"Ipams":[{"State":"delete-complete"}]}' },
+    { cmd: "aws", match: "^ec2 describe-client-vpn-endpoints", out: '{"ClientVpnEndpoints":[{"Status":{"Code":"deleted"}}]}' },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-22-site-to-site"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.deepEqual(calls3(w, /^aws ec2 (delete|detach|disassociate)-/), []);
+  assert.equal(calls3(w, /^aws ec2 describe-client-vpn-target-networks/).length, 0);
+  assert.doesNotMatch(r.out, /::warning::/);
+  w.cleanup();
+});
+
+test("fix round 1 (Task 6): a disassociate, detach or reject AWS refuses outright is asked once, and the item is left with a warning", { skip }, () => {
+  const no = (c, op) => `An error occurred (${c}) when calling the ${op} operation: x`;
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("ec2", "client-vpn-endpoint/cvpn-endpoint-0a"), ARN3("ec2", "vpn-gateway/vgw-0a"), ARN3("ec2", "vpc-endpoint-service/vpce-svc-0abc")) },
+    { cmd: "aws", match: "^ec2 describe-client-vpn-endpoints", out: '{"ClientVpnEndpoints":[{"Status":{"Code":"available"}}]}' },
+    { cmd: "aws", match: "^ec2 describe-client-vpn-target-networks", out: '{"ClientVpnTargetNetworks":[{"AssociationId":"cvpn-assoc-1","VpcId":"vpc-0lab","Status":{"Code":"associated"}}]}' },
+    { cmd: "aws", match: "^ec2 disassociate-client-vpn-target-network", out: "", code: 254, err: no("AccessDenied", "DisassociateClientVpnTargetNetwork") },
+    { cmd: "aws", match: "^ec2 describe-vpn-gateways", out: '{"VpnGateways":[{"State":"available","VpcAttachments":[{"VpcId":"vpc-0lab","State":"attached"}]}]}' },
+    { cmd: "aws", match: "^ec2 detach-vpn-gateway", out: "", code: 254, err: no("UnauthorizedOperation", "DetachVpnGateway") },
+    { cmd: "aws", match: "^ec2 describe-vpc-endpoint-connections", out: '{"VpcEndpointConnections":[{"VpcEndpointId":"vpce-0theirs","VpcEndpointState":"pendingAcceptance"}]}' },
+    { cmd: "aws", match: "^ec2 reject-vpc-endpoint-connections", out: "", code: 254, err: no("InvalidParameterValue", "RejectVpcEndpointConnections") },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-28-client-vpn"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls3(w, /^aws ec2 disassociate-client-vpn-target-network /).length, 1);
+  assert.equal(calls3(w, /^aws ec2 detach-vpn-gateway /).length, 1);
+  assert.equal(calls3(w, /^aws ec2 reject-vpc-endpoint-connections /).length, 1);
+  assert.deepEqual(calls3(w, /^aws ec2 delete-(client-vpn-endpoint|vpn-gateway|vpc-endpoint-service-configurations) /), []);
+  for (const what of ["ec2:client-vpn-endpoint cvpn-endpoint-0a (AWS refuses the request: AccessDenied)", "ec2:vpn-gateway vgw-0a (AWS refuses the request: UnauthorizedOperation)", "ec2:vpc-endpoint-service vpce-svc-0abc (AWS refuses the request: InvalidParameterValue)"]) assert.ok(r.out.includes(`left behind: ${what}`), `${what}\n${r.out}`);
+  w.cleanup();
+});
+
+test("fix round 1 (Task 6): a certificate whose user is still there is left at once, one still in use is asked at most 10 times; IAM still runs after", { skip }, () => {
+  const inUse = "An error occurred (ResourceInUseException) when calling the DeleteCertificate operation: x";
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("acm", "certificate/c1"), ARN3("acm", "certificate/c2"), ARN3("ec2", "client-vpn-endpoint/cvpn-endpoint-0a")) },
+    // The endpoint stays: AWS refuses its network's disassociate.
+    { cmd: "aws", match: "^ec2 describe-client-vpn-endpoints", out: '{"ClientVpnEndpoints":[{"Status":{"Code":"available"}}]}' },
+    { cmd: "aws", match: "^ec2 describe-client-vpn-target-networks", out: '{"ClientVpnTargetNetworks":[{"AssociationId":"cvpn-assoc-1","Status":{"Code":"associated"}}]}' },
+    { cmd: "aws", match: "^ec2 disassociate-client-vpn-target-network", out: "", code: 254, err: "An error occurred (AccessDenied) when calling the DisassociateClientVpnTargetNetwork operation: x" },
+    { cmd: "aws", match: "^acm delete-certificate", out: "", code: 254, err: inUse },
+    { cmd: "aws", match: "^acm describe-certificate --certificate-arn \\S+certificate/c1 ", out: `{"Certificate":{"InUseBy":["${ARN3("ec2", "client-vpn-endpoint/cvpn-endpoint-0a")}"]}}` },
+    { cmd: "aws", match: "^acm describe-certificate --certificate-arn \\S+certificate/c2 ", out: `{"Certificate":{"InUseBy":["${ARN3("elasticloadbalancing", "loadbalancer/app/alb-gone/1")}"]}}` },
+    { cmd: "aws", match: "^iam list-roles", out: '{"Roles":[{"RoleName":"lab-ans-28-client-vpn-x","Path":"/cloudlabs-lab/"}]}' },
+    { cmd: "aws", match: "^iam list-(attached-role-policies|role-policies)", out: "{}" },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-28-client-vpn"], ENV);
+  assert.equal(r.status, 0, r.out);
+  const all = w.calls();
+  assert.equal(calls3(w, /^aws acm delete-certificate \S+ \S+certificate\/c1 /).length, 1);
+  assert.equal(calls3(w, /^aws acm delete-certificate \S+ \S+certificate\/c2 /).length, 10);
+  assert.ok(r.out.includes("left behind: acm:certificate c1 (in use by ec2:client-vpn-endpoint cvpn-endpoint-0a, which is still there)"), r.out);
+  assert.ok(r.out.includes("left behind: acm:certificate c2 (still in use after 10 tries)"), r.out);
+  const lastCert = all.map((c) => c.startsWith("aws acm delete-certificate")).lastIndexOf(true);
+  assert.ok(all.findIndex((c) => c.startsWith("aws iam delete-role --role-name lab-ans-28-client-vpn-x")) > lastCert, all.join("\n"));
+  w.cleanup();
+});
+
+test("fix round 1 (Task 6): a failed or expired endpoint connection holds nothing: never rejected or waited on", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("ec2", "vpc-endpoint-service/vpce-svc-0abc")) },
+    { cmd: "aws", match: "^ec2 describe-vpc-endpoint-connections", out: '{"VpcEndpointConnections":[{"VpcEndpointId":"vpce-0f","VpcEndpointState":"Failed"},{"VpcEndpointId":"vpce-0e","VpcEndpointState":"expired"},{"VpcEndpointId":"vpce-0r","VpcEndpointState":"rejected"}]}' },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-24-privatelink"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls3(w, /^aws ec2 reject-vpc-endpoint-connections/).length, 0);
+  assert.equal(calls3(w, /^aws ec2 describe-vpc-endpoint-connections/).length, 1, "nothing to wait for");
+  assert.equal(calls3(w, /^aws ec2 delete-vpc-endpoint-service-configurations --service-ids vpce-svc-0abc /).length, 1);
   w.cleanup();
 });
