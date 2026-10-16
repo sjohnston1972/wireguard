@@ -329,6 +329,21 @@ describe("GET /labs/:id/topology for an AWS lab", () => {
     expect(nodes.find((n) => n.id === node!.parent)!.kind).toBe("resourceGroup");
   });
 
+  it("ruling P5: a two-region DNS lab's live graph reads London, Ireland and us-east-1 within the call cap", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    resetTopologyCache();
+    await runningLab(env, world, "saa-16-dr-pilot-light");
+    const seen = fakeAws();
+    const r = await api(env, "GET", "/labs/saa-16-dr-pilot-light/topology");
+    expect(r.json.status).toBe("ok");
+    expect(AWS_TOPOLOGY_CALLS_MAX).toBe(15);
+    expect(seen.length).toBeLessThanOrEqual(AWS_TOPOLOGY_CALLS_MAX);
+    expect(seen.filter((s) => s.host.endsWith(".us-east-1.amazonaws.com")).map((s) => s.action)).toEqual(["ResourceGroupsTaggingAPI_20170126.GetResources"]);
+    expect(seen.some((s) => s.host === "tagging.eu-west-1.amazonaws.com")).toBe(true);
+  });
+
   it("an AWS refusal is failed in plain words; throttling is throttled", async () => {
     const { env } = await runningAws();
     fakeAws({ fail: { status: 403, code: "UnauthorizedOperation" } });

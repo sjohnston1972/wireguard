@@ -14,7 +14,7 @@
 
 import type { Env } from "../env";
 import { canAws, canAzure } from "../env";
-import { AWS_GLOBAL_LABS, AWS_LAB_REGIONS, LAB_TAG, labResourceGroupName, labRg, type LabDef } from "../../../shared/labs";
+import { AWS_GLOBAL_LABS, AWS_LAB_REGIONS, readsUsEast1, LAB_TAG, labResourceGroupName, labRg, type LabDef } from "../../../shared/labs";
 import { awsRegionName } from "../../../shared/azureMetrics";
 import type { LabDetail } from "../../../shared/api";
 import { arm, directNet } from "./net";
@@ -25,12 +25,12 @@ const MAX = 200;
 async function awsLabResources(env: Env, def: LabDef): Promise<LabDetail["resources"]> {
   if (!canAws(env)) return null;
   const net = directNet();
-  // A global lab's CloudFront and Route 53 items are tagged in us-east-1 (ruling P7).
-  const regions = [AWS_LAB_REGIONS[0], ...(def.regions.secondary ? [def.regions.secondary] : []), ...(AWS_GLOBAL_LABS.includes(def.id) ? ["us-east-1"] : [])];
+  // A global lab's CloudFront and Route 53 items, and a DNS lab's Route 53 items, are tagged in us-east-1 (rulings P7, P5).
+  const regions = [AWS_LAB_REGIONS[0], ...(def.regions.secondary ? [def.regions.secondary] : []), ...(readsUsEast1(def.id) ? ["us-east-1"] : [])];
   try {
     const out: NonNullable<LabDetail["resources"]> = [];
     for (const region of regions) {
-      const group = region === "us-east-1" ? `${labResourceGroupName(def.id)} (global: CloudFront, Route 53)` : `${labResourceGroupName(def.id)} (${awsRegionName(region)})`;
+      const group = region === "us-east-1" ? `${labResourceGroupName(def.id)} (global: ${AWS_GLOBAL_LABS.includes(def.id) ? "CloudFront, Route 53" : "Route 53"})` : `${labResourceGroupName(def.id)} (${awsRegionName(region)})`;
       for (const t of await labTagged(env, net, region, def.id)) {
         if (t.tags[LAB_TAG] !== def.id) continue;
         const p = arnParts(t.arn);
