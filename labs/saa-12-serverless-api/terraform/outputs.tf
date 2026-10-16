@@ -12,7 +12,7 @@ output "connect" {
   value = [
     "curl -s ${aws_apigatewayv2_api.lab.api_endpoint}/health",
     "TOKEN=$(aws cognito-idp initiate-auth --region ${var.region} --auth-flow USER_PASSWORD_AUTH --client-id ${aws_cognito_user_pool_client.cli.id} --auth-parameters USERNAME=labuser,PASSWORD='<the session password>' --query AuthenticationResult.IdToken --output text)",
-    "curl -s -X POST -H \"Authorization: Bearer $TOKEN\" -d '{\"text\":\"hello\"}' ${aws_apigatewayv2_api.lab.api_endpoint}/items",
+    "curl -s -X POST -H \"Authorization: Bearer $TOKEN\" -H \"content-type: application/json\" -d '{\"text\":\"hello\"}' ${aws_apigatewayv2_api.lab.api_endpoint}/items",
     "curl -s -H \"Authorization: Bearer $TOKEN\" ${aws_apigatewayv2_api.lab.api_endpoint}/items",
   ]
 }

@@ -1,4 +1,4 @@
-An API with no servers at all: API Gateway's HTTP API takes the requests, a Lambda function does the work, a DynamoDB table keeps the data, and a Cognito user pool decides who may call it. API Gateway checks each caller's token itself, so the function only ever sees signed-in users. Everything is listed in the lab's resource group, `lab-saa-12-serverless-api`, in AWS Resource Groups (London).
+An API with no servers at all: API Gateway's HTTP API takes the requests, a Lambda function does the work, a DynamoDB table keeps the data, and a Cognito user pool decides who may call it. API Gateway checks each caller's token itself, so the function only ever sees signed-in users on `/items`. Everything is listed in the lab's resource group, `lab-saa-12-serverless-api`, in AWS Resource Groups (London).
 From the SAA-C03 outline: design secure access to application tiers with an identity provider, and choose serverless, scale-to-zero services for resilient, high-performing designs.
 
 ## What it deploys
@@ -17,9 +17,9 @@ lab-saa-12-serverless-api (London)
 
 ## Things to try
 
-- Open CloudShell and run the first Connect line: `/health` answers without a token. Ask for `/items` without one and see API Gateway refuse it with 401 before the function runs (no new line in the function's log).
-- Sign in with the second line (paste the session password), then add an item with the third and list them with the fourth: each item records who stored it, from the token's `cognito:username` claim.
-- Paste the token into a JWT decoder of your choice and read its claims: issuer, audience (the app client), expiry. Change one character and call again: 401.
+- Open CloudShell and run the first Connect line: `/health` answers without a token. Ask for `/items` without one and see API Gateway refuse it with 401 before the function runs (`curl -s -o /dev/null -w "%{http_code}\n" <api>/items`) (no new line in the function's log).
+- Sign in with the second line (paste the session password), then add an item with the third and list them with the fourth: each item records who stored it, from the token's `cognito:username` claim. The token lasts an hour; run the second line again for a new one.
+- Decode the token locally with `echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null; echo` and read its claims: issuer, audience (the app client), expiry. Change one character and call again: 401.
 - Send 50 requests at once (`for i in $(seq 50); do curl -s -o /dev/null -w "%{http_code}\n" <api>/health & done; wait`) and count the 429s: the stage's throttle at work.
 - Open the table in the DynamoDB console and look at its capacity mode: on demand bills each read and write, so an idle table costs nothing but its storage.
 

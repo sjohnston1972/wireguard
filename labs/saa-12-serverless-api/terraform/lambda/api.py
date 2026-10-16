@@ -6,6 +6,7 @@
 # pool (the JWT authoriser checks the token before this code runs), recorded
 # with the user name the token carries.
 
+import base64
 import json
 import os
 import uuid
@@ -30,8 +31,11 @@ def handler(event, _context):
         return reply(200, {"you": who, "items": TABLE.scan(Limit=50).get("Items", [])})
     if route == "POST /items":
         try:
-            body = json.loads(event.get("body") or "{}")
-        except json.JSONDecodeError:
+            raw = event.get("body") or "{}"
+            if event.get("isBase64Encoded"):
+                raw = base64.b64decode(raw).decode("utf-8", "replace")
+            body = json.loads(raw)
+        except ValueError:
             return reply(400, {"error": "the body must be JSON"})
         item = {"id": str(uuid.uuid4()), "text": str(body.get("text", ""))[:200], "by": who, "at": datetime.now(timezone.utc).isoformat()}
         TABLE.put_item(Item=item)
