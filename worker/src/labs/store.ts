@@ -57,6 +57,8 @@ export interface LabRunDb {
   outputs_json: string | null;
   steps_json: string | null;
   error: string | null;
+  /** A run's files (name -> text, ruling P2): lab 31's Client VPN profile and keys, until the session ends. */
+  files_json: string | null;
 }
 
 /** Live states as an SQL list ('deploying', 'running', ...), from the shared constant. */
@@ -189,9 +191,9 @@ export function settleRun(env: Env, id: string, patch: Partial<LabRunDb>): Promi
   return updateRun(env, id, patch, "finished_at IS NULL");
 }
 
-/** Forget every admin password of a session's runs (the session has ended: they open nothing now). */
-export async function clearPasswords(env: Env, sid: string): Promise<void> {
-  await env.DB.prepare("UPDATE lab_runs SET admin_password = NULL WHERE session_id = ?1 AND admin_password IS NOT NULL").bind(sid).run();
+/** Forget every admin password and file of a session's runs (the session has ended: they open nothing now; A13). */
+export async function clearSecrets(env: Env, sid: string): Promise<void> {
+  await env.DB.prepare("UPDATE lab_runs SET admin_password = NULL, files_json = NULL WHERE session_id = ?1 AND (admin_password IS NOT NULL OR files_json IS NOT NULL)").bind(sid).run();
 }
 
 /** A run's parsed private payload ({} when unreadable). */

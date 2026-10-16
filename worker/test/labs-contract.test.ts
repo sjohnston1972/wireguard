@@ -47,7 +47,7 @@ describe("migration 0020", () => {
     // The spec's columns, exactly.
     const cols = async (t: string) => (await rows<{ name: string }>(env, `PRAGMA table_info(${t})`)).map((r) => r.name);
     expect(await cols("lab_sessions")).toEqual(["id", "lab_id", "lab_version", "state", "test", "region", "secondary_region", "slot", "cidr", "name_prefix", "peering", "requested_at", "ready_at", "ended_at", "auto_destroy_at", "max_until", "warned_at", "est_gbp_h", "est_gbp", "end_reason", "outputs_json", "leftovers_json", "note"]);
-    expect(await cols("lab_runs")).toEqual(["id", "session_id", "lab_id", "action", "status", "requested_at", "requested_by", "reason", "started_at", "finished_at", "github_run_id", "github_run_url", "callback_token_hash", "admin_password", "payload_json", "outputs_json", "steps_json", "error"]);
+    expect(await cols("lab_runs")).toEqual(["id", "session_id", "lab_id", "action", "status", "requested_at", "requested_by", "reason", "started_at", "finished_at", "github_run_id", "github_run_url", "callback_token_hash", "admin_password", "payload_json", "outputs_json", "steps_json", "error", "files_json"]); // files_json: migration 0025 (ruling P2)
     expect(await cols("lab_cost_days")).toEqual(["day", "rg", "lab_id", "gbp", "fetched_at"]);
     expect(await cols("lab_release_tests")).toEqual(["lab_id", "version", "at", "run_id", "result", "deploy_seconds", "destroy_seconds", "est_gbp", "leftovers_json"]);
     expect(await cols("peers")).toContain("labs_config_due");

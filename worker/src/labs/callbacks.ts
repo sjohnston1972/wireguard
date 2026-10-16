@@ -23,7 +23,7 @@ import { verifyGithubOidc, workflowRef as workflowRefOf } from "../oidc";
 import { directNet, getGhRun, LAB_WORKFLOWS, labWorkflowOf } from "./net";
 import * as db from "../db";
 import { cloudOf, getSnapshot } from "../state";
-import { cloudOfId } from "../../../shared/labs";
+import { AWS_FILES_LABS, cloudOfId } from "../../../shared/labs";
 import { crossCloudMessage } from "./engine";
 import { acquireLock, releaseLock, GATEWAY_LOCK } from "../lock";
 import { getLabRun, getSession, LIVE_SQL, updateRun, updateSession } from "./store";
@@ -53,7 +53,31 @@ async function runForToken(env: Env, token: string, runId: unknown) {
   return { run };
 }
 
-const RESULT_KEYS = ["run_id", "action", "status", "outputs", "github_run_id", "github_run_url"] as const;
+const RESULT_KEYS = ["run_id", "action", "status", "outputs", "files", "github_run_id", "github_run_url"] as const;
+
+/** Ruling P2: the most a run may hand over, and the names it may use. */
+export const FILES_MAX = 8;
+export const FILE_BYTES_MAX = 16 * 1024;
+export const FILES_BYTES_MAX = 48 * 1024;
+const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/** A result's `files` (name -> text), or why they are refused. */
+export function readFiles(v: unknown): { ok: true; files: Record<string, string> } | { ok: false; why: string } {
+  if (v === undefined || v === null) return { ok: true, files: {} };
+  if (!isObj(v)) return { ok: false, why: "files must be an object of name -> text" };
+  const entries = Object.entries(v);
+  if (entries.length > FILES_MAX) return { ok: false, why: `at most ${FILES_MAX} files` };
+  let total = 0;
+  for (const [name, text] of entries) {
+    if (!FILE_NAME.test(name)) return { ok: false, why: `${name.slice(0, 40)} is not a file name this takes` };
+    if (typeof text !== "string") return { ok: false, why: `${name} is not text` };
+    const n = new TextEncoder().encode(text).length;
+    if (n > FILE_BYTES_MAX) return { ok: false, why: `${name} is over ${FILE_BYTES_MAX / 1024} KiB` };
+    total += n;
+  }
+  if (total > FILES_BYTES_MAX) return { ok: false, why: `the files are over ${FILES_BYTES_MAX / 1024} KiB together` };
+  return { ok: true, files: Object.fromEntries(entries) as Record<string, string> };
+}
 
 /** POST /api/callback/lab: a lab run's result, with the run's callback token. */
 export async function handleLabCallback(env: Env, token: string | null, body: unknown): Promise<CallbackReply> {
@@ -69,9 +93,15 @@ export async function handleLabCallback(env: Env, token: string | null, body: un
   const run = found.run;
   if (run.finished_at) return { status: 200, body: { message: "already settled" } };
   if (body.action !== undefined && body.action !== run.action) return badBody(`this run is a ${run.action}, not a ${String(body.action)}`, "action");
+  const files = readFiles(body.files);
+  if (!files.ok) return badBody(files.why, "files");
+  const hasFiles = Object.keys(files.files).length > 0;
+  if (hasFiles && !(AWS_FILES_LABS.includes(run.lab_id) && (run.action === "deploy" || run.action === "test") && body.status === "success")) return badBody("files come only with a succeeded deploy or test of a lab that hands out files (ruling P2)", "files");
 
   const ghId = Number(body.github_run_id);
   if (Number.isInteger(ghId) && ghId > 0 && !run.github_run_id) await updateRun(env, run.id, { github_run_id: ghId });
+  // Before finishRun, so a session ended by this run's own result clears them at once (clearSecrets).
+  if (hasFiles) await updateRun(env, run.id, { files_json: JSON.stringify(files.files) });
   const ok = body.status === "success";
   const settled = await finishRun(env, run, { ok, outputs: outputs.outputs, via: "callback", error: ok ? null : `The workflow reported "${String(body.status).slice(0, 40)}". See the GitHub log.` });
   return { status: 200, body: { message: settled ? "ok" : "already settled" } };

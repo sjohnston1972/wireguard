@@ -103,6 +103,16 @@ test("every env a step is handed from a secret or GitHub's token is one the live
   assert.ok(n >= 15, "the secret env entries were found");
 });
 
+test("ruling P2: step 16 sends files only beside the result, for a succeeded deploy or test, never in LAB_RESULT or outputs", () => {
+  const report = step("Finish live log, Report result");
+  assert.match(report.run, /files="\$\(jq -c '\.files\.value \/\/ \{\}' "\$RUNNER_TEMP\/outputs\.json"\)"/);
+  assert.match(report.run, /\[ "\$status" = success \] && \{ \[ "\$action" = deploy \] \|\| \[ "\$action" = test \]; \}/);
+  assert.match(report.run, /--argjson files "\$files"/);
+  assert.match(report.run, /outputs:\{private_ips[^}]*\},\s*files:\$files|files:\$files/);
+  assert.match(report.run, /echo "LAB_RESULT \$result"/);
+  assert.doesNotMatch(report.run.split('echo "LAB_RESULT')[0].split("result=")[1] ?? "", /files/, "LAB_RESULT never carries files");
+});
+
 // Pre-flight ruling C20: lab.yml is frozen, so lab-aws.yml keeps verbatim copies of five of its steps.
 test("the five steps copied from lab.yml equal lab.yml's after the named substitutions", () => {
   const lab = Object.values(parse(read(".github/workflows/lab.yml")).jobs)[0].steps;
@@ -119,6 +129,17 @@ test("the five steps copied from lab.yml equal lab.yml's after the named substit
     "Finish live log, Report result": [
       swap("jq 'with_entries(.value = .value.value)'", "jq 'del(.files) | with_entries(.value = .value.value)'"),
       swap("peer_vnet_id:($o.peer_vnet_id // null)", "peer_vpc_id:($o.peer_vpc_id // null)"),
+      // Ruling P2: a lab's files go beside the result, in the body's own files key.
+      swap(
+        `if [ -n "\${CALLBACK_URL:-}" ] && [ -n "\${CALLBACK_TOKEN:-}" ]; then\n`,
+        `if [ -n "\${CALLBACK_URL:-}" ] && [ -n "\${CALLBACK_TOKEN:-}" ]; then\n` +
+          `  files="{}"\n` +
+          `  if [ "$status" = success ] && { [ "$action" = deploy ] || [ "$action" = test ]; } && [ -f "$RUNNER_TEMP/outputs.json" ]; then\n` +
+          `    files="$(jq -c '.files.value // {}' "$RUNNER_TEMP/outputs.json")"\n` +
+          `  fi\n`,
+      ),
+      swap(`--argjson o "$outputs" --arg gh_run_id`, `--argjson o "$outputs" --argjson files "$files" --arg gh_run_id`),
+      swap(`destroy_seconds:$r.destroy_seconds}}')"`, `destroy_seconds:$r.destroy_seconds},\n      files:$files}')"`),
     ],
   };
   for (const [name, subs] of Object.entries(SUBS)) {
