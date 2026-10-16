@@ -77,8 +77,15 @@ export const NAME_OWNED_TYPES = ["cloudwatch:dashboard", "config:ConfigurationRe
  * too. An association changes nothing by itself; deleting one still needs the lab's tag (DeleteAssociation, change list).
  */
 export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface", "ssm:CreateAssociation", "ssm:CreateAssociationBatch"];
-/** A create-list entry (an action, or a folded "svc:Prefix*") that names or covers an exempt action. */
-const isExempt = (a) => CREATE_TAG_EXEMPT.some((x) => a === x || (a.endsWith("*") && x.toLowerCase().startsWith(a.slice(0, -1).toLowerCase())));
+/**
+ * Ruling A82: actions exempt from the change-needs-lab-tag rule. AWS authorises ReplaceNetworkAclAssociation on the ACL
+ * being replaced too, and a new subnet always starts on its VPC's untagged default ACL; NaclOnlyInLabVpcs keeps the new
+ * ACL in a lab VPC instead.
+ */
+export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation"];
+/** A list entry (an action, or a folded "svc:Prefix*") that names or covers one of these exempt actions. */
+const covers = (exempt) => (a) => exempt.some((x) => a === x || (a.endsWith("*") && x.toLowerCase().startsWith(a.slice(0, -1).toLowerCase())));
+const isExempt = covers(CREATE_TAG_EXEMPT);
 /**
  * Ruling A56: services whose tag read lags a create. CloudWatch Logs answers aws:ResourceTag from a store that trails
  * CreateLogGroup by seconds (soa-01's release test, and a probe, 2026-10-15: PutRetentionPolicy refused then allowed on
@@ -159,7 +166,7 @@ export function abacLists(sar) {
         continue;
       }
       if (res.some((r) => NAME_OWNED_TYPES.includes(`${service}:${r.Name}`))) continue;
-      if (CREATE_TAG_EXEMPT.includes(name)) continue;
+      if (CREATE_TAG_EXEMPT.includes(name) || CHANGE_TAG_EXEMPT.includes(name)) continue;
       if (isAccountSetting(service, a)) accountSettings.push(name);
       // A read makes nothing (the reference gives some reads the request tag): never in either list.
       if (!(p.IsWrite || p.IsPermissionManagement) || p.IsList) continue;
@@ -292,14 +299,22 @@ const IAM_WRITES = ["Create*", "Delete*", "Put*", "Attach*", "Detach*", "Update*
  * lab tag, so the tag cannot be put on someone else's item to make it the lab's; no DeleteTags without keys (it would
  * strip every tag, the lab's too, past KeepLabTag); and a VPC's network fabric (its ACLs, route tables, security groups
  * and the VPC itself) changes only when it carries the lab tag: AWS makes every VPC's default security group, network
- * ACL and main route table untagged, the VPN server's VPC's too.
+ * ACL and main route table untagged, the VPN server's VPC's too. Ruling A82: ReplaceNetworkAclAssociation is not fabric
+ * here, because AWS checks the ACL being replaced as well as the new one and a new subnet always starts on its VPC's
+ * untagged default ACL; instead NaclOnlyInLabVpcs lets a lab make an ACL only inside a lab-tagged VPC, so a lab can only
+ * move a subnet onto an ACL it made in its own VPC, and NaclMoveLabSubnetsOnly lets it move only a lab-tagged subnet.
  */
-const VPC_FABRIC_ACTIONS = ["CreateRoute", "ReplaceRoute", "DeleteRoute", "CreateNetworkAclEntry", "ReplaceNetworkAclEntry", "DeleteNetworkAclEntry", "ReplaceNetworkAclAssociation", "DeleteNetworkAcl", "AssociateRouteTable", "DisassociateRouteTable", "ReplaceRouteTableAssociation", "DeleteRouteTable", "AuthorizeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupIngress", "RevokeSecurityGroupEgress", "ModifySecurityGroupRules", "UpdateSecurityGroupRuleDescriptionsIngress", "UpdateSecurityGroupRuleDescriptionsEgress", "DeleteSecurityGroup", "ModifyVpcAttribute", "DeleteVpc", "AttachInternetGateway", "DetachInternetGateway", "CreateSubnet", "AssociateVpcCidrBlock", "CreateVpcPeeringConnection", "AcceptVpcPeeringConnection"].map((a) => `ec2:${a}`);
+const VPC_FABRIC_ACTIONS = ["CreateRoute", "ReplaceRoute", "DeleteRoute", "CreateNetworkAclEntry", "ReplaceNetworkAclEntry", "DeleteNetworkAclEntry", "DeleteNetworkAcl", "AssociateRouteTable", "DisassociateRouteTable", "ReplaceRouteTableAssociation", "DeleteRouteTable", "AuthorizeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupIngress", "RevokeSecurityGroupEgress", "ModifySecurityGroupRules", "UpdateSecurityGroupRuleDescriptionsIngress", "UpdateSecurityGroupRuleDescriptionsEgress", "DeleteSecurityGroup", "ModifyVpcAttribute", "DeleteVpc", "AttachInternetGateway", "DetachInternetGateway", "CreateSubnet", "AssociateVpcCidrBlock", "CreateVpcPeeringConnection", "AcceptVpcPeeringConnection"].map((a) => `ec2:${a}`);
 const VPC_FABRIC_GUARDS = [
   // Network and compute items only (fix round 2): AWS Backup's service role tags the snapshots it makes after making them.
   deny("TagOnlyAtCreate", "ec2:CreateTags", ["network-acl", "route-table", "security-group", "vpc", "subnet", "internet-gateway", "network-interface", "instance"].map((t) => `arn:aws:ec2:*:*:${t}/*`), { Null: { "ec2:CreateAction": "true", [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
   deny("NoDeleteAllTags", "ec2:DeleteTags", "*", { Null: { "aws:TagKeys": "true" } }),
   deny("VpcFabricNeedsLabTag", VPC_FABRIC_ACTIONS, ["network-acl", "route-table", "security-group", "vpc"].map((t) => `arn:aws:ec2:*:*:${t}/*`), { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
+  // Ruling A82: a network ACL only inside a VPC carrying the lab tag (lab VPCs are tagged at create).
+  deny("NaclOnlyInLabVpcs", "ec2:CreateNetworkAcl", "arn:aws:ec2:*:*:vpc/*", { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
+  // ... and an ACL move only for a subnet carrying the lab tag (AWS asks about the subnet too; lab subnets are tagged at
+  // create), so the VPN server's subnets are refused twice: DenyVpnServer and this.
+  deny("NaclMoveLabSubnetsOnly", "ec2:ReplaceNetworkAclAssociation", "arn:aws:ec2:*:*:subnet/*", { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
 ];
 /** Every write to a Config recorder (V 2026-10-15: the reference's actions on ConfigurationRecorder). */
 const RECORDER_WRITES = ["PutConfigurationRecorder", "StartConfigurationRecorder", "StopConfigurationRecorder", "DeleteConfigurationRecorder", "AssociateResourceTypes", "DisassociateResourceTypes", "DeleteServiceLinkedConfigurationRecorder"].map((a) => `config:${a}`);
@@ -469,6 +484,9 @@ function roleItems(abac, change) {
  * `changeFallback` is true when A29's fall-back was needed.
  */
 export function renderLabPolicies(abac) {
+  // A deny cannot be narrowed after the fact, so a wildcard covering an exempt action must be regenerated, not rendered.
+  const exempted = abac.change.filter(covers(CHANGE_TAG_EXEMPT));
+  if (exempted.length) throw new Error(`the change list's ${exempted.join(", ")} covers ${CHANGE_TAG_EXEMPT.join(", ")}, which ruling A82 exempts; regenerate lab-abac.json`);
   let role = pack(roleItems(abac, abac.change));
   let fallback = false;
   if (role.length > ROLE_POLICIES_MAX) {

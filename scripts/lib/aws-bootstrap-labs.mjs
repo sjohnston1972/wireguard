@@ -79,11 +79,19 @@ export function simulatorCases(account, defaultVpcArns = []) {
 function fabricCases(account, prefix = "") {
   const region = ctx("aws:RequestedRegion", ["eu-west-2"]);
   const acl = `arn:aws:ec2:eu-west-2:${account}:network-acl/acl-0123456789abcdef0`;
+  const subnet = `arn:aws:ec2:eu-west-2:${account}:subnet/subnet-0123456789abcdef0`;
   return [
     { name: `${prefix}an entry in a lab network ACL`, action: "ec2:CreateNetworkAclEntry", resource: acl, context: [region, ctx(`aws:ResourceTag/${LAB_TAG}`, ["soa-01-x"])], want: "allowed" },
     { name: `${prefix}tag an untagged network ACL`, action: "ec2:CreateTags", resource: acl, context: [region, ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-01-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")], want: "denied" },
     { name: `${prefix}an entry in an untagged network ACL`, action: "ec2:CreateNetworkAclEntry", resource: acl, context: [region], want: "denied" },
     { name: `${prefix}a rule in an untagged security group`, action: "ec2:AuthorizeSecurityGroupIngress", resource: `arn:aws:ec2:eu-west-2:${account}:security-group/sg-0123456789abcdef0`, context: [region], want: "denied" },
+    // Ruling A82: AWS asks about the (untagged) default ACL being replaced too; a new ACL only in a lab-tagged VPC.
+    { name: `${prefix}replace an ACL association off a default ACL`, action: "ec2:ReplaceNetworkAclAssociation", resource: acl, context: [region], want: "allowed" },
+    { name: `${prefix}a network ACL in an untagged VPC`, action: "ec2:CreateNetworkAcl", resource: `arn:aws:ec2:eu-west-2:${account}:vpc/vpc-0123456789abcdef1`, context: [region, ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-01-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")], want: "denied" },
+    // ... and about the subnet: only a lab subnet's ACL moves (NaclMoveLabSubnetsOnly); the VPN server's never.
+    { name: `${prefix}move a lab subnet's ACL association`, action: "ec2:ReplaceNetworkAclAssociation", resource: subnet, context: [region, ctx(`aws:ResourceTag/${LAB_TAG}`, ["soa-01-x"])], want: "allowed" },
+    { name: `${prefix}move an untagged subnet's ACL association`, action: "ec2:ReplaceNetworkAclAssociation", resource: subnet, context: [region], want: "denied" },
+    { name: `${prefix}move the VPN server's subnet's ACL association`, action: "ec2:ReplaceNetworkAclAssociation", resource: subnet, context: [region, ctx("aws:ResourceTag/wg-admin", ["vpn"])], want: "denied" },
   ];
 }
 /** An account-wide EC2 setting (fix round 2): VPC Block Public Access would cut the VPN server off the internet. */
@@ -103,7 +111,12 @@ function ssmSettingCases(account, prefix = "") {
 function defaultVpcCase(account, defaultVpcArns, prefix = "") {
   const arn = defaultVpcArns[0];
   if (!arn) return [];
-  return [{ name: `${prefix}a subnet in the default VPC`, action: "ec2:CreateSubnet", resource: arn, context: [ctx("aws:RequestedRegion", [arn.split(":")[3]]), ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-01-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")], want: "denied" }];
+  const [, , , region, acct] = arn.split(":");
+  return [
+    { name: `${prefix}a subnet in the default VPC`, action: "ec2:CreateSubnet", resource: arn, context: [ctx("aws:RequestedRegion", [region]), ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-01-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")], want: "denied" },
+    // Ruling A82 (review Low-1): even a lab-tagged subnet's ACL may not move inside a default VPC.
+    { name: `${prefix}an ACL move in the default VPC`, action: "ec2:ReplaceNetworkAclAssociation", resource: `arn:aws:ec2:${region}:${acct}:subnet/subnet-0123456789abcdef0`, context: [ctx("aws:RequestedRegion", [region]), ctx(`aws:ResourceTag/${LAB_TAG}`, ["soa-01-x"]), ctx("ec2:Vpc", [arn])], want: "denied" },
+  ];
 }
 
 /** The boundary's own cases (ruling A48), asked with `aws iam simulate-custom-policy` on the filled boundary document. */

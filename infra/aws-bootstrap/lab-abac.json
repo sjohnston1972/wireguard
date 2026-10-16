@@ -739,7 +739,7 @@
     "ec2:Reject*",
     "ec2:Release*",
     "ec2:ReplaceIamInstanceProfileAssociation",
-    "ec2:ReplaceNetwork*",
+    "ec2:ReplaceNetworkAclEntry",
     "ec2:ReplaceRoute*",
     "ec2:ReplaceTransitGatewayRoute",
     "ec2:ReplaceVpnTunnel",

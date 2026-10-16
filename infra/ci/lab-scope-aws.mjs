@@ -286,8 +286,11 @@ const IAM_PATH = "/cloudlabs-lab/";
  */
 export const GATEWAY_NAME_LIST = ["vpc-wg", "snet-wg", "rt-wg", "sg-wg", "igw-wg", "nic-wg", "pip-wg", "vm-wg", "osdisk-wg", "rt-workloads", "snet-workloads", "sg-workloads", "vm-test", "osdisk-test"];
 const GATEWAY_NAMES = new RegExp(String.raw`\b(${GATEWAY_NAME_LIST.join("|")})\b`, "i");
-/** An id of an existing EC2 resource: a lab names its own only by reference, so a known one is someone else's. */
-const EC2_ID = "(?:vpc|subnet|rtb|sg|igw|nat|pcx|tgw|tgw-attach|eni|i|eipalloc|vpce|lt|eigw|pl|vol|snap)-[0-9a-f]{8,17}";
+/**
+ * An id of an existing EC2 resource: a lab names its own only by reference, so a known one is someone else's. acl- since
+ * ruling A82 (the role may move a subnet's ACL association, so a lab's association names its own ACL by reference).
+ */
+const EC2_ID = "(?:vpc|subnet|rtb|sg|igw|nat|pcx|tgw|tgw-attach|eni|i|eipalloc|vpce|lt|eigw|pl|vol|snap|acl)-[0-9a-f]{8,17}";
 const KNOWN_ID_RE = new RegExp(`^${EC2_ID}$`);
 /** An EC2 ARN that embeds a known id (arn:aws:ec2:<region>:<account>:instance/i-…), anywhere in a string (JSON documents too). */
 const EC2_ARN_RE = new RegExp(String.raw`arn:aws[a-z-]*:ec2:[^:"\s]*:[^:"\s]*:[a-z-]+/(${EC2_ID})(?![0-9a-z-])`);
