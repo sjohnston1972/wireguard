@@ -48,13 +48,19 @@ const plan9 = planFor(c9);
 const user7 = (over = {}) => ({ address: "aws_iam_user.ann", values: tagged(c7, { name: "lab-soa-07-iam-kms-ann", path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, force_destroy: true, ...over }), refs: {} });
 const tpl = (Resources) => JSON.stringify({ AWSTemplateFormatVersion: "2010-09-09", Resources });
 const cfnRole = () => ({ ...role({ name: `lab-${ID}-cfn`, assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "cloudformation.amazonaws.com" }, Action: "sts:AssumeRole" }] }) }), address: "aws_iam_role.cfn" });
-const stack = (over = {}, { noRole = false } = {}) => ({
+const stack = (over = {}, { noRole = false, unknown = [] } = {}) => ({
   address: "aws_cloudformation_stack.lab",
   values: tagged(c, { name: `lab-${ID}-stack`, template_body: tpl({ Q: { Type: "AWS::SQS::Queue" } }), parameters: {}, ...over }),
-  unknown: noRole ? [] : ["iam_role_arn"],
+  unknown: [...(noRole ? [] : ["iam_role_arn"]), ...unknown],
   refs: noRole ? {} : { iam_role_arn: ref("aws_iam_role.cfn", "arn") },
 });
 const stackPlan = (over, opts) => plan([cfnRole(), stack(over, opts)]);
+/** The template's resources with the lab group's resource_query.query replaced (review C-1). */
+const groupBase = (query) => {
+  const base = templateResources(c);
+  base[0] = { ...base[0], values: { ...base[0].values, resource_query: [{ type: "TAG_FILTERS_1_0", query: JSON.stringify(query) }] } };
+  return base;
+};
 const fnLogs = { address: "aws_cloudwatch_log_group.f", values: tagged(c, { name: `/cloudlabs/${ID}/f`, retention_in_days: 1, skip_destroy: false }), refs: {} };
 const lambdaFn = (over = {}) => ({ address: "aws_lambda_function.f", values: tagged(c, { function_name: `lab-${ID}-f`, runtime: "python3.13", handler: "f.handler", memory_size: 128, timeout: 30, logging_config: [{ log_format: "Text", log_group: `/cloudlabs/${ID}/f` }], ...over }), unknown: ["role"], refs: { role: ref("aws_iam_role.vm", "arn") } });
 const ecsService = (over = {}) => ({ address: "aws_ecs_service.s", values: tagged(c, { name: `lab-${ID}-s`, desired_count: 2, launch_type: "FARGATE", propagate_tags: "SERVICE", ...over }), unknown: ["cluster", "task_definition"], refs: {} });
@@ -163,6 +169,20 @@ const EVIL = [
   ["size", "a distribution in every edge location (PriceClass_All)", () => plan9([{ address: "aws_cloudfront_distribution.d", values: tagged(c9, { enabled: true, price_class: "PriceClass_All", retain_on_delete: false }), refs: {} }]), "soa-09-route53-cloudfront"],
   ["size", "an ECS service of 10 tasks", () => plan([ecsService({ desired_count: 10 })])],
   ["size", "a Lambda function with 3 GB of memory", () => plan([role(), fnLogs, lambdaFn({ memory_size: 3008 })])],
+  // Task 3 review, fix round 1: the bypasses the probe found (each passed before its fix).
+  ["gateway", "a lab group selecting every instance with a Name tag, targeted by resource-groups:Name (review C-1)", () => plan([{ address: "aws_ssm_association.rg", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "resource-groups:Name", values: [`lab-${ID}`] }] }), refs: {} }], { base: groupBase({ ResourceTypeFilters: ["AWS::EC2::Instance"], TagFilters: [{ Key: "Name" }] }) })],
+  ["template", "a template alarm on an existing instance by id (review I-1)", () => stackPlan({ template_body: tpl({ A: { Type: "AWS::CloudWatch::Alarm", Properties: { MetricName: "CPUUtilization", Namespace: "AWS/EC2", Dimensions: [{ Name: "InstanceId", Value: "i-0123456789abcdef0" }], Statistic: "Average", Period: 60, EvaluationPeriods: 1, Threshold: 1, ComparisonOperator: "GreaterThanThreshold" } } }) })],
+  ["template", "a template alarm that terminates an instance (EC2 alarm action, review I-1)", () => stackPlan({ template_body: tpl({ A: { Type: "AWS::CloudWatch::Alarm", Properties: { MetricName: "CPUUtilization", Namespace: "AWS/EC2", Statistic: "Average", Period: 60, EvaluationPeriods: 1, Threshold: 1, ComparisonOperator: "GreaterThanThreshold", AlarmActions: ["arn:aws:automate:eu-west-2:ec2:terminate"] } } }) })],
+  ["gateway", "a Terraform alarm with an EC2 action (review I-1)", () => plan([{ address: "aws_cloudwatch_metric_alarm.stop", values: tagged(c, { alarm_name: `lab-${ID}-stop`, comparison_operator: "GreaterThanThreshold", evaluation_periods: 1, metric_name: "CPUUtilization", namespace: "AWS/EC2", period: 300, statistic: "Average", threshold: 80, alarm_actions: ["arn:aws:swf:eu-west-2:123456789012:action/actions/AWS_EC2.InstanceId.Stop/1.0"] }), unknown: ["dimensions"], refs: { dimensions: ref("aws_instance.app", "id") } }])],
+  ["public", "a KMS key policy not known until apply, with no references (review I-2)", () => plan([{ address: "aws_kms_key.k", values: tagged(c, { deletion_window_in_days: 7 }), unknown: ["policy"], refs: {} }])],
+  ["public", "a Lambda permission whose principal is not known until apply (review I-2)", () => plan([{ address: "aws_lambda_permission.p", values: { action: "lambda:InvokeFunction", statement_id: "x" }, unknown: ["function_name", "principal"], refs: {} }])],
+  ["public", "a Lambda permission whose function URL auth is not known until apply (review I-2)", () => plan([{ address: "aws_lambda_permission.p", values: { action: "lambda:InvokeFunctionUrl", principal: "events.amazonaws.com", statement_id: "x" }, unknown: ["function_name", "function_url_auth_type"], refs: {} }])],
+  ["public", "a bucket whose own policy allows Principal * (review I-3)", () => plan([{ address: "aws_s3_bucket.open", values: tagged(c, { bucket: `cloudlabs-${c.prefix}-open`, force_destroy: true, policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: "*", Action: "s3:GetObject", Resource: "*" }] }) }), refs: {} }])],
+  ["template", "a stack whose parameters are not known until apply (review I-4)", () => stackPlan({ template_body: JSON.stringify({ Parameters: { N: { Type: "String", Default: `/cloudlabs/${ID}/x` } }, Resources: { L: { Type: "AWS::Logs::LogGroup", Properties: { LogGroupName: { Ref: "N" }, RetentionInDays: 1 } } } }), parameters: undefined }, { unknown: ["parameters"] })],
+  ["template", "a stack whose capabilities are not known until apply (review I-4)", () => stackPlan({}, { unknown: ["capabilities"] })],
+  ["public", "a bucket policy allowing Principal * with Effect \"allow\" (review M-1)", () => plan([{ address: "aws_s3_bucket_policy.p", values: { policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "allow", Principal: "*", Action: "s3:GetObject", Resource: "*" }] }) }, unknown: ["bucket"], refs: {} }])],
+  ["gateway", "a distribution in front of a look-alike domain cloudlabs-<prefix>-x.evil.example.com (review M-3)", () => plan9([{ address: "aws_cloudfront_distribution.d", values: tagged(c9, { enabled: true, price_class: "PriceClass_100", retain_on_delete: false, origin: [{ origin_id: "x", domain_name: `cloudlabs-${c9.prefix}-x.evil.example.com` }] }), refs: {} }]), "soa-09-route53-cloudfront"],
+  ["provider", "a resource whose own region is not known until apply, with no references (review M-4)", () => plan([{ address: "aws_sns_topic.far", values: tagged(c, { name: `lab-${ID}-far` }), unknown: ["region"], refs: {} }])],
 ];
 for (const [rule, what, make, id = ID] of EVIL) {
   test(`${rule}: refuses ${what}`, () => {
@@ -390,4 +410,25 @@ test("ruling P10, mock mode: with no caller identity in the stream, the lab's ow
   assert.deepEqual(mock([role(), topicPolicy(`arn:aws:iam::${ACCOUNT}:root`)]), []);
   assert.deepEqual(mock([role(), topicPolicy("arn:aws:iam::999999999999:root")]), ["public: aws_sns_topic_policy.p"]);
   assert.deepEqual(mock([topicPolicy(`arn:aws:iam::${ACCOUNT}:root`)]), ["public: aws_sns_topic_policy.p"], "no account to read: refused");
+});
+
+test("review C-1: the lab's group selects only its own tag, known at plan, so resource-groups:Name = lab-<id> selects only the lab", () => {
+  const gate = (base) => rules(plan([], { base }));
+  assert.deepEqual(gate(templateResources(c)), [], "the template's group (any ResourceTypeFilters, TagFilters cloudlabs-lab = the id)");
+  assert.deepEqual(gate(groupBase({ ResourceTypeFilters: ["AWS::EC2::Instance"], TagFilters: [{ Key: "cloudlabs-lab", Values: [ID] }] })), []);
+  for (const q of [{ ResourceTypeFilters: ["AWS::AllSupported"], TagFilters: [{ Key: "run_id" }] }, { ResourceTypeFilters: ["AWS::AllSupported"], TagFilters: [{ Key: "cloudlabs-lab", Values: [ID, "soa-02-systems-manager"] }] }, { ResourceTypeFilters: ["AWS::AllSupported"], TagFilters: [{ Key: "cloudlabs-lab", Values: [ID] }, { Key: "Name", Values: ["vm-x"] }] }, { ResourceTypeFilters: ["AWS::AllSupported"] }]) {
+    assert.deepEqual(gate(groupBase(q)), ["gateway: aws_resourcegroups_group.lab"], JSON.stringify(q));
+  }
+  const unknownQuery = templateResources(c);
+  unknownQuery[0] = { ...unknownQuery[0], values: { ...unknownQuery[0].values, resource_query: [{ type: "TAG_FILTERS_1_0" }] }, unknown: ["resource_query.0.query"], refs: {} };
+  assert.deepEqual(gate(unknownQuery), ["gateway: aws_resourcegroups_group.lab"], "a query not known at plan");
+  const otherName = templateResources(c);
+  otherName[0] = { ...otherName[0], values: { ...otherName[0].values, name: `lab-${ID}-all` } };
+  assert.deepEqual(gate(otherName), ["gateway: aws_resourcegroups_group.lab"], "a group not named lab-<id>");
+});
+
+test("review I-4: a stack's parameters known at plan are what its template is judged with", () => {
+  const body = JSON.stringify({ Parameters: { N: { Type: "String", Default: `/cloudlabs/${ID}/x` } }, Resources: { L: { Type: "AWS::Logs::LogGroup", Properties: { LogGroupName: { Ref: "N" }, RetentionInDays: 1 } } } });
+  assert.deepEqual(rules(stackPlan({ template_body: body, parameters: { N: `/cloudlabs/${ID}/y` } })), []);
+  assert.deepEqual(rules(stackPlan({ template_body: body, parameters: { N: "/aws/other" } })), ["template: aws_cloudformation_stack.lab"]);
 });
