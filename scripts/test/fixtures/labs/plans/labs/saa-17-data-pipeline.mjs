@@ -135,7 +135,7 @@ export default () => {
       policy("firehose", [
         { Sid: "ReadTheStream", Effect: "Allow", Action: ["kinesis:DescribeStream", "kinesis:DescribeStreamSummary", "kinesis:GetShardIterator", "kinesis:GetRecords", "kinesis:ListShards"], Resource: streamArn },
         { Sid: "WriteTheLake", Effect: "Allow", Action: ["s3:AbortMultipartUpload", "s3:GetBucketLocation", "s3:GetObject", "s3:ListBucket", "s3:ListBucketMultipartUploads", "s3:PutObject"], Resource: lakeArns },
-      ], ["local.stream_arn", "var.name_prefix"]),
+      ], ["local.stream_arn", "var.name_prefix", "var.name_prefix"]),
       attach("firehose"),
       { address: "time_sleep.firehose_role", values: { create_duration: "20s" }, refs: {} },
       {
@@ -168,7 +168,7 @@ export default () => {
       policy("crawler", [
         { Sid: "LabCatalogue", Effect: "Allow", Action: "glue:*", Resource: [`${glueArn}:catalog`, `${glueArn}:database/${glueDb}`, `${glueArn}:table/${glueDb}/*`] },
         { Sid: "ReadTheLake", Effect: "Allow", Action: ["s3:GetObject", "s3:ListBucket"], Resource: [`arn:aws:s3:::${lake}`, `arn:aws:s3:::${lake}/events/*`] },
-      ], ["local.glue_arn", "local.glue_db", "var.name_prefix"]),
+      ], ["local.glue_arn", "local.glue_arn", "local.glue_db", "local.glue_arn", "local.glue_db", "var.name_prefix", "var.name_prefix"]),
       attach("crawler"),
       {
         address: "aws_glue_crawler.events",

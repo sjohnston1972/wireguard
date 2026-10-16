@@ -11,8 +11,9 @@
 // are read; data.archive_file.validate is read at plan with the zip's hash
 // known. Every name, the queue policies (built from the account, region and
 // topic name) and the state machine's definition (it names the function and
-// topic by built ARNs) are known at plan; the billing queue's redrive policy
-// is unknown (it holds the dead-letter queue's ARN). What is built from
+// topic by built ARNs) are known at plan; both queues' redrive policies are
+// unknown (billing's holds the dead-letter queue's ARN; shipping's is null,
+// and the attribute is Optional and Computed). What is built from
 // another resource's attribute is unknown, with its references: the
 // subscriptions' topic_arn and endpoint, the policies' queue_url, the
 // workflow's role_arn, the target's arn and role_arn.
@@ -38,7 +39,8 @@ export default () => {
       name: `lab-${id}-${key}`, visibility_timeout_seconds: 20, message_retention_seconds: 86400, sqs_managed_sse_enabled: true,
       tags: { Name: `queue-${key}` },
     }),
-    ...(key === "billing" ? { unknown: ["redrive_policy"] } : {}),
+    // Optional and Computed: unknown where null (shipping) too.
+    unknown: ["redrive_policy"],
     refs: { name: ["var.lab_id", "each.key"], redrive_policy: ["each.key", ...ref("aws_sqs_queue.billing_dlq", "arn")], tags: ["each.key"] },
   });
   const queuePolicy = (key) => ({
