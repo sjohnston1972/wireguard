@@ -180,7 +180,7 @@ test("every role policy and the boundary fit (A29), and the role holds at most 1
 
 test("each §7.1 statement says what it must", { skip }, () => {
   const { POLICIES, statements, sid } = files();
-  for (const s of ["LabServices", "LabBuckets", "BucketList", "GlobalServices", "Identity", "LabRolesBounded", "LabRolesOther", "Lab07UsersBounded", "Lab07UsersOther", "PassLabRoles", "ServiceLinkedRoles", "DenyVpnServer", "DenyVpnTagRequest", "DenyVpnTagKeys", "DenyDefaultVpc", "DenyDefaultVpcChildren", "DenyAccountAndBilling", "DenyStackSets", "DenyIamOutsideLab", "DenyBoundaryRemoval", "DenyOtherRoles", "DenyOtherRegions", "DenyGlobalRegionsForLabServices", "CreateNeedsLabTagRunInstances", "KeepLabTag", "NaclOnlyInLabVpcs"]) assert.ok(sid(s), s);
+  for (const s of ["LabServices", "LabBuckets", "BucketList", "GlobalServices", "Identity", "LabRolesBounded", "LabRolesOther", "Lab07UsersBounded", "Lab07UsersOther", "PassLabRoles", "ServiceLinkedRoles", "DenyVpnServer", "DenyVpnTagRequest", "DenyVpnTagKeys", "DenyDefaultVpc", "DenyDefaultVpcChildren", "DenyAccountAndBilling", "DenyStackSets", "DenyIamOutsideLab", "DenyBoundaryRemoval", "DenyOtherRoles", "DenyOtherRegions", "DenyGlobalRegionsForLabServices", "CreateNeedsLabTagRunInstances", "KeepLabTag", "NaclOnlyInLabVpcs", "NaclMoveLabSubnetsOnly"]) assert.ok(sid(s), s);
   assert.ok(statements.some((s) => /^CreateNeedsLabTag\d+$/.test(s.Sid)) && statements.some((s) => /^ChangeNeedsLabTag\d+$/.test(s.Sid)));
   assert.deepEqual(sid("DenyVpnServer").Condition, { StringEquals: { "aws:ResourceTag/wg-admin": "vpn" } });
   assert.deepEqual(sid("LabRolesBounded").Condition, { StringEquals: { "iam:PermissionsBoundary": "arn:aws:iam::__ACCOUNT__:policy/wg-admin-lab-boundary" } });
@@ -317,10 +317,10 @@ test("the Worker user may read lab things in both lab regions, and change nothin
 test("the simulator cases are A19's, fix round 1's and batch 2's, and a wrong answer is a problem", () => {
   const cases = simulatorCases("123456789012", FILL.vpcArns);
   assert.deepEqual(cases.map((c) => [c.name, c.want]), [["tagged VPC", "allowed"], ["bounded lab role", "allowed"], ["untagged VPC", "denied"], ["the VPN server", "denied"], ["role without the boundary", "denied"], ["role outside the path", "denied"], ["access key", "denied"], ["a third region", "denied"],
-    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["replace an ACL association off a default ACL", "allowed"], ["a network ACL in an untagged VPC", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["an SSM association", "allowed"], ["retention on a new lab log group", "allowed"], ["retention on another log group", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a lab 07 user under the boundary", "allowed"], ["a user for another lab", "denied"], ["remove a hand-made key from the lab 07 user", "allowed"], ["delete the lab's analyzer", "allowed"], ["an untagged CloudFormation stack", "denied"], ["a CloudFront distribution", "allowed"], ["a Route 53 hosted zone", "allowed"], ["an ECS cluster in us-east-1", "denied"], ["a subnet in the default VPC", "denied"]]);
+    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["replace an ACL association off a default ACL", "allowed"], ["a network ACL in an untagged VPC", "denied"], ["move a lab subnet's ACL association", "allowed"], ["move an untagged subnet's ACL association", "denied"], ["move the VPN server's subnet's ACL association", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["an SSM association", "allowed"], ["retention on a new lab log group", "allowed"], ["retention on another log group", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a lab 07 user under the boundary", "allowed"], ["a user for another lab", "denied"], ["remove a hand-made key from the lab 07 user", "allowed"], ["delete the lab's analyzer", "allowed"], ["an untagged CloudFormation stack", "denied"], ["a CloudFront distribution", "allowed"], ["a Route 53 hosted zone", "allowed"], ["an ECS cluster in us-east-1", "denied"], ["a subnet in the default VPC", "denied"], ["an ACL move in the default VPC", "denied"]]);
   // With no default VPC in the account there is nothing to ask about it.
-  assert.ok(!simulatorCases("123456789012", []).some((c) => c.name === "a subnet in the default VPC"));
-  assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: replace an ACL association off a default ACL", "allowed"], ["boundary: a network ACL in an untagged VPC", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: SSM default host management", "denied"], ["boundary: reset an SSM setting", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"]]);
+  assert.ok(!simulatorCases("123456789012", []).some((c) => /default VPC/.test(c.name)));
+  assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: replace an ACL association off a default ACL", "allowed"], ["boundary: a network ACL in an untagged VPC", "denied"], ["boundary: move a lab subnet's ACL association", "allowed"], ["boundary: move an untagged subnet's ACL association", "denied"], ["boundary: move the VPN server's subnet's ACL association", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: SSM default host management", "denied"], ["boundary: reset an SSM setting", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"], ["boundary: an ACL move in the default VPC", "denied"]]);
   const ok = cases.map((c) => ({ name: c.name, decision: c.want === "allowed" ? "allowed" : "explicitDeny" }));
   assert.deepEqual(simulatorProblems(ok, cases), []);
   assert.deepEqual(simulatorProblems([{ ...ok[0], decision: "implicitDeny" }, ...ok.slice(1)], cases), ["tagged VPC: wanted allowed, AWS said implicitDeny"]);
@@ -388,11 +388,11 @@ test("--labs: every simulator case is asked of the role, quotas below target are
   const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
   assert.equal(r.ok, true);
   const sims = calls.filter((c) => c[2] === "simulate-principal-policy");
-  assert.equal(sims.length, 37);
+  assert.equal(sims.length, 41);
   for (const c of sims) assert.equal(c[c.indexOf("--policy-source-arn") + 1], O.roleArn);
   // The boundary, simulated as a policy of its own (simulate-custom-policy), with the document the bootstrap filled.
   const custom = calls.filter((c) => c[2] === "simulate-custom-policy");
-  assert.equal(custom.length, 12);
+  assert.equal(custom.length, 16);
   for (const c of custom) assert.equal(c[c.indexOf("--policy-input-list") + 1], BOUNDARY_DOC);
   const tagged = sims[0];
   assert.deepEqual(JSON.parse(tagged[tagged.indexOf("--context-entries") + 1]), [
@@ -797,5 +797,24 @@ test("ruling A82: a lab may move a subnet off its VPC's untagged default ACL ont
     denied("ec2:CreateNetworkAcl", arn("vpc/vpc-0vpn"), { ...NEW, "aws:ResourceTag/cloudlabs-lab": "soa-08-vpc-fix", "aws:ResourceTag/wg-admin": "vpn" });
     denied("ec2:ReplaceNetworkAclAssociation", defaultAcl, { ...R, "ec2:Vpc": FILL.vpcArns[0] });
     denied("ec2:CreateNetworkAcl", FILL.vpcArns[0], { ...NEW, "aws:ResourceTag/cloudlabs-lab": "soa-08-vpc-fix" });
+    // Review Low-1/Low-2: AWS also asks about the subnet. Only a lab subnet's ACL may move; the VPN server's subnets
+    // are refused twice (DenyVpnServer and NaclMoveLabSubnetsOnly), a default VPC's by the default-VPC deny.
+    const subnet = arn("subnet/subnet-0123456789abcdef0");
+    const labSubnet = { ...R, "aws:ResourceTag/cloudlabs-lab": "soa-08-vpc-fix" };
+    allowed("ec2:ReplaceNetworkAclAssociation", subnet, labSubnet);
+    allowed("ec2:ReplaceNetworkAclAssociation", defaultAcl, R);
+    allowed("ec2:ReplaceNetworkAclAssociation", arn("network-acl/acl-0lab"), labSubnet);
+    denied("ec2:ReplaceNetworkAclAssociation", subnet, R);
+    denied("ec2:ReplaceNetworkAclAssociation", subnet, { ...R, "aws:ResourceTag/wg-admin": "vpn" });
+    denied("ec2:ReplaceNetworkAclAssociation", subnet, { ...labSubnet, "ec2:Vpc": FILL.vpcArns[0] });
+  }
+  for (const get of [sid, bsid]) {
+    assert.deepEqual(get("NaclMoveLabSubnetsOnly"), { Sid: "NaclMoveLabSubnetsOnly", Effect: "Deny", Action: "ec2:ReplaceNetworkAclAssociation", Resource: "arn:aws:ec2:*:*:subnet/*", Condition: { Null: { "aws:ResourceTag/cloudlabs-lab": "true" } } });
+  }
+  // The VPN server's subnet is refused even without the new deny (DenyVpnServer), and by it even without DenyVpnServer.
+  const vpnSubnet = { action: "ec2:ReplaceNetworkAclAssociation", resource: arn("subnet/subnet-0vpn"), ctx: { ...R, "aws:ResourceTag/wg-admin": "vpn" } };
+  for (const drop of ["DenyVpnServer", "NaclMoveLabSubnetsOnly"]) {
+    const docs = POLICIES.role.map((d) => ({ ...d, Statement: d.Statement.filter((s) => s.Sid !== drop) }));
+    assert.equal(decide(docs, vpnSubnet), "explicitDeny", `without ${drop}`);
   }
 });

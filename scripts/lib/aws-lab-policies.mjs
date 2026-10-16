@@ -302,7 +302,7 @@ const IAM_WRITES = ["Create*", "Delete*", "Put*", "Attach*", "Detach*", "Update*
  * ACL and main route table untagged, the VPN server's VPC's too. Ruling A82: ReplaceNetworkAclAssociation is not fabric
  * here, because AWS checks the ACL being replaced as well as the new one and a new subnet always starts on its VPC's
  * untagged default ACL; instead NaclOnlyInLabVpcs lets a lab make an ACL only inside a lab-tagged VPC, so a lab can only
- * move a subnet onto an ACL it made in its own VPC.
+ * move a subnet onto an ACL it made in its own VPC, and NaclMoveLabSubnetsOnly lets it move only a lab-tagged subnet.
  */
 const VPC_FABRIC_ACTIONS = ["CreateRoute", "ReplaceRoute", "DeleteRoute", "CreateNetworkAclEntry", "ReplaceNetworkAclEntry", "DeleteNetworkAclEntry", "DeleteNetworkAcl", "AssociateRouteTable", "DisassociateRouteTable", "ReplaceRouteTableAssociation", "DeleteRouteTable", "AuthorizeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupIngress", "RevokeSecurityGroupEgress", "ModifySecurityGroupRules", "UpdateSecurityGroupRuleDescriptionsIngress", "UpdateSecurityGroupRuleDescriptionsEgress", "DeleteSecurityGroup", "ModifyVpcAttribute", "DeleteVpc", "AttachInternetGateway", "DetachInternetGateway", "CreateSubnet", "AssociateVpcCidrBlock", "CreateVpcPeeringConnection", "AcceptVpcPeeringConnection"].map((a) => `ec2:${a}`);
 const VPC_FABRIC_GUARDS = [
@@ -312,6 +312,9 @@ const VPC_FABRIC_GUARDS = [
   deny("VpcFabricNeedsLabTag", VPC_FABRIC_ACTIONS, ["network-acl", "route-table", "security-group", "vpc"].map((t) => `arn:aws:ec2:*:*:${t}/*`), { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
   // Ruling A82: a network ACL only inside a VPC carrying the lab tag (lab VPCs are tagged at create).
   deny("NaclOnlyInLabVpcs", "ec2:CreateNetworkAcl", "arn:aws:ec2:*:*:vpc/*", { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
+  // ... and an ACL move only for a subnet carrying the lab tag (AWS asks about the subnet too; lab subnets are tagged at
+  // create), so the VPN server's subnets are refused twice: DenyVpnServer and this.
+  deny("NaclMoveLabSubnetsOnly", "ec2:ReplaceNetworkAclAssociation", "arn:aws:ec2:*:*:subnet/*", { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
 ];
 /** Every write to a Config recorder (V 2026-10-15: the reference's actions on ConfigurationRecorder). */
 const RECORDER_WRITES = ["PutConfigurationRecorder", "StartConfigurationRecorder", "StopConfigurationRecorder", "DeleteConfigurationRecorder", "AssociateResourceTypes", "DisassociateResourceTypes", "DeleteServiceLinkedConfigurationRecorder"].map((a) => `config:${a}`);
