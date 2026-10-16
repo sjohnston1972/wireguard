@@ -25,7 +25,9 @@
 // (the reference gives a few reads the request tag), nor using a KMS key
 // (KEY_USE: AWS's own untagged keys encrypt the labs' disks). A delete or
 // update verb is never a create (ruling P1), whatever keys the reference
-// lists for it.
+// lists for it. API Gateway's HTTP-verb actions are judged by HTTP_VERB_RULES
+// (ruling P2); DynamoDB's creates and changes are refused only outside the
+// lab's own table names (ruling P3).
 //
 // Size (ruling A29). AWS caps a managed policy at 6,144 characters without
 // whitespace and a role at 10 of them, so the statements are packed, first
@@ -35,7 +37,10 @@
 // without case) is in the same list. If even then the role would need more
 // than 10, the change list falls back to <svc>:Delete*, Modify*, Update* and
 // Terminate* for each ABAC service (but those of the untaggable named types),
-// and the plan-time tag rule (§7.3) covers the rest.
+// and the plan-time tag rule (§7.3) covers the rest. Each policy is filled
+// only to POLICY_PACK (5,600), so a statement can grow without moving the
+// others, and the role may hold 20 (ruling P1: IAM's L-0DA4ABF3 is 20 in this
+// account).
 
 import { AWS_LAB_REGIONS, AWS_GLOBAL_REGIONS, LAB_TAG, AWS_IAM_PATH, AWS_BOUNDARY } from "./labs.mjs";
 import { MANAGED_POLICIES } from "../../infra/ci/lab-scope-aws.mjs";
@@ -57,7 +62,7 @@ const svc = (x) => `${x}.amazonaws.com`;
 /** iam:PassedToService: the services a lab role may be handed to. */
 export const PASS_SERVICES = ["ec2", "lambda", "ecs-tasks", "eks", "states", "config", "backup", "ssm", "firehose", "glue", "vpc-flow-logs", "apigateway", "events", "scheduler", "s3", "cloudformation"].map(svc);
 /** iam:AWSServiceName: the service-linked roles a lab may cause (ruling A18). */
-export const SERVICE_LINKED = ["elasticloadbalancing", "autoscaling", "rds", "elasticache", "ecs", "eks", "eks-nodegroup", "network-firewall", "globalaccelerator", "backup", "config", "remediation.config", "transitgateway", "vpc-lattice", "ssm", "ec2-instance-connect", "access-analyzer"].map(svc);
+export const SERVICE_LINKED = ["elasticloadbalancing", "autoscaling", "rds", "elasticache", "ecs", "eks", "eks-nodegroup", "network-firewall", "globalaccelerator", "backup", "config", "remediation.config", "transitgateway", "vpc-lattice", "ssm", "ec2-instance-connect", "access-analyzer", "spot", "replication.dynamodb", "elasticfilesystem"].map(svc);
 /** Resource types AWS (or another account) owns: a change list action naming one would refuse e.g. launching from Amazon's AMI. */
 export const AWS_OWNED_TYPES = ["ec2:image", "ec2:snapshot", "ec2:prefix-list", "ssm:document", "ssm:parameter"];
 /** Types a lab owns by name (lab-<id>-*) because Terraform cannot tag them (lab-scope-aws.mjs UNTAGGABLE). */
@@ -76,13 +81,45 @@ export const NAME_OWNED_TYPES = ["cloudwatch:dashboard", "config:ConfigurationRe
  * (soa-02's release test and a probe, 2026-10-15: refused with the tag sent), so State Manager associations are exempt
  * too. An association changes nothing by itself; deleting one still needs the lab's tag (DeleteAssociation, change list).
  */
-export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface", "ssm:CreateAssociation", "ssm:CreateAssociationBatch"];
+// Ruling P4 (A86): the provider's aws_ami_copy calls CopyImage with no TagSpecifications and tags the image after; a
+// lab's copies are named lab-<id>-* (lab-scope-aws.mjs) and found by that name.
+export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface", "ssm:CreateAssociation", "ssm:CreateAssociationBatch", "ec2:CopyImage"];
 /**
  * Ruling A82: actions exempt from the change-needs-lab-tag rule. AWS authorises ReplaceNetworkAclAssociation on the ACL
  * being replaced too, and a new subnet always starts on its VPC's untagged default ACL; NaclOnlyInLabVpcs keeps the new
  * ACL in a lab VPC instead.
  */
-export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation"];
+// Ruling P8 (A90): a load balancer Kubernetes made carries its cluster's tag, not the lab's; ElbDeleteLabOrEks judges it.
+export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation", "elasticloadbalancing:DeleteLoadBalancer"];
+/** Ruling P8: the tag Kubernetes gives what lab 19's cluster makes (its cluster is lab-<id>, ruling P7). */
+export const EKS_LB_TAG = "kubernetes.io/cluster/lab-saa-19-eks";
+/**
+ * Ruling P2 (A84): API Gateway names its write actions after HTTP verbs, each taking the request tag. POST is a create
+ * only on the top-level collections that take tags (refused there without the lab tag); a route, integration or stage
+ * POST carries no tags and is judged by nothing. PUT, PATCH and DELETE are changes (the reference gives every child
+ * type its API's aws:ResourceTag), so PATCH /account, API Gateway's account-wide setting, is always refused. DELETE is
+ * also how a tag is removed, so it joins the untag list (KeepLabTag). GET is a read.
+ * Pre-flight C17, option (b): AWS documents tag inheritance for authorisation only for V1 (REST) APIs, so the changes
+ * are refused without the lab tag only on changesOn: /account, an API itself (its id is 10 characters, so
+ * "??????????" never matches a child path), an HTTP API's stages, and the other tag-taking top-level items. A V2 route,
+ * integration or authoriser is judged by nothing, so lab 12's destroy can remove them one by one.
+ */
+export const HTTP_VERB_RULES = {
+  apigateway: {
+    postCreatesOn: ["/apis", "/restapis", "/vpclinks", "/domainnames"].map((p) => `arn:aws:apigateway:*::${p}`),
+    changes: ["PUT", "PATCH", "DELETE"],
+    untag: "DELETE",
+    changesOn: ["arn:aws:apigateway:*::/account", "arn:aws:apigateway:*::/apis/??????????", "arn:aws:apigateway:*::/apis/??????????/stages/*", "arn:aws:apigateway:*::/restapis/??????????", "arn:aws:apigateway:*::/domainnames/*", "arn:aws:apigateway:*::/vpclinks/*"],
+  },
+};
+/**
+ * Ruling P3 (A85): DynamoDB tables a lab owns by name. A global table's replica is made in its region by the caller's
+ * CreateTable and CreateTableReplica on the replica's ARN, with no request tag, and its item writes follow before its
+ * tags arrive (AWS docs, read 2026-10-16). The VPN server has no tables.
+ */
+export const NAMED_TABLES = ["arn:aws:dynamodb:*:*:table/lab-*", "arn:aws:dynamodb:*:*:table/lab-*/*"];
+/** Ruling P3: services whose create-list actions are refused only outside these names, and there without the tag. */
+export const NAMED_CREATES = { dynamodb: NAMED_TABLES };
 /** A list entry (an action, or a folded "svc:Prefix*") that names or covers one of these exempt actions. */
 const covers = (exempt) => (a) => exempt.some((x) => a === x || (a.endsWith("*") && x.toLowerCase().startsWith(a.slice(0, -1).toLowerCase())));
 const isExempt = covers(CREATE_TAG_EXEMPT);
@@ -91,16 +128,19 @@ const isExempt = covers(CREATE_TAG_EXEMPT);
  * CreateLogGroup by seconds (soa-01's release test, and a probe, 2026-10-15: PutRetentionPolicy refused then allowed on
  * the same new, tagged group), so Terraform's retention call right after the create fails at random. Their change-list
  * actions are refused only outside these names (lab-scope-aws.mjs holds every lab log group to /cloudlabs/<id>/...),
- * and inside them without the tag; the VPN server has no log groups.
+ * and inside them without the tag; the VPN server has no log groups. And DynamoDB, whose replicas are made untagged
+ * (ruling P3).
  */
-export const TAG_LAG_NAMED = { logs: ["arn:aws:logs:*:*:log-group:/cloudlabs/*"] };
+export const TAG_LAG_NAMED = { logs: ["arn:aws:logs:*:*:log-group:/cloudlabs/*"], dynamodb: NAMED_TABLES };
 export const KEY_USE = /^kms:(Encrypt|Decrypt|ReEncrypt\w*|GenerateDataKey\w*|GenerateMac|VerifyMac|Sign|Verify|DeriveSharedSecret|CreateGrant|RetireGrant)$/;
 /** Services with an untaggable named type: A29's fall-back gives them no wildcards. */
 const NAME_OWNED_SERVICES = ["cloudwatch", "config", "logs", "kms"];
 /** What ec2:RunInstances must tag: the two types Terraform's aws_instance tags (tags_all and volume_tags). */
 export const RUN_INSTANCES_TYPES = ["instance", "volume"];
 export const POLICY_MAX = 6000;
-export const ROLE_POLICIES_MAX = 10;
+export const ROLE_POLICIES_MAX = 20;
+/** Ruling P1: how full the packer makes each policy (POLICY_MAX is still the hard check): room for a statement to grow. */
+export const POLICY_PACK = 5600;
 
 const RT = "aws:RequestTag/${TagKey}";
 const RS = "aws:ResourceTag/${TagKey}";
@@ -133,7 +173,7 @@ const isUntag = (name) => /^(Untag|Remove\w*Tags?|Delete\w*Tags?)/.test(name);
  * delete) is always refused: lab 07 could make an analyzer and never remove it. They are judged as changes instead
  * (the reference also moved DeleteServiceLinkedAnalyzer, apigateway:UpdatePortal* and cloudformation:UpdateStackSet,
  * which no lab may call: DenyStackSets).
- * apigateway's HTTP-verb actions (DELETE, PATCH) are left to batch 3's API Gateway lab.
+ * apigateway's HTTP-verb actions (DELETE, PATCH) are judged by HTTP_VERB_RULES instead (ruling P2).
  */
 export const NON_CREATE_VERB = /^(Delete|Update|Remove|Disassociate|Detach|Deregister|Cancel|Stop|Terminate|Revoke|Reset|Disable|Reject|Untag)/;
 
@@ -156,6 +196,9 @@ export function abacLists(sar) {
     const all = (allOf[service] = (doc.Actions ?? []).map((a) => `${service}:${a.Name}`));
     const actionLevel = [];
     const changes = [];
+    // C17 (b): kept out of the fold, so no wildcard of another action (apigateway:Put*, Delete*) covers a verb and
+    // refuses it on every path.
+    const verbChanges = [];
     const untags = [];
     for (const a of doc.Actions ?? []) {
       const p = props(a);
@@ -167,6 +210,16 @@ export function abacLists(sar) {
       }
       if (res.some((r) => NAME_OWNED_TYPES.includes(`${service}:${r.Name}`))) continue;
       if (CREATE_TAG_EXEMPT.includes(name) || CHANGE_TAG_EXEMPT.includes(name)) continue;
+      // Ruling P2: HTTP-verb actions by rule, never by their keys.
+      const verbs = HTTP_VERB_RULES[service];
+      if (verbs && /^(GET|HEAD|OPTIONS|POST|PUT|PATCH|DELETE)$/.test(a.Name)) {
+        if (a.Name === "POST") {
+          createOn[name] = verbs.postCreatesOn;
+          create.push(name);
+        } else if (verbs.changes.includes(a.Name)) verbChanges.push(name);
+        if (a.Name === verbs.untag) untags.push(name);
+        continue;
+      }
       if (isAccountSetting(service, a)) accountSettings.push(name);
       // A read makes nothing (the reference gives some reads the request tag): never in either list.
       if (!(p.IsWrite || p.IsPermissionManagement) || p.IsList) continue;
@@ -187,7 +240,7 @@ export function abacLists(sar) {
       }
     }
     create.push(...foldWildcards(actionLevel, all));
-    change.push(...foldWildcards(changes, all));
+    change.push(...foldWildcards(changes, all), ...verbChanges);
     untag.push(...foldWildcards(untags, all));
   }
   // One statement may refuse several made types together (A29: fewer statements) only when no action in it touches a
@@ -339,6 +392,8 @@ function fixedStatements(abac) {
     deny("DenyDefaultVpc", "ec2:*", "__DEFAULT_VPC_ARNS__"),
     deny("DenyDefaultVpcChildren", "ec2:*", "*", { ArnEquals: { "ec2:Vpc": "__DEFAULT_VPC_ARNS__" } }),
     ...VPC_FABRIC_GUARDS,
+    // Ruling P8: a load balancer is deleted only when it carries the lab tag or lab 19's Kubernetes cluster tag.
+    deny("ElbDeleteLabOrEks", "elasticloadbalancing:DeleteLoadBalancer", "*", { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true", [`aws:ResourceTag/${EKS_LB_TAG}`]: "true" } }),
     // The untaggable named types (NAME_OWNED_TYPES): the lab's own names only, never the account's default recorder.
     { Sid: "LabDashboardsOnly", Effect: "Deny", Action: ["cloudwatch:PutDashboard", "cloudwatch:DeleteDashboards"], NotResource: `arn:aws:cloudwatch::${ACCT}:dashboard/lab-*` },
     // soa-02's release test must confirm AWS evaluates PutConfigurationRecorder, at create, against the recorder's named
@@ -392,7 +447,7 @@ export function fillPolicy(doc, fill) {
   return JSON.stringify(doc).split(ACCT).join(fill.account).split('"__DEFAULT_VPC_ARNS__"').join(JSON.stringify(fill.vpcArns));
 }
 const docOf = (Statement) => ({ Version: "2012-10-17", Statement });
-const fits = (statements) => policySize(docOf(statements), PACK_FILL) < POLICY_MAX;
+const fits = (statements) => policySize(docOf(statements), PACK_FILL) < POLICY_PACK;
 
 /**
  * The statements packed into policies (first fit: each goes into the first policy with room, a new one when none has).
@@ -436,6 +491,15 @@ function counter(prefix) {
   return { next: () => `${prefix}${n + 1}`, take: () => `${prefix}${++n}` };
 }
 
+/** An HTTP-verb change (ruling P2) judged only on its rule's changesOn paths (pre-flight C17, option (b)). */
+const scopedVerb = (a) => {
+  const [service, name] = a.split(":");
+  const rule = HTTP_VERB_RULES[service];
+  return Boolean(rule?.changesOn) && rule.changes.includes(name);
+};
+/** A change-list entry other than a scoped verb that names or covers one (IAM matches actions without case). */
+const coversScopedVerb = (a) => !scopedVerb(a) && Object.entries(HTTP_VERB_RULES).some(([s, r]) => r.changesOn && r.changes.some((v) => covers([`${s}:${v}`])(a) || a.toLowerCase() === `${s}:${v}`.toLowerCase()));
+
 /** <svc>:Delete*, Modify*, Update*, Terminate* for each ABAC service without an untaggable named type (A29). */
 export const changeFallback = () => ABAC_SERVICES.filter((s) => !NAME_OWNED_SERVICES.includes(s)).flatMap((s) => ["Delete*", "Modify*", "Update*", "Terminate*"].map((v) => `${s}:${v}`));
 
@@ -448,9 +512,14 @@ function roleItems(abac, change) {
   const creates = counter("CreateNeedsLabTag");
   const changes = counter("ChangeNeedsLabTag");
   const items = fixedStatements(abac).map((statement) => ({ statement }));
-  // Requested on the action: refused on any resource.
-  const anywhere = abac.create.filter((a) => !createOn[a]);
+  // Requested on the action: refused on any resource; for NAMED_CREATES' services (ruling P3), outside their names.
+  const named = (a) => Object.hasOwn(NAMED_CREATES, a.split(":")[0]);
+  const anywhere = abac.create.filter((a) => !createOn[a] && !named(a));
   items.push({ list: anywhere, ...creates, make: (Action, Sid) => deny(Sid, Action, "*", noRequestTag) });
+  for (const [service, names] of Object.entries(NAMED_CREATES)) {
+    const list = abac.create.filter((a) => a.split(":")[0] === service && !createOn[a]);
+    if (list.length) items.push({ list, ...creates, make: (Action, Sid) => ({ Sid, Effect: "Deny", Action, NotResource: names, Condition: noRequestTag }) });
+  }
   // Requested on the type made: refused on that type's ARNs only, one statement per set of types.
   const groups = new Map();
   for (const a of abac.create.filter((x) => createOn[x] && x !== "ec2:RunInstances")) {
@@ -467,7 +536,12 @@ function roleItems(abac, change) {
   }
   const changeCond = (Action) => ({ Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true", ...(Action.some((a) => a.startsWith("ec2:")) ? { "ec2:CreateAction": "true" } : {}) } });
   const lagged = (a) => Object.hasOwn(TAG_LAG_NAMED, a.split(":")[0]);
-  items.push({ list: change.filter((a) => !lagged(a)), ...changes, make: (Action, Sid) => deny(Sid, Action, "*", changeCond(Action)) });
+  items.push({ list: change.filter((a) => !lagged(a) && !scopedVerb(a)), ...changes, make: (Action, Sid) => deny(Sid, Action, "*", changeCond(Action)) });
+  // Ruling P2 with pre-flight C17 (b): HTTP-verb changes need the tag only on their rule's changesOn paths.
+  for (const [service, rule] of Object.entries(HTTP_VERB_RULES)) {
+    const list = change.filter((a) => a.split(":")[0] === service && scopedVerb(a));
+    if (list.length) items.push({ list, ...changes, make: (Action, Sid) => deny(Sid, Action, rule.changesOn, changeCond(Action)) });
+  }
   // Ruling A56: the lab's own names need no tag (the tag read lags the create); anything else still does.
   for (const [service, names] of Object.entries(TAG_LAG_NAMED)) {
     const list = change.filter((a) => a.split(":")[0] === service);
@@ -487,6 +561,9 @@ export function renderLabPolicies(abac) {
   // A deny cannot be narrowed after the fact, so a wildcard covering an exempt action must be regenerated, not rendered.
   const exempted = abac.change.filter(covers(CHANGE_TAG_EXEMPT));
   if (exempted.length) throw new Error(`the change list's ${exempted.join(", ")} covers ${CHANGE_TAG_EXEMPT.join(", ")}, which ruling A82 exempts; regenerate lab-abac.json`);
+  // ... and one covering an HTTP verb would refuse it on every path, past C17 (b)'s changesOn.
+  const verbCovered = abac.change.filter(coversScopedVerb);
+  if (verbCovered.length) throw new Error(`the change list's ${verbCovered.join(", ")} covers an HTTP-verb change that ruling P2 judges on its own paths; regenerate lab-abac.json`);
   let role = pack(roleItems(abac, abac.change));
   let fallback = false;
   if (role.length > ROLE_POLICIES_MAX) {
